@@ -17,8 +17,10 @@ import { type AdoContext } from './invoke.js';
 import { type AdoPrView } from './reviews.js';
 export declare const BUILD_POLICY_TYPE = "0609b952-1397-4640-95ec-e00a01b2c241";
 export declare const STATUS_POLICY_TYPE = "cbdc66da-9728-4af8-aada-9a5a32e4a226";
-/** ADO 5xx, TF400898 (internal error) and VS800075 (project service unavailable). */
+/** ADO 5xx, TF400898 (internal error), VS800075 (project service unavailable) and TF400733 (rate limited: retried, ADO parity design §2.3). */
 export declare const ADO_TRANSIENT_ERROR: RegExp;
+/** A request blocked by the 200 TSTU / 5 min limit: `omg factory poll` doubles its interval (az prints no Retry-After header). */
+export declare const ADO_RATE_LIMITED: RegExp;
 export type BuildHeadVerdict = 'counts' | 'pending' | 'foreign';
 /** The PR source sha a build records, from either field; undefined values when absent. */
 export declare function buildHeadFields(build: Record<string, unknown>): {

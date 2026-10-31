@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "824629395f9f768c16d8098e2950e052a99fba8b",
-    "sourceSha256": "422255b1cb2f395422018d2f70d67f88a6dddf7340ea0d63a1d886c0feed962a",
+    "head": "cbb91bcfb2d93e4a6e073747b0ed479b42a97218",
+    "sourceSha256": "bb57b08d344337856ae1285c3cdc03bc01f24695f27984163388eb9731cdce77",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "824629395f9f768c16d8098e2950e052a99fba8b",
-  "sourceSha256": "422255b1cb2f395422018d2f70d67f88a6dddf7340ea0d63a1d886c0feed962a",
+  "head": "cbb91bcfb2d93e4a6e073747b0ed479b42a97218",
+  "sourceSha256": "bb57b08d344337856ae1285c3cdc03bc01f24695f27984163388eb9731cdce77",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1930,
-      "total": 1954
+      "srcFiles": 1935,
+      "total": 1959
     },
     "generated": {
-      "distFiles": 7124,
+      "distFiles": 7140,
       "bridgeFiles": 9,
-      "total": 7133
+      "total": 7149
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -2777,6 +2777,10 @@
       "dist/cli/commands/factory-check.d.ts.map",
       "dist/cli/commands/factory-check.js",
       "dist/cli/commands/factory-check.js.map",
+      "dist/cli/commands/factory-poll.d.ts",
+      "dist/cli/commands/factory-poll.d.ts.map",
+      "dist/cli/commands/factory-poll.js",
+      "dist/cli/commands/factory-poll.js.map",
       "dist/cli/commands/factory-setup.d.ts",
       "dist/cli/commands/factory-setup.d.ts.map",
       "dist/cli/commands/factory-setup.js",
@@ -3023,6 +3027,14 @@
       "dist/factory/__tests__/map-run.test.d.ts.map",
       "dist/factory/__tests__/map-run.test.js",
       "dist/factory/__tests__/map-run.test.js.map",
+      "dist/factory/__tests__/poll-ado.test.d.ts",
+      "dist/factory/__tests__/poll-ado.test.d.ts.map",
+      "dist/factory/__tests__/poll-ado.test.js",
+      "dist/factory/__tests__/poll-ado.test.js.map",
+      "dist/factory/__tests__/poll.test.d.ts",
+      "dist/factory/__tests__/poll.test.d.ts.map",
+      "dist/factory/__tests__/poll.test.js",
+      "dist/factory/__tests__/poll.test.js.map",
       "dist/factory/__tests__/status.test.d.ts",
       "dist/factory/__tests__/status.test.d.ts.map",
       "dist/factory/__tests__/status.test.js",
@@ -3171,6 +3183,10 @@
       "dist/factory/map-run.d.ts.map",
       "dist/factory/map-run.js",
       "dist/factory/map-run.js.map",
+      "dist/factory/poll.d.ts",
+      "dist/factory/poll.d.ts.map",
+      "dist/factory/poll.js",
+      "dist/factory/poll.js.map",
       "dist/factory/run/__tests__/ci-heal.test.d.ts",
       "dist/factory/run/__tests__/ci-heal.test.d.ts.map",
       "dist/factory/run/__tests__/ci-heal.test.js",
@@ -18770,6 +18786,26 @@
         "path": "dist/cli/commands/factory-check.js.map"
       },
       {
+        "id": "dist/cli/commands/factory-poll.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-poll.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/factory-poll.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-poll.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/factory-poll.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-poll.js"
+      },
+      {
+        "id": "dist/cli/commands/factory-poll.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-poll.js.map"
+      },
+      {
         "id": "dist/cli/commands/factory-setup.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/factory-setup.d.ts"
@@ -20000,6 +20036,46 @@
         "path": "dist/factory/__tests__/map-run.test.js.map"
       },
       {
+        "id": "dist/factory/__tests__/poll-ado.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/poll-ado.test.d.ts"
+      },
+      {
+        "id": "dist/factory/__tests__/poll-ado.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/poll-ado.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/__tests__/poll-ado.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/poll-ado.test.js"
+      },
+      {
+        "id": "dist/factory/__tests__/poll-ado.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/poll-ado.test.js.map"
+      },
+      {
+        "id": "dist/factory/__tests__/poll.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/poll.test.d.ts"
+      },
+      {
+        "id": "dist/factory/__tests__/poll.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/poll.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/__tests__/poll.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/poll.test.js"
+      },
+      {
+        "id": "dist/factory/__tests__/poll.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/poll.test.js.map"
+      },
+      {
         "id": "dist/factory/__tests__/status.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/__tests__/status.test.d.ts"
@@ -20738,6 +20814,26 @@
         "id": "dist/factory/map-run.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/map-run.js.map"
+      },
+      {
+        "id": "dist/factory/poll.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/poll.d.ts"
+      },
+      {
+        "id": "dist/factory/poll.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/poll.d.ts.map"
+      },
+      {
+        "id": "dist/factory/poll.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/poll.js"
+      },
+      {
+        "id": "dist/factory/poll.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/poll.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/ci-heal.test.d.ts",
@@ -50020,6 +50116,11 @@
         "path": "src/cli/commands/factory-check.ts"
       },
       {
+        "id": "src/cli/commands/factory-poll.ts",
+        "kind": "src",
+        "path": "src/cli/commands/factory-poll.ts"
+      },
+      {
         "id": "src/cli/commands/factory-setup.ts",
         "kind": "src",
         "path": "src/cli/commands/factory-setup.ts"
@@ -50335,6 +50436,16 @@
         "path": "src/factory/__tests__/map-run.test.ts"
       },
       {
+        "id": "src/factory/__tests__/poll-ado.test.ts",
+        "kind": "src",
+        "path": "src/factory/__tests__/poll-ado.test.ts"
+      },
+      {
+        "id": "src/factory/__tests__/poll.test.ts",
+        "kind": "src",
+        "path": "src/factory/__tests__/poll.test.ts"
+      },
+      {
         "id": "src/factory/__tests__/status.test.ts",
         "kind": "src",
         "path": "src/factory/__tests__/status.test.ts"
@@ -50628,6 +50739,11 @@
         "id": "src/factory/map-run.ts",
         "kind": "src",
         "path": "src/factory/map-run.ts"
+      },
+      {
+        "id": "src/factory/poll.ts",
+        "kind": "src",
+        "path": "src/factory/poll.ts"
       },
       {
         "id": "src/factory/run/__tests__/ci-heal.test.ts",
@@ -51478,6 +51594,11 @@
         "id": "src/forge/ado/__tests__/fixtures/git.pullRequestStatuses.GET.17.json",
         "kind": "src",
         "path": "src/forge/ado/__tests__/fixtures/git.pullRequestStatuses.GET.17.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/git.pullRequestThreads.GET.17.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/git.pullRequestThreads.GET.17.json"
       },
       {
         "id": "src/forge/ado/__tests__/fixtures/git.pullRequestThreads.POST.17.json",
@@ -73137,6 +73258,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/factory-poll.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-poll.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-poll.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-poll.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-poll.ts",
+        "to": "src/factory/poll.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-poll.ts",
+        "to": "src/factory/poll.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/cli/commands/factory-setup.ts",
         "to": "external:chalk",
         "kind": "imports"
@@ -73338,6 +73489,11 @@
       },
       {
         "from": "src/cli/commands/factory.ts",
+        "to": "src/cli/commands/factory-poll.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
         "to": "src/cli/commands/factory-setup.ts",
         "kind": "imports"
       },
@@ -73394,6 +73550,11 @@
       {
         "from": "src/cli/commands/factory.ts",
         "to": "src/factory/listener.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/poll.ts",
         "kind": "imports"
       },
       {
@@ -75927,6 +76088,166 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/__tests__/poll-ado.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll-ado.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll-ado.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll-ado.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll-ado.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll-ado.test.ts",
+        "to": "src/factory/heal/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll-ado.test.ts",
+        "to": "src/factory/poll.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll-ado.test.ts",
+        "to": "src/factory/poll.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll-ado.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll-ado.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll-ado.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll-ado.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll-ado.test.ts",
+        "to": "src/forge/ado/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll-ado.test.ts",
+        "to": "src/forge/ado/reviews.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll-ado.test.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll-ado.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.test.ts",
+        "to": "src/cli/commands/factory-poll.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.test.ts",
+        "to": "src/factory/heal/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.test.ts",
+        "to": "src/factory/heal/run.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.test.ts",
+        "to": "src/factory/poll.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.test.ts",
+        "to": "src/factory/poll.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.test.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/factory/__tests__/status.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -77970,6 +78291,116 @@
         "from": "src/factory/map-run.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/factory/board/render.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/factory/check/rules.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/factory/heal/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/factory/heal/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/factory/heal/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/factory/heal/run.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/forge/ado/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/ci-heal.test.ts",
@@ -116038,12 +116469,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9805,
-      "edgeCount": 11660,
-      "importEdgeCount": 9578,
+      "nodeCount": 9826,
+      "edgeCount": 11722,
+      "importEdgeCount": 9622,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "66ef96acf286329aeaceca35cca89db316b6f533918cef43f0188bbb3008ecad",
-  "manifestSha256": "ba955ad9da425a543de9674c81d53967dc7c56d0fbfae7601d79d795a0a41a53"
+  "inventorySha256": "6760089b799bbb7d96987238a6018ec235884e8227a47b5bbb316cd9047672d1",
+  "manifestSha256": "6a53b630d0373f2ac1887bae8f13024fecb04095cc57deffb85b2f4446a8ccd2"
 }

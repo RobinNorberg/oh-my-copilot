@@ -210,6 +210,25 @@ export interface ForgeReviews {
   prHead(pr: number): { headRefOid: string; state: string };
   markReady(pr: number): void;
   commentPr(pr: number, bodyFile: string): { ok: boolean; stderr: string };
+  /** `omg factory poll` only: the PR's review threads, read-only. Optional: GitHub omits it for now. Throws on a failed read. */
+  listThreads?(pr: number): ForgeThread[];
+}
+
+/** One PR review thread (ADO Pull Request Threads - List; deleted threads are left out). */
+export interface ForgeThread {
+  id: number;
+  /** CommentThreadStatus; any other value is `unknown`. */
+  status: 'active' | 'fixed' | 'wontFix' | 'closed' | 'byDesign' | 'pending' | 'unknown';
+  /** commentType of the first comment: `text` for people, `system` for ADO's own entries. */
+  kind: 'text' | 'system' | 'codeChange' | 'unknown';
+  /** The first comment's author.uniqueName, lowercased ('' when absent). */
+  author: string;
+  /** The PR's creator started the thread: the identity the factory opens its PRs as. */
+  byPrAuthor: boolean;
+  /** lastUpdatedDate. */
+  updatedAt: string;
+  /** threadContext.filePath. */
+  file?: string;
 }
 
 export interface ForgeChecks {

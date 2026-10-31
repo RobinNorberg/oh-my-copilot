@@ -1340,6 +1340,26 @@ omg factory board --no-check                # no check rules: one batched tracke
 - **`--json`** (schemaVersion 1): `{ schemaVersion, ok, forge, repo, source, parent, columns: [{ stage, title, items }], outside, warnings }`. Each row has `id`, `title`, `url`, optional `error`, `check` (`{ bucket, priority, reasons, detail }`; absent with `--no-check`), `run` (including `gate: { name, reason }` when the run is parked at a gate), `stage` (`expected`, `recorded`, `live`), `liveText`, `flags` and `gates`. Tracker and state text is plain (ANSI and control characters removed).
 - **Exit codes:** `0` shown; `1` an item could not be read (`read-failed`); `2` usage; `5` incompatible (an unsupported remote or forge, or no intake source and no runs).
 
+#### `omg factory poll` (experimental)
+
+`omg factory poll` is a foreground polling loop for GitHub and Azure DevOps. Use it where webhooks cannot reach you: Azure DevOps service hooks need a public HTTPS endpoint, and `omg factory listen` takes GitHub webhooks only. A tick never starts a session or a lane, and never writes to the tracker or the forge: forge calls run on `omg factory check`'s read guard with no marker, and the heal scan on the heal guard. It writes local state only: `.omg/state/factory-poll.json`, `.omg/state/factory-poll-audit.jsonl` and heal state.
+
+```bash
+omg factory poll [--interval 5m] [--once] [--no-heal] [--no-intake] [--no-prs] [--json]
+```
+
+One tick, in this order:
+
+1. **Heal.** Only when the forge has the heal capability (GitHub; Azure DevOps with `factory.heal.pipeline`): `omg factory heal scan`, which classifies new red CI runs into heal state. A tick never runs `heal run` or `heal approve`, because diagnosis lanes are billed. On Azure DevOps the scan is still refused, and the tick is skipped with that reason.
+2. **Intake.** Reads `factory.intake.source` and compares the ids with `seen` in the poll file. Each new id is checked with `omg factory check`'s rules and audited as `intake-new` with its bucket. Nothing is started: run it with `omg factory run <id>`.
+3. **PRs.** For every run in flight with a PR: a PR a human completed or abandoned prints the command that records it (`omg factory run <id>`, or `omg factory heal approve <sig8>` for a ci-heal run). On Azure DevOps the open review threads a person started are counted. ADO's system threads and threads started by the PR's creator (the factory's identity) are left out. Review comments never start a lane.
+4. **Board.** The `omg factory board` rows that changed since the previous tick (all rows on the first tick), read without the check rules. With `--json`, each tick prints one JSON object on one line (schemaVersion 1): `{ tick, at, forge, repo, heal, intake, prs, board, idle, rateLimited, errors, warnings, nextIntervalMs }`. `idle` is true when no engine owns the repository and no run is in flight (a run parked at a gate does not count).
+
+- **Interval.** The default is 5 min and the floor is 2 min (Azure DevOps allows 200 TSTU per sliding 5 minutes per user). A tick that hits the rate limit (`TF400733`, HTTP 429) doubles the wait, up to 60 min. The next clean tick resets it. `az devops invoke` shows no `Retry-After` header, so this backoff is the only control.
+- **One poller per repository.** The poll file records the owner's pid. A second poller, including `--once`, is refused while the first runs. An owner whose process has died is taken over.
+- **Stopping.** SIGINT or SIGTERM ends the loop after the current tick. A second signal exits at once.
+- **Exit codes:** `0` stopped by a signal, or a clean `--once` tick; `1` a read failed in the `--once` tick, or another poller runs; `2` usage (a bad `--interval`); `5` incompatible.
+
 #### `omg factory enqueue`
 
 ```bash
@@ -1452,7 +1472,7 @@ omg factory setup --intake label:factory | milestone:v5.18 ...   # GitHub
 - **Guard:** every forge call goes through a setup allowlist. On GitHub it allows `gh auth status`, `gh label list`, `gh label create` with the fixed color, and one GET of this repository's open milestones. On Azure DevOps it allows `az devops invoke` GETs of routes in `src/forge/ado/routes.ts`. Each GET is pinned to the detected org and project, uses the route's API version and `--detect false`, and has no `--in-file`, `--debug` or `--verbose`.
 - **JSON:** `{ exitCode, forge, auth, config, written: <paths>|null, diffs, labels: { missing, created }, prerequisites, preview, previewError?, notes, error? }`.
 - **Exit codes:** `0` written or dry run, `2` usage error, `3` auth or Azure DevOps extension missing, `5` incompatible (unsupported forge, mismatch, unknown query, state validation failed), `1` other failures.
-- **Listener:** `omg factory listen` receives GitHub webhooks only. It refuses when the origin remote or the user config's `factory.forge.kind` is `azure-devops`.
+- **Listener:** `omg factory listen` receives GitHub webhooks only. It refuses when the origin remote or the user config's `factory.forge.kind` is `azure-devops`, and points at `omg factory poll`.
 
 #### Live acceptance on Azure DevOps (maintainers)
 

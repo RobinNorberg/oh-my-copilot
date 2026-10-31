@@ -31,7 +31,33 @@ export function readAdoPr(ctx, pr) {
         lastMergeCommit: commitOf(json.lastMergeCommit),
         mergeStatus: str(json.mergeStatus),
         projectId: str(project.id),
+        createdBy: isObject(json.createdBy) ? str(json.createdBy.uniqueName)?.toLowerCase() : undefined,
     };
+}
+const THREAD_STATUS = new Set(['active', 'fixed', 'wontFix', 'closed', 'byDesign', 'pending']);
+const COMMENT_TYPE = new Set(['text', 'system', 'codeChange']);
+/** The PR's threads (Pull Request Threads - List), deleted ones left out; a thread without a numeric id fails the read. */
+export function parseAdoThreads(json, pr, prAuthor) {
+    return listValue(json).flatMap((t) => {
+        if (!isObject(t) || t.isDeleted === true)
+            return [];
+        if (!Number.isSafeInteger(t.id))
+            throw new Error(`pull request ${pr}: a thread without an id`);
+        const first = Array.isArray(t.comments) && isObject(t.comments[0]) ? t.comments[0] : {};
+        const author = (isObject(first.author) ? str(first.author.uniqueName) : undefined)?.toLowerCase() ?? '';
+        const status = str(t.status) ?? '';
+        const kind = str(first.commentType) ?? '';
+        const file = isObject(t.threadContext) ? str(t.threadContext.filePath) : undefined;
+        return [{
+                id: t.id,
+                status: THREAD_STATUS.has(status) ? status : 'unknown',
+                kind: COMMENT_TYPE.has(kind) ? kind : 'unknown',
+                author,
+                byPrAuthor: author !== '' && author === prAuthor,
+                updatedAt: str(t.lastUpdatedDate) ?? '',
+                ...(file ? { file } : {}),
+            }];
+    });
 }
 const STATE = { active: 'OPEN', completed: 'MERGED', abandoned: 'CLOSED' };
 const branchOf = (ref) => ref.replace(/^refs\/heads\//, '');
@@ -42,6 +68,13 @@ function description(bodyFile) {
 }
 export function adoReviews(ctx) {
     const prUrl = (pr) => `${ctx.repo.url}/pullrequest/${pr}`;
+    // A PR's creator never changes: listThreads reuses the one viewPr or prHead read.
+    const creators = new Map();
+    const read = (pr) => {
+        const v = readAdoPr(ctx, pr);
+        creators.set(pr, v.createdBy);
+        return v;
+    };
     return {
         findOpenPrForBranch(branch) {
             const json = adoJson(adoCall(ctx, 'git.pullRequests.GET', repoParams(ctx), { 'searchCriteria.sourceRefName': `refs/heads/${branch}`, 'searchCriteria.status': 'active' }), `pull requests for ${branch}`);
@@ -72,7 +105,7 @@ export function adoReviews(ctx) {
             return id;
         },
         viewPr(pr) {
-            const v = readAdoPr(ctx, pr);
+            const v = read(pr);
             const state = STATE[v.status];
             if (!state)
                 throw new Error(`pull request ${pr}: unknown status ${JSON.stringify(v.status)}`);
@@ -90,7 +123,7 @@ export function adoReviews(ctx) {
             };
         },
         prHead(pr) {
-            const v = readAdoPr(ctx, pr);
+            const v = read(pr);
             if (!v.lastMergeSourceCommit)
                 throw new Error(`pull request ${pr}: no source commit yet`);
             return { headRefOid: v.lastMergeSourceCommit, state: STATE[v.status] ?? v.status.toUpperCase() };
@@ -107,6 +140,11 @@ export function adoReviews(ctx) {
             catch (error) {
                 return { ok: false, stderr: error instanceof Error ? error.message : String(error) };
             }
+        },
+        listThreads(pr) {
+            const author = creators.has(pr) ? creators.get(pr) : read(pr).createdBy;
+            const json = adoJson(adoCall(ctx, 'git.pullRequestThreads.GET', { ...repoParams(ctx), pullRequestId: String(pr) }), `threads of pull request ${pr}`);
+            return parseAdoThreads(json, pr, author);
         },
     };
 }

@@ -101,7 +101,7 @@ const RUN_FILE = /^run-(\d+|heal-[0-9a-f]{8})\.json$/;
 const message = (error: unknown): string => plainText(error instanceof Error ? error.message : String(error));
 
 /** Every run state on disk; an unreadable one is a warning (and, for an item in the source, a `seal` flag). */
-function readRuns(root: string, warnings: string[]): { runs: Map<FactoryRunKey, FactoryRunState>; broken: Set<FactoryRunKey> } {
+export function readRuns(root: string, warnings: string[]): { runs: Map<FactoryRunKey, FactoryRunState>; broken: Set<FactoryRunKey> } {
   const runs = new Map<FactoryRunKey, FactoryRunState>();
   const broken = new Set<FactoryRunKey>();
   let names: string[];

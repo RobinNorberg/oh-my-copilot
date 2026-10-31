@@ -1,0 +1,63 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-threads/list?view=azure-devops-rest-7.1",
+  "note": "adapted: PR 17's threads: a system vote entry, one the factory (the PR creator owner@example.com) posted, an active and a fixed human thread, a deleted one",
+  "route": "git.pullRequestThreads.GET",
+  "routeParameters": { "project": "Web", "repositoryId": "web-app", "pullRequestId": "17" },
+  "stdout": {
+    "value": [
+      {
+        "id": 1,
+        "publishedDate": "2026-10-28T10:01:00.000Z",
+        "lastUpdatedDate": "2026-10-28T10:01:00.000Z",
+        "comments": [
+          { "id": 1, "parentCommentId": 0, "author": { "displayName": "Microsoft.VisualStudio.Services.TFS", "uniqueName": "00000002-0000-8888-8000-000000000000@2c895908-04e0-4952-89fd-54b0046d6288" }, "content": "Reviewer voted 10", "commentType": "system" }
+        ],
+        "status": "active",
+        "properties": {},
+        "isDeleted": false
+      },
+      {
+        "id": 2,
+        "publishedDate": "2026-10-28T10:05:00.000Z",
+        "lastUpdatedDate": "2026-10-28T10:05:00.000Z",
+        "comments": [
+          { "id": 1, "parentCommentId": 0, "author": { "displayName": "Owner", "uniqueName": "Owner@Example.com" }, "content": "factory: gates green; a human merges", "commentType": "text" }
+        ],
+        "status": "active",
+        "isDeleted": false
+      },
+      {
+        "id": 3,
+        "publishedDate": "2026-10-28T10:10:00.000Z",
+        "lastUpdatedDate": "2026-10-28T10:12:00.000Z",
+        "comments": [
+          { "id": 1, "parentCommentId": 0, "author": { "displayName": "Reviewer", "uniqueName": "reviewer@example.com" }, "content": "Please rename this export.", "commentType": "text" }
+        ],
+        "threadContext": { "filePath": "/src/report.ts", "rightFileStart": { "line": 12, "offset": 1 }, "rightFileEnd": { "line": 12, "offset": 9 } },
+        "status": "active",
+        "isDeleted": false
+      },
+      {
+        "id": 4,
+        "publishedDate": "2026-10-28T10:20:00.000Z",
+        "lastUpdatedDate": "2026-10-28T10:30:00.000Z",
+        "comments": [
+          { "id": 1, "parentCommentId": 0, "author": { "displayName": "Reviewer", "uniqueName": "reviewer@example.com" }, "content": "Typo in the header.", "commentType": "text" }
+        ],
+        "status": "fixed",
+        "isDeleted": false
+      },
+      {
+        "id": 5,
+        "publishedDate": "2026-10-28T10:40:00.000Z",
+        "lastUpdatedDate": "2026-10-28T10:41:00.000Z",
+        "comments": [
+          { "id": 1, "parentCommentId": 0, "author": { "displayName": "Reviewer", "uniqueName": "reviewer@example.com" }, "content": "never mind", "commentType": "text" }
+        ],
+        "status": "active",
+        "isDeleted": true
+      }
+    ],
+    "count": 5
+  }
+}

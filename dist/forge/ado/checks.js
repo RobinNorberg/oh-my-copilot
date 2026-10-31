@@ -16,8 +16,10 @@ import { adoCall, adoJson, isObject, listValue, projectParams, repoParams, str }
 import { readAdoPr } from './reviews.js';
 export const BUILD_POLICY_TYPE = '0609b952-1397-4640-95ec-e00a01b2c241';
 export const STATUS_POLICY_TYPE = 'cbdc66da-9728-4af8-aada-9a5a32e4a226';
-/** ADO 5xx, TF400898 (internal error) and VS800075 (project service unavailable). */
-export const ADO_TRANSIENT_ERROR = /HTTP 5\d\d|\b50[0234]\b|Bad Gateway|Service Unavailable|Gateway Time-?out|Internal Server Error|TF400898|VS800075/i;
+/** ADO 5xx, TF400898 (internal error), VS800075 (project service unavailable) and TF400733 (rate limited: retried, ADO parity design §2.3). */
+export const ADO_TRANSIENT_ERROR = /HTTP 5\d\d|\b50[0234]\b|Bad Gateway|Service Unavailable|Gateway Time-?out|Internal Server Error|TF400898|VS800075|TF400733/i;
+/** A request blocked by the 200 TSTU / 5 min limit: `omg factory poll` doubles its interval (az prints no Retry-After header). */
+export const ADO_RATE_LIMITED = /TF400733|\b429\b|Too Many Requests/i;
 /** The PR source sha a build records, from either field; undefined values when absent. */
 export function buildHeadFields(build) {
     const trigger = isObject(build.triggerInfo) ? str(build.triggerInfo['pr.sourceSha']) : undefined;

@@ -6,7 +6,7 @@
  */
 
 import { readFileSync } from 'fs';
-import type { ForgePr, ForgeReviews } from '../types.js';
+import type { ForgePr, ForgeReviews, ForgeThread } from '../types.js';
 import { adoCall, adoJson, isObject, listValue, repoParams, str, type AdoContext } from './invoke.js';
 
 const SHA = /^[0-9a-f]{40}$/;
@@ -29,6 +29,8 @@ export interface AdoPrView {
   mergeStatus?: string;
   /** Project GUID, for the policy artifact id. */
   projectId?: string;
+  /** createdBy.uniqueName, lowercased: the identity the factory opened the PR as. */
+  createdBy?: string;
 }
 
 const commitOf = (v: unknown): string | undefined => {
@@ -52,7 +54,33 @@ export function readAdoPr(ctx: AdoContext, pr: number): AdoPrView {
     lastMergeCommit: commitOf(json.lastMergeCommit),
     mergeStatus: str(json.mergeStatus),
     projectId: str(project.id),
+    createdBy: isObject(json.createdBy) ? str(json.createdBy.uniqueName)?.toLowerCase() : undefined,
   };
+}
+
+const THREAD_STATUS: ReadonlySet<string> = new Set(['active', 'fixed', 'wontFix', 'closed', 'byDesign', 'pending']);
+const COMMENT_TYPE: ReadonlySet<string> = new Set(['text', 'system', 'codeChange']);
+
+/** The PR's threads (Pull Request Threads - List), deleted ones left out; a thread without a numeric id fails the read. */
+export function parseAdoThreads(json: unknown, pr: number, prAuthor: string | undefined): ForgeThread[] {
+  return listValue(json).flatMap((t): ForgeThread[] => {
+    if (!isObject(t) || t.isDeleted === true) return [];
+    if (!Number.isSafeInteger(t.id)) throw new Error(`pull request ${pr}: a thread without an id`);
+    const first = Array.isArray(t.comments) && isObject(t.comments[0]) ? t.comments[0] : {};
+    const author = (isObject(first.author) ? str(first.author.uniqueName) : undefined)?.toLowerCase() ?? '';
+    const status = str(t.status) ?? '';
+    const kind = str(first.commentType) ?? '';
+    const file = isObject(t.threadContext) ? str(t.threadContext.filePath) : undefined;
+    return [{
+      id: t.id as number,
+      status: THREAD_STATUS.has(status) ? (status as ForgeThread['status']) : 'unknown',
+      kind: COMMENT_TYPE.has(kind) ? (kind as ForgeThread['kind']) : 'unknown',
+      author,
+      byPrAuthor: author !== '' && author === prAuthor,
+      updatedAt: str(t.lastUpdatedDate) ?? '',
+      ...(file ? { file } : {}),
+    }];
+  });
 }
 
 const STATE: Readonly<Record<string, ForgePr['state']>> = { active: 'OPEN', completed: 'MERGED', abandoned: 'CLOSED' };
@@ -66,6 +94,13 @@ function description(bodyFile: string): string {
 
 export function adoReviews(ctx: AdoContext): ForgeReviews {
   const prUrl = (pr: number) => `${ctx.repo.url}/pullrequest/${pr}`;
+  // A PR's creator never changes: listThreads reuses the one viewPr or prHead read.
+  const creators = new Map<number, string | undefined>();
+  const read = (pr: number): AdoPrView => {
+    const v = readAdoPr(ctx, pr);
+    creators.set(pr, v.createdBy);
+    return v;
+  };
   return {
     findOpenPrForBranch(branch: string): number | undefined {
       const json = adoJson(
@@ -104,7 +139,7 @@ export function adoReviews(ctx: AdoContext): ForgeReviews {
     },
 
     viewPr(pr: number): ForgePr {
-      const v = readAdoPr(ctx, pr);
+      const v = read(pr);
       const state = STATE[v.status];
       if (!state) throw new Error(`pull request ${pr}: unknown status ${JSON.stringify(v.status)}`);
       if (!v.lastMergeSourceCommit || !v.lastMergeTargetCommit) throw new Error(`pull request ${pr}: no source/target commit yet`);
@@ -121,7 +156,7 @@ export function adoReviews(ctx: AdoContext): ForgeReviews {
     },
 
     prHead(pr: number) {
-      const v = readAdoPr(ctx, pr);
+      const v = read(pr);
       if (!v.lastMergeSourceCommit) throw new Error(`pull request ${pr}: no source commit yet`);
       return { headRefOid: v.lastMergeSourceCommit, state: STATE[v.status] ?? v.status.toUpperCase() };
     },
@@ -138,6 +173,12 @@ export function adoReviews(ctx: AdoContext): ForgeReviews {
       } catch (error) {
         return { ok: false, stderr: error instanceof Error ? error.message : String(error) };
       }
+    },
+
+    listThreads(pr: number): ForgeThread[] {
+      const author = creators.has(pr) ? creators.get(pr) : read(pr).createdBy;
+      const json = adoJson(adoCall(ctx, 'git.pullRequestThreads.GET', { ...repoParams(ctx), pullRequestId: String(pr) }), `threads of pull request ${pr}`);
+      return parseAdoThreads(json, pr, author);
     },
   };
 }
