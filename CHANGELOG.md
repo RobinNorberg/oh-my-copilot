@@ -9,8 +9,11 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **`omg factory heal` and the ci-heal run on Azure DevOps.** With a trusted
   `factory.heal.pipeline` (capabilities.heal), `heal scan|run|approve|cancel`
   read the pipeline's builds through the heal guard's `read` policy, whose
-  context is built from the same resolved config as the CI reads; without
-  the key heal refuses and names it. `heal approve` runs the ci-heal run on
+  context is built from the same resolved config as the CI reads and lists
+  the builds of that pipeline only; without the key heal refuses and names
+  it. `heal status` and `close` need no forge wiring, and `heal cancel`
+  still records the cancel request when the key is gone or az is broken
+  (az is resolved on first use). `heal approve` runs the ci-heal run on
   the Azure DevOps forge: the repository url comes from the forge, the draft
   PR has a fixed title, no work item link and build-page run links, and the
   run parks at the human merge with the head-pinned merge body. Nothing

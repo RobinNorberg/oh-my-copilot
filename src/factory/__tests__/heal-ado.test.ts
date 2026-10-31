@@ -12,7 +12,6 @@ import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ADO_FIXTURE_DIR, adoFixtureExec, loadAdoFixtures, parseAdoFixture, type AdoFixture } from '../../forge/ado/__tests__/fixtures.js';
 import { adoConfig, POSIX_ENTRY, REPO } from '../../forge/ado/__tests__/world.js';
-import { createAzureDevOpsForge } from '../../forge/ado/index.js';
 import type { LoadedForgeConfig } from '../../forge/config.js';
 import type { ResolvedForgeConfig } from '../../forge/types.js';
 import type { Exec } from '../../ship/exec.js';
@@ -22,6 +21,7 @@ import { healGuardExec, HealSafetyError } from '../heal/history.js';
 import { DEFAULT_HEAL_CONFIG } from '../heal/config.js';
 import { healStateDir, listHealStates } from '../heal/state.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../run/budget.js';
+import { createFactoryState, factoryCancelRequested, healRunKey, overwriteFactoryState, type FactoryHealRecord } from '../run/state.js';
 
 const NOW = new Date('2026-11-05T00:00:00Z');
 const PIPELINE: ResolvedForgeConfig = { ...adoConfig(), heal: { pipeline: { definitionId: 9 } } };
@@ -59,8 +59,8 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-/** git answers the checkout (nothing fetched, no known-flaky file); az goes to the fixtures. */
-function world(forge: () => LoadedForgeConfig) {
+/** git answers the checkout (nothing fetched, no known-flaky file; `gitOk` subcommands succeed); az goes to the fixtures. */
+function world(forge: () => LoadedForgeConfig, gitOk: readonly string[] = []) {
   const az = adoFixtureExec(FIXTURES);
   const git: string[] = [];
   const exec: Exec = (cmd, args, opts) => {
@@ -68,6 +68,7 @@ function world(forge: () => LoadedForgeConfig) {
     if (cmd !== 'git') throw new Error(`unexpected ${cmd} ${args.join(' ')}`);
     git.push(args.join(' '));
     if (args.join(' ') === 'rev-parse --show-toplevel') return { status: 0, stdout: `${root}\n`, stderr: '' };
+    if (gitOk.includes(args[0])) return { status: 0, stdout: '', stderr: '' };
     return { status: 1, stdout: '', stderr: 'not fetched' };
   };
   const forgeCalls = vi.fn(forge);
@@ -87,6 +88,8 @@ function world(forge: () => LoadedForgeConfig) {
 }
 
 async function cli(deps: HealDeps, argv: string[]): Promise<{ code: number | undefined; json: any }> {
+  out.length = 0;
+  process.exitCode = undefined;
   await healCommand(deps).parseAsync([...argv, '--json'], { from: 'user' });
   return { code: process.exitCode as number | undefined, json: JSON.parse(out.join('\n')) };
 }
@@ -141,20 +144,114 @@ describe('omg factory heal scan on Azure DevOps (fixtures)', () => {
   });
 });
 
+describe('omg factory heal run --dry-run on Azure DevOps (fixtures)', () => {
+  it('collects the evidence through the forge CI over the read guard: every az call is a GET of pipeline 9 in the forge repo', async () => {
+    const w = world(() => ({ config: PIPELINE, warnings: [] }), ['cat-file', 'merge-base']);
+    const scan = await cli(w.deps, ['scan']);
+    expect(scan.code, scan.json.error).toBe(0);
+    const [state] = listHealStates(root);
+    expect(state.next).toBe('debug-lane');
+    const before = w.az.calls.length;
+
+    const { code, json } = await cli(w.deps, ['run', state.sig8, '--dry-run']);
+    expect(code, json.error).toBe(0);
+    expect(json.message).toMatch(/^dry run: wrote the evidence bundle/);
+    expect(json.bundleDir.startsWith(root)).toBe(true);
+    const calls = w.az.calls.slice(before);
+    expect(calls.length).toBeGreaterThan(0);
+    for (const c of calls) {
+      expect(flag(c.args, '--http-method')).toBe('GET');
+      expect(flag(c.args, '--org')).toBe('https://dev.azure.com/contoso');
+      expect(c.args).toContain('project=Web');
+      if (c.args.some((a) => a.startsWith('definitions='))) expect(c.args).toContain('definitions=9');
+    }
+  });
+});
+
+describe('heal status, close and cancel need no forge wiring', () => {
+  const SIG8 = '0a1b2c3d';
+  /** A ci-heal run's state as the engine leaves it parked (heal approve). */
+  function seedCiHeal(): void {
+    const record: FactoryHealRecord = {
+      sig8: SIG8, class: 'regression', firstRed: { runId: '205', sha: 'd'.repeat(40) }, failingTests: [], env: [],
+      diagnosis: { class: 'regression', rootCause: 'x', evidence: [], reproduced: false, fix: null },
+    };
+    overwriteFactoryState(root, healRunKey(SIG8), createFactoryState({ issue: 0, repoUrl: REPO.url, base: 'main', heal: record }, NOW.toISOString()));
+  }
+  const broken: Array<[string, (deps: HealDeps) => HealDeps]> = [
+    ['no factory.heal.pipeline', (deps) => ({ ...deps, forge: () => ({ config: adoConfig(), warnings: [] }) })],
+    ['a failing az resolve', (deps) => ({ ...deps, resolveAz: () => { throw new Error('az is not installed'); } })],
+  ];
+
+  for (const [name, edit] of broken) {
+    it(`with ${name}: status lists the signatures and cancel records the request without an az call`, async () => {
+      const w = world(() => ({ config: PIPELINE, warnings: [] }));
+      expect((await cli(w.deps, ['scan'])).code).toBe(0);
+      const deps = edit(w.deps);
+      const before = w.az.calls.length;
+
+      const status = await cli(deps, ['status']);
+      expect(status.code, status.json.error).toBe(0);
+      expect(status.json.signatures).toHaveLength(1);
+
+      seedCiHeal();
+      const cancel = await cli(deps, ['cancel', SIG8]);
+      expect(cancel.code, cancel.json.error).toBe(0);
+      expect(cancel.json).toMatchObject({ ok: true, sig8: SIG8, cancelRequested: true });
+      expect(cancel.json.note).toMatch(/a parked run is cancelled by the next omg factory heal cancel/);
+      expect(factoryCancelRequested(root, healRunKey(SIG8))).toBe(true);
+      expect(w.az.calls.length).toBe(before);
+    });
+  }
+
+  it('status and close never load the forge config', async () => {
+    const w = world(() => { throw new Error('the forge config is broken'); });
+    expect((await cli(w.deps, ['status'])).json).toMatchObject({ ok: true, signatures: [] });
+    const close = await cli(w.deps, ['close', SIG8]);
+    expect(close.json.error).not.toMatch(/forge config/);
+    expect(w.forgeCalls).not.toHaveBeenCalled();
+  });
+});
+
 describe('adoHeal: the guard context and the ForgeCi come from one config', () => {
-  it('the guard context names the forge repository, entry and no progress values', () => {
-    const heal = adoHeal(PIPELINE, POSIX_ENTRY, root);
-    const forge = createAzureDevOpsForge(() => ({ status: 1, stdout: '', stderr: '' }), root, heal.forge.config, { ...heal.forge.options, entry: heal.forge.entry! });
-    expect(heal.guard().repo).toEqual(forge.repo);
-    expect(heal.guard().repo).toEqual(REPO);
-    expect(heal.forge.config).toBe(PIPELINE);
-    expect(heal.guard()).toMatchObject({ entry: POSIX_ENTRY, allowedStates: [], allowedColumns: [] });
+  /** Records every az argv the guard lets through; answers an empty build list. */
+  const recordingAz = () => {
+    const calls: string[][] = [];
+    const exec: Exec = (_cmd, args) => { calls.push([...args]); return { status: 0, stdout: '{"count":0,"value":[]}', stderr: '' }; };
+    return { exec, calls };
+  };
+
+  it('the guard and the CI reads adoHeal builds name the configured repository, pipeline and entry, resolved once on first use', () => {
+    const resolveAz = vi.fn(() => POSIX_ENTRY);
+    const heal = adoHeal(PIPELINE, resolveAz, root);
+    expect(resolveAz).not.toHaveBeenCalled();
+    expect(heal.guard()).toEqual({ repo: PIPELINE.repo, entry: POSIX_ENTRY, allowedStates: [], allowedColumns: [], definitionId: PIPELINE.heal!.pipeline!.definitionId });
+    expect(heal.forge()).toMatchObject({ config: PIPELINE, entry: POSIX_ENTRY });
+
+    // The CI reads go out through the guard to the org, project and pipeline of the config.
+    const az = recordingAz();
+    heal.ci(healGuardExec(az.exec, heal.guard), root).listRuns({ workflow: 'ci', event: 'push', branch: 'main', limit: 5 });
+    expect(az.calls).toHaveLength(1);
+    for (const args of az.calls) {
+      expect(flag(args, '--org')).toBe(`https://dev.azure.com/${PIPELINE.azureDevOps!.org}`);
+      expect(args).toContain(`project=${PIPELINE.azureDevOps!.project}`);
+      expect(args).toContain(`definitions=${PIPELINE.heal!.pipeline!.definitionId}`);
+    }
+    expect(resolveAz).toHaveBeenCalledTimes(1);
   });
 
-  it('the guard context refuses a read of another repository or project than the config names', () => {
-    const exec = healGuardExec(adoFixtureExec(FIXTURES), adoHeal(PIPELINE, POSIX_ENTRY, root).guard);
+  it('the guard context refuses a read of another organization, repository, project or pipeline than the config names', () => {
+    const az = recordingAz();
+    const exec = healGuardExec(az.exec, adoHeal(PIPELINE, () => POSIX_ENTRY, root).guard);
     const other = { ...REPO, project: 'Other', name: 'other-app' };
+    const fabrikam = { ...REPO, owner: 'fabrikam' };
+    const builds = (repo: typeof REPO, definitions: string) => adoInvokeArgs({ entry: POSIX_ENTRY, repo }, 'build.builds.GET', { project: repo.project! }, { definitions, statusFilter: 'completed' });
     expect(() => exec('az', adoInvokeArgs({ entry: POSIX_ENTRY, repo: other }, 'git.repositories.GET', { project: 'Web', repositoryId: 'other-app' }), {})).toThrow(HealSafetyError);
-    expect(() => exec('az', adoInvokeArgs({ entry: POSIX_ENTRY, repo: other }, 'build.builds.GET', { project: 'Other' }), {})).toThrow(HealSafetyError);
+    expect(() => exec('az', builds(other, '9'), {})).toThrow(HealSafetyError);
+    expect(() => exec('az', builds(fabrikam, '9'), {})).toThrow(/--org must be https:\/\/dev\.azure\.com\/contoso/);
+    expect(() => exec('az', builds(REPO, '10'), {})).toThrow(/definitions must be the configured factory\.heal\.pipeline 9/);
+    expect(az.calls).toEqual([]);
+    expect(exec('az', builds(REPO, '9'), {}).status).toBe(0);
+    expect(az.calls).toHaveLength(1);
   });
 });

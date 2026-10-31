@@ -30131,6 +30131,9 @@ function invokeProblem(inv, ctx, policy, writes) {
   for (const [name, value] of Object.entries(qp)) {
     if (!((policy === "read" ? READ_QUERY_VALUE[name] : void 0) ?? QUERY_VALUE[name] ?? VALUE).test(value)) return `query parameter ${name} has a refused value`;
   }
+  if (ctx.definitionId !== void 0 && Object.hasOwn(qp, "definitions") && qp.definitions !== String(ctx.definitionId)) {
+    return `definitions must be the configured factory.heal.pipeline ${ctx.definitionId}`;
+  }
   const takesBody = route2.body !== void 0 && route2.body.kind !== "none";
   if (takesBody && inv.inFileAt === void 0) return `${route2.id} needs --in-file`;
   if (!takesBody && inv.inFileAt !== void 0) return `${route2.id} takes no --in-file`;

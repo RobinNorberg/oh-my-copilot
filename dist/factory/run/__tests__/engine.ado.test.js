@@ -438,6 +438,8 @@ describe('ci-heal run on Azure DevOps (ADO parity design §3.6)', () => {
             expect(json.mergeCommand).toContain(`--in-file ${bodyFile}`);
             // A ci-heal run has no work item: nothing was read or written on the tracker.
             expect(ado.calls.some((c) => c.route.startsWith('wit.'))).toBe(false);
+            // The whole write set: the draft PR, its ready flip and the PR threads; no policy requeue, no tracker write.
+            expect(new Set(ado.calls.map((c) => c.route).filter((r) => !r.endsWith('.GET')))).toEqual(new Set(['git.pullRequests.POST', 'git.pullRequests.PATCH', 'git.pullRequestThreads.POST']));
             expectNoMerge();
         }
         finally {

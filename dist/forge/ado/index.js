@@ -46,9 +46,13 @@ export function adoGuardContext(config, entry) {
         throw new Error('the Azure DevOps guard needs an azure-devops forge config');
     return { repo: config.repo, entry, allowedStates: progressStates(config), allowedColumns: progressColumns(config) };
 }
-/** The heal guard context (ADO parity design §3.5): the forge repo and az entry, no progress values (the `read` policy refuses every write anyway). */
+/**
+ * The heal guard context (ADO parity design §3.5): the forge repo, az entry and factory.heal.pipeline's
+ * definition (the only pipeline whose builds it lists), no progress values (the `read` policy refuses every write anyway).
+ */
 export function adoReadGuardContext(config, entry) {
-    return { ...adoGuardContext(config, entry), allowedStates: [], allowedColumns: [] };
+    const pipeline = config.heal?.pipeline;
+    return { ...adoGuardContext(config, entry), allowedStates: [], allowedColumns: [], ...(pipeline ? { definitionId: pipeline.definitionId } : {}) };
 }
 export function createAzureDevOpsForge(exec, cwd, config, options) {
     if (config.kind !== 'azure-devops' || !config.azureDevOps || !config.repo.project)

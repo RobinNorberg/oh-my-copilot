@@ -66,15 +66,16 @@ export interface HealDeps {
 export interface AdoHeal {
     ci: (exec: Exec, root: string) => ForgeCi;
     guard: () => AdoGuardContext;
-    forge: FactoryForgeInput;
+    forge: () => FactoryForgeInput;
 }
 /**
  * The Azure DevOps heal wiring (ADO parity design §3.5-§3.6). The guard
  * context and the ForgeCi are built from the same trusted `config` and az
- * `entry`, so the guard lets through only the reads of the repository the CI
- * history comes from.
+ * entry, so the guard lets through only the reads of the repository and
+ * pipeline the CI history comes from. The entry is resolved on first use
+ * (`heal status`, `close` and `cancel` need no az).
  */
-export declare function adoHeal(config: ResolvedForgeConfig, entry: AzEntry, root: string): AdoHeal;
+export declare function adoHeal(config: ResolvedForgeConfig, resolveAz: () => AzEntry, root: string): AdoHeal;
 export interface ScanEntry {
     runId: string;
     event: string;

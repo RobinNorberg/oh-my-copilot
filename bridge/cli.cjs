@@ -94608,6 +94608,9 @@ function invokeProblem(inv, ctx, policy, writes) {
   for (const [name, value] of Object.entries(qp)) {
     if (!((policy === "read" ? READ_QUERY_VALUE[name] : void 0) ?? QUERY_VALUE[name] ?? VALUE).test(value)) return `query parameter ${name} has a refused value`;
   }
+  if (ctx.definitionId !== void 0 && Object.hasOwn(qp, "definitions") && qp.definitions !== String(ctx.definitionId)) {
+    return `definitions must be the configured factory.heal.pipeline ${ctx.definitionId}`;
+  }
   const takesBody = route2.body !== void 0 && route2.body.kind !== "none";
   if (takesBody && inv.inFileAt === void 0) return `${route2.id} needs --in-file`;
   if (!takesBody && inv.inFileAt !== void 0) return `${route2.id} takes no --in-file`;
@@ -122929,7 +122932,8 @@ function adoGuardContext(config2, entry2) {
   return { repo: config2.repo, entry: entry2, allowedStates: progressStates(config2), allowedColumns: progressColumns(config2) };
 }
 function adoReadGuardContext(config2, entry2) {
-  return { ...adoGuardContext(config2, entry2), allowedStates: [], allowedColumns: [] };
+  const pipeline = config2.heal?.pipeline;
+  return { ...adoGuardContext(config2, entry2), allowedStates: [], allowedColumns: [], ...pipeline ? { definitionId: pipeline.definitionId } : {} };
 }
 function createAzureDevOpsForge(exec3, cwd2, config2, options) {
   if (config2.kind !== "azure-devops" || !config2.azureDevOps || !config2.repo.project) throw new Error("createAzureDevOpsForge needs a resolved azure-devops forge config");
@@ -127637,17 +127641,19 @@ var init_implement = __esm({
 });
 
 // src/factory/heal/cli.ts
-function adoHeal(config2, entry2, root2) {
-  const guard = adoReadGuardContext(config2, entry2);
+function adoHeal(config2, resolveAz, root2) {
+  let entry2;
+  const az = () => entry2 ??= resolveAz();
+  let guard;
   const options = factoryForgeOptions(root2);
   return {
-    guard: () => guard,
+    guard: () => guard ??= adoReadGuardContext(config2, az()),
     ci: (exec3, cwd2) => {
-      const ci = createAzureDevOpsForge(exec3, cwd2, config2, { ...options, entry: entry2 }).ci;
+      const ci = createAzureDevOpsForge(exec3, cwd2, config2, { ...options, entry: az() }).ci;
       if (!ci) throw new HealRunRefused(HEAL_PIPELINE_MISSING);
       return ci;
     },
-    forge: { config: config2, options, entry: entry2 }
+    forge: () => ({ config: config2, options, entry: az() })
   };
 }
 function runJobs(ctx, runId) {
@@ -127892,20 +127898,27 @@ function engineDeps(deps, ado) {
     warn: (m) => console.error(source_default.yellow(termSafe(m))),
     ...deps.gateConfig ? { gateConfig: deps.gateConfig } : {},
     ...deps.engine ? { engine: deps.engine } : {},
-    ...ado ? { forge: ado.forge } : {}
+    ...ado ? { forge: ado.forge() } : {}
   };
 }
-function healRoot(deps) {
+function checkoutRoot(deps) {
   const r = healGuardExec(deps.exec)("git", ["rev-parse", "--show-toplevel"]);
   if (r.status !== 0) throw new HealUsageError("omg factory heal must run inside a git repository");
-  const root2 = r.stdout.trim();
-  if (deps.forgeKind?.(root2) !== "azure-devops") return { root: root2 };
+  return r.stdout.trim();
+}
+function healForge(deps, root2) {
+  if (deps.forgeKind?.(root2) !== "azure-devops") return void 0;
   if (!deps.forge) throw new HealRunRefused(HEAL_PIPELINE_MISSING);
   const { config: config2, warnings } = deps.forge(root2, deps.base(root2));
   for (const w of warnings) console.error(source_default.yellow(termSafe(w)));
   if (config2.kind !== "azure-devops") throw new HealRunRefused(`the origin is on Azure DevOps, but the forge config resolves to ${config2.kind}`);
   if (!config2.heal?.pipeline) throw new HealRunRefused(HEAL_PIPELINE_MISSING);
-  return { root: root2, ado: adoHeal(config2, (deps.resolveAz ?? defaultResolveAz)(root2), root2) };
+  return adoHeal(config2, () => (deps.resolveAz ?? defaultResolveAz)(root2), root2);
+}
+function healRoot(deps) {
+  const root2 = checkoutRoot(deps);
+  const ado = healForge(deps, root2);
+  return ado ? { root: root2, ado } : { root: root2 };
 }
 function healCommand(deps) {
   const heal = new Command("heal");
@@ -127925,7 +127938,7 @@ function healCommand(deps) {
   }));
   heal.command("status [sig8]").description("Print recorded heal signatures, or one signature's classification (read-only)").option("--json", "JSON output").action((sig8, _o, c) => guarded(Boolean(c.optsWithGlobals().json), () => {
     const json = Boolean(c.optsWithGlobals().json);
-    const { root: root2 } = healRoot(deps);
+    const root2 = checkoutRoot(deps);
     if (sig8 !== void 0) {
       if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
       const state = readHealState(root2, sig8);
@@ -127979,14 +127992,24 @@ function healCommand(deps) {
   }));
   heal.command("cancel <sig8>").description("Cancel the ci-heal run of a signature: a running engine stops its lane; a parked run is cancelled now (the PR, branch and worktrees are kept)").option("--json", "JSON output").action((sig8, o) => guarded(Boolean(o.json), async () => {
     if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
-    const { root: root2, ado } = healRoot(deps);
+    const root2 = checkoutRoot(deps);
     const key = healRunKey(sig8);
     if (!readFactoryState(root2, key)) throw new HealRunRefused(`heal ${sig8} has no ci-heal run (omg factory heal close ${sig8} closes a parked heal run)`);
     requestFactoryCancel(root2, key, deps.now().toISOString());
+    let engine;
+    try {
+      engine = engineDeps(deps, healForge(deps, root2));
+    } catch (error2) {
+      const why = termSafe(error2 instanceof Error ? error2.message : String(error2));
+      const note = `a running engine stops within seconds; a parked run is cancelled by the next omg factory heal cancel ${sig8} or approve once the forge wiring works (${why})`;
+      if (o.json) console.log(JSON.stringify({ ok: true, sig8, cancelRequested: true, note }, null, 2));
+      else console.log(source_default.yellow(`cancel requested for ci-heal heal-${sig8}; ${note}`));
+      return 0;
+    }
     const { config: config2 } = deps.config(root2);
     let outcome;
     try {
-      outcome = await runHealEngine({ root: root2, base: deps.base(root2), sig8, config: config2, approved: false }, engineDeps(deps, ado));
+      outcome = await runHealEngine({ root: root2, base: deps.base(root2), sig8, config: config2, approved: false }, engine);
     } catch (error2) {
       if (!/already running/.test(error2 instanceof Error ? error2.message : "") || !factoryCancelRequested(root2, key)) throw error2;
       if (o.json) console.log(JSON.stringify({ ok: true, sig8, cancelRequested: true }, null, 2));
@@ -127998,7 +128021,7 @@ function healCommand(deps) {
   }));
   heal.command("close <sig8>").description("Close an open heal run parked at heal-approve or heal-diagnosis (a human decision; frees the open-run slot)").option("--json", "JSON output").action((sig8, o) => guarded(Boolean(o.json), () => {
     if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
-    const { root: root2 } = healRoot(deps);
+    const root2 = checkoutRoot(deps);
     const state = closeHeal(root2, sig8, { ledgerDir: deps.ledgerDir, now: deps.now });
     if (o.json) console.log(JSON.stringify({ ok: true, sig8, healRun: state.healRun, next: state.next }, null, 2));
     else console.log(`${source_default.bold(`factory heal close ${sig8}`)}  closed heal run ${termSafe(state.healRun.id)}`);
