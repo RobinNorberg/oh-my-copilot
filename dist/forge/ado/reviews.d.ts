@@ -4,7 +4,7 @@
  * opens drafts and only flips isDraft to false; the guard refuses any other
  * PR body (a merge in particular).
  */
-import type { ForgeReviews } from '../types.js';
+import type { ForgeReviews, ForgeThread } from '../types.js';
 import { type AdoContext } from './invoke.js';
 /** REST `description` limit on a pull request. */
 export declare const ADO_PR_DESCRIPTION_MAX = 4000;
@@ -24,6 +24,14 @@ export interface AdoPrView {
     /** Project GUID, for the policy artifact id. */
     projectId?: string;
 }
+/**
+ * The hidden last line of every PR comment the factory posts on Azure Repos
+ * (an HTML comment, not rendered): `omg factory poll` leaves those threads out
+ * of its human thread count. A person who pastes it only hides their own thread.
+ */
+export declare const ADO_FACTORY_COMMENT_MARKER = "<!-- omg-factory: comment -->";
 export declare function readAdoPr(ctx: AdoContext, pr: number): AdoPrView;
+/** The PR's threads (Pull Request Threads - List), deleted ones left out; a thread without a numeric id fails the read. */
+export declare function parseAdoThreads(json: unknown, pr: number): ForgeThread[];
 export declare function adoReviews(ctx: AdoContext): ForgeReviews;
 //# sourceMappingURL=reviews.d.ts.map

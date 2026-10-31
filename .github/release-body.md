@@ -1,60 +1,63 @@
-# oh-my-copilot v5.18.2
+# oh-my-copilot v5.19.0
 
-A security and fix release for factory lanes, `copilot_run` jobs and pane
-team workers, with Azure DevOps parity fixes and Copilot record/replay
-groundwork, on top of v5.18.1.
+A feature release that connects the shipyard skills to `omg factory`, from
+harbor intake to dependency-ordered delivery, and brings Azure DevOps closer
+to parity with GitHub, on top of v5.18.2.
 
-Install with `npm install -g oh-my-copilot@5.18.2`, or from the plugin
+Install with `npm install -g oh-my-copilot@5.19.0`, or from the plugin
 marketplace: `copilot plugin update oh-my-copilot@omc`.
 
 ## Security
 
-- Factory lanes and SDK sessions can no longer write a worktree's `.git`
-  through the built-in file tools (including `GIT~1`, NTFS alternate data
-  streams and links), which could point git at a config whose
-  `core.fsmonitor` ran outside the sandbox.
-- `copilot_run` snapshots the common git dir (config, hooks, info,
-  commondir, modules, refs, worktree admin files) and fails the job as
-  `sandbox-escaped` on any change.
-- Job and factory checkout branches can no longer be turned into a symref
-  that moves `main`: branches move with `update-ref --no-deref`, and only
-  while they are plain commit refs.
-- `.claude/`, `.vscode/`, `.mcp.json`, `.husky/` and a relative
-  `core.hooksPath` are refused at write time; lane changes there park at
-  `protected-paths`.
-- Sandboxed lane shells are denied more credential files (`gh`, AWS, npm,
-  Docker, kube, gcloud and others) and, on Linux and macOS, agent and
-  container sockets.
-- Pane team workers refuse credential-named
-  `OMC_TEAM_WORKER_ENV_PASSTHROUGH` entries, except the provider's own login.
-
-Known gap, accepted: Copilot's built-in file write and edit tools still run
-outside the sandbox, so a race between the write check and the write remains
-an arbitrary-file-write window. The git dir snapshot is a detector, not a
-boundary.
+- Tracker writes on GitHub (`gh issue create`, `gh issue edit`,
+  `gh issue list --search`) and on Azure DevOps (`wit/workItems` `POST` and
+  `PATCH`) are allowed only for `omg factory enqueue`, each as one exact
+  shape. Nothing closes, deletes or unlinks; `omg factory run`,
+  `omg factory check` and `omg ship` still refuse them.
+- The factory listener and the SessionEnd chain reject issue numbers that
+  are not positive integers.
 
 ## Added
 
-- `omg smoke copilot --record/--replay` and `omg smoke cassette
-  verify|import`: Copilot record/replay groundwork with a fail-closed
-  redaction gate. No cassettes ship yet.
-- `omg:` accepted beside `omc:` in skill and agent names the model emits
-  (typed slash commands stay `/oh-my-copilot:<skill>`).
-- Azure DevOps live acceptance and capture scripts for maintainers.
+- `omg factory enqueue --spec <id> --file <tickets.json>` on GitHub and
+  Azure DevOps: launch's signed tickets become children of the spec, with
+  dependency edges, an idempotent re-run and neutralized model text.
+- `omg factory check --parent <spec>` and
+  `omg factory run --next [--parent <spec>]`: check a spec's children and run
+  the first runnable one.
+- Outcome comments on each item and rollup lines on its spec when a factory
+  run parks at merge or ends.
+- `omg factory init --check` and `--migrate` for old route tables.
+- `omg factory board`: a read-only board of intake items and factory runs on
+  GitHub and Azure DevOps.
+- Azure Pipelines CI history for heal (groundwork, via
+  `factory.heal.pipeline`).
+
+## Changed
+
+- Factory intake goes to harbor; launch delivers through `omg factory` on
+  GitHub (`--team` keeps Team delivery).
+- `omg factory run` parks at `blocked-by` until dependencies are satisfied;
+  a merged factory PR into the base counts as satisfied.
+- Two-axis factory review (spec and `docs/standards/`) when the base has
+  `docs/standards/`.
+- `omg factory status` is now `omg factory chain status` (the old name stays
+  as an alias).
+- The maintainer Azure DevOps acceptance script walks the shipyard–factory
+  flow.
+- The README has a skills guide for the current skill set, with colored
+  category badges; the stars chart is gone.
 
 ## Fixed
 
-- `omg factory check` works on real Azure DevOps repositories.
-- Factory lanes may not edit Azure Pipelines definitions.
-- ci-fix and heal on Azure DevOps get the failed job and the failing tests;
-  known-flaky entries apply.
-- The Azure CLI MSI layout with only `__main__.pyc` is accepted.
-- Lanes keep proxy and CA settings (`HTTPS_PROXY`, `NODE_EXTRA_CA_CERTS`
-  and similar).
-- A second factory run on the same repository refuses instead of breaking
-  the first.
-- Skill lists, `/omc-teams` references and setup hints match the shipped
-  plugin (`omg team`, `/oh-my-copilot:omc-setup`).
+- CI failures no longer start a session for the nonexistent `diagnose`
+  skill; `omg factory init --no-narrow` refuses.
+- The SessionEnd chain refuses routes to captain skills (`launch`,
+  `ask-navigator`, `loft`, `drydock`), retired skills and unknown skills.
+- `omg ralph from-map` reads the navigator's `Type:` lines.
 
 This release was published without the live Copilot smoke (quota exhausted).
-Details are in `CHANGELOG.md`.
+The Azure DevOps parts are fixture-tested and have not been run against a
+live org. `omg factory heal scan` on Azure DevOps is still refused (in
+progress), and `omg factory poll` and `factory.intake.autoStart` are not in
+this release. Details are in `CHANGELOG.md`.

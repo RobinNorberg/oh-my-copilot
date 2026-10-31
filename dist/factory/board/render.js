@@ -30,7 +30,7 @@ function flagText(r) {
         return chalk.yellow('stale');
     });
 }
-function backlogLine(r) {
+export function backlogLine(r) {
     const id = runLabel(r.id).padEnd(6);
     if (r.error)
         return `  ${chalk.red('read-failed'.padEnd(10))}  ${id}  ${r.error}`;
@@ -41,7 +41,7 @@ function backlogLine(r) {
     const bucket = BUCKET_COLOR[r.check.bucket](r.check.bucket.padEnd(10));
     return `  ${bucket}  ${id}  ${pri}  ${title}  ${r.check.reasons[0] ?? ''}${r.check.reasons.length ? `  ${chalk.gray(r.check.detail)}` : ''}${r.flags.length ? `  ${flagText(r).join('  ')}` : ''}`;
 }
-function runLine(r, prefix) {
+export function runLine(r, prefix) {
     const run = r.run;
     const parts = [runLabel(r.id).padEnd(6)];
     if (r.error)
