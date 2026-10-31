@@ -194,7 +194,7 @@ export function fetchBase(exec, root, base, warnings) {
     return null;
 }
 /** The base branch's committed `.copilot/omg.jsonc`, when the base is in ship.trustedBases (as loadTrustedShipConfig). */
-function baseLayer(exec, root, base, baseSha, trustedUser, warnings) {
+export function baseLayer(exec, root, base, baseSha, trustedUser, warnings) {
     const trustedBases = resolveShipConfig({ trustedBases: trustedUser?.ship?.trustedBases }).trustedBases;
     if (!trustedBases.includes(base)) {
         warnings.push(`omg factory check: base ${base} is not in ship.trustedBases; its committed config is not read`);

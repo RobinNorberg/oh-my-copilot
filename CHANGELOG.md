@@ -36,6 +36,20 @@ All notable changes to oh-my-copilot will be documented in this file.
   caller's own directory, and labels from an allowlist (never `factory:*`).
   `gh api` stays refused, and nothing closes, deletes, transfers or locks an
   issue. `omg factory run` and `omg factory check` still refuse all three.
+- **`omg factory enqueue --spec <id> --file <tickets.json> [--dry-run]
+  [--json]`** (GitHub) pushes launch's approved tickets to the tracker as
+  children of the spec: one issue per ticket with its Acceptance criteria,
+  `Part of #<spec>` and `Blocked by #n` lines and a `shipyard-key:` footer,
+  plus a task list in the spec body. The ticket file is validated strictly
+  (unknown fields, duplicate keys, cycles, AC limits) before anything is
+  written. A re-run is idempotent: unchanged items are not written, items
+  already claimed by a factory run are never edited, and items whose key left
+  the file are reported, never closed. Keys on issues by untrusted authors
+  are ignored. Model-written text is neutralized before it is posted:
+  mentions and cross-repository references go into code spans, and
+  `omg-plan:` lines, Acceptance-criteria headings and edge lines are escaped.
+  It ends with `omg factory check --parent <spec> --mark --yes`; the launch C3
+  signature confirms that and the intake label.
 
 ### Changed
 

@@ -27,6 +27,7 @@ import { type LaneBackend } from '../../factory/run/lane.js';
 import type { GateConfigLoader } from '../../factory/run/prepare.js';
 import { type FactoryRunState } from '../../factory/run/state.js';
 import { type Exec } from '../../ship/exec.js';
+import { type FactoryCheckDeps } from '../../factory/check/cli.js';
 export declare function renderChainStatus(status: ChainStatus): string;
 /** Seams for `omg factory run` (tests script gh/git and the lanes; nothing live). */
 export interface FactoryRunDeps {
@@ -51,6 +52,8 @@ export declare const defaultFactoryRunDeps: FactoryRunDeps;
 export declare function renderFactoryRunState(state: FactoryRunState): string;
 /** `omg factory run <issue>`, `run cancel|clean|status <issue>` (experimental; manual trigger only; merge is always human). */
 export declare function factoryRunCommand(deps?: FactoryRunDeps): Command;
+/** `omg factory enqueue` (shipyard ↔ factory design §3.2-§3.4); the command lives in src/factory/enqueue.ts. */
+export declare function factoryEnqueueCommand(deps: FactoryCheckDeps): Command;
 export declare function factoryCommand(): Command;
 /**
  * Narrow starter route table: exactly the listener's INTAKE_ROUTE_TABLE — the
