@@ -64,6 +64,8 @@ export interface ForgeItem {
   parent?: number;
   /** Repository the factory branch and PR live in. */
   repoUrl: string;
+  /** ADO System.TeamProject (work item ids are org-wide); undefined on GitHub. */
+  project?: string;
 }
 
 /** The fields the engine and merge policy read (today's MergeView plus url/headRefName). */

@@ -1,8 +1,8 @@
 /**
  * `omg factory enqueue --spec <id> --file <tickets.json> [--dry-run] [--json]`
- * (shipyard ↔ factory design §3.2-§3.4, PR 8; GitHub only, Azure DevOps is
- * PR 9): push launch's C3-approved tickets to the tracker as child items of
- * the spec, idempotently.
+ * (shipyard ↔ factory design §3.2-§3.4, PR 8; Azure DevOps PR 9): push
+ * launch's C3-approved tickets to the tracker as child items of the spec,
+ * idempotently.
  *
  * - The ticket file is validated strictly (unknown fields, duplicate keys,
  *   `blockedBy` cycles, unknown references, AC count, rendered body length,
@@ -45,20 +45,40 @@
  * gh and git call is one of `omg factory check`'s read shapes. `--dry-run`
  * never sets the write mode, so the guard refuses any write it might reach.
  *
+ * Azure DevOps (design §3.3): a work item of `factory.intake.itemTypes[0]`;
+ * the description is the ticket body plus the key footer (the adapter
+ * escapes it into HTML), the AC go to Microsoft.VSTS.Common.AcceptanceCriteria
+ * and the priority to Microsoft.VSTS.Common.Priority; the parent is a
+ * Hierarchy-Reverse link and each edge a Dependency-Reverse link (added once
+ * every id is known; a link is never removed, a dropped edge is a warning),
+ * and the spec is never edited. Trust is `System.CreatedBy.uniqueName` in
+ * `factory.forge.azureDevOps.trustedAuthors` (user config only); spec, `#n` edges
+ * and key holders must be items of the forge project. An area-tag intake
+ * source gives a new item its tag and area path; a board-column or saved
+ * query source is warned about, since enqueue never sets a column or state.
+ * Model text loses its `@`/`#n`/`!n` signs to fullwidth look-alikes, so no
+ * mention or work item link forms. The az calls are the read guard's, and
+ * while writing the work item create and PATCH go through the factory guard
+ * with the TrackerWriteContext (PR 7b's routes).
+ *
  * Exit codes: 0 enqueued (or planned), 1 a tracker read or write failed, or
  * the mark step did, 2 usage or a refused ticket file (nothing written), 5
- * incompatible (no forge, or a forge other than GitHub).
+ * incompatible (no forge, or an unsupported one).
  */
 import chalk from 'chalk';
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { isAbsolute, join, relative } from 'path';
+import { isAdoCommand } from '../forge/ado/guard.js';
+import { adoHtmlToText } from '../forge/ado/html.js';
+import { adoGuardContext } from '../forge/ado/index.js';
+import { adoListHtml, adoTextHtml } from '../forge/ado/tracker.js';
 import { ForgeConfigError, resolveForgeConfig } from '../forge/config.js';
 import { ghRepoArg } from '../forge/github/gh.js';
 import { shipyardKeyLine, shipyardKeys } from '../forge/types.js';
 import { isPlainBranchName } from '../ship/config.js';
 import { TRUSTED_READ_ENV } from '../ship/exec.js';
-import { baseLayer, CheckIncompatibleError, CheckUsageError, checkGuardExec, EXIT_CHECK_FAILED, fetchBase, parseItemId, runFactoryCheck, } from './check/cli.js';
+import { baseLayer, CheckIncompatibleError, CheckUsageError, checkGuardExec, defaultResolveAz, EXIT_CHECK_FAILED, fetchBase, parseItemId, runFactoryCheck, } from './check/cli.js';
 import { isVague } from './check/rules.js';
 import { plainText } from './check/score.js';
 import { factoryForgeOptions } from './run/forge-roots.js';
@@ -201,8 +221,11 @@ export function findCycle(tickets) {
  * from a human reader.
  */
 export function neutralizeTrusted(text) {
+    return escapeTrustedLines(text.replace(/<!--/g, '&lt;!--'));
+}
+/** neutralizeTrusted without the comment rule (Azure DevOps: the adapter escapes every `<`). */
+function escapeTrustedLines(text) {
     return text
-        .replace(/<!--/g, '&lt;!--')
         .replace(/(omg-plan|shipyard-key):/gi, '$1\\:')
         .replace(/^([^\S\r\n]*)(#{1,6}[^\S\r\n]*acceptance criteria)/gim, '$1\\$2')
         .replace(/^([^\S\r\n]*(?:depends on|blocked by|part of)[^\S\r\n]+)#(?=\d)/gim, '$1\\#')
@@ -228,6 +251,23 @@ export function neutralizeNotifying(text) {
         .replace(/&(?=#|[a-z]+;)/gi, '&amp;');
 }
 const modelText = (s) => neutralizeTrusted(neutralizeNotifying(s));
+/**
+ * Azure DevOps: an `@` that could start a mention (`@<GUID>`, `@name`; not an
+ * email's), and a `#n` work item or `!n` pull request link. Markup mentions
+ * (`<a data-vss-mention>`) cannot form at all: the adapter escapes every `<`
+ * and the guard passes no attribute.
+ */
+const ADO_NOTIFYING = /(?<![\w.+-])@(?=[<{\w])|(?<!\w)[#!](?=\d)/g;
+const FULLWIDTH = { '@': '＠', '#': '＃', '!': '！' };
+/** Each mention or link sign becomes its fullwidth look-alike (＠ ＃ ！), so the text reads the same and links nothing. */
+export const neutralizeAdoNotifying = (text) => text.replace(ADO_NOTIFYING, (m) => FULLWIDTH[m]);
+/** Model text as an Azure DevOps field gets it (the adapter HTML-escapes it). */
+export const adoModelText = (s) => escapeTrustedLines(neutralizeAdoNotifying(s));
+/** The work item description (design §3.3): the ticket body and the key footer; AC, parent and edges have their own fields and links. */
+export function renderAdoDescription(spec, t) {
+    const body = adoModelText(t.body).trim();
+    return [...(body ? [body, ''] : []), shipyardKeyLine(spec, t.key), ''].join('\n');
+}
 /** The item title as posted. */
 export const renderTitle = (t) => neutralizeNotifying(t.title);
 /** The item body (design §3.3): the ticket body, the AC list, the edges section, the key footer. `edges` are `#<n>` refs. */
@@ -274,12 +314,20 @@ export function specBodyWithTickets(body, children) {
  * enqueue's Exec: the key search, and while `writing()` the issue create and
  * edit, go through the factory guard with the TrackerWriteContext (PR 7a's
  * exact shapes); every other gh and git call through `omg factory check`'s
- * read-only guard. Nothing else runs.
+ * read-only guard. On Azure DevOps (`ado` names the forge and az entry),
+ * while `writing()` the work item create and PATCH go through the factory
+ * guard with the TrackerWriteContext (PR 7b's routes); every other az call,
+ * the key WIQL included, is a check read. Nothing else runs.
  */
-export function enqueueGuardExec(exec, writes, writing) {
-    const reads = checkGuardExec(exec);
-    const tracker = factoryGuardExec(exec, () => [], () => undefined, writes);
+export function enqueueGuardExec(exec, writes, writing, ado = () => undefined) {
+    const reads = checkGuardExec(exec, undefined, ado);
+    const tracker = factoryGuardExec(exec, () => [], ado, writes);
     return (cmd, args, opts) => {
+        if (isAdoCommand(cmd)) {
+            const flag = (f) => { const at = args.indexOf(f); return at >= 0 ? args[at + 1]?.toLowerCase() : undefined; };
+            const itemWrite = flag('--area') === 'wit' && flag('--resource') === 'workitems' && (flag('--http-method') === 'post' || flag('--http-method') === 'patch');
+            return writing() && itemWrite ? tracker(cmd, args, opts) : reads(cmd, args, opts);
+        }
         const file = cmd.replace(/\\/g, '/').split('/').pop().toLowerCase().replace(/\.exe$/, '');
         if (file === 'gh' && args[0] === 'issue') {
             if (args[1] === 'list' && args[2] === '--repo')
@@ -336,7 +384,8 @@ export async function runFactoryEnqueue(o, deps) {
     const warnings = [];
     let ctx;
     let writing = false;
-    const exec = enqueueGuardExec(deps.exec, () => ctx, () => writing);
+    let adoGuard;
+    const exec = enqueueGuardExec(deps.exec, () => ctx, () => writing, () => adoGuard);
     const top = git(exec, process.cwd(), ['rev-parse', '--show-toplevel']);
     if (!top.ok)
         throw new CheckUsageError('omg factory enqueue must run inside a git repository');
@@ -360,46 +409,82 @@ export async function runFactoryEnqueue(o, deps) {
             throw error;
         throw error.code === 'invalid' ? new CheckUsageError(error.message) : new CheckIncompatibleError(`${error.code}: ${error.message}`);
     }
-    if (config.kind !== 'github')
-        throw new CheckIncompatibleError(`omg factory enqueue supports GitHub only for now; the forge is ${config.kind}`);
+    if (config.kind !== 'github' && config.kind !== 'azure-devops')
+        throw new CheckIncompatibleError(`omg factory enqueue does not support the ${String(config.kind)} forge`);
+    const ado = config.kind === 'azure-devops';
     const file = readTicketFile(o.file, config.check.maxAcceptanceItems);
     if (file.spec !== specId)
         throw new CheckUsageError(`--spec ${specId} does not match the ticket file's spec ${file.spec}`);
     const source = config.intake.source;
     const intakeLabel = source?.type === 'label' ? source.label : undefined;
-    if (!intakeLabel)
-        warnings.push('factory.intake.source is not a label: the items are not added to the intake source (omg factory check --parent still lists them)');
-    ctx = { repo: ghRepoArg(config.repo), bodyDir: '', labels: [...(intakeLabel ? [intakeLabel] : []), ...PRIORITY_LABELS] };
+    // Azure DevOps membership: an area-tag source's tag and area path (the adapter sets the path on create).
+    const intakeTag = source?.type === 'area-tag' ? source.tag : undefined;
+    if (ado) {
+        const itemType = config.intake.itemTypes[0];
+        if (!itemType)
+            throw new CheckUsageError('factory.intake.itemTypes names no work item type to create');
+        // Enqueue never sets a board column or state, so these sources cannot be honoured at create.
+        if (source?.type === 'board-column')
+            warnings.push(`factory.intake.source is the board column ${source.column}: enqueue never sets a column or state, so the work items join the intake only once they are moved there (omg factory check --parent still lists them)`);
+        else if (source?.type === 'wiql-query')
+            warnings.push('factory.intake.source is a saved query: membership is the query\'s job, enqueue does not make the work items match it (omg factory check --parent still lists them)');
+        else if (!intakeTag)
+            warnings.push('factory.intake.source is not an area-tag source: the work items are not added to the intake source (omg factory check --parent still lists them)');
+        ctx = { repo: config.repo.url, bodyDir: '', labels: intakeTag ? [intakeTag] : [], itemTypes: [itemType] };
+    }
+    else {
+        if (!intakeLabel)
+            warnings.push('factory.intake.source is not a label: the items are not added to the intake source (omg factory check --parent still lists them)');
+        ctx = { repo: ghRepoArg(config.repo), bodyDir: '', labels: [...(intakeLabel ? [intakeLabel] : []), ...PRIORITY_LABELS] };
+    }
     let forge;
+    let forgeOptions;
     try {
-        forge = deps.createForge(exec, root, config, factoryForgeOptions(root));
+        // Azure DevOps: the az entry is resolved once; the guard and the adapter use the same one.
+        const entry = ado ? (deps.resolveAz ?? defaultResolveAz)(root) : undefined;
+        if (entry)
+            adoGuard = adoGuardContext(config, entry);
+        forgeOptions = { ...factoryForgeOptions(root), ...(entry ? { entry } : {}) };
+        forge = deps.createForge(exec, root, config, forgeOptions);
     }
     catch (error) {
         throw new CheckIncompatibleError(error instanceof Error ? error.message : String(error));
     }
     const tracker = forge.tracker;
-    if (!tracker.findByKey || !tracker.createItem || !tracker.updateItem)
+    if (!tracker.findByKey || !tracker.createItem || !tracker.updateItem || (ado && !tracker.addRelation))
         throw new CheckIncompatibleError(`the ${config.kind} tracker cannot write items`);
+    // Work item ids are org-wide: an Azure DevOps item counts only in the forge project.
+    const inForge = (item) => (ado
+        ? item.project !== undefined && item.project.toLowerCase() === (config.repo.project ?? '').toLowerCase()
+        : item.repoUrl.toLowerCase() === config.repo.url.toLowerCase());
+    const itemOf = ado ? `a work item of project ${config.repo.project}` : `an issue of ${config.repo.url}`;
     const remoteBranch = (branch) => {
         const res = git(exec, root, ['ls-remote', 'origin', `refs/heads/${branch}`]);
         if (!res.ok)
             throw new Error(`git ls-remote origin refs/heads/${branch} failed: ${res.err}`);
         return res.out.length > 0;
     };
-    // The spec: an open issue of this repository.
+    // The spec: an open issue of this repository (a work item of the forge project).
     let spec;
     try {
         spec = tracker.viewItem(specId);
     }
     catch (error) {
-        throw new CheckUsageError(`spec #${specId} cannot be read as an issue of ${config.repo.url}: ${error instanceof Error ? error.message : String(error)}`);
+        throw new CheckUsageError(`spec #${specId} cannot be read as ${itemOf}: ${error instanceof Error ? error.message : String(error)}`);
     }
-    if (spec.repoUrl.toLowerCase() !== config.repo.url.toLowerCase())
-        throw new CheckUsageError(`spec #${specId} is not an issue of ${config.repo.url}`);
+    if (!inForge(spec))
+        throw new CheckUsageError(`spec #${specId} is not ${itemOf}`);
     if (!spec.open)
         throw new CheckUsageError(`spec #${specId} is closed`);
-    if (!spec.authorTrusted)
-        throw new CheckUsageError(`spec #${specId}'s author is not an OWNER, MEMBER or COLLABORATOR of ${config.repo.url}`);
+    if (!spec.authorTrusted) {
+        // Azure DevOps has no author association: trust is the creator's uniqueName in the user config's trustedAuthors; none listed trusts nobody.
+        const trusted = config.azureDevOps?.trustedAuthors ?? [];
+        throw new CheckUsageError(!ado
+            ? `spec #${specId}'s author is not an OWNER, MEMBER or COLLABORATOR of ${config.repo.url}`
+            : trusted.length === 0
+                ? `factory.forge.azureDevOps.trustedAuthors is empty in the user config, so no Azure DevOps author is trusted: add the uniqueName that created spec #${specId} there`
+                : `spec #${specId}'s creator is not in factory.forge.azureDevOps.trustedAuthors (user config)`);
+    }
     // Key holders: trusted children of the spec only, from the key search and the spec's task list (search lags behind creates).
     const holders = new Map();
     const ignored = [];
@@ -417,40 +502,70 @@ export async function runFactoryEnqueue(o, deps) {
             continue;
         }
         const keys = shipyardKeys(item.body).filter(([s]) => s === specId);
-        if (keys.length === 1 && item.repoUrl.toLowerCase() === config.repo.url.toLowerCase())
+        if (keys.length === 1 && inForge(item))
             found.push({ key: keys[0][1], item });
     }
     for (const { key, item } of found) {
         if (!item.authorTrusted)
             ignored.push({ id: item.id, key, reason: 'author is not trusted' });
-        else if (item.parent !== specId)
+        // Azure DevOps links the parent right after the create: a trusted holder with no parent is one whose link failed, and enqueue links it.
+        else if (item.parent !== specId && !(ado && item.parent === undefined))
             ignored.push({ id: item.id, key, reason: `not a child of #${specId}` });
         else if (holders.has(key))
             throw new CheckUsageError(`key ${key} is held by #${holders.get(key).id} and #${item.id}; close one by hand`);
         else
             holders.set(key, item);
     }
-    // `#n` edges must name existing items.
+    // `#n` edges must name existing items (on Azure DevOps, of the forge project).
     for (const ref of new Set(file.tickets.flatMap((t) => t.blockedBy.filter((b) => b.startsWith('#'))))) {
+        let item;
         try {
-            tracker.viewItem(Number(ref.slice(1)));
+            item = tracker.viewItem(Number(ref.slice(1)));
         }
         catch {
-            throw new CheckUsageError(`blockedBy ${ref} is not an issue of ${config.repo.url}`);
+            item = undefined;
         }
+        if (!item || (ado && !inForge(item)))
+            throw new CheckUsageError(`blockedBy ${ref} is not ${itemOf}`);
     }
     const ids = new Map([...holders].map(([k, item]) => [k, item.id]));
     const ref = (b, known) => (b.startsWith('#') ? b : known.has(b) ? `#${known.get(b)}` : undefined);
     /** The full edge list; a key without an id yet shows as `#<key>` (dry run only). */
     const edgesOf = (t, known) => t.blockedBy.map((b) => ref(b, known) ?? `#${b}`);
+    /** Azure DevOps: the links an item still lacks, as `[kind, #n]` (a key without an id yet shows as `#<key>`, dry run only). */
+    const adoLinks = (p, known) => [
+        ...(p.item?.parent === specId ? [] : [['parent', `#${specId}`]]),
+        ...edgesOf(p.ticket, known).filter((e) => !p.item?.dependsOn.includes(Number(e.slice(1)))).map((e) => ['depends-on', e]),
+    ];
     const planned = file.tickets.map((t) => {
         const item = holders.get(t.key);
-        const title = renderTitle(t);
-        if (title.length > 256)
-            throw new CheckUsageError(`${t.key}: the title is longer than 256 characters once mentions are neutralized`);
-        const body = renderTicketBody(specId, t, edgesOf(t, ids));
+        const title = ado ? neutralizeAdoNotifying(t.title) : renderTitle(t);
+        const maxTitle = ado ? 255 : 256;
+        if (title.length > maxTitle)
+            throw new CheckUsageError(`${t.key}: the title is longer than ${maxTitle} characters once mentions are neutralized`);
+        const body = ado ? renderAdoDescription(specId, t) : renderTicketBody(specId, t, edgesOf(t, ids));
         if (body.length > config.check.maxBodyChars)
             throw new CheckUsageError(`${t.key}: the rendered body is ${body.length} characters (factory.check.maxBodyChars is ${config.check.maxBodyChars})`);
+        if (ado) {
+            const acceptance = t.acceptance.map(adoModelText);
+            const labels = intakeTag ? [intakeTag] : [];
+            if (!item)
+                return { ticket: t, action: 'created', reasons: [], title, labels, addLabels: labels, removeLabels: [], acceptance };
+            const addLabels = labels.filter((l) => !item.labels.some((x) => x.toLowerCase() === l.toLowerCase()));
+            const claim = claimOf(forge, root, base, item, remoteBranch);
+            if (claim)
+                return { ticket: t, item, action: 'kept-claimed', reasons: [claim], title, labels, addLabels: [], removeLabels: [], acceptance };
+            // Compared as the adapter writes and viewItem reads them back (the HTML round trip folds whitespace).
+            const fieldsSame = item.title === title && normalized(item.body) === normalized(adoHtmlToText(adoTextHtml(body)))
+                && (item.acceptance ?? '') === adoHtmlToText(adoListHtml(acceptance)) && (t.priority === undefined || item.priority === t.priority) && addLabels.length === 0;
+            // A link is never removed (the guard passes adds only): an edge the file dropped is the captain's to unlink.
+            const wanted = new Set(t.blockedBy.map((b) => ref(b, ids)).filter((r) => r !== undefined).map((r) => Number(r.slice(1))));
+            for (const dep of item.dependsOn.filter((d) => !wanted.has(d)))
+                warnings.push(`#${item.id} (${t.key}) keeps its predecessor link to #${dep}: enqueue never removes a link; remove it by hand if that edge is gone`);
+            const p = { ticket: t, item, action: 'updated', reasons: [], title, labels, addLabels, removeLabels: [], acceptance, fieldsSame };
+            const pending = t.blockedBy.some((b) => ref(b, ids) === undefined);
+            return fieldsSame && !pending && adoLinks(p, ids).length === 0 ? { ...p, action: 'unchanged' } : p;
+        }
         const labels = [...(intakeLabel ? [intakeLabel] : []), ...(t.priority ? [PRIORITY_LABELS[t.priority - 1]] : [])];
         if (!item)
             return { ticket: t, action: 'created', reasons: [], title, labels, addLabels: labels, removeLabels: [] };
@@ -473,13 +588,13 @@ export async function runFactoryEnqueue(o, deps) {
     const orphanRows = orphans.map((item) => ({ key: [...holders].find(([, i]) => i === item)[0], id: item.id, action: 'orphaned', bucket: null, reasons: [], markCandidate: false }));
     const markCandidate = (a) => a === 'created' || a === 'updated' || a === 'unchanged';
     const newKeys = planned.filter((p) => p.action === 'created').map((p) => p.ticket.key);
-    // Each new child adds one `- [ ] #<id>` line; refuse now rather than after the creates.
-    if (specBody(ids).length + newKeys.length * 20 > MAX_TRACKER_BODY_CHARS)
+    // Each new child adds one `- [ ] #<id>` line; refuse now rather than after the creates. (Azure DevOps: the spec is never edited.)
+    if (!ado && specBody(ids).length + newKeys.length * 20 > MAX_TRACKER_BODY_CHARS)
         throw new CheckUsageError(`spec #${specId}'s body would exceed ${MAX_TRACKER_BODY_CHARS} characters with the task list`);
     if (o.dryRun) {
         // Ids a create would assign are unknown: the planned spec body lists the known ones and names the new keys.
-        const taskList = newKeys.length > 0 || normalized(specBody(ids)) !== normalized(spec.body) ? 'updated' : 'unchanged';
-        const specPlanned = `${specBody(ids)}${newKeys.length > 0 ? `\n(plus the new ${newKeys.join(', ')} once created)` : ''}`;
+        const taskList = !ado && (newKeys.length > 0 || normalized(specBody(ids)) !== normalized(spec.body)) ? 'updated' : 'unchanged';
+        const specPlanned = () => `${specBody(ids)}${newKeys.length > 0 ? `\n(plus the new ${newKeys.join(', ')} once created)` : ''}`;
         const rows = [
             ...planned.map((p) => ({
                 key: p.ticket.key,
@@ -489,12 +604,19 @@ export async function runFactoryEnqueue(o, deps) {
                 reasons: p.reasons,
                 markCandidate: markCandidate(p.action),
                 ...(p.action === 'created' || p.action === 'updated'
-                    ? { planned: { title: p.title, body: renderTicketBody(specId, p.ticket, edgesOf(p.ticket, ids)), addLabels: p.addLabels, removeLabels: p.removeLabels } }
+                    ? {
+                        planned: ado
+                            ? {
+                                title: p.title, body: renderAdoDescription(specId, p.ticket), addLabels: p.addLabels, removeLabels: [], acceptance: p.acceptance,
+                                ...(p.ticket.priority !== undefined ? { priority: p.ticket.priority } : {}), links: adoLinks(p, ids).map(([kind, target]) => `${kind} ${target}`),
+                            }
+                            : { title: p.title, body: renderTicketBody(specId, p.ticket, edgesOf(p.ticket, ids)), addLabels: p.addLabels, removeLabels: p.removeLabels },
+                    }
                     : {}),
             })),
             ...orphanRows,
         ];
-        report(o, deps, { schemaVersion: ENQUEUE_SCHEMA_VERSION, ok: true, dryRun: true, spec: { id: specId, taskList, ...(taskList === 'updated' ? { planned: specPlanned } : {}) }, items: rows, ignored, mark: null, warnings });
+        report(o, deps, { schemaVersion: ENQUEUE_SCHEMA_VERSION, ok: true, dryRun: true, spec: { id: specId, taskList, ...(taskList === 'updated' ? { planned: specPlanned() } : {}) }, items: rows, ignored, mark: null, warnings });
         return 0;
     }
     // The writes: body files in a fresh directory outside the worktree (the guard reads its own copy of each).
@@ -516,6 +638,7 @@ export async function runFactoryEnqueue(o, deps) {
         };
         const written = new Map();
         let specNow = spec.body;
+        // GitHub only: on Azure DevOps the spec's children are its Hierarchy-Forward links and its description is never edited.
         const writeSpec = () => {
             const next = specBody(ids);
             if (normalized(next) === normalized(specNow))
@@ -525,30 +648,56 @@ export async function runFactoryEnqueue(o, deps) {
             taskList = 'updated';
         };
         try {
-            // Pass 1: create the missing items with the edges already known; list each on the spec at once, so a re-run finds it without search.
-            for (const p of planned.filter((x) => x.action === 'created')) {
-                const body = renderTicketBody(specId, p.ticket, p.ticket.blockedBy.map((b) => ref(b, ids)).filter((r) => r !== undefined));
-                ids.set(p.ticket.key, tracker.createItem({ title: p.title, bodyFile: bodyFile(p.ticket.key, body), labels: p.labels }));
-                written.set(p.ticket.key, body);
+            if (ado) {
+                // The adapter reads a body file only from the directory it was built with.
+                const writer = deps.createForge(exec, root, config, { ...forgeOptions, trackerBodyDir: bodyDir }).tracker;
+                const priority = (t) => (t.priority !== undefined ? { priority: t.priority } : {});
+                // Pass 1: create the missing work items and link each to the spec at once, so a re-run finds it as a child.
+                for (const p of planned.filter((x) => x.action === 'created')) {
+                    const id = writer.createItem({ title: p.title, bodyFile: bodyFile(p.ticket.key, renderAdoDescription(specId, p.ticket)), labels: p.labels, acceptance: p.acceptance, ...priority(p.ticket) });
+                    ids.set(p.ticket.key, id);
+                    writer.addRelation(id, 'parent', specId);
+                }
+                // Pass 2: every id is known now; update the changed fields, then add the missing predecessor (and, for a holder, parent) links.
+                for (const p of planned) {
+                    if (p.action !== 'created' && p.action !== 'updated')
+                        continue;
+                    const id = ids.get(p.ticket.key);
+                    if (p.action === 'updated' && !p.fieldsSame) {
+                        writer.updateItem(id, { title: p.title, bodyFile: bodyFile(p.ticket.key, renderAdoDescription(specId, p.ticket)), addLabels: p.addLabels, removeLabels: [], acceptance: p.acceptance, ...priority(p.ticket) });
+                    }
+                    // A created item got its parent link in pass 1.
+                    for (const [kind, target] of adoLinks(p, ids))
+                        if (p.action === 'updated' || kind !== 'parent')
+                            writer.addRelation(id, kind, Number(target.slice(1)));
+                }
+            }
+            else {
+                // Pass 1: create the missing items with the edges already known; list each on the spec at once, so a re-run finds it without search.
+                for (const p of planned.filter((x) => x.action === 'created')) {
+                    const body = renderTicketBody(specId, p.ticket, p.ticket.blockedBy.map((b) => ref(b, ids)).filter((r) => r !== undefined));
+                    ids.set(p.ticket.key, tracker.createItem({ title: p.title, bodyFile: bodyFile(p.ticket.key, body), labels: p.labels }));
+                    written.set(p.ticket.key, body);
+                    writeSpec();
+                }
+                // Pass 2: every edge is known now; rewrite the created items that missed one, and update the changed ones.
+                for (const p of planned) {
+                    if (p.action !== 'created' && p.action !== 'updated')
+                        continue;
+                    const body = renderTicketBody(specId, p.ticket, edgesOf(p.ticket, ids));
+                    if (p.action === 'created' && written.get(p.ticket.key) === body)
+                        continue;
+                    tracker.updateItem(ids.get(p.ticket.key), {
+                        title: p.title,
+                        bodyFile: bodyFile(p.ticket.key, body),
+                        // A created item got its labels at create.
+                        addLabels: p.action === 'updated' ? p.addLabels : [],
+                        removeLabels: p.removeLabels,
+                    });
+                }
+                // The spec's task list, which `omg factory check --parent` reads (already current unless nothing was created).
                 writeSpec();
             }
-            // Pass 2: every edge is known now; rewrite the created items that missed one, and update the changed ones.
-            for (const p of planned) {
-                if (p.action !== 'created' && p.action !== 'updated')
-                    continue;
-                const body = renderTicketBody(specId, p.ticket, edgesOf(p.ticket, ids));
-                if (p.action === 'created' && written.get(p.ticket.key) === body)
-                    continue;
-                tracker.updateItem(ids.get(p.ticket.key), {
-                    title: p.title,
-                    bodyFile: bodyFile(p.ticket.key, body),
-                    // A created item got its labels at create.
-                    addLabels: p.action === 'updated' ? p.addLabels : [],
-                    removeLabels: p.removeLabels,
-                });
-            }
-            // The spec's task list, which `omg factory check --parent` reads (already current unless nothing was created).
-            writeSpec();
         }
         catch (error) {
             failed = true;
@@ -617,6 +766,12 @@ function report(o, deps, json) {
             const labels = [...p.addLabels.map((l) => `+${l}`), ...p.removeLabels.map((l) => `-${l}`)].join(' ');
             deps.out(`\n== ${r.action === 'created' ? 'create' : `edit #${r.id}`} ${r.key}: ${JSON.stringify(p.title)}${labels ? ` [${labels}]` : ''}`);
             deps.out(p.body);
+            if (p.acceptance)
+                deps.out(`acceptance criteria:\n${p.acceptance.map((a) => `- ${a}`).join('\n')}`);
+            if (p.priority !== undefined)
+                deps.out(`priority: ${p.priority}`);
+            if (p.links?.length)
+                deps.out(`links: ${p.links.join(', ')}`);
         }
         if (json.spec.planned)
             deps.out(`\n== edit spec #${json.spec.id} body:\n${json.spec.planned}`);

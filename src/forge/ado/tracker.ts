@@ -148,6 +148,7 @@ export function adoTracker(ctx: AdoContext, intakeSource?: IntakeSource, bodyDir
       const category = type && state ? stateCategory(ctx, type, state) : undefined;
       const acceptance = adoHtmlToText(f['Microsoft.VSTS.Common.AcceptanceCriteria']);
       const [parent] = linkedIds(item.relations, PARENT);
+      const project = str(f['System.TeamProject']);
       return {
         id,
         url: item.url ?? `https://dev.azure.com/${encodeURIComponent(ctx.repo.owner)}/${encodeURIComponent(ctx.repo.project ?? '')}/_workitems/edit/${id}`,
@@ -168,6 +169,7 @@ export function adoTracker(ctx: AdoContext, intakeSource?: IntakeSource, bodyDir
         children: linkedIds(item.relations, CHILD),
         ...(parent !== undefined ? { parent } : {}),
         repoUrl: ctx.repo.url,
+        ...(project ? { project } : {}),
       };
     },
 

@@ -1,8 +1,8 @@
 /**
  * `omg factory enqueue --spec <id> --file <tickets.json> [--dry-run] [--json]`
- * (shipyard ↔ factory design §3.2-§3.4, PR 8; GitHub only, Azure DevOps is
- * PR 9): push launch's C3-approved tickets to the tracker as child items of
- * the spec, idempotently.
+ * (shipyard ↔ factory design §3.2-§3.4, PR 8; Azure DevOps PR 9): push
+ * launch's C3-approved tickets to the tracker as child items of the spec,
+ * idempotently.
  *
  * - The ticket file is validated strictly (unknown fields, duplicate keys,
  *   `blockedBy` cycles, unknown references, AC count, rendered body length,
@@ -45,10 +45,27 @@
  * gh and git call is one of `omg factory check`'s read shapes. `--dry-run`
  * never sets the write mode, so the guard refuses any write it might reach.
  *
+ * Azure DevOps (design §3.3): a work item of `factory.intake.itemTypes[0]`;
+ * the description is the ticket body plus the key footer (the adapter
+ * escapes it into HTML), the AC go to Microsoft.VSTS.Common.AcceptanceCriteria
+ * and the priority to Microsoft.VSTS.Common.Priority; the parent is a
+ * Hierarchy-Reverse link and each edge a Dependency-Reverse link (added once
+ * every id is known; a link is never removed, a dropped edge is a warning),
+ * and the spec is never edited. Trust is `System.CreatedBy.uniqueName` in
+ * `factory.forge.azureDevOps.trustedAuthors` (user config only); spec, `#n` edges
+ * and key holders must be items of the forge project. An area-tag intake
+ * source gives a new item its tag and area path; a board-column or saved
+ * query source is warned about, since enqueue never sets a column or state.
+ * Model text loses its `@`/`#n`/`!n` signs to fullwidth look-alikes, so no
+ * mention or work item link forms. The az calls are the read guard's, and
+ * while writing the work item create and PATCH go through the factory guard
+ * with the TrackerWriteContext (PR 7b's routes).
+ *
  * Exit codes: 0 enqueued (or planned), 1 a tracker read or write failed, or
  * the mark step did, 2 usage or a refused ticket file (nothing written), 5
- * incompatible (no forge, or a forge other than GitHub).
+ * incompatible (no forge, or an unsupported one).
  */
+import { type AdoGuardContext } from '../forge/ado/guard.js';
 import { type Exec } from '../ship/exec.js';
 import { type CheckJson, type FactoryCheckDeps } from './check/cli.js';
 import { type CheckBucket } from './check/rules.js';
@@ -87,12 +104,15 @@ export interface EnqueueRow {
     reasons: string[];
     /** The mark step considers this item: created, updated or unchanged. */
     markCandidate: boolean;
-    /** Dry run only: the exact write. */
+    /** Dry run only: the exact write; on Azure DevOps also the AC and priority fields and the links to add (`parent #n`, `depends-on #n`). */
     planned?: {
         title: string;
         body: string;
         addLabels: string[];
         removeLabels: string[];
+        acceptance?: string[];
+        priority?: number;
+        links?: string[];
     };
 }
 export interface EnqueueJson {
@@ -144,6 +164,12 @@ export declare function neutralizeTrusted(text: string): string;
  * block it shows as literal backticks, which is harmless.
  */
 export declare function neutralizeNotifying(text: string): string;
+/** Each mention or link sign becomes its fullwidth look-alike (＠ ＃ ！), so the text reads the same and links nothing. */
+export declare const neutralizeAdoNotifying: (text: string) => string;
+/** Model text as an Azure DevOps field gets it (the adapter HTML-escapes it). */
+export declare const adoModelText: (s: string) => string;
+/** The work item description (design §3.3): the ticket body and the key footer; AC, parent and edges have their own fields and links. */
+export declare function renderAdoDescription(spec: number, t: Ticket): string;
 /** The item title as posted. */
 export declare const renderTitle: (t: Ticket) => string;
 /** The item body (design §3.3): the ticket body, the AC list, the edges section, the key footer. `edges` are `#<n>` refs. */
@@ -158,9 +184,12 @@ export declare function specBodyWithTickets(body: string, children: readonly num
  * enqueue's Exec: the key search, and while `writing()` the issue create and
  * edit, go through the factory guard with the TrackerWriteContext (PR 7a's
  * exact shapes); every other gh and git call through `omg factory check`'s
- * read-only guard. Nothing else runs.
+ * read-only guard. On Azure DevOps (`ado` names the forge and az entry),
+ * while `writing()` the work item create and PATCH go through the factory
+ * guard with the TrackerWriteContext (PR 7b's routes); every other az call,
+ * the key WIQL included, is a check read. Nothing else runs.
  */
-export declare function enqueueGuardExec(exec: Exec, writes: () => TrackerWriteContext | undefined, writing: () => boolean): Exec;
+export declare function enqueueGuardExec(exec: Exec, writes: () => TrackerWriteContext | undefined, writing: () => boolean, ado?: () => AdoGuardContext | undefined): Exec;
 /** Run one enqueue; returns the exit code. Usage and incompatible errors propagate (exit 2 / 5 at the CLI). */
 export declare function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryCheckDeps): Promise<number>;
 //# sourceMappingURL=enqueue.d.ts.map
