@@ -29730,7 +29730,8 @@ function trackerTagEditProblem(body, labels) {
   const split = (v) => v.split(";").map((t) => t.trim());
   const current = body[tests[0]].value === "" ? [] : split(body[tests[0]].value).filter(Boolean);
   const next = split(body[adds[0]].value);
-  const has = (list, tag) => list.some((t) => t.toLowerCase() === tag.toLowerCase());
+  const fold3 = (t) => t.replace(/[A-Z]/g, (c) => c.toLowerCase());
+  const has = (list, tag) => list.some((t) => fold3(t) === fold3(tag));
   for (const tag of next) {
     if (has(current, tag)) continue;
     if (!isTrackerTag(tag)) return `${at} has a refused tag ${JSON.stringify(tag)}`;

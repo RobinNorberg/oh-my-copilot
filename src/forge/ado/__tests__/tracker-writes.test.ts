@@ -196,6 +196,10 @@ describe('ADO tracker writes: the text rule', () => {
     refused(guard(patch([REV, tagTest('factory'), tagAdd('factory; factory:building')]), writes), /refused tag "factory:building"/);
     // A look-alike already on the item is held like the real tag.
     refused(guard(patch([REV, tagTest(`factory; factory ${ch(0xff1a)}x`), tagAdd('factory')])), /removes the factory tag/);
+    // A Kelvin sign (U+212A) is not "k" to ADO: the look-alike is a new tag and the real one is stripped.
+    refused(guard(patch([REV, tagTest('factory:blocked'), tagAdd(`factory:bloc${ch(0x212a)}ed`)])), /refused tag|removes the factory tag/);
+    // A pure ASCII case change of a current tag is the same tag to ADO and stays allowed.
+    expect(guard(patch([REV, tagTest('factory:run'), tagAdd('Factory:Run')]))).not.toThrow();
   });
 
   it('area path: the forge project or under it; priority 1 to 4', () => {

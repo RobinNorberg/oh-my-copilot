@@ -292,7 +292,10 @@ function trackerTagEditProblem(body, labels) {
     const split = (v) => v.split(';').map((t) => t.trim());
     const current = body[tests[0]].value === '' ? [] : split(body[tests[0]].value).filter(Boolean);
     const next = split(body[adds[0]].value);
-    const has = (list, tag) => list.some((t) => t.toLowerCase() === tag.toLowerCase());
+    // ASCII-only fold: toLowerCase maps U+212A (Kelvin sign) to "k", which ADO's ordinal-ignore-case compare does not, so a look-alike would count as already current.
+    // A pure case change of an existing tag (`Factory:Run` for `factory:run`) is the same tag to ADO and stays allowed.
+    const fold = (t) => t.replace(/[A-Z]/g, (c) => c.toLowerCase());
+    const has = (list, tag) => list.some((t) => fold(t) === fold(tag));
     for (const tag of next) {
         if (has(current, tag))
             continue;
