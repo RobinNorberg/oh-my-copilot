@@ -10,7 +10,7 @@ import { plainText } from '../../factory/check/score.js';
 import { runFactoryPoll } from '../../factory/poll.js';
 export function factoryPollCommand(deps) {
     return new Command('poll')
-        .description('Poll heal, intake, PRs and the board each interval (GitHub and Azure DevOps); never starts a lane and never writes to the tracker or forge')
+        .description('Poll heal, intake, PRs and the board each interval (GitHub and Azure DevOps); never writes to the tracker or forge, and starts no lane unless factory.intake.autoStart (trusted config) starts omg factory run --next on an idle tick')
         .option('--interval <duration>', 'wait between ticks: <n>s, <n>m or <n>h, 2 min to 60 min (default 5m; doubles while rate-limited)')
         .option('--once', 'run one tick and exit')
         .option('--no-heal', 'skip the heal scan')

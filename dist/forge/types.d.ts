@@ -354,6 +354,8 @@ export interface ForgeIntakeConfig {
     limit: number;
     /** Label (GitHub) / tag (ADO) that `check --mark` adds. */
     marker: string;
+    /** `factory.intake.autoStart` from the trusted layers: `omg factory poll` may start `run --next` on an idle tick. Absent = off. */
+    autoStart?: true;
 }
 export interface ForgeCheckConfig {
     maxAcceptanceItems: number;

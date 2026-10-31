@@ -22,6 +22,7 @@ import { Command } from 'commander';
 import { type ChainStatus } from '../../factory/status.js';
 import { type ChainSkillStatus, type RouteTable } from '../../hooks/session-end/routing.js';
 import { type LoadedFactoryRunLimits } from '../../factory/run/budget.js';
+import { type FactoryRunOutcome } from '../../factory/run/engine.js';
 import type { LoadedForgeConfig } from '../../forge/config.js';
 import { type LaneBackend } from '../../factory/run/lane.js';
 import type { GateConfigLoader } from '../../factory/run/prepare.js';
@@ -49,6 +50,16 @@ export interface FactoryRunDeps {
     forge?: (root: string, base: string) => LoadedForgeConfig;
 }
 export declare const defaultFactoryRunDeps: FactoryRunDeps;
+/**
+ * The `omg factory run --json` documents on stdout. `omg factory poll`'s
+ * auto-start parses them (parseRunNextOutcome; its contract test builds its
+ * fixtures from these writers).
+ */
+export declare const factoryRunJson: {
+    nothingRunnable: (counts: Record<string, number>) => string;
+    outcome: (outcome: FactoryRunOutcome, next?: number) => string;
+    error: (message: string) => string;
+};
 export declare function renderFactoryRunState(state: FactoryRunState): string;
 /** `omg factory run <issue>`, `run cancel|clean|status <issue>` (experimental; manual trigger only; merge is always human). */
 export declare function factoryRunCommand(deps?: FactoryRunDeps): Command;

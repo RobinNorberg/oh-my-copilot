@@ -83217,11 +83217,11 @@ function evaluateSdkSandbox(probe) {
   if (probe.applyError) return { id, ok: false, detail: `supported, capabilities ${caps}; the review policy was not applied: ${probe.applyError}` };
   const enf = probe.enforcement;
   if (enf === void 0 || typeof enf === "string") return { id, ok: false, detail: `supported, capabilities ${caps}; review policy applied; enforcement unread: ${enf ?? "not asked"}` };
-  const spawn18 = probe.spawn ?? { ok: false, detail: "not run" };
+  const spawn19 = probe.spawn ?? { ok: false, detail: "not run" };
   return {
     id,
-    ok: !enf.blocked && spawn18.ok,
-    detail: `supported, capabilities ${caps}; review policy applied (options.update), enforcement required=${enf.required} blocked=${enf.blocked}${enf.reason ? ` (${enf.reason})` : ""}; spawn canary: ${spawn18.detail}`
+    ok: !enf.blocked && spawn19.ok,
+    detail: `supported, capabilities ${caps}; review policy applied (options.update), enforcement required=${enf.required} blocked=${enf.blocked}${enf.reason ? ` (${enf.reason})` : ""}; spawn canary: ${spawn19.detail}`
   };
 }
 function sliceLogByTime(text4, starts) {
@@ -95805,8 +95805,8 @@ function rpcMethod(root2, path30, name) {
     return null;
   }
 }
-function bwrapTrialLaunchError(spawn18 = defaultTrialSpawner, timeoutMs = 1e4) {
-  const r = spawn18("bwrap", BWRAP_TRIAL_ARGS, timeoutMs);
+function bwrapTrialLaunchError(spawn19 = defaultTrialSpawner, timeoutMs = 1e4) {
+  const r = spawn19("bwrap", BWRAP_TRIAL_ARGS, timeoutMs);
   if (r.error?.code === "ENOENT") return "bwrap (bubblewrap) is not on PATH, and the Linux sandbox runs every shell under it: install bubblewrap";
   if (r.error) return `a trial bwrap launch failed: ${errText(r.error)}`;
   if (r.status === 0) return null;
@@ -122519,6 +122519,14 @@ function resolveForgeConfig(trustedUser, base, project, originUrl2) {
   if (pPipeline !== void 0 && !same3(pPipeline, bPipeline)) {
     warnings.push(`omg factory: ignoring factory.heal.pipeline from the working-tree project config; it is read only from the user config or ${baseSource}`);
   }
+  const bAuto = factoryBlock(base, "intake", baseSource).autoStart;
+  const uAuto = factoryBlock(trustedUser, "intake", "user config").autoStart;
+  const pAuto = factoryBlock(project, "intake", "project config").autoStart;
+  if (pAuto !== void 0 && !same3(pAuto, bAuto)) {
+    warnings.push(`omg factory: ignoring factory.intake.autoStart from the working-tree project config; it is read only from the user config or ${baseSource}`);
+  }
+  const autoStart = uAuto ?? bAuto;
+  if (autoStart !== void 0 && typeof autoStart !== "boolean") throw new ForgeConfigError("invalid", `${source}: factory.intake.autoStart must be true or false`);
   const pipelineRaw = uPipeline ?? bPipeline;
   let heal;
   if (pipelineRaw !== void 0 && pipelineRaw !== null) {
@@ -122536,7 +122544,7 @@ function resolveForgeConfig(trustedUser, base, project, originUrl2) {
       kind,
       repo: remote,
       ...azureDevOps ? { azureDevOps } : {},
-      intake: resolveIntake(intake, kind),
+      intake: { ...resolveIntake(intake, kind), ...autoStart === true ? { autoStart } : {} },
       check: resolveCheck(check2),
       progress: resolveProgress({ ...bProgress, ...uProgress }, hasFactoryKey(base, "progress") || hasFactoryKey(trustedUser, "progress"), kind, source),
       ...heal ? { heal } : {}
@@ -126374,8 +126382,9 @@ function openReadForge(o, deps, warnings, command, marker) {
   const baseSha = fetchBase(pre, root2, base, warnings);
   const trustedUser = deps.trustedUser();
   let config2;
+  const baseConfig = baseLayer(pre, root2, base, baseSha, trustedUser, warnings);
   try {
-    const loaded2 = resolveForgeConfig(trustedUser, baseLayer(pre, root2, base, baseSha, trustedUser, warnings), withFlags(deps.projectConfig(root2), o), origin.out);
+    const loaded2 = resolveForgeConfig(trustedUser, baseConfig, withFlags(deps.projectConfig(root2), o), origin.out);
     config2 = loaded2.config;
     warnings.push(...loaded2.warnings);
   } catch (error2) {
@@ -126384,7 +126393,7 @@ function openReadForge(o, deps, warnings, command, marker) {
   }
   try {
     const read = forgeReadExec(deps.exec, config2, root2, deps.resolveAz, marker, command);
-    return { root: root2, base, baseSha, config: config2, forge: deps.createForge(read.exec, root2, config2, read.options), exec: read.exec };
+    return { root: root2, base, baseSha, config: config2, baseConfig, forge: deps.createForge(read.exec, root2, config2, read.options), exec: read.exec };
   } catch (error2) {
     throw new CheckIncompatibleError(error2 instanceof Error ? error2.message : String(error2));
   }
@@ -130422,7 +130431,115 @@ function defaultPollHealScan(exec3, config2, ledgerDir) {
     return runHealScan({ exec: exec3, root: o.root, base: o.base, config: heal.config, now: o.now, dryRun: false, warn: o.warn, ledgerDir });
   };
 }
-function pollTick(ctx) {
+function autoStartTimeoutMs(limits) {
+  return limits.maxRunWallTimeMs + limits.laneTimeoutMs + limits.gatesTimeoutMs + AUTO_START_SLACK_MS;
+}
+function parseRunNextOutcome(stdout) {
+  let raw;
+  try {
+    raw = JSON.parse(stdout);
+  } catch {
+    raw = void 0;
+  }
+  const o = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const text4 = typeof o.message === "string" ? o.message : typeof o.error === "string" ? o.error : void 0;
+  if (text4 === void 0) return { parsed: false, next: null, message: "no outcome on stdout" };
+  return { parsed: true, next: Number.isSafeInteger(o.next) && o.next > 0 ? o.next : null, message: text4 };
+}
+function defaultPollAutoStart(entry2 = process.argv[1], o = {}) {
+  return ({ root: root2 }) => new Promise((resolve73) => {
+    if (!entry2) {
+      resolve73({ exitCode: 1, parsed: false, next: null, message: "cannot locate the omg CLI entry to start omg factory run --next" });
+      return;
+    }
+    const timeoutMs = o.timeoutMs?.(root2) ?? autoStartTimeoutMs(DEFAULT_FACTORY_RUN_LIMITS);
+    let stdout = "";
+    let truncated = false;
+    let timedOut = false;
+    let settled = false;
+    let timer;
+    let killer;
+    let unsubscribe = () => {
+    };
+    const settle = (r) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearTimeout(killer);
+      unsubscribe();
+      resolve73(r);
+    };
+    const notStarted = (error2) => settle({ exitCode: 1, parsed: false, next: null, message: `omg factory run --next did not start: ${message3(error2)}` });
+    let child;
+    try {
+      child = (0, import_child_process46.spawn)(process.execPath, [entry2, "factory", "run", "--next", "--json"], { cwd: root2, stdio: ["ignore", "pipe", "inherit"], windowsHide: true, detached: process.platform !== "win32" });
+    } catch (error2) {
+      notStarted(error2);
+      return;
+    }
+    const killTree = (sig) => {
+      if (process.platform === "win32" || child.pid === void 0) {
+        child.kill(sig);
+        return;
+      }
+      try {
+        process.kill(-child.pid, sig);
+      } catch {
+        child.kill(sig);
+      }
+    };
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (d) => {
+      if (stdout.length + d.length <= AUTO_START_MAX_STDOUT) stdout += d;
+      else truncated = true;
+    });
+    child.on("error", notStarted);
+    child.on("close", (code, signal) => {
+      const ended = signal ? ` (ended by ${signal})` : "";
+      if (timedOut) {
+        settle({ exitCode: code ?? 1, parsed: false, next: null, message: `omg factory run --next ran past its ${Math.round(timeoutMs / 6e4)} min limit and was stopped${ended}` });
+        return;
+      }
+      const out = truncated ? { parsed: false, next: null, message: `the outcome on stdout exceeded ${AUTO_START_MAX_STDOUT} bytes` } : parseRunNextOutcome(stdout);
+      settle({ exitCode: code ?? 1, ...out, message: out.parsed ? out.message : `${out.message}${ended}` });
+    });
+    timer = setTimeout(() => {
+      timedOut = true;
+      killTree("SIGTERM");
+      killer = setTimeout(() => killTree("SIGKILL"), o.graceMs ?? AUTO_START_GRACE_MS);
+    }, timeoutMs);
+    unsubscribe = o.signals?.((signal) => {
+      if (process.platform !== "win32" || signal !== "SIGINT") child.kill(signal);
+    }) ?? unsubscribe;
+  });
+}
+function softLimitOf(config2, source) {
+  const raw = config2?.budget?.softLimit;
+  if (raw === void 0) return void 0;
+  if (typeof raw !== "number" || !Number.isFinite(raw) || raw <= 0) throw new Error(`${source}: budget.softLimit must be a positive number (got ${JSON.stringify(raw)})`);
+  return raw;
+}
+function defaultPollBudget(layers, env2 = process.env) {
+  return (root2) => {
+    try {
+      const l = layers(root2);
+      resolveFactoryRunLimits(l.trustedUser, l.project);
+      if (env2.OMC_BUDGET_GOVERNOR === "0") return "the budget governor is off (OMC_BUDGET_GOVERNOR=0); autoStart needs it on";
+      const trusted = softLimitOf(l.trustedUser, "user config") ?? softLimitOf(l.base, "base-branch .copilot/omg.jsonc");
+      if (trusted === void 0) return "autoStart needs budget.softLimit (user config or base branch)";
+      const project = softLimitOf(l.project, "project config");
+      const limit = project !== void 0 && project < trusted ? project : trusted;
+      const path30 = ledgerPath2(root2);
+      const { ledger, invalid } = parseLedger(path30);
+      if (invalid) return `the budget ledger is unreadable (${path30}); autoStart needs it (omg budget status)`;
+      const used = ledgerTotals(ledger).credits;
+      return used >= limit ? `the AI credits used (${used.toFixed(2)}) reached budget.softLimit ${limit} (omg budget status)` : null;
+    } catch (error2) {
+      return message3(error2);
+    }
+  };
+}
+async function pollTick(ctx) {
   const { forge, config: config2, root: root2 } = ctx;
   const at = new Date(ctx.now()).toISOString();
   const errors = [];
@@ -130438,6 +130555,11 @@ function pollTick(ctx) {
   };
   ctx.tick += 1;
   if (step("heartbeat", () => beat(root2, ctx.owner, at)) === false) warnings.push(`another poller owns ${pollStatePath(root2)}; stop this one`);
+  const ledgerNow = step("ledger", () => (0, import_fs173.existsSync)(ledgerPath2(root2)));
+  if (ledgerNow !== void 0) {
+    if (ctx.previous.ledger && !ledgerNow) warnings.push(`budget ledger ${ledgerPath2(root2)} disappeared; spend restarts at 0`);
+    ctx.previous.ledger = ledgerNow;
+  }
   let heal;
   if (!ctx.heal) heal = { ran: false, reason: "--no-heal" };
   else if (!forge.capabilities.heal) heal = { ran: false, reason: "the forge has no heal capability (Azure DevOps: set factory.heal.pipeline)" };
@@ -130504,8 +130626,9 @@ function pollTick(ctx) {
       prs.push(row);
     }
   }
+  const locked = engineBusy(root2, ctx.owner);
   const unsound = broken.size > 0 || [...runs.values()].some((s) => !verifyFactoryIntegrity(s));
-  const idle = !unsound && !engineBusy(root2, ctx.owner) && !live.some(([, s]) => !s.gate);
+  const idle = !locked && !unsound && !live.some(([, s]) => !s.gate);
   const board = [];
   const shown = step("board", () => collectBoard({ forge, config: config2, root: root2, ids: ids2, check: null, now: ctx.now(), warnings }));
   if (shown) {
@@ -130519,6 +130642,26 @@ function pollTick(ctx) {
     ctx.previous.board = next;
   }
   const rateLimited = [...errors, ...warnings].some((m) => ADO_RATE_LIMITED.test(m));
+  let autoStart;
+  const blocked2 = !config2.intake.autoStart ? "factory.intake.autoStart is off" : locked ? "the run lock is held: an engine runs in this repository" : unsound ? "a run state is unreadable or fails its integrity check" : !idle ? "a run is in flight" : !intake.ran ? `no intake read this tick (${intake.reason})` : rateLimited ? "the tick was rate-limited" : null;
+  if (blocked2) autoStart = { started: false, reason: blocked2 };
+  else {
+    let reason = ctx.budget(root2);
+    if (!reason) {
+      try {
+        acquireFactoryRepoOwner(root2, AUTO_START_CLAIM, at, ctx.owner).release();
+      } catch (error2) {
+        reason = `the run lock is held: ${message3(error2)}`;
+      }
+    }
+    if (reason) autoStart = { started: false, reason: plainText(reason) };
+    else {
+      audit(root2, { kind: "auto-start" }, at);
+      const r = await ctx.autoStart({ root: root2 });
+      audit(root2, { kind: "auto-start-done", ...r.parsed ? { next: r.next } : { outcome: "unreadable" }, exitCode: r.exitCode }, new Date(ctx.now()).toISOString());
+      autoStart = { started: true, parsed: r.parsed, next: r.parsed ? r.next : null, exitCode: r.exitCode, message: plainText(r.message) };
+    }
+  }
   return {
     schemaVersion: POLL_JSON_SCHEMA_VERSION,
     tick: ctx.tick,
@@ -130530,6 +130673,7 @@ function pollTick(ctx) {
     prs,
     board,
     idle,
+    autoStart,
     rateLimited,
     errors: errors.map(plainText),
     warnings: warnings.map(plainText)
@@ -130545,6 +130689,11 @@ function renderTick(t) {
     else if (p.threads) lines4.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)}: ${p.threads} open human thread(s)`);
   }
   for (const b of t.board) lines4.push(`  ${b.stage.toUpperCase()}${b.stage === "backlog" ? backlogLine(b.row) : runLine(b.row, prefix)}`);
+  if (t.autoStart.started) {
+    const a = t.autoStart;
+    const took = !a.parsed ? "outcome unreadable" : a.next !== null ? `took #${a.next}` : a.exitCode === 0 ? "found nothing runnable" : "took no item";
+    lines4.push(`  auto-start: omg factory run --next ${took}, exit ${a.exitCode}: ${a.message}`);
+  }
   return lines4.join("\n");
 }
 async function runFactoryPoll(o, deps) {
@@ -130555,11 +130704,21 @@ async function runFactoryPoll(o, deps) {
   const read = openReadForge({}, checkDeps, warnings, "omg factory poll");
   for (const w of warnings) deps.err(plainText(w));
   const owner = deps.owner ?? defaultOwnerDeps();
+  const layers = { trustedUser: deps.trustedUser(), base: read.baseConfig, project: deps.projectConfig(read.root) };
+  const runLimits = () => {
+    try {
+      return resolveFactoryRunLimits(layers.trustedUser, layers.project).limits;
+    } catch {
+      return DEFAULT_FACTORY_RUN_LIMITS;
+    }
+  };
   const { release } = acquirePoller(read.root, new Date(now2()).toISOString(), owner);
   let stopping = 0;
   const wake = new AbortController();
-  const off = (deps.onStop ?? defaultOnStop)(() => {
+  const forwards = /* @__PURE__ */ new Set();
+  const off = (deps.onStop ?? defaultOnStop)((signal = "SIGTERM") => {
     stopping += 1;
+    for (const forward of forwards) forward(signal);
     if (stopping > 1) process.exit(130);
     deps.err("omg factory poll: stopping after the current tick; press again to exit at once");
     wake.abort();
@@ -130575,6 +130734,16 @@ async function runFactoryPoll(o, deps) {
     intake: o.intake !== false,
     prs: o.prs !== false,
     healScan: deps.healScan,
+    autoStart: deps.autoStart ?? defaultPollAutoStart(process.argv[1], {
+      timeoutMs: () => autoStartTimeoutMs(runLimits()),
+      signals: (forward) => {
+        forwards.add(forward);
+        return () => {
+          forwards.delete(forward);
+        };
+      }
+    }),
+    budget: deps.budget ?? defaultPollBudget(() => layers),
     owner,
     now: now2,
     previous: { board: /* @__PURE__ */ new Map(), prs: /* @__PURE__ */ new Map() },
@@ -130583,7 +130752,7 @@ async function runFactoryPoll(o, deps) {
   let interval = base;
   try {
     for (; ; ) {
-      const t = pollTick(ctx);
+      const t = await pollTick(ctx);
       if (!o.once) {
         interval = nextInterval(interval, base, t.rateLimited);
         t.nextIntervalMs = interval;
@@ -130604,12 +130773,14 @@ async function runFactoryPoll(o, deps) {
     release();
   }
 }
-var import_fs173, import_path199, POLL_JSON_SCHEMA_VERSION, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS, PollBusyError, pollStatePath, pollAuditPath, writePollFile, ownerless, stale, heldBy, message3, resumeHint, defaultSleep, defaultOnStop;
+var import_child_process46, import_fs173, import_path199, POLL_JSON_SCHEMA_VERSION, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS, PollBusyError, pollStatePath, pollAuditPath, writePollFile, ownerless, stale, heldBy, AUTO_START_MAX_STDOUT, AUTO_START_CLAIM, AUTO_START_SLACK_MS, AUTO_START_GRACE_MS, message3, resumeHint, defaultSleep, defaultOnStop;
 var init_poll = __esm({
   "src/factory/poll.ts"() {
     "use strict";
+    import_child_process46 = require("child_process");
     import_fs173 = require("fs");
     import_path199 = require("path");
+    init_ledger();
     init_atomic_write();
     init_file_lock();
     init_worktree_paths();
@@ -130621,6 +130792,7 @@ var init_poll = __esm({
     init_score();
     init_cli2();
     init_run2();
+    init_budget();
     init_state6();
     POLL_JSON_SCHEMA_VERSION = 1;
     POLL_DEFAULT_INTERVAL_MS = 5 * 6e4;
@@ -130639,6 +130811,10 @@ var init_poll = __esm({
       return !Number.isFinite(beat2) || Date.parse(now2) - beat2 > POLL_OWNER_STALE_MS;
     };
     heldBy = (f, me) => f.pid !== void 0 && (f.hostname !== me.hostname || f.pid !== me.pid && me.isAlive(f.pid));
+    AUTO_START_MAX_STDOUT = 4 * 1024 * 1024;
+    AUTO_START_CLAIM = 0;
+    AUTO_START_SLACK_MS = 30 * 6e4;
+    AUTO_START_GRACE_MS = 2 * 6e4;
     message3 = (error2) => plainText(error2 instanceof Error ? error2.message : String(error2));
     resumeHint = (key) => typeof key === "number" ? `omg factory run ${key}` : `omg factory heal approve ${key.slice("heal-".length)}`;
     defaultSleep = (ms, wake) => new Promise((resolve73) => {
@@ -130665,7 +130841,7 @@ var init_poll = __esm({
 
 // src/cli/commands/factory-poll.ts
 function factoryPollCommand(deps) {
-  return new Command("poll").description("Poll heal, intake, PRs and the board each interval (GitHub and Azure DevOps); never starts a lane and never writes to the tracker or forge").option("--interval <duration>", "wait between ticks: <n>s, <n>m or <n>h, 2 min to 60 min (default 5m; doubles while rate-limited)").option("--once", "run one tick and exit").option("--no-heal", "skip the heal scan").option("--no-intake", "skip the intake query (the board shows runs only)").option("--no-prs", "skip the PR reads").option("--json", "one JSON object per tick (schemaVersion 1)").action(async (o) => {
+  return new Command("poll").description("Poll heal, intake, PRs and the board each interval (GitHub and Azure DevOps); never writes to the tracker or forge, and starts no lane unless factory.intake.autoStart (trusted config) starts omg factory run --next on an idle tick").option("--interval <duration>", "wait between ticks: <n>s, <n>m or <n>h, 2 min to 60 min (default 5m; doubles while rate-limited)").option("--once", "run one tick and exit").option("--no-heal", "skip the heal scan").option("--no-intake", "skip the intake query (the board shows runs only)").option("--no-prs", "skip the PR reads").option("--json", "one JSON object per tick (schemaVersion 1)").action(async (o) => {
     try {
       process.exitCode = await runFactoryPoll(o, deps);
     } catch (error2) {
@@ -130730,7 +130906,7 @@ async function factoryGuarded(json, fn) {
     process.exitCode = await fn();
   } catch (error2) {
     const message4 = error2 instanceof Error ? error2.message : String(error2);
-    if (json) console.log(JSON.stringify({ ok: false, error: message4 }, null, 2));
+    if (json) console.log(factoryRunJson.error(message4));
     else console.error(source_default.red(`Error: ${message4}`));
     process.exitCode = error2 instanceof FactoryUsageError ? 2 : 1;
   }
@@ -130762,7 +130938,7 @@ function pickNext(deps, root2, base, loaded2, parent) {
 }
 function printOutcome2(json, outcome, next) {
   if (json) {
-    console.log(JSON.stringify({ ok: outcome.exitCode === 0, ...next !== void 0 ? { next } : {}, ...outcome }, null, 2));
+    console.log(factoryRunJson.outcome(outcome, next));
     return;
   }
   if (outcome.state) console.log(renderFactoryRunState(outcome.state));
@@ -130795,7 +130971,7 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
       for (const w of pickWarnings) console.error(source_default.yellow(plainText(w)));
       const counts = bucketCounts(items);
       if (!next) {
-        if (o.json) console.log(JSON.stringify({ ok: true, next: null, message: "nothing runnable", counts }, null, 2));
+        if (o.json) console.log(factoryRunJson.nothingRunnable(counts));
         else console.log(`nothing runnable (${BUCKET_ORDER.map((b) => `${counts[b]} ${b}`).join(", ")})`);
         return 0;
       }
@@ -131133,7 +131309,7 @@ A backup is written first.`)) {
   return { exitCode: 0, message: `factory init --migrate rewrote ${routesPath} (backup: ${backupPath}):
 ${plan}` };
 }
-var import_fs174, import_path200, defaultFactoryRunDeps, FactoryUsageError, NO_LANES, bucketCounts;
+var import_fs174, import_path200, defaultFactoryRunDeps, FactoryUsageError, NO_LANES, factoryRunJson, bucketCounts;
 var init_factory = __esm({
   "src/cli/commands/factory.ts"() {
     "use strict";
@@ -131192,6 +131368,11 @@ var init_factory = __esm({
       poll: () => Promise.reject(new Error("omg factory run --dry-run starts no lanes")),
       wait: () => Promise.reject(new Error("omg factory run --dry-run starts no lanes")),
       cancel: () => Promise.reject(new Error("omg factory run --dry-run starts no lanes"))
+    };
+    factoryRunJson = {
+      nothingRunnable: (counts) => JSON.stringify({ ok: true, next: null, message: "nothing runnable", counts }, null, 2),
+      outcome: (outcome, next) => JSON.stringify({ ok: outcome.exitCode === 0, ...next !== void 0 ? { next } : {}, ...outcome }, null, 2),
+      error: (message4) => JSON.stringify({ ok: false, error: message4 }, null, 2)
     };
     bucketCounts = (items) => Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length]));
   }
@@ -131335,7 +131516,7 @@ async function runChainScenario(input) {
   });
   const env2 = chainLinkSmokeEnv(input.env, input.bin, input.root, firstLink);
   const plan = buildHostBinarySpawn(input.bin, [...COPILOT_AFK_SPAWN_FLAGS, ...copilotPluginDirArgs(env2, input.projectDir)]);
-  const link1 = await runAsync(input.spawn ?? import_child_process46.spawn, input.spawnSync, plan.command, plan.args, {
+  const link1 = await runAsync(input.spawn ?? import_child_process47.spawn, input.spawnSync, plan.command, plan.args, {
     cwd: input.projectDir,
     env: env2,
     input: `${SCENARIOS.chain.prompt}
@@ -131370,12 +131551,12 @@ async function runChainScenario(input) {
     chain
   };
 }
-var import_crypto54, import_child_process46, import_fs175, import_path201, CHAIN_ACK_TOKEN, sleep8;
+var import_crypto54, import_child_process47, import_fs175, import_path201, CHAIN_ACK_TOKEN, sleep8;
 var init_copilot_chain_scenario = __esm({
   "src/smoke/copilot-chain-scenario.ts"() {
     "use strict";
     import_crypto54 = require("crypto");
-    import_child_process46 = require("child_process");
+    import_child_process47 = require("child_process");
     import_fs175 = require("fs");
     import_path201 = require("path");
     init_tmux_utils();
@@ -131589,7 +131770,7 @@ async function runCliScenario(input) {
       break;
     }
     const plan = buildHostBinarySpawn(input.bin, argsFor(budget));
-    const res = await runAsync(input.spawn ?? import_child_process47.spawn, input.spawnSync, plan.command, plan.args, {
+    const res = await runAsync(input.spawn ?? import_child_process48.spawn, input.spawnSync, plan.command, plan.args, {
       cwd: input.projectDir,
       env: input.env,
       input: `${prompt}
@@ -131624,12 +131805,12 @@ async function runCliScenario(input) {
   }
   return { ...base, capped, events, idle: !timedOut && !error2, timedOut, ...error2 ? { error: error2 } : {} };
 }
-var import_crypto55, import_child_process47, import_fs177, import_path203, CLI_SCENARIO_PERMISSIONS, SANDBOX_FLAGS, STUB_EVENTS;
+var import_crypto55, import_child_process48, import_fs177, import_path203, CLI_SCENARIO_PERMISSIONS, SANDBOX_FLAGS, STUB_EVENTS;
 var init_copilot_cli_scenarios = __esm({
   "src/smoke/copilot-cli-scenarios.ts"() {
     "use strict";
     import_crypto55 = require("crypto");
-    import_child_process47 = require("child_process");
+    import_child_process48 = require("child_process");
     import_fs177 = require("fs");
     import_path203 = require("path");
     init_worktree_paths();
@@ -132475,7 +132656,7 @@ async function runTeamScenario(input) {
   const deadline = started + budgetMs;
   const env2 = teamLeaderEnv(input.env, input.bin, input.budget, input.model);
   const cli = (0, import_path206.join)(input.root, "bridge", "cli.cjs");
-  const spawnFn = input.spawn ?? import_child_process48.spawn;
+  const spawnFn = input.spawn ?? import_child_process49.spawn;
   const omg = (args, timeoutMs) => runAsync(spawnFn, input.spawnSync, process.execPath, [cli, ...args], { cwd: input.projectDir, env: env2, timeoutMs });
   const base = {
     name: "team",
@@ -132604,11 +132785,11 @@ async function runTeamScenario(input) {
     team: evidence
   };
 }
-var import_child_process48, import_fs180, import_path206, sleep9;
+var import_child_process49, import_fs180, import_path206, sleep9;
 var init_copilot_team_scenario = __esm({
   "src/smoke/copilot-team-scenario.ts"() {
     "use strict";
-    import_child_process48 = require("child_process");
+    import_child_process49 = require("child_process");
     import_fs180 = require("fs");
     import_path206 = require("path");
     init_worktree_paths();
@@ -133465,8 +133646,8 @@ async function runCopilotSmoke(input = {}) {
   const ctx = {
     root: root2,
     env: { ...env2 },
-    spawnFn: deps.spawn ?? import_child_process49.spawn,
-    spawnSyncFn: deps.spawnSync ?? import_child_process49.spawnSync,
+    spawnFn: deps.spawn ?? import_child_process50.spawn,
+    spawnSyncFn: deps.spawnSync ?? import_child_process50.spawnSync,
     deps,
     timeoutMs: tier === 0 ? opts.timeoutMs ?? DEFAULT_TIER0_TIMEOUT_MS : DEFAULT_TIER0_TIMEOUT_MS,
     ...cassette ? { cassette } : {}
@@ -133601,11 +133782,11 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
   if (logs.path) artifacts.debugLog = logs.path;
   return result;
 }
-var import_child_process49, import_crypto57, import_fs182, import_os39, import_path208, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
+var import_child_process50, import_crypto57, import_fs182, import_os39, import_path208, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
 var init_copilot_smoke = __esm({
   "src/smoke/copilot-smoke.ts"() {
     "use strict";
-    import_child_process49 = require("child_process");
+    import_child_process50 = require("child_process");
     import_crypto57 = require("crypto");
     import_fs182 = require("fs");
     import_os39 = require("os");
@@ -136023,7 +136204,7 @@ __export(checkpoint_exports, {
 });
 function git5(args, options = {}) {
   try {
-    return (0, import_child_process55.execFileSync)("git", args, {
+    return (0, import_child_process56.execFileSync)("git", args, {
       cwd: options.cwd ?? process.cwd(),
       env: options.env ?? process.env,
       timeout: GIT_TIMEOUT_MS5,
@@ -136128,11 +136309,11 @@ function rollbackToCheckpoint(cwd2, checkpointId, force = false) {
   git5([...CONTENT_FIDELITY, "restore", "--source", full, "--staged", "--worktree", ":/"], { cwd: toplevel });
   git5(["clean", "-fd"], { cwd: toplevel });
 }
-var import_child_process55, import_fs190, import_os45, import_path217, GIT_TIMEOUT_MS5, REF_PREFIX, SHADOW_IDENTITY, CONTENT_FIDELITY, CheckpointError;
+var import_child_process56, import_fs190, import_os45, import_path217, GIT_TIMEOUT_MS5, REF_PREFIX, SHADOW_IDENTITY, CONTENT_FIDELITY, CheckpointError;
 var init_checkpoint = __esm({
   "src/features/checkpoint/index.ts"() {
     "use strict";
-    import_child_process55 = require("child_process");
+    import_child_process56 = require("child_process");
     import_fs190 = require("fs");
     import_os45 = require("os");
     import_path217 = require("path");
@@ -139063,7 +139244,7 @@ function processEntry(entry2, agentMap, latestTodos, result, maxAgentMapSize = 5
       if (block.name === "Task" || block.name === "proxy_Task" || block.name === "Agent" || block.name === "proxy_Agent") {
         result.agentCallCount++;
         const input = block.input;
-        const spawn18 = classifyAgentSpawn({
+        const spawn19 = classifyAgentSpawn({
           hasName: Boolean(input?.name),
           sessionId: entry2.sessionId
         });
@@ -139075,8 +139256,8 @@ function processEntry(entry2, agentMap, latestTodos, result, maxAgentMapSize = 5
           description: input?.description,
           status: "running",
           startTime: timestamp2,
-          kind: spawn18.kind,
-          spawnedBy: spawn18.spawnedBy
+          kind: spawn19.kind,
+          spawnedBy: spawn19.spawnedBy
         };
         if (agentMap.size >= maxAgentMapSize) {
           let oldestCompleted = null;
@@ -139773,7 +139954,7 @@ function isCacheValid2(cache2) {
 function spawnWithTimeout(cmd, timeoutMs) {
   return new Promise((resolve73, reject2) => {
     const [executable, ...args] = Array.isArray(cmd) ? cmd : ["sh", "-c", cmd];
-    const child = (0, import_child_process58.spawn)(executable, args, {
+    const child = (0, import_child_process59.spawn)(executable, args, {
       stdio: ["ignore", "pipe", "pipe"],
       detached: process.platform !== "win32"
     });
@@ -139881,11 +140062,11 @@ async function executeCustomProvider(config2) {
     return { buckets: [], stale: false, error: "command failed" };
   }
 }
-var import_child_process58, import_node_crypto19, import_fs202, import_path232, CACHE_TTL_MS2, DEFAULT_TIMEOUT_MS4;
+var import_child_process59, import_node_crypto19, import_fs202, import_path232, CACHE_TTL_MS2, DEFAULT_TIMEOUT_MS4;
 var init_custom_rate_provider = __esm({
   "src/hud/custom-rate-provider.ts"() {
     "use strict";
-    import_child_process58 = require("child_process");
+    import_child_process59 = require("child_process");
     import_node_crypto19 = require("node:crypto");
     import_fs202 = require("fs");
     import_path232 = require("path");
@@ -142742,7 +142923,7 @@ function spawnSessionSummaryScript(transcriptPath, stateDir, sessionId) {
     return;
   }
   try {
-    const child = (0, import_child_process59.spawn)(
+    const child = (0, import_child_process60.spawn)(
       "node",
       [scriptPath, transcriptPath, stateDir, sessionId],
       {
@@ -143051,7 +143232,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
 function main2(watchMode = false, skipInit = false) {
   return withWorktreePathRenderScope(() => mainImpl(watchMode, skipInit));
 }
-var import_fs206, import_promises39, import_path235, import_child_process59, import_url27, HUD_SCRIPT_NAMES, HUD_COMMAND_MARKERS, SAME_WINDOW_TOLERANCE_MS, lastSummarySpawnTimestamp, summaryProcessPid;
+var import_fs206, import_promises39, import_path235, import_child_process60, import_url27, HUD_SCRIPT_NAMES, HUD_COMMAND_MARKERS, SAME_WINDOW_TOLERANCE_MS, lastSummarySpawnTimestamp, summaryProcessPid;
 var init_hud = __esm({
   "src/hud/index.ts"() {
     "use strict";
@@ -143077,7 +143258,7 @@ var init_hud = __esm({
     import_fs206 = require("fs");
     import_promises39 = require("fs/promises");
     import_path235 = require("path");
-    import_child_process59 = require("child_process");
+    import_child_process60 = require("child_process");
     import_url27 = require("url");
     init_worktree_paths();
     init_config_dir();
@@ -155992,7 +156173,7 @@ function smokeCassetteImportCommand(dir, cli) {
 }
 
 // src/cli/commands/hooks.ts
-var import_child_process50 = require("child_process");
+var import_child_process51 = require("child_process");
 var import_crypto58 = require("crypto");
 var import_fs183 = require("fs");
 var import_os41 = require("os");
@@ -156159,7 +156340,7 @@ function dispatchChecks(manifest, root2, env2, spawnSync19, deps, only) {
         const script = `const fs=require('fs');const d=process.argv[1];let n=0;(function t(){try{fs.rmSync(d,{recursive:true,force:true});}catch{if(++n<60)return setTimeout(t,2000);}})();`;
         const minimalEnv = {};
         for (const key of ["PATH", "Path", "SystemRoot", "TEMP", "TMP"]) if (env2[key] !== void 0) minimalEnv[key] = env2[key];
-        (deps.spawn ?? import_child_process50.spawn)(process.execPath, ["-e", script, parent], { detached: true, stdio: "ignore", windowsHide: true, cwd: (0, import_os41.tmpdir)(), env: minimalEnv }).on("error", () => {
+        (deps.spawn ?? import_child_process51.spawn)(process.execPath, ["-e", script, parent], { detached: true, stdio: "ignore", windowsHide: true, cwd: (0, import_os41.tmpdir)(), env: minimalEnv }).on("error", () => {
         }).unref();
         checks.push({ id: "dispatch.cleanup", status: "ok", detail: `hook workers still hold the sandbox (${err.message}); a background process is scheduled to remove ${parent} once they exit` });
       } catch {
@@ -156171,7 +156352,7 @@ function dispatchChecks(manifest, root2, env2, spawnSync19, deps, only) {
 async function runHooksDoctor(opts = {}) {
   const env2 = opts.env ?? process.env;
   const deps = opts.deps ?? {};
-  const spawnSync19 = deps.spawnSync ?? import_child_process50.spawnSync;
+  const spawnSync19 = deps.spawnSync ?? import_child_process51.spawnSync;
   const root2 = (0, import_path210.resolve)(opts.pluginRoot ?? resolveDefaultPluginRoot(env2));
   const checks = [];
   const node = checkNode(spawnSync19, env2);
@@ -159564,7 +159745,7 @@ async function aliasRetirementCommand(args) {
 
 // src/cli/commands/teleport.ts
 init_source();
-var import_child_process51 = require("child_process");
+var import_child_process52 = require("child_process");
 var import_fs187 = require("fs");
 var import_os42 = require("os");
 var import_path213 = require("path");
@@ -159620,7 +159801,7 @@ function installDependencies(worktreePath, packageManager) {
     pnpm: ["install"],
     yarn: ["install"]
   };
-  (0, import_child_process51.execFileSync)(packageManager, argsByManager[packageManager], {
+  (0, import_child_process52.execFileSync)(packageManager, argsByManager[packageManager], {
     cwd: worktreePath,
     stdio: "inherit"
   });
@@ -159798,12 +159979,12 @@ function sanitize(str8, maxLen = 30) {
 }
 function getCurrentRepo() {
   try {
-    const root2 = (0, import_child_process51.execFileSync)("git", ["rev-parse", "--show-toplevel"], {
+    const root2 = (0, import_child_process52.execFileSync)("git", ["rev-parse", "--show-toplevel"], {
       encoding: "utf-8",
       timeout: 5e3,
       windowsHide: true
     }).trim();
-    const remoteUrl = (0, import_child_process51.execFileSync)("git", ["remote", "get-url", "origin"], {
+    const remoteUrl = (0, import_child_process52.execFileSync)("git", ["remote", "get-url", "origin"], {
       encoding: "utf-8",
       timeout: 5e3,
       windowsHide: true
@@ -159833,20 +160014,20 @@ function createWorktree(repoRoot3, worktreePath, branchName2, baseBranch) {
     if ((0, import_fs187.existsSync)(worktreePath)) {
       return { success: false, error: `Worktree already exists at ${worktreePath}` };
     }
-    (0, import_child_process51.execFileSync)("git", ["fetch", "origin", baseBranch], {
+    (0, import_child_process52.execFileSync)("git", ["fetch", "origin", baseBranch], {
       cwd: repoRoot3,
       stdio: "pipe",
       windowsHide: true
     });
     try {
-      (0, import_child_process51.execFileSync)("git", ["branch", branchName2, `origin/${baseBranch}`], {
+      (0, import_child_process52.execFileSync)("git", ["branch", branchName2, `origin/${baseBranch}`], {
         cwd: repoRoot3,
         stdio: "pipe",
         windowsHide: true
       });
     } catch {
     }
-    (0, import_child_process51.execFileSync)("git", ["worktree", "add", worktreePath, branchName2], {
+    (0, import_child_process52.execFileSync)("git", ["worktree", "add", worktreePath, branchName2], {
       cwd: repoRoot3,
       stdio: "pipe",
       windowsHide: true
@@ -159926,7 +160107,7 @@ async function teleportCommand(ref, options) {
       if (provider.prRefspec) {
         try {
           const refspec = provider.prRefspec.replace("{number}", String(parsed2.number)).replace("{branch}", branchName2);
-          (0, import_child_process51.execFileSync)(
+          (0, import_child_process52.execFileSync)(
             "git",
             ["fetch", "origin", refspec],
             { cwd: repoRoot3, stdio: ["pipe", "pipe", "pipe"], timeout: 3e4, windowsHide: true }
@@ -159935,7 +160116,7 @@ async function teleportCommand(ref, options) {
         }
       } else if (info.branch) {
         try {
-          (0, import_child_process51.execFileSync)(
+          (0, import_child_process52.execFileSync)(
             "git",
             ["fetch", "origin", `${info.branch}:${branchName2}`],
             { cwd: repoRoot3, stdio: ["pipe", "pipe", "pipe"], timeout: 3e4, windowsHide: true }
@@ -160038,7 +160219,7 @@ async function teleportListCommand(options) {
     const relativePath = (0, import_path213.relative)(worktreeRoot, worktreePath);
     let branch = "unknown";
     try {
-      branch = (0, import_child_process51.execFileSync)("git", ["branch", "--show-current"], {
+      branch = (0, import_child_process52.execFileSync)("git", ["branch", "--show-current"], {
         cwd: worktreePath,
         encoding: "utf-8",
         windowsHide: true
@@ -160087,7 +160268,7 @@ async function teleportRemoveCommand(pathOrName, options) {
   }
   try {
     if (!options.force) {
-      const status = (0, import_child_process51.execFileSync)("git", ["status", "--porcelain"], {
+      const status = (0, import_child_process52.execFileSync)("git", ["status", "--porcelain"], {
         cwd: worktreePath,
         encoding: "utf-8",
         windowsHide: true
@@ -160102,7 +160283,7 @@ async function teleportRemoveCommand(pathOrName, options) {
         return 1;
       }
     }
-    const gitDir = (0, import_child_process51.execFileSync)("git", ["rev-parse", "--git-dir"], {
+    const gitDir = (0, import_child_process52.execFileSync)("git", ["rev-parse", "--git-dir"], {
       cwd: worktreePath,
       encoding: "utf-8",
       windowsHide: true
@@ -160120,7 +160301,7 @@ async function teleportRemoveCommand(pathOrName, options) {
       mainRepoRoots: [mainRepo]
     });
     const args = options.force ? ["worktree", "remove", "--force", worktreePath] : ["worktree", "remove", worktreePath];
-    (0, import_child_process51.execFileSync)("git", args, {
+    (0, import_child_process52.execFileSync)("git", args, {
       cwd: mainRepo,
       stdio: "pipe",
       windowsHide: true
@@ -160158,7 +160339,7 @@ function resolvePluginDirArg(rawPath) {
 }
 
 // src/cli/launch.ts
-var import_child_process52 = require("child_process");
+var import_child_process53 = require("child_process");
 var import_fs188 = require("fs");
 var import_os43 = require("os");
 var import_path215 = require("path");
@@ -161130,7 +161311,7 @@ function runClaudeDirect(cwd2, args) {
   try {
     if (process.platform === "win32") {
       const launch = buildHostBinarySpawn(binary, args);
-      const result = (0, import_child_process52.spawnSync)(launch.command, launch.args, {
+      const result = (0, import_child_process53.spawnSync)(launch.command, launch.args, {
         cwd: cwd2,
         stdio: "inherit",
         windowsVerbatimArguments: launch.windowsVerbatimArguments
@@ -161144,7 +161325,7 @@ function runClaudeDirect(cwd2, args) {
         process.exit(result.status ?? 1);
       }
     } else {
-      (0, import_child_process52.execFileSync)(binary, args, {
+      (0, import_child_process53.execFileSync)(binary, args, {
         cwd: cwd2,
         stdio: "inherit"
       });
@@ -161260,7 +161441,7 @@ async function launchCommand(args) {
 }
 
 // src/cli/interop.ts
-var import_child_process53 = require("child_process");
+var import_child_process54 = require("child_process");
 var import_crypto60 = require("crypto");
 init_tmux_utils();
 init_host_detection();
@@ -161286,7 +161467,7 @@ function validateInteropRuntimeFlags(flags) {
 }
 function isCodexAvailable() {
   try {
-    (0, import_child_process53.execFileSync)("codex", ["--version"], { stdio: "ignore" });
+    (0, import_child_process54.execFileSync)("codex", ["--version"], { stdio: "ignore" });
     return true;
   } catch {
     return false;
@@ -161376,7 +161557,7 @@ function interopCommand(options = {}) {
 }
 
 // src/cli/ask.ts
-var import_child_process54 = require("child_process");
+var import_child_process55 = require("child_process");
 var import_fs189 = require("fs");
 var import_promises37 = require("fs/promises");
 var import_os44 = require("os");
@@ -161554,7 +161735,7 @@ async function askCommand(args) {
 
 ${parsed2.prompt}`;
   }
-  const child = (0, import_child_process54.spawnSync)(
+  const child = (0, import_child_process55.spawnSync)(
     process.execPath,
     [advisorScriptPath, parsed2.provider, finalPrompt],
     {
@@ -162524,14 +162705,14 @@ init_reviews();
 init_agent_progress();
 
 // src/release/drive.ts
-var import_child_process57 = require("child_process");
+var import_child_process58 = require("child_process");
 var import_fs194 = require("fs");
 var import_os46 = require("os");
 var import_path222 = require("path");
 init_process_utils();
 
 // src/release/engine.ts
-var import_child_process56 = require("child_process");
+var import_child_process57 = require("child_process");
 var import_fs193 = require("fs");
 var import_path221 = require("path");
 var import_url25 = require("url");
@@ -162722,7 +162903,7 @@ var defaultReleaseExec = (cmd, args, opts) => {
   }
   const base = scrubShipEnv(process.env);
   if (opts?.suiteEnv) delete base.GIT_NO_REPLACE_OBJECTS;
-  const result = (0, import_child_process56.spawnSync)(shell ? ["npm", ...args].join(" ") : cmd, shell ? [] : args, {
+  const result = (0, import_child_process57.spawnSync)(shell ? ["npm", ...args].join(" ") : cmd, shell ? [] : args, {
     cwd: opts?.cwd,
     env: { ...base, ...opts?.env },
     encoding: "utf8",
@@ -163850,7 +164031,7 @@ async function driveRelease(deps, opts, drive = {}) {
     request = { ...request, from: void 0 };
   }
 }
-function spawnDetachedDriver(entry2, argv, logPath, cwd2, spawnImpl = import_child_process57.spawn) {
+function spawnDetachedDriver(entry2, argv, logPath, cwd2, spawnImpl = import_child_process58.spawn) {
   (0, import_fs194.mkdirSync)((0, import_path222.dirname)(logPath), { recursive: true });
   const fd = (0, import_fs194.openSync)(logPath, "a");
   try {

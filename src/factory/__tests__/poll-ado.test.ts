@@ -20,7 +20,7 @@ import { createForge } from '../../forge/index.js';
 import type { Exec, ExecResult } from '../../ship/exec.js';
 import type { ScanResult } from '../heal/cli.js';
 import { computeFactoryIntegrity, createFactoryState, factoryStateDir, factoryStatePath, moveTo } from '../run/state.js';
-import { defaultPollHealScan, pollStatePath, runFactoryPoll, type FactoryPollDeps, type FactoryPollOptions, type PollHealScan, type PollTick } from '../poll.js';
+import { defaultPollHealScan, pollStatePath, runFactoryPoll, type FactoryPollDeps, type FactoryPollOptions, type PollAutoStart, type PollHealScan, type PollTick } from '../poll.js';
 
 const SHA = 'a'.repeat(40);
 const T1 = '2026-10-31T11:00:00.000Z';
@@ -166,6 +166,27 @@ describe('omg factory poll on Azure DevOps (runFactoryPoll + the real adapter)',
       : undefined);
     expect(await poll(world(undefined, limited).exec, { once: true, json: true })).toBe(1);
     expect(tick()).toMatchObject({ rateLimited: true, intake: { ran: false }, errors: [expect.stringMatching(/^intake: .*TF400733/)] });
+  });
+
+  it('factory.intake.autoStart: an idle tick starts one run --next; a run in flight or a working-tree key starts none', async () => {
+    const starts: string[] = [];
+    const autoStart: PollAutoStart = async (o) => { starts.push(o.root); return { exitCode: 0, parsed: true, next: 42, message: 'parked at awaiting-human: merge' }; };
+    const user = { factory: { ...USER.factory, intake: { ...USER.factory.intake, autoStart: true } } };
+    const w = world();
+    expect(await poll(w.exec, { once: true, json: true }, { trustedUser: () => user, autoStart, budget: () => null })).toBe(0);
+    expect(tick()).toMatchObject({ forge: 'azure-devops', idle: true, autoStart: { started: true, next: 42, exitCode: 0 } });
+    expect(starts).toEqual([root]);
+    // The tick's own reads stay GETs and the WIQL query.
+    for (const r of w.az.map(routeOf)) expect(r, r).toMatch(/\.GET$|^wit\.wiql\.POST$/);
+    seedReview();
+    expect(await poll(world().exec, { once: true, json: true }, { trustedUser: () => user, autoStart, budget: () => null })).toBe(0);
+    expect(tick().autoStart).toEqual({ started: false, reason: 'a run is in flight' });
+    rmSync(factoryStatePath(root, 42));
+    const project = { factory: { intake: { autoStart: true } } };
+    expect(await poll(world().exec, { once: true, json: true }, { projectConfig: () => project, autoStart, budget: () => null })).toBe(0);
+    expect(tick().autoStart).toEqual({ started: false, reason: 'factory.intake.autoStart is off' });
+    expect(err.join('\n')).toContain('ignoring factory.intake.autoStart from the working-tree project config');
+    expect(starts).toHaveLength(1);
   });
 });
 

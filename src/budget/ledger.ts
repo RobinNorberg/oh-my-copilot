@@ -158,7 +158,8 @@ function records(raw: unknown): Record<string, UsageRecord> {
   return out;
 }
 
-function parseLedger(path: string): { ledger: BudgetLedger; invalid: boolean } {
+/** The ledger at `path`; `invalid` when the file exists but is not a version-1 ledger (a missing file is an empty, valid one). */
+export function parseLedger(path: string): { ledger: BudgetLedger; invalid: boolean } {
   let text: string;
   try {
     text = readFileSync(path, 'utf8');

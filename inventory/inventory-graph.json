@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "5bef89c73c9f4ae0ec14239ad868ead1475ba473",
-    "sourceSha256": "bd4295d5bef91ab923085ff7217c42e305f86aa32ce6d0e2d11b0d4fa16bafea",
+    "head": "209582acc9eb29c78a5a12f0fbadfa923015e4f2",
+    "sourceSha256": "f5a3d2cde5f5e7ac9de86060648afa2f7f630654569c7bae168133666842853f",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "5bef89c73c9f4ae0ec14239ad868ead1475ba473",
-  "sourceSha256": "bd4295d5bef91ab923085ff7217c42e305f86aa32ce6d0e2d11b0d4fa16bafea",
+  "head": "209582acc9eb29c78a5a12f0fbadfa923015e4f2",
+  "sourceSha256": "f5a3d2cde5f5e7ac9de86060648afa2f7f630654569c7bae168133666842853f",
   "counts": {
     "public": {
       "skills": 63,
@@ -76391,6 +76391,11 @@
       },
       {
         "from": "src/factory/__tests__/poll.test.ts",
+        "to": "src/cli/commands/factory.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.test.ts",
         "to": "src/factory/heal/cli.ts",
         "kind": "type-imports"
       },
@@ -76418,6 +76423,11 @@
         "from": "src/factory/__tests__/poll.test.ts",
         "to": "src/factory/poll.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/__tests__/poll.test.ts",
@@ -78531,12 +78541,22 @@
       },
       {
         "from": "src/factory/poll.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
         "to": "external:fs",
         "kind": "imports"
       },
       {
         "from": "src/factory/poll.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/budget/ledger.ts",
         "kind": "imports"
       },
       {
@@ -78593,6 +78613,16 @@
         "from": "src/factory/poll.ts",
         "to": "src/factory/heal/run.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/poll.ts",
@@ -116837,11 +116867,11 @@
     ],
     "stats": {
       "nodeCount": 9841,
-      "edgeCount": 11778,
-      "importEdgeCount": 9660,
+      "edgeCount": 11784,
+      "importEdgeCount": 9665,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "412cfa40cd1c750a5dd5df40c272dc02ba85ba9d62b93e87a01ac790cf44adcd",
-  "manifestSha256": "4332cf5b79ffeaba9d6324948924b664203718f4f42cddda82222eec7d540ebc"
+  "manifestSha256": "62d312402de5a9a3cd69b9fbfbbd85e1ea03f0eb0fe95ff0122d92d24bace70c"
 }

@@ -31636,11 +31636,11 @@ function evaluateSdkSandbox(probe) {
   if (probe.applyError) return { id, ok: false, detail: `supported, capabilities ${caps}; the review policy was not applied: ${probe.applyError}` };
   const enf = probe.enforcement;
   if (enf === void 0 || typeof enf === "string") return { id, ok: false, detail: `supported, capabilities ${caps}; review policy applied; enforcement unread: ${enf ?? "not asked"}` };
-  const spawn5 = probe.spawn ?? { ok: false, detail: "not run" };
+  const spawn6 = probe.spawn ?? { ok: false, detail: "not run" };
   return {
     id,
-    ok: !enf.blocked && spawn5.ok,
-    detail: `supported, capabilities ${caps}; review policy applied (options.update), enforcement required=${enf.required} blocked=${enf.blocked}${enf.reason ? ` (${enf.reason})` : ""}; spawn canary: ${spawn5.detail}`
+    ok: !enf.blocked && spawn6.ok,
+    detail: `supported, capabilities ${caps}; review policy applied (options.update), enforcement required=${enf.required} blocked=${enf.blocked}${enf.reason ? ` (${enf.reason})` : ""}; spawn canary: ${spawn6.detail}`
   };
 }
 function sliceLogByTime(text3, starts) {
@@ -32840,8 +32840,8 @@ function rpcMethod(root, path15, name) {
     return null;
   }
 }
-function bwrapTrialLaunchError(spawn5 = defaultTrialSpawner, timeoutMs = 1e4) {
-  const r = spawn5("bwrap", BWRAP_TRIAL_ARGS, timeoutMs);
+function bwrapTrialLaunchError(spawn6 = defaultTrialSpawner, timeoutMs = 1e4) {
+  const r = spawn6("bwrap", BWRAP_TRIAL_ARGS, timeoutMs);
   if (r.error?.code === "ENOENT") return "bwrap (bubblewrap) is not on PATH, and the Linux sandbox runs every shell under it: install bubblewrap";
   if (r.error) return `a trial bwrap launch failed: ${errText(r.error)}`;
   if (r.status === 0) return null;
@@ -49677,12 +49677,14 @@ var init_factory_board = __esm({
 });
 
 // src/factory/poll.ts
-var import_fs90, import_path105, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS;
+var import_child_process21, import_fs90, import_path105, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS, AUTO_START_MAX_STDOUT, AUTO_START_SLACK_MS, AUTO_START_GRACE_MS;
 var init_poll = __esm({
   "src/factory/poll.ts"() {
     "use strict";
+    import_child_process21 = require("child_process");
     import_fs90 = require("fs");
     import_path105 = require("path");
+    init_ledger();
     init_atomic_write();
     init_file_lock();
     init_worktree_paths();
@@ -49694,11 +49696,15 @@ var init_poll = __esm({
     init_score();
     init_cli2();
     init_run2();
+    init_budget();
     init_state5();
     POLL_DEFAULT_INTERVAL_MS = 5 * 6e4;
     POLL_MIN_INTERVAL_MS = 2 * 6e4;
     POLL_MAX_INTERVAL_MS = 60 * 6e4;
     POLL_OWNER_STALE_MS = 2 * POLL_MAX_INTERVAL_MS;
+    AUTO_START_MAX_STDOUT = 4 * 1024 * 1024;
+    AUTO_START_SLACK_MS = 30 * 6e4;
+    AUTO_START_GRACE_MS = 2 * 6e4;
   }
 });
 
@@ -49941,7 +49947,7 @@ async function runChainScenario(input) {
   });
   const env2 = chainLinkSmokeEnv(input.env, input.bin, input.root, firstLink);
   const plan = buildHostBinarySpawn(input.bin, [...COPILOT_AFK_SPAWN_FLAGS, ...copilotPluginDirArgs(env2, input.projectDir)]);
-  const link1 = await runAsync(input.spawn ?? import_child_process21.spawn, input.spawnSync, plan.command, plan.args, {
+  const link1 = await runAsync(input.spawn ?? import_child_process22.spawn, input.spawnSync, plan.command, plan.args, {
     cwd: input.projectDir,
     env: env2,
     input: `${SCENARIOS.chain.prompt}
@@ -49976,12 +49982,12 @@ async function runChainScenario(input) {
     chain
   };
 }
-var import_crypto28, import_child_process21, import_fs92, import_path107, CHAIN_ACK_TOKEN, sleep6;
+var import_crypto28, import_child_process22, import_fs92, import_path107, CHAIN_ACK_TOKEN, sleep6;
 var init_copilot_chain_scenario = __esm({
   "src/smoke/copilot-chain-scenario.ts"() {
     "use strict";
     import_crypto28 = require("crypto");
-    import_child_process21 = require("child_process");
+    import_child_process22 = require("child_process");
     import_fs92 = require("fs");
     import_path107 = require("path");
     init_tmux_utils();
@@ -50195,7 +50201,7 @@ async function runCliScenario(input) {
       break;
     }
     const plan = buildHostBinarySpawn(input.bin, argsFor(budget));
-    const res = await runAsync(input.spawn ?? import_child_process22.spawn, input.spawnSync, plan.command, plan.args, {
+    const res = await runAsync(input.spawn ?? import_child_process23.spawn, input.spawnSync, plan.command, plan.args, {
       cwd: input.projectDir,
       env: input.env,
       input: `${prompt}
@@ -50230,12 +50236,12 @@ async function runCliScenario(input) {
   }
   return { ...base, capped, events, idle: !timedOut && !error2, timedOut, ...error2 ? { error: error2 } : {} };
 }
-var import_crypto29, import_child_process22, import_fs94, import_path109, CLI_SCENARIO_PERMISSIONS, SANDBOX_FLAGS, STUB_EVENTS;
+var import_crypto29, import_child_process23, import_fs94, import_path109, CLI_SCENARIO_PERMISSIONS, SANDBOX_FLAGS, STUB_EVENTS;
 var init_copilot_cli_scenarios = __esm({
   "src/smoke/copilot-cli-scenarios.ts"() {
     "use strict";
     import_crypto29 = require("crypto");
-    import_child_process22 = require("child_process");
+    import_child_process23 = require("child_process");
     import_fs94 = require("fs");
     import_path109 = require("path");
     init_worktree_paths();
@@ -51081,7 +51087,7 @@ async function runTeamScenario(input) {
   const deadline = started + budgetMs;
   const env2 = teamLeaderEnv(input.env, input.bin, input.budget, input.model);
   const cli = (0, import_path112.join)(input.root, "bridge", "cli.cjs");
-  const spawnFn = input.spawn ?? import_child_process23.spawn;
+  const spawnFn = input.spawn ?? import_child_process24.spawn;
   const omg = (args, timeoutMs) => runAsync(spawnFn, input.spawnSync, process.execPath, [cli, ...args], { cwd: input.projectDir, env: env2, timeoutMs });
   const base = {
     name: "team",
@@ -51210,11 +51216,11 @@ async function runTeamScenario(input) {
     team: evidence
   };
 }
-var import_child_process23, import_fs97, import_path112, sleep7;
+var import_child_process24, import_fs97, import_path112, sleep7;
 var init_copilot_team_scenario = __esm({
   "src/smoke/copilot-team-scenario.ts"() {
     "use strict";
-    import_child_process23 = require("child_process");
+    import_child_process24 = require("child_process");
     import_fs97 = require("fs");
     import_path112 = require("path");
     init_worktree_paths();
@@ -51731,8 +51737,8 @@ async function runCopilotSmoke(input = {}) {
   const ctx = {
     root,
     env: { ...env2 },
-    spawnFn: deps.spawn ?? import_child_process24.spawn,
-    spawnSyncFn: deps.spawnSync ?? import_child_process24.spawnSync,
+    spawnFn: deps.spawn ?? import_child_process25.spawn,
+    spawnSyncFn: deps.spawnSync ?? import_child_process25.spawnSync,
     deps,
     timeoutMs: tier === 0 ? opts.timeoutMs ?? DEFAULT_TIER0_TIMEOUT_MS : DEFAULT_TIER0_TIMEOUT_MS,
     ...cassette ? { cassette } : {}
@@ -51867,11 +51873,11 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
   if (logs.path) artifacts.debugLog = logs.path;
   return result;
 }
-var import_child_process24, import_crypto31, import_fs98, import_os22, import_path113, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
+var import_child_process25, import_crypto31, import_fs98, import_os22, import_path113, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
 var init_copilot_smoke = __esm({
   "src/smoke/copilot-smoke.ts"() {
     "use strict";
-    import_child_process24 = require("child_process");
+    import_child_process25 = require("child_process");
     import_crypto31 = require("crypto");
     import_fs98 = require("fs");
     import_os22 = require("os");

@@ -161,6 +161,27 @@ describe('omg factory poll on Azure DevOps (runFactoryPoll + the real adapter)',
         expect(await poll(world(undefined, limited).exec, { once: true, json: true })).toBe(1);
         expect(tick()).toMatchObject({ rateLimited: true, intake: { ran: false }, errors: [expect.stringMatching(/^intake: .*TF400733/)] });
     });
+    it('factory.intake.autoStart: an idle tick starts one run --next; a run in flight or a working-tree key starts none', async () => {
+        const starts = [];
+        const autoStart = async (o) => { starts.push(o.root); return { exitCode: 0, parsed: true, next: 42, message: 'parked at awaiting-human: merge' }; };
+        const user = { factory: { ...USER.factory, intake: { ...USER.factory.intake, autoStart: true } } };
+        const w = world();
+        expect(await poll(w.exec, { once: true, json: true }, { trustedUser: () => user, autoStart, budget: () => null })).toBe(0);
+        expect(tick()).toMatchObject({ forge: 'azure-devops', idle: true, autoStart: { started: true, next: 42, exitCode: 0 } });
+        expect(starts).toEqual([root]);
+        // The tick's own reads stay GETs and the WIQL query.
+        for (const r of w.az.map(routeOf))
+            expect(r, r).toMatch(/\.GET$|^wit\.wiql\.POST$/);
+        seedReview();
+        expect(await poll(world().exec, { once: true, json: true }, { trustedUser: () => user, autoStart, budget: () => null })).toBe(0);
+        expect(tick().autoStart).toEqual({ started: false, reason: 'a run is in flight' });
+        rmSync(factoryStatePath(root, 42));
+        const project = { factory: { intake: { autoStart: true } } };
+        expect(await poll(world().exec, { once: true, json: true }, { projectConfig: () => project, autoStart, budget: () => null })).toBe(0);
+        expect(tick().autoStart).toEqual({ started: false, reason: 'factory.intake.autoStart is off' });
+        expect(err.join('\n')).toContain('ignoring factory.intake.autoStart from the working-tree project config');
+        expect(starts).toHaveLength(1);
+    });
 });
 describe('ADO rate limits and threads', () => {
     it('ADO_RATE_LIMITED and the transient set', () => {
