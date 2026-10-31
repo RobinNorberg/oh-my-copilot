@@ -49,6 +49,8 @@ export interface FactorySetupOptions {
     progress?: string;
     board?: string;
     trustedAuthor?: string;
+    /** Azure DevOps: the build definition id heal reads as CI, or none. */
+    healPipeline?: string;
     scope?: string;
     dryRun?: boolean;
     yes?: boolean;

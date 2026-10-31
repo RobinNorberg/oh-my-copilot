@@ -63,6 +63,7 @@ import { driveGates, MAX_FAILING_TITLES } from './gates-driver.js';
 import { mergeComment, mergeDecision } from './merge-policy.js';
 import { resolveAzEntry } from '../../forge/ado/az-binary.js';
 import { adoGuardContext, defaultAzBinaryDeps } from '../../forge/ado/index.js';
+import { adoBuildUrl } from '../../forge/ado/checks.js';
 import { createForge } from '../../forge/index.js';
 import { GhCommandError } from '../../forge/github/gh.js';
 import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, ghOpenPrs, ghPrHeadState, ghRepoView, githubReviews } from '../../forge/github/reviews.js';
@@ -113,7 +114,8 @@ export const ADO_HEAD_LAG_POLLS = 12;
  * Exec. The az guard gets the run's forge repo, az entry and progress
  * mapping (src/forge/ado/guard.ts); without it every az call is refused.
  * GitHub (no forge, or a github forge) keeps the plain factory guard and the
- * gh calls. ci-heal runs are GitHub-only.
+ * gh calls. A ci-heal run on Azure DevOps uses the forge `omg factory heal`
+ * read its CI from (ADO parity design §3.6).
  */
 function engineExec(o, inner) {
     const f = o.forge;
@@ -121,8 +123,6 @@ function engineExec(o, inner) {
         assertFactoryForgeOptions(o.root, f.options);
     if (!f || f.config.kind !== 'azure-devops')
         return { exec: factoryGuardExec(inner, () => [o.base]) };
-    if (o.heal)
-        throw new FactoryStepError('ci-heal runs are GitHub-only (omg factory heal reads GitHub Actions history); this repository is on Azure DevOps');
     const entry = f.entry ?? resolveAzEntry(defaultAzBinaryDeps([o.root, ...f.options.untrustedRoots]));
     const guard = adoGuardContext(f.config, entry);
     const exec = factoryGuardExec(inner, () => [o.base], () => guard);
@@ -258,12 +258,15 @@ export function healPlanText(h, base) {
         ...fenced(fix.acceptance.map((a) => `- ${oneLine(a, 300)}`)),
     ].join('\n');
 }
-/** The draft PR body of a ci-heal run: the failing runs, the env diff, the signature and the diagnosis. */
-export function healPrBody(s) {
+/**
+ * The draft PR body of a ci-heal run: the failing runs, the env diff, the signature and the diagnosis.
+ * `runUrl`: a CI run's page (default GitHub Actions under the repository url; Azure DevOps passes the build results page).
+ */
+export function healPrBody(s, runUrl = (id) => `${s.repoUrl}/actions/runs/${id}`) {
     const h = s.heal;
     const d = h.diagnosis;
     const cell = (v) => oneLine(v ?? '', 80).replace(/[|`<>[\]\\]/g, '') || '?';
-    const run = (r) => `${/^\d{1,20}$/.test(r.runId) && s.repoUrl ? `[${r.runId}](${s.repoUrl}/actions/runs/${r.runId})` : cell(r.runId)} | ${HEX40.test(r.sha) ? `\`${r.sha.slice(0, 12)}\`` : '?'}`;
+    const run = (r) => `${/^\d{1,20}$/.test(r.runId) && s.repoUrl ? `[${r.runId}](${runUrl(r.runId)})` : cell(r.runId)} | ${HEX40.test(r.sha) ? `\`${r.sha.slice(0, 12)}\`` : '?'}`;
     return [
         `Self-heal for CI signature ${h.sig8}; merge is human.`,
         '',
@@ -1150,12 +1153,20 @@ class FactoryEngine {
         this.gate('blocked-by', `depends on unfinished item${open.length > 1 ? 's' : ''} ${ids} (open, no factory PR merged into ${this.state.base}); nothing is implemented until ${open.length > 1 ? 'they merge' : 'it merges'}`);
         return true;
     }
-    /** ci-heal intake: no issue, only GitHub's url of the repository (the remote check before every fetch and push compares origin with it). */
+    /**
+     * ci-heal intake: no issue, only the repository url (the remote check before every fetch and push compares origin with it):
+     * the forge repo's on Azure DevOps, GitHub's `gh repo view` otherwise.
+     */
     healIntake() {
-        const v = this.gh(ghRepoView);
-        const url = typeof v?.url === 'string' && /^https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+$/.test(v.url) ? v.url : '';
-        if (!url)
-            throw new FactoryStepError('gh repo view returned no repository url');
+        let url;
+        if (this.forge)
+            url = this.forge.repo.url;
+        else {
+            const v = this.gh(ghRepoView);
+            url = typeof v?.url === 'string' && /^https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+$/.test(v.url) ? v.url : '';
+            if (!url)
+                throw new FactoryStepError('gh repo view returned no repository url');
+        }
         if (this.foreignPr(url))
             return;
         this.save((s) => moveTo({ ...s, repoUrl: url }, 'plan', `ci-heal for CI signature ${s.heal?.sig8} in ${url}`, this.iso()));
@@ -1393,11 +1404,11 @@ class FactoryEngine {
                 const heal = s.kind === 'ci-heal';
                 // Azure DevOps links the work item through workItemRefs; `Closes #n` is GitHub's issue link.
                 const link = forge ? `Work item #${s.issue}` : `Closes #${s.issue}`;
-                const body = this.writeBody('pr-body', `${heal ? healPrBody(s) : `${link}\n\nOpened by \`omg factory run ${s.issue}\` (draft until the factory review approves).\n`}${sandboxNote}`);
+                const body = this.writeBody('pr-body', `${heal ? (forge ? healPrBody(s, (id) => adoBuildUrl(forge.repo, id)) : healPrBody(s)) : `${link}\n\nOpened by \`omg factory run ${s.issue}\` (draft until the factory review approves).\n`}${sandboxNote}`);
                 // A ci-heal title is fixed: the diagnosis is untrusted lane output.
                 const title = heal ? `fix(ci): self-heal for CI signature ${s.heal?.sig8}` : `${oneLine(s.issueTitle ?? `issue ${s.issue}`).replace(/^[-\s]+/, '') || `issue ${s.issue}`} (#${s.issue})`;
                 pr = forge
-                    ? forge.reviews.createDraftPr({ base: s.base, head: s.branch, title, bodyFile: body, itemId: s.issue })
+                    ? forge.reviews.createDraftPr({ base: s.base, head: s.branch, title, bodyFile: body, ...(heal ? {} : { itemId: s.issue }) })
                     : this.gh((exec, cwd) => ghCreateDraftPr(exec, { base: s.base, head: s.branch, title, bodyFile: body }, cwd));
             }
             this.save((x) => ({ ...x, pr }));

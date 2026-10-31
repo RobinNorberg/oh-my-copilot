@@ -25,6 +25,12 @@ export interface SetupSection {
         itemTypes?: string[];
     };
     progress: Pick<ForgeProgressConfig, 'enabled' | 'stages'>;
+    /** Azure DevOps: the build definition heal reads as CI (factory.heal.pipeline; read from <base> once committed). */
+    heal?: {
+        pipeline: {
+            definitionId: number;
+        };
+    };
 }
 export declare function buildSection(repo: ForgeRepo, intake: Pick<ForgeIntakeConfig, 'source' | 'itemTypes'> & {
     source: IntakeSource;

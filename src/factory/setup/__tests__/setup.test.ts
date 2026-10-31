@@ -338,6 +338,7 @@ describe('omg factory setup: Azure DevOps (fixtures)', () => {
       '(none)', 'Ready', 'Code Review', '(none)', 'Ready to merge', 'Closed', '(none)', // queued … blocked
       'Closed', // done state
       '', // trusted authors
+      'none (no heal on Azure DevOps)', // heal pipeline
       true, // write
     ]);
     const r = await run(w, {}, { isTTY: () => true, prompter });

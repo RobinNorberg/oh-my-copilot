@@ -28,6 +28,7 @@ import { join, resolve } from 'path';
 import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { withFileLockSync } from '../../lib/file-lock.js';
 import { ledgerPath, readLedger } from '../../budget/ledger.js';
+import type { AdoGuardContext } from '../../forge/ado/guard.js';
 import type { ForgeCi } from '../../forge/types.js';
 import type { Exec } from '../../ship/exec.js';
 import { RUNTIME_MIN_MAX_CREDITS } from '../run/budget.js';
@@ -83,6 +84,8 @@ export interface HealRunDeps {
   warn?: (message: string) => void;
   /** Builds the forge's CI reads over the heal-guarded exec for the evidence (default GitHub Actions). */
   ci?: (exec: Exec, root: string) => ForgeCi;
+  /** That forge's Azure DevOps guard context (adoHeal in cli.ts); without it every az call is refused. */
+  ado?: () => AdoGuardContext;
 }
 
 /**
@@ -345,7 +348,7 @@ export async function runHeal(o: HealRunOptions, deps: HealRunDeps): Promise<Hea
   const now = () => deps.now().toISOString();
   const lockPath = join(healStateDir(o.root), 'scan.lock');
   const locked = <T>(fn: () => T): T => withFileLockSync(lockPath, fn, { timeoutMs: o.lockTimeoutMs ?? 60_000 });
-  const healExec = healGuardExec(deps.exec);
+  const healExec = healGuardExec(deps.exec, deps.ado);
   const bundleDir = join(healStateDir(o.root), o.sig8, 'evidence');
 
   const initial = readHealState(o.root, o.sig8);
