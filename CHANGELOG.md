@@ -6,6 +6,17 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Added
 
+- **`omg factory board`.** A read-only view of intake items, their factory
+  runs and their tracker stages, on GitHub and Azure DevOps. Items without a
+  run are grouped by check bucket; runs sit in the column of their expected
+  stage, with the gate, lane, credits, PR, head and latest verdict. Flags:
+  `drift` (a human moved the card), `unsynced` (a progress write is pending),
+  `seal!` (the run state fails its integrity check) and `stale` (no change
+  for 24 hours). `--parent <spec>` shows a spec's children, runs outside the
+  source get their own section, and `--no-check` reads Azure DevOps items in
+  one batched `wit/workitems?ids=` GET (the new optional
+  `ForgeTracker.peekItems`). It runs on `omg factory check`'s read guard with
+  no marker, so every write is refused. `--json` has schemaVersion 1.
 - **`omg factory enqueue` on Azure DevOps.** Tickets become work items of the
   first `factory.intake.itemTypes` type, with the criteria in the
   acceptance-criteria field, the priority field, a parent link to the spec and

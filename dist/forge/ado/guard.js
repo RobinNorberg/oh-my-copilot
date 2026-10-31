@@ -62,6 +62,8 @@ const QUERY_VALUE = {
     // A satisfied dependency: a completed (merged) PR into the base.
     'searchCriteria.targetRefName': /^refs\/heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]{1,400}$/u,
     continuationToken: /^[A-Za-z0-9+/=_-]{1,512}$/,
+    // The board's batched work item read (tracker.ts peekItems): at most 200 ids, field reference names, missing ids omitted.
+    ids: /^[1-9]\d{0,9}(?:,[1-9]\d{0,9}){0,199}$/, fields: /^[A-Za-z][\w.]{0,127}(?:,[A-Za-z][\w.]{0,127}){0,15}$/, errorPolicy: /^omit$/,
 };
 const MAX_BODY_BYTES = 1024 * 1024;
 /** ADO names compare case-insensitively with escapes decoded (design §8.3). */

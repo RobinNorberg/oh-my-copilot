@@ -141,6 +141,25 @@ export interface ForgeTracker {
    * read it back. No write when the link exists. Throws on failure.
    */
   addRelation?(id: number, kind: ForgeRelationKind, target: number): void;
+  /**
+   * `omg factory board --no-check` only: a cheap batched read of the live
+   * stage fields. Azure DevOps: one `GET wit/workitems?ids=…&fields=…` per
+   * 200 ids. An id missing from the map could not be read. Optional: GitHub
+   * reads each item with viewItem. Throws on a failed call.
+   */
+  peekItems?(ids: readonly number[]): Map<number, ForgePeek>;
+}
+
+/** What peekItems reads per item: enough for a board row and its live stage. */
+export interface ForgePeek {
+  title: string;
+  url: string;
+  /** ADO System.BoardColumn. */
+  column?: string;
+  /** GitHub state | ADO System.State. */
+  state: string;
+  /** GitHub labels | ADO tags. */
+  labels: string[];
 }
 
 /** The links enqueue writes on Azure DevOps: Hierarchy-Reverse (parent) and Dependency-Reverse (predecessor). */

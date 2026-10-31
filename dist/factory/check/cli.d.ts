@@ -19,7 +19,7 @@
  * source or limit, no intake source, `--mark` without `--yes` and no TTY),
  * 5 incompatible (forge mismatch, unsupported remote, no adapter for the forge).
  */
-import type { ForgeFactory, ResolvedForgeConfig } from '../../forge/types.js';
+import type { Forge, ForgeFactory, ResolvedForgeConfig } from '../../forge/types.js';
 import { type AzEntry } from '../../forge/ado/az-binary.js';
 import { type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
 import { type Exec } from '../../ship/exec.js';
@@ -39,7 +39,7 @@ export declare class CheckIncompatibleError extends Error {
  * confirmed: then, and only then, `gh issue edit <n> --add-label <marker>`
  * and az writes pass (the wit.wiql.POST query is a read and passes without it).
  */
-export declare function checkGuardExec(exec: Exec, marker?: () => string | undefined, ado?: () => AdoGuardContext | undefined): Exec;
+export declare function checkGuardExec(exec: Exec, marker?: () => string | undefined, ado?: () => AdoGuardContext | undefined, command?: string): Exec;
 /** `--source` as a config value (resolveForgeConfig validates it): label:x, milestone:x, wiql-query:<guid>, board-column:team/board/column, area-tag:<area path>#<tag>. */
 export declare function parseSourceSpec(spec: string): Record<string, string>;
 export declare function parseItemId(raw: string): number;
@@ -111,10 +111,28 @@ export declare const defaultResolveAz: (root: string) => AzEntry;
  * gets the forge repo and that entry (adoGuardContext), and the adapter
  * spawns the same entry. GitHub needs neither. Exported for the board (B1) to reuse.
  */
-export declare function forgeReadExec(exec: Exec, config: ResolvedForgeConfig, root: string, resolveAz?: (root: string) => AzEntry, marker?: () => string | undefined): {
+export declare function forgeReadExec(exec: Exec, config: ResolvedForgeConfig, root: string, resolveAz?: (root: string) => AzEntry, marker?: () => string | undefined, command?: string): {
     exec: Exec;
     options: AzureDevOpsForgeOptions;
 };
+/** What a read-only factory command (check, board) works on: the checkout, its base, the resolved forge config and the forge on the read guard. */
+export interface ReadForge {
+    root: string;
+    base: string;
+    /** origin/<base>; null when it cannot be read (fetchBase warned). */
+    baseSha: string | null;
+    config: ResolvedForgeConfig;
+    forge: Forge;
+    /** The guarded Exec the forge runs on (forgeReadExec). */
+    exec: Exec;
+}
+/**
+ * Resolve the checkout, base and forge config (`--source` / `--limit` as
+ * working-tree intake keys) and build the forge on the read guard. Every
+ * command passes checkGuardExec; `marker` is check's confirmed `--mark`
+ * (the board passes none). Throws CheckUsageError / CheckIncompatibleError.
+ */
+export declare function openReadForge(o: Pick<FactoryCheckOptions, 'source' | 'limit'>, deps: FactoryCheckDeps, warnings: string[], command: string, marker?: () => string | undefined): ReadForge;
 /** Run one check; returns the exit code. Errors other than usage / incompatible propagate (exit 1 at the CLI). */
 export declare function runFactoryCheck(o: FactoryCheckOptions, deps: FactoryCheckDeps): Promise<number>;
 //# sourceMappingURL=cli.d.ts.map

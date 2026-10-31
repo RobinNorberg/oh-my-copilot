@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "26b41a2510d10a37484531cbc99173f8506fa02f",
-    "sourceSha256": "ddf087597f71b53960edcb4386c22984caac0e373ae499ce4184783623b88e6b",
+    "head": "3f60087f48d7833521dc5886afc9fe5c05baf7c2",
+    "sourceSha256": "8991a093dbbb58e297f2664bdf305d5f6b2a3e35dd9cdb97f93518d9e5451157",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "26b41a2510d10a37484531cbc99173f8506fa02f",
-  "sourceSha256": "ddf087597f71b53960edcb4386c22984caac0e373ae499ce4184783623b88e6b",
+  "head": "3f60087f48d7833521dc5886afc9fe5c05baf7c2",
+  "sourceSha256": "8991a093dbbb58e297f2664bdf305d5f6b2a3e35dd9cdb97f93518d9e5451157",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1919,
-      "total": 1943
+      "srcFiles": 1925,
+      "total": 1949
     },
     "generated": {
-      "distFiles": 7096,
+      "distFiles": 7116,
       "bridgeFiles": 9,
-      "total": 7105
+      "total": 7125
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -2769,6 +2769,10 @@
       "dist/cli/commands/doctor-team-routing.d.ts.map",
       "dist/cli/commands/doctor-team-routing.js",
       "dist/cli/commands/doctor-team-routing.js.map",
+      "dist/cli/commands/factory-board.d.ts",
+      "dist/cli/commands/factory-board.d.ts.map",
+      "dist/cli/commands/factory-board.js",
+      "dist/cli/commands/factory-board.js.map",
       "dist/cli/commands/factory-check.d.ts",
       "dist/cli/commands/factory-check.d.ts.map",
       "dist/cli/commands/factory-check.js",
@@ -3027,6 +3031,22 @@
       "dist/factory/__tests__/workflow-run.test.d.ts.map",
       "dist/factory/__tests__/workflow-run.test.js",
       "dist/factory/__tests__/workflow-run.test.js.map",
+      "dist/factory/board/__tests__/board-ado.test.d.ts",
+      "dist/factory/board/__tests__/board-ado.test.d.ts.map",
+      "dist/factory/board/__tests__/board-ado.test.js",
+      "dist/factory/board/__tests__/board-ado.test.js.map",
+      "dist/factory/board/__tests__/board.test.d.ts",
+      "dist/factory/board/__tests__/board.test.d.ts.map",
+      "dist/factory/board/__tests__/board.test.js",
+      "dist/factory/board/__tests__/board.test.js.map",
+      "dist/factory/board/collect.d.ts",
+      "dist/factory/board/collect.d.ts.map",
+      "dist/factory/board/collect.js",
+      "dist/factory/board/collect.js.map",
+      "dist/factory/board/render.d.ts",
+      "dist/factory/board/render.d.ts.map",
+      "dist/factory/board/render.js",
+      "dist/factory/board/render.js.map",
       "dist/factory/check/__tests__/ado.test.d.ts",
       "dist/factory/check/__tests__/ado.test.d.ts.map",
       "dist/factory/check/__tests__/ado.test.js",
@@ -18702,6 +18722,26 @@
         "path": "dist/cli/commands/doctor-team-routing.js.map"
       },
       {
+        "id": "dist/cli/commands/factory-board.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-board.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/factory-board.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-board.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/factory-board.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-board.js"
+      },
+      {
+        "id": "dist/cli/commands/factory-board.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-board.js.map"
+      },
+      {
         "id": "dist/cli/commands/factory-check.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/factory-check.d.ts"
@@ -19990,6 +20030,86 @@
         "id": "dist/factory/__tests__/workflow-run.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/__tests__/workflow-run.test.js.map"
+      },
+      {
+        "id": "dist/factory/board/__tests__/board-ado.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/__tests__/board-ado.test.d.ts"
+      },
+      {
+        "id": "dist/factory/board/__tests__/board-ado.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/__tests__/board-ado.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/board/__tests__/board-ado.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/__tests__/board-ado.test.js"
+      },
+      {
+        "id": "dist/factory/board/__tests__/board-ado.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/__tests__/board-ado.test.js.map"
+      },
+      {
+        "id": "dist/factory/board/__tests__/board.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/__tests__/board.test.d.ts"
+      },
+      {
+        "id": "dist/factory/board/__tests__/board.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/__tests__/board.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/board/__tests__/board.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/__tests__/board.test.js"
+      },
+      {
+        "id": "dist/factory/board/__tests__/board.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/__tests__/board.test.js.map"
+      },
+      {
+        "id": "dist/factory/board/collect.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/collect.d.ts"
+      },
+      {
+        "id": "dist/factory/board/collect.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/collect.d.ts.map"
+      },
+      {
+        "id": "dist/factory/board/collect.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/collect.js"
+      },
+      {
+        "id": "dist/factory/board/collect.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/collect.js.map"
+      },
+      {
+        "id": "dist/factory/board/render.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/render.d.ts"
+      },
+      {
+        "id": "dist/factory/board/render.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/render.d.ts.map"
+      },
+      {
+        "id": "dist/factory/board/render.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/render.js"
+      },
+      {
+        "id": "dist/factory/board/render.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/render.js.map"
       },
       {
         "id": "dist/factory/check/__tests__/ado.test.d.ts",
@@ -49842,6 +49962,11 @@
         "path": "src/cli/commands/doctor-team-routing.ts"
       },
       {
+        "id": "src/cli/commands/factory-board.ts",
+        "kind": "src",
+        "path": "src/cli/commands/factory-board.ts"
+      },
+      {
         "id": "src/cli/commands/factory-check.ts",
         "kind": "src",
         "path": "src/cli/commands/factory-check.ts"
@@ -50170,6 +50295,26 @@
         "id": "src/factory/__tests__/workflow-run.test.ts",
         "kind": "src",
         "path": "src/factory/__tests__/workflow-run.test.ts"
+      },
+      {
+        "id": "src/factory/board/__tests__/board-ado.test.ts",
+        "kind": "src",
+        "path": "src/factory/board/__tests__/board-ado.test.ts"
+      },
+      {
+        "id": "src/factory/board/__tests__/board.test.ts",
+        "kind": "src",
+        "path": "src/factory/board/__tests__/board.test.ts"
+      },
+      {
+        "id": "src/factory/board/collect.ts",
+        "kind": "src",
+        "path": "src/factory/board/collect.ts"
+      },
+      {
+        "id": "src/factory/board/render.ts",
+        "kind": "src",
+        "path": "src/factory/board/render.ts"
       },
       {
         "id": "src/factory/check/__tests__/ado.test.ts",
@@ -51355,6 +51500,11 @@
         "id": "src/forge/ado/__tests__/fixtures/wit.workItems.GET.missing.json",
         "kind": "src",
         "path": "src/forge/ado/__tests__/fixtures/wit.workItems.GET.missing.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/wit.workItems.GET.peek.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/wit.workItems.GET.peek.json"
       },
       {
         "id": "src/forge/ado/__tests__/fixtures/wit.workItems.PATCH.42.json",
@@ -72814,6 +72964,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/factory-board.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-board.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-board.ts",
+        "to": "src/cli/utils/integer-option.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-board.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-board.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory-board.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-board.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/factory-check.ts",
         "to": "external:chalk",
         "kind": "imports"
@@ -73066,6 +73251,11 @@
       {
         "from": "src/cli/commands/factory.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/cli/commands/factory-board.ts",
         "kind": "imports"
       },
       {
@@ -75742,6 +75932,261 @@
         "from": "src/factory/__tests__/workflow-run.test.ts",
         "to": "src/factory/listener.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/forge/ado/invoke.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/cli/commands/factory-board.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/cli/commands/factory.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/factory/board/render.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/factory/check/rules.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/forge/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/render.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/render.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/render.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/render.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/check/__tests__/ado.test.ts",
@@ -115410,12 +115855,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9766,
-      "edgeCount": 11579,
-      "importEdgeCount": 9518,
+      "nodeCount": 9792,
+      "edgeCount": 11638,
+      "importEdgeCount": 9562,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "21384c7fab586fc36680757651001e1b18e78e8b0900d51d688ee74bad8dc0fc",
-  "manifestSha256": "ef01ae14d80b46e12023ffa9cb96f36bfcdbffade183bc19bc8b5b6f62a723fb"
+  "inventorySha256": "2995691281664cbc43ea3abfbe0ccb072beec7b21dce995bcd9ddff13cea270b",
+  "manifestSha256": "af69222ddcdb2e521ffac2f938ce8145e925f4ccd1b6ae25f61dc96d57c3d38b"
 }

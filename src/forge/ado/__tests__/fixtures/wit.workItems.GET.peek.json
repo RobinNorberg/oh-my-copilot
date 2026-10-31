@@ -1,0 +1,25 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/work-items/list?view=azure-devops-rest-7.1",
+  "note": "adapted: the board's batched read of work items 42 and 404 in project Web (errorPolicy=omit returns null for 404)",
+  "route": "wit.workItems.GET",
+  "routeParameters": { "project": "Web" },
+  "queryParameters": { "ids": "42,404", "fields": "System.Id,System.Title,System.State,System.BoardColumn,System.Tags", "errorPolicy": "omit" },
+  "stdout": {
+    "count": 2,
+    "value": [
+      {
+        "id": 42,
+        "rev": 7,
+        "fields": {
+          "System.Id": 42,
+          "System.Title": "Add CSV export to the report page",
+          "System.State": "Active",
+          "System.BoardColumn": "Ready",
+          "System.Tags": "factory; reports"
+        },
+        "url": "https://dev.azure.com/contoso/_apis/wit/workItems/42"
+      },
+      null
+    ]
+  }
+}

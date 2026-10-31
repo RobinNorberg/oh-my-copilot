@@ -51,6 +51,7 @@ import { resolveHealConfig } from '../../factory/heal/config.js';
 import { defaultLedgerDir } from '../../factory/run/ledger.js';
 import { listenForgeRefusal } from '../../factory/setup/detect.js';
 import { factorySetupCommand } from './factory-setup.js';
+import { factoryBoardCommand } from './factory-board.js';
 import { checkEnvFor, fetchBase, forgeReadExec, parseItemId } from '../../factory/check/cli.js';
 import { BUCKET_ORDER, checkItems, plainText, type CheckResult } from '../../factory/check/score.js';
 import { createForge } from '../../forge/index.js';
@@ -360,6 +361,7 @@ export function factoryCommand(): Command {
   cmd.addCommand(factoryRunCommand());
   cmd.addCommand(factoryCheckCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(factoryEnqueueCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
+  cmd.addCommand(factoryBoardCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(healCommand({
     exec: defaultExec,
     base: defaultFactoryRunDeps.base,
