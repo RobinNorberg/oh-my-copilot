@@ -11,7 +11,7 @@ import { acceptanceItems, acceptanceSection } from '../check/rules.js';
 import type { FactoryCheckDeps } from '../check/cli.js';
 import type { Exec, ExecResult } from '../../ship/exec.js';
 import {
-  enqueueGuardExec, findCycle, neutralizeNotifying, neutralizeTrusted, parseTicketFile, renderTicketBody, runFactoryEnqueue, specBodyWithTickets,
+  enqueueGuardExec, findCycle, neutralizeNotifying, neutralizeTrusted, parseTicketFile, renderTicketBody, renderTitle, runFactoryEnqueue, specBodyWithTickets,
   type EnqueueJson, type Ticket,
 } from '../enqueue.js';
 
@@ -181,8 +181,18 @@ describe('omg factory enqueue: neutralizing model-written text (#372 review b, c
   });
 
   it('wraps same-repo #n and GH-n references and bare www. urls, but not headings, entities or words (#373 review 4)', () => {
-    expect(neutralizeNotifying('see #12, GH-7 and gh-8; www.github.com/x/y/pull/9; ## Context; &#35;1; issue#3; a-GH-4'))
-      .toBe('see `#12`, `GH-7` and `gh-8`; `www.github.com/x/y/pull/9`; ## Context; &#35;1; issue#3; a-GH-4');
+    expect(neutralizeNotifying('see #12, GH-7 and gh-8; www.github.com/x/y/pull/9; ## Context; issue#3; a-GH-4'))
+      .toBe('see `#12`, `GH-7` and `gh-8`; `www.github.com/x/y/pull/9`; ## Context; issue#3; a-GH-4');
+  });
+
+  it('escapes the ampersand of an entity so GitHub cannot decode it into a mention or reference', () => {
+    for (const e of ['&#64;x', '&#x40;x', '&commat;x', '&#35;12', 'o/r&#35;5']) {
+      expect(neutralizeNotifying(`ping ${e} now`)).toBe(`ping ${e.replace('&', '&amp;')} now`);
+    }
+    const body = renderTicketBody(10, ticket('abc', { title: 't &#64;x', body: 'b &commat;y', acceptance: ['a o/r&#35;5'] }), []);
+    expect(body).toContain('b &amp;commat;y');
+    expect(body).toContain('- [ ] a o/r&amp;#35;5');
+    expect(renderTitle(ticket('abc', { title: 't &#64;x' }))).toBe('t &amp;#64;x');
   });
 
   it('a preceding backslash cannot escape the opening backtick (#373 review 2)', () => {
@@ -482,5 +492,17 @@ describe('omg factory enqueue: the run', () => {
     expect(again.code).toBe(0);
     expect(again.json.items.map((r) => [r.key, r.id, r.action])).toEqual([['aaa', 11, 'unchanged'], ['bbb', 12, 'created']]);
     expect(Object.keys(issues)).toEqual(['10', '11', '12']);
+  });
+
+  it('finds a trusted task-list child holding the key when the search returns nothing', async () => {
+    const issues = spec();
+    await enqueue(github(root, issues), [ticket('aaa')]);
+    const base = github(root, issues);
+    const rec = recordingExec((cmd, args, opts) => (args[1] === 'list' && args[2] === '--repo' ? ok('[]') : base(cmd, args, opts)), {}, ['gh']);
+    const { code, json } = await enqueue(rec.exec, [ticket('aaa')]);
+    expect(code).toBe(0);
+    expect(json.items.map((r) => [r.key, r.id, r.action])).toEqual([['aaa', 11, 'unchanged']]);
+    expect(writes(rec.calls)).toEqual([]);
+    expect(Object.keys(issues)).toEqual(['10', '11']);
   });
 });

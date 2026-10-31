@@ -127732,7 +127732,7 @@ function neutralizeTrusted(text4) {
 function neutralizeNotifying(text4) {
   const longest = Math.max(0, ...[...text4.matchAll(/`+/g)].map((m) => m[0].length));
   const tick = "`".repeat(longest + 1);
-  return text4.replace(NOTIFYING, (m, at, s) => `${s[at - 1] === "`" || s[at - 1] === "\\" ? " " : ""}${tick}${m}${tick}${s[at + m.length] === "`" ? " " : ""}`);
+  return text4.replace(NOTIFYING, (m, at, s) => `${s[at - 1] === "`" || s[at - 1] === "\\" ? " " : ""}${tick}${m}${tick}${s[at + m.length] === "`" ? " " : ""}`).replace(/&(?=#|[a-z]+;)/gi, "&amp;");
 }
 function renderTicketBody(spec, t, edges) {
   const body = modelText(t.body).trim();

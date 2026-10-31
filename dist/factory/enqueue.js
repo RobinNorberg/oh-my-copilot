@@ -222,7 +222,10 @@ const NOTIFYING = /(?:https?:\/\/|(?<![\w./-])www\.)[^\s/<>()`]+\/[^\s/<>()`]+\/
 export function neutralizeNotifying(text) {
     const longest = Math.max(0, ...[...text.matchAll(/`+/g)].map((m) => m[0].length));
     const tick = '`'.repeat(longest + 1);
-    return text.replace(NOTIFYING, (m, at, s) => `${s[at - 1] === '`' || s[at - 1] === '\\' ? ' ' : ''}${tick}${m}${tick}${s[at + m.length] === '`' ? ' ' : ''}`);
+    // GitHub decodes entities before it detects mentions and references (`&#64;x`, `&commat;x`, `o/r&#35;5`).
+    return text
+        .replace(NOTIFYING, (m, at, s) => `${s[at - 1] === '`' || s[at - 1] === '\\' ? ' ' : ''}${tick}${m}${tick}${s[at + m.length] === '`' ? ' ' : ''}`)
+        .replace(/&(?=#|[a-z]+;)/gi, '&amp;');
 }
 const modelText = (s) => neutralizeTrusted(neutralizeNotifying(s));
 /** The item title as posted. */
