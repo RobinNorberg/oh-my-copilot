@@ -7,10 +7,17 @@
  * - The ticket file is validated strictly (unknown fields, duplicate keys,
  *   `blockedBy` cycles, unknown references, AC count, rendered body length,
  *   all-vague AC); any refusal exits 2 before anything is written.
+ * - The spec's author must be trusted (OWNER, MEMBER or COLLABORATOR), else
+ *   exit 2: enqueue writes into its body and marks its children.
  * - Every item carries a `shipyard-key: <spec>/<key>` footer. A key counts
  *   only on an issue of the configured repository whose author is trusted and
  *   whose `Part of #<spec>` line names the spec; any other holder is ignored
- *   and reported, so an external issue cannot claim a key.
+ *   and reported, so an external issue cannot claim a key. Holders come from
+ *   the key search and from the spec's task-list children: GitHub search is
+ *   eventually consistent, so the task list is rewritten right after each
+ *   create and a re-run after a partial failure finds what it created. An
+ *   immediate re-run may still need a short wait when a create landed but
+ *   its task-list write did not.
  * - Per key: missing → created; present and equal → unchanged (no write);
  *   present, changed and unclaimed → updated; claimed (closed, a factory run
  *   state, an open or merged `factory/issue-<n>` PR, or the branch on origin)
@@ -20,13 +27,16 @@
  *   known; the spec body's `<!-- shipyard:tickets -->` task list is rewritten
  *   as one section.
  * - Model-written text is neutralized before it is posted from the user's
- *   account: @-mentions, cross-repository `owner/repo#n` references and issue
+ *   account: @-mentions, `#n`, `GH-n` and `owner/repo#n` references and issue
  *   or PR urls go into code spans (nobody is notified, no backlink appears),
+ *   `<!--` is escaped (no comment hides the rest of the body from a reader),
  *   and `omg-plan:`, `shipyard-key:`, `Acceptance criteria` headings, edge,
  *   parent and task-list lines are escaped so they cannot become trusted
  *   plan, key or edge input.
- * - The mark step is `omg factory check --parent <spec> --mark --yes`: the C3
- *   signature covers it (design Q11), and with the intake label enqueue adds
+ * - The mark step is `omg factory check <ids> --mark --yes` over this file's
+ *   created, updated and unchanged items only (never an orphan or any other
+ *   task-list line of the spec); the dry run lists exactly those mark
+ *   candidates, so the C3 signature covers them (design Q11), and with the intake label enqueue adds
  *   at create it is what makes the runnable children factory work.
  *
  * Writes go through the factory guard with a TrackerWriteContext (the 7a
@@ -75,6 +85,8 @@ export interface EnqueueRow {
     bucket: CheckBucket | null;
     /** The claim for kept-claimed, else the check's reason codes. */
     reasons: string[];
+    /** The mark step considers this item: created, updated or unchanged. */
+    markCandidate: boolean;
     /** Dry run only: the exact write. */
     planned?: {
         title: string;
@@ -117,7 +129,9 @@ export declare function findCycle(tickets: readonly Ticket[]): string[] | null;
  * trusted, as enqueue's items are: the `omg-plan:` link, the `shipyard-key:`
  * footer, an `Acceptance criteria` heading, `Depends on|Blocked by|Part of
  * #n` lines and task-list `- [ ] #n` children (src/forge/github/tracker.ts,
- * src/factory/run/plan-rules.ts). The backslashes render as nothing.
+ * src/factory/run/plan-rules.ts). The backslashes render as nothing. `<!--`
+ * becomes `&lt;!--`, so an unclosed comment cannot hide the AC, edges and key
+ * from a human reader.
  */
 export declare function neutralizeTrusted(text: string): string;
 /**
@@ -125,7 +139,8 @@ export declare function neutralizeTrusted(text: string): string;
  * notifies nobody and leaves no backlink. The span's backtick run is one
  * longer than any run in the text, so it pairs only with itself (CommonMark
  * code spans close on a run of the same length); a backtick right next to it
- * gets a space so the runs never merge. Inside an existing code span or
+ * gets a space so the runs never merge, and so does a backslash before it
+ * (it would escape the first backtick and no span would form). Inside an existing code span or
  * block it shows as literal backticks, which is harmless.
  */
 export declare function neutralizeNotifying(text: string): string;

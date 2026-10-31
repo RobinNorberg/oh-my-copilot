@@ -166,8 +166,25 @@ describe('omg factory enqueue: the ticket file', () => {
 });
 describe('omg factory enqueue: neutralizing model-written text (#372 review b, c)', () => {
     it('puts mentions, cross-repo references and issue urls in code spans', () => {
-        expect(neutralizeNotifying('ping @alice and @org/team, see evil/repo#12 and https://github.com/x/y/issues/3; mail a@b.com; #5 stays'))
-            .toBe('ping `@alice` and `@org/team`, see `evil/repo#12` and `https://github.com/x/y/issues/3`; mail a@b.com; #5 stays');
+        expect(neutralizeNotifying('ping @alice and @org/team, see evil/repo#12 and https://github.com/x/y/issues/3; mail a@b.com; #5 too'))
+            .toBe('ping `@alice` and `@org/team`, see `evil/repo#12` and `https://github.com/x/y/issues/3`; mail a@b.com; `#5` too');
+    });
+    it('wraps same-repo #n and GH-n references and bare www. urls, but not headings, entities or words (#373 review 4)', () => {
+        expect(neutralizeNotifying('see #12, GH-7 and gh-8; www.github.com/x/y/pull/9; ## Context; &#35;1; issue#3; a-GH-4'))
+            .toBe('see `#12`, `GH-7` and `gh-8`; `www.github.com/x/y/pull/9`; ## Context; &#35;1; issue#3; a-GH-4');
+    });
+    it('a preceding backslash cannot escape the opening backtick (#373 review 2)', () => {
+        for (const ref of ['@alice', '@org/team', 'evil/repo#12', '#5']) {
+            expect(neutralizeNotifying(`x \\${ref} y`)).toBe(`x \\ \`${ref}\` y`);
+        }
+        const t = ticket('abc', { acceptance: ['`a()` pings \\@alice'] });
+        expect(acceptanceItems(acceptanceSection(renderTicketBody(10, t, [])))).toEqual(['`a()` pings \\ ``@alice``']);
+    });
+    it('escapes <!-- so an unclosed comment cannot hide the AC, edges or key (#373 review 4)', () => {
+        const body = renderTicketBody(10, ticket('abc', { body: 'intro <!-- hidden', acceptance: ['`a()` <!-- x'] }), []);
+        expect(body).toContain('intro &lt;!-- hidden');
+        expect(body).toContain('- [ ] `a()` &lt;!-- x');
+        expect(body.split('<!--').length - 1).toBe(2);
     });
     it('uses a backtick run longer than any in the text and never merges with a neighbour', () => {
         expect(neutralizeNotifying('code ``x`` then @bob')).toBe('code ``x`` then ```@bob```');
@@ -200,7 +217,7 @@ describe('omg factory enqueue: neutralizing model-written text (#372 review b, c
         const body = renderTicketBody(10, t, ['#3']);
         expect(findPlanLink(body, [], true)).toBeUndefined();
         expect(shipyardKeys(body)).toEqual([[10, 'abc']]);
-        expect(acceptanceItems(acceptanceSection(body))).toEqual(['`a()` returns 1', '\\#5 is fine `@eve`']);
+        expect(acceptanceItems(acceptanceSection(body))).toEqual(['`a()` returns 1', '`#5` is fine `@eve`']);
         expect([...body.matchAll(/^blocked by #(\d+)/gim)].map((m) => m[1])).toEqual(['3']);
         expect(/^part of #(\d+)/im.exec(body)?.[1]).toBe('10');
         expect(body).toContain('hi ``@mallory``');
@@ -268,12 +285,14 @@ describe('omg factory enqueue: the run', () => {
         expect(issues[12].labels).toEqual(['factory', 'factory-ready']);
         expect(issues[10].body).toBe('The spec.\n\n<!-- shipyard:tickets -->\n- [ ] #11\n- [ ] #12\n<!-- /shipyard:tickets -->\n');
         const w = writes(rec.calls);
-        expect(w).toHaveLength(5);
+        expect(w).toHaveLength(6);
         expect(w[0]).toMatch(/^gh \["issue","create","--repo","github.com\/o\/r","--title","Do auth-token-refresh","--body-file","[^"]*omg-gh-body-[^"]*","--label","factory","--label","priority:p1"\]/);
-        expect(w[1]).toMatch(/"issue","create".*"--title","Do token-store-port"/);
-        expect(w[2]).toMatch(/^gh \["issue","edit","11","--repo","github.com\/o\/r","--title","Do auth-token-refresh","--body-file","[^"]*"\] /);
-        expect(w[3]).toMatch(/^gh \["issue","edit","10","--repo","github.com\/o\/r","--title","Spec: token refresh","--body-file","[^"]*"\] /);
-        expect(w[4]).toMatch(/^gh \["issue","edit","12","--add-label","factory-ready"\] /);
+        // #373 review 3: the spec's task list is rewritten right after each create.
+        expect(w[1]).toMatch(/^gh \["issue","edit","10","--repo","github.com\/o\/r","--title","Spec: token refresh","--body-file","[^"]*"\] /);
+        expect(w[2]).toMatch(/"issue","create".*"--title","Do token-store-port"/);
+        expect(w[3]).toMatch(/^gh \["issue","edit","10","--repo"/);
+        expect(w[4]).toMatch(/^gh \["issue","edit","11","--repo","github.com\/o\/r","--title","Do auth-token-refresh","--body-file","[^"]*"\] /);
+        expect(w[5]).toMatch(/^gh \["issue","edit","12","--add-label","factory-ready"\] /);
         // #372 review (a): bodies are written to a fresh omg-enqueue-* directory under the temp dir, removed afterwards.
         expect(dirs.some((d) => d.startsWith('omg-enqueue-'))).toBe(true);
         expect(readdirSync(scratch)).toEqual([]);
@@ -340,7 +359,7 @@ describe('omg factory enqueue: the run', () => {
         expect(code).toBe(0);
         expect(json.dryRun).toBe(true);
         expect(json.mark).toBeNull();
-        expect(json.items.map((r) => [r.key, r.id, r.action])).toEqual([['aaa', null, 'created'], ['bbb', null, 'created']]);
+        expect(json.items.map((r) => [r.key, r.id, r.action, r.markCandidate])).toEqual([['aaa', null, 'created', true], ['bbb', null, 'created', true]]);
         expect(json.items[0].planned.body).toContain('Blocked by #bbb');
         expect(json.items[1].planned.addLabels).toEqual(['factory', 'priority:p3']);
         expect(json.spec.taskList).toBe('updated');
@@ -350,6 +369,42 @@ describe('omg factory enqueue: the run', () => {
         expect(await runFactoryEnqueue({ spec: '10', file: ticketFile([ticket('aaa')]), dryRun: true }, deps(github(root, issues)))).toBe(0);
         expect(out.join('\n')).toMatch(/dry run: nothing was written/);
         expect(out.join('\n')).toMatch(/== create aaa: "Do aaa" \[\+factory\]\n## Context/);
+        expect(out.join('\n')).toMatch(/== mark step: omg factory check --mark --yes over \(new\) aaa;/);
+    });
+    it('the dry run lists the exact mark candidates: never an orphan or a claimed item (#373 review 1)', async () => {
+        const issues = spec();
+        await enqueue(github(root, issues), [ticket('aaa'), ticket('bbb'), ticket('ccc')]);
+        const { json } = await enqueue(github(root, issues, { prs: { 12: 40 } }), [ticket('aaa'), ticket('bbb', { title: 'x' }), ticket('ddd')], { dryRun: true });
+        expect(json.items.map((r) => [r.key, r.id, r.action, r.markCandidate])).toEqual([
+            ['aaa', 11, 'unchanged', true],
+            ['bbb', 12, 'kept-claimed', false],
+            ['ddd', null, 'created', true],
+            ['ccc', 13, 'orphaned', false],
+        ]);
+    });
+    it('marks only this file\'s items: not an outsider listed in the spec body, not an orphan (#373 review 1)', async () => {
+        const issues = {
+            10: { title: 'Spec', body: 'The spec.\n- [ ] #20\n' },
+            20: { title: 'outsider', body: '## Acceptance criteria\n- [ ] `evil()` returns 1\n', author: 'stranger', labels: ['factory'] },
+        };
+        await enqueue(github(root, issues), [ticket('aaa'), ticket('ccc')]);
+        expect(issues[20].labels).toEqual(['factory']);
+        expect(issues[22].labels).toContain('factory-ready');
+        // ccc leaves the file and its marker is removed by hand: the orphan is never re-marked.
+        issues[22].labels = ['factory'];
+        const rec = recordingExec(github(root, issues), {}, ['gh']);
+        const { code, json } = await enqueue(rec.exec, [ticket('aaa')]);
+        expect(code).toBe(0);
+        expect(json.items.map((r) => [r.key, r.id, r.action])).toEqual([['aaa', 21, 'unchanged'], ['ccc', 22, 'orphaned']]);
+        expect(issues[22].labels).toEqual(['factory']);
+        expect(issues[20].labels).toEqual(['factory']);
+        expect(rec.calls.filter((c) => /"--add-label"/.test(c))).toEqual([]);
+    });
+    it('refuses a spec whose author is not trusted (#373 review 1)', async () => {
+        const issues = { 10: { title: 'Spec', body: 'x\n', author: 'stranger' } };
+        const rec = recordingExec(github(root, issues), {}, ['gh']);
+        await expect(runFactoryEnqueue({ spec: '10', file: ticketFile([ticket('aaa')]), json: true }, deps(rec.exec))).rejects.toThrow(/author is not an OWNER, MEMBER or COLLABORATOR/);
+        expect(writes(rec.calls)).toEqual([]);
     });
     it('refuses a bad file, a closed spec, a mismatched spec and a missing #n before any write', async () => {
         const run = async (issues, tickets, specArg = '10') => {
@@ -383,6 +438,13 @@ describe('omg factory enqueue: the run', () => {
         expect(json.mark).toBeNull();
         expect(json.warnings.join('\n')).toMatch(/re-run enqueue/);
         expect(json.items.map((r) => [r.key, r.id])).toEqual([['aaa', 11], ['bbb', null]]);
+        // #373 review 3: #11 is already on the spec, so a re-run that the key search does not answer yet still finds it.
+        expect(issues[10].body).toContain('- [ ] #11');
+        const lagging = (cmd, args, opts) => (args[1] === 'list' && args[2] === '--repo' ? ok('[]') : base(cmd, args, opts));
+        const again = await enqueue(lagging, [ticket('aaa'), ticket('bbb')]);
+        expect(again.code).toBe(0);
+        expect(again.json.items.map((r) => [r.key, r.id, r.action])).toEqual([['aaa', 11, 'unchanged'], ['bbb', 12, 'created']]);
+        expect(Object.keys(issues)).toEqual(['10', '11', '12']);
     });
 });
 //# sourceMappingURL=enqueue.test.js.map

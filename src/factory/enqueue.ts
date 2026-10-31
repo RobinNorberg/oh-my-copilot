@@ -7,10 +7,17 @@
  * - The ticket file is validated strictly (unknown fields, duplicate keys,
  *   `blockedBy` cycles, unknown references, AC count, rendered body length,
  *   all-vague AC); any refusal exits 2 before anything is written.
+ * - The spec's author must be trusted (OWNER, MEMBER or COLLABORATOR), else
+ *   exit 2: enqueue writes into its body and marks its children.
  * - Every item carries a `shipyard-key: <spec>/<key>` footer. A key counts
  *   only on an issue of the configured repository whose author is trusted and
  *   whose `Part of #<spec>` line names the spec; any other holder is ignored
- *   and reported, so an external issue cannot claim a key.
+ *   and reported, so an external issue cannot claim a key. Holders come from
+ *   the key search and from the spec's task-list children: GitHub search is
+ *   eventually consistent, so the task list is rewritten right after each
+ *   create and a re-run after a partial failure finds what it created. An
+ *   immediate re-run may still need a short wait when a create landed but
+ *   its task-list write did not.
  * - Per key: missing → created; present and equal → unchanged (no write);
  *   present, changed and unclaimed → updated; claimed (closed, a factory run
  *   state, an open or merged `factory/issue-<n>` PR, or the branch on origin)
@@ -20,13 +27,16 @@
  *   known; the spec body's `<!-- shipyard:tickets -->` task list is rewritten
  *   as one section.
  * - Model-written text is neutralized before it is posted from the user's
- *   account: @-mentions, cross-repository `owner/repo#n` references and issue
+ *   account: @-mentions, `#n`, `GH-n` and `owner/repo#n` references and issue
  *   or PR urls go into code spans (nobody is notified, no backlink appears),
+ *   `<!--` is escaped (no comment hides the rest of the body from a reader),
  *   and `omg-plan:`, `shipyard-key:`, `Acceptance criteria` headings, edge,
  *   parent and task-list lines are escaped so they cannot become trusted
  *   plan, key or edge input.
- * - The mark step is `omg factory check --parent <spec> --mark --yes`: the C3
- *   signature covers it (design Q11), and with the intake label enqueue adds
+ * - The mark step is `omg factory check <ids> --mark --yes` over this file's
+ *   created, updated and unchanged items only (never an orphan or any other
+ *   task-list line of the spec); the dry run lists exactly those mark
+ *   candidates, so the C3 signature covers them (design Q11), and with the intake label enqueue adds
  *   at create it is what makes the runnable children factory work.
  *
  * Writes go through the factory guard with a TrackerWriteContext (the 7a
@@ -46,7 +56,7 @@ import { tmpdir } from 'os';
 import { isAbsolute, join, relative } from 'path';
 import { ForgeConfigError, resolveForgeConfig } from '../forge/config.js';
 import { ghRepoArg } from '../forge/github/gh.js';
-import { shipyardKeyLine, type Forge, type ForgeItem, type ResolvedForgeConfig } from '../forge/types.js';
+import { shipyardKeyLine, shipyardKeys, type Forge, type ForgeItem, type ResolvedForgeConfig } from '../forge/types.js';
 import { isPlainBranchName } from '../ship/config.js';
 import { TRUSTED_READ_ENV, type Exec } from '../ship/exec.js';
 import {
@@ -99,6 +109,8 @@ export interface EnqueueRow {
   bucket: CheckBucket | null;
   /** The claim for kept-claimed, else the check's reason codes. */
   reasons: string[];
+  /** The mark step considers this item: created, updated or unchanged. */
+  markCandidate: boolean;
   /** Dry run only: the exact write. */
   planned?: { title: string; body: string; addLabels: string[]; removeLabels: string[] };
 }
@@ -223,32 +235,36 @@ export function findCycle(tickets: readonly Ticket[]): string[] | null {
  * trusted, as enqueue's items are: the `omg-plan:` link, the `shipyard-key:`
  * footer, an `Acceptance criteria` heading, `Depends on|Blocked by|Part of
  * #n` lines and task-list `- [ ] #n` children (src/forge/github/tracker.ts,
- * src/factory/run/plan-rules.ts). The backslashes render as nothing.
+ * src/factory/run/plan-rules.ts). The backslashes render as nothing. `<!--`
+ * becomes `&lt;!--`, so an unclosed comment cannot hide the AC, edges and key
+ * from a human reader.
  */
 export function neutralizeTrusted(text: string): string {
   return text
+    .replace(/<!--/g, '&lt;!--')
     .replace(/(omg-plan|shipyard-key):/gi, '$1\\:')
     .replace(/^([^\S\r\n]*)(#{1,6}[^\S\r\n]*acceptance criteria)/gim, '$1\\$2')
     .replace(/^([^\S\r\n]*(?:depends on|blocked by|part of)[^\S\r\n]+)#(?=\d)/gim, '$1\\#')
     .replace(/^([^\S\r\n]*[-*][^\S\r\n]+\[[ xX]\][^\S\r\n]+)#(?=\d)/gm, '$1\\#');
 }
 
-/** An issue/PR/discussion url, an @-mention (user or org/team), or a cross-repository `owner/repo#n`. */
-const NOTIFYING = /https?:\/\/[^\s/<>()`]+\/[^\s/<>()`]+\/[^\s/<>()`]+\/(?:issues|pull|discussions)\/\d+|(?<![A-Za-z0-9_])@[A-Za-z0-9][A-Za-z0-9-]*(?:\/[A-Za-z0-9][A-Za-z0-9_.-]*)?|(?<![\w./-])[A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9_.-]+#\d+/g;
+/** An issue/PR/discussion url (also a bare `www.` one), an @-mention (user or org/team), or an `owner/repo#n`, `#n` or `GH-n` reference. */
+const NOTIFYING = /(?:https?:\/\/|(?<![\w./-])www\.)[^\s/<>()`]+\/[^\s/<>()`]+\/[^\s/<>()`]+\/(?:issues|pull|discussions)\/\d+|(?<![A-Za-z0-9_])@[A-Za-z0-9][A-Za-z0-9-]*(?:\/[A-Za-z0-9][A-Za-z0-9_.-]*)?|(?<![\w./-])[A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9_.-]+#\d+|(?<![\w&])#\d+\b|(?<![\w-])GH-\d+\b/gi;
 
 /**
  * Put every mention and cross-reference in a code span, so posting the text
  * notifies nobody and leaves no backlink. The span's backtick run is one
  * longer than any run in the text, so it pairs only with itself (CommonMark
  * code spans close on a run of the same length); a backtick right next to it
- * gets a space so the runs never merge. Inside an existing code span or
+ * gets a space so the runs never merge, and so does a backslash before it
+ * (it would escape the first backtick and no span would form). Inside an existing code span or
  * block it shows as literal backticks, which is harmless.
  */
 export function neutralizeNotifying(text: string): string {
   const longest = Math.max(0, ...[...text.matchAll(/`+/g)].map((m) => m[0].length));
   const tick = '`'.repeat(longest + 1);
   return text.replace(NOTIFYING, (m: string, at: number, s: string) =>
-    `${s[at - 1] === '`' ? ' ' : ''}${tick}${m}${tick}${s[at + m.length] === '`' ? ' ' : ''}`);
+    `${s[at - 1] === '`' || s[at - 1] === '\\' ? ' ' : ''}${tick}${m}${tick}${s[at + m.length] === '`' ? ' ' : ''}`);
 }
 
 const modelText = (s: string): string => neutralizeTrusted(neutralizeNotifying(s));
@@ -424,11 +440,26 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
   }
   if (spec.repoUrl.toLowerCase() !== config.repo.url.toLowerCase()) throw new CheckUsageError(`spec #${specId} is not an issue of ${config.repo.url}`);
   if (!spec.open) throw new CheckUsageError(`spec #${specId} is closed`);
+  if (!spec.authorTrusted) throw new CheckUsageError(`spec #${specId}'s author is not an OWNER, MEMBER or COLLABORATOR of ${config.repo.url}`);
 
-  // Key holders: trusted children of the spec only.
+  // Key holders: trusted children of the spec only, from the key search and the spec's task list (search lags behind creates).
   const holders = new Map<string, ForgeItem>();
   const ignored: EnqueueJson['ignored'] = [];
-  for (const { key, item } of tracker.findByKey(specId)) {
+  const found = tracker.findByKey(specId);
+  const seen = new Set(found.map((f) => f.item.id));
+  for (const child of spec.children) {
+    if (seen.has(child)) continue;
+    let item: ForgeItem;
+    try {
+      item = tracker.viewItem(child);
+    } catch (error) {
+      warnings.push(`task-list child #${child} of spec #${specId} cannot be read: ${error instanceof Error ? error.message : String(error)}`);
+      continue;
+    }
+    const keys = shipyardKeys(item.body).filter(([s]) => s === specId);
+    if (keys.length === 1 && item.repoUrl.toLowerCase() === config.repo.url.toLowerCase()) found.push({ key: keys[0][1], item });
+  }
+  for (const { key, item } of found) {
     if (!item.authorTrusted) ignored.push({ id: item.id, key, reason: 'author is not trusted' });
     else if (item.parent !== specId) ignored.push({ id: item.id, key, reason: `not a child of #${specId}` });
     else if (holders.has(key)) throw new CheckUsageError(`key ${key} is held by #${holders.get(key)!.id} and #${item.id}; close one by hand`);
@@ -472,7 +503,8 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
     ...file.tickets.map((t) => known.get(t.key)).filter((id): id is number => id !== undefined),
     ...orphans.map((i) => i.id),
   ]);
-  const orphanRows = orphans.map((item): EnqueueRow => ({ key: [...holders].find(([, i]) => i === item)![0], id: item.id, action: 'orphaned', bucket: null, reasons: [] }));
+  const orphanRows = orphans.map((item): EnqueueRow => ({ key: [...holders].find(([, i]) => i === item)![0], id: item.id, action: 'orphaned', bucket: null, reasons: [], markCandidate: false }));
+  const markCandidate = (a: EnqueueAction): boolean => a === 'created' || a === 'updated' || a === 'unchanged';
 
   const newKeys = planned.filter((p) => p.action === 'created').map((p) => p.ticket.key);
   // Each new child adds one `- [ ] #<id>` line; refuse now rather than after the creates.
@@ -489,6 +521,7 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
         action: p.action,
         bucket: null,
         reasons: p.reasons,
+        markCandidate: markCandidate(p.action),
         ...(p.action === 'created' || p.action === 'updated'
           ? { planned: { title: p.title, body: renderTicketBody(specId, p.ticket, edgesOf(p.ticket, ids)), addLabels: p.addLabels, removeLabels: p.removeLabels } }
           : {}),
@@ -516,12 +549,21 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
       return path;
     };
     const written = new Map<string, string>();
+    let specNow = spec.body;
+    const writeSpec = (): void => {
+      const next = specBody(ids);
+      if (normalized(next) === normalized(specNow)) return;
+      tracker.updateItem!(specId, { title: spec.title, bodyFile: bodyFile(`spec-${specId}`, next), addLabels: [], removeLabels: [] });
+      specNow = next;
+      taskList = 'updated';
+    };
     try {
-      // Pass 1: create the missing items with the edges already known.
+      // Pass 1: create the missing items with the edges already known; list each on the spec at once, so a re-run finds it without search.
       for (const p of planned.filter((x) => x.action === 'created')) {
         const body = renderTicketBody(specId, p.ticket, p.ticket.blockedBy.map((b) => ref(b, ids)).filter((r): r is string => r !== undefined));
         ids.set(p.ticket.key, tracker.createItem({ title: p.title, bodyFile: bodyFile(p.ticket.key, body), labels: p.labels }));
         written.set(p.ticket.key, body);
+        writeSpec();
       }
       // Pass 2: every edge is known now; rewrite the created items that missed one, and update the changed ones.
       for (const p of planned) {
@@ -536,12 +578,8 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
           removeLabels: p.removeLabels,
         });
       }
-      // The spec's task list, which `omg factory check --parent` reads.
-      const next = specBody(ids);
-      if (normalized(next) !== normalized(spec.body)) {
-        tracker.updateItem(specId, { title: spec.title, bodyFile: bodyFile(`spec-${specId}`, next), addLabels: [], removeLabels: [] });
-        taskList = 'updated';
-      }
+      // The spec's task list, which `omg factory check --parent` reads (already current unless nothing was created).
+      writeSpec();
     } catch (error) {
       failed = true;
       warnings.push(`write failed (re-run enqueue to finish; it is idempotent): ${error instanceof Error ? error.message : String(error)}`);
@@ -551,15 +589,16 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
   } finally {
     rmSync(bodyDir, { recursive: true, force: true });
   }
-  for (const p of planned) rows.push({ key: p.ticket.key, id: ids.get(p.ticket.key) ?? null, action: p.action, bucket: null, reasons: p.reasons });
+  for (const p of planned) rows.push({ key: p.ticket.key, id: ids.get(p.ticket.key) ?? null, action: p.action, bucket: null, reasons: p.reasons, markCandidate: markCandidate(p.action) });
   rows.push(...orphanRows);
 
-  // The mark step: `omg factory check --parent <spec> --mark --yes` (the C3 signature covers it).
+  // The mark step: `omg factory check <ids> --mark --yes` over this file's candidates only (the C3 signature covers them).
   let mark: CheckJson['mark'] | null = null;
-  if (!failed) {
+  const candidates = rows.filter((r) => r.markCandidate && r.id !== null).map((r) => String(r.id));
+  if (!failed && candidates.length > 0) {
     const captured: string[] = [];
     try {
-      const code = await runFactoryCheck({ ids: [], parent: String(specId), mark: true, yes: true, json: true }, { ...deps, out: (l) => captured.push(l), err: (l) => captured.push(l) });
+      const code = await runFactoryCheck({ ids: candidates, mark: true, yes: true, json: true }, { ...deps, out: (l) => captured.push(l), err: (l) => captured.push(l) });
       const json = JSON.parse(captured.join('\n')) as CheckJson;
       mark = json.mark;
       for (const r of rows) {
@@ -604,6 +643,8 @@ function report(o: FactoryEnqueueOptions, deps: FactoryCheckDeps, json: EnqueueJ
       deps.out(p.body);
     }
     if (json.spec.planned) deps.out(`\n== edit spec #${json.spec.id} body:\n${json.spec.planned}`);
+    const candidates = json.items.filter((r) => r.markCandidate).map((r) => (r.id === null ? `(new) ${r.key}` : `#${r.id}`));
+    deps.out(`\n== mark step: omg factory check --mark --yes over ${candidates.length > 0 ? candidates.join(', ') : 'nothing'}; the runnable ones get the marker`);
   } else if (json.mark) {
     if (json.mark.marked.length > 0) deps.out(chalk.green(`marked ${json.mark.marker}: ${json.mark.marked.map((id) => `#${id}`).join(', ')}`));
   }

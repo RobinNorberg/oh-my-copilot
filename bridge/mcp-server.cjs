@@ -48734,7 +48734,6 @@ var init_factory = __esm({
     init_cli();
     init_factory_check();
     init_cli2();
-    init_score();
     init_enqueue();
     init_config4();
     init_ledger2();

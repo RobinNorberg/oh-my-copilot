@@ -43,7 +43,6 @@ import { parseJsonc } from '../../utils/jsonc.js';
 import { healCommand } from '../../factory/heal/cli.js';
 import { defaultFactoryCheckDeps, factoryCheckCommand, ttyConfirm } from './factory-check.js';
 import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_INCOMPATIBLE, EXIT_CHECK_USAGE } from '../../factory/check/cli.js';
-import { plainText } from '../../factory/check/score.js';
 import { runFactoryEnqueue } from '../../factory/enqueue.js';
 import { resolveHealConfig } from '../../factory/heal/config.js';
 import { defaultLedgerDir } from '../../factory/run/ledger.js';
@@ -328,8 +327,9 @@ export function factoryEnqueueCommand(deps) {
         .addHelpText('after', [
         '',
         'Without --dry-run, enqueue creates or updates the items (with the intake label and a priority label),',
-        'rewrites the spec\'s task list, then runs the mark step `omg factory check --parent <spec> --mark --yes`,',
-        'which adds factory.intake.marker to the runnable children. The launch C3 signature is the confirmation',
+        'rewrites the spec\'s task list, then runs the mark step `omg factory check <ids> --mark --yes` over',
+        'this file\'s created, updated and unchanged items (never orphans), which adds factory.intake.marker',
+        'to the runnable ones. The launch C3 signature is the confirmation',
         'for all of it: run --dry-run first and show its output at C3. Items already claimed by a factory run',
         'are never edited, and items whose key left the file are reported as orphaned, never closed.',
     ].join('\n'))
