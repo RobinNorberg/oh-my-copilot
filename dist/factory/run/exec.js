@@ -6,6 +6,7 @@
  *   (no `+`, no flags), never a protected branch. Ship's `HEAD:refs/heads/<b>`
  *   push shape is refused here: the factory pushes nothing else.
  * - GitHub: `gh issue view|comment`, `gh pr create --draft|comment|list|ready`
+ *   (one `pr list` is the blocked-by gate's merged lookup on `factory/issue-<n>`)
  *   and `gh repo view --json url` (ci-heal runs) in fixed shapes, plus ship's
  *   `gh pr view|checks` and `gh run list|view|rerun`.
  *   Never `gh api`, `gh -R`, or a merge (merge is always human).
@@ -218,8 +219,13 @@ function factoryGh(a, writes) {
         }
         if (sub === 'comment')
             return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--body-file' && isFile(r[2]);
-        if (sub === 'list')
-            return r.length === 4 && r[0] === '--head' && isFactoryBranch(r[1], []) && r[2] === '--json' && JSON_FIELDS.test(r[3]);
+        if (sub === 'list') {
+            if (r.length === 4)
+                return r[0] === '--head' && isFactoryBranch(r[1], []) && r[2] === '--json' && JSON_FIELDS.test(r[3]);
+            // The blocked-by gate: a dependency's factory PR merged into the base (score.ts isSatisfied, findMergedPrForBranch).
+            return r.length === 8 && r[0] === '--head' && /^factory\/issue-\d+$/.test(r[1]) && r[2] === '--base' && isBranch(r[3])
+                && same(r.slice(4), ['--state', 'merged', '--json', 'number']);
+        }
         if (sub === 'ready')
             return r.length === 1 && NUMBER.test(r[0]);
         // Merge is always a human step: ship's `gh pr merge` shape is refused here.

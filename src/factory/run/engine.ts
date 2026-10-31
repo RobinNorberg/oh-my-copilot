@@ -67,8 +67,9 @@ import { adoGuardContext, defaultAzBinaryDeps, type AzureDevOpsForgeOptions } fr
 import { createForge } from '../../forge/index.js';
 import type { Forge, ForgeOptions, ForgeProgressConfig, ForgeTracker, ProgressStage, ResolvedForgeConfig } from '../../forge/types.js';
 import { GhCommandError } from '../../forge/github/gh.js';
-import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, ghOpenPrs, ghPrHeadState, ghRepoView } from '../../forge/github/reviews.js';
-import { ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, githubTracker } from '../../forge/github/tracker.js';
+import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, ghOpenPrs, ghPrHeadState, ghRepoView, githubReviews } from '../../forge/github/reviews.js';
+import { ghDependsOn, ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, githubTracker } from '../../forge/github/tracker.js';
+import { isSatisfied, type DependencyForge } from '../check/score.js';
 import { outcomePosts, postedBefore, type OutcomeEvent } from './outcome.js';
 import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, linkNodeModules, type GateConfig, type GateConfigLoader } from './prepare.js';
 import {
@@ -1218,6 +1219,32 @@ class FactoryEngine {
     return true;
   }
 
+  /**
+   * The blocked-by intake gate (shipyard ↔ factory design §3.5): a dependency
+   * that is not satisfied (check's isSatisfied: closed, its factory PR merged
+   * into the base, or its run merged; unreadable is unsatisfied) parks the
+   * run at blocked-by. A rerun re-reads the item and its dependencies, so it
+   * proceeds once they merged. True when it parked.
+   */
+  private blockedBy(dependsOn: readonly number[], repoUrl: string): boolean {
+    if (dependsOn.length === 0) return false;
+    if (dependsOn.includes(this.o.issue!)) {
+      this.save((s) => ({ ...s, repoUrl }));
+      this.gate('blocked-by', `blocked-by:self: #${this.o.issue} depends on itself, so it would wait forever; remove the Depends on / Blocked by line naming it, then rerun`);
+      return true;
+    }
+    const forge: DependencyForge = this.forge ?? { kind: 'github', tracker: { viewItem: (id) => ghViewItem(this.exec, id, this.o.root) }, reviews: githubReviews(this.exec, this.o.root) };
+    const runState = (id: number) => {
+      try { return readFactoryState(this.o.root, id); } catch { return null; }
+    };
+    const open = dependsOn.filter((d) => !isSatisfied(forge, d, this.state.base, runState));
+    if (open.length === 0) return false;
+    const ids = open.map((d) => `#${d}`).join(', ');
+    this.save((s) => ({ ...s, repoUrl }));
+    this.gate('blocked-by', `depends on unfinished item${open.length > 1 ? 's' : ''} ${ids} (open, no factory PR merged into ${this.state.base}); nothing is implemented until ${open.length > 1 ? 'they merge' : 'it merges'}`);
+    return true;
+  }
+
   /** ci-heal intake: no issue, only GitHub's url of the repository (the remote check before every fetch and push compares origin with it). */
   private healIntake(): void {
     const v = this.gh(ghRepoView);
@@ -1273,6 +1300,7 @@ class FactoryEngine {
     const body = item.acceptance ? `${item.body.trim()}\n\n## Acceptance criteria\n\n${item.acceptance}\n` : item.body;
     const planLink = findPlanLink(item.body, item.comments, item.authorTrusted);
     if (this.foreignPr(item.repoUrl)) return;
+    if (this.blockedBy(item.dependsOn, item.repoUrl)) return;
     this.save((s) => moveTo({ ...s, repoUrl: item.repoUrl, issueTitle: item.title, issueBody: body, ...(planLink ? { planLink } : {}) }, 'plan', `work item ${item.url}`, this.iso()));
   }
 
@@ -1291,6 +1319,7 @@ class FactoryEngine {
     const body = typeof v.body === 'string' ? v.body : '';
     const planLink = findPlanLink(body, Array.isArray(v.comments) ? v.comments : [], issueAuthorTrusted(v));
     if (this.foreignPr(m[1])) return;
+    if (this.blockedBy(ghDependsOn(body), m[1])) return;
     this.save((s) => moveTo({ ...s, repoUrl: m[1], issueTitle: typeof v.title === 'string' ? v.title : '', issueBody: body, ...(planLink ? { planLink } : {}) }, 'plan', `issue ${url}`, this.iso()));
   }
 

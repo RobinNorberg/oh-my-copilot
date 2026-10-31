@@ -10,12 +10,14 @@
  * | item closed (GitHub CLOSED, ADO Completed/Removed category)  | blocked    | closed                     |
  * | ADO type not in intake.itemTypes, or the GitHub id is a PR   | blocked    | wrong-type                 |
  * | a merged, cancelled or failed factory run state exists       | blocked    | run-finished:<phase>       |
- * | any other factory run state exists                           | blocked    | run-active:<phase>[/<gate>]|
+ * | any other factory run state exists (a run parked at the      | blocked    | run-active:<phase>[/<gate>]|
+ * | intake blocked-by gate is re-evaluated by the rules below)   |            |                            |
  * | an open PR on factory/issue-<n> (a fork's too, as the engine)| blocked    | pr-exists                  |
  * | a PR from factory/issue-<n> merged into the base             | blocked    | merged                     |
  * | origin/factory/issue-<n> exists without an open PR           | blocked    | branch-exists              |
  * | a dependsOn item is unsatisfied (open, no merged factory PR  | blocked    | depends-on:#n,...          |
  * | into the base, no merged run state; score.ts isSatisfied)    |            |                            |
+ * | the item depends on itself                                   | blocked    | blocked-by:self            |
  * | open children, ADO type Epic/Feature, or GitHub label epic   | blocked    | needs-split                |
  * | no trusted omg-plan: line, no AC heading, empty ADO AC field | needs-plan | no-plan                    |
  * | omg-plan: path not repo-relative, or missing/empty on base   | needs-plan | plan-missing               |

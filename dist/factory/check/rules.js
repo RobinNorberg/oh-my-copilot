@@ -10,12 +10,14 @@
  * | item closed (GitHub CLOSED, ADO Completed/Removed category)  | blocked    | closed                     |
  * | ADO type not in intake.itemTypes, or the GitHub id is a PR   | blocked    | wrong-type                 |
  * | a merged, cancelled or failed factory run state exists       | blocked    | run-finished:<phase>       |
- * | any other factory run state exists                           | blocked    | run-active:<phase>[/<gate>]|
+ * | any other factory run state exists (a run parked at the      | blocked    | run-active:<phase>[/<gate>]|
+ * | intake blocked-by gate is re-evaluated by the rules below)   |            |                            |
  * | an open PR on factory/issue-<n> (a fork's too, as the engine)| blocked    | pr-exists                  |
  * | a PR from factory/issue-<n> merged into the base             | blocked    | merged                     |
  * | origin/factory/issue-<n> exists without an open PR           | blocked    | branch-exists              |
  * | a dependsOn item is unsatisfied (open, no merged factory PR  | blocked    | depends-on:#n,...          |
  * | into the base, no merged run state; score.ts isSatisfied)    |            |                            |
+ * | the item depends on itself                                   | blocked    | blocked-by:self            |
  * | open children, ADO type Epic/Feature, or GitHub label epic   | blocked    | needs-split                |
  * | no trusted omg-plan: line, no AC heading, empty ADO AC field | needs-plan | no-plan                    |
  * | omg-plan: path not repo-relative, or missing/empty on base   | needs-plan | plan-missing               |
@@ -69,7 +71,10 @@ export function evaluateItem(item, kind, config, look) {
         // The engine never restarts a merged, cancelled or failed run (engine.ts start()).
         return hit('blocked', `run-finished:${run.phase}`, `the factory run is ${run.phase} and is not restarted; see omg factory run status ${item.id}`);
     }
-    if (run) {
+    // A run parked at the intake blocked-by gate stays a candidate: its dependencies are re-read
+    // below, so `run --next` resumes it once they are satisfied.
+    const parkedOnDeps = run?.phase === 'intake' && run.gate?.name === 'blocked-by';
+    if (run && !parkedOnDeps) {
         const at = run.gate ? `${run.phase}/${run.gate.name}` : run.phase;
         return hit('blocked', `run-active:${at}`, `a factory run is active (${at}); see omg factory run status ${item.id}`);
     }
@@ -83,6 +88,8 @@ export function evaluateItem(item, kind, config, look) {
         return hit('blocked', 'merged', `PR #${merged} from ${branch} already merged into the base`);
     if (look.remoteBranch(branch))
         return hit('blocked', 'branch-exists', `origin/${branch} exists without an open PR; the engine would stop at head-moved-externally`);
+    if (item.dependsOn.includes(item.id))
+        return hit('blocked', 'blocked-by:self', `#${item.id} depends on itself; remove the Depends on / Blocked by line naming it`);
     const deps = item.dependsOn.filter((d) => !look.isSatisfied(d));
     if (deps.length > 0)
         return hit('blocked', `depends-on:${ids(deps)}`, `depends on unfinished item${deps.length > 1 ? 's' : ''} ${ids(deps)} (open, no merged factory PR)`);

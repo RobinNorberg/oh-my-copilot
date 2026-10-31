@@ -6,7 +6,7 @@
  * `priority:p0..p3` labels as 1..4; none last), then id. Items are read only
  * through `forge.tracker`; the open-PR lookup goes through `forge.reviews`.
  */
-import type { Forge, ForgeItem, ResolvedForgeConfig } from '../../forge/types.js';
+import type { Forge, ForgeItem, ForgeReviews, ForgeTracker, ResolvedForgeConfig } from '../../forge/types.js';
 import { type FactoryPhase } from '../run/state.js';
 import { type CheckBucket, type PlanSource } from './rules.js';
 export declare const BUCKET_ORDER: readonly CheckBucket[];
@@ -44,6 +44,12 @@ export declare const plainText: (v: string) => string;
 /** ADO Priority, else a GitHub `priority:pN` label (p0 -> 1 ... p3 -> 4). */
 export declare function itemPriority(item: ForgeItem): number | null;
 export declare function compareResults(a: CheckResult, b: CheckResult): number;
+/** The forge reads isSatisfied makes (the engine builds them from the gh calls on GitHub). */
+export interface DependencyForge {
+    kind: Forge['kind'];
+    tracker: Pick<ForgeTracker, 'viewItem'>;
+    reviews: Pick<ForgeReviews, 'viewPr' | 'findMergedPrForBranch'>;
+}
 /**
  * A dependency is satisfied when its factory run merged, the item is closed,
  * or (still open) a PR from `factory/issue-<n>` merged into `base`: with a
@@ -51,10 +57,11 @@ export declare function compareResults(a: CheckResult, b: CheckResult): number;
  * (shipyard ↔ factory design §3.5). A dependency that is a GitHub PR is
  * satisfied once merged (closed unmerged is not); on ADO a failed work-item
  * read never falls back to the PR with that number (separate id namespaces).
- * Anything unreadable is unsatisfied. The engine will share this rule from
- * PR 5 (shipyard ↔ factory design §9).
+ * Anything unreadable is unsatisfied, but a guard refusal (FactorySafetyError)
+ * is rethrown: it is a bug, never an unfinished dependency. The engine's
+ * blocked-by intake gate shares this rule (engine.ts), so check and run cannot drift.
  */
-export declare function isSatisfied(forge: Forge, id: number, base: string, runState: CheckEnv['runState']): boolean;
+export declare function isSatisfied(forge: DependencyForge, id: number, base: string, runState: CheckEnv['runState']): boolean;
 /**
  * The result of one item. A GitHub PR id is `wrong-type`; any other failed
  * read (the item, its run state, PR or branch lookup) is `read-failed`, so one

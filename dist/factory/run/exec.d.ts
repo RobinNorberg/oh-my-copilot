@@ -6,6 +6,7 @@
  *   (no `+`, no flags), never a protected branch. Ship's `HEAD:refs/heads/<b>`
  *   push shape is refused here: the factory pushes nothing else.
  * - GitHub: `gh issue view|comment`, `gh pr create --draft|comment|list|ready`
+ *   (one `pr list` is the blocked-by gate's merged lookup on `factory/issue-<n>`)
  *   and `gh repo view --json url` (ci-heal runs) in fixed shapes, plus ship's
  *   `gh pr view|checks` and `gh run list|view|rerun`.
  *   Never `gh api`, `gh -R`, or a merge (merge is always human).

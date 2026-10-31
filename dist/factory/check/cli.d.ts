@@ -98,6 +98,8 @@ export interface CheckJson {
  * The setup wizard builds its preview env with this too.
  */
 export declare function checkEnvFor(exec: Exec, root: string, config: CheckEnv['config'], base: string, baseSha: string | null): CheckEnv;
+/** Fetch `origin/<base>` (read-only) and resolve it; null with a warning when it cannot be read. */
+export declare function fetchBase(exec: Exec, root: string, base: string, warnings: string[]): string | null;
 export declare function renderCheckTable(items: readonly CheckResult[]): string;
 /** Production az entry: resolved outside every root a lane writes (factoryForgeOptions). */
 export declare const defaultResolveAz: (root: string) => AzEntry;
