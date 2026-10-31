@@ -32,6 +32,19 @@ All notable changes to oh-my-copilot will be documented in this file.
   caller's own directory, and labels from an allowlist (never `factory:*`).
   `gh api` stays refused, and nothing closes, deletes, transfers or locks an
   issue. `omg factory run` and `omg factory check` still refuse all three.
+- **Azure DevOps tracker writes for the planned `omg factory enqueue`**:
+  create a work item of the first `factory.intake.itemTypes` type, update its
+  title, description, acceptance criteria, priority and tags, link it to its
+  parent (`Hierarchy-Reverse`) or a predecessor (`Dependency-Reverse`), and
+  find work items by their `shipyard-key:` footer. These go through
+  `az devops invoke` on two routes only, `wit/workItems` `POST` and `PATCH`,
+  with JSON-patch `add` ops on an allowlist of paths. Description and
+  acceptance criteria are escaped HTML that the adapter builds, and the guard
+  accepts no other markup. Links take those two types only and must point to
+  work items in the forge org. Tags never use `factory:` or `harbor:`.
+  Nothing removes a field, a link or a work item. The factory guard allows
+  these writes only with enqueue's write context, so `omg factory run`,
+  `omg factory check` and `omg ship` still refuse them.
 
 ### Changed
 

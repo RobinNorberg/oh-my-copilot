@@ -9,7 +9,7 @@
 import { readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { factoryGuardExec } from '../../../factory/run/exec.js';
+import { factoryGuardExec, type TrackerWriteContext } from '../../../factory/run/exec.js';
 import type { Exec } from '../../../ship/exec.js';
 import type { ForgeRepo, IntakeSource, ResolvedForgeConfig } from '../../types.js';
 import { AZ_PYTHON_PREFIX, type AzEntry } from '../az-binary.js';
@@ -55,7 +55,8 @@ export interface Call {
 }
 
 /** A forge over the fixtures, behind the factory guard; `calls` records what reached the fixture Exec. */
-export function adoWorld(o: { fixtures?: readonly AdoFixture[]; entry?: AzEntry; source?: IntakeSource } = {}) {
+/** `writes`: the tracker write context `omg factory enqueue` sets (none = the engine and check). */
+export function adoWorld(o: { fixtures?: readonly AdoFixture[]; entry?: AzEntry; source?: IntakeSource; writes?: TrackerWriteContext } = {}) {
   const fixtures = o.fixtures ?? loadAdoFixtures();
   const entry = o.entry ?? POSIX_ENTRY;
   const inner = adoFixtureExec(fixtures);
@@ -68,7 +69,7 @@ export function adoWorld(o: { fixtures?: readonly AdoFixture[]; entry?: AzEntry;
   };
   const config = adoConfig(o.source);
   const guard: AdoGuardContext = adoGuardContext(config, entry);
-  const exec = factoryGuardExec(recording, () => [], () => guard);
+  const exec = factoryGuardExec(recording, () => [], () => guard, () => o.writes);
   const forge = createAzureDevOpsForge(exec, CHECKOUT, config, { entry, env: {}, untrustedRoots: [CHECKOUT], stateDir: STATE_DIR });
   const routeOf = (c: Call) => {
     const a = c.args;

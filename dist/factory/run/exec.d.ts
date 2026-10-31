@@ -17,6 +17,8 @@
  *   transfer or lock; without the context all three shapes are refused.
  * - Azure DevOps: `az devops invoke` on the routes.ts allowlist only, as the
  *   resolved az entry, for the run's forge repo (src/forge/ado/guard.ts).
+ *   The work item create and the PATCH's item fields and links pass only with
+ *   the TrackerWriteContext (shipyard-factory design PR 7b).
  * - The engine-owned prepare checkout: `git worktree add -B <its branch>
  *   <abs path> <sha40>` and `git merge --abort` (ship's prepare shapes run in it).
  * - Read-only git for the lane tamper check (review-guard.ts) and the review
@@ -30,6 +32,7 @@ import { type AdoGuardContext } from '../../forge/ado/guard.js';
 import { ShipSafetyError, type Exec } from '../../ship/exec.js';
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
 export declare const FACTORY_BRANCH_PREFIX = "factory/";
+export { MAX_TRACKER_BODY_CHARS } from '../../forge/body-file.js';
 export declare class FactorySafetyError extends ShipSafetyError {
     constructor(message: string);
 }
@@ -43,11 +46,11 @@ export interface TrackerWriteContext {
     repo: string;
     /** Absolute directory the caller writes bodies into; `--body-file` must be a file directly in it. */
     bodyDir: string;
-    /** Labels a write may add or remove (the intake label, `priority:p0`…`p3`); `factory:*` and `harbor:*` never pass. */
+    /** Labels a write may add or remove (the intake label, `priority:p0`…`p3`); `factory:*` and `harbor:*` never pass. On Azure DevOps: the tags a new work item may carry. */
     labels: readonly string[];
+    /** Azure DevOps: the work item types a create may name (factory.intake.itemTypes); none = no create. */
+    itemTypes?: readonly string[];
 }
-/** The most characters a tracker write's body file may hold. */
-export declare const MAX_TRACKER_BODY_CHARS = 65536;
 /**
  * Throws FactorySafetyError unless the command is a factory shape or a
  * non-push, non-merge ship shape. `extraProtected` adds the run's base.

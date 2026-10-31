@@ -1,0 +1,14 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/wiql/query-by-wiql?view=azure-devops-rest-7.1",
+  "note": "adapted: the answer to findByKey's shipyard-key WIQL ($top=1000)",
+  "route": "wit.wiql.POST",
+  "routeParameters": { "project": "Web" },
+  "queryParameters": { "$top": "1000" },
+  "stdout": {
+    "queryType": "flat",
+    "queryResultType": "workItem",
+    "asOf": "2026-10-30T10:00:00.000Z",
+    "columns": [{ "referenceName": "System.Id", "name": "ID", "url": "https://dev.azure.com/contoso/_apis/wit/fields/System.Id" }],
+    "workItems": [{ "id": 42, "url": "https://dev.azure.com/contoso/_apis/wit/workItems/42" }]
+  }
+}
