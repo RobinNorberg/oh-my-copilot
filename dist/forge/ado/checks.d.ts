@@ -12,7 +12,7 @@
  * are pending, and while the PR's lastMergeSourceCommit is not H (the forge
  * lags a push by seconds) every check is pending.
  */
-import type { ForgeChecks } from '../types.js';
+import type { ForgeChecks, ForgeRepo } from '../types.js';
 import { type AdoContext } from './invoke.js';
 import { type AdoPrView } from './reviews.js';
 export declare const BUILD_POLICY_TYPE = "0609b952-1397-4640-95ec-e00a01b2c241";
@@ -31,6 +31,11 @@ export declare function buildHeadFields(build: Record<string, unknown>): {
  * is foreign even when the other field matches (fail closed).
  */
 export declare function buildHeadVerdict(build: Record<string, unknown>, head: string, mergeCommit: string | undefined): BuildHeadVerdict;
+export declare const RUN_STATUS: Readonly<Record<string, string>>;
+/** A finished build's conclusion; an unknown result fails closed. */
+export declare const conclusion: (result: string | undefined) => {
+    conclusion?: string;
+};
 interface Evaluation {
     evaluationId: string;
     status: string;
@@ -47,6 +52,14 @@ export declare const isStatusPolicy: (e: Pick<Evaluation, "typeId" | "typeName">
 export declare function policyName(e: Evaluation): string;
 /** Every policy evaluation of the PR (policy/evaluations by the PR's artifact id). */
 export declare function listEvaluations(ctx: AdoContext, pr: AdoPrView): Evaluation[];
+/** The records of build `buildId`'s timeline; throws when it cannot be read. */
+export declare function buildTimeline(ctx: AdoContext, buildId: string): Record<string, unknown>[];
+/** The Job records of a timeline, only the newest `attempt` per `identifier`. */
+export declare function newestJobRecords(records: readonly Record<string, unknown>[]): Record<string, unknown>[];
+/** One build log's text (its lines joined); throws on a failed read or an unexpected response. */
+export declare function readBuildLog(ctx: AdoContext, buildId: string, logId: number): string;
+/** The build's results page (where a human reruns it). */
+export declare const adoBuildUrl: (repo: ForgeRepo, id: number | string) => string;
 export declare function adoChecks(ctx: AdoContext): ForgeChecks;
 export {};
 //# sourceMappingURL=checks.d.ts.map

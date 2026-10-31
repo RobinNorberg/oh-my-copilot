@@ -51,8 +51,12 @@ export interface AdoGuardContext {
   allowedColumns?: readonly string[];
 }
 
-/** factory: every routes.ts route. ship: reads plus the requeue of a build evaluation (`omg ship` reruns flaky builds). */
-export type AdoGuardPolicy = 'factory' | 'ship';
+/**
+ * factory: every routes.ts route. ship: reads plus the requeue of a build
+ * evaluation (`omg ship` reruns flaky builds). read: GET routes only
+ * (`omg factory heal`, ADO parity design §3.5).
+ */
+export type AdoGuardPolicy = 'factory' | 'ship' | 'read';
 
 const SHIP_WRITES = new Set(['policy.evaluations.PATCH']);
 
@@ -76,7 +80,7 @@ const NAME = /^(?!@)[^\p{Cc}/\\?#%&]{1,256}$/u;
 const VALUE = /^(?!@)[^\p{Cc}]{1,2048}$/u;
 const ROUTE_VALUE: Readonly<Record<string, RegExp>> = {
   id: NUMBER_ID, workItemId: NUMBER_ID, pullRequestId: NUMBER_ID, buildId: NUMBER_ID, logId: NUMBER_ID,
-  evaluationId: GUID, type: NAME, team: NAME, board: NAME, structureGroup: /^(?:areas|iterations)$/,
+  evaluationId: GUID, type: NAME, team: NAME, board: NAME, structureGroup: /^(?:areas|iterations)$/, definitionId: NUMBER_ID,
 };
 /** Where `id` is not a numeric id: a saved query's GUID, a board's name. */
 const ROUTE_VALUE_BY_ROUTE: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
@@ -87,13 +91,21 @@ const QUERY_VALUE: Readonly<Record<string, RegExp>> = {
   $top: /^\d{1,4}$/, $skip: /^\d{1,6}$/, $depth: /^\d{1,2}$/, $expand: /^[A-Za-z]{1,32}$/,
   artifactId: /^vstfs:\/\/\/CodeReview\/CodeReviewId\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[1-9]\d{0,9}$/i,
   includeNotApplicable: /^(?:true|false)$/, format: /^markdown$/, order: /^(?:asc|desc)$/,
-  branchName: /^refs\/pull\/[1-9]\d{0,9}\/merge$/, reasonFilter: /^pullRequest$/, queryOrder: /^queueTimeDescending$/,
+  branchName: /^refs\/pull\/[1-9]\d{0,9}\/merge$/, reasonFilter: /^pullRequest$/, queryOrder: /^(?:queueTimeDescending|finishTimeDescending)$/,
+  definitions: NUMBER_ID, statusFilter: /^completed$/, resultFilter: /^(?:succeeded|partiallySucceeded|failed|canceled)$/,
+  minTime: /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,7})?Z$/,
+  // build.definitions.GET: the repository's GUID, as a query parameter (the repositoryId route parameter is the forge repo).
+  repositoryId: GUID, repositoryType: /^TfsGit$/, includeAllProperties: /^(?:true|false)$/,
   'searchCriteria.sourceRefName': /^refs\/heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]{1,400}$/u, 'searchCriteria.status': /^(?:active|completed)$/,
   // A satisfied dependency: a completed (merged) PR into the base.
   'searchCriteria.targetRefName': /^refs\/heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]{1,400}$/u,
   continuationToken: /^[A-Za-z0-9+/=_-]{1,512}$/,
   // The board's batched work item read (tracker.ts peekItems): at most 200 ids, field reference names, missing ids omitted.
   ids: /^[1-9]\d{0,9}(?:,[1-9]\d{0,9}){0,199}$/, fields: /^[A-Za-z][\w.]{0,127}(?:,[A-Za-z][\w.]{0,127}){0,15}$/, errorPolicy: /^omit$/,
+};
+/** The `read` policy's overrides: heal lists its pipeline's builds of a base branch too. */
+const READ_QUERY_VALUE: Readonly<Record<string, RegExp>> = {
+  branchName: /^refs\/(?:pull\/[1-9]\d{0,9}\/merge|heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]{1,400})$/u,
 };
 const MAX_BODY_BYTES = 1024 * 1024;
 
@@ -167,6 +179,7 @@ export function parseAdoInvoke(azArgs: readonly string[]): AdoInvoke | string {
 /** Why an invoke is refused for `ctx`/`policy`, or undefined. Does not read the body. */
 function invokeProblem(inv: AdoInvoke, ctx: AdoGuardContext, policy: AdoGuardPolicy, writes: AdoTrackerWrites | undefined): string | undefined {
   const { route, flags, routeParameters: rp, queryParameters: qp } = inv;
+  if (policy === 'read' && (route.method !== 'GET' || flags['--http-method'] !== 'GET')) return `${route.id} is not a read (this command only reads Azure DevOps)`;
   if (policy === 'ship' && route.method !== 'GET' && !SHIP_WRITES.has(route.id)) return `${route.id} is not a route omg ship runs`;
   if (route.tracker && (policy !== 'factory' || !writes)) return `${route.id} is a tracker write (omg factory enqueue only)`;
   // The create names one of enqueue's work item types, exactly.
@@ -195,7 +208,7 @@ function invokeProblem(inv: AdoInvoke, ctx: AdoGuardContext, policy: AdoGuardPol
   if (route.routeParams.includes('repositoryId') && !Object.hasOwn(rp, 'repositoryId')) return 'the repositoryId route parameter is required';
   if (route.tracker && route.routeParams.includes('type') && !Object.hasOwn(rp, 'type')) return 'the type route parameter is required';
   for (const [name, value] of Object.entries(qp)) {
-    if (!(QUERY_VALUE[name] ?? VALUE).test(value)) return `query parameter ${name} has a refused value`;
+    if (!((policy === 'read' ? READ_QUERY_VALUE[name] : undefined) ?? QUERY_VALUE[name] ?? VALUE).test(value)) return `query parameter ${name} has a refused value`;
   }
   const takesBody = route.body !== undefined && route.body.kind !== 'none';
   if (takesBody && inv.inFileAt === undefined) return `${route.id} needs --in-file`;

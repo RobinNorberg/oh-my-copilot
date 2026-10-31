@@ -186,8 +186,18 @@ export const ADO_ROUTES = Object.freeze([
     route({ id: 'policy.evaluations.GET', area: 'policy', resource: 'evaluations', method: 'GET', apiVersion: '7.1-preview.1', routeParams: ['project'], queryParams: ['artifactId', 'includeNotApplicable', '$top', '$skip'] }),
     // Requeue one evaluation (rerun a flaky or expired build); the REST call has no body.
     route({ id: 'policy.evaluations.PATCH', area: 'policy', resource: 'evaluations', method: 'PATCH', apiVersion: '7.1-preview.1', routeParams: ['project', 'evaluationId'], queryParams: [], body: { kind: 'none' } }),
-    // By id, or the builds of refs/pull/{id}/merge (runsForHead, critic amendments §A.2).
-    route({ id: 'build.builds.GET', area: 'build', resource: 'builds', method: 'GET', apiVersion: STABLE, routeParams: ['project', 'buildId'], queryParams: ['branchName', 'reasonFilter', 'queryOrder', '$top'] }),
+    // By id, the builds of refs/pull/{id}/merge (runsForHead, critic amendments §A.2), or heal's pipeline history (ci.ts, ADO parity design §3.3).
+    // https://learn.microsoft.com/en-us/rest/api/azure/devops/build/builds/list?view=azure-devops-rest-7.1
+    route({
+        id: 'build.builds.GET', area: 'build', resource: 'builds', method: 'GET', apiVersion: STABLE, routeParams: ['project', 'buildId'],
+        queryParams: ['branchName', 'reasonFilter', 'queryOrder', '$top', 'definitions', 'statusFilter', 'resultFilter', 'minTime'],
+    }),
+    // The heal pipeline pick (ADO parity design §3.2).
+    // https://learn.microsoft.com/en-us/rest/api/azure/devops/build/definitions/list?view=azure-devops-rest-7.1
+    route({
+        id: 'build.definitions.GET', area: 'build', resource: 'definitions', method: 'GET', apiVersion: STABLE, routeParams: ['project', 'definitionId'],
+        queryParams: ['name', 'repositoryId', 'repositoryType', 'includeAllProperties', '$top'],
+    }),
     route({ id: 'build.timeline.GET', area: 'build', resource: 'timeline', method: 'GET', apiVersion: STABLE, routeParams: ['project', 'buildId'], queryParams: [] }),
     // Read as JSON ({ count, value: [lines] }): az devops invoke refuses a non-JSON response without --out-file, which the guard never allows.
     route({ id: 'build.logs.GET', area: 'build', resource: 'logs', method: 'GET', apiVersion: STABLE, routeParams: ['project', 'buildId', 'logId'], queryParams: [] }),

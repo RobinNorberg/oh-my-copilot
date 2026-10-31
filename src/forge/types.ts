@@ -254,8 +254,9 @@ export interface ForgeMerge {
   blockingPolicies(pr: number, headSha: string): string[];
 }
 
-/** Heal (CI history); GitHub only for now: ADO has capabilities.heal = false. */
+/** Heal (CI history): GitHub Actions; Azure Pipelines only with a configured factory.heal.pipeline (capabilities.heal). */
 export interface ForgeCi {
+  /** ADO ignores `workflow` and lists the builds of factory.heal.pipeline. */
   listRuns(o: { workflow: string; event: 'push' | 'pull_request'; branch?: string; limit: number }): HealRun[];
   runJobs(runId: string): HealJob[];
   jobLog(jobId: string): string;
@@ -330,6 +331,8 @@ export interface ResolvedForgeConfig {
   intake: ForgeIntakeConfig;
   check: ForgeCheckConfig;
   progress: ForgeProgressConfig;
+  /** `factory.heal.pipeline` from the trusted layers (user config, base branch); absent unless configured. */
+  heal?: { pipeline?: { definitionId: number } };
 }
 
 /** What an adapter needs from its caller besides the Exec (src/factory/run/forge-roots.ts builds it for the factory). */

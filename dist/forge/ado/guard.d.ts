@@ -45,8 +45,12 @@ export interface AdoGuardContext {
     /** The progress-mapping board columns (progressColumns): the only Kanban column a work item PATCH may set; none when absent. */
     allowedColumns?: readonly string[];
 }
-/** factory: every routes.ts route. ship: reads plus the requeue of a build evaluation (`omg ship` reruns flaky builds). */
-export type AdoGuardPolicy = 'factory' | 'ship';
+/**
+ * factory: every routes.ts route. ship: reads plus the requeue of a build
+ * evaluation (`omg ship` reruns flaky builds). read: GET routes only
+ * (`omg factory heal`, ADO parity design §3.5).
+ */
+export type AdoGuardPolicy = 'factory' | 'ship' | 'read';
 /** The parsed parts of an `az devops invoke` argv (after the entry prefix). */
 export interface AdoInvoke {
     route: AdoRoute;

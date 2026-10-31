@@ -1,12 +1,15 @@
 /**
- * Read-only GitHub and git access for `omg factory heal` through an injected
- * Exec. healGuardExec allows only the fixed read shapes below; PR 1 issues no
- * GitHub write (a rerun is recorded as an intent, never run), so `gh run
- * rerun`, `gh api` and every other command are refused before they spawn.
+ * Read-only GitHub, Azure DevOps and git access for `omg factory heal`
+ * through an injected Exec. healGuardExec allows only the fixed read shapes
+ * below; PR 1 issues no GitHub write (a rerun is recorded as an intent,
+ * never run), so `gh run rerun`, `gh api` and every other command are
+ * refused before they spawn. `az` goes to the Azure DevOps guard with the
+ * `read` policy (ADO parity design §3.5): GET routes of the forge repo only.
  */
 
 import type { Exec } from '../../ship/exec.js';
 import { ShipSafetyError, TRUSTED_READ_ENV } from '../../ship/exec.js';
+import { isAdoCommand, runGuardedAdo, type AdoGuardContext } from '../../forge/ado/guard.js';
 import { RUN_LIST_FIELDS } from '../../forge/github/ci.js';
 
 export { RUN_LIST_FIELDS };
@@ -80,9 +83,16 @@ export function assertHealCommand(cmd: string, args: string[]): void {
   if (!ok) throw new HealSafetyError(`omg factory heal refuses \`${base} ${args.join(' ')}\`: not one of its read-only command shapes`);
 }
 
-/** The exec every heal command runs through: allowlisted read shapes, git with replace refs off. */
-export function healGuardExec(exec: Exec): Exec {
+/**
+ * The exec every heal command runs through: allowlisted read shapes, git with replace refs off.
+ * `ado`: the Azure DevOps guard context (adoReadGuardContext); without one every az call is refused.
+ */
+export function healGuardExec(exec: Exec, ado: () => AdoGuardContext | undefined = () => undefined): Exec {
   return (cmd, args, opts) => {
+    if (isAdoCommand(cmd)) {
+      const fail = (reason: string) => new HealSafetyError(`omg factory heal refuses \`${gitBase(cmd)} ${args.join(' ')}\`: ${reason}`);
+      return runGuardedAdo(exec, cmd, args, opts, ado(), 'read', fail);
+    }
     assertHealCommand(cmd, args);
     return exec(cmd, args, gitBase(cmd) === 'git' ? { ...opts, env: TRUSTED_READ_ENV } : opts);
   };

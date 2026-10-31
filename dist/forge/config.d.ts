@@ -11,6 +11,7 @@
  * | forge.* (identity)                 | user -> base -> origin detection     | ignored, warned on a diff  |
  * | forge.azureDevOps.trustedAuthors   | user only                            | ignored, warned            |
  * | progress.* (tracker writes)        | user -> base                         | ignored, warned on a diff  |
+ * | heal.pipeline (ADO: which is CI)   | user -> base                         | ignored, warned on a diff  |
  * | intake.*, check.*                  | project -> user -> base -> defaults  | allowed                    |
  *
  * Config can pin the forge, never redirect it: a kind, org, project or repo

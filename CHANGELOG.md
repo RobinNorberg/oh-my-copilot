@@ -6,6 +6,21 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Added
 
+- **Azure Pipelines CI history for heal (groundwork).** The Azure DevOps forge
+  gets a `ForgeCi` over the build definition that `factory.heal.pipeline:
+  { definitionId }` names: CI builds of the base branch (`individualCI` and
+  `batchedCI`), pull request builds with their recorded head (a build without
+  one is dropped, never guessed), the newest attempt of each job with its
+  failed tasks, and the job log (or the failed task logs). The rerun is a
+  human step on the build page and is never issued. `factory.heal.pipeline`
+  is read only from the user config or the base branch; a working-tree value
+  is ignored with a warning; set it on the base branch, since the user config
+  is shared across repositories. Builds of another repository, push builds
+  of another branch or of a tag are dropped, and the failed task logs are
+  read only up to the log cap. `capabilities.heal` is true only with a
+  pipeline. The heal guard sends `az` to the Azure DevOps guard with a new
+  `read` policy that refuses every non-GET route. `heal scan` on Azure
+  DevOps stays refused until the follow-up PR.
 - **`omg factory board`.** A read-only view of intake items, their factory
   runs and their tracker stages, on GitHub and Azure DevOps. Items without a
   run are grouped by check bucket; runs sit in the column of their expected
