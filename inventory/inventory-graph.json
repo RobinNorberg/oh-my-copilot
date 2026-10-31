@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "44bdaf6c2d4f9c5afac41c1225b58e6d8fcce0c4",
-    "sourceSha256": "b8ce5734d8374dcabf1c194f0208ce1ad6e4823e0910cc6b1dfb4623e010371d",
+    "head": "5bef89c73c9f4ae0ec14239ad868ead1475ba473",
+    "sourceSha256": "bd4295d5bef91ab923085ff7217c42e305f86aa32ce6d0e2d11b0d4fa16bafea",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "44bdaf6c2d4f9c5afac41c1225b58e6d8fcce0c4",
-  "sourceSha256": "b8ce5734d8374dcabf1c194f0208ce1ad6e4823e0910cc6b1dfb4623e010371d",
+  "head": "5bef89c73c9f4ae0ec14239ad868ead1475ba473",
+  "sourceSha256": "bd4295d5bef91ab923085ff7217c42e305f86aa32ce6d0e2d11b0d4fa16bafea",
   "counts": {
     "public": {
       "skills": 63,
@@ -8971,11 +8971,6 @@
         "id": ".omc/skills/zod-v4-migration-expertise.md",
         "kind": "other",
         "path": ".omc/skills/zod-v4-migration-expertise.md"
-      },
-      {
-        "id": ".omg/projection-manifest.json",
-        "kind": "other",
-        "path": ".omg/projection-manifest.json"
       },
       {
         "id": ".omx/plans/source-overall-cleanup/fallback-classification-inventory.md",
@@ -116841,12 +116836,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9842,
+      "nodeCount": 9841,
       "edgeCount": 11778,
       "importEdgeCount": 9660,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "390cdd6aea266048e228b178b6e26ab98c27d601a10eb1b8b537fb7671690e1b",
-  "manifestSha256": "5bc3036dc98608979cb977d22322286fae9a4cdf481fafd5ad83ba97af0ee1fb"
+  "inventorySha256": "412cfa40cd1c750a5dd5df40c272dc02ba85ba9d62b93e87a01ac790cf44adcd",
+  "manifestSha256": "4332cf5b79ffeaba9d6324948924b664203718f4f42cddda82222eec7d540ebc"
 }
