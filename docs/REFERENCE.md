@@ -919,7 +919,22 @@ omg progress status --dir <dir> --json          # latest event and state per age
 
 ### `omg factory`
 
-`omg factory init` seeds the project route table `.omg/factory-routes.json`, `omg factory listen` runs the HMAC-verified tracker intake daemon, and `omg factory status [--json]` is the read-only chain audit. A chain is a series of headless AFK links: when a link's session ends, the SessionEnd hook routes its `outcome:reason` through the route table and the detached SessionEnd worker spawns the next link. Guardrails apply per link: one active link per intent (serial lock) and a daily cap of 10 (`OMC_DAILY_CHAIN_LIMIT`).
+`omg factory init` seeds the project route table `.omg/factory-routes.json`, `omg factory listen` runs the HMAC-verified tracker intake daemon, and `omg factory chain status [--json]` is the read-only chain audit (`omg factory status` stays as an alias; `omg factory run status <issue>` is the engine's run state). The chain is legacy and frozen: delivery goes through `omg factory run`. A chain is a series of headless AFK links: when a link's session ends, the SessionEnd hook routes its `outcome:reason` through the route table and the detached SessionEnd worker spawns the next link. Guardrails apply per link: one active link per intent (serial lock) and a daily cap of 10 (`OMC_DAILY_CHAIN_LIMIT`).
+
+`omg factory init` seeds only the narrow starter table (`success:intake` → `harbor`). It refuses (exit 1, nothing written) unless `.omg/state/` and the yard's two faces, `CLAUDE.md` and `GLOSSARY.md` (seeded by `/oh-my-copilot:drydock`), exist; `docs/design/` is no longer required. An issue labeled `intake` makes the listener spawn a headless `/oh-my-copilot:harbor look at #<n>` session: tracker intake is harbor's job (verify, desk, signed dispositions), not intent's. The listener writes no labels on the issue (the old `needs-review` / `failed` labels are gone; harbor owns the labels). It keeps the issue pointer in the link's ledger so the stall watchdog can flag the issue: a link that stalls gets `harbor:for-maintainer` plus a comment (it used to get `harbor:need-info`, which harbor reads as "waiting on the reporter"). `--no-narrow`, which seeded the full `intake → intent → launch → diagnose` template, is retired: it exits 1 and writes nothing, because launch needs a live captain and no `diagnose` skill exists. Run launch in a session and deliver each issue with `omg factory run <issue>`. The listener answers a failed `check_suite` webhook with an audited `204` discard (`CI failures are healed from workflow_run`) and never starts a session. Only failed push runs of `ci.yml` on the dev branch are enqueued (via `workflow_run`) for the next `omg factory heal scan` (see `omg factory heal`); failures on other branches or workflows are no longer acted on by the listener, so run `omg factory heal scan` manually.
+
+The SessionEnd chain fails closed on skills an AFK link cannot run. A route to a captain skill (`launch`, `ask-navigator`, `loft`, `drydock`: they hold human checkpoints) or a retired skill (`diagnose`) halts the chain: the decision and the stop marker read `route-retired:<skill>`, and nothing spawns. The skill is matched by its canonical name (trimmed, lower-case, without a leading `/` or a `plugin:` prefix), so `Diagnose` or `oh-my-copilot:launch` is refused too. A route to `intent` still spawns but records `route-deprecated:intent` first: tracker intake belongs to harbor. Any other skill must be a bundled skill or a project skill under `.copilot/skills`, `.omg/skills` or `.agents/skills`, named in lower case from `[a-z0-9_-]`; otherwise the chain halts with `route-unknown:<skill>`. A skill is named by its registered name, the `name` in its `SKILL.md` frontmatter (else its directory name): the bundled `plan` and `review` directories register as `omc-plan` and `omc-review`, so a route to `plan` halts with a `did you mean omc-plan` hint in the decision (a bare `/plan` is a native command). A bundled skill spawns as `/oh-my-copilot:<name>` on Copilot CLI, which registers plugin skills only under the plugin prefix, and as `/<name>` on Claude Code; a project skill spawns as `/<name>`. The spawn step applies the same rules again, so a queued job or a replayed closeout from before an upgrade cannot spawn a refused skill.
+
+An existing table from the old full template is fixed with two `init` modes:
+
+- `omg factory init --check` prints every route of `.omg/factory-routes.json` with its status (`ok`, `terminal`, `deprecated`, `captain`, `retired`, `unknown` when no bundled skill or project skill under `.copilot/skills`, `.omg/skills` or `.agents/skills` has that name, `invalid` when the enqueuer ignores the entry) and the replacement. It writes nothing and exits 1 when a captain or retired route would halt the chain or the table is not a JSON object, else 0. `--migrate` refuses a symlinked routes file.
+- `omg factory init --migrate` writes the original to `.omg/factory-routes.json.bak-<UTC timestamp>` (never over an existing backup), then removes the captain and retired routes and turns `success:intake` → `intent` into `success:intake` → `harbor`. Every other entry is kept as it was. It asks first on a terminal; without one it needs `--yes` (exit 2 otherwise). A declined prompt exits 1 and writes nothing.
+
+| Old route | Replacement |
+|---|---|
+| `success:intake` → `intent` | `success:intake` → `harbor` |
+| `success:intent` → `launch` | none: run `/oh-my-copilot:launch` with the accepted intent |
+| `success:launch` → `diagnose`, `failed:ci` → `diagnose` | none: `omg factory heal scan` |
 
 #### Factory chains on Copilot
 
@@ -934,10 +949,10 @@ The link's own SessionStart binds the link to its host session: the first sessio
 |---|---|
 | `chainLink`, `host`, `createdAt`, `parentLink` | Written at spawn: the link id, `copilot` or `claude`, and the link that spawned it. |
 | `boundSessionId`, `boundAt` | Copilot only: the host session that started the link. |
-| `closedAt`, `hostSessionId`, `endReason`, `outcome`, `decision`, `enqueuedChain` | Written once by the link's SessionEnd. The watchdog skips a closed ledger only when its decision advanced the chain or left a stop marker (`enqueued`, `chain-terminal`, `chain-loop-capped`, `human-gate`, `no-route` on failure); a link dropped by a guardrail, an invalid ledger, or an error is still flagged. |
+| `closedAt`, `hostSessionId`, `endReason`, `outcome`, `decision`, `enqueuedChain` | Written once by the link's SessionEnd. The watchdog skips a closed ledger only when its decision advanced the chain or left a stop marker (`enqueued`, `chain-terminal`, `chain-loop-capped`, `human-gate`, `route-retired:<skill>`, `route-unknown:<skill>`, `no-route` on failure); a link dropped by a guardrail, an invalid ledger, or an error is still flagged. |
 | `maxStageVisits` | Stage-visit cap, carried from the first ledger to every later link (default 2, values above 99 clamp to 99). |
 
-Copilot's SessionEnd reason for a finished `-p` link is `complete` (CLI 1.0.91), which counts as `success` alongside Claude's `other`, `prompt_input_exit`, and `logout`; route keys such as `success:*` match both hosts. When OMC runs from a dev plugin root (`omg --plugin-dir`, which sets `OMC_PLUGIN_ROOT`), Copilot links also get `--plugin-dir <root>`, and the SessionEnd worker forwards `OMC_PLUGIN_ROOT`, so every link loads the same plugin. The root is dropped when it overlaps the link's working directory, because an AFK link may write there and could rewrite the plugin's hooks; a chain over the plugin's own repo needs the plugin installed. On Windows a root containing `%` is dropped as well. Limitation: Copilot fires `sessionEnd` after every turn, also in `-p` mode, so a link that a Stop hook keeps going into a second turn hands off after its first turn. The closed ledger stops later turns from enqueuing again, but the next link may start while this one still runs. A single-prompt link is not affected. `omg factory status` lists each intent's links in spawn order with host, link id, and closeout, for example `环 2 link-2 [copilot] link=<id> 已结束 success→chain-loop-capped session=<host session>`.
+Copilot's SessionEnd reason for a finished `-p` link is `complete` (CLI 1.0.91), which counts as `success` alongside Claude's `other`, `prompt_input_exit`, and `logout`; route keys such as `success:*` match both hosts. When OMC runs from a dev plugin root (`omg --plugin-dir`, which sets `OMC_PLUGIN_ROOT`), Copilot links also get `--plugin-dir <root>`, and the SessionEnd worker forwards `OMC_PLUGIN_ROOT`, so every link loads the same plugin. The root is dropped when it overlaps the link's working directory, because an AFK link may write there and could rewrite the plugin's hooks; a chain over the plugin's own repo needs the plugin installed. On Windows a root containing `%` is dropped as well. Limitation: Copilot fires `sessionEnd` after every turn, also in `-p` mode, so a link that a Stop hook keeps going into a second turn hands off after its first turn. The closed ledger stops later turns from enqueuing again, but the next link may start while this one still runs. A single-prompt link is not affected. `omg factory chain status` lists each intent's links in spawn order with host, link id, and closeout, for example `环 2 link-2 [copilot] link=<id> 已结束 success→chain-loop-capped session=<host session>`.
 
 #### `omg factory run` (experimental)
 
@@ -948,6 +963,7 @@ The engine is deterministic code that owns every transition. LLM work happens on
 ```bash
 omg factory run <issue> [--json]          # start, or resume at the recorded phase
 omg factory run <issue> --dry-run         # read the issue and plan and print the next step; no state, lanes or pushes
+omg factory run --next [--parent <spec>] [--json]  # run the first runnable item in omg factory check order
 omg factory run status <issue> [--json]   # the persisted state, read-only; --json adds integrityOk and runCredits
 omg factory run cancel <issue> [--json]   # ask the running engine to cancel its lane and stop; keeps the PR, branch and worktrees
 omg factory run clean <issue> [--json]    # remove the worktrees and local branches of a merged or cancelled run
@@ -959,6 +975,8 @@ omg factory run clean <issue> [--json]    # remove the worktrees and local branc
 | `4` | Any other `awaiting-human` stop, or `clean` kept a worktree |
 | `1` | A failure: an engine step failed, or the state is `failed` |
 | `2` | A usage error, such as a missing issue number, or `status` for an issue with no run |
+
+`omg factory run --next` picks the first `runnable` item in `omg factory check` order (priority, then id) among the children of `--parent <spec>`, or else the `factory.intake.source` items, and runs it. A run parked at `blocked-by` is picked again, and resumed, once its dependencies are satisfied; a finished or otherwise active run, or an item whose factory PR is open or merged, is never picked. With nothing runnable it prints the bucket counts and exits 0.
 
 `omg factory run` without `--dry-run` is itself the opt-in to live, billed lanes; no `OMG_COPILOT_RUN_ALLOW` is needed. The first Ctrl+C or SIGTERM cancels the lane after the current poll. A second one exits at once, and the next run treats the lane as lost.
 
@@ -975,7 +993,7 @@ any phase ─cancel─→ cancelled          any phase ─gate─→ awaiting-hu
 
 | Phase | What the engine does |
 |---|---|
-| `intake` | Reads the issue with `gh issue view`. A closed issue ends the run as `cancelled`. An open PR that already uses the factory branch stops at `pr-exists`. |
+| `intake` | Reads the issue with `gh issue view`. A closed issue ends the run as `cancelled`. An open PR that already uses the factory branch stops at `pr-exists`. A `Depends on #n` / `Blocked by #n` line (GitHub) or a Predecessor link (Azure DevOps) whose item is not satisfied stops at `blocked-by`; satisfied means closed, its factory PR merged into the base, or its factory run `merged`. An item that depends on itself stops at `blocked-by` with `blocked-by:self`. |
 | `plan` | Resolves the spec. An `omg-plan: <repo path>` line wins. It counts in the body when the issue's author owns the repository or has commented as an owner, member or collaborator, and in a comment by an owner, member or collaborator. The plan file is read from the base branch. Otherwise the issue body counts when it has an `Acceptance criteria` heading. |
 | `implement` | One write lane at `origin/<base>`. The prompt carries the issue and the plan and says to commit, not push. The lane must leave at least one commit that descends from its start. |
 | `publish` | The engine pushes the lane head to `refs/heads/factory/issue-<n>` with a plain refspec. The first publish opens a draft PR with `Closes #<n>` and starts ship state with implementer `factory-impl-<n>`. Before pushing, the engine re-reads the remote branch and the PR, so a crash between push and record repeats nothing. |
@@ -1045,7 +1063,8 @@ Merge is always human. There is no `factory.merge` key and no auto mode, and the
 - **Fresh context.** Each review is a new session in its own worktree at the head, on `copilot_run`'s `review` profile, which cannot write files or commit.
 - **Contract.** The lane's final message must end with exactly one fenced `json` block: `verdict` (`approve` or `request-changes`), `sha` (the 40-hex head), `findings` (each with `severity` `blocker`, `major`, `minor` or `nit`, a `summary`, and optional `file` and `line`) and optional `notes` of at most 500 characters.
 - **Fail closed.** No block, two blocks, text after the block, a wrong sha, bad fields, an edited worktree or a moved PR head make the review `invalid`, and no verdict is recorded. An `approve` with a `blocker` or `major` finding counts as `request-changes`.
-- **Posting.** The engine posts the findings as one PR comment, so the merge gate sees filtered findings next to the diff.
+- **Posting.** The engine posts the findings as one PR comment, so the merge gate sees filtered findings next to the diff. A two-axis review adds an `Axis` column.
+- **Two-axis review.** When the base commit has `docs/standards/`, the review runs on two axes, reported separately and never ranked against each other. The `spec` axis checks the diff against the plan: missing or partial requirements, behavior nobody asked for, and requirements that look implemented but look wrong. The `standards` axis checks the diff against the matching `docs/standards/` volume. The prompt lists the volumes, and the lane reads them at the base commit (`git show <base>:<path>`), not from the head that the diff may change. Every finding must carry `axis` (`spec` or `standards`); a missing or unknown axis makes the review `invalid`. A `blocker` or `major` on either axis fails the verdict, and the fix lane sees each finding's axis. The engine lists the standards at the base, never at the reviewed head, so a PR cannot switch the second axis on or off. Without `docs/standards/` on the base, the prompt is the single-axis one and `axis` is ignored.
 
 ##### Configuration
 
@@ -1237,6 +1256,7 @@ omg smoke copilot --tier 2 --scenario sandbox-lane      # review, write and cana
 
 ```bash
 omg factory check [<id>...] [--json]           # the given ids, or the items of factory.intake.source
+omg factory check --parent <spec> [--json]     # the spec's children (GitHub `- [ ] #n` task list | ADO child links)
 omg factory check --source label:factory       # label:<name> | milestone:<name> | wiql-query:<guid> |
                                                # board-column:<team>/<board>/<column> | area-tag:<area path>#<tag>
 omg factory check --limit 20                   # read at most 20 items from the source (1..200; default factory.intake.limit)
@@ -1250,10 +1270,12 @@ The rules are evaluated in order, and the first one that matches sets the bucket
 | `closed` | blocked | The item is closed (GitHub `CLOSED`, or an ADO Completed/Removed state). |
 | `wrong-type` | blocked | The ADO type is not in `factory.intake.itemTypes`, or the GitHub id is a pull request. |
 | `run-finished:<phase>` | blocked | A factory run for the item is merged, cancelled or failed. The engine never restarts one. |
-| `run-active:<phase>[/<gate>]` | blocked | Any other factory run for the item exists. |
+| `run-active:<phase>[/<gate>]` | blocked | Any other factory run for the item exists. A run parked at `intake` / `blocked-by` is not counted: the rules below re-read its dependencies, so it becomes `runnable` once they are satisfied. |
 | `pr-exists` | blocked | An open PR already uses `factory/issue-<n>`. A PR from a fork counts too, because the engine's `pr-exists` gate counts it. |
+| `merged` | blocked | A PR from `factory/issue-<n>` was already merged into the base. The item stays open when the base is not the default branch, so it is not run again. |
 | `branch-exists` | blocked | `origin/factory/issue-<n>` exists without an open PR (`git ls-remote`). The engine would stop at `head-moved-externally`. |
-| `depends-on:#n,…` | blocked | An item it depends on is still open. A dependency that is a PR counts as resolved once it is merged or closed. |
+| `blocked-by:self` | blocked | The item depends on itself (a `Depends on` / `Blocked by` line naming its own number). |
+| `depends-on:#n,…` | blocked | An item it depends on is unfinished. A dependency is satisfied when it is closed, when a PR from its `factory/issue-<n>` branch was merged into the base (`ship.base`), or when its factory run is `merged`. The merged PR counts because `Closes #n` does not close the issue when the base is not the default branch. A dependency that is a GitHub PR counts as resolved once it is merged; a PR closed without merging does not. On Azure DevOps a work item that cannot be read is never looked up as a PR, because work items and PRs number separately there. A dependency that cannot be read stays unsatisfied. |
 | `needs-split` | blocked | It has open children, is an ADO Epic or Feature, or has the GitHub label `epic`. |
 | `no-plan` | needs-plan | There is no trusted `omg-plan:` line, no `Acceptance criteria` heading, and no ADO Acceptance Criteria. |
 | `plan-missing` | needs-plan | The `omg-plan:` path is not repo-relative, or is missing or empty on `origin/<base>`. |
@@ -1267,13 +1289,109 @@ Results are sorted by bucket, then by priority, then by id. Priority is the ADO 
 
 `--mark` touches only runnable items that do not already carry the marker (GitHub label, ADO tag; default `factory-ready`). The marker is compared without regard to case. On GitHub the label must already exist: when it is missing, the check exits `5` and tells you to run `omg factory setup`, because check never creates labels. It asks before writing. Without a terminal, or with `--json`, it needs `--yes`. The guard allows the label write only after you confirm.
 
-`--json` prints `{ schemaVersion: 1, ok, forge, repo, source, counts, items, mark, warnings }`. Each item is `{ id, title, url, bucket, reasons, detail, priority, planSource }`. `reasons` holds the exact reason code (empty when the item is runnable), and `planSource` is `omg-plan`, `issue-body` or `ado-acceptance`. `mark` is `{ marker, requested, confirmed, marked, alreadyMarked, failed }`.
+`--parent <spec>` checks the children of a spec item instead of ids or the intake source: on GitHub the issues in the spec body's task list (`- [ ] #n`), on Azure DevOps the work items linked as children. It cannot be combined with ids, `--source` or `--limit`. A child names its spec with a `Part of #<spec>` line on GitHub or a parent link on Azure DevOps; the adapters read that as the item's parent.
+
+**Tracker writes (`omg factory enqueue`).** The GitHub tracker can create items, edit them and find them by their `shipyard-key: <spec>/<key>` footer line. Only `omg factory enqueue` uses these writes. The factory guard allows them only when the caller passes the enqueue write context; `omg factory run` and `omg factory check` never do, so for them all three shapes stay refused. Each write is one exact shape:
+
+```bash
+gh issue create --repo <host>/<owner>/<name> --title <title> --body-file <file> [--label <l>]...
+gh issue edit <n> --repo <host>/<owner>/<name> --title <title> --body-file <file> [--add-label <l>]... [--remove-label <l>]...
+gh issue list --repo <host>/<owner>/<name> --search '"shipyard-key: <spec>/" in:body' --state all --json number,body --limit <1..1000>
+```
+
+- `--repo` must be the configured forge repository. Any other repository, `-R`, or a missing `--repo` is refused.
+- The body is passed only through `--body-file`, never inline. The file must sit directly in the directory the caller writes bodies to.
+- Labels come from the caller's allowlist (the intake label and `priority:p0`…`priority:p3`), each label once, at most four per write. A `factory:*` label is always refused. On an edit, every `--add-label` comes before every `--remove-label`.
+- Extra flags, reordered flags and a different `--state`, `--json` or search are refused. `gh api`, `gh search`, and `gh issue close|delete|transfer|lock|reopen` stay refused. Nothing touches pull requests or merges.
+- A search hit counts only when its body has exactly one key line for that spec, and the same key is still there when the issue is read again with `gh issue view`. Trust and parent are left to the caller.
+
+**Azure DevOps tracker writes (`omg factory enqueue` on Azure DevOps).** The Azure DevOps tracker can create work items, update them, link them and find them by their `shipyard-key:` footer. Only `omg factory enqueue` uses these writes, and the factory guard allows them only with the enqueue write context. Every call is `az devops invoke` (REST 7.1, `application/json-patch+json`):
+
+| Write | Route | JSON-patch paths |
+|---|---|---|
+| create | `wit/workItems` `POST` ([docs](https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/work-items/create?view=azure-devops-rest-7.1)), `type` = one of `factory.intake.itemTypes` (the first one) | `add` only: `System.Title`, `System.Description`, `Microsoft.VSTS.Common.AcceptanceCriteria`, `Microsoft.VSTS.Common.Priority`, `System.Tags`, `System.AreaPath` |
+| update, link | `wit/workItems` `PATCH` ([docs](https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/work-items/update?view=azure-devops-rest-7.1)), starting with `test /rev` | `add` only: the four fields above, `System.Tags`, and `/relations/-` |
+| find by key | `wit/wiql` `POST` (a read) | `[System.Description] CONTAINS 'shipyard-key: <spec>/'`, then each hit is read and must hold exactly one key line for that spec |
+
+- A link is `{ rel, url }` with `rel` either `System.LinkTypes.Hierarchy-Reverse` (parent) or `System.LinkTypes.Dependency-Reverse` (predecessor), the links `parent` and `dependsOn` read back, and `url` a work item of the forge org. Other link types, attributes, removing or replacing a link, and a second parent are refused. An existing link is not written again.
+- Description and acceptance criteria are HTML the adapter builds: every character escaped, lines joined with `<br>`, the criteria as a `<ul>` list. The guard accepts only escaped text, `<div>`, `<br>`, `<ul>`, `<li>` and the entities `&amp; &lt; &gt; &quot; &#39;`, so no link, image or attribute gets through. Control characters (other than tab) and bidi controls are refused.
+- Titles are one line of visible text, at most 255 characters, with no control or format characters and no leading `-`.
+- Tags never start with `factory:`, `harbor:` or `-`, and contain no `,`, `;` or control characters. A new work item carries only allowlisted tags. An update keeps the item's other tags.
+- The area path (from an `area-tag` intake source) must be the forge project or under it. Priority is 1 to 4.
+- The body file is read like a GitHub one: a regular file with one link, at most 65536 characters. `--in-file` may not contain `:` after the drive letter, because that would name an NTFS alternate data stream. `omg factory run`, `omg factory check` and `omg ship` refuse the create route and every tracker path.
+
+#### `omg factory board` (experimental)
+
+`omg factory board` shows intake items, their factory runs and their tracker stages in one view. It works the same on GitHub and Azure DevOps, and it is strictly read-only: it runs on `omg factory check`'s read guard with no marker, so every tracker or forge write (a gh edit, comment or PR call, an az POST or PATCH other than the WIQL query the `area-tag` and `board-column` sources run) is refused, and it writes no local state.
+
+```bash
+omg factory board [--json]                  # the items of factory.intake.source, plus runs in flight
+omg factory board --parent <spec> [--json]  # the spec's children, as omg factory check --parent
+omg factory board --source <spec> [--limit n]
+omg factory board --no-check                # no check rules: one batched tracker read for the live stages
+```
+
+- **Columns.** `backlog` holds the items without a run, by check bucket (runnable, needs-plan, blocked) with the reason. Every other item sits in the column of its run's expected tracker stage: queued, building, reviewing, verifying, ready-to-merge, done, blocked or cancelled. A run parked at the engine's `blocked-by` gate shows in `blocked` with the gate's reason. With `factory.progress` configured, the column titles are the mapped label (GitHub), or the column or state (Azure DevOps).
+- **Rows.** Phase or `awaiting-human: <gate>`, the running lane, AI credits spent, the PR (`#n` on GitHub, `!n` on Azure DevOps), the head, and the latest `omg ship` verdict for the PR.
+- **Live stage.** The progress label on GitHub; on Azure DevOps the board column, else the state, mapped back through `factory.progress.stages`. When several stages match, the recorded one wins.
+- **Flags.** `drift`: the live stage is not the one the run recorded (a human moved the card). `unsynced`: the recorded stage is not the expected one (a progress write failed or is pending). `seal!`: the run state fails its integrity check, is unreadable, or has no seal at all (`integrity: 'none'`, a legacy state), so do not act on it. `stale`: a run that is not finished and not at a gate has not changed for 24 hours.
+- **Runs not in the intake source.** Runs in flight whose key is not in the source (a run started with an explicit id, a ci-heal `heal-<sig8>` run) get their own section. Finished runs outside the source are not shown.
+- **`--no-check`** skips the check rules (no comment, plan or PR reads). On Azure DevOps the items are read with one `GET wit/workitems?ids=…&fields=…&errorPolicy=omit` per 200 ids; on GitHub with one `gh issue view` per item.
+- **`--json`** (schemaVersion 1): `{ schemaVersion, ok, forge, repo, source, parent, columns: [{ stage, title, items }], outside, warnings }`. Each row has `id`, `title`, `url`, optional `error`, `check` (`{ bucket, priority, reasons, detail }`; absent with `--no-check`), `run` (including `gate: { name, reason }` when the run is parked at a gate), `stage` (`expected`, `recorded`, `live`), `liveText`, `flags` and `gates`. Tracker and state text is plain (ANSI and control characters removed).
+- **Exit codes:** `0` shown; `1` an item could not be read (`read-failed`); `2` usage; `5` incompatible (an unsupported remote or forge, or no intake source and no runs).
+
+#### `omg factory enqueue`
+
+```bash
+omg factory enqueue --spec <id> --file <tickets.json> [--dry-run] [--json]
+```
+
+Pushes launch's C3-approved tickets to the tracker as children of the spec issue or work item (shipyard ↔ factory design §3.2–§3.4), on GitHub and Azure DevOps. Launch writes the ticket file to its scratchpad, runs `--dry-run`, shows the output at C3, then runs it again without `--dry-run`.
+
+```json
+{
+  "schemaVersion": 1,
+  "spec": 412,
+  "tickets": [
+    {
+      "key": "auth-token-refresh",
+      "title": "Refresh tokens before expiry",
+      "body": "## Context\n…",
+      "acceptance": ["`TokenStore.refresh()` runs when < 60 s remain"],
+      "blockedBy": ["token-store-port", "#123"],
+      "priority": 2
+    }
+  ]
+}
+```
+
+- `key` is `[a-z0-9-]{3,60}` and unique in the file. `title` is one line. `acceptance` holds 1 to `factory.check.maxAcceptanceItems` one-line items, and they can't all be vague. `blockedBy` holds keys in the file or `#<n>` for an existing issue. `priority` (optional) is 1..4 and becomes the `priority:p<n-1>` label. `--spec` must match `spec`.
+- The command refuses with exit 2, and writes nothing, on: an unknown field, a duplicate key, a `blockedBy` cycle or unknown reference, too many or all-vague AC items, control or format characters (such as bidi overrides) in the text, a rendered body over `factory.check.maxBodyChars`, a spec that is closed, isn't an issue of the forge repository or whose author isn't an owner, member or collaborator, a `#n` that does not exist, or two trusted issues holding the same key.
+- Each ticket becomes an issue whose body is the ticket body, then `## Acceptance criteria` with a checkbox per item, then a `<!-- shipyard:edges -->` section (`Part of #<spec>` and one `Blocked by #n` per edge), then the footer `shipyard-key: <spec>/<key>`. It gets the intake label (when `factory.intake.source` is a label) and the priority label. The spec body gets a `<!-- shipyard:tickets -->` task list (`- [ ] #n`) that `omg factory check --parent` reads. A box ticked there stays ticked.
+- **Model-written text is neutralized** before it is posted from your account. @-mentions, `#n`, `GH-n` and cross-repository `owner/repo#n` references and issue/PR/discussion URLs (also bare `www.` ones) go into code spans, so nobody is notified and no backlink appears on another issue. `<!--` is escaped as `&lt;!--`, so an unclosed comment can't hide the acceptance criteria, edges or key from a reader. `omg-plan:` and `shipyard-key:` are escaped (`omg-plan\:`), as are `Acceptance criteria` headings, `Depends on`/`Blocked by`/`Part of #n` lines and task-list `- [ ] #n` lines, so ticket text can't become a trusted plan link, a second key, an edge or a child.
+- **Idempotent.** A key counts only on an issue by a trusted author (owner, member or collaborator) whose `Part of #<spec>` line names the spec. Holders are found by the key search and among the spec's task-list children; the task list is rewritten right after each create, because GitHub search is eventually consistent. After a partial failure, an immediate re-run may still need a short wait. Keys on other issues are listed under `ignored` and don't count, so an outside issue can't claim a key. Each ticket is then `created`, `unchanged` (no write), `updated` (title, body or labels changed), or `kept-claimed` (never edited) when the issue is closed, has a factory run state, has an open or merged `factory/issue-<n>` PR, or has that branch on origin. A key that is in the tracker but not in the file is reported as `orphaned`. It stays open and stays in the spec's task list, so the captain decides whether to close it.
+- Edges are written in a second pass, once every new issue has its number.
+- **On Azure DevOps** each ticket becomes a work item of the first `factory.intake.itemTypes` type. `System.Description` is the ticket body plus the `shipyard-key:` footer, escaped into HTML by the adapter. The criteria go into `Microsoft.VSTS.Common.AcceptanceCriteria` as an HTML list and the priority into `Microsoft.VSTS.Common.Priority`. The parent is a `System.LinkTypes.Hierarchy-Reverse` link to the spec, added right after the create, and each edge is a `System.LinkTypes.Dependency-Reverse` link to the predecessor, added once every id is known. The spec itself is never edited: its children are its `Hierarchy-Forward` links. An `area-tag` intake source gives a new work item its tag and area path. A `board-column` or `wiql-query` source gets a warning, because enqueue never sets a board column or a state. A link is never removed: when the file drops an edge, enqueue warns and leaves the link for the captain. Trust is the creator's `uniqueName` in `factory.forge.azureDevOps.trustedAuthors`, read from the user config only. With that list empty, enqueue refuses. The spec, every `#n` edge and every key holder must be work items of the forge project. A key holder by a trusted creator with no parent (its parent link failed after the create) is adopted and linked: a trusted, in-project work item that carries this spec's key footer but has no parent counts as a holder, and enqueue edits it and links it to the spec. A key holder outside the forge project is ignored. Model text loses its mention and link signs: `@` before a name or `<GUID>`, and `#` or `!` before a number, become the fullwidth `＠`, `＃` and `！`, so no mention, work item link or pull request link forms. Markup such as `<a data-vss-mention>` can't form at all, because every `<` is escaped. `omg-plan:`, `shipyard-key:` and `Acceptance criteria` headings are escaped as on GitHub.
+- Body files are written to a fresh temporary directory outside the worktree (enqueue refuses if the temporary directory is inside it), then removed. gh reads the guard's own copy of each file.
+- **The mark step.** After the writes, enqueue runs `omg factory check <ids> --mark --yes` over this file's created, updated and unchanged issues only, which adds `factory.intake.marker` to the runnable ones. Orphans and any other task-list line of the spec are never marked. The dry run lists these mark candidates. The launch C3 signature is the confirmation for the issues, the intake label and the marker, so harbor's accept step doesn't apply these labels. The marker label must already exist (`omg factory setup`).
+- `--dry-run` prints every planned write (title, labels and the exact body; new issues show as `#<key>` in edges; on Azure DevOps also the criteria, the priority and the links to add) and writes nothing. The guard refuses any create or edit during a dry run.
+- `--json` prints `{ schemaVersion: 1, ok, dryRun, spec: { id, taskList, planned? }, items, ignored, mark, warnings }`. Each item is `{ key, id, action, bucket, reasons, markCandidate }`, plus `planned` on a dry run. `bucket` and `reasons` come from the mark step's check.
+- Calls: every gh and git read is one of `omg factory check`'s shapes. Writes are the three tracker write shapes above, plus check's marker edit in the mark step. Nothing closes, deletes or merges anything.
+
+| Exit code | Meaning |
+|---|---|
+| 0 | enqueued (or planned, with `--dry-run`) |
+| 1 | a tracker read or write failed, or the mark step did (re-run: it is idempotent) |
+| 2 | usage, or a refused ticket file (nothing written) |
+| 5 | incompatible: no forge, or an unsupported one |
+
+`--json` prints `{ schemaVersion: 1, ok, forge, repo, source, counts, items, mark, warnings }` (`source` is `null` for ids and `--parent`). Each item is `{ id, title, url, bucket, reasons, detail, priority, planSource }`. `reasons` holds the exact reason code (empty when the item is runnable), and `planSource` is `omg-plan`, `issue-body` or `ado-acceptance`. `mark` is `{ marker, requested, confirmed, marked, alreadyMarked, failed }`.
 
 | Exit code | Meaning |
 |---|---|
 | `0` | The check ran (whatever the buckets), including a `--mark` you declined |
 | `1` | An item is `read-failed`, a marker write failed, or the setup itself failed (for example the label list) |
-| `2` | A usage error: a bad id, `--source` or limit; no ids and no intake source; or `--mark` without `--yes` when there is no terminal or with `--json` |
+| `2` | A usage error: a bad id, `--parent`, `--source` or limit; `--parent` with ids, `--source` or `--limit`; no ids and no intake source; or `--mark` without `--yes` when there is no terminal or with `--json` |
 | `5` | Incompatible: the forge config does not match the origin remote, the remote is neither GitHub nor Azure DevOps, this build has no adapter for the forge, or the `--mark` label does not exist |
 
 #### `omg factory heal` (experimental)
@@ -1290,6 +1408,7 @@ omg factory heal close <sig8> [--json]           # close a heal run parked at he
 ```
 
 - **Candidates:** a red push run on the integration branch, or one failure signature on PR runs of two or more head branches in 72 hours. Cancelled, skipped and in-progress runs never count. Jobs in `factory.heal.ignoreJobs` never count. The defaults are "No Committed Build Artifacts" and "Version Consistency Check".
+- **Azure Pipelines:** on an Azure DevOps forge the CI history is the builds of the definition `factory.heal.pipeline: { definitionId }` names. Set it in the base branch's `.copilot/omg.jsonc`, not in the user config: the user config is shared across repositories and wins over the base branch, so a user-config definition can build another repository. Builds of another repository, push builds of another branch and builds of a tag are dropped.
 - **Signature:** each failed job contributes its name and its sorted failing tests. A job with no failing test contributes its failing step and its first `##[error]` line, normalized. The sha256 of the job signatures is the dedupe key, and its first 8 hex characters are the `sig8`.
 - **Classes:** the classifier checks, in order, infra patterns, the known-flaky list at `origin/<base>`, the dev history and an environment diff. The diff covers image, image version, runner, git, node and npm. When the environment changed and the red sha adds no code the green sha lacks, the class is `env-change`. A sha that is green on one image version and red on another is also `env-change`. The other classes are `infra`, `known-flaky`, `intermittent`, `regression`, `regression-or-env` and `unknown`.
 - **State and limits:** each signature is stored in `.omg/state/factory/heal/<sig8>.json`. A run is counted once per signature. The fixed limits are one open heal run and one recorded rerun per signature. The user config sets `factory.heal.dailyRuns` (default 3) and `factory.heal.dailyDebugLanes` (default 4). The project config can only lower them. Over a limit, a signature is queued as `blocked: rate-limit`.
@@ -1341,22 +1460,24 @@ Three scripts in the repository (not in the package) test the factory against a 
 
 ```bash
 node scripts/ado-acceptance.mjs --org https://dev.azure.com/<org> --source C:/Code/ExcavatorTrek \
-  [--phase preflight|create|exercise|heal-drill|capture|cleanup|all] [--run <runId>] \
-  [--pool <self-hosted pool> | --hosted] [--with-lanes] [--project-id <guid>] [--dry-run]
+  [--phase preflight|create|enqueue|exercise|heal-drill|capture|cleanup|all] [--run <runId>] \
+  [--pool <self-hosted pool> | --hosted] [--with-lanes] [--project-id <guid>] [--yes] [--dry-run]
 ```
 
 - **Run:** each run makes one private Agile project named `omg-acc-<yyyymmddHHMM>` (UTC). Its manifest is `~/.omg/acceptance/<runId>.json`. It records every created id and is written before each create. The clone, the OMC recording (`OMG_ADO_RECORD_DIR`) and the capture are kept in `~/.omg/acceptance/<runId>/`. Later phases take `--run`; without it they use the newest manifest.
-- **Phases:** `all` runs `preflight`, `create`, `exercise` and `capture`. `heal-drill` and `cleanup` run only by name.
+- **Phases:** `all` runs `preflight`, `create`, `enqueue`, `exercise` and `capture`. Together they walk the shipyard–factory flow: a spec, its tickets through `omg factory enqueue`, and `omg factory run --next --parent <spec>`. `heal-drill` and `cleanup` run only by name.
   - `preflight` checks az, the `azure-devops` extension, the login, the org, a clean `--source` and the agent pools. It is read-only.
-  - `create` makes the project. It clones `--source` with `git clone --no-local`, commits `azure-pipelines.yml` on `main`, and pushes `main` and the other branches to the new, empty repository (no force). It then creates the `ci` pipeline and one User Story per `## EXC-NNN` ticket of `BACKLOG.md`. Each story gets its acceptance criteria and the tag `factory`, and every `Depends on:` becomes a predecessor link. It runs `omg factory setup` and pushes `.copilot/omg.jsonc`. Last, after every direct push, it creates a blocking build policy on `main` (a branch with required policies refuses direct pushes without bypass permission). It adds no `trustedAuthors`.
-  - `exercise` runs `omg factory check --json`, `omg factory board --json` and `omg factory run <first runnable> --dry-run`.
+  - `create` makes the project. It clones `--source` with `git clone --no-local`, commits `azure-pipelines.yml` on `main`, and pushes `main` and the other branches to the new, empty repository (no force). It then creates the `ci` pipeline and the spec, a Feature work item without the `factory` tag (so it is never intake). The manifest records the spec's id and its creator's `uniqueName`. It runs `omg factory setup` and pushes `.copilot/omg.jsonc`. Last, after every direct push, it creates a blocking build policy on `main` (a branch with required policies refuses direct pushes without bypass permission). It adds no `trustedAuthors`.
+  - `enqueue` hands the tickets to the factory as launch does at C3. On Azure DevOps, enqueue trusts only the `uniqueName`s in the user config's `factory.forge.azureDevOps.trustedAuthors`. When the spec's creator is not listed, the phase prints the user config path and the list before and after, and asks (`--yes` answers yes). The manifest records the name before `omg factory setup --trusted-author <list> --scope user` writes it. A no writes nothing and stops. The phase then turns each `## EXC-NNN` ticket of `BACKLOG.md` into a ticket of `<runId>/tickets.json`: key `exc-nnn`, its acceptance criteria, and each `Depends on:` ticket that the backlog defines as `blockedBy`. It runs `omg factory enqueue --spec <spec> --file <tickets.json> --dry-run --json` and prints the plan. The signature is the next question: on a yes it runs the same command without `--dry-run`. Enqueue creates the User Stories as children of the spec, with the predecessor links, the `factory` tag and the intake marker. A second `--dry-run` must find every ticket `unchanged`.
+  - `exercise` runs `omg factory check --json`, `omg factory check --parent <spec> --json`, `omg factory board --json` and `omg factory run --next --parent <spec> --dry-run --json`. It checks that `check --parent` lists every ticket, that each ticket with a predecessor is `blocked` with `depends-on:#<predecessor>`, and that `--next` picks a runnable ticket.
   - `heal-drill` pushes a failing test to `main` and waits up to 20 minutes for its build. It then runs `omg factory heal scan` and `heal run <sig8> --dry-run`, and reverts the test with a new commit. It disables the build policy (`az repos policy build update --enabled false`) around each of its two pushes and enables it again right after.
   - `capture` runs `ado-capture.mjs` and `ado-fixture-diff.mjs` on the recording.
-  - `cleanup` deletes the project with `az devops project delete`. Azure DevOps soft-deletes it, so it can be restored for 28 days. Cleanup also removes the clone.
-- **Credits:** without `--with-lanes` nothing spends Copilot credits. With it, `exercise` also runs `omg factory run <id>` (capped by the `factory.run` limits, which it prints first) and `omg factory poll --once`, then checks the recording: a draft PR linked to the item, gates read from policy evaluations, the run parked at `awaiting-human: merge`, and the PR never `completed`. `heal-drill` with `--with-lanes` also runs `heal run <sig8>` (one debugger lane) and, when that succeeds, `heal approve` (the ci-heal run).
+  - `cleanup` deletes the project with `az devops project delete`, and with it the spec and the tickets. Azure DevOps soft-deletes it, so it can be restored for 28 days. Cleanup also removes the clone. It prints the `trustedAuthors` this run added and the user config they are in. It never edits the user config, so remove them yourself if they should not stay trusted.
+- **Credits:** without `--with-lanes` nothing spends Copilot credits. With it, `exercise` also runs `omg factory run --next --parent <spec> --json` (capped by the `factory.run` limits, which it prints first), `omg factory poll --once` and `check --parent` again. It then checks the recording and the outcome: the real run took the dry run's pick, a draft PR linked to the item, gates read from policy evaluations, the run parked at `awaiting-human: merge`, the merge gate comment on the item, the rollup line `- #<n> ready to merge: <PR url>` on the spec, no edit of the spec work item, the item no longer runnable, and its dependents still blocked. `heal-drill` with `--with-lanes` also runs `heal run <sig8>` (one debugger lane) and, when that succeeds, `heal approve` (the ci-heal run).
+- **No merge:** the factory never merges. `exercise` and `heal-drill` both end with `az repos pr list --status completed`, and any completed PR in the run's repository fails the phase.
 - **Agents:** the pipeline uses the self-hosted pool `Default` unless you pass `--pool <name>`. A self-hosted agent is free for one job, but you must register it in the org. `--hosted` uses Microsoft-hosted `ubuntu-latest`, which needs the org linked to an Azure subscription. Without an agent, builds stay queued, and `heal-drill` cannot finish.
 - **Cleanup guard:** cleanup needs `--org`, equal to the manifest's org, and deletes only the project id in that run's manifest. Every az call asks for `--output json`, so an unreadable `az devops project show` refuses too. It refuses when the manifest's project name lacks the `omg-acc-` prefix or is not the run id, when `--project-id` differs from the manifest, when `az devops project show` names another project, and when `<runId>/` or its clone is a symlink or a junction.
-- **Dry run:** `--dry-run` prints the exact argv of every command, and every file it would write, for any phase. It runs nothing, not even read-only commands, and writes nothing.
+- **Dry run:** `--dry-run` prints the exact argv of every command, and every file it would write, for any phase. It runs nothing, not even read-only commands, and writes nothing. It prints the questions it would ask, and the user-config change, without asking.
 
 `node scripts/ado-capture.mjs --org https://dev.azure.com/<org> --project <p> --repo <r> [--moment <label>] [--work-items <ids>] [--prs <ids>] [--builds <ids>] [--out <dir>]` needs only node and az, so it can run on another computer. It makes GETs only, through `az devops invoke` (and `az --version`, `az extension show`). It writes fixtures in the format of `src/forge/ado/__tests__/fixtures.ts` into `<out>/<moment>/`, plus the text form of failed build logs, the resource table and the az environment. It also writes `<out>/manifest.json` with SHA-256s. Run it once per moment (for example `draft`, `ready`, `second-push`, `red-build`).
 

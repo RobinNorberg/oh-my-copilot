@@ -2,7 +2,8 @@
  * The Azure DevOps Forge adapter (factory forges design §6, PR 5). Every
  * call is `az devops invoke` through the caller's guarded Exec (see
  * guard.ts for what the guard allows); the adapter never spawns.
- * Capabilities: no heal, no Projects v2, board columns, no webhook intake
+ * Capabilities: heal only with a configured `factory.heal.pipeline` (ADO
+ * parity design §3.2), no Projects v2, board columns, no webhook intake
  * (design §10.9).
  */
 
@@ -13,6 +14,7 @@ import type { Exec } from '../../ship/exec.js';
 import type { Forge, ForgeOptions, ResolvedForgeConfig } from '../types.js';
 import { resolveAzEntry, type AzBinaryDeps, type AzEntry } from './az-binary.js';
 import { adoChecks } from './checks.js';
+import { adoCi } from './ci.js';
 import type { AdoGuardContext } from './guard.js';
 import type { AdoContext } from './invoke.js';
 import { adoMerge } from './merge.js';
@@ -61,6 +63,11 @@ export function adoGuardContext(config: ResolvedForgeConfig, entry: AzEntry): Ad
   return { repo: config.repo, entry, allowedStates: progressStates(config), allowedColumns: progressColumns(config) };
 }
 
+/** The heal guard context (ADO parity design §3.5): the forge repo and az entry, no progress values (the `read` policy refuses every write anyway). */
+export function adoReadGuardContext(config: ResolvedForgeConfig, entry: AzEntry): AdoGuardContext {
+  return { ...adoGuardContext(config, entry), allowedStates: [], allowedColumns: [] };
+}
+
 export function createAzureDevOpsForge(exec: Exec, cwd: string, config: ResolvedForgeConfig, options: AzureDevOpsForgeOptions): Forge {
   if (config.kind !== 'azure-devops' || !config.azureDevOps || !config.repo.project) throw new Error('createAzureDevOpsForge needs a resolved azure-devops forge config');
   const env = options.env ?? process.env;
@@ -75,14 +82,17 @@ export function createAzureDevOpsForge(exec: Exec, cwd: string, config: Resolved
     config: config.azureDevOps,
     intakeItemTypes: config.intake.itemTypes,
   };
+  const pipeline = config.heal?.pipeline;
   return {
     kind: 'azure-devops',
     provider: 'azure-devops',
     repo: config.repo,
-    tracker: adoTracker(ctx, config.intake.source),
+    tracker: adoTracker(ctx, config.intake.source, options.trackerBodyDir),
     reviews: adoReviews(ctx),
     checks: adoChecks(ctx),
     merge: adoMerge(ctx, { stateDir: options.stateDir ?? join(homedir(), '.omg', 'forge'), untrustedRoots }),
-    capabilities: { heal: false, projectsV2: false, boardColumns: true, webhookIntake: false },
+    ...(pipeline ? { ci: adoCi(ctx, pipeline) } : {}),
+    // Heal needs to know which pipeline is CI: only a trusted factory.heal.pipeline names it.
+    capabilities: { heal: pipeline !== undefined, projectsV2: false, boardColumns: true, webhookIntake: false },
   };
 }

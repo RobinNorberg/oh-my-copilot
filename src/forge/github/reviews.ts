@@ -62,6 +62,12 @@ export function ghFindOpenPr(exec: Exec, branch: string, cwd: string): number | 
   return Array.isArray(open) && typeof open[0]?.number === 'number' ? open[0].number : undefined;
 }
 
+/** `gh pr list --head <branch> --base <base> --state merged --json number`: the first merged PR's number, if any. */
+export function ghFindMergedPr(exec: Exec, branch: string, base: string, cwd: string): number | undefined {
+  const merged = ghJson<Array<{ number?: number }>>(exec, ['pr', 'list', '--head', branch, '--base', base, '--state', 'merged', '--json', 'number'], cwd);
+  return Array.isArray(merged) && typeof merged[0]?.number === 'number' ? merged[0].number : undefined;
+}
+
 /** `gh pr create --draft`; the new PR's number from the url gh prints. */
 export function ghCreateDraftPr(exec: Exec, o: { base: string; head: string; title: string; bodyFile: string }, cwd: string): number {
   const out = ghRun(exec, ['pr', 'create', '--draft', '--base', o.base, '--head', o.head, '--title', o.title, '--body-file', o.bodyFile], cwd);
@@ -111,6 +117,7 @@ export function ghViewPr(exec: Exec, pr: number, cwd: string): ForgePr {
 export function githubReviews(exec: Exec, cwd: string): ForgeReviews {
   return {
     findOpenPrForBranch: (branch) => ghFindOpenPr(exec, branch, cwd),
+    findMergedPrForBranch: (branch, base) => ghFindMergedPr(exec, branch, base, cwd),
     createDraftPr: (o) => ghCreateDraftPr(exec, o, cwd),
     viewPr: (pr) => ghViewPr(exec, pr, cwd),
     prHead: (pr) => ghPrHead(exec, pr, cwd),

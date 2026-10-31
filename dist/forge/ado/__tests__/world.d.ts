@@ -5,6 +5,7 @@
  * Exec, so every call a test makes was also allowed by the guard, and each
  * write's body is the guard's validated copy.
  */
+import { type TrackerWriteContext } from '../../../factory/run/exec.js';
 import type { ForgeRepo, IntakeSource, ResolvedForgeConfig } from '../../types.js';
 import { type AzEntry } from '../az-binary.js';
 import type { AdoGuardContext } from '../guard.js';
@@ -29,10 +30,13 @@ export interface Call {
     inFile?: string;
 }
 /** A forge over the fixtures, behind the factory guard; `calls` records what reached the fixture Exec. */
+/** `writes`: the tracker write context `omg factory enqueue` sets (none = the engine and check); `bodyDir`: the adapter's body directory, default writes.bodyDir. */
 export declare function adoWorld(o?: {
     fixtures?: readonly AdoFixture[];
     entry?: AzEntry;
     source?: IntakeSource;
+    writes?: TrackerWriteContext;
+    bodyDir?: string;
 }): {
     forge: import("../../types.js").Forge;
     calls: Call[];

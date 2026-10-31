@@ -4,9 +4,10 @@
  * Resident intake daemon: transport adapters (smee/cloudflared/direct) live
  * outside the OMC boundary — the daemon only receives already-unpacked
  * webhook events as POSTs. It verifies the HMAC signature, enforces the repo
- * whitelist, applies the intake label gate (tracker issues) or the completed
- * CI failure gate (check-suite webhooks), and routes through the shared
- * routing pure function (T1 seam). v1 processes events serially.
+ * whitelist, applies the intake label gate (tracker issues) and routes through
+ * the shared routing pure function (T1 seam). Check-suite webhooks are audited
+ * and discarded; red CI reaches the heal queue through workflow_run. v1
+ * processes events serially.
  */
 
 import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
@@ -22,13 +23,11 @@ import { withFileLockSync } from '../lib/file-lock.js';
 import { enqueueWebhookRun, healStateDir } from './heal/state.js';
 
 export const INTAKE_LABEL = 'intake';
-export const INTAKE_ROUTE_TABLE: RouteTable = { 'success:intake': { stage: 'intent', skill: 'intent' } };
+/** Tracker intake is harbor's job (verify, desk, signed dispositions); intent needs a live contributor. */
+export const INTAKE_ROUTE_TABLE: RouteTable = { 'success:intake': { stage: 'harbor', skill: 'harbor' } };
 
-/** CI check-suite failures feed the diagnose stage of the same chain. */
-export const CI_ROUTE_TABLE: RouteTable = { 'failed:ci': { stage: 'diagnose', skill: 'diagnose' } };
-
-/** A check-suite head_branch admitted into a diagnose prompt. */
-export const HEAD_BRANCH_PATTERN = /^[\w./-]{1,200}$/;
+/** Why a failed check suite starts nothing: heal owns CI via workflow_run. */
+const CI_FAILURE_DISCARD_REASON = 'CI failures are healed from workflow_run';
 
 /** GitHub issue webhook payload subset the daemon needs. */
 export interface TrackerEvent {
@@ -38,7 +37,7 @@ export interface TrackerEvent {
   issue?: { number?: number; title?: string; html_url?: string; labels?: Array<{ name?: string }> };
 }
 
-/** GitHub check-run webhook payload subset the daemon needs (CI failure intake). */
+/** GitHub check-run webhook payload subset the daemon needs (audited discard). */
 export interface CheckRunEvent {
   action?: string;
   check_suite?: { conclusion?: string; head_branch?: string };
@@ -110,44 +109,22 @@ export function routeTrackerEvent(
   for (const l of event.issue?.labels ?? []) if (l.name) labels.add(l.name);
   const labeled = (event.action === 'labeled' || event.action === 'opened') && labels.has(INTAKE_LABEL);
   if (!labeled) return { kind: 'discarded', reason: `no ${INTAKE_LABEL} label (action: ${event.action ?? '?'})` };
+  const issueNumber: unknown = event.issue?.number;
+  if (issueNumber !== undefined && !(typeof issueNumber === 'number' && Number.isSafeInteger(issueNumber) && issueNumber > 0)) {
+    return { kind: 'discarded', reason: INVALID_ISSUE_NUMBER };
+  }
   const directive = decideNextStage('success', 'intake', table);
   if (!directive) return { kind: 'discarded', reason: 'route table has no intake directive' };
-  return { kind: 'routed', directive, issueNumber: event.issue?.number, issueUrl: event.issue?.html_url };
+  return { kind: 'routed', directive, issueNumber: issueNumber as number | undefined, issueUrl: event.issue?.html_url };
 }
 
-/**
- * Pure CI intake decision: whitelist -> completed/failure gate -> shared
- * routing seam. Same outcome shape as routeTrackerEvent so the listener
- * dispatches both webhook kinds uniformly.
- */
-export function routeCheckFailure(
-  event: CheckRunEvent,
-  whitelist: ReadonlyArray<string>,
-  table: RouteTable = CI_ROUTE_TABLE,
-): RouteOutcome {
-  const repo = event.repository?.full_name;
-  if (!repo || !whitelist.includes(repo)) {
-    return { kind: 'rejected', status: 403, reason: `repository outside whitelist: ${repo ?? '(missing)'}` };
-  }
-  const failed = event.action === 'completed' && event.check_suite?.conclusion === 'failure';
-  if (!failed) {
-    return { kind: 'discarded', reason: `not a failed check run (action: ${event.action ?? '?'}, conclusion: ${event.check_suite?.conclusion ?? '?'})` };
-  }
-  const directive = decideNextStage('failed', 'ci', table);
-  if (!directive) return { kind: 'discarded', reason: 'route table has no ci directive' };
-  return { kind: 'routed', directive };
+/** Harbor's own single-ship form, as the Copilot plugin registers the skill; harbor writes the tracker in English. */
+export function buildHarborPrompt(directive: ChainDirective, issueNumber?: number, issueUrl?: string): string {
+  const target = issueNumber !== undefined ? `#${issueNumber}` : issueUrl ?? '#?';
+  return `/oh-my-copilot:${directive.skill} look at ${target}`;
 }
 
-export function buildIntentPrompt(directive: ChainDirective, issueNumber?: number, issueUrl?: string): string {
-  const target = issueUrl ?? `(issue #${issueNumber ?? '?'})`;
-  return `/${directive.skill} 处理 tracker 进货：${target}。追问以 issue 评论回贴；回写契约：docs/intents/<slug>/ = 内容，issue 评论 = 记录指针，标签转 needs-review。`;
-}
-
-export function buildDiagnosePrompt(directive: ChainDirective, repo: string, branch?: string): string {
-  const target = branch ? `${repo}@${branch}` : repo;
-  return `/${directive.skill} 处理 CI 失败：${target}。诊断失败原因并尝试修复；无法自动修复时留下诊断结论并停住（needs-human）。`;
-}
-
+const INVALID_ISSUE_NUMBER = 'invalid issue number';
 const ISSUE_URL_PATTERN = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+$/;
 
 function issueUrlMatchesRepo(issueUrl: string | undefined, repo: string): boolean {
@@ -221,9 +198,9 @@ interface ChainLinkRequest {
   intentId: string;
   directive: ChainDirective;
   prompt: string;
-  /** Tracker fields copied into the pre-written ledger (CI failures carry none). */
+  /** Tracker fields copied into the pre-written ledger. */
   tracker?: SpawnNextTracker;
-  /** Extra audit fields for the routed record (issue pointer or CI target). */
+  /** Extra audit fields for the routed record (the issue pointer). */
   routedAuditFields?: Record<string, unknown>;
   config: ListenerConfig;
   deps: ListenerDeps;
@@ -277,6 +254,7 @@ export function processEvent(event: TrackerEvent, config: ListenerConfig, deps: 
     return { status: outcome.status, kind: 'rejected', detail: outcome.reason };
   }
   if (outcome.kind === 'discarded') {
+    if (outcome.reason === INVALID_ISSUE_NUMBER) audit({ kind: 'discarded', reason: outcome.reason });
     return { status: 204, kind: 'discarded', detail: outcome.reason };
   }
 
@@ -290,10 +268,9 @@ export function processEvent(event: TrackerEvent, config: ListenerConfig, deps: 
   return spawnChainLink({
     intentId,
     directive: outcome.directive,
-    prompt: buildIntentPrompt(outcome.directive, outcome.issueNumber, outcome.issueUrl),
-    tracker: outcome.issueNumber !== undefined
-      ? { repo, issue: outcome.issueNumber, nextLabel: 'needs-review', failedLabel: 'failed' }
-      : undefined,
+    prompt: buildHarborPrompt(outcome.directive, outcome.issueNumber, outcome.issueUrl),
+    // No labels: harbor owns the issue's labels. The pointer lets the watchdog flag a stall.
+    tracker: outcome.issueNumber !== undefined ? { repo, issue: outcome.issueNumber } : undefined,
     routedAuditFields: { issue: outcome.issueUrl ?? outcome.issueNumber },
     config,
     deps,
@@ -301,36 +278,24 @@ export function processEvent(event: TrackerEvent, config: ListenerConfig, deps: 
   });
 }
 
-/** Orchestrates one CI check-suite event: same guardrail/ledger/AFK flow, no tracker. */
+/**
+ * One CI check-suite event. It never spawns a session: a failure is an
+ * audited discard, because heal owns CI through workflow_run (the retired
+ * route spawned a billed session for a `diagnose` skill that does not exist).
+ */
 export function processCheckFailureEvent(event: CheckRunEvent, config: ListenerConfig, deps: ListenerDeps = {}): EventResult {
   const audit = deps.audit ?? defaultAudit(config.cwd);
-  const outcome = routeCheckFailure(event, config.whitelist);
-
-  if (outcome.kind === 'rejected') {
-    audit({ kind: 'rejected', status: outcome.status, reason: outcome.reason });
-    return { status: outcome.status, kind: 'rejected', detail: outcome.reason };
+  const repo = event.repository?.full_name;
+  if (!repo || !config.whitelist.includes(repo)) {
+    const reason = `repository outside whitelist: ${repo ?? '(missing)'}`;
+    audit({ kind: 'rejected', status: 403, reason });
+    return { status: 403, kind: 'rejected', detail: reason };
   }
-  if (outcome.kind === 'discarded') {
-    return { status: 204, kind: 'discarded', detail: outcome.reason };
+  if (event.action !== 'completed' || event.check_suite?.conclusion !== 'failure') {
+    return { status: 204, kind: 'discarded', detail: `not a failed check run (action: ${event.action ?? '?'}, conclusion: ${event.check_suite?.conclusion ?? '?'})` };
   }
-
-  const repo = event.repository?.full_name ?? '';
-  const branch = event.check_suite?.head_branch;
-  // The branch name is pusher-controlled and lands in the session prompt.
-  if (branch !== undefined && !HEAD_BRANCH_PATTERN.test(branch)) {
-    audit({ kind: 'rejected', status: 422, reason: 'invalid head_branch', branch: branch.slice(0, 200) });
-    return { status: 422, kind: 'rejected', detail: 'invalid head_branch' };
-  }
-  const intentId = `${repo}:ci:${branch ?? 'unknown'}`.replace(/[^\w.-]/g, '-');
-  return spawnChainLink({
-    intentId,
-    directive: outcome.directive,
-    prompt: buildDiagnosePrompt(outcome.directive, repo, branch),
-    routedAuditFields: { target: branch ? `${repo}@${branch}` : repo },
-    config,
-    deps,
-    audit,
-  });
+  audit({ kind: 'discarded', reason: CI_FAILURE_DISCARD_REASON, repo });
+  return { status: 204, kind: 'discarded', detail: CI_FAILURE_DISCARD_REASON };
 }
 
 function defaultEnqueueHeal(cwd: string, runId: string): boolean {

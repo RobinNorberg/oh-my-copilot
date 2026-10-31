@@ -5,12 +5,15 @@
  * (smee.io / cloudflared / direct) live outside the OMC boundary: the daemon
  * only receives already-unpacked webhook events as POSTs and does the OMC-side
  * work itself (HMAC verification, repo whitelist, intake label gate, routing
- * through the shared pure function, headless intent session spawn).
+ * through the shared pure function, headless harbor session spawn).
  *
  * `omg factoryinit` — seeds the project route table (`.omg/factory-routes.json`,
  * the single source of truth the SessionEnd chain enqueuer reads) and validates
- * the factory prerequisites. Default seeds the narrow starter loop; --no-narrow
- * seeds the full-pipeline widening template. Never overwrites without --force.
+ * the factory prerequisites. It seeds the narrow starter loop; --no-narrow is
+ * retired and refuses. Never overwrites without --force. `--check` audits an
+ * existing table; `--migrate` rewrites an old one (backup first).
+ *
+ * `omg factory chain status` (alias `omg factory status`) — the chain audit.
  *
  * Liveness: pid file at <omc root>/state/factory-listener.json (SessionStart
  * supervision reads it) plus a GET /status endpoint on the listening port.
@@ -18,10 +21,12 @@
 import { Command } from 'commander';
 import { integerOption } from '../utils/integer-option.js';
 import chalk from 'chalk';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { INTAKE_ROUTE_TABLE, startListener, stopListener } from '../../factory/listener.js';
 import { readChainStatus } from '../../factory/status.js';
+import { canonicalChainSkill, chainSkillStatus } from '../../hooks/session-end/routing.js';
+import { LABEL_PATTERN, resolveChainSkill } from '../../hooks/session-end/spawn-next.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { resolveProjectConfigPath } from '../../config/project-config-path.js';
 import { CopilotRunManager, defaultCopilotRunDeps } from '../../copilot-run/job.js';
@@ -36,11 +41,17 @@ import { resolveShipConfig, userConfigLayers } from '../../ship/config.js';
 import { defaultExec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { healCommand } from '../../factory/heal/cli.js';
-import { defaultFactoryCheckDeps, factoryCheckCommand } from './factory-check.js';
+import { defaultFactoryCheckDeps, factoryCheckCommand, ttyConfirm } from './factory-check.js';
+import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_INCOMPATIBLE, EXIT_CHECK_USAGE } from '../../factory/check/cli.js';
+import { runFactoryEnqueue } from '../../factory/enqueue.js';
 import { resolveHealConfig } from '../../factory/heal/config.js';
 import { defaultLedgerDir } from '../../factory/run/ledger.js';
 import { listenForgeRefusal } from '../../factory/setup/detect.js';
 import { factorySetupCommand } from './factory-setup.js';
+import { factoryBoardCommand } from './factory-board.js';
+import { checkEnvFor, fetchBase, forgeReadExec, parseItemId } from '../../factory/check/cli.js';
+import { BUCKET_ORDER, checkItems, plainText } from '../../factory/check/score.js';
+import { createForge } from '../../forge/index.js';
 export function renderChainStatus(status) {
     const lines = [];
     lines.push(`链状态 ${status.directory}`);
@@ -134,9 +145,31 @@ export function renderFactoryRunState(state) {
         lines.push(chalk.gray(`  ${h.at} ${h.from ?? '-'} -> ${h.to}: ${h.note}`));
     return lines.join('\n');
 }
-function printOutcome(json, outcome) {
+/**
+ * `run --next`: the first runnable item in `omg factory check` order
+ * (priority, then id) among the spec's children (`--parent`) or the intake
+ * source, read through check's read-only guard. A merged, cancelled, failed
+ * or active run, an own factory PR open or merged, or an unsatisfied
+ * dependency is never runnable (check/rules.ts), so --next never re-runs a
+ * finished item. Null with the checked rows when nothing is runnable.
+ */
+function pickNext(deps, root, base, loaded, parent) {
+    const { config } = loaded;
+    const source = config.intake.source;
+    if (parent === undefined && !source)
+        throw new FactoryUsageError('--next needs --parent <spec> or factory.intake.source');
+    const read = forgeReadExec(deps.exec, config, root);
+    const forge = createForge(read.exec, root, config, read.options);
+    const warnings = [];
+    const baseSha = fetchBase(read.exec, root, base, warnings);
+    const ids = parent !== undefined ? forge.tracker.viewItem(parent).children : forge.tracker.queryItems(source, config.intake.limit);
+    const items = checkItems(forge, ids, checkEnvFor(read.exec, root, config, base, baseSha));
+    return { next: items.find((r) => r.bucket === 'runnable') ?? null, items, warnings };
+}
+const bucketCounts = (items) => Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length]));
+function printOutcome(json, outcome, next) {
     if (json) {
-        console.log(JSON.stringify({ ok: outcome.exitCode === 0, ...outcome }, null, 2));
+        console.log(JSON.stringify({ ok: outcome.exitCode === 0, ...(next !== undefined ? { next } : {}), ...outcome }, null, 2));
         return;
     }
     if (outcome.state)
@@ -151,10 +184,22 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
     run
         .description('Experimental: drive one issue through implement -> draft PR -> independent review / fix rounds -> prepare -> CI gates, then park for the human merge')
         .argument('[issue]', 'GitHub issue or Azure DevOps work item number')
+        .option('--next', 'Run the next runnable item (omg factory check order: priority, then id); exit 0 when nothing is runnable')
+        .option('--parent <spec>', 'With --next: pick among the children of this spec item instead of factory.intake.source')
         .option('--dry-run', 'Resolve the issue and plan and print the next step; no state, lanes or pushes')
         .option('--json', 'JSON output')
         .action((issueRaw, o) => factoryGuarded(Boolean(o.json), async () => {
-        const issue = parseIssue(issueRaw);
+        if (o.next && issueRaw !== undefined)
+            throw new FactoryUsageError('--next takes no issue: it picks the next runnable item');
+        if (o.parent !== undefined && !o.next)
+            throw new FactoryUsageError('--parent applies to --next');
+        let parent;
+        try {
+            parent = o.parent === undefined ? undefined : parseItemId(o.parent);
+        }
+        catch (error) {
+            throw new FactoryUsageError(error instanceof Error ? error.message : String(error));
+        }
         const root = factoryRoot(exec);
         const { limits, warnings } = deps.limits(root);
         for (const w of warnings)
@@ -163,6 +208,29 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         const loaded = deps.forge?.(root, base);
         for (const w of loaded?.warnings ?? [])
             console.error(chalk.yellow(w));
+        let issue;
+        let picked;
+        if (o.next) {
+            if (!loaded)
+                throw new FactoryUsageError('--next needs the forge config (omg factory setup)');
+            const { next, items, warnings: pickWarnings } = pickNext(deps, root, base, loaded, parent);
+            for (const w of pickWarnings)
+                console.error(chalk.yellow(plainText(w)));
+            const counts = bucketCounts(items);
+            if (!next) {
+                if (o.json)
+                    console.log(JSON.stringify({ ok: true, next: null, message: 'nothing runnable', counts }, null, 2));
+                else
+                    console.log(`nothing runnable (${BUCKET_ORDER.map((b) => `${counts[b]} ${b}`).join(', ')})`);
+                return 0;
+            }
+            issue = picked = next.id;
+            if (!o.json)
+                console.log(chalk.cyan(`next runnable: #${next.id} ${next.title}`));
+        }
+        else {
+            issue = parseIssue(issueRaw);
+        }
         // The full untrusted roots, never a partial list (critic amendments §A.14; the engine re-checks).
         const forge = loaded ? { config: loaded.config, options: factoryForgeOptions(root) } : undefined;
         let signals = 0;
@@ -186,7 +254,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
                 interrupted: () => signals > 0,
                 warn: (m) => console.error(chalk.yellow(m)),
             });
-            printOutcome(Boolean(o.json), outcome);
+            printOutcome(Boolean(o.json), outcome, picked);
             return outcome.exitCode;
         }
         finally {
@@ -249,11 +317,46 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
     }));
     return run;
 }
+/** `omg factory enqueue` (shipyard ↔ factory design §3.2-§3.4); the command lives in src/factory/enqueue.ts. */
+export function factoryEnqueueCommand(deps) {
+    return new Command('enqueue')
+        .description('Push launch\'s approved tickets to the tracker as children of a spec (GitHub or Azure DevOps; idempotent by shipyard-key)')
+        .requiredOption('--spec <id>', 'the parent spec issue')
+        .requiredOption('--file <path>', 'the ticket file launch wrote (schemaVersion 1)')
+        .option('--dry-run', 'print the exact writes and write nothing')
+        .option('--json', 'JSON output (schemaVersion 1)')
+        .addHelpText('after', [
+        '',
+        'Without --dry-run, enqueue creates or updates the items (with the intake label and a priority label),',
+        'rewrites the spec\'s task list, then runs the mark step `omg factory check <ids> --mark --yes` over',
+        'this file\'s created, updated and unchanged items (never orphans), which adds factory.intake.marker',
+        'to the runnable ones. The launch C3 signature is the confirmation',
+        'for all of it: run --dry-run first and show its output at C3. Items already claimed by a factory run',
+        'are never edited, and items whose key left the file are reported as orphaned, never closed.',
+        'On Azure DevOps the items are work items of factory.intake.itemTypes[0] with the AC and priority fields,',
+        'linked to the spec (parent) and their predecessors; the spec itself is not edited.',
+    ].join('\n'))
+        .action(async (o) => {
+        try {
+            process.exitCode = await runFactoryEnqueue(o, deps);
+        }
+        catch (error) {
+            const message = plainText(error instanceof Error ? error.message : String(error));
+            if (o.json)
+                deps.out(JSON.stringify({ ok: false, error: message }, null, 2));
+            else
+                deps.err(chalk.red(`Error: ${message}`));
+            process.exitCode = error instanceof CheckUsageError ? EXIT_CHECK_USAGE : error instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
+        }
+    });
+}
 export function factoryCommand() {
     const cmd = new Command('factory');
     cmd.description('Software factory automation (chain trigger + intake listener)');
     cmd.addCommand(factoryRunCommand());
     cmd.addCommand(factoryCheckCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
+    cmd.addCommand(factoryEnqueueCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
+    cmd.addCommand(factoryBoardCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
     cmd.addCommand(healCommand({
         exec: defaultExec,
         base: defaultFactoryRunDeps.base,
@@ -269,7 +372,7 @@ export function factoryCommand() {
     cmd.addCommand(factorySetupCommand());
     cmd
         .command('listen')
-        .description('Run the intake listener daemon: HMAC-verified webhook events -> intake label gate -> headless intent sessions')
+        .description('Run the intake listener daemon: HMAC-verified webhook events -> intake label gate -> headless harbor sessions')
         .option('--port <n>', 'port to listen on (transport adapters forward here)', integerOption(0, 65535), 7788)
         .option('--host <addr>', 'host to bind to (default: 127.0.0.1 for localhost only; set to 0.0.0.0 only when transport adapter runs on another machine)', '127.0.0.1')
         .requiredOption('--repo <names>', 'repository whitelist, comma-separated owner/name')
@@ -311,88 +414,97 @@ export function factoryCommand() {
     cmd
         .command('init')
         .description('Seed the project route table .omg/factory-routes.json (the chain-routing source of truth) and validate factory prerequisites')
-        // Negatable option: Commander defaults `narrow` to true, so the default
-        // seed is the narrow starter loop; --no-narrow seeds the widening template.
-        .option('--no-narrow', 'seed the full-pipeline widening template (intake -> intent -> launch -> diagnose) instead of the narrow starter loop')
+        // Negatable option: Commander defaults `narrow` to true. --no-narrow is
+        // kept only so that it refuses with a pointer instead of "unknown option".
+        .option('--no-narrow', 'retired: the full-pipeline template (intake -> intent -> launch -> diagnose) now refuses')
         .option('--cwd <dir>', 'project directory to seed (defaults to the working directory)', process.cwd())
         .option('--force', 'replace an existing route table (read it first — it is the routing source of truth)', false)
-        .action((options) => {
-        const result = runFactoryInit({ narrow: options.narrow, cwd: options.cwd, force: options.force });
+        .option('--check', 'print every route of the existing table with its status and replacement (read-only; exit 1 when a route needs --migrate)')
+        .option('--migrate', 'rewrite an old table to the narrow one: captain/retired routes removed, intake -> harbor; writes a .bak first')
+        .option('--yes', 'confirm --migrate without a prompt (required without an interactive terminal)')
+        .action(async (options) => {
+        let result;
+        if (options.check && options.migrate)
+            result = { exitCode: 2, message: 'factory init: --check and --migrate are mutually exclusive' };
+        else if (options.check)
+            result = checkFactoryRoutes(options.cwd);
+        else if (options.migrate) {
+            result = await migrateFactoryRoutes({ cwd: options.cwd, yes: options.yes, isTTY: Boolean(process.stdin.isTTY), confirm: ttyConfirm });
+        }
+        else
+            result = runFactoryInit({ narrow: options.narrow, cwd: options.cwd, force: options.force });
         if (result.exitCode === 0) {
-            console.log(chalk.green(result.message));
+            console.log(options.check ? result.message : chalk.green(result.message));
         }
         else {
-            console.error(chalk.red(result.message));
+            console.error(options.check ? result.message : chalk.red(result.message));
             process.exitCode = result.exitCode;
         }
     });
     // Read-only audit view of this project's chain: decision trail, stop
     // markers, live ledgers, stalled links (D2). Never writes.
-    cmd
+    const chainStatus = (options) => {
+        const status = readChainStatus(process.cwd());
+        console.log(options.json ? JSON.stringify(status, null, 2) : renderChainStatus(status));
+    };
+    const chain = cmd.command('chain').description('Legacy SessionEnd chain (frozen: single intake -> harbor hop)');
+    chain
         .command('status')
         .description('Summarize this project\'s chain decisions, stop markers, and stalled links (read-only)')
         .option('--json', 'Output as JSON')
-        .action((options) => {
-        const status = readChainStatus(process.cwd());
-        if (options.json) {
-            console.log(JSON.stringify(status, null, 2));
-            return;
-        }
-        console.log(renderChainStatus(status));
-    });
+        .action(chainStatus);
+    // Kept so existing scripts work; `omg factory run status <issue>` is the engine's.
+    cmd
+        .command('status')
+        .description('Alias of omg factory chain status (legacy chain audit, read-only)')
+        .option('--json', 'Output as JSON')
+        .action(chainStatus);
     return cmd;
 }
 /**
  * Narrow starter route table: exactly the listener's INTAKE_ROUTE_TABLE — the
- * single intake -> intent hop. Everything after a completed intent session
+ * single intake -> harbor hop. Everything after a completed harbor session
  * halts (`no-route`) until the project deliberately widens the table.
  */
 export function buildRouteTableNarrow() {
     return { ...INTAKE_ROUTE_TABLE };
 }
 /**
- * Full-pipeline widening template: a documented example widening the starter
- * loop into the intent -> launch -> diagnose progression. Keys are
- * `outcome:reason` pairs (the listener's intake label event, or the ending
- * session's outcome + hook reason); values name the next stage/skill. This is
- * a starting point to edit per project — a missing route halts the chain, and
- * `skill: "stop"` declares a terminal stage.
- */
-export function buildRouteTableFull() {
-    return {
-        'success:intake': { stage: 'intent', skill: 'intent' },
-        'success:intent': { stage: 'launch', skill: 'launch' },
-        'success:launch': { stage: 'diagnose', skill: 'diagnose' },
-    };
-}
-/**
  * Factory prerequisites, checked loudly before anything is written:
- * harbor needs the OMC state root (`.omg/state/`) and the shipyard layout
- * needs `docs/design/`.
+ * harbor needs the OMC state root (`.omg/state/`) and the yard's two day-one
+ * faces drydock seeds (`CLAUDE.md` + `GLOSSARY.md`).
  */
 export function validateFactoryPrerequisites(cwd) {
     const missing = [];
     if (!existsSync(join(getOmcRoot(cwd), 'state')))
         missing.push('.omg/state/');
-    if (!existsSync(join(cwd, 'docs', 'design')))
-        missing.push('docs/design/');
+    for (const face of ['CLAUDE.md', 'GLOSSARY.md']) {
+        if (!existsSync(join(cwd, face)))
+            missing.push(face);
+    }
     return { ok: missing.length === 0, missing };
 }
 /**
- * `omg factoryinit`: seed `.omg/factory-routes.json` — narrow starter table
- * by default, full widening template with narrow:false. Refuses loudly when
+ * `omg factoryinit`: seed `.omg/factory-routes.json` with the narrow starter
+ * table. narrow:false (the retired full template) refuses. Refuses loudly when
  * prerequisites are missing and never overwrites an existing table without
  * force (the SessionEnd chain enqueuer reads that file as the single source
  * of truth).
  */
 export function runFactoryInit(options = {}) {
+    if (options.narrow === false) {
+        return {
+            exitCode: 1,
+            message: 'factory init refused: --no-narrow is retired. Its full template (intake -> intent -> launch -> diagnose) chained launch, which needs a live captain, into a diagnose skill that does not exist. Run launch in a session and deliver each issue with omg factory run <issue>; CI: failed push runs of ci.yml on the dev branch are queued by the listener (workflow_run) and processed by the next omg factory heal scan; failures on other branches or workflows are no longer acted on by the listener (run omg factory heal scan manually). See the factory section of docs/REFERENCE.md.',
+        };
+    }
     const cwd = resolve(options.cwd ?? process.cwd());
     const routesPath = join(getOmcRoot(cwd), 'factory-routes.json');
     const prerequisites = validateFactoryPrerequisites(cwd);
     if (!prerequisites.ok) {
         return {
             exitCode: 1,
-            message: `factory init refused: missing prerequisites (${prerequisites.missing.join(', ')}). Harbor needs .omg/state/ (run an OMC session or omg setup first); the shipyard layout needs docs/design/. Point --cwd at the project root.`,
+            message: `factory init refused: missing prerequisites (${prerequisites.missing.join(', ')}). Harbor needs .omg/state/ (run an OMC session or omg setup first); the yard faces CLAUDE.md and GLOSSARY.md come from /oh-my-copilot:drydock. Point --cwd at the project root.`,
         };
     }
     if (existsSync(routesPath) && !options.force) {
@@ -401,7 +513,7 @@ export function runFactoryInit(options = {}) {
             message: `factory init refused: ${routesPath} already exists and the project route table is never overwritten. Read it first, then pass --force to replace it.`,
         };
     }
-    const table = options.narrow === false ? buildRouteTableFull() : buildRouteTableNarrow();
+    const table = buildRouteTableNarrow();
     try {
         mkdirSync(join(routesPath, '..'), { recursive: true });
         writeFileSync(routesPath, `${JSON.stringify(table, null, 2)}\n`, 'utf8');
@@ -409,11 +521,153 @@ export function runFactoryInit(options = {}) {
     catch (error) {
         return { exitCode: 1, message: `factory init failed: cannot write ${routesPath}: ${error.message}` };
     }
-    const mode = options.narrow === false ? 'full-pipeline widening template' : 'narrow starter table';
     const routes = Object.entries(table).map(([key, directive]) => `${key} -> ${directive.stage}/${directive.skill}`).join('; ');
     return {
         exitCode: 0,
-        message: `factory init wrote ${routesPath} (${mode}): ${routes}. The SessionEnd chain enqueuer reads this file as the single source of truth — a missing route halts the chain, and skill "stop" marks a terminal stage.`,
+        message: `factory init wrote ${routesPath} (narrow starter table): ${routes}. The SessionEnd chain enqueuer reads this file as the single source of truth — a missing route halts the chain, and skill "stop" marks a terminal stage.`,
     };
+}
+function readRawRoutes(routesPath) {
+    if (!existsSync(routesPath))
+        return null;
+    const raw = readFileSync(routesPath, 'utf8');
+    try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+            return { ok: true, raw, table: parsed };
+    }
+    catch {
+        // reported below
+    }
+    return { ok: false, message: `${routesPath} is not a JSON object; fix it by hand or re-run omg factory init --force` };
+}
+function classifyRoute(cwd, key, value) {
+    const entry = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const stage = typeof entry.stage === 'string' ? entry.stage : '';
+    const skill = typeof entry.skill === 'string' ? entry.skill : '';
+    const row = (status, replacement) => ({ key, stage, skill, status, replacement });
+    if (!key.includes(':') || typeof entry.stage !== 'string' || typeof entry.skill !== 'string') {
+        return row('invalid', 'ignored by the chain: not an outcome:reason route with a stage and a skill');
+    }
+    const name = canonicalChainSkill(skill);
+    const status = chainSkillStatus(skill);
+    if (status === 'retired')
+        return row(status, 'none: omg factory heal scan handles CI failures');
+    if (status === 'captain') {
+        return row(status, name === 'launch'
+            ? 'none: run /oh-my-copilot:launch with the accepted intent'
+            : `none: run /oh-my-copilot:${name} in a session (it needs a live captain)`);
+    }
+    if (!LABEL_PATTERN.test(stage) || !LABEL_PATTERN.test(skill))
+        return row('invalid', 'ignored by the chain: stage or skill has characters outside [A-Za-z0-9_.-]');
+    if (name === 'stop')
+        return row('terminal', '');
+    if (status === 'deprecated') {
+        return row(status, key === 'success:intake' ? 'success:intake -> harbor' : 'still spawns; tracker intake belongs to harbor');
+    }
+    const resolved = resolveChainSkill(cwd, skill);
+    if (resolved.ok)
+        return row('ok', '');
+    return row('unknown', resolved.hint
+        ? `halts the chain (route-unknown): ${resolved.hint}`
+        : 'halts the chain (route-unknown): no bundled or project skill of this name');
+}
+function renderRouteRows(rows) {
+    const cells = [['route', 'skill', 'status', 'replacement'], ...rows.map((r) => [r.key, r.skill, r.status, r.replacement])];
+    const widths = [0, 1, 2].map((i) => Math.max(...cells.map((c) => c[i].length)));
+    return cells.map((c) => c.map((cell, i) => (i < 3 ? cell.padEnd(widths[i]) : cell)).join('  ').trimEnd()).join('\n');
+}
+/** Routes `--migrate` rewrites: refused skills drop out, the old intake -> intent hop becomes intake -> harbor. */
+function needsMigration(row) {
+    return row.status === 'captain' || row.status === 'retired' || (row.status === 'deprecated' && row.key === 'success:intake');
+}
+/**
+ * `omg factory init --check`: classify every route of the project table
+ * (read-only). Exit 1 when a route halts at runtime (captain or retired
+ * skill) or the table is malformed, so `--migrate` is due; else 0.
+ */
+export function checkFactoryRoutes(cwd = process.cwd()) {
+    const root = resolve(cwd);
+    const routesPath = join(getOmcRoot(root), 'factory-routes.json');
+    const read = readRawRoutes(routesPath);
+    if (!read)
+        return { exitCode: 0, rows: [], message: `no route table at ${routesPath}; nothing to check` };
+    if (!read.ok)
+        return { exitCode: 1, rows: [], message: `factory init --check: ${read.message}` };
+    const rows = Object.entries(read.table).map(([key, value]) => classifyRoute(root, key, value));
+    const due = rows.filter(needsMigration);
+    const summary = due.some((r) => r.status === 'captain' || r.status === 'retired')
+        ? `${due.length} route(s) need migration: captain and retired routes halt the chain (route-retired:<skill>). Run omg factory init --migrate.`
+        : due.length > 0
+            ? `${due.length} route(s) can be migrated (omg factory init --migrate).`
+            : 'no route needs migration.';
+    return {
+        exitCode: rows.some((r) => r.status === 'captain' || r.status === 'retired') ? 1 : 0,
+        rows,
+        message: `${routesPath}\n${rows.length > 0 ? renderRouteRows(rows) : '(empty table)'}\n${summary}`,
+    };
+}
+/**
+ * `omg factory init --migrate`: back the table up to
+ * `factory-routes.json.bak-<timestamp>` (never overwriting a backup), then
+ * drop the captain/retired routes and turn `success:intake -> intent` into
+ * `-> harbor`. Every other entry stays byte-for-byte. Asks on a TTY; needs
+ * `--yes` otherwise.
+ */
+export async function migrateFactoryRoutes(options = {}) {
+    const root = resolve(options.cwd ?? process.cwd());
+    const routesPath = join(getOmcRoot(root), 'factory-routes.json');
+    const read = readRawRoutes(routesPath);
+    if (!read)
+        return { exitCode: 0, message: `no route table at ${routesPath}; nothing to migrate` };
+    if (!read.ok)
+        return { exitCode: 1, message: `factory init --migrate refused: ${read.message}` };
+    // The rename below would replace the link with a regular file and silently
+    // detach the table from its real target.
+    if (lstatSync(routesPath).isSymbolicLink()) {
+        return { exitCode: 1, message: `factory init --migrate refused: ${routesPath} is a symlink; migrate its target by hand (omg factory init --check shows the routes)` };
+    }
+    const rows = Object.entries(read.table).map(([key, value]) => classifyRoute(root, key, value));
+    const due = rows.filter(needsMigration);
+    if (due.length === 0)
+        return { exitCode: 0, message: `${routesPath}: nothing to migrate` };
+    const plan = due.map((r) => `  ${r.key} -> ${r.skill}: ${r.status === 'deprecated' ? 'becomes success:intake -> harbor' : 'removed'}`).join('\n');
+    if (!options.yes) {
+        if (!options.isTTY || !options.confirm) {
+            return { exitCode: 2, message: `factory init --migrate needs --yes without an interactive terminal. It would rewrite ${routesPath}:\n${plan}` };
+        }
+        if (!await options.confirm(`Rewrite ${routesPath}?\n${plan}\nA backup is written first.`)) {
+            return { exitCode: 1, message: 'factory init --migrate cancelled; nothing written' };
+        }
+    }
+    const migrated = {};
+    for (const [key, value] of Object.entries(read.table)) {
+        const row = rows.find((r) => r.key === key);
+        if (!needsMigration(row))
+            migrated[key] = value;
+        else if (row.status === 'deprecated')
+            migrated[key] = { ...value, stage: 'harbor', skill: 'harbor' };
+    }
+    const stamp = (options.now ?? new Date()).toISOString().replace(/\.\d{3}Z$/, 'Z').replace(/:/g, '-');
+    const backupPath = `${routesPath}.bak-${stamp}`;
+    try {
+        writeFileSync(backupPath, read.raw, { encoding: 'utf8', flag: 'wx' });
+    }
+    catch (error) {
+        return { exitCode: 1, message: `factory init --migrate refused: cannot write the backup ${backupPath} (${error.message}); nothing changed` };
+    }
+    const tmp = `${routesPath}.${process.pid}.tmp`;
+    try {
+        writeFileSync(tmp, `${JSON.stringify(migrated, null, 2)}\n`, 'utf8');
+        renameSync(tmp, routesPath);
+    }
+    catch (error) {
+        try {
+            unlinkSync(tmp);
+        }
+        catch { /* never written */ }
+        return { exitCode: 1, message: `factory init --migrate failed: cannot write ${routesPath} (${error.message}); the backup is ${backupPath}` };
+    }
+    return { exitCode: 0, message: `factory init --migrate rewrote ${routesPath} (backup: ${backupPath}):\n${plan}` };
 }
 //# sourceMappingURL=factory.js.map

@@ -127,10 +127,26 @@ The cross-cutting express surfaces — **diagram** and **show-me** — are calla
 
 Shipyard corrects itself through its file-backed paper trail; `/oh-my-copilot:drydock --check` audits harness drift. These skills do not add a separate findings store, shipped/wontfixed state machine, hidden ledger, or `sy check`/`context-lint` commands.
 
+## Shipyard and the factory
+
+The shipyard skills decide **what and why**, with the captain signing. `omg factory` (a CLI, not a skill) delivers **how**: unattended, with sandboxed lanes, protected paths, a credit budget, and gates enforced in code. Merges stay human — the engine parks every PR at `awaiting-human: merge`. The handoff between the two is code, not prose:
+
+| Stage | Owner | The captain signs | Code enforces |
+| --- | --- | --- | --- |
+| Intake | `harbor` (the factory listener starts `look at #<n>`); routes accepted work, a single slice included, to `launch` and never runs `enqueue` | accept / reject, standing rules | `omg factory check <n> --json` as a read-only fact |
+| Requirements | `intent` / `ask-navigator` / `loft` | intent accept, W1/W2, loft reaction | — |
+| Spec + tickets | `launch` Phases 1–3 | C2, C3 on the `omg factory enqueue --dry-run` output | `enqueue`: schema, cycles, idempotency by `shipyard-key:`; the mark step |
+| Delivery | `omg factory run --next --parent <spec>` | every merge, every `awaiting-human` gate | lanes, sandbox, budget, gates, one engine per repository |
+| CI repair on the base | `omg factory heal` | `heal approve`, the merge | classification, caps |
+| Closeout | `launch` Phase 5 | C5 | `omg factory check --parent <spec> --json` shows every child closed or merged |
+
+Launch picks factory mode when `omg factory check --parent <spec>` works on a GitHub forge; otherwise, or with `--team`, it delivers through Team as before. Harbor and the navigator stay GitHub-only this cycle, and `enqueue` supports GitHub only. The legacy SessionEnd chain is frozen to one `intake → harbor` hop; `omg factory init --check` reports old routes and `--migrate` rewrites them.
+
 ## When to reach for what
 
 - one-point fix → `execute` directly (no shipyard ceremony)
-- multi-step feature → `launch`
+- multi-step feature → `launch` (delivers through `omg factory` when one is configured)
+- runnable tracker items waiting for unattended delivery → `omg factory run --next` yourself
 - foggy effort (destination unclear, questions not yet stateable) → `ask-navigator` first; it hands back a mission brief
 - external requests piling up (issues, bug reports, PRs) → `harbor` sweeps the intake and hands over a signature queue
 - new repo, or a repo where knowledge lives in heads → `drydock` first

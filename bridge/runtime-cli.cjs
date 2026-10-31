@@ -19587,7 +19587,7 @@ var init_remote_url = __esm({
 });
 
 // src/forge/ado/routes.ts
-var STABLE, TEXT_CHARS, TEXT, text, BRANCH_REF, route, ADO_ROUTES, ADO_WRITE_ALLOWLIST;
+var STABLE, TEXT_CHARS, TEXT, text, BRANCH_REF, TITLE, ADAPTER_HTML, AREA_PATH, ADO_TRACKER_RELATIONS, RELATION, PRIORITY, route, ADO_ROUTES, ADO_WRITE_ALLOWLIST;
 var init_routes = __esm({
   "src/forge/ado/routes.ts"() {
     "use strict";
@@ -19596,6 +19596,24 @@ var init_routes = __esm({
     TEXT = { type: "string", pattern: TEXT_CHARS };
     text = (maxLength) => ({ type: "string", pattern: TEXT_CHARS, maxLength });
     BRANCH_REF = { type: "string", pattern: /^refs\/heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]+$/u, maxLength: 400 };
+    TITLE = { type: "string", pattern: /^(?!-)[^\p{Cc}\p{Cf}]+$/u, maxLength: 255 };
+    ADAPTER_HTML = {
+      type: "string",
+      pattern: /^(?:[^<>&\p{Cc}\p{Bidi_Control}]|\t|<\/?(?:div|ul|li)>|<br>|&(?:amp|lt|gt|quot|#39);)+$/u,
+      maxLength: 262144
+    };
+    AREA_PATH = { type: "string", pattern: /^(?!@)[^\p{Cc}\p{Cf}/$?*:"&<>#%|+]+$/u, maxLength: 4e3 };
+    ADO_TRACKER_RELATIONS = ["System.LinkTypes.Hierarchy-Reverse", "System.LinkTypes.Dependency-Reverse"];
+    RELATION = {
+      type: "object",
+      shape: {
+        kind: "object",
+        keys: ["rel", "url"],
+        required: ["rel", "url"],
+        values: { rel: { enum: ADO_TRACKER_RELATIONS }, url: { type: "string", pattern: /^https:\/\/dev\.azure\.com\/[^/\s]+\/_apis\/wit\/workItems\/[1-9]\d{0,9}$/, maxLength: 400 } }
+      }
+    };
+    PRIORITY = { enum: [1, 2, 3, 4] };
     route = (r) => Object.freeze(r);
     ADO_ROUTES = Object.freeze([
       // Setup probes.
@@ -19603,7 +19621,7 @@ var init_routes = __esm({
       route({ id: "core.teams.GET", area: "core", resource: "teams", method: "GET", apiVersion: STABLE, routeParams: ["projectId"], queryParams: ["$top", "$skip"] }),
       route({ id: "git.repositories.GET", area: "git", resource: "repositories", method: "GET", apiVersion: STABLE, routeParams: ["project", "repositoryId"], queryParams: [] }),
       // Work items (intake, check, progress).
-      route({ id: "wit.workItems.GET", area: "wit", resource: "workItems", method: "GET", apiVersion: STABLE, routeParams: ["project", "id"], queryParams: ["$expand"] }),
+      route({ id: "wit.workItems.GET", area: "wit", resource: "workItems", method: "GET", apiVersion: STABLE, routeParams: ["project", "id"], queryParams: ["$expand", "ids", "fields", "errorPolicy"] }),
       route({
         id: "wit.workItems.PATCH",
         area: "wit",
@@ -19613,17 +19631,53 @@ var init_routes = __esm({
         routeParams: ["project", "id"],
         queryParams: [],
         mediaType: "application/json-patch+json",
-        // test /rev guards a concurrent edit; tags, state and the board's Kanban column field are the only writes.
+        // test /rev guards a concurrent edit; tags, state and the board's Kanban column field are the only engine writes.
+        // `add` on a field sets it; `add` on /relations/- appends a link; no op removes or replaces anything.
+        // https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/work-items/update?view=azure-devops-rest-7.1 ("Add a link", "Add a tag")
         body: {
           kind: "json-patch",
           ops: ["test", "add"],
           paths: [
             { path: /^\/rev$/, value: { type: "integer", min: 1 } },
-            { path: /^\/fields\/System\.Tags$/, value: TEXT },
+            // With the tracker write context, a tag write is a test of the current list, then an add editing allowlisted tags only.
+            { path: /^\/fields\/System\.Tags$/, value: TEXT, configured: "tags" },
             // Also one of the configured progress-mapping states (validateAdoBody's allowedStates, design §7).
             { path: /^\/fields\/System\.State$/, value: TEXT, configured: "states" },
             // A column move can change System.State too, so it is held to the configured progress columns (critic amendments §A.14).
-            { path: /^\/fields\/WEF_[0-9A-F]{32}_Kanban\.Column$/, value: TEXT, configured: "columns" }
+            { path: /^\/fields\/WEF_[0-9A-F]{32}_Kanban\.Column$/, value: TEXT, configured: "columns" },
+            // Tracker writes (enqueue's update and link): title, description, AC, priority, and a parent or predecessor link.
+            { path: /^\/fields\/System\.Title$/, value: TITLE, tracker: true },
+            { path: /^\/fields\/System\.Description$/, value: ADAPTER_HTML, tracker: true },
+            { path: /^\/fields\/Microsoft\.VSTS\.Common\.AcceptanceCriteria$/, value: ADAPTER_HTML, tracker: true },
+            { path: /^\/fields\/Microsoft\.VSTS\.Common\.Priority$/, value: PRIORITY, tracker: true },
+            { path: /^\/relations\/-$/, value: RELATION, configured: "relation", tracker: true }
+          ]
+        }
+      }),
+      // Create one work item (POST {project}/_apis/wit/workitems/${type}: the `$` is in the route template, the parameter is the type name).
+      // Fields only: links go through the PATCH above once every id is known. Enqueue only (tracker: true).
+      // https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/work-items/create?view=azure-devops-rest-7.1
+      route({
+        id: "wit.workItems.POST",
+        area: "wit",
+        resource: "workItems",
+        method: "POST",
+        apiVersion: STABLE,
+        routeParams: ["project", "type"],
+        queryParams: [],
+        mediaType: "application/json-patch+json",
+        tracker: true,
+        body: {
+          kind: "json-patch",
+          ops: ["add"],
+          paths: [
+            { path: /^\/fields\/System\.Title$/, value: TITLE },
+            { path: /^\/fields\/System\.Description$/, value: ADAPTER_HTML },
+            { path: /^\/fields\/Microsoft\.VSTS\.Common\.AcceptanceCriteria$/, value: ADAPTER_HTML },
+            { path: /^\/fields\/Microsoft\.VSTS\.Common\.Priority$/, value: PRIORITY },
+            // Every tag on the tracker write allowlist.
+            { path: /^\/fields\/System\.Tags$/, value: TEXT, configured: "tags" },
+            { path: /^\/fields\/System\.AreaPath$/, value: AREA_PATH, configured: "areaPath" }
           ]
         }
       }),
@@ -19664,7 +19718,7 @@ var init_routes = __esm({
         method: "GET",
         apiVersion: STABLE,
         routeParams: ["project", "repositoryId", "pullRequestId"],
-        queryParams: ["searchCriteria.sourceRefName", "searchCriteria.status", "$top"]
+        queryParams: ["searchCriteria.sourceRefName", "searchCriteria.status", "searchCriteria.targetRefName", "$top"]
       }),
       route({
         id: "git.pullRequests.POST",
@@ -19735,14 +19789,36 @@ var init_routes = __esm({
       route({ id: "policy.evaluations.GET", area: "policy", resource: "evaluations", method: "GET", apiVersion: "7.1-preview.1", routeParams: ["project"], queryParams: ["artifactId", "includeNotApplicable", "$top", "$skip"] }),
       // Requeue one evaluation (rerun a flaky or expired build); the REST call has no body.
       route({ id: "policy.evaluations.PATCH", area: "policy", resource: "evaluations", method: "PATCH", apiVersion: "7.1-preview.1", routeParams: ["project", "evaluationId"], queryParams: [], body: { kind: "none" } }),
-      // By id, or the builds of refs/pull/{id}/merge (runsForHead, critic amendments §A.2).
-      route({ id: "build.builds.GET", area: "build", resource: "builds", method: "GET", apiVersion: STABLE, routeParams: ["project", "buildId"], queryParams: ["branchName", "reasonFilter", "queryOrder", "$top"] }),
+      // By id, the builds of refs/pull/{id}/merge (runsForHead, critic amendments §A.2), or heal's pipeline history (ci.ts, ADO parity design §3.3).
+      // https://learn.microsoft.com/en-us/rest/api/azure/devops/build/builds/list?view=azure-devops-rest-7.1
+      route({
+        id: "build.builds.GET",
+        area: "build",
+        resource: "builds",
+        method: "GET",
+        apiVersion: STABLE,
+        routeParams: ["project", "buildId"],
+        queryParams: ["branchName", "reasonFilter", "queryOrder", "$top", "definitions", "statusFilter", "resultFilter", "minTime"]
+      }),
+      // The heal pipeline pick (ADO parity design §3.2).
+      // https://learn.microsoft.com/en-us/rest/api/azure/devops/build/definitions/list?view=azure-devops-rest-7.1
+      route({
+        id: "build.definitions.GET",
+        area: "build",
+        resource: "definitions",
+        method: "GET",
+        apiVersion: STABLE,
+        routeParams: ["project", "definitionId"],
+        queryParams: ["name", "repositoryId", "repositoryType", "includeAllProperties", "$top"]
+      }),
       route({ id: "build.timeline.GET", area: "build", resource: "timeline", method: "GET", apiVersion: STABLE, routeParams: ["project", "buildId"], queryParams: [] }),
       // Read as JSON ({ count, value: [lines] }): az devops invoke refuses a non-JSON response without --out-file, which the guard never allows.
       route({ id: "build.logs.GET", area: "build", resource: "logs", method: "GET", apiVersion: STABLE, routeParams: ["project", "buildId", "logId"], queryParams: [] })
     ]);
     ADO_WRITE_ALLOWLIST = Object.freeze([
       ["wit", "workItems", "PATCH"],
+      // Enqueue only (the route's `tracker` flag).
+      ["wit", "workItems", "POST"],
       ["wit", "comments", "POST"],
       ["wit", "wiql", "POST"],
       ["git", "pullRequests", "POST"],

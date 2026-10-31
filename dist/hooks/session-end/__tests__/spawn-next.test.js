@@ -30,7 +30,7 @@ afterEach(() => {
 const chain = {
     outcome: 'success',
     reason: 'clear',
-    routeTable: { 'success:clear': { stage: 'launch', skill: 'launch' }, 'success:*': { stage: 'fallback', skill: 'fallback' } },
+    routeTable: { 'success:clear': { stage: 'launch', skill: 'execute' }, 'success:*': { stage: 'fallback', skill: 'omc-review' } },
     sessionId: 'sess-1',
     handoffContext: 'context body',
     tracker: { repo: 'owner/repo', issue: 42, nextLabel: 'in-launch', failedLabel: 'failed' },
@@ -45,7 +45,7 @@ const spawnRecording = () => {
 describe('planSpawnNext', () => {
     it('routes exact key hit to the next stage plan', () => {
         const plan = planSpawnNext(chain, '/omc-root');
-        expect(plan?.directive).toEqual({ stage: 'launch', skill: 'launch' });
+        expect(plan?.directive).toEqual({ stage: 'launch', skill: 'execute' });
         expect(plan?.handoffPath).toBe(path.join('/omc-root', 'handoffs', 'sess-1-launch.json'));
         expect(plan?.spawnArgv[0]).toBe('claude');
         expect(plan?.spawnArgv.join(' ')).toContain('-p');
@@ -55,7 +55,7 @@ describe('planSpawnNext', () => {
     });
     it('falls back to the wildcard key', () => {
         const plan = planSpawnNext({ ...chain, reason: 'other' }, '/omc-root');
-        expect(plan?.directive).toEqual({ stage: 'fallback', skill: 'fallback' });
+        expect(plan?.directive).toEqual({ stage: 'fallback', skill: 'omc-review' });
     });
     it('returns null when no route matches', () => {
         expect(planSpawnNext({ ...chain, outcome: 'failed' }, '/omc-root')).toBeNull();
@@ -67,6 +67,11 @@ describe('planSpawnNext', () => {
         const withoutTracker = planSpawnNext({ ...chain, tracker: undefined }, '/omc-root');
         expect(withoutTracker?.trackerCommands).toEqual([]);
     });
+    it('comments but writes no label for a label-less tracker (harbor owns the labels)', () => {
+        const plan = planSpawnNext({ ...chain, tracker: { repo: 'owner/repo', issue: 42 } }, '/omc-root');
+        expect(plan?.trackerCommands).toHaveLength(1);
+        expect(plan?.trackerCommands[0]?.slice(0, 6)).toEqual(['gh', 'issue', 'comment', '42', '--repo', 'owner/repo']);
+    });
     it('appends the AFK permission profile to the spawn argv', () => {
         const plan = planSpawnNext(chain, '/omc-root');
         for (const flag of AFK_SPAWN_FLAGS)
@@ -77,7 +82,7 @@ describe('planSpawnNext', () => {
     it("propagates the routed stage's declared verify commands into the link's allowedTools", () => {
         const withVerify = planSpawnNext({
             ...chain,
-            routeTable: { 'success:clear': { stage: 'launch', skill: 'launch', verify: ['npm test'] } },
+            routeTable: { 'success:clear': { stage: 'launch', skill: 'execute', verify: ['npm test'] } },
         }, '/omc-root');
         const tools = withVerify.spawnArgv[withVerify.spawnArgv.indexOf('--allowedTools') + 1];
         expect(tools).toBe(`${AFK_ALLOWED_TOOLS},Bash(npm test)`);
@@ -112,6 +117,9 @@ describe('planSpawnNext', () => {
     });
     it('rejects a chain whose tracker repo or label carries shell metacharacters', () => {
         expect(() => planSpawnNext({ ...chain, tracker: { ...chain.tracker, repo: 'owner/repo; rm -rf /' } }, '/omc-root')).toThrow(/invalid tracker repo/);
+        for (const issue of ['7; ignore prior', -1, 1.5, 2 ** 60]) {
+            expect(() => planSpawnNext({ ...chain, tracker: { ...chain.tracker, issue: issue } }, '/omc-root')).toThrow(/invalid tracker issue/);
+        }
         expect(() => planSpawnNext({ ...chain, tracker: { ...chain.tracker, nextLabel: 'a b; touch /tmp/x' } }, '/omc-root')).toThrow(/invalid tracker label/);
     });
     it('rejects a chain whose visits carry an invalid stage or count', () => {
@@ -130,6 +138,53 @@ describe('spawnNextAlertComment', () => {
         expect(comment).toContain('无自动重试');
     });
 });
+describe('executeSpawnNext — planSpawnNext is the single choke point', () => {
+    it.each([
+        ['a captain skill', { stage: 'launch', skill: 'launch' }, /^route-retired:launch/],
+        ['a prefixed captain skill', { stage: 'launch', skill: '/oh-my-copilot:Launch' }, /^route-retired:launch/],
+        ['a retired skill', { stage: 'diagnose', skill: 'diagnose' }, /^route-retired:diagnose/],
+        ['an unknown dotted name', { stage: 'next', skill: 'launch.' }, /^route-unknown:launch\.$/],
+        ['a typo', { stage: 'next', skill: 'harbr' }, /^route-unknown:harbr$/],
+        ['a bundled directory name (registered as omc-plan)', { stage: 'spec', skill: 'plan' }, /^route-unknown:plan \(did you mean omc-plan\)$/],
+        ['the terminal skill', { stage: 'done', skill: 'stop' }, /^terminal route/],
+        ['an invalid stage', { stage: '../evil', skill: 'execute' }, /^invalid stage\/skill/],
+    ])('refuses a hand-written chain routing to %s and spawns nothing', (_label, route, error) => {
+        const { spawnFn, calls } = spawnRecording();
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'spawn-next-'));
+        execFileSync('git', ['init', '--quiet'], { cwd: directory, stdio: 'ignore' });
+        try {
+            // Shaped like a manifest job queued before the enqueuer refused these routes.
+            const queued = { outcome: 'success', reason: 'clear', routeTable: { 'success:*': route }, sessionId: 'sess-1', tracker: chain.tracker };
+            expect(() => executeSpawnNext(queued, directory, spawnFn)).toThrow(error);
+            expect(calls).toEqual([]);
+            expect(fs.existsSync(path.join(directory, '.omg', 'handoffs'))).toBe(false);
+            expect(fs.existsSync(path.join(directory, '.omg', 'state', 'factory'))).toBe(false);
+        }
+        finally {
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
+    it('spawns a project skill from .agents/skills', () => {
+        const { spawnFn, calls } = spawnRecording();
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'spawn-next-'));
+        execFileSync('git', ['init', '--quiet'], { cwd: directory, stdio: 'ignore' });
+        try {
+            fs.mkdirSync(path.join(directory, '.agents', 'skills', 'my-stage'), { recursive: true });
+            fs.writeFileSync(path.join(directory, '.agents', 'skills', 'my-stage', 'SKILL.md'), '# my-stage');
+            executeSpawnNext({ ...chain, tracker: undefined, routeTable: { 'success:*': { stage: 'next', skill: 'my-stage' } } }, directory, spawnFn);
+            expect(calls).toHaveLength(1);
+            expect(calls[0][1].join(' ')).toContain('/my-stage');
+        }
+        finally {
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
+    it('spawns a bundled skill by its registered name in the bare form on Claude Code', () => {
+        const plan = planSpawnNext({ ...chain, routeTable: { 'success:*': { stage: 'spec', skill: 'omc-plan' } } }, '/omc-root');
+        expect(plan?.spawnArgv[0]).toBe('claude');
+        expect(plan?.spawnArgv[2]).toMatch(/^\/omc-plan 继续 spec 环/);
+    });
+});
 describe('executeSpawnNext', () => {
     it('writes the handoff file, the next-link ledger, and spawns the next session plus tracker writebacks', () => {
         const { spawnFn, calls, ctxs } = spawnRecording();
@@ -140,7 +195,7 @@ describe('executeSpawnNext', () => {
             const handoffPath = path.join(directory, '.omg', 'handoffs', 'sess-1-launch.json');
             const handoff = JSON.parse(fs.readFileSync(handoffPath, 'utf8'));
             expect(handoff.sessionId).toBe('sess-1');
-            expect(handoff.next).toEqual({ stage: 'launch', skill: 'launch' });
+            expect(handoff.next).toEqual({ stage: 'launch', skill: 'execute' });
             expect(handoff.context).toBe('context body');
             const factoryDir = path.join(directory, '.omg', 'state', 'factory');
             const ledgerFiles = fs.readdirSync(factoryDir).filter((f) => f.startsWith('chain-') && f.endsWith('.json'));
@@ -248,6 +303,26 @@ describe('executeSpawnNext', () => {
             fs.rmSync(directory, { recursive: true, force: true });
         }
     });
+    it('alerts a label-less tracker with a comment only when spawning fails', () => {
+        const calls = sessions();
+        const failingSpawn = (command, args) => {
+            if (command === 'claude')
+                throw new Error('spawn-failure');
+            calls.push([command, args]);
+            return { unref() { } };
+        };
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'spawn-next-'));
+        execFileSync('git', ['init', '--quiet'], { cwd: directory, stdio: 'ignore' });
+        try {
+            expect(() => executeSpawnNext({ ...chain, tracker: { repo: 'owner/repo', issue: 42 } }, directory, failingSpawn)).toThrow('spawn-failure');
+            const ghCalls = calls.filter(([command]) => command === 'gh');
+            expect(ghCalls).toHaveLength(1);
+            expect(ghCalls[0][1]).toContain('comment');
+        }
+        finally {
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
 });
 describe('factoryLinkArgv', () => {
     it('keeps the prompt right after -p and appends the AFK profile at the tail', () => {
@@ -308,6 +383,22 @@ describe('Copilot host factory links', () => {
             expect(calls[0][0]).toBe('copilot');
             expect(calls[0][1]).not.toContain(linkId);
             expect(ctxs[0]).toEqual({ cwd: directory, chainLink: linkId });
+        }
+        finally {
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
+    it('spawns a bundled skill as /oh-my-copilot:<registered name> and a project skill bare', () => {
+        const bundled = planSpawnNext({ ...chain, routeTable: { 'success:*': { stage: 'spec', skill: 'omc-plan' } } }, '/omc-root');
+        expect(bundled?.spawnArgv[0]).toBe('copilot');
+        expect(bundled?.spawnArgv[2]).toMatch(/^\/oh-my-copilot:omc-plan 继续 spec 环/);
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'spawn-next-'));
+        try {
+            fs.mkdirSync(path.join(directory, '.copilot', 'skills', 'stage-dir'), { recursive: true });
+            fs.writeFileSync(path.join(directory, '.copilot', 'skills', 'stage-dir', 'SKILL.md'), '---\nname: my-stage\n---\n');
+            const project = planSpawnNext({ ...chain, routeTable: { 'success:*': { stage: 'next', skill: 'my-stage' } } }, '/omc-root', directory);
+            expect(project?.spawnArgv[2]).toMatch(/^\/my-stage 继续 next 环/);
+            expect(() => planSpawnNext({ ...chain, routeTable: { 'success:*': { stage: 'next', skill: 'stage-dir' } } }, '/omc-root', directory)).toThrow(/^route-unknown:stage-dir$/);
         }
         finally {
             fs.rmSync(directory, { recursive: true, force: true });

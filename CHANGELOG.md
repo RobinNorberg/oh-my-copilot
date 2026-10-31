@@ -2,6 +2,188 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **Azure Pipelines CI history for heal (groundwork).** The Azure DevOps forge
+  gets a `ForgeCi` over the build definition that `factory.heal.pipeline:
+  { definitionId }` names: CI builds of the base branch (`individualCI` and
+  `batchedCI`), pull request builds with their recorded head (a build without
+  one is dropped, never guessed), the newest attempt of each job with its
+  failed tasks, and the job log (or the failed task logs). The rerun is a
+  human step on the build page and is never issued. `factory.heal.pipeline`
+  is read only from the user config or the base branch; a working-tree value
+  is ignored with a warning; set it on the base branch, since the user config
+  is shared across repositories. Builds of another repository, push builds
+  of another branch or of a tag are dropped, and the failed task logs are
+  read only up to the log cap. `capabilities.heal` is true only with a
+  pipeline. The heal guard sends `az` to the Azure DevOps guard with a new
+  `read` policy that refuses every non-GET route. `heal scan` on Azure
+  DevOps stays refused until the follow-up PR.
+- **`omg factory board`.** A read-only view of intake items, their factory
+  runs and their tracker stages, on GitHub and Azure DevOps. Items without a
+  run are grouped by check bucket; runs sit in the column of their expected
+  stage, with the gate, lane, credits, PR, head and latest verdict. Flags:
+  `drift` (a human moved the card), `unsynced` (a progress write is pending),
+  `seal!` (the run state fails its integrity check) and `stale` (no change
+  for 24 hours). `--parent <spec>` shows a spec's children, runs outside the
+  source get their own section, and `--no-check` reads Azure DevOps items in
+  one batched `wit/workitems?ids=` GET (the new optional
+  `ForgeTracker.peekItems`). It runs on `omg factory check`'s read guard with
+  no marker, so every write is refused. `--json` has schemaVersion 1.
+- **`omg factory enqueue` on Azure DevOps.** Tickets become work items of the
+  first `factory.intake.itemTypes` type, with the criteria in the
+  acceptance-criteria field, the priority field, a parent link to the spec and
+  a predecessor link per edge. An `area-tag` intake source gives each new item
+  its tag and area path; enqueue never sets a board column or a state, and
+  warns when the intake source needs one. Trust is the creator in
+  `factory.forge.azureDevOps.trustedAuthors` (user config). Mentions and
+  work item links in model text are neutralized. Exit 5 is now only for an
+  unsupported forge. A trusted in-project work item that carries the spec's
+  key footer but has no parent counts as a holder: enqueue edits it and links
+  it to the spec, which recovers a failed parent link.
+
+### Changed
+
+- **The Azure DevOps live acceptance script walks the shipyard–factory flow**
+  (`scripts/ado-acceptance.mjs`, maintainers only). `create` makes a spec work
+  item instead of one User Story per backlog ticket. A new `enqueue` phase
+  prints the user-config `factory.forge.azureDevOps.trustedAuthors` change and
+  asks before it adds the spec's creator (`--yes` confirms). It then sends the
+  `BACKLOG.md` tickets through `omg factory enqueue`: `--dry-run`, a
+  signature, the real enqueue, and a re-run that must find every ticket
+  unchanged. `exercise` checks `omg factory check --parent` and the
+  predecessor ordering, and picks with `omg factory run --next --parent`
+  (real only with `--with-lanes`). It then checks the merge gate comment, the
+  spec's rollup line, and that no PR of the run is `completed`. Cleanup lists
+  the trustedAuthors the run added, and one whose setup did not finish as
+  "may have been added". enqueue records into its own `recorded-enqueue/`, so
+  exercise's progress check sees only a `System.State` PATCH of the run's
+  item. The y/N prompt reads the terminal through `isatty(0)` (it no longer
+  fails silently on Linux and macOS), and a failed enqueue keeps its warnings.
+- **Listener intake goes to harbor, not intent.** An issue labeled `intake`
+  now spawns a headless `/oh-my-copilot:harbor look at #<n>` session (English
+  prompt) instead of an intent session with a Chinese prompt, and the default
+  narrow route table (`omg factory init`) is `success:intake` → `harbor`. The
+  listener no longer writes the `needs-review` / `failed` labels, which are
+  outside harbor's label set. A stalled chain link is flagged with
+  `harbor:for-maintainer` instead of `harbor:need-info` ("waiting on the
+  reporter"). `omg factory init` now requires the yard faces `CLAUDE.md` and
+  `GLOSSARY.md` (from `/oh-my-copilot:drydock`) instead of `docs/design/`.
+
+### Added
+
+- **`omg factory check --parent <spec>`** checks a spec's children (the
+  GitHub task list `- [ ] #n`, or the Azure DevOps child links) with their
+  readiness. The `--json` shape is unchanged (`schemaVersion` 1).
+- **Forge items carry their parent**: a GitHub `Part of #n` line, or an Azure
+  DevOps parent link (`Hierarchy-Reverse`).
+- **`omg factory run --next [--parent <spec>]`** runs the first runnable item
+  in `omg factory check` order (priority, then id) among the spec's children
+  or the intake source. A run parked at `blocked-by` is resumed once its
+  dependencies are satisfied; nothing runnable exits 0 with the bucket counts.
+- **GitHub tracker writes for the planned `omg factory enqueue`**: create an
+  issue, edit its title, body and labels, and find issues by their
+  `shipyard-key: <spec>/<key>` footer. The factory guard allows them only
+  with enqueue's write context, each as one exact shape: `gh issue create`,
+  `gh issue edit` and `gh issue list --search`, pinned to the configured
+  repository with `--repo`, bodies only through `--body-file` from the
+  caller's own directory, and labels from an allowlist (never `factory:*`).
+  `gh api` stays refused, and nothing closes, deletes, transfers or locks an
+  issue. `omg factory run` and `omg factory check` still refuse all three.
+- **Azure DevOps tracker writes for the planned `omg factory enqueue`**:
+  create a work item of the first `factory.intake.itemTypes` type, update its
+  title, description, acceptance criteria, priority and tags, link it to its
+  parent (`Hierarchy-Reverse`) or a predecessor (`Dependency-Reverse`), and
+  find work items by their `shipyard-key:` footer. These go through
+  `az devops invoke` on two routes only, `wit/workItems` `POST` and `PATCH`,
+  with JSON-patch `add` ops on an allowlist of paths. Description and
+  acceptance criteria are escaped HTML that the adapter builds, and the guard
+  accepts no other markup. Links take those two types only and must point to
+  work items in the forge org. Tags never use `factory:` or `harbor:`.
+  Nothing removes a field, a link or a work item. The factory guard allows
+  these writes only with enqueue's write context, so `omg factory run`,
+  `omg factory check` and `omg ship` still refuse them.
+- **`omg factory enqueue --spec <id> --file <tickets.json> [--dry-run]
+  [--json]`** (GitHub) pushes launch's approved tickets to the tracker as
+  children of the spec: one issue per ticket with its Acceptance criteria,
+  `Part of #<spec>` and `Blocked by #n` lines and a `shipyard-key:` footer,
+  plus a task list in the spec body. The ticket file is validated strictly
+  (unknown fields, duplicate keys, cycles, AC limits) before anything is
+  written. A re-run is idempotent: unchanged items are not written, items
+  already claimed by a factory run are never edited, and items whose key left
+  the file are reported, never closed. Keys on issues by untrusted authors
+  are ignored. Model-written text is neutralized before it is posted:
+  mentions and cross-repository references go into code spans, and
+  `omg-plan:` lines, Acceptance-criteria headings and edge lines are escaped.
+  It ends with `omg factory check --parent <spec> --mark --yes`; the launch C3
+  signature confirms that and the intake label.
+
+### Changed
+
+- **`omg factory run` parks at `blocked-by` until dependencies are
+  satisfied.** An item with `Depends on #n` / `Blocked by #n` lines, or Azure
+  DevOps Predecessor links, waits at the intake gate `blocked-by` until each
+  dependency is closed, its factory PR merged into the base, or its run
+  merged. An item that depends on itself parks with `blocked-by:self`
+  (`omg factory check` reports it the same way) instead of waiting forever.
+- **A dependency whose factory PR merged counts as satisfied.** `omg factory
+  check` no longer reports `depends-on:#n` when issue `#n` is still open but
+  a PR from `factory/issue-<n>` was merged into the base, or its factory run
+  is `merged`. With `ship.base: dev`, `Closes #n` never closed the issue, so
+  dependents stayed blocked until a release. The lookup is one new read:
+  `gh pr list --head factory/issue-<n> --base <base> --state merged --json
+  number`, and on Azure DevOps a pull request search with
+  `searchCriteria.status=completed` and `searchCriteria.targetRefName`
+  (allowed by the ADO guard as a GET only).
+- **Two-axis factory review.** When the base commit of an `omg factory run` has `docs/standards/`, the review lane reviews on a spec axis (the diff against the plan) and a standards axis (the diff against the matching `docs/standards/` volume, read at the base). Each finding names its `axis`, a `blocker` or `major` on either axis fails the verdict, the PR comment gains an `Axis` column, and the fix lane sees each finding's axis. Without `docs/standards/` the review prompt is byte-identical to before.
+### Fixed
+
+- **The listener no longer starts a billed session for a nonexistent
+  `diagnose` skill on CI failures.** A failed `check_suite` webhook is now
+  an audited `204` discard ("CI failures are healed from workflow_run"); only
+  failed push runs of `ci.yml` on the dev branch reach the heal queue (via
+  `workflow_run`), and the next `omg factory heal scan` processes them;
+  failures on other branches or workflows are no longer acted on by the
+  listener (run `omg factory heal scan` manually). `omg factory init
+  --no-narrow`, whose full template routed `success:launch` to the same
+  missing skill, now refuses (exit 1, nothing written) and points at
+  `omg factory run <issue>`. The default narrow table is unchanged. An existing
+  `.omg/factory-routes.json` created with the old full template no longer
+  spawns those links: the chain refuses them (next entry), and
+  `omg factory init --migrate` removes them.
+- **The SessionEnd chain refuses routes to captain and retired skills.** A
+  route to `launch`, `ask-navigator`, `loft` or `drydock` (human checkpoints)
+  or to `diagnose` (retired) halts the chain with decision and stop marker
+  `route-retired:<skill>` and spawns nothing, whatever the gate says. Case,
+  whitespace, a leading `/` and a `plugin:` prefix do not get past it. A
+  route to `intent` still spawns but records `route-deprecated:intent`. A
+  route to a skill that is neither bundled nor a project skill halts with
+  `route-unknown:<skill>`. Skills are matched by their registered (frontmatter)
+  name, so `plan` halts with a `did you mean omc-plan` hint; a bundled skill
+  spawns as `/oh-my-copilot:<name>` on Copilot CLI. The spawn step re-checks every rule, so a job
+  queued or a closeout stored before the upgrade cannot spawn a refused
+  skill either. The watchdog treats `route-retired:*` and `route-unknown:*`
+  closeouts as halted, not stalled. `omg factory init --migrate` refuses a
+  symlinked routes file.
+- **`omg ralph from-map` now reads the navigator's ticket types.** `map-frontier` took types only from `wayfinder:<type>` labels, but `ask-navigator` writes them in the issue body (`Type: research`), so every navigator ticket was human-gated. A body `Type: <type>` line is now read (`loft` counts as `prototype`, human-gated) and labels still work; when label and body disagree the more restrictive type wins, and a body type alone grants auto only on a native sub-issue of the map.
+
+### Added
+
+- **`omg factory init --check` and `--migrate`.** `--check` prints every
+  route of `.omg/factory-routes.json` with its status and replacement
+  (read-only; exit 1 when a route would halt the chain). `--migrate` writes
+  `factory-routes.json.bak-<UTC timestamp>` first, then drops the captain and
+  retired routes and turns `success:intake` → `intent` into → `harbor`; it
+  asks on a terminal and needs `--yes` without one.
+
+### Changed
+
+- **`omg factory status` is now `omg factory chain status`.** The old name
+  stays as an alias, so scripts keep working; it no longer reads like
+  `omg factory run status <issue>`.
+
 # oh-my-copilot v5.18.2
 
 ## [5.18.2] - 2026-10-30
