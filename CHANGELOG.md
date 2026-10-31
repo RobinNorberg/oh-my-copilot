@@ -20,6 +20,22 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Changed
 
+- **The Azure DevOps live acceptance script walks the shipyard–factory flow**
+  (`scripts/ado-acceptance.mjs`, maintainers only). `create` makes a spec work
+  item instead of one User Story per backlog ticket. A new `enqueue` phase
+  prints the user-config `factory.forge.azureDevOps.trustedAuthors` change and
+  asks before it adds the spec's creator (`--yes` confirms). It then sends the
+  `BACKLOG.md` tickets through `omg factory enqueue`: `--dry-run`, a
+  signature, the real enqueue, and a re-run that must find every ticket
+  unchanged. `exercise` checks `omg factory check --parent` and the
+  predecessor ordering, and picks with `omg factory run --next --parent`
+  (real only with `--with-lanes`). It then checks the merge gate comment, the
+  spec's rollup line, and that no PR of the run is `completed`. Cleanup lists
+  the trustedAuthors the run added, and one whose setup did not finish as
+  "may have been added". enqueue records into its own `recorded-enqueue/`, so
+  exercise's progress check sees only a `System.State` PATCH of the run's
+  item. The y/N prompt reads the terminal through `isatty(0)` (it no longer
+  fails silently on Linux and macOS), and a failed enqueue keeps its warnings.
 - **Listener intake goes to harbor, not intent.** An issue labeled `intake`
   now spawns a headless `/oh-my-copilot:harbor look at #<n>` session (English
   prompt) instead of an intent session with a Chinese prompt, and the default
