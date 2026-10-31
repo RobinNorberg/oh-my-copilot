@@ -21,6 +21,7 @@
  * The class and classification come only from the scan-time record there; an
  * open heal run reuses the subject it was sealed with.
  */
+import type { AdoGuardContext } from '../../forge/ado/guard.js';
 import type { ForgeCi } from '../../forge/types.js';
 import type { Exec } from '../../ship/exec.js';
 import type { LaneBackend } from '../run/lane.js';
@@ -53,6 +54,8 @@ export interface HealRunDeps {
     warn?: (message: string) => void;
     /** Builds the forge's CI reads over the heal-guarded exec for the evidence (default GitHub Actions). */
     ci?: (exec: Exec, root: string) => ForgeCi;
+    /** That forge's Azure DevOps guard context (adoHeal in cli.ts); without it every az call is refused. */
+    ado?: () => AdoGuardContext;
 }
 /**
  * The owner's opt-in to a debugger lane without OS confinement. The lane's

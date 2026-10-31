@@ -144,6 +144,7 @@ export async function runHealEngine(o, deps) {
         ...(o.dryRun ? { dryRun: true } : {}),
         ...(deps.gateConfig ? { gateConfig: deps.gateConfig } : {}),
         ...(deps.warn ? { warn: deps.warn } : {}),
+        ...(deps.forge ? { forge: deps.forge } : {}),
         ...deps.engine,
     });
     // A merged or cancelled ci-heal run frees the open heal-run slot.

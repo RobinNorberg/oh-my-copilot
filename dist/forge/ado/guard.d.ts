@@ -44,6 +44,8 @@ export interface AdoGuardContext {
     allowedStates?: readonly string[];
     /** The progress-mapping board columns (progressColumns): the only Kanban column a work item PATCH may set; none when absent. */
     allowedColumns?: readonly string[];
+    /** factory.heal.pipeline's build definition (the heal read context): the only `definitions` a build list may name. */
+    definitionId?: number;
 }
 /**
  * factory: every routes.ts route. ship: reads plus the requeue of a build

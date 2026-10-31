@@ -12,11 +12,15 @@
  */
 import { Command } from 'commander';
 import type { Exec } from '../../ship/exec.js';
-import type { ForgeCi, ForgeKind } from '../../forge/types.js';
+import type { AzEntry } from '../../forge/ado/az-binary.js';
+import type { AdoGuardContext } from '../../forge/ado/guard.js';
+import type { LoadedForgeConfig } from '../../forge/config.js';
+import type { ForgeCi, ForgeKind, ResolvedForgeConfig } from '../../forge/types.js';
 import { type HealConfig } from './config.js';
 import { type HealSignatureState } from './state.js';
 import type { LaneBackend } from '../run/lane.js';
 import type { LoadedFactoryRunLimits } from '../run/budget.js';
+import type { FactoryForgeInput } from '../run/engine.js';
 import type { GateConfigLoader } from '../run/prepare.js';
 import { type HealEngineDeps } from './implement.js';
 import { type HealRunDeps } from './run.js';
@@ -49,11 +53,29 @@ export interface HealDeps {
     gateConfig?: GateConfigLoader;
     /** Test seams of the factory engine. */
     engine?: HealEngineDeps['engine'];
-    /** The origin's forge kind (originForgeKind); heal reads GitHub Actions only, so Azure DevOps is refused. Omitted = GitHub. */
+    /** The origin's forge kind (originForgeKind); Azure DevOps heals only with factory.heal.pipeline (capabilities.heal). Omitted = GitHub. */
     forgeKind?: (root: string) => ForgeKind;
     /** Builds the forge's CI reads over the heal-guarded exec (heal scan, heal run evidence). Omitted = GitHub Actions. */
     ci?: (exec: Exec, root: string) => ForgeCi;
+    /** The forge config on Azure DevOps (loadFactoryForgeConfig: user, base-branch and project layers); GitHub never reads it. */
+    forge?: (root: string, base: string) => LoadedForgeConfig;
+    /** The az entry on Azure DevOps (default: resolved outside every root a lane writes). */
+    resolveAz?: (root: string) => AzEntry;
 }
+/** Heal on Azure DevOps: the CI reads, their `read` guard context and the ci-heal run's forge, all from one resolved config. */
+export interface AdoHeal {
+    ci: (exec: Exec, root: string) => ForgeCi;
+    guard: () => AdoGuardContext;
+    forge: () => FactoryForgeInput;
+}
+/**
+ * The Azure DevOps heal wiring (ADO parity design §3.5-§3.6). The guard
+ * context and the ForgeCi are built from the same trusted `config` and az
+ * entry, so the guard lets through only the reads of the repository and
+ * pipeline the CI history comes from. The entry is resolved on first use
+ * (`heal status`, `close` and `cancel` need no az).
+ */
+export declare function adoHeal(config: ResolvedForgeConfig, resolveAz: () => AzEntry, root: string): AdoHeal;
 export interface ScanEntry {
     runId: string;
     event: string;
@@ -76,6 +98,7 @@ export interface ScanResult {
 /**
  * `ledgerDir`: the out-of-repository heal ledger directory, where the scan-time class and classification are kept.
  * `ci`: builds the forge's CI reads over the heal-guarded exec (default GitHub Actions).
+ * `ado`: that forge's Azure DevOps guard context (adoHeal); without it every az call is refused.
  */
 type ScanOpts = {
     exec: Exec;
@@ -88,6 +111,7 @@ type ScanOpts = {
     ledgerDir: string;
     lockTimeoutMs?: number;
     ci?: (exec: Exec, root: string) => ForgeCi;
+    ado?: () => AdoGuardContext;
 };
 /** One writing scan at a time: the read-fold-write of heal state is held under a lock file. */
 export declare function runHealScan(opts: ScanOpts): ScanResult;

@@ -49,6 +49,8 @@ export interface AdoGuardContext {
   allowedStates?: readonly string[];
   /** The progress-mapping board columns (progressColumns): the only Kanban column a work item PATCH may set; none when absent. */
   allowedColumns?: readonly string[];
+  /** factory.heal.pipeline's build definition (the heal read context): the only `definitions` a build list may name. */
+  definitionId?: number;
 }
 
 /**
@@ -209,6 +211,9 @@ function invokeProblem(inv: AdoInvoke, ctx: AdoGuardContext, policy: AdoGuardPol
   if (route.tracker && route.routeParams.includes('type') && !Object.hasOwn(rp, 'type')) return 'the type route parameter is required';
   for (const [name, value] of Object.entries(qp)) {
     if (!((policy === 'read' ? READ_QUERY_VALUE[name] : undefined) ?? QUERY_VALUE[name] ?? VALUE).test(value)) return `query parameter ${name} has a refused value`;
+  }
+  if (ctx.definitionId !== undefined && Object.hasOwn(qp, 'definitions') && qp.definitions !== String(ctx.definitionId)) {
+    return `definitions must be the configured factory.heal.pipeline ${ctx.definitionId}`;
   }
   const takesBody = route.body !== undefined && route.body.kind !== 'none';
   if (takesBody && inv.inFileAt === undefined) return `${route.id} needs --in-file`;

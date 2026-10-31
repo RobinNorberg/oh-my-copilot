@@ -199,8 +199,11 @@ export declare function healRecordProblem(h: FactoryHealRecord): string | null;
  * diagnosis fields, with every lane-derived text fenced and labelled.
  */
 export declare function healPlanText(h: FactoryHealRecord, base: string): string;
-/** The draft PR body of a ci-heal run: the failing runs, the env diff, the signature and the diagnosis. */
-export declare function healPrBody(s: FactoryRunState): string;
+/**
+ * The draft PR body of a ci-heal run: the failing runs, the env diff, the signature and the diagnosis.
+ * `runUrl`: a CI run's page (default GitHub Actions under the repository url; Azure DevOps passes the build results page).
+ */
+export declare function healPrBody(s: FactoryRunState, runUrl?: (runId: string) => string): string;
 export declare function implementPrompt(s: FactoryRunState): string;
 export declare function fixPrompt(s: FactoryRunState, round: number): string;
 /** `conflicted`: the files the engine's merge left conflict markers in (conflictFixStart), else the ones prepare reported. */

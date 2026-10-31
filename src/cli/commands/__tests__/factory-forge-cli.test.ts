@@ -1,7 +1,7 @@
 /**
  * `omg factory` forge wiring (factory forges design §9 PR 6): `run` resolves
  * the forge config and hands the engine the full untrusted roots; `listen`
- * and `heal` stay GitHub-only and refuse an Azure DevOps origin.
+ * stays GitHub-only, and `heal` refuses an Azure DevOps origin without factory.heal.pipeline.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -157,7 +157,7 @@ describe('GitHub-only commands on an Azure DevOps origin', () => {
     expect(out.join('\n')).toMatch(/omg factory listen receives GitHub webhooks only/);
   });
 
-  it('omg factory heal refuses', async () => {
+  it('omg factory heal refuses without factory.heal.pipeline', async () => {
     const exec: Exec = (cmd, args) => (cmd === 'git' && args.join(' ') === 'rev-parse --show-toplevel' ? ok(`${dir}\n`) : { status: 1, stdout: '', stderr: `unexpected ${cmd} ${args.join(' ')}` });
     const heal = healCommand({
       exec, base: () => 'dev', config: () => resolveHealConfig(undefined, undefined), now: () => new Date(), lanes: () => { throw new Error('no lanes'); },
@@ -165,6 +165,6 @@ describe('GitHub-only commands on an Azure DevOps origin', () => {
     });
     await heal.parseAsync(['scan', '--json'], { from: 'user' });
     expect(process.exitCode).toBe(3);
-    expect(out.join('\n')).toMatch(/omg factory heal is GitHub-only/);
+    expect(out.join('\n')).toMatch(/omg factory heal on Azure DevOps needs factory\.heal\.pipeline/);
   });
 });
