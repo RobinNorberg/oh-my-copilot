@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "6461ae826153bcb03b9535ce83ade2236c7cb441",
-    "sourceSha256": "e7b0e06325f83a0f1b29e76ed916a2e21508b86cc829216888b3eb2324a212ab",
+    "head": "7fe6b2aa7d7166e06fa7769c236b6cd8ee56bebd",
+    "sourceSha256": "c319ab0d84aafdbc9216151d6b7988485e948fc857df15cd512031e7e561416d",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "6461ae826153bcb03b9535ce83ade2236c7cb441",
-  "sourceSha256": "e7b0e06325f83a0f1b29e76ed916a2e21508b86cc829216888b3eb2324a212ab",
+  "head": "7fe6b2aa7d7166e06fa7769c236b6cd8ee56bebd",
+  "sourceSha256": "c319ab0d84aafdbc9216151d6b7988485e948fc857df15cd512031e7e561416d",
   "counts": {
     "public": {
       "skills": 63,
@@ -8964,11 +8964,6 @@
         "id": ".omc/skills/zod-v4-migration-expertise.md",
         "kind": "other",
         "path": ".omc/skills/zod-v4-migration-expertise.md"
-      },
-      {
-        "id": ".omg/projection-manifest.json",
-        "kind": "other",
-        "path": ".omg/projection-manifest.json"
       },
       {
         "id": ".omx/plans/source-overall-cleanup/fallback-classification-inventory.md",
@@ -57754,6 +57749,11 @@
         "id": "tests/lint/multirepo-paths-git-files.test.ts",
         "kind": "other",
         "path": "tests/lint/multirepo-paths-git-files.test.ts"
+      },
+      {
+        "id": "tests/lint/omg-runtime-untracked.test.ts",
+        "kind": "other",
+        "path": "tests/lint/omg-runtime-untracked.test.ts"
       },
       {
         "id": "tests/lint/session-end-forwarder-no-op.test.ts",
@@ -116173,6 +116173,26 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/omg-runtime-untracked.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/omg-runtime-untracked.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/omg-runtime-untracked.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/omg-runtime-untracked.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/session-end-forwarder-no-op.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -116485,11 +116505,11 @@
     ],
     "stats": {
       "nodeCount": 9826,
-      "edgeCount": 11725,
-      "importEdgeCount": 9625,
+      "edgeCount": 11729,
+      "importEdgeCount": 9629,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "6760089b799bbb7d96987238a6018ec235884e8227a47b5bbb316cd9047672d1",
-  "manifestSha256": "95d581cdfa0eb811863faeb49456ad608b22eb830a676a1bf38c4cd339161330"
+  "inventorySha256": "0ba6c97bee624d7f0d3854ad80ba3e3d4735be06af264ca36686d90854cc7e77",
+  "manifestSha256": "336e423e4ae9a108bbf984093e59056a0205fde7c31ccbf704e7b36a26e25cdc"
 }
