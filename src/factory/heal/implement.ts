@@ -29,7 +29,7 @@ import { withFileLockSync } from '../../lib/file-lock.js';
 import type { KnownFlakyTest } from '../../ship/config.js';
 import type { Exec } from '../../ship/exec.js';
 import { RUNTIME_MIN_MAX_CREDITS, type LoadedFactoryRunLimits } from '../run/budget.js';
-import { runFactoryEngine, type FactoryEngineOptions, type FactoryRunOutcome, type HealLaneCapDecision } from '../run/engine.js';
+import { runFactoryEngine, type FactoryEngineOptions, type FactoryForgeInput, type FactoryRunOutcome, type HealLaneCapDecision } from '../run/engine.js';
 import type { LaneBackend } from '../run/lane.js';
 import type { GateConfigLoader } from '../run/prepare.js';
 import { healRunKey, readFactoryState, type FactoryHealRecord } from '../run/state.js';
@@ -51,6 +51,8 @@ export interface HealEngineDeps {
   warn?: (message: string) => void;
   /** Test seams of the engine. */
   engine?: Partial<Pick<FactoryEngineOptions, 'pollMs' | 'owner' | 'processes' | 'sleep' | 'interrupted' | 'progressFile'>>;
+  /** The run's forge on Azure DevOps (the config heal read its CI from); omitted = GitHub through the gh calls. */
+  forge?: FactoryForgeInput;
 }
 
 export interface HealEngineOptions {
@@ -166,6 +168,7 @@ export async function runHealEngine(o: HealEngineOptions, deps: HealEngineDeps):
     ...(o.dryRun ? { dryRun: true } : {}),
     ...(deps.gateConfig ? { gateConfig: deps.gateConfig } : {}),
     ...(deps.warn ? { warn: deps.warn } : {}),
+    ...(deps.forge ? { forge: deps.forge } : {}),
     ...deps.engine,
   });
   // A merged or cancelled ci-heal run frees the open heal-run slot.

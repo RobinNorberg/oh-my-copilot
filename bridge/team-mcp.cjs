@@ -19643,6 +19643,9 @@ var init_routes = __esm({
           }
         }
       }),
+      // `omg factory poll`'s open human threads (ADO parity design §2.2).
+      // https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-threads/list?view=azure-devops-rest-7.1
+      route({ id: "git.pullRequestThreads.GET", area: "git", resource: "pullRequestThreads", method: "GET", apiVersion: STABLE, routeParams: ["project", "repositoryId", "pullRequestId"], queryParams: [] }),
       route({ id: "git.pullRequestIterations.GET", area: "git", resource: "pullRequestIterations", method: "GET", apiVersion: STABLE, routeParams: ["project", "repositoryId", "pullRequestId"], queryParams: [] }),
       route({ id: "git.pullRequestStatuses.GET", area: "git", resource: "pullRequestStatuses", method: "GET", apiVersion: STABLE, routeParams: ["project", "repositoryId", "pullRequestId"], queryParams: [] }),
       // Policy (gates) and builds.

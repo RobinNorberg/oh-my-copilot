@@ -128,6 +128,11 @@ export declare const HOOK_LOCK_TIMEOUT_MS = 250;
 export declare const SAFE_KEY: RegExp;
 export declare function ledgerPath(cwd: string): string;
 export declare function emptyLedger(now?: Date): BudgetLedger;
+/** The ledger at `path`; `invalid` when the file exists but is not a version-1 ledger (a missing file is an empty, valid one). */
+export declare function parseLedger(path: string): {
+    ledger: BudgetLedger;
+    invalid: boolean;
+};
 export declare function readLedger(path: string): BudgetLedger;
 /**
  * Start of the prompt count: the last `omg budget reset`. Before any reset

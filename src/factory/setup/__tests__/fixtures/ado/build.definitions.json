@@ -1,0 +1,15 @@
+{
+  "provenance": "synthetic: setup heal pipeline pick, shape of the Definitions - List sample with includeAllProperties (REST 7.1)",
+  "route": "build.definitions.GET",
+  "routeParameters": { "project": "Web" },
+  "queryParameters": { "repositoryId": "5febef5a-833d-4e14-b9c0-14cb638f91e6", "repositoryType": "TfsGit", "includeAllProperties": "true" },
+  "stdout": {
+    "count": 4,
+    "value": [
+      { "id": 9, "name": "web-app CI", "path": "\\", "type": "build", "queueStatus": "enabled", "repository": { "id": "5febef5a-833d-4e14-b9c0-14cb638f91e6", "name": "web-app", "type": "TfsGit" }, "process": { "yamlFilename": "azure-pipelines.yml", "type": 2 } },
+      { "id": 12, "name": "web-app docs\u001b[31m", "path": "\\docs", "type": "build", "queueStatus": "enabled", "repository": { "id": "5febef5a-833d-4e14-b9c0-14cb638f91e6", "name": "web-app", "type": "TfsGit" }, "process": { "yamlFilename": "docs/azure-pipelines.yml", "type": 2 } },
+      { "id": 15, "name": "other-app CI", "path": "\\", "type": "build", "queueStatus": "enabled", "repository": { "id": "0b0b0b0b-0000-4000-8000-000000000015", "name": "other-app", "type": "TfsGit" } },
+      { "id": 16, "name": "mirror CI", "path": "\\", "type": "build", "queueStatus": "enabled", "repository": { "id": "5febef5a-833d-4e14-b9c0-14cb638f91e6", "name": "web-app", "type": "GitHub" } }
+    ]
+  }
+}

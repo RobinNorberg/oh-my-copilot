@@ -122,6 +122,8 @@ export interface ReadForge {
     /** origin/<base>; null when it cannot be read (fetchBase warned). */
     baseSha: string | null;
     config: ResolvedForgeConfig;
+    /** The base branch's committed `.copilot/omg.jsonc` the config was resolved with (baseLayer; undefined when not read). */
+    baseConfig: unknown;
     forge: Forge;
     /** The guarded Exec the forge runs on (forgeReadExec). */
     exec: Exec;

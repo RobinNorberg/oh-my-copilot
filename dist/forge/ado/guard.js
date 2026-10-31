@@ -207,6 +207,9 @@ function invokeProblem(inv, ctx, policy, writes) {
         if (!((policy === 'read' ? READ_QUERY_VALUE[name] : undefined) ?? QUERY_VALUE[name] ?? VALUE).test(value))
             return `query parameter ${name} has a refused value`;
     }
+    if (ctx.definitionId !== undefined && Object.hasOwn(qp, 'definitions') && qp.definitions !== String(ctx.definitionId)) {
+        return `definitions must be the configured factory.heal.pipeline ${ctx.definitionId}`;
+    }
     const takesBody = route.body !== undefined && route.body.kind !== 'none';
     if (takesBody && inv.inFileAt === undefined)
         return `${route.id} needs --in-file`;

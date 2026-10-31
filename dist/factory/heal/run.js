@@ -260,7 +260,7 @@ export async function runHeal(o, deps) {
     const now = () => deps.now().toISOString();
     const lockPath = join(healStateDir(o.root), 'scan.lock');
     const locked = (fn) => withFileLockSync(lockPath, fn, { timeoutMs: o.lockTimeoutMs ?? 60_000 });
-    const healExec = healGuardExec(deps.exec);
+    const healExec = healGuardExec(deps.exec, deps.ado);
     const bundleDir = join(healStateDir(o.root), o.sig8, 'evidence');
     const initial = readHealState(o.root, o.sig8);
     if (!initial)

@@ -36,7 +36,7 @@ export const BOARD_STALE_MS = 24 * 60 * 60 * 1000;
 const RUN_FILE = /^run-(\d+|heal-[0-9a-f]{8})\.json$/;
 const message = (error) => plainText(error instanceof Error ? error.message : String(error));
 /** Every run state on disk; an unreadable one is a warning (and, for an item in the source, a `seal` flag). */
-function readRuns(root, warnings) {
+export function readRuns(root, warnings) {
     const runs = new Map();
     const broken = new Set();
     let names;

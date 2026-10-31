@@ -210,6 +210,29 @@ export interface ForgeReviews {
   prHead(pr: number): { headRefOid: string; state: string };
   markReady(pr: number): void;
   commentPr(pr: number, bodyFile: string): { ok: boolean; stderr: string };
+  /** `omg factory poll` only: the PR's review threads, read-only. Optional: GitHub omits it for now. Throws on a failed read. */
+  listThreads?(pr: number): ForgeThread[];
+}
+
+/** One PR review thread (ADO Pull Request Threads - List; deleted threads are left out). */
+export interface ForgeThread {
+  id: number;
+  /** CommentThreadStatus; any other value is `unknown`. */
+  status: 'active' | 'fixed' | 'wontFix' | 'closed' | 'byDesign' | 'pending' | 'unknown';
+  /** commentType of the first comment: `text` for people, `system` for ADO's own entries. */
+  kind: 'text' | 'system' | 'codeChange' | 'unknown';
+  /** The first comment's author.uniqueName, lowercased ('' when absent). */
+  author: string;
+  /**
+   * The thread's first comment ends with the factory's hidden marker line
+   * (ADO_FACTORY_COMMENT_MARKER, which the ADO commentPr appends). Not the
+   * author: the factory may run as the operator's own login.
+   */
+  byFactory: boolean;
+  /** lastUpdatedDate. */
+  updatedAt: string;
+  /** threadContext.filePath. */
+  file?: string;
 }
 
 export interface ForgeChecks {
@@ -237,7 +260,7 @@ export interface ForgeChecks {
    * that evaluationId; no matching evaluation is `ok: false`, never a guess.
    */
   rerun(pr: number, runId: string): { ok: boolean; stderr: string };
-  /** TRANSIENT_GH_ERROR for GitHub; ADO 5xx/TF400898/VS800075. */
+  /** TRANSIENT_GH_ERROR for GitHub; ADO 5xx/TF400898/VS800075/TF400733. Never a reason to retry a non-idempotent write. */
   readonly transientError: RegExp;
 }
 
@@ -309,6 +332,8 @@ export interface ForgeIntakeConfig {
   limit: number;
   /** Label (GitHub) / tag (ADO) that `check --mark` adds. */
   marker: string;
+  /** `factory.intake.autoStart` from the trusted layers: `omg factory poll` may start `run --next` on an idle tick. Absent = off. */
+  autoStart?: true;
 }
 
 export interface ForgeCheckConfig {

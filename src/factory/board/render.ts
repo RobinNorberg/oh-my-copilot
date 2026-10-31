@@ -33,7 +33,7 @@ function flagText(r: BoardRow): string[] {
   });
 }
 
-function backlogLine(r: BoardRow): string {
+export function backlogLine(r: BoardRow): string {
   const id = runLabel(r.id).padEnd(6);
   if (r.error) return `  ${chalk.red('read-failed'.padEnd(10))}  ${id}  ${r.error}`;
   const pri = r.check?.priority ? `P${r.check.priority}` : '- ';
@@ -43,7 +43,7 @@ function backlogLine(r: BoardRow): string {
   return `  ${bucket}  ${id}  ${pri}  ${title}  ${r.check.reasons[0] ?? ''}${r.check.reasons.length ? `  ${chalk.gray(r.check.detail)}` : ''}${r.flags.length ? `  ${flagText(r).join('  ')}` : ''}`;
 }
 
-function runLine(r: BoardRow, prefix: string): string {
+export function runLine(r: BoardRow, prefix: string): string {
   const run = r.run;
   const parts = [runLabel(r.id).padEnd(6)];
   if (r.error) parts.push(chalk.red(`read-failed: ${r.error}`));

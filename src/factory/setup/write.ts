@@ -28,6 +28,8 @@ export interface SetupSection {
   forge: Record<string, unknown>;
   intake: { source: IntakeSource; itemTypes?: string[] };
   progress: Pick<ForgeProgressConfig, 'enabled' | 'stages'>;
+  /** Azure DevOps: the build definition heal reads as CI (factory.heal.pipeline; read from <base> once committed). */
+  heal?: { pipeline: { definitionId: number } };
 }
 
 export function buildSection(repo: ForgeRepo, intake: Pick<ForgeIntakeConfig, 'source' | 'itemTypes'> & { source: IntakeSource }, progress: ForgeProgressConfig, team?: string): SetupSection {
@@ -58,6 +60,7 @@ export function sectionEdits(section: SetupSection): Array<[JSONPath, unknown]> 
   if (section.intake.itemTypes) edits.push([['factory', 'intake', 'itemTypes'], section.intake.itemTypes]);
   edits.push([['factory', 'progress', 'enabled'], section.progress.enabled]);
   edits.push([['factory', 'progress', 'stages'], section.progress.stages]);
+  if (section.heal) edits.push([['factory', 'heal', 'pipeline'], section.heal.pipeline]);
   return edits;
 }
 
@@ -69,7 +72,7 @@ export function trustedAuthorsEdit(authors: readonly string[]): [JSONPath, unkno
 
 /** The subtrees each scope may change; everything else must parse the same before and after. */
 const OWNED: Record<SetupScope, readonly JSONPath[]> = {
-  project: [['factory', 'forge'], ['factory', 'intake'], ['factory', 'progress']],
+  project: [['factory', 'forge'], ['factory', 'intake'], ['factory', 'progress'], ['factory', 'heal', 'pipeline']],
   user: [TRUSTED_AUTHORS],
 };
 

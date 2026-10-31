@@ -49,6 +49,8 @@ export function sectionEdits(section) {
         edits.push([['factory', 'intake', 'itemTypes'], section.intake.itemTypes]);
     edits.push([['factory', 'progress', 'enabled'], section.progress.enabled]);
     edits.push([['factory', 'progress', 'stages'], section.progress.stages]);
+    if (section.heal)
+        edits.push([['factory', 'heal', 'pipeline'], section.heal.pipeline]);
     return edits;
 }
 const TRUSTED_AUTHORS = ['factory', 'forge', 'azureDevOps', 'trustedAuthors'];
@@ -57,7 +59,7 @@ export function trustedAuthorsEdit(authors) {
 }
 /** The subtrees each scope may change; everything else must parse the same before and after. */
 const OWNED = {
-    project: [['factory', 'forge'], ['factory', 'intake'], ['factory', 'progress']],
+    project: [['factory', 'forge'], ['factory', 'intake'], ['factory', 'progress'], ['factory', 'heal', 'pipeline']],
     user: [TRUSTED_AUTHORS],
 };
 const BOM = String.fromCharCode(0xfeff);

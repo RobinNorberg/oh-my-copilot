@@ -24,7 +24,7 @@ import { type FactoryCheckDeps } from '../check/cli.js';
 import { checkItems } from '../check/score.js';
 import type { CheckBucket } from '../check/rules.js';
 import { type Forge, type ForgeKind, type ProgressStage, type ResolvedForgeConfig } from '../../forge/types.js';
-import { type FactoryPhase, type FactoryRunKey } from '../run/state.js';
+import { type FactoryPhase, type FactoryRunKey, type FactoryRunState } from '../run/state.js';
 /** Bumped on any change to the `--json` shape (src/factory/board/__tests__ pins it). */
 export declare const BOARD_JSON_SCHEMA_VERSION = 1;
 /** A non-terminal run without a gate whose state has not changed for this long is likely lost (the watchdog's idea). */
@@ -106,6 +106,11 @@ export interface FactoryBoardOptions {
 /** check's deps plus the clock (stale). */
 export type FactoryBoardDeps = Pick<FactoryCheckDeps, 'exec' | 'base' | 'trustedUser' | 'projectConfig' | 'createForge' | 'resolveAz' | 'out' | 'err'> & {
     now?: () => number;
+};
+/** Every run state on disk; an unreadable one is a warning (and, for an item in the source, a `seal` flag). */
+export declare function readRuns(root: string, warnings: string[]): {
+    runs: Map<FactoryRunKey, FactoryRunState>;
+    broken: Set<FactoryRunKey>;
 };
 /**
  * The stage the tracker shows now, reverse-mapped through the progress

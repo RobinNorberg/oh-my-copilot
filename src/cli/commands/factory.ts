@@ -52,6 +52,8 @@ import { defaultLedgerDir } from '../../factory/run/ledger.js';
 import { listenForgeRefusal } from '../../factory/setup/detect.js';
 import { factorySetupCommand } from './factory-setup.js';
 import { factoryBoardCommand } from './factory-board.js';
+import { factoryPollCommand } from './factory-poll.js';
+import { defaultPollHealScan } from '../../factory/poll.js';
 import { checkEnvFor, fetchBase, forgeReadExec, parseItemId } from '../../factory/check/cli.js';
 import { BUCKET_ORDER, checkItems, plainText, type CheckResult } from '../../factory/check/score.js';
 import { createForge } from '../../forge/index.js';
@@ -142,12 +144,23 @@ function factoryRoot(exec: Exec): string {
   return r.stdout.trim();
 }
 
+/**
+ * The `omg factory run --json` documents on stdout. `omg factory poll`'s
+ * auto-start parses them (parseRunNextOutcome; its contract test builds its
+ * fixtures from these writers).
+ */
+export const factoryRunJson = {
+  nothingRunnable: (counts: Record<string, number>): string => JSON.stringify({ ok: true, next: null, message: 'nothing runnable', counts }, null, 2),
+  outcome: (outcome: FactoryRunOutcome, next?: number): string => JSON.stringify({ ok: outcome.exitCode === 0, ...(next !== undefined ? { next } : {}), ...outcome }, null, 2),
+  error: (message: string): string => JSON.stringify({ ok: false, error: message }, null, 2),
+};
+
 async function factoryGuarded(json: boolean, fn: () => Promise<number> | number): Promise<void> {
   try {
     process.exitCode = await fn();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (json) console.log(JSON.stringify({ ok: false, error: message }, null, 2));
+    if (json) console.log(factoryRunJson.error(message));
     else console.error(chalk.red(`Error: ${message}`));
     process.exitCode = error instanceof FactoryUsageError ? 2 : 1;
   }
@@ -193,7 +206,7 @@ const bucketCounts = (items: readonly CheckResult[]): Record<string, number> =>
 
 function printOutcome(json: boolean, outcome: FactoryRunOutcome, next?: number): void {
   if (json) {
-    console.log(JSON.stringify({ ok: outcome.exitCode === 0, ...(next !== undefined ? { next } : {}), ...outcome }, null, 2));
+    console.log(factoryRunJson.outcome(outcome, next));
     return;
   }
   if (outcome.state) console.log(renderFactoryRunState(outcome.state));
@@ -236,7 +249,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
           for (const w of pickWarnings) console.error(chalk.yellow(plainText(w)));
           const counts = bucketCounts(items);
           if (!next) {
-            if (o.json) console.log(JSON.stringify({ ok: true, next: null, message: 'nothing runnable', counts }, null, 2));
+            if (o.json) console.log(factoryRunJson.nothingRunnable(counts));
             else console.log(`nothing runnable (${BUCKET_ORDER.map((b) => `${counts[b]} ${b}`).join(', ')})`);
             return 0;
           }
@@ -362,6 +375,10 @@ export function factoryCommand(): Command {
   cmd.addCommand(factoryCheckCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(factoryEnqueueCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(factoryBoardCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
+  cmd.addCommand(factoryPollCommand({
+    ...defaultFactoryCheckDeps(defaultFactoryRunDeps.base),
+    healScan: defaultPollHealScan(defaultExec, (root) => resolveHealConfig(userConfigLayers().trustedUser, projectConfig(root)), defaultLedgerDir()),
+  }));
   cmd.addCommand(healCommand({
     exec: defaultExec,
     base: defaultFactoryRunDeps.base,
@@ -373,6 +390,8 @@ export function factoryCommand(): Command {
     ledgerDir: defaultLedgerDir(),
     runLimits: defaultFactoryRunDeps.limits,
     forgeKind: (root) => originForgeKind(factoryGuardExec(defaultExec), root),
+    // Azure DevOps only: the trusted forge config naming factory.heal.pipeline (GitHub never loads it).
+    forge: defaultFactoryRunDeps.forge,
   }));
   cmd.addCommand(factorySetupCommand());
 

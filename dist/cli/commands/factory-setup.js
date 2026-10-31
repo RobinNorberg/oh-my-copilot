@@ -33,6 +33,7 @@ import { checkAdoAuth, checkGitHubAuth } from '../../factory/setup/auth.js';
 import { detectSetupForge } from '../../factory/setup/detect.js';
 import { SetupError, setupGuardExec } from '../../factory/setup/guard.js';
 import { adoWorkItemTypes, formatIntakeSpec, githubLabels, parseIntakeSpec, pickIntake, previewIntake, validateIntake, } from '../../factory/setup/intake-pick.js';
+import { pickHealPipeline } from '../../factory/setup/pipeline-pick.js';
 import { missingGitHubLabels, pickProgress, progressFromFlag, validateAdoProgress } from '../../factory/setup/progress-pick.js';
 import { applyWrites, buildSection, parsedAfter, planWrites } from '../../factory/setup/write.js';
 import { redactAdoSecrets } from '../../forge/ado/redact.js';
@@ -143,8 +144,8 @@ async function setup(o, deps, cwd, out) {
     const repo = detected.repo;
     out.forge = { kind: repo.kind, host: repo.host, owner: repo.owner, ...(repo.project ? { project: repo.project } : {}), name: repo.name, url: repo.url };
     const ado = repo.kind === 'azure-devops';
-    if (!ado && (o.itemTypes || o.board || o.trustedAuthor))
-        throw new SetupError(2, '--item-types, --board and --trusted-author are Azure DevOps flags; this repository is on GitHub');
+    if (!ado && (o.itemTypes || o.board || o.trustedAuthor || o.healPipeline))
+        throw new SetupError(2, '--item-types, --board, --trusted-author and --heal-pipeline are Azure DevOps flags; this repository is on GitHub');
     // Step 2: auth.
     let az;
     if (ado) {
@@ -206,7 +207,9 @@ async function setup(o, deps, cwd, out) {
     }
     // Step 6: write.
     const team = source.type === 'board-column' ? source.team : board?.team ?? detected.prefill.team;
-    out.config = buildSection(repo, { source, itemTypes }, progress, team);
+    // The heal pipeline (optional): only a build definition of the forge repository; it goes to the project file, which is read from <base>.
+    const healPipeline = ado ? await pickHealPipeline(io, prompter, o.healPipeline) : undefined;
+    out.config = { ...buildSection(repo, { source, itemTypes }, progress, team), ...(healPipeline ? { heal: { pipeline: healPipeline } } : {}) };
     const planned = planWrites({ projectPath, userPath, section: out.config, ...(trustedAuthors.length > 0 ? { trustedAuthors } : {}) });
     out.diffs = planned.map((w) => ({ path: w.path, scope: w.scope, diff: w.diff }));
     const afterUser = parsedAfter(planned, userPath);
@@ -227,6 +230,8 @@ async function setup(o, deps, cwd, out) {
     out.notes.push(`${projectPath} is a protected path: omg factory reads forge.* and progress.* from it only on <base> once it is committed there.`);
     if (trustedAuthors.length > 0)
         out.notes.push(`trustedAuthors go to the user config ${userPath} only.`);
+    if (healPipeline)
+        out.notes.push(`factory.heal.pipeline (build definition ${healPipeline.definitionId}) counts once ${projectPath} is committed on <base>; omg factory heal ignores it in the working tree.`);
     if (!o.json) {
         for (const w of planned) {
             console.log(chalk.bold(`--- ${w.path} (${w.scope})`));
@@ -314,6 +319,7 @@ export function factorySetupCommand(deps = defaultFactorySetupDeps) {
         .option('--progress <mode>', 'default | none | <file.json>')
         .option('--board <team/board>', 'Azure DevOps board the progress columns live on (default: the board-column intake board)')
         .option('--trusted-author <list>', 'Azure DevOps uniqueNames whose omg-plan: comments count (user config only), comma-separated')
+        .option('--heal-pipeline <id>', 'Azure DevOps build definition omg factory heal reads as CI (a pipeline of this repository), or none')
         .option('--scope <scope>', 'project | user; forge identity, intake and progress always go to .copilot/omg.jsonc, the user config gets only trustedAuthors', 'project')
         .option('--dry-run', 'Show the diff and the preview; write nothing')
         .option('--yes', 'Non-interactive: take every answer from flags and confirm the write')

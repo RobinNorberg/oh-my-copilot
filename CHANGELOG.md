@@ -2,6 +2,114 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+# oh-my-copilot v5.19.1
+
+## [5.19.1] - 2026-10-31
+
+Fork **v5.19.1** (from v5.19.0) is the first published release of the
+v5.19.0 work, plus a build fix and three Azure DevOps parity features. The
+v5.19.0 tag exists but was never published: its release job failed because
+the build rewrote `.omg/projection-manifest.json`, a runtime file committed
+by mistake, which made the inventory drift check fail. This release ships
+everything listed under v5.19.0 below. New on top of it: `omg factory poll`,
+a polling loop for GitHub and Azure DevOps; `omg factory heal` and the
+ci-heal run on Azure DevOps; and `factory.intake.autoStart`, which lets poll
+start `omg factory run --next` on an idle tick. This release was published
+without the live Copilot smoke (the account's Copilot quota is exhausted).
+The Azure DevOps parts are fixture-tested only and have not been run against
+a live Azure DevOps org. The shipped `launch` and `harbor`
+skills and `docs/shipyard.md` still treat factory mode as GitHub-only, so
+launch delivers through Team on Azure DevOps.
+
+### Added
+
+#### Azure DevOps parity
+
+- **`omg factory poll`.** A foreground polling loop for GitHub and Azure
+  DevOps, for where webhooks cannot reach (ADO service hooks need a public
+  endpoint):
+  `omg factory poll [--interval 5m] [--once] [--no-heal] [--no-intake] [--no-prs] [--json]`.
+  Each tick runs the heal scan (only with the heal capability; still skipped
+  on Azure DevOps), reports new intake items with their check bucket, prints
+  the resume hint for a PR a human completed or abandoned, counts the active
+  and pending human review threads on Azure DevOps (new
+  `ForgeReviews.listThreads`, route `git.pullRequestThreads.GET`; system
+  threads and the factory's own are left out), and prints the board rows
+  that changed. `--once --json` prints one tick; its `idle` is advisory and
+  false while a run state is unreadable or fails its integrity seal. A tick
+  never spawns anything and never writes to the tracker or forge (check's
+  read guard); the only exception is the run that `factory.intake.autoStart`
+  starts. One poller per repository, with a heartbeat each tick (an owner
+  silent for 2 h is taken over); SIGINT ends the loop after the tick. The
+  interval is 5 min by default with a 2 min floor, and doubles up to 60 min
+  after a rate-limited tick (`TF400733`, HTTP 429).
+- **`factory.intake.autoStart` for `omg factory poll`.** One key for GitHub
+  and Azure DevOps, off by default. When it is on, an idle tick starts at
+  most one `omg factory run --next --json` as a child `omg` process and
+  waits for it. The tick must be idle, with a successful intake read and no
+  rate limit. A run state that is unreadable or fails its integrity seal
+  makes the tick not idle. `idle` is only advisory: right before the start,
+  poll claims the engine's run lock atomically, and a refusal skips the
+  tick. There must also be budget headroom: the `factory.run` limits
+  resolve, and the AI credits are below `budget.softLimit`. The budget gate
+  fails closed. It reads `budget.softLimit` from the user config, then the
+  base branch. The working tree can only lower it. A missing trusted limit,
+  a corrupt ledger or `OMC_BUDGET_GOVERNOR=0` blocks the start. The tick
+  JSON (`autoStart`, with `parsed`), the text output and the poll audit
+  record whether a run started, the item it took and its exit code. An
+  unreadable outcome shows as `outcome unreadable`. The run has a wall-clock
+  limit taken from the `factory.run` limits (SIGTERM, then SIGKILL, sent to
+  the whole process group on POSIX; on Windows only the engine process is
+  reached), and poll forwards its stop signals to it. A tick warns when a
+  budget ledger an earlier tick saw has disappeared. Poll never starts the
+  listener chain, `heal run` or `heal approve`. The key is read only from
+  the user config and the base branch's `.copilot/omg.jsonc`. A working-tree
+  value is ignored with a warning, as with `factory.progress`.
+- **`omg factory heal` and the ci-heal run on Azure DevOps.** With a trusted
+  `factory.heal.pipeline` on the base branch (capabilities.heal),
+  `heal scan|run|approve|cancel` read the pipeline's builds through the heal
+  guard's `read` policy, whose context is built from the same resolved
+  config as the CI reads and lists the builds of that pipeline only; without
+  the key heal refuses and names it. `heal status` and `close` need no forge
+  wiring, and `heal cancel` still records the cancel request when the key is
+  gone or az is broken (az is resolved on first use). `heal approve` runs
+  the ci-heal run on the Azure DevOps forge: the repository url comes from
+  the forge, the draft PR has a fixed title, no work item link and
+  build-page run links, and the run parks at the human merge with the
+  head-pinned merge body. ci-heal never merges or completes a PR.
+- **`omg factory setup --heal-pipeline <id>|none`.** An optional heal
+  pipeline pick on Azure DevOps (also a choice on a TTY) that offers only
+  build definitions of the forge repository (the `repositoryId` query is the
+  GUID the forge repository answers) and writes `factory.heal.pipeline` to
+  `.copilot/omg.jsonc`, which counts once committed on the base branch.
+
+### Changed
+
+- **`omg factory poll`'s heal tick runs on Azure DevOps.** With
+  `factory.heal.pipeline` set, it classifies red builds of that pipeline
+  through `omg factory heal scan`'s own wiring: the `read` policy, GETs only,
+  `definitions` pinned to the configured pipeline. It writes heal state and
+  the ledger as `heal scan` does. Without a pipeline the tick is skipped with
+  `heal scan`'s message.
+- **`omg factory listen` on Azure DevOps points at `omg factory poll`.**
+- **`TF400733` is a transient Azure DevOps error**, so gate polls retry it.
+- **Factory PR comments on Azure Repos end with a hidden marker line**,
+  `<!-- omg-factory: comment -->`, so poll can leave them out of the review
+  thread count. GitHub comments are unchanged.
+
+### Fixed
+
+- **A build no longer breaks the release's inventory check.**
+  `.omg/projection-manifest.json` is gitignored runtime state that a commit
+  after v5.18.2 force-added. `npm run build` rewrites its `generatedAt`, and
+  the release job builds before it tests, so the inventory baseline was
+  stale and `tests/lint/inventory-graph-drift.test.ts` failed (the v5.19.0
+  tag run). The file is untracked again, and the new
+  `tests/lint/omg-runtime-untracked.test.ts` fails when git tracks anything
+  under `.omg/` except `.omg/skills/`. The same commit had also force-added
+  `.claude/settings.local.json`, a personal permissions file with no
+  secrets; it is untracked too.
+
 # oh-my-copilot v5.19.0
 
 ## [5.19.0] - 2026-10-31

@@ -288,6 +288,8 @@ export interface ReadForge {
   /** origin/<base>; null when it cannot be read (fetchBase warned). */
   baseSha: string | null;
   config: ResolvedForgeConfig;
+  /** The base branch's committed `.copilot/omg.jsonc` the config was resolved with (baseLayer; undefined when not read). */
+  baseConfig: unknown;
   forge: Forge;
   /** The guarded Exec the forge runs on (forgeReadExec). */
   exec: Exec;
@@ -313,8 +315,9 @@ export function openReadForge(o: Pick<FactoryCheckOptions, 'source' | 'limit'>, 
   const trustedUser = deps.trustedUser();
 
   let config: ResolvedForgeConfig;
+  const baseConfig = baseLayer(pre, root, base, baseSha, trustedUser, warnings);
   try {
-    const loaded = resolveForgeConfig(trustedUser, baseLayer(pre, root, base, baseSha, trustedUser, warnings), withFlags(deps.projectConfig(root), o), origin.out);
+    const loaded = resolveForgeConfig(trustedUser, baseConfig, withFlags(deps.projectConfig(root), o), origin.out);
     config = loaded.config;
     warnings.push(...loaded.warnings);
   } catch (error) {
@@ -323,7 +326,7 @@ export function openReadForge(o: Pick<FactoryCheckOptions, 'source' | 'limit'>, 
   }
   try {
     const read = forgeReadExec(deps.exec, config, root, deps.resolveAz, marker, command);
-    return { root, base, baseSha, config, forge: deps.createForge(read.exec, root, config, read.options), exec: read.exec };
+    return { root, base, baseSha, config, baseConfig, forge: deps.createForge(read.exec, root, config, read.options), exec: read.exec };
   } catch (error) {
     throw new CheckIncompatibleError(error instanceof Error ? error.message : String(error));
   }

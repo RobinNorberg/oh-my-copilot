@@ -1,0 +1,767 @@
+/**
+ * `omg factory poll` on GitHub (a scripted gh + git): tick order, the intake
+ * diff and its seen file, the PR resume hint, the board diff, the heal
+ * capability gate, the owner lock, the rate-limit backoff, the stop signal,
+ * the idle seam, and the read guard: a tick never spawns and never writes to
+ * the tracker or forge.
+ */
+import { execFileSync } from 'node:child_process';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { hostname, tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { factoryRunJson } from '../../cli/commands/factory.js';
+import { factoryPollCommand } from '../../cli/commands/factory-poll.js';
+import { createForge } from '../../forge/index.js';
+import type { ForgeFactory } from '../../forge/types.js';
+import type { Exec, ExecResult } from '../../ship/exec.js';
+import { FactorySafetyError } from '../run/exec.js';
+import { HealRunRefused } from '../heal/run.js';
+import { HEAL_PIPELINE_MISSING, type ScanResult } from '../heal/cli.js';
+import { adoConfig } from '../../forge/ado/__tests__/world.js';
+import { DEFAULT_HEAL_CONFIG } from '../heal/config.js';
+import { DEFAULT_FACTORY_RUN_LIMITS } from '../run/budget.js';
+import { healStateDir } from '../heal/state.js';
+import { computeFactoryIntegrity, createFactoryState, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, moveTo, runKeyOf, setGate, type FactoryRunState } from '../run/state.js';
+import {
+  acquirePoller, defaultPollHealScan, nextInterval, parseInterval, PollBusyError, pollAuditPath, pollStatePath, POLL_JSON_SCHEMA_VERSION, POLL_MAX_INTERVAL_MS,
+  autoStartTimeoutMs, defaultPollAutoStart, defaultPollBudget, parseRunNextOutcome, runFactoryPoll, type FactoryPollDeps, type FactoryPollOptions, type PollAutoStart, type PollHealScan, type PollTick,
+} from '../poll.js';
+
+const SHA = 'a'.repeat(40);
+const HEAD = 'b'.repeat(40);
+const T0 = '2026-10-31T10:00:00.000Z';
+const NOW = Date.parse('2026-10-31T12:00:00.000Z');
+const AC = '## Acceptance criteria\n- `omg x` exits 0\n';
+const REPO = 'https://github.com/o/r';
+const ok = (stdout = ''): ExecResult => ({ status: 0, stdout, stderr: '' });
+const MIN = 60_000;
+
+let root: string;
+let out: string[];
+let err: string[];
+
+beforeEach(() => {
+  root = mkdtempSync(join(tmpdir(), 'omg-poll-'));
+  // A git checkout, so the poll and run state live under it (outside a repository the state root climbs to the home directory).
+  execFileSync('git', ['init', '-q', root]);
+  if (!pollStatePath(root).startsWith(root) || !factoryStateDir(root).startsWith(root)) throw new Error('state dir is outside the test root');
+  out = [];
+  err = [];
+});
+afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+/** gh + git: issues 1 and 2 in the label source; PR 9 (run #4) with `prState`. `onCall` sees each command first. */
+function scripted(o: { listed?: number[]; prState?: string; onCall?: (cmd: string, args: string[]) => ExecResult | undefined } = {}) {
+  const calls: string[] = [];
+  const exec: Exec = (cmd, args) => {
+    const a = args.join(' ');
+    calls.push(`${cmd} ${a}`);
+    const hooked = o.onCall?.(cmd, args);
+    if (hooked) return hooked;
+    if (cmd === 'git') {
+      if (a === 'rev-parse --show-toplevel') return ok(`${root}\n`);
+      if (a === 'remote get-url origin') return ok('https://github.com/o/r.git\n');
+      if (a === 'fetch origin dev') return ok();
+      if (a === 'rev-parse --verify refs/remotes/origin/dev') return ok(`${SHA}\n`);
+      if (a === `cat-file -e ${SHA}^{commit}`) return ok();
+      if (args[0] === 'ls-remote') return ok('');
+      if (args[0] === 'show') return { status: 128, stdout: '', stderr: `fatal: path does not exist in '${SHA}'` };
+    }
+    if (cmd === 'gh') {
+      if (args[0] === 'issue' && args[1] === 'list') return ok(JSON.stringify((o.listed ?? [1, 2]).map((number) => ({ number }))));
+      if (args[0] === 'issue' && args[1] === 'view') {
+        const n = Number(args[2]);
+        return ok(JSON.stringify({ title: `issue ${n}`, body: n === 1 ? AC : 'no plan', state: 'OPEN', url: `${REPO}/issues/${n}`, author: { login: 'o' }, comments: [], labels: [] }));
+      }
+      if (args[0] === 'pr' && args[1] === 'list') return ok('[]');
+      if (args[0] === 'pr' && args[1] === 'view' && args[2] === '9') {
+        return ok(JSON.stringify({ number: 9, state: o.prState ?? 'OPEN', isDraft: false, baseRefName: 'dev', baseRefOid: SHA, headRefName: 'factory/issue-4', headRefOid: HEAD, url: `${REPO}/pull/9` }));
+      }
+    }
+    throw new Error(`unscripted ${cmd} ${a}`);
+  };
+  return { exec, calls };
+}
+
+const scan = (calls: string[] = []): PollHealScan => (o) => {
+  calls.push(`${o.kind} ${o.base}`);
+  return { base: o.base, dryRun: false, entries: [{ runId: '77', event: 'push', headBranch: 'dev', sig8: '0123abcd', class: 'test-failure', reason: 'x', recorded: true }], queued: 0 } satisfies ScanResult;
+};
+
+function deps(exec: Exec, over: Partial<FactoryPollDeps> = {}): FactoryPollDeps {
+  return {
+    exec,
+    base: () => 'dev',
+    trustedUser: () => undefined,
+    projectConfig: () => undefined,
+    createForge,
+    now: () => NOW,
+    healScan: scan(),
+    owner: { pid: 4242, hostname: hostname(), isAlive: () => false },
+    onStop: () => () => {},
+    sleep: async () => { throw new Error('a --once poll never sleeps'); },
+    out: (l) => out.push(l),
+    err: (l) => err.push(l),
+    ...over,
+  };
+}
+
+const poll = (exec: Exec, o: FactoryPollOptions = {}, over: Partial<FactoryPollDeps> = {}) => runFactoryPoll(o, deps(exec, over));
+const ticks = (): PollTick[] => out.map((l) => JSON.parse(l) as PollTick);
+const LABEL = { factory: { intake: { source: { type: 'label', label: 'factory' } } } };
+
+function save(s: FactoryRunState): void {
+  const path = factoryStatePath(root, runKeyOf(s));
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify({ ...s, integrity: computeFactoryIntegrity(s) }));
+}
+const issueRun = (issue: number) => ({ ...createFactoryState({ issue, repoUrl: REPO, base: 'dev' }, T0), forgeKind: 'github' as const, issueTitle: `issue ${issue}` });
+/** #4 parked at the merge gate with PR 9. */
+const seedParked = () => save({ ...setGate(moveTo(issueRun(4), 'gates', 'gates', T0), 'merge', 'gates green; a human merges', T0), pr: 9, head: HEAD });
+
+describe('omg factory poll on GitHub', () => {
+  it('--once --json: heal, intake, PRs and board in one tick; the seen file and the audit', async () => {
+    seedParked();
+    const healCalls: string[] = [];
+    const w = scripted({ prState: 'MERGED' });
+    expect(await poll(w.exec, { once: true, json: true }, { projectConfig: () => LABEL, healScan: scan(healCalls) })).toBe(0);
+    const [t] = ticks();
+    expect(out).toHaveLength(1);
+    expect(t).toMatchObject({
+      schemaVersion: POLL_JSON_SCHEMA_VERSION, tick: 1, forge: 'github', repo: REPO,
+      heal: { ran: true, entries: 1, recorded: 1, queued: 0 },
+      intake: { ran: true, items: 2, new: [{ id: 1, bucket: 'runnable', reasons: [] }, { id: 2, bucket: 'needs-plan' }] },
+      prs: [{ id: 4, pr: 9, state: 'MERGED', hint: 'omg factory run 4' }],
+      idle: true, rateLimited: false, errors: [],
+    });
+    expect(t.nextIntervalMs).toBeUndefined();
+    expect(healCalls).toEqual(['github dev']);
+    // Every row on the first tick: the two backlog items and the parked run (not in the source).
+    expect(t.board.map((b) => [b.stage, b.row.id])).toEqual([['backlog', 1], ['backlog', 2], ['outside', 4]]);
+    // Tick order: the intake query, then the new items' reads, then the PR read.
+    const order = w.calls.filter((c) => /^gh (issue list|issue view|pr view)/.test(c)).map((c) => c.split(' ').slice(1, 3).join(' '));
+    expect(order.indexOf('issue list')).toBeLessThan(order.indexOf('issue view'));
+    expect(order.indexOf('issue view')).toBeLessThan(order.indexOf('pr view'));
+    expect(JSON.parse(readFileSync(pollStatePath(root), 'utf8'))).toEqual({ seen: [1, 2], at: '2026-10-31T12:00:00.000Z' });
+    const audit = readFileSync(pollAuditPath(root), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    expect(audit.map((a) => [a.kind, a.id])).toEqual([['intake-new', 1], ['intake-new', 2], ['pr-done', 4]]);
+    expect(audit[2]).toMatchObject({ pr: 9, state: 'MERGED', hint: 'omg factory run 4' });
+  });
+
+  it('a second tick reports only items new since the seen file', async () => {
+    const w = scripted({ listed: [1, 2] });
+    expect(await poll(w.exec, { once: true, json: true }, { projectConfig: () => LABEL })).toBe(0);
+    out.length = 0;
+    const w2 = scripted({ listed: [1, 2, 3] });
+    expect(await poll(w2.exec, { once: true, json: true }, { projectConfig: () => LABEL })).toBe(0);
+    expect(ticks()[0].intake).toMatchObject({ ran: true, items: 3, new: [{ id: 3 }] });
+    // check reads #3 alone; then the board reads each item (GitHub has no batched peek).
+    expect(w2.calls.filter((c) => c.startsWith('gh issue view')).map((c) => c.split(' ')[3])).toEqual(['3', '1', '2', '3']);
+    expect(JSON.parse(readFileSync(pollStatePath(root), 'utf8')).seen).toEqual([1, 2, 3]);
+  });
+
+  it('an open PR prints no hint; text output names a merged one', async () => {
+    seedParked();
+    expect(await poll(scripted().exec, { once: true, json: true })).toBe(0);
+    expect(ticks()[0].prs).toEqual([{ id: 4, pr: 9, state: 'OPEN' }]);
+    out.length = 0;
+    expect(await poll(scripted({ prState: 'CLOSED' }).exec, { once: true })).toBe(0);
+    expect(out.join('\n')).toContain('PR #9 of #4 is closed by a human: run `omg factory run 4` to record it');
+  });
+
+  it('never spawns and never writes: every command is a read, and the guard refuses writes before gh', async () => {
+    seedParked();
+    let guarded: Exec | undefined;
+    const spy: ForgeFactory = (exec, cwd, config, options) => {
+      guarded = exec;
+      return createForge(exec, cwd, config, options);
+    };
+    const w = scripted({ prState: 'MERGED' });
+    expect(await poll(w.exec, { once: true, json: true }, { projectConfig: () => LABEL, createForge: spy })).toBe(0);
+    for (const c of w.calls) expect(c, c).toMatch(/^(?:git (?:rev-parse|remote get-url|fetch origin dev|cat-file -e|ls-remote|show)|gh (?:issue (?:list|view)|pr (?:list|view)))\b/);
+    const before = w.calls.length;
+    const writes = [
+      ['issue', 'edit', '1', '--add-label', 'factory:building'],
+      ['issue', 'comment', '1', '--body-file', join(root, 'b.md')],
+      ['pr', 'ready', '9'],
+      ['pr', 'merge', '9', '--squash'],
+      ['pr', 'comment', '9', '--body-file', join(root, 'b.md')],
+      ['run', 'rerun', '77', '--failed'],
+    ];
+    for (const args of writes) expect(() => guarded!('gh', args, { cwd: root }), args.join(' ')).toThrow(FactorySafetyError);
+    for (const cmd of ['copilot', 'node', 'omg']) expect(() => guarded!(cmd, ['-p', 'x'], { cwd: root })).toThrow(FactorySafetyError);
+    expect(w.calls.length).toBe(before);
+  });
+
+  it('a guard refusal inside a tick propagates instead of being reported as a read failure', async () => {
+    const refusing: ForgeFactory = (exec, cwd, config, options) => {
+      const forge = createForge(exec, cwd, config, options);
+      return { ...forge, tracker: { ...forge.tracker, queryItems: () => { exec('gh', ['issue', 'edit', '1', '--add-label', 'x']); return []; } } };
+    };
+    await expect(poll(scripted().exec, { once: true, json: true }, { projectConfig: () => LABEL, createForge: refusing })).rejects.toThrow(FactorySafetyError);
+  });
+
+  it('the heal tick runs only with the heal capability, and a refused scan only skips it', async () => {
+    const noHeal: ForgeFactory = (exec, cwd, config, options) => {
+      const forge = createForge(exec, cwd, config, options);
+      return { ...forge, capabilities: { ...forge.capabilities, heal: false } };
+    };
+    const calls: string[] = [];
+    expect(await poll(scripted().exec, { once: true, json: true }, { createForge: noHeal, healScan: scan(calls) })).toBe(0);
+    expect(calls).toEqual([]);
+    expect(ticks()[0].heal).toEqual({ ran: false, reason: expect.stringContaining('no heal capability') });
+    out.length = 0;
+    expect(await poll(scripted().exec, { once: true, json: true, heal: false }, { healScan: scan(calls) })).toBe(0);
+    expect(calls).toEqual([]);
+    expect(ticks()[0].heal).toEqual({ ran: false, reason: '--no-heal' });
+    out.length = 0;
+    const refused: PollHealScan = () => { throw new HealRunRefused('not here'); };
+    expect(await poll(scripted().exec, { once: true, json: true }, { healScan: refused })).toBe(0);
+    expect(ticks()[0]).toMatchObject({ heal: { ran: false, reason: 'not here' }, errors: [] });
+  });
+
+  it('the default heal scan on Azure DevOps without factory.heal.pipeline refuses with heal scan\'s message before any command', () => {
+    const exec: Exec = () => { throw new Error('no command runs'); };
+    const heal = defaultPollHealScan(exec, () => { throw new Error('no config read'); }, join(root, 'ledger'), () => { throw new Error('no az entry'); });
+    expect(() => heal({ root, base: 'dev', kind: 'azure-devops', forge: adoConfig(), now: new Date(NOW), warn: () => {} })).toThrow(new HealRunRefused(HEAL_PIPELINE_MISSING));
+  });
+
+  it('owner lock: a second poller is refused; a dead owner is taken over and released', async () => {
+    const live = acquirePoller(root, T0, { pid: 1, hostname: hostname(), isAlive: () => true });
+    await expect(poll(scripted().exec, { once: true, json: true }, { owner: { pid: 2, hostname: hostname(), isAlive: () => true } })).rejects.toThrow(PollBusyError);
+    const cli = factoryPollCommand(deps(scripted().exec, { owner: { pid: 2, hostname: hostname(), isAlive: () => true } }));
+    await cli.parseAsync(['--once', '--json'], { from: 'user' });
+    expect(process.exitCode).toBe(1);
+    expect(JSON.parse(out.at(-1)!)).toEqual({ ok: false, error: expect.stringContaining('omg factory poll already runs in this repository (pid 1') });
+    process.exitCode = 0;
+    live.release();
+    out.length = 0;
+    // A recorded owner whose pid is dead on this host is taken over; the run releases it again.
+    acquirePoller(root, T0, { pid: 1, hostname: hostname(), isAlive: () => true });
+    expect(await poll(scripted().exec, { once: true, json: true }, { owner: { pid: 2, hostname: hostname(), isAlive: () => false } })).toBe(0);
+    expect(JSON.parse(readFileSync(pollStatePath(root), 'utf8')).pid).toBeUndefined();
+  });
+
+  it('the interval: default 5 min, 2 min floor, 60 min ceiling', async () => {
+    expect(parseInterval('5m')).toBe(5 * MIN);
+    expect(parseInterval('3')).toBe(3 * MIN);
+    expect(parseInterval('120s')).toBe(2 * MIN);
+    expect(parseInterval('1h')).toBe(60 * MIN);
+    for (const bad of ['1m', '90s', '2h', '0', '-5m', '5 min', '']) expect(() => parseInterval(bad), bad).toThrow();
+    const cli = factoryPollCommand(deps(scripted().exec));
+    await cli.parseAsync(['--interval', '1m', '--once'], { from: 'user' });
+    expect(process.exitCode).toBe(2);
+    expect(err.join('\n')).toMatch(/below the 2 min floor/);
+    process.exitCode = 0;
+  });
+
+  it('backoff: a rate-limited tick doubles the wait up to 60 min; a clean tick resets it', async () => {
+    expect(nextInterval(5 * MIN, 5 * MIN, true)).toBe(10 * MIN);
+    expect(nextInterval(40 * MIN, 5 * MIN, true)).toBe(POLL_MAX_INTERVAL_MS);
+    expect(nextInterval(40 * MIN, 5 * MIN, false)).toBe(5 * MIN);
+    let n = 0;
+    const limited = new Set([1, 2]);
+    const w = scripted({
+      onCall: (cmd, args) => (cmd === 'gh' && args[0] === 'issue' && args[1] === 'list' && limited.has(++n)
+        ? { status: 1, stdout: '', stderr: 'HTTP 429: Too Many Requests' } : undefined),
+    });
+    const waits: number[] = [];
+    let stop: () => void = () => {};
+    const code = await poll(w.exec, { json: true }, {
+      projectConfig: () => LABEL,
+      onStop: (h) => { stop = h; return () => {}; },
+      sleep: async (ms) => { waits.push(ms); if (waits.length === 3) stop(); },
+    });
+    expect(code).toBe(0);
+    expect(waits).toEqual([10 * MIN, 20 * MIN, 5 * MIN]);
+    expect(ticks().map((t) => [t.rateLimited, t.nextIntervalMs])).toEqual([[true, 10 * MIN], [true, 20 * MIN], [false, 5 * MIN]]);
+    expect(ticks()[0].errors[0]).toMatch(/^intake: .*429/);
+  });
+
+  it('warns once when the budget ledger an earlier tick saw has disappeared', async () => {
+    const file = join(root, '.omg', 'state', 'budget-ledger.json');
+    mkdirSync(join(root, '.omg', 'state'), { recursive: true });
+    writeFileSync(file, '{}');
+    let stop: () => void = () => {};
+    let n = 0;
+    const code = await poll(scripted().exec, { json: true }, {
+      projectConfig: () => LABEL,
+      onStop: (h) => { stop = h; return () => {}; },
+      sleep: async () => { n += 1; if (n === 1) rmSync(file); if (n === 3) stop(); },
+    });
+    expect(code).toBe(0);
+    expect(ticks().map((t) => t.warnings.filter((w) => /disappeared/.test(w)).length)).toEqual([0, 1, 0]);
+    expect(ticks()[1].warnings.join('\n')).toMatch(/budget ledger .*budget-ledger\.json disappeared; spend restarts at 0/);
+  });
+
+  it('a stop signal during a tick ends the loop after that tick; the board then prints only changed rows', async () => {
+    let stop: () => void = () => {};
+    let ticked = 0;
+    const w = scripted({ onCall: (cmd, args) => { if (cmd === 'gh' && args[1] === 'list' && args[0] === 'issue' && ++ticked === 2) stop(); return undefined; } });
+    const sleeps: number[] = [];
+    const code = await poll(w.exec, { json: true }, {
+      projectConfig: () => LABEL,
+      onStop: (h) => { stop = h; return () => {}; },
+      sleep: async (ms) => { sleeps.push(ms); },
+    });
+    expect(code).toBe(0);
+    expect(sleeps).toEqual([5 * MIN]);
+    expect(ticks().map((t) => t.tick)).toEqual([1, 2]);
+    // The second tick finished (output printed) and nothing on the board changed.
+    expect(ticks()[1].board).toEqual([]);
+    expect(ticks()[0].board.map((b) => b.row.id)).toEqual([1, 2]);
+    expect(err.join('\n')).toMatch(/stopping after the current tick/);
+  });
+
+  it('idle: a live engine owner or a run in flight is not idle; a parked run is', async () => {
+    seedParked();
+    expect(await poll(scripted().exec, { once: true, json: true, prs: false })).toBe(0);
+    expect(ticks()[0].idle).toBe(true);
+    out.length = 0;
+    save(moveTo(issueRun(5), 'implement', 'plan ok', T0));
+    expect(await poll(scripted().exec, { once: true, json: true, prs: false })).toBe(0);
+    expect(ticks()[0].idle).toBe(false);
+    rmSync(factoryStatePath(root, 5));
+    out.length = 0;
+    writeFileSync(factoryRepoOwnerPath(root), JSON.stringify({ pid: 99, hostname: hostname(), startedAt: T0, run: '4' }));
+    expect(await poll(scripted().exec, { once: true, json: true, prs: false }, { owner: { pid: 2, hostname: hostname(), isAlive: (pid) => pid === 99 } })).toBe(0);
+    expect(ticks()[0].idle).toBe(false);
+    expect(existsSync(factoryRepoOwnerPath(root))).toBe(true);
+  });
+
+  it('no intake source: the intake tick is skipped and the board shows runs only', async () => {
+    seedParked();
+    const w = scripted();
+    expect(await poll(w.exec, { once: true, json: true })).toBe(0);
+    expect(ticks()[0].intake).toEqual({ ran: false, reason: 'no intake source (factory.intake.source)' });
+    expect(ticks()[0].board.map((b) => [b.stage, b.row.id])).toEqual([['outside', 4]]);
+    expect(w.calls.some((c) => c.startsWith('gh issue'))).toBe(false);
+  });
+
+  it('idle: an unreadable or integrity-failed run state is never idle', async () => {
+    seedParked();
+    const path = factoryStatePath(root, 5);
+    // Parked at a gate (would be idle) but its seal fails: readFactoryState still reads it.
+    const parked = setGate(moveTo(issueRun(5), 'gates', 'gates', T0), 'merge', 'gates green; a human merges', T0);
+    writeFileSync(path, JSON.stringify({ ...parked, integrity: 'f'.repeat(64) }));
+    expect(await poll(scripted().exec, { once: true, json: true, prs: false })).toBe(0);
+    expect(ticks()[0].idle).toBe(false);
+    out.length = 0;
+    save(parked);
+    expect(await poll(scripted().exec, { once: true, json: true, prs: false })).toBe(0);
+    expect(ticks()[0].idle).toBe(true);
+    out.length = 0;
+    writeFileSync(path, '{ not json');
+    expect(await poll(scripted().exec, { once: true, json: true, prs: false })).toBe(0);
+    expect(ticks()[0].idle).toBe(false);
+    out.length = 0;
+    rmSync(path);
+    expect(await poll(scripted().exec, { once: true, json: true, prs: false })).toBe(0);
+    expect(ticks()[0].idle).toBe(true);
+  });
+
+  it('owner: a pid without a hostname is no owner; a stale heartbeat is taken over; the refusal names the file', async () => {
+    const path = pollStatePath(root);
+    mkdirSync(dirname(path), { recursive: true });
+    const me = { pid: 2, hostname: hostname(), isAlive: () => true };
+    writeFileSync(path, JSON.stringify({ pid: 1, startedAt: T0, seen: [7] }));
+    acquirePoller(root, T0, me).release();
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ seen: [7] });
+    // Another host, last beat 2 h 1 min ago: stale.
+    const beatAt = new Date(NOW - 121 * MIN).toISOString();
+    writeFileSync(path, JSON.stringify({ pid: 1, hostname: 'elsewhere', startedAt: T0, beatAt, seen: [7] }));
+    const now = new Date(NOW).toISOString();
+    acquirePoller(root, now, me);
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ pid: 2, hostname: hostname(), startedAt: now, beatAt: now, seen: [7] });
+    // A live owner within the window is refused, with the file to delete.
+    writeFileSync(path, JSON.stringify({ pid: 1, hostname: 'elsewhere', startedAt: T0, beatAt: new Date(NOW - 119 * MIN).toISOString(), seen: [] }));
+    expect(() => acquirePoller(root, now, me)).toThrow(PollBusyError);
+    expect(() => acquirePoller(root, now, me)).toThrow(`If no poller runs, delete ${path}`);
+  });
+
+  it('owner: each tick writes the heartbeat under the lock', async () => {
+    let clock = NOW;
+    let stop: () => void = () => {};
+    const beats: string[] = [];
+    const code = await poll(scripted().exec, { json: true }, {
+      now: () => clock,
+      onStop: (h) => { stop = h; return () => {}; },
+      sleep: async () => {
+        beats.push(JSON.parse(readFileSync(pollStatePath(root), 'utf8')).beatAt);
+        clock += 5 * MIN;
+        if (beats.length === 2) stop();
+      },
+    });
+    expect(code).toBe(0);
+    expect(beats).toEqual([new Date(NOW).toISOString(), new Date(NOW + 5 * MIN).toISOString()]);
+    // Released: no owner and no heartbeat left.
+    expect(JSON.parse(readFileSync(pollStatePath(root), 'utf8')).beatAt).toBeUndefined();
+  });
+
+  it('a failed intake check or seen-file write is a tick error, never the end of the loop', async () => {
+    // On the first tick item 2 cannot be shaped into a result: checkItems throws.
+    const throwing: ForgeFactory = (exec, cwd, config, options) => {
+      const forge = createForge(exec, cwd, config, options);
+      return {
+        ...forge,
+        tracker: {
+          ...forge.tracker,
+          viewItem: (id) => {
+            const item = forge.tracker.viewItem(id);
+            return id === 2 && ticks().length === 0 ? Object.defineProperty({ ...item }, 'title', { get: () => { throw new Error('bad title'); } }) : item;
+          },
+        },
+      };
+    };
+    let stop: () => void = () => {};
+    let lockHeld = false;
+    const lock = `${pollStatePath(root)}.lock`;
+    const code = await poll(scripted({
+      // The second tick's seen-file write meets a held lock (a live pid, fresh).
+      onCall: (cmd, args) => {
+        if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'list' && ticks().length === 1) {
+          writeFileSync(lock, JSON.stringify({ pid: process.pid, timestamp: Date.now() }));
+          lockHeld = true;
+        }
+        return undefined;
+      },
+    }).exec, { json: true }, {
+      projectConfig: () => LABEL,
+      createForge: throwing,
+      onStop: (h) => { stop = h; return () => {}; },
+      sleep: async () => {
+        if (lockHeld) { rmSync(lock); lockHeld = false; }
+        if (ticks().length === 3) stop();
+      },
+    });
+    expect(code).toBe(0);
+    const [t1, t2] = ticks();
+    expect(t1.intake).toEqual({ ran: false, reason: 'the intake check failed' });
+    expect(t1.errors).toEqual([expect.stringMatching(/^intake check: bad title/)]);
+    expect(t2.errors).toEqual(expect.arrayContaining([expect.stringMatching(/^intake seen: /)]));
+    expect(ticks()).toHaveLength(3);
+    // Tick 1 marked nothing seen and tick 2 could not write: tick 3 checks both ids again and records them.
+    expect(ticks()[2].intake).toMatchObject({ ran: true, new: [{ id: 1 }, { id: 2 }] });
+    expect(JSON.parse(readFileSync(pollStatePath(root), 'utf8')).seen).toEqual([1, 2]);
+  }, 30_000);
+
+  it('the audit never appends through a symbolic link', async () => {
+    const target = join(root, 'elsewhere.jsonl');
+    writeFileSync(target, '');
+    mkdirSync(dirname(pollAuditPath(root)), { recursive: true });
+    let linked = true;
+    try { symlinkSync(target, pollAuditPath(root), 'file'); } catch { linked = false; }
+    // Without the privilege to make a file link (Windows), a junction is the link.
+    if (!linked) {
+      mkdirSync(join(root, 'dir-target'));
+      symlinkSync(join(root, 'dir-target'), pollAuditPath(root), 'junction');
+    }
+    seedParked();
+    expect(await poll(scripted({ prState: 'MERGED' }).exec, { once: true, json: true }, { projectConfig: () => LABEL })).toBe(0);
+    expect(ticks()[0].intake).toMatchObject({ ran: true, items: 2 });
+    expect(readFileSync(target, 'utf8')).toBe('');
+    expect(lstatSync(pollAuditPath(root)).isSymbolicLink()).toBe(true);
+  });
+
+  it('the default heal scan on GitHub: read-only argv, heal state under the repository', () => {
+    const calls: string[] = [];
+    const exec: Exec = (cmd, args) => {
+      calls.push(`${cmd} ${args.join(' ')}`);
+      if (cmd === 'gh' && args[0] === 'run' && args[1] === 'list') return ok('[]');
+      if (cmd === 'git' && args[0] === 'show') return { status: 128, stdout: '', stderr: 'fatal: path does not exist' };
+      throw new Error(`unscripted ${cmd} ${args.join(' ')}`);
+    };
+    const warnings: string[] = [];
+    const ledger = mkdtempSync(join(tmpdir(), 'omg-poll-ledger-'));
+    try {
+      const heal = defaultPollHealScan(exec, () => ({ config: { ...DEFAULT_HEAL_CONFIG }, warnings: [] }), ledger);
+      expect(heal({ root, base: 'dev', kind: 'github', now: new Date(NOW), warn: (m) => warnings.push(m) })).toMatchObject({ entries: [], queued: 0 });
+    } finally {
+      rmSync(ledger, { recursive: true, force: true });
+    }
+    expect(calls.length).toBeGreaterThan(0);
+    for (const c of calls) expect(c, c).toMatch(/^(?:gh run list |git show refs\/remotes\/origin\/dev:)/);
+    expect(healStateDir(root).startsWith(root)).toBe(true);
+    expect(warnings.join('\n')).toMatch(/known-flaky/);
+  });
+});
+
+describe('omg factory poll: factory.intake.autoStart', () => {
+  const ON = { factory: { intake: { autoStart: true } } };
+  /** A fake engine: records each start, optionally leaves a run behind. */
+  function engine(r: { exitCode?: number; next?: number | null; parsed?: boolean; after?: () => void } = {}) {
+    const starts: string[] = [];
+    const autoStart: PollAutoStart = async (o) => {
+      starts.push(o.root);
+      r.after?.();
+      return { exitCode: r.exitCode ?? 0, parsed: r.parsed ?? true, next: r.next === undefined ? 1 : r.next, message: 'parked at awaiting-human: merge' };
+    };
+    return { starts, autoStart };
+  }
+  const on = (e: { autoStart: PollAutoStart }, over: Partial<FactoryPollDeps> = {}): Partial<FactoryPollDeps> =>
+    ({ trustedUser: () => ON, projectConfig: () => LABEL, autoStart: e.autoStart, budget: () => null, ...over });
+
+  it('is off by default: an idle tick starts nothing', async () => {
+    const e = engine();
+    expect(await poll(scripted().exec, { once: true, json: true }, on(e, { trustedUser: () => undefined }))).toBe(0);
+    expect(ticks()[0]).toMatchObject({ idle: true, autoStart: { started: false, reason: 'factory.intake.autoStart is off' } });
+    expect(e.starts).toEqual([]);
+  });
+
+  it('a working-tree key is ignored with a warning', async () => {
+    const e = engine();
+    const project = { factory: { intake: { ...LABEL.factory.intake, autoStart: true } } };
+    expect(await poll(scripted().exec, { once: true, json: true }, on(e, { trustedUser: () => undefined, projectConfig: () => project }))).toBe(0);
+    expect(ticks()[0].autoStart).toEqual({ started: false, reason: 'factory.intake.autoStart is off' });
+    expect(err.join('\n')).toContain('ignoring factory.intake.autoStart from the working-tree project config');
+    expect(e.starts).toEqual([]);
+  });
+
+  it('on an idle tick it starts one run --next and reports the item and the exit code (JSON and text)', async () => {
+    const e = engine({ exitCode: 3, next: 1 });
+    const budget: string[] = [];
+    expect(await poll(scripted().exec, { once: true, json: true }, on(e, { budget: (r) => { budget.push(r); return null; } }))).toBe(0);
+    expect(ticks()[0]).toMatchObject({ idle: true, autoStart: { started: true, next: 1, exitCode: 3, message: 'parked at awaiting-human: merge' } });
+    expect([e.starts, budget]).toEqual([[root], [root]]);
+    const audit = readFileSync(pollAuditPath(root), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    expect(audit.filter((a) => a.kind.startsWith('auto-start')).map((a) => [a.kind, a.next, a.exitCode])).toEqual([['auto-start', undefined, undefined], ['auto-start-done', 1, 3]]);
+    out.length = 0;
+    expect(await poll(scripted().exec, { once: true }, on(engine({ next: null })))).toBe(0);
+    expect(out.join('\n')).toContain('auto-start: omg factory run --next found nothing runnable, exit 0');
+    out.length = 0;
+    expect(await poll(scripted().exec, { once: true }, on(e))).toBe(0);
+    expect(out.join('\n')).toContain('auto-start: omg factory run --next took #1, exit 3: parked at awaiting-human: merge');
+  });
+
+  it('starts only on an idle tick with a successful, unthrottled intake read', async () => {
+    const e = engine();
+    save(moveTo(issueRun(5), 'implement', 'plan ok', T0));
+    await poll(scripted().exec, { once: true, json: true, prs: false }, on(e));
+    expect(ticks().at(-1)).toMatchObject({ idle: false, autoStart: { started: false, reason: 'a run is in flight' } });
+    rmSync(factoryStatePath(root, 5));
+    await poll(scripted().exec, { once: true, json: true, intake: false }, on(e));
+    expect(ticks().at(-1)!.autoStart).toEqual({ started: false, reason: 'no intake read this tick (--no-intake)' });
+    await poll(scripted().exec, { once: true, json: true }, on(e, { projectConfig: () => undefined }));
+    expect(ticks().at(-1)!.autoStart).toEqual({ started: false, reason: 'no intake read this tick (no intake source (factory.intake.source))' });
+    // A parked run keeps the tick idle; its PR read is throttled.
+    seedParked();
+    const limited = scripted({ onCall: (cmd, args) => (cmd === 'gh' && args[0] === 'pr' && args[1] === 'view' ? { status: 1, stdout: '', stderr: 'HTTP 429: Too Many Requests' } : undefined) });
+    await poll(limited.exec, { once: true, json: true }, on(e));
+    expect(ticks().at(-1)).toMatchObject({ idle: true, intake: { ran: true }, rateLimited: true, autoStart: { started: false, reason: 'the tick was rate-limited' } });
+    expect(e.starts).toEqual([]);
+  });
+
+  it('not started while the run lock is held or without budget headroom', async () => {
+    const e = engine();
+    const owner = () => writeFileSync(factoryRepoOwnerPath(root), JSON.stringify({ pid: 99, hostname: hostname(), startedAt: T0, run: '4' }));
+    const busy = { pid: 2, hostname: hostname(), isAlive: (pid: number) => pid === 99 };
+    mkdirSync(factoryStateDir(root), { recursive: true });
+    owner();
+    expect(await poll(scripted().exec, { once: true, json: true }, on(e, { owner: busy }))).toBe(0);
+    expect(ticks().at(-1)!.autoStart).toEqual({ started: false, reason: 'the run lock is held: an engine runs in this repository' });
+    rmSync(factoryRepoOwnerPath(root));
+    // idle is advisory: an engine that claims the lock during the board step (after the idle check; the items are
+    // seen, so the board reads first) makes poll's own claim refuse at start time; the tick is skipped, not failed.
+    let views = 0;
+    const late = scripted({ onCall: (cmd, args) => { if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'view' && ++views === 1) owner(); return undefined; } });
+    expect(await poll(late.exec, { once: true, json: true, prs: false }, on(e, { owner: busy }))).toBe(0);
+    expect(ticks().at(-1)).toMatchObject({ idle: true, errors: [], autoStart: { started: false, reason: expect.stringMatching(/^the run lock is held: another omg factory engine runs in this repository \(4, pid 99/) } });
+    expect(JSON.parse(readFileSync(factoryRepoOwnerPath(root), 'utf8'))).toMatchObject({ pid: 99, run: '4' });
+    rmSync(factoryRepoOwnerPath(root));
+    // A successful claim is released before the start, so the run's own claim (the binding one) can take it.
+    let held: unknown = 'unread';
+    const check: PollAutoStart = async () => { held = existsSync(factoryRepoOwnerPath(root)); return { exitCode: 0, parsed: true, next: null, message: 'nothing runnable' }; };
+    expect(await poll(scripted().exec, { once: true, json: true }, on({ autoStart: check }))).toBe(0);
+    expect([ticks().at(-1)!.autoStart.started, held]).toEqual([true, false]);
+    expect(await poll(scripted().exec, { once: true, json: true }, on(e, { budget: () => 'the AI credits used (9.00) reached budget.softLimit 5' }))).toBe(0);
+    expect(ticks().at(-1)!.autoStart).toEqual({ started: false, reason: 'the AI credits used (9.00) reached budget.softLimit 5' });
+    expect(e.starts).toEqual([]);
+  });
+
+  it('a broken run state (failing its integrity check) is never idle and starts nothing', async () => {
+    const e = engine();
+    const s = moveTo(issueRun(6), 'implement', 'plan ok', T0);
+    mkdirSync(factoryStateDir(root), { recursive: true });
+    writeFileSync(factoryStatePath(root, 6), JSON.stringify({ ...s, phase: 'merged', integrity: computeFactoryIntegrity(s) }));
+    expect(await poll(scripted().exec, { once: true, json: true, prs: false }, on(e))).toBe(0);
+    expect(ticks().at(-1)).toMatchObject({ idle: false, autoStart: { started: false, reason: 'a run state is unreadable or fails its integrity check' } });
+    writeFileSync(factoryStatePath(root, 6), '{ not json');
+    expect(await poll(scripted().exec, { once: true, json: true, prs: false }, on(e))).toBe(0);
+    expect(ticks().at(-1)).toMatchObject({ idle: false, autoStart: { started: false, reason: 'a run state is unreadable or fails its integrity check' } });
+    expect(e.starts).toEqual([]);
+  });
+
+  it('at most one run per tick: the started run in flight keeps the next tick from starting another', async () => {
+    const e = engine({ after: () => save(moveTo(issueRun(1), 'implement', 'lane lost', T0)) });
+    let stop: () => void = () => {};
+    let sleeps = 0;
+    const code = await poll(scripted().exec, { json: true, prs: false }, on(e, {
+      onStop: (h) => { stop = h; return () => {}; },
+      sleep: async () => { if (++sleeps === 2) stop(); },
+    }));
+    expect(code).toBe(0);
+    expect(e.starts).toHaveLength(1);
+    expect(ticks().map((t) => t.autoStart.started)).toEqual([true, false]);
+    expect(ticks()[1].autoStart).toEqual({ started: false, reason: 'a run is in flight' });
+  });
+
+  it('an unreadable outcome renders "outcome unreadable", never "found nothing runnable", and the audit logs no next', async () => {
+    expect(await poll(scripted().exec, { once: true, json: true }, on(engine({ parsed: false, next: null, exitCode: 1 })))).toBe(0);
+    expect(ticks()[0].autoStart).toMatchObject({ started: true, parsed: false, next: null, exitCode: 1 });
+    const done = readFileSync(pollAuditPath(root), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((a) => a.kind === 'auto-start-done');
+    expect(done).toHaveLength(1);
+    expect(done[0]).toMatchObject({ outcome: 'unreadable', exitCode: 1 });
+    expect('next' in done[0]).toBe(false);
+    out.length = 0;
+    expect(await poll(scripted().exec, { once: true }, on(engine({ parsed: false, next: null, exitCode: 1 })))).toBe(0);
+    expect(out.join('\n')).toContain('auto-start: omg factory run --next outcome unreadable, exit 1');
+    expect(out.join('\n')).not.toContain('found nothing runnable');
+  });
+
+  describe('defaultPollBudget (fails closed)', () => {
+    const ledger = (credits: number) => {
+      mkdirSync(join(root, '.omg', 'state'), { recursive: true });
+      writeFileSync(join(root, '.omg', 'state', 'budget-ledger.json'), JSON.stringify({
+        version: 1, since: T0, sessions: { s1: { credits, premiumRequests: 0, source: 'measured', detail: 'x', updatedAt: T0 } }, teams: {}, notified: {},
+      }));
+    };
+    const limit = (softLimit: unknown) => ({ budget: { softLimit } });
+    const gate = (l: { trustedUser?: unknown; base?: unknown; project?: unknown }, env: NodeJS.ProcessEnv = {}) =>
+      defaultPollBudget(() => ({ trustedUser: l.trustedUser, base: l.base, project: l.project }), env)(root);
+
+    it('reads budget.softLimit from the user config, then the base branch', () => {
+      ledger(4.5);
+      expect(gate({ trustedUser: limit(5) })).toBeNull();
+      expect(gate({ base: limit(5) })).toBeNull();
+      ledger(5);
+      expect(gate({ trustedUser: limit(5) })).toMatch(/AI credits used \(5\.00\) reached budget\.softLimit 5/);
+      expect(gate({ base: limit(5) })).toMatch(/reached budget\.softLimit 5/);
+      // The user config wins over the base branch.
+      expect(gate({ trustedUser: limit(10), base: limit(5) })).toBeNull();
+    });
+
+    it('a project layer raising the limit does not raise it; lowering it lowers it', () => {
+      ledger(5);
+      expect(gate({ trustedUser: limit(5), project: limit(100) })).toMatch(/reached budget\.softLimit 5 /);
+      expect(gate({ base: limit(5), project: limit(100) })).toMatch(/reached budget\.softLimit 5 /);
+      ledger(3);
+      expect(gate({ trustedUser: limit(5) })).toBeNull();
+      expect(gate({ trustedUser: limit(5), project: limit(2) })).toMatch(/AI credits used \(3\.00\) reached budget\.softLimit 2 /);
+    });
+
+    it('no trusted softLimit blocks the start, even with a project value', () => {
+      ledger(0);
+      expect(gate({})).toBe('autoStart needs budget.softLimit (user config or base branch)');
+      expect(gate({ project: limit(5) })).toBe('autoStart needs budget.softLimit (user config or base branch)');
+      expect(gate({ trustedUser: limit(-1) })).toMatch(/user config: budget\.softLimit must be a positive number/);
+    });
+
+    it('the env kill switch blocks the start instead of opening the gate', () => {
+      ledger(0);
+      expect(gate({ trustedUser: limit(5) }, { OMC_BUDGET_GOVERNOR: '0' })).toBe('the budget governor is off (OMC_BUDGET_GOVERNOR=0); autoStart needs it on');
+      expect(gate({}, { OMC_BUDGET_GOVERNOR: '0' })).toMatch(/OMC_BUDGET_GOVERNOR=0/);
+    });
+
+    it('an invalid or corrupt ledger blocks the start; a missing one is empty', () => {
+      expect(gate({ trustedUser: limit(5) })).toBeNull();
+      mkdirSync(join(root, '.omg', 'state'), { recursive: true });
+      writeFileSync(join(root, '.omg', 'state', 'budget-ledger.json'), '{ corrupt');
+      expect(gate({ trustedUser: limit(5) })).toMatch(/^the budget ledger is unreadable .*budget-ledger\.json/);
+      writeFileSync(join(root, '.omg', 'state', 'budget-ledger.json'), JSON.stringify({ version: 2, since: T0 }));
+      expect(gate({ trustedUser: limit(5) })).toMatch(/^the budget ledger is unreadable/);
+    });
+
+    it('the factory.run limits must resolve', () => {
+      ledger(0);
+      expect(gate({ trustedUser: { ...limit(5), factory: { run: { laneMaxCredits: 0 } } } })).toMatch(/laneMaxCredits 0 is below the Copilot CLI minimum/);
+    });
+
+    it('runFactoryPoll wires it by default: the working tree alone cannot satisfy it', async () => {
+      const e = engine();
+      expect(await poll(scripted().exec, { once: true, json: true }, on(e, { budget: undefined, projectConfig: () => ({ ...LABEL, ...limit(5) }) }))).toBe(0);
+      expect(ticks()[0].autoStart).toEqual({ started: false, reason: 'autoStart needs budget.softLimit (user config or base branch)' });
+      expect(e.starts).toEqual([]);
+    });
+  });
+
+  it('contract: the real `omg factory run --next --json` documents (next, message, error) parse', () => {
+    const state = issueRun(7);
+    const outcome = { exitCode: 3, phase: state.phase, state, message: 'parked at awaiting-human: merge', mergeCommand: 'gh pr merge 9' };
+    expect(parseRunNextOutcome(factoryRunJson.outcome(outcome, 7))).toEqual({ parsed: true, next: 7, message: 'parked at awaiting-human: merge' });
+    expect(parseRunNextOutcome(factoryRunJson.nothingRunnable({ runnable: 0, 'needs-plan': 1, blocked: 2 }))).toEqual({ parsed: true, next: null, message: 'nothing runnable' });
+    expect(parseRunNextOutcome(factoryRunJson.error('--next needs the forge config (omg factory setup)'))).toEqual({ parsed: true, next: null, message: '--next needs the forge config (omg factory setup)' });
+    // Truncated or foreign stdout is not an outcome.
+    expect(parseRunNextOutcome(factoryRunJson.outcome(outcome, 7).slice(0, 40)).parsed).toBe(false);
+    expect(parseRunNextOutcome('')).toEqual({ parsed: false, next: null, message: 'no outcome on stdout' });
+    expect(parseRunNextOutcome('[1]').parsed).toBe(false);
+  });
+
+  it('autoStartTimeoutMs: the run wall time plus one lane and one gates phase, plus 30 min', () => {
+    expect(autoStartTimeoutMs({ ...DEFAULT_FACTORY_RUN_LIMITS })).toBe((240 + 30 + 90 + 30) * MIN);
+    expect(autoStartTimeoutMs({ ...DEFAULT_FACTORY_RUN_LIMITS, maxRunWallTimeMs: 60 * MIN, laneTimeoutMs: 10 * MIN, gatesTimeoutMs: 20 * MIN })).toBe(120 * MIN);
+  });
+
+  describe('defaultPollAutoStart', () => {
+    const script = () => join(root, 'fake-omg.cjs');
+
+    it('a child `<entry> factory run --next --json` in the root; the outcome is read from its stdout', async () => {
+      writeFileSync(script(), 'process.stdout.write(JSON.stringify({ ok: false, next: 7, message: process.argv.slice(2).join(" ") + " @ " + process.cwd() }, null, 2)); process.exit(3);\n');
+      const r = await defaultPollAutoStart(script())({ root });
+      expect(r).toMatchObject({ exitCode: 3, parsed: true, next: 7 });
+      expect(r.message).toMatch(/^factory run --next --json @ /);
+      writeFileSync(script(), 'process.stdout.write("garbage"); process.exit(1);\n');
+      expect(await defaultPollAutoStart(script())({ root })).toEqual({ exitCode: 1, parsed: false, next: null, message: 'no outcome on stdout' });
+      expect(await defaultPollAutoStart('')({ root })).toMatchObject({ exitCode: 1, parsed: false, next: null });
+    });
+
+    it('a truncated stdout is unreadable', async () => {
+      writeFileSync(script(), 'const big = "x".repeat(5 * 1024 * 1024); process.stdout.write(JSON.stringify({ ok: true, next: 3, message: big }), () => process.exit(0));\n');
+      expect(await defaultPollAutoStart(script())({ root })).toMatchObject({ exitCode: 0, parsed: false, next: null, message: expect.stringMatching(/exceeded/) });
+    });
+
+    it('a spawn error resolves (never rejects)', async () => {
+      writeFileSync(script(), 'process.exit(0);\n');
+      expect(await defaultPollAutoStart(script())({ root: join(root, 'missing') })).toMatchObject({ exitCode: 1, parsed: false, next: null, message: expect.stringMatching(/^omg factory run --next did not start: /) });
+    });
+
+    it('past its limit the child gets SIGTERM, then SIGKILL after the grace', async () => {
+      // It ignores SIGTERM where it can (POSIX), so the grace's SIGKILL ends it; on Windows SIGTERM already ends it.
+      writeFileSync(script(), 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);\n');
+      const r = await defaultPollAutoStart(script(), { timeoutMs: () => 300, graceMs: 300 })({ root });
+      expect(r).toMatchObject({ exitCode: 1, parsed: false, next: null, message: expect.stringMatching(/ran past its 0 min limit and was stopped \(ended by SIG(?:TERM|KILL)\)$/) });
+    });
+
+    it.skipIf(process.platform === 'win32')('past its limit the SIGKILL reaches the child\'s own children (the process group)', async () => {
+      // The child ignores SIGTERM and leaves a grandchild that does too; only the group's SIGKILL ends the grandchild.
+      const pidFile = join(root, 'grandchild.pid');
+      writeFileSync(script(), `process.on("SIGTERM", () => {});
+const { spawn } = require("child_process");
+const g = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"], { stdio: "ignore" });
+require("fs").writeFileSync(${JSON.stringify(pidFile)}, String(g.pid));
+setInterval(() => {}, 1000);
+`);
+      const r = await defaultPollAutoStart(script(), { timeoutMs: () => 1500, graceMs: 300 })({ root });
+      expect(r.message).toMatch(/was stopped \(ended by SIGKILL\)$/);
+      const pid = Number(readFileSync(pidFile, 'utf8'));
+      let alive = true;
+      for (let i = 0; i < 20 && alive; i++) {
+        try { process.kill(pid, 0); await new Promise((res) => setTimeout(res, 100)); } catch { alive = false; }
+      }
+      if (alive) process.kill(pid, 'SIGKILL');
+      expect(alive).toBe(false);
+    });
+
+    it('forwards poll\'s stop signal to the child and reports a child ended by a signal', async () => {
+      writeFileSync(script(), 'setInterval(() => {}, 1000); process.stdout.write("");\n');
+      let forward: ((signal: NodeJS.Signals) => void) | undefined;
+      let unsubscribed = false;
+      const run = defaultPollAutoStart(script(), { signals: (f) => { forward = f; return () => { unsubscribed = true; }; } })({ root });
+      await new Promise((r) => setTimeout(r, 300));
+      forward!('SIGTERM');
+      expect(await run).toEqual({ exitCode: 1, parsed: false, next: null, message: 'no outcome on stdout (ended by SIGTERM)' });
+      expect(unsubscribed).toBe(true);
+    });
+  });
+});
+

@@ -112,5 +112,5 @@ export function listenForgeRefusal(exec: Exec, cwd: string, trustedUser: unknown
     }
   }
   if (kind !== 'azure-devops') return undefined;
-  return 'refused: omg factory listen receives GitHub webhooks only, and this repository\'s forge.kind is azure-devops. Azure DevOps service-hook intake is not supported yet; pick work with `omg factory check` and start it with `omg factory run`.';
+  return 'refused: omg factory listen receives GitHub webhooks only, and this repository\'s forge.kind is azure-devops. On Azure DevOps run `omg factory poll`, which polls the tracker, the PRs and CI instead (service hooks need a public endpoint); start work with `omg factory run`.';
 }

@@ -6,7 +6,7 @@
  */
 
 import { readFileSync } from 'fs';
-import type { ForgePr, ForgeReviews } from '../types.js';
+import type { ForgePr, ForgeReviews, ForgeThread } from '../types.js';
 import { adoCall, adoJson, isObject, listValue, repoParams, str, type AdoContext } from './invoke.js';
 
 const SHA = /^[0-9a-f]{40}$/;
@@ -31,6 +31,16 @@ export interface AdoPrView {
   projectId?: string;
 }
 
+/**
+ * The hidden last line of every PR comment the factory posts on Azure Repos
+ * (an HTML comment, not rendered): `omg factory poll` leaves those threads out
+ * of its human thread count. A person who pastes it only hides their own thread.
+ */
+export const ADO_FACTORY_COMMENT_MARKER = '<!-- omg-factory: comment -->';
+
+const endsWithMarker = (content: unknown): boolean =>
+  typeof content === 'string' && content.trimEnd().split('\n').pop()?.trim() === ADO_FACTORY_COMMENT_MARKER;
+
 const commitOf = (v: unknown): string | undefined => {
   const id = isObject(v) ? str(v.commitId) : undefined;
   return id && SHA.test(id) ? id : undefined;
@@ -53,6 +63,31 @@ export function readAdoPr(ctx: AdoContext, pr: number): AdoPrView {
     mergeStatus: str(json.mergeStatus),
     projectId: str(project.id),
   };
+}
+
+const THREAD_STATUS: ReadonlySet<string> = new Set(['active', 'fixed', 'wontFix', 'closed', 'byDesign', 'pending']);
+const COMMENT_TYPE: ReadonlySet<string> = new Set(['text', 'system', 'codeChange']);
+
+/** The PR's threads (Pull Request Threads - List), deleted ones left out; a thread without a numeric id fails the read. */
+export function parseAdoThreads(json: unknown, pr: number): ForgeThread[] {
+  return listValue(json).flatMap((t): ForgeThread[] => {
+    if (!isObject(t) || t.isDeleted === true) return [];
+    if (!Number.isSafeInteger(t.id)) throw new Error(`pull request ${pr}: a thread without an id`);
+    const first = Array.isArray(t.comments) && isObject(t.comments[0]) ? t.comments[0] : {};
+    const author = (isObject(first.author) ? str(first.author.uniqueName) : undefined)?.toLowerCase() ?? '';
+    const status = str(t.status) ?? '';
+    const kind = str(first.commentType) ?? '';
+    const file = isObject(t.threadContext) ? str(t.threadContext.filePath) : undefined;
+    return [{
+      id: t.id as number,
+      status: THREAD_STATUS.has(status) ? (status as ForgeThread['status']) : 'unknown',
+      kind: COMMENT_TYPE.has(kind) ? (kind as ForgeThread['kind']) : 'unknown',
+      author,
+      byFactory: endsWithMarker(first.content),
+      updatedAt: str(t.lastUpdatedDate) ?? '',
+      ...(file ? { file } : {}),
+    }];
+  });
 }
 
 const STATE: Readonly<Record<string, ForgePr['state']>> = { active: 'OPEN', completed: 'MERGED', abandoned: 'CLOSED' };
@@ -132,12 +167,18 @@ export function adoReviews(ctx: AdoContext): ForgeReviews {
 
     commentPr(pr: number, bodyFile: string) {
       try {
-        const body = { comments: [{ parentCommentId: 0, content: readFileSync(bodyFile, 'utf8'), commentType: 1 }], status: 1 };
+        const content = `${readFileSync(bodyFile, 'utf8').trimEnd()}\n\n${ADO_FACTORY_COMMENT_MARKER}\n`;
+        const body = { comments: [{ parentCommentId: 0, content, commentType: 1 }], status: 1 };
         const call = adoCall(ctx, 'git.pullRequestThreads.POST', { ...repoParams(ctx), pullRequestId: String(pr) }, {}, body);
         return { ok: call.ok, stderr: call.ok ? '' : call.stderr || `az exited ${call.status}` };
       } catch (error) {
         return { ok: false, stderr: error instanceof Error ? error.message : String(error) };
       }
+    },
+
+    listThreads(pr: number): ForgeThread[] {
+      const json = adoJson(adoCall(ctx, 'git.pullRequestThreads.GET', { ...repoParams(ctx), pullRequestId: String(pr) }), `threads of pull request ${pr}`);
+      return parseAdoThreads(json, pr);
     },
   };
 }
