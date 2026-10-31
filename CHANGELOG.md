@@ -2,6 +2,12 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Security
+
+- **Team workers on Windows: a provider can no longer run a `node.cmd` (or `git.exe`) planted in the worker cwd.** An npm-installed `codex.cmd`, `copilot.cmd` or `claude.cmd` shim without a `node.exe` beside it (the normal global install; pnpm and yarn shims behave the same) runs a bare `node`, and cmd.exe searches the current directory before PATH. The worker supervisor ran it with the repo or worktree as cwd, so a repo containing `node.cmd`, `node.exe`, `node.com` or `node.bat` got it executed as the user at worker launch, before any provider sandbox or approval. Every Windows provider launch (the supervisor on every route, and the activation-gate cmd route) now sets `NoDefaultCurrentDirectoryInExePath=1`, so `.exe` providers and their child processes (a bare `spawn('git')` in the repo) are covered too; a provider-supplied value of that name is dropped. The supervisor also refuses any argv[0] that is not an existing fully qualified path with `worker_launch_provider_executable_invalid`. Behaviour change: under worker providers, a bare repo-local command such as `gradlew`, `mvnw` or `build.bat` no longer resolves from cmd or a Node spawn without `.\`; PowerShell is unaffected.
+
 # oh-my-copilot v5.19.1
 
 ## [5.19.1] - 2026-10-31
