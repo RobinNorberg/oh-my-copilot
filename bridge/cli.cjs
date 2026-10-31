@@ -35708,8 +35708,8 @@ function sameCanonicalPath(left, right) {
   if (process.platform !== "win32") {
     return false;
   }
-  const fold6 = (value) => value.replaceAll("/", "\\").toLowerCase();
-  return fold6(a) === fold6(b);
+  const fold7 = (value) => value.replaceAll("/", "\\").toLowerCase();
+  return fold7(a) === fold7(b);
 }
 function isCredibleGitWorktreeRoot(root2) {
   try {
@@ -83150,8 +83150,8 @@ function evaluateSdkSkills(skills, root2, skillDirs, platform = process.platform
     if (str2(s.path) && p.startsWith(prefix)) fromSkillsDir.add(p.slice(prefix.length).split("/")[0]);
     else other.push(str2(s.commandName) || str2(s.name));
   }
-  const fold6 = (d) => platform === "win32" ? d.toLowerCase() : d;
-  const missing = skillDirs.filter((d) => !fromSkillsDir.has(fold6(d)));
+  const fold7 = (d) => platform === "win32" ? d.toLowerCase() : d;
+  const missing = skillDirs.filter((d) => !fromSkillsDir.has(fold7(d)));
   const ok2 = skillDirs.length > 0 && missing.length === 0 && fromSkillsDir.size === skillDirs.length;
   return {
     id,
@@ -94207,8 +94207,8 @@ function trackerTagEditProblem(body, labels) {
   const split = (v) => v.split(";").map((t) => t.trim());
   const current = body[tests[0]].value === "" ? [] : split(body[tests[0]].value).filter(Boolean);
   const next = split(body[adds[0]].value);
-  const fold6 = (t) => t.replace(/[A-Z]/g, (c) => c.toLowerCase());
-  const has2 = (list2, tag) => list2.some((t) => fold6(t) === fold6(tag));
+  const fold7 = (t) => t.replace(/[A-Z]/g, (c) => c.toLowerCase());
+  const has2 = (list2, tag) => list2.some((t) => fold7(t) === fold7(tag));
   for (const tag of next) {
     if (has2(current, tag)) continue;
     if (!isTrackerTag(tag)) return `${at} has a refused tag ${JSON.stringify(tag)}`;
@@ -122003,6 +122003,11 @@ var init_logs = __esm({
 });
 
 // src/forge/ado/ci.ts
+function ofRepo(build, ctx) {
+  const repository = isObject4(build.repository) ? build.repository : {};
+  const name = str3(repository.name);
+  return repository.type === "TfsGit" && name !== void 0 && fold3(name) === fold3(ctx.repo.name);
+}
 function prHead(build) {
   const { triggerSha, parameterSha } = buildHeadFields(build);
   if (triggerSha !== void 0 && parameterSha !== void 0 && triggerSha !== parameterSha) return void 0;
@@ -122013,13 +122018,14 @@ function prHead(build) {
   const headBranch = branchName(str3(trigger["pr.sourceBranch"])) ?? (number3 && BUILD_ID.test(number3) ? `pr-${number3}` : void 0);
   return headBranch ? { headSha, headBranch } : void 0;
 }
-function toRun(build, event) {
-  if (!isObject4(build) || !Number.isSafeInteger(build.id) || build.id < 1) return [];
+function toRun(build, ctx, event, branch) {
+  if (!isObject4(build) || !Number.isSafeInteger(build.id) || build.id < 1 || !ofRepo(build, ctx)) return [];
   const reason = str3(build.reason) ?? "";
   let head;
   if (event === "push") {
     const sha2 = str3(build.sourceVersion) ?? "";
-    head = PUSH_REASONS.has(reason) && HEX404.test(sha2) ? { headSha: sha2, headBranch: branchName(str3(build.sourceBranch)) ?? "" } : void 0;
+    const headBranch = branchName(str3(build.sourceBranch));
+    head = PUSH_REASONS.has(reason) && HEX404.test(sha2) && headBranch !== void 0 && (branch === void 0 || headBranch === branch) ? { headSha: sha2, headBranch } : void 0;
   } else {
     head = reason === "pullRequest" ? prHead(build) : void 0;
   }
@@ -122044,7 +122050,7 @@ function adoCi(ctx, pipeline) {
     listRuns(o) {
       const query3 = o.event === "push" ? { definitions, ...o.branch ? { branchName: `refs/heads/${o.branch}` } : {}, statusFilter: "completed", queryOrder: "finishTimeDescending", $top: String(o.limit) } : { definitions, reasonFilter: "pullRequest", statusFilter: "completed", queryOrder: "finishTimeDescending", $top: String(o.limit) };
       const json = adoJson(adoCall(ctx, "build.builds.GET", projectParams(ctx), query3), `builds of pipeline ${definitions}`);
-      return listValue(json).flatMap((b) => toRun(b, o.event)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      return listValue(json).flatMap((b) => toRun(b, ctx, o.event, o.branch)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     },
     runJobs(runId) {
       const records2 = buildTimeline(ctx, buildId(runId));
@@ -122067,12 +122073,20 @@ function adoCi(ctx, pipeline) {
       const logId = (r) => isObject4(r.log) ? r.log.id : void 0;
       const ids2 = (typeof logId(job) === "number" ? [logId(job)] : records2.filter((r) => sameId(r.parentId, job.id) && r.type === "Task" && r.result === "failed").sort(byOrder).map(logId)).filter((id) => typeof id === "number" && Number.isSafeInteger(id));
       if (ids2.length === 0) throw new Error(`build ${m[1]} record ${m[2]} has no log`);
-      return capLog(ids2.map((id) => readBuildLog(ctx, m[1], id)).join("\n"));
+      const logs = [];
+      let length = 0;
+      for (const id of ids2) {
+        if (length >= MAX_LOG_CHARS) break;
+        const log3 = readBuildLog(ctx, m[1], id);
+        logs.push(log3);
+        length += log3.length + 1;
+      }
+      return capLog(logs.join("\n"));
     },
     rerunIntent: (runId) => `Rerun failed jobs on ${adoBuildUrl(ctx.repo, runId)}`
   };
 }
-var BUILD_ID, HEX404, JOB_ID2, PUSH_REASONS, JOB_CONCLUSION, branchName, sameId, byOrder;
+var BUILD_ID, HEX404, JOB_ID2, PUSH_REASONS, JOB_CONCLUSION, branchName, sameId, byOrder, fold3;
 var init_ci = __esm({
   "src/forge/ado/ci.ts"() {
     "use strict";
@@ -122094,6 +122108,7 @@ var init_ci = __esm({
     branchName = (ref) => ref?.startsWith("refs/heads/") ? ref.slice("refs/heads/".length) : void 0;
     sameId = (a, b) => typeof a === "string" && typeof b === "string" && a.toLowerCase() === b.toLowerCase();
     byOrder = (a, b) => Number(a.order ?? 0) - Number(b.order ?? 0);
+    fold3 = (s) => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
   }
 });
 
@@ -122414,7 +122429,7 @@ function resolveForgeConfig(trustedUser, base, project, originUrl2) {
     const pin = (key, actual) => {
       if (ado[key] === void 0) return;
       const value = text2(ado[key], SEGMENT, `forge.azureDevOps.${key}`, source);
-      if (fold3(value) !== fold3(actual)) mismatch(`azureDevOps.${key}`, value, actual);
+      if (fold4(value) !== fold4(actual)) mismatch(`azureDevOps.${key}`, value, actual);
     };
     pin("org", remote.owner);
     pin("project", remote.project);
@@ -122429,7 +122444,7 @@ function resolveForgeConfig(trustedUser, base, project, originUrl2) {
     }
     if (ado.workItemProject !== void 0) {
       const wip = text2(ado.workItemProject, SEGMENT, "forge.azureDevOps.workItemProject", source);
-      if (fold3(wip) !== fold3(remote.project)) {
+      if (fold4(wip) !== fold4(remote.project)) {
         throw new ForgeConfigError(
           "forge-unsupported",
           `factory.forge.azureDevOps.workItemProject ${JSON.stringify(wip)} differs from the repository project ${JSON.stringify(remote.project)}; work items in another project are not supported yet`
@@ -122492,7 +122507,7 @@ function isTrustedAdoAuthor(createdBy, trustedAuthors) {
   const name = unique.trim().toLowerCase();
   return trustedAuthors.some((a) => a.toLowerCase() === name);
 }
-var ForgeConfigError, DEFAULT_ADO_API_VERSION, DEFAULT_INTAKE_LIMIT, MAX_INTAKE_LIMIT, DEFAULT_INTAKE_MARKER, DEFAULT_ADO_ITEM_TYPES, DEFAULT_CHECK_CONFIG, GUID2, SEGMENT, TRACKER_NAME, TEXT2, hasFactoryKey, canonical, same3, decode, fold3;
+var ForgeConfigError, DEFAULT_ADO_API_VERSION, DEFAULT_INTAKE_LIMIT, MAX_INTAKE_LIMIT, DEFAULT_INTAKE_MARKER, DEFAULT_ADO_ITEM_TYPES, DEFAULT_CHECK_CONFIG, GUID2, SEGMENT, TRACKER_NAME, TEXT2, hasFactoryKey, canonical, same3, decode, fold4;
 var init_config5 = __esm({
   "src/forge/config.ts"() {
     "use strict";
@@ -122528,7 +122543,7 @@ var init_config5 = __esm({
         return s;
       }
     };
-    fold3 = (s) => decode(s).toLowerCase();
+    fold4 = (s) => decode(s).toLowerCase();
   }
 });
 
@@ -128625,8 +128640,8 @@ function invokeAllowed(r, repo) {
   const rp = pairsAllowed(flags.get("--route-parameters") ?? [], route2.routeParams);
   const qp = pairsAllowed(flags.get("--query-parameters") ?? [], route2.queryParams);
   if (!rp || !qp || flags.has("--route-parameters") && rp.size === 0 || flags.has("--query-parameters") && qp.size === 0) return false;
-  for (const key of ["project", "projectId"]) if (rp.has(key) && fold4(rp.get(key)) !== fold4(repo.project ?? "")) return false;
-  return !rp.has("repositoryId") || fold4(rp.get("repositoryId")) === fold4(repo.name);
+  for (const key of ["project", "projectId"]) if (rp.has(key) && fold5(rp.get(key)) !== fold5(repo.project ?? "")) return false;
+  return !rp.has("repositoryId") || fold5(rp.get("repositoryId")) === fold5(repo.name);
 }
 function azAllowed(a, repo) {
   return same6(a, ["extension", "show", "--name", "azure-devops", "--output", "json"]) || same6(a, ["account", "show", "--output", "json"]) || invokeAllowed(a, repo);
@@ -128697,7 +128712,7 @@ function adoList(body) {
   const value = body?.value;
   return Array.isArray(value) ? value.filter((v) => v !== null && typeof v === "object") : [];
 }
-var SetupError, SetupSafetyError, LABEL_COLOR, LABEL_NAME, PARAM_VALUE, INVOKE_SINGLE, INVOKE_PAIRS, same6, fold4, adoOrgUrl2, milestonesPath, baseName2;
+var SetupError, SetupSafetyError, LABEL_COLOR, LABEL_NAME, PARAM_VALUE, INVOKE_SINGLE, INVOKE_PAIRS, same6, fold5, adoOrgUrl2, milestonesPath, baseName2;
 var init_guard2 = __esm({
   "src/factory/setup/guard.ts"() {
     "use strict";
@@ -128722,7 +128737,7 @@ var init_guard2 = __esm({
     INVOKE_SINGLE = ["--area", "--resource", "--http-method", "--api-version", "--org", "--detect", "--output"];
     INVOKE_PAIRS = ["--route-parameters", "--query-parameters"];
     same6 = (args, shape) => args.length === shape.length && shape.every((v, i) => args[i] === v);
-    fold4 = (s) => {
+    fold5 = (s) => {
       try {
         return decodeURIComponent(s).toLowerCase();
       } catch {
@@ -128765,14 +128780,14 @@ function detectSetupForge(exec3, cwd2, pins, configs = []) {
     if (pins.org !== void 0 || pins.project !== void 0) throw new SetupError(2, "--org and --project are Azure DevOps flags; this repository is on GitHub");
     if (pins.repo !== void 0 && pins.repo.toLowerCase() !== `${repo.owner}/${repo.name}`.toLowerCase()) mismatch2("--repo", pins.repo, `${repo.owner}/${repo.name}`);
   } else {
-    if (pins.org !== void 0 && fold5(pins.org) !== fold5(repo.owner)) mismatch2("--org", pins.org, repo.owner);
-    if (pins.project !== void 0 && fold5(pins.project) !== fold5(repo.project)) mismatch2("--project", pins.project, repo.project);
-    if (pins.repo !== void 0 && fold5(pins.repo) !== fold5(repo.name)) mismatch2("--repo", pins.repo, repo.name);
+    if (pins.org !== void 0 && fold6(pins.org) !== fold6(repo.owner)) mismatch2("--org", pins.org, repo.owner);
+    if (pins.project !== void 0 && fold6(pins.project) !== fold6(repo.project)) mismatch2("--project", pins.project, repo.project);
+    if (pins.repo !== void 0 && fold6(pins.repo) !== fold6(repo.name)) mismatch2("--repo", pins.repo, repo.name);
   }
   const prefill = {};
   if (repo.kind === "azure-devops") {
     const ado = getAdoConfig(cwd2);
-    if (ado.project === void 0 || fold5(ado.project) === fold5(repo.project)) {
+    if (ado.project === void 0 || fold6(ado.project) === fold6(repo.project)) {
       if (ado.areaPath) prefill.areaPath = ado.areaPath;
       if (ado.defaultWorkItemType) prefill.workItemType = ado.defaultWorkItemType;
     }
@@ -128795,14 +128810,14 @@ function listenForgeRefusal(exec3, cwd2, trustedUser) {
   if (kind !== "azure-devops") return void 0;
   return "refused: omg factory listen receives GitHub webhooks only, and this repository's forge.kind is azure-devops. Azure DevOps service-hook intake is not supported yet; pick work with `omg factory check` and start it with `omg factory run`.";
 }
-var fold5;
+var fold6;
 var init_detect = __esm({
   "src/factory/setup/detect.ts"() {
     "use strict";
     init_ado_config();
     init_config5();
     init_guard2();
-    fold5 = (s) => {
+    fold6 = (s) => {
       try {
         return decodeURIComponent(s).toLowerCase();
       } catch {
@@ -145724,8 +145739,8 @@ function isAbsolutePath(value) {
 function withinPath(target, root2) {
   const t = portablePath(target), r = portablePath(root2);
   if (!isAbsolutePath(t) || !isAbsolutePath(r)) return false;
-  const fold6 = isWindowsPath(t) || isWindowsPath(r);
-  const a = fold6 ? t.toLowerCase() : t, b = fold6 ? r.toLowerCase() : r;
+  const fold7 = isWindowsPath(t) || isWindowsPath(r);
+  const a = fold7 ? t.toLowerCase() : t, b = fold7 ? r.toLowerCase() : r;
   return a === b || a.startsWith(b.endsWith("/") ? b : `${b}/`);
 }
 function canonicalPath(value) {

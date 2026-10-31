@@ -15921,8 +15921,8 @@ function sameCanonicalPath(left, right) {
   if (process.platform !== "win32") {
     return false;
   }
-  const fold3 = (value) => value.replaceAll("/", "\\").toLowerCase();
-  return fold3(a) === fold3(b);
+  const fold4 = (value) => value.replaceAll("/", "\\").toLowerCase();
+  return fold4(a) === fold4(b);
 }
 function isCredibleGitWorktreeRoot(root) {
   try {
@@ -29730,8 +29730,8 @@ function trackerTagEditProblem(body, labels) {
   const split = (v) => v.split(";").map((t) => t.trim());
   const current = body[tests[0]].value === "" ? [] : split(body[tests[0]].value).filter(Boolean);
   const next = split(body[adds[0]].value);
-  const fold3 = (t) => t.replace(/[A-Z]/g, (c) => c.toLowerCase());
-  const has = (list, tag) => list.some((t) => fold3(t) === fold3(tag));
+  const fold4 = (t) => t.replace(/[A-Z]/g, (c) => c.toLowerCase());
+  const has = (list, tag) => list.some((t) => fold4(t) === fold4(tag));
   for (const tag of next) {
     if (has(current, tag)) continue;
     if (!isTrackerTag(tag)) return `${at} has a refused tag ${JSON.stringify(tag)}`;
@@ -31559,8 +31559,8 @@ function evaluateSdkSkills(skills, root, skillDirs, platform = process.platform)
     if (str2(s.path) && p.startsWith(prefix)) fromSkillsDir.add(p.slice(prefix.length).split("/")[0]);
     else other.push(str2(s.commandName) || str2(s.name));
   }
-  const fold3 = (d) => platform === "win32" ? d.toLowerCase() : d;
-  const missing = skillDirs.filter((d) => !fromSkillsDir.has(fold3(d)));
+  const fold4 = (d) => platform === "win32" ? d.toLowerCase() : d;
+  const missing = skillDirs.filter((d) => !fromSkillsDir.has(fold4(d)));
   const ok2 = skillDirs.length > 0 && missing.length === 0 && fromSkillsDir.size === skillDirs.length;
   return {
     id,
@@ -44865,6 +44865,11 @@ var init_logs = __esm({
 });
 
 // src/forge/ado/ci.ts
+function ofRepo(build, ctx) {
+  const repository = isObject3(build.repository) ? build.repository : {};
+  const name = str3(repository.name);
+  return repository.type === "TfsGit" && name !== void 0 && fold3(name) === fold3(ctx.repo.name);
+}
 function prHead(build) {
   const { triggerSha, parameterSha } = buildHeadFields(build);
   if (triggerSha !== void 0 && parameterSha !== void 0 && triggerSha !== parameterSha) return void 0;
@@ -44875,13 +44880,14 @@ function prHead(build) {
   const headBranch = branchName(str3(trigger["pr.sourceBranch"])) ?? (number3 && BUILD_ID.test(number3) ? `pr-${number3}` : void 0);
   return headBranch ? { headSha, headBranch } : void 0;
 }
-function toRun(build, event) {
-  if (!isObject3(build) || !Number.isSafeInteger(build.id) || build.id < 1) return [];
+function toRun(build, ctx, event, branch) {
+  if (!isObject3(build) || !Number.isSafeInteger(build.id) || build.id < 1 || !ofRepo(build, ctx)) return [];
   const reason = str3(build.reason) ?? "";
   let head;
   if (event === "push") {
     const sha2 = str3(build.sourceVersion) ?? "";
-    head = PUSH_REASONS.has(reason) && HEX403.test(sha2) ? { headSha: sha2, headBranch: branchName(str3(build.sourceBranch)) ?? "" } : void 0;
+    const headBranch = branchName(str3(build.sourceBranch));
+    head = PUSH_REASONS.has(reason) && HEX403.test(sha2) && headBranch !== void 0 && (branch === void 0 || headBranch === branch) ? { headSha: sha2, headBranch } : void 0;
   } else {
     head = reason === "pullRequest" ? prHead(build) : void 0;
   }
@@ -44906,7 +44912,7 @@ function adoCi(ctx, pipeline) {
     listRuns(o) {
       const query2 = o.event === "push" ? { definitions, ...o.branch ? { branchName: `refs/heads/${o.branch}` } : {}, statusFilter: "completed", queryOrder: "finishTimeDescending", $top: String(o.limit) } : { definitions, reasonFilter: "pullRequest", statusFilter: "completed", queryOrder: "finishTimeDescending", $top: String(o.limit) };
       const json = adoJson(adoCall(ctx, "build.builds.GET", projectParams(ctx), query2), `builds of pipeline ${definitions}`);
-      return listValue(json).flatMap((b) => toRun(b, o.event)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      return listValue(json).flatMap((b) => toRun(b, ctx, o.event, o.branch)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     },
     runJobs(runId) {
       const records2 = buildTimeline(ctx, buildId(runId));
@@ -44929,12 +44935,20 @@ function adoCi(ctx, pipeline) {
       const logId = (r) => isObject3(r.log) ? r.log.id : void 0;
       const ids = (typeof logId(job) === "number" ? [logId(job)] : records2.filter((r) => sameId(r.parentId, job.id) && r.type === "Task" && r.result === "failed").sort(byOrder).map(logId)).filter((id) => typeof id === "number" && Number.isSafeInteger(id));
       if (ids.length === 0) throw new Error(`build ${m[1]} record ${m[2]} has no log`);
-      return capLog(ids.map((id) => readBuildLog(ctx, m[1], id)).join("\n"));
+      const logs = [];
+      let length = 0;
+      for (const id of ids) {
+        if (length >= MAX_LOG_CHARS) break;
+        const log = readBuildLog(ctx, m[1], id);
+        logs.push(log);
+        length += log.length + 1;
+      }
+      return capLog(logs.join("\n"));
     },
     rerunIntent: (runId) => `Rerun failed jobs on ${adoBuildUrl(ctx.repo, runId)}`
   };
 }
-var BUILD_ID, HEX403, JOB_ID2, PUSH_REASONS, JOB_CONCLUSION, branchName, sameId, byOrder;
+var BUILD_ID, HEX403, JOB_ID2, PUSH_REASONS, JOB_CONCLUSION, branchName, sameId, byOrder, fold3;
 var init_ci = __esm({
   "src/forge/ado/ci.ts"() {
     "use strict";
@@ -44956,6 +44970,7 @@ var init_ci = __esm({
     branchName = (ref) => ref?.startsWith("refs/heads/") ? ref.slice("refs/heads/".length) : void 0;
     sameId = (a, b) => typeof a === "string" && typeof b === "string" && a.toLowerCase() === b.toLowerCase();
     byOrder = (a, b) => Number(a.order ?? 0) - Number(b.order ?? 0);
+    fold3 = (s) => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
   }
 });
 

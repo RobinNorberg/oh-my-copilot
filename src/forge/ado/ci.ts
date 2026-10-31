@@ -7,7 +7,7 @@
  */
 
 import type { HealJob, HealRun } from '../../factory/heal/history.js';
-import { capLog } from '../../factory/heal/logs.js';
+import { capLog, MAX_LOG_CHARS } from '../../factory/heal/logs.js';
 import type { ForgeCi } from '../types.js';
 import { adoBuildUrl, buildHeadFields, buildTimeline, conclusion, newestJobRecords, readBuildLog, RUN_STATUS } from './checks.js';
 import { adoCall, adoJson, isObject, listValue, projectParams, str, type AdoContext } from './invoke.js';
@@ -25,6 +25,15 @@ const JOB_CONCLUSION: Readonly<Record<string, string>> = {
 const branchName = (ref: string | undefined): string | undefined => (ref?.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : undefined);
 const sameId = (a: unknown, b: unknown): boolean => typeof a === 'string' && typeof b === 'string' && a.toLowerCase() === b.toLowerCase();
 const byOrder = (a: Record<string, unknown>, b: Record<string, unknown>): number => Number(a.order ?? 0) - Number(b.order ?? 0);
+/** ASCII-only fold (as routes.ts folds tags): toLowerCase maps U+212A to "k", so a look-alike repository name would match. */
+const fold = (s: string): string => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
+
+/** The build checked out the forge repository: the user config can name a definition that builds another one. */
+function ofRepo(build: Record<string, unknown>, ctx: AdoContext): boolean {
+  const repository = isObject(build.repository) ? build.repository : {};
+  const name = str(repository.name);
+  return repository.type === 'TfsGit' && name !== undefined && fold(name) === fold(ctx.repo.name);
+}
 
 /** A PR build's head: the recorded PR source sha (both fields must agree) and branch; undefined = dropped, never guessed. */
 function prHead(build: Record<string, unknown>): { headSha: string; headBranch: string } | undefined {
@@ -39,13 +48,17 @@ function prHead(build: Record<string, unknown>): { headSha: string; headBranch: 
   return headBranch ? { headSha, headBranch } : undefined;
 }
 
-function toRun(build: unknown, event: 'push' | 'pull_request'): HealRun[] {
-  if (!isObject(build) || !Number.isSafeInteger(build.id) || (build.id as number) < 1) return [];
+function toRun(build: unknown, ctx: AdoContext, event: 'push' | 'pull_request', branch: string | undefined): HealRun[] {
+  if (!isObject(build) || !Number.isSafeInteger(build.id) || (build.id as number) < 1 || !ofRepo(build, ctx)) return [];
   const reason = str(build.reason) ?? '';
   let head: { headSha: string; headBranch: string } | undefined;
   if (event === 'push') {
     const sha = str(build.sourceVersion) ?? '';
-    head = PUSH_REASONS.has(reason) && HEX40.test(sha) ? { headSha: sha, headBranch: branchName(str(build.sourceBranch)) ?? '' } : undefined;
+    // The server's branchName filter is not trusted alone: a build of another branch, or of a tag, is dropped.
+    const headBranch = branchName(str(build.sourceBranch));
+    head = PUSH_REASONS.has(reason) && HEX40.test(sha) && headBranch !== undefined && (branch === undefined || headBranch === branch)
+      ? { headSha: sha, headBranch }
+      : undefined;
   } else {
     head = reason === 'pullRequest' ? prHead(build) : undefined;
   }
@@ -76,7 +89,7 @@ export function adoCi(ctx: AdoContext, pipeline: { definitionId: number }): Forg
         : { definitions, reasonFilter: 'pullRequest', statusFilter: 'completed', queryOrder: 'finishTimeDescending', $top: String(o.limit) };
       const json = adoJson(adoCall(ctx, 'build.builds.GET', projectParams(ctx), query), `builds of pipeline ${definitions}`);
       // Newest first, whatever order the service returned.
-      return listValue(json).flatMap((b) => toRun(b, o.event)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      return listValue(json).flatMap((b) => toRun(b, ctx, o.event, o.branch)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     },
 
     runJobs(runId): HealJob[] {
@@ -108,7 +121,16 @@ export function adoCi(ctx: AdoContext, pipeline: { definitionId: number }): Forg
         : records.filter((r) => sameId(r.parentId, job.id) && r.type === 'Task' && r.result === 'failed').sort(byOrder).map(logId)
       ).filter((id): id is number => typeof id === 'number' && Number.isSafeInteger(id));
       if (ids.length === 0) throw new Error(`build ${m[1]} record ${m[2]} has no log`);
-      return capLog(ids.map((id) => readBuildLog(ctx, m[1], id)).join('\n'));
+      // In order, and no further log once the text reaches capLog's size cap.
+      const logs: string[] = [];
+      let length = 0;
+      for (const id of ids) {
+        if (length >= MAX_LOG_CHARS) break;
+        const log = readBuildLog(ctx, m[1], id);
+        logs.push(log);
+        length += log.length + 1;
+      }
+      return capLog(logs.join('\n'));
     },
 
     rerunIntent: (runId) => `Rerun failed jobs on ${adoBuildUrl(ctx.repo, runId)}`,

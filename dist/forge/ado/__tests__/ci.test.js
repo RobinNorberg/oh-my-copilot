@@ -9,11 +9,12 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { healGuardExec, HealSafetyError } from '../../../factory/heal/history.js';
+import { MAX_LOG_CHARS } from '../../../factory/heal/logs.js';
 import { checkAdoCommand } from '../guard.js';
 import { adoReadGuardContext, createAzureDevOpsForge } from '../index.js';
 import { adoInvokeArgs } from '../invoke.js';
 import { ADO_FIXTURE_DIR, adoFixtureExec, loadAdoFixtures, parseAdoFixture } from './fixtures.js';
-import { adoConfig, CHECKOUT, POSIX_ENTRY, REPO, STATE_DIR } from './world.js';
+import { adoConfig, CHECKOUT, POSIX_ENTRY, REPO, STATE_DIR, variant } from './world.js';
 const ATTEMPTS = 'build.timeline.GET.101-attempts.json';
 const attempts = parseAdoFixture(ATTEMPTS, readFileSync(join(ADO_FIXTURE_DIR, 'variants', ATTEMPTS), 'utf8'));
 const TEST_JOB = '7e570002-0000-4000-8000-000000000002';
@@ -57,8 +58,36 @@ describe('adoCi.listRuns', () => {
             { id: '201', headSha: '9'.repeat(40), headBranch: 'main', event: 'push', createdAt: '2026-10-29T06:00:00.000Z', status: 'completed', conclusion: 'cancelled' },
         ]);
         // 203 (reason manual) is not CI: the reason filter is client-side; 202 has no 40-hex sourceVersion.
-        expect(runs.map((r) => r.id)).not.toContain('203');
-        expect(runs.map((r) => r.id)).not.toContain('202');
+        // 208 built another repository; 207 (refs/heads/feature) and 206 (refs/tags/v1) are not the base branch.
+        for (const id of ['203', '202', '208', '207', '206'])
+            expect(runs.map((r) => r.id)).not.toContain(id);
+    });
+    it('push without a branch: any refs/heads/ build of the forge repository, never a tag', () => {
+        const fixtures = loadAdoFixtures().map((f) => (f.name === 'build.builds.GET.heal-push.json' ? { ...f, queryParameters: { definitions: '9', statusFilter: 'completed', queryOrder: 'finishTimeDescending', $top: '30' } } : f));
+        const runs = ci(healWorld({ fixtures })).listRuns({ workflow: 'ci.yml', event: 'push', limit: 30 });
+        expect(runs.map((r) => [r.id, r.headBranch])).toEqual([['207', 'feature'], ['205', 'main'], ['204', 'main'], ['201', 'main']]);
+    });
+    it('keeps only TfsGit builds of the forge repository, the name folded ASCII-only', () => {
+        const repos = [
+            { id: '3411ebc1-d5aa-464f-9615-0b527bc66719', name: 'Web-App', type: 'TfsGit' },
+            { name: 'web-app', type: 'GitHub' },
+            { name: 'web-app' },
+            { name: 'web-appK', type: 'TfsGit' },
+            undefined,
+        ];
+        const fixtures = variant(loadAdoFixtures(), 'build.builds.GET.heal-push.json', (stdout) => ({
+            count: repos.length,
+            value: repos.map((repository, i) => ({ ...stdout.value[1], id: 211 + i, repository })),
+        }));
+        const runs = ci(healWorld({ fixtures })).listRuns({ workflow: 'ci.yml', event: 'push', branch: 'main', limit: 30 });
+        expect(runs.map((r) => r.id)).toEqual(['211']);
+    });
+    it('pull_request: a build of another repository is dropped', () => {
+        const fixtures = variant(loadAdoFixtures(), 'build.builds.GET.heal-pr.json', (stdout) => ({
+            count: 2,
+            value: [stdout.value[0], { ...stdout.value[0], id: 311, repository: { name: 'other-app', type: 'TfsGit' } }],
+        }));
+        expect(ci(healWorld({ fixtures })).listRuns({ workflow: 'ci.yml', event: 'pull_request', limit: 30 }).map((r) => r.id)).toEqual(['310']);
     });
     it('push: one GET of the pipeline\'s completed builds; `workflow` is GitHub\'s and not sent', () => {
         const w = healWorld();
@@ -135,6 +164,29 @@ describe('adoCi.jobLog', () => {
             '2026-10-28T11:13:00.0000000Z ##[error]Upload failed.',
         ]);
     });
+    it('stops reading task logs once the text reaches the capLog size cap', () => {
+        const big = 'x'.repeat(Math.ceil(MAX_LOG_CHARS / 2) + 1);
+        const tasks = [21, 22, 23, 24].map((logId, i) => ({ id: `5e7e00${21 + i}-0000-4000-8000-000000000000`, parentId: TEST_JOB, type: 'Task', name: `T${i}`, attempt: 2, order: i + 1, result: 'failed', log: { id: logId } }));
+        const timeline = {
+            ...attempts,
+            stdout: {
+                records: attempts.stdout.records
+                    .filter((r) => r.parentId !== TEST_JOB)
+                    .map((r) => (r.id === TEST_JOB ? { ...r, log: undefined } : r))
+                    .concat(tasks),
+            },
+        };
+        const logs = [21, 22, 23, 24].map((logId) => parseAdoFixture(`build.logs.GET.101-${logId}.json`, JSON.stringify({
+            provenance: 'synthetic: a large failed task log',
+            route: 'build.logs.GET',
+            routeParameters: { project: 'Web', buildId: '101', logId: String(logId) },
+            stdout: { count: 1, value: [big] },
+        })));
+        const w = healWorld({ fixtures: withTimeline(timeline, logs) });
+        ci(w).jobLog(`101:${TEST_JOB}`);
+        const read = w.calls.flatMap((c) => c.args.filter((a) => a.startsWith('logId=')));
+        expect(read).toEqual(['logId=21', 'logId=22']);
+    });
     it('throws on no log, an unknown record or a malformed id', () => {
         const bare = { ...attempts, stdout: { records: [{ id: TEST_JOB, type: 'Job', name: 'Test', result: 'failed' }] } };
         expect(() => ci(healWorld({ fixtures: withTimeline(bare) })).jobLog(`101:${TEST_JOB}`)).toThrow(/has no log/);
@@ -208,6 +260,11 @@ describe('the `read` guard policy (ADO parity design §3.5)', () => {
         const exec = healGuardExec(inner);
         const args = adoInvokeArgs({ entry: POSIX_ENTRY, repo: REPO }, 'build.timeline.GET', { project: 'Web', buildId: '101' });
         expect(() => exec('az', args)).toThrow(/no Azure DevOps forge is configured/);
+        expect(inner.calls).toEqual([]);
+    });
+    it('python goes to the ADO guard too: refused without spawning', () => {
+        const inner = adoFixtureExec(loadAdoFixtures());
+        expect(() => healGuardExec(inner)('python3', ['-c', 'x'])).toThrow(HealSafetyError);
         expect(inner.calls).toEqual([]);
     });
 });
