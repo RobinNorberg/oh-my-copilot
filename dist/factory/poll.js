@@ -5,7 +5,10 @@
  * One tick, in this order:
  *
  * 1. heal: `runHealScan` (classify new red CI runs into heal state), only
- *    when `forge.capabilities.heal`; never `heal run` or `heal approve`.
+ *    when `forge.capabilities.heal` (Azure DevOps: factory.heal.pipeline set;
+ *    without it the tick is skipped with heal scan's message); on Azure DevOps
+ *    through heal scan's own wiring (adoHealFor), so the read guard pins
+ *    `definitions` to that pipeline. Never `heal run` or `heal approve`.
  * 2. intake: the source's ids diffed against `.omg/state/factory-poll.json`
  *    `seen`; each new id is checked (check's rules) and audited
  *    (`intake-new` in `.omg/state/factory-poll-audit.jsonl`).
@@ -17,9 +20,9 @@
  * Steps 1-4 never spawn a session or a lane and never write to the tracker or
  * the forge: every forge call goes through check's read guard with no marker
  * (openReadForge), and the heal scan through the heal guard. It writes local
- * state only: the poll file and its audit; on GitHub the heal tick also
- * writes heal state under its `scan.lock` and the heal scan records in the
- * ledger directory outside the repository. The tick result says whether the
+ * state only: the poll file and its audit; the heal tick also writes heal
+ * state under its `scan.lock` and the heal scan records in the ledger
+ * directory outside the repository, as `heal scan` does. The tick result says whether the
  * repository was idle (no engine owner, no run in flight, no unreadable run
  * state).
  *
@@ -62,9 +65,9 @@ import { ADO_RATE_LIMITED } from '../forge/ado/checks.js';
 import { ShipSafetyError } from '../ship/exec.js';
 import { collectBoard, readRuns } from './board/collect.js';
 import { backlogLine, runLine } from './board/render.js';
-import { CheckUsageError, checkEnvFor, openReadForge } from './check/cli.js';
+import { CheckUsageError, checkEnvFor, defaultResolveAz, openReadForge } from './check/cli.js';
 import { checkItems, plainText } from './check/score.js';
-import { runHealScan } from './heal/cli.js';
+import { adoHealFor, ciDeps, HEAL_PIPELINE_MISSING, runHealScan } from './heal/cli.js';
 import { HealRunRefused } from './heal/run.js';
 import { DEFAULT_FACTORY_RUN_LIMITS, resolveFactoryRunLimits } from './run/budget.js';
 import { acquireFactoryRepoOwner, defaultOwnerDeps, factoryRepoOwnerPath, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, } from './run/state.js';
@@ -197,17 +200,22 @@ function engineBusy(root, me) {
 }
 /**
  * The production heal tick: `omg factory heal scan` (writing heal state, never
- * a lane) through the heal guard on the raw Exec. On Azure DevOps the scan is
- * refused until heal runs there.
+ * a lane) through the heal guard on the raw Exec. On Azure DevOps it is heal
+ * scan's wiring (adoHealFor over the tick's forge config): factory.heal.pipeline's
+ * reads under the `read` policy, GETs only.
  */
-export function defaultPollHealScan(exec, config, ledgerDir) {
+export function defaultPollHealScan(exec, config, ledgerDir, resolveAz = defaultResolveAz) {
     return (o) => {
-        if (o.kind === 'azure-devops')
-            throw new HealRunRefused('omg factory heal scan does not run on Azure DevOps yet; the heal tick is skipped');
+        let ado;
+        if (o.kind === 'azure-devops') {
+            if (!o.forge)
+                throw new HealRunRefused(HEAL_PIPELINE_MISSING);
+            ado = adoHealFor(o.forge, () => resolveAz(o.root), o.root);
+        }
         const heal = config(o.root);
         for (const w of heal.warnings)
             o.warn(w);
-        return runHealScan({ exec, root: o.root, base: o.base, config: heal.config, now: o.now, dryRun: false, warn: o.warn, ledgerDir });
+        return runHealScan({ exec, root: o.root, base: o.base, config: heal.config, now: o.now, dryRun: false, warn: o.warn, ledgerDir, ...ciDeps({}, ado) });
     };
 }
 /** The child's JSON stdout is the run outcome (state included); more than this is not parsed. */
@@ -414,10 +422,10 @@ export async function pollTick(ctx) {
     if (!ctx.heal)
         heal = { ran: false, reason: '--no-heal' };
     else if (!forge.capabilities.heal)
-        heal = { ran: false, reason: 'the forge has no heal capability (Azure DevOps: set factory.heal.pipeline)' };
+        heal = { ran: false, reason: forge.kind === 'azure-devops' ? HEAL_PIPELINE_MISSING : 'the forge has no heal capability' };
     else {
         try {
-            const r = ctx.healScan({ root, base: ctx.base, kind: forge.kind, now: new Date(ctx.now()), warn: (m) => warnings.push(plainText(m)) });
+            const r = ctx.healScan({ root, base: ctx.base, kind: forge.kind, forge: config, now: new Date(ctx.now()), warn: (m) => warnings.push(plainText(m)) });
             heal = { ran: true, entries: r.entries.length, recorded: r.entries.filter((e) => e.recorded).length, queued: r.queued };
         }
         catch (error) {

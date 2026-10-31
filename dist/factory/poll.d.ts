@@ -5,7 +5,10 @@
  * One tick, in this order:
  *
  * 1. heal: `runHealScan` (classify new red CI runs into heal state), only
- *    when `forge.capabilities.heal`; never `heal run` or `heal approve`.
+ *    when `forge.capabilities.heal` (Azure DevOps: factory.heal.pipeline set;
+ *    without it the tick is skipped with heal scan's message); on Azure DevOps
+ *    through heal scan's own wiring (adoHealFor), so the read guard pins
+ *    `definitions` to that pipeline. Never `heal run` or `heal approve`.
  * 2. intake: the source's ids diffed against `.omg/state/factory-poll.json`
  *    `seen`; each new id is checked (check's rules) and audited
  *    (`intake-new` in `.omg/state/factory-poll-audit.jsonl`).
@@ -17,9 +20,9 @@
  * Steps 1-4 never spawn a session or a lane and never write to the tracker or
  * the forge: every forge call goes through check's read guard with no marker
  * (openReadForge), and the heal scan through the heal guard. It writes local
- * state only: the poll file and its audit; on GitHub the heal tick also
- * writes heal state under its `scan.lock` and the heal scan records in the
- * ledger directory outside the repository. The tick result says whether the
+ * state only: the poll file and its audit; the heal tick also writes heal
+ * state under its `scan.lock` and the heal scan records in the ledger
+ * directory outside the repository, as `heal scan` does. The tick result says whether the
  * repository was idle (no engine owner, no run in flight, no unreadable run
  * state).
  *
@@ -51,6 +54,7 @@
  * 1 a read failed in the `--once` tick, or another poller runs; 2 usage;
  * 5 incompatible (as `omg factory check`).
  */
+import type { AzEntry } from '../forge/ado/az-binary.js';
 import type { Forge, ForgeKind, ForgePr, ResolvedForgeConfig } from '../forge/types.js';
 import { type Exec } from '../ship/exec.js';
 import { type BoardRow, type BoardStage, type FactoryBoardDeps } from './board/collect.js';
@@ -83,23 +87,25 @@ export declare function nextInterval(current: number, base: number, rateLimited:
 export declare function acquirePoller(root: string, now: string, me?: OwnerDeps): {
     release: () => void;
 };
-/** The heal tick's scan; a HealRunRefused skips the heal tick with its message. */
+/** The heal tick's scan; a HealRunRefused skips the heal tick with its message. `forge`: the tick's forge config (Azure DevOps reads it; GitHub never does). */
 export type PollHealScan = (o: {
     root: string;
     base: string;
     kind: ForgeKind;
+    forge?: ResolvedForgeConfig;
     now: Date;
     warn: (m: string) => void;
 }) => ScanResult;
 /**
  * The production heal tick: `omg factory heal scan` (writing heal state, never
- * a lane) through the heal guard on the raw Exec. On Azure DevOps the scan is
- * refused until heal runs there.
+ * a lane) through the heal guard on the raw Exec. On Azure DevOps it is heal
+ * scan's wiring (adoHealFor over the tick's forge config): factory.heal.pipeline's
+ * reads under the `read` policy, GETs only.
  */
 export declare function defaultPollHealScan(exec: Exec, config: (root: string) => {
     config: HealConfig;
     warnings: string[];
-}, ledgerDir: string): PollHealScan;
+}, ledgerDir: string, resolveAz?: (root: string) => AzEntry): PollHealScan;
 /**
  * The auto-start: run `omg factory run --next` to its end. `parsed` is false
  * when its stdout held no outcome (none, truncated, or not one of the run's

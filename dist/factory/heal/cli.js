@@ -38,7 +38,7 @@ export const SCAN_LIMITS = Object.freeze({
     greenLookups: 3,
     prWindowMs: 72 * 3_600_000,
 });
-const HEAL_PIPELINE_MISSING = 'omg factory heal on Azure DevOps needs factory.heal.pipeline: { "definitionId": <build definition id> } in the base branch\'s .copilot/omg.jsonc (omg factory setup offers the pick); without it heal does not know which pipeline is CI';
+export const HEAL_PIPELINE_MISSING = 'omg factory heal on Azure DevOps needs factory.heal.pipeline: { "definitionId": <build definition id> } in the base branch\'s .copilot/omg.jsonc (omg factory setup offers the pick); without it heal does not know which pipeline is CI';
 /**
  * The Azure DevOps heal wiring (ADO parity design §3.5-§3.6). The guard
  * context and the ForgeCi are built from the same trusted `config` and az
@@ -344,7 +344,7 @@ function engineDeps(deps, ado) {
     };
 }
 /** The CI reads of `heal scan` and `heal run`: the Azure DevOps forge's with its guard context, else GitHub's (deps.ci or the default). */
-const ciDeps = (deps, ado) => ado ? { ci: ado.ci, ado: ado.guard } : deps.ci ? { ci: deps.ci } : {};
+export const ciDeps = (deps, ado) => ado ? { ci: ado.ci, ado: ado.guard } : deps.ci ? { ci: deps.ci } : {};
 /** The checkout (`heal status` and `close` read and write only heal state: no forge). */
 function checkoutRoot(deps) {
     const r = healGuardExec(deps.exec)('git', ['rev-parse', '--show-toplevel']);
@@ -365,11 +365,15 @@ function healForge(deps, root) {
     const { config, warnings } = deps.forge(root, deps.base(root));
     for (const w of warnings)
         console.error(chalk.yellow(termSafe(w)));
+    return adoHealFor(config, () => (deps.resolveAz ?? defaultResolveAz)(root), root);
+}
+/** adoHeal over a resolved forge config; refused unless it is Azure DevOps naming factory.heal.pipeline (`heal` and the poll heal tick). */
+export function adoHealFor(config, resolveAz, root) {
     if (config.kind !== 'azure-devops')
         throw new HealRunRefused(`the origin is on Azure DevOps, but the forge config resolves to ${config.kind}`);
     if (!config.heal?.pipeline)
         throw new HealRunRefused(HEAL_PIPELINE_MISSING);
-    return adoHeal(config, () => (deps.resolveAz ?? defaultResolveAz)(root), root);
+    return adoHeal(config, resolveAz, root);
 }
 function healRoot(deps) {
     const root = checkoutRoot(deps);
