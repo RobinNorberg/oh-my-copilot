@@ -1,0 +1,65 @@
+name: Install dependencies (node_modules cache)
+description: >-
+  Sets up Node.js and restores node_modules from a cache keyed on OS, arch,
+  Node major and package-lock.json; runs `npm ci` only on a miss. Only trusted
+  refs (push to dev or main, schedule) save the cache, so a PR can never write
+  an entry another ref restores.
+
+inputs:
+  node-version:
+    description: Node.js version for actions/setup-node.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      id: node
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Compute the node_modules cache key
+      id: key
+      shell: bash
+      env:
+        NODE_VERSION: ${{ steps.node.outputs.node-version }}
+        LOCK_HASH: ${{ hashFiles('package-lock.json') }}
+        IMAGE: ${{ env.ImageOS }}-${{ env.ImageVersion }}
+      run: |
+        major="${NODE_VERSION#v}"
+        major="${major%%.*}"
+        echo "key=nm-v2-${RUNNER_OS}-${IMAGE}-${RUNNER_ARCH}-node${major}-${LOCK_HASH}" >> "$GITHUB_OUTPUT"
+
+    - name: Restore node_modules
+      id: restore
+      uses: actions/cache/restore@v4
+      with:
+        path: node_modules
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Install dependencies (cache miss)
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci
+
+    - name: Check the native SQLite binding (cache hit)
+      if: steps.restore.outputs.cache-hit == 'true'
+      shell: bash
+      run: |
+        echo "node_modules restored from cache ${{ steps.key.outputs.key }}"
+        if [ -d node_modules/better-sqlite3 ] && [ ! -f node_modules/better-sqlite3/build/Release/better_sqlite3.node ]; then
+          echo "::warning::restored node_modules lacks the better-sqlite3 binding; rebuilding it"
+          npm rebuild --ignore-scripts=false better-sqlite3
+        fi
+
+    - name: Save node_modules (trusted refs only)
+      if: >-
+        steps.restore.outputs.cache-hit != 'true' && (
+          github.event_name == 'schedule' ||
+          (github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'))
+        )
+      uses: actions/cache/save@v4
+      with:
+        path: node_modules
+        key: ${{ steps.key.outputs.key }}

@@ -5,22 +5,22 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "319a1e472e00bc74818d7dd4633bb35d1b18e032",
-    "sourceSha256": "ab65dc783ddd0f8a093f00c61045432c57a3d6c50e287df7c500a629d8811609",
+    "head": "e72f0952cbb79d223c21ffea5ca328be20e1d891",
+    "sourceSha256": "0cc84a17e17f64a203451733cc0dbf2ce9c3495414977e0dec9977e563a77827",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "319a1e472e00bc74818d7dd4633bb35d1b18e032",
-  "sourceSha256": "ab65dc783ddd0f8a093f00c61045432c57a3d6c50e287df7c500a629d8811609",
+  "head": "e72f0952cbb79d223c21ffea5ca328be20e1d891",
+  "sourceSha256": "0cc84a17e17f64a203451733cc0dbf2ce9c3495414977e0dec9977e563a77827",
   "counts": {
     "public": {
       "skills": 63,
       "commands": 21,
-      "workflows": 9,
+      "workflows": 8,
       "agents": 20,
-      "total": 113
+      "total": 112
     },
     "internal": {
       "hookFiles": 346,
@@ -42,7 +42,7 @@
     "skills": 63,
     "commands": 21,
     "hookFiles": 346,
-    "workflows": 9,
+    "workflows": 8,
     "agentDefinitions": 18,
     "promptLikeFiles": 66
   },
@@ -165,7 +165,6 @@
       ".github/workflows/pr-check.yml",
       ".github/workflows/release.yml",
       ".github/workflows/stale.yml",
-      ".github/workflows/upgrade-test.yml",
       ".github/workflows/upstream-drift.yml"
     ]
   },
@@ -8509,7 +8508,6 @@
       ".github/workflows/pr-check.yml",
       ".github/workflows/release.yml",
       ".github/workflows/stale.yml",
-      ".github/workflows/upgrade-test.yml",
       ".github/workflows/upstream-drift.yml"
     ],
     "promptSources": [
@@ -8795,6 +8793,11 @@
         "path": ".github/SPONSOR_TIERS.md"
       },
       {
+        "id": ".github/actions/deps/action.yml",
+        "kind": "other",
+        "path": ".github/actions/deps/action.yml"
+      },
+      {
         "id": ".github/known-flaky-tests.json",
         "kind": "other",
         "path": ".github/known-flaky-tests.json"
@@ -8848,11 +8851,6 @@
         "id": ".github/workflows/stale.yml",
         "kind": "workflow",
         "path": ".github/workflows/stale.yml"
-      },
-      {
-        "id": ".github/workflows/upgrade-test.yml",
-        "kind": "workflow",
-        "path": ".github/workflows/upgrade-test.yml"
       },
       {
         "id": ".github/workflows/upstream-drift.yml",
@@ -117009,6 +117007,6 @@
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "2d3b9da3fa02304b37c1f98e3cc887e6fd72edf7e552541feeb6f8ff5bb627df",
-  "manifestSha256": "8204656e2f7fed4ca3595e59ad63c01126cee9b9b442915684d982c2b28fe787"
+  "inventorySha256": "a63a66e617f97753d3dd146e5497fda3023c5c1f218d57e5542cc3bff12b98fb",
+  "manifestSha256": "f83ea6f482a8ead7329129e4c7ebeb46cf3aea6added77fcce85401a9f529288"
 }
