@@ -281,10 +281,11 @@ jobs:
         run: npm run plugin:shipping:verify
 
       - name: Build
-        run: |
-          npm run build
-          # The committed tree is expected to be build-clean; a diff means stale committed output.
-          git diff --exit-code
+        run: npm run build
+
+      # The committed tree is expected to be build-clean; a diff means stale committed output.
+      - name: Fail if the build changed tracked files
+        run: git diff --exit-code
 
       - name: Verify bridge omits retired merge-readiness tools
         run: |
