@@ -35,6 +35,9 @@ const PHASE_FILES = [
   "03-integrations.md",
   "04-welcome.md",
 ] as const;
+// The phase snippets run `node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" <subcommand>`,
+// so point them at this checkout's scripts exactly as the setup agent would.
+const PLUGIN_ROOT_ENV = { OMC_SETUP_PLUGIN_ROOT: REPO_ROOT };
 
 function readPhase(file: string): string {
   const path = join(PHASES_DIR, file);
@@ -176,7 +179,7 @@ describe("setup phases drift enforcement (issue #3871)", () => {
     try {
       const config = join(root, ".omc-config.json");
       writeFileSync(config, original);
-      execFileSync("bash", ["-c", snippet!], { env: { ...process.env, COPILOT_HOME: root } });
+      execFileSync("bash", ["-c", snippet!], { env: { ...process.env, ...PLUGIN_ROOT_ENV, COPILOT_HOME: root } });
       const cleaned = JSON.parse(readFileSync(config, "utf8")) as Record<string, unknown>;
       expect(cleaned).toEqual({ silentAutoUpdate: false });
 
@@ -186,19 +189,19 @@ describe("setup phases drift enforcement (issue #3871)", () => {
       writeFileSync(tildeConfig, original);
       // os.homedir() reads USERPROFILE on Windows and HOME elsewhere.
       execFileSync("bash", ["-c", snippet!], {
-        env: { ...process.env, HOME: root, USERPROFILE: root, COPILOT_HOME: "~/nested" },
+        env: { ...process.env, ...PLUGIN_ROOT_ENV, HOME: root, USERPROFILE: root, COPILOT_HOME: "~/nested" },
       });
       expect(JSON.parse(readFileSync(tildeConfig, "utf8"))).toEqual({ silentAutoUpdate: false });
       writeFileSync(tildeConfig, original);
       execFileSync("bash", ["-c", snippet!], {
-        env: { ...process.env, HOME: root, USERPROFILE: root, COPILOT_HOME: "~\\nested" },
+        env: { ...process.env, ...PLUGIN_ROOT_ENV, HOME: root, USERPROFILE: root, COPILOT_HOME: "~\\nested" },
       });
       expect(JSON.parse(readFileSync(tildeConfig, "utf8"))).toEqual({ silentAutoUpdate: false });
 
       const malformed = "{ \"defaultExecutionMode\":";
       writeFileSync(config, malformed);
       execFileSync("bash", ["-c", snippet!], {
-        env: { ...process.env, COPILOT_HOME: root },
+        env: { ...process.env, ...PLUGIN_ROOT_ENV, COPILOT_HOME: root },
         stdio: "ignore",
       });
       expect(readFileSync(config, "utf8")).toBe(malformed);
@@ -224,7 +227,7 @@ describe("setup phases drift enforcement (issue #3871)", () => {
       try {
         if (denialEnforced) {
           execFileSync("bash", ["-c", snippet!], {
-            env: { ...process.env, COPILOT_HOME: denied },
+            env: { ...process.env, ...PLUGIN_ROOT_ENV, COPILOT_HOME: denied },
             stdio: "ignore",
           });
           expect(readFileSync(deniedConfig, "utf8")).toBe(original);
@@ -237,7 +240,7 @@ describe("setup phases drift enforcement (issue #3871)", () => {
       // Success path leaves no temp residue behind either.
       writeFileSync(config, original);
       execFileSync("bash", ["-c", snippet!], {
-        env: { ...process.env, COPILOT_HOME: root },
+        env: { ...process.env, ...PLUGIN_ROOT_ENV, COPILOT_HOME: root },
         stdio: "ignore",
       });
       expect(JSON.parse(readFileSync(config, "utf8"))).toEqual({ silentAutoUpdate: false });
@@ -258,7 +261,7 @@ describe("setup phases drift enforcement (issue #3871)", () => {
       // The snippet reports the boundary as KEY=value lines on stdout for the
       // setup agent to read; it does not export shell variables of its own.
       const boundaryVars = () => {
-        const out = execFileSync("bash", ["-c", snippet!], { cwd: root, encoding: "utf-8" });
+        const out = execFileSync("bash", ["-c", snippet!], { cwd: root, encoding: "utf-8", env: { ...process.env, ...PLUGIN_ROOT_ENV } });
         return Object.fromEntries(
           out.trim().split(/\r?\n/).filter(Boolean).map((line) => {
             const at = line.indexOf("=");

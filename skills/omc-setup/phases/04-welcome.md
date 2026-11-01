@@ -5,7 +5,7 @@
 Check if user has existing 2.x configuration:
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_HOME||p.join(require('os').homedir(),'.copilot');console.log('IS_UPGRADE='+f.existsSync(p.join(d,'commands','ralph-loop.md')))"
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" detect-upgrade
 ```
 
 If found, this is an upgrade from 2.x. Set `IS_UPGRADE=true`.
@@ -130,7 +130,7 @@ OMC includes rule templates you can copy to your project's `.claude/rules/` dire
 
 Copy with:
 ```bash
-node -e "const p=require('path'),f=require('fs'),r=process.env.OMC_SETUP_PLUGIN_ROOT||process.env.CLAUDE_PLUGIN_ROOT;if(r===undefined||r===''){console.error('ERROR: plugin root is not set');process.exit(1)}const src=p.join(r,'templates','rules'),dest=p.join('.claude','rules');f.mkdirSync(dest,{recursive:true});for(const n of f.readdirSync(src).filter(x=>x.endsWith('.md'))){f.copyFileSync(p.join(src,n),p.join(dest,n));console.log('Copied '+n)}"
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" copy-rules
 ```
 
 See `templates/rules/README.md` for details.
@@ -169,7 +169,7 @@ Use AskUserQuestion:
 If user chooses "Yes, star it!":
 
 ```bash
-node -e "const{spawnSync}=require('node:child_process');const r=spawnSync('gh',['api','-X','PUT','user/starred/RobinNorberg/oh-my-copilot'],{encoding:'utf8',shell:process.platform==='win32'});if(r.status===0)console.log('Thanks for starring')"
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" star-repo
 ```
 
 **Note:** Fail silently if the API call doesn't work - never block setup completion.
