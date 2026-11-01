@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "d52cc9a904f2813209e88dad60acdd09b97cbc17",
-    "sourceSha256": "71d56c5ee4a619c6a294b21e5e7e4c5999be1d534d7823a256fd88def953b7f4",
+    "head": "982a196e8aaa5fd3f5509bf2be30c96ca5318e44",
+    "sourceSha256": "3f9033978eeed50c0e0feb3c49b66103843115ee04f0d97b9d9111768872f4e1",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "d52cc9a904f2813209e88dad60acdd09b97cbc17",
-  "sourceSha256": "71d56c5ee4a619c6a294b21e5e7e4c5999be1d534d7823a256fd88def953b7f4",
+  "head": "982a196e8aaa5fd3f5509bf2be30c96ca5318e44",
+  "sourceSha256": "3f9033978eeed50c0e0feb3c49b66103843115ee04f0d97b9d9111768872f4e1",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1950,
-      "total": 1974
+      "srcFiles": 1949,
+      "total": 1973
     },
     "generated": {
-      "distFiles": 7192,
+      "distFiles": 7188,
       "bridgeFiles": 9,
-      "total": 7201
+      "total": 7197
     },
     "prompt": {
       "promptLikeFiles": 66
@@ -849,7 +849,6 @@
       "scripts/ci/check-multirepo-paths.mjs",
       "scripts/ci/check-no-committed-build-artifacts.mjs",
       "scripts/ci/multirepo-patterns.yml",
-      "scripts/ci/tree-reuse.mjs",
       "scripts/cleanup-orphans.mjs",
       "scripts/code-simplifier.mjs",
       "scripts/collect-epic-3698-ci-evidence.mjs",
@@ -1070,10 +1069,6 @@
       "dist/__tests__/chain-enqueuer-registration.test.d.ts.map",
       "dist/__tests__/chain-enqueuer-registration.test.js",
       "dist/__tests__/chain-enqueuer-registration.test.js.map",
-      "dist/__tests__/ci-evidence.test.d.ts",
-      "dist/__tests__/ci-evidence.test.d.ts.map",
-      "dist/__tests__/ci-evidence.test.js",
-      "dist/__tests__/ci-evidence.test.js.map",
       "dist/__tests__/claude-goal-adapter-doc.test.d.ts",
       "dist/__tests__/claude-goal-adapter-doc.test.d.ts.map",
       "dist/__tests__/claude-goal-adapter-doc.test.js",
@@ -10276,26 +10271,6 @@
         "id": "dist/__tests__/chain-enqueuer-registration.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/chain-enqueuer-registration.test.js.map"
-      },
-      {
-        "id": "dist/__tests__/ci-evidence.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/ci-evidence.test.d.ts"
-      },
-      {
-        "id": "dist/__tests__/ci-evidence.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/ci-evidence.test.d.ts.map"
-      },
-      {
-        "id": "dist/__tests__/ci-evidence.test.js",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/ci-evidence.test.js"
-      },
-      {
-        "id": "dist/__tests__/ci-evidence.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/ci-evidence.test.js.map"
       },
       {
         "id": "dist/__tests__/claude-goal-adapter-doc.test.d.ts",
@@ -46783,11 +46758,6 @@
         "path": "scripts/ci/multirepo-patterns.yml"
       },
       {
-        "id": "scripts/ci/tree-reuse.mjs",
-        "kind": "script",
-        "path": "scripts/ci/tree-reuse.mjs"
-      },
-      {
         "id": "scripts/cleanup-orphans.mjs",
         "kind": "script",
         "path": "scripts/cleanup-orphans.mjs"
@@ -48146,11 +48116,6 @@
         "id": "src/__tests__/chain-enqueuer-registration.test.ts",
         "kind": "src",
         "path": "src/__tests__/chain-enqueuer-registration.test.ts"
-      },
-      {
-        "id": "src/__tests__/ci-evidence.test.ts",
-        "kind": "src",
-        "path": "src/__tests__/ci-evidence.test.ts"
       },
       {
         "id": "src/__tests__/claude-goal-adapter-doc.test.ts",
@@ -59090,21 +59055,6 @@
         "kind": "imports"
       },
       {
-        "from": "scripts/ci/tree-reuse.mjs",
-        "to": "external:node:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/ci/tree-reuse.mjs",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/ci/tree-reuse.mjs",
-        "to": "external:node:url",
-        "kind": "imports"
-      },
-      {
         "from": "scripts/cleanup-orphans.mjs",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -62493,36 +62443,6 @@
         "from": "src/__tests__/chain-enqueuer-registration.test.ts",
         "to": "src/installer/index.ts",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/__tests__/ci-evidence.test.ts",
-        "to": "external:node:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/ci-evidence.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/ci-evidence.test.ts",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/ci-evidence.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/ci-evidence.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/ci-evidence.test.ts",
-        "to": "scripts/ci/tree-reuse.mjs",
-        "kind": "imports"
       },
       {
         "from": "src/__tests__/claude-goal-adapter-doc.test.ts",
@@ -74722,6 +74642,11 @@
       {
         "from": "src/cli/commands/release.ts",
         "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/release.ts",
+        "to": "src/utils/windows-search.ts",
         "kind": "imports"
       },
       {
@@ -102160,6 +102085,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/release/checks.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
         "from": "src/release/drive.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -102203,6 +102133,11 @@
         "from": "src/release/engine.ts",
         "to": "external:child_process",
         "kind": "imports"
+      },
+      {
+        "from": "src/release/engine.ts",
+        "to": "external:child_process",
+        "kind": "type-imports"
       },
       {
         "from": "src/release/engine.ts",
@@ -117796,12 +117731,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9900,
-      "edgeCount": 11902,
-      "importEdgeCount": 9777,
+      "nodeCount": 9894,
+      "edgeCount": 11896,
+      "importEdgeCount": 9770,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "014a9d662981193fa5ba1d728dff2735b20e5bb0fa9b93c493e49713986791f9",
-  "manifestSha256": "4056395382a25ad829fd5822e30fe89d783dbc7ee2e8b9800b91ce608866c770"
+  "inventorySha256": "b9b8913a1ca12e87404672eeaf23e0b3b9ad239f18a9990229935583927b244b",
+  "manifestSha256": "57fcd2a1daeae902d1895f96c68538722098b1a32d8d106563fb9e897f17ef16"
 }

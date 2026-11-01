@@ -1,11 +1,12 @@
 /**
  * Pure checks behind `omg release`: version order, release prose, version
  * stamps, dist orphans, vitest report diffs, flake triage, smoke reports,
- * the smoke input hash and tag targets.
+ * the smoke input hash, tag targets and the suite's Windows bash.
  * No I/O beyond the `exists` callback, so each rule is tested directly.
  */
 
 import { createHash } from 'crypto';
+import { win32 } from 'path';
 
 export const VERSION_RE = /^\d+\.\d+\.\d+$/;
 
@@ -255,4 +256,50 @@ export function tagTargetProblem(tag: string, objectType: string, peeled: string
   if (objectType.trim() !== 'tag') return `${tag} is a ${objectType.trim() || 'missing'} object, not an annotated tag`;
   if (peeled.trim() !== expected) return `${tag}^{} is ${peeled.trim().slice(0, 12) || 'unresolved'}, not the main merge commit ${expected.slice(0, 12)}`;
   return null;
+}
+
+/** Env overrides for the suite's children, or why the suite must not start. */
+export type SuiteShell = { env: Record<string, string>; note?: string } | { problem: string };
+
+/** A bash.exe that is the WSL launcher (System32, or the WindowsApps alias), not a POSIX shell for the tests. */
+function isWslBash(path: string, env: Record<string, string | undefined>): boolean {
+  const slashed = (s: string) => s.toLowerCase().replace(/\\/g, '/');
+  const p = slashed(path);
+  const system = `${slashed(env.SystemRoot ?? env.SYSTEMROOT ?? 'C:/Windows').replace(/\/$/, '')}/`;
+  return p.startsWith(`${system}system32/`) || p.startsWith(`${system}sysnative/`) || p.includes('/windowsapps/');
+}
+
+/**
+ * Windows: the suite's tests spawn `bash`, and a PowerShell PATH resolves it
+ * to the WSL launcher (System32\bash.exe), which fails them with exit 127.
+ * When the first bash.exe on PATH is WSL's (or there is none), Git for
+ * Windows' bin directory (next to `git --exec-path`'s root, else the default
+ * install dirs) is put first on the PATH key the env already uses; `usr\bin`
+ * only when no `bin` holds a bash.exe (with a note saying so); no Git
+ * bash found is a problem. Elsewhere, and with a non-WSL bash first, no change.
+ */
+export function suiteShellFor(
+  platform: string,
+  env: Record<string, string | undefined>,
+  exists: (path: string) => boolean,
+  gitExecPath: string | null,
+): SuiteShell {
+  if (platform !== 'win32') return { env: {} };
+  const key = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
+  const path = env[key] ?? '';
+  const first = path.split(';').filter(Boolean).map((dir) => win32.join(dir, 'bash.exe')).find(exists);
+  if (first && !isWslBash(first, env)) return { env: {} };
+  const roots = [
+    ...(gitExecPath ? [win32.resolve(gitExecPath.trim(), '..', '..', '..')] : []),
+    ...[env.ProgramFiles, env.ProgramW6432, env['ProgramFiles(x86)']].filter((d): d is string => !!d).map((d) => win32.join(d, 'Git')),
+    ...(env.LOCALAPPDATA ? [win32.join(env.LOCALAPPDATA, 'Programs', 'Git')] : []),
+  ];
+  const hasBash = (dir: string) => exists(win32.join(dir, 'bash.exe'));
+  const top = roots.map((r) => win32.join(r, 'bin')).find(hasBash);
+  const bin = top ?? roots.map((r) => win32.join(r, 'usr', 'bin')).find(hasBash);
+  if (!bin) {
+    return { problem: `the suite needs Git for Windows bash, but ${first ? `the first bash on PATH is WSL's (${first})` : 'no bash.exe is on PATH'} and none was found under ${roots.join(', ') || '(no Git install dir)'}; install Git for Windows or put its bin directory first on PATH` };
+  }
+  const shell = { env: { [key]: `${bin};${path}` } };
+  return top ? shell : { ...shell, note: `no bash.exe in Git for Windows' bin directory; the suite uses ${win32.join(bin, 'bash.exe')}` };
 }

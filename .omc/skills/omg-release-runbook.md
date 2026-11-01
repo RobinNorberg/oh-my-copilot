@@ -38,6 +38,13 @@ reference for what each phase asserts.
    omg release X.Y.Z --live-smoke --yes    # --yes: required for the tag phase without a terminal (agent lanes, CI)
    ```
 
+   Faster: one run from `suite` through `pr` overlaps the local suite
+   (~34 min) with the release PR's CI (~18 min): the PR is pushed right after
+   `commit` and merges only once the suite and smoke passed, e.g.
+   `omg release X.Y.Z --from suite --suite full --baseline <report> --live-smoke --to pr`.
+   A red suite leaves the PR open and unmerged; fix, then `--from suite` (or
+   `--from build` after a fix commit). `--to suite` still pushes nothing.
+
    Before any `--yes`, check `phases.smoke.status` is `ok` in
    `.omg/release/X.Y.Z.json` (`--yes` only logs the skipped-smoke warning).
 
