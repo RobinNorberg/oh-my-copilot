@@ -2,7 +2,19 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
-## [Unreleased]
+# oh-my-copilot v5.19.2
+
+## [5.19.2] - 2026-11-01
+
+Fork **v5.19.2** (from v5.19.1) is a security release for team workers on
+Windows. Every published version up to and including v5.19.1 is affected:
+when team workers launched an npm-installed provider on Windows, a repository
+containing a planted `node.cmd` (or `node.exe`, `node.com`, `node.bat`), or a
+planted `git.exe` reached by a provider's child process, could run code as the
+user at worker launch, before any provider sandbox or approval. Linux and
+macOS are not affected. Update if you use `omg team` workers on Windows with
+repositories you do not fully trust. Like v5.19.1, this release was published
+without the live Copilot smoke (the account's Copilot quota is exhausted).
 
 ### Security
 
