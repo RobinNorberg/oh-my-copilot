@@ -11,15 +11,12 @@ export interface CopilotSkillEntry {
     /** The skill's directory; a plugin skill sits at `<plugin root>/skills/<dir>`. */
     path?: string;
 }
-/** Lists the skills a Copilot session in `cwd` would register; null when the probe failed. */
-export type SkillListProbe = (cwd: string, extraArgs: readonly string[]) => CopilotSkillEntry[] | null;
 /**
- * `<host binary> [--plugin-dir <root>] skill list --json`: free, it starts no
- * model session. The binary is the one a link spawns, resolved on PATH only
- * (resolveBareExe): the probe runs in the project cwd, so a cwd-relative
- * lookup could run a `copilot.exe` the repo planted. A binary that does not
- * resolve (or only resolves to a `.cmd` shim) is not probed.
+ * Lists the skills a Copilot session in `cwd` would register; null when the
+ * probe failed, `'unresolved'` when no host binary resolves on PATH.
  */
+export type SkillListProbe = (cwd: string, extraArgs: readonly string[]) => CopilotSkillEntry[] | null | 'unresolved';
+/** `<host binary> [--plugin-dir <root>] skill list --json`: free, it starts no model session. */
 export declare const defaultSkillListProbe: SkillListProbe;
 /** Test seam: replace the probe (and drop the per-process cache). Returns the previous probe. */
 export declare function setSkillListProbe(probe: SkillListProbe): SkillListProbe;
@@ -30,7 +27,11 @@ export interface ResolveSkillSlashOptions {
     host?: CliAgentType;
     /** Args the spawned session gets before the prompt that change the skill set, e.g. `--plugin-dir`. */
     probeArgs?: readonly string[];
-    /** The session runs without a human (an --allow-all link): a skill that is not ours throws `skill-shadowed:<name>`. */
+    /**
+     * The session runs without a human (an --allow-all link): a skill that is
+     * not ours throws `skill-shadowed:<name>`, and no host binary on PATH to
+     * probe throws `skill-unverifiable:<name>`.
+     */
     unattended?: boolean;
     /** Where a mismatch warning goes; stderr by default. */
     warn?: (message: string) => void;

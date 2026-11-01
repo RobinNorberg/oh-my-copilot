@@ -6,12 +6,12 @@
 
 import { spawnSync } from 'child_process';
 import { readFileSync } from 'fs';
-import { dirname, join } from 'path';
+import { dirname, join, win32 } from 'path';
 import type { CliAgentType } from '../team/model-contract.js';
 import { detectHostCliType } from './host-signal.js';
 import { getHostCliBinary } from './host-detection.js';
 import { SKILL_NAMESPACE, skillSlash } from './skill-slash.js';
-import { childEnv, resolveBareExe } from './windows-search.js';
+import { childEnv, findOnPath, resolveBareExe } from './windows-search.js';
 
 /** One entry of `copilot skill list --json`. */
 export interface CopilotSkillEntry {
@@ -21,28 +21,57 @@ export interface CopilotSkillEntry {
   path?: string;
 }
 
-/** Lists the skills a Copilot session in `cwd` would register; null when the probe failed. */
-export type SkillListProbe = (cwd: string, extraArgs: readonly string[]) => CopilotSkillEntry[] | null;
+/**
+ * Lists the skills a Copilot session in `cwd` would register; null when the
+ * probe failed, `'unresolved'` when no host binary resolves on PATH.
+ */
+export type SkillListProbe = (cwd: string, extraArgs: readonly string[]) => CopilotSkillEntry[] | null | 'unresolved';
 
 const PROBE_TIMEOUT_MS = 5_000;
 
+/** A token cmd.exe could rewrite even inside quotes (`%VAR%`, a quote, a line break) is not probed. */
+const CMD_UNSAFE = /["%\u0000-\u001f]/;
+
 /**
- * `<host binary> [--plugin-dir <root>] skill list --json`: free, it starts no
- * model session. The binary is the one a link spawns, resolved on PATH only
- * (resolveBareExe): the probe runs in the project cwd, so a cwd-relative
- * lookup could run a `copilot.exe` the repo planted. A binary that does not
- * resolve (or only resolves to a `.cmd` shim) is not probed.
+ * How to start the host binary found on PATH only (absolute entries), never
+ * by a cwd-relative lookup: the probe runs in the project cwd, where a repo
+ * could plant a `copilot.exe` or `copilot.cmd`. A native binary is spawned
+ * directly. An npm `.cmd`/`.bat` shim runs through
+ * `%SystemRoot%\System32\cmd.exe /d /v:off /s /c` with every token quoted;
+ * the child env (childEnv) keeps NoDefaultCurrentDirectoryInExePath set for
+ * the shim's own `node` lookup.
  */
+function probeLaunch(args: readonly string[]): { file: string; args: string[]; verbatim: boolean } | 'unresolved' | null {
+  const binary = getHostCliBinary();
+  if (process.platform !== 'win32') {
+    const found = binary.includes('/') ? binary : findOnPath(binary, process.env, process.platform);
+    return found ? { file: found, args: [...args], verbatim: false } : 'unresolved';
+  }
+  const exe = resolveBareExe(binary);
+  if (exe) return { file: exe, args: [...args], verbatim: false };
+  const shim = findOnPath(binary, { ...process.env, PATHEXT: '.CMD;.BAT' }, 'win32');
+  if (!shim) return 'unresolved';
+  const systemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT;
+  if (!systemRoot || !/^[A-Za-z]:\\[^"%\u0000-\u001f]*$/.test(systemRoot)) return null;
+  const tokens = [shim, ...args];
+  if (tokens.some((token) => CMD_UNSAFE.test(token))) return null;
+  // Trailing backslashes are doubled so the closing quote stays a quote for the CRT argv parser.
+  const line = tokens.map((token) => `"${token.replace(/(\\+)$/, '$1$1')}"`).join(' ');
+  return { file: win32.join(systemRoot, 'System32', 'cmd.exe'), args: ['/d', '/v:off', '/s', '/c', `"${line}"`], verbatim: true };
+}
+
+/** `<host binary> [--plugin-dir <root>] skill list --json`: free, it starts no model session. */
 export const defaultSkillListProbe: SkillListProbe = (cwd, extraArgs) => {
-  const command = resolveBareExe(getHostCliBinary());
-  if (!command) return null;
+  const launch = probeLaunch([...extraArgs, 'skill', 'list', '--json']);
+  if (!launch || launch === 'unresolved') return launch;
   try {
-    const result = spawnSync(command, [...extraArgs, 'skill', 'list', '--json'], {
+    const result = spawnSync(launch.file, launch.args, {
       cwd,
       env: childEnv(process.env),
       encoding: 'utf8',
       timeout: PROBE_TIMEOUT_MS,
       windowsHide: true,
+      windowsVerbatimArguments: launch.verbatim,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     if (result.status !== 0 || typeof result.stdout !== 'string') return null;
@@ -56,7 +85,7 @@ export const defaultSkillListProbe: SkillListProbe = (cwd, extraArgs) => {
 };
 
 let activeProbe: SkillListProbe = defaultSkillListProbe;
-const probeCache = new Map<string, CopilotSkillEntry[] | null>();
+const probeCache = new Map<string, ReturnType<SkillListProbe>>();
 
 /** Test seam: replace the probe (and drop the per-process cache). Returns the previous probe. */
 export function setSkillListProbe(probe: SkillListProbe): SkillListProbe {
@@ -73,7 +102,11 @@ export interface ResolveSkillSlashOptions {
   host?: CliAgentType;
   /** Args the spawned session gets before the prompt that change the skill set, e.g. `--plugin-dir`. */
   probeArgs?: readonly string[];
-  /** The session runs without a human (an --allow-all link): a skill that is not ours throws `skill-shadowed:<name>`. */
+  /**
+   * The session runs without a human (an --allow-all link): a skill that is
+   * not ours throws `skill-shadowed:<name>`, and no host binary on PATH to
+   * probe throws `skill-unverifiable:<name>`.
+   */
   unattended?: boolean;
   /** Where a mismatch warning goes; stderr by default. */
   warn?: (message: string) => void;
@@ -110,11 +143,14 @@ export function resolveSkillSlash(name: string, options: ResolveSkillSlashOption
   const key = `${options.cwd}\0${probeArgs.join('\0')}`;
   if (!probeCache.has(key)) probeCache.set(key, activeProbe(options.cwd, probeArgs));
   const entries = probeCache.get(key);
-  // No registry to check (no PATH binary, timeout, old CLI): even unattended,
-  // the bare name goes out. Refusing would stop every chain wherever the probe
-  // cannot run, and the caller already confirmed the skill is bundled; the
-  // shadow check narrows the risk where it can verify, it is not the boundary.
-  if (!entries) return skillSlash(name, host);
+  if (entries === 'unresolved' && options.unattended) {
+    throw new Error(`skill-unverifiable:${name}: no copilot binary on PATH to list the registered skills; an unattended session cannot be checked for a shadowing skill`);
+  }
+  // A probe that ran but failed (timeout, old CLI): even unattended, the bare
+  // name goes out. Refusing would stop every chain wherever the probe cannot
+  // parse, and the caller already confirmed the skill is bundled; the shadow
+  // check narrows the risk where it can verify, it is not the boundary.
+  if (!entries || entries === 'unresolved') return skillSlash(name, host);
   const warn = options.warn ?? ((message: string) => process.stderr.write(`[oh-my-copilot] ${message}\n`));
   const bare = entries.find((entry) => entry.name === name);
   if (bare) {

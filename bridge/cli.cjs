@@ -77699,6 +77699,23 @@ var init_windows_search = __esm({
 });
 
 // src/utils/skill-registry.ts
+function probeLaunch(args) {
+  const binary = getHostCliBinary();
+  if (process.platform !== "win32") {
+    const found = binary.includes("/") ? binary : findOnPath(binary, process.env, process.platform);
+    return found ? { file: found, args: [...args], verbatim: false } : "unresolved";
+  }
+  const exe = resolveBareExe(binary);
+  if (exe) return { file: exe, args: [...args], verbatim: false };
+  const shim = findOnPath(binary, { ...process.env, PATHEXT: ".CMD;.BAT" }, "win32");
+  if (!shim) return "unresolved";
+  const systemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT;
+  if (!systemRoot || !/^[A-Za-z]:\\[^"%\u0000-\u001f]*$/.test(systemRoot)) return null;
+  const tokens = [shim, ...args];
+  if (tokens.some((token) => CMD_UNSAFE.test(token))) return null;
+  const line2 = tokens.map((token) => `"${token.replace(/(\\+)$/, "$1$1")}"`).join(" ");
+  return { file: import_path99.win32.join(systemRoot, "System32", "cmd.exe"), args: ["/d", "/v:off", "/s", "/c", `"${line2}"`], verbatim: true };
+}
 function printable(value) {
   return value.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
 }
@@ -77718,7 +77735,10 @@ function resolveSkillSlash(name, options) {
   const key = `${options.cwd}\0${probeArgs.join("\0")}`;
   if (!probeCache.has(key)) probeCache.set(key, activeProbe(options.cwd, probeArgs));
   const entries = probeCache.get(key);
-  if (!entries) return skillSlash(name, host);
+  if (entries === "unresolved" && options.unattended) {
+    throw new Error(`skill-unverifiable:${name}: no copilot binary on PATH to list the registered skills; an unattended session cannot be checked for a shadowing skill`);
+  }
+  if (!entries || entries === "unresolved") return skillSlash(name, host);
   const warn = options.warn ?? ((message4) => process.stderr.write(`[oh-my-copilot] ${message4}
 `));
   const bare = entries.find((entry2) => entry2.name === name);
@@ -77736,7 +77756,7 @@ function resolveSkillSlash(name, options) {
   warn(`copilot skill list has no skill named "${name}"; /${name} may be rejected as an unknown command.`);
   return `/${name}`;
 }
-var import_child_process25, import_fs82, import_path99, PROBE_TIMEOUT_MS, defaultSkillListProbe, activeProbe, probeCache;
+var import_child_process25, import_fs82, import_path99, PROBE_TIMEOUT_MS, CMD_UNSAFE, defaultSkillListProbe, activeProbe, probeCache;
 var init_skill_registry = __esm({
   "src/utils/skill-registry.ts"() {
     "use strict";
@@ -77748,16 +77768,18 @@ var init_skill_registry = __esm({
     init_skill_slash();
     init_windows_search();
     PROBE_TIMEOUT_MS = 5e3;
+    CMD_UNSAFE = /["%\u0000-\u001f]/;
     defaultSkillListProbe = (cwd2, extraArgs) => {
-      const command = resolveBareExe(getHostCliBinary());
-      if (!command) return null;
+      const launch = probeLaunch([...extraArgs, "skill", "list", "--json"]);
+      if (!launch || launch === "unresolved") return launch;
       try {
-        const result = (0, import_child_process25.spawnSync)(command, [...extraArgs, "skill", "list", "--json"], {
+        const result = (0, import_child_process25.spawnSync)(launch.file, launch.args, {
           cwd: cwd2,
           env: childEnv(process.env),
           encoding: "utf8",
           timeout: PROBE_TIMEOUT_MS,
           windowsHide: true,
+          windowsVerbatimArguments: launch.verbatim,
           stdio: ["ignore", "pipe", "pipe"]
         });
         if (result.status !== 0 || typeof result.stdout !== "string") return null;

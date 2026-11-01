@@ -128,11 +128,45 @@ describe('defaultSkillListProbe', () => {
             writeFileSync(join(cwd, 'copilot'), `#!/bin/sh\ntouch "${marker}"\necho []\n`, { mode: 0o755 });
             vi.stubEnv('COPILOT_CLI', '1');
             vi.stubEnv('PATH', emptyPath);
-            expect(defaultSkillListProbe(cwd, [])).toBeNull();
+            expect(defaultSkillListProbe(cwd, [])).toBe('unresolved');
             expect(existsSync(marker)).toBe(false);
         }
         finally {
             rmSync(cwd, { recursive: true, force: true });
+            rmSync(emptyPath, { recursive: true, force: true });
+        }
+    });
+    it('probes an npm-style copilot.cmd shim on PATH, never the one planted in the cwd', () => {
+        const cwd = mkdtempSync(join(tmpdir(), 'skill-probe-cwd-'));
+        const binDir = mkdtempSync(join(tmpdir(), 'skill-probe-bin-'));
+        try {
+            const marker = join(cwd, 'ran');
+            writeFileSync(join(cwd, 'copilot.cmd'), `@echo off\r\necho x> "${marker}"\r\necho []\r\n`);
+            writeFileSync(join(cwd, 'copilot'), `#!/bin/sh\ntouch "${marker}"\necho []\n`, { mode: 0o755 });
+            // The shim echoes its second argument back as a skill name: the quoted plugin dir must arrive whole.
+            writeFileSync(join(binDir, 'copilot.cmd'), '@echo off\r\necho [{"name":"%~2","source":"plugin"}]\r\n');
+            writeFileSync(join(binDir, 'copilot'), '#!/bin/sh\necho "[{\\"name\\":\\"$2\\",\\"source\\":\\"plugin\\"}]"\n', { mode: 0o755 });
+            vi.stubEnv('COPILOT_CLI', '1');
+            vi.stubEnv('PATH', binDir);
+            expect(defaultSkillListProbe(cwd, ['--plugin-dir', 'plugin root'])).toEqual([{ name: 'plugin root', source: 'plugin' }]);
+            expect(existsSync(marker)).toBe(false);
+        }
+        finally {
+            rmSync(cwd, { recursive: true, force: true });
+            rmSync(binDir, { recursive: true, force: true });
+        }
+    });
+    it('refuses an unattended slash with skill-unverifiable when no copilot resolves on PATH', () => {
+        const emptyPath = mkdtempSync(join(tmpdir(), 'skill-probe-path-'));
+        const previous = setSkillListProbe(defaultSkillListProbe);
+        try {
+            vi.stubEnv('COPILOT_CLI', '1');
+            vi.stubEnv('PATH', emptyPath);
+            expect(() => resolveSkillSlash('harbor', { cwd: emptyPath, host: 'copilot', unattended: true })).toThrow(/^skill-unverifiable:harbor/);
+            expect(resolveSkillSlash('harbor', { cwd: emptyPath, host: 'copilot', warn: () => { } })).toBe('/harbor');
+        }
+        finally {
+            setSkillListProbe(previous);
             rmSync(emptyPath, { recursive: true, force: true });
         }
     });
