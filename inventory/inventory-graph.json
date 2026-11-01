@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "e3b5ed8a0b3995eb077160ae79edba41809797e0",
-    "sourceSha256": "0c335b71f703188a54fea3cac4c048b784473424b2cb9822f547bf891363eb46",
+    "head": "c8c48451b9995ea064d5887a21a3973d4e35b9af",
+    "sourceSha256": "67675fb82ae3a36c95ac51c60931a334c8e094ad1622cd8e2100fb0a828f307c",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "e3b5ed8a0b3995eb077160ae79edba41809797e0",
-  "sourceSha256": "0c335b71f703188a54fea3cac4c048b784473424b2cb9822f547bf891363eb46",
+  "head": "c8c48451b9995ea064d5887a21a3973d4e35b9af",
+  "sourceSha256": "67675fb82ae3a36c95ac51c60931a334c8e094ad1622cd8e2100fb0a828f307c",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1949,
-      "total": 1973
+      "srcFiles": 1950,
+      "total": 1974
     },
     "generated": {
-      "distFiles": 7188,
+      "distFiles": 7192,
       "bridgeFiles": 9,
-      "total": 7197
+      "total": 7201
     },
     "prompt": {
       "promptLikeFiles": 66
@@ -848,6 +848,7 @@
       "scripts/build-workflow-stage-prompts.mjs",
       "scripts/ci/check-multirepo-paths.mjs",
       "scripts/ci/check-no-committed-build-artifacts.mjs",
+      "scripts/ci/evidence.mjs",
       "scripts/ci/multirepo-patterns.yml",
       "scripts/cleanup-orphans.mjs",
       "scripts/code-simplifier.mjs",
@@ -1069,6 +1070,10 @@
       "dist/__tests__/chain-enqueuer-registration.test.d.ts.map",
       "dist/__tests__/chain-enqueuer-registration.test.js",
       "dist/__tests__/chain-enqueuer-registration.test.js.map",
+      "dist/__tests__/ci-evidence.test.d.ts",
+      "dist/__tests__/ci-evidence.test.d.ts.map",
+      "dist/__tests__/ci-evidence.test.js",
+      "dist/__tests__/ci-evidence.test.js.map",
       "dist/__tests__/claude-goal-adapter-doc.test.d.ts",
       "dist/__tests__/claude-goal-adapter-doc.test.d.ts.map",
       "dist/__tests__/claude-goal-adapter-doc.test.js",
@@ -10271,6 +10276,26 @@
         "id": "dist/__tests__/chain-enqueuer-registration.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/chain-enqueuer-registration.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/ci-evidence.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/ci-evidence.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/ci-evidence.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/ci-evidence.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/ci-evidence.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/ci-evidence.test.js"
+      },
+      {
+        "id": "dist/__tests__/ci-evidence.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/ci-evidence.test.js.map"
       },
       {
         "id": "dist/__tests__/claude-goal-adapter-doc.test.d.ts",
@@ -46753,6 +46778,11 @@
         "path": "scripts/ci/check-no-committed-build-artifacts.mjs"
       },
       {
+        "id": "scripts/ci/evidence.mjs",
+        "kind": "script",
+        "path": "scripts/ci/evidence.mjs"
+      },
+      {
         "id": "scripts/ci/multirepo-patterns.yml",
         "kind": "script",
         "path": "scripts/ci/multirepo-patterns.yml"
@@ -48116,6 +48146,11 @@
         "id": "src/__tests__/chain-enqueuer-registration.test.ts",
         "kind": "src",
         "path": "src/__tests__/chain-enqueuer-registration.test.ts"
+      },
+      {
+        "id": "src/__tests__/ci-evidence.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/ci-evidence.test.ts"
       },
       {
         "id": "src/__tests__/claude-goal-adapter-doc.test.ts",
@@ -59055,6 +59090,21 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/ci/evidence.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/evidence.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/evidence.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/cleanup-orphans.mjs",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -62443,6 +62493,36 @@
         "from": "src/__tests__/chain-enqueuer-registration.test.ts",
         "to": "src/installer/index.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/__tests__/ci-evidence.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/ci-evidence.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/ci-evidence.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/ci-evidence.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/ci-evidence.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/ci-evidence.test.ts",
+        "to": "scripts/ci/evidence.mjs",
+        "kind": "imports"
       },
       {
         "from": "src/__tests__/claude-goal-adapter-doc.test.ts",
@@ -117716,12 +117796,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9894,
-      "edgeCount": 11893,
-      "importEdgeCount": 9768,
+      "nodeCount": 9900,
+      "edgeCount": 11902,
+      "importEdgeCount": 9777,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "b9b8913a1ca12e87404672eeaf23e0b3b9ad239f18a9990229935583927b244b",
-  "manifestSha256": "22b3694cd3f938f0eef5c4e2f3dda897d50acd62cc365385d51641b35a5ce376"
+  "inventorySha256": "0976641fe962c136e886502ea2973c66839bd638c071fedf42c61fdbb2901ccc",
+  "manifestSha256": "f92c5d3550efd11132e1cfe1384193ac18de6c71d5fb9cc9a43593eb9821224b"
 }
