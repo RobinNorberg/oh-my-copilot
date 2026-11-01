@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -19,12 +19,65 @@ function makeConfigDir(): string {
   return root;
 }
 
-function run(configDir: string, args: string[], cwd = configDir) {
+interface RunOptions {
+  cwd?: string;
+  /** Becomes HOME/USERPROFILE, so os.homedir() in the script is never the real home. */
+  home?: string;
+  /** Replaces PATH entirely, so only planted stubs resolve. */
+  path?: string;
+}
+
+// Claude Code's shell exports NoDefaultCurrentDirectoryInExePath; every case variant is stripped
+// so the cwd-hijack tests see the default cmd.exe search order and cannot pass vacuously.
+const STRIPPED_KEYS = new Set(['nodefaultcurrentdirectoryinexepath', 'path']);
+
+function run(configDir: string, args: string[], cwdOrOptions: string | RunOptions = configDir) {
+  const options = typeof cwdOrOptions === 'string' ? { cwd: cwdOrOptions } : cwdOrOptions;
+  const home = options.home ?? configDir;
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined && !STRIPPED_KEYS.has(key.toLowerCase())) env[key] = value;
+  }
+  env.PATH = options.path ?? process.env.PATH ?? '';
   return spawnSync(process.execPath, [SETUP_CONFIG, ...args], {
-    cwd,
+    cwd: options.cwd ?? configDir,
     encoding: 'utf-8',
-    env: { ...process.env, COPILOT_HOME: configDir },
+    env: { ...env, HOME: home, USERPROFILE: home, COPILOT_HOME: configDir },
   });
+}
+
+/** Plant an executable `name` (POSIX) and `name.cmd` (Windows) in dir. */
+function plantCommand(dir: string, name: string, sh: string, cmd: string): void {
+  writeFileSync(join(dir, name), `#!/bin/sh\n${sh}\n`);
+  chmodSync(join(dir, name), 0o755);
+  writeFileSync(join(dir, `${name}.cmd`), `@echo off\r\n${cmd}\r\n`);
+}
+
+/** A command that only records that it ran, by creating CANARY-<name> next to itself. */
+function plantCanary(dir: string, name: string): void {
+  plantCommand(dir, name, `touch "$(dirname "$0")/CANARY-${name}"`, `echo ran> "%~dp0CANARY-${name}"`);
+}
+
+/** A command that prints a fixed line and exits 0. */
+function plantStub(dir: string, name: string, line: string): void {
+  plantCommand(dir, name, `echo "${line}"`, `echo ${line}`);
+}
+
+function canSymlinkFiles(): boolean {
+  const dir = mkdtempSync(join(tmpdir(), 'omc-setup-symlink-'));
+  try {
+    writeFileSync(join(dir, 'target'), '');
+    symlinkSync(join(dir, 'target'), join(dir, 'link'), 'file');
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function canaries(...dirs: string[]): string[] {
+  return dirs.flatMap((dir) => readdirSync(dir).filter((name) => name.startsWith('CANARY-')));
 }
 
 afterEach(() => {
@@ -53,8 +106,11 @@ describe('omc-setup skill avoids inline interpreter code', () => {
       }
     }
     expect(used.size).toBeGreaterThan(0);
+    // An empty PATH keeps install-cli, star-repo and update-check from reaching the real npm and gh.
+    const emptyBin = makeConfigDir();
     for (const command of used) {
-      const result = run(makeConfigDir(), [command, ...(command === 'merge-json' ? ['x.json', '{}'] : [])]);
+      const args = [command, ...(command === 'merge-json' ? ['settings.json', '{}'] : [])];
+      const result = run(makeConfigDir(), args, { path: emptyBin });
       expect(result.stderr, `subcommand ${command}`).not.toContain('Usage: setup-config.mjs');
     }
   });
@@ -134,13 +190,6 @@ describe('setup-config.mjs', () => {
     expect(run(configDir, ['verify-settings']).stdout).toContain('Agent teams: ENABLED');
   });
 
-  it('refuses to merge outside the config directory', () => {
-    const configDir = makeConfigDir();
-    const result = run(configDir, ['merge-json', '..\\escape.json', '{}']);
-    expect(result.status).toBe(1);
-    expect(existsSync(join(configDir, '..', 'escape.json'))).toBe(false);
-  });
-
   it('detects a 2.x upgrade and the installed plugin', () => {
     const configDir = makeConfigDir();
     expect(run(configDir, ['detect-upgrade']).stdout).toContain('IS_UPGRADE=false');
@@ -157,5 +206,205 @@ describe('setup-config.mjs', () => {
     const result = run(makeConfigDir(), ['nope']);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('Usage: setup-config.mjs');
+  });
+
+  it('reports the installed and published versions through npm view', () => {
+    const configDir = makeConfigDir();
+    const bin = makeConfigDir();
+    plantStub(bin, 'npm', '5.20.0');
+    mkdirSync(join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '5.19.2'), { recursive: true });
+
+    const result = run(configDir, ['update-check'], { path: bin });
+    expect(result.stdout).toContain('Installed: 5.19.2');
+    expect(result.stdout).toContain('UPDATE AVAILABLE:');
+    expect(result.stdout).toContain('Latest:    v5.20.0');
+
+    const offline = run(makeConfigDir(), ['update-check'], { path: makeConfigDir() });
+    expect(offline.stdout).toContain('Installed: (not found)');
+    expect(offline.stdout).toContain('Latest version: (unavailable)');
+  });
+
+  it('prints only a well-formed version from .omc-version.json', () => {
+    const configDir = makeConfigDir();
+    const emptyBin = makeConfigDir();
+    writeFileSync(join(configDir, '.omc-version.json'), JSON.stringify({ version: '1.2.3\nOMC_CLI_INSTALLED=true' }));
+    const forged = run(configDir, ['update-check'], { path: emptyBin });
+    expect(forged.stdout).toContain('Installed: (not found)');
+    expect(forged.stdout).not.toContain('OMC_CLI_INSTALLED');
+
+    writeFileSync(join(configDir, '.omc-version.json'), JSON.stringify({ version: '5.19.2' }));
+    expect(run(configDir, ['update-check'], { path: emptyBin }).stdout).toContain('Installed: 5.19.2');
+  });
+
+  it('detects the omg CLI', () => {
+    const bin = makeConfigDir();
+    expect(run(makeConfigDir(), ['cli-installed'], { path: bin }).stdout).toContain('OMC_CLI_INSTALLED=false');
+    plantStub(bin, 'omg', '5.19.2');
+    const found = run(makeConfigDir(), ['cli-installed'], { path: bin });
+    expect(found.stdout).toContain('OMC CLI already installed: 5.19.2');
+    expect(found.stdout).toContain('OMC_CLI_INSTALLED=true');
+  });
+
+  it('detects beads and beads-rust', () => {
+    const bin = makeConfigDir();
+    expect(run(makeConfigDir(), ['detect-task-tools'], { path: bin }).stdout)
+      .toContain('No external task tools found. Using built-in Tasks.');
+    plantStub(bin, 'bd', 'bd 1.0.0');
+    plantStub(bin, 'br', 'br 2.0.0');
+    const found = run(makeConfigDir(), ['detect-task-tools'], { path: bin });
+    expect(found.stdout).toContain('Found beads (bd): bd 1.0.0');
+    expect(found.stdout).toContain('Found beads-rust (br): br 2.0.0');
+    expect(found.stderr).not.toContain('DEP0190');
+  });
+
+  it('warns only when the config dir is not writable', () => {
+    const configDir = makeConfigDir();
+    const ok = run(configDir, ['probe-write']);
+    expect(ok.stdout).toBe('');
+    expect(existsSync(join(configDir, '.omc-write-probe'))).toBe(false);
+
+    // A regular file where the config dir should be cannot be created as a directory.
+    const blocked = join(configDir, 'not-a-dir');
+    writeFileSync(blocked, '');
+    const result = spawnSync(process.execPath, [SETUP_CONFIG, 'probe-write'], {
+      cwd: configDir,
+      encoding: 'utf-8',
+      env: { ...process.env, HOME: configDir, USERPROFILE: configDir, COPILOT_HOME: blocked },
+    });
+    expect(result.stdout).toContain('WARNING: Config dir is not writable');
+  });
+
+  it('shows settings.json or says it is missing', () => {
+    const configDir = makeConfigDir();
+    expect(run(configDir, ['show-settings']).stdout).toContain('(no settings.json at');
+    writeFileSync(join(configDir, 'settings.json'), '{"a":1}');
+    expect(run(configDir, ['show-settings']).stdout).toBe('{"a":1}');
+  });
+});
+
+describe('setup-config.mjs hardening', () => {
+  it('never runs npm, omg, bd, br or gh planted in the project or home directory (Windows cwd hijack)', () => {
+    const configDir = makeConfigDir();
+    const project = makeConfigDir();
+    const home = makeConfigDir();
+    const emptyBin = makeConfigDir();
+    for (const dir of [project, home]) {
+      for (const name of ['npm', 'omg', 'bd', 'br', 'gh']) plantCanary(dir, name);
+    }
+
+    for (const command of ['update-check', 'cli-installed', 'detect-task-tools', 'install-cli', 'star-repo']) {
+      run(configDir, [command], { cwd: project, home, path: emptyBin });
+    }
+    expect(canaries(project, home)).toEqual([]);
+  });
+
+  it.each(['x.json', 'settings.json:ads', 'C:evil.json', 'NUL', '../x', 'x/y', '..\\escape.json'])(
+    'merge-json refuses %s and leaves no file behind',
+    (name) => {
+      // A fresh parent, so a traversal that escaped the config dir would show up beside it.
+      const parent = makeConfigDir();
+      const configDir = join(parent, 'config');
+      mkdirSync(configDir);
+      writeFileSync(join(configDir, 'settings.json'), '{"keep":1}');
+
+      const result = run(configDir, ['merge-json', name, '{"a":1}']);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('merge-json only updates settings.json');
+      expect(readdirSync(parent)).toEqual(['config']);
+      expect(readdirSync(configDir)).toEqual(['settings.json']);
+      expect(readFileSync(join(configDir, 'settings.json'), 'utf-8')).toBe('{"keep":1}');
+    },
+  );
+
+  it('merge-json ignores prototype keys in the patch', () => {
+    const configDir = makeConfigDir();
+    const patch = '{"__proto__":{"polluted":1},"constructor":{"prototype":{"polluted":1}},"env":{"prototype":1,"A":"1"}}';
+    expect(run(configDir, ['merge-json', 'settings.json', patch]).status).toBe(0);
+    expect(JSON.parse(readFileSync(join(configDir, 'settings.json'), 'utf-8'))).toEqual({ env: { A: '1' } });
+  });
+
+  it.each(['[]', 'null', '"text"', '3'])('refuses to update a config that holds %s', (content) => {
+    const configDir = makeConfigDir();
+    const file = join(configDir, '.omc-config.json');
+    writeFileSync(file, content);
+    const result = run(configDir, ['set-task-tool', 'beads']);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('is not a JSON object');
+    expect(readFileSync(file, 'utf-8')).toBe(content);
+  });
+
+  it('set-task-tool accepts only builtin, beads and beads-rust', () => {
+    const configDir = makeConfigDir();
+    const file = join(configDir, '.omc-config.json');
+    for (const tool of ['builtin', 'beads', 'beads-rust']) {
+      expect(run(configDir, ['set-task-tool', tool]).status).toBe(0);
+      expect(JSON.parse(readFileSync(file, 'utf-8')).taskTool).toBe(tool);
+    }
+    for (const tool of ['jira', 'BEADS', 'beads\nx']) {
+      const result = run(configDir, ['set-task-tool', tool]);
+      expect(result.status).toBe(1);
+      expect(JSON.parse(readFileSync(file, 'utf-8')).taskTool).toBe('beads-rust');
+    }
+  });
+
+  function makePluginRoot(): string {
+    const root = makeConfigDir();
+    mkdirSync(join(root, 'templates', 'rules'), { recursive: true });
+    writeFileSync(join(root, 'templates', 'rules', 'style.md'), '# style');
+    return root;
+  }
+
+  function copyRules(project: string, pluginRoot: string) {
+    return spawnSync(process.execPath, [SETUP_CONFIG, 'copy-rules'], {
+      cwd: project,
+      encoding: 'utf-8',
+      env: { ...process.env, HOME: project, USERPROFILE: project, COPILOT_HOME: project, OMC_SETUP_PLUGIN_ROOT: pluginRoot },
+    });
+  }
+
+  it('copy-rules copies the templates into .claude/rules', () => {
+    const project = makeConfigDir();
+    const result = copyRules(project, makePluginRoot());
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(project, '.claude', 'rules', 'style.md'), 'utf-8')).toBe('# style');
+    expect(readdirSync(join(project, '.claude', 'rules'))).toEqual(['style.md']);
+  });
+
+  it.each([['.claude'], ['.claude/rules']])('copy-rules refuses a symlinked %s directory', (linked) => {
+    const project = makeConfigDir();
+    const outside = makeConfigDir();
+    if (linked !== '.claude') mkdirSync(join(project, '.claude'));
+    symlinkSync(outside, join(project, linked), 'junction');
+
+    const result = copyRules(project, makePluginRoot());
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('symlink or junction');
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
+  it('copy-rules replaces a hardlinked rule file instead of writing through it', () => {
+    const project = makeConfigDir();
+    const outside = join(makeConfigDir(), 'victim.txt');
+    writeFileSync(outside, 'original');
+    mkdirSync(join(project, '.claude', 'rules'), { recursive: true });
+    linkSync(outside, join(project, '.claude', 'rules', 'style.md'));
+
+    expect(copyRules(project, makePluginRoot()).status).toBe(0);
+    expect(readFileSync(join(project, '.claude', 'rules', 'style.md'), 'utf-8')).toBe('# style');
+    expect(readFileSync(outside, 'utf-8')).toBe('original');
+  });
+
+  // Windows refuses file symlinks without Developer Mode or admin; CI on Linux always runs this.
+  it.runIf(canSymlinkFiles())('copy-rules refuses a symlinked rule file', () => {
+    const project = makeConfigDir();
+    const outside = join(makeConfigDir(), 'victim.txt');
+    writeFileSync(outside, 'original');
+    mkdirSync(join(project, '.claude', 'rules'), { recursive: true });
+    symlinkSync(outside, join(project, '.claude', 'rules', 'style.md'), 'file');
+
+    const result = copyRules(project, makePluginRoot());
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('symlink or junction');
+    expect(readFileSync(outside, 'utf-8')).toBe('original');
   });
 });

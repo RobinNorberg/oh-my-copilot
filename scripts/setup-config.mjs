@@ -19,14 +19,15 @@
 //   set-task-tool <tool>       Store taskTool in .omc-config.json
 //   plugin-verify              Check that settings.json mentions the plugin
 //   show-settings              Print settings.json
-//   merge-json <file> <json>   Deep-merge a JSON patch into a file in the config dir
+//   merge-json settings.json <json>  Deep-merge a JSON patch into settings.json in the config dir
 //   verify-settings            Check settings.json parses and agent teams are enabled
 //   detect-upgrade             Print IS_UPGRADE=true|false (2.x command files present)
 //   copy-rules                 Copy templates/rules/*.md into ./.claude/rules
 //   star-repo                  Star the repository through gh (silent on failure)
 
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, renameSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, renameSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import process from 'node:process';
 
@@ -35,15 +36,38 @@ import { getCopilotConfigDir } from './lib/config-dir.mjs';
 const CONFIG_DIR = getCopilotConfigDir();
 const CONFIG_FILE = join(CONFIG_DIR, '.omc-config.json');
 const SETTINGS_FILE = join(CONFIG_DIR, 'settings.json');
-const SHELL = process.platform === 'win32';
+const WINDOWS = process.platform === 'win32';
+const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
+const TASK_TOOLS = ['builtin', 'beads', 'beads-rust'];
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 function fail(message) {
   process.stderr.write(`${message}\n`);
   process.exit(1);
 }
 
+/** The child env with every case variant of NoDefaultCurrentDirectoryInExePath replaced by =1. */
+function childEnv() {
+  const env = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.toLowerCase() !== 'nodefaultcurrentdirectoryinexepath') env[key] = value;
+  }
+  env.NoDefaultCurrentDirectoryInExePath = '1';
+  return env;
+}
+
+/**
+ * Run a PATH command (npm, omg, bd, br, gh) outside the project. cmd.exe searches the cwd
+ * before PATH, so with the project as cwd a planted npm.cmd or gh.cmd there would run instead;
+ * the home directory as cwd plus NoDefaultCurrentDirectoryInExePath=1 rules that out. Windows
+ * needs cmd.exe for .cmd shims, so it gets one command line (every argument here is a fixed
+ * literal) rather than shell:true with an args array (DEP0190).
+ */
 function run(command, args, options = {}) {
-  return spawnSync(command, args, { encoding: 'utf8', shell: SHELL, ...options });
+  const base = { encoding: 'utf8', cwd: homedir(), env: childEnv(), ...options };
+  return WINDOWS
+    ? spawnSync([command, ...args].join(' '), { ...base, shell: true })
+    : spawnSync(command, args, base);
 }
 
 function firstLine(result) {
@@ -56,12 +80,14 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
-/** Write through a temp file so a failure cannot truncate the original. */
-function writeJsonAtomic(path, value) {
-  mkdirSync(dirname(path), { recursive: true });
+/**
+ * Write through a fresh temp file and rename it over path, so a failure cannot truncate the
+ * original and a symlink or hardlink at path is replaced rather than written through.
+ */
+function writeAtomic(path, data) {
   const tmp = `${path}.tmp.${process.pid}`;
   try {
-    writeFileSync(tmp, JSON.stringify(value, null, 2));
+    writeFileSync(tmp, data, { flag: 'wx' });
     renameSync(tmp, path);
   } catch (error) {
     rmSync(tmp, { force: true });
@@ -69,16 +95,25 @@ function writeJsonAtomic(path, value) {
   }
 }
 
+function writeJsonAtomic(path, value) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeAtomic(path, JSON.stringify(value, null, 2));
+}
+
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function readConfigOrFail(path, label) {
+  let value;
   try {
-    return readJson(path) ?? {};
+    value = readJson(path);
   } catch {
     return fail(`ERROR: ${label} is not valid JSON. Existing file was not modified.`);
   }
+  if (value === undefined) return {};
+  if (!isPlainObject(value)) fail(`ERROR: ${label} is not a JSON object. Existing file was not modified.`);
+  return value;
 }
 
 function cmdConfigured() {
@@ -133,7 +168,7 @@ function detectInstalledVersion() {
   const cache = join(CONFIG_DIR, 'plugins', 'cache', 'omc', 'oh-my-copilot');
   try {
     const versions = readdirSync(cache)
-      .filter((name) => /^\d/.test(name))
+      .filter((name) => VERSION_PATTERN.test(name))
       .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
     if (versions.length > 0) return versions[versions.length - 1];
   } catch {
@@ -142,7 +177,7 @@ function detectInstalledVersion() {
 
   try {
     const version = JSON.parse(readFileSync('.omc-version.json', 'utf8')).version;
-    if (version) return version;
+    if (typeof version === 'string' && VERSION_PATTERN.test(version)) return version;
   } catch {
     // No project version file.
   }
@@ -215,7 +250,7 @@ function cmdInstallCli() {
     console.log('Install Node.js/npm first, then run: npm install -g oh-my-copilot');
     return;
   }
-  const install = spawnSync('npm', ['install', '-g', 'oh-my-copilot'], { stdio: 'inherit', shell: SHELL });
+  const install = run('npm', ['install', '-g', 'oh-my-copilot'], { stdio: 'inherit' });
   if (install.status === 0) {
     console.log('OMC CLI installed successfully.');
     const verify = run('omg', ['--version']);
@@ -242,7 +277,7 @@ function cmdDetectTaskTools() {
 }
 
 function cmdSetTaskTool(tool) {
-  if (!tool) fail('ERROR: task tool required (builtin, beads, or beads-rust).');
+  if (!TASK_TOOLS.includes(tool)) fail('ERROR: task tool must be builtin, beads, or beads-rust.');
   const config = readConfigOrFail(CONFIG_FILE, CONFIG_FILE);
   config.taskTool = tool;
   config.taskToolConfig = { injectInstructions: true, useMcp: false };
@@ -276,6 +311,7 @@ function cmdShowSettings() {
 
 function mergeInto(target, patch) {
   for (const key of Object.keys(patch)) {
+    if (UNSAFE_KEYS.has(key)) continue;
     const value = patch[key];
     target[key] = isPlainObject(value) ? mergeInto(isPlainObject(target[key]) ? target[key] : {}, value) : value;
   }
@@ -284,9 +320,9 @@ function mergeInto(target, patch) {
 
 function cmdMergeJson(name, raw) {
   if (!name || raw === undefined) fail('Usage: setup-config.mjs merge-json <file-name> <json-patch>');
-  if (name.includes('/') || name.includes('\\') || name.includes('..')) {
-    fail('ERROR: file name must be a plain file name inside the config directory.');
-  }
+  // The skill only ever merges into settings.json; any other name (an ADS suffix, a drive-relative
+  // path, a device name, a traversal) is refused before anything is opened.
+  if (name !== 'settings.json') fail('ERROR: merge-json only updates settings.json in the config directory.');
   let patch;
   try {
     patch = JSON.parse(raw);
@@ -325,14 +361,25 @@ function cmdDetectUpgrade() {
   console.log(`IS_UPGRADE=${existsSync(join(CONFIG_DIR, 'commands', 'ralph-loop.md'))}`);
 }
 
+/** Refuse to write through a symlink or junction (lstat reports both as links). */
+function refuseLink(path) {
+  if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink()) {
+    fail(`ERROR: ${path} is a symlink or junction; refusing to write through it.`);
+  }
+}
+
 function cmdCopyRules() {
   const root = process.env.OMC_SETUP_PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
   if (!root) fail('ERROR: plugin root is not set');
   const source = join(root, 'templates', 'rules');
   const destination = join('.claude', 'rules');
+  refuseLink('.claude');
+  refuseLink(destination);
   mkdirSync(destination, { recursive: true });
   for (const name of readdirSync(source).filter((file) => file.endsWith('.md'))) {
-    copyFileSync(join(source, name), join(destination, name));
+    const target = join(destination, name);
+    refuseLink(target);
+    writeAtomic(target, readFileSync(join(source, name)));
     console.log(`Copied ${name}`);
   }
 }

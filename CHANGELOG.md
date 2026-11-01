@@ -2,6 +2,20 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Security
+
+- **`/oh-my-copilot:omc-setup` on Windows: a repository can no longer plant `npm.cmd`, `omg.cmd`, `bd.cmd`, `br.cmd` or `gh.cmd` and have setup run it.** Setup's version check, CLI check and install, task-tool detection and repo star spawned those commands through cmd.exe with the project as cwd, and cmd.exe searches the current directory before PATH, so a planted shim in the project ran as the user. Every published version through v5.19.2 is affected, on Windows only, while `/oh-my-copilot:omc-setup` runs in an untrusted repository. The commands now run from the home directory with `NoDefaultCurrentDirectoryInExePath=1` (any inherited case variant is replaced), and on Windows as one command line instead of `shell: true` with an argument array (DEP0190).
+
+### Fixed
+
+- **omc-setup checks run through `scripts/setup-config.mjs` instead of inline `node -e`** (#392), so setup works on hosts that refuse inline interpreter code. The script is hardened:
+  - `merge-json` only accepts `settings.json`; any other name (an ADS suffix, a drive-relative path, `NUL`, a traversal) is refused before a file is opened.
+  - `copy-rules` refuses a symlinked or junctioned `.claude`, `.claude/rules` or rule file, and writes each rule through a temp file and a rename.
+  - JSON patches skip `__proto__`, `constructor` and `prototype` keys; a config file holding an array, `null` or a scalar is refused unmodified.
+  - `set-task-tool` accepts only `builtin`, `beads` and `beads-rust`; `update-check` prints a version from `.omc-version.json` or the plugin cache only when it is a well-formed semver.
+
 # oh-my-copilot v5.19.2
 
 ## [5.19.2] - 2026-11-01
