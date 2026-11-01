@@ -258,7 +258,7 @@ Fires when the user submits a prompt.
 | `keyword-detector.mjs` | Detects magic keywords and invokes the corresponding skill | 30s outer host fuse; 8s trusted Worker limit |
 | `skill-injector.mjs` | Injects skill prompts | 30s outer host fuse; 12s trusted Worker limit |
 
-Runs on all user input (`matcher: "*"`). When the keyword detector finds keywords like "ralph" or "autopilot", it injects the corresponding skill invocation instruction via `additionalContext`. Parallel work is invoked explicitly with `/oh-my-copilot:team` and is not auto-detected.
+Runs on all user input (`matcher: "*"`). When the keyword detector finds keywords like "ralph" or "autopilot", it injects the corresponding skill invocation instruction via `additionalContext`. Parallel work is invoked explicitly with `/team` and is not auto-detected.
 
 The 30s timeout is a per-command outer host fuse that includes launcher startup before `run.cjs`. Once the runner reaches its exact trusted Worker branch, `keyword-detector.mjs` is limited to 8s and `skill-injector.mjs` to 12s; lower manifest limits are never extended. A command that never reaches `run.cjs` can consume its full 30s outer fuse. The host schedules the two commands externally, so this does not claim an aggregate prompt latency.
 
@@ -461,7 +461,7 @@ Enforces continuation when an execution mode is active. This is the hook that ke
 - **Reinforcement message**: "The boulder never stops" — prompts Claude to continue working
 - **Staleness check**: States older than 2 hours are treated as inactive to prevent stale state from blocking new sessions
 - **Notification**: Sends Discord/Telegram/Slack notification on first stop (if configured)
-- **Cancel**: Use `/oh-my-copilot:cancel` to deactivate modes
+- **Cancel**: Use `/cancel` to deactivate modes
 
 > **Note**: autopilot, ralph, and team are **skills** (invoked through their current skill surfaces), not hooks. Legacy/retired `ultrawork` and `pipeline` state is cleanup-only and must never be invoked or reactivated. The persistent-mode hook enforces continuation by blocking the Stop event.
 
@@ -517,7 +517,7 @@ When a session ID is present, state is stored in session scope under `.omg/state
 - **Pending confirmation**: a fresh unconfirmed state is exempt from both Stop reinforcement and matching-`/goal` PreToolUse enforcement. Freshness requires `awaiting_confirmation: true` and a timestamp age in `[0, 2 minutes)`; a non-empty `awaiting_confirmation_set_at` is authoritative, while an absent or blank value may fall back to `started_at`. Invalid, future, or expired timestamps fail closed.
 - **Stop hook**: after confirmation, reinforces only when the state is active, fresh (within the normal 2-hour mode-state freshness window), session-matching, and project-matching. Terminal phases (`complete`, `completed`, `done`, `all-done`, `failed`, `cancelled`) and all-done `.omg/ultragoal/goals.json` plans are ignored.
 - **PreToolUse guard**: after confirmation, tools are denied unless the hook can see a matching active Claude `/goal` snapshot. Use `ALLOW_ULTRAGOAL_WITHOUT_GOAL=1` only as an intentional local bypass.
-- **Completion**: after the final quality gate and ultragoal checkpoint, mark the state inactive or run `/oh-my-copilot:cancel` so the state file is cleared with other workflow state.
+- **Completion**: after the final quality gate and ultragoal checkpoint, mark the state inactive or run `/cancel` so the state file is cleared with other workflow state.
 
 #### Canceling a Mode
 
@@ -528,7 +528,7 @@ cancelomc
 or
 
 ```
-/oh-my-copilot:cancel
+/cancel
 ```
 
 `cancel` removes state files for all active modes: ralph, autopilot, team, and any others; it also clears legacy/retired `ultrawork` state.
@@ -549,7 +549,7 @@ A SessionStart hook: the unattended-run **watchdog**. It scans the resolved `.om
 
 - **Threshold**: 2 hours of mtime silence (matching the persistent-mode freshness window); tunable via `OMC_STALE_RUN_HOURS`.
 - **Coverage**: both layouts — legacy `.omg/state/<mode>-state.json` and session-scoped `.omg/state/sessions/<sessionId>/<mode>-state.json`. The starting session's own state is excluded; malformed state files are ignored, never findings.
-- **Doctrine**: the watchdog observes and reports only. It never mutates state, never resumes a run, and never infers approval — reclaiming a dead run (`/oh-my-copilot:cancel` to clean up, or re-entering the mode to resume from artifacts) is always a human decision.
+- **Doctrine**: the watchdog observes and reports only. It never mutates state, never resumes a run, and never infers approval — reclaiming a dead run (`/cancel` to clean up, or re-entering the mode to resume from artifacts) is always a human decision.
 
 
 ---
@@ -723,7 +723,7 @@ cancel  (highest priority, exclusive)
 autopilot: implement user authentication with OAuth
 
 # Parallel execution
-/oh-my-copilot:team 3:executor "write all tests for this module"
+/team 3:executor "write all tests for this module"
 
 # Persistent execution
 ralph refactor this authentication module
@@ -740,10 +740,10 @@ stopomc
 
 ### Note on the `team` Keyword
 
-`team` is not auto-detected. It must be invoked explicitly via the `/oh-my-copilot:team` slash command to prevent infinite spawning.
+`team` is not auto-detected. It must be invoked explicitly via the `/team` slash command to prevent infinite spawning.
 
 ```
-/oh-my-copilot:team 3:executor "build a fullstack todo app"
+/team 3:executor "build a fullstack todo app"
 ```
 
 ---

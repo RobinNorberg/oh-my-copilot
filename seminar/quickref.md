@@ -5,7 +5,7 @@
 ```bash
 /plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
 /plugin install oh-my-copilot
-/oh-my-copilot:omc-setup
+/omc-setup
 ```
 
 ## Execution Modes
@@ -59,17 +59,17 @@
 ## Key Commands
 | Command | Purpose |
 |---------|---------|
-| `/oh-my-copilot:omc-setup` | Initial setup wizard |
-| `/oh-my-copilot:hud setup` | Enable HUD statusline |
-| `/oh-my-copilot:omc-doctor` | Diagnose issues |
-| `/oh-my-copilot:omc-help` | Show usage guide |
-| `/oh-my-copilot:cancel` | Stop current operation |
-| `/oh-my-copilot:note` | Save compaction-resilient note |
-| `/oh-my-copilot:learner` | Extract reusable skill |
-| `/oh-my-copilot:analyze` | Deep analysis/debugging |
-| `/oh-my-copilot:deepsearch` | Thorough codebase search |
-| `/oh-my-copilot:ultraqa` | QA cycling (test/fix/repeat) |
-| `/oh-my-copilot:tdd` | Test-driven development mode |
+| `/omc-setup` | Initial setup wizard |
+| `/hud setup` | Enable HUD statusline |
+| `/omc-doctor` | Diagnose issues |
+| `/omc-help` | Show usage guide |
+| `/cancel` | Stop current operation |
+| `/note` | Save compaction-resilient note |
+| `/learner` | Extract reusable skill |
+| `/analyze` | Deep analysis/debugging |
+| `/deepsearch` | Thorough codebase search |
+| `/ultraqa` | QA cycling (test/fix/repeat) |
+| `/tdd` | Test-driven development mode |
 
 ## Natural Language (No Commands Needed)
 - "build me a todo app" → Autopilot activates

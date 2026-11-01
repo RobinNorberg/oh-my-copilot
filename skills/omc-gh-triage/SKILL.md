@@ -34,7 +34,7 @@ Extract from the `github` key:
 - `defaultBranch` — default branch name
 - `labelTriage` — triage label filter (optional)
 
-If config is NOT_FOUND or missing the `github` key: tell the user to run `/oh-my-copilot:omc-gh-setup` first and stop.
+If config is NOT_FOUND or missing the `github` key: tell the user to run `/omc-gh-setup` first and stop.
 
 ---
 
@@ -163,7 +163,7 @@ After presenting the summary, ask the user (via AskUserQuestion):
 1. Fix failing CI — delegate to `build-fixer` agent
 2. Address PR feedback — open the PR diff and summarize changes needed
 3. Triage issues — walk through untriaged issues one by one
-4. Review a PR — delegate to `/oh-my-copilot:omc-gh-review`
+4. Review a PR — delegate to `/omc-gh-review`
 5. Show details for a specific item — enter issue or PR number
 6. No action needed — exit triage
 
@@ -173,7 +173,7 @@ After presenting the summary, ask the user (via AskUserQuestion):
 
 | Error | Action |
 |-------|--------|
-| `.omg/config.json` missing | Tell user to run `/oh-my-copilot:omc-gh-setup` first |
+| `.omg/config.json` missing | Tell user to run `/omc-gh-setup` first |
 | `gh auth` required | Prompt user to authenticate; do not abort — skip that section |
 | Dependabot not enabled | Skip security alerts section, note it in summary |
 | Query returns 0 results | Show the section with count "(0)" — do not omit the header |

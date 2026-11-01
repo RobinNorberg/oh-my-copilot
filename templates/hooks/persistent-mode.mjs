@@ -1183,7 +1183,7 @@ async function main() {
             JSON.stringify({
               continue: false,
               decision: "block",
-              reason: `[RALPH LOOP - HARD LIMIT] Reached hard max iterations (${hardMax}). Mode auto-disabled. Restart with /oh-my-copilot:ralph if needed.`,
+              reason: `[RALPH LOOP - HARD LIMIT] Reached hard max iterations (${hardMax}). Mode auto-disabled. Restart with /ralph if needed.`,
             }),
           );
           return;
@@ -1201,7 +1201,7 @@ async function main() {
           }
           writeJsonFile(ralph.path, ralph.state);
 
-          let reason = `[RALPH LOOP - ITERATION ${iteration + 1}/${maxIter}] Work is NOT done. Continue working.\nWhen FULLY complete (after Architect verification), run /oh-my-copilot:cancel to cleanly exit ralph mode and clean up all state files. If cancel fails, retry with /oh-my-copilot:cancel --force.\n${ralph.state.prompt ? `Task: ${ralph.state.prompt}` : ""}`;
+          let reason = `[RALPH LOOP - ITERATION ${iteration + 1}/${maxIter}] Work is NOT done. Continue working.\nWhen FULLY complete (after Architect verification), run /cancel to cleanly exit ralph mode and clean up all state files. If cancel fails, retry with /cancel --force.\n${ralph.state.prompt ? `Task: ${ralph.state.prompt}` : ""}`;
           if (errorGuidance) {
             reason = errorGuidance + reason;
           }
@@ -1230,7 +1230,7 @@ async function main() {
           JSON.stringify({
             continue: false,
             decision: "block",
-            reason: `[RALPH LOOP - EXTENDED] Max iterations reached; extending to ${ralph.state.max_iterations} and continuing. When FULLY complete (after Architect verification), run /oh-my-copilot:cancel (or --force).`,
+            reason: `[RALPH LOOP - EXTENDED] Max iterations reached; extending to ${ralph.state.max_iterations} and continuing. When FULLY complete (after Architect verification), run /cancel (or --force).`,
           }),
         );
         return;
@@ -1320,7 +1320,7 @@ async function main() {
             autopilot.state = reinforced;
 
             const cancelGuidance = hasValidSessionId && autopilot.state.session_id === sessionId
-              ? " When all phases are complete, run /oh-my-copilot:cancel to cleanly exit and clean up this session's autopilot state files. If cancel fails, retry with /oh-my-copilot:cancel --force."
+              ? " When all phases are complete, run /cancel to cleanly exit and clean up this session's autopilot state files. If cancel fails, retry with /cancel --force."
               : "";
             let reason = `[AUTOPILOT - Phase: ${phase}] Autopilot not complete. Continue working.${cancelGuidance}`;
             if (errorGuidance) {
@@ -1363,7 +1363,7 @@ async function main() {
           ultrapilot.state.last_checked_at = new Date().toISOString();
           writeJsonFile(ultrapilot.path, ultrapilot.state);
 
-          let reason = `[ULTRAPILOT] ${incomplete} workers still running. Continue working. When all workers complete, run /oh-my-copilot:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-copilot:cancel --force.`;
+          let reason = `[ULTRAPILOT] ${incomplete} workers still running. Continue working. When all workers complete, run /cancel to cleanly exit and clean up state files. If cancel fails, retry with /cancel --force.`;
           if (errorGuidance) {
             reason = errorGuidance + reason;
           }
@@ -1400,7 +1400,7 @@ async function main() {
           swarmSummary.last_checked_at = new Date().toISOString();
           writeJsonFile(join(stateDir, "swarm-summary.json"), swarmSummary);
 
-          let reason = `[SWARM ACTIVE] ${pending} tasks remain. Continue working. When all tasks are done, run /oh-my-copilot:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-copilot:cancel --force.`;
+          let reason = `[SWARM ACTIVE] ${pending} tasks remain. Continue working. When all tasks are done, run /cancel to cleanly exit and clean up state files. If cancel fails, retry with /cancel --force.`;
           if (errorGuidance) {
             reason = errorGuidance + reason;
           }
@@ -1438,7 +1438,7 @@ async function main() {
           pipeline.state.last_checked_at = new Date().toISOString();
           writeJsonFile(pipeline.path, pipeline.state);
 
-          let reason = `[PIPELINE - Stage ${currentStage + 1}/${totalStages}] Pipeline not complete. Continue working. When all stages complete, run /oh-my-copilot:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-copilot:cancel --force.`;
+          let reason = `[PIPELINE - Stage ${currentStage + 1}/${totalStages}] Pipeline not complete. Continue working. When all stages complete, run /cancel to cleanly exit and clean up state files. If cancel fails, retry with /cancel --force.`;
           if (errorGuidance) {
             reason = errorGuidance + reason;
           }
@@ -1476,7 +1476,7 @@ async function main() {
             team.state.last_checked_at = new Date().toISOString();
             writeJsonFile(team.path, team.state);
 
-            let reason = `[TEAM - Phase: ${phase}] Team mode active. Continue working. When all team tasks complete, run /oh-my-copilot:cancel to cleanly exit. If cancel fails, retry with /oh-my-copilot:cancel --force.`;
+            let reason = `[TEAM - Phase: ${phase}] Team mode active. Continue working. When all team tasks complete, run /cancel to cleanly exit. If cancel fails, retry with /cancel --force.`;
             if (errorGuidance) {
               reason = errorGuidance + reason;
             }

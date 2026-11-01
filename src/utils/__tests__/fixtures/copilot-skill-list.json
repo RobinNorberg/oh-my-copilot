@@ -1,0 +1,262 @@
+[
+  {
+    "name": "agent-doc-discipline",
+    "source": "plugin"
+  },
+  {
+    "name": "ai-slop-cleaner",
+    "source": "plugin"
+  },
+  {
+    "name": "architecture-survey",
+    "source": "plugin"
+  },
+  {
+    "name": "ask-navigator",
+    "source": "plugin"
+  },
+  {
+    "name": "ask",
+    "source": "plugin"
+  },
+  {
+    "name": "autopilot",
+    "source": "plugin"
+  },
+  {
+    "name": "autoresearch",
+    "source": "plugin"
+  },
+  {
+    "name": "cancel",
+    "source": "plugin"
+  },
+  {
+    "name": "configure-notifications",
+    "source": "plugin"
+  },
+  {
+    "name": "critique",
+    "source": "plugin"
+  },
+  {
+    "name": "debug",
+    "source": "plugin"
+  },
+  {
+    "name": "deep-interview",
+    "source": "plugin"
+  },
+  {
+    "name": "deep-review",
+    "source": "plugin"
+  },
+  {
+    "name": "deepinit",
+    "source": "plugin"
+  },
+  {
+    "name": "diagram",
+    "source": "plugin"
+  },
+  {
+    "name": "discover",
+    "source": "plugin"
+  },
+  {
+    "name": "drydock",
+    "source": "plugin"
+  },
+  {
+    "name": "execute",
+    "source": "plugin"
+  },
+  {
+    "name": "external-context",
+    "source": "plugin"
+  },
+  {
+    "name": "graph",
+    "source": "plugin"
+  },
+  {
+    "name": "harbor",
+    "source": "plugin"
+  },
+  {
+    "name": "hud",
+    "source": "plugin"
+  },
+  {
+    "name": "intent",
+    "source": "plugin"
+  },
+  {
+    "name": "launch",
+    "source": "plugin"
+  },
+  {
+    "name": "loft",
+    "source": "plugin"
+  },
+  {
+    "name": "map",
+    "source": "plugin"
+  },
+  {
+    "name": "minimal-code-discipline",
+    "source": "plugin"
+  },
+  {
+    "name": "minimal-prose-discipline",
+    "source": "plugin"
+  },
+  {
+    "name": "omc-ado-auto-review",
+    "source": "plugin"
+  },
+  {
+    "name": "omc-ado-review",
+    "source": "plugin"
+  },
+  {
+    "name": "omc-ado-setup",
+    "source": "plugin"
+  },
+  {
+    "name": "omc-ado-sprint",
+    "source": "plugin"
+  },
+  {
+    "name": "omc-ado-triage",
+    "source": "plugin"
+  },
+  {
+    "name": "omc-doctor",
+    "source": "plugin"
+  },
+  {
+    "name": "omc-gh-auto-review",
+    "source": "plugin"
+  },
+  {
+    "name": "omc-gh-project",
+    "source": "plugin"
+  },
+  {
+    "name": "omc-gh-review",
+    "source": "plugin"
+  },
+  {
+    "name": "omc-gh-setup",
+    "source": "plugin"
+  },
+  {
+    "name": "omc-gh-triage",
+    "source": "plugin"
+  },
+  {
+    "name": "omc-setup",
+    "source": "plugin"
+  },
+  {
+    "name": "omc-plan",
+    "source": "plugin"
+  },
+  {
+    "name": "pr",
+    "source": "plugin"
+  },
+  {
+    "name": "project-session-manager",
+    "source": "plugin"
+  },
+  {
+    "name": "ralph-experiment",
+    "source": "plugin"
+  },
+  {
+    "name": "ralph",
+    "source": "plugin"
+  },
+  {
+    "name": "ralplan",
+    "source": "plugin"
+  },
+  {
+    "name": "refit",
+    "source": "plugin"
+  },
+  {
+    "name": "release",
+    "source": "plugin"
+  },
+  {
+    "name": "remember",
+    "source": "plugin"
+  },
+  {
+    "name": "research",
+    "source": "plugin"
+  },
+  {
+    "name": "omc-review",
+    "source": "plugin"
+  },
+  {
+    "name": "self-improve",
+    "source": "plugin"
+  },
+  {
+    "name": "session-flow",
+    "source": "plugin"
+  },
+  {
+    "name": "ship",
+    "source": "plugin"
+  },
+  {
+    "name": "skill",
+    "source": "plugin"
+  },
+  {
+    "name": "skillify",
+    "source": "plugin"
+  },
+  {
+    "name": "tdd",
+    "source": "plugin"
+  },
+  {
+    "name": "team",
+    "source": "plugin"
+  },
+  {
+    "name": "trace",
+    "source": "plugin"
+  },
+  {
+    "name": "ultragoal",
+    "source": "plugin"
+  },
+  {
+    "name": "verify",
+    "source": "plugin"
+  },
+  {
+    "name": "visual-verdict",
+    "source": "plugin"
+  },
+  {
+    "name": "wiki",
+    "source": "plugin"
+  },
+  {
+    "name": "compact",
+    "source": "plugin"
+  },
+  {
+    "name": "psm",
+    "source": "plugin"
+  }
+]

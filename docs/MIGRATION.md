@@ -56,7 +56,7 @@ Applies to projects with a `.omg/factory-routes.json`, especially one seeded by 
   | Old route | Replacement |
   |---|---|
   | `success:intake` → `intent` | `success:intake` → `harbor` |
-  | `success:intent` → `launch` | none: run `/oh-my-copilot:launch` with the accepted intent |
+  | `success:intent` → `launch` | none: run `/launch` with the accepted intent |
   | `success:launch` → `diagnose`, `failed:ci` → `diagnose` | none: `omg factory heal scan` |
 
 - **An unmigrated table.** Nothing breaks silently: the chain halts at the first refused route, and `omg factory chain status` shows `route-retired:<skill>` as the decision and the stop reason.
@@ -177,7 +177,7 @@ Under Copilot CLI an OMC Stop continuation (ralph, ultragoal and the other keep-
 The configured MCP server no longer registers the five retired merge-readiness tools (upstream #4422), so it now exposes 56 tools.
 
 - **Removed tools:** `merge_readiness_start`, `merge_readiness_set_content`, `merge_readiness_record_answer`, `merge_readiness_report` and `merge_readiness_cancel`, together with their runtime (`src/hooks/merge-readiness/`). A client, script or tool allowlist that still names one gets an unknown-tool error; remove those names.
-- **What to use instead:** `/oh-my-copilot:review` for an advisory review, and `omg ship gates <pr>` for the mechanical merge rule. The `merge-readiness` skill was already retired in v5.0.0 (see the removed-skills table under v4.x → v5.0). Release hard checks are unchanged.
+- **What to use instead:** `/omc-review` for an advisory review, and `omg ship gates <pr>` for the mechanical merge rule. The `merge-readiness` skill was already retired in v5.0.0 (see the removed-skills table under v4.x → v5.0). Release hard checks are unchanged.
 
 ## v5.8.1 → v5.9.0: SDK Team Transport by Default
 
@@ -215,7 +215,7 @@ The shipyard glossary surface is now `GLOSSARY.md` at the repository root. It ho
 
 ### What changes for existing yards
 
-- **Only `CONTEXT.md` exists:** the yard keeps working. The audit accepts `CONTEXT.md` as the glossary, and the skills read it until it is migrated. The next full `/oh-my-copilot:drydock` run (not `--check`) renames it to `GLOSSARY.md` with its content and frontmatter unchanged, and rewrites `CONTEXT.md` references in `CLAUDE.md` (for example `Glossary: CONTEXT.md`) to `GLOSSARY.md`. Commit the result.
+- **Only `CONTEXT.md` exists:** the yard keeps working. The audit accepts `CONTEXT.md` as the glossary, and the skills read it until it is migrated. The next full `/drydock` run (not `--check`) renames it to `GLOSSARY.md` with its content and frontmatter unchanged, and rewrites `CONTEXT.md` references in `CLAUDE.md` (for example `Glossary: CONTEXT.md`) to `GLOSSARY.md`. Commit the result.
 - **Both files exist:** `node scripts/shipyard-audit.mjs` reports a high-confidence `shipyard.glossary.duplicate-authority` finding and exits 1, so Launch stays blocked. Drydock does not merge the files for you. Move any terms that exist only in `CONTEXT.md` into `GLOSSARY.md`, delete `CONTEXT.md`, replace remaining `CONTEXT.md` references in `CLAUDE.md` with `GLOSSARY.md`, then commit.
 - **Fresh yards:** no action. Drydock creates `GLOSSARY.md`.
 
@@ -318,7 +318,7 @@ Session ownership alone does not prove ownership of a same-name runtime instance
 
 ## Unreleased: Cancellation Scope
 
-`/oh-my-copilot:cancel --force` now targets only the current session; it no longer
+`/cancel --force` now targets only the current session; it no longer
 means clearing every session. It skips graceful waits, not state locks or ownership checks.
 If the current session cannot be identified, cancellation fails closed.
 
@@ -754,7 +754,7 @@ copilot plugin install oh-my-copilot@omc
 ```
 
 Inside a session, `/plugin install oh-my-copilot@omc` does the same. Then
-re-run `/oh-my-copilot:omc-setup`. A standalone install that copied agents
+re-run `/omc-setup`. A standalone install that copied agents
 into `~/.copilot/agents/` shadows the plugin's agents by name, so re-run
 `omg setup` after upgrading.
 
@@ -974,9 +974,9 @@ skills, plugins, rules, tasks, and worktrees.
 - Your user-level OMC config, `.omc-config.json`, now resolves to
   `${COPILOT_CONFIG_DIR:-~/.copilot}/.omc-config.json`. This one you do *not*
   have to move: if `~/.claude/.omc-config.json` is the only copy you have,
-  `/oh-my-copilot:omc-setup` adopts it into the new location when setup
+  `/omc-setup` adopts it into the new location when setup
   completes, copying rather than moving so nothing is destroyed.
-  `/oh-my-copilot:omc-doctor` reports a stranded copy and can adopt it on its
+  `/omc-doctor` reports a stranded copy and can adopt it on its
   own, and setting `COPILOT_CONFIG_DIR` overrides the location entirely.
   (v5.5.0 renames that variable to `COPILOT_HOME`; see
   [v5.1.0 → v5.5.0](#v510--v550-fork-upgrade-guide).)
@@ -1003,17 +1003,17 @@ switch to the replacement — the old name no longer resolves:
 
 | Retired name       | Replacement                              |
 | ------------------- | ----------------------------------------- |
-| `ultrawork`         | `/oh-my-copilot:execute`                 |
-| `ultraqa`           | `/oh-my-copilot:verify`                  |
-| `deep-dive`         | `/oh-my-copilot:plan` then `execute`, or `/oh-my-copilot:research` for investigation |
-| `sciomc`            | `/oh-my-copilot:research`                |
-| `cccg` skill (invoked as `/ccg`) | `/oh-my-copilot:execute`   |
-| `omc-teams`         | `/oh-my-copilot:team`                    |
-| `setup`             | `/oh-my-copilot:omc-setup`               |
-| `mcp-setup`         | `/oh-my-copilot:omc-setup`               |
-| `omc-reference`     | `/oh-my-copilot:wiki`                    |
-| `learner`           | `/oh-my-copilot:skillify` or `/oh-my-copilot:remember` |
-| `writer-memory`     | `/oh-my-copilot:remember`                |
+| `ultrawork`         | `/execute`                 |
+| `ultraqa`           | `/verify`                  |
+| `deep-dive`         | `/omc-plan` then `execute`, or `/research` for investigation |
+| `sciomc`            | `/research`                |
+| `cccg` skill (invoked as `/ccg`) | `/execute`   |
+| `omc-teams`         | `/team`                    |
+| `setup`             | `/omc-setup`               |
+| `mcp-setup`         | `/omc-setup`               |
+| `omc-reference`     | `/wiki`                    |
+| `learner`           | `/skillify` or `/remember` |
+| `writer-memory`     | `/remember`                |
 
 Seven command files were removed alongside their skills: `ccg.md`,
 `deep-dive.md`, `learner.md`, `mcp-setup.md`, `omc-teams.md`, `sciomc.md`,
@@ -1054,7 +1054,7 @@ or, via the plugin marketplace:
 /plugin install oh-my-copilot
 ```
 
-Then run `/oh-my-copilot:omc-setup` (or say "setup omc") to refresh installed
+Then run `/omc-setup` (or say "setup omc") to refresh installed
 skills and prune retired ones.
 
 **Stale agent files from v4 are now correctly cleaned up.** The 4.x agent
@@ -1102,23 +1102,23 @@ names no longer resolve. Use the replacement in the table below.
 
 | Removed                | Replacement                              | Notes                                                        |
 | ---------------------- | ---------------------------------------- | ------------------------------------------------------------ |
-| `ultrawork`            | `/oh-my-copilot:execute` or `/team`   | Use `/team` when you want coordinated parallel workers        |
-| `ultrapilot`           | `/oh-my-copilot:team`                 | Declared-only; never shipped as a skill file                  |
-| `swarm`                | `/oh-my-copilot:team`                 | Declared-only                                                 |
-| `pipeline`             | `/oh-my-copilot:execute`              | Declared-only                                                 |
-| `ultraqa`              | `/oh-my-copilot:verify`               |                                                               |
-| `merge-readiness`      | `/oh-my-copilot:review`               | MCP tools and runtime are removed; review stays advisory; release hard checks are unchanged |
-| `deep-dive`            | `/oh-my-copilot:research`             |                                                               |
-| `sciomc`               | `/oh-my-copilot:research`             |                                                               |
-| `ccg`                  | `/oh-my-copilot:ask` + `/team`        | Run `/ask codex` and `/ask antigravity`, then synthesize      |
-| `omc-teams`            | `/oh-my-copilot:team` or `omg team`   |                                                               |
-| `setup`                | `/oh-my-copilot:omc-setup`            |                                                               |
+| `ultrawork`            | `/execute` or `/team`   | Use `/team` when you want coordinated parallel workers        |
+| `ultrapilot`           | `/team`                 | Declared-only; never shipped as a skill file                  |
+| `swarm`                | `/team`                 | Declared-only                                                 |
+| `pipeline`             | `/execute`              | Declared-only                                                 |
+| `ultraqa`              | `/verify`               |                                                               |
+| `merge-readiness`      | `/omc-review`               | MCP tools and runtime are removed; review stays advisory; release hard checks are unchanged |
+| `deep-dive`            | `/research`             |                                                               |
+| `sciomc`               | `/research`             |                                                               |
+| `ccg`                  | `/ask` + `/team`        | Run `/ask codex` and `/ask antigravity`, then synthesize      |
+| `omc-teams`            | `/team` or `omg team`   |                                                               |
+| `setup`                | `/omc-setup`            |                                                               |
 | `mcp-setup`            | Claude Code native MCP configuration     | Use `claude mcp add <name> ...` or the path selected by `CLAUDE_MCP_CONFIG_PATH`. |
-| `omc-reference`        | `/oh-my-copilot:wiki`                 | Model-routing reference moved into the wiki skill             |
-| `learner`              | `/oh-my-copilot:remember`             |                                                               |
-| `writer-memory`        | `/oh-my-copilot:remember`             |                                                               |
+| `omc-reference`        | `/wiki`                 | Model-routing reference moved into the wiki skill             |
+| `learner`              | `/remember`             |                                                               |
+| `writer-memory`        | `/remember`             |                                                               |
 | `local-build-reminder` | —                                        | Removed; docs and CI cover the rebuild signal                 |
-| `understanding-gate`   | `/oh-my-copilot:review`               | Frontmatter alias of the removed merge-readiness              |
+| `understanding-gate`   | `/omc-review`               | Frontmatter alias of the removed merge-readiness              |
 
 Command files removed alongside their skills: `ccg.md`, `deep-dive.md`,
 `learner.md`, `mcp-setup.md`, `omc-teams.md`, `sciomc.md`, `writer-memory.md`.
@@ -1153,7 +1153,7 @@ Claude Code native commands:
 ### Migration Steps
 
 1. Update any scripts, docs, or prompts that invoke a removed name.
-2. Run `omg setup` (or `/oh-my-copilot:omc-setup`). The installer prunes the
+2. Run `omg setup` (or `/omc-setup`). The installer prunes the
    retired skill directories automatically — no manual cleanup needed.
 3. If you pinned a removed skill in `.claude/settings.json` or a project
    `CLAUDE.md`, replace it using the table above.
@@ -1276,30 +1276,30 @@ The following skills have been **completely removed** in v3.5.3:
 
 | Removed Skill        | Replacement                            |
 | -------------------- | -------------------------------------- |
-| `cancel-autopilot`   | `/oh-my-copilot:cancel`             |
-| `cancel-ralph`       | `/oh-my-copilot:cancel`             |
-| `cancel-ultrawork`   | `/oh-my-copilot:cancel`             |
-| `cancel-ultraqa`     | `/oh-my-copilot:cancel`             |
-| `omc-default`        | `/oh-my-copilot:omc-setup --local`  |
-| `omc-default-global` | `/oh-my-copilot:omc-setup --global` |
-| `planner`            | `/oh-my-copilot:plan`               |
+| `cancel-autopilot`   | `/cancel`             |
+| `cancel-ralph`       | `/cancel`             |
+| `cancel-ultrawork`   | `/cancel`             |
+| `cancel-ultraqa`     | `/cancel`             |
+| `omc-default`        | `/omc-setup --local`  |
+| `omc-default-global` | `/omc-setup --global` |
+| `planner`            | `/omc-plan`               |
 
 ### What Changed
 
 **Before v3.5.3:**
 
 ```bash
-/oh-my-copilot:cancel-ralph      # Cancel ralph specifically
-/oh-my-copilot:omc-default       # Configure local project
-/oh-my-copilot:planner "task"    # Start planning
+/cancel-ralph      # Cancel ralph specifically
+/omc-default       # Configure local project
+/planner "task"    # Start planning
 ```
 
 **After v3.5.3:**
 
 ```bash
-/oh-my-copilot:cancel            # Auto-detects and cancels any active mode
-/oh-my-copilot:omc-setup --local # Configure local project
-/oh-my-copilot:plan "task"       # Start planning (includes interview mode)
+/cancel            # Auto-detects and cancels any active mode
+/omc-setup --local # Configure local project
+/omc-plan "task"       # Start planning (includes interview mode)
 ```
 
 ### New Features
@@ -1313,8 +1313,8 @@ The following skills have been **completely removed** in v3.5.3:
 **Plan skill now supports consensus mode:**
 
 ```bash
-/oh-my-copilot:plan --consensus "task"  # Iterative planning with Critic review
-/oh-my-copilot:ralplan "task"           # Alias for plan --consensus
+/omc-plan --consensus "task"  # Iterative planning with Critic review
+/ralplan "task"           # Alias for plan --consensus
 ```
 
 ### Migration Steps
@@ -1336,7 +1336,7 @@ The following skills have been **completely removed** in v3.5.3:
 
 Your old commands still work! But now you don't need them.
 
-**Before 3.0:** Explicitly invoke 25+ commands like `/oh-my-copilot:ralph "task"`, `/oh-my-copilot:ultrawork "task"`
+**Before 3.0:** Explicitly invoke 25+ commands like `/ralph "task"`, `/ultrawork "task"`
 
 **After 3.0:** Just work naturally - Claude auto-activates the right behaviors. One-time setup: just say "setup omc"
 
@@ -1363,13 +1363,13 @@ You had to remember and explicitly invoke specific commands for each mode:
 
 ```bash
 # 2.x workflow: Multiple commands, lots to remember
-/oh-my-copilot:ralph "implement user authentication"       # Persistence mode
-/oh-my-copilot:ultrawork "refactor the API layer"          # Maximum parallelism
-/oh-my-copilot:planner "plan the new dashboard"            # Planning interview
-/oh-my-copilot:deepsearch "find database schema files"     # Deep search
-/oh-my-copilot:git-master "commit these changes"           # Git expertise
-/oh-my-copilot:deepinit ./src                              # Index codebase
-/oh-my-copilot:analyze "why is this test failing?"         # Deep analysis
+/ralph "implement user authentication"       # Persistence mode
+/ultrawork "refactor the API layer"          # Maximum parallelism
+/planner "plan the new dashboard"            # Planning interview
+/deepsearch "find database schema files"     # Deep search
+/git-master "commit these changes"           # Git expertise
+/deepinit ./src                              # Index codebase
+/analyze "why is this test failing?"         # Deep analysis
 ```
 
 #### After (3.0): Auto-Activation + Keywords
@@ -1410,20 +1410,20 @@ All 2.x commands continue to work. Here's what changed:
 
 | 2.x Command                            | 3.0 Equivalent                                     | Works?                 |
 | -------------------------------------- | -------------------------------------------------- | ---------------------- |
-| `/oh-my-copilot:ralph "task"`       | Say "don't stop until done" OR use `ralph` keyword | ✅ YES (both ways)     |
-| `/oh-my-copilot:ultrawork "task"`   | Say "fast" or "parallel" OR use `ulw` keyword      | ✅ YES (both ways)     |
-| `/oh-my-copilot:ultrawork-ralph`    | Say "ralph ulw:" prefix                            | ✅ YES (keyword combo) |
-| `/oh-my-copilot:planner "task"`     | Say "plan this" OR use `plan` keyword              | ✅ YES (both ways)     |
-| `/oh-my-copilot:plan "description"` | Start planning naturally                           | ✅ YES                 |
-| `/oh-my-copilot:review [path]`      | Invoke normally                                    | ✅ YES (unchanged)     |
-| `/oh-my-copilot:deepsearch "query"` | Say "find" or "search"                             | ✅ YES (auto-detect)   |
-| `/oh-my-copilot:analyze "target"`   | Say "analyze" — routes to debugger/architect agent | ✅ YES (keyword route) |
-| `/oh-my-copilot:deepinit [path]`    | Invoke normally                                    | ✅ YES (unchanged)     |
-| `/oh-my-copilot:git-master`         | Say "git", "commit", "atomic commit"               | ✅ YES (auto-detect)   |
-| `/oh-my-copilot:frontend-ui-ux`     | Say "UI", "styling", "component", "design"         | ✅ YES (auto-detect)   |
-| `/oh-my-copilot:note "content"`     | Say "remember this" or "save this"                 | ✅ YES (auto-detect)   |
-| `/oh-my-copilot:cancel-ralph`       | Say "stop", "cancel", or "abort"                   | ✅ YES (auto-detect)   |
-| `/oh-my-copilot:omc-doctor`         | Invoke normally                                    | ✅ YES (unchanged)     |
+| `/ralph "task"`       | Say "don't stop until done" OR use `ralph` keyword | ✅ YES (both ways)     |
+| `/ultrawork "task"`   | Say "fast" or "parallel" OR use `ulw` keyword      | ✅ YES (both ways)     |
+| `/ultrawork-ralph`    | Say "ralph ulw:" prefix                            | ✅ YES (keyword combo) |
+| `/planner "task"`     | Say "plan this" OR use `plan` keyword              | ✅ YES (both ways)     |
+| `/omc-plan "description"` | Start planning naturally                           | ✅ YES                 |
+| `/omc-review [path]`      | Invoke normally                                    | ✅ YES (unchanged)     |
+| `/deepsearch "query"` | Say "find" or "search"                             | ✅ YES (auto-detect)   |
+| `/analyze "target"`   | Say "analyze" — routes to debugger/architect agent | ✅ YES (keyword route) |
+| `/deepinit [path]`    | Invoke normally                                    | ✅ YES (unchanged)     |
+| `/git-master`         | Say "git", "commit", "atomic commit"               | ✅ YES (auto-detect)   |
+| `/frontend-ui-ux`     | Say "UI", "styling", "component", "design"         | ✅ YES (auto-detect)   |
+| `/note "content"`     | Say "remember this" or "save this"                 | ✅ YES (auto-detect)   |
+| `/cancel-ralph`       | Say "stop", "cancel", or "abort"                   | ✅ YES (auto-detect)   |
+| `/omc-doctor`         | Invoke normally                                    | ✅ YES (unchanged)     |
 | All other commands                     | Work exactly as before                             | ✅ YES                 |
 
 ### Magic Keywords
@@ -1473,7 +1473,7 @@ If in planning       → End planning interview
 If multiple active   → Stop the most recent
 ```
 
-No more `/oh-my-copilot:cancel-ralph` - just say "cancel"!
+No more `/cancel-ralph` - just say "cancel"!
 
 ### Migration Steps
 
@@ -1550,7 +1550,7 @@ After migration, verify your setup:
 **No commands to memorize.** Work naturally:
 
 ```
-Before: "OK, I need to use /oh-my-copilot:ultrawork for speed..."
+Before: "OK, I need to use /ultrawork for speed..."
 After:  "I'm in a hurry, go fast!"
         ↓
         Claude: "I'm activating ultrawork mode..."
@@ -1572,9 +1572,9 @@ Your request              Claude's action
 
 You don't ask for delegation - it happens automatically.
 
-#### 3. Learned Skills (`/oh-my-copilot:skillify`)
+#### 3. Learned Skills (`/skillify`)
 
-Extract reusable insights from problem-solving. `/oh-my-copilot:learner` remains as a deprecated compatibility alias:
+Extract reusable insights from problem-solving. `/learner` remains as a deprecated compatibility alias:
 
 ```bash
 # After solving a tricky bug:
@@ -1598,7 +1598,7 @@ See what Claude is doing in the status bar:
 [OMC] ralph:3/10 | US-002 | ultrawork skill:planner | ctx:67% | agents:2 | todos:2/5
 ```
 
-Run `/oh-my-copilot:hud setup` to install. Presets: minimal, focused, full.
+Run `/hud setup` to install. Presets: minimal, focused, full.
 
 #### 5. Three-Tier Memory System
 
@@ -1612,10 +1612,10 @@ Permanently loaded on session start
 Never lost through compaction
 ```
 
-Or use `/oh-my-copilot:note` to save discoveries manually:
+Or use `/note` to save discoveries manually:
 
 ```bash
-/oh-my-copilot:note Project uses PostgreSQL with Prisma ORM
+/note Project uses PostgreSQL with Prisma ORM
 ```
 
 #### 6. Structured Task Tracking (PRD Support)
@@ -1623,7 +1623,7 @@ Or use `/oh-my-copilot:note` to save discoveries manually:
 **Ralph Loop now uses Product Requirements Documents:**
 
 ```bash
-/oh-my-copilot:ralph-init "implement OAuth with multiple providers"
+/ralph-init "implement OAuth with multiple providers"
     ↓
 Auto-creates PRD with user stories
     ↓
@@ -1747,7 +1747,7 @@ Version 3.4.0 introduces powerful parallel execution modes and advanced workflow
 Chain agents with data passing between stages:
 
 ```bash
-/oh-my-copilot:pipeline explore:haiku -> architect:opus -> executor:sonnet
+/pipeline explore:haiku -> architect:opus -> executor:sonnet
 ```
 
 **Built-in Presets:**
@@ -1764,7 +1764,7 @@ Chain agents with data passing between stages:
 Smart cancellation that auto-detects active mode:
 
 ```bash
-/oh-my-copilot:cancel
+/cancel
 # Or just say: "stop", "cancel", "abort"
 ```
 
@@ -1773,12 +1773,12 @@ Smart cancellation that auto-detects active mode:
 **Deprecation Notice:**
 Individual cancel commands are deprecated but still work:
 
-- `/oh-my-copilot:cancel-ralph` (deprecated)
-- `/oh-my-copilot:cancel-ultraqa` (deprecated)
-- `/oh-my-copilot:cancel-ultrawork` (deprecated)
-- `/oh-my-copilot:cancel-autopilot` (deprecated)
+- `/cancel-ralph` (deprecated)
+- `/cancel-ultraqa` (deprecated)
+- `/cancel-ultrawork` (deprecated)
+- `/cancel-autopilot` (deprecated)
 
-Use `/oh-my-copilot:cancel` instead.
+Use `/cancel` instead.
 
 #### 6. Explore-High Agent
 
@@ -1819,7 +1819,7 @@ When multiple execution mode keywords are present:
 **Explicit mode keywords:** `ulw`, `ultrawork`
 **Generic keywords:** `fast`, `parallel`
 
-Users set their default mode preference via `/oh-my-copilot:omc-setup`.
+Users set their default mode preference via `/omc-setup`.
 
 ### Migration Steps
 
@@ -1901,7 +1901,7 @@ After upgrading, verify new features:
 2. **Test unified cancel**:
 
    ```bash
-   /oh-my-copilot:cancel
+   /cancel
    ```
 
 3. **Check state directory**:
@@ -1963,7 +1963,7 @@ Expected timeline: Q1 2026
 **2.x Workflow:**
 
 ```
-/oh-my-copilot:ultrawork "implement the todo list feature"
+/ultrawork "implement the todo list feature"
 ```
 
 **3.0+ Workflow:**
@@ -1981,7 +1981,7 @@ Claude: "I'm activating ultrawork for maximum parallelism"
 **2.x Workflow:**
 
 ```
-/oh-my-copilot:ralph "debug the memory leak"
+/ralph "debug the memory leak"
 ```
 
 **3.0+ Workflow:**
@@ -1999,7 +1999,7 @@ Claude: "I'm activating ralph-loop to ensure completion"
 **2.x Workflow:**
 
 ```
-/oh-my-copilot:planner "design the new authentication system"
+/planner "design the new authentication system"
 ```
 
 **3.0+ Workflow:**
@@ -2019,7 +2019,7 @@ Interview begins automatically
 **2.x Workflow:**
 
 ```
-/oh-my-copilot:cancel-ralph
+/cancel-ralph
 ```
 
 **3.0+ Workflow:**
@@ -2039,7 +2039,7 @@ Interview begins automatically
 Apply oh-my-copilot to current project only:
 
 ```
-/oh-my-copilot:omc-default
+/omc-default
 ```
 
 Creates: `./.claude/CLAUDE.md`
@@ -2049,7 +2049,7 @@ Creates: `./.claude/CLAUDE.md`
 Apply to all Claude Code sessions:
 
 ```
-/oh-my-copilot:omc-default-global
+/omc-default-global
 ```
 
 Creates: `~/.claude/CLAUDE.md`
@@ -2067,10 +2067,10 @@ A: No. Keywords are optional shortcuts. Claude auto-detects intent without them.
 A: No. All commands continue to work across minor versions (3.0 → 3.1). Major version changes (3.x → 4.0) will provide migration paths.
 
 **Q: What if I like explicit commands?**
-A: Keep using them! `/oh-my-copilot:ralph`, `/oh-my-copilot:ultrawork`, and `/oh-my-copilot:plan` work. Note: `/oh-my-copilot:planner` now redirects to `/oh-my-copilot:plan`.
+A: Keep using them! `/ralph`, `/ultrawork`, and `/omc-plan` work. Note: `/planner` now redirects to `/omc-plan`.
 
 **Q: How do I know what Claude is doing?**
-A: Claude announces major behaviors: "I'm activating ralph-loop..." or set up `/oh-my-copilot:hud` for real-time status.
+A: Claude announces major behaviors: "I'm activating ralph-loop..." or set up `/hud` for real-time status.
 
 **Q: Where's the full command list?**
 A: See [README.md](../README.md) for full command reference. All commands still work.
@@ -2082,9 +2082,9 @@ A: Keywords are explicit shortcuts. Natural language triggers auto-detection. Bo
 
 ## Need Help?
 
-- **Diagnose issues**: Run `/oh-my-copilot:omc-doctor`
-- **See all commands**: Run `/oh-my-copilot:omc-help`
-- **View real-time status**: Run `/oh-my-copilot:hud setup`
+- **Diagnose issues**: Run `/omc-doctor`
+- **See all commands**: Run `/omc-help`
+- **View real-time status**: Run `/hud setup`
 - **Review detailed changelog**: See [CHANGELOG.md](../CHANGELOG.md)
 - **Report bugs**: [GitHub Issues](https://github.com/Yeachan-Heo/oh-my-claudecode/issues)
 

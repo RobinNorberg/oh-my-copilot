@@ -41,6 +41,7 @@ export type {
   ModeStatus,
   CanStartResult,
 } from "./types.js";
+import { skillSlash } from "../../utils/skill-slash.js";
 
 /**
  * Mode configuration registry
@@ -360,7 +361,7 @@ export function canStartMode(mode: ExecutionMode, cwd: string): CanStartResult {
         return {
           allowed: false,
           blockedBy: exclusiveMode,
-          message: `Cannot start ${MODE_CONFIGS[mode].name} while ${config.name} is active. Cancel ${config.name} first with /oh-my-copilot:cancel.`,
+          message: `Cannot start ${MODE_CONFIGS[mode].name} while ${config.name} is active. Cancel ${config.name} first with ${skillSlash('cancel')}.`,
         };
       }
     }

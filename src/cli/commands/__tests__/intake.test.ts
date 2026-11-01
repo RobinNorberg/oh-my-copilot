@@ -23,6 +23,7 @@ import {
   validateHostBin,
   type IntakeRunner,
 } from '../intake.js';
+import { skillSlash } from '../../../utils/skill-slash.js';
 
 describe('defaultIntakeRunner on win32', () => {
   const realPlatform = process.platform;
@@ -32,11 +33,11 @@ describe('defaultIntakeRunner on win32', () => {
     try {
       resolution.resolveHostBinaryLaunch.mockReturnValueOnce({ file: 'C:\\npm\\copilot.cmd', viaCmd: true });
       vi.mocked(spawnSync).mockReturnValueOnce({ status: 0, stdout: 'ok', stderr: '' } as unknown as ReturnType<typeof spawnSync>);
-      const result = defaultIntakeRunner('copilot', ['-p', '/oh-my-copilot:harbor sweep', '--no-ask-user'], { cwd: '.', env: { COPILOT_ALLOW_ALL: 'false' } });
+      const result = defaultIntakeRunner('copilot', ['-p', '/harbor sweep', '--no-ask-user'], { cwd: '.', env: { COPILOT_ALLOW_ALL: 'false' } });
       expect(result.status).toBe(0);
       const [file, args, options] = vi.mocked(spawnSync).mock.calls.at(-1)!;
       expect(file).toBe(process.env.COMSPEC || 'cmd.exe');
-      expect(args).toEqual(['/d', '/s', '/c', '"C:\\npm\\copilot.cmd -p "/oh-my-copilot:harbor sweep" --no-ask-user"']);
+      expect(args).toEqual(['/d', '/s', '/c', '"C:\\npm\\copilot.cmd -p "/harbor sweep" --no-ask-user"']);
       expect(options).toMatchObject({ windowsVerbatimArguments: true });
       expect((options as { env: NodeJS.ProcessEnv }).env.COPILOT_ALLOW_ALL).toBe('false');
     } finally {
@@ -199,7 +200,7 @@ describe('runHeadlessIntake preconditions', () => {
       const result = runHeadlessIntake({ allowDocketOnly: true, cwd: '.' }, runner);
       expect(result.exitCode).toBe(0);
       expect(spawnedCommand).toBe('copilot');
-      expect(spawnedArgs).toEqual(['-p', '/oh-my-copilot:harbor sweep', '--no-ask-user']);
+      expect(spawnedArgs).toEqual(['-p', `${skillSlash('harbor', 'copilot')} sweep`, '--no-ask-user']);
       // The runner merges options.env over process.env, so this overrides an inherited 'true'.
       expect(spawnedEnv.COPILOT_ALLOW_ALL).toBe('false');
     } finally {
@@ -250,7 +251,7 @@ describe('runHeadlessIntake preconditions', () => {
       const result = runHeadlessIntake({ allowDocketOnly: true, cwd: '.' }, runner);
       expect(result.exitCode).toBe(0);
       expect(spawnedCommand).toBe('claude');
-      expect(spawnedArgs).toEqual(['--print', '/oh-my-copilot:harbor sweep']);
+      expect(spawnedArgs).toEqual(['--print', `${skillSlash('harbor', 'claude')} sweep`]);
       expect(spawnedEnv.OMC_GIT_GUARDRAILS).toBe('1');
     } finally {
       vi.unstubAllEnvs();

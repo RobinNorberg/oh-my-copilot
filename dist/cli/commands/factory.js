@@ -54,6 +54,7 @@ import { defaultPollHealScan } from '../../factory/poll.js';
 import { checkEnvFor, fetchBase, forgeReadExec, parseItemId } from '../../factory/check/cli.js';
 import { BUCKET_ORDER, checkItems, plainText } from '../../factory/check/score.js';
 import { createForge } from '../../forge/index.js';
+import { skillSlash } from '../../utils/skill-slash.js';
 export function renderChainStatus(status) {
     const lines = [];
     lines.push(`链状态 ${status.directory}`);
@@ -522,7 +523,7 @@ export function runFactoryInit(options = {}) {
     if (!prerequisites.ok) {
         return {
             exitCode: 1,
-            message: `factory init refused: missing prerequisites (${prerequisites.missing.join(', ')}). Harbor needs .omg/state/ (run an OMC session or omg setup first); the yard faces CLAUDE.md and GLOSSARY.md come from /oh-my-copilot:drydock. Point --cwd at the project root.`,
+            message: `factory init refused: missing prerequisites (${prerequisites.missing.join(', ')}). Harbor needs .omg/state/ (run an OMC session or omg setup first); the yard faces CLAUDE.md and GLOSSARY.md come from ${skillSlash('drydock')}. Point --cwd at the project root.`,
         };
     }
     if (existsSync(routesPath) && !options.force) {
@@ -573,8 +574,8 @@ function classifyRoute(cwd, key, value) {
         return row(status, 'none: omg factory heal scan handles CI failures');
     if (status === 'captain') {
         return row(status, name === 'launch'
-            ? 'none: run /oh-my-copilot:launch with the accepted intent'
-            : `none: run /oh-my-copilot:${name} in a session (it needs a live captain)`);
+            ? `none: run ${skillSlash('launch')} with the accepted intent`
+            : `none: run ${skillSlash(name)} in a session (it needs a live captain)`);
     }
     if (!LABEL_PATTERN.test(stage) || !LABEL_PATTERN.test(skill))
         return row('invalid', 'ignored by the chain: stage or skill has characters outside [A-Za-z0-9_.-]');

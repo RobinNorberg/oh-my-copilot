@@ -1034,7 +1034,7 @@ function formatUpdateNoticeForUser(updateInfo, options = {}) {
   if (updateInfo?.source === 'copilot-plugin') {
     action = 'To update the plugin, run: /plugin update oh-my-copilot@omc (from a shell: copilot plugin update oh-my-copilot@omc)';
   } else if (updateInfo?.source === 'marketplace') {
-    action = 'To update the plugin channel, run: copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc (shell), then /oh-my-copilot:omc-setup';
+    action = 'To update the plugin channel, run: copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc (shell), then /omc-setup';
   } else if (options.copilotHost) {
     // Copilot's /update updates Copilot CLI itself, not this package.
     action = 'To update, run: npm i -g oh-my-copilot@latest';
@@ -1731,7 +1731,7 @@ async function main() {
         driftMsg += `\nRun '/plugin update oh-my-copilot@omc' to sync plugin-managed components.`;
       } else {
         driftMsg += driftInfo.source === 'marketplace'
-          ? `\nRun 'copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc (shell), then /oh-my-copilot:omc-setup' to sync plugin-managed components.`
+          ? `\nRun 'copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc (shell), then /omc-setup' to sync plugin-managed components.`
           : `\nRun 'omg update' to sync all components.`;
       }
 
@@ -1748,7 +1748,7 @@ async function main() {
         const omcConfigPath = join(configDir, '.omc-config.json');
         const omcConfig = readJsonFile(omcConfigPath);
         if (omcConfig?.silentAutoUpdate) {
-          messages.push(`<session-restore>\n\n[OMC] silentAutoUpdate is enabled in .omc-config.json but has no effect in plugin mode.\nTo update, use: copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc (shell), then /oh-my-copilot:omc-setup\nOr run manually: omg update\n\n</session-restore>\n\n---\n`);
+          messages.push(`<session-restore>\n\n[OMC] silentAutoUpdate is enabled in .omc-config.json but has no effect in plugin mode.\nTo update, use: copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc (shell), then /omc-setup\nOr run manually: omg update\n\n</session-restore>\n\n---\n`);
         }
       } catch {}
     }

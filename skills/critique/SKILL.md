@@ -16,7 +16,7 @@ Devil's Advocate critique of all unpushed commits. Spawns an independent adversa
 </Use_When>
 
 <Do_Not_Use_When>
-- Reviewing a PR that's already pushed — use `/review` or `code-reviewer` agent instead
+- Reviewing a PR that's already pushed — use `/omc-review` or `code-reviewer` agent instead
 - Deep multi-pass review needed — use `/deep-review` instead
 - Only want security review — use `security-reviewer` agent directly
 </Do_Not_Use_When>

@@ -28,7 +28,7 @@ describe('skill map references', () => {
 
   it('routes session reorientation to the session-flow skill', () => {
     expect(references).toContain('session-flow');
-    expect(mapBody).toContain('run `/oh-my-copilot:session-flow` manually');
+    expect(mapBody).toContain('run `/session-flow` manually');
   });
 
   it('resolves every reference to a real surface (skill, agent, or command)', () => {

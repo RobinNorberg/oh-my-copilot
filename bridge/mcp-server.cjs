@@ -20089,6 +20089,34 @@ var init_mode_names = __esm({
   }
 });
 
+// src/utils/host-signal.ts
+function detectHostCliType(env2 = process.env) {
+  return detectHostCliSignal(env2) ?? "copilot";
+}
+function detectHostCliSignal(env2 = process.env) {
+  if (env2.COPILOT_CLI || env2.COPILOT_AGENT_SESSION_ID) return "copilot";
+  if (env2.CLAUDE_CODE_ENTRYPOINT) return "claude";
+  return null;
+}
+var init_host_signal = __esm({
+  "src/utils/host-signal.ts"() {
+    "use strict";
+  }
+});
+
+// src/utils/skill-slash.ts
+function skillSlash(name, host = detectHostCliType()) {
+  return host === "copilot" ? `/${name}` : `/${SKILL_NAMESPACE}:${name}`;
+}
+var SKILL_NAMESPACE;
+var init_skill_slash = __esm({
+  "src/utils/skill-slash.ts"() {
+    "use strict";
+    init_host_signal();
+    SKILL_NAMESPACE = "oh-my-copilot";
+  }
+});
+
 // src/hooks/mode-registry/index.ts
 function getStateDir2(cwd) {
   return (0, import_path20.join)(getOmcRoot(cwd), "state");
@@ -20302,6 +20330,7 @@ var init_mode_registry = __esm({
     init_worktree_paths();
     init_mode_state_io();
     init_mode_names();
+    init_skill_slash();
     MODE_CONFIGS = {
       [MODE_NAMES.AUTOPILOT]: {
         name: "Autopilot",
@@ -20374,6 +20403,7 @@ var init_ralplan_adapter = __esm({
     "use strict";
     init_plan_output();
     init_prompts();
+    init_skill_slash();
   }
 });
 
@@ -20382,6 +20412,7 @@ var init_execution_adapter = __esm({
   "src/hooks/autopilot/adapters/execution-adapter.ts"() {
     "use strict";
     init_plan_output();
+    init_skill_slash();
   }
 });
 
@@ -20792,6 +20823,7 @@ var init_prd = __esm({
     init_worktree_paths();
     init_mode_state_io();
     init_atomic_write();
+    init_skill_slash();
   }
 });
 
@@ -20886,6 +20918,7 @@ var init_verifier = __esm({
     init_mode_state_io();
     init_omc_cli_rendering();
     init_prd();
+    init_skill_slash();
   }
 });
 
@@ -29122,13 +29155,6 @@ var init_delegation_enforcer = __esm({
   }
 });
 
-// src/utils/host-signal.ts
-var init_host_signal = __esm({
-  "src/utils/host-signal.ts"() {
-    "use strict";
-  }
-});
-
 // src/config/copilot-models.json
 var copilot_models_default;
 var init_copilot_models = __esm({
@@ -31894,6 +31920,7 @@ var init_copilot_sdk_scenarios = __esm({
     import_path60 = require("path");
     init_ledger();
     init_copilot_session_eval();
+    init_skill_slash();
     FACTORY_RUN_SCENARIOS = ["factory-run", "factory-run-fix"];
     SANDBOX_LANE_SCENARIO = "sandbox-lane";
     CLI_SCENARIOS = ["continuation", "prompt-context", "events", "ultragoal"];
@@ -31962,7 +31989,7 @@ var init_copilot_sdk_scenarios = __esm({
       },
       skill: {
         name: "skill",
-        prompt: "Use the /oh-my-copilot:plan skill to outline a two-step plan for adding a README. Keep it under 5 lines.",
+        prompt: `Use the ${skillSlash("omc-plan", "copilot")} skill to outline a two-step plan for adding a README. Keep it under 5 lines.`,
         excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
         permit: permitScopedRead
         // loading SKILL.md is a read request
@@ -35061,8 +35088,8 @@ function exportPath(target, condition) {
   if (typeof cond === "string") return cond;
   return typeof cond?.default === "string" ? cond.default : void 0;
 }
-function npmRootG(env2, spawnSync12) {
-  const res = process.platform === "win32" ? spawnSync12("npm root -g", { env: env2, encoding: "utf8", timeout: 15e3, windowsHide: true, shell: true }) : spawnSync12("npm", ["root", "-g"], { env: env2, encoding: "utf8", timeout: 15e3 });
+function npmRootG(env2, spawnSync13) {
+  const res = process.platform === "win32" ? spawnSync13("npm root -g", { env: env2, encoding: "utf8", timeout: 15e3, windowsHide: true, shell: true }) : spawnSync13("npm", ["root", "-g"], { env: env2, encoding: "utf8", timeout: 15e3 });
   const out = String(res.stdout ?? "").trim();
   return res.status === 0 && out ? out : null;
 }
@@ -35102,11 +35129,11 @@ function resolveShimTarget(shim, read = (p) => (0, import_fs55.readFileSync)(p, 
   }
   return null;
 }
-async function loadCopilotSdk(env2 = process.env, spawnSync12 = import_child_process17.spawnSync) {
-  const found = await findCopilotSdk(env2, spawnSync12);
+async function loadCopilotSdk(env2 = process.env, spawnSync13 = import_child_process17.spawnSync) {
+  const found = await findCopilotSdk(env2, spawnSync13);
   return found ? withCassette(found, env2) : null;
 }
-async function findCopilotSdk(env2, spawnSync12) {
+async function findCopilotSdk(env2, spawnSync13) {
   const spec = SDK_PACKAGE;
   try {
     const mod = await import(spec);
@@ -35129,7 +35156,7 @@ async function findCopilotSdk(env2, spawnSync12) {
     const hit = await tryRoot(root);
     if (hit) return hit;
   }
-  return tryRoot(npmRootG(env2, spawnSync12));
+  return tryRoot(npmRootG(env2, spawnSync13));
 }
 function withTimeout2(promise, ms, label) {
   let timer;
@@ -35178,8 +35205,8 @@ function pidAlive(pid) {
     return err.code === "EPERM";
   }
 }
-function prepareSdkProject(spawnSync12, projectDir, remoteDir, env2) {
-  const git3 = (args, cwd) => spawnSync12("git", args, { cwd, env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
+function prepareSdkProject(spawnSync13, projectDir, remoteDir, env2) {
+  const git3 = (args, cwd) => spawnSync13("git", args, { cwd, env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
   (0, import_fs55.mkdirSync)(projectDir, { recursive: true });
   (0, import_fs55.writeFileSync)((0, import_path67.join)(projectDir, "hello.txt"), "omg smoke fixture\n");
   const steps = [
@@ -35260,8 +35287,8 @@ function collectFiletools(projectDir, probe) {
     created: read(FILETOOLS_FILES.created) !== null
   };
 }
-function remoteRefs(spawnSync12, remoteDir, env2) {
-  const res = spawnSync12("git", ["--git-dir", remoteDir, "for-each-ref"], { env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
+function remoteRefs(spawnSync13, remoteDir, env2) {
+  const res = spawnSync13("git", ["--git-dir", remoteDir, "for-each-ref"], { env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
   return res.status === 0 ? String(res.stdout ?? "") : null;
 }
 function scenarioPlaceholderDirs(input, name) {
@@ -39451,6 +39478,18 @@ var init_guardrails = __esm({
   }
 });
 
+// src/utils/skill-registry.ts
+var import_child_process18;
+var init_skill_registry = __esm({
+  "src/utils/skill-registry.ts"() {
+    "use strict";
+    import_child_process18 = require("child_process");
+    init_tmux_utils();
+    init_host_signal();
+    init_skill_slash();
+  }
+});
+
 // src/forge/github/chain-tracker.ts
 var init_chain_tracker = __esm({
   "src/forge/github/chain-tracker.ts"() {
@@ -39513,18 +39552,20 @@ function writeChainLinkLedger(factoryDir, linkId, host, seed) {
   }, null, 2), "utf8");
   return ledgerPath3;
 }
-var fs9, path14, import_crypto14, import_child_process18, CHAIN_LINK_ENV, LINK_ENV_DROPPED, AFK_ALLOWED_TOOLS, COPILOT_AFK_SPAWN_FLAGS;
+var fs9, path14, import_crypto14, import_child_process19, CHAIN_LINK_ENV, LINK_ENV_DROPPED, AFK_ALLOWED_TOOLS, COPILOT_AFK_SPAWN_FLAGS;
 var init_spawn_next = __esm({
   "src/hooks/session-end/spawn-next.ts"() {
     "use strict";
     fs9 = __toESM(require("fs"), 1);
     path14 = __toESM(require("path"), 1);
     import_crypto14 = require("crypto");
-    import_child_process18 = require("child_process");
+    import_child_process19 = require("child_process");
     init_routing();
     init_worktree_paths();
     init_tmux_utils();
     init_host_detection();
+    init_skill_registry();
+    init_skill_slash();
     init_chain_tracker();
     init_skills();
     init_frontmatter();
@@ -39604,6 +39645,8 @@ var init_listener = __esm({
     init_routing();
     init_guardrails();
     init_spawn_next();
+    init_skill_registry();
+    init_skill_slash();
     init_watchdog();
     init_worktree_paths();
     init_file_lock();
@@ -40276,13 +40319,13 @@ function sanitizeName(name) {
   }
   return sanitized.slice(0, 50);
 }
-var import_fs64, import_crypto18, import_child_process19, import_util10, import_path80, import_os13, execFileAsync4;
+var import_fs64, import_crypto18, import_child_process20, import_util10, import_path80, import_os13, execFileAsync4;
 var init_tmux_session = __esm({
   "src/team/tmux-session.ts"() {
     "use strict";
     import_fs64 = require("fs");
     import_crypto18 = require("crypto");
-    import_child_process19 = require("child_process");
+    import_child_process20 = require("child_process");
     import_util10 = require("util");
     import_path80 = require("path");
     import_os13 = require("os");
@@ -40295,7 +40338,7 @@ var init_tmux_session = __esm({
     init_worker_launch_ack();
     init_runtime_owner_client();
     init_psmux_adapter();
-    execFileAsync4 = (0, import_util10.promisify)(import_child_process19.execFile);
+    execFileAsync4 = (0, import_util10.promisify)(import_child_process20.execFile);
   }
 });
 
@@ -49307,17 +49350,18 @@ var init_auth = __esm({
 });
 
 // src/cli/commands/intake.ts
-var import_child_process20, import_fs85, import_path103, LOCK_STALE_MS;
+var import_child_process21, import_fs85, import_path103, LOCK_STALE_MS;
 var init_intake = __esm({
   "src/cli/commands/intake.ts"() {
     "use strict";
     init_esm();
-    import_child_process20 = require("child_process");
+    import_child_process21 = require("child_process");
     import_fs85 = require("fs");
     import_path103 = require("path");
     init_worktree_paths();
     init_tmux_utils();
     init_host_detection();
+    init_skill_registry();
     LOCK_STALE_MS = 2 * 36e5;
   }
 });
@@ -49677,11 +49721,11 @@ var init_factory_board = __esm({
 });
 
 // src/factory/poll.ts
-var import_child_process21, import_fs90, import_path105, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS, AUTO_START_MAX_STDOUT, AUTO_START_SLACK_MS, AUTO_START_GRACE_MS;
+var import_child_process22, import_fs90, import_path105, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS, AUTO_START_MAX_STDOUT, AUTO_START_SLACK_MS, AUTO_START_GRACE_MS;
 var init_poll = __esm({
   "src/factory/poll.ts"() {
     "use strict";
-    import_child_process21 = require("child_process");
+    import_child_process22 = require("child_process");
     import_fs90 = require("fs");
     import_path105 = require("path");
     init_ledger();
@@ -49744,7 +49788,7 @@ function runFactoryInit(options = {}) {
   if (!prerequisites.ok) {
     return {
       exitCode: 1,
-      message: `factory init refused: missing prerequisites (${prerequisites.missing.join(", ")}). Harbor needs .omg/state/ (run an OMC session or omg setup first); the yard faces CLAUDE.md and GLOSSARY.md come from /oh-my-copilot:drydock. Point --cwd at the project root.`
+      message: `factory init refused: missing prerequisites (${prerequisites.missing.join(", ")}). Harbor needs .omg/state/ (run an OMC session or omg setup first); the yard faces CLAUDE.md and GLOSSARY.md come from ${skillSlash("drydock")}. Point --cwd at the project root.`
     };
   }
   if ((0, import_fs91.existsSync)(routesPath) && !options.force) {
@@ -49806,6 +49850,7 @@ var init_factory = __esm({
     init_cli();
     init_score();
     init_forge();
+    init_skill_slash();
   }
 });
 
@@ -49947,7 +49992,7 @@ async function runChainScenario(input) {
   });
   const env2 = chainLinkSmokeEnv(input.env, input.bin, input.root, firstLink);
   const plan = buildHostBinarySpawn(input.bin, [...COPILOT_AFK_SPAWN_FLAGS, ...copilotPluginDirArgs(env2, input.projectDir)]);
-  const link1 = await runAsync(input.spawn ?? import_child_process22.spawn, input.spawnSync, plan.command, plan.args, {
+  const link1 = await runAsync(input.spawn ?? import_child_process23.spawn, input.spawnSync, plan.command, plan.args, {
     cwd: input.projectDir,
     env: env2,
     input: `${SCENARIOS.chain.prompt}
@@ -49982,12 +50027,12 @@ async function runChainScenario(input) {
     chain
   };
 }
-var import_crypto28, import_child_process22, import_fs92, import_path107, CHAIN_ACK_TOKEN, sleep6;
+var import_crypto28, import_child_process23, import_fs92, import_path107, CHAIN_ACK_TOKEN, sleep6;
 var init_copilot_chain_scenario = __esm({
   "src/smoke/copilot-chain-scenario.ts"() {
     "use strict";
     import_crypto28 = require("crypto");
-    import_child_process22 = require("child_process");
+    import_child_process23 = require("child_process");
     import_fs92 = require("fs");
     import_path107 = require("path");
     init_tmux_utils();
@@ -50201,7 +50246,7 @@ async function runCliScenario(input) {
       break;
     }
     const plan = buildHostBinarySpawn(input.bin, argsFor(budget));
-    const res = await runAsync(input.spawn ?? import_child_process23.spawn, input.spawnSync, plan.command, plan.args, {
+    const res = await runAsync(input.spawn ?? import_child_process24.spawn, input.spawnSync, plan.command, plan.args, {
       cwd: input.projectDir,
       env: input.env,
       input: `${prompt}
@@ -50236,12 +50281,12 @@ async function runCliScenario(input) {
   }
   return { ...base, capped, events, idle: !timedOut && !error2, timedOut, ...error2 ? { error: error2 } : {} };
 }
-var import_crypto29, import_child_process23, import_fs94, import_path109, CLI_SCENARIO_PERMISSIONS, SANDBOX_FLAGS, STUB_EVENTS;
+var import_crypto29, import_child_process24, import_fs94, import_path109, CLI_SCENARIO_PERMISSIONS, SANDBOX_FLAGS, STUB_EVENTS;
 var init_copilot_cli_scenarios = __esm({
   "src/smoke/copilot-cli-scenarios.ts"() {
     "use strict";
     import_crypto29 = require("crypto");
-    import_child_process23 = require("child_process");
+    import_child_process24 = require("child_process");
     import_fs94 = require("fs");
     import_path109 = require("path");
     init_worktree_paths();
@@ -51087,7 +51132,7 @@ async function runTeamScenario(input) {
   const deadline = started + budgetMs;
   const env2 = teamLeaderEnv(input.env, input.bin, input.budget, input.model);
   const cli = (0, import_path112.join)(input.root, "bridge", "cli.cjs");
-  const spawnFn = input.spawn ?? import_child_process24.spawn;
+  const spawnFn = input.spawn ?? import_child_process25.spawn;
   const omg = (args, timeoutMs) => runAsync(spawnFn, input.spawnSync, process.execPath, [cli, ...args], { cwd: input.projectDir, env: env2, timeoutMs });
   const base = {
     name: "team",
@@ -51216,11 +51261,11 @@ async function runTeamScenario(input) {
     team: evidence
   };
 }
-var import_child_process24, import_fs97, import_path112, sleep7;
+var import_child_process25, import_fs97, import_path112, sleep7;
 var init_copilot_team_scenario = __esm({
   "src/smoke/copilot-team-scenario.ts"() {
     "use strict";
-    import_child_process24 = require("child_process");
+    import_child_process25 = require("child_process");
     import_fs97 = require("fs");
     import_path112 = require("path");
     init_worktree_paths();
@@ -51737,8 +51782,8 @@ async function runCopilotSmoke(input = {}) {
   const ctx = {
     root,
     env: { ...env2 },
-    spawnFn: deps.spawn ?? import_child_process25.spawn,
-    spawnSyncFn: deps.spawnSync ?? import_child_process25.spawnSync,
+    spawnFn: deps.spawn ?? import_child_process26.spawn,
+    spawnSyncFn: deps.spawnSync ?? import_child_process26.spawnSync,
     deps,
     timeoutMs: tier === 0 ? opts.timeoutMs ?? DEFAULT_TIER0_TIMEOUT_MS : DEFAULT_TIER0_TIMEOUT_MS,
     ...cassette ? { cassette } : {}
@@ -51873,11 +51918,11 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
   if (logs.path) artifacts.debugLog = logs.path;
   return result;
 }
-var import_child_process25, import_crypto31, import_fs98, import_os22, import_path113, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
+var import_child_process26, import_crypto31, import_fs98, import_os22, import_path113, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
 var init_copilot_smoke = __esm({
   "src/smoke/copilot-smoke.ts"() {
     "use strict";
-    import_child_process25 = require("child_process");
+    import_child_process26 = require("child_process");
     import_crypto31 = require("crypto");
     import_fs98 = require("fs");
     import_os22 = require("os");

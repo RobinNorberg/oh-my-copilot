@@ -27,7 +27,7 @@ OMC ships two surfaces and they are designed to coexist:
 
 | Surface | What you get | Recommended install |
 |---|---|---|
-| **Plugin** (`oh-my-copilot@omc`, Copilot CLI or Claude Code) | In-session skills, agents, hooks, statusline, MCP servers — the `/oh-my-copilot:autopilot`, `/oh-my-copilot:ralph`, `/oh-my-copilot:execute`, and `/oh-my-copilot:team` slash commands | Marketplace plugin install (Step 1–2 below) |
+| **Plugin** (`oh-my-copilot@omc`, Copilot CLI or Claude Code) | In-session skills, agents, hooks, statusline, MCP servers — the `/autopilot`, `/ralph`, `/execute`, and `/team` slash commands (on Claude Code: `/oh-my-copilot:<name>`) | Marketplace plugin install (Step 1–2 below) |
 | **Terminal CLI** (`omg` binary, package `oh-my-copilot`) | Shell commands: `omg setup`, `omg update`, `omg team`, `omg ask`, and a hard-deprecated `omg autoresearch` shim | `npm i -g oh-my-copilot@latest` |
 
 Most users want **both**: the plugin for the in-session experience, and the npm CLI for shell-side automation and updates. Running them in parallel is fully supported — `omg update` and `omg setup` are idempotent and detect the plugin install to avoid duplicating in-session skills (#2252).
@@ -81,7 +81,7 @@ Both can be installed at the same time. The host config directory is `~/.copilot
 After installation, run this in Claude Code:
 
 ```bash
-/oh-my-copilot:omc-setup
+/omc-setup
 ```
 
 ### Prerequisites summary
@@ -99,7 +99,7 @@ After installation, run this in Claude Code:
 Applies OMC only to the current project:
 
 ```bash
-/oh-my-copilot:omc-setup --local
+/omc-setup --local
 ```
 
 - Settings are saved to `./.claude/CLAUDE.md`
@@ -111,7 +111,7 @@ Applies OMC only to the current project:
 Applies OMC to all Claude Code sessions:
 
 ```bash
-/oh-my-copilot:omc-setup
+/omc-setup
 ```
 
 - Settings are saved to `~/.claude/CLAUDE.md`
@@ -124,7 +124,7 @@ Applies OMC to all Claude Code sessions:
 To confirm everything is working, run the diagnostics tool:
 
 ```bash
-/oh-my-copilot:omc-doctor
+/omc-doctor
 ```
 
 This checks the following:
@@ -159,7 +159,7 @@ This loads agents, skills, and commands directly from your checkout without copy
 
 OMC checks for updates at session start, at most every 6 hours, and earlier after an update or a switch between plugin and npm installs. A plugin install reads the latest version from the marketplace on `main`, and an npm install reads npm `latest`. To update a plugin install, run `copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc` in a shell (the HUD hint prints the same chain), or `/plugin update oh-my-copilot@omc` inside Copilot CLI. To update an npm install, run `npm i -g oh-my-copilot@latest`.
 
-> ⚠️ **Warning:** After a plugin update, run `/oh-my-copilot:omc-setup` again to apply the latest configuration.
+> ⚠️ **Warning:** After a plugin update, run `/omc-setup` again to apply the latest configuration.
 
 ### Uninstalling
 
@@ -231,7 +231,7 @@ While work is in progress, you can monitor the current state in the Claude Code 
 To configure the HUD display, run:
 
 ```bash
-/oh-my-copilot:hud setup
+/hud setup
 ```
 
 ### Starting smaller
@@ -246,10 +246,10 @@ analyze why this test is failing
 deepsearch for files that handle authentication
 
 # Approved implementation task
-/oh-my-copilot:execute add a health check endpoint
+/execute add a health check endpoint
 ```
 
-These surfaces invoke focused work without running the full autopilot pipeline. Use `/oh-my-copilot:team` when the task needs parallel agents.
+These surfaces invoke focused work without running the full autopilot pipeline. Use `/team` when the task needs parallel agents.
 
 ### Next steps
 
@@ -395,7 +395,7 @@ You can customize the supported search, analysis, and deep-reasoning categories 
 }
 ```
 
-> ℹ️ **Note:** Parallel work is not configured as a magic keyword. Use `/oh-my-copilot:team` for coordinated agents, or `/oh-my-copilot:execute` to carry an approved task through verified implementation. Keywords such as `autopilot` and `ralph` are hardcoded in the keyword-detector hook and cannot be changed via config files.
+> ℹ️ **Note:** Parallel work is not configured as a magic keyword. Use `/team` for coordinated agents, or `/execute` to carry an approved task through verified implementation. Keywords such as `autopilot` and `ralph` are hardcoded in the keyword-detector hook and cannot be changed via config files.
 
 ### Model routing configuration
 
@@ -434,7 +434,7 @@ To run delegated work on a different model, use one of the supported surfaces (a
 
 ### CLAUDE.md configuration
 
-OMC's default behavior is also configured via `CLAUDE.md` files. Running `/oh-my-copilot:omc-setup` generates this file automatically.
+OMC's default behavior is also configured via `CLAUDE.md` files. Running `/omc-setup` generates this file automatically.
 
 | Scope | File | Description |
 |-------|------|-------------|

@@ -16,6 +16,7 @@
 import { readStdin } from './lib/stdin.mjs';
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
 import { findStaleRuns } from './lib/run-reaper.mjs';
+import { skillSlash } from './lib/skill-slash.mjs';
 
 async function main() {
   const raw = await readStdin(3000);
@@ -56,7 +57,7 @@ async function main() {
       (entry) =>
         `- ${entry.mode}${entry.sessionId ? ` (session ${entry.sessionId})` : ''}: active for ~${entry.ageHours}h — ${entry.path}`,
     ),
-    'Nothing was changed automatically. To reclaim: run /oh-my-copilot:cancel to clean up the state, or re-enter the mode to resume from its artifacts. Re-kicking is a human decision.',
+    `Nothing was changed automatically. To reclaim: run ${skillSlash('cancel')} to clean up the state, or re-enter the mode to resume from its artifacts. Re-kicking is a human decision.`,
   ];
 
   console.log(

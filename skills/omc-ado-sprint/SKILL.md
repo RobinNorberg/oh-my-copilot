@@ -38,7 +38,7 @@ Extract from the `ado` key:
 - `areaPath` — area path filter (optional)
 - `iterationPath` — current iteration path (optional)
 
-If config is NOT_FOUND or missing the `ado` key: tell the user to run `/oh-my-copilot:omc-ado-setup` first and stop.
+If config is NOT_FOUND or missing the `ado` key: tell the user to run `/omc-ado-setup` first and stop.
 
 ---
 
@@ -323,7 +323,7 @@ az boards iteration team add \
 
 | Error | Action |
 |-------|--------|
-| `.omg/config.json` missing | Tell user to run `/oh-my-copilot:omc-ado-setup` first |
+| `.omg/config.json` missing | Tell user to run `/omc-ado-setup` first |
 | `team` not found in config | Prompt user to provide team name; use project name as default |
 | `az login` required | Prompt user to authenticate; skip that step and continue with available data |
 | Iteration not found | Verify the iteration name/path matches exactly what ADO returns in Step 2 |

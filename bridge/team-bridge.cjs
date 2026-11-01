@@ -2654,6 +2654,16 @@ var SKININTHEGAMEBROS_ONLY_SKILLS2 = new Set(
 var import_fs14 = require("fs");
 var import_path15 = require("path");
 
+// src/utils/host-signal.ts
+function detectHostCliType(env = process.env) {
+  return detectHostCliSignal(env) ?? "copilot";
+}
+function detectHostCliSignal(env = process.env) {
+  if (env.COPILOT_CLI || env.COPILOT_AGENT_SESSION_ID) return "copilot";
+  if (env.CLAUDE_CODE_ENTRYPOINT) return "claude";
+  return null;
+}
+
 // src/config/copilot-models.json
 var copilot_models_default = {
   knownModels: [
@@ -2910,6 +2920,12 @@ var import_fs21 = require("fs");
 var import_path23 = require("path");
 var SMOKE_TOKEN = "SMOKE_OK";
 
+// src/utils/skill-slash.ts
+var SKILL_NAMESPACE = "oh-my-copilot";
+function skillSlash(name, host = detectHostCliType()) {
+  return host === "copilot" ? `/${name}` : `/${SKILL_NAMESPACE}:${name}`;
+}
+
 // src/smoke/copilot-sdk-scenarios.ts
 var FACTORY_RUN_SCENARIOS = ["factory-run", "factory-run-fix"];
 var SANDBOX_LANE_SCENARIO = "sandbox-lane";
@@ -3004,7 +3020,7 @@ var SCENARIOS = {
   },
   skill: {
     name: "skill",
-    prompt: "Use the /oh-my-copilot:plan skill to outline a two-step plan for adding a README. Keep it under 5 lines.",
+    prompt: `Use the ${skillSlash("omc-plan", "copilot")} skill to outline a two-step plan for adding a README. Keep it under 5 lines.`,
     excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
     permit: permitScopedRead
     // loading SKILL.md is a read request

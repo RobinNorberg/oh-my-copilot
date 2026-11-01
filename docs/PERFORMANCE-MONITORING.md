@@ -352,7 +352,7 @@ Track Claude's performance across standard benchmarks:
 
 ```bash
 # Set up budget warnings in HUD
-/oh-my-copilot:hud
+/hud
 # Select "focused" or "full"
 ```
 
@@ -441,7 +441,7 @@ cleanupReplayFiles(process.cwd()); // Keeps last 10 sessions
 
 **Solutions**:
 1. End the session normally so the `session-end` hook runs
-2. Verify HUD / hooks are installed: `/oh-my-copilot:hud setup`
+2. Verify HUD / hooks are installed: `/hud setup`
 3. Check the current workspace `.omg/sessions/` directory
 4. Review `.omg/state/agent-replay-*.jsonl` if you need timing/activity evidence instead
 

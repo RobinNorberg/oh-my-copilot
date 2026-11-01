@@ -17,6 +17,7 @@ import {
   type CopilotEvent,
   type SmokeCheck,
 } from './copilot-session-eval.js';
+import { skillSlash } from '../utils/skill-slash.js';
 
 export type Scenario = 'smoke' | 'guardrail' | 'skill' | 'delegate' | 'filetools' | 'chain' | 'team' | FactoryRunScenario | 'sandbox-lane' | CliScenario;
 /** `omg factory run` end to end, in-process, with real lanes (copilot-factory-run-scenario.ts). */
@@ -205,7 +206,7 @@ export const SCENARIOS: Record<Scenario, ScenarioSpec> = {
   },
   skill: {
     name: 'skill',
-    prompt: 'Use the /oh-my-copilot:plan skill to outline a two-step plan for adding a README. Keep it under 5 lines.',
+    prompt: `Use the ${skillSlash('omc-plan', 'copilot')} skill to outline a two-step plan for adding a README. Keep it under 5 lines.`,
     excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
     permit: permitScopedRead, // loading SKILL.md is a read request
   },

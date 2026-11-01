@@ -10,6 +10,7 @@
  */
 import { resolveAutopilotPlanPath } from "../../../config/plan-output.js";
 import { getExpansionPrompt, getDirectPlanningPrompt } from "../prompts.js";
+import { skillSlash } from "../../../utils/skill-slash.js";
 export const RALPLAN_COMPLETION_SIGNAL = "PIPELINE_RALPLAN_COMPLETE";
 export const ralplanAdapter = {
     id: "ralplan",
@@ -36,7 +37,7 @@ ${getExpansionPrompt(context.idea, undefined, false)}
 
 After the spec is created at \`${specPath}\`, invoke the RALPLAN consensus workflow:
 
-Use the \`/oh-my-copilot:ralplan\` skill to create a consensus-driven implementation plan.
+Use the \`${skillSlash('ralplan')}\` skill to create a consensus-driven implementation plan.
 The plan should be saved to: \`${planPath}\`
 
 The RALPLAN process will:

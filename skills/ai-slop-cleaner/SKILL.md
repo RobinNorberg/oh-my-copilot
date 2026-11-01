@@ -129,9 +129,9 @@ Use these as review prompts, not absolute bans. Keep intentional brand, accessib
 
 ## Usage
 
-- `/oh-my-copilot:ai-slop-cleaner <target>`
-- `/oh-my-copilot:ai-slop-cleaner <target> --review`
-- `/oh-my-copilot:ai-slop-cleaner <file-a> <file-b> <file-c>`
+- `/ai-slop-cleaner <target>`
+- `/ai-slop-cleaner <target> --review`
+- `/ai-slop-cleaner <file-a> <file-b> <file-c>`
 - From Ralph: run the cleaner on the Ralph session's changed files only, then return to Ralph for post-cleanup regression verification
 
 ## Good Fits

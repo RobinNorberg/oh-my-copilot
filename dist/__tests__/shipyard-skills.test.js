@@ -94,7 +94,7 @@ describe('shipyard skills — behavior & packaging contract', () => {
     it('launch routes fog with the yard-gate honesty contract (run never started, no artifacts)', () => {
         expect(LAUNCH).toContain('**Fog gate**');
         expect(LAUNCH).toContain('**Map check**');
-        expect(LAUNCH).toContain('`/oh-my-copilot:ask-navigator`');
+        expect(LAUNCH).toContain('`/ask-navigator`');
         expect(LAUNCH).toContain('the run never starts');
         expect(LAUNCH).toContain('no artifacts were produced');
         expect(LAUNCH).toContain('the pipeline never invents a destination');
@@ -102,7 +102,7 @@ describe('shipyard skills — behavior & packaging contract', () => {
     it('ask-navigator produces decisions, never deliverables, and exits through launch', () => {
         expect(NAVIGATOR).toContain('decisions, never deliverables');
         expect(NAVIGATOR).toContain('navigator:map');
-        expect(NAVIGATOR).toContain('`/oh-my-copilot:launch`');
+        expect(NAVIGATOR).toContain('`/launch`');
         expect(NAVIGATOR).toContain('Stop after one ticket');
         expect(NAVIGATOR).toContain('never answers a question that belongs to the captain');
     });
@@ -174,7 +174,7 @@ describe('shipyard skills — behavior & packaging contract', () => {
         expect(LAUNCH).toContain('call the Skill tool with "loft"');
         expect(LAUNCH).toContain('usually a loft');
         expect(LAUNCH).toContain('map resolutions or deferred-sediment lines');
-        expect(LAUNCH).toContain('/oh-my-copilot:minimal-code-discipline');
+        expect(LAUNCH).toContain('/minimal-code-discipline');
         expect(NAVIGATOR).toContain('| `loft` |');
         expect(NAVIGATOR).not.toContain('`prototype`');
         expect(NAVIGATOR).toContain('Call the Skill tool with "loft"');
@@ -331,7 +331,7 @@ describe('shipyard skills — behavior & packaging contract', () => {
         expect(HARBOR).toContain('at most one main question');
         expect(HARBOR).toContain('The docket is **one persistent issue, refreshed in place**');
         expect(HARBOR).toContain('- [ ]');
-        expect(NAVIGATOR).toContain('/oh-my-copilot:harbor');
+        expect(NAVIGATOR).toContain('/harbor');
         expect(SHIPYARD_DOC).toContain('harbor gate');
         expect(SHIPYARD_DOC).toContain('outer ear');
     });
@@ -514,7 +514,7 @@ describe('shipyard skills — behavior & packaging contract', () => {
     });
     it('launch keeps the canonical path canonical and itself opt-in (no seeded default override)', () => {
         // drydock's generated CLAUDE.md must not mandate launch as the default delivery path
-        expect(DRYDOCK).not.toContain('交付走 /oh-my-copilot:launch');
+        expect(DRYDOCK).not.toContain('交付走 /launch');
         expect(DRYDOCK).toContain('plan → execute → review → verify');
         expect(LAUNCH).toMatch(/opt-in|explicit/i);
     });
@@ -819,10 +819,10 @@ describe('shipyard skills — behavior & packaging contract', () => {
             : 0;
         expect(ref).toContain(`Skills (${dirCount} Total)`);
         expect(ref).toContain(`[Skills (${dirCount} Total)](#skills-${dirCount}-total)`);
-        expect(ref).toContain('/oh-my-copilot:drydock [--check]');
-        expect(ref).toContain('/oh-my-copilot:launch <brief\\|spec-path> [--serial]');
-        expect(ref).toContain('/oh-my-copilot:ask-navigator <idea\\|map>');
-        expect(ref).toContain('/oh-my-copilot:harbor [sweep\\|look at #N\\|what\'s ready?]');
+        expect(ref).toContain('/drydock [--check]');
+        expect(ref).toContain('/launch <brief\\|spec-path> [--serial]');
+        expect(ref).toContain('/ask-navigator <idea\\|map>');
+        expect(ref).toContain('/harbor [sweep\\|look at #N\\|what\'s ready?]');
         for (const name of ['launch', 'drydock', 'ask-navigator', 'loft', 'harbor', 'architecture-survey']) {
             expect(ref).toContain(`\`${name}\``);
         }

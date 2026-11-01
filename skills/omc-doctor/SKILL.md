@@ -280,7 +280,7 @@ existing config and leaves the old file in place:
 node -e "const p=require('path'),f=require('fs'),h=require('os').homedir(),d=process.env.COPILOT_HOME||p.join(h,'.copilot'),active=p.join(d,'.omc-config.json'),legacy=p.join(h,'.claude','.omc-config.json');if(legacy===active||f.existsSync(legacy)===false){console.log('Nothing to adopt');process.exit(0)}if(f.existsSync(active)){console.log('Active config already exists; compare the two by hand: '+active+' and '+legacy);process.exit(0)}f.mkdirSync(p.dirname(active),{recursive:true});f.copyFileSync(legacy,active);console.log('Adopted '+legacy+' as '+active)"
 ```
 
-Running `/oh-my-copilot:omc-setup` performs the same adoption automatically.
+Running `/omc-setup` performs the same adoption automatically.
 
 ---
 

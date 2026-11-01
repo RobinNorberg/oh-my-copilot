@@ -28,6 +28,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
 import { stripLeadingUtf8Bom } from './lib/utf8-bom.mjs';
+import { skillSlash } from './lib/skill-slash.mjs';
 
 const toPosix = (value) => value.replace(/\\/g, '/');
 
@@ -85,7 +86,7 @@ function checkYardBaseFaces(root) {
       'high',
       true,
       missing,
-      'Run `/oh-my-copilot:drydock` to seed CLAUDE.md and GLOSSARY.md; a recognizable legacy CONTEXT.md glossary is accepted until drydock migrates it.',
+      `Run \`${skillSlash('drydock')}\` to seed CLAUDE.md and GLOSSARY.md; a recognizable legacy CONTEXT.md glossary is accepted until drydock migrates it.`,
     ),
   ];
 }

@@ -32,7 +32,7 @@ Extract from the `github` key:
 - `owner` — GitHub owner (org or user)
 - `repo` — repository name
 
-If config is NOT_FOUND or missing the `github` key: tell the user to run `/oh-my-copilot:omc-gh-setup` first and stop.
+If config is NOT_FOUND or missing the `github` key: tell the user to run `/omc-gh-setup` first and stop.
 
 ---
 
@@ -215,7 +215,7 @@ gh api graphql -f query='
 
 | Error | Action |
 |-------|--------|
-| `.omg/config.json` missing | Tell user to run `/oh-my-copilot:omc-gh-setup` first |
+| `.omg/config.json` missing | Tell user to run `/omc-gh-setup` first |
 | `gh auth` required | Prompt user to authenticate; stop execution |
 | No projects found | Suggest creating a project in the web UI |
 | Project item not found | Verify item ID; it may have been removed |

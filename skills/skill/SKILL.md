@@ -94,7 +94,7 @@ argument-hint: "<args>"
 ## Examples
 
 ```
-/oh-my-copilot:<name> example-arg
+/<name> example-arg
 ```
 
 ## Notes
@@ -649,9 +649,9 @@ How to work with this integration correctly:
 
 When invoked with an argument, skip the interactive wizard:
 
-- `/oh-my-copilot:skill list` - Show detailed skill inventory
-- `/oh-my-copilot:skill add` - Start skill creation (invoke skillify)
-- `/oh-my-copilot:skill scan` - Scan both skill directories
+- `/skill list` - Show detailed skill inventory
+- `/skill add` - Start skill creation (invoke skillify)
+- `/skill scan` - Scan both skill directories
 
 ### Interactive Mode
 
@@ -697,16 +697,16 @@ Good skills are:
 
 ## Related Skills
 
-- `/oh-my-copilot:skillify` - Extract a skill from current conversation (`/oh-my-copilot:learner` is a deprecated alias)
-- `/oh-my-copilot:note` - Save quick notes (less formal than skills)
-- `/oh-my-copilot:deepinit` - Generate AGENTS.md codebase hierarchy
+- `/skillify` - Extract a skill from current conversation (`/learner` is a deprecated alias)
+- `/note` - Save quick notes (less formal than skills)
+- `/deepinit` - Generate AGENTS.md codebase hierarchy
 
 ---
 
 ## Example Session
 
 ```
-> /oh-my-copilot:skill list
+> /skill list
 
 Checking skill directories...
 ✓ User skills directory exists: ~/.claude/skills/omc-learned/
@@ -749,7 +749,7 @@ What would you like to do?
 
 ## Tips for Users
 
-- Run `/oh-my-copilot:skill list` periodically to review your skill library
+- Run `/skill list` periodically to review your skill library
 - After solving a tricky bug, immediately run skillify to capture it
 - Use project-level skills for codebase-specific knowledge
 - Use user-level skills for general patterns that apply everywhere
@@ -770,9 +770,9 @@ What would you like to do?
 
 ## Related Skills
 
-- `/oh-my-copilot:skillify` - Extract a skill from current conversation (`/oh-my-copilot:learner` is a deprecated alias)
-- `/oh-my-copilot:note` - Save quick notes (less formal than skills)
-- `/oh-my-copilot:deepinit` - Generate AGENTS.md codebase hierarchy
+- `/skillify` - Extract a skill from current conversation (`/learner` is a deprecated alias)
+- `/note` - Save quick notes (less formal than skills)
+- `/deepinit` - Generate AGENTS.md codebase hierarchy
 
 ---
 

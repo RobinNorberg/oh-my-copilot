@@ -36,7 +36,7 @@ Extract from the `ado` key:
 - `areaPath` — area path filter (optional)
 - `iterationPath` — iteration path filter (optional)
 
-If config is NOT_FOUND or missing the `ado` key: tell the user to run `/oh-my-copilot:omc-ado-setup` first and stop.
+If config is NOT_FOUND or missing the `ado` key: tell the user to run `/omc-ado-setup` first and stop.
 
 ---
 
@@ -283,7 +283,7 @@ az boards work-item show --id {id} --org "{org}" -o json
 
 | Error | Action |
 |-------|--------|
-| `.omg/config.json` missing | Tell user to run `/oh-my-copilot:omc-ado-setup` first |
+| `.omg/config.json` missing | Tell user to run `/omc-ado-setup` first |
 | `az login` required | Prompt user to authenticate; do not abort the whole triage — skip that section |
 | Advanced Security not enabled | Skip security alerts section, note it in summary |
 | WIQL query returns 0 results | Show the section with count "(0)" — do not omit the header |

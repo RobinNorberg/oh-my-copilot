@@ -8,6 +8,7 @@
  * - Provides background task execution guidance
  */
 import { getBackgroundTaskGuidance, DEFAULT_MAX_BACKGROUND_TASKS } from './background-tasks.js';
+import { skillSlash } from '../utils/skill-slash.js';
 /**
  * Messages to remind agents to continue
  * ENHANCED: Using exact pattern from oh-my-opencode's todo-continuation-enforcer
@@ -103,7 +104,7 @@ If ANY box is unchecked, CONTINUE WORKING.
 You may ONLY stop when:
 1. **100% Complete**: Every single task is marked 'completed'
 2. **User Override**: User explicitly says "stop", "cancel", or "that's enough"
-3. **Clean Exit**: You run \`/oh-my-copilot:cancel\` to properly exit the active mode and clean up state files
+3. **Clean Exit**: You run \`${skillSlash('cancel')}\` to properly exit the active mode and clean up state files
 
 ### ANTI-STOPPING MECHANISMS
 

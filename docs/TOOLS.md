@@ -769,7 +769,7 @@ deepinit_manifest(action="save")
 deepinit_manifest(action="check")
 ```
 
-Used internally by the `deepinit` skill (`/oh-my-copilot:deepinit`) to enable incremental AGENTS.md regeneration instead of full re-scans.
+Used internally by the `deepinit` skill (`/deepinit`) to enable incremental AGENTS.md regeneration instead of full re-scans.
 
 ---
 

@@ -252,7 +252,7 @@ Create as a slide graphic using:
 **Description:** HUD statusline showing active agents, todo progress, token usage, and context window status in real-time.
 
 **Capture Instructions:**
-1. Ensure HUD is installed: `claude` then `/oh-my-copilot:hud setup`
+1. Ensure HUD is installed: `claude` then `/hud setup`
 2. Start a task with multiple agents:
    ```
    ultrawork: refactor the authentication system
@@ -500,7 +500,7 @@ Time →
 **Capture Instructions:**
 1. Use a pipeline preset or custom pipeline:
    ```
-   /oh-my-copilot:pipeline review "analyze the authentication system"
+   /pipeline review "analyze the authentication system"
    ```
 2. Capture showing each stage completing and passing data to next
 3. Alternative: Check `.omc/logs/pipeline.log` for formatted output
@@ -759,7 +759,7 @@ Time →
 **Capture Instructions:**
 1. Start swarm mode:
    ```
-   /oh-my-copilot:swarm 5:executor "implement all CRUD operations"
+   /swarm 5:executor "implement all CRUD operations"
    ```
 2. Capture when agents are actively claiming tasks
 3. Check `.omc/state/swarm-tasks.json` for task status

@@ -147,7 +147,7 @@ describe('shipyard document-language behavior contract', () => {
                     expect(output).not.toContain(otherHeading);
             }
             expect(output).toContain('# <Project> — Agent & Human Shipyard');
-            expect(output).toContain('/oh-my-copilot:launch');
+            expect(output).toContain('/launch');
             expect(output).toContain('plan → execute → review → verify');
             expect(output).toContain('GLOSSARY.md');
             expect(renderSeed('b', tag)).toContain(`documentLanguage: ${tag}`);

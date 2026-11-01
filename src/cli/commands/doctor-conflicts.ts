@@ -17,6 +17,7 @@ import { findWorkspaceRoot, WORKSPACE_MARKER } from '../../lib/worktree-paths.js
 import { getHostCliType } from '../../utils/host-detection.js';
 import { findLegacyProjectConfigs, type LegacyProjectConfig } from '../../config/project-config-path.js';
 import { loadBudgetSettings } from '../../budget/governor.js';
+import { skillSlash } from '../../utils/skill-slash.js';
 
 function hasActiveOmcPluginForDiagnostics(): boolean {
   if (process.env.CLAUDE_PLUGIN_ROOT?.trim()) return true;
@@ -790,7 +791,7 @@ export function formatReport(report: ConflictReport, json: boolean): string {
       lines.push(`  ${colors.blue('ℹ')} No OMC markers found (claudeMdEnabled is false in .omc-config.json; OMC does not manage CLAUDE.md)`);
     } else {
       lines.push(`  ${colors.yellow('⚠')} No OMC markers found`);
-      lines.push(`    ${colors.gray('Run /oh-my-copilot:omc-setup to add markers to the selected guide')}`);
+      lines.push(`    ${colors.gray(`Run ${skillSlash('omc-setup')} to add markers to the selected guide`)}`);
       if (report.claudeMdStatus.dirtyFiles.length > 0) {
         lines.push(`  ${colors.blue('ℹ')} User content present: ${report.claudeMdStatus.dirtyFiles.join(', ')}`);
       }
@@ -801,7 +802,7 @@ export function formatReport(report: ConflictReport, json: boolean): string {
       if (report.claudeMdStatus.managementDisabled) {
         lines.push(`    ${colors.gray('Setup cleanup is skipped while claudeMdEnabled is false: re-enable claudeMdEnabled in .omc-config.json, or remove the legacy content manually.')}`);
       } else {
-        lines.push(`    ${colors.gray('Run /oh-my-copilot:omc-setup for coordinator-backed cleanup with a verified backup.')}`);
+        lines.push(`    ${colors.gray(`Run ${skillSlash('omc-setup')} for coordinator-backed cleanup with a verified backup.`)}`);
       }
     }
     if (report.claudeMdStatus.manualReviewPaths.length > 0) {
@@ -866,7 +867,7 @@ export function formatReport(report: ConflictReport, json: boolean): string {
       lines.push(`      ${colors.gray(hook.command)}`);
     }
     lines.push(`    ${colors.gray("cmd.exe answers these with \"'sh' is not recognized\", so every hook silently fails.")}`);
-    lines.push(`    ${colors.gray('Run /oh-my-copilot:omc-setup to restore the portable node run.cjs commands.')}`);
+    lines.push(`    ${colors.gray(`Run ${skillSlash('omc-setup')} to restore the portable node run.cjs commands.`)}`);
     lines.push('');
   }
 
@@ -977,7 +978,7 @@ export function formatReport(report: ConflictReport, json: boolean): string {
   lines.push(colors.gray('━'.repeat(60)));
   if (report.hasConflicts) {
     lines.push(`${colors.yellow('⚠')} Potential conflicts detected`);
-    lines.push(`${colors.gray('Review the issues above and run /oh-my-copilot:omc-setup if needed')}`);
+    lines.push(`${colors.gray(`Review the issues above and run ${skillSlash('omc-setup')} if needed`)}`);
   } else {
     lines.push(`${colors.green('✓')} No conflicts detected`);
     lines.push(`${colors.gray('OMC is properly configured')}`);

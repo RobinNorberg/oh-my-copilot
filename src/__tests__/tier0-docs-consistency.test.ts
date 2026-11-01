@@ -27,7 +27,7 @@ describe('Tier-0 contract docs consistency', () => {
 
   it('documents all Tier-0 slash commands in REFERENCE.md', () => {
     for (const skillName of ['autopilot', 'ralph', 'team', 'ralplan', 'omc-setup', 'wiki']) {
-      expect(referenceDoc).toContain(`/oh-my-copilot:${skillName}`);
+      expect(referenceDoc).toContain(`/${skillName}`);
     }
   });
 
@@ -54,8 +54,8 @@ describe('Tier-0 contract docs consistency', () => {
   });
 
   it('does not document removed wrapper slash commands as installed skills', () => {
-    expect(referenceDoc).not.toContain('/oh-my-copilot:analyze <target>');
-    expect(referenceDoc).not.toContain('/oh-my-copilot:tdd <feature>');
+    expect(referenceDoc).not.toContain('/analyze <target>');
+    expect(referenceDoc).not.toContain('/tdd <feature>');
   });
 
   it('documents team as explicit-only rather than an auto-triggered keyword', () => {
@@ -75,8 +75,8 @@ describe('Tier-0 contract docs consistency', () => {
   it('keeps install and update guidance aligned on canonical setup entrypoints', () => {
     const localPluginDoc = readProjectFile('docs', 'LOCAL_PLUGIN_INSTALL.md');
 
-    expect(claudeDoc).toContain('Say "setup omc" or run `/oh-my-copilot:omc-setup`.');
-    expect(referenceDoc).toContain('/oh-my-copilot:omc-setup');
+    expect(claudeDoc).toContain('Say "setup omc" or run `/omc-setup`.');
+    expect(referenceDoc).toContain('/omc-setup');
     expect(localPluginDoc).toContain('/setup');
     expect(localPluginDoc).toContain('git worktrees');
   });

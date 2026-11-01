@@ -296,7 +296,7 @@ I want a/an...
 ```
 autopilot: build a REST API with CRUD for inventory
 
-/oh-my-copilot:autopilot Add OAuth2 authentication
+/autopilot Add OAuth2 authentication
 
 autopilot: create a CLI tool that tracks daily habits
 ```
@@ -993,7 +993,7 @@ Note: Keywords are optional - natural language works fine. Keywords just give yo
 
 **Setup:**
 ```
-/oh-my-copilot:hud setup
+/hud setup
 ```
 
 **Presets:**
@@ -1109,7 +1109,7 @@ Note: Plugin marketplace is the easiest - one command and you're done.
 
 **Step 2: Setup**
 ```bash
-/oh-my-copilot:omc-setup
+/omc-setup
 ```
 (Configures defaults, HUD, preferences)
 
@@ -1206,8 +1206,8 @@ npm install -g oh-my-copilot
 
 **Getting Help**
 ```
-/oh-my-copilot:omc-help    - Usage guide
-/oh-my-copilot:omc-doctor  - Diagnose issues
+/omc-help    - Usage guide
+/omc-doctor  - Diagnose issues
 ```
 
 Note: The GitHub repo has all documentation, examples, and issue tracking.
@@ -1222,8 +1222,8 @@ Note: The GitHub repo has all documentation, examples, and issue tracking.
 |----------|--------|
 | Does OMC work with Claude API keys? | Yes, both Max/Pro subscription and API keys work |
 | Can I use OMC with other AI models? | No, OMC is specifically for Claude Code |
-| How do I stop a runaway autopilot? | Say "stop", "cancel", or `/oh-my-copilot:cancel` |
-| Why is my HUD not showing? | Run `/oh-my-copilot:hud setup` |
+| How do I stop a runaway autopilot? | Say "stop", "cancel", or `/cancel` |
+| Why is my HUD not showing? | Run `/hud setup` |
 | Can I create custom agents? | Yes, add `.md` files to `agents/` directory |
 | Is there a cost limit? | No built-in limit, but  helps control costs |
 
@@ -1352,11 +1352,11 @@ autopilot: build something amazing
 
 | Shortcut | Full Command | Effect |
 |----------|--------------|--------|
-| `autopilot:` | `/oh-my-copilot:autopilot` | Full autonomous mode |
-| `ralph:` | `/oh-my-copilot:ralph` | Persistence mode |
-| `ulw` | `/oh-my-copilot:ultrawork` | Parallel execution |
+| `autopilot:` | `/autopilot` | Full autonomous mode |
+| `ralph:` | `/ralph` | Persistence mode |
+| `ulw` | `/ultrawork` | Parallel execution |
 | `eco:` | `/oh-my-copilot:` | Token-efficient mode |
-| `plan` | `/oh-my-copilot:plan` | Planning interview |
+| `plan` | `/omc-plan` | Planning interview |
 
 **Combinations:**
 ```

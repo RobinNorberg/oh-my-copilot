@@ -194,8 +194,8 @@ Triage Label : {labelTriage or "none"}
 Config file  : .omg/config.json
 
 Next steps:
-  /oh-my-copilot:omc-gh-triage   — run a full triage of issues, PRs, and CI
-  /oh-my-copilot:omc-gh-review   — review open pull requests
+  /omc-gh-triage   — run a full triage of issues, PRs, and CI
+  /omc-gh-review   — review open pull requests
 ```
 
 ---

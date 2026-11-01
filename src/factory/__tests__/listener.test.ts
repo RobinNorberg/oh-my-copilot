@@ -14,6 +14,7 @@ import {
   type ListenerConfig,
   type TrackerEvent,
 } from '../listener.js';
+import { skillSlash } from '../../utils/skill-slash.js';
 import { acquireFileLockSync, releaseFileLockSync, type FileLockHandle } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { AFK_INCLUDE_USER_SETTINGS_ENV } from '../../hooks/session-end/spawn-next.js';
@@ -121,12 +122,13 @@ describe('routeTrackerEvent', () => {
 });
 
 describe('buildHarborPrompt', () => {
-  it('is the English plugin-skill form harbor registers on Copilot', () => {
-    expect(buildHarborPrompt({ stage: 'harbor', skill: 'harbor' }, 7, 'https://github.com/o/r/issues/7')).toBe('/oh-my-copilot:harbor look at #7');
+  it('is the English plugin-skill form harbor registers on the host', () => {
+    expect(buildHarborPrompt({ stage: 'harbor', skill: 'harbor' }, 7, 'https://github.com/o/r/issues/7')).toBe(`${skillSlash('harbor', 'claude')} look at #7`);
+    expect(buildHarborPrompt({ stage: 'harbor', skill: 'harbor' }, 7, undefined, skillSlash('harbor', 'copilot'))).toBe('/harbor look at #7');
   });
 
   it('falls back to the issue url when the event has no issue number', () => {
-    expect(buildHarborPrompt({ stage: 'harbor', skill: 'harbor' }, undefined, 'https://github.com/o/r/issues/7')).toBe('/oh-my-copilot:harbor look at https://github.com/o/r/issues/7');
+    expect(buildHarborPrompt({ stage: 'harbor', skill: 'harbor' }, undefined, 'https://github.com/o/r/issues/7')).toBe(`${skillSlash('harbor', 'claude')} look at https://github.com/o/r/issues/7`);
   });
 });
 
@@ -140,7 +142,7 @@ describe('processEvent', () => {
       audit: (r) => audits.push(r),
     });
     expect(result.kind).toBe('accepted');
-    const prompt = '/oh-my-copilot:harbor look at #7';
+    const prompt = `${skillSlash('harbor', 'claude')} look at #7`;
     expect(spawned).toHaveLength(1);
     expect(spawned[0][0]).toBe('claude');
     expect(spawned[0][1][0]).toBe('-p');
