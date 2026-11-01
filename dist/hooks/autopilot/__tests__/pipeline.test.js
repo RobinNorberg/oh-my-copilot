@@ -7,6 +7,7 @@ import { resolvePipelineConfig, getDeprecationWarning, buildPipelineTracking, ge
 import { DEFAULT_PIPELINE_CONFIG, STAGE_ORDER, DEPRECATED_MODE_ALIASES, } from "../pipeline-types.js";
 import { ralplanAdapter, executionAdapter, ralphAdapter, qaAdapter, RALPLAN_COMPLETION_SIGNAL, EXECUTION_COMPLETION_SIGNAL, RALPH_COMPLETION_SIGNAL, QA_COMPLETION_SIGNAL, ALL_ADAPTERS, getAdapterById, } from "../adapters/index.js";
 import { readAutopilotState, writeAutopilotState } from "../state.js";
+import { skillSlash } from "../../../utils/skill-slash.js";
 describe("Pipeline Types", () => {
     it("should have 4 stages in canonical order", () => {
         expect(STAGE_ORDER).toEqual(["ralplan", "execution", "ralph", "qa"]);
@@ -565,7 +566,7 @@ describe("autopilot team CLI worker configuration", () => {
         });
         expect(prompt).toContain("CLI Team Runtime Required");
         expect(prompt).toContain("omg team 1:cursor");
-        expect(prompt).toContain("/oh-my-copilot:team 1:cursor");
+        expect(prompt).toContain(`${skillSlash("team")} 1:cursor`);
         expect(prompt).toContain("including reviewer-style roles");
         expect(prompt).toContain("structured verdict-output contract");
         expect(prompt).toContain("cursor-agent");

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { autoresearchCommand, normalizeAutoresearchClaudeArgs, parseAutoresearchArgs, AUTORESEARCH_HELP } from '../autoresearch.js';
+import { skillSlash } from '../../utils/skill-slash.js';
 
 describe('normalizeAutoresearchClaudeArgs', () => {
   it('returns the provided args unchanged for the deprecated shim', () => {
@@ -22,7 +23,7 @@ describe('parseAutoresearchArgs', () => {
   it('publishes hard-deprecation guidance', () => {
     expect(AUTORESEARCH_HELP).toContain('HARD DEPRECATED');
     expect(AUTORESEARCH_HELP).toContain('/deep-interview --autoresearch');
-    expect(AUTORESEARCH_HELP).toContain('/oh-my-copilot:autoresearch');
+    expect(AUTORESEARCH_HELP).toContain(skillSlash('autoresearch'));
     expect(AUTORESEARCH_HELP).toContain('single-mission only');
     expect(AUTORESEARCH_HELP).toContain('max-runtime ceiling');
   });
@@ -45,6 +46,6 @@ describe('autoresearchCommand', () => {
     await autoresearchCommand(['--resume', 'old-run']);
     expect(logSpy).toHaveBeenCalledTimes(1);
     expect(logSpy.mock.calls[0]?.[0]).toContain('Received legacy arguments: --resume old-run');
-    expect(logSpy.mock.calls[0]?.[0]).toContain('/oh-my-copilot:autoresearch');
+    expect(logSpy.mock.calls[0]?.[0]).toContain(skillSlash('autoresearch'));
   });
 });

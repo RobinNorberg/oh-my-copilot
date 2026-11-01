@@ -11,6 +11,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import corpus from '../installer/__tests__/fixtures/legacy-guides.json' with { type: 'json' };
 import { requiresSymlinks } from './helpers/platform.js';
+import { skillSlash } from '../utils/skill-slash.js';
 
 // vi.hoisted runs before vi.mock hoisting — safe to reference in mock factories
 const { TEST_DIRS } = vi.hoisted(() => {
@@ -753,11 +754,11 @@ describe('doctor-conflicts: CLAUDE.md companion file detection (issue #1101)', (
     writeFileSync(join(TEST_CLAUDE_DIR, 'CLAUDE.md'), '# My custom config\n');
 
     expect(checkClaudeMdStatus()!.managementDisabled).toBe(false);
-    expect(formatReport(runConflictCheck(), false)).toContain('Run /oh-my-copilot:omc-setup to add markers');
+    expect(formatReport(runConflictCheck(), false)).toContain(`Run ${skillSlash('omc-setup')} to add markers`);
 
     writeFileSync(join(TEST_CLAUDE_DIR, '.omc-config.json'), JSON.stringify({ claudeMdEnabled: true }));
     expect(checkClaudeMdStatus()!.managementDisabled).toBe(false);
-    expect(formatReport(runConflictCheck(), false)).toContain('Run /oh-my-copilot:omc-setup to add markers');
+    expect(formatReport(runConflictCheck(), false)).toContain(`Run ${skillSlash('omc-setup')} to add markers`);
   });
 
   it('does not ask for omc-setup when claudeMdEnabled is false', () => {
@@ -770,7 +771,7 @@ describe('doctor-conflicts: CLAUDE.md companion file detection (issue #1101)', (
     expect(report.claudeMdStatus!.managementDisabled).toBe(true);
     expect(report.configIssues.unknownFields).toEqual([]);
     expect(output).toContain('claudeMdEnabled is false in .omc-config.json');
-    expect(output).not.toContain('Run /oh-my-copilot:omc-setup to add markers');
+    expect(output).not.toContain(`Run ${skillSlash('omc-setup')} to add markers`);
     expect(JSON.parse(formatReport(report, true)).claudeMdStatus.managementDisabled).toBe(true);
   });
 
@@ -798,7 +799,7 @@ describe('doctor-conflicts: CLAUDE.md companion file detection (issue #1101)', (
     expect(report.claudeMdStatus!.managementDisabled).toBe(true);
     expect(report.claudeMdStatus!.exactLegacyPaths).toEqual([mainPath]);
     expect(output).toContain(`Exact legacy guide content: ${mainPath}`);
-    expect(output).not.toContain('/oh-my-copilot:omc-setup');
+    expect(output).not.toContain(skillSlash('omc-setup'));
     expect(output).toContain('re-enable claudeMdEnabled');
     expect(output).toContain('remove the legacy content manually');
   });
@@ -815,7 +816,7 @@ describe('doctor-conflicts: CLAUDE.md companion file detection (issue #1101)', (
     expect(report.hasConflicts).toBe(false);
     expect(output).toContain('claudeMdEnabled is false in .omc-config.json');
     expect(output).not.toContain('No CLAUDE.md found');
-    expect(output).not.toContain('Run /oh-my-copilot:omc-setup to add markers');
+    expect(output).not.toContain(`Run ${skillSlash('omc-setup')} to add markers`);
     expect(JSON.parse(formatReport(report, true)).claudeMdStatus.managementDisabled).toBe(true);
   });
 

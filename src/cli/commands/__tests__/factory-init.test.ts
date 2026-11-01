@@ -12,6 +12,7 @@ import {
   validateFactoryPrerequisites,
 } from '../factory.js';
 import { readProjectRoutes } from '../../../hooks/session-end/chain-enqueuer.js';
+import { skillSlash } from '../../../utils/skill-slash.js';
 
 const tempRoots: string[] = [];
 
@@ -164,7 +165,7 @@ describe('checkFactoryRoutes (init --check)', () => {
     expect(result.exitCode).toBe(1);
     expect(result.rows).toEqual([
       expect.objectContaining({ key: 'success:intake', skill: 'intent', status: 'deprecated', replacement: 'success:intake -> harbor' }),
-      expect.objectContaining({ key: 'success:intent', skill: 'launch', status: 'captain', replacement: expect.stringContaining('/oh-my-copilot:launch') }),
+      expect.objectContaining({ key: 'success:intent', skill: 'launch', status: 'captain', replacement: expect.stringContaining(skillSlash('launch')) }),
       expect.objectContaining({ key: 'success:launch', skill: 'diagnose', status: 'retired', replacement: expect.stringContaining('omg factory heal scan') }),
       expect.objectContaining({ key: 'failed:ci', skill: 'diagnose', status: 'retired', replacement: expect.stringContaining('omg factory heal scan') }),
     ]);
