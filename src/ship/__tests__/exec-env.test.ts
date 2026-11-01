@@ -7,6 +7,8 @@ import { defaultExec } from '../exec.js';
 
 const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!;
 
+type SpawnCall = [string, string[], { env: Record<string, string | undefined> }];
+
 describe('defaultExec exe-search hardening', () => {
   afterEach(() => {
     Object.defineProperty(process, 'platform', realPlatform);
@@ -15,10 +17,17 @@ describe('defaultExec exe-search hardening', () => {
 
   it('keeps exactly one NoDefaultCurrentDirectoryInExePath=1 on win32 even when the caller overrides it', () => {
     Object.defineProperty(process, 'platform', { value: 'win32' });
-    defaultExec('git', ['status'], { env: { NoDefaultCurrentDirectoryInExePath: '0', nodefaultcurrentdirectoryinexepath: '0' } });
-    const calls = spawnSync.mock.calls as unknown as Array<[string, string[], { env: Record<string, string | undefined> }]>;
-    const env = calls[0][2].env;
+    // A path-qualified cmd skips resolveBareExe, which would find nothing on a non-Windows PATH.
+    defaultExec('C:\\Git\\git.exe', ['status'], { env: { NoDefaultCurrentDirectoryInExePath: '0', nodefaultcurrentdirectoryinexepath: '0' } });
+    const env = (spawnSync.mock.calls as unknown as SpawnCall[])[0][2].env;
     const entries = Object.entries(env).filter(([k]) => k.toUpperCase() === 'NODEFAULTCURRENTDIRECTORYINEXEPATH');
     expect(entries).toEqual([['NoDefaultCurrentDirectoryInExePath', '1']]);
+  });
+
+  it('leaves the caller env untouched off win32', () => {
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+    defaultExec('git', ['status'], { env: { NoDefaultCurrentDirectoryInExePath: '0' } });
+    const env = (spawnSync.mock.calls as unknown as SpawnCall[])[0][2].env;
+    expect(env.NoDefaultCurrentDirectoryInExePath).toBe('0');
   });
 });
