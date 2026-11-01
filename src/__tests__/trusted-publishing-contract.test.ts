@@ -7,6 +7,8 @@ const CI_WORKFLOW_PATH = join(REPO_ROOT, '.github/workflows/ci.yml');
 const RECOVERY_WORKFLOW_PATH = join(REPO_ROOT, '.github/workflows/release.yml');
 const RELEASE_BOUNDARY_PATH = join(REPO_ROOT, 'scripts/release-boundary.mjs');
 const CI_JOB_IF = "if: github.event_name != 'push' || github.ref_type != 'tag'";
+// Jobs gated on the tree-evidence lookup: still never on a tag, and a failed lookup runs them.
+const EVIDENCE_JOB_IF = "if: ${{ !cancelled() && (github.event_name != 'push' || github.ref_type != 'tag') && needs.evidence.outputs.reused != 'true' }}";
 const RELEASE_JOB_IF = "if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')";
 
 function extractJob(workflow: string, jobName: string): string {
@@ -51,18 +53,19 @@ describe('npm trusted publishing contract', () => {
   });
 
   it('excludes duplicate tag triggers so only the ci.yml release job publishes', () => {
-    expect(extractJob(ci, 'lint-and-typecheck')).toContain(CI_JOB_IF);
-    expect(extractJob(ci, 'test')).toContain(CI_JOB_IF);
-    expect(extractJob(ci, 'test-windows')).toContain(CI_JOB_IF);
-    expect(extractJob(ci, 'better-sqlite3-node26-ubuntu')).toContain(CI_JOB_IF);
-    expect(extractJob(ci, 'better-sqlite3-node26-windows')).toContain(CI_JOB_IF);
+    expect(extractJob(ci, 'lint-and-typecheck')).toContain(EVIDENCE_JOB_IF);
+    expect(extractJob(ci, 'test')).toContain(EVIDENCE_JOB_IF);
+    expect(extractJob(ci, 'test-windows')).toContain(EVIDENCE_JOB_IF);
+    expect(extractJob(ci, 'better-sqlite3-node26-ubuntu')).toContain(EVIDENCE_JOB_IF);
+    expect(extractJob(ci, 'better-sqlite3-node26-windows')).toContain(EVIDENCE_JOB_IF);
     expect(extractJob(ci, 'test-precompact-restore-ubuntu')).toContain(CI_JOB_IF);
     expect(extractJob(ci, 'test-precompact-restore-macos')).toContain(CI_JOB_IF);
     expect(extractJob(ci, 'test-precompact-restore-windows')).toContain(CI_JOB_IF);
-    expect(extractJob(ci, 'build')).toContain(CI_JOB_IF);
-    expect(extractJob(ci, 'multirepo-paths-gate-ubuntu')).toContain(CI_JOB_IF);
-    expect(extractJob(ci, 'multirepo-paths-gate-windows')).toContain(CI_JOB_IF);
-    expect(extractJob(ci, 'version-check')).toContain(CI_JOB_IF);
+    expect(extractJob(ci, 'build')).toContain(EVIDENCE_JOB_IF);
+    expect(extractJob(ci, 'multirepo-paths-gate-ubuntu')).toContain(EVIDENCE_JOB_IF);
+    expect(extractJob(ci, 'multirepo-paths-gate-windows')).toContain(EVIDENCE_JOB_IF);
+    expect(extractJob(ci, 'version-check')).toContain(EVIDENCE_JOB_IF);
+    expect(extractJob(ci, 'evidence')).toContain(CI_JOB_IF);
     expect(extractJob(ci, 'npm-pack-test')).toContain(CI_JOB_IF);
     expect(extractJob(ci, 'upgrade-test')).toContain(CI_JOB_IF);
     expect(extractJob(ci, 'ci-gate')).toContain("(github.event_name != 'push' || github.ref_type != 'tag')");
@@ -170,6 +173,26 @@ describe('npm trusted publishing contract', () => {
     expect(releaseJob).not.toContain('generate_release_notes: true');
     expect(releaseJob).not.toMatch(/(?:^|[^A-Z_])GH_TOKEN(?:[^A-Z_]|$)/m);
     expect(releaseJob).not.toContain('gh api');
+  });
+
+  it('skips only the release tests, only on main, only with tree evidence, and reads evidence with a read-only lookup', () => {
+    const evidenceJob = extractJob(ci, 'evidence');
+    expect(evidenceJob).toContain('permissions:\n      contents: read\n      actions: read\n    outputs:');
+    expect(evidenceJob).toContain('persist-credentials: false');
+    expect(evidenceJob).toContain('run: node scripts/ci/evidence.mjs');
+
+    const lookup = stepIndex(releaseJob, 'Look up tree evidence');
+    expect(stepIndex(releaseJob, 'Assert release trigger and npm availability')).toBeLessThan(lookup);
+    expect(lookup).toBeLessThan(stepIndex(releaseJob, 'Run functional tests'));
+    expect(releaseJob).toContain('if git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then\n            node scripts/ci/evidence.mjs --sha "$GITHUB_SHA"');
+    expect(releaseJob).toContain('CI_EVIDENCE_REUSE: ${{ vars.CI_RELEASE_REUSE }}');
+    // Exactly the two test steps are conditional; build, archive, smoke and publish always run.
+    const gated = releaseJob.match(/^ {8}if: .*$/gm) ?? [];
+    expect(gated).toEqual([
+      "        if: steps.evidence.outputs.reused != 'true'",
+      "        if: steps.evidence.outputs.reused != 'true'",
+    ]);
+    expect(releaseJob).toMatch(/- name: Run functional tests\n {8}if: steps\.evidence\.outputs\.reused != 'true'\n {8}run: npm test -- --run/);
   });
 
   it('keeps recovery strictly non-publishing and workflow_dispatch-only', () => {

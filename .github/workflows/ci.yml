@@ -22,9 +22,39 @@ permissions:
   contents: read
 
 jobs:
+  # Test each tree once: when this exact git tree already passed every job in a
+  # trusted ci.yml run (push, or a same-repo PR; scripts/ci/evidence.mjs), the
+  # jobs that need this one report SKIPPED and CI Gate names the source run.
+  # A failed or doubtful lookup runs everything. Repo variable
+  # CI_TREE_REUSE=false turns reuse off; workflow_dispatch always runs.
+  evidence:
+    name: Tree evidence
+    if: github.event_name != 'push' || github.ref_type != 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      tree: ${{ steps.lookup.outputs.tree }}
+      reused: ${{ steps.lookup.outputs.reused }}
+      run_url: ${{ steps.lookup.outputs.run_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ci
+
+      - name: Look up tree evidence
+        id: lookup
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI_EVIDENCE_REUSE: ${{ github.event_name == 'workflow_dispatch' && 'false' || vars.CI_TREE_REUSE }}
+        run: node scripts/ci/evidence.mjs
+
   lint-and-typecheck:
     name: Lint & Type Check
-    if: github.event_name != 'push' || github.ref_type != 'tag'
+    needs: [evidence]
+    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref_type != 'tag') && needs.evidence.outputs.reused != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,7 +74,8 @@ jobs:
 
   test:
     name: Test
-    if: github.event_name != 'push' || github.ref_type != 'tag'
+    needs: [evidence]
+    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref_type != 'tag') && needs.evidence.outputs.reused != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -65,7 +96,8 @@ jobs:
 
   test-windows:
     name: Test (Windows path suite)
-    if: github.event_name != 'push' || github.ref_type != 'tag'
+    needs: [evidence]
+    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref_type != 'tag') && needs.evidence.outputs.reused != 'true' }}
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
@@ -115,7 +147,8 @@ jobs:
   # requires, so a job skipped by a job-level `if:` still reports under it.
   better-sqlite3-node26-ubuntu:
     name: better-sqlite3 Node 26 (ubuntu-latest)
-    if: github.event_name != 'push' || github.ref_type != 'tag'
+    needs: [evidence]
+    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref_type != 'tag') && needs.evidence.outputs.reused != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -132,7 +165,8 @@ jobs:
 
   better-sqlite3-node26-windows:
     name: better-sqlite3 Node 26 (windows-2022)
-    if: github.event_name != 'push' || github.ref_type != 'tag'
+    needs: [evidence]
+    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref_type != 'tag') && needs.evidence.outputs.reused != 'true' }}
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
@@ -265,7 +299,8 @@ jobs:
   # modes), the `npm pack --ignore-scripts` tarball and a sha256 manifest.
   build:
     name: Build
-    if: github.event_name != 'push' || github.ref_type != 'tag'
+    needs: [evidence]
+    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref_type != 'tag') && needs.evidence.outputs.reused != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -357,7 +392,8 @@ jobs:
 
   multirepo-paths-gate-ubuntu:
     name: Multi-repo Path Gate (AST-grep) (ubuntu-latest)
-    if: github.event_name != 'push' || github.ref_type != 'tag'
+    needs: [evidence]
+    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref_type != 'tag') && needs.evidence.outputs.reused != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -374,7 +410,8 @@ jobs:
 
   multirepo-paths-gate-windows:
     name: Multi-repo Path Gate (AST-grep) (windows-2022)
-    if: github.event_name != 'push' || github.ref_type != 'tag'
+    needs: [evidence]
+    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref_type != 'tag') && needs.evidence.outputs.reused != 'true' }}
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
@@ -391,7 +428,8 @@ jobs:
 
   version-check:
     name: Version Consistency Check
-    if: github.event_name != 'push' || github.ref_type != 'tag'
+    needs: [evidence]
+    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref_type != 'tag') && needs.evidence.outputs.reused != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -1201,11 +1239,14 @@ jobs:
   # Aggregates every blocking job: fails when any needed job failed or was
   # cancelled, passes when each succeeded or was skipped. The advisory
   # No Committed Build Artifacts and the tag-only release are not needed.
+  # When every job ran and succeeded it logs `ci-evidence v1 tree=<tree>`,
+  # the line scripts/ci/evidence.mjs requires before reusing this run.
   ci-gate:
     name: CI Gate
     if: ${{ always() && (github.event_name != 'push' || github.ref_type != 'tag') }}
     runs-on: ubuntu-latest
     needs:
+      - evidence
       - lint-and-typecheck
       - test
       - test-windows
@@ -1225,6 +1266,9 @@ jobs:
       - name: Check needed job results
         env:
           NEEDS: ${{ toJSON(needs) }}
+          TREE: ${{ needs.evidence.outputs.tree }}
+          REUSED: ${{ needs.evidence.outputs.reused }}
+          REUSED_FROM: ${{ needs.evidence.outputs.run_url }}
         run: |
           echo "$NEEDS" | jq -r 'to_entries[] | "\(.value.result)\t\(.key)"' | sort
           bad=$(echo "$NEEDS" | jq -r '[to_entries[] | select(.value.result != "success" and .value.result != "skipped") | .key] | join(", ")')
@@ -1233,6 +1277,16 @@ jobs:
             exit 1
           fi
           echo "every needed job succeeded or was skipped"
+          if [ "$REUSED" = "true" ]; then
+            echo "::notice title=CI Gate::tree $TREE reused from run $REUSED_FROM; its jobs were skipped here"
+            exit 0
+          fi
+          unproven=$(echo "$NEEDS" | jq -r '[to_entries[] | select(.value.result != "success") | .key] | join(", ")')
+          if [ -z "$unproven" ] && printf '%s' "$TREE" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "ci-evidence v1 tree=$TREE"
+          else
+            echo "no tree evidence recorded (not run or not success: ${unproven:-tree unknown})"
+          fi
 
   release:
     name: Create GitHub Release
@@ -1240,6 +1294,7 @@ jobs:
     permissions:
       contents: write
       id-token: write
+      actions: read
     runs-on: ubuntu-latest
     concurrency:
       group: npm-trusted-publish-${{ github.ref_name }}
@@ -1274,6 +1329,25 @@ jobs:
           node scripts/release-boundary.mjs assert-trigger --tag "$GITHUB_REF_NAME" --sha "$RELEASE_SHA"
           node scripts/release-boundary.mjs assert-npm-absent --package oh-my-copilot --version "$VERSION"
 
+      # Publish-only tag: the tests below are skipped only when the tagged
+      # commit is on origin/main AND its tree already passed every ci.yml job
+      # in a trusted run (scripts/ci/evidence.mjs; normally the release PR's).
+      # Otherwise they run here as before. Repo variable CI_RELEASE_REUSE=false
+      # always runs them. Build, archive, smoke and publish never skip.
+      - name: Look up tree evidence
+        id: evidence
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI_EVIDENCE_REUSE: ${{ vars.CI_RELEASE_REUSE }}
+        run: |
+          git fetch --no-tags --force origin +refs/heads/main:refs/remotes/origin/main || echo "::warning::could not fetch origin/main"
+          if git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
+            node scripts/ci/evidence.mjs --sha "$GITHUB_SHA"
+          else
+            echo "::notice title=Tree evidence::$GITHUB_SHA is not on origin/main; the tests run"
+            echo "reused=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Validate release notes
         run: |
           git cat-file -e HEAD:.github/release-body.md
@@ -1287,9 +1361,11 @@ jobs:
         run: npm run build
 
       - name: Run functional tests
+        if: steps.evidence.outputs.reused != 'true'
         run: npm test -- --run
 
       - name: Run subagent-lock performance test
+        if: steps.evidence.outputs.reused != 'true'
         run: npm exec vitest -- run tests/perf/subagent-lock.bench.ts --fileParallelism=false --maxWorkers=1
 
       # Some tests execute scripts/plugin-setup.mjs against the real
