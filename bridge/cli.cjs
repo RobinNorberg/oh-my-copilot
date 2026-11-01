@@ -35,6 +35,33 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
+// src/utils/windows-search.ts
+function isVariable(key) {
+  return key.toUpperCase() === VARIABLE.toUpperCase();
+}
+function hardenWindowsExeSearch() {
+  if (process.platform !== "win32") return;
+  for (const key of Object.keys(process.env)) {
+    if (isVariable(key)) delete process.env[key];
+  }
+  process.env[VARIABLE] = "1";
+}
+function childEnv(env2) {
+  const out = {};
+  for (const [key, value] of Object.entries(env2)) {
+    if (process.platform !== "win32" || !isVariable(key)) out[key] = value;
+  }
+  if (process.platform === "win32") out[VARIABLE] = "1";
+  return out;
+}
+var VARIABLE;
+var init_windows_search = __esm({
+  "src/utils/windows-search.ts"() {
+    "use strict";
+    VARIABLE = "NoDefaultCurrentDirectoryInExePath";
+  }
+});
+
 // node_modules/commander/lib/error.js
 var require_error = __commonJS({
   "node_modules/commander/lib/error.js"(exports2) {
@@ -71433,7 +71460,7 @@ async function runSessionEndAction(context, _execute) {
     fs13.mkdirSync(runPath, { recursive: true });
     if (Date.now() >= context.deadlineAt) return { code: "deadline-before-arm", completed: false };
     const childInput = { directory: context.directory, sessionId: context.sessionId, jobId: context.job.jobId, actionName: context.actionName, attempt: context.action.attempts, ownerNonce: context.ownerNonce, runnerNonce: context.runnerNonce, runPath, deadlineAt: context.deadlineAt };
-    const child = (0, import_child_process21.spawn)(process.execPath, [(0, import_url14.fileURLToPath)(importMetaUrl), RUNNER_ARG, JSON.stringify(childInput)], { detached: true, stdio: "ignore", windowsHide: true, env: runnerEnvironment(context) });
+    const child = (0, import_child_process21.spawn)(process.execPath, [(0, import_url14.fileURLToPath)(importMetaUrl), RUNNER_ARG, JSON.stringify(childInput)], { detached: true, stdio: "ignore", windowsHide: true, env: childEnv(runnerEnvironment(context)) });
     const identity = child.pid ? getProcessStartIdentitySync(child.pid) : null;
     child.unref();
     let settled = false;
@@ -71547,6 +71574,7 @@ var fs13, path19, import_child_process21, import_url14, RUNNER_ARG, COPILOT_PERM
 var init_action_runner = __esm({
   "src/hooks/session-end/action-runner.ts"() {
     "use strict";
+    init_windows_search();
     fs13 = __toESM(require("fs"), 1);
     path19 = __toESM(require("path"), 1);
     import_child_process21 = require("child_process");
@@ -105891,7 +105919,7 @@ function startReplyListener(_config) {
       detached: true,
       stdio: "ignore",
       cwd: process.cwd(),
-      env: createMinimalDaemonEnv()
+      env: childEnv(createMinimalDaemonEnv())
     });
     child.unref();
     const pid = child.pid;
@@ -106073,6 +106101,7 @@ var import_fs107, import_path129, import_url17, import_child_process30, import_c
 var init_reply_listener = __esm({
   "src/notifications/reply-listener.ts"() {
     "use strict";
+    init_windows_search();
     import_fs107 = require("fs");
     import_path129 = require("path");
     import_url17 = require("url");
@@ -106901,7 +106930,7 @@ function workerEnvironment() {
 }
 function spawnSessionEndWorker(payload) {
   try {
-    const child = (0, import_child_process31.spawn)(process.execPath, [(0, import_url18.fileURLToPath)(importMetaUrl), WORKER_ARG, JSON.stringify(payload)], { detached: true, stdio: "ignore", env: workerEnvironment(), windowsHide: true });
+    const child = (0, import_child_process31.spawn)(process.execPath, [(0, import_url18.fileURLToPath)(importMetaUrl), WORKER_ARG, JSON.stringify(payload)], { detached: true, stdio: "ignore", env: childEnv(workerEnvironment()), windowsHide: true });
     child.unref();
     return true;
   } catch {
@@ -107108,6 +107137,7 @@ var import_child_process31, import_crypto37, import_url18, WORKER_ARG, MAX_WORKE
 var init_worker = __esm({
   "src/hooks/session-end/worker.ts"() {
     "use strict";
+    init_windows_search();
     import_child_process31 = require("child_process");
     import_crypto37 = require("crypto");
     import_url18 = require("url");
@@ -119176,6 +119206,7 @@ var import_node_child_process16, import_node_crypto15, import_node_fs27, import_
 var init_job = __esm({
   "src/copilot-run/job.ts"() {
     "use strict";
+    init_windows_search();
     import_node_child_process16 = require("node:child_process");
     import_node_crypto15 = require("node:crypto");
     import_node_fs27 = require("node:fs");
@@ -119681,7 +119712,7 @@ var init_job = __esm({
         const ident = loginIdentity(deps.userConfigDir());
         (0, import_node_fs27.writeFileSync)((0, import_node_path34.join)(job.home, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [job.workCwd] }, null, 2)}
 `);
-        const env2 = allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), job.home);
+        const env2 = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), job.home));
         const gitHubToken = sessionGitHubToken(deps.env);
         (0, import_node_fs27.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
         (0, import_node_fs27.mkdirSync)((0, import_node_path34.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
@@ -143253,6 +143284,7 @@ var import_fs206, import_promises39, import_path235, import_child_process60, imp
 var init_hud = __esm({
   "src/hud/index.ts"() {
     "use strict";
+    init_windows_search();
     init_stdin();
     init_transcript();
     init_copilot_events();
@@ -143279,6 +143311,7 @@ var init_hud = __esm({
     import_url27 = require("url");
     init_worktree_paths();
     init_config_dir();
+    hardenWindowsExeSearch();
     HUD_SCRIPT_NAMES = ["omg-hud.mjs", "omcp-hud.mjs", "omcp-hud.js"];
     HUD_COMMAND_MARKERS = ["omg-hud", "omcp-hud"];
     SAME_WINDOW_TOLERANCE_MS = 60 * 1e3;
@@ -143295,6 +143328,7 @@ __export(index_exports, {
   buildProgram: () => buildProgram
 });
 module.exports = __toCommonJS(index_exports);
+init_windows_search();
 init_esm();
 init_source();
 var import_path236 = require("path");
@@ -153454,6 +153488,7 @@ function shouldMonitorBlockedPanes(status) {
 init_tmux_detector();
 
 // src/features/rate-limit-wait/daemon.ts
+init_windows_search();
 var import_fs140 = require("fs");
 var import_path164 = require("path");
 var import_url22 = require("url");
@@ -153881,7 +153916,7 @@ function startDaemon(config2) {
   `;
   try {
     const daemonEnv = {
-      ...createMinimalDaemonEnv2(),
+      ...childEnv(createMinimalDaemonEnv2()),
       OMC_DAEMON_CONFIG_FILE: configPath
     };
     const child = (0, import_child_process40.spawn)(process.execPath, ["-e", daemonScript], {
@@ -161787,6 +161822,9 @@ var import_node_path43 = require("node:path");
 init_descriptor();
 init_types12();
 
+// src/graph/runtime/executors/agent.ts
+init_windows_search();
+
 // src/graph/runtime/executors/authority.ts
 var BASE_ENV_ALLOWLIST = [
   "PATH",
@@ -161966,7 +162004,7 @@ Goal: ${context.descriptor.goal}`;
           options: {
             abortController,
             cwd: process.cwd(),
-            env: buildAgentEnv(idempotencyKey),
+            env: childEnv(buildAgentEnv(idempotencyKey)),
             tools: [...READ_ONLY_AGENT_TOOLS],
             permissionMode: "dontAsk",
             canUseTool,
@@ -162044,6 +162082,7 @@ function failed2(context, summary) {
 }
 
 // src/graph/runtime/executors/command.ts
+init_windows_search();
 var import_node_child_process18 = require("node:child_process");
 var STREAM_TAIL_CHARS = 2e3;
 var KILL_ESCALATION_MS = 5e3;
@@ -162091,7 +162130,7 @@ function runShellCommand(command, timeoutMs, stdoutTail, stderrTail, idempotency
         shell: true,
         windowsHide: true,
         cwd: process.cwd(),
-        env: buildCommandEnv(idempotencyKey),
+        env: childEnv(buildCommandEnv(idempotencyKey)),
         stdio: ["ignore", "pipe", "pipe"],
         // Detached => own process group => the NEGATIVE-pid group kill in
         // terminateProcessTree can reach grandchildren, not just the shell.
@@ -165932,6 +165971,7 @@ async function runHudWatchLoop(options) {
 
 // src/cli/index.ts
 init_integer_option();
+hardenWindowsExeSearch();
 var version2 = getRuntimePackageVersion();
 function applyPluginDirOption(rawPath) {
   if (!rawPath) return;

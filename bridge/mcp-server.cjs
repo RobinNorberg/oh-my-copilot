@@ -48,6 +48,33 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
+// src/utils/windows-search.ts
+function isVariable(key) {
+  return key.toUpperCase() === VARIABLE.toUpperCase();
+}
+function hardenWindowsExeSearch() {
+  if (process.platform !== "win32") return;
+  for (const key of Object.keys(process.env)) {
+    if (isVariable(key)) delete process.env[key];
+  }
+  process.env[VARIABLE] = "1";
+}
+function childEnv(env2) {
+  const out = {};
+  for (const [key, value] of Object.entries(env2)) {
+    if (process.platform !== "win32" || !isVariable(key)) out[key] = value;
+  }
+  if (process.platform === "win32") out[VARIABLE] = "1";
+  return out;
+}
+var VARIABLE;
+var init_windows_search = __esm({
+  "src/utils/windows-search.ts"() {
+    "use strict";
+    VARIABLE = "NoDefaultCurrentDirectoryInExePath";
+  }
+});
+
 // node_modules/zod/v3/helpers/util.js
 var util, objectUtil, ZodParsedType, getParsedType;
 var init_util = __esm({
@@ -42737,6 +42764,7 @@ var import_node_child_process4, import_node_crypto3, import_node_fs11, import_no
 var init_job = __esm({
   "src/copilot-run/job.ts"() {
     "use strict";
+    init_windows_search();
     import_node_child_process4 = require("node:child_process");
     import_node_crypto3 = require("node:crypto");
     import_node_fs11 = require("node:fs");
@@ -43242,7 +43270,7 @@ var init_job = __esm({
         const ident = loginIdentity(deps.userConfigDir());
         (0, import_node_fs11.writeFileSync)((0, import_node_path12.join)(job.home, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [job.workCwd] }, null, 2)}
 `);
-        const env2 = allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), job.home);
+        const env2 = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), job.home));
         const gitHubToken = sessionGitHubToken(deps.env);
         (0, import_node_fs11.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
         (0, import_node_fs11.mkdirSync)((0, import_node_path12.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
@@ -52777,6 +52805,9 @@ var init_tool_registry = __esm({
   }
 });
 
+// src/mcp/standalone-server.ts
+init_windows_search();
+
 // node_modules/zod/v4/core/core.js
 var NEVER2 = Object.freeze({
   status: "aborted"
@@ -59768,6 +59799,7 @@ init_bridge_manager();
 init_tool_registry();
 init_lsp();
 init_copilot_run_tools();
+hardenWindowsExeSearch();
 var server = new Server(
   {
     name: "t",

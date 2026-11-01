@@ -2,6 +2,23 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Security
+
+- On Windows, a command spawned by bare name (`git`, `npm`, `gh`, `node`, …)
+  in the project folder could run an executable planted in the repository:
+  a `.exe`/`.com` directly, or a `.cmd`/`.bat` through `cmd.exe`, because
+  Windows searches the current directory before `PATH`. Every published
+  version through v5.19.2 is affected (for example `setup-claude-md.mjs`
+  ran `git rev-parse` in the project). The fix is process-wide: every Node
+  entry point (the `omg` CLI, the hook runners, the MCP servers, the team
+  runtime and bridge, the HUD and the scripts skills run) now sets
+  `NoDefaultCurrentDirectoryInExePath=1` before anything spawns, and the
+  allowlisted child environments (graph command/agent nodes, session-end
+  workers, rate-limit and reply-listener daemons, sandboxed Copilot jobs)
+  carry it too.
+
 # oh-my-copilot v5.19.2
 
 ## [5.19.2] - 2026-11-01
