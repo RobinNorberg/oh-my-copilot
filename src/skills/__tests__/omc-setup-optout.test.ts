@@ -10,8 +10,10 @@ const optoutHeading = '## Check the Global Opt-Out Before Asking About Install S
 const optoutStart = phase.indexOf(optoutHeading);
 const styleQuestion = phase.indexOf('**Question:** "Global setup will change your base Claude config. Which behavior do you want?"');
 const probeSection = phase.slice(optoutStart, styleQuestion);
-const probeMatch = probeSection.match(/^node -e "\n([\s\S]*?)\n"$/m);
-const probe = probeMatch?.[1];
+const probeMatch = probeSection.match(/^node "[^"\n]*\/scripts\/setup-config\.mjs" claude-md-enabled$/m);
+const probe = probeMatch?.[0];
+
+const setupConfigScript = join(process.cwd(), 'scripts', 'setup-config.mjs');
 
 const roots: string[] = [];
 function createHome(): string {
@@ -22,7 +24,7 @@ function createHome(): string {
 
 function runProbe(home: string, configDir: string) {
   if (probe === undefined) throw new Error('omc-setup global opt-out probe is missing');
-  return spawnSync(process.execPath, ['-e', probe], {
+  return spawnSync(process.execPath, [setupConfigScript, 'claude-md-enabled'], {
     env: { ...process.env, HOME: home, USERPROFILE: home, COPILOT_HOME: configDir },
     encoding: 'utf8',
   });

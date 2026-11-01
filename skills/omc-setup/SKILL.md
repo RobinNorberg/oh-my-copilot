@@ -100,8 +100,10 @@ The script is the sole cache resolver. It accepts only complete plugin roots (ca
 **CRITICAL**: Before doing anything else, check if setup has already been completed. This prevents users from having to re-run the full setup wizard after every update.
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_HOME||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'.omc-config.json');if(f.existsSync(t)===false){console.log('ALREADY_CONFIGURED=false');process.exit(0)}let c;try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: Existing OMC config is invalid JSON. Existing config was not modified.');process.exit(1)}if(c&&c.setupCompleted){console.log('OMC setup was already completed on: '+c.setupCompleted);if(c.setupVersion)console.log('Setup version: '+c.setupVersion);console.log('ALREADY_CONFIGURED=true')}else{console.log('ALREADY_CONFIGURED=false')}"
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" configured
 ```
+
+All setup checks and config writes run through `scripts/setup-config.mjs` subcommands, never inline interpreter code, so setup also works on hosts that block inline interpreter execution.
 
 Treat `ALREADY_CONFIGURED=true` in the output as the configured case. A non-zero exit
 means the existing config could not be parsed; stop and report that rather than

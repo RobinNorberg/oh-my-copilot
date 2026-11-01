@@ -20,24 +20,7 @@ Set `CONFIG_TARGET` to `local` or `global` based on the user's choice.
 Only when `CONFIG_TARGET=global`, run this probe before any overwrite/preserve question. It checks the same `.omc-config.json` used by the installer and respects `COPILOT_HOME`, including `~`, `~/...`, and `~\...` values:
 
 ```bash
-node -e "
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-let configDir = (process.env.COPILOT_HOME || '').trim();
-if (configDir === '') configDir = path.join(os.homedir(), '.copilot');
-if (configDir === '~') configDir = os.homedir();
-else if (configDir.startsWith('~/') || configDir.startsWith('~' + String.fromCharCode(92))) {
-  configDir = path.join(os.homedir(), configDir.slice(2));
-}
-try {
-  const config = JSON.parse(fs.readFileSync(path.join(configDir, '.omc-config.json'), 'utf8'));
-  const disabled = Boolean(config && typeof config === 'object' && config.claudeMdEnabled === false);
-  console.log(disabled ? 'disabled' : 'enabled');
-} catch {
-  console.log('enabled');
-}
-"
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" claude-md-enabled
 ```
 
 If the probe prints `disabled`, do not ask the overwrite/preserve question; set `GLOBAL_INSTALL_STYLE=overwrite` and continue through the coordinator so it can report the skip. If it prints `enabled`, continue below. If the probe fails or prints neither status, stop before asking or running setup; do not assume management is enabled.

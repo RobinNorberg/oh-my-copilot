@@ -788,6 +788,7 @@ jobs:
           test -f "$SMOKE_PACKAGE_ROOT/scripts/lib/config-dir.sh"
           test -f "$SMOKE_PACKAGE_ROOT/scripts/setup-claude-md.mjs"
           test -f "$SMOKE_PACKAGE_ROOT/scripts/setup-progress.mjs"
+          test -f "$SMOKE_PACKAGE_ROOT/scripts/setup-config.mjs"
           test -f "$SMOKE_PACKAGE_ROOT/scripts/uninstall.mjs"
           test -f "$SMOKE_PACKAGE_ROOT/scripts/lib/config-dir.mjs"
           test -s "$SMOKE_PACKAGE_ROOT/skills/wiki/SKILL.md"
