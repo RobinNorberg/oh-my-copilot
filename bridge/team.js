@@ -13967,11 +13967,11 @@ function buildWorkerStartCommand(config) {
       windowsEnvVars.OMC_RECOVERY_GATE_SPEC_B64 = Buffer.from(windowsEnvVars.OMC_RECOVERY_GATE_SPEC, "utf8").toString("base64");
       delete windowsEnvVars.OMC_RECOVERY_GATE_SPEC;
     }
-    const envPrefix = Object.entries(windowsEnvVars).map(([key, value]) => {
+    const envPrefix = ['set "NoDefaultCurrentDirectoryInExePath=1"', ...Object.entries(windowsEnvVars).filter(([key]) => key.toUpperCase() !== "NODEFAULTCURRENTDIRECTORYINEXEPATH").map(([key, value]) => {
       assertSafeEnvKey(key);
       assertSafeCmdValue2(value);
       return `set "${key}=${escapeForCmdSet(value)}"`;
-    }).join(" && ");
+    })].join(" && ");
     const launch = launchWords.map((part) => {
       assertSafeCmdValue2(part);
       return `"${escapeForCmdSet(part)}"`;
@@ -20684,6 +20684,13 @@ var init_guard = __esm({
   }
 });
 
+// src/utils/windows-search.ts
+var init_windows_search = __esm({
+  "src/utils/windows-search.ts"() {
+    "use strict";
+  }
+});
+
 // src/ship/exec.ts
 import { spawnSync as spawnSync6 } from "child_process";
 var TRUSTED_READ_ENV;
@@ -20691,6 +20698,7 @@ var init_exec = __esm({
   "src/ship/exec.ts"() {
     "use strict";
     init_guard();
+    init_windows_search();
     TRUSTED_READ_ENV = Object.freeze({ GIT_NO_REPLACE_OBJECTS: "1" });
   }
 });

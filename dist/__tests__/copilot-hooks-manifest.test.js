@@ -213,6 +213,7 @@ describe('exec form under a plugin root containing a space', () => {
         mkdirSync(join(root, 'scripts', 'lib'), { recursive: true });
         mkdirSync(join(root, 'scripts', 'copilot'), { recursive: true });
         copyFileSync(join(REPO_ROOT, 'scripts', 'lib', 'copilot-hook-adapter.cjs'), join(root, 'scripts', 'lib', 'copilot-hook-adapter.cjs'));
+        copyFileSync(join(REPO_ROOT, 'scripts', 'lib', 'windows-search.cjs'), join(root, 'scripts', 'lib', 'windows-search.cjs'));
         // Probe in place of the dispatcher: report argv through additionalContext.
         // (The adapter preload leaves the dispatcher's own output alone.)
         writeFileSync(join(root, 'scripts', 'copilot', 'dispatch.cjs'), [

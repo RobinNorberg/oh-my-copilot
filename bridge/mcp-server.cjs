@@ -30284,6 +30284,33 @@ var init_guard = __esm({
   }
 });
 
+// src/utils/windows-search.ts
+function isVariable(key) {
+  return key.toUpperCase() === VARIABLE.toUpperCase();
+}
+function hardenWindowsExeSearch() {
+  if (process.platform !== "win32") return;
+  for (const key of Object.keys(process.env)) {
+    if (isVariable(key)) delete process.env[key];
+  }
+  process.env[VARIABLE] = "1";
+}
+function childEnv(env2) {
+  const out = {};
+  for (const [key, value] of Object.entries(env2)) {
+    if (process.platform !== "win32" || !isVariable(key)) out[key] = value;
+  }
+  if (process.platform === "win32") out[VARIABLE] = "1";
+  return out;
+}
+var VARIABLE;
+var init_windows_search = __esm({
+  "src/utils/windows-search.ts"() {
+    "use strict";
+    VARIABLE = "NoDefaultCurrentDirectoryInExePath";
+  }
+});
+
 // src/ship/exec.ts
 function scrubShipEnv(env2) {
   const out = {};
@@ -30383,6 +30410,7 @@ var init_exec = __esm({
     "use strict";
     import_child_process16 = require("child_process");
     init_guard();
+    init_windows_search();
     ShipSafetyError = class extends Error {
       constructor(message) {
         super(message);
@@ -30403,6 +30431,7 @@ var init_exec = __esm({
     DROPPED_GH_VARS = /* @__PURE__ */ new Set(["GH_REPO", "GH_HOST"]);
     isDroppedAdoVar = (upper) => upper.startsWith("AZURE_DEVOPS_EXT_DEFAULTS") || upper === "AZURE_DEVOPS_DEFAULTS_ORGANIZATION" || upper === "AZURE_DEVOPS_DEFAULTS_PROJECT";
     defaultExec = (cmd, args, opts) => {
+      hardenWindowsExeSearch();
       const result = (0, import_child_process16.spawnSync)(cmd, args, {
         cwd: opts?.cwd,
         env: { ...scrubShipEnv(process.env), ...opts?.env },
@@ -42715,6 +42744,7 @@ function relativeInside(path15, root) {
   return rel && !rel.startsWith("..") && !(0, import_node_path12.isAbsolute)(rel) ? rel.replace(/\\/g, "/") : null;
 }
 function defaultCopilotRunDeps(env2 = process.env) {
+  hardenWindowsExeSearch();
   return {
     env: env2,
     platform: process.platform,
@@ -42737,6 +42767,7 @@ var import_node_child_process4, import_node_crypto3, import_node_fs11, import_no
 var init_job = __esm({
   "src/copilot-run/job.ts"() {
     "use strict";
+    init_windows_search();
     import_node_child_process4 = require("node:child_process");
     import_node_crypto3 = require("node:crypto");
     import_node_fs11 = require("node:fs");
@@ -43242,7 +43273,7 @@ var init_job = __esm({
         const ident = loginIdentity(deps.userConfigDir());
         (0, import_node_fs11.writeFileSync)((0, import_node_path12.join)(job.home, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [job.workCwd] }, null, 2)}
 `);
-        const env2 = allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), job.home);
+        const env2 = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), job.home));
         const gitHubToken = sessionGitHubToken(deps.env);
         (0, import_node_fs11.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
         (0, import_node_fs11.mkdirSync)((0, import_node_path12.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
@@ -47315,7 +47346,8 @@ var init_engine = __esm({
     HEX405 = /^[0-9a-f]{40}$/;
     WRITE_LANE_GIT_RULES = [
       "Leave your changes in this worktree and do NOT commit: the git directory is read-only, so git add, git commit, git merge, git stash and every other git command that writes fail. The engine commits your changes after you finish, with your final message as the commit message, so end with a short summary of the change.",
-      "Do NOT push, open a pull request, or change git config, hooks or refs."
+      "Do NOT push, open a pull request, or change git config, hooks or refs.",
+      "On Windows, call repo-local scripts as `.\\name` (`.\\gradlew`, `.\\build.bat`): a bare name does not search the worktree."
     ];
     resumeCommand = (key) => typeof key === "number" ? `omg factory run ${key}` : `omg factory heal approve ${key.slice("heal-".length)}`;
     subject = (s) => s.kind === "ci-heal" ? `the CI self-heal of failure signature ${s.heal?.sig8} on ${s.base}` : `GitHub issue #${s.issue}: ${oneLine3(s.issueTitle)}`;

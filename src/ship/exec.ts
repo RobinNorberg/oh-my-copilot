@@ -7,6 +7,7 @@
 
 import { spawnSync } from 'child_process';
 import { isAdoCommand, runGuardedAdo, type AdoGuardContext } from '../forge/ado/guard.js';
+import { hardenWindowsExeSearch } from '../utils/windows-search.js';
 
 export interface ExecResult {
   status: number;
@@ -98,6 +99,10 @@ export function scrubShipEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 }
 
 export const defaultExec: Exec = (cmd, args, opts) => {
+  // libuv resolves a bare `git`/`gh` with this process's environment, so the
+  // engine itself must turn off the cwd search (a lane worktree could hold a
+  // planted git.exe); scrubShipEnv(process.env) then carries it to the child.
+  hardenWindowsExeSearch();
   const result = spawnSync(cmd, args, {
     cwd: opts?.cwd,
     env: { ...scrubShipEnv(process.env), ...opts?.env },
