@@ -7,7 +7,7 @@
 
 import { spawnSync } from 'child_process';
 import { isAdoCommand, runGuardedAdo, type AdoGuardContext } from '../forge/ado/guard.js';
-import { childEnv, hardenWindowsExeSearch } from '../utils/windows-search.js';
+import { childEnv, hardenWindowsExeSearch, resolveBareExe } from '../utils/windows-search.js';
 
 export interface ExecResult {
   status: number;
@@ -103,7 +103,9 @@ export const defaultExec: Exec = (cmd, args, opts) => {
   // engine itself must turn off the cwd search (a lane worktree could hold a
   // planted git.exe); scrubShipEnv(process.env) then carries it to the child.
   hardenWindowsExeSearch();
-  const result = spawnSync(cmd, args, {
+  const exe = resolveBareExe(cmd);
+  if (exe === null) return { status: 127, stdout: '', stderr: `spawnSync ${cmd} ENOENT (not found on PATH)` };
+  const result = spawnSync(exe, args, {
     cwd: opts?.cwd,
     env: childEnv({ ...scrubShipEnv(process.env), ...opts?.env }),
     encoding: 'utf8',

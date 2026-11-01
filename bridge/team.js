@@ -17621,6 +17621,44 @@ var init_phase_controller = __esm({
   }
 });
 
+// src/utils/windows-search.ts
+import { statSync as statSync7 } from "node:fs";
+import { posix, win32 as win324 } from "node:path";
+function envValue(env, name) {
+  const key = Object.keys(env).find((k) => k.toUpperCase() === name);
+  const value = key === void 0 ? void 0 : env[key];
+  return typeof value === "string" && value.trim() !== "" ? value : void 0;
+}
+function findOnPath(name, env, platform, exists = isFile) {
+  const P = platform === "win32" ? win324 : posix;
+  const exts = platform === "win32" ? (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean) : [""];
+  const inNodeModules = platform === "win32" ? /(^|[\\/])node_modules([\\/]|$)/i : /(^|\/)node_modules(\/|$)/;
+  for (const raw of (envValue(env, "PATH") ?? "").split(P.delimiter)) {
+    const dir = raw.trim().replace(/^"(.*)"$/, "$1");
+    if (!dir || !P.isAbsolute(dir) || inNodeModules.test(dir)) continue;
+    for (const ext of exts) if (exists(P.join(dir, name + ext))) return P.join(dir, name + ext);
+  }
+  return null;
+}
+function resolveBareExe(cmd, env = process.env) {
+  if (process.platform !== "win32" || /[\\/:]/.test(cmd)) return cmd;
+  const pathext = (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter((e) => e && !/^\.(cmd|bat)$/i.test(e)).join(";");
+  return findOnPath(cmd, { ...env, PATHEXT: pathext }, "win32");
+}
+var isFile;
+var init_windows_search = __esm({
+  "src/utils/windows-search.ts"() {
+    "use strict";
+    isFile = (p) => {
+      try {
+        return statSync7(p).isFile();
+      } catch {
+        return false;
+      }
+    };
+  }
+});
+
 // src/lib/worktree-cleanup-safety.ts
 import { existsSync as existsSync31, lstatSync as lstatSync7, realpathSync as realpathSync7 } from "node:fs";
 import { homedir as homedir6 } from "node:os";
@@ -17769,7 +17807,7 @@ function hostGitEnv(args, base = process.env) {
 function hostGitDriverOverrides(cwd, env, timeout) {
   let out;
   try {
-    out = execFileSync5("git", [...hostGitHardeningArgs(), "config", "--null", "--show-scope", "--name-only", "--get-regexp", "^(filter|diff)\\."], { cwd, env, encoding: "utf8", stdio: "pipe", windowsHide: true, timeout });
+    out = execFileSync5(hostGitExe(), [...hostGitHardeningArgs(), "config", "--null", "--show-scope", "--name-only", "--get-regexp", "^(filter|diff)\\."], { cwd, env, encoding: "utf8", stdio: "pipe", windowsHide: true, timeout });
   } catch (err) {
     return err.status === 1 ? [] : null;
   }
@@ -17794,6 +17832,11 @@ function hostGitDriverOverrides(cwd, env, timeout) {
     ...[...diffs].flatMap((n) => ["textconv=", "command="].flatMap((kv) => ["-c", `diff.${n}.${kv}`]))
   ];
 }
+function hostGitExe() {
+  const git2 = resolveBareExe("git");
+  if (git2 === null) throw new Error("host git: git is not on PATH");
+  return git2;
+}
 function runHostGit(cwd, args, timeout, baseEnv = process.env) {
   const env = hostGitEnv(args, baseEnv);
   const recorded = env.GIT_DIR ? recordedGitDirs.get(env.GIT_DIR) : void 0;
@@ -17814,7 +17857,7 @@ function runHostGit(cwd, args, timeout, baseEnv = process.env) {
     tree = [...tree, ...LANE_SUBMODULE_OVERRIDES.flatMap((kv) => ["-c", kv])];
     if (IGNORE_SUBMODULES_SUBCOMMANDS.has(subcommand)) finalArgs = [...args.slice(0, at + 1), "--ignore-submodules=all", ...args.slice(at + 1)];
   }
-  return execFileSync5("git", [...hostGitHardeningArgs(), ...tree, ...finalArgs], { cwd, env, encoding: "utf-8", stdio: "pipe", windowsHide: true, timeout });
+  return execFileSync5(hostGitExe(), [...hostGitHardeningArgs(), ...tree, ...finalArgs], { cwd, env, encoding: "utf-8", stdio: "pipe", windowsHide: true, timeout });
 }
 function git(repoRoot, args, cwd = repoRoot) {
   return runHostGit(cwd, args).trim();
@@ -17863,7 +17906,7 @@ function recordWorktreeGitLinks(wtPath, links) {
     throw new Error(`sandbox-escaped: other git links are already recorded for ${wtPath}; the record is never replaced`);
   }
   const args = ["--git-dir", links.adminDir, "--work-tree", wtPath];
-  const format = execFileSync5("git", [...hostGitHardeningArgs(), ...args, "rev-parse", "--show-object-format"], { cwd: wtPath, env: hostGitEnv(args), encoding: "utf-8", stdio: "pipe", windowsHide: true }).trim();
+  const format = execFileSync5(hostGitExe(), [...hostGitHardeningArgs(), ...args, "rev-parse", "--show-object-format"], { cwd: wtPath, env: hostGitEnv(args), encoding: "utf-8", stdio: "pipe", windowsHide: true }).trim();
   const emptyTree = EMPTY_TREE[format];
   if (!emptyTree) throw new Error(`host git: unknown object format ${JSON.stringify(format)} in ${wtPath}`);
   recordedGitDirs.set(resolve13(links.adminDir), { wtPath, links, emptyTree });
@@ -18625,6 +18668,7 @@ var emptyHooksDir, EXEC_KEY_OVERRIDES, emptyAttributesFile, WORK_TREE_SUBCOMMAND
 var init_git_worktree = __esm({
   "src/team/git-worktree.ts"() {
     "use strict";
+    init_windows_search();
     init_fs_utils();
     init_worktree_cleanup_safety();
     init_tmux_session();
@@ -20684,13 +20728,6 @@ var init_guard = __esm({
   }
 });
 
-// src/utils/windows-search.ts
-var init_windows_search = __esm({
-  "src/utils/windows-search.ts"() {
-    "use strict";
-  }
-});
-
 // src/ship/exec.ts
 import { spawnSync as spawnSync6 } from "child_process";
 var TRUSTED_READ_ENV;
@@ -20821,6 +20858,7 @@ var init_sandbox = __esm({
     init_copilot_session_env();
     init_sdk_policy();
     init_jsonc();
+    init_windows_search();
     DEFAULT_SANDBOX_SETTINGS = Object.freeze({
       enabled: true,
       reviewUnsandboxed: "no-shell",
@@ -20880,7 +20918,7 @@ var init_version = __esm({
 });
 
 // src/smoke/replay/redact.ts
-function userHomePatterns(win, pct, posix, posixFlags) {
+function userHomePatterns(win, pct, posix2, posixFlags) {
   return [
     // The separator spelling is captured once, so `\n` after an escaped `\\` is not taken for a tail separator.
     // `\` doubles per JSON level, so any run of backslashes is a separator. The one after `Users` may be either
@@ -20889,7 +20927,7 @@ function userHomePatterns(win, pct, posix, posixFlags) {
     // Percent-encoded (`file:///c%3A/Users/...`, `C%3A%5CUsers%5C...`, `%2Fhome%2Fname`).
     new RegExp(String.raw`(?<head>(?:\b[A-Za-z]%3A${PCT_SEP}Users|%2F(?:home|Users))${PCT_SEP}(?!<user>)${pct})(?:${PCT_SEP}${PCT_SEG})*`, "gi"),
     // POSIX, Git Bash (`/c/Users/...`) and WSL (`/mnt/c/Users/...`).
-    new RegExp(String.raw`(?<head>(?<![\w.$}-])\/(?:home|Users|(?:mnt\/)?[A-Za-z]\/Users)\/(?!<user>)${posix})(?:\/${POSIX_SEG})*`, posixFlags)
+    new RegExp(String.raw`(?<head>(?<![\w.$}-])\/(?:home|Users|(?:mnt\/)?[A-Za-z]\/Users)\/(?!<user>)${posix2})(?:\/${POSIX_SEG})*`, posixFlags)
   ];
 }
 function knownUserHomePatterns(user) {
@@ -22549,7 +22587,7 @@ var init_handler = __esm({
 });
 
 // src/smoke/replay/run.ts
-import { cpSync, existsSync as existsSync40, readdirSync as readdirSync16, readFileSync as readFileSync28, rmSync as rmSync6, statSync as statSync7 } from "fs";
+import { cpSync, existsSync as existsSync40, readdirSync as readdirSync16, readFileSync as readFileSync28, rmSync as rmSync6, statSync as statSync8 } from "fs";
 import { join as join49, relative as relative12, resolve as resolve17 } from "path";
 var init_run = __esm({
   "src/smoke/replay/run.ts"() {

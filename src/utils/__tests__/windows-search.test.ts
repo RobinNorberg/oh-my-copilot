@@ -15,6 +15,11 @@ const VARIABLE = 'NoDefaultCurrentDirectoryInExePath';
 const isWin = process.platform === 'win32';
 const WIN_REASON = 'the current-directory executable search exists only on Windows';
 
+/** libuv honours the variable for no-shell spawns only from 1.48 (Node 22); older Node relies on resolveBareExe(). */
+const uvHonoursVariable = (() => {
+  const [major, minor] = (process.versions.uv ?? '0.0').split('.').map(Number);
+  return major > 1 || (major === 1 && minor >= 48);
+})();
 const isVariable = (key: string) => key.toUpperCase() === VARIABLE.toUpperCase();
 /** The env minus every case variant of the variable: Claude Code's shell sets it, which would make these tests pass vacuously. */
 function withoutVariable(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -64,7 +69,7 @@ describe(`hardenWindowsExeSearch / childEnv, real processes (skipped off win32: 
     return JSON.parse(res.stdout);
   }
 
-  it.skipIf(!isWin)('(a) a child that hardens does not run an exe planted in its cwd', () => {
+  it.skipIf(!isWin || !uvHonoursVariable)('(a) a child that hardens does not run an exe planted in its cwd', () => {
     expect(probeChild(false).ran).toBe(true); // red without the call: the plant runs
     expect(probeChild(true)).toEqual({ ran: false, code: 'ENOENT' });
   });
@@ -90,7 +95,7 @@ describe(`hardenWindowsExeSearch / childEnv, real processes (skipped off win32: 
     expect(process.env[VARIABLE]).toBe('1');
   });
 
-  it.skipIf(!isWin)('the copilot-run host deps harden the host process before any job spawns', () => {
+  it.skipIf(!isWin || !uvHonoursVariable)('the copilot-run host deps harden the host process before any job spawns', () => {
     plantExe();
     expect(probeHere().status).toBe(0); // red: an unhardened host runs the plant
     defaultCopilotRunDeps();

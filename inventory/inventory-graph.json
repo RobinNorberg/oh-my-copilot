@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "6ab381df1c86f1442e1a410e1679039b761c98cd",
-    "sourceSha256": "005e589396e03c189f610b26679e3aceadf9dcb1e1d6be900ac2c8205c18848f",
+    "head": "9e5266fccd98697e373e1c8da7ad127c98f152e2",
+    "sourceSha256": "90aec36b870fb534602c51aa020f980ee7a6fdd96efeb26e957dae60c47d7628",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "6ab381df1c86f1442e1a410e1679039b761c98cd",
-  "sourceSha256": "005e589396e03c189f610b26679e3aceadf9dcb1e1d6be900ac2c8205c18848f",
+  "head": "9e5266fccd98697e373e1c8da7ad127c98f152e2",
+  "sourceSha256": "90aec36b870fb534602c51aa020f980ee7a6fdd96efeb26e957dae60c47d7628",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1943,
-      "total": 1967
+      "srcFiles": 1944,
+      "total": 1968
     },
     "generated": {
-      "distFiles": 7168,
+      "distFiles": 7172,
       "bridgeFiles": 9,
-      "total": 7177
+      "total": 7181
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -6568,6 +6568,10 @@
       "dist/ship/__tests__/exec-env.test.d.ts.map",
       "dist/ship/__tests__/exec-env.test.js",
       "dist/ship/__tests__/exec-env.test.js.map",
+      "dist/ship/__tests__/exec-plant.test.d.ts",
+      "dist/ship/__tests__/exec-plant.test.d.ts.map",
+      "dist/ship/__tests__/exec-plant.test.js",
+      "dist/ship/__tests__/exec-plant.test.js.map",
       "dist/ship/__tests__/gates.test.d.ts",
       "dist/ship/__tests__/gates.test.d.ts.map",
       "dist/ship/__tests__/gates.test.js",
@@ -37747,6 +37751,26 @@
         "path": "dist/ship/__tests__/exec-env.test.js.map"
       },
       {
+        "id": "dist/ship/__tests__/exec-plant.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/exec-plant.test.d.ts"
+      },
+      {
+        "id": "dist/ship/__tests__/exec-plant.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/exec-plant.test.d.ts.map"
+      },
+      {
+        "id": "dist/ship/__tests__/exec-plant.test.js",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/exec-plant.test.js"
+      },
+      {
+        "id": "dist/ship/__tests__/exec-plant.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/exec-plant.test.js.map"
+      },
+      {
         "id": "dist/ship/__tests__/gates.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/ship/__tests__/gates.test.d.ts"
@@ -55455,6 +55479,11 @@
         "id": "src/ship/__tests__/exec-env.test.ts",
         "kind": "src",
         "path": "src/ship/__tests__/exec-env.test.ts"
+      },
+      {
+        "id": "src/ship/__tests__/exec-plant.test.ts",
+        "kind": "src",
+        "path": "src/ship/__tests__/exec-plant.test.ts"
       },
       {
         "id": "src/ship/__tests__/fixtures/checks-pr233-green.json",
@@ -76091,6 +76120,11 @@
       {
         "from": "src/copilot-run/sandbox.ts",
         "to": "src/utils/jsonc.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/sandbox.ts",
+        "to": "src/utils/windows-search.ts",
         "kind": "imports"
       },
       {
@@ -101869,6 +101903,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/ship/__tests__/exec-plant.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/exec-plant.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/exec-plant.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/exec-plant.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/exec-plant.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/exec-plant.test.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/ship/__tests__/gates.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -109594,6 +109658,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/team/git-worktree.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/team/governance.ts",
         "to": "src/team/types.ts",
         "kind": "imports"
@@ -115079,6 +115148,16 @@
         "kind": "imports"
       },
       {
+        "from": "src/utils/windows-search.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/windows-search.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
         "from": "src/workflow/__tests__/alias-resolver.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -117190,12 +117269,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9864,
-      "edgeCount": 11822,
-      "importEdgeCount": 9701,
+      "nodeCount": 9869,
+      "edgeCount": 11832,
+      "importEdgeCount": 9711,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "79dedb5a1ddfbae70e2c3768271571e78da4dff091f9efab7c53e56829fa2956",
-  "manifestSha256": "62be8d7ebb5a2925402fb557da35784ae1180a59e96997d5d96a9f199dc6794b"
+  "inventorySha256": "11d679156a89f5460e735303cd6ea00188f7417b18d3622bba6acc6e0f9f0bdf",
+  "manifestSha256": "8f26fcb2a2085084f0c05031210bdadc6d176130a718dddb75993098798d3b41"
 }
