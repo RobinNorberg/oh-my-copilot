@@ -46,7 +46,7 @@ jobs:
   # scripts/ci/duration-sequencer.mjs with .github/ci/test-durations.json).
   # Each shard prints its own FAIL lines and uploads a blob report for Test.
   test-shards:
-    name: Test shard ${{ matrix.shard }}/4
+    name: Test shard ${{ matrix.shard }} of 4
     if: github.event_name != 'push' || github.ref_type != 'tag'
     runs-on: ubuntu-latest
     strategy:
@@ -75,6 +75,8 @@ jobs:
           path: ${{ runner.temp }}/vitest-reports/blob-${{ matrix.shard }}.json
           if-no-files-found: error
           retention-days: 3
+          # `gh run rerun --failed` of one shard re-uploads under the same name.
+          overwrite: true
 
   # The required `Test` check: merges the shard reports so its log carries
   # every FAIL line (parseFailingTests), and fails when any shard did not
@@ -110,7 +112,7 @@ jobs:
         run: |
           status=0
           blobs=$(find "$RUNNER_TEMP/vitest-reports" -name 'blob-*.json' | wc -l)
-          npx vitest --merge-reports "$RUNNER_TEMP/vitest-reports" --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/vitest-report/vitest-report.json" || status=$?
+          npx vitest --merge-reports "$RUNNER_TEMP/vitest-reports" --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/vitest-report/vitest-report.json" --reporter=./scripts/ci/durations-reporter.mjs --outputFile.durations="$RUNNER_TEMP/vitest-report/test-durations.json" || status=$?
           if [ "$SHARDS_RESULT" != "success" ]; then
             echo "::error title=Test::test shards: $SHARDS_RESULT"
             status=1
@@ -121,13 +123,16 @@ jobs:
           fi
           exit $status
 
-      # Feeds scripts/ci/update-test-durations.mjs when the shard balance drifts.
+      # test-durations.json feeds scripts/ci/update-test-durations.mjs when the
+      # shard balance drifts.
       - name: Upload merged report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: vitest-report
-          path: ${{ runner.temp }}/vitest-report/vitest-report.json
+          path: |
+            ${{ runner.temp }}/vitest-report/vitest-report.json
+            ${{ runner.temp }}/vitest-report/test-durations.json
           if-no-files-found: ignore
           retention-days: 14
 
@@ -165,7 +170,7 @@ jobs:
       - name: Run Windows path-handling tests
         shell: bash
         run: |
-          mapfile -t files < <(grep -v '^[[:space:]]*\(#\|$\)' .github/ci/windows-path-suite.txt | tr -d '\r')
+          mapfile -t files < <(grep -v '^[[:space:]]*\(#\|$\)' .github/ci/windows-path-suite.txt | sed 's/[[:space:]]*$//')
           test "${#files[@]}" -gt 0
           npx vitest run --fileParallelism=false "${files[@]}"
 

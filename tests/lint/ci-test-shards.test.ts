@@ -1,17 +1,21 @@
 /**
  * Pins CI's sharded Linux Test: the duration-balanced split in
- * scripts/ci/duration-sequencer.mjs, the duration refresh in
+ * scripts/ci/duration-sequencer.mjs, the durations report from
+ * scripts/ci/durations-reporter.mjs, the refresh in
  * scripts/ci/update-test-durations.mjs, the committed duration data and the
  * Windows path-suite list the workflow reads.
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "fs";
+import { spawnSync } from "child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { describe, expect, it } from "vitest";
-import { assignShards, DURATIONS_PATH, readDurations } from "../../scripts/ci/duration-sequencer.mjs";
+import DurationSequencer, { assignShards, DURATIONS_PATH, readDurations } from "../../scripts/ci/duration-sequencer.mjs";
+import DurationsReporter from "../../scripts/ci/durations-reporter.mjs";
 import { durationsFromReports } from "../../scripts/ci/update-test-durations.mjs";
 
 const REPO_ROOT = join(import.meta.dirname, "../..");
+const UPDATER = join(REPO_ROOT, "scripts/ci/update-test-durations.mjs");
 
 describe("duration-balanced test shards", () => {
   it("puts every file in exactly one shard, longest first onto the lightest shard", () => {
@@ -39,6 +43,28 @@ describe("duration-balanced test shards", () => {
     }
   });
 
+  it("shards vitest specs disjointly and deterministically, unmeasured files included", async () => {
+    const root = mkdtempSync(join(tmpdir(), "omg-shard-"));
+    try {
+      mkdirSync(join(root, ".github/ci"), { recursive: true });
+      const durations = { "a.test.ts": 90, "b.test.ts": 70, "c.test.ts": 50, "d.test.ts": 30, "e.test.ts": 20, "f.test.ts": 10 };
+      writeFileSync(join(root, DURATIONS_PATH), JSON.stringify(durations));
+      const specs = [...Object.keys(durations), "new.test.ts"].map((file) => ({ moduleId: join(root, file) }));
+      const run = (index: number, input: typeof specs) =>
+        new DurationSequencer({ config: { root, shard: { index, count: 4 } } } as never).shard(input as never);
+      const shards = await Promise.all([1, 2, 3, 4].map((index) => run(index, specs)));
+      const ids = shards.flat().map((spec) => spec.moduleId);
+      expect(ids).toHaveLength(specs.length);
+      expect(new Set(ids)).toEqual(new Set(specs.map((spec) => spec.moduleId)));
+      for (const shard of shards) expect(shard.length).toBeGreaterThan(0);
+      expect(await Promise.all([1, 2, 3, 4].map((index) => run(index, [...specs].reverse())))).toEqual(
+        shards.map((shard) => [...shard].reverse()),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("balances the committed suite into 4 shards within 1.3x", () => {
     const durations = readDurations(REPO_ROOT);
     expect(durations, `${DURATIONS_PATH} must parse`).not.toBeNull();
@@ -48,22 +74,56 @@ describe("duration-balanced test shards", () => {
 });
 
 describe("update-test-durations", () => {
-  it("takes the median per file across reports, relative to the root", () => {
-    const root = join(tmpdir(), "repo");
-    const report = (ms: number) => ({
-      testResults: [
-        { name: join(root, "src", "a.test.ts"), startTime: 1000, endTime: 1000 + ms },
-        { name: "tests/b.test.ts", startTime: 0, endTime: 7 },
-      ],
-    });
-    expect(durationsFromReports([report(10), report(40), report(20)], root)).toEqual({
+  it("takes the median per file across reports and drops paths outside the repo", () => {
+    const report = (ms: number) => ({ "src\\a.test.ts": ms, "tests/b.test.ts": 7, "../x.test.ts": 1, "/abs.test.ts": 1, "c.test.ts": -1 });
+    expect(durationsFromReports([report(10), report(40), report(20)])).toEqual({
       "src/a.test.ts": 20,
       "tests/b.test.ts": 7,
     });
   });
 
-  it("rejects a file that is not a vitest JSON report", () => {
-    expect(() => durationsFromReports([{}], REPO_ROOT)).toThrow(/testResults/);
+  it("rejects a file that is not a durations report", () => {
+    expect(() => durationsFromReports([[]])).toThrow(/durations report/);
+    expect(() => durationsFromReports([null])).toThrow(/durations report/);
+  });
+
+  it.each([["--root"], ["--out"], ["report.json", "--out"]])("prints the usage for %s without a value", (...args) => {
+    const result = spawnSync(process.execPath, [UPDATER, ...args], { encoding: "utf8" });
+    expect(result.status).toBe(2);
+    expect(result.stderr).toMatch(/^usage: update-test-durations\.mjs/);
+  });
+});
+
+describe("durations reporter", () => {
+  it("writes each module's import plus test ms by repo path to --outputFile.durations", () => {
+    const root = mkdtempSync(join(tmpdir(), "omg-durations-"));
+    try {
+      const reporter = new DurationsReporter();
+      reporter.onInit({ config: { root, outputFile: { durations: "out/test-durations.json" } } } as never);
+      const module = (relativeModuleId: string, collectDuration: number, setupDuration: number, duration: number) =>
+        ({ relativeModuleId, diagnostic: () => ({ collectDuration, setupDuration, duration }) }) as never;
+      reporter.onTestModuleEnd(module("src\\a.test.ts", 100.4, 20, 300));
+      reporter.onTestModuleEnd(module("tests/b.test.ts", 5, 0, 1.2));
+      reporter.onTestRunEnd();
+      expect(JSON.parse(readFileSync(join(root, "out/test-durations.json"), "utf8"))).toEqual({
+        "src/a.test.ts": 420,
+        "tests/b.test.ts": 6,
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("writes nothing without the durations output option", () => {
+    const root = mkdtempSync(join(tmpdir(), "omg-durations-"));
+    try {
+      const reporter = new DurationsReporter();
+      reporter.onInit({ config: { root, outputFile: { json: "report.json" } } } as never);
+      reporter.onTestRunEnd();
+      expect(existsSync(join(root, "report.json"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

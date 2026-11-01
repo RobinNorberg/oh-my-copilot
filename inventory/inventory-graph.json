@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "0b536bf5e68fe88f0b65f528ba881209cc85348e",
-    "sourceSha256": "5f4839374466ffb053737790b89864b7af342b137bd8414ec9ab5ee48b07cf5b",
+    "head": "c56ebe815cc20fde03900b2b892455d081708797",
+    "sourceSha256": "07fabcdd9374fe858027b8b32d967a619257ddaaa6410e9168395641e9a63a90",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "0b536bf5e68fe88f0b65f528ba881209cc85348e",
-  "sourceSha256": "5f4839374466ffb053737790b89864b7af342b137bd8414ec9ab5ee48b07cf5b",
+  "head": "c56ebe815cc20fde03900b2b892455d081708797",
+  "sourceSha256": "07fabcdd9374fe858027b8b32d967a619257ddaaa6410e9168395641e9a63a90",
   "counts": {
     "public": {
       "skills": 63,
@@ -849,6 +849,7 @@
       "scripts/ci/check-multirepo-paths.mjs",
       "scripts/ci/check-no-committed-build-artifacts.mjs",
       "scripts/ci/duration-sequencer.mjs",
+      "scripts/ci/durations-reporter.mjs",
       "scripts/ci/multirepo-patterns.yml",
       "scripts/ci/update-test-durations.mjs",
       "scripts/cleanup-orphans.mjs",
@@ -46775,6 +46776,11 @@
         "path": "scripts/ci/duration-sequencer.mjs"
       },
       {
+        "id": "scripts/ci/durations-reporter.mjs",
+        "kind": "script",
+        "path": "scripts/ci/durations-reporter.mjs"
+      },
+      {
         "id": "scripts/ci/multirepo-patterns.yml",
         "kind": "script",
         "path": "scripts/ci/multirepo-patterns.yml"
@@ -59099,6 +59105,16 @@
       {
         "from": "scripts/ci/duration-sequencer.mjs",
         "to": "external:vitest/node",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/durations-reporter.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/durations-reporter.mjs",
+        "to": "external:node:path",
         "kind": "imports"
       },
       {
@@ -117198,6 +117214,11 @@
       },
       {
         "from": "tests/lint/ci-test-shards.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/ci-test-shards.test.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -117219,6 +117240,11 @@
       {
         "from": "tests/lint/ci-test-shards.test.ts",
         "to": "scripts/ci/duration-sequencer.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/ci-test-shards.test.ts",
+        "to": "scripts/ci/durations-reporter.mjs",
         "kind": "imports"
       },
       {
@@ -117818,12 +117844,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9900,
-      "edgeCount": 11907,
-      "importEdgeCount": 9782,
+      "nodeCount": 9901,
+      "edgeCount": 11911,
+      "importEdgeCount": 9786,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "31b24af9b33dbbdbfd099457d89d7b82d0d618c18b660f649f49466ab88851b8",
-  "manifestSha256": "c62b71ccdfc608075f2459df3c4f4c21e896d4468176f727b7246ab80e2f1d46"
+  "inventorySha256": "13777b38f4ee2138522984f874d76652d8e81746c3a4fe84608eacf13da878bf",
+  "manifestSha256": "b9d753ed5056448d3b69e49a2d8713d09d93233deee5246428e8b339de82781a"
 }

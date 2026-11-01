@@ -3,7 +3,8 @@
  * instead of vitest's file-count split, which leaves one shard about twice as
  * long when a few files take minutes. Ordering within a shard (`sort`) is
  * vitest's own. Durations come from `.github/ci/test-durations.json` (repo
- * path to median ms, refreshed with `scripts/ci/update-test-durations.mjs`);
+ * path to median import plus test ms, refreshed with
+ * `scripts/ci/update-test-durations.mjs`);
  * a file without a measurement counts as the median. Without the file the
  * split falls back to vitest's. Stale data only affects balance: every file
  * still lands in exactly one shard.
