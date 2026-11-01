@@ -46,7 +46,8 @@ describe('npm trusted publishing contract', () => {
     });
     it('excludes duplicate tag triggers so only the ci.yml release job publishes', () => {
         expect(extractJob(ci, 'lint-and-typecheck')).toContain(CI_JOB_IF);
-        expect(extractJob(ci, 'test')).toContain(CI_JOB_IF);
+        expect(extractJob(ci, 'test-shards')).toContain(CI_JOB_IF);
+        expect(extractJob(ci, 'test')).toContain("(github.event_name != 'push' || github.ref_type != 'tag')");
         expect(extractJob(ci, 'test-windows')).toContain(CI_JOB_IF);
         expect(extractJob(ci, 'better-sqlite3-node26-ubuntu')).toContain(CI_JOB_IF);
         expect(extractJob(ci, 'better-sqlite3-node26-windows')).toContain(CI_JOB_IF);

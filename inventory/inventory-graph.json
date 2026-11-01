@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "e3b5ed8a0b3995eb077160ae79edba41809797e0",
-    "sourceSha256": "0c335b71f703188a54fea3cac4c048b784473424b2cb9822f547bf891363eb46",
+    "head": "aa23d90cef6dc9668648ecdcd9f113064ebceb56",
+    "sourceSha256": "6579d9b3f0f33aeb20b5a75de4247d5126ea97aedc41aef507b76e8727a7a725",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "e3b5ed8a0b3995eb077160ae79edba41809797e0",
-  "sourceSha256": "0c335b71f703188a54fea3cac4c048b784473424b2cb9822f547bf891363eb46",
+  "head": "aa23d90cef6dc9668648ecdcd9f113064ebceb56",
+  "sourceSha256": "6579d9b3f0f33aeb20b5a75de4247d5126ea97aedc41aef507b76e8727a7a725",
   "counts": {
     "public": {
       "skills": 63,
@@ -848,7 +848,9 @@
       "scripts/build-workflow-stage-prompts.mjs",
       "scripts/ci/check-multirepo-paths.mjs",
       "scripts/ci/check-no-committed-build-artifacts.mjs",
+      "scripts/ci/duration-sequencer.mjs",
       "scripts/ci/multirepo-patterns.yml",
+      "scripts/ci/update-test-durations.mjs",
       "scripts/cleanup-orphans.mjs",
       "scripts/code-simplifier.mjs",
       "scripts/collect-epic-3698-ci-evidence.mjs",
@@ -8831,6 +8833,16 @@
         "id": ".github/actions/deps/action.yml",
         "kind": "other",
         "path": ".github/actions/deps/action.yml"
+      },
+      {
+        "id": ".github/ci/test-durations.json",
+        "kind": "other",
+        "path": ".github/ci/test-durations.json"
+      },
+      {
+        "id": ".github/ci/windows-path-suite.txt",
+        "kind": "other",
+        "path": ".github/ci/windows-path-suite.txt"
       },
       {
         "id": ".github/known-flaky-tests.json",
@@ -46468,6 +46480,11 @@
         "path": "vitest/config"
       },
       {
+        "id": "external:vitest/node",
+        "kind": "external",
+        "path": "vitest/node"
+      },
+      {
         "id": "external:worker_threads",
         "kind": "external",
         "path": "worker_threads"
@@ -46753,9 +46770,19 @@
         "path": "scripts/ci/check-no-committed-build-artifacts.mjs"
       },
       {
+        "id": "scripts/ci/duration-sequencer.mjs",
+        "kind": "script",
+        "path": "scripts/ci/duration-sequencer.mjs"
+      },
+      {
         "id": "scripts/ci/multirepo-patterns.yml",
         "kind": "script",
         "path": "scripts/ci/multirepo-patterns.yml"
+      },
+      {
+        "id": "scripts/ci/update-test-durations.mjs",
+        "kind": "script",
+        "path": "scripts/ci/update-test-durations.mjs"
       },
       {
         "id": "scripts/cleanup-orphans.mjs",
@@ -58083,6 +58110,11 @@
         "path": "tests/lint/cancel-signal-fixture-ttl.test.ts"
       },
       {
+        "id": "tests/lint/ci-test-shards.test.ts",
+        "kind": "other",
+        "path": "tests/lint/ci-test-shards.test.ts"
+      },
+      {
         "id": "tests/lint/copilot-smoke-ci-workflow.test.ts",
         "kind": "other",
         "path": "tests/lint/copilot-smoke-ci-workflow.test.ts"
@@ -59052,6 +59084,41 @@
       {
         "from": "scripts/ci/check-no-committed-build-artifacts.mjs",
         "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/duration-sequencer.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/duration-sequencer.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/duration-sequencer.mjs",
+        "to": "external:vitest/node",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/update-test-durations.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/update-test-durations.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/update-test-durations.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/update-test-durations.mjs",
+        "to": "scripts/ci/duration-sequencer.mjs",
         "kind": "imports"
       },
       {
@@ -117130,6 +117197,36 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/ci-test-shards.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/ci-test-shards.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/ci-test-shards.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/ci-test-shards.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/ci-test-shards.test.ts",
+        "to": "scripts/ci/duration-sequencer.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/ci-test-shards.test.ts",
+        "to": "scripts/ci/update-test-durations.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/copilot-smoke-ci-workflow.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -117701,6 +117798,11 @@
       },
       {
         "from": "vitest.config.ts",
+        "to": "scripts/ci/duration-sequencer.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "vitest.config.ts",
         "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
@@ -117716,12 +117818,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9894,
-      "edgeCount": 11893,
-      "importEdgeCount": 9768,
+      "nodeCount": 9900,
+      "edgeCount": 11907,
+      "importEdgeCount": 9782,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "b9b8913a1ca12e87404672eeaf23e0b3b9ad239f18a9990229935583927b244b",
-  "manifestSha256": "22b3694cd3f938f0eef5c4e2f3dda897d50acd62cc365385d51641b35a5ce376"
+  "inventorySha256": "31b24af9b33dbbdbfd099457d89d7b82d0d618c18b660f649f49466ab88851b8",
+  "manifestSha256": "da6f31bdbb1c19479c3980ad9f4fc9920d304bcebe9d1902ac4146ec80e6f841"
 }

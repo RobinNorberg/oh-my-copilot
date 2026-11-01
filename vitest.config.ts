@@ -2,6 +2,7 @@ import { availableParallelism } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import { IS_WIN, TIMING_SCALE } from './src/__tests__/helpers/platform.js';
+import DurationSequencer from './scripts/ci/duration-sequencer.mjs';
 
 export default defineConfig({
   test: {
@@ -17,6 +18,9 @@ export default defineConfig({
       hookTimeout: 10000 * TIMING_SCALE,
       maxWorkers: Math.min(16, Math.max(1, availableParallelism() - 1)),
     } : {}),
+    // CI shards (`--shard=<i>/<n>`) split by measured file duration; the
+    // order inside a run stays vitest's own.
+    sequence: { sequencer: DurationSequencer },
     setupFiles: ['src/__tests__/setup/clear-copilot-home.ts', 'src/__tests__/setup/stub-skill-list-probe.ts'],
     globalSetup: ['src/__tests__/setup/global-state-guard.ts'],
     // Test-only seams (for example the conditional-clear replacement hooks in

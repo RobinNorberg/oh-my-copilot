@@ -42,10 +42,17 @@ jobs:
       - name: Lint
         run: npm run lint --if-present
 
-  test:
-    name: Test
+  # Four shards balanced by measured file duration (vitest.config.ts uses
+  # scripts/ci/duration-sequencer.mjs with .github/ci/test-durations.json).
+  # Each shard prints its own FAIL lines and uploads a blob report for Test.
+  test-shards:
+    name: Test shard ${{ matrix.shard }}/4
     if: github.event_name != 'push' || github.ref_type != 'tag'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -58,7 +65,71 @@ jobs:
           node-version: '20'
 
       - name: Run functional tests
-        run: npm test -- --run
+        run: npm test -- --run --shard=${{ matrix.shard }}/4 --reporter=default --reporter=blob --outputFile.blob="$RUNNER_TEMP/vitest-reports/blob-${{ matrix.shard }}.json"
+
+      - name: Upload blob report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-blob-${{ matrix.shard }}
+          path: ${{ runner.temp }}/vitest-reports/blob-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 3
+
+  # The required `Test` check: merges the shard reports so its log carries
+  # every FAIL line (parseFailingTests), and fails when any shard did not
+  # succeed or a blob is missing. `always()` keeps a failed or cancelled
+  # shard from turning Test into a passing SKIPPED check.
+  test:
+    name: Test
+    if: ${{ always() && (github.event_name != 'push' || github.ref_type != 'tag') }}
+    needs: [test-shards]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        uses: ./.github/actions/deps
+        with:
+          node-version: '20'
+
+      - name: Download blob reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: vitest-blob-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/vitest-reports
+
+      # One step on purpose: the FAIL lines and the failing exit share a step,
+      # so a known-flaky shard failure stays attributable (logBlockers).
+      - name: Merge shard reports
+        env:
+          SHARDS_RESULT: ${{ needs.test-shards.result }}
+        run: |
+          status=0
+          blobs=$(find "$RUNNER_TEMP/vitest-reports" -name 'blob-*.json' | wc -l)
+          npx vitest --merge-reports "$RUNNER_TEMP/vitest-reports" --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/vitest-report/vitest-report.json" || status=$?
+          if [ "$SHARDS_RESULT" != "success" ]; then
+            echo "::error title=Test::test shards: $SHARDS_RESULT"
+            status=1
+          fi
+          if [ "$blobs" -ne 4 ]; then
+            echo "::error title=Test::expected 4 shard blob reports, found $blobs"
+            status=1
+          fi
+          exit $status
+
+      # Feeds scripts/ci/update-test-durations.mjs when the shard balance drifts.
+      - name: Upload merged report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-report
+          path: ${{ runner.temp }}/vitest-report/vitest-report.json
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Run subagent-lock performance test
         run: npm exec vitest -- run tests/perf/subagent-lock.bench.ts --fileParallelism=false --maxWorkers=1
@@ -87,29 +158,16 @@ jobs:
       # the full `npm test` suite here is not yet possible: it has pre-existing
       # platform-specific failures on Windows (e.g. python-repl sandbox, lsp
       # devcontainer, session-end path interpolation) that are out of scope for
-      # this gate. Keep this list in sync with the path-handling test files.
+      # this gate. The file list is .github/ci/windows-path-suite.txt; keep it
+      # in sync with the path-handling test files.
       # run.cjs supervisor/stdio contract tests (#3920) must run here: leaked
       # protocol handles and process-tree reap are Windows-hosted failures.
       - name: Run Windows path-handling tests
-        run: >-
-          npx vitest run --fileParallelism=false
-          src/utils/__tests__/encode-project-path.test.ts
-          src/__tests__/resolve-transcript-path.test.ts
-          src/__tests__/session-history-search.test.ts
-          src/cli/__tests__/session-search.test.ts
-          src/lib/__tests__/worktree-paths.test.ts
-          src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts
-          src/lib/__tests__/worktree-paths-foreign-root.test.ts
-          src/lib/__tests__/worktree-paths-issue-4254-win32.test.ts
-          src/lib/__tests__/worktree-paths-nested-under-gitless-root.test.ts
-          src/tools/__tests__/wiki-tools-git-probe-failclosed.test.ts
-          src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts
-          src/hooks/project-memory/__tests__/hot-path-tracker.test.ts
-          src/__tests__/windows-prompt-hook-runner.test.ts
-          src/__tests__/run-cjs-generic-timeout.test.ts
-          src/__tests__/run-cjs-windows-stdio-contract.test.ts
-          src/installer/__tests__/claude-md-transaction.test.ts
-          src/team/__tests__/cli-detection.windows.integration.test.ts
+        shell: bash
+        run: |
+          mapfile -t files < <(grep -v '^[[:space:]]*\(#\|$\)' .github/ci/windows-path-suite.txt | tr -d '\r')
+          test "${#files[@]}" -gt 0
+          npx vitest run --fileParallelism=false "${files[@]}"
 
   # Unrolled matrix: each job's literal `name:` is the check name `omg ship`
   # requires, so a job skipped by a job-level `if:` still reports under it.

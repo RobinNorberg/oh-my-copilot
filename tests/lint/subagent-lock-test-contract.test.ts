@@ -175,8 +175,29 @@ describe("subagent-lock test contract", () => {
   it("keeps CI and release as ordered, blocking functional and serialized perf gates", () => {
     const ci = readRepoFile(".github/workflows/ci.yml");
 
-    assertWorkflowCommands(ci, "test");
     assertWorkflowCommands(ci, "release", true);
+
+    // CI shards the functional run; the Test summary job merges the shard
+    // reports, then runs the one serialized perf gate.
+    const shardSteps = extractSteps(extractJob(ci, "test-shards"));
+    const functional = shardSteps.filter((step) => step.run?.includes("npm test -- --run"));
+    expect(functional, "test-shards must have one functional package step").toHaveLength(1);
+    expect(functional[0].run).toMatch(/^npm test -- --run --shard=\$\{\{ matrix\.shard \}\}\/4 /);
+    expect(shardSteps.some((step) => step.run?.includes(PERF_TARGET))).toBe(false);
+    const summary = extractJob(ci, "test");
+    expect(summary).toMatch(/^    name: Test$/m);
+    expect(summary).toMatch(/^    if: \$\{\{ always\(\) && /m);
+    expect(summary).toMatch(/^    needs: \[test-shards\]$/m);
+    const summarySteps = extractSteps(summary);
+    const merge = summarySteps.findIndex((step) => step.raw.includes("npx vitest --merge-reports"));
+    const perf = summarySteps.filter((step) => step.run?.includes(PERF_TARGET));
+    expect(merge, "Test must merge the shard reports").toBeGreaterThanOrEqual(0);
+    expect(perf, "Test must have one serialized perf step").toHaveLength(1);
+    expect(perf[0].run).toBe(PERF_COMMAND);
+    expect(summarySteps.indexOf(perf[0])).toBeGreaterThan(merge);
+    for (const step of [...functional, ...perf, summarySteps[merge]]) {
+      expect(step.raw, "test steps must block failures").not.toMatch(/^        continue-on-error:\s*true\s*$/m);
+    }
     // Build runs beside Test (build once); CI Gate is the job that blocks on both.
     expect(extractJob(ci, "build")).not.toMatch(/^    needs:/m);
     expect(extractJob(ci, "ci-gate")).toMatch(/^      - test$/m);
