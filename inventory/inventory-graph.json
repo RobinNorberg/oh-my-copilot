@@ -5,22 +5,22 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "712db3d6b9dcad217cac0a35ce40b8d791da0bc4",
-    "sourceSha256": "39b8a6b58cdda171e7c4f0cd4c4dc718833c2e949ee813cc08cee85c4708694c",
+    "head": "0b885b0827f75298382b97cea8c0a102d691d7b1",
+    "sourceSha256": "e6d7728cb9f3e55f70bdfd2cdcef18b63f23011320a8b4447f9cd6eff011bf3d",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "712db3d6b9dcad217cac0a35ce40b8d791da0bc4",
-  "sourceSha256": "39b8a6b58cdda171e7c4f0cd4c4dc718833c2e949ee813cc08cee85c4708694c",
+  "head": "0b885b0827f75298382b97cea8c0a102d691d7b1",
+  "sourceSha256": "e6d7728cb9f3e55f70bdfd2cdcef18b63f23011320a8b4447f9cd6eff011bf3d",
   "counts": {
     "public": {
       "skills": 63,
       "commands": 21,
-      "workflows": 9,
+      "workflows": 8,
       "agents": 20,
-      "total": 113
+      "total": 112
     },
     "internal": {
       "hookFiles": 346,
@@ -28,23 +28,23 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1939,
-      "total": 1963
+      "srcFiles": 1949,
+      "total": 1973
     },
     "generated": {
-      "distFiles": 7152,
+      "distFiles": 7188,
       "bridgeFiles": 9,
-      "total": 7161
+      "total": 7197
     },
     "prompt": {
-      "promptLikeFiles": 65
+      "promptLikeFiles": 66
     },
     "skills": 63,
     "commands": 21,
     "hookFiles": 346,
-    "workflows": 9,
+    "workflows": 8,
     "agentDefinitions": 18,
-    "promptLikeFiles": 65
+    "promptLikeFiles": 66
   },
   "public": {
     "skills": [
@@ -165,7 +165,6 @@
       ".github/workflows/pr-check.yml",
       ".github/workflows/release.yml",
       ".github/workflows/stale.yml",
-      ".github/workflows/upgrade-test.yml",
       ".github/workflows/upstream-drift.yml"
     ]
   },
@@ -772,6 +771,7 @@
       "docs/CLAUDE.md",
       "docs/design/issue-3704-prompt-ssot/README.md",
       "docs/design/issue-3704-prompt-ssot/measurements.json",
+      "docs/field-testing-first-prompt.md",
       "generated/prompt-ssot/coordinator.md",
       "generated/prompt-ssot/role-executor.md",
       "generated/prompt-ssot/role-planner.md",
@@ -906,6 +906,7 @@
       "scripts/lib/read-budget-preflight.mjs",
       "scripts/lib/run-reaper.mjs",
       "scripts/lib/skill-entitlements.mjs",
+      "scripts/lib/skill-slash.mjs",
       "scripts/lib/state-lock.mjs",
       "scripts/lib/state-root.cjs",
       "scripts/lib/state-root.mjs",
@@ -913,6 +914,8 @@
       "scripts/lib/tool-input-paths.mjs",
       "scripts/lib/utf8-bom.d.mts",
       "scripts/lib/utf8-bom.mjs",
+      "scripts/lib/windows-search.cjs",
+      "scripts/lib/windows-search.mjs",
       "scripts/lib/workflow-profile-runtime.mjs",
       "scripts/lib/workflow-stage-prompts.mjs",
       "scripts/measure-prompt-ssot.ts",
@@ -948,6 +951,7 @@
       "scripts/session-summary.mjs",
       "scripts/setup-claude-md.mjs",
       "scripts/setup-claude-md.sh",
+      "scripts/setup-config.mjs",
       "scripts/setup-copilot-instructions.sh",
       "scripts/setup-init.mjs",
       "scripts/setup-maintenance.mjs",
@@ -2101,6 +2105,10 @@
       "dist/__tests__/setup-claude-md-script.test.d.ts.map",
       "dist/__tests__/setup-claude-md-script.test.js",
       "dist/__tests__/setup-claude-md-script.test.js.map",
+      "dist/__tests__/setup-config-script.test.d.ts",
+      "dist/__tests__/setup-config-script.test.d.ts.map",
+      "dist/__tests__/setup-config-script.test.js",
+      "dist/__tests__/setup-config-script.test.js.map",
       "dist/__tests__/setup-contracts-regression.test.d.ts",
       "dist/__tests__/setup-contracts-regression.test.d.ts.map",
       "dist/__tests__/setup-contracts-regression.test.js",
@@ -2129,6 +2137,10 @@
       "dist/__tests__/setup/global-state-guard.test.d.ts.map",
       "dist/__tests__/setup/global-state-guard.test.js",
       "dist/__tests__/setup/global-state-guard.test.js.map",
+      "dist/__tests__/setup/stub-skill-list-probe.d.ts",
+      "dist/__tests__/setup/stub-skill-list-probe.d.ts.map",
+      "dist/__tests__/setup/stub-skill-list-probe.js",
+      "dist/__tests__/setup/stub-skill-list-probe.js.map",
       "dist/__tests__/shared-memory-concurrency.test.d.ts",
       "dist/__tests__/shared-memory-concurrency.test.d.ts.map",
       "dist/__tests__/shared-memory-concurrency.test.js",
@@ -6557,6 +6569,14 @@
       "dist/shared/types.d.ts.map",
       "dist/shared/types.js",
       "dist/shared/types.js.map",
+      "dist/ship/__tests__/exec-env.test.d.ts",
+      "dist/ship/__tests__/exec-env.test.d.ts.map",
+      "dist/ship/__tests__/exec-env.test.js",
+      "dist/ship/__tests__/exec-env.test.js.map",
+      "dist/ship/__tests__/exec-plant.test.d.ts",
+      "dist/ship/__tests__/exec-plant.test.d.ts.map",
+      "dist/ship/__tests__/exec-plant.test.js",
+      "dist/ship/__tests__/exec-plant.test.js.map",
       "dist/ship/__tests__/gates.test.d.ts",
       "dist/ship/__tests__/gates.test.d.ts.map",
       "dist/ship/__tests__/gates.test.js",
@@ -8009,10 +8029,18 @@
       "dist/utils/__tests__/semver-compare.test.d.ts.map",
       "dist/utils/__tests__/semver-compare.test.js",
       "dist/utils/__tests__/semver-compare.test.js.map",
+      "dist/utils/__tests__/skill-slash.test.d.ts",
+      "dist/utils/__tests__/skill-slash.test.d.ts.map",
+      "dist/utils/__tests__/skill-slash.test.js",
+      "dist/utils/__tests__/skill-slash.test.js.map",
       "dist/utils/__tests__/string-width.test.d.ts",
       "dist/utils/__tests__/string-width.test.d.ts.map",
       "dist/utils/__tests__/string-width.test.js",
       "dist/utils/__tests__/string-width.test.js.map",
+      "dist/utils/__tests__/windows-search.test.d.ts",
+      "dist/utils/__tests__/windows-search.test.d.ts.map",
+      "dist/utils/__tests__/windows-search.test.js",
+      "dist/utils/__tests__/windows-search.test.js.map",
       "dist/utils/cache-occupancy.d.ts",
       "dist/utils/cache-occupancy.d.ts.map",
       "dist/utils/cache-occupancy.js",
@@ -8077,10 +8105,18 @@
       "dist/utils/skill-pipeline.d.ts.map",
       "dist/utils/skill-pipeline.js",
       "dist/utils/skill-pipeline.js.map",
+      "dist/utils/skill-registry.d.ts",
+      "dist/utils/skill-registry.d.ts.map",
+      "dist/utils/skill-registry.js",
+      "dist/utils/skill-registry.js.map",
       "dist/utils/skill-resources.d.ts",
       "dist/utils/skill-resources.d.ts.map",
       "dist/utils/skill-resources.js",
       "dist/utils/skill-resources.js.map",
+      "dist/utils/skill-slash.d.ts",
+      "dist/utils/skill-slash.d.ts.map",
+      "dist/utils/skill-slash.js",
+      "dist/utils/skill-slash.js.map",
       "dist/utils/skininthegamebros-user.d.ts",
       "dist/utils/skininthegamebros-user.d.ts.map",
       "dist/utils/skininthegamebros-user.js",
@@ -8105,6 +8141,10 @@
       "dist/utils/user-skill-compat.d.ts.map",
       "dist/utils/user-skill-compat.js",
       "dist/utils/user-skill-compat.js.map",
+      "dist/utils/windows-search.d.ts",
+      "dist/utils/windows-search.d.ts.map",
+      "dist/utils/windows-search.js",
+      "dist/utils/windows-search.js.map",
       "dist/workflow/__tests__/alias-resolver.test.d.ts",
       "dist/workflow/__tests__/alias-resolver.test.d.ts.map",
       "dist/workflow/__tests__/alias-resolver.test.js",
@@ -8503,7 +8543,6 @@
       ".github/workflows/pr-check.yml",
       ".github/workflows/release.yml",
       ".github/workflows/stale.yml",
-      ".github/workflows/upgrade-test.yml",
       ".github/workflows/upstream-drift.yml"
     ],
     "promptSources": [
@@ -8517,6 +8556,7 @@
       "docs/CLAUDE.md",
       "docs/design/issue-3704-prompt-ssot/README.md",
       "docs/design/issue-3704-prompt-ssot/measurements.json",
+      "docs/field-testing-first-prompt.md",
       "generated/prompt-ssot/coordinator.md",
       "generated/prompt-ssot/role-executor.md",
       "generated/prompt-ssot/role-planner.md",
@@ -8778,9 +8818,19 @@
         "path": ".github/FUNDING.yml"
       },
       {
+        "id": ".github/ISSUE_TEMPLATE/field-report.yml",
+        "kind": "other",
+        "path": ".github/ISSUE_TEMPLATE/field-report.yml"
+      },
+      {
         "id": ".github/SPONSOR_TIERS.md",
         "kind": "other",
         "path": ".github/SPONSOR_TIERS.md"
+      },
+      {
+        "id": ".github/actions/deps/action.yml",
+        "kind": "other",
+        "path": ".github/actions/deps/action.yml"
       },
       {
         "id": ".github/known-flaky-tests.json",
@@ -8836,11 +8886,6 @@
         "id": ".github/workflows/stale.yml",
         "kind": "workflow",
         "path": ".github/workflows/stale.yml"
-      },
-      {
-        "id": ".github/workflows/upgrade-test.yml",
-        "kind": "workflow",
-        "path": ".github/workflows/upgrade-test.yml"
       },
       {
         "id": ".github/workflows/upstream-drift.yml",
@@ -15408,6 +15453,26 @@
         "path": "dist/__tests__/setup-claude-md-script.test.js.map"
       },
       {
+        "id": "dist/__tests__/setup-config-script.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup-config-script.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/setup-config-script.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup-config-script.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/setup-config-script.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup-config-script.test.js"
+      },
+      {
+        "id": "dist/__tests__/setup-config-script.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup-config-script.test.js.map"
+      },
+      {
         "id": "dist/__tests__/setup-contracts-regression.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/setup-contracts-regression.test.d.ts"
@@ -15546,6 +15611,26 @@
         "id": "dist/__tests__/setup/global-state-guard.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/setup/global-state-guard.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/setup/stub-skill-list-probe.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup/stub-skill-list-probe.d.ts"
+      },
+      {
+        "id": "dist/__tests__/setup/stub-skill-list-probe.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup/stub-skill-list-probe.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/setup/stub-skill-list-probe.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup/stub-skill-list-probe.js"
+      },
+      {
+        "id": "dist/__tests__/setup/stub-skill-list-probe.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup/stub-skill-list-probe.js.map"
       },
       {
         "id": "dist/__tests__/shared-memory-concurrency.test.d.ts",
@@ -37688,6 +37773,46 @@
         "path": "dist/shared/types.js.map"
       },
       {
+        "id": "dist/ship/__tests__/exec-env.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/exec-env.test.d.ts"
+      },
+      {
+        "id": "dist/ship/__tests__/exec-env.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/exec-env.test.d.ts.map"
+      },
+      {
+        "id": "dist/ship/__tests__/exec-env.test.js",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/exec-env.test.js"
+      },
+      {
+        "id": "dist/ship/__tests__/exec-env.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/exec-env.test.js.map"
+      },
+      {
+        "id": "dist/ship/__tests__/exec-plant.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/exec-plant.test.d.ts"
+      },
+      {
+        "id": "dist/ship/__tests__/exec-plant.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/exec-plant.test.d.ts.map"
+      },
+      {
+        "id": "dist/ship/__tests__/exec-plant.test.js",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/exec-plant.test.js"
+      },
+      {
+        "id": "dist/ship/__tests__/exec-plant.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/exec-plant.test.js.map"
+      },
+      {
         "id": "dist/ship/__tests__/gates.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/ship/__tests__/gates.test.d.ts"
@@ -44948,6 +45073,26 @@
         "path": "dist/utils/__tests__/semver-compare.test.js.map"
       },
       {
+        "id": "dist/utils/__tests__/skill-slash.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/utils/__tests__/skill-slash.test.d.ts"
+      },
+      {
+        "id": "dist/utils/__tests__/skill-slash.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/__tests__/skill-slash.test.d.ts.map"
+      },
+      {
+        "id": "dist/utils/__tests__/skill-slash.test.js",
+        "kind": "generated-dist",
+        "path": "dist/utils/__tests__/skill-slash.test.js"
+      },
+      {
+        "id": "dist/utils/__tests__/skill-slash.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/__tests__/skill-slash.test.js.map"
+      },
+      {
         "id": "dist/utils/__tests__/string-width.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/utils/__tests__/string-width.test.d.ts"
@@ -44966,6 +45111,26 @@
         "id": "dist/utils/__tests__/string-width.test.js.map",
         "kind": "generated-dist",
         "path": "dist/utils/__tests__/string-width.test.js.map"
+      },
+      {
+        "id": "dist/utils/__tests__/windows-search.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/utils/__tests__/windows-search.test.d.ts"
+      },
+      {
+        "id": "dist/utils/__tests__/windows-search.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/__tests__/windows-search.test.d.ts.map"
+      },
+      {
+        "id": "dist/utils/__tests__/windows-search.test.js",
+        "kind": "generated-dist",
+        "path": "dist/utils/__tests__/windows-search.test.js"
+      },
+      {
+        "id": "dist/utils/__tests__/windows-search.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/__tests__/windows-search.test.js.map"
       },
       {
         "id": "dist/utils/cache-occupancy.d.ts",
@@ -45288,6 +45453,26 @@
         "path": "dist/utils/skill-pipeline.js.map"
       },
       {
+        "id": "dist/utils/skill-registry.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/utils/skill-registry.d.ts"
+      },
+      {
+        "id": "dist/utils/skill-registry.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/skill-registry.d.ts.map"
+      },
+      {
+        "id": "dist/utils/skill-registry.js",
+        "kind": "generated-dist",
+        "path": "dist/utils/skill-registry.js"
+      },
+      {
+        "id": "dist/utils/skill-registry.js.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/skill-registry.js.map"
+      },
+      {
         "id": "dist/utils/skill-resources.d.ts",
         "kind": "generated-dist",
         "path": "dist/utils/skill-resources.d.ts"
@@ -45306,6 +45491,26 @@
         "id": "dist/utils/skill-resources.js.map",
         "kind": "generated-dist",
         "path": "dist/utils/skill-resources.js.map"
+      },
+      {
+        "id": "dist/utils/skill-slash.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/utils/skill-slash.d.ts"
+      },
+      {
+        "id": "dist/utils/skill-slash.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/skill-slash.d.ts.map"
+      },
+      {
+        "id": "dist/utils/skill-slash.js",
+        "kind": "generated-dist",
+        "path": "dist/utils/skill-slash.js"
+      },
+      {
+        "id": "dist/utils/skill-slash.js.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/skill-slash.js.map"
       },
       {
         "id": "dist/utils/skininthegamebros-user.d.ts",
@@ -45426,6 +45631,26 @@
         "id": "dist/utils/user-skill-compat.js.map",
         "kind": "generated-dist",
         "path": "dist/utils/user-skill-compat.js.map"
+      },
+      {
+        "id": "dist/utils/windows-search.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/utils/windows-search.d.ts"
+      },
+      {
+        "id": "dist/utils/windows-search.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/windows-search.d.ts.map"
+      },
+      {
+        "id": "dist/utils/windows-search.js",
+        "kind": "generated-dist",
+        "path": "dist/utils/windows-search.js"
+      },
+      {
+        "id": "dist/utils/windows-search.js.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/windows-search.js.map"
       },
       {
         "id": "dist/workflow/__tests__/alias-resolver.test.d.ts",
@@ -45606,6 +45831,11 @@
         "id": "docs/FEATURES.md",
         "kind": "other",
         "path": "docs/FEATURES.md"
+      },
+      {
+        "id": "docs/FIELD-TESTING.md",
+        "kind": "other",
+        "path": "docs/FIELD-TESTING.md"
       },
       {
         "id": "docs/GETTING-STARTED.md",
@@ -45806,6 +46036,11 @@
         "id": "docs/factory/t6-acceptance/acceptance-comment.md",
         "kind": "other",
         "path": "docs/factory/t6-acceptance/acceptance-comment.md"
+      },
+      {
+        "id": "docs/field-testing-first-prompt.md",
+        "kind": "other",
+        "path": "docs/field-testing-first-prompt.md"
       },
       {
         "id": "docs/geobench.md",
@@ -46808,6 +47043,11 @@
         "path": "scripts/lib/skill-entitlements.mjs"
       },
       {
+        "id": "scripts/lib/skill-slash.mjs",
+        "kind": "script",
+        "path": "scripts/lib/skill-slash.mjs"
+      },
+      {
         "id": "scripts/lib/state-lock.mjs",
         "kind": "script",
         "path": "scripts/lib/state-lock.mjs"
@@ -46841,6 +47081,16 @@
         "id": "scripts/lib/utf8-bom.mjs",
         "kind": "script",
         "path": "scripts/lib/utf8-bom.mjs"
+      },
+      {
+        "id": "scripts/lib/windows-search.cjs",
+        "kind": "script",
+        "path": "scripts/lib/windows-search.cjs"
+      },
+      {
+        "id": "scripts/lib/windows-search.mjs",
+        "kind": "script",
+        "path": "scripts/lib/windows-search.mjs"
       },
       {
         "id": "scripts/lib/workflow-profile-runtime.mjs",
@@ -47016,6 +47266,11 @@
         "id": "scripts/setup-claude-md.sh",
         "kind": "script",
         "path": "scripts/setup-claude-md.sh"
+      },
+      {
+        "id": "scripts/setup-config.mjs",
+        "kind": "script",
+        "path": "scripts/setup-config.mjs"
       },
       {
         "id": "scripts/setup-copilot-instructions.sh",
@@ -49313,6 +49568,11 @@
         "path": "src/__tests__/setup-claude-md-script.test.ts"
       },
       {
+        "id": "src/__tests__/setup-config-script.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/setup-config-script.test.ts"
+      },
+      {
         "id": "src/__tests__/setup-contracts-regression.test.ts",
         "kind": "src",
         "path": "src/__tests__/setup-contracts-regression.test.ts"
@@ -49346,6 +49606,11 @@
         "id": "src/__tests__/setup/global-state-guard.ts",
         "kind": "src",
         "path": "src/__tests__/setup/global-state-guard.ts"
+      },
+      {
+        "id": "src/__tests__/setup/stub-skill-list-probe.ts",
+        "kind": "src",
+        "path": "src/__tests__/setup/stub-skill-list-probe.ts"
       },
       {
         "id": "src/__tests__/shared-memory-concurrency.test.ts",
@@ -55333,6 +55598,16 @@
         "path": "src/shared/types.ts"
       },
       {
+        "id": "src/ship/__tests__/exec-env.test.ts",
+        "kind": "src",
+        "path": "src/ship/__tests__/exec-env.test.ts"
+      },
+      {
+        "id": "src/ship/__tests__/exec-plant.test.ts",
+        "kind": "src",
+        "path": "src/ship/__tests__/exec-plant.test.ts"
+      },
+      {
         "id": "src/ship/__tests__/fixtures/checks-pr233-green.json",
         "kind": "src",
         "path": "src/ship/__tests__/fixtures/checks-pr233-green.json"
@@ -57268,6 +57543,11 @@
         "path": "src/utils/__tests__/encode-project-path.test.ts"
       },
       {
+        "id": "src/utils/__tests__/fixtures/copilot-skill-list.json",
+        "kind": "src",
+        "path": "src/utils/__tests__/fixtures/copilot-skill-list.json"
+      },
+      {
         "id": "src/utils/__tests__/frontmatter.test.ts",
         "kind": "src",
         "path": "src/utils/__tests__/frontmatter.test.ts"
@@ -57293,9 +57573,19 @@
         "path": "src/utils/__tests__/semver-compare.test.ts"
       },
       {
+        "id": "src/utils/__tests__/skill-slash.test.ts",
+        "kind": "src",
+        "path": "src/utils/__tests__/skill-slash.test.ts"
+      },
+      {
         "id": "src/utils/__tests__/string-width.test.ts",
         "kind": "src",
         "path": "src/utils/__tests__/string-width.test.ts"
+      },
+      {
+        "id": "src/utils/__tests__/windows-search.test.ts",
+        "kind": "src",
+        "path": "src/utils/__tests__/windows-search.test.ts"
       },
       {
         "id": "src/utils/cache-occupancy.ts",
@@ -57378,9 +57668,19 @@
         "path": "src/utils/skill-pipeline.ts"
       },
       {
+        "id": "src/utils/skill-registry.ts",
+        "kind": "src",
+        "path": "src/utils/skill-registry.ts"
+      },
+      {
         "id": "src/utils/skill-resources.ts",
         "kind": "src",
         "path": "src/utils/skill-resources.ts"
+      },
+      {
+        "id": "src/utils/skill-slash.ts",
+        "kind": "src",
+        "path": "src/utils/skill-slash.ts"
       },
       {
         "id": "src/utils/skininthegamebros-user.ts",
@@ -57411,6 +57711,11 @@
         "id": "src/utils/user-skill-compat.ts",
         "kind": "src",
         "path": "src/utils/user-skill-compat.ts"
+      },
+      {
+        "id": "src/utils/windows-search.ts",
+        "kind": "src",
+        "path": "src/utils/windows-search.ts"
       },
       {
         "id": "src/workflow/__tests__/alias-resolver.test.ts",
@@ -58235,6 +58540,11 @@
         "kind": "imports"
       },
       {
+        "from": "bin/oh-my-copilot.js",
+        "to": "scripts/lib/windows-search.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "commands/ask.md",
         "to": "src/commands/index.ts",
         "kind": "registers"
@@ -58950,6 +59260,11 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/copilot/dispatch.cjs",
+        "to": "scripts/lib/windows-search.cjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/copilot/notification.mjs",
         "to": "dist/hooks/background-notifications.js",
         "kind": "imports"
@@ -59331,6 +59646,11 @@
       },
       {
         "from": "scripts/keyword-detector.mjs",
+        "to": "scripts/lib/skill-slash.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/keyword-detector.mjs",
         "to": "scripts/lib/state-root.mjs",
         "kind": "imports"
       },
@@ -59472,6 +59792,11 @@
       {
         "from": "scripts/lib/copilot-hook-adapter.cjs",
         "to": "external:worker_threads",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/copilot-hook-adapter.cjs",
+        "to": "scripts/lib/windows-search.cjs",
         "kind": "imports"
       },
       {
@@ -59630,6 +59955,11 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/lib/skill-slash.mjs",
+        "to": "scripts/lib/hook-host.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/lib/state-lock.mjs",
         "to": "external:better-sqlite3",
         "kind": "imports"
@@ -59720,6 +60050,11 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/lib/windows-search.mjs",
+        "to": "scripts/lib/windows-search.cjs",
+        "kind": "exports"
+      },
+      {
         "from": "scripts/lib/workflow-profile-runtime.mjs",
         "to": "external:child_process",
         "kind": "imports"
@@ -59767,6 +60102,11 @@
       {
         "from": "scripts/lib/workflow-profile-runtime.mjs",
         "to": "scripts/lib/workflow-stage-prompts.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/workflow-stage-prompts.mjs",
+        "to": "scripts/lib/skill-slash.mjs",
         "kind": "imports"
       },
       {
@@ -60675,6 +61015,46 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/setup-claude-md.mjs",
+        "to": "scripts/lib/windows-search.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/setup-config.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/setup-config.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/setup-config.mjs",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/setup-config.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/setup-config.mjs",
+        "to": "external:node:process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/setup-config.mjs",
+        "to": "scripts/lib/config-dir.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/setup-config.mjs",
+        "to": "scripts/lib/windows-search.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/setup-init.mjs",
         "to": "dist/hooks/setup/index.js",
         "kind": "imports"
@@ -60745,6 +61125,11 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/setup-progress.mjs",
+        "to": "scripts/lib/windows-search.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/shipyard-audit.mjs",
         "to": "external:node:fs",
         "kind": "imports"
@@ -60752,6 +61137,11 @@
       {
         "from": "scripts/shipyard-audit.mjs",
         "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/shipyard-audit.mjs",
+        "to": "scripts/lib/skill-slash.mjs",
         "kind": "imports"
       },
       {
@@ -60872,6 +61262,11 @@
       {
         "from": "scripts/stale-run-reporter.mjs",
         "to": "scripts/lib/run-reaper.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/stale-run-reporter.mjs",
+        "to": "scripts/lib/skill-slash.mjs",
         "kind": "imports"
       },
       {
@@ -62960,6 +63355,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/doctor-conflicts.test.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/doctor-legacy-config-dir.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -63942,6 +64342,11 @@
       {
         "from": "src/__tests__/hud/cli-diagnostic.test.ts",
         "to": "src/hud/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/cli-diagnostic.test.ts",
+        "to": "src/utils/skill-slash.ts",
         "kind": "imports"
       },
       {
@@ -65972,6 +66377,11 @@
       {
         "from": "src/__tests__/mnemosyne/detector.test.ts",
         "to": "src/hooks/learner/detector.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/mnemosyne/detector.test.ts",
+        "to": "src/utils/skill-slash.ts",
         "kind": "imports"
       },
       {
@@ -68850,6 +69260,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/setup-config-script.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/setup-config-script.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/setup-config-script.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/setup-config-script.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/setup-config-script.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/setup-contracts-regression.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -68977,6 +69412,16 @@
       {
         "from": "src/__tests__/setup/global-state-guard.ts",
         "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/setup/stub-skill-list-probe.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/setup/stub-skill-list-probe.ts",
+        "to": "src/utils/skill-registry.ts",
         "kind": "imports"
       },
       {
@@ -71425,6 +71870,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/__tests__/autoresearch.test.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/__tests__/cli-boot.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -72270,6 +72720,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/autoresearch.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/checkpoint.ts",
         "to": "external:chalk",
         "kind": "imports"
@@ -72475,6 +72930,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/__tests__/factory-init.test.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/factory-listen-port.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -72638,6 +73098,16 @@
         "from": "src/cli/commands/__tests__/intake.test.ts",
         "to": "src/cli/commands/intake.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/intake.test.ts",
+        "to": "src/utils/skill-registry.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/intake.test.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
       },
       {
         "from": "src/cli/commands/__tests__/port-cli.test.ts",
@@ -73220,6 +73690,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/doctor-conflicts.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/doctor-team-routing.ts",
         "to": "src/cli/utils/formatting.ts",
         "kind": "imports"
@@ -73780,6 +74255,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/hooks.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -73887,6 +74367,11 @@
       {
         "from": "src/cli/commands/intake.ts",
         "to": "src/utils/host-detection.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/intake.ts",
+        "to": "src/utils/skill-registry.ts",
         "kind": "imports"
       },
       {
@@ -75795,6 +76280,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/copilot-run/sandbox-session.ts",
         "to": "src/copilot-run/sandbox.ts",
         "kind": "imports"
@@ -75862,6 +76352,11 @@
       {
         "from": "src/copilot-run/sandbox.ts",
         "to": "src/utils/jsonc.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/sandbox.ts",
+        "to": "src/utils/windows-search.ts",
         "kind": "imports"
       },
       {
@@ -76192,6 +76687,16 @@
       {
         "from": "src/factory/__tests__/listener.test.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "src/utils/skill-registry.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "src/utils/skill-slash.ts",
         "kind": "imports"
       },
       {
@@ -78487,6 +78992,16 @@
       {
         "from": "src/factory/listener.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "src/utils/skill-registry.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "src/utils/skill-slash.ts",
         "kind": "imports"
       },
       {
@@ -81498,6 +82013,11 @@
         "from": "src/features/continuation-enforcement.ts",
         "to": "src/shared/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/features/continuation-enforcement.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
       },
       {
         "from": "src/features/delegation-categories/__tests__/index.test.ts",
@@ -86460,6 +86980,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/autopilot/__tests__/pipeline.test.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/autopilot/__tests__/prompts.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -86715,6 +87240,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hooks/autopilot/adapters/execution-adapter.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/autopilot/adapters/index.ts",
         "to": "src/hooks/autopilot/adapters/execution-adapter.ts",
         "kind": "exports"
@@ -86787,6 +87317,11 @@
       {
         "from": "src/hooks/autopilot/adapters/ralplan-adapter.ts",
         "to": "src/hooks/autopilot/prompts.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/autopilot/adapters/ralplan-adapter.ts",
+        "to": "src/utils/skill-slash.ts",
         "kind": "imports"
       },
       {
@@ -88850,6 +89385,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/learner/detector.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/learner/finder.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -89192,6 +89732,11 @@
       {
         "from": "src/hooks/mode-registry/index.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/mode-registry/index.ts",
+        "to": "src/utils/skill-slash.ts",
         "kind": "imports"
       },
       {
@@ -90232,6 +90777,11 @@
       {
         "from": "src/hooks/persistent-mode/index.ts",
         "to": "src/utils/paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/persistent-mode/index.ts",
+        "to": "src/utils/skill-slash.ts",
         "kind": "imports"
       },
       {
@@ -91290,6 +91840,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/ralph/prd.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/ralph/progress.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -91377,6 +91932,11 @@
       {
         "from": "src/hooks/ralph/verifier.ts",
         "to": "src/utils/omc-cli-rendering.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/ralph/verifier.ts",
+        "to": "src/utils/skill-slash.ts",
         "kind": "imports"
       },
       {
@@ -92695,6 +93255,21 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "to": "src/utils/skill-registry.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "to": "src/utils/skill-registry.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/session-end/__tests__/subdirectory-cwd.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -93262,6 +93837,16 @@
       {
         "from": "src/hooks/session-end/spawn-next.ts",
         "to": "src/utils/host-detection.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "src/utils/skill-registry.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "src/utils/skill-slash.ts",
         "kind": "imports"
       },
       {
@@ -95635,6 +96220,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/hud/index.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hud/mission-board.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -96530,6 +97120,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/installer/__tests__/hook-templates.test.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/installer/__tests__/hud-cache-wrapper.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -97017,6 +97612,11 @@
       {
         "from": "src/installer/hooks.ts",
         "to": "src/utils/config-dir.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/hooks.ts",
+        "to": "src/utils/skill-slash.ts",
         "kind": "imports"
       },
       {
@@ -101630,6 +102230,46 @@
         "kind": "exports"
       },
       {
+        "from": "src/ship/__tests__/exec-env.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/exec-env.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/exec-plant.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/exec-plant.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/exec-plant.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/exec-plant.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/exec-plant.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/exec-plant.test.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/ship/__tests__/gates.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -101963,6 +102603,11 @@
         "from": "src/ship/exec.ts",
         "to": "src/forge/ado/guard.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/exec.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
       },
       {
         "from": "src/ship/gates.ts",
@@ -103208,6 +103853,11 @@
         "from": "src/smoke/copilot-sdk-scenarios.ts",
         "to": "src/smoke/copilot-session-eval.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-scenarios.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
       },
       {
         "from": "src/smoke/copilot-session-env.ts",
@@ -109350,6 +110000,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/team/git-worktree.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/team/governance.ts",
         "to": "src/team/types.ts",
         "kind": "imports"
@@ -114385,6 +115040,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/ultragoal/goal-record.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/utils/__tests__/cache-occupancy.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -114565,6 +115225,46 @@
         "kind": "imports"
       },
       {
+        "from": "src/utils/__tests__/skill-slash.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/skill-slash.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/skill-slash.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/skill-slash.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/skill-slash.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/skill-slash.test.ts",
+        "to": "src/utils/skill-registry.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/skill-slash.test.ts",
+        "to": "src/utils/skill-registry.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/utils/__tests__/skill-slash.test.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/utils/__tests__/string-width.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -114577,6 +115277,56 @@
       {
         "from": "src/utils/__tests__/string-width.test.ts",
         "to": "src/utils/string-width.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/windows-search.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/windows-search.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/windows-search.test.ts",
+        "to": "external:node:module",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/windows-search.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/windows-search.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/windows-search.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/windows-search.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/windows-search.test.ts",
+        "to": "src/copilot-run/job.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/windows-search.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/windows-search.test.ts",
+        "to": "src/utils/windows-search.ts",
         "kind": "imports"
       },
       {
@@ -114745,6 +115495,51 @@
         "kind": "imports"
       },
       {
+        "from": "src/utils/skill-registry.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/skill-registry.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/skill-registry.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/skill-registry.ts",
+        "to": "src/team/model-contract.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/utils/skill-registry.ts",
+        "to": "src/utils/config-dir.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/skill-registry.ts",
+        "to": "src/utils/host-detection.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/skill-registry.ts",
+        "to": "src/utils/host-signal.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/skill-registry.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/skill-registry.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/utils/skill-resources.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -114752,6 +115547,16 @@
       {
         "from": "src/utils/skill-resources.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/skill-slash.ts",
+        "to": "src/team/model-contract.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/utils/skill-slash.ts",
+        "to": "src/utils/host-signal.ts",
         "kind": "imports"
       },
       {
@@ -114782,6 +115587,16 @@
       {
         "from": "src/utils/user-skill-compat.ts",
         "to": "src/utils/config-dir.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/windows-search.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/windows-search.ts",
+        "to": "external:node:path",
         "kind": "imports"
       },
       {
@@ -116275,6 +117090,11 @@
         "kind": "imports"
       },
       {
+        "from": "tests/integration/workflow-profile-stop-transition.test.ts",
+        "to": "templates/hooks/lib/workflow-stage-prompts.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/better-sqlite3-lockfloor.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -116896,12 +117716,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9841,
-      "edgeCount": 11790,
-      "importEdgeCount": 9670,
+      "nodeCount": 9894,
+      "edgeCount": 11893,
+      "importEdgeCount": 9768,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "412cfa40cd1c750a5dd5df40c272dc02ba85ba9d62b93e87a01ac790cf44adcd",
-  "manifestSha256": "01dcb3445611867410a18b980470b727e2382f1ca4b01d22858893d3a1fd9ba8"
+  "inventorySha256": "b9b8913a1ca12e87404672eeaf23e0b3b9ad239f18a9990229935583927b244b",
+  "manifestSha256": "e95a12353a166a94842168be75c598963b76f5252c98f68a8f184c8ca6dd1196"
 }

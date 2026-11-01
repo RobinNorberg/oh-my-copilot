@@ -15,7 +15,9 @@ import { appendFileSync, mkdirSync, writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { decideNextStage } from '../hooks/session-end/routing.js';
 import { acquireChainSlot, releaseChainSlot } from '../hooks/session-end/guardrails.js';
-import { AFK_INCLUDE_USER_SETTINGS_ENV, chainLinkHost, defaultSpawnFn, factoryLinkArgv, factoryLinkCommand, writeChainLinkLedger } from '../hooks/session-end/spawn-next.js';
+import { AFK_INCLUDE_USER_SETTINGS_ENV, chainLinkHost, copilotPluginDirArgs, defaultSpawnFn, factoryLinkArgv, factoryLinkCommand, writeChainLinkLedger } from '../hooks/session-end/spawn-next.js';
+import { resolveSkillSlash } from '../utils/skill-registry.js';
+import { skillSlash } from '../utils/skill-slash.js';
 import { DEFAULT_STALL_THRESHOLD_MS, detectStalledLinks, flagStall } from './watchdog.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { withFileLockSync } from '../lib/file-lock.js';
@@ -87,10 +89,10 @@ export function routeTrackerEvent(event, whitelist, table = INTAKE_ROUTE_TABLE) 
         return { kind: 'discarded', reason: 'route table has no intake directive' };
     return { kind: 'routed', directive, issueNumber: issueNumber, issueUrl: event.issue?.html_url };
 }
-/** Harbor's own single-ship form, as the Copilot plugin registers the skill; harbor writes the tracker in English. */
-export function buildHarborPrompt(directive, issueNumber, issueUrl) {
+/** Harbor's own single-ship form under the slash the link's host registers; harbor writes the tracker in English. */
+export function buildHarborPrompt(directive, issueNumber, issueUrl, slash = skillSlash(directive.skill)) {
     const target = issueNumber !== undefined ? `#${issueNumber}` : issueUrl ?? '#?';
-    return `/oh-my-copilot:${directive.skill} look at ${target}`;
+    return `${slash} look at ${target}`;
 }
 const INVALID_ISSUE_NUMBER = 'invalid issue number';
 const ISSUE_URL_PATTERN = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+$/;
@@ -195,10 +197,23 @@ export function processEvent(event, config, deps = {}) {
         return { status: 204, kind: 'discarded', detail: 'issue url outside whitelisted repo' };
     }
     const intentId = `${repo}#${outcome.issueNumber ?? 0}`.replace(/[^\w.-]/g, '-');
+    let slash;
+    try {
+        slash = resolveSkillSlash(outcome.directive.skill, {
+            cwd: config.cwd,
+            probeArgs: copilotPluginDirArgs(process.env, config.cwd),
+            unattended: true,
+        });
+    }
+    catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        audit({ kind: 'discarded', reason, intentId });
+        return { status: 204, kind: 'discarded', detail: reason };
+    }
     return spawnChainLink({
         intentId,
         directive: outcome.directive,
-        prompt: buildHarborPrompt(outcome.directive, outcome.issueNumber, outcome.issueUrl),
+        prompt: buildHarborPrompt(outcome.directive, outcome.issueNumber, outcome.issueUrl, slash),
         // No labels: harbor owns the issue's labels. The pointer lets the watchdog flag a stall.
         tracker: outcome.issueNumber !== undefined ? { repo, issue: outcome.issueNumber } : undefined,
         routedAuditFields: { issue: outcome.issueUrl ?? outcome.issueNumber },

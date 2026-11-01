@@ -60,7 +60,7 @@ npm i -g oh-my-copilot@latest
 omg setup
 ```
 
-The npm package exposes both `oh-my-copilot` and `omg`; examples prefer `omg` unless troubleshooting needs the long alias. The CLI does not make in-session slash skills available by itself; install the plugin for `/oh-my-copilot:autopilot`, `/oh-my-copilot:ralph`, `/oh-my-copilot:execute`, `/oh-my-copilot:team`, and other interactive skills.
+The npm package exposes both `oh-my-copilot` and `omg`; examples prefer `omg` unless troubleshooting needs the long alias. The CLI does not make in-session slash skills available by itself; install the plugin for `/autopilot`, `/ralph`, `/execute`, `/team`, and other interactive skills.
 
 ### Requirements
 
@@ -76,7 +76,7 @@ The npm package exposes both `oh-my-copilot` and `omg`; examples prefer `omg` un
 Configure omc for the current project only:
 
 ```
-/oh-my-copilot:omc-setup --local
+/omc-setup --local
 ```
 
 - Creates `./.claude/CLAUDE.md` in your current project
@@ -89,7 +89,7 @@ Configure omc for the current project only:
 Configure omc for all Claude Code sessions:
 
 ```
-/oh-my-copilot:omc-setup
+/omc-setup
 ```
 
 - Creates `~/.claude/CLAUDE.md` globally
@@ -106,7 +106,7 @@ If you maintain your own `~/.copilot/CLAUDE.md` and do not want installs or upda
 ```
 
 - Default is `true`; only an explicit `false` opts out
-- `omg install`, `omg update` and the global `/oh-my-copilot:omc-setup` step then leave `~/.copilot/CLAUDE.md` and `~/.copilot/CLAUDE-omc.md` untouched and log a skip line
+- `omg install`, `omg update` and the global `/omc-setup` step then leave `~/.copilot/CLAUDE.md` and `~/.copilot/CLAUDE-omc.md` untouched and log a skip line
 - `omg doctor` reports missing OMC markers as informational (legacy-guide and marker-structure warnings remain); SessionStart omits CLAUDE.md from its drift check, while other component drift notices still apply
 - A `CLAUDE-omc.md` left by an earlier preserve-mode install is still loaded by `omg` launch; delete it if you no longer want it
 - Project-scoped setup (`--local`) is unaffected
@@ -355,7 +355,7 @@ Multi-plan layout, enabled by `--plan-id <id>` or `--auto-plan-id` on `omg ultra
 - **First time**: Run after installation (choose project or global)
 - **After updates**: Re-run to get the latest configuration
 - **Different machines**: Run on each machine where you use Claude Code
-- **New projects**: Run `/oh-my-copilot:omc-setup --local` in each project that needs omc
+- **New projects**: Run `/omc-setup --local` in each project that needs omc
 
 > **NOTE**: After updating the plugin (via `npm update`, `git pull`, or Claude Code's plugin update), you MUST re-run `/oh-my-copilot:omc-setup` to apply the latest CLAUDE.md changes.
 
@@ -626,7 +626,7 @@ omg ask claude --agent-prompt executor --prompt "create an implementation plan"
 - Artifacts: `.omg/artifacts/ask/{provider}-{slug}-{timestamp}.md`
 - Canonical env vars: `OMC_ASK_ADVISOR_SCRIPT`, `OMC_ASK_ORIGINAL_TASK`
 - Phase-1 aliases (deprecated warning): `OMX_ASK_ADVISOR_SCRIPT`, `OMX_ASK_ORIGINAL_TASK`
-- Skill entrypoint: `/oh-my-copilot:ask <claude|codex|gemini|antigravity|grok|cursor|muse> <prompt>` routes to this command
+- Skill entrypoint: `/ask <claude|codex|gemini|antigravity|grok|cursor|muse> <prompt>` routes to this command
 - Muse and Grok require CLI versions supporting `--prompt-file`; role prompts are passed through a private temporary file. Muse disables approval prompts while preserving its configured sandbox behavior.
 
 ### `omg team` (CLI runtime surface)
@@ -828,7 +828,7 @@ omg lookout scan --strict   # exit 1 when review is recommended (for scripts)
 
 ### `omg ship`
 
-The deterministic half of the `/oh-my-copilot:ship` workflow (executor lane → independent verifier lane → fix rounds by a fresh agent → housekeeping → merge-readiness). The skill runs the agent lanes; these commands record verdicts, do the mechanical steps, and refuse the unsafe ones. State: `.omg/state/ship/<pr>.json`, written under the state file lock, so a run survives restarts.
+The deterministic half of the `/ship` workflow (executor lane → independent verifier lane → fix rounds by a fresh agent → housekeeping → merge-readiness). The skill runs the agent lanes; these commands record verdicts, do the mechanical steps, and refuse the unsafe ones. State: `.omg/state/ship/<pr>.json`, written under the state file lock, so a run survives restarts.
 
 ```bash
 omg ship init 241 --implementer executor-1        # start a run; the implementer can never approve
@@ -852,7 +852,7 @@ omg ship status 241 --json
 - **`init --force`:** replaces a non-terminal run and keeps the old one in `previousRuns`. A run with verdicts (now or in a replaced run) keeps its implementer, `fixRounds` and `maxFixRounds`; a different `--implementer` is refused. Replacing a `blocked` or `merged` run, a state that fails its integrity check, or resetting a reviewed run needs `OMG_SHIP_HUMAN=1` (owner-only; lane briefs forbid it). `history` and `previousRuns` entries are shape-checked on read.
 - **Trust model:** implementer/reviewer names, `OMG_SHIP_HUMAN` and every other environment input are advisory against a hostile lane (a process that controls the environment can set them or put another `git` first on `PATH`). Engine children run with a scrubbed environment: every `GIT_*` variable except commit identity, `GIT_ASKPASS`, `GIT_TERMINAL_PROMPT` and `GIT_SSL_CAINFO` / `GIT_SSL_CAPATH` is dropped (`GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_*` / `GIT_CONFIG_PARAMETERS`, `GIT_DIR`, `GIT_WORK_TREE`, `GIT_EXEC_PATH`, `GIT_SSH_COMMAND`, ...), `GH_REPO` / `GH_HOST` are dropped, `GH_TOKEN` / `GITHUB_TOKEN` pass through for authentication, and `GIT_NO_REPLACE_OBJECTS=1` is set. The state file is not tamper-proof: every engine write stores a sha256 over the state in `integrity`, and later updates and `merge` refuse a mismatch, which catches hand edits but not someone who recomputes the hash. `verdict --sha` must be hex.
 - **Safety guard (allowlist):** every command the engine spawns must match one of the exact shapes the engine builds: `git rev-parse|check-ref-format|status|remote get-url <remote>|fetch|merge-base|merge --no-ff --no-edit <sha40>|diff|checkout --theirs -- inventory|add -- inventory|commit|push <remote> HEAD:refs/heads/<branch>|cat-file|rev-list|log|show`, `git show <base sha>:<repo path>`, `git rev-parse --verify refs/remotes/<remote>/<branch>`, `git diff --name-only --no-renames -z <sha>...<sha>`, `gh pr view|checks|merge <pr> --admin --merge --match-head-commit <sha>`, `gh run view|list|rerun <id> --failed`, and the node repo scripts (`tsc`, `eslint`, `vitest run`, the generators). Everything else is refused before it spawns, including global options before the subcommand (`-c`, `--config-env`, `--namespace`, `gh -R`), option-shaped operands (`--upload-pack=…`), reads by ref name (a tag `origin/dev` would shadow the remote-tracking ref), any extra environment except `GIT_NO_REPLACE_OBJECTS=1` on git, forced or deleting refspecs, a push to `main` / `master` / `dev` or the run's base (case-insensitive), `--auto`, `--delete-branch`, `gh api`, `.cmd` shims and every npm command.
-- **Config** (key `ship`, owner-edited): `base`, `advisoryChecks`, `requiredChecks`, `knownFlakyFile`, `maxFixRounds`, `allowAdminMerge`, `autoRerunFlaky`, `pollIntervalSeconds`, `watchTimeoutMinutes`, `trustedBases`. Ill-typed values are an error, not ignored. The safety keys `allowAdminMerge`, `advisoryChecks`, `requiredChecks` and `knownFlakyFile` come only from the user config at its default location, then `.copilot/omg.jsonc` as committed on the PR's base branch, then the defaults; the same keys in the working-tree project file (which a lane can drop in untracked) or the PR head are ignored with a warning. The default user-config location is derived from the account's home as the OS reports it (`os.userInfo()`): `<home>/.config/claude-omc/config.jsonc`, on Windows `<home>/AppData/Roaming/claude-omc/config.jsonc`; when `XDG_CONFIG_HOME` / `APPDATA` select another file, its safety keys are ignored with a warning. The base layer is read only for a base in `ship.trustedBases` (user config only; default `dev`, `main`, `master`), after `git fetch origin <base>` and a check that `refs/remotes/origin/<base>` equals GitHub's `baseRefOid`, as `git show <baseRefOid>:.copilot/omg.jsonc` with `GIT_NO_REPLACE_OBJECTS=1`; when the check fails `gates` warns and uses the defaults, `merge` refuses. A base-branch file that is not valid JSONC, or whose `ship` is not an object, is an error. The legacy `.copilot/omc.jsonc` name is never read from the base; a working-tree file under that name gets a single warning. The other keys use defaults < base-branch file < user config < working-tree file. `knownFlakyFile` must be a repo-relative path. The default `requiredChecks` are what a PR to `dev` reports: `ci.yml` and `upgrade-test.yml` filter on `pull_request.branches: [main, dev]`, so on a PR to another base those checks stay pending until the user config lists that base's checks.
+- **Config** (key `ship`, owner-edited): `base`, `advisoryChecks`, `requiredChecks`, `knownFlakyFile`, `maxFixRounds`, `allowAdminMerge`, `autoRerunFlaky`, `pollIntervalSeconds`, `watchTimeoutMinutes`, `trustedBases`. Ill-typed values are an error, not ignored. The safety keys `allowAdminMerge`, `advisoryChecks`, `requiredChecks` and `knownFlakyFile` come only from the user config at its default location, then `.copilot/omg.jsonc` as committed on the PR's base branch, then the defaults; the same keys in the working-tree project file (which a lane can drop in untracked) or the PR head are ignored with a warning. The default user-config location is derived from the account's home as the OS reports it (`os.userInfo()`): `<home>/.config/claude-omc/config.jsonc`, on Windows `<home>/AppData/Roaming/claude-omc/config.jsonc`; when `XDG_CONFIG_HOME` / `APPDATA` select another file, its safety keys are ignored with a warning. The base layer is read only for a base in `ship.trustedBases` (user config only; default `dev`, `main`, `master`), after `git fetch origin <base>` and a check that `refs/remotes/origin/<base>` equals GitHub's `baseRefOid`, as `git show <baseRefOid>:.copilot/omg.jsonc` with `GIT_NO_REPLACE_OBJECTS=1`; when the check fails `gates` warns and uses the defaults, `merge` refuses. A base-branch file that is not valid JSONC, or whose `ship` is not an object, is an error. The legacy `.copilot/omc.jsonc` name is never read from the base; a working-tree file under that name gets a single warning. The other keys use defaults < base-branch file < user config < working-tree file. `knownFlakyFile` must be a repo-relative path. The default `requiredChecks` are what a PR to `dev` reports: `ci.yml` filters on `pull_request.branches: [main, dev]`, so on a PR to another base those checks stay pending until the user config lists that base's checks.
 
 ### `omg release`
 
@@ -921,9 +921,9 @@ omg progress status --dir <dir> --json          # latest event and state per age
 
 `omg factory init` seeds the project route table `.omg/factory-routes.json`, `omg factory listen` runs the HMAC-verified tracker intake daemon, and `omg factory chain status [--json]` is the read-only chain audit (`omg factory status` stays as an alias; `omg factory run status <issue>` is the engine's run state). The chain is legacy and frozen: delivery goes through `omg factory run`. A chain is a series of headless AFK links: when a link's session ends, the SessionEnd hook routes its `outcome:reason` through the route table and the detached SessionEnd worker spawns the next link. Guardrails apply per link: one active link per intent (serial lock) and a daily cap of 10 (`OMC_DAILY_CHAIN_LIMIT`).
 
-`omg factory init` seeds only the narrow starter table (`success:intake` → `harbor`). It refuses (exit 1, nothing written) unless `.omg/state/` and the yard's two faces, `CLAUDE.md` and `GLOSSARY.md` (seeded by `/oh-my-copilot:drydock`), exist; `docs/design/` is no longer required. An issue labeled `intake` makes the listener spawn a headless `/oh-my-copilot:harbor look at #<n>` session: tracker intake is harbor's job (verify, desk, signed dispositions), not intent's. The listener writes no labels on the issue (the old `needs-review` / `failed` labels are gone; harbor owns the labels). It keeps the issue pointer in the link's ledger so the stall watchdog can flag the issue: a link that stalls gets `harbor:for-maintainer` plus a comment (it used to get `harbor:need-info`, which harbor reads as "waiting on the reporter"). `--no-narrow`, which seeded the full `intake → intent → launch → diagnose` template, is retired: it exits 1 and writes nothing, because launch needs a live captain and no `diagnose` skill exists. Run launch in a session and deliver each issue with `omg factory run <issue>`. The listener answers a failed `check_suite` webhook with an audited `204` discard (`CI failures are healed from workflow_run`) and never starts a session. Only failed push runs of `ci.yml` on the dev branch are enqueued (via `workflow_run`) for the next `omg factory heal scan` (see `omg factory heal`); failures on other branches or workflows are no longer acted on by the listener, so run `omg factory heal scan` manually.
+`omg factory init` seeds only the narrow starter table (`success:intake` → `harbor`). It refuses (exit 1, nothing written) unless `.omg/state/` and the yard's two faces, `CLAUDE.md` and `GLOSSARY.md` (seeded by `/drydock`), exist; `docs/design/` is no longer required. An issue labeled `intake` makes the listener spawn a headless `/harbor look at #<n>` session: tracker intake is harbor's job (verify, desk, signed dispositions), not intent's. The listener writes no labels on the issue (the old `needs-review` / `failed` labels are gone; harbor owns the labels). It keeps the issue pointer in the link's ledger so the stall watchdog can flag the issue: a link that stalls gets `harbor:for-maintainer` plus a comment (it used to get `harbor:need-info`, which harbor reads as "waiting on the reporter"). `--no-narrow`, which seeded the full `intake → intent → launch → diagnose` template, is retired: it exits 1 and writes nothing, because launch needs a live captain and no `diagnose` skill exists. Run launch in a session and deliver each issue with `omg factory run <issue>`. The listener answers a failed `check_suite` webhook with an audited `204` discard (`CI failures are healed from workflow_run`) and never starts a session. Only failed push runs of `ci.yml` on the dev branch are enqueued (via `workflow_run`) for the next `omg factory heal scan` (see `omg factory heal`); failures on other branches or workflows are no longer acted on by the listener, so run `omg factory heal scan` manually.
 
-The SessionEnd chain fails closed on skills an AFK link cannot run. A route to a captain skill (`launch`, `ask-navigator`, `loft`, `drydock`: they hold human checkpoints) or a retired skill (`diagnose`) halts the chain: the decision and the stop marker read `route-retired:<skill>`, and nothing spawns. The skill is matched by its canonical name (trimmed, lower-case, without a leading `/` or a `plugin:` prefix), so `Diagnose` or `oh-my-copilot:launch` is refused too. A route to `intent` still spawns but records `route-deprecated:intent` first: tracker intake belongs to harbor. Any other skill must be a bundled skill or a project skill under `.copilot/skills`, `.omg/skills` or `.agents/skills`, named in lower case from `[a-z0-9_-]`; otherwise the chain halts with `route-unknown:<skill>`. A skill is named by its registered name, the `name` in its `SKILL.md` frontmatter (else its directory name): the bundled `plan` and `review` directories register as `omc-plan` and `omc-review`, so a route to `plan` halts with a `did you mean omc-plan` hint in the decision (a bare `/plan` is a native command). A bundled skill spawns as `/oh-my-copilot:<name>` on Copilot CLI, which registers plugin skills only under the plugin prefix, and as `/<name>` on Claude Code; a project skill spawns as `/<name>`. The spawn step applies the same rules again, so a queued job or a replayed closeout from before an upgrade cannot spawn a refused skill.
+The SessionEnd chain fails closed on skills an AFK link cannot run. A route to a captain skill (`launch`, `ask-navigator`, `loft`, `drydock`: they hold human checkpoints) or a retired skill (`diagnose`) halts the chain: the decision and the stop marker read `route-retired:<skill>`, and nothing spawns. The skill is matched by its canonical name (trimmed, lower-case, without a leading `/` or a `plugin:` prefix), so `Diagnose` or `oh-my-copilot:launch` is refused too. A route to `intent` still spawns but records `route-deprecated:intent` first: tracker intake belongs to harbor. Any other skill must be a bundled skill or a project skill under `.copilot/skills`, `.omg/skills` or `.agents/skills`, named in lower case from `[a-z0-9_-]`; otherwise the chain halts with `route-unknown:<skill>`. A skill is named by its registered name, the `name` in its `SKILL.md` frontmatter (else its directory name): the bundled `plan` and `review` directories register as `omc-plan` and `omc-review`, so a route to `plan` halts with a `did you mean omc-plan` hint in the decision (a bare `/plan` is a native command). A bundled skill spawns as `/<name>` on Copilot CLI, which registers plugin skills only under the plugin prefix, and as `/<name>` on Claude Code; a project skill spawns as `/<name>`. The spawn step applies the same rules again, so a queued job or a replayed closeout from before an upgrade cannot spawn a refused skill.
 
 An existing table from the old full template is fixed with two `init` modes:
 
@@ -933,7 +933,7 @@ An existing table from the old full template is fixed with two `init` modes:
 | Old route | Replacement |
 |---|---|
 | `success:intake` → `intent` | `success:intake` → `harbor` |
-| `success:intent` → `launch` | none: run `/oh-my-copilot:launch` with the accepted intent |
+| `success:intent` → `launch` | none: run `/launch` with the accepted intent |
 | `success:launch` → `diagnose`, `failed:ci` → `diagnose` | none: `omg factory heal scan` |
 
 #### Factory chains on Copilot
@@ -1565,7 +1565,7 @@ omg smoke copilot --tier 2 --scenario continuation,prompt-context,events   # opt
 |---|---|---|
 | `smoke` (default) | a plain reply, no tools | `scn.smoke.reply`, `scn.smoke.hooks`, `scn.smoke.no_tools` |
 | `guardrail` (default) | `git push --force` with `OMC_GIT_GUARDRAILS=1` against a bare remote | `scn.guardrail.denied`, `scn.guardrail.no_push`, `scn.guardrail.hooks` |
-| `skill` | `/oh-my-copilot:plan` | `scn.skill.invoked` |
+| `skill` | `/omc-plan` | `scn.skill.invoked` |
 | `delegate` | a hand-off to `oh-my-copilot:architect` | `scn.delegate.selected`, `scn.delegate.hooks`, `scn.delegate.completed` |
 | `filetools` (opt-in, never in `all`) | view and edit `filetools/notes.txt`, create `filetools/new/created.txt`; each directory holds a `README.md` with a fresh nonce | `scn.filetools.tools`, `scn.filetools.hooks`, `scn.filetools.pre`, `scn.filetools.post`, `scn.filetools.matcher`, `scn.filetools.payload`, `scn.filetools.injected`, `scn.filetools.injected_write` |
 | `chain` (opt-in, never in `all`) | two real `copilot -p` factory links: link 1 replies with one token, link 2 runs the project skill `/chain-ack` | `scn.chain.link1`, `scn.chain.spawned`, `scn.chain.inherited`, `scn.chain.closed`, `scn.chain.credits` |
@@ -1932,7 +1932,7 @@ Fail-closed invariants: a malformed ledger entry, an amended original that is st
 
 ## Named autopilot stage profiles (v1)
 
-A named profile is selected only by `/oh-my-copilot:autopilot --workflow <name> <task>`; it is not a dynamic slash command, prompt alias, mode, plugin, filename, or independent state identity. Existing `/oh-my-copilot:autopilot <task>` behavior remains the legacy no-profile path.
+A named profile is selected only by `/autopilot --workflow <name> <task>`; it is not a dynamic slash command, prompt alias, mode, plugin, filename, or independent state identity. Existing `/autopilot <task>` behavior remains the legacy no-profile path.
 
 Named profiles require Linux with the `flock` utility in v1. Their authenticated transcript boundary depends on Linux no-follow file-descriptor traversal and their recoverable mutation lock depends on kernel advisory locking; unsupported environments reject explicit `--workflow` activation before state mutation while legacy autopilot remains supported.
 
@@ -1978,129 +1978,129 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 
 | Skill                     | Description                                                                    | Manual Command                              |
 | ------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------- |
-| `ai-slop-cleaner`         | Anti-slop cleanup workflow with optional reviewer-only `--review` pass        | `/oh-my-copilot:ai-slop-cleaner`         |
-| `agent-doc-discipline`    | Writing-time discipline for agent-facing documents: checkable rules with a why, steps first, one meaning one home | `/oh-my-copilot:agent-doc-discipline` |
-| `architecture-survey`     | Shipyard survey: report ranked architecture-deepening candidates with evidence, never edit code | `/oh-my-copilot:architecture-survey`     |
-| `ask`                     | Ask Claude, Codex, Gemini, Antigravity, Grok, or Cursor via local CLI          | `/oh-my-copilot:ask`                     |
-| `ask-navigator`           | Shipyard navigator: chart foggy efforts into decision-ticket maps, hand off to launch | `/oh-my-copilot:ask-navigator`    |
-| `autopilot`               | Full autonomous execution from idea to working code                            | `/oh-my-copilot:autopilot`               |
-| `autoresearch`            | Stateful evaluator-driven improvement loop                                     | `/oh-my-copilot:autoresearch`            |
-| `cancel`                  | Unified cancellation for active modes                                          | `/oh-my-copilot:cancel`                  |
-| `cancel-ralph`            | Deprecated compatibility alias for `cancel`                                   | `/oh-my-copilot:cancel-ralph`            |
-| `configure-notifications` | Configure Telegram, Discord, and Slack notification integrations               | `/oh-my-copilot:configure-notifications` |
-| `critique`                | Critique all unpushed commits before pushing to remote                          | `/oh-my-copilot:critique`                |
-| `debug`                   | Diagnose the current OMC session or repository state                           | `/oh-my-copilot:debug`                   |
-| `deep-interview`          | Socratic deep interview with ambiguity gating                                  | `/oh-my-copilot:deep-interview`                |
-| `deep-review`             | Multi-pass code review with security, quality, structural analysis, and validation | `/oh-my-copilot:deep-review`         |
-| `deepinit`                | Generate hierarchical AGENTS.md documentation                                  | `/oh-my-copilot:deepinit`                |
-| `diagram`                 | Model-invoked visual explanations — smallest view (pseudocode, tree, Mermaid, diff) that carries the point | `/oh-my-copilot:diagram`                |
-| `discover`                | Parallel specialist scan of the codebase producing a prioritized improvement backlog | `/oh-my-copilot:discover`          |
-| `drydock`                 | Shipyard harness scaffold: 4-pillar shared environment, --check drift audit    | `/oh-my-copilot:drydock`                 |
-| `execute`                 | Carry an approved task through to working, verified code                       | `/oh-my-copilot:execute`                |
-| `external-context`        | Parallel document-specialist research                                          | `/oh-my-copilot:external-context`       |
-| `graph`                   | Deterministic orchestration graph runtime: declarative DAG pipelines with journal-based crash recovery | `/oh-my-copilot:graph` |
-| `harbor`                  | Shipyard intake gate: verify external issues and PRs, hand a signature docket  | `/oh-my-copilot:harbor`                  |
-| `hud`                     | Configure HUD/statusline                                                        | `/oh-my-copilot:hud`                     |
-| `intent`                  | Internal requirements intake for non-engineer contributors                      | `/oh-my-copilot:intent`                  |
-| `launch`                  | Shipyard governed delivery pipeline: spec, tickets, frontier execution          | `/oh-my-copilot:launch`                  |
-| `loft`                    | Shipyard shape-before-steel discipline: throwaway artifacts answer design questions | `/oh-my-copilot:loft`              |
-| `map`                     | The yard's skill map: which skill owns which job, in delivery-loop order; routes, never executes | `/oh-my-copilot:map`                  |
-| `minimal-code-discipline` | YAGNI-ladder writing-time discipline: reuse first, shortest correct diff        | `/oh-my-copilot:minimal-code-discipline` |
-| `minimal-prose-discipline` | Writing-time discipline for the agent's own prose: protected core, no filler, close on the action | `/oh-my-copilot:minimal-prose-discipline` |
-| `omc-ado-auto-review`     | Auto-review Azure DevOps PRs where you are an assigned reviewer                 | `/oh-my-copilot:omc-ado-auto-review`     |
-| `omc-ado-review`          | Review Azure DevOps pull requests: diffs, reviewers, comments, votes, threads   | `/oh-my-copilot:omc-ado-review`          |
-| `omc-ado-setup`           | Set up or troubleshoot the Azure DevOps integration (`.omg/config.json`)        | `/oh-my-copilot:omc-ado-setup`           |
-| `omc-ado-sprint`          | Azure DevOps sprint planning: iterations, capacity, backlog grooming            | `/oh-my-copilot:omc-ado-sprint`          |
-| `omc-ado-triage`          | Azure DevOps project health: work items, PRs, pipeline failures, security alerts | `/oh-my-copilot:omc-ado-triage`         |
-| `omc-doctor`              | Diagnose and fix installation issues                                           | `/oh-my-copilot:omc-doctor`              |
-| `omc-gh-auto-review`      | Auto-review GitHub PRs where you are a requested reviewer                       | `/oh-my-copilot:omc-gh-auto-review`      |
-| `omc-gh-project`          | Manage GitHub Projects (v2) boards: items, status, iterations                   | `/oh-my-copilot:omc-gh-project`          |
-| `omc-gh-review`           | Review GitHub pull requests: diffs, review comments, approve or request changes | `/oh-my-copilot:omc-gh-review`           |
-| `omc-gh-setup`            | Set up or troubleshoot the GitHub integration (`.omg/config.json`)              | `/oh-my-copilot:omc-gh-setup`            |
-| `omc-gh-triage`           | GitHub project health: open issues, PRs needing review, failing CI, security alerts | `/oh-my-copilot:omc-gh-triage`       |
-| `omc-plan`                | Strategic planning with optional interview and consensus modes                 | `/oh-my-copilot:omc-plan`               |
-| `omc-review`              | Evaluate finished work for defects, risk, and simplification                   | `/oh-my-copilot:omc-review`             |
-| `omc-setup`               | Install or refresh OMC for plugin, npm, and local-development setups           | `/oh-my-copilot:omc-setup`              |
-| `pr`                      | PR body assembly from OMC's paper trail: smallest visual, verify evidence, ADR-test reversibility | `/oh-my-copilot:pr` |
-| `project-session-manager` | Manage isolated development environments (git worktrees + tmux)                | `/oh-my-copilot:project-session-manager` |
-| `psm`                     | Deprecated compatibility alias for `project-session-manager`                    | `/oh-my-copilot:psm`                     |
-| `ralph`                   | Persistence loop until verified completion                                     | `/oh-my-copilot:ralph`                   |
-| `ralph-experiment`        | Hypothesis-driven experiment loop with notebook, git checkpoint/revert, and agent delegation | `/oh-my-copilot:ralph-experiment` |
-| `ralplan`                 | Consensus planning entrypoint                                                   | `/oh-my-copilot:ralplan`                 |
-| `release`                 | Automated release workflow                                                      | `/oh-my-copilot:release`                 |
-| `refit`                   | Cross-session retrospective; instrument evidence to user-approved environment fixes | `/oh-my-copilot:refit` |
-| `remember`                | Save and retrieve durable session memory                                        | `/oh-my-copilot:remember`                |
-| `research`                | Investigate an open question and return grounded findings                       | `/oh-my-copilot:research`               |
-| `self-improve`            | Autonomous evolutionary code improvement engine                                | `/oh-my-copilot:self-improve`           |
-| `ship`                    | Task or PR to merge-ready: executor lane, independent verifier lane, bounded fix rounds, `omg ship` gates | `/oh-my-copilot:ship` |
-| `session-flow`            | Reorient in the current session with an evidence-backed map of its flow        | `/oh-my-copilot:session-flow`           |
-| `skill`                   | Manage local skills (list/add/remove/search/edit)                              | `/oh-my-copilot:skill`                   |
-| `skillify`                | Extract a reusable skill from the current session                              | `/oh-my-copilot:skillify`                |
-| `team`                    | Coordinated multi-agent workflow                                               | `/oh-my-copilot:team`                    |
-| `tdd`                     | Test-first discipline at pre-agreed seams                                     | `/oh-my-copilot:tdd`                     |
-| `trace`                   | Evidence-driven tracing lane with parallel tracer hypotheses                   | `/oh-my-copilot:trace`                  |
-| `ultragoal`               | Durable multi-goal workflow with checkpointed artifacts                        | `/oh-my-copilot:ultragoal`              |
-| `verify`                  | Verify that a change really works before claiming completion                    | `/oh-my-copilot:verify`                 |
-| `visual-verdict`          | Structured visual QA verdict for screenshot/reference comparisons              | `/oh-my-copilot:visual-verdict`        |
-| `wiki`                    | Persistent markdown knowledge base that compounds across sessions              | `/oh-my-copilot:wiki`                   |
+| `ai-slop-cleaner`         | Anti-slop cleanup workflow with optional reviewer-only `--review` pass        | `/ai-slop-cleaner`         |
+| `agent-doc-discipline`    | Writing-time discipline for agent-facing documents: checkable rules with a why, steps first, one meaning one home | `/agent-doc-discipline` |
+| `architecture-survey`     | Shipyard survey: report ranked architecture-deepening candidates with evidence, never edit code | `/architecture-survey`     |
+| `ask`                     | Ask Claude, Codex, Gemini, Antigravity, Grok, or Cursor via local CLI          | `/ask`                     |
+| `ask-navigator`           | Shipyard navigator: chart foggy efforts into decision-ticket maps, hand off to launch | `/ask-navigator`    |
+| `autopilot`               | Full autonomous execution from idea to working code                            | `/autopilot`               |
+| `autoresearch`            | Stateful evaluator-driven improvement loop                                     | `/autoresearch`            |
+| `cancel`                  | Unified cancellation for active modes                                          | `/cancel`                  |
+| `cancel-ralph`            | Deprecated compatibility alias for `cancel`                                   | `/cancel-ralph`            |
+| `configure-notifications` | Configure Telegram, Discord, and Slack notification integrations               | `/configure-notifications` |
+| `critique`                | Critique all unpushed commits before pushing to remote                          | `/critique`                |
+| `debug`                   | Diagnose the current OMC session or repository state                           | `/debug`                   |
+| `deep-interview`          | Socratic deep interview with ambiguity gating                                  | `/deep-interview`                |
+| `deep-review`             | Multi-pass code review with security, quality, structural analysis, and validation | `/deep-review`         |
+| `deepinit`                | Generate hierarchical AGENTS.md documentation                                  | `/deepinit`                |
+| `diagram`                 | Model-invoked visual explanations — smallest view (pseudocode, tree, Mermaid, diff) that carries the point | `/diagram`                |
+| `discover`                | Parallel specialist scan of the codebase producing a prioritized improvement backlog | `/discover`          |
+| `drydock`                 | Shipyard harness scaffold: 4-pillar shared environment, --check drift audit    | `/drydock`                 |
+| `execute`                 | Carry an approved task through to working, verified code                       | `/execute`                |
+| `external-context`        | Parallel document-specialist research                                          | `/external-context`       |
+| `graph`                   | Deterministic orchestration graph runtime: declarative DAG pipelines with journal-based crash recovery | `/graph` |
+| `harbor`                  | Shipyard intake gate: verify external issues and PRs, hand a signature docket  | `/harbor`                  |
+| `hud`                     | Configure HUD/statusline                                                        | `/hud`                     |
+| `intent`                  | Internal requirements intake for non-engineer contributors                      | `/intent`                  |
+| `launch`                  | Shipyard governed delivery pipeline: spec, tickets, frontier execution          | `/launch`                  |
+| `loft`                    | Shipyard shape-before-steel discipline: throwaway artifacts answer design questions | `/loft`              |
+| `map`                     | The yard's skill map: which skill owns which job, in delivery-loop order; routes, never executes | `/map`                  |
+| `minimal-code-discipline` | YAGNI-ladder writing-time discipline: reuse first, shortest correct diff        | `/minimal-code-discipline` |
+| `minimal-prose-discipline` | Writing-time discipline for the agent's own prose: protected core, no filler, close on the action | `/minimal-prose-discipline` |
+| `omc-ado-auto-review`     | Auto-review Azure DevOps PRs where you are an assigned reviewer                 | `/omc-ado-auto-review`     |
+| `omc-ado-review`          | Review Azure DevOps pull requests: diffs, reviewers, comments, votes, threads   | `/omc-ado-review`          |
+| `omc-ado-setup`           | Set up or troubleshoot the Azure DevOps integration (`.omg/config.json`)        | `/omc-ado-setup`           |
+| `omc-ado-sprint`          | Azure DevOps sprint planning: iterations, capacity, backlog grooming            | `/omc-ado-sprint`          |
+| `omc-ado-triage`          | Azure DevOps project health: work items, PRs, pipeline failures, security alerts | `/omc-ado-triage`         |
+| `omc-doctor`              | Diagnose and fix installation issues                                           | `/omc-doctor`              |
+| `omc-gh-auto-review`      | Auto-review GitHub PRs where you are a requested reviewer                       | `/omc-gh-auto-review`      |
+| `omc-gh-project`          | Manage GitHub Projects (v2) boards: items, status, iterations                   | `/omc-gh-project`          |
+| `omc-gh-review`           | Review GitHub pull requests: diffs, review comments, approve or request changes | `/omc-gh-review`           |
+| `omc-gh-setup`            | Set up or troubleshoot the GitHub integration (`.omg/config.json`)              | `/omc-gh-setup`            |
+| `omc-gh-triage`           | GitHub project health: open issues, PRs needing review, failing CI, security alerts | `/omc-gh-triage`       |
+| `omc-plan`                | Strategic planning with optional interview and consensus modes                 | `/omc-plan`               |
+| `omc-review`              | Evaluate finished work for defects, risk, and simplification                   | `/omc-review`             |
+| `omc-setup`               | Install or refresh OMC for plugin, npm, and local-development setups           | `/omc-setup`              |
+| `pr`                      | PR body assembly from OMC's paper trail: smallest visual, verify evidence, ADR-test reversibility | `/pr` |
+| `project-session-manager` | Manage isolated development environments (git worktrees + tmux)                | `/project-session-manager` |
+| `psm`                     | Deprecated compatibility alias for `project-session-manager`                    | `/psm`                     |
+| `ralph`                   | Persistence loop until verified completion                                     | `/ralph`                   |
+| `ralph-experiment`        | Hypothesis-driven experiment loop with notebook, git checkpoint/revert, and agent delegation | `/ralph-experiment` |
+| `ralplan`                 | Consensus planning entrypoint                                                   | `/ralplan`                 |
+| `release`                 | Automated release workflow                                                      | `/release`                 |
+| `refit`                   | Cross-session retrospective; instrument evidence to user-approved environment fixes | `/refit` |
+| `remember`                | Save and retrieve durable session memory                                        | `/remember`                |
+| `research`                | Investigate an open question and return grounded findings                       | `/research`               |
+| `self-improve`            | Autonomous evolutionary code improvement engine                                | `/self-improve`           |
+| `ship`                    | Task or PR to merge-ready: executor lane, independent verifier lane, bounded fix rounds, `omg ship` gates | `/ship` |
+| `session-flow`            | Reorient in the current session with an evidence-backed map of its flow        | `/session-flow`           |
+| `skill`                   | Manage local skills (list/add/remove/search/edit)                              | `/skill`                   |
+| `skillify`                | Extract a reusable skill from the current session                              | `/skillify`                |
+| `team`                    | Coordinated multi-agent workflow                                               | `/team`                    |
+| `tdd`                     | Test-first discipline at pre-agreed seams                                     | `/tdd`                     |
+| `trace`                   | Evidence-driven tracing lane with parallel tracer hypotheses                   | `/trace`                  |
+| `ultragoal`               | Durable multi-goal workflow with checkpointed artifacts                        | `/ultragoal`              |
+| `verify`                  | Verify that a change really works before claiming completion                    | `/verify`                 |
+| `visual-verdict`          | Structured visual QA verdict for screenshot/reference comparisons              | `/visual-verdict`        |
+| `wiki`                    | Persistent markdown knowledge base that compounds across sessions              | `/wiki`                   |
 
 
 ---
 
 ## Slash Commands
 
-Most installed skills are exposed as `/oh-my-copilot:<registered-name>`. The plugin ships 21 command files alongside the 63 skill entrypoints listed above; the commands below list both surfaces. Compatibility keyword modes like `deep-analyze` and `tdd` are prompt-triggered behaviors, not standalone slash commands. OMC's manual compaction helper is plugin-scoped as `/oh-my-copilot:compact`; bare `/compact` remains Claude Code's native command and is not shadowed by OMC. The helper preserves the user's note and instructs them to run bare `/compact`; OMC does not invoke native compaction itself because Claude Code's built-in `/compact` is not a prompt skill.
+Most installed skills are exposed as `/<registered-name>` (on Claude Code: `/oh-my-copilot:<registered-name>`). The plugin ships 21 command files alongside the 63 skill entrypoints listed above; the commands below list both surfaces. Compatibility keyword modes like `deep-analyze` and `tdd` are prompt-triggered behaviors, not standalone slash commands. OMC's manual compaction helper is plugin-scoped as `/oh-my-copilot:compact`; bare `/compact` remains Claude Code's native command and is not shadowed by OMC. The helper preserves the user's note and instructs them to run bare `/compact`; OMC does not invoke native compaction itself because Claude Code's built-in `/compact` is not a prompt skill.
 
 | Command                                                  | Description                                                                                   |
 | -------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `/oh-my-copilot:ai-slop-cleaner <target>`             | Run the anti-slop cleanup workflow (`--review` for reviewer-only pass)                        |
-| `/oh-my-copilot:agent-doc-discipline`                 | Apply the writing-time discipline for agent-facing documents                                   |
-| `/oh-my-copilot:ask <claude\|codex\|gemini\|antigravity\|grok\|cursor\|muse> <prompt>` | Route a prompt through the selected advisor CLI and capture an ask artifact                   |
-| `/oh-my-copilot:architecture-survey [area]`           | Survey the repo for architecture-deepening candidates with evidence; reports only, never edits  |
-| `/oh-my-copilot:ask-navigator <idea\|map>`            | Chart a foggy effort into a map of decision tickets (or work the open map), then hand off to launch |
-| `/oh-my-copilot:autopilot <task>`                     | Full autonomous execution                                                                     |
-| `/oh-my-copilot:autoresearch <task>`                  | Run a bounded evaluator-driven improvement mission                                             |
-| `/oh-my-copilot:cancel [--force] [--all]`            | Cancel current-session modes; `--force` skips graceful waits, `--all` explicitly selects all sessions |
-| `/oh-my-copilot:cancel-ralph [--force] [--all]`      | Deprecated alias with the same force/scope distinction                                         |
-| `/oh-my-copilot:configure-notifications`              | Configure notification integrations                                                           |
+| `/ai-slop-cleaner <target>`             | Run the anti-slop cleanup workflow (`--review` for reviewer-only pass)                        |
+| `/agent-doc-discipline`                 | Apply the writing-time discipline for agent-facing documents                                   |
+| `/ask <claude\|codex\|gemini\|antigravity\|grok\|cursor\|muse> <prompt>` | Route a prompt through the selected advisor CLI and capture an ask artifact                   |
+| `/architecture-survey [area]`           | Survey the repo for architecture-deepening candidates with evidence; reports only, never edits  |
+| `/ask-navigator <idea\|map>`            | Chart a foggy effort into a map of decision tickets (or work the open map), then hand off to launch |
+| `/autopilot <task>`                     | Full autonomous execution                                                                     |
+| `/autoresearch <task>`                  | Run a bounded evaluator-driven improvement mission                                             |
+| `/cancel [--force] [--all]`            | Cancel current-session modes; `--force` skips graceful waits, `--all` explicitly selects all sessions |
+| `/cancel-ralph [--force] [--all]`      | Deprecated alias with the same force/scope distinction                                         |
+| `/configure-notifications`              | Configure notification integrations                                                           |
 | `/oh-my-copilot:compact [note]`                       | Prepare an OMC-safe manual handoff telling the user to run bare `/compact [note]`              |
-| `/oh-my-copilot:debug`                                | Diagnose the current OMC session or repository state                                          |
+| `/debug`                                | Diagnose the current OMC session or repository state                                          |
 | `/deep-interview <idea>`                                 | Socratic interview with ambiguity scoring before execution                                    |
-| `/oh-my-copilot:deepinit [path]`                      | Index codebase with hierarchical AGENTS.md files                                              |
-| `/oh-my-copilot:diagram`                              | Explain the current topic with the smallest visual that carries it                            |
-| `/oh-my-copilot:execute <task>`                      | Carry an approved task through to working, verified code                                      |
-| `/oh-my-copilot:external-context <topic>`             | Run parallel document-specialist research                                                     |
-| `/oh-my-copilot:harbor [sweep\|look at #N\|what's ready?]` | Sweep external issues and PRs, verify claims, hand a signature docket                    |
-| `/oh-my-copilot:hud [setup\|minimal\|focused\|full\|status]` | Configure HUD/statusline                                                               |
-| `/oh-my-copilot:drydock [--check]`                   | Lay the shipyard harness keel in a repo (two faces seeded day one; every other surface appears on first use); --check audits drift |
-| `/oh-my-copilot:launch <brief\|spec-path> [--serial]` | Run the shipyard governed delivery pipeline (spec -> tickets -> frontier)                      |
-| `/oh-my-copilot:loft <design-question>`               | Loft the shape before cutting steel: a throwaway artifact answers a design question prose cannot settle |
-| `/oh-my-copilot:minimal-code-discipline`              | Apply the YAGNI-ladder writing-time discipline while implementing                              |
-| `/oh-my-copilot:minimal-prose-discipline`             | Apply the writing-time discipline for the agent's own prose                                    |
-| `/oh-my-copilot:omc-doctor`                           | Diagnose and fix installation issues                                                          |
-| `/oh-my-copilot:omc-plan <description>`               | Start planning session (supports consensus structured deliberation)                           |
-| `/oh-my-copilot:omc-review [path]`                    | Review finished work for defects and risk                                                       |
-| `/oh-my-copilot:omc-setup`                            | Install or refresh OMC                                                                        |
-| `/oh-my-copilot:pr`                                   | Assemble a PR body from existing paper-trail evidence                                           |
-| `/oh-my-copilot:project-session-manager <arguments>`  | Manage isolated dev environments with git worktrees + tmux                                    |
-| `/oh-my-copilot:psm <arguments>`                      | Deprecated alias for project session manager                                                  |
-| `/oh-my-copilot:ralph <task>`                         | Persistence loop until task completion (`--critic=architect \| critic \| codex`)             |
-| `/oh-my-copilot:ralplan <description>`                | Iterative planning with consensus structured deliberation                                     |
-| `/oh-my-copilot:release`                              | Automated release workflow                                                                    |
-| `/oh-my-copilot:refit [--scope <area>] [--last <N sessions>]` | Retrospect on OMC instrumentation and propose user-approved environment fixes            |
-| `/oh-my-copilot:remember <note>`                      | Save durable session memory                                                                   |
-| `/oh-my-copilot:research <question>`                  | Investigate an open question and return grounded findings                                      |
-| `/oh-my-copilot:self-improve <topic>`                 | Run the autonomous code-improvement workflow                                                   |
-| `/oh-my-copilot:ship <task> \| --pr <n>`              | Take a task or PR to merge-ready through independent review and the `omg ship` gate engine     |
-| `/oh-my-copilot:skill <action>`                       | Manage local skills                                                                           |
-| `/oh-my-copilot:skillify`                             | Extract a reusable skill from the current session                                             |
-| `/oh-my-copilot:team <N>:<agent> <task>`               | Coordinated native team workflow                                                              |
-| `/oh-my-copilot:tdd`                                  | Test-first discipline at pre-agreed seams                                                     |
-| `/oh-my-copilot:trace`                                | Evidence-driven tracing lane                                                                  |
-| `/oh-my-copilot:ultragoal <condition>`                | Track a durable multi-goal workflow                                                           |
-| `/oh-my-copilot:verify <target>`                      | Verify that a change really works before claiming completion                                  |
-| `/oh-my-copilot:visual-verdict <task>`                | Structured visual QA verdict for screenshot/reference comparisons                             |
-| `/oh-my-copilot:wiki <action>`                        | Query or update the persistent markdown knowledge base                                         |
+| `/deepinit [path]`                      | Index codebase with hierarchical AGENTS.md files                                              |
+| `/diagram`                              | Explain the current topic with the smallest visual that carries it                            |
+| `/execute <task>`                      | Carry an approved task through to working, verified code                                      |
+| `/external-context <topic>`             | Run parallel document-specialist research                                                     |
+| `/harbor [sweep\|look at #N\|what's ready?]` | Sweep external issues and PRs, verify claims, hand a signature docket                    |
+| `/hud [setup\|minimal\|focused\|full\|status]` | Configure HUD/statusline                                                               |
+| `/drydock [--check]`                   | Lay the shipyard harness keel in a repo (two faces seeded day one; every other surface appears on first use); --check audits drift |
+| `/launch <brief\|spec-path> [--serial]` | Run the shipyard governed delivery pipeline (spec -> tickets -> frontier)                      |
+| `/loft <design-question>`               | Loft the shape before cutting steel: a throwaway artifact answers a design question prose cannot settle |
+| `/minimal-code-discipline`              | Apply the YAGNI-ladder writing-time discipline while implementing                              |
+| `/minimal-prose-discipline`             | Apply the writing-time discipline for the agent's own prose                                    |
+| `/omc-doctor`                           | Diagnose and fix installation issues                                                          |
+| `/omc-plan <description>`               | Start planning session (supports consensus structured deliberation)                           |
+| `/omc-review [path]`                    | Review finished work for defects and risk                                                       |
+| `/omc-setup`                            | Install or refresh OMC                                                                        |
+| `/pr`                                   | Assemble a PR body from existing paper-trail evidence                                           |
+| `/project-session-manager <arguments>`  | Manage isolated dev environments with git worktrees + tmux                                    |
+| `/psm <arguments>`                      | Deprecated alias for project session manager                                                  |
+| `/ralph <task>`                         | Persistence loop until task completion (`--critic=architect \| critic \| codex`)             |
+| `/ralplan <description>`                | Iterative planning with consensus structured deliberation                                     |
+| `/release`                              | Automated release workflow                                                                    |
+| `/refit [--scope <area>] [--last <N sessions>]` | Retrospect on OMC instrumentation and propose user-approved environment fixes            |
+| `/remember <note>`                      | Save durable session memory                                                                   |
+| `/research <question>`                  | Investigate an open question and return grounded findings                                      |
+| `/self-improve <topic>`                 | Run the autonomous code-improvement workflow                                                   |
+| `/ship <task> \| --pr <n>`              | Take a task or PR to merge-ready through independent review and the `omg ship` gate engine     |
+| `/skill <action>`                       | Manage local skills                                                                           |
+| `/skillify`                             | Extract a reusable skill from the current session                                             |
+| `/team <N>:<agent> <task>`               | Coordinated native team workflow                                                              |
+| `/tdd`                                  | Test-first discipline at pre-agreed seams                                                     |
+| `/trace`                                | Evidence-driven tracing lane                                                                  |
+| `/ultragoal <condition>`                | Track a durable multi-goal workflow                                                           |
+| `/verify <target>`                      | Verify that a change really works before claiming completion                                  |
+| `/visual-verdict <task>`                | Structured visual QA verdict for screenshot/reference comparisons                             |
+| `/wiki <action>`                        | Query or update the persistent markdown knowledge base                                         |
 
 
 ### Skill Pipeline Metadata (Preview)
@@ -2116,7 +2116,7 @@ handoff: .omg/specs/deep-interview-{slug}.md
 
 When present, OMC appends a standardized **Skill Pipeline** section to the rendered skill prompt so the current stage, handoff artifact, and explicit next `Skill("oh-my-copilot:...")` invocation are carried forward consistently.
 
-Pipeline metadata may use on-disk directory keys such as `plan`; invoke the registered workflow as `/oh-my-copilot:omc-plan` (and use `/oh-my-copilot:omc-review` for the review workflow).
+Pipeline metadata may use on-disk directory keys such as `plan`; invoke the registered workflow as `/omc-plan` (and use `/omc-review` for the review workflow).
 
 ### Skills 2.0 Compatibility (MVP)
 
@@ -2395,7 +2395,7 @@ Enable a supported preset for agent and context visibility in your status line:
 ### Diagnose Installation Issues
 
 ```bash
-/oh-my-copilot:omc-doctor
+/omc-doctor
 ```
 
 Checks for:
@@ -2420,7 +2420,7 @@ report; the human report is unchanged when `--json` is omitted. `--json` and
 ### Configure HUD Statusline
 
 ```bash
-/oh-my-copilot:hud setup
+/hud setup
 ```
 
 Installs or repairs the HUD statusline for real-time status updates.
@@ -2516,8 +2516,8 @@ Available presets: `minimal`, `focused`, `full`, `dense`, `analytics`, `opencode
 
 | Issue                 | Solution                                                                         |
 | --------------------- | -------------------------------------------------------------------------------- |
-| Commands not found    | Re-run `/oh-my-copilot:omc-setup`                                             |
-| Hooks not executing   | Check that `node` 20+ is on `PATH`, then run `/oh-my-copilot:omc-doctor`      |
+| Commands not found    | Re-run `/omc-setup`                                             |
+| Hooks not executing   | Check that `node` 20+ is on `PATH`, then run `/omc-doctor`      |
 | Agents not delegating | Verify CLAUDE.md is loaded: check `./.claude/CLAUDE.md` or `~/.claude/CLAUDE.md` |
 | LSP tools not working | Install language servers: `npm install -g typescript-language-server`            |
 | Token limit errors    | Use `/oh-my-copilot:` for token-efficient execution                           |

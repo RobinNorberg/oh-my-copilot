@@ -11,6 +11,7 @@ vi.mock('../../../platform/executable-resolution.js', async (importOriginal) => 
     return { ...actual, resolveHostBinaryLaunch: resolution.resolveHostBinaryLaunch };
 });
 import { buildSchedulePlan, checkOrCreateHarborLabels, checkTrackerReachable, defaultIntakeRunner, filterCrontabLines, parseSimpleCron, runHeadlessIntake, validateHostBin, } from '../intake.js';
+import { skillSlash } from '../../../utils/skill-slash.js';
 describe('defaultIntakeRunner on win32', () => {
     const realPlatform = process.platform;
     it('launches a .cmd host shim through cmd.exe (CreateProcess cannot exec it directly)', () => {
@@ -18,11 +19,11 @@ describe('defaultIntakeRunner on win32', () => {
         try {
             resolution.resolveHostBinaryLaunch.mockReturnValueOnce({ file: 'C:\\npm\\copilot.cmd', viaCmd: true });
             vi.mocked(spawnSync).mockReturnValueOnce({ status: 0, stdout: 'ok', stderr: '' });
-            const result = defaultIntakeRunner('copilot', ['-p', '/oh-my-copilot:harbor sweep', '--no-ask-user'], { cwd: '.', env: { COPILOT_ALLOW_ALL: 'false' } });
+            const result = defaultIntakeRunner('copilot', ['-p', '/harbor sweep', '--no-ask-user'], { cwd: '.', env: { COPILOT_ALLOW_ALL: 'false' } });
             expect(result.status).toBe(0);
             const [file, args, options] = vi.mocked(spawnSync).mock.calls.at(-1);
             expect(file).toBe(process.env.COMSPEC || 'cmd.exe');
-            expect(args).toEqual(['/d', '/s', '/c', '"C:\\npm\\copilot.cmd -p "/oh-my-copilot:harbor sweep" --no-ask-user"']);
+            expect(args).toEqual(['/d', '/s', '/c', '"C:\\npm\\copilot.cmd -p "/harbor sweep" --no-ask-user"']);
             expect(options).toMatchObject({ windowsVerbatimArguments: true });
             expect(options.env.COPILOT_ALLOW_ALL).toBe('false');
         }
@@ -177,11 +178,32 @@ describe('runHeadlessIntake preconditions', () => {
             const result = runHeadlessIntake({ allowDocketOnly: true, cwd: '.' }, runner);
             expect(result.exitCode).toBe(0);
             expect(spawnedCommand).toBe('copilot');
-            expect(spawnedArgs).toEqual(['-p', '/oh-my-copilot:harbor sweep', '--no-ask-user']);
+            expect(spawnedArgs).toEqual(['-p', `${skillSlash('harbor', 'copilot')} sweep`, '--no-ask-user']);
             // The runner merges options.env over process.env, so this overrides an inherited 'true'.
             expect(spawnedEnv.COPILOT_ALLOW_ALL).toBe('false');
         }
         finally {
+            vi.unstubAllEnvs();
+        }
+    });
+    it('refuses the sweep when a project skill shadows harbor in the Copilot registry', async () => {
+        vi.stubEnv('COPILOT_CLI', '1');
+        const { setSkillListProbe } = await import('../../../utils/skill-registry.js');
+        const previous = setSkillListProbe(() => [{ name: 'harbor', source: 'project', path: '/repo/.github/skills/harbor' }]);
+        const calls = [];
+        const runner = (cmd, args, options) => {
+            if (cmd === 'copilot')
+                calls.push(cmd);
+            return okRunner()(cmd, args, options);
+        };
+        try {
+            const result = runHeadlessIntake({ allowDocketOnly: true, cwd: '.' }, runner);
+            expect(result.exitCode).toBe(1);
+            expect(result.message).toMatch(/^intake refused: skill-shadowed:harbor/);
+            expect(calls).toEqual([]);
+        }
+        finally {
+            setSkillListProbe(previous);
             vi.unstubAllEnvs();
         }
     });
@@ -220,7 +242,7 @@ describe('runHeadlessIntake preconditions', () => {
             const result = runHeadlessIntake({ allowDocketOnly: true, cwd: '.' }, runner);
             expect(result.exitCode).toBe(0);
             expect(spawnedCommand).toBe('claude');
-            expect(spawnedArgs).toEqual(['--print', '/oh-my-copilot:harbor sweep']);
+            expect(spawnedArgs).toEqual(['--print', `${skillSlash('harbor', 'claude')} sweep`]);
             expect(spawnedEnv.OMC_GIT_GUARDRAILS).toBe('1');
         }
         finally {

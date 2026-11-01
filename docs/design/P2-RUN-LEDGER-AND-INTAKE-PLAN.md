@@ -16,7 +16,7 @@ Non-goals inherited from the #4113 review: nothing posts to a tracker or opens a
 The enforcement-layer design (E1) originally placed closeout enforcement in a Stop hook. Walking the real sequence invalidates that placement:
 
 1. ralph Step 10 writes the run closeout to the notepad;
-2. Step 8 runs `/oh-my-copilot:cancel`, which **deletes the mode state file**;
+2. Step 8 runs `/cancel`, which **deletes the mode state file**;
 3. the session stops; the Stop hook fires with **no state left to read**.
 
 A Stop-hook closeout check can therefore never observe a legitimately finished run — it would only ever fire on the mid-run stops that persistent-mode already blocks. The companion idea ("have the stale-run watchdog notice missing closeouts") is equally void: the watchdog only sees **crashed** runs (state still `active`), and a crashed run legitimately has no closeout. Hard closeout enforcement needs a durable trace that survives cancel. That trace is the run ledger.

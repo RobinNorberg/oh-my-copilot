@@ -2,6 +2,7 @@ import { readFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { atomicWriteJson } from '../lib/atomic-write.js';
 import { readUltragoalPlan, recordUltragoalStatePlanId, ultragoalDir, UltragoalError, } from './artifacts.js';
+import { skillSlash } from '../utils/skill-slash.js';
 /**
  * OMG-owned goal record: the Copilot CLI stand-in for Claude Code's `/goal`.
  *
@@ -158,7 +159,7 @@ export function buildCopilotGoalInstruction(goal, plan) {
         '- Copilot has no Claude /goal; do not try to invoke it. The OMG goal record satisfies the ultragoal tool guard.',
         `- Record the objective with its acceptance criteria now: omg ultragoal goal-start${planFlag} --criterion "<criterion 1>" --criterion "<criterion 2>"`,
         `- When a criterion is met, record its evidence: omg ultragoal goal-evidence${planFlag} --criterion C1 --evidence "<tests/files/PR evidence>"`,
-        '- The session keeps continuing until every criterion has evidence (or the user cancels with /oh-my-copilot:cancel).',
+        `- The session keeps continuing until every criterion has evidence (or the user cancels with ${skillSlash('cancel')}).`,
         '- Checkpoint commands below may omit --claude-goal-json on Copilot; the goal record is used as the snapshot (active until all criteria have evidence, then complete).',
         `Goal record objective: ${objective}`,
     ].join('\n');

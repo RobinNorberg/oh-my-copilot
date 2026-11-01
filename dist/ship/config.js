@@ -30,9 +30,9 @@ export const DEFAULT_SHIP_CONFIG = Object.freeze({
         'Socket Security: Pull Request Alerts',
         'Socket Security: Project Report',
     ],
-    // Every check this repo's CI reports on a PR to dev (ci.yml, pr-check.yml,
-    // upgrade-test.yml); Build, npm pack and the smoke job start late (`needs:`).
-    // ci.yml and upgrade-test.yml run only for PRs to main / dev
+    // Every check this repo's CI reports on a PR to dev (ci.yml, pr-check.yml);
+    // the jobs that consume the Build output start late (`needs: [build]`).
+    // ci.yml runs only for PRs to main / dev
     // (`pull_request.branches`): on a PR to another base their checks never
     // report and stay pending, so such a base needs its own requiredChecks in
     // the user config.

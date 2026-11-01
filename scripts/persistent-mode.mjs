@@ -159,6 +159,7 @@ const { readStdin } = await import(
 );
 const { resolveOmcStateRoot } = await import(pathToFileURL(join(__dirname, "lib", "state-root.mjs")).href);
 const { isCopilotHookHost } = await import(pathToFileURL(join(__dirname, "lib", "hook-host.mjs")).href);
+const { skillSlash } = await import(pathToFileURL(join(__dirname, "lib", "skill-slash.mjs")).href);
 const { incrementCopilotStopChain, isCopilotNativeAutopilot, readCopilotStopChain, resetCopilotStopChain, resolveCopilotStopChainMax } = await import(pathToFileURL(join(__dirname, "lib", "copilot-continuation.mjs")).href);
 const { goalRecordMatches, isGoalRecordComplete, missingGoalCriteria, readOmgGoalRecord, ultragoalStatePlanId } = await import(pathToFileURL(join(__dirname, "lib", "omg-goal-record.mjs")).href);
 
@@ -1458,7 +1459,7 @@ async function main() {
           console.log(
             JSON.stringify({
               decision: "block",
-              reason: `[RALPH LOOP - HARD LIMIT] Reached hard max iterations (${hardMax}). Mode auto-disabled. Restart with /oh-my-copilot:ralph if needed.`,
+              reason: `[RALPH LOOP - HARD LIMIT] Reached hard max iterations (${hardMax}). Mode auto-disabled. Restart with ${skillSlash("ralph")} if needed.`,
             }),
           );
           return;
@@ -1476,7 +1477,7 @@ async function main() {
           }
           writeJsonFile(ralph.path, ralph.state);
 
-          let reason = `[RALPH LOOP - ITERATION ${iteration + 1}/${maxIter}] Work is NOT done. Continue working.\nWhen FULLY complete (after Architect verification), run /oh-my-copilot:cancel to cleanly exit ralph mode and clean up all state files. If cancel fails, retry with /oh-my-copilot:cancel --force.\n${ralph.state.prompt ? `Task: ${ralph.state.prompt}` : ""}`;
+          let reason = `[RALPH LOOP - ITERATION ${iteration + 1}/${maxIter}] Work is NOT done. Continue working.\nWhen FULLY complete (after Architect verification), run ${skillSlash("cancel")} to cleanly exit ralph mode and clean up all state files. If cancel fails, retry with ${skillSlash("cancel")} --force.\n${ralph.state.prompt ? `Task: ${ralph.state.prompt}` : ""}`;
           if (errorGuidance) {
             reason = errorGuidance + reason;
           }
@@ -1522,7 +1523,7 @@ async function main() {
         }
         writeJsonFile(ralph.path, ralph.state);
 
-        const ralphExtendedReason = `[RALPH LOOP - EXTENDED] Max iterations reached; extending to ${ralph.state.max_iterations} and continuing. When FULLY complete (after Architect verification), run /oh-my-copilot:cancel (or --force).`;
+        const ralphExtendedReason = `[RALPH LOOP - EXTENDED] Max iterations reached; extending to ${ralph.state.max_iterations} and continuing. When FULLY complete (after Architect verification), run ${skillSlash("cancel")} (or --force).`;
         recordLoopContinuationShadow({
           mode_name: "ralph",
           session_id: sessionId || null,
@@ -1594,14 +1595,14 @@ async function main() {
         const objective = getUltragoalObjective(ultragoal.state, omcRoot);
         let reason;
         if (copilotHost) {
-          reason = `[ULTRAGOAL #${newCount}/${maxReinforcements}] Ultragoal mode is active. Continue the durable goal workflow, record evidence for every acceptance criterion with omg ultragoal goal-evidence --criterion <id> --evidence "<evidence>", and checkpoint .omg/ultragoal/ledger.jsonl before stopping. When all ultragoal stories are complete and the final quality gate passes, run /oh-my-copilot:cancel to cleanly exit.`;
+          reason = `[ULTRAGOAL #${newCount}/${maxReinforcements}] Ultragoal mode is active. Continue the durable goal workflow, record evidence for every acceptance criterion with omg ultragoal goal-evidence --criterion <id> --evidence "<evidence>", and checkpoint .omg/ultragoal/ledger.jsonl before stopping. When all ultragoal stories are complete and the final quality gate passes, run ${skillSlash("cancel")} to cleanly exit.`;
           const goalObjective = goalRecord?.record.objective || objective;
           if (goalObjective) reason += `\nGoal objective: ${goalObjective}`;
           reason += goalRecord
             ? `\nMissing evidence: ${missingGoalCriteria(goalRecord.record).map((criterion) => `${criterion.id} ${criterion.text}`).join("; ")}`
             : `\nNo OMG goal record yet: run omg ultragoal goal-start --criterion "<acceptance criterion>" (one --criterion per criterion).`;
         } else {
-          reason = `[ULTRAGOAL #${newCount}/${maxReinforcements}] Ultragoal mode is active. Continue the durable goal workflow, keep the matching Claude /goal active, and checkpoint .omg/ultragoal/ledger.jsonl before stopping. When all ultragoal stories are complete and the final quality gate passes, run /oh-my-copilot:cancel to cleanly exit.`;
+          reason = `[ULTRAGOAL #${newCount}/${maxReinforcements}] Ultragoal mode is active. Continue the durable goal workflow, keep the matching Claude /goal active, and checkpoint .omg/ultragoal/ledger.jsonl before stopping. When all ultragoal stories are complete and the final quality gate passes, run ${skillSlash("cancel")} to cleanly exit.`;
           if (objective) reason += `\nClaude /goal objective: ${objective}`;
         }
         if (errorGuidance) {
@@ -1709,7 +1710,7 @@ async function main() {
             autopilot.state = reinforced;
 
             const cancelGuidance = hasValidSessionId && autopilot.state.session_id === sessionId
-              ? " When all phases are complete, run /oh-my-copilot:cancel to cleanly exit and clean up this session's autopilot state files. If cancel fails, retry with /oh-my-copilot:cancel --force."
+              ? ` When all phases are complete, run ${skillSlash("cancel")} to cleanly exit and clean up this session's autopilot state files. If cancel fails, retry with ${skillSlash("cancel")} --force.`
               : "";
             let reason = `[AUTOPILOT - Phase: ${phase}] Autopilot not complete. Continue working.${cancelGuidance}`;
             if (errorGuidance) {
@@ -1765,7 +1766,7 @@ async function main() {
           ultrapilot.state.last_checked_at = new Date().toISOString();
           writeJsonFile(ultrapilot.path, ultrapilot.state);
 
-          let reason = `[ULTRAPILOT] ${incomplete} workers still running. Continue working. When all workers complete, run /oh-my-copilot:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-copilot:cancel --force.`;
+          let reason = `[ULTRAPILOT] ${incomplete} workers still running. Continue working. When all workers complete, run ${skillSlash("cancel")} to cleanly exit and clean up state files. If cancel fails, retry with ${skillSlash("cancel")} --force.`;
           if (errorGuidance) {
             reason = errorGuidance + reason;
           }
@@ -1800,7 +1801,7 @@ async function main() {
           swarmSummary.last_checked_at = new Date().toISOString();
           writeJsonFile(join(stateDir, "swarm-summary.json"), swarmSummary);
 
-          let reason = `[SWARM ACTIVE] ${pending} tasks remain. Continue working. When all tasks are done, run /oh-my-copilot:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-copilot:cancel --force.`;
+          let reason = `[SWARM ACTIVE] ${pending} tasks remain. Continue working. When all tasks are done, run ${skillSlash("cancel")} to cleanly exit and clean up state files. If cancel fails, retry with ${skillSlash("cancel")} --force.`;
           if (errorGuidance) {
             reason = errorGuidance + reason;
           }
@@ -1837,7 +1838,7 @@ async function main() {
           pipeline.state.last_checked_at = new Date().toISOString();
           writeJsonFile(pipeline.path, pipeline.state);
 
-          let reason = `[PIPELINE - Stage ${currentStage + 1}/${totalStages}] Pipeline not complete. Continue working. When all stages complete, run /oh-my-copilot:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-copilot:cancel --force.`;
+          let reason = `[PIPELINE - Stage ${currentStage + 1}/${totalStages}] Pipeline not complete. Continue working. When all stages complete, run ${skillSlash("cancel")} to cleanly exit and clean up state files. If cancel fails, retry with ${skillSlash("cancel")} --force.`;
           if (errorGuidance) {
             reason = errorGuidance + reason;
           }
@@ -1874,7 +1875,7 @@ async function main() {
             team.state.last_checked_at = new Date().toISOString();
             writeJsonFile(team.path, team.state);
 
-            let reason = `[TEAM - Phase: ${phase}] Team mode active. Continue working. When all team tasks complete, run /oh-my-copilot:cancel to cleanly exit. If cancel fails, retry with /oh-my-copilot:cancel --force.`;
+            let reason = `[TEAM - Phase: ${phase}] Team mode active. Continue working. When all team tasks complete, run ${skillSlash("cancel")} to cleanly exit. If cancel fails, retry with ${skillSlash("cancel")} --force.`;
             if (errorGuidance) {
               reason = errorGuidance + reason;
             }
@@ -1912,7 +1913,7 @@ async function main() {
             omcTeams.state.last_checked_at = new Date().toISOString();
             writeJsonFile(omcTeams.path, omcTeams.state);
 
-            let reason = `[OMC TEAMS - Phase: ${phase}] OMC Teams workers active. Continue working. When all workers complete, run /oh-my-copilot:cancel to cleanly exit. If cancel fails, retry with /oh-my-copilot:cancel --force.`;
+            let reason = `[OMC TEAMS - Phase: ${phase}] OMC Teams workers active. Continue working. When all workers complete, run ${skillSlash("cancel")} to cleanly exit. If cancel fails, retry with ${skillSlash("cancel")} --force.`;
             if (errorGuidance) {
               reason = errorGuidance + reason;
             }

@@ -9,7 +9,7 @@ pipeline: [deep-interview, ask-navigator]
 
 # Ask Navigator
 
-Ask-navigator is the shipyard's **navigator**: it takes an effort wrapped in fog — the way from here to the destination isn't visible yet — and charts it as a **map of decision tickets** on the repo's issue tracker, then works the frontier one ticket per session until the route is clear. It produces **decisions, never deliverables**: when the way is clear it hands off, it doesn't build. Delivery belongs to `/oh-my-copilot:launch`.
+Ask-navigator is the shipyard's **navigator**: it takes an effort wrapped in fog — the way from here to the destination isn't visible yet — and charts it as a **map of decision tickets** on the repo's issue tracker, then works the frontier one ticket per session until the route is clear. It produces **decisions, never deliverables**: when the way is clear it hands off, it doesn't build. Delivery belongs to `/launch`.
 
 **The role contract.** The captain (the human) signs the destination (W1) and the chart (W2); the navigator drafts everything else and **never answers a question that belongs to the captain** — a grilling session in which the agent answers its own questions has broken the role, not just the process. Facts are the navigator's job; decisions are the captain's.
 
@@ -18,11 +18,11 @@ Ask-navigator is the shipyard's **navigator**: it takes an effort wrapped in fog
 1. **Q1** — Can the destination be stated in one sentence: the spec, decision, or change this effort is finding its way to?
 2. **Q2** — Can the first three decisions be stated precisely right now, even though none of them can be answered yet?
 
-Both yes → no map is needed; run `/oh-my-copilot:launch` (its fog gate sends efforts here only when an answer is no). Either no → chart first. `ask-navigator` is also reachable directly: invoke it with a loose idea, with residual questions handed over by launch's fog gate, or with no argument to continue the open map.
+Both yes → no map is needed; run `/launch` (its fog gate sends efforts here only when an answer is no). Either no → chart first. `ask-navigator` is also reachable directly: invoke it with a loose idea, with residual questions handed over by launch's fog gate, or with no argument to continue the open map.
 
 ## Map home
 
-The map is a **single issue** labelled `navigator:map` on the repo's issue tracker; its decision tickets are child issues of the map. The tracker should have been recorded by `/oh-my-copilot:drydock`; if none was recorded, ask once and remember the answer inside the map's Notes.
+The map is a **single issue** labelled `navigator:map` on the repo's issue tracker; its decision tickets are child issues of the map. The tracker should have been recorded by `/drydock`; if none was recorded, ask once and remember the answer inside the map's Notes.
 
 The tracker is the **only map medium** — there is no local fallback: one map issue, child issues per ticket, native blocking/sub-issue relationships. Concurrent sessions and the tracker's own UI render the frontier — the map lives where humans already look. A map written to local files strands decisions where later sessions, the captain, and launch will never find them; do not fall back to local files. If the tracker is unreachable, stop and report the blocker. Create the `navigator:map` label if the tracker doesn't have it yet; each ticket's type lives in its body as a `Type: <type>` line (see Ticket types).
 
@@ -32,19 +32,19 @@ The map is an **index, not a store**: a decision lives in exactly one place — 
 
 ## Document language
 
-Map and ticket prose follow the same document-language contract as `/oh-my-copilot:drydock`: read `documentLanguage` from `GLOSSARY.md` frontmatter when present (a legacy yard with only `CONTEXT.md` reads it there and never gets a second glossary; drydock's legacy glossary migration renames it); if the yard is not laid, ask the language question once during charting (W2) and record the resolved tag in the map's Notes so the later launch run inherits it. Paths, labels, slash commands, the `navigator:map` label, ticket-type names (`research`, `loft`, `grilling`, `task`), `HITL`/`AFK`, and `blockedBy` are stable tokens and stay byte-for-byte stable in every language.
+Map and ticket prose follow the same document-language contract as `/drydock`: read `documentLanguage` from `GLOSSARY.md` frontmatter when present (a legacy yard with only `CONTEXT.md` reads it there and never gets a second glossary; drydock's legacy glossary migration renames it); if the yard is not laid, ask the language question once during charting (W2) and record the resolved tag in the map's Notes so the later launch run inherits it. Paths, labels, slash commands, the `navigator:map` label, ticket-type names (`research`, `loft`, `grilling`, `task`), `HITL`/`AFK`, and `blockedBy` are stable tokens and stay byte-for-byte stable in every language.
 
 ## Chart the map
 
 Invoked with a loose idea (or launch's residual questions). Charting is one session's work; it hand-resolves nothing.
 
-1. **Run the audit, defer the findings.** Run the `/oh-my-copilot:drydock` `--check` audit in report-only mode — the mechanical subset via `node scripts/shipyard-audit.mjs`, the heuristic classes via the drydock prose audit: findings never block charting (a map produces decisions, not slot landings), but they are recorded verbatim in the map's Notes — launch's yard gate will collect that debt when the effort finally enters delivery. If the yard is not laid at all (no `GLOSSARY.md`, no `docs/adr/`), offer `/oh-my-copilot:drydock` **once**; if the captain declines, proceed in tracker-only mode and defer all sediment (see Sediment).
+1. **Run the audit, defer the findings.** Run the `/drydock` `--check` audit in report-only mode — the mechanical subset via `node scripts/shipyard-audit.mjs`, the heuristic classes via the drydock prose audit: findings never block charting (a map produces decisions, not slot landings), but they are recorded verbatim in the map's Notes — launch's yard gate will collect that debt when the effort finally enters delivery. If the yard is not laid at all (no `GLOSSARY.md`, no `docs/adr/`), offer `/drydock` **once**; if the captain declines, proceed in tracker-only mode and defer all sediment (see Sediment).
 2. **W1 — name the destination.** Call the Skill tool with "deep-interview" and pin down what this map is finding its way to: the spec, decision, or change. The destination fixes the scope, so it is settled first. **W1 is a captain signature: present the destination statement and get explicit confirmation.** If the captain cannot state a destination even with the interview's help, that is not an error — present the best candidates ranked and let the captain pick one to chart toward or park the effort.
-3. **Map the frontier.** Grill again with "deep-interview", **breadth-first with frontier rounds** (`--frontier`): fan out across the whole space rather than deep on any one thread — each round asks the whole frontier of decisions whose prerequisites are settled, then recomputes from the answers — surfacing the open decisions and the first steps takeable now. When charting against an existing map (residual questions or a redraw), read its **Out of scope** section before ticketing — ruled-out work never re-enters as a fresh ticket. **If this surfaces no fog** — the way to the destination is already clear and the journey fits one session — no map is needed: stop and recommend `/oh-my-copilot:launch`.
+3. **Map the frontier.** Grill again with "deep-interview", **breadth-first with frontier rounds** (`--frontier`): fan out across the whole space rather than deep on any one thread — each round asks the whole frontier of decisions whose prerequisites are settled, then recomputes from the answers — surfacing the open decisions and the first steps takeable now. When charting against an existing map (residual questions or a redraw), read its **Out of scope** section before ticketing — ruled-out work never re-enters as a fresh ticket. **If this surfaces no fog** — the way to the destination is already clear and the journey fits one session — no map is needed: stop and recommend `/launch`.
 4. **W2 — sign the chart.** Present the proposed map: destination, initial tickets with types and blocking edges, and the fog sketch. **W2 is a captain signature**: granularity wrong here wastes every later session. Iterate until signed.
 5. **Create the map and tickets.** Label the map `navigator:map`; create child tickets; wire blocking edges in a second pass (issues need ids before they can reference each other). Everything not yet sharp enough to ticket stays in **Not yet specified**.
 6. **Fire the research subagents.** For each `research` ticket just created, spawn a background subagent to resolve it in parallel (see Ticket types), capturing findings where the ticket can link them.
-7. **Stop** with the session-close pointer: the map link, how many tickets are on the frontier, and "next session, run `/oh-my-copilot:ask-navigator` to work the next decision."
+7. **Stop** with the session-close pointer: the map link, how many tickets are on the frontier, and "next session, run `/ask-navigator` to work the next decision."
 
 ## Work through the map
 
@@ -129,20 +129,20 @@ Resolutions land in the shipyard's paper trail the moment they settle — the sa
 
 **Legacy yards (CONTEXT.md only)**: If the yard has only a recognizable legacy glossary `CONTEXT.md` and no `GLOSSARY.md`, run drydock before writing sediment to migrate the glossary authority to `GLOSSARY.md`. Do not create a fresh `GLOSSARY.md` beside the legacy file; this would split authorities. When drydock's legacy glossary migration completes, glossary writes will target `GLOSSARY.md` automatically. Alternatively, defer this sediment landing in the map's Notes (see below).
 
-When the yard is not laid (the captain declined drydock at charting time), **defer, don't skip**: record each pending landing as one line in the map's Notes under a `Deferred sediment` heading. The later `/oh-my-copilot:launch` run's yard gate requires the base faces and audits only adopted optional surfaces — an un-adopted optional surface never becomes a finding — and the deferred lines tell the launch run exactly which first-use trigger to fire and what to land there.
+When the yard is not laid (the captain declined drydock at charting time), **defer, don't skip**: record each pending landing as one line in the map's Notes under a `Deferred sediment` heading. The later `/launch` run's yard gate requires the base faces and audits only adopted optional surfaces — an un-adopted optional surface never becomes a finding — and the deferred lines tell the launch run exactly which first-use trigger to fire and what to land there.
 
 ## Exit — hand off, don't build
 
 The map is done when no open tickets remain and **Not yet specified** is empty. Then:
 
 1. Collapse **Decisions so far** into a **mission brief** — objective, scope boundary, non-goals — and write it into the map issue body under **Mission brief**. The handoff passes one pointer, the map issue itself; no brief file is created.
-2. Recommend: "The way is clear. Run `/oh-my-copilot:launch` with the map issue as the mission brief — the brief pointer is in the map issue body." The map stays as the effort's logbook; launch's yard gate owns every check from there.
+2. Recommend: "The way is clear. Run `/launch` with the map issue as the mission brief — the brief pointer is in the map issue body." The map stays as the effort's logbook; launch's yard gate owns every check from there.
 3. Default entry is launch Phase 1 (the paper trail is already half-full; its frontier clears fast). Only when the decisions already read like a spec may a spec be drafted and launch entered at Phase 2, carrying the spec tracker issue reference (the parent spec issue number or link).
 
 ## Scope and non-goals
 
 - No daemon, no mode, no always-on behavior, no runtime state machine: the map is ordinary tracker issues — nothing is written to repo files.
-- Incoming requests that arrive as fog are the harbor's to route: a fuzzy issue handed over by `/oh-my-copilot:harbor` charts like any loose idea, with the original thread and any signed decision links as material.
+- Incoming requests that arrive as fog are the harbor's to route: a fuzzy issue handed over by `/harbor` charts like any loose idea, with the original thread and any signed decision links as material.
 - Never mutates Team lifecycle, task statuses, or runtime state; never publishes delivery tickets — vertical-slice build tickets belong to launch's C3, and the navigator must not pre-slice fog into them. Map tickets therefore never carry the factory intake label or a `shipyard-key:` line: delivery tickets reach the factory only as launch's `omg factory enqueue` output.
 - Tracker: GitHub only this cycle, also when launch and the factory run on another forge; on any other tracker, report and stop.
 - Never executes a decision beyond recording it. The one exception is a `task` ticket, which does only what unblocks a decision.
@@ -150,4 +150,4 @@ The map is done when no open tickets remain and **Not yet specified** is empty. 
 
 ## Completion definition
 
-A charting session ends with a captain-signed map and fired research tickets. A working session ends with exactly one resolution recorded, the frontier advanced, and the session-close pointer emitted. The effort ends when the way is clear and the mission brief is in the captain's hands with `/oh-my-copilot:launch` recommended — every decision the navigator made on the captain's behalf answerable with one pointer to where it was recorded.
+A charting session ends with a captain-signed map and fired research tickets. A working session ends with exactly one resolution recorded, the frontier advanced, and the session-close pointer emitted. The effort ends when the way is clear and the mission brief is in the captain's hands with `/launch` recommended — every decision the navigator made on the captain's behalf answerable with one pointer to where it was recorded.

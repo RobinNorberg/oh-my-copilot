@@ -216,18 +216,18 @@ Active skills: team + execute + git-master
 
 **Slash commands:**
 ```bash
-/oh-my-copilot:omc-plan "plan a todo app"
-/oh-my-copilot:execute build me a todo app
-/oh-my-copilot:omc-review [path]
-/oh-my-copilot:verify [target]
-/oh-my-copilot:team 3:executor "implement fullstack app"
+/omc-plan "plan a todo app"
+/execute build me a todo app
+/omc-review [path]
+/verify [target]
+/team 3:executor "implement fullstack app"
 ```
 
 **Magic keywords** — include a keyword in natural language and the skill activates automatically:
 ```bash
 autopilot build me a todo app      # activates autopilot
 ralph: refactor the auth module    # activates ralph
-/oh-my-copilot:team 3:executor "implement OAuth"  # explicit parallel team skill
+/team 3:executor "implement OAuth"  # explicit parallel team skill
 ```
 
 ### Core Workflow Skills
@@ -248,24 +248,24 @@ ralph: refactor the authentication module
 
 #### execute
 Carries an approved task through to working, verified code.
-- Manual command: `/oh-my-copilot:execute`
+- Manual command: `/execute`
 ```bash
-/oh-my-copilot:execute implement user authentication with OAuth
+/execute implement user authentication with OAuth
 ```
-For coordinated parallel workers, use `/oh-my-copilot:team` instead.
+For coordinated parallel workers, use `/team` instead.
 
 #### team
 Coordinates N Claude agents with a 5-stage pipeline: `plan → prd → exec → verify → fix`
 ```bash
-/oh-my-copilot:team 3:executor "implement fullstack todo app"
+/team 3:executor "implement fullstack todo app"
 ```
 
 #### Multi-provider advice with ask + team
-The retired `ccg` workflow is replaced by `/oh-my-copilot:ask` plus `/oh-my-copilot:team`: ask the selected providers for independent advice, then use a team to synthesize the results.
+The retired `ccg` workflow is replaced by `/ask` plus `/team`: ask the selected providers for independent advice, then use a team to synthesize the results.
 ```bash
-/oh-my-copilot:ask codex "review this authentication implementation"
-/oh-my-copilot:ask antigravity "review this authentication implementation"
-/oh-my-copilot:team 2:executor "synthesize the advisor findings"
+/ask codex "review this authentication implementation"
+/ask antigravity "review this authentication implementation"
+/team 2:executor "synthesize the advisor findings"
 ```
 
 #### ralplan
@@ -279,21 +279,21 @@ ralplan this feature
 
 | Skill | Description | Command |
 |-------|-------------|---------|
-| `cancel` | Cancel active execution mode | `/oh-my-copilot:cancel` |
-| `hud` | Status bar configuration | `/oh-my-copilot:hud` |
-| `omc-setup` | Initial setup wizard | `/oh-my-copilot:omc-setup` |
-| `omc-doctor` | Diagnose installation | `/oh-my-copilot:omc-doctor` |
-| `skillify` | Extract reusable skills from session | `/oh-my-copilot:skillify` |
-| `skill` | Manage local skills (list/add/remove) | `/oh-my-copilot:skill` |
-| `trace` | Evidence-driven causal tracing | `/oh-my-copilot:trace` |
-| `release` | Automated release workflow | `/oh-my-copilot:release` |
-| `deepinit` | Generate hierarchical AGENTS.md | `/oh-my-copilot:deepinit` |
+| `cancel` | Cancel active execution mode | `/cancel` |
+| `hud` | Status bar configuration | `/hud` |
+| `omc-setup` | Initial setup wizard | `/omc-setup` |
+| `omc-doctor` | Diagnose installation | `/omc-doctor` |
+| `skillify` | Extract reusable skills from session | `/skillify` |
+| `skill` | Manage local skills (list/add/remove) | `/skill` |
+| `trace` | Evidence-driven causal tracing | `/trace` |
+| `release` | Automated release workflow | `/release` |
+| `deepinit` | Generate hierarchical AGENTS.md | `/deepinit` |
 | `deep-interview` | Socratic deep interview | `/deep-interview` |
-| `research` | Parallel or focused research | `/oh-my-copilot:research` |
-| `external-context` | Parallel document-specialist research | `/oh-my-copilot:external-context` |
-| `ai-slop-cleaner` | Clean AI expression patterns | `/oh-my-copilot:ai-slop-cleaner` |
-| `configure-notifications` | Configure Telegram, Discord, and Slack notification integrations | `/oh-my-copilot:configure-notifications` |
-| `remember` | Save durable session memory | `/oh-my-copilot:remember` |
+| `research` | Parallel or focused research | `/research` |
+| `external-context` | Parallel document-specialist research | `/external-context` |
+| `ai-slop-cleaner` | Clean AI expression patterns | `/ai-slop-cleaner` |
+| `configure-notifications` | Configure Telegram, Discord, and Slack notification integrations | `/configure-notifications` |
+| `remember` | Save durable session memory | `/remember` |
 
 ### Shipyard document discipline
 
@@ -328,7 +328,7 @@ cross-ranked; the ticket fails when either axis fails.
 | `deslop`, `anti-slop` | AI expression cleanup |
 | `cancelomc`, `stopomc` | Cancel active execution mode |
 
-Parallel work is not a magic keyword; invoke `/oh-my-copilot:team` explicitly. Use `/oh-my-copilot:execute` to carry an approved task through verified code.
+Parallel work is not a magic keyword; invoke `/team` explicitly. Use `/execute` to carry an approved task through verified code.
 
 ### Keyword Detection Sources
 

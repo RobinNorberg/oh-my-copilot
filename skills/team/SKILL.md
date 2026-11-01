@@ -15,9 +15,9 @@ The `swarm` compatibility alias was removed in #1131.
 ## Usage
 
 ```
-/oh-my-copilot:team N:agent-type "task description"
-/oh-my-copilot:team "task description"
-/oh-my-copilot:team ralph "task description"
+/team N:agent-type "task description"
+/team "task description"
+/team ralph "task description"
 ```
 
 ### Parameters
@@ -41,7 +41,7 @@ The `swarm` compatibility alias was removed in #1131.
 /team 2:gemini "redesign the UI components"
 # With Antigravity CLI workers (requires: install per https://antigravity.google)
 /team 2:antigravity "redesign the UI components"
-# Mixed: Codex for backend analysis, Gemini/Antigravity for frontend (delegate per-task with /oh-my-copilot:ask)
+# Mixed: Codex for backend analysis, Gemini/Antigravity for frontend (delegate per-task with /ask)
 ```
 
 ## Architecture
@@ -150,7 +150,7 @@ Continue `team-exec -> team-verify -> team-fix` until:
 
 `team-fix` is bounded by max attempts. If fix attempts exceed the configured limit, transition to terminal `failed` (no infinite loop).
 
-**Run closeout (either terminal outcome).** Before `/oh-my-copilot:cancel` state cleanup, append at most three factual lines to `.omg/notepads/team/problems.md` (blockers additionally in `.omg/notepads/team/issues.md`) — what broke (defects that survived a fix round, three-strike halts) and what dragged (worker environment friction, missing checks, unreachable information). Preserve existing entries: append only and never replace the shared file. If there are no observations, append nothing; an empty closeout is valid, so do not write “no lessons.” Observations only; landing them on repo surfaces is `refit`'s job, with the user's approval. For a terminal `failed` outcome, also draft an incident work item with the failure signature, evidence pointers, and reopen path; append it to the local `.omg/notepads/team/issues.md`. Post it to a tracker only when the user or mode invocation explicitly authorizes that external action.
+**Run closeout (either terminal outcome).** Before `/cancel` state cleanup, append at most three factual lines to `.omg/notepads/team/problems.md` (blockers additionally in `.omg/notepads/team/issues.md`) — what broke (defects that survived a fix round, three-strike halts) and what dragged (worker environment friction, missing checks, unreachable information). Preserve existing entries: append only and never replace the shared file. If there are no observations, append nothing; an empty closeout is valid, so do not write “no lessons.” Observations only; landing them on repo surfaces is `refit`'s job, with the user's approval. For a terminal `failed` outcome, also draft an incident work item with the failure signature, evidence pointers, and reopen path; append it to the local `.omg/notepads/team/issues.md`. Post it to a tracker only when the user or mode invocation explicitly authorizes that external action.
 
 ### Stage Handoff Convention
 
@@ -777,7 +777,7 @@ When the user invokes `/team ralph`, says "team ralph", or combines both keyword
 
 Team+Ralph activates when:
 
-1. User invokes `/team ralph "task"` or `/oh-my-copilot:team ralph "task"`
+1. User invokes `/team ralph "task"` or `/team ralph "task"`
 2. Keyword detector finds both `team` and `ralph` in the prompt
 3. Hook detects `MAGIC KEYWORD: RALPH` alongside team context
 
@@ -805,7 +805,7 @@ state_write(mode="ralph", session_id="<current_session_id>", active=true, iterat
 1. Ralph outer loop starts (iteration 1)
 2. Team pipeline runs: `team-plan -> team-prd -> team-exec -> team-verify`
 3. If `team-verify` passes: Ralph runs architect verification (STANDARD tier minimum)
-4. If architect approves: both modes complete, run `/oh-my-copilot:cancel`
+4. If architect approves: both modes complete, run `/cancel`
 5. If `team-verify` fails OR architect rejects: team enters `team-fix`, then loops back to `team-exec -> team-verify`
 6. If fix loop exceeds `max_fix_loops`: Ralph increments iteration and retries the full pipeline
 7. If Ralph exceeds `max_iterations`: terminal `failed` state
@@ -982,7 +982,7 @@ An empty `team.roleRouting` preserves pre-patch behavior: every worker is Claude
 
 ## State Cleanup
 
-Use `/oh-my-copilot:cancel` for Team and linked-Ralph cleanup; its
+Use `/cancel` for Team and linked-Ralph cleanup; its
 authoritative flow handles session identity, locks/ownership, graceful versus
 forced waits, and legacy runtime cleanup. Native Claude Code 2.1.178+ has no
 `TeamDelete`. For normal completion, invoke it after the shutdown protocol;

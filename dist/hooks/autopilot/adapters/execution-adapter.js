@@ -7,6 +7,7 @@
  * When execution='solo', uses direct executor agents in the current session.
  */
 import { resolveAutopilotPlanPath } from "../../../config/plan-output.js";
+import { skillSlash } from "../../../utils/skill-slash.js";
 export const EXECUTION_COMPLETION_SIGNAL = "PIPELINE_EXECUTION_COMPLETE";
 const CLI_TEAM_AGENT_TYPES = new Set(["copilot", "codex", "gemini", "grok", "cursor", "antigravity"]);
 function uniqueRequestedAgentTypes(agentTypes) {
@@ -43,7 +44,7 @@ omg team ${agentSpec} "<implementation task from ${planPath}>"
 Or via the \`team\` skill from a Copilot CLI session:
 
 \`\`\`text
-/oh-my-copilot:team ${agentSpec} "<implementation task from ${planPath}>"
+${skillSlash('team')} ${agentSpec} "<implementation task from ${planPath}>"
 \`\`\`
 
 Requested worker types: ${requested}. CLI workers may receive their assigned team roles, including reviewer-style roles. The roles \`critic\`, \`code-reviewer\`, \`security-reviewer\`, and \`test-engineer\` use the structured verdict-output contract, with the team leader owning the terminal task transition. Final approval remains a lead-session responsibility.${cursorGuidance}`;
@@ -77,7 +78,7 @@ Read the implementation plan at: \`${planPath}\`
 
 ${teamRuntimeGuidance}
 
-${useCliTeamRuntime ? `1. **Launch CLI executor workers** with \`omg team\` or \`/oh-my-copilot:team\` using the requested agent types.
+${useCliTeamRuntime ? `1. **Launch CLI executor workers** with \`omg team\` or \`${skillSlash('team')}\` using the requested agent types.
 2. **Decompose executor-style implementation tasks** from the implementation plan and pass them to CLI workers.
 3. **Monitor tmux/team output** and integrate completed implementation changes.
 4. **Keep review/critic/security/verdict work native**; do not assign those roles to Cursor/CLI workers.

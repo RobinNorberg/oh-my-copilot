@@ -9,6 +9,7 @@ import { getProcessStartIdentitySync } from '../../src/platform/process-utils.js
 import { provisionStandaloneStateLockBridge } from '../../src/installer/index.js';
 import { isWorkflowRuntimeSupported, selectWorkflowProfile } from '../../scripts/lib/workflow-profile-runtime.mjs';
 import { resolveCanonicalWorkflowStagePrompt } from '../../scripts/lib/workflow-stage-prompts.mjs';
+import { resolveCanonicalWorkflowStagePrompt as resolveInstalledWorkflowStagePrompt } from '../../templates/hooks/lib/workflow-stage-prompts.mjs';
 
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -24,8 +25,11 @@ function canonicalJson(value: unknown): string {
 }
 
 const workflowTask = 'ship the release';
-function expectedStagePrompt(stage) {
-  return resolveCanonicalWorkflowStagePrompt(stage, workflowTask);
+// The plugin copy resolves skill slashes per host; the installed-template copy
+// always resolves the bare name (standalone skills live in the user skills dir).
+function expectedStagePrompt(stage, kind = 'plugin') {
+  const resolve = kind === 'installed-template' ? resolveInstalledWorkflowStagePrompt : resolveCanonicalWorkflowStagePrompt;
+  return resolve(stage, workflowTask);
 }
 
 describe('canonical workflow stage prompt serialization', () => {
@@ -39,9 +43,17 @@ describe('canonical workflow stage prompt serialization', () => {
       `prompt=${JSON.stringify(`REQUIREMENTS ANALYSIS for: ${normalizedTask}\n\nExtract and document:\n1. Functional requirements (what it must do)\n2. Non-functional requirements (performance, UX, etc.)\n3. Implicit requirements (things user didn't say but needs)\n4. Out of scope items\n\nOutput as structured markdown with clear sections.`)}`,
     );
     expect(prompt).not.toContain('prompt=REQUIREMENTS ANALYSIS for:');
-    expect(readFileSync(join(root, 'scripts/lib/workflow-stage-prompts.mjs'), 'utf8')).toBe(
-      readFileSync(join(root, 'templates/hooks/lib/workflow-stage-prompts.mjs'), 'utf8'),
-    );
+    expect(
+      readFileSync(join(root, 'scripts/lib/workflow-stage-prompts.mjs'), 'utf8')
+        .replace("import { skillSlash } from './skill-slash.mjs';\n", 'const skillSlash = (name) => `/${name}`;\n'),
+    ).toBe(readFileSync(join(root, 'templates/hooks/lib/workflow-stage-prompts.mjs'), 'utf8'));
+    for (const stage of ['ralplan', 'execution', 'ralph', 'qa']) {
+      const installed = resolveInstalledWorkflowStagePrompt(stage, task);
+      expect(installed).not.toContain('__OMC_SKILL_SLASH_');
+      expect(installed).not.toContain('/oh-my-copilot:');
+      expect(installed).toBe(resolveCanonicalWorkflowStagePrompt(stage, task)!.replaceAll('/oh-my-copilot:', '/'));
+    }
+    expect(resolveInstalledWorkflowStagePrompt('ralplan', task)).toContain('/ralplan');
     const builder = readFileSync(join(root, 'scripts/build-workflow-stage-prompts.mjs'), 'utf8');
     expect(builder).toContain('serialized.includes(taskToken)');
     expect(builder).not.toContain('.split(TASK_TOKEN)');
@@ -230,7 +242,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     const f = fixture(kind);
     writeState(f, workflowState(f, stages));
     const initial = readState(f);
-    expect(invoke(f).reason).toBe(expectedStagePrompt(stages[0]));
+    expect(invoke(f).reason).toBe(expectedStagePrompt(stages[0], kind));
     expect(readState(f)).toMatchObject({ ...initial, last_checked_at: expect.any(String), updated_at: expect.any(String) });
 
     for (let index = 0; index < stages.length; index += 1) {
@@ -239,8 +251,8 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
       const state = readState(f);
       expect(state.pipelineTracking.trackingRevision).toBe(index + 1);
       if (index + 1 < stages.length) {
-        expect(result.reason).toBe(expectedStagePrompt(stages[index + 1]));
-        expect(invoke(f).reason).toBe(expectedStagePrompt(stages[index + 1]));
+        expect(result.reason).toBe(expectedStagePrompt(stages[index + 1], kind));
+        expect(invoke(f).reason).toBe(expectedStagePrompt(stages[index + 1], kind));
         expect(readState(f).pipelineTracking).toMatchObject({ currentStageIndex: index + 1, trackingRevision: index + 1 });
       } else {
         expect(result.reason).toBe('[AUTOPILOT WORKFLOW] All selected stages are complete.');
@@ -279,11 +291,11 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     writeState(f, workflowState(f));
     writeFileSync(f.transcript, Buffer.concat([bomPayload, Buffer.from('\n')]));
 
-    expect(invoke(f).reason).toBe(expectedStagePrompt('execution'));
+    expect(invoke(f).reason).toBe(expectedStagePrompt('execution', kind));
     const observedHash = readState(f).pipelineTracking.completionObservations[0].recordContentSha256;
     expect(observedHash).toBe(createHash('sha256').update(bomPayload).digest('hex'));
     expect(observedHash).not.toBe(createHash('sha256').update(payload).digest('hex'));
-    expect(invoke(f).reason).toBe(expectedStagePrompt('execution'));
+    expect(invoke(f).reason).toBe(expectedStagePrompt('execution', kind));
   });
   it('accepts a valid multibyte UTF-8 sequence split across 64 KiB read chunks', () => {
     const f = fixture(kind);
@@ -295,7 +307,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     writeFileSync(f.transcript, Buffer.concat([prefix, padding, multibyte, suffix]));
     appendRawRecord(f, { sessionId: f.sessionId, type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: completion('ralplan') }] } });
 
-    expect(invoke(f).reason).toBe(expectedStagePrompt('execution'));
+    expect(invoke(f).reason).toBe(expectedStagePrompt('execution', kind));
     expect(readState(f).pipelineTracking.currentStageIndex).toBe(1);
   });
   it.each([
@@ -307,7 +319,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     writeState(f, workflowState(f));
     writeFileSync(f.transcript, Buffer.concat([Buffer.alloc(8 * 1024 * 1024, 0x20), delimiter]));
 
-    expect(invoke(f)).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('ralplan') });
+    expect(invoke(f)).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('ralplan', kind) });
   });
   it('rejects an oversized lone terminal CR at EOF', () => {
     const f = fixture(kind);
@@ -330,7 +342,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     writeFileSync(f.transcript, filler.repeat(Math.ceil((16 * 1024 * 1024 + 1) / Buffer.byteLength(filler))));
     appendRecord(f, { message: { role: 'assistant', content: completion('ralplan') } });
 
-    expect(invoke(f).reason).toBe(expectedStagePrompt('execution'));
+    expect(invoke(f).reason).toBe(expectedStagePrompt('execution', kind));
     expect(readState(f).pipelineTracking.currentStageIndex).toBe(1);
   });
   it('advances on a post-activation assistant signal, records redacted observation metadata, and emits the next prompt', () => {
@@ -345,7 +357,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
 
     const result = invoke(f);
     const state = readState(f);
-    expect(result.reason).toBe(expectedStagePrompt('execution'));
+    expect(result.reason).toBe(expectedStagePrompt('execution', kind));
     expect(JSON.stringify(result)).not.toContain('secret-token-never-in-output');
     expect(JSON.stringify(result)).not.toContain(f.transcript);
     expect(state.phase).toBe('execution');
@@ -363,7 +375,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     chmodSync(f.statePath, 0o600);
     appendRecord(f, { message: { role: 'assistant', content: completion('ralplan') } });
 
-    expect(invoke(f).reason).toBe(expectedStagePrompt('execution'));
+    expect(invoke(f).reason).toBe(expectedStagePrompt('execution', kind));
     expect(statSync(f.statePath).mode & 0o777).toBe(0o600);
     expect(readdirSync(dirname(f.statePath)).filter(name => name.includes('.tmp.'))).toEqual([]);
   });
@@ -374,10 +386,10 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     appendRecord(f, { message: { role: 'assistant', content: completion('execution') } });
     appendRecord(f, { message: { role: 'assistant', content: completion('ralplan') } });
 
-    expect(invoke(f).reason).toBe(expectedStagePrompt('execution'));
+    expect(invoke(f).reason).toBe(expectedStagePrompt('execution', kind));
     const advanced = readState(f);
     expect(advanced.pipelineTracking.activationBoundary.byteOffset).toBe(readFileSync(f.transcript).byteLength);
-    expect(invoke(f)).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('execution') });
+    expect(invoke(f)).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('execution', kind) });
     expect(readState(f).pipelineTracking).toMatchObject({ currentStageIndex: 1, trackingRevision: 1 });
 
     appendRecord(f, { message: { role: 'assistant', content: completion('execution') } });
@@ -388,7 +400,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     const f = fixture(kind);
     writeState(f, workflowState(f));
     appendRecord(f, { message: { role: 'assistant', content: completion('ralplan') } });
-    expect(invoke(f).reason).toBe(expectedStagePrompt('execution'));
+    expect(invoke(f).reason).toBe(expectedStagePrompt('execution', kind));
     appendRecord(f, { message: { role: 'assistant', content: completion('execution') } });
 
     expect(invoke(f).reason).toContain('All selected stages are complete');
@@ -410,8 +422,8 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     expect(state.pipelineTracking.currentStageIndex).toBe(1);
     expect(state.pipelineTracking.completionObservations).toHaveLength(1);
     const outputPrompts = results.map(result => result.reason).sort();
-    const currentStagePrompt = expectedStagePrompt('ralplan');
-    const nextStagePrompt = expectedStagePrompt('execution');
+    const currentStagePrompt = expectedStagePrompt('ralplan', kind);
+    const nextStagePrompt = expectedStagePrompt('execution', kind);
     // A contender may either observe the committed stage or report its own uncommitted stage.
     expect([
       [currentStagePrompt, nextStagePrompt].sort(),
@@ -425,7 +437,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     appendRecord(f, { message: { role: 'assistant', content: completion('ralplan') } });
     writeFileSync(`${f.statePath}.mutation.lock`, abandonedLockOwner());
 
-    expect(invoke(f).reason).toBe(expectedStagePrompt('execution'));
+    expect(invoke(f).reason).toBe(expectedStagePrompt('execution', kind));
     expect(readState(f).pipelineTracking.trackingRevision).toBe(1);
   });
 
@@ -444,7 +456,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
       target_workflow_run_id: '22222222-2222-4222-8222-222222222222',
     }));
 
-    expect(invoke(f).reason).toBe(expectedStagePrompt('ralplan'));
+    expect(invoke(f).reason).toBe(expectedStagePrompt('ralplan', kind));
     expect(readState(f).workflowRunId).toBe(state.workflowRunId);
   });
 
@@ -526,7 +538,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     writeState(f, workflowState(f));
     unlinkSync(lockPath);
 
-    expect(await pending).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('ralplan') });
+    expect(await pending).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('ralplan', kind) });
   });
 
   it('fails closed when concurrent autopilot activation commits after lock retries expire', async () => {
@@ -577,7 +589,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
       expires_at: new Date(requestedAt + 30_000).toISOString(),
     }));
 
-    expect(invoke(f, {}, { OMC_TEST_FLOCK_AVAILABLE: '0' }).reason).toBe(expectedStagePrompt('ralplan'));
+    expect(invoke(f, {}, { OMC_TEST_FLOCK_AVAILABLE: '0' }).reason).toBe(expectedStagePrompt('ralplan', kind));
   });
 
   it('does not let an absent-generation exact autopilot signal suppress concurrent activation', async () => {
@@ -599,7 +611,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     writeState(f, workflowState(f));
     unlinkSync(lockPath);
 
-    expect(await pending).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('ralplan') });
+    expect(await pending).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('ralplan', kind) });
   });
 
   it('honors an exact same-run cancel signal for a named workflow', () => {
@@ -645,7 +657,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     let replacement;
     if (change === 'advanced stage') {
       appendRecord(f, { message: { role: 'assistant', content: completion('ralplan') } });
-      expect(invoke(f).reason).toBe(expectedStagePrompt('execution'));
+      expect(invoke(f).reason).toBe(expectedStagePrompt('execution', kind));
       replacement = readState(f);
       writeState(f, state);
     } else {
@@ -669,7 +681,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     writeState(f, replacement);
     unlinkSync(lockPath);
 
-    expect(await pending).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt(change === 'advanced stage' ? 'execution' : 'ralplan') });
+    expect(await pending).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt(change === 'advanced stage' ? 'execution' : 'ralplan', kind) });
   });
 
   // The hook accepts a request up to 5s in the future (clock skew). Keep the
@@ -697,7 +709,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     if (shouldSuppress) {
       expect(invoke(f)).toEqual({ continue: true, suppressOutput: true });
     } else {
-      expect(invoke(f).reason).toBe(expectedStagePrompt('ralplan'));
+      expect(invoke(f).reason).toBe(expectedStagePrompt('ralplan', kind));
     }
   });
 
@@ -716,7 +728,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     };
     writeFileSync(signalPath, JSON.stringify(expired));
 
-    expect(invoke(f).reason).toBe(expectedStagePrompt('ralplan'));
+    expect(invoke(f).reason).toBe(expectedStagePrompt('ralplan', kind));
     expect(existsSync(signalPath)).toBe(false);
 
     const forgedRequestedAt = Date.now();
@@ -727,7 +739,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
       target_state_sha256: '0'.repeat(64),
     };
     writeFileSync(signalPath, JSON.stringify(forged));
-    expect(invoke(f).reason).toBe(expectedStagePrompt('ralplan'));
+    expect(invoke(f).reason).toBe(expectedStagePrompt('ralplan', kind));
   });
 
   it('requires an exact state digest for active legacy cancel signals', () => {
@@ -790,7 +802,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     writeState(f, workflowState(f));
     unlinkSync(lockPath);
 
-    expect(await pending).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('ralplan') });
+    expect(await pending).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('ralplan', kind) });
   });
 
   it('fails closed when a named workflow is missing tracking state', () => {
@@ -893,7 +905,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     state.started_at = stale;
     writeState(f, state);
 
-    expect(invoke(f).reason).toBe(expectedStagePrompt('ralplan'));
+    expect(invoke(f).reason).toBe(expectedStagePrompt('ralplan', kind));
     const refreshed = readState(f);
     expect(new Date(refreshed.last_checked_at).getTime()).toBeGreaterThan(new Date(stale).getTime());
     expect(new Date(refreshed.updated_at).getTime()).toBeGreaterThan(new Date(stale).getTime());
@@ -909,7 +921,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
       message: { role: 'assistant', content: [{ type: 'thinking', thinking: 123 }, { type: 'text', text: completion('ralplan') }] },
     });
 
-    expect(invoke(f)).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('ralplan') });
+    expect(invoke(f)).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('ralplan', kind) });
     expect(readState(f).pipelineTracking).toMatchObject({ currentStageIndex: 0, trackingRevision: 0 });
   });
 
@@ -944,7 +956,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
       writeState(f, workflowState(f));
       if (name === 'out-of-range completion observation') {
         appendRecord(f, { message: { role: 'assistant', content: completion('ralplan') } });
-        expect(invoke(f).reason).toBe(expectedStagePrompt('execution'));
+        expect(invoke(f).reason).toBe(expectedStagePrompt('execution', kind));
       }
       const state = readState(f);
       corrupt(state, f);
@@ -1044,7 +1056,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     const state = workflowState(f);
     writeState(f, state);
     append(f);
-    expect(invoke(f)).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('ralplan') });
+    expect(invoke(f)).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('ralplan', kind) });
     expect(readState(f)).toMatchObject({ ...state, last_checked_at: expect.any(String), updated_at: expect.any(String) });
   });
 
@@ -1055,7 +1067,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     appendRawRecord(f, { sessionId: f.sessionId, type: 'system', message: { role: 'assistant', content: [{ type: 'text', text: completion('ralplan') }] } });
     appendRawRecord(f, { session_id: f.sessionId, type: 'assistant', message: { role: 'assistant', content: completion('ralplan') } });
     appendRawRecord(f, { sessionId: f.sessionId, type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: '   ' }, { type: 'text', text: completion('ralplan') }] } });
-    expect(invoke(f)).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('ralplan') });
+    expect(invoke(f)).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('ralplan', kind) });
     expect(readState(f).pipelineTracking).toMatchObject({ currentStageIndex: 0, trackingRevision: 0 });
   });
 
@@ -1066,7 +1078,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     appendRecord(f, { message: { role: 'assistant', content: completion('ralplan') } });
     const cases = [
       [{ session_id: 'other-session' }, { continue: true, suppressOutput: true }],
-      [{ transcript_path: join(f.dir, 'escaped.jsonl') }, { continue: false, decision: 'block', reason: expectedStagePrompt('ralplan') }],
+      [{ transcript_path: join(f.dir, 'escaped.jsonl') }, { continue: false, decision: 'block', reason: expectedStagePrompt('ralplan', kind) }],
     ] as const;
     writeFileSync(join(f.dir, 'escaped.jsonl'), JSON.stringify({ message: { role: 'assistant', content: completion('ralplan') } }));
     for (const [input, expected] of cases) {
@@ -1175,7 +1187,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     const f = fixture(kind);
     writeState(f, workflowState(f));
     appendRecord(f, { message: { role: 'assistant', content: completion('ralplan') } });
-    expect(invoke(f).reason).toBe(expectedStagePrompt('execution'));
+    expect(invoke(f).reason).toBe(expectedStagePrompt('execution', kind));
     const validState = readState(f);
     const cases = [
       state => { state.pipelineTracking.stages[1].id = 'qa'; },
@@ -1212,7 +1224,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     const replacementBytes = readFileSync(f.statePath);
     unlinkSync(lockPath);
 
-    expect(await pending).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('ralplan') });
+    expect(await pending).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('ralplan', kind) });
     expectStateExceptLiveness(readState(f), JSON.parse(replacementBytes.toString('utf8')));
   });
 
@@ -1231,7 +1243,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
 
     const result = await pending;
     expect(result).toMatchObject({ continue: false, decision: 'block' });
-    expect([expectedStagePrompt('ralplan'), workflowIntegrityFailure.reason]).toContain(result.reason);
+    expect([expectedStagePrompt('ralplan', kind), workflowIntegrityFailure.reason]).toContain(result.reason);
     expect(readState(f).pipelineTracking.trackingRevision).toBe(0);
   });
 
@@ -1249,7 +1261,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
       OMC_WORKFLOW_TEST_MUTATE_AFTER_READ_BASE64: replacement.toString('base64'),
     });
     expect(result).toMatchObject({ continue: false, decision: 'block' });
-    expect([expectedStagePrompt('ralplan'), workflowIntegrityFailure.reason]).toContain(result.reason);
+    expect([expectedStagePrompt('ralplan', kind), workflowIntegrityFailure.reason]).toContain(result.reason);
     expectStateExceptLiveness(readState(f), JSON.parse(before.toString('utf8')));
   });
 
@@ -1284,12 +1296,12 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     appendRecord(f, { message: { role: 'assistant', content: completion('execution') } });
     unlinkSync(lockPath);
 
-    expect(await pending).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('ralplan') });
+    expect(await pending).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('ralplan', kind) });
     expect(readState(f).pipelineTracking.trackingRevision).toBe(0);
-    expect(invoke(f)).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('execution') });
+    expect(invoke(f)).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('execution', kind) });
     const committed = readState(f);
     expect(committed.pipelineTracking.activationBoundary.byteOffset).toBe(readFileSync(f.transcript).byteLength);
-    expect(invoke(f)).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('execution') });
+    expect(invoke(f)).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('execution', kind) });
     expect(readState(f).pipelineTracking).toMatchObject({ currentStageIndex: 1, trackingRevision: 1 });
 
     appendRecord(f, { message: { role: 'assistant', content: completion('execution') } });

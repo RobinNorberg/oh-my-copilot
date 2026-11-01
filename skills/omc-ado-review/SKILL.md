@@ -35,7 +35,7 @@ Extract from the `ado` key:
 - `project` — ADO project name
 - `repo` — repository name
 
-If config is NOT_FOUND or missing the `ado` key: tell the user to run `/oh-my-copilot:omc-ado-setup` first and stop.
+If config is NOT_FOUND or missing the `ado` key: tell the user to run `/omc-ado-setup` first and stop.
 
 ---
 
@@ -378,7 +378,7 @@ az repos pr update --id {prId} --status {status} --org "{org}" -o json
 
 | Error | Action |
 |-------|--------|
-| `.omg/config.json` missing | Tell user to run `/oh-my-copilot:omc-ado-setup` first |
+| `.omg/config.json` missing | Tell user to run `/omc-ado-setup` first |
 | `az login` required | Prompt user to authenticate; do not abort — skip that section |
 | PR not found | Verify PR ID and that the repository name in config matches ADO |
 | Reviewer identity not found | Use `core_get_identity_ids` to look up the user by email; prompt user to provide full email address |

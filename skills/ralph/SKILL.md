@@ -56,7 +56,7 @@ By default, ralph operates in PRD mode. A scaffold `prd.json` is auto-generated 
 
 **Reviewer selection:** Pass `--critic=architect`, `--critic=critic`, or `--critic=codex` in the Ralph prompt to choose the completion reviewer for that run. `architect` remains the default.
 
-**Stale-state detection & reconciliation (#3669):** If a PRD is left unfinished by an abnormal/non-Step 8 exit (crash, force-kill, cancel before `/oh-my-copilot:cancel`, session end), Ralph surfaces an explicit `[STALE PRD WARNING]` at startup/resume, in the continuation context, and at session end — with unfinished counts, last-touched age, and stale-pointer signals (PRD `branchName` merged/gone). Completion is NEVER inferred from PR/branch/merge status alone; git state is a warning signal only. A story is auto-reconciled to `passes: true` ONLY when the PRD carries configured observable evidence and every check passes:
+**Stale-state detection & reconciliation (#3669):** If a PRD is left unfinished by an abnormal/non-Step 8 exit (crash, force-kill, cancel before `/cancel`, session end), Ralph surfaces an explicit `[STALE PRD WARNING]` at startup/resume, in the continuation context, and at session end — with unfinished counts, last-touched age, and stale-pointer signals (PRD `branchName` merged/gone). Completion is NEVER inferred from PR/branch/merge status alone; git state is a warning signal only. A story is auto-reconciled to `passes: true` ONLY when the PRD carries configured observable evidence and every check passes:
 
 ```json
 {
@@ -76,7 +76,7 @@ Check types: `fileExists` / `fileContains` (working tree) and `gitGrep` (content
 
 **Repo quality class:** The PRD carries a top-level `repoQualityClass` — `prototype`, `production` (default), or `library` — set during scaffold refinement. If the task does not say, ask the user once when a human is present; when running headless (`omg ralph afk`) there is nobody to ask, so INFER it from repo signals (CI config and test depth, published-package metadata, publishing docs) and record the inference in the PRD. Only escalate when the signals genuinely conflict. Never silently assume a lower bar than reality. It scales two things: story ordering (architectural and integration stories weigh heavier in `production`/`library`) and acceptance strictness — `prototype` may relax test depth for speed, `production` applies the full bar, `library` must add a backward-compatibility check to every story that touches a public surface. The repo itself outranks instructions either way: if existing code contradicts the declared class, surface the contradiction instead of copying the codebase's worst habits.
 
-**Feedback commands:** The PRD may carry a top-level `feedbackCommands` array (e.g. `["npm run build", "npm test", "npm run lint"]`). When absent, detect them from the repo's package scripts (build / lint / test variants). These are the commands `omg ralph verify` runs — the single executor of the baseline (Step 1f) and every feedback gate (Steps 4 and 7.6).
+**Feedback commands:** The PRD may carry a top-level `feedbackCommands` array (e.g. `["npm run build", "npm test", "npm run lint"]`). When absent, detect them from the repo's package scripts (build / lint / test variants). These are the commands `omg ralph verify` runs — the single executor of the baseline (Step 1f) and every feedback gate (Steps 4 and 7.6). On Windows, call repo-local scripts as `.\name` (`.\gradlew build`, `.\build.bat`): a bare name does not search the project folder.
 </PRD_Mode>
 
 <PRD_Criterion_Amendments>
@@ -165,7 +165,7 @@ Rules:
      4. The list of files changed during the ralph session for context
    - Ralph floor: always at least STANDARD, even for small changes
    - The selected reviewer verifies against the SPECIFIC acceptance criteria from prd.json, not vague "is it done?"
-   - **On APPROVAL: immediately proceed to Step 7.5 in the same turn. Do NOT pause to report the verdict to the user — reporting happens only at Step 8 (terminal closeout and `/oh-my-copilot:cancel`) or on rejection (Step 9). Treating an approved verdict as a reporting checkpoint is a polite-stop anti-pattern.**
+   - **On APPROVAL: immediately proceed to Step 7.5 in the same turn. Do NOT pause to report the verdict to the user — reporting happens only at Step 8 (terminal closeout and `/cancel`) or on rejection (Step 9). Treating an approved verdict as a reporting checkpoint is a polite-stop anti-pattern.**
 
 7.5 **Mandatory Deslop Pass** (runs unconditionally after Step 7 approval, unless `{{PROMPT}}` contains `--no-deslop`):
 
@@ -179,7 +179,7 @@ Rules:
 - Exit 0 confirms the post-deslop regression state matches the baseline (baseline-only failures are recorded warnings, not a reason to loop here forever). Exit 1 means NEW failures — roll back the cleaner changes or fix the regression, then re-verify until it exits 0.
 - Only proceed to completion after the verify call exits 0 (or `--no-deslop` was explicitly specified).
 
-8. **On approval, terminal closeout and cleanup**: After Step 7.6 passes (with Step 7.5 completed, or skipped via `--no-deslop`), run the closeout below and any applicable Step 10 incident work item before PR creation or `/oh-my-copilot:cancel` state cleanup. When the user or mode invocation explicitly authorizes publishing and draft-PR creation, draft the body with `/oh-my-copilot:pr` and create the draft PR. Do not push or open a PR based on completion alone. Mark an authorized draft ready only after the user accepts the completion report. Before any other terminal `/cancel` or state cleanup, including user-requested cancellation, run the same closeout first.
+8. **On approval, terminal closeout and cleanup**: After Step 7.6 passes (with Step 7.5 completed, or skipped via `--no-deslop`), run the closeout below and any applicable Step 10 incident work item before PR creation or `/cancel` state cleanup. When the user or mode invocation explicitly authorizes publishing and draft-PR creation, draft the body with `/pr` and create the draft PR. Do not push or open a PR based on completion alone. Mark an authorized draft ready only after the user accepts the completion report. Before any other terminal `/cancel` or state cleanup, including user-requested cancellation, run the same closeout first.
 
    Append at most three factual lines to `.omg/notepads/ralph/problems.md` — what broke (errors that survived retries, verdicts that came back rejected) and what dragged (missing checks, unreachable information, environment friction); blockers additionally go in `.omg/notepads/ralph/issues.md`. Preserve existing entries: append only and never replace the shared file. If there are no observations, append nothing; an empty closeout is valid, so do not write “no lessons.” These are observations only; landing them on repo surfaces is `refit`'s job, with the user's approval.
 
@@ -297,7 +297,7 @@ Why good: The falsified criterion stops governing, the measurement is preserved 
 
 <Escalation_And_Stop_Conditions>
 - Stop and report when a fundamental blocker requires user input (missing credentials, unclear requirements, external service down)
-- Stop when the user says "stop", "cancel", or "abort" -- run the terminal closeout in Step 8 before `/oh-my-copilot:cancel`
+- Stop when the user says "stop", "cancel", or "abort" -- run the terminal closeout in Step 8 before `/cancel`
 - Continue working when the hook system sends "The boulder never stops" -- this means the iteration continues
 - If the selected reviewer rejects verification, fix the issues and re-verify (do not stop)
 - If the same issue recurs across 3+ iterations, report it as a potential fundamental problem
@@ -318,7 +318,7 @@ Why good: The falsified criterion stops governing, the measurement is preserved 
 - [ ] Selected reviewer verification passed against specific acceptance criteria
 - [ ] ai-slop-cleaner pass completed on changed files (or `--no-deslop` specified)
 - [ ] Post-deslop regression tests pass, or only failures already present in the feedback baseline (same treatment as the test/build lines)
-- [ ] `/oh-my-copilot:cancel` run for clean state cleanup
+- [ ] `/cancel` run for clean state cleanup
 </Final_Checklist>
 
 ## Parallel session caveats

@@ -6,6 +6,7 @@
 // POSIX toolchain; this one needs only the Node that already runs the coordinator,
 // so setup works identically on Windows without Git Bash.
 
+import { hardenWindowsExeSearch } from './lib/windows-search.mjs';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -23,6 +24,8 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { getCopilotConfigDir } from './lib/config-dir.mjs';
+
+hardenWindowsExeSearch();
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const SCRIPT_PLUGIN_ROOT = resolve(SCRIPT_DIR, '..');

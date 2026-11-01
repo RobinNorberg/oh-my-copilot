@@ -18,6 +18,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { resolveBareExe } from '../utils/windows-search.js';
 import { atomicWriteJson, ensureDirWithMode, validateResolvedPath } from './fs-utils.js';
 import { validateWorktreeRemovalTarget } from '../lib/worktree-cleanup-safety.js';
 import { sanitizeName } from './tmux-session.js';
@@ -236,7 +237,7 @@ export function hostGitEnv(args: readonly string[], base: NodeJS.ProcessEnv = pr
 export function hostGitDriverOverrides(cwd: string, env?: NodeJS.ProcessEnv, timeout?: number): string[] | null {
   let out: string;
   try {
-    out = execFileSync('git', [...hostGitHardeningArgs(), 'config', '--null', '--show-scope', '--name-only', '--get-regexp', '^(filter|diff)\\.'], { cwd, env, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout });
+    out = execFileSync(hostGitExe(), [...hostGitHardeningArgs(), 'config', '--null', '--show-scope', '--name-only', '--get-regexp', '^(filter|diff)\\.'], { cwd, env, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout });
   } catch (err) {
     // Exit 1: no key matches.
     return (err as { status?: number }).status === 1 ? [] : null;
@@ -263,6 +264,13 @@ export function hostGitDriverOverrides(cwd: string, env?: NodeJS.ProcessEnv, tim
     ...[...filters].flatMap((n) => ['clean=', 'smudge=', 'process=', 'required=false'].flatMap((kv) => ['-c', `filter.${n}.${kv}`])),
     ...[...diffs].flatMap((n) => ['textconv=', 'command='].flatMap((kv) => ['-c', `diff.${n}.${kv}`])),
   ];
+}
+
+/** Absolute git for a host spawn (see resolveBareExe: Node 20 searches the cwd for a bare name). */
+function hostGitExe(): string {
+  const git = resolveBareExe('git');
+  if (git === null) throw new Error('host git: git is not on PATH');
+  return git;
 }
 
 /**
@@ -307,7 +315,7 @@ export function runHostGit(cwd: string, args: readonly string[], timeout?: numbe
     tree = [...tree, ...LANE_SUBMODULE_OVERRIDES.flatMap((kv) => ['-c', kv])];
     if (IGNORE_SUBMODULES_SUBCOMMANDS.has(subcommand)) finalArgs = [...args.slice(0, at + 1), '--ignore-submodules=all', ...args.slice(at + 1)];
   }
-  return execFileSync('git', [...hostGitHardeningArgs(), ...tree, ...finalArgs], { cwd, env, encoding: 'utf-8', stdio: 'pipe', windowsHide: true, timeout });
+  return execFileSync(hostGitExe(), [...hostGitHardeningArgs(), ...tree, ...finalArgs], { cwd, env, encoding: 'utf-8', stdio: 'pipe', windowsHide: true, timeout });
 }
 
 /** `-c` pairs on every host command in a lane worktree: no submodule recursion, status or summary. */
@@ -337,7 +345,7 @@ export function hostGitAttrSourceProblem(version?: string | null): string | null
   if (version === undefined) {
     if (hostGitVersionCache === undefined) {
       try {
-        hostGitVersionCache = execFileSync('git', ['--version'], { encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
+        hostGitVersionCache = execFileSync(hostGitExe(), ['--version'], { encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
       } catch {
         hostGitVersionCache = null;
       }
@@ -445,7 +453,7 @@ export function recordWorktreeGitLinks(wtPath: string, links: WorktreeGitLinks):
     throw new Error(`sandbox-escaped: other git links are already recorded for ${wtPath}; the record is never replaced`);
   }
   const args = ['--git-dir', links.adminDir, '--work-tree', wtPath];
-  const format = execFileSync('git', [...hostGitHardeningArgs(), ...args, 'rev-parse', '--show-object-format'], { cwd: wtPath, env: hostGitEnv(args), encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
+  const format = execFileSync(hostGitExe(), [...hostGitHardeningArgs(), ...args, 'rev-parse', '--show-object-format'], { cwd: wtPath, env: hostGitEnv(args), encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
   const emptyTree = EMPTY_TREE[format];
   if (!emptyTree) throw new Error(`host git: unknown object format ${JSON.stringify(format)} in ${wtPath}`);
   recordedGitDirs.set(resolve(links.adminDir), { wtPath, links, emptyTree });
@@ -1215,7 +1223,7 @@ export function ensureWorkerWorktree(
   const args = mode === 'named'
     ? ['worktree', 'add', '-b', branch, wtPath, options.baseRef ?? 'HEAD']
     : ['worktree', 'add', '--detach', wtPath, options.baseRef ?? 'HEAD'];
-  execFileSync('git', args, { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
+  execFileSync(hostGitExe(), args, { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
   const baseCommit = gitOrNull(['rev-parse', 'HEAD'], wtPath);
 
   const info: EnsureWorkerWorktreeResult = {

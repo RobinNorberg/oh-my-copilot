@@ -41,7 +41,7 @@ Also read optional `ado.autoReview` settings (apply defaults when absent):
 | `maxFilesPerReview` | `50` | Cap on number of files analysed per PR |
 | `excludePatterns` | `["*.lock", "*.min.js", "*.generated.*"]` | Glob patterns for files to skip |
 
-If config is NOT_FOUND or missing the `ado` key: tell the user to run `/oh-my-copilot:omc-ado-setup` first and stop.
+If config is NOT_FOUND or missing the `ado` key: tell the user to run `/omc-ado-setup` first and stop.
 
 ---
 
@@ -389,7 +389,7 @@ az repos pr set-vote \
 
 | Error | Action |
 |-------|--------|
-| `.omg/config.json` missing | Tell user to run `/oh-my-copilot:omc-ado-setup` first |
+| `.omg/config.json` missing | Tell user to run `/omc-ado-setup` first |
 | `az login` required | Prompt user to authenticate; stop execution |
 | No PRs for review | Report "No PRs pending your review" and stop |
 | PR diff too large (>`maxFilesPerReview` files) | Warn and review first N files per `maxFilesPerReview` config |

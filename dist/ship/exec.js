@@ -6,6 +6,7 @@
  */
 import { spawnSync } from 'child_process';
 import { isAdoCommand, runGuardedAdo } from '../forge/ado/guard.js';
+import { childEnv, hardenWindowsExeSearch, resolveBareExe } from '../utils/windows-search.js';
 export class ShipSafetyError extends Error {
     constructor(message) {
         super(message);
@@ -74,9 +75,16 @@ export function scrubShipEnv(env) {
     return { ...out, ...TRUSTED_READ_ENV };
 }
 export const defaultExec = (cmd, args, opts) => {
-    const result = spawnSync(cmd, args, {
+    // libuv resolves a bare `git`/`gh` with this process's environment, so the
+    // engine itself must turn off the cwd search (a lane worktree could hold a
+    // planted git.exe); scrubShipEnv(process.env) then carries it to the child.
+    hardenWindowsExeSearch();
+    const exe = resolveBareExe(cmd);
+    if (exe === null)
+        return { status: 127, stdout: '', stderr: `spawnSync ${cmd} ENOENT (not found on PATH)` };
+    const result = spawnSync(exe, args, {
         cwd: opts?.cwd,
-        env: { ...scrubShipEnv(process.env), ...opts?.env },
+        env: childEnv({ ...scrubShipEnv(process.env), ...opts?.env }),
         encoding: 'utf8',
         windowsHide: true,
         maxBuffer: 256 * 1024 * 1024,

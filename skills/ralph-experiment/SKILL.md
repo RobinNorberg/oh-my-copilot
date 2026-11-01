@@ -211,7 +211,7 @@ Branch: experiment/{tag}
 Notebook: .omg/experiment-notebook.json
 ```
 
-Then run `/oh-my-copilot:cancel` for clean state cleanup.
+Then run `/cancel` for clean state cleanup.
 
 </Steps>
 
@@ -334,7 +334,7 @@ Why bad: If metrics improve, which change helped? If they worsen, which hurt? On
 <Escalation_And_Stop_Conditions>
 - Stop and report when success criteria are met — produce exit report
 - Stop when budget is exhausted — produce exit report with best result
-- Stop when human interrupts — run `/oh-my-copilot:cancel`
+- Stop when human interrupts — run `/cancel`
 - Continue when hook sends "The boulder never stops" — this means keep experimenting
 - Escalate to human when same crash occurs 3+ times
 - Escalate to human when 5+ consecutive discards yield no new learnings (loop is stuck)
@@ -349,5 +349,5 @@ Why bad: If metrics improve, which change helped? If they worsen, which hurt? On
 - [ ] Discarded experiments were reverted (git reset)
 - [ ] Best result is recorded in notebook
 - [ ] Exit report produced with summary, learnings, and file list
-- [ ] `/oh-my-copilot:cancel` run for clean state cleanup
+- [ ] `/cancel` run for clean state cleanup
 </Final_Checklist>

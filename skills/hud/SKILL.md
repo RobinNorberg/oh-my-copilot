@@ -17,16 +17,16 @@ Note: All `~/.copilot/...` paths in this guide respect `COPILOT_HOME` when that 
 
 | Command | Description |
 |---------|-------------|
-| `/oh-my-copilot:hud` | Show current HUD status (auto-setup if needed) |
-| `/oh-my-copilot:hud setup` | Install/repair HUD statusline |
-| `/oh-my-copilot:hud minimal` | Switch to minimal display |
-| `/oh-my-copilot:hud focused` | Switch to focused display (default) |
-| `/oh-my-copilot:hud full` | Switch to full display |
-| `/oh-my-copilot:hud status` | Show detailed HUD status |
+| `/hud` | Show current HUD status (auto-setup if needed) |
+| `/hud setup` | Install/repair HUD statusline |
+| `/hud minimal` | Switch to minimal display |
+| `/hud focused` | Switch to focused display (default) |
+| `/hud full` | Switch to full display |
+| `/hud status` | Show detailed HUD status |
 
 ## Auto-Setup
 
-When you run `/oh-my-copilot:hud` or `/oh-my-copilot:hud setup`, the system will automatically:
+When you run `/hud` or `/hud setup`, the system will automatically:
 1. Check if `~/.copilot/hud/omg-hud.mjs` exists
 2. Check if `statusLine` is configured in `~/.copilot/settings.json`
 3. If missing, create the HUD wrapper script and configure settings
@@ -251,9 +251,9 @@ When `safeMode` is `true` (default), the HUD strips ANSI codes and uses ASCII-on
 ## Troubleshooting
 
 If the HUD is not showing:
-1. Run `/oh-my-copilot:hud setup` to auto-install and configure
+1. Run `/hud setup` to auto-install and configure
 2. Restart Claude Code after setup completes
-3. If still not working, run `/oh-my-copilot:omc-doctor` for full diagnostics
+3. If still not working, run `/omc-doctor` for full diagnostics
 
 **Legacy string format migration:** Older OMC versions wrote `statusLine` as a plain string pointing at the pre-v5 wrapper name (e.g., `"~/.claude/hud/omcp-hud.mjs"`). Modern Claude Code (v2.1+) requires an object format. Running the installer or `/oh-my-copilot:hud setup` will auto-migrate legacy strings to the correct object format:
 ```json
@@ -265,7 +265,7 @@ If the HUD is not showing:
 }
 ```
 
-**Upgrading from v4 (`omcp-hud.mjs` → `omg-hud.mjs`):** v5.0.0 renamed the wrapper along with the `omcp` → `omg` command, and the old file is no longer installed. A `statusLine` left over from v4 still points at `hud/omcp-hud.mjs`, so the HUD silently renders nothing after the upgrade — the command is simply missing. Re-run `/oh-my-copilot:hud setup` to rewrite the entry, or edit `~/.copilot/settings.json` by hand and replace `hud/omcp-hud.mjs` with `hud/omg-hud.mjs`. Step 6 above also clears the stale v4 files so they cannot be picked up again.
+**Upgrading from v4 (`omcp-hud.mjs` → `omg-hud.mjs`):** v5.0.0 renamed the wrapper along with the `omcp` → `omg` command, and the old file is no longer installed. A `statusLine` left over from v4 still points at `hud/omcp-hud.mjs`, so the HUD silently renders nothing after the upgrade — the command is simply missing. Re-run `/hud setup` to rewrite the entry, or edit `~/.copilot/settings.json` by hand and replace `hud/omcp-hud.mjs` with `hud/omg-hud.mjs`. Step 6 above also clears the stale v4 files so they cannot be picked up again.
 
 **Node 24+ compatibility:** The HUD wrapper script imports `homedir` from `node:os` (not `node:path`). If you encounter `SyntaxError: The requested module 'path' does not provide an export named 'homedir'`, re-run the installer to regenerate `omg-hud.mjs`.
 

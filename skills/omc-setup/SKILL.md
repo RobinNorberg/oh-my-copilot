@@ -37,11 +37,11 @@ When user runs with `--help`, display this and stop:
 OMC Setup - Configure oh-my-copilot
 
 USAGE:
-  /oh-my-copilot:omc-setup           Run initial setup wizard (or update if already configured)
-  /oh-my-copilot:omc-setup --local   Configure local project (.claude/CLAUDE.md)
-  /oh-my-copilot:omc-setup --global  Configure global settings (~/.claude/CLAUDE.md)
-  /oh-my-copilot:omc-setup --force   Force full setup wizard even if already configured
-  /oh-my-copilot:omc-setup --help    Show this help
+  /omc-setup           Run initial setup wizard (or update if already configured)
+  /omc-setup --local   Configure local project (.claude/CLAUDE.md)
+  /omc-setup --global  Configure global settings (~/.claude/CLAUDE.md)
+  /omc-setup --force   Force full setup wizard even if already configured
+  /omc-setup --help    Show this help
 
 MODES:
   Initial Setup (no flags)
@@ -74,10 +74,10 @@ MODES:
     - Use when you want to reconfigure preferences
 
 EXAMPLES:
-  /oh-my-copilot:omc-setup           # First time setup (or update CLAUDE.md if configured)
-  /oh-my-copilot:omc-setup --local   # Update this project
-  /oh-my-copilot:omc-setup --global  # Update all projects
-  /oh-my-copilot:omc-setup --force   # Re-run full setup wizard
+  /omc-setup           # First time setup (or update CLAUDE.md if configured)
+  /omc-setup --local   # Update this project
+  /omc-setup --global  # Update all projects
+  /omc-setup --force   # Re-run full setup wizard
 
 For more info: https://github.com/RobinNorberg/oh-my-copilot
 ```
@@ -100,8 +100,10 @@ The script is the sole cache resolver. It accepts only complete plugin roots (ca
 **CRITICAL**: Before doing anything else, check if setup has already been completed. This prevents users from having to re-run the full setup wizard after every update.
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_HOME||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'.omc-config.json');if(f.existsSync(t)===false){console.log('ALREADY_CONFIGURED=false');process.exit(0)}let c;try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: Existing OMC config is invalid JSON. Existing config was not modified.');process.exit(1)}if(c&&c.setupCompleted){console.log('OMC setup was already completed on: '+c.setupCompleted);if(c.setupVersion)console.log('Setup version: '+c.setupVersion);console.log('ALREADY_CONFIGURED=true')}else{console.log('ALREADY_CONFIGURED=false')}"
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" configured
 ```
+
+All setup checks and config writes run through `scripts/setup-config.mjs` subcommands, never inline interpreter code, so setup also works on hosts that block inline interpreter execution.
 
 Treat `ALREADY_CONFIGURED=true` in the output as the configured case. A non-zero exit
 means the existing config could not be parsed; stop and report that rather than
@@ -184,13 +186,13 @@ Execute phases sequentially. For each phase, read the corresponding file and fol
 
 After installing oh-my-copilot updates (via npm or plugin update):
 
-**Automatic**: Just run `/oh-my-copilot:omc-setup` - it will detect you've already configured and offer a quick "Update CLAUDE.md and clear retired setup values" option that skips the rest of the wizard.
+**Automatic**: Just run `/omc-setup` - it will detect you've already configured and offer a quick "Update CLAUDE.md and clear retired setup values" option that skips the rest of the wizard.
 
 The quick update path must still perform Phase 2 Step 2.4 so upgrades remove the retired `defaultExecutionMode` value; it must not write any replacement execution-mode setting.
 
 **Manual options**:
-- `/oh-my-copilot:omc-setup --local` to update project config only
-- `/oh-my-copilot:omc-setup --global` to update global config only
-- `/oh-my-copilot:omc-setup --force` to re-run the full wizard (reconfigure preferences)
+- `/omc-setup --local` to update project config only
+- `/omc-setup --global` to update global config only
+- `/omc-setup --force` to re-run the full wizard (reconfigure preferences)
 
 This ensures you have the newest features and agent configurations without the token cost of repeating the full setup.

@@ -47,6 +47,7 @@ import {
 } from "../adapters/index.js";
 
 import { readAutopilotState, writeAutopilotState } from "../state.js";
+import { skillSlash } from "../../../utils/skill-slash.js";
 
 describe("Pipeline Types", () => {
   it("should have 4 stages in canonical order", () => {
@@ -697,7 +698,7 @@ describe("autopilot team CLI worker configuration", () => {
 
     expect(prompt).toContain("CLI Team Runtime Required");
     expect(prompt).toContain("omg team 1:cursor");
-    expect(prompt).toContain("/oh-my-copilot:team 1:cursor");
+    expect(prompt).toContain(`${skillSlash("team")} 1:cursor`);
     expect(prompt).toContain("including reviewer-style roles");
     expect(prompt).toContain("structured verdict-output contract");
     expect(prompt).toContain("cursor-agent");

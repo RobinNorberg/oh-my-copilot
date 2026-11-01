@@ -79,36 +79,6 @@ describe('MINGW64 escape safety: no "!" in node -e inline scripts (issue #729)',
     });
   });
 
-  describe('skills/omc-setup (SKILL.md + phases)', () => {
-    const setupDir = join(REPO_ROOT, 'skills', 'omc-setup');
-    const filesToScan = [
-      join(setupDir, 'SKILL.md'),
-      ...readdirSync(join(setupDir, 'phases')).map(f => join(setupDir, 'phases', f)),
-    ].filter(f => f.endsWith('.md'));
-    const allScripts: string[] = [];
-    const allContent: string[] = [];
-    for (const f of filesToScan) {
-      const c = readFileSync(f, 'utf-8');
-      allContent.push(c);
-      allScripts.push(...extractNodeEScripts(c));
-    }
-
-    it('has at least one node -e script across setup files', () => {
-      expect(allScripts.length).toBeGreaterThan(0);
-    });
-
-    it('has no "!" in any node -e script body (MINGW64 safe)', () => {
-      const violations = findBangViolations(allScripts, 'omc-setup/*');
-      if (violations.length > 0) {
-        expect.fail(
-          'Found "!" in node -e scripts (breaks MINGW64/Git Bash):\n' +
-          violations.map(v => `  • ${v}`).join('\n')
-        );
-      }
-      expect(violations.length).toBe(0);
-    });
-  });
-
   describe('specific regressions (issue #729)', () => {
     it('hud SKILL.md plugin-verify script uses v.length===0 not !v.length', () => {
       const content = readFileSync(join(REPO_ROOT, 'skills', 'hud', 'SKILL.md'), 'utf-8');
@@ -148,17 +118,6 @@ describe('MINGW64 escape safety: no "!" in node -e inline scripts (issue #729)',
       expect(cleanupLine).toContain("'omg-hud.js'");
       // The wrapper the installer actually writes must never be swept.
       expect(cleanupLine).not.toContain("'omg-hud.mjs'");
-    });
-
-    it("omc-setup version-detect script uses v==='' not !v", () => {
-      const setupDir = join(REPO_ROOT, 'skills', 'omc-setup');
-      const files = [
-        join(setupDir, 'SKILL.md'),
-        ...readdirSync(join(setupDir, 'phases')).map(f => join(setupDir, 'phases', f)),
-      ].filter(f => f.endsWith('.md'));
-      const combined = files.map(f => readFileSync(f, 'utf-8')).join('\n');
-      expect(combined).toContain("if(v==='')");
-      expect(combined).not.toContain('if(!v)');
     });
 
     it('omc-setup extracts CLAUDE.md version from OMC marker', () => {

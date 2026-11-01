@@ -10,11 +10,11 @@ Compaction-resilient memory system at `.omg/notepad.md` with three tiers:
 | **Working Memory** | Timestamped entries, auto-pruned after 7 days | Debugging breadcrumbs, temporary findings |
 | **MANUAL** | Never auto-pruned | Team contacts, deployment info, permanent notes |
 
-**User skill:** `/oh-my-copilot:note`
-- `/oh-my-copilot:note <content>` - Add to Working Memory
-- `/oh-my-copilot:note --priority <content>` - Add to Priority Context
-- `/oh-my-copilot:note --manual <content>` - Add to MANUAL section
-- `/oh-my-copilot:note --show` - Display notepad contents
+**User skill:** `/note`
+- `/note <content>` - Add to Working Memory
+- `/note --priority <content>` - Add to Priority Context
+- `/note --manual <content>` - Add to MANUAL section
+- `/note --show` - Display notepad contents
 
 **Automatic capture:** `<remember>` tags in Task agent output are automatically captured:
 - `<remember>content</remember>` → Working Memory with timestamp

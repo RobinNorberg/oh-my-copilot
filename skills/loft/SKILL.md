@@ -19,7 +19,7 @@ level: 3
 Do **not** loft when:
 
 - the question is answerable from repo evidence or by asking the captain (that is interviewing, not lofting)
-- the destination itself is unclear (that is fog — `/oh-my-copilot:ask-navigator`)
+- the destination itself is unclear (that is fog — `/ask-navigator`)
 - the answer already lives in an ADR (do not re-loft settled decisions)
 - the "design question" is actually a bug (that is the debugger's jurisdiction)
 
@@ -62,7 +62,7 @@ The artifact is evidence, not a landing. When the captain reacts:
 ## Scope and non-goals
 
 - Loft produces **answers, not deliverables**: no runtime, no state files, nothing always-on.
-- It does not diagnose (debugger), does not chart fog (`/oh-my-copilot:ask-navigator`), does not approve its own answer (the captain's reaction is the only acceptance).
+- It does not diagnose (debugger), does not chart fog (`/ask-navigator`), does not approve its own answer (the captain's reaction is the only acceptance).
 - It does not replace seam approval: a lofted UI shows the shape; the test seams for it are still approved at C2.
 
 ## Completion definition

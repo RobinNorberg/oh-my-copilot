@@ -40,7 +40,7 @@ Also read optional `github.autoReview` settings (apply defaults when absent):
 | `maxFilesPerReview` | `50` | Cap on number of files analysed per PR |
 | `excludePatterns` | `["*.lock", "*.min.js", "*.generated.*"]` | Glob patterns for files to skip |
 
-If config is NOT_FOUND or missing the `github` key: tell the user to run `/oh-my-copilot:omc-gh-setup` first and stop.
+If config is NOT_FOUND or missing the `github` key: tell the user to run `/omc-gh-setup` first and stop.
 
 ---
 
@@ -218,7 +218,7 @@ If `autoSubmit` is false, inform the user of the recommended decision and let th
 
 | Error | Action |
 |-------|--------|
-| `.omg/config.json` missing | Tell user to run `/oh-my-copilot:omc-gh-setup` first |
+| `.omg/config.json` missing | Tell user to run `/omc-gh-setup` first |
 | `gh auth` required | Prompt user to authenticate; stop execution |
 | No PRs for review | Report "No PRs pending your review" and stop |
 | PR diff too large (>`maxFilesPerReview` files) | Warn and review first N files per `maxFilesPerReview` config |

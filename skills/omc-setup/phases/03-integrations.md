@@ -5,7 +5,7 @@
 ## Step 3.1: Verify Plugin Installation
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_HOME||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'settings.json');let c='';try{c=f.readFileSync(t,'utf8')}catch{};console.log(c.includes('oh-my-copilot')?'Plugin verified':'Plugin NOT found - run: claude /install-plugin oh-my-copilot')"
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" plugin-verify
 ```
 
 ## Step 3.2: MCP Server Configuration (Pointer Only)
@@ -43,7 +43,7 @@ Use AskUserQuestion:
 First, read the current settings.json:
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_HOME||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'settings.json');try{process.stdout.write(f.readFileSync(t,'utf8'))}catch{console.log('(no settings.json at '+t+')')}"
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" show-settings
 ```
 
 Then use the Read tool to read `${COPILOT_HOME:-~/.copilot}/settings.json` (if it exists). Use the Edit tool to merge the teams configuration while preserving ALL existing settings.
@@ -55,7 +55,7 @@ refuses to touch a file it cannot parse. It runs unchanged in bash, zsh, and Pow
 with no external JSON tooling, no heredoc, and no shell redirection:
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_HOME||p.join(require('os').homedir(),'.copilot');const[name,raw]=process.argv.slice(1);const t=p.join(d,name);const patch=JSON.parse(raw);f.mkdirSync(p.dirname(t),{recursive:true});let c={};if(f.existsSync(t)){try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: '+t+' is not valid JSON. Existing file was not modified.');process.exit(1)}}const merge=(a,b)=>{for(const k of Object.keys(b)){const v=b[k];if(v&&typeof v==='object'&&Array.isArray(v)===false){a[k]=merge(a[k]&&typeof a[k]==='object'?a[k]:{},v)}else{a[k]=v}}return a};merge(c,patch);const tmp=t+'.tmp.'+process.pid;try{f.writeFileSync(tmp,JSON.stringify(c,null,2));f.renameSync(tmp,t);console.log('Updated '+t)}catch(e){f.rmSync(tmp,{force:true});console.error('ERROR: Failed to update '+t+'. Existing file was not modified.');process.exit(1)}" "settings.json" "{\"env\":{\"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS\":\"1\"}}"
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" merge-json "settings.json" "{\"env\":{\"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS\":\"1\"}}"
 ```
 
 **IMPORTANT**: The Edit tool is preferred for modifying settings.json when possible, since it preserves formatting and comments. The merge command above is the fallback for when the file needs structural merging.
@@ -118,7 +118,7 @@ teammates inherit your session model.
 After all modifications, verify settings.json is valid JSON and contains the expected keys:
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_HOME||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'settings.json');let c;try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: settings.json is invalid JSON or missing. Restore it from the backup before continuing.');process.exit(1)}console.log('settings.json: valid JSON');console.log((c.env||{}).CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS?'Agent teams: ENABLED':'WARNING: Agent teams env var not found in settings.json');console.log('');console.log('Final settings.json:');console.log(JSON.stringify(c,null,2))"
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" verify-settings
 ```
 
 ### If User Chooses NO:
@@ -132,7 +132,7 @@ Skip this step. Agent teams will remain disabled. User can enable later by addin
 }
 ```
 
-Or by running `/oh-my-copilot:omc-setup --force` and choosing to enable teams.
+Or by running `/omc-setup --force` and choosing to enable teams.
 
 ## Save Progress
 

@@ -58,7 +58,7 @@ The document language for the generated harness files is a file-backed decision,
   "scriptVariants": ["zh-Hans", "zh-Hant"],
   "seedCompanionPrefixes": { "en": "en", "zh-Hans": "zh-Hans", "zh-Hant": "zh-Hant" },
   "stableTokens": [
-    "GLOSSARY.md", "documentLanguage", "/oh-my-copilot:launch", "--serial",
+    "GLOSSARY.md", "documentLanguage", "/launch", "--serial",
     "plan", "execute", "review", "verify", "blockedBy", "blocked_by",
     "pending", "in_progress", "completed", "failed", "ready-for-agent",
     "id", "name", "description", "triggers", "mcpServers", "```",
@@ -132,7 +132,7 @@ Seed A — CLAUDE.md, en (thin entry; extend in place if the file exists):
 - Glossary: GLOSSARY.md
 
 ## Agent guide
-- Delivery follows the canonical workflow plan → execute → review → verify; `/oh-my-copilot:launch` is an optional governed delivery pipeline (opt-in, invoke explicitly)
+- Delivery follows the canonical workflow plan → execute → review → verify; `/launch` is an optional governed delivery pipeline (opt-in, invoke explicitly)
 - On term conflicts GLOSSARY.md wins; new terms are recorded the moment they settle
 - When a deferred surface first appears (standards, decision records, business knowledge, project skills, the design system), it gets an index section here at the moment it is created — never before
 ```
@@ -154,7 +154,7 @@ Seed A — zh-Hans companion (结构一致，二选一按文档语言渲染):
 - 术语: GLOSSARY.md
 
 ## Agent 指南
-- 交付遵循 canonical 工作流 plan → execute → review → verify；`/oh-my-copilot:launch` 是可选的受治理交付管道（opt-in，需要时显式调用）
+- 交付遵循 canonical 工作流 plan → execute → review → verify；`/launch` 是可选的受治理交付管道（opt-in，需要时显式调用）
 - 术语冲突以 GLOSSARY.md 为准；新术语当场补录
 - 延后面首次出现时（规范、决策记录、业务知识、项目技能、设计系统），在创建的当下于此补一段索引——绝不提前
 ```
@@ -176,7 +176,7 @@ Seed A — zh-Hant companion（結構一致，只渲染此版本）:
 - 詞彙: GLOSSARY.md
 
 ## Agent 指南
-- 交付遵循 canonical 工作流 plan → execute → review → verify；`/oh-my-copilot:launch` 是可選的治理交付管道（opt-in，必須明確呼叫）
+- 交付遵循 canonical 工作流 plan → execute → review → verify；`/launch` 是可選的治理交付管道（opt-in，必須明確呼叫）
 - 術語衝突以 GLOSSARY.md 為準；新術語確定時立即補錄
 - 延後面首次出現時（規範、決策記錄、業務知識、專案技能、設計系統），在建立時於此補一段索引——絕不提前
 ```
@@ -360,6 +360,6 @@ The rule that keeps 先动手 aligned: **starting needs no permission; landing g
 
 ## `--check` mode
 
-Diff actual repo state against the shipyard map; require the day-one faces `CLAUDE.md` and `GLOSSARY.md` (a recognizable legacy glossary `CONTEXT.md` is accepted until migrated), then report integrity findings on adopted optional surfaces only (an absent optional surface is not adopted, not missing), a missing or invalid glossary `documentLanguage` tag, CLAUDE.md sections that point at dead paths, GLOSSARY.md terms unused in code, and standards never referenced. For each finding, state the confidence (`high` when mechanically checkable, `low` when heuristic) and whether it is actionable after excluding throwaway/scratch repositories explicitly declared by the user. Launch's yard gate treats high-confidence actionable findings as blocking; low-confidence or explicitly-classified false-positive findings, and findings in a user-declared scratch/throwaway scope, may be overridden only with deliberate per-invocation intent (see `/oh-my-copilot:launch`). `/oh-my-copilot:ask-navigator` may also run this audit in report-only mode while charting a foggy effort: findings are recorded verbatim in the map's Notes (never swallowed) and remain live findings for the launch yard gate.
+Diff actual repo state against the shipyard map; require the day-one faces `CLAUDE.md` and `GLOSSARY.md` (a recognizable legacy glossary `CONTEXT.md` is accepted until migrated), then report integrity findings on adopted optional surfaces only (an absent optional surface is not adopted, not missing), a missing or invalid glossary `documentLanguage` tag, CLAUDE.md sections that point at dead paths, GLOSSARY.md terms unused in code, and standards never referenced. For each finding, state the confidence (`high` when mechanically checkable, `low` when heuristic) and whether it is actionable after excluding throwaway/scratch repositories explicitly declared by the user. Launch's yard gate treats high-confidence actionable findings as blocking; low-confidence or explicitly-classified false-positive findings, and findings in a user-declared scratch/throwaway scope, may be overridden only with deliberate per-invocation intent (see `/launch`). `/ask-navigator` may also run this audit in report-only mode while charting a foggy effort: findings are recorded verbatim in the map's Notes (never swallowed) and remain live findings for the launch yard gate.
 
 **The structured exit contract (version 2).** The mechanical subset of this audit is executable: `node scripts/shipyard-audit.mjs [repoRoot]` emits JSON on stdout (human summary on stderr) with `contractVersion: 2` and checks required base faces (`CLAUDE.md` plus `GLOSSARY.md`, or a recognizable legacy glossary `CONTEXT.md`), duplicate glossary authority, a missing/invalid `documentLanguage` tag, dead paths in `CLAUDE.md`, project-skill triggers, and intent statuses. Optional absent surfaces are not findings; `shipyard.surface.missing.*` IDs are retired, and consumers must use the new contract rather than depend on the old finding family. Findings use the shared `severity` (high/medium/low/info), `confidence` (high/low), `actionable`, id, evidence, and advice fields. Exit code 0 = clean, 1 = high-confidence actionable findings present, 2 = invocation error. The heuristic classes (terms unused in code, standards never referenced) stay in this prose layer by design — they are `low`-confidence by construction and the script never invents findings it cannot verify mechanically. Read-only.

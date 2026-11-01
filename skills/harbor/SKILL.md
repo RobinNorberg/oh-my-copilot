@@ -60,7 +60,7 @@ All hold → cite and proceed. Thin evidence → gather evidence first. Substant
 
 Verify the remote tracker responds (`gh repo view` on the recorded/implicit remote) **and that it is the expected repository**. If it does, the remote tracker is the ONLY medium for dispositions: every sheet, label, and docket lives there. A local `issues/` directory (or any untracked markdown collection) is **content to inspect, never a tracker to write to** — chaotic repos are full of lookalike directories, and writing dispositions into local files strands them where reporters and maintainers will never see them. If the remote is unreachable, stop and report the blocker — do not fall back to local files.
 
-**V1 scope**: remote GitHub only. Other backends are explicitly unsupported — report and stop; no silent migration, no local fallback. The tracker and label vocabulary should have been recorded by `/oh-my-copilot:drydock`; if not, ask once and record the answer in `CLAUDE.md` under the shipyard conventions.
+**V1 scope**: remote GitHub only. Other backends are explicitly unsupported — report and stop; no silent migration, no local fallback. The tracker and label vocabulary should have been recorded by `/drydock`; if not, ask once and record the answer in `CLAUDE.md` under the shipyard conventions.
 
 ## The labels
 
@@ -102,11 +102,11 @@ A ruling that answers scope questions returns the ship to the desk for re-dispos
 
 | Check result | Route |
 |---|---|
-| `runnable`, or `needs-plan` and the work is one slice an engineer can specify | `/oh-my-copilot:launch` with the issue as its spec: launch's Phase 3 factory handoff enqueues a one-ticket file whose `spec` is the issue, and the captain signs that dry run at C3 |
-| `needs-plan`, several slices, clear | `/oh-my-copilot:launch` with the signed decisions as its mission brief |
-| `needs-plan`, the requirements belong to a non-engineer | `/oh-my-copilot:intent`, linking the issue as the intent's source |
-| `needs-plan`, foggy (fog test Q1 or Q2 fails) | `harbor:needs-exploration` + `/oh-my-copilot:ask-navigator` |
-| `blocked` with `too-big` or `needs-split` | `/oh-my-copilot:launch` |
+| `runnable`, or `needs-plan` and the work is one slice an engineer can specify | `/launch` with the issue as its spec: launch's Phase 3 factory handoff enqueues a one-ticket file whose `spec` is the issue, and the captain signs that dry run at C3 |
+| `needs-plan`, several slices, clear | `/launch` with the signed decisions as its mission brief |
+| `needs-plan`, the requirements belong to a non-engineer | `/intent`, linking the issue as the intent's source |
+| `needs-plan`, foggy (fog test Q1 or Q2 fails) | `harbor:needs-exploration` + `/ask-navigator` |
+| `blocked` with `too-big` or `needs-split` | `/launch` |
 
 Once launch has enqueued the work, delivery state lives in the factory: harbor never writes `factory:*` labels and stops tracking the ship. The docket may show one read-only line counting accepted ships by factory bucket.
 
@@ -177,7 +177,7 @@ Harbor itself runs no daemons and keeps no timers — but the sweep does not nee
 - The deliverables are the refreshed docket and the coverage report (inspected / not-inspected / blocked, each locatable on the tracker). If a notification channel is configured (`configure-notifications`), post the docket link there so the captain learns the desk has pending boxes without opening the session.
 - Partial-completion, retry, and budget rules apply unchanged. A headless sweep that runs out of budget posts what is accurate and leaves a remaining-queue index — never "all complete".
 
-The factory listener (`omg factory listen`) starts the single-ship form: when an issue gets the intake label it spawns a headless `/oh-my-copilot:harbor look at #<n>` session under the same authority contract. The listener writes no labels. When such a session stalls, the factory watchdog adds `harbor:for-maintainer` with a stall comment: the next sweep treats it as a maintainer hand-over, not as a reporter reply.
+The factory listener (`omg factory listen`) starts the single-ship form: when an issue gets the intake label it spawns a headless `/harbor look at #<n>` session under the same authority contract. The listener writes no labels. When such a session stalls, the factory watchdog adds `harbor:for-maintainer` with a stall comment: the next sweep treats it as a maintainer hand-over, not as a reporter reply.
 
 ## Scope and non-goals
 

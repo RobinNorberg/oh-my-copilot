@@ -17,7 +17,7 @@ Discover scans a codebase through 6 parallel specialist agents — Security, Qua
 <Do_Not_Use_When>
 - User wants to review a specific PR or changeset — use `/deep-review` instead
 - User wants to fix a specific bug — delegate to debugger agent
-- User wants to plan a feature — use `/plan` instead
+- User wants to plan a feature — use `/omc-plan` instead
 </Do_Not_Use_When>
 
 <Why_This_Exists>

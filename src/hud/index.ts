@@ -68,6 +68,7 @@ import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { getOmcRoot } from "../lib/worktree-paths.js";
 import { getCopilotConfigDir, getUpdateCheckCachePath } from "../utils/config-dir.js";
+import { skillSlash } from "../utils/skill-slash.js";
 
 /**
  * HUD wrapper filenames this release recognises, current first.
@@ -307,7 +308,7 @@ function showDiagnostic(): void {
   console.log(`  statusLine:  ${statusLineOk ? "configured" : "NOT configured"}`);
 
   if (!hudExists || !statusLineOk) {
-    console.log("  Run /oh-my-copilot:hud setup to fix.");
+    console.log(`  Run ${skillSlash('hud')} setup to fix.`);
   } else {
     console.log("  HUD renders automatically inside Claude Code sessions.");
   }
@@ -704,7 +705,7 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
         error.message.includes("Cannot find module"));
 
     if (isInstallError) {
-      console.log("[OMC] run /oh-my-copilot:omc-setup to install properly");
+      console.log(`[OMC] run ${skillSlash('omc-setup')} to install properly`);
     } else {
       // Output fallback message to stdout for status line visibility
       console.log("[OMC] HUD error - check stderr");

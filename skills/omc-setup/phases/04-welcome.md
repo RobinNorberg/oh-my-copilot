@@ -5,7 +5,7 @@
 Check if user has existing 2.x configuration:
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_HOME||p.join(require('os').homedir(),'.copilot');console.log('IS_UPGRADE='+f.existsSync(p.join(d,'commands','ralph-loop.md')))"
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" detect-upgrade
 ```
 
 If found, this is an upgrade from 2.x. Set `IS_UPGRADE=true`.
@@ -39,14 +39,14 @@ Just include these words naturally in your request:
 | cancelomc | Stop active OMC modes | "cancelomc" |
 
 CANONICAL WORKFLOWS (Tier-0):
-omc-plan -> execute -> omc-review -> verify, invoked as /oh-my-copilot:omc-plan and /oh-my-copilot:omc-review.
+omc-plan -> execute -> omc-review -> verify, invoked as /omc-plan and /omc-review.
 /deep-interview and /ralplan are independent planning workflows.
 /research and /team are internal lanes; /autopilot, /autoresearch, /ralph, /ultragoal stay directly invocable.
 
 TEAMS:
 Spawn coordinated agents with shared task lists and real-time messaging:
-- /oh-my-copilot:team 3:executor "fix all TypeScript errors"
-- /oh-my-copilot:team 5:debugger "fix build errors in src/"
+- /team 3:executor "fix all TypeScript errors"
+- /team 5:debugger "fix build errors in src/"
 Teams use Claude Code's implicit agent team (spawn teammates directly with distinct `name` values; no TeamCreate/TeamDelete in Claude Code 2.1.178+). Team orchestration is explicit via /team — there is no bare "team" keyword.
 
 MCP SERVERS:
@@ -100,7 +100,7 @@ MAGIC KEYWORDS (power-user shortcuts):
 
 TEAMS (NEW!):
 Spawn coordinated agents with shared task lists and real-time messaging:
-- /oh-my-copilot:team 3:executor "fix all TypeScript errors"
+- /team 3:executor "fix all TypeScript errors"
 - Uses Claude Code's implicit agent team (spawn teammates directly with distinct `name` values; no TeamCreate/TeamDelete in Claude Code 2.1.178+)
 
 HUD STATUSLINE:
@@ -130,7 +130,7 @@ OMC includes rule templates you can copy to your project's `.claude/rules/` dire
 
 Copy with:
 ```bash
-node -e "const p=require('path'),f=require('fs'),r=process.env.OMC_SETUP_PLUGIN_ROOT||process.env.CLAUDE_PLUGIN_ROOT;if(r===undefined||r===''){console.error('ERROR: plugin root is not set');process.exit(1)}const src=p.join(r,'templates','rules'),dest=p.join('.claude','rules');f.mkdirSync(dest,{recursive:true});for(const n of f.readdirSync(src).filter(x=>x.endsWith('.md'))){f.copyFileSync(p.join(src,n),p.join(dest,n));console.log('Copied '+n)}"
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" copy-rules
 ```
 
 See `templates/rules/README.md` for details.
@@ -169,7 +169,7 @@ Use AskUserQuestion:
 If user chooses "Yes, star it!":
 
 ```bash
-node -e "const{spawnSync}=require('node:child_process');const r=spawnSync('gh',['api','-X','PUT','user/starred/RobinNorberg/oh-my-copilot'],{encoding:'utf8',shell:process.platform==='win32'});if(r.status===0)console.log('Thanks for starring')"
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" star-repo
 ```
 
 **Note:** Fail silently if the API call doesn't work - never block setup completion.

@@ -1,3 +1,4 @@
+import { skillSlash } from '../utils/skill-slash.js';
 export const AUTORESEARCH_HELP = `omg autoresearch - HARD DEPRECATED
 
 This command is no longer the authoritative autoresearch workflow.
@@ -5,7 +6,7 @@ This command is no longer the authoritative autoresearch workflow.
 Use this flow instead:
   1. /deep-interview --autoresearch "<mission idea>"
      - use deep-interview to generate/setup the mission and evaluator
-  2. /oh-my-copilot:autoresearch
+  2. ${skillSlash('autoresearch')}
      - run the stateful single-mission autoresearch skill
 
 Key behavior:

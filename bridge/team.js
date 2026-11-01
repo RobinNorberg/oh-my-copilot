@@ -10194,6 +10194,19 @@ var init_copilot_session_eval = __esm({
   }
 });
 
+// src/utils/skill-slash.ts
+function skillSlash(name, host = detectHostCliType()) {
+  return host === "copilot" ? `/${name}` : `/${SKILL_NAMESPACE}:${name}`;
+}
+var SKILL_NAMESPACE;
+var init_skill_slash = __esm({
+  "src/utils/skill-slash.ts"() {
+    "use strict";
+    init_host_signal();
+    SKILL_NAMESPACE = "oh-my-copilot";
+  }
+});
+
 // src/smoke/copilot-sdk-scenarios.ts
 import { realpathSync as realpathSync5 } from "fs";
 import { basename as basename12, join as join25, resolve as resolve9, sep as sep4 } from "path";
@@ -10243,6 +10256,7 @@ var init_copilot_sdk_scenarios = __esm({
     "use strict";
     init_ledger();
     init_copilot_session_eval();
+    init_skill_slash();
     FACTORY_RUN_SCENARIOS = ["factory-run", "factory-run-fix"];
     SANDBOX_LANE_SCENARIO = "sandbox-lane";
     CLI_SCENARIOS = ["continuation", "prompt-context", "events", "ultragoal"];
@@ -10301,7 +10315,7 @@ var init_copilot_sdk_scenarios = __esm({
       },
       skill: {
         name: "skill",
-        prompt: "Use the /oh-my-copilot:plan skill to outline a two-step plan for adding a README. Keep it under 5 lines.",
+        prompt: `Use the ${skillSlash("omc-plan", "copilot")} skill to outline a two-step plan for adding a README. Keep it under 5 lines.`,
         excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
         permit: permitScopedRead
         // loading SKILL.md is a read request
@@ -13967,11 +13981,11 @@ function buildWorkerStartCommand(config) {
       windowsEnvVars.OMC_RECOVERY_GATE_SPEC_B64 = Buffer.from(windowsEnvVars.OMC_RECOVERY_GATE_SPEC, "utf8").toString("base64");
       delete windowsEnvVars.OMC_RECOVERY_GATE_SPEC;
     }
-    const envPrefix = Object.entries(windowsEnvVars).map(([key, value]) => {
+    const envPrefix = ['set "NoDefaultCurrentDirectoryInExePath=1"', ...Object.entries(windowsEnvVars).filter(([key]) => key.toUpperCase() !== "NODEFAULTCURRENTDIRECTORYINEXEPATH").map(([key, value]) => {
       assertSafeEnvKey(key);
       assertSafeCmdValue2(value);
       return `set "${key}=${escapeForCmdSet(value)}"`;
-    }).join(" && ");
+    })].join(" && ");
     const launch = launchWords.map((part) => {
       assertSafeCmdValue2(part);
       return `"${escapeForCmdSet(part)}"`;
@@ -17621,6 +17635,44 @@ var init_phase_controller = __esm({
   }
 });
 
+// src/utils/windows-search.ts
+import { statSync as statSync7 } from "node:fs";
+import { posix, win32 as win324 } from "node:path";
+function envValue(env, name) {
+  const key = Object.keys(env).find((k) => k.toUpperCase() === name);
+  const value = key === void 0 ? void 0 : env[key];
+  return typeof value === "string" && value.trim() !== "" ? value : void 0;
+}
+function findOnPath(name, env, platform, exists = isFile) {
+  const P = platform === "win32" ? win324 : posix;
+  const exts = platform === "win32" ? (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean) : [""];
+  const inNodeModules = platform === "win32" ? /(^|[\\/])node_modules([\\/]|$)/i : /(^|\/)node_modules(\/|$)/;
+  for (const raw of (envValue(env, "PATH") ?? "").split(P.delimiter)) {
+    const dir = raw.trim().replace(/^"(.*)"$/, "$1");
+    if (!dir || !P.isAbsolute(dir) || inNodeModules.test(dir)) continue;
+    for (const ext of exts) if (exists(P.join(dir, name + ext))) return P.join(dir, name + ext);
+  }
+  return null;
+}
+function resolveBareExe(cmd, env = process.env) {
+  if (process.platform !== "win32" || /[\\/:]/.test(cmd)) return cmd;
+  const pathext = (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter((e) => e && !/^\.(cmd|bat)$/i.test(e)).join(";") || ".COM;.EXE";
+  return findOnPath(cmd, { ...env, PATHEXT: pathext }, "win32");
+}
+var isFile;
+var init_windows_search = __esm({
+  "src/utils/windows-search.ts"() {
+    "use strict";
+    isFile = (p) => {
+      try {
+        return statSync7(p).isFile();
+      } catch {
+        return false;
+      }
+    };
+  }
+});
+
 // src/lib/worktree-cleanup-safety.ts
 import { existsSync as existsSync31, lstatSync as lstatSync7, realpathSync as realpathSync7 } from "node:fs";
 import { homedir as homedir6 } from "node:os";
@@ -17769,7 +17821,7 @@ function hostGitEnv(args, base = process.env) {
 function hostGitDriverOverrides(cwd, env, timeout) {
   let out;
   try {
-    out = execFileSync5("git", [...hostGitHardeningArgs(), "config", "--null", "--show-scope", "--name-only", "--get-regexp", "^(filter|diff)\\."], { cwd, env, encoding: "utf8", stdio: "pipe", windowsHide: true, timeout });
+    out = execFileSync5(hostGitExe(), [...hostGitHardeningArgs(), "config", "--null", "--show-scope", "--name-only", "--get-regexp", "^(filter|diff)\\."], { cwd, env, encoding: "utf8", stdio: "pipe", windowsHide: true, timeout });
   } catch (err) {
     return err.status === 1 ? [] : null;
   }
@@ -17794,6 +17846,11 @@ function hostGitDriverOverrides(cwd, env, timeout) {
     ...[...diffs].flatMap((n) => ["textconv=", "command="].flatMap((kv) => ["-c", `diff.${n}.${kv}`]))
   ];
 }
+function hostGitExe() {
+  const git2 = resolveBareExe("git");
+  if (git2 === null) throw new Error("host git: git is not on PATH");
+  return git2;
+}
 function runHostGit(cwd, args, timeout, baseEnv = process.env) {
   const env = hostGitEnv(args, baseEnv);
   const recorded = env.GIT_DIR ? recordedGitDirs.get(env.GIT_DIR) : void 0;
@@ -17814,7 +17871,7 @@ function runHostGit(cwd, args, timeout, baseEnv = process.env) {
     tree = [...tree, ...LANE_SUBMODULE_OVERRIDES.flatMap((kv) => ["-c", kv])];
     if (IGNORE_SUBMODULES_SUBCOMMANDS.has(subcommand)) finalArgs = [...args.slice(0, at + 1), "--ignore-submodules=all", ...args.slice(at + 1)];
   }
-  return execFileSync5("git", [...hostGitHardeningArgs(), ...tree, ...finalArgs], { cwd, env, encoding: "utf-8", stdio: "pipe", windowsHide: true, timeout });
+  return execFileSync5(hostGitExe(), [...hostGitHardeningArgs(), ...tree, ...finalArgs], { cwd, env, encoding: "utf-8", stdio: "pipe", windowsHide: true, timeout });
 }
 function git(repoRoot, args, cwd = repoRoot) {
   return runHostGit(cwd, args).trim();
@@ -17863,7 +17920,7 @@ function recordWorktreeGitLinks(wtPath, links) {
     throw new Error(`sandbox-escaped: other git links are already recorded for ${wtPath}; the record is never replaced`);
   }
   const args = ["--git-dir", links.adminDir, "--work-tree", wtPath];
-  const format = execFileSync5("git", [...hostGitHardeningArgs(), ...args, "rev-parse", "--show-object-format"], { cwd: wtPath, env: hostGitEnv(args), encoding: "utf-8", stdio: "pipe", windowsHide: true }).trim();
+  const format = execFileSync5(hostGitExe(), [...hostGitHardeningArgs(), ...args, "rev-parse", "--show-object-format"], { cwd: wtPath, env: hostGitEnv(args), encoding: "utf-8", stdio: "pipe", windowsHide: true }).trim();
   const emptyTree = EMPTY_TREE[format];
   if (!emptyTree) throw new Error(`host git: unknown object format ${JSON.stringify(format)} in ${wtPath}`);
   recordedGitDirs.set(resolve13(links.adminDir), { wtPath, links, emptyTree });
@@ -18377,7 +18434,7 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
   const wtDir = join37(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees");
   ensureDirWithMode(wtDir);
   const args = mode === "named" ? ["worktree", "add", "-b", branch, wtPath, options.baseRef ?? "HEAD"] : ["worktree", "add", "--detach", wtPath, options.baseRef ?? "HEAD"];
-  execFileSync5("git", args, { cwd: repoRoot, stdio: "pipe", windowsHide: true });
+  execFileSync5(hostGitExe(), args, { cwd: repoRoot, stdio: "pipe", windowsHide: true });
   const baseCommit = gitOrNull(["rev-parse", "HEAD"], wtPath);
   const info = {
     ...baseCommit ? { baseCommit } : {},
@@ -18625,6 +18682,7 @@ var emptyHooksDir, EXEC_KEY_OVERRIDES, emptyAttributesFile, WORK_TREE_SUBCOMMAND
 var init_git_worktree = __esm({
   "src/team/git-worktree.ts"() {
     "use strict";
+    init_windows_search();
     init_fs_utils();
     init_worktree_cleanup_safety();
     init_tmux_session();
@@ -20691,6 +20749,7 @@ var init_exec = __esm({
   "src/ship/exec.ts"() {
     "use strict";
     init_guard();
+    init_windows_search();
     TRUSTED_READ_ENV = Object.freeze({ GIT_NO_REPLACE_OBJECTS: "1" });
   }
 });
@@ -20719,9 +20778,9 @@ var init_config2 = __esm({
         "Socket Security: Pull Request Alerts",
         "Socket Security: Project Report"
       ],
-      // Every check this repo's CI reports on a PR to dev (ci.yml, pr-check.yml,
-      // upgrade-test.yml); Build, npm pack and the smoke job start late (`needs:`).
-      // ci.yml and upgrade-test.yml run only for PRs to main / dev
+      // Every check this repo's CI reports on a PR to dev (ci.yml, pr-check.yml);
+      // the jobs that consume the Build output start late (`needs: [build]`).
+      // ci.yml runs only for PRs to main / dev
       // (`pull_request.branches`): on a PR to another base their checks never
       // report and stay pending, so such a base needs its own requiredChecks in
       // the user config.
@@ -20813,6 +20872,7 @@ var init_sandbox = __esm({
     init_copilot_session_env();
     init_sdk_policy();
     init_jsonc();
+    init_windows_search();
     DEFAULT_SANDBOX_SETTINGS = Object.freeze({
       enabled: true,
       reviewUnsandboxed: "no-shell",
@@ -20872,7 +20932,7 @@ var init_version = __esm({
 });
 
 // src/smoke/replay/redact.ts
-function userHomePatterns(win, pct, posix, posixFlags) {
+function userHomePatterns(win, pct, posix2, posixFlags) {
   return [
     // The separator spelling is captured once, so `\n` after an escaped `\\` is not taken for a tail separator.
     // `\` doubles per JSON level, so any run of backslashes is a separator. The one after `Users` may be either
@@ -20881,7 +20941,7 @@ function userHomePatterns(win, pct, posix, posixFlags) {
     // Percent-encoded (`file:///c%3A/Users/...`, `C%3A%5CUsers%5C...`, `%2Fhome%2Fname`).
     new RegExp(String.raw`(?<head>(?:\b[A-Za-z]%3A${PCT_SEP}Users|%2F(?:home|Users))${PCT_SEP}(?!<user>)${pct})(?:${PCT_SEP}${PCT_SEG})*`, "gi"),
     // POSIX, Git Bash (`/c/Users/...`) and WSL (`/mnt/c/Users/...`).
-    new RegExp(String.raw`(?<head>(?<![\w.$}-])\/(?:home|Users|(?:mnt\/)?[A-Za-z]\/Users)\/(?!<user>)${posix})(?:\/${POSIX_SEG})*`, posixFlags)
+    new RegExp(String.raw`(?<head>(?<![\w.$}-])\/(?:home|Users|(?:mnt\/)?[A-Za-z]\/Users)\/(?!<user>)${posix2})(?:\/${POSIX_SEG})*`, posixFlags)
   ];
 }
 function knownUserHomePatterns(user) {
@@ -22541,7 +22601,7 @@ var init_handler = __esm({
 });
 
 // src/smoke/replay/run.ts
-import { cpSync, existsSync as existsSync40, readdirSync as readdirSync16, readFileSync as readFileSync28, rmSync as rmSync6, statSync as statSync7 } from "fs";
+import { cpSync, existsSync as existsSync40, readdirSync as readdirSync16, readFileSync as readFileSync28, rmSync as rmSync6, statSync as statSync8 } from "fs";
 import { join as join49, relative as relative12, resolve as resolve17 } from "path";
 var init_run = __esm({
   "src/smoke/replay/run.ts"() {

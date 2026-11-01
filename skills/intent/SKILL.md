@@ -86,7 +86,7 @@ An accepted intent (`status: accepted`) is a valid mission brief. Launch's spec 
 
 Intent open questions carry into the spec verbatim, keeping their pending status.
 
-**Factory-sourced intents.** An intent that harbor routed from a factory `needs-plan` issue adds `source: <issue url>` to its frontmatter. Launch's spec links that issue, and launch closes it at C5 with a pointer to the spec. Hand the accepted intent to the captain with `/oh-my-copilot:launch` recommended; launch's `omg factory enqueue` handoff is what reaches the factory.
+**Factory-sourced intents.** An intent that harbor routed from a factory `needs-plan` issue adds `source: <issue url>` to its frontmatter. Launch's spec links that issue, and launch closes it at C5 with a pointer to the spec. Hand the accepted intent to the captain with `/launch` recommended; launch's `omg factory enqueue` handoff is what reaches the factory.
 
 **Not a chain stage.** Intent needs a live contributor for its numbered batches, so it runs only when a human invokes it. The factory listener sends intake to harbor, and the legacy SessionEnd chain still spawns an `intent` route but records `route-deprecated:intent`. `omg factory init --check` lists such routes; `omg factory init --migrate` rewrites `success:intake -> intent` to `success:intake -> harbor`.
 

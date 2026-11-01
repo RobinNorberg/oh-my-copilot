@@ -14,6 +14,7 @@
  * `writeUnsandboxed: "detect-only"` is set, and a shell call the runtime
  * reports as not sandboxed stops the session with `sandbox-escaped`.
  */
+import { findOnPath } from '../utils/windows-search.js';
 export type SandboxMode = 'enforced' | 'read-only-no-shell' | 'detect-only' | 'refused';
 export type SandboxProfile = 'write' | 'review';
 export interface SandboxHostRecord {
@@ -184,13 +185,7 @@ export interface ToolPathProbe {
     gitExecPath: (git: string) => string | null;
     realpath: (p: string) => string;
 }
-/**
- * `name` on `env`'s PATH (PATHEXT on win32), or null. Empty and relative
- * entries are skipped, and so is any entry under a `node_modules` dir (npx
- * and npm scripts put `node_modules/.bin` first, so a package's shim would
- * stand in for the host git that `git --exec-path` runs).
- */
-export declare function findOnPath(name: string, env: NodeJS.ProcessEnv, platform: NodeJS.Platform, exists?: (p: string) => boolean): string | null;
+export { findOnPath };
 /**
  * The install dirs of the programs every lane starts: node (the plugin
  * hooks and the `t` MCP server run `node`) and git. With

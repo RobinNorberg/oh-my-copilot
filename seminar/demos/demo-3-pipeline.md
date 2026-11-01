@@ -73,12 +73,12 @@ EOF
 ## The Command
 
 ```
-/oh-my-copilot:pipeline review
+/pipeline review
 ```
 
 Or demonstrate custom pipeline:
 ```
-/oh-my-copilot:pipeline explore:haiku -> architect:opus -> critic:opus -> executor:sonnet
+/pipeline explore:haiku -> architect:opus -> critic:opus -> executor:sonnet
 ```
 
 ## Expected Flow (2-3 minutes)
@@ -148,7 +148,7 @@ Or demonstrate custom pipeline:
 
 ### Terminal Output
 ```
-$ /oh-my-copilot:pipeline review
+$ /pipeline review
 
 Activating pipeline with preset 'review':
   Stage 1: explore (haiku) →
@@ -393,14 +393,14 @@ Total: 1m 23s, 4 stages, 6 issues fixed
 ### Variation 1: Custom Pipeline
 Show custom pipeline syntax:
 ```
-/oh-my-copilot:pipeline explore:haiku -> architect:opus -> executor-high:opus -> qa-tester:sonnet
+/pipeline explore:haiku -> architect:opus -> executor-high:opus -> qa-tester:sonnet
 ```
 
 "You can define your own stage sequence - any agent, any model, any order"
 
 ### Variation 2: Research Pipeline
 ```
-/oh-my-copilot:pipeline research
+/pipeline research
 ```
 
 "The 'research' preset: Parallel researchers gather data, architect synthesizes, writer documents"

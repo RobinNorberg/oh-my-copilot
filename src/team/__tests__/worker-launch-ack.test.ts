@@ -2591,6 +2591,21 @@ describe('worker launch acknowledgement', () => {
     await expect(cleanupWorkerLaunchTransport(launchAttempt, 'windows_descriptor_round_trip')).resolves.toBe(true);
   });
 
+  it('gives the Windows supervisor one NoDefaultCurrentDirectoryInExePath=1 over the allowlisted baseline without changing the authority digest', async () => {
+    const launchAttempt = await attempt();
+    const providerEnv = { EXPLICIT_PROVIDER_VALUE: 'yes', nodefaultcurrentdirectoryinexepath: '' };
+    const materialized = await materializeWorkerLaunchTransport({ attempt: launchAttempt, providerArgv: ['codex'], providerEnv, cwd, platform: 'win32' });
+    const consumed = await readAndConsumeWorkerLaunchDescriptor(materialized.bootstrapDescriptorPath, 'win32') as WorkerLaunchBootstrapSpec;
+    // The allowlists (SAFE_BASELINE_ENV_KEYS, WINDOWS_BASELINE_ENV_KEYS) never forward an ambient value, here 0.
+    const invocation = buildWindowsSupervisorInvocation(consumed, { PATH: 'C:\\Windows\\System32', SystemRoot: 'C:\\Windows', NODEFAULTCURRENTDIRECTORYINEXEPATH: '0' });
+    const payload = JSON.parse(invocation.stdinPayload!) as { canonical_json: string; authority_digest: string; provider_env: Record<string, string> };
+    expect(JSON.parse(payload.canonical_json).provider_env).toEqual(providerEnv);
+    expect(createHash('sha256').update(payload.canonical_json, 'utf8').digest('hex')).toBe(payload.authority_digest);
+    expect(Object.entries(payload.provider_env).filter(([key]) => key.toUpperCase() === 'NODEFAULTCURRENTDIRECTORYINEXEPATH'))
+      .toEqual([['NoDefaultCurrentDirectoryInExePath', '1']]);
+    await expect(cleanupWorkerLaunchTransport(launchAttempt, 'windows_cwd_search')).resolves.toBe(true);
+  });
+
   it('propagates only the canonical home variable for each platform', () => {
     const posix = buildProviderEnvironment(undefined, {
       PATH: '/usr/bin:/bin',
