@@ -210,7 +210,9 @@ jobs:
         shell: bash
         run: |
           tar -xf "$RUNNER_TEMP/build-output/build-output.tar"
-          npm run build:contained-fs
+          # A cache hit skips npm ci, so node-gyp never fetched headers; use the
+          # headers that ship with the setup-node toolcache install instead.
+          npm_config_nodedir="$(dirname "$(dirname "$(command -v node)")")" npm run build:contained-fs
 
       - name: Run portable restore and SessionStart interleaving tests
         env:
