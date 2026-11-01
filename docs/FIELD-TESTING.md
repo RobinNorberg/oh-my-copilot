@@ -34,8 +34,11 @@ in the way, stop and ask Robin.
    When your branch falls behind `dev`, run `git merge origin/dev` and push
    again. *Why:* Robin is the only merger, and a force-push can destroy
    commits the maintainer side added to your branch.
-3. **Push only `field/*` branches.** Every `git push` names a branch that
-   starts with `field/`. *Why:* `dev`, `main` and `release/*` are the
+3. **Push only `field/*` branches to this repository.** Every `git push` you
+   run against the `RobinNorberg/oh-my-copilot` remote names a branch that
+   starts with `field/`. The acceptance script's own pushes of `main` into
+   the throwaway Azure DevOps project (the `create` and `heal-drill` phases)
+   are outside this rule. *Why:* `dev`, `main` and `release/*` are the
    maintainer's; a `field/` prefix also tells everyone where a branch came
    from.
 4. **Do not edit protected files.** Never change repository rulesets or
@@ -60,15 +63,29 @@ in the way, stop and ask Robin.
 7. **Ask Robin before spending Copilot credits.** These commands spend AI
    credits: `scripts/ado-acceptance.mjs --with-lanes`, `omg factory run`
    without `--dry-run`, `omg factory heal run` and `heal approve`,
-   `omg team` with real workers, and every live smoke (`omg smoke copilot
-   --tier 1`, `--tier 2` with scenarios, `--record`). Free: `--dry-run`
-   forms, `omg factory setup|check|board|enqueue --dry-run|poll --once`,
+   `omg team` with real workers, and every live smoke: `omg smoke copilot
+   --tier 1`, `omg smoke copilot --tier 2` in any form without
+   `--sdk-static` or `--replay` (with no `--scenario` it runs `smoke` and
+   `guardrail`, about 0.6 credits), and `--record`. `omg factory poll` is
+   paid too when `factory.intake.autoStart` is on, because an idle tick then
+   starts `omg factory run --next`; check it first (see
+   [Step 2](#step-2-the-factory-by-hand-on-github-and-on-azure-devops)).
+   Free: `--dry-run` forms, `omg factory setup|check|board|enqueue
+   --dry-run`, `omg factory poll --once` once autoStart is checked off,
    `omg factory heal scan`, `omg smoke copilot` (tier 0), `omg smoke copilot
-   --sdk-static`, `omg smoke copilot --replay`, `omg smoke cassette verify`.
-   Before a paid command, say which command, why, and the estimate (the
+   --sdk-static`, `omg smoke copilot --tier 2 --replay <dir>`,
+   `omg smoke cassette verify`. Before a paid command, say which command,
+   why, and the estimate (the
    [REFERENCE.md](./REFERENCE.md#omg-smoke-copilot) figures), and wait for a
    yes. *Why:* the account's quota is small and shared with releases.
-8. **One finding per issue, and search first.** *Why:* one issue maps to one
+8. **Never answer a confirmation for Robin.** Never add `--yes` to any
+   command, never run `scripts/ado-acceptance.mjs --phase all` (it is also
+   the default, so always pass `--phase`), and never pipe an answer into a
+   prompt, unless Robin has said yes to that exact command in this session.
+   *Why:* `--yes` writes trust into the user config and deletes projects
+   without a human looking; Copilot CLI's shell has no terminal, so every
+   prompt answers no and prints "pass --yes", which is not an invitation.
+9. **One finding per issue, and search first.** *Why:* one issue maps to one
    fix and one close; duplicates split the discussion.
 
 ## Setup
@@ -134,8 +151,9 @@ Use this checkout for testing. Fixes start from `origin/dev` instead (see
 ### 5. Azure DevOps access
 
 - Azure CLI with the extension: `az extension add --name azure-devops`.
-- Sign in with `az login`, or set `AZURE_DEVOPS_EXT_PAT` in the session only
-  (never in a file in the repository).
+- Sign in with `az login`, or have Robin set `AZURE_DEVOPS_EXT_PAT` in the
+  session himself. Never type a PAT yourself and never put one in a file
+  (see [Scrubbing](#scrubbing)).
 - A test repository to push into the throwaway project: a local clone with a
   `BACKLOG.md` of `## EXC-NNN` tickets. Ask Robin which one.
 - An agent for the project's pipeline: the self-hosted pool `Default` (free,
@@ -153,13 +171,17 @@ output of anything that surprises you.
 The script is `scripts/ado-acceptance.mjs`; its reference is
 [Live acceptance on Azure DevOps](./REFERENCE.md#live-acceptance-on-azure-devops-maintainers).
 Every phase takes `--org https://dev.azure.com/<org>`; the first phases also
-take `--source <test repo clone>`.
+take `--source <test repo clone>`. Always pass `--phase`: without it the
+script runs every phase (`all`), which rule 8 forbids. Never add `--yes`
+(rule 8).
 
 1. **Dry run first, always.**
    `node scripts/ado-acceptance.mjs --org <org url> --source <clone> --phase preflight --dry-run`
    prints the exact argv of every command and every file it would write, and
-   runs nothing. Observe: every `az` call ends in `--output json`; no argv
-   holds a token; paths are Windows paths.
+   runs nothing. Observe: every `az` call except `az --version` (which
+   prints text only) ends in `--output json`, and every `devops`, `repos`,
+   `boards` and `pipelines` call also carries `--detect false`; no argv holds
+   a token; paths are Windows paths.
 2. **Preflight.** The same without `--dry-run`. It is read-only and free.
    Observe: one `ok` line per check (az, the `azure-devops` extension, the
    login, the org, a clean `--source`, `BACKLOG.md`, the build), the pool
@@ -169,11 +191,23 @@ take `--source <test repo clone>`.
    `~/.omg/acceptance/<runId>.json`. Note the run id. Observe: the push of
    `main` succeeds before the build policy appears; `omg factory setup` runs
    and pushes `.copilot/omg.jsonc`.
-4. **Enqueue.** `--phase enqueue --run <runId>`. It shows the user-config
-   change (adding the spec creator to `trustedAuthors`) and the enqueue dry
-   run, and asks twice. Read both before answering. Observe: every ticket
-   becomes a User Story child of the spec; a second dry run reports every
-   ticket `unchanged`.
+4. **Enqueue**, in two passes, because it writes trust into the user config.
+   Copilot CLI's shell has no terminal, so the script's two questions (add
+   the spec creator to `trustedAuthors`; enqueue the tickets) both answer no
+   and it stops with "pass --yes". You never add `--yes` on your own.
+   1. Run `--phase enqueue --run <runId> --source <clone> --dry-run`. It
+      runs and writes nothing, and prints: the `user-scope write:` block
+      (the user config path and the `trustedAuthors` list before `->`
+      after), the `omg factory setup` and `omg factory enqueue` argv it
+      would run, and the two questions as `[dry-run] would ask:` lines (the
+      second names how many tickets it would enqueue under which spec).
+   2. Send Robin all of it, scrubbed (the author is a `uniqueName`: write
+      `user1@example.com`), and ask whether to proceed.
+   3. Only after he explicitly says yes to this run, rerun
+      `--phase enqueue --run <runId> --yes`.
+
+   Observe: every ticket becomes a User Story child of the spec; a second
+   `--dry-run` reports every ticket `unchanged`.
 5. **Exercise.** `--phase exercise --run <runId>` (no `--with-lanes`). It runs
    `omg factory check`, `check --parent`, `board` and `run --next --parent
    <spec> --dry-run`. Observe: each `PASS`/`FAIL` line; a ticket with a
@@ -193,6 +227,22 @@ take `--source <test repo clone>`.
 `--with-lanes` on `exercise` or `heal-drill` runs real lanes and spends
 credits (rule 7).
 
+### When a phase fails
+
+A phase that exits non-zero may have made part of a project, pipeline, work
+item or policy. The manifest records which step was in flight.
+
+- Never rerun `create`: a second run makes a second project, and the first
+  run's half-made parts are then nobody's.
+- Never delete anything in the org by hand, not even what the failed run
+  made (rule 6).
+- Do not try `--phase all`, `--yes` or another `--run` to get past it.
+- Stop, and send Robin the error, the manifest path and the pending line.
+  On a failure the script prints
+  `the manifest <path> records a pending <step>; check the org before retrying`.
+  When it prints no such line, say so and give the manifest path
+  (`~/.omg/acceptance/<runId>.json`). Wait for his answer.
+
 ### Step 2: the factory by hand, on GitHub and on Azure DevOps
 
 Run these inside a test repository whose `origin` is the forge under test (the
@@ -205,9 +255,25 @@ scratch GitHub repository of your own for GitHub). The reference is
 | `omg factory setup --intake <source> --dry-run --json` (`<source>` as in the reference, for example `label:factory` or `wiql-query:<guid>`) | the detected forge, the auth check (no token printed), the diff it would write, the preview |
 | `omg factory check --json` | every item in exactly one bucket (`runnable`, `needs-plan`, `blocked`) with its reason codes |
 | `omg factory board --json` | the same items with their runs and stages; no write to the tracker |
-| `omg factory poll --once --json` | one tick, no lane started, no tracker write |
+| `omg factory poll --once --json`, only after the autoStart check below | one tick, no lane started, no tracker write; the tick's `autoStart` is `{ "started": false, "reason": "factory.intake.autoStart is off" }` |
 | `omg factory run --next --parent <spec> --dry-run` | the pick matches the first runnable item of `check --parent` |
 | `omg factory heal scan --dry-run --json` | red CI runs classified; no state written |
+
+**The autoStart check, before any `omg factory poll`.** With
+`factory.intake.autoStart: true` an idle tick starts `omg factory run --next`,
+which runs lanes and spends credits. The key is read from only two places;
+both must lack it or set it to `false`:
+
+```powershell
+Select-String -Path "$env:USERPROFILE\AppData\Roaming\claude-omc\config.jsonc" -Pattern 'autoStart' -ErrorAction SilentlyContinue
+git fetch origin
+git show "origin/<base>:.copilot/omg.jsonc" | Select-String 'autoStart'
+```
+
+`<base>` is `ship.base` (default `dev`; for a test repository without `dev`
+use the branch its PRs target, usually `main`). No output from either means
+off. A `true` anywhere: stop and ask Robin; poll is then a paid command
+(rule 7).
 
 `omg factory run --next --parent <spec>` without `--dry-run` runs lanes:
 credits, ask first. It must stop at `awaiting-human: merge` and never merge.
@@ -285,9 +351,28 @@ Before anything leaves this machine:
 | a machine or agent name | `agent1` |
 | `C:\Users\<name>` | `C:\Users\user` |
 | a GUID that identifies your org or project | `00000000-0000-0000-0000-000000000001` |
+| a tenant id or subscription id (`tenantId`, `id` in `az account show`) | `00000000-0000-0000-0000-000000000002` |
+| a subscription name (`name` in `az account show`) | `subscription1` |
+| a GitHub token (`ghp_…`, `github_pat_…`, `gho_…`) | `[REDACTED]` |
+| an Azure DevOps PAT (52 lowercase letters and digits 2-7, or the newer 84-character form with `AZDO` inside) | `[REDACTED]` |
+| an old-style org URL `https://<org>.visualstudio.com` | `https://dev.azure.com/contoso` |
+| a OneDrive company folder (`OneDrive - <company>`) | `OneDrive - Company` |
+| a git remote with credentials in it (`https://<user>:<token>@…`) | `https://dev.azure.com/contoso/Web/_git/web-app` |
 
-Then search the text for `@`, `dev.azure.com/`, `Bearer`, `Basic `, your
-login and your machine name; each hit must be one of the scrubbed forms.
+Then search the text. Each hit must be one of the scrubbed forms:
+
+```powershell
+Select-String -Path finding.md -Pattern '@','dev\.azure\.com/','visualstudio\.com','Bearer','Basic ','ghp_','github_pat_','gho_','AZDO','\b[a-z2-7]{52}\b','OneDrive - ','tenantId','subscription','https?://[^/\s]+:[^@\s]+@','<your login>','<your machine name>'
+```
+
+Replace the last two patterns with your real login and machine name before
+running it, and never paste that command line anywhere.
+
+**Never type a PAT.** Robin sets `AZURE_DEVOPS_EXT_PAT` in your session
+himself (or you sign in with `az login`). A value you type lands in the
+PSReadLine history file and in the Copilot CLI transcript, both of which
+outlive the session. When a command needs a token you do not have, stop
+and ask.
 
 ## Contributing a fix
 
