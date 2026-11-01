@@ -179,20 +179,27 @@ describe('npm trusted publishing contract', () => {
     const evidenceJob = extractJob(ci, 'evidence');
     expect(evidenceJob).toContain('permissions:\n      contents: read\n      actions: read\n    outputs:');
     expect(evidenceJob).toContain('persist-credentials: false');
-    expect(evidenceJob).toContain('run: node scripts/ci/evidence.mjs');
+    expect(evidenceJob).toContain('run: node scripts/ci/tree-reuse.mjs');
 
-    const lookup = stepIndex(releaseJob, 'Look up tree evidence');
-    expect(stepIndex(releaseJob, 'Assert release trigger and npm availability')).toBeLessThan(lookup);
-    expect(lookup).toBeLessThan(stepIndex(releaseJob, 'Run functional tests'));
-    expect(releaseJob).toContain('if git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then\n            node scripts/ci/evidence.mjs --sha "$GITHUB_SHA"');
-    expect(releaseJob).toContain('CI_EVIDENCE_REUSE: ${{ vars.CI_RELEASE_REUSE }}');
+    // The lookup holds actions: read in its own tag-only job; the publishing job never does.
+    const releaseEvidence = extractJob(ci, 'release-evidence');
+    expect(releaseEvidence).toContain(RELEASE_JOB_IF);
+    expect(releaseEvidence).toContain('permissions:\n      contents: read\n      actions: read\n    outputs:');
+    expect(releaseEvidence).toContain('persist-credentials: false');
+    expect(releaseEvidence).not.toMatch(/contents: write|id-token/);
+    expect(releaseEvidence).toContain('if git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then\n            node scripts/ci/tree-reuse.mjs --sha "$GITHUB_SHA"');
+    expect(releaseEvidence).toContain('CI_EVIDENCE_REUSE: ${{ vars.CI_RELEASE_REUSE }}');
+    expect(releaseJob).toContain('    needs: [release-evidence]\n    permissions:\n      contents: write\n      id-token: write\n    runs-on:');
+    expect(releaseJob).not.toContain('actions: read');
+    expect(releaseJob).not.toContain('tree-reuse.mjs');
+
     // Exactly the two test steps are conditional; build, archive, smoke and publish always run.
     const gated = releaseJob.match(/^ {8}if: .*$/gm) ?? [];
     expect(gated).toEqual([
-      "        if: steps.evidence.outputs.reused != 'true'",
-      "        if: steps.evidence.outputs.reused != 'true'",
+      "        if: needs.release-evidence.outputs.reused != 'true'",
+      "        if: needs.release-evidence.outputs.reused != 'true'",
     ]);
-    expect(releaseJob).toMatch(/- name: Run functional tests\n {8}if: steps\.evidence\.outputs\.reused != 'true'\n {8}run: npm test -- --run/);
+    expect(releaseJob).toMatch(/- name: Run functional tests\n {8}if: needs\.release-evidence\.outputs\.reused != 'true'\n {8}run: npm test -- --run/);
   });
 
   it('keeps recovery strictly non-publishing and workflow_dispatch-only', () => {

@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   # Test each tree once: when this exact git tree already passed every job in a
-  # trusted ci.yml run (push, or a same-repo PR; scripts/ci/evidence.mjs), the
+  # trusted ci.yml run (push, or a same-repo PR; scripts/ci/tree-reuse.mjs), the
   # jobs that need this one report SKIPPED and CI Gate names the source run.
   # A failed or doubtful lookup runs everything. Repo variable
   # CI_TREE_REUSE=false turns reuse off; workflow_dispatch always runs.
@@ -49,7 +49,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI_EVIDENCE_REUSE: ${{ github.event_name == 'workflow_dispatch' && 'false' || vars.CI_TREE_REUSE }}
-        run: node scripts/ci/evidence.mjs
+        run: node scripts/ci/tree-reuse.mjs
 
   lint-and-typecheck:
     name: Lint & Type Check
@@ -1240,7 +1240,7 @@ jobs:
   # cancelled, passes when each succeeded or was skipped. The advisory
   # No Committed Build Artifacts and the tag-only release are not needed.
   # When every job ran and succeeded it logs `ci-evidence v1 tree=<tree>`,
-  # the line scripts/ci/evidence.mjs requires before reusing this run.
+  # the line scripts/ci/tree-reuse.mjs requires before reusing this run.
   ci-gate:
     name: CI Gate
     if: ${{ always() && (github.event_name != 'push' || github.ref_type != 'tag') }}
@@ -1288,13 +1288,48 @@ jobs:
             echo "no tree evidence recorded (not run or not success: ${unproven:-tree unknown})"
           fi
 
+  # commit is on origin/main AND its tree already passed every ci.yml job in a
+  # trusted run (scripts/ci/tree-reuse.mjs, run from the tag only once it is
+  # known to be on main; normally the release PR's run). Otherwise they run
+  # there as before. Repo variable CI_RELEASE_REUSE=false always runs them.
+  # Build, archive, smoke and publish never skip. A separate job so the
+  # publishing job never holds `actions: read`.
+  release-evidence:
+    name: Release tree evidence
+    if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      reused: ${{ steps.lookup.outputs.reused }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Look up tree evidence
+        id: lookup
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI_EVIDENCE_REUSE: ${{ vars.CI_RELEASE_REUSE }}
+        run: |
+          git fetch --no-tags --force origin +refs/heads/main:refs/remotes/origin/main || echo "::warning::could not fetch origin/main"
+          if git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
+            node scripts/ci/tree-reuse.mjs --sha "$GITHUB_SHA"
+          else
+            echo "::notice title=Tree evidence::$GITHUB_SHA is not on origin/main; the tests run"
+            echo "reused=false" >> "$GITHUB_OUTPUT"
+          fi
+
   release:
     name: Create GitHub Release
     if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+    needs: [release-evidence]
     permissions:
       contents: write
       id-token: write
-      actions: read
     runs-on: ubuntu-latest
     concurrency:
       group: npm-trusted-publish-${{ github.ref_name }}
@@ -1329,25 +1364,6 @@ jobs:
           node scripts/release-boundary.mjs assert-trigger --tag "$GITHUB_REF_NAME" --sha "$RELEASE_SHA"
           node scripts/release-boundary.mjs assert-npm-absent --package oh-my-copilot --version "$VERSION"
 
-      # Publish-only tag: the tests below are skipped only when the tagged
-      # commit is on origin/main AND its tree already passed every ci.yml job
-      # in a trusted run (scripts/ci/evidence.mjs; normally the release PR's).
-      # Otherwise they run here as before. Repo variable CI_RELEASE_REUSE=false
-      # always runs them. Build, archive, smoke and publish never skip.
-      - name: Look up tree evidence
-        id: evidence
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CI_EVIDENCE_REUSE: ${{ vars.CI_RELEASE_REUSE }}
-        run: |
-          git fetch --no-tags --force origin +refs/heads/main:refs/remotes/origin/main || echo "::warning::could not fetch origin/main"
-          if git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
-            node scripts/ci/evidence.mjs --sha "$GITHUB_SHA"
-          else
-            echo "::notice title=Tree evidence::$GITHUB_SHA is not on origin/main; the tests run"
-            echo "reused=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Validate release notes
         run: |
           git cat-file -e HEAD:.github/release-body.md
@@ -1361,11 +1377,11 @@ jobs:
         run: npm run build
 
       - name: Run functional tests
-        if: steps.evidence.outputs.reused != 'true'
+        if: needs.release-evidence.outputs.reused != 'true'
         run: npm test -- --run
 
       - name: Run subagent-lock performance test
-        if: steps.evidence.outputs.reused != 'true'
+        if: needs.release-evidence.outputs.reused != 'true'
         run: npm exec vitest -- run tests/perf/subagent-lock.bench.ts --fileParallelism=false --maxWorkers=1
 
       # Some tests execute scripts/plugin-setup.mjs against the real

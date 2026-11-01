@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 // @ts-expect-error The CI helper is intentionally dependency-free ESM without declarations.
-import * as evidence from '../../scripts/ci/evidence.mjs';
+import * as evidence from '../../scripts/ci/tree-reuse.mjs';
 
 const { createApi, findEvidence, rejectRun, sameTreeCommits, cliMain, REQUIRED_JOBS } = evidence;
 
@@ -27,6 +27,7 @@ const greenJobs = (gateId = 900): Job[] => [
   ...ALL_JOBS.map((name: string, i: number) => ({ id: name === 'CI Gate' ? gateId : i + 1, name, conclusion: 'success' })),
   { id: 50, name: 'No Committed Build Artifacts', conclusion: 'failure' },
   { id: 51, name: 'Create GitHub Release', conclusion: 'skipped' },
+  { id: 52, name: 'Release tree evidence', conclusion: 'skipped' },
 ];
 const gateLog = (tree: string) => `2026-11-01T09:51:40.1234567Z ##[group]Run echo "ci-evidence v1 tree=$TREE"\n2026-11-01T09:51:40.2234567Z every needed job succeeded or was skipped\n2026-11-01T09:51:40.3234567Z ci-evidence v1 tree=${tree}\n`;
 
@@ -80,7 +81,7 @@ function fakeApi({ runs = { [HEAD]: [run()] } as Record<string, Run[]>, jobs = {
 
 const ctx = { repo: REPO, sha: HEAD, tree: T, now: NOW, currentRunId: '1' };
 
-describe('scripts/ci/evidence.mjs: which runs prove a tree', () => {
+describe('scripts/ci/tree-reuse.mjs: which runs prove a tree', () => {
   it('walks from a tag through the main and dev merges to the release PR head, keeping only same-tree commits', async () => {
     expect(await sameTreeCommits(fakeApi(), TAG, T)).toEqual([TAG, DEV, HEAD]);
     expect(await sameTreeCommits(fakeApi(), TAG, OTHER_TREE)).toEqual([]);
@@ -148,7 +149,7 @@ describe('scripts/ci/evidence.mjs: which runs prove a tree', () => {
   });
 });
 
-describe('scripts/ci/evidence.mjs: GitHub client', () => {
+describe('scripts/ci/tree-reuse.mjs: GitHub client', () => {
   it('follows the job-log redirect without sending the token off api.github.com', async () => {
     const seen: Array<{ url: string; auth?: string; redirect?: string }> = [];
     const fetchImpl = async (url: string, init: { headers?: Record<string, string>; redirect?: string } = {}) => {
@@ -170,7 +171,7 @@ describe('scripts/ci/evidence.mjs: GitHub client', () => {
   });
 });
 
-describe('scripts/ci/evidence.mjs: CLI outputs', () => {
+describe('scripts/ci/tree-reuse.mjs: CLI outputs', () => {
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   const tree = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' }).trim();
 
@@ -197,6 +198,28 @@ describe('scripts/ci/evidence.mjs: CLI outputs', () => {
       await cliMain({ env, argv: ['--sha', head], fetchImpl, log: (l: string) => lines.push(l) });
       expect(read('out')).toBe(`tree=${tree}\nreused=false\nrun_url=\n`);
       expect(lines.join('\n')).toMatch(/lookup failed, running the jobs: GET commits\/[0-9a-f]{40}: HTTP 500/);
+    });
+  });
+
+  it('reads the tree of a commit missing from the trusted clone (a PR merge commit) from the API', async () => {
+    await withFiles(async (env, read) => {
+      const absent = 'c'.repeat(40);
+      const fetchImpl = async (url: string) => {
+        expect(url).toBe(`https://api.github.com/repos/${REPO}/commits/${absent}`);
+        return new Response(JSON.stringify({ sha: absent, commit: { tree: { sha: T } } }));
+      };
+      const result = await cliMain({ env: { ...env, CI_EVIDENCE_REUSE: 'false' }, argv: ['--sha', absent], fetchImpl, log: () => {} });
+      expect(result.reused).toBe(false);
+      expect(read('out')).toBe(`tree=${T}\nreused=false\nrun_url=\n`);
+    });
+  });
+
+  it('a commit the API answers for with another sha writes no tree', async () => {
+    await withFiles(async (env, read) => {
+      const absent = 'c'.repeat(40);
+      const fetchImpl = async () => new Response(JSON.stringify({ sha: HEAD, commit: { tree: { sha: T } } }));
+      await cliMain({ env, argv: ['--sha', absent], fetchImpl, log: () => {} });
+      expect(read('out')).toBe('tree=\nreused=false\nrun_url=\n');
     });
   });
 

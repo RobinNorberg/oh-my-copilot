@@ -14,6 +14,11 @@
  *   - its CI Gate job log carries `ci-evidence v1 tree=T`, the tree the run
  *     checked out (for a pull_request run, the merge commit's tree).
  * Any error or doubt means no reuse: the jobs run.
+ *
+ * ci.yml runs this file from a trusted tree (a PR's base commit, a pushed
+ * dev/main commit, a tag on main), never from the tree under test, which it
+ * names with --sha. A commit missing from the local clone (a PR's merge
+ * commit) has its tree read from the API.
  */
 import { execFileSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
@@ -23,7 +28,7 @@ export const WORKFLOW_PATH = '.github/workflows/ci.yml';
 export const TRUSTED_EVENTS = ['push', 'pull_request'];
 export const MAX_AGE_DAYS = 14;
 /** Jobs whose result says nothing about the tree: advisory, tag-only, and this lookup. */
-export const NOT_EVIDENCE_JOBS = ['No Committed Build Artifacts', 'Create GitHub Release', 'Tree evidence'];
+export const NOT_EVIDENCE_JOBS = ['No Committed Build Artifacts', 'Create GitHub Release', 'Tree evidence', 'Release tree evidence'];
 /** A run missing any of these did not run the gate (the ruleset checks plus the aggregator). */
 export const REQUIRED_JOBS = ['CI Gate', 'Lint & Type Check', 'Build', 'Test', 'Version Consistency Check'];
 const MAX_COMMITS = 6;
@@ -123,15 +128,21 @@ export async function cliMain({ env = process.env, argv = process.argv.slice(2),
     const git = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
     const sha = shaArg ?? git(['rev-parse', 'HEAD']);
     if (!SHA.test(sha)) throw new Error(`bad commit ${sha}`);
-    const checkedOut = git(['rev-parse', `${sha}^{tree}`]);
-    if (!SHA.test(checkedOut)) throw new Error(`bad tree ${checkedOut}`);
-    tree = checkedOut;
+    const repo = env.GITHUB_REPOSITORY;
+    const api = createApi({ repo, token: env.GITHUB_TOKEN, fetchImpl, apiUrl: env.GITHUB_API_URL });
+    let tested;
+    try {
+      tested = git(['rev-parse', '--verify', '--quiet', `${sha}^{tree}`]);
+    } catch {
+      const commit = await api.json(`commits/${sha}`);
+      tested = commit?.sha === sha ? commit?.commit?.tree?.sha : undefined;
+    }
+    if (!SHA.test(tested ?? '')) throw new Error(`bad tree ${tested}`);
+    tree = tested;
     log(`tested tree ${tree} (commit ${sha})`);
     if (env.CI_EVIDENCE_REUSE === 'false') {
       note = 'reuse disabled (CI_EVIDENCE_REUSE=false)';
     } else {
-      const repo = env.GITHUB_REPOSITORY;
-      const api = createApi({ repo, token: env.GITHUB_TOKEN, fetchImpl, apiUrl: env.GITHUB_API_URL });
       result = await findEvidence(api, { repo, sha, tree, currentRunId: env.GITHUB_RUN_ID });
     }
   } catch (error) {
