@@ -2,6 +2,12 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- **CI: the two artifact-policy checks no longer email failures on fork PRs.** `Generated Artifact Authorization` is skipped when the repository owner is `RobinNorberg`, and `No Committed Build Artifacts` is `continue-on-error`, because the fork commits `dist/` and `bridge/` by design. Neither check is required and CI Gate does not depend on them.
+
 # oh-my-copilot v5.19.3
 
 ## [5.19.3] - 2026-11-01
