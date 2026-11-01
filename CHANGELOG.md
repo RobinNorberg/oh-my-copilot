@@ -7,6 +7,17 @@ All notable changes to oh-my-copilot will be documented in this file.
 ### Docs
 
 - **Field testing by a remote Copilot CLI agent.** `docs/FIELD-TESTING.md` is the standalone guide for an agent that tests the published package on a second Windows computer: ground rules with their reasons (published version only, never merge or force-push, `field/*` branches only, no edits to rulesets, `.github/known-flaky-tests.json`, workflows or release files, no secrets or identities, cleanup of its own `omg-acc-` acceptance runs only, ask before spending Copilot credits), setup with a minimal fine-grained token, the ADO acceptance flow, the factory on GitHub and Azure DevOps, Windows team workers, record and replay, filing and scrubbing findings, small fixes as draft PRs, and how captures and cassettes come in. Adds the `Field report` issue form (`.github/ISSUE_TEMPLATE/field-report.yml`, label `field`), the labels `field`, `field:ado`, `field:windows`, `field:needs-repro` and `field:fix-in-progress`, a "Field testing" section in `AGENTS.md`, and a ready-to-paste first prompt (`docs/field-testing-first-prompt.md`). The agent never adds `--yes` or runs `--phase all` on its own (enqueue runs as a `--dry-run` first and the trust diff goes to the maintainer), stops on a failed acceptance phase with the manifest's pending line, keeps the guide on a `dev` clone and runs scripts from a second clone at its version tag, and treats tier 2 without `--sdk-static`/`--replay` and `factory poll` with `autoStart` on as paid. CONTRIBUTING.md §6 and §8 get "On this fork" notes (committed `dist`/`bridge`, no force-push), and the stale bot exempts issues and PRs labelled `field`.
+### Security
+
+- **`/oh-my-copilot:omc-setup` on Windows: a repository can no longer plant `npm.cmd`, `omg.cmd`, `bd.cmd`, `br.cmd` or `gh.cmd` and have setup run it.** Setup's version check, CLI check and install, task-tool detection and repo star spawned those commands through cmd.exe with the project as cwd, and cmd.exe searches the current directory before PATH, so a planted shim in the project ran as the user. Every published version through v5.19.2 is affected, on Windows only, while `/oh-my-copilot:omc-setup` runs in an untrusted repository. The commands now run from the home directory with `NoDefaultCurrentDirectoryInExePath=1` (any inherited case variant is replaced), and on Windows as one command line instead of `shell: true` with an argument array (DEP0190).
+
+### Fixed
+
+- **omc-setup checks run through `scripts/setup-config.mjs` instead of inline `node -e`** (#392), so setup works on hosts that refuse inline interpreter code. The script is hardened:
+  - `merge-json` only accepts `settings.json`; any other name (an ADS suffix, a drive-relative path, `NUL`, a traversal) is refused before a file is opened.
+  - `copy-rules` refuses a symlinked or junctioned `.claude`, `.claude/rules` or rule file, and writes each rule through a temp file and a rename.
+  - JSON patches skip `__proto__`, `constructor` and `prototype` keys; a config file holding an array, `null` or a scalar is refused unmodified.
+  - `set-task-tool` accepts only `builtin`, `beads` and `beads-rust`; `update-check` prints a version from `.omc-version.json` or the plugin cache only when it is a well-formed semver.
 
 # oh-my-copilot v5.19.2
 

@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "e1e6aa09f5a10420ea15984969c58aa36a9f7a22",
-    "sourceSha256": "4ceb67a4ceca0cf75d6f948eae0e64531badb6d5e82f59e6d3bd578310d1e508",
+    "head": "319a1e472e00bc74818d7dd4633bb35d1b18e032",
+    "sourceSha256": "ab65dc783ddd0f8a093f00c61045432c57a3d6c50e287df7c500a629d8811609",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "e1e6aa09f5a10420ea15984969c58aa36a9f7a22",
-  "sourceSha256": "4ceb67a4ceca0cf75d6f948eae0e64531badb6d5e82f59e6d3bd578310d1e508",
+  "head": "319a1e472e00bc74818d7dd4633bb35d1b18e032",
+  "sourceSha256": "ab65dc783ddd0f8a093f00c61045432c57a3d6c50e287df7c500a629d8811609",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1939,
-      "total": 1963
+      "srcFiles": 1940,
+      "total": 1964
     },
     "generated": {
-      "distFiles": 7152,
+      "distFiles": 7156,
       "bridgeFiles": 9,
-      "total": 7161
+      "total": 7165
     },
     "prompt": {
       "promptLikeFiles": 66
@@ -949,6 +949,7 @@
       "scripts/session-summary.mjs",
       "scripts/setup-claude-md.mjs",
       "scripts/setup-claude-md.sh",
+      "scripts/setup-config.mjs",
       "scripts/setup-copilot-instructions.sh",
       "scripts/setup-init.mjs",
       "scripts/setup-maintenance.mjs",
@@ -2102,6 +2103,10 @@
       "dist/__tests__/setup-claude-md-script.test.d.ts.map",
       "dist/__tests__/setup-claude-md-script.test.js",
       "dist/__tests__/setup-claude-md-script.test.js.map",
+      "dist/__tests__/setup-config-script.test.d.ts",
+      "dist/__tests__/setup-config-script.test.d.ts.map",
+      "dist/__tests__/setup-config-script.test.js",
+      "dist/__tests__/setup-config-script.test.js.map",
       "dist/__tests__/setup-contracts-regression.test.d.ts",
       "dist/__tests__/setup-contracts-regression.test.d.ts.map",
       "dist/__tests__/setup-contracts-regression.test.js",
@@ -15413,6 +15418,26 @@
         "id": "dist/__tests__/setup-claude-md-script.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/setup-claude-md-script.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/setup-config-script.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup-config-script.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/setup-config-script.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup-config-script.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/setup-config-script.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup-config-script.test.js"
+      },
+      {
+        "id": "dist/__tests__/setup-config-script.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup-config-script.test.js.map"
       },
       {
         "id": "dist/__tests__/setup-contracts-regression.test.d.ts",
@@ -47035,6 +47060,11 @@
         "path": "scripts/setup-claude-md.sh"
       },
       {
+        "id": "scripts/setup-config.mjs",
+        "kind": "script",
+        "path": "scripts/setup-config.mjs"
+      },
+      {
         "id": "scripts/setup-copilot-instructions.sh",
         "kind": "script",
         "path": "scripts/setup-copilot-instructions.sh"
@@ -49328,6 +49358,11 @@
         "id": "src/__tests__/setup-claude-md-script.test.ts",
         "kind": "src",
         "path": "src/__tests__/setup-claude-md-script.test.ts"
+      },
+      {
+        "id": "src/__tests__/setup-config-script.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/setup-config-script.test.ts"
       },
       {
         "id": "src/__tests__/setup-contracts-regression.test.ts",
@@ -60692,6 +60727,36 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/setup-config.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/setup-config.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/setup-config.mjs",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/setup-config.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/setup-config.mjs",
+        "to": "external:node:process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/setup-config.mjs",
+        "to": "scripts/lib/config-dir.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/setup-init.mjs",
         "to": "dist/hooks/setup/index.js",
         "kind": "imports"
@@ -68864,6 +68929,31 @@
       {
         "from": "src/__tests__/setup-claude-md-script.test.ts",
         "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/setup-config-script.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/setup-config-script.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/setup-config-script.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/setup-config-script.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/setup-config-script.test.ts",
+        "to": "external:vitest",
         "kind": "imports"
       },
       {
@@ -116913,12 +117003,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9844,
-      "edgeCount": 11790,
-      "importEdgeCount": 9670,
+      "nodeCount": 9850,
+      "edgeCount": 11801,
+      "importEdgeCount": 9681,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "d090e1f0b44f06dd0808ecdeabf7f006d0673ccfb21d4920bed7dfaac12b8b6c",
-  "manifestSha256": "152cd896ab04b6bfacf61c0a8659a13655d59e25ecb81620770b05c3865018d4"
+  "inventorySha256": "2d3b9da3fa02304b37c1f98e3cc887e6fd72edf7e552541feeb6f8ff5bb627df",
+  "manifestSha256": "8204656e2f7fed4ca3595e59ad63c01126cee9b9b442915684d982c2b28fe787"
 }
