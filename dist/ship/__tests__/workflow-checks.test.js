@@ -15,6 +15,8 @@ const WORKFLOWS = join(HERE, '..', '..', '..', '.github', 'workflows');
 const EXTERNAL_CHECKS = ['Socket Security: Pull Request Alerts', 'Socket Security: Project Report'];
 /** Jobs PRs report as SKIPPED (tag-only); excluded from the required list. */
 const TAG_ONLY = ['Create GitHub Release'];
+/** Reported on every PR but not (yet) a ship requirement: the ci.yml aggregator. */
+const NOT_REQUIRED = ['CI Gate'];
 const unquote = (s) => s.trim().replace(/^(['"])(.*)\1$/, '$2');
 const stripExpr = (s) => unquote(s).replace(/^\$\{\{\s*([\s\S]*?)\s*\}\}$/, '$1').trim();
 /**
@@ -119,11 +121,11 @@ describe('requiredChecks drift (workflow files vs the ship defaults)', () => {
     it('PR jobs in .github/workflows equal DEFAULT requiredChecks + advisoryChecks (minus the external Socket app)', () => {
         const { reported, skipped } = prCheckNames();
         expect(new Set(reported).size).toBe(reported.length);
-        const expected = [...DEFAULT_SHIP_CONFIG.requiredChecks, ...DEFAULT_SHIP_CONFIG.advisoryChecks.filter((n) => !EXTERNAL_CHECKS.includes(n))];
+        const expected = [...DEFAULT_SHIP_CONFIG.requiredChecks, ...DEFAULT_SHIP_CONFIG.advisoryChecks.filter((n) => !EXTERNAL_CHECKS.includes(n)), ...NOT_REQUIRED];
         expect([...reported].sort()).toEqual([...expected].sort());
         expect(skipped).toEqual(TAG_ONLY);
     });
-    it('honors pull_request.branches: a PR to another base never gets the ci.yml / upgrade-test.yml checks (they stay pending)', () => {
+    it('honors pull_request.branches: a PR to another base never gets the ci.yml checks (they stay pending)', () => {
         expect(parseWorkflow('on:\n  pull_request:\n    branches: [main, dev]\n  push:\n    branches: ["x"]\njobs:\n  a:\n    name: A\n').branches)
             .toEqual({ pull_request: ['main', 'dev'], push: ['x'] });
         const { reported } = prCheckNames('release/x');
@@ -133,10 +135,26 @@ describe('requiredChecks drift (workflow files vs the ship defaults)', () => {
         // So the default requiredChecks never go green on such a base: it needs its own list in the user config.
         expect(DEFAULT_SHIP_CONFIG.requiredChecks.filter((n) => !reported.includes(n))).toEqual(expect.arrayContaining(['Test', 'Build']));
     });
-    it('covers ci.yml, pr-check.yml and upgrade-test.yml', () => {
+    it('covers ci.yml and pr-check.yml', () => {
         const { reported } = prCheckNames();
-        expect(reported).toEqual(expect.arrayContaining(['Lint & Type Check', 'Multi-repo Path Gate (AST-grep) (windows-2022)', 'Draft PR Check', 'omg update + session-start hook']));
+        expect(reported).toEqual(expect.arrayContaining(['Lint & Type Check', 'Multi-repo Path Gate (AST-grep) (windows-2022)', 'Draft PR Check', 'omg update + session-start hook', 'CI Gate']));
         expect(EXTERNAL_CHECKS.every((n) => DEFAULT_SHIP_CONFIG.advisoryChecks.includes(n))).toBe(true);
+    });
+    // A job skipped by a job-level `if:` reports under its literal name, a
+    // skipped matrix job only under its unexpanded name, so every name ship
+    // (and the release driver's smoke lookup) needs must be a literal `name:`.
+    it('reports every required check from a literal job name, never a matrix expansion', () => {
+        const literal = new Map();
+        for (const file of readdirSync(WORKFLOWS).filter((f) => /.ya?ml$/.test(f))) {
+            for (const job of parseWorkflow(readFileSync(join(WORKFLOWS, file), 'utf8')).jobs)
+                literal.set(job.name ?? job.key, job);
+        }
+        for (const name of [...DEFAULT_SHIP_CONFIG.requiredChecks, 'Copilot smoke (tier 2)']) {
+            const job = literal.get(name);
+            expect(job, `${name}: no job with this literal name`).toBeDefined();
+            expect(Object.keys(job.matrix), `${name}: must not be a matrix job`).toEqual([]);
+        }
+        expect(readFileSync(join(HERE, '..', '..', 'release', 'engine.ts'), 'utf8')).toContain("j.name === 'Copilot smoke (tier 2)'");
     });
 });
 //# sourceMappingURL=workflow-checks.test.js.map

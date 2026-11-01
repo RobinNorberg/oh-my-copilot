@@ -4,6 +4,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **CI builds once and caches `node_modules`** (CI speed-up PR 1). `Build` no longer waits for Lint and Test; it uploads a `build-output` artifact (the built tree, the `npm pack --ignore-scripts` tarball and a sha256 manifest) that PreCompact restore, npm pack, the Copilot smoke and the upgrade test use instead of their own `npm run build`. A composite action, `.github/actions/deps`, restores `node_modules` keyed on OS, arch, Node major and `package-lock.json` and runs `npm ci` only on a miss; only pushes to `dev`/`main` and schedules save it, and `setup-node`'s per-ref npm cache is gone. The PreCompact, better-sqlite3 and Multi-repo Path Gate matrices are unrolled into literally named jobs (same check names), `omg update + session-start hook` moved from `upgrade-test.yml` into `ci.yml` under the same name, and a new `CI Gate` job fails when any blocking job failed or was cancelled.
+
 ### Security
 
 - **`/oh-my-copilot:omc-setup` on Windows: a repository can no longer plant `npm.cmd`, `omg.cmd`, `bd.cmd`, `br.cmd` or `gh.cmd` and have setup run it.** Setup's version check, CLI check and install, task-tool detection and repo star spawned those commands through cmd.exe with the project as cwd, and cmd.exe searches the current directory before PATH, so a planted shim in the project ran as the user. Every published version through v5.19.2 is affected, on Windows only, while `/oh-my-copilot:omc-setup` runs in an untrusted repository. The commands now run from the home directory with `NoDefaultCurrentDirectoryInExePath=1` (any inherited case variant is replaced), and on Windows as one command line instead of `shell: true` with an argument array (DEP0190).
