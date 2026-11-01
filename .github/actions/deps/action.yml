@@ -25,10 +25,11 @@ runs:
       env:
         NODE_VERSION: ${{ steps.node.outputs.node-version }}
         LOCK_HASH: ${{ hashFiles('package-lock.json') }}
+        IMAGE: ${{ env.ImageOS }}-${{ env.ImageVersion }}
       run: |
         major="${NODE_VERSION#v}"
         major="${major%%.*}"
-        echo "key=nm-v1-${RUNNER_OS}-${RUNNER_ARCH}-node${major}-${LOCK_HASH}" >> "$GITHUB_OUTPUT"
+        echo "key=nm-v2-${RUNNER_OS}-${IMAGE}-${RUNNER_ARCH}-node${major}-${LOCK_HASH}" >> "$GITHUB_OUTPUT"
 
     - name: Restore node_modules
       id: restore

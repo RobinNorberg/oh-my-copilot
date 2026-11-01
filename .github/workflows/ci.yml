@@ -175,6 +175,7 @@ jobs:
         shell: bash
         run: |
           tar -xf "$RUNNER_TEMP/build-output/build-output.tar"
+          jq -r '.files[]|"\(.sha256)  \(.path)"' "$RUNNER_TEMP/build-output/build-manifest.json" | sha256sum -c --quiet
           npm run build:contained-fs
 
       - name: Run portable restore and SessionStart interleaving tests
@@ -248,6 +249,7 @@ jobs:
         run: |
           # Git Bash GNU tar reads a drive-letter path as host:path without --force-local.
           tar --force-local -xf "$RUNNER_TEMP/build-output/build-output.tar"
+          jq -r '.files[]|"\(.sha256)  \(.path)"' "$RUNNER_TEMP/build-output/build-manifest.json" | sha256sum -c --quiet
           npm run build:contained-fs
 
       - name: Run portable restore and SessionStart interleaving tests
@@ -279,7 +281,10 @@ jobs:
         run: npm run plugin:shipping:verify
 
       - name: Build
-        run: npm run build
+        run: |
+          npm run build
+          # The committed tree is expected to be build-clean; a diff means stale committed output.
+          git diff --exit-code
 
       - name: Verify bridge omits retired merge-readiness tools
         run: |
@@ -306,7 +311,7 @@ jobs:
           OUT="$RUNNER_TEMP/build-output"
           mkdir -p "$OUT"
           # Every path `npm run build` writes; native/ holds the addon on darwin only.
-          tar -cf "$OUT/build-output.tar" dist bridge copilot/hooks.json copilot/agents docs/shared .omg/projection-manifest.json native
+          tar -cf "$OUT/build-output.tar" dist bridge copilot/hooks.json copilot/agents docs/shared .omg/projection-manifest.json CLAUDE.md .github/CLAUDE.md native
           TARBALL=$(npm pack --ignore-scripts --pack-destination "$OUT" --silent | tail -1)
           test -s "$OUT/$TARBALL"
           TREE=$(git rev-parse 'HEAD^{tree}')
@@ -447,7 +452,10 @@ jobs:
           path: ${{ runner.temp }}/build-output
 
       - name: Unpack build output
-        run: tar -xf "$RUNNER_TEMP/build-output/build-output.tar"
+        shell: bash
+        run: |
+          tar -xf "$RUNNER_TEMP/build-output/build-output.tar"
+          jq -r '.files[]|"\(.sha256)  \(.path)"' "$RUNNER_TEMP/build-output/build-manifest.json" | sha256sum -c --quiet
 
       - name: npm pack test
         run: |
@@ -621,7 +629,10 @@ jobs:
 
       - name: Unpack build output
         if: steps.gate.outputs.enabled == 'true' && needs.build.result == 'success'
-        run: tar -xf "$RUNNER_TEMP/build-output/build-output.tar"
+        shell: bash
+        run: |
+          tar -xf "$RUNNER_TEMP/build-output/build-output.tar"
+          jq -r '.files[]|"\(.sha256)  \(.path)"' "$RUNNER_TEMP/build-output/build-manifest.json" | sha256sum -c --quiet
 
       - name: Build
         if: steps.gate.outputs.enabled == 'true' && needs.build.result != 'success'
@@ -969,6 +980,7 @@ jobs:
           CURRENT_PACKAGE_VERSION="$(node -p "require('./package.json').version")"
           TARBALL_NAME="$(jq -r .tarball "$RUNNER_TEMP/build-output/build-manifest.json")"
           test -s "$RUNNER_TEMP/build-output/$TARBALL_NAME"
+          echo "$(jq -r .tarballSha256 "$RUNNER_TEMP/build-output/build-manifest.json")  $RUNNER_TEMP/build-output/$TARBALL_NAME" | sha256sum -c --quiet
           cp "$RUNNER_TEMP/build-output/$TARBALL_NAME" "$RUNNER_TEMP/$TARBALL_NAME"
           {
             echo "OMC_UPGRADE_TEST_EXPECTED_VERSION=$CURRENT_PACKAGE_VERSION"
