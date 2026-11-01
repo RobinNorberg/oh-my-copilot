@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "e87cdcfde642362284759440be95ecaaa8d4be22",
-    "sourceSha256": "6d15c25f3eb9cb77d765c307d4a02d40bca050013a9c09cbeeb4d3f6fa39c7a7",
+    "head": "d52cc9a904f2813209e88dad60acdd09b97cbc17",
+    "sourceSha256": "71d56c5ee4a619c6a294b21e5e7e4c5999be1d534d7823a256fd88def953b7f4",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "e87cdcfde642362284759440be95ecaaa8d4be22",
-  "sourceSha256": "6d15c25f3eb9cb77d765c307d4a02d40bca050013a9c09cbeeb4d3f6fa39c7a7",
+  "head": "d52cc9a904f2813209e88dad60acdd09b97cbc17",
+  "sourceSha256": "71d56c5ee4a619c6a294b21e5e7e4c5999be1d534d7823a256fd88def953b7f4",
   "counts": {
     "public": {
       "skills": 63,
@@ -848,8 +848,8 @@
       "scripts/build-workflow-stage-prompts.mjs",
       "scripts/ci/check-multirepo-paths.mjs",
       "scripts/ci/check-no-committed-build-artifacts.mjs",
-      "scripts/ci/evidence.mjs",
       "scripts/ci/multirepo-patterns.yml",
+      "scripts/ci/tree-reuse.mjs",
       "scripts/cleanup-orphans.mjs",
       "scripts/code-simplifier.mjs",
       "scripts/collect-epic-3698-ci-evidence.mjs",
@@ -46778,14 +46778,14 @@
         "path": "scripts/ci/check-no-committed-build-artifacts.mjs"
       },
       {
-        "id": "scripts/ci/evidence.mjs",
-        "kind": "script",
-        "path": "scripts/ci/evidence.mjs"
-      },
-      {
         "id": "scripts/ci/multirepo-patterns.yml",
         "kind": "script",
         "path": "scripts/ci/multirepo-patterns.yml"
+      },
+      {
+        "id": "scripts/ci/tree-reuse.mjs",
+        "kind": "script",
+        "path": "scripts/ci/tree-reuse.mjs"
       },
       {
         "id": "scripts/cleanup-orphans.mjs",
@@ -59090,17 +59090,17 @@
         "kind": "imports"
       },
       {
-        "from": "scripts/ci/evidence.mjs",
+        "from": "scripts/ci/tree-reuse.mjs",
         "to": "external:node:child_process",
         "kind": "imports"
       },
       {
-        "from": "scripts/ci/evidence.mjs",
+        "from": "scripts/ci/tree-reuse.mjs",
         "to": "external:node:fs",
         "kind": "imports"
       },
       {
-        "from": "scripts/ci/evidence.mjs",
+        "from": "scripts/ci/tree-reuse.mjs",
         "to": "external:node:url",
         "kind": "imports"
       },
@@ -62521,7 +62521,7 @@
       },
       {
         "from": "src/__tests__/ci-evidence.test.ts",
-        "to": "scripts/ci/evidence.mjs",
+        "to": "scripts/ci/tree-reuse.mjs",
         "kind": "imports"
       },
       {
@@ -117802,6 +117802,6 @@
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "0976641fe962c136e886502ea2973c66839bd638c071fedf42c61fdbb2901ccc",
-  "manifestSha256": "308c7aaf24bcd52f1636ceb31b4a921b1f94655dfa85c522d9c711eb72f58cd0"
+  "inventorySha256": "014a9d662981193fa5ba1d728dff2735b20e5bb0fa9b93c493e49713986791f9",
+  "manifestSha256": "4056395382a25ad829fd5822e30fe89d783dbc7ee2e8b9800b91ce608866c770"
 }
