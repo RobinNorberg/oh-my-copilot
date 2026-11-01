@@ -94931,7 +94931,7 @@ var init_exec = __esm({
       hardenWindowsExeSearch();
       const result = (0, import_child_process28.spawnSync)(cmd, args, {
         cwd: opts?.cwd,
-        env: { ...scrubShipEnv(process.env), ...opts?.env },
+        env: childEnv({ ...scrubShipEnv(process.env), ...opts?.env }),
         encoding: "utf8",
         windowsHide: true,
         maxBuffer: 256 * 1024 * 1024

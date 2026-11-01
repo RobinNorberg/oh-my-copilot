@@ -6,7 +6,7 @@
  */
 import { spawnSync } from 'child_process';
 import { isAdoCommand, runGuardedAdo } from '../forge/ado/guard.js';
-import { hardenWindowsExeSearch } from '../utils/windows-search.js';
+import { childEnv, hardenWindowsExeSearch } from '../utils/windows-search.js';
 export class ShipSafetyError extends Error {
     constructor(message) {
         super(message);
@@ -81,7 +81,7 @@ export const defaultExec = (cmd, args, opts) => {
     hardenWindowsExeSearch();
     const result = spawnSync(cmd, args, {
         cwd: opts?.cwd,
-        env: { ...scrubShipEnv(process.env), ...opts?.env },
+        env: childEnv({ ...scrubShipEnv(process.env), ...opts?.env }),
         encoding: 'utf8',
         windowsHide: true,
         maxBuffer: 256 * 1024 * 1024,

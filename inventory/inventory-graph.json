@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "69f4dbc4f284af9a90dfdf7c0e9da0884a7a46ba",
-    "sourceSha256": "2395df0301f8ccaad43daedc9cfd897f803f52e95601a6e10f3b1c842b3987d8",
+    "head": "6ab381df1c86f1442e1a410e1679039b761c98cd",
+    "sourceSha256": "005e589396e03c189f610b26679e3aceadf9dcb1e1d6be900ac2c8205c18848f",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "69f4dbc4f284af9a90dfdf7c0e9da0884a7a46ba",
-  "sourceSha256": "2395df0301f8ccaad43daedc9cfd897f803f52e95601a6e10f3b1c842b3987d8",
+  "head": "6ab381df1c86f1442e1a410e1679039b761c98cd",
+  "sourceSha256": "005e589396e03c189f610b26679e3aceadf9dcb1e1d6be900ac2c8205c18848f",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1942,
-      "total": 1966
+      "srcFiles": 1943,
+      "total": 1967
     },
     "generated": {
-      "distFiles": 7164,
+      "distFiles": 7168,
       "bridgeFiles": 9,
-      "total": 7173
+      "total": 7177
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -6564,6 +6564,10 @@
       "dist/shared/types.d.ts.map",
       "dist/shared/types.js",
       "dist/shared/types.js.map",
+      "dist/ship/__tests__/exec-env.test.d.ts",
+      "dist/ship/__tests__/exec-env.test.d.ts.map",
+      "dist/ship/__tests__/exec-env.test.js",
+      "dist/ship/__tests__/exec-env.test.js.map",
       "dist/ship/__tests__/gates.test.d.ts",
       "dist/ship/__tests__/gates.test.d.ts.map",
       "dist/ship/__tests__/gates.test.js",
@@ -37723,6 +37727,26 @@
         "path": "dist/shared/types.js.map"
       },
       {
+        "id": "dist/ship/__tests__/exec-env.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/exec-env.test.d.ts"
+      },
+      {
+        "id": "dist/ship/__tests__/exec-env.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/exec-env.test.d.ts.map"
+      },
+      {
+        "id": "dist/ship/__tests__/exec-env.test.js",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/exec-env.test.js"
+      },
+      {
+        "id": "dist/ship/__tests__/exec-env.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/exec-env.test.js.map"
+      },
+      {
         "id": "dist/ship/__tests__/gates.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/ship/__tests__/gates.test.d.ts"
@@ -55426,6 +55450,11 @@
         "id": "src/shared/types.ts",
         "kind": "src",
         "path": "src/shared/types.ts"
+      },
+      {
+        "id": "src/ship/__tests__/exec-env.test.ts",
+        "kind": "src",
+        "path": "src/ship/__tests__/exec-env.test.ts"
       },
       {
         "id": "src/ship/__tests__/fixtures/checks-pr233-green.json",
@@ -101830,6 +101859,16 @@
         "kind": "exports"
       },
       {
+        "from": "src/ship/__tests__/exec-env.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/exec-env.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/ship/__tests__/gates.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -117151,12 +117190,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9859,
-      "edgeCount": 11820,
-      "importEdgeCount": 9699,
+      "nodeCount": 9864,
+      "edgeCount": 11822,
+      "importEdgeCount": 9701,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "833179d6a10731d29350636424251c6ecab41f01abfb26b36bd964fd30928c5a",
-  "manifestSha256": "be891ab07a0a0049c04c8ea03f0a5845219d4bd71b996530f2ef5f4c46c67cf8"
+  "inventorySha256": "79dedb5a1ddfbae70e2c3768271571e78da4dff091f9efab7c53e56829fa2956",
+  "manifestSha256": "62be8d7ebb5a2925402fb557da35784ae1180a59e96997d5d96a9f199dc6794b"
 }
