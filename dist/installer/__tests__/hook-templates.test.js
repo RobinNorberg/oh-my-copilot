@@ -7,6 +7,7 @@ import { tmpdir } from 'os';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { KEYWORD_DETECTOR_SCRIPT_NODE } from '../hooks.js';
 import { provisionStandaloneStateLockBridge } from '../index.js';
+import { skillSlash } from '../../utils/skill-slash.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const packageRoot = join(__dirname, '..', '..', '..');
@@ -113,7 +114,8 @@ describe('keyword-detector packaged artifacts', () => {
             const result = runKeywordHook(scriptPath, 'ralph fix and code review this change');
             const context = JSON.stringify(result);
             expect(context).toContain('[MAGIC KEYWORD: RALPH]');
-            expect(context).toContain('Preferred invocation: /oh-my-copilot:ralph');
+            // Standalone templates run under Copilot (bare); the plugin script runs here without a Copilot hook signal.
+            expect(context).toContain(`Preferred invocation: ${skillSlash('ralph', scriptPath === templatePath ? 'copilot' : 'claude')}`);
             expect(context).toContain('Read fallback:');
             expect(context).not.toContain('name: ralph');
             expect(context).not.toContain('[RALPH + ULTRAWORK');

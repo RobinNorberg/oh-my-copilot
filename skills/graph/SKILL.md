@@ -16,8 +16,8 @@ so crash recovery (kill mid-run, rerun, resume from journal) works for real.
 ## Usage
 
 ```
-/oh-my-copilot:graph <descriptor.json>
-/oh-my-copilot:graph "build then test then ask me before deploy"   (author the descriptor first)
+/graph <descriptor.json>
+/graph "build then test then ask me before deploy"   (author the descriptor first)
 ```
 
 The execution surface is always the CLI subcommand:

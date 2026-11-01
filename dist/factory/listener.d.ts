@@ -94,8 +94,8 @@ export type RouteOutcome = {
 };
 /** Pure intake decision: whitelist -> label gate -> shared routing seam. */
 export declare function routeTrackerEvent(event: TrackerEvent, whitelist: ReadonlyArray<string>, table?: RouteTable): RouteOutcome;
-/** Harbor's own single-ship form, as the Copilot plugin registers the skill; harbor writes the tracker in English. */
-export declare function buildHarborPrompt(directive: ChainDirective, issueNumber?: number, issueUrl?: string): string;
+/** Harbor's own single-ship form under the slash the link's host registers; harbor writes the tracker in English. */
+export declare function buildHarborPrompt(directive: ChainDirective, issueNumber?: number, issueUrl?: string, slash?: string): string;
 export interface ListenerConfig {
     port: number;
     secret: string;

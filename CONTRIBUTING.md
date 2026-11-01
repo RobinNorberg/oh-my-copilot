@@ -379,7 +379,7 @@ npm run test:run
    - GitHub will auto-populate the template when you open the PR
 
 4. **Release workflow** (advanced):
-   - If your PR should trigger a release, you can invoke the `/oh-my-copilot:release` skill
+   - If your PR should trigger a release, you can invoke the `/release` skill
    - This is typically for maintainers; ask in the PR if unsure
 
 5. **What happens next**:

@@ -2,6 +2,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { skillSlash } from '../../utils/skill-slash.js';
 
 const fakeConfig = {
   preset: 'focused',
@@ -145,7 +146,7 @@ describe('HUD CLI diagnostic (no stdin, no watch mode)', () => {
     const output = consoleLogSpy.mock.calls.map((c: unknown[]) => c[0]).join('\n');
     expect(output).toContain('[OMC] HUD v4.10.1');
     expect(output).toContain('preset: focused');
-    expect(output).not.toContain('run /oh-my-copilot:omc-setup to install properly');
+    expect(output).not.toContain(`run ${skillSlash('omc-setup')} to install properly`);
   });
 
   it('shows HUD script as MISSING when omg-hud.mjs does not exist', async () => {
@@ -188,7 +189,7 @@ describe('HUD CLI diagnostic (no stdin, no watch mode)', () => {
 
     const output = consoleLogSpy.mock.calls.map((c: unknown[]) => c[0]).join('\n');
     expect(output).toContain('NOT configured');
-    expect(output).toContain('Run /oh-my-copilot:hud setup to fix.');
+    expect(output).toContain(`Run ${skillSlash('hud')} setup to fix.`);
   });
 
   it('handles legacy string statusLine format', async () => {
@@ -217,6 +218,6 @@ describe('HUD CLI diagnostic (no stdin, no watch mode)', () => {
     await hud.main(false, false);
 
     const output = consoleLogSpy.mock.calls.map((c: unknown[]) => c[0]).join('\n');
-    expect(output).toContain('Run /oh-my-copilot:hud setup to fix.');
+    expect(output).toContain(`Run ${skillSlash('hud')} setup to fix.`);
   });
 });

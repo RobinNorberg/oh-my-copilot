@@ -3,7 +3,7 @@
  *
  * Unified handler for persistent work modes: ralph and todo-continuation.
  * This hook intercepts Stop events and enforces work continuation based on:
- * 1. Active ralph loop (until cancelled via /oh-my-copilot:cancel)
+ * 1. Active ralph loop (until cancelled via /cancel)
  * 2. Any pending todos (general enforcement)
  *
  * Priority order: Ralph > Todo Continuation
@@ -29,6 +29,7 @@ import { applyLoopContinuationShadow } from './jev-shadow.js';
 import { truncatePromptForEcho } from '../../lib/truncate-prompt.js';
 import { isModeActive } from '../mode-registry/index.js';
 import { namedWorkflowRuntimeSupported, validateNamedWorkflowState } from '../autopilot/named-workflow-resume-validator.js';
+import { skillSlash } from '../../utils/skill-slash.js';
 /** Maximum todo-continuation attempts before giving up (prevents infinite loops) */
 const MAX_TODO_CONTINUATION_ATTEMPTS = 5;
 const CANCEL_SIGNAL_TTL_MS = 30_000;
@@ -1154,7 +1155,7 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
         writeRalphState(workingDir, state, sessionId);
         return {
             shouldBlock: true,
-            message: `[RALPH - HARD LIMIT] Reached hard max iterations (${hardMax}). Mode auto-disabled. Restart with /oh-my-copilot:ralph if needed.`,
+            message: `[RALPH - HARD LIMIT] Reached hard max iterations (${hardMax}). Mode auto-disabled. Restart with ${skillSlash('ralph')} if needed.`,
             mode: 'ralph',
             metadata: { iteration: state.iteration, maxIterations: state.max_iterations }
         };
@@ -1196,7 +1197,7 @@ CRITICAL INSTRUCTIONS:
 1. Review your progress and the original task
 ${prdInstruction}
 3. Continue from where you left off
-4. When FULLY complete (after ${state.critic_mode === 'codex' ? 'Codex critic' : state.critic_mode === 'critic' ? 'Critic' : 'Architect'} verification), run \`/oh-my-copilot:cancel\` to cleanly exit and clean up state files. If cancel fails, report the failure and retry within the same session scope. Cancel all sessions only when the user explicitly requests \`--all\`.
+4. When FULLY complete (after ${state.critic_mode === 'codex' ? 'Codex critic' : state.critic_mode === 'critic' ? 'Critic' : 'Architect'} verification), run \`${skillSlash('cancel')}\` to cleanly exit and clean up state files. If cancel fails, report the failure and retry within the same session scope. Cancel all sessions only when the user explicitly requests \`--all\`.
 5. Do NOT stop until the task is truly done
 
 ${newState.prompt ? `Original task: ${truncatePromptForEcho(newState.prompt)}` : ''}
@@ -1499,7 +1500,7 @@ async function checkTeamPipeline(sessionId, directory, cancelInProgress) {
 
 The team pipeline is active in phase "${phase}". Continue working on the team workflow.
 Do not stop until the pipeline reaches a terminal state (complete/failed/cancelled).
-When done, run \`/oh-my-copilot:cancel\` to cleanly exit.
+When done, run \`${skillSlash('cancel')}\` to cleanly exit.
 
 </team-pipeline-continuation>
 
@@ -1725,7 +1726,7 @@ async function checkRalplan(sessionId, directory, cancelInProgress) {
 The ralplan consensus workflow is active. Continue the Planner/Architect/Critic planning loop only.
 Ralplan is read-only/planning mode: do not implement, invoke execution skills, edit source, commit, push, or open PRs from this continuation.
 When consensus is reached, stop at a pending-approval handoff and require explicit user approval before execution.
-When done, run \`/oh-my-copilot:cancel\` to cleanly exit.
+When done, run \`${skillSlash('cancel')}\` to cleanly exit.
 
 </ralplan-continuation>
 

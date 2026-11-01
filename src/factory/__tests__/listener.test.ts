@@ -14,6 +14,8 @@ import {
   type ListenerConfig,
   type TrackerEvent,
 } from '../listener.js';
+import { skillSlash } from '../../utils/skill-slash.js';
+import { setSkillListProbe } from '../../utils/skill-registry.js';
 import { acquireFileLockSync, releaseFileLockSync, type FileLockHandle } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { AFK_INCLUDE_USER_SETTINGS_ENV } from '../../hooks/session-end/spawn-next.js';
@@ -121,12 +123,13 @@ describe('routeTrackerEvent', () => {
 });
 
 describe('buildHarborPrompt', () => {
-  it('is the English plugin-skill form harbor registers on Copilot', () => {
-    expect(buildHarborPrompt({ stage: 'harbor', skill: 'harbor' }, 7, 'https://github.com/o/r/issues/7')).toBe('/oh-my-copilot:harbor look at #7');
+  it('is the English plugin-skill form harbor registers on the host', () => {
+    expect(buildHarborPrompt({ stage: 'harbor', skill: 'harbor' }, 7, 'https://github.com/o/r/issues/7')).toBe(`${skillSlash('harbor', 'claude')} look at #7`);
+    expect(buildHarborPrompt({ stage: 'harbor', skill: 'harbor' }, 7, undefined, skillSlash('harbor', 'copilot'))).toBe('/harbor look at #7');
   });
 
   it('falls back to the issue url when the event has no issue number', () => {
-    expect(buildHarborPrompt({ stage: 'harbor', skill: 'harbor' }, undefined, 'https://github.com/o/r/issues/7')).toBe('/oh-my-copilot:harbor look at https://github.com/o/r/issues/7');
+    expect(buildHarborPrompt({ stage: 'harbor', skill: 'harbor' }, undefined, 'https://github.com/o/r/issues/7')).toBe(`${skillSlash('harbor', 'claude')} look at https://github.com/o/r/issues/7`);
   });
 });
 
@@ -140,7 +143,7 @@ describe('processEvent', () => {
       audit: (r) => audits.push(r),
     });
     expect(result.kind).toBe('accepted');
-    const prompt = '/oh-my-copilot:harbor look at #7';
+    const prompt = `${skillSlash('harbor', 'claude')} look at #7`;
     expect(spawned).toHaveLength(1);
     expect(spawned[0][0]).toBe('claude');
     expect(spawned[0][1][0]).toBe('-p');
@@ -157,6 +160,21 @@ describe('processEvent', () => {
     expect(ledger.tracker).toEqual({ repo: 'pangpang778/factory-demo', issue: 7 });
     expect(JSON.stringify(ledger)).not.toMatch(/needs-review|"failed"/);
     expect(audits[0]).toMatchObject({ kind: 'routed', stage: 'harbor', skill: 'harbor', issue: 'https://github.com/pangpang778/factory-demo/issues/7', session: sessionId });
+  });
+
+  it('audits and skips a Copilot link whose skill a project skill shadows', () => {
+    vi.stubEnv('COPILOT_CLI', '1');
+    const previous = setSkillListProbe(() => [{ name: 'harbor', source: 'project', path: '/repo/.github/skills/harbor' }]);
+    try {
+      const spawned: Array<[string, string[]]> = [];
+      const audits: Record<string, unknown>[] = [];
+      const result = processEvent(event(), config(), { spawner: (cmd, args) => spawned.push([cmd, args]), audit: (r) => audits.push(r) });
+      expect(result).toMatchObject({ status: 204, kind: 'discarded', detail: expect.stringMatching(/^skill-shadowed:harbor/) });
+      expect(spawned).toEqual([]);
+      expect(audits).toEqual([expect.objectContaining({ kind: 'discarded', reason: expect.stringMatching(/^skill-shadowed:harbor/), intentId: 'pangpang778-factory-demo-7' })]);
+    } finally {
+      setSkillListProbe(previous);
+    }
   });
 
   it('captures the user-settings choice in the initial factory ledger and link argv', () => {

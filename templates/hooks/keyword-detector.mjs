@@ -387,7 +387,7 @@ const QUESTION_FOLLOWUP_PATTERNS = [
 // recognized block header. They must be stripped only in that context —
 // never standalone — because a user might legitimately start a prompt with
 // "Task: …" or similar (Codex automated review P1/P2 on #2795).
-const ECHO_CONTINUATION = '(?:\\r?\\n[ \\t]*(?:Task:\\s|(?:Claude \\/goal objective|Goal objective|Missing evidence|No OMG goal record yet):\\s|When FULLY complete \\(after Architect verification\\)|run\\s+\\/oh-my-copilot:cancel).*)*';
+const ECHO_CONTINUATION = '(?:\\r?\\n[ \\t]*(?:Task:\\s|(?:Claude \\/goal objective|Goal objective|Missing evidence|No OMG goal record yet):\\s|When FULLY complete \\(after Architect verification\\)|run\\s+\\/(?:oh-my-copilot:)?cancel).*)*';
 
 // Each pattern is a single logical block: the block header line + zero or
 // more continuation lines emitted right after it. The whole match is
@@ -417,7 +417,7 @@ const SYSTEM_ECHO_BLOCK_PATTERNS = [
 
 const SYSTEM_ECHO_SIGNATURES = [
   /\bWhen FULLY complete \(after Architect verification\)\b/i,
-  /\brun\s+\/oh-my-copilot:cancel\b/i,
+  /\brun\s+\/(?:oh-my-copilot:)?cancel\b/i,
   /\[RALPH LOOP\s*-\s*ITERATION\b/i,
 ];
 
@@ -1226,7 +1226,7 @@ Arguments: ${args}` : '';
   return `[MAGIC KEYWORD: ${skillName.toUpperCase()}]
 
 Skill routing detected: ${skillName}
-Preferred invocation: /oh-my-copilot:${skillName}${args ? ` ${args}` : ''}
+Preferred invocation: /${skillName}${args ? ` ${args}` : ''}
 ${pathStatus}${argsSection}${ralphLoopNotice ? `
 
 ${ralphLoopNotice}` : ''}
@@ -1253,7 +1253,7 @@ function createMultiSkillInvocation(skills, originalPrompt, directory = '') {
       ? `Read fallback: ${skillPath}`
       : `Read fallback: locate skills/${s.name}/SKILL.md in the active oh-my-copilot plugin/install`;
     return `### Skill ${i + 1}: ${s.name.toUpperCase()}
-Preferred invocation: /oh-my-copilot:${s.name}${argsText}
+Preferred invocation: /${s.name}${argsText}
 ${pathStatus}`;
   }).join('\n\n');
 

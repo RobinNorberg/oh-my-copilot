@@ -9,7 +9,7 @@
  *
  * This test locks the setup phases to the shipped surface so they cannot
  * drift again:
- *  - every `/oh-my-copilot:<skill>` reference in the setup phases must
+ *  - every `/<skill>` reference in the setup phases must
  *    resolve to a skill the plugin actually ships (`.claude-plugin/plugin.json`)
  *  - no setup phase may reference a name retired in 5.0.0 (the canonical
  *    retired list in docs/CLAUDE.md, kept byte-identical to CLAUDE.md)
@@ -38,6 +38,17 @@ const PHASE_FILES = [
 // The phase snippets run `node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" <subcommand>`,
 // so point them at this checkout's scripts exactly as the setup agent would.
 const PLUGIN_ROOT_ENV = { OMC_SETUP_PLUGIN_ROOT: REPO_ROOT };
+
+/** A standalone `/<name>` slash reference (not a path segment). */
+const SLASH_REFERENCE = /(?<![\w./:~-])\/([a-z][a-z0-9-]*)(?![\w/.:-])/g;
+
+/** Drops the retirement notices, which name removed skills on purpose. */
+function stripRetirementNotices(content: string): string {
+  return content
+    .replace(/^#{1,6} Retired in 5\.0\.0[^\n]*\n[\s\S]*?(?=\n#{1,6} |$(?![\s\S]))/gim, "")
+    .replace(/RETIRED IN 5\.0\.0[\s\S]*?(?=\n[A-Z#]|\n```|$)/g, "")
+    .replace(/[^.\n]*removed in 5\.0\.0[^.\n]*\.?/gi, "");
+}
 
 function readPhase(file: string): string {
   const path = join(PHASES_DIR, file);
@@ -99,16 +110,16 @@ describe("setup phases drift enforcement (issue #3871)", () => {
     }
   });
 
-  it("every referenced /oh-my-copilot:<skill> exists in the shipped plugin", () => {
+  it("every referenced /<skill> exists in the shipped plugin", () => {
     for (const file of PHASE_FILES) {
-      const content = readPhase(file);
-      const referenced = [...content.matchAll(/\/oh-my-copilot:([a-z0-9-]+)/g)].map(
+      const content = stripRetirementNotices(readPhase(file));
+      const referenced = [...content.matchAll(SLASH_REFERENCE)].map(
         (m) => m[1],
       );
       for (const name of referenced) {
         expect(
           skills.has(name),
-          `${file} references /oh-my-copilot:${name}, but the plugin does not ship a skill with that name`,
+          `${file} references /${name}, but the plugin does not ship a skill with that name`,
         ).toBe(true);
       }
     }
@@ -118,16 +129,14 @@ describe("setup phases drift enforcement (issue #3871)", () => {
     for (const file of PHASE_FILES) {
       const content = readPhase(file);
       // An invocation-shaped reference is any of:
-      //   /oh-my-copilot:<name>   <name>: <task>   "invoke the <name> skill"
+      //   /<name>   <name>: <task>   "invoke the <name> skill"
       // Plain-prose retirement notices (a dedicated block listing removed
       // names, or a "removed in 5.0.0" sentence) are allowed — users and the
       // setup agent must still be told what no longer exists.
-      const stripped = content
-        .replace(/RETIRED IN 5\.0\.0[\s\S]*?(?=\n[A-Z#]|\n```|$)/g, "")
-        .replace(/[^.\n]*removed in 5\.0\.0[^.\n]*\.?/gi, "");
+      const stripped = stripRetirementNotices(content);
       for (const name of retired) {
         const invocationPatterns = [
-          new RegExp(`/oh-my-copilot:${name}\\b`),
+          new RegExp(`(?<![\\w./:~-])/(?:oh-my-copilot:)?${name}\\b`),
           new RegExp(`^#{1,6}.*\\b${name}\\b.*(step|skill|invoke)`, "im"),
           new RegExp(`invoke (?:the )?.{0,20}\\b${name}\\b (?:skill|workflow)`, "i"),
         ];
@@ -285,10 +294,10 @@ describe("setup phases drift enforcement (issue #3871)", () => {
 
   it("uses the installed plan and review skill names in the welcome text", () => {
     const welcome = readPhase("04-welcome.md");
-    expect(welcome).toContain("/oh-my-copilot:omc-plan");
-    expect(welcome).toContain("/oh-my-copilot:omc-review");
-    expect(welcome).not.toContain("/oh-my-copilot:plan");
-    expect(welcome).not.toContain("/oh-my-copilot:review");
+    // Copilot CLI registers plugin skills by bare name; bare /plan and /review are its own commands.
+    expect(welcome).toContain("/omc-plan");
+    expect(welcome).toContain("/omc-review");
+    expect(welcome).not.toMatch(/(?<![\w-])\/(?:oh-my-copilot:)?(?:plan|review)\b/);
   });
 
   it("delegates the team config write instead of normalizing the path inline", () => {

@@ -1145,7 +1145,7 @@ async function main() {
           const stamp = readJsonFile(stampPath);
           if (stamp?.version && stamp.version !== currentVersion) {
             process.stderr.write(
-              `[omc] template version drift: installed=${stamp.version}, plugin=${currentVersion} — run /oh-my-copilot:omc-setup to refresh\n`
+              `[omc] template version drift: installed=${stamp.version}, plugin=${currentVersion} — run /omc-setup to refresh\n`
             );
             mkdirSync(join(driftMarkerPath, '..'), { recursive: true });
             writeFileSync(driftMarkerPath, JSON.stringify({ warnedAt: new Date().toISOString() }));

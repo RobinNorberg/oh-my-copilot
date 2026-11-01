@@ -32,7 +32,7 @@ Extract from the `github` key:
 - `owner` — GitHub owner (org or user)
 - `repo` — repository name
 
-If config is NOT_FOUND or missing the `github` key: tell the user to run `/oh-my-copilot:omc-gh-setup` first and stop.
+If config is NOT_FOUND or missing the `github` key: tell the user to run `/omc-gh-setup` first and stop.
 
 ---
 
@@ -229,7 +229,7 @@ gh pr edit {prNumber} --repo {owner}/{repo} --add-label "{label}" 2>&1
 
 | Error | Action |
 |-------|--------|
-| `.omg/config.json` missing | Tell user to run `/oh-my-copilot:omc-gh-setup` first |
+| `.omg/config.json` missing | Tell user to run `/omc-gh-setup` first |
 | `gh auth` required | Prompt user to authenticate; stop execution |
 | PR not found | Verify PR number and that the repository in config matches |
 | No permission to review | User may need write access to the repo |

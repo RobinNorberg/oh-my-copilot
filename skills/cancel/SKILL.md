@@ -58,10 +58,10 @@ Automatically detects and cancels active modes:
 ## Usage
 
 ```text
-/oh-my-copilot:cancel
-/oh-my-copilot:cancel --force
-/oh-my-copilot:cancel --all
-/oh-my-copilot:cancel --force --all
+/cancel
+/cancel --force
+/cancel --all
+/cancel --force --all
 ```
 
 Or say: `cancelomc`, `stopomc`.
@@ -319,7 +319,7 @@ use `--all` to enumerate other sessions and perform the global pass.
 | Team | Handoffs and uncaptured runtime roots preserved; selected state cleared only after its flow |
 | Plan Consensus / Self-Improve | Mode-specific resume/artifact records preserved as documented by the mode |
 
-Autopilot can resume with `/oh-my-copilot:autopilot`; Ultragoal's durable
+Autopilot can resume with `/autopilot`; Ultragoal's durable
 plan and ledger can resume through `/ultragoal`. Ralph and retired state do not
 provide a resume path. Team handoffs remain available for a later scoped
 resume, while shared Swarm and legacy records require explicit authorization.

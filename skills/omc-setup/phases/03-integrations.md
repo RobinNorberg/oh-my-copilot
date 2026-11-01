@@ -132,7 +132,7 @@ Skip this step. Agent teams will remain disabled. User can enable later by addin
 }
 ```
 
-Or by running `/oh-my-copilot:omc-setup --force` and choosing to enable teams.
+Or by running `/omc-setup --force` and choosing to enable teams.
 
 ## Save Progress
 

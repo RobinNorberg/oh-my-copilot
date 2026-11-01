@@ -230,7 +230,7 @@ Iteration    : {iterationPath}
 Config file  : .omg/config.json
 
 Next steps:
-  /oh-my-copilot:omc-ado-triage   — run a full triage of work items and PRs
+  /omc-ado-triage   — run a full triage of work items and PRs
 ```
 
 ---

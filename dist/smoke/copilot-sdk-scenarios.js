@@ -8,6 +8,7 @@ import { realpathSync } from 'fs';
 import { basename, join, resolve, sep } from 'path';
 import { NANO_AIU_PER_CREDIT } from '../budget/ledger.js';
 import { assistantText, BENIGN_ADAPTER_NOTES, collectHookRuns, excerpt, SMOKE_TOKEN, } from './copilot-session-eval.js';
+import { skillSlash } from '../utils/skill-slash.js';
 export const FACTORY_RUN_SCENARIOS = ['factory-run', 'factory-run-fix'];
 /** Sandboxed copilot_run lanes against the OS sandbox, in-process (copilot-sandbox-lane-scenario.ts). */
 export const SANDBOX_LANE_SCENARIO = 'sandbox-lane';
@@ -165,7 +166,7 @@ export const SCENARIOS = {
     },
     skill: {
         name: 'skill',
-        prompt: 'Use the /oh-my-copilot:plan skill to outline a two-step plan for adding a README. Keep it under 5 lines.',
+        prompt: `Use the ${skillSlash('omc-plan', 'copilot')} skill to outline a two-step plan for adding a README. Keep it under 5 lines.`,
         excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
         permit: permitScopedRead, // loading SKILL.md is a read request
     },

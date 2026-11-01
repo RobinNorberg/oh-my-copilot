@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "d67cf0001b1620cdedafae435d8e1b24bcf86dc4",
-    "sourceSha256": "06a0e4ac7c92a0c0dd9e2d11f7733d974ad75ba107239a0bce8516fafb277e42",
+    "head": "e3b5ed8a0b3995eb077160ae79edba41809797e0",
+    "sourceSha256": "0c335b71f703188a54fea3cac4c048b784473424b2cb9822f547bf891363eb46",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "d67cf0001b1620cdedafae435d8e1b24bcf86dc4",
-  "sourceSha256": "06a0e4ac7c92a0c0dd9e2d11f7733d974ad75ba107239a0bce8516fafb277e42",
+  "head": "e3b5ed8a0b3995eb077160ae79edba41809797e0",
+  "sourceSha256": "0c335b71f703188a54fea3cac4c048b784473424b2cb9822f547bf891363eb46",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1944,
-      "total": 1968
+      "srcFiles": 1949,
+      "total": 1973
     },
     "generated": {
-      "distFiles": 7172,
+      "distFiles": 7188,
       "bridgeFiles": 9,
-      "total": 7181
+      "total": 7197
     },
     "prompt": {
       "promptLikeFiles": 66
@@ -906,6 +906,7 @@
       "scripts/lib/read-budget-preflight.mjs",
       "scripts/lib/run-reaper.mjs",
       "scripts/lib/skill-entitlements.mjs",
+      "scripts/lib/skill-slash.mjs",
       "scripts/lib/state-lock.mjs",
       "scripts/lib/state-root.cjs",
       "scripts/lib/state-root.mjs",
@@ -2136,6 +2137,10 @@
       "dist/__tests__/setup/global-state-guard.test.d.ts.map",
       "dist/__tests__/setup/global-state-guard.test.js",
       "dist/__tests__/setup/global-state-guard.test.js.map",
+      "dist/__tests__/setup/stub-skill-list-probe.d.ts",
+      "dist/__tests__/setup/stub-skill-list-probe.d.ts.map",
+      "dist/__tests__/setup/stub-skill-list-probe.js",
+      "dist/__tests__/setup/stub-skill-list-probe.js.map",
       "dist/__tests__/shared-memory-concurrency.test.d.ts",
       "dist/__tests__/shared-memory-concurrency.test.d.ts.map",
       "dist/__tests__/shared-memory-concurrency.test.js",
@@ -8024,6 +8029,10 @@
       "dist/utils/__tests__/semver-compare.test.d.ts.map",
       "dist/utils/__tests__/semver-compare.test.js",
       "dist/utils/__tests__/semver-compare.test.js.map",
+      "dist/utils/__tests__/skill-slash.test.d.ts",
+      "dist/utils/__tests__/skill-slash.test.d.ts.map",
+      "dist/utils/__tests__/skill-slash.test.js",
+      "dist/utils/__tests__/skill-slash.test.js.map",
       "dist/utils/__tests__/string-width.test.d.ts",
       "dist/utils/__tests__/string-width.test.d.ts.map",
       "dist/utils/__tests__/string-width.test.js",
@@ -8096,10 +8105,18 @@
       "dist/utils/skill-pipeline.d.ts.map",
       "dist/utils/skill-pipeline.js",
       "dist/utils/skill-pipeline.js.map",
+      "dist/utils/skill-registry.d.ts",
+      "dist/utils/skill-registry.d.ts.map",
+      "dist/utils/skill-registry.js",
+      "dist/utils/skill-registry.js.map",
       "dist/utils/skill-resources.d.ts",
       "dist/utils/skill-resources.d.ts.map",
       "dist/utils/skill-resources.js",
       "dist/utils/skill-resources.js.map",
+      "dist/utils/skill-slash.d.ts",
+      "dist/utils/skill-slash.d.ts.map",
+      "dist/utils/skill-slash.js",
+      "dist/utils/skill-slash.js.map",
       "dist/utils/skininthegamebros-user.d.ts",
       "dist/utils/skininthegamebros-user.d.ts.map",
       "dist/utils/skininthegamebros-user.js",
@@ -15594,6 +15611,26 @@
         "id": "dist/__tests__/setup/global-state-guard.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/setup/global-state-guard.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/setup/stub-skill-list-probe.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup/stub-skill-list-probe.d.ts"
+      },
+      {
+        "id": "dist/__tests__/setup/stub-skill-list-probe.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup/stub-skill-list-probe.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/setup/stub-skill-list-probe.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup/stub-skill-list-probe.js"
+      },
+      {
+        "id": "dist/__tests__/setup/stub-skill-list-probe.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup/stub-skill-list-probe.js.map"
       },
       {
         "id": "dist/__tests__/shared-memory-concurrency.test.d.ts",
@@ -45036,6 +45073,26 @@
         "path": "dist/utils/__tests__/semver-compare.test.js.map"
       },
       {
+        "id": "dist/utils/__tests__/skill-slash.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/utils/__tests__/skill-slash.test.d.ts"
+      },
+      {
+        "id": "dist/utils/__tests__/skill-slash.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/__tests__/skill-slash.test.d.ts.map"
+      },
+      {
+        "id": "dist/utils/__tests__/skill-slash.test.js",
+        "kind": "generated-dist",
+        "path": "dist/utils/__tests__/skill-slash.test.js"
+      },
+      {
+        "id": "dist/utils/__tests__/skill-slash.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/__tests__/skill-slash.test.js.map"
+      },
+      {
         "id": "dist/utils/__tests__/string-width.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/utils/__tests__/string-width.test.d.ts"
@@ -45396,6 +45453,26 @@
         "path": "dist/utils/skill-pipeline.js.map"
       },
       {
+        "id": "dist/utils/skill-registry.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/utils/skill-registry.d.ts"
+      },
+      {
+        "id": "dist/utils/skill-registry.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/skill-registry.d.ts.map"
+      },
+      {
+        "id": "dist/utils/skill-registry.js",
+        "kind": "generated-dist",
+        "path": "dist/utils/skill-registry.js"
+      },
+      {
+        "id": "dist/utils/skill-registry.js.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/skill-registry.js.map"
+      },
+      {
         "id": "dist/utils/skill-resources.d.ts",
         "kind": "generated-dist",
         "path": "dist/utils/skill-resources.d.ts"
@@ -45414,6 +45491,26 @@
         "id": "dist/utils/skill-resources.js.map",
         "kind": "generated-dist",
         "path": "dist/utils/skill-resources.js.map"
+      },
+      {
+        "id": "dist/utils/skill-slash.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/utils/skill-slash.d.ts"
+      },
+      {
+        "id": "dist/utils/skill-slash.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/skill-slash.d.ts.map"
+      },
+      {
+        "id": "dist/utils/skill-slash.js",
+        "kind": "generated-dist",
+        "path": "dist/utils/skill-slash.js"
+      },
+      {
+        "id": "dist/utils/skill-slash.js.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/skill-slash.js.map"
       },
       {
         "id": "dist/utils/skininthegamebros-user.d.ts",
@@ -46944,6 +47041,11 @@
         "id": "scripts/lib/skill-entitlements.mjs",
         "kind": "script",
         "path": "scripts/lib/skill-entitlements.mjs"
+      },
+      {
+        "id": "scripts/lib/skill-slash.mjs",
+        "kind": "script",
+        "path": "scripts/lib/skill-slash.mjs"
       },
       {
         "id": "scripts/lib/state-lock.mjs",
@@ -49504,6 +49606,11 @@
         "id": "src/__tests__/setup/global-state-guard.ts",
         "kind": "src",
         "path": "src/__tests__/setup/global-state-guard.ts"
+      },
+      {
+        "id": "src/__tests__/setup/stub-skill-list-probe.ts",
+        "kind": "src",
+        "path": "src/__tests__/setup/stub-skill-list-probe.ts"
       },
       {
         "id": "src/__tests__/shared-memory-concurrency.test.ts",
@@ -57436,6 +57543,11 @@
         "path": "src/utils/__tests__/encode-project-path.test.ts"
       },
       {
+        "id": "src/utils/__tests__/fixtures/copilot-skill-list.json",
+        "kind": "src",
+        "path": "src/utils/__tests__/fixtures/copilot-skill-list.json"
+      },
+      {
         "id": "src/utils/__tests__/frontmatter.test.ts",
         "kind": "src",
         "path": "src/utils/__tests__/frontmatter.test.ts"
@@ -57459,6 +57571,11 @@
         "id": "src/utils/__tests__/semver-compare.test.ts",
         "kind": "src",
         "path": "src/utils/__tests__/semver-compare.test.ts"
+      },
+      {
+        "id": "src/utils/__tests__/skill-slash.test.ts",
+        "kind": "src",
+        "path": "src/utils/__tests__/skill-slash.test.ts"
       },
       {
         "id": "src/utils/__tests__/string-width.test.ts",
@@ -57551,9 +57668,19 @@
         "path": "src/utils/skill-pipeline.ts"
       },
       {
+        "id": "src/utils/skill-registry.ts",
+        "kind": "src",
+        "path": "src/utils/skill-registry.ts"
+      },
+      {
         "id": "src/utils/skill-resources.ts",
         "kind": "src",
         "path": "src/utils/skill-resources.ts"
+      },
+      {
+        "id": "src/utils/skill-slash.ts",
+        "kind": "src",
+        "path": "src/utils/skill-slash.ts"
       },
       {
         "id": "src/utils/skininthegamebros-user.ts",
@@ -59519,6 +59646,11 @@
       },
       {
         "from": "scripts/keyword-detector.mjs",
+        "to": "scripts/lib/skill-slash.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/keyword-detector.mjs",
         "to": "scripts/lib/state-root.mjs",
         "kind": "imports"
       },
@@ -59823,6 +59955,11 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/lib/skill-slash.mjs",
+        "to": "scripts/lib/hook-host.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/lib/state-lock.mjs",
         "to": "external:better-sqlite3",
         "kind": "imports"
@@ -59965,6 +60102,11 @@
       {
         "from": "scripts/lib/workflow-profile-runtime.mjs",
         "to": "scripts/lib/workflow-stage-prompts.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/workflow-stage-prompts.mjs",
+        "to": "scripts/lib/skill-slash.mjs",
         "kind": "imports"
       },
       {
@@ -60999,6 +61141,11 @@
       },
       {
         "from": "scripts/shipyard-audit.mjs",
+        "to": "scripts/lib/skill-slash.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/shipyard-audit.mjs",
         "to": "scripts/lib/state-root.mjs",
         "kind": "imports"
       },
@@ -61115,6 +61262,11 @@
       {
         "from": "scripts/stale-run-reporter.mjs",
         "to": "scripts/lib/run-reaper.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/stale-run-reporter.mjs",
+        "to": "scripts/lib/skill-slash.mjs",
         "kind": "imports"
       },
       {
@@ -63203,6 +63355,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/doctor-conflicts.test.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/doctor-legacy-config-dir.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -64185,6 +64342,11 @@
       {
         "from": "src/__tests__/hud/cli-diagnostic.test.ts",
         "to": "src/hud/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/cli-diagnostic.test.ts",
+        "to": "src/utils/skill-slash.ts",
         "kind": "imports"
       },
       {
@@ -66215,6 +66377,11 @@
       {
         "from": "src/__tests__/mnemosyne/detector.test.ts",
         "to": "src/hooks/learner/detector.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/mnemosyne/detector.test.ts",
+        "to": "src/utils/skill-slash.ts",
         "kind": "imports"
       },
       {
@@ -69248,6 +69415,16 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/setup/stub-skill-list-probe.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/setup/stub-skill-list-probe.ts",
+        "to": "src/utils/skill-registry.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/shared-memory-concurrency.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -71693,6 +71870,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/__tests__/autoresearch.test.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/__tests__/cli-boot.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -72538,6 +72720,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/autoresearch.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/checkpoint.ts",
         "to": "external:chalk",
         "kind": "imports"
@@ -72743,6 +72930,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/__tests__/factory-init.test.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/factory-listen-port.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -72906,6 +73098,16 @@
         "from": "src/cli/commands/__tests__/intake.test.ts",
         "to": "src/cli/commands/intake.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/intake.test.ts",
+        "to": "src/utils/skill-registry.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/intake.test.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
       },
       {
         "from": "src/cli/commands/__tests__/port-cli.test.ts",
@@ -73488,6 +73690,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/doctor-conflicts.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/doctor-team-routing.ts",
         "to": "src/cli/utils/formatting.ts",
         "kind": "imports"
@@ -74048,6 +74255,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/hooks.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -74155,6 +74367,11 @@
       {
         "from": "src/cli/commands/intake.ts",
         "to": "src/utils/host-detection.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/intake.ts",
+        "to": "src/utils/skill-registry.ts",
         "kind": "imports"
       },
       {
@@ -76473,6 +76690,16 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "src/utils/skill-registry.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/__tests__/map-frontier.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -78765,6 +78992,16 @@
       {
         "from": "src/factory/listener.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "src/utils/skill-registry.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "src/utils/skill-slash.ts",
         "kind": "imports"
       },
       {
@@ -81776,6 +82013,11 @@
         "from": "src/features/continuation-enforcement.ts",
         "to": "src/shared/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/features/continuation-enforcement.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
       },
       {
         "from": "src/features/delegation-categories/__tests__/index.test.ts",
@@ -86738,6 +86980,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/autopilot/__tests__/pipeline.test.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/autopilot/__tests__/prompts.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -86993,6 +87240,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hooks/autopilot/adapters/execution-adapter.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/autopilot/adapters/index.ts",
         "to": "src/hooks/autopilot/adapters/execution-adapter.ts",
         "kind": "exports"
@@ -87065,6 +87317,11 @@
       {
         "from": "src/hooks/autopilot/adapters/ralplan-adapter.ts",
         "to": "src/hooks/autopilot/prompts.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/autopilot/adapters/ralplan-adapter.ts",
+        "to": "src/utils/skill-slash.ts",
         "kind": "imports"
       },
       {
@@ -89128,6 +89385,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/learner/detector.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/learner/finder.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -89470,6 +89732,11 @@
       {
         "from": "src/hooks/mode-registry/index.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/mode-registry/index.ts",
+        "to": "src/utils/skill-slash.ts",
         "kind": "imports"
       },
       {
@@ -90510,6 +90777,11 @@
       {
         "from": "src/hooks/persistent-mode/index.ts",
         "to": "src/utils/paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/persistent-mode/index.ts",
+        "to": "src/utils/skill-slash.ts",
         "kind": "imports"
       },
       {
@@ -91568,6 +91840,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/ralph/prd.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/ralph/progress.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -91655,6 +91932,11 @@
       {
         "from": "src/hooks/ralph/verifier.ts",
         "to": "src/utils/omc-cli-rendering.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/ralph/verifier.ts",
+        "to": "src/utils/skill-slash.ts",
         "kind": "imports"
       },
       {
@@ -92973,6 +93255,21 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "to": "src/utils/skill-registry.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "to": "src/utils/skill-registry.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/session-end/__tests__/subdirectory-cwd.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -93540,6 +93837,16 @@
       {
         "from": "src/hooks/session-end/spawn-next.ts",
         "to": "src/utils/host-detection.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "src/utils/skill-registry.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "src/utils/skill-slash.ts",
         "kind": "imports"
       },
       {
@@ -95913,6 +96220,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/hud/index.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hud/mission-board.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -96808,6 +97120,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/installer/__tests__/hook-templates.test.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/installer/__tests__/hud-cache-wrapper.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -97295,6 +97612,11 @@
       {
         "from": "src/installer/hooks.ts",
         "to": "src/utils/config-dir.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/hooks.ts",
+        "to": "src/utils/skill-slash.ts",
         "kind": "imports"
       },
       {
@@ -103531,6 +103853,11 @@
         "from": "src/smoke/copilot-sdk-scenarios.ts",
         "to": "src/smoke/copilot-session-eval.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-scenarios.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
       },
       {
         "from": "src/smoke/copilot-session-env.ts",
@@ -114713,6 +115040,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/ultragoal/goal-record.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/utils/__tests__/cache-occupancy.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -114890,6 +115222,46 @@
       {
         "from": "src/utils/__tests__/semver-compare.test.ts",
         "to": "src/utils/semver-compare.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/skill-slash.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/skill-slash.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/skill-slash.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/skill-slash.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/skill-slash.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/skill-slash.test.ts",
+        "to": "src/utils/skill-registry.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/skill-slash.test.ts",
+        "to": "src/utils/skill-registry.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/utils/__tests__/skill-slash.test.ts",
+        "to": "src/utils/skill-slash.ts",
         "kind": "imports"
       },
       {
@@ -115123,6 +115495,51 @@
         "kind": "imports"
       },
       {
+        "from": "src/utils/skill-registry.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/skill-registry.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/skill-registry.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/skill-registry.ts",
+        "to": "src/team/model-contract.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/utils/skill-registry.ts",
+        "to": "src/utils/config-dir.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/skill-registry.ts",
+        "to": "src/utils/host-detection.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/skill-registry.ts",
+        "to": "src/utils/host-signal.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/skill-registry.ts",
+        "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/skill-registry.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/utils/skill-resources.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -115130,6 +115547,16 @@
       {
         "from": "src/utils/skill-resources.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/skill-slash.ts",
+        "to": "src/team/model-contract.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/utils/skill-slash.ts",
+        "to": "src/utils/host-signal.ts",
         "kind": "imports"
       },
       {
@@ -116663,6 +117090,11 @@
         "kind": "imports"
       },
       {
+        "from": "tests/integration/workflow-profile-stop-transition.test.ts",
+        "to": "templates/hooks/lib/workflow-stage-prompts.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/better-sqlite3-lockfloor.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -117284,12 +117716,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9872,
-      "edgeCount": 11832,
-      "importEdgeCount": 9711,
+      "nodeCount": 9894,
+      "edgeCount": 11893,
+      "importEdgeCount": 9768,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "c8400457cd40c4bd9a9167134b316243a02cc70f5b2f26fb54aa600e8197a80e",
-  "manifestSha256": "8859fdef64a0d41de1692d9f5989045bd307745ed2b0ff61493dff4cf9e37f8e"
+  "inventorySha256": "b9b8913a1ca12e87404672eeaf23e0b3b9ad239f18a9990229935583927b244b",
+  "manifestSha256": "22b3694cd3f938f0eef5c4e2f3dda897d50acd62cc365385d51641b35a5ce376"
 }

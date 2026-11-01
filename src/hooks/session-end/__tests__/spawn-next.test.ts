@@ -4,6 +4,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
 import { AFK_ALLOWED_TOOLS, AFK_INCLUDE_USER_SETTINGS_ENV, AFK_SPAWN_FLAGS, CHAIN_LINK_ENV, chainLinkEnv, COPILOT_AFK_SPAWN_FLAGS, copilotPluginDirArgs, defaultSpawnFn, executeSpawnNext, factoryLinkArgv, isCopilotVerifyCommandAllowed, planSpawnNext, spawnNextAlertComment, type SpawnNextChain, type SpawnFn } from '../spawn-next.js';
+import { setSkillListProbe, type SkillListProbe } from '../../../utils/skill-registry.js';
+import { skillSlash } from '../../../utils/skill-slash.js';
 
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('child_process')>();
@@ -199,10 +201,10 @@ describe('executeSpawnNext — planSpawnNext is the single choke point', () => {
     }
   });
 
-  it('spawns a bundled skill by its registered name in the bare form on Claude Code', () => {
+  it('spawns a bundled skill by its registered name in the Claude Code form on Claude Code', () => {
     const plan = planSpawnNext({ ...chain, routeTable: { 'success:*': { stage: 'spec', skill: 'omc-plan' } } }, '/omc-root');
     expect(plan?.spawnArgv[0]).toBe('claude');
-    expect(plan?.spawnArgv[2]).toMatch(/^\/omc-plan 继续 spec 环/);
+    expect(plan?.spawnArgv[2]?.startsWith(`${skillSlash('omc-plan', 'claude')} 继续 spec 环`)).toBe(true);
   });
 });
 
@@ -409,10 +411,35 @@ describe('Copilot host factory links', () => {
     }
   });
 
-  it('spawns a bundled skill as /oh-my-copilot:<registered name> and a project skill bare', () => {
+  it('spawns a bundled skill namespaced when Copilot lists only the namespaced name (plugin-name collision)', () => {
+    const probe = vi.fn<SkillListProbe>(() => [{ name: 'oh-my-copilot:omc-plan', source: 'plugin' }, { name: 'other:omc-plan', source: 'plugin' }]);
+    const previous = setSkillListProbe(probe);
+    const warn = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const plan = planSpawnNext({ ...chain, routeTable: { 'success:*': { stage: 'spec', skill: 'omc-plan' } } }, '/omc-root', '/link-cwd');
+      expect(plan?.spawnArgv[2]?.startsWith('/oh-my-copilot:omc-plan 继续 spec 环')).toBe(true);
+      expect(probe).toHaveBeenCalledWith('/link-cwd', []);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+      setSkillListProbe(previous);
+    }
+  });
+
+  it('refuses a bundled skill a project skill shadows in the registry as route-unknown', () => {
+    const previous = setSkillListProbe(() => [{ name: 'omc-plan', source: 'project', path: '/link-cwd/.github/skills/omc-plan' }]);
+    try {
+      expect(() => planSpawnNext({ ...chain, routeTable: { 'success:*': { stage: 'spec', skill: 'omc-plan' } } }, '/omc-root', '/link-cwd'))
+        .toThrow(/^route-unknown:omc-plan \(skill-shadowed:omc-plan/);
+    } finally {
+      setSkillListProbe(previous);
+    }
+  });
+
+  it('spawns a bundled skill by its bare registered name and a project skill bare', () => {
     const bundled = planSpawnNext({ ...chain, routeTable: { 'success:*': { stage: 'spec', skill: 'omc-plan' } } }, '/omc-root');
     expect(bundled?.spawnArgv[0]).toBe('copilot');
-    expect(bundled?.spawnArgv[2]).toMatch(/^\/oh-my-copilot:omc-plan 继续 spec 环/);
+    expect(bundled?.spawnArgv[2]?.startsWith(`${skillSlash('omc-plan', 'copilot')} 继续 spec 环`)).toBe(true);
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'spawn-next-'));
     try {
       fs.mkdirSync(path.join(directory, '.copilot', 'skills', 'stage-dir'), { recursive: true });

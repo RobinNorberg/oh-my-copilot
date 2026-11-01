@@ -40,7 +40,7 @@ Code Intel: LSP (`lsp_hover`, `lsp_goto_definition`, `lsp_find_references`, `lsp
 </tools>
 
 <skills>
-Invoke via `/oh-my-copilot:<name>`. Trigger patterns auto-detect keywords.
+Invoke via `/<name>`. Trigger patterns auto-detect keywords.
 
 **Canonical workflows (Tier-0):** `plan` → `execute` → `review` → `verify`. Roles: `planner` → `executor` → `reviewer` → `verifier`. `deep-interview` and `ralplan` are independent Tier-0 planning workflows. `research` and `team` are internal lanes; `autopilot`, `autoresearch`, `ralph`, and `ultragoal` remain directly invocable.
 **Retired in 5.0.0 (removed, not aliased):** `ultrawork`, `ultraqa`, `ultrapilot`, `swarm`, `pipeline`, `merge-readiness`, `deep-dive`, `sciomc`, `ccg`, `omc-teams`, `setup`, `mcp-setup`, `omc-reference`, `learner`, `writer-memory`, `local-build-reminder`. Use `execute`, `verify`, `review`, `research`, `omc-setup`, `wiki`, `remember`, or `team` instead.
@@ -70,7 +70,7 @@ Kill switches: `DISABLE_OMC`, `OMC_SKIP_HOOKS` (comma-separated).
 </hooks_and_context>
 
 <cancellation>
-`/oh-my-copilot:cancel` ends execution modes. Cancel when done+verified or blocked. Don't cancel if work incomplete.
+`/cancel` ends execution modes. Cancel when done+verified or blocked. Don't cancel if work incomplete.
 </cancellation>
 
 <worktree_paths>
@@ -79,6 +79,6 @@ State: `.omg/state/`, `.omg/state/sessions/{sessionId}/`, `.omg/notepad.md`, `.o
 
 ## Setup
 
-Say "setup omc" or run `/oh-my-copilot:omc-setup`.
+Say "setup omc" or run `/omc-setup`.
 
 <!-- OMC:END -->

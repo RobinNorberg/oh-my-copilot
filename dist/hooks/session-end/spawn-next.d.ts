@@ -130,6 +130,7 @@ export declare const LABEL_PATTERN: RegExp;
 export type ChainSkillResolution = {
     ok: true;
     slash: string;
+    bundled: boolean;
 } | {
     ok: false;
     hint?: string;
@@ -139,9 +140,11 @@ export type ChainSkillResolution = {
  * skill or a project skill (.copilot/skills, .omg/skills, .agents/skills).
  * A bundled directory name that registers under another name (`plan` →
  * `omc-plan`) is refused with a hint: the bare `/plan` is a native command.
- * `slash` is the form the link's host resolves: Copilot CLI registers plugin
- * skills only as `/oh-my-copilot:<name>`; Claude Code and project skills use
- * the bare `/<name>`.
+ * `slash` is the form the link's host resolves (skillSlash): Copilot CLI
+ * registers a bundled skill by its bare name and Claude Code as
+ * `/oh-my-copilot:<name>`; project skills are bare on both hosts. The
+ * spawner re-checks a bundled skill's slash against Copilot's registry
+ * (resolveSkillSlash) only when it spawns, so this stays a filesystem check.
  */
 export declare function resolveChainSkill(cwd: string, name: string): ChainSkillResolution;
 /**

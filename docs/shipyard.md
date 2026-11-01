@@ -4,7 +4,7 @@ Shipyard is the delivery methodology behind seven opt-in skills: `drydock`, `ask
 
 > **Everyone ships, and nobody ships randomly** — agents continuously run everything repeatable and acceptable-by-evidence; humans decide what cannot be judged by the system or what fails expensively.
 
-This page is the map of the methodology: the boundary principle, the roles, the four pillars, the surface layout, the working metaphor, and how the seven skills compose. The skills themselves (`/oh-my-copilot:drydock`, `/oh-my-copilot:ask-navigator`, `/oh-my-copilot:loft`, `/oh-my-copilot:harbor`, `/oh-my-copilot:launch`, `/oh-my-copilot:architecture-survey`, `/oh-my-copilot:minimal-code-discipline`) are the executable form.
+This page is the map of the methodology: the boundary principle, the roles, the four pillars, the surface layout, the working metaphor, and how the seven skills compose. The skills themselves (`/drydock`, `/ask-navigator`, `/loft`, `/harbor`, `/launch`, `/architecture-survey`, `/minimal-code-discipline`) are the executable form.
 
 ## The verifiability boundary
 
@@ -33,7 +33,7 @@ The premise sentence is the role model compressed: **everyone ships** is the adm
 
 ## The four pillars → five surfaces
 
-A repo that humans and agents both build on carries four pillars across five conceptual surfaces. `/oh-my-copilot:drydock` lays them; every later session inherits them by reading.
+A repo that humans and agents both build on carries four pillars across five conceptual surfaces. `/drydock` lays them; every later session inherits them by reading.
 
 | Conceptual surface | Concrete paths | Carries / filled by |
 | --- | --- | --- |
@@ -50,13 +50,13 @@ A repo that humans and agents both build on carries four pillars across five con
 | The shipyard | The whole harness | A shared facility; everyone comes here to build |
 | The keel | Shared context + rules surfaces | Lay the skeleton first; the hull grows upward |
 | The fog | An effort whose destination isn't stateable yet | Nobody ships randomly — and nobody ships into fog without a chart |
-| The navigator | `/oh-my-copilot:ask-navigator` | Charts the fog as a map of decision tickets; hands off, never builds |
-| The loft | `/oh-my-copilot:loft` | Cut no steel until the shape is fair: a throwaway artifact answers a design question before real work begins |
-| The harbor | `/oh-my-copilot:harbor` | The port's gate: external requests inspected, dispositioned, and turned into work orders — never merges, never decides |
+| The navigator | `/ask-navigator` | Charts the fog as a map of decision tickets; hands off, never builds |
+| The loft | `/loft` | Cut no steel until the shape is fair: a throwaway artifact answers a design question before real work begins |
+| The harbor | `/harbor` | The port's gate: external requests inspected, dispositioned, and turned into work orders — never merges, never decides |
 | The classification society | `docs/standards/` + `design-system/` | A ship must pass class to sail = changes must pass standards to merge |
 | The charts | specs + tickets | Launch's output; build from the chart |
 | The logbook | `docs/adr/` | Decisions, auditable after the fact |
-| The launch | `/oh-my-copilot:launch` | Everyone may launch — and not one class check may be skipped |
+| The launch | `/launch` | Everyone may launch — and not one class check may be skipped |
 | The lookout | `omg lookout` | The mast watch: before an unattended run, scan the briefing and the workspace for danger — the lookout reports, the captain decides |
 
 ## The seven skills compose
@@ -81,7 +81,7 @@ Two levers every checkpoint pulls: **push right** — a checkpoint is deferred a
 
 Every shipyard skill — the seven compose skills plus the `agent-doc-discipline` companion — sits on one of two axes:
 
-- **User-invoked** — reachable only by the human typing the skill (`/oh-my-copilot:launch`). Other skills may point the human at them, but never invoke them through the Skill tool. `launch`, `harbor`, `ask-navigator`, and `architecture-survey` are user-invoked entry points, marked `disable-model-invocation: true` in frontmatter where the harness honors it.
+- **User-invoked** — reachable only by the human typing the skill (`/launch`). Other skills may point the human at them, but never invoke them through the Skill tool. `launch`, `harbor`, `ask-navigator`, and `architecture-survey` are user-invoked entry points, marked `disable-model-invocation: true` in frontmatter where the harness honors it.
 - **Model-invoked** — reachable by the model when the task fits, and callable by other skills ("call the Skill tool with ..."). `drydock`, `loft`, `minimal-code-discipline`, and `agent-doc-discipline` stay model-invoked.
 
 The iron rule: a user-invoked skill never invokes another user-invoked skill. The one deliberate exception is `drydock` — it is a human keel-laying entry point *and* the gate chain's callable audit: launch's yard gate and the navigator's charting mechanically call `drydock --check`, so it must remain model-invoked. The shipyard contract test suite pins the assignment in both directions and rejects skill text that invokes a user-invoked skill by name through the Skill tool.
@@ -125,7 +125,7 @@ The joins, each named as a gate:
 
 The cross-cutting express surfaces — **diagram** and **show-me** — are callable from any stage of the circuit; they are express lanes, not stages.
 
-Shipyard corrects itself through its file-backed paper trail; `/oh-my-copilot:drydock --check` audits harness drift. These skills do not add a separate findings store, shipped/wontfixed state machine, hidden ledger, or `sy check`/`context-lint` commands.
+Shipyard corrects itself through its file-backed paper trail; `/drydock --check` audits harness drift. These skills do not add a separate findings store, shipped/wontfixed state machine, hidden ledger, or `sy check`/`context-lint` commands.
 
 ## Shipyard and the factory
 

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { detectExtractableMoment, shouldPromptExtraction, generateExtractionPrompt, } from '../../hooks/learner/detector.js';
+import { skillSlash } from '../../utils/skill-slash.js';
 describe('Skill Detector', () => {
     describe('detectExtractableMoment', () => {
         it('should detect problem-solution pattern', () => {
@@ -92,8 +93,8 @@ describe('Skill Detector', () => {
             expect(prompt).toContain('useful technique');
             expect(prompt).toContain('80%');
             expect(prompt).toContain('react, hooks');
-            expect(prompt).toContain('oh-my-copilot:skillify');
-            expect(prompt).toContain('oh-my-copilot:learner');
+            expect(prompt).toContain(skillSlash('skillify'));
+            expect(prompt).toContain(skillSlash('learner'));
             expect(prompt).toContain('deprecated compatibility alias');
         });
     });

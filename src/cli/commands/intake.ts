@@ -20,6 +20,7 @@ import { isAbsolute, join, resolve, win32 } from 'path';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { buildHostBinarySpawn } from '../tmux-utils.js';
 import { getHostCliBinary, getHostCliType } from '../../utils/host-detection.js';
+import { resolveSkillSlash } from '../../utils/skill-registry.js';
 
 const HARBOR_LABELS = [
   'harbor:accepted',
@@ -32,7 +33,6 @@ const HARBOR_LABELS = [
   'harbor:changes-requested',
 ];
 
-const HARBOR_SWEEP_PROMPT = '/oh-my-copilot:harbor sweep';
 const TASK_NAME = 'OMC Intake';
 const CRONTAB_MARKER = '# omc-intake';
 const LOCK_STALE_MS = 2 * 3600_000;
@@ -264,9 +264,17 @@ export function runHeadlessIntake(options: { cwd?: string; hostBin?: string; all
     const guardrailsEnv = { OMC_GIT_GUARDRAILS: '1', COPILOT_ALLOW_ALL: 'false' };
     // Copilot's non-interactive mode is `-p <prompt>`; --no-ask-user keeps the
     // unattended sweep from blocking on a question.
-    const sweepArgs = getHostCliType() === 'copilot'
-      ? ['-p', HARBOR_SWEEP_PROMPT, '--no-ask-user']
-      : ['--print', HARBOR_SWEEP_PROMPT];
+    const host = getHostCliType();
+    let harborSlash: string;
+    try {
+      harborSlash = resolveSkillSlash('harbor', { cwd, host, unattended: true });
+    } catch (error) {
+      return { exitCode: 1, message: `intake refused: ${error instanceof Error ? error.message : String(error)}` };
+    }
+    const sweepPrompt = `${harborSlash} sweep`;
+    const sweepArgs = host === 'copilot'
+      ? ['-p', sweepPrompt, '--no-ask-user']
+      : ['--print', sweepPrompt];
     const child = runner(hostBin, sweepArgs, { cwd, env: guardrailsEnv });
     const ok = child.status === 0;
     return {

@@ -69,7 +69,7 @@ The write goes through a temp file, so a failure leaves the existing config unto
 node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" clear-retired
 ```
 
-**Note:** Never write a new `defaultExecutionMode` value. Generic keywords no longer route through a configured execution mode; invoke `/oh-my-copilot:execute` or `/oh-my-copilot:team` directly instead.
+**Note:** Never write a new `defaultExecutionMode` value. Generic keywords no longer route through a configured execution mode; invoke `/execute` or `/team` directly instead.
 
 **Resume-only boundary:** If `RESUMED_PHASE_TWO_BOUNDARY` is `true`, stop Phase 2 after this cleanup. Do not execute Steps 2.5 or 2.6, do not prompt for task-tool or team settings again, and do not save a new progress value. Return to the setup orchestrator with the original `RESUME_LAST_COMPLETED_STEP` unchanged.
 

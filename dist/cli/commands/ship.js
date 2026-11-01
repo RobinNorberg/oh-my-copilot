@@ -1,6 +1,6 @@
 /**
  * `omg ship` — deterministic half of the ship workflow (skill
- * `/oh-my-copilot:ship` drives the agent lanes):
+ * `/ship` drives the agent lanes):
  *   init     start a run for a PR and name the implementer lane
  *   verdict  record an independent reviewer/verifier verdict
  *   prepare  merge the base in, run checks, regenerate the inventory last

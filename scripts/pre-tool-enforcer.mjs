@@ -1447,7 +1447,7 @@ function evaluateUltragoalPreToolEnforcement(stateDir, directory, sessionId, dat
       : !recordUsable
         ? `the OMG goal record is ${record.status || 'missing a status'}.`
         : `the OMG goal record objective does not match: "${record.objective}".`;
-    return `[ULTRAGOAL GOAL RECORD REQUIRED] Active ultragoal state requires an OMG goal record before tools run on GitHub Copilot CLI (it has no Claude /goal); ${problem} Record the objective and its acceptance criteria with: omg ultragoal goal-start --criterion "<acceptance criterion>" (one --criterion per criterion; it defaults to the expected objective). Or run /oh-my-copilot:cancel, or set ALLOW_ULTRAGOAL_WITHOUT_GOAL=1 to bypass this guard intentionally. Expected objective: ${expected || '<the objective passed to goal-start>'}`;
+    return `[ULTRAGOAL GOAL RECORD REQUIRED] Active ultragoal state requires an OMG goal record before tools run on GitHub Copilot CLI (it has no Claude /goal); ${problem} Record the objective and its acceptance criteria with: omg ultragoal goal-start --criterion "<acceptance criterion>" (one --criterion per criterion; it defaults to the expected objective). Or run /cancel, or set ALLOW_ULTRAGOAL_WITHOUT_GOAL=1 to bypass this guard intentionally. Expected objective: ${expected || '<the objective passed to goal-start>'}`;
   }
 
   const mismatch = actualObjective

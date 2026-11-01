@@ -564,7 +564,7 @@ Narrate:
 - "  Which mode is active"
 - "  How many agents are working"
 - "  What each agent is doing"
-- "Installation: `/oh-my-copilot:hud setup` - adds to your shell prompt"
+- "Installation: `/hud setup` - adds to your shell prompt"
 
 **Notepad Wisdom** (Slide 36)
 - "OMC learns from every session via the notepad system:"
@@ -617,7 +617,7 @@ Narrate:
 npm install -g oh-my-copilot
 
 # Step 2: Run setup wizard
-claude-code "/oh-my-copilot:omc-setup"
+claude-code "/omc-setup"
 
 # Step 3: Start using it
 claude-code "autopilot: build me a todo app"

@@ -6,6 +6,8 @@ import { canonicalChainSkill, chainSkillStatus, decideNextStage, VERIFY_COMMAND_
 import { getOmcRoot, validateSessionId } from '../../lib/worktree-paths.js';
 import { buildHostBinarySpawn } from '../../cli/tmux-utils.js';
 import { getHostCliBinary, getHostCliType } from '../../utils/host-detection.js';
+import { resolveSkillSlash } from '../../utils/skill-registry.js';
+import { skillSlash } from '../../utils/skill-slash.js';
 import { issueAddLabelArgv, issueCommentBodyArgv } from '../../forge/github/chain-tracker.js';
 import { getSkillsDir } from '../../features/builtin-skills/skills.js';
 import { parseFrontmatter } from '../../utils/frontmatter.js';
@@ -257,18 +259,20 @@ function skillRegisteredIn(dir, name) {
  * skill or a project skill (.copilot/skills, .omg/skills, .agents/skills).
  * A bundled directory name that registers under another name (`plan` →
  * `omc-plan`) is refused with a hint: the bare `/plan` is a native command.
- * `slash` is the form the link's host resolves: Copilot CLI registers plugin
- * skills only as `/oh-my-copilot:<name>`; Claude Code and project skills use
- * the bare `/<name>`.
+ * `slash` is the form the link's host resolves (skillSlash): Copilot CLI
+ * registers a bundled skill by its bare name and Claude Code as
+ * `/oh-my-copilot:<name>`; project skills are bare on both hosts. The
+ * spawner re-checks a bundled skill's slash against Copilot's registry
+ * (resolveSkillSlash) only when it spawns, so this stays a filesystem check.
  */
 export function resolveChainSkill(cwd, name) {
     if (!CHAIN_SKILL_NAME.test(name))
         return { ok: false };
     if (skillRegisteredIn(getSkillsDir(), name)) {
-        return { ok: true, slash: getHostCliType() === 'copilot' ? `/oh-my-copilot:${name}` : `/${name}` };
+        return { ok: true, slash: skillSlash(name), bundled: true };
     }
     if ([path.join(cwd, '.copilot', 'skills'), path.join(getOmcRoot(cwd), 'skills'), path.join(cwd, '.agents', 'skills')].some((dir) => skillRegisteredIn(dir, name))) {
-        return { ok: true, slash: `/${name}` };
+        return { ok: true, slash: `/${name}`, bundled: false };
     }
     const registered = registeredSkillName(path.join(getSkillsDir(), name));
     return registered && registered !== name ? { ok: false, hint: `did you mean ${registered}` } : { ok: false };
@@ -361,6 +365,15 @@ export function planSpawnNext(chain, omcRoot, linkCwd = process.cwd()) {
     const skill = resolveChainSkill(linkCwd, directive.skill);
     if (!skill.ok)
         throw new Error(`route-unknown:${directive.skill}${skill.hint ? ` (${skill.hint})` : ''}`);
+    let slash = skill.slash;
+    if (skill.bundled) {
+        try {
+            slash = resolveSkillSlash(directive.skill, { cwd: linkCwd, probeArgs: copilotPluginDirArgs(process.env, linkCwd), unattended: true });
+        }
+        catch (error) {
+            throw new Error(`route-unknown:${directive.skill} (${error instanceof Error ? error.message : String(error)})`);
+        }
+    }
     const handoffPath = path.join(omcRoot, 'handoffs', `${chain.sessionId}-${directive.stage}.json`);
     const trackerCommands = chain.tracker
         ? [
@@ -372,7 +385,7 @@ export function planSpawnNext(chain, omcRoot, linkCwd = process.cwd()) {
     return {
         directive,
         handoffPath,
-        spawnArgv: [factoryLinkCommand(), ...factoryLinkArgv(`${skill.slash} 继续 ${directive.stage} 环；交接上下文：${path.basename(handoffPath)}`, nextSessionId, directive.verify, [], chain.includeUserSettings === true, linkCwd)],
+        spawnArgv: [factoryLinkCommand(), ...factoryLinkArgv(`${slash} 继续 ${directive.stage} 环；交接上下文：${path.basename(handoffPath)}`, nextSessionId, directive.verify, [], chain.includeUserSettings === true, linkCwd)],
         nextSessionId,
         trackerCommands,
     };

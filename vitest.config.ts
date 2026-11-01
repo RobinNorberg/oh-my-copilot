@@ -17,7 +17,7 @@ export default defineConfig({
       hookTimeout: 10000 * TIMING_SCALE,
       maxWorkers: Math.min(16, Math.max(1, availableParallelism() - 1)),
     } : {}),
-    setupFiles: ['src/__tests__/setup/clear-copilot-home.ts'],
+    setupFiles: ['src/__tests__/setup/clear-copilot-home.ts', 'src/__tests__/setup/stub-skill-list-probe.ts'],
     globalSetup: ['src/__tests__/setup/global-state-guard.ts'],
     // Test-only seams (for example the conditional-clear replacement hooks in
     // src/lib/mode-state-io.ts) run only when NODE_ENV is 'test'. Pin it so an

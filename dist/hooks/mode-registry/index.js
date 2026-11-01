@@ -14,6 +14,7 @@ import { join, dirname } from "path";
 import { listSessionIds, resolveSessionStatePath, getSessionStateDir, getOmcRoot, } from '../../lib/worktree-paths.js';
 import { getStateSessionOwner } from '../../lib/mode-state-io.js';
 import { MODE_STATE_FILE_MAP, MODE_NAMES } from "../../lib/mode-names.js";
+import { skillSlash } from "../../utils/skill-slash.js";
 /**
  * Mode configuration registry
  *
@@ -278,7 +279,7 @@ export function canStartMode(mode, cwd) {
                 return {
                     allowed: false,
                     blockedBy: exclusiveMode,
-                    message: `Cannot start ${MODE_CONFIGS[mode].name} while ${config.name} is active. Cancel ${config.name} first with /oh-my-copilot:cancel.`,
+                    message: `Cannot start ${MODE_CONFIGS[mode].name} while ${config.name} is active. Cancel ${config.name} first with ${skillSlash('cancel')}.`,
                 };
             }
         }

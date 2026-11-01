@@ -14,6 +14,7 @@ import { readFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
 import { homedir } from "os";
 import { getCopilotConfigDir } from '../utils/config-dir.js';
+import { skillSlash } from '../utils/skill-slash.js';
 
 // =============================================================================
 // TEMPLATE LOADER (loads hook scripts from templates/hooks/)
@@ -245,7 +246,7 @@ Ralph mode persists until the requested work is verified complete. Follow these 
 ### Completion Requirements
 - Verify ALL requirements from the original task are met
 - Architect verification is MANDATORY before claiming completion
-- When FULLY complete, run \`/oh-my-copilot:cancel\` to cleanly exit and clean up state files
+- When FULLY complete, run \`${skillSlash('cancel')}\` to cleanly exit and clean up state files
 
 Continue working until the task is truly done.
 `;

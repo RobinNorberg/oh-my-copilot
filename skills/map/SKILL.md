@@ -41,7 +41,7 @@ You know something needs doing; you do not know which skill owns it. Find the jo
 | An open question needs grounded answers | `research`; external docs: `external-context` |
 | Knowledge should compound across sessions | `wiki`; durable project memory: `remember` |
 | A recurring autonomous improvement loop | `self-improve`; durable goal ledger: `ultragoal` |
-| A session needs reorientation across its pivots and outcomes | `session-flow` — run `/oh-my-copilot:session-flow` manually |
+| A session needs reorientation across its pivots and outcomes | `session-flow` — run `/session-flow` manually |
 | Visual work needs verdicts or diagrams | `visual-verdict`; `diagram` |
 | Unpushed commits need a pre-push critique | `critique` |
 | A change needs multi-pass review (security, quality, structure) | `deep-review` |

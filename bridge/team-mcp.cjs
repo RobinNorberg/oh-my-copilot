@@ -11695,6 +11695,14 @@ var init_security_config = __esm({
 });
 
 // src/utils/host-signal.ts
+function detectHostCliType(env = process.env) {
+  return detectHostCliSignal(env) ?? "copilot";
+}
+function detectHostCliSignal(env = process.env) {
+  if (env.COPILOT_CLI || env.COPILOT_AGENT_SESSION_ID) return "copilot";
+  if (env.CLAUDE_CODE_ENTRYPOINT) return "claude";
+  return null;
+}
 var init_host_signal = __esm({
   "src/utils/host-signal.ts"() {
     "use strict";
@@ -12905,6 +12913,19 @@ var init_copilot_session_eval = __esm({
   }
 });
 
+// src/utils/skill-slash.ts
+function skillSlash(name, host = detectHostCliType()) {
+  return host === "copilot" ? `/${name}` : `/${SKILL_NAMESPACE}:${name}`;
+}
+var SKILL_NAMESPACE;
+var init_skill_slash = __esm({
+  "src/utils/skill-slash.ts"() {
+    "use strict";
+    init_host_signal();
+    SKILL_NAMESPACE = "oh-my-copilot";
+  }
+});
+
 // src/smoke/copilot-sdk-scenarios.ts
 function samePathKey(p, platform) {
   let out = (0, import_path26.resolve)(p);
@@ -12954,6 +12975,7 @@ var init_copilot_sdk_scenarios = __esm({
     import_path26 = require("path");
     init_ledger();
     init_copilot_session_eval();
+    init_skill_slash();
     FACTORY_RUN_SCENARIOS = ["factory-run", "factory-run-fix"];
     SANDBOX_LANE_SCENARIO = "sandbox-lane";
     CLI_SCENARIOS = ["continuation", "prompt-context", "events", "ultragoal"];
@@ -13011,7 +13033,7 @@ var init_copilot_sdk_scenarios = __esm({
       },
       skill: {
         name: "skill",
-        prompt: "Use the /oh-my-copilot:plan skill to outline a two-step plan for adding a README. Keep it under 5 lines.",
+        prompt: `Use the ${skillSlash("omc-plan", "copilot")} skill to outline a two-step plan for adding a README. Keep it under 5 lines.`,
         excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
         permit: permitScopedRead
         // loading SKILL.md is a read request

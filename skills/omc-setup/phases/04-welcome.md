@@ -39,14 +39,14 @@ Just include these words naturally in your request:
 | cancelomc | Stop active OMC modes | "cancelomc" |
 
 CANONICAL WORKFLOWS (Tier-0):
-omc-plan -> execute -> omc-review -> verify, invoked as /oh-my-copilot:omc-plan and /oh-my-copilot:omc-review.
+omc-plan -> execute -> omc-review -> verify, invoked as /omc-plan and /omc-review.
 /deep-interview and /ralplan are independent planning workflows.
 /research and /team are internal lanes; /autopilot, /autoresearch, /ralph, /ultragoal stay directly invocable.
 
 TEAMS:
 Spawn coordinated agents with shared task lists and real-time messaging:
-- /oh-my-copilot:team 3:executor "fix all TypeScript errors"
-- /oh-my-copilot:team 5:debugger "fix build errors in src/"
+- /team 3:executor "fix all TypeScript errors"
+- /team 5:debugger "fix build errors in src/"
 Teams use Claude Code's implicit agent team (spawn teammates directly with distinct `name` values; no TeamCreate/TeamDelete in Claude Code 2.1.178+). Team orchestration is explicit via /team — there is no bare "team" keyword.
 
 MCP SERVERS:
@@ -100,7 +100,7 @@ MAGIC KEYWORDS (power-user shortcuts):
 
 TEAMS (NEW!):
 Spawn coordinated agents with shared task lists and real-time messaging:
-- /oh-my-copilot:team 3:executor "fix all TypeScript errors"
+- /team 3:executor "fix all TypeScript errors"
 - Uses Claude Code's implicit agent team (spawn teammates directly with distinct `name` values; no TeamCreate/TeamDelete in Claude Code 2.1.178+)
 
 HUD STATUSLINE:
