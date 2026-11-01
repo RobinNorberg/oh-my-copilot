@@ -266,6 +266,8 @@ Runs the complete pipeline: `tsc` → esbuild bundles → docs composition → a
 
 ### Generated `dist/` and `bridge/` changes are held
 
+> **On this fork:** `dist/` and `bridge/` are committed. Run `npm run build`, then stage with `git add -A` followed by `git add -f dist bridge` (never `git add -A -f`). The **No Committed Build Artifacts** and **Authorize generated artifacts from base trust root** checks then fail by design; the maintainer signs the generated delta off. The upstream policy below does not apply here.
+
 `npm run build` regenerates `dist/` and `bridge/`. **Do not commit these build artifacts in ordinary PRs.** They are gitignored, but tracked `bridge/*.cjs` bundles can appear modified after a rebuild. Committing them inflates the diff, causes merge conflicts, and obscures the source change.
 
 Before committing, restore them:
@@ -312,6 +314,8 @@ All of these should pass before you submit a PR. GitHub CI will verify them.
 ---
 
 ## 8. Rebasing onto Upstream
+
+> **On this fork:** never rebase a pushed branch and never force-push, `--force-with-lease` included. When your branch falls behind, run `git fetch origin` and `git merge origin/dev`, then a plain `git push`. Others (the maintainer side) may have pushed commits to your branch; a force-push would destroy them. The upstream rebase flow below does not apply here.
 
 When you're ready to sync with the latest upstream changes:
 

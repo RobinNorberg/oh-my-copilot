@@ -92,20 +92,30 @@ in the way, stop and ask Robin.
 
 ### 1. GitHub CLI with minimal rights
 
-Use a fine-grained personal access token scoped to
-`RobinNorberg/oh-my-copilot` only, with:
+Use a fine-grained personal access token that reaches two repositories
+only: `RobinNorberg/oh-my-copilot`, and a scratch repository for the GitHub
+factory test ([Step 2](#step-2-the-factory-by-hand-on-github-and-on-azure-devops)).
+Robin creates the scratch repository and the token; you never create a
+repository. On GitHub, under **Settings → Developer settings → Personal
+access tokens → Fine-grained tokens → Generate new token**:
+
+- **Resource owner:** `RobinNorberg`.
+- **Repository access:** **Only select repositories**, then pick
+  `RobinNorberg/oh-my-copilot` and the scratch repository. Nothing else.
+- **Repository permissions:**
 
 | Permission | Access | For |
 |---|---|---|
-| Contents | Read and write | pushing `field/*` branches |
-| Issues | Read and write | filing findings, labels, comments |
+| Contents | Read and write | pushing `field/*` branches; the factory's branches in the scratch repository |
+| Issues | Read and write | filing findings, labels, comments; factory intake in the scratch repository |
 | Pull requests | Read and write | draft PRs |
+| Actions | Read | `omg factory heal scan` and the factory's CI checks read workflow runs |
 | Metadata | Read | required by GitHub |
 
 Give it nothing else: no Administration, no Workflows, no Actions write, no
-Secrets. Without the Workflows permission GitHub itself refuses a push that
-touches `.github/workflows/`. Contents write still allows pushing any branch,
-so rule 3 is yours to keep.
+Secrets, no account permissions. Without the Workflows permission GitHub
+itself refuses a push that touches `.github/workflows/`. Contents write
+still allows pushing any branch, so rule 3 is yours to keep.
 
 ```powershell
 gh auth login --hostname github.com   # paste the token when asked
@@ -125,28 +135,49 @@ git config --global user.email "<id>+<login>@users.noreply.github.com"
 
 ```powershell
 npm i -g oh-my-copilot@latest
+npm i -g @github/copilot-sdk --omit=optional --ignore-scripts
 omg --version
 omg setup
 omg doctor
 ```
 
-Write the version down; it goes in every issue.
+Write the version down; it goes in every issue. `@github/copilot-sdk` is an
+optional peer: without it `omg smoke copilot --sdk-static` and every tier 2
+form exit 2 ("skipped"). Exit 2 is not a pass; report it as skipped.
 
-### 4. A clone at the same version
-
-The acceptance and fixture scripts live in the repository, not the package,
-and need a build. Check out the tag that matches `omg --version`:
+For team workers in panes (Step 3) install psmux 3.3.7 or later and check
+the version:
 
 ```powershell
-gh repo clone RobinNorberg/oh-my-copilot C:\field\oh-my-copilot
-cd C:\field\oh-my-copilot
+winget install psmux
+psmux -V
+```
+
+### 4. Two clones: the guide on `dev`, the scripts at your version
+
+The acceptance and fixture scripts live in the repository, not the package,
+and need a build matching the installed package. This guide and the field
+section of `AGENTS.md` live on `dev` and do not exist in older tags, so a
+`git checkout v<version>` in the clone you read them from would delete
+them. Keep two separate clones (two directories, not `git worktree`):
+
+```powershell
+# 1. The guide, and the base for fixes: stays on dev.
+gh repo clone RobinNorberg/oh-my-copilot C:\field\guide
+# 2. The scripts, at the tag that matches `omg --version`.
+gh repo clone RobinNorberg/oh-my-copilot C:\field\run
+cd C:\field\run
 git checkout v<version>     # for example v5.19.2
 npm ci
 npm run build
 ```
 
-Use this checkout for testing. Fixes start from `origin/dev` instead (see
-[Contributing a fix](#contributing-a-fix)).
+Run every `node scripts/...` command and every test from `C:\field\run`.
+Judge behaviour against that tag's `docs/REFERENCE.md`
+(`C:\field\run\docs\REFERENCE.md`), not the one on `dev`: `dev` may document
+features your version lacks. Read this guide from `C:\field\guide`, and
+`git pull` there before each session. Fixes start from `origin/dev` in
+`C:\field\guide` (see [Contributing a fix](#contributing-a-fix)).
 
 ### 5. Azure DevOps access
 
@@ -247,7 +278,7 @@ item or policy. The manifest records which step was in flight.
 
 Run these inside a test repository whose `origin` is the forge under test (the
 acceptance clone under `~/.omg/acceptance/<runId>/repo/` for Azure DevOps; a
-scratch GitHub repository of your own for GitHub). The reference is
+scratch repository Robin made for GitHub, see Setup step 1). The reference is
 [`omg factory`](./REFERENCE.md#omg-factory).
 
 | Command | Observe |
@@ -283,21 +314,39 @@ credits, ask first. It must stop at `awaiting-human: merge` and never merge.
 The reference is [`omg team`](./REFERENCE.md#omg-team-cli-runtime-surface) and
 its [Windows (psmux)](./REFERENCE.md#windows-psmux) section.
 
+Check every command's syntax against your version first, with
+`omg team --help` and `omg smoke copilot --help` (or
+`node bin/oh-my-copilot.js team --help` in `C:\field\run`).
+
 1. Free checks: `omg doctor`, `omg smoke copilot` (tier 0) and
    `omg smoke copilot --sdk-static`. Observe: all checks pass; `sdk.sandbox`
-   reports host support.
-2. With Robin's yes (credits): `omg team 2:copilot "<a tiny task>"`, then
-   `omg team status --json` and `omg team shutdown <team>`. Observe:
-   `transport`, worker states, AI credits per worker, a clean shutdown, no
-   leftover psmux namespace.
+   reports host support. Exit 2 means skipped (the copilot binary or
+   `@github/copilot-sdk` was not found), not passed.
+2. With Robin's yes (credits), both transports. Under Copilot CLI the
+   default `--transport auto` picks `sdk`, so the psmux run needs
+   `--transport pane`:
+   - `omg team 2:copilot --transport sdk "<a tiny task>"`
+   - `omg team 2:copilot --transport pane "<a tiny task>"`
+
+   Each launch prints the team name. Then run
+   `omg team status <team-name> --json` and
+   `omg team shutdown <team-name>`. Observe: `transport`, worker states, AI
+   credits per worker, a clean shutdown, and for `pane` no leftover psmux
+   namespace (the namespace is in `status`; see the
+   [Windows (psmux)](./REFERENCE.md#windows-psmux) section).
 
 ### Step 4: Copilot record and replay (when asked)
 
 The reference is [`omg smoke copilot`](./REFERENCE.md#omg-smoke-copilot).
 
-- Free: `omg smoke copilot --tier 2 --scenario factory-run --replay
-  src/smoke/__tests__/fixtures/cassettes` in the clone replays recorded
-  model traffic. A miss or a failed check is a finding.
+- Free, and only once cassettes exist in your clone: `omg smoke copilot
+  --tier 2 --scenario factory-run --replay
+  src/smoke/__tests__/fixtures/cassettes` in `C:\field\run` replays recorded
+  model traffic. First check that
+  `src/smoke/__tests__/fixtures/cassettes` exists there; when it does not
+  (no release has shipped cassettes yet), skip this step. A missing
+  cassette directory is not a finding. With cassettes present, a miss or a
+  failed check is a finding.
 - Paid, only on Robin's request: `omg smoke copilot --tier 2 --scenario
   <list> --model <id> --record ~/omg-cassettes` records new cassettes. See
   [Captured data](#captured-data) for how they come in.
@@ -392,9 +441,10 @@ list below wins and the difference is called out):
 
 1. Comment on the issue that you are taking it and add
    `field:fix-in-progress`.
-2. Branch from `dev`, in a checkout separate from your testing tag:
+2. Branch from `dev` in `C:\field\guide`, never in `C:\field\run`:
    `git fetch origin` then `git switch -c field/<issue#>-<slug> origin/dev`
-   (for example `field/412-az-path-join`).
+   (for example `field/412-az-path-join`), then `npm ci`. Switch back to
+   `dev` when the PR is open, so the guide you read stays current.
 3. Reproduce on `dev` first. When `dev` already behaves, say so on the issue
    and stop.
 4. Write the failing test, then the fix. Keep the diff small; match the
@@ -405,7 +455,11 @@ list below wins and the difference is called out):
    npm run build
    npx vitest run <the test files you touched>
    npx tsc --noEmit
+   npm run lint
    ```
+
+   Keep `pr.md`, `finding.md` and any notes OUTSIDE the clone (for example
+   in `C:\field\notes\`): the `git add -A` in step 7 would commit them.
 
 6. Add one entry under `## [Unreleased]` in `CHANGELOG.md` (Fixed, Changed or
    Docs), ending with the issue number.
@@ -430,14 +484,23 @@ list below wins and the difference is called out):
 9. Open a draft PR to `dev`:
 
    ```powershell
-   gh pr create --repo RobinNorberg/oh-my-copilot --base dev --draft --title "fix(<area>): <summary>" --body-file pr.md
+   gh pr create --repo RobinNorberg/oh-my-copilot --base dev --draft --label field --title "fix(<area>): <summary>" --body-file C:\field\notes\pr.md
    ```
 
    The body holds: what and why in two or three lines; `Fixes #<n>`; the red
    evidence (the test failing before the fix, output trimmed); the green
-   evidence (the same test passing, plus `npx tsc --noEmit` clean); what you
-   could not verify. `Fixes #<n>` closes the issue when the change reaches
-   `main` in a release, not when the PR merges to `dev`.
+   evidence (the same test passing, plus `npx tsc --noEmit` and
+   `npm run lint` clean); what you could not verify. `Fixes #<n>` closes the
+   issue when the change reaches `main` in a release, not when the PR merges
+   to `dev`.
+
+   Two checks fail by design on every PR whose diff touches `dist/` or
+   `bridge/`, which every fix with a build does: **No Committed Build
+   Artifacts** and **Authorize generated artifacts from base trust root**.
+   They hold generated changes for the maintainer's sign-off. Do not try to
+   make them pass (no `git restore dist bridge`, no workflow edits); say in
+   the PR body that they are expected. Any other red check is yours to look
+   at.
 10. Answer review comments with new commits on the same branch. Never
     force-push (rule 2).
 
@@ -455,7 +518,8 @@ issue attachments or pasted text.
   the diff before committing.
 - **Replay cassettes** (from `--record <dir>`): run
   `omg smoke cassette verify <dir>` (the redaction gate, then a free replay),
-  then from the clone root `omg smoke cassette import <dir>`, which copies them
+  then on your `field/` branch in `C:\field\guide` run
+  `omg smoke cassette import <dir>`, which copies them
   into `src/smoke/__tests__/fixtures/cassettes/`. A cassette marked
   `REDACTION-FAILED` never goes in. Read the diff before committing.
 
@@ -472,8 +536,9 @@ body that names the run, the moment or scenario, and the Copilot CLI version.
 | `field:needs-repro` | the maintainer | not reproduced from the report | add the missing data as a comment; the label is removed when it reproduces |
 | `field:fix-in-progress` | whoever starts the fix | a branch or PR is open for it | nobody else starts a second fix |
 
-An idle issue gets the `stale` label after 30 days and closes 14 days later;
-a comment resets the clock.
+Issues and PRs labelled `field` are exempt from the stale bot, so a finding
+or a fix PR never closes for inactivity. Put `field` on every issue and PR
+you open (the form and the `gh` commands above do).
 
 ## What the maintainer side does
 
