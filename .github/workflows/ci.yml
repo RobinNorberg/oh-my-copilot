@@ -175,7 +175,7 @@ jobs:
         shell: bash
         run: |
           tar -xf "$RUNNER_TEMP/build-output/build-output.tar"
-          jq -r '.files[]|"\(.sha256)  \(.path)"' "$RUNNER_TEMP/build-output/build-manifest.json" | sha256sum -c --quiet
+          jq -r '.files[]|"\(.sha256)  \(.path)"' "$RUNNER_TEMP/build-output/build-manifest.json" | tr -d '' | sha256sum -c --quiet
           npm run build:contained-fs
 
       - name: Run portable restore and SessionStart interleaving tests
@@ -249,7 +249,7 @@ jobs:
         run: |
           # Git Bash GNU tar reads a drive-letter path as host:path without --force-local.
           tar --force-local -xf "$RUNNER_TEMP/build-output/build-output.tar"
-          jq -r '.files[]|"\(.sha256)  \(.path)"' "$RUNNER_TEMP/build-output/build-manifest.json" | sha256sum -c --quiet
+          jq -r '.files[]|"\(.sha256)  \(.path)"' "$RUNNER_TEMP/build-output/build-manifest.json" | tr -d '' | sha256sum -c --quiet
           npm run build:contained-fs
 
       - name: Run portable restore and SessionStart interleaving tests
@@ -455,7 +455,7 @@ jobs:
         shell: bash
         run: |
           tar -xf "$RUNNER_TEMP/build-output/build-output.tar"
-          jq -r '.files[]|"\(.sha256)  \(.path)"' "$RUNNER_TEMP/build-output/build-manifest.json" | sha256sum -c --quiet
+          jq -r '.files[]|"\(.sha256)  \(.path)"' "$RUNNER_TEMP/build-output/build-manifest.json" | tr -d '' | sha256sum -c --quiet
 
       - name: npm pack test
         run: |
@@ -632,7 +632,7 @@ jobs:
         shell: bash
         run: |
           tar -xf "$RUNNER_TEMP/build-output/build-output.tar"
-          jq -r '.files[]|"\(.sha256)  \(.path)"' "$RUNNER_TEMP/build-output/build-manifest.json" | sha256sum -c --quiet
+          jq -r '.files[]|"\(.sha256)  \(.path)"' "$RUNNER_TEMP/build-output/build-manifest.json" | tr -d '' | sha256sum -c --quiet
 
       - name: Build
         if: steps.gate.outputs.enabled == 'true' && needs.build.result != 'success'
