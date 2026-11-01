@@ -14317,49 +14317,49 @@ var init_sdk = __esm({
         const resolved = resolveComponents(parse62(baseURI, schemelessOptions), parse62(relativeURI, schemelessOptions), schemelessOptions, true);
         return serialize(resolved, { ...schemelessOptions, skipEscape: true });
       }
-      function resolveComponents(base, relative42, options, skipNormalization) {
+      function resolveComponents(base, relative43, options, skipNormalization) {
         const target = {};
         if (!skipNormalization) {
           base = parse62(serialize(base, options), options);
-          relative42 = parse62(serialize(relative42, options), options);
+          relative43 = parse62(serialize(relative43, options), options);
         }
         options = options || {};
-        if (!options.tolerant && relative42.scheme) {
-          target.scheme = relative42.scheme;
-          target.userinfo = relative42.userinfo;
-          target.host = relative42.host;
-          target.port = relative42.port;
-          target.path = removeDotSegments(relative42.path || "");
-          target.query = relative42.query;
+        if (!options.tolerant && relative43.scheme) {
+          target.scheme = relative43.scheme;
+          target.userinfo = relative43.userinfo;
+          target.host = relative43.host;
+          target.port = relative43.port;
+          target.path = removeDotSegments(relative43.path || "");
+          target.query = relative43.query;
         } else {
-          if (relative42.userinfo !== void 0 || relative42.host !== void 0 || relative42.port !== void 0) {
-            target.userinfo = relative42.userinfo;
-            target.host = relative42.host;
-            target.port = relative42.port;
-            target.path = removeDotSegments(relative42.path || "");
-            target.query = relative42.query;
+          if (relative43.userinfo !== void 0 || relative43.host !== void 0 || relative43.port !== void 0) {
+            target.userinfo = relative43.userinfo;
+            target.host = relative43.host;
+            target.port = relative43.port;
+            target.path = removeDotSegments(relative43.path || "");
+            target.query = relative43.query;
           } else {
-            if (!relative42.path) {
+            if (!relative43.path) {
               target.path = base.path;
-              if (relative42.query !== void 0) {
-                target.query = relative42.query;
+              if (relative43.query !== void 0) {
+                target.query = relative43.query;
               } else {
                 target.query = base.query;
               }
             } else {
-              if (relative42.path.charAt(0) === "/") {
-                target.path = removeDotSegments(relative42.path);
+              if (relative43.path.charAt(0) === "/") {
+                target.path = removeDotSegments(relative43.path);
               } else {
                 if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                  target.path = "/" + relative42.path;
+                  target.path = "/" + relative43.path;
                 } else if (!base.path) {
-                  target.path = relative42.path;
+                  target.path = relative43.path;
                 } else {
-                  target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative42.path;
+                  target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative43.path;
                 }
                 target.path = removeDotSegments(target.path);
               }
-              target.query = relative42.query;
+              target.query = relative43.query;
             }
             target.userinfo = base.userinfo;
             target.host = base.host;
@@ -14367,7 +14367,7 @@ var init_sdk = __esm({
           }
           target.scheme = base.scheme;
         }
-        target.fragment = relative42.fragment;
+        target.fragment = relative43.fragment;
         return target;
       }
       function equal(uriA, uriB, options) {
@@ -58819,9 +58819,9 @@ function getTrustedPrefixes() {
 function isTrustedPrefix(resolvedPath) {
   const flavor = pathFlavor();
   return getTrustedPrefixes().some((prefix) => {
-    const relative42 = flavor.relative(prefix, resolvedPath);
-    if (relative42 === "") return true;
-    return !relative42.startsWith("..") && !flavor.isAbsolute(relative42);
+    const relative43 = flavor.relative(prefix, resolvedPath);
+    if (relative43 === "") return true;
+    return !relative43.startsWith("..") && !flavor.isAbsolute(relative43);
   });
 }
 function assertBinaryName(binary) {
@@ -77719,10 +77719,30 @@ function probeLaunch(args) {
 function printable(value) {
   return value.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
 }
+function realKey(path30) {
+  try {
+    const real2 = import_fs82.realpathSync.native(path30);
+    return process.platform === "win32" ? real2.toLowerCase() : real2;
+  } catch {
+    return null;
+  }
+}
+function isOurPluginLocation(root2) {
+  const real2 = realKey(root2);
+  if (!real2) return false;
+  const devRoot = process.env.OMC_PLUGIN_ROOT?.trim();
+  if (devRoot && realKey(devRoot) === real2) return true;
+  const installed = realKey((0, import_path99.join)(getCopilotConfigDir(), "installed-plugins"));
+  if (!installed) return false;
+  const rel = (0, import_path99.relative)(installed, real2);
+  return rel !== "" && !rel.startsWith("..") && !(0, import_path99.isAbsolute)(rel);
+}
 function isOurSkill(entry2) {
   if (entry2.source !== "plugin" || typeof entry2.path !== "string" || entry2.path === "") return false;
   try {
-    const manifest = JSON.parse((0, import_fs82.readFileSync)((0, import_path99.join)((0, import_path99.dirname)((0, import_path99.dirname)(entry2.path)), "plugin.json"), "utf8"));
+    const root2 = (0, import_path99.dirname)((0, import_path99.dirname)(entry2.path));
+    if (!isOurPluginLocation(root2)) return false;
+    const manifest = JSON.parse((0, import_fs82.readFileSync)((0, import_path99.join)(root2, "plugin.json"), "utf8"));
     return typeof manifest === "object" && manifest !== null && manifest.name === SKILL_NAMESPACE;
   } catch {
     return false;
@@ -77735,8 +77755,9 @@ function resolveSkillSlash(name, options) {
   const key = `${options.cwd}\0${probeArgs.join("\0")}`;
   if (!probeCache.has(key)) probeCache.set(key, activeProbe(options.cwd, probeArgs));
   const entries = probeCache.get(key);
-  if (entries === "unresolved" && options.unattended) {
-    throw new Error(`skill-unverifiable:${name}: no copilot binary on PATH to list the registered skills; an unattended session cannot be checked for a shadowing skill`);
+  if ((!entries || entries === "unresolved") && options.unattended) {
+    const why = entries === "unresolved" ? "no copilot binary on PATH to list the registered skills" : "the registered skills could not be listed";
+    throw new Error(`skill-unverifiable:${name}: ${why}; an unattended session cannot be checked for a shadowing skill`);
   }
   if (!entries || entries === "unresolved") return skillSlash(name, host);
   const warn = options.warn ?? ((message4) => process.stderr.write(`[oh-my-copilot] ${message4}
@@ -77764,6 +77785,7 @@ var init_skill_registry = __esm({
     import_fs82 = require("fs");
     import_path99 = require("path");
     init_host_signal();
+    init_config_dir();
     init_host_detection();
     init_skill_slash();
     init_windows_search();

@@ -29,8 +29,9 @@ export interface ResolveSkillSlashOptions {
     probeArgs?: readonly string[];
     /**
      * The session runs without a human (an --allow-all link): a skill that is
-     * not ours throws `skill-shadowed:<name>`, and no host binary on PATH to
-     * probe throws `skill-unverifiable:<name>`.
+     * not ours throws `skill-shadowed:<name>`, and any probe failure (no host
+     * binary on PATH, timeout, non-zero exit, unparseable output) throws
+     * `skill-unverifiable:<name>`.
      */
     unattended?: boolean;
     /** Where a mismatch warning goes; stderr by default. */
@@ -41,8 +42,10 @@ export interface ResolveSkillSlashOptions {
  * skill. On Copilot the registry is probed once per process (per cwd and
  * args): a namespaced-only entry (a plugin-name collision) wins, a missing or
  * shadowed name is warned about, and a failed probe falls back to the bare
- * name. With `unattended`, a bare entry that is not our plugin's skill (a
- * project or user skill, or another plugin's) throws instead.
+ * name. With `unattended`, a failed probe throws `skill-unverifiable`, and a
+ * bare entry that is not our plugin's skill (a project or user skill, another
+ * plugin's, or a plugin outside OMC_PLUGIN_ROOT and the installed-plugins dir)
+ * throws `skill-shadowed`.
  */
 export declare function resolveSkillSlash(name: string, options: ResolveSkillSlashOptions): string;
 //# sourceMappingURL=skill-registry.d.ts.map

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, relative } from 'path';
@@ -89,7 +89,9 @@ describe('resolveSkillSlash', () => {
   describe('unattended', () => {
     const ourPath = join(ROOT, 'skills', 'harbor');
     let tmp: string | undefined;
-    afterEach(() => { if (tmp) rmSync(tmp, { recursive: true, force: true }); tmp = undefined; });
+    afterEach(() => { vi.unstubAllEnvs(); if (tmp) rmSync(tmp, { recursive: true, force: true }); tmp = undefined; });
+    // Our plugin is the dev plugin root; a plugin elsewhere is not, whatever its plugin.json says.
+    beforeEach(() => { vi.stubEnv('OMC_PLUGIN_ROOT', ROOT); });
 
     function otherPlugin(): string {
       tmp = mkdtempSync(join(tmpdir(), 'skill-registry-'));
@@ -120,10 +122,32 @@ describe('resolveSkillSlash', () => {
       expect(() => resolveSkillSlash('harbor', { cwd: '/repo', host: 'copilot', unattended: true, warn: fake.warn })).toThrow(/^skill-shadowed:harbor/);
     });
 
-    it('uses the bare name when the registry cannot be probed', () => {
-      const fake = useProbe(null);
+    it("throws skill-shadowed for a plugin named oh-my-copilot outside OMC_PLUGIN_ROOT and the installed-plugins dir", () => {
+      const impostor = otherPlugin();
+      writeFileSync(join(tmp as string, 'plugin.json'), JSON.stringify({ name: 'oh-my-copilot' }));
+      const fake = useProbe([{ name: 'harbor', source: 'plugin', path: impostor }]);
+      restore = fake.restore;
+      expect(() => resolveSkillSlash('harbor', { cwd: '/repo', host: 'copilot', unattended: true, warn: fake.warn })).toThrow(/^skill-shadowed:harbor/);
+    });
+
+    it('returns the bare name for our plugin under the installed-plugins dir', () => {
+      const home = mkdtempSync(join(tmpdir(), 'skill-registry-home-'));
+      tmp = home;
+      const root = join(home, 'installed-plugins', '_direct', 'oh-my-copilot');
+      mkdirSync(join(root, 'skills', 'harbor'), { recursive: true });
+      writeFileSync(join(root, 'plugin.json'), JSON.stringify({ name: 'oh-my-copilot' }));
+      vi.stubEnv('OMC_PLUGIN_ROOT', '');
+      vi.stubEnv('COPILOT_HOME', home);
+      const fake = useProbe([{ name: 'harbor', source: 'plugin', path: join(root, 'skills', 'harbor') }]);
       restore = fake.restore;
       expect(resolveSkillSlash('harbor', { cwd: '/repo', host: 'copilot', unattended: true, warn: fake.warn })).toBe('/harbor');
+    });
+
+    it('throws skill-unverifiable when the registry cannot be probed, and interactive callers keep the bare name', () => {
+      const fake = useProbe(null);
+      restore = fake.restore;
+      expect(() => resolveSkillSlash('harbor', { cwd: '/repo', host: 'copilot', unattended: true, warn: fake.warn })).toThrow(/^skill-unverifiable:harbor/);
+      expect(resolveSkillSlash('harbor', { cwd: '/repo', host: 'copilot', warn: fake.warn })).toBe('/harbor');
     });
 
     it('strips control characters from the source it prints', () => {
@@ -174,6 +198,47 @@ describe('defaultSkillListProbe', () => {
       rmSync(cwd, { recursive: true, force: true });
       rmSync(binDir, { recursive: true, force: true });
     }
+  });
+
+  describe('a probe that runs and fails', () => {
+    const win = process.platform === 'win32';
+    const cases: Array<[string, string, string]> = [
+      ['a non-zero exit', '@echo off\r\nexit /b 3\r\n', '#!/bin/sh\nexit 3\n'],
+      ['unparseable JSON', '@echo off\r\necho not json\r\n', '#!/bin/sh\necho not json\n'],
+      ['the timeout', '@echo off\r\n%SystemRoot%\\System32\\ping.exe -n 8 127.0.0.1 >nul\r\n', '#!/bin/sh\n/bin/sleep 8\n'],
+    ];
+    it.each(cases)('throws skill-unverifiable unattended and keeps the bare name interactive on %s', { timeout: 30_000 }, (_label, cmd, sh) => {
+      const binDir = mkdtempSync(join(tmpdir(), 'skill-probe-bin-'));
+      const previous = setSkillListProbe(defaultSkillListProbe);
+      try {
+        writeFileSync(join(binDir, 'copilot.cmd'), cmd);
+        writeFileSync(join(binDir, 'copilot'), sh, { mode: 0o755 });
+        vi.stubEnv('COPILOT_CLI', '1');
+        vi.stubEnv('PATH', binDir);
+        expect(() => resolveSkillSlash('harbor', { cwd: binDir, host: 'copilot', unattended: true })).toThrow(/^skill-unverifiable:harbor/);
+        expect(resolveSkillSlash('harbor', { cwd: binDir, host: 'copilot', warn: () => {} })).toBe('/harbor');
+      } finally {
+        setSkillListProbe(previous);
+        // The timed-out probe's orphaned grandchild can still hold the dir open on Windows.
+        try { rmSync(binDir, { recursive: true, force: true }); } catch { /* removed with the OS temp dir */ }
+      }
+    });
+
+    it.skipIf(!win)('throws skill-unverifiable unattended for a refused token (a % in a shim argument)', () => {
+      const binDir = mkdtempSync(join(tmpdir(), 'skill-probe-bin-'));
+      const previous = setSkillListProbe(defaultSkillListProbe);
+      try {
+        writeFileSync(join(binDir, 'copilot.cmd'), '@echo off\r\necho []\r\n');
+        vi.stubEnv('COPILOT_CLI', '1');
+        vi.stubEnv('PATH', binDir);
+        const probeArgs = ['--plugin-dir', 'C:\\p%TEMP%'];
+        expect(() => resolveSkillSlash('harbor', { cwd: binDir, host: 'copilot', probeArgs, unattended: true })).toThrow(/^skill-unverifiable:harbor/);
+        expect(resolveSkillSlash('harbor', { cwd: binDir, host: 'copilot', probeArgs, warn: () => {} })).toBe('/harbor');
+      } finally {
+        setSkillListProbe(previous);
+        rmSync(binDir, { recursive: true, force: true });
+      }
+    });
   });
 
   it('refuses an unattended slash with skill-unverifiable when no copilot resolves on PATH', () => {

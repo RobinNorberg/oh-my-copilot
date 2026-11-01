@@ -4,9 +4,10 @@
  * is prompted with it.
  */
 import { spawnSync } from 'child_process';
-import { readFileSync } from 'fs';
-import { dirname, join, win32 } from 'path';
+import { readFileSync, realpathSync } from 'fs';
+import { dirname, isAbsolute, join, relative, win32 } from 'path';
 import { detectHostCliType } from './host-signal.js';
+import { getCopilotConfigDir } from './config-dir.js';
 import { getHostCliBinary } from './host-detection.js';
 import { SKILL_NAMESPACE, skillSlash } from './skill-slash.js';
 import { childEnv, findOnPath, resolveBareExe } from './windows-search.js';
@@ -83,12 +84,38 @@ export function setSkillListProbe(probe) {
 function printable(value) {
     return value.replace(/[\u0000-\u001f\u007f-\u009f]/g, '');
 }
-/** A plugin entry whose plugin root (`<path>/../..`) has a plugin.json named oh-my-copilot. */
+function realKey(path) {
+    try {
+        const real = realpathSync.native(path);
+        return process.platform === 'win32' ? real.toLowerCase() : real;
+    }
+    catch {
+        return null;
+    }
+}
+/** The plugin root is OMC_PLUGIN_ROOT or sits under the installed-plugins dir (realpath on both sides). */
+function isOurPluginLocation(root) {
+    const real = realKey(root);
+    if (!real)
+        return false;
+    const devRoot = process.env.OMC_PLUGIN_ROOT?.trim();
+    if (devRoot && realKey(devRoot) === real)
+        return true;
+    const installed = realKey(join(getCopilotConfigDir(), 'installed-plugins'));
+    if (!installed)
+        return false;
+    const rel = relative(installed, real);
+    return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+}
+/** A plugin entry from our plugin location whose plugin root (`<path>/../..`) has a plugin.json named oh-my-copilot. */
 function isOurSkill(entry) {
     if (entry.source !== 'plugin' || typeof entry.path !== 'string' || entry.path === '')
         return false;
     try {
-        const manifest = JSON.parse(readFileSync(join(dirname(dirname(entry.path)), 'plugin.json'), 'utf8'));
+        const root = dirname(dirname(entry.path));
+        if (!isOurPluginLocation(root))
+            return false;
+        const manifest = JSON.parse(readFileSync(join(root, 'plugin.json'), 'utf8'));
         return typeof manifest === 'object' && manifest !== null && manifest.name === SKILL_NAMESPACE;
     }
     catch {
@@ -100,8 +127,10 @@ function isOurSkill(entry) {
  * skill. On Copilot the registry is probed once per process (per cwd and
  * args): a namespaced-only entry (a plugin-name collision) wins, a missing or
  * shadowed name is warned about, and a failed probe falls back to the bare
- * name. With `unattended`, a bare entry that is not our plugin's skill (a
- * project or user skill, or another plugin's) throws instead.
+ * name. With `unattended`, a failed probe throws `skill-unverifiable`, and a
+ * bare entry that is not our plugin's skill (a project or user skill, another
+ * plugin's, or a plugin outside OMC_PLUGIN_ROOT and the installed-plugins dir)
+ * throws `skill-shadowed`.
  */
 export function resolveSkillSlash(name, options) {
     const host = options.host ?? detectHostCliType();
@@ -112,13 +141,11 @@ export function resolveSkillSlash(name, options) {
     if (!probeCache.has(key))
         probeCache.set(key, activeProbe(options.cwd, probeArgs));
     const entries = probeCache.get(key);
-    if (entries === 'unresolved' && options.unattended) {
-        throw new Error(`skill-unverifiable:${name}: no copilot binary on PATH to list the registered skills; an unattended session cannot be checked for a shadowing skill`);
+    if ((!entries || entries === 'unresolved') && options.unattended) {
+        const why = entries === 'unresolved' ? 'no copilot binary on PATH to list the registered skills' : 'the registered skills could not be listed';
+        throw new Error(`skill-unverifiable:${name}: ${why}; an unattended session cannot be checked for a shadowing skill`);
     }
-    // A probe that ran but failed (timeout, old CLI): even unattended, the bare
-    // name goes out. Refusing would stop every chain wherever the probe cannot
-    // parse, and the caller already confirmed the skill is bundled; the shadow
-    // check narrows the risk where it can verify, it is not the boundary.
+    // An interactive caller has a human at the prompt: the bare name goes out.
     if (!entries || entries === 'unresolved')
         return skillSlash(name, host);
     const warn = options.warn ?? ((message) => process.stderr.write(`[oh-my-copilot] ${message}\n`));

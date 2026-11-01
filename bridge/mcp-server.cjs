@@ -7761,49 +7761,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative31, options, skipNormalization) {
+    function resolveComponent(base, relative32, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse13(serialize(base, options), options);
-        relative31 = parse13(serialize(relative31, options), options);
+        relative32 = parse13(serialize(relative32, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative31.scheme) {
-        target.scheme = relative31.scheme;
-        target.userinfo = relative31.userinfo;
-        target.host = relative31.host;
-        target.port = relative31.port;
-        target.path = removeDotSegments(relative31.path || "");
-        target.query = relative31.query;
+      if (!options.tolerant && relative32.scheme) {
+        target.scheme = relative32.scheme;
+        target.userinfo = relative32.userinfo;
+        target.host = relative32.host;
+        target.port = relative32.port;
+        target.path = removeDotSegments(relative32.path || "");
+        target.query = relative32.query;
       } else {
-        if (relative31.userinfo !== void 0 || relative31.host !== void 0 || relative31.port !== void 0) {
-          target.userinfo = relative31.userinfo;
-          target.host = relative31.host;
-          target.port = relative31.port;
-          target.path = removeDotSegments(relative31.path || "");
-          target.query = relative31.query;
+        if (relative32.userinfo !== void 0 || relative32.host !== void 0 || relative32.port !== void 0) {
+          target.userinfo = relative32.userinfo;
+          target.host = relative32.host;
+          target.port = relative32.port;
+          target.path = removeDotSegments(relative32.path || "");
+          target.query = relative32.query;
         } else {
-          if (!relative31.path) {
+          if (!relative32.path) {
             target.path = base.path;
-            if (relative31.query !== void 0) {
-              target.query = relative31.query;
+            if (relative32.query !== void 0) {
+              target.query = relative32.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative31.path[0] === "/") {
-              target.path = removeDotSegments(relative31.path);
+            if (relative32.path[0] === "/") {
+              target.path = removeDotSegments(relative32.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative31.path;
+                target.path = "/" + relative32.path;
               } else if (!base.path) {
-                target.path = relative31.path;
+                target.path = relative32.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative31.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative32.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative31.query;
+            target.query = relative32.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -7811,7 +7811,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative31.fragment;
+      target.fragment = relative32.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -39531,6 +39531,7 @@ var init_skill_registry = __esm({
     import_fs57 = require("fs");
     import_path69 = require("path");
     init_host_signal();
+    init_config_dir();
     init_host_detection();
     init_skill_slash();
     init_windows_search();
