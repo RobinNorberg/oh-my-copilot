@@ -7,6 +7,7 @@ All notable changes to oh-my-copilot will be documented in this file.
 ### Changed
 
 - **CI shards the Linux test suite four ways** (CI speed-up PR 2). Four `Test shard <i> of 4` jobs (no slash in the name: `gh run view --job --log` reports a slashed job's steps as UNKNOWN STEP) each run `npm test -- --run --shard=<i>/4`, split by measured file cost, import plus test time (longest first onto the lightest shard) through a vitest sequencer, `scripts/ci/duration-sequencer.mjs`, reading `.github/ci/test-durations.json`; without that file vitest's own split applies. The required `Test` check is now a summary job that merges the shard blob reports (so its log keeps every `FAIL` line for known-flaky attribution), fails when any shard failed, was cancelled or left no report, uploads the merged JSON report plus a per-file durations report (`scripts/ci/durations-reporter.mjs`) and runs the subagent-lock bench. `scripts/ci/update-test-durations.mjs` refreshes the duration file from durations reports. A re-run shard overwrites its blob artifact. The Windows path suite's file list moved to `.github/ci/windows-path-suite.txt`.
+- **CI: the two artifact-policy checks no longer email failures on fork PRs.** `Generated Artifact Authorization` is skipped when the repository owner is `RobinNorberg`, and `No Committed Build Artifacts` is `continue-on-error`, because the fork commits `dist/` and `bridge/` by design. Neither check is required and CI Gate does not depend on them.
 
 # oh-my-copilot v5.19.3
 

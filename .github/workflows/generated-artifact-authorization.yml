@@ -18,6 +18,8 @@ permissions:
 
 jobs:
   authorize-generated-artifacts:
+    # fork: keep ours — dist/bridge are committed by design in RobinNorberg/oh-my-copilot
+    if: github.repository_owner != 'RobinNorberg'
     name: Authorize generated artifacts from base trust root
     runs-on: ubuntu-latest
     timeout-minutes: 5

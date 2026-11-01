@@ -400,6 +400,8 @@ jobs:
     # This candidate-side classifier is credential-free containment only; it
     # never authorizes generated artifacts or supplies merge approval.
     if: github.event_name == 'pull_request'
+    # fork: keep ours — dist/bridge are committed by design in RobinNorberg/oh-my-copilot
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with:
