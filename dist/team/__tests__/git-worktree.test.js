@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync, readFileSync, symlinkSync } from 'fs';
+import { copyFileSync, mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync, readFileSync, symlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { execFileSync, spawn } from 'child_process';
@@ -70,6 +70,15 @@ describe('git-worktree', () => {
             writeFileSync(join(stalePath, 'orphan.txt'), 'orphaned state');
             expect(() => createWorkerWorktree(teamName, 'worker-stale', repoDir)).toThrow(/worktree_path_mismatch/);
             expect(existsSync(join(stalePath, 'orphan.txt'))).toBe(true);
+        });
+        it.skipIf(process.platform !== 'win32')('creates a worktree with the PATH git, not a git.exe planted in the repo root', () => {
+            // node.exe renamed git.exe: if it ran, `worktree add` would fail with a node error.
+            copyFileSync(process.execPath, join(repoDir, 'git.exe'));
+            const info = ensureWorkerWorktree(teamName, 'worker-plant', repoDir, {
+                mode: 'detached',
+                requireCleanLeader: false,
+            });
+            expect(info?.created).toBe(true);
         });
         it('plans detached worktrees under canonical native team path', () => {
             const info = ensureWorkerWorktree(teamName, 'worker-detached', repoDir, {

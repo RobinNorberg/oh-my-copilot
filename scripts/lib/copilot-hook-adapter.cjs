@@ -46,6 +46,9 @@
 
 const fs = require('fs');
 const path = require('path');
+const { hardenWindowsExeSearch } = require('./windows-search.cjs');
+
+hardenWindowsExeSearch();
 
 const STDERR_TAIL_BYTES = 4096;
 const STOP_EVENTS = new Set(['Stop', 'SubagentStop']);
