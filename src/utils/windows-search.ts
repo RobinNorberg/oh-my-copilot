@@ -84,6 +84,6 @@ export function findOnPath(name: string, env: NodeJS.ProcessEnv, platform: NodeJ
  */
 export function resolveBareExe(cmd: string, env: NodeJS.ProcessEnv = process.env): string | null {
   if (process.platform !== 'win32' || /[\\/:]/.test(cmd)) return cmd;
-  const pathext = (envValue(env, 'PATHEXT') ?? '.COM;.EXE;.BAT;.CMD').split(';').filter((e) => e && !/^\.(cmd|bat)$/i.test(e)).join(';');
+  const pathext = (envValue(env, 'PATHEXT') ?? '.COM;.EXE;.BAT;.CMD').split(';').filter((e) => e && !/^\.(cmd|bat)$/i.test(e)).join(';') || '.COM;.EXE';
   return findOnPath(cmd, { ...env, PATHEXT: pathext }, 'win32');
 }

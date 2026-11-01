@@ -91065,7 +91065,7 @@ function findOnPath(name, env2, platform, exists = isFile) {
 }
 function resolveBareExe(cmd, env2 = process.env) {
   if (process.platform !== "win32" || /[\\/:]/.test(cmd)) return cmd;
-  const pathext = (envValue(env2, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter((e) => e && !/^\.(cmd|bat)$/i.test(e)).join(";");
+  const pathext = (envValue(env2, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter((e) => e && !/^\.(cmd|bat)$/i.test(e)).join(";") || ".COM;.EXE";
   return findOnPath(cmd, { ...env2, PATHEXT: pathext }, "win32");
 }
 var import_node_fs15, import_node_path20, VARIABLE, isFile;
@@ -91912,7 +91912,7 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot3, options = {}) {
   const wtDir = (0, import_node_path22.join)(getOmcRoot(repoRoot3), "team", sanitizeName(teamName), "worktrees");
   ensureDirWithMode(wtDir);
   const args = mode === "named" ? ["worktree", "add", "-b", branch, wtPath, options.baseRef ?? "HEAD"] : ["worktree", "add", "--detach", wtPath, options.baseRef ?? "HEAD"];
-  (0, import_node_child_process10.execFileSync)("git", args, { cwd: repoRoot3, stdio: "pipe", windowsHide: true });
+  (0, import_node_child_process10.execFileSync)(hostGitExe(), args, { cwd: repoRoot3, stdio: "pipe", windowsHide: true });
   const baseCommit = gitOrNull(["rev-parse", "HEAD"], wtPath);
   const info = {
     ...baseCommit ? { baseCommit } : {},

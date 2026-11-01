@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { childEnv, hardenWindowsExeSearch } from '../windows-search.js';
+import { childEnv, hardenWindowsExeSearch, resolveBareExe } from '../windows-search.js';
 import { defaultExec, scrubShipEnv } from '../../ship/exec.js';
 import { defaultCopilotRunDeps } from '../../copilot-run/job.js';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -137,6 +137,18 @@ describe('every fork-only Node entry point hardens the Windows executable search
     });
     it('each imports the helper and calls hardenWindowsExeSearch()', () => {
         expect(FORK_ENTRY_POINTS.filter((rel) => !/windows-search\.(mjs|cjs)['"]/.test(read(rel)) || !/^\s*hardenWindowsExeSearch\(\);/m.test(read(rel)))).toEqual([]);
+    });
+});
+describe('resolveBareExe PATHEXT filtering', () => {
+    it.skipIf(process.platform !== 'win32')('falls back to .COM;.EXE when PATHEXT holds only .CMD/.BAT', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'omg-pathext-'));
+        try {
+            writeFileSync(join(dir, 'tool.exe'), '');
+            expect(resolveBareExe('tool', { PATH: dir, PATHEXT: '.CMD;.BAT' })?.toLowerCase()).toBe(join(dir, 'tool.exe').toLowerCase());
+        }
+        finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 });
 //# sourceMappingURL=windows-search.test.js.map
