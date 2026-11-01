@@ -2,6 +2,12 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Docs
+
+- **Field testing by a remote Copilot CLI agent.** `docs/FIELD-TESTING.md` is the standalone guide for an agent that tests the published package on a second Windows computer: ground rules with their reasons (published version only, never merge or force-push, `field/*` branches only, no edits to rulesets, `.github/known-flaky-tests.json`, workflows or release files, no secrets or identities, cleanup of its own `omg-acc-` acceptance runs only, ask before spending Copilot credits), setup with a minimal fine-grained token, the ADO acceptance flow, the factory on GitHub and Azure DevOps, Windows team workers, record and replay, filing and scrubbing findings, small fixes as draft PRs, and how captures and cassettes come in. Adds the `Field report` issue form (`.github/ISSUE_TEMPLATE/field-report.yml`, label `field`), the labels `field`, `field:ado`, `field:windows`, `field:needs-repro` and `field:fix-in-progress`, a "Field testing" section in `AGENTS.md`, and a ready-to-paste first prompt (`docs/field-testing-first-prompt.md`).
+
 # oh-my-copilot v5.19.2
 
 ## [5.19.2] - 2026-11-01

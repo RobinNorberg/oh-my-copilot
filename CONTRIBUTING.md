@@ -368,6 +368,7 @@ npm run test:run
    - Select your fork and branch
    - Fill in the PR title and description
    - Reference any related issues (e.g., "Fixes #123")
+   - Field-test findings and fixes from a remote agent follow [docs/FIELD-TESTING.md](./docs/FIELD-TESTING.md)
 
 3. **PR templates** (if present):
    - Check `.github/pull_request_template.md` for required sections
