@@ -177,8 +177,8 @@ describe("subagent-lock test contract", () => {
 
     assertWorkflowCommands(ci, "test");
     assertWorkflowCommands(ci, "release", true);
-    expect(extractJob(ci, "build")).toMatch(
-      /^    needs: \[[^\]]*\btest\b[^\]]*\]$/m,
-    );
+    // Build runs beside Test (build once); CI Gate is the job that blocks on both.
+    expect(extractJob(ci, "build")).not.toMatch(/^    needs:/m);
+    expect(extractJob(ci, "ci-gate")).toMatch(/^      - test$/m);
   });
 });
