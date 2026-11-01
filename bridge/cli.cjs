@@ -83423,11 +83423,11 @@ function evaluateSdkSandbox(probe) {
   if (probe.applyError) return { id, ok: false, detail: `supported, capabilities ${caps}; the review policy was not applied: ${probe.applyError}` };
   const enf = probe.enforcement;
   if (enf === void 0 || typeof enf === "string") return { id, ok: false, detail: `supported, capabilities ${caps}; review policy applied; enforcement unread: ${enf ?? "not asked"}` };
-  const spawn19 = probe.spawn ?? { ok: false, detail: "not run" };
+  const spawn20 = probe.spawn ?? { ok: false, detail: "not run" };
   return {
     id,
-    ok: !enf.blocked && spawn19.ok,
-    detail: `supported, capabilities ${caps}; review policy applied (options.update), enforcement required=${enf.required} blocked=${enf.blocked}${enf.reason ? ` (${enf.reason})` : ""}; spawn canary: ${spawn19.detail}`
+    ok: !enf.blocked && spawn20.ok,
+    detail: `supported, capabilities ${caps}; review policy applied (options.update), enforcement required=${enf.required} blocked=${enf.blocked}${enf.reason ? ` (${enf.reason})` : ""}; spawn canary: ${spawn20.detail}`
   };
 }
 function sliceLogByTime(text4, starts) {
@@ -96021,8 +96021,8 @@ function rpcMethod(root2, path30, name) {
     return null;
   }
 }
-function bwrapTrialLaunchError(spawn19 = defaultTrialSpawner, timeoutMs = 1e4) {
-  const r = spawn19("bwrap", BWRAP_TRIAL_ARGS, timeoutMs);
+function bwrapTrialLaunchError(spawn20 = defaultTrialSpawner, timeoutMs = 1e4) {
+  const r = spawn20("bwrap", BWRAP_TRIAL_ARGS, timeoutMs);
   if (r.error?.code === "ENOENT") return "bwrap (bubblewrap) is not on PATH, and the Linux sandbox runs every shell under it: install bubblewrap";
   if (r.error) return `a trial bwrap launch failed: ${errText(r.error)}`;
   if (r.status === 0) return null;
@@ -139396,7 +139396,7 @@ function extractTargetSummary(input, toolName) {
   if (toolName.includes("Edit") || toolName.includes("Write")) {
     const filePath = inp.file_path;
     if (filePath) {
-      return (0, import_path230.basename)(filePath) || filePath;
+      return (0, import_path231.basename)(filePath) || filePath;
     }
   }
   if (toolName.includes("Bash")) {
@@ -139487,7 +139487,7 @@ function processEntry(entry2, agentMap, latestTodos, result, maxAgentMapSize = 5
       if (block.name === "Task" || block.name === "proxy_Task" || block.name === "Agent" || block.name === "proxy_Agent") {
         result.agentCallCount++;
         const input = block.input;
-        const spawn19 = classifyAgentSpawn({
+        const spawn20 = classifyAgentSpawn({
           hasName: Boolean(input?.name),
           sessionId: entry2.sessionId
         });
@@ -139499,8 +139499,8 @@ function processEntry(entry2, agentMap, latestTodos, result, maxAgentMapSize = 5
           description: input?.description,
           status: "running",
           startTime: timestamp2,
-          kind: spawn19.kind,
-          spawnedBy: spawn19.spawnedBy
+          kind: spawn20.kind,
+          spawnedBy: spawn20.spawnedBy
         };
         if (agentMap.size >= maxAgentMapSize) {
           let oldestCompleted = null;
@@ -139663,13 +139663,13 @@ function extractLastRequestTokenUsage(usage) {
 function getNumericUsageValue(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
-var import_fs200, import_readline5, import_path230, MAX_TAIL_BYTES, MAX_AGENT_MAP_SIZE, MAX_RECENT_TOOLS, RECENT_TOOLS_SKIP, PERMISSION_TOOLS, PERMISSION_THRESHOLD_MS, pendingPermissionMap, taskToolStates, TASK_STATUSES, THINKING_PART_TYPES2, THINKING_RECENCY_MS, transcriptCache, TRANSCRIPT_CACHE_MAX_SIZE;
+var import_fs200, import_readline5, import_path231, MAX_TAIL_BYTES, MAX_AGENT_MAP_SIZE, MAX_RECENT_TOOLS, RECENT_TOOLS_SKIP, PERMISSION_TOOLS, PERMISSION_THRESHOLD_MS, pendingPermissionMap, taskToolStates, TASK_STATUSES, THINKING_PART_TYPES2, THINKING_RECENCY_MS, transcriptCache, TRANSCRIPT_CACHE_MAX_SIZE;
 var init_transcript = __esm({
   "src/hud/transcript.ts"() {
     "use strict";
     import_fs200 = require("fs");
     import_readline5 = require("readline");
-    import_path230 = require("path");
+    import_path231 = require("path");
     init_agent_kind();
     MAX_TAIL_BYTES = 4 * 1024 * 1024;
     MAX_AGENT_MAP_SIZE = 100;
@@ -139739,7 +139739,7 @@ function resolveCopilotEventsPath(transcriptPath, sessionId) {
   if (transcriptPath) {
     try {
       const stat2 = (0, import_fs201.statSync)(transcriptPath);
-      const candidate = stat2.isDirectory() ? (0, import_path231.join)(transcriptPath, "events.jsonl") : (0, import_path231.basename)(transcriptPath) === "events.jsonl" ? transcriptPath : (0, import_path231.join)((0, import_path231.dirname)(transcriptPath), "events.jsonl");
+      const candidate = stat2.isDirectory() ? (0, import_path232.join)(transcriptPath, "events.jsonl") : (0, import_path232.basename)(transcriptPath) === "events.jsonl" ? transcriptPath : (0, import_path232.join)((0, import_path232.dirname)(transcriptPath), "events.jsonl");
       if (isFile3(candidate)) return candidate;
     } catch {
     }
@@ -139777,7 +139777,7 @@ function toolTarget(args) {
   if (!args || typeof args !== "object") return null;
   const input = args;
   const path30 = str7(input.path) ?? str7(input.file_path) ?? str7(input.fileName);
-  if (path30) return import_path231.win32.basename(path30) || path30;
+  if (path30) return import_path232.win32.basename(path30) || path30;
   const command = str7(input.command);
   if (command) return command.length > 20 ? `${command.slice(0, 20)}...` : command;
   return null;
@@ -139933,12 +139933,12 @@ function readCopilotEvents(eventsPath, options = {}) {
     return emptyResult();
   }
 }
-var import_fs201, import_path231, MAX_TAIL_BYTES2, MAX_AGENTS, MAX_RECENT_TOOLS2, CACHE_MAX_SIZE, RECENT_TOOLS_SKIP2, RELEVANT_TYPES, cache;
+var import_fs201, import_path232, MAX_TAIL_BYTES2, MAX_AGENTS, MAX_RECENT_TOOLS2, CACHE_MAX_SIZE, RECENT_TOOLS_SKIP2, RELEVANT_TYPES, cache;
 var init_copilot_events = __esm({
   "src/hud/copilot-events.ts"() {
     "use strict";
     import_fs201 = require("fs");
-    import_path231 = require("path");
+    import_path232 = require("path");
     init_ledger();
     MAX_TAIL_BYTES2 = 4 * 1024 * 1024;
     MAX_AGENTS = 10;
@@ -139990,18 +139990,18 @@ function isStateFileStale(filePath) {
 function resolveStatePath2(directory, filename, sessionId) {
   const omcRoot = getOmcRoot(directory);
   if (sessionId) {
-    const sessionPath = (0, import_path232.join)(omcRoot, "state", "sessions", sessionId, filename);
+    const sessionPath = (0, import_path233.join)(omcRoot, "state", "sessions", sessionId, filename);
     return (0, import_fs202.existsSync)(sessionPath) ? sessionPath : null;
   }
   let bestPath = null;
   let bestMtime = 0;
-  const sessionsDir = (0, import_path232.join)(omcRoot, "state", "sessions");
+  const sessionsDir = (0, import_path233.join)(omcRoot, "state", "sessions");
   if ((0, import_fs202.existsSync)(sessionsDir)) {
     try {
       const entries = (0, import_fs202.readdirSync)(sessionsDir, { withFileTypes: true });
       for (const entry2 of entries) {
         if (!entry2.isDirectory()) continue;
-        const sessionFile = (0, import_path232.join)(sessionsDir, entry2.name, filename);
+        const sessionFile = (0, import_path233.join)(sessionsDir, entry2.name, filename);
         if ((0, import_fs202.existsSync)(sessionFile)) {
           try {
             const mtime = (0, import_fs202.statSync)(sessionFile).mtimeMs;
@@ -140016,7 +140016,7 @@ function resolveStatePath2(directory, filename, sessionId) {
     } catch {
     }
   }
-  const newPath = (0, import_path232.join)(omcRoot, "state", filename);
+  const newPath = (0, import_path233.join)(omcRoot, "state", filename);
   if ((0, import_fs202.existsSync)(newPath)) {
     try {
       const mtime = (0, import_fs202.statSync)(newPath).mtimeMs;
@@ -140028,7 +140028,7 @@ function resolveStatePath2(directory, filename, sessionId) {
       if (!bestPath) bestPath = newPath;
     }
   }
-  const legacyPath = (0, import_path232.join)(omcRoot, filename);
+  const legacyPath = (0, import_path233.join)(omcRoot, filename);
   if ((0, import_fs202.existsSync)(legacyPath)) {
     try {
       const mtime = (0, import_fs202.statSync)(legacyPath).mtimeMs;
@@ -140067,9 +140067,9 @@ function readRalphStateForHud(directory, sessionId) {
   }
 }
 function readPrdStateForHud(directory) {
-  let prdPath = (0, import_path232.join)(directory, "prd.json");
+  let prdPath = (0, import_path233.join)(directory, "prd.json");
   if (!(0, import_fs202.existsSync)(prdPath)) {
-    prdPath = (0, import_path232.join)(getOmcRoot(directory), "prd.json");
+    prdPath = (0, import_path233.join)(getOmcRoot(directory), "prd.json");
     if (!(0, import_fs202.existsSync)(prdPath)) {
       return null;
     }
@@ -140151,12 +140151,12 @@ function readAutopilotStateForHud(directory, sessionId) {
     return null;
   }
 }
-var import_fs202, import_path232, MAX_STATE_AGE_MS2;
+var import_fs202, import_path233, MAX_STATE_AGE_MS2;
 var init_omc_state = __esm({
   "src/hud/omc-state.ts"() {
     "use strict";
     import_fs202 = require("fs");
-    import_path232 = require("path");
+    import_path233 = require("path");
     init_worktree_paths();
     init_named_workflow_resume_validator();
     MAX_STATE_AGE_MS2 = 2 * 60 * 60 * 1e3;
@@ -140165,7 +140165,7 @@ var init_omc_state = __esm({
 
 // src/hud/custom-rate-provider.ts
 function getCachePath2() {
-  return (0, import_path233.join)(
+  return (0, import_path234.join)(
     getCopilotConfigDir(),
     "plugins",
     "oh-my-copilot",
@@ -140184,7 +140184,7 @@ function readCache2() {
 function writeCache2(buckets, identity) {
   try {
     const p = getCachePath2();
-    const dir = (0, import_path233.dirname)(p);
+    const dir = (0, import_path234.dirname)(p);
     if (!(0, import_fs203.existsSync)(dir)) (0, import_fs203.mkdirSync)(dir, { recursive: true });
     const cache2 = { timestamp: Date.now(), buckets, identity };
     (0, import_fs203.writeFileSync)(p, JSON.stringify(cache2, null, 2));
@@ -140305,14 +140305,14 @@ async function executeCustomProvider(config2) {
     return { buckets: [], stale: false, error: "command failed" };
   }
 }
-var import_child_process60, import_node_crypto19, import_fs203, import_path233, CACHE_TTL_MS2, DEFAULT_TIMEOUT_MS4;
+var import_child_process60, import_node_crypto19, import_fs203, import_path234, CACHE_TTL_MS2, DEFAULT_TIMEOUT_MS4;
 var init_custom_rate_provider = __esm({
   "src/hud/custom-rate-provider.ts"() {
     "use strict";
     import_child_process60 = require("child_process");
     import_node_crypto19 = require("node:crypto");
     import_fs203 = require("fs");
-    import_path233 = require("path");
+    import_path234 = require("path");
     init_config_dir();
     CACHE_TTL_MS2 = 3e4;
     DEFAULT_TIMEOUT_MS4 = 800;
@@ -141570,12 +141570,12 @@ function readPlan(path30) {
   }
 }
 function readUltragoalStateForHud(directory, now2 = Date.now()) {
-  const root2 = (0, import_path234.join)(getOmcRoot(directory), "ultragoal");
+  const root2 = (0, import_path235.join)(getOmcRoot(directory), "ultragoal");
   if (!(0, import_fs204.existsSync)(root2)) return null;
-  const paths = [(0, import_path234.join)(root2, ULTRAGOAL_GOALS)];
+  const paths = [(0, import_path235.join)(root2, ULTRAGOAL_GOALS)];
   try {
-    for (const entry2 of (0, import_fs204.readdirSync)((0, import_path234.join)(root2, ULTRAGOAL_PLANS_SUBDIR), { withFileTypes: true })) {
-      if (entry2.isDirectory()) paths.push((0, import_path234.join)(root2, ULTRAGOAL_PLANS_SUBDIR, entry2.name, ULTRAGOAL_GOALS));
+    for (const entry2 of (0, import_fs204.readdirSync)((0, import_path235.join)(root2, ULTRAGOAL_PLANS_SUBDIR), { withFileTypes: true })) {
+      if (entry2.isDirectory()) paths.push((0, import_path235.join)(root2, ULTRAGOAL_PLANS_SUBDIR, entry2.name, ULTRAGOAL_GOALS));
     }
   } catch {
   }
@@ -141595,12 +141595,12 @@ function renderUltragoal(state) {
   const color = state.failed > 0 ? YELLOW10 : GREEN10;
   return `goal:${color}${state.complete}/${state.total}${RESET}`;
 }
-var import_fs204, import_path234, GREEN10, YELLOW10, MAX_PLAN_AGE_MS;
+var import_fs204, import_path235, GREEN10, YELLOW10, MAX_PLAN_AGE_MS;
 var init_ultragoal = __esm({
   "src/hud/elements/ultragoal.ts"() {
     "use strict";
     import_fs204 = require("fs");
-    import_path234 = require("path");
+    import_path235 = require("path");
     init_worktree_paths();
     init_artifacts();
     init_colors();
@@ -142103,10 +142103,10 @@ function settingsFileHasApiKey(filePath) {
 }
 function detectApiKeySource(cwd2) {
   if (cwd2) {
-    const projectSettings = (0, import_path235.join)(cwd2, ".copilot", "settings.local.json");
+    const projectSettings = (0, import_path236.join)(cwd2, ".copilot", "settings.local.json");
     if (settingsFileHasApiKey(projectSettings)) return "project";
   }
-  const globalSettings = (0, import_path235.join)(getCopilotConfigDir(), "settings.json");
+  const globalSettings = (0, import_path236.join)(getCopilotConfigDir(), "settings.json");
   if (settingsFileHasApiKey(globalSettings)) return "global";
   if (process.env.ANTHROPIC_API_KEY) return "env";
   return null;
@@ -142115,12 +142115,12 @@ function renderApiKeySource(source) {
   if (!source) return null;
   return `${dim("key:")}${cyan(source)}`;
 }
-var import_fs205, import_path235;
+var import_fs205, import_path236;
 var init_api_key_source = __esm({
   "src/hud/elements/api-key-source.ts"() {
     "use strict";
     import_fs205 = require("fs");
-    import_path235 = require("path");
+    import_path236 = require("path");
     init_colors();
     init_config_dir();
   }
@@ -143122,7 +143122,7 @@ function mergeStdinRateLimits(stdinRateLimits, usageResult) {
   };
 }
 function readSessionSummary(stateDir, sessionId) {
-  const statePath = (0, import_path236.join)(stateDir, `session-summary-${sessionId}.json`);
+  const statePath = (0, import_path237.join)(stateDir, `session-summary-${sessionId}.json`);
   if (!(0, import_fs207.existsSync)(statePath)) return null;
   try {
     return JSON.parse((0, import_fs207.readFileSync)(statePath, "utf-8"));
@@ -143151,8 +143151,8 @@ function spawnSessionSummaryScript(transcriptPath, stateDir, sessionId) {
     return;
   }
   lastSummarySpawnTimestamp = now2;
-  const thisDir = (0, import_path236.dirname)((0, import_url27.fileURLToPath)(importMetaUrl));
-  const scriptPath = (0, import_path236.join)(
+  const thisDir = (0, import_path237.dirname)((0, import_url27.fileURLToPath)(importMetaUrl));
+  const scriptPath = (0, import_path237.join)(
     thisDir,
     "..",
     "..",
@@ -143198,9 +143198,9 @@ async function calculateSessionHealth(sessionStart, contextPercent, reportedDura
 function showDiagnostic() {
   const version3 = getRuntimePackageVersion();
   const configDir = getCopilotConfigDir();
-  const hudScript = (0, import_path236.join)(configDir, "hud", HUD_SCRIPT_NAMES[0]);
-  const settingsFile = (0, import_path236.join)(configDir, "settings.json");
-  const hudExists = HUD_SCRIPT_NAMES.some((name) => (0, import_fs207.existsSync)((0, import_path236.join)(configDir, "hud", name)));
+  const hudScript = (0, import_path237.join)(configDir, "hud", HUD_SCRIPT_NAMES[0]);
+  const settingsFile = (0, import_path237.join)(configDir, "settings.json");
+  const hudExists = HUD_SCRIPT_NAMES.some((name) => (0, import_fs207.existsSync)((0, import_path237.join)(configDir, "hud", name)));
   let statusLineOk = false;
   try {
     const settings = JSON.parse((0, import_fs207.readFileSync)(settingsFile, "utf-8"));
@@ -143340,7 +143340,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
     let sessionSummary = null;
     const sessionSummaryEnabled = !isCopilotHost && (config2.elements.sessionSummary ?? false);
     if (sessionSummaryEnabled && resolvedTranscriptPath && currentSessionId) {
-      const omcStateDir = (0, import_path236.join)(getOmcRoot(cwd2), "state");
+      const omcStateDir = (0, import_path237.join)(getOmcRoot(cwd2), "state");
       sessionSummary = readSessionSummary(omcStateDir, currentSessionId);
       const shouldSpawn = !sessionSummary?.generatedAt || Date.now() - new Date(sessionSummary.generatedAt).getTime() > 6e4;
       if (shouldSpawn) {
@@ -143404,7 +143404,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
       apiKeyMode: !isCopilotHost && detectApiKeySource(cwd2) !== null,
       subscriptionType: subscriptionInfo.subscriptionType,
       rateLimitTier: subscriptionInfo.rateLimitTier,
-      profileName: process.env.COPILOT_HOME ? (0, import_path236.basename)(process.env.COPILOT_HOME).replace(/^\./, "") : null,
+      profileName: process.env.COPILOT_HOME ? (0, import_path237.basename)(process.env.COPILOT_HOME).replace(/^\./, "") : null,
       sessionSummary,
       lastToolName: transcriptData.lastToolName,
       recentTools: transcriptData.recentTools,
@@ -143430,9 +143430,9 @@ async function mainImpl(watchMode = false, skipInit = false) {
     }
     if (config2.contextLimitWarning.autoCompact && context.contextPercent >= config2.contextLimitWarning.threshold) {
       try {
-        const omcStateDir = (0, import_path236.join)(getOmcRoot(cwd2), "state");
+        const omcStateDir = (0, import_path237.join)(getOmcRoot(cwd2), "state");
         (0, import_fs207.mkdirSync)(omcStateDir, { recursive: true });
-        const triggerFile = (0, import_path236.join)(omcStateDir, "compact-requested.json");
+        const triggerFile = (0, import_path237.join)(omcStateDir, "compact-requested.json");
         (0, import_fs207.writeFileSync)(
           triggerFile,
           JSON.stringify({
@@ -143475,7 +143475,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
 function main2(watchMode = false, skipInit = false) {
   return withWorktreePathRenderScope(() => mainImpl(watchMode, skipInit));
 }
-var import_fs207, import_promises39, import_path236, import_child_process61, import_url27, HUD_SCRIPT_NAMES, HUD_COMMAND_MARKERS, SAME_WINDOW_TOLERANCE_MS, lastSummarySpawnTimestamp, summaryProcessPid;
+var import_fs207, import_promises39, import_path237, import_child_process61, import_url27, HUD_SCRIPT_NAMES, HUD_COMMAND_MARKERS, SAME_WINDOW_TOLERANCE_MS, lastSummarySpawnTimestamp, summaryProcessPid;
 var init_hud = __esm({
   "src/hud/index.ts"() {
     "use strict";
@@ -143500,7 +143500,7 @@ var init_hud = __esm({
     init_worktree_paths();
     import_fs207 = require("fs");
     import_promises39 = require("fs/promises");
-    import_path236 = require("path");
+    import_path237 = require("path");
     import_child_process61 = require("child_process");
     import_url27 = require("url");
     init_worktree_paths();
@@ -143524,7 +143524,7 @@ __export(index_exports, {
 module.exports = __toCommonJS(index_exports);
 init_esm();
 init_source();
-var import_path237 = require("path");
+var import_path238 = require("path");
 var import_fs208 = require("fs");
 init_config_dir();
 init_env_vars();
@@ -162947,7 +162947,7 @@ init_factory();
 // src/cli/commands/ship.ts
 init_esm();
 init_source();
-var import_path224 = require("path");
+var import_path225 = require("path");
 init_config4();
 init_exec();
 init_gates();
@@ -162958,13 +162958,13 @@ init_agent_progress();
 var import_child_process59 = require("child_process");
 var import_fs195 = require("fs");
 var import_os46 = require("os");
-var import_path223 = require("path");
+var import_path224 = require("path");
 init_process_utils();
 
 // src/release/engine.ts
 var import_child_process58 = require("child_process");
 var import_fs194 = require("fs");
-var import_path222 = require("path");
+var import_path223 = require("path");
 var import_url25 = require("url");
 init_atomic_write();
 init_config4();
@@ -162973,6 +162973,7 @@ init_gates();
 
 // src/release/checks.ts
 var import_crypto63 = require("crypto");
+var import_path222 = require("path");
 var VERSION_RE = /^\d+\.\d+\.\d+$/;
 function parseReleaseVersion(raw) {
   const v = raw.trim().replace(/^v/, "");
@@ -163134,6 +163135,29 @@ function tagTargetProblem(tag, objectType3, peeled, expected) {
   if (peeled.trim() !== expected) return `${tag}^{} is ${peeled.trim().slice(0, 12) || "unresolved"}, not the main merge commit ${expected.slice(0, 12)}`;
   return null;
 }
+function isWslBash(path30, env2) {
+  const slashed = (s) => s.toLowerCase().replace(/\\/g, "/");
+  const p = slashed(path30);
+  const system = `${slashed(env2.SystemRoot ?? env2.SYSTEMROOT ?? "C:/Windows").replace(/\/$/, "")}/`;
+  return p.startsWith(`${system}system32/`) || p.startsWith(`${system}sysnative/`) || p.includes("/windowsapps/");
+}
+function suiteShellFor(platform, env2, exists, gitExecPath) {
+  if (platform !== "win32") return { env: {} };
+  const key = Object.keys(env2).find((k) => k.toUpperCase() === "PATH") ?? "PATH";
+  const path30 = env2[key] ?? "";
+  const first = path30.split(";").filter(Boolean).map((dir) => import_path222.win32.join(dir, "bash.exe")).find(exists);
+  if (first && !isWslBash(first, env2)) return { env: {} };
+  const roots = [
+    ...gitExecPath ? [import_path222.win32.resolve(gitExecPath.trim(), "..", "..", "..")] : [],
+    ...[env2.ProgramFiles, env2.ProgramW6432, env2["ProgramFiles(x86)"]].filter((d) => !!d).map((d) => import_path222.win32.join(d, "Git")),
+    ...env2.LOCALAPPDATA ? [import_path222.win32.join(env2.LOCALAPPDATA, "Programs", "Git")] : []
+  ];
+  const bin = roots.flatMap((r) => [import_path222.win32.join(r, "bin"), import_path222.win32.join(r, "usr", "bin")]).find((dir) => exists(import_path222.win32.join(dir, "bash.exe")));
+  if (!bin) {
+    return { problem: `the suite needs Git for Windows bash, but ${first ? `the first bash on PATH is WSL's (${first})` : "no bash.exe is on PATH"} and none was found under ${roots.join(", ") || "(no Git install dir)"}; install Git for Windows or put its bin directory first on PATH` };
+  }
+  return { env: { [key]: `${bin};${path30}` } };
+}
 
 // src/release/engine.ts
 init_copilot_binary();
@@ -163146,22 +163170,40 @@ var UsageError = class extends Error {
 };
 var PROSE_FILES = ["CHANGELOG.md", ".github/release-body.md", "README.md", "docs/REFERENCE.md", "docs/MIGRATION.md"];
 var SHELL_SAFE_ARG = /^[\w@./:=-]+$/;
-var defaultReleaseExec = (cmd, args, opts) => {
+function releaseSpawn(cmd, args, opts) {
   const shell = process.platform === "win32" && cmd === "npm";
   if (shell && !args.every((a) => SHELL_SAFE_ARG.test(a))) {
-    return { status: 1, stdout: "", stderr: `refusing to pass ${JSON.stringify(args)} to npm through cmd.exe` };
+    return { refused: { status: 1, stdout: "", stderr: `refusing to pass ${JSON.stringify(args)} to npm through cmd.exe` } };
   }
   const base = scrubShipEnv(process.env);
   if (opts?.suiteEnv) delete base.GIT_NO_REPLACE_OBJECTS;
-  const result = (0, import_child_process58.spawnSync)(shell ? ["npm", ...args].join(" ") : cmd, shell ? [] : args, {
-    cwd: opts?.cwd,
-    env: { ...base, ...opts?.env },
-    encoding: "utf8",
-    windowsHide: true,
-    maxBuffer: 512 * 1024 * 1024,
-    shell,
-    timeout: opts?.timeoutMs
+  return {
+    file: shell ? ["npm", ...args].join(" ") : cmd,
+    args: shell ? [] : args,
+    options: { cwd: opts?.cwd, env: { ...base, ...opts?.env }, windowsHide: true, shell, timeout: opts?.timeoutMs }
+  };
+}
+var defaultReleaseExecAsync = (cmd, args, opts) => {
+  const s = releaseSpawn(cmd, args, opts);
+  if ("refused" in s) return Promise.resolve(s.refused);
+  return new Promise((done) => {
+    let stdout = "";
+    let stderr = "";
+    const child = (0, import_child_process58.spawn)(s.file, s.args, { ...s.options, stdio: ["ignore", "pipe", "pipe"] });
+    child.stdout?.setEncoding("utf8").on("data", (d) => {
+      stdout += d;
+    });
+    child.stderr?.setEncoding("utf8").on("data", (d) => {
+      stderr += d;
+    });
+    child.on("error", (error2) => done({ status: 1, stdout, stderr: `${stderr}${error2.message}` }));
+    child.on("close", (code) => done({ status: code ?? 1, stdout, stderr }));
   });
+};
+var defaultReleaseExec = (cmd, args, opts) => {
+  const s = releaseSpawn(cmd, args, opts);
+  if ("refused" in s) return s.refused;
+  const result = (0, import_child_process58.spawnSync)(s.file, s.args, { ...s.options, encoding: "utf8", maxBuffer: 512 * 1024 * 1024 });
   return {
     status: result.status ?? 1,
     stdout: result.stdout ?? "",
@@ -163190,10 +163232,10 @@ var pendingWait = (note) => {
   throw new PendingError({ status: "blocked", note });
 };
 function releaseStatePath(stateRoot2, version3) {
-  return (0, import_path222.join)(stateRoot2, "release", `${version3}.json`);
+  return (0, import_path223.join)(stateRoot2, "release", `${version3}.json`);
 }
 function flakyCandidatesPath(stateRoot2, version3) {
-  return (0, import_path222.join)(stateRoot2, "release", `${version3}-flaky-candidates.json`);
+  return (0, import_path223.join)(stateRoot2, "release", `${version3}-flaky-candidates.json`);
 }
 function readReleaseState(stateRoot2, version3) {
   const path30 = releaseStatePath(stateRoot2, version3);
@@ -163273,7 +163315,8 @@ function phasePlan(id, v, opts) {
         `git push origin HEAD:refs/heads/${branch} until the PR is merged (plain, never forced; a refused push blocks)`,
         `gh pr create --base dev --head ${branch} (an open one is reused; a merged one when its merge contains HEAD, or the dev tip once a follow-up PR into dev carried HEAD; else blocks)`,
         "wait for CI under the ship merge rule (ship.advisoryChecks never block); one rerun of failed jobs, awaited until its new attempt starts",
-        "gh pr merge --admin --merge --match-head-commit <head> when the PR head is local HEAD, ship.allowAdminMerge and dev is a trusted base, else print it"
+        "gh pr merge --admin --merge --match-head-commit <head> when the PR head is local HEAD, ship.allowAdminMerge and dev is a trusted base, else print it",
+        "in one run with suite / smoke: pushed and opened before them, its CI watched while they run; merged only once they pass (a failure leaves the PR open and unmerged); not when a skipped smoke would block pr"
       ];
     case "promote":
       return [
@@ -163315,7 +163358,7 @@ var Release = class {
   save(patch) {
     this.state = { ...this.state, ...patch, updatedAt: new Date(this.deps.now()).toISOString() };
     const path30 = releaseStatePath(this.deps.stateRoot, this.v);
-    (0, import_fs194.mkdirSync)((0, import_path222.join)(this.deps.stateRoot, "release"), { recursive: true });
+    (0, import_fs194.mkdirSync)((0, import_path223.join)(this.deps.stateRoot, "release"), { recursive: true });
     atomicWriteJsonSync(path30, this.state);
   }
   run(cmd, args, opts) {
@@ -163342,7 +163385,7 @@ ${r.stderr}`)) throw new PendingError(outcome);
     this.must(this.deps.node, [script, ...args], `node ${[script, ...args].join(" ")}`);
   }
   file(rel) {
-    const path30 = (0, import_path222.join)(this.deps.root, rel);
+    const path30 = (0, import_path223.join)(this.deps.root, rel);
     return (0, import_fs194.existsSync)(path30) ? (0, import_fs194.readFileSync)(path30, "utf8") : null;
   }
   readPkgName() {
@@ -163362,7 +163405,7 @@ ${r.stderr}`)) throw new PendingError(outcome);
         case "gates":
           return this.gates();
         case "suite":
-          return this.suite();
+          return await this.suite();
         case "smoke":
           return this.smoke();
         case "commit":
@@ -163409,7 +163452,7 @@ ${r.stderr}`)) throw new PendingError(outcome);
     } else if (!/E404/.test(latest2.stderr)) problems.push(`npm view ${this.pkgName} failed: ${tail2(latest2.stderr, 1).join("")}`);
     if (this.run("gh", ["auth", "status"]).status !== 0) problems.push("gh is not authenticated (gh auth login)");
     const lockRel = this.git("rev-parse", "--git-path", "index.lock");
-    const lock = (0, import_path222.isAbsolute)(lockRel) ? lockRel : (0, import_path222.join)(this.deps.root, lockRel);
+    const lock = (0, import_path223.isAbsolute)(lockRel) ? lockRel : (0, import_path223.join)(this.deps.root, lockRel);
     if ((0, import_fs194.existsSync)(lock)) {
       problems.push(`${lock} exists; another git process may hold it (not deleted; remove it only when no git process runs): ${this.gitProcesses()}`);
     }
@@ -163436,7 +163479,7 @@ ${r.stderr}`)) throw new PendingError(outcome);
       const content2 = this.file(stamp.file);
       const next = content2 === null ? null : stampVersion(content2, stamp, v);
       if (next === null) missing.push(`${stamp.file}: no version stamp`);
-      else if (next !== content2) (0, import_fs194.writeFileSync)((0, import_path222.join)(this.deps.root, stamp.file), next);
+      else if (next !== content2) (0, import_fs194.writeFileSync)((0, import_path223.join)(this.deps.root, stamp.file), next);
     }
     if (missing.length > 0) fail8("version stamps missing", missing);
     this.script("scripts/generate-prompt-projections.mjs");
@@ -163448,7 +163491,7 @@ ${r.stderr}`)) throw new PendingError(outcome);
     this.must("npm", ["run", "build"], "npm run build");
     this.git("add", "-f", "dist", "bridge");
     const tracked = this.git("ls-files", "dist").split(/\r?\n/).filter(Boolean);
-    const orphans = findDistOrphans(tracked, (p) => (0, import_fs194.existsSync)((0, import_path222.join)(this.deps.root, p)));
+    const orphans = findDistOrphans(tracked, (p) => (0, import_fs194.existsSync)((0, import_path223.join)(this.deps.root, p)));
     if (orphans.length > 0) {
       if (!this.opts.fixOrphans) fail8(`${orphans.length} dist file(s) without a src source (re-run with --fix-orphans to remove them)`, orphans);
       for (let i = 0; i < orphans.length; i += 100) this.git("rm", "-q", "--", ...orphans.slice(i, i + 100));
@@ -163456,7 +163499,7 @@ ${r.stderr}`)) throw new PendingError(outcome);
     const untracked = this.git("ls-files", "--others", "dist", "bridge");
     if (untracked) fail8("untracked files under dist/ or bridge/ after git add -f", untracked.split(/\r?\n/));
     const probes = [];
-    const importProbe = this.run(this.deps.node, ["--input-type=module", "-e", "await import(process.argv[1])", (0, import_url25.pathToFileURL)((0, import_path222.join)(this.deps.root, "dist", "index.js")).href]);
+    const importProbe = this.run(this.deps.node, ["--input-type=module", "-e", "await import(process.argv[1])", (0, import_url25.pathToFileURL)((0, import_path223.join)(this.deps.root, "dist", "index.js")).href]);
     if (importProbe.status !== 0) probes.push(`import dist/index.js failed: ${tail2(importProbe.stderr, 3).join(" ")}`);
     for (const entry2 of ["dist/cli/index.js", "bridge/cli.cjs"]) {
       const r = this.run(this.deps.node, [entry2, "--version"]);
@@ -163487,29 +163530,42 @@ ${r.stderr}`.trim().split(/\r?\n/);
     this.script("scripts/ci/check-multirepo-paths.mjs");
     return { status: "ok", note: "gates green" };
   }
+  /** A suite child: through execAsync when given (the release PR's CI is watched meanwhile), with the suite shell env. */
+  async runSuite(args, opts = {}) {
+    const full = { cwd: this.deps.root, ...opts, suiteEnv: true, env: { ...this.suiteEnv, ...opts.env } };
+    return this.deps.execAsync ? this.deps.execAsync(this.deps.node, args, full) : this.deps.exec(this.deps.node, args, full);
+  }
+  suiteEnv = {};
   /** After the commit phase: tests of committed state (pack, committed docs, inventory drift) need the release commits. */
-  suite() {
+  async suite() {
     const suite = this.opts.suite ?? "none";
     const head = this.git("rev-parse", "HEAD");
     this.save({ suiteSha: head, suiteRan: suite });
+    if (suite !== "none") {
+      const shell = this.deps.suiteShell?.() ?? { env: {} };
+      if ("problem" in shell) return fail8(`suite not started: ${shell.problem}`);
+      this.suiteEnv = shell.env;
+    }
     if (suite === "targeted") {
       const tag = this.run("git", ["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", "HEAD"]);
       if (tag.status !== 0) fail8("no v* tag reachable from HEAD for --suite targeted", tail2(tag.stderr, 2));
-      const changed = this.git("diff", "--name-only", `${tag.stdout.trim()}...HEAD`, "--", "src").split(/\r?\n/).filter((f) => /\.(?:ts|tsx|mts)$/.test(f) && !f.endsWith(".d.ts") && (0, import_fs194.existsSync)((0, import_path222.join)(this.deps.root, f)));
+      const changed = this.git("diff", "--name-only", `${tag.stdout.trim()}...HEAD`, "--", "src").split(/\r?\n/).filter((f) => /\.(?:ts|tsx|mts)$/.test(f) && !f.endsWith(".d.ts") && (0, import_fs194.existsSync)((0, import_path223.join)(this.deps.root, f)));
       if (changed.length === 0) return { status: "ok", note: `suite: no src changes since ${tag.stdout.trim()} for the targeted suite` };
       const args = ["node_modules/vitest/vitest.mjs", "related", "--run", "--exclude", "tests/perf/**", ...changed];
       this.deps.log(`  node ${args.join(" ")}`);
-      this.must(this.deps.node, args, `node ${args.join(" ")}`, { suiteEnv: true });
+      const r = await this.runSuite(args);
+      if (r.status !== 0) fail8(`node ${args.join(" ")} failed (exit ${r.status})`, tail2(`${r.stdout}
+${r.stderr}`));
       this.requireClean("targeted suite");
       return { status: "ok", note: `targeted suite over ${changed.length} changed src file(s)` };
     }
     if (suite === "full") {
-      const out = (0, import_path222.join)(this.deps.stateRoot, "release", `${this.v}-vitest.json`);
-      (0, import_fs194.mkdirSync)((0, import_path222.join)(this.deps.stateRoot, "release"), { recursive: true });
+      const out = (0, import_path223.join)(this.deps.stateRoot, "release", `${this.v}-vitest.json`);
+      (0, import_fs194.mkdirSync)((0, import_path223.join)(this.deps.stateRoot, "release"), { recursive: true });
       (0, import_fs194.rmSync)(out, { force: true });
       (0, import_fs194.rmSync)(flakyCandidatesPath(this.deps.stateRoot, this.v), { force: true });
       this.deps.log(`  node node_modules/vitest/vitest.mjs run --reporter=json --outputFile=${out}`);
-      const r = this.run(this.deps.node, ["node_modules/vitest/vitest.mjs", "run", "--exclude", "tests/perf/**", "--reporter=json", `--outputFile=${out}`], { suiteEnv: true });
+      const r = await this.runSuite(["node_modules/vitest/vitest.mjs", "run", "--exclude", "tests/perf/**", "--reporter=json", `--outputFile=${out}`]);
       if (!(0, import_fs194.existsSync)(out)) fail8(`vitest wrote no JSON report (exit ${r.status})`, tail2(r.stderr));
       const failing = failingTitlesFromVitestJson((0, import_fs194.readFileSync)(out, "utf8"));
       const baseline = this.opts.baseline ? parseBaselineTitles((0, import_fs194.readFileSync)(this.opts.baseline, "utf8")) : [];
@@ -163519,7 +163575,7 @@ ${r.stderr}`.trim().split(/\r?\n/);
         this.requireClean("full suite");
         return { status: "ok", note: `full suite: ${failing.length} failing, all in the baseline` };
       }
-      const triage = this.triage(fresh, head);
+      const triage = await this.triage(fresh, head);
       const lines4 = triage.map((t) => `${t.class}: ${t.title} (passed ${t.passes}/${t.runs} isolated reruns)`);
       const real2 = triage.filter((t) => t.class === "real").length;
       const mixed = triage.filter((t) => t.class === "mixed").length;
@@ -163551,11 +163607,11 @@ ${r.stderr}`.trim().split(/\r?\n/);
    * the suite's load. Saved after each title, so a re-run on the same HEAD
    * does not repeat finished titles.
    */
-  triage(titles, head) {
+  async triage(titles, head) {
     const runs = this.opts.triageRuns ?? 3;
     const timeoutMs = (this.opts.triageTimeoutMinutes ?? 5) * 6e4;
     const prior = this.state.suiteTriage?.sha === head ? this.state.suiteTriage.results : [];
-    const out = (0, import_path222.join)(this.deps.stateRoot, "release", `${this.v}-triage.json`);
+    const out = (0, import_path223.join)(this.deps.stateRoot, "release", `${this.v}-triage.json`);
     const results = [];
     for (const [i, title] of titles.entries()) {
       const { file, name } = splitFailingTitle(title);
@@ -163566,7 +163622,7 @@ ${r.stderr}`.trim().split(/\r?\n/);
           (0, import_fs194.rmSync)(out, { force: true });
           const args = ["node_modules/vitest/vitest.mjs", "run", file, `--testNamePattern=${escapeRe(name)}`, "--reporter=json", `--outputFile=${out}`];
           this.deps.log(`  node ${args.slice(0, 3).join(" ")} ${JSON.stringify(args[3])} --reporter=json (isolated rerun ${n + 1}/${runs})`);
-          const r = this.run(this.deps.node, args, { suiteEnv: true, timeoutMs });
+          const r = await this.runSuite(args, { timeoutMs });
           if (r.status === 0 && (0, import_fs194.existsSync)(out) && testPassedInReport((0, import_fs194.readFileSync)(out, "utf8"), file, name)) passes++;
         }
         result = { title, file, runs: name === null ? 0 : runs, passes, class: classifyTriage(runs, passes, name === null) };
@@ -163778,11 +163834,31 @@ ${r.stderr}`;
     if (!m) fail8(`gh pr create printed no PR url: ${out.trim()}`);
     return Number(m[1]);
   }
-  async pr() {
+  /** Why pr may not merge for want of a live smoke (null = it may). */
+  smokeBlock() {
     const smoke = this.state.phases.smoke?.status;
-    if (smoke !== "ok" && !this.opts.allowSkippedSmoke) {
-      blocked(`the live smoke ${smoke === "skipped" ? "was skipped" : "has not passed"}; run it (--from smoke --live-smoke, two prompts, about 0.6 AI credits), or pass --allow-skipped-smoke to release without it`);
-    }
+    if (smoke === "ok" || this.opts.allowSkippedSmoke) return null;
+    return `the live smoke ${smoke === "skipped" ? "was skipped" : "has not passed"}; run it (--from smoke --live-smoke, two prompts, about 0.6 AI credits), or pass --allow-skipped-smoke to release without it`;
+  }
+  /** Whether the smoke phase, run on HEAD now, would skip (no --live-smoke, no reusable green smoke): pr would then block. */
+  smokeWouldSkip() {
+    return !this.opts.liveSmoke && !this.opts.forceSmoke && this.state.lastSmoke?.inputHash !== this.smokeInputs();
+  }
+  /**
+   * Set while pr runs alongside the suite (and smoke): land() awaits it before
+   * merging, and it throws (PhaseStop) when they did not pass.
+   */
+  mergeGate;
+  /** Set when the suite (or smoke) beside pr did not pass: the CI wait stops at its next pause. */
+  ciAbort;
+  /** Every CI wait sleeps here, so a failed suite beside the CI wait ends it at the next poll. */
+  async pause(ms) {
+    await this.deps.sleep(ms);
+    if (this.ciAbort) throw new PhaseStop(this.ciAbort);
+  }
+  async pr() {
+    const smoke = this.mergeGate ? null : this.smokeBlock();
+    if (smoke) blocked(smoke);
     const branch = `release/v${this.v}`;
     if (this.state.devPr === void 0 || this.viewPr(this.state.devPr).state !== "MERGED") {
       const push = this.run("git", ["push", "origin", `HEAD:refs/heads/${branch}`]);
@@ -163842,7 +163918,7 @@ ${rr.stderr}`) });
         const note = `run ${id} was rerun but attempt ${before + 1} has not started; re-run omg release ${this.v} --from ${phase}`;
         if (polls >= RERUN_START_POLLS) blocked(note);
         if (this.deps.now() >= this.deadline) pendingWait(note);
-        await this.deps.sleep(pollMs);
+        await this.pause(pollMs);
       }
     }
     return ready.length > 0;
@@ -163905,13 +163981,20 @@ ${rr.stderr}`) });
         headSha: view.headRefOid,
         watch: true,
         reruns: this.rerunBudget,
-        sleep: this.deps.sleep,
+        sleep: (ms) => this.pause(ms),
         now: this.deps.now,
         onReport: (r) => this.deps.progress({ phase, status: "heartbeat", note: `PR #${pr} gates ${r.verdict}: ${r.pending.length} pending, ${r.failed.length} failed` }),
         retryTransient: this.opts.drive,
         onTransient: (message4) => this.deps.progress({ phase, status: "heartbeat", note: `PR #${pr}: transient GitHub error, retrying (${message4.slice(0, 120)})` })
       });
       if (report3.verdict === "green") {
+        if (this.mergeGate) {
+          const gate = this.mergeGate;
+          this.mergeGate = void 0;
+          this.deps.progress({ phase, status: "heartbeat", note: `PR #${pr} gates green; merge waits for the suite` });
+          await gate();
+          continue;
+        }
         const command = ["pr", "merge", String(pr), "--admin", "--merge", "--match-head-commit", view.headRefOid];
         if (!config2.allowAdminMerge || !config2.trustedBases.includes(base)) {
           blocked(`PR #${pr} is green; ship.allowAdminMerge is off or ${base} is not a trusted base, so run the merge yourself, then re-run omg release ${this.v} --from ${phase}`, [`gh ${command.join(" ")}`]);
@@ -163924,7 +164007,7 @@ ${rr.stderr}`) });
       const failedRuns = [...new Set(report3.checks.filter((c) => c.class === "failed" && c.runId).map((c) => c.runId))];
       const finished = failedRuns.filter((id) => !report3.checks.some((c) => c.runId === id && c.class === "pending"));
       if (finished.length < failedRuns.length) {
-        await this.deps.sleep(config2.pollIntervalSeconds * 1e3);
+        await this.pause(config2.pollIntervalSeconds * 1e3);
         continue;
       }
       if (await this.rerunOnce(finished, phase, config2.pollIntervalSeconds * 1e3)) continue;
@@ -163947,7 +164030,7 @@ ${rr.stderr}`) });
       if (expected ? view.headRefOid === expected : this.headContains(ancestor, base, view.headRefOid)) return;
       const note = expected ? `PR #${pr} head is ${view.headRefOid.slice(0, 12)}, not local HEAD ${expected.slice(0, 12)}; push or merge until they match, then re-run omg release ${this.v} --from ${phase}` : `PR #${pr} head ${view.headRefOid.slice(0, 12)} does not contain ${ancestor.slice(0, 12)}; update the PR, then re-run omg release ${this.v} --from ${phase}`;
       if (polls >= HEAD_SYNC_POLLS) blocked(note);
-      await this.deps.sleep(HEAD_SYNC_POLL_MS);
+      await this.pause(HEAD_SYNC_POLL_MS);
     }
   }
   /**
@@ -164108,7 +164191,7 @@ async function runRelease(deps, requested) {
     deps.log(`[${start ?? "verify"}] blocked: ${note}`);
     return { ok: false, version: v, dryRun: Boolean(requested.dryRun), statePath, phases: [{ id: start ?? "verify", status: "blocked", note }] };
   }
-  const baseline = requested.baseline ? (0, import_path222.resolve)(requested.baseline) : start === "preflight" ? void 0 : existing?.baseline;
+  const baseline = requested.baseline ? (0, import_path223.resolve)(requested.baseline) : start === "preflight" ? void 0 : existing?.baseline;
   const opts = { ...requested, suite: requested.suite ?? recorded ?? "none", baseline };
   if (requested.baseline && opts.suite !== "full") throw new UsageError(`--baseline needs --suite full (this release's suite is ${opts.suite})`);
   const last = PHASES2.indexOf(opts.to ?? "verify");
@@ -164149,24 +164232,70 @@ async function runRelease(deps, requested) {
     return { ok: false, version: v, dryRun: false, statePath, phases: [{ id: selected[0], status: "blocked", note, details: skip }] };
   }
   if (release.current.suite !== opts.suite || release.current.baseline !== opts.baseline) release.save({ suite: opts.suite, baseline: opts.baseline });
+  const record3 = (id, outcome) => {
+    const entry2 = { ...outcome, at: new Date(deps.now()).toISOString() };
+    const kept = Object.fromEntries(Object.entries(release.current.phases).filter(([p]) => PHASES2.indexOf(p) < PHASES2.indexOf(id)));
+    release.save({ phases: { ...kept, [id]: entry2 } });
+    results.push({ id, ...outcome });
+    deps.progress({ phase: id, status: outcome.status === "skipped" ? "ok" : outcome.status, note: outcome.note });
+    deps.log(`[${id}] ${outcome.status}: ${outcome.note}`);
+    for (const d of outcome.details ?? []) deps.log(`    ${d}`);
+    return outcome.status !== "fail" && outcome.status !== "blocked";
+  };
+  const beside = selected.includes("pr") ? selected.filter((id) => id === "suite" || id === "smoke") : [];
+  const besideOk = beside.length > 0 && (opts.allowSkippedSmoke || (beside.includes("smoke") ? !release.smokeWouldSkip() : !release.smokeBlock()));
+  let ci;
+  const stopCi = async (stop) => {
+    release.ciAbort = stop;
+    ci.shut(stop);
+    const r = await ci.done;
+    if (r.outcome) return r.outcome;
+    if (r.error instanceof PendingError) return stop;
+    throw r.error;
+  };
   for (const id of selected) {
+    if (id === "pr" && ci) {
+      const smoke = release.smokeBlock();
+      if (smoke) await stopCi({ status: "blocked", note: `release PR #${release.current.devPr ?? "?"} left open and unmerged: ${smoke}` });
+      else ci.open();
+      const r = await ci.done;
+      if (r.error instanceof PendingError) return pendingResult(id, r.error);
+      if (r.error) throw r.error;
+      if (!record3(id, r.outcome)) return { ok: false, version: v, dryRun: false, statePath, phases: results };
+      continue;
+    }
+    if (besideOk && id === beside[0]) {
+      let open9;
+      let shut;
+      const gate = new Promise((resolveGate, reject2) => {
+        open9 = resolveGate;
+        shut = (o) => reject2(new PhaseStop(o));
+      });
+      gate.catch(() => {
+      });
+      release.mergeGate = () => gate;
+      deps.log(`[pr] ${phasePlan("pr", v, opts)[0]} (beside the ${beside.join(" and ")}: merged only once they pass)`);
+      deps.progress({ phase: "pr", status: "start", note: `release PR CI runs beside the ${beside.join(" and ")}` });
+      const done = release.phase("pr").then((outcome2) => ({ outcome: outcome2 }), (error2) => ({ error: error2 }));
+      ci = { done, open: open9, shut };
+    }
     deps.log(`[${id}] ${phasePlan(id, v, opts)[0]}`);
     deps.progress({ phase: id, status: "start" });
     let outcome;
     try {
       outcome = await release.phase(id);
     } catch (error2) {
-      if (error2 instanceof PendingError) return pendingResult(id, error2);
+      if (error2 instanceof PendingError) {
+        if (ci) await stopCi({ status: "blocked", note: `the ${id} phase beside the release PR is pending` });
+        return pendingResult(id, error2);
+      }
       throw error2;
     }
-    const record3 = { ...outcome, at: new Date(deps.now()).toISOString() };
-    const kept = Object.fromEntries(Object.entries(release.current.phases).filter(([p]) => PHASES2.indexOf(p) < PHASES2.indexOf(id)));
-    release.save({ phases: { ...kept, [id]: record3 } });
-    results.push({ id, ...outcome });
-    deps.progress({ phase: id, status: outcome.status === "skipped" ? "ok" : outcome.status, note: outcome.note });
-    deps.log(`[${id}] ${outcome.status}: ${outcome.note}`);
-    for (const d of outcome.details ?? []) deps.log(`    ${d}`);
-    if (outcome.status === "fail" || outcome.status === "blocked") {
+    if (!record3(id, outcome)) {
+      if (ci) {
+        const pr = await stopCi({ status: "blocked", note: `release PR #${release.current.devPr ?? "?"} left open and unmerged: the ${id} phase ${outcome.status} (${outcome.note}); fix it, then re-run omg release ${v} --from ${id}` });
+        record3("pr", pr);
+      }
       return { ok: false, version: v, dryRun: false, statePath, phases: results };
     }
   }
@@ -164192,10 +164321,10 @@ var defaultDriveProcess = {
   kill: (pid) => killProcessTree(pid, process.platform === "win32" ? "SIGKILL" : "SIGTERM")
 };
 function driveLockPath(dir, name) {
-  return (0, import_path223.join)(dir, `${name}.drive.json`);
+  return (0, import_path224.join)(dir, `${name}.drive.json`);
 }
 function driveLogPath(dir, name) {
-  return (0, import_path223.join)(dir, `${name}.drive.log`);
+  return (0, import_path224.join)(dir, `${name}.drive.log`);
 }
 function readDriveLock(path30) {
   try {
@@ -164209,7 +164338,7 @@ async function acquireDriveLock(path30, argv, proc, log3, now2 = Date.now, fsx =
   const identity = await proc.identity(process.pid) ?? await proc.identity(process.pid);
   if (!identity) throw new Error(`cannot read the start identity of pid ${process.pid}; refusing to drive (${path30} could not be told apart from a reused pid by --stop)`);
   const lock = { pid: process.pid, startedAt: new Date(now2()).toISOString(), argv, host: (0, import_os46.hostname)(), identity };
-  (0, import_fs195.mkdirSync)((0, import_path223.dirname)(path30), { recursive: true });
+  (0, import_fs195.mkdirSync)((0, import_path224.dirname)(path30), { recursive: true });
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       (0, import_fs195.writeFileSync)(path30, `${JSON.stringify(lock, null, 2)}
@@ -164282,7 +164411,7 @@ async function driveRelease(deps, opts, drive = {}) {
   }
 }
 function spawnDetachedDriver(entry2, argv, logPath, cwd2, spawnImpl = import_child_process59.spawn) {
-  (0, import_fs195.mkdirSync)((0, import_path223.dirname)(logPath), { recursive: true });
+  (0, import_fs195.mkdirSync)((0, import_path224.dirname)(logPath), { recursive: true });
   const fd = (0, import_fs195.openSync)(logPath, "a");
   try {
     const child = spawnImpl(process.execPath, [entry2, ...argv], { cwd: cwd2, detached: true, stdio: ["ignore", fd, fd], windowsHide: true, env: process.env });
@@ -164554,7 +164683,7 @@ function shipCommand(execImpl = defaultExec, loadShipConfig = shipConfig, drive 
     const progress = (phase, status, note) => {
       emitProgress({ phase, status, note, agent, cwd: root2 });
     };
-    const driveDir = (0, import_path224.dirname)(shipStatePath(root2, pr));
+    const driveDir = (0, import_path225.dirname)(shipStatePath(root2, pr));
     const lockPath2 = driveLockPath(driveDir, String(pr));
     const logPath = driveLogPath(driveDir, String(pr));
     const monitor = `omg progress watch --file ${progressFile} --until settled --stall 30m`;
@@ -164762,14 +164891,14 @@ function shipCommand(execImpl = defaultExec, loadShipConfig = shipConfig, drive 
 init_esm();
 init_source();
 var import_fs197 = require("fs");
-var import_path226 = require("path");
+var import_path227 = require("path");
 var import_promises38 = require("readline/promises");
 init_config4();
 init_worktree_paths();
 
 // src/release/progress.ts
 var import_fs196 = require("fs");
-var import_path225 = require("path");
+var import_path226 = require("path");
 var BARE_VALUE = /^[A-Za-z0-9._:/@+,%#~-]+$/;
 var MAX_NOTE = 500;
 function quote3(value) {
@@ -164783,12 +164912,12 @@ function formatReleaseProgress(input, at = /* @__PURE__ */ new Date()) {
   return parts.join(" ");
 }
 function releaseProgressFile(stateRoot2) {
-  return process.env.OMG_PROGRESS_FILE || (0, import_path225.join)(stateRoot2, "progress", "release.log");
+  return process.env.OMG_PROGRESS_FILE || (0, import_path226.join)(stateRoot2, "progress", "release.log");
 }
 function emitReleaseProgress(input, stateRoot2) {
   try {
     const path30 = input.file || releaseProgressFile(stateRoot2);
-    (0, import_fs196.mkdirSync)((0, import_path225.dirname)(path30), { recursive: true });
+    (0, import_fs196.mkdirSync)((0, import_path226.dirname)(path30), { recursive: true });
     (0, import_fs196.appendFileSync)(path30, `${formatReleaseProgress(input)}
 `, "utf8");
     return true;
@@ -164892,6 +165021,12 @@ function releaseCommand(overrides = {}) {
       const stateRoot2 = overrides.stateRoot ?? getOmcRoot(root2);
       const deps = {
         exec: exec3,
+        // A scripted exec (tests) runs the suite through itself too, with no PATH check.
+        execAsync: overrides.execAsync ?? (overrides.exec ? void 0 : defaultReleaseExecAsync),
+        suiteShell: overrides.suiteShell ?? (overrides.exec ? void 0 : () => {
+          const git7 = process.platform === "win32" ? exec3("git", ["--exec-path"]) : null;
+          return suiteShellFor(process.platform, process.env, import_fs197.existsSync, git7?.status === 0 && git7.stdout.trim() ? git7.stdout : null);
+        }),
         root: root2,
         stateRoot: stateRoot2,
         node: overrides.node ?? process.execPath,
@@ -164907,7 +165042,7 @@ function releaseCommand(overrides = {}) {
         now: overrides.now ?? (() => Date.now())
       };
       const proc = overrides.driveProcess ?? defaultDriveProcess;
-      const releaseDir = (0, import_path226.join)(stateRoot2, "release");
+      const releaseDir = (0, import_path227.join)(stateRoot2, "release");
       const lockPath2 = driveLockPath(releaseDir, version3);
       const logPath = driveLogPath(releaseDir, version3);
       const progressFile = releaseProgressFile(stateRoot2);
@@ -164962,7 +165097,7 @@ function releaseCommand(overrides = {}) {
         process.exitCode = !stopped.stopped && stopped.refused ? 1 : 0;
         return;
       }
-      const baseline = o.baseline ? (0, import_path226.resolve)(o.baseline) : void 0;
+      const baseline = o.baseline ? (0, import_path227.resolve)(o.baseline) : void 0;
       if (o.detach) {
         const argv = releaseDriveArgv(version3, o, baseline);
         const detached = await detachDriver({
@@ -165037,7 +165172,7 @@ function releaseCommand(overrides = {}) {
 // src/cli/commands/port.ts
 init_esm();
 init_source();
-var import_path228 = require("path");
+var import_path229 = require("path");
 init_job();
 init_lane();
 init_worktree_paths();
@@ -165045,7 +165180,7 @@ init_worktree_paths();
 // src/port/engine.ts
 var import_crypto64 = require("crypto");
 var import_fs198 = require("fs");
-var import_path227 = require("path");
+var import_path228 = require("path");
 init_lane();
 init_ledger2();
 init_review_guard();
@@ -165202,7 +165337,7 @@ var listed = (paths, n = 10) => `${paths.slice(0, n).join(", ")}${paths.length >
 var isJunk = (p) => JUNK_PATHS.some((j) => p === j || p.startsWith(`${j}/`));
 var chunks = (items, size = 100) => Array.from({ length: Math.ceil(items.length / size) }, (_, i) => items.slice(i * size, (i + 1) * size));
 function forkFeaturesSection(cwd2) {
-  const path30 = (0, import_path227.join)(cwd2, ".omc", "skills", "port-upstream.md");
+  const path30 = (0, import_path228.join)(cwd2, ".omc", "skills", "port-upstream.md");
   if (!(0, import_fs198.existsSync)(path30)) return "";
   const text4 = (0, import_fs198.readFileSync)(path30, "utf8").replace(/\r/g, "");
   const m = /^## Fork Features to Preserve\n([\s\S]*?)(?=^## )/m.exec(text4);
@@ -165247,15 +165382,15 @@ async function runPortDrive(opts) {
   const push = opts.push !== false;
   const date3 = opts.date ?? (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const stateRoot2 = getOmcRoot(cwd2);
-  const rel = (0, import_path227.relative)(cwd2, stateRoot2).replace(/\\/g, "/");
-  const stateRootRel2 = rel && !rel.startsWith("..") && !(0, import_path227.isAbsolute)(rel) ? rel : null;
-  const hooksDir = (0, import_path227.join)(stateRoot2, "port", "empty-hooks");
+  const rel = (0, import_path228.relative)(cwd2, stateRoot2).replace(/\\/g, "/");
+  const stateRootRel2 = rel && !rel.startsWith("..") && !(0, import_path228.isAbsolute)(rel) ? rel : null;
+  const hooksDir = (0, import_path228.join)(stateRoot2, "port", "empty-hooks");
   const exec3 = portGuardExec(opts.exec, hooksDir);
   const scriptEnv = hardenedScriptEnv(hooksDir);
   const git7 = (...args) => exec3("git", args, { cwd: cwd2 });
   const script = (...args) => exec3(node, args, { cwd: cwd2 });
   const repoScript = (...args) => exec3(node, args, { cwd: cwd2, env: scriptEnv });
-  const exists = (p) => (0, import_fs198.existsSync)((0, import_path227.isAbsolute)(p) ? p : (0, import_path227.join)(cwd2, p));
+  const exists = (p) => (0, import_fs198.existsSync)((0, import_path228.isAbsolute)(p) ? p : (0, import_path228.join)(cwd2, p));
   const result = {
     status: "fail",
     exitCode: 1,
@@ -165288,7 +165423,7 @@ async function runPortDrive(opts) {
   };
   try {
     begin("preflight", opts.head);
-    emptyHooksDir2((0, import_path227.join)(stateRoot2, "port"));
+    emptyHooksDir2((0, import_path228.join)(stateRoot2, "port"));
     const head = git7("rev-parse", "--verify", "--quiet", `${opts.head}^{commit}`).stdout.trim();
     if (!/^[0-9a-f]{40}$/.test(head)) throw new PortStop("fail", phase, `upstream head ${JSON.stringify(opts.head)} is not a commit here; fetch upstream first (git fetch upstream dev)`);
     result.upstreamHead = head;
@@ -165298,8 +165433,8 @@ async function runPortDrive(opts) {
     }
     const branch = `port/upstream-${short(head)}`;
     result.branch = branch;
-    const portDir = (0, import_path227.join)(stateRoot2, "port", short(head));
-    const progressFile = opts.progressFile || process.env.OMG_PROGRESS_FILE || (0, import_path227.join)(stateRoot2, "progress", "port.log");
+    const portDir = (0, import_path228.join)(stateRoot2, "port", short(head));
+    const progressFile = opts.progressFile || process.env.OMG_PROGRESS_FILE || (0, import_path228.join)(stateRoot2, "progress", "port.log");
     const resumeCmd = `omg port drive --head ${head} --continue`;
     const current = git7("rev-parse", "--abbrev-ref", "HEAD").stdout.trim();
     if (opts.resume) {
@@ -165341,7 +165476,7 @@ ${dirty}`);
       ok2(junk.length > 0 ? `unstaged ${junk.length} junk file(s): ${junk.slice(0, 5).join(", ")}` : "none");
       begin("delta", "package.json");
       const blockers = [];
-      const deltaFile = (0, import_path227.join)(portDir, "package-delta.json");
+      const deltaFile = (0, import_path228.join)(portDir, "package-delta.json");
       if (opts.resume && (0, import_fs198.existsSync)(deltaFile)) {
         result.packageDelta = JSON.parse((0, import_fs198.readFileSync)(deltaFile, "utf8"));
         ok2("ran before; skipped on --continue (the human handled it)");
@@ -165363,9 +165498,9 @@ ${dirty}`);
         if (accept !== void 0) {
           result.acceptedLeaks = report3.leaks.map((l) => `${l.path}:${l.line}`);
           (0, import_fs198.mkdirSync)(portDir, { recursive: true });
-          (0, import_fs198.writeFileSync)((0, import_path227.join)(portDir, "accepted-leaks.json"), `${JSON.stringify({ head, acceptedAt: (/* @__PURE__ */ new Date()).toISOString(), leaks: report3.leaks }, null, 2)}
+          (0, import_fs198.writeFileSync)((0, import_path228.join)(portDir, "accepted-leaks.json"), `${JSON.stringify({ head, acceptedAt: (/* @__PURE__ */ new Date()).toISOString(), leaks: report3.leaks }, null, 2)}
 `);
-          opts.log(`reconcile: ${report3.leaks.length} leak line(s) accepted with --accept-leaks ${short(head)} (${(0, import_path227.join)(portDir, "accepted-leaks.json")})`);
+          opts.log(`reconcile: ${report3.leaks.length} leak line(s) accepted with --accept-leaks ${short(head)} (${(0, import_path228.join)(portDir, "accepted-leaks.json")})`);
         } else {
           blockers.push(`leak sweep: ${report3.leaks.length} new oh-my-claudecode line(s), first ${report3.leaks[0].path}:${report3.leaks[0].line}; fix them, or accept them with --accept-leaks ${head}`);
         }
@@ -165373,7 +165508,7 @@ ${dirty}`);
       const conflicts = report3.conflicts;
       if (conflicts.length > 0) {
         (0, import_fs198.mkdirSync)(portDir, { recursive: true });
-        const brief = (0, import_path227.join)(portDir, "brief.md");
+        const brief = (0, import_path228.join)(portDir, "brief.md");
         (0, import_fs198.writeFileSync)(brief, renderReconcileBrief({ cwd: cwd2, base: rangeBase, head, conflicts, progressFile, date: date3 }));
         result.brief = brief;
         const sensitive = conflicts.filter((c) => HUMAN_REVIEW_PREFIXES.some((p) => c.path.startsWith(p)) || laneForbidden([c.path]).length > 0);
@@ -165476,7 +165611,7 @@ ${[...errors, tail3(out, 10)].join("\n")}`, `fix, stage, then ${resumeCmd}`);
     if (pushed.status !== 0) throw new PortStop("fail", phase, `git push ${remote} ${branch} failed: ${tail3(pushed.stderr || pushed.stdout, 5)}`, resumeCmd);
     const md = repoScript(DRIFT_SCRIPT, "--report", "--base", rangeBase, "--head", head, "--markdown");
     (0, import_fs198.mkdirSync)(portDir, { recursive: true });
-    const bodyFile = (0, import_path227.join)(portDir, "pr-body.md");
+    const bodyFile = (0, import_path228.join)(portDir, "pr-body.md");
     const gates = result.gates.length > 0 ? result.gates.join(", ") : "green before the port commit (resumed with --continue)";
     const leaks = result.acceptedLeaks.length > 0 ? `
 - leak sweep: ${result.acceptedLeaks.length} line(s) accepted with --accept-leaks: ${listed(result.acceptedLeaks)}` : "";
@@ -165601,7 +165736,7 @@ function contentHash(path30) {
   if (st.isDirectory()) return "d";
   return `f ${st.mode & 73 ? "x" : "-"} ${sha2566((0, import_fs198.readFileSync)(path30))}`;
 }
-var hashPaths = (cwd2, paths) => sha2566([...paths].sort().map((p) => `${p} ${contentHash((0, import_path227.join)(cwd2, p))}`).join("\n"));
+var hashPaths = (cwd2, paths) => sha2566([...paths].sort().map((p) => `${p} ${contentHash((0, import_path228.join)(cwd2, p))}`).join("\n"));
 function hostBaseline(gitOk, cwd2, preApply, conflicted) {
   const applied = gitOk(["diff", "--cached", "--name-only", "-z", "--no-renames", preApply]).split("\0").filter(Boolean);
   const tracked = gitOk(["ls-files", "-z"]).split("\0").filter(Boolean);
@@ -165694,7 +165829,7 @@ function portCommand(deps = {}) {
       const top = exec3("git", ["rev-parse", "--show-toplevel"]);
       if (top.status !== 0) throw new PortUsageError("omg port drive must run inside a git repository");
       const cwd2 = top.stdout.trim();
-      const progressFile = o.progressFile ?? process.env.OMG_PROGRESS_FILE ?? (0, import_path228.join)(getOmcRoot(cwd2), "progress", "port.log");
+      const progressFile = o.progressFile ?? process.env.OMG_PROGRESS_FILE ?? (0, import_path229.join)(getOmcRoot(cwd2), "progress", "port.log");
       const result = await runPortDrive({
         cwd: cwd2,
         head: o.head,
@@ -165732,7 +165867,7 @@ function portCommand(deps = {}) {
 // src/cli/commands/progress.ts
 init_esm();
 var import_fs199 = require("fs");
-var import_path229 = require("path");
+var import_path230 = require("path");
 init_agent_progress();
 var UsageError3 = class extends Error {
 };
@@ -165755,7 +165890,7 @@ function resolveSources(o, cwd2) {
 function listSources(sources) {
   if (sources.files) return sources.files;
   try {
-    return (0, import_fs199.readdirSync)(sources.dir).filter((name) => name.endsWith(".log")).sort().map((name) => (0, import_path229.join)(sources.dir, name));
+    return (0, import_fs199.readdirSync)(sources.dir).filter((name) => name.endsWith(".log")).sort().map((name) => (0, import_path230.join)(sources.dir, name));
   } catch {
     return [];
   }
@@ -166284,7 +166419,7 @@ Profile types (use with --profile):
   webhook      Generic webhook (POST with JSON body)
 
 Examples:
-  $ omg config-stop-callback file --enable --path ${(0, import_path237.join)(getCopilotConfigDir(), "logs/{date}.md")}
+  $ omg config-stop-callback file --enable --path ${(0, import_path238.join)(getCopilotConfigDir(), "logs/{date}.md")}
   $ omg config-stop-callback telegram --enable --token <token> --chat <id>
   $ omg config-stop-callback discord --enable --webhook <url>
   $ omg config-stop-callback file --disable
@@ -166469,7 +166604,7 @@ Examples:
       const current = config2.stopHookCallbacks.file;
       config2.stopHookCallbacks.file = {
         enabled: enabled ?? current?.enabled ?? false,
-        path: options.path ?? current?.path ?? (0, import_path237.join)(getCopilotConfigDir(), "session-logs/{session_id}.md"),
+        path: options.path ?? current?.path ?? (0, import_path238.join)(getCopilotConfigDir(), "session-logs/{session_id}.md"),
         format: options.format ?? current?.format ?? "markdown"
       };
       break;

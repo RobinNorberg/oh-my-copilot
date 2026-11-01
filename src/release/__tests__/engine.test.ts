@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
@@ -6,6 +6,7 @@ import type { ExecResult } from '../../ship/exec.js';
 import { resolveShipConfig } from '../../ship/config.js';
 import {
   defaultReleaseExec,
+  defaultReleaseExecAsync,
   PHASES,
   phasePlan,
   readReleaseState,
@@ -1261,6 +1262,180 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
     });
   });
 
+  describe('pr beside the suite: the release PR CI runs while the suite does', () => {
+    const VITEST = 'vitest.mjs run --exclude';
+    const green = JSON.stringify([{ name: 'Test', state: 'SUCCESS', link: 'https://github.com/o/r/actions/runs/77/job/88' }]);
+    const running = JSON.stringify([{ name: 'Test', state: 'IN_PROGRESS', link: 'https://github.com/o/r/actions/runs/77/job/88' }]);
+    let prState: string;
+    let checksJson: string;
+    /** The vitest report the full suite writes, or null for none (the suite then fails). */
+    let report: unknown;
+    let suiteDone: () => void;
+    let suiteHeld: Promise<void>;
+
+    /** The suite's vitest run resolves only once `suiteDone()` is called; every other child as `exec`. */
+    const execAsync = (cmd: string, args: string[], opts?: Parameters<ReleaseExec>[2]): Promise<ExecResult> => {
+      const r = exec(cmd, args, opts);
+      return args.join(' ').includes(VITEST) ? suiteHeld.then(() => r) : Promise.resolve(r);
+    };
+    // CI polls yield a macrotask, as a real sleep does: the held suite and the test get turns while CI is watched.
+    const yieldSleep = () => new Promise<void>((r) => setImmediate(r));
+    const run = (opts: Partial<ReleaseOptions>, extra: Partial<ReleaseDeps> = {}) => runRelease({ ...deps(), execAsync, sleep: yieldSleep, ...extra }, { version: V, ...opts });
+    /** Lets the CI wait run between the awaits of the held suite. */
+    const settle = async () => { for (let i = 0; i < 50; i++) await new Promise((r) => setImmediate(r)); };
+
+    beforeEach(() => {
+      seedState('commit');
+      prState = 'OPEN';
+      checksJson = green;
+      report = { testResults: [] };
+      suiteHeld = new Promise((r) => { suiteDone = r; });
+      handlers.push(attempts(), (key, args) => {
+        if (key.includes(VITEST)) {
+          if (report) writeFileSync(args.find((a) => a.startsWith('--outputFile='))!.slice('--outputFile='.length), JSON.stringify(report));
+          return report ? ok() : no('vitest crashed', 1);
+        }
+        if (key.startsWith('gh pr list --head release/v5.12.2 --base dev')) return ok('[]');
+        if (key.startsWith('gh pr create --base dev')) return ok(`${PR_URL}\n`);
+        if (key.startsWith('gh pr view 301 --json number,state')) return ok(prJson(301, 'dev', prState, prState === 'MERGED' ? MERGE : null));
+        if (key === 'git rev-parse HEAD') return ok(`${HEAD}\n`);
+        if (key === 'gh pr view 301 --json headRefOid') return ok(JSON.stringify({ headRefOid: HEAD }));
+        if (key.startsWith('gh pr checks 301')) return ok(checksJson);
+        if (key.startsWith('gh pr merge 301')) { prState = 'MERGED'; return ok(); }
+        return undefined;
+      });
+    });
+
+    it('pushes and opens the PR before the suite starts, and merges a green PR only after the suite passed', async () => {
+      const pending = run({ from: 'suite', suite: 'full', to: 'pr', allowSkippedSmoke: true });
+      await vi.waitFor(() => expect(events.some((e) => e.phase === 'pr' && /merge waits for the suite/.test(e.note ?? ''))).toBe(true));
+      const vitest = calls.findIndex((c) => c.includes(VITEST));
+      expect(vitest).toBeGreaterThan(calls.indexOf('git push origin HEAD:refs/heads/release/v5.12.2'));
+      expect(calls.findIndex((c) => c.startsWith('gh pr create --base dev'))).toBeLessThan(vitest);
+      expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+      await settle();
+      expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+
+      suiteDone();
+      const result = await pending;
+      expect(result.ok).toBe(true);
+      expect(result.phases.map((p) => [p.id, p.status])).toEqual([['suite', 'ok'], ['smoke', 'skipped'], ['pr', 'ok']]);
+      expect(calls).toContain(`gh pr merge 301 --admin --merge --match-head-commit ${HEAD}`);
+      // Phase names and records stay as before; pr starts first and finishes last.
+      const marks = events.filter((e) => e.status !== 'heartbeat').map((e) => `${e.phase}:${e.status}`);
+      expect(marks).toEqual(['pr:start', 'suite:start', 'suite:ok', 'smoke:start', 'smoke:ok', 'pr:ok', 'release:done']);
+      expect(Object.keys(readReleaseState(stateRoot, V)!.phases)).toEqual([...PHASES.slice(0, PHASES.indexOf('pr') + 1)]);
+      expect(readReleaseState(stateRoot, V)).toMatchObject({ devPr: 301, devMergeSha: MERGE, suiteSha: HEAD, suiteRan: 'full' });
+    });
+
+    it('a CI still running when the suite passes is merged once it turns green', async () => {
+      checksJson = running;
+      suiteDone();
+      handlers.unshift((key) => {
+        // CI turns green only after the suite was recorded.
+        if (key.startsWith('gh pr checks 301') && readReleaseState(stateRoot, V)?.phases.suite?.status === 'ok') return ok(green);
+        return undefined;
+      });
+      const result = await run({ from: 'suite', suite: 'full', to: 'pr', allowSkippedSmoke: true });
+      expect(result.ok).toBe(true);
+      expect(calls).toContain(`gh pr merge 301 --admin --merge --match-head-commit ${HEAD}`);
+    });
+
+    for (const ci of ['green', 'running'] as const) {
+      it(`a failed suite leaves the PR open and unmerged (CI ${ci}) and reports it; --from suite resumes`, async () => {
+        checksJson = ci === 'green' ? green : running;
+        report = null;
+        const pending = run({ from: 'suite', suite: 'full', to: 'pr', allowSkippedSmoke: true });
+        await settle();
+        suiteDone();
+        const result = await pending;
+        expect(result.ok).toBe(false);
+        expect(result.phases.map((p) => [p.id, p.status])).toEqual([['suite', 'fail'], ['pr', 'blocked']]);
+        expect(result.phases[1].note).toMatch(/^release PR #301 left open and unmerged: the suite phase fail \(vitest wrote no JSON report.*re-run omg release 5\.12\.2 --from suite$/);
+        expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+        expect(events.at(-1)).toMatchObject({ phase: 'pr', status: 'blocked' });
+        expect(readReleaseState(stateRoot, V)).toMatchObject({ devPr: 301 });
+        expect(resumePoint(readReleaseState(stateRoot, V))).toBe('suite');
+
+        // The fix: the resume re-runs the suite, reuses the open PR (pushed again, never recreated) and merges.
+        report = { testResults: [] };
+        const creates = calls.filter((c) => c.startsWith('gh pr create')).length;
+        checksJson = green;
+        const resumed = await run({ allowSkippedSmoke: true, to: 'pr' });
+        expect(resumed.phases.map((p) => [p.id, p.status])).toEqual([['suite', 'ok'], ['smoke', 'skipped'], ['pr', 'ok']]);
+        expect(calls.filter((c) => c.startsWith('gh pr create')).length).toBe(creates);
+        expect(calls).toContain(`gh pr merge 301 --admin --merge --match-head-commit ${HEAD}`);
+      });
+    }
+
+    it('a CI failure beside the suite is reported at pr after the suite finished; the suite record holds', async () => {
+      suiteDone();
+      checksJson = JSON.stringify([{ name: 'Test', state: 'FAILURE', link: 'https://github.com/o/r/actions/runs/77/job/88' }]);
+      handlers.unshift((key) => (key.startsWith('gh run list --commit') ? ok('[{"databaseId":77,"status":"completed","conclusion":"failure","workflowName":"CI"}]') : undefined));
+      const result = await run({ from: 'suite', suite: 'full', to: 'pr', allowSkippedSmoke: true });
+      expect(result.phases.map((p) => [p.id, p.status])).toEqual([['suite', 'ok'], ['smoke', 'skipped'], ['pr', 'fail']]);
+      expect(result.phases[2].note).toMatch(/CI failed after the one automatic rerun/);
+      expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+      expect(resumePoint(readReleaseState(stateRoot, V))).toBe('pr');
+    });
+
+    it('--to suite and --to smoke prepare without pushing anything', async () => {
+      suiteDone();
+      expect((await run({ from: 'suite', suite: 'full', to: 'suite' })).ok).toBe(true);
+      expect((await run({ from: 'suite', suite: 'full', to: 'smoke', allowSkippedSmoke: true })).ok).toBe(true);
+      expect(calls.some((c) => c.startsWith('git push') || c.startsWith('gh pr'))).toBe(false);
+    });
+
+    it('a smoke that would be skipped without --allow-skipped-smoke opens no PR: suite, smoke, then pr blocks as before', async () => {
+      suiteDone();
+      const result = await run({ from: 'suite', suite: 'full', to: 'pr' });
+      expect(result.phases.map((p) => [p.id, p.status])).toEqual([['suite', 'ok'], ['smoke', 'skipped'], ['pr', 'blocked']]);
+      expect(result.phases[2].note).toMatch(/live smoke was skipped.*--allow-skipped-smoke/);
+      expect(calls.some((c) => c.startsWith('git push') || c.startsWith('gh pr'))).toBe(false);
+    });
+
+    it('a red live smoke beside the PR leaves it open and unmerged', async () => {
+      suiteDone();
+      handlers.unshift((key) => (key === 'node bridge/cli.cjs smoke copilot --tier 2 --json'
+        ? { status: 1, stdout: '{"ok":false,"checks":[{"id":"scn.guardrail","ok":false,"detail":"not denied"}]}', stderr: '' }
+        : undefined));
+      const result = await run({ from: 'suite', suite: 'full', to: 'pr', liveSmoke: true });
+      expect(result.phases.map((p) => [p.id, p.status])).toEqual([['suite', 'ok'], ['smoke', 'fail'], ['pr', 'blocked']]);
+      expect(result.phases[2].note).toMatch(/^release PR #301 left open and unmerged: the smoke phase fail/);
+      expect(calls).toContain('git push origin HEAD:refs/heads/release/v5.12.2');
+      expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+    });
+
+    it('drive mode: a CI wait past --timeout beside a green suite ends pending at pr with the suite recorded', async () => {
+      suiteDone();
+      checksJson = running;
+      let t = Date.parse('2026-10-21T12:00:00Z');
+      const result = await run({ from: 'suite', suite: 'full', to: 'pr', allowSkippedSmoke: true, drive: true, timeoutMinutes: 1 }, {
+        now: () => t,
+        sleep: async (ms) => { t += ms; },
+      });
+      expect(result.pending?.phase).toBe('pr');
+      const state = readReleaseState(stateRoot, V)!;
+      expect(state.phases.suite?.status).toBe('ok');
+      expect(state.phases.pr).toBeUndefined();
+      expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+    });
+
+    it('the suite runs with the suite shell env, and a shell problem fails the suite before vitest starts', async () => {
+      suiteDone();
+      const envs: Array<Record<string, string> | undefined> = [];
+      const seen = (cmd: string, args: string[], opts?: Parameters<ReleaseExec>[2]) => { if (args.join(' ').includes(VITEST)) envs.push(opts?.env); return execAsync(cmd, args, opts); };
+      expect((await run({ from: 'suite', suite: 'full', to: 'suite' }, { execAsync: seen, suiteShell: () => ({ env: { Path: 'C:\\Git\\bin;C:\\Windows' } }) })).ok).toBe(true);
+      expect(envs).toEqual([{ Path: 'C:\\Git\\bin;C:\\Windows' }]);
+
+      const refused = await run({ from: 'suite', suite: 'full', to: 'pr', allowSkippedSmoke: true }, { execAsync: seen, suiteShell: () => ({ problem: "the first bash on PATH is WSL's" }) });
+      expect(refused.phases[0]).toMatchObject({ id: 'suite', status: 'fail', note: "suite not started: the first bash on PATH is WSL's" });
+      expect(envs).toHaveLength(1);
+      expect(refused.phases[1]).toMatchObject({ id: 'pr', status: 'blocked' });
+      expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+    });
+  });
+
   describe('promote: only a merged release', () => {
     beforeEach(() => {
       seedState('pr', { devPr: 301, devMergeSha: DEVMERGE });
@@ -1570,7 +1745,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
 });
 
 describe('defaultReleaseExec environment', () => {
-  it('scrubs every child, node scripts included (they call git); the suite (suiteEnv) only drops GIT_NO_REPLACE_OBJECTS', () => {
+  it('scrubs every child, node scripts included (they call git); the suite (suiteEnv) only drops GIT_NO_REPLACE_OBJECTS', async () => {
     const saved = { idx: process.env.GIT_INDEX_FILE, repl: process.env.GIT_NO_REPLACE_OBJECTS };
     process.env.GIT_INDEX_FILE = 'caller-index';
     delete process.env.GIT_NO_REPLACE_OBJECTS;
@@ -1578,6 +1753,9 @@ describe('defaultReleaseExec environment', () => {
     try {
       expect(JSON.parse(defaultReleaseExec(process.execPath, probe).stdout)).toEqual([null, '1']);
       expect(JSON.parse(defaultReleaseExec(process.execPath, probe, { suiteEnv: true }).stdout)).toEqual([null, null]);
+      // The async exec the suite runs through spawns the same env.
+      expect(JSON.parse((await defaultReleaseExecAsync(process.execPath, probe, { suiteEnv: true, env: { GIT_INDEX_FILE: 'x' } })).stdout)).toEqual(['x', null]);
+      expect(await defaultReleaseExecAsync(process.execPath, ['-e', 'process.exit(3)'])).toMatchObject({ status: 3 });
     } finally {
       if (saved.idx === undefined) delete process.env.GIT_INDEX_FILE; else process.env.GIT_INDEX_FILE = saved.idx;
       if (saved.repl !== undefined) process.env.GIT_NO_REPLACE_OBJECTS = saved.repl;

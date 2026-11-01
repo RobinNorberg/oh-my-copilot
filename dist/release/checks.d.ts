@@ -1,7 +1,7 @@
 /**
  * Pure checks behind `omg release`: version order, release prose, version
  * stamps, dist orphans, vitest report diffs, flake triage, smoke reports,
- * the smoke input hash and tag targets.
+ * the smoke input hash, tag targets and the suite's Windows bash.
  * No I/O beyond the `exists` callback, so each rule is tested directly.
  */
 export declare const VERSION_RE: RegExp;
@@ -112,4 +112,19 @@ export declare function remoteTagTarget(lsRemote: string, tag: string): {
 } | null;
 /** Why a tag is not an annotated tag on `expected` (null = it is). */
 export declare function tagTargetProblem(tag: string, objectType: string, peeled: string, expected: string): string | null;
+/** Env overrides for the suite's children, or why the suite must not start. */
+export type SuiteShell = {
+    env: Record<string, string>;
+} | {
+    problem: string;
+};
+/**
+ * Windows: the suite's tests spawn `bash`, and a PowerShell PATH resolves it
+ * to the WSL launcher (System32\bash.exe), which fails them with exit 127.
+ * When the first bash.exe on PATH is WSL's (or there is none), Git for
+ * Windows' bin directory (next to `git --exec-path`'s root, else the default
+ * install dirs) is put first on the PATH key the env already uses; no Git
+ * bash found is a problem. Elsewhere, and with a non-WSL bash first, no change.
+ */
+export declare function suiteShellFor(platform: string, env: Record<string, string | undefined>, exists: (path: string) => boolean, gitExecPath: string | null): SuiteShell;
 //# sourceMappingURL=checks.d.ts.map

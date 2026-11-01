@@ -4,7 +4,7 @@ import { existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { classifyTriage, compareVersions, escapeRe, failingTitlesFromVitestJson, findDistOrphans, flakyCandidates, newFailures, SMOKE_INPUTS, smokeInputHash, splitFailingTitle, testPassedInReport, parseBaselineTitles, parseReleaseVersion, releaseProseProblems, remoteTagTarget, smokeProblems, stampVersion, tagTargetProblem, VERSION_STAMPS, } from '../checks.js';
+import { classifyTriage, compareVersions, escapeRe, failingTitlesFromVitestJson, findDistOrphans, flakyCandidates, newFailures, SMOKE_INPUTS, smokeInputHash, splitFailingTitle, testPassedInReport, parseBaselineTitles, parseReleaseVersion, releaseProseProblems, remoteTagTarget, smokeProblems, stampVersion, suiteShellFor, tagTargetProblem, VERSION_STAMPS, } from '../checks.js';
 import { formatReleaseProgress } from '../progress.js';
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SHA = 'a'.repeat(40);
@@ -192,6 +192,33 @@ describe('progress line contract', () => {
         expect(formatReleaseProgress({ phase: 'build', status: 'ok' }, at)).toBe('2026-10-21T12:00:00.000Z phase=build status=ok');
         expect(formatReleaseProgress({ phase: 'pr', status: 'heartbeat', note: 'PR #3 "x"', agent: 'release' }, at))
             .toBe('2026-10-21T12:00:00.000Z phase=pr status=heartbeat note="PR #3 \\"x\\"" agent=release');
+    });
+});
+describe('suite shell (Windows bash for the suite children)', () => {
+    const GIT_EXEC = 'C:/Program Files/Git/mingw64/libexec/git-core\n';
+    const GIT_BIN = 'C:\\Program Files\\Git\\bin';
+    const WSL = 'C:\\Windows\\System32';
+    const has = (...files) => (p) => files.map((f) => f.toLowerCase()).includes(p.toLowerCase());
+    const env = (path) => ({ Path: path, SystemRoot: 'C:\\Windows', ProgramFiles: 'C:\\Program Files' });
+    it('changes nothing off Windows, or when the first bash on PATH is not WSL', () => {
+        expect(suiteShellFor('linux', { PATH: '/usr/bin' }, () => false, null)).toEqual({ env: {} });
+        expect(suiteShellFor('win32', env(`${GIT_BIN};${WSL}`), has(`${GIT_BIN}\\bash.exe`, `${WSL}\\bash.exe`), GIT_EXEC)).toEqual({ env: {} });
+    });
+    it("puts Git for Windows' bin first when WSL's System32 bash.exe would win (the PowerShell PATH), on the env's own PATH key", () => {
+        const shell = suiteShellFor('win32', env(`${WSL};${GIT_BIN}`), has(`${WSL}\\bash.exe`, `${GIT_BIN}\\bash.exe`), GIT_EXEC);
+        expect(shell).toEqual({ env: { Path: `${GIT_BIN};${WSL};${GIT_BIN}` } });
+    });
+    it('treats the WindowsApps bash alias as WSL and finds Git in the install dir without git --exec-path', () => {
+        const apps = 'C:\\Users\\r\\AppData\\Local\\Microsoft\\WindowsApps';
+        expect(suiteShellFor('win32', env(apps), has(`${apps}\\bash.exe`, `${GIT_BIN}\\bash.exe`), null)).toEqual({ env: { Path: `${GIT_BIN};${apps}` } });
+    });
+    it('refuses with a clear message when only WSL bash (or no bash) is found', () => {
+        expect(suiteShellFor('win32', env(WSL), has(`${WSL}\\bash.exe`), GIT_EXEC)).toEqual({
+            problem: expect.stringContaining("needs Git for Windows bash, but the first bash on PATH is WSL's (C:\\Windows\\System32\\bash.exe)"),
+        });
+        expect(suiteShellFor('win32', { PATH: 'C:\\x' }, () => false, null)).toEqual({
+            problem: expect.stringContaining('no bash.exe is on PATH and none was found under (no Git install dir)'),
+        });
     });
 });
 //# sourceMappingURL=checks.test.js.map

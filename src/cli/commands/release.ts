@@ -17,9 +17,10 @@ import { join, resolve } from 'path';
 import { createInterface } from 'readline/promises';
 import { loadTrustedShipConfig, userConfigLayers } from '../../ship/config.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
-import { parseReleaseVersion } from '../../release/checks.js';
+import { parseReleaseVersion, suiteShellFor } from '../../release/checks.js';
 import {
   defaultReleaseExec,
+  defaultReleaseExecAsync,
   flakyCandidatesPath,
   isPhaseId,
   PHASES,
@@ -178,6 +179,12 @@ export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
         const stateRoot = overrides.stateRoot ?? getOmcRoot(root);
         const deps: ReleaseDeps = {
           exec,
+          // A scripted exec (tests) runs the suite through itself too, with no PATH check.
+          execAsync: overrides.execAsync ?? (overrides.exec ? undefined : defaultReleaseExecAsync),
+          suiteShell: overrides.suiteShell ?? (overrides.exec ? undefined : () => {
+            const git = process.platform === 'win32' ? exec('git', ['--exec-path']) : null;
+            return suiteShellFor(process.platform, process.env, existsSync, git?.status === 0 && git.stdout.trim() ? git.stdout : null);
+          }),
           root,
           stateRoot,
           node: overrides.node ?? process.execPath,

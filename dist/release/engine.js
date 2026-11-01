@@ -24,7 +24,12 @@
  *   smoke      live Tier 2 smoke, only with --live-smoke; after the suite so
  *              a red suite costs no AI credits. A green smoke is reused while
  *              HEAD's smoke inputs hash the same (lastSmoke; --force-smoke runs)
- *   pr         push, PR to dev, CI gate (ship merge rule), admin merge
+ *   pr         push, PR to dev, CI gate (ship merge rule), admin merge. When
+ *              a run selects suite (or smoke) and pr, pr starts before them:
+ *              the PR is pushed and its CI watched while the suite runs
+ *              (execAsync), and the merge waits until the suite and smoke
+ *              passed; a failure there ends the CI wait and leaves the PR
+ *              open and unmerged. --to suite / smoke never pushes
  *   promote    PR dev -> main, same gate, merge
  *   tag        annotated v<v> on main's merge commit, verified, pushed (--yes)
  *   verify     tag run green, npm version / latest / provenance, GitHub Release
@@ -39,7 +44,7 @@
  * commit needs a clean working tree (HEAD is what pr pushes).
  * Every external command goes through one injectable runner (ReleaseExec).
  */
-import { spawnSync } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { isAbsolute, join, resolve } from 'path';
 import { pathToFileURL } from 'url';
@@ -61,10 +66,11 @@ export class UsageError extends Error {
 export const PROSE_FILES = ['CHANGELOG.md', '.github/release-body.md', 'README.md', 'docs/REFERENCE.md', 'docs/MIGRATION.md'];
 /** npm through a shell only on Windows (npm.cmd), and only with shell-inert arguments. */
 const SHELL_SAFE_ARG = /^[\w@./:=-]+$/;
-export const defaultReleaseExec = (cmd, args, opts) => {
+/** The spawn of a release child, or the refusal of unsafe npm arguments. */
+function releaseSpawn(cmd, args, opts) {
     const shell = process.platform === 'win32' && cmd === 'npm';
     if (shell && !args.every((a) => SHELL_SAFE_ARG.test(a))) {
-        return { status: 1, stdout: '', stderr: `refusing to pass ${JSON.stringify(args)} to npm through cmd.exe` };
+        return { refused: { status: 1, stdout: '', stderr: `refusing to pass ${JSON.stringify(args)} to npm through cmd.exe` } };
     }
     // Every child runs under the ship scrub (GIT_NO_REPLACE_OBJECTS=1, redirecting GIT_* / GH_* dropped),
     // node scripts included: they call git too. The vitest suite runs without GIT_NO_REPLACE_OBJECTS, as in CI,
@@ -73,15 +79,31 @@ export const defaultReleaseExec = (cmd, args, opts) => {
     if (opts?.suiteEnv)
         delete base.GIT_NO_REPLACE_OBJECTS;
     // One command string through the shell (the arguments were checked inert above).
-    const result = spawnSync(shell ? ['npm', ...args].join(' ') : cmd, shell ? [] : args, {
-        cwd: opts?.cwd,
-        env: { ...base, ...opts?.env },
-        encoding: 'utf8',
-        windowsHide: true,
-        maxBuffer: 512 * 1024 * 1024,
-        shell,
-        timeout: opts?.timeoutMs,
+    return {
+        file: shell ? ['npm', ...args].join(' ') : cmd,
+        args: shell ? [] : args,
+        options: { cwd: opts?.cwd, env: { ...base, ...opts?.env }, windowsHide: true, shell, timeout: opts?.timeoutMs },
+    };
+}
+export const defaultReleaseExecAsync = (cmd, args, opts) => {
+    const s = releaseSpawn(cmd, args, opts);
+    if ('refused' in s)
+        return Promise.resolve(s.refused);
+    return new Promise((done) => {
+        let stdout = '';
+        let stderr = '';
+        const child = spawn(s.file, s.args, { ...s.options, stdio: ['ignore', 'pipe', 'pipe'] });
+        child.stdout?.setEncoding('utf8').on('data', (d) => { stdout += d; });
+        child.stderr?.setEncoding('utf8').on('data', (d) => { stderr += d; });
+        child.on('error', (error) => done({ status: 1, stdout, stderr: `${stderr}${error.message}` }));
+        child.on('close', (code) => done({ status: code ?? 1, stdout, stderr }));
     });
+};
+export const defaultReleaseExec = (cmd, args, opts) => {
+    const s = releaseSpawn(cmd, args, opts);
+    if ('refused' in s)
+        return s.refused;
+    const result = spawnSync(s.file, s.args, { ...s.options, encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 });
     return {
         status: result.status ?? 1,
         stdout: result.stdout ?? '',
@@ -212,6 +234,7 @@ export function phasePlan(id, v, opts) {
                 `gh pr create --base dev --head ${branch} (an open one is reused; a merged one when its merge contains HEAD, or the dev tip once a follow-up PR into dev carried HEAD; else blocks)`,
                 'wait for CI under the ship merge rule (ship.advisoryChecks never block); one rerun of failed jobs, awaited until its new attempt starts',
                 'gh pr merge --admin --merge --match-head-commit <head> when the PR head is local HEAD, ship.allowAdminMerge and dev is a trusted base, else print it',
+                'in one run with suite / smoke: pushed and opened before them, its CI watched while they run; merged only once they pass (a failure leaves the PR open and unmerged); not when a skipped smoke would block pr',
             ];
         case 'promote':
             return [
@@ -298,7 +321,7 @@ class Release {
                 case 'bump': return this.bump();
                 case 'build': return this.build();
                 case 'gates': return this.gates();
-                case 'suite': return this.suite();
+                case 'suite': return await this.suite();
                 case 'smoke': return this.smoke();
                 case 'commit': return this.commit();
                 case 'pr': return await this.pr();
@@ -453,11 +476,23 @@ class Release {
         this.script('scripts/ci/check-multirepo-paths.mjs');
         return { status: 'ok', note: 'gates green' };
     }
+    /** A suite child: through execAsync when given (the release PR's CI is watched meanwhile), with the suite shell env. */
+    async runSuite(args, opts = {}) {
+        const full = { cwd: this.deps.root, ...opts, suiteEnv: true, env: { ...this.suiteEnv, ...opts.env } };
+        return this.deps.execAsync ? this.deps.execAsync(this.deps.node, args, full) : this.deps.exec(this.deps.node, args, full);
+    }
+    suiteEnv = {};
     /** After the commit phase: tests of committed state (pack, committed docs, inventory drift) need the release commits. */
-    suite() {
+    async suite() {
         const suite = this.opts.suite ?? 'none';
         const head = this.git('rev-parse', 'HEAD');
         this.save({ suiteSha: head, suiteRan: suite });
+        if (suite !== 'none') {
+            const shell = this.deps.suiteShell?.() ?? { env: {} };
+            if ('problem' in shell)
+                return fail(`suite not started: ${shell.problem}`);
+            this.suiteEnv = shell.env;
+        }
         if (suite === 'targeted') {
             const tag = this.run('git', ['describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*', 'HEAD']);
             if (tag.status !== 0)
@@ -468,7 +503,9 @@ class Release {
                 return { status: 'ok', note: `suite: no src changes since ${tag.stdout.trim()} for the targeted suite` };
             const args = ['node_modules/vitest/vitest.mjs', 'related', '--run', '--exclude', 'tests/perf/**', ...changed];
             this.deps.log(`  node ${args.join(' ')}`);
-            this.must(this.deps.node, args, `node ${args.join(' ')}`, { suiteEnv: true });
+            const r = await this.runSuite(args);
+            if (r.status !== 0)
+                fail(`node ${args.join(' ')} failed (exit ${r.status})`, tail(`${r.stdout}\n${r.stderr}`));
             this.requireClean('targeted suite');
             return { status: 'ok', note: `targeted suite over ${changed.length} changed src file(s)` };
         }
@@ -479,7 +516,7 @@ class Release {
             rmSync(out, { force: true });
             rmSync(flakyCandidatesPath(this.deps.stateRoot, this.v), { force: true });
             this.deps.log(`  node node_modules/vitest/vitest.mjs run --reporter=json --outputFile=${out}`);
-            const r = this.run(this.deps.node, ['node_modules/vitest/vitest.mjs', 'run', '--exclude', 'tests/perf/**', '--reporter=json', `--outputFile=${out}`], { suiteEnv: true });
+            const r = await this.runSuite(['node_modules/vitest/vitest.mjs', 'run', '--exclude', 'tests/perf/**', '--reporter=json', `--outputFile=${out}`]);
             if (!existsSync(out))
                 fail(`vitest wrote no JSON report (exit ${r.status})`, tail(r.stderr));
             const failing = failingTitlesFromVitestJson(readFileSync(out, 'utf8'));
@@ -491,7 +528,7 @@ class Release {
                 this.requireClean('full suite');
                 return { status: 'ok', note: `full suite: ${failing.length} failing, all in the baseline` };
             }
-            const triage = this.triage(fresh, head);
+            const triage = await this.triage(fresh, head);
             const lines = triage.map((t) => `${t.class}: ${t.title} (passed ${t.passes}/${t.runs} isolated reruns)`);
             const real = triage.filter((t) => t.class === 'real').length;
             const mixed = triage.filter((t) => t.class === 'mixed').length;
@@ -524,7 +561,7 @@ class Release {
      * the suite's load. Saved after each title, so a re-run on the same HEAD
      * does not repeat finished titles.
      */
-    triage(titles, head) {
+    async triage(titles, head) {
         const runs = this.opts.triageRuns ?? 3;
         const timeoutMs = (this.opts.triageTimeoutMinutes ?? 5) * 60_000;
         const prior = this.state.suiteTriage?.sha === head ? this.state.suiteTriage.results : [];
@@ -540,7 +577,7 @@ class Release {
                     // One --testNamePattern=<pattern> argument: a title starting with "-" is never read as a flag.
                     const args = ['node_modules/vitest/vitest.mjs', 'run', file, `--testNamePattern=${escapeRe(name)}`, '--reporter=json', `--outputFile=${out}`];
                     this.deps.log(`  node ${args.slice(0, 3).join(' ')} ${JSON.stringify(args[3])} --reporter=json (isolated rerun ${n + 1}/${runs})`);
-                    const r = this.run(this.deps.node, args, { suiteEnv: true, timeoutMs });
+                    const r = await this.runSuite(args, { timeoutMs });
                     // A pass is exit 0 AND the report saying the test passed; a timeout or crash exits non-zero.
                     if (r.status === 0 && existsSync(out) && testPassedInReport(readFileSync(out, 'utf8'), file, name))
                         passes++;
@@ -793,11 +830,35 @@ class Release {
             fail(`gh pr create printed no PR url: ${out.trim()}`);
         return Number(m[1]);
     }
-    async pr() {
+    /** Why pr may not merge for want of a live smoke (null = it may). */
+    smokeBlock() {
         const smoke = this.state.phases.smoke?.status;
-        if (smoke !== 'ok' && !this.opts.allowSkippedSmoke) {
-            blocked(`the live smoke ${smoke === 'skipped' ? 'was skipped' : 'has not passed'}; run it (--from smoke --live-smoke, two prompts, about 0.6 AI credits), or pass --allow-skipped-smoke to release without it`);
-        }
+        if (smoke === 'ok' || this.opts.allowSkippedSmoke)
+            return null;
+        return `the live smoke ${smoke === 'skipped' ? 'was skipped' : 'has not passed'}; run it (--from smoke --live-smoke, two prompts, about 0.6 AI credits), or pass --allow-skipped-smoke to release without it`;
+    }
+    /** Whether the smoke phase, run on HEAD now, would skip (no --live-smoke, no reusable green smoke): pr would then block. */
+    smokeWouldSkip() {
+        return !this.opts.liveSmoke && !this.opts.forceSmoke && this.state.lastSmoke?.inputHash !== this.smokeInputs();
+    }
+    /**
+     * Set while pr runs alongside the suite (and smoke): land() awaits it before
+     * merging, and it throws (PhaseStop) when they did not pass.
+     */
+    mergeGate;
+    /** Set when the suite (or smoke) beside pr did not pass: the CI wait stops at its next pause. */
+    ciAbort;
+    /** Every CI wait sleeps here, so a failed suite beside the CI wait ends it at the next poll. */
+    async pause(ms) {
+        await this.deps.sleep(ms);
+        if (this.ciAbort)
+            throw new PhaseStop(this.ciAbort);
+    }
+    async pr() {
+        // Beside the suite, the smoke rule is checked by the merge gate once the smoke phase has run.
+        const smoke = this.mergeGate ? null : this.smokeBlock();
+        if (smoke)
+            blocked(smoke);
         const branch = `release/v${this.v}`;
         // Pushed on every run until merged, so commits added after a failure reach the PR.
         if (this.state.devPr === undefined || this.viewPr(this.state.devPr).state !== 'MERGED') {
@@ -864,7 +925,7 @@ class Release {
                     blocked(note);
                 if (this.deps.now() >= this.deadline)
                     pendingWait(note);
-                await this.deps.sleep(pollMs);
+                await this.pause(pollMs);
             }
         }
         return ready.length > 0;
@@ -939,13 +1000,21 @@ class Release {
                 headSha: view.headRefOid,
                 watch: true,
                 reruns: this.rerunBudget,
-                sleep: this.deps.sleep,
+                sleep: (ms) => this.pause(ms),
                 now: this.deps.now,
                 onReport: (r) => this.deps.progress({ phase, status: 'heartbeat', note: `PR #${pr} gates ${r.verdict}: ${r.pending.length} pending, ${r.failed.length} failed` }),
                 retryTransient: this.opts.drive,
                 onTransient: (message) => this.deps.progress({ phase, status: 'heartbeat', note: `PR #${pr}: transient GitHub error, retrying (${message.slice(0, 120)})` }),
             });
             if (report.verdict === 'green') {
+                if (this.mergeGate) {
+                    // CI is green before the suite beside it finished: merge only once it passed, then re-read the PR.
+                    const gate = this.mergeGate;
+                    this.mergeGate = undefined;
+                    this.deps.progress({ phase, status: 'heartbeat', note: `PR #${pr} gates green; merge waits for the suite` });
+                    await gate();
+                    continue;
+                }
                 const command = ['pr', 'merge', String(pr), '--admin', '--merge', '--match-head-commit', view.headRefOid];
                 if (!config.allowAdminMerge || !config.trustedBases.includes(base)) {
                     blocked(`PR #${pr} is green; ship.allowAdminMerge is off or ${base} is not a trusted base, so run the merge yourself, then re-run omg release ${this.v} --from ${phase}`, [`gh ${command.join(' ')}`]);
@@ -962,7 +1031,7 @@ class Release {
             const failedRuns = [...new Set(report.checks.filter((c) => c.class === 'failed' && c.runId).map((c) => c.runId))];
             const finished = failedRuns.filter((id) => !report.checks.some((c) => c.runId === id && c.class === 'pending'));
             if (finished.length < failedRuns.length) {
-                await this.deps.sleep(config.pollIntervalSeconds * 1000);
+                await this.pause(config.pollIntervalSeconds * 1000);
                 continue;
             }
             if (await this.rerunOnce(finished, phase, config.pollIntervalSeconds * 1000))
@@ -993,7 +1062,7 @@ class Release {
             // independent of the deadline, or a short --timeout would make every round pending and never block.
             if (polls >= HEAD_SYNC_POLLS)
                 blocked(note);
-            await this.deps.sleep(HEAD_SYNC_POLL_MS);
+            await this.pause(HEAD_SYNC_POLL_MS);
         }
     }
     /**
@@ -1239,7 +1308,62 @@ export async function runRelease(deps, requested) {
     }
     if (release.current.suite !== opts.suite || release.current.baseline !== opts.baseline)
         release.save({ suite: opts.suite, baseline: opts.baseline });
+    const record = (id, outcome) => {
+        const entry = { ...outcome, at: new Date(deps.now()).toISOString() };
+        // A re-run phase voids every later record: they were built on its previous result.
+        const kept = Object.fromEntries(Object.entries(release.current.phases).filter(([p]) => PHASES.indexOf(p) < PHASES.indexOf(id)));
+        release.save({ phases: { ...kept, [id]: entry } });
+        results.push({ id, ...outcome });
+        deps.progress({ phase: id, status: outcome.status === 'skipped' ? 'ok' : outcome.status, note: outcome.note });
+        deps.log(`[${id}] ${outcome.status}: ${outcome.note}`);
+        for (const d of outcome.details ?? [])
+            deps.log(`    ${d}`);
+        return outcome.status !== 'fail' && outcome.status !== 'blocked';
+    };
+    // pr beside the suite: with pr in range, the release PR is pushed and its CI watched while the suite (and smoke)
+    // run; it merges only after they pass. Not when pr would block on a skipped smoke anyway (nothing is pushed then).
+    const beside = selected.includes('pr') ? selected.filter((id) => id === 'suite' || id === 'smoke') : [];
+    const besideOk = beside.length > 0 && (opts.allowSkippedSmoke || (beside.includes('smoke') ? !release.smokeWouldSkip() : !release.smokeBlock()));
+    let ci;
+    /** Ends the pr phase running beside the suite with `stop` (its gate refuses, its CI wait ends at the next poll); its outcome. */
+    const stopCi = async (stop) => {
+        release.ciAbort = stop;
+        ci.shut(stop);
+        const r = await ci.done;
+        if (r.outcome)
+            return r.outcome;
+        if (r.error instanceof PendingError)
+            return stop;
+        throw r.error;
+    };
     for (const id of selected) {
+        if (id === 'pr' && ci) {
+            // The suite and smoke passed: open the merge gate unless the smoke rule blocks it.
+            const smoke = release.smokeBlock();
+            if (smoke)
+                await stopCi({ status: 'blocked', note: `release PR #${release.current.devPr ?? '?'} left open and unmerged: ${smoke}` });
+            else
+                ci.open();
+            const r = await ci.done;
+            if (r.error instanceof PendingError)
+                return pendingResult(id, r.error);
+            if (r.error)
+                throw r.error;
+            if (!record(id, r.outcome))
+                return { ok: false, version: v, dryRun: false, statePath, phases: results };
+            continue;
+        }
+        if (besideOk && id === beside[0]) {
+            let open;
+            let shut;
+            const gate = new Promise((resolveGate, reject) => { open = resolveGate; shut = (o) => reject(new PhaseStop(o)); });
+            gate.catch(() => { });
+            release.mergeGate = () => gate;
+            deps.log(`[pr] ${phasePlan('pr', v, opts)[0]} (beside the ${beside.join(' and ')}: merged only once they pass)`);
+            deps.progress({ phase: 'pr', status: 'start', note: `release PR CI runs beside the ${beside.join(' and ')}` });
+            const done = release.phase('pr').then((outcome) => ({ outcome }), (error) => ({ error }));
+            ci = { done, open, shut };
+        }
         deps.log(`[${id}] ${phasePlan(id, v, opts)[0]}`);
         deps.progress({ phase: id, status: 'start' });
         let outcome;
@@ -1247,20 +1371,19 @@ export async function runRelease(deps, requested) {
             outcome = await release.phase(id);
         }
         catch (error) {
-            if (error instanceof PendingError)
+            if (error instanceof PendingError) {
+                if (ci)
+                    await stopCi({ status: 'blocked', note: `the ${id} phase beside the release PR is pending` });
                 return pendingResult(id, error);
+            }
             throw error;
         }
-        const record = { ...outcome, at: new Date(deps.now()).toISOString() };
-        // A re-run phase voids every later record: they were built on its previous result.
-        const kept = Object.fromEntries(Object.entries(release.current.phases).filter(([p]) => PHASES.indexOf(p) < PHASES.indexOf(id)));
-        release.save({ phases: { ...kept, [id]: record } });
-        results.push({ id, ...outcome });
-        deps.progress({ phase: id, status: outcome.status === 'skipped' ? 'ok' : outcome.status, note: outcome.note });
-        deps.log(`[${id}] ${outcome.status}: ${outcome.note}`);
-        for (const d of outcome.details ?? [])
-            deps.log(`    ${d}`);
-        if (outcome.status === 'fail' || outcome.status === 'blocked') {
+        if (!record(id, outcome)) {
+            if (ci) {
+                // The PR stays open and unmerged; its CI wait ends, and pr records why.
+                const pr = await stopCi({ status: 'blocked', note: `release PR #${release.current.devPr ?? '?'} left open and unmerged: the ${id} phase ${outcome.status} (${outcome.note}); fix it, then re-run omg release ${v} --from ${id}` });
+                record('pr', pr);
+            }
             return { ok: false, version: v, dryRun: false, statePath, phases: results };
         }
     }
