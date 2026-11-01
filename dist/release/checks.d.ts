@@ -115,6 +115,7 @@ export declare function tagTargetProblem(tag: string, objectType: string, peeled
 /** Env overrides for the suite's children, or why the suite must not start. */
 export type SuiteShell = {
     env: Record<string, string>;
+    note?: string;
 } | {
     problem: string;
 };
@@ -123,7 +124,8 @@ export type SuiteShell = {
  * to the WSL launcher (System32\bash.exe), which fails them with exit 127.
  * When the first bash.exe on PATH is WSL's (or there is none), Git for
  * Windows' bin directory (next to `git --exec-path`'s root, else the default
- * install dirs) is put first on the PATH key the env already uses; no Git
+ * install dirs) is put first on the PATH key the env already uses; `usr\bin`
+ * only when no `bin` holds a bash.exe (with a note saying so); no Git
  * bash found is a problem. Elsewhere, and with a non-WSL bash first, no change.
  */
 export declare function suiteShellFor(platform: string, env: Record<string, string | undefined>, exists: (path: string) => boolean, gitExecPath: string | null): SuiteShell;

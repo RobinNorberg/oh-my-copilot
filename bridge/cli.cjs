@@ -163152,11 +163152,14 @@ function suiteShellFor(platform, env2, exists, gitExecPath) {
     ...[env2.ProgramFiles, env2.ProgramW6432, env2["ProgramFiles(x86)"]].filter((d) => !!d).map((d) => import_path222.win32.join(d, "Git")),
     ...env2.LOCALAPPDATA ? [import_path222.win32.join(env2.LOCALAPPDATA, "Programs", "Git")] : []
   ];
-  const bin = roots.flatMap((r) => [import_path222.win32.join(r, "bin"), import_path222.win32.join(r, "usr", "bin")]).find((dir) => exists(import_path222.win32.join(dir, "bash.exe")));
+  const hasBash = (dir) => exists(import_path222.win32.join(dir, "bash.exe"));
+  const top = roots.map((r) => import_path222.win32.join(r, "bin")).find(hasBash);
+  const bin = top ?? roots.map((r) => import_path222.win32.join(r, "usr", "bin")).find(hasBash);
   if (!bin) {
     return { problem: `the suite needs Git for Windows bash, but ${first ? `the first bash on PATH is WSL's (${first})` : "no bash.exe is on PATH"} and none was found under ${roots.join(", ") || "(no Git install dir)"}; install Git for Windows or put its bin directory first on PATH` };
   }
-  return { env: { [key]: `${bin};${path30}` } };
+  const shell = { env: { [key]: `${bin};${path30}` } };
+  return top ? shell : { ...shell, note: `no bash.exe in Git for Windows' bin directory; the suite uses ${import_path222.win32.join(bin, "bash.exe")}` };
 }
 
 // src/release/engine.ts
@@ -163197,7 +163200,7 @@ var defaultReleaseExecAsync = (cmd, args, opts) => {
       stderr += d;
     });
     child.on("error", (error2) => done({ status: 1, stdout, stderr: `${stderr}${error2.message}` }));
-    child.on("close", (code) => done({ status: code ?? 1, stdout, stderr }));
+    child.on("close", (code, signal) => done({ status: code ?? 1, stdout, stderr: code === null ? `${stderr}killed by ${signal}` : stderr }));
   });
 };
 var defaultReleaseExec = (cmd, args, opts) => {
@@ -163544,6 +163547,7 @@ ${r.stderr}`.trim().split(/\r?\n/);
     if (suite !== "none") {
       const shell = this.deps.suiteShell?.() ?? { env: {} };
       if ("problem" in shell) return fail8(`suite not started: ${shell.problem}`);
+      if (shell.note) this.deps.log(`  ${shell.note}`);
       this.suiteEnv = shell.env;
     }
     if (suite === "targeted") {
@@ -163851,6 +163855,24 @@ ${r.stderr}`;
   mergeGate;
   /** Set when the suite (or smoke) beside pr did not pass: the CI wait stops at its next pause. */
   ciAbort;
+  /** The local HEAD the pr phase lands (land()'s expectedHead), once pr has read it. */
+  prHead;
+  /**
+   * Why the merge gate beside the suite must stay shut (null = it may open):
+   * re-checked from the records, not trusted from control flow. The suite
+   * passed at the required level, the smoke rule holds, and the suite's
+   * commit, local HEAD and the head the PR lands are one commit.
+   */
+  gateProblem() {
+    const suite = this.postconditionProblem("suite");
+    if (suite) return `the suite record does not hold: ${suite}`;
+    const smoke = this.smokeBlock();
+    if (smoke) return smoke;
+    const head = this.git("rev-parse", "HEAD");
+    if (this.state.suiteSha === head && this.prHead === head) return null;
+    const short2 = (sha2) => sha2?.slice(0, 12) ?? "none";
+    return `the suite ran on ${short2(this.state.suiteSha)}, the PR lands ${short2(this.prHead)} and HEAD is ${short2(head)}; they must be one commit (--from suite)`;
+  }
   /** Every CI wait sleeps here, so a failed suite beside the CI wait ends it at the next poll. */
   async pause(ms) {
     await this.deps.sleep(ms);
@@ -163870,7 +163892,8 @@ ${r.stderr}`;
         this.save({ devPr: pr });
       }
     }
-    const sha2 = await this.land(this.state.devPr, "dev", "pr", this.git("rev-parse", "HEAD"));
+    this.prHead = this.git("rev-parse", "HEAD");
+    const sha2 = await this.land(this.state.devPr, "dev", "pr", this.prHead);
     this.save({ devMergeSha: sha2 });
     return { status: "ok", note: `PR #${this.state.devPr} merged into dev at ${sha2.slice(0, 12)}` };
   }
@@ -164245,59 +164268,73 @@ async function runRelease(deps, requested) {
   const beside = selected.includes("pr") ? selected.filter((id) => id === "suite" || id === "smoke") : [];
   const besideOk = beside.length > 0 && (opts.allowSkippedSmoke || (beside.includes("smoke") ? !release.smokeWouldSkip() : !release.smokeBlock()));
   let ci;
-  const stopCi = async (stop) => {
+  let gateOpen = false;
+  const stopCi = async (why) => {
+    const pr = `release PR #${release.current.devPr ?? "?"}`;
+    const stop = { status: "blocked", note: `${pr} left open and unmerged: ${why}` };
     release.ciAbort = stop;
     ci.shut(stop);
     const r = await ci.done;
+    if (r.outcome?.status === "ok") return { status: "blocked", note: `${pr} was merged outside the release, although ${why}` };
     if (r.outcome) return r.outcome;
     if (r.error instanceof PendingError) return stop;
     throw r.error;
   };
-  for (const id of selected) {
-    if (id === "pr" && ci) {
-      const smoke = release.smokeBlock();
-      if (smoke) await stopCi({ status: "blocked", note: `release PR #${release.current.devPr ?? "?"} left open and unmerged: ${smoke}` });
-      else ci.open();
-      const r = await ci.done;
-      if (r.error instanceof PendingError) return pendingResult(id, r.error);
-      if (r.error) throw r.error;
-      if (!record3(id, r.outcome)) return { ok: false, version: v, dryRun: false, statePath, phases: results };
-      continue;
-    }
-    if (besideOk && id === beside[0]) {
-      let open9;
-      let shut;
-      const gate = new Promise((resolveGate, reject2) => {
-        open9 = resolveGate;
-        shut = (o) => reject2(new PhaseStop(o));
-      });
-      gate.catch(() => {
-      });
-      release.mergeGate = () => gate;
-      deps.log(`[pr] ${phasePlan("pr", v, opts)[0]} (beside the ${beside.join(" and ")}: merged only once they pass)`);
-      deps.progress({ phase: "pr", status: "start", note: `release PR CI runs beside the ${beside.join(" and ")}` });
-      const done = release.phase("pr").then((outcome2) => ({ outcome: outcome2 }), (error2) => ({ error: error2 }));
-      ci = { done, open: open9, shut };
-    }
-    deps.log(`[${id}] ${phasePlan(id, v, opts)[0]}`);
-    deps.progress({ phase: id, status: "start" });
-    let outcome;
-    try {
-      outcome = await release.phase(id);
-    } catch (error2) {
-      if (error2 instanceof PendingError) {
-        if (ci) await stopCi({ status: "blocked", note: `the ${id} phase beside the release PR is pending` });
-        return pendingResult(id, error2);
+  try {
+    for (const id of selected) {
+      if (id === "pr" && ci) {
+        const problem = release.gateProblem();
+        let r;
+        if (problem) {
+          r = { outcome: await stopCi(problem) };
+        } else {
+          gateOpen = true;
+          ci.open();
+          r = await ci.done;
+        }
+        if (r.error instanceof PendingError) return pendingResult(id, r.error);
+        if (r.error) throw r.error;
+        if (!record3(id, r.outcome)) return { ok: false, version: v, dryRun: false, statePath, phases: results };
+        continue;
       }
-      throw error2;
-    }
-    if (!record3(id, outcome)) {
-      if (ci) {
-        const pr = await stopCi({ status: "blocked", note: `release PR #${release.current.devPr ?? "?"} left open and unmerged: the ${id} phase ${outcome.status} (${outcome.note}); fix it, then re-run omg release ${v} --from ${id}` });
-        record3("pr", pr);
+      if (besideOk && id === beside[0]) {
+        let open9;
+        let shut;
+        const gate = new Promise((resolveGate, reject2) => {
+          open9 = resolveGate;
+          shut = (o) => reject2(new PhaseStop(o));
+        });
+        gate.catch(() => {
+        });
+        release.mergeGate = () => gate;
+        deps.log(`[pr] ${phasePlan("pr", v, opts)[0]} (beside the ${beside.join(" and ")}: merged only once they pass)`);
+        deps.progress({ phase: "pr", status: "start", note: `release PR CI runs beside the ${beside.join(" and ")}` });
+        const done = release.phase("pr").then((outcome2) => ({ outcome: outcome2 }), (error2) => ({ error: error2 }));
+        ci = { done, open: open9, shut };
       }
-      return { ok: false, version: v, dryRun: false, statePath, phases: results };
+      deps.log(`[${id}] ${phasePlan(id, v, opts)[0]}`);
+      deps.progress({ phase: id, status: "start" });
+      let outcome;
+      try {
+        outcome = await release.phase(id);
+      } catch (error2) {
+        if (error2 instanceof PendingError) {
+          if (ci) await stopCi(`the ${id} phase is pending`);
+          return pendingResult(id, error2);
+        }
+        throw error2;
+      }
+      if (!record3(id, outcome)) {
+        if (ci) {
+          record3("pr", await stopCi(`the ${id} phase ${outcome.status} (${outcome.note}); fix it, then re-run omg release ${v} --from ${id}`));
+        }
+        return { ok: false, version: v, dryRun: false, statePath, phases: results };
+      }
     }
+  } catch (error2) {
+    if (ci && !gateOpen) await stopCi(`the release run stopped on an error (${error2 instanceof Error ? error2.message : String(error2)})`).catch(() => {
+    });
+    throw error2;
   }
   const triage = release.current.suiteTriage;
   const flaky = triage && triage.sha === release.current.suiteSha ? triage.results.filter((t) => t.class === "load-flaky").length : 0;
@@ -164895,6 +164932,7 @@ var import_path227 = require("path");
 var import_promises38 = require("readline/promises");
 init_config4();
 init_worktree_paths();
+init_windows_search();
 
 // src/release/progress.ts
 var import_fs196 = require("fs");
@@ -165024,7 +165062,8 @@ function releaseCommand(overrides = {}) {
         // A scripted exec (tests) runs the suite through itself too, with no PATH check.
         execAsync: overrides.execAsync ?? (overrides.exec ? void 0 : defaultReleaseExecAsync),
         suiteShell: overrides.suiteShell ?? (overrides.exec ? void 0 : () => {
-          const git7 = process.platform === "win32" ? exec3("git", ["--exec-path"]) : null;
+          const gitExe = process.platform === "win32" ? resolveBareExe("git") : null;
+          const git7 = gitExe ? exec3(gitExe, ["--exec-path"]) : null;
           return suiteShellFor(process.platform, process.env, import_fs197.existsSync, git7?.status === 0 && git7.stdout.trim() ? git7.stdout : null);
         }),
         root: root2,

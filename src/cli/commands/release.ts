@@ -17,6 +17,7 @@ import { join, resolve } from 'path';
 import { createInterface } from 'readline/promises';
 import { loadTrustedShipConfig, userConfigLayers } from '../../ship/config.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
+import { resolveBareExe } from '../../utils/windows-search.js';
 import { parseReleaseVersion, suiteShellFor } from '../../release/checks.js';
 import {
   defaultReleaseExec,
@@ -182,7 +183,9 @@ export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
           // A scripted exec (tests) runs the suite through itself too, with no PATH check.
           execAsync: overrides.execAsync ?? (overrides.exec ? undefined : defaultReleaseExecAsync),
           suiteShell: overrides.suiteShell ?? (overrides.exec ? undefined : () => {
-            const git = process.platform === 'win32' ? exec('git', ['--exec-path']) : null;
+            // An absolute git: a bare name may resolve in the cwd on Node 20 (see resolveBareExe).
+            const gitExe = process.platform === 'win32' ? resolveBareExe('git') : null;
+            const git = gitExe ? exec(gitExe, ['--exec-path']) : null;
             return suiteShellFor(process.platform, process.env, existsSync, git?.status === 0 && git.stdout.trim() ? git.stdout : null);
           }),
           root,

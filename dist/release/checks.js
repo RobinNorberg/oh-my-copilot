@@ -246,7 +246,8 @@ function isWslBash(path, env) {
  * to the WSL launcher (System32\bash.exe), which fails them with exit 127.
  * When the first bash.exe on PATH is WSL's (or there is none), Git for
  * Windows' bin directory (next to `git --exec-path`'s root, else the default
- * install dirs) is put first on the PATH key the env already uses; no Git
+ * install dirs) is put first on the PATH key the env already uses; `usr\bin`
+ * only when no `bin` holds a bash.exe (with a note saying so); no Git
  * bash found is a problem. Elsewhere, and with a non-WSL bash first, no change.
  */
 export function suiteShellFor(platform, env, exists, gitExecPath) {
@@ -262,10 +263,13 @@ export function suiteShellFor(platform, env, exists, gitExecPath) {
         ...[env.ProgramFiles, env.ProgramW6432, env['ProgramFiles(x86)']].filter((d) => !!d).map((d) => win32.join(d, 'Git')),
         ...(env.LOCALAPPDATA ? [win32.join(env.LOCALAPPDATA, 'Programs', 'Git')] : []),
     ];
-    const bin = roots.flatMap((r) => [win32.join(r, 'bin'), win32.join(r, 'usr', 'bin')]).find((dir) => exists(win32.join(dir, 'bash.exe')));
+    const hasBash = (dir) => exists(win32.join(dir, 'bash.exe'));
+    const top = roots.map((r) => win32.join(r, 'bin')).find(hasBash);
+    const bin = top ?? roots.map((r) => win32.join(r, 'usr', 'bin')).find(hasBash);
     if (!bin) {
         return { problem: `the suite needs Git for Windows bash, but ${first ? `the first bash on PATH is WSL's (${first})` : 'no bash.exe is on PATH'} and none was found under ${roots.join(', ') || '(no Git install dir)'}; install Git for Windows or put its bin directory first on PATH` };
     }
-    return { env: { [key]: `${bin};${path}` } };
+    const shell = { env: { [key]: `${bin};${path}` } };
+    return top ? shell : { ...shell, note: `no bash.exe in Git for Windows' bin directory; the suite uses ${win32.join(bin, 'bash.exe')}` };
 }
 //# sourceMappingURL=checks.js.map

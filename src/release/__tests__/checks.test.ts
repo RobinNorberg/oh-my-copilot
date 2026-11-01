@@ -261,6 +261,18 @@ describe('suite shell (Windows bash for the suite children)', () => {
     expect(suiteShellFor('win32', env(apps), has(`${apps}\\bash.exe`, `${GIT_BIN}\\bash.exe`), null)).toEqual({ env: { Path: `${GIT_BIN};${apps}` } });
   });
 
+  it('prefers any Git bin over usr\\bin, and notes when only usr\\bin has bash', () => {
+    const LOCAL = 'C:\\Users\\r\\AppData\\Local';
+    const both = { ...env(WSL), LOCALAPPDATA: LOCAL };
+    const usr = 'C:\\Program Files\\Git\\usr\\bin';
+    const local = `${LOCAL}\\Programs\\Git\\bin`;
+    expect(suiteShellFor('win32', both, has(`${WSL}\\bash.exe`, `${usr}\\bash.exe`, `${local}\\bash.exe`), GIT_EXEC)).toEqual({ env: { Path: `${local};${WSL}` } });
+    expect(suiteShellFor('win32', both, has(`${WSL}\\bash.exe`, `${usr}\\bash.exe`), GIT_EXEC)).toEqual({
+      env: { Path: `${usr};${WSL}` },
+      note: `no bash.exe in Git for Windows' bin directory; the suite uses ${usr}\\bash.exe`,
+    });
+  });
+
   it('refuses with a clear message when only WSL bash (or no bash) is found', () => {
     expect(suiteShellFor('win32', env(WSL), has(`${WSL}\\bash.exe`), GIT_EXEC)).toEqual({
       problem: expect.stringContaining("needs Git for Windows bash, but the first bash on PATH is WSL's (C:\\Windows\\System32\\bash.exe)"),

@@ -1309,6 +1309,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
     it('pushes and opens the PR before the suite starts, and merges a green PR only after the suite passed', async () => {
       const pending = run({ from: 'suite', suite: 'full', to: 'pr', allowSkippedSmoke: true });
       await vi.waitFor(() => expect(events.some((e) => e.phase === 'pr' && /merge waits for the suite/.test(e.note ?? ''))).toBe(true));
+      const checksBeforeGate = calls.filter((c) => c.startsWith('gh pr checks 301')).length;
       const vitest = calls.findIndex((c) => c.includes(VITEST));
       expect(vitest).toBeGreaterThan(calls.indexOf('git push origin HEAD:refs/heads/release/v5.12.2'));
       expect(calls.findIndex((c) => c.startsWith('gh pr create --base dev'))).toBeLessThan(vitest);
@@ -1321,6 +1322,9 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       expect(result.ok).toBe(true);
       expect(result.phases.map((p) => [p.id, p.status])).toEqual([['suite', 'ok'], ['smoke', 'skipped'], ['pr', 'ok']]);
       expect(calls).toContain(`gh pr merge 301 --admin --merge --match-head-commit ${HEAD}`);
+      // The merge after the gate opened re-read the PR's CI first (a later push or a red re-run must not merge).
+      const merge = calls.findIndex((c) => c.startsWith('gh pr merge'));
+      expect(calls.slice(0, merge).filter((c) => c.startsWith('gh pr checks 301')).length).toBeGreaterThan(checksBeforeGate);
       // Phase names and records stay as before; pr starts first and finishes last.
       const marks = events.filter((e) => e.status !== 'heartbeat').map((e) => `${e.phase}:${e.status}`);
       expect(marks).toEqual(['pr:start', 'suite:start', 'suite:ok', 'smoke:start', 'smoke:ok', 'pr:ok', 'release:done']);
@@ -1433,6 +1437,59 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       expect(envs).toHaveLength(1);
       expect(refused.phases[1]).toMatchObject({ id: 'pr', status: 'blocked' });
       expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+
+      // A shell note (Git's usr\bin bash in use) is logged before the suite runs.
+      expect((await run({ from: 'suite', suite: 'full', to: 'suite' }, { execAsync: seen, suiteShell: () => ({ env: {}, note: 'no bash.exe in bin' }) })).ok).toBe(true);
+      expect(logs).toContain('  no bash.exe in bin');
+    });
+
+    for (const moved of ['suite:start', 'suite:ok'] as const) {
+      it(`the merge gate re-checks its facts: ${moved === 'suite:start' ? 'a suite run on another commit' : 'a HEAD that moved after the suite'} keeps it shut`, async () => {
+        suiteDone();
+        let head = HEAD;
+        handlers.unshift((key) => (key === 'git rev-parse HEAD' ? ok(`${head}\n`) : undefined));
+        const result = await run({ from: 'suite', suite: 'full', to: 'pr', allowSkippedSmoke: true }, {
+          progress: (e) => { events.push(e); if (`${e.phase}:${e.status}` === moved) head = OTHER; },
+        });
+        expect(result.ok).toBe(false);
+        expect(result.phases.map((p) => [p.id, p.status])).toEqual([['suite', 'ok'], ['smoke', 'skipped'], ['pr', 'blocked']]);
+        expect(result.phases[2].note).toMatch(moved === 'suite:start'
+          ? /^release PR #301 left open and unmerged: the suite record does not hold: the suite did not run on the recorded release commit/
+          : /^release PR #301 left open and unmerged: the suite ran on 111111111111, the PR lands 111111111111 and HEAD is 555555555555; they must be one commit/);
+        expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+      });
+    }
+
+    it('a failed suite never records pr ok, even when the PR was merged outside the release meanwhile', async () => {
+      prState = 'MERGED';
+      report = null;
+      suiteDone();
+      const result = await run({ from: 'suite', suite: 'full', to: 'pr', allowSkippedSmoke: true });
+      expect(result.phases.map((p) => [p.id, p.status])).toEqual([['suite', 'fail'], ['pr', 'blocked']]);
+      expect(result.phases[1].note).toMatch(/^release PR #301 was merged outside the release, although the suite phase fail/);
+      expect(readReleaseState(stateRoot, V)!.phases.pr?.status).toBe('blocked');
+      expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+    });
+
+    it('an error escaping the run stops the CI wait beside the suite', async () => {
+      suiteDone();
+      checksJson = running;
+      const boom = (e: ReleaseProgressInput) => { events.push(e); if (e.phase === 'suite' && e.status === 'ok') throw new Error('progress sink broke'); };
+      await expect(run({ from: 'suite', suite: 'full', to: 'pr', allowSkippedSmoke: true }, { progress: boom })).rejects.toThrow('progress sink broke');
+      const polls = calls.filter((c) => c.startsWith('gh pr checks 301')).length;
+      await settle();
+      expect(calls.filter((c) => c.startsWith('gh pr checks 301')).length).toBe(polls);
+      expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+    });
+
+    it('--from smoke runs pr beside the smoke alone, and merges after it', async () => {
+      seedState('suite', { suiteRan: 'none' });
+      const result = await run({ from: 'smoke', to: 'pr', allowSkippedSmoke: true });
+      expect(result.ok).toBe(true);
+      expect(logs.some((l) => /^\[pr\] .*\(beside the smoke: merged only once they pass\)$/.test(l))).toBe(true);
+      expect(events.filter((e) => e.status !== 'heartbeat').map((e) => `${e.phase}:${e.status}`)).toEqual(['pr:start', 'smoke:start', 'smoke:ok', 'pr:ok', 'release:done']);
+      expect(calls.some((c) => c.includes(VITEST))).toBe(false);
+      expect(calls).toContain(`gh pr merge 301 --admin --merge --match-head-commit ${HEAD}`);
     });
   });
 
@@ -1756,6 +1813,10 @@ describe('defaultReleaseExec environment', () => {
       // The async exec the suite runs through spawns the same env.
       expect(JSON.parse((await defaultReleaseExecAsync(process.execPath, probe, { suiteEnv: true, env: { GIT_INDEX_FILE: 'x' } })).stdout)).toEqual(['x', null]);
       expect(await defaultReleaseExecAsync(process.execPath, ['-e', 'process.exit(3)'])).toMatchObject({ status: 3 });
+      // A child the timeout kills has no exit code: a failure that says so, as the sync path's ETIMEDOUT does.
+      const killed = await defaultReleaseExecAsync(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { timeoutMs: 300 });
+      expect(killed.status).toBe(1);
+      expect(killed.stderr).toMatch(/killed by SIG[A-Z]+$/);
     } finally {
       if (saved.idx === undefined) delete process.env.GIT_INDEX_FILE; else process.env.GIT_INDEX_FILE = saved.idx;
       if (saved.repl !== undefined) process.env.GIT_NO_REPLACE_OBJECTS = saved.repl;

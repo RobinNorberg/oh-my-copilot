@@ -96,7 +96,8 @@ export const defaultReleaseExecAsync = (cmd, args, opts) => {
         child.stdout?.setEncoding('utf8').on('data', (d) => { stdout += d; });
         child.stderr?.setEncoding('utf8').on('data', (d) => { stderr += d; });
         child.on('error', (error) => done({ status: 1, stdout, stderr: `${stderr}${error.message}` }));
-        child.on('close', (code) => done({ status: code ?? 1, stdout, stderr }));
+        // A child the timeout (or anything else) killed has no exit code: say so, as the sync path's ETIMEDOUT does.
+        child.on('close', (code, signal) => done({ status: code ?? 1, stdout, stderr: code === null ? `${stderr}killed by ${signal}` : stderr }));
     });
 };
 export const defaultReleaseExec = (cmd, args, opts) => {
@@ -491,6 +492,8 @@ class Release {
             const shell = this.deps.suiteShell?.() ?? { env: {} };
             if ('problem' in shell)
                 return fail(`suite not started: ${shell.problem}`);
+            if (shell.note)
+                this.deps.log(`  ${shell.note}`);
             this.suiteEnv = shell.env;
         }
         if (suite === 'targeted') {
@@ -848,6 +851,27 @@ class Release {
     mergeGate;
     /** Set when the suite (or smoke) beside pr did not pass: the CI wait stops at its next pause. */
     ciAbort;
+    /** The local HEAD the pr phase lands (land()'s expectedHead), once pr has read it. */
+    prHead;
+    /**
+     * Why the merge gate beside the suite must stay shut (null = it may open):
+     * re-checked from the records, not trusted from control flow. The suite
+     * passed at the required level, the smoke rule holds, and the suite's
+     * commit, local HEAD and the head the PR lands are one commit.
+     */
+    gateProblem() {
+        const suite = this.postconditionProblem('suite');
+        if (suite)
+            return `the suite record does not hold: ${suite}`;
+        const smoke = this.smokeBlock();
+        if (smoke)
+            return smoke;
+        const head = this.git('rev-parse', 'HEAD');
+        if (this.state.suiteSha === head && this.prHead === head)
+            return null;
+        const short = (sha) => sha?.slice(0, 12) ?? 'none';
+        return `the suite ran on ${short(this.state.suiteSha)}, the PR lands ${short(this.prHead)} and HEAD is ${short(head)}; they must be one commit (--from suite)`;
+    }
     /** Every CI wait sleeps here, so a failed suite beside the CI wait ends it at the next poll. */
     async pause(ms) {
         await this.deps.sleep(ms);
@@ -871,7 +895,8 @@ class Release {
                 this.save({ devPr: pr });
             }
         }
-        const sha = await this.land(this.state.devPr, 'dev', 'pr', this.git('rev-parse', 'HEAD'));
+        this.prHead = this.git('rev-parse', 'HEAD');
+        const sha = await this.land(this.state.devPr, 'dev', 'pr', this.prHead);
         this.save({ devMergeSha: sha });
         return { status: 'ok', note: `PR #${this.state.devPr} merged into dev at ${sha.slice(0, 12)}` };
     }
@@ -1325,67 +1350,86 @@ export async function runRelease(deps, requested) {
     const beside = selected.includes('pr') ? selected.filter((id) => id === 'suite' || id === 'smoke') : [];
     const besideOk = beside.length > 0 && (opts.allowSkippedSmoke || (beside.includes('smoke') ? !release.smokeWouldSkip() : !release.smokeBlock()));
     let ci;
-    /** Ends the pr phase running beside the suite with `stop` (its gate refuses, its CI wait ends at the next poll); its outcome. */
-    const stopCi = async (stop) => {
+    let gateOpen = false;
+    /**
+     * Ends the pr phase running beside the suite, blocked for `why` (its gate refuses, its CI wait ends at the next
+     * poll); its outcome. The gate never opened, so a pr that still came back ok found the PR merged by someone else.
+     */
+    const stopCi = async (why) => {
+        const pr = `release PR #${release.current.devPr ?? '?'}`;
+        const stop = { status: 'blocked', note: `${pr} left open and unmerged: ${why}` };
         release.ciAbort = stop;
         ci.shut(stop);
         const r = await ci.done;
+        if (r.outcome?.status === 'ok')
+            return { status: 'blocked', note: `${pr} was merged outside the release, although ${why}` };
         if (r.outcome)
             return r.outcome;
         if (r.error instanceof PendingError)
             return stop;
         throw r.error;
     };
-    for (const id of selected) {
-        if (id === 'pr' && ci) {
-            // The suite and smoke passed: open the merge gate unless the smoke rule blocks it.
-            const smoke = release.smokeBlock();
-            if (smoke)
-                await stopCi({ status: 'blocked', note: `release PR #${release.current.devPr ?? '?'} left open and unmerged: ${smoke}` });
-            else
-                ci.open();
-            const r = await ci.done;
-            if (r.error instanceof PendingError)
-                return pendingResult(id, r.error);
-            if (r.error)
-                throw r.error;
-            if (!record(id, r.outcome))
+    try {
+        for (const id of selected) {
+            if (id === 'pr' && ci) {
+                // The suite and smoke passed: the merge gate opens only once the facts it relies on are re-checked.
+                const problem = release.gateProblem();
+                let r;
+                if (problem) {
+                    r = { outcome: await stopCi(problem) };
+                }
+                else {
+                    gateOpen = true;
+                    ci.open();
+                    r = await ci.done;
+                }
+                if (r.error instanceof PendingError)
+                    return pendingResult(id, r.error);
+                if (r.error)
+                    throw r.error;
+                if (!record(id, r.outcome))
+                    return { ok: false, version: v, dryRun: false, statePath, phases: results };
+                continue;
+            }
+            if (besideOk && id === beside[0]) {
+                let open;
+                let shut;
+                const gate = new Promise((resolveGate, reject) => { open = resolveGate; shut = (o) => reject(new PhaseStop(o)); });
+                gate.catch(() => { });
+                release.mergeGate = () => gate;
+                deps.log(`[pr] ${phasePlan('pr', v, opts)[0]} (beside the ${beside.join(' and ')}: merged only once they pass)`);
+                deps.progress({ phase: 'pr', status: 'start', note: `release PR CI runs beside the ${beside.join(' and ')}` });
+                const done = release.phase('pr').then((outcome) => ({ outcome }), (error) => ({ error }));
+                ci = { done, open, shut };
+            }
+            deps.log(`[${id}] ${phasePlan(id, v, opts)[0]}`);
+            deps.progress({ phase: id, status: 'start' });
+            let outcome;
+            try {
+                outcome = await release.phase(id);
+            }
+            catch (error) {
+                if (error instanceof PendingError) {
+                    if (ci)
+                        await stopCi(`the ${id} phase is pending`);
+                    return pendingResult(id, error);
+                }
+                throw error;
+            }
+            if (!record(id, outcome)) {
+                if (ci) {
+                    // The PR stays open and unmerged; its CI wait ends, and pr records why.
+                    record('pr', await stopCi(`the ${id} phase ${outcome.status} (${outcome.note}); fix it, then re-run omg release ${v} --from ${id}`));
+                }
                 return { ok: false, version: v, dryRun: false, statePath, phases: results };
-            continue;
-        }
-        if (besideOk && id === beside[0]) {
-            let open;
-            let shut;
-            const gate = new Promise((resolveGate, reject) => { open = resolveGate; shut = (o) => reject(new PhaseStop(o)); });
-            gate.catch(() => { });
-            release.mergeGate = () => gate;
-            deps.log(`[pr] ${phasePlan('pr', v, opts)[0]} (beside the ${beside.join(' and ')}: merged only once they pass)`);
-            deps.progress({ phase: 'pr', status: 'start', note: `release PR CI runs beside the ${beside.join(' and ')}` });
-            const done = release.phase('pr').then((outcome) => ({ outcome }), (error) => ({ error }));
-            ci = { done, open, shut };
-        }
-        deps.log(`[${id}] ${phasePlan(id, v, opts)[0]}`);
-        deps.progress({ phase: id, status: 'start' });
-        let outcome;
-        try {
-            outcome = await release.phase(id);
-        }
-        catch (error) {
-            if (error instanceof PendingError) {
-                if (ci)
-                    await stopCi({ status: 'blocked', note: `the ${id} phase beside the release PR is pending` });
-                return pendingResult(id, error);
             }
-            throw error;
         }
-        if (!record(id, outcome)) {
-            if (ci) {
-                // The PR stays open and unmerged; its CI wait ends, and pr records why.
-                const pr = await stopCi({ status: 'blocked', note: `release PR #${release.current.devPr ?? '?'} left open and unmerged: the ${id} phase ${outcome.status} (${outcome.note}); fix it, then re-run omg release ${v} --from ${id}` });
-                record('pr', pr);
-            }
-            return { ok: false, version: v, dryRun: false, statePath, phases: results };
-        }
+    }
+    catch (error) {
+        // An error escaping the loop stops the pr phase beside it too, unless it is past the gate (then it is pr's own).
+        if (ci && !gateOpen)
+            await stopCi(`the release run stopped on an error (${error instanceof Error ? error.message : String(error)})`).catch(() => { });
+        throw error;
     }
     const triage = release.current.suiteTriage;
     const flaky = triage && triage.sha === release.current.suiteSha ? triage.results.filter((t) => t.class === 'load-flaky').length : 0;
