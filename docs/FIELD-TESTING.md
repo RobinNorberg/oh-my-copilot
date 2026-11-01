@@ -92,11 +92,11 @@ in the way, stop and ask Robin.
 
 ### 1. GitHub CLI with minimal rights
 
-Use a fine-grained personal access token that reaches two repositories
+Robin creates a fine-grained personal access token that reaches two repositories
 only: `RobinNorberg/oh-my-copilot`, and a scratch repository for the GitHub
 factory test ([Step 2](#step-2-the-factory-by-hand-on-github-and-on-azure-devops)).
 Robin creates the scratch repository and the token; you never create a
-repository. On GitHub, under **Settings → Developer settings → Personal
+repository and you never handle a token. On GitHub, under **Settings → Developer settings → Personal
 access tokens → Fine-grained tokens → Generate new token**:
 
 - **Resource owner:** `RobinNorberg`.
@@ -112,15 +112,21 @@ access tokens → Fine-grained tokens → Generate new token**:
 | Actions | Read | `omg factory heal scan` and the factory's CI checks read workflow runs |
 | Metadata | Read | required by GitHub |
 
-Give it nothing else: no Administration, no Workflows, no Actions write, no
+Robin: give it nothing else: no Administration, no Workflows, no Actions write, no
 Secrets, no account permissions. Without the Workflows permission GitHub
 itself refuses a push that touches `.github/workflows/`. Contents write
 still allows pushing any branch, so rule 3 is yours to keep.
 
+Robin runs `gh auth login --hostname github.com` himself on that machine and
+pastes the token there. It is interactive: it fails without a terminal, and a
+token pasted into the session lands in the transcript. The agent only runs:
+
 ```powershell
-gh auth login --hostname github.com   # paste the token when asked
 gh auth status
 ```
+
+If that shows it is not logged in, stop and report to Robin. Never run
+`gh auth login` and never handle a token.
 
 ### 2. Git identity
 
@@ -187,9 +193,11 @@ features your version lacks. Read this guide from `C:\field\guide`, and
   (see [Scrubbing](#scrubbing)).
 - A test repository to push into the throwaway project: a local clone with a
   `BACKLOG.md` of `## EXC-NNN` tickets. Ask Robin which one.
-- An agent for the project's pipeline: the self-hosted pool `Default` (free,
-  register an agent on this machine) or `--hosted` (needs the org linked to an
-  Azure subscription; ask Robin before using it, it can bill).
+- An agent for the project's pipeline: Robin registers any pipeline agent, or
+  tells you which pool to use (`--hosted` needs the org linked to an Azure
+  subscription; ask Robin before using it, it can bill). Never register,
+  reconfigure or remove an agent yourself: it is an org-level write outside the
+  manifest.
 
 ## What to test
 
@@ -223,9 +231,10 @@ script runs every phase (`all`), which rule 8 forbids. Never add `--yes`
    `main` succeeds before the build policy appears; `omg factory setup` runs
    and pushes `.copilot/omg.jsonc`.
 4. **Enqueue**, in two passes, because it writes trust into the user config.
-   Copilot CLI's shell has no terminal, so the script's two questions (add
-   the spec creator to `trustedAuthors`; enqueue the tickets) both answer no
-   and it stops with "pass --yes". You never add `--yes` on your own.
+   Copilot CLI's shell has no terminal, so the script's first question (add
+   the spec creator to `trustedAuthors`) answers no and the run throws
+   "not confirmed"; the second question (enqueue the tickets) never comes.
+   Passing `--yes` is what answers both. You never add `--yes` on your own.
    1. Run `--phase enqueue --run <runId> --source <clone> --dry-run`. It
       runs and writes nothing, and prints: the `user-scope write:` block
       (the user config path and the `trustedAuthors` list before `->`
@@ -252,8 +261,8 @@ script runs every phase (`all`), which rule 8 forbids. Never add `--yes`
    recording. A drift line is a finding.
 8. **Cleanup.** `--phase cleanup --org <org url> --run <runId>`. Deletes only
    this run's project (restorable for 28 days) and its clone. It prints the
-   `trustedAuthors` the run added; remove those from the user config by hand
-   if they should not stay.
+   `trustedAuthors` the run added. Send Robin that list (scrubbed); he
+   decides whether to remove them. Never remove them yourself.
 
 `--with-lanes` on `exercise` or `heal-drill` runs real lanes and spends
 credits (rule 7).
@@ -297,7 +306,7 @@ both must lack it or set it to `false`:
 
 ```powershell
 Select-String -Path "$env:USERPROFILE\AppData\Roaming\claude-omc\config.jsonc" -Pattern 'autoStart' -ErrorAction SilentlyContinue
-git fetch origin
+git fetch origin   # if git asks for credentials or opens a sign-in window, stop and tell Robin; never type or paste credentials
 git show "origin/<base>:.copilot/omg.jsonc" | Select-String 'autoStart'
 ```
 

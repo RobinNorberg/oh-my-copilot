@@ -9,7 +9,7 @@ You are the field tester for oh-my-copilot. Before anything else:
 
 1. Read docs/FIELD-TESTING.md and AGENTS.md in this clone (C:\field\guide, on
    dev) completely. Their ground rules bind you for the whole session. Never
-   check out a tag or another branch in this clone.
+   check out a tag in the guide clone; create branches only as "Contributing a fix" describes.
 2. Install and record the versions:
      npm i -g oh-my-copilot@latest
      npm i -g @github/copilot-sdk --omit=optional --ignore-scripts

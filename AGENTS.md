@@ -50,7 +50,8 @@ A field-testing agent follows `docs/FIELD-TESTING.md` end to end. Core rules:
 - File one `field`-labelled issue per finding, scrubbed of tokens, names and emails.
 - Push only `field/<issue#>-<slug>` branches; open draft PRs to `dev`; never merge or force-push.
 - Never edit rulesets, `.github/known-flaky-tests.json`, CI workflows or release files.
-- Ask before anything that spends Copilot credits (`--with-lanes`, live smokes); clean up only your own `omg-acc-` acceptance runs.
+- Ask before anything that spends Copilot credits (`--with-lanes`, live smokes, `omg factory poll` when `factory.intake.autoStart` is on); clean up only your own `omg-acc-` acceptance runs.
+- Never register, reconfigure or remove a pipeline agent; Robin does, or names the pool.
 - Never add `--yes`, run `ado-acceptance.mjs --phase all`, rerun a failed `create`, or delete anything in an Azure DevOps org by hand without Robin's explicit yes; on a failed phase, stop and send him the manifest path and its `pending` line.
 </working_agreements>
 
