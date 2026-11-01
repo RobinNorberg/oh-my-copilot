@@ -55,7 +55,7 @@ runs:
     - name: Save node_modules (trusted refs only)
       if: >-
         steps.restore.outputs.cache-hit != 'true' && (
-          github.event_name == 'schedule' || github.event_name == 'pull_request' ||
+          github.event_name == 'schedule' ||
           (github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'))
         )
       uses: actions/cache/save@v4
