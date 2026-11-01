@@ -22,6 +22,7 @@ import { resolveProjectConfigPath } from '../config/project-config-path.js';
 import { SMOKE_SET_ENV } from '../smoke/copilot-session-env.js';
 import { isUnderRoot } from '../team/sdk-policy.js';
 import { parseJsonc } from '../utils/jsonc.js';
+import { findOnPath } from '../utils/windows-search.js';
 /** Shell tools whose `tool.execution_complete` must carry `sandboxed: true` in an enforced session. */
 export const SANDBOX_SHELL_TOOLS = new Set(['powershell', 'bash', 'shell']);
 /** The built-in tools a review session keeps: view, search, and the turn bookkeeping tools. */
@@ -307,32 +308,7 @@ export function buildSandboxConfig(profile, ctx, host) {
         : { allowOutbound: false, allowLocalNetwork: false };
     return { enabled: true, addCurrentWorkingDirectory: true, ...common, userPolicy: { filesystem, network } };
 }
-const isFile = (p) => { try {
-    return statSync(p).isFile();
-}
-catch {
-    return false;
-} };
-/**
- * `name` on `env`'s PATH (PATHEXT on win32), or null. Empty and relative
- * entries are skipped, and so is any entry under a `node_modules` dir (npx
- * and npm scripts put `node_modules/.bin` first, so a package's shim would
- * stand in for the host git that `git --exec-path` runs).
- */
-export function findOnPath(name, env, platform, exists = isFile) {
-    const P = platform === 'win32' ? win32 : posix;
-    const exts = platform === 'win32' ? (envValue(env, 'PATHEXT') ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean) : [''];
-    const inNodeModules = platform === 'win32' ? /(^|[\\/])node_modules([\\/]|$)/i : /(^|\/)node_modules(\/|$)/;
-    for (const raw of (envValue(env, 'PATH') ?? '').split(P.delimiter)) {
-        const dir = raw.trim().replace(/^"(.*)"$/, '$1');
-        if (!dir || !P.isAbsolute(dir) || inNodeModules.test(dir))
-            continue;
-        for (const ext of exts)
-            if (exists(P.join(dir, name + ext)))
-                return P.join(dir, name + ext);
-    }
-    return null;
-}
+export { findOnPath };
 function defaultToolPathProbe(env, platform) {
     return {
         execPath: process.execPath,

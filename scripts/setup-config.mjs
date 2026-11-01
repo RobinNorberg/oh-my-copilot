@@ -25,6 +25,7 @@
 //   copy-rules                 Copy templates/rules/*.md into ./.claude/rules
 //   star-repo                  Star the repository through gh (silent on failure)
 
+import { hardenWindowsExeSearch } from './lib/windows-search.mjs';
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, renameSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -32,6 +33,8 @@ import { dirname, join } from 'node:path';
 import process from 'node:process';
 
 import { getCopilotConfigDir } from './lib/config-dir.mjs';
+
+hardenWindowsExeSearch();
 
 const CONFIG_DIR = getCopilotConfigDir();
 const CONFIG_FILE = join(CONFIG_DIR, '.omc-config.json');

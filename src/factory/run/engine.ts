@@ -327,6 +327,7 @@ export function fenceFor(content: string): string {
 const WRITE_LANE_GIT_RULES: readonly string[] = [
   'Leave your changes in this worktree and do NOT commit: the git directory is read-only, so git add, git commit, git merge, git stash and every other git command that writes fail. The engine commits your changes after you finish, with your final message as the commit message, so end with a short summary of the change.',
   'Do NOT push, open a pull request, or change git config, hooks or refs.',
+  'On Windows, call repo-local scripts as `.\\name` (`.\\gradlew`, `.\\build.bat`): a bare name does not search the worktree.',
 ];
 
 /** The run's key: `heal-<sig8>` for a ci-heal run, else the issue number. */

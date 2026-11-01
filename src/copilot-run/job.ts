@@ -40,6 +40,7 @@
  *   node_modules) are unlinked first so their targets survive.
  */
 
+import { childEnv, hardenWindowsExeSearch } from '../utils/windows-search.js';
 import { spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
@@ -791,6 +792,8 @@ function relativeInside(path: string, root: string): string | null {
 }
 
 export function defaultCopilotRunDeps(env: NodeJS.ProcessEnv = process.env): CopilotRunDeps {
+  // The host (the MCP server or omg) resolves bare names with its own env: no cwd search on Windows.
+  hardenWindowsExeSearch();
   return {
     env,
     platform: process.platform,
@@ -1251,7 +1254,7 @@ export class CopilotRunManager {
     const ident = loginIdentity(deps.userConfigDir());
     writeFileSync(join(job.home, 'config.json'), `${JSON.stringify({ ...ident, trustedFolders: [job.workCwd] }, null, 2)}\n`);
     // An env allowlist with the profile relocated into the job's home (sandbox.ts).
-    const env = allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== undefined }), job.home);
+    const env = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== undefined }), job.home));
     const gitHubToken = sessionGitHubToken(deps.env);
     mkdirSync(env.XDG_CONFIG_HOME!, { recursive: true });
     mkdirSync(dirname(env.GIT_CONFIG_GLOBAL!), { recursive: true });
