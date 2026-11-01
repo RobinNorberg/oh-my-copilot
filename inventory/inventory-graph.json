@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "9c83a7c8e915d0b2dc045c9a0a9c6af1892b4b80",
-    "sourceSha256": "961b3d46fb3f5a5e64bfe3b545b8ac056b799d0d4b43d91b0f26200cbe3ad528",
+    "head": "8553e79427439e5894658bce2621642073d70f77",
+    "sourceSha256": "d8d30ecd37bf7a3ec1e5021ed560be47f53fcee7746750364c8d3f0c065e311d",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "9c83a7c8e915d0b2dc045c9a0a9c6af1892b4b80",
-  "sourceSha256": "961b3d46fb3f5a5e64bfe3b545b8ac056b799d0d4b43d91b0f26200cbe3ad528",
+  "head": "8553e79427439e5894658bce2621642073d70f77",
+  "sourceSha256": "d8d30ecd37bf7a3ec1e5021ed560be47f53fcee7746750364c8d3f0c065e311d",
   "counts": {
     "public": {
       "skills": 63,
@@ -37,14 +37,14 @@
       "total": 7181
     },
     "prompt": {
-      "promptLikeFiles": 65
+      "promptLikeFiles": 66
     },
     "skills": 63,
     "commands": 21,
     "hookFiles": 346,
     "workflows": 9,
     "agentDefinitions": 18,
-    "promptLikeFiles": 65
+    "promptLikeFiles": 66
   },
   "public": {
     "skills": [
@@ -772,6 +772,7 @@
       "docs/CLAUDE.md",
       "docs/design/issue-3704-prompt-ssot/README.md",
       "docs/design/issue-3704-prompt-ssot/measurements.json",
+      "docs/field-testing-first-prompt.md",
       "generated/prompt-ssot/coordinator.md",
       "generated/prompt-ssot/role-executor.md",
       "generated/prompt-ssot/role-planner.md",
@@ -8540,6 +8541,7 @@
       "docs/CLAUDE.md",
       "docs/design/issue-3704-prompt-ssot/README.md",
       "docs/design/issue-3704-prompt-ssot/measurements.json",
+      "docs/field-testing-first-prompt.md",
       "generated/prompt-ssot/coordinator.md",
       "generated/prompt-ssot/role-executor.md",
       "generated/prompt-ssot/role-planner.md",
@@ -8799,6 +8801,11 @@
         "id": ".github/FUNDING.yml",
         "kind": "other",
         "path": ".github/FUNDING.yml"
+      },
+      {
+        "id": ".github/ISSUE_TEMPLATE/field-report.yml",
+        "kind": "other",
+        "path": ".github/ISSUE_TEMPLATE/field-report.yml"
       },
       {
         "id": ".github/SPONSOR_TIERS.md",
@@ -45731,6 +45738,11 @@
         "path": "docs/FEATURES.md"
       },
       {
+        "id": "docs/FIELD-TESTING.md",
+        "kind": "other",
+        "path": "docs/FIELD-TESTING.md"
+      },
+      {
         "id": "docs/GETTING-STARTED.md",
         "kind": "other",
         "path": "docs/GETTING-STARTED.md"
@@ -45929,6 +45941,11 @@
         "id": "docs/factory/t6-acceptance/acceptance-comment.md",
         "kind": "other",
         "path": "docs/factory/t6-acceptance/acceptance-comment.md"
+      },
+      {
+        "id": "docs/field-testing-first-prompt.md",
+        "kind": "other",
+        "path": "docs/field-testing-first-prompt.md"
       },
       {
         "id": "docs/geobench.md",
@@ -117269,12 +117286,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9869,
+      "nodeCount": 9872,
       "edgeCount": 11832,
       "importEdgeCount": 9711,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "11d679156a89f5460e735303cd6ea00188f7417b18d3622bba6acc6e0f9f0bdf",
-  "manifestSha256": "81dcb035e68f0ddd74769de10ce89bf12811450e594feb5ed199306164199d1f"
+  "inventorySha256": "aa4117c54fa661d67e6a738739cd7d61cd7e13858b28545d69d61757973b10f3",
+  "manifestSha256": "2589b8126ad45f77957d6a999260da3b6a0531fca14176fd66e8775dfded12b5"
 }
