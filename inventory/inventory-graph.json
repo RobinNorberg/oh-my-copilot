@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "8312a3c69f018c8dd2b6ab2106ca6f45cc286fa7",
-    "sourceSha256": "760e580d9680348cf7a03f4fdb2fa40146957562dc35bbd96c5394d204c8336d",
+    "head": "445a948bda3727a4dac09b618246c042ceadcd66",
+    "sourceSha256": "a0fa25b04e4a2f1ca3e6e4243200b52a35ef496ad33d63741d5e8db400b770ab",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "8312a3c69f018c8dd2b6ab2106ca6f45cc286fa7",
-  "sourceSha256": "760e580d9680348cf7a03f4fdb2fa40146957562dc35bbd96c5394d204c8336d",
+  "head": "445a948bda3727a4dac09b618246c042ceadcd66",
+  "sourceSha256": "a0fa25b04e4a2f1ca3e6e4243200b52a35ef496ad33d63741d5e8db400b770ab",
   "counts": {
     "public": {
       "skills": 63,
@@ -117060,6 +117060,11 @@
         "kind": "imports"
       },
       {
+        "from": "tests/integration/workflow-profile-stop-transition.test.ts",
+        "to": "templates/hooks/lib/workflow-stage-prompts.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/better-sqlite3-lockfloor.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -117682,11 +117687,11 @@
     ],
     "stats": {
       "nodeCount": 9894,
-      "edgeCount": 11886,
-      "importEdgeCount": 9761,
+      "edgeCount": 11887,
+      "importEdgeCount": 9762,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "b9b8913a1ca12e87404672eeaf23e0b3b9ad239f18a9990229935583927b244b",
-  "manifestSha256": "246f45cf3c2c857a1d2256b22d46425f760af7e8346656a536227e9ef5329187"
+  "manifestSha256": "0a6932b97b7d2e55b0eacce0ed194626644bc8ab71fba45be39285cb048b59d5"
 }
