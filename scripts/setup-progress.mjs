@@ -11,6 +11,7 @@
 // `save` and `complete` also resolve their optional argument themselves, so the
 // setup skill no longer needs a jq/grep/sed preamble to compute it.
 
+import { hardenWindowsExeSearch } from './lib/windows-search.mjs';
 import { spawnSync } from 'node:child_process';
 import { constants as fsConstants, copyFileSync, existsSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -20,6 +21,8 @@ import process from 'node:process';
 import { atomicWriteFileSync, ensureDirSync } from './lib/atomic-write.mjs';
 import { getCopilotConfigDir } from './lib/config-dir.mjs';
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
+
+hardenWindowsExeSearch();
 
 const CONFIG_DIR = getCopilotConfigDir();
 const STATE_DIR = join(await resolveOmcStateRoot(process.cwd()), 'state');

@@ -82,6 +82,9 @@ const { transform, parseHookOutput, writeAllSync } = require('../lib/copilot-hoo
 const { normalizeHookPayload } = require('../lib/copilot-payload.cjs');
 const { getCopilotConfigDir } = require('../lib/config-dir.cjs');
 const { isChildSessionPayload } = require('../lib/child-session.cjs');
+const { hardenWindowsExeSearch } = require('../lib/windows-search.cjs');
+
+hardenWindowsExeSearch();
 
 const SCRIPTS_DIR = path.join(__dirname, '..');
 const RUN_CJS = path.join(SCRIPTS_DIR, 'run.cjs');

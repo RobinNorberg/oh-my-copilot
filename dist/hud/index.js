@@ -5,6 +5,7 @@
  * Statusline command that visualizes oh-my-copilot state.
  * Receives stdin JSON from Claude Code and outputs formatted statusline.
  */
+import { hardenWindowsExeSearch } from "../utils/windows-search.js";
 import { readStdin, writeStdinCache, readStdinCache, getContextPercent, getModelId, getEffortLevel, getModelName, getRateLimitsFromStdin, stabilizeContextPercent, getAiUsed, getCopilotContextPercent, getCopilotModelName, getCopilotTokenUsage, getSessionDurationMs, } from "./stdin.js";
 import { parseTranscript } from "./transcript.js";
 import { readCopilotEvents, resolveCopilotEventsPath } from "./copilot-events.js";
@@ -31,6 +32,7 @@ import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { getOmcRoot } from "../lib/worktree-paths.js";
 import { getCopilotConfigDir, getUpdateCheckCachePath } from "../utils/config-dir.js";
+hardenWindowsExeSearch();
 /**
  * HUD wrapper filenames this release recognises, current first.
  *

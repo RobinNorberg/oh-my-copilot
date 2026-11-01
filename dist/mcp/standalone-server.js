@@ -7,6 +7,7 @@
  *
  * Usage: node dist/mcp/standalone-server.js
  */
+import { hardenWindowsExeSearch } from '../utils/windows-search.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, } from '@modelcontextprotocol/sdk/types.js';
@@ -15,6 +16,7 @@ import { cleanupOwnedBridgeSessions } from '../tools/python-repl/bridge-manager.
 import { buildListToolsResponse, callTool, getEnabledTools } from './tool-registry.js';
 import { disconnectAll as disconnectAllLsp } from '../tools/lsp/index.js';
 import { stopCopilotRunJobs } from '../tools/copilot-run-tools.js';
+hardenWindowsExeSearch();
 // Create the MCP server
 const server = new Server({
     name: 't',

@@ -27082,6 +27082,21 @@ __export(runtime_cli_exports, {
   writeResultArtifact: () => writeResultArtifact
 });
 module.exports = __toCommonJS(runtime_cli_exports);
+
+// src/utils/windows-search.ts
+var VARIABLE = "NoDefaultCurrentDirectoryInExePath";
+function isVariable(key) {
+  return key.toUpperCase() === VARIABLE.toUpperCase();
+}
+function hardenWindowsExeSearch() {
+  if (process.platform !== "win32") return;
+  for (const key of Object.keys(process.env)) {
+    if (isVariable(key)) delete process.env[key];
+  }
+  process.env[VARIABLE] = "1";
+}
+
+// src/team/runtime-cli.ts
 var import_node_crypto12 = require("node:crypto");
 var import_fs44 = require("fs");
 var import_promises20 = require("fs/promises");
@@ -27665,6 +27680,7 @@ init_team_owner_epoch();
 init_team_instance();
 init_tmux_session();
 init_tmux_session();
+hardenWindowsExeSearch();
 function normalizeRuntimeInstanceId(value) {
   return isValidTeamInstanceId(value) ? value.toLowerCase() : null;
 }
