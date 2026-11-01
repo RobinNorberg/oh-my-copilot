@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readdirSync, readFileSync, statSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
 import { join, relative } from 'path';
 import { pathToFileURL } from 'url';
-import { resolveSkillSlash, setSkillListProbe } from '../skill-registry.js';
+import { defaultSkillListProbe, resolveSkillSlash, setSkillListProbe } from '../skill-registry.js';
 import { skillSlash } from '../skill-slash.js';
 const ROOT = join(__dirname, '..', '..', '..');
 // `copilot --plugin-dir <repo> skill list --json` on Copilot CLI 1.0.105, plugin entries only.
@@ -71,6 +72,69 @@ describe('resolveSkillSlash', () => {
         resolveSkillSlash('ralph', { cwd: '/repo', host: 'copilot', probeArgs: ['--plugin-dir', '/p'], warn: fake.warn });
         resolveSkillSlash('harbor', { cwd: '/other', host: 'copilot' });
         expect(fake.probe.mock.calls).toEqual([['/repo', ['--plugin-dir', '/p']], ['/other', []]]);
+    });
+    describe('unattended', () => {
+        const ourPath = join(ROOT, 'skills', 'harbor');
+        let tmp;
+        afterEach(() => { if (tmp)
+            rmSync(tmp, { recursive: true, force: true }); tmp = undefined; });
+        function otherPlugin() {
+            tmp = mkdtempSync(join(tmpdir(), 'skill-registry-'));
+            mkdirSync(join(tmp, 'skills', 'harbor'), { recursive: true });
+            writeFileSync(join(tmp, 'plugin.json'), JSON.stringify({ name: 'other-plugin' }));
+            return join(tmp, 'skills', 'harbor');
+        }
+        it('returns the bare name for our plugin skill', () => {
+            const fake = useProbe([{ name: 'harbor', source: 'plugin', path: ourPath }]);
+            restore = fake.restore;
+            expect(resolveSkillSlash('harbor', { cwd: '/repo', host: 'copilot', unattended: true, warn: fake.warn })).toBe('/harbor');
+        });
+        it.each([
+            ['a project skill', { name: 'harbor', source: 'project', path: '/repo/.github/skills/harbor' }],
+            ['a user skill', { name: 'harbor', source: 'personal-copilot', path: '/home/u/.copilot/skills/harbor' }],
+            ['a plugin entry without a path', { name: 'harbor', source: 'plugin' }],
+        ])('throws skill-shadowed for %s', (_label, entry) => {
+            const fake = useProbe([entry, { name: 'oh-my-copilot:harbor', source: 'plugin', path: ourPath }]);
+            restore = fake.restore;
+            expect(() => resolveSkillSlash('harbor', { cwd: '/repo', host: 'copilot', unattended: true, warn: fake.warn })).toThrow(/^skill-shadowed:harbor/);
+        });
+        it("throws skill-shadowed for another plugin's same-named skill", () => {
+            const fake = useProbe([{ name: 'harbor', source: 'plugin', path: otherPlugin() }]);
+            restore = fake.restore;
+            expect(() => resolveSkillSlash('harbor', { cwd: '/repo', host: 'copilot', unattended: true, warn: fake.warn })).toThrow(/^skill-shadowed:harbor/);
+        });
+        it('uses the bare name when the registry cannot be probed', () => {
+            const fake = useProbe(null);
+            restore = fake.restore;
+            expect(resolveSkillSlash('harbor', { cwd: '/repo', host: 'copilot', unattended: true, warn: fake.warn })).toBe('/harbor');
+        });
+        it('strips control characters from the source it prints', () => {
+            const fake = useProbe([{ name: 'harbor', source: 'pro\u001b[2Jject\r\n' }]);
+            restore = fake.restore;
+            resolveSkillSlash('harbor', { cwd: '/repo', host: 'copilot', warn: fake.warn });
+            expect(fake.warnings).toEqual([expect.stringMatching(/^a pro\[2Jject skill named "harbor"/)]);
+            expect(() => resolveSkillSlash('harbor', { cwd: '/repo', host: 'copilot', unattended: true })).toThrow(/^skill-shadowed:harbor: a pro\[2Jject skill/);
+        });
+    });
+});
+describe('defaultSkillListProbe', () => {
+    afterEach(() => vi.unstubAllEnvs());
+    it('never runs a copilot planted in the cwd when the host binary is not on PATH', () => {
+        const cwd = mkdtempSync(join(tmpdir(), 'skill-probe-cwd-'));
+        const emptyPath = mkdtempSync(join(tmpdir(), 'skill-probe-path-'));
+        try {
+            const marker = join(cwd, 'ran');
+            writeFileSync(join(cwd, 'copilot.cmd'), `@echo off\r\necho x> "${marker}"\r\necho []\r\n`);
+            writeFileSync(join(cwd, 'copilot'), `#!/bin/sh\ntouch "${marker}"\necho []\n`, { mode: 0o755 });
+            vi.stubEnv('COPILOT_CLI', '1');
+            vi.stubEnv('PATH', emptyPath);
+            expect(defaultSkillListProbe(cwd, [])).toBeNull();
+            expect(existsSync(marker)).toBe(false);
+        }
+        finally {
+            rmSync(cwd, { recursive: true, force: true });
+            rmSync(emptyPath, { recursive: true, force: true });
+        }
     });
 });
 function walk(dir, out = []) {

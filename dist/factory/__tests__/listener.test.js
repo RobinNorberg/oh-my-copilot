@@ -5,6 +5,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { buildHarborPrompt, MAX_BODY_BYTES, processEvent, routeTrackerEvent, startListener, stopListener, verifySignature, } from '../listener.js';
 import { skillSlash } from '../../utils/skill-slash.js';
+import { setSkillListProbe } from '../../utils/skill-registry.js';
 import { acquireFileLockSync, releaseFileLockSync } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { AFK_INCLUDE_USER_SETTINGS_ENV } from '../../hooks/session-end/spawn-next.js';
@@ -136,6 +137,21 @@ describe('processEvent', () => {
         expect(ledger.tracker).toEqual({ repo: 'pangpang778/factory-demo', issue: 7 });
         expect(JSON.stringify(ledger)).not.toMatch(/needs-review|"failed"/);
         expect(audits[0]).toMatchObject({ kind: 'routed', stage: 'harbor', skill: 'harbor', issue: 'https://github.com/pangpang778/factory-demo/issues/7', session: sessionId });
+    });
+    it('audits and skips a Copilot link whose skill a project skill shadows', () => {
+        vi.stubEnv('COPILOT_CLI', '1');
+        const previous = setSkillListProbe(() => [{ name: 'harbor', source: 'project', path: '/repo/.github/skills/harbor' }]);
+        try {
+            const spawned = [];
+            const audits = [];
+            const result = processEvent(event(), config(), { spawner: (cmd, args) => spawned.push([cmd, args]), audit: (r) => audits.push(r) });
+            expect(result).toMatchObject({ status: 204, kind: 'discarded', detail: expect.stringMatching(/^skill-shadowed:harbor/) });
+            expect(spawned).toEqual([]);
+            expect(audits).toEqual([expect.objectContaining({ kind: 'discarded', reason: expect.stringMatching(/^skill-shadowed:harbor/), intentId: 'pangpang778-factory-demo-7' })]);
+        }
+        finally {
+            setSkillListProbe(previous);
+        }
     });
     it('captures the user-settings choice in the initial factory ledger and link argv', () => {
         process.env[AFK_INCLUDE_USER_SETTINGS_ENV] = '1';

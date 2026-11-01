@@ -265,7 +265,13 @@ export function runHeadlessIntake(options: { cwd?: string; hostBin?: string; all
     // Copilot's non-interactive mode is `-p <prompt>`; --no-ask-user keeps the
     // unattended sweep from blocking on a question.
     const host = getHostCliType();
-    const sweepPrompt = `${resolveSkillSlash('harbor', { cwd, host })} sweep`;
+    let harborSlash: string;
+    try {
+      harborSlash = resolveSkillSlash('harbor', { cwd, host, unattended: true });
+    } catch (error) {
+      return { exitCode: 1, message: `intake refused: ${error instanceof Error ? error.message : String(error)}` };
+    }
+    const sweepPrompt = `${harborSlash} sweep`;
     const sweepArgs = host === 'copilot'
       ? ['-p', sweepPrompt, '--no-ask-user']
       : ['--print', sweepPrompt];

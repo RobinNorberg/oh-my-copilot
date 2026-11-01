@@ -267,13 +267,22 @@ export function processEvent(event: TrackerEvent, config: ListenerConfig, deps: 
   }
 
   const intentId = `${repo}#${outcome.issueNumber ?? 0}`.replace(/[^\w.-]/g, '-');
+  let slash: string;
+  try {
+    slash = resolveSkillSlash(outcome.directive.skill, {
+      cwd: config.cwd,
+      probeArgs: copilotPluginDirArgs(process.env, config.cwd),
+      unattended: true,
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    audit({ kind: 'discarded', reason, intentId });
+    return { status: 204, kind: 'discarded', detail: reason };
+  }
   return spawnChainLink({
     intentId,
     directive: outcome.directive,
-    prompt: buildHarborPrompt(outcome.directive, outcome.issueNumber, outcome.issueUrl, resolveSkillSlash(outcome.directive.skill, {
-      cwd: config.cwd,
-      probeArgs: copilotPluginDirArgs(process.env, config.cwd),
-    })),
+    prompt: buildHarborPrompt(outcome.directive, outcome.issueNumber, outcome.issueUrl, slash),
     // No labels: harbor owns the issue's labels. The pointer lets the watchdog flag a stall.
     tracker: outcome.issueNumber !== undefined ? { repo, issue: outcome.issueNumber } : undefined,
     routedAuditFields: { issue: outcome.issueUrl ?? outcome.issueNumber },

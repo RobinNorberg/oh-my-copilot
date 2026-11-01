@@ -405,6 +405,16 @@ describe('Copilot host factory links', () => {
             setSkillListProbe(previous);
         }
     });
+    it('refuses a bundled skill a project skill shadows in the registry as route-unknown', () => {
+        const previous = setSkillListProbe(() => [{ name: 'omc-plan', source: 'project', path: '/link-cwd/.github/skills/omc-plan' }]);
+        try {
+            expect(() => planSpawnNext({ ...chain, routeTable: { 'success:*': { stage: 'spec', skill: 'omc-plan' } } }, '/omc-root', '/link-cwd'))
+                .toThrow(/^route-unknown:omc-plan \(skill-shadowed:omc-plan/);
+        }
+        finally {
+            setSkillListProbe(previous);
+        }
+    });
     it('spawns a bundled skill by its bare registered name and a project skill bare', () => {
         const bundled = planSpawnNext({ ...chain, routeTable: { 'success:*': { stage: 'spec', skill: 'omc-plan' } } }, '/omc-root');
         expect(bundled?.spawnArgv[0]).toBe('copilot');

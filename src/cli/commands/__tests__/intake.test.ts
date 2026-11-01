@@ -208,6 +208,26 @@ describe('runHeadlessIntake preconditions', () => {
     }
   });
 
+  it('refuses the sweep when a project skill shadows harbor in the Copilot registry', async () => {
+    vi.stubEnv('COPILOT_CLI', '1');
+    const { setSkillListProbe } = await import('../../../utils/skill-registry.js');
+    const previous = setSkillListProbe(() => [{ name: 'harbor', source: 'project', path: '/repo/.github/skills/harbor' }]);
+    const calls: string[] = [];
+    const runner: IntakeRunner = (cmd, args, options) => {
+      if (cmd === 'copilot') calls.push(cmd);
+      return okRunner()(cmd, args, options);
+    };
+    try {
+      const result = runHeadlessIntake({ allowDocketOnly: true, cwd: '.' }, runner);
+      expect(result.exitCode).toBe(1);
+      expect(result.message).toMatch(/^intake refused: skill-shadowed:harbor/);
+      expect(calls).toEqual([]);
+    } finally {
+      setSkillListProbe(previous);
+      vi.unstubAllEnvs();
+    }
+  });
+
   it.each(['tools/copilot', '..\\copilot', 'copilot;rm', 'copilot&calc', 'co pilot', 'copilot%X%', ' copilot', ''])(
     'refuses an unsafe --host-bin before running anything: %j',
     (hostBin) => {

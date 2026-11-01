@@ -446,9 +446,14 @@ export function planSpawnNext(chain: SpawnNextChain, omcRoot: string, linkCwd: s
   if (directive.skill === 'stop') throw new Error(`terminal route: ${directive.stage} spawns no link`);
   const skill = resolveChainSkill(linkCwd, directive.skill);
   if (!skill.ok) throw new Error(`route-unknown:${directive.skill}${skill.hint ? ` (${skill.hint})` : ''}`);
-  const slash = skill.bundled
-    ? resolveSkillSlash(directive.skill, { cwd: linkCwd, probeArgs: copilotPluginDirArgs(process.env, linkCwd) })
-    : skill.slash;
+  let slash = skill.slash;
+  if (skill.bundled) {
+    try {
+      slash = resolveSkillSlash(directive.skill, { cwd: linkCwd, probeArgs: copilotPluginDirArgs(process.env, linkCwd), unattended: true });
+    } catch (error) {
+      throw new Error(`route-unknown:${directive.skill} (${error instanceof Error ? error.message : String(error)})`);
+    }
+  }
   const handoffPath = path.join(omcRoot, 'handoffs', `${chain.sessionId}-${directive.stage}.json`);
   const trackerCommands = chain.tracker
     ? [
