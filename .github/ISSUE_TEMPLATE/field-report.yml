@@ -1,0 +1,90 @@
+name: Field report
+description: A finding from field testing oh-my-copilot (see docs/FIELD-TESTING.md)
+title: "<area>: <short symptom>"
+labels: ["field"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One finding per issue. Follow [docs/FIELD-TESTING.md](https://github.com/RobinNorberg/oh-my-copilot/blob/dev/docs/FIELD-TESTING.md).
+        Never post tokens, PATs, org/project/repository/user names, emails, machine names or user profile paths.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - factory-ado
+        - factory-github
+        - team-windows
+        - install
+        - replay
+        - other
+    validations:
+      required: true
+  - type: input
+    id: omg-version
+    attributes:
+      label: oh-my-copilot version
+      description: Output of `omg --version` (the published npm version under test).
+      placeholder: "5.19.2"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "Windows 11 24H2 (x64)"
+    validations:
+      required: true
+  - type: input
+    id: copilot-version
+    attributes:
+      label: Copilot CLI version
+      description: Output of `copilot --version`.
+    validations:
+      required: true
+  - type: input
+    id: forge
+    attributes:
+      label: Forge
+      description: GitHub, Azure DevOps (with the az and azure-devops extension versions), or none.
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command run
+      description: The exact command line, scrubbed.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: What should have happened, with the docs section that says so when there is one.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Scrub secrets first (docs/FIELD-TESTING.md#scrubbing). Only the lines that matter; never raw ADO captures or cassettes.
+      render: shell
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I scrubbed secrets and identities from everything above.
+          required: true
+        - label: I searched existing issues (`gh issue list --label field --state all --search ...`) and found no duplicate.
+          required: true
