@@ -6,7 +6,7 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Changed
 
-- Added the 11 load-flaky tests from the v5.19.4 release triage (each failed under full-suite load and passed 3/3 isolated reruns) to `.github/known-flaky-tests.json` so `omg ship gates` classifies their CI failures as flaky (owner-approved).
+- Added the 24 load-flaky tests from both v5.19.4 release suite runs (each failed under full-suite load and passed 3/3 isolated reruns) to `.github/known-flaky-tests.json` so `omg ship gates` classifies their CI failures as flaky (owner-approved).
 
 # oh-my-copilot v5.19.4
 
