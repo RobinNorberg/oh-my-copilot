@@ -21,6 +21,7 @@ const SERIAL_BUDGET = [
   'src/__tests__/run-cjs-windows-stdio-contract.test.ts',
   'src/__tests__/run-cjs-generic-timeout.test.ts',
   'src/__tests__/run-cjs-session-end-budget.test.ts',
+  'src/__tests__/session-end-process-exit.test.ts',
   'src/__tests__/windows-prompt-hook-runner.test.ts',
   'tests/integration/git-guardrails-hook.test.ts',
 ];
