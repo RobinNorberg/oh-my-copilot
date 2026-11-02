@@ -50,9 +50,10 @@ export declare function newFailures(failing: readonly string[], baseline: readon
 /** More new failing titles than this are a real failure: no isolated reruns. */
 export declare const TRIAGE_CAP = 20;
 /**
- * `real`: failed every isolated rerun (or a file-level collection error);
+ * `real`: failed every isolated rerun;
  * `load-flaky`: passed every isolated rerun (fails only under suite load, does not block);
  * `mixed`: failed some isolated reruns (may be a real race, blocks).
+ * A file-level failure (setup or collection error, no failing title) reruns as the whole file.
  */
 export type TriageClass = 'real' | 'load-flaky' | 'mixed';
 export interface TriageResult {
@@ -63,14 +64,17 @@ export interface TriageResult {
     passes: number;
     class: TriageClass;
 }
-/** The test file and full title of a failing-title line; `name` is null for a file-level collection error. */
+/** The test file and full title of a failing-title line; `name` is null for a file-level failure (setup or collection error). */
 export declare function splitFailingTitle(line: string): {
     file: string;
     name: string | null;
 };
-export declare function classifyTriage(runs: number, passes: number, collectionError?: boolean): TriageClass;
+/** Throws without a rerun: no evidence is no verdict ("passed 0/0" is never real). */
+export declare function classifyTriage(runs: number, passes: number): TriageClass;
 /** Whether a vitest JSON report has the test `name` in `file`, and it passed. */
 export declare function testPassedInReport(text: string, file: string, name: string): boolean;
+/** Whether a vitest JSON report has `file`, passed as a whole: at least one test passed and none failed. */
+export declare function filePassedInReport(text: string, file: string): boolean;
 /**
  * `.github/known-flaky-tests.json` entries (file, title, note) plus the
  * triage evidence, for the owner to approve by hand: the engine never edits

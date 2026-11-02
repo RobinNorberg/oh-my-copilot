@@ -163060,8 +163060,9 @@ function splitFailingTitle(line2) {
   const at = line2.indexOf(" > ");
   return at < 0 ? { file: line2, name: null } : { file: line2.slice(0, at), name: line2.slice(at + 3) };
 }
-function classifyTriage(runs, passes, collectionError = false) {
-  if (collectionError || runs === 0 || passes === 0) return "real";
+function classifyTriage(runs, passes) {
+  if (!Number.isInteger(runs) || runs < 1) throw new RangeError(`flake triage needs at least one isolated rerun, got ${runs}`);
+  if (passes === 0) return "real";
   return passes === runs ? "load-flaky" : "mixed";
 }
 function testPassedInReport(text4, file, name) {
@@ -163075,10 +163076,21 @@ function testPassedInReport(text4, file, name) {
   const matches = (entry2?.assertionResults ?? []).filter((a) => (a.fullName ?? a.title) === name);
   return matches.length > 0 && matches.every((a) => a.status === "passed");
 }
+function filePassedInReport(text4, file) {
+  let report3;
+  try {
+    report3 = JSON.parse(text4);
+  } catch {
+    return false;
+  }
+  const entry2 = (report3?.testResults ?? []).find((f) => repoRelativeTestPath(f.name ?? "") === file);
+  const results = entry2?.assertionResults ?? [];
+  return entry2?.status === "passed" && results.some((a) => a.status === "passed") && !results.some((a) => a.status === "failed");
+}
 function flakyCandidates(version3, triage) {
-  return triage.filter((t) => t.class !== "real").map((t) => ({
+  return triage.filter((t) => t.class !== "real" && splitFailingTitle(t.title).name !== null).map((t) => ({
     file: t.file,
-    title: splitFailingTitle(t.title).name ?? t.title,
+    title: splitFailingTitle(t.title).name,
     note: `${t.class === "load-flaky" ? "load-sensitive: failed in the full suite, passed" : "mixed: failed in the full suite, passed"} ${t.passes}/${t.runs} isolated reruns (v${version3} release suite)`,
     evidence: { class: t.class, runs: t.runs, passes: t.passes, release: version3 }
   }));
@@ -163261,6 +163273,7 @@ function tail2(text4, lines4 = 30) {
 var FULL_SHA2 = /^[0-9a-f]{40}$/;
 var RERUN_START_POLLS = 40;
 var LAND_ROUNDS = 500;
+var SUITE_HEARTBEAT_MS = 5 * 6e4;
 var HEAD_SYNC_POLL_MS = 5e3;
 var HEAD_SYNC_POLLS = 36;
 var MERGE_RETRY_BACKOFF_MS = [1e4, 3e4];
@@ -163311,7 +163324,7 @@ function phasePlan(id, v, opts) {
       ];
     case "suite":
       return [
-        opts.suite === "full" ? `vitest run --reporter=json (on the committed tree); titles not in ${opts.baseline ?? "(no baseline: any failure fails)"} (at most ${TRIAGE_CAP}) rerun alone ${opts.triageRuns ?? 3}x: fail every rerun = real (fail), pass some = mixed (blocked), pass every rerun = load-flaky (warning; known-flaky candidates written, never committed)` : opts.suite === "targeted" ? "vitest related --run <src files changed since the last v* tag> (on the committed tree)" : "suite: none (pass --suite targeted|full)"
+        opts.suite === "full" ? `vitest run --reporter=json (on the committed tree); titles not in ${opts.baseline ?? "(no baseline: any failure fails)"} (at most ${TRIAGE_CAP}) rerun alone ${opts.triageRuns ?? 3}x (a failed file with no failing title, e.g. its setup, reruns as the whole file): fail every rerun = real (fail), pass some = mixed (blocked), pass every rerun = load-flaky (warning; known-flaky candidates written, never committed)` : opts.suite === "targeted" ? "vitest related --run <src files changed since the last v* tag> (on the committed tree)" : "suite: none (pass --suite targeted|full)"
       ];
     case "pr":
       return [
@@ -163534,14 +163547,29 @@ ${r.stderr}`.trim().split(/\r?\n/);
     return { status: "ok", note: "gates green" };
   }
   /** A suite child: through execAsync when given (the release PR's CI is watched meanwhile), with the suite shell env. */
-  async runSuite(args, opts = {}) {
+  async runSuite(args, opts = {}, label2 = "suite") {
     const full = { cwd: this.deps.root, ...opts, suiteEnv: true, env: { ...this.suiteEnv, ...opts.env } };
-    return this.deps.execAsync ? this.deps.execAsync(this.deps.node, args, full) : this.deps.exec(this.deps.node, args, full);
+    if (!this.deps.execAsync) return this.deps.exec(this.deps.node, args, full);
+    const started = label2 === "suite" ? this.suiteStarted : this.deps.now();
+    const timer = setInterval(() => {
+      try {
+        this.deps.progress({ phase: "suite", status: "heartbeat", note: `${label2 === "suite" ? "suite running" : label2}, ${Math.round((this.deps.now() - started) / 6e4)} min`, always: true });
+      } catch {
+      }
+    }, SUITE_HEARTBEAT_MS);
+    timer.unref?.();
+    try {
+      return await this.deps.execAsync(this.deps.node, args, full);
+    } finally {
+      clearInterval(timer);
+    }
   }
   suiteEnv = {};
+  suiteStarted = 0;
   /** After the commit phase: tests of committed state (pack, committed docs, inventory drift) need the release commits. */
   async suite() {
     const suite = this.opts.suite ?? "none";
+    this.suiteStarted = this.deps.now();
     const head = this.git("rev-parse", "HEAD");
     this.save({ suiteSha: head, suiteRan: suite });
     if (suite !== "none") {
@@ -163598,7 +163626,7 @@ ${r.stderr}`));
         blocked(`${mixed} failing test(s) not in the baseline failed some isolated reruns (mixed, may be a real race: blocks); fix them, then --from suite (evidence: ${candidatesPath})`, lines4);
       }
       this.requireClean("full suite");
-      const note = `full suite: ${failing.length} failing; ${fresh.length} not in the baseline are load-flaky (passed every isolated rerun); ${candidates.length} known-flaky candidate(s) await owner approval: ${candidatesPath}`;
+      const note = `full suite: ${failing.length} failing; ${fresh.length} not in the baseline are load-flaky (passed every isolated rerun)${candidates.length > 0 ? `; ${candidates.length} known-flaky candidate(s) await owner approval: ${candidatesPath}` : ""}`;
       this.deps.log(`  !! WARNING ${note}`);
       return { status: "ok", note, details: lines4 };
     }
@@ -163606,30 +163634,35 @@ ${r.stderr}`));
     return { status: "skipped", note: "vitest suite not run (--suite none)" };
   }
   /**
-   * Each new failing full-suite title alone, `triageRuns` times, sequentially
+   * Each new failing full-suite title alone (a file-level failure: the whole file), `triageRuns` times, sequentially
    * with the suite env: passing every isolated run means it failed only under
    * the suite's load. Saved after each title, so a re-run on the same HEAD
    * does not repeat finished titles.
    */
   async triage(titles, head) {
     const runs = this.opts.triageRuns ?? 3;
-    const timeoutMs = (this.opts.triageTimeoutMinutes ?? 5) * 6e4;
+    const titleTimeoutMs = (this.opts.triageTimeoutMinutes ?? 5) * 6e4;
+    const fileTimeoutMs = titleTimeoutMs * 3;
     const prior = this.state.suiteTriage?.sha === head ? this.state.suiteTriage.results : [];
     const out = (0, import_path223.join)(this.deps.stateRoot, "release", `${this.v}-triage.json`);
     const results = [];
     for (const [i, title] of titles.entries()) {
       const { file, name } = splitFailingTitle(title);
-      let result = prior.find((r) => r.title === title && r.runs === (name === null ? 0 : runs));
+      let result = prior.find((r) => r.title === title && r.runs === runs);
       if (!result) {
         let passes = 0;
-        for (let n = 0; name !== null && n < runs; n++) {
+        for (let n = 0; n < runs; n++) {
           (0, import_fs194.rmSync)(out, { force: true });
-          const args = ["node_modules/vitest/vitest.mjs", "run", file, `--testNamePattern=${escapeRe(name)}`, "--reporter=json", `--outputFile=${out}`];
-          this.deps.log(`  node ${args.slice(0, 3).join(" ")} ${JSON.stringify(args[3])} --reporter=json (isolated rerun ${n + 1}/${runs})`);
-          const r = await this.runSuite(args, { timeoutMs });
-          if (r.status === 0 && (0, import_fs194.existsSync)(out) && testPassedInReport((0, import_fs194.readFileSync)(out, "utf8"), file, name)) passes++;
+          const pattern = name === null ? [] : [`--testNamePattern=${escapeRe(name)}`];
+          const args = ["node_modules/vitest/vitest.mjs", "run", file, ...pattern, "--reporter=json", `--outputFile=${out}`];
+          this.deps.log(`  node ${args.slice(0, 3).join(" ")}${name === null ? "" : ` ${JSON.stringify(pattern[0])}`} --reporter=json (isolated ${name === null ? "whole-file " : ""}rerun ${n + 1}/${runs})`);
+          const timeoutMs = name === null ? fileTimeoutMs : titleTimeoutMs;
+          const r = await this.runSuite(args, { timeoutMs }, `triage rerun ${n + 1}/${runs} of ${file}`);
+          if (r.status !== 0 && /killed by|ETIMEDOUT/.test(r.stderr)) this.deps.log(`  !! triage rerun ${n + 1}/${runs} of ${title} timed out after ${timeoutMs / 6e4} min (counts as failed)`);
+          const report3 = r.status === 0 && (0, import_fs194.existsSync)(out) ? (0, import_fs194.readFileSync)(out, "utf8") : null;
+          if (report3 !== null && (name === null ? filePassedInReport(report3, file) : testPassedInReport(report3, file, name))) passes++;
         }
-        result = { title, file, runs: name === null ? 0 : runs, passes, class: classifyTriage(runs, passes, name === null) };
+        result = { title, file, runs, passes, class: classifyTriage(runs, passes) };
       }
       results.push(result);
       this.save({ suiteTriage: { sha: head, results: [...results, ...prior.filter((p) => !results.some((r) => r.title === p.title))] } });
@@ -164014,7 +164047,7 @@ ${rr.stderr}`) });
         if (this.mergeGate) {
           const gate = this.mergeGate;
           this.mergeGate = void 0;
-          this.deps.progress({ phase, status: "heartbeat", note: `PR #${pr} gates green; merge waits for the suite` });
+          this.deps.progress({ phase, status: "heartbeat", note: `PR #${pr} gates green; merge waits for the suite`, always: true });
           await gate();
           continue;
         }
@@ -164337,7 +164370,7 @@ async function runRelease(deps, requested) {
     throw error2;
   }
   const triage = release.current.suiteTriage;
-  const flaky = triage && triage.sha === release.current.suiteSha ? triage.results.filter((t) => t.class === "load-flaky").length : 0;
+  const flaky = triage && triage.sha === release.current.suiteSha ? flakyCandidates(v, triage.results).length : 0;
   const awaiting = flaky > 0 ? `; ${flaky} known-flaky candidate(s) await owner approval (omg release ${v} --flaky-candidates)` : "";
   deps.progress({ phase: "release", status: "done", note: `${v}: ${selected[0]}..${selected[selected.length - 1]} ok${awaiting}` });
   return { ok: true, version: v, dryRun: false, statePath, phases: results };
@@ -164417,11 +164450,11 @@ function releaseDriveLock(path30, pid = process.pid) {
   if (readDriveLock(path30)?.pid === pid) (0, import_fs195.rmSync)(path30, { force: true });
 }
 function throttleHeartbeats(progress, now2, everyMs = DRIVE_HEARTBEAT_MS) {
-  let last = -Infinity;
+  const last = /* @__PURE__ */ new Map();
   return (event) => {
     if (event.status === "heartbeat") {
-      if (now2() - last < everyMs) return;
-      last = now2();
+      if (!event.always && now2() - (last.get(event.phase) ?? -Infinity) < everyMs) return;
+      last.set(event.phase, now2());
     }
     progress(event);
   };
@@ -164994,6 +165027,58 @@ function printResult(result) {
   const color = result.ok ? source_default.green : source_default.red;
   console.log(color(`release ${result.version}: ${result.ok ? "ok" : "stopped"} (state ${result.statePath})`));
 }
+function cliPackageRoot(entry2) {
+  let dir;
+  try {
+    dir = (0, import_path227.dirname)((0, import_fs197.realpathSync)(entry2));
+  } catch {
+    return null;
+  }
+  for (let i = 0; i < 4; i++) {
+    if ((0, import_fs197.existsSync)((0, import_path227.join)(dir, "package.json"))) return dir;
+    const up = (0, import_path227.dirname)(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return null;
+}
+function foreignCliProblem(cliRoot, root2) {
+  const real2 = (p) => {
+    let r;
+    try {
+      r = import_fs197.realpathSync.native(p);
+    } catch {
+      r = (0, import_path227.resolve)(p);
+    }
+    return process.platform === "win32" ? r.toLowerCase() : r;
+  };
+  if (!cliRoot) return `the running omg belongs to no package found from its script, so it may not be this checkout's CLI (${root2})`;
+  if (real2(cliRoot) === real2(root2)) return null;
+  const version3 = (dir) => {
+    try {
+      return JSON.parse((0, import_fs197.readFileSync)((0, import_path227.join)(dir, "package.json"), "utf8")).version ?? "unknown";
+    } catch {
+      return "unknown";
+    }
+  };
+  const bundle = (dir) => {
+    try {
+      return (0, import_fs197.readFileSync)((0, import_path227.join)(dir, "bridge", "cli.cjs"));
+    } catch {
+      return null;
+    }
+  };
+  const [cliVersion, repoVersion] = [version3(cliRoot), version3(root2)];
+  const [theirs, ours] = [bundle(cliRoot), bundle(root2)];
+  if (cliVersion === repoVersion && theirs && ours && theirs.equals(ours)) return null;
+  return `the running omg is ${cliRoot} (oh-my-copilot ${cliVersion}), not this checkout's own CLI (${repoVersion}${cliVersion === repoVersion ? ", a different build" : ""})`;
+}
+function repoCliCommand(versionRaw) {
+  const passed = process.argv.slice(2);
+  const at = passed.indexOf("release");
+  const args = at >= 0 ? passed.slice(at + 1) : [versionRaw];
+  return ["node", "bin/oh-my-copilot.js", "release", ...args].map((a) => /^[\w@./:=,+-]+$/.test(a) ? a : JSON.stringify(a)).join(" ");
+}
 function releaseDriveArgv(version3, o, baseline) {
   return [
     "release",
@@ -165015,7 +165100,8 @@ function releaseDriveArgv(version3, o, baseline) {
     "--triage-timeout",
     o.triageTimeout,
     ...o.allowSkippedSmoke ? ["--allow-skipped-smoke"] : [],
-    ...o.fixOrphans ? ["--fix-orphans"] : []
+    ...o.fixOrphans ? ["--fix-orphans"] : [],
+    ...o.allowForeignCli ? ["--allow-foreign-cli"] : []
   ];
 }
 function monitorHint(progressFile) {
@@ -165023,7 +165109,7 @@ function monitorHint(progressFile) {
 }
 function releaseCommand(overrides = {}) {
   const cmd = new Command("release");
-  cmd.description("Maintainer-only release: preflight, bump, build, gates, commit, suite, smoke, PR to dev, promote to main, tag, verify (resumable)").argument("<version>", "Release version X.Y.Z").option("--from <phase>", `Start at this phase (${PHASES2.join(", ")}); default: the first phase not yet ok`).option("--to <phase>", "Stop after this phase").option("--dry-run", "Print the plan for the selected phases without running anything").option("--json", "JSON output").option("--yes", "Create and push the tag without the interactive confirmation").option("--suite <suite>", "vitest suite (suite phase, after commit): none, targeted (related to src changed since the last tag) or full; recorded per release, default: the recorded level, else none").option("--baseline <file>", 'Full-suite baseline (vitest JSON report or one "<file> > <title>" per line); only new failing titles fail').option("--live-smoke", "Run the live Tier 2 smoke (two prompts, about 0.6 AI credits); skipped otherwise").option("--force-smoke", "Run the live smoke even when its inputs hash to the last green smoke (implies --live-smoke); without it an identical input hash reuses that smoke").option("--triage-runs <n>", "Isolated reruns of each new failing full-suite title (pass every rerun = load-flaky, warns; fail some = mixed, blocks; fail all = real, fails)", "3").option("--triage-timeout <minutes>", "Minutes each isolated rerun may take; a timeout counts as a failed rerun", "5").option("--flaky-candidates", "Print the known-flaky candidates of the full-suite triage, ready to paste into .github/known-flaky-tests.json after review; run nothing").option("--allow-skipped-smoke", "Let the pr phase run although the live smoke was skipped").option("--fix-orphans", "Remove tracked dist outputs whose src source is gone").option("--timeout <minutes>", "Minutes the pr / promote / verify phases wait on CI per run", "60").option("--drive", "Keep driving until done, a real failure or a human decision: a CI wait past --timeout or a transient GitHub error resumes after a minute (never prompts; the tag still needs --yes)").option("--drive-max <hours>", "Hard ceiling of a --drive run; then blocked", String(DRIVE_MAX_HOURS)).option("--detach", "Run the --drive loop as a detached process that outlives this session (log: <state root>/release/<v>.drive.log)").option("--status", "Print the drive lock, the last progress events and the phase table, run nothing").option("--stop", "Stop the detached driver of this release and remove its lock").action(async (versionRaw, o) => {
+  cmd.description("Maintainer-only release: preflight, bump, build, gates, commit, suite, smoke, PR to dev, promote to main, tag, verify (resumable)").argument("<version>", "Release version X.Y.Z").option("--from <phase>", `Start at this phase (${PHASES2.join(", ")}); default: the first phase not yet ok`).option("--to <phase>", "Stop after this phase").option("--dry-run", "Print the plan for the selected phases without running anything").option("--json", "JSON output").option("--yes", "Create and push the tag without the interactive confirmation").option("--suite <suite>", "vitest suite (suite phase, after commit): none, targeted (related to src changed since the last tag) or full; recorded per release, default: the recorded level, else none").option("--baseline <file>", 'Full-suite baseline (vitest JSON report or one "<file> > <title>" per line); only new failing titles fail').option("--live-smoke", "Run the live Tier 2 smoke (two prompts, about 0.6 AI credits); skipped otherwise").option("--force-smoke", "Run the live smoke even when its inputs hash to the last green smoke (implies --live-smoke); without it an identical input hash reuses that smoke").option("--triage-runs <n>", "Isolated reruns of each new failing full-suite title (pass every rerun = load-flaky, warns; fail some = mixed, blocks; fail all = real, fails)", "3").option("--triage-timeout <minutes>", "Minutes each isolated rerun may take; a timeout counts as a failed rerun", "5").option("--flaky-candidates", "Print the known-flaky candidates of the full-suite triage, ready to paste into .github/known-flaky-tests.json after review; run nothing").option("--allow-skipped-smoke", "Let the pr phase run although the live smoke was skipped").option("--fix-orphans", "Remove tracked dist outputs whose src source is gone").option("--timeout <minutes>", "Minutes the pr / promote / verify phases wait on CI per run", "60").option("--drive", "Keep driving until done, a real failure or a human decision: a CI wait past --timeout or a transient GitHub error resumes after a minute (never prompts; the tag still needs --yes)").option("--drive-max <hours>", "Hard ceiling of a --drive run; then blocked", String(DRIVE_MAX_HOURS)).option("--detach", "Run the --drive loop as a detached process that outlives this session (log: <state root>/release/<v>.drive.log)").option("--status", "Print the drive lock, the last progress events and the phase table, run nothing").option("--stop", "Stop the detached driver of this release and remove its lock").option("--allow-foreign-cli", "Run although this omg is not the checkout's own CLI (another install or build); refused otherwise").action(async (versionRaw, o) => {
     const json = Boolean(o.json);
     try {
       let version3;
@@ -165136,6 +165222,15 @@ function releaseCommand(overrides = {}) {
         process.exitCode = !stopped.stopped && stopped.refused ? 1 : 0;
         return;
       }
+      const entry2 = overrides.entry ?? process.argv[1];
+      const foreign = (overrides.foreignCli ?? (overrides.exec ? () => null : () => foreignCliProblem(cliPackageRoot(entry2), root2)))();
+      if (foreign) {
+        const use = `run the checkout's own CLI in ${root2}:
+  ${repoCliCommand(versionRaw)}`;
+        if (!o.dryRun && !o.allowForeignCli) throw new Error(`${foreign}; this release would run that install's release engine. Refused: ${use}
+(or pass --allow-foreign-cli to run this one anyway)`);
+        console.error(source_default.yellow(`Warning: ${foreign}; ${o.dryRun ? "the plan below is that install's" : "running it anyway (--allow-foreign-cli)"}. To ${use}`));
+      }
       const baseline = o.baseline ? (0, import_path227.resolve)(o.baseline) : void 0;
       if (o.detach) {
         const argv = releaseDriveArgv(version3, o, baseline);
@@ -165147,7 +165242,7 @@ function releaseCommand(overrides = {}) {
           proc,
           sleep: deps.sleep,
           spawnImpl: overrides.spawnDriver,
-          entry: overrides.entry ?? process.argv[1],
+          entry: entry2,
           statusCommand: `omg release ${version3} --status`
         });
         if (json) console.log(JSON.stringify({ ...detached, lockPath: lockPath2, logPath, progressFile, monitor: monitorHint(progressFile) }, null, 2));

@@ -149,13 +149,16 @@ export function releaseDriveLock(path: string, pid: number = process.pid): void 
   if (readDriveLock(path)?.pid === pid) rmSync(path, { force: true });
 }
 
-/** Under --drive, heartbeats at most every DRIVE_HEARTBEAT_MS; every other event passes. */
+/**
+ * Under --drive, heartbeats at most every DRIVE_HEARTBEAT_MS per phase (the pr phase beside the suite keeps its own
+ * pace); an `always` heartbeat and every other event pass.
+ */
 export function throttleHeartbeats(progress: (event: ReleaseProgressInput) => void, now: () => number, everyMs = DRIVE_HEARTBEAT_MS): (event: ReleaseProgressInput) => void {
-  let last = -Infinity;
+  const last = new Map<string, number>();
   return (event) => {
     if (event.status === 'heartbeat') {
-      if (now() - last < everyMs) return;
-      last = now();
+      if (!event.always && now() - (last.get(event.phase) ?? -Infinity) < everyMs) return;
+      last.set(event.phase, now());
     }
     progress(event);
   };

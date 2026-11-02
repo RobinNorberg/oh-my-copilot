@@ -125,14 +125,17 @@ export function releaseDriveLock(path, pid = process.pid) {
     if (readDriveLock(path)?.pid === pid)
         rmSync(path, { force: true });
 }
-/** Under --drive, heartbeats at most every DRIVE_HEARTBEAT_MS; every other event passes. */
+/**
+ * Under --drive, heartbeats at most every DRIVE_HEARTBEAT_MS per phase (the pr phase beside the suite keeps its own
+ * pace); an `always` heartbeat and every other event pass.
+ */
 export function throttleHeartbeats(progress, now, everyMs = DRIVE_HEARTBEAT_MS) {
-    let last = -Infinity;
+    const last = new Map();
     return (event) => {
         if (event.status === 'heartbeat') {
-            if (now() - last < everyMs)
+            if (!event.always && now() - (last.get(event.phase) ?? -Infinity) < everyMs)
                 return;
-            last = now();
+            last.set(event.phase, now());
         }
         progress(event);
     };
