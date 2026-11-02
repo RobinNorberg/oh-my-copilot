@@ -8,7 +8,7 @@
  * recorded: the forge move leaves them where they are.
  */
 import { rmSync } from 'node:fs';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../../factory/run/budget.js';
 import { runFactoryEngine, type FactoryEngineOptions, type FactoryHealStart } from '../../factory/run/engine.js';
@@ -18,6 +18,13 @@ import {
   type Harness, type LaneScript,
 } from '../../factory/run/__tests__/fake-lanes.js';
 import { recordingExec } from './recording-exec.js';
+import { scaleTiming } from '../../__tests__/helpers/platform.js';
+
+// Every engine run here drives a few hundred real git processes (the lane
+// tamper snapshots, prepare merges, the bare remote). No assertion measures
+// time, so the timeout only bounds a hang and must leave a loaded host's
+// process spawns room.
+vi.setConfig({ testTimeout: scaleTiming(90_000) });
 
 let h: Harness;
 let t: number;

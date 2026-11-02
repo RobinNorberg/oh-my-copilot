@@ -844,6 +844,12 @@ describe('ralplan standalone stop enforcement', () => {
     const sessionId = 'session-ralplan-subagent-breaker';
     const tempDir = makeTempProject();
 
+    // Freeze the clock: a loaded host can spend more than the 5 s tracker
+    // recency window inside the first check, which then exhausts the 30/30
+    // breaker instead of taking the subagent bypass.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-28T18:10:00.000Z'));
+
     try {
       writeRalplanState(tempDir, sessionId);
       writeStopBreaker(tempDir, sessionId, 'ralplan', 30);
@@ -860,6 +866,8 @@ describe('ralplan standalone stop enforcement', () => {
       const bypassResult = await checkPersistentModes(sessionId, tempDir);
       expect(bypassResult.shouldBlock).toBe(false);
       expect(bypassResult.mode).toBe('ralplan');
+      // The subagent bypass is silent; the exhausted breaker would explain itself.
+      expect(bypassResult.message).toBe('');
 
       writeSubagentTrackingState(tempDir, []);
 
