@@ -12,6 +12,7 @@ import {
   findDistOrphans,
   flakyCandidates,
   newFailures,
+  outsideNodeLoad,
   SMOKE_INPUTS,
   smokeInputHash,
   splitFailingTitle,
@@ -154,6 +155,24 @@ describe('flake triage', () => {
     expect(classifyTriage(1, 1)).toBe('load-flaky');
     // "passed 0/0 isolated reruns" is never real.
     expect(() => classifyTriage(0, 0)).toThrow(/at least one isolated rerun/);
+  });
+
+  it('counts node (and vitest) processes outside the release tree: itself, its ancestors and descendants excluded', () => {
+    const listing = [
+      '10 1 node bin/oh-my-copilot.js release 5.20.0 --drive',
+      '20 10 node bin/oh-my-copilot.js release 5.20.0',
+      '30 20 C:\\Windows\\System32\\cmd.exe /c npx vitest',
+      '31 30 node node_modules/vitest/vitest.mjs run',
+      '32 31 "C:\\Program Files\\nodejs\\node.exe" node_modules/vitest/dist/workers/forks.js',
+      '40 1 "C:\\Program Files\\nodejs\\node.exe" C:\\lane\\node_modules\\vitest\\vitest.mjs run',
+      '41 40 /usr/bin/node /lane/node_modules/vitest/dist/workers/forks.js',
+      '42 1 node.exe',
+      '43 1 C:\\Windows\\explorer.exe',
+      '44 1 nodemon server.js',
+      'not a process line',
+    ].join('\r\n');
+    expect(outsideNodeLoad(listing, 20)).toEqual({ node: 3, vitest: 2 });
+    expect(outsideNodeLoad('', 20)).toBeNull();
   });
 
   it('reads one file of a vitest JSON report: passed as a whole only with a passed test and no failed one', () => {
