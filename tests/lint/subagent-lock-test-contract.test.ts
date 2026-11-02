@@ -193,7 +193,7 @@ describe("subagent-lock test contract", () => {
     const summary = extractJob(ci, "test");
     expect(summary).toMatch(/^    name: Test$/m);
     expect(summary).toMatch(/^    if: \$\{\{ always\(\) && /m);
-    expect(summary).toMatch(/^    needs: \[test-shards\]$/m);
+    expect(summary).toMatch(/^    needs: \[evidence, test-shards\]$/m);
     const summarySteps = extractSteps(summary);
     const merge = summarySteps.findIndex((step) => step.raw.includes("npx vitest --merge-reports"));
     const perf = summarySteps.filter((step) => step.run?.includes(PERF_TARGET));
@@ -212,7 +212,8 @@ describe("subagent-lock test contract", () => {
       expect(step.raw, "test steps must block failures").not.toMatch(/^        continue-on-error:\s*true\s*$/m);
     }
     // Build runs beside Test (build once); CI Gate is the job that blocks on both.
-    expect(extractJob(ci, "build")).not.toMatch(/^    needs:/m);
+    // Its only need is the tree-evidence lookup, which never waits on Test.
+    expect(extractJob(ci, "build")).toMatch(/^    needs: \[evidence\]$/m);
     expect(extractJob(ci, "ci-gate")).toMatch(/^      - test$/m);
   });
 });
