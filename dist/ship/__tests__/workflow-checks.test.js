@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { DEFAULT_SHIP_CONFIG } from '../config.js';
+import { checkNames, CI_WORKFLOW, jobCheckNames, parseWorkflow } from '../workflow.js';
 /**
  * requiredChecks drift guard: the check names this repo's workflows report on
  * a pull request must equal DEFAULT requiredChecks + advisoryChecks, minus the
@@ -34,78 +35,6 @@ const NOT_REQUIRED = [
  * Not in NOT_REQUIRED: that list holds the names of a run that tests.
  */
 const TREE_REUSE_SKIPPED = ['Test shard ${{ matrix.shard }} of 4'];
-const unquote = (s) => s.trim().replace(/^(['"])(.*)\1$/, '$2');
-const stripExpr = (s) => unquote(s).replace(/^\$\{\{\s*([\s\S]*?)\s*\}\}$/, '$1').trim();
-/**
- * Tight parser for the subset these workflow files use: block-style `on:`
- * keys at 2 spaces with an optional `branches: [a, b]` flow list at 4, jobs
- * at 2 spaces under `jobs:`, `name:` / `if:` at 4, and
- * `strategy: matrix: <key>: [a, b]` flow lists at 8.
- */
-function parseWorkflow(text) {
-    const triggers = [];
-    const branches = {};
-    const jobs = [];
-    let section = null;
-    let job = null;
-    let inMatrix = false;
-    for (const line of text.split(/\r?\n/)) {
-        if (/^\S/.test(line)) {
-            section = line.startsWith('on:') ? 'on' : line.startsWith('jobs:') ? 'jobs' : null;
-            job = null;
-            continue;
-        }
-        if (section === 'on') {
-            const m = /^ {2}([a-z_]+):/.exec(line);
-            if (m)
-                triggers.push(m[1]);
-            const filter = /^ {4}branches:\s*\[(.*)\]\s*$/.exec(line);
-            if (filter && triggers.length > 0)
-                branches[triggers[triggers.length - 1]] = filter[1].split(',').map(unquote).filter(Boolean);
-            continue;
-        }
-        if (section !== 'jobs')
-            continue;
-        const jobKey = /^ {2}([\w-]+):\s*$/.exec(line);
-        if (jobKey) {
-            job = { key: jobKey[1], matrix: {} };
-            jobs.push(job);
-            inMatrix = false;
-            continue;
-        }
-        if (!job)
-            continue;
-        const prop = /^ {4}(name|if):\s*(.+)$/.exec(line);
-        if (prop) {
-            job[prop[1]] = prop[1] === 'if' ? stripExpr(prop[2]) : unquote(prop[2]);
-            continue;
-        }
-        if (/^ {4}\S/.test(line))
-            inMatrix = false;
-        if (/^ {6}matrix:\s*$/.test(line)) {
-            inMatrix = true;
-            continue;
-        }
-        const axis = inMatrix ? /^ {8}([\w-]+):\s*\[(.*)\]\s*$/.exec(line) : null;
-        if (axis)
-            job.matrix[axis[1]] = axis[2].split(',').map(unquote).filter(Boolean);
-    }
-    return { triggers, branches, jobs };
-}
-/** GitHub's check names: `${{ matrix.x }}` substituted, else ` (<values>)` appended per combination. */
-function checkNames(job) {
-    const base = job.name ?? job.key;
-    const axes = Object.entries(job.matrix);
-    if (axes.length === 0)
-        return [base];
-    let combos = [{}];
-    for (const [axisKey, values] of axes)
-        combos = combos.flatMap((c) => values.map((v) => ({ ...c, [axisKey]: v })));
-    return combos.map((combo) => {
-        const substituted = base.replace(/\$\{\{\s*matrix\.([\w-]+)\s*\}\}/g, (_m, k) => combo[k] ?? '');
-        return substituted !== base ? substituted : `${base} (${Object.values(combo).join(', ')})`;
-    });
-}
 /** A job whose condition requires a push / dispatch / schedule event never runs on a PR. */
 function runsOnPullRequest(job) {
     return !/^github\.event_name == '(push|workflow_dispatch|schedule)'(\s*&&|\s*$)/.test(job.if ?? '');
@@ -178,6 +107,22 @@ describe('requiredChecks drift (workflow files vs the ship defaults)', () => {
             expect(Object.keys(job.matrix), `${name}: must not be a matrix job`).toEqual([]);
         }
         expect(readFileSync(join(HERE, '..', '..', 'release', 'engine.ts'), 'utf8')).toContain("j.name === 'Copilot smoke (tier 2)'");
+    });
+});
+// gates.ts aggregateOnly matches these lines in the job log (the `::error title=…::`
+// becomes `##[error]`); a wording change in ci.yml must fail here, not turn
+// every shard failure back into a CI Gate blocker.
+describe('ci.yml aggregator lines (gates.ts aggregateOnly)', () => {
+    const ci = readFileSync(join(WORKFLOWS, '..', '..', CI_WORKFLOW), 'utf8');
+    it('ci.yml prints the exact aggregator errors the regexes match', () => {
+        expect(ci).toContain('echo "::error title=CI Gate::not success or skipped: $bad"');
+        expect(ci).toContain('echo "::error title=Test::test shards: $SHARDS_RESULT"');
+    });
+    it('maps the job keys CI Gate names to their checks', () => {
+        const names = jobCheckNames(ci);
+        expect(names.get('test-shards')).toEqual(['Test shard 1 of 4', 'Test shard 2 of 4', 'Test shard 3 of 4', 'Test shard 4 of 4']);
+        expect(names.get('test')).toEqual(['Test']);
+        expect(names.get('build')).toEqual(['Build']);
     });
 });
 //# sourceMappingURL=workflow-checks.test.js.map

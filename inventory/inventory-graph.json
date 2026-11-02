@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "aaf8d4cb72d3f2368ee349c798051d01e1ef590d",
-    "sourceSha256": "3d6764f21fac2155927d3f5b16ecf17fd1f1d35bfc8f126a894db47b4cce3629",
+    "head": "9d06d908679907cbae206a7c78f8f16eec3b502d",
+    "sourceSha256": "d90816cc4412c7c4f2bb6f78b1cf8a8f375d7dc159f83fd261752999cd86dc7c",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "aaf8d4cb72d3f2368ee349c798051d01e1ef590d",
-  "sourceSha256": "3d6764f21fac2155927d3f5b16ecf17fd1f1d35bfc8f126a894db47b4cce3629",
+  "head": "9d06d908679907cbae206a7c78f8f16eec3b502d",
+  "sourceSha256": "d90816cc4412c7c4f2bb6f78b1cf8a8f375d7dc159f83fd261752999cd86dc7c",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1950,
-      "total": 1974
+      "srcFiles": 1955,
+      "total": 1979
     },
     "generated": {
-      "distFiles": 7192,
+      "distFiles": 7196,
       "bridgeFiles": 9,
-      "total": 7201
+      "total": 7205
     },
     "prompt": {
       "promptLikeFiles": 66
@@ -6633,6 +6633,10 @@
       "dist/ship/state.d.ts.map",
       "dist/ship/state.js",
       "dist/ship/state.js.map",
+      "dist/ship/workflow.d.ts",
+      "dist/ship/workflow.d.ts.map",
+      "dist/ship/workflow.js",
+      "dist/ship/workflow.js.map",
       "dist/skills/__tests__/mingw-escape.test.d.ts",
       "dist/skills/__tests__/mingw-escape.test.d.ts.map",
       "dist/skills/__tests__/mingw-escape.test.js",
@@ -38096,6 +38100,26 @@
         "path": "dist/ship/state.js.map"
       },
       {
+        "id": "dist/ship/workflow.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ship/workflow.d.ts"
+      },
+      {
+        "id": "dist/ship/workflow.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/workflow.d.ts.map"
+      },
+      {
+        "id": "dist/ship/workflow.js",
+        "kind": "generated-dist",
+        "path": "dist/ship/workflow.js"
+      },
+      {
+        "id": "dist/ship/workflow.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/workflow.js.map"
+      },
+      {
         "id": "dist/skills/__tests__/mingw-escape.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/skills/__tests__/mingw-escape.test.d.ts"
@@ -55686,6 +55710,16 @@
         "path": "src/ship/__tests__/fixtures/checks-pr233-green.json"
       },
       {
+        "id": "src/ship/__tests__/fixtures/job-log-ci-gate-needs-failed.txt",
+        "kind": "src",
+        "path": "src/ship/__tests__/fixtures/job-log-ci-gate-needs-failed.txt"
+      },
+      {
+        "id": "src/ship/__tests__/fixtures/job-log-ci-gate-own-failure.txt",
+        "kind": "src",
+        "path": "src/ship/__tests__/fixtures/job-log-ci-gate-own-failure.txt"
+      },
+      {
         "id": "src/ship/__tests__/fixtures/job-log-flaky.txt",
         "kind": "src",
         "path": "src/ship/__tests__/fixtures/job-log-flaky.txt"
@@ -55694,6 +55728,16 @@
         "id": "src/ship/__tests__/fixtures/job-log-real-failure.txt",
         "kind": "src",
         "path": "src/ship/__tests__/fixtures/job-log-real-failure.txt"
+      },
+      {
+        "id": "src/ship/__tests__/fixtures/job-log-shard-flaky.txt",
+        "kind": "src",
+        "path": "src/ship/__tests__/fixtures/job-log-shard-flaky.txt"
+      },
+      {
+        "id": "src/ship/__tests__/fixtures/job-log-test-shards-failed.txt",
+        "kind": "src",
+        "path": "src/ship/__tests__/fixtures/job-log-test-shards-failed.txt"
       },
       {
         "id": "src/ship/__tests__/fixtures/project-config-admin-merge.jsonc",
@@ -55759,6 +55803,11 @@
         "id": "src/ship/state.ts",
         "kind": "src",
         "path": "src/ship/state.ts"
+      },
+      {
+        "id": "src/ship/workflow.ts",
+        "kind": "src",
+        "path": "src/ship/workflow.ts"
       },
       {
         "id": "src/skills/__tests__/mingw-escape.test.ts",
@@ -78631,6 +78680,16 @@
         "from": "src/factory/heal/cli.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
+        "to": "src/ship/workflow.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/heal/config.ts",
@@ -102738,6 +102797,16 @@
         "kind": "imports"
       },
       {
+        "from": "src/ship/__tests__/workflow-checks.test.ts",
+        "to": "src/ship/workflow.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/workflow-checks.test.ts",
+        "to": "src/ship/workflow.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/ship/config.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -102804,6 +102873,16 @@
       },
       {
         "from": "src/ship/gates.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/gates.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/gates.ts",
         "to": "src/forge/github/checks.ts",
         "kind": "imports"
       },
@@ -102821,6 +102900,11 @@
         "from": "src/ship/gates.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/gates.ts",
+        "to": "src/ship/workflow.ts",
+        "kind": "imports"
       },
       {
         "from": "src/ship/merge.ts",
@@ -117969,12 +118053,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9908,
-      "edgeCount": 11928,
-      "importEdgeCount": 9802,
+      "nodeCount": 9917,
+      "edgeCount": 11935,
+      "importEdgeCount": 9808,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "d6e77e225fc27bf047069980a8dcf2cf68277a244cfd084a98b29edee803dcfd",
-  "manifestSha256": "f1110c50a3bed7d21440e0b785a57a01fb7878f589710fafe61a64c302263199"
+  "inventorySha256": "e74fff8baf8d2867c5b052a7eb81d012e55cbbcb325504312b0e190beda15f36",
+  "manifestSha256": "ffa170a816b0069fcd872c872d89204293e4abc27dc8dd661ffa91a61116cec8"
 }

@@ -60,8 +60,11 @@ export interface FlakyAnalysis {
     unknown: FailingTest[];
     /** Log evidence that the job failed for a reason other than its failing tests. */
     blockers: string[];
-    /** The job failed only because jobs it needs failed (aggregateOnly): those jobs carry the verdict. */
-    aggregate?: true;
+    /**
+     * The job keys it names when the job failed only because jobs it needs
+     * failed (aggregateOnly): those jobs carry the verdict (needsExplained).
+     */
+    aggregate?: string[];
 }
 /** One `gh run list --commit <sha> --json ...` entry. */
 export interface WorkflowRun {
@@ -133,22 +136,38 @@ export declare function isKnownFlaky(test: FailingTest, known: readonly KnownFla
  */
 export declare function logBlockers(log: string): string[];
 /**
- * True when the job failed only because jobs it needs failed: every step with
- * an `##[error]` logged an aggregator line (AGGREGATE_ERROR) and otherwise
- * only its exit code, and vitest reported no unhandled error or failed suite.
- * A CI Gate naming the evidence job, or any other error, keeps it a blocker.
+ * The job keys a job that failed only because jobs it needs failed names:
+ * every step with an `##[error]` logged an aggregator line (AGGREGATE_ERROR)
+ * and otherwise only its exit code, and vitest reported no unhandled error or
+ * failed suite. CI Gate's line names the keys; the Test summary's is
+ * `test-shards`. Undefined when the job failed on its own (any other error,
+ * or a CI Gate naming the evidence job).
  */
-export declare function aggregateOnly(log: string): boolean;
+export declare function aggregateOnly(log: string): string[] | undefined;
+/**
+ * True when every job key an aggregator names is accounted for in its run:
+ * the key maps (`jobChecks`, from ci.yml) to check names, at least one of
+ * them is a non-passing check of the run, and every non-passing one has been
+ * analysed. Otherwise the aggregator stays a blocker.
+ */
+export declare function needsExplained(keys: readonly string[], jobChecks: ReadonlyMap<string, readonly string[]>, run: ReadonlyArray<{
+    name: string;
+    failed: boolean;
+    analysed: boolean;
+}>): boolean;
+/** ci.yml's job key -> check names from `root`; empty when it is missing (no aggregator is set aside). */
+export declare function readJobChecks(root: string): Map<string, string[]>;
 export declare function analyzeFailedLog(check: string, runId: string | undefined, log: string, known: readonly KnownFlakyTest[], jobId?: string): FlakyAnalysis;
 /**
  * Fold log analyses into a report: verdict becomes `flaky` when every failed
  * required check is a known-flaky failure (matched by job id); a run is
  * rerunnable only when all its required jobs are finished. An aggregator
  * check (CI Gate, the Test summary) that failed only because jobs it needs
- * failed is judged by those jobs: it is set aside when a failed
- * non-aggregate check shares its run.
+ * failed is judged by those jobs: it is set aside only when every job it
+ * names is a failed, analysed check of its run (needsExplained over
+ * `jobChecks`, ci.yml's key -> check names; empty = never set aside).
  */
-export declare function applyFlakyAnalysis(report: GateReport, analyses: FlakyAnalysis[], kind?: ForgeKind): GateReport;
+export declare function applyFlakyAnalysis(report: GateReport, analyses: FlakyAnalysis[], kind?: ForgeKind, jobChecks?: ReadonlyMap<string, readonly string[]>): GateReport;
 /** Run `gh pr checks <pr> --json ...`; "no checks reported" is an empty list (the GitHub forge's checks). */
 export declare function fetchChecks(exec: Exec, pr: number, cwd?: string): GhCheck[];
 /** The PR head sha from `gh pr view <pr> --json headRefOid`. */
@@ -163,7 +182,8 @@ export declare function fetchWorkflowRuns(exec: Exec, headSha: string, cwd?: str
  * (unless given), read the checks and the workflow runs for it, then re-read
  * the head; a head that moved in between is pending whatever the verdict
  * (green, failed or flaky), since the read may mix two heads. Failed Actions
- * jobs' logs are read for known-flaky attribution. `forge` replaces the gh
+ * jobs' logs are read for known-flaky attribution; an aggregator's named jobs
+ * are mapped to checks from the checkout's ci.yml. `forge` replaces the gh
  * reads (GateForge); without it every call is the GitHub one.
  */
 export declare function evaluateGates(exec: Exec, pr: number, config: ShipConfig, known: readonly KnownFlakyTest[], cwd?: string, headSha?: string, forge?: GateForge): GateReport;

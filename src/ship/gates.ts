@@ -11,10 +11,13 @@
  * is pending, never green.
  */
 
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import type { ShipConfig, KnownFlakyTest } from './config.js';
 import type { Exec } from './exec.js';
 import { ghHeadSha, ghJobLog, ghPrChecks, ghRerun, ghRunsForHead } from '../forge/github/checks.js';
 import type { ForgeChecks, ForgeKind, ForgeReviews } from '../forge/types.js';
+import { CI_WORKFLOW, jobCheckNames } from './workflow.js';
 
 /**
  * The forge reads of a gate evaluation (factory forges design §2): the PR
@@ -69,8 +72,11 @@ export interface FlakyAnalysis {
   unknown: FailingTest[];
   /** Log evidence that the job failed for a reason other than its failing tests. */
   blockers: string[];
-  /** The job failed only because jobs it needs failed (aggregateOnly): those jobs carry the verdict. */
-  aggregate?: true;
+  /**
+   * The job keys it names when the job failed only because jobs it needs
+   * failed (aggregateOnly): those jobs carry the verdict (needsExplained).
+   */
+  aggregate?: string[];
 }
 
 /** One `gh run list --commit <sha> --json ...` entry. */
@@ -316,35 +322,69 @@ export function logBlockers(log: string): string[] {
 /**
  * The `::error` lines of this repo's ci.yml aggregators: CI Gate (the needs
  * keys that did not succeed or skip) and the Test summary (the shard matrix
- * result).
+ * result). Matched at line start: logLines strips the log prefix.
  */
-const AGGREGATE_ERROR = /##\[error\](?:not success or skipped: (.+?)|test shards: \w+)\s*$/;
-const EXIT_ERROR = /##\[error\]Process completed with exit code \d+\.?\s*$/;
+const AGGREGATE_ERROR = /^##\[error\](?:not success or skipped: (.+?)|test shards: \w+)\s*$/;
+const EXIT_ERROR = /^##\[error\]Process completed with exit code \d+\.?\s*$/;
 
 /**
- * True when the job failed only because jobs it needs failed: every step with
- * an `##[error]` logged an aggregator line (AGGREGATE_ERROR) and otherwise
- * only its exit code, and vitest reported no unhandled error or failed suite.
- * A CI Gate naming the evidence job, or any other error, keeps it a blocker.
+ * The job keys a job that failed only because jobs it needs failed names:
+ * every step with an `##[error]` logged an aggregator line (AGGREGATE_ERROR)
+ * and otherwise only its exit code, and vitest reported no unhandled error or
+ * failed suite. CI Gate's line names the keys; the Test summary's is
+ * `test-shards`. Undefined when the job failed on its own (any other error,
+ * or a CI Gate naming the evidence job).
  */
-export function aggregateOnly(log: string): boolean {
+export function aggregateOnly(log: string): string[] | undefined {
   const steps = new Map<string, { aggregate: boolean; other: boolean }>();
+  const keys = new Set<string>();
   for (const { step, line } of logLines(log)) {
-    if (UNHANDLED.test(line) || FAILED_SUITES.test(line)) return false;
+    if (UNHANDLED.test(line) || FAILED_SUITES.test(line)) return undefined;
     if (!STEP_ERROR.test(line)) continue;
     const s = steps.get(step) ?? { aggregate: false, other: false };
     const m = AGGREGATE_ERROR.exec(line);
-    if (m && !(m[1] ?? '').split(/,\s*/).includes('evidence')) s.aggregate = true;
-    else if (!EXIT_ERROR.test(line)) s.other = true;
+    const named = m ? (m[1] === undefined ? ['test-shards'] : m[1].split(/,\s*/).filter(Boolean)) : [];
+    if (m && named.length > 0 && !named.includes('evidence')) {
+      s.aggregate = true;
+      for (const k of named) keys.add(k);
+    } else if (!EXIT_ERROR.test(line)) s.other = true;
     steps.set(step, s);
   }
-  return steps.size > 0 && [...steps.values()].every((s) => s.aggregate && !s.other);
+  return steps.size > 0 && [...steps.values()].every((s) => s.aggregate && !s.other) ? [...keys] : undefined;
+}
+
+/**
+ * True when every job key an aggregator names is accounted for in its run:
+ * the key maps (`jobChecks`, from ci.yml) to check names, at least one of
+ * them is a non-passing check of the run, and every non-passing one has been
+ * analysed. Otherwise the aggregator stays a blocker.
+ */
+export function needsExplained(
+  keys: readonly string[],
+  jobChecks: ReadonlyMap<string, readonly string[]>,
+  run: ReadonlyArray<{ name: string; failed: boolean; analysed: boolean }>,
+): boolean {
+  return keys.length > 0 && keys.every((key) => {
+    const names = jobChecks.get(key);
+    const hit = names ? run.filter((c) => c.failed && names.includes(c.name)) : [];
+    return hit.length > 0 && hit.every((c) => c.analysed);
+  });
+}
+
+/** ci.yml's job key -> check names from `root`; empty when it is missing (no aggregator is set aside). */
+export function readJobChecks(root: string): Map<string, string[]> {
+  try {
+    return jobCheckNames(readFileSync(join(root, CI_WORKFLOW), 'utf8'));
+  } catch {
+    return new Map();
+  }
 }
 
 export function analyzeFailedLog(check: string, runId: string | undefined, log: string, known: readonly KnownFlakyTest[], jobId?: string): FlakyAnalysis {
   const failingTests = parseFailingTests(log);
   const unknown = failingTests.filter((t) => !isKnownFlaky(t, known));
   const blockers = logBlockers(log);
+  const aggregate = aggregateOnly(log);
   return {
     check,
     runId,
@@ -353,7 +393,7 @@ export function analyzeFailedLog(check: string, runId: string | undefined, log: 
     unknown,
     blockers,
     knownFlaky: failingTests.length > 0 && unknown.length === 0 && blockers.length === 0,
-    ...(aggregateOnly(log) ? { aggregate: true as const } : {}),
+    ...(aggregate ? { aggregate } : {}),
   };
 }
 
@@ -364,15 +404,21 @@ const analysisKey = (jobId: string | undefined, name: string) => (jobId ? `job:$
  * required check is a known-flaky failure (matched by job id); a run is
  * rerunnable only when all its required jobs are finished. An aggregator
  * check (CI Gate, the Test summary) that failed only because jobs it needs
- * failed is judged by those jobs: it is set aside when a failed
- * non-aggregate check shares its run.
+ * failed is judged by those jobs: it is set aside only when every job it
+ * names is a failed, analysed check of its run (needsExplained over
+ * `jobChecks`, ci.yml's key -> check names; empty = never set aside).
  */
-export function applyFlakyAnalysis(report: GateReport, analyses: FlakyAnalysis[], kind?: ForgeKind): GateReport {
+export function applyFlakyAnalysis(report: GateReport, analyses: FlakyAnalysis[], kind?: ForgeKind, jobChecks: ReadonlyMap<string, readonly string[]> = new Map()): GateReport {
   const byJob = new Map(analyses.map((a) => [analysisKey(a.jobId, a.check), a]));
   const failed = report.checks.filter((c) => c.class === 'failed');
-  const aggregate = (c: ClassifiedCheck) => byJob.get(analysisKey(c.jobId, c.name))?.aggregate === true;
   const derived = new Set(failed
-    .filter((c) => aggregate(c) && c.runId && failed.some((o) => o.runId === c.runId && !aggregate(o)))
+    .filter((c) => {
+      const keys = byJob.get(analysisKey(c.jobId, c.name))?.aggregate;
+      const run = report.checks
+        .filter((o) => c.runId && o.runId === c.runId && o !== c)
+        .map((o) => ({ name: o.name, failed: o.class === 'failed', analysed: byJob.has(analysisKey(o.jobId, o.name)) }));
+      return keys !== undefined && needsExplained(keys, jobChecks, run);
+    })
     .map((c) => analysisKey(c.jobId, c.name)));
   const failedChecks = failed.filter((c) => !derived.has(analysisKey(c.jobId, c.name)));
   const allFlaky = failedChecks.length > 0 && failedChecks.every((c) => byJob.get(analysisKey(c.jobId, c.name))?.knownFlaky === true);
@@ -423,7 +469,8 @@ export function fetchWorkflowRuns(exec: Exec, headSha: string, cwd?: string): Wo
  * (unless given), read the checks and the workflow runs for it, then re-read
  * the head; a head that moved in between is pending whatever the verdict
  * (green, failed or flaky), since the read may mix two heads. Failed Actions
- * jobs' logs are read for known-flaky attribution. `forge` replaces the gh
+ * jobs' logs are read for known-flaky attribution; an aggregator's named jobs
+ * are mapped to checks from the checkout's ci.yml. `forge` replaces the gh
  * reads (GateForge); without it every call is the GitHub one.
  */
 export function evaluateGates(exec: Exec, pr: number, config: ShipConfig, known: readonly KnownFlakyTest[], cwd?: string, headSha?: string, forge?: GateForge): GateReport {
@@ -447,7 +494,8 @@ export function evaluateGates(exec: Exec, pr: number, config: ShipConfig, known:
     const log = forge ? forge.checks.jobLog(check.jobId) : ghJobLog(exec, check.jobId, cwd);
     analyses.push(analyzeFailedLog(check.name, check.runId, log.ok ? log.text : '', known, check.jobId));
   }
-  return applyFlakyAnalysis(report, analyses, forge?.kind);
+  const jobChecks = analyses.some((a) => a.aggregate) ? readJobChecks(cwd ?? process.cwd()) : undefined;
+  return applyFlakyAnalysis(report, analyses, forge?.kind, jobChecks);
 }
 
 export interface WatchOptions {

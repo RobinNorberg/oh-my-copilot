@@ -4,7 +4,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { DEFAULT_SHIP_CONFIG, parseKnownFlaky, resolveShipConfig } from '../config.js';
 import { guardExec } from '../exec.js';
-import { aggregateOnly, applyFlakyAnalysis, applyWorkflowRuns, analyzeFailedLog, classifyCheck, evaluateChecks, evaluateGates, fetchChecks, logBlockers, NO_WORKFLOWS_TRIGGERED, parseChecksJson, parseFailingTests, parseRunsJson, watchGates, } from '../gates.js';
+import { aggregateOnly, applyFlakyAnalysis, applyWorkflowRuns, analyzeFailedLog, classifyCheck, evaluateChecks, evaluateGates, fetchChecks, logBlockers, NO_WORKFLOWS_TRIGGERED, parseChecksJson, parseFailingTests, parseRunsJson, readJobChecks, watchGates, } from '../gates.js';
 import { EXIT_PENDING, gateExit } from '../../cli/commands/ship.js';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(HERE, 'fixtures');
@@ -513,17 +513,17 @@ describe('aggregator checks (CI Gate, the Test summary)', () => {
         logs: { [JOBS.shard]: fixture('job-log-shard-flaky.txt'), [JOBS.test]: fixture('job-log-test-shards-failed.txt'), [JOBS.gate]: fixture(gateLog) },
     });
     it('recognizes a job that failed only because jobs it needs failed', () => {
-        expect(aggregateOnly(fixture('job-log-ci-gate-needs-failed.txt'))).toBe(true);
-        expect(aggregateOnly(fixture('job-log-test-shards-failed.txt'))).toBe(true);
-        expect(aggregateOnly(fixture('job-log-shard-flaky.txt'))).toBe(false);
-        expect(aggregateOnly(fixture('job-log-ci-gate-own-failure.txt'))).toBe(false);
+        expect(aggregateOnly(fixture('job-log-ci-gate-needs-failed.txt'))).toEqual(['test-shards', 'test']);
+        expect(aggregateOnly(fixture('job-log-test-shards-failed.txt'))).toEqual(['test-shards']);
+        expect(aggregateOnly(fixture('job-log-shard-flaky.txt'))).toBeUndefined();
+        expect(aggregateOnly(fixture('job-log-ci-gate-own-failure.txt'))).toBeUndefined();
         // The evidence job failing, or a second error in the step, is CI Gate's own failure.
         const gate = fixture('job-log-ci-gate-needs-failed.txt');
-        expect(aggregateOnly(gate.replace('not success or skipped: test-shards, test', 'not success or skipped: evidence, test'))).toBe(false);
-        expect(aggregateOnly(gate.replace('##[error]Process completed', '##[error]jq: parse error\nCI Gate\tCheck needed job results\t##[error]Process completed'))).toBe(false);
+        expect(aggregateOnly(gate.replace('not success or skipped: test-shards, test', 'not success or skipped: evidence, test'))).toBeUndefined();
+        expect(aggregateOnly(gate.replace('##[error]Process completed', '##[error]jq: parse error\nCI Gate\tCheck needed job results\t##[error]Process completed'))).toBeUndefined();
         // The Test summary missing a shard blob report is its own failure too.
-        expect(aggregateOnly(fixture('job-log-test-shards-failed.txt').replace('test shards: failure', 'expected 4 shard blob reports, found 3'))).toBe(false);
-        expect(aggregateOnly('')).toBe(false);
+        expect(aggregateOnly(fixture('job-log-test-shards-failed.txt').replace('test shards: failure', 'expected 4 shard blob reports, found 3'))).toBeUndefined();
+        expect(aggregateOnly('')).toBeUndefined();
     });
     it('a known-flaky shard failure plus a failed CI Gate and Test is flaky, rerunnable once', () => {
         const { checks: cs, logs } = checks();
@@ -531,7 +531,7 @@ describe('aggregator checks (CI Gate, the Test summary)', () => {
         const report = evaluateGates(exec, 233, CONFIG, RUNTIME_CLI);
         expect(report.verdict).toBe('flaky');
         expect(report.rerunnable).toEqual([AG_RUN]);
-        expect(report.flaky.find((a) => a.check === 'CI Gate')).toMatchObject({ aggregate: true, knownFlaky: false });
+        expect(report.flaky.find((a) => a.check === 'CI Gate')).toMatchObject({ aggregate: ['test-shards', 'test'], knownFlaky: false });
         const text = report.suggestions.join('\n');
         expect(text).toContain(`Test shard 2 of 4: known-flaky failure`);
         expect(text).toContain(`gh run rerun ${AG_RUN} --failed`);
@@ -552,6 +552,44 @@ describe('aggregator checks (CI Gate, the Test summary)', () => {
         // An aggregate CI Gate with no failed non-aggregate sibling in its run is not set aside either.
         const alone = [...PR233, { name: 'CI Gate', state: 'FAILURE', link: link(JOBS.gate) }];
         expect(evaluateGates(fakeGh([alone], { [JOBS.gate]: fixture('job-log-ci-gate-needs-failed.txt') }).exec, 233, CONFIG, RUNTIME_CLI).verdict).toBe('failed');
+    });
+    describe('CI Gate is set aside only when every job it names failed in its run and was analysed', () => {
+        const BUILD_JOB = '125039000001';
+        const namingBuild = fixture('job-log-ci-gate-needs-failed.txt').replace('not success or skipped: test-shards, test', 'not success or skipped: test-shards, test, build');
+        const evaluate = (build, buildLog = '') => {
+            const { checks: cs, logs } = checks();
+            const patched = cs.flatMap((c) => (c.name !== 'Build' ? [c] : build ? [{ ...c, ...build }] : []));
+            return evaluateGates(fakeGh([patched], { ...logs, [JOBS.gate]: namingBuild, [BUILD_JOB]: buildLog }).exec, 233, CONFIG, RUNTIME_CLI);
+        };
+        const setAside = (r) => r.suggestions.some((s) => s.startsWith('CI Gate: failed only because'));
+        it('a flaky shard + an aggregate CI Gate + a third real failed job is failed', () => {
+            const r = evaluate({ state: 'FAILURE', link: link(BUILD_JOB) }, fixture('job-log-real-failure.txt'));
+            expect(r.verdict).toBe('failed');
+            expect(r.rerunnable).toEqual([]);
+        });
+        it('a flaky shard + a CI Gate naming a CANCELLED needed job is failed', () => {
+            const r = evaluate({ state: 'CANCELLED', link: link(BUILD_JOB) });
+            expect(r.verdict).toBe('failed');
+            expect(r.rerunnable).toEqual([]);
+        });
+        it('a CI Gate naming a job whose check is missing (or passed) stays a blocker', () => {
+            const passed = evaluate({ state: 'SUCCESS', link: link(BUILD_JOB) });
+            expect(passed.verdict).toBe('failed');
+            expect(setAside(passed)).toBe(false);
+            // No shard check in the run: neither CI Gate nor the Test summary is set aside.
+            const { checks: cs, logs } = checks();
+            const noShard = evaluateGates(fakeGh([cs.filter((c) => !c.name.startsWith('Test shard'))], logs).exec, 233, CONFIG, RUNTIME_CLI);
+            expect(noShard.verdict).toBe('failed');
+            expect(noShard.suggestions.some((s) => s.includes('failed only because'))).toBe(false);
+        });
+        it('without the ci.yml job map no aggregator is set aside', () => {
+            const { checks: cs, logs } = checks();
+            const report = evaluateChecks(233, cs, CONFIG);
+            const analyses = [['Test shard 2 of 4', JOBS.shard], ['Test', JOBS.test], ['CI Gate', JOBS.gate]]
+                .map(([name, job]) => analyzeFailedLog(name, AG_RUN, logs[job], RUNTIME_CLI, job));
+            expect(applyFlakyAnalysis(report, analyses).verdict).toBe('failed');
+            expect(applyFlakyAnalysis(report, analyses, undefined, readJobChecks(REPO_ROOT)).verdict).toBe('flaky');
+        });
     });
     it('gates --watch reruns the flaky run once; the same failure again is final', async () => {
         const { checks: cs, logs } = checks();

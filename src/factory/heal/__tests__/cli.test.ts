@@ -18,6 +18,7 @@ import { enqueueWebhookRun, healStateDir, listHealStates, readWebhookQueue, writ
 const HERE = dirname(fileURLToPath(import.meta.url));
 const fixture = (name: string) => readFileSync(join(HERE, 'fixtures', name), 'utf8');
 const KNOWN_FILE = readFileSync(join(HERE, '../../../../.github/known-flaky-tests.json'), 'utf8');
+const CI_FILE = readFileSync(join(HERE, '../../../../.github/workflows/ci.yml'), 'utf8');
 const NOW = new Date('2026-10-28T00:00:00Z');
 const RED_SHA = '15e3c590ca6eaadf0a0d1efe38f89092b3ae6269';
 
@@ -51,6 +52,7 @@ function fakeExec(push: RunFixture[], pr: RunFixture[], range = { count: '0', fi
     if (cmd === 'git') {
       if (a === 'rev-parse --show-toplevel') return ok(`${root}\n`);
       if (a === 'show refs/remotes/origin/dev:.github/known-flaky-tests.json') return ok(KNOWN_FILE);
+      if (a === 'show refs/remotes/origin/dev:.github/workflows/ci.yml') return ok(CI_FILE);
       if (args[0] === 'cat-file') return ok('');
       if (args[0] === 'rev-list') return ok(`${range.count}\n`);
       if (args[0] === 'diff') return ok(range.files);
@@ -187,8 +189,25 @@ describe('omg factory heal scan', () => {
     expect(jobsOf().sort()).toEqual(['CI Gate', 'Test shard 2 of 4']);
 
     // CI Gate failing only because an ignored PR-policy job failed starts no heal.
-    const policyOnly = scan(fakeExec([redPush(40700000013, [job(122329976558, 'Version Consistency Check', 'Check versions'), job(603, 'CI Gate', 'Check needed job results')])], []));
+    LOGS[605] = ship('job-log-ci-gate-needs-failed.txt').replace('not success or skipped: test-shards, test', 'not success or skipped: version-check');
+    const policyOnly = scan(fakeExec([redPush(40700000013, [job(122329976558, 'Version Consistency Check', 'Check versions'), job(605, 'CI Gate', 'Check needed job results')])], []));
     expect(policyOnly.entries[0].reason).toMatch(/ignored: only PR-policy job\(s\) failed \(Version Consistency Check\)/);
+
+    // A CI Gate naming a job that has no failed job in the run stays counted.
+    rmSync(healStateDir(root), { recursive: true, force: true });
+    LOGS[606] = ship('job-log-ci-gate-needs-failed.txt').replace('not success or skipped: test-shards, test', 'not success or skipped: test-shards, build');
+    scan(fakeExec([redPush(40700000014, [shard, job(606, 'CI Gate', 'Check needed job results')]), run(40584638028)], []));
+    expect(jobsOf().sort()).toEqual(['CI Gate', 'Test shard 2 of 4']);
+
+    // A cancelled or timed-out job CI Gate names is non-passing but never parsed: CI Gate stays counted,
+    // so a flaky shard plus a cancelled Build is not classified as the shard alone.
+    LOGS[607] = ship('job-log-ci-gate-needs-failed.txt').replace('not success or skipped: test-shards, test', 'not success or skipped: test-shards, build');
+    for (const [i, conclusion] of (['cancelled', 'timed_out'] as const).entries()) {
+      rmSync(healStateDir(root), { recursive: true, force: true });
+      const build = { databaseId: 608, name: 'Build', conclusion, steps: [] };
+      scan(fakeExec([redPush(40700000015 + i, [shard, build, job(607, 'CI Gate', 'Check needed job results')]), run(40584638028)], []));
+      expect(jobsOf().sort()).toEqual(['CI Gate', 'Test shard 2 of 4']);
+    }
   });
 
   it('--dry-run writes no state', () => {
