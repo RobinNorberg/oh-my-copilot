@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "982a196e8aaa5fd3f5509bf2be30c96ca5318e44",
-    "sourceSha256": "3f9033978eeed50c0e0feb3c49b66103843115ee04f0d97b9d9111768872f4e1",
+    "head": "bd6ed65aa0de96e5c803e4e9caefadb1dca8b51d",
+    "sourceSha256": "a3f9e1fe72ae399dc9a0004c0e2aee1ed0c27d0dc56c7ec169bc0aa5baa3b4e7",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "982a196e8aaa5fd3f5509bf2be30c96ca5318e44",
-  "sourceSha256": "3f9033978eeed50c0e0feb3c49b66103843115ee04f0d97b9d9111768872f4e1",
+  "head": "bd6ed65aa0de96e5c803e4e9caefadb1dca8b51d",
+  "sourceSha256": "a3f9e1fe72ae399dc9a0004c0e2aee1ed0c27d0dc56c7ec169bc0aa5baa3b4e7",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1949,
-      "total": 1973
+      "srcFiles": 1950,
+      "total": 1974
     },
     "generated": {
-      "distFiles": 7188,
+      "distFiles": 7192,
       "bridgeFiles": 9,
-      "total": 7197
+      "total": 7201
     },
     "prompt": {
       "promptLikeFiles": 66
@@ -848,7 +848,11 @@
       "scripts/build-workflow-stage-prompts.mjs",
       "scripts/ci/check-multirepo-paths.mjs",
       "scripts/ci/check-no-committed-build-artifacts.mjs",
+      "scripts/ci/duration-sequencer.mjs",
+      "scripts/ci/durations-reporter.mjs",
       "scripts/ci/multirepo-patterns.yml",
+      "scripts/ci/tree-reuse.mjs",
+      "scripts/ci/update-test-durations.mjs",
       "scripts/cleanup-orphans.mjs",
       "scripts/code-simplifier.mjs",
       "scripts/collect-epic-3698-ci-evidence.mjs",
@@ -1069,6 +1073,10 @@
       "dist/__tests__/chain-enqueuer-registration.test.d.ts.map",
       "dist/__tests__/chain-enqueuer-registration.test.js",
       "dist/__tests__/chain-enqueuer-registration.test.js.map",
+      "dist/__tests__/ci-evidence.test.d.ts",
+      "dist/__tests__/ci-evidence.test.d.ts.map",
+      "dist/__tests__/ci-evidence.test.js",
+      "dist/__tests__/ci-evidence.test.js.map",
       "dist/__tests__/claude-goal-adapter-doc.test.d.ts",
       "dist/__tests__/claude-goal-adapter-doc.test.d.ts.map",
       "dist/__tests__/claude-goal-adapter-doc.test.js",
@@ -8833,6 +8841,16 @@
         "path": ".github/actions/deps/action.yml"
       },
       {
+        "id": ".github/ci/test-durations.json",
+        "kind": "other",
+        "path": ".github/ci/test-durations.json"
+      },
+      {
+        "id": ".github/ci/windows-path-suite.txt",
+        "kind": "other",
+        "path": ".github/ci/windows-path-suite.txt"
+      },
+      {
         "id": ".github/known-flaky-tests.json",
         "kind": "other",
         "path": ".github/known-flaky-tests.json"
@@ -10271,6 +10289,26 @@
         "id": "dist/__tests__/chain-enqueuer-registration.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/chain-enqueuer-registration.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/ci-evidence.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/ci-evidence.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/ci-evidence.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/ci-evidence.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/ci-evidence.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/ci-evidence.test.js"
+      },
+      {
+        "id": "dist/__tests__/ci-evidence.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/ci-evidence.test.js.map"
       },
       {
         "id": "dist/__tests__/claude-goal-adapter-doc.test.d.ts",
@@ -46468,6 +46506,11 @@
         "path": "vitest/config"
       },
       {
+        "id": "external:vitest/node",
+        "kind": "external",
+        "path": "vitest/node"
+      },
+      {
         "id": "external:worker_threads",
         "kind": "external",
         "path": "worker_threads"
@@ -46753,9 +46796,29 @@
         "path": "scripts/ci/check-no-committed-build-artifacts.mjs"
       },
       {
+        "id": "scripts/ci/duration-sequencer.mjs",
+        "kind": "script",
+        "path": "scripts/ci/duration-sequencer.mjs"
+      },
+      {
+        "id": "scripts/ci/durations-reporter.mjs",
+        "kind": "script",
+        "path": "scripts/ci/durations-reporter.mjs"
+      },
+      {
         "id": "scripts/ci/multirepo-patterns.yml",
         "kind": "script",
         "path": "scripts/ci/multirepo-patterns.yml"
+      },
+      {
+        "id": "scripts/ci/tree-reuse.mjs",
+        "kind": "script",
+        "path": "scripts/ci/tree-reuse.mjs"
+      },
+      {
+        "id": "scripts/ci/update-test-durations.mjs",
+        "kind": "script",
+        "path": "scripts/ci/update-test-durations.mjs"
       },
       {
         "id": "scripts/cleanup-orphans.mjs",
@@ -48116,6 +48179,11 @@
         "id": "src/__tests__/chain-enqueuer-registration.test.ts",
         "kind": "src",
         "path": "src/__tests__/chain-enqueuer-registration.test.ts"
+      },
+      {
+        "id": "src/__tests__/ci-evidence.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/ci-evidence.test.ts"
       },
       {
         "id": "src/__tests__/claude-goal-adapter-doc.test.ts",
@@ -58083,6 +58151,11 @@
         "path": "tests/lint/cancel-signal-fixture-ttl.test.ts"
       },
       {
+        "id": "tests/lint/ci-test-shards.test.ts",
+        "kind": "other",
+        "path": "tests/lint/ci-test-shards.test.ts"
+      },
+      {
         "id": "tests/lint/copilot-smoke-ci-workflow.test.ts",
         "kind": "other",
         "path": "tests/lint/copilot-smoke-ci-workflow.test.ts"
@@ -59052,6 +59125,66 @@
       {
         "from": "scripts/ci/check-no-committed-build-artifacts.mjs",
         "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/duration-sequencer.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/duration-sequencer.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/duration-sequencer.mjs",
+        "to": "external:vitest/node",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/durations-reporter.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/durations-reporter.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/tree-reuse.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/tree-reuse.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/tree-reuse.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/update-test-durations.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/update-test-durations.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/update-test-durations.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/update-test-durations.mjs",
+        "to": "scripts/ci/duration-sequencer.mjs",
         "kind": "imports"
       },
       {
@@ -62443,6 +62576,36 @@
         "from": "src/__tests__/chain-enqueuer-registration.test.ts",
         "to": "src/installer/index.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/__tests__/ci-evidence.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/ci-evidence.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/ci-evidence.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/ci-evidence.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/ci-evidence.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/ci-evidence.test.ts",
+        "to": "scripts/ci/tree-reuse.mjs",
+        "kind": "imports"
       },
       {
         "from": "src/__tests__/claude-goal-adapter-doc.test.ts",
@@ -117145,6 +117308,46 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/ci-test-shards.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/ci-test-shards.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/ci-test-shards.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/ci-test-shards.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/ci-test-shards.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/ci-test-shards.test.ts",
+        "to": "scripts/ci/duration-sequencer.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/ci-test-shards.test.ts",
+        "to": "scripts/ci/durations-reporter.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/ci-test-shards.test.ts",
+        "to": "scripts/ci/update-test-durations.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/copilot-smoke-ci-workflow.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -117716,6 +117919,11 @@
       },
       {
         "from": "vitest.config.ts",
+        "to": "scripts/ci/duration-sequencer.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "vitest.config.ts",
         "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
@@ -117731,12 +117939,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9894,
-      "edgeCount": 11896,
-      "importEdgeCount": 9770,
+      "nodeCount": 9907,
+      "edgeCount": 11923,
+      "importEdgeCount": 9797,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "b9b8913a1ca12e87404672eeaf23e0b3b9ad239f18a9990229935583927b244b",
-  "manifestSha256": "57fcd2a1daeae902d1895f96c68538722098b1a32d8d106563fb9e897f17ef16"
+  "inventorySha256": "4434dbe34eabdc22a5b6690b5b328cf43e3aeb788ba724e82b06ca23209e7707",
+  "manifestSha256": "8ce38954906a288d59d50b8f024214482db53e91fae4fa522b61f904a8e86124"
 }
