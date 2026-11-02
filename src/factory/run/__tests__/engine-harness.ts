@@ -1,7 +1,7 @@
 /**
  * The shared harness of the core engine tests (engine.test.ts, engine.intake,
- * engine.state, engine.resume): fake lanes, real git with a local bare remote,
- * scripted gh behind the exec seam.
+ * engine.state, engine.lanes, engine.resume): fake lanes, real git with a local
+ * bare remote, scripted gh behind the exec seam.
  */
 import { rmSync } from 'node:fs';
 import { afterEach, beforeEach } from 'vitest';
