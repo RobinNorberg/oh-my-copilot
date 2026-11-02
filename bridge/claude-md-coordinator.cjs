@@ -35,15 +35,32 @@ __export(claude_md_coordinator_exports, {
   runClaudeMdCoordinatorHandshake: () => runClaudeMdCoordinatorHandshake
 });
 module.exports = __toCommonJS(claude_md_coordinator_exports);
-var import_node_crypto2 = require("node:crypto");
+
+// src/utils/windows-search.ts
 var import_node_fs = require("node:fs");
-var import_node_path2 = require("node:path");
+var import_node_path = require("node:path");
+var VARIABLE = "NoDefaultCurrentDirectoryInExePath";
+function isVariable(key) {
+  return key.toUpperCase() === VARIABLE.toUpperCase();
+}
+function hardenWindowsExeSearch() {
+  if (process.platform !== "win32") return;
+  for (const key of Object.keys(process.env)) {
+    if (isVariable(key)) delete process.env[key];
+  }
+  process.env[VARIABLE] = "1";
+}
+
+// src/cli/claude-md-coordinator.ts
+var import_node_crypto2 = require("node:crypto");
+var import_node_fs2 = require("node:fs");
+var import_node_path3 = require("node:path");
 
 // src/installer/claude-md-transaction.ts
 var import_node_crypto = require("node:crypto");
 var nodeFs = __toESM(require("node:fs"), 1);
 var nativePath = __toESM(require("node:path"), 1);
-var import_node_path = require("node:path");
+var import_node_path2 = require("node:path");
 
 // src/lib/paths.ts
 var OMC_PLUGIN_MARKETPLACE_SLUG = "omc";
@@ -647,15 +664,15 @@ function validateRootedRegularFile(root, path, allowAbsent = true, fs = defaultF
   return normalizedPath;
 }
 function captureTransactionRoot(root, fs) {
-  const alias = (0, import_node_path.resolve)(root);
-  const canonical = (0, import_node_path.resolve)(fs.realpathSync(alias));
+  const alias = (0, import_node_path2.resolve)(root);
+  const canonical = (0, import_node_path2.resolve)(fs.realpathSync(alias));
   const stat = fs.lstatSync(canonical);
   if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error(`Invalid transaction root: ${alias}`);
   return { alias, canonical, dev: typeof stat.dev === "number" ? stat.dev : void 0, ino: typeof stat.ino === "number" ? stat.ino : void 0 };
 }
 function verifyCapturedRoot(root, fs, verifyAlias) {
-  if (verifyAlias && (0, import_node_path.resolve)(fs.realpathSync(root.alias)) !== root.canonical) throw new Error(`Transaction root changed: ${root.alias}`);
-  if ((0, import_node_path.resolve)(fs.realpathSync(root.canonical)) !== root.canonical) throw new Error(`Transaction root changed: ${root.canonical}`);
+  if (verifyAlias && (0, import_node_path2.resolve)(fs.realpathSync(root.alias)) !== root.canonical) throw new Error(`Transaction root changed: ${root.alias}`);
+  if ((0, import_node_path2.resolve)(fs.realpathSync(root.canonical)) !== root.canonical) throw new Error(`Transaction root changed: ${root.canonical}`);
   const stat = fs.lstatSync(root.canonical);
   if (stat.isSymbolicLink() || !stat.isDirectory() || root.dev !== void 0 && stat.dev !== root.dev || root.ino !== void 0 && stat.ino !== root.ino) throw new Error(`Invalid transaction root: ${root.canonical}`);
 }
@@ -718,8 +735,8 @@ function mergeForOverwrite(existing, canonical, version) {
 ${cleaned.content}`, ranges: cleaned.ranges, variants: cleaned.variants };
 }
 function exclusiveVerifiedBackup(state, root, fs) {
-  const directory = (0, import_node_path.dirname)(state.path);
-  const stem = `${(0, import_node_path.basename)(state.path)}.backup.${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-")}`;
+  const directory = (0, import_node_path2.dirname)(state.path);
+  const stem = `${(0, import_node_path2.basename)(state.path)}.backup.${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-")}`;
   for (let attempt = 0; attempt < 16; attempt += 1) {
     const backup = `${directory}/${stem}.${(0, import_node_crypto.randomBytes)(12).toString("hex")}`;
     try {
@@ -745,8 +762,8 @@ function exclusiveVerifiedBackup(state, root, fs) {
   throw new Error("Unable to create backup");
 }
 function atomicWrite(operation, root, fs, verifyAlias) {
-  const directory = (0, import_node_path.dirname)(operation.path);
-  operation.tempPath = `${directory}/.${(0, import_node_path.basename)(operation.path)}.omc-tmp-${(0, import_node_crypto.randomBytes)(12).toString("hex")}`;
+  const directory = (0, import_node_path2.dirname)(operation.path);
+  operation.tempPath = `${directory}/.${(0, import_node_path2.basename)(operation.path)}.omc-tmp-${(0, import_node_crypto.randomBytes)(12).toString("hex")}`;
   validateTransactionTarget(root, operation.tempPath, true, fs, verifyAlias);
   fs.writeFileSync(operation.tempPath, operation.bytes, { flag: "wx", mode: 384 });
   validateTransactionTarget(root, operation.tempPath, false, fs, verifyAlias);
@@ -777,7 +794,7 @@ function lstatPresent(path, fs) {
 }
 function isClaudeMdEnabledInConfig(configRoot, fs = defaultFs) {
   try {
-    const configPath = (0, import_node_path.resolve)(configRoot, OMC_CONFIG_FILE_REL);
+    const configPath = (0, import_node_path2.resolve)(configRoot, OMC_CONFIG_FILE_REL);
     if (!fs.existsSync(configPath)) return true;
     return JSON.parse(fs.readFileSync(configPath, "utf-8")).claudeMdEnabled !== false;
   } catch {
@@ -795,8 +812,8 @@ function executeClaudeMdTransaction(request) {
     return failure(request, 3, message(error), "validation");
   }
   const root = capturedRoot.canonical;
-  const main2 = (0, import_node_path.resolve)(root, "CLAUDE.md");
-  const companion = (0, import_node_path.resolve)(root, "CLAUDE-omc.md");
+  const main2 = (0, import_node_path2.resolve)(root, "CLAUDE.md");
+  const companion = (0, import_node_path2.resolve)(root, "CLAUDE-omc.md");
   try {
     verifyCapturedRoot(capturedRoot, fs, true);
     validateTransactionTarget(capturedRoot, main2, true, fs, true);
@@ -890,6 +907,7 @@ function executeClaudeMdTransaction(request) {
 }
 
 // src/cli/claude-md-coordinator.ts
+hardenWindowsExeSearch();
 var CLAUDE_MD_COORDINATOR_SCHEMA_VERSION = 1;
 var COMPILED_ENGINE_VERSION = true ? "5.19.4" : "";
 var COMPILED_SOURCE_SHA256 = true ? "f9111b6b63a91f61f7b1cfd2c6c9f44ea95cf51698802716a5893ef53e255798" : "";
@@ -906,22 +924,22 @@ function isObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function verifiedSource(pluginRootInput, sourceInput) {
-  const pluginRoot = (0, import_node_path2.resolve)(pluginRootInput);
-  const sourcePath = (0, import_node_path2.resolve)(sourceInput);
+  const pluginRoot = (0, import_node_path3.resolve)(pluginRootInput);
+  const sourcePath = (0, import_node_path3.resolve)(sourceInput);
   if (!isStrictChildPath(pluginRootInput, sourceInput)) throw new Error("Source must be inside plugin root");
-  if ((0, import_node_fs.lstatSync)(pluginRoot).isSymbolicLink()) throw new Error("Plugin root must not be a symbolic link");
-  const rootReal = (0, import_node_fs.realpathSync)(pluginRoot);
+  if ((0, import_node_fs2.lstatSync)(pluginRoot).isSymbolicLink()) throw new Error("Plugin root must not be a symbolic link");
+  const rootReal = (0, import_node_fs2.realpathSync)(pluginRoot);
   let component = pluginRoot;
-  const suffix = (0, import_node_path2.relative)(pluginRoot, sourcePath).split(/[\\/]/);
+  const suffix = (0, import_node_path3.relative)(pluginRoot, sourcePath).split(/[\\/]/);
   for (const part of suffix) {
-    component = (0, import_node_path2.resolve)(component, part);
-    if ((0, import_node_fs.lstatSync)(component).isSymbolicLink()) throw new Error("Source path must not traverse a symbolic link");
+    component = (0, import_node_path3.resolve)(component, part);
+    if ((0, import_node_fs2.lstatSync)(component).isSymbolicLink()) throw new Error("Source path must not traverse a symbolic link");
   }
-  const stat = (0, import_node_fs.lstatSync)(sourcePath);
+  const stat = (0, import_node_fs2.lstatSync)(sourcePath);
   if (!stat.isFile()) throw new Error("Source must be a regular file");
-  const sourceReal = (0, import_node_fs.realpathSync)(sourcePath);
+  const sourceReal = (0, import_node_fs2.realpathSync)(sourcePath);
   if (!isStrictChildPath(rootReal, sourceReal)) throw new Error("Resolved source escapes plugin root");
-  return { pluginRoot, sourcePath, bytes: (0, import_node_fs.readFileSync)(sourcePath) };
+  return { pluginRoot, sourcePath, bytes: (0, import_node_fs2.readFileSync)(sourcePath) };
 }
 function runClaudeMdCoordinator(input) {
   try {
@@ -953,7 +971,7 @@ function main() {
   }
   let parsed;
   try {
-    parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode((0, import_node_fs.readFileSync)(0)));
+    parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode((0, import_node_fs2.readFileSync)(0)));
   } catch {
     process.stdout.write(`${JSON.stringify(coordinatorError(2, "Malformed UTF-8 JSON request"))}
 `);

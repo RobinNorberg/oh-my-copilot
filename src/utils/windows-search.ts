@@ -15,8 +15,10 @@
  * nothing an entry point imports may spawn at module-load time.
  *
  * Multi-surface mirrors (keep in sync):
- *   scripts/lib/windows-search.cjs   — CJS hook/script runtime
- *   scripts/lib/windows-search.mjs   — ESM re-export of the CJS runtime
+ *   scripts/lib/windows-search.mjs   — ESM hook/script runtime
+ *   scripts/lib/windows-search.cjs   — CJS hook runtime
+ *   templates/hooks/lib/windows-search.mjs — standalone hooks (byte-identical to the .mjs)
+ *   (findOnPath/resolveBareExe are fork-only and exist only here)
  */
 
 import { statSync } from 'node:fs';

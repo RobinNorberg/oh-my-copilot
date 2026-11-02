@@ -2,6 +2,12 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Security
+
+- **Windows: no omg process runs an executable planted in the project folder** (port of upstream #4768, issue #4767). Windows looks up a bare command name (`git`, `npm`, `gh`, `claude`) in the current directory before `PATH`, so a `git.exe` or `git.cmd` committed to a repository could run when omg spawned the real tool there. v5.19.3 hardened the `omg` bin, the Copilot hook dispatcher and adapter, the setup scripts, the factory/ship runner and sandboxed Copilot jobs; this port extends it process-wide: the CLI and team bundles, `scripts/run.cjs` (every Copilot and Claude Code hook), the MCP servers, the team runtime and bridge, the HUD, the CLAUDE.md coordinator, the scripts skills run (`cleanup-orphans`, `repair-plugin-cache`, `shipyard-audit`, `workflow-drift-guard`, `run-provider-advisor`, self-improve's `resolve-paths`) and every installed standalone hook (`templates/hooks/*.mjs`, through a new `templates/hooks/lib/windows-search.mjs`) now set `NoDefaultCurrentDirectoryInExePath=1` before anything spawns. Allowlisted child environments (graph command and agent nodes, session-end workers, the rate-limit and reply-listener daemons) carry it through `childEnv()`, and the native Windows `omg launch` pane command sets it before its `where` check. libuv honours the variable for no-shell spawns only from 1.48 (Node 22); on Node 20 the fork's `resolveBareExe()` callers keep resolving against absolute `PATH` entries, and `cmd.exe` routes are closed on every version. This closes the gap v5.19.3 left open for the `omg-cli` entry, `scripts/run.cjs`, the MCP servers, the team runtime and the HUD.
+
 # oh-my-copilot v5.19.4
 
 ## [5.19.4] - 2026-11-02

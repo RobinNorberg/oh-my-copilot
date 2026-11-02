@@ -31,6 +31,55 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
+// src/utils/windows-search.ts
+function isVariable(key) {
+  return key.toUpperCase() === VARIABLE.toUpperCase();
+}
+function hardenWindowsExeSearch() {
+  if (process.platform !== "win32") return;
+  for (const key of Object.keys(process.env)) {
+    if (isVariable(key)) delete process.env[key];
+  }
+  process.env[VARIABLE] = "1";
+}
+function envValue(env, name) {
+  const key = Object.keys(env).find((k) => k.toUpperCase() === name);
+  const value = key === void 0 ? void 0 : env[key];
+  return typeof value === "string" && value.trim() !== "" ? value : void 0;
+}
+function findOnPath(name, env, platform, exists = isFile) {
+  const P = platform === "win32" ? import_node_path.win32 : import_node_path.posix;
+  const exts = platform === "win32" ? (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean) : [""];
+  const inNodeModules = platform === "win32" ? /(^|[\\/])node_modules([\\/]|$)/i : /(^|\/)node_modules(\/|$)/;
+  for (const raw of (envValue(env, "PATH") ?? "").split(P.delimiter)) {
+    const dir = raw.trim().replace(/^"(.*)"$/, "$1");
+    if (!dir || !P.isAbsolute(dir) || inNodeModules.test(dir)) continue;
+    for (const ext of exts) if (exists(P.join(dir, name + ext))) return P.join(dir, name + ext);
+  }
+  return null;
+}
+function resolveBareExe(cmd, env = process.env) {
+  if (process.platform !== "win32" || /[\\/:]/.test(cmd)) return cmd;
+  const pathext = (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter((e) => e && !/^\.(cmd|bat)$/i.test(e)).join(";") || ".COM;.EXE";
+  return findOnPath(cmd, { ...env, PATHEXT: pathext }, "win32");
+}
+var import_node_fs, import_node_path, VARIABLE, isFile;
+var init_windows_search = __esm({
+  "src/utils/windows-search.ts"() {
+    "use strict";
+    import_node_fs = require("node:fs");
+    import_node_path = require("node:path");
+    VARIABLE = "NoDefaultCurrentDirectoryInExePath";
+    isFile = (p) => {
+      try {
+        return (0, import_node_fs.statSync)(p).isFile();
+      } catch {
+        return false;
+      }
+    };
+  }
+});
+
 // src/utils/config-dir.ts
 function stripTrailingSep(p) {
   if (!p.endsWith(import_path.sep)) {
@@ -1132,10 +1181,10 @@ function normalizeTaskFileStem(taskId) {
 function canonicalTeamCwd(cwd) {
   const resolved = (0, import_path3.resolve)(cwd);
   try {
-    return import_node_fs.realpathSync.native(resolved);
+    return import_node_fs2.realpathSync.native(resolved);
   } catch {
     try {
-      return (0, import_node_fs.realpathSync)(resolved);
+      return (0, import_node_fs2.realpathSync)(resolved);
     } catch {
       return resolved;
     }
@@ -1147,18 +1196,18 @@ function canonicalStoragePath(path5) {
   const visitedLinks = /* @__PURE__ */ new Set();
   while (true) {
     try {
-      const stat2 = (0, import_node_fs.lstatSync)(cursor);
+      const stat2 = (0, import_node_fs2.lstatSync)(cursor);
       if (stat2.isSymbolicLink()) {
         if (visitedLinks.has(cursor)) throw new Error("team_storage_anchor_symlink_cycle");
         visitedLinks.add(cursor);
-        cursor = (0, import_path3.resolve)((0, import_path3.dirname)(cursor), (0, import_node_fs.readlinkSync)(cursor));
+        cursor = (0, import_path3.resolve)((0, import_path3.dirname)(cursor), (0, import_node_fs2.readlinkSync)(cursor));
         continue;
       }
       const canonical = (() => {
         try {
-          return import_node_fs.realpathSync.native(cursor);
+          return import_node_fs2.realpathSync.native(cursor);
         } catch {
-          return (0, import_node_fs.realpathSync)(cursor);
+          return (0, import_node_fs2.realpathSync)(cursor);
         }
       })();
       return missingSuffix.length === 0 ? canonical : (0, import_path3.join)(canonical, ...missingSuffix.reverse());
@@ -1239,7 +1288,7 @@ function assertTeamStatePathSafeSync(cwd, path5) {
   for (const component of suffix.split(import_path3.sep).filter(Boolean)) {
     cursor = (0, import_path3.join)(cursor, component);
     try {
-      const stat2 = (0, import_node_fs.lstatSync)(cursor);
+      const stat2 = (0, import_node_fs2.lstatSync)(cursor);
       if (stat2.isSymbolicLink()) throw new Error("team_instance_path_symlink");
     } catch (error) {
       if (error instanceof Error && error.message === "team_instance_path_symlink") throw error;
@@ -1248,12 +1297,12 @@ function assertTeamStatePathSafeSync(cwd, path5) {
     }
   }
 }
-var import_node_crypto, import_node_fs, import_promises, import_path3, TeamPaths;
+var import_node_crypto, import_node_fs2, import_promises, import_path3, TeamPaths;
 var init_state_paths = __esm({
   "src/team/state-paths.ts"() {
     "use strict";
     import_node_crypto = require("node:crypto");
-    import_node_fs = require("node:fs");
+    import_node_fs2 = require("node:fs");
     import_promises = require("node:fs/promises");
     import_path3 = require("path");
     init_worktree_paths();
@@ -2989,13 +3038,13 @@ var init_contracts = __esm({
 // src/graph/runtime/native-contained-fs.ts
 function getNativeContainedFs() {
   if (loaded) return loaded;
-  let directory = (0, import_node_path.dirname)((0, import_node_url.fileURLToPath)(importMetaUrl));
+  let directory = (0, import_node_path2.dirname)((0, import_node_url.fileURLToPath)(importMetaUrl));
   for (; ; ) {
-    const manifest = (0, import_node_path.join)(directory, "package.json");
-    if ((0, import_node_fs2.existsSync)(manifest)) {
-      const metadata = JSON.parse((0, import_node_fs2.readFileSync)(manifest, "utf8"));
+    const manifest = (0, import_node_path2.join)(directory, "package.json");
+    if ((0, import_node_fs3.existsSync)(manifest)) {
+      const metadata = JSON.parse((0, import_node_fs3.readFileSync)(manifest, "utf8"));
       if (metadata.name === "oh-my-copilot") {
-        const binary = (0, import_node_path.join)(directory, "native", `contained-fs-${process.platform}-${process.arch}.node`);
+        const binary = (0, import_node_path2.join)(directory, "native", `contained-fs-${process.platform}-${process.arch}.node`);
         try {
           loaded = (0, import_node_module.createRequire)(importMetaUrl)(binary);
           return loaded;
@@ -3004,18 +3053,18 @@ function getNativeContainedFs() {
         }
       }
     }
-    const parent = (0, import_node_path.dirname)(directory);
+    const parent = (0, import_node_path2.dirname)(directory);
     if (parent === directory) throw new Error("Cannot locate the OMC package for the contained filesystem backend");
     directory = parent;
   }
 }
-var import_node_fs2, import_node_module, import_node_path, import_node_url, loaded;
+var import_node_fs3, import_node_module, import_node_path2, import_node_url, loaded;
 var init_native_contained_fs = __esm({
   "src/graph/runtime/native-contained-fs.ts"() {
     "use strict";
-    import_node_fs2 = require("node:fs");
+    import_node_fs3 = require("node:fs");
     import_node_module = require("node:module");
-    import_node_path = require("node:path");
+    import_node_path2 = require("node:path");
     import_node_url = require("node:url");
   }
 });
@@ -3271,7 +3320,7 @@ var init_team_owner_epoch = __esm({
 // src/team/process-identity-lock.ts
 function readLock(path5) {
   try {
-    const record = JSON.parse((0, import_node_fs3.readFileSync)(path5, "utf8"));
+    const record = JSON.parse((0, import_node_fs4.readFileSync)(path5, "utf8"));
     return record.schema_version === 1 && Number.isSafeInteger(record.pid) && record.pid > 0 && isValidProcessStartIdentity(record.process_started_at) && typeof record.nonce === "string" && record.nonce.length > 0 ? record : null;
   } catch {
     return null;
@@ -3279,7 +3328,7 @@ function readLock(path5) {
 }
 async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
   const reclaimPath = `${lockPath}.reclaim`;
-  (0, import_node_fs3.mkdirSync)((0, import_node_path2.dirname)(lockPath), { recursive: true, mode: 448 });
+  (0, import_node_fs4.mkdirSync)((0, import_node_path3.dirname)(lockPath), { recursive: true, mode: 448 });
   const processStartedAt = currentProcessStartIdentity();
   if (!processStartedAt) throw new Error("process_start_identity_unavailable");
   const owner = {
@@ -3290,7 +3339,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
     created_at: (/* @__PURE__ */ new Date()).toISOString()
   };
   const tempPath = `${lockPath}.${owner.nonce}.tmp`;
-  (0, import_node_fs3.writeFileSync)(tempPath, JSON.stringify(owner), { encoding: "utf8", mode: 384, flush: true });
+  (0, import_node_fs4.writeFileSync)(tempPath, JSON.stringify(owner), { encoding: "utf8", mode: 384, flush: true });
   const deadline = Date.now() + timeoutMs;
   let acquired = false;
   try {
@@ -3299,7 +3348,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
       if (reclaimer) {
         if (isProcessIdentityDead(reclaimer)) {
           try {
-            (0, import_node_fs3.unlinkSync)(reclaimPath);
+            (0, import_node_fs4.unlinkSync)(reclaimPath);
           } catch {
           }
           continue;
@@ -3309,17 +3358,17 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
         continue;
       }
       try {
-        (0, import_node_fs3.linkSync)(tempPath, lockPath);
+        (0, import_node_fs4.linkSync)(tempPath, lockPath);
         acquired = true;
       } catch (error) {
         if (error.code !== "EEXIST") throw error;
         const existing = readLock(lockPath);
         if (existing && isProcessIdentityDead(existing)) {
           try {
-            (0, import_node_fs3.linkSync)(tempPath, reclaimPath);
+            (0, import_node_fs4.linkSync)(tempPath, reclaimPath);
             const current = readLock(lockPath);
-            if (current?.nonce === existing.nonce && isProcessIdentityDead(current)) (0, import_node_fs3.unlinkSync)(lockPath);
-            if (readLock(reclaimPath)?.nonce === owner.nonce) (0, import_node_fs3.unlinkSync)(reclaimPath);
+            if (current?.nonce === existing.nonce && isProcessIdentityDead(current)) (0, import_node_fs4.unlinkSync)(lockPath);
+            if (readLock(reclaimPath)?.nonce === owner.nonce) (0, import_node_fs4.unlinkSync)(reclaimPath);
             continue;
           } catch (reclaimError) {
             if (reclaimError.code !== "EEXIST" && reclaimError.code !== "ENOENT") throw reclaimError;
@@ -3332,18 +3381,18 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
     return await fn();
   } finally {
     try {
-      (0, import_node_fs3.unlinkSync)(tempPath);
+      (0, import_node_fs4.unlinkSync)(tempPath);
     } catch {
     }
     if (acquired && readLock(lockPath)?.nonce === owner.nonce) {
       try {
-        (0, import_node_fs3.unlinkSync)(lockPath);
+        (0, import_node_fs4.unlinkSync)(lockPath);
       } catch {
       }
     }
     if (readLock(reclaimPath)?.nonce === owner.nonce) {
       try {
-        (0, import_node_fs3.unlinkSync)(reclaimPath);
+        (0, import_node_fs4.unlinkSync)(reclaimPath);
       } catch {
       }
     }
@@ -3351,7 +3400,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
 }
 function withProcessIdentityFileLockSync(lockPath, fn) {
   const reclaimPath = `${lockPath}.reclaim`;
-  (0, import_node_fs3.mkdirSync)((0, import_node_path2.dirname)(lockPath), { recursive: true, mode: 448 });
+  (0, import_node_fs4.mkdirSync)((0, import_node_path3.dirname)(lockPath), { recursive: true, mode: 448 });
   const processStartedAt = currentProcessStartIdentity();
   if (!processStartedAt) throw new Error("process_start_identity_unavailable");
   const owner = {
@@ -3362,22 +3411,22 @@ function withProcessIdentityFileLockSync(lockPath, fn) {
     created_at: (/* @__PURE__ */ new Date()).toISOString()
   };
   const tempPath = `${lockPath}.${owner.nonce}.tmp`;
-  (0, import_node_fs3.writeFileSync)(tempPath, JSON.stringify(owner), { encoding: "utf8", mode: 384, flush: true });
+  (0, import_node_fs4.writeFileSync)(tempPath, JSON.stringify(owner), { encoding: "utf8", mode: 384, flush: true });
   let acquired = false;
   try {
     for (let attempt = 0; attempt < 3 && !acquired; attempt++) {
       try {
-        (0, import_node_fs3.linkSync)(tempPath, lockPath);
+        (0, import_node_fs4.linkSync)(tempPath, lockPath);
         acquired = true;
       } catch (error) {
         if (error.code !== "EEXIST") throw error;
         const existing = readLock(lockPath);
         if (!existing || !isProcessIdentityDead(existing)) throw new Error("process_identity_lock_busy");
         try {
-          (0, import_node_fs3.linkSync)(tempPath, reclaimPath);
+          (0, import_node_fs4.linkSync)(tempPath, reclaimPath);
           const current = readLock(lockPath);
-          if (current?.nonce === existing.nonce && isProcessIdentityDead(current)) (0, import_node_fs3.unlinkSync)(lockPath);
-          if (readLock(reclaimPath)?.nonce === owner.nonce) (0, import_node_fs3.unlinkSync)(reclaimPath);
+          if (current?.nonce === existing.nonce && isProcessIdentityDead(current)) (0, import_node_fs4.unlinkSync)(lockPath);
+          if (readLock(reclaimPath)?.nonce === owner.nonce) (0, import_node_fs4.unlinkSync)(reclaimPath);
         } catch (reclaimError) {
           if (reclaimError.code !== "EEXIST" && reclaimError.code !== "ENOENT") throw reclaimError;
         }
@@ -3387,29 +3436,29 @@ function withProcessIdentityFileLockSync(lockPath, fn) {
     return fn();
   } finally {
     try {
-      (0, import_node_fs3.unlinkSync)(tempPath);
+      (0, import_node_fs4.unlinkSync)(tempPath);
     } catch {
     }
     if (acquired && readLock(lockPath)?.nonce === owner.nonce) {
       try {
-        (0, import_node_fs3.unlinkSync)(lockPath);
+        (0, import_node_fs4.unlinkSync)(lockPath);
       } catch {
       }
     }
     if (readLock(reclaimPath)?.nonce === owner.nonce) {
       try {
-        (0, import_node_fs3.unlinkSync)(reclaimPath);
+        (0, import_node_fs4.unlinkSync)(reclaimPath);
       } catch {
       }
     }
   }
 }
-var import_node_fs3, import_node_path2, import_node_crypto2;
+var import_node_fs4, import_node_path3, import_node_crypto2;
 var init_process_identity_lock = __esm({
   "src/team/process-identity-lock.ts"() {
     "use strict";
-    import_node_fs3 = require("node:fs");
-    import_node_path2 = require("node:path");
+    import_node_fs4 = require("node:fs");
+    import_node_path3 = require("node:path");
     import_node_crypto2 = require("node:crypto");
     init_team_owner_epoch();
   }
@@ -3670,7 +3719,7 @@ async function assertExternalCleanupPathsSafe(binding) {
   }
 }
 function canonicalPath(path5) {
-  return (0, import_node_path3.resolve)(path5);
+  return (0, import_node_path4.resolve)(path5);
 }
 function sameBinding(a, b) {
   return a.instance_id === b.instance_id && a.team_name === b.team_name && canonicalTeamCwd(a.cwd) === b.cwd && a.workspace_hash === b.workspace_hash && canonicalTeamStatePath(b.cwd, a.state_root) === canonicalPath(b.state_root);
@@ -3713,7 +3762,7 @@ async function pathKind(path5) {
 }
 async function defaultPublish(path5, value) {
   const bytes = JSON.stringify(value, null, 2);
-  await (0, import_promises5.mkdir)((0, import_node_path3.dirname)(path5), { recursive: true, mode: 448 });
+  await (0, import_promises5.mkdir)((0, import_node_path4.dirname)(path5), { recursive: true, mode: 448 });
   const tempPath = `${path5}.tmp.${process.pid}.${(0, import_node_crypto3.randomUUID)()}`;
   try {
     await (0, import_promises5.writeFile)(tempPath, bytes, { encoding: "utf8", mode: 384, flag: "wx" });
@@ -3764,7 +3813,7 @@ async function publishCleanupReceipt(record, io, path5 = record.receipt_path) {
   }
 }
 async function publishInitialCleanupReceipt(record, io) {
-  const cleanupRoot = (0, import_node_path3.dirname)(record.receipt_path);
+  const cleanupRoot = (0, import_node_path4.dirname)(record.receipt_path);
   const stagingRoot = `${cleanupRoot}.staging-${process.pid}-${(0, import_node_crypto3.randomUUID)()}`;
   let published = false;
   try {
@@ -3774,7 +3823,7 @@ async function publishInitialCleanupReceipt(record, io) {
       fail("team_instance_authority_corrupt", "cleanup_root_already_exists");
     }
     await (0, import_promises5.mkdir)(stagingRoot, { recursive: true, mode: 448 });
-    const stagedReceiptPath = (0, import_node_path3.join)(stagingRoot, "cleanup.json");
+    const stagedReceiptPath = (0, import_node_path4.join)(stagingRoot, "cleanup.json");
     await publishCleanupReceipt(record, io, stagedReceiptPath);
     await (0, import_promises5.rename)(stagingRoot, cleanupRoot);
     published = true;
@@ -3828,10 +3877,10 @@ async function hasHistoricalCleanupAuthority(binding) {
   const root = expectedPaths(binding).cleanupRoot;
   const kind = await pathKind(root);
   if (kind !== "missing") return true;
-  const parent = (0, import_node_path3.dirname)(root);
+  const parent = (0, import_node_path4.dirname)(root);
   try {
     const entries = await (0, import_promises5.readdir)(parent);
-    return entries.some((entry) => entry.startsWith(`${(0, import_node_path3.basename)(root)}.staging-`));
+    return entries.some((entry) => entry.startsWith(`${(0, import_node_path4.basename)(root)}.staging-`));
   } catch (error) {
     if (error.code === "ENOENT") return false;
     fail("team_instance_authority_corrupt", `cleanup_authority_parent_unreadable:${String(error)}`);
@@ -3900,7 +3949,7 @@ async function inspectTeamState(binding) {
   if (entries.length === 0) return { observed_state: "empty" };
   const identities = [];
   for (const fileName of ["config.json", "manifest.json"]) {
-    const path5 = (0, import_node_path3.join)(root, fileName);
+    const path5 = (0, import_node_path4.join)(root, fileName);
     const fileKind = await pathKind(path5);
     if (fileKind === "missing") continue;
     if (fileKind !== "file") fail("team_instance_state_corrupt", `team_state_document_not_file:${fileName}`);
@@ -4088,7 +4137,7 @@ async function renameIntoDetachedRoot(binding, options) {
   if (sourceKind === "missing" && destinationKind !== "missing") return;
   if (sourceKind !== "directory") fail("team_instance_state_corrupt", "team_state_root_not_directory");
   if (destinationKind !== "missing") fail("team_instance_cleanup_inconsistent", "both_state_and_detached_roots_exist");
-  await (0, import_promises5.mkdir)((0, import_node_path3.dirname)(paths.detached), { recursive: true, mode: 448 });
+  await (0, import_promises5.mkdir)((0, import_node_path4.dirname)(paths.detached), { recursive: true, mode: 448 });
   try {
     if (options.io?.renameStateRoot) await options.io.renameStateRoot(binding.state_root, paths.detached);
     else await (0, import_promises5.rename)(binding.state_root, paths.detached);
@@ -4253,13 +4302,13 @@ function retryTeamInstanceDisposal(input, authorization, options = {}) {
     options.timeoutMs
   );
 }
-var import_node_crypto3, import_promises5, import_node_path3, TeamInstanceError, TEAM_INSTANCE_RESERVATION_PHASES, TEAM_INSTANCE_CLEANUP_PHASES;
+var import_node_crypto3, import_promises5, import_node_path4, TeamInstanceError, TEAM_INSTANCE_RESERVATION_PHASES, TEAM_INSTANCE_CLEANUP_PHASES;
 var init_team_instance = __esm({
   "src/team/team-instance.ts"() {
     "use strict";
     import_node_crypto3 = require("node:crypto");
     import_promises5 = require("node:fs/promises");
-    import_node_path3 = require("node:path");
+    import_node_path4 = require("node:path");
     init_contracts();
     init_state_paths();
     init_process_identity_lock();
@@ -8869,7 +8918,7 @@ function encodePowerShell(source) {
 }
 function canonicalAuthorityDigest(input) {
   const env = Object.fromEntries(Object.entries(input.providerEnv).sort(([a], [b]) => a.localeCompare(b)));
-  const payload = JSON.stringify({ protocol: WORKER_LAUNCH_AUTHORITY_PROTOCOL, nonce: input.containmentNonce ?? "", supervisor_source_sha256: input.supervisorSourceSha256 ?? "", identity: identityOf(input.identity), provider_argv: [...input.providerArgv], provider_env: env, cwd: (0, import_node_path4.resolve)(input.cwd) });
+  const payload = JSON.stringify({ protocol: WORKER_LAUNCH_AUTHORITY_PROTOCOL, nonce: input.containmentNonce ?? "", supervisor_source_sha256: input.supervisorSourceSha256 ?? "", identity: identityOf(input.identity), provider_argv: [...input.providerArgv], provider_env: env, cwd: (0, import_node_path5.resolve)(input.cwd) });
   return (0, import_node_crypto5.createHash)("sha256").update(payload, "utf8").digest("hex");
 }
 function sleep2(ms) {
@@ -9082,7 +9131,7 @@ async function isCurrentLaunchIdentity(currentPath, identity) {
   return current.kind === "value" && identityMatches(current.value, identity);
 }
 async function writeExclusiveAtomic(path5, value) {
-  await (0, import_promises8.mkdir)((0, import_node_path4.dirname)(path5), { recursive: true });
+  await (0, import_promises8.mkdir)((0, import_node_path5.dirname)(path5), { recursive: true });
   const candidate = `${path5}.candidate.${process.pid}.${(0, import_node_crypto5.randomUUID)()}`;
   const handle = await (0, import_promises8.open)(candidate, "wx", 384);
   try {
@@ -9098,7 +9147,7 @@ async function writeExclusiveAtomic(path5, value) {
   }
 }
 async function writeExclusiveTextAtomic(path5, value) {
-  await (0, import_promises8.mkdir)((0, import_node_path4.dirname)(path5), { recursive: true });
+  await (0, import_promises8.mkdir)((0, import_node_path5.dirname)(path5), { recursive: true });
   const candidate = `${path5}.candidate.${process.pid}.${(0, import_node_crypto5.randomUUID)()}`;
   const handle = await (0, import_promises8.open)(candidate, "wx", 384);
   try {
@@ -9168,7 +9217,7 @@ async function prepareWorkerLaunchAttempt(input) {
     runtimeCliPath: input.runtimeCliPath,
     ...input.context ? { context: input.context } : {}
   };
-  if ((0, import_node_fs4.existsSync)(attempt.expectedPath) || (0, import_node_fs4.existsSync)(attempt.ackPath) || (0, import_node_fs4.existsSync)(attempt.decisionPath) || (0, import_node_fs4.existsSync)(attempt.startedPath) || (0, import_node_fs4.existsSync)(attempt.transportOwnerPath) || (0, import_node_fs4.existsSync)(attempt.bootstrapDescriptorPath) || (0, import_node_fs4.existsSync)(attempt.wrapperPath) || (0, import_node_fs4.existsSync)(attempt.transportCleanupCompletePath)) {
+  if ((0, import_node_fs5.existsSync)(attempt.expectedPath) || (0, import_node_fs5.existsSync)(attempt.ackPath) || (0, import_node_fs5.existsSync)(attempt.decisionPath) || (0, import_node_fs5.existsSync)(attempt.startedPath) || (0, import_node_fs5.existsSync)(attempt.transportOwnerPath) || (0, import_node_fs5.existsSync)(attempt.bootstrapDescriptorPath) || (0, import_node_fs5.existsSync)(attempt.wrapperPath) || (0, import_node_fs5.existsSync)(attempt.transportCleanupCompletePath)) {
     throw new Error("worker_launch_attempt_path_conflict");
   }
   await writeExclusiveAtomic(attempt.expectedPath, identity);
@@ -9245,7 +9294,7 @@ function buildWorkerLaunchBootstrapSpec(attempt, providerArgv, cwd, options = {}
     buildWindowsBatchProviderLine(providerArgv);
   }
   const providerEnv = normalizeProviderEnvironment(options.providerEnv, options.platform ?? process.platform);
-  const absoluteCwd = (0, import_node_path4.resolve)(cwd);
+  const absoluteCwd = (0, import_node_path5.resolve)(cwd);
   const containmentNonce = (0, import_node_crypto5.randomUUID)();
   const supervisorSourceSha256 = (0, import_node_crypto5.createHash)("sha256").update(buildWindowsSupervisorSource(), "utf8").digest("hex");
   return {
@@ -9270,8 +9319,8 @@ function buildWorkerLaunchBootstrapSpec(attempt, providerArgv, cwd, options = {}
   };
 }
 function attemptTransportPathsAreDeterministic(attempt) {
-  const expectedRoot = (0, import_node_path4.dirname)(attempt.expectedPath);
-  return isDeterministicTransportPath(attempt.expectedPath, attempt.transportOwnerPath, "transport-owner.json") && isDeterministicTransportPath(attempt.expectedPath, attempt.bootstrapDescriptorPath, WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE) && isDeterministicTransportPath(attempt.expectedPath, attempt.wrapperPath, "launch.cmd") && isDeterministicTransportPath(attempt.expectedPath, attempt.transportCleanupCompletePath, "transport-cleanup-complete.json") && (0, import_node_path4.resolve)(attempt.expectedPath) === (0, import_node_path4.resolve)((0, import_node_path4.join)(expectedRoot, "expected.json"));
+  const expectedRoot = (0, import_node_path5.dirname)(attempt.expectedPath);
+  return isDeterministicTransportPath(attempt.expectedPath, attempt.transportOwnerPath, "transport-owner.json") && isDeterministicTransportPath(attempt.expectedPath, attempt.bootstrapDescriptorPath, WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE) && isDeterministicTransportPath(attempt.expectedPath, attempt.wrapperPath, "launch.cmd") && isDeterministicTransportPath(attempt.expectedPath, attempt.transportCleanupCompletePath, "transport-cleanup-complete.json") && (0, import_node_path5.resolve)(attempt.expectedPath) === (0, import_node_path5.resolve)((0, import_node_path5.join)(expectedRoot, "expected.json"));
 }
 function transportOwnerMatches(value, attempt, authorityDigest) {
   if (!identityMatches(value, attempt) || typeof value !== "object" || value === null || value.kind !== WORKER_LAUNCH_TRANSPORT_OWNER_KIND) return false;
@@ -9281,7 +9330,7 @@ function cleanupProofMatches(value, attempt) {
   return identityMatches(value, attempt) && typeof value === "object" && value !== null && value.kind === WORKER_LAUNCH_TRANSPORT_CLEANUP_KIND && isExactText(value.reason) && typeof value.written_at === "string" && Number.isFinite(Date.parse(value.written_at));
 }
 function windowsWrapperRelativePath(cwd, wrapperPath) {
-  const relativePath = (0, import_node_path4.relative)((0, import_node_path4.resolve)(cwd), (0, import_node_path4.resolve)(wrapperPath)).replace(/\//g, "\\");
+  const relativePath = (0, import_node_path5.relative)((0, import_node_path5.resolve)(cwd), (0, import_node_path5.resolve)(wrapperPath)).replace(/\//g, "\\");
   if (!relativePath || relativePath.startsWith("\\") || /^[A-Za-z]:/.test(relativePath) || !/^[A-Za-z0-9._\\-]+$/.test(relativePath)) {
     throw new Error("worker_launch_transport_relative_path_invalid");
   }
@@ -9353,7 +9402,7 @@ async function materializeWorkerLaunchTransport(input) {
         await writeExclusiveAtomic(attempt.transportOwnerPath, owner);
         ownerCreated = true;
       }
-      if ((0, import_node_fs4.existsSync)(attempt.bootstrapDescriptorPath) || (0, import_node_fs4.existsSync)(attempt.wrapperPath)) {
+      if ((0, import_node_fs5.existsSync)(attempt.bootstrapDescriptorPath) || (0, import_node_fs5.existsSync)(attempt.wrapperPath)) {
         throw new Error("worker_launch_transport_path_conflict");
       }
       await writeExclusiveAtomic(attempt.bootstrapDescriptorPath, spec);
@@ -9367,19 +9416,19 @@ async function materializeWorkerLaunchTransport(input) {
       await (0, import_promises8.unlink)(attempt.wrapperPath).catch(() => {
         cleanupVerified = false;
       });
-      cleanupVerified &&= !(0, import_node_fs4.existsSync)(attempt.wrapperPath);
+      cleanupVerified &&= !(0, import_node_fs5.existsSync)(attempt.wrapperPath);
     }
     if (descriptorCreated) {
       await (0, import_promises8.unlink)(attempt.bootstrapDescriptorPath).catch(() => {
         cleanupVerified = false;
       });
-      cleanupVerified &&= !(0, import_node_fs4.existsSync)(attempt.bootstrapDescriptorPath);
+      cleanupVerified &&= !(0, import_node_fs5.existsSync)(attempt.bootstrapDescriptorPath);
     }
     if (ownerCreated) {
       await (0, import_promises8.unlink)(attempt.transportOwnerPath).catch(() => {
         cleanupVerified = false;
       });
-      cleanupVerified &&= !(0, import_node_fs4.existsSync)(attempt.transportOwnerPath);
+      cleanupVerified &&= !(0, import_node_fs5.existsSync)(attempt.transportOwnerPath);
     }
     if (!cleanupVerified) {
       const cleanupError = new Error("worker_launch_transport_partial_cleanup_unverified");
@@ -9400,7 +9449,7 @@ async function cleanupWorkerLaunchTransportUnlocked(attempt, reason) {
   if (owner.kind === "malformed" || proof.kind === "malformed") return false;
   if (owner.kind === "value" && !transportOwnerMatches(owner.value, attempt)) return false;
   if (proof.kind === "value" && !cleanupProofMatches(proof.value, attempt)) return false;
-  const hasTransportFiles = (0, import_node_fs4.existsSync)(attempt.bootstrapDescriptorPath) || (0, import_node_fs4.existsSync)(attempt.wrapperPath);
+  const hasTransportFiles = (0, import_node_fs5.existsSync)(attempt.bootstrapDescriptorPath) || (0, import_node_fs5.existsSync)(attempt.wrapperPath);
   if (owner.kind === "absent") {
     return !hasTransportFiles && (proof.kind === "absent" || cleanupProofMatches(proof.value, attempt));
   }
@@ -9410,7 +9459,7 @@ async function cleanupWorkerLaunchTransportUnlocked(attempt, reason) {
   await (0, import_promises8.unlink)(attempt.wrapperPath).catch((error) => {
     if (error.code !== "ENOENT") throw error;
   });
-  if ((0, import_node_fs4.existsSync)(attempt.bootstrapDescriptorPath) || (0, import_node_fs4.existsSync)(attempt.wrapperPath)) return false;
+  if ((0, import_node_fs5.existsSync)(attempt.bootstrapDescriptorPath) || (0, import_node_fs5.existsSync)(attempt.wrapperPath)) return false;
   if (proof.kind === "absent") {
     await writeExclusiveAtomic(attempt.transportCleanupCompletePath, {
       ...identityOf(attempt),
@@ -9420,7 +9469,7 @@ async function cleanupWorkerLaunchTransportUnlocked(attempt, reason) {
     });
   }
   const completed = await readJson(attempt.transportCleanupCompletePath);
-  return completed.kind === "value" && cleanupProofMatches(completed.value, attempt) && !(0, import_node_fs4.existsSync)(attempt.bootstrapDescriptorPath) && !(0, import_node_fs4.existsSync)(attempt.wrapperPath);
+  return completed.kind === "value" && cleanupProofMatches(completed.value, attempt) && !(0, import_node_fs5.existsSync)(attempt.bootstrapDescriptorPath) && !(0, import_node_fs5.existsSync)(attempt.wrapperPath);
 }
 async function cleanupWorkerLaunchTransport(attempt, reason = "transport_cleanup") {
   if (!attemptTransportPathsAreDeterministic(attempt)) return false;
@@ -9438,7 +9487,7 @@ async function readAndConsumeWorkerLaunchDescriptor(descriptorPath, platform = p
   let parsed;
   let handle;
   try {
-    handle = await (0, import_promises8.open)(descriptorPath, import_node_fs4.constants.O_RDONLY | import_node_fs4.constants.O_NOFOLLOW);
+    handle = await (0, import_promises8.open)(descriptorPath, import_node_fs5.constants.O_RDONLY | import_node_fs5.constants.O_NOFOLLOW);
     const info = await handle.stat();
     if (!info.isFile() || info.nlink !== 1) throw new Error("worker_launch_descriptor_invalid");
     parsed = JSON.parse(await handle.readFile("utf8"));
@@ -9450,9 +9499,9 @@ async function readAndConsumeWorkerLaunchDescriptor(descriptorPath, platform = p
   }
   if (!isValidBootstrapSpec(parsed, platform)) throw new Error("worker_launch_descriptor_invalid");
   const spec = parsed;
-  if ((0, import_node_path4.resolve)(descriptorPath) !== (0, import_node_path4.resolve)(spec.bootstrap_descriptor_path)) throw new Error("worker_launch_descriptor_path_mismatch");
+  if ((0, import_node_path5.resolve)(descriptorPath) !== (0, import_node_path5.resolve)(spec.bootstrap_descriptor_path)) throw new Error("worker_launch_descriptor_path_mismatch");
   const owner = await readJson(spec.transport_owner_path);
-  if (owner.kind !== "value" || !transportOwnerMatches(owner.value, spec, spec.authority_digest) || !(0, import_node_fs4.existsSync)(spec.wrapper_path)) throw new Error("worker_launch_descriptor_owner_invalid");
+  if (owner.kind !== "value" || !transportOwnerMatches(owner.value, spec, spec.authority_digest) || !(0, import_node_fs5.existsSync)(spec.wrapper_path)) throw new Error("worker_launch_descriptor_owner_invalid");
   try {
     await withFileLock(lockPathFor(spec.current_path), async () => {
       const currentOwner2 = await readJson(spec.transport_owner_path);
@@ -9674,7 +9723,7 @@ async function readWorkerLaunchCleanupProof(attempt, started) {
 }
 async function readWorkerLaunchProviderCompletionState(attempt, started) {
   if (started.supervisor_completion_path === void 0) return "absent";
-  if (!isExactText(started.supervisor_completion_path) || !(0, import_node_path4.isAbsolute)(started.supervisor_completion_path)) return "invalid";
+  if (!isExactText(started.supervisor_completion_path) || !(0, import_node_path5.isAbsolute)(started.supervisor_completion_path)) return "invalid";
   const bindingReceipt = await readJson(`${attempt.startedPath}.completion-binding`);
   if (bindingReceipt.kind !== "value" || !bindingReceipt.value || typeof bindingReceipt.value !== "object" || Array.isArray(bindingReceipt.value)) return "invalid";
   const bindingValue = bindingReceipt.value;
@@ -9685,14 +9734,14 @@ async function readWorkerLaunchProviderCompletionState(attempt, started) {
     authority_digest: bindingValue.authority_digest
   };
   if (!isValidCompletionBinding(completionBinding)) return "invalid";
-  const absoluteCompletionPath = (0, import_node_path4.resolve)(started.supervisor_completion_path);
-  const trustedTempRoot = (0, import_node_path4.resolve)((0, import_node_os.tmpdir)());
+  const absoluteCompletionPath = (0, import_node_path5.resolve)(started.supervisor_completion_path);
+  const trustedTempRoot = (0, import_node_path5.resolve)((0, import_node_os.tmpdir)());
   const pathParts = [];
-  let pathPart = (0, import_node_path4.dirname)(absoluteCompletionPath);
-  if (absoluteCompletionPath === trustedTempRoot || absoluteCompletionPath.startsWith(`${trustedTempRoot}${import_node_path4.sep}`)) {
-    while (pathPart !== trustedTempRoot && pathPart !== (0, import_node_path4.dirname)(pathPart)) {
+  let pathPart = (0, import_node_path5.dirname)(absoluteCompletionPath);
+  if (absoluteCompletionPath === trustedTempRoot || absoluteCompletionPath.startsWith(`${trustedTempRoot}${import_node_path5.sep}`)) {
+    while (pathPart !== trustedTempRoot && pathPart !== (0, import_node_path5.dirname)(pathPart)) {
       pathParts.push(pathPart);
-      pathPart = (0, import_node_path4.dirname)(pathPart);
+      pathPart = (0, import_node_path5.dirname)(pathPart);
     }
   } else {
     pathParts.push(pathPart);
@@ -9710,7 +9759,7 @@ async function readWorkerLaunchProviderCompletionState(attempt, started) {
   try {
     handle = await (0, import_promises8.open)(
       started.supervisor_completion_path,
-      import_node_fs4.constants.O_RDONLY | (import_node_fs4.constants.O_NOFOLLOW ?? 0) | (process.platform === "win32" ? 0 : import_node_fs4.constants.O_NONBLOCK ?? 0)
+      import_node_fs5.constants.O_RDONLY | (import_node_fs5.constants.O_NOFOLLOW ?? 0) | (process.platform === "win32" ? 0 : import_node_fs5.constants.O_NONBLOCK ?? 0)
     );
     const info = await handle.stat();
     if (!info.isFile() || info.nlink !== 1) return "invalid";
@@ -9975,7 +10024,7 @@ async function readValidProviderStarted(attempt, options = {}) {
   if (started.kind !== "value") return null;
   if (!started.value || typeof started.value !== "object" || Array.isArray(started.value)) return null;
   const record = started.value;
-  if (!options.allowSupervisorCompletion && record.supervisor_completion_path !== void 0 && (typeof record.supervisor_completion_path !== "string" || record.supervisor_completion_path.trim().length === 0 || (0, import_node_fs4.existsSync)(record.supervisor_completion_path))) return null;
+  if (!options.allowSupervisorCompletion && record.supervisor_completion_path !== void 0 && (typeof record.supervisor_completion_path !== "string" || record.supervisor_completion_path.trim().length === 0 || (0, import_node_fs5.existsSync)(record.supervisor_completion_path))) return null;
   if (options.allowSupervisorCompletion && record.supervisor_completion_path !== void 0 && (typeof record.supervisor_completion_path !== "string" || record.supervisor_completion_path.trim().length === 0)) return null;
   return identityMatches(record, attempt) && record.kind === "worker_launch_provider_started" && Number.isSafeInteger(record.pid) && record.pid > 0 && typeof record.process_start_identity === "string" && record.process_start_identity.trim().length > 0 && (record.containment_nonce === void 0 || isExactText(record.containment_nonce)) && typeof record.written_at === "string" && Number.isFinite(Date.parse(record.written_at)) ? record : null;
 }
@@ -10002,7 +10051,7 @@ async function awaitWorkerLaunchProviderStarted(attempt, options = {}) {
     }
     if ((await readJson(`${attempt.decisionPath}.retired`)).kind !== "absent" || (await readJson(`${attempt.startedPath}.terminal`)).kind !== "absent") return false;
     const completed = await readValidProviderStarted(attempt, { allowSupervisorCompletion: true });
-    if (completed?.supervisor_completion_path !== void 0 && (0, import_node_fs4.existsSync)(completed.supervisor_completion_path)) return false;
+    if (completed?.supervisor_completion_path !== void 0 && (0, import_node_fs5.existsSync)(completed.supervisor_completion_path)) return false;
     await sleep2(pollIntervalMs);
   }
   return false;
@@ -10011,7 +10060,7 @@ async function isWorkerLaunchProviderStarted(attempt) {
   return await readValidProviderStarted(attempt) !== null;
 }
 function isDeterministicTransportPath(expectedPath, candidate, fileName) {
-  return isExactText(candidate) && (0, import_node_path4.resolve)(candidate) === (0, import_node_path4.resolve)((0, import_node_path4.join)((0, import_node_path4.dirname)(expectedPath), fileName));
+  return isExactText(candidate) && (0, import_node_path5.resolve)(candidate) === (0, import_node_path5.resolve)((0, import_node_path5.join)((0, import_node_path5.dirname)(expectedPath), fileName));
 }
 function isValidBootstrapSpec(value, platform = process.platform) {
   if (!isValidIdentity(value)) return false;
@@ -10067,7 +10116,7 @@ function buildWindowsSupervisorInvocation(spec, sourceEnv = process.env) {
     identity: identityOf(spec),
     provider_argv: [...spec.provider_argv],
     provider_env: authorityEnv,
-    cwd: (0, import_node_path4.resolve)(spec.cwd)
+    cwd: (0, import_node_path5.resolve)(spec.cwd)
   });
   const payload = Buffer.from(JSON.stringify({
     canonical_json,
@@ -10077,7 +10126,7 @@ function buildWindowsSupervisorInvocation(spec, sourceEnv = process.env) {
     identity: identityOf(spec),
     provider_argv: [...spec.provider_argv],
     provider_env: env,
-    cwd: (0, import_node_path4.resolve)(spec.cwd)
+    cwd: (0, import_node_path5.resolve)(spec.cwd)
   }), "utf8").toString("base64");
   const systemRoot = env.SystemRoot;
   if (!systemRoot || !/^[A-Za-z]:\\/.test(systemRoot)) throw new Error("worker_launch_powershell_authority_missing");
@@ -10161,11 +10210,11 @@ async function materializeProviderSpawnInvocation(invocation, options = {}) {
     return { command: invocation.command, args: invocation.args, cleanup: async () => {
     } };
   }
-  const wrapperDir = await (0, import_promises8.mkdtemp)((0, import_node_path4.join)((0, import_node_os.tmpdir)(), "omc-provider-"));
+  const wrapperDir = await (0, import_promises8.mkdtemp)((0, import_node_path5.join)((0, import_node_os.tmpdir)(), "omc-provider-"));
   try {
-    const completionPath = superviseProcessTree ? (0, import_node_path4.join)(wrapperDir, "provider-exit.txt") : void 0;
+    const completionPath = superviseProcessTree ? (0, import_node_path5.join)(wrapperDir, "provider-exit.txt") : void 0;
     if (invocation.batchScript) {
-      const wrapperPath2 = (0, import_node_path4.join)(wrapperDir, "launch.cmd");
+      const wrapperPath2 = (0, import_node_path5.join)(wrapperDir, "launch.cmd");
       if (/[%"]/.test(wrapperPath2)) throw new Error("worker_launch_wrapper_path_invalid");
       const completionPayload = completionBinding ? completionRecordTemplate(completionBinding, "%_OMC_EXIT%") : "%_OMC_EXIT%";
       const completionScript2 = completionPath ? `set "_OMC_EXIT=%ERRORLEVEL%"\r
@@ -10187,7 +10236,7 @@ goto omc_hold\r
         }
       };
     }
-    const wrapperPath = (0, import_node_path4.join)(wrapperDir, "launch.sh");
+    const wrapperPath = (0, import_node_path5.join)(wrapperDir, "launch.sh");
     const quotedCompletion = `'${completionPath.replace(/'/g, `'"'"'`)}'`;
     const providerGate = gateProviderExecution ? "if ! IFS= read -r _omc_provider_release <&3; then exit 125; fi\nexec 3<&-\n" : "";
     const completionScript = completionBinding ? `printf '%s%s}\\n' ${quotePosixShellArgument(completionRecordTemplate(completionBinding, "").slice(0, -1))} "$_omc_exit" > ${quotedCompletion}
@@ -10680,7 +10729,7 @@ async function runWorkerLaunchBootstrap(value) {
         if (!spec.release_after_spawn) await new Promise((resolve21) => setTimeout(resolve21, 75));
         if (settled) return { completion };
       }
-      if (invocation.completionPath && (0, import_node_fs4.existsSync)(invocation.completionPath)) {
+      if (invocation.completionPath && (0, import_node_fs5.existsSync)(invocation.completionPath)) {
         const exitCode = await readProviderCompletionExitCode(
           invocation.completionPath,
           invocation.completionBinding
@@ -10708,7 +10757,7 @@ async function runWorkerLaunchBootstrap(value) {
       } catch {
         return cleanupProvider("provider_spawn_failed");
       }
-      if (invocation.completionPath && (0, import_node_fs4.existsSync)(invocation.completionPath)) {
+      if (invocation.completionPath && (0, import_node_fs5.existsSync)(invocation.completionPath)) {
         const exitCode = await readProviderCompletionExitCode(
           invocation.completionPath,
           invocation.completionBinding
@@ -10803,15 +10852,15 @@ async function runWorkerLaunchBootstrap(value) {
     return { outcome: "provider_spawn_failed" };
   }
 }
-var import_node_child_process2, import_node_crypto5, import_node_fs4, import_promises8, import_node_path4, import_node_os, import_node_zlib, WORKER_LAUNCH_SCHEMA_VERSION, DEFAULT_ACK_TIMEOUT_MS, DEFAULT_POLL_INTERVAL_MS, DEFAULT_DECISION_TIMEOUT_MS, WORKER_LAUNCH_TRANSPORT_OWNER_KIND, WORKER_LAUNCH_TRANSPORT_CLEANUP_KIND, WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE, WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV, WORKER_LAUNCH_INTERNAL_ENV_KEYS, WORKER_LAUNCH_AUTHORITY_PROTOCOL, WINDOWS_SUPERVISOR_PROTOCOL, WINDOWS_RESERVED_ENV_KEYS, SAFE_BASELINE_ENV_KEYS, WINDOWS_BASELINE_ENV_KEYS, PROVIDER_PASSTHROUGH_CREDENTIALS, DECIMAL_INTEGER_TEXT, WINDOWS_PROVIDER_LINE_MAX, PROVIDER_LINE_VAR;
+var import_node_child_process2, import_node_crypto5, import_node_fs5, import_promises8, import_node_path5, import_node_os, import_node_zlib, WORKER_LAUNCH_SCHEMA_VERSION, DEFAULT_ACK_TIMEOUT_MS, DEFAULT_POLL_INTERVAL_MS, DEFAULT_DECISION_TIMEOUT_MS, WORKER_LAUNCH_TRANSPORT_OWNER_KIND, WORKER_LAUNCH_TRANSPORT_CLEANUP_KIND, WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE, WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV, WORKER_LAUNCH_INTERNAL_ENV_KEYS, WORKER_LAUNCH_AUTHORITY_PROTOCOL, WINDOWS_SUPERVISOR_PROTOCOL, WINDOWS_RESERVED_ENV_KEYS, SAFE_BASELINE_ENV_KEYS, WINDOWS_BASELINE_ENV_KEYS, PROVIDER_PASSTHROUGH_CREDENTIALS, DECIMAL_INTEGER_TEXT, WINDOWS_PROVIDER_LINE_MAX, PROVIDER_LINE_VAR;
 var init_worker_launch_ack = __esm({
   "src/team/worker-launch-ack.ts"() {
     "use strict";
     import_node_child_process2 = require("node:child_process");
     import_node_crypto5 = require("node:crypto");
-    import_node_fs4 = require("node:fs");
+    import_node_fs5 = require("node:fs");
     import_promises8 = require("node:fs/promises");
-    import_node_path4 = require("node:path");
+    import_node_path5 = require("node:path");
     import_node_os = require("node:os");
     init_process_utils();
     init_types3();
@@ -11181,20 +11230,20 @@ function parseRecoveryIntent(raw) {
 function resolveRuntimeCliPath() {
   if (process.env.OMC_RUNTIME_CLI_PATH) return process.env.OMC_RUNTIME_CLI_PATH;
   if (typeof __dirname !== "undefined" && __dirname) {
-    return (0, import_node_path5.basename)(__dirname) === "bridge" ? (0, import_node_path5.join)(__dirname, "runtime-cli.cjs") : (0, import_node_path5.join)(__dirname, "../../bridge/runtime-cli.cjs");
+    return (0, import_node_path6.basename)(__dirname) === "bridge" ? (0, import_node_path6.join)(__dirname, "runtime-cli.cjs") : (0, import_node_path6.join)(__dirname, "../../bridge/runtime-cli.cjs");
   }
   const entry = process.argv[1];
-  if (entry && (0, import_node_path5.basename)(entry) === "runtime-cli.cjs") return entry;
+  if (entry && (0, import_node_path6.basename)(entry) === "runtime-cli.cjs") return entry;
   throw new Error("runtime_owner_bootstrap_path_unavailable");
 }
 function setRuntimeOwnerDispatch(dispatch) {
   installedRecoveryOwnerDispatch = dispatch;
 }
-var import_node_path5, installedRecoveryOwnerDispatch;
+var import_node_path6, installedRecoveryOwnerDispatch;
 var init_runtime_owner_client = __esm({
   "src/team/runtime-owner-client.ts"() {
     "use strict";
-    import_node_path5 = require("node:path");
+    import_node_path6 = require("node:path");
     init_recovery_request_store();
     init_state_paths();
     init_team_instance();
@@ -15715,7 +15764,7 @@ function parseCheckpoint(value) {
   return checkpoint;
 }
 function checkpointSequenceFromPath(path5) {
-  const match = /^(\d+)\.json$/.exec((0, import_node_path6.basename)(path5));
+  const match = /^(\d+)\.json$/.exec((0, import_node_path7.basename)(path5));
   if (!match) return null;
   const sequence = Number(match[1]);
   return Number.isSafeInteger(sequence) && sequence > 0 ? sequence : null;
@@ -15733,7 +15782,7 @@ async function readCheckpoint(path5) {
 async function selectTaskRecoveryCheckpoint(teamName, task, cwd) {
   if (!task.owner || !task.claim) return { ok: false, error: "stale" };
   const root = absPath(cwd, TeamPaths.checkpoints(teamName, task.id, taskRecoveryClaimTokenHash(task.claim.token)));
-  if (!(0, import_node_fs5.existsSync)(root)) return { ok: false, error: "missing" };
+  if (!(0, import_node_fs6.existsSync)(root)) return { ok: false, error: "missing" };
   let names;
   try {
     names = await (0, import_promises12.readdir)(root);
@@ -15756,16 +15805,16 @@ async function selectTaskRecoveryCheckpoint(teamName, task, cwd) {
 }
 async function readTaskRecoveryCheckpoint(path5) {
   const checkpoint = await readCheckpoint(path5);
-  return checkpoint ? { ok: true, checkpoint, path: path5 } : { ok: false, error: (0, import_node_fs5.existsSync)(path5) ? "malformed" : "missing" };
+  return checkpoint ? { ok: true, checkpoint, path: path5 } : { ok: false, error: (0, import_node_fs6.existsSync)(path5) ? "malformed" : "missing" };
 }
-var import_node_crypto6, import_node_fs5, import_promises12, import_node_path6, MAX_TASK_RECOVERY_CHECKPOINT_BYTES;
+var import_node_crypto6, import_node_fs6, import_promises12, import_node_path7, MAX_TASK_RECOVERY_CHECKPOINT_BYTES;
 var init_task_recovery_checkpoint = __esm({
   "src/team/task-recovery-checkpoint.ts"() {
     "use strict";
     import_node_crypto6 = require("node:crypto");
-    import_node_fs5 = require("node:fs");
+    import_node_fs6 = require("node:fs");
     import_promises12 = require("node:fs/promises");
-    import_node_path6 = require("node:path");
+    import_node_path7 = require("node:path");
     init_state_paths();
     MAX_TASK_RECOVERY_CHECKPOINT_BYTES = 64 * 1024;
   }
@@ -15783,11 +15832,11 @@ function normalizeTaskId(taskId) {
 }
 function canonicalTaskFilePath(teamName, taskId, cwd) {
   const normalizedTaskId = normalizeTaskId(taskId);
-  return (0, import_node_path7.join)(absPath(cwd, TeamPaths.tasks(teamName)), `task-${normalizedTaskId}.json`);
+  return (0, import_node_path8.join)(absPath(cwd, TeamPaths.tasks(teamName)), `task-${normalizedTaskId}.json`);
 }
 function legacyTaskFilePath(teamName, taskId, cwd) {
   const normalizedTaskId = normalizeTaskId(taskId);
-  return (0, import_node_path7.join)(absPath(cwd, TeamPaths.tasks(teamName)), `${normalizedTaskId}.json`);
+  return (0, import_node_path8.join)(absPath(cwd, TeamPaths.tasks(teamName)), `${normalizedTaskId}.json`);
 }
 function taskFileCandidates(teamName, taskId, cwd) {
   const canonical = canonicalTaskFilePath(teamName, taskId, cwd);
@@ -15796,7 +15845,7 @@ function taskFileCandidates(teamName, taskId, cwd) {
 }
 async function writeAtomic2(path5, data) {
   const tmp = `${path5}.${process.pid}.${(0, import_node_crypto7.randomUUID)()}.tmp`;
-  await (0, import_promises13.mkdir)((0, import_node_path7.dirname)(path5), { recursive: true });
+  await (0, import_promises13.mkdir)((0, import_node_path8.dirname)(path5), { recursive: true });
   try {
     await (0, import_promises13.writeFile)(tmp, data, "utf8");
     const { rename: rename8 } = await import("node:fs/promises");
@@ -15817,7 +15866,7 @@ async function writeAtomic2(path5, data) {
 }
 async function readJsonSafe2(path5) {
   try {
-    if (!(0, import_node_fs6.existsSync)(path5)) return null;
+    if (!(0, import_node_fs7.existsSync)(path5)) return null;
     const raw = await (0, import_promises13.readFile)(path5, "utf8");
     return JSON.parse(raw);
   } catch {
@@ -15917,7 +15966,7 @@ async function withLock(lockPath, fn) {
   }
 }
 async function withTaskClaimLock(teamName, taskId, cwd, fn) {
-  const lockDir = (0, import_node_path7.join)(teamDir(teamName, cwd), "tasks", `.lock-${normalizeTaskId(taskId)}`);
+  const lockDir = (0, import_node_path8.join)(teamDir(teamName, cwd), "tasks", `.lock-${normalizeTaskId(taskId)}`);
   return withLock(lockDir, fn);
 }
 function configFromManifest2(manifest) {
@@ -15973,7 +16022,7 @@ async function teamReadConfig(teamName, cwd) {
     teamReadManifest(teamName, cwd),
     readJsonSafe2(configPath)
   ]);
-  if (!config && (0, import_node_fs6.existsSync)(configPath)) throw new Error("invalid_persisted_state");
+  if (!config && (0, import_node_fs7.existsSync)(configPath)) throw new Error("invalid_persisted_state");
   if (config && !isValidPersistedMaxWorkers(config.max_workers)) throw new Error("invalid_persisted_state");
   if (config && Array.isArray(config.agentTypes)) {
     const agentTypes = config.agentTypes;
@@ -15988,13 +16037,13 @@ async function teamReadConfig(teamName, cwd) {
   if (config && typeof config.state_revision === "number" && Number.isSafeInteger(config.state_revision)) {
     return canonicalizeTeamConfigWorkers(config);
   }
-  if (!manifest && (0, import_node_fs6.existsSync)(manifestPath)) throw new Error("invalid_persisted_state");
+  if (!manifest && (0, import_node_fs7.existsSync)(manifestPath)) throw new Error("invalid_persisted_state");
   return mergeTeamConfigSources(config, manifest);
 }
 async function teamReadManifest(teamName, cwd) {
   const manifestPath = absPath(cwd, TeamPaths.manifest(teamName));
   const manifest = await readJsonSafe2(manifestPath);
-  if (!manifest && (0, import_node_fs6.existsSync)(manifestPath)) throw new Error("invalid_persisted_state");
+  if (!manifest && (0, import_node_fs7.existsSync)(manifestPath)) throw new Error("invalid_persisted_state");
   return manifest ? normalizeTeamManifest(manifest) : null;
 }
 async function teamReadTask(teamName, taskId, cwd) {
@@ -16048,7 +16097,7 @@ function recoveryTransitionDeps(teamName, cwd, launchAttemptId) {
     ...launchAttemptId ? { launchAttemptId } : {},
     readRecoverySidecar: async (tn, recoveryId, tid, c) => {
       const path5 = absPath(c, TeamPaths.taskRecoverySidecar(tn, recoveryId, tid));
-      if (!(0, import_node_fs6.existsSync)(path5)) return null;
+      if (!(0, import_node_fs7.existsSync)(path5)) return null;
       try {
         return JSON.parse(await (0, import_promises13.readFile)(path5, "utf8"));
       } catch {
@@ -16075,7 +16124,7 @@ async function teamAppendEvent(teamName, event, cwd) {
     ...event
   };
   const p = absPath(cwd, TeamPaths.events(teamName));
-  await (0, import_promises13.mkdir)((0, import_node_path7.dirname)(p), { recursive: true });
+  await (0, import_promises13.mkdir)((0, import_node_path8.dirname)(p), { recursive: true });
   await (0, import_promises13.appendFile)(p, `${JSON.stringify(full)}
 `, "utf8");
   return full;
@@ -16128,7 +16177,7 @@ async function teamReadMonitorSnapshot(teamName, cwd) {
 async function teamWriteMonitorSnapshot(teamName, snapshot, cwd) {
   const p = absPath(cwd, TeamPaths.monitorSnapshot(teamName));
   if (!isMonitorSnapshotState(snapshot)) throw persistedStateError(p, "schema");
-  const lockPath = (0, import_node_path7.join)(teamDir(teamName, cwd), ".monitor-snapshot.lock");
+  const lockPath = (0, import_node_path8.join)(teamDir(teamName, cwd), ".monitor-snapshot.lock");
   await withProcessIdentityFileLock(lockPath, async () => {
     const currentState = await readPersistedJson(p);
     const current = currentState.kind === "value" && isMonitorSnapshotState(currentState.value) ? currentState.value : null;
@@ -16142,7 +16191,7 @@ async function teamWriteMonitorSnapshot(teamName, snapshot, cwd) {
 async function teamMarkTaskCompleted(teamName, taskId, cwd) {
   const normalizedTaskId = normalizeTaskId(taskId);
   const p = absPath(cwd, TeamPaths.monitorSnapshot(teamName));
-  const lockPath = (0, import_node_path7.join)(teamDir(teamName, cwd), ".monitor-snapshot.lock");
+  const lockPath = (0, import_node_path8.join)(teamDir(teamName, cwd), ".monitor-snapshot.lock");
   await withProcessIdentityFileLock(lockPath, async () => {
     const state = await readPersistedJson(p);
     const current = state.kind === "value" && isMonitorSnapshotState(state.value) ? state.value : null;
@@ -16165,14 +16214,14 @@ async function teamMarkTaskCompleted(teamName, taskId, cwd) {
     await writeAtomic2(p, JSON.stringify(next, null, 2));
   }, 5e3);
 }
-var import_node_crypto7, import_node_fs6, import_promises13, import_node_path7, WIN32_RENAME_RETRY_CODES, WIN32_RENAME_RETRY_DELAYS_MS;
+var import_node_crypto7, import_node_fs7, import_promises13, import_node_path8, WIN32_RENAME_RETRY_CODES, WIN32_RENAME_RETRY_DELAYS_MS;
 var init_team_ops = __esm({
   "src/team/team-ops.ts"() {
     "use strict";
     import_node_crypto7 = require("node:crypto");
-    import_node_fs6 = require("node:fs");
+    import_node_fs7 = require("node:fs");
     import_promises13 = require("node:fs/promises");
-    import_node_path7 = require("node:path");
+    import_node_path8 = require("node:path");
     init_state_paths();
     init_governance();
     init_governance();
@@ -16306,44 +16355,6 @@ var init_mcp_comm = __esm({
     init_state_paths();
     init_process_identity_lock();
     init_swallowed_error();
-  }
-});
-
-// src/utils/windows-search.ts
-function envValue(env, name) {
-  const key = Object.keys(env).find((k) => k.toUpperCase() === name);
-  const value = key === void 0 ? void 0 : env[key];
-  return typeof value === "string" && value.trim() !== "" ? value : void 0;
-}
-function findOnPath(name, env, platform, exists = isFile) {
-  const P = platform === "win32" ? import_node_path8.win32 : import_node_path8.posix;
-  const exts = platform === "win32" ? (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean) : [""];
-  const inNodeModules = platform === "win32" ? /(^|[\\/])node_modules([\\/]|$)/i : /(^|\/)node_modules(\/|$)/;
-  for (const raw of (envValue(env, "PATH") ?? "").split(P.delimiter)) {
-    const dir = raw.trim().replace(/^"(.*)"$/, "$1");
-    if (!dir || !P.isAbsolute(dir) || inNodeModules.test(dir)) continue;
-    for (const ext of exts) if (exists(P.join(dir, name + ext))) return P.join(dir, name + ext);
-  }
-  return null;
-}
-function resolveBareExe(cmd, env = process.env) {
-  if (process.platform !== "win32" || /[\\/:]/.test(cmd)) return cmd;
-  const pathext = (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter((e) => e && !/^\.(cmd|bat)$/i.test(e)).join(";") || ".COM;.EXE";
-  return findOnPath(cmd, { ...env, PATHEXT: pathext }, "win32");
-}
-var import_node_fs7, import_node_path8, isFile;
-var init_windows_search = __esm({
-  "src/utils/windows-search.ts"() {
-    "use strict";
-    import_node_fs7 = require("node:fs");
-    import_node_path8 = require("node:path");
-    isFile = (p) => {
-      try {
-        return (0, import_node_fs7.statSync)(p).isFile();
-      } catch {
-        return false;
-      }
-    };
   }
 });
 
@@ -27142,6 +27153,7 @@ __export(runtime_cli_exports, {
   writeResultArtifact: () => writeResultArtifact
 });
 module.exports = __toCommonJS(runtime_cli_exports);
+init_windows_search();
 var import_node_crypto12 = require("node:crypto");
 var import_fs44 = require("fs");
 var import_promises20 = require("fs/promises");
@@ -27725,6 +27737,7 @@ init_team_owner_epoch();
 init_team_instance();
 init_tmux_session();
 init_tmux_session();
+hardenWindowsExeSearch();
 function normalizeRuntimeInstanceId(value) {
   return isValidTeamInstanceId(value) ? value.toLowerCase() : null;
 }
