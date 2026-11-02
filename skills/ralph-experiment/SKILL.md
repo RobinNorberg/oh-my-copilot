@@ -77,10 +77,9 @@ Require a clean tree before starting: `git status --porcelain` must print nothin
 
 Then:
 a. Create experiment branch: `git checkout -b experiment/{tag}` from current HEAD. For multi-repo work, use `git worktree add -b experiment/{tag} <path>` in each repo instead of `git checkout -b`, so every repo gets its own branch without disturbing its main checkout (see Rollback_Safety)
-b. Record each repo's start commit (`git rev-parse HEAD`) as `start`, a `{repo: hash}` map, for each experiment before its first commit
-c. Initialize `experiment-notebook.json` in `.omg/` at the workspace/root where the loop is driven, or at a custom path the user gives (see schema below)
-d. Run the measurement command to establish **baseline metrics**
-e. Record baseline in the notebook
+b. Initialize `experiment-notebook.json` in `.omg/` at the workspace/root where the loop is driven, or at a custom path the user gives (see schema below)
+c. Run the measurement command to establish **baseline metrics**
+d. Record baseline in the notebook
 
 ## Step 2: HYPOTHESIZE
 
@@ -120,6 +119,8 @@ TeamCreate(name="exp-{N}", members=["executor-1", "executor-2", "tester-3"])
 ```
 
 **Adaptive escalation**: If a single executor fails due to implementation complexity (not wrong hypothesis), retry with a team. Track `escalated: true` in the notebook.
+
+Before the first `git add` of each experiment, record each repo's full `git rev-parse HEAD` as this experiment's `start` (a `{repo: hash}` map).
 
 After implementation, commit the changes (run each command separately in PowerShell 5.1). Stage only the files the experiment touched, by pathspec -- never `git add -A` or `git add .`:
 ```
@@ -185,9 +186,11 @@ Compare metrics to:
 
 **On DISCARD:**
 ```bash
-git revert --no-edit {start}..HEAD   # Safe default; keeps history; undoes every commit of this experiment (crash-fix re-commits included)
+git -C <repo> revert --no-edit {start[repo]}..HEAD   # Safe default; keeps history; undoes every commit of this experiment (crash-fix re-commits included)
 ```
-`git reset --hard {start}` is allowed only when ALL of these checks pass (condition 1 = check 1, condition 2 = check 2, condition 3 = checks 3a-3c). A check that errors, cannot be run, or gives any result other than the one stated counts as a fail: use `git revert`. Run each command separately (PowerShell 5.1 has no `&&`; quote `'@{u}'` there):
+Do this per repo the experiment touched, and skip a repo whose `start` equals HEAD (revert exits 128 on an empty range).
+
+`git reset --hard {start[repo]}` is allowed in a repo only when ALL of these checks pass in that repo (condition 1 = check 1, condition 2 = check 2, condition 3 = checks 3a-3c). Run the checks in each repo and reset only the repos where every check passes; revert the others. A check that errors, cannot be run, or gives any result other than the one stated counts as a fail: use `git revert`. Run each command separately (PowerShell 5.1 has no `&&`; quote `'@{u}'` there, and read exit codes from `$LASTEXITCODE`):
 ```bash
 git branch --show-current                                                # 1: must print exactly experiment/{tag}, the branch Step 1 created
 git status --porcelain                                                   # 2: must print nothing (clean tree)
@@ -248,7 +251,7 @@ Then run `/cancel` for clean state cleanup.
 <Rollback_Safety>
 - `git reset --hard` is allowed only when the current branch is the `experiment/{tag}` branch Step 1 created, `git status --porcelain` is empty, and the branch has never been pushed or checked out in another worktree (checks 1-3c in Step 5). Any check that errors or cannot be run counts as a fail. Otherwise use `git revert`
 - Stage by pathspec only, so a revert or reset never touches unrelated work
-- Multi-repo work: one `experiment/{tag}` branch or `git worktree` per repo, with the per-repo `start` and `commit` recorded in the notebook (both are `{repo: hash}` maps); discard reverts every repo the experiment touched
+- Multi-repo work: one `experiment/{tag}` branch or `git worktree` per repo, with the per-repo `start` and `commit` recorded in the notebook (both are `{repo: hash}` maps); discard reverts every repo the experiment touched (`git -C <repo> revert --no-edit {start[repo]}..HEAD`), and resets only the repos where every Step 5 check passes
 - Non-code (runtime/infra) hypotheses: record the exact change and rollback command in the notebook first, and roll back by running it, not by git
 </Rollback_Safety>
 
@@ -281,7 +284,7 @@ Then run `/cancel` for clean state cleanup.
       "rationale": "string — why this should work",
       "changes": ["file1.ts", "setting=value"],
       "rollback": "string | null — rollback command for non-code changes",
-      "start": { "<repo-name>": "<7-char hash>" },
+      "start": { "<repo-name>": "<full hash>" },
       "commit": { "<repo-name>": "<7-char hash>" },
       "status": "keep|discard|modify|crash|in_progress",
       "escalated": false,
@@ -339,7 +342,7 @@ but worse than EXP-001's 170)
 Decision: DISCARD (does not improve on current best)
 Learnings: "Lock-free queue adds overhead for small batch sizes.
 Contention is not the bottleneck — I/O is."
-git revert --no-edit HEAD
+git revert --no-edit {start}..HEAD
 ```
 Why good: Reverted cleanly, captured specific learning that informs future hypotheses.
 </Good>
