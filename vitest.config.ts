@@ -2,8 +2,39 @@ import { availableParallelism } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import { IS_WIN, TIMING_SCALE } from './src/__tests__/helpers/platform.js';
+import DurationSequencer from './scripts/ci/duration-sequencer.mjs';
+
+const INCLUDE = [
+  'src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
+  'tests/**/*.bench.ts',
+  'tests/**/*.{test,spec}.ts',
+];
+// tests/live/** drives real host binaries; run it with `npm run test:live`.
+const EXCLUDE = ['node_modules', 'dist', '.omc', 'tests/live/**'];
+// Wall-time budget tests: they assert run.cjs's production cushions (500 ms
+// Windows inner timeout, fail-closed SessionEnd budgets, grandchild reap
+// deadlines) and miss them when the parallel suite loads the host. They run
+// one file at a time after the `main` project (groupOrder 1) instead of
+// widening those budgets.
+const SERIAL_BUDGET = [
+  'src/__tests__/run-cjs-graceful-fallback.test.ts',
+  'src/__tests__/run-cjs-windows-stdio-contract.test.ts',
+  'src/__tests__/run-cjs-generic-timeout.test.ts',
+  'src/__tests__/run-cjs-session-end-budget.test.ts',
+  'src/__tests__/session-end-process-exit.test.ts',
+  'src/__tests__/windows-prompt-hook-runner.test.ts',
+  'tests/integration/git-guardrails-hook.test.ts',
+];
 
 export default defineConfig({
+  // Vitest applies a CLI `--exclude` (the `tests/perf/**` in `npm test` and
+  // `omg release`) only to the root config, not to projects; hand it on.
+  plugins: [{
+    name: 'omg:cli-exclude-to-projects',
+    configureVitest({ vitest, project }) {
+      project.config.exclude.push(...(vitest.config.cliExclude ?? []));
+    },
+  }],
   test: {
     globals: true,
     environment: 'node',
@@ -17,6 +48,9 @@ export default defineConfig({
       hookTimeout: 10000 * TIMING_SCALE,
       maxWorkers: Math.min(16, Math.max(1, availableParallelism() - 1)),
     } : {}),
+    // CI shards (`--shard=<i>/<n>`) split by measured file duration; the
+    // order inside a run stays vitest's own.
+    sequence: { sequencer: DurationSequencer },
     setupFiles: ['src/__tests__/setup/clear-copilot-home.ts', 'src/__tests__/setup/stub-skill-list-probe.ts'],
     globalSetup: ['src/__tests__/setup/global-state-guard.ts'],
     // Test-only seams (for example the conditional-clear replacement hooks in
@@ -26,13 +60,21 @@ export default defineConfig({
       NODE_ENV: 'test',
     },
 
-    include: [
-      'src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
-      'tests/**/*.bench.ts',
-      'tests/**/*.{test,spec}.ts',
+    // Two projects partition the suite: every file belongs to exactly one, so
+    // `npm test` and each CI shard still run it once.
+    projects: [
+      { extends: true, test: { name: 'main', include: INCLUDE, exclude: [...EXCLUDE, ...SERIAL_BUDGET] } },
+      {
+        extends: true,
+        test: {
+          name: 'serial-budget',
+          include: SERIAL_BUDGET,
+          exclude: EXCLUDE,
+          fileParallelism: false,
+          sequence: { groupOrder: 1 },
+        },
+      },
     ],
-    // tests/live/** drives real host binaries; run it with `npm run test:live`.
-    exclude: ['node_modules', 'dist', '.omc', 'tests/live/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

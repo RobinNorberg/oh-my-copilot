@@ -16,8 +16,9 @@ import { join, resolve } from 'path';
 import { createInterface } from 'readline/promises';
 import { loadTrustedShipConfig, userConfigLayers } from '../../ship/config.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
-import { parseReleaseVersion } from '../../release/checks.js';
-import { defaultReleaseExec, flakyCandidatesPath, isPhaseId, PHASES, readReleaseState, runRelease, UsageError, } from '../../release/engine.js';
+import { resolveBareExe } from '../../utils/windows-search.js';
+import { parseReleaseVersion, suiteShellFor } from '../../release/checks.js';
+import { defaultReleaseExec, defaultReleaseExecAsync, flakyCandidatesPath, isPhaseId, PHASES, readReleaseState, runRelease, UsageError, } from '../../release/engine.js';
 import { emitReleaseProgress, releaseProgressFile } from '../../release/progress.js';
 import { defaultDriveProcess, detachDriver, driveLockPath, driveLogPath, driveRelease, DRIVE_MAX_HOURS, lastLines, readDriveLock, stopDriver, throttleHeartbeats, withDriveLock, } from '../../release/drive.js';
 function phaseOption(raw, flag) {
@@ -144,6 +145,14 @@ export function releaseCommand(overrides = {}) {
             const stateRoot = overrides.stateRoot ?? getOmcRoot(root);
             const deps = {
                 exec,
+                // A scripted exec (tests) runs the suite through itself too, with no PATH check.
+                execAsync: overrides.execAsync ?? (overrides.exec ? undefined : defaultReleaseExecAsync),
+                suiteShell: overrides.suiteShell ?? (overrides.exec ? undefined : () => {
+                    // An absolute git: a bare name may resolve in the cwd on Node 20 (see resolveBareExe).
+                    const gitExe = process.platform === 'win32' ? resolveBareExe('git') : null;
+                    const git = gitExe ? exec(gitExe, ['--exec-path']) : null;
+                    return suiteShellFor(process.platform, process.env, existsSync, git?.status === 0 && git.stdout.trim() ? git.stdout : null);
+                }),
                 root,
                 stateRoot,
                 node: overrides.node ?? process.execPath,

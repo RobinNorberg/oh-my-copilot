@@ -24,7 +24,12 @@
  *   smoke      live Tier 2 smoke, only with --live-smoke; after the suite so
  *              a red suite costs no AI credits. A green smoke is reused while
  *              HEAD's smoke inputs hash the same (lastSmoke; --force-smoke runs)
- *   pr         push, PR to dev, CI gate (ship merge rule), admin merge
+ *   pr         push, PR to dev, CI gate (ship merge rule), admin merge. When
+ *              a run selects suite (or smoke) and pr, pr starts before them:
+ *              the PR is pushed and its CI watched while the suite runs
+ *              (execAsync), and the merge waits until the suite and smoke
+ *              passed; a failure there ends the CI wait and leaves the PR
+ *              open and unmerged. --to suite / smoke never pushes
  *   promote    PR dev -> main, same gate, merge
  *   tag        annotated v<v> on main's merge commit, verified, pushed (--yes)
  *   verify     tag run green, npm version / latest / provenance, GitHub Release
@@ -41,7 +46,7 @@
  */
 import { type LoadedShipConfig } from '../ship/config.js';
 import { type Exec, type ExecOptions, type ExecResult } from '../ship/exec.js';
-import { type TriageResult } from './checks.js';
+import { type SuiteShell, type TriageResult } from './checks.js';
 import type { ReleaseProgressInput } from './progress.js';
 export declare const PHASES: readonly ["preflight", "bump", "build", "gates", "commit", "suite", "smoke", "pr", "promote", "tag", "verify"];
 export type PhaseId = (typeof PHASES)[number];
@@ -108,6 +113,9 @@ export declare class UsageError extends Error {
 export type ReleaseExec = (cmd: string, args: string[], opts?: ReleaseExecOptions) => ExecResult;
 /** Files the release prose lives in; uncommitted edits to them are folded into the release commit. */
 export declare const PROSE_FILES: string[];
+/** An async ReleaseExec: the suite runs through it so the release PR's CI can be watched meanwhile. */
+export type ReleaseExecAsync = (cmd: string, args: string[], opts?: ReleaseExecOptions) => Promise<ExecResult>;
+export declare const defaultReleaseExecAsync: ReleaseExecAsync;
 export declare const defaultReleaseExec: ReleaseExec;
 /** The ship config for a PR's base (omg ship's loader: user config + the base's committed config). */
 export type ReleaseShipConfigLoader = (ctx: {
@@ -149,6 +157,10 @@ export interface ReleaseOptions {
 }
 export interface ReleaseDeps {
     exec: ReleaseExec;
+    /** The suite's vitest runs; omitted: `exec` (the suite then holds the event loop, so CI is watched only between its runs). */
+    execAsync?: ReleaseExecAsync;
+    /** Env for the suite's children (Windows: Git for Windows bash first on PATH), or why the suite must not start. */
+    suiteShell?: () => SuiteShell;
     /** Repo root (the release checkout). */
     root: string;
     /** `<state root>` (getOmcRoot): holds release/<version>.json. */
