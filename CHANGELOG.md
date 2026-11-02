@@ -4,9 +4,14 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Tests
+
+- **The longest factory test files are split** (fast release suite, PR A). Tests inside a file run serially, so the local release suite's wall time was the longest single file: `prepare-gates.test.ts` (2,094 s in the 5.19.4 suite), `engine.test.ts` (1,156 s), `epic-3698-closure-verifier.test.ts` (972 s) and the `engine.ado`, `engine.outcome`, `engine.progress` and `engine.sandbox` files (440-705 s). They are now 24 files along describe and test boundaries: `prepare-gates` and `engine.test` into 5, `epic-3698-closure-verifier` into 4, `engine.ado` and `engine.progress` into 3, `engine.outcome` and `engine.sandbox` into 2. On the 5.19.4 per-test durations, the largest new file is 515 s (`prepare-gates.crash`). Shared setup lives in one harness module per family (`engine-harness.ts`, `prepare-gates-harness.ts`, `engine-{ado,outcome,progress,sandbox}-harness.ts`, `tests/integration/epic-3698-fixtures.ts`). Test count (266) and full titles are unchanged, and so are assertions, timeouts and budgets. `.github/ci/test-durations.json` splits each old file's Linux duration over its new files in proportion to their 5.19.4 local per-test time.
+
 ### Security
 
 - **Windows: no omg process runs an executable planted in the project folder** (port of upstream #4768, issue #4767). Windows looks up a bare command name (`git`, `npm`, `gh`, `claude`) in the current directory before `PATH`, so a `git.exe` or `git.cmd` committed to a repository could run when omg spawned the real tool there. v5.19.3 hardened the `omg` bin, the Copilot hook dispatcher and adapter, the setup scripts, the factory/ship runner and sandboxed Copilot jobs; this port extends it process-wide: the CLI and team bundles, `scripts/run.cjs` (every Copilot and Claude Code hook), the MCP servers, the team runtime and bridge, the HUD, the CLAUDE.md coordinator, the scripts skills run (`cleanup-orphans`, `repair-plugin-cache`, `shipyard-audit`, `workflow-drift-guard`, `run-provider-advisor`, self-improve's `resolve-paths`) and every installed standalone hook (`templates/hooks/*.mjs`, through a new `templates/hooks/lib/windows-search.mjs`) now set `NoDefaultCurrentDirectoryInExePath=1` before anything spawns. Allowlisted child environments (graph command and agent nodes, session-end workers, the rate-limit and reply-listener daemons) carry it through `childEnv()`, and the native Windows `omg launch` pane command sets it before its `where` check. libuv honours the variable for no-shell spawns only from 1.48 (Node 22); on Node 20 the fork's `resolveBareExe()` callers keep resolving against absolute `PATH` entries, and `cmd.exe` routes are closed on every version. This closes the gap v5.19.3 left open for the `omg-cli` entry, `scripts/run.cjs`, the MCP servers, the team runtime and the HUD.
+
 ### Fixed
 
 - **`omg release` pooled triage, over-cap file reruns and the outside-load note.** v5.19.4's triage reran 16 titles one at a time (about 18 min). Triage reruns now run 3 at a time, never two titles of one file at once; a title that passes every pooled rerun is load-flaky, and one that fails a pooled rerun gets the usual `--triage-runs` serial reruns alone, which decide real / mixed / load-flaky as before (a pass is never easier to get). More than 20 new failing titles no longer fail the phase: their files are rerun as a whole (pooled), up to `--triage-runs` times; a title passing every file rerun is load-flaky (`passed 3/3 whole-file reruns`), the rest are triaged (still more than 20: fail), and a resume keeps the file-rerun verdicts. A timed-out rerun, and every suite child on a stop, is killed with its process tree, and the process listing runs asynchronously through an absolute Windows PowerShell path. The 5-min suite and triage heartbeats end with `outside load: N node process(es), V vitest` (processes outside the release's own tree), and outside vitest processes at suite start log a warning (never block); the release runbook gains a Quiet window section.
@@ -676,7 +681,6 @@ release was published without the live Copilot smoke (the account's Copilot
 quota is exhausted); the token-only CI path for SDK workers, where the
 Copilot token now reaches the session over RPC, is covered by unit tests
 only so far.
-
 
 ### Fixed
 
