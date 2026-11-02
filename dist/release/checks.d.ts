@@ -47,12 +47,28 @@ export declare function failingTitlesFromVitestJson(text: string): string[];
 export declare function parseBaselineTitles(text: string): string[];
 /** Failing titles absent from the baseline (the suite gate fails only on these). */
 export declare function newFailures(failing: readonly string[], baseline: readonly string[]): string[];
-/** More new failing titles than this are a real failure: no isolated reruns. */
-export declare const TRIAGE_CAP = 20;
 /**
- * `real`: failed every isolated rerun (or a file-level collection error);
+ * More new failing titles than this are not triaged title by title: their
+ * files are rerun once each as a whole (pooled), and only the titles still
+ * failing there are triaged, again at most this many.
+ */
+export declare const TRIAGE_CAP = 20;
+/** Triage reruns running at once (never two of one file: a file's tests share fixtures). */
+export declare const TRIAGE_POOL = 3;
+/**
+ * Node processes outside the release's own process tree (itself, its
+ * ancestors and its descendants), and how many of those run vitest, from
+ * `<pid> <ppid> <command line>` lines. Null for an empty listing (unknown).
+ */
+export declare function outsideNodeLoad(listing: string, selfPid: number): {
+    node: number;
+    vitest: number;
+} | null;
+/**
+ * `real`: failed every isolated rerun;
  * `load-flaky`: passed every isolated rerun (fails only under suite load, does not block);
  * `mixed`: failed some isolated reruns (may be a real race, blocks).
+ * A file-level failure (setup or collection error, no failing title) reruns as the whole file.
  */
 export type TriageClass = 'real' | 'load-flaky' | 'mixed';
 export interface TriageResult {
@@ -62,15 +78,24 @@ export interface TriageResult {
     runs: number;
     passes: number;
     class: TriageClass;
+    /** Over the triage cap: the passes were reruns of the whole file, not of the title alone. */
+    wholeFile?: boolean;
+    /** The pooled rerun (1-based) that failed before the serial isolated reruns decided. */
+    pooledFailure?: number;
 }
-/** The test file and full title of a failing-title line; `name` is null for a file-level collection error. */
+/** A triage verdict as a detail line: `<class>: <title> (<evidence>)`. */
+export declare function triageLine(t: TriageResult): string;
+/** The test file and full title of a failing-title line; `name` is null for a file-level failure (setup or collection error). */
 export declare function splitFailingTitle(line: string): {
     file: string;
     name: string | null;
 };
-export declare function classifyTriage(runs: number, passes: number, collectionError?: boolean): TriageClass;
+/** Throws without a rerun: no evidence is no verdict ("passed 0/0" is never real). */
+export declare function classifyTriage(runs: number, passes: number): TriageClass;
 /** Whether a vitest JSON report has the test `name` in `file`, and it passed. */
 export declare function testPassedInReport(text: string, file: string, name: string): boolean;
+/** Whether a vitest JSON report has `file`, passed as a whole: at least one test passed and none failed. */
+export declare function filePassedInReport(text: string, file: string): boolean;
 /**
  * `.github/known-flaky-tests.json` entries (file, title, note) plus the
  * triage evidence, for the owner to approve by hand: the engine never edits

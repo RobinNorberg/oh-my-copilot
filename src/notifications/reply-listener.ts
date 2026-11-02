@@ -16,6 +16,7 @@
  * Follows the daemon pattern from src/features/rate-limit-wait/daemon.ts
  */
 
+import { childEnv } from '../utils/windows-search.js';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, chmodSync, statSync, appendFileSync, renameSync } from 'fs';
 import { join } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -1181,7 +1182,7 @@ export function startReplyListener(_config: ReplyListenerDaemonConfig): DaemonRe
       detached: true,
       stdio: 'ignore',
       cwd: process.cwd(),
-      env: createMinimalDaemonEnv(),
+      env: childEnv(createMinimalDaemonEnv()),
     });
 
     child.unref();
