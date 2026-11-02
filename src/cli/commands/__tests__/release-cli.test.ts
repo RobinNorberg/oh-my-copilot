@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
-import { releaseCommand } from '../release.js';
+import { cliPackageRoot, foreignCliProblem, releaseCommand } from '../release.js';
 import type { ReleaseExec } from '../../../release/engine.js';
 import type { DriveProcess, DriverLiveness } from '../../../release/drive.js';
 import type { ReleaseProgressInput } from '../../../release/progress.js';
@@ -112,6 +112,64 @@ describe('omg release CLI', () => {
     expect(calls).toEqual([]);
   });
 
+  describe('a foreign omg (not the checkout\'s own CLI)', () => {
+    const FOREIGN = 'the running omg is /g/oh-my-copilot (oh-my-copilot 5.19.2), not this checkout\'s own CLI (5.19.4)';
+
+    async function runAs(foreign: string | null, ...argv: string[]): Promise<number> {
+      process.exitCode = undefined;
+      await releaseCommand({ exec, root, stateRoot: join(root, '.omg'), progress: () => {}, foreignCli: () => foreign }).parseAsync(argv, { from: 'user' });
+      const code = Number(process.exitCode ?? 0);
+      process.exitCode = undefined;
+      return code;
+    }
+
+    it('refuses a run and prints the command for the repo CLI; --allow-foreign-cli warns and runs', async () => {
+      expect(await runAs(FOREIGN, '5.19.4', '--to', 'preflight')).toBe(1);
+      const text = err.join('\n');
+      expect(text).toContain(FOREIGN);
+      expect(text).toMatch(/Refused: run the checkout's own CLI in .*:\n {2}node bin\/oh-my-copilot\.js release 5\.19\.4/);
+      expect(text).toMatch(/--allow-foreign-cli/);
+      expect(calls).toEqual([]);
+
+      err = [];
+      await runAs(FOREIGN, '5.19.4', '--to', 'preflight', '--allow-foreign-cli');
+      expect(err.join('\n')).toMatch(/Warning: the running omg is .*running it anyway \(--allow-foreign-cli\)/);
+      expect(calls.length).toBeGreaterThan(0);
+    });
+
+    it('a dry run only warns; --status runs without the check; the checkout\'s own CLI passes silently', async () => {
+      expect(await runAs(FOREIGN, '5.19.4', '--dry-run')).toBe(0);
+      expect(err.join('\n')).toMatch(/Warning: the running omg is .*the plan below is that install's/);
+      err = [];
+      expect(await runAs(FOREIGN, '5.19.4', '--status')).toBe(0);
+      expect(await runAs(null, '5.19.4', '--dry-run')).toBe(0);
+      expect(err).toEqual([]);
+    });
+
+    it('foreignCliProblem: the checkout itself or a byte-identical build passes; another version or build does not', () => {
+      const pkg = (dir: string, version: string, bundle: string) => {
+        mkdirSync(join(dir, 'bridge'), { recursive: true });
+        writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'oh-my-copilot', version }));
+        writeFileSync(join(dir, 'bridge', 'cli.cjs'), bundle);
+      };
+      const repo = join(root, 'repo');
+      const other = join(root, 'global', 'oh-my-copilot');
+      pkg(repo, '5.19.4', 'build A');
+      mkdirSync(join(repo, 'bin'), { recursive: true });
+      writeFileSync(join(repo, 'bin', 'oh-my-copilot.js'), '');
+      expect(cliPackageRoot(join(repo, 'bin', 'oh-my-copilot.js'))).toBe(realpathSync(repo));
+      expect(foreignCliProblem(cliPackageRoot(join(repo, 'bin', 'oh-my-copilot.js')), repo)).toBeNull();
+
+      pkg(other, '5.19.2', 'build old');
+      expect(foreignCliProblem(other, repo)).toMatch(/oh-my-copilot 5\.19\.2\), not this checkout's own CLI \(5\.19\.4\)$/);
+      pkg(other, '5.19.4', 'build B');
+      expect(foreignCliProblem(other, repo)).toMatch(/\(5\.19\.4, a different build\)$/);
+      pkg(other, '5.19.4', 'build A');
+      expect(foreignCliProblem(other, repo)).toBeNull();
+      expect(foreignCliProblem(null, repo)).toMatch(/belongs to no package/);
+    });
+  });
+
   describe('drive mode: --detach, --status, --stop', () => {
     let liveness: DriverLiveness;
     let killed: number[];
@@ -151,6 +209,7 @@ describe('omg release CLI', () => {
       expect(args).toEqual(expect.arrayContaining(['--yes', '--from', 'pr', '--suite', 'full', '--baseline', resolve('base.json'), '--force-smoke']));
       expect(args.slice(args.indexOf('--triage-runs'), args.indexOf('--triage-runs') + 2)).toEqual(['--triage-runs', '5']);
       expect(args).not.toContain('--detach');
+      expect(args).not.toContain('--allow-foreign-cli');
       expect(spawned[0].options).toMatchObject({ cwd: root, detached: true, windowsHide: true });
       expect(out.join('\n')).toMatch(/driving detached as pid 777/);
       expect(out.join('\n')).toMatch(/omg progress watch --file .* --until settled/);
@@ -163,6 +222,12 @@ describe('omg release CLI', () => {
       expect(err.join('\n')).toMatch(/another driver holds .*5\.12\.2\.drive\.json/);
       expect(spawned).toHaveLength(1);
       expect(calls).toEqual([]);
+    });
+
+    it('--detach --allow-foreign-cli: the child runs the same CLI script as the parent and keeps the flag', async () => {
+      expect(await drive('5.12.2', '--detach', '--allow-foreign-cli')).toBe(0);
+      expect(spawned[0].args[0]).toBe('/x/cli.cjs');
+      expect(spawned[0].args).toContain('--allow-foreign-cli');
     });
 
     it('--status prints the driver, the last events and the phase table; --stop kills it and emits blocked', async () => {

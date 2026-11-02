@@ -205,6 +205,8 @@ export declare function releaseStatePath(stateRoot: string, version: string): st
 /** Known-flaky candidates of the full-suite triage; the owner approves them into .github/known-flaky-tests.json by hand. */
 export declare function flakyCandidatesPath(stateRoot: string, version: string): string;
 export declare function readReleaseState(stateRoot: string, version: string): ReleaseState | null;
+/** A heartbeat every 5 min while a suite child runs (under execAsync). */
+export declare const SUITE_HEARTBEAT_MS: number;
 /** Steps each phase runs, as printed by --dry-run. */
 export declare function phasePlan(id: PhaseId, v: string, opts: ReleaseOptions): string[];
 /** First phase to run: --from, else the first phase not yet ok / skipped in the state (runRelease re-checks the skipped ones). */

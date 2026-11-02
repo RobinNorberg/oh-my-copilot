@@ -12,8 +12,8 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { existsSync, readFileSync } from 'fs';
-import { join, resolve } from 'path';
+import { existsSync, readFileSync, realpathSync } from 'fs';
+import { dirname, join, resolve } from 'path';
 import { createInterface } from 'readline/promises';
 import { loadTrustedShipConfig, userConfigLayers } from '../../ship/config.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -90,12 +90,76 @@ export interface ReleaseCommandDeps extends Partial<ReleaseDeps> {
   spawnDriver?: DriveSpawn;
   /** CLI script the detached driver runs (default: the one running now). */
   entry?: string;
+  /** Why the running CLI is not the checkout's own (null = it is); default: foreignCliProblem of the entry's package (skipped with a scripted exec). */
+  foreignCli?: () => string | null;
+}
+
+/** The package root of the CLI script `entry` (the nearest directory up with a package.json), or null. */
+export function cliPackageRoot(entry: string): string | null {
+  let dir: string;
+  try {
+    dir = dirname(realpathSync(entry));
+  } catch {
+    return null;
+  }
+  for (let i = 0; i < 4; i++) {
+    if (existsSync(join(dir, 'package.json'))) return dir;
+    const up = dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return null;
+}
+
+/**
+ * Why the running omg is not the release checkout's own CLI (null = it is, or a byte-identical build of the same
+ * version). A release runs the engine of the binary that runs it: a stale global omg once drove a release without
+ * the fixes on the checkout's dev (v5.19.4 ran without the CI-beside-the-suite overlap of #403).
+ */
+export function foreignCliProblem(cliRoot: string | null, root: string): string | null {
+  const real = (p: string) => {
+    let r: string;
+    try {
+      r = realpathSync(p);
+    } catch {
+      r = resolve(p);
+    }
+    return process.platform === 'win32' ? r.toLowerCase() : r;
+  };
+  if (!cliRoot) return `the running omg belongs to no package found from its script, so it may not be this checkout's CLI (${root})`;
+  if (real(cliRoot) === real(root)) return null;
+  const version = (dir: string) => {
+    try {
+      return (JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { version?: string }).version ?? 'unknown';
+    } catch {
+      return 'unknown';
+    }
+  };
+  const bundle = (dir: string) => {
+    try {
+      return readFileSync(join(dir, 'bridge', 'cli.cjs'));
+    } catch {
+      return null;
+    }
+  };
+  const [cliVersion, repoVersion] = [version(cliRoot), version(root)];
+  const [theirs, ours] = [bundle(cliRoot), bundle(root)];
+  if (cliVersion === repoVersion && theirs && ours && theirs.equals(ours)) return null;
+  return `the running omg is ${cliRoot} (oh-my-copilot ${cliVersion}), not this checkout's own CLI (${repoVersion}${cliVersion === repoVersion ? ', a different build' : ''})`;
+}
+
+/** `node bin/oh-my-copilot.js release ...` with this invocation's arguments (run in the checkout). */
+function repoCliCommand(versionRaw: string): string {
+  const passed = process.argv.slice(2);
+  const at = passed.indexOf('release');
+  const args = at >= 0 ? passed.slice(at + 1) : [versionRaw];
+  return ['node', 'bin/oh-my-copilot.js', 'release', ...args].map((a) => (/^[\w@./:=,+-]+$/.test(a) ? a : JSON.stringify(a))).join(' ');
 }
 
 interface ReleaseCliOptions {
   from?: string; to?: string; dryRun?: boolean; json?: boolean; yes?: boolean; suite?: string; baseline?: string;
   liveSmoke?: boolean; forceSmoke?: boolean; triageRuns: string; triageTimeout: string; allowSkippedSmoke?: boolean; fixOrphans?: boolean; timeout: string;
-  drive?: boolean; driveMax: string; detach?: boolean; status?: boolean; stop?: boolean; flakyCandidates?: boolean;
+  drive?: boolean; driveMax: string; detach?: boolean; status?: boolean; stop?: boolean; flakyCandidates?: boolean; allowForeignCli?: boolean;
 }
 
 /** The detached driver's command line: this invocation with --drive and without --detach / --json. */
@@ -112,6 +176,7 @@ export function releaseDriveArgv(version: string, o: ReleaseCliOptions, baseline
     '--triage-runs', o.triageRuns, '--triage-timeout', o.triageTimeout,
     ...(o.allowSkippedSmoke ? ['--allow-skipped-smoke'] : []),
     ...(o.fixOrphans ? ['--fix-orphans'] : []),
+    ...(o.allowForeignCli ? ['--allow-foreign-cli'] : []),
   ];
 }
 
@@ -144,6 +209,7 @@ export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
     .option('--detach', 'Run the --drive loop as a detached process that outlives this session (log: <state root>/release/<v>.drive.log)')
     .option('--status', 'Print the drive lock, the last progress events and the phase table, run nothing')
     .option('--stop', 'Stop the detached driver of this release and remove its lock')
+    .option('--allow-foreign-cli', "Run although this omg is not the checkout's own CLI (another install or build); refused otherwise")
     .action(async (versionRaw: string, o: ReleaseCliOptions) => {
       const json = Boolean(o.json);
       try {
@@ -256,12 +322,20 @@ export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
           process.exitCode = !stopped.stopped && stopped.refused ? 1 : 0;
           return;
         }
+        // The engine that runs is the running binary's: refuse another install's unless allowed (a dry run only warns).
+        const entry = overrides.entry ?? process.argv[1];
+        const foreign = (overrides.foreignCli ?? (overrides.exec ? () => null : () => foreignCliProblem(cliPackageRoot(entry), root)))();
+        if (foreign) {
+          const use = `run the checkout's own CLI in ${root}:\n  ${repoCliCommand(versionRaw)}`;
+          if (!o.dryRun && !o.allowForeignCli) throw new Error(`${foreign}; this release would run that install's release engine. Refused: ${use}\n(or pass --allow-foreign-cli to run this one anyway)`);
+          console.error(chalk.yellow(`Warning: ${foreign}; ${o.dryRun ? "the plan below is that install's" : 'running it anyway (--allow-foreign-cli)'}. To ${use}`));
+        }
         const baseline = o.baseline ? resolve(o.baseline) : undefined;
         if (o.detach) {
           const argv = releaseDriveArgv(version, o, baseline);
           const detached = await detachDriver({
             lockPath, logPath, argv, cwd: root, proc, sleep: deps.sleep, spawnImpl: overrides.spawnDriver,
-            entry: overrides.entry ?? process.argv[1], statusCommand: `omg release ${version} --status`,
+            entry, statusCommand: `omg release ${version} --status`,
           });
           if (json) console.log(JSON.stringify({ ...detached, lockPath, logPath, progressFile, monitor: monitorHint(progressFile) }, null, 2));
           else if (!detached.ok) console.error(chalk.red(`Error: ${detached.reason}`));
