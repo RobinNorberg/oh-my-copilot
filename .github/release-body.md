@@ -1,53 +1,53 @@
-# oh-my-copilot v5.19.3
+# oh-my-copilot v5.19.4
 
-A security release for Windows, plus a skill-name fix for Copilot CLI. Every
-published version up to and including v5.19.2 is affected by the Windows
-fixes. Linux and macOS are not.
+A CI, release tooling and test reliability release. There are no user-facing
+behaviour changes, so the field agent can upgrade safely.
 
-Install with `npm install -g oh-my-copilot@5.19.3`, or from the plugin
+Install with `npm install -g oh-my-copilot@5.19.4`, or from the plugin
 marketplace: `copilot plugin update oh-my-copilot@omc`.
 
-## Security
+## Release pipeline
 
-- On Windows, `/omc-setup` ran `npm`, `omg`, `bd`, `br` and `gh` through
-  cmd.exe with the project as the current folder, so a repository could plant
-  `npm.cmd` (or the others) and have it run as the user. Setup now runs those
-  commands from the home folder with `NoDefaultCurrentDirectoryInExePath=1`.
-- On Windows, a bare `git`, `gh`, `node` or `npm` spawned by oh-my-copilot
-  could resolve to a `git.exe` or `git.cmd` planted in the project folder or a
-  lane worktree. The `omg` launcher, the Copilot hook dispatcher, the
-  omc-setup scripts, the `omg factory` / `omg ship` / `omg port` runner, the
-  `copilot_run` host and the psmux/cmd.exe worker fallback now set
-  `NoDefaultCurrentDirectoryInExePath=1`.
-- **Node 20:** the variable does not protect no-shell spawns before Node 22.
-  On Node 20 only the factory/ship/port runner and the team host git are
-  protected (they resolve a bare name from absolute `PATH` entries only).
-  Use Node 22 or later on Windows.
+- `omg release` pushes the release PR right after the release commit and
+  watches its CI while the local suite and smoke run. The PR merges only once
+  CI is green and the suite and smoke passed; a red suite leaves it open and
+  unmerged. This saves about the release PR's CI time (~18 min) per release.
+- On Windows, the release suite no longer picks up WSL's `bash` when started
+  from PowerShell; it puts Git for Windows' bash first on PATH, or refuses to
+  start without one.
 
-## Behaviour change
+## CI
 
-On Windows, a bare repository-local `.cmd`/`.bat` such as `gradlew`, `mvnw` or
-`build.bat`, run through cmd under oh-my-copilot (a factory lane gate, a
-`ralph` feedback command, a team worker), must now be called as `.\gradlew`.
-PowerShell and Git Bash are unaffected.
+- CI tests each tree once. A new `Tree evidence` job reuses an earlier green
+  run of the same tree (a release PR's dev merge, the main merge of dev, the
+  tag) and reports the other jobs as SKIPPED, naming the source run.
+- A tag only publishes when its tree already passed: the release job skips
+  `npm test` only when the tagged commit is on `main` and its tree has that
+  evidence, and runs the suite as before otherwise. Publishing, provenance and
+  the GitHub Release are unchanged. Repo variables `CI_TREE_REUSE=false` and
+  `CI_RELEASE_REUSE=false` turn reuse off.
+- The Linux suite runs in four shards split by measured file cost; the
+  required `Test` check merges their reports. On the sharding PR's own CI run,
+  `Test` finished 5.2 min after the run started, against 13.9 min for the old
+  single job.
+- `Generated Artifact Authorization` and `No Committed Build Artifacts` no
+  longer email failures on fork PRs (the fork commits `dist/` and `bridge/` by
+  design). Neither check is required.
 
-## Skill names on Copilot CLI
+## Tests
 
-Copilot CLI 1.0.66 and later registers plugin skills by their bare name and
-rejects `/oh-my-copilot:<name>`. Docs, prompts and the messages oh-my-copilot
-writes now use `/omc-setup`, `/ralph` and so on on Copilot CLI, and
-`/oh-my-copilot:<name>` on Claude Code. Unattended factory paths (factory
-listener, `omg intake`, chain links) check the name with
-`copilot skill list --json` and refuse a skill that another skill shadows or
-that cannot be verified.
+- Load-flaky tests no longer depend on host load: clock-sensitive tests freeze
+  the clock, overhead checks measure CPU time, fixed sleeps became signals or
+  baseline comparisons.
+- Slow tests sped up: `inventory-graph-drift` (65.6 s to 31.2 s locally) and
+  `copilot-sdk-driver` (25.7 s to 5.3 s).
+- The wall-time budget tests run serially after the parallel suite, so a
+  loaded host no longer breaks them; budgets and assertions are unchanged.
 
-## Also in this release
+## Caveats
 
-- omc-setup checks run through `scripts/setup-config.mjs` instead of inline
-  `node -e`, so setup works on hosts that refuse inline interpreter code.
-- `docs/FIELD-TESTING.md`: a guide for testing the published package with a
-  remote Copilot CLI agent, with a `Field report` issue form.
-- CI builds once and caches `node_modules`; a `CI Gate` job sums up the
-  blocking checks.
-
-This release was published without the live Copilot smoke (quota exhausted).
+- A release that reuses its tree relies on CI's `Test` job, which runs on
+  Node 20, instead of the release job's Node 24 suite.
+- Tree reuse on dev to main PRs only starts once `main` has
+  `scripts/ci/tree-reuse.mjs`, that is after this release.
+- This release was published without the live Copilot smoke.

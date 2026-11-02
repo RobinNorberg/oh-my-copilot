@@ -6,7 +6,7 @@
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { commitFile, FakeLanes, FakeProcesses, gitIn, verdictBlock, type LaneScript } from '../../factory/run/__tests__/fake-lanes.js';
 import { FIX_REVIEW_INSTRUCTION, runFactoryRunScenario, scriptedFactoryGh } from '../copilot-factory-run-scenario.js';
@@ -24,6 +24,13 @@ import {
   type ScenarioRun,
 } from '../copilot-sdk-scenarios.js';
 import { LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL, liveRunRefusal } from '../copilot-smoke.js';
+import { scaleTiming } from '../../__tests__/helpers/platform.js';
+
+// Every engine run here drives a few hundred real git processes (the lane
+// tamper snapshots, prepare merges, the bare remote). No assertion measures
+// time, so the timeout only bounds a hang and must leave a loaded host's
+// process spawns room.
+vi.setConfig({ testTimeout: scaleTiming(90_000) });
 
 let dir: string;
 let lanes: FakeLanes | undefined;

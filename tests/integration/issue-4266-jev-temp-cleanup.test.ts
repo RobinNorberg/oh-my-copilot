@@ -55,12 +55,15 @@ function runActiveRecord(tempRoot: string, homeRoot: string) {
       TEMP: tempRoot,
       OMC_JEV: "cleanup-test:active",
       TYPESAFE_API_KEY: "test-key",
+      // fetch rejects port 1 at once ("bad port"), so the resolver degrades
+      // without waiting. The parent kills it at this timeout + 500 ms, so a
+      // short timeout only races the child's node startup on a loaded host.
       OMC_JEV_ENDPOINT: "http://127.0.0.1:1",
-      OMC_JEV_TIMEOUT_MS: "100",
+      OMC_JEV_TIMEOUT_MS: "10000",
       OMC_JEV_LOG_DIR: join(homeRoot, "logs"),
     },
     encoding: "utf8",
-    timeout: 5000,
+    timeout: 20000,
   });
 }
 

@@ -6,7 +6,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { parseProgressLog } from '../../../lib/agent-progress.js';
 import { readShipState } from '../../../ship/state.js';
@@ -22,6 +22,13 @@ import {
   commitFile, failedGates, FakeLanes, FakeProcesses, gitIn, greenGates, harness, ISSUE, noCommit, PR, pendingGates, remoteHead, review, testGateConfig,
   type GatesRead, type Harness, type LaneScript,
 } from './fake-lanes.js';
+import { scaleTiming } from '../../../__tests__/helpers/platform.js';
+
+// Every engine run here drives a few hundred real git processes (the lane
+// tamper snapshots, prepare merges, the bare remote). No assertion measures
+// time, so the timeout only bounds a hang and must leave a loaded host's
+// process spawns room.
+vi.setConfig({ testTimeout: scaleTiming(90_000) });
 
 let h: Harness;
 let t: number;

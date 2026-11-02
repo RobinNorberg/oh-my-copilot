@@ -26,7 +26,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, existsSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, normalize, relative, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { scaleTiming } from '../../src/__tests__/helpers/platform.js';
 
 const REPO_ROOT = resolve(join(import.meta.dirname, '../..'));
@@ -153,6 +153,24 @@ function collectGeneratedRel(prefix: string): string[] {
   }
   rec(root);
   return out.sort();
+}
+
+type NodeRun = { status: number | null; stdout: string; stderr: string };
+
+/**
+ * Each generator run is a multi-second full graph build. Spawn asynchronously
+ * so a test's independent runs overlap instead of queueing.
+ */
+function runNode(args: string[], env: NodeJS.ProcessEnv = process.env): Promise<NodeRun> {
+  return new Promise((resolveRun, reject) => {
+    const child = spawn('node', args, { cwd: REPO_ROOT, env });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8').on('data', (chunk: string) => { stdout += chunk; });
+    child.stderr.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; });
+    child.once('error', reject);
+    child.once('close', (status) => resolveRun({ status, stdout, stderr }));
+  });
 }
 
 const manifest = (() => {
@@ -308,14 +326,12 @@ describe('inventory-graph drift enforcement (#3702)', () => {
     expect(m.graph.edges.some((e) => e.from === 'src/features/delegation-categories/index.ts' && e.kind.endsWith('-unresolved'))).toBe(false);
   });
 
-  it('generator is deterministic (two consecutive runs yield identical manifest modulo head/generatedAt)', { timeout: scaleTiming(30_000) }, () => {
-    const opts = { cwd: REPO_ROOT, encoding: 'utf8' as const, maxBuffer: 20 * 1024 * 1024 };
-    const r1 = spawnSync('node', [GENERATOR], opts);
+  it('generator is deterministic (two independent runs yield identical manifest modulo head/generatedAt)', { timeout: scaleTiming(30_000) }, async () => {
+    const [r1, r2] = await Promise.all([runNode([GENERATOR]), runNode([GENERATOR])]);
     expect(r1.status, r1.stderr || r1.stdout).toBe(0);
-    const r2 = spawnSync('node', [GENERATOR], opts);
     expect(r2.status, r2.stderr || r2.stdout).toBe(0);
-    const a = JSON.parse(r1.stdout as unknown as string) as Manifest;
-    const b = JSON.parse(r2.stdout as unknown as string) as Manifest;
+    const a = JSON.parse(r1.stdout) as Manifest;
+    const b = JSON.parse(r2.stdout) as Manifest;
     // Strip ephemeral head/generatedAt + manifestSha before comparison; provenance.base/planningHead must still match exactly
     const strip = (m: Manifest) => {
       const c = JSON.parse(JSON.stringify(m)) as Manifest;
@@ -376,28 +392,18 @@ describe('inventory-graph drift enforcement (#3702)', () => {
   // suite has crossed 60s three times (PRs #4064, #4070, #4071) while every
   // assertion still passed locally, so the budget — not the contract — was the
   // failure. Keep the spawn count; give it room.
-  it('verify mode rejects tampered hashes and head provenance', { timeout: 240_000 }, () => {
-    const opts = { cwd: REPO_ROOT, encoding: 'utf8' as const, maxBuffer: 20 * 1024 * 1024 };
-    for (const mutate of [
+  it('verify mode rejects tampered hashes and head provenance', { timeout: 240_000 }, async () => {
+    const tampered = [
       (m: Manifest) => { m.inventorySha256 = '0'.repeat(64); },
       (m: Manifest) => { m.manifestSha256 = '0'.repeat(64); },
       (m: Manifest) => { m.head = 'not-a-sha'; m.provenance.head = 'not-a-sha'; },
-    ]) {
+    ].map((mutate) => {
       const temp = join(REPO_ROOT, `.tmp-inventory-graph-${process.pid}-${Math.random().toString(16).slice(2)}.json`);
       const copy = JSON.parse(JSON.stringify(manifest)) as Manifest;
       mutate(copy);
       writeFileSync(temp, `${JSON.stringify(copy, null, 2)}\n`);
-      try {
-        const result = spawnSync('node', [GENERATOR, '--verify', '--out', temp], opts);
-        expect(result.status, `tampered baseline unexpectedly passed: ${result.stdout}`).not.toBe(0);
-      } finally {
-        unlinkSync(temp);
-      }
-    }
-    const invalidOverride = spawnSync('node', [GENERATOR], { ...opts, env: { ...process.env, ISSUE_3702_HEAD: 'bogus' } });
-    expect(invalidOverride.status).not.toBe(0);
-    const unreachableOverride = spawnSync('node', [GENERATOR], { ...opts, env: { ...process.env, ISSUE_3702_HEAD: '0'.repeat(40) } });
-    expect(unreachableOverride.status).not.toBe(0);
+      return temp;
+    });
 
     const detached = spawnSync('git', ['commit-tree', 'HEAD^{tree}', '-m', 'detached inventory provenance'], {
       cwd: REPO_ROOT,
@@ -413,12 +419,6 @@ describe('inventory-graph drift enforcement (#3702)', () => {
     expect(detached.status, detached.stderr).toBe(0);
     const nonAncestor = detached.stdout.trim();
     expect(nonAncestor).toMatch(/^[0-9a-f]{40}$/);
-    const nonAncestorOverride = spawnSync('node', [GENERATOR], {
-      ...opts,
-      env: { ...process.env, ISSUE_3702_HEAD: nonAncestor },
-    });
-    expect(nonAncestorOverride.status).not.toBe(0);
-    expect(nonAncestorOverride.stderr).toContain('ancestor of the current HEAD');
 
     // A committed baseline whose generating commit is no longer reachable is the normal
     // outcome of squash/rebase integration: the contribution head that produced the
@@ -433,16 +433,30 @@ describe('inventory-graph drift enforcement (#3702)', () => {
     delete withoutManifestSha.manifestSha256;
     rewrittenHeadManifest.manifestSha256 = sha256Hex(stableStringify(withoutManifestSha));
     writeFileSync(rewrittenHeadBaseline, `${JSON.stringify(rewrittenHeadManifest, null, 2)}\n`);
-    try {
-      const result = spawnSync('node', [GENERATOR, '--verify', '--out', rewrittenHeadBaseline], opts);
-      expect(result.status, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`).toBe(0);
-    } finally {
-      unlinkSync(rewrittenHeadBaseline);
-    }
-
     const outsideOut = resolve(REPO_ROOT, '..', `.tmp-inventory-outside-${process.pid}.json`);
-    const outsideWrite = spawnSync('node', [GENERATOR, '--write', '--out', outsideOut], opts);
-    expect(outsideWrite.status).not.toBe(0);
-    expect(existsSync(outsideOut)).toBe(false);
+
+    // Every run below is independent of the others: run them together.
+    try {
+      const [tamperedResults, invalidOverride, unreachableOverride, nonAncestorOverride, rewrittenVerify, outsideWrite] = await Promise.all([
+        Promise.all(tampered.map((temp) => runNode([GENERATOR, '--verify', '--out', temp]))),
+        runNode([GENERATOR], { ...process.env, ISSUE_3702_HEAD: 'bogus' }),
+        runNode([GENERATOR], { ...process.env, ISSUE_3702_HEAD: '0'.repeat(40) }),
+        runNode([GENERATOR], { ...process.env, ISSUE_3702_HEAD: nonAncestor }),
+        runNode([GENERATOR, '--verify', '--out', rewrittenHeadBaseline]),
+        runNode([GENERATOR, '--write', '--out', outsideOut]),
+      ]);
+      for (const result of tamperedResults) {
+        expect(result.status, `tampered baseline unexpectedly passed: ${result.stdout}`).not.toBe(0);
+      }
+      expect(invalidOverride.status).not.toBe(0);
+      expect(unreachableOverride.status).not.toBe(0);
+      expect(nonAncestorOverride.status).not.toBe(0);
+      expect(nonAncestorOverride.stderr).toContain('ancestor of the current HEAD');
+      expect(rewrittenVerify.status, `stdout:\n${rewrittenVerify.stdout}\nstderr:\n${rewrittenVerify.stderr}`).toBe(0);
+      expect(outsideWrite.status).not.toBe(0);
+      expect(existsSync(outsideOut)).toBe(false);
+    } finally {
+      for (const temp of [...tampered, rewrittenHeadBaseline]) unlinkSync(temp);
+    }
   });
 });

@@ -278,6 +278,41 @@ describe('known-flaky attribution from job logs', () => {
             { file: 'tests/perf/subagent-lock.bench.ts' },
         ]);
     });
+    // Recorded from vitest 4.1.11 with the `main` / `serial-budget` projects of
+    // vitest.config.ts: plain output, and the coloured line vitest's reporter
+    // builds (`bgRed(bold(' FAIL '))` + formatProjectName) inside an Actions log.
+    it.each([
+        ['no project label', ' FAIL  src/x.test.ts > grp > fails here'],
+        ['a plain project label', ' FAIL  |main| src/x.test.ts > grp > fails here'],
+        ['a coloured project label', 'Test\tRun functional tests\t2026-11-02T02:41:15.1Z \u001b[41m\u001b[1m FAIL \u001b[22m\u001b[49m \u001b[30m\u001b[45m main \u001b[49m\u001b[39m src/x.test.ts > grp > fails here'],
+    ])('parses a FAIL line with %s', (_label, line) => {
+        expect(parseFailingTests(line)).toEqual([{ file: 'src/x.test.ts', title: 'grp > fails here' }]);
+    });
+    it('parses project-labelled file-level failures and keeps the label out of the file', () => {
+        expect(parseFailingTests([
+            ' FAIL  |serial-budget| src/__tests__/session-end-process-exit.test.ts [ src/__tests__/session-end-process-exit.test.ts ]',
+            ' FAIL   serial-budget  src/__tests__/session-end-process-exit.test.ts > serial fails',
+            ' FAIL  src/a.test.ts > mentions b.test.ts in its title',
+        ].join('\n'))).toEqual([
+            { file: 'src/__tests__/session-end-process-exit.test.ts' },
+            { file: 'src/__tests__/session-end-process-exit.test.ts', title: 'serial fails' },
+            { file: 'src/a.test.ts', title: 'mentions b.test.ts in its title' },
+        ]);
+    });
+    it('a project-labelled FAIL line marks its step as a test step', () => {
+        const log = [
+            'Test\tRun functional tests\t2026-11-02T02:41:15.1Z \u001b[41m\u001b[1m FAIL \u001b[22m\u001b[49m \u001b[30m\u001b[42m serial-budget \u001b[49m\u001b[39m src/x.test.ts > grp > fails here',
+            'Test\tRun functional tests\t2026-11-02T02:41:16.0Z ##[error]Process completed with exit code 1.',
+        ].join('\n');
+        expect(logBlockers(log)).toEqual([]);
+    });
+    it('attributes a project-labelled failure of a listed test as known flaky', () => {
+        const k = KNOWN[0];
+        for (const label of [`|main| `, '\u001b[30m\u001b[45m main \u001b[49m\u001b[39m ']) {
+            const log = `Test\tRun functional tests\t2026-11-02T02:41:15.1Z \u001b[41m\u001b[1m FAIL \u001b[22m\u001b[49m ${label}${k.file} > ${k.title}`;
+            expect(analyzeFailedLog('Test', RUN, log, KNOWN).knownFlaky, label).toBe(true);
+        }
+    });
     it('classifies a known-flaky failure and a real one', () => {
         expect(analyzeFailedLog('Test', RUN, fixture('job-log-flaky.txt'), KNOWN).knownFlaky).toBe(true);
         const real = analyzeFailedLog('Test', RUN, fixture('job-log-real-failure.txt'), KNOWN);
