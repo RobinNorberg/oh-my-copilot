@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "982a196e8aaa5fd3f5509bf2be30c96ca5318e44",
-    "sourceSha256": "3f9033978eeed50c0e0feb3c49b66103843115ee04f0d97b9d9111768872f4e1",
+    "head": "9f6f54a924a9bcd9f25bbd826921c2393fd8df1a",
+    "sourceSha256": "e638856a65211e9c8f5264d44c389bd920165ebb0672511b850d062bdb1c68ea",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "982a196e8aaa5fd3f5509bf2be30c96ca5318e44",
-  "sourceSha256": "3f9033978eeed50c0e0feb3c49b66103843115ee04f0d97b9d9111768872f4e1",
+  "head": "9f6f54a924a9bcd9f25bbd826921c2393fd8df1a",
+  "sourceSha256": "e638856a65211e9c8f5264d44c389bd920165ebb0672511b850d062bdb1c68ea",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1949,
-      "total": 1973
+      "srcFiles": 1950,
+      "total": 1974
     },
     "generated": {
-      "distFiles": 7188,
+      "distFiles": 7192,
       "bridgeFiles": 9,
-      "total": 7197
+      "total": 7201
     },
     "prompt": {
       "promptLikeFiles": 66
@@ -849,6 +849,7 @@
       "scripts/ci/check-multirepo-paths.mjs",
       "scripts/ci/check-no-committed-build-artifacts.mjs",
       "scripts/ci/multirepo-patterns.yml",
+      "scripts/ci/tree-reuse.mjs",
       "scripts/cleanup-orphans.mjs",
       "scripts/code-simplifier.mjs",
       "scripts/collect-epic-3698-ci-evidence.mjs",
@@ -1069,6 +1070,10 @@
       "dist/__tests__/chain-enqueuer-registration.test.d.ts.map",
       "dist/__tests__/chain-enqueuer-registration.test.js",
       "dist/__tests__/chain-enqueuer-registration.test.js.map",
+      "dist/__tests__/ci-evidence.test.d.ts",
+      "dist/__tests__/ci-evidence.test.d.ts.map",
+      "dist/__tests__/ci-evidence.test.js",
+      "dist/__tests__/ci-evidence.test.js.map",
       "dist/__tests__/claude-goal-adapter-doc.test.d.ts",
       "dist/__tests__/claude-goal-adapter-doc.test.d.ts.map",
       "dist/__tests__/claude-goal-adapter-doc.test.js",
@@ -10271,6 +10276,26 @@
         "id": "dist/__tests__/chain-enqueuer-registration.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/chain-enqueuer-registration.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/ci-evidence.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/ci-evidence.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/ci-evidence.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/ci-evidence.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/ci-evidence.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/ci-evidence.test.js"
+      },
+      {
+        "id": "dist/__tests__/ci-evidence.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/ci-evidence.test.js.map"
       },
       {
         "id": "dist/__tests__/claude-goal-adapter-doc.test.d.ts",
@@ -46758,6 +46783,11 @@
         "path": "scripts/ci/multirepo-patterns.yml"
       },
       {
+        "id": "scripts/ci/tree-reuse.mjs",
+        "kind": "script",
+        "path": "scripts/ci/tree-reuse.mjs"
+      },
+      {
         "id": "scripts/cleanup-orphans.mjs",
         "kind": "script",
         "path": "scripts/cleanup-orphans.mjs"
@@ -48116,6 +48146,11 @@
         "id": "src/__tests__/chain-enqueuer-registration.test.ts",
         "kind": "src",
         "path": "src/__tests__/chain-enqueuer-registration.test.ts"
+      },
+      {
+        "id": "src/__tests__/ci-evidence.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/ci-evidence.test.ts"
       },
       {
         "id": "src/__tests__/claude-goal-adapter-doc.test.ts",
@@ -59055,6 +59090,21 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/ci/tree-reuse.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/tree-reuse.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/tree-reuse.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/cleanup-orphans.mjs",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -62443,6 +62493,36 @@
         "from": "src/__tests__/chain-enqueuer-registration.test.ts",
         "to": "src/installer/index.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/__tests__/ci-evidence.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/ci-evidence.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/ci-evidence.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/ci-evidence.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/ci-evidence.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/ci-evidence.test.ts",
+        "to": "scripts/ci/tree-reuse.mjs",
+        "kind": "imports"
       },
       {
         "from": "src/__tests__/claude-goal-adapter-doc.test.ts",
@@ -117731,12 +117811,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9894,
-      "edgeCount": 11896,
-      "importEdgeCount": 9770,
+      "nodeCount": 9900,
+      "edgeCount": 11905,
+      "importEdgeCount": 9779,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "b9b8913a1ca12e87404672eeaf23e0b3b9ad239f18a9990229935583927b244b",
-  "manifestSha256": "57fcd2a1daeae902d1895f96c68538722098b1a32d8d106563fb9e897f17ef16"
+  "inventorySha256": "014a9d662981193fa5ba1d728dff2735b20e5bb0fa9b93c493e49713986791f9",
+  "manifestSha256": "a78ff9820c934b649f96c53d071aa6439b888aa61be27c86a48b877a093c0a5d"
 }

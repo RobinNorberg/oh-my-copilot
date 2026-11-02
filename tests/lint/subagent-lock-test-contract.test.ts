@@ -178,7 +178,8 @@ describe("subagent-lock test contract", () => {
     assertWorkflowCommands(ci, "test");
     assertWorkflowCommands(ci, "release", true);
     // Build runs beside Test (build once); CI Gate is the job that blocks on both.
-    expect(extractJob(ci, "build")).not.toMatch(/^    needs:/m);
+    // Its only need is the tree-evidence lookup, which never waits on Test.
+    expect(extractJob(ci, "build")).toMatch(/^    needs: \[evidence\]$/m);
     expect(extractJob(ci, "ci-gate")).toMatch(/^      - test$/m);
   });
 });
