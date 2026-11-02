@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync, existsSync, lstatSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { basename, dirname, join, resolve } from 'path';
-import { IS_WIN } from '../../__tests__/helpers/platform.js';
+import { IS_WIN, scaleTiming } from '../../__tests__/helpers/platform.js';
 import {
   stateReadTool,
   stateWriteTool,
@@ -143,7 +143,7 @@ function parseStateReadPayload(text: string): Record<string, unknown> {
   if (!match) throw new Error(`state_read response did not contain JSON: ${text}`);
   return JSON.parse(match[1]) as Record<string, unknown>;
 }
-async function waitForFile(path: string, timeoutMs = 2000): Promise<void> {
+async function waitForFile(path: string, timeoutMs = scaleTiming(2000)): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!existsSync(path)) {
     if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${path}`);
@@ -3054,6 +3054,46 @@ describe('state-tools', () => {
       expect(result.content[0].text).toContain(join(TEST_DIR, '.omg', 'state', 'sessions', sessionId, 'autopilot-state.json'));
     });
 
+    it('keeps session-scoped no-op diagnostics bounded with hundreds of unrelated sessions', async () => {
+      const sessionId = 'missing-ralph-state-session';
+      const sessionsRoot = join(TEST_DIR, '.omg', 'state', 'sessions');
+      for (let i = 0; i < 400; i++) {
+        mkdirSync(join(sessionsRoot, `unrelated-session-${String(i).padStart(3, '0')}`), { recursive: true });
+      }
+
+      const result = await stateClearTool.handler({
+        mode: 'ralph',
+        session_id: sessionId,
+        workingDirectory: TEST_DIR,
+      });
+      const text = result.content[0].text;
+
+      expect(text).toContain(`No state found to clear for mode: ralph in session: ${sessionId}`);
+      expect(text).toContain(join(sessionsRoot, sessionId, 'ralph-state.json'));
+      expect(text).not.toContain('unrelated-session-');
+      expect(text.split('\n')).toHaveLength(3);
+    });
+
+    it('caps unscoped no-op path diagnostics and reports the exact remainder', async () => {
+      const sessionIds = Array.from({ length: 12 }, (_, i) => `unrelated-session-${String(i).padStart(3, '0')}`);
+      const sessionsRoot = join(TEST_DIR, '.omg', 'state', 'sessions');
+      for (const sessionId of sessionIds) mkdirSync(join(sessionsRoot, sessionId), { recursive: true });
+
+      const result = await stateClearTool.handler({ mode: 'ralph', workingDirectory: TEST_DIR });
+      const text = result.content[0].text;
+      const listedPaths = text.split('\n').filter((line) => line.startsWith('  - ') && !line.includes('more checked paths'));
+      const remainder = text.match(/\s{2}- \.\.\. and (\d+) more checked paths/);
+      const expectedPaths = new Set([
+        resolveSessionStatePaths('ralph', undefined, TEST_DIR).legacy,
+        join(getOmcRoot(TEST_DIR), 'ralph-state.json'),
+        ...sessionIds.map((sessionId) => resolveSessionStatePaths('ralph', sessionId, TEST_DIR).sessionScoped),
+      ]);
+
+      expect(listedPaths).toHaveLength(10);
+      expect(remainder).not.toBeNull();
+      expect(Number(remainder?.[1])).toBe(expectedPaths.size - listedPaths.length);
+    });
+
     it('reports a captured candidate that survives a non-team session clear as a failure', async () => {
       // The workingDirectory-local cleanup only runs as a fallback, so with a
       // centralized session file present the local candidate is captured but
@@ -3305,6 +3345,38 @@ describe('state-tools', () => {
       });
 
       expect(result.content[0].text).toContain('Successfully wrote');
+    });
+  });
+
+  describe('run ledger edges', () => {
+    function ledger(): Array<Record<string, unknown>> {
+      const path = join(TEST_DIR, '.omg', 'state', 'runs', 'ledger.jsonl');
+      if (!existsSync(path)) return [];
+      return readFileSync(path, 'utf8').trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));
+    }
+
+    it('records a start and an end for a session-scoped ralph run', async () => {
+      const sessionId = 'ledger-ralph-session';
+      const written = await stateWriteTool.handler({ mode: 'ralph', active: true, session_id: sessionId, workingDirectory: TEST_DIR });
+      expect(written.isError).toBeFalsy();
+      const cleared = await stateClearTool.handler({ mode: 'ralph', session_id: sessionId, workingDirectory: TEST_DIR });
+      expect(cleared.isError).toBeFalsy();
+      expect(ledger().map(({ run, sessionId: id, event }) => ({ run, sessionId: id, event }))).toEqual([
+        { run: 'ralph', sessionId, event: 'start' },
+        { run: 'ralph', sessionId, event: 'end' },
+      ]);
+    });
+
+    it('records a start and an end for a session-scoped team run', async () => {
+      const sessionId = 'ledger-team-session';
+      const written = await publishTeamState(sessionId, 'ledger-team');
+      expect(written.isError).toBeFalsy();
+      const cleared = await stateClearTool.handler({ mode: 'team', session_id: sessionId, workingDirectory: TEST_DIR });
+      expect(cleared.isError).toBeFalsy();
+      expect(ledger().map(({ run, sessionId: id, event }) => ({ run, sessionId: id, event }))).toEqual([
+        { run: 'team', sessionId, event: 'start' },
+        { run: 'team', sessionId, event: 'end' },
+      ]);
     });
   });
 });

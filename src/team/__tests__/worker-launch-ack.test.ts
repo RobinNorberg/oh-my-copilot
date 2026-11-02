@@ -5,7 +5,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { copyFile, link, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 
 import * as processUtils from '../../platform/process-utils.js';
 import {
@@ -32,6 +32,7 @@ import {
   assertEnvPassthroughAllowed,
   buildProviderEnvironment,
   buildProviderSpawnInvocation,
+  buildProviderSpawnEnvironment,
   materializeProviderSpawnInvocation,
   quoteWindowsCreateProcessArgument,
 } from '../worker-launch-ack.js';
@@ -2606,10 +2607,12 @@ describe('worker launch acknowledgement', () => {
     await expect(cleanupWorkerLaunchTransport(launchAttempt, 'windows_cwd_search')).resolves.toBe(true);
   });
 
-  it('propagates only the canonical home variable for each platform', () => {
+  it('propagates only the canonical identity variables for each platform', () => {
     const posix = buildProviderEnvironment(undefined, {
       PATH: '/usr/bin:/bin',
       HOME: '/home/provider',
+      USER: 'provider',
+      LOGNAME: 'provider',
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
       USERPROFILE: 'C:\\Users\\wrong-platform',
@@ -2618,6 +2621,7 @@ describe('worker launch acknowledgement', () => {
     expect(posix).toEqual({
       PATH: '/usr/bin:/bin',
       HOME: '/home/provider',
+      USER: 'provider',
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
     });
@@ -2625,13 +2629,15 @@ describe('worker launch acknowledgement', () => {
     const macos = buildProviderEnvironment(undefined, {
       PATH: '/usr/bin:/bin',
       HOME: '/Users/provider',
+      USER: 'provider',
       USERPROFILE: 'C:\\Users\\wrong-platform',
     }, 'darwin');
-    expect(macos).toEqual({ PATH: '/usr/bin:/bin', HOME: '/Users/provider' });
+    expect(macos).toEqual({ PATH: '/usr/bin:/bin', HOME: '/Users/provider', USER: 'provider' });
 
     const windows = buildProviderEnvironment(undefined, {
       PATH: 'C:\\Windows\\System32',
       HOME: '/home/wrong-platform',
+      USER: 'provider',
       USERPROFILE: 'C:\\Users\\provider',
       SystemRoot: 'C:\\Windows',
       GH_TOKEN: 'ambient-secret',
@@ -2703,6 +2709,19 @@ describe('worker launch acknowledgement', () => {
     expect(posix).toEqual({ PATH: '/usr/bin:/bin', HOME: '/home/provider', TEMP: 'C:\\Temp', TMP: 'C:\\Temp' });
   });
 
+  it('always sets NoDefaultCurrentDirectoryInExePath on win32 and lets no provider value clear it', () => {
+    const windows = buildProviderEnvironment(
+      { nodefaultcurrentdirectoryinexepath: '' },
+      { PATH: 'C:\\Windows\\System32', SystemRoot: 'C:\\Windows', NoDefaultCurrentDirectoryInExePath: '' },
+      'win32',
+      ['NoDefaultCurrentDirectoryInExePath'],
+    );
+    expect(Object.entries(windows).filter(([key]) => key.toUpperCase() === 'NODEFAULTCURRENTDIRECTORYINEXEPATH'))
+      .toEqual([['NoDefaultCurrentDirectoryInExePath', '1']]);
+    expect(buildProviderEnvironment(undefined, { PATH: '/usr/bin:/bin', NoDefaultCurrentDirectoryInExePath: '1' }, 'linux'))
+      .toEqual({ PATH: '/usr/bin:/bin' });
+  });
+
   it('omits missing or empty ambient homes while preserving explicit overrides', () => {
     expect(buildProviderEnvironment(undefined, { PATH: '/usr/bin:/bin' }, 'linux'))
       .toEqual({ PATH: '/usr/bin:/bin' });
@@ -2710,22 +2729,24 @@ describe('worker launch acknowledgement', () => {
       PATH: '/usr/bin:/bin', HOME: '', USERPROFILE: 'C:\\Users\\wrong-platform',
     }, 'linux')).toEqual({ PATH: '/usr/bin:/bin' });
     expect(buildProviderEnvironment(undefined, {
+      PATH: '/usr/bin:/bin', HOME: '/Users/provider', USER: '',
+    }, 'darwin')).toEqual({ PATH: '/usr/bin:/bin', HOME: '/Users/provider' });
+    expect(buildProviderEnvironment(undefined, {
       PATH: 'C:\\Windows\\System32', USERPROFILE: '', HOME: '/home/wrong-platform',
     }, 'win32')).toEqual({ PATH: 'C:\\Windows\\System32', NoDefaultCurrentDirectoryInExePath: '1' });
 
     expect(buildProviderEnvironment({ HOME: '/home/explicit' }, {
       PATH: '/usr/bin:/bin', HOME: '/home/ambient',
     }, 'linux')).toMatchObject({ PATH: '/usr/bin:/bin', HOME: '/home/explicit' });
+    expect(buildProviderEnvironment({ USER: 'explicit' }, {
+      PATH: '/usr/bin:/bin', HOME: '/Users/ambient', USER: 'ambient',
+    }, 'darwin')).toEqual({ PATH: '/usr/bin:/bin', HOME: '/Users/ambient', USER: 'explicit' });
     expect(buildProviderEnvironment({ USERPROFILE: 'D:\\Users\\explicit' }, {
       PATH: 'C:\\Windows\\System32', USERPROFILE: 'C:\\Users\\ambient',
     }, 'win32')).toMatchObject({ PATH: 'C:\\Windows\\System32', USERPROFILE: 'D:\\Users\\explicit' });
     expect(buildProviderEnvironment({ userprofile: 'D:\\Users\\mixed-case' }, {
       PATH: 'C:\\Windows\\System32', USERPROFILE: 'C:\\Users\\ambient',
     }, 'win32')).toEqual({ PATH: 'C:\\Windows\\System32', userprofile: 'D:\\Users\\mixed-case', NoDefaultCurrentDirectoryInExePath: '1' });
-    // A provider or ambient value, in any case, never turns the cwd search back on.
-    expect(buildProviderEnvironment({ nodefaultcurrentdirectoryinexepath: '' }, {
-      PATH: 'C:\\Windows\\System32', NODEFAULTCURRENTDIRECTORYINEXEPATH: '',
-    }, 'win32')).toEqual({ PATH: 'C:\\Windows\\System32', NoDefaultCurrentDirectoryInExePath: '1' });
     expect(buildProviderEnvironment({ HOME: '' }, {
       PATH: '/usr/bin:/bin', HOME: '/home/ambient',
     }, 'linux')).toMatchObject({ PATH: '/usr/bin:/bin', HOME: '' });
@@ -2861,9 +2882,11 @@ describe('worker launch acknowledgement', () => {
       '--encoded=%25',
       'say "hello" & continue',
       '--literal=bang! caret^',
+      'trail\\',
     ];
 
-    vi.stubEnv('SystemRoot', 'C:\\Windows'); // a win32 host reads SystemRoot from process.env
+    // A win32 host reads SystemRoot from process.env and other hosts from the caller env, so set both.
+    vi.stubEnv('SystemRoot', 'C:\\Windows');
     const windowsInvocation = buildProviderSpawnInvocation(providerArgv, 'win32', { SystemRoot: 'C:\\Windows' });
     const [lineVar] = Object.keys(windowsInvocation.env ?? {});
     expect(lineVar).toMatch(/^_OMC_PL_[0-9A-F]{16}$/);
@@ -2872,7 +2895,7 @@ describe('worker launch acknowledgement', () => {
       args: ['/d', '/v:off', '/s', '/c'],
       batchScript: `@echo off\r\nif not defined ${lineVar} exit /b 87\r\n"C:\\Windows\\System32\\cmd.exe" /d /v:off /s /c "set "${lineVar}=" & %%${lineVar}%%"\r\n`,
       env: {
-        [lineVar!]: '"C:\\Program Files\\Codex\\codex.cmd" "--label=100% ready" "--home=%USERPROFILE%" "--encoded=%25" "say ""hello"" & continue" "--literal=bang! caret^"',
+        [lineVar!]: '"C:\\Program Files\\Codex\\codex.cmd" "--label=100% ready" "--home=%USERPROFILE%" "--encoded=%25" "say ""hello"" & continue" "--literal=bang! caret^" "trail\\\\"',
         NoDefaultCurrentDirectoryInExePath: '1',
       },
     });
@@ -2896,9 +2919,9 @@ describe('worker launch acknowledgement', () => {
       args: providerArgv.slice(1),
     });
     expect(buildProviderSpawnInvocation(['C:\\Tools\\codex.exe', '--version'], 'win32', { SystemRoot: 'C:\\Windows' }))
-      .toEqual({ command: 'C:\\Tools\\codex.exe', args: ['--version'] });
+      .toEqual({ command: 'C:\\Tools\\codex.exe', args: ['--version'], env: { NoDefaultCurrentDirectoryInExePath: '1' }, windowsDirect: true });
     expect(buildProviderSpawnInvocation(['C:\\Tools\\CODEX.COM', '100%'], 'win32', { SystemRoot: 'C:\\Windows' }))
-      .toEqual({ command: 'C:\\Tools\\CODEX.COM', args: ['100%'] });
+      .toEqual({ command: 'C:\\Tools\\CODEX.COM', args: ['100%'], env: { NoDefaultCurrentDirectoryInExePath: '1' }, windowsDirect: true });
     // A bare name or a trailing-dot batch path keeps the cmd route.
     for (const command of ['codex', 'C:\\Tools\\codex.cmd.', 'C:\\Tools\\CODEX.BAT']) {
       expect(buildProviderSpawnInvocation([command], 'win32', { SystemRoot: 'C:\\Windows' }))
@@ -2908,32 +2931,30 @@ describe('worker launch acknowledgement', () => {
 
   it('pins the batch wrapper cmd under SystemRoot and ignores ComSpec', () => {
     const argv = ['C:\\Tools\\provider.cmd', 'x'];
-    // A win32 host reads SystemRoot from process.env and other hosts from the caller env, so set both.
     vi.stubEnv('SystemRoot', 'D:\\Win\\');
-    try {
-      const invocation = buildProviderSpawnInvocation(argv, 'win32', { ComSpec: process.execPath, SystemRoot: 'D:\\Win\\' });
-      expect(invocation.command).toBe('D:\\Win\\System32\\cmd.exe');
-      expect(invocation.batchScript).toContain('\r\n"D:\\Win\\System32\\cmd.exe" /d /v:off /s /c ');
-      expect(invocation.batchScript).not.toContain(process.execPath);
-      // A missing or non-absolute SystemRoot fails closed instead of searching for cmd.exe.
-      for (const root of ['', 'Windows', '\\\\server\\share', 'C:\\%X%']) {
-        vi.stubEnv('SystemRoot', root);
-        expect(() => buildProviderSpawnInvocation(argv, 'win32', { ComSpec: 'C:\\Windows\\System32\\cmd.exe', SystemRoot: root })).toThrow('worker_launch_cmd_authority_missing');
-      }
-    } finally {
-      vi.unstubAllEnvs();
+    vi.stubEnv('ComSpec', process.execPath);
+    const invocation = buildProviderSpawnInvocation(argv, 'win32', { ComSpec: process.execPath, SystemRoot: 'D:\\Win\\' });
+    expect(invocation.command).toBe('D:\\Win\\System32\\cmd.exe');
+    expect(invocation.batchScript).toContain('\r\n"D:\\Win\\System32\\cmd.exe" /d /v:off /s /c ');
+    expect(invocation.batchScript).not.toContain(process.execPath);
+    // A missing or non-absolute SystemRoot fails closed instead of searching for cmd.exe.
+    for (const root of ['', 'Windows', '\\\\server\\share', 'C:\\%X%']) {
+      vi.stubEnv('SystemRoot', root);
+      expect(() => buildProviderSpawnInvocation(argv, 'win32', { ComSpec: 'C:\\Windows\\System32\\cmd.exe', SystemRoot: root }))
+        .toThrow('worker_launch_cmd_authority_missing');
     }
   });
 
   it('rejects control characters and over-long lines in native Windows batch arguments', async () => {
-    const comSpec = { SystemRoot: 'C:\\Windows' };
+    vi.stubEnv('SystemRoot', 'C:\\Windows');
+    const env = { SystemRoot: 'C:\\Windows' };
     for (let code = 0; code < 0x20; code++) {
-      expect(() => buildProviderSpawnInvocation(['C:\\Tools\\provider.cmd', `x${String.fromCharCode(code)}y`], 'win32', comSpec))
+      expect(() => buildProviderSpawnInvocation(['C:\\Tools\\provider.cmd', `x${String.fromCharCode(code)}y`], 'win32', env))
         .toThrow('worker_launch_provider_argv_invalid');
     }
-    expect(() => buildProviderSpawnInvocation(['C:\\Tools\\provider.cmd', 'A'.repeat(8000)], 'win32', comSpec))
+    expect(() => buildProviderSpawnInvocation(['C:\\Tools\\provider.cmd', 'A'.repeat(8000)], 'win32', env))
       .toThrow('worker_launch_provider_argv_too_long');
-    expect(Object.values(buildProviderSpawnInvocation(['C:\\Tools\\provider.cmd', 'A'.repeat(7900)], 'win32', comSpec).env ?? {}))
+    expect(Object.values(buildProviderSpawnInvocation(['C:\\Tools\\provider.cmd', 'A'.repeat(7900)], 'win32', env).env ?? {}))
       .toEqual([`"C:\\Tools\\provider.cmd" "${'A'.repeat(7900)}"`, '1']);
     // The bootstrap spec refuses the same argv before the supervisor runs.
     const launchAttempt = await attempt();
@@ -3126,24 +3147,36 @@ describe('worker launch acknowledgement', () => {
     await expect(readFile(wrapperPath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  it('fails closed instead of using the POSIX wrapper for a supervised .exe provider', async () => {
+    const exe = 'C:\\Tools\\codex.exe';
+    const invocation = buildProviderSpawnInvocation([exe, '--version'], 'win32', { SystemRoot: 'C:\\Windows' });
+    await expect(materializeProviderSpawnInvocation(invocation, { superviseProcessTree: true }))
+      .rejects.toThrow('worker_launch_windows_supervision_unsupported');
+    await expect(materializeProviderSpawnInvocation(invocation)).resolves.toMatchObject({ command: exe });
+  });
+
   describe.runIf(process.platform === 'win32')('native Windows batch provider hardening', () => {
-    async function runBatchProvider(providerDir: string, payload: string[]) {
+    const recordArgv = `"${process.execPath}" -e "require('fs').writeFileSync(process.argv[1],JSON.stringify({argv:process.argv.slice(2),leaked:Object.keys(process.env).some(k=>k.toUpperCase().startsWith('_OMC_P'))}))" %*`;
+
+    async function runBatchProvider(providerDir: string, payload: string[], spawnEnv?: (invocationEnv: Record<string, string> | undefined) => NodeJS.ProcessEnv) {
       await mkdir(providerDir, { recursive: true });
       const providerPath = join(providerDir, 'provider.cmd');
       const outputPath = join(cwd, 'argv.json');
-      await writeFile(providerPath, `@echo off\r\n"${process.execPath}" -e "require('fs').writeFileSync(process.argv[1],JSON.stringify({argv:process.argv.slice(2),leaked:Object.keys(process.env).some(k=>k.toUpperCase().startsWith('_OMC_P'))}))" %*\r\n`, 'utf8');
+      await writeFile(providerPath, `@echo off\r\n${recordArgv}\r\n`, 'utf8');
       const invocation = await materializeProviderSpawnInvocation(buildProviderSpawnInvocation(
         [providerPath, outputPath, ...payload], 'win32', { SystemRoot: process.env.SystemRoot },
       ));
       try {
         const exitCode = await new Promise<number | null>((resolve, reject) => {
           const child = spawn(invocation.command, invocation.args, {
-            stdio: 'pipe', windowsVerbatimArguments: invocation.windowsVerbatimArguments, env: { ...process.env, ...invocation.env },
+            stdio: 'pipe', windowsVerbatimArguments: invocation.windowsVerbatimArguments,
+            env: spawnEnv ? spawnEnv(invocation.env) : { ...process.env, ...invocation.env },
           });
           child.once('error', reject);
           child.once('exit', code => resolve(code));
         });
-        return { exitCode, output: JSON.parse(await readFile(outputPath, 'utf8')) as unknown };
+        const output = await readFile(outputPath, 'utf8').then(JSON.parse, () => null) as unknown;
+        return { exitCode, output };
       } finally {
         await invocation.cleanup();
       }
@@ -3172,6 +3205,17 @@ describe('worker launch acknowledgement', () => {
       await expect(runBatchProvider(join(cwd, 'bin'), near)).resolves.toEqual({ exitCode: 0, output: { argv: near, leaked: false } });
     });
 
+    it('carries BatBadBut-style quote and backslash payloads as literal arguments', async () => {
+      cwd = await createFixture('worker-launch-native-batbadbut-');
+      const canaryPath = join(cwd, 'injected.txt');
+      const payload = [
+        `"&echo pwned>"${canaryPath}"`, `\\"&echo pwned>"${canaryPath}"&rem \\"`, `x\\\\"&echo pwned>"${canaryPath}"&"`,
+        `%CD:~0,1%&echo pwned>"${canaryPath}"`, `^"&echo pwned>"${canaryPath}"`,
+      ];
+      await expect(runBatchProvider(join(cwd, 'bin'), payload)).resolves.toEqual({ exitCode: 0, output: { argv: payload, leaked: false } });
+      expect(existsSync(canaryPath)).toBe(false);
+    });
+
     it('round-trips non-ASCII arguments and a non-ASCII provider path exactly', async () => {
       cwd = await createFixture('worker-launch-native-unicode-');
       const payload = ['åäö ü 漢字', '“quoted”', 'a＂ & b'];
@@ -3186,7 +3230,7 @@ describe('worker launch acknowledgement', () => {
         [process.execPath, '-e', "require('fs').writeFileSync(process.argv[1],JSON.stringify(process.argv.slice(2)))", outputPath, ...payload],
         'win32', { SystemRoot: process.env.SystemRoot },
       );
-      expect(invocation).toEqual({ command: process.execPath, args: expect.any(Array) });
+      expect(invocation).toEqual({ command: process.execPath, args: expect.any(Array), env: { NoDefaultCurrentDirectoryInExePath: '1' }, windowsDirect: true });
       await new Promise<void>((resolve, reject) => {
         const child = spawn(invocation.command, invocation.args, { stdio: 'ignore' });
         child.once('error', reject);
@@ -3194,6 +3238,148 @@ describe('worker launch acknowledgement', () => {
       });
       await expect(readFile(outputPath, 'utf8').then(JSON.parse)).resolves.toEqual(payload);
     });
+
+    it('ignores a ComSpec override in the spawn environment', async () => {
+      cwd = await createFixture('worker-launch-native-comspec-');
+      const payload = ['hello world', '100% ready'];
+      await expect(runBatchProvider(join(cwd, 'bin'), payload, invocationEnv => ({
+        ...process.env, ComSpec: process.execPath, COMSPEC: process.execPath, ...invocationEnv,
+      }))).resolves.toEqual({ exitCode: 0, output: { argv: payload, leaked: false } });
+    });
+
+    it('runs the PATH node for an npm-style shim even when the cwd holds a planted node.cmd', async () => {
+      cwd = await createFixture('worker-launch-native-cwd-');
+      const shimDir = join(cwd, 'npm');
+      await mkdir(shimDir, { recursive: true });
+      const shimPath = join(shimDir, 'codex.cmd');
+      const outputPath = join(cwd, 'ran.txt');
+      const canaryPath = join(cwd, 'planted.txt');
+      // npm's cmd-shim falls back to a bare `node` when no node.exe sits beside it.
+      await writeFile(shimPath, `@ECHO off\r\nSETLOCAL\r\nIF EXIST "%~dp0\\node.exe" (SET "_prog=%~dp0\\node.exe") ELSE (SET "_prog=node")\r\n"%_prog%" -e "require('fs').writeFileSync(process.argv[1],'real')" %*\r\n`, 'utf8');
+      await writeFile(join(cwd, 'node.cmd'), `@echo off\r\necho planted>"${canaryPath}"\r\n`, 'utf8');
+      const invocation = await materializeProviderSpawnInvocation(buildProviderSpawnInvocation(
+        [shimPath, outputPath], 'win32', { SystemRoot: process.env.SystemRoot },
+      ));
+      try {
+        const exitCode = await new Promise<number | null>((resolve, reject) => {
+          const child = spawn(invocation.command, invocation.args, {
+            cwd, stdio: 'pipe', windowsVerbatimArguments: invocation.windowsVerbatimArguments,
+            // A minimal env: the host may already set NoDefaultCurrentDirectoryInExePath.
+            env: { SystemRoot: process.env.SystemRoot, PATH: `${dirname(process.execPath)};${join(process.env.SystemRoot!, 'System32')}`, ...invocation.env },
+          });
+          child.once('error', reject);
+          child.once('exit', code => resolve(code));
+        });
+        expect(exitCode).toBe(0);
+        expect(existsSync(canaryPath)).toBe(false);
+        expect(await readFile(outputPath, 'utf8')).toBe('real');
+      } finally {
+        await invocation.cleanup();
+      }
+    });
+
+    it('keeps the bare-name children of an .exe provider from running a git planted in the cwd', async () => {
+      cwd = await createFixture('worker-launch-native-child-');
+      const canaryPath = join(cwd, 'planted.txt');
+      const donePath = join(cwd, 'done.txt');
+      const plant = `require('fs').writeFileSync(${JSON.stringify(canaryPath)},'exe')`;
+      // A node.exe named git.exe runs the -e script the child hands it.
+      await link(process.execPath, join(cwd, 'git.exe')).catch(() => copyFile(process.execPath, join(cwd, 'git.exe')));
+      await writeFile(join(cwd, 'git.cmd'), `@echo off\r\necho cmd>"${canaryPath}"\r\n`, 'utf8');
+      const cmdPath = join(process.env.SystemRoot!, 'System32', 'cmd.exe');
+      const script = `const cp=require('child_process');cp.spawnSync('git',['-e',${JSON.stringify(plant)}]);cp.spawnSync(${JSON.stringify(cmdPath)},['/d','/c','git -e x']);require('fs').writeFileSync(${JSON.stringify(donePath)},'done')`;
+      const invocation = await materializeProviderSpawnInvocation(buildProviderSpawnInvocation(
+        [process.execPath, '-e', script], 'win32', { SystemRoot: process.env.SystemRoot },
+      ));
+      try {
+        const exitCode = await new Promise<number | null>((resolve, reject) => {
+          const child = spawn(invocation.command, invocation.args, {
+            cwd, stdio: 'pipe', windowsVerbatimArguments: invocation.windowsVerbatimArguments,
+            // A minimal env: the host may already set NoDefaultCurrentDirectoryInExePath.
+            env: { SystemRoot: process.env.SystemRoot, PATH: `${dirname(process.execPath)};${join(process.env.SystemRoot!, 'System32')}`, ...invocation.env },
+          });
+          child.once('error', reject);
+          child.once('exit', code => resolve(code));
+        });
+        expect(exitCode).toBe(0);
+        expect(await readFile(donePath, 'utf8')).toBe('done');
+        expect(existsSync(canaryPath)).toBe(false);
+      } finally {
+        await invocation.cleanup();
+      }
+    });
+
+    it('sets NoDefaultCurrentDirectoryInExePath for a batch provider even when the spawn env clears it', async () => {
+      cwd = await createFixture('worker-launch-native-nodefault-');
+      const shimPath = join(cwd, 'provider.cmd');
+      const outputPath = join(cwd, 'value.txt');
+      await writeFile(shimPath, `@echo off\r\n>"%~1" echo [%NoDefaultCurrentDirectoryInExePath%]\r\n`, 'utf8');
+      const invocation = await materializeProviderSpawnInvocation(buildProviderSpawnInvocation(
+        [shimPath, outputPath], 'win32', { SystemRoot: process.env.SystemRoot },
+      ));
+      try {
+        await new Promise<number | null>((resolve, reject) => {
+          const child = spawn(invocation.command, invocation.args, {
+            cwd, stdio: 'pipe', windowsVerbatimArguments: invocation.windowsVerbatimArguments,
+            env: { SystemRoot: process.env.SystemRoot, NoDefaultCurrentDirectoryInExePath: '', ...invocation.env },
+          });
+          child.once('error', reject);
+          child.once('exit', code => resolve(code));
+        });
+        expect((await readFile(outputPath, 'utf8')).trim()).toBe('[1]');
+      } finally {
+        await invocation.cleanup();
+      }
+    });
+
+    it('keeps exactly one NoDefaultCurrentDirectoryInExePath=1 when the provider env holds a case alias', async () => {
+      cwd = await createFixture('worker-launch-native-nodefault-alias-');
+      const invocation = buildProviderSpawnInvocation(
+        [process.execPath, '-e', "console.log(JSON.stringify(Object.entries(process.env).filter(([k])=>k.toUpperCase()==='NODEFAULTCURRENTDIRECTORYINEXEPATH')))"],
+        'win32', { SystemRoot: process.env.SystemRoot },
+      );
+      // Windows keeps one entry per case-insensitive name, and NODEFAULT... sorts first.
+      const env = buildProviderSpawnEnvironment({ SystemRoot: process.env.SystemRoot, NODEFAULTCURRENTDIRECTORYINEXEPATH: '' }, invocation);
+      expect(Object.entries(env).filter(([key]) => key.toUpperCase() === 'NODEFAULTCURRENTDIRECTORYINEXEPATH'))
+        .toEqual([['NoDefaultCurrentDirectoryInExePath', '1']]);
+      const output = await new Promise<string>((resolve, reject) => {
+        const child = spawn(invocation.command, invocation.args, { cwd, stdio: ['ignore', 'pipe', 'ignore'], env });
+        let stdout = '';
+        child.stdout.on('data', chunk => { stdout += chunk; });
+        child.once('error', reject);
+        child.once('exit', () => resolve(stdout));
+      });
+      expect(JSON.parse(output)).toEqual([['NoDefaultCurrentDirectoryInExePath', '1']]);
+    });
+
+    it('refuses to run the wrapper when the spawn env lacks its line variable', async () => {
+      cwd = await createFixture('worker-launch-native-noline-');
+      const canaryPath = join(cwd, 'injected.txt');
+      // An inherited fixed-name line must never stand in for the per-launch one.
+      const result = await runBatchProvider(join(cwd, 'bin'), ['x'], () => ({
+        ...process.env, _OMC_PROVIDER_LINE: `echo pwned>"${canaryPath}"`,
+      }));
+      expect(result).toEqual({ exitCode: 87, output: null });
+      expect(existsSync(canaryPath)).toBe(false);
+    });
+    it.each([
+      ['filters a case-variant pre-set provider-line variable', (canaryPath: string) => ({ _omc_provider_line: `echo pwned>"${canaryPath}"` })],
+      ['ignores a provider_env ComSpec', () => ({ ComSpec: process.execPath })],
+    ])('supervisor %s', async (_name, providerEnvFor) => {
+      const launchAttempt = await attempt();
+      const providerPath = join(cwd, 'provider.cmd');
+      const outputPath = join(cwd, 'argv.json');
+      const canaryPath = join(cwd, 'injected.txt');
+      await writeFile(providerPath, `@echo off\r\n"${process.execPath}" -e "require('fs').writeFileSync(process.argv[1],JSON.stringify({argv:process.argv.slice(2),leaked:Object.keys(process.env).some(k=>k.toUpperCase().startsWith('_OMC_P'))}))" %*\r\n`, 'utf8');
+      const payload = ['hello world', '100% ready'];
+      const spec = buildWorkerLaunchBootstrapSpec(launchAttempt, [providerPath, outputPath, ...payload], cwd, { providerEnv: providerEnvFor(canaryPath) });
+      const bootstrap = runWorkerLaunchBootstrap(spec);
+      await expect(awaitWorkerLaunchAcknowledgement(launchAttempt, { timeoutMs: LAUNCH_WAIT_TIMEOUT_MS, pollIntervalMs: 5 }))
+        .resolves.toEqual({ ok: true });
+      await expect(bootstrap).resolves.toMatchObject({ outcome: 'ran' });
+      await expect(readFile(outputPath, 'utf8').then(JSON.parse)).resolves.toEqual({ argv: payload, leaked: false });
+      expect(existsSync(canaryPath)).toBe(false);
+    }, 30_000);
 
     it('runs a .cmd provider through the supervisor without cmd reparsing its arguments', async () => {
       const launchAttempt = await attempt();
@@ -3208,52 +3394,6 @@ describe('worker launch acknowledgement', () => {
         'hello world', 'say "hi"', '%USERPROFILE%', '100% ready', '!PATH!', '^', '', 'trail\\', 'åäö ü 漢字',
       ];
       const spec = buildWorkerLaunchBootstrapSpec(launchAttempt, [providerPath, outputPath, ...payload], cwd);
-      const bootstrap = runWorkerLaunchBootstrap(spec);
-      await expect(awaitWorkerLaunchAcknowledgement(launchAttempt, { timeoutMs: LAUNCH_WAIT_TIMEOUT_MS, pollIntervalMs: 5 }))
-        .resolves.toEqual({ ok: true });
-      await expect(bootstrap).resolves.toMatchObject({ outcome: 'ran' });
-      await expect(readFile(outputPath, 'utf8').then(JSON.parse)).resolves.toEqual({ argv: payload, leaked: false });
-      expect(existsSync(canaryPath)).toBe(false);
-    }, 30_000);
-
-    it('refuses to run the wrapper when the spawn env lacks its line variable', async () => {
-      cwd = await createFixture('worker-launch-native-noline-');
-      const providerPath = join(cwd, 'provider.cmd');
-      const outputPath = join(cwd, 'argv.json');
-      const canaryPath = join(cwd, 'injected.txt');
-      await writeFile(providerPath, `@echo off\r\n"${process.execPath}" -e "require('fs').writeFileSync(process.argv[1],'ran')" %*\r\n`, 'utf8');
-      const invocation = await materializeProviderSpawnInvocation(buildProviderSpawnInvocation(
-        [providerPath, outputPath], 'win32', { SystemRoot: process.env.SystemRoot },
-      ));
-      try {
-        // An inherited fixed-name line from older builds must never stand in for the per-launch one.
-        const exitCode = await new Promise<number | null>((resolve, reject) => {
-          const child = spawn(invocation.command, invocation.args, {
-            stdio: 'pipe', windowsVerbatimArguments: invocation.windowsVerbatimArguments,
-            env: { ...process.env, _OMC_PROVIDER_LINE: `echo pwned>"${canaryPath}"` },
-          });
-          child.once('error', reject);
-          child.once('exit', code => resolve(code));
-        });
-        expect(exitCode).toBe(87);
-        expect(existsSync(outputPath)).toBe(false);
-        expect(existsSync(canaryPath)).toBe(false);
-      } finally {
-        await invocation.cleanup();
-      }
-    });
-
-    it.each([
-      ['filters a case-variant pre-set provider-line variable', (canaryPath: string) => ({ _omc_provider_line: `echo pwned>"${canaryPath}"` })],
-      ['ignores a provider_env ComSpec', () => ({ ComSpec: process.execPath })],
-    ])('supervisor %s', async (_name, providerEnvFor) => {
-      const launchAttempt = await attempt();
-      const providerPath = join(cwd, 'provider.cmd');
-      const outputPath = join(cwd, 'argv.json');
-      const canaryPath = join(cwd, 'injected.txt');
-      await writeFile(providerPath, `@echo off\r\n"${process.execPath}" -e "require('fs').writeFileSync(process.argv[1],JSON.stringify({argv:process.argv.slice(2),leaked:Object.keys(process.env).some(k=>k.toUpperCase().startsWith('_OMC_P'))}))" %*\r\n`, 'utf8');
-      const payload = ['hello world', '100% ready'];
-      const spec = buildWorkerLaunchBootstrapSpec(launchAttempt, [providerPath, outputPath, ...payload], cwd, { providerEnv: providerEnvFor(canaryPath) });
       const bootstrap = runWorkerLaunchBootstrap(spec);
       await expect(awaitWorkerLaunchAcknowledgement(launchAttempt, { timeoutMs: LAUNCH_WAIT_TIMEOUT_MS, pollIntervalMs: 5 }))
         .resolves.toEqual({ ok: true });
@@ -3466,11 +3606,9 @@ describe('worker launch acknowledgement', () => {
 
   it('binds the Windows supervisor source, environment, Job Object, and argv protocol', () => {
     const source = buildWindowsSupervisorSource();
-    // Fork: the fork keeps its own supervisor (CreateProcessW with the pane
-    // console and .cmd/.bat via cmd.exe), not upstream's CreateConsoleProcess.
-    const create = source.indexOf('CreateProcessW(');
-    const assign = source.indexOf('AssignProcessToJobObject(');
-    const resume = source.indexOf('ResumeThread(');
+    const create = source.indexOf('[O]::CreateConsoleProcess(');
+    const assign = source.indexOf('[O]::AssignProcessToJobObject(');
+    const resume = source.indexOf('[O]::ResumeThread(');
 
     expect(create).toBeGreaterThan(-1);
     expect(source).toContain('0x00000400');
@@ -3497,24 +3635,24 @@ describe('worker launch acknowledgement', () => {
     expect(source.split('\n')[0]).toBe('$ErrorActionPreference = "Stop"');
     expect(source).toContain("if (c == '\\\\')");
     expect(source).not.toMatch(/'\\'[,)]/);
-    expect(source).toContain('$app = [NullString]::Value;');
-    expect(source).toContain('CreateProcessW($app, $cmd,');
     // A batch argv[0] runs under cmd.exe from the system directory, with the
     // line in the environment block rather than the command line.
-    expect(source).toContain('$argv = [string[]]$payload.provider_argv; [O]::RequireProviderExecutable($argv[0]);');
-    expect(source).toContain("if ($argv[0] -match '\\.(cmd|bat)[. ]*$') { $providerLine = [O]::BuildCmdLine($argv); $app = Join-Path ([Environment]::SystemDirectory) 'cmd.exe';");
-    expect(source).toContain('Regex.IsMatch(app, @"^(?:[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\/]+[\\\\/][^\\\\/]+[\\\\/])") || !System.IO.File.Exists(app)) throw new ArgumentException("worker_launch_provider_executable_invalid")');
+    expect(source).toContain("if ($app -match '\\.(cmd|bat)[. ]*$') { [O]::RequireBatchProvider($app); $providerLine = [O]::BuildCmdLine($argv); $app = Join-Path ([Environment]::SystemDirectory) 'cmd.exe';");
     expect(source).toContain('/d /v:off /s /c "set "_OMC_PROVIDER_LINE=" & %_OMC_PROVIDER_LINE%"');
+    expect(source).toContain('[O]::CreateConsoleProcess($app, $cmd, $envPtr, $payload.cwd, [ref]$pi)');
+    expect(source).toContain('throw new ArgumentException("worker_launch_provider_executable_invalid")');
     expect(source).toContain('if (c < \' \') throw new ArgumentException("worker_launch_provider_argv_invalid")');
     expect(source).toContain('if (b.Length > 8000) throw new ArgumentException("worker_launch_provider_argv_too_long")');
-    expect(source).toContain('CreateJobObjectW([IntPtr]::Zero, [NullString]::Value)');
     expect(source).toContain('[uint32]::MaxValue');
     expect(source).not.toContain('0xffffffff');
+    // The start identity is read while the provider is still suspended.
+    expect(source.indexOf('$ticks = ')).toBeGreaterThan(source.indexOf('[O]::AssignProcessToJobObject('));
+    expect(source.indexOf('$ticks = ')).toBeLessThan(source.indexOf('[O]::ResumeThread('));
     // The provider talks to the pane console, never the protocol pipes.
-    expect(source).toContain("CreateFileW('CONOUT$'");
-    expect(source).toContain('$si.dwFlags = 0x00000100; $si.hStdInput = $conIn; $si.hStdOutput = $conOut; $si.hStdError = $conOut;');
+    expect(source).toContain('CreateFileW("CONOUT$"');
+    expect(source).toContain('startup.StartupInfo.hStdOutput = output;');
     expect(source).not.toContain('[Console]::In.ReadLineAsync()');
-    expect(source.match(/\$stdinReader\.ReadLineAsync\(\)/g)).toHaveLength(2);
+    expect(source.match(/\[O\]::ReadLineAsync\(\)/g)).toHaveLength(2);
   });
 
   it('binds every Windows supervisor frame to the exact launch instance', () => {

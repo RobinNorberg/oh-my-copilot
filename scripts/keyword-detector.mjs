@@ -216,7 +216,7 @@ function isExplicitAskSlashInvocation(prompt) {
 }
 
 function isRetiredSlashInvocation(prompt) {
-  return /^\s*\/(?:omc:|omg:|oh-my-copilot:)?(?:ultrawork|ulw|uw|울트라워크|ウルトラワーク|ccg|claude-codex-gemini|씨씨지|シーシージー)(?=\s|$|[?!.,;:])/i.test(prompt);
+  return /^\s*\/(?:omc:|omg:|oh-my-copilot:)?(?:ultrawork|ulw|uw|울트라워크|ウルトラワーク|ccg|claude-codex-gemini|씨씨지|シーシージー|ultraqa|omc-teams)(?=\s|$|[?!.,;:])/i.test(prompt);
 }
 
 // Sanitize text to prevent false positives from code blocks, XML tags, URLs, and file paths

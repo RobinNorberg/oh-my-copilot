@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { _openclaw, processHook, resetSkipHooksCache, type HookInput } from "../bridge.js";
+import { useIsolatedCwd } from "../../__tests__/helpers/isolated-cwd.js";
+
+useIsolatedCwd();
 
 describe("_openclaw.wake", () => {
   afterEach(() => {

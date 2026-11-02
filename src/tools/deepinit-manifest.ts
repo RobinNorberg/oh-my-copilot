@@ -125,7 +125,6 @@ export function isExcluded(name: string): boolean {
  */
 export function scanDirectories(projectRoot: string): Record<string, DirectoryEntry> {
   const result: Record<string, DirectoryEntry> = {};
-  // bigint keys: NTFS file IDs exceed 2^53, so Number inodes of distinct dirs can collide
   const visitedInodes = new Set<string>();
 
   // Resolve the real project root for symlink containment checks
@@ -152,12 +151,13 @@ export function scanDirectories(projectRoot: string): Record<string, DirectoryEn
       return; // Skip inaccessible directories
     }
 
-    // Symlink loop protection via inode tracking
+    // Symlink loop protection via inode tracking. BigInt ids: NTFS file ids
+    // exceed 2^53, where a Number ino can merge two distinct directories.
     try {
       const stat = statSync(absDir, { bigint: true });
-      const inodeKey = `${stat.dev}:${stat.ino}`;
-      if (visitedInodes.has(inodeKey)) return;
-      visitedInodes.add(inodeKey);
+      const identity = `${stat.dev}:${stat.ino}`;
+      if (visitedInodes.has(identity)) return;
+      visitedInodes.add(identity);
     } catch {
       return; // Skip inaccessible directories
     }

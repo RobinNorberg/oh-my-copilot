@@ -33,6 +33,8 @@ import { skillSlash } from './lib/skill-slash.mjs';
 
 hardenWindowsExeSearch();
 
+hardenWindowsExeSearch();
+
 const toPosix = (value) => value.replace(/\\/g, '/');
 
 const SEVERITY = { high: 'high', medium: 'medium', low: 'low', info: 'info' };
