@@ -10,7 +10,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 - [Unreleased: omg factory run](#unreleased-omg-factory-run)
 - [Unreleased: Budget Unit Is AI Credits](#unreleased-budget-unit-is-ai-credits)
 - [Unreleased: HUD Host Detection and Copilot Defaults](#unreleased-hud-host-detection-and-copilot-defaults)
-- [Unreleased: Team Bridge Exports Removed from `oh-my-copilot/team`](#unreleased-team-bridge-exports-removed-from-oh-my-copilotteam)
+- [v5.19.5 → v5.19.6: Team Bridge Exports Removed from `oh-my-copilot/team`](#v5195--v5196-team-bridge-exports-removed-from-oh-my-copilotteam)
 - [Unreleased: Host Load Gate Threshold Values](#unreleased-host-load-gate-threshold-values)
 - [v5.12.2 → v5.13.0: Chained Stop Continuation on Copilot](#v5122--v5130-chained-stop-continuation-on-copilot)
 - [v5.11.0 → v5.12.0: Merge-readiness MCP Tools Removed](#v5110--v5120-merge-readiness-mcp-tools-removed)
@@ -151,7 +151,7 @@ Applies when upgrading from v5.13.1. The HUD now detects whether Claude Code or 
 
 **Who must act.** Nobody. To bring back an element Copilot now hides, set it to `true` under `omcHud.elements` in `~/.copilot/settings.json`. See [REFERENCE.md](./REFERENCE.md#configure-hud-statusline).
 
-## Unreleased: Team Bridge Exports Removed from `oh-my-copilot/team`
+## v5.19.5 → v5.19.6: Team Bridge Exports Removed from `oh-my-copilot/team`
 
 The MCP team bridge (`bridge/team-bridge.cjs`) was never spawned by any OMC
 runtime path, so it and the modules only it used have been removed. The
