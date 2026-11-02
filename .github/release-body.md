@@ -1,53 +1,54 @@
-# oh-my-copilot v5.19.4
+# oh-my-copilot v5.19.5
 
-A CI, release tooling and test reliability release. There are no user-facing
-behaviour changes, so the field agent can upgrade safely.
+A Windows security hardening plus release tooling, CI and test reliability
+release. Apart from the Windows hardening there are no user-facing behaviour
+changes, so the field agent can upgrade safely.
 
-Install with `npm install -g oh-my-copilot@5.19.4`, or from the plugin
+Install with `npm install -g oh-my-copilot@5.19.5`, or from the plugin
 marketplace: `copilot plugin update oh-my-copilot@omc`.
 
-## Release pipeline
+## Security
 
-- `omg release` pushes the release PR right after the release commit and
-  watches its CI while the local suite and smoke run. The PR merges only once
-  CI is green and the suite and smoke passed; a red suite leaves it open and
-  unmerged. This saves about the release PR's CI time (~18 min) per release.
-- On Windows, the release suite no longer picks up WSL's `bash` when started
-  from PowerShell; it puts Git for Windows' bash first on PATH, or refuses to
-  start without one.
+- Windows: no omg process runs an executable planted in the project folder
+  (port of upstream #4768). Windows looks up a bare command name (`git`,
+  `npm`, `gh`) in the current directory before `PATH`, so a `git.cmd` or
+  `git.exe` committed to a repository could run in its place. v5.19.3
+  covered the `omg` bin, the Copilot hooks, the setup scripts and the
+  factory; now every entry point, hook script, MCP server, the team runtime
+  and the HUD set `NoDefaultCurrentDirectoryInExePath=1` before anything
+  spawns, and allowlisted child environments carry it on.
 
-## CI
+## Release tooling
 
-- CI tests each tree once. A new `Tree evidence` job reuses an earlier green
-  run of the same tree (a release PR's dev merge, the main merge of dev, the
-  tag) and reports the other jobs as SKIPPED, naming the source run.
-- A tag only publishes when its tree already passed: the release job skips
-  `npm test` only when the tagged commit is on `main` and its tree has that
-  evidence, and runs the suite as before otherwise. Publishing, provenance and
-  the GitHub Release are unchanged. Repo variables `CI_TREE_REUSE=false` and
-  `CI_RELEASE_REUSE=false` turn reuse off.
-- The Linux suite runs in four shards split by measured file cost; the
-  required `Test` check merges their reports. On the sharding PR's own CI run,
-  `Test` finished 5.2 min after the run started, against 13.9 min for the old
-  single job.
-- `Generated Artifact Authorization` and `No Committed Build Artifacts` no
-  longer email failures on fork PRs (the fork commits `dist/` and `bridge/` by
-  design). Neither check is required.
+- A test file that fails in setup (no failing title) is rerun as the whole
+  file and classified real / mixed / load-flaky, instead of failing the suite
+  as `passed 0/0 isolated reruns`.
+- Heartbeats are no longer dropped during the suite: they are throttled per
+  phase, `PR #N gates green; merge waits for the suite` is never throttled,
+  and the suite writes `suite running, N min` every 5 min.
+- `omg release` refuses to run from a different installed omg version than
+  the checkout's own and prints the command to use:
+  `node bin/oh-my-copilot.js release ...` (`--dry-run` only warns).
+- Triage reruns 3 titles at a time; a title failing a pooled rerun still gets
+  the usual serial reruns, so no verdict is easier to get.
+- More than 20 new failing titles rerun their files as a whole instead of
+  failing the phase, so no full-suite rerun is needed.
 
-## Tests
+## CI and tests
 
-- Load-flaky tests no longer depend on host load: clock-sensitive tests freeze
-  the clock, overhead checks measure CPU time, fixed sleeps became signals or
-  baseline comparisons.
-- Slow tests sped up: `inventory-graph-drift` (65.6 s to 31.2 s locally) and
-  `copilot-sdk-driver` (25.7 s to 5.3 s).
-- The wall-time budget tests run serially after the parallel suite, so a
-  loaded host no longer breaks them; budgets and assertions are unchanged.
+- CI and the release suite start the longest test files first.
+- The largest factory test files are split into 24 files (test count and
+  titles unchanged); the largest is now 515 s, down from 2,094 s, on the
+  5.19.4 durations.
+- `omg ship gates` gives the flaky verdict again when a known-flaky shard
+  failure also fails `CI Gate`; `omg factory heal` classifies such runs by
+  the failed shard.
+- 24 load-flaky tests from the v5.19.4 release suites joined the known-flaky
+  list.
 
 ## Caveats
 
-- A release that reuses its tree relies on CI's `Test` job, which runs on
-  Node 20, instead of the release job's Node 24 suite.
-- Tree reuse on dev to main PRs only starts once `main` has
-  `scripts/ci/tree-reuse.mjs`, that is after this release.
+- On Node 20, libuv ignores `NoDefaultCurrentDirectoryInExePath`, so full
+  protection against a planted executable needs Node 22+. The Node 22
+  minimum is planned for v5.20.0.
 - This release was published without the live Copilot smoke.
