@@ -11,7 +11,7 @@ triggers:
   - "ralph-experiment"
 ---
 
-[EXPERIMENT LOOP — ITERATION {{ITERATION}}/{{MAX}}]
+[EXPERIMENT LOOP]
 
 <Purpose>
 Ralph-Experiment is a hypothesis-driven experiment loop inspired by the Karpathy Experiment Loop. It iteratively tests single hypotheses against measurable success criteria, using git as a state machine to keep or discard each attempt. Unlike ralph (which completes user stories), ralph-experiment optimizes toward a goal through structured experimentation with an experiment notebook that captures learnings across iterations.
@@ -45,10 +45,18 @@ Optimization tasks fail when treated as implementation tasks. "Make X faster" do
 <Execution_Policy>
 - One hypothesis at a time -- sequential experiments, not parallel
 - Delegate implementation to executor agents or teams for each hypothesis
-- Use `run_in_background: true` for measurement commands (builds, benchmarks, test suites)
-- Always pass the `model` parameter explicitly when delegating to agents
-- Git commit before measuring, git reset on discard -- no uncommitted experiments
+- Run long measurement commands (builds, benchmarks, test suites) in the background (`run_in_background: true`)
+- Always pass the model explicitly when delegating to agents (`model="sonnet"`)
+- Pseudo-code below uses Claude Code names; see "On GitHub Copilot CLI" below for the Copilot equivalents
+- Commit before measuring, roll back on discard -- no uncommitted experiments. Roll back safely (see Rollback_Safety)
 - Never stop unless: success criteria met, budget exhausted, or human interrupts
+
+### On GitHub Copilot CLI
+
+- Run long measurement commands with shell `mode: "async"` instead of `run_in_background`
+- `Agent(subagent_type=...)` is `task(agent_type=..., mode="background"|"sync")`; `TeamCreate`/`TeamDelete` become several parallel `task` calls (or the `team` skill)
+- The `task` tool's `model` takes a full model id such as `claude-sonnet-5.5`, not the `sonnet` alias
+- PowerShell 5.1 has no `&&`: run each command separately. Do not redirect native commands with `*>` or `| Out-File` (they write UTF-16 or a BOM and wrap stderr in `NativeCommandError` records); use `cmd /c "... > log 2>&1"`
 </Execution_Policy>
 
 <Steps>
@@ -65,9 +73,11 @@ Parse the user's request to extract:
   - `--budget "scripts done"` → scope-based (scripts complete successfully)
   - Default: 20 experiments
 
+Require a clean tree before starting: `git status --porcelain` must print nothing in every repo the loop will change. If it does not, stop and ask the user to commit or move the unrelated work first. Keep `.omg/` gitignored (the notebook and logs live there); otherwise the clean-tree checks below can never pass.
+
 Then:
-a. Create experiment branch: `git checkout -b experiment/{tag}` from current HEAD
-b. Initialize `experiment-notebook.json` in `.omg/` (see schema below)
+a. Create experiment branch: `git checkout -b experiment/{tag}` from current HEAD. For multi-repo work, use `git worktree add -b experiment/{tag} <path>` in each repo instead of `git checkout -b`, so every repo gets its own branch without disturbing its main checkout (see Rollback_Safety)
+b. Initialize `experiment-notebook.json` in `.omg/` at the workspace/root where the loop is driven, or at a custom path the user gives (see schema below)
 c. Run the measurement command to establish **baseline metrics**
 d. Record baseline in the notebook
 
@@ -110,17 +120,29 @@ TeamCreate(name="exp-{N}", members=["executor-1", "executor-2", "tester-3"])
 
 **Adaptive escalation**: If a single executor fails due to implementation complexity (not wrong hypothesis), retry with a team. Track `escalated: true` in the notebook.
 
-After implementation, commit all changes:
+Before the first `git add` of each experiment, record each repo's full `git rev-parse HEAD` as this experiment's `start` (a `{repo: hash}` map).
+
+After implementation, commit the changes (run each command separately in PowerShell 5.1). Stage only the files the experiment touched, by pathspec -- never `git add -A` or `git add .`:
 ```
-git add -A && git commit -m "experiment(EXP-{N}): {hypothesis summary}"
+git add -- {file1} {file2}
+git commit -m "experiment(EXP-{N}): {hypothesis summary}"
 ```
+Then `git status --porcelain` must print nothing. Any leftover file (for example one the executor created but you did not list) is either added by path and amended into the commit, or investigated and removed before measuring; revert and reset do not remove untracked files.
+
+For a non-code hypothesis (cluster settings, env vars, feature toggles), there is no commit to revert: record the exact change and its rollback command in the notebook (`changes` as `setting=value` entries, `rollback`) before applying it.
 
 ## Step 4: EXECUTE & MEASURE
 
-Run the measurement command:
+Run the measurement command, writing output to a log file as it is produced:
 ```bash
 {measurement_command} > .omg/experiment-run.log 2>&1
 ```
+PowerShell 5.1: `cmd /c "{measurement_command} > .omg\experiment-run.log 2>&1"`
+
+Measurement rules:
+- Write results to disk as they are produced (log file, notebook entry per run), never only at the end; a crash must not lose a round of measurements
+- Measure every experiment against the current best with the same procedure (same command, inputs, and environment); re-measure the best if conditions drifted
+- Toggles (env vars, feature flags) built into one build let several hypotheses be tested without rebuilding, but still test one hypothesis at a time
 
 Extract metrics from output (grep, parse JSON, etc.).
 
@@ -164,8 +186,19 @@ Compare metrics to:
 
 **On DISCARD:**
 ```bash
-git reset --hard HEAD~1   # Revert to last keep point
+git -C <repo> revert --no-edit {start[repo]}..HEAD   # Safe default; keeps history; undoes every commit of this experiment (crash-fix re-commits included)
 ```
+Do this per repo the experiment touched, and skip a repo whose `start` equals HEAD (revert exits 128 on an empty range).
+
+`git reset --hard {start[repo]}` is allowed in a repo only when ALL of these checks pass in that repo (condition 1 = check 1, condition 2 = check 2, condition 3 = checks 3a-3c). Run the checks in each repo and reset only the repos where every check passes; revert the others. A check that errors, cannot be run, or gives any result other than the one stated counts as a fail: use `git revert`. Run each command separately (PowerShell 5.1 has no `&&`; quote `'@{u}'` there, and read exit codes from `$LASTEXITCODE`):
+```bash
+git branch --show-current                                                # 1: must print exactly experiment/{tag}, the branch Step 1 created
+git status --porcelain                                                   # 2: must print nothing (clean tree)
+git rev-parse --abbrev-ref '@{u}'                                        # 3a: must fail (exit 128, no upstream); success = fail
+git ls-remote --exit-code --heads <remote> refs/heads/experiment/{tag}   # 3b: run for EVERY remote in `git remote`: exit 2 = not pushed; exit 0 = pushed; any other exit = cannot verify = fail
+git worktree list --porcelain                                            # 3c: the exact line `branch refs/heads/experiment/{tag}` appears once
+```
+For non-code changes, run the recorded rollback command and verify the previous state is restored.
 
 **On MODIFY:**
 ```bash
@@ -208,12 +241,19 @@ Top learnings:
 
 Files changed: {list}
 Branch: experiment/{tag}
-Notebook: .omg/experiment-notebook.json
+Notebook: {notebook_path}
 ```
 
 Then run `/cancel` for clean state cleanup.
 
 </Steps>
+
+<Rollback_Safety>
+- `git reset --hard` is allowed only when the current branch is the `experiment/{tag}` branch Step 1 created, `git status --porcelain` is empty, and the branch has never been pushed or checked out in another worktree (checks 1-3c in Step 5). Any check that errors or cannot be run counts as a fail. Otherwise use `git revert`
+- Stage by pathspec only, so a revert or reset never touches unrelated work
+- Multi-repo work: one `experiment/{tag}` branch or `git worktree` per repo, with the per-repo `start` and `commit` recorded in the notebook (both are `{repo: hash}` maps); discard reverts every repo the experiment touched (`git -C <repo> revert --no-edit {start[repo]}..HEAD`), and resets only the repos where every Step 5 check passes
+- Non-code (runtime/infra) hypotheses: record the exact change and rollback command in the notebook first, and roll back by running it, not by git
+</Rollback_Safety>
 
 <Experiment_Notebook_Schema>
 ```json
@@ -226,12 +266,12 @@ Then run `/cancel` for clean state cleanup.
   "budget": { "type": "experiments|time|scope", "limit": "number|string" },
   "branch": "string — experiment branch name",
   "baseline": {
-    "commit": "string — 7-char hash",
+    "commit": { "<repo-name>": "<7-char hash>" },
     "metrics": { "metric_name": "number" },
     "timestamp": "ISO string"
   },
   "best": {
-    "commit": "string",
+    "commit": { "<repo-name>": "<7-char hash>" },
     "experimentId": "string",
     "metrics": { "metric_name": "number" },
     "improvement": "string — human-readable summary"
@@ -242,8 +282,10 @@ Then run `/cancel` for clean state cleanup.
       "hypothesis": "string — what we're testing",
       "prediction": "string — expected outcome",
       "rationale": "string — why this should work",
-      "changes": ["file1.ts", "file2.ts"],
-      "commit": "string — 7-char hash",
+      "changes": ["file1.ts", "setting=value"],
+      "rollback": "string | null — rollback command for non-code changes",
+      "start": { "<repo-name>": "<full hash>" },
+      "commit": { "<repo-name>": "<7-char hash>" },
       "status": "keep|discard|modify|crash|in_progress",
       "escalated": false,
       "metrics": { "metric_name": "number" },
@@ -300,7 +342,7 @@ but worse than EXP-001's 170)
 Decision: DISCARD (does not improve on current best)
 Learnings: "Lock-free queue adds overhead for small batch sizes.
 Contention is not the bottleneck — I/O is."
-git reset --hard HEAD~1
+git revert --no-edit {start}..HEAD
 ```
 Why good: Reverted cleanly, captured specific learning that informs future hypotheses.
 </Good>
@@ -345,8 +387,8 @@ Why bad: If metrics improve, which change helped? If they worsen, which hurt? On
 - [ ] experiment-notebook.json exists with baseline and all experiments logged
 - [ ] Every experiment has: hypothesis, prediction, metrics, learnings
 - [ ] No in_progress experiments remain (all resolved to keep/discard/modify/crash)
-- [ ] Git branch is clean (no uncommitted changes)
-- [ ] Discarded experiments were reverted (git reset)
+- [ ] Git branch is clean (no uncommitted changes), `.omg/` gitignored
+- [ ] Discarded experiments were reverted (git revert/branch reset, or recorded config rollback)
 - [ ] Best result is recorded in notebook
 - [ ] Exit report produced with summary, learnings, and file list
 - [ ] `/cancel` run for clean state cleanup

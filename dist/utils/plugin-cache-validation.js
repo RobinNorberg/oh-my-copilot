@@ -10,25 +10,15 @@ const FILESYSTEM_JUNK_NAMES = new Set(['.ds_store', 'desktop.ini', 'thumbs.db'])
 export function isOmcPluginCacheIdentity(pluginName, marketplace) {
     return OMC_PLUGIN_CACHE_IDENTITIES.has(`${pluginName}@${marketplace}`.toLowerCase());
 }
-function identityPart(value) {
-    if (typeof value === 'bigint')
-        return value;
-    // A Number above 2^53 may be a rounded file ID, which cannot prove identity.
-    return Number.isSafeInteger(value) ? BigInt(value) : undefined;
-}
 export function sameFileSystemIdentity(left, right) {
-    const leftDev = identityPart(left.dev);
-    const leftIno = identityPart(left.ino);
-    const rightDev = identityPart(right.dev);
-    const rightIno = identityPart(right.ino);
-    return (leftDev !== undefined &&
-        leftIno !== undefined &&
-        leftIno !== 0n &&
-        rightDev !== undefined &&
-        rightIno !== undefined &&
-        rightIno !== 0n &&
-        leftDev === rightDev &&
-        leftIno === rightIno);
+    return (typeof left.dev === 'bigint' &&
+        typeof left.ino === 'bigint' &&
+        left.ino !== 0n &&
+        typeof right.dev === 'bigint' &&
+        typeof right.ino === 'bigint' &&
+        right.ino !== 0n &&
+        left.dev === right.dev &&
+        left.ino === right.ino);
 }
 export function hasAncestorWithIdentity(path, identity) {
     let currentPath = path;
@@ -135,8 +125,7 @@ function pathTraversesFileSystemIdentity(path, identity) {
             currentPath = nextPath;
             continue;
         }
-        // bigint: NTFS file IDs exceed 2^53, so the Number inodes of distinct links can collide
-        const linkKey = nextStats.ino !== 0n
+        const linkKey = typeof nextStats.dev === 'bigint' && typeof nextStats.ino === 'bigint' && nextStats.ino !== 0n
             ? `inode:${nextStats.dev}:${nextStats.ino}`
             : `path:${process.platform === 'win32' ? nextPath.toLowerCase() : nextPath}`;
         if (activeLinks.has(linkKey))
@@ -177,6 +166,8 @@ function pathTraversesFileSystemIdentity(path, identity) {
  * also prevents required paths from traversing the version being demoted.
  */
 export function isUsableVersionPath(path, staleVersionIdentity) {
+    if (staleVersionIdentity !== undefined && typeof staleVersionIdentity.ino !== 'bigint')
+        return false;
     let stats;
     try {
         stats = lstatSync(path);
@@ -272,7 +263,7 @@ function hasResolvablePluginSymlinks(directory, staleVersionIdentity, ancestors 
             }
             else if (payload &&
                 entryStats.isFile() &&
-                entryStats.size > 0 &&
+                entryStats.size > 0n &&
                 !FILESYSTEM_JUNK_NAMES.has(entry.name.toLowerCase())) {
                 payload.found = true;
             }
@@ -289,6 +280,8 @@ function hasResolvablePluginSymlinks(directory, staleVersionIdentity, ancestors 
     return true;
 }
 export function isUsableGenericPluginTarget(target, staleVersionIdentity) {
+    if (staleVersionIdentity !== undefined && typeof staleVersionIdentity.ino !== 'bigint')
+        return false;
     const payload = { found: false };
     return hasResolvablePluginSymlinks(target, staleVersionIdentity, [], payload) && payload.found;
 }

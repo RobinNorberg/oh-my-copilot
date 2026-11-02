@@ -24,6 +24,8 @@ import { stopCopilotRunJobs } from '../tools/copilot-run-tools.js';
 
 hardenWindowsExeSearch();
 
+hardenWindowsExeSearch();
+
 type StandaloneCallToolHandler = (
   request: CallToolRequest,
 ) => Promise<CallToolResult>;

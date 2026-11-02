@@ -877,6 +877,11 @@ function ensureStandaloneHookScripts(log) {
                 continue;
             }
             const targetPath = join(hooksLibDir, filename);
+            // The plugin setup hook links stdin.mjs into a versioned plugin cache that
+            // later disappears; copying through that link fails or mutates the cache.
+            if (lstatSync(targetPath, { throwIfNoEntry: false })?.isSymbolicLink()) {
+                unlinkSync(targetPath);
+            }
             copyFileSync(sourcePath, targetPath);
             if (!isWindows()) {
                 chmodSync(targetPath, 0o755);
@@ -2166,23 +2171,25 @@ export function install(options = {}) {
     // Check if running as a plugin
     const runningAsPlugin = isRunningAsPlugin();
     const projectScoped = isProjectScopedPlugin();
-    const pluginPayloadSync = syncInstalledPluginPayload();
-    if (pluginPayloadSync.errors.length > 0) {
-        for (const error of pluginPayloadSync.errors) {
-            log(`Plugin cache sync error: ${error}`);
+    if (!options.skipPluginPayloadSync) {
+        const pluginPayloadSync = syncInstalledPluginPayload();
+        if (pluginPayloadSync.errors.length > 0) {
+            for (const error of pluginPayloadSync.errors) {
+                log(`Plugin cache sync error: ${error}`);
+            }
+            if (pluginPayloadSync.targetRoots.length > 0) {
+                result.errors.push(...pluginPayloadSync.errors.map(error => `Plugin cache sync failed: ${error}`));
+                result.message = 'Installation failed: OMC plugin cache is incomplete and could not be repaired';
+                return result;
+            }
         }
-        if (pluginPayloadSync.targetRoots.length > 0) {
-            result.errors.push(...pluginPayloadSync.errors.map(error => `Plugin cache sync failed: ${error}`));
-            result.message = 'Installation failed: OMC plugin cache is incomplete and could not be repaired';
-            return result;
+        if (pluginPayloadSync.synced) {
+            const targetSummary = pluginPayloadSync.targetRoots.length > 0
+                ? pluginPayloadSync.targetRoots.join(', ')
+                : 'installed plugin roots';
+            const sourceSummary = pluginPayloadSync.sourceRoot ?? 'unknown source';
+            log(`Repaired installed OMC plugin payload from ${sourceSummary} -> ${targetSummary}`);
         }
-    }
-    if (pluginPayloadSync.synced) {
-        const targetSummary = pluginPayloadSync.targetRoots.length > 0
-            ? pluginPayloadSync.targetRoots.join(', ')
-            : 'installed plugin roots';
-        const sourceSummary = pluginPayloadSync.sourceRoot ?? 'unknown source';
-        log(`Repaired installed OMC plugin payload from ${sourceSummary} -> ${targetSummary}`);
     }
     const pluginProvidesAgentFiles = hasPluginProvidedAgentFiles();
     const pluginProvidesSkillFiles = hasPluginProvidedSkillFiles();

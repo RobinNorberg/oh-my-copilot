@@ -44,6 +44,7 @@ import { skillSlash } from "../utils/skill-slash.js";
  */
 const HUD_SCRIPT_NAMES = ["omg-hud.mjs", "omcp-hud.mjs", "omcp-hud.js"];
 const HUD_COMMAND_MARKERS = ["omg-hud", "omcp-hud"];
+hardenWindowsExeSearch();
 /**
  * Extract session ID (UUID) from a transcript path.
  */
@@ -399,7 +400,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
         }
         const missionBoardEnabled = config.missionBoard?.enabled ?? config.elements.missionBoard ?? false;
         const missionBoard = missionBoardEnabled
-            ? await refreshMissionBoardState(cwd, config.missionBoard)
+            ? await refreshMissionBoardState(cwd, config.missionBoard, currentSessionId ?? undefined)
             : null;
         const contextPercent = isCopilotHost
             ? getCopilotContextPercent(stdin)
