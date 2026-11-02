@@ -18517,6 +18517,38 @@ function isWatchedRunMode(modeName) {
 function ledgerPath(omcRoot) {
   return (0, import_path19.join)(omcRoot, "state", "runs", "ledger.jsonl");
 }
+function findLatestStartEdge(omcRoot, mode, sessionId) {
+  try {
+    const path15 = ledgerPath(omcRoot);
+    if (!(0, import_fs18.existsSync)(path15)) return void 0;
+    const lines3 = (0, import_fs18.readFileSync)(path15, "utf8").split("\n");
+    let unmatchedEnds = 0;
+    for (let i = lines3.length - 1; i >= 0; i -= 1) {
+      if (lines3[i].trim().length === 0) continue;
+      let parsed;
+      try {
+        parsed = JSON.parse(lines3[i]);
+      } catch {
+        continue;
+      }
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) continue;
+      const entry = parsed;
+      if (entry.run !== mode || entry.sessionId !== sessionId) continue;
+      if (entry.event === "end") {
+        unmatchedEnds += 1;
+        continue;
+      }
+      if (entry.event !== "start") continue;
+      if (unmatchedEnds > 0) {
+        unmatchedEnds -= 1;
+        continue;
+      }
+      return typeof entry.ts === "string" && Number.isFinite(Date.parse(entry.ts)) ? entry.ts : void 0;
+    }
+  } catch {
+  }
+  return void 0;
+}
 function closeoutWrittenFor(omcRoot, mode, startedAt) {
   if (!startedAt || !Number.isFinite(Date.parse(startedAt))) return false;
   const started = Date.parse(startedAt);
@@ -18570,19 +18602,41 @@ function observeModeStateWrite(omcRoot, filePath, state) {
   } catch {
   }
 }
+function observeModeStateActivation(omcRoot, filePath, previous, next) {
+  try {
+    if (previous?.active === true || next?.active !== true) return;
+    const mode = modeFromStatePath(filePath);
+    if (!mode || !isWatchedRunMode(mode)) return;
+    activeLoggedPaths.set(filePath, true);
+    appendRunLedger(omcRoot, {
+      ts: (/* @__PURE__ */ new Date()).toISOString(),
+      run: mode,
+      sessionId: sessionIdFromStatePath(filePath),
+      event: "start",
+      outcome: "running"
+    });
+  } catch {
+  }
+}
 function observeModeStateClear(omcRoot, filePath, previousState) {
   try {
     const mode = modeFromStatePath(filePath);
     if (!mode || !isWatchedRunMode(mode)) return;
     if (!previousState || previousState.active !== true) return;
     if (previousState.active === true) activeLoggedPaths.delete(filePath);
+    const staleStartedAt = typeof previousState.started_at === "string" ? previousState.started_at : void 0;
+    const sessionId = sessionIdFromStatePath(filePath);
+    const latestStartEdge = findLatestStartEdge(omcRoot, mode, sessionId);
+    const staleStartedAtMs = staleStartedAt ? Date.parse(staleStartedAt) : Number.NaN;
+    const latestStartEdgeMs = latestStartEdge ? Date.parse(latestStartEdge) : Number.NaN;
+    const closeoutBoundary = Number.isFinite(latestStartEdgeMs) && (!Number.isFinite(staleStartedAtMs) || latestStartEdgeMs > staleStartedAtMs) ? latestStartEdge : staleStartedAt;
     appendRunLedger(omcRoot, {
       ts: (/* @__PURE__ */ new Date()).toISOString(),
       run: mode,
-      sessionId: sessionIdFromStatePath(filePath),
+      sessionId,
       event: "end",
       outcome: typeof previousState.current_phase === "string" && /complete|done/i.test(previousState.current_phase) ? "completed" : "cancelled",
-      closeoutWritten: closeoutWrittenFor(omcRoot, mode, typeof previousState.started_at === "string" ? previousState.started_at : void 0)
+      closeoutWritten: closeoutWrittenFor(omcRoot, mode, closeoutBoundary)
     });
   } catch {
   }
@@ -19197,6 +19251,10 @@ function processStartIdentity(pid) {
     return code === "ESRCH" ? "absent" : null;
   }
 }
+function observeStateFileActivation(filePath, previous, next) {
+  const omcRoot = omcRootFromStatePath(filePath);
+  if (omcRoot) observeModeStateActivation(omcRoot, filePath, previous, next);
+}
 function writeStateFileLocked(filePath, state) {
   if (!recoverEmergencyStateFile(filePath)) return false;
   const lock = acquireMutationLock(filePath);
@@ -19293,8 +19351,10 @@ function writeStateFileLockedIf(filePath, predicate, transform2) {
       } else if (!predicate(current)) {
         result = "skipped";
       } else {
-        atomicWriteJsonSync(filePath, transform2(current));
+        const next = transform2(current);
+        atomicWriteJsonSync(filePath, next);
         result = "written";
+        observeStateFileActivation(filePath, current, next);
       }
     }
   } catch {
@@ -19338,8 +19398,10 @@ function writeStateFileLockedCreateIf(filePath, predicate, transform2) {
     } else if (!predicate(current)) {
       result = "skipped";
     } else {
-      atomicWriteJsonSync(filePath, transform2(current));
+      const next = transform2(current);
+      atomicWriteJsonSync(filePath, next);
       result = "written";
+      observeStateFileActivation(filePath, current, next);
     }
   } catch (error2) {
     if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] CreateIf caught-error ${filePath} ${error2?.message}`);
@@ -21632,6 +21694,7 @@ async function writeTeamState(statePath, sessionId, patch) {
       if (!(0, import_fs30.existsSync)(statePath)) {
         try {
           atomicWriteJsonSync(statePath, patch);
+          observeStateFileActivation(statePath, null, patch);
           return { result: "written", state: patch };
         } catch (error2) {
           return { result: "failed", error: error2 };
@@ -21653,6 +21716,7 @@ async function writeTeamState(statePath, sessionId, patch) {
       };
       try {
         atomicWriteJsonSync(statePath, merged);
+        observeStateFileActivation(statePath, current, merged);
         return { result: "written", state: merged };
       } catch (error2) {
         return { result: "failed", error: error2 };
@@ -22010,17 +22074,24 @@ function getStateClearCheckedPaths(mode, root, sessionId) {
   const paths = /* @__PURE__ */ new Set();
   if (sessionId) {
     paths.add(getSessionStatePath(mode, root, sessionId));
-  } else {
-    paths.add(getStatePath(mode, root));
+    if (CONVERGED_STATE_PATH_MODES.has(mode)) {
+      for (const omcRoot of getConvergedOmcRoots(root)) {
+        paths.add((0, import_path34.join)(omcRoot, "state", "sessions", sessionId, getStateFileName(mode)));
+      }
+    }
+    if (shouldCheckWorkingDirectoryLocalState(root)) {
+      paths.add(getWorkingDirectoryLocalSessionStatePath(mode, root, sessionId));
+    }
+    return [...paths];
   }
+  paths.add(getStatePath(mode, root));
   for (const legacyPath of getLegacyStateFileCandidates(mode, root)) {
     paths.add(legacyPath);
   }
-  for (const localPath of getWorkingDirectoryLocalStateClearCandidates(mode, root, sessionId)) {
+  for (const localPath of getWorkingDirectoryLocalStateClearCandidates(mode, root)) {
     paths.add(localPath);
   }
-  const sessionIds = sessionId ? [sessionId, ...listSessionIds(root)] : listSessionIds(root);
-  for (const sid of new Set(sessionIds)) {
+  for (const sid of listSessionIds(root)) {
     paths.add(getSessionStatePath(mode, root, sid));
   }
   return [...paths];
@@ -22028,9 +22099,12 @@ function getStateClearCheckedPaths(mode, root, sessionId) {
 function formatStateClearNoopMessage(mode, root, sessionId) {
   const scope = sessionId ? ` in session: ${sessionId}` : "";
   const checkedPaths = getStateClearCheckedPaths(mode, root, sessionId);
+  const displayedPaths = checkedPaths.slice(0, MAX_REPORTED_STATE_CLEAR_PATHS);
+  const omittedPathCount = checkedPaths.length - displayedPaths.length;
   const checked = checkedPaths.length > 0 ? `
 - Checked paths:
-${checkedPaths.map((statePath) => `  - ${statePath}`).join("\n")}` : "";
+${displayedPaths.map((statePath) => `  - ${statePath}`).join("\n")}${omittedPathCount > 0 ? `
+  - ... and ${omittedPathCount} more checked paths` : ""}` : "";
   return `No state found to clear for mode: ${mode}${scope}${checked}`;
 }
 function getModeRuntimeArtifactPaths(mode, root, sessionIds, includeLegacy = true) {
@@ -22279,7 +22353,7 @@ function recoverAutopilotEmergencyTransactions(root, sessionId) {
     if (artifacts.length > 0) throw new Error(`workflow_emergency_recovery_failed: ${path15}`);
   }
 }
-var import_crypto10, import_fs30, import_os4, import_path34, MAX_MIGRATION_FILE_BYTES, EXECUTION_MODES, RETIRED_STATE_MODES, STATE_TOOL_MODES, STATE_WRITE_MODES, EXTRA_STATE_ONLY_MODES, CANCEL_SIGNAL_TTL_MS, TEAM_RUNTIME_PRESERVATION_NOTE, OWNER_SESSION_FALLBACK_MODES, CONVERGED_STATE_PATH_MODES, RETIRED_WORKFLOW_MODES, NAMED_WORKFLOW_MARKERS, ULTRAGOAL_PLAN_ID_PATTERN, stateReadTool, stateWriteTool, stateClearTool, stateListActiveTool, stateGetStatusTool, stateMigrateNonGitTool, stateTools;
+var import_crypto10, import_fs30, import_os4, import_path34, MAX_MIGRATION_FILE_BYTES, EXECUTION_MODES, RETIRED_STATE_MODES, STATE_TOOL_MODES, STATE_WRITE_MODES, EXTRA_STATE_ONLY_MODES, CANCEL_SIGNAL_TTL_MS, MAX_REPORTED_STATE_CLEAR_PATHS, TEAM_RUNTIME_PRESERVATION_NOTE, OWNER_SESSION_FALLBACK_MODES, CONVERGED_STATE_PATH_MODES, RETIRED_WORKFLOW_MODES, NAMED_WORKFLOW_MARKERS, ULTRAGOAL_PLAN_ID_PATTERN, stateReadTool, stateWriteTool, stateClearTool, stateListActiveTool, stateGetStatusTool, stateMigrateNonGitTool, stateTools;
 var init_state_tools = __esm({
   "src/tools/state-tools.ts"() {
     "use strict";
@@ -22323,6 +22397,7 @@ var init_state_tools = __esm({
     ];
     EXTRA_STATE_ONLY_MODES = ["ralplan", "omc-teams", "skill-active", "ultragoal"];
     CANCEL_SIGNAL_TTL_MS = 3e4;
+    MAX_REPORTED_STATE_CLEAR_PATHS = 10;
     TEAM_RUNTIME_PRESERVATION_NOTE = "Native team runtimes and cleanup evidence are not removed by state_clear; use instance-validated team shutdown/job cleanup.";
     OWNER_SESSION_FALLBACK_MODES = /* @__PURE__ */ new Set(["ralph"]);
     CONVERGED_STATE_PATH_MODES = /* @__PURE__ */ new Set(["ralph", "ultrawork"]);
@@ -23428,8 +23503,8 @@ No active sessions for this mode.`);
           }
           const gitProbe = probeGitTopLevel(sourceRoot);
           if (gitProbe.status === "ok") throw new Error("state_migrate_non_git only accepts a non-git source directory");
-          if (gitProbe.status !== "not_a_repository") throw new Error("state_migrate_non_git refused a failed Git probe");
           if (findGitMetadataDir(sourceRoot)) throw new Error("state_migrate_non_git refuses a directory with Git metadata");
+          if (gitProbe.status !== "not_a_repository") throw new Error("state_migrate_non_git refused a failed Git probe");
           const authorizedHome = (0, import_fs30.realpathSync)((0, import_os4.homedir)());
           const sourceFromHome = (0, import_path34.relative)(authorizedHome, sourceRoot);
           if (sourceFromHome === ".." || sourceFromHome.startsWith(`..${import_path34.sep}`) || (0, import_path34.isAbsolute)(sourceFromHome)) {
@@ -24493,11 +24568,12 @@ var init_detector = __esm({
 });
 
 // src/hooks/project-memory/hot-path-tracker.ts
-var import_path41;
+var import_path41, ACCESS_HALF_LIFE_MS;
 var init_hot_path_tracker = __esm({
   "src/hooks/project-memory/hot-path-tracker.ts"() {
     "use strict";
     import_path41 = __toESM(require("path"), 1);
+    ACCESS_HALF_LIFE_MS = 24 * 60 * 60 * 1e3;
   }
 });
 
@@ -24673,11 +24749,8 @@ function mergeArrays(fieldName, base, incoming) {
         base,
         incoming,
         (hp) => hp.path,
-        (a, b) => ({
-          ...b,
-          accessCount: Math.max(a.accessCount, b.accessCount),
-          lastAccessed: Math.max(a.lastAccessed, b.lastAccessed)
-        })
+        // Counts decay on each touch, so the newer entry already folds in the older one.
+        (a, b) => b.lastAccessed >= a.lastAccessed ? b : a
       );
     case "languages":
     case "frameworks":
@@ -26576,9 +26649,9 @@ function scanDirectories(projectRoot) {
     }
     try {
       const stat = (0, import_node_fs4.statSync)(absDir, { bigint: true });
-      const inodeKey = `${stat.dev}:${stat.ino}`;
-      if (visitedInodes.has(inodeKey)) return;
-      visitedInodes.add(inodeKey);
+      const identity = `${stat.dev}:${stat.ino}`;
+      if (visitedInodes.has(identity)) return;
+      visitedInodes.add(identity);
     } catch {
       return;
     }
@@ -28992,7 +29065,6 @@ var init_keyword_detector = __esm({
       "autopilot",
       "ralph",
       "team",
-      "ultraqa",
       "deep-interview",
       "ralplan",
       "self-improve"
@@ -59998,6 +60070,7 @@ init_bridge_manager();
 init_tool_registry();
 init_lsp();
 init_copilot_run_tools();
+hardenWindowsExeSearch();
 hardenWindowsExeSearch();
 var server = new Server(
   {

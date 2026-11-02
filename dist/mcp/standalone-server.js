@@ -17,6 +17,7 @@ import { buildListToolsResponse, callTool, getEnabledTools } from './tool-regist
 import { disconnectAll as disconnectAllLsp } from '../tools/lsp/index.js';
 import { stopCopilotRunJobs } from '../tools/copilot-run-tools.js';
 hardenWindowsExeSearch();
+hardenWindowsExeSearch();
 // Create the MCP server
 const server = new Server({
     name: 't',

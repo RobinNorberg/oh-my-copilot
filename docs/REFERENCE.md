@@ -130,6 +130,8 @@ If both configurations exist, **project-scoped takes precedence** over global:
 ./.claude/CLAUDE.md  (project)   →  Overrides  →  ~/.claude/CLAUDE.md  (global)
 ```
 
+For configurable skill reviews in deep-interview, ralplan, and omc-review, see [Quality Gates Configuration](quality-gates-configuration.md).
+
 ### Environment Variables
 
 | Variable                   | Default              | Description                                                                                                                                                                                                                                                                 |
@@ -2298,10 +2300,14 @@ stopomc
 | Platform    | Install Method              | Hook Type      |
 | ----------- | --------------------------- | -------------- |
 | **Windows** | WSL2 recommended (see note) | Node.js (.mjs) |
-| **macOS**   | Claude Code Plugin          | Node.js (.mjs) |
-| **Linux**   | Claude Code Plugin          | Node.js (.mjs) |
+| **macOS**   | Claude Code Plugin          | Bash (.sh)     |
+| **Linux**   | Claude Code Plugin          | Bash (.sh)     |
+
+> **Note**: Bash hooks are fully portable across macOS and Linux (no GNU-specific dependencies).
 
 > **Windows**: Native Windows (win32) support is experimental. Features that launch tmux-backed worker panes require a tmux-compatible binary. OMC supports native [psmux](https://github.com/psmux/psmux) for PowerShell 7+ users who want visible Claude Code teammate panes in interactive team workflows, and recommends WSL2 as the fallback when no compatible `tmux` command is installed or native Windows behavior is insufficient. psmux does not force worktree agents, non-interactive/print-mode agents, or model-selected in-process agents into visible panes. Native Windows issues may have limited support.
+
+> **Advanced**: Set `OMC_USE_NODE_HOOKS=1` to use Node.js hooks on macOS/Linux.
 
 ### Available Tools
 

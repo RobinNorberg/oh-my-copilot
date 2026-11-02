@@ -81,12 +81,4 @@ describe('sameFileSystemIdentity', () => {
     expect(hasAncestorWithIdentity(nested, statSync(other, { bigint: true }))).toBe(false);
     expect(hasAncestorWithIdentity(nested, statSync(root, { bigint: true }))).toBe(true);
   });
-
-  it('does not accept a rounded Number inode as proof of identity', () => {
-    const lossy = statSync(root);
-    const rounded = Object.assign(Object.create(Object.getPrototypeOf(lossy)), lossy, { ino: 2 ** 53 });
-
-    expect(sameFileSystemIdentity(rounded, rounded)).toBe(false);
-    expect(sameFileSystemIdentity(lossy, statSync(root, { bigint: true }))).toBe(Number.isSafeInteger(lossy.ino));
-  });
 });

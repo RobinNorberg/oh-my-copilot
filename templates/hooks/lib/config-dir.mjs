@@ -1,12 +1,11 @@
 /**
- * OMC configuration directory resolution (standalone hook runtime).
+ * OMC configuration directory resolution (ESM hook/HUD runtime).
  *
  * Honours COPILOT_HOME (absolute, or ~-prefixed) and falls back to
  * ~/.copilot, the host CLI's config directory.
  *
  * Multi-surface mirrors (keep in sync):
  *   src/utils/config-dir.ts      — TypeScript runtime (source of truth)
- *   scripts/lib/config-dir.mjs   — ESM plugin runtime
  *   scripts/lib/config-dir.cjs   — CJS bridge runtime
  *   scripts/lib/config-dir.sh    — POSIX shell runtime
  */

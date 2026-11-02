@@ -20,6 +20,7 @@ export declare function shouldBlockStandaloneUpdateInCurrentSession(): boolean;
 export declare function syncPluginCache(verbose?: boolean): {
     synced: boolean;
     skipped: boolean;
+    activeRootsSynced: boolean;
     errors: string[];
 };
 /** Installation paths (respects COPILOT_HOME env var) */
@@ -225,6 +226,7 @@ export declare function checkForUpdates(): Promise<UpdateCheckResult>;
 export declare function reconcileUpdateRuntime(options?: {
     verbose?: boolean;
     skipGracePeriod?: boolean;
+    pluginCacheAlreadySynced?: boolean;
 }): UpdateReconcileResult;
 /**
  * Download and execute the install script to perform an update
@@ -234,6 +236,7 @@ export declare function performUpdate(options?: {
     verbose?: boolean;
     standalone?: boolean;
     clean?: boolean;
+    unattended?: boolean;
 }): Promise<UpdateResult>;
 export type OmcUpdateChannel = 'marketplace' | 'copilot-plugin' | 'npm';
 /**
