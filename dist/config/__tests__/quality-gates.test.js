@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -155,7 +155,7 @@ describe("quality gates", () => {
             qualityGates: mergedConfig,
         }).gates).toEqual([{ skill: "project-plan-check", mode: "blocking" }]);
     });
-    it("resolves project, OMC project, compatibility, user, plugin, and bundled skill roots in order", () => {
+    it("resolves project (.copilot then .claude), OMC project, compatibility, user, plugin, and bundled skill roots in order", () => {
         const project = join(tempDir, "project");
         const userConfig = join(tempDir, "user-config");
         const omcRoot = join(tempDir, "omc-root");
@@ -169,6 +169,7 @@ describe("quality gates", () => {
             pluginRoot,
         };
         const roots = [
+            join(project, ".copilot", "skills"),
             join(project, ".claude", "skills"),
             join(omcRoot, "skills"),
             join(project, ".agents", "skills"),
@@ -184,13 +185,17 @@ describe("quality gates", () => {
             return path;
         };
         const projectPath = createSkill(roots[0], "project-check");
-        const omcPath = createSkill(roots[1], "omc-check");
-        const compatibilityPath = createSkill(roots[2], "compat-check");
-        const userPath = createSkill(roots[3], "user-check");
-        const pluginPath = createSkill(roots[4], "plugin-check");
-        const bundledPath = createSkill(roots[5], "bundled-check");
-        const cwdPath = createSkill(roots[6], "cwd-check");
+        const claudeFallbackPath = createSkill(roots[1], "claude-check");
+        // The same name in both project roots resolves to .copilot/skills.
+        createSkill(roots[1], "project-check");
+        const omcPath = createSkill(roots[2], "omc-check");
+        const compatibilityPath = createSkill(roots[3], "compat-check");
+        const userPath = createSkill(roots[4], "user-check");
+        const pluginPath = createSkill(roots[5], "plugin-check");
+        const bundledPath = createSkill(roots[6], "bundled-check");
+        const cwdPath = createSkill(roots[7], "cwd-check");
         expect(resolveQualityGateSkillPath("project-check", options)).toBe(projectPath);
+        expect(resolveQualityGateSkillPath("claude-check", options)).toBe(claudeFallbackPath);
         expect(resolveQualityGateSkillPath("omc-check", options)).toBe(omcPath);
         expect(resolveQualityGateSkillPath("compat-check", options)).toBe(compatibilityPath);
         expect(resolveQualityGateSkillPath("user-check", options)).toBe(userPath);
@@ -198,6 +203,25 @@ describe("quality gates", () => {
         expect(resolveQualityGateSkillPath("bundled-check", options)).toBe(bundledPath);
         expect(resolveQualityGateSkillPath("cwd-check", options)).toBe(cwdPath);
         expect(resolveQualityGateSkillPath("missing-check", options)).toBeNull();
+    });
+    it("uses PLUGIN_ROOT for the plugin skill root ahead of CLAUDE_PLUGIN_ROOT", () => {
+        const pluginRoot = join(tempDir, "copilot-plugin");
+        const skillPath = join(pluginRoot, "skills", "plugin-check", "SKILL.md");
+        mkdirSync(join(pluginRoot, "skills", "plugin-check"), { recursive: true });
+        writeFileSync(skillPath, "---\nname: plugin-check\n---\n");
+        vi.stubEnv("PLUGIN_ROOT", pluginRoot);
+        vi.stubEnv("CLAUDE_PLUGIN_ROOT", join(tempDir, "claude-plugin"));
+        try {
+            expect(resolveQualityGateSkillPath("plugin-check", {
+                cwd: join(tempDir, "project"),
+                userConfigDir: join(tempDir, "user-config"),
+                omcRoot: join(tempDir, "omc-root"),
+                bundledSkillsDir: join(tempDir, "bundled"),
+            })).toBe(skillPath);
+        }
+        finally {
+            vi.unstubAllEnvs();
+        }
     });
     it("resolves OMC bundled names that differ from their skill directory names", () => {
         const path = resolveQualityGateSkillPath("omc-review", {

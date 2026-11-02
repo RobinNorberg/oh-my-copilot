@@ -186,9 +186,10 @@ function getSkillRoots(options) {
     const userConfigDir = options.userConfigDir ?? getCopilotConfigDir();
     const bundledSkillsDir = options.bundledSkillsDir ?? getSkillsDir();
     const pluginRoot = options.pluginRoot === undefined
-        ? process.env.CLAUDE_PLUGIN_ROOT || process.env.OMC_PLUGIN_ROOT || null
+        ? process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT || process.env.OMC_PLUGIN_ROOT || null
         : options.pluginRoot;
     return [
+        join(cwd, ".copilot", "skills"),
         join(cwd, ".claude", "skills"),
         join(omcRoot, "skills"),
         join(cwd, ".agents", "skills"),

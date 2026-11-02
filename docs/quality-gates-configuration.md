@@ -39,7 +39,7 @@ The workflow-controller skills `deep-interview`, `ralplan`, and `omc-review` are
 
 ## Skill resolution and CLI
 
-`omc quality-gates list --stage <deep-interview|ralplan|omc-review> [--json]` prints normalized gates, model overrides, resolved `SKILL.md` paths, warnings, and validation errors. Resolution follows OMC's discovery roots: project `.claude/skills`, project `.omg/skills`, project `.agents/skills`, user `~/.claude/skills`, the active plugin, bundled OMC skills, and the working directory `skills` root. The Claude config directory honors `COPILOT_HOME`.
+`omg quality-gates list --stage <deep-interview|ralplan|omc-review> [--json]` prints normalized gates, model overrides, resolved `SKILL.md` paths, warnings, and validation errors. Resolution follows OMC's discovery roots: project `.copilot/skills` (then `.claude/skills`), project `.omg/skills`, project `.agents/skills`, user `~/.copilot/skills`, the active plugin, bundled OMC skills, and the working directory `skills` root. The Copilot config directory honors `COPILOT_HOME`.
 
 An unresolved skill is reported as `status: "gate_unavailable"` with a visible warning. It is never treated as a pass and does not itself fail the workflow stage. Validation errors, including legacy stage keys, are printed in both human and JSON output.
 

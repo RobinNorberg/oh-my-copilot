@@ -1,7 +1,7 @@
 // src/team/index.ts
 
 /**
- * Team Module - Barrel Export (the `oh-my-claude-sisyphus/team` package entry)
+ * Team Module - Barrel Export (the `oh-my-copilot/team` package entry)
  */
 
 export {

@@ -150,6 +150,7 @@ Applies when upgrading from v5.13.1. The HUD now detects whether Claude Code or 
 - The update check runs at most every 6 hours (was 24) and recognises Copilot plugin installs. The hint prints the command for your channel: `copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc` for a plugin install, `npm i -g oh-my-copilot@latest` for npm. Under Copilot the HUD no longer shows a Claude Code update hint.
 
 **Who must act.** Nobody. To bring back an element Copilot now hides, set it to `true` under `omcHud.elements` in `~/.copilot/settings.json`. See [REFERENCE.md](./REFERENCE.md#configure-hud-statusline).
+
 ## Unreleased: Team Bridge Exports Removed from `oh-my-copilot/team`
 
 The MCP team bridge (`bridge/team-bridge.cjs`) was never spawned by any OMC

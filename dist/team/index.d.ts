@@ -1,5 +1,5 @@
 /**
- * Team Module - Barrel Export (the `oh-my-claude-sisyphus/team` package entry)
+ * Team Module - Barrel Export (the `oh-my-copilot/team` package entry)
  */
 export { validateTmux, sanitizeName, sessionName, isSessionAlive, listActiveSessions, } from './tmux-session.js';
 export { createWorkerWorktree, removeWorkerWorktree, listTeamWorktrees, cleanupTeamWorktrees, } from './git-worktree.js';
