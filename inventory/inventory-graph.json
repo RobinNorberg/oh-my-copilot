@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "aa23d90cef6dc9668648ecdcd9f113064ebceb56",
-    "sourceSha256": "7317731af516039c2afcd748c43ab4b6754d85e2f8c1c76afd2ea56eee850ed5",
+    "head": "982a196e8aaa5fd3f5509bf2be30c96ca5318e44",
+    "sourceSha256": "3f9033978eeed50c0e0feb3c49b66103843115ee04f0d97b9d9111768872f4e1",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "aa23d90cef6dc9668648ecdcd9f113064ebceb56",
-  "sourceSha256": "7317731af516039c2afcd748c43ab4b6754d85e2f8c1c76afd2ea56eee850ed5",
+  "head": "982a196e8aaa5fd3f5509bf2be30c96ca5318e44",
+  "sourceSha256": "3f9033978eeed50c0e0feb3c49b66103843115ee04f0d97b9d9111768872f4e1",
   "counts": {
     "public": {
       "skills": 63,
@@ -74645,6 +74645,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/release.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/session-friction-report.ts",
         "to": "external:chalk",
         "kind": "imports"
@@ -80006,11 +80011,6 @@
       },
       {
         "from": "src/factory/run/__tests__/prepare-gates.test.ts",
-        "to": "src/__tests__/helpers/platform.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
         "to": "src/factory/run/__tests__/fake-lanes.ts",
         "kind": "imports"
       },
@@ -83282,11 +83282,6 @@
       {
         "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
         "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
-        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -102090,6 +102085,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/release/checks.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
         "from": "src/release/drive.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -102133,6 +102133,11 @@
         "from": "src/release/engine.ts",
         "to": "external:child_process",
         "kind": "imports"
+      },
+      {
+        "from": "src/release/engine.ts",
+        "to": "external:child_process",
+        "kind": "type-imports"
       },
       {
         "from": "src/release/engine.ts",
@@ -102952,11 +102957,6 @@
       {
         "from": "src/smoke/__tests__/copilot-factory-run-scenario.test.ts",
         "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/__tests__/copilot-factory-run-scenario.test.ts",
-        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -117733,10 +117733,10 @@
     "stats": {
       "nodeCount": 9894,
       "edgeCount": 11896,
-      "importEdgeCount": 9771,
+      "importEdgeCount": 9770,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "b9b8913a1ca12e87404672eeaf23e0b3b9ad239f18a9990229935583927b244b",
-  "manifestSha256": "8c2b05aad0a0be858154518b6f6cd9ffc12fa600c875484a064a29109a1501ba"
+  "manifestSha256": "57fcd2a1daeae902d1895f96c68538722098b1a32d8d106563fb9e897f17ef16"
 }
