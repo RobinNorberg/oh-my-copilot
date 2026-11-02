@@ -154,7 +154,7 @@ describe('npm trusted publishing contract', () => {
         const evidenceJob = extractJob(ci, 'evidence');
         expect(evidenceJob).toContain('permissions:\n      contents: read\n      actions: read\n    outputs:');
         expect(evidenceJob).toContain('persist-credentials: false');
-        expect(evidenceJob).toContain('run: node scripts/ci/tree-reuse.mjs');
+        expect(evidenceJob).toContain('node scripts/ci/tree-reuse.mjs --sha "$TESTED_SHA"');
         // The lookup holds actions: read in its own tag-only job; the publishing job never does.
         const releaseEvidence = extractJob(ci, 'release-evidence');
         expect(releaseEvidence).toContain(RELEASE_JOB_IF);
@@ -173,6 +173,18 @@ describe('npm trusted publishing contract', () => {
             "        if: needs.release-evidence.outputs.reused != 'true'",
         ]);
         expect(releaseJob).toMatch(/- name: Run functional tests\n {8}if: needs\.release-evidence\.outputs\.reused != 'true'\n {8}run: npm test -- --run/);
+    });
+    it('runs the PR evidence lookup from the base commit, never from the tree under test', () => {
+        const evidenceJob = extractJob(ci, 'evidence');
+        // A PR could rewrite scripts/ci/tree-reuse.mjs to print reused=true; the base's copy runs instead.
+        expect(evidenceJob).toContain("ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.sha }}");
+        expect(evidenceJob).toContain('sparse-checkout: scripts/ci');
+        expect(evidenceJob.match(/uses: actions\/checkout/g)).toHaveLength(1);
+        expect(evidenceJob).toContain('TESTED_SHA: ${{ github.sha }}');
+        // A base without the script gets no reuse.
+        expect(evidenceJob).toContain('if [ -f scripts/ci/tree-reuse.mjs ]; then\n            node scripts/ci/tree-reuse.mjs --sha "$TESTED_SHA"\n          else\n');
+        expect(evidenceJob).toContain(String.raw `printf 'tree=%s\nreused=false\nrun_url=\n' "$tree" >> "$GITHUB_OUTPUT"`);
+        expect(evidenceJob).not.toMatch(/reused=true/);
     });
     it('keeps recovery strictly non-publishing and workflow_dispatch-only', () => {
         expect(recoveryJob).toContain('permissions:\n      contents: write');
