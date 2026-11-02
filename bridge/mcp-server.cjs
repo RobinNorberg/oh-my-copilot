@@ -29232,7 +29232,7 @@ var init_copilot_models = __esm({
       tiers: {
         opus: ["claude-opus-5.5", "gpt-6.1-sol", "claude-sonnet-5.5"],
         sonnet: ["claude-sonnet-5.5", "gpt-6-astra", "claude-haiku-5.5"],
-        haiku: ["claude-haiku-5.5", "claude-haiku-4.5", "gemini-3.8-flash"],
+        haiku: ["gpt-6-luna", "claude-haiku-5.5", "claude-haiku-4.5", "gemini-3.8-flash"],
         fable: ["claude-opus-5.5", "gpt-6.1-sol", "claude-sonnet-5.5"]
       }
     };

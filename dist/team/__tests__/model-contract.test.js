@@ -594,7 +594,7 @@ describe('model-contract', () => {
             // First column of the tiers in src/config/copilot-models.json.
             expect(toCopilotModelId('opus')).toBe('claude-opus-5.5');
             expect(toCopilotModelId('sonnet')).toBe('claude-sonnet-5.5');
-            expect(toCopilotModelId('haiku')).toBe('claude-haiku-5.5');
+            expect(toCopilotModelId('haiku')).toBe('gpt-6-luna');
             expect(toCopilotModelId('fable')).toBe('claude-opus-5.5');
             expect(toCopilotModelId('Opus')).toBe('claude-opus-5.5');
             expect(toCopilotModelId('gpt-5.4-mini')).toBe('gpt-5.4-mini');
