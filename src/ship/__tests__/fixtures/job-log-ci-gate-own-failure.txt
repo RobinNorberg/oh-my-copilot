@@ -1,0 +1,6 @@
+CI Gate	Set up job	2026-11-02T01:07:02.5807747Z Complete job name: CI Gate
+CI Gate	Check needed job results	﻿2026-11-02T01:07:02.7483344Z ##[group]Run echo "$NEEDS" | jq -r 'to_entries[] | "\(.value.result)\t\(.key)"' | sort
+CI Gate	Check needed job results	2026-11-02T01:07:02.8284537Z ##[endgroup]
+CI Gate	Check needed job results	2026-11-02T01:07:02.8598586Z jq: error (at <stdin>:86): Cannot index string with "result"
+CI Gate	Check needed job results	2026-11-02T01:07:02.8601913Z ##[error]Process completed with exit code 5.
+CI Gate	Complete job	﻿2026-11-02T01:07:02.8921045Z Cleaning up orphan processes

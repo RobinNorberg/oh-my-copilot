@@ -58,6 +58,7 @@ import {
   compareVersions,
   escapeRe,
   failingTitlesFromVitestJson,
+  filePassedInReport,
   findDistOrphans,
   flakyCandidates,
   newFailures,
@@ -327,6 +328,9 @@ const RERUN_START_POLLS = 40;
 /** Rounds of land()'s wait / merge loop before giving up (bounded even when the clock does not move). */
 const LAND_ROUNDS = 500;
 
+/** A heartbeat every 5 min while a suite child runs (under execAsync). */
+export const SUITE_HEARTBEAT_MS = 5 * 60_000;
+
 /** After a push GitHub moves the PR's headRefOid asynchronously: poll every 5 s, up to 3 min. */
 const HEAD_SYNC_POLL_MS = 5_000;
 const HEAD_SYNC_POLLS = 36;
@@ -387,7 +391,7 @@ export function phasePlan(id: PhaseId, v: string, opts: ReleaseOptions): string[
     case 'suite':
       return [
         opts.suite === 'full'
-          ? `vitest run --reporter=json (on the committed tree); titles not in ${opts.baseline ?? '(no baseline: any failure fails)'} (at most ${TRIAGE_CAP}) rerun alone ${opts.triageRuns ?? 3}x: fail every rerun = real (fail), pass some = mixed (blocked), pass every rerun = load-flaky (warning; known-flaky candidates written, never committed)`
+          ? `vitest run --reporter=json (on the committed tree); titles not in ${opts.baseline ?? '(no baseline: any failure fails)'} (at most ${TRIAGE_CAP}) rerun alone ${opts.triageRuns ?? 3}x (a failed file with no failing title, e.g. its setup, reruns as the whole file): fail every rerun = real (fail), pass some = mixed (blocked), pass every rerun = load-flaky (warning; known-flaky candidates written, never committed)`
           : opts.suite === 'targeted' ? 'vitest related --run <src files changed since the last v* tag> (on the committed tree)' : 'suite: none (pass --suite targeted|full)',
       ];
     case 'pr':
@@ -623,16 +627,33 @@ class Release {
   }
 
   /** A suite child: through execAsync when given (the release PR's CI is watched meanwhile), with the suite shell env. */
-  private async runSuite(args: string[], opts: ReleaseExecOptions = {}): Promise<ExecResult> {
+  private async runSuite(args: string[], opts: ReleaseExecOptions = {}, label = 'suite'): Promise<ExecResult> {
     const full: ReleaseExecOptions = { cwd: this.deps.root, ...opts, suiteEnv: true, env: { ...this.suiteEnv, ...opts.env } };
-    return this.deps.execAsync ? this.deps.execAsync(this.deps.node, args, full) : this.deps.exec(this.deps.node, args, full);
+    if (!this.deps.execAsync) return this.deps.exec(this.deps.node, args, full);
+    // The full vitest run prints nothing for most of an hour: a paced heartbeat keeps `progress watch --stall` quiet.
+    const started = label === 'suite' ? this.suiteStarted : this.deps.now();
+    const timer = setInterval(() => {
+      try {
+        this.deps.progress({ phase: 'suite', status: 'heartbeat', note: `${label === 'suite' ? 'suite running' : label}, ${Math.round((this.deps.now() - started) / 60_000)} min`, always: true });
+      } catch {
+        // A broken progress sink must not crash the release from a timer.
+      }
+    }, SUITE_HEARTBEAT_MS);
+    timer.unref?.();
+    try {
+      return await this.deps.execAsync(this.deps.node, args, full);
+    } finally {
+      clearInterval(timer);
+    }
   }
 
   private suiteEnv: Record<string, string> = {};
+  private suiteStarted = 0;
 
   /** After the commit phase: tests of committed state (pack, committed docs, inventory drift) need the release commits. */
   private async suite(): Promise<PhaseOutcome> {
     const suite = this.opts.suite ?? 'none';
+    this.suiteStarted = this.deps.now();
     const head = this.git('rev-parse', 'HEAD');
     this.save({ suiteSha: head, suiteRan: suite });
     if (suite !== 'none') {
@@ -661,7 +682,7 @@ class Release {
       rmSync(out, { force: true });
       rmSync(flakyCandidatesPath(this.deps.stateRoot, this.v), { force: true });
       this.deps.log(`  node node_modules/vitest/vitest.mjs run --reporter=json --outputFile=${out}`);
-      const r = await this.runSuite(['node_modules/vitest/vitest.mjs', 'run', '--exclude', 'tests/perf/**', '--reporter=json', `--outputFile=${out}`]);
+      const r = await this.runSuite(['node_modules/vitest/vitest.mjs', 'run', '--exclude', 'tests/perf/**', '--reporter=json', `--outputFile=${out}`], { env: { OMC_TEST_LPT: '1' } });
       if (!existsSync(out)) fail(`vitest wrote no JSON report (exit ${r.status})`, tail(r.stderr));
       const failing = failingTitlesFromVitestJson(readFileSync(out, 'utf8'));
       const baseline = this.opts.baseline ? parseBaselineTitles(readFileSync(this.opts.baseline, 'utf8')) : [];
@@ -690,7 +711,7 @@ class Release {
         blocked(`${mixed} failing test(s) not in the baseline failed some isolated reruns (mixed, may be a real race: blocks); fix them, then --from suite (evidence: ${candidatesPath})`, lines);
       }
       this.requireClean('full suite');
-      const note = `full suite: ${failing.length} failing; ${fresh.length} not in the baseline are load-flaky (passed every isolated rerun); ${candidates.length} known-flaky candidate(s) await owner approval: ${candidatesPath}`;
+      const note = `full suite: ${failing.length} failing; ${fresh.length} not in the baseline are load-flaky (passed every isolated rerun)${candidates.length > 0 ? `; ${candidates.length} known-flaky candidate(s) await owner approval: ${candidatesPath}` : ''}`;
       this.deps.log(`  !! WARNING ${note}`);
       return { status: 'ok', note, details: lines };
     }
@@ -699,32 +720,40 @@ class Release {
   }
 
   /**
-   * Each new failing full-suite title alone, `triageRuns` times, sequentially
+   * Each new failing full-suite title alone (a file-level failure: the whole file), `triageRuns` times, sequentially
    * with the suite env: passing every isolated run means it failed only under
    * the suite's load. Saved after each title, so a re-run on the same HEAD
    * does not repeat finished titles.
    */
   private async triage(titles: string[], head: string): Promise<TriageResult[]> {
     const runs = this.opts.triageRuns ?? 3;
-    const timeoutMs = (this.opts.triageTimeoutMinutes ?? 5) * 60_000;
+    const titleTimeoutMs = (this.opts.triageTimeoutMinutes ?? 5) * 60_000;
+    // A whole file runs every test of it: three times the per-title allowance.
+    const fileTimeoutMs = titleTimeoutMs * 3;
     const prior = this.state.suiteTriage?.sha === head ? this.state.suiteTriage.results : [];
     const out = join(this.deps.stateRoot, 'release', `${this.v}-triage.json`);
     const results: TriageResult[] = [];
     for (const [i, title] of titles.entries()) {
       const { file, name } = splitFailingTitle(title);
-      let result = prior.find((r) => r.title === title && r.runs === (name === null ? 0 : runs));
+      // A record of another run count (an older 0-run file-level record included) is not reused.
+      let result = prior.find((r) => r.title === title && r.runs === runs);
       if (!result) {
         let passes = 0;
-        for (let n = 0; name !== null && n < runs; n++) {
+        for (let n = 0; n < runs; n++) {
           rmSync(out, { force: true });
           // One --testNamePattern=<pattern> argument: a title starting with "-" is never read as a flag.
-          const args = ['node_modules/vitest/vitest.mjs', 'run', file, `--testNamePattern=${escapeRe(name)}`, '--reporter=json', `--outputFile=${out}`];
-          this.deps.log(`  node ${args.slice(0, 3).join(' ')} ${JSON.stringify(args[3])} --reporter=json (isolated rerun ${n + 1}/${runs})`);
-          const r = await this.runSuite(args, { timeoutMs });
-          // A pass is exit 0 AND the report saying the test passed; a timeout or crash exits non-zero.
-          if (r.status === 0 && existsSync(out) && testPassedInReport(readFileSync(out, 'utf8'), file, name)) passes++;
+          // A file-level failure (its setup or collection failed, no failing title) reruns the whole file.
+          const pattern = name === null ? [] : [`--testNamePattern=${escapeRe(name)}`];
+          const args = ['node_modules/vitest/vitest.mjs', 'run', file, ...pattern, '--reporter=json', `--outputFile=${out}`];
+          this.deps.log(`  node ${args.slice(0, 3).join(' ')}${name === null ? '' : ` ${JSON.stringify(pattern[0])}`} --reporter=json (isolated ${name === null ? 'whole-file ' : ''}rerun ${n + 1}/${runs})`);
+          const timeoutMs = name === null ? fileTimeoutMs : titleTimeoutMs;
+          const r = await this.runSuite(args, { timeoutMs }, `triage rerun ${n + 1}/${runs} of ${file}`);
+          if (r.status !== 0 && /killed by|ETIMEDOUT/.test(r.stderr)) this.deps.log(`  !! triage rerun ${n + 1}/${runs} of ${title} timed out after ${timeoutMs / 60_000} min (counts as failed)`);
+          // A pass is exit 0 AND the report saying the test (or every test of the file) passed; a timeout or crash exits non-zero.
+          const report = r.status === 0 && existsSync(out) ? readFileSync(out, 'utf8') : null;
+          if (report !== null && (name === null ? filePassedInReport(report, file) : testPassedInReport(report, file, name))) passes++;
         }
-        result = { title, file, runs: name === null ? 0 : runs, passes, class: classifyTriage(runs, passes, name === null) };
+        result = { title, file, runs, passes, class: classifyTriage(runs, passes) };
       }
       results.push(result);
       this.save({ suiteTriage: { sha: head, results: [...results, ...prior.filter((p) => !results.some((r) => r.title === p.title))] } });
@@ -1151,7 +1180,8 @@ class Release {
           // CI is green before the suite beside it finished: merge only once it passed, then re-read the PR.
           const gate = this.mergeGate;
           this.mergeGate = undefined;
-          this.deps.progress({ phase, status: 'heartbeat', note: `PR #${pr} gates green; merge waits for the suite` });
+          // A state change, never throttled: under --drive the green report just before it used the heartbeat slot.
+          this.deps.progress({ phase, status: 'heartbeat', note: `PR #${pr} gates green; merge waits for the suite`, always: true });
           await gate();
           continue;
         }
@@ -1503,7 +1533,7 @@ export async function runRelease(deps: ReleaseDeps, requested: ReleaseOptions): 
     throw error;
   }
   const triage = release.current.suiteTriage;
-  const flaky = triage && triage.sha === release.current.suiteSha ? triage.results.filter((t) => t.class === 'load-flaky').length : 0;
+  const flaky = triage && triage.sha === release.current.suiteSha ? flakyCandidates(v, triage.results).length : 0;
   const awaiting = flaky > 0 ? `; ${flaky} known-flaky candidate(s) await owner approval (omg release ${v} --flaky-candidates)` : '';
   deps.progress({ phase: 'release', status: 'done', note: `${v}: ${selected[0]}..${selected[selected.length - 1]} ok${awaiting}` });
   return { ok: true, version: v, dryRun: false, statePath, phases: results };

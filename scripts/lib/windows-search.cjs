@@ -1,17 +1,7 @@
 'use strict';
 /**
- * Windows executable search hardening (CJS hook/script runtime).
- *
- * Without NoDefaultCurrentDirectoryInExePath, Windows looks up a bare command
- * name (`git`, `npm`) in the current directory before PATH, so an executable
- * planted in the project folder runs. Entry points call
- * hardenWindowsExeSearch() first; explicit child envs go through childEnv().
- * Imports evaluate before the entry's call, so nothing an entry point imports
- * may spawn at module-load time.
- *
- * Multi-surface mirrors (keep in sync):
- *   src/utils/windows-search.ts      — TypeScript runtime (source of truth)
- *   scripts/lib/windows-search.mjs   — ESM re-export of this file
+ * Windows executable search hardening (CJS hook runtime).
+ * Source of truth: src/utils/windows-search.ts — keep in sync.
  */
 
 const VARIABLE = 'NoDefaultCurrentDirectoryInExePath';

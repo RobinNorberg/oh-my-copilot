@@ -16,6 +16,7 @@ import {
   smokeInputHash,
   splitFailingTitle,
   testPassedInReport,
+  filePassedInReport,
   parseBaselineTitles,
   parseReleaseVersion,
   releaseProseProblems,
@@ -145,13 +146,26 @@ describe('suite baseline diff', () => {
 });
 
 describe('flake triage', () => {
-  it('classifies: every isolated rerun passed = load-flaky, some = mixed, none or a collection error = real', () => {
+  it('classifies: every isolated rerun passed = load-flaky, some = mixed, none = real; no rerun is no verdict', () => {
     expect(classifyTriage(3, 3)).toBe('load-flaky');
     expect(classifyTriage(3, 2)).toBe('mixed');
     expect(classifyTriage(3, 1)).toBe('mixed');
     expect(classifyTriage(3, 0)).toBe('real');
-    expect(classifyTriage(0, 0, true)).toBe('real');
-    expect(classifyTriage(3, 3, true)).toBe('real');
+    expect(classifyTriage(1, 1)).toBe('load-flaky');
+    // "passed 0/0 isolated reruns" is never real.
+    expect(() => classifyTriage(0, 0)).toThrow(/at least one isolated rerun/);
+  });
+
+  it('reads one file of a vitest JSON report: passed as a whole only with a passed test and no failed one', () => {
+    const report = (status: string, results: Array<{ fullName: string; status: string }>) => JSON.stringify({ testResults: [{ name: 'C:\\x\\src\\a.test.ts', status, assertionResults: results }] });
+    expect(filePassedInReport(report('passed', [{ fullName: 'a', status: 'passed' }, { fullName: 'b', status: 'skipped' }]), 'src/a.test.ts')).toBe(true);
+    expect(filePassedInReport(report('failed', []), 'src/a.test.ts')).toBe(false);
+    expect(filePassedInReport(report('passed', []), 'src/a.test.ts')).toBe(false);
+    expect(filePassedInReport(report('passed', [{ fullName: 'a', status: 'skipped' }]), 'src/a.test.ts')).toBe(false);
+    expect(filePassedInReport(report('passed', [{ fullName: 'a', status: 'todo' }]), 'src/a.test.ts')).toBe(false);
+    expect(filePassedInReport(report('failed', [{ fullName: 'a', status: 'passed' }, { fullName: 'b', status: 'failed' }]), 'src/a.test.ts')).toBe(false);
+    expect(filePassedInReport(report('passed', [{ fullName: 'a', status: 'passed' }]), 'src/b.test.ts')).toBe(false);
+    expect(filePassedInReport('not json', 'src/a.test.ts')).toBe(false);
   });
 
   it('splits a failing-title line at the first " > "; a file alone is a collection error', () => {
@@ -179,6 +193,8 @@ describe('flake triage', () => {
       { title: 'src/a.test.ts > s > t', file: 'src/a.test.ts', runs: 3, passes: 3, class: 'load-flaky' },
       { title: 'src/b.test.ts > u', file: 'src/b.test.ts', runs: 3, passes: 0, class: 'real' },
       { title: 'src/c.test.ts > v', file: 'src/c.test.ts', runs: 3, passes: 1, class: 'mixed' },
+      // A file-level failure has no title for a known-flaky entry: never a candidate.
+      { title: 'src/d.test.ts', file: 'src/d.test.ts', runs: 3, passes: 3, class: 'load-flaky' },
     ]);
     expect(candidates).toEqual([
       { file: 'src/a.test.ts', title: 's > t', note: expect.stringMatching(/^load-sensitive: .* passed 3\/3 isolated reruns \(v5\.12\.2/), evidence: { class: 'load-flaky', runs: 3, passes: 3, release: '5.12.2' } },
