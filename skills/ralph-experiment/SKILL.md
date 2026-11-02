@@ -11,7 +11,7 @@ triggers:
   - "ralph-experiment"
 ---
 
-[EXPERIMENT LOOP — ITERATION {{ITERATION}}/{{MAX}}]
+[EXPERIMENT LOOP — iteration and budget are tracked in the experiment notebook; if this header shows unfilled `{{ITERATION}}/{{MAX}}` placeholders, ignore them]
 
 <Purpose>
 Ralph-Experiment is a hypothesis-driven experiment loop inspired by the Karpathy Experiment Loop. It iteratively tests single hypotheses against measurable success criteria, using git as a state machine to keep or discard each attempt. Unlike ralph (which completes user stories), ralph-experiment optimizes toward a goal through structured experimentation with an experiment notebook that captures learnings across iterations.
@@ -45,9 +45,10 @@ Optimization tasks fail when treated as implementation tasks. "Make X faster" do
 <Execution_Policy>
 - One hypothesis at a time -- sequential experiments, not parallel
 - Delegate implementation to executor agents or teams for each hypothesis
-- Use `run_in_background: true` for measurement commands (builds, benchmarks, test suites)
-- Always pass the `model` parameter explicitly when delegating to agents
-- Git commit before measuring, git reset on discard -- no uncommitted experiments
+- Run long measurement commands (builds, benchmarks, test suites) in the background: `run_in_background: true` on Claude Code, shell `mode: "async"` on Copilot CLI
+- Always pass the model explicitly when delegating to agents (`model="sonnet"` on Claude Code; on Copilot CLI the `task` tool's `model` takes a full id such as `claude-sonnet-...`)
+- Pseudo-code below uses Claude Code names. On Copilot CLI, `Agent(subagent_type=...)` is `task(agent_type=..., mode="background"|"sync")`, and `TeamCreate`/`TeamDelete` become several parallel `task` calls (or the `team` skill)
+- Commit before measuring, roll back on discard -- no uncommitted experiments. Roll back safely (see Rollback_Safety)
 - Never stop unless: success criteria met, budget exhausted, or human interrupts
 </Execution_Policy>
 
@@ -66,8 +67,8 @@ Parse the user's request to extract:
   - Default: 20 experiments
 
 Then:
-a. Create experiment branch: `git checkout -b experiment/{tag}` from current HEAD
-b. Initialize `experiment-notebook.json` in `.omg/` (see schema below)
+a. Create experiment branch: `git checkout -b experiment/{tag}` from current HEAD (in every repo the loop will change; for multi-repo work prefer a worktree per repo, see Rollback_Safety)
+b. Initialize `experiment-notebook.json` in `.omg/` at the workspace/root where the loop is driven, or at a custom path the user gives (see schema below)
 c. Run the measurement command to establish **baseline metrics**
 d. Record baseline in the notebook
 
@@ -110,17 +111,27 @@ TeamCreate(name="exp-{N}", members=["executor-1", "executor-2", "tester-3"])
 
 **Adaptive escalation**: If a single executor fails due to implementation complexity (not wrong hypothesis), retry with a team. Track `escalated: true` in the notebook.
 
-After implementation, commit all changes:
+After implementation, commit the changes (run each command separately in PowerShell; `&&` needs PowerShell 7+):
 ```
-git add -A && git commit -m "experiment(EXP-{N}): {hypothesis summary}"
+git add -A
+git commit -m "experiment(EXP-{N}): {hypothesis summary}"
 ```
+Prefer staging only the files the hypothesis touched if the tree has unrelated changes.
+
+For a non-code hypothesis (cluster settings, env vars, feature toggles), there is no commit to revert: record the exact change and its rollback command in the notebook (`changes`, `rollback`) before applying it.
 
 ## Step 4: EXECUTE & MEASURE
 
-Run the measurement command:
+Run the measurement command, writing output to a log file as it is produced:
 ```bash
 {measurement_command} > .omg/experiment-run.log 2>&1
 ```
+PowerShell: `{measurement_command} *> .omg/experiment-run.log`
+
+Measurement rules:
+- Write results to disk as they are produced (log file, notebook entry per run), never only at the end; a crash must not lose a round of measurements
+- Measure every experiment against the current best with the same procedure (same command, inputs, and environment); re-measure the best if conditions drifted
+- Toggles (env vars, feature flags) built into one build let several hypotheses be tested without rebuilding, but still test one hypothesis at a time
 
 Extract metrics from output (grep, parse JSON, etc.).
 
@@ -164,8 +175,10 @@ Compare metrics to:
 
 **On DISCARD:**
 ```bash
-git reset --hard HEAD~1   # Revert to last keep point
+git revert --no-edit HEAD   # Safe default; keeps history
+# On a private experiment branch with only your own commits, `git reset --hard HEAD~1` is also fine
 ```
+For non-code changes, run the recorded rollback command and verify the previous state is restored.
 
 **On MODIFY:**
 ```bash
@@ -215,6 +228,12 @@ Then run `/cancel` for clean state cleanup.
 
 </Steps>
 
+<Rollback_Safety>
+- `git reset --hard` may only run on the experiment branch, and only over commits this loop made. Never reset a branch that holds others' commits or a working tree with unrelated uncommitted work; use `git revert` instead
+- Multi-repo work: one `experiment/{tag}` branch or `git worktree` per repo, with the per-repo commit recorded in the notebook; discard reverts every repo the experiment touched
+- Non-code (runtime/infra) hypotheses: record the exact change and rollback command in the notebook first, and roll back by running it, not by git
+</Rollback_Safety>
+
 <Experiment_Notebook_Schema>
 ```json
 {
@@ -243,7 +262,8 @@ Then run `/cancel` for clean state cleanup.
       "prediction": "string — expected outcome",
       "rationale": "string — why this should work",
       "changes": ["file1.ts", "file2.ts"],
-      "commit": "string — 7-char hash",
+      "rollback": "string | null — rollback command for non-code changes",
+      "commit": "string — 7-char hash (per repo if multi-repo)",
       "status": "keep|discard|modify|crash|in_progress",
       "escalated": false,
       "metrics": { "metric_name": "number" },
@@ -300,7 +320,7 @@ but worse than EXP-001's 170)
 Decision: DISCARD (does not improve on current best)
 Learnings: "Lock-free queue adds overhead for small batch sizes.
 Contention is not the bottleneck — I/O is."
-git reset --hard HEAD~1
+git revert --no-edit HEAD
 ```
 Why good: Reverted cleanly, captured specific learning that informs future hypotheses.
 </Good>
@@ -346,7 +366,7 @@ Why bad: If metrics improve, which change helped? If they worsen, which hurt? On
 - [ ] Every experiment has: hypothesis, prediction, metrics, learnings
 - [ ] No in_progress experiments remain (all resolved to keep/discard/modify/crash)
 - [ ] Git branch is clean (no uncommitted changes)
-- [ ] Discarded experiments were reverted (git reset)
+- [ ] Discarded experiments were reverted (git revert/branch reset, or recorded config rollback)
 - [ ] Best result is recorded in notebook
 - [ ] Exit report produced with summary, learnings, and file list
 - [ ] `/cancel` run for clean state cleanup
