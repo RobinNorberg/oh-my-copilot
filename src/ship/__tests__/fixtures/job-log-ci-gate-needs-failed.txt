@@ -1,0 +1,23 @@
+CI Gate	Set up job	2026-11-02T01:01:45.5063818Z Complete job name: CI Gate
+CI Gate	Check needed job results	﻿2026-11-02T01:01:45.6462518Z ##[group]Run echo "$NEEDS" | jq -r 'to_entries[] | "\(.value.result)\t\(.key)"' | sort
+CI Gate	Check needed job results	2026-11-02T01:01:45.7209559Z ##[endgroup]
+CI Gate	Check needed job results	2026-11-02T01:01:45.7437674Z failure	test
+CI Gate	Check needed job results	2026-11-02T01:01:45.7438248Z failure	test-shards
+CI Gate	Check needed job results	2026-11-02T01:01:45.7438768Z success	better-sqlite3-node26-ubuntu
+CI Gate	Check needed job results	2026-11-02T01:01:45.7439399Z success	better-sqlite3-node26-windows
+CI Gate	Check needed job results	2026-11-02T01:01:45.7439956Z success	build
+CI Gate	Check needed job results	2026-11-02T01:01:45.7440396Z success	evidence
+CI Gate	Check needed job results	2026-11-02T01:01:45.7440863Z success	lint-and-typecheck
+CI Gate	Check needed job results	2026-11-02T01:01:45.7441400Z success	multirepo-paths-gate-ubuntu
+CI Gate	Check needed job results	2026-11-02T01:01:45.7442524Z success	multirepo-paths-gate-windows
+CI Gate	Check needed job results	2026-11-02T01:01:45.7443115Z success	npm-pack-test
+CI Gate	Check needed job results	2026-11-02T01:01:45.7443583Z success	smoke
+CI Gate	Check needed job results	2026-11-02T01:01:45.7444056Z success	test-precompact-restore-macos
+CI Gate	Check needed job results	2026-11-02T01:01:45.7444659Z success	test-precompact-restore-ubuntu
+CI Gate	Check needed job results	2026-11-02T01:01:45.7445274Z success	test-precompact-restore-windows
+CI Gate	Check needed job results	2026-11-02T01:01:45.7445861Z success	test-windows
+CI Gate	Check needed job results	2026-11-02T01:01:45.7446633Z success	upgrade-test
+CI Gate	Check needed job results	2026-11-02T01:01:45.7447110Z success	version-check
+CI Gate	Check needed job results	2026-11-02T01:01:45.7490241Z ##[error]not success or skipped: test-shards, test
+CI Gate	Check needed job results	2026-11-02T01:01:45.7508847Z ##[error]Process completed with exit code 1.
+CI Gate	Complete job	﻿2026-11-02T01:01:45.7667995Z Cleaning up orphan processes

@@ -1,0 +1,43 @@
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.2029887Z  [32m✓[39m src/__tests__/session-end-empty-stdin.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 365[2mms[22m[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.2661313Z  [32m✓[39m src/cli/__tests__/team-command-branding.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 52[2mms[22m[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4302042Z  [32m✓[39m src/mcp/__tests__/omc-tools-server.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 22[2mms[22m[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4454311Z 
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4455539Z [31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 2 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4455899Z 
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4456958Z [41m[1m FAIL [22m[49m src/team/__tests__/runtime-cli.test.ts[2m > [22mruntime-cli recovery intent cleanup[2m > [22mkeeps a predeadline malformed admission fenced after a postdeadline corruption touch
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4460458Z [31m[1mAssertionError[22m: expected 1793581067545.0637 to be less than or equal to 1793581067545[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4461308Z [36m [2m❯[22m seedReservationThenPassDeadline src/team/__tests__/runtime-cli.test.ts:[2m738:46[22m[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4622623Z     [90m736|[39m     [35mconst[39m deadline [33m=[39m [33mDate[39m[33m.[39m[34mnow[39m()[33m;[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4623651Z     [90m737|[39m     [35mconst[39m { birthtimeMs } [33m=[39m [34mlstatSync[39m(path)[33m;[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4624317Z     [90m738|[39m     if (birthtimeMs > 0) expect(birthtimeMs).toBeLessThanOrEqual(deadl…
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4624841Z     [90m   |[39m                                              [31m^[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4625351Z     [90m739|[39m     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, scale…
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4625876Z     [90m740|[39m     [35mreturn[39m { path[33m,[39m deadline }[33m;[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4626433Z [90m [2m❯[22m src/team/__tests__/runtime-cli.test.ts:[2m1234:34[22m[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4626689Z 
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4626861Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯[22m[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4626988Z 
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4627704Z [41m[1m FAIL [22m[49m src/team/__tests__/runtime-cli.test.ts[2m > [22mruntime-cli recovery intent cleanup[2m > [22mkeeps a predeadline admission fenced when a postdeadline corruption changes workspace_hash without its payload hash
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4629010Z [31m[1mAssertionError[22m: expected 1793581067621.062 to be less than or equal to 1793581067621[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4629788Z [36m [2m❯[22m seedReservationThenPassDeadline src/team/__tests__/runtime-cli.test.ts:[2m738:46[22m[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4631055Z     [90m736|[39m     [35mconst[39m deadline [33m=[39m [33mDate[39m[33m.[39m[34mnow[39m()[33m;[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4631687Z     [90m737|[39m     [35mconst[39m { birthtimeMs } [33m=[39m [34mlstatSync[39m(path)[33m;[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4632291Z     [90m738|[39m     if (birthtimeMs > 0) expect(birthtimeMs).toBeLessThanOrEqual(deadl…
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4632884Z     [90m   |[39m                                              [31m^[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4633378Z     [90m739|[39m     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, scale…
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4633740Z     [90m740|[39m     [35mreturn[39m { path[33m,[39m deadline }[33m;[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4634203Z [90m [2m❯[22m src/team/__tests__/runtime-cli.test.ts:[2m1249:36[22m[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4634360Z 
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4634492Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯[22m[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4634614Z 
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4634643Z 
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4644077Z [2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m261 passed[39m[22m[2m | [22m[33m1 skipped[39m[90m (263)[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4674388Z [2m      Tests [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m5056 passed[39m[22m[2m | [22m[33m5 skipped[39m[90m (5063)[39m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4674853Z [2m   Start at [22m 00:57:44
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4676454Z [2m   Duration [22m 151.76s[2m (transform 9.57s, setup 2.23s, import 72.70s, tests 351.06s, environment 34ms)[22m
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.4677666Z 
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.5687270Z blob report written to /home/runner/work/_temp/vitest-reports/blob-2.json
+Test shard 2 of 4	Run functional tests	2026-11-02T01:00:16.6501662Z ##[error]Process completed with exit code 1.
+Test shard 2 of 4	Upload blob report	﻿2026-11-02T01:00:16.6556830Z ##[group]Run actions/upload-artifact@v4
+Test shard 2 of 4	Upload blob report	2026-11-02T01:00:16.6557009Z with:
+Test shard 2 of 4	Upload blob report	2026-11-02T01:00:16.6557136Z   name: vitest-blob-2

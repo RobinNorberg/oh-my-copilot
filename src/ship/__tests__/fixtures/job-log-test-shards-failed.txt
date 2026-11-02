@@ -1,0 +1,48 @@
+Test	Merge shard reports	﻿2026-11-02T01:01:37.2866048Z ##[group]Run status=0
+Test	Merge shard reports	2026-11-02T01:01:39.0236112Z 
+Test	Merge shard reports	2026-11-02T01:01:39.0236117Z 
+Test	Merge shard reports	2026-11-02T01:01:39.0236464Z [31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 2 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+Test	Merge shard reports	2026-11-02T01:01:39.0236474Z 
+Test	Merge shard reports	2026-11-02T01:01:39.0237464Z [41m[1m FAIL [22m[49m src/team/__tests__/runtime-cli.test.ts[2m > [22mruntime-cli recovery intent cleanup[2m > [22mkeeps a predeadline malformed admission fenced after a postdeadline corruption touch
+Test	Merge shard reports	2026-11-02T01:01:39.0238463Z [31m[1mAssertionError[22m: expected 1793581067545.0637 to be less than or equal to 1793581067545[39m
+Test	Merge shard reports	2026-11-02T01:01:39.0239209Z [36m [2m❯[22m seedReservationThenPassDeadline src/team/__tests__/runtime-cli.test.ts:[2m738:46[22m[39m
+Test	Merge shard reports	2026-11-02T01:01:39.0239647Z     [90m736|[39m     [35mconst[39m deadline [33m=[39m [33mDate[39m[33m.[39m[34mnow[39m()[33m;[39m
+Test	Merge shard reports	2026-11-02T01:01:39.0240046Z     [90m737|[39m     [35mconst[39m { birthtimeMs } [33m=[39m [34mlstatSync[39m(path)[33m;[39m
+Test	Merge shard reports	2026-11-02T01:01:39.0240421Z     [90m738|[39m     if (birthtimeMs > 0) expect(birthtimeMs).toBeLessThanOrEqual(deadl…
+Test	Merge shard reports	2026-11-02T01:01:39.0240680Z     [90m   |[39m                                              [31m^[39m
+Test	Merge shard reports	2026-11-02T01:01:39.0241036Z     [90m739|[39m     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, scale…
+Test	Merge shard reports	2026-11-02T01:01:39.0241334Z     [90m740|[39m     [35mreturn[39m { path[33m,[39m deadline }[33m;[39m
+Test	Merge shard reports	2026-11-02T01:01:39.0241701Z [90m [2m❯[22m src/team/__tests__/runtime-cli.test.ts:[2m1234:34[22m[39m
+Test	Merge shard reports	2026-11-02T01:01:39.0241711Z 
+Test	Merge shard reports	2026-11-02T01:01:39.0241966Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯[22m[39m
+Test	Merge shard reports	2026-11-02T01:01:39.0241976Z 
+Test	Merge shard reports	2026-11-02T01:01:39.0243107Z [41m[1m FAIL [22m[49m src/team/__tests__/runtime-cli.test.ts[2m > [22mruntime-cli recovery intent cleanup[2m > [22mkeeps a predeadline admission fenced when a postdeadline corruption changes workspace_hash without its payload hash
+Test	Merge shard reports	2026-11-02T01:01:39.0243592Z [31m[1mAssertionError[22m: expected 1793581067621.062 to be less than or equal to 1793581067621[39m
+Test	Merge shard reports	2026-11-02T01:01:39.0244116Z [36m [2m❯[22m seedReservationThenPassDeadline src/team/__tests__/runtime-cli.test.ts:[2m738:46[22m[39m
+Test	Merge shard reports	2026-11-02T01:01:39.0244544Z     [90m736|[39m     [35mconst[39m deadline [33m=[39m [33mDate[39m[33m.[39m[34mnow[39m()[33m;[39m
+Test	Merge shard reports	2026-11-02T01:01:39.0244936Z     [90m737|[39m     [35mconst[39m { birthtimeMs } [33m=[39m [34mlstatSync[39m(path)[33m;[39m
+Test	Merge shard reports	2026-11-02T01:01:39.0245304Z     [90m738|[39m     if (birthtimeMs > 0) expect(birthtimeMs).toBeLessThanOrEqual(deadl…
+Test	Merge shard reports	2026-11-02T01:01:39.0245562Z     [90m   |[39m                                              [31m^[39m
+Test	Merge shard reports	2026-11-02T01:01:39.0245917Z     [90m739|[39m     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, scale…
+Test	Merge shard reports	2026-11-02T01:01:39.0246211Z     [90m740|[39m     [35mreturn[39m { path[33m,[39m deadline }[33m;[39m
+Test	Merge shard reports	2026-11-02T01:01:39.0246563Z [90m [2m❯[22m src/team/__tests__/runtime-cli.test.ts:[2m1249:36[22m[39m
+Test	Merge shard reports	2026-11-02T01:01:39.0246572Z 
+Test	Merge shard reports	2026-11-02T01:01:39.0246812Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯[22m[39m
+Test	Merge shard reports	2026-11-02T01:01:39.0246820Z 
+Test	Merge shard reports	2026-11-02T01:01:39.0247403Z  [32m✓[39m src/notifications/__tests__/custom-integration.test.ts [2m([22m[2m32 tests[22m[2m)[22m[32m 103[2mms[22m[39m
+Test	Merge shard reports	2026-11-02T01:01:39.0248165Z  [32m✓[39m src/__tests__/hud/render-rate-limits-priority.test.ts [2m([22m[2m23 tests[22m[2m)[22m[32m 71[2mms[22m[39m
+Test	Merge shard reports	2026-11-02T01:01:39.1116383Z  [32m✓[39m src/__tests__/omc-state-gitignore-contract.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 91[2mms[22m[39m
+Test	Merge shard reports	2026-11-02T01:01:39.1116892Z  [32m✓[39m src/cli/commands/__tests__/factory-listen-port.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+Test	Merge shard reports	2026-11-02T01:01:39.1117375Z  [32m✓[39m src/features/model-routing/__tests__/index.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 84[2mms[22m[39m
+Test	Merge shard reports	2026-11-02T01:01:39.1118105Z  [32m✓[39m src/team/__tests__/index.compat-exports.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+Test	Merge shard reports	2026-11-02T01:01:39.1118685Z  [32m✓[39m src/hooks/factcheck/__tests__/config-tokens.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 52[2mms[22m[39m
+Test	Merge shard reports	2026-11-02T01:01:39.1118697Z 
+Test	Merge shard reports	2026-11-02T01:01:39.1119310Z [2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m1043 passed[39m[22m[2m | [22m[33m8 skipped[39m[90m (1052)[39m
+Test	Merge shard reports	2026-11-02T01:01:39.1119910Z [2m      Tests [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m21194 passed[39m[22m[2m | [22m[33m78 skipped[39m[90m (21274)[39m
+Test	Merge shard reports	2026-11-02T01:01:39.1120108Z [2m   Start at [22m 01:01:38
+Test	Merge shard reports	2026-11-02T01:01:39.1120661Z [2m   Duration [22m 720.48s[2m (transform 0ms, setup 11.89s, import 166.86s, tests 1820.16s, environment 213ms)[22m
+Test	Merge shard reports	2026-11-02T01:01:39.1120908Z [2m   Per blob [22m 207.07s 151.84s 192.42s 169.16s
+Test	Merge shard reports	2026-11-02T01:01:39.1120924Z 
+Test	Merge shard reports	2026-11-02T01:01:39.1121285Z JSON report written to /home/runner/work/_temp/vitest-report/vitest-report.json
+Test	Merge shard reports	2026-11-02T01:01:39.1139993Z ##[error]test shards: failure
+Test	Merge shard reports	2026-11-02T01:01:39.1148226Z ##[error]Process completed with exit code 1.
