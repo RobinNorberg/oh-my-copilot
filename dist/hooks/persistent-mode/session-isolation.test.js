@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -253,19 +253,28 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
             state.phase = 'planning';
             state.project_path = tempDir;
             writeFileSync(join(sessionDir, 'autopilot-state.json'), JSON.stringify(state));
-            const requestedAt = Date.now() + offsetMs;
-            writeFileSync(join(sessionDir, 'cancel-signal-state.json'), JSON.stringify({
-                active: true,
-                mode: 'autopilot',
-                source: 'state_clear',
-                requested_at: new Date(requestedAt).toISOString(),
-                expires_at: new Date(requestedAt + 30_000).toISOString(),
-                target_state_sha256: createHash('sha256').update(JSON.stringify(state)).digest('hex'),
-            }));
-            await expect(checkPersistentModes(sessionId, tempDir)).resolves.toMatchObject({
-                shouldBlock,
-                mode: shouldBlock ? 'autopilot' : 'none',
-            });
+            // Freeze the clock: the 6 s future offset sits 1 s past the 5 s skew
+            // allowance, so a slow check on a loaded host would otherwise read it
+            // as in-skew and accept the signal.
+            vi.useFakeTimers({ toFake: ['Date'] });
+            try {
+                const requestedAt = Date.now() + offsetMs;
+                writeFileSync(join(sessionDir, 'cancel-signal-state.json'), JSON.stringify({
+                    active: true,
+                    mode: 'autopilot',
+                    source: 'state_clear',
+                    requested_at: new Date(requestedAt).toISOString(),
+                    expires_at: new Date(requestedAt + 30_000).toISOString(),
+                    target_state_sha256: createHash('sha256').update(JSON.stringify(state)).digest('hex'),
+                }));
+                await expect(checkPersistentModes(sessionId, tempDir)).resolves.toMatchObject({
+                    shouldBlock,
+                    mode: shouldBlock ? 'autopilot' : 'none',
+                });
+            }
+            finally {
+                vi.useRealTimers();
+            }
         });
         it.each([
             ['future-dated', 6_000],

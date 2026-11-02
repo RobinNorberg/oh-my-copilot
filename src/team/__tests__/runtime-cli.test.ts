@@ -729,13 +729,14 @@ describe('runtime-cli recovery intent cleanup', () => {
    * is then <= the deadline however long the durable seed write took on a
    * loaded host (a deadline guessed ahead of the seed raced it). Returns once
    * the clock is clearly past the deadline, so a following write is a
-   * postdeadline touch even with coarse filesystem timestamps.
+   * postdeadline touch even with coarse filesystem timestamps. The birthtime
+   * carries sub-millisecond precision while Date.now() is whole milliseconds,
+   * so a seed born late in the current millisecond rounds the deadline up.
    */
   function seedReservationThenPassDeadline(cwd: string, requestId: string, recoveryId: string): { path: string; deadline: number } {
     const { path } = seedPredeadlineReservation(cwd, requestId, recoveryId, Date.now());
-    const deadline = Date.now();
     const { birthtimeMs } = lstatSync(path);
-    if (birthtimeMs > 0) expect(birthtimeMs).toBeLessThanOrEqual(deadline);
+    const deadline = Math.max(Date.now(), Math.ceil(birthtimeMs));
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, scaleTiming(50));
     return { path, deadline };
   }
