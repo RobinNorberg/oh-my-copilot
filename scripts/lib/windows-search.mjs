@@ -1,7 +1,27 @@
 /**
- * Windows executable search hardening (ESM runtime): re-exports
- * scripts/lib/windows-search.cjs so both module systems share one copy.
- * Source of truth: src/utils/windows-search.ts.
+ * Windows executable search hardening (ESM hook/script runtime).
+ * Source of truth: src/utils/windows-search.ts — keep in sync.
  */
 
-export { hardenWindowsExeSearch, childEnv } from './windows-search.cjs';
+const VARIABLE = 'NoDefaultCurrentDirectoryInExePath';
+
+function isVariable(key) {
+  return key.toUpperCase() === VARIABLE.toUpperCase();
+}
+
+export function hardenWindowsExeSearch() {
+  if (process.platform !== 'win32') return;
+  for (const key of Object.keys(process.env)) {
+    if (isVariable(key)) delete process.env[key];
+  }
+  process.env[VARIABLE] = '1';
+}
+
+export function childEnv(env) {
+  const out = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (process.platform !== 'win32' || !isVariable(key)) out[key] = value;
+  }
+  if (process.platform === 'win32') out[VARIABLE] = '1';
+  return out;
+}

@@ -35,6 +35,55 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
+// src/utils/windows-search.ts
+function isVariable(key) {
+  return key.toUpperCase() === VARIABLE.toUpperCase();
+}
+function hardenWindowsExeSearch() {
+  if (process.platform !== "win32") return;
+  for (const key of Object.keys(process.env)) {
+    if (isVariable(key)) delete process.env[key];
+  }
+  process.env[VARIABLE] = "1";
+}
+function envValue(env, name) {
+  const key = Object.keys(env).find((k) => k.toUpperCase() === name);
+  const value = key === void 0 ? void 0 : env[key];
+  return typeof value === "string" && value.trim() !== "" ? value : void 0;
+}
+function findOnPath(name, env, platform, exists = isFile) {
+  const P = platform === "win32" ? import_node_path.win32 : import_node_path.posix;
+  const exts = platform === "win32" ? (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean) : [""];
+  const inNodeModules = platform === "win32" ? /(^|[\\/])node_modules([\\/]|$)/i : /(^|\/)node_modules(\/|$)/;
+  for (const raw of (envValue(env, "PATH") ?? "").split(P.delimiter)) {
+    const dir = raw.trim().replace(/^"(.*)"$/, "$1");
+    if (!dir || !P.isAbsolute(dir) || inNodeModules.test(dir)) continue;
+    for (const ext of exts) if (exists(P.join(dir, name + ext))) return P.join(dir, name + ext);
+  }
+  return null;
+}
+function resolveBareExe(cmd, env = process.env) {
+  if (process.platform !== "win32" || /[\\/:]/.test(cmd)) return cmd;
+  const pathext = (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter((e) => e && !/^\.(cmd|bat)$/i.test(e)).join(";") || ".COM;.EXE";
+  return findOnPath(cmd, { ...env, PATHEXT: pathext }, "win32");
+}
+var import_node_fs, import_node_path, VARIABLE, isFile;
+var init_windows_search = __esm({
+  "src/utils/windows-search.ts"() {
+    "use strict";
+    import_node_fs = require("node:fs");
+    import_node_path = require("node:path");
+    VARIABLE = "NoDefaultCurrentDirectoryInExePath";
+    isFile = (p) => {
+      try {
+        return (0, import_node_fs.statSync)(p).isFile();
+      } catch {
+        return false;
+      }
+    };
+  }
+});
+
 // node_modules/ajv/dist/compile/codegen/code.js
 var require_code = __commonJS({
   "node_modules/ajv/dist/compile/codegen/code.js"(exports2) {
@@ -8039,10 +8088,10 @@ function normalizeTaskFileStem(taskId) {
 function canonicalTeamCwd(cwd) {
   const resolved = (0, import_path3.resolve)(cwd);
   try {
-    return import_node_fs.realpathSync.native(resolved);
+    return import_node_fs2.realpathSync.native(resolved);
   } catch {
     try {
-      return (0, import_node_fs.realpathSync)(resolved);
+      return (0, import_node_fs2.realpathSync)(resolved);
     } catch {
       return resolved;
     }
@@ -8054,18 +8103,18 @@ function canonicalStoragePath(path5) {
   const visitedLinks = /* @__PURE__ */ new Set();
   while (true) {
     try {
-      const stat2 = (0, import_node_fs.lstatSync)(cursor);
+      const stat2 = (0, import_node_fs2.lstatSync)(cursor);
       if (stat2.isSymbolicLink()) {
         if (visitedLinks.has(cursor)) throw new Error("team_storage_anchor_symlink_cycle");
         visitedLinks.add(cursor);
-        cursor = (0, import_path3.resolve)((0, import_path3.dirname)(cursor), (0, import_node_fs.readlinkSync)(cursor));
+        cursor = (0, import_path3.resolve)((0, import_path3.dirname)(cursor), (0, import_node_fs2.readlinkSync)(cursor));
         continue;
       }
       const canonical = (() => {
         try {
-          return import_node_fs.realpathSync.native(cursor);
+          return import_node_fs2.realpathSync.native(cursor);
         } catch {
-          return (0, import_node_fs.realpathSync)(cursor);
+          return (0, import_node_fs2.realpathSync)(cursor);
         }
       })();
       return missingSuffix.length === 0 ? canonical : (0, import_path3.join)(canonical, ...missingSuffix.reverse());
@@ -8146,7 +8195,7 @@ function assertTeamStatePathSafeSync(cwd, path5) {
   for (const component of suffix.split(import_path3.sep).filter(Boolean)) {
     cursor = (0, import_path3.join)(cursor, component);
     try {
-      const stat2 = (0, import_node_fs.lstatSync)(cursor);
+      const stat2 = (0, import_node_fs2.lstatSync)(cursor);
       if (stat2.isSymbolicLink()) throw new Error("team_instance_path_symlink");
     } catch (error2) {
       if (error2 instanceof Error && error2.message === "team_instance_path_symlink") throw error2;
@@ -8155,12 +8204,12 @@ function assertTeamStatePathSafeSync(cwd, path5) {
     }
   }
 }
-var import_node_crypto, import_node_fs, import_promises, import_path3, TeamPaths;
+var import_node_crypto, import_node_fs2, import_promises, import_path3, TeamPaths;
 var init_state_paths = __esm({
   "src/team/state-paths.ts"() {
     "use strict";
     import_node_crypto = require("node:crypto");
-    import_node_fs = require("node:fs");
+    import_node_fs2 = require("node:fs");
     import_promises = require("node:fs/promises");
     import_path3 = require("path");
     init_worktree_paths();
@@ -8326,13 +8375,13 @@ var init_contracts = __esm({
 // src/graph/runtime/native-contained-fs.ts
 function getNativeContainedFs() {
   if (loaded) return loaded;
-  let directory = (0, import_node_path.dirname)((0, import_node_url.fileURLToPath)(importMetaUrl));
+  let directory = (0, import_node_path2.dirname)((0, import_node_url.fileURLToPath)(importMetaUrl));
   for (; ; ) {
-    const manifest = (0, import_node_path.join)(directory, "package.json");
-    if ((0, import_node_fs2.existsSync)(manifest)) {
-      const metadata = JSON.parse((0, import_node_fs2.readFileSync)(manifest, "utf8"));
+    const manifest = (0, import_node_path2.join)(directory, "package.json");
+    if ((0, import_node_fs3.existsSync)(manifest)) {
+      const metadata = JSON.parse((0, import_node_fs3.readFileSync)(manifest, "utf8"));
       if (metadata.name === "oh-my-copilot") {
-        const binary = (0, import_node_path.join)(directory, "native", `contained-fs-${process.platform}-${process.arch}.node`);
+        const binary = (0, import_node_path2.join)(directory, "native", `contained-fs-${process.platform}-${process.arch}.node`);
         try {
           loaded = (0, import_node_module.createRequire)(importMetaUrl)(binary);
           return loaded;
@@ -8341,18 +8390,18 @@ function getNativeContainedFs() {
         }
       }
     }
-    const parent = (0, import_node_path.dirname)(directory);
+    const parent = (0, import_node_path2.dirname)(directory);
     if (parent === directory) throw new Error("Cannot locate the OMC package for the contained filesystem backend");
     directory = parent;
   }
 }
-var import_node_fs2, import_node_module, import_node_path, import_node_url, loaded;
+var import_node_fs3, import_node_module, import_node_path2, import_node_url, loaded;
 var init_native_contained_fs = __esm({
   "src/graph/runtime/native-contained-fs.ts"() {
     "use strict";
-    import_node_fs2 = require("node:fs");
+    import_node_fs3 = require("node:fs");
     import_node_module = require("node:module");
-    import_node_path = require("node:path");
+    import_node_path2 = require("node:path");
     import_node_url = require("node:url");
   }
 });
@@ -8517,7 +8566,7 @@ var init_team_owner_epoch = __esm({
 // src/team/process-identity-lock.ts
 function readLock(path5) {
   try {
-    const record2 = JSON.parse((0, import_node_fs3.readFileSync)(path5, "utf8"));
+    const record2 = JSON.parse((0, import_node_fs4.readFileSync)(path5, "utf8"));
     return record2.schema_version === 1 && Number.isSafeInteger(record2.pid) && record2.pid > 0 && isValidProcessStartIdentity(record2.process_started_at) && typeof record2.nonce === "string" && record2.nonce.length > 0 ? record2 : null;
   } catch {
     return null;
@@ -8525,7 +8574,7 @@ function readLock(path5) {
 }
 async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
   const reclaimPath = `${lockPath}.reclaim`;
-  (0, import_node_fs3.mkdirSync)((0, import_node_path2.dirname)(lockPath), { recursive: true, mode: 448 });
+  (0, import_node_fs4.mkdirSync)((0, import_node_path3.dirname)(lockPath), { recursive: true, mode: 448 });
   const processStartedAt = currentProcessStartIdentity();
   if (!processStartedAt) throw new Error("process_start_identity_unavailable");
   const owner = {
@@ -8536,7 +8585,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
     created_at: (/* @__PURE__ */ new Date()).toISOString()
   };
   const tempPath = `${lockPath}.${owner.nonce}.tmp`;
-  (0, import_node_fs3.writeFileSync)(tempPath, JSON.stringify(owner), { encoding: "utf8", mode: 384, flush: true });
+  (0, import_node_fs4.writeFileSync)(tempPath, JSON.stringify(owner), { encoding: "utf8", mode: 384, flush: true });
   const deadline = Date.now() + timeoutMs;
   let acquired = false;
   try {
@@ -8545,7 +8594,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
       if (reclaimer) {
         if (isProcessIdentityDead(reclaimer)) {
           try {
-            (0, import_node_fs3.unlinkSync)(reclaimPath);
+            (0, import_node_fs4.unlinkSync)(reclaimPath);
           } catch {
           }
           continue;
@@ -8555,17 +8604,17 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
         continue;
       }
       try {
-        (0, import_node_fs3.linkSync)(tempPath, lockPath);
+        (0, import_node_fs4.linkSync)(tempPath, lockPath);
         acquired = true;
       } catch (error2) {
         if (error2.code !== "EEXIST") throw error2;
         const existing = readLock(lockPath);
         if (existing && isProcessIdentityDead(existing)) {
           try {
-            (0, import_node_fs3.linkSync)(tempPath, reclaimPath);
+            (0, import_node_fs4.linkSync)(tempPath, reclaimPath);
             const current = readLock(lockPath);
-            if (current?.nonce === existing.nonce && isProcessIdentityDead(current)) (0, import_node_fs3.unlinkSync)(lockPath);
-            if (readLock(reclaimPath)?.nonce === owner.nonce) (0, import_node_fs3.unlinkSync)(reclaimPath);
+            if (current?.nonce === existing.nonce && isProcessIdentityDead(current)) (0, import_node_fs4.unlinkSync)(lockPath);
+            if (readLock(reclaimPath)?.nonce === owner.nonce) (0, import_node_fs4.unlinkSync)(reclaimPath);
             continue;
           } catch (reclaimError) {
             if (reclaimError.code !== "EEXIST" && reclaimError.code !== "ENOENT") throw reclaimError;
@@ -8578,18 +8627,18 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
     return await fn();
   } finally {
     try {
-      (0, import_node_fs3.unlinkSync)(tempPath);
+      (0, import_node_fs4.unlinkSync)(tempPath);
     } catch {
     }
     if (acquired && readLock(lockPath)?.nonce === owner.nonce) {
       try {
-        (0, import_node_fs3.unlinkSync)(lockPath);
+        (0, import_node_fs4.unlinkSync)(lockPath);
       } catch {
       }
     }
     if (readLock(reclaimPath)?.nonce === owner.nonce) {
       try {
-        (0, import_node_fs3.unlinkSync)(reclaimPath);
+        (0, import_node_fs4.unlinkSync)(reclaimPath);
       } catch {
       }
     }
@@ -8597,7 +8646,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
 }
 function withProcessIdentityFileLockSync(lockPath, fn) {
   const reclaimPath = `${lockPath}.reclaim`;
-  (0, import_node_fs3.mkdirSync)((0, import_node_path2.dirname)(lockPath), { recursive: true, mode: 448 });
+  (0, import_node_fs4.mkdirSync)((0, import_node_path3.dirname)(lockPath), { recursive: true, mode: 448 });
   const processStartedAt = currentProcessStartIdentity();
   if (!processStartedAt) throw new Error("process_start_identity_unavailable");
   const owner = {
@@ -8608,22 +8657,22 @@ function withProcessIdentityFileLockSync(lockPath, fn) {
     created_at: (/* @__PURE__ */ new Date()).toISOString()
   };
   const tempPath = `${lockPath}.${owner.nonce}.tmp`;
-  (0, import_node_fs3.writeFileSync)(tempPath, JSON.stringify(owner), { encoding: "utf8", mode: 384, flush: true });
+  (0, import_node_fs4.writeFileSync)(tempPath, JSON.stringify(owner), { encoding: "utf8", mode: 384, flush: true });
   let acquired = false;
   try {
     for (let attempt = 0; attempt < 3 && !acquired; attempt++) {
       try {
-        (0, import_node_fs3.linkSync)(tempPath, lockPath);
+        (0, import_node_fs4.linkSync)(tempPath, lockPath);
         acquired = true;
       } catch (error2) {
         if (error2.code !== "EEXIST") throw error2;
         const existing = readLock(lockPath);
         if (!existing || !isProcessIdentityDead(existing)) throw new Error("process_identity_lock_busy");
         try {
-          (0, import_node_fs3.linkSync)(tempPath, reclaimPath);
+          (0, import_node_fs4.linkSync)(tempPath, reclaimPath);
           const current = readLock(lockPath);
-          if (current?.nonce === existing.nonce && isProcessIdentityDead(current)) (0, import_node_fs3.unlinkSync)(lockPath);
-          if (readLock(reclaimPath)?.nonce === owner.nonce) (0, import_node_fs3.unlinkSync)(reclaimPath);
+          if (current?.nonce === existing.nonce && isProcessIdentityDead(current)) (0, import_node_fs4.unlinkSync)(lockPath);
+          if (readLock(reclaimPath)?.nonce === owner.nonce) (0, import_node_fs4.unlinkSync)(reclaimPath);
         } catch (reclaimError) {
           if (reclaimError.code !== "EEXIST" && reclaimError.code !== "ENOENT") throw reclaimError;
         }
@@ -8633,29 +8682,29 @@ function withProcessIdentityFileLockSync(lockPath, fn) {
     return fn();
   } finally {
     try {
-      (0, import_node_fs3.unlinkSync)(tempPath);
+      (0, import_node_fs4.unlinkSync)(tempPath);
     } catch {
     }
     if (acquired && readLock(lockPath)?.nonce === owner.nonce) {
       try {
-        (0, import_node_fs3.unlinkSync)(lockPath);
+        (0, import_node_fs4.unlinkSync)(lockPath);
       } catch {
       }
     }
     if (readLock(reclaimPath)?.nonce === owner.nonce) {
       try {
-        (0, import_node_fs3.unlinkSync)(reclaimPath);
+        (0, import_node_fs4.unlinkSync)(reclaimPath);
       } catch {
       }
     }
   }
 }
-var import_node_fs3, import_node_path2, import_node_crypto2;
+var import_node_fs4, import_node_path3, import_node_crypto2;
 var init_process_identity_lock = __esm({
   "src/team/process-identity-lock.ts"() {
     "use strict";
-    import_node_fs3 = require("node:fs");
-    import_node_path2 = require("node:path");
+    import_node_fs4 = require("node:fs");
+    import_node_path3 = require("node:path");
     import_node_crypto2 = require("node:crypto");
     init_team_owner_epoch();
   }
@@ -8915,7 +8964,7 @@ async function assertExternalCleanupPathsSafe(binding) {
   }
 }
 function canonicalPath(path5) {
-  return (0, import_node_path3.resolve)(path5);
+  return (0, import_node_path4.resolve)(path5);
 }
 function sameBinding(a, b) {
   return a.instance_id === b.instance_id && a.team_name === b.team_name && canonicalTeamCwd(a.cwd) === b.cwd && a.workspace_hash === b.workspace_hash && canonicalTeamStatePath(b.cwd, a.state_root) === canonicalPath(b.state_root);
@@ -8943,7 +8992,7 @@ async function pathKind(path5) {
 }
 async function defaultPublish(path5, value) {
   const bytes = JSON.stringify(value, null, 2);
-  await (0, import_promises2.mkdir)((0, import_node_path3.dirname)(path5), { recursive: true, mode: 448 });
+  await (0, import_promises2.mkdir)((0, import_node_path4.dirname)(path5), { recursive: true, mode: 448 });
   const tempPath = `${path5}.tmp.${process.pid}.${(0, import_node_crypto3.randomUUID)()}`;
   try {
     await (0, import_promises2.writeFile)(tempPath, bytes, { encoding: "utf8", mode: 384, flag: "wx" });
@@ -8980,7 +9029,7 @@ async function publishCleanupReceipt(record2, io, path5 = record2.receipt_path) 
   }
 }
 async function publishInitialCleanupReceipt(record2, io) {
-  const cleanupRoot = (0, import_node_path3.dirname)(record2.receipt_path);
+  const cleanupRoot = (0, import_node_path4.dirname)(record2.receipt_path);
   const stagingRoot = `${cleanupRoot}.staging-${process.pid}-${(0, import_node_crypto3.randomUUID)()}`;
   let published = false;
   try {
@@ -8990,7 +9039,7 @@ async function publishInitialCleanupReceipt(record2, io) {
       fail("team_instance_authority_corrupt", "cleanup_root_already_exists");
     }
     await (0, import_promises2.mkdir)(stagingRoot, { recursive: true, mode: 448 });
-    const stagedReceiptPath = (0, import_node_path3.join)(stagingRoot, "cleanup.json");
+    const stagedReceiptPath = (0, import_node_path4.join)(stagingRoot, "cleanup.json");
     await publishCleanupReceipt(record2, io, stagedReceiptPath);
     await (0, import_promises2.rename)(stagingRoot, cleanupRoot);
     published = true;
@@ -9103,7 +9152,7 @@ async function inspectTeamState(binding) {
   if (entries.length === 0) return { observed_state: "empty" };
   const identities = [];
   for (const fileName of ["config.json", "manifest.json"]) {
-    const path5 = (0, import_node_path3.join)(root, fileName);
+    const path5 = (0, import_node_path4.join)(root, fileName);
     const fileKind = await pathKind(path5);
     if (fileKind === "missing") continue;
     if (fileKind !== "file") fail("team_instance_state_corrupt", `team_state_document_not_file:${fileName}`);
@@ -9189,7 +9238,7 @@ async function renameIntoDetachedRoot(binding, options) {
   if (sourceKind === "missing" && destinationKind !== "missing") return;
   if (sourceKind !== "directory") fail("team_instance_state_corrupt", "team_state_root_not_directory");
   if (destinationKind !== "missing") fail("team_instance_cleanup_inconsistent", "both_state_and_detached_roots_exist");
-  await (0, import_promises2.mkdir)((0, import_node_path3.dirname)(paths.detached), { recursive: true, mode: 448 });
+  await (0, import_promises2.mkdir)((0, import_node_path4.dirname)(paths.detached), { recursive: true, mode: 448 });
   try {
     if (options.io?.renameStateRoot) await options.io.renameStateRoot(binding.state_root, paths.detached);
     else await (0, import_promises2.rename)(binding.state_root, paths.detached);
@@ -9354,13 +9403,13 @@ function retryTeamInstanceDisposal(input, authorization, options = {}) {
     options.timeoutMs
   );
 }
-var import_node_crypto3, import_promises2, import_node_path3, TeamInstanceError, TEAM_INSTANCE_RESERVATION_PHASES, TEAM_INSTANCE_CLEANUP_PHASES;
+var import_node_crypto3, import_promises2, import_node_path4, TeamInstanceError, TEAM_INSTANCE_RESERVATION_PHASES, TEAM_INSTANCE_CLEANUP_PHASES;
 var init_team_instance = __esm({
   "src/team/team-instance.ts"() {
     "use strict";
     import_node_crypto3 = require("node:crypto");
     import_promises2 = require("node:fs/promises");
-    import_node_path3 = require("node:path");
+    import_node_path4 = require("node:path");
     init_contracts();
     init_state_paths();
     init_process_identity_lock();
@@ -13249,7 +13298,7 @@ function buildWindowsSupervisorSource() {
 }
 function canonicalAuthorityDigest(input) {
   const env = Object.fromEntries(Object.entries(input.providerEnv).sort(([a], [b]) => a.localeCompare(b)));
-  const payload = JSON.stringify({ protocol: WORKER_LAUNCH_AUTHORITY_PROTOCOL, nonce: input.containmentNonce ?? "", supervisor_source_sha256: input.supervisorSourceSha256 ?? "", identity: identityOf(input.identity), provider_argv: [...input.providerArgv], provider_env: env, cwd: (0, import_node_path4.resolve)(input.cwd) });
+  const payload = JSON.stringify({ protocol: WORKER_LAUNCH_AUTHORITY_PROTOCOL, nonce: input.containmentNonce ?? "", supervisor_source_sha256: input.supervisorSourceSha256 ?? "", identity: identityOf(input.identity), provider_argv: [...input.providerArgv], provider_env: env, cwd: (0, import_node_path5.resolve)(input.cwd) });
   return (0, import_node_crypto5.createHash)("sha256").update(payload, "utf8").digest("hex");
 }
 function sleep2(ms) {
@@ -13419,7 +13468,7 @@ async function isCurrentLaunchIdentity(currentPath, identity) {
   return current.kind === "value" && identityMatches(current.value, identity);
 }
 async function writeExclusiveAtomic(path5, value) {
-  await (0, import_promises8.mkdir)((0, import_node_path4.dirname)(path5), { recursive: true });
+  await (0, import_promises8.mkdir)((0, import_node_path5.dirname)(path5), { recursive: true });
   const candidate = `${path5}.candidate.${process.pid}.${(0, import_node_crypto5.randomUUID)()}`;
   const handle = await (0, import_promises8.open)(candidate, "wx", 384);
   try {
@@ -13435,7 +13484,7 @@ async function writeExclusiveAtomic(path5, value) {
   }
 }
 async function writeExclusiveTextAtomic(path5, value) {
-  await (0, import_promises8.mkdir)((0, import_node_path4.dirname)(path5), { recursive: true });
+  await (0, import_promises8.mkdir)((0, import_node_path5.dirname)(path5), { recursive: true });
   const candidate = `${path5}.candidate.${process.pid}.${(0, import_node_crypto5.randomUUID)()}`;
   const handle = await (0, import_promises8.open)(candidate, "wx", 384);
   try {
@@ -13505,7 +13554,7 @@ async function prepareWorkerLaunchAttempt(input) {
     runtimeCliPath: input.runtimeCliPath,
     ...input.context ? { context: input.context } : {}
   };
-  if ((0, import_node_fs4.existsSync)(attempt.expectedPath) || (0, import_node_fs4.existsSync)(attempt.ackPath) || (0, import_node_fs4.existsSync)(attempt.decisionPath) || (0, import_node_fs4.existsSync)(attempt.startedPath) || (0, import_node_fs4.existsSync)(attempt.transportOwnerPath) || (0, import_node_fs4.existsSync)(attempt.bootstrapDescriptorPath) || (0, import_node_fs4.existsSync)(attempt.wrapperPath) || (0, import_node_fs4.existsSync)(attempt.transportCleanupCompletePath)) {
+  if ((0, import_node_fs5.existsSync)(attempt.expectedPath) || (0, import_node_fs5.existsSync)(attempt.ackPath) || (0, import_node_fs5.existsSync)(attempt.decisionPath) || (0, import_node_fs5.existsSync)(attempt.startedPath) || (0, import_node_fs5.existsSync)(attempt.transportOwnerPath) || (0, import_node_fs5.existsSync)(attempt.bootstrapDescriptorPath) || (0, import_node_fs5.existsSync)(attempt.wrapperPath) || (0, import_node_fs5.existsSync)(attempt.transportCleanupCompletePath)) {
     throw new Error("worker_launch_attempt_path_conflict");
   }
   await writeExclusiveAtomic(attempt.expectedPath, identity);
@@ -13553,7 +13602,7 @@ function buildWorkerLaunchBootstrapSpec(attempt, providerArgv, cwd, options = {}
     buildWindowsBatchProviderLine(providerArgv);
   }
   const providerEnv = normalizeProviderEnvironment(options.providerEnv, options.platform ?? process.platform);
-  const absoluteCwd = (0, import_node_path4.resolve)(cwd);
+  const absoluteCwd = (0, import_node_path5.resolve)(cwd);
   const containmentNonce = (0, import_node_crypto5.randomUUID)();
   const supervisorSourceSha256 = (0, import_node_crypto5.createHash)("sha256").update(buildWindowsSupervisorSource(), "utf8").digest("hex");
   return {
@@ -13578,8 +13627,8 @@ function buildWorkerLaunchBootstrapSpec(attempt, providerArgv, cwd, options = {}
   };
 }
 function attemptTransportPathsAreDeterministic(attempt) {
-  const expectedRoot = (0, import_node_path4.dirname)(attempt.expectedPath);
-  return isDeterministicTransportPath(attempt.expectedPath, attempt.transportOwnerPath, "transport-owner.json") && isDeterministicTransportPath(attempt.expectedPath, attempt.bootstrapDescriptorPath, WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE) && isDeterministicTransportPath(attempt.expectedPath, attempt.wrapperPath, "launch.cmd") && isDeterministicTransportPath(attempt.expectedPath, attempt.transportCleanupCompletePath, "transport-cleanup-complete.json") && (0, import_node_path4.resolve)(attempt.expectedPath) === (0, import_node_path4.resolve)((0, import_node_path4.join)(expectedRoot, "expected.json"));
+  const expectedRoot = (0, import_node_path5.dirname)(attempt.expectedPath);
+  return isDeterministicTransportPath(attempt.expectedPath, attempt.transportOwnerPath, "transport-owner.json") && isDeterministicTransportPath(attempt.expectedPath, attempt.bootstrapDescriptorPath, WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE) && isDeterministicTransportPath(attempt.expectedPath, attempt.wrapperPath, "launch.cmd") && isDeterministicTransportPath(attempt.expectedPath, attempt.transportCleanupCompletePath, "transport-cleanup-complete.json") && (0, import_node_path5.resolve)(attempt.expectedPath) === (0, import_node_path5.resolve)((0, import_node_path5.join)(expectedRoot, "expected.json"));
 }
 function transportOwnerMatches(value, attempt, authorityDigest) {
   if (!identityMatches(value, attempt) || typeof value !== "object" || value === null || value.kind !== WORKER_LAUNCH_TRANSPORT_OWNER_KIND) return false;
@@ -13589,7 +13638,7 @@ function cleanupProofMatches(value, attempt) {
   return identityMatches(value, attempt) && typeof value === "object" && value !== null && value.kind === WORKER_LAUNCH_TRANSPORT_CLEANUP_KIND && isExactText(value.reason) && typeof value.written_at === "string" && Number.isFinite(Date.parse(value.written_at));
 }
 function windowsWrapperRelativePath(cwd, wrapperPath) {
-  const relativePath = (0, import_node_path4.relative)((0, import_node_path4.resolve)(cwd), (0, import_node_path4.resolve)(wrapperPath)).replace(/\//g, "\\");
+  const relativePath = (0, import_node_path5.relative)((0, import_node_path5.resolve)(cwd), (0, import_node_path5.resolve)(wrapperPath)).replace(/\//g, "\\");
   if (!relativePath || relativePath.startsWith("\\") || /^[A-Za-z]:/.test(relativePath) || !/^[A-Za-z0-9._\\-]+$/.test(relativePath)) {
     throw new Error("worker_launch_transport_relative_path_invalid");
   }
@@ -13661,7 +13710,7 @@ async function materializeWorkerLaunchTransport(input) {
         await writeExclusiveAtomic(attempt.transportOwnerPath, owner);
         ownerCreated = true;
       }
-      if ((0, import_node_fs4.existsSync)(attempt.bootstrapDescriptorPath) || (0, import_node_fs4.existsSync)(attempt.wrapperPath)) {
+      if ((0, import_node_fs5.existsSync)(attempt.bootstrapDescriptorPath) || (0, import_node_fs5.existsSync)(attempt.wrapperPath)) {
         throw new Error("worker_launch_transport_path_conflict");
       }
       await writeExclusiveAtomic(attempt.bootstrapDescriptorPath, spec);
@@ -13675,19 +13724,19 @@ async function materializeWorkerLaunchTransport(input) {
       await (0, import_promises8.unlink)(attempt.wrapperPath).catch(() => {
         cleanupVerified = false;
       });
-      cleanupVerified &&= !(0, import_node_fs4.existsSync)(attempt.wrapperPath);
+      cleanupVerified &&= !(0, import_node_fs5.existsSync)(attempt.wrapperPath);
     }
     if (descriptorCreated) {
       await (0, import_promises8.unlink)(attempt.bootstrapDescriptorPath).catch(() => {
         cleanupVerified = false;
       });
-      cleanupVerified &&= !(0, import_node_fs4.existsSync)(attempt.bootstrapDescriptorPath);
+      cleanupVerified &&= !(0, import_node_fs5.existsSync)(attempt.bootstrapDescriptorPath);
     }
     if (ownerCreated) {
       await (0, import_promises8.unlink)(attempt.transportOwnerPath).catch(() => {
         cleanupVerified = false;
       });
-      cleanupVerified &&= !(0, import_node_fs4.existsSync)(attempt.transportOwnerPath);
+      cleanupVerified &&= !(0, import_node_fs5.existsSync)(attempt.transportOwnerPath);
     }
     if (!cleanupVerified) {
       const cleanupError = new Error("worker_launch_transport_partial_cleanup_unverified");
@@ -13708,7 +13757,7 @@ async function cleanupWorkerLaunchTransportUnlocked(attempt, reason) {
   if (owner.kind === "malformed" || proof.kind === "malformed") return false;
   if (owner.kind === "value" && !transportOwnerMatches(owner.value, attempt)) return false;
   if (proof.kind === "value" && !cleanupProofMatches(proof.value, attempt)) return false;
-  const hasTransportFiles = (0, import_node_fs4.existsSync)(attempt.bootstrapDescriptorPath) || (0, import_node_fs4.existsSync)(attempt.wrapperPath);
+  const hasTransportFiles = (0, import_node_fs5.existsSync)(attempt.bootstrapDescriptorPath) || (0, import_node_fs5.existsSync)(attempt.wrapperPath);
   if (owner.kind === "absent") {
     return !hasTransportFiles && (proof.kind === "absent" || cleanupProofMatches(proof.value, attempt));
   }
@@ -13718,7 +13767,7 @@ async function cleanupWorkerLaunchTransportUnlocked(attempt, reason) {
   await (0, import_promises8.unlink)(attempt.wrapperPath).catch((error2) => {
     if (error2.code !== "ENOENT") throw error2;
   });
-  if ((0, import_node_fs4.existsSync)(attempt.bootstrapDescriptorPath) || (0, import_node_fs4.existsSync)(attempt.wrapperPath)) return false;
+  if ((0, import_node_fs5.existsSync)(attempt.bootstrapDescriptorPath) || (0, import_node_fs5.existsSync)(attempt.wrapperPath)) return false;
   if (proof.kind === "absent") {
     await writeExclusiveAtomic(attempt.transportCleanupCompletePath, {
       ...identityOf(attempt),
@@ -13728,7 +13777,7 @@ async function cleanupWorkerLaunchTransportUnlocked(attempt, reason) {
     });
   }
   const completed = await readJson(attempt.transportCleanupCompletePath);
-  return completed.kind === "value" && cleanupProofMatches(completed.value, attempt) && !(0, import_node_fs4.existsSync)(attempt.bootstrapDescriptorPath) && !(0, import_node_fs4.existsSync)(attempt.wrapperPath);
+  return completed.kind === "value" && cleanupProofMatches(completed.value, attempt) && !(0, import_node_fs5.existsSync)(attempt.bootstrapDescriptorPath) && !(0, import_node_fs5.existsSync)(attempt.wrapperPath);
 }
 async function cleanupWorkerLaunchTransport(attempt, reason = "transport_cleanup") {
   if (!attemptTransportPathsAreDeterministic(attempt)) return false;
@@ -13941,7 +13990,7 @@ async function readWorkerLaunchCleanupProof(attempt, started) {
 }
 async function readWorkerLaunchProviderCompletionState(attempt, started) {
   if (started.supervisor_completion_path === void 0) return "absent";
-  if (!isExactText(started.supervisor_completion_path) || !(0, import_node_path4.isAbsolute)(started.supervisor_completion_path)) return "invalid";
+  if (!isExactText(started.supervisor_completion_path) || !(0, import_node_path5.isAbsolute)(started.supervisor_completion_path)) return "invalid";
   const bindingReceipt = await readJson(`${attempt.startedPath}.completion-binding`);
   if (bindingReceipt.kind !== "value" || !bindingReceipt.value || typeof bindingReceipt.value !== "object" || Array.isArray(bindingReceipt.value)) return "invalid";
   const bindingValue = bindingReceipt.value;
@@ -13952,14 +14001,14 @@ async function readWorkerLaunchProviderCompletionState(attempt, started) {
     authority_digest: bindingValue.authority_digest
   };
   if (!isValidCompletionBinding(completionBinding)) return "invalid";
-  const absoluteCompletionPath = (0, import_node_path4.resolve)(started.supervisor_completion_path);
-  const trustedTempRoot = (0, import_node_path4.resolve)((0, import_node_os.tmpdir)());
+  const absoluteCompletionPath = (0, import_node_path5.resolve)(started.supervisor_completion_path);
+  const trustedTempRoot = (0, import_node_path5.resolve)((0, import_node_os.tmpdir)());
   const pathParts = [];
-  let pathPart = (0, import_node_path4.dirname)(absoluteCompletionPath);
-  if (absoluteCompletionPath === trustedTempRoot || absoluteCompletionPath.startsWith(`${trustedTempRoot}${import_node_path4.sep}`)) {
-    while (pathPart !== trustedTempRoot && pathPart !== (0, import_node_path4.dirname)(pathPart)) {
+  let pathPart = (0, import_node_path5.dirname)(absoluteCompletionPath);
+  if (absoluteCompletionPath === trustedTempRoot || absoluteCompletionPath.startsWith(`${trustedTempRoot}${import_node_path5.sep}`)) {
+    while (pathPart !== trustedTempRoot && pathPart !== (0, import_node_path5.dirname)(pathPart)) {
       pathParts.push(pathPart);
-      pathPart = (0, import_node_path4.dirname)(pathPart);
+      pathPart = (0, import_node_path5.dirname)(pathPart);
     }
   } else {
     pathParts.push(pathPart);
@@ -13977,7 +14026,7 @@ async function readWorkerLaunchProviderCompletionState(attempt, started) {
   try {
     handle = await (0, import_promises8.open)(
       started.supervisor_completion_path,
-      import_node_fs4.constants.O_RDONLY | (import_node_fs4.constants.O_NOFOLLOW ?? 0) | (process.platform === "win32" ? 0 : import_node_fs4.constants.O_NONBLOCK ?? 0)
+      import_node_fs5.constants.O_RDONLY | (import_node_fs5.constants.O_NOFOLLOW ?? 0) | (process.platform === "win32" ? 0 : import_node_fs5.constants.O_NONBLOCK ?? 0)
     );
     const info = await handle.stat();
     if (!info.isFile() || info.nlink !== 1) return "invalid";
@@ -14235,7 +14284,7 @@ async function readValidProviderStarted(attempt, options = {}) {
   if (started.kind !== "value") return null;
   if (!started.value || typeof started.value !== "object" || Array.isArray(started.value)) return null;
   const record2 = started.value;
-  if (!options.allowSupervisorCompletion && record2.supervisor_completion_path !== void 0 && (typeof record2.supervisor_completion_path !== "string" || record2.supervisor_completion_path.trim().length === 0 || (0, import_node_fs4.existsSync)(record2.supervisor_completion_path))) return null;
+  if (!options.allowSupervisorCompletion && record2.supervisor_completion_path !== void 0 && (typeof record2.supervisor_completion_path !== "string" || record2.supervisor_completion_path.trim().length === 0 || (0, import_node_fs5.existsSync)(record2.supervisor_completion_path))) return null;
   if (options.allowSupervisorCompletion && record2.supervisor_completion_path !== void 0 && (typeof record2.supervisor_completion_path !== "string" || record2.supervisor_completion_path.trim().length === 0)) return null;
   return identityMatches(record2, attempt) && record2.kind === "worker_launch_provider_started" && Number.isSafeInteger(record2.pid) && record2.pid > 0 && typeof record2.process_start_identity === "string" && record2.process_start_identity.trim().length > 0 && (record2.containment_nonce === void 0 || isExactText(record2.containment_nonce)) && typeof record2.written_at === "string" && Number.isFinite(Date.parse(record2.written_at)) ? record2 : null;
 }
@@ -14262,13 +14311,13 @@ async function awaitWorkerLaunchProviderStarted(attempt, options = {}) {
     }
     if ((await readJson(`${attempt.decisionPath}.retired`)).kind !== "absent" || (await readJson(`${attempt.startedPath}.terminal`)).kind !== "absent") return false;
     const completed = await readValidProviderStarted(attempt, { allowSupervisorCompletion: true });
-    if (completed?.supervisor_completion_path !== void 0 && (0, import_node_fs4.existsSync)(completed.supervisor_completion_path)) return false;
+    if (completed?.supervisor_completion_path !== void 0 && (0, import_node_fs5.existsSync)(completed.supervisor_completion_path)) return false;
     await sleep2(pollIntervalMs);
   }
   return false;
 }
 function isDeterministicTransportPath(expectedPath, candidate, fileName) {
-  return isExactText(candidate) && (0, import_node_path4.resolve)(candidate) === (0, import_node_path4.resolve)((0, import_node_path4.join)((0, import_node_path4.dirname)(expectedPath), fileName));
+  return isExactText(candidate) && (0, import_node_path5.resolve)(candidate) === (0, import_node_path5.resolve)((0, import_node_path5.join)((0, import_node_path5.dirname)(expectedPath), fileName));
 }
 function quoteWindowsCmdArgument(value) {
   if (/[\x00-\x1f]/.test(value)) throw new Error("worker_launch_provider_argv_invalid");
@@ -14283,14 +14332,14 @@ function buildWindowsBatchProviderLine(providerArgv) {
   if (line.length > WINDOWS_PROVIDER_LINE_MAX) throw new Error("worker_launch_provider_argv_too_long");
   return line;
 }
-var import_node_crypto5, import_node_fs4, import_promises8, import_node_path4, import_node_os, WORKER_LAUNCH_SCHEMA_VERSION, DEFAULT_ACK_TIMEOUT_MS, DEFAULT_POLL_INTERVAL_MS, DEFAULT_DECISION_TIMEOUT_MS, WORKER_LAUNCH_TRANSPORT_OWNER_KIND, WORKER_LAUNCH_TRANSPORT_CLEANUP_KIND, WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE, WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV, WORKER_LAUNCH_INTERNAL_ENV_KEYS, WORKER_LAUNCH_AUTHORITY_PROTOCOL, WINDOWS_SUPERVISOR_PROTOCOL, WINDOWS_RESERVED_ENV_KEYS, SAFE_BASELINE_ENV_KEYS, WINDOWS_BASELINE_ENV_KEYS, PROVIDER_PASSTHROUGH_CREDENTIALS, DECIMAL_INTEGER_TEXT, WINDOWS_PROVIDER_LINE_MAX, PROVIDER_LINE_VAR;
+var import_node_crypto5, import_node_fs5, import_promises8, import_node_path5, import_node_os, WORKER_LAUNCH_SCHEMA_VERSION, DEFAULT_ACK_TIMEOUT_MS, DEFAULT_POLL_INTERVAL_MS, DEFAULT_DECISION_TIMEOUT_MS, WORKER_LAUNCH_TRANSPORT_OWNER_KIND, WORKER_LAUNCH_TRANSPORT_CLEANUP_KIND, WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE, WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV, WORKER_LAUNCH_INTERNAL_ENV_KEYS, WORKER_LAUNCH_AUTHORITY_PROTOCOL, WINDOWS_SUPERVISOR_PROTOCOL, WINDOWS_RESERVED_ENV_KEYS, SAFE_BASELINE_ENV_KEYS, WINDOWS_BASELINE_ENV_KEYS, PROVIDER_PASSTHROUGH_CREDENTIALS, DECIMAL_INTEGER_TEXT, WINDOWS_PROVIDER_LINE_MAX, PROVIDER_LINE_VAR;
 var init_worker_launch_ack = __esm({
   "src/team/worker-launch-ack.ts"() {
     "use strict";
     import_node_crypto5 = require("node:crypto");
-    import_node_fs4 = require("node:fs");
+    import_node_fs5 = require("node:fs");
     import_promises8 = require("node:fs/promises");
-    import_node_path4 = require("node:path");
+    import_node_path5 = require("node:path");
     import_node_os = require("node:os");
     init_process_utils();
     init_types2();
@@ -14371,17 +14420,17 @@ var init_recovery_request_store = __esm({
 function resolveRuntimeCliPath() {
   if (process.env.OMC_RUNTIME_CLI_PATH) return process.env.OMC_RUNTIME_CLI_PATH;
   if (typeof __dirname !== "undefined" && __dirname) {
-    return (0, import_node_path5.basename)(__dirname) === "bridge" ? (0, import_node_path5.join)(__dirname, "runtime-cli.cjs") : (0, import_node_path5.join)(__dirname, "../../bridge/runtime-cli.cjs");
+    return (0, import_node_path6.basename)(__dirname) === "bridge" ? (0, import_node_path6.join)(__dirname, "runtime-cli.cjs") : (0, import_node_path6.join)(__dirname, "../../bridge/runtime-cli.cjs");
   }
   const entry = process.argv[1];
-  if (entry && (0, import_node_path5.basename)(entry) === "runtime-cli.cjs") return entry;
+  if (entry && (0, import_node_path6.basename)(entry) === "runtime-cli.cjs") return entry;
   throw new Error("runtime_owner_bootstrap_path_unavailable");
 }
-var import_node_path5;
+var import_node_path6;
 var init_runtime_owner_client = __esm({
   "src/team/runtime-owner-client.ts"() {
     "use strict";
-    import_node_path5 = require("node:path");
+    import_node_path6 = require("node:path");
     init_recovery_request_store();
     init_state_paths();
     init_team_instance();
@@ -18253,44 +18302,6 @@ var init_mcp_comm = __esm({
   }
 });
 
-// src/utils/windows-search.ts
-function envValue(env, name) {
-  const key = Object.keys(env).find((k) => k.toUpperCase() === name);
-  const value = key === void 0 ? void 0 : env[key];
-  return typeof value === "string" && value.trim() !== "" ? value : void 0;
-}
-function findOnPath(name, env, platform, exists = isFile) {
-  const P = platform === "win32" ? import_node_path6.win32 : import_node_path6.posix;
-  const exts = platform === "win32" ? (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean) : [""];
-  const inNodeModules = platform === "win32" ? /(^|[\\/])node_modules([\\/]|$)/i : /(^|\/)node_modules(\/|$)/;
-  for (const raw of (envValue(env, "PATH") ?? "").split(P.delimiter)) {
-    const dir = raw.trim().replace(/^"(.*)"$/, "$1");
-    if (!dir || !P.isAbsolute(dir) || inNodeModules.test(dir)) continue;
-    for (const ext of exts) if (exists(P.join(dir, name + ext))) return P.join(dir, name + ext);
-  }
-  return null;
-}
-function resolveBareExe(cmd, env = process.env) {
-  if (process.platform !== "win32" || /[\\/:]/.test(cmd)) return cmd;
-  const pathext = (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter((e) => e && !/^\.(cmd|bat)$/i.test(e)).join(";") || ".COM;.EXE";
-  return findOnPath(cmd, { ...env, PATHEXT: pathext }, "win32");
-}
-var import_node_fs5, import_node_path6, isFile;
-var init_windows_search = __esm({
-  "src/utils/windows-search.ts"() {
-    "use strict";
-    import_node_fs5 = require("node:fs");
-    import_node_path6 = require("node:path");
-    isFile = (p) => {
-      try {
-        return (0, import_node_fs5.statSync)(p).isFile();
-      } catch {
-        return false;
-      }
-    };
-  }
-});
-
 // src/lib/worktree-cleanup-safety.ts
 function realpathOrResolve(path5) {
   try {
@@ -20823,6 +20834,7 @@ __export(team_server_exports, {
   handleWait: () => handleWait
 });
 module.exports = __toCommonJS(team_server_exports);
+init_windows_search();
 
 // node_modules/zod/v3/external.js
 var external_exports = {};
@@ -32093,6 +32105,7 @@ var __ownDir = (() => {
     return process.cwd();
   }
 })();
+hardenWindowsExeSearch();
 var OMC_JOBS_DIR = process.env.OMC_JOBS_DIR || getGlobalOmcStatePath("team-jobs");
 var DEPRECATION_CODE = "deprecated_cli_only";
 var TEAM_CLI_REPLACEMENT_HINTS = {

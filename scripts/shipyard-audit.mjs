@@ -24,11 +24,14 @@
 //
 // Output: findings JSON on stdout, human summary on stderr.
 
+import { hardenWindowsExeSearch } from './lib/windows-search.mjs';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
 import { stripLeadingUtf8Bom } from './lib/utf8-bom.mjs';
 import { skillSlash } from './lib/skill-slash.mjs';
+
+hardenWindowsExeSearch();
 
 const toPosix = (value) => value.replace(/\\/g, '/');
 
