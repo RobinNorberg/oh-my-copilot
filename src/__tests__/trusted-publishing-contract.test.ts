@@ -40,6 +40,8 @@ describe('npm trusted publishing contract', () => {
     expect(ci).toContain("  cancel-in-progress: ${{ github.ref_type != 'tag' }}");
     expect(ci).toMatch(/^permissions:\n {2}contents: read$/m);
     expect(releaseJob).toContain(RELEASE_JOB_IF);
+    // A skipped or failed needed job must never let the publishing job run.
+    expect(releaseJob).not.toMatch(/always\(\)|cancelled\(\)/);
     expect(releaseJob).toContain('permissions:\n      contents: write\n      id-token: write');
     expect(releaseJob).toContain('runs-on: ubuntu-latest');
     expect(releaseJob).toContain('group: npm-trusted-publish-${{ github.ref_name }}');
@@ -54,7 +56,10 @@ describe('npm trusted publishing contract', () => {
 
   it('excludes duplicate tag triggers so only the ci.yml release job publishes', () => {
     expect(extractJob(ci, 'lint-and-typecheck')).toContain(EVIDENCE_JOB_IF);
-    expect(extractJob(ci, 'test')).toContain(EVIDENCE_JOB_IF);
+    expect(extractJob(ci, 'test-shards')).toContain(EVIDENCE_JOB_IF);
+    expect(extractJob(ci, 'test')).toContain(
+      "${{ always() && (github.event_name != 'push' || github.ref_type != 'tag') && needs.evidence.outputs.reused != 'true' }}",
+    );
     expect(extractJob(ci, 'test-windows')).toContain(EVIDENCE_JOB_IF);
     expect(extractJob(ci, 'better-sqlite3-node26-ubuntu')).toContain(EVIDENCE_JOB_IF);
     expect(extractJob(ci, 'better-sqlite3-node26-windows')).toContain(EVIDENCE_JOB_IF);

@@ -175,8 +175,42 @@ describe("subagent-lock test contract", () => {
   it("keeps CI and release as ordered, blocking functional and serialized perf gates", () => {
     const ci = readRepoFile(".github/workflows/ci.yml");
 
-    assertWorkflowCommands(ci, "test");
     assertWorkflowCommands(ci, "release", true);
+
+    // CI shards the functional run; the Test summary job merges the shard
+    // reports, then runs the one serialized perf gate.
+    const shardJob = extractJob(ci, "test-shards");
+    // Fail-closed: every shard runs to the end on Linux, and the matrix covers
+    // exactly the 1..N the --shard total and the Test blob count assume.
+    expect(shardJob).toMatch(/^    runs-on: ubuntu-latest$/m);
+    expect(shardJob).toMatch(/^      fail-fast: false$/m);
+    expect(shardJob).toMatch(/^        shard: \[1, 2, 3, 4\]$/m);
+    const shardSteps = extractSteps(shardJob);
+    const functional = shardSteps.filter((step) => step.run?.includes("npm test -- --run"));
+    expect(functional, "test-shards must have one functional package step").toHaveLength(1);
+    expect(functional[0].run).toMatch(/^npm test -- --run --shard=\$\{\{ matrix\.shard \}\}\/4 /);
+    expect(shardSteps.some((step) => step.run?.includes(PERF_TARGET))).toBe(false);
+    const summary = extractJob(ci, "test");
+    expect(summary).toMatch(/^    name: Test$/m);
+    expect(summary).toMatch(/^    if: \$\{\{ always\(\) && /m);
+    expect(summary).toMatch(/^    needs: \[evidence, test-shards\]$/m);
+    const summarySteps = extractSteps(summary);
+    const merge = summarySteps.findIndex((step) => step.raw.includes("npx vitest --merge-reports"));
+    const perf = summarySteps.filter((step) => step.run?.includes(PERF_TARGET));
+    expect(merge, "Test must merge the shard reports").toBeGreaterThanOrEqual(0);
+    // Test fails unless every shard succeeded and all 4 blobs arrived.
+    // From raw: extractSteps reads `run: |` as the inline command "|".
+    const mergeRun = summarySteps[merge].raw.replace(/^ {10}/gm, "");
+    expect(summarySteps[merge].raw).toMatch(/^          SHARDS_RESULT: \$\{\{ needs\.test-shards\.result \}\}$/m);
+    expect(mergeRun).toMatch(/^if \[ "\$SHARDS_RESULT" != "success" \]; then\n {2}echo "::error[^\n]*\n {2}status=1\nfi$/m);
+    expect(mergeRun).toMatch(/^if \[ "\$blobs" -ne 4 \]; then\n {2}echo "::error[^\n]*\n {2}status=1\nfi$/m);
+    expect(mergeRun).toMatch(/\nexit \$status$/m);
+    expect(perf, "Test must have one serialized perf step").toHaveLength(1);
+    expect(perf[0].run).toBe(PERF_COMMAND);
+    expect(summarySteps.indexOf(perf[0])).toBeGreaterThan(merge);
+    for (const step of [...functional, ...perf, summarySteps[merge]]) {
+      expect(step.raw, "test steps must block failures").not.toMatch(/^        continue-on-error:\s*true\s*$/m);
+    }
     // Build runs beside Test (build once); CI Gate is the job that blocks on both.
     // Its only need is the tree-evidence lookup, which never waits on Test.
     expect(extractJob(ci, "build")).toMatch(/^    needs: \[evidence\]$/m);

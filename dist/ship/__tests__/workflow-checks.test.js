@@ -15,8 +15,19 @@ const WORKFLOWS = join(HERE, '..', '..', '..', '.github', 'workflows');
 const EXTERNAL_CHECKS = ['Socket Security: Pull Request Alerts', 'Socket Security: Project Report'];
 /** Jobs PRs report as SKIPPED (tag-only); excluded from the required list. */
 const TAG_ONLY = ['Release tree evidence', 'Create GitHub Release'];
-/** Reported on every PR but not (yet) a ship requirement: the ci.yml aggregator and its tree-evidence lookup. */
-const NOT_REQUIRED = ['CI Gate', 'Tree evidence'];
+/**
+ * Reported on every PR but not (yet) a ship requirement: the ci.yml aggregator,
+ * its tree-evidence lookup and the Linux test shards (the required `Test`
+ * summary fails with any shard).
+ */
+const NOT_REQUIRED = [
+    'CI Gate',
+    'Tree evidence',
+    'Test shard 1 of 4',
+    'Test shard 2 of 4',
+    'Test shard 3 of 4',
+    'Test shard 4 of 4',
+];
 const unquote = (s) => s.trim().replace(/^(['"])(.*)\1$/, '$2');
 const stripExpr = (s) => unquote(s).replace(/^\$\{\{\s*([\s\S]*?)\s*\}\}$/, '$1').trim();
 /**
