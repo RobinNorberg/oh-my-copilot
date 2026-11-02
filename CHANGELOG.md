@@ -2,6 +2,12 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **`omg ship gates` gives the flaky verdict again with the sharded CI.** `CI Gate` and the `Test` summary fail whenever a shard fails; CI Gate's log has an `##[error]` but no `FAIL` line, so it counted as a non-test failure and a known-flaky shard failure was always `failed`. A job whose only errors are the ci.yml aggregator lines (`not success or skipped: …`, `test shards: …`) plus its exit code is now set aside when a failed non-aggregate check shares its run, and the verdict comes from those jobs (the `Test shard <i> of 4` jobs, the Windows path suite, …). CI Gate stays a blocker when it fails on its own (any other error, the evidence job named, or no failed sibling in its run). `gates --watch` still reruns each run at most once. `omg factory heal` classifies such a run by the failed jobs too (an aggregator failing only beside ignored PR-policy jobs starts no heal), and the factory gates driver and `omg release` get the fix through `watchGates`. A tree-reuse run's single SKIPPED `Test shard ${{ matrix.shard }} of 4` check is covered by a test (it passes and is never required).
+
 # oh-my-copilot v5.19.4
 
 ## [5.19.4] - 2026-11-02

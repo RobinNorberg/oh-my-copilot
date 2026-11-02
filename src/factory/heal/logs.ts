@@ -114,6 +114,8 @@ export interface ParsedJob {
   failingTests: FailingTest[];
   blockers: string[];
   knownFlaky: boolean;
+  /** Failed only because jobs it needs failed (CI Gate, the Test summary; gates.ts aggregateOnly). */
+  aggregate?: true;
   infra: string[];
   firstError?: string;
   env: JobEnv;
@@ -130,6 +132,7 @@ export function parseJob(job: { jobId: string; name: string; failedSteps: string
     failingTests: analysis.failingTests,
     blockers: analysis.blockers,
     knownFlaky: analysis.knownFlaky,
+    ...(analysis.aggregate ? { aggregate: true as const } : {}),
     infra: analysis.failingTests.length === 0 ? infraMatches(log, job.failedSteps) : [],
     ...(firstError ? { firstError } : {}),
     env: parseJobEnv(log),

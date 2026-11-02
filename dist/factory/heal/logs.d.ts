@@ -42,6 +42,8 @@ export interface ParsedJob {
     failingTests: FailingTest[];
     blockers: string[];
     knownFlaky: boolean;
+    /** Failed only because jobs it needs failed (CI Gate, the Test summary; gates.ts aggregateOnly). */
+    aggregate?: true;
     infra: string[];
     firstError?: string;
     env: JobEnv;

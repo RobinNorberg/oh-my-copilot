@@ -28,6 +28,12 @@ const NOT_REQUIRED = [
     'Test shard 3 of 4',
     'Test shard 4 of 4',
 ];
+/**
+ * A tree-reuse run skips the shard matrix before it expands, so GitHub reports
+ * one SKIPPED check under the unexpanded name (runs 41370854784, 41395474470).
+ * Not in NOT_REQUIRED: that list holds the names of a run that tests.
+ */
+const TREE_REUSE_SKIPPED = ['Test shard ${{ matrix.shard }} of 4'];
 const unquote = (s) => s.trim().replace(/^(['"])(.*)\1$/, '$2');
 const stripExpr = (s) => unquote(s).replace(/^\$\{\{\s*([\s\S]*?)\s*\}\}$/, '$1').trim();
 /**
@@ -145,6 +151,12 @@ describe('requiredChecks drift (workflow files vs the ship defaults)', () => {
         expect(reported).toContain('Draft PR Check');
         // So the default requiredChecks never go green on such a base: it needs its own list in the user config.
         expect(DEFAULT_SHIP_CONFIG.requiredChecks.filter((n) => !reported.includes(n))).toEqual(expect.arrayContaining(['Test', 'Build']));
+    });
+    it('knows the skipped shard matrix name of a tree-reuse run, and never requires it', () => {
+        const jobs = parseWorkflow(readFileSync(join(WORKFLOWS, 'ci.yml'), 'utf8')).jobs;
+        const matrixNames = jobs.filter((j) => Object.keys(j.matrix).length > 0).map((j) => j.name ?? j.key);
+        expect(matrixNames).toEqual(expect.arrayContaining(TREE_REUSE_SKIPPED));
+        expect(TREE_REUSE_SKIPPED.every((n) => !DEFAULT_SHIP_CONFIG.requiredChecks.includes(n))).toBe(true);
     });
     it('covers ci.yml and pr-check.yml', () => {
         const { reported } = prCheckNames();

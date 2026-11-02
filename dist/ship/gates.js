@@ -184,16 +184,12 @@ const STEP_ERROR = /##\[error\]/;
 /** An Azure Pipelines job log has no step column: each step opens with this marker. */
 const ADO_STEP_START = /^##\[section\]Starting: (.*)$/;
 /**
- * Evidence in a job log that the job did not fail only because of its failing
- * tests: vitest unhandled errors, failed suites (collection errors), or an
- * `##[error]` in a step that printed no FAIL line (a non-test step failed).
- * The step is the GitHub log's second tab column, or on an Azure Pipelines
- * log the last `##[section]Starting:` marker.
+ * Each log line without ANSI codes and its prefix, with its step: the GitHub
+ * log's second tab column, or on an Azure Pipelines log the last
+ * `##[section]Starting:` marker.
  */
-export function logBlockers(log) {
-    const blockers = new Set();
-    const testSteps = new Set();
-    const errorSteps = new Set();
+function logLines(log) {
+    const out = [];
     let adoStep = '';
     for (const rawLine of log.split(/\r?\n/)) {
         const plain = rawLine.replace(ANSI, '');
@@ -201,7 +197,20 @@ export function logBlockers(log) {
         const line = github ? plain.replace(GH_LOG_PREFIX, '') : plain.replace(ADO_LOG_PREFIX, '');
         if (!github)
             adoStep = ADO_STEP_START.exec(line)?.[1].trim() ?? adoStep;
-        const step = rawLine.split('\t').length >= 3 ? rawLine.split('\t')[1] : adoStep;
+        out.push({ step: rawLine.split('\t').length >= 3 ? rawLine.split('\t')[1] : adoStep, line });
+    }
+    return out;
+}
+/**
+ * Evidence in a job log that the job did not fail only because of its failing
+ * tests: vitest unhandled errors, failed suites (collection errors), or an
+ * `##[error]` in a step that printed no FAIL line (a non-test step failed).
+ */
+export function logBlockers(log) {
+    const blockers = new Set();
+    const testSteps = new Set();
+    const errorSteps = new Set();
+    for (const { step, line } of logLines(log)) {
         if (UNHANDLED.test(line))
             blockers.add('vitest reported unhandled errors');
         if (FAILED_SUITES.test(line))
@@ -217,6 +226,36 @@ export function logBlockers(log) {
     }
     return [...blockers];
 }
+/**
+ * The `::error` lines of this repo's ci.yml aggregators: CI Gate (the needs
+ * keys that did not succeed or skip) and the Test summary (the shard matrix
+ * result).
+ */
+const AGGREGATE_ERROR = /##\[error\](?:not success or skipped: (.+?)|test shards: \w+)\s*$/;
+const EXIT_ERROR = /##\[error\]Process completed with exit code \d+\.?\s*$/;
+/**
+ * True when the job failed only because jobs it needs failed: every step with
+ * an `##[error]` logged an aggregator line (AGGREGATE_ERROR) and otherwise
+ * only its exit code, and vitest reported no unhandled error or failed suite.
+ * A CI Gate naming the evidence job, or any other error, keeps it a blocker.
+ */
+export function aggregateOnly(log) {
+    const steps = new Map();
+    for (const { step, line } of logLines(log)) {
+        if (UNHANDLED.test(line) || FAILED_SUITES.test(line))
+            return false;
+        if (!STEP_ERROR.test(line))
+            continue;
+        const s = steps.get(step) ?? { aggregate: false, other: false };
+        const m = AGGREGATE_ERROR.exec(line);
+        if (m && !(m[1] ?? '').split(/,\s*/).includes('evidence'))
+            s.aggregate = true;
+        else if (!EXIT_ERROR.test(line))
+            s.other = true;
+        steps.set(step, s);
+    }
+    return steps.size > 0 && [...steps.values()].every((s) => s.aggregate && !s.other);
+}
 export function analyzeFailedLog(check, runId, log, known, jobId) {
     const failingTests = parseFailingTests(log);
     const unknown = failingTests.filter((t) => !isKnownFlaky(t, known));
@@ -229,17 +268,26 @@ export function analyzeFailedLog(check, runId, log, known, jobId) {
         unknown,
         blockers,
         knownFlaky: failingTests.length > 0 && unknown.length === 0 && blockers.length === 0,
+        ...(aggregateOnly(log) ? { aggregate: true } : {}),
     };
 }
 const analysisKey = (jobId, name) => (jobId ? `job:${jobId}` : `name:${name}`);
 /**
  * Fold log analyses into a report: verdict becomes `flaky` when every failed
  * required check is a known-flaky failure (matched by job id); a run is
- * rerunnable only when all its required jobs are finished.
+ * rerunnable only when all its required jobs are finished. An aggregator
+ * check (CI Gate, the Test summary) that failed only because jobs it needs
+ * failed is judged by those jobs: it is set aside when a failed
+ * non-aggregate check shares its run.
  */
 export function applyFlakyAnalysis(report, analyses, kind) {
     const byJob = new Map(analyses.map((a) => [analysisKey(a.jobId, a.check), a]));
-    const failedChecks = report.checks.filter((c) => c.class === 'failed');
+    const failed = report.checks.filter((c) => c.class === 'failed');
+    const aggregate = (c) => byJob.get(analysisKey(c.jobId, c.name))?.aggregate === true;
+    const derived = new Set(failed
+        .filter((c) => aggregate(c) && c.runId && failed.some((o) => o.runId === c.runId && !aggregate(o)))
+        .map((c) => analysisKey(c.jobId, c.name)));
+    const failedChecks = failed.filter((c) => !derived.has(analysisKey(c.jobId, c.name)));
     const allFlaky = failedChecks.length > 0 && failedChecks.every((c) => byJob.get(analysisKey(c.jobId, c.name))?.knownFlaky === true);
     const runIds = [...new Set(failedChecks.map((c) => c.runId).filter((id) => Boolean(id)))];
     const rerunnable = allFlaky
@@ -247,7 +295,10 @@ export function applyFlakyAnalysis(report, analyses, kind) {
         : [];
     const suggestions = [...report.suggestions];
     for (const a of analyses) {
-        if (a.knownFlaky) {
+        if (derived.has(analysisKey(a.jobId, a.check))) {
+            suggestions.push(`${a.check}: failed only because jobs it needs failed; judged by those jobs`);
+        }
+        else if (a.knownFlaky) {
             // ADO: a build is requeued through its PR policy evaluation, from the PR's checks or the build page.
             const link = report.checks.find((c) => c.jobId === a.jobId)?.link;
             const rerun = kind === 'azure-devops'

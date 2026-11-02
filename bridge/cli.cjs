@@ -121194,17 +121194,23 @@ function parseFailingTests(log3) {
 function isKnownFlaky(test, known) {
   return test.title !== void 0 && known.some((k) => k.file === test.file && Boolean(k.title) && test.title.includes(k.title));
 }
-function logBlockers(log3) {
-  const blockers = /* @__PURE__ */ new Set();
-  const testSteps = /* @__PURE__ */ new Set();
-  const errorSteps = /* @__PURE__ */ new Set();
+function logLines(log3) {
+  const out = [];
   let adoStep = "";
   for (const rawLine of log3.split(/\r?\n/)) {
     const plain = rawLine.replace(ANSI, "");
     const github = GH_LOG_PREFIX.test(plain);
     const line2 = github ? plain.replace(GH_LOG_PREFIX, "") : plain.replace(ADO_LOG_PREFIX, "");
     if (!github) adoStep = ADO_STEP_START.exec(line2)?.[1].trim() ?? adoStep;
-    const step = rawLine.split("	").length >= 3 ? rawLine.split("	")[1] : adoStep;
+    out.push({ step: rawLine.split("	").length >= 3 ? rawLine.split("	")[1] : adoStep, line: line2 });
+  }
+  return out;
+}
+function logBlockers(log3) {
+  const blockers = /* @__PURE__ */ new Set();
+  const testSteps = /* @__PURE__ */ new Set();
+  const errorSteps = /* @__PURE__ */ new Set();
+  for (const { step, line: line2 } of logLines(log3)) {
     if (UNHANDLED.test(line2)) blockers.add("vitest reported unhandled errors");
     if (FAILED_SUITES.test(line2)) blockers.add("vitest reported failed suites (collection errors)");
     if (FAIL_LINE.test(line2)) testSteps.add(step);
@@ -121214,6 +121220,19 @@ function logBlockers(log3) {
     if (!testSteps.has(step)) blockers.add(`step "${step || "(unnamed)"}" failed without a failing test`);
   }
   return [...blockers];
+}
+function aggregateOnly(log3) {
+  const steps = /* @__PURE__ */ new Map();
+  for (const { step, line: line2 } of logLines(log3)) {
+    if (UNHANDLED.test(line2) || FAILED_SUITES.test(line2)) return false;
+    if (!STEP_ERROR.test(line2)) continue;
+    const s = steps.get(step) ?? { aggregate: false, other: false };
+    const m = AGGREGATE_ERROR.exec(line2);
+    if (m && !(m[1] ?? "").split(/,\s*/).includes("evidence")) s.aggregate = true;
+    else if (!EXIT_ERROR.test(line2)) s.other = true;
+    steps.set(step, s);
+  }
+  return steps.size > 0 && [...steps.values()].every((s) => s.aggregate && !s.other);
 }
 function analyzeFailedLog(check2, runId, log3, known, jobId) {
   const failingTests = parseFailingTests(log3);
@@ -121226,18 +121245,24 @@ function analyzeFailedLog(check2, runId, log3, known, jobId) {
     failingTests,
     unknown: unknown2,
     blockers,
-    knownFlaky: failingTests.length > 0 && unknown2.length === 0 && blockers.length === 0
+    knownFlaky: failingTests.length > 0 && unknown2.length === 0 && blockers.length === 0,
+    ...aggregateOnly(log3) ? { aggregate: true } : {}
   };
 }
 function applyFlakyAnalysis(report3, analyses, kind) {
   const byJob = new Map(analyses.map((a) => [analysisKey(a.jobId, a.check), a]));
-  const failedChecks = report3.checks.filter((c) => c.class === "failed");
+  const failed3 = report3.checks.filter((c) => c.class === "failed");
+  const aggregate = (c) => byJob.get(analysisKey(c.jobId, c.name))?.aggregate === true;
+  const derived = new Set(failed3.filter((c) => aggregate(c) && c.runId && failed3.some((o) => o.runId === c.runId && !aggregate(o))).map((c) => analysisKey(c.jobId, c.name)));
+  const failedChecks = failed3.filter((c) => !derived.has(analysisKey(c.jobId, c.name)));
   const allFlaky = failedChecks.length > 0 && failedChecks.every((c) => byJob.get(analysisKey(c.jobId, c.name))?.knownFlaky === true);
   const runIds = [...new Set(failedChecks.map((c) => c.runId).filter((id) => Boolean(id)))];
   const rerunnable = allFlaky ? runIds.filter((id) => !report3.checks.some((c) => c.runId === id && c.class === "pending")) : [];
   const suggestions = [...report3.suggestions];
   for (const a of analyses) {
-    if (a.knownFlaky) {
+    if (derived.has(analysisKey(a.jobId, a.check))) {
+      suggestions.push(`${a.check}: failed only because jobs it needs failed; judged by those jobs`);
+    } else if (a.knownFlaky) {
       const link6 = report3.checks.find((c) => c.jobId === a.jobId)?.link;
       const rerun = kind === "azure-devops" ? `re-queue build ${a.runId ?? "<build-id>"} from the pull request's checks${link6 ? ` (${link6})` : ""}` : `gh run rerun ${a.runId ?? "<run-id>"} --failed`;
       suggestions.push(`${a.check}: known-flaky failure (${a.failingTests.map((t) => t.title ?? t.file).join("; ")}) -> ${rerun}`);
@@ -121327,7 +121352,7 @@ async function watchGates(opts) {
     await opts.sleep(Math.min(config2.pollIntervalSeconds * 1e3, Math.max(0, deadline - opts.now())));
   }
 }
-var CHECK_FIELDS, RUN_FIELDS, PASS_STATES, PENDING_STATES, GhChecksError, TRANSIENT_GH_ERROR, OK_CONCLUSIONS, NO_WORKFLOWS_TRIGGERED, ANSI, GH_LOG_PREFIX, ADO_LOG_PREFIX, FAIL_LINE, UNHANDLED, FAILED_SUITES, STEP_ERROR, ADO_STEP_START, analysisKey;
+var CHECK_FIELDS, RUN_FIELDS, PASS_STATES, PENDING_STATES, GhChecksError, TRANSIENT_GH_ERROR, OK_CONCLUSIONS, NO_WORKFLOWS_TRIGGERED, ANSI, GH_LOG_PREFIX, ADO_LOG_PREFIX, FAIL_LINE, UNHANDLED, FAILED_SUITES, STEP_ERROR, ADO_STEP_START, AGGREGATE_ERROR, EXIT_ERROR, analysisKey;
 var init_gates = __esm({
   "src/ship/gates.ts"() {
     "use strict";
@@ -121353,6 +121378,8 @@ var init_gates = __esm({
     FAILED_SUITES = /\bFailed Suites \d+/;
     STEP_ERROR = /##\[error\]/;
     ADO_STEP_START = /^##\[section\]Starting: (.*)$/;
+    AGGREGATE_ERROR = /##\[error\](?:not success or skipped: (.+?)|test shards: \w+)\s*$/;
+    EXIT_ERROR = /##\[error\]Process completed with exit code \d+\.?\s*$/;
     analysisKey = (jobId, name) => jobId ? `job:${jobId}` : `name:${name}`;
   }
 });
@@ -122244,6 +122271,7 @@ function parseJob(job, rawLog, known) {
     failingTests: analysis.failingTests,
     blockers: analysis.blockers,
     knownFlaky: analysis.knownFlaky,
+    ...analysis.aggregate ? { aggregate: true } : {},
     infra: analysis.failingTests.length === 0 ? infraMatches(log3, job.failedSteps) : [],
     ...firstError ? { firstError } : {},
     env: parseJobEnv(log3)
@@ -127947,7 +127975,9 @@ function parsed(ctx, job) {
 function failedJobs(ctx, run2) {
   const failed3 = runJobs(ctx, run2.id).filter((j) => j.conclusion === "failure");
   const ignored = failed3.filter((j) => ctx.config.ignoreJobs.includes(j.name)).map((j) => j.name);
-  return { counted: failed3.filter((j) => !ctx.config.ignoreJobs.includes(j.name)).map((j) => parsed(ctx, j)), ignored };
+  const counted = failed3.filter((j) => !ctx.config.ignoreJobs.includes(j.name)).map((j) => parsed(ctx, j));
+  const own2 = counted.filter((j) => !j.aggregate);
+  return { counted: own2.length + ignored.length > 0 ? own2 : counted, ignored };
 }
 function greenSample(ctx, runs, name) {
   for (const run2 of runs.slice(0, SCAN_LIMITS.greenLookups)) {

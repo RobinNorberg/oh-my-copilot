@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "956e73e26549c35bde6e5526bf9951e7d5c94bc8",
-    "sourceSha256": "9ec5bebb3021b1c35e80de50b38f618fe01363c506b86879a6ed2542ee05ce7a",
+    "head": "a82acd70d0d317077b271596d3f1ee7923f6b63a",
+    "sourceSha256": "1bd8a1494446965d59aabf7efb9e99f5a716f921b8b774835deab48d6bc03383",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "956e73e26549c35bde6e5526bf9951e7d5c94bc8",
-  "sourceSha256": "9ec5bebb3021b1c35e80de50b38f618fe01363c506b86879a6ed2542ee05ce7a",
+  "head": "a82acd70d0d317077b271596d3f1ee7923f6b63a",
+  "sourceSha256": "1bd8a1494446965d59aabf7efb9e99f5a716f921b8b774835deab48d6bc03383",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1950,
-      "total": 1974
+      "srcFiles": 1954,
+      "total": 1978
     },
     "generated": {
       "distFiles": 7192,
@@ -55681,6 +55681,16 @@
         "path": "src/ship/__tests__/fixtures/checks-pr233-green.json"
       },
       {
+        "id": "src/ship/__tests__/fixtures/job-log-ci-gate-needs-failed.txt",
+        "kind": "src",
+        "path": "src/ship/__tests__/fixtures/job-log-ci-gate-needs-failed.txt"
+      },
+      {
+        "id": "src/ship/__tests__/fixtures/job-log-ci-gate-own-failure.txt",
+        "kind": "src",
+        "path": "src/ship/__tests__/fixtures/job-log-ci-gate-own-failure.txt"
+      },
+      {
         "id": "src/ship/__tests__/fixtures/job-log-flaky.txt",
         "kind": "src",
         "path": "src/ship/__tests__/fixtures/job-log-flaky.txt"
@@ -55689,6 +55699,16 @@
         "id": "src/ship/__tests__/fixtures/job-log-real-failure.txt",
         "kind": "src",
         "path": "src/ship/__tests__/fixtures/job-log-real-failure.txt"
+      },
+      {
+        "id": "src/ship/__tests__/fixtures/job-log-shard-flaky.txt",
+        "kind": "src",
+        "path": "src/ship/__tests__/fixtures/job-log-shard-flaky.txt"
+      },
+      {
+        "id": "src/ship/__tests__/fixtures/job-log-test-shards-failed.txt",
+        "kind": "src",
+        "path": "src/ship/__tests__/fixtures/job-log-test-shards-failed.txt"
       },
       {
         "id": "src/ship/__tests__/fixtures/project-config-admin-merge.jsonc",
@@ -117959,12 +117979,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9907,
+      "nodeCount": 9911,
       "edgeCount": 11927,
       "importEdgeCount": 9801,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "4434dbe34eabdc22a5b6690b5b328cf43e3aeb788ba724e82b06ca23209e7707",
-  "manifestSha256": "8717d9546d4106b9c7fb11e91ea93136a1771d948850b6e39f83c9f3ffc70da7"
+  "inventorySha256": "392e22ac2dad91818655c4624f2f50268ccc20c455a11abac99ee7ab84c516a6",
+  "manifestSha256": "d28ad3acca34d6a7a435a22f35c596c0ae69cb495d79ad0e1ef38c3ec610ede2"
 }

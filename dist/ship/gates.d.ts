@@ -60,6 +60,8 @@ export interface FlakyAnalysis {
     unknown: FailingTest[];
     /** Log evidence that the job failed for a reason other than its failing tests. */
     blockers: string[];
+    /** The job failed only because jobs it needs failed (aggregateOnly): those jobs carry the verdict. */
+    aggregate?: true;
 }
 /** One `gh run list --commit <sha> --json ...` entry. */
 export interface WorkflowRun {
@@ -128,15 +130,23 @@ export declare function isKnownFlaky(test: FailingTest, known: readonly KnownFla
  * Evidence in a job log that the job did not fail only because of its failing
  * tests: vitest unhandled errors, failed suites (collection errors), or an
  * `##[error]` in a step that printed no FAIL line (a non-test step failed).
- * The step is the GitHub log's second tab column, or on an Azure Pipelines
- * log the last `##[section]Starting:` marker.
  */
 export declare function logBlockers(log: string): string[];
+/**
+ * True when the job failed only because jobs it needs failed: every step with
+ * an `##[error]` logged an aggregator line (AGGREGATE_ERROR) and otherwise
+ * only its exit code, and vitest reported no unhandled error or failed suite.
+ * A CI Gate naming the evidence job, or any other error, keeps it a blocker.
+ */
+export declare function aggregateOnly(log: string): boolean;
 export declare function analyzeFailedLog(check: string, runId: string | undefined, log: string, known: readonly KnownFlakyTest[], jobId?: string): FlakyAnalysis;
 /**
  * Fold log analyses into a report: verdict becomes `flaky` when every failed
  * required check is a known-flaky failure (matched by job id); a run is
- * rerunnable only when all its required jobs are finished.
+ * rerunnable only when all its required jobs are finished. An aggregator
+ * check (CI Gate, the Test summary) that failed only because jobs it needs
+ * failed is judged by those jobs: it is set aside when a failed
+ * non-aggregate check shares its run.
  */
 export declare function applyFlakyAnalysis(report: GateReport, analyses: FlakyAnalysis[], kind?: ForgeKind): GateReport;
 /** Run `gh pr checks <pr> --json ...`; "no checks reported" is an empty list (the GitHub forge's checks). */

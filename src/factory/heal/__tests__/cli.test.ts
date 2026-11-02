@@ -171,6 +171,26 @@ describe('omg factory heal scan', () => {
     expect(existsSync(join(healStateDir(root), 'scan.lock'))).toBe(false);
   });
 
+  it('CI Gate and the Test summary failing only because a shard failed are classified by the shard', () => {
+    const ship = (name: string) => readFileSync(join(HERE, '../../../ship/__tests__/fixtures', name), 'utf8');
+    Object.assign(LOGS, { 601: ship('job-log-shard-flaky.txt'), 602: ship('job-log-test-shards-failed.txt'), 603: ship('job-log-ci-gate-needs-failed.txt'), 604: ship('job-log-ci-gate-own-failure.txt') });
+    const job = (databaseId: number, name: string, step: string) => ({ databaseId, name, conclusion: 'failure', steps: [{ name: step, conclusion: 'failure' }] });
+    const shard = job(601, 'Test shard 2 of 4', 'Run functional tests');
+    const redPush = (databaseId: number, jobs: unknown[]): RunFixture => ({ ...SECOND_PR, databaseId, event: 'push', headBranch: 'dev', headSha: 'a'.repeat(40), createdAt: '2026-10-27T22:00:00Z', jobs });
+    const jobsOf = () => listHealStates(root)[0].classification.jobs.map((j) => j.job);
+
+    expect(scan(fakeExec([redPush(40700000011, [shard, job(602, 'Test', 'Merge shard reports'), job(603, 'CI Gate', 'Check needed job results')]), run(40584638028)], [])).entries).toHaveLength(1);
+    expect(jobsOf()).toEqual(['Test shard 2 of 4']);
+
+    rmSync(healStateDir(root), { recursive: true, force: true });
+    scan(fakeExec([redPush(40700000012, [shard, job(604, 'CI Gate', 'Check needed job results')]), run(40584638028)], []));
+    expect(jobsOf().sort()).toEqual(['CI Gate', 'Test shard 2 of 4']);
+
+    // CI Gate failing only because an ignored PR-policy job failed starts no heal.
+    const policyOnly = scan(fakeExec([redPush(40700000013, [job(122329976558, 'Version Consistency Check', 'Check versions'), job(603, 'CI Gate', 'Check needed job results')])], []));
+    expect(policyOnly.entries[0].reason).toMatch(/ignored: only PR-policy job\(s\) failed \(Version Consistency Check\)/);
+  });
+
   it('--dry-run writes no state', () => {
     const result = scan(fakeExec([run(40584638028)], [run(40542274776), SECOND_PR]), true);
     expect(result.entries.some((e) => e.class === 'env-change' && e.recorded === false)).toBe(true);

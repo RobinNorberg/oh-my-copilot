@@ -153,11 +153,17 @@ function parsed(ctx: Ctx, job: HealJob): ParsedJob {
   return p;
 }
 
-/** The run's failed jobs, split into the ones that count and the PR-policy jobs that never heal. */
+/**
+ * The run's failed jobs, split into the ones that count and the PR-policy jobs
+ * that never heal. An aggregator (CI Gate, the Test summary) that failed only
+ * because other failed jobs did is classified by those jobs.
+ */
 function failedJobs(ctx: Ctx, run: HealRun): { counted: ParsedJob[]; ignored: string[] } {
   const failed = runJobs(ctx, run.id).filter((j) => j.conclusion === 'failure');
   const ignored = failed.filter((j) => ctx.config.ignoreJobs.includes(j.name)).map((j) => j.name);
-  return { counted: failed.filter((j) => !ctx.config.ignoreJobs.includes(j.name)).map((j) => parsed(ctx, j)), ignored };
+  const counted = failed.filter((j) => !ctx.config.ignoreJobs.includes(j.name)).map((j) => parsed(ctx, j));
+  const own = counted.filter((j) => !j.aggregate);
+  return { counted: own.length + ignored.length > 0 ? own : counted, ignored };
 }
 
 /** The same-named successful job in one of `runs` (newest first), parsed for its environment. */
