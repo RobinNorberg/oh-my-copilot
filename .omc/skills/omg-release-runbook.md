@@ -30,7 +30,16 @@ reference for what each phase asserts.
    `docs/MIGRATION.md` as needed. Uncommitted edits to those five files are
    allowed by preflight and land in the release commit.
 2. `git checkout -b release/vX.Y.Z origin/dev`, then
-   `omg release X.Y.Z --dry-run` to see the plan, then run it:
+   `omg release X.Y.Z --dry-run` to see the plan, then run it.
+
+   **Use the repo CLI.** The release runs the engine of the binary that runs
+   it, so a stale global `omg` releases without the checkout's own fixes
+   (v5.19.4's first drive ran a global 5.19.2 without the CI-beside-the-suite
+   overlap). Run `node bin/oh-my-copilot.js release ...` from the checkout
+   wherever this file says `omg release`. A run from another install or build
+   is refused with that exact command (a `--dry-run` only warns);
+   `--allow-foreign-cli` runs it anyway. The `--detach` child runs the same
+   script as the parent.
 
    ```bash
    omg release X.Y.Z --to suite --suite full --baseline <last good report>   # preflight..suite: release commit + full suite, no AI credits
@@ -68,6 +77,13 @@ reference for what each phase asserts.
    `omg release X.Y.Z --status`: driver alive → re-arm the Monitor; dead →
    `--drive --detach` again (it resumes from the state). `--stop` ends it.
 
+   **Stall watch.** `--stall 30m` stays quiet through the ~45 min full
+   suite: the suite writes `suite running, N min` every 5 min. Heartbeats are
+   throttled to one per 5 min per phase, so the pr CI wait beside the suite
+   keeps its own; `PR #N gates green; merge waits for the suite` is never
+   throttled. A `stalled` line is therefore a real hang: check `--status` and
+   the drive log before re-arming.
+
    Phases: preflight, bump, build, gates, commit, suite, smoke, pr, promote,
    tag, verify. The vitest suite (`--suite`) runs in `suite`, AFTER the
    commit: some tests read committed state (npm pack of the committed tree,
@@ -103,17 +119,27 @@ reference for what each phase asserts.
    again (with `--live-smoke`). `--force-smoke` always runs it. A red smoke
    drops `lastSmoke`.
    **Flake triage.** With `--suite full`, each failing title not in the
-   baseline (at most 20; more fail at once) is rerun alone
+   baseline is rerun alone
    `--triage-runs` times (default 3) with
-   `vitest run <file> --testNamePattern=<title> --reporter=json`, sequentially,
-   each with a timeout (`--triage-timeout`, default 5 min; a timeout is a
-   failed rerun). A rerun passes only if vitest exits 0 and the report says so. Passing
+   `vitest run <file> --testNamePattern=<title> --reporter=json`, 3 titles at
+   a time but never two of one file; a title that fails a pooled rerun then
+   gets `--triage-runs` serial reruns alone, which decide its class. Over 20
+   such titles, their files are rerun as a whole (pooled) instead, up to
+   `--triage-runs` times: titles passing every file rerun are load-flaky,
+   the rest are triaged (more than 20 still
+   failing: the suite fails). Each rerun has a timeout (`--triage-timeout`, default 5 min; a timeout is a
+   failed rerun). A file that failed with no failing title (its
+   `beforeAll` or collection failed, every test skipped) reruns as the whole
+   file, `vitest run <file> --reporter=json`, the same number of times, and
+   passes when no test failed and one passed. A rerun passes only if vitest
+   exits 0 and the report says so. Passing
    every rerun = load-flaky: the suite passes with a warning. Failing every
-   rerun (or a file-level collection error) = real: the suite fails. Failing
+   rerun = real: the suite fails (no rerun is never a verdict). Failing
    only some reruns = mixed: blocked, since it may be a real race. Progress
    heartbeats name each title's class. The triage is recorded as
    `suiteTriage` and reused by a re-run on the same HEAD. Load-flaky and
-   mixed titles are written to `.omg/release/X.Y.Z-flaky-candidates.json` in
+   mixed titles (not file-level entries: a known-flaky entry needs a title,
+   so a recurring one goes in the baseline as the file line) are written to `.omg/release/X.Y.Z-flaky-candidates.json` in
    the known-flaky entry shape plus `evidence`; the engine never edits or
    commits `.github/known-flaky-tests.json`. `omg release X.Y.Z
    --flaky-candidates` prints them ready to paste, and adding one needs the
@@ -147,6 +173,18 @@ reference for what each phase asserts.
 4. The script never deletes `.git/index.lock`, never force-pushes, rebases or
    deletes tags; a local tag that peels elsewhere (an upstream tag) stops the
    `tag` phase for you to remove by hand.
+
+## Quiet window
+
+While the release suite runs (`phase=suite`, the full suite and its
+triage), no other agent lanes run on this machine: the lead holds running
+lanes at a quiet point and starts no new agents until the suite phase
+ends. Why: other lanes' vitest and npm load slowed the per-file cost about
+2.5x and turned passing tests into load flakes (fast-release-suite design,
+2026-11-02). The driver logs the outside load at suite start (`!! WARNING
+outside load at suite start` when other vitest processes run) and in every
+5-min suite heartbeat (`outside load: N node process(es), V vitest`); it
+warns, never blocks.
 
 ## Where publishing actually happens
 
@@ -318,3 +356,15 @@ current recovery launch with its durable context".
 | `coordinator source digest mismatch` | docs/CLAUDE.md edited without rebuilding bridge in the same commit |
 | `reachable generated runtime module is missing` | new/deleted source without a full dist rebuild force-added |
 | `... was PUBLISHED to the registry; it did not become visible after 30 attempts` | Publish SUCCEEDED but the verify loop timed out on slow registry propagation (hit on v5.1.0 at 12 attempts; the window is ~28 min since the upstream #4083 port). Check `npm view oh-my-copilot@X.Y.Z version dist-tags dist.attestations` — if live with provenance, do NOT rerun the job (republish over an existing version fails). Only the GitHub Release step was skipped: run the `Release Recovery` workflow (`release.yml`, workflow_dispatch with `tag` and `sha` inputs — generic since the v5.5.0 port; no longer pinned to an old tag), or `gh release create vX.Y.Z --title vX.Y.Z --notes-file .github/release-body.md`. |
+
+## Refresh the Windows test-duration table (after a release)
+
+The local suite starts test files longest first (`scripts/ci/duration-sequencer.mjs`), on Windows by `.github/ci/test-durations.win32.json`. After a release whose suite passed, refresh it from that run's report in a lane worktree and commit the result in a PR to `dev`:
+
+```bash
+node scripts/ci/update-test-durations.mjs --root C:/Code/OMC --out .github/ci/test-durations.win32.json C:/Code/OMC/.omg/release/<X.Y.Z>-vitest.json
+```
+
+Use the latest `.omg/release/<X.Y.Z>-vitest.json` from a green full suite (the full run sets `OMC_TEST_LPT=1`, so the sort applies; a triage rerun report such as `<X.Y.Z>-triage.json` has one file and must not be used). Each value is that single run's wall time; passing several reports gives the per-file median.
+
+`--root` is the tree the report ran in (its paths are absolute); `--out` resolves against `--root` unless absolute, so pass the worktree's absolute path. A stale table only costs ordering, never coverage; new files missing from it start first.

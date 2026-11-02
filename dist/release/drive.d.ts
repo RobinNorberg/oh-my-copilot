@@ -74,7 +74,10 @@ export interface DriveLockFs {
 export declare function acquireDriveLock(path: string, argv: string[], proc: DriveProcess, log: (line: string) => void, now?: () => number, fsx?: DriveLockFs): Promise<AcquireResult>;
 /** Remove the lock only while it is still this process's. */
 export declare function releaseDriveLock(path: string, pid?: number): void;
-/** Under --drive, heartbeats at most every DRIVE_HEARTBEAT_MS; every other event passes. */
+/**
+ * Under --drive, heartbeats at most every DRIVE_HEARTBEAT_MS per phase (the pr phase beside the suite keeps its own
+ * pace); an `always` heartbeat and every other event pass.
+ */
 export declare function throttleHeartbeats(progress: (event: ReleaseProgressInput) => void, now: () => number, everyMs?: number): (event: ReleaseProgressInput) => void;
 export interface DriveOptions {
     maxHours?: number;

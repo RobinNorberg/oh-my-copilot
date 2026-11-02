@@ -22,6 +22,8 @@ export interface ReleaseProgressInput {
   agent?: string;
   /** Explicit log path; wins over OMG_PROGRESS_FILE and the default location. */
   file?: string;
+  /** A heartbeat the drive's throttle never drops: a state change (CI green, the merge waits), or one its emitter already paces. Not written. */
+  always?: boolean;
 }
 
 const BARE_VALUE = /^[A-Za-z0-9._:/@+,%#~-]+$/;

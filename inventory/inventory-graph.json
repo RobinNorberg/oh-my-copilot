@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "956e73e26549c35bde6e5526bf9951e7d5c94bc8",
-    "sourceSha256": "9ec5bebb3021b1c35e80de50b38f618fe01363c506b86879a6ed2542ee05ce7a",
+    "head": "2a05b6d9a474a84f9feaa3107966f77b92c01db6",
+    "sourceSha256": "fb5f388131ea4c5155913b993dad6eeba504d9d3305ff4148cac30c248d8e52f",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "956e73e26549c35bde6e5526bf9951e7d5c94bc8",
-  "sourceSha256": "9ec5bebb3021b1c35e80de50b38f618fe01363c506b86879a6ed2542ee05ce7a",
+  "head": "2a05b6d9a474a84f9feaa3107966f77b92c01db6",
+  "sourceSha256": "fb5f388131ea4c5155913b993dad6eeba504d9d3305ff4148cac30c248d8e52f",
   "counts": {
     "public": {
       "skills": 63,
@@ -27,14 +27,14 @@
       "featureFiles": 89,
       "toolFiles": 68,
       "libFiles": 54,
-      "templateHooks": 24,
-      "srcFiles": 1950,
-      "total": 1974
+      "templateHooks": 25,
+      "srcFiles": 1975,
+      "total": 2000
     },
     "generated": {
-      "distFiles": 7192,
+      "distFiles": 7276,
       "bridgeFiles": 9,
-      "total": 7201
+      "total": 7285
     },
     "prompt": {
       "promptLikeFiles": 66
@@ -749,6 +749,7 @@
       "templates/hooks/lib/state-root.mjs",
       "templates/hooks/lib/stdin.mjs",
       "templates/hooks/lib/utf8-bom.mjs",
+      "templates/hooks/lib/windows-search.mjs",
       "templates/hooks/lib/workflow-profile-runtime.mjs",
       "templates/hooks/lib/workflow-stage-prompts.mjs",
       "templates/hooks/persistent-mode.mjs",
@@ -3215,22 +3216,82 @@
       "dist/factory/run/__tests__/ci-heal.test.d.ts.map",
       "dist/factory/run/__tests__/ci-heal.test.js",
       "dist/factory/run/__tests__/ci-heal.test.js.map",
+      "dist/factory/run/__tests__/engine-ado-harness.d.ts",
+      "dist/factory/run/__tests__/engine-ado-harness.d.ts.map",
+      "dist/factory/run/__tests__/engine-ado-harness.js",
+      "dist/factory/run/__tests__/engine-ado-harness.js.map",
+      "dist/factory/run/__tests__/engine-harness.d.ts",
+      "dist/factory/run/__tests__/engine-harness.d.ts.map",
+      "dist/factory/run/__tests__/engine-harness.js",
+      "dist/factory/run/__tests__/engine-harness.js.map",
+      "dist/factory/run/__tests__/engine-outcome-harness.d.ts",
+      "dist/factory/run/__tests__/engine-outcome-harness.d.ts.map",
+      "dist/factory/run/__tests__/engine-outcome-harness.js",
+      "dist/factory/run/__tests__/engine-outcome-harness.js.map",
+      "dist/factory/run/__tests__/engine-progress-harness.d.ts",
+      "dist/factory/run/__tests__/engine-progress-harness.d.ts.map",
+      "dist/factory/run/__tests__/engine-progress-harness.js",
+      "dist/factory/run/__tests__/engine-progress-harness.js.map",
+      "dist/factory/run/__tests__/engine-sandbox-harness.d.ts",
+      "dist/factory/run/__tests__/engine-sandbox-harness.d.ts.map",
+      "dist/factory/run/__tests__/engine-sandbox-harness.js",
+      "dist/factory/run/__tests__/engine-sandbox-harness.js.map",
+      "dist/factory/run/__tests__/engine.ado.heal.test.d.ts",
+      "dist/factory/run/__tests__/engine.ado.heal.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.ado.heal.test.js",
+      "dist/factory/run/__tests__/engine.ado.heal.test.js.map",
+      "dist/factory/run/__tests__/engine.ado.progress.test.d.ts",
+      "dist/factory/run/__tests__/engine.ado.progress.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.ado.progress.test.js",
+      "dist/factory/run/__tests__/engine.ado.progress.test.js.map",
       "dist/factory/run/__tests__/engine.ado.test.d.ts",
       "dist/factory/run/__tests__/engine.ado.test.d.ts.map",
       "dist/factory/run/__tests__/engine.ado.test.js",
       "dist/factory/run/__tests__/engine.ado.test.js.map",
+      "dist/factory/run/__tests__/engine.intake.test.d.ts",
+      "dist/factory/run/__tests__/engine.intake.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.intake.test.js",
+      "dist/factory/run/__tests__/engine.intake.test.js.map",
+      "dist/factory/run/__tests__/engine.lanes.test.d.ts",
+      "dist/factory/run/__tests__/engine.lanes.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.lanes.test.js",
+      "dist/factory/run/__tests__/engine.lanes.test.js.map",
+      "dist/factory/run/__tests__/engine.outcome.marker.test.d.ts",
+      "dist/factory/run/__tests__/engine.outcome.marker.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.outcome.marker.test.js",
+      "dist/factory/run/__tests__/engine.outcome.marker.test.js.map",
       "dist/factory/run/__tests__/engine.outcome.test.d.ts",
       "dist/factory/run/__tests__/engine.outcome.test.d.ts.map",
       "dist/factory/run/__tests__/engine.outcome.test.js",
       "dist/factory/run/__tests__/engine.outcome.test.js.map",
+      "dist/factory/run/__tests__/engine.progress.resume.test.d.ts",
+      "dist/factory/run/__tests__/engine.progress.resume.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.progress.resume.test.js",
+      "dist/factory/run/__tests__/engine.progress.resume.test.js.map",
+      "dist/factory/run/__tests__/engine.progress.skip.test.d.ts",
+      "dist/factory/run/__tests__/engine.progress.skip.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.progress.skip.test.js",
+      "dist/factory/run/__tests__/engine.progress.skip.test.js.map",
       "dist/factory/run/__tests__/engine.progress.test.d.ts",
       "dist/factory/run/__tests__/engine.progress.test.d.ts.map",
       "dist/factory/run/__tests__/engine.progress.test.js",
       "dist/factory/run/__tests__/engine.progress.test.js.map",
+      "dist/factory/run/__tests__/engine.resume.test.d.ts",
+      "dist/factory/run/__tests__/engine.resume.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.resume.test.js",
+      "dist/factory/run/__tests__/engine.resume.test.js.map",
+      "dist/factory/run/__tests__/engine.sandbox.commit.test.d.ts",
+      "dist/factory/run/__tests__/engine.sandbox.commit.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.sandbox.commit.test.js",
+      "dist/factory/run/__tests__/engine.sandbox.commit.test.js.map",
       "dist/factory/run/__tests__/engine.sandbox.test.d.ts",
       "dist/factory/run/__tests__/engine.sandbox.test.d.ts.map",
       "dist/factory/run/__tests__/engine.sandbox.test.js",
       "dist/factory/run/__tests__/engine.sandbox.test.js.map",
+      "dist/factory/run/__tests__/engine.state.test.d.ts",
+      "dist/factory/run/__tests__/engine.state.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.state.test.js",
+      "dist/factory/run/__tests__/engine.state.test.js.map",
       "dist/factory/run/__tests__/engine.test.d.ts",
       "dist/factory/run/__tests__/engine.test.d.ts.map",
       "dist/factory/run/__tests__/engine.test.js",
@@ -3255,6 +3316,26 @@
       "dist/factory/run/__tests__/plan-rules.test.d.ts.map",
       "dist/factory/run/__tests__/plan-rules.test.js",
       "dist/factory/run/__tests__/plan-rules.test.js.map",
+      "dist/factory/run/__tests__/prepare-gates-harness.d.ts",
+      "dist/factory/run/__tests__/prepare-gates-harness.d.ts.map",
+      "dist/factory/run/__tests__/prepare-gates-harness.js",
+      "dist/factory/run/__tests__/prepare-gates-harness.js.map",
+      "dist/factory/run/__tests__/prepare-gates.conflict.test.d.ts",
+      "dist/factory/run/__tests__/prepare-gates.conflict.test.d.ts.map",
+      "dist/factory/run/__tests__/prepare-gates.conflict.test.js",
+      "dist/factory/run/__tests__/prepare-gates.conflict.test.js.map",
+      "dist/factory/run/__tests__/prepare-gates.crash.test.d.ts",
+      "dist/factory/run/__tests__/prepare-gates.crash.test.d.ts.map",
+      "dist/factory/run/__tests__/prepare-gates.crash.test.js",
+      "dist/factory/run/__tests__/prepare-gates.crash.test.js.map",
+      "dist/factory/run/__tests__/prepare-gates.gates-resume.test.d.ts",
+      "dist/factory/run/__tests__/prepare-gates.gates-resume.test.d.ts.map",
+      "dist/factory/run/__tests__/prepare-gates.gates-resume.test.js",
+      "dist/factory/run/__tests__/prepare-gates.gates-resume.test.js.map",
+      "dist/factory/run/__tests__/prepare-gates.gates.test.d.ts",
+      "dist/factory/run/__tests__/prepare-gates.gates.test.d.ts.map",
+      "dist/factory/run/__tests__/prepare-gates.gates.test.js",
+      "dist/factory/run/__tests__/prepare-gates.gates.test.js.map",
       "dist/factory/run/__tests__/prepare-gates.test.d.ts",
       "dist/factory/run/__tests__/prepare-gates.test.d.ts.map",
       "dist/factory/run/__tests__/prepare-gates.test.js",
@@ -6633,6 +6714,10 @@
       "dist/ship/state.d.ts.map",
       "dist/ship/state.js",
       "dist/ship/state.js.map",
+      "dist/ship/workflow.d.ts",
+      "dist/ship/workflow.d.ts.map",
+      "dist/ship/workflow.js",
+      "dist/ship/workflow.js.map",
       "dist/skills/__tests__/mingw-escape.test.d.ts",
       "dist/skills/__tests__/mingw-escape.test.d.ts.map",
       "dist/skills/__tests__/mingw-escape.test.js",
@@ -8844,6 +8929,11 @@
         "id": ".github/ci/test-durations.json",
         "kind": "other",
         "path": ".github/ci/test-durations.json"
+      },
+      {
+        "id": ".github/ci/test-durations.win32.json",
+        "kind": "other",
+        "path": ".github/ci/test-durations.win32.json"
       },
       {
         "id": ".github/ci/windows-path-suite.txt",
@@ -21001,6 +21091,146 @@
         "path": "dist/factory/run/__tests__/ci-heal.test.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/engine-ado-harness.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine-ado-harness.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine-ado-harness.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine-ado-harness.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine-ado-harness.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine-ado-harness.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine-ado-harness.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine-ado-harness.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine-harness.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine-harness.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine-harness.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine-harness.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine-harness.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine-harness.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine-harness.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine-harness.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine-outcome-harness.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine-outcome-harness.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine-outcome-harness.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine-outcome-harness.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine-outcome-harness.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine-outcome-harness.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine-outcome-harness.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine-outcome-harness.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine-progress-harness.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine-progress-harness.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine-progress-harness.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine-progress-harness.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine-progress-harness.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine-progress-harness.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine-progress-harness.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine-progress-harness.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine-sandbox-harness.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine-sandbox-harness.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine-sandbox-harness.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine-sandbox-harness.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine-sandbox-harness.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine-sandbox-harness.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine-sandbox-harness.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine-sandbox-harness.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.ado.heal.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.ado.heal.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.ado.heal.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.ado.heal.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.ado.heal.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.ado.heal.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.ado.heal.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.ado.heal.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.ado.progress.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.ado.progress.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.ado.progress.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.ado.progress.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.ado.progress.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.ado.progress.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.ado.progress.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.ado.progress.test.js.map"
+      },
+      {
         "id": "dist/factory/run/__tests__/engine.ado.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.ado.test.d.ts"
@@ -21019,6 +21249,66 @@
         "id": "dist/factory/run/__tests__/engine.ado.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.ado.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.intake.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.intake.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.intake.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.intake.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.intake.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.intake.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.intake.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.intake.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.lanes.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.lanes.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.lanes.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.lanes.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.lanes.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.lanes.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.lanes.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.lanes.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.outcome.marker.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.outcome.marker.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.outcome.marker.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.outcome.marker.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.outcome.marker.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.outcome.marker.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.outcome.marker.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.outcome.marker.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/engine.outcome.test.d.ts",
@@ -21041,6 +21331,46 @@
         "path": "dist/factory/run/__tests__/engine.outcome.test.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/engine.progress.resume.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.progress.resume.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.progress.resume.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.progress.resume.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.progress.resume.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.progress.resume.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.progress.resume.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.progress.resume.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.progress.skip.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.progress.skip.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.progress.skip.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.progress.skip.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.progress.skip.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.progress.skip.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.progress.skip.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.progress.skip.test.js.map"
+      },
+      {
         "id": "dist/factory/run/__tests__/engine.progress.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.progress.test.d.ts"
@@ -21061,6 +21391,46 @@
         "path": "dist/factory/run/__tests__/engine.progress.test.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/engine.resume.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.resume.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.resume.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.resume.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.resume.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.resume.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.resume.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.resume.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.sandbox.commit.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.sandbox.commit.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.sandbox.commit.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.sandbox.commit.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.sandbox.commit.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.sandbox.commit.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.sandbox.commit.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.sandbox.commit.test.js.map"
+      },
+      {
         "id": "dist/factory/run/__tests__/engine.sandbox.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.sandbox.test.d.ts"
@@ -21079,6 +21449,26 @@
         "id": "dist/factory/run/__tests__/engine.sandbox.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.sandbox.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.state.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.state.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.state.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.state.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.state.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.state.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.state.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.state.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/engine.test.d.ts",
@@ -21199,6 +21589,106 @@
         "id": "dist/factory/run/__tests__/plan-rules.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/plan-rules.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates-harness.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates-harness.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates-harness.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates-harness.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates-harness.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates-harness.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates-harness.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates-harness.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.conflict.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.conflict.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.conflict.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.conflict.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.conflict.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.conflict.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.conflict.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.conflict.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.crash.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.crash.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.crash.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.crash.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.crash.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.crash.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.crash.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.crash.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.gates-resume.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.gates-resume.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.gates-resume.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.gates-resume.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.gates-resume.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.gates-resume.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.gates-resume.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.gates-resume.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.gates.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.gates.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.gates.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.gates.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.gates.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.gates.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.gates.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.gates.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/prepare-gates.test.d.ts",
@@ -38091,6 +38581,26 @@
         "path": "dist/ship/state.js.map"
       },
       {
+        "id": "dist/ship/workflow.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ship/workflow.d.ts"
+      },
+      {
+        "id": "dist/ship/workflow.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/workflow.d.ts.map"
+      },
+      {
+        "id": "dist/ship/workflow.js",
+        "kind": "generated-dist",
+        "path": "dist/ship/workflow.js"
+      },
+      {
+        "id": "dist/ship/workflow.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/workflow.js.map"
+      },
+      {
         "id": "dist/skills/__tests__/mingw-escape.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/skills/__tests__/mingw-escape.test.d.ts"
@@ -51151,9 +51661,59 @@
         "path": "src/factory/run/__tests__/ci-heal.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/engine-ado-harness.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine-ado-harness.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/engine-harness.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine-harness.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/engine-outcome-harness.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine-outcome-harness.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/engine-progress-harness.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine-progress-harness.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/engine-sandbox-harness.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine-sandbox-harness.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.ado.heal.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/engine.ado.progress.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.ado.progress.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/engine.ado.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.ado.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/engine.intake.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.intake.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/engine.lanes.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.lanes.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/engine.outcome.marker.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.outcome.marker.test.ts"
       },
       {
         "id": "src/factory/run/__tests__/engine.outcome.test.ts",
@@ -51161,14 +51721,39 @@
         "path": "src/factory/run/__tests__/engine.outcome.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/engine.progress.resume.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.progress.resume.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/engine.progress.skip.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.progress.skip.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/engine.progress.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.progress.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/engine.resume.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.resume.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/engine.sandbox.commit.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.sandbox.commit.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/engine.sandbox.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.sandbox.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/engine.state.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.state.test.ts"
       },
       {
         "id": "src/factory/run/__tests__/engine.test.ts",
@@ -51199,6 +51784,31 @@
         "id": "src/factory/run/__tests__/plan-rules.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/plan-rules.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/prepare-gates-harness.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/prepare-gates-harness.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/prepare-gates.conflict.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/prepare-gates.conflict.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/prepare-gates.crash.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/prepare-gates.crash.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/prepare-gates.gates-resume.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/prepare-gates.gates-resume.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/prepare-gates.gates.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/prepare-gates.gates.test.ts"
       },
       {
         "id": "src/factory/run/__tests__/prepare-gates.test.ts",
@@ -55681,6 +56291,16 @@
         "path": "src/ship/__tests__/fixtures/checks-pr233-green.json"
       },
       {
+        "id": "src/ship/__tests__/fixtures/job-log-ci-gate-needs-failed.txt",
+        "kind": "src",
+        "path": "src/ship/__tests__/fixtures/job-log-ci-gate-needs-failed.txt"
+      },
+      {
+        "id": "src/ship/__tests__/fixtures/job-log-ci-gate-own-failure.txt",
+        "kind": "src",
+        "path": "src/ship/__tests__/fixtures/job-log-ci-gate-own-failure.txt"
+      },
+      {
         "id": "src/ship/__tests__/fixtures/job-log-flaky.txt",
         "kind": "src",
         "path": "src/ship/__tests__/fixtures/job-log-flaky.txt"
@@ -55689,6 +56309,16 @@
         "id": "src/ship/__tests__/fixtures/job-log-real-failure.txt",
         "kind": "src",
         "path": "src/ship/__tests__/fixtures/job-log-real-failure.txt"
+      },
+      {
+        "id": "src/ship/__tests__/fixtures/job-log-shard-flaky.txt",
+        "kind": "src",
+        "path": "src/ship/__tests__/fixtures/job-log-shard-flaky.txt"
+      },
+      {
+        "id": "src/ship/__tests__/fixtures/job-log-test-shards-failed.txt",
+        "kind": "src",
+        "path": "src/ship/__tests__/fixtures/job-log-test-shards-failed.txt"
       },
       {
         "id": "src/ship/__tests__/fixtures/project-config-admin-merge.jsonc",
@@ -55754,6 +56384,11 @@
         "id": "src/ship/state.ts",
         "kind": "src",
         "path": "src/ship/state.ts"
+      },
+      {
+        "id": "src/ship/workflow.ts",
+        "kind": "src",
+        "path": "src/ship/workflow.ts"
       },
       {
         "id": "src/skills/__tests__/mingw-escape.test.ts",
@@ -57896,6 +58531,11 @@
         "path": "templates/hooks/lib/utf8-bom.mjs"
       },
       {
+        "id": "templates/hooks/lib/windows-search.mjs",
+        "kind": "template-hook",
+        "path": "templates/hooks/lib/windows-search.mjs"
+      },
+      {
         "id": "templates/hooks/lib/workflow-profile-runtime.mjs",
         "kind": "template-hook",
         "path": "templates/hooks/lib/workflow-profile-runtime.mjs"
@@ -58056,9 +58696,29 @@
         "path": "tests/integration/contained-fs-packaging.test.ts"
       },
       {
+        "id": "tests/integration/epic-3698-closure-verifier.docs.test.ts",
+        "kind": "other",
+        "path": "tests/integration/epic-3698-closure-verifier.docs.test.ts"
+      },
+      {
+        "id": "tests/integration/epic-3698-closure-verifier.html.test.ts",
+        "kind": "other",
+        "path": "tests/integration/epic-3698-closure-verifier.html.test.ts"
+      },
+      {
+        "id": "tests/integration/epic-3698-closure-verifier.markdown.test.ts",
+        "kind": "other",
+        "path": "tests/integration/epic-3698-closure-verifier.markdown.test.ts"
+      },
+      {
         "id": "tests/integration/epic-3698-closure-verifier.test.ts",
         "kind": "other",
         "path": "tests/integration/epic-3698-closure-verifier.test.ts"
+      },
+      {
+        "id": "tests/integration/epic-3698-fixtures.ts",
+        "kind": "other",
+        "path": "tests/integration/epic-3698-fixtures.ts"
       },
       {
         "id": "tests/integration/git-guardrails-hook.test.ts",
@@ -59193,6 +59853,11 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/cleanup-orphans.mjs",
+        "to": "scripts/lib/windows-search.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/code-simplifier.mjs",
         "to": "external:child_process",
         "kind": "imports"
@@ -60183,11 +60848,6 @@
         "kind": "imports"
       },
       {
-        "from": "scripts/lib/windows-search.mjs",
-        "to": "scripts/lib/windows-search.cjs",
-        "kind": "exports"
-      },
-      {
         "from": "scripts/lib/workflow-profile-runtime.mjs",
         "to": "external:child_process",
         "kind": "imports"
@@ -60903,6 +61563,11 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/repair-plugin-cache.mjs",
+        "to": "scripts/lib/windows-search.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/review-gate.mjs",
         "to": "external:node:path",
         "kind": "imports"
@@ -60968,6 +61633,11 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/run-provider-advisor.js",
+        "to": "scripts/lib/windows-search.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/run.cjs",
         "to": "external:child_process",
         "kind": "imports"
@@ -60995,6 +61665,11 @@
       {
         "from": "scripts/run.cjs",
         "to": "external:worker_threads",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/run.cjs",
+        "to": "scripts/lib/windows-search.cjs",
         "kind": "imports"
       },
       {
@@ -61285,6 +61960,11 @@
       {
         "from": "scripts/shipyard-audit.mjs",
         "to": "scripts/lib/utf8-bom.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/shipyard-audit.mjs",
+        "to": "scripts/lib/windows-search.mjs",
         "kind": "imports"
       },
       {
@@ -61718,6 +62398,11 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/workflow-drift-guard.mjs",
+        "to": "scripts/lib/windows-search.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "skills/agent-doc-discipline/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
@@ -61995,6 +62680,11 @@
       {
         "from": "skills/self-improve/scripts/resolve-paths.mjs",
         "to": "scripts/lib/state-root.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "skills/self-improve/scripts/resolve-paths.mjs",
+        "to": "scripts/lib/windows-search.mjs",
         "kind": "imports"
       },
       {
@@ -72928,6 +73618,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/cli/claude-md-coordinator.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/capabilities.test.ts",
         "to": "external:fs/promises",
         "kind": "imports"
@@ -75538,6 +76233,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/index.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/interop.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -75750,6 +76450,11 @@
       {
         "from": "src/cli/team.ts",
         "to": "src/utils/paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/team.ts",
+        "to": "src/utils/windows-search.ts",
         "kind": "imports"
       },
       {
@@ -78628,6 +79333,16 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/factory/heal/cli.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
+        "to": "src/ship/workflow.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/heal/config.ts",
         "to": "src/factory/run/budget.ts",
         "kind": "imports"
@@ -79503,6 +80218,441 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/__tests__/engine-ado-harness.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-ado-harness.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-ado-harness.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-ado-harness.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-ado-harness.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-ado-harness.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-ado-harness.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-ado-harness.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-ado-harness.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-ado-harness.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-ado-harness.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-ado-harness.ts",
+        "to": "src/forge/ado/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-ado-harness.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-ado-harness.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-ado-harness.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-harness.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-harness.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-harness.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-harness.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-harness.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-harness.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-harness.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-harness.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-harness.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-harness.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-harness.ts",
+        "to": "src/factory/run/review-guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-harness.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-harness.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-harness.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-harness.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-harness.ts",
+        "to": "src/ship/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-outcome-harness.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-outcome-harness.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-outcome-harness.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-outcome-harness.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-outcome-harness.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-outcome-harness.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-outcome-harness.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-progress-harness.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-progress-harness.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-progress-harness.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-progress-harness.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-progress-harness.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-progress-harness.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-progress-harness.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-progress-harness.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-progress-harness.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-progress-harness.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-progress-harness.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-progress-harness.ts",
+        "to": "src/forge/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-progress-harness.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-progress-harness.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-sandbox-harness.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-sandbox-harness.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-sandbox-harness.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-sandbox-harness.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-sandbox-harness.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-sandbox-harness.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-sandbox-harness.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-sandbox-harness.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine-sandbox-harness.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "to": "src/factory/heal/classify.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "to": "src/factory/heal/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "to": "src/factory/heal/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "to": "src/factory/heal/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "to": "src/factory/heal/run.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "to": "src/factory/heal/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "to": "src/factory/heal/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "to": "src/factory/run/__tests__/engine-ado-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "to": "src/forge/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.heal.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.progress.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.progress.test.ts",
+        "to": "src/factory/run/__tests__/engine-ado-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.progress.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.progress.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.progress.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.progress.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/__tests__/engine.ado.test.ts",
         "to": "external:node:crypto",
         "kind": "imports"
@@ -79524,67 +80674,12 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.ado.test.ts",
-        "to": "src/factory/heal/classify.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.ado.test.ts",
-        "to": "src/factory/heal/cli.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.ado.test.ts",
-        "to": "src/factory/heal/cli.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.ado.test.ts",
-        "to": "src/factory/heal/config.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.ado.test.ts",
-        "to": "src/factory/heal/run.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.ado.test.ts",
-        "to": "src/factory/heal/state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.ado.test.ts",
-        "to": "src/factory/heal/state.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.ado.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "to": "src/factory/run/__tests__/engine-ado-harness.ts",
         "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.ado.test.ts",
         "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.ado.test.ts",
-        "to": "src/factory/run/budget.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.ado.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.ado.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.ado.test.ts",
-        "to": "src/factory/run/forge-roots.ts",
         "kind": "imports"
       },
       {
@@ -79594,38 +80689,8 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.ado.test.ts",
-        "to": "src/forge/ado/__tests__/fixtures.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.ado.test.ts",
-        "to": "src/forge/ado/__tests__/world.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.ado.test.ts",
-        "to": "src/forge/ado/checks.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.ado.test.ts",
-        "to": "src/forge/ado/guard.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.ado.test.ts",
-        "to": "src/forge/config.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.ado.test.ts",
         "to": "src/ship/exec.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.ado.test.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.ado.test.ts",
@@ -79633,9 +80698,139 @@
         "kind": "imports"
       },
       {
-        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "from": "src/factory/run/__tests__/engine.intake.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.intake.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.intake.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.intake.test.ts",
+        "to": "src/factory/run/__tests__/engine-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.intake.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.intake.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.intake.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.intake.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.intake.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.lanes.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.lanes.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.lanes.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.lanes.test.ts",
+        "to": "src/factory/run/__tests__/engine-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.lanes.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.lanes.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.lanes.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.lanes.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.lanes.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.marker.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.marker.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.marker.test.ts",
+        "to": "src/factory/run/__tests__/engine-outcome-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.marker.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.marker.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.marker.test.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.marker.test.ts",
+        "to": "src/factory/run/outcome.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.marker.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.marker.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.outcome.test.ts",
@@ -79644,32 +80839,17 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.outcome.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "to": "src/factory/run/__tests__/engine-outcome-harness.ts",
         "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.outcome.test.ts",
         "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
-        "to": "src/factory/run/budget.ts",
         "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.outcome.test.ts",
         "to": "src/factory/run/engine.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
-        "to": "src/factory/run/ledger.ts",
         "kind": "imports"
       },
       {
@@ -79683,14 +80863,79 @@
         "kind": "imports"
       },
       {
-        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "type-imports"
+        "from": "src/factory/run/__tests__/engine.progress.resume.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
       },
       {
-        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
+        "from": "src/factory/run/__tests__/engine.progress.resume.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.resume.test.ts",
+        "to": "src/factory/run/__tests__/engine-progress-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.resume.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.resume.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.resume.test.ts",
+        "to": "src/factory/run/progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.resume.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.resume.test.ts",
+        "to": "src/lib/agent-progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.skip.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.skip.test.ts",
+        "to": "src/factory/run/__tests__/engine-progress-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.skip.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.skip.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.skip.test.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.skip.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.skip.test.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.progress.test.ts",
@@ -79704,42 +80949,22 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.progress.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "to": "src/factory/run/__tests__/engine-progress-harness.ts",
         "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.progress.test.ts",
         "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.progress.test.ts",
-        "to": "src/factory/run/budget.ts",
         "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.progress.test.ts",
         "to": "src/factory/run/engine.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.progress.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.progress.test.ts",
         "to": "src/factory/run/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.progress.test.ts",
-        "to": "src/factory/run/forge-roots.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.progress.test.ts",
-        "to": "src/factory/run/ledger.ts",
         "kind": "imports"
       },
       {
@@ -79759,28 +80984,118 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.progress.test.ts",
-        "to": "src/forge/config.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.progress.test.ts",
-        "to": "src/forge/types.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.progress.test.ts",
-        "to": "src/forge/types.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.progress.test.ts",
         "to": "src/lib/agent-progress.ts",
         "kind": "imports"
       },
       {
-        "from": "src/factory/run/__tests__/engine.progress.test.ts",
-        "to": "src/ship/exec.ts",
+        "from": "src/factory/run/__tests__/engine.resume.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.resume.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.resume.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.resume.test.ts",
+        "to": "src/factory/run/__tests__/engine-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.resume.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.resume.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.resume.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.resume.test.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.resume.test.ts",
+        "to": "src/factory/run/progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.resume.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.resume.test.ts",
+        "to": "src/lib/agent-progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.resume.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.commit.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.commit.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.commit.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.commit.test.ts",
+        "to": "src/factory/run/__tests__/engine-sandbox-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.commit.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.commit.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.commit.test.ts",
+        "to": "src/factory/run/lane-commit.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.commit.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.commit.test.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.commit.test.ts",
+        "to": "src/team/git-worktree.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
@@ -79799,32 +81114,17 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
-        "to": "src/copilot-run/sandbox.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "to": "src/factory/run/__tests__/engine-sandbox-harness.ts",
         "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
         "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
-        "to": "src/factory/run/budget.ts",
         "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
-        "to": "src/factory/run/engine.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
         "kind": "type-imports"
       },
       {
@@ -79838,23 +81138,68 @@
         "kind": "imports"
       },
       {
-        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
-        "to": "src/ship/merge.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
-        "to": "src/team/git-worktree.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
+        "from": "src/factory/run/__tests__/engine.state.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
       },
       {
-        "from": "src/factory/run/__tests__/engine.test.ts",
+        "from": "src/factory/run/__tests__/engine.state.test.ts",
         "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.state.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.state.test.ts",
+        "to": "src/factory/run/__tests__/engine-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.state.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.state.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.state.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.state.test.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.state.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.state.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.state.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.state.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.test.ts",
+        "to": "external:node:fs",
         "kind": "imports"
       },
       {
@@ -79864,42 +81209,17 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "to": "src/factory/run/__tests__/engine-harness.ts",
         "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.test.ts",
         "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/factory/run/budget.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/factory/run/budget.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/factory/run/engine.ts",
         "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.test.ts",
         "to": "src/factory/run/engine.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/factory/run/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/factory/run/ledger.ts",
         "kind": "imports"
       },
       {
@@ -79909,18 +81229,8 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/factory/run/review-guard.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
         "to": "src/factory/run/state.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.test.ts",
@@ -79929,18 +81239,8 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
         "to": "src/ship/state.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/ship/state.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/fake-lanes.ts",
@@ -80158,6 +81458,236 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/__tests__/prepare-gates-harness.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates-harness.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates-harness.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates-harness.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates-harness.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates-harness.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates-harness.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates-harness.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates-harness.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates-harness.ts",
+        "to": "src/factory/run/progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates-harness.ts",
+        "to": "src/lib/agent-progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates-harness.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.conflict.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.conflict.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.conflict.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.conflict.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.conflict.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.conflict.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.conflict.test.ts",
+        "to": "src/factory/run/__tests__/prepare-gates-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.conflict.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.conflict.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.conflict.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.crash.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.crash.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.crash.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.crash.test.ts",
+        "to": "src/factory/run/__tests__/prepare-gates-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.crash.test.ts",
+        "to": "src/factory/run/prepare.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.crash.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.crash.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.crash.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.gates-resume.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.gates-resume.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.gates-resume.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.gates-resume.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.gates-resume.test.ts",
+        "to": "src/factory/run/__tests__/prepare-gates-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.gates-resume.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.gates-resume.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.gates-resume.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.gates.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.gates.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.gates.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.gates.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.gates.test.ts",
+        "to": "src/factory/run/__tests__/prepare-gates-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.gates.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.gates.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.gates.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/__tests__/prepare-gates.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -80184,37 +81714,12 @@
       },
       {
         "from": "src/factory/run/__tests__/prepare-gates.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
-        "to": "src/factory/run/budget.ts",
+        "to": "src/factory/run/__tests__/prepare-gates-harness.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
-        "to": "src/factory/run/budget.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/prepare-gates.test.ts",
         "to": "src/factory/run/clean.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
-        "to": "src/factory/run/exec.ts",
         "kind": "imports"
       },
       {
@@ -80224,23 +81729,8 @@
       },
       {
         "from": "src/factory/run/__tests__/prepare-gates.test.ts",
-        "to": "src/factory/run/progress.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
         "to": "src/factory/run/state.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
-        "to": "src/lib/agent-progress.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/prepare-gates.test.ts",
@@ -83010,6 +84500,11 @@
       {
         "from": "src/features/rate-limit-wait/daemon.ts",
         "to": "src/utils/paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/rate-limit-wait/daemon.ts",
+        "to": "src/utils/windows-search.ts",
         "kind": "imports"
       },
       {
@@ -85888,6 +87383,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/graph/runtime/executors/agent.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/graph/runtime/executors/authority.ts",
         "to": "src/graph/runtime/types.ts",
         "kind": "type-imports"
@@ -85916,6 +87416,11 @@
         "from": "src/graph/runtime/executors/command.ts",
         "to": "src/graph/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/graph/runtime/executors/command.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
       },
       {
         "from": "src/graph/runtime/fence.ts",
@@ -93628,6 +95133,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/session-end/action-runner.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/session-end/action-watchdog.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -94110,6 +95620,11 @@
       {
         "from": "src/hooks/session-end/worker.ts",
         "to": "src/platform/process-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/worker.ts",
+        "to": "src/utils/windows-search.ts",
         "kind": "imports"
       },
       {
@@ -96400,6 +97915,11 @@
       {
         "from": "src/hud/index.ts",
         "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/index.ts",
+        "to": "src/utils/windows-search.ts",
         "kind": "imports"
       },
       {
@@ -99873,6 +101393,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/mcp/standalone-server.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/mcp/team-job-convergence.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -100030,6 +101555,11 @@
       {
         "from": "src/mcp/team-server.ts",
         "to": "src/utils/paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/team-server.ts",
+        "to": "src/utils/windows-search.ts",
         "kind": "imports"
       },
       {
@@ -100978,6 +102508,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/notifications/reply-listener.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/notifications/session-registry.ts",
         "to": "external:crypto",
         "kind": "imports"
@@ -101585,6 +103120,11 @@
       {
         "from": "src/platform/process-utils.ts",
         "to": "external:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/platform/process-utils.ts",
+        "to": "external:path",
         "kind": "imports"
       },
       {
@@ -102334,6 +103874,11 @@
       },
       {
         "from": "src/release/engine.ts",
+        "to": "src/platform/process-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/engine.ts",
         "to": "src/release/checks.ts",
         "kind": "imports"
       },
@@ -102380,6 +103925,11 @@
       {
         "from": "src/release/engine.ts",
         "to": "src/smoke/copilot-binary.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/engine.ts",
+        "to": "src/utils/windows-search.ts",
         "kind": "imports"
       },
       {
@@ -102733,6 +104283,16 @@
         "kind": "imports"
       },
       {
+        "from": "src/ship/__tests__/workflow-checks.test.ts",
+        "to": "src/ship/workflow.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/workflow-checks.test.ts",
+        "to": "src/ship/workflow.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/ship/config.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -102799,6 +104359,16 @@
       },
       {
         "from": "src/ship/gates.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/gates.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/gates.ts",
         "to": "src/forge/github/checks.ts",
         "kind": "imports"
       },
@@ -102816,6 +104386,11 @@
         "from": "src/ship/gates.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/gates.ts",
+        "to": "src/ship/workflow.ts",
+        "kind": "imports"
       },
       {
         "from": "src/ship/merge.ts",
@@ -109978,6 +111553,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/team/bridge-entry.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/team/capabilities.ts",
         "to": "src/team/types.ts",
         "kind": "type-imports"
@@ -111400,6 +112980,11 @@
       {
         "from": "src/team/runtime-cli.ts",
         "to": "src/team/worker-launch-ack.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/runtime-cli.ts",
+        "to": "src/utils/windows-search.ts",
         "kind": "imports"
       },
       {
@@ -115968,6 +117553,11 @@
         "kind": "projects"
       },
       {
+        "from": "templates/hooks/code-simplifier.mjs",
+        "to": "templates/hooks/lib/windows-search.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "templates/hooks/keyword-detector.mjs",
         "to": "external:fs",
         "kind": "imports"
@@ -116000,6 +117590,11 @@
       {
         "from": "templates/hooks/keyword-detector.mjs",
         "to": "templates/hooks/lib/utf8-bom.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "templates/hooks/keyword-detector.mjs",
+        "to": "templates/hooks/lib/windows-search.mjs",
         "kind": "imports"
       },
       {
@@ -116243,6 +117838,16 @@
         "kind": "projects"
       },
       {
+        "from": "templates/hooks/lib/windows-search.mjs",
+        "to": "hooks/hooks.json",
+        "kind": "projects"
+      },
+      {
+        "from": "templates/hooks/lib/windows-search.mjs",
+        "to": "src/hooks/bridge.ts",
+        "kind": "projects"
+      },
+      {
         "from": "templates/hooks/lib/workflow-profile-runtime.mjs",
         "to": "external:child_process",
         "kind": "imports"
@@ -116353,6 +117958,11 @@
         "kind": "imports"
       },
       {
+        "from": "templates/hooks/persistent-mode.mjs",
+        "to": "templates/hooks/lib/windows-search.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "templates/hooks/post-tool-use-failure.mjs",
         "to": "external:fs",
         "kind": "imports"
@@ -116376,6 +117986,11 @@
         "from": "templates/hooks/post-tool-use-failure.mjs",
         "to": "src/hooks/bridge.ts",
         "kind": "projects"
+      },
+      {
+        "from": "templates/hooks/post-tool-use-failure.mjs",
+        "to": "templates/hooks/lib/windows-search.mjs",
+        "kind": "imports"
       },
       {
         "from": "templates/hooks/post-tool-use.mjs",
@@ -116406,6 +118021,11 @@
         "from": "templates/hooks/post-tool-use.mjs",
         "to": "src/hooks/bridge.ts",
         "kind": "projects"
+      },
+      {
+        "from": "templates/hooks/post-tool-use.mjs",
+        "to": "templates/hooks/lib/windows-search.mjs",
+        "kind": "imports"
       },
       {
         "from": "templates/hooks/pre-tool-use.mjs",
@@ -116458,6 +118078,11 @@
         "kind": "imports"
       },
       {
+        "from": "templates/hooks/pre-tool-use.mjs",
+        "to": "templates/hooks/lib/windows-search.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "templates/hooks/session-end.mjs",
         "to": "external:child_process",
         "kind": "imports"
@@ -116486,6 +118111,11 @@
         "from": "templates/hooks/session-end.mjs",
         "to": "src/hooks/bridge.ts",
         "kind": "projects"
+      },
+      {
+        "from": "templates/hooks/session-end.mjs",
+        "to": "templates/hooks/lib/windows-search.mjs",
+        "kind": "imports"
       },
       {
         "from": "templates/hooks/session-start.mjs",
@@ -116523,6 +118153,11 @@
         "kind": "projects"
       },
       {
+        "from": "templates/hooks/session-start.mjs",
+        "to": "templates/hooks/lib/windows-search.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "templates/hooks/stop-continuation.mjs",
         "to": "external:path",
         "kind": "imports"
@@ -116541,6 +118176,11 @@
         "from": "templates/hooks/stop-continuation.mjs",
         "to": "src/hooks/bridge.ts",
         "kind": "projects"
+      },
+      {
+        "from": "templates/hooks/stop-continuation.mjs",
+        "to": "templates/hooks/lib/windows-search.mjs",
+        "kind": "imports"
       },
       {
         "from": "templates/hooks/workflow-drift-guard.mjs",
@@ -116566,6 +118206,11 @@
         "from": "templates/hooks/workflow-drift-guard.mjs",
         "to": "src/hooks/bridge.ts",
         "kind": "projects"
+      },
+      {
+        "from": "templates/hooks/workflow-drift-guard.mjs",
+        "to": "templates/hooks/lib/windows-search.mjs",
+        "kind": "imports"
       },
       {
         "from": "tests/benchmark-diagnostics.test.ts",
@@ -116728,6 +118373,86 @@
         "kind": "imports"
       },
       {
+        "from": "tests/integration/epic-3698-closure-verifier.docs.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-closure-verifier.docs.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-closure-verifier.docs.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-closure-verifier.docs.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-closure-verifier.docs.test.ts",
+        "to": "tests/integration/epic-3698-fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-closure-verifier.html.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-closure-verifier.html.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-closure-verifier.html.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-closure-verifier.html.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-closure-verifier.html.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-closure-verifier.html.test.ts",
+        "to": "tests/integration/epic-3698-fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-closure-verifier.markdown.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-closure-verifier.markdown.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-closure-verifier.markdown.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-closure-verifier.markdown.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-closure-verifier.markdown.test.ts",
+        "to": "tests/integration/epic-3698-fixtures.ts",
+        "kind": "imports"
+      },
+      {
         "from": "tests/integration/epic-3698-closure-verifier.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -116749,16 +118474,41 @@
       },
       {
         "from": "tests/integration/epic-3698-closure-verifier.test.ts",
-        "to": "external:node:url",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/epic-3698-closure-verifier.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
       {
         "from": "tests/integration/epic-3698-closure-verifier.test.ts",
+        "to": "tests/integration/epic-3698-fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-fixtures.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-fixtures.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-fixtures.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-fixtures.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-fixtures.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/epic-3698-fixtures.ts",
         "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
@@ -117345,6 +119095,11 @@
       {
         "from": "tests/lint/ci-test-shards.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/ci-test-shards.test.ts",
+        "to": "external:vitest/node",
         "kind": "imports"
       },
       {
@@ -117959,12 +119714,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9907,
-      "edgeCount": 11927,
-      "importEdgeCount": 9801,
+      "nodeCount": 10022,
+      "edgeCount": 12146,
+      "importEdgeCount": 10003,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "4434dbe34eabdc22a5b6690b5b328cf43e3aeb788ba724e82b06ca23209e7707",
-  "manifestSha256": "8717d9546d4106b9c7fb11e91ea93136a1771d948850b6e39f83c9f3ffc70da7"
+  "inventorySha256": "e476c9fa92d037f9e915273b6986c240cca0db1441c04ab149245f7a9abaeb11",
+  "manifestSha256": "efae3fb27f28627595f35bf6585f0c0683eaf6f3b6fef1636b04f4c637f56694"
 }

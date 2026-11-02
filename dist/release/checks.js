@@ -130,15 +130,74 @@ export function newFailures(failing, baseline) {
     const known = new Set(baseline);
     return failing.filter((t) => !known.has(t));
 }
-/** More new failing titles than this are a real failure: no isolated reruns. */
+/**
+ * More new failing titles than this are not triaged title by title: their
+ * files are rerun once each as a whole (pooled), and only the titles still
+ * failing there are triaged, again at most this many.
+ */
 export const TRIAGE_CAP = 20;
-/** The test file and full title of a failing-title line; `name` is null for a file-level collection error. */
+/** Triage reruns running at once (never two of one file: a file's tests share fixtures). */
+export const TRIAGE_POOL = 3;
+/** A process-listing line: `<pid> <ppid> <command line>`. */
+const PROCESS_LINE = /^\s*(\d+)\s+(\d+)\s*(.*)$/;
+/** A node command line: `node ...`, `/usr/bin/node ...`, `"C:\Program Files\nodejs\node.exe" ...` (or a bare `node.exe` name). */
+const NODE_COMMAND = /^(?:"[^"]*[\\/]node(?:\.exe)?"|(?:\S*[\\/])?node(?:\.exe)?)(?:\s|$)/i;
+/**
+ * Node processes outside the release's own process tree (itself, its
+ * ancestors and its descendants), and how many of those run vitest, from
+ * `<pid> <ppid> <command line>` lines. Null for an empty listing (unknown).
+ */
+export function outsideNodeLoad(listing, selfPid) {
+    const procs = new Map();
+    for (const line of listing.split(/\r?\n/)) {
+        const m = PROCESS_LINE.exec(line);
+        if (m)
+            procs.set(Number(m[1]), { ppid: Number(m[2]), args: m[3].trim() });
+    }
+    if (procs.size === 0)
+        return null;
+    const ancestors = new Set();
+    for (let pid = procs.get(selfPid)?.ppid; pid !== undefined && pid !== selfPid && procs.has(pid) && !ancestors.has(pid); pid = procs.get(pid).ppid)
+        ancestors.add(pid);
+    const mine = new Set([selfPid]);
+    for (let grew = true; grew;) {
+        grew = false;
+        for (const [pid, p] of procs) {
+            if (!mine.has(pid) && mine.has(p.ppid)) {
+                mine.add(pid);
+                grew = true;
+            }
+        }
+    }
+    let node = 0;
+    let vitest = 0;
+    for (const [pid, p] of procs) {
+        if (ancestors.has(pid) || mine.has(pid) || !NODE_COMMAND.test(p.args))
+            continue;
+        node++;
+        if (/vitest/i.test(p.args))
+            vitest++;
+    }
+    return { node, vitest };
+}
+/** A triage verdict as a detail line: `<class>: <title> (<evidence>)`. */
+export function triageLine(t) {
+    if (t.wholeFile)
+        return `${t.class}: ${t.title} (over the cap: passed ${t.passes}/${t.runs} whole-file reruns)`;
+    if (t.pooledFailure)
+        return `${t.class}: ${t.title} (pooled rerun ${t.pooledFailure}/${t.runs} failed, then passed ${t.passes}/${t.runs} serial isolated reruns)`;
+    return `${t.class}: ${t.title} (passed ${t.passes}/${t.runs} isolated reruns)`;
+}
+/** The test file and full title of a failing-title line; `name` is null for a file-level failure (setup or collection error). */
 export function splitFailingTitle(line) {
     const at = line.indexOf(' > ');
     return at < 0 ? { file: line, name: null } : { file: line.slice(0, at), name: line.slice(at + 3) };
 }
-export function classifyTriage(runs, passes, collectionError = false) {
-    if (collectionError || runs === 0 || passes === 0)
+/** Throws without a rerun: no evidence is no verdict ("passed 0/0" is never real). */
+export function classifyTriage(runs, passes) {
+    if (!Number.isInteger(runs) || runs < 1)
+        throw new RangeError(`flake triage needs at least one isolated rerun, got ${runs}`);
+    if (passes === 0)
         return 'real';
     return passes === runs ? 'load-flaky' : 'mixed';
 }
@@ -155,16 +214,30 @@ export function testPassedInReport(text, file, name) {
     const matches = (entry?.assertionResults ?? []).filter((a) => (a.fullName ?? a.title) === name);
     return matches.length > 0 && matches.every((a) => a.status === 'passed');
 }
+/** Whether a vitest JSON report has `file`, passed as a whole: at least one test passed and none failed. */
+export function filePassedInReport(text, file) {
+    let report;
+    try {
+        report = JSON.parse(text);
+    }
+    catch {
+        return false;
+    }
+    const entry = (report?.testResults ?? []).find((f) => repoRelativeTestPath(f.name ?? '') === file);
+    const results = entry?.assertionResults ?? [];
+    return entry?.status === 'passed' && results.some((a) => a.status === 'passed') && !results.some((a) => a.status === 'failed');
+}
 /**
  * `.github/known-flaky-tests.json` entries (file, title, note) plus the
  * triage evidence, for the owner to approve by hand: the engine never edits
  * that file.
  */
 export function flakyCandidates(version, triage) {
-    return triage.filter((t) => t.class !== 'real').map((t) => ({
+    // A known-flaky entry needs a title: a file-level failure is never one (ship never excuses it), the baseline covers it.
+    return triage.filter((t) => t.class !== 'real' && splitFailingTitle(t.title).name !== null).map((t) => ({
         file: t.file,
-        title: splitFailingTitle(t.title).name ?? t.title,
-        note: `${t.class === 'load-flaky' ? 'load-sensitive: failed in the full suite, passed' : 'mixed: failed in the full suite, passed'} ${t.passes}/${t.runs} isolated reruns (v${version} release suite)`,
+        title: splitFailingTitle(t.title).name,
+        note: `${t.class === 'load-flaky' ? 'load-sensitive: failed in the full suite, passed' : 'mixed: failed in the full suite, passed'} ${t.passes}/${t.runs} ${t.wholeFile ? 'whole-file' : 'isolated'} reruns (v${version} release suite)`,
         evidence: { class: t.class, runs: t.runs, passes: t.passes, release: version },
     }));
 }
