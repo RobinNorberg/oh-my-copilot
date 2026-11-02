@@ -165,6 +165,22 @@ describe('release drive helpers', () => {
     expect(seen.map((e) => e.note ?? e.status)).toEqual(['start', 'a', 'c', 'd']);
   });
 
+  it('throttles heartbeats per phase, and never drops an always heartbeat (v5.19.4 lost "merge waits for the suite")', () => {
+    const seen: ReleaseProgressInput[] = [];
+    let t = 0;
+    const progress = throttleHeartbeats((e) => seen.push(e), () => t, 300_000);
+    progress({ phase: 'pr', status: 'heartbeat', note: 'pr pending' });
+    t = 1_000;
+    // Another phase's heartbeat keeps its own pace: the suite beside pr does not starve pr, nor pr the suite.
+    progress({ phase: 'suite', status: 'heartbeat', note: 'suite running' });
+    t = 2_000;
+    progress({ phase: 'pr', status: 'heartbeat', note: 'pr green' });
+    progress({ phase: 'pr', status: 'heartbeat', note: 'merge waits', always: true });
+    t = 302_000;
+    progress({ phase: 'pr', status: 'heartbeat', note: 'pr later' });
+    expect(seen.map((e) => e.note)).toEqual(['pr pending', 'suite running', 'merge waits', 'pr later']);
+  });
+
   it('detach spawns node detached with stdio to the log, windowsHide, and refuses while a driver runs', async () => {
     const spawned: Array<{ command: string; args: string[]; options: Record<string, unknown> }> = [];
     const spawnImpl = (command: string, args: string[], options: unknown) => {

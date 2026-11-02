@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "a82acd70d0d317077b271596d3f1ee7923f6b63a",
-    "sourceSha256": "8a730e00eb4eef3aceabbc927bb5062fd543b8cde130f3a19d9db22c8a823f7e",
+    "head": "e1f342fd503d1006fac531b7123b0ac461d870b6",
+    "sourceSha256": "cb60529218b5dbaae2968322b6b108b3b2f5ef454b0fcdec3fad894a137e310f",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "a82acd70d0d317077b271596d3f1ee7923f6b63a",
-  "sourceSha256": "8a730e00eb4eef3aceabbc927bb5062fd543b8cde130f3a19d9db22c8a823f7e",
+  "head": "e1f342fd503d1006fac531b7123b0ac461d870b6",
+  "sourceSha256": "cb60529218b5dbaae2968322b6b108b3b2f5ef454b0fcdec3fad894a137e310f",
   "counts": {
     "public": {
       "skills": 63,
@@ -8845,6 +8845,11 @@
         "id": ".github/ci/test-durations.json",
         "kind": "other",
         "path": ".github/ci/test-durations.json"
+      },
+      {
+        "id": ".github/ci/test-durations.win32.json",
+        "kind": "other",
+        "path": ".github/ci/test-durations.win32.json"
       },
       {
         "id": ".github/ci/windows-path-suite.txt",
@@ -117515,6 +117520,11 @@
       },
       {
         "from": "tests/lint/ci-test-shards.test.ts",
+        "to": "external:vitest/node",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/ci-test-shards.test.ts",
         "to": "scripts/ci/duration-sequencer.mjs",
         "kind": "imports"
       },
@@ -118125,12 +118135,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9908,
-      "edgeCount": 11959,
-      "importEdgeCount": 9832,
+      "nodeCount": 9909,
+      "edgeCount": 11960,
+      "importEdgeCount": 9833,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "21e62c1643b52908e5baacc54f232d768f9b06c8ba3cc47d7b6231cad454cd76",
-  "manifestSha256": "ae4f8c7a2ce5625030c48a1a52f8549e939d9fce2a5097d8e56208cc9bf6efe6"
+  "inventorySha256": "784491f0f922b3d2db431542892347c5419b6c4cad1807f15c6956d52296810e",
+  "manifestSha256": "bb962be80033754e57dabbdcc5803cef1cbbb62b5685d255a821dec665e98d92"
 }

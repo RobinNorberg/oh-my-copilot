@@ -139,9 +139,10 @@ export function newFailures(failing: readonly string[], baseline: readonly strin
 export const TRIAGE_CAP = 20;
 
 /**
- * `real`: failed every isolated rerun (or a file-level collection error);
+ * `real`: failed every isolated rerun;
  * `load-flaky`: passed every isolated rerun (fails only under suite load, does not block);
  * `mixed`: failed some isolated reruns (may be a real race, blocks).
+ * A file-level failure (setup or collection error, no failing title) reruns as the whole file.
  */
 export type TriageClass = 'real' | 'load-flaky' | 'mixed';
 
@@ -154,14 +155,16 @@ export interface TriageResult {
   class: TriageClass;
 }
 
-/** The test file and full title of a failing-title line; `name` is null for a file-level collection error. */
+/** The test file and full title of a failing-title line; `name` is null for a file-level failure (setup or collection error). */
 export function splitFailingTitle(line: string): { file: string; name: string | null } {
   const at = line.indexOf(' > ');
   return at < 0 ? { file: line, name: null } : { file: line.slice(0, at), name: line.slice(at + 3) };
 }
 
-export function classifyTriage(runs: number, passes: number, collectionError = false): TriageClass {
-  if (collectionError || runs === 0 || passes === 0) return 'real';
+/** Throws without a rerun: no evidence is no verdict ("passed 0/0" is never real). */
+export function classifyTriage(runs: number, passes: number): TriageClass {
+  if (!Number.isInteger(runs) || runs < 1) throw new RangeError(`flake triage needs at least one isolated rerun, got ${runs}`);
+  if (passes === 0) return 'real';
   return passes === runs ? 'load-flaky' : 'mixed';
 }
 
@@ -178,15 +181,29 @@ export function testPassedInReport(text: string, file: string, name: string): bo
   return matches.length > 0 && matches.every((a) => a.status === 'passed');
 }
 
+/** Whether a vitest JSON report has `file`, passed as a whole: at least one test passed and none failed. */
+export function filePassedInReport(text: string, file: string): boolean {
+  let report: VitestJsonReport;
+  try {
+    report = JSON.parse(text) as VitestJsonReport;
+  } catch {
+    return false;
+  }
+  const entry = (report?.testResults ?? []).find((f) => repoRelativeTestPath(f.name ?? '') === file);
+  const results = entry?.assertionResults ?? [];
+  return entry?.status === 'passed' && results.some((a) => a.status === 'passed') && !results.some((a) => a.status === 'failed');
+}
+
 /**
  * `.github/known-flaky-tests.json` entries (file, title, note) plus the
  * triage evidence, for the owner to approve by hand: the engine never edits
  * that file.
  */
 export function flakyCandidates(version: string, triage: readonly TriageResult[]): Array<{ file: string; title: string; note: string; evidence: { class: TriageClass; runs: number; passes: number; release: string } }> {
-  return triage.filter((t) => t.class !== 'real').map((t) => ({
+  // A known-flaky entry needs a title: a file-level failure is never one (ship never excuses it), the baseline covers it.
+  return triage.filter((t) => t.class !== 'real' && splitFailingTitle(t.title).name !== null).map((t) => ({
     file: t.file,
-    title: splitFailingTitle(t.title).name ?? t.title,
+    title: splitFailingTitle(t.title).name!,
     note: `${t.class === 'load-flaky' ? 'load-sensitive: failed in the full suite, passed' : 'mixed: failed in the full suite, passed'} ${t.passes}/${t.runs} isolated reruns (v${version} release suite)`,
     evidence: { class: t.class, runs: t.runs, passes: t.passes, release: version },
   }));

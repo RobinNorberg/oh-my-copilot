@@ -673,12 +673,53 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
         expect(isolatedRuns().every((c) => !/ -t /.test(c))).toBe(true);
       });
 
-      it('a file-level collection error is real without reruns', async () => {
+      describe('a file-level failure (its setup failed, every test skipped, no failing title)', () => {
+        const wholeFile = `vitest.mjs run ${FILE} --reporter=json`;
+        /** An isolated whole-file `vitest run <file>` passes per `outcomes[n]` on its n-th run. */
+        const wholeFileRuns = (outcomes: boolean[]): Handler => (key, args) => {
+          if (!key.includes(wholeFile)) return undefined;
+          const passed = outcomes[calls.filter((c) => c.includes(wholeFile)).length - 1];
+          const results = Array.from({ length: 8 }, (_, i) => ({ fullName: `anchor ${i}`, status: passed ? 'passed' : 'skipped' }));
+          writeFileSync(args.find((a) => a.startsWith('--outputFile='))!.slice('--outputFile='.length), JSON.stringify({ testResults: [{ name: join(root, FILE), status: passed ? 'passed' : 'failed', assertionResults: results }] }));
+          return passed ? ok() : no('beforeAll failed', 1);
+        };
+        const setupFailed = { testResults: [{ name: FILE, status: 'failed', assertionResults: Array.from({ length: 8 }, (_, i) => ({ fullName: `anchor ${i}`, status: 'skipped' })) }] };
+
+        it('that passes every whole-file rerun alone is load-flaky (v5.19.4: "real ... passed 0/0" though 8/8 alone)', async () => {
+          seedState('commit');
+          handlers.push(wholeFileRuns([true, true, true]), vitestWrites(setupFailed));
+          const result = await release({ from: 'suite', to: 'suite', suite: 'full' });
+          expect(result.phases[0]).toMatchObject({ status: 'ok', details: [`load-flaky: ${FILE} (passed 3/3 isolated reruns)`] });
+          expect(result.phases[0].note).toBe('full suite: 1 failing; 1 not in the baseline are load-flaky (passed every isolated rerun)');
+          // The whole file alone, three times, with no title filter; never a known-flaky candidate (it has no title).
+          expect(calls.filter((c) => c.includes(wholeFile))).toEqual(Array(3).fill(`node node_modules/vitest/vitest.mjs run ${FILE} --reporter=json --outputFile=${join(stateRoot, 'release', `${V}-triage.json`)}`));
+          expect(calls.filter((c) => c.includes(' --testNamePattern='))).toEqual([]);
+          expect(existsSync(join(stateRoot, 'release', `${V}-flaky-candidates.json`))).toBe(false);
+          expect(logs).toContain(`  node node_modules/vitest/vitest.mjs run ${FILE} --reporter=json (isolated whole-file rerun 1/3)`);
+        });
+
+        it('that fails every whole-file rerun is real', async () => {
+          seedState('commit');
+          handlers.push(wholeFileRuns([false, false, false]), vitestWrites(setupFailed));
+          const result = await release({ from: 'suite', to: 'suite', suite: 'full' });
+          expect(result.phases[0]).toMatchObject({ status: 'fail', details: [`real: ${FILE} (passed 0/3 isolated reruns)`] });
+          expect(calls.filter((c) => c.includes(wholeFile))).toHaveLength(3);
+        });
+
+        it('a recorded 0-run verdict of an older engine is not reused: the file is rerun', async () => {
+          seedState('commit', { suiteTriage: { sha: HEAD, results: [{ title: FILE, file: FILE, runs: 0, passes: 0, class: 'real' }] } });
+          handlers.push(wholeFileRuns([true, true, true]), vitestWrites(setupFailed));
+          expect((await release({ from: 'suite', to: 'suite', suite: 'full' })).phases[0]).toMatchObject({ status: 'ok', details: [`load-flaky: ${FILE} (passed 3/3 isolated reruns)`] });
+          expect(calls.filter((c) => c.includes(wholeFile))).toHaveLength(3);
+        });
+      });
+
+      it('no isolated rerun (--triage-runs 0 through the API) fails the suite without calling anything real', async () => {
         seedState('commit');
-        handlers.push(vitestWrites({ testResults: [{ name: FILE, status: 'failed', assertionResults: [] }] }));
-        const result = await release({ from: 'suite', to: 'suite', suite: 'full' });
-        expect(result.phases[0]).toMatchObject({ status: 'fail', details: [`real: ${FILE} (passed 0/0 isolated reruns)`] });
-        expect(calls.filter((c) => c.includes(' --testNamePattern='))).toEqual([]);
+        handlers.push(vitestWrites(suiteReport([LOCK])));
+        const result = await release({ from: 'suite', to: 'suite', suite: 'full', triageRuns: 0 });
+        expect(result.phases[0]).toMatchObject({ status: 'fail', note: expect.stringMatching(/flake triage needs at least one isolated rerun/) });
+        expect(JSON.stringify(result.phases[0])).not.toMatch(/real:/);
       });
 
       it('more than 20 new failing titles fail at once, without triage', async () => {
@@ -1332,6 +1373,37 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       expect(readReleaseState(stateRoot, V)).toMatchObject({ devPr: 301, devMergeSha: MERGE, suiteSha: HEAD, suiteRan: 'full' });
     });
 
+    it('the gate-wait event is never throttled, and the CI wait keeps polling while the suite runs', async () => {
+      const pending = run({ from: 'suite', suite: 'full', to: 'pr', allowSkippedSmoke: true });
+      await vi.waitFor(() => expect(events).toContainEqual({ phase: 'pr', status: 'heartbeat', note: 'PR #301 gates green; merge waits for the suite', always: true }));
+      suiteDone();
+      expect((await pending).ok).toBe(true);
+    });
+
+    it('a running suite emits a paced suite heartbeat (every 5 min, never throttled), and none after it ends', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+      try {
+        let t = Date.parse('2026-10-21T12:00:00Z');
+        const pending = run({ from: 'suite', suite: 'full', to: 'suite' }, { now: () => t });
+        await vi.waitFor(() => expect(calls.some((c) => c.includes(VITEST))).toBe(true));
+        for (let i = 0; i < 2; i++) {
+          t += 300_000;
+          vi.advanceTimersByTime(300_000);
+        }
+        const beats = () => events.filter((e) => e.phase === 'suite' && e.status === 'heartbeat');
+        expect(beats()).toEqual([
+          { phase: 'suite', status: 'heartbeat', note: 'suite running, 5 min', always: true },
+          { phase: 'suite', status: 'heartbeat', note: 'suite running, 10 min', always: true },
+        ]);
+        suiteDone();
+        expect((await pending).ok).toBe(true);
+        vi.advanceTimersByTime(600_000);
+        expect(beats()).toHaveLength(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('a CI still running when the suite passes is merged once it turns green', async () => {
       checksJson = running;
       suiteDone();
@@ -1430,7 +1502,8 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       const envs: Array<Record<string, string> | undefined> = [];
       const seen = (cmd: string, args: string[], opts?: Parameters<ReleaseExec>[2]) => { if (args.join(' ').includes(VITEST)) envs.push(opts?.env); return execAsync(cmd, args, opts); };
       expect((await run({ from: 'suite', suite: 'full', to: 'suite' }, { execAsync: seen, suiteShell: () => ({ env: { Path: 'C:\\Git\\bin;C:\\Windows' } }) })).ok).toBe(true);
-      expect(envs).toEqual([{ Path: 'C:\\Git\\bin;C:\\Windows' }]);
+      // The full run opts into the longest-first sort (OMC_TEST_LPT); triage reruns pass no env of their own.
+      expect(envs).toEqual([{ Path: 'C:\\Git\\bin;C:\\Windows', OMC_TEST_LPT: '1' }]);
 
       const refused = await run({ from: 'suite', suite: 'full', to: 'pr', allowSkippedSmoke: true }, { execAsync: seen, suiteShell: () => ({ problem: "the first bash on PATH is WSL's" }) });
       expect(refused.phases[0]).toMatchObject({ id: 'suite', status: 'fail', note: "suite not started: the first bash on PATH is WSL's" });
