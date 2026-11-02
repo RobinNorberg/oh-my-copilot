@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "956e73e26549c35bde6e5526bf9951e7d5c94bc8",
-    "sourceSha256": "9ec5bebb3021b1c35e80de50b38f618fe01363c506b86879a6ed2542ee05ce7a",
+    "head": "a82acd70d0d317077b271596d3f1ee7923f6b63a",
+    "sourceSha256": "21d261686ef0ebe37557db244e4d3030130731e450eff230a45ad89c1864187b",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "956e73e26549c35bde6e5526bf9951e7d5c94bc8",
-  "sourceSha256": "9ec5bebb3021b1c35e80de50b38f618fe01363c506b86879a6ed2542ee05ce7a",
+  "head": "a82acd70d0d317077b271596d3f1ee7923f6b63a",
+  "sourceSha256": "21d261686ef0ebe37557db244e4d3030130731e450eff230a45ad89c1864187b",
   "counts": {
     "public": {
       "skills": 63,
@@ -8844,6 +8844,11 @@
         "id": ".github/ci/test-durations.json",
         "kind": "other",
         "path": ".github/ci/test-durations.json"
+      },
+      {
+        "id": ".github/ci/test-durations.win32.json",
+        "kind": "other",
+        "path": ".github/ci/test-durations.win32.json"
       },
       {
         "id": ".github/ci/windows-path-suite.txt",
@@ -117959,12 +117964,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9907,
+      "nodeCount": 9908,
       "edgeCount": 11927,
       "importEdgeCount": 9801,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "4434dbe34eabdc22a5b6690b5b328cf43e3aeb788ba724e82b06ca23209e7707",
-  "manifestSha256": "8717d9546d4106b9c7fb11e91ea93136a1771d948850b6e39f83c9f3ffc70da7"
+  "inventorySha256": "d6e77e225fc27bf047069980a8dcf2cf68277a244cfd084a98b29edee803dcfd",
+  "manifestSha256": "3f1ea117f9ab1aefe5281ec73a63092fac662b9427ff04bac3e03852a3cf10bf"
 }

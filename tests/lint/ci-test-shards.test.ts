@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "os";
 import { join } from "path";
 import { describe, expect, it } from "vitest";
-import DurationSequencer, { assignShards, DURATIONS_PATH, readDurations } from "../../scripts/ci/duration-sequencer.mjs";
+import DurationSequencer, { assignShards, DURATIONS_PATH, readDurations, WIN32_DURATIONS_PATH } from "../../scripts/ci/duration-sequencer.mjs";
 import DurationsReporter from "../../scripts/ci/durations-reporter.mjs";
 import { durationsFromReports } from "../../scripts/ci/update-test-durations.mjs";
 
@@ -67,10 +67,93 @@ describe("duration-balanced test shards", () => {
   });
 
   it("balances the committed suite into 4 shards within 1.3x", () => {
-    const durations = readDurations(REPO_ROOT);
+    const durations = readDurations(REPO_ROOT, "linux");
     expect(durations, `${DURATIONS_PATH} must parse`).not.toBeNull();
     const loads = assignShards(Object.keys(durations!), durations!, 4).map((s) => s.ms);
     expect(Math.max(...loads) / Math.min(...loads)).toBeLessThanOrEqual(1.3);
+  });
+});
+
+describe("longest-first test order", () => {
+  type Spec = { moduleId: string; project: { name: string; config: { sequence: { groupOrder: number }; isolate: boolean } } };
+  const project = (name: string, groupOrder: number) => ({ name, config: { sequence: { groupOrder }, isolate: true } });
+  const MAIN = project("main", 0);
+  const SERIAL = project("serial-budget", 1);
+
+  function withTables(tables: Record<string, Record<string, number>>, body: (root: string) => Promise<void>) {
+    const root = mkdtempSync(join(tmpdir(), "omg-sort-"));
+    mkdirSync(join(root, ".github/ci"), { recursive: true });
+    for (const [path, table] of Object.entries(tables)) writeFileSync(join(root, path), JSON.stringify(table));
+    return body(root).finally(() => rmSync(root, { recursive: true, force: true }));
+  }
+  const sequencer = (root: string, shard?: { index: number; count: number }) =>
+    new DurationSequencer({ config: { root, shard } } as never);
+  const names = (root: string, specs: Spec[]) => specs.map((spec) => `${spec.project.name}:${spec.moduleId.slice(root.length + 1).replace(/\\/g, "/")}`);
+
+  it("starts the longest file first, unmeasured files before all measured ones", () =>
+    withTables({ [DURATIONS_PATH]: { "a.test.ts": 10, "b.test.ts": 500, "c.test.ts": 90, "d.test.ts": 90 } }, async (root) => {
+      const specs = ["a.test.ts", "new-2.test.ts", "c.test.ts", "b.test.ts", "d.test.ts", "new-1.test.ts"].map((file) => ({ moduleId: join(root, file), project: MAIN }));
+      expect(names(root, await sequencer(root).sort(specs as never))).toEqual([
+        "main:new-1.test.ts",
+        "main:new-2.test.ts",
+        "main:b.test.ts",
+        "main:c.test.ts",
+        "main:d.test.ts",
+        "main:a.test.ts",
+      ]);
+    }));
+
+  it("keeps the serial-budget project after main and never mixes projects", () =>
+    withTables({ [DURATIONS_PATH]: { "s-long.test.ts": 9000, "s-short.test.ts": 5, "m-long.test.ts": 800, "m-short.test.ts": 1 } }, async (root) => {
+      const specs = [
+        { moduleId: join(root, "s-short.test.ts"), project: SERIAL },
+        { moduleId: join(root, "m-short.test.ts"), project: MAIN },
+        { moduleId: join(root, "s-long.test.ts"), project: SERIAL },
+        { moduleId: join(root, "m-long.test.ts"), project: MAIN },
+      ];
+      expect(names(root, await sequencer(root).sort(specs as never))).toEqual([
+        "main:m-long.test.ts",
+        "main:m-short.test.ts",
+        "serial-budget:s-long.test.ts",
+        "serial-budget:s-short.test.ts",
+      ]);
+    }));
+
+  it("picks the Windows table on win32 only, and the Linux table when Windows has none", () =>
+    withTables({ [DURATIONS_PATH]: { "a.test.ts": 1 }, [WIN32_DURATIONS_PATH]: { "a.test.ts": 2 } }, async (root) => {
+      expect(readDurations(root, "win32")).toEqual({ "a.test.ts": 2 });
+      expect(readDurations(root, "linux")).toEqual({ "a.test.ts": 1 });
+      rmSync(join(root, WIN32_DURATIONS_PATH));
+      expect(readDurations(root, "win32")).toEqual({ "a.test.ts": 1 });
+    }));
+
+  it("still runs every file exactly once across 4 shards, each shard longest first", () =>
+    withTables({ [DURATIONS_PATH]: { "a.test.ts": 90, "b.test.ts": 70, "c.test.ts": 50, "d.test.ts": 30, "e.test.ts": 20, "f.test.ts": 10, "s.test.ts": 40 } }, async (root) => {
+      const specs = [
+        ...["f.test.ts", "a.test.ts", "new.test.ts", "c.test.ts", "e.test.ts", "b.test.ts", "d.test.ts"].map((file) => ({ moduleId: join(root, file), project: MAIN })),
+        { moduleId: join(root, "s.test.ts"), project: SERIAL },
+      ];
+      const runs = await Promise.all([1, 2, 3, 4].map(async (index) => {
+        const seq = sequencer(root, { index, count: 4 });
+        return seq.sort((await seq.shard(specs as never)) as never);
+      }));
+      const ids = runs.flat().map((spec) => (spec as Spec).moduleId);
+      expect(ids.sort()).toEqual(specs.map((spec) => spec.moduleId).sort());
+      const ms: Record<string, number> = { "new.test.ts": Infinity, ...readDurations(root, "linux") };
+      for (const run of runs) {
+        const order = run as Spec[];
+        const groups = order.map((spec) => spec.project.config.sequence.groupOrder);
+        expect(groups).toEqual([...groups].sort((a, b) => a - b));
+        const main = order.filter((spec) => spec.project === MAIN).map((spec) => ms[spec.moduleId.slice(root.length + 1)]);
+        expect(main).toEqual([...main].sort((a, b) => b - a));
+      }
+    }));
+
+  it("commits a Windows table that names the slow factory suite", () => {
+    const durations = readDurations(REPO_ROOT, "win32");
+    expect(durations).not.toBeNull();
+    expect(existsSync(join(REPO_ROOT, WIN32_DURATIONS_PATH))).toBe(true);
+    expect(durations!["src/factory/run/__tests__/prepare-gates.test.ts"]).toBeGreaterThan(0);
   });
 });
 
@@ -79,6 +162,16 @@ describe("update-test-durations", () => {
     const report = (ms: number) => ({ "src\\a.test.ts": ms, "tests/b.test.ts": 7, "../x.test.ts": 1, "/abs.test.ts": 1, "c.test.ts": -1 });
     expect(durationsFromReports([report(10), report(40), report(20)])).toEqual({
       "src/a.test.ts": 20,
+      "tests/b.test.ts": 7,
+    });
+  });
+
+  it("reads a vitest JSON report as each file's wall time, relative to the root", () => {
+    const root = join(tmpdir(), "omg-repo");
+    const file = (path: string, startTime: number, endTime: number) => ({ name: join(root, path).replace(/\\/g, "/"), startTime, endTime });
+    const vitestReport = { startTime: 0, testResults: [file("src/a.test.ts", 100, 1100.6), file("tests/b.test.ts", 5, 12), { name: join(tmpdir(), "elsewhere.test.ts"), startTime: 0, endTime: 1 }] };
+    expect(durationsFromReports([vitestReport, { "src/a.test.ts": 3000 }, { "src/a.test.ts": 2000 }], root)).toEqual({
+      "src/a.test.ts": 2000,
       "tests/b.test.ts": 7,
     });
   });

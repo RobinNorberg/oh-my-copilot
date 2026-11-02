@@ -8,21 +8,37 @@
  * affects shard balance (scripts/ci/duration-sequencer.mjs), never which
  * tests run.
  *
- * Run: node scripts/ci/update-test-durations.mjs [--root <dir>] [--out <file>] <test-durations.json>...
+ * A vitest JSON report (`--reporter=json`, e.g. `omg release`'s
+ * `.omg/release/<version>-vitest.json`) also works: each file counts as its
+ * endTime - startTime, and its absolute paths are made relative to --root.
+ * That is how the Windows table `.github/ci/test-durations.win32.json` is
+ * refreshed (`--out .github/ci/test-durations.win32.json`).
+ *
+ * Run: node scripts/ci/update-test-durations.mjs [--root <dir>] [--out <file>] <report.json>...
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { DURATIONS_PATH, median } from './duration-sequencer.mjs';
 
-const USAGE = 'usage: update-test-durations.mjs [--root <dir>] [--out <file>] <test-durations.json>...';
+const USAGE = 'usage: update-test-durations.mjs [--root <dir>] [--out <file>] <report.json>...';
 
-/** Map repo-relative test path to median ms over `reports` (parsed durations reports). */
-export function durationsFromReports(reports) {
+/** A vitest JSON report as repo path to wall ms per file, or the report unchanged. */
+function fileDurations(report, root) {
+  if (!Array.isArray(report?.testResults)) return report;
+  return Object.fromEntries(report.testResults.map((file) => [relative(root, file.name), file.endTime - file.startTime]));
+}
+
+/**
+ * Map repo-relative test path to median ms over `reports` (parsed durations
+ * reports or vitest JSON reports, whose paths are taken relative to `root`).
+ */
+export function durationsFromReports(reports, root = process.cwd()) {
   const samples = new Map();
-  for (const report of reports) {
+  for (const input of reports) {
+    const report = fileDurations(input, root);
     if (!report || typeof report !== 'object' || Array.isArray(report)) {
-      throw new Error('not a durations report: expected an object of test path to ms');
+      throw new Error('not a durations report: expected an object of test path to ms or a vitest JSON report');
     }
     for (const [name, ms] of Object.entries(report)) {
       const path = name.replace(/\\/g, '/');
@@ -52,7 +68,7 @@ function main(argv) {
     console.error(USAGE);
     return 2;
   }
-  const durations = durationsFromReports(files.map((f) => JSON.parse(readFileSync(f, 'utf8'))));
+  const durations = durationsFromReports(files.map((f) => JSON.parse(readFileSync(f, 'utf8'))), root);
   const target = resolve(root, out ?? DURATIONS_PATH);
   writeFileSync(target, `${JSON.stringify(durations, null, 2)}\n`);
   console.log(`wrote ${Object.keys(durations).length} file durations to ${relative(root, target).replace(/\\/g, '/')}`);

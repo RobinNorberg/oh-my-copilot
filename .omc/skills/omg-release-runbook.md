@@ -318,3 +318,13 @@ current recovery launch with its durable context".
 | `coordinator source digest mismatch` | docs/CLAUDE.md edited without rebuilding bridge in the same commit |
 | `reachable generated runtime module is missing` | new/deleted source without a full dist rebuild force-added |
 | `... was PUBLISHED to the registry; it did not become visible after 30 attempts` | Publish SUCCEEDED but the verify loop timed out on slow registry propagation (hit on v5.1.0 at 12 attempts; the window is ~28 min since the upstream #4083 port). Check `npm view oh-my-copilot@X.Y.Z version dist-tags dist.attestations` — if live with provenance, do NOT rerun the job (republish over an existing version fails). Only the GitHub Release step was skipped: run the `Release Recovery` workflow (`release.yml`, workflow_dispatch with `tag` and `sha` inputs — generic since the v5.5.0 port; no longer pinned to an old tag), or `gh release create vX.Y.Z --title vX.Y.Z --notes-file .github/release-body.md`. |
+
+## Refresh the Windows test-duration table (after a release)
+
+The local suite starts test files longest first (`scripts/ci/duration-sequencer.mjs`), on Windows by `.github/ci/test-durations.win32.json`. After a release whose suite passed, refresh it from that run's report in a lane worktree and commit the result in a PR to `dev`:
+
+```bash
+node scripts/ci/update-test-durations.mjs --root C:/Code/OMC --out .github/ci/test-durations.win32.json C:/Code/OMC/.omg/release/<X.Y.Z>-vitest.json
+```
+
+`--root` is the tree the report ran in (its paths are absolute); `--out` resolves against `--root` unless absolute, so pass the worktree's absolute path. A stale table only costs ordering, never coverage; new files missing from it start first.

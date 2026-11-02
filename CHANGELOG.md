@@ -2,6 +2,12 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- **The test suite starts the longest files first.** `scripts/ci/duration-sequencer.mjs` now also overrides vitest's `sort()`: within each project (the serial-budget project still runs after `main`) files start longest first by measured duration, and files without a measurement start before all measured ones. Vitest's own failed-first, cache-based order had started multi-minute factory files 19-23 min into the 5.19.0 and 5.19.4 local release suites, costing about 9-11 min each against longest-first packing. Windows reads a new committed table, `.github/ci/test-durations.win32.json` (from the 5.19.4 release report), and falls back to the Linux `.github/ci/test-durations.json`; `--shard` balancing is unchanged on Linux. `scripts/ci/update-test-durations.mjs` now also reads a vitest JSON report such as `.omg/release/<version>-vitest.json`; the release runbook has the refresh command.
+
 # oh-my-copilot v5.19.4
 
 ## [5.19.4] - 2026-11-02
