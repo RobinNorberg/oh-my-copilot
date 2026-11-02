@@ -10,7 +10,8 @@ import { spawnSync } from "child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BaseSequencer } from "vitest/node";
 import DurationSequencer, { assignShards, DURATIONS_PATH, readDurations, WIN32_DURATIONS_PATH } from "../../scripts/ci/duration-sequencer.mjs";
 import DurationsReporter from "../../scripts/ci/durations-reporter.mjs";
 import { durationsFromReports } from "../../scripts/ci/update-test-durations.mjs";
@@ -80,6 +81,12 @@ describe("longest-first test order", () => {
   const MAIN = project("main", 0);
   const SERIAL = project("serial-budget", 1);
 
+  beforeEach(() => {
+    vi.stubEnv("CI", "");
+    vi.stubEnv("OMC_TEST_LPT", "1");
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
   function withTables(tables: Record<string, Record<string, number>>, body: (root: string) => Promise<void>) {
     const root = mkdtempSync(join(tmpdir(), "omg-sort-"));
     mkdirSync(join(root, ".github/ci"), { recursive: true });
@@ -101,6 +108,28 @@ describe("longest-first test order", () => {
         "main:d.test.ts",
         "main:a.test.ts",
       ]);
+    }));
+
+  it.each([["CI", "true"], ["OMC_TEST_LPT", "1"]])("sorts longest first when %s is set", (name, value) =>
+    withTables({ [DURATIONS_PATH]: { "a.test.ts": 10, "b.test.ts": 500 } }, async (root) => {
+      vi.stubEnv("CI", "");
+      vi.stubEnv("OMC_TEST_LPT", "");
+      vi.stubEnv(name, value);
+      const specs = ["a.test.ts", "b.test.ts"].map((file) => ({ moduleId: join(root, file), project: MAIN }));
+      expect(names(root, await sequencer(root).sort(specs as never))).toEqual(["main:b.test.ts", "main:a.test.ts"]);
+    }));
+
+  it("defers to vitest's own sort when neither CI nor OMC_TEST_LPT is set", () =>
+    withTables({ [DURATIONS_PATH]: { "a.test.ts": 10, "b.test.ts": 500 } }, async (root) => {
+      vi.stubEnv("OMC_TEST_LPT", "");
+      const base = vi.spyOn(BaseSequencer.prototype, "sort").mockResolvedValue(["base"] as never);
+      try {
+        const specs = ["a.test.ts", "b.test.ts"].map((file) => ({ moduleId: join(root, file), project: MAIN }));
+        expect(await sequencer(root).sort(specs as never)).toEqual(["base"]);
+        expect(base).toHaveBeenCalledTimes(1);
+      } finally {
+        base.mockRestore();
+      }
     }));
 
   it("keeps the serial-budget project after main and never mixes projects", () =>
@@ -179,6 +208,20 @@ describe("update-test-durations", () => {
   it("rejects a file that is not a durations report", () => {
     expect(() => durationsFromReports([[]])).toThrow(/durations report/);
     expect(() => durationsFromReports([null])).toThrow(/durations report/);
+  });
+
+  it("refuses a report with no file entries instead of wiping the table", () => {
+    const root = mkdtempSync(join(tmpdir(), "omg-durations-"));
+    try {
+      for (const body of [{}, { testResults: [] }]) {
+        writeFileSync(join(root, "report.json"), JSON.stringify(body));
+        const result = spawnSync(process.execPath, [UPDATER, "--root", root, join(root, "report.json")], { encoding: "utf8" });
+        expect(result.status).toBe(1);
+        expect(result.stderr).toMatch(/no file durations/);
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it.each([["--root"], ["--out"], ["report.json", "--out"]])("prints the usage for %s without a value", (...args) => {

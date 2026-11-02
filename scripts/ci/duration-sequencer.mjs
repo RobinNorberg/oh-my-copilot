@@ -3,7 +3,8 @@
  *
  * `sort` starts the longest files first (longest-processing-time-first), so a
  * multi-minute file does not start late and set the run's tail; vitest's own
- * order is failed-first from a per-checkout cache. `shard` balances
+ * order is failed-first from a per-checkout cache, which a local run keeps:
+ * `sort` applies only when `CI` or `OMC_TEST_LPT` is set. `shard` balances
  * `--shard=<i>/<n>` by duration instead of vitest's file-count split, which
  * leaves one shard about twice as long when a few files take minutes.
  *
@@ -75,6 +76,7 @@ export default class DurationSequencer extends BaseSequencer {
     const { root, shard } = this.ctx.config;
     const durations = readDurations(root);
     if (!durations) return super.shard(specs);
+    // Unknown files weigh the median here (a balanced split needs a cost), unlike sort(), which starts them first.
     const keyOf = (spec) => relative(root, spec.moduleId).replace(/\\/g, '/');
     const shards = assignShards([...new Set(specs.map(keyOf))], durations, shard.count);
     const mine = new Set(shards[shard.index - 1].paths);
@@ -90,6 +92,7 @@ export default class DurationSequencer extends BaseSequencer {
    * costs only its own seconds.
    */
   async sort(files) {
+    if (!process.env.CI && !process.env.OMC_TEST_LPT) return super.sort(files);
     const { root } = this.ctx.config;
     const durations = readDurations(root);
     if (!durations) return super.sort(files);

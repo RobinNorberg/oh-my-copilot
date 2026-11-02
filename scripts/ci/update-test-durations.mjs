@@ -69,6 +69,10 @@ function main(argv) {
     return 2;
   }
   const durations = durationsFromReports(files.map((f) => JSON.parse(readFileSync(f, 'utf8'))), root);
+  if (Object.keys(durations).length === 0) {
+    console.error('no file durations in the given report(s): an empty report, or a vitest JSON report without testResults, would wipe the table');
+    return 1;
+  }
   const target = resolve(root, out ?? DURATIONS_PATH);
   writeFileSync(target, `${JSON.stringify(durations, null, 2)}\n`);
   console.log(`wrote ${Object.keys(durations).length} file durations to ${relative(root, target).replace(/\\/g, '/')}`);
