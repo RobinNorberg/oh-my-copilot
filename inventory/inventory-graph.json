@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "a82acd70d0d317077b271596d3f1ee7923f6b63a",
-    "sourceSha256": "1bd8a1494446965d59aabf7efb9e99f5a716f921b8b774835deab48d6bc03383",
+    "head": "aaf8d4cb72d3f2368ee349c798051d01e1ef590d",
+    "sourceSha256": "3d6764f21fac2155927d3f5b16ecf17fd1f1d35bfc8f126a894db47b4cce3629",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "a82acd70d0d317077b271596d3f1ee7923f6b63a",
-  "sourceSha256": "1bd8a1494446965d59aabf7efb9e99f5a716f921b8b774835deab48d6bc03383",
+  "head": "aaf8d4cb72d3f2368ee349c798051d01e1ef590d",
+  "sourceSha256": "3d6764f21fac2155927d3f5b16ecf17fd1f1d35bfc8f126a894db47b4cce3629",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1954,
-      "total": 1978
+      "srcFiles": 1950,
+      "total": 1974
     },
     "generated": {
       "distFiles": 7192,
@@ -8844,6 +8844,11 @@
         "id": ".github/ci/test-durations.json",
         "kind": "other",
         "path": ".github/ci/test-durations.json"
+      },
+      {
+        "id": ".github/ci/test-durations.win32.json",
+        "kind": "other",
+        "path": ".github/ci/test-durations.win32.json"
       },
       {
         "id": ".github/ci/windows-path-suite.txt",
@@ -55681,16 +55686,6 @@
         "path": "src/ship/__tests__/fixtures/checks-pr233-green.json"
       },
       {
-        "id": "src/ship/__tests__/fixtures/job-log-ci-gate-needs-failed.txt",
-        "kind": "src",
-        "path": "src/ship/__tests__/fixtures/job-log-ci-gate-needs-failed.txt"
-      },
-      {
-        "id": "src/ship/__tests__/fixtures/job-log-ci-gate-own-failure.txt",
-        "kind": "src",
-        "path": "src/ship/__tests__/fixtures/job-log-ci-gate-own-failure.txt"
-      },
-      {
         "id": "src/ship/__tests__/fixtures/job-log-flaky.txt",
         "kind": "src",
         "path": "src/ship/__tests__/fixtures/job-log-flaky.txt"
@@ -55699,16 +55694,6 @@
         "id": "src/ship/__tests__/fixtures/job-log-real-failure.txt",
         "kind": "src",
         "path": "src/ship/__tests__/fixtures/job-log-real-failure.txt"
-      },
-      {
-        "id": "src/ship/__tests__/fixtures/job-log-shard-flaky.txt",
-        "kind": "src",
-        "path": "src/ship/__tests__/fixtures/job-log-shard-flaky.txt"
-      },
-      {
-        "id": "src/ship/__tests__/fixtures/job-log-test-shards-failed.txt",
-        "kind": "src",
-        "path": "src/ship/__tests__/fixtures/job-log-test-shards-failed.txt"
       },
       {
         "id": "src/ship/__tests__/fixtures/project-config-admin-merge.jsonc",
@@ -117369,6 +117354,11 @@
       },
       {
         "from": "tests/lint/ci-test-shards.test.ts",
+        "to": "external:vitest/node",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/ci-test-shards.test.ts",
         "to": "scripts/ci/duration-sequencer.mjs",
         "kind": "imports"
       },
@@ -117979,12 +117969,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9911,
-      "edgeCount": 11927,
-      "importEdgeCount": 9801,
+      "nodeCount": 9908,
+      "edgeCount": 11928,
+      "importEdgeCount": 9802,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "392e22ac2dad91818655c4624f2f50268ccc20c455a11abac99ee7ab84c516a6",
-  "manifestSha256": "d28ad3acca34d6a7a435a22f35c596c0ae69cb495d79ad0e1ef38c3ec610ede2"
+  "inventorySha256": "d6e77e225fc27bf047069980a8dcf2cf68277a244cfd084a98b29edee803dcfd",
+  "manifestSha256": "f1110c50a3bed7d21440e0b785a57a01fb7878f589710fafe61a64c302263199"
 }
