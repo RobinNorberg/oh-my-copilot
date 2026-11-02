@@ -114,6 +114,7 @@ export function parseJob(job, rawLog, known) {
         failingTests: analysis.failingTests,
         blockers: analysis.blockers,
         knownFlaky: analysis.knownFlaky,
+        ...(analysis.aggregate ? { aggregate: analysis.aggregate } : {}),
         infra: analysis.failingTests.length === 0 ? infraMatches(log, job.failedSteps) : [],
         ...(firstError ? { firstError } : {}),
         env: parseJobEnv(log),

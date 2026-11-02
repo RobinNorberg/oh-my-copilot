@@ -16,6 +16,8 @@ import { Command } from 'commander';
 import { withFileLockSync } from '../../lib/file-lock.js';
 import chalk from 'chalk';
 import { parseKnownFlaky, type KnownFlakyTest } from '../../ship/config.js';
+import { needsExplained } from '../../ship/gates.js';
+import { CI_WORKFLOW, jobCheckNames } from '../../ship/workflow.js';
 import type { Exec } from '../../ship/exec.js';
 import type { AzEntry } from '../../forge/ado/az-binary.js';
 import type { AdoGuardContext } from '../../forge/ado/guard.js';
@@ -139,6 +141,9 @@ interface Ctx {
   config: HealConfig;
   jobs: Map<string, HealJob[]>;
   logs: Map<string, ParsedJob>;
+  base: string;
+  /** jobChecks cache. */
+  jobChecks?: Map<string, string[]>;
 }
 
 function runJobs(ctx: Ctx, runId: string): HealJob[] {
@@ -153,11 +158,38 @@ function parsed(ctx: Ctx, job: HealJob): ParsedJob {
   return p;
 }
 
-/** The run's failed jobs, split into the ones that count and the PR-policy jobs that never heal. */
+/** Conclusions an aggregator (CI Gate) reports as `not success or skipped`. */
+const NON_PASSING = new Set(['failure', 'cancelled', 'timed_out']);
+
+/** ci.yml's job key -> check names at origin/<base> (read once per scan); empty when it is missing. */
+function jobChecks(ctx: Ctx): Map<string, string[]> {
+  if (!ctx.jobChecks) {
+    const r = ctx.exec('git', ['show', `refs/remotes/origin/${ctx.base}:${CI_WORKFLOW}`], { cwd: ctx.root });
+    ctx.jobChecks = r.status === 0 ? jobCheckNames(r.stdout) : new Map();
+  }
+  return ctx.jobChecks;
+}
+
+/**
+ * The run's failed jobs, split into the ones that count and the PR-policy jobs
+ * that never heal. An aggregator (CI Gate, the Test summary) that failed only
+ * because jobs it needs failed is classified by those jobs, but only when
+ * every job it names failed and was parsed or ignored here (needsExplained):
+ * a cancelled or timed-out job it names is non-passing yet never parsed, so
+ * the aggregator stays counted.
+ */
 function failedJobs(ctx: Ctx, run: HealRun): { counted: ParsedJob[]; ignored: string[] } {
-  const failed = runJobs(ctx, run.id).filter((j) => j.conclusion === 'failure');
+  const jobs = runJobs(ctx, run.id);
+  const failed = jobs.filter((j) => j.conclusion === 'failure');
   const ignored = failed.filter((j) => ctx.config.ignoreJobs.includes(j.name)).map((j) => j.name);
-  return { counted: failed.filter((j) => !ctx.config.ignoreJobs.includes(j.name)).map((j) => parsed(ctx, j)), ignored };
+  const counted = failed.filter((j) => !ctx.config.ignoreJobs.includes(j.name)).map((j) => parsed(ctx, j));
+  if (!counted.some((j) => j.aggregate)) return { counted, ignored };
+  const analysed = new Set(failed.map((j) => j.jobId));
+  const nonPassing = jobs.filter((j) => NON_PASSING.has(j.conclusion));
+  const explained = (job: ParsedJob) => needsExplained(job.aggregate ?? [], jobChecks(ctx), nonPassing
+    .filter((j) => j.jobId !== job.jobId)
+    .map((j) => ({ name: j.name, failed: true, analysed: analysed.has(j.jobId) })));
+  return { counted: counted.filter((j) => !(j.aggregate && explained(j))), ignored };
 }
 
 /** The same-named successful job in one of `runs` (newest first), parsed for its environment. */
@@ -230,7 +262,7 @@ export function runHealScan(opts: ScanOpts): ScanResult {
 function scanOnce(opts: ScanOpts): ScanResult {
   const exec = healGuardExec(opts.exec, opts.ado);
   const ci = (opts.ci ?? githubCi)(exec, opts.root);
-  const ctx: Ctx = { exec, root: opts.root, ci, known: loadKnownFlaky(exec, opts.root, opts.base, opts.warn), config: opts.config, jobs: new Map(), logs: new Map() };
+  const ctx: Ctx = { exec, root: opts.root, ci, known: loadKnownFlaky(exec, opts.root, opts.base, opts.warn), config: opts.config, jobs: new Map(), logs: new Map(), base: opts.base };
   const completed = (r: HealRun) => r.status === 'completed';
   const pushRuns = ci.listRuns({ workflow: HEAL_WORKFLOW, event: 'push', branch: opts.base, limit: SCAN_LIMITS.runList }).filter(completed);
   const since = opts.now.getTime() - SCAN_LIMITS.prWindowMs;
