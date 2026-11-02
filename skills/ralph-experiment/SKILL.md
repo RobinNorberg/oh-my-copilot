@@ -45,11 +45,18 @@ Optimization tasks fail when treated as implementation tasks. "Make X faster" do
 <Execution_Policy>
 - One hypothesis at a time -- sequential experiments, not parallel
 - Delegate implementation to executor agents or teams for each hypothesis
-- Run long measurement commands (builds, benchmarks, test suites) in the background: `run_in_background: true` on Claude Code, shell `mode: "async"` on Copilot CLI
-- Always pass the model explicitly when delegating to agents (`model="sonnet"` on Claude Code; on Copilot CLI the `task` tool's `model` takes a full id such as `claude-sonnet-...`)
-- Pseudo-code below uses Claude Code names. On Copilot CLI, `Agent(subagent_type=...)` is `task(agent_type=..., mode="background"|"sync")`, and `TeamCreate`/`TeamDelete` become several parallel `task` calls (or the `team` skill)
+- Run long measurement commands (builds, benchmarks, test suites) in the background (`run_in_background: true`)
+- Always pass the model explicitly when delegating to agents (`model="sonnet"`)
+- Pseudo-code below uses Claude Code names; see "On GitHub Copilot CLI" below for the Copilot equivalents
 - Commit before measuring, roll back on discard -- no uncommitted experiments. Roll back safely (see Rollback_Safety)
 - Never stop unless: success criteria met, budget exhausted, or human interrupts
+
+### On GitHub Copilot CLI
+
+- Run long measurement commands with shell `mode: "async"` instead of `run_in_background`
+- `Agent(subagent_type=...)` is `task(agent_type=..., mode="background"|"sync")`; `TeamCreate`/`TeamDelete` become several parallel `task` calls (or the `team` skill)
+- The `task` tool's `model` takes a full model id such as `claude-sonnet-5.5`, not the `sonnet` alias
+- PowerShell 5.1 has no `&&`: run each command separately. Do not redirect native commands with `*>` (it writes UTF-16 and wraps stderr in `NativeCommandError` records)
 </Execution_Policy>
 
 <Steps>
@@ -66,8 +73,10 @@ Parse the user's request to extract:
   - `--budget "scripts done"` → scope-based (scripts complete successfully)
   - Default: 20 experiments
 
+Require a clean tree before starting: `git status --porcelain` must print nothing in every repo the loop will change. If it does not, stop and ask the user to commit or move the unrelated work first.
+
 Then:
-a. Create experiment branch: `git checkout -b experiment/{tag}` from current HEAD (in every repo the loop will change; for multi-repo work prefer a worktree per repo, see Rollback_Safety)
+a. Create experiment branch: `git checkout -b experiment/{tag}` from current HEAD. For multi-repo work, use `git worktree add -b experiment/{tag} <path>` in each repo instead of `git checkout -b`, so every repo gets its own branch without disturbing its main checkout (see Rollback_Safety)
 b. Initialize `experiment-notebook.json` in `.omg/` at the workspace/root where the loop is driven, or at a custom path the user gives (see schema below)
 c. Run the measurement command to establish **baseline metrics**
 d. Record baseline in the notebook
@@ -111,12 +120,11 @@ TeamCreate(name="exp-{N}", members=["executor-1", "executor-2", "tester-3"])
 
 **Adaptive escalation**: If a single executor fails due to implementation complexity (not wrong hypothesis), retry with a team. Track `escalated: true` in the notebook.
 
-After implementation, commit the changes (run each command separately in PowerShell; `&&` needs PowerShell 7+):
+After implementation, commit the changes (run each command separately in PowerShell 5.1). Stage only the files the experiment touched, by pathspec -- never `git add -A` or `git add .`:
 ```
-git add -A
+git add -- {file1} {file2}
 git commit -m "experiment(EXP-{N}): {hypothesis summary}"
 ```
-Prefer staging only the files the hypothesis touched if the tree has unrelated changes.
 
 For a non-code hypothesis (cluster settings, env vars, feature toggles), there is no commit to revert: record the exact change and its rollback command in the notebook (`changes`, `rollback`) before applying it.
 
@@ -126,7 +134,7 @@ Run the measurement command, writing output to a log file as it is produced:
 ```bash
 {measurement_command} > .omg/experiment-run.log 2>&1
 ```
-PowerShell: `{measurement_command} *> .omg/experiment-run.log`
+PowerShell 5.1: `cmd /c "{measurement_command} > .omg\experiment-run.log 2>&1"` (or `{measurement_command} 2>&1 | Out-File -Encoding utf8 .omg/experiment-run.log`)
 
 Measurement rules:
 - Write results to disk as they are produced (log file, notebook entry per run), never only at the end; a crash must not lose a round of measurements
@@ -176,7 +184,14 @@ Compare metrics to:
 **On DISCARD:**
 ```bash
 git revert --no-edit HEAD   # Safe default; keeps history
-# On a private experiment branch with only your own commits, `git reset --hard HEAD~1` is also fine
+```
+`git reset --hard HEAD~1` is allowed only when all three checks pass; otherwise use `git revert`:
+```bash
+test "$(git branch --show-current)" = "experiment/{tag}"   # the branch Step 1 created
+test -z "$(git status --porcelain)"                        # clean tree
+git rev-parse --abbrev-ref @{u}                            # must fail: never pushed (no upstream)
+git ls-remote --heads origin experiment/{tag}              # must print nothing: not on the remote
+git worktree list                                          # branch must appear in exactly one worktree
 ```
 For non-code changes, run the recorded rollback command and verify the previous state is restored.
 
@@ -229,8 +244,9 @@ Then run `/cancel` for clean state cleanup.
 </Steps>
 
 <Rollback_Safety>
-- `git reset --hard` may only run on the experiment branch, and only over commits this loop made. Never reset a branch that holds others' commits or a working tree with unrelated uncommitted work; use `git revert` instead
-- Multi-repo work: one `experiment/{tag}` branch or `git worktree` per repo, with the per-repo commit recorded in the notebook; discard reverts every repo the experiment touched
+- `git reset --hard` is allowed only when the current branch is the `experiment/{tag}` branch Step 1 created, `git status --porcelain` is empty, and the branch has never been pushed or checked out in another worktree (commands in Step 5). Otherwise use `git revert`
+- Stage by pathspec only, so a revert or reset never touches unrelated work
+- Multi-repo work: one `experiment/{tag}` branch or `git worktree` per repo, with the per-repo commit recorded in the notebook (`commit` is a `{repo: hash}` map); discard reverts every repo the experiment touched
 - Non-code (runtime/infra) hypotheses: record the exact change and rollback command in the notebook first, and roll back by running it, not by git
 </Rollback_Safety>
 
@@ -245,12 +261,12 @@ Then run `/cancel` for clean state cleanup.
   "budget": { "type": "experiments|time|scope", "limit": "number|string" },
   "branch": "string — experiment branch name",
   "baseline": {
-    "commit": "string — 7-char hash",
+    "commit": { "repo": "7-char hash" },
     "metrics": { "metric_name": "number" },
     "timestamp": "ISO string"
   },
   "best": {
-    "commit": "string",
+    "commit": { "repo": "7-char hash" },
     "experimentId": "string",
     "metrics": { "metric_name": "number" },
     "improvement": "string — human-readable summary"
@@ -263,7 +279,7 @@ Then run `/cancel` for clean state cleanup.
       "rationale": "string — why this should work",
       "changes": ["file1.ts", "file2.ts"],
       "rollback": "string | null — rollback command for non-code changes",
-      "commit": "string — 7-char hash (per repo if multi-repo)",
+      "commit": { "repo": "7-char hash" },  // one entry per repo; single-repo work uses one key
       "status": "keep|discard|modify|crash|in_progress",
       "escalated": false,
       "metrics": { "metric_name": "number" },
