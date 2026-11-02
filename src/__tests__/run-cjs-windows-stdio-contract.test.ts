@@ -57,15 +57,27 @@ async function waitForFile(path: string, timeoutMs = 4000): Promise<void> {
  * process starts from passing for the runner waiting that timeout out.
  * EARLY_CLOSE_BOUND_MS only stops a hung runner. The real bound is
  * EARLY_CLOSE_EXCESS_MS, measured from the consumer close or above a
- * baseline run, so slow process starts stay out of it while a fixed
- * drain of 2 s or more after the close still fails.
+ * baseline run, so slow process starts stay out of it. Runner exit time
+ * lifts the real detection floor to about 2.3-2.5 s, so a fixed 2 s drain
+ * fails only with the 1.5 s excess; a shorter drain goes unnoticed.
  */
 const EARLY_CLOSE_HOOK_SEC = 30;
 const EARLY_CLOSE_BOUND_MS = 10_000;
-const EARLY_CLOSE_EXCESS_MS = 2_500;
+const EARLY_CLOSE_EXCESS_MS = 1_500;
+const BASELINE_CLAMP_MS = 2_000;
 
-/** Spawn-to-exit time of the runner for a hook that writes once and exits, consumers open. */
+/**
+ * Spawn-to-exit time of the runner for a hook that writes once and exits,
+ * consumers open: the minimum of two runs, clamped so a load spike cannot
+ * hide a drain regression.
+ */
 async function runnerBaselineMs(directory: string): Promise<number> {
+  const first = await runnerBaselineOnceMs(directory);
+  const second = await runnerBaselineOnceMs(directory);
+  return Math.min(first, second, BASELINE_CLAMP_MS);
+}
+
+async function runnerBaselineOnceMs(directory: string): Promise<number> {
   const pluginRoot = join(directory, 'baseline-plugin');
   const target = writePluginHook(pluginRoot, 'baseline.cjs', "process.stdout.write('BASE');\n", EARLY_CLOSE_HOOK_SEC);
   const startedAt = Date.now();
