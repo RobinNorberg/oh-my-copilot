@@ -6,7 +6,7 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Changed
 
-- The haiku tier (explore, writer) on Copilot now tries GPT-6 Luna first, then Claude Haiku 5.5.
+- The haiku tier (explore, writer) on Copilot now falls back to GPT-6 Luna after Claude Haiku 5.5, before Claude Haiku 4.5.
 
 # oh-my-copilot v5.19.5
 

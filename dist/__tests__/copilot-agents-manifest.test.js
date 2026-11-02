@@ -135,11 +135,11 @@ describe('copilot/agents generated from agents/', () => {
             }
         }
     });
-    it('lists claude-opus-5.5 / claude-sonnet-5.5 / gpt-6-luna first in their tiers', async () => {
+    it('lists claude-opus-5.5 / claude-sonnet-5.5 / claude-haiku-5.5 first in their tiers', async () => {
         const { MODEL_TABLE } = await generator;
         expect(MODEL_TABLE.opus[0]).toBe('claude-opus-5.5');
         expect(MODEL_TABLE.sonnet[0]).toBe('claude-sonnet-5.5');
-        expect(MODEL_TABLE.haiku.slice(0, 2)).toEqual(['gpt-6-luna', 'claude-haiku-5.5']);
+        expect(MODEL_TABLE.haiku.slice(0, 2)).toEqual(['claude-haiku-5.5', 'gpt-6-luna']);
     });
     it('lets read-only agents read async shell output and background subagents', () => {
         for (const name of READ_ONLY_AGENTS) {
