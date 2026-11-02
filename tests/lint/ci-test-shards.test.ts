@@ -155,4 +155,15 @@ describe("serial-budget vitest project", () => {
     expect(serial.fileParallelism).toBe(false);
     expect(serial.sequence?.groupOrder ?? 0).toBeGreaterThan(main.sequence?.groupOrder ?? 0);
   });
+
+  it("hands a CLI --exclude on to the projects", () => {
+    const file = "src/__tests__/session-end-process-exit.test.ts";
+    const list = (...extra: string[]) =>
+      spawnSync(process.execPath, [join(REPO_ROOT, "node_modules/vitest/vitest.mjs"), "list", "--filesOnly", file, ...extra], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+      }).stdout;
+    expect(list()).toContain(`[serial-budget] ${file}`);
+    expect(list("--exclude", file)).not.toContain(file);
+  });
 });
