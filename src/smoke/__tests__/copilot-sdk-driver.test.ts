@@ -78,6 +78,8 @@ interface FakeOptions {
   stopError?: string;
   /** Tool names getCurrentMetadata reports (default: two t-* tools, no host_smoke). */
   toolNames?: string[];
+  /** The plugin MCP server mcp.list reports connected (default 't'); another name waits out the 20 s connect window. */
+  mcpServer?: string;
   /** Appended while `during` runs, stamped with the time `from` was sent (a late line). */
   lateLine?: { from: Scenario; during: Scenario; text: string };
   /** `client.rpc.sandbox.getHostSupport()` answer (default: an unsupported host); null = no such RPC. */
@@ -212,7 +214,7 @@ function fakeSdk(opts: FakeOptions = {}): { loaded: LoadedSdk; rec: FakeRecord }
           },
           agent: { list: async () => ({ agents: [{ name: 'oh-my-copilot:architect' }] }) },
           mcp: {
-            list: async () => ({ servers: [{ name: 't', status: 'connected' }] }),
+            list: async () => ({ servers: [{ name: opts.mcpServer ?? 't', status: 'connected' }] }),
             listTools: async () => ({ tools: [{ name: 'a' }, { name: 'b' }, { name: 'c' }] }),
           },
           tools: {
@@ -780,7 +782,7 @@ describe('runSdkTier credit cap, log windows, tree kill', () => {
   });
 
   it('derives the excluded tool from the MCP server name', async () => {
-    const { loaded, rec } = fakeSdk({ toolNames: ['omg-state_read'] });
+    const { loaded, rec } = fakeSdk({ toolNames: ['omg-state_read'], mcpServer: 'omg' });
     await runSdkTier(input(loaded, { scenarios: ['smoke'], mcpServer: 'omg' }));
     for (const s of rec.sessions) expect(s.excludedTools[0]).toBe('omg-host_smoke');
   });

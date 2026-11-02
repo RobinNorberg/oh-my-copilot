@@ -5,7 +5,7 @@ import { buildSync } from 'esbuild';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { IS_WIN, requiresSymlinks } from './helpers/platform.js';
+import { IS_WIN, requiresSymlinks, scaleTiming } from './helpers/platform.js';
 const REPO_ROOT = join(__dirname, '..', '..');
 const SETUP_SCRIPT = join(REPO_ROOT, 'scripts', 'setup-claude-md.sh');
 const CONFIG_DIR_HELPER = join(REPO_ROOT, 'scripts', 'lib', 'config-dir.sh');
@@ -1371,7 +1371,8 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
                 cwd: fixture.projectRoot,
                 env: { ...process.env, HOME: fixture.homeRoot, COPILOT_HOME: join(fixture.homeRoot, '.claude') },
                 encoding: 'utf-8',
-                timeout: 10_000,
+                // Bounds a hang only: a loaded host spends seconds in the shimmed node starts.
+                timeout: scaleTiming(25_000),
             });
             expect(result.status).toBe(0);
             expect(result.stderr).toBe('');
@@ -1403,7 +1404,8 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
                     OMC_SETUP_REEXEC_DEPTH: '2',
                 },
                 encoding: 'utf-8',
-                timeout: 10_000,
+                // Bounds a hang only: a loaded host spends seconds in the shimmed node starts.
+                timeout: scaleTiming(25_000),
             });
             expect(result.status).toBe(1);
             expect(result.stderr).toContain('setup re-exec loop detected');
@@ -1434,7 +1436,8 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
                     PATH: `${shimDir}:${process.env.PATH}`,
                 },
                 encoding: 'utf-8',
-                timeout: 10_000,
+                // Bounds a hang only: a loaded host spends seconds in the shimmed node starts.
+                timeout: scaleTiming(25_000),
             });
             expect(result.status).toBe(0);
             expect(readFileSync(join(fixture.projectRoot, '.claude', 'CLAUDE.md'), 'utf-8')).toContain('9.9.10');

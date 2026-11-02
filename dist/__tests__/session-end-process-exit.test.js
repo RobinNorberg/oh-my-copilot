@@ -22,6 +22,9 @@ const TEST_PRODUCER_GRACE_MS = '25';
 // The worker's required actions have a 9s budget; allow that bounded contract
 // plus process-startup/runner contention under the full suite.
 const DETACHED_WORKER_CEILING_MS = IS_CI ? 25_000 : scaleTiming(5_000);
+// Each manifest revision restarts this wait. A loaded local full suite slows
+// the detached worker as much as a CI runner does, so both get the same window.
+const WORKER_PROGRESS_WINDOW_MS = 10_000;
 const WIN_REAPER = [
     "const { rmSync } = require('node:fs');",
     'const deadline = Date.now() + 180_000;',
@@ -98,7 +101,7 @@ async function waitForTerminalCallback(cwd, sessionId) {
                 if (manifest.revision !== lastRevision || manifest.phase !== lastPhase) {
                     lastRevision = manifest.revision;
                     lastPhase = manifest.phase;
-                    deadline = Math.min(hardCeiling, Date.now() + (IS_CI ? 10_000 : 5_000));
+                    deadline = Math.min(hardCeiling, Date.now() + WORKER_PROGRESS_WINDOW_MS);
                 }
                 if (manifest.phase === 'complete' && manifest.owner === null && manifest.actions.callback?.status === 'completed') {
                     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -115,7 +118,7 @@ async function waitForTerminalCallback(cwd, sessionId) {
                 if (manifest.revision !== lastRevision || manifest.phase !== lastPhase) {
                     lastRevision = manifest.revision;
                     lastPhase = manifest.phase;
-                    deadline = Math.min(hardCeiling, Date.now() + (IS_CI ? 10_000 : 5_000));
+                    deadline = Math.min(hardCeiling, Date.now() + WORKER_PROGRESS_WINDOW_MS);
                 }
             }
             catch {
@@ -250,7 +253,7 @@ describe('SessionEnd run.cjs process exit regressions (#3477)', () => {
         });
         expectPromptExit(result);
         const manifestPath = join(getOmcRoot(cwd), 'state', 'session-end-jobs', 'configured-network-routing.json');
-        const publicationDeadline = Date.now() + scaleTiming(2_000);
+        const publicationDeadline = Date.now() + DETACHED_WORKER_CEILING_MS;
         while (!existsSync(manifestPath) && Date.now() < publicationDeadline) {
             await new Promise(resolve => setTimeout(resolve, 10));
         }

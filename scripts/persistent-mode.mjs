@@ -1648,6 +1648,8 @@ async function main() {
         }
         const workflowAdvance = advanceWorkflowOnStop(autopilot.state, data, sessionId);
         if (workflowAdvance) {
+          // Test-only: tell a test the transcript snapshot is taken before the commit lock is tried.
+          if (process.env.NODE_ENV === "test" && process.env.OMC_WORKFLOW_TEST_ADVANCE_SIGNAL_PATH) closeSync(openSync(process.env.OMC_WORKFLOW_TEST_ADVANCE_SIGNAL_PATH, "w"));
           const commit = commitWorkflowAdvance(autopilot.path, workflowAdvance);
           if (commit.committed) {
             console.log(JSON.stringify({ continue: false, decision: "block", reason: workflowAdvance.nextStage

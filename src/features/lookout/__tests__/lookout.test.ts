@@ -18,6 +18,14 @@ import { LookoutError, resolveBriefArg, scanLookout } from "../index.js";
 
 const tempDirs: string[] = [];
 
+/** CPU milliseconds `fn` costs this worker; unlike wall time it ignores host load. */
+function cpuMs(fn: () => unknown): number {
+  const start = process.cpuUsage();
+  fn();
+  const { user, system } = process.cpuUsage(start);
+  return (user + system) / 1000;
+}
+
 function git(cwd: string, args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 }
@@ -615,16 +623,12 @@ EOF`,
 
   it("keeps repeated negation lookup bounded", () => {
     const brief = Array.from({ length: 30_000 }, () => "never skip tests").join("; ");
-    const started = performance.now();
-    scanLookout({ ...base(), brief });
-    expect(performance.now() - started).toBeLessThan(3_000);
+    expect(cpuMs(() => scanLookout({ ...base(), brief }))).toBeLessThan(3_000);
   });
 
   it("bounds deeply nested substitution scanning", () => {
     const brief = `${"$(".repeat(5_000)}printf ok${")".repeat(5_000)}`;
-    const started = performance.now();
-    scanLookout({ ...base(), brief });
-    expect(performance.now() - started).toBeLessThan(3_000);
+    expect(cpuMs(() => scanLookout({ ...base(), brief }))).toBeLessThan(3_000);
   });
 
   it("honors explicit negation in briefings", () => {

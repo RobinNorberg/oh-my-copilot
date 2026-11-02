@@ -194,9 +194,13 @@ describe('processHook - Environment Kill-Switches', () => {
         directory: '/tmp/test'
       };
 
-      const start = Date.now();
+      // Warm the lazy imports first, then measure this worker's CPU time: wall
+      // time on a loaded host counts the scheduler, not the hook.
       await processHook('keyword-detector', input);
-      const duration = Date.now() - start;
+      const start = process.cpuUsage();
+      await processHook('keyword-detector', input);
+      const { user, system } = process.cpuUsage(start);
+      const duration = (user + system) / 1000;
 
       // Should complete in under 500ms (generous threshold for CI environments)
       // The actual overhead should be negligible (< 1ms)

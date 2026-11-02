@@ -52,6 +52,13 @@ async function waitForFile(path, timeoutMs = 4000) {
     }
     throw new Error(`timed out waiting for ${path}`);
 }
+/**
+ * Consumer-closes-early cases: the runner must exit long before its inner
+ * timeout. A declared budget far above the bound keeps a loaded host's
+ * process starts from passing for the runner waiting that timeout out.
+ */
+const EARLY_CLOSE_HOOK_SEC = 30;
+const EARLY_CLOSE_BOUND_MS = 10_000;
 function writePluginHook(root, scriptName, source, timeoutSec) {
     mkdirSync(join(root, 'scripts'), { recursive: true });
     mkdirSync(join(root, 'hooks'), { recursive: true });
@@ -505,7 +512,7 @@ const start = () => {
   setInterval(() => {}, 1e9);
 };
 start();
-`, 5);
+`, EARLY_CLOSE_HOOK_SEC);
             const startedAt = Date.now();
             const child = runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
                 stdio: ['ignore', 'pipe', 'pipe'],
@@ -517,14 +524,14 @@ start();
             child.stdout.destroy();
             writeFileSync(goFile, 'go');
             const code = await new Promise((resolve, reject) => {
-                const timer = setTimeout(() => reject(new Error('runner waited for the inner timeout after stdout close')), 1500);
+                const timer = setTimeout(() => reject(new Error('runner waited for the inner timeout after stdout close')), EARLY_CLOSE_BOUND_MS);
                 child.once('exit', status => {
                     clearTimeout(timer);
                     resolve(status);
                 });
             });
             expect(code).toBe(0);
-            expect(Date.now() - startedAt).toBeLessThan(1500);
+            expect(Date.now() - startedAt).toBeLessThan(EARLY_CLOSE_BOUND_MS);
         }
         finally {
             try {
@@ -554,7 +561,7 @@ const pump = () => {
   }
 };
 pump();
-`, 5);
+`, EARLY_CLOSE_HOOK_SEC);
             const startedAt = Date.now();
             const runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
                 stdio: ['ignore', 'pipe', 'pipe'],
@@ -566,14 +573,14 @@ pump();
             runner.stderr.on('data', chunk => { stderr += chunk; });
             runner.stdout.destroy();
             const code = await new Promise((resolve, reject) => {
-                const timer = setTimeout(() => reject(new Error('drain-aware stdout hook waited for inner timeout')), 1500);
+                const timer = setTimeout(() => reject(new Error('drain-aware stdout hook waited for inner timeout')), EARLY_CLOSE_BOUND_MS);
                 runner.once('exit', status => {
                     clearTimeout(timer);
                     resolve(status);
                 });
             });
             expect(code).toBe(0);
-            expect(Date.now() - startedAt).toBeLessThan(1500);
+            expect(Date.now() - startedAt).toBeLessThan(EARLY_CLOSE_BOUND_MS);
             expect(stderr).toContain('ERR-KEEP');
         }
         finally {
@@ -600,7 +607,7 @@ const pump = () => {
   }
 };
 pump();
-`, 5);
+`, EARLY_CLOSE_HOOK_SEC);
             const startedAt = Date.now();
             const runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
                 stdio: ['ignore', 'pipe', 'pipe'],
@@ -612,14 +619,14 @@ pump();
             runner.stdout.on('data', chunk => { stdout += chunk; });
             runner.stderr.destroy();
             const code = await new Promise((resolve, reject) => {
-                const timer = setTimeout(() => reject(new Error('drain-aware stderr hook waited for inner timeout')), 1500);
+                const timer = setTimeout(() => reject(new Error('drain-aware stderr hook waited for inner timeout')), EARLY_CLOSE_BOUND_MS);
                 runner.once('exit', status => {
                     clearTimeout(timer);
                     resolve(status);
                 });
             });
             expect(code).toBe(0);
-            expect(Date.now() - startedAt).toBeLessThan(1500);
+            expect(Date.now() - startedAt).toBeLessThan(EARLY_CLOSE_BOUND_MS);
             expect(stdout).toContain('OUT-KEEP');
         }
         finally {

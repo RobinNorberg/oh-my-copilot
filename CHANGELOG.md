@@ -26,6 +26,11 @@ All notable changes to oh-my-copilot will be documented in this file.
   - JSON patches skip `__proto__`, `constructor` and `prototype` keys; a config file holding an array, `null` or a scalar is refused unmodified.
   - `set-task-tool` accepts only `builtin`, `beads` and `beads-rust`; `update-check` prints a version from `.omc-version.json` or the plugin cache only when it is a well-formed semver.
 
+### Tests
+
+- **Load-flaky tests no longer depend on host load** (CI speed-up goal 4). Root causes from the v5.19.x release suites and CI logs: the runtime-cli touched-admission deadline compared a sub-millisecond birthtime to a whole-millisecond `Date.now()` (it now rounds the deadline up to the birthtime); the ralplan subagent-bypass and requested_at-freshness tests froze the clock, since a slow first check outlived the 5 s recency window or the 1 s skew margin; lookout and the hook-bridge overhead checks measure the worker's CPU time instead of wall time; the stale-transcript Stop test waits for a NODE_ENV=test signal (`OMC_WORKFLOW_TEST_ADVANCE_SIGNAL_PATH`) from `persistent-mode.mjs` instead of sleeping 1 s; the Jev cleanup tests no longer give the resolver child 600 ms to start; the malformed-lock SessionStart check compares against a baseline run instead of a fixed 2400 ms; the early-close stdio contract cases declare a 30 s hook budget so a slow start cannot pass for an inner-timeout wait; the detached SessionEnd worker and Volta-shim waits got the CI window; the factory engine suites (a few hundred real git processes per run) got a hang-bound timeout.
+- **Slow tests:** `inventory-graph-drift` runs its independent generator spawns concurrently (65.6 s to 31.2 s locally), and the `copilot-sdk-driver` fake reports the MCP server the test names instead of waiting out the 20 s connect window (25.7 s to 5.3 s).
+
 # oh-my-copilot v5.19.2
 
 ## [5.19.2] - 2026-11-01

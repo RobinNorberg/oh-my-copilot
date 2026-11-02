@@ -642,19 +642,28 @@ describe('session-start template retired-state handling', () => {
     const legacyPath = join(stateDir, 'last-tool-error.json');
     const lockPath = `${legacyPath}.lock`;
     const workerLockPath = join(stateDir, '.legacy-tool-failure-cleanup-worker.lock');
+    const runSessionStart = async () => {
+      const startedAt = Date.now();
+      const output = JSON.parse(await startSessionStartProcess(SCRIPT_PATH, fakeHome, {
+        hook_event_name: 'SessionStart',
+        session_id: 'session-current',
+        cwd: fakeProject,
+      }, { CLAUDE_PLUGIN_ROOT: '', OMC_STATE_DIR: '', OMC_HOOK_BACKGROUND_CHILD: '1' }).output);
+      return { output, elapsed: Date.now() - startedAt };
+    };
+    // Baseline: the same SessionStart with no failure state at all. Comparing
+    // against it, not a fixed budget, keeps a loaded host's slow node start
+    // out of the measurement.
+    const baseline = await runSessionStart();
+    expect(baseline.output.continue).toBe(true);
+
     writeFileSync(legacyPath, JSON.stringify({ tool_input_preview: 'malformed lock legacy secret' }));
     writeFileSync(lockPath, 'malformed lock metadata');
 
     // Malformed metadata never repairs itself, so SessionStart does not spend its 2500 ms lock wait.
-    const sessionStartedAt = Date.now();
-    const output = JSON.parse(await startSessionStartProcess(SCRIPT_PATH, fakeHome, {
-      hook_event_name: 'SessionStart',
-      session_id: 'session-current',
-      cwd: fakeProject,
-    }, { CLAUDE_PLUGIN_ROOT: '', OMC_STATE_DIR: '', OMC_HOOK_BACKGROUND_CHILD: '1' }).output);
+    const { output, elapsed } = await runSessionStart();
     expect(output.continue).toBe(true);
-    // 2400 leaves room for a win32 cold node start yet stays below the 2500 ms wait plus startup.
-    expect(Date.now() - sessionStartedAt).toBeLessThan(2400);
+    expect(elapsed - baseline.elapsed).toBeLessThan(2000);
     expect(existsSync(legacyPath)).toBe(true);
     expect(readFileSync(lockPath, 'utf-8')).toBe('malformed lock metadata');
 
