@@ -47,7 +47,7 @@
 
 import { spawn, spawnSync, type SpawnOptions } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
-import { isAbsolute, join, resolve } from 'path';
+import { isAbsolute, join, resolve, win32 } from 'path';
 import { pathToFileURL } from 'url';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
 import { loadBaseKnownFlaky, prRepoUrl, type LoadedShipConfig } from '../ship/config.js';
@@ -75,11 +75,14 @@ import {
   testPassedInReport,
   TRIAGE_CAP,
   TRIAGE_POOL,
+  triageLine,
   VERSION_STAMPS,
   type SuiteShell,
   type TriageResult,
 } from './checks.js';
 import { parseCopilotVersion, resolveCopilotBinary } from '../smoke/copilot-binary.js';
+import { killProcessTree } from '../platform/process-utils.js';
+import { childEnv } from '../utils/windows-search.js';
 import type { ReleaseProgressInput } from './progress.js';
 
 export const PHASES = ['preflight', 'bump', 'build', 'gates', 'commit', 'suite', 'smoke', 'pr', 'promote', 'tag', 'verify'] as const;
@@ -175,18 +178,57 @@ function releaseSpawn(cmd: string, args: string[], opts?: ReleaseExecOptions): {
   };
 }
 
+/** Async children still running (POSIX: each leads its own process group): a stop of the release kills their trees. */
+const liveTrees = new Set<number>();
+const STOP_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
+
+/** A stop signal: kill every live child tree (vitest's fork workers included), then die of the signal as before. */
+function killLiveTrees(signal: NodeJS.Signals): void {
+  for (const pid of liveTrees) void killProcessTree(pid, 'SIGKILL');
+  for (const s of STOP_SIGNALS) process.off(s, killLiveTrees);
+  process.kill(process.pid, signal);
+}
+
+function trackTree(pid: number): void {
+  if (liveTrees.size === 0) for (const s of STOP_SIGNALS) process.on(s, killLiveTrees);
+  liveTrees.add(pid);
+}
+
+function untrackTree(pid: number): void {
+  if (liveTrees.delete(pid) && liveTrees.size === 0) for (const s of STOP_SIGNALS) process.off(s, killLiveTrees);
+}
+
 export const defaultReleaseExecAsync: ReleaseExecAsync = (cmd, args, opts) => {
   const s = releaseSpawn(cmd, args, opts);
   if ('refused' in s) return Promise.resolve(s.refused);
+  // Not spawn's own timeout: it kills only the child, orphaning vitest's pooled fork workers.
+  const { timeout, ...options } = s.options;
   return new Promise((done) => {
     let stdout = '';
     let stderr = '';
-    const child = spawn(s.file, s.args, { ...s.options, stdio: ['ignore', 'pipe', 'pipe'] });
+    let timedOut = false;
+    // POSIX: its own process group, so the tree kill reaches its children (Windows: taskkill /T walks the tree).
+    const child = spawn(s.file, s.args, { ...options, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
+    const pid = child.pid;
+    if (pid) trackTree(pid);
+    const timer = timeout && pid ? setTimeout(() => {
+      timedOut = true;
+      void killProcessTree(pid, 'SIGKILL');
+    }, timeout) : undefined;
+    const finish = (result: ExecResult): void => {
+      clearTimeout(timer);
+      if (pid) untrackTree(pid);
+      done(result);
+    };
     child.stdout?.setEncoding('utf8').on('data', (d: string) => { stdout += d; });
     child.stderr?.setEncoding('utf8').on('data', (d: string) => { stderr += d; });
-    child.on('error', (error) => done({ status: 1, stdout, stderr: `${stderr}${error.message}` }));
-    // A child the timeout (or anything else) killed has no exit code: say so, as the sync path's ETIMEDOUT does.
-    child.on('close', (code, signal) => done({ status: code ?? 1, stdout, stderr: code === null ? `${stderr}killed by ${signal}` : stderr }));
+    child.on('error', (error) => finish({ status: 1, stdout, stderr: `${stderr}${error.message}` }));
+    // A killed child (the timeout, or anything else) is a failure that says so, as the sync path's ETIMEDOUT does.
+    child.on('close', (code, signal) => finish({
+      status: code || (timedOut || code === null ? 1 : 0),
+      stdout,
+      stderr: timedOut ? `${stderr}killed by the ${timeout} ms timeout` : code === null ? `${stderr}killed by ${signal}` : stderr,
+    }));
   });
 };
 
@@ -336,13 +378,17 @@ export const SUITE_HEARTBEAT_MS = 5 * 60_000;
 /**
  * Every process as `<pid> <ppid> <command line>`, for the outside-load note: Windows has no
  * `ps`, and `tasklist` gives no parent ids. Encoded, so no quoting reaches powershell's parser.
+ * Windows PowerShell by absolute path: a bare name is searched in the cwd first, where a lane
+ * worktree could plant a powershell.exe.
  */
-const PROCESS_LISTING: [string, string[]] = process.platform === 'win32'
-  ? ['powershell', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(
+export function processListing(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): [string, string[]] {
+  if (platform !== 'win32') return ['ps', ['-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'args=']];
+  const systemRoot = env.SystemRoot || env.SYSTEMROOT || env.windir || 'C:\\Windows';
+  return [win32.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(
     "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId) $($_.ParentProcessId) $(if ($_.CommandLine) { $_.CommandLine -replace '\\s+', ' ' } else { $_.Name })\" }",
     'utf16le',
-  ).toString('base64')]]
-  : ['ps', ['-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'args=']];
+  ).toString('base64')]];
+}
 
 /** After a push GitHub moves the PR's headRefOid asynchronously: poll every 5 s, up to 3 min. */
 const HEAD_SYNC_POLL_MS = 5_000;
@@ -404,7 +450,7 @@ export function phasePlan(id: PhaseId, v: string, opts: ReleaseOptions): string[
     case 'suite':
       return [
         opts.suite === 'full'
-          ? `vitest run --reporter=json (on the committed tree); titles not in ${opts.baseline ?? '(no baseline: any failure fails)'} rerun alone ${opts.triageRuns ?? 3}x (a failed file with no failing title, e.g. its setup, reruns as the whole file), ${TRIAGE_POOL} titles at a time and never two of one file; a title failing a pooled rerun gets ${opts.triageRuns ?? 3} serial isolated reruns: fail every rerun = real (fail), pass some = mixed (blocked), pass every rerun = load-flaky (warning; known-flaky candidates written, never committed). Over ${TRIAGE_CAP} such titles: their files rerun once each (pooled); a title passing its file rerun is load-flaky, the rest (at most ${TRIAGE_CAP}, else fail) are triaged`
+          ? `vitest run --reporter=json (on the committed tree); titles not in ${opts.baseline ?? '(no baseline: any failure fails)'} rerun alone ${opts.triageRuns ?? 3}x (a failed file with no failing title, e.g. its setup, reruns as the whole file), ${TRIAGE_POOL} titles at a time and never two of one file; a title failing a pooled rerun gets ${opts.triageRuns ?? 3} serial isolated reruns: fail every rerun = real (fail), pass some = mixed (blocked), pass every rerun = load-flaky (warning; known-flaky candidates written, never committed). Over ${TRIAGE_CAP} such titles: their files rerun as a whole up to ${opts.triageRuns ?? 3}x each (pooled); a title passing every file rerun is load-flaky, the rest (at most ${TRIAGE_CAP}, else fail) are triaged`
           : opts.suite === 'targeted' ? 'vitest related --run <src files changed since the last v* tag> (on the committed tree)' : 'suite: none (pass --suite targeted|full)',
       ];
     case 'pr':
@@ -658,7 +704,9 @@ class Release {
     const timer = setInterval(() => {
       try {
         const text = typeof label === 'string' ? label : label();
-        this.deps.progress({ phase: 'suite', status: 'heartbeat', note: `${text}, ${Math.round((this.deps.now() - started) / 60_000)} min; ${this.outsideLoadNote()}`, always: true });
+        // The last listing's value; the next one refreshes it in the background.
+        this.deps.progress({ phase: 'suite', status: 'heartbeat', note: `${text}, ${Math.round((this.deps.now() - started) / 60_000)} min; ${this.outsideLoadNote(this.lastLoad)}`, always: true });
+        void this.outsideLoad();
       } catch {
         // A broken progress sink must not crash the release from a timer.
       }
@@ -667,17 +715,33 @@ class Release {
     return () => clearInterval(timer);
   }
 
-  /** Node (and vitest) processes outside this release's process tree: other lanes' load. Null when the listing fails (an agent shell may block it). */
-  private outsideLoad(): { node: number; vitest: number } | null {
-    try {
-      const r = this.run(PROCESS_LISTING[0], PROCESS_LISTING[1], { timeoutMs: 30_000 });
-      return r.status === 0 ? outsideNodeLoad(r.stdout, process.pid) : null;
-    } catch {
-      return null;
-    }
+  private lastLoad: { node: number; vitest: number } | null = null;
+  private loadListing: Promise<{ node: number; vitest: number } | null> | null = null;
+
+  /**
+   * Node (and vitest) processes outside this release's process tree: other lanes' load, also kept as
+   * `lastLoad`. Null when the listing fails (an agent shell may block it). Through execAsync when given,
+   * so a listing never blocks the event loop; at most one in flight (a second call shares it).
+   */
+  private outsideLoad(): Promise<{ node: number; vitest: number } | null> {
+    this.loadListing ??= (async () => {
+      try {
+        const [cmd, args] = processListing(process.platform, process.env);
+        const opts: ReleaseExecOptions = { cwd: this.deps.root, timeoutMs: 30_000, env: childEnv({}) };
+        const r = this.deps.execAsync ? await this.deps.execAsync(cmd, args, opts) : this.deps.exec(cmd, args, opts);
+        return r.status === 0 ? outsideNodeLoad(r.stdout, process.pid) : null;
+      } catch {
+        return null;
+      }
+    })().then((load) => {
+      this.lastLoad = load;
+      this.loadListing = null;
+      return load;
+    });
+    return this.loadListing;
   }
 
-  private outsideLoadNote(load = this.outsideLoad()): string {
+  private outsideLoadNote(load: { node: number; vitest: number } | null): string {
     return load ? `outside load: ${load.node} node process(es), ${load.vitest} vitest` : 'outside load: unknown (no process listing)';
   }
 
@@ -696,7 +760,7 @@ class Release {
       if (shell.note) this.deps.log(`  ${shell.note}`);
       this.suiteEnv = shell.env;
       // The quiet-window rule: no other lanes while the suite runs. Outside vitest load slows every file and turns passes into load flakes.
-      const load = this.outsideLoad();
+      const load = await this.outsideLoad();
       this.deps.log(`  ${this.outsideLoadNote(load)}`);
       if (load && load.vitest > 0) {
         const warning = `outside load at suite start: ${load.vitest} vitest process(es) outside this release (${load.node} node in all); the quiet window wants no other lanes while the suite runs`;
@@ -737,21 +801,29 @@ class Release {
       let toTriage = fresh;
       let fileRerunPassed: TriageResult[] = [];
       if (fresh.length > TRIAGE_CAP) {
+        const runs = this.opts.triageRuns ?? 3;
         const files = new Set(fresh.map((t) => splitFailingTitle(t).file)).size;
-        this.deps.log(`  ${fresh.length} failing test(s) not in the baseline, more than the ${TRIAGE_CAP} triaged one by one: rerunning their ${files} file(s), ${TRIAGE_POOL} at a time`);
-        const rerun = await this.rerunFailingFiles(fresh, baseline);
-        if (rerun.still.length > TRIAGE_CAP) {
-          fail(`${fresh.length} failing test(s) not in the baseline; ${rerun.still.length} still fail a rerun of their ${files} file(s), more than the ${TRIAGE_CAP} triaged in isolation (report: ${out})`, rerun.still);
+        // A resume on the same HEAD keeps the verdicts already saved: whole-file passes, and titles triaged one by one.
+        const prior = this.state.suiteTriage?.sha === head ? this.state.suiteTriage.results.filter((r) => r.runs === runs) : [];
+        const priorOf = (title: string) => prior.find((r) => r.title === title);
+        fileRerunPassed = fresh.map(priorOf).filter((r): r is TriageResult => r?.wholeFile === true);
+        const isolated = fresh.filter((t) => priorOf(t) && !priorOf(t)!.wholeFile);
+        const pending = fresh.filter((t) => !priorOf(t));
+        let still: string[] = [];
+        if (pending.length > 0) {
+          this.deps.log(`  ${fresh.length} failing test(s) not in the baseline, more than the ${TRIAGE_CAP} triaged one by one: rerunning the ${new Set(pending.map((t) => splitFailingTitle(t).file)).size} file(s) of ${pending.length}, ${TRIAGE_POOL} at a time, up to ${runs} times each`);
+          const rerun = await this.rerunFailingFiles(pending, baseline, head, runs);
+          still = rerun.still;
+          fileRerunPassed = [...fileRerunPassed, ...rerun.passed];
         }
-        toTriage = rerun.still;
-        fileRerunPassed = rerun.passed;
+        toTriage = [...new Set([...still, ...isolated])].sort();
+        if (toTriage.length > TRIAGE_CAP) {
+          fail(`${fresh.length} failing test(s) not in the baseline; ${toTriage.length} still fail a rerun of their ${files} file(s), more than the ${TRIAGE_CAP} triaged in isolation (report: ${out})`, toTriage);
+        }
       }
       const triaged = toTriage.length > 0 ? await this.triage(toTriage, head) : [];
       const triage = [...fileRerunPassed, ...triaged];
-      const lines = [
-        ...fileRerunPassed.map((t) => `${t.class}: ${t.title} (over the cap: passed the rerun of its file)`),
-        ...triaged.map((t) => `${t.class}: ${t.title} (passed ${t.passes}/${t.runs} isolated reruns)`),
-      ];
+      const lines = triage.map(triageLine);
       const real = triage.filter((t) => t.class === 'real').length;
       const mixed = triage.filter((t) => t.class === 'mixed').length;
       const candidates = flakyCandidates(this.v, triage);
@@ -769,8 +841,10 @@ class Release {
         blocked(`${mixed} failing test(s) not in the baseline failed some isolated reruns (mixed, may be a real race: blocks); fix them, then --from suite (evidence: ${candidatesPath})`, lines);
       }
       this.requireClean('full suite');
-      const overCap = fileRerunPassed.length > 0 ? ` (over the cap of ${TRIAGE_CAP}: ${fileRerunPassed.length} passed the rerun of their file, ${triaged.length} every isolated rerun)` : '';
-      const note = `full suite: ${failing.length} failing; ${triage.length} not in the baseline are load-flaky (passed every isolated rerun)${overCap}${candidates.length > 0 ? `; ${candidates.length} known-flaky candidate(s) await owner approval: ${candidatesPath}` : ''}`;
+      const evidence = fileRerunPassed.length > 0
+        ? `over the cap of ${TRIAGE_CAP}: ${fileRerunPassed.length} passed every whole-file rerun, ${triaged.length} every isolated rerun`
+        : 'passed every isolated rerun';
+      const note = `full suite: ${failing.length} failing; ${triage.length} not in the baseline are load-flaky (${evidence})${candidates.length > 0 ? `; ${candidates.length} known-flaky candidate(s) await owner approval: ${candidatesPath}` : ''}`;
       this.deps.log(`  !! WARNING ${note}`);
       return { status: 'ok', note, details: lines };
     }
@@ -820,93 +894,111 @@ class Release {
 
     const pooled: string[] = [];
     for (const title of titles) {
-      // A record of another run count (an older 0-run file-level record included) is not reused.
-      const reused = prior.find((r) => r.title === title && r.runs === runs);
+      // A record of another run count (an older 0-run file-level record included), or of whole-file reruns over the cap, is not reused.
+      const reused = prior.find((r) => r.title === title && r.runs === runs && !r.wholeFile);
       if (reused) record(reused);
       else pooled.push(title);
     }
-    const serial = new Set<string>();
+    /** Title -> the pooled rerun (1-based) it failed. */
+    const serial = new Map<string, number>();
     let running = 0;
     const stop = this.pulse(() => `triage pool: ${results.size}/${titles.length} done, ${running} running`, this.deps.now());
     try {
-      await this.pool(pooled.map((title) => ({
-        file: splitFailingTitle(title).file,
-        run: async (slot: number) => {
-          running++;
-          try {
-            for (let n = 0; n < runs; n++) {
-              if (!(await rerun(title, n, this.triageOut(slot), 'pooled'))) {
-                serial.add(title);
-                return;
+      try {
+        await this.pool(pooled.map((title) => ({
+          file: splitFailingTitle(title).file,
+          run: async (slot: number) => {
+            running++;
+            try {
+              for (let n = 0; n < runs; n++) {
+                if (!(await rerun(title, n, this.triageOut(slot), 'pooled'))) {
+                  serial.set(title, n + 1);
+                  return;
+                }
               }
+              record({ title, file: splitFailingTitle(title).file, runs, passes: runs, class: classifyTriage(runs, runs) });
+            } finally {
+              running--;
             }
-            record({ title, file: splitFailingTitle(title).file, runs, passes: runs, class: classifyTriage(runs, runs) });
-          } finally {
-            running--;
-          }
-        },
-      })));
+          },
+        })));
+      } finally {
+        stop();
+      }
+      // A failed pooled rerun is never a verdict: the title is judged alone, serially, as before pooling.
+      for (const title of titles.filter((t) => serial.has(t))) {
+        this.deps.log(`  pooled rerun ${serial.get(title)}/${runs} of ${title} failed, then ${runs} serial isolated reruns decide`);
+        let passes = 0;
+        for (let n = 0; n < runs; n++) if (await rerun(title, n, this.triageOut(), 'isolated')) passes++;
+        record({ title, file: splitFailingTitle(title).file, runs, passes, class: classifyTriage(runs, passes), pooledFailure: serial.get(title) });
+      }
     } finally {
-      stop();
+      this.removeTriageOuts();
     }
-    // A failed pooled rerun is never a verdict: the title is judged alone, serially, as before pooling.
-    for (const title of titles.filter((t) => serial.has(t))) {
-      let passes = 0;
-      for (let n = 0; n < runs; n++) if (await rerun(title, n, this.triageOut(), 'isolated')) passes++;
-      record({ title, file: splitFailingTitle(title).file, runs, passes, class: classifyTriage(runs, passes) });
-    }
-    this.removeTriageOuts();
     return titles.map((t) => results.get(t)!);
   }
 
   /**
-   * Over the triage cap: each failing file once more as a whole, pooled, with
-   * the whole-file timeout. A title its file rerun reports passed is
-   * load-flaky (`passed`); every title still failing there (a file with no
-   * report, or a non-zero exit with no failing title, as the file line) and
-   * not in the baseline goes to `still`, as does a title the rerun did not
-   * report.
+   * Over the triage cap: each failing file as a whole, pooled, with the
+   * whole-file timeout, up to `runs` times, as long as one of its `fresh`
+   * titles has passed every rerun so far. A title that passes all `runs`
+   * file reruns is load-flaky (`passed`, saved at once so a resume does not
+   * repeat them); one failing any of them (a file with no report, or a
+   * non-zero exit with no failing title, fails as the file line), and every
+   * other title failing a file rerun not in the baseline, goes to `still`,
+   * for triage one by one.
    */
-  private async rerunFailingFiles(fresh: string[], baseline: string[]): Promise<{ still: string[]; passed: TriageResult[] }> {
+  private async rerunFailingFiles(fresh: string[], baseline: string[], head: string, runs: number): Promise<{ still: string[]; passed: TriageResult[] }> {
     const files = [...new Set(fresh.map((t) => splitFailingTitle(t).file))];
     const timeoutMs = (this.opts.triageTimeoutMinutes ?? 5) * 60_000 * 3;
-    const reports = new Map<string, string | null>();
     const failing = new Set<string>();
-    const stop = this.pulse(() => `over-cap file reruns: ${reports.size}/${files.length} done`, this.deps.now());
+    const passed: TriageResult[] = [];
+    let done = 0;
+    const stop = this.pulse(() => `over-cap file reruns: ${done}/${files.length} file(s) done`, this.deps.now());
     try {
       await this.pool(files.map((file) => ({
         file,
         run: async (slot: number) => {
           const out = this.triageOut(slot);
-          rmSync(out, { force: true });
-          const args = ['node_modules/vitest/vitest.mjs', 'run', file, '--reporter=json', `--outputFile=${out}`];
-          this.deps.log(`  node ${args.slice(0, 3).join(' ')} --reporter=json (over-cap file rerun)`);
-          const r = await this.runSuite(args, { timeoutMs }, null);
-          let report: string | null = existsSync(out) ? readFileSync(out, 'utf8') : null;
-          let titles: string[] = [];
-          try {
-            if (report !== null) titles = failingTitlesFromVitestJson(report);
-          } catch {
-            report = null;
+          let candidates = fresh.filter((t) => splitFailingTitle(t).file === file);
+          for (let n = 0; n < runs && candidates.length > 0; n++) {
+            rmSync(out, { force: true });
+            const args = ['node_modules/vitest/vitest.mjs', 'run', file, '--reporter=json', `--outputFile=${out}`];
+            this.deps.log(`  node ${args.slice(0, 3).join(' ')} --reporter=json (over-cap whole-file rerun ${n + 1}/${runs})`);
+            const r = await this.runSuite(args, { timeoutMs }, null);
+            let report: string | null = existsSync(out) ? readFileSync(out, 'utf8') : null;
+            let titles: string[] = [];
+            try {
+              if (report !== null) titles = failingTitlesFromVitestJson(report);
+            } catch {
+              report = null;
+            }
+            if (r.status !== 0 && titles.length === 0) titles = [file];
+            for (const t of titles) failing.add(t);
+            const ok = (title: string): boolean => {
+              const { name } = splitFailingTitle(title);
+              return !failing.has(title) && report !== null && (name === null ? filePassedInReport(report, file) : testPassedInReport(report, file, name));
+            };
+            // The first failure of a title ends its file reruns: it goes to triage one by one.
+            for (const t of candidates.filter((c) => !ok(c))) failing.add(t);
+            candidates = candidates.filter(ok);
+            this.deps.progress({ phase: 'suite', status: 'heartbeat', note: `over-cap whole-file rerun ${n + 1}/${runs}: ${titles.length} failing, ${candidates.length} still passing every rerun: ${file}` });
           }
-          if (r.status !== 0 && titles.length === 0) titles = [file];
-          for (const t of titles) failing.add(t);
-          reports.set(file, report);
-          this.deps.progress({ phase: 'suite', status: 'heartbeat', note: `over-cap file rerun ${reports.size}/${files.length}: ${titles.length} failing: ${file}` });
+          const verdicts = candidates.map((title) => ({ title, file, runs, passes: runs, class: classifyTriage(runs, runs), wholeFile: true }));
+          passed.push(...verdicts);
+          if (verdicts.length > 0) {
+            const prior = this.state.suiteTriage?.sha === head ? this.state.suiteTriage.results : [];
+            this.save({ suiteTriage: { sha: head, results: [...prior.filter((p) => !candidates.includes(p.title)), ...verdicts] } });
+          }
+          done++;
         },
       })));
     } finally {
       stop();
+      this.removeTriageOuts();
     }
-    this.removeTriageOuts();
-    const passed: TriageResult[] = [];
-    for (const title of fresh) {
-      const { file, name } = splitFailingTitle(title);
-      const report = reports.get(file) ?? null;
-      const ok = !failing.has(title) && report !== null && (name === null ? filePassedInReport(report, file) : testPassedInReport(report, file, name));
-      if (ok) passed.push({ title, file, runs: 1, passes: 1, class: classifyTriage(1, 1) });
-      else failing.add(title);
-    }
+    const order = new Map(fresh.map((t, i) => [t, i]));
+    passed.sort((a, b) => order.get(a.title)! - order.get(b.title)!);
     return { still: newFailures([...failing].sort(), baseline), passed };
   }
 

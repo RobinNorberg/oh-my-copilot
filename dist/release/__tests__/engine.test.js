@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { dirname, join } from 'path';
+import { dirname, join, win32 } from 'path';
 import { resolveShipConfig } from '../../ship/config.js';
-import { defaultReleaseExec, defaultReleaseExecAsync, PHASES, phasePlan, readReleaseState, releaseStatePath, resumePoint, runRelease, } from '../engine.js';
+import { defaultReleaseExec, defaultReleaseExecAsync, PHASES, phasePlan, readReleaseState, releaseStatePath, resumePoint, processListing, runRelease, } from '../engine.js';
 import { SMOKE_INPUTS } from '../checks.js';
 import { driveRelease } from '../drive.js';
 const V = '5.12.2';
@@ -560,7 +560,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
                 expect(result.phases[0]).toMatchObject({
                     status: 'fail',
                     note: expect.stringMatching(/^1 failing test\(s\) not in the baseline also fail every isolated rerun/),
-                    details: expect.arrayContaining([`real: ${FILE} > ${ACK} (passed 0/3 isolated reruns)`, `load-flaky: ${FILE} > ${LOCK} (passed 3/3 isolated reruns)`]),
+                    details: expect.arrayContaining([`real: ${FILE} > ${ACK} (pooled rerun 1/3 failed, then passed 0/3 serial isolated reruns)`, `load-flaky: ${FILE} > ${LOCK} (passed 3/3 isolated reruns)`]),
                 });
             });
             it('a title that fails some isolated reruns is mixed: the suite is blocked, with the evidence', async () => {
@@ -571,7 +571,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
                 expect(result.phases[0]).toMatchObject({
                     status: 'blocked',
                     note: expect.stringMatching(/^1 failing test\(s\) not in the baseline failed some isolated reruns \(mixed, may be a real race: blocks\)/),
-                    details: [`mixed: ${FILE} > ${LOCK} (passed 2/3 isolated reruns)`],
+                    details: [`mixed: ${FILE} > ${LOCK} (pooled rerun 2/3 failed, then passed 2/3 serial isolated reruns)`],
                 });
                 expect(existsSync(join(stateRoot, 'release', `${V}-flaky-candidates.json`))).toBe(true);
             });
@@ -590,7 +590,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
                     return no('worker crashed after the report', 1);
                 }, vitestWrites(suiteReport([LOCK])));
                 const result = await release({ from: 'suite', to: 'suite', suite: 'full' });
-                expect(result.phases[0]).toMatchObject({ status: 'fail', details: [`real: ${FILE} > ${LOCK} (passed 0/3 isolated reruns)`] });
+                expect(result.phases[0]).toMatchObject({ status: 'fail', details: [`real: ${FILE} > ${LOCK} (pooled rerun 1/3 failed, then passed 0/3 serial isolated reruns)`] });
             });
             describe('rerun timeout', () => {
                 const timedOut = { status: 1, stdout: '', stderr: 'spawnSync ETIMEDOUT' };
@@ -604,7 +604,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
                 };
                 it('defaults to 5 minutes, and a timed-out rerun is a failed run', async () => {
                     const { result, timeouts } = await run({});
-                    expect(result.phases[0]).toMatchObject({ status: 'fail', details: [`real: ${FILE} > ${LOCK} (passed 0/3 isolated reruns)`] });
+                    expect(result.phases[0]).toMatchObject({ status: 'fail', details: [`real: ${FILE} > ${LOCK} (pooled rerun 1/3 failed, then passed 0/3 serial isolated reruns)`] });
                     expect(timeouts).toEqual([300_000, 300_000, 300_000, 300_000]);
                 });
                 it('--triage-timeout sets it', async () => {
@@ -647,7 +647,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
                     seedState('commit');
                     handlers.push(wholeFileRuns([false, false, false, false]), vitestWrites(setupFailed));
                     const result = await release({ from: 'suite', to: 'suite', suite: 'full' });
-                    expect(result.phases[0]).toMatchObject({ status: 'fail', details: [`real: ${FILE} (passed 0/3 isolated reruns)`] });
+                    expect(result.phases[0]).toMatchObject({ status: 'fail', details: [`real: ${FILE} (pooled rerun 1/3 failed, then passed 0/3 serial isolated reruns)`] });
                     // The failed pooled rerun, then three serial isolated reruns decide.
                     expect(calls.filter((c) => c.includes(wholeFile))).toHaveLength(4);
                 });
@@ -747,11 +747,12 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
                     expect(result.phases[0]).toMatchObject({ status: 'fail', note: expect.stringMatching(/^1 failing test\(s\) not in the baseline also fail every isolated rerun/) });
                     expect(result.phases[0].details).toEqual([
                         `load-flaky: ${A} > a1 (passed 3/3 isolated reruns)`,
-                        `load-flaky: ${A} > a2 (passed 3/3 isolated reruns)`,
-                        `real: ${B} > b1 (passed 0/3 isolated reruns)`,
-                        `mixed: ${C} > c1 (passed 2/3 isolated reruns)`,
+                        `load-flaky: ${A} > a2 (pooled rerun 1/3 failed, then passed 3/3 serial isolated reruns)`,
+                        `real: ${B} > b1 (pooled rerun 1/3 failed, then passed 0/3 serial isolated reruns)`,
+                        `mixed: ${C} > c1 (pooled rerun 2/3 failed, then passed 2/3 serial isolated reruns)`,
                         `load-flaky: ${D} > d1 (passed 3/3 isolated reruns)`,
                     ]);
+                    expect(logs).toContain(`  pooled rerun 2/3 of ${C} > c1 failed, then 3 serial isolated reruns decide`);
                     const serial = s.reruns.filter((r) => r.mode === 'serial');
                     expect(serial.map((r) => r.title)).toEqual([...Array(3).fill(`${A} > a2`), ...Array(3).fill(`${B} > b1`), ...Array(3).fill(`${C} > c1`)]);
                     // Serial reruns come after every pooled one, each alone.
@@ -778,7 +779,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
                             '501 1 node server.js',
                             '502 1 C:\\Windows\\explorer.exe',
                         ].join('\n');
-                        handlers.push((key) => (key.startsWith('powershell -NoProfile') || key.startsWith('ps -A') ? ok(listing) : undefined), vitestWrites(multiReport({ [B]: ['b1'] })));
+                        handlers.push((key) => (/powershell.exe -NoProfile|^ps -A/.test(key) ? ok(listing) : undefined), vitestWrites(multiReport({ [B]: ['b1'] })));
                         let release;
                         const s = scripted({ outcome: () => true, hold: new Promise((r) => { release = r; }) });
                         let t = Date.parse('2026-10-21T12:00:00Z');
@@ -801,7 +802,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
                 });
                 it('a failing process listing (blocked in an agent shell) leaves the load unknown and never fails the suite', async () => {
                     seedState('commit');
-                    handlers.push((key) => (key.startsWith('powershell -NoProfile') || key.startsWith('ps -A') ? no('Access is denied', 1) : undefined), vitestWrites(multiReport({ [B]: ['b1'] })));
+                    handlers.push((key) => (/powershell.exe -NoProfile|^ps -A/.test(key) ? no('Access is denied', 1) : undefined), vitestWrites(multiReport({ [B]: ['b1'] })));
                     const s = scripted({ outcome: () => true });
                     expect((await runRelease({ ...deps(), execAsync: s.execAsync }, { version: V, from: 'suite', to: 'suite', suite: 'full' })).ok).toBe(true);
                     expect(logs).toContain('  outside load: unknown (no process listing)');
@@ -827,19 +828,55 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
                             const result = await runRelease({ ...deps(), execAsync: s.execAsync }, { version: V, from: 'suite', to: 'suite', suite: 'full' });
                             expect(result.phases[0]).toMatchObject({
                                 status: 'ok',
-                                note: expect.stringMatching(/^full suite: 21 failing; 21 not in the baseline are load-flaky \(passed every isolated rerun\) \(over the cap of 20: 20 passed the rerun of their file, 1 every isolated rerun\)/),
+                                note: expect.stringMatching(/^full suite: 21 failing; 21 not in the baseline are load-flaky \(over the cap of 20: 20 passed every whole-file rerun, 1 every isolated rerun\)/),
                             });
-                            expect(result.phases[0].details).toContain(`load-flaky: ${X} > x0 (over the cap: passed the rerun of its file)`);
+                            expect(result.phases[0].details).toContain(`load-flaky: ${X} > x0 (over the cap: passed 3/3 whole-file reruns)`);
                             expect(result.phases[0].details).toContain(`load-flaky: ${Z} > z1 (passed 3/3 isolated reruns)`);
-                            // Each failing file once, as a whole, pooled; no full-suite rerun; then z1 alone.
-                            expect(s.reruns.filter((r) => r.mode === 'file').map((r) => r.title).sort()).toEqual([X, Y, Z]);
+                            // X and Y three times each as a whole, Z once (it failed), pooled; no full-suite rerun; then z1 alone.
+                            expect(s.reruns.filter((r) => r.mode === 'file').map((r) => r.title).sort()).toEqual([X, X, X, Y, Y, Y, Z]);
                             expect(s.peak()).toBe(3);
                             expect(calls.filter((c) => c.includes('--exclude tests/perf/**'))).toHaveLength(1);
                             expect(s.reruns.filter((r) => r.mode === 'pooled').map((r) => r.title)).toEqual(Array(3).fill(`${Z} > z1`));
-                            expect(logs).toContain('  21 failing test(s) not in the baseline, more than the 20 triaged one by one: rerunning their 3 file(s), 3 at a time');
+                            expect(logs).toContain('  21 failing test(s) not in the baseline, more than the 20 triaged one by one: rerunning the 3 file(s) of 21, 3 at a time, up to 3 times each');
+                            const candidates = JSON.parse(readFileSync(join(stateRoot, 'release', `${V}-flaky-candidates.json`), 'utf8'));
+                            expect(candidates.tests.find((t) => t.title === 'x0').note).toBe(`load-sensitive: failed in the full suite, passed 3/3 whole-file reruns (v${V} release suite)`);
+                            expect(candidates.tests.find((t) => t.title === 'z1').note).toBe(`load-sensitive: failed in the full suite, passed 3/3 isolated reruns (v${V} release suite)`);
                         }
                         finally {
                             delete NAMES[Z];
+                        }
+                    });
+                    it('one passing file rerun then a failure is not load-flaky (the title is triaged); passing all 3 is; a resume repeats no rerun', async () => {
+                        seedState('commit');
+                        handlers.push(vitestWrites(multiReport({ [X]: xs, [Y]: ys, [Z]: ['z1'] })));
+                        NAMES[X] = xs;
+                        try {
+                            let xRuns = 0;
+                            const s = scripted({
+                                // X passes its first file rerun, then x3 fails the second; Y and Z pass all three.
+                                file: (file) => (file === X ? fileReport(X, xs, ++xRuns === 2 ? ['x3'] : []) : file === Y ? fileReport(Y, ys) : fileReport(Z, ['z1'])),
+                                outcome: () => true,
+                            });
+                            const result = await runRelease({ ...deps(), execAsync: s.execAsync }, { version: V, from: 'suite', to: 'suite', suite: 'full' });
+                            expect(result.phases[0].status).toBe('ok');
+                            const details = result.phases[0].details;
+                            expect(details).toContain(`load-flaky: ${X} > x3 (passed 3/3 isolated reruns)`);
+                            expect(details).toContain(`load-flaky: ${Y} > y0 (over the cap: passed 3/3 whole-file reruns)`);
+                            // The other X titles kept passing, so X ran three times; x3 left at its first failure for triage alone.
+                            expect(details).toContain(`load-flaky: ${X} > x0 (over the cap: passed 3/3 whole-file reruns)`);
+                            expect(details.filter((d) => d.includes('whole-file'))).toHaveLength(20);
+                            expect(s.reruns.filter((r) => r.mode === 'file').map((r) => r.title).sort()).toEqual([X, X, X, Y, Y, Y, Z, Z, Z]);
+                            expect(s.reruns.filter((r) => r.mode === 'pooled').map((r) => r.title)).toEqual(Array(3).fill(`${X} > x3`));
+                            const saved = readReleaseState(stateRoot, V).suiteTriage.results;
+                            expect(saved.filter((r) => r.wholeFile).map((r) => r.title).sort()).toEqual([...xs.filter((x) => x !== 'x3').map((x) => `${X} > ${x}`), ...ys.map((y) => `${Y} > ${y}`), `${Z} > z1`].sort());
+                            // A resume on the same HEAD: every verdict is reused, no file or title rerun runs again.
+                            const again = scripted({ file: () => { throw new Error('no file rerun on a resume'); }, outcome: () => { throw new Error('no title rerun on a resume'); } });
+                            const resumed = await runRelease({ ...deps(), execAsync: again.execAsync }, { version: V, from: 'suite', to: 'suite', suite: 'full' });
+                            expect(resumed.phases[0]).toMatchObject({ status: 'ok', details });
+                            expect(again.reruns).toEqual([]);
+                        }
+                        finally {
+                            delete NAMES[X];
                         }
                     });
                     it('fails when more than 20 still fail the rerun of their files (a crashed file counts every title)', async () => {
@@ -2004,10 +2041,10 @@ describe('defaultReleaseExec environment', () => {
             // The async exec the suite runs through spawns the same env.
             expect(JSON.parse((await defaultReleaseExecAsync(process.execPath, probe, { suiteEnv: true, env: { GIT_INDEX_FILE: 'x' } })).stdout)).toEqual(['x', null]);
             expect(await defaultReleaseExecAsync(process.execPath, ['-e', 'process.exit(3)'])).toMatchObject({ status: 3 });
-            // A child the timeout kills has no exit code: a failure that says so, as the sync path's ETIMEDOUT does.
+            // A child the timeout kills is a failure that says so, as the sync path's ETIMEDOUT does.
             const killed = await defaultReleaseExecAsync(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { timeoutMs: 300 });
             expect(killed.status).toBe(1);
-            expect(killed.stderr).toMatch(/killed by SIG[A-Z]+$/);
+            expect(killed.stderr).toMatch(/killed by the 300 ms timeout$/);
         }
         finally {
             if (saved.idx === undefined)
@@ -2017,6 +2054,31 @@ describe('defaultReleaseExec environment', () => {
             if (saved.repl !== undefined)
                 process.env.GIT_NO_REPLACE_OBJECTS = saved.repl;
         }
+    });
+    it('a timeout kills the whole child tree, so a grandchild (a vitest fork worker) is not orphaned', async () => {
+        const parent = `const c = require('child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' }); console.log(c.pid); setInterval(() => {}, 1000);`;
+        const r = await defaultReleaseExecAsync(process.execPath, ['-e', parent], { timeoutMs: 2_000 });
+        expect(r.stderr).toMatch(/killed by the 2000 ms timeout$/);
+        const grandchild = Number(r.stdout.trim());
+        expect(grandchild).toBeGreaterThan(0);
+        const alive = () => { try {
+            process.kill(grandchild, 0);
+            return true;
+        }
+        catch {
+            return false;
+        } };
+        await vi.waitFor(() => expect(alive()).toBe(false), { timeout: 5_000 });
+    }, 20_000);
+});
+describe('processListing', () => {
+    it('runs Windows PowerShell by its absolute SystemRoot path, never a bare name', () => {
+        const [cmd, args] = processListing('win32', { SystemRoot: 'D:\\Win' });
+        expect(cmd).toBe('D:\\Win\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
+        expect(win32.isAbsolute(cmd)).toBe(true);
+        expect(args.slice(0, 3)).toEqual(['-NoProfile', '-NonInteractive', '-EncodedCommand']);
+        expect(win32.isAbsolute(processListing('win32', {})[0])).toBe(true);
+        expect(processListing('linux', {})[0]).toBe('ps');
     });
 });
 //# sourceMappingURL=engine.test.js.map

@@ -207,6 +207,13 @@ export declare function flakyCandidatesPath(stateRoot: string, version: string):
 export declare function readReleaseState(stateRoot: string, version: string): ReleaseState | null;
 /** A heartbeat every 5 min while a suite child runs (under execAsync). */
 export declare const SUITE_HEARTBEAT_MS: number;
+/**
+ * Every process as `<pid> <ppid> <command line>`, for the outside-load note: Windows has no
+ * `ps`, and `tasklist` gives no parent ids. Encoded, so no quoting reaches powershell's parser.
+ * Windows PowerShell by absolute path: a bare name is searched in the cwd first, where a lane
+ * worktree could plant a powershell.exe.
+ */
+export declare function processListing(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): [string, string[]];
 /** Steps each phase runs, as printed by --dry-run. */
 export declare function phasePlan(id: PhaseId, v: string, opts: ReleaseOptions): string[];
 /** First phase to run: --from, else the first phase not yet ok / skipped in the state (runRelease re-checks the skipped ones). */

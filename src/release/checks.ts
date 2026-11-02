@@ -199,6 +199,17 @@ export interface TriageResult {
   runs: number;
   passes: number;
   class: TriageClass;
+  /** Over the triage cap: the passes were reruns of the whole file, not of the title alone. */
+  wholeFile?: boolean;
+  /** The pooled rerun (1-based) that failed before the serial isolated reruns decided. */
+  pooledFailure?: number;
+}
+
+/** A triage verdict as a detail line: `<class>: <title> (<evidence>)`. */
+export function triageLine(t: TriageResult): string {
+  if (t.wholeFile) return `${t.class}: ${t.title} (over the cap: passed ${t.passes}/${t.runs} whole-file reruns)`;
+  if (t.pooledFailure) return `${t.class}: ${t.title} (pooled rerun ${t.pooledFailure}/${t.runs} failed, then passed ${t.passes}/${t.runs} serial isolated reruns)`;
+  return `${t.class}: ${t.title} (passed ${t.passes}/${t.runs} isolated reruns)`;
 }
 
 /** The test file and full title of a failing-title line; `name` is null for a file-level failure (setup or collection error). */
@@ -250,7 +261,7 @@ export function flakyCandidates(version: string, triage: readonly TriageResult[]
   return triage.filter((t) => t.class !== 'real' && splitFailingTitle(t.title).name !== null).map((t) => ({
     file: t.file,
     title: splitFailingTitle(t.title).name!,
-    note: `${t.class === 'load-flaky' ? 'load-sensitive: failed in the full suite, passed' : 'mixed: failed in the full suite, passed'} ${t.passes}/${t.runs} isolated reruns (v${version} release suite)`,
+    note: `${t.class === 'load-flaky' ? 'load-sensitive: failed in the full suite, passed' : 'mixed: failed in the full suite, passed'} ${t.passes}/${t.runs} ${t.wholeFile ? 'whole-file' : 'isolated'} reruns (v${version} release suite)`,
     evidence: { class: t.class, runs: t.runs, passes: t.passes, release: version },
   }));
 }

@@ -124,8 +124,9 @@ reference for what each phase asserts.
    `vitest run <file> --testNamePattern=<title> --reporter=json`, 3 titles at
    a time but never two of one file; a title that fails a pooled rerun then
    gets `--triage-runs` serial reruns alone, which decide its class. Over 20
-   such titles, their files are rerun once each (pooled) instead: titles
-   passing there are load-flaky, the rest are triaged (more than 20 still
+   such titles, their files are rerun as a whole (pooled) instead, up to
+   `--triage-runs` times: titles passing every file rerun are load-flaky,
+   the rest are triaged (more than 20 still
    failing: the suite fails). Each rerun has a timeout (`--triage-timeout`, default 5 min; a timeout is a
    failed rerun). A file that failed with no failing title (its
    `beforeAll` or collection failed, every test skipped) reruns as the whole

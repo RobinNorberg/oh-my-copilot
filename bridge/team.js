@@ -9268,6 +9268,7 @@ var init_pane_readiness = __esm({
 // src/platform/process-utils.ts
 import { execFileSync as execFileSync4, execFile as execFile2, spawnSync as spawnSync5 } from "child_process";
 import { readFileSync as readFileSync14 } from "fs";
+import { win32 as win323 } from "path";
 import { promisify as promisify2 } from "util";
 import * as fsPromises from "fs/promises";
 function processGroupIdSync(pid) {
@@ -9344,7 +9345,7 @@ async function killProcessTreeWindows(pid, force) {
     if (force) {
       args.unshift("/F");
     }
-    execFileSync4("taskkill.exe", args, {
+    execFileSync4(win323.join(process.env.SystemRoot || process.env.windir || "C:\\Windows", "System32", "taskkill.exe"), args, {
       stdio: "ignore",
       timeout: 5e3,
       windowsHide: true
@@ -12821,13 +12822,13 @@ import { existsSync as existsSync27, mkdtempSync, rmSync as rmSync2, statSync as
 import { createHash as createHash10, randomUUID as randomUUID14 } from "crypto";
 import { execFile as execFile3 } from "child_process";
 import { promisify as promisify3 } from "util";
-import { join as join30, basename as basename14, dirname as dirname24, isAbsolute as isAbsolute8, win32 as win323 } from "path";
+import { join as join30, basename as basename14, dirname as dirname24, isAbsolute as isAbsolute8, win32 as win324 } from "path";
 import { tmpdir as tmpdir3 } from "os";
 function tmuxArgsForIdentity(identity, args) {
   return ["-S", identity.socket_path, ...args];
 }
 function buildDetachedTmuxServerKeepaliveArgs(socketPath) {
-  if (!isAbsolute8(socketPath) && !win323.isAbsolute(socketPath)) {
+  if (!isAbsolute8(socketPath) && !win324.isAbsolute(socketPath)) {
     throw new Error("tmux_private_socket_path_not_absolute");
   }
   return [
@@ -12870,11 +12871,11 @@ function resolveTmuxServerGuardRuntime() {
   } catch {
     throw new Error("tmux_server_guard_runtime_path_unavailable");
   }
-  if (!isAbsolute8(runtimePath) && !win323.isAbsolute(runtimePath) || !isRegularFile(runtimePath)) {
+  if (!isAbsolute8(runtimePath) && !win324.isAbsolute(runtimePath) || !isRegularFile(runtimePath)) {
     throw new Error("tmux_server_guard_runtime_path_unavailable");
   }
   const nodePath = process.execPath;
-  if (!isAbsolute8(nodePath) && !win323.isAbsolute(nodePath) || !isRegularFile(nodePath)) {
+  if (!isAbsolute8(nodePath) && !win324.isAbsolute(nodePath) || !isRegularFile(nodePath)) {
     throw new Error("tmux_server_guard_node_path_unavailable");
   }
   return { nodePath, runtimePath };
@@ -13927,7 +13928,7 @@ function assertSafeEnvKey(key) {
   }
 }
 function isAbsoluteLaunchBinaryPath(value) {
-  return isAbsolute8(value) || win323.isAbsolute(value);
+  return isAbsolute8(value) || win324.isAbsolute(value);
 }
 function assertSafeLaunchBinary(launchBinary) {
   if (launchBinary.trim().length === 0) {
@@ -17637,14 +17638,14 @@ var init_phase_controller = __esm({
 
 // src/utils/windows-search.ts
 import { statSync as statSync7 } from "node:fs";
-import { posix, win32 as win324 } from "node:path";
+import { posix, win32 as win325 } from "node:path";
 function envValue(env, name) {
   const key = Object.keys(env).find((k) => k.toUpperCase() === name);
   const value = key === void 0 ? void 0 : env[key];
   return typeof value === "string" && value.trim() !== "" ? value : void 0;
 }
 function findOnPath(name, env, platform, exists = isFile) {
-  const P = platform === "win32" ? win324 : posix;
+  const P = platform === "win32" ? win325 : posix;
   const exts = platform === "win32" ? (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean) : [""];
   const inNodeModules = platform === "win32" ? /(^|[\\/])node_modules([\\/]|$)/i : /(^|\/)node_modules(\/|$)/;
   for (const raw of (envValue(env, "PATH") ?? "").split(P.delimiter)) {

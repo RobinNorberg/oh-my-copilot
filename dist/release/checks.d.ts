@@ -78,7 +78,13 @@ export interface TriageResult {
     runs: number;
     passes: number;
     class: TriageClass;
+    /** Over the triage cap: the passes were reruns of the whole file, not of the title alone. */
+    wholeFile?: boolean;
+    /** The pooled rerun (1-based) that failed before the serial isolated reruns decided. */
+    pooledFailure?: number;
 }
+/** A triage verdict as a detail line: `<class>: <title> (<evidence>)`. */
+export declare function triageLine(t: TriageResult): string;
 /** The test file and full title of a failing-title line; `name` is null for a file-level failure (setup or collection error). */
 export declare function splitFailingTitle(line: string): {
     file: string;
