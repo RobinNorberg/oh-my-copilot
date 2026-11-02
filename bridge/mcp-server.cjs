@@ -44679,7 +44679,7 @@ var init_gates = __esm({
     ANSI = /\x1b\[[0-9;]*[A-Za-z]/g;
     GH_LOG_PREFIX = /^[^\t]*\t[^\t]*\t(?:\d{4}-\d\d-\d\dT[\d:.]+Z ?)?/;
     ADO_LOG_PREFIX = new RegExp("^\\p{Cf}?\\d{4}-\\d\\d-\\d\\dT[\\d:.]+Z ", "u");
-    FAIL_LINE = /^\s*FAIL\s+(\S+\.(?:test|spec|bench)\.[cm]?[jt]sx?)(.*)$/;
+    FAIL_LINE = /^\s*FAIL\s+(?:\|[^|]+\|\s+|(?!\S+\.(?:test|spec|bench)\.)\S+\s+(?=\S+\.(?:test|spec|bench)\.))?(\S+\.(?:test|spec|bench)\.[cm]?[jt]sx?)(.*)$/;
     UNHANDLED = /\bUnhandled (?:Errors?|Rejections?)\b/;
     FAILED_SUITES = /\bFailed Suites \d+/;
     STEP_ERROR = /##\[error\]/;

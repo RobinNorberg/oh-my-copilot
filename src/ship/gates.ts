@@ -237,7 +237,9 @@ const ANSI = /\x1b\[[0-9;]*[A-Za-z]/g;
 const GH_LOG_PREFIX = /^[^\t]*\t[^\t]*\t(?:\d{4}-\d\d-\d\dT[\d:.]+Z ?)?/;
 /** An Azure Pipelines log line's timestamp (after a byte-order mark on the first line); stripped only when the GitHub prefix is absent. */
 export const ADO_LOG_PREFIX = /^\p{Cf}?\d{4}-\d\d-\d\dT[\d:.]+Z /u;
-const FAIL_LINE = /^\s*FAIL\s+(\S+\.(?:test|spec|bench)\.[cm]?[jt]sx?)(.*)$/;
+// With vitest projects the file follows a project label: `|main|` without
+// colour, ` main ` on a coloured background with it (plain after ANSI stripping).
+const FAIL_LINE = /^\s*FAIL\s+(?:\|[^|]+\|\s+|(?!\S+\.(?:test|spec|bench)\.)\S+\s+(?=\S+\.(?:test|spec|bench)\.))?(\S+\.(?:test|spec|bench)\.[cm]?[jt]sx?)(.*)$/;
 
 /** Extract vitest ` FAIL  <file> > <title>` lines from a GitHub Actions or Azure Pipelines log. */
 export function parseFailingTests(log: string): FailingTest[] {
