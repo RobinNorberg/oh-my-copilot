@@ -1502,7 +1502,8 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       const envs: Array<Record<string, string> | undefined> = [];
       const seen = (cmd: string, args: string[], opts?: Parameters<ReleaseExec>[2]) => { if (args.join(' ').includes(VITEST)) envs.push(opts?.env); return execAsync(cmd, args, opts); };
       expect((await run({ from: 'suite', suite: 'full', to: 'suite' }, { execAsync: seen, suiteShell: () => ({ env: { Path: 'C:\\Git\\bin;C:\\Windows' } }) })).ok).toBe(true);
-      expect(envs).toEqual([{ Path: 'C:\\Git\\bin;C:\\Windows' }]);
+      // The full run opts into the longest-first sort (OMC_TEST_LPT); triage reruns pass no env of their own.
+      expect(envs).toEqual([{ Path: 'C:\\Git\\bin;C:\\Windows', OMC_TEST_LPT: '1' }]);
 
       const refused = await run({ from: 'suite', suite: 'full', to: 'pr', allowSkippedSmoke: true }, { execAsync: seen, suiteShell: () => ({ problem: "the first bash on PATH is WSL's" }) });
       expect(refused.phases[0]).toMatchObject({ id: 'suite', status: 'fail', note: "suite not started: the first bash on PATH is WSL's" });
