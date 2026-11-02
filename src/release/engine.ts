@@ -47,7 +47,7 @@
 
 import { spawn, spawnSync, type SpawnOptions } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
-import { isAbsolute, join, resolve } from 'path';
+import { isAbsolute, join, resolve, win32 } from 'path';
 import { pathToFileURL } from 'url';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
 import { loadBaseKnownFlaky, prRepoUrl, type LoadedShipConfig } from '../ship/config.js';
@@ -62,6 +62,7 @@ import {
   findDistOrphans,
   flakyCandidates,
   newFailures,
+  outsideNodeLoad,
   parseBaselineTitles,
   releaseProseProblems,
   remoteTagTarget,
@@ -73,11 +74,15 @@ import {
   tagTargetProblem,
   testPassedInReport,
   TRIAGE_CAP,
+  TRIAGE_POOL,
+  triageLine,
   VERSION_STAMPS,
   type SuiteShell,
   type TriageResult,
 } from './checks.js';
 import { parseCopilotVersion, resolveCopilotBinary } from '../smoke/copilot-binary.js';
+import { killProcessTree } from '../platform/process-utils.js';
+import { childEnv } from '../utils/windows-search.js';
 import type { ReleaseProgressInput } from './progress.js';
 
 export const PHASES = ['preflight', 'bump', 'build', 'gates', 'commit', 'suite', 'smoke', 'pr', 'promote', 'tag', 'verify'] as const;
@@ -173,18 +178,59 @@ function releaseSpawn(cmd: string, args: string[], opts?: ReleaseExecOptions): {
   };
 }
 
+/** Async children still running (POSIX: each leads its own process group): a stop of the release kills their trees. */
+const liveTrees = new Set<number>();
+const STOP_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
+
+/** A stop signal: kill every live child tree (vitest's fork workers included), then die of the signal as before. */
+function killLiveTrees(signal: NodeJS.Signals): void {
+  for (const pid of liveTrees) void killProcessTree(pid, 'SIGKILL');
+  for (const s of STOP_SIGNALS) process.off(s, killLiveTrees);
+  // Windows cannot raise SIGHUP on itself (ENOSYS): exit with the conventional 128 + 1.
+  if (process.platform === 'win32' && signal === 'SIGHUP') process.exit(129);
+  else process.kill(process.pid, signal);
+}
+
+function trackTree(pid: number): void {
+  if (liveTrees.size === 0) for (const s of STOP_SIGNALS) process.on(s, killLiveTrees);
+  liveTrees.add(pid);
+}
+
+function untrackTree(pid: number): void {
+  if (liveTrees.delete(pid) && liveTrees.size === 0) for (const s of STOP_SIGNALS) process.off(s, killLiveTrees);
+}
+
 export const defaultReleaseExecAsync: ReleaseExecAsync = (cmd, args, opts) => {
   const s = releaseSpawn(cmd, args, opts);
   if ('refused' in s) return Promise.resolve(s.refused);
+  // Not spawn's own timeout: it kills only the child, orphaning vitest's pooled fork workers.
+  const { timeout, ...options } = s.options;
   return new Promise((done) => {
     let stdout = '';
     let stderr = '';
-    const child = spawn(s.file, s.args, { ...s.options, stdio: ['ignore', 'pipe', 'pipe'] });
+    let timedOut = false;
+    // POSIX: its own process group, so the tree kill reaches its children (Windows: taskkill /T walks the tree).
+    const child = spawn(s.file, s.args, { ...options, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
+    const pid = child.pid;
+    if (pid) trackTree(pid);
+    const timer = timeout && pid ? setTimeout(() => {
+      timedOut = true;
+      void killProcessTree(pid, 'SIGKILL');
+    }, timeout) : undefined;
+    const finish = (result: ExecResult): void => {
+      clearTimeout(timer);
+      if (pid) untrackTree(pid);
+      done(result);
+    };
     child.stdout?.setEncoding('utf8').on('data', (d: string) => { stdout += d; });
     child.stderr?.setEncoding('utf8').on('data', (d: string) => { stderr += d; });
-    child.on('error', (error) => done({ status: 1, stdout, stderr: `${stderr}${error.message}` }));
-    // A child the timeout (or anything else) killed has no exit code: say so, as the sync path's ETIMEDOUT does.
-    child.on('close', (code, signal) => done({ status: code ?? 1, stdout, stderr: code === null ? `${stderr}killed by ${signal}` : stderr }));
+    child.on('error', (error) => finish({ status: 1, stdout, stderr: `${stderr}${error.message}` }));
+    // A killed child (the timeout, or anything else) is a failure that says so, as the sync path's ETIMEDOUT does.
+    child.on('close', (code, signal) => finish({
+      status: code || (timedOut || code === null ? 1 : 0),
+      stdout,
+      stderr: timedOut ? `${stderr}killed by the ${timeout} ms timeout` : code === null ? `${stderr}killed by ${signal}` : stderr,
+    }));
   });
 };
 
@@ -331,6 +377,21 @@ const LAND_ROUNDS = 500;
 /** A heartbeat every 5 min while a suite child runs (under execAsync). */
 export const SUITE_HEARTBEAT_MS = 5 * 60_000;
 
+/**
+ * Every process as `<pid> <ppid> <command line>`, for the outside-load note: Windows has no
+ * `ps`, and `tasklist` gives no parent ids. Encoded, so no quoting reaches powershell's parser.
+ * Windows PowerShell by absolute path: a bare name is searched in the cwd first, where a lane
+ * worktree could plant a powershell.exe.
+ */
+export function processListing(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): [string, string[]] {
+  if (platform !== 'win32') return ['ps', ['-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'args=']];
+  const systemRoot = env.SystemRoot || env.SYSTEMROOT || env.windir || 'C:\\Windows';
+  return [win32.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(
+    "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId) $($_.ParentProcessId) $(if ($_.CommandLine) { $_.CommandLine -replace '\\s+', ' ' } else { $_.Name })\" }",
+    'utf16le',
+  ).toString('base64')]];
+}
+
 /** After a push GitHub moves the PR's headRefOid asynchronously: poll every 5 s, up to 3 min. */
 const HEAD_SYNC_POLL_MS = 5_000;
 const HEAD_SYNC_POLLS = 36;
@@ -391,7 +452,7 @@ export function phasePlan(id: PhaseId, v: string, opts: ReleaseOptions): string[
     case 'suite':
       return [
         opts.suite === 'full'
-          ? `vitest run --reporter=json (on the committed tree); titles not in ${opts.baseline ?? '(no baseline: any failure fails)'} (at most ${TRIAGE_CAP}) rerun alone ${opts.triageRuns ?? 3}x (a failed file with no failing title, e.g. its setup, reruns as the whole file): fail every rerun = real (fail), pass some = mixed (blocked), pass every rerun = load-flaky (warning; known-flaky candidates written, never committed)`
+          ? `vitest run --reporter=json (on the committed tree); titles not in ${opts.baseline ?? '(no baseline: any failure fails)'} rerun alone ${opts.triageRuns ?? 3}x (a failed file with no failing title, e.g. its setup, reruns as the whole file), ${TRIAGE_POOL} titles at a time and never two of one file; a title failing a pooled rerun gets ${opts.triageRuns ?? 3} serial isolated reruns: fail every rerun = real (fail), pass some = mixed (blocked), pass every rerun = load-flaky (warning; known-flaky candidates written, never committed). Over ${TRIAGE_CAP} such titles: their files rerun as a whole up to ${opts.triageRuns ?? 3}x each (pooled); a title passing every file rerun is load-flaky, the rest (at most ${TRIAGE_CAP}, else fail) are triaged`
           : opts.suite === 'targeted' ? 'vitest related --run <src files changed since the last v* tag> (on the committed tree)' : 'suite: none (pass --suite targeted|full)',
       ];
     case 'pr':
@@ -627,24 +688,63 @@ class Release {
   }
 
   /** A suite child: through execAsync when given (the release PR's CI is watched meanwhile), with the suite shell env. */
-  private async runSuite(args: string[], opts: ReleaseExecOptions = {}, label = 'suite'): Promise<ExecResult> {
+  /** `label`: its own heartbeat; null: none (a pooled rerun, whose pool keeps one). */
+  private async runSuite(args: string[], opts: ReleaseExecOptions = {}, label: string | null = 'suite'): Promise<ExecResult> {
     const full: ReleaseExecOptions = { cwd: this.deps.root, ...opts, suiteEnv: true, env: { ...this.suiteEnv, ...opts.env } };
     if (!this.deps.execAsync) return this.deps.exec(this.deps.node, args, full);
     // The full vitest run prints nothing for most of an hour: a paced heartbeat keeps `progress watch --stall` quiet.
-    const started = label === 'suite' ? this.suiteStarted : this.deps.now();
+    const stop = label === null ? () => undefined : this.pulse(label === 'suite' ? 'suite running' : label, label === 'suite' ? this.suiteStarted : this.deps.now());
+    try {
+      return await this.deps.execAsync(this.deps.node, args, full);
+    } finally {
+      stop();
+    }
+  }
+
+  /** A suite heartbeat every 5 min, `<label>, N min; <outside load>`, never throttled; returns its stop. */
+  private pulse(label: string | (() => string), started: number): () => void {
     const timer = setInterval(() => {
       try {
-        this.deps.progress({ phase: 'suite', status: 'heartbeat', note: `${label === 'suite' ? 'suite running' : label}, ${Math.round((this.deps.now() - started) / 60_000)} min`, always: true });
+        const text = typeof label === 'string' ? label : label();
+        // The last listing's value; the next one refreshes it in the background.
+        this.deps.progress({ phase: 'suite', status: 'heartbeat', note: `${text}, ${Math.round((this.deps.now() - started) / 60_000)} min; ${this.outsideLoadNote(this.lastLoad)}`, always: true });
+        void this.outsideLoad();
       } catch {
         // A broken progress sink must not crash the release from a timer.
       }
     }, SUITE_HEARTBEAT_MS);
     timer.unref?.();
-    try {
-      return await this.deps.execAsync(this.deps.node, args, full);
-    } finally {
-      clearInterval(timer);
-    }
+    return () => clearInterval(timer);
+  }
+
+  private lastLoad: { node: number; vitest: number } | null = null;
+  private loadListing: Promise<{ node: number; vitest: number } | null> | null = null;
+
+  /**
+   * Node (and vitest) processes outside this release's process tree: other lanes' load, also kept as
+   * `lastLoad`. Null when the listing fails (an agent shell may block it). Through execAsync when given,
+   * so a listing never blocks the event loop; at most one in flight (a second call shares it).
+   */
+  private outsideLoad(): Promise<{ node: number; vitest: number } | null> {
+    this.loadListing ??= (async () => {
+      try {
+        const [cmd, args] = processListing(process.platform, process.env);
+        const opts: ReleaseExecOptions = { cwd: this.deps.root, timeoutMs: 30_000, env: childEnv({}) };
+        const r = this.deps.execAsync ? await this.deps.execAsync(cmd, args, opts) : this.deps.exec(cmd, args, opts);
+        return r.status === 0 ? outsideNodeLoad(r.stdout, process.pid) : null;
+      } catch {
+        return null;
+      }
+    })().then((load) => {
+      this.lastLoad = load;
+      this.loadListing = null;
+      return load;
+    });
+    return this.loadListing;
+  }
+
+  private outsideLoadNote(load: { node: number; vitest: number } | null): string {
+    return load ? `outside load: ${load.node} node process(es), ${load.vitest} vitest` : 'outside load: unknown (no process listing)';
   }
 
   private suiteEnv: Record<string, string> = {};
@@ -661,6 +761,14 @@ class Release {
       if ('problem' in shell) return fail(`suite not started: ${shell.problem}`);
       if (shell.note) this.deps.log(`  ${shell.note}`);
       this.suiteEnv = shell.env;
+      // The quiet-window rule: no other lanes while the suite runs. Outside vitest load slows every file and turns passes into load flakes.
+      const load = await this.outsideLoad();
+      this.deps.log(`  ${this.outsideLoadNote(load)}`);
+      if (load && load.vitest > 0) {
+        const warning = `outside load at suite start: ${load.vitest} vitest process(es) outside this release (${load.node} node in all); the quiet window wants no other lanes while the suite runs`;
+        this.deps.log(`  !! WARNING ${warning}`);
+        this.deps.progress({ phase: 'suite', status: 'heartbeat', note: warning, always: true });
+      }
     }
     if (suite === 'targeted') {
       const tag = this.run('git', ['describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*', 'HEAD']);
@@ -687,13 +795,37 @@ class Release {
       const failing = failingTitlesFromVitestJson(readFileSync(out, 'utf8'));
       const baseline = this.opts.baseline ? parseBaselineTitles(readFileSync(this.opts.baseline, 'utf8')) : [];
       const fresh = newFailures(failing, baseline);
-      if (fresh.length > TRIAGE_CAP) fail(`${fresh.length} failing test(s) not in the baseline, more than the ${TRIAGE_CAP} triaged in isolation (report: ${out})`, fresh);
       if (fresh.length === 0) {
         this.requireClean('full suite');
         return { status: 'ok', note: `full suite: ${failing.length} failing, all in the baseline` };
       }
-      const triage = await this.triage(fresh, head);
-      const lines = triage.map((t) => `${t.class}: ${t.title} (passed ${t.passes}/${t.runs} isolated reruns)`);
+      // Over the cap (a load storm): rerun the failing files instead of failing or rerunning the whole suite.
+      let toTriage = fresh;
+      let fileRerunPassed: TriageResult[] = [];
+      if (fresh.length > TRIAGE_CAP) {
+        const runs = this.opts.triageRuns ?? 3;
+        const files = new Set(fresh.map((t) => splitFailingTitle(t).file)).size;
+        // A resume on the same HEAD keeps the verdicts already saved: whole-file passes, and titles triaged one by one.
+        const prior = this.state.suiteTriage?.sha === head ? this.state.suiteTriage.results.filter((r) => r.runs === runs) : [];
+        const priorOf = (title: string) => prior.find((r) => r.title === title);
+        fileRerunPassed = fresh.map(priorOf).filter((r): r is TriageResult => r?.wholeFile === true);
+        const isolated = fresh.filter((t) => priorOf(t) && !priorOf(t)!.wholeFile);
+        const pending = fresh.filter((t) => !priorOf(t));
+        let still: string[] = [];
+        if (pending.length > 0) {
+          this.deps.log(`  ${fresh.length} failing test(s) not in the baseline, more than the ${TRIAGE_CAP} triaged one by one: rerunning the ${new Set(pending.map((t) => splitFailingTitle(t).file)).size} file(s) of ${pending.length}, ${TRIAGE_POOL} at a time, up to ${runs} times each`);
+          const rerun = await this.rerunFailingFiles(pending, baseline, head, runs);
+          still = rerun.still;
+          fileRerunPassed = [...fileRerunPassed, ...rerun.passed];
+        }
+        toTriage = [...new Set([...still, ...isolated])].sort();
+        if (toTriage.length > TRIAGE_CAP) {
+          fail(`${fresh.length} failing test(s) not in the baseline; ${toTriage.length} still fail a rerun of their ${files} file(s), more than the ${TRIAGE_CAP} triaged in isolation (report: ${out})`, toTriage);
+        }
+      }
+      const triaged = toTriage.length > 0 ? await this.triage(toTriage, head) : [];
+      const triage = [...fileRerunPassed, ...triaged];
+      const lines = triage.map(triageLine);
       const real = triage.filter((t) => t.class === 'real').length;
       const mixed = triage.filter((t) => t.class === 'mixed').length;
       const candidates = flakyCandidates(this.v, triage);
@@ -711,7 +843,10 @@ class Release {
         blocked(`${mixed} failing test(s) not in the baseline failed some isolated reruns (mixed, may be a real race: blocks); fix them, then --from suite (evidence: ${candidatesPath})`, lines);
       }
       this.requireClean('full suite');
-      const note = `full suite: ${failing.length} failing; ${fresh.length} not in the baseline are load-flaky (passed every isolated rerun)${candidates.length > 0 ? `; ${candidates.length} known-flaky candidate(s) await owner approval: ${candidatesPath}` : ''}`;
+      const evidence = fileRerunPassed.length > 0
+        ? `over the cap of ${TRIAGE_CAP}: ${fileRerunPassed.length} passed every whole-file rerun, ${triaged.length} every isolated rerun`
+        : 'passed every isolated rerun';
+      const note = `full suite: ${failing.length} failing; ${triage.length} not in the baseline are load-flaky (${evidence})${candidates.length > 0 ? `; ${candidates.length} known-flaky candidate(s) await owner approval: ${candidatesPath}` : ''}`;
       this.deps.log(`  !! WARNING ${note}`);
       return { status: 'ok', note, details: lines };
     }
@@ -720,10 +855,14 @@ class Release {
   }
 
   /**
-   * Each new failing full-suite title alone (a file-level failure: the whole file), `triageRuns` times, sequentially
-   * with the suite env: passing every isolated run means it failed only under
-   * the suite's load. Saved after each title, so a re-run on the same HEAD
-   * does not repeat finished titles.
+   * Each new failing full-suite title alone (a file-level failure: the whole
+   * file), `triageRuns` times with the suite env. First pooled: up to
+   * TRIAGE_POOL titles at once, never two of one file. A title that passes
+   * every pooled rerun is load-flaky (it passed under more load than alone);
+   * one that fails a pooled rerun is judged by `triageRuns` serial isolated
+   * reruns once the pool is done, classified as before. So a pass is never
+   * easier to get than in serial triage. Saved after each title, so a re-run
+   * on the same HEAD does not repeat finished titles.
    */
   private async triage(titles: string[], head: string): Promise<TriageResult[]> {
     const runs = this.opts.triageRuns ?? 3;
@@ -731,36 +870,180 @@ class Release {
     // A whole file runs every test of it: three times the per-title allowance.
     const fileTimeoutMs = titleTimeoutMs * 3;
     const prior = this.state.suiteTriage?.sha === head ? this.state.suiteTriage.results : [];
-    const out = join(this.deps.stateRoot, 'release', `${this.v}-triage.json`);
-    const results: TriageResult[] = [];
-    for (const [i, title] of titles.entries()) {
+    const results = new Map<string, TriageResult>();
+    const record = (result: TriageResult): void => {
+      results.set(result.title, result);
+      const done = titles.filter((t) => results.has(t)).map((t) => results.get(t)!);
+      this.save({ suiteTriage: { sha: head, results: [...done, ...prior.filter((p) => !results.has(p.title))] } });
+      this.deps.progress({ phase: 'suite', status: 'heartbeat', note: `triage ${results.size}/${titles.length}: ${result.class}, passed ${result.passes}/${result.runs} isolated reruns: ${result.title}` });
+    };
+    /** One rerun of `title` alone: whether it passed. */
+    const rerun = async (title: string, n: number, out: string, mode: 'pooled' | 'isolated'): Promise<boolean> => {
       const { file, name } = splitFailingTitle(title);
-      // A record of another run count (an older 0-run file-level record included) is not reused.
-      let result = prior.find((r) => r.title === title && r.runs === runs);
-      if (!result) {
-        let passes = 0;
-        for (let n = 0; n < runs; n++) {
-          rmSync(out, { force: true });
-          // One --testNamePattern=<pattern> argument: a title starting with "-" is never read as a flag.
-          // A file-level failure (its setup or collection failed, no failing title) reruns the whole file.
-          const pattern = name === null ? [] : [`--testNamePattern=${escapeRe(name)}`];
-          const args = ['node_modules/vitest/vitest.mjs', 'run', file, ...pattern, '--reporter=json', `--outputFile=${out}`];
-          this.deps.log(`  node ${args.slice(0, 3).join(' ')}${name === null ? '' : ` ${JSON.stringify(pattern[0])}`} --reporter=json (isolated ${name === null ? 'whole-file ' : ''}rerun ${n + 1}/${runs})`);
-          const timeoutMs = name === null ? fileTimeoutMs : titleTimeoutMs;
-          const r = await this.runSuite(args, { timeoutMs }, `triage rerun ${n + 1}/${runs} of ${file}`);
-          if (r.status !== 0 && /killed by|ETIMEDOUT/.test(r.stderr)) this.deps.log(`  !! triage rerun ${n + 1}/${runs} of ${title} timed out after ${timeoutMs / 60_000} min (counts as failed)`);
-          // A pass is exit 0 AND the report saying the test (or every test of the file) passed; a timeout or crash exits non-zero.
-          const report = r.status === 0 && existsSync(out) ? readFileSync(out, 'utf8') : null;
-          if (report !== null && (name === null ? filePassedInReport(report, file) : testPassedInReport(report, file, name))) passes++;
-        }
-        result = { title, file, runs, passes, class: classifyTriage(runs, passes) };
-      }
-      results.push(result);
-      this.save({ suiteTriage: { sha: head, results: [...results, ...prior.filter((p) => !results.some((r) => r.title === p.title))] } });
-      this.deps.progress({ phase: 'suite', status: 'heartbeat', note: `triage ${i + 1}/${titles.length}: ${result.class}, passed ${result.passes}/${result.runs} isolated reruns: ${title}` });
+      rmSync(out, { force: true });
+      // One --testNamePattern=<pattern> argument: a title starting with "-" is never read as a flag.
+      // A file-level failure (its setup or collection failed, no failing title) reruns the whole file.
+      const pattern = name === null ? [] : [`--testNamePattern=${escapeRe(name)}`];
+      const args = ['node_modules/vitest/vitest.mjs', 'run', file, ...pattern, '--reporter=json', `--outputFile=${out}`];
+      this.deps.log(`  node ${args.slice(0, 3).join(' ')}${name === null ? '' : ` ${JSON.stringify(pattern[0])}`} --reporter=json (${mode} ${name === null ? 'whole-file ' : ''}rerun ${n + 1}/${runs})`);
+      const timeoutMs = name === null ? fileTimeoutMs : titleTimeoutMs;
+      const r = await this.runSuite(args, { timeoutMs }, mode === 'pooled' ? null : `triage rerun ${n + 1}/${runs} of ${file}`);
+      if (r.status !== 0 && /killed by|ETIMEDOUT/.test(r.stderr)) this.deps.log(`  !! triage ${mode} rerun ${n + 1}/${runs} of ${title} timed out after ${timeoutMs / 60_000} min (counts as failed)`);
+      // A pass is exit 0 AND the report saying the test (or every test of the file) passed; a timeout or crash exits non-zero.
+      const report = r.status === 0 && existsSync(out) ? readFileSync(out, 'utf8') : null;
+      return report !== null && (name === null ? filePassedInReport(report, file) : testPassedInReport(report, file, name));
+    };
+
+    const pooled: string[] = [];
+    for (const title of titles) {
+      // A record of another run count (an older 0-run file-level record included), or of whole-file reruns over the cap, is not reused.
+      const reused = prior.find((r) => r.title === title && r.runs === runs && !r.wholeFile);
+      if (reused) record(reused);
+      else pooled.push(title);
     }
-    rmSync(out, { force: true });
-    return results;
+    /** Title -> the pooled rerun (1-based) it failed. */
+    const serial = new Map<string, number>();
+    let running = 0;
+    const stop = this.pulse(() => `triage pool: ${results.size}/${titles.length} done, ${running} running`, this.deps.now());
+    try {
+      try {
+        await this.pool(pooled.map((title) => ({
+          file: splitFailingTitle(title).file,
+          run: async (slot: number) => {
+            running++;
+            try {
+              for (let n = 0; n < runs; n++) {
+                if (!(await rerun(title, n, this.triageOut(slot), 'pooled'))) {
+                  serial.set(title, n + 1);
+                  return;
+                }
+              }
+              record({ title, file: splitFailingTitle(title).file, runs, passes: runs, class: classifyTriage(runs, runs) });
+            } finally {
+              running--;
+            }
+          },
+        })));
+      } finally {
+        stop();
+      }
+      // A failed pooled rerun is never a verdict: the title is judged alone, serially, as before pooling.
+      for (const title of titles.filter((t) => serial.has(t))) {
+        this.deps.log(`  pooled rerun ${serial.get(title)}/${runs} of ${title} failed, then ${runs} serial isolated reruns decide`);
+        let passes = 0;
+        for (let n = 0; n < runs; n++) if (await rerun(title, n, this.triageOut(), 'isolated')) passes++;
+        record({ title, file: splitFailingTitle(title).file, runs, passes, class: classifyTriage(runs, passes), pooledFailure: serial.get(title) });
+      }
+    } finally {
+      this.removeTriageOuts();
+    }
+    return titles.map((t) => results.get(t)!);
+  }
+
+  /**
+   * Over the triage cap: each failing file as a whole, pooled, with the
+   * whole-file timeout, up to `runs` times, as long as one of its `fresh`
+   * titles has passed every rerun so far. A title that passes all `runs`
+   * file reruns is load-flaky (`passed`, saved at once so a resume does not
+   * repeat them); one failing any of them (a file with no report, or a
+   * non-zero exit with no failing title, fails as the file line), and every
+   * other title failing a file rerun not in the baseline, goes to `still`,
+   * for triage one by one.
+   */
+  private async rerunFailingFiles(fresh: string[], baseline: string[], head: string, runs: number): Promise<{ still: string[]; passed: TriageResult[] }> {
+    const files = [...new Set(fresh.map((t) => splitFailingTitle(t).file))];
+    const timeoutMs = (this.opts.triageTimeoutMinutes ?? 5) * 60_000 * 3;
+    const failing = new Set<string>();
+    const passed: TriageResult[] = [];
+    let done = 0;
+    const stop = this.pulse(() => `over-cap file reruns: ${done}/${files.length} file(s) done`, this.deps.now());
+    try {
+      await this.pool(files.map((file) => ({
+        file,
+        run: async (slot: number) => {
+          const out = this.triageOut(slot);
+          let candidates = fresh.filter((t) => splitFailingTitle(t).file === file);
+          for (let n = 0; n < runs && candidates.length > 0; n++) {
+            rmSync(out, { force: true });
+            const args = ['node_modules/vitest/vitest.mjs', 'run', file, '--reporter=json', `--outputFile=${out}`];
+            this.deps.log(`  node ${args.slice(0, 3).join(' ')} --reporter=json (over-cap whole-file rerun ${n + 1}/${runs})`);
+            const r = await this.runSuite(args, { timeoutMs }, null);
+            let report: string | null = existsSync(out) ? readFileSync(out, 'utf8') : null;
+            let titles: string[] = [];
+            try {
+              if (report !== null) titles = failingTitlesFromVitestJson(report);
+            } catch {
+              report = null;
+            }
+            if (r.status !== 0 && titles.length === 0) titles = [file];
+            for (const t of titles) failing.add(t);
+            const ok = (title: string): boolean => {
+              const { name } = splitFailingTitle(title);
+              return !failing.has(title) && report !== null && (name === null ? filePassedInReport(report, file) : testPassedInReport(report, file, name));
+            };
+            // The first failure of a title ends its file reruns: it goes to triage one by one.
+            for (const t of candidates.filter((c) => !ok(c))) failing.add(t);
+            candidates = candidates.filter(ok);
+            this.deps.progress({ phase: 'suite', status: 'heartbeat', note: `over-cap whole-file rerun ${n + 1}/${runs}: ${titles.length} failing, ${candidates.length} still passing every rerun: ${file}` });
+          }
+          const verdicts = candidates.map((title) => ({ title, file, runs, passes: runs, class: classifyTriage(runs, runs), wholeFile: true }));
+          passed.push(...verdicts);
+          if (verdicts.length > 0) {
+            const prior = this.state.suiteTriage?.sha === head ? this.state.suiteTriage.results : [];
+            this.save({ suiteTriage: { sha: head, results: [...prior.filter((p) => !candidates.includes(p.title)), ...verdicts] } });
+          }
+          done++;
+        },
+      })));
+    } finally {
+      stop();
+      this.removeTriageOuts();
+    }
+    const order = new Map(fresh.map((t, i) => [t, i]));
+    passed.sort((a, b) => order.get(a.title)! - order.get(b.title)!);
+    return { still: newFailures([...failing].sort(), baseline), passed };
+  }
+
+  /** The JSON report of a triage rerun: `slot` for a pooled one (each its own), none for a serial one. */
+  private triageOut(slot?: number): string {
+    return join(this.deps.stateRoot, 'release', slot === undefined ? `${this.v}-triage.json` : `${this.v}-triage-${slot + 1}.json`);
+  }
+
+  private removeTriageOuts(): void {
+    rmSync(this.triageOut(), { force: true });
+    for (let slot = 0; slot < TRIAGE_POOL; slot++) rmSync(this.triageOut(slot), { force: true });
+  }
+
+  /**
+   * Runs `jobs`, at most TRIAGE_POOL at once and never two of one file at
+   * once (a file's tests share fixtures); `slot` (0..TRIAGE_POOL-1) is the
+   * job's own while it runs. Without execAsync every job runs to its end in
+   * turn. A job's error stops new jobs, waits for the running ones, and is
+   * rethrown.
+   */
+  private async pool(jobs: Array<{ file: string; run: (slot: number) => Promise<void> }>): Promise<void> {
+    const pending = [...jobs];
+    const busy = new Set<string>();
+    const free = Array.from({ length: TRIAGE_POOL }, (_, i) => i);
+    const running = new Set<Promise<void>>();
+    let error: { cause: unknown } | undefined;
+    while (running.size > 0 || (pending.length > 0 && !error)) {
+      for (let next = pending.findIndex((j) => !busy.has(j.file)); !error && free.length > 0 && next >= 0; next = pending.findIndex((j) => !busy.has(j.file))) {
+        const [job] = pending.splice(next, 1);
+        const slot = free.shift()!;
+        busy.add(job.file);
+        const p: Promise<void> = job.run(slot)
+          .catch((cause: unknown) => { error ??= { cause }; })
+          .finally(() => {
+            busy.delete(job.file);
+            free.push(slot);
+            running.delete(p);
+          });
+        running.add(p);
+      }
+      if (running.size > 0) await Promise.race(running);
+    }
+    if (error) throw error.cause;
   }
 
   /** sha256 of HEAD's object ids for SMOKE_INPUTS: the committed tree, since smoke runs after commit. */

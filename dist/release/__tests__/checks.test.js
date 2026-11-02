@@ -4,7 +4,7 @@ import { existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { classifyTriage, compareVersions, escapeRe, failingTitlesFromVitestJson, findDistOrphans, flakyCandidates, newFailures, SMOKE_INPUTS, smokeInputHash, splitFailingTitle, testPassedInReport, filePassedInReport, parseBaselineTitles, parseReleaseVersion, releaseProseProblems, remoteTagTarget, smokeProblems, stampVersion, suiteShellFor, tagTargetProblem, VERSION_STAMPS, } from '../checks.js';
+import { classifyTriage, compareVersions, escapeRe, failingTitlesFromVitestJson, findDistOrphans, flakyCandidates, newFailures, outsideNodeLoad, SMOKE_INPUTS, smokeInputHash, splitFailingTitle, testPassedInReport, filePassedInReport, parseBaselineTitles, parseReleaseVersion, releaseProseProblems, remoteTagTarget, smokeProblems, stampVersion, suiteShellFor, tagTargetProblem, VERSION_STAMPS, } from '../checks.js';
 import { formatReleaseProgress } from '../progress.js';
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SHA = 'a'.repeat(40);
@@ -119,6 +119,23 @@ describe('flake triage', () => {
         expect(classifyTriage(1, 1)).toBe('load-flaky');
         // "passed 0/0 isolated reruns" is never real.
         expect(() => classifyTriage(0, 0)).toThrow(/at least one isolated rerun/);
+    });
+    it('counts node (and vitest) processes outside the release tree: itself, its ancestors and descendants excluded', () => {
+        const listing = [
+            '10 1 node bin/oh-my-copilot.js release 5.20.0 --drive',
+            '20 10 node bin/oh-my-copilot.js release 5.20.0',
+            '30 20 C:\\Windows\\System32\\cmd.exe /c npx vitest',
+            '31 30 node node_modules/vitest/vitest.mjs run',
+            '32 31 "C:\\Program Files\\nodejs\\node.exe" node_modules/vitest/dist/workers/forks.js',
+            '40 1 "C:\\Program Files\\nodejs\\node.exe" C:\\lane\\node_modules\\vitest\\vitest.mjs run',
+            '41 40 /usr/bin/node /lane/node_modules/vitest/dist/workers/forks.js',
+            '42 1 node.exe',
+            '43 1 C:\\Windows\\explorer.exe',
+            '44 1 nodemon server.js',
+            'not a process line',
+        ].join('\r\n');
+        expect(outsideNodeLoad(listing, 20)).toEqual({ node: 3, vitest: 2 });
+        expect(outsideNodeLoad('', 20)).toBeNull();
     });
     it('reads one file of a vitest JSON report: passed as a whole only with a passed test and no failed one', () => {
         const report = (status, results) => JSON.stringify({ testResults: [{ name: 'C:\\x\\src\\a.test.ts', status, assertionResults: results }] });

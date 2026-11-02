@@ -4,6 +4,7 @@
  */
 import { execFileSync, execFile, spawnSync } from 'child_process';
 import { readFileSync } from 'fs';
+import { win32 } from 'path';
 import { promisify } from 'util';
 import * as fsPromises from 'fs/promises';
 const execFileAsync = promisify(execFile);
@@ -113,7 +114,8 @@ async function killProcessTreeWindows(pid, force) {
         if (force) {
             args.unshift('/F');
         }
-        execFileSync('taskkill.exe', args, {
+        // An absolute path: a bare name is searched in the cwd first, where a lane worktree could plant one.
+        execFileSync(win32.join(process.env.SystemRoot || process.env.windir || 'C:\\Windows', 'System32', 'taskkill.exe'), args, {
             stdio: 'ignore',
             timeout: 5000,
             windowsHide: true

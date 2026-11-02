@@ -119,10 +119,15 @@ reference for what each phase asserts.
    again (with `--live-smoke`). `--force-smoke` always runs it. A red smoke
    drops `lastSmoke`.
    **Flake triage.** With `--suite full`, each failing title not in the
-   baseline (at most 20; more fail at once) is rerun alone
+   baseline is rerun alone
    `--triage-runs` times (default 3) with
-   `vitest run <file> --testNamePattern=<title> --reporter=json`, sequentially,
-   each with a timeout (`--triage-timeout`, default 5 min; a timeout is a
+   `vitest run <file> --testNamePattern=<title> --reporter=json`, 3 titles at
+   a time but never two of one file; a title that fails a pooled rerun then
+   gets `--triage-runs` serial reruns alone, which decide its class. Over 20
+   such titles, their files are rerun as a whole (pooled) instead, up to
+   `--triage-runs` times: titles passing every file rerun are load-flaky,
+   the rest are triaged (more than 20 still
+   failing: the suite fails). Each rerun has a timeout (`--triage-timeout`, default 5 min; a timeout is a
    failed rerun). A file that failed with no failing title (its
    `beforeAll` or collection failed, every test skipped) reruns as the whole
    file, `vitest run <file> --reporter=json`, the same number of times, and
@@ -168,6 +173,18 @@ reference for what each phase asserts.
 4. The script never deletes `.git/index.lock`, never force-pushes, rebases or
    deletes tags; a local tag that peels elsewhere (an upstream tag) stops the
    `tag` phase for you to remove by hand.
+
+## Quiet window
+
+While the release suite runs (`phase=suite`, the full suite and its
+triage), no other agent lanes run on this machine: the lead holds running
+lanes at a quiet point and starts no new agents until the suite phase
+ends. Why: other lanes' vitest and npm load slowed the per-file cost about
+2.5x and turned passing tests into load flakes (fast-release-suite design,
+2026-11-02). The driver logs the outside load at suite start (`!! WARNING
+outside load at suite start` when other vitest processes run) and in every
+5-min suite heartbeat (`outside load: N node process(es), V vitest`); it
+warns, never blocks.
 
 ## Where publishing actually happens
 
