@@ -480,14 +480,15 @@ class Release {
         return { status: 'ok', note: 'gates green' };
     }
     /** A suite child: through execAsync when given (the release PR's CI is watched meanwhile), with the suite shell env. */
-    async runSuite(args, opts = {}) {
+    async runSuite(args, opts = {}, label = 'suite') {
         const full = { cwd: this.deps.root, ...opts, suiteEnv: true, env: { ...this.suiteEnv, ...opts.env } };
         if (!this.deps.execAsync)
             return this.deps.exec(this.deps.node, args, full);
         // The full vitest run prints nothing for most of an hour: a paced heartbeat keeps `progress watch --stall` quiet.
+        const started = label === 'suite' ? this.suiteStarted : this.deps.now();
         const timer = setInterval(() => {
             try {
-                this.deps.progress({ phase: 'suite', status: 'heartbeat', note: `suite running, ${Math.round((this.deps.now() - this.suiteStarted) / 60_000)} min`, always: true });
+                this.deps.progress({ phase: 'suite', status: 'heartbeat', note: `${label === 'suite' ? 'suite running' : label}, ${Math.round((this.deps.now() - started) / 60_000)} min`, always: true });
             }
             catch {
                 // A broken progress sink must not crash the release from a timer.
@@ -587,7 +588,9 @@ class Release {
      */
     async triage(titles, head) {
         const runs = this.opts.triageRuns ?? 3;
-        const timeoutMs = (this.opts.triageTimeoutMinutes ?? 5) * 60_000;
+        const titleTimeoutMs = (this.opts.triageTimeoutMinutes ?? 5) * 60_000;
+        // A whole file runs every test of it: three times the per-title allowance.
+        const fileTimeoutMs = titleTimeoutMs * 3;
         const prior = this.state.suiteTriage?.sha === head ? this.state.suiteTriage.results : [];
         const out = join(this.deps.stateRoot, 'release', `${this.v}-triage.json`);
         const results = [];
@@ -604,7 +607,10 @@ class Release {
                     const pattern = name === null ? [] : [`--testNamePattern=${escapeRe(name)}`];
                     const args = ['node_modules/vitest/vitest.mjs', 'run', file, ...pattern, '--reporter=json', `--outputFile=${out}`];
                     this.deps.log(`  node ${args.slice(0, 3).join(' ')}${name === null ? '' : ` ${JSON.stringify(pattern[0])}`} --reporter=json (isolated ${name === null ? 'whole-file ' : ''}rerun ${n + 1}/${runs})`);
-                    const r = await this.runSuite(args, { timeoutMs });
+                    const timeoutMs = name === null ? fileTimeoutMs : titleTimeoutMs;
+                    const r = await this.runSuite(args, { timeoutMs }, `triage rerun ${n + 1}/${runs} of ${file}`);
+                    if (r.status !== 0 && /killed by|ETIMEDOUT/.test(r.stderr))
+                        this.deps.log(`  !! triage rerun ${n + 1}/${runs} of ${title} timed out after ${timeoutMs / 60_000} min (counts as failed)`);
                     // A pass is exit 0 AND the report saying the test (or every test of the file) passed; a timeout or crash exits non-zero.
                     const report = r.status === 0 && existsSync(out) ? readFileSync(out, 'utf8') : null;
                     if (report !== null && (name === null ? filePassedInReport(report, file) : testPassedInReport(report, file, name)))

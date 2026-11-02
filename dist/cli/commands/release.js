@@ -82,7 +82,7 @@ export function foreignCliProblem(cliRoot, root) {
     const real = (p) => {
         let r;
         try {
-            r = realpathSync(p);
+            r = realpathSync.native(p);
         }
         catch {
             r = resolve(p);

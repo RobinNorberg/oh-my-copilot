@@ -161,6 +161,8 @@ describe('flake triage', () => {
     expect(filePassedInReport(report('passed', [{ fullName: 'a', status: 'passed' }, { fullName: 'b', status: 'skipped' }]), 'src/a.test.ts')).toBe(true);
     expect(filePassedInReport(report('failed', []), 'src/a.test.ts')).toBe(false);
     expect(filePassedInReport(report('passed', []), 'src/a.test.ts')).toBe(false);
+    expect(filePassedInReport(report('passed', [{ fullName: 'a', status: 'skipped' }]), 'src/a.test.ts')).toBe(false);
+    expect(filePassedInReport(report('passed', [{ fullName: 'a', status: 'todo' }]), 'src/a.test.ts')).toBe(false);
     expect(filePassedInReport(report('failed', [{ fullName: 'a', status: 'passed' }, { fullName: 'b', status: 'failed' }]), 'src/a.test.ts')).toBe(false);
     expect(filePassedInReport(report('passed', [{ fullName: 'a', status: 'passed' }]), 'src/b.test.ts')).toBe(false);
     expect(filePassedInReport('not json', 'src/a.test.ts')).toBe(false);

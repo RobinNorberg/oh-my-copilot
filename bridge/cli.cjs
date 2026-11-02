@@ -163547,12 +163547,13 @@ ${r.stderr}`.trim().split(/\r?\n/);
     return { status: "ok", note: "gates green" };
   }
   /** A suite child: through execAsync when given (the release PR's CI is watched meanwhile), with the suite shell env. */
-  async runSuite(args, opts = {}) {
+  async runSuite(args, opts = {}, label2 = "suite") {
     const full = { cwd: this.deps.root, ...opts, suiteEnv: true, env: { ...this.suiteEnv, ...opts.env } };
     if (!this.deps.execAsync) return this.deps.exec(this.deps.node, args, full);
+    const started = label2 === "suite" ? this.suiteStarted : this.deps.now();
     const timer = setInterval(() => {
       try {
-        this.deps.progress({ phase: "suite", status: "heartbeat", note: `suite running, ${Math.round((this.deps.now() - this.suiteStarted) / 6e4)} min`, always: true });
+        this.deps.progress({ phase: "suite", status: "heartbeat", note: `${label2 === "suite" ? "suite running" : label2}, ${Math.round((this.deps.now() - started) / 6e4)} min`, always: true });
       } catch {
       }
     }, SUITE_HEARTBEAT_MS);
@@ -163640,7 +163641,8 @@ ${r.stderr}`));
    */
   async triage(titles, head) {
     const runs = this.opts.triageRuns ?? 3;
-    const timeoutMs = (this.opts.triageTimeoutMinutes ?? 5) * 6e4;
+    const titleTimeoutMs = (this.opts.triageTimeoutMinutes ?? 5) * 6e4;
+    const fileTimeoutMs = titleTimeoutMs * 3;
     const prior = this.state.suiteTriage?.sha === head ? this.state.suiteTriage.results : [];
     const out = (0, import_path223.join)(this.deps.stateRoot, "release", `${this.v}-triage.json`);
     const results = [];
@@ -163654,7 +163656,9 @@ ${r.stderr}`));
           const pattern = name === null ? [] : [`--testNamePattern=${escapeRe(name)}`];
           const args = ["node_modules/vitest/vitest.mjs", "run", file, ...pattern, "--reporter=json", `--outputFile=${out}`];
           this.deps.log(`  node ${args.slice(0, 3).join(" ")}${name === null ? "" : ` ${JSON.stringify(pattern[0])}`} --reporter=json (isolated ${name === null ? "whole-file " : ""}rerun ${n + 1}/${runs})`);
-          const r = await this.runSuite(args, { timeoutMs });
+          const timeoutMs = name === null ? fileTimeoutMs : titleTimeoutMs;
+          const r = await this.runSuite(args, { timeoutMs }, `triage rerun ${n + 1}/${runs} of ${file}`);
+          if (r.status !== 0 && /killed by|ETIMEDOUT/.test(r.stderr)) this.deps.log(`  !! triage rerun ${n + 1}/${runs} of ${title} timed out after ${timeoutMs / 6e4} min (counts as failed)`);
           const report3 = r.status === 0 && (0, import_fs194.existsSync)(out) ? (0, import_fs194.readFileSync)(out, "utf8") : null;
           if (report3 !== null && (name === null ? filePassedInReport(report3, file) : testPassedInReport(report3, file, name))) passes++;
         }
@@ -165042,7 +165046,7 @@ function foreignCliProblem(cliRoot, root2) {
   const real2 = (p) => {
     let r;
     try {
-      r = (0, import_fs197.realpathSync)(p);
+      r = import_fs197.realpathSync.native(p);
     } catch {
       r = (0, import_path227.resolve)(p);
     }
