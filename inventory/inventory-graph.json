@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "4520707e99aa5dd803e55ff76c0933203bf39acb",
-    "sourceSha256": "8dad77cf1c3dada9d44765f23d5e156f7310b1f5988f6deaca2645ca7219db3d",
+    "head": "986b4b25e34d5273e3c18f0ff3d7b3afc675c2f0",
+    "sourceSha256": "cfb6ae73e81e4956227241a80d788fda701d0d72a77b7e1b7600481e2c5eb4d2",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "4520707e99aa5dd803e55ff76c0933203bf39acb",
-  "sourceSha256": "8dad77cf1c3dada9d44765f23d5e156f7310b1f5988f6deaca2645ca7219db3d",
+  "head": "986b4b25e34d5273e3c18f0ff3d7b3afc675c2f0",
+  "sourceSha256": "cfb6ae73e81e4956227241a80d788fda701d0d72a77b7e1b7600481e2c5eb4d2",
   "counts": {
     "public": {
       "skills": 63,
@@ -80174,6 +80174,11 @@
       },
       {
         "from": "src/factory/run/__tests__/prepare-gates.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
         "to": "src/factory/run/__tests__/fake-lanes.ts",
         "kind": "imports"
       },
@@ -83445,6 +83450,11 @@
       {
         "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -103124,6 +103134,11 @@
       },
       {
         "from": "src/smoke/__tests__/copilot-factory-run-scenario.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-factory-run-scenario.test.ts",
         "to": "src/factory/run/__tests__/fake-lanes.ts",
         "kind": "imports"
       },
@@ -117945,11 +117960,11 @@
     ],
     "stats": {
       "nodeCount": 9907,
-      "edgeCount": 11924,
-      "importEdgeCount": 9798,
+      "edgeCount": 11927,
+      "importEdgeCount": 9801,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "4434dbe34eabdc22a5b6690b5b328cf43e3aeb788ba724e82b06ca23209e7707",
-  "manifestSha256": "670fe3b84e07d5e0e0d956667cdfa643b70b60ac24437f899021fe2bb9fadad5"
+  "manifestSha256": "1714ff5af631f13211a7d719ea2135c45f22824fc53705b3dcb59a92aa3c6855"
 }

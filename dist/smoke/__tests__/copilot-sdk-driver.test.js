@@ -154,7 +154,7 @@ function fakeSdk(opts = {}) {
                     },
                     agent: { list: async () => ({ agents: [{ name: 'oh-my-copilot:architect' }] }) },
                     mcp: {
-                        list: async () => ({ servers: [{ name: 't', status: 'connected' }] }),
+                        list: async () => ({ servers: [{ name: opts.mcpServer ?? 't', status: 'connected' }] }),
                         listTools: async () => ({ tools: [{ name: 'a' }, { name: 'b' }, { name: 'c' }] }),
                     },
                     tools: {
@@ -680,7 +680,7 @@ describe('runSdkTier credit cap, log windows, tree kill', () => {
         expect(c['sdk.tools_excluded']).toMatchObject({ ok: false, detail: 't-host_smoke still offered to the model' });
     });
     it('derives the excluded tool from the MCP server name', async () => {
-        const { loaded, rec } = fakeSdk({ toolNames: ['omg-state_read'] });
+        const { loaded, rec } = fakeSdk({ toolNames: ['omg-state_read'], mcpServer: 'omg' });
         await runSdkTier(input(loaded, { scenarios: ['smoke'], mcpServer: 'omg' }));
         for (const s of rec.sessions)
             expect(s.excludedTools[0]).toBe('omg-host_smoke');

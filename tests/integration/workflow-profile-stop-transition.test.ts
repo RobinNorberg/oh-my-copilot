@@ -1291,8 +1291,14 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     appendRecord(f, { message: { role: 'assistant', content: completion('ralplan') } });
     const lockPath = `${f.statePath}.mutation.lock`;
     writeFileSync(lockPath, liveLockOwner());
-    const pending = invokeAsync(f);
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Wait for the hook's own signal that it holds the ralplan-only snapshot:
+    // a fixed sleep lost the race to a slow child start on a loaded host.
+    const snapshotTaken = join(f.dir, 'advance-snapshot-taken');
+    const pending = invokeAsync(f, {}, { OMC_WORKFLOW_TEST_ADVANCE_SIGNAL_PATH: snapshotTaken });
+    for (const deadline = Date.now() + 20_000; !existsSync(snapshotTaken);) {
+      if (Date.now() > deadline) throw new Error('hook never reached the workflow commit');
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
     appendRecord(f, { message: { role: 'assistant', content: completion('execution') } });
     unlinkSync(lockPath);
 

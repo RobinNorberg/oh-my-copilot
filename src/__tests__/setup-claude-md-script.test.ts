@@ -14,7 +14,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { IS_WIN, requiresSymlinks } from './helpers/platform.js';
+import { IS_WIN, requiresSymlinks, scaleTiming } from './helpers/platform.js';
 
 const REPO_ROOT = join(__dirname, '..', '..');
 const SETUP_SCRIPT = join(REPO_ROOT, 'scripts', 'setup-claude-md.sh');
@@ -1717,7 +1717,8 @@ describe('setup-claude-md.sh Volta shim + re-exec loop regression (issue #3743)'
       cwd: fixture.projectRoot,
       env: { ...process.env, HOME: fixture.homeRoot, COPILOT_HOME: join(fixture.homeRoot, '.claude') },
       encoding: 'utf-8',
-      timeout: 10_000,
+      // Bounds a hang only: a loaded host spends seconds in the shimmed node starts.
+      timeout: scaleTiming(25_000),
     });
 
     expect(result.status).toBe(0);
@@ -1755,7 +1756,8 @@ describe('setup-claude-md.sh Volta shim + re-exec loop regression (issue #3743)'
           OMC_SETUP_REEXEC_DEPTH: '2',
         },
         encoding: 'utf-8',
-        timeout: 10_000,
+        // Bounds a hang only: a loaded host spends seconds in the shimmed node starts.
+        timeout: scaleTiming(25_000),
       },
     );
 
@@ -1790,7 +1792,8 @@ describe('setup-claude-md.sh Volta shim + re-exec loop regression (issue #3743)'
         PATH: `${shimDir}:${process.env.PATH}`,
       },
       encoding: 'utf-8',
-      timeout: 10_000,
+      // Bounds a hang only: a loaded host spends seconds in the shimmed node starts.
+      timeout: scaleTiming(25_000),
     });
 
     expect(result.status).toBe(0);
