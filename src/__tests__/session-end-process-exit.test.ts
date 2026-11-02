@@ -26,6 +26,9 @@ const DETACHED_WORKER_CEILING_MS = IS_CI ? 25_000 : scaleTiming(5_000);
 // Each manifest revision restarts this wait. A loaded local full suite slows
 // the detached worker as much as a CI runner does, so both get the same window.
 const WORKER_PROGRESS_WINDOW_MS = 10_000;
+// Never below two progress windows, so the ceiling cannot cut a live window short.
+// Also bounds the detached publisher's first manifest write, which has no progress to watch.
+const WORKER_HARD_CEILING_MS = Math.max(DETACHED_WORKER_CEILING_MS, WORKER_PROGRESS_WINDOW_MS) * 2;
 const WIN_REAPER = [
   "const { rmSync } = require('node:fs');",
   'const deadline = Date.now() + 180_000;',
@@ -111,7 +114,7 @@ async function waitForTerminalCallback(cwd: string, sessionId: string): Promise<
   const callbackPath = join(cwd, 'callback.md');
   const manifestPath = join(getOmcRoot(cwd), 'state', 'session-end-jobs', `${sessionId}.json`);
   let deadline = Date.now() + DETACHED_WORKER_CEILING_MS;
-  const hardCeiling = Date.now() + DETACHED_WORKER_CEILING_MS * 2;
+  const hardCeiling = Date.now() + WORKER_HARD_CEILING_MS;
   let lastRevision = -1;
   let lastPhase = '';
 
@@ -127,7 +130,7 @@ async function waitForTerminalCallback(cwd: string, sessionId: string): Promise<
         if (manifest.revision !== lastRevision || manifest.phase !== lastPhase) {
           lastRevision = manifest.revision;
           lastPhase = manifest.phase;
-          deadline = Math.min(hardCeiling, Date.now() + WORKER_PROGRESS_WINDOW_MS);
+          deadline = Math.min(hardCeiling, Math.max(deadline, Date.now() + WORKER_PROGRESS_WINDOW_MS));
         }
         if (manifest.phase === 'complete' && manifest.owner === null && manifest.actions.callback?.status === 'completed') {
           await new Promise<void>((resolve) => setTimeout(resolve, 250));
@@ -142,7 +145,7 @@ async function waitForTerminalCallback(cwd: string, sessionId: string): Promise<
         if (manifest.revision !== lastRevision || manifest.phase !== lastPhase) {
           lastRevision = manifest.revision;
           lastPhase = manifest.phase;
-          deadline = Math.min(hardCeiling, Date.now() + WORKER_PROGRESS_WINDOW_MS);
+          deadline = Math.min(hardCeiling, Math.max(deadline, Date.now() + WORKER_PROGRESS_WINDOW_MS));
         }
       } catch {
         // Read or parse collision
@@ -304,11 +307,15 @@ describe('SessionEnd run.cjs process exit regressions (#3477)', () => {
         HTTPS_PROXY: 'http://127.0.0.1:9',
         HTTP_PROXY: 'http://127.0.0.1:9',
         NODE_EXTRA_CA_CERTS: caPath,
+        // The 300 ms foreground budget is not under test here; on a loaded host
+        // it fails open before publishing, and no manifest ever appears.
+        NODE_ENV: 'test',
+        OMC_SESSION_END_TEST_FOREGROUND_TIMEOUT_MS: String(Math.max(450, COMMAND_CEILING_MS - 50)),
       },
     );
     expectPromptExit(result);
     const manifestPath = join(getOmcRoot(cwd), 'state', 'session-end-jobs', 'configured-network-routing.json');
-    const publicationDeadline = Date.now() + DETACHED_WORKER_CEILING_MS;
+    const publicationDeadline = Date.now() + WORKER_HARD_CEILING_MS;
     while (!existsSync(manifestPath) && Date.now() < publicationDeadline) {
       await new Promise(resolve => setTimeout(resolve, 10));
     }
@@ -390,7 +397,7 @@ describe('SessionEnd run.cjs process exit regressions (#3477)', () => {
       expect(filename).toMatch(/^session-log-.*\.md$/);
 
       // Same hard ceiling as waitForTerminalCallback.
-      const deadline = Date.now() + DETACHED_WORKER_CEILING_MS * 2;
+      const deadline = Date.now() + WORKER_HARD_CEILING_MS;
       let job = readJob();
       while (!(job.phase === 'complete' && job.owner === null) && Date.now() < deadline) {
         if (job.owner === null && Date.now() >= Date.parse(job.producerGraceExpiresAt)) {

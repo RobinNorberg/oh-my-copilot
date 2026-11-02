@@ -55,9 +55,30 @@ async function waitForFile(path: string, timeoutMs = 4000): Promise<void> {
  * Consumer-closes-early cases: the runner must exit long before its inner
  * timeout. A declared budget far above the bound keeps a loaded host's
  * process starts from passing for the runner waiting that timeout out.
+ * EARLY_CLOSE_BOUND_MS only stops a hung runner. The real bound is
+ * EARLY_CLOSE_EXCESS_MS, measured from the consumer close or above a
+ * baseline run, so slow process starts stay out of it while a fixed
+ * drain of 2 s or more after the close still fails.
  */
 const EARLY_CLOSE_HOOK_SEC = 30;
 const EARLY_CLOSE_BOUND_MS = 10_000;
+const EARLY_CLOSE_EXCESS_MS = 2_500;
+
+/** Spawn-to-exit time of the runner for a hook that writes once and exits, consumers open. */
+async function runnerBaselineMs(directory: string): Promise<number> {
+  const pluginRoot = join(directory, 'baseline-plugin');
+  const target = writePluginHook(pluginRoot, 'baseline.cjs', "process.stdout.write('BASE');\n", EARLY_CLOSE_HOOK_SEC);
+  const startedAt = Date.now();
+  const runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+    windowsHide: true,
+  });
+  runner.stdout.resume();
+  runner.stderr.resume();
+  await new Promise(resolve => runner.once('exit', resolve));
+  return Date.now() - startedAt;
+}
 
 function writePluginHook(root: string, scriptName: string, source: string, timeoutSec: number): string {
   mkdirSync(join(root, 'scripts'), { recursive: true });
@@ -540,7 +561,6 @@ const start = () => {
 };
 start();
 `, EARLY_CLOSE_HOOK_SEC);
-      const startedAt = Date.now();
       const child = runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
         stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot, OMC_READY_FILE: readyFile, OMC_GO_FILE: goFile },
@@ -548,6 +568,7 @@ start();
       });
       child.stderr!.resume();
       await waitForFile(readyFile);
+      const closedAt = Date.now();
       child.stdout!.destroy();
       writeFileSync(goFile, 'go');
       const code = await new Promise<number | null>((resolve, reject) => {
@@ -558,7 +579,7 @@ start();
         });
       });
       expect(code).toBe(0);
-      expect(Date.now() - startedAt).toBeLessThan(EARLY_CLOSE_BOUND_MS);
+      expect(Date.now() - closedAt).toBeLessThan(EARLY_CLOSE_EXCESS_MS);
     } finally {
       try { runner?.kill('SIGKILL'); } catch { /* already gone */ }
       rmSync(directory, { recursive: true, force: true });
@@ -586,6 +607,7 @@ const pump = () => {
 };
 pump();
 `, EARLY_CLOSE_HOOK_SEC);
+      const baselineMs = await runnerBaselineMs(directory);
       const startedAt = Date.now();
       const runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -604,7 +626,7 @@ pump();
         });
       });
       expect(code).toBe(0);
-      expect(Date.now() - startedAt).toBeLessThan(EARLY_CLOSE_BOUND_MS);
+      expect(Date.now() - startedAt - baselineMs).toBeLessThan(EARLY_CLOSE_EXCESS_MS);
       expect(stderr).toContain('ERR-KEEP');
     } finally {
       rmSync(directory, { recursive: true, force: true });
@@ -632,6 +654,7 @@ const pump = () => {
 };
 pump();
 `, EARLY_CLOSE_HOOK_SEC);
+      const baselineMs = await runnerBaselineMs(directory);
       const startedAt = Date.now();
       const runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -650,7 +673,7 @@ pump();
         });
       });
       expect(code).toBe(0);
-      expect(Date.now() - startedAt).toBeLessThan(EARLY_CLOSE_BOUND_MS);
+      expect(Date.now() - startedAt - baselineMs).toBeLessThan(EARLY_CLOSE_EXCESS_MS);
       expect(stdout).toContain('OUT-KEEP');
     } finally {
       rmSync(directory, { recursive: true, force: true });

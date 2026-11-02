@@ -195,16 +195,20 @@ describe('processHook - Environment Kill-Switches', () => {
       };
 
       // Warm the lazy imports first, then measure this worker's CPU time: wall
-      // time on a loaded host counts the scheduler, not the hook.
+      // time on a loaded host counts the scheduler, not the hook. A generous
+      // wall bound still catches a blocking wait, which spends no CPU.
       await processHook('keyword-detector', input);
       const start = process.cpuUsage();
+      const wallStart = Date.now();
       await processHook('keyword-detector', input);
+      const wall = Date.now() - wallStart;
       const { user, system } = process.cpuUsage(start);
       const duration = (user + system) / 1000;
 
       // Should complete in under 500ms (generous threshold for CI environments)
       // The actual overhead should be negligible (< 1ms)
       expect(duration).toBeLessThan(scaleTiming(500));
+      expect(wall).toBeLessThan(scaleTiming(5_000));
     });
 
     it('should have minimal overhead when DISABLE_OMC=1', async () => {

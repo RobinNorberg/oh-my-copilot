@@ -1649,7 +1649,9 @@ async function main() {
         const workflowAdvance = advanceWorkflowOnStop(autopilot.state, data, sessionId);
         if (workflowAdvance) {
           // Test-only: tell a test the transcript snapshot is taken before the commit lock is tried.
-          if (process.env.NODE_ENV === "test" && process.env.OMC_WORKFLOW_TEST_ADVANCE_SIGNAL_PATH) closeSync(openSync(process.env.OMC_WORKFLOW_TEST_ADVANCE_SIGNAL_PATH, "w"));
+          if (process.env.NODE_ENV === "test" && process.env.OMC_WORKFLOW_TEST_ADVANCE_SIGNAL_PATH) {
+            try { closeSync(openSync(process.env.OMC_WORKFLOW_TEST_ADVANCE_SIGNAL_PATH, "wx")); } catch { /* exists or unwritable: never truncate, never fail the hook */ }
+          }
           const commit = commitWorkflowAdvance(autopilot.path, workflowAdvance);
           if (commit.committed) {
             console.log(JSON.stringify({ continue: false, decision: "block", reason: workflowAdvance.nextStage
