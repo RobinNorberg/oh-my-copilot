@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "2fc089f2837225c5f3fc2419f5765cfd90380b19",
-    "sourceSha256": "24f9e4513eb9f13f30b25f6be3c237569b7c0f07b8bda96c0c704ba7b7011f61",
+    "head": "df7772bebae1480d3a8944226e9277f2dae6c800",
+    "sourceSha256": "1ac860a1ce454c9b3560c70b7e350a4bd15ca2f27da6244ac4110bd2ad95f358",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "2fc089f2837225c5f3fc2419f5765cfd90380b19",
-  "sourceSha256": "24f9e4513eb9f13f30b25f6be3c237569b7c0f07b8bda96c0c704ba7b7011f61",
+  "head": "df7772bebae1480d3a8944226e9277f2dae6c800",
+  "sourceSha256": "1ac860a1ce454c9b3560c70b7e350a4bd15ca2f27da6244ac4110bd2ad95f358",
   "counts": {
     "public": {
       "skills": 63,
@@ -27,9 +27,9 @@
       "featureFiles": 89,
       "toolFiles": 68,
       "libFiles": 54,
-      "templateHooks": 24,
+      "templateHooks": 25,
       "srcFiles": 1950,
-      "total": 1974
+      "total": 1975
     },
     "generated": {
       "distFiles": 7192,
@@ -749,6 +749,7 @@
       "templates/hooks/lib/state-root.mjs",
       "templates/hooks/lib/stdin.mjs",
       "templates/hooks/lib/utf8-bom.mjs",
+      "templates/hooks/lib/windows-search.mjs",
       "templates/hooks/lib/workflow-profile-runtime.mjs",
       "templates/hooks/lib/workflow-stage-prompts.mjs",
       "templates/hooks/persistent-mode.mjs",
@@ -8844,6 +8845,11 @@
         "id": ".github/ci/test-durations.json",
         "kind": "other",
         "path": ".github/ci/test-durations.json"
+      },
+      {
+        "id": ".github/ci/test-durations.win32.json",
+        "kind": "other",
+        "path": ".github/ci/test-durations.win32.json"
       },
       {
         "id": ".github/ci/windows-path-suite.txt",
@@ -57896,6 +57902,11 @@
         "path": "templates/hooks/lib/utf8-bom.mjs"
       },
       {
+        "id": "templates/hooks/lib/windows-search.mjs",
+        "kind": "template-hook",
+        "path": "templates/hooks/lib/windows-search.mjs"
+      },
+      {
         "id": "templates/hooks/lib/workflow-profile-runtime.mjs",
         "kind": "template-hook",
         "path": "templates/hooks/lib/workflow-profile-runtime.mjs"
@@ -59193,6 +59204,11 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/cleanup-orphans.mjs",
+        "to": "scripts/lib/windows-search.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/code-simplifier.mjs",
         "to": "external:child_process",
         "kind": "imports"
@@ -60183,11 +60199,6 @@
         "kind": "imports"
       },
       {
-        "from": "scripts/lib/windows-search.mjs",
-        "to": "scripts/lib/windows-search.cjs",
-        "kind": "exports"
-      },
-      {
         "from": "scripts/lib/workflow-profile-runtime.mjs",
         "to": "external:child_process",
         "kind": "imports"
@@ -60903,6 +60914,11 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/repair-plugin-cache.mjs",
+        "to": "scripts/lib/windows-search.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/review-gate.mjs",
         "to": "external:node:path",
         "kind": "imports"
@@ -60968,6 +60984,11 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/run-provider-advisor.js",
+        "to": "scripts/lib/windows-search.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/run.cjs",
         "to": "external:child_process",
         "kind": "imports"
@@ -60995,6 +61016,11 @@
       {
         "from": "scripts/run.cjs",
         "to": "external:worker_threads",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/run.cjs",
+        "to": "scripts/lib/windows-search.cjs",
         "kind": "imports"
       },
       {
@@ -61285,6 +61311,11 @@
       {
         "from": "scripts/shipyard-audit.mjs",
         "to": "scripts/lib/utf8-bom.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/shipyard-audit.mjs",
+        "to": "scripts/lib/windows-search.mjs",
         "kind": "imports"
       },
       {
@@ -61718,6 +61749,11 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/workflow-drift-guard.mjs",
+        "to": "scripts/lib/windows-search.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "skills/agent-doc-discipline/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
@@ -61995,6 +62031,11 @@
       {
         "from": "skills/self-improve/scripts/resolve-paths.mjs",
         "to": "scripts/lib/state-root.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "skills/self-improve/scripts/resolve-paths.mjs",
+        "to": "scripts/lib/windows-search.mjs",
         "kind": "imports"
       },
       {
@@ -72928,6 +72969,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/cli/claude-md-coordinator.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/capabilities.test.ts",
         "to": "external:fs/promises",
         "kind": "imports"
@@ -75538,6 +75584,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/index.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/interop.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -75750,6 +75801,11 @@
       {
         "from": "src/cli/team.ts",
         "to": "src/utils/paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/team.ts",
+        "to": "src/utils/windows-search.ts",
         "kind": "imports"
       },
       {
@@ -83013,6 +83069,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/features/rate-limit-wait/daemon.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/features/rate-limit-wait/index.ts",
         "to": "src/features/rate-limit-wait/daemon.ts",
         "kind": "exports"
@@ -85888,6 +85949,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/graph/runtime/executors/agent.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/graph/runtime/executors/authority.ts",
         "to": "src/graph/runtime/types.ts",
         "kind": "type-imports"
@@ -85916,6 +85982,11 @@
         "from": "src/graph/runtime/executors/command.ts",
         "to": "src/graph/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/graph/runtime/executors/command.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
       },
       {
         "from": "src/graph/runtime/fence.ts",
@@ -93628,6 +93699,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/session-end/action-runner.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/session-end/action-watchdog.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -94110,6 +94186,11 @@
       {
         "from": "src/hooks/session-end/worker.ts",
         "to": "src/platform/process-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/worker.ts",
+        "to": "src/utils/windows-search.ts",
         "kind": "imports"
       },
       {
@@ -96400,6 +96481,11 @@
       {
         "from": "src/hud/index.ts",
         "to": "src/utils/skill-slash.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/index.ts",
+        "to": "src/utils/windows-search.ts",
         "kind": "imports"
       },
       {
@@ -99873,6 +99959,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/mcp/standalone-server.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/mcp/team-job-convergence.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -100030,6 +100121,11 @@
       {
         "from": "src/mcp/team-server.ts",
         "to": "src/utils/paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/team-server.ts",
+        "to": "src/utils/windows-search.ts",
         "kind": "imports"
       },
       {
@@ -100975,6 +101071,11 @@
       {
         "from": "src/notifications/reply-listener.ts",
         "to": "src/utils/paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/reply-listener.ts",
+        "to": "src/utils/windows-search.ts",
         "kind": "imports"
       },
       {
@@ -109993,6 +110094,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/team/bridge-entry.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/team/capabilities.ts",
         "to": "src/team/types.ts",
         "kind": "type-imports"
@@ -111415,6 +111521,11 @@
       {
         "from": "src/team/runtime-cli.ts",
         "to": "src/team/worker-launch-ack.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/runtime-cli.ts",
+        "to": "src/utils/windows-search.ts",
         "kind": "imports"
       },
       {
@@ -115983,6 +116094,11 @@
         "kind": "projects"
       },
       {
+        "from": "templates/hooks/code-simplifier.mjs",
+        "to": "templates/hooks/lib/windows-search.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "templates/hooks/keyword-detector.mjs",
         "to": "external:fs",
         "kind": "imports"
@@ -116015,6 +116131,11 @@
       {
         "from": "templates/hooks/keyword-detector.mjs",
         "to": "templates/hooks/lib/utf8-bom.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "templates/hooks/keyword-detector.mjs",
+        "to": "templates/hooks/lib/windows-search.mjs",
         "kind": "imports"
       },
       {
@@ -116258,6 +116379,16 @@
         "kind": "projects"
       },
       {
+        "from": "templates/hooks/lib/windows-search.mjs",
+        "to": "hooks/hooks.json",
+        "kind": "projects"
+      },
+      {
+        "from": "templates/hooks/lib/windows-search.mjs",
+        "to": "src/hooks/bridge.ts",
+        "kind": "projects"
+      },
+      {
         "from": "templates/hooks/lib/workflow-profile-runtime.mjs",
         "to": "external:child_process",
         "kind": "imports"
@@ -116368,6 +116499,11 @@
         "kind": "imports"
       },
       {
+        "from": "templates/hooks/persistent-mode.mjs",
+        "to": "templates/hooks/lib/windows-search.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "templates/hooks/post-tool-use-failure.mjs",
         "to": "external:fs",
         "kind": "imports"
@@ -116391,6 +116527,11 @@
         "from": "templates/hooks/post-tool-use-failure.mjs",
         "to": "src/hooks/bridge.ts",
         "kind": "projects"
+      },
+      {
+        "from": "templates/hooks/post-tool-use-failure.mjs",
+        "to": "templates/hooks/lib/windows-search.mjs",
+        "kind": "imports"
       },
       {
         "from": "templates/hooks/post-tool-use.mjs",
@@ -116421,6 +116562,11 @@
         "from": "templates/hooks/post-tool-use.mjs",
         "to": "src/hooks/bridge.ts",
         "kind": "projects"
+      },
+      {
+        "from": "templates/hooks/post-tool-use.mjs",
+        "to": "templates/hooks/lib/windows-search.mjs",
+        "kind": "imports"
       },
       {
         "from": "templates/hooks/pre-tool-use.mjs",
@@ -116473,6 +116619,11 @@
         "kind": "imports"
       },
       {
+        "from": "templates/hooks/pre-tool-use.mjs",
+        "to": "templates/hooks/lib/windows-search.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "templates/hooks/session-end.mjs",
         "to": "external:child_process",
         "kind": "imports"
@@ -116501,6 +116652,11 @@
         "from": "templates/hooks/session-end.mjs",
         "to": "src/hooks/bridge.ts",
         "kind": "projects"
+      },
+      {
+        "from": "templates/hooks/session-end.mjs",
+        "to": "templates/hooks/lib/windows-search.mjs",
+        "kind": "imports"
       },
       {
         "from": "templates/hooks/session-start.mjs",
@@ -116538,6 +116694,11 @@
         "kind": "projects"
       },
       {
+        "from": "templates/hooks/session-start.mjs",
+        "to": "templates/hooks/lib/windows-search.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "templates/hooks/stop-continuation.mjs",
         "to": "external:path",
         "kind": "imports"
@@ -116556,6 +116717,11 @@
         "from": "templates/hooks/stop-continuation.mjs",
         "to": "src/hooks/bridge.ts",
         "kind": "projects"
+      },
+      {
+        "from": "templates/hooks/stop-continuation.mjs",
+        "to": "templates/hooks/lib/windows-search.mjs",
+        "kind": "imports"
       },
       {
         "from": "templates/hooks/workflow-drift-guard.mjs",
@@ -116581,6 +116747,11 @@
         "from": "templates/hooks/workflow-drift-guard.mjs",
         "to": "src/hooks/bridge.ts",
         "kind": "projects"
+      },
+      {
+        "from": "templates/hooks/workflow-drift-guard.mjs",
+        "to": "templates/hooks/lib/windows-search.mjs",
+        "kind": "imports"
       },
       {
         "from": "tests/benchmark-diagnostics.test.ts",
@@ -117364,6 +117535,11 @@
       },
       {
         "from": "tests/lint/ci-test-shards.test.ts",
+        "to": "external:vitest/node",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/ci-test-shards.test.ts",
         "to": "scripts/ci/duration-sequencer.mjs",
         "kind": "imports"
       },
@@ -117974,12 +118150,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9907,
-      "edgeCount": 11930,
-      "importEdgeCount": 9804,
+      "nodeCount": 9909,
+      "edgeCount": 11963,
+      "importEdgeCount": 9836,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "4434dbe34eabdc22a5b6690b5b328cf43e3aeb788ba724e82b06ca23209e7707",
-  "manifestSha256": "a134b3474dc226d12978389f50da2f5b6d0d9dc669e370a42988674c040dc870"
+  "inventorySha256": "784491f0f922b3d2db431542892347c5419b6c4cad1807f15c6956d52296810e",
+  "manifestSha256": "53216a07f339aa805744121aed1e84b5a273c1561972370da7a091cc00a23ea0"
 }

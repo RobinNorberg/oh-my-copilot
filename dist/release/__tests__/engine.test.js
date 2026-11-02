@@ -1657,7 +1657,8 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             const seen = (cmd, args, opts) => { if (args.join(' ').includes(VITEST))
                 envs.push(opts?.env); return execAsync(cmd, args, opts); };
             expect((await run({ from: 'suite', suite: 'full', to: 'suite' }, { execAsync: seen, suiteShell: () => ({ env: { Path: 'C:\\Git\\bin;C:\\Windows' } }) })).ok).toBe(true);
-            expect(envs).toEqual([{ Path: 'C:\\Git\\bin;C:\\Windows' }]);
+            // The full run opts into the longest-first sort (OMC_TEST_LPT); triage reruns pass no env of their own.
+            expect(envs).toEqual([{ Path: 'C:\\Git\\bin;C:\\Windows', OMC_TEST_LPT: '1' }]);
             const refused = await run({ from: 'suite', suite: 'full', to: 'pr', allowSkippedSmoke: true }, { execAsync: seen, suiteShell: () => ({ problem: "the first bash on PATH is WSL's" }) });
             expect(refused.phases[0]).toMatchObject({ id: 'suite', status: 'fail', note: "suite not started: the first bash on PATH is WSL's" });
             expect(envs).toHaveLength(1);
@@ -2057,8 +2058,8 @@ describe('defaultReleaseExec environment', () => {
     });
     it('a timeout kills the whole child tree, so a grandchild (a vitest fork worker) is not orphaned', async () => {
         const parent = `const c = require('child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' }); console.log(c.pid); setInterval(() => {}, 1000);`;
-        const r = await defaultReleaseExecAsync(process.execPath, ['-e', parent], { timeoutMs: 2_000 });
-        expect(r.stderr).toMatch(/killed by the 2000 ms timeout$/);
+        const r = await defaultReleaseExecAsync(process.execPath, ['-e', parent], { timeoutMs: 5_000 });
+        expect(r.stderr).toMatch(/killed by the 5000 ms timeout$/);
         const grandchild = Number(r.stdout.trim());
         expect(grandchild).toBeGreaterThan(0);
         const alive = () => { try {
@@ -2069,6 +2070,25 @@ describe('defaultReleaseExec environment', () => {
             return false;
         } };
         await vi.waitFor(() => expect(alive()).toBe(false), { timeout: 5_000 });
+    }, 20_000);
+    it('a SIGHUP kills the live child tree, then re-raises (Windows: exit 129, as it cannot signal itself)', async () => {
+        const realKill = process.kill.bind(process);
+        const kill = vi.spyOn(process, 'kill').mockImplementation(((pid, sig) => (pid === process.pid ? true : realKill(pid, sig))));
+        const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined));
+        try {
+            const pending = defaultReleaseExecAsync(process.execPath, ['-e', 'setInterval(() => {}, 1000)']);
+            await new Promise((r) => setTimeout(r, 500));
+            process.emit('SIGHUP', 'SIGHUP');
+            expect((await pending).status).toBe(1);
+            if (process.platform === 'win32')
+                expect(exit).toHaveBeenCalledWith(129);
+            else
+                expect(kill).toHaveBeenCalledWith(process.pid, 'SIGHUP');
+        }
+        finally {
+            kill.mockRestore();
+            exit.mockRestore();
+        }
     }, 20_000);
 });
 describe('processListing', () => {

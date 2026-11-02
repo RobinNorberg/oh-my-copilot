@@ -96,7 +96,11 @@ function killLiveTrees(signal) {
         void killProcessTree(pid, 'SIGKILL');
     for (const s of STOP_SIGNALS)
         process.off(s, killLiveTrees);
-    process.kill(process.pid, signal);
+    // Windows cannot raise SIGHUP on itself (ENOSYS): exit with the conventional 128 + 1.
+    if (process.platform === 'win32' && signal === 'SIGHUP')
+        process.exit(129);
+    else
+        process.kill(process.pid, signal);
 }
 function trackTree(pid) {
     if (liveTrees.size === 0)
@@ -642,7 +646,7 @@ class Release {
             rmSync(out, { force: true });
             rmSync(flakyCandidatesPath(this.deps.stateRoot, this.v), { force: true });
             this.deps.log(`  node node_modules/vitest/vitest.mjs run --reporter=json --outputFile=${out}`);
-            const r = await this.runSuite(['node_modules/vitest/vitest.mjs', 'run', '--exclude', 'tests/perf/**', '--reporter=json', `--outputFile=${out}`]);
+            const r = await this.runSuite(['node_modules/vitest/vitest.mjs', 'run', '--exclude', 'tests/perf/**', '--reporter=json', `--outputFile=${out}`], { env: { OMC_TEST_LPT: '1' } });
             if (!existsSync(out))
                 fail(`vitest wrote no JSON report (exit ${r.status})`, tail(r.stderr));
             const failing = failingTitlesFromVitestJson(readFileSync(out, 'utf8'));

@@ -8,6 +8,55 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// src/utils/windows-search.ts
+import { statSync } from "node:fs";
+import { posix, win32 } from "node:path";
+function isVariable(key) {
+  return key.toUpperCase() === VARIABLE.toUpperCase();
+}
+function hardenWindowsExeSearch() {
+  if (process.platform !== "win32") return;
+  for (const key of Object.keys(process.env)) {
+    if (isVariable(key)) delete process.env[key];
+  }
+  process.env[VARIABLE] = "1";
+}
+function envValue(env, name) {
+  const key = Object.keys(env).find((k) => k.toUpperCase() === name);
+  const value = key === void 0 ? void 0 : env[key];
+  return typeof value === "string" && value.trim() !== "" ? value : void 0;
+}
+function findOnPath(name, env, platform, exists = isFile) {
+  const P = platform === "win32" ? win32 : posix;
+  const exts = platform === "win32" ? (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean) : [""];
+  const inNodeModules = platform === "win32" ? /(^|[\\/])node_modules([\\/]|$)/i : /(^|\/)node_modules(\/|$)/;
+  for (const raw of (envValue(env, "PATH") ?? "").split(P.delimiter)) {
+    const dir = raw.trim().replace(/^"(.*)"$/, "$1");
+    if (!dir || !P.isAbsolute(dir) || inNodeModules.test(dir)) continue;
+    for (const ext of exts) if (exists(P.join(dir, name + ext))) return P.join(dir, name + ext);
+  }
+  return null;
+}
+function resolveBareExe(cmd, env = process.env) {
+  if (process.platform !== "win32" || /[\\/:]/.test(cmd)) return cmd;
+  const pathext = (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter((e) => e && !/^\.(cmd|bat)$/i.test(e)).join(";") || ".COM;.EXE";
+  return findOnPath(cmd, { ...env, PATHEXT: pathext }, "win32");
+}
+var VARIABLE, isFile;
+var init_windows_search = __esm({
+  "src/utils/windows-search.ts"() {
+    "use strict";
+    VARIABLE = "NoDefaultCurrentDirectoryInExePath";
+    isFile = (p) => {
+      try {
+        return statSync(p).isFile();
+      } catch {
+        return false;
+      }
+    };
+  }
+});
+
 // src/utils/config-dir.ts
 import { join, normalize, parse, sep } from "path";
 import { homedir } from "os";
@@ -48,7 +97,7 @@ var init_encode_project_path = __esm({
 import { createHash } from "crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { execFileSync } from "child_process";
-import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, readdirSync, writeFileSync, unlinkSync, statSync } from "fs";
+import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, readdirSync, writeFileSync, unlinkSync, statSync as statSync2 } from "fs";
 import { homedir as homedir2, tmpdir } from "os";
 import { resolve, normalize as normalize2, relative, sep as sep2, join as join2, isAbsolute, basename, dirname } from "path";
 import { pathToFileURL } from "url";
@@ -412,7 +461,7 @@ function sameCanonicalPath(left, right) {
 }
 function isCredibleGitWorktreeRoot(root) {
   try {
-    if (!statSync(root).isDirectory()) {
+    if (!statSync2(root).isDirectory()) {
       return false;
     }
   } catch {
@@ -487,7 +536,7 @@ function probeGitTopLevel(cwd) {
 }
 function gitMetadataFileSignature(path5) {
   try {
-    const metadata = statSync(path5);
+    const metadata = statSync2(path5);
     return [
       path5,
       metadata.dev,
@@ -522,7 +571,7 @@ function commonGitDirectorySignature(linkedGitDir) {
     const marker = readGitMarker(commondirPath);
     if (marker === null) return `${commondirPath}:unreadable`;
     const commonDir = canonicalizeExistingPath(resolve(linkedGitDir, marker.trim()));
-    if (!commonDir || !statSync(commonDir).isDirectory()) {
+    if (!commonDir || !statSync2(commonDir).isDirectory()) {
       return `${commondirPath}:invalid:${marker}`;
     }
     return [
@@ -543,7 +592,7 @@ function getGitMetadataSnapshot(cwd) {
   if (!canonicalDirectory) return null;
   const gitPath2 = join2(canonicalDirectory, ".git");
   try {
-    const metadata = statSync(gitPath2);
+    const metadata = statSync2(gitPath2);
     const marker = metadata.isFile() ? readGitMarker(gitPath2) : "";
     if (marker === null) return null;
     let metadataPath = gitPath2;
@@ -553,7 +602,7 @@ function getGitMetadataSnapshot(cwd) {
       if (!gitDirMatch?.[1]) return null;
       const linkedGitDir = resolve(canonicalDirectory, gitDirMatch[1].trim());
       const linkedGitDirReal = canonicalizeExistingPath(linkedGitDir);
-      if (!linkedGitDirReal || !statSync(linkedGitDirReal).isDirectory()) return null;
+      if (!linkedGitDirReal || !statSync2(linkedGitDirReal).isDirectory()) return null;
       metadataPath = linkedGitDirReal;
       linkedGitDirSignature = [
         linkedGitDirReal,
@@ -595,7 +644,7 @@ function getGitTopologySignature(cwd) {
       let metadataPath = gitPath2;
       let marker = "";
       try {
-        if (statSync(gitPath2).isFile()) {
+        if (statSync2(gitPath2).isFile()) {
           marker = readGitMarker(gitPath2) ?? "<unreadable>";
           const gitDirMatch = /^\s*gitdir:\s*(.+?)\s*$/im.exec(marker);
           if (gitDirMatch?.[1]) metadataPath = resolve(cursor, gitDirMatch[1].trim());
@@ -6047,7 +6096,7 @@ var init_cache_occupancy = __esm({
 
 // src/utils/plugin-cache-validation.ts
 import { basename as basename7, dirname as dirname13, isAbsolute as isAbsolute4, join as join13, parse as parse2, resolve as resolve7 } from "path";
-import { existsSync as existsSync10, lstatSync as lstatSync4, readFileSync as readFileSync7, readlinkSync as readlinkSync2, readdirSync as readdirSync4, statSync as statSync2 } from "fs";
+import { existsSync as existsSync10, lstatSync as lstatSync4, readFileSync as readFileSync7, readlinkSync as readlinkSync2, readdirSync as readdirSync4, statSync as statSync3 } from "fs";
 var PLUGIN_ROOT_REQUIREMENTS;
 var init_plugin_cache_validation = __esm({
   "src/utils/plugin-cache-validation.ts"() {
@@ -6058,7 +6107,7 @@ var init_plugin_cache_validation = __esm({
 
 // src/utils/paths.ts
 import { join as join14, dirname as dirname14 } from "path";
-import { existsSync as existsSync11, readFileSync as readFileSync8, readdirSync as readdirSync5, statSync as statSync3, lstatSync as lstatSync5, realpathSync as realpathSync4, unlinkSync as unlinkSync5, rmSync, renameSync as renameSync2, symlinkSync } from "fs";
+import { existsSync as existsSync11, readFileSync as readFileSync8, readdirSync as readdirSync5, statSync as statSync4, lstatSync as lstatSync5, realpathSync as realpathSync4, unlinkSync as unlinkSync5, rmSync, renameSync as renameSync2, symlinkSync } from "fs";
 import { homedir as homedir3 } from "os";
 function getConfigDir() {
   if (process.platform === "win32") {
@@ -8006,7 +8055,7 @@ var init_builtin_skill_entitlements = __esm({
 
 // src/features/builtin-skills/skills.ts
 import { existsSync as existsSync16, readdirSync as readdirSync7, readFileSync as readFileSync11 } from "fs";
-import { join as join18, dirname as dirname17, basename as basename8, resolve as resolve8, relative as relative6, isAbsolute as isAbsolute5, win32 } from "path";
+import { join as join18, dirname as dirname17, basename as basename8, resolve as resolve8, relative as relative6, isAbsolute as isAbsolute5, win32 as win322 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
 function getPackageDir2() {
   if (typeof __dirname !== "undefined" && __dirname) {
@@ -9001,7 +9050,7 @@ import { spawnSync as spawnSync3 } from "child_process";
 import { readdir as readdir4, rm as rm6 } from "fs/promises";
 import { homedir as homedir5 } from "os";
 import { randomUUID as randomUUID9 } from "crypto";
-import { win32 as win322 } from "path";
+import { win32 as win323 } from "path";
 function isPsmux() {
   if (process.platform !== "win32") return false;
   if (psmuxDetected === void 0) {
@@ -9021,7 +9070,7 @@ function isPsmux() {
 }
 function buildPsmuxNamespacePath() {
   const ns = `omg-${process.pid.toString(36)}-${Date.now().toString(36)}-${randomUUID9().slice(0, 8)}`;
-  const socketPath = win322.join(PSMUX_NS_DIR, ns);
+  const socketPath = win323.join(PSMUX_NS_DIR, ns);
   if (/[#|\u0000-\u001f\u007f]/.test(socketPath) || psmuxNamespaceOf(socketPath) !== ns) {
     throw new Error("psmux_namespace_path_invalid");
   }
@@ -9029,8 +9078,8 @@ function buildPsmuxNamespacePath() {
 }
 function psmuxNamespaceOf(socketPath) {
   if (/[#|\u0000-\u001f\u007f]/.test(socketPath)) return null;
-  if (win322.dirname(socketPath).toLowerCase() !== PSMUX_NS_DIR.toLowerCase()) return null;
-  const ns = win322.basename(socketPath);
+  if (win323.dirname(socketPath).toLowerCase() !== PSMUX_NS_DIR.toLowerCase()) return null;
+  const ns = win323.basename(socketPath);
   return PSMUX_NS_NAME.test(ns) ? ns : null;
 }
 function translatePsmuxArgs(args) {
@@ -9126,7 +9175,7 @@ async function disposePsmuxNamespace(socketPath, exec2) {
   const ns = psmuxNamespaceOf(socketPath);
   try {
     for (const name of await readdir4(PSMUX_REGISTRY_DIR)) {
-      if (name.startsWith(`${ns}__`)) await rm6(win322.join(PSMUX_REGISTRY_DIR, name), { force: true }).catch(() => void 0);
+      if (name.startsWith(`${ns}__`)) await rm6(win323.join(PSMUX_REGISTRY_DIR, name), { force: true }).catch(() => void 0);
     }
   } catch {
   }
@@ -9137,8 +9186,8 @@ var init_psmux_adapter = __esm({
   "src/team/psmux-adapter.ts"() {
     "use strict";
     init_executable_resolution();
-    PSMUX_REGISTRY_DIR = win322.join(homedir5(), ".psmux");
-    PSMUX_NS_DIR = win322.join(PSMUX_REGISTRY_DIR, "omg-ns");
+    PSMUX_REGISTRY_DIR = win323.join(homedir5(), ".psmux");
+    PSMUX_NS_DIR = win323.join(PSMUX_REGISTRY_DIR, "omg-ns");
     PSMUX_NS_NAME = /^omg-[a-z0-9-]{1,48}$/;
   }
 });
@@ -9268,7 +9317,7 @@ var init_pane_readiness = __esm({
 // src/platform/process-utils.ts
 import { execFileSync as execFileSync4, execFile as execFile2, spawnSync as spawnSync5 } from "child_process";
 import { readFileSync as readFileSync14 } from "fs";
-import { win32 as win323 } from "path";
+import { win32 as win324 } from "path";
 import { promisify as promisify2 } from "util";
 import * as fsPromises from "fs/promises";
 function processGroupIdSync(pid) {
@@ -9345,7 +9394,7 @@ async function killProcessTreeWindows(pid, force) {
     if (force) {
       args.unshift("/F");
     }
-    execFileSync4(win323.join(process.env.SystemRoot || process.env.windir || "C:\\Windows", "System32", "taskkill.exe"), args, {
+    execFileSync4(win324.join(process.env.SystemRoot || process.env.windir || "C:\\Windows", "System32", "taskkill.exe"), args, {
       stdio: "ignore",
       timeout: 5e3,
       windowsHide: true
@@ -9973,13 +10022,13 @@ import {
   unlinkSync as unlinkSync7,
   writeSync as writeSync3,
   readFileSync as readFileSync16,
-  statSync as statSync4,
+  statSync as statSync5,
   constants as fsConstants
 } from "fs";
 import * as path4 from "path";
 function isLockStale(lockPath, staleLockMs) {
   try {
-    const stat2 = statSync4(lockPath);
+    const stat2 = statSync5(lockPath);
     const ageMs = Date.now() - stat2.mtimeMs;
     if (ageMs < staleLockMs) return false;
     try {
@@ -10185,7 +10234,7 @@ var init_ledger = __esm({
 });
 
 // src/smoke/copilot-session-eval.ts
-import { existsSync as existsSync22, readdirSync as readdirSync9, statSync as statSync5 } from "fs";
+import { existsSync as existsSync22, readdirSync as readdirSync9, statSync as statSync6 } from "fs";
 import { join as join24, relative as relative7 } from "path";
 var SMOKE_TOKEN;
 var init_copilot_session_eval = __esm({
@@ -12818,17 +12867,17 @@ __export(tmux_session_exports, {
   workerPaneBelongsToProviderTarget: () => workerPaneBelongsToProviderTarget,
   workerPaneShellCommand: () => workerPaneShellCommand
 });
-import { existsSync as existsSync27, mkdtempSync, rmSync as rmSync2, statSync as statSync6, writeFileSync as writeFileSync6 } from "fs";
+import { existsSync as existsSync27, mkdtempSync, rmSync as rmSync2, statSync as statSync7, writeFileSync as writeFileSync6 } from "fs";
 import { createHash as createHash10, randomUUID as randomUUID14 } from "crypto";
 import { execFile as execFile3 } from "child_process";
 import { promisify as promisify3 } from "util";
-import { join as join30, basename as basename14, dirname as dirname24, isAbsolute as isAbsolute8, win32 as win324 } from "path";
+import { join as join30, basename as basename14, dirname as dirname24, isAbsolute as isAbsolute8, win32 as win325 } from "path";
 import { tmpdir as tmpdir3 } from "os";
 function tmuxArgsForIdentity(identity, args) {
   return ["-S", identity.socket_path, ...args];
 }
 function buildDetachedTmuxServerKeepaliveArgs(socketPath) {
-  if (!isAbsolute8(socketPath) && !win324.isAbsolute(socketPath)) {
+  if (!isAbsolute8(socketPath) && !win325.isAbsolute(socketPath)) {
     throw new Error("tmux_private_socket_path_not_absolute");
   }
   return [
@@ -12871,11 +12920,11 @@ function resolveTmuxServerGuardRuntime() {
   } catch {
     throw new Error("tmux_server_guard_runtime_path_unavailable");
   }
-  if (!isAbsolute8(runtimePath) && !win324.isAbsolute(runtimePath) || !isRegularFile(runtimePath)) {
+  if (!isAbsolute8(runtimePath) && !win325.isAbsolute(runtimePath) || !isRegularFile(runtimePath)) {
     throw new Error("tmux_server_guard_runtime_path_unavailable");
   }
   const nodePath = process.execPath;
-  if (!isAbsolute8(nodePath) && !win324.isAbsolute(nodePath) || !isRegularFile(nodePath)) {
+  if (!isAbsolute8(nodePath) && !win325.isAbsolute(nodePath) || !isRegularFile(nodePath)) {
     throw new Error("tmux_server_guard_node_path_unavailable");
   }
   return { nodePath, runtimePath };
@@ -12883,7 +12932,7 @@ function resolveTmuxServerGuardRuntime() {
 function isRegularFile(path5) {
   if (!existsSync27(path5)) return false;
   try {
-    return statSync6(path5).isFile();
+    return statSync7(path5).isFile();
   } catch {
     return false;
   }
@@ -13928,7 +13977,7 @@ function assertSafeEnvKey(key) {
   }
 }
 function isAbsoluteLaunchBinaryPath(value) {
-  return isAbsolute8(value) || win324.isAbsolute(value);
+  return isAbsolute8(value) || win325.isAbsolute(value);
 }
 function assertSafeLaunchBinary(launchBinary) {
   if (launchBinary.trim().length === 0) {
@@ -17633,44 +17682,6 @@ function inferPhase(tasks) {
 var init_phase_controller = __esm({
   "src/team/phase-controller.ts"() {
     "use strict";
-  }
-});
-
-// src/utils/windows-search.ts
-import { statSync as statSync7 } from "node:fs";
-import { posix, win32 as win325 } from "node:path";
-function envValue(env, name) {
-  const key = Object.keys(env).find((k) => k.toUpperCase() === name);
-  const value = key === void 0 ? void 0 : env[key];
-  return typeof value === "string" && value.trim() !== "" ? value : void 0;
-}
-function findOnPath(name, env, platform, exists = isFile) {
-  const P = platform === "win32" ? win325 : posix;
-  const exts = platform === "win32" ? (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean) : [""];
-  const inNodeModules = platform === "win32" ? /(^|[\\/])node_modules([\\/]|$)/i : /(^|\/)node_modules(\/|$)/;
-  for (const raw of (envValue(env, "PATH") ?? "").split(P.delimiter)) {
-    const dir = raw.trim().replace(/^"(.*)"$/, "$1");
-    if (!dir || !P.isAbsolute(dir) || inNodeModules.test(dir)) continue;
-    for (const ext of exts) if (exists(P.join(dir, name + ext))) return P.join(dir, name + ext);
-  }
-  return null;
-}
-function resolveBareExe(cmd, env = process.env) {
-  if (process.platform !== "win32" || /[\\/:]/.test(cmd)) return cmd;
-  const pathext = (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter((e) => e && !/^\.(cmd|bat)$/i.test(e)).join(";") || ".COM;.EXE";
-  return findOnPath(cmd, { ...env, PATHEXT: pathext }, "win32");
-}
-var isFile;
-var init_windows_search = __esm({
-  "src/utils/windows-search.ts"() {
-    "use strict";
-    isFile = (p) => {
-      try {
-        return statSync7(p).isFile();
-      } catch {
-        return false;
-      }
-    };
   }
 });
 
@@ -28238,6 +28249,7 @@ var init_runtime_v2 = __esm({
 });
 
 // src/cli/team.ts
+init_windows_search();
 import { randomUUID as randomUUID19 } from "crypto";
 import { spawn as spawn3 } from "child_process";
 import {
@@ -29763,6 +29775,7 @@ function readApprovedExecutionLaunchHintOutcome(cwd, mode, options = {}) {
 // src/cli/team.ts
 init_types();
 init_process_identity_lock();
+hardenWindowsExeSearch();
 var JOB_ID_PATTERN = /^omc-[a-z0-9]{1,16}$/;
 var VALID_CLI_AGENT_TYPES = /* @__PURE__ */ new Set(["claude", "copilot", "codex", "gemini", "cursor", "grok", "antigravity"]);
 var SUBCOMMANDS = /* @__PURE__ */ new Set(["start", "status", "wait", "cleanup", "resume", "shutdown", "api", "help", "--help", "-h"]);
