@@ -8,6 +8,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 - The haiku tier (explore, writer) on Copilot now falls back to GPT-6 Luna after Claude Haiku 5.5, before Claude Haiku 4.5.
 
+### Fixed
+
+- The hook state lock no longer fails on a single slow Windows owner probe: an inconclusive probe is retried while attempts remain, and a probe that spends the overall budget no longer leads to a lock acquired late or a busy wait past the deadline (upstream #4727 tests).
+
 # oh-my-copilot v5.19.5
 
 ## [5.19.5] - 2026-11-02
