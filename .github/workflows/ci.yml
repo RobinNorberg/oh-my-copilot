@@ -49,12 +49,12 @@ jobs:
           sparse-checkout: scripts/ci
 
       # A base without the script (before it landed there) gets no reuse; the
-      # tree is still recorded so a full run can become evidence.
+      # tree is still recorded so a full run can become evidence (the fetch
+      # adds the tested commit's objects only; nothing is checked out).
       - name: Look up tree evidence
         id: lookup
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TESTED_SHA: ${{ github.sha }}
           CI_EVIDENCE_REUSE: ${{ github.event_name == 'workflow_dispatch' && 'false' || vars.CI_TREE_REUSE }}
         run: |
@@ -62,7 +62,7 @@ jobs:
             node scripts/ci/tree-reuse.mjs --sha "$TESTED_SHA"
           else
             echo "::notice title=Tree evidence::no scripts/ci/tree-reuse.mjs in the trusted tree $(git rev-parse HEAD); the jobs run"
-            tree=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TESTED_SHA" --jq .commit.tree.sha) || tree=
+            tree=$(git fetch --no-tags --depth=1 origin "$TESTED_SHA" && git rev-parse "$TESTED_SHA^{tree}") || tree=
             printf 'tree=%s\nreused=false\nrun_url=\n' "$tree" >> "$GITHUB_OUTPUT"
           fi
 
