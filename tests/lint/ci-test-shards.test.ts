@@ -3,7 +3,8 @@
  * scripts/ci/duration-sequencer.mjs, the durations report from
  * scripts/ci/durations-reporter.mjs, the refresh in
  * scripts/ci/update-test-durations.mjs, the committed duration data and the
- * Windows path-suite list the workflow reads.
+ * Windows path-suite list the workflow reads, and the serial-budget project
+ * split in vitest.config.ts.
  */
 import { spawnSync } from "child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
@@ -136,5 +137,22 @@ describe("Windows path suite list", () => {
     expect(files.length).toBeGreaterThan(0);
     for (const file of files) expect(existsSync(join(REPO_ROOT, file)), file).toBe(true);
     expect(readFileSync(join(REPO_ROOT, ".github/workflows/ci.yml"), "utf8")).toContain(".github/ci/windows-path-suite.txt");
+  });
+});
+
+describe("serial-budget vitest project", () => {
+  it("partitions the suite: its existing files leave main and run one at a time after it", async () => {
+    type Project = { test: { name: string; include: string[]; exclude: string[]; fileParallelism?: boolean; sequence?: { groupOrder?: number } } };
+    const { default: config } = await import("../../vitest.config.ts");
+    const projects = (config as { test: { projects: Project[] } }).test.projects;
+    expect(projects.map((p) => p.test.name)).toEqual(["main", "serial-budget"]);
+    const [main, serial] = projects.map((p) => p.test);
+    expect(serial.include.length).toBeGreaterThan(0);
+    for (const file of serial.include) {
+      expect(existsSync(join(REPO_ROOT, file)), file).toBe(true);
+      expect(main.exclude, file).toContain(file);
+    }
+    expect(serial.fileParallelism).toBe(false);
+    expect(serial.sequence?.groupOrder ?? 0).toBeGreaterThan(main.sequence?.groupOrder ?? 0);
   });
 });
