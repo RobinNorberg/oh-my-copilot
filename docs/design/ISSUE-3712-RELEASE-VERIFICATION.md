@@ -14,7 +14,7 @@ ships:
 1. `scripts/verify-epic-3698-closure.mjs` — the closure verifier (fail-closed).
 2. `scripts/collect-epic-3698-ci-evidence.mjs` — read-only exact-head CI evidence collector (`gh`).
 3. `receipts/epic-3698/` — schema-validated migration/verification receipts and the remaining-risk register.
-4. `tests/integration/epic-3698-closure-verifier.test.ts` — acceptance tests.
+4. `tests/integration/epic-3698-closure-verifier*.test.ts` (fixtures in `epic-3698-fixtures.ts`) — acceptance tests.
 
 ## 2. Verifier checks and verdict semantics
 

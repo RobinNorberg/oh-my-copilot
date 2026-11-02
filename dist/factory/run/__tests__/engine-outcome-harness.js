@@ -1,0 +1,78 @@
+/**
+ * The shared harness of the engine.outcome*.test.ts files: outcome and rollup
+ * comments through the real factory guard, with fake gh and real git.
+ */
+import { readFileSync, rmSync } from 'node:fs';
+import { afterEach, beforeEach } from 'vitest';
+import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
+import { commitFile, FakeLanes, FakeProcesses, harness, ISSUE, REPO_URL, review, testGateConfig } from './fake-lanes.js';
+export const SPEC = 12;
+export let h;
+/** Every issue comment the engine posted: target and body. */
+export let posted;
+/** The parent spec's comments as `gh issue view` reports them. */
+export let specComments;
+/** Answer for `gh issue comment <n>` (posting still records nothing on failure). */
+export let commentResult;
+export let warnings;
+/** Answer every later `gh issue comment` with `result`. */
+export function setCommentResult(result) {
+    commentResult = result;
+}
+/** A fresh harness per test; call once at the top of each test file that uses it. */
+export function useOutcomeHarness() {
+    beforeEach(() => {
+        h = harness('omg-factory-outcome-');
+        h.gh.issue.body = `${h.gh.issue.body}\nPart of #${SPEC}\n`;
+        posted = [];
+        specComments = [];
+        commentResult = () => ({ status: 0, stdout: '', stderr: '' });
+        warnings = [];
+    });
+    afterEach(() => {
+        rmSync(h.dir, { recursive: true, force: true });
+    });
+}
+export const ok = (stdout) => ({ status: 0, stdout, stderr: '' });
+export const exec = (cmd, args, o) => {
+    if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'comment') {
+        const n = Number(args[2]);
+        const res = commentResult(n);
+        if (res.status !== 0)
+            return res;
+        const body = readFileSync(args[4], 'utf8');
+        posted.push({ n, body });
+        // The comment shows up on the tracker as the engine identity's (a trusted owner).
+        const c = { body, authorAssociation: 'OWNER', author: { login: 'o' } };
+        if (n === ISSUE)
+            h.gh.issue.comments.push(c);
+        if (n === SPEC)
+            specComments.push(c);
+    }
+    if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'view' && args[2] === String(SPEC)) {
+        h.calls.push(`gh ${args.join(' ')}`);
+        return ok(JSON.stringify({ title: 'Spec', body: `- [ ] #${ISSUE}\n`, state: 'OPEN', url: `${REPO_URL}/issues/${SPEC}`, author: { login: 'o' }, labels: [], comments: specComments }));
+    }
+    return h.exec(cmd, args, o);
+};
+export function opts(scripts, over = {}) {
+    return {
+        root: h.root,
+        issue: ISSUE,
+        exec,
+        lanes: new FakeLanes(h.root, scripts),
+        limits: { ...DEFAULT_FACTORY_RUN_LIMITS },
+        base: 'dev',
+        pollMs: 5,
+        owner: { pid: 4242, hostname: 'test-host', isAlive: () => false },
+        ledgerDir: h.ledgerDir,
+        processes: new FakeProcesses(),
+        gateConfig: testGateConfig,
+        warn: (m) => warnings.push(m),
+        ...over,
+    };
+}
+export const happy = () => [commitFile('src/greet.ts', 'export const greet = () => "hi";\n'), review('approve')];
+export const on = (n) => posted.filter((p) => p.n === n);
+export const outcomes = () => on(ISSUE).filter((p) => p.body.includes('omg-factory-outcome'));
+//# sourceMappingURL=engine-outcome-harness.js.map

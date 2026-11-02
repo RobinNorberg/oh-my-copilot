@@ -2,6 +2,12 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Tests
+
+- **The longest factory test files are split** (fast release suite, PR A). Tests inside a file run serially, so the local release suite's wall time was the longest single file: `prepare-gates.test.ts` (2,094 s in the 5.19.4 suite), `engine.test.ts` (1,156 s), `epic-3698-closure-verifier.test.ts` (972 s) and the `engine.ado`, `engine.outcome`, `engine.progress` and `engine.sandbox` files (440-705 s). They are now 23 files along describe and test boundaries: `prepare-gates` into 5, `engine.test` and `epic-3698-closure-verifier` into 4, `engine.ado` and `engine.progress` into 3, `engine.outcome` and `engine.sandbox` into 2. On the 5.19.4 per-test durations, the largest new file is 515 s (`prepare-gates.crash`). Shared setup lives in one harness module per family (`engine-harness.ts`, `prepare-gates-harness.ts`, `engine-{ado,outcome,progress,sandbox}-harness.ts`, `tests/integration/epic-3698-fixtures.ts`). Test count (266) and full titles are unchanged, and so are assertions, timeouts and budgets. `.github/ci/test-durations.json` splits each old file's Linux duration over its new files in proportion to their 5.19.4 local per-test time.
+
 # oh-my-copilot v5.19.4
 
 ## [5.19.4] - 2026-11-02
