@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "1223bf08eb9546f63e8bcc077956c7f231428913",
-    "sourceSha256": "c6bcdf31dfebeb3a7dd1d4e3fff48d916a55501b45004ef87a3f641f24b4e27f",
+    "head": "1dea6af63d12c1b8ad4cabecb2d9a470f1b458ec",
+    "sourceSha256": "06a90fa569648e141dcd54971a534e3a1733ba69f6ac7c9014dfa681f66bd789",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "1223bf08eb9546f63e8bcc077956c7f231428913",
-  "sourceSha256": "c6bcdf31dfebeb3a7dd1d4e3fff48d916a55501b45004ef87a3f641f24b4e27f",
+  "head": "1dea6af63d12c1b8ad4cabecb2d9a470f1b458ec",
+  "sourceSha256": "06a90fa569648e141dcd54971a534e3a1733ba69f6ac7c9014dfa681f66bd789",
   "counts": {
     "public": {
       "skills": 63,
@@ -115013,6 +115013,11 @@
         "kind": "imports"
       },
       {
+        "from": "tests/integration/issue-4727-windows-state-lock-probe-budget.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
         "from": "tests/integration/issue-4804-jev-context-pruning.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -116175,11 +116180,11 @@
     ],
     "stats": {
       "nodeCount": 9728,
-      "edgeCount": 11781,
-      "importEdgeCount": 9720,
+      "edgeCount": 11782,
+      "importEdgeCount": 9721,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "f7982015c76563cb810429004549f7640de7b709396957f459163aeb7f045709",
-  "manifestSha256": "9c70e6bea86cc16164de59a9e0549d2bfbaaad36af4eb66f60d6ec7e46aba4bd"
+  "manifestSha256": "5faeedfff33887da8c919ad892ecdb84725b1d791276f90b304926ad4a7d12fb"
 }
