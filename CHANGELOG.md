@@ -4,6 +4,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- The hook state lock no longer fails on a single slow Windows owner probe: an inconclusive probe is retried while attempts remain, and a probe that spends the overall budget no longer leads to a lock acquired late or a busy wait past the deadline (upstream #4727 tests).
+
 # oh-my-copilot v5.19.6
 
 ## [5.19.6] - 2026-11-02
@@ -46,10 +50,6 @@ Fork **v5.19.6** (from v5.19.5) is an upstream port of oh-my-claudecode `ed9eb4f
 
 - The Node 20 libuv caveat from 5.19.5 still applies: libuv honours `NoDefaultCurrentDirectoryInExePath` for no-shell spawns only from 1.48 (Node 22), so full protection against a planted executable on Windows needs Node 22+. The Node 22 minimum is planned for a later release.
 - Upstream's Windows state-lock probe-budget test (#4727) is held out of this port; a fork fix follows.
-
-### Fixed
-
-- The hook state lock no longer fails on a single slow Windows owner probe: an inconclusive probe is retried while attempts remain, and a probe that spends the overall budget no longer leads to a lock acquired late or a busy wait past the deadline (upstream #4727 tests).
 
 # oh-my-copilot v5.19.5
 
