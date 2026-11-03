@@ -519,6 +519,12 @@ function acquireFileLock(lockPath, attempts, processProbeDeadline, operationDead
       const live = sameOwner(existing, verifiedLiveOwner) ? true : ownerLive(existing, remainingProcessProbeMs(processProbeDeadline, operationDeadline, testHooks), testHooks);
       if (live === null) {
         recordFailure('unverifiable');
+        // Fork fix (#4727): retry an inconclusive probe while attempts and probe budget remain.
+        const remainingMs = remainingOperationTimeoutMs(operationDeadline);
+        if (attempt + 1 < attempts && remainingMs > 0 && remainingProcessProbeMs(processProbeDeadline, operationDeadline, testHooks) > 0) {
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.min(10, Math.floor(remainingMs)));
+          continue;
+        }
         return null;
       }
       if (live) {
@@ -673,13 +679,23 @@ function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclu
   }
   if (preLive === null || preLive) {
     try { db.close(); } catch {}
-    if (preLive === null || attempts <= 1) {
+    // Fork fix (#4727): an inconclusive verdict is never cached, so a retry re-probes the owner;
+    // one slow win32 probe must not sink the acquire while attempts and probe budget remain.
+    if (attempts <= 1 || (preLive === null && remainingProcessProbeMs(processProbeDeadline, operationDeadline, testHooks) <= 0)) {
       recordFailure(preLive === null ? 'unverifiable' : 'contention');
       return null;
     }
     return retryAcquisition();
   }
+  // Fork fix (#4727): the probe above can spend the overall budget. Never re-enter the write
+  // transaction after the deadline, and bound its busy wait by what remains of the budget.
+  if (remainingOperationTimeoutMs(operationDeadline) <= 0) {
+    try { db.close(); } catch {}
+    recordFailure('contention');
+    return null;
+  }
   try {
+    db.pragma(`busy_timeout = ${boundedBusyTimeoutMs(busyTimeoutMs, operationDeadline)}`);
     db.exec('BEGIN IMMEDIATE');
     const row = selectRow();
     if (row) {
