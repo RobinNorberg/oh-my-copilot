@@ -15,6 +15,7 @@ import { tmpdir } from 'os';
 import Database from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import { afterAll, describe, expect, it, vi } from 'vitest';
+import { scaleTiming } from '../../src/__tests__/helpers/platform.js';
 import {
   acquireStateFileLockAtPathSync,
   getStateFileLockFailureKind,
@@ -177,6 +178,46 @@ describe('issue #4727: state-lock owner probe runs outside the write transaction
     expect(releaseStateFileLockSync(lock!)).toBe(true);
   });
 
+  it('retries an inconclusive owner-file probe on the file backend', () => {
+    vi.stubEnv('OMC_TEST_FLOCK_AVAILABLE', '0');
+    try {
+      const lockPath = join(stateDir, 'inconclusive-file-backend.lock');
+      seedOwner(lockPath, randomUUID(), { row: false });
+      const verdicts: Array<string | null> = [null, 'absent'];
+
+      const lock = acquire(lockPath, 3, hooks(() => verdicts.shift() as string));
+
+      expect(verdicts).toEqual([]);
+      expect(lock).not.toBeNull();
+      expect(lock!.backend).toBe('file');
+      expect(releaseStateFileLockSync(lock!)).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('reports unverifiable when the probe budget is spent while attempts remain', () => {
+    vi.stubEnv('OMC_TEST_FLOCK_AVAILABLE', '0');
+    try {
+      const lockPath = join(stateDir, 'probe-budget-spent.lock');
+      seedOwner(lockPath, randomUUID(), { row: false });
+      const slowInconclusiveProbe = () => {
+        const start = Date.now();
+        while (Date.now() - start < 150) { /* simulated PowerShell probe latency */ }
+      };
+      let probes = 0;
+      const testHooks = hooks(() => { probes += 1; return null as unknown as string; }, slowInconclusiveProbe);
+
+      const lock = acquireStateFileLockAtPathSync(lockPath, 5, false, false, 2000, 100, Infinity, testHooks);
+
+      expect(lock).toBeNull();
+      expect(probes).toBe(1);
+      expect(getStateFileLockFailureKind()).toBe('unverifiable');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('bounds the post-probe transaction wait by the remaining overall budget', () => {
     const lockPath = join(stateDir, 'post-probe-deadline.lock');
     seedOwner(lockPath, randomUUID(), { artifact: false });
@@ -193,7 +234,7 @@ describe('issue #4727: state-lock owner probe runs outside the write transaction
 
       expect(lock).toBeNull();
       expect(getStateFileLockFailureKind()).toBe('contention');
-      expect(elapsedMs).toBeLessThan(550);
+      expect(elapsedMs).toBeLessThan(400 + scaleTiming(150));
     } finally {
       if (blocker.inTransaction) blocker.exec('ROLLBACK');
       blocker.close();
