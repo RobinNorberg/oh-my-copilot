@@ -55,7 +55,7 @@ Before launching Cursor workers, verify \`cursor-agent\` is installed and authen
 
 Configured autopilot team worker types include CLI-backed workers: ${requested}. For executor-style implementation work, use the tmux CLI team runtime instead of in-process Claude-only Task subagents.
 
-Use one of these equivalent surfaces from the lead session:
+Launch them from the lead session:
 
 \`\`\`sh
 omg team ${agentSpec} "<implementation task from ${planPath}>"

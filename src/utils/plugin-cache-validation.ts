@@ -1,5 +1,5 @@
 import { basename, dirname, isAbsolute, join, parse, resolve } from 'path';
-import { existsSync, lstatSync, readFileSync, readlinkSync, readdirSync, statSync, type BigIntStats, type Stats } from 'fs';
+import { existsSync, lstatSync, readFileSync, readlinkSync, readdirSync, statSync, type BigIntStats } from 'fs';
 
 /**
  * The hook runner's required entry points. Keep this aligned with isPluginRoot()
@@ -14,33 +14,20 @@ export function isOmcPluginCacheIdentity(pluginName: string, marketplace: string
   return OMC_PLUGIN_CACHE_IDENTITIES.has(`${pluginName}@${marketplace}`.toLowerCase());
 }
 
-/** Callers stat with `{ bigint: true }`: NTFS file IDs exceed 2^53, so distinct Number inodes can collide. */
-export type FileSystemIdentity = Stats | BigIntStats;
-
-function identityPart(value: number | bigint): bigint | undefined {
-  if (typeof value === 'bigint') return value;
-  // A Number above 2^53 may be a rounded file ID, which cannot prove identity.
-  return Number.isSafeInteger(value) ? BigInt(value) : undefined;
-}
-
-export function sameFileSystemIdentity(left: FileSystemIdentity, right: FileSystemIdentity): boolean {
-  const leftDev = identityPart(left.dev);
-  const leftIno = identityPart(left.ino);
-  const rightDev = identityPart(right.dev);
-  const rightIno = identityPart(right.ino);
+export function sameFileSystemIdentity(left: BigIntStats, right: BigIntStats): boolean {
   return (
-    leftDev !== undefined &&
-    leftIno !== undefined &&
-    leftIno !== 0n &&
-    rightDev !== undefined &&
-    rightIno !== undefined &&
-    rightIno !== 0n &&
-    leftDev === rightDev &&
-    leftIno === rightIno
+    typeof left.dev === 'bigint' &&
+    typeof left.ino === 'bigint' &&
+    left.ino !== 0n &&
+    typeof right.dev === 'bigint' &&
+    typeof right.ino === 'bigint' &&
+    right.ino !== 0n &&
+    left.dev === right.dev &&
+    left.ino === right.ino
   );
 }
 
-export function hasAncestorWithIdentity(path: string, identity: FileSystemIdentity): boolean {
+export function hasAncestorWithIdentity(path: string, identity: BigIntStats): boolean {
   let currentPath = path;
   while (true) {
     if (sameFileSystemIdentity(statSync(currentPath, { bigint: true }), identity)) return true;
@@ -50,7 +37,7 @@ export function hasAncestorWithIdentity(path: string, identity: FileSystemIdenti
   }
 }
 
-export function firstChildBelowDirectoryIdentity(path: string, directoryIdentity: FileSystemIdentity): string | undefined {
+export function firstChildBelowDirectoryIdentity(path: string, directoryIdentity: BigIntStats): string | undefined {
   // Relative install paths retain the existing lexical-only matching semantics.
   if (!isAbsolute(path)) return undefined;
   let currentPath = resolve(path);
@@ -76,7 +63,7 @@ export function pathRootForTraversal(path: string): string {
   return parse(path).root;
 }
 
-function pathTraversesFileSystemIdentity(path: string, identity: FileSystemIdentity): boolean {
+function pathTraversesFileSystemIdentity(path: string, identity: BigIntStats): boolean {
   let currentPath: string;
   let components: string[];
   const splitComponents = (value: string, root: string): string[] =>
@@ -142,9 +129,8 @@ function pathTraversesFileSystemIdentity(path: string, identity: FileSystemIdent
       continue;
     }
 
-    // bigint: NTFS file IDs exceed 2^53, so the Number inodes of distinct links can collide
     const linkKey =
-      nextStats.ino !== 0n
+      typeof nextStats.dev === 'bigint' && typeof nextStats.ino === 'bigint' && nextStats.ino !== 0n
         ? `inode:${nextStats.dev}:${nextStats.ino}`
         : `path:${process.platform === 'win32' ? nextPath.toLowerCase() : nextPath}`;
     if (activeLinks.has(linkKey)) return false;
@@ -182,7 +168,8 @@ function pathTraversesFileSystemIdentity(path: string, identity: FileSystemIdent
  * True when `path` is a usable plugin root. When supplied, the stale identity
  * also prevents required paths from traversing the version being demoted.
  */
-export function isUsableVersionPath(path: string, staleVersionIdentity?: FileSystemIdentity): boolean {
+export function isUsableVersionPath(path: string, staleVersionIdentity?: BigIntStats): boolean {
+  if (staleVersionIdentity !== undefined && typeof staleVersionIdentity.ino !== 'bigint') return false;
   let stats;
   try {
     stats = lstatSync(path);
@@ -209,7 +196,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function hasUsableOmcHookTargets(path: string, staleVersionIdentity: FileSystemIdentity): boolean {
+function hasUsableOmcHookTargets(path: string, staleVersionIdentity: BigIntStats): boolean {
   let manifest: unknown;
   try {
     manifest = JSON.parse(readFileSync(join(path, 'hooks', 'hooks.json'), 'utf8'));
@@ -259,7 +246,7 @@ interface PayloadScan {
 
 function hasResolvablePluginSymlinks(
   directory: string,
-  staleVersionIdentity: FileSystemIdentity,
+  staleVersionIdentity: BigIntStats,
   ancestors: BigIntStats[] = [],
   payload?: PayloadScan,
 ): boolean {
@@ -278,7 +265,7 @@ function hasResolvablePluginSymlinks(
       } else if (
         payload &&
         entryStats.isFile() &&
-        entryStats.size > 0 &&
+        entryStats.size > 0n &&
         !FILESYSTEM_JUNK_NAMES.has(entry.name.toLowerCase())
       ) {
         payload.found = true;
@@ -292,7 +279,8 @@ function hasResolvablePluginSymlinks(
   return true;
 }
 
-export function isUsableGenericPluginTarget(target: string, staleVersionIdentity: FileSystemIdentity): boolean {
+export function isUsableGenericPluginTarget(target: string, staleVersionIdentity: BigIntStats): boolean {
+  if (staleVersionIdentity !== undefined && typeof staleVersionIdentity.ino !== 'bigint') return false;
   const payload = { found: false };
   return hasResolvablePluginSymlinks(target, staleVersionIdentity, [], payload) && payload.found;
 }

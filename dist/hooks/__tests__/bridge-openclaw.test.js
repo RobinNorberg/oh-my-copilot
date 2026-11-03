@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { _openclaw, processHook, resetSkipHooksCache } from "../bridge.js";
+import { useIsolatedCwd } from "../../__tests__/helpers/isolated-cwd.js";
+useIsolatedCwd();
 describe("_openclaw.wake", () => {
     afterEach(() => {
         vi.unstubAllEnvs();

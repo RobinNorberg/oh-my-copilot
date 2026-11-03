@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { buildProviderSpawnInvocation, buildWorkerLaunchBootstrapSpec, materializeProviderSpawnInvocation, readProviderCompletionExitCode, withWorkerLaunchAttemptFence, WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV, } from './worker-launch-ack.js';
+import { buildProviderSpawnEnvironment, buildProviderSpawnInvocation, buildWorkerLaunchBootstrapSpec, materializeProviderSpawnInvocation, readProviderCompletionExitCode, withWorkerLaunchAttemptFence, WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV, } from './worker-launch-ack.js';
 import { captureOwnedProcessGroup, getProcessStartIdentitySync, isProcessAlive, terminateOwnedProcessTree } from '../platform/process-utils.js';
 async function writeAtomic(path, value) {
     await mkdir(dirname(path), { recursive: true });
@@ -71,7 +71,7 @@ export async function runWorkerActivationGate(gate) {
         });
         const child = spawn(invocation.command, invocation.args, {
             cwd: gate.cwd,
-            env: { ...providerEnv, ...invocation.env },
+            env: buildProviderSpawnEnvironment(providerEnv, invocation),
             stdio: 'inherit',
             windowsVerbatimArguments: invocation.windowsVerbatimArguments,
             // A recovery gate already runs inside the durable worker-launch

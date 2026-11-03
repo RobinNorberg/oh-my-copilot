@@ -1330,10 +1330,13 @@ describe('session-start.mjs regression #1386', () => {
       expect(existsSync(join(fakeProject, '.omg', 'project-memory.json'))).toBe(false);
     });
 
-    it('writes .omg/project-memory.json as before when OMC_TEAM_WORKER is unset', () => {
+    // project-memory-session.mjs is the only writer (#4681); its team-worker
+    // guard is covered in src/hooks/project-memory/__tests__/integration.test.ts.
+    it('leaves .omg/project-memory.json to the rescan hook when OMC_TEAM_WORKER is unset', () => {
       const context = runDetecting(undefined);
       expect(context).toContain('<project-memory-context>');
-      expect(existsSync(join(fakeProject, '.omg', 'project-memory.json'))).toBe(true);
+      expect(context).toContain('[Project Environment]');
+      expect(existsSync(join(fakeProject, '.omg', 'project-memory.json'))).toBe(false);
     });
   });
 

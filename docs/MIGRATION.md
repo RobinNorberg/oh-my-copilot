@@ -10,6 +10,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 - [Unreleased: omg factory run](#unreleased-omg-factory-run)
 - [Unreleased: Budget Unit Is AI Credits](#unreleased-budget-unit-is-ai-credits)
 - [Unreleased: HUD Host Detection and Copilot Defaults](#unreleased-hud-host-detection-and-copilot-defaults)
+- [v5.19.5 → v5.19.6: Team Bridge Exports Removed from `oh-my-copilot/team`](#v5195--v5196-team-bridge-exports-removed-from-oh-my-copilotteam)
 - [Unreleased: Host Load Gate Threshold Values](#unreleased-host-load-gate-threshold-values)
 - [v5.12.2 → v5.13.0: Chained Stop Continuation on Copilot](#v5122--v5130-chained-stop-continuation-on-copilot)
 - [v5.11.0 → v5.12.0: Merge-readiness MCP Tools Removed](#v5110--v5120-merge-readiness-mcp-tools-removed)
@@ -149,6 +150,29 @@ Applies when upgrading from v5.13.1. The HUD now detects whether Claude Code or 
 - The update check runs at most every 6 hours (was 24) and recognises Copilot plugin installs. The hint prints the command for your channel: `copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc` for a plugin install, `npm i -g oh-my-copilot@latest` for npm. Under Copilot the HUD no longer shows a Claude Code update hint.
 
 **Who must act.** Nobody. To bring back an element Copilot now hides, set it to `true` under `omcHud.elements` in `~/.copilot/settings.json`. See [REFERENCE.md](./REFERENCE.md#configure-hud-statusline).
+
+## v5.19.5 → v5.19.6: Team Bridge Exports Removed from `oh-my-copilot/team`
+
+The MCP team bridge (`bridge/team-bridge.cjs`) was never spawned by any OMC
+runtime path, so it and the modules only it used have been removed. The
+`oh-my-copilot/team` entry point no longer exports the APIs of these
+modules: `activity-log`, `audit-log`, `bridge-entry`, `capabilities`,
+`heartbeat`, `inbox-outbox`, `mcp-team-bridge`, `message-router`,
+`outbox-reader`, `permissions`, `summary-report`, `task-file-ops`,
+`task-router`, `team-registration`, `team-status`, `tmux-comm`,
+`unified-team`, `usage-tracker`, `worker-health`, and `worker-restart`
+(for example `getTeamStatus`, `readTask`, and `readNewOutboxMessages`).
+
+This is a breaking change for JavaScript code that imports those names from
+`oh-my-copilot/team`. Such imports now fail at module load with
+"does not provide an export named ...".
+
+### Migration
+
+- Drive teams through the `omg team` CLI (`omg team status <team>`,
+  `omg team api <operation>`) instead of the removed helpers.
+- Read team state through the exports that remain on the entry point
+  (`runtime-v2`, `team-ops`, `api-interop`, and the team types).
 
 ## Unreleased: Host Load Gate Threshold Values
 

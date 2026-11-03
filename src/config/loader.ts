@@ -1058,6 +1058,25 @@ export function loadContextFromFiles(files: string[]): string {
  * Generate JSON Schema for configuration (for editor autocomplete)
  */
 export function generateConfigSchema(): object {
+  const qualityGateListSchema = {
+    type: "array",
+    items: {
+      anyOf: [
+        { type: "string" },
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["skill"],
+          properties: {
+            skill: { type: "string", minLength: 1 },
+            mode: { type: "string", enum: ["blocking", "advisory"], default: "advisory" },
+            model: { type: "string", minLength: 1 },
+          },
+        },
+      ],
+    },
+  };
+
   return {
     $schema: "http://json-schema.org/draft-07/schema#",
     title: "Oh-My-Copilot Configuration",
@@ -1163,6 +1182,17 @@ export function generateConfigSchema(): object {
           astTools: { type: "boolean", default: true },
           continuationEnforcement: { type: "boolean", default: true },
           autoContextInjection: { type: "boolean", default: true },
+        },
+      },
+      qualityGates: {
+        type: "object",
+        description: "Additional skill reviews for OMC workflow stages; omitted mode defaults to advisory",
+        propertyNames: { enum: ["deep-interview", "ralplan", "omc-review"] },
+        additionalProperties: false,
+        properties: {
+          "deep-interview": qualityGateListSchema,
+          ralplan: qualityGateListSchema,
+          "omc-review": qualityGateListSchema,
         },
       },
       mcpServers: {

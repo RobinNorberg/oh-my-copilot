@@ -4,9 +4,48 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+# oh-my-copilot v5.19.6
+
+## [5.19.6] - 2026-11-02
+
+Fork **v5.19.6** (from v5.19.5) is an upstream port of oh-my-claudecode `ed9eb4fa8..27e7f235e` (229 commits, upstream v5.7.18 to v5.7.30) plus two changes of our own: the haiku tier falls back to GPT-6 Luna, and the `ralph-experiment` skill now works on Copilot CLI with a safer rollback. The port removes the unused MCP team bridge and adds `omg quality-gates`. This release was published without the live Copilot smoke.
+
+### Added
+
+- **`omg quality-gates list --stage <deep-interview|ralplan|omc-review> [--json]`** (port). Prints the configured custom quality gates for a stage with each gate's mode, model override and resolved `SKILL.md` path, plus warnings and validation errors. A gate whose skill cannot be resolved is reported as `gate_unavailable` and does not block the stage. Gates are configured under `qualityGates` in `.copilot/omg.jsonc`; see `docs/quality-gates-configuration.md`.
+- **Mission board: `-s, --session <id>`** (port of upstream #4649). Without it the board now shows persisted missions across the newest sessions; the option restricts the snapshot to one session.
+
 ### Changed
 
-- The haiku tier (explore, writer) on Copilot now falls back to GPT-6 Luna after Claude Haiku 5.5, before Claude Haiku 4.5.
+- **The haiku tier (explore, writer) now falls back `claude-haiku-5.5` -> `gpt-6-luna` -> `claude-haiku-4.5` -> `gemini-3.8-flash`** (#420). Before, GPT-6 Luna was not in the chain.
+- **`ralph-experiment` runs on Copilot CLI** (#408, fixes #407; thanks to the field agent whose PR this is). The skill now names the Copilot tools (shell `mode: "async"` for long measurements, `task(agent_type=..., mode=...)` for `Agent`, full model ids for `model`) and no longer prints an unsubstituted `{{ITERATION}}/{{MAX}}` header.
+  - A discarded experiment is undone with `git revert --no-edit {start}..HEAD` by default, which keeps history. `git reset --hard {start}` is used only in a repo where every fail-closed check passes: the current branch is the `experiment/{tag}` branch the loop created, the tree is clean, and the branch has no upstream, is on no remote and is checked out in one worktree only. A check that errors counts as a fail.
+  - The loop requires a clean tree at the start, stages the experiment's files by pathspec (never `git add -A`) and checks the tree is clean again before measuring.
+  - Each experiment records its start, and the notebook's `commit` and `start` fields are per-repo `{repo: hash}` maps, so multi-repo experiments revert each repo on its own. Non-code changes (settings, environment variables) record a rollback command first.
+  - Measurement guidance is PowerShell 5.1-safe: no `&&`, and output is written with `cmd /c "... > log 2>&1"` rather than `*>` or `Out-File`.
+- **Upstream ports.** Auto-update reconciliation waits up to 600 s for interactive updates (silent auto-updates stay at 60 s), names the recovery command on timeout, and syncs the plugin payload once per target, which cut measured reconcile time by about two thirds (#4629, #4634, fixes #4630). Reinstalls replace a dangling `hooks/lib/stdin.mjs` symlink before copying (#4631). Project-memory hot paths follow the files in current work (#4698). The plugin cache and the `deepinit` manifest use BigInt inodes for file identity, which NTFS needs (#4719).
+
+### Fixed
+
+- **Ralph pytest signature handling** (port of upstream #4800-#4802).
+- **Context pruning no longer drops the Jev context** (port of upstream #4804, #4807).
+- **The keyword detector no longer routes retired workflow names** such as `ultraqa`, `omc-teams` and `ultrawork` (port of upstream #4699).
+- **Team worker launch.** The PATHEXT candidate is resolved for Windows providers and the Windows `where` lookup no longer searches the current directory (#4726 follow-up, #4741, #4728, #4734; partly our own fixes returning from upstream).
+- **SessionEnd and state.** Owner-fenced SessionEnd manifest writes retry on revision drift (#4721), `ralph` release undoes SessionEnd action claims that never started (#4723), and an early `SQLITE_BUSY` from state-lock database setup is retried (#4717).
+- **Session start writes project memory from a single writer** (port of upstream #4681).
+- **Mission board** finds team missions when no session snapshot exists, and completed missions expire in that view (port of upstream #4661, #4662).
+- **`state_clear`** limits its missing-state path output to the requested session, or caps the checked paths with an "and N more" count (port of upstream #4654).
+- **Run ledger.** Session-scoped runs record start edges, unattended runs that end without a notepad closeout are reported, and a resumed run's closeout is bounded by its latest unmatched start edge (port of upstream #4646, #4650).
+- Upstream #4768 (Windows executable search, shipped in 5.19.5 from our port) is now canonical in the port base; no behaviour change.
+
+### Removed
+
+- **The MCP team bridge and 37 modules nothing reached.** `bridge/team-bridge.cjs` was never spawned by any omg runtime path, so it and the modules only it used are gone. `oh-my-copilot/team` no longer exports their APIs (for example `getTeamStatus`, `readTask`, `readNewOutboxMessages`). This breaks JavaScript code that imports those names; `omg team` itself is unchanged. See `docs/MIGRATION.md`, "Team Bridge Exports Removed".
+
+### Known issues
+
+- The Node 20 libuv caveat from 5.19.5 still applies: libuv honours `NoDefaultCurrentDirectoryInExePath` for no-shell spawns only from 1.48 (Node 22), so full protection against a planted executable on Windows needs Node 22+. The Node 22 minimum is planned for a later release.
+- Upstream's Windows state-lock probe-budget test (#4727) is held out of this port; a fork fix follows.
 
 ### Fixed
 

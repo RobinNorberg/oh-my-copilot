@@ -109,7 +109,6 @@ These are esbuild bundles — if the source files are ported correctly, just reb
 npm run build:cli          # → bridge/cli.cjs + bridge/team.js
 node scripts/build-skill-bridge.mjs  # → dist/hooks/skill-bridge.cjs
 node scripts/build-mcp-server.mjs    # → bridge/mcp-server.cjs
-node scripts/build-bridge-entry.mjs  # → bridge/team-bridge.cjs
 npm run build:runtime-cli  # → bridge/runtime-cli.cjs
 npx tsc --skipLibCheck     # → dist/ (use --skipLibCheck to bypass missing optional deps)
 ```

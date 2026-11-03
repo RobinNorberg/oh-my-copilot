@@ -735,8 +735,6 @@ async function loadProjectMemoryModules() {
 
     return {
       loadProjectMemory: projectMemoryStorage.loadProjectMemory,
-      saveProjectMemory: projectMemoryStorage.saveProjectMemory,
-      shouldRescan: projectMemoryStorage.shouldRescan,
       detectProjectEnvironment: projectMemoryDetector.detectProjectEnvironment,
       formatContextSummary: projectMemoryFormatter.formatContextSummary,
       findProjectRoot: rulesFinder.findProjectRoot,
@@ -818,8 +816,6 @@ async function resolveProjectMemorySummary(directory, projectMemoryModules) {
     findProjectRoot,
     formatContextSummary,
     loadProjectMemory,
-    saveProjectMemory,
-    shouldRescan,
   } = projectMemoryModules;
 
   const projectRoot = findProjectRoot?.(directory);
@@ -827,22 +823,10 @@ async function resolveProjectMemorySummary(directory, projectMemoryModules) {
     return '';
   }
 
+  // project-memory-session.mjs owns rescans and saves; a second writer here raced it and dropped hotPaths.
   let memory = await loadProjectMemory?.(projectRoot);
-
-  if ((!memory || shouldRescan?.(memory)) && detectProjectEnvironment && saveProjectMemory) {
-    const existing = memory;
+  if (!memory && detectProjectEnvironment) {
     memory = await detectProjectEnvironment(projectRoot);
-
-    if (existing) {
-      memory.customNotes = existing.customNotes;
-      memory.userDirectives = existing.userDirectives;
-    }
-
-    // A team worker runs in its own worktree: a detected-environment file
-    // there reads as worker output and keeps the worktree at team shutdown.
-    if (!process.env.OMC_TEAM_WORKER && !process.env.OMX_TEAM_WORKER) {
-      await saveProjectMemory(projectRoot, memory);
-    }
   }
 
   if (!hasProjectMemoryContent(memory)) {
