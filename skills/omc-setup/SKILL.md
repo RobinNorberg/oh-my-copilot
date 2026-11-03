@@ -62,7 +62,7 @@ MODES:
   Global Configuration (--global)
     - Invokes the plugin-local coordinator through `scripts/setup-claude-md.mjs`; the script validates the coordinator response and its exit status before any post-install work
     - Reports coordinator-created byte-identical backups only for changed global files
-    - Default: explicitly overwrites ~/.copilot/CLAUDE.md so plain `claude` also uses OMC
+    - Default: explicitly overwrites ~/.copilot/CLAUDE.md so plain `copilot` also uses OMC
     - Optional preserve mode keeps the user's base `CLAUDE.md` and installs OMC into `CLAUDE-omc.md` for `omg` launches
     - Applies to all Copilot CLI sessions
     - Preserves same-named legacy hook files unless their exact historical contents are independently verified

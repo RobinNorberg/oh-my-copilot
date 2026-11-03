@@ -313,8 +313,12 @@ describe("setup phases drift enforcement (issue #3871)", () => {
       /TeamCreate|TeamDelete/,
       /Claude Code's (?:implicit agent team|native MCP)/,
     ];
-    for (const file of PHASE_FILES) {
-      const content = readPhase(file);
+    const skillMd = readFileSync(join(REPO_ROOT, "skills", "omc-setup", "SKILL.md"), "utf-8");
+    const targets: Array<[string, string]> = [
+      ["SKILL.md", skillMd],
+      ...PHASE_FILES.map((file): [string, string] => [file, readPhase(file)]),
+    ];
+    for (const [file, content] of targets) {
       for (const pattern of claudeOnly) {
         expect(pattern.test(content), `${file} carries Claude Code-only ${pattern}`).toBe(false);
       }

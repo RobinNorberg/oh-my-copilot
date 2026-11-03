@@ -47,7 +47,7 @@ TEAMS:
 Spawn coordinated Copilot CLI workers on a shared task list:
 - omg team 3:executor "fix all TypeScript errors"
 - omg team 5:debugger "fix build errors in src/"
-Workers run headless as copilot-sdk sessions by default (--transport pane puts them in tmux/psmux panes). Team orchestration is explicit via /team or omg team — there is no bare "team" keyword.
+Under Copilot CLI, workers run headless as copilot-sdk sessions by default (--transport pane puts them in tmux/psmux panes). Team orchestration is explicit via omg team — there is no bare "team" keyword.
 
 MCP SERVERS:
 Register extra MCP servers (web search, GitHub, etc.) through Copilot CLI's native MCP config (`copilot mcp add ...`, stored in `mcp-config.json` in the Copilot config directory). OMC's bundled MCP server is already registered via the plugin's .mcp.json.
@@ -101,7 +101,7 @@ MAGIC KEYWORDS (power-user shortcuts):
 TEAMS (NEW!):
 Spawn coordinated Copilot CLI workers on a shared task list:
 - omg team 3:executor "fix all TypeScript errors"
-- Workers run headless as copilot-sdk sessions by default (--transport pane puts them in tmux/psmux panes)
+- Under Copilot CLI, workers run headless as copilot-sdk sessions by default (--transport pane puts them in tmux/psmux panes)
 
 HUD STATUSLINE:
 The status line now shows OMC state. Restart Copilot CLI to see it.

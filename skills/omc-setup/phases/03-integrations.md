@@ -23,18 +23,18 @@ Do **not** try to invoke an MCP setup skill — `mcp-setup` was removed in 5.0.0
 
 ## Step 3.3: Teams (No Setup Needed)
 
-`omg team` and `/team` need no setting or environment variable on Copilot CLI, so do not ask the user anything here and do not write any file. Tell the user:
+`omg team` needs no setting or environment variable on Copilot CLI, so do not ask the user anything here and do not write any file. Tell the user:
 
 - `omg team 3:executor "fix all TypeScript errors"` starts three Copilot CLI workers on a shared task list. Without `N:`, a team gets 3 workers.
-- Under Copilot CLI the workers run headless as copilot-sdk sessions by default; `--transport pane` runs them in tmux panes (psmux on Windows) instead.
+- Under Copilot CLI the workers run headless as copilot-sdk sessions by default (the auto transport falls back to panes for auto-merge, non-Copilot workers, contract roles, or a missing SDK); `--transport pane` runs them in tmux panes (psmux on Windows) instead.
 - To change the defaults, set these keys in `.copilot/omg.jsonc` (project) or the user config (`~/.config/claude-omc/config.jsonc`, `%APPDATA%\claude-omc\config.jsonc` on Windows):
 
 ```jsonc
 {
   "team": {
-    "transport": "auto", // sdk | pane | auto (default: sdk under Copilot CLI)
+    "transport": "auto", // sdk | pane | auto (default auto: sdk under Copilot CLI, else pane)
     "ops": {
-      "defaultAgentType": "copilot" // worker CLI when the N:agent-type spec names none
+      "defaultAgentType": "copilot" // worker CLI for omg team "task" with no N: spec (a spec like 3:executor uses the host CLI)
     }
   }
 }
