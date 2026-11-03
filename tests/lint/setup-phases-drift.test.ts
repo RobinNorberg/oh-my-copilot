@@ -300,16 +300,34 @@ describe("setup phases drift enforcement (issue #3871)", () => {
     expect(welcome).not.toMatch(/(?<![\w-])\/(?:oh-my-copilot:)?(?:plan|review)\b/);
   });
 
-  it("delegates the team config write instead of normalizing the path inline", () => {
-    // The phase used to build $CONFIG_FILE with its own shell path normalizer,
-    // which is where the backslash-tilde bug lived. It now hands the patch to
-    // MERGE_JSON_FILE, so the guard is that no inline path building comes back.
+  it("carries no Claude Code-only team or MCP setup", () => {
+    // The fork path-renamed upstream's Claude Code steps, so Copilot users were
+    // asked to set CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS and teammateMode, which
+    // Copilot CLI ignores, and were pointed at `claude mcp add`.
+    const claudeOnly = [
+      /CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS/,
+      /teammateMode/,
+      /\bclaude mcp\b/,
+      /CLAUDE_MCP_CONFIG_PATH/,
+      /\.claude\.json/,
+      /TeamCreate|TeamDelete/,
+      /Claude Code's (?:implicit agent team|native MCP)/,
+    ];
+    for (const file of PHASE_FILES) {
+      const content = readPhase(file);
+      for (const pattern of claudeOnly) {
+        expect(pattern.test(content), `${file} carries Claude Code-only ${pattern}`).toBe(false);
+      }
+    }
+  });
+
+  it("points Phase 3 at Copilot CLI MCP registration and keeps its progress contract", () => {
     const phase = readPhase("03-integrations.md");
-    const section = phase.match(/Store the team configuration[\s\S]*?(?=\n#{1,4} )/)?.[0];
-    expect(section, "team config section must remain present").toBeTruthy();
-    expect(section).toMatch(/MERGE_JSON_FILE/);
-    expect(section).toMatch(/\.omc-config\.json/);
-    expect(section, "team config must not rebuild the config path inline").not.toMatch(/CONFIG_FILE=/);
-    expect(section, "team config must not expand ~ inline").not.toMatch(/COPILOT_HOME[^\n]*HOME/);
+    expect(phase).toContain("copilot mcp add");
+    expect(phase).toContain("mcp-config.json");
+    expect(phase).toMatch(/\*\*Skip condition\*\*: If resuming and `lastCompletedStep >= 6`/);
+    expect(phase).toMatch(/scripts\/setup-progress\.mjs" save 6\n/);
+    // Teams need no setting on Copilot: the phase must not write one.
+    expect(phase).not.toMatch(/merge-json|MERGE_JSON_FILE|AskUserQuestion/);
   });
 });

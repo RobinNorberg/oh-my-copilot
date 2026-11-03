@@ -10,13 +10,13 @@ This is the **only command you need to learn**. After running this, everything e
 
 **When this skill is invoked, immediately execute the workflow below. Do not only restate or summarize these instructions back to the user.**
 
-Note: All `~/.claude/...` paths in this guide respect `COPILOT_HOME` when that environment variable is set.
+Note: All `~/.copilot/...` paths in this guide respect `COPILOT_HOME` when that environment variable is set.
 
 ## Best-Fit Use
 
 Choose this setup flow when the user wants to **install, refresh, or repair OMC itself**.
 
-- Marketplace/plugin install users should land here after `/plugin install oh-my-copilot`
+- Marketplace/plugin install users should land here after `/plugin install oh-my-copilot@omc` (from a shell: `copilot plugin install oh-my-copilot@omc`)
 - npm users should land here after `npm i -g oh-my-copilot@latest`
 - local-dev and worktree users should land here after updating the checked-out repo and rerunning setup
 
@@ -39,7 +39,7 @@ OMC Setup - Configure oh-my-copilot
 USAGE:
   /omc-setup           Run initial setup wizard (or update if already configured)
   /omc-setup --local   Configure local project (.claude/CLAUDE.md)
-  /omc-setup --global  Configure global settings (~/.claude/CLAUDE.md)
+  /omc-setup --global  Configure global settings (~/.copilot/CLAUDE.md)
   /omc-setup --force   Force full setup wizard even if already configured
   /omc-setup --help    Show this help
 
@@ -49,8 +49,8 @@ MODES:
     - Configures CLAUDE.md (local or global)
     - Sets up HUD statusline
     - Checks for updates
-    - Clears retired setup values (5.0.0 removed defaultExecutionMode) and points MCP registration at Claude Code's native config
-    - Configures team mode defaults (agent count, type, model)
+    - Clears retired setup values (5.0.0 removed defaultExecutionMode) and points MCP registration at Copilot CLI's native config (`copilot mcp add`)
+    - Explains the `omg team` defaults (teams need no setting on Copilot CLI)
     - If already configured, offers quick update option
 
   Local Configuration (--local)
@@ -62,9 +62,9 @@ MODES:
   Global Configuration (--global)
     - Invokes the plugin-local coordinator through `scripts/setup-claude-md.mjs`; the script validates the coordinator response and its exit status before any post-install work
     - Reports coordinator-created byte-identical backups only for changed global files
-    - Default: explicitly overwrites ~/.claude/CLAUDE.md so plain `claude` also uses OMC
-    - Optional preserve mode keeps the user's base `CLAUDE.md` and installs OMC into `CLAUDE-omc.md` for `omc` launches
-    - Applies to all Claude Code sessions
+    - Default: explicitly overwrites ~/.copilot/CLAUDE.md so plain `claude` also uses OMC
+    - Optional preserve mode keeps the user's base `CLAUDE.md` and installs OMC into `CLAUDE-omc.md` for `omg` launches
+    - Applies to all Copilot CLI sessions
     - Preserves same-named legacy hook files unless their exact historical contents are independently verified
     - Use this to update global config after OMC upgrades
 
@@ -123,7 +123,7 @@ Use AskUserQuestion to prompt:
 3. **Cancel** - Exit without changes
 
 **If user chooses "Update CLAUDE.md and clear retired setup values":**
-- Detect if local (.claude/CLAUDE.md) or global (~/.claude/CLAUDE.md) config exists
+- Detect if local (.claude/CLAUDE.md) or global (`${COPILOT_HOME:-~/.copilot}/CLAUDE.md`) config exists
 - If local exists, run: `node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.mjs" local`
 - If only global exists, run: `node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.mjs" global`
 - Run Phase 2 Step 2.4 to clear the retired `defaultExecutionMode` key

@@ -44,16 +44,16 @@ omc-plan -> execute -> omc-review -> verify, invoked as /omc-plan and /omc-revie
 /research and /team are internal lanes; /autopilot, /autoresearch, /ralph, /ultragoal stay directly invocable.
 
 TEAMS:
-Spawn coordinated agents with shared task lists and real-time messaging:
-- /team 3:executor "fix all TypeScript errors"
-- /team 5:debugger "fix build errors in src/"
-Teams use Claude Code's implicit agent team (spawn teammates directly with distinct `name` values; no TeamCreate/TeamDelete in Claude Code 2.1.178+). Team orchestration is explicit via /team — there is no bare "team" keyword.
+Spawn coordinated Copilot CLI workers on a shared task list:
+- omg team 3:executor "fix all TypeScript errors"
+- omg team 5:debugger "fix build errors in src/"
+Workers run headless as copilot-sdk sessions by default (--transport pane puts them in tmux/psmux panes). Team orchestration is explicit via /team or omg team — there is no bare "team" keyword.
 
 MCP SERVERS:
-Register extra MCP servers (web search, GitHub, etc.) through Claude Code's native MCP config (`claude mcp add ...` or the path selected by `CLAUDE_MCP_CONFIG_PATH`; by default, the sibling `.claude.json` next to `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`). OMC's bundled MCP server is already registered via the plugin's .mcp.json.
+Register extra MCP servers (web search, GitHub, etc.) through Copilot CLI's native MCP config (`copilot mcp add ...`, stored in `mcp-config.json` in the Copilot config directory). OMC's bundled MCP server is already registered via the plugin's .mcp.json.
 
 HUD STATUSLINE:
-The status bar now shows OMC state. Restart Claude Code to see it.
+The status line now shows OMC state. Restart Copilot CLI to see it.
 
 OMC CLI HELPERS (if installed):
 - omg hud         - Render the current HUD statusline
@@ -61,7 +61,7 @@ OMC CLI HELPERS (if installed):
 - omg team status - Inspect a running team job
 - Session summaries are written to `.omg/sessions/*.json`
 
-That's it! Just use Claude Code normally.
+That's it! Just use Copilot CLI normally.
 ```
 
 ### Retired in 5.0.0 (all users)
@@ -72,7 +72,7 @@ The following commands and keywords were removed in 5.0.0 and are not aliased:
 /learner, /writer-memory, /local-build-reminder.
 Use the replacement instead — see the migration table in docs/MIGRATION.md
 (commonly /execute for ultrawork, /verify for ultraqa, /team for omc-teams,
-/omc-setup for setup, and Claude Code's native MCP config for mcp-setup;
+/omc-setup for setup, and Copilot CLI's native MCP config (`copilot mcp add`) for mcp-setup;
 /wiki for omc-reference).
 
 ### For Users Upgrading from 2.x (IS_UPGRADE is true):
@@ -99,12 +99,12 @@ MAGIC KEYWORDS (power-user shortcuts):
 | cancelomc | /cancel | "cancelomc" |
 
 TEAMS (NEW!):
-Spawn coordinated agents with shared task lists and real-time messaging:
-- /team 3:executor "fix all TypeScript errors"
-- Uses Claude Code's implicit agent team (spawn teammates directly with distinct `name` values; no TeamCreate/TeamDelete in Claude Code 2.1.178+)
+Spawn coordinated Copilot CLI workers on a shared task list:
+- omg team 3:executor "fix all TypeScript errors"
+- Workers run headless as copilot-sdk sessions by default (--transport pane puts them in tmux/psmux panes)
 
 HUD STATUSLINE:
-The status bar now shows OMC state. Restart Claude Code to see it.
+The status line now shows OMC state. Restart Copilot CLI to see it.
 
 OMC CLI HELPERS (if installed):
 - omg hud         - Render the current HUD statusline
