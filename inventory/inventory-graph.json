@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "034ec52d16e50416dca93ac4622db30d64e740d4",
-    "sourceSha256": "ec2721932012b23459b84e81268c439170e6011dde1bfa70e6a0feff64771ec6",
+    "head": "05eac7cf7f1dc7b25ec43e1088e2bd639cb0285c",
+    "sourceSha256": "9834bee8805accb42f96a236f6431dbf17381d2befc4dc243b90dede13c251c7",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "034ec52d16e50416dca93ac4622db30d64e740d4",
-  "sourceSha256": "ec2721932012b23459b84e81268c439170e6011dde1bfa70e6a0feff64771ec6",
+  "head": "05eac7cf7f1dc7b25ec43e1088e2bd639cb0285c",
+  "sourceSha256": "9834bee8805accb42f96a236f6431dbf17381d2befc4dc243b90dede13c251c7",
   "counts": {
     "public": {
       "skills": 63,
@@ -57199,6 +57199,11 @@
         "id": "tests/lint/team-resume-contract.test.ts",
         "kind": "other",
         "path": "tests/lint/team-resume-contract.test.ts"
+      },
+      {
+        "id": "tests/lint/team-skill-host.test.ts",
+        "kind": "other",
+        "path": "tests/lint/team-skill-host.test.ts"
       },
       {
         "id": "tests/lint/upstream-drift-workflow.test.ts",
@@ -115988,6 +115993,21 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/team-skill-host.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/team-skill-host.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/team-skill-host.test.ts",
+        "to": "src/cli/commands/team.ts",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/upstream-drift-workflow.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -116184,12 +116204,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9728,
-      "edgeCount": 11783,
-      "importEdgeCount": 9722,
+      "nodeCount": 9729,
+      "edgeCount": 11786,
+      "importEdgeCount": 9725,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "f7982015c76563cb810429004549f7640de7b709396957f459163aeb7f045709",
-  "manifestSha256": "119548014dff02e5b6585eafd2293e7b406956d43d7be00f7188d8a7cbeb011b"
+  "inventorySha256": "f1f2da834217f895675c5a8c14b360cf60654291b1dfa4b06abf7c0e8fdcf464",
+  "manifestSha256": "de197ca9f6908d6cd8ef35b4fea8216960cc6946160d29f9989aa307a3700fa7"
 }
