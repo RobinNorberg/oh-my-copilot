@@ -88,10 +88,10 @@ For more info: https://github.com/RobinNorberg/oh-my-copilot
 Every command and file path in this skill and its phases starts with `<plugin-root>`, the oh-my-copilot plugin directory. Resolve it once, before the first command:
 
 1. The host shows this skill's directory as `Base directory for this skill: <dir>` (Copilot CLI and Claude Code both do). `<plugin-root>` is two levels above it: `<dir>` without its trailing `skills/omc-setup`.
-2. Only if no base directory is shown: use `CLAUDE_PLUGIN_ROOT` or `OMC_PLUGIN_ROOT` when one is set, else the `oh-my-copilot` directory under `${COPILOT_HOME:-~/.copilot}/installed-plugins/<marketplace>/`.
+2. Only if no base directory is shown: if you read this SKILL.md from a file path, `<plugin-root>` is two levels above that file's directory (`<plugin-root>/skills/omc-setup/SKILL.md`). Otherwise use `CLAUDE_PLUGIN_ROOT` or `OMC_PLUGIN_ROOT` when one is set, else the `oh-my-copilot` directory under the Copilot installed-plugins path (COPILOT_HOME if set, else `~/.copilot`, then `installed-plugins/<marketplace>/`) or the Claude Code cache (`~/.claude/plugins/cache/<marketplace>/oh-my-copilot/<version>/`).
 3. Check that `<plugin-root>/scripts/setup-config.mjs` exists. If it does not, stop and tell the user: "Cannot find the oh-my-copilot plugin scripts. Run `copilot plugin marketplace add RobinNorberg/oh-my-copilot` and `copilot plugin install oh-my-copilot@omc`, then rerun /omc-setup."
 
-Write the resolved absolute path literally in every command, never as a shell variable, so the commands run the same in bash, zsh and PowerShell.
+Write the resolved absolute path literally in every command, never as a shell variable, so the commands run the same in bash, zsh and PowerShell. If the path contains `$` or a backtick, use single quotes instead of double quotes.
 
 ## Setup Invocation
 
@@ -133,7 +133,7 @@ Use AskUserQuestion to prompt:
 3. **Cancel** - Exit without changes
 
 **If user chooses "Update CLAUDE.md and clear retired setup values":**
-- Detect if local (.claude/CLAUDE.md) or global (`${COPILOT_HOME:-~/.copilot}/CLAUDE.md`) config exists
+- Detect if local (.claude/CLAUDE.md) or global (`CLAUDE.md` in COPILOT_HOME if set, else `~/.copilot`) config exists
 - If local exists, run: `node "<plugin-root>/scripts/setup-claude-md.mjs" local`
 - If only global exists, run: `node "<plugin-root>/scripts/setup-claude-md.mjs" global`
 - Run Phase 2 Step 2.4 to clear the retired `defaultExecutionMode` key

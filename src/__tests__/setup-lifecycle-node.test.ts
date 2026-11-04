@@ -358,7 +358,7 @@ describe('omc-setup skill documents the Node entry points', () => {
 
   it('never instructs the agent to shell into the bash setup scripts', () => {
     const offenders = SETUP_DOCS.filter(doc =>
-      /\bbash\s+"?<plugin-root>/.test(readFileSync(doc, 'utf-8')),
+      /\bbash\s+"?(?:<plugin-root>|[^"\s]*\/scripts\/setup-)/.test(readFileSync(doc, 'utf-8')),
     );
     expect(offenders).toEqual([]);
   });
