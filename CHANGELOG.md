@@ -4,6 +4,12 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+# oh-my-copilot v5.19.7
+
+## [5.19.7] - 2026-11-04
+
+Fork **v5.19.7** (from v5.19.6) is a fix release for Copilot CLI users. `/omc-setup` and `/team` no longer give Claude Code instructions on Copilot CLI, setup finds its own scripts in PowerShell, and the hook state lock handles slow Windows owner probes (upstream #4727). This release was published without the live Copilot smoke.
+
 ### Fixed
 
 - Skills (`configure-notifications`, `omc-doctor`, `skill`, `skillify`, `hud`) no longer show the bash-only `${COPILOT_HOME:-~/.copilot}` notation that PowerShell cannot parse; they use `<copilot-home>`, defined as "COPILOT_HOME if set, else `~/.copilot`", and a repo-wide lint test guards `skills/` and `commands/` against it.
