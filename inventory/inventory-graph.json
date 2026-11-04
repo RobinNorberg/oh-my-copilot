@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "7e02fa3d1ea1b843ccd001ae807807c0301e35c1",
-    "sourceSha256": "0437757b79052d31916c6beb2243087212dd256591a6501ac7c0f7f74bff2acf",
+    "head": "bacaa7f3c60d92cfeb4a31206d041372e7c5bbe7",
+    "sourceSha256": "3a768dbc1bf9e9352b30a803694ed6b1ee3ad01eda518c248273987ef670578e",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "7e02fa3d1ea1b843ccd001ae807807c0301e35c1",
-  "sourceSha256": "0437757b79052d31916c6beb2243087212dd256591a6501ac7c0f7f74bff2acf",
+  "head": "bacaa7f3c60d92cfeb4a31206d041372e7c5bbe7",
+  "sourceSha256": "3a768dbc1bf9e9352b30a803694ed6b1ee3ad01eda518c248273987ef670578e",
   "counts": {
     "public": {
       "skills": 63,
@@ -57186,6 +57186,11 @@
         "path": "tests/lint/skill-parallel-caveats.test.ts"
       },
       {
+        "id": "tests/lint/skills-copilot-home-notation.test.ts",
+        "kind": "other",
+        "path": "tests/lint/skills-copilot-home-notation.test.ts"
+      },
+      {
         "id": "tests/lint/subagent-lock-test-contract.test.ts",
         "kind": "other",
         "path": "tests/lint/subagent-lock-test-contract.test.ts"
@@ -57199,11 +57204,6 @@
         "id": "tests/lint/team-resume-contract.test.ts",
         "kind": "other",
         "path": "tests/lint/team-resume-contract.test.ts"
-      },
-      {
-        "id": "tests/lint/team-skill-host.test.ts",
-        "kind": "other",
-        "path": "tests/lint/team-skill-host.test.ts"
       },
       {
         "id": "tests/lint/upstream-drift-workflow.test.ts",
@@ -115948,6 +115948,26 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/skills-copilot-home-notation.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/skills-copilot-home-notation.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/skills-copilot-home-notation.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/skills-copilot-home-notation.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/subagent-lock-test-contract.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -115990,21 +116010,6 @@
       {
         "from": "tests/lint/team-resume-contract.test.ts",
         "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/lint/team-skill-host.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/lint/team-skill-host.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/lint/team-skill-host.test.ts",
-        "to": "src/cli/commands/team.ts",
         "kind": "imports"
       },
       {
@@ -116205,11 +116210,11 @@
     ],
     "stats": {
       "nodeCount": 9729,
-      "edgeCount": 11786,
-      "importEdgeCount": 9725,
+      "edgeCount": 11787,
+      "importEdgeCount": 9726,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "f1f2da834217f895675c5a8c14b360cf60654291b1dfa4b06abf7c0e8fdcf464",
-  "manifestSha256": "15c64e1818a68eb6cf7bdc5b168b75fbb0559d764e4f1c9158c58495b0d3fc85"
+  "inventorySha256": "0478dc9a0256afa05c8f36937097aae2297b071d408f5ee20b07e45ffdfb4e0f",
+  "manifestSha256": "61db61aaa54af4359bfac1f0219dbbda7d4f559ebcbf1f3ace3f7c350aafc718"
 }

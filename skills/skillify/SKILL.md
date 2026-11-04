@@ -4,6 +4,7 @@ description: Turn a repeatable workflow from the current session into a reusable
 ---
 
 # Skillify
+`<copilot-home>` means COPILOT_HOME if set, else `~/.copilot`.
 
 Use this skill when the current session uncovered a repeatable workflow that should become a reusable OMC skill.
 
@@ -45,7 +46,7 @@ Prefer skills that encode decision-making heuristics, constraints, pitfalls, and
      ---
      ```
    - Write learned/user/project skills to flat file-backed paths:
-     - `${COPILOT_HOME:-~/.copilot}/skills/omc-learned/<skill-name>.md`
+     - `<copilot-home>/skills/omc-learned/<skill-name>.md`
      - `.omg/skills/<skill-name>.md`
    - Remember that uncommitted skills are still worktree-local until committed or copied to a user-level directory.
 5. Draft the rest of the skill file with clear triggers, steps, success criteria, and pitfalls.

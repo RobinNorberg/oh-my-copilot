@@ -17,6 +17,7 @@ level: 2
 ---
 
 # Configure Notifications
+`<copilot-home>` means COPILOT_HOME if set, else `~/.copilot`.
 
 Set up OMC notification integrations so you're alerted when sessions end, need input, or complete background tasks.
 
@@ -39,7 +40,7 @@ Detect which provider the user wants based on their request or argument:
 
 ## Shared Config Commands
 
-Every provider section reads and writes the same `${COPILOT_HOME:-~/.copilot}/.omc-config.json`.
+Every provider section reads and writes the same `<copilot-home>/.omc-config.json`.
 These two commands are the only ones you need for that, and both run unchanged in bash,
 zsh, and PowerShell — no jq, no shell-specific redirection.
 
@@ -68,7 +69,7 @@ Set up Telegram notifications so OMC can message you when sessions end, need inp
 
 ### How This Skill Works
 
-This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `${COPILOT_HOME:-~/.copilot}/.omc-config.json`.
+This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `<copilot-home>/.omc-config.json`.
 
 ### Step 1: Detect Existing Configuration
 
@@ -237,7 +238,7 @@ Set up Discord notifications so OMC can ping you when sessions end, need input, 
 
 ### How This Skill Works
 
-This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `${COPILOT_HOME:-~/.copilot}/.omc-config.json`.
+This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `<copilot-home>/.omc-config.json`.
 
 ### Step 1: Detect Existing Configuration
 
@@ -427,7 +428,7 @@ Set up Slack notifications so OMC can message you when sessions end, need input,
 
 ### How This Skill Works
 
-This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `${COPILOT_HOME:-~/.copilot}/.omc-config.json`.
+This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `<copilot-home>/.omc-config.json`.
 
 ### Step 1: Detect Existing Configuration
 
@@ -652,7 +653,7 @@ If the trigger or argument contains "hook", "template", or "customize messages" 
 
 ### Step 1: Detect Existing Hook Config
 
-Check if `${COPILOT_HOME:-~/.copilot}/omc_config.hook.json` exists. If it does, show the current configuration. If not, explain what it does.
+Check if `<copilot-home>/omc_config.hook.json` exists. If it does, show the current configuration. If not, explain what it does.
 
 ```
 Hook event templates let you customize the notification messages sent to each platform.
@@ -739,7 +740,7 @@ If per-platform: ask for each enabled platform's template separately.
 
 ### Step 6: Write Configuration
 
-Read or create `${COPILOT_HOME:-~/.copilot}/omc_config.hook.json` and merge the new settings:
+Read or create `<copilot-home>/omc_config.hook.json` and merge the new settings:
 
 ```json
 {
