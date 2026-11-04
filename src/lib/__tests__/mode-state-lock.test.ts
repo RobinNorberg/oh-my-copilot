@@ -23,6 +23,8 @@ const probeControl = vi.hoisted(() => ({
   onCall: undefined as undefined | ((call: string) => void),
   pid: undefined as number | undefined,
   onProbe: undefined as undefined | (() => void),
+  // Replaces getProcessStartIdentitySync's verdict when it returns anything but undefined.
+  identity: undefined as undefined | ((pid: number) => string | null | undefined),
   fire(pid: unknown): void {
     if (pid !== this.pid || !this.onProbe) return;
     const hook = this.onProbe;
@@ -79,7 +81,8 @@ vi.mock('../../platform/process-utils.js', async importOriginal => {
     ...actual,
     getProcessStartIdentitySync: (pid: number) => {
       probeControl.fire(pid);
-      return actual.getProcessStartIdentitySync(pid);
+      const override = probeControl.identity?.(pid);
+      return override !== undefined ? override : actual.getProcessStartIdentitySync(pid);
     },
   };
 });
@@ -179,6 +182,7 @@ afterEach(() => {
   probeControl.onCall = undefined;
   probeControl.pid = undefined;
   probeControl.onProbe = undefined;
+  probeControl.identity = undefined;
   delete process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE;
   delete process.env.OMC_TEST_FLOCK_AVAILABLE;
   for (const child of children.splice(0)) child.kill();
@@ -258,6 +262,40 @@ describe.each<Backend>(['ts-sqlite', 'mjs-sqlite'])('SQLite lock rows (%s)', bac
 
     expect(acquireOnce(backend, statePath)).toBe(false);
     expect(probesFor(live.pid as number)).toBe(1);
+  }, 60_000);
+});
+
+// Parity with scripts/lib/state-lock.mjs (#4727 follow-up): an inconclusive probe is retried a
+// bounded number of times instead of failing closed at once.
+describe.each<Backend>(['ts-sqlite', 'ts-file'])('inconclusive owner probes (%s)', backend => {
+  it('retries an inconclusive probe and reclaims the owner it then proves dead', async () => {
+    const { statePath, lockPath } = fixture('mode-state-lock-inconclusive-');
+    const live = await liveForeignOwner();
+    writeFileSync(lockPath, JSON.stringify(live));
+    useBackend(backend);
+    const verdicts: Array<string | null> = [null, 'absent'];
+    probeControl.identity = pid => (pid === live.pid ? verdicts.shift() : undefined);
+
+    expect(acquireOnce(backend, statePath)).toBe(true);
+    expect(verdicts).toEqual([]);
+  }, 60_000);
+
+  it('stops retrying a probe that stays inconclusive', async () => {
+    const { statePath, lockPath } = fixture('mode-state-lock-never-conclusive-');
+    const live = await liveForeignOwner();
+    writeFileSync(lockPath, JSON.stringify(live));
+    useBackend(backend);
+    let probes = 0;
+    probeControl.identity = pid => {
+      if (pid !== live.pid) return undefined;
+      probes += 1;
+      return null;
+    };
+
+    expect(acquireOnce(backend, statePath)).toBe(false);
+    // The first probe plus two retries: each can be a PowerShell spawn on win32.
+    expect(probes).toBe(3);
+    expect(JSON.parse(readFileSync(lockPath, 'utf8'))).toEqual(live);
   }, 60_000);
 });
 
