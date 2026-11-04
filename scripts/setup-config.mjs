@@ -17,7 +17,7 @@
 //   install-cli                npm install -g oh-my-copilot
 //   detect-task-tools          Look for beads (bd) and beads-rust (br)
 //   set-task-tool <tool>       Store taskTool in .omc-config.json
-//   plugin-verify              Check that settings.json mentions the plugin
+//   plugin-verify              Check that Copilot CLI installed the plugin (or settings.json mentions it)
 //   show-settings              Print settings.json
 //   merge-json settings.json <json>  Deep-merge a JSON patch into settings.json in the config dir
 //   verify-settings            Check settings.json parses and agent teams are enabled
@@ -209,7 +209,8 @@ function cmdUpdateCheck() {
       console.log('UPDATE AVAILABLE:');
       console.log(`  Installed: v${installed}`);
       console.log(`  Latest:    v${latest}`);
-      console.log('To update, run: claude /install-plugin oh-my-copilot');
+      console.log('To update, run: copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc');
+      console.log('(npm install: npm i -g oh-my-copilot@latest)');
     }
   } else if (latest) {
     console.log(`Latest version available: v${latest}`);
@@ -300,10 +301,20 @@ function readSettingsText() {
   }
 }
 
+/** Copilot CLI installs a plugin at <config dir>/installed-plugins/<marketplace>/<name>. */
+function copilotPluginInstalled() {
+  try {
+    const root = join(CONFIG_DIR, 'installed-plugins');
+    return readdirSync(root).some((marketplace) => existsSync(join(root, marketplace, 'oh-my-copilot', 'plugin.json')));
+  } catch {
+    return false;
+  }
+}
+
 function cmdPluginVerify() {
-  console.log(readSettingsText().includes('oh-my-copilot')
+  console.log(copilotPluginInstalled() || readSettingsText().includes('oh-my-copilot')
     ? 'Plugin verified'
-    : 'Plugin NOT found - run: claude /install-plugin oh-my-copilot');
+    : 'Plugin NOT found - run: copilot plugin install oh-my-copilot@omc');
 }
 
 function cmdShowSettings() {

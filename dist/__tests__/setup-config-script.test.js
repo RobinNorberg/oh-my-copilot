@@ -164,9 +164,16 @@ describe('setup-config.mjs', () => {
         mkdirSync(join(configDir, 'commands'), { recursive: true });
         writeFileSync(join(configDir, 'commands', 'ralph-loop.md'), '');
         expect(run(configDir, ['detect-upgrade']).stdout).toContain('IS_UPGRADE=true');
-        expect(run(configDir, ['plugin-verify']).stdout).toContain('Plugin NOT found');
+        const missing = run(configDir, ['plugin-verify']).stdout;
+        expect(missing).toContain('Plugin NOT found - run: copilot plugin install oh-my-copilot@omc');
         writeFileSync(join(configDir, 'settings.json'), '{"enabledPlugins":{"oh-my-copilot@omc":true}}');
         expect(run(configDir, ['plugin-verify']).stdout).toContain('Plugin verified');
+        const copilotDir = makeConfigDir();
+        const pluginRoot = join(copilotDir, 'installed-plugins', 'omc', 'oh-my-copilot');
+        mkdirSync(pluginRoot, { recursive: true });
+        expect(run(copilotDir, ['plugin-verify']).stdout).toContain('Plugin NOT found');
+        writeFileSync(join(pluginRoot, 'plugin.json'), '{"name":"oh-my-copilot"}');
+        expect(run(copilotDir, ['plugin-verify']).stdout).toContain('Plugin verified');
     });
     it('rejects an unknown subcommand', () => {
         const result = run(makeConfigDir(), ['nope']);

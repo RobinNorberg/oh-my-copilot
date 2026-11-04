@@ -7,6 +7,7 @@ All notable changes to oh-my-copilot will be documented in this file.
 ### Fixed
 
 - The hook state lock no longer fails on a single slow Windows owner probe: an inconclusive probe is retried while attempts remain, and a probe that spends the overall budget no longer leads to a lock acquired late or a busy wait past the deadline (upstream #4727 tests).
+- `/omc-setup` no longer runs Claude Code steps on Copilot CLI. Phase 3 no longer asks to set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` in `~/.copilot/settings.json` or asks about Claude Code `teammateMode`. It also no longer writes a team provider into `.omc-config.json`, which `omg team` does not read and which the merge helper refused anyway. Instead, it explains the `omg team` defaults and the `team.transport` and `team.ops.defaultAgentType` keys in `.copilot/omg.jsonc`. MCP guidance now points at `copilot mcp add` and `mcp-config.json`, not `claude mcp add` and `.claude.json`. The welcome text, the help text and the plugin and update hints now give Copilot CLI commands and paths. The plugin check also finds a plugin installed under `installed-plugins/`.
 
 # oh-my-copilot v5.19.6
 
