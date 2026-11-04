@@ -267,7 +267,7 @@ describe('omc-setup skill documents the Node entry points', () => {
         join(REPO_ROOT, 'skills', 'omc-setup', 'phases', '04-welcome.md'),
     ];
     it('never instructs the agent to shell into the bash setup scripts', () => {
-        const offenders = SETUP_DOCS.filter(doc => /\bbash\s+"?<plugin-root>/.test(readFileSync(doc, 'utf-8')));
+        const offenders = SETUP_DOCS.filter(doc => /\bbash\s+"?(?:<plugin-root>|[^"\s]*\/scripts\/setup-)/.test(readFileSync(doc, 'utf-8')));
         expect(offenders).toEqual([]);
     });
     it('invokes setup-progress and setup-claude-md through node', () => {
