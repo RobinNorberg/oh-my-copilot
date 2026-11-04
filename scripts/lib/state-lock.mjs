@@ -51,6 +51,11 @@ let lastLockFailureReason = null;
 // process for its lifetime. Keyed by nonce, not pid+processStart, so another thread's live lock
 // in the same process is never mistaken for an orphan.
 const abandonedOwnNonces = new Set();
+// Fork fix: an inconclusive (null) owner probe is retried at most this many times per acquire.
+// A slow win32 probe can turn conclusive on a retry (#4727), but most nulls never can (a legacy
+// owner on a platform without a start-time tolerance, an unreadable procfs entry, an invalid
+// pid), and retrying those on every one of 50 attempts stalled the acquire for 0.5-1 s.
+const INCONCLUSIVE_PROBE_RETRY_LIMIT = 2;
 
 function wallClockNowMs(testHooks) {
   return typeof testHooks?.nowMs === 'function' ? testHooks.nowMs() : Date.now();
@@ -455,6 +460,8 @@ function acquireFileLock(lockPath, attempts, processProbeDeadline, operationDead
   }
 
   let verifiedLiveOwner = null;
+  let inconclusiveRetries = 0;
+  let reclaimRetried = false;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (remainingOperationTimeoutMs(operationDeadline) <= 0) {
       recordFailure('contention');
@@ -518,10 +525,17 @@ function acquireFileLock(lockPath, attempts, processProbeDeadline, operationDead
       // already verified live in this loop is treated as still live (fail closed).
       const live = sameOwner(existing, verifiedLiveOwner) ? true : ownerLive(existing, remainingProcessProbeMs(processProbeDeadline, operationDeadline, testHooks), testHooks);
       if (live === null) {
+        // Fork fix: a deadline spent during the probe is contention, as after a conclusive probe.
+        const remainingMs = remainingOperationTimeoutMs(operationDeadline);
+        if (remainingMs <= 0) {
+          recordFailure('contention');
+          return null;
+        }
         recordFailure('unverifiable');
         // Fork fix (#4727): retry an inconclusive probe while attempts and probe budget remain.
-        const remainingMs = remainingOperationTimeoutMs(operationDeadline);
-        if (attempt + 1 < attempts && remainingMs > 0 && remainingProcessProbeMs(processProbeDeadline, operationDeadline, testHooks) > 0) {
+        if (attempt + 1 < attempts && inconclusiveRetries < INCONCLUSIVE_PROBE_RETRY_LIMIT &&
+            remainingProcessProbeMs(processProbeDeadline, operationDeadline, testHooks) > 0) {
+          inconclusiveRetries += 1;
           Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.min(10, Math.floor(remainingMs)));
           continue;
         }
@@ -542,6 +556,13 @@ function acquireFileLock(lockPath, attempts, processProbeDeadline, operationDead
       if (reclaimed === 'failed') {
         recordFailure('unverifiable');
         return null;
+      }
+      // Fork fix: a reclaim frees the path, so the link is retried without spending an attempt;
+      // otherwise attempts=1 could never take over a dead owner. Once per acquire, so a stream of
+      // dead owners cannot keep the loop alive.
+      if (reclaimed === 'removed' && !reclaimRetried) {
+        reclaimRetried = true;
+        attempt -= 1;
       }
     }
   }
@@ -573,6 +594,7 @@ export function acquireStateFileLockAtPathSync(lockPath, attempts = 50, requireE
 // never revives; an abandoned nonce stays abandoned). Each liveness probe is a PowerShell spawn
 // on win32, so re-probing on all 50 attempts stalled for ~10 s. A cached live owner is treated as
 // still live (fail closed). `probe` false returns undefined for an owner with no cached verdict.
+// `inconclusiveRetries` counts the retries spent on null verdicts (INCONCLUSIVE_PROBE_RETRY_LIMIT).
 function cachedOwnerLive(owner, verified, slot, probe, timeoutMs = 3000, testHooks) {
   if (sameOwner(owner, verified[slot])) return true;
   if (verified.dead.some(dead => sameOwner(owner, dead))) return false;
@@ -583,7 +605,7 @@ function cachedOwnerLive(owner, verified, slot, probe, timeoutMs = 3000, testHoo
   return live;
 }
 
-function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclusive, bypassTestOverride, busyTimeoutMs, processProbeDeadline, operationDeadline, testHooks, verified = { row: null, artifact: null, dead: [] }) {
+function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclusive, bypassTestOverride, busyTimeoutMs, processProbeDeadline, operationDeadline, testHooks, verified = { row: null, artifact: null, dead: [], inconclusiveRetries: 0 }) {
   lastLockFailureDetail = null;
   lastLockFailure = null;
   lastLockFailureReason = null;
@@ -679,12 +701,19 @@ function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclu
   }
   if (preLive === null || preLive) {
     try { db.close(); } catch {}
+    // Fork fix: a deadline spent during the probe is contention whatever the verdict was.
+    if (remainingOperationTimeoutMs(operationDeadline) <= 0) {
+      recordFailure('contention');
+      return null;
+    }
     // Fork fix (#4727): an inconclusive verdict is never cached, so a retry re-probes the owner;
     // one slow win32 probe must not sink the acquire while attempts and probe budget remain.
-    if (attempts <= 1 || (preLive === null && remainingProcessProbeMs(processProbeDeadline, operationDeadline, testHooks) <= 0)) {
+    if (attempts <= 1 || (preLive === null && (verified.inconclusiveRetries >= INCONCLUSIVE_PROBE_RETRY_LIMIT ||
+        remainingProcessProbeMs(processProbeDeadline, operationDeadline, testHooks) <= 0))) {
       recordFailure(preLive === null ? 'unverifiable' : 'contention');
       return null;
     }
+    if (preLive === null) verified.inconclusiveRetries += 1;
     return retryAcquisition();
   }
   // Fork fix (#4727): the probe above can spend the overall budget. Never re-enter the write

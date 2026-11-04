@@ -40775,6 +40775,7 @@ function acquireFileLockAt(path30, attempts) {
     return null;
   }
   let verifiedLiveOwner = null;
+  let inconclusiveRetries = 0;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const owner = {
       version: 1,
@@ -40835,6 +40836,11 @@ function acquireFileLockAt(path30, attempts) {
       const live = verifiedLiveOwner !== null && sameOwner(existing, verifiedLiveOwner) ? true : ownerLive(existing);
       if (live === null) {
         lastMutationLockFailure = "unverifiable";
+        if (attempt + 1 < attempts && inconclusiveRetries < INCONCLUSIVE_PROBE_RETRY_LIMIT) {
+          inconclusiveRetries += 1;
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+          continue;
+        }
         return null;
       }
       if (live) {
@@ -40866,7 +40872,7 @@ function cachedOwnerLive(owner, verified, slot, probe) {
   else if (live === false) verified.dead.push(owner);
   return live;
 }
-function acquireLockAt(path30, attempts = 50, verified = { row: null, artifact: null, dead: [] }) {
+function acquireLockAt(path30, attempts = 50, verified = { row: null, artifact: null, dead: [], inconclusiveRetries: 0 }) {
   lastMutationLockFailureDetail = null;
   (0, import_fs26.mkdirSync)((0, import_path32.dirname)(path30), { recursive: true });
   const key = (() => {
@@ -40925,10 +40931,11 @@ function acquireLockAt(path30, attempts = 50, verified = { row: null, artifact: 
       db.close();
     } catch {
     }
-    if (preLive === null || attempts <= 1) {
+    if (attempts <= 1 || preLive === null && verified.inconclusiveRetries >= INCONCLUSIVE_PROBE_RETRY_LIMIT) {
       lastMutationLockFailure = preLive === null ? "unverifiable" : "contention";
       return null;
     }
+    if (preLive === null) verified.inconclusiveRetries += 1;
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
     return acquireLockAt(path30, attempts - 1, verified);
   }
@@ -42301,7 +42308,7 @@ function clearModeStateFile(mode, directory, sessionId, expectedState, cleanupSn
   }
   return success;
 }
-var import_fs26, import_path32, import_crypto8, import_module2, require2, SQLITE_NATIVE_BINDING, SQLITE_NATIVE_BINDING_REMEDIATION, Database, sqliteBindingLoadError, localLocks, lastMutationLockFailure, lastMutationLockFailureDetail, abandonedOwnNonces, ownProcessStartIdentityCache, RELEASE_BUSY_BUDGET_MS;
+var import_fs26, import_path32, import_crypto8, import_module2, require2, SQLITE_NATIVE_BINDING, SQLITE_NATIVE_BINDING_REMEDIATION, Database, sqliteBindingLoadError, localLocks, lastMutationLockFailure, lastMutationLockFailureDetail, abandonedOwnNonces, INCONCLUSIVE_PROBE_RETRY_LIMIT, ownProcessStartIdentityCache, RELEASE_BUSY_BUDGET_MS;
 var init_mode_state_io = __esm({
   "src/lib/mode-state-io.ts"() {
     "use strict";
@@ -42334,6 +42341,7 @@ var init_mode_state_io = __esm({
     lastMutationLockFailure = null;
     lastMutationLockFailureDetail = null;
     abandonedOwnNonces = /* @__PURE__ */ new Set();
+    INCONCLUSIVE_PROBE_RETRY_LIMIT = 2;
     ownProcessStartIdentityCache = null;
     RELEASE_BUSY_BUDGET_MS = 5e3;
   }

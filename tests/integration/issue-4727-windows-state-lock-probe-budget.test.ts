@@ -190,6 +190,7 @@ describe('issue #4727: state-lock owner probe runs outside the write transaction
       expect(verdicts).toEqual([]);
       expect(lock).not.toBeNull();
       expect(lock!.backend).toBe('file');
+      expect(JSON.parse(readFileSync(lockPath, 'utf8')).nonce).toBe(lock!.owner.nonce);
       expect(releaseStateFileLockSync(lock!)).toBe(true);
     } finally {
       vi.unstubAllEnvs();
@@ -306,5 +307,67 @@ describe('issue #4727: state-lock owner probe runs outside the write transaction
     expect(JSON.parse(readFileSync(lockPath, 'utf8')).nonce).toBe(lock!.owner.nonce);
     expect(releaseStateFileLockSync(lock!)).toBe(true);
     expect(rowNonce(lockPath)).toBeUndefined();
+  });
+});
+
+// Follow-ups to #4727: each case fails against the lock before these fixes.
+describe('issue #4727 follow-ups: bounded inconclusive retries and consistent failure kinds', () => {
+  const backends = [
+    ['SQLite', { artifact: false }, false],
+    ['file', { row: false }, true],
+  ] as const;
+
+  it.each(backends)('stops retrying a probe that stays inconclusive (%s backend)', (label, seed, fileBackend) => {
+    if (fileBackend) vi.stubEnv('OMC_TEST_FLOCK_AVAILABLE', '0');
+    try {
+      const lockPath = join(stateDir, `never-conclusive-${label}.lock`);
+      seedOwner(lockPath, randomUUID(), seed);
+      let probes = 0;
+
+      const lock = acquire(lockPath, 50, hooks(() => { probes += 1; return null as unknown as string; }));
+
+      expect(lock).toBeNull();
+      expect(getStateFileLockFailureKind()).toBe('unverifiable');
+      // The first probe plus two retries, not one probe per attempt.
+      expect(probes).toBe(3);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it.each(backends)('reports contention when the deadline expires during an inconclusive probe (%s backend)', (label, seed, fileBackend) => {
+    if (fileBackend) vi.stubEnv('OMC_TEST_FLOCK_AVAILABLE', '0');
+    try {
+      const lockPath = join(stateDir, `deadline-inconclusive-${label}.lock`);
+      seedOwner(lockPath, randomUUID(), seed);
+      const outlastDeadline = () => {
+        const start = Date.now();
+        while (Date.now() - start < 250) { /* simulated PowerShell probe latency */ }
+      };
+
+      const lock = acquireStateFileLockAtPathSync(lockPath, 5, false, false, 2000, 3000, 200, hooks(() => null as unknown as string, outlastDeadline));
+
+      expect(lock).toBeNull();
+      expect(getStateFileLockFailureKind()).toBe('contention');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('takes over a dead owner file with a single attempt on the file backend', () => {
+    vi.stubEnv('OMC_TEST_FLOCK_AVAILABLE', '0');
+    try {
+      const lockPath = join(stateDir, 'single-attempt-reclaim.lock');
+      seedOwner(lockPath, randomUUID(), { row: false });
+
+      const lock = acquire(lockPath, 1, hooks(() => 'absent'));
+
+      expect(lock).not.toBeNull();
+      expect(lock!.backend).toBe('file');
+      expect(JSON.parse(readFileSync(lockPath, 'utf8')).nonce).toBe(lock!.owner.nonce);
+      expect(releaseStateFileLockSync(lock!)).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
