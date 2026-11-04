@@ -8,6 +8,7 @@ level: 2
 ---
 
 # HUD Skill
+`<copilot-home>` means COPILOT_HOME if set, else `~/.copilot`.
 
 Configure the OMC HUD (Heads-Up Display) for the statusline.
 
@@ -61,7 +62,7 @@ node -e "if(process.platform==='win32'){console.log('Skipped (Windows)')}else{re
 
 **Step 5:** Update settings.json to use the HUD:
 
-Read `${COPILOT_HOME:-~/.copilot}/settings.json`, then update/add the `statusLine` field.
+Read `<copilot-home>/settings.json`, then update/add the `statusLine` field.
 
 **IMPORTANT:** Do not use `~` in the command. On Unix, use `$HOME` to keep the path portable across machines. On Windows, use an absolute path because Windows does not expand `~` in shell commands.
 
