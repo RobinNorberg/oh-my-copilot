@@ -95,6 +95,10 @@ let lastMutationLockFailureDetail: string | null = null;
 // process for its lifetime. Keyed by nonce, not pid+processStart, so another thread's live lock
 // in the same process is never mistaken for an orphan.
 const abandonedOwnNonces = new Set<string>();
+// Fork fix: an inconclusive (null) owner probe is retried at most this many times per acquire,
+// matching scripts/lib/state-lock.mjs. A slow win32 probe can turn conclusive on a retry (#4727),
+// but each retry can cost another PowerShell spawn and most nulls never turn conclusive.
+const INCONCLUSIVE_PROBE_RETRY_LIMIT = 2;
 // The current process's own start identity is immutable for the process
 // lifetime once successfully captured. acquireLockAt spawns a real
 // subprocess (ps on Darwin, powershell on Windows) to compute it; caching
@@ -370,6 +374,7 @@ function acquireFileLockAt(path: string, attempts: number): MutationLock | null 
   }
 
   let verifiedLiveOwner: MutationLockOwner | null = null;
+  let inconclusiveRetries = 0;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const owner: MutationLockOwner = {
       version: 1,
@@ -434,6 +439,12 @@ function acquireFileLockAt(path: string, attempts: number): MutationLock | null 
       const live = verifiedLiveOwner !== null && sameOwner(existing, verifiedLiveOwner) ? true : ownerLive(existing);
       if (live === null) {
         lastMutationLockFailure = 'unverifiable';
+        // Fork fix (#4727): retry an inconclusive probe a bounded number of times.
+        if (attempt + 1 < attempts && inconclusiveRetries < INCONCLUSIVE_PROBE_RETRY_LIMIT) {
+          inconclusiveRetries += 1;
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+          continue;
+        }
         return null;
       }
       if (live) {
@@ -461,7 +472,8 @@ function acquireFileLockAt(path: string, attempts: number): MutationLock | null 
 // never revives; an abandoned nonce stays abandoned). Each liveness probe is a PowerShell spawn
 // on win32, so re-probing on all 50 attempts stalled for ~10 s. A cached live owner is treated as
 // still live (fail closed). `probe` false returns undefined for an owner with no cached verdict.
-type VerifiedOwners = { row: MutationLockOwner | null; artifact: MutationLockOwner | null; dead: MutationLockOwner[] };
+// `inconclusiveRetries` counts the retries spent on null verdicts (INCONCLUSIVE_PROBE_RETRY_LIMIT).
+type VerifiedOwners = { row: MutationLockOwner | null; artifact: MutationLockOwner | null; dead: MutationLockOwner[]; inconclusiveRetries: number };
 function cachedOwnerLive(owner: MutationLockOwner, verified: VerifiedOwners, slot: 'row' | 'artifact', probe: boolean): boolean | null | undefined {
   const cached = verified[slot];
   if (cached !== null && sameOwner(owner, cached)) return true;
@@ -473,7 +485,7 @@ function cachedOwnerLive(owner: MutationLockOwner, verified: VerifiedOwners, slo
   return live;
 }
 
-function acquireLockAt(path: string, attempts = 50, verified: VerifiedOwners = { row: null, artifact: null, dead: [] }): MutationLock | null {
+function acquireLockAt(path: string, attempts = 50, verified: VerifiedOwners = { row: null, artifact: null, dead: [], inconclusiveRetries: 0 }): MutationLock | null {
   lastMutationLockFailureDetail = null;
   mkdirSync(dirname(path), { recursive: true });
   const key = (() => { try { return resolve(realpathSync(dirname(path)), basename(path)); } catch { return resolve(path); } })();
@@ -526,10 +538,12 @@ function acquireLockAt(path: string, attempts = 50, verified: VerifiedOwners = {
   }
   if (preLive === null || preLive) {
     try { db.close(); } catch { /* best effort */ }
-    if (preLive === null || attempts <= 1) {
+    // Fork fix (#4727): an inconclusive verdict is never cached, so a retry re-probes the owner.
+    if (attempts <= 1 || (preLive === null && verified.inconclusiveRetries >= INCONCLUSIVE_PROBE_RETRY_LIMIT)) {
       lastMutationLockFailure = preLive === null ? 'unverifiable' : 'contention';
       return null;
     }
+    if (preLive === null) verified.inconclusiveRetries += 1;
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
     return acquireLockAt(path, attempts - 1, verified);
   }
