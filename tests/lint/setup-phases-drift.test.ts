@@ -21,7 +21,7 @@
  * runtime change.
  */
 
-import { execFileSync } from "child_process";
+import { execFileSync, spawnSync } from "child_process";
 import { readFileSync, existsSync, mkdtempSync, rmSync, writeFileSync, chmodSync, readdirSync, mkdirSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -289,6 +289,28 @@ describe("setup phases drift enforcement (issue #3871)", () => {
       const fresh = boundaryVars();
       expect(fresh.RESUMED_PHASE_TWO_BOUNDARY).toBe("false");
       expect(fresh.RESUME_LAST_COMPLETED_STEP).toBe("2");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // withPluginRoot() normalizes to forward slashes; a Windows agent running PowerShell writes the
+  // native backslash root into the same snippet, so prove that spelling resolves identically.
+  const pwshAvailable = process.platform === "win32" && spawnSync("pwsh", ["-NoProfile", "-Command", "exit 0"]).status === 0;
+  const pwshTest = process.platform === "win32" ? (pwshAvailable ? it : it.skip) : it.skip;
+  pwshTest(`executes the resume boundary with the native backslash plugin root through pwsh (win32 only; skipped when pwsh is missing: ${pwshAvailable ? "pwsh found" : "pwsh NOT found"})`, () => {
+    const phase = readPhase("02-configure.md");
+    const snippet = phase.match(/## Resume Boundary[\s\S]*?```bash\n([\s\S]*?)\n```/)?.[1];
+    expect(snippet, "Phase 2 must keep an executable resume-boundary snippet").toBeTruthy();
+    const root = mkdtempSync(join(tmpdir(), "setup-drift-pwsh-"));
+    try {
+      mkdirSync(join(root, ".omg", "state"), { recursive: true });
+      writeFileSync(join(root, ".omg", "state", "setup-state.json"), JSON.stringify({ lastCompletedStep: 7 }));
+      const command = snippet!.split("<plugin-root>").join(REPO_ROOT);
+      expect(command).toContain(REPO_ROOT);
+      const out = execFileSync("pwsh", ["-NoProfile", "-Command", command], { cwd: root, encoding: "utf-8", env: { ...process.env } });
+      expect(out).toContain("RESUMED_PHASE_TWO_BOUNDARY=true");
+      expect(out).toContain("RESUME_LAST_COMPLETED_STEP=7");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
