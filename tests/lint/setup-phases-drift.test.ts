@@ -370,6 +370,7 @@ describe("setup phases drift enforcement (issue #3871)", () => {
     for (const [file, content] of targets) {
       expect(content, `${file} uses a nested shell fallback expansion`).not.toMatch(/\$\{\w+:-\$\{?\w/);
       expect(content, `${file} names OMC_SETUP_PLUGIN_ROOT`).not.toContain("OMC_SETUP_PLUGIN_ROOT");
+      expect(content, `${file} uses the bash-only COPILOT_HOME fallback notation`).not.toContain("${COPILOT_HOME:-");
       for (const match of content.matchAll(/node\s+"([^"]*)\/scripts\//g)) {
         expect(match[1], `${file} runs a script outside <plugin-root>`).toBe("<plugin-root>");
       }

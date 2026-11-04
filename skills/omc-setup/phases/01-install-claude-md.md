@@ -13,7 +13,7 @@ Otherwise (initial setup wizard), use AskUserQuestion to prompt:
 
 **Options:**
 1. **Local (this project)** - Creates `.claude/CLAUDE.md` in current project directory. Best for project-specific configurations.
-2. **Global (all projects)** - Creates `${COPILOT_HOME:-~/.copilot}/CLAUDE.md` for all Copilot CLI sessions. Best for consistent behavior everywhere.
+2. **Global (all projects)** - Creates `CLAUDE.md` in COPILOT_HOME if set, else `~/.copilot` for all Copilot CLI sessions. Best for consistent behavior everywhere.
 
 Set `CONFIG_TARGET` to `local` or `global` based on the user's choice.
 
@@ -27,7 +27,7 @@ node "<plugin-root>/scripts/setup-config.mjs" claude-md-enabled
 
 If the probe prints `disabled`, do not ask the overwrite/preserve question; set `GLOBAL_INSTALL_STYLE=overwrite` and continue through the coordinator so it can report the skip. If it prints `enabled`, continue below. If the probe fails or prints neither status, stop before asking or running setup; do not assume management is enabled.
 
-If `CONFIG_TARGET=global`, the probe printed `enabled`, and `${COPILOT_HOME:-~/.copilot}/CLAUDE.md` already exists without OMC markers, ask a second explicit question before running setup:
+If `CONFIG_TARGET=global`, the probe printed `enabled`, and the global `CLAUDE.md` (in COPILOT_HOME if set, else `~/.copilot`) already exists without OMC markers, ask a second explicit question before running setup:
 
 **Question:** "Global setup will change your base Claude config. Which behavior do you want?"
 
@@ -80,8 +80,8 @@ If the coordinator reported the `claudeMdEnabled` skip, report `CLAUDE.md: Skipp
 
 ```
 OMC Global Configuration Complete
-- CLAUDE.md: Updated at ${COPILOT_HOME:-~/.copilot}/CLAUDE.md, or preserved with explicit preserve mode
-- Companion: May install ${COPILOT_HOME:-~/.copilot}/CLAUDE-omc.md when preserve mode is chosen
+- CLAUDE.md: Updated at CLAUDE.md in COPILOT_HOME if set (else ~/.copilot), or preserved with explicit preserve mode
+- Companion: May install CLAUDE-omc.md alongside it when preserve mode is chosen
 - Backup: Coordinator reported byte-identical backups only for global files that required mutation
 - Scope: GLOBAL - applies to all Copilot CLI sessions
 - Hooks: Provided by plugin (no manual installation needed)
