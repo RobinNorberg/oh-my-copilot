@@ -35,9 +35,11 @@ const PHASE_FILES = [
   "03-integrations.md",
   "04-welcome.md",
 ] as const;
-// The phase snippets run `node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" <subcommand>`,
-// so point them at this checkout's scripts exactly as the setup agent would.
-const PLUGIN_ROOT_ENV = { OMC_SETUP_PLUGIN_ROOT: REPO_ROOT };
+// The phase snippets run `node "<plugin-root>/scripts/setup-config.mjs" <subcommand>`, and the
+// setup agent writes the resolved root in literally, so substitute this checkout the same way.
+function withPluginRoot(snippet: string): string {
+  return snippet.split("<plugin-root>").join(REPO_ROOT.replace(/\\/g, "/"));
+}
 
 /** A standalone `/<name>` slash reference (not a path segment). */
 const SLASH_REFERENCE = /(?<![\w./:~-])\/([a-z][a-z0-9-]*)(?![\w/.:-])/g;
@@ -188,7 +190,7 @@ describe("setup phases drift enforcement (issue #3871)", () => {
     try {
       const config = join(root, ".omc-config.json");
       writeFileSync(config, original);
-      execFileSync("bash", ["-c", snippet!], { env: { ...process.env, ...PLUGIN_ROOT_ENV, COPILOT_HOME: root } });
+      execFileSync("bash", ["-c", withPluginRoot(snippet!)], { env: { ...process.env, COPILOT_HOME: root } });
       const cleaned = JSON.parse(readFileSync(config, "utf8")) as Record<string, unknown>;
       expect(cleaned).toEqual({ silentAutoUpdate: false });
 
@@ -197,20 +199,20 @@ describe("setup phases drift enforcement (issue #3871)", () => {
       mkdirSync(tildeConfigDir, { recursive: true });
       writeFileSync(tildeConfig, original);
       // os.homedir() reads USERPROFILE on Windows and HOME elsewhere.
-      execFileSync("bash", ["-c", snippet!], {
-        env: { ...process.env, ...PLUGIN_ROOT_ENV, HOME: root, USERPROFILE: root, COPILOT_HOME: "~/nested" },
+      execFileSync("bash", ["-c", withPluginRoot(snippet!)], {
+        env: { ...process.env, HOME: root, USERPROFILE: root, COPILOT_HOME: "~/nested" },
       });
       expect(JSON.parse(readFileSync(tildeConfig, "utf8"))).toEqual({ silentAutoUpdate: false });
       writeFileSync(tildeConfig, original);
-      execFileSync("bash", ["-c", snippet!], {
-        env: { ...process.env, ...PLUGIN_ROOT_ENV, HOME: root, USERPROFILE: root, COPILOT_HOME: "~\\nested" },
+      execFileSync("bash", ["-c", withPluginRoot(snippet!)], {
+        env: { ...process.env, HOME: root, USERPROFILE: root, COPILOT_HOME: "~\\nested" },
       });
       expect(JSON.parse(readFileSync(tildeConfig, "utf8"))).toEqual({ silentAutoUpdate: false });
 
       const malformed = "{ \"defaultExecutionMode\":";
       writeFileSync(config, malformed);
-      execFileSync("bash", ["-c", snippet!], {
-        env: { ...process.env, ...PLUGIN_ROOT_ENV, COPILOT_HOME: root },
+      execFileSync("bash", ["-c", withPluginRoot(snippet!)], {
+        env: { ...process.env, COPILOT_HOME: root },
         stdio: "ignore",
       });
       expect(readFileSync(config, "utf8")).toBe(malformed);
@@ -235,8 +237,8 @@ describe("setup phases drift enforcement (issue #3871)", () => {
       }
       try {
         if (denialEnforced) {
-          execFileSync("bash", ["-c", snippet!], {
-            env: { ...process.env, ...PLUGIN_ROOT_ENV, COPILOT_HOME: denied },
+          execFileSync("bash", ["-c", withPluginRoot(snippet!)], {
+            env: { ...process.env, COPILOT_HOME: denied },
             stdio: "ignore",
           });
           expect(readFileSync(deniedConfig, "utf8")).toBe(original);
@@ -248,8 +250,8 @@ describe("setup phases drift enforcement (issue #3871)", () => {
 
       // Success path leaves no temp residue behind either.
       writeFileSync(config, original);
-      execFileSync("bash", ["-c", snippet!], {
-        env: { ...process.env, ...PLUGIN_ROOT_ENV, COPILOT_HOME: root },
+      execFileSync("bash", ["-c", withPluginRoot(snippet!)], {
+        env: { ...process.env, COPILOT_HOME: root },
         stdio: "ignore",
       });
       expect(JSON.parse(readFileSync(config, "utf8"))).toEqual({ silentAutoUpdate: false });
@@ -270,7 +272,7 @@ describe("setup phases drift enforcement (issue #3871)", () => {
       // The snippet reports the boundary as KEY=value lines on stdout for the
       // setup agent to read; it does not export shell variables of its own.
       const boundaryVars = () => {
-        const out = execFileSync("bash", ["-c", snippet!], { cwd: root, encoding: "utf-8", env: { ...process.env, ...PLUGIN_ROOT_ENV } });
+        const out = execFileSync("bash", ["-c", withPluginRoot(snippet!)], { cwd: root, encoding: "utf-8", env: { ...process.env } });
         return Object.fromEntries(
           out.trim().split(/\r?\n/).filter(Boolean).map((line) => {
             const at = line.indexOf("=");
@@ -333,5 +335,27 @@ describe("setup phases drift enforcement (issue #3871)", () => {
     expect(phase).toMatch(/scripts\/setup-progress\.mjs" save 6\n/);
     // Teams need no setting on Copilot: the phase must not write one.
     expect(phase).not.toMatch(/merge-json|MERGE_JSON_FILE|AskUserQuestion/);
+  });
+
+  it("locates scripts through a literal <plugin-root>, never a shell fallback expansion", () => {
+    // `${A:-${B}}` is bash-only: PowerShell, Copilot CLI's shell on Windows, rejects it as a
+    // parse error, and nothing exports OMC_SETUP_PLUGIN_ROOT, so it expanded to "/scripts/...".
+    const skillMd = readFileSync(join(REPO_ROOT, "skills", "omc-setup", "SKILL.md"), "utf-8");
+    const targets: Array<[string, string]> = [
+      ["SKILL.md", skillMd],
+      ...PHASE_FILES.map((file): [string, string] => [file, readPhase(file)]),
+    ];
+    for (const [file, content] of targets) {
+      expect(content, `${file} uses a nested shell fallback expansion`).not.toMatch(/\$\{\w+:-\$\{?\w/);
+      expect(content, `${file} names OMC_SETUP_PLUGIN_ROOT`).not.toContain("OMC_SETUP_PLUGIN_ROOT");
+      for (const match of content.matchAll(/node\s+"([^"]*)\/scripts\//g)) {
+        expect(match[1], `${file} runs a script outside <plugin-root>`).toBe("<plugin-root>");
+      }
+      for (const match of content.matchAll(/([^\s`"]*)\/skills\/omc-setup\/phases\//g)) {
+        expect(match[1], `${file} reads a phase outside <plugin-root>`).toBe("<plugin-root>");
+      }
+    }
+    // The resolution step the placeholder depends on, with its stop message.
+    expect(skillMd).toMatch(/## Plugin Root[\s\S]*Base directory for this skill[\s\S]*scripts\/setup-config\.mjs` exists[\s\S]*copilot plugin marketplace add RobinNorberg\/oh-my-copilot/);
   });
 });

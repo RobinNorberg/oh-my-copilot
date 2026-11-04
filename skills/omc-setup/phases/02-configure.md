@@ -1,5 +1,7 @@
 # Phase 2: Environment Configuration
 
+`<plugin-root>` is the plugin directory resolved in the omc-setup skill's "Plugin Root" step. Write it as a literal absolute path in every command below, never as a shell variable.
+
 **Skip condition**: If resuming and `lastCompletedStep >= 4`, skip Steps 2.0–2.3 and begin at Step 2.4 so retired setup values are always cleared before the phase exits.
 
 ## Resume Boundary
@@ -7,7 +9,7 @@
 Capture the original progress marker once when Phase 2 starts. A resumed run that enters at Step 2.4 must not repeat the completed Steps 2.5/2.6 prompts or overwrite a higher progress marker:
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" resume-boundary
+node "<plugin-root>/scripts/setup-config.mjs" resume-boundary
 ```
 
 ## Step 2.0: Check Ralph Runtime Prerequisites
@@ -16,7 +18,7 @@ Ralph is an agent-driven persistence loop with no external language dependency. 
 
 ```bash
 node --version || echo "ERROR: Node is required for OMC hooks and Ralph state persistence."
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" probe-write
+node "<plugin-root>/scripts/setup-config.mjs" probe-write
 ```
 
 ## Step 2.1: Setup HUD Statusline
@@ -36,7 +38,7 @@ This will:
 
 After HUD setup completes, save progress:
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" save 3
+node "<plugin-root>/scripts/setup-progress.mjs" save 3
 ```
 
 With no config type argument, `save` carries forward the one already recorded in `.omg/state/setup-state.json`.
@@ -46,7 +48,7 @@ With no config type argument, `save` carries forward the one already recorded in
 After a marketplace update, Copilot CLI may still have old OMC cache paths in the running session or plugin registry. Repair those references before any cache cleanup so setup does not repeatedly emit stale plugin directory errors.
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/repair-plugin-cache.mjs"
+node "<plugin-root>/scripts/repair-plugin-cache.mjs"
 ```
 
 ## Step 2.3: Check for Updates
@@ -54,7 +56,7 @@ node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/repair-plugin-cach
 Notify user if a newer version is available:
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" update-check
+node "<plugin-root>/scripts/setup-config.mjs" update-check
 ```
 
 It detects the installed version (plugin cache, then `.omc-version.json`, then the `CLAUDE.md` header) and compares it against the published version.
@@ -66,7 +68,7 @@ The `ultrawork` workflow was removed in 5.0.0 and the `defaultExecutionMode` con
 The write goes through a temp file, so a failure leaves the existing config untouched:
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" clear-retired
+node "<plugin-root>/scripts/setup-config.mjs" clear-retired
 ```
 
 **Note:** Never write a new `defaultExecutionMode` value. Generic keywords no longer route through a configured execution mode; invoke `/execute` or `/team` directly instead.
@@ -80,7 +82,7 @@ The OMC CLI (`omg` command) provides standalone helper commands such as `omg hud
 First, check if the CLI is already installed:
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" cli-installed
+node "<plugin-root>/scripts/setup-config.mjs" cli-installed
 ```
 
 If `OMC_CLI_INSTALLED` is `"true"`, skip the rest of this step.
@@ -96,7 +98,7 @@ If `OMC_CLI_INSTALLED` is `"false"`, use AskUserQuestion:
 If user chooses **Yes**:
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" install-cli
+node "<plugin-root>/scripts/setup-config.mjs" install-cli
 ```
 
 **Note**: The CLI is optional. All core functionality is also available through the plugin system.
@@ -106,7 +108,7 @@ node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" 
 First, detect available task tools:
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" detect-task-tools
+node "<plugin-root>/scripts/setup-config.mjs" detect-task-tools
 ```
 
 If **neither** beads nor beads-rust is detected, skip this step (default to built-in).
@@ -128,7 +130,7 @@ Pass the user's selection (`builtin`, `beads`, or `beads-rust`) as the argument.
 goes through a temp file, so a failure leaves the existing config untouched:
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" set-task-tool "USER_CHOICE"
+node "<plugin-root>/scripts/setup-config.mjs" set-task-tool "USER_CHOICE"
 ```
 
 **Note:** The beads context instructions will be injected automatically on the next session start.
@@ -138,5 +140,5 @@ node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" 
 If this phase was resumed at the Phase 2 boundary (`RESUMED_PHASE_TWO_BOUNDARY` is true), do NOT save; report `Resumed Phase 2: preserving lastCompletedStep=<RESUME_LAST_COMPLETED_STEP>` instead. Otherwise run:
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" save 4
+node "<plugin-root>/scripts/setup-progress.mjs" save 4
 ```

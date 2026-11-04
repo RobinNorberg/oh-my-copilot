@@ -1,11 +1,13 @@
 # Phase 4: Completion
 
+`<plugin-root>` is the plugin directory resolved in the omc-setup skill's "Plugin Root" step. Write it as a literal absolute path in every command below, never as a shell variable.
+
 ## Detect Upgrade from 2.x
 
 Check if user has existing 2.x configuration:
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" detect-upgrade
+node "<plugin-root>/scripts/setup-config.mjs" detect-upgrade
 ```
 
 If found, this is an upgrade from 2.x. Set `IS_UPGRADE=true`.
@@ -130,7 +132,7 @@ OMC includes rule templates you can copy to your project's `.claude/rules/` dire
 
 Copy with:
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" copy-rules
+node "<plugin-root>/scripts/setup-config.mjs" copy-rules
 ```
 
 See `templates/rules/README.md` for details.
@@ -169,7 +171,7 @@ Use AskUserQuestion:
 If user chooses "Yes, star it!":
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" star-repo
+node "<plugin-root>/scripts/setup-config.mjs" star-repo
 ```
 
 **Note:** Fail silently if the API call doesn't work - never block setup completion.
@@ -188,7 +190,7 @@ echo ""
 Mark setup complete:
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" complete
+node "<plugin-root>/scripts/setup-progress.mjs" complete
 ```
 
 With no version argument, `complete` reads the `OMC:VERSION:` marker from `.claude/CLAUDE.md`, falls back to the marker in the global `CLAUDE.md` (honouring `COPILOT_HOME`), then to `omg --version`, and finally records `unknown`.

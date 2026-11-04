@@ -1,5 +1,7 @@
 # Phase 1: Install CLAUDE.md
 
+`<plugin-root>` is the plugin directory resolved in the omc-setup skill's "Plugin Root" step. Write it as a literal absolute path in every command below, never as a shell variable.
+
 ## Determine Configuration Target
 
 If `--local` flag was passed, set `CONFIG_TARGET=local`.
@@ -20,7 +22,7 @@ Set `CONFIG_TARGET` to `local` or `global` based on the user's choice.
 Only when `CONFIG_TARGET=global`, run this probe before any overwrite/preserve question. It checks the same `.omc-config.json` used by the installer and respects `COPILOT_HOME`, including `~`, `~/...`, and `~\...` values:
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" claude-md-enabled
+node "<plugin-root>/scripts/setup-config.mjs" claude-md-enabled
 ```
 
 If the probe prints `disabled`, do not ask the overwrite/preserve question; set `GLOBAL_INSTALL_STYLE=overwrite` and continue through the coordinator so it can report the skip. If it prints `enabled`, continue below. If the probe fails or prints neither status, stop before asking or running setup; do not assume management is enabled.
@@ -40,7 +42,7 @@ Set `GLOBAL_INSTALL_STYLE=overwrite` or `preserve` based on the user's choice. I
 **MANDATORY**: Always run this command. Do NOT skip. Do NOT use the Write tool. The script is the sole plugin-cache resolver and invokes the selected plugin root's `bridge/claude-md-coordinator.cjs` with one versioned JSON request. It fails closed when required plugin assets, the canonical-source handshake, coordinator response validation, or coordinator exit/`ok` agreement fails.
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.mjs" <CONFIG_TARGET> [GLOBAL_INSTALL_STYLE]
+node "<plugin-root>/scripts/setup-claude-md.mjs" <CONFIG_TARGET> [GLOBAL_INSTALL_STYLE]
 ```
 
 This entry point needs only Node, so it works the same on Windows, macOS, and Linux. The older `scripts/setup-claude-md.sh` still exists for back-compat but requires bash and jq.
@@ -92,13 +94,13 @@ Note: Hooks are now managed by the plugin system automatically. No manual hook i
 ## Save Progress
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" save 2 <CONFIG_TARGET>
+node "<plugin-root>/scripts/setup-progress.mjs" save 2 <CONFIG_TARGET>
 ```
 
 ## Early Exit for Flag Mode
 
 If `--local` or `--global` flag was used, clear state and **STOP HERE**:
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" clear
+node "<plugin-root>/scripts/setup-progress.mjs" clear
 ```
 Do not continue to Phase 2 or other phases.
