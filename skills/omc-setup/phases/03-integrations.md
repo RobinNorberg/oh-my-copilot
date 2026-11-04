@@ -17,7 +17,7 @@ MCP servers extend Copilot CLI with additional tools (web search, GitHub, etc.).
 If the user asks about MCP servers, point them at the native registration path:
 
 - Copilot CLI: `copilot mcp add <name> -- <command> [args...]` for a local (stdio) server, or `copilot mcp add --transport http <name> <url>` for a remote one (see `copilot mcp --help`). `copilot mcp list` shows every configured server.
-- User servers live in `mcp-config.json` in the Copilot config directory (`${COPILOT_HOME:-~/.copilot}/mcp-config.json`); workspace servers in the project's `.mcp.json` or `.github/mcp.json`
+- User servers live in `mcp-config.json` in the Copilot config directory (`mcp-config.json` in COPILOT_HOME if set, else `~/.copilot`); workspace servers in the project's `.mcp.json` or `.github/mcp.json`
 - OMC keeps its own bundled MCP server (`bridge/mcp-server.cjs`) registered via the plugin's `.mcp.json`; it requires no user action
 - Company-context guidance, if used, is documented in `docs/company-context-interface.md`
 
