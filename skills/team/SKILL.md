@@ -1,6 +1,6 @@
 ---
 name: team
-description: N coordinated agents on shared task list using Claude Code implicit agent teams
+description: N coordinated agents on a shared task list (omg team under GitHub Copilot CLI, the implicit agent team under Claude Code)
 argument-hint: "[N:agent-type] [ralph] <task description>"
 aliases: []
 level: 4
@@ -8,7 +8,12 @@ level: 4
 
 # Team Skill
 
-Spawn N coordinated agents working on a shared task list using Claude Code's implicit agent team. Claude Code 2.1.178+ removed native `TeamCreate`/`TeamDelete`; with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, each session has one implicit team and teammates are spawned directly with the Agent/Task tool using distinct `name` values. This skill still preserves OMC's legacy tmux/CLI worker orchestration where documented (`omg team`). The implicit team and `omg team` do not share a result: one finishing does not make the other succeed.
+Spawn N coordinated agents working on a shared task list. Pick the host first:
+
+- **GitHub Copilot CLI** (`COPILOT_CLI` or `COPILOT_AGENT_SESSION_ID` is set, or you have the `task` tool and no `Agent`/`SendMessage` tools): follow [On GitHub Copilot CLI](#on-github-copilot-cli) below. It drives `omg team`. The Claude Code agent-team instructions in this file do not apply there.
+- **Claude Code**: follow the rest of this file.
+
+On Claude Code the skill uses Claude Code's implicit agent team. Claude Code 2.1.178+ removed native `TeamCreate`/`TeamDelete`; with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, each session has one implicit team and teammates are spawned directly with the Agent/Task tool using distinct `name` values. This skill still preserves OMC's legacy tmux/CLI worker orchestration where documented (`omg team`). The implicit team and `omg team` do not share a result: one finishing does not make the other succeed.
 
 The `swarm` compatibility alias was removed in #1131.
 
@@ -44,7 +49,35 @@ The `swarm` compatibility alias was removed in #1131.
 # Mixed: Codex for backend analysis, Gemini/Antigravity for frontend (delegate per-task with /ask)
 ```
 
+## On GitHub Copilot CLI
+
+Copilot CLI has no Claude Code agent team: no team-creation tool, no `SendMessage` or teammate tools, and no agent-teams environment variable to set. Run the team with `omg team` through your shell tool instead. Its workers run as headless copilot-sdk sessions or in tmux/psmux panes, and `omg team` owns the task list, the worker mailboxes and the team state. Skip the Claude Code sections of this file (Architecture, the Workflow phases, Communication Patterns, the Shutdown Protocol); do not spawn workers with `task` and do not write Team state with `state_write`.
+
+1. **Check for a live team first.** Run `omg team status --json`. With exactly one active team it reports that team; otherwise it prints a usage error. If a team is live, monitor or shut it down (steps 4 and 5) instead of starting another: a second start in the same repo is refused while one is live.
+2. **Start the team.** Pass the user's arguments through:
+
+   ```bash
+   omg team 3:executor "fix all TypeScript errors across the project"
+   omg team "refactor the auth module"                   # 3 workers
+   omg team --task "review"                              # a one-word task needs --task
+   omg team 2:copilot:architect "design the auth system"
+   omg team 1:codex,1:gemini "compare approaches"        # other CLIs: pane workers
+   ```
+
+   - A spec is `N[:agent-type[:role]]`, comma-separated for mixed teams, 1-20 workers in total. `agent-type` is a worker CLI: `copilot`, `claude`, `codex`, `gemini`, `grok`, `cursor` or `antigravity`. Any other word, such as `executor` or `debugger`, is a role for workers of the host CLI. `omg team --help` lists the roles.
+   - Without `N:` the team gets 3 workers (not auto-sized) of `team.ops.defaultAgentType` from `omg.jsonc`, else the host CLI.
+   - A multi-word task is one quoted argument. Other flags: `--no-decompose` (keep the launch text as fixed worker scope), `--auto-merge` (per-commit merge to the leader; pane workers only), `--new-window` (put the worker panes in a new tmux window).
+   - `ralph` is not an `omg team` option. Drop it from the arguments; after shutdown, verify the result yourself or hand the remaining fixes to the `ralph` skill.
+   - The start prints `Team started: <team-name>` and the worker count. The team name is the slug of the task; use it in the commands below.
+3. **Transport.** `--transport sdk|pane|auto` (`tmux` and `psmux` are aliases of `pane`); `team.transport` in `omg.jsonc` sets the default and the flag wins. `auto`, the default, picks `sdk` under Copilot CLI. It falls back to `pane`, with a note on stderr, for `--auto-merge`, any non-copilot worker, an explicitly assigned `critic`, `code-reviewer`, `security-reviewer` or `test-engineer` role, or when `@github/copilot-sdk` is not installed. An explicit `--transport sdk` rejects those teams instead.
+   - **Warp terminal:** never run tmux or psmux inside Warp. Pass `--transport sdk`, keep the team to copilot workers without `--auto-merge` and without those reviewer roles, and if `@github/copilot-sdk` is missing tell the user to install it (`npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`) rather than falling back to panes.
+4. **Monitor.** Poll `omg team status <team-name> --json` (the name can be omitted while it is the only active team). It reports the task counts and, for sdk workers, `workers.sdk` with each worker's `state`, `current_task_id`, `turns` and `credits`. Report progress to the user between polls; do not answer for the workers.
+5. **Shut down.** When every task is completed or failed, run `omg team shutdown <team-name>`. `--force` skips the task-status gate and the graceful waits; use it only when the user cancels or the team is stuck. A worker worktree that holds commits the leader HEAD does not contain is kept: stderr names its path and branch, and `omg team status <team-name> --json` lists it under `preserved_worktrees`. Merge or cherry-pick those commits before reporting the work as done.
+6. **Resume.** There is no `omg team resume`. After a lead restart, `omg team status --json` finds the running team; continue from step 4. A team whose state is gone has ended: start a new one only for the work that is still open.
+
 ## Architecture
+
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
 
 ```
 User: "/team 3:executor fix all TypeScript errors"
@@ -245,7 +278,7 @@ Use `explore` or `architect` (via MCP or agent) to analyze the codebase and brea
 
 ### Phase 3: Initialize Team State
 
-Use the session's implicit Claude Code team. Do **not** call `TeamCreate`; Claude Code 2.1.178+ removed that tool and automatically gives the session one implicit team when `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` is enabled.
+Claude Code host only (on Copilot CLI, `omg team` creates the team state). Use the session's implicit Claude Code team. Do **not** call `TeamCreate`; Claude Code 2.1.178+ removed that tool and automatically gives the session one implicit team when `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` is enabled.
 
 Derive a slug such as `fix-ts-errors` for OMC state, prompt labels, handoffs, and human-readable reporting only. Native Claude Code may accept `team_name` as legacy metadata, but it is ignored for routing.
 
@@ -341,7 +374,7 @@ For tasks with dependencies, update the active task-list entries after creation:
 
 ### Phase 5: Spawn Teammates
 
-Spawn N teammates directly using the Agent/Task tool with distinct `name` values. Each teammate gets the team worker preamble (see below) plus their specific assignment. Do **not** call `TeamCreate`, and do **not** rely on `team_name`; Claude Code 2.1.178+ ignores it for native routing.
+Claude Code host only (on Copilot CLI, `omg team` launches the workers). Spawn N teammates directly using the Agent/Task tool with distinct `name` values. Each teammate gets the team worker preamble (see below) plus their specific assignment. Do **not** call `TeamCreate`, and do **not** rely on `team_name`; Claude Code 2.1.178+ ignores it for native routing.
 
 ```json
 {
@@ -536,6 +569,8 @@ This addendum must preserve the core rule: **worker = executor only, never leade
 ```
 
 ### Shutdown Protocol (BLOCKING)
+
+Claude Code host only. On Copilot CLI, shut down with `omg team shutdown <team-name>` (step 5 of [On GitHub Copilot CLI](#on-github-copilot-cli)).
 
 **CRITICAL for graceful paths:** Execute these steps in order. Never clear OMC
 Team state before shutdown is confirmed or timed out. The `--force` and
