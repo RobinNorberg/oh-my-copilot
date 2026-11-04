@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "5eda7c22f73b0f73778c209fc5dee1263a1b85d0",
-    "sourceSha256": "ac2e47f4d33c316b8b2961d081bfea5972eaca4e26b279c5cd7992ea6af17f35",
+    "head": "bacaa7f3c60d92cfeb4a31206d041372e7c5bbe7",
+    "sourceSha256": "3a768dbc1bf9e9352b30a803694ed6b1ee3ad01eda518c248273987ef670578e",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "5eda7c22f73b0f73778c209fc5dee1263a1b85d0",
-  "sourceSha256": "ac2e47f4d33c316b8b2961d081bfea5972eaca4e26b279c5cd7992ea6af17f35",
+  "head": "bacaa7f3c60d92cfeb4a31206d041372e7c5bbe7",
+  "sourceSha256": "3a768dbc1bf9e9352b30a803694ed6b1ee3ad01eda518c248273987ef670578e",
   "counts": {
     "public": {
       "skills": 63,
@@ -57184,6 +57184,11 @@
         "id": "tests/lint/skill-parallel-caveats.test.ts",
         "kind": "other",
         "path": "tests/lint/skill-parallel-caveats.test.ts"
+      },
+      {
+        "id": "tests/lint/skills-copilot-home-notation.test.ts",
+        "kind": "other",
+        "path": "tests/lint/skills-copilot-home-notation.test.ts"
       },
       {
         "id": "tests/lint/subagent-lock-test-contract.test.ts",
@@ -115943,6 +115948,26 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/skills-copilot-home-notation.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/skills-copilot-home-notation.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/skills-copilot-home-notation.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/skills-copilot-home-notation.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/subagent-lock-test-contract.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -116184,12 +116209,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9728,
-      "edgeCount": 11783,
-      "importEdgeCount": 9722,
+      "nodeCount": 9729,
+      "edgeCount": 11787,
+      "importEdgeCount": 9726,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "f7982015c76563cb810429004549f7640de7b709396957f459163aeb7f045709",
-  "manifestSha256": "99324927516eeb0366618c0d1f29a5a4f9314bcfa215e72107bdbafdea3bc6e2"
+  "inventorySha256": "0478dc9a0256afa05c8f36937097aae2297b071d408f5ee20b07e45ffdfb4e0f",
+  "manifestSha256": "61db61aaa54af4359bfac1f0219dbbda7d4f559ebcbf1f3ace3f7c350aafc718"
 }
