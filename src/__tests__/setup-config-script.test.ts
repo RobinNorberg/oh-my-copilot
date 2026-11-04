@@ -109,8 +109,7 @@ describe('omc-setup skill avoids inline interpreter code', () => {
     // An empty PATH keeps install-cli, star-repo and update-check from reaching the real npm and gh.
     const emptyBin = makeConfigDir();
     for (const command of used) {
-      const args = [command, ...(command === 'merge-json' ? ['settings.json', '{}'] : [])];
-      const result = run(makeConfigDir(), args, { path: emptyBin });
+      const result = run(makeConfigDir(), [command], { path: emptyBin });
       expect(result.stderr, `subcommand ${command}`).not.toContain('Usage: setup-config.mjs');
     }
   });
@@ -176,20 +175,6 @@ describe('setup-config.mjs', () => {
     });
   });
 
-  it('deep-merges a patch into settings.json and verifies it', () => {
-    const configDir = makeConfigDir();
-    const file = join(configDir, 'settings.json');
-    writeFileSync(file, JSON.stringify({ env: { A: '1' }, other: true }));
-
-    const patch = JSON.stringify({ env: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' } });
-    expect(run(configDir, ['merge-json', 'settings.json', patch]).status).toBe(0);
-    expect(JSON.parse(readFileSync(file, 'utf-8'))).toEqual({
-      env: { A: '1', CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' },
-      other: true,
-    });
-    expect(run(configDir, ['verify-settings']).stdout).toContain('Agent teams: ENABLED');
-  });
-
   it('detects a 2.x upgrade and the installed plugin', () => {
     const configDir = makeConfigDir();
     expect(run(configDir, ['detect-upgrade']).stdout).toContain('IS_UPGRADE=false');
@@ -198,7 +183,7 @@ describe('setup-config.mjs', () => {
     expect(run(configDir, ['detect-upgrade']).stdout).toContain('IS_UPGRADE=true');
 
     const missing = run(configDir, ['plugin-verify']).stdout;
-    expect(missing).toContain('Plugin NOT found - run: copilot plugin install oh-my-copilot@omc');
+    expect(missing).toContain('Plugin NOT found - run: copilot plugin marketplace add RobinNorberg/oh-my-copilot, then: copilot plugin install oh-my-copilot@omc');
     writeFileSync(join(configDir, 'settings.json'), '{"enabledPlugins":{"oh-my-copilot@omc":true}}');
     expect(run(configDir, ['plugin-verify']).stdout).toContain('Plugin verified');
 
@@ -212,6 +197,12 @@ describe('setup-config.mjs', () => {
 
   it('rejects an unknown subcommand', () => {
     const result = run(makeConfigDir(), ['nope']);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('Usage: setup-config.mjs');
+  });
+
+  it.each(['show-settings', 'merge-json', 'verify-settings'])('no longer offers the retired %s subcommand', (command) => {
+    const result = run(makeConfigDir(), [command]);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('Usage: setup-config.mjs');
   });
@@ -282,12 +273,6 @@ describe('setup-config.mjs', () => {
     expect(result.stdout).toContain('WARNING: Config dir is not writable');
   });
 
-  it('shows settings.json or says it is missing', () => {
-    const configDir = makeConfigDir();
-    expect(run(configDir, ['show-settings']).stdout).toContain('(no settings.json at');
-    writeFileSync(join(configDir, 'settings.json'), '{"a":1}');
-    expect(run(configDir, ['show-settings']).stdout).toBe('{"a":1}');
-  });
 });
 
 describe('setup-config.mjs hardening', () => {
@@ -304,31 +289,6 @@ describe('setup-config.mjs hardening', () => {
       run(configDir, [command], { cwd: project, home, path: emptyBin });
     }
     expect(canaries(project, home)).toEqual([]);
-  });
-
-  it.each(['x.json', 'settings.json:ads', 'C:evil.json', 'NUL', '../x', 'x/y', '..\\escape.json'])(
-    'merge-json refuses %s and leaves no file behind',
-    (name) => {
-      // A fresh parent, so a traversal that escaped the config dir would show up beside it.
-      const parent = makeConfigDir();
-      const configDir = join(parent, 'config');
-      mkdirSync(configDir);
-      writeFileSync(join(configDir, 'settings.json'), '{"keep":1}');
-
-      const result = run(configDir, ['merge-json', name, '{"a":1}']);
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain('merge-json only updates settings.json');
-      expect(readdirSync(parent)).toEqual(['config']);
-      expect(readdirSync(configDir)).toEqual(['settings.json']);
-      expect(readFileSync(join(configDir, 'settings.json'), 'utf-8')).toBe('{"keep":1}');
-    },
-  );
-
-  it('merge-json ignores prototype keys in the patch', () => {
-    const configDir = makeConfigDir();
-    const patch = '{"__proto__":{"polluted":1},"constructor":{"prototype":{"polluted":1}},"env":{"prototype":1,"A":"1"}}';
-    expect(run(configDir, ['merge-json', 'settings.json', patch]).status).toBe(0);
-    expect(JSON.parse(readFileSync(join(configDir, 'settings.json'), 'utf-8'))).toEqual({ env: { A: '1' } });
   });
 
   it.each(['[]', 'null', '"text"', '3'])('refuses to update a config that holds %s', (content) => {
@@ -376,6 +336,18 @@ describe('setup-config.mjs hardening', () => {
     expect(result.status).toBe(0);
     expect(readFileSync(join(project, '.claude', 'rules', 'style.md'), 'utf-8')).toBe('# style');
     expect(readdirSync(join(project, '.claude', 'rules'))).toEqual(['style.md']);
+  });
+
+  it('copy-rules reads the templates of its own plugin root when no root is set', () => {
+    const project = makeConfigDir();
+    const env: NodeJS.ProcessEnv = { ...process.env, HOME: project, USERPROFILE: project, COPILOT_HOME: project };
+    delete env.OMC_SETUP_PLUGIN_ROOT;
+    delete env.CLAUDE_PLUGIN_ROOT;
+    const result = spawnSync(process.execPath, [SETUP_CONFIG, 'copy-rules'], { cwd: project, encoding: 'utf-8', env });
+    expect(result.status, result.stderr).toBe(0);
+    expect(readdirSync(join(project, '.claude', 'rules')).sort()).toEqual(
+      readdirSync(join(REPO_ROOT, 'templates', 'rules')).filter((file) => file.endsWith('.md')).sort(),
+    );
   });
 
   it.each([['.claude'], ['.claude/rules']])('copy-rules refuses a symlinked %s directory', (linked) => {

@@ -1,11 +1,13 @@
 # Phase 3: Integration Setup
 
+`<plugin-root>` is the plugin directory resolved in the omc-setup skill's "Plugin Root" step. Write it as a literal absolute path in every command below, never as a shell variable.
+
 **Skip condition**: If resuming and `lastCompletedStep >= 6`, skip this entire phase.
 
 ## Step 3.1: Verify Plugin Installation
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" plugin-verify
+node "<plugin-root>/scripts/setup-config.mjs" plugin-verify
 ```
 
 ## Step 3.2: MCP Server Configuration (Pointer Only)
@@ -43,7 +45,7 @@ Do **not** try to invoke an MCP setup skill — `mcp-setup` was removed in 5.0.0
 ## Save Progress
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" save 6
+node "<plugin-root>/scripts/setup-progress.mjs" save 6
 ```
 
 With no config type argument, `save` carries forward the one already recorded in `.omg/state/setup-state.json`.

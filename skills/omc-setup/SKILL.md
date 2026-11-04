@@ -83,12 +83,22 @@ For more info: https://github.com/RobinNorberg/oh-my-copilot
 ```
 
 
+## Plugin Root
+
+Every command and file path in this skill and its phases starts with `<plugin-root>`, the oh-my-copilot plugin directory. Resolve it once, before the first command:
+
+1. The host shows this skill's directory as `Base directory for this skill: <dir>` (Copilot CLI and Claude Code both do). `<plugin-root>` is two levels above it: `<dir>` without its trailing `skills/omc-setup`.
+2. Only if no base directory is shown: use `CLAUDE_PLUGIN_ROOT` or `OMC_PLUGIN_ROOT` when one is set, else the `oh-my-copilot` directory under `${COPILOT_HOME:-~/.copilot}/installed-plugins/<marketplace>/`.
+3. Check that `<plugin-root>/scripts/setup-config.mjs` exists. If it does not, stop and tell the user: "Cannot find the oh-my-copilot plugin scripts. Run `copilot plugin marketplace add RobinNorberg/oh-my-copilot` and `copilot plugin install oh-my-copilot@omc`, then rerun /omc-setup."
+
+Write the resolved absolute path literally in every command, never as a shell variable, so the commands run the same in bash, zsh and PowerShell.
+
 ## Setup Invocation
 
-Do not independently scan plugin cache directories or select a plugin root in this skill. Invoke the setup script from the plugin root supplied by the running plugin environment:
+Do not scan plugin cache directories to choose which plugin version to install from; the setup script does that. Invoke it from `<plugin-root>`:
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.mjs" <local|global> [overwrite|preserve]
+node "<plugin-root>/scripts/setup-claude-md.mjs" <local|global> [overwrite|preserve]
 ```
 
 This runs unchanged on Windows, macOS, and Linux: it needs only Node, never bash or jq. (`scripts/setup-claude-md.sh` remains for back-compat with older invocations; the Node entry point above is the supported path.)
@@ -100,7 +110,7 @@ The script is the sole cache resolver. It accepts only complete plugin roots (ca
 **CRITICAL**: Before doing anything else, check if setup has already been completed. This prevents users from having to re-run the full setup wizard after every update.
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" configured
+node "<plugin-root>/scripts/setup-config.mjs" configured
 ```
 
 All setup checks and config writes run through `scripts/setup-config.mjs` subcommands, never inline interpreter code, so setup also works on hosts that block inline interpreter execution.
@@ -124,8 +134,8 @@ Use AskUserQuestion to prompt:
 
 **If user chooses "Update CLAUDE.md and clear retired setup values":**
 - Detect if local (.claude/CLAUDE.md) or global (`${COPILOT_HOME:-~/.copilot}/CLAUDE.md`) config exists
-- If local exists, run: `node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.mjs" local`
-- If only global exists, run: `node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.mjs" global`
+- If local exists, run: `node "<plugin-root>/scripts/setup-claude-md.mjs" local`
+- If only global exists, run: `node "<plugin-root>/scripts/setup-claude-md.mjs" global`
 - Run Phase 2 Step 2.4 to clear the retired `defaultExecutionMode` key
 - Skip all other steps after the cleanup
 - Report success and exit
@@ -145,7 +155,7 @@ If user passes `--force` flag, skip this check and proceed directly to setup.
 Before starting any phase, check for existing state:
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" resume
+node "<plugin-root>/scripts/setup-progress.mjs" resume
 ```
 
 If state exists (output is not "fresh"), use AskUserQuestion to prompt:
@@ -158,29 +168,29 @@ If state exists (output is not "fresh"), use AskUserQuestion to prompt:
 
 If user chooses "Start fresh":
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" clear
+node "<plugin-root>/scripts/setup-progress.mjs" clear
 ```
 
 ## Phase Execution
 
 ### For `--local` or `--global` flags:
-Read the file at `${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/skills/omc-setup/phases/01-install-claude-md.md` and follow its instructions.
+Read the file at `<plugin-root>/skills/omc-setup/phases/01-install-claude-md.md` and follow its instructions.
 (The phase file handles early exit for flag mode.)
 
 ### For full setup (default or --force):
 Execute phases sequentially. For each phase, read the corresponding file and follow its instructions:
 
-1. **Phase 1 - Install CLAUDE.md**: Read `${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/skills/omc-setup/phases/01-install-claude-md.md` and follow its instructions.
+1. **Phase 1 - Install CLAUDE.md**: Read `<plugin-root>/skills/omc-setup/phases/01-install-claude-md.md` and follow its instructions.
 
-2. **Phase 2 - Environment Configuration**: Read `${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/skills/omc-setup/phases/02-configure.md` and follow its instructions. Phase 2 must delegate HUD/statusLine setup to the `hud` skill; do not generate or patch `statusLine` paths inline here.
+2. **Phase 2 - Environment Configuration**: Read `<plugin-root>/skills/omc-setup/phases/02-configure.md` and follow its instructions. Phase 2 must delegate HUD/statusLine setup to the `hud` skill; do not generate or patch `statusLine` paths inline here.
 
-3. **Phase 3 - Integration Setup**: Read `${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/skills/omc-setup/phases/03-integrations.md` and follow its instructions.
+3. **Phase 3 - Integration Setup**: Read `<plugin-root>/skills/omc-setup/phases/03-integrations.md` and follow its instructions.
 
-4. **Phase 4 - Completion**: Read `${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/skills/omc-setup/phases/04-welcome.md` and follow its instructions.
+4. **Phase 4 - Completion**: Read `<plugin-root>/skills/omc-setup/phases/04-welcome.md` and follow its instructions.
 
 ## Graceful Interrupt Handling
 
-**IMPORTANT**: This setup process saves progress after each phase via `${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs`. If interrupted (Ctrl+C or connection loss), the setup can resume from where it left off.
+**IMPORTANT**: This setup process saves progress after each phase via `<plugin-root>/scripts/setup-progress.mjs`. If interrupted (Ctrl+C or connection loss), the setup can resume from where it left off.
 
 ## Keeping Up to Date
 
