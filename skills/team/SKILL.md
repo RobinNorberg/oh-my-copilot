@@ -10,7 +10,7 @@ level: 4
 
 Spawn N coordinated agents working on a shared task list. Pick the host first:
 
-- **GitHub Copilot CLI** (`COPILOT_CLI` or `COPILOT_AGENT_SESSION_ID` is set, or you have the `task` tool and no `Agent`/`SendMessage` tools): follow [On GitHub Copilot CLI](#on-github-copilot-cli) below. It drives `omg team`. The Claude Code agent-team instructions in this file do not apply there.
+- **GitHub Copilot CLI**: you are on Copilot CLI when `COPILOT_CLI` or `COPILOT_AGENT_SESSION_ID` is set, or when you have the `task` tool and have no `Agent` tool. Probe with `echo $env:COPILOT_CLI` (PowerShell) or `echo $COPILOT_CLI` (bash); any non-empty output means Copilot CLI. Follow only [On GitHub Copilot CLI](#on-github-copilot-cli) below. It drives `omg team`. Every section after it is Claude Code only.
 - **Claude Code**: follow the rest of this file.
 
 On Claude Code the skill uses Claude Code's implicit agent team. Claude Code 2.1.178+ removed native `TeamCreate`/`TeamDelete`; with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, each session has one implicit team and teammates are spawned directly with the Agent/Task tool using distinct `name` values. This skill still preserves OMC's legacy tmux/CLI worker orchestration where documented (`omg team`). The implicit team and `omg team` do not share a result: one finishing does not make the other succeed.
@@ -30,7 +30,7 @@ The `swarm` compatibility alias was removed in #1131.
 - **N** - Number of teammate agents (1-20). Optional; defaults to auto-sizing based on task decomposition.
 - **agent-type** - OMC agent to spawn for the `team-exec` stage (e.g., executor, debugger, designer, codex, gemini, antigravity). Optional; defaults to stage-aware routing. Use `codex` to spawn Codex CLI workers, `gemini` for Gemini CLI workers (enterprise/API-key tier), or `antigravity` for Antigravity CLI (`agy`) workers (Google's successor to the Gemini CLI; requires respective CLIs installed). See Stage Agent Routing below.
 - **task** - High-level task to decompose and distribute among teammates
-- **ralph** - Optional modifier. When present, wraps the team pipeline in Ralph's persistence loop (retry on failure, architect verification before completion). See Team + Ralph Composition below.
+- **ralph** - Optional modifier. When present, wraps the team pipeline in Ralph's persistence loop (retry on failure, architect verification before completion). On Claude Code see Team + Ralph Composition below; on Copilot CLI see step 2 of [On GitHub Copilot CLI](#on-github-copilot-cli).
 
 ### Examples
 
@@ -51,29 +51,31 @@ The `swarm` compatibility alias was removed in #1131.
 
 ## On GitHub Copilot CLI
 
-Copilot CLI has no Claude Code agent team: no team-creation tool, no `SendMessage` or teammate tools, and no agent-teams environment variable to set. Run the team with `omg team` through your shell tool instead. Its workers run as headless copilot-sdk sessions or in tmux/psmux panes, and `omg team` owns the task list, the worker mailboxes and the team state. Skip the Claude Code sections of this file (Architecture, the Workflow phases, Communication Patterns, the Shutdown Protocol); do not spawn workers with `task` and do not write Team state with `state_write`.
+Copilot CLI has no Claude Code agent team: no team-creation tool, no `SendMessage` or teammate tools, and no agent-teams environment variable to set. Run the team with `omg team` through your shell tool instead. Its workers run as headless copilot-sdk sessions or in tmux/psmux panes, and `omg team` owns the task list, the worker mailboxes and the team state. Steps 1-7 below are the whole Copilot flow. Every section after this one, from Architecture to the end of the file, is Claude Code only, even where it names `omg team`: do not follow it here. Do not spawn workers with `task` and do not write Team state with `state_write`.
 
-1. **Check for a live team first.** Run `omg team status --json`. With exactly one active team it reports that team; otherwise it prints a usage error. If a team is live, monitor or shut it down (steps 4 and 5) instead of starting another: a second start in the same repo is refused while one is live.
+1. **Check for a live team first.** Run `omg team status --json`. With exactly one active team it reports that team. With zero or several active teams it prints the usage error `Usage: omg team status <team-name> [--json]`: list the team directories under `.omg/state/team/` or ask the user for the name, then run `omg team status <team-name> --json`. If a team is live, monitor, cancel or shut it down (steps 4-6) instead of starting another: a second start in the same repo is refused while one is live.
 2. **Start the team.** Pass the user's arguments through:
 
    ```bash
-   omg team 3:executor "fix all TypeScript errors across the project"
+   omg team 3:executor "fix all TypeScript errors across the project"   # 3 workers
    omg team "refactor the auth module"                   # 3 workers
    omg team --task "review"                              # a one-word task needs --task
-   omg team 2:copilot:architect "design the auth system"
-   omg team 1:codex,1:gemini "compare approaches"        # other CLIs: pane workers
+   omg team 2:copilot:architect "design the auth system" # 2 workers
+   omg team 1:codex,1:gemini "compare approaches"        # 2 workers; other CLIs: pane workers
    ```
 
    - A spec is `N[:agent-type[:role]]`, comma-separated for mixed teams, 1-20 workers in total. `agent-type` is a worker CLI: `copilot`, `claude`, `codex`, `gemini`, `grok`, `cursor` or `antigravity`. Any other word, such as `executor` or `debugger`, is a role for workers of the host CLI. `omg team --help` lists the roles.
    - Without `N:` the team gets 3 workers (not auto-sized) of `team.ops.defaultAgentType` from `omg.jsonc`, else the host CLI.
-   - A multi-word task is one quoted argument. Other flags: `--no-decompose` (keep the launch text as fixed worker scope), `--auto-merge` (per-commit merge to the leader; pane workers only), `--new-window` (put the worker panes in a new tmux window).
+   - A multi-word task is one quoted argument. Other flags: `--no-decompose` (keep the launch text as fixed worker scope), `--auto-merge` (per-commit merge to the leader; pane workers only), `--new-window` (put the worker panes in a new tmux window). `--auto-merge` is refused when the leader branch is `main` or `master`, and it needs runtime v2, which is on unless `OMC_RUNTIME_V2` is `0`, `false`, `no` or `off`.
    - `ralph` is not an `omg team` option. Drop it from the arguments; after shutdown, verify the result yourself or hand the remaining fixes to the `ralph` skill.
-   - The start prints `Team started: <team-name>` and the worker count. The team name is the slug of the task; use it in the commands below.
+   - The start prints `Team started: <team-name>` and the worker count. Use the name printed after `Team started:` in the commands below; do not derive it from the task, because a name already in use gets a `-2` to `-99` suffix.
+   - If it prints `Team start incomplete: <team-name>` on stderr instead, report that line and each `startup_failure worker=... reason=...` line to the user, then run `omg team shutdown <team-name>`.
 3. **Transport.** `--transport sdk|pane|auto` (`tmux` and `psmux` are aliases of `pane`); `team.transport` in `omg.jsonc` sets the default and the flag wins. `auto`, the default, picks `sdk` under Copilot CLI. It falls back to `pane`, with a note on stderr, for `--auto-merge`, any non-copilot worker, an explicitly assigned `critic`, `code-reviewer`, `security-reviewer` or `test-engineer` role, or when `@github/copilot-sdk` is not installed. An explicit `--transport sdk` rejects those teams instead.
-   - **Warp terminal:** never run tmux or psmux inside Warp. Pass `--transport sdk`, keep the team to copilot workers without `--auto-merge` and without those reviewer roles, and if `@github/copilot-sdk` is missing tell the user to install it (`npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`) rather than falling back to panes.
+   - **Warp terminal** (`TERM_PROGRAM` is `WarpTerminal`; probe with `echo $env:TERM_PROGRAM` in PowerShell or `echo $TERM_PROGRAM` in bash): never run tmux or psmux inside Warp. Pass `--transport sdk`, keep the team to copilot workers without `--auto-merge` and without those reviewer roles, and if `@github/copilot-sdk` is missing tell the user to install it (`npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`) rather than falling back to panes.
 4. **Monitor.** Poll `omg team status <team-name> --json` (the name can be omitted while it is the only active team). It reports the task counts and, for sdk workers, `workers.sdk` with each worker's `state`, `current_task_id`, `turns` and `credits`. Report progress to the user between polls; do not answer for the workers.
-5. **Shut down.** When every task is completed or failed, run `omg team shutdown <team-name>`. `--force` skips the task-status gate and the graceful waits; use it only when the user cancels or the team is stuck. A worker worktree that holds commits the leader HEAD does not contain is kept: stderr names its path and branch, and `omg team status <team-name> --json` lists it under `preserved_worktrees`. Merge or cherry-pick those commits before reporting the work as done.
-6. **Resume.** There is no `omg team resume`. After a lead restart, `omg team status --json` finds the running team; continue from step 4. A team whose state is gone has ended: start a new one only for the work that is still open.
+5. **Shut down.** When every task is completed or failed, run `omg team shutdown <team-name>`. A worker worktree that holds commits the leader HEAD does not contain is kept: stderr names its path and branch, and `omg team status <team-name> --json` lists it under `preserved_worktrees`. Merge or cherry-pick those commits before reporting the work as done.
+6. **Cancel.** When the user cancels (`cancel`, `/cancel`, "stop the team") or the team is stuck, run `omg team shutdown <team-name> --force`, which skips the task-status gate and the graceful waits. This is the whole cancel on Copilot CLI; the Cancellation section below and `state_clear` do not apply. Preserved worktrees are reported as in step 5.
+7. **Resume.** There is no `omg team resume`. After a lead restart, `omg team status --json` finds the running team; continue from step 4. A team whose state is gone has ended: start a new one only for the work that is still open.
 
 ## Architecture
 
@@ -123,9 +125,13 @@ User: "/team 3:executor fix all TypeScript errors"
 
 ## Goal Workflow Relationship
 
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
+
 Team is the OMC authority for parallel, staged execution. Use the deterministic conflict policies `refuse`, `adopt_existing`, and `artifact_only` rather than non-deterministic warning handling. If a task mentions Claude Code `/goal`, Ralph, or artifact-only Ultragoal, keep Team as the primary loop authority unless the leader explicitly hands off. Use `/goal` only as a documented native Claude Code handoff target or as visible evidence from the lead session; do not claim the `/goal` evaluator independently runs commands, reads files, or replaces `team-verify` / `team-fix`. Artifact-only Ultragoal references should be treated as durable goal ledger/checkpoint/evidence artifacts, not as worker execution by themselves.
 
 ## Staged Pipeline (Canonical Team Runtime)
+
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
 
 Team execution follows a staged pipeline:
 
@@ -234,6 +240,8 @@ The lead writes handoffs to `.omg/handoffs/<stage-name>.md`.
 
 ## Windows psmux tmux-compatible gate
 
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
+
 On native Windows, do **not** tell users that `/team` requires WSL or that tmux is unavailable until the actual tmux-compatible binary has been checked. Native [psmux](https://github.com/psmux/psmux) installs a `tmux`-compatible command (often `tmux` / `tmux.cmd`) and is a supported Team multiplexer.
 
 Before blocking or falling back on Windows:
@@ -244,6 +252,8 @@ Before blocking or falling back on Windows:
 4. Only when no tmux-compatible binary is available, tell the user to install psmux for native Windows support or use WSL2 as an alternative.
 
 ## Workflow
+
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
 
 ### Resume Check (Before Initialization)
 
@@ -475,6 +485,8 @@ When all real tasks (non-internal) are completed or failed:
 
 ## Agent Preamble
 
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
+
 When spawning teammates, include this preamble in the prompt to establish the work protocol. Adapt it per teammate with their specific task assignments.
 
 ```
@@ -535,6 +547,8 @@ When composing teammate prompts, append a short addendum based on worker type:
 This addendum must preserve the core rule: **worker = executor only, never leader/orchestrator**.
 
 ## Communication Patterns
+
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
 
 ### Teammate to Lead (task completion report)
 
@@ -637,6 +651,8 @@ teammates must return it, never fabricate one.
 
 ## CLI Workers (Codex and Gemini)
 
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
+
 The team skill supports **hybrid execution** combining Claude agent teammates with external CLI workers (Codex CLI and Gemini CLI). Both types can make code changes -- they differ in capabilities and cost. These are standalone CLI tools, not MCP servers.
 
 ### Execution Modes
@@ -714,6 +730,8 @@ This is especially useful when the task scope is unclear and benefits from exter
 
 ## Error Handling
 
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
+
 ### Teammate Fails a Task
 
 1. Teammate reports the failure to the lead through the active team/conversation surface
@@ -742,6 +760,8 @@ This is especially useful when the task scope is unclear and benefits from exter
 3. If needed, spawn a replacement teammate with `Task(name="worker-N", subagent_type="...")`
 
 ## Team + Ralph Composition
+
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
 
 When the user invokes `/team ralph`, says "team ralph", or combines both keywords, team mode wraps itself in Ralph's persistence loop. This provides:
 
@@ -787,6 +807,8 @@ state_write(mode="ralph", session_id="<current_session_id>", active=true, iterat
 
 ## Idempotent Recovery
 
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
+
 If the lead crashes mid-run, the team skill should detect existing OMC state and resume:
 
 1. Read `state_read(mode="team", session_id="<current_session_id>")` for the active OMC team slug, phase, and worker labels
@@ -797,6 +819,8 @@ If the lead crashes mid-run, the team skill should detect existing OMC state and
 This prevents duplicate worker spawns and allows graceful recovery from lead failures.
 
 ## Comparison: Team vs Legacy Swarm
+
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
 
 | Aspect                  | Team (Native Claude Code 2.1.178+)                              | Swarm (Legacy SQLite)                  |
 | ----------------------- | ---------------------------------------------------------------- | -------------------------------------- |
@@ -818,6 +842,8 @@ This prevents duplicate worker spawns and allows graceful recovery from lead fai
 
 ## Cancellation
 
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
+
 Team cancellation is defined only by the flow in
 `skills/cancel/SKILL.md`. It owns the flag matrix, identity/fail-closed rule,
 graceful and forced waits, session-scoped protected clears, Team-first linked
@@ -830,6 +856,8 @@ The linked-Ralph dependency is covered by that same canonical flow; do not
 restate a second session-operation recipe here.
 
 ## Runtime V2 (Event-Driven)
+
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
 
 By default, the team runtime uses an event-driven architecture instead of the legacy done.json polling watchdog:
 
@@ -847,6 +875,8 @@ native runtime trees or substitute for native team shutdown.
 
 ## Dynamic Scaling
 
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
+
 When `OMC_TEAM_SCALING_ENABLED=1` is set, the team supports mid-session scaling:
 
 - **scale_up**: Add workers to a running team (respects max_workers limit)
@@ -855,6 +885,8 @@ When `OMC_TEAM_SCALING_ENABLED=1` is set, the team supports mid-session scaling:
 - Monotonic worker index counter ensures unique worker names across scale events
 
 ## Configuration
+
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
 
 Optional settings live in `.copilot/omg.jsonc` (project) or `~/.config/claude-omc/config.jsonc` (user). Project values override user values; `OMC_TEAM_ROLE_OVERRIDES` (env JSON) supersedes both.
 
@@ -883,6 +915,8 @@ Optional settings live in `.copilot/omg.jsonc` (project) or `~/.config/claude-om
 > **Concurrency:** The current OMC team CLI caps worker fan-out at 20 (`MAX_WORKER_COUNT`); although `ops.maxAgents` exists in the config schema, the current launcher does not consult it. Claude Code's `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` also defaults to 20, but that limit applies to Agent-spawned subagents; Claude Code documents agent-team teammates as following their own limits. Do not treat the two values as a shared cap or assume a full-size OMC team leaves exactly zero headroom for ordinary subagents; size OMC teams conservatively when the lead also needs Agent-spawned work.
 
 ## Per-Role Provider & Model Routing
+
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
 
 > **Scope:** Applies to `/team` only. Task-based delegation uses `delegationRouting` (see separate docs). The two systems coexist by design.
 
@@ -957,6 +991,8 @@ An empty `team.roleRouting` preserves pre-patch behavior: every worker is Claude
 
 ## State Cleanup
 
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
+
 Use `/cancel` for Team and linked-Ralph cleanup; its
 authoritative flow handles session identity, locks/ownership, graceful versus
 forced waits, and legacy runtime cleanup. Native Claude Code 2.1.178+ has no
@@ -964,6 +1000,8 @@ forced waits, and legacy runtime cleanup. Native Claude Code 2.1.178+ has no
 uncaptured Team roots and handoffs are preserved.
 
 ## Git Worktree Integration
+
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
 
 MCP workers can operate in isolated git worktrees to prevent file conflicts between concurrent workers.
 
@@ -998,6 +1036,8 @@ MCP workers can operate in isolated git worktrees to prevent file conflicts betw
 
 ## Gotchas
 
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
+
 1. **Internal/lifecycle task entries may pollute task-list output** -- If Claude Code reports internal lifecycle entries for spawned teammates, filter them when counting real task progress. The subject of an internal task is often the teammate's name.
 
 2. **No atomic claiming** -- Unlike SQLite swarm, native task-list/TodoWrite state does not provide transactional claiming. Two teammates could race to claim the same task. **Mitigation:** The lead should pre-assign owners before spawning teammates. Teammates should only work on tasks assigned to them.
@@ -1021,6 +1061,8 @@ MCP workers can operate in isolated git worktrees to prevent file conflicts betw
 11. **CLI worker lifetime follows the provider** -- See How CLI Workers Operate. Tmux CLI workers do not use Claude Code's native task-list or team messaging surfaces.
 
 ## Parallel session caveats
+
+> **Claude Code host only.** On GitHub Copilot CLI use [On GitHub Copilot CLI](#on-github-copilot-cli) instead.
 
 - **Multi-repo workspace anchor:** drop a `.omc-workspace` marker at the parent directory so multiple sessions across sub-repos share one `.omg/`. Resolution order: `OMC_STATE_DIR > .omc-workspace > git > cwd`. See `docs/REFERENCE.md`.
 - **Session id source:** OMC_SESSION_ID env var wins in CLI contexts; hook payload data.session_id wins in hook contexts.
