@@ -23,7 +23,7 @@
  */
 
 import { existsSync, readFileSync } from 'fs';
-import { readStdin } from './lib/stdin.mjs';
+import { HOOK_STDIN_TIMEOUT_MS, readStdin } from './lib/stdin.mjs';
 import { resolveSessionStatePathsForHook } from './lib/state-root.mjs';
 
 const LABELS = {
@@ -546,7 +546,7 @@ function destructiveCommandLabel(command) {
 async function main() {
   if (process.env.OMC_GIT_GUARDRAILS === '0') process.exit(0);
 
-  const raw = await readStdin(3000);
+  const raw = await readStdin(HOOK_STDIN_TIMEOUT_MS);
   let payload = null;
   try {
     payload = JSON.parse(raw);

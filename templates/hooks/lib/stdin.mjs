@@ -9,6 +9,17 @@
  */
 
 /**
+ * Stdin wait for hooks declared with a 5s manifest timeout. run.cjs gives
+ * such a hook 5000 - 1500 = 3500ms on Windows (500ms cushion elsewhere, so
+ * 4500ms). Node boot and imports cost the hook up to ~500ms before the wait
+ * starts on Windows, so a 3000ms wait overran the 3500ms budget under load and
+ * the runner killed the hook instead of the hook failing open on its own.
+ * 1500ms on Windows keeps about 2s of headroom, which a loaded machine needs:
+ * the run.cjs -> supervisor -> hook chain alone took over 1s there.
+ */
+export const HOOK_STDIN_TIMEOUT_MS = process.platform === 'win32' ? 1500 : 3000;
+
+/**
  * Read all stdin with timeout to prevent indefinite hang on Linux and Windows.
  *
  * The blocking `for await (const chunk of process.stdin)` pattern waits

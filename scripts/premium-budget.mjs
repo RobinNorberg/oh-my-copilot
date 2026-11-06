@@ -15,7 +15,7 @@
  * Kill switch: OMC_BUDGET_GOVERNOR=0.
  */
 
-import { readStdin } from './lib/stdin.mjs';
+import { HOOK_STDIN_TIMEOUT_MS, readStdin } from './lib/stdin.mjs';
 
 const noop = { continue: true, suppressOutput: true };
 const PHASES = new Set(['start', 'submit', 'turn']);
@@ -23,7 +23,7 @@ const PHASES = new Set(['start', 'submit', 'turn']);
 async function main() {
   const phase = process.argv[2];
   if (!PHASES.has(phase) || process.env.OMC_BUDGET_GOVERNOR === '0') return noop;
-  const raw = await readStdin(3000);
+  const raw = await readStdin(HOOK_STDIN_TIMEOUT_MS);
   let payload = null;
   try {
     payload = JSON.parse(raw);
