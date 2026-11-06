@@ -36,7 +36,7 @@ function omcRootFromStatePath(filePath: string): string | null {
   return normalized.slice(0, idx);
 }
 
-type MutationLockOwner = { version: 1; pid: number; processStart: string; createdAt: string; nonce: string };
+type MutationLockOwner = { version: 1 | 2; pid: number; processStart: string; createdAt: string; nonce: string };
 type BetterSqlite3 = import('better-sqlite3').Database;
 type BetterSqlite3Constructor = new (path: string) => BetterSqlite3;
 type MutationLock =
@@ -115,6 +115,55 @@ function ownProcessStartIdentity(): string | null {
   return ownProcessStartIdentityCache;
 }
 
+// Fork fix: mirrors ownLockStartIdentity in scripts/lib/state-lock.mjs, which documents why the
+// win32 lock owner carries `ticksmax:<n>` (version 2), an upper bound on this process's creation
+// time, instead of the exact identity behind a PowerShell spawn. Both copies must stay in step:
+// hooks and the bridge adjudicate each other's owner records.
+const START_BOUND_PREFIX = 'ticksmax:';
+const START_BOUND_SLACK_MS = 20;
+const START_BOUND_ORIGIN_TOLERANCE_MS = 1000;
+let ownStartBoundCache: string | null = null;
+
+function ownStartBoundIdentity(): string | null {
+  if (ownStartBoundCache !== null) return ownStartBoundCache;
+  const origin = performance.timeOrigin;
+  const uptimeOrigin = Date.now() - process.uptime() * 1000;
+  if (!Number.isFinite(origin) || origin <= 0 || Math.abs(origin - uptimeOrigin) > START_BOUND_ORIGIN_TOLERANCE_MS) return null;
+  const wait = Math.ceil(START_BOUND_SLACK_MS - performance.now());
+  if (wait > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait);
+  ownStartBoundCache = `${START_BOUND_PREFIX}${BigInt(Math.ceil((origin + START_BOUND_SLACK_MS) * 10000)) + 621355968000000000n}`;
+  return ownStartBoundCache;
+}
+
+/** The identity this process records in lock owners: the win32 bound, else the exact probe. */
+function ownLockStartIdentity(): string | null {
+  if (process.platform === 'win32') {
+    const bound = ownStartBoundIdentity();
+    if (bound !== null) return bound;
+  }
+  return ownProcessStartIdentity();
+}
+
+function lockOwnerVersion(processStart: string): 1 | 2 {
+  return processStart.startsWith(START_BOUND_PREFIX) ? 2 : 1;
+}
+
+/** Version 1 owners carry an exact identity; version 2 owners carry the win32 creation bound. */
+function validOwnerIdentity(version: unknown, processStart: unknown): boolean {
+  if (typeof processStart !== 'string') return false;
+  if (version === 2) return /^ticksmax:\d+$/.test(processStart);
+  return version === 1 && /^\S+$/.test(processStart) && !processStart.startsWith(START_BOUND_PREFIX);
+}
+
+/** Whether exact probe result `current` proves the recorded identity live; null when incomparable. */
+export function startIdentityMatches(recorded: string, current: string): boolean | null {
+  if (!recorded.startsWith(START_BOUND_PREFIX)) return current === recorded;
+  const ticks = current.match(/^ticks:(\d+)$/)?.[1];
+  const bound = recorded.slice(START_BOUND_PREFIX.length);
+  if (!ticks || !/^\d+$/.test(bound)) return null;
+  return BigInt(ticks) <= BigInt(bound);
+}
+
 /**
  * True when state mutations can be serialized across processes on this platform. The SQLite
  * lock backend is platform-independent, so only the test-only 'none' switch reports unsupported.
@@ -168,8 +217,8 @@ function mutationDbPath(lockPath: string): string {
 }
 
 function ownerFromRow(row: Record<string, unknown> | undefined): MutationLockOwner | null {
-  if (!row || row.version !== 1 || !Number.isSafeInteger(row.pid) || (row.pid as number) <= 0 || typeof row.process_start !== 'string' || typeof row.created_at !== 'string' || typeof row.nonce !== 'string') return null;
-  return { version: 1, pid: row.pid as number, processStart: row.process_start, createdAt: row.created_at, nonce: row.nonce };
+  if (!row || !validOwnerIdentity(row.version, row.process_start) || !Number.isSafeInteger(row.pid) || (row.pid as number) <= 0 || typeof row.created_at !== 'string' || typeof row.nonce !== 'string') return null;
+  return { version: row.version as 1 | 2, pid: row.pid as number, processStart: row.process_start as string, createdAt: row.created_at, nonce: row.nonce };
 }
 
 function writeAllSync(fd: number, content: string, label: string): void {
@@ -187,7 +236,7 @@ function readLockOwner(path: string): MutationLockOwner | 'absent' | null {
   try {
     const value = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
     const pid = value.pid;
-    if (value.version !== 1 || !Number.isSafeInteger(pid) || (pid as number) <= 0 || typeof value.processStart !== 'string' || !/^\S+$/.test(value.processStart) || typeof value.createdAt !== 'string' || !Number.isFinite(Date.parse(value.createdAt)) || typeof value.nonce !== 'string' || !/^[0-9a-f-]{36}$/i.test(value.nonce)) return null;
+    if (!validOwnerIdentity(value.version, value.processStart) || !Number.isSafeInteger(pid) || (pid as number) <= 0 || typeof value.createdAt !== 'string' || !Number.isFinite(Date.parse(value.createdAt)) || typeof value.nonce !== 'string' || !/^[0-9a-f-]{36}$/i.test(value.nonce)) return null;
     return value as unknown as MutationLockOwner;
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'absent' : null;
@@ -287,12 +336,14 @@ function reclaimDeadLockOwner(
 
 function ownerLive(owner: MutationLockOwner): boolean | null {
   // Fork fix: an owner this module abandoned is orphaned-by-self (see abandonedOwnNonces).
-  if (owner.pid === process.pid && abandonedOwnNonces.has(owner.nonce) && owner.processStart === ownProcessStartIdentity()) return false;
+  if (owner.pid === process.pid && abandonedOwnNonces.has(owner.nonce) && owner.processStart === ownLockStartIdentity()) return false;
   if (process.env.NODE_ENV === 'test' && process.env.OMC_TEST_EMERGENCY_PROCESS_START_UNKNOWN_PID === String(owner.pid)) return null;
+  if (owner.pid === process.pid && owner.processStart === ownLockStartIdentity()) return true;
   // Fork fix: reuse the cached own identity instead of a PowerShell probe per retry on win32.
+  // Any other record for this pid (another thread's bound, a dead predecessor) needs the exact probe.
   const current = owner.pid === process.pid ? ownProcessStartIdentity() : processStartIdentity(owner.pid);
   if (current === null) return null;
-  return current === 'absent' ? false : current === owner.processStart;
+  return current === 'absent' ? false : startIdentityMatches(owner.processStart, current);
 }
 
 function publishLockOwner(path: string, owner: MutationLockOwner): boolean {
@@ -367,7 +418,7 @@ function acquireFileLockAt(path: string, attempts: number): MutationLock | null 
     try { return resolve(realpathSync(dirname(path)), basename(path)); }
     catch { return resolve(path); }
   })();
-  const processStart = ownProcessStartIdentity();
+  const processStart = ownLockStartIdentity();
   if (!processStart || processStart === 'absent') {
     lastMutationLockFailure = 'unverifiable';
     return null;
@@ -377,7 +428,7 @@ function acquireFileLockAt(path: string, attempts: number): MutationLock | null 
   let inconclusiveRetries = 0;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const owner: MutationLockOwner = {
-      version: 1,
+      version: lockOwnerVersion(processStart),
       pid: process.pid,
       processStart,
       createdAt: new Date().toISOString(),
@@ -506,7 +557,7 @@ function acquireLockAt(path: string, attempts = 50, verified: VerifiedOwners = {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
     return acquireLockAt(path, attempts - 1, verified);
   }
-  const processStart = ownProcessStartIdentity();
+  const processStart = ownLockStartIdentity();
   if (!processStart) {
     try { db.close(); } catch { /* best effort */ }
     if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt processStart-null ${path}`);
@@ -520,7 +571,7 @@ function acquireLockAt(path: string, attempts = 50, verified: VerifiedOwners = {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
     return acquireLockAt(path, attempts - 1, verified);
   }
-  const owner: MutationLockOwner = { version: 1, pid: process.pid, processStart, createdAt: new Date().toISOString(), nonce: randomUUID() };
+  const owner: MutationLockOwner = { version: lockOwnerVersion(processStart), pid: process.pid, processStart, createdAt: new Date().toISOString(), nonce: randomUUID() };
   const selectRow = () => db.prepare('SELECT version, pid, process_start, created_at, nonce FROM state_mutation_locks WHERE lock_key = ?').get(key) as Record<string, unknown> | undefined;
   // Fork fix: adjudicate liveness before BEGIN IMMEDIATE, so the slow win32 probe does not hold
   // the write lock (which also blocks the holder's own release). Inside the transaction only the
@@ -618,7 +669,7 @@ function acquireLockAt(path: string, attempts = 50, verified: VerifiedOwners = {
         return null;
       }
     }
-    db.prepare('INSERT INTO state_mutation_locks (lock_key, version, pid, process_start, created_at, nonce) VALUES (?, 1, ?, ?, ?, ?)').run(key, owner.pid, owner.processStart, owner.createdAt, owner.nonce);
+    db.prepare('INSERT INTO state_mutation_locks (lock_key, version, pid, process_start, created_at, nonce) VALUES (?, ?, ?, ?, ?, ?)').run(key, owner.version, owner.pid, owner.processStart, owner.createdAt, owner.nonce);
     if (!publishLockOwner(path, owner)) {
       abandonedOwnNonces.add(owner.nonce); // Fork fix: publication may have linked before failing.
       db.exec('ROLLBACK');
