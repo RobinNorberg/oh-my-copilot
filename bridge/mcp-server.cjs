@@ -18686,6 +18686,38 @@ function ownProcessStartIdentity() {
   }
   return ownProcessStartIdentityCache;
 }
+function ownStartBoundIdentity() {
+  if (ownStartBoundCache !== null) return ownStartBoundCache;
+  const origin = performance.timeOrigin;
+  const uptimeOrigin = Date.now() - process.uptime() * 1e3;
+  if (!Number.isFinite(origin) || origin <= 0 || Math.abs(origin - uptimeOrigin) > START_BOUND_ORIGIN_TOLERANCE_MS) return null;
+  const wait = Math.ceil(START_BOUND_SLACK_MS - performance.now());
+  if (wait > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait);
+  ownStartBoundCache = `${START_BOUND_PREFIX}${BigInt(Math.ceil((origin + START_BOUND_SLACK_MS) * 1e4)) + 621355968000000000n}`;
+  return ownStartBoundCache;
+}
+function ownLockStartIdentity() {
+  if (process.platform === "win32") {
+    const bound = ownStartBoundIdentity();
+    if (bound !== null) return bound;
+  }
+  return ownProcessStartIdentity();
+}
+function lockOwnerVersion(processStart) {
+  return processStart.startsWith(START_BOUND_PREFIX) ? 2 : 1;
+}
+function validOwnerIdentity(version2, processStart) {
+  if (typeof processStart !== "string") return false;
+  if (version2 === 2) return /^ticksmax:\d+$/.test(processStart);
+  return version2 === 1 && /^\S+$/.test(processStart) && !processStart.startsWith(START_BOUND_PREFIX);
+}
+function startIdentityMatches(recorded, current) {
+  if (!recorded.startsWith(START_BOUND_PREFIX)) return current === recorded;
+  const ticks = current.match(/^ticks:(\d+)$/)?.[1];
+  const bound = recorded.slice(START_BOUND_PREFIX.length);
+  if (!ticks || !/^\d+$/.test(bound)) return null;
+  return BigInt(ticks) <= BigInt(bound);
+}
 function isStateMutationLockingSupported() {
   return !(process.env.NODE_ENV === "test" && process.env.OMC_TEST_STATE_LOCK_MODE === "none");
 }
@@ -18726,8 +18758,8 @@ function mutationDbPath(lockPath) {
   return (0, import_path20.join)(current, ".state-mutation-locks.db");
 }
 function ownerFromRow(row) {
-  if (!row || row.version !== 1 || !Number.isSafeInteger(row.pid) || row.pid <= 0 || typeof row.process_start !== "string" || typeof row.created_at !== "string" || typeof row.nonce !== "string") return null;
-  return { version: 1, pid: row.pid, processStart: row.process_start, createdAt: row.created_at, nonce: row.nonce };
+  if (!row || !validOwnerIdentity(row.version, row.process_start) || !Number.isSafeInteger(row.pid) || row.pid <= 0 || typeof row.created_at !== "string" || typeof row.nonce !== "string") return null;
+  return { version: row.version, pid: row.pid, processStart: row.process_start, createdAt: row.created_at, nonce: row.nonce };
 }
 function writeAllSync2(fd, content, label) {
   const bytes = Buffer.from(content, "utf8");
@@ -18743,7 +18775,7 @@ function readLockOwner(path15) {
   try {
     const value = JSON.parse((0, import_fs19.readFileSync)(path15, "utf8"));
     const pid = value.pid;
-    if (value.version !== 1 || !Number.isSafeInteger(pid) || pid <= 0 || typeof value.processStart !== "string" || !/^\S+$/.test(value.processStart) || typeof value.createdAt !== "string" || !Number.isFinite(Date.parse(value.createdAt)) || typeof value.nonce !== "string" || !/^[0-9a-f-]{36}$/i.test(value.nonce)) return null;
+    if (!validOwnerIdentity(value.version, value.processStart) || !Number.isSafeInteger(pid) || pid <= 0 || typeof value.createdAt !== "string" || !Number.isFinite(Date.parse(value.createdAt)) || typeof value.nonce !== "string" || !/^[0-9a-f-]{36}$/i.test(value.nonce)) return null;
     return value;
   } catch (error2) {
     return error2.code === "ENOENT" ? "absent" : null;
@@ -18798,11 +18830,12 @@ function reclaimDeadLockOwner(path15, observedOwner, observedIdentity) {
   return "changed";
 }
 function ownerLive(owner) {
-  if (owner.pid === process.pid && abandonedOwnNonces.has(owner.nonce) && owner.processStart === ownProcessStartIdentity()) return false;
+  if (owner.pid === process.pid && abandonedOwnNonces.has(owner.nonce) && owner.processStart === ownLockStartIdentity()) return false;
   if (process.env.NODE_ENV === "test" && process.env.OMC_TEST_EMERGENCY_PROCESS_START_UNKNOWN_PID === String(owner.pid)) return null;
+  if (owner.pid === process.pid && owner.processStart === ownLockStartIdentity()) return true;
   const current = owner.pid === process.pid ? ownProcessStartIdentity() : processStartIdentity(owner.pid);
   if (current === null) return null;
-  return current === "absent" ? false : current === owner.processStart;
+  return current === "absent" ? false : startIdentityMatches(owner.processStart, current);
 }
 function publishLockOwner(path15, owner) {
   const tempPath = `${path15}.${owner.pid}.${owner.nonce}.tmp`;
@@ -18878,7 +18911,7 @@ function acquireFileLockAt(path15, attempts) {
       return (0, import_path20.resolve)(path15);
     }
   })();
-  const processStart = ownProcessStartIdentity();
+  const processStart = ownLockStartIdentity();
   if (!processStart || processStart === "absent") {
     lastMutationLockFailure = "unverifiable";
     return null;
@@ -18887,7 +18920,7 @@ function acquireFileLockAt(path15, attempts) {
   let inconclusiveRetries = 0;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const owner = {
-      version: 1,
+      version: lockOwnerVersion(processStart),
       pid: process.pid,
       processStart,
       createdAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -19008,7 +19041,7 @@ function acquireLockAt(path15, attempts = 50, verified = { row: null, artifact: 
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
     return acquireLockAt(path15, attempts - 1, verified);
   }
-  const processStart = ownProcessStartIdentity();
+  const processStart = ownLockStartIdentity();
   if (!processStart) {
     try {
       db.close();
@@ -19022,7 +19055,7 @@ function acquireLockAt(path15, attempts = 50, verified = { row: null, artifact: 
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
     return acquireLockAt(path15, attempts - 1, verified);
   }
-  const owner = { version: 1, pid: process.pid, processStart, createdAt: (/* @__PURE__ */ new Date()).toISOString(), nonce: (0, import_crypto4.randomUUID)() };
+  const owner = { version: lockOwnerVersion(processStart), pid: process.pid, processStart, createdAt: (/* @__PURE__ */ new Date()).toISOString(), nonce: (0, import_crypto4.randomUUID)() };
   const selectRow = () => db.prepare("SELECT version, pid, process_start, created_at, nonce FROM state_mutation_locks WHERE lock_key = ?").get(key);
   let preLive = false;
   try {
@@ -19118,7 +19151,7 @@ function acquireLockAt(path15, attempts = 50, verified = { row: null, artifact: 
         return null;
       }
     }
-    db.prepare("INSERT INTO state_mutation_locks (lock_key, version, pid, process_start, created_at, nonce) VALUES (?, 1, ?, ?, ?, ?)").run(key, owner.pid, owner.processStart, owner.createdAt, owner.nonce);
+    db.prepare("INSERT INTO state_mutation_locks (lock_key, version, pid, process_start, created_at, nonce) VALUES (?, ?, ?, ?, ?, ?)").run(key, owner.version, owner.pid, owner.processStart, owner.createdAt, owner.nonce);
     if (!publishLockOwner(path15, owner)) {
       abandonedOwnNonces.add(owner.nonce);
       db.exec("ROLLBACK");
@@ -20125,7 +20158,7 @@ function findCompletedSessionStateCandidates(mode, directory, requesterSessionId
 function findCompletedSessionStateFiles(mode, directory, requesterSessionId) {
   return findCompletedSessionStateCandidates(mode, directory, requesterSessionId).map((candidate) => candidate.path);
 }
-var import_fs19, import_path20, import_crypto4, import_module2, require2, SQLITE_NATIVE_BINDING, SQLITE_NATIVE_BINDING_REMEDIATION, Database, sqliteBindingLoadError, localLocks, lastMutationLockFailure, lastMutationLockFailureDetail, abandonedOwnNonces, INCONCLUSIVE_PROBE_RETRY_LIMIT, ownProcessStartIdentityCache, RELEASE_BUSY_BUDGET_MS;
+var import_fs19, import_path20, import_crypto4, import_module2, require2, SQLITE_NATIVE_BINDING, SQLITE_NATIVE_BINDING_REMEDIATION, Database, sqliteBindingLoadError, localLocks, lastMutationLockFailure, lastMutationLockFailureDetail, abandonedOwnNonces, INCONCLUSIVE_PROBE_RETRY_LIMIT, ownProcessStartIdentityCache, START_BOUND_PREFIX, START_BOUND_SLACK_MS, START_BOUND_ORIGIN_TOLERANCE_MS, ownStartBoundCache, RELEASE_BUSY_BUDGET_MS;
 var init_mode_state_io = __esm({
   "src/lib/mode-state-io.ts"() {
     "use strict";
@@ -20160,6 +20193,10 @@ var init_mode_state_io = __esm({
     abandonedOwnNonces = /* @__PURE__ */ new Set();
     INCONCLUSIVE_PROBE_RETRY_LIMIT = 2;
     ownProcessStartIdentityCache = null;
+    START_BOUND_PREFIX = "ticksmax:";
+    START_BOUND_SLACK_MS = 20;
+    START_BOUND_ORIGIN_TOLERANCE_MS = 1e3;
+    ownStartBoundCache = null;
     RELEASE_BUSY_BUDGET_MS = 5e3;
   }
 });
