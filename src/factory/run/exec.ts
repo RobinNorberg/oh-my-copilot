@@ -35,6 +35,7 @@ import { tmpdir } from 'os';
 import { isAbsolute, join } from 'path';
 import { checkAdoCommand, isAdoCommand, runGuardedAdo, type AdoGuardContext } from '../../forge/ado/guard.js';
 import { isBodyFileIn, readTrackerBody } from '../../forge/body-file.js';
+import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
@@ -167,23 +168,42 @@ function isFactoryBranch(name: string | undefined, protectedBranches: readonly s
     && !protectedBranches.some((b) => b.toLowerCase() === name.toLowerCase());
 }
 
+/** An absolute path to a bare mirror the local forge owns: `<stateDir>/local/<repo-id>.git` (localMirrorPath). */
+function isMirrorPath(p: string | undefined): p is string {
+  return isFile(p) && isAbsolute(p) && /[\\/]local[\\/][A-Za-z0-9_][A-Za-z0-9._-]*-[0-9a-f]{12}\.git$/.test(p);
+}
+
 /** Factory-only git shapes; null = not a factory shape (ship's allowlist decides), false = refused outright. */
-function factoryGit(a: string[], protectedBranches: readonly string[]): boolean | null {
+function factoryGit(a: string[], protectedBranches: readonly string[], extraProtected: readonly string[] = []): boolean | null {
   const [sub, ...r] = a;
+  const remote = r[0] === 'origin' || r[0] === LOCAL_REMOTE;
   switch (sub) {
     case 'push': {
-      const m = r.length === 2 && r[0] === 'origin' ? /^([0-9a-f]{40}):refs\/heads\/(.+)$/.exec(r[1]) : null;
-      return Boolean(m) && isFactoryBranch(m![2], protectedBranches);
+      const m = r.length === 2 && remote ? /^([0-9a-f]{40}):refs\/heads\/(.+)$/.exec(r[1]) : null;
+      if (!m) return false;
+      // The local forge's base sync: exactly the run's base (extraProtected) into the engine-owned mirror, fast-forward only (no `+`).
+      if (r[0] === LOCAL_REMOTE && isBranch(m[2]) && extraProtected.includes(m[2])) return true;
+      return isFactoryBranch(m[2], protectedBranches);
     }
     case 'ls-remote': {
-      const m = r.length === 2 && r[0] === 'origin' ? /^refs\/heads\/(.+)$/.exec(r[1]) : null;
+      const m = r.length === 2 && remote ? /^refs\/heads\/(.+)$/.exec(r[1]) : null;
       return Boolean(m) && isFactoryBranch(m![1], protectedBranches);
     }
+    case 'init':
+      // The local forge's bare mirror, created once under the engine-owned forge state dir.
+      return r.length === 3 && same(r.slice(0, 2), ['--bare', '--quiet']) && isMirrorPath(r[2]);
+    case 'remote':
+      // Registering that mirror as `omg-local` in the checkout; ship decides get-url, every other shape is refused there.
+      if (r[0] === 'add') return r.length === 3 && r[1] === LOCAL_REMOTE && isMirrorPath(r[2]);
+      return null;
     case 'rev-parse':
       if (same(r, ['--git-common-dir']) || same(r, ['--symbolic-full-name', 'HEAD'])) return true;
       if (r.length === 2 && r[0] === '--verify') {
         const m = /^([0-9a-f]{40}):(.+)$/.exec(r[1]);
         if (m) return REPO_PATH.test(m[2]) && !m[2].split('/').includes('..');
+        // The local forge's base: the local branch, fully qualified (a tag cannot shadow it).
+        const h = /^refs\/heads\/(.+)$/.exec(r[1]);
+        if (h) return isBranch(h[1]);
       }
       return null;
     case 'config':
@@ -197,7 +217,13 @@ function factoryGit(a: string[], protectedBranches: readonly string[]): boolean 
       return r.length === 3 && r[0] === '--no-ext-diff' && r[1] === '--no-textconv' && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[2]) ? true : null;
     case 'ls-tree':
       // Two-axis review: the standards files on the base commit.
-      return r.length === 6 && same(r.slice(0, 3), ['-r', '-z', '--name-only']) && /^[0-9a-f]{40}$/.test(r[3]) && same(r.slice(4), ['--', 'docs/standards/']) ? true : null;
+      if (r.length === 6 && same(r.slice(0, 3), ['-r', '-z', '--name-only']) && /^[0-9a-f]{40}$/.test(r[3]) && same(r.slice(4), ['--', 'docs/standards/'])) return true;
+      // The local forge's backlog at the base commit (backlogListArgs): one plain repo directory, never `..`.
+      if (r.length === 5 && same(r.slice(0, 2), ['-z', '--name-only']) && /^[0-9a-f]{40}$/.test(r[2]) && r[3] === '--' && r[4].endsWith('/')) {
+        const dir = r[4].slice(0, -1);
+        return REPO_PATH.test(dir) && !dir.split('/').includes('..');
+      }
+      return null;
     case 'rev-list':
       // Publish check: the commits of the prepared head beyond the reviewed head and GitHub's base.
       return r.length === 3 && /^[0-9a-f]{40}$/.test(r[0]) && /^\^[0-9a-f]{40}$/.test(r[1]) && /^\^[0-9a-f]{40}$/.test(r[2]) ? true : null;
@@ -263,7 +289,7 @@ export function assertFactoryCommand(cmd: string, args: string[], extraProtected
   const base = file.replace(/\.exe$/, '');
   const protectedBranches = [...PROTECTED_BRANCHES, ...extraProtected];
   const strings = args.every((x) => typeof x === 'string');
-  const verdict = !strings ? false : base === 'git' ? factoryGit(args, protectedBranches) : base === 'gh' ? factoryGh(args, writes) : null;
+  const verdict = !strings ? false : base === 'git' ? factoryGit(args, protectedBranches, extraProtected) : base === 'gh' ? factoryGh(args, writes) : null;
   if (verdict === false) throw new FactorySafetyError(`omg factory run refuses \`${file} ${args.join(' ')}\`: not one of the command shapes the factory engine runs`);
   if (verdict === true) {
     // Factory shapes take no environment except ship's trusted-read env on git.
@@ -314,6 +340,17 @@ export function gitHardeningArgs(hooksDir: string): string[] {
 }
 
 /**
+ * Prepended to a transport command on the local forge's `omg-local` remote:
+ * the stock pack programs, so a `remote.omg-local.receivepack` or
+ * `uploadpack` planted in the checkout's .git/config never runs. Its url and
+ * every push url are compared with the mirror path before each fetch and
+ * push (remoteRepoMismatch), so a planted pushurl or insteadOf refuses.
+ */
+export const LOCAL_REMOTE_PACK_ARGS: readonly string[] = ['-c', `remote.${LOCAL_REMOTE}.receivepack=git-receive-pack`, '-c', `remote.${LOCAL_REMOTE}.uploadpack=git-upload-pack`];
+
+const onLocalRemote = (args: string[]): boolean => (args[0] === 'push' || args[0] === 'fetch' || args[0] === 'ls-remote') && args[1] === LOCAL_REMOTE;
+
+/**
  * Run git with `core.hooksPath` set to an engine-owned empty directory and
  * `core.fsmonitor=false`, so no hook (pre-push, post-checkout,
  * reference-transaction) and no fsmonitor command runs in the engine.
@@ -337,6 +374,6 @@ export function hardenedGitExec(exec: Exec, hooksDir: string): Exec {
     if (!existsSync(hooksDir) || readdirSync(hooksDir).length > 0) {
       throw new FactorySafetyError(`omg factory run refuses git: the engine's empty hooks directory ${hooksDir} is missing or not empty`);
     }
-    return exec(cmd, [...gitHardeningArgs(hooksDir), ...args], opts);
+    return exec(cmd, [...gitHardeningArgs(hooksDir), ...(onLocalRemote(args) ? LOCAL_REMOTE_PACK_ARGS : []), ...args], opts);
   };
 }
