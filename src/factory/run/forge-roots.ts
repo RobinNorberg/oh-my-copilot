@@ -115,7 +115,11 @@ export function loadFactoryForgeConfig(exec: Exec, root: string, base: string, t
     // No GitHub or Azure DevOps origin: only the local forge can work, and nothing is fetched. Its base is the
     // local branch the human merges into, so the committed config is read there.
     const sha = at(`refs/heads/${base}`);
-    if (!sha) throw new Error(missingBaseHint(exec, root, base));
+    if (!sha) {
+      // Without the base, only the user config can name the local forge: no forge at all is exit 5, not a base hint.
+      resolveOrUnavailable(undefined);
+      throw new Error(missingBaseHint(exec, root, base));
+    }
     return withBaseLayer(sha, []);
   }
   const tracking = `refs/remotes/origin/${base}`;
