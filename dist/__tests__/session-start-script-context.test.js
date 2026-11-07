@@ -749,7 +749,9 @@ describe('session-start.mjs regression #1386', () => {
             // second, so a loaded host can miss it; the ready file stays.
             expect(await waitForFilesToAppear([initialScan.readyPath], scaleTiming(5000))).toBe(true);
             // The ready file is written inside the 1000 ms lifetime, so 1700 ms after it the lifetime
-            // has ended. The purge started right after it, so its 2500 ms lock wait has not run out.
+            // has ended. The purge starts right after the ready file and waits until
+            // min(start + 2500 ms, lifetime deadline). A worker that ignored the lifetime would
+            // still be waiting at the release, take the lock and exit after it.
             await new Promise(resolve => setTimeout(resolve, 1700));
             const releasedAt = Date.now();
             expect(await holder.release()).toEqual({ code: 0, signal: null });
