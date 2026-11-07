@@ -36,6 +36,8 @@ const SERIAL_BUDGET = [
   'src/__tests__/workflow-profile-activation-script.test.ts',
 ];
 
+const ENV_MAX_WORKERS = /^[1-9]d*$/.test(process.env.OMC_VITEST_MAX_WORKERS ?? '') ? Number(process.env.OMC_VITEST_MAX_WORKERS) : 0;
+
 export default defineConfig({
   // Vitest applies a CLI `--exclude` (the `tests/perf/**` in `npm test` and
   // `omg release`) only to the root config, not to projects; hand it on.
@@ -53,11 +55,13 @@ export default defineConfig({
     // fork per logical core starves the spawn-heavy suites (git fixtures, hook
     // scripts, worker launches) until they miss their own deadlines. Scale the
     // timeouts and cap the pool. POSIX keeps the vitest defaults.
+    // OMC_VITEST_MAX_WORKERS (positive integer) overrides the worker count on every platform.
     ...(IS_WIN ? {
       testTimeout: 30000 * TIMING_SCALE,
       hookTimeout: 10000 * TIMING_SCALE,
       maxWorkers: Math.min(16, Math.max(1, availableParallelism() - 1)),
     } : {}),
+    ...(ENV_MAX_WORKERS ? { maxWorkers: ENV_MAX_WORKERS } : {}),
     // Files start longest first and CI shards (`--shard=<i>/<n>`) split by
     // measured file duration (a Windows table on win32).
     sequence: { sequencer: DurationSequencer },
