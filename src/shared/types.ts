@@ -609,6 +609,17 @@ export interface TeamConfigBlock {
      * of starting the `t` stdio MCP server per worker. Default false.
      */
     inProcessTools?: boolean;
+    /**
+     * Give sdk workers the compact worker protocol (no pane, tmux, sentinel or
+     * heartbeat sections; the claim, ACK, mailbox, commit and failure-report
+     * rules stay). Default false.
+     */
+    compactProtocol?: boolean;
+    /**
+     * Minutes a worker's message to the leader may stay unanswered before the
+     * monitor fails its task with reason `blocker_unanswered`. Default off.
+     */
+    blockerTimeoutMinutes?: number;
   };
   roleRouting?: Partial<Record<CanonicalTeamRole, TeamRoleAssignmentSpec>> & {
     orchestrator?: OrchestratorSpec;
