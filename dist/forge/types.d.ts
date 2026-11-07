@@ -429,6 +429,12 @@ export interface LocalTrackerOptions {
     baseSha?: () => string | undefined;
     /** Also read the working tree (never for `run`). */
     workingTree?: boolean;
+    /**
+     * The repository's runtime root, `getOmcRoot(root)` (src/lib/worktree-paths.ts,
+     * which spawns git, so src/forge cannot call it). Required by createLocalForge:
+     * comments, progress and PR bodies for the human go under `<omgRoot>/factory/local/`.
+     */
+    omgRoot?: string;
 }
 /** Adapters are built from the caller's (guarded) Exec; they never spawn. */
 export type ForgeFactory = (exec: Exec, cwd: string, config: ResolvedForgeConfig, options: ForgeOptions) => Forge;

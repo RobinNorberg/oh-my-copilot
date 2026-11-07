@@ -16,7 +16,7 @@ export interface LocalReviewsContext {
     mirror: string;
     /** The PR store file. */
     storePath: string;
-    /** `<root>/.omg/factory/local`: bodies and comments for the human. */
+    /** `<omgRoot>/factory/local` (ForgeOptions.local.omgRoot): bodies and comments for the human. */
     humanDir: string;
 }
 export declare const localPrUrl: (pr: number) => string;

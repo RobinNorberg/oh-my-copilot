@@ -45,7 +45,10 @@ export const createLocalForge = (exec, cwd, config, options) => {
     // <stateDir>/local/<repo-id>.git -> <stateDir>/local/<repo-id>: engine-owned, never under a lane-writable root.
     const storeDir = engineOwnedDir(mirror.slice(0, -'.git'.length), options.untrustedRoots);
     const recordFor = (head) => readCheckRecordAt(storeDir, head);
-    const humanDir = join(cwd, '.omg', 'factory', 'local');
+    const omgRoot = options.local?.omgRoot;
+    if (!omgRoot)
+        throw new Error('local forge: options.local.omgRoot is required (getOmcRoot(root))');
+    const humanDir = join(omgRoot, 'factory', 'local');
     return {
         kind: 'local',
         provider: 'unknown',

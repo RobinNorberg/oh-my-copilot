@@ -124837,7 +124837,9 @@ var init_local = __esm({
       if (!/\.git$/.test(mirror)) throw new Error(`local forge: the mirror path ${mirror} does not end in .git`);
       const storeDir = engineOwnedDir(mirror.slice(0, -".git".length), options.untrustedRoots);
       const recordFor = (head) => readCheckRecordAt(storeDir, head);
-      const humanDir = (0, import_path188.join)(cwd2, ".omg", "factory", "local");
+      const omgRoot = options.local?.omgRoot;
+      if (!omgRoot) throw new Error("local forge: options.local.omgRoot is required (getOmcRoot(root))");
+      const humanDir = (0, import_path188.join)(omgRoot, "factory", "local");
       return {
         kind: "local",
         provider: "unknown",

@@ -17,7 +17,7 @@ export interface LocalTrackerContext {
     backlogDir: string;
     /** ForgeItem.repoUrl (the mirror). */
     repoUrl: string;
-    /** `<root>/.omg/factory/local`. */
+    /** `<omgRoot>/factory/local` (ForgeOptions.local.omgRoot). */
     humanDir: string;
     options: LocalTrackerOptions;
     /** enqueue's body directory: createItem/updateItem read a body file only directly in it. */

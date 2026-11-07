@@ -15,6 +15,8 @@ export interface Fixture {
     tmp: string;
     root: string;
     stateDir: string;
+    /** getOmcRoot(root) for a plain checkout. */
+    omgRoot: string;
     mirror: string;
     config: ResolvedForgeConfig;
     write(path: string, text: string): void;
