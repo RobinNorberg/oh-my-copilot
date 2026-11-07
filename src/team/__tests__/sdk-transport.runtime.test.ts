@@ -150,7 +150,7 @@ describe('team.sdk settings', () => {
   it('accepts a positive cap below the runtime floor (the host enforces it; the runtime floors its own flag)', () => {
     delete process.env.OMC_TEAM_SDK_MAX_CREDITS;
     expect(resolveSdkTeamSettings(withCap(2.5)).maxCreditsPerWorker).toBe(2.5);
-    expect(resolveSdkTeamSettings({} as PluginConfig).maxCreditsPerWorker).toBe(10);
+    expect(resolveSdkTeamSettings({} as PluginConfig).maxCreditsPerWorker).toBe(50);
   });
 
   it('lets a valid env value override the config cap', () => {
