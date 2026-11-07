@@ -27,7 +27,21 @@ const { join, dirname, resolve, normalize } = require("path");
 const { getCopilotConfigDir } = require("./lib/config-dir.cjs");
 const { resolveOmcStateRoot } = require("./lib/state-root.cjs");
 
-async function readStdin(timeoutMs = 2000) {
+// Mirrors hookStdinTimeoutMs() in scripts/lib/stdin.mjs (an ESM module this
+// CommonJS script cannot require): fit the wait inside the inner budget that
+// run.cjs exports in OMC_HOOK_INNER_BUDGET_MS, minus the time elapsed since
+// OMC_HOOK_INNER_BUDGET_START_MS and a 1500ms (win32) or 500ms margin, never
+// below 250ms and never above 2000ms.
+function hookStdinTimeoutMs(capMs = 2000) {
+  const raw = String(process.env.OMC_HOOK_INNER_BUDGET_MS ?? "").trim();
+  if (!/^\d+$/.test(raw) || Number(raw) <= 0) return capMs;
+  const start = String(process.env.OMC_HOOK_INNER_BUDGET_START_MS ?? "").trim();
+  const elapsedMs = /^\d+$/.test(start) ? Math.max(0, Date.now() - Number(start)) : 0;
+  const marginMs = process.platform === "win32" ? 1500 : 500;
+  return Math.max(250, Math.min(capMs, Number(raw) - elapsedMs - marginMs));
+}
+
+async function readStdin(timeoutMs = hookStdinTimeoutMs()) {
   return new Promise((resolve) => {
     const chunks = [];
     let settled = false;

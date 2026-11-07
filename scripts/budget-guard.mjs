@@ -24,7 +24,7 @@
 
 import { closeSync, existsSync, fstatSync, openSync, readFileSync, readSync } from 'fs';
 import { join } from 'path';
-import { HOOK_STDIN_TIMEOUT_MS, readStdin } from './lib/stdin.mjs';
+import { HOOK_STDIN_TIMEOUT_MS, hookStdinTimeoutMs, readStdin } from './lib/stdin.mjs';
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
 import { logEnforcement } from './lib/enforcement-log.mjs';
 
@@ -147,7 +147,7 @@ async function main() {
   const budget = Number(process.env.OMC_RUN_BUDGET_TOKENS);
   if (!Number.isFinite(budget) || budget <= 0) process.exit(0);
 
-  const raw = await readStdin(HOOK_STDIN_TIMEOUT_MS);
+  const raw = await readStdin(hookStdinTimeoutMs(HOOK_STDIN_TIMEOUT_MS));
   let payload = null;
   try {
     payload = JSON.parse(raw);

@@ -11,6 +11,14 @@ import { dirname, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { afterAll, describe, expect, it } from 'vitest';
 import { resolveSessionStatePathsForHook } from '../../scripts/lib/state-root.mjs';
+import {
+  HOOK_INNER_BUDGET_ENV,
+  HOOK_STDIN_TIMEOUT_MS,
+  hookStdinTimeoutMs,
+} from '../../scripts/lib/stdin.mjs';
+import { scaleTiming } from '../../src/__tests__/helpers/platform.js';
+
+const runCjs = require('../../scripts/run.cjs');
 
 const root = process.cwd();
 const script = join(root, 'scripts', 'git-guardrails.mjs');
@@ -105,6 +113,64 @@ function runHook(
     env,
     cwd,
   );
+}
+
+// The wait git-guardrails uses under run.cjs: derived from the inner budget
+// run.cjs gives its 5s PreToolUse manifest entry on this platform.
+const guardrailsInnerBudgetMs: number = runCjs.resolveInnerTimeoutMs({
+  timeoutMs: 5000,
+  event: 'PreToolUse',
+});
+const guardrailsStdinWaitMs = hookStdinTimeoutMs(
+  HOOK_STDIN_TIMEOUT_MS,
+  HOOK_STDIN_TIMEOUT_MS,
+  { [HOOK_INNER_BUDGET_ENV]: String(guardrailsInnerBudgetMs) },
+);
+// The fixed readStdin(3000) the derived wait replaced.
+const LEGACY_GUARDRAILS_STDIN_WAIT_MS = 3000;
+
+interface TimedRunResult extends RunResult {
+  elapsedMs: number;
+}
+
+// Run git-guardrails through run.cjs, write `input`, and keep stdin open so
+// the hook only returns once its stdin wait runs out.
+async function runThroughRunnerWithOpenStdin(
+  input: string,
+  env: Record<string, string>,
+  cwd: string,
+  watchdogMs: number,
+): Promise<TimedRunResult> {
+  const child = spawn('node', [runner, script], {
+    cwd,
+    env: childEnvironment(env),
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  let stderr = '';
+  child.stderr.on('data', (chunk) => {
+    stderr += String(chunk);
+  });
+  const startedAt = performance.now();
+  const exit = new Promise<TimedRunResult>((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', (code) =>
+      resolve({ code, stderr, elapsedMs: performance.now() - startedAt }),
+    );
+  });
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      child.kill();
+      reject(new Error(`hook still running after ${watchdogMs}ms`));
+    }, watchdogMs);
+  });
+  if (input) child.stdin.write(input);
+  try {
+    return await Promise.race([exit, timeout]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+    child.stdin.destroy();
+  }
 }
 
 function payloadWithoutCommand() {
@@ -371,7 +437,65 @@ describe('git-guardrails hook', () => {
     expect(result.code).toBe(0);
     expect(result.stderr).toBe('');
     expect(result.elapsedMs).toBeLessThan(4500);
+    if (process.platform === 'win32') {
+      // The wait comes from the budget, not the legacy 3000ms; only the
+      // non-wait part (runner and hook start-up, exit) gets timing slack,
+      // which stays below what the legacy wait alone took.
+      expect(guardrailsStdinWaitMs).toBeLessThan(LEGACY_GUARDRAILS_STDIN_WAIT_MS);
+      expect(result.elapsedMs).toBeLessThan(
+        guardrailsStdinWaitMs + scaleTiming(375),
+      );
+    }
   }, 6000);
+
+  it('still blocks a destructive command in an active mode while stdin stays open', async () => {
+    const dir = await dirWithActiveMode('ralph', true);
+    const result = await runThroughRunnerWithOpenStdin(
+      JSON.stringify({
+        tool_name: 'Bash',
+        tool_input: { command: 'git push origin main' },
+        cwd: dir,
+        session_id: 'guardrail-test',
+      }),
+      {},
+      dir,
+      4500,
+    );
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('git push');
+    expect(result.stderr).not.toContain('timed out');
+  }, 15000);
+
+  it.each([
+    ['fails open without OMC_HOOK_FAIL_CLOSED', {}, 0],
+    ['fails closed (124) with OMC_HOOK_FAIL_CLOSED=1', { OMC_HOOK_FAIL_CLOSED: '1' }, 124],
+  ] as Array<[string, Record<string, string>, number]>)(
+    'a truncated payload at stdin timeout %s',
+    async (_label, extraEnv, expectedCode) => {
+      const dir = freshGitDir();
+      const result = await runThroughRunnerWithOpenStdin(
+        '{"tool_name":"Bash","tool_input":{"command":"git pu',
+        { ...enabled, ...extraEnv },
+        dir,
+        4500,
+      );
+      expect(result.code).toBe(expectedCode);
+      // The hook decided, not the runner's own timeout.
+      expect(result.stderr).not.toContain('[run.cjs]');
+      if (expectedCode === 124) expect(result.stderr).toContain('failing closed');
+      else expect(result.stderr).toBe('');
+    },
+    15000,
+  );
+
+  it('a complete malformed payload still fails open with OMC_HOOK_FAIL_CLOSED=1', async () => {
+    const result = await runHookInput('not json at all', {
+      ...enabled,
+      OMC_HOOK_FAIL_CLOSED: '1',
+    });
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe('');
+  });
 
   it('OMC_GIT_GUARDRAILS=0 disables the guard', async () => {
     const result = await runHook('git push origin main', {
