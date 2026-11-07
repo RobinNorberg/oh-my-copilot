@@ -2,5 +2,5 @@
   "upstream_sha": "4d5d22187f1689cf1c4e91c8e35cbc1f05a5b4b8",
   "upstream_branch": "dev",
   "ported_at": "2026-11-07",
-  "fork_version": "unreleased"
+  "fork_version": "5.19.8"
 }
