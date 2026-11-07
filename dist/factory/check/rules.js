@@ -60,6 +60,9 @@ const hit = (bucket, reason, detail) => ({ bucket, reasons: [reason], detail });
 export function evaluateItem(item, kind, config, look) {
     if (!item.open)
         return hit('blocked', 'closed', `the item is ${item.rawState || 'closed'}`);
+    // A local backlog file that is not on the base commit (new or edited): omg factory run reads items at the base, so it cannot start it.
+    if (item.uncommitted)
+        return hit('blocked', 'uncommitted', `${item.url} is not committed on the base branch (untrusted until it is); commit it there first`);
     if (kind === 'azure-devops') {
         const types = config.intake.itemTypes.map((t) => t.toLowerCase());
         if (!item.type || !types.includes(item.type.toLowerCase())) {

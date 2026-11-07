@@ -78,6 +78,8 @@ export interface BoardJson {
     schemaVersion: number;
     ok: boolean;
     forge: ForgeKind;
+    /** What the forge cannot do (the local forge's offline lines); empty on GitHub and Azure DevOps. */
+    limitations: string[];
     repo: string;
     source: Record<string, unknown> | null;
     /** With --parent: the spec whose children are shown. */

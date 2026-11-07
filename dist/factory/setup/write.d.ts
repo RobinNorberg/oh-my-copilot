@@ -65,6 +65,14 @@ export interface WritePlanInput {
 }
 /** The writes for one setup, with diffs; nothing is written here. Unchanged files are left out. */
 export declare function planWrites(input: WritePlanInput): PlannedWrite[];
+/** The sample item `--forge local` adds to an empty backlog: closed, so no run picks it up before it is edited. */
+export declare const SAMPLE_BACKLOG_FILE = "1-example.md";
+export declare const SAMPLE_BACKLOG_TEXT: string;
+/**
+ * The sample backlog item for the local forge, when `<root>/<backlogDir>` has
+ * no backlog file yet (`<n>-<slug>.md`); undefined otherwise. Written by applyWrites.
+ */
+export declare function planBacklogSample(root: string, backlogDir: string): PlannedWrite | undefined;
 export declare function applyWrites(planned: readonly PlannedWrite[]): string[];
 /** The parsed config a planned write would leave (for validation through resolveForgeConfig). */
 export declare function parsedAfter(planned: readonly PlannedWrite[], path: string): unknown;

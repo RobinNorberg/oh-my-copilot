@@ -12,7 +12,7 @@ import { integerOption } from '../utils/integer-option.js';
 export function factoryBoardCommand(deps) {
     return new Command('board')
         .description('Read-only board: intake items by bucket, runs by tracker stage, drift / unsynced / seal / stale flags')
-        .option('--source <spec>', 'intake source: label:<name> | milestone:<name> | wiql-query:<guid> | board-column:<team>/<board>/<column> | area-tag:<area path>#<tag>')
+        .option('--source <spec>', 'intake source: label:<name> | milestone:<name> | wiql-query:<guid> | board-column:<team>/<board>/<column> | area-tag:<area path>#<tag> | local-backlog[:<label>]')
         .option('--parent <spec>', 'show the children of this spec item instead of the intake source')
         .option('--limit <n>', 'items read from the source (1..200)', integerOption(1, 200))
         .option('--no-check', 'skip the check rules: one batched tracker read for the live stages')

@@ -21,6 +21,8 @@
  */
 import chalk from 'chalk';
 import { ForgeConfigError, resolveForgeConfig } from '../../forge/config.js';
+import { localForgeLimitations, readMirrorRef } from '../../forge/local/index.js';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { resolveAzEntry } from '../../forge/ado/az-binary.js';
 import { adoGuardContext, defaultAzBinaryDeps } from '../../forge/ado/index.js';
 import { factoryForgeOptions } from '../run/forge-roots.js';
@@ -69,7 +71,22 @@ function checkGh(a, marker) {
         return r.length === 6 && r[0] === '--search' && VALUE(r[1]) && r[2] === '--json' && r[3] === 'name' && r[4] === '--limit' && NUMBER.test(r[5]);
     return false;
 }
-const CHECK_GIT = new Set(['rev-parse', 'remote', 'fetch', 'cat-file', 'show', 'ls-remote']);
+const CHECK_GIT = new Set(['rev-parse', 'remote', 'fetch', 'cat-file', 'show', 'ls-remote', 'merge-base']);
+/** A repo-relative directory (the local backlog): plain segments, no leading `-`, no `.` or `..` segment. */
+const REPO_DIR = /^(?!-)[\w.-]+(?:\/[\w.-]+)*$/;
+/**
+ * The local forge's read shapes (src/forge/local): the backlog listing at a
+ * commit, and the local base branch (an offline repository has no origin to
+ * fetch). The check guard allows them itself, with ship's trusted-read env only.
+ */
+export function isLocalReadShape(args) {
+    if (args[0] === 'ls-tree') {
+        const dir = args[5] ?? '';
+        return args.length === 6 && same(args.slice(1, 3), ['-z', '--name-only']) && /^[0-9a-f]{40}$/.test(args[3]) && args[4] === '--'
+            && dir.endsWith('/') && REPO_DIR.test(dir.slice(0, -1)) && !dir.slice(0, -1).split('/').some((seg) => seg === '.' || seg === '..');
+    }
+    return args.length === 3 && args[0] === 'rev-parse' && args[1] === '--verify' && args[2].startsWith('refs/heads/') && isPlainBranchName(args[2].slice('refs/heads/'.length));
+}
 /**
  * The `omg factory check` guard. `marker` is set only after `--mark` was
  * confirmed: then, and only then, `gh issue edit <n> --add-label <marker>`
@@ -87,6 +104,10 @@ export function checkGuardExec(exec, marker, ado = () => undefined, command = 'o
                 refuse('gh takes no environment');
             if (!checkGh(args, mark))
                 refuse(`not one of the command shapes ${command} runs`);
+        }
+        else if (file === 'git' && isLocalReadShape(args)) {
+            if (opts?.env !== undefined && JSON.stringify(Object.entries(opts.env)) !== JSON.stringify(Object.entries(TRUSTED_READ_ENV)))
+                refuse('git takes only the trusted-read environment');
         }
         else if (file === 'git') {
             const read = CHECK_GIT.has(args[0]) && (args[0] !== 'show' || (args.length === 2 && /^[0-9a-f]{40}:/.test(args[1])));
@@ -113,6 +134,11 @@ export function checkGuardExec(exec, marker, ado = () => undefined, command = 'o
 }
 /** `--source` as a config value (resolveForgeConfig validates it): label:x, milestone:x, wiql-query:<guid>, board-column:team/board/column, area-tag:<area path>#<tag>. */
 export function parseSourceSpec(spec) {
+    // The local forge's backlog directory, optionally only the items with a label.
+    if (spec === 'local-backlog')
+        return { type: spec };
+    if (spec.startsWith('local-backlog:') && spec.length > 'local-backlog:'.length)
+        return { type: 'local-backlog', label: spec.slice('local-backlog:'.length) };
     const at = spec.indexOf(':');
     const type = at > 0 ? spec.slice(0, at) : '';
     const value = spec.slice(at + 1);
@@ -134,7 +160,7 @@ export function parseSourceSpec(spec) {
         }
         default: break;
     }
-    throw new CheckUsageError(`--source ${JSON.stringify(spec)} is not label:<name>, milestone:<name>, wiql-query:<guid>, board-column:<team>/<board>/<column> or area-tag:<area path>#<tag>`);
+    throw new CheckUsageError(`--source ${JSON.stringify(spec)} is not label:<name>, milestone:<name>, wiql-query:<guid>, board-column:<team>/<board>/<column>, area-tag:<area path>#<tag> or local-backlog[:<label>]`);
 }
 export function parseItemId(raw) {
     const n = Number(raw.replace(/^#/, ''));
@@ -152,6 +178,18 @@ function git(exec, root, args) {
  * The setup wizard builds its preview env with this too.
  */
 export function checkEnvFor(exec, root, config, base, baseSha) {
+    if (config.kind === 'local' && config.repo) {
+        // The local forge: the base is the local branch, and the factory branches live in the engine's mirror (read as files, no spawn).
+        const mirror = config.repo.url;
+        return {
+            config,
+            runState: (id) => readFactoryState(root, id),
+            remoteBranch: (branch) => readMirrorRef(mirror, branch) !== undefined,
+            readPlan: (path) => (baseSha ? readBaseFile(exec, root, baseSha, path) : null),
+            planBase: baseSha ? `${base} at ${baseSha.slice(0, 12)}` : `${base} (not available)`,
+            base,
+        };
+    }
     return {
         config,
         runState: (id) => readFactoryState(root, id),
@@ -264,32 +302,58 @@ export function openReadForge(o, deps, warnings, command, marker) {
         throw new CheckUsageError(`${command} must run inside a git repository`);
     const root = top.out;
     const origin = git(pre, root, ['remote', 'get-url', 'origin']);
-    if (!origin.ok)
-        throw new CheckIncompatibleError(`git remote get-url origin failed: ${origin.err}`);
+    // No origin: only the local (offline) forge can work; resolveForgeConfig decides once the layers are read.
+    const originUrl = origin.ok && origin.out ? origin.out : undefined;
     const base = deps.base(root);
     if (!isPlainBranchName(base))
         throw new CheckUsageError(`base ${JSON.stringify(base)} is not a branch name`);
-    const baseSha = fetchBase(pre, root, base, warnings);
+    let baseSha = originUrl ? fetchBase(pre, root, base, warnings) : localBase(pre, root, base, warnings);
     const trustedUser = deps.trustedUser();
     let config;
     const baseConfig = baseLayer(pre, root, base, baseSha, trustedUser, warnings);
+    const stateDir = factoryForgeOptions(root).stateDir;
     try {
-        const loaded = resolveForgeConfig(trustedUser, baseConfig, withFlags(deps.projectConfig(root), o), origin.out);
+        const loaded = resolveForgeConfig(trustedUser, baseConfig, withFlags(deps.projectConfig(root), o), originUrl, { root, stateDir });
         config = loaded.config;
         warnings.push(...loaded.warnings);
     }
     catch (error) {
         if (!(error instanceof ForgeConfigError))
             throw error;
-        throw error.code === 'invalid' ? new CheckUsageError(error.message) : new CheckIncompatibleError(`${error.code}: ${error.message}`);
+        if (error.code === 'invalid')
+            throw new CheckUsageError(error.message);
+        throw new CheckIncompatibleError(error.code === 'forge-unsupported' ? unsupportedForge(error.message) : `${error.code}: ${error.message}`);
     }
+    // The local forge's base is the local branch (the human merges there; the engine syncs its mirror from it).
+    if (config.kind === 'local' && originUrl)
+        baseSha = localBase(pre, root, base, warnings);
     try {
         const read = forgeReadExec(deps.exec, config, root, deps.resolveAz, marker, command);
-        return { root, base, baseSha, config, baseConfig, forge: deps.createForge(read.exec, root, config, read.options), exec: read.exec };
+        const local = { omgRoot: getOmcRoot(root), workingTree: true, baseSha: () => baseSha ?? undefined };
+        const options = config.kind === 'local' ? { ...read.options, local } : read.options;
+        return { root, base, baseSha, config, baseConfig, forge: deps.createForge(read.exec, root, config, options), exec: read.exec };
     }
     catch (error) {
         throw new CheckIncompatibleError(error instanceof Error ? error.message : String(error));
     }
+}
+/** The F9/F10 text of "no usable forge" (exit 5 in check, board, poll and setup), with the offline hint. */
+export function unsupportedForge(why) {
+    return `unsupported forge: ${why.replace(/^unsupported forge: /, '')}; for the offline (local) forge run \`omg factory setup --forge local\``;
+}
+/** The local branch `<base>` (the local forge's base; no fetch); null with a warning when it does not exist. */
+export function localBase(exec, root, base, warnings) {
+    const sha = git(exec, root, ['rev-parse', '--verify', `refs/heads/${base}`]);
+    if (sha.ok && /^[0-9a-f]{40}$/.test(sha.out))
+        return sha.out;
+    warnings.push(`omg factory: the base branch ${base} does not exist in this repository; committed backlog items and the committed config cannot be read`);
+    return null;
+}
+/** The forge's limitations (the local forge's offline lines), or none. */
+export function forgeLimitations(forge, base) {
+    if (forge.kind === 'local')
+        return localForgeLimitations(base);
+    return forge.limitations?.() ?? [];
 }
 /** Run one check; returns the exit code. Errors other than usage / incompatible propagate (exit 1 at the CLI). */
 export async function runFactoryCheck(o, deps) {
@@ -342,11 +406,15 @@ export async function runFactoryCheck(o, deps) {
         }
     }
     const ok = m.failed.length === 0 && !items.some((r) => r.reasons[0] === 'read-failed');
+    // Skipped backlog files (the local tracker), after every read.
+    warnings.push(...(forge.tracker.warnings?.() ?? []));
+    const limitations = forgeLimitations(forge, base);
     if (o.json) {
         const json = {
             schemaVersion: CHECK_JSON_SCHEMA_VERSION,
             ok,
             forge: config.kind,
+            limitations,
             repo: config.repo.url,
             source: ids.length > 0 || parent !== undefined || !source ? null : { ...source },
             counts: Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length])),
@@ -359,6 +427,8 @@ export async function runFactoryCheck(o, deps) {
     else {
         for (const w of warnings)
             deps.err(chalk.yellow(plainText(w)));
+        for (const l of limitations)
+            deps.out(chalk.gray(l));
         deps.out(renderCheckTable(items));
         if (o.mark) {
             if (m.marked.length > 0)

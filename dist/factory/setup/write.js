@@ -14,14 +14,20 @@
  * write that changed anything but the keys its scope owns, so `ship.*`
  * safety keys can never move.
  */
-import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { dirname } from 'path';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { backlogFileId } from '../../forge/local/backlog.js';
 import { applyEdits, modify, parse, parseTree } from 'jsonc-parser';
+import { DEFAULT_LOCAL_BACKLOG_DIR } from '../../forge/config.js';
+import { renderBacklogFile } from '../../forge/local/index.js';
 import { SetupError } from './guard.js';
 export function buildSection(repo, intake, progress, team) {
     const forge = repo.kind === 'github'
         ? { kind: 'github', github: { repo: `${repo.owner}/${repo.name}`, host: repo.host } }
-        : { kind: 'azure-devops', azureDevOps: { org: repo.owner, project: repo.project, repo: repo.name, ...(team ? { team } : {}) } };
+        : repo.kind === 'local'
+            // The gate is a command: it counts only from the user config or the committed base file, so the wizard does not write it.
+            ? { kind: 'local', local: { backlogDir: DEFAULT_LOCAL_BACKLOG_DIR } }
+            : { kind: 'azure-devops', azureDevOps: { org: repo.owner, project: repo.project, repo: repo.name, ...(team ? { team } : {}) } };
     return {
         forge,
         intake: { source: intake.source, ...(repo.kind === 'azure-devops' ? { itemTypes: [...intake.itemTypes] } : {}) },
@@ -200,6 +206,32 @@ export function planWrites(input) {
             out.push({ path, scope, before, after, diff: lineDiff(before, after) });
     }
     return out;
+}
+/** The sample item `--forge local` adds to an empty backlog: closed, so no run picks it up before it is edited. */
+export const SAMPLE_BACKLOG_FILE = '1-example.md';
+export const SAMPLE_BACKLOG_TEXT = renderBacklogFile({ title: 'Example: one change the factory can make', state: 'closed', labels: [], dependsOn: [] }, [
+    'One file per item: `<id>-<slug>.md` in this directory. Describe the change here, set `state: open`,',
+    'and commit the file on the base branch: `omg factory run` reads items at the base commit only.',
+    '',
+    '## Acceptance',
+    '- [ ] `npm test` passes',
+].join('\n'));
+/**
+ * The sample backlog item for the local forge, when `<root>/<backlogDir>` has
+ * no backlog file yet (`<n>-<slug>.md`); undefined otherwise. Written by applyWrites.
+ */
+export function planBacklogSample(root, backlogDir) {
+    const dir = join(root, ...backlogDir.split('/'));
+    let p = root;
+    for (const seg of backlogDir.split('/')) {
+        p = join(p, seg);
+        if (existsSync(p) && lstatSync(p).isSymbolicLink())
+            throw new SetupError(5, `refusing to write the sample backlog item: ${p} is a symlink or junction`);
+    }
+    if (existsSync(dir) && readdirSync(dir).some((name) => backlogFileId(name) !== undefined))
+        return undefined;
+    const path = join(dir, SAMPLE_BACKLOG_FILE);
+    return { path, scope: 'project', before: '', after: SAMPLE_BACKLOG_TEXT, diff: lineDiff('', SAMPLE_BACKLOG_TEXT) };
 }
 export function applyWrites(planned) {
     for (const w of planned) {

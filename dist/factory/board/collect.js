@@ -20,8 +20,9 @@
  * Exit codes: 0 shown; 1 an item could not be read; 2 usage; 5 incompatible
  * (forge mismatch, unsupported remote, no intake source and no runs).
  */
+import chalk from 'chalk';
 import { readdirSync } from 'fs';
-import { CheckIncompatibleError, CheckUsageError, checkEnvFor, openReadForge, parseItemId } from '../check/cli.js';
+import { CheckIncompatibleError, CheckUsageError, checkEnvFor, forgeLimitations, openReadForge, parseItemId } from '../check/cli.js';
 import { checkItems, plainText } from '../check/score.js';
 import { PROGRESS_STAGES } from '../../forge/types.js';
 import { latestVerdict, readShipState } from '../../ship/state.js';
@@ -297,10 +298,27 @@ export async function runFactoryBoard(o, deps) {
     }
     const env = o.check === false ? null : checkEnvFor(exec, root, config, base, baseSha);
     const board = collectBoard({ forge, config, root, ids, check: env, now: (deps.now ?? Date.now)(), warnings });
+    if (forge.kind === 'local') {
+        // The local backlog's working tree: an item not committed on the base is untrusted, and omg factory run cannot start it yet.
+        for (const id of ids) {
+            try {
+                const item = forge.tracker.viewItem(id);
+                if (item.uncommitted)
+                    warnings.push(`omg factory board: #${id} (${item.url}) is uncommitted: untrusted until it is committed on ${base}`);
+            }
+            catch (error) {
+                if (error instanceof FactorySafetyError)
+                    throw error;
+            }
+        }
+    }
+    warnings.push(...(forge.tracker.warnings?.() ?? []));
+    const limitations = forgeLimitations(forge, base);
     const json = {
         schemaVersion: BOARD_JSON_SCHEMA_VERSION,
         ok: !board.readFailed,
         forge: config.kind,
+        limitations,
         repo: config.repo.url,
         source: parent !== undefined || !source ? null : Object.fromEntries(Object.entries(source).map(([k, v]) => [k, typeof v === 'string' ? plainText(v) : v])),
         parent: spec,
@@ -314,6 +332,8 @@ export async function runFactoryBoard(o, deps) {
     else {
         for (const w of json.warnings)
             deps.err(w);
+        for (const l of limitations)
+            deps.out(chalk.gray(l));
         deps.out(renderBoard(json));
     }
     return json.ok ? 0 : 1;
