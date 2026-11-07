@@ -990,6 +990,30 @@ export async function teamStatusByTeamName(teamName: string, cwd = process.cwd()
 
 export async function teamResumeByName(teamName: string, cwd = process.cwd()): Promise<Record<string, unknown>> {
   validateTeamName(teamName);
+  const runtimeV2 = await import('../team/runtime-v2.js');
+  if (runtimeV2.isRuntimeV2Enabled()) {
+    const diagnostics: { reason?: string } = {};
+    const runtime = await runtimeV2.resumeTeamV2(teamName, cwd, diagnostics);
+    if (!runtime) {
+      return {
+        teamName,
+        resumed: false,
+        error: 'Team session is not currently resumable',
+        ...(diagnostics.reason ? { reason: diagnostics.reason } : {}),
+      };
+    }
+    return {
+      teamName,
+      resumed: true,
+      instanceId: runtime.instanceId,
+      sessionName: runtime.sessionName,
+      leaderPaneId: runtime.config.leader_pane_id,
+      workerPaneIds: runtime.config.workers
+        .map((worker) => worker.pane_id)
+        .filter((paneId): paneId is string => typeof paneId === 'string' && paneId.trim().length > 0),
+    };
+  }
+
   const runtime = await resumeTeam(teamName, cwd);
   if (!runtime) {
     return {

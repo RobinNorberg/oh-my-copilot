@@ -8153,6 +8153,9 @@ var init_keyword_detector = __esm({
       "deepsearch",
       "analyze",
       "deep-interview",
+      "ultragoal",
+      "ai-slop-cleaner",
+      "wiki",
       "codex",
       "gemini",
       "cursor",
@@ -8183,7 +8186,7 @@ function skillTriggerCriteria() {
   const priority = Array.isArray(KEYWORD_PRIORITY) ? KEYWORD_PRIORITY : [];
   return {
     ...Object.fromEntries(
-      priority.filter((type) => type !== "team").slice(0, 12).map((type) => [type, `The prompt explicitly invokes the ${type} trigger.`])
+      priority.filter((type) => type !== "team").map((type) => [type, `The prompt explicitly invokes the ${type} trigger.`])
     ),
     none: "No trigger fires; handle the prompt without a mode or skill."
   };
@@ -8247,6 +8250,16 @@ var init_points = __esm({
           haiku: "Quick lookups and lightweight, mechanical work",
           sonnet: "Standard coding and orchestration work",
           opus: "Complex architecture and deep analysis"
+        }
+      },
+      effort: {
+        type: "score",
+        instructions: "How much reasoning effort does this delegated task need?",
+        criteria: {
+          trivial: "Trivial: the answer or action is obvious, no thinking needed",
+          some: "Some thought: a few straightforward steps",
+          careful: "Careful multi-step reasoning: several dependent steps or things to check",
+          deep: "Deep reasoning: many tradeoffs, hidden pitfalls, or easy to get subtly wrong"
         }
       }
     };
@@ -12896,6 +12909,7 @@ __export(tmux_session_exports, {
   getWorkerLiveness: () => getWorkerLiveness,
   injectToLeaderPane: () => injectToLeaderPane,
   invokeDirectMailboxEffect: () => invokeDirectMailboxEffect,
+  isCmuxSurfaceTarget: () => isCmuxSurfaceTarget,
   isPosixTmuxSession: () => isPosixTmuxSession,
   isSessionAlive: () => isSessionAlive,
   isUnixLikeOnWindows: () => isUnixLikeOnWindows,
@@ -13367,7 +13381,11 @@ function isCmuxContext() {
   return detectTeamMultiplexerContext() === "cmux";
 }
 function isCmuxSurfaceTarget(value) {
-  return typeof value === "string" && value.trim().length > 0 && !value.trim().startsWith("%");
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.startsWith("%")) return false;
+  if (/^w[0-9A-Za-z]+:p[0-9A-Za-z]+$/.test(trimmed)) return false;
+  return isCmuxContext();
 }
 async function cmuxExecAsync(args) {
   const result = await execFileAsync2("cmux", args, { encoding: "utf-8" });
@@ -28117,12 +28135,26 @@ If you accept, exit your session. If you reject, remain active for task work and
     return retainedWorktrees.length > 0 ? { outcome: "cleaned", preservedWorktrees: retainedWorktrees } : { outcome: "cleaned" };
   });
 }
-async function resumeTeamV2(teamName, cwd) {
+async function resumeTeamV2(teamName, cwd, diagnostics) {
   const sanitized = sanitizeTeamName(teamName);
   const config = await readTeamConfig(sanitized, cwd);
-  if (!config?.instance_id) return null;
+  if (!config?.instance_id || (config.lifecycle_state ?? "active") !== "active") return null;
   const sessionName2 = config.tmux_session || `omc-team-${sanitized}`;
-  if (sessionName2.startsWith("cmux:") || isSdkTarget(sessionName2)) {
+  if (isSdkTarget(sessionName2)) {
+    const stateRoot2 = teamStateRoot(cwd, sanitized);
+    const sdkWorkers = config.workers.filter((worker) => isSdkTarget(worker.pane_id));
+    const liveness = await Promise.all(sdkWorkers.map(async (worker) => {
+      if (await getWorkerProviderLiveness(sanitized, cwd, config.instance_id, worker) !== "alive") return false;
+      const session = readSdkSession(stateRoot2, worker.name);
+      const current = session && (!worker.launch_attempt_id || session.attempt_id === worker.launch_attempt_id) ? session : null;
+      return current?.state !== "failed" && current?.state !== "closed";
+    }));
+    if (!liveness.some(Boolean)) {
+      if (diagnostics) {
+        diagnostics.reason = sdkWorkers.length === 0 ? "sdk_team_has_no_worker_hosts" : "sdk_worker_hosts_not_alive";
+      }
+      return null;
+    }
     return {
       teamName: sanitized,
       sanitizedName: sanitized,
@@ -28133,17 +28165,15 @@ async function resumeTeamV2(teamName, cwd) {
       cwd
     };
   }
-  if (!isValidTmuxServerIdentity(config.tmux_server_identity) || await observeTmuxServerIdentity(config.tmux_server_identity) !== "matching") {
-    return null;
-  }
   if (!config.leader_pane_id) return null;
+  const provider = config.leader_pane_id.startsWith("%") ? "tmux" : "cmux";
   const targetOwnership = await verifyTeamTargetOwnership({
-    provider: "tmux",
+    provider,
     providerTarget: sessionName2,
     recipient: "leader-fixed",
     recipientRole: "leader",
     paneId: config.leader_pane_id,
-    tmuxServerIdentity: config.tmux_server_identity
+    ...provider === "tmux" ? { tmuxServerIdentity: config.tmux_server_identity } : {}
   });
   if (targetOwnership.kind !== "owned") return null;
   return {
@@ -30515,6 +30545,27 @@ async function teamStatusByTeamName(teamName, cwd = process.cwd()) {
 }
 async function teamResumeByName(teamName, cwd = process.cwd()) {
   validateTeamName2(teamName);
+  const runtimeV2 = await Promise.resolve().then(() => (init_runtime_v2(), runtime_v2_exports));
+  if (runtimeV2.isRuntimeV2Enabled()) {
+    const diagnostics = {};
+    const runtime2 = await runtimeV2.resumeTeamV2(teamName, cwd, diagnostics);
+    if (!runtime2) {
+      return {
+        teamName,
+        resumed: false,
+        error: "Team session is not currently resumable",
+        ...diagnostics.reason ? { reason: diagnostics.reason } : {}
+      };
+    }
+    return {
+      teamName,
+      resumed: true,
+      instanceId: runtime2.instanceId,
+      sessionName: runtime2.sessionName,
+      leaderPaneId: runtime2.config.leader_pane_id,
+      workerPaneIds: runtime2.config.workers.map((worker) => worker.pane_id).filter((paneId) => typeof paneId === "string" && paneId.trim().length > 0)
+    };
+  }
   const runtime = await resumeTeam(teamName, cwd);
   if (!runtime) {
     return {

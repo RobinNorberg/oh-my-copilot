@@ -6215,14 +6215,35 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
 // ---------------------------------------------------------------------------
 // resumeTeam — reconstruct runtime from persisted state
 // ---------------------------------------------------------------------------
-export async function resumeTeamV2(teamName, cwd) {
+export async function resumeTeamV2(teamName, cwd, 
+/** Filled with why the team is not resumable, when the caller wants to say so. */
+diagnostics) {
     const sanitized = sanitizeTeamName(teamName);
     const config = await readTeamConfig(sanitized, cwd);
-    if (!config?.instance_id)
+    if (!config?.instance_id || (config.lifecycle_state ?? 'active') !== 'active')
         return null;
-    // Verify tmux session is alive
     const sessionName = config.tmux_session || `omc-team-${sanitized}`;
-    if (sessionName.startsWith('cmux:') || isSdkTarget(sessionName)) {
+    // Fork (SDK teams): an SDK host has no leader pane to verify; the team is
+    // resumable while at least one worker's SDK host is alive by its provider
+    // record and its session file has not failed or closed.
+    if (isSdkTarget(sessionName)) {
+        const stateRoot = teamStateRoot(cwd, sanitized);
+        const sdkWorkers = config.workers.filter((worker) => isSdkTarget(worker.pane_id));
+        const liveness = await Promise.all(sdkWorkers.map(async (worker) => {
+            if (await getWorkerProviderLiveness(sanitized, cwd, config.instance_id, worker) !== 'alive')
+                return false;
+            const session = readSdkSession(stateRoot, worker.name);
+            const current = session && (!worker.launch_attempt_id || session.attempt_id === worker.launch_attempt_id) ? session : null;
+            return current?.state !== 'failed' && current?.state !== 'closed';
+        }));
+        if (!liveness.some(Boolean)) {
+            if (diagnostics) {
+                diagnostics.reason = sdkWorkers.length === 0
+                    ? 'sdk_team_has_no_worker_hosts'
+                    : 'sdk_worker_hosts_not_alive';
+            }
+            return null;
+        }
         return {
             teamName: sanitized,
             sanitizedName: sanitized,
@@ -6233,19 +6254,16 @@ export async function resumeTeamV2(teamName, cwd) {
             cwd,
         };
     }
-    if (!isValidTmuxServerIdentity(config.tmux_server_identity)
-        || await observeTmuxServerIdentity(config.tmux_server_identity) !== 'matching') {
-        return null;
-    }
     if (!config.leader_pane_id)
         return null;
+    const provider = config.leader_pane_id.startsWith('%') ? 'tmux' : 'cmux';
     const targetOwnership = await verifyTeamTargetOwnership({
-        provider: 'tmux',
+        provider,
         providerTarget: sessionName,
         recipient: 'leader-fixed',
         recipientRole: 'leader',
         paneId: config.leader_pane_id,
-        tmuxServerIdentity: config.tmux_server_identity,
+        ...(provider === 'tmux' ? { tmuxServerIdentity: config.tmux_server_identity } : {}),
     });
     if (targetOwnership.kind !== 'owned')
         return null;

@@ -1,11 +1,11 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
-  REPO_ROOT, COLLECTOR, runVerifier, check, writeJson, gitFixture, fakeGhPreload, commitFixture, commitFixtureHead, buildCompleteFixture,
+  REPO_ROOT, SCRIPT, COLLECTOR, runVerifier, check, writeJson, gitFixture, fakeGhPreload, commitFixture, commitFixtureHead, buildCompleteFixture,
 } from './epic-3698-fixtures.js';
 
 describe('epic-3698 closure verifier (#3712)', () => {
@@ -18,6 +18,19 @@ describe('epic-3698 closure verifier (#3712)', () => {
     });
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('unknown argument: --direct-only');
+  });
+
+  it('runs main when invoked from a path that a URL pathname would encode', () => {
+    const root = mkdtempSync(join(tmpdir(), 'epic-3698 entry-'));
+    try {
+      const copy = join(root, 'verify-epic-3698-closure.mjs');
+      copyFileSync(SCRIPT, copy);
+      const result = spawnSync(process.execPath, [copy, '--no-such-flag'], { encoding: 'utf8' });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('unknown argument: --no-such-flag');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('refuses queued or in-progress PR checks instead of emitting completed evidence', () => {

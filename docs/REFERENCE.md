@@ -2,7 +2,7 @@
 
 Complete reference for oh-my-copilot. For quick start, see the main [README.md](../README.md).
 
-For v5.12.1, the plugin ships 20 agents, 63 skills, 21 command files, and one configured MCP server exposing exactly 56 tools.
+For v5.12.1, the plugin ships 20 agents, 96 skills, 21 command files, and one configured MCP server exposing exactly 56 tools.
 
 ---
 
@@ -16,7 +16,7 @@ For v5.12.1, the plugin ships 20 agents, 63 skills, 21 command files, and one co
 - [Legacy MCP Team Runtime Tools (Deprecated)](#legacy-mcp-team-runtime-tools-deprecated-opt-in-only)
 - [Agents (20 Total)](#agents-20-total)
 - [Goal Workflow UX: `/goal`, Ralph, Team, Ultragoal](#goal-workflow-ux-goal-ralph-team-ultragoal)
-- [Skills (63 Total)](#skills-63-total)
+- [Skills (96 Total)](#skills-96-total)
 - [Slash Commands](#slash-commands)
 - [Shipyard Methodology](./shipyard.md) — governed delivery & shared harness map
 - [Claude Code `/goal` Adapter Design](#claude-code-goal-adapter-design)
@@ -1971,7 +1971,7 @@ Autopilot continues to own cancel, resume, cleanup, state inspection, HUD, and S
 
 V1 deliberately defers `stageModels` and all model/provider/role routing, inline/no-spawn execution, dynamic commands/modes/state files, arbitrary stages/prompts/plugins and control-flow extensions, and the separate custom-skill inline-array frontmatter parser mismatch. See [ADR 03487](./adr/03487-named-autopilot-stage-profiles.md) for the decision record.
 
-## Skills (63 Total)
+## Skills (96 Total)
 
 Includes bundled workflow, utility, domain, and compatibility skills. Runtime truth comes from the builtin skill loader scanning `skills/*/SKILL.md` and expanding aliases declared in frontmatter.
 
@@ -1983,14 +1983,23 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | ------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------- |
 | `ai-slop-cleaner`         | Anti-slop cleanup workflow with optional reviewer-only `--review` pass        | `/ai-slop-cleaner`         |
 | `agent-doc-discipline`    | Writing-time discipline for agent-facing documents: checkable rules with a why, steps first, one meaning one home | `/agent-doc-discipline` |
+| `architect`               | Parallel design exploration before cross-boundary code; decision with rejected alternatives | `/architect`             |
 | `architecture-survey`     | Shipyard survey: report ranked architecture-deepening candidates with evidence, never edit code | `/architecture-survey`     |
+| `arena`                   | N-candidate bakeoff: parallel attempts, cross-judge, pick by rubric, graft the best parts      | `/arena`                   |
 | `ask`                     | Ask Claude, Codex, Gemini, Antigravity, Grok, or Cursor via local CLI          | `/ask`                     |
 | `ask-navigator`           | Shipyard navigator: chart foggy efforts into decision-ticket maps, hand off to launch | `/ask-navigator`    |
 | `autopilot`               | Full autonomous execution from idea to working code                            | `/autopilot`               |
 | `autoresearch`            | Stateful evaluator-driven improvement loop                                     | `/autoresearch`            |
+| `babysit`                 | Drive an open PR to merge-ready: watch-pr verdicts, fix CI, address comments; never merges | `/babysit`       |
+| `benchmark-checklist`     | Vet a measured speedup or regression before reporting or acting on it          | `/benchmark-checklist`     |
+| `blast-radius`            | Map what a change could break beyond the diff; prove safety by running code     | `/blast-radius`            |
+| `bro`                     | Restate the last message in plain language, keeping every fact                  | `/bro`                     |
 | `cancel`                  | Unified cancellation for active modes                                          | `/cancel`                  |
 | `cancel-ralph`            | Deprecated compatibility alias for `cancel`                                   | `/cancel-ralph`            |
 | `configure-notifications` | Configure Telegram, Discord, and Slack notification integrations               | `/configure-notifications` |
+| `correct`                 | Make repeated agent mistakes impossible at the highest enforcing level         | `/correct`                 |
+| `create-formal-verification-skill` | Generate a project-local skill that formally verifies one high-risk property (TLA+/Lean/Kani) | `/create-formal-verification-skill` |
+| `create-verification-skill` | Generate the project's own verify skill: commands discovered by execution, with a feature map | `/create-verification-skill` |
 | `critique`                | Critique all unpushed commits before pushing to remote                          | `/critique`                |
 | `debug`                   | Diagnose the current OMC session or repository state                           | `/debug`                   |
 | `deep-interview`          | Socratic deep interview with ambiguity gating                                  | `/deep-interview`                |
@@ -2001,15 +2010,27 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | `drydock`                 | Shipyard harness scaffold: 4-pillar shared environment, --check drift audit    | `/drydock`                 |
 | `execute`                 | Carry an approved task through to working, verified code                       | `/execute`                |
 | `external-context`        | Parallel document-specialist research                                          | `/external-context`       |
+| `figure-it-out`           | Design a bespoke playbook for tasks no bundled skill fits                      | `/figure-it-out`           |
+| `fix-ci`                  | Classify CI failures (real/flaky/environmental) and fix the real ones          | `/fix-ci`                  |
+| `fix-merge-conflicts`     | Resolve conflicts preserving both sides' intent, non-interactively             | `/fix-merge-conflicts`     |
+| `get-pr-comments`         | Fetch and triage review threads: fix / dismiss / ask                           | `/get-pr-comments`         |
 | `graph`                   | Deterministic orchestration graph runtime: declarative DAG pipelines with journal-based crash recovery | `/graph` |
 | `harbor`                  | Shipyard intake gate: verify external issues and PRs, hand a signature docket  | `/harbor`                  |
+| `hillclimb`                 | Sustained single-metric climbing loop: hypothesis, measurement, one commit per verified win | `/hillclimb`               |
+| `how`                     | Two-pass subsystem walkthrough: explore, then explain with file:line citations | `/how`                     |
 | `hud`                     | Configure HUD/statusline                                                        | `/hud`                     |
+| `in-your-own-words`       | Play back the goal, problem, and success check before work starts              | `/in-your-own-words`       |
 | `intent`                  | Internal requirements intake for non-engineer contributors                      | `/intent`                  |
+| `interrogate`             | Adversarial three-reviewer panel over a diff or design; severity-merged verdict | `/interrogate`             |
+| `ketchup`                 | Catch up on everything since your last message, with status lines              | `/ketchup`                 |
 | `launch`                  | Shipyard governed delivery pipeline: spec, tickets, frontier execution          | `/launch`                  |
 | `loft`                    | Shipyard shape-before-steel discipline: throwaway artifacts answer design questions | `/loft`              |
+| `maintain-formal-verification-skill` | Re-sync an existing formal verification skill after the covered code changed | `/maintain-formal-verification-skill` |
+| `maintain-verification-skill` | Re-sync the project verify skill when its commands drift | `/maintain-verification-skill` |
 | `map`                     | The yard's skill map: which skill owns which job, in delivery-loop order; routes, never executes | `/map`                  |
 | `minimal-code-discipline` | YAGNI-ladder writing-time discipline: reuse first, shortest correct diff        | `/minimal-code-discipline` |
 | `minimal-prose-discipline` | Writing-time discipline for the agent's own prose: protected core, no filler, close on the action | `/minimal-prose-discipline` |
+| `models`                  | Setup wizard for role-based model routing (`team.roleRouting`) and panel diversity | `/models`              |
 | `omc-ado-auto-review`     | Auto-review Azure DevOps PRs where you are an assigned reviewer                 | `/omc-ado-auto-review`     |
 | `omc-ado-review`          | Review Azure DevOps pull requests: diffs, reviewers, comments, votes, threads   | `/omc-ado-review`          |
 | `omc-ado-setup`           | Set up or troubleshoot the Azure DevOps integration (`.omg/config.json`)        | `/omc-ado-setup`           |
@@ -2024,27 +2045,39 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | `omc-plan`                | Strategic planning with optional interview and consensus modes                 | `/omc-plan`               |
 | `omc-review`              | Evaluate finished work for defects, risk, and simplification                   | `/omc-review`             |
 | `omc-setup`               | Install or refresh OMC for plugin, npm, and local-development setups           | `/omc-setup`              |
+| `personal-mode`            | Draft a cross-project user behavior profile from recent transcripts            | `/personal-mode`           |
 | `pr`                      | PR body assembly from OMC's paper trail: smallest visual, verify evidence, ADR-test reversibility | `/pr` |
+| `principles`              | Ten cross-cutting engineering principles for lane delegation and judgment      | `/principles`              |
 | `project-session-manager` | Manage isolated development environments (git worktrees + tmux)                | `/project-session-manager` |
 | `psm`                     | Deprecated compatibility alias for `project-session-manager`                    | `/psm`                     |
 | `ralph`                   | Persistence loop until verified completion                                     | `/ralph`                   |
 | `ralph-experiment`        | Hypothesis-driven experiment loop with notebook, git checkpoint/revert, and agent delegation | `/ralph-experiment` |
 | `ralplan`                 | Consensus planning entrypoint                                                   | `/ralplan`                 |
+| `recall`                  | Reconstruct working context from artifacts in trust order                      | `/recall`                  |
+| `reflect`                  | Three-reviewer transcript audit proposing concrete skill edits                 | `/reflect`                 |
 | `release`                 | Automated release workflow                                                      | `/release`                 |
 | `refit`                   | Cross-session retrospective; instrument evidence to user-approved environment fixes | `/refit` |
 | `remember`                | Save and retrieve durable session memory                                        | `/remember`                |
 | `research`                | Investigate an open question and return grounded findings                       | `/research`               |
 | `self-improve`            | Autonomous evolutionary code improvement engine                                | `/self-improve`           |
+| `sharpen`                 | Aim a task at its real objective: consumer, done-check, non-goals              | `/sharpen`                 |
 | `ship`                    | Task or PR to merge-ready: executor lane, independent verifier lane, bounded fix rounds, `omg ship` gates | `/ship` |
 | `session-flow`            | Reorient in the current session with an evidence-backed map of its flow        | `/session-flow`           |
+| `show-me-your-work`       | Append-only TSV decision trail for auditable autonomous work                   | `/show-me-your-work`       |
 | `skill`                   | Manage local skills (list/add/remove/search/edit)                              | `/skill`                   |
 | `skillify`                | Extract a reusable skill from the current session                              | `/skillify`                |
+| `stacked-delivery`         | Deliver a queue as one linear stacked PR chain, bottom-up landing              | `/stacked-delivery`        |
+| `teach`                   | Explain a subsystem by composing how and why, with a landing check             | `/teach`                   |
 | `team`                    | Coordinated multi-agent workflow                                               | `/team`                    |
 | `tdd`                     | Test-first discipline at pre-agreed seams                                     | `/tdd`                     |
+| `technical-writing`       | Layered prose standard for docs, RFCs, PR descriptions, commit messages        | `/technical-writing`       |
 | `trace`                   | Evidence-driven tracing lane with parallel tracer hypotheses                   | `/trace`                  |
+| `typescript-best-practices` | TS syntax grounding for type-system discipline                               | `/typescript-best-practices` |
 | `ultragoal`               | Durable multi-goal workflow with checkpointed artifacts                        | `/ultragoal`              |
 | `verify`                  | Verify that a change really works before claiming completion                    | `/verify`                 |
 | `visual-verdict`          | Structured visual QA verdict for screenshot/reference comparisons              | `/visual-verdict`        |
+| `what-did-i-get-done`     | Summarize authored commits over a period, grouped by theme                     | `/what-did-i-get-done`    |
+| `why`                     | Evidence-first investigation of why code is the way it is                      | `/why`                     |
 | `wiki`                    | Persistent markdown knowledge base that compounds across sessions              | `/wiki`                   |
 
 
@@ -2052,57 +2085,90 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 
 ## Slash Commands
 
-Most installed skills are exposed as `/<registered-name>` (on Claude Code: `/oh-my-copilot:<registered-name>`). The plugin ships 21 command files alongside the 63 skill entrypoints listed above; the commands below list both surfaces. Compatibility keyword modes like `deep-analyze` and `tdd` are prompt-triggered behaviors, not standalone slash commands. OMC's manual compaction helper is plugin-scoped as `/oh-my-copilot:compact`; bare `/compact` remains Claude Code's native command and is not shadowed by OMC. The helper preserves the user's note and instructs them to run bare `/compact`; OMC does not invoke native compaction itself because Claude Code's built-in `/compact` is not a prompt skill.
+Most installed skills are exposed as `/<registered-name>` (on Claude Code: `/oh-my-copilot:<registered-name>`). The plugin ships 21 command files alongside the 96 skill entrypoints listed above; the commands below list both surfaces. Compatibility keyword modes like `deep-analyze` and `tdd` are prompt-triggered behaviors, not standalone slash commands. OMC's manual compaction helper is plugin-scoped as `/oh-my-copilot:compact`; bare `/compact` remains Claude Code's native command and is not shadowed by OMC. The helper preserves the user's note and instructs them to run bare `/compact`; OMC does not invoke native compaction itself because Claude Code's built-in `/compact` is not a prompt skill.
 
 | Command                                                  | Description                                                                                   |
 | -------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `/ai-slop-cleaner <target>`             | Run the anti-slop cleanup workflow (`--review` for reviewer-only pass)                        |
 | `/agent-doc-discipline`                 | Apply the writing-time discipline for agent-facing documents                                   |
+| `/architect`                            | Parallel design exploration before cross-boundary code                                        |
+| `/arena <brief>`                        | N-candidate bakeoff: fan out, cross-judge, pick by rubric, graft                               |
 | `/ask <claude\|codex\|gemini\|antigravity\|grok\|cursor\|muse> <prompt>` | Route a prompt through the selected advisor CLI and capture an ask artifact                   |
 | `/architecture-survey [area]`           | Survey the repo for architecture-deepening candidates with evidence; reports only, never edits  |
 | `/ask-navigator <idea\|map>`            | Chart a foggy effort into a map of decision tickets (or work the open map), then hand off to launch |
 | `/autopilot <task>`                     | Full autonomous execution                                                                     |
 | `/autoresearch <task>`                  | Run a bounded evaluator-driven improvement mission                                             |
+| `/babysit <PR>`                         | Drive an open PR to merge-ready; watch verdicts, fix CI, never merges                          |
+| `/benchmark-checklist`                  | Vet a measured number before reporting or acting on it                                        |
+| `/blast-radius [path]`                  | Map what a change could break and prove safety by running code                                |
+| `/bro`                                  | Restate the last message in plain language                                                    |
 | `/cancel [--force] [--all]`            | Cancel current-session modes; `--force` skips graceful waits, `--all` explicitly selects all sessions |
 | `/cancel-ralph [--force] [--all]`      | Deprecated alias with the same force/scope distinction                                         |
 | `/configure-notifications`              | Configure notification integrations                                                           |
 | `/oh-my-copilot:compact [note]`                       | Prepare an OMC-safe manual handoff telling the user to run bare `/compact [note]`              |
+| `/correct`                              | Make repeated agent mistakes impossible at the highest enforcing level                        |
+| `/create-formal-verification-skill`     | Generate a project skill that formally verifies one high-risk property                        |
+| `/create-verification-skill`            | Generate the project's own verify skill, commands proven by running them                      |
 | `/debug`                                | Diagnose the current OMC session or repository state                                          |
 | `/deep-interview <idea>`                                 | Socratic interview with ambiguity scoring before execution                                    |
 | `/deepinit [path]`                      | Index codebase with hierarchical AGENTS.md files                                              |
 | `/diagram`                              | Explain the current topic with the smallest visual that carries it                            |
 | `/execute <task>`                      | Carry an approved task through to working, verified code                                      |
 | `/external-context <topic>`             | Run parallel document-specialist research                                                     |
+| `/figure-it-out <task-shape>`           | Design a bespoke playbook, validated against its anchors                                      |
+| `/fix-ci`                               | Classify CI failures and fix the real ones                                                    |
+| `/fix-merge-conflicts`                  | Resolve conflicts preserving both sides' intent                                               |
+| `/get-pr-comments`                       | Fetch and triage review threads                                                               |
 | `/harbor [sweep\|look at #N\|what's ready?]` | Sweep external issues and PRs, verify claims, hand a signature docket                    |
+| `/hillclimb <target>`                   | Sustained single-metric climbing loop                                                          |
+| `/how <subsystem>`                       | Two-pass subsystem walkthrough with file:line citations                                       |
 | `/hud [setup\|minimal\|focused\|full\|status]` | Configure HUD/statusline                                                               |
 | `/drydock [--check]`                   | Lay the shipyard harness keel in a repo (two faces seeded day one; every other surface appears on first use); --check audits drift |
+| `/in-your-own-words`                     | Play back the goal, problem, and success check before starting                                |
+| `/interrogate [path]`                   | Adversarial three-reviewer panel over a diff or design                                        |
+| `/ketchup`                               | Catch up on everything since your last message                                                |
 | `/launch <brief\|spec-path> [--serial]` | Run the shipyard governed delivery pipeline (spec -> tickets -> frontier)                      |
 | `/loft <design-question>`               | Loft the shape before cutting steel: a throwaway artifact answers a design question prose cannot settle |
+| `/maintain-formal-verification-skill`   | Re-sync a formal verification skill after the covered code changed                            |
+| `/maintain-verification-skill`          | Re-sync the project verify skill when its commands drift                                      |
 | `/minimal-code-discipline`              | Apply the YAGNI-ladder writing-time discipline while implementing                              |
 | `/minimal-prose-discipline`             | Apply the writing-time discipline for the agent's own prose                                    |
+| `/models`                               | Configure role-based model routing and check panel diversity                                  |
 | `/omc-doctor`                           | Diagnose and fix installation issues                                                          |
 | `/omc-plan <description>`               | Start planning session (supports consensus structured deliberation)                           |
 | `/omc-review [path]`                    | Review finished work for defects and risk                                                       |
 | `/omc-setup`                            | Install or refresh OMC                                                                        |
+| `/personal-mode`                       | Draft a cross-project personal behavior profile                                                |
 | `/pr`                                   | Assemble a PR body from existing paper-trail evidence                                           |
+| `/principles`                           | Load the ten cross-cutting engineering principles                                              |
 | `/project-session-manager <arguments>`  | Manage isolated dev environments with git worktrees + tmux                                    |
 | `/psm <arguments>`                      | Deprecated alias for project session manager                                                  |
 | `/ralph <task>`                         | Persistence loop until task completion (`--critic=architect \| critic \| codex`)             |
 | `/ralplan <description>`                | Iterative planning with consensus structured deliberation                                     |
+| `/recall`                               | Reconstruct working context from artifacts in trust order                                     |
+| `/reflect`                              | Three-reviewer transcript audit proposing skill edits                                         |
 | `/release`                              | Automated release workflow                                                                    |
 | `/refit [--scope <area>] [--last <N sessions>]` | Retrospect on OMC instrumentation and propose user-approved environment fixes            |
 | `/remember <note>`                      | Save durable session memory                                                                   |
 | `/research <question>`                  | Investigate an open question and return grounded findings                                      |
 | `/self-improve <topic>`                 | Run the autonomous code-improvement workflow                                                   |
+| `/sharpen <brief>`                      | Aim a task at its real objective: consumer, done-check, non-goals                             |
 | `/ship <task> \| --pr <n>`              | Take a task or PR to merge-ready through independent review and the `omg ship` gate engine     |
+| `/show-me-your-work`                    | Start (or read) the append-only decision trail                                                |
 | `/skill <action>`                       | Manage local skills                                                                           |
 | `/skillify`                             | Extract a reusable skill from the current session                                             |
+| `/stacked-delivery <queue>`             | Deliver a queue as one stacked PR chain, bottom-up                                             |
+| `/teach <subsystem>`                    | Explain a subsystem by composing how and why                                                 |
 | `/team <N>:<agent> <task>`               | Coordinated native team workflow                                                              |
 | `/tdd`                                  | Test-first discipline at pre-agreed seams                                                     |
+| `/technical-writing`                    | Write shipping prose to the layered standard                                                  |
 | `/trace`                                | Evidence-driven tracing lane                                                                  |
+| `/typescript-best-practices`            | Ground type-system discipline in TypeScript syntax                                            |
 | `/ultragoal <condition>`                | Track a durable multi-goal workflow                                                           |
 | `/verify <target>`                      | Verify that a change really works before claiming completion                                  |
 | `/visual-verdict <task>`                | Structured visual QA verdict for screenshot/reference comparisons                             |
+| `/what-did-i-get-done [period]`         | Summarize authored commits, grouped by theme                                                  |
+| `/why <question>`                       | Investigate why code is the way it is, from evidence                                          |
 | `/wiki <action>`                        | Query or update the persistent markdown knowledge base                                         |
 
 
@@ -2442,6 +2508,8 @@ Configure HUD elements in `~/.claude/settings.json`:
     "preset": "focused",
     "elements": {
       "cwd": true,
+      "agents": true,
+      "todos": true,
       "gitRepo": true,
       "gitBranch": true,
       "showTokens": true

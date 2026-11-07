@@ -245,7 +245,7 @@ Other skills load these; invoke one directly to apply it to your own work.
 
 </details>
 
-The [Full Reference](docs/REFERENCE.md#skills-63-total) lists every skill with
+The [Full Reference](docs/REFERENCE.md#skills-96-total) lists every skill with
 its arguments.
 
 ### Magic keywords

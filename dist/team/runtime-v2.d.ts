@@ -454,6 +454,10 @@ export declare function cleanupAbandonedTeamState(teamName: string, cwd: string)
  * 5. Clean up state
  */
 export declare function shutdownTeamV2(teamName: string, cwd: string, options?: ShutdownOptionsV2): Promise<ShutdownTeamV2Result>;
-export declare function resumeTeamV2(teamName: string, cwd: string): Promise<TeamRuntimeV2 | null>;
+export declare function resumeTeamV2(teamName: string, cwd: string, 
+/** Filled with why the team is not resumable, when the caller wants to say so. */
+diagnostics?: {
+    reason?: string;
+}): Promise<TeamRuntimeV2 | null>;
 export declare function findActiveTeamsV2(cwd: string): Promise<string[]>;
 //# sourceMappingURL=runtime-v2.d.ts.map

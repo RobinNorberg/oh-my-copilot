@@ -11,12 +11,13 @@ const REPO_ROOT = join(__dirname, '..', '..');
 const PLUGIN_JSON = join(REPO_ROOT, '.claude-plugin', 'plugin.json');
 const SKILLS_DIR = join(REPO_ROOT, 'skills');
 const COMMANDS_DIR = join(REPO_ROOT, 'commands');
-// Fork: oh-my-copilot ships 61 bundled skills vs upstream's 47, and each compact
-// shim is ~900 bytes of fixed boilerplate (~1.1 KiB average), so the total
-// scales with skill count rather than with any one oversized skill. Upstream's
-// 64 KiB gate is a proxy, not a host limit: only the (already truncated)
-// frontmatter descriptions load at startup, and the per-file 2 KiB cap below
-// still guards each shim. 80 KiB leaves ~19% headroom over the 61-skill payload (65 KiB).
+// Fork: oh-my-copilot ships more bundled skills than upstream (96, measured
+// 2026-11-07), and each compact shim is mostly fixed boilerplate (~730 bytes
+// average, 1044 max), so the total scales with skill count rather than with
+// any one oversized skill. Upstream's 64 KiB gate is a proxy, not a host
+// limit: only the (already truncated) frontmatter descriptions load at
+// startup, and the per-file 2 KiB cap below still guards each shim. 80 KiB
+// leaves ~15% headroom over the 96-skill payload (69,872 bytes, ~68 KiB).
 const COMPACT_PLUGIN_SKILL_BUDGET_BYTES = 80 * 1024;
 const COMPACT_PLUGIN_SKILL_PER_FILE_BUDGET_BYTES = 2 * 1024;
 function readPluginJson() {
@@ -72,6 +73,7 @@ describe('plugin skill context budget gate (issues #2943, #2986)', () => {
                 const source = readFileSync(join(SKILLS_DIR, skillDir, 'SKILL.md'), 'utf-8');
                 expect(Buffer.byteLength(shim), `${skillDir} compact shim size`).toBeLessThan(COMPACT_PLUGIN_SKILL_PER_FILE_BUDGET_BYTES);
                 expect(shim, `${skillDir} shim should point to archived body`).toContain(`../../skill-bodies/${skillDir}/SKILL.md`);
+                expect(shim, `${skillDir} shim should instruct native loaders`).toContain('Read and follow the full skill body at');
                 expect(shim, `${skillDir} shim should expose runtime body override`).toContain('omc-full-body:');
                 expect(shim, `${skillDir} shim should prefer plugin root env vars`).toContain(`\${CLAUDE_PLUGIN_ROOT:-\${OMC_PLUGIN_ROOT}}/skill-bodies/${skillDir}/SKILL.md`);
                 expect(shim, `${skillDir} shim should define plugin root by containing directories`).toContain('The plugin root is the directory containing both `skills/` and `skill-bodies/`.');

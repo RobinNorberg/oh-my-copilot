@@ -14,6 +14,11 @@ vi.mock('../../hud/elements/git.js', () => ({
     renderGitBranch: vi.fn(() => null),
     renderGitStatus: vi.fn(() => null),
 }));
+// The real element reads the Claude account from `.claude.json`; stub it so
+// the test controls whether there is an account to show.
+vi.mock('../../hud/elements/account.js', () => ({
+    renderAccount: vi.fn(() => 'acct:robin@example.com'),
+}));
 function strip(s) {
     return s.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
 }
@@ -55,6 +60,7 @@ const ALL_ON = {
         ...DEFAULT_HUD_CONFIG.elements,
         rateLimits: true,
         apiKeySource: true,
+        account: true,
         thinking: true,
         todos: true,
         sessionSummary: true,
@@ -67,7 +73,7 @@ describe('Copilot host element visibility', () => {
     it('render drops the Copilot-invalid elements even when the config enables them', async () => {
         const claude = strip(await render(contextWithDroppedData('claude'), ALL_ON));
         const copilot = strip(await render(contextWithDroppedData('copilot'), ALL_ON));
-        for (const marker of ['5h:', 'key:env', 'thinking', 'todos:', 'summary:', 'payload ~27MB']) {
+        for (const marker of ['5h:', 'key:env', 'acct:robin@example.com', 'thinking', 'todos:', 'summary:', 'payload ~27MB']) {
             expect(claude, marker).toContain(marker);
             expect(copilot, marker).not.toContain(marker);
         }
