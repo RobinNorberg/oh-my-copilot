@@ -6,9 +6,9 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 # oh-my-copilot v5.19.7
 
-## [5.19.7] - 2026-11-04
+## [5.19.7] - 2026-11-07
 
-Fork **v5.19.7** (from v5.19.6) is a fix release for Copilot CLI users. `/omc-setup` and `/team` no longer give Claude Code instructions on Copilot CLI, setup finds its own scripts in PowerShell, and the hook state lock handles slow Windows owner probes (upstream #4727). This release was published without the live Copilot smoke.
+Fork **v5.19.7** (from v5.19.6) is a fix release for Copilot CLI users. `/omc-setup` and `/team` no longer give Claude Code instructions on Copilot CLI, and setup finds its own scripts in PowerShell. On Windows, hooks no longer overrun their time budget on a busy machine: the hook state lock handles slow owner probes (upstream #4727) and no longer spawns PowerShell for its own identity, and hook stdin waits fit inside the runner's budget. Lock records move to version 2; see the note on mixed plugin versions below. This release was published without the live Copilot smoke.
 
 ### Fixed
 
