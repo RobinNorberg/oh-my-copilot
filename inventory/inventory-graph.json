@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "4d5076ee77eda7f6ea6915faeaa111e9fc1d32e0",
-    "sourceSha256": "8eddca22c54a76c626718898770f3031b30fd9c3e9e22fdcf0ccccd1c272790e",
+    "head": "5d68821e7c9624de1880a8d23b77783cf6397af4",
+    "sourceSha256": "93e895ab7c357c1428979e62dc7b77ee769c433b4748724c2616738efe792b22",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "4d5076ee77eda7f6ea6915faeaa111e9fc1d32e0",
-  "sourceSha256": "8eddca22c54a76c626718898770f3031b30fd9c3e9e22fdcf0ccccd1c272790e",
+  "head": "5d68821e7c9624de1880a8d23b77783cf6397af4",
+  "sourceSha256": "93e895ab7c357c1428979e62dc7b77ee769c433b4748724c2616738efe792b22",
   "counts": {
     "public": {
       "skills": 63,
@@ -57100,11 +57100,6 @@
         "path": "tests/integration/task-list-identity-stop.test.ts"
       },
       {
-        "id": "tests/integration/win32-own-identity-bound.test.ts",
-        "kind": "other",
-        "path": "tests/integration/win32-own-identity-bound.test.ts"
-      },
-      {
         "id": "tests/integration/workflow-profile-keyword-activation.test.ts",
         "kind": "other",
         "path": "tests/integration/workflow-profile-keyword-activation.test.ts"
@@ -59109,11 +59104,6 @@
       {
         "from": "scripts/lib/state-lock.mjs",
         "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/lib/state-lock.mjs",
-        "to": "external:perf_hooks",
         "kind": "imports"
       },
       {
@@ -66433,6 +66423,11 @@
       },
       {
         "from": "src/__tests__/pre-tool-enforcer.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/pre-tool-enforcer.test.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
@@ -72164,6 +72159,11 @@
       {
         "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -115457,56 +115457,6 @@
         "kind": "imports"
       },
       {
-        "from": "tests/integration/win32-own-identity-bound.test.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/win32-own-identity-bound.test.ts",
-        "to": "external:child_process",
-        "kind": "type-imports"
-      },
-      {
-        "from": "tests/integration/win32-own-identity-bound.test.ts",
-        "to": "external:crypto",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/win32-own-identity-bound.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/win32-own-identity-bound.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/win32-own-identity-bound.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/win32-own-identity-bound.test.ts",
-        "to": "external:url",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/win32-own-identity-bound.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/win32-own-identity-bound.test.ts",
-        "to": "scripts/lib/state-lock.mjs",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/win32-own-identity-bound.test.ts",
-        "to": "src/lib/mode-state-io.ts",
-        "kind": "imports"
-      },
-      {
         "from": "tests/integration/workflow-profile-keyword-activation.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -115574,6 +115524,11 @@
       {
         "from": "tests/integration/workflow-profile-lock-recovery.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/workflow-profile-lock-recovery.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -116373,12 +116328,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9737,
-      "edgeCount": 11811,
-      "importEdgeCount": 9749,
+      "nodeCount": 9736,
+      "edgeCount": 11803,
+      "importEdgeCount": 9742,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "a4fd018ecbb87054b24299cb35c8573bfdb1d7d3d5072ea916904f5af958fd1b",
-  "manifestSha256": "c309a6e1ae615e94e7c71c97f27070710322c044511783b8687c8ee18c8a10e3"
+  "inventorySha256": "13adc141bdbd3ee548b3c21fd659ccefc27b14a0a6e27cbd667607f1be12cb2d",
+  "manifestSha256": "15e8bb9f56b6caf5ace9bc6b11b0fa83460c8fd74d25a67acc4931cf45b915fb"
 }
