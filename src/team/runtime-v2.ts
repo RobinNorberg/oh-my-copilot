@@ -115,6 +115,7 @@ import {
   renderWorkerExitContract,
 } from './worker-bootstrap.js';
 import { queueInboxInstruction } from './mcp-comm.js';
+import { startSdkLaunchProgress } from './sdk-launch-progress.js';
 import { readLeaderInbox, type LeaderInboxMessage } from './mailbox-outstanding.js';
 import {
   cleanupTeamWorktrees,
@@ -1600,6 +1601,8 @@ export interface SdkTeamSettings {
   launchConcurrency: number;
   /** `team.sdk.inProcessTools` / `OMC_TEAM_SDK_INPROCESS_TOOLS` (`1`/`true`, `0`/`false`). */
   inProcessTools: boolean;
+  /** `team.sdk.compactProtocol`: the compact worker protocol overlay for sdk workers. Default false. */
+  compactProtocol: boolean;
   denyTools: string[];
   denyUrls: string[];
 }
@@ -1757,6 +1760,10 @@ export function resolveSdkTeamSettings(pluginCfg: PluginConfig): SdkTeamSettings
   if (configInProcess !== undefined && typeof configInProcess !== 'boolean') {
     throw new Error(`invalid_team_sdk_config:inProcessTools must be a boolean (got ${JSON.stringify(configInProcess)})`);
   }
+  const configCompact = sdk.compactProtocol as unknown;
+  if (configCompact !== undefined && typeof configCompact !== 'boolean') {
+    throw new Error(`invalid_team_sdk_config:compactProtocol must be a boolean (got ${JSON.stringify(configCompact)})`);
+  }
   const rawEnvInProcess = process.env.OMC_TEAM_SDK_INPROCESS_TOOLS?.trim().toLowerCase();
   const envInProcess = rawEnvInProcess === '1' || rawEnvInProcess === 'true' ? '1'
     : rawEnvInProcess === '0' || rawEnvInProcess === 'false' ? '0'
@@ -1768,6 +1775,7 @@ export function resolveSdkTeamSettings(pluginCfg: PluginConfig): SdkTeamSettings
   const model = process.env.OMC_TEAM_SDK_MODEL?.trim() || sdk.model?.trim();
   return {
     inProcessTools: envInProcess === '1' ? true : envInProcess === '0' ? false : (configInProcess as boolean | undefined) ?? false,
+    compactProtocol: (configCompact as boolean | undefined) ?? false,
     launchConcurrency: (envConcurrency !== undefined ? Math.max(1, Math.floor(envConcurrency)) : undefined)
       ?? (configConcurrency as number | undefined) ?? DEFAULT_SDK_LAUNCH_CONCURRENCY,
     maxCreditsPerWorker: envNumber('OMC_TEAM_SDK_MAX_CREDITS') ?? (configCap as number | undefined) ?? DEFAULT_SDK_MAX_CREDITS_PER_WORKER,
@@ -1841,6 +1849,9 @@ async function spawnSdkV2Worker(opts: SpawnV2WorkerOptions, sdk: SdkTeamSettings
     };
   }
   const attempt = launch.attempt;
+  // Launch phases (session created, first reply, claim) on stderr while the
+  // leader waits for startup evidence; stopped whatever the outcome.
+  const stopLaunchProgress = startSdkLaunchProgress(stateRoot, opts.workerName, (line) => process.stderr.write(`${line}\n`));
   const triggerMessage = `${generateTriggerMessage(opts.teamName, opts.workerName, workerInstructionStateRoot(opts.cwd, opts.teamName))} ` +
     `[launch:${attempt.attempt_id.slice(0, 12)}]`;
   const fenced = await withWorkerLaunchAttemptFence(attempt, () => queueInboxInstruction({
@@ -1872,7 +1883,7 @@ async function spawnSdkV2Worker(opts: SpawnV2WorkerOptions, sdk: SdkTeamSettings
         : { ok: false, transport: 'prompt_stdin' as const, reason: 'copilot_sdk_startup_evidence_missing' };
     },
     deps: { writeWorkerInbox },
-  }));
+  })).finally(stopLaunchProgress);
   const outcome = fenced.ok ? fenced.value : { ok: false as const, reason: 'worker_launch_attempt_superseded' };
   if (!outcome.ok) {
     const session = readSdkSession(stateRoot, opts.workerName);
@@ -4795,6 +4806,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
         instructionStateRoot: workerInstructionStateRoot(leaderCwd, sanitized),
         ...(prepared.role && shouldInjectContract(prepared.role, prepared.agentType)
           ? { reviewerRole: true } : {}),
+        ...(sdkMode && sdkSettings?.compactProtocol ? { compactProtocol: true } : {}),
       });
       const worktree = workerWorktrees.get(wName);
       if (worktree) {

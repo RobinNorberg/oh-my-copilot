@@ -9,7 +9,22 @@ import {
   DEFAULT_SDK_MAX_CREDITS_PER_WORKER,
   resolveBlockerTimeoutMs,
   resolveSdkDefaultWorktreeMode,
+  resolveSdkTeamSettings,
 } from '../runtime-v2.js';
+
+describe('resolveSdkTeamSettings compactProtocol', () => {
+  const withCompact = (value: unknown) => ({ team: { sdk: { compactProtocol: value } } }) as unknown as PluginConfig;
+
+  it('defaults to false and passes a boolean through', () => {
+    expect(resolveSdkTeamSettings({} as PluginConfig).compactProtocol).toBe(false);
+    expect(resolveSdkTeamSettings(withCompact(true)).compactProtocol).toBe(true);
+    expect(resolveSdkTeamSettings(withCompact(false)).compactProtocol).toBe(false);
+  });
+
+  it('rejects a non-boolean', () => {
+    expect(() => resolveSdkTeamSettings(withCompact('yes'))).toThrow(/^invalid_team_sdk_config:compactProtocol/);
+  });
+});
 
 describe('DEFAULT_SDK_MAX_CREDITS_PER_WORKER', () => {
   it('is 50 (above the Copilot runtime floor of 30 and one measured task)', () => {
