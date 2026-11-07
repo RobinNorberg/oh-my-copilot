@@ -14011,7 +14011,7 @@ var init_sdk = __esm({
         return acc;
       }
       function getIPV6(input) {
-        let tokenCount = 0;
+        let tokenCount2 = 0;
         const output = { error: false, address: "", zone: "" };
         const address = [];
         const buffer = [];
@@ -14045,9 +14045,9 @@ var init_sdk = __esm({
             if (!consume()) {
               break;
             }
-            tokenCount++;
+            tokenCount2++;
             address.push(":");
-            if (tokenCount > 7) {
+            if (tokenCount2 > 7) {
               output.error = true;
               break;
             }
@@ -59020,6 +59020,12 @@ function getTrustedPrefixes() {
       localAppData ? flavor.join(localAppData, "npm") : void 0,
       localAppData ? flavor.join(localAppData, "Programs") : void 0,
       localAppData ? flavor.join(localAppData, "Yarn", "bin") : void 0,
+      // WinGet: per-user installs and their PATH links live under LOCALAPPDATA,
+      // machine-wide (--scope machine) installs under ProgramFiles.
+      localAppData ? flavor.join(localAppData, "Microsoft", "WinGet", "Packages") : void 0,
+      localAppData ? flavor.join(localAppData, "Microsoft", "WinGet", "Links") : void 0,
+      programFiles ? flavor.join(programFiles, "WinGet", "Packages") : void 0,
+      programFiles ? flavor.join(programFiles, "WinGet", "Links") : void 0,
       programFiles ? flavor.join(programFiles, "nodejs") : void 0,
       programFilesX86 ? flavor.join(programFilesX86, "nodejs") : void 0,
       home ? flavor.join(home, ".cargo", "bin") : void 0,
@@ -90284,9 +90290,52 @@ function generateWorkerOverlay(params) {
   const checkpointTaskCommand = formatOmcCliInvocation(`team api write-task-checkpoint --input "{\\"team_name\\":\\"${teamName}\\",\\"task_id\\":\\"<id>\\",\\"worker\\":\\"${workerName}\\",\\"claim_token\\":\\"<claim_token>\\",\\"task_version\\":<current_task_version>,\\"sequence\\":<next_sequence>,\\"resume_payload\\":<safe_boundary_json>}" --json`);
   const teamApiCommand = formatOmcCliInvocation("team api");
   const teamCommand2 = formatOmcCliInvocation("team");
+  const sendMessageCommand = formatOmcCliInvocation(`team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"<message>\\"}" --json`);
   const taskList = sanitizedTasks.length > 0 ? sanitizedTasks.map((t) => `- **Task ${t.id}**: ${t.subject}
   Description: ${t.description}
   Status: pending`).join("\n") : "- No tasks assigned yet. Check your inbox for assignments.";
+  if (params.compactProtocol === true && agentType !== "cursor") {
+    return `# Team Worker Protocol (sdk)
+
+You are a **team worker**, not the leader. Team ${teamName}, worker ${workerName}, agent ${agentType}, OMC_TEAM_WORKER=${teamName}/${workerName}. Preserve the exact \`OMC_WORKER_LAUNCH_ATTEMPT_ID\` value in task claims and status updates.
+
+## Workflow (in order)
+Recovery task adopted from an owner: skip steps 1-2 and resume from Recovery Continuation with its \`claim_token\`. No task assigned: wait for one; never invent a task.
+1. **Claim** first: \`${claimTaskCommand}\`
+   Save \`claim_token\`. If the claim fails, do not ACK or start work; report the failure to leader-fixed and wait.
+2. **ACK once** (never again for later tasks): \`${sendAckCommand}\`
+3. **Do the work** in your task description. Edit only the paths it names.
+4. **Commit**: in a team worktree, commit the finished change on its branch before step 5 (never push), so it survives the worker stopping.
+5. **Transition** (REQUIRED before you stop):
+   - Success: \`${completeTaskCommand}\`
+     The \`result\` MUST hold the summary, the verification you ran and the subagent skip reason; without it completion is rejected (\`missing_delegation_compliance_evidence\`).
+   - Failure: \`${failTaskCommand}\`
+     Before failing, send the leader what failed and why (exact error text).
+6. Replies and ACKs are not a stop signal: keep going until the task is completed or failed.
+
+## Your Tasks
+${taskList}
+
+## Task API (never edit task files directly)
+- Read task: \`${readTaskCommand}\` (task_id is "1", not "task-1")
+- Release claim: \`${releaseClaimCommand}\`
+- Checkpoint before a risky step or stopping: \`${checkpointTaskCommand}\` (a completed safe boundary and the next action; no credentials)
+
+## Mailbox and status
+- Inbox: ${inboxPath}. Mailbox: \`${mailboxListCommand}\`; mark read: \`${mailboxDeliveredCommand}\`
+- To leader: \`${sendMessageCommand}\`
+- Blocked: write {"state":"blocked","reason":"...","launch_attempt_id":"<id>","updated_at":"<iso>"} to ${statusPath} and message the leader.
+- State root: \`OMC_TEAM_STATE_ROOT\` when set (already team-specific; do not append \`team/${teamName}\`), else ${params.cwd}/.omg/state/team/${teamName}. Never use a worktree-local \`.omg/state\`.
+- Shutdown request in the inbox: write {"status":"accept"|"reject","reason":"...","updated_at":"<iso>"} to ${shutdownAckPath}; forced shutdown cannot be rejected.
+
+## Rules
+- No sub-agents, no team or orchestration commands (\`${teamCommand2} ...\`, \`$team\`, \`$autopilot\`, \`$ralph\`). Your only control surface is \`${teamApiCommand} ... --json\`.
+- ${renderWorkerExitContract(agentType, false)}
+
+${bootstrapInstructions ? `## Role Context
+${bootstrapInstructions}
+` : ""}`;
+  }
   const cursorReviewer = agentType === "cursor" && reviewerRole === true;
   const persistentCursor = agentType === "cursor" && !cursorReviewer;
   const mandatoryWorkflow = cursorReviewer ? [
@@ -135522,6 +135571,7 @@ var init_copilot_smoke = __esm({
 var sdk_host_exports = {};
 __export(sdk_host_exports, {
   WORKER_GIT_CONFIG: () => WORKER_GIT_CONFIG,
+  addTurnUsage: () => addTurnUsage,
   adoptSessionEnv: () => adoptSessionEnv,
   prependPath: () => prependPath,
   readDoorbell: () => readDoorbell,
@@ -135532,6 +135582,23 @@ __export(sdk_host_exports, {
   urlScopedExtraHeaderKeys: () => urlScopedExtraHeaderKeys,
   workerGitHubToken: () => workerGitHubToken
 });
+function addTurnUsage(list2, turn, event) {
+  if (event.type !== "assistant.usage") return;
+  const data = event.data ?? {};
+  let entry2 = list2[list2.length - 1];
+  if (!entry2 || entry2.turn !== turn) {
+    entry2 = { turn, calls: 0, credits: 0, input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, model: null };
+    list2.push(entry2);
+    if (list2.length > TURN_USAGE_MAX) list2.splice(0, list2.length - TURN_USAGE_MAX);
+  }
+  entry2.calls += 1;
+  entry2.credits += usageCredits(event);
+  entry2.input_tokens += tokenCount(data.inputTokens);
+  entry2.output_tokens += tokenCount(data.outputTokens);
+  entry2.cache_read_tokens += tokenCount(data.cacheReadTokens);
+  entry2.cache_write_tokens += tokenCount(data.cacheWriteTokens);
+  if (typeof data.model === "string" && data.model) entry2.model = data.model;
+}
 function withTimeout5(promise, ms, label2) {
   let timer;
   return Promise.race([
@@ -135790,7 +135857,8 @@ async function runSdkHost(spec, deps) {
     aborts: 0,
     permissions: [],
     last_error: null,
-    timeline: { host_started_at: (/* @__PURE__ */ new Date()).toISOString() }
+    timeline: { host_started_at: (/* @__PURE__ */ new Date()).toISOString() },
+    turn_usage: []
   };
   let dirty = true;
   const writeSessionJson = deps.writeSessionJson ?? atomicWriteJson;
@@ -135967,8 +136035,12 @@ async function runSdkHost(spec, deps) {
     }
     session.last_event_type = event.type ?? null;
     session.last_event_at = at;
+    mark("first_event_at");
     const data = event.data ?? {};
     switch (event.type) {
+      case "assistant.turn_start":
+        mark("turn_started_at");
+        break;
       case "session.idle":
         busy = false;
         session.state = capped ? "capped" : "idle";
@@ -135980,6 +136052,7 @@ async function runSdkHost(spec, deps) {
       case "assistant.usage": {
         session.usage.credits += usageCredits(event);
         if (data.initiator === "user") session.usage.premium_requests += 1;
+        addTurnUsage(session.turn_usage, session.turns, event);
         if (!capped && session.usage.credits >= spec.max_credits) {
           capped = true;
           session.last_error = `credit cap ${spec.max_credits} reached (${session.usage.credits.toFixed(2)})`;
@@ -136280,7 +136353,7 @@ async function runSdkHostMain(specPath, loadInProcessTools) {
   }
   process.exit(code);
 }
-var import_node_fs31, import_promises31, import_node_crypto16, import_node_child_process17, import_node_path37, DECISION_TIMEOUT_MS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, ABORT_GRACE_MS3, SHUTDOWN_GRACE_MS3, STOP_TIMEOUT_MS3, TOOL_CLEANUP_TIMEOUT_MS, PERMISSION_LOG_MAX, CREDENTIAL_READ_TIMEOUT_MS, STOP_SIGNALS, TimeoutError2, sleep11, errText7, WORKER_CREDENTIAL_RESET, WORKER_GIT_CONFIG;
+var import_node_fs31, import_promises31, import_node_crypto16, import_node_child_process17, import_node_path37, DECISION_TIMEOUT_MS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, ABORT_GRACE_MS3, SHUTDOWN_GRACE_MS3, STOP_TIMEOUT_MS3, TOOL_CLEANUP_TIMEOUT_MS, PERMISSION_LOG_MAX, CREDENTIAL_READ_TIMEOUT_MS, STOP_SIGNALS, TURN_USAGE_MAX, tokenCount, TimeoutError2, sleep11, errText7, WORKER_CREDENTIAL_RESET, WORKER_GIT_CONFIG;
 var init_sdk_host = __esm({
   "src/team/sdk-host.ts"() {
     "use strict";
@@ -136308,6 +136381,8 @@ var init_sdk_host = __esm({
     PERMISSION_LOG_MAX = 200;
     CREDENTIAL_READ_TIMEOUT_MS = 5e3;
     STOP_SIGNALS = ["SIGTERM", "SIGINT", "SIGHUP"];
+    TURN_USAGE_MAX = 50;
+    tokenCount = (value) => typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
     TimeoutError2 = class extends Error {
     };
     sleep11 = (ms) => new Promise((r) => {

@@ -52,6 +52,53 @@ const TOOL_CLEANUP_TIMEOUT_MS = 5_000;
 const PERMISSION_LOG_MAX = 200;
 const CREDENTIAL_READ_TIMEOUT_MS = 5_000;
 const STOP_SIGNALS = ['SIGTERM', 'SIGINT', 'SIGHUP'] as const;
+const TURN_USAGE_MAX = 50;
+
+/**
+ * One doorbell turn's billed model calls, summed from `assistant.usage`: what
+ * a turn costs and how much of its prompt was input versus cache reads. Turn 0
+ * holds calls before the first prompt.
+ */
+export interface SdkTurnUsage {
+  turn: number;
+  calls: number;
+  credits: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  model: string | null;
+}
+
+/** Launch phases the host stamps beyond {@link SdkSessionFile}'s timeline (read by sdk-launch-progress). */
+export type SdkHostTimelineMark = keyof SdkSessionFile['timeline'] | 'first_event_at' | 'turn_started_at';
+
+/** The session file as this host writes it: the shared shape plus the per-turn usage and launch marks. */
+export type SdkHostSessionFile = Omit<SdkSessionFile, 'timeline'> & {
+  timeline: Partial<Record<SdkHostTimelineMark, string>>;
+  turn_usage: SdkTurnUsage[];
+};
+
+const tokenCount = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0);
+
+/** Add one `assistant.usage` event to `turn`'s entry (the last {@link TURN_USAGE_MAX} turns are kept). */
+export function addTurnUsage(list: SdkTurnUsage[], turn: number, event: CopilotEvent): void {
+  if (event.type !== 'assistant.usage') return;
+  const data = (event.data ?? {}) as Record<string, unknown>;
+  let entry = list[list.length - 1];
+  if (!entry || entry.turn !== turn) {
+    entry = { turn, calls: 0, credits: 0, input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, model: null };
+    list.push(entry);
+    if (list.length > TURN_USAGE_MAX) list.splice(0, list.length - TURN_USAGE_MAX);
+  }
+  entry.calls += 1;
+  entry.credits += usageCredits(event);
+  entry.input_tokens += tokenCount(data.inputTokens);
+  entry.output_tokens += tokenCount(data.outputTokens);
+  entry.cache_read_tokens += tokenCount(data.cacheReadTokens);
+  entry.cache_write_tokens += tokenCount(data.cacheWriteTokens);
+  if (typeof data.model === 'string' && data.model) entry.model = data.model;
+}
 
 export interface SdkHostDeps {
   loadSdk: () => Promise<LoadedSdk | null>;
@@ -382,7 +429,7 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
   });
   if (!attempt) return 'invalid_spec';
 
-  const session: SdkSessionFile = {
+  const session: SdkHostSessionFile = {
     schema_version: 1,
     team_name: spec.team_name,
     worker_name: spec.worker_name,
@@ -405,6 +452,7 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
     permissions: [],
     last_error: null,
     timeline: { host_started_at: new Date().toISOString() },
+    turn_usage: [],
   };
   let dirty = true;
   const writeSessionJson = deps.writeSessionJson ?? atomicWriteJson;
@@ -455,7 +503,7 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
       log(`session write failed: ${errText(err)}`);
     }
   };
-  const mark = (stamp?: keyof SdkSessionFile['timeline']) => {
+  const mark = (stamp?: SdkHostTimelineMark) => {
     if (stamp && !session.timeline[stamp]) session.timeline[stamp] = new Date().toISOString();
     dirty = true;
   };
@@ -593,8 +641,12 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
     try { appendFileSync(files.events, `${JSON.stringify({ at, ...event })}\n`); } catch { /* evidence only */ }
     session.last_event_type = event.type ?? null;
     session.last_event_at = at;
+    mark('first_event_at');
     const data = (event.data ?? {}) as Record<string, unknown>;
     switch (event.type) {
+      case 'assistant.turn_start':
+        mark('turn_started_at');
+        break;
       case 'session.idle':
         busy = false;
         session.state = capped ? 'capped' : 'idle';
@@ -606,6 +658,7 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
       case 'assistant.usage': {
         session.usage.credits += usageCredits(event);
         if (data.initiator === 'user') session.usage.premium_requests += 1;
+        addTurnUsage(session.turn_usage, session.turns, event);
         if (!capped && session.usage.credits >= spec.max_credits) {
           capped = true;
           session.last_error = `credit cap ${spec.max_credits} reached (${session.usage.credits.toFixed(2)})`;

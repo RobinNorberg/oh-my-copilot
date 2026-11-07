@@ -153,9 +153,50 @@ export function generateWorkerOverlay(params) {
     const checkpointTaskCommand = formatOmcCliInvocation(`team api write-task-checkpoint --input "{\\"team_name\\":\\"${teamName}\\",\\"task_id\\":\\"<id>\\",\\"worker\\":\\"${workerName}\\",\\"claim_token\\":\\"<claim_token>\\",\\"task_version\\":<current_task_version>,\\"sequence\\":<next_sequence>,\\"resume_payload\\":<safe_boundary_json>}" --json`);
     const teamApiCommand = formatOmcCliInvocation('team api');
     const teamCommand = formatOmcCliInvocation('team');
+    const sendMessageCommand = formatOmcCliInvocation(`team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"<message>\\"}" --json`);
     const taskList = sanitizedTasks.length > 0
         ? sanitizedTasks.map(t => `- **Task ${t.id}**: ${t.subject}\n  Description: ${t.description}\n  Status: pending`).join('\n')
         : '- No tasks assigned yet. Check your inbox for assignments.';
+    if (params.compactProtocol === true && agentType !== 'cursor') {
+        return `# Team Worker Protocol (sdk)
+
+You are a **team worker**, not the leader. Team ${teamName}, worker ${workerName}, agent ${agentType}, OMC_TEAM_WORKER=${teamName}/${workerName}. Preserve the exact \`OMC_WORKER_LAUNCH_ATTEMPT_ID\` value in task claims and status updates.
+
+## Workflow (in order)
+Recovery task adopted from an owner: skip steps 1-2 and resume from Recovery Continuation with its \`claim_token\`. No task assigned: wait for one; never invent a task.
+1. **Claim** first: \`${claimTaskCommand}\`
+   Save \`claim_token\`. If the claim fails, do not ACK or start work; report the failure to leader-fixed and wait.
+2. **ACK once** (never again for later tasks): \`${sendAckCommand}\`
+3. **Do the work** in your task description. Edit only the paths it names.
+4. **Commit**: in a team worktree, commit the finished change on its branch before step 5 (never push), so it survives the worker stopping.
+5. **Transition** (REQUIRED before you stop):
+   - Success: \`${completeTaskCommand}\`
+     The \`result\` MUST hold the summary, the verification you ran and the subagent skip reason; without it completion is rejected (\`missing_delegation_compliance_evidence\`).
+   - Failure: \`${failTaskCommand}\`
+     Before failing, send the leader what failed and why (exact error text).
+6. Replies and ACKs are not a stop signal: keep going until the task is completed or failed.
+
+## Your Tasks
+${taskList}
+
+## Task API (never edit task files directly)
+- Read task: \`${readTaskCommand}\` (task_id is "1", not "task-1")
+- Release claim: \`${releaseClaimCommand}\`
+- Checkpoint before a risky step or stopping: \`${checkpointTaskCommand}\` (a completed safe boundary and the next action; no credentials)
+
+## Mailbox and status
+- Inbox: ${inboxPath}. Mailbox: \`${mailboxListCommand}\`; mark read: \`${mailboxDeliveredCommand}\`
+- To leader: \`${sendMessageCommand}\`
+- Blocked: write {"state":"blocked","reason":"...","launch_attempt_id":"<id>","updated_at":"<iso>"} to ${statusPath} and message the leader.
+- State root: \`OMC_TEAM_STATE_ROOT\` when set (already team-specific; do not append \`team/${teamName}\`), else ${params.cwd}/.omg/state/team/${teamName}. Never use a worktree-local \`.omg/state\`.
+- Shutdown request in the inbox: write {"status":"accept"|"reject","reason":"...","updated_at":"<iso>"} to ${shutdownAckPath}; forced shutdown cannot be rejected.
+
+## Rules
+- No sub-agents, no team or orchestration commands (\`${teamCommand} ...\`, \`$team\`, \`$autopilot\`, \`$ralph\`). Your only control surface is \`${teamApiCommand} ... --json\`.
+- ${renderWorkerExitContract(agentType, false)}
+
+${bootstrapInstructions ? `## Role Context\n${bootstrapInstructions}\n` : ''}`;
+    }
     const cursorReviewer = agentType === 'cursor' && reviewerRole === true;
     const persistentCursor = agentType === 'cursor' && !cursorReviewer;
     const mandatoryWorkflow = cursorReviewer

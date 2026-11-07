@@ -19,6 +19,13 @@ export interface WorkerBootstrapParams {
      * `OMC_TEAM_STATE_ROOT` and `teamStateRoot()` semantics.
      */
     instructionStateRoot?: string;
+    /**
+     * `team.sdk.compactProtocol`: the compact protocol for sdk-transport workers,
+     * which never use panes, tmux, the ready sentinel or the heartbeat file. It
+     * is sent with every turn, so its length is a per-turn cost. Ignored for
+     * cursor workers, whose session contract differs.
+     */
+    compactProtocol?: boolean;
 }
 export declare function generateTriggerMessage(teamName: string, workerName: string, teamStateRoot?: string): string;
 export declare function generatePromptModeStartupPrompt(teamName: string, workerName: string, teamStateRoot?: string, cliOutputContract?: string): string;

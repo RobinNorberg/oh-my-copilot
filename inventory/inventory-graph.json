@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "79f1a2110a0f60521c0330487886d1d44125c8ae",
-    "sourceSha256": "6808e587fa7b3d208c5901f2d62dc13ef2127ba57c8507344f04ae2fe503dc3e",
+    "head": "fef9ccefcaa2ea336911c0381162e22612e365a1",
+    "sourceSha256": "fecbd26d95ee5ec564e365b5812570bb0eea4242be5edffc4b5ec79dbc24c0da",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "79f1a2110a0f60521c0330487886d1d44125c8ae",
-  "sourceSha256": "6808e587fa7b3d208c5901f2d62dc13ef2127ba57c8507344f04ae2fe503dc3e",
+  "head": "fef9ccefcaa2ea336911c0381162e22612e365a1",
+  "sourceSha256": "fecbd26d95ee5ec564e365b5812570bb0eea4242be5edffc4b5ec79dbc24c0da",
   "counts": {
     "public": {
       "skills": 96,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 1949,
-      "total": 1974
+      "srcFiles": 1952,
+      "total": 1977
     },
     "generated": {
-      "distFiles": 7168,
+      "distFiles": 7180,
       "bridgeFiles": 8,
-      "total": 7176
+      "total": 7188
     },
     "prompt": {
       "promptLikeFiles": 68
@@ -7314,10 +7314,18 @@
       "dist/team/__tests__/scaling.test.d.ts.map",
       "dist/team/__tests__/scaling.test.js",
       "dist/team/__tests__/scaling.test.js.map",
+      "dist/team/__tests__/sdk-host-turn-usage.test.d.ts",
+      "dist/team/__tests__/sdk-host-turn-usage.test.d.ts.map",
+      "dist/team/__tests__/sdk-host-turn-usage.test.js",
+      "dist/team/__tests__/sdk-host-turn-usage.test.js.map",
       "dist/team/__tests__/sdk-inprocess-tools.test.d.ts",
       "dist/team/__tests__/sdk-inprocess-tools.test.d.ts.map",
       "dist/team/__tests__/sdk-inprocess-tools.test.js",
       "dist/team/__tests__/sdk-inprocess-tools.test.js.map",
+      "dist/team/__tests__/sdk-launch-progress.test.d.ts",
+      "dist/team/__tests__/sdk-launch-progress.test.d.ts.map",
+      "dist/team/__tests__/sdk-launch-progress.test.js",
+      "dist/team/__tests__/sdk-launch-progress.test.js.map",
       "dist/team/__tests__/sdk-transport.runtime.test.d.ts",
       "dist/team/__tests__/sdk-transport.runtime.test.d.ts.map",
       "dist/team/__tests__/sdk-transport.runtime.test.js",
@@ -7662,6 +7670,10 @@
       "dist/team/sdk-inprocess-tools.d.ts.map",
       "dist/team/sdk-inprocess-tools.js",
       "dist/team/sdk-inprocess-tools.js.map",
+      "dist/team/sdk-launch-progress.d.ts",
+      "dist/team/sdk-launch-progress.d.ts.map",
+      "dist/team/sdk-launch-progress.js",
+      "dist/team/sdk-launch-progress.js.map",
       "dist/team/sdk-policy.d.ts",
       "dist/team/sdk-policy.d.ts.map",
       "dist/team/sdk-policy.js",
@@ -41300,6 +41312,26 @@
         "path": "dist/team/__tests__/scaling.test.js.map"
       },
       {
+        "id": "dist/team/__tests__/sdk-host-turn-usage.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/sdk-host-turn-usage.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/sdk-host-turn-usage.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/sdk-host-turn-usage.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/sdk-host-turn-usage.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/sdk-host-turn-usage.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/sdk-host-turn-usage.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/sdk-host-turn-usage.test.js.map"
+      },
+      {
         "id": "dist/team/__tests__/sdk-inprocess-tools.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/sdk-inprocess-tools.test.d.ts"
@@ -41318,6 +41350,26 @@
         "id": "dist/team/__tests__/sdk-inprocess-tools.test.js.map",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/sdk-inprocess-tools.test.js.map"
+      },
+      {
+        "id": "dist/team/__tests__/sdk-launch-progress.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/sdk-launch-progress.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/sdk-launch-progress.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/sdk-launch-progress.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/sdk-launch-progress.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/sdk-launch-progress.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/sdk-launch-progress.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/sdk-launch-progress.test.js.map"
       },
       {
         "id": "dist/team/__tests__/sdk-transport.runtime.test.d.ts",
@@ -43038,6 +43090,26 @@
         "id": "dist/team/sdk-inprocess-tools.js.map",
         "kind": "generated-dist",
         "path": "dist/team/sdk-inprocess-tools.js.map"
+      },
+      {
+        "id": "dist/team/sdk-launch-progress.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/sdk-launch-progress.d.ts"
+      },
+      {
+        "id": "dist/team/sdk-launch-progress.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/sdk-launch-progress.d.ts.map"
+      },
+      {
+        "id": "dist/team/sdk-launch-progress.js",
+        "kind": "generated-dist",
+        "path": "dist/team/sdk-launch-progress.js"
+      },
+      {
+        "id": "dist/team/sdk-launch-progress.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/sdk-launch-progress.js.map"
       },
       {
         "id": "dist/team/sdk-policy.d.ts",
@@ -56840,9 +56912,19 @@
         "path": "src/team/__tests__/scaling.test.ts"
       },
       {
+        "id": "src/team/__tests__/sdk-host-turn-usage.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/sdk-host-turn-usage.test.ts"
+      },
+      {
         "id": "src/team/__tests__/sdk-inprocess-tools.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/sdk-inprocess-tools.test.ts"
+      },
+      {
+        "id": "src/team/__tests__/sdk-launch-progress.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/sdk-launch-progress.test.ts"
       },
       {
         "id": "src/team/__tests__/sdk-transport.runtime.test.ts",
@@ -57273,6 +57355,11 @@
         "id": "src/team/sdk-inprocess-tools.ts",
         "kind": "src",
         "path": "src/team/sdk-inprocess-tools.ts"
+      },
+      {
+        "id": "src/team/sdk-launch-progress.ts",
+        "kind": "src",
+        "path": "src/team/sdk-launch-progress.ts"
       },
       {
         "id": "src/team/sdk-policy.ts",
@@ -109402,6 +109489,21 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/team/__tests__/sdk-host-turn-usage.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-host-turn-usage.test.ts",
+        "to": "src/team/sdk-host.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-host-turn-usage.test.ts",
+        "to": "src/team/sdk-host.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/team/__tests__/sdk-inprocess-tools.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -109439,6 +109541,41 @@
       {
         "from": "src/team/__tests__/sdk-inprocess-tools.test.ts",
         "to": "src/team/sdk-policy.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-launch-progress.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-launch-progress.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-launch-progress.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-launch-progress.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-launch-progress.test.ts",
+        "to": "src/team/sdk-launch-progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-launch-progress.test.ts",
+        "to": "src/team/sdk-launch-progress.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-launch-progress.test.ts",
+        "to": "src/team/sdk-transport.ts",
         "kind": "imports"
       },
       {
@@ -112839,6 +112976,21 @@
       {
         "from": "src/team/sdk-inprocess-tools.ts",
         "to": "src/tools/python-repl/bridge-manager.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/sdk-launch-progress.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/sdk-launch-progress.ts",
+        "to": "src/team/sdk-host.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/sdk-launch-progress.ts",
+        "to": "src/team/sdk-transport.ts",
         "kind": "imports"
       },
       {
@@ -118798,12 +118950,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9947,
-      "edgeCount": 12049,
-      "importEdgeCount": 9915,
+      "nodeCount": 9962,
+      "edgeCount": 12062,
+      "importEdgeCount": 9925,
       "registerEdgeCount": 117
     }
   },
-  "inventorySha256": "8d297846c739d697a5bec38a714571c1037d6ed9ecc51c791d7fcc26e71003fd",
-  "manifestSha256": "40f4913cb3cd67a33333d85064e306323434cbeb8b321ce347cd5de7d0e4d910"
+  "inventorySha256": "ab6e9b1c4cdafeef31b334361ad187ffc0740bdfba9a6beb2ea6913cceba81d3",
+  "manifestSha256": "baaaed956bebd294851d7fadb8fd2f0c0288ff156a8a8367bba8437f054954a8"
 }
