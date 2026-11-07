@@ -596,7 +596,7 @@ export interface TeamConfigBlock {
   transport?: 'pane' | 'sdk' | 'auto';
   /** `transport: "sdk"` tuning. */
   sdk?: {
-    /** Per-worker credit cap; the runtime gets `--max-ai-credits max(30, cap)`. Default 10. */
+    /** Per-worker credit cap; the runtime gets `--max-ai-credits max(30, cap)`. Default 50. */
     maxCreditsPerWorker?: number;
     /** Explicit model for every sdk worker (default: the worker's resolved model, else runtime auto). */
     model?: string;
@@ -609,6 +609,11 @@ export interface TeamConfigBlock {
      * of starting the `t` stdio MCP server per worker. Default false.
      */
     inProcessTools?: boolean;
+    /**
+     * Minutes a worker's message to the leader may stay unanswered before the
+     * monitor fails the sender's in-progress task (`blocker_unanswered`). Default off.
+     */
+    blockerTimeoutMinutes?: number;
   };
   roleRouting?: Partial<Record<CanonicalTeamRole, TeamRoleAssignmentSpec>> & {
     orchestrator?: OrchestratorSpec;
