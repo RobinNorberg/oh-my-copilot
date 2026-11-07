@@ -59,6 +59,12 @@ function getTrustedPrefixes() {
             localAppData ? flavor.join(localAppData, 'npm') : undefined,
             localAppData ? flavor.join(localAppData, 'Programs') : undefined,
             localAppData ? flavor.join(localAppData, 'Yarn', 'bin') : undefined,
+            // WinGet: per-user installs and their PATH links live under LOCALAPPDATA,
+            // machine-wide (--scope machine) installs under ProgramFiles.
+            localAppData ? flavor.join(localAppData, 'Microsoft', 'WinGet', 'Packages') : undefined,
+            localAppData ? flavor.join(localAppData, 'Microsoft', 'WinGet', 'Links') : undefined,
+            programFiles ? flavor.join(programFiles, 'WinGet', 'Packages') : undefined,
+            programFiles ? flavor.join(programFiles, 'WinGet', 'Links') : undefined,
             programFiles ? flavor.join(programFiles, 'nodejs') : undefined,
             programFilesX86 ? flavor.join(programFilesX86, 'nodejs') : undefined,
             home ? flavor.join(home, '.cargo', 'bin') : undefined,

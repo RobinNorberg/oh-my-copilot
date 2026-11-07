@@ -17,9 +17,34 @@
  * `sdk-events.jsonl` (every session event), and `shutdown-ack.json` when the
  * doorbell carries a shutdown.
  */
+import type { CopilotEvent } from '../smoke/copilot-session-eval.js';
 import { type LoadedSdk } from '../smoke/copilot-sdk-driver.js';
-import { type SdkDoorbellEntry, type SdkHostSpec } from './sdk-transport.js';
+import { type SdkDoorbellEntry, type SdkHostSpec, type SdkSessionFile } from './sdk-transport.js';
 import type { buildSdkInProcessTools } from './sdk-inprocess-tools.js';
+/**
+ * One doorbell turn's billed model calls, summed from `assistant.usage`: what
+ * a turn costs and how much of its prompt was input versus cache reads. Turn 0
+ * holds calls before the first prompt.
+ */
+export interface SdkTurnUsage {
+    turn: number;
+    calls: number;
+    credits: number;
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    cache_write_tokens: number;
+    model: string | null;
+}
+/** Launch phases the host stamps beyond {@link SdkSessionFile}'s timeline (read by sdk-launch-progress). */
+export type SdkHostTimelineMark = keyof SdkSessionFile['timeline'] | 'first_event_at' | 'turn_started_at';
+/** The session file as this host writes it: the shared shape plus the per-turn usage and launch marks. */
+export type SdkHostSessionFile = Omit<SdkSessionFile, 'timeline'> & {
+    timeline: Partial<Record<SdkHostTimelineMark, string>>;
+    turn_usage: SdkTurnUsage[];
+};
+/** Add one `assistant.usage` event to `turn`'s entry (the last {@link TURN_USAGE_MAX} turns are kept). */
+export declare function addTurnUsage(list: SdkTurnUsage[], turn: number, event: CopilotEvent): void;
 export interface SdkHostDeps {
     loadSdk: () => Promise<LoadedSdk | null>;
     pid: number;
