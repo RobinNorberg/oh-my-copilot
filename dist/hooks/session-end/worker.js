@@ -173,8 +173,12 @@ async function planDeferredChain(payload) {
     if (landed?.sessionId !== chain.sessionId)
         recordChainHandoffFailure(payload.directory, chain, 'manifest-unavailable', { hostSessionId: payload.sessionId });
 }
-/** An ownerless job whose claim is refused by a still-bounded runner gets one retry once every such runner deadline has passed. */
-function retryAfterBoundedRunners(payload, job) {
+/**
+ * An ownerless job whose claim is refused by a still-bounded runner gets one
+ * retry once every such runner deadline has passed. The retry keeps the
+ * caller's Copilot live-recheck count, so it cannot restart the 30 s window.
+ */
+function retryAfterBoundedRunners(payload, job, liveRechecks) {
     if (!job || job.owner || job.phase === 'complete')
         return;
     const now = Date.now();
@@ -184,7 +188,7 @@ function retryAfterBoundedRunners(payload, job) {
         .filter(deadline => deadline > now);
     if (deadlines.length === 0)
         return;
-    setTimeout(() => { void processSessionEndWorker(payload); }, Math.max(...deadlines) - now + 1);
+    setTimeout(() => { void processSessionEndWorker(payload, liveRechecks); }, Math.max(...deadlines) - now + 1);
 }
 /** Copilot mid-session SessionEnd: recheck for the real end every 5 s for 30 s, then leave it to the next SessionEnd or SessionStart reconcile. */
 const COPILOT_LIVE_RECHECK_MS = 5_000;
@@ -220,7 +224,7 @@ export async function processSessionEndWorker(payload, liveRechecks = 0) {
         claimed = claimSessionEndJob(payload.directory, payload.sessionId, nonce, identity, deadlineAt);
     }
     if (!claimed || !claimed.owner) {
-        retryAfterBoundedRunners(payload, readSessionEndJob(payload.directory, payload.sessionId));
+        retryAfterBoundedRunners(payload, readSessionEndJob(payload.directory, payload.sessionId), liveRechecks);
         return;
     }
     let admitted = readSessionEndJob(payload.directory, payload.sessionId);

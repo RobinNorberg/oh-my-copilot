@@ -28135,12 +28135,26 @@ If you accept, exit your session. If you reject, remain active for task work and
     return retainedWorktrees.length > 0 ? { outcome: "cleaned", preservedWorktrees: retainedWorktrees } : { outcome: "cleaned" };
   });
 }
-async function resumeTeamV2(teamName, cwd) {
+async function resumeTeamV2(teamName, cwd, diagnostics) {
   const sanitized = sanitizeTeamName(teamName);
   const config = await readTeamConfig(sanitized, cwd);
   if (!config?.instance_id || (config.lifecycle_state ?? "active") !== "active") return null;
   const sessionName2 = config.tmux_session || `omc-team-${sanitized}`;
   if (isSdkTarget(sessionName2)) {
+    const stateRoot2 = teamStateRoot(cwd, sanitized);
+    const sdkWorkers = config.workers.filter((worker) => isSdkTarget(worker.pane_id));
+    const liveness = await Promise.all(sdkWorkers.map(async (worker) => {
+      if (await getWorkerProviderLiveness(sanitized, cwd, config.instance_id, worker) !== "alive") return false;
+      const session = readSdkSession(stateRoot2, worker.name);
+      const current = session && (!worker.launch_attempt_id || session.attempt_id === worker.launch_attempt_id) ? session : null;
+      return current?.state !== "failed" && current?.state !== "closed";
+    }));
+    if (!liveness.some(Boolean)) {
+      if (diagnostics) {
+        diagnostics.reason = sdkWorkers.length === 0 ? "sdk_team_has_no_worker_hosts" : "sdk_worker_hosts_not_alive";
+      }
+      return null;
+    }
     return {
       teamName: sanitized,
       sanitizedName: sanitized,
@@ -30533,12 +30547,14 @@ async function teamResumeByName(teamName, cwd = process.cwd()) {
   validateTeamName2(teamName);
   const runtimeV2 = await Promise.resolve().then(() => (init_runtime_v2(), runtime_v2_exports));
   if (runtimeV2.isRuntimeV2Enabled()) {
-    const runtime2 = await runtimeV2.resumeTeamV2(teamName, cwd);
+    const diagnostics = {};
+    const runtime2 = await runtimeV2.resumeTeamV2(teamName, cwd, diagnostics);
     if (!runtime2) {
       return {
         teamName,
         resumed: false,
-        error: "Team session is not currently resumable"
+        error: "Team session is not currently resumable",
+        ...diagnostics.reason ? { reason: diagnostics.reason } : {}
       };
     }
     return {

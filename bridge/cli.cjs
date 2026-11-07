@@ -64105,6 +64105,7 @@ var init_types9 = __esm({
       enterpriseMode: false,
       showEnterpriseCost: false,
       apiKeySource: false,
+      account: false,
       thinking: false,
       todos: false,
       sessionSummary: false
@@ -104911,12 +104912,26 @@ If you accept, exit your session. If you reject, remain active for task work and
     return retainedWorktrees.length > 0 ? { outcome: "cleaned", preservedWorktrees: retainedWorktrees } : { outcome: "cleaned" };
   });
 }
-async function resumeTeamV2(teamName, cwd2) {
+async function resumeTeamV2(teamName, cwd2, diagnostics) {
   const sanitized = sanitizeTeamName(teamName);
   const config2 = await readTeamConfig(sanitized, cwd2);
   if (!config2?.instance_id || (config2.lifecycle_state ?? "active") !== "active") return null;
   const sessionName2 = config2.tmux_session || `omc-team-${sanitized}`;
   if (isSdkTarget(sessionName2)) {
+    const stateRoot2 = teamStateRoot(cwd2, sanitized);
+    const sdkWorkers2 = config2.workers.filter((worker) => isSdkTarget(worker.pane_id));
+    const liveness = await Promise.all(sdkWorkers2.map(async (worker) => {
+      if (await getWorkerProviderLiveness(sanitized, cwd2, config2.instance_id, worker) !== "alive") return false;
+      const session = readSdkSession(stateRoot2, worker.name);
+      const current = session && (!worker.launch_attempt_id || session.attempt_id === worker.launch_attempt_id) ? session : null;
+      return current?.state !== "failed" && current?.state !== "closed";
+    }));
+    if (!liveness.some(Boolean)) {
+      if (diagnostics) {
+        diagnostics.reason = sdkWorkers2.length === 0 ? "sdk_team_has_no_worker_hosts" : "sdk_worker_hosts_not_alive";
+      }
+      return null;
+    }
     return {
       teamName: sanitized,
       sanitizedName: sanitized,
@@ -107560,13 +107575,13 @@ async function planDeferredChain(payload) {
   const landed2 = readSessionEndJob(payload.directory, payload.sessionId)?.actions["spawn-next"]?.payload?.chain;
   if (landed2?.sessionId !== chain.sessionId) recordChainHandoffFailure2(payload.directory, chain, "manifest-unavailable", { hostSessionId: payload.sessionId });
 }
-function retryAfterBoundedRunners(payload, job) {
+function retryAfterBoundedRunners(payload, job, liveRechecks) {
   if (!job || job.owner || job.phase === "complete") return;
   const now2 = Date.now();
   const deadlines = Object.values(job.actions).filter((action) => action.status === "claimed" && action.runner && action.runner.phase !== "terminal").map((action) => Date.parse(action.runner.deadlineAt)).filter((deadline) => deadline > now2);
   if (deadlines.length === 0) return;
   setTimeout(() => {
-    void processSessionEndWorker(payload);
+    void processSessionEndWorker(payload, liveRechecks);
   }, Math.max(...deadlines) - now2 + 1);
 }
 async function processSessionEndWorker(payload, liveRechecks = 0) {
@@ -107595,7 +107610,7 @@ async function processSessionEndWorker(payload, liveRechecks = 0) {
     claimed = claimSessionEndJob(payload.directory, payload.sessionId, nonce, identity, deadlineAt);
   }
   if (!claimed || !claimed.owner) {
-    retryAfterBoundedRunners(payload, readSessionEndJob(payload.directory, payload.sessionId));
+    retryAfterBoundedRunners(payload, readSessionEndJob(payload.directory, payload.sessionId), liveRechecks);
     return;
   }
   let admitted = readSessionEndJob(payload.directory, payload.sessionId);

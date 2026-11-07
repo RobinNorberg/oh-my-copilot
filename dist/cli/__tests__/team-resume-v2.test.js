@@ -5,9 +5,20 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { absPath, TeamPaths } from '../../team/state-paths.js';
 const ownership = vi.hoisted(() => ({ verify: vi.fn() }));
+const provider = vi.hoisted(() => ({ liveness: 'alive' }));
 vi.mock('../../team/tmux-session.js', async (importOriginal) => {
     const actual = await importOriginal();
     return { ...actual, verifyTeamTargetOwnership: ownership.verify };
+});
+// SDK host liveness comes from the worker's provider record; stub the record
+// read so a test picks whether the host is alive.
+vi.mock('../../team/worker-launch-ack.js', async (importOriginal) => {
+    const actual = await importOriginal();
+    return {
+        ...actual,
+        loadWorkerLaunchAttempt: vi.fn(async () => ({ attempt_id: 'attempt-1' })),
+        observeWorkerLaunchProvider: vi.fn(async () => provider.liveness),
+    };
 });
 const { teamResumeByName } = await import('../team.js');
 const INSTANCE_ID = '11111111-2222-3333-4444-555555555555';
@@ -39,7 +50,17 @@ const tmuxConfig = (overrides = {}) => v2Config({
     tmux_server_identity: TMUX_IDENTITY,
     ...overrides,
 });
-describe('omc team resume on a runtime v2 team', () => {
+const sdkConfig = (overrides = {}) => v2Config({
+    agent_type: 'copilot',
+    tmux_session: 'sdk:demo',
+    leader_pane_id: null,
+    workers: [{
+            name: 'worker-1', index: 1, role: 'executor', assigned_tasks: [],
+            pane_id: 'sdk:worker-1', worker_cli: 'copilot', launch_attempt_id: 'attempt-1',
+        }],
+    ...overrides,
+});
+describe('omg team resume on a runtime v2 team', () => {
     let cwd;
     let savedFlag;
     function writeConfig(config) {
@@ -98,6 +119,27 @@ describe('omc team resume on a runtime v2 team', () => {
         it('does not resume when the config has no tmux server identity', async () => {
             writeConfig(tmuxConfig({ tmux_server_identity: undefined }));
             expect(await teamResumeByName('demo', cwd)).toMatchObject({ resumed: false });
+        });
+    });
+    describe('SDK team', () => {
+        it('resumes while a worker SDK host is alive', async () => {
+            provider.liveness = 'alive';
+            writeConfig(sdkConfig());
+            expect(await teamResumeByName('demo', cwd)).toMatchObject({
+                resumed: true,
+                sessionName: 'sdk:demo',
+                workerPaneIds: ['sdk:worker-1'],
+            });
+            expect(ownership.verify).not.toHaveBeenCalled();
+        });
+        it('does not resume, and says why, when every worker SDK host is dead', async () => {
+            provider.liveness = 'dead';
+            writeConfig(sdkConfig());
+            expect(await teamResumeByName('demo', cwd)).toMatchObject({
+                teamName: 'demo',
+                resumed: false,
+                reason: 'sdk_worker_hosts_not_alive',
+            });
         });
     });
     it('reports a missing team as not resumable', async () => {

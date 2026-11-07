@@ -23,7 +23,7 @@ describe('renderAccount', () => {
         process.env.HOME = homeDir;
         process.env.USERPROFILE = homeDir;
         delete process.env.ANTHROPIC_API_KEY;
-        // getOmcConfigDir() places hud-account-cache.json under COPILOT_HOME/.omc,
+        // getOmcConfigDir() places hud-account-cache.json under COPILOT_HOME/.omg,
         // so each fixture gets an isolated cache without a separate HUD cache override.
     });
     afterEach(() => {

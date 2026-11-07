@@ -95,7 +95,7 @@ export const COPILOT_HOST_DEFAULTS = {
 };
 /**
  * Elements with no data source under Copilot (Claude usage/enterprise APIs,
- * Claude transcript, `claude -p`). Forced off on the Copilot host even when the
+ * Claude transcript, `claude -p`, the Claude account in `.claude.json`). Forced off on the Copilot host even when the
  * user config enables them; the payload warning is skipped in index.ts.
  */
 export const COPILOT_HOST_DROPPED = {
@@ -103,6 +103,7 @@ export const COPILOT_HOST_DROPPED = {
     enterpriseMode: false,
     showEnterpriseCost: false,
     apiKeySource: false,
+    account: false,
     thinking: false,
     todos: false,
     sessionSummary: false,
