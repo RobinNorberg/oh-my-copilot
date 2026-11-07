@@ -185,7 +185,7 @@ describe('the local (offline) forge never runs gh, az or copilot', () => {
       const body = join(fx.tmp, 'body.md');
       writeFileSync(body, 'body');
       const { exec, calls } = recordingExec();
-      const forge = createForge(exec, fx.root, fx.config, { untrustedRoots: [fx.root], stateDir: fx.stateDir, local: { baseSha: () => base, workingTree: true } });
+      const forge = createForge(exec, fx.root, fx.config, { untrustedRoots: [fx.root], stateDir: fx.stateDir, local: { baseSha: () => base, workingTree: true, omgRoot: fx.omgRoot } });
       const t = forge.tracker;
       t.queryItems({ type: 'local-backlog' }, 10);
       t.viewItem(1);

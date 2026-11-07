@@ -40,6 +40,8 @@ export interface Fixture {
   tmp: string;
   root: string;
   stateDir: string;
+  /** getOmcRoot(root) for a plain checkout. */
+  omgRoot: string;
   mirror: string;
   config: ResolvedForgeConfig;
   write(path: string, text: string): void;
@@ -71,7 +73,7 @@ export function makeFixture(): Fixture {
   git(tmp, ...mirrorInitArgs(mirror));
   git(root, ...mirrorRemoteAddArgs(mirror));
   return {
-    tmp, root, stateDir, mirror, config, write, commit,
+    tmp, root, stateDir, omgRoot: join(root, '.omg'), mirror, config, write, commit,
     push: (sha, branch) => void git(root, ...mirrorPushArgs(sha, branch)),
     cleanup: () => rmSync(tmp, { recursive: true, force: true }),
   };

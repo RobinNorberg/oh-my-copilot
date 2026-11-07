@@ -14,7 +14,7 @@ afterEach(() => fx.cleanup());
 
 describe('createForge with a local config', () => {
   it('returns the local forge with no CI, heal, board or webhooks, and its limitations', () => {
-    const forge = createForge(recordingExec().exec, fx.root, fx.config, { untrustedRoots: [fx.root], stateDir: fx.stateDir });
+    const forge = createForge(recordingExec().exec, fx.root, fx.config, { untrustedRoots: [fx.root], stateDir: fx.stateDir, local: { omgRoot: fx.omgRoot } });
     expect(forge.kind).toBe('local');
     expect(forge.provider).toBe('unknown');
     expect(forge.repo).toEqual(fx.config.repo);
@@ -25,7 +25,11 @@ describe('createForge with a local config', () => {
   });
 
   it('refuses a store under an untrusted root', () => {
-    expect(() => createForge(recordingExec().exec, fx.root, fx.config, { untrustedRoots: [fx.tmp] })).toThrow(/untrusted root/);
+    expect(() => createForge(recordingExec().exec, fx.root, fx.config, { untrustedRoots: [fx.tmp], local: { omgRoot: fx.omgRoot } })).toThrow(/untrusted root/);
+  });
+
+  it('needs the caller to name the runtime root (src/forge cannot resolve it without spawning)', () => {
+    expect(() => createForge(recordingExec().exec, fx.root, fx.config, { untrustedRoots: [fx.root] })).toThrow(/omgRoot is required/);
   });
 
   it('refuses a non-local config', () => {
@@ -40,7 +44,7 @@ describe('createForge with a local config', () => {
     fx.write('b.txt', 'b');
     const head = fx.commit('b');
     fx.push(head, 'factory/1-x');
-    const forge = createForge(recordingExec().exec, fx.root, fx.config, { untrustedRoots: [fx.root] });
+    const forge = createForge(recordingExec().exec, fx.root, fx.config, { untrustedRoots: [fx.root], local: { omgRoot: fx.omgRoot } });
     const body = join(fx.tmp, 'body.md');
     writeFileSync(body, 'x');
     const pr = forge.reviews.createDraftPr({ base: 'main', head: 'factory/1-x', title: 'x', bodyFile: body });
