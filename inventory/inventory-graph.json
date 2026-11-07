@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "4cecb6f0fc591cda8c11acd0f038e10be232b035",
-    "sourceSha256": "8395527a5f503820b184abc5a9f058f92fc5f4114bfe86cb1650fb5407e58bba",
+    "head": "88a097b0d170ac2875b99c6948fb8a94e79a0b8c",
+    "sourceSha256": "b0031519ef10a886e39b8b79caf214729ebf83b1d0c1db436f40094e763f7e93",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "4cecb6f0fc591cda8c11acd0f038e10be232b035",
-  "sourceSha256": "8395527a5f503820b184abc5a9f058f92fc5f4114bfe86cb1650fb5407e58bba",
+  "head": "88a097b0d170ac2875b99c6948fb8a94e79a0b8c",
+  "sourceSha256": "b0031519ef10a886e39b8b79caf214729ebf83b1d0c1db436f40094e763f7e93",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 1919,
-      "total": 1944
+      "srcFiles": 1920,
+      "total": 1945
     },
     "generated": {
       "distFiles": 7044,
@@ -848,6 +848,7 @@
       "scripts/ci/duration-sequencer.mjs",
       "scripts/ci/durations-reporter.mjs",
       "scripts/ci/multirepo-patterns.yml",
+      "scripts/ci/parse-max-workers.mjs",
       "scripts/ci/tree-reuse.mjs",
       "scripts/ci/update-test-durations.mjs",
       "scripts/cleanup-orphans.mjs",
@@ -45910,6 +45911,11 @@
         "path": "scripts/ci/multirepo-patterns.yml"
       },
       {
+        "id": "scripts/ci/parse-max-workers.mjs",
+        "kind": "script",
+        "path": "scripts/ci/parse-max-workers.mjs"
+      },
+      {
         "id": "scripts/ci/tree-reuse.mjs",
         "kind": "script",
         "path": "scripts/ci/tree-reuse.mjs"
@@ -48303,6 +48309,11 @@
         "id": "src/__tests__/package-dir-resolution-regression.test.ts",
         "kind": "src",
         "path": "src/__tests__/package-dir-resolution-regression.test.ts"
+      },
+      {
+        "id": "src/__tests__/parse-max-workers.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/parse-max-workers.test.ts"
       },
       {
         "id": "src/__tests__/paths-consistency.test.ts",
@@ -66044,6 +66055,16 @@
       {
         "from": "src/__tests__/package-dir-resolution-regression.test.ts",
         "to": "src/features/builtin-skills/skills.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/parse-max-workers.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/parse-max-workers.test.ts",
+        "to": "scripts/ci/parse-max-workers.mjs",
         "kind": "imports"
       },
       {
@@ -116438,12 +116459,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9738,
-      "edgeCount": 11823,
-      "importEdgeCount": 9761,
+      "nodeCount": 9740,
+      "edgeCount": 11825,
+      "importEdgeCount": 9763,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "69af7cddf22771134544b9217fe3ecca7e85f4f95275816e92752be56ef7488a",
-  "manifestSha256": "26005df1f5653d3a56faf100613667e5b7f38b24fb3d298c659b56aa57e11ebc"
+  "inventorySha256": "8d7a1941caf37b9df791677191471fc22e218cecd09c63aba22bb5b36e0d0848",
+  "manifestSha256": "b507fcf783a238c2c85079c68a146a4abea55bf3d97e28bc4ef137efbf7b5eda"
 }
