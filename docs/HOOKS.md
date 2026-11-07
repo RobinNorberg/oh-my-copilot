@@ -103,7 +103,7 @@ The adapter fails **open** on a hook's internal error. Copilot treats a PreToolU
 | `OMC_HOOK_STRICT=1` | A hook target that is missing or not a file exits 1 instead of 0 plus a stderr line. |
 | `OMC_COPILOT_HOOK_DISPATCH=0` | The dispatcher runs each hook as its own `node --require <adapter> run.cjs <script>` process, one after another, as before the dispatcher, and still merges the outputs (see [Per-event dispatcher](#per-event-dispatcher)). No regeneration needed. |
 | `OMC_COPILOT_HOOK_WORKER=0` | Run every generic hook as a child process under Copilot, as under Claude Code (see [Latency](#latency)). |
-| `OMC_SESSION_END_BUDGET_MS` | Foreground budget of each SessionEnd hook (`session-end.mjs`, `wiki-session-end.mjs`) in `scripts/run.cjs`, on both hosts. An integer from 1 to 60000; any other value is ignored. The default is 1500 under Copilot and 300 under Claude Code (see [SessionEnd](#sessionend)). |
+| `OMC_SESSION_END_BUDGET_MS` | Foreground budget of each SessionEnd hook (`session-end.mjs`, `wiki-session-end.mjs`) in `scripts/run.cjs`, on both hosts. An integer from 1 to 60000; any other value is ignored. The default is half the hook's manifest timeout, at least 1000 under Claude Code and at least 1500 under Copilot (see [SessionEnd](#sessionend)). |
 | `OMC_COPILOT_STOP_CHAIN_MAX` | Most OMC Stop continuations per genuine user prompt under Copilot, an integer from 1 to 7. Default 3 (see [Stop](#stop)). |
 | `OMC_DEBUG_HOOKS` | Log adapter decisions, such as a dropped `updatedInput`, to stderr. |
 
@@ -400,10 +400,10 @@ Saves agent activity, token usage, and other session data to `.omg/sessions/`. I
 
 | Host | Budget | Why |
 |---|---|---|
-| Claude Code | 300 ms (upstream) | Claude Code kills SessionEnd hooks when it exits. |
-| Copilot (`OMC_HOOK_EVENT=SessionEnd`) | 1500 ms | Copilot fires SessionEnd after every turn and waits up to `timeoutSec` (30 s). At 300 ms, ordinary load (parallel sessions, a cold disk) dropped the cleanup and failed the hook. |
+| Claude Code | Half the manifest timeout, at least 1000 ms (upstream) | Claude Code kills SessionEnd hooks when it exits; a 300 ms budget dropped cold starts under load. |
+| Copilot (`OMC_HOOK_EVENT=SessionEnd`) | Half the manifest timeout, at least 1500 ms | Copilot fires SessionEnd after every turn and waits up to `timeoutSec` (30 s). At 300 ms, ordinary load (parallel sessions, a cold disk) dropped the cleanup and failed the hook. |
 
-The budget counts Worker boot, stdin, imports and the git root probe. 1500 ms is a chosen value, about 5x the idle foreground cost, not a measured limit. `OMC_SESSION_END_BUDGET_MS` overrides it on both hosts. The manifest timeout still caps it. `session-end.mjs` imports the factory chain enqueuer only when the session has a chain ledger or an `OMC_CHAIN_LINK` claim.
+The budget counts Worker boot, stdin, imports and the git root probe. The 1500 ms Copilot floor is a chosen value, about 5x the idle foreground cost, not a measured limit. With the shipped 30 s manifest timeout both hosts get 15 s. `OMC_SESSION_END_BUDGET_MS` overrides it on both hosts. The manifest timeout still caps it. `session-end.mjs` imports the factory chain enqueuer only when the session has a chain ledger or an `OMC_CHAIN_LINK` claim.
 
 **Mid-session SessionEnd on Copilot.** Copilot 1.0.91 fires SessionEnd after every agentStop, so the per-session cleanup job (mode-state cleanup, team cleanup, notifications, callbacks, spawning the next chain link) runs once, and only after the session really ends. The factory-chain link is decided there too: on Copilot the foreground does not plan the chain enqueue; each SessionEnd records its end reason and `OMC_CHAIN_LINK` claim on the job, and the worker plans the link at the real end with the last SessionEnd's outcome. The foreground marks the job `host: copilot`; each mid-session worker restarts the unclaimed job's producer grace and action deadlines, so a long session still gets them in full at the real end. The real end keeps the grace the holds already ran and only moves the action deadline, so the actions run without waiting a fresh grace. The worker holds the job while `$COPILOT_HOME/session-state/<id>/events.jsonl` shows no `session.shutdown` after the session's last activity, rechecking every 5 s for 30 s. The next SessionEnd or a SessionStart reconcile picks it up after that. A missing events file, or one idle for 2 hours, is treated as ended.
 
@@ -546,9 +546,12 @@ A PreToolUse hook (matcher: `Bash`) that checks shell command positions and bloc
 
 #### Stale Run Reporter (`stale-run-reporter.mjs`)
 
-A SessionStart hook: the unattended-run **watchdog**. It scans the resolved `.omg` state root for persistent unattended-mode state files — ralph, autopilot, team, ultragoal — left `active: true` with a stale mtime (the signature of a run whose process died mid-flight), and surfaces them as advisory `[STALE RUN]` context naming the mode, approximate age, and state path.
+A SessionStart hook: the unattended-run **watchdog**. It scans the resolved `.omg` state root for persistent unattended-mode state files — ralph, autopilot, team, ultragoal — left `active: true` with a stale mtime and surfaces them as advisory context, split into two categories.
 
+- **`[STALE RUN]`**: the signature of a run whose process died mid-flight. The message names the mode, approximate age, and state path, and points at reclaiming the state via `/cancel` or re-entering the mode.
+- **`[AWAITING CONFIRMATION]`**: the run is parked on a confirmation prompt and has emitted no activity since `awaiting_confirmation_set_at`. It is reported separately so a live-but-paused run is not called dead; the message names the mode, session, `since` timestamp, and state path, and points at answering the prompt or cancelling if the run is gone.
 - **Threshold**: 2 hours of mtime silence (matching the persistent-mode freshness window); tunable via `OMC_STALE_RUN_HOURS`.
+- **Confirmation expiry**: the waiting category requires the marker to be the file's last write — `awaiting_confirmation_set_at` must parse, must not be in the future, and must be within a few seconds of the state file's mtime. `keyword-detector.mjs` writes both in the same atomic write, so a genuinely parked run keeps them aligned no matter how old it is; a leftover flag on a file that was written again afterwards has an mtime later than `set_at` and falls back to `[STALE RUN]`.
 - **Coverage**: both layouts — legacy `.omg/state/<mode>-state.json` and session-scoped `.omg/state/sessions/<sessionId>/<mode>-state.json`. The starting session's own state is excluded; malformed state files are ignored, never findings.
 - **Doctrine**: the watchdog observes and reports only. It never mutates state, never resumes a run, and never infers approval — reclaiming a dead run (`/cancel` to clean up, or re-entering the mode to resume from artifacts) is always a human decision.
 
@@ -784,6 +787,7 @@ export OMC_JEV="point1,point2:active,all"
 | `OMC_JEV_ENDPOINT` | `https://api.typesafe.ai/v1/systemone` | Override for stub servers or tests. |
 | `OMC_JEV_LOG_DIR` | `.omg/state/jev` | Shadow-log directory override (test only). |
 | `OMC_JEV_QUIET` | (unset) | Set to `1` to silence the env-activation stderr warning. |
+| `OMC_JEV_MAX_EFFORT` | `high` | Cap for the subagent reasoning effort set by the active `model-routing` point: `low`, `medium`, `high`, `xhigh`, or `max`, case-insensitive, surrounding spaces ignored. Other values use the default. A lower cap lowers the mapping; `xhigh` or `max` opts in to the top effort levels for deep-reasoning tasks. See [Model routing: subagent effort](#model-routing-subagent-effort). |
 | `OMC_JEV_PLAN_MODE` | (unset) | Behavior while Claude Code is in plan mode (`permission_mode: "plan"`): `shadow` runs every opted-in point in shadow, `off` disables every point. Unset or any other value changes nothing. See [Plan mode](#plan-mode). |
 | `OMC_JEV=off` | — | Master switch: disables every point regardless of key or other config. |
 
@@ -852,7 +856,8 @@ Each line is a JSON record with:
 - `state`: the bounded state passed to the judgment
 - `mode`: `"shadow"`, `"active"`, or `"degraded"`
 - `heuristic`: the heuristic twin's result
-- `jev`: Jev's response, or `null` when the request degrades
+- `jev`: Jev's first answer, or `null` when the request degrades
+- `answers`: every Jev answer by question name, or `null` when the request degrades. Points that ask more than one question in one request, such as `model-routing`, are read from this map: the API does not guarantee the order of its answers.
 - `confidence`: Jev's confidence when provided
 - `durationMs`: elapsed request time
 - `usage`: Jev-reported token usage when available
@@ -877,7 +882,7 @@ Every registered judgment point with its lifecycle hook, decision type, and bloc
 | `intent` | UserPromptSubmit | keyword-detector | Is this an Intent-intake request? | Noul (yes/no) | No | — |
 | `skill-trigger` | UserPromptSubmit | keyword-detector | Which skill should this prompt trigger? | Choice (cancel/ralph/autopilot/…) | No | — |
 | `task-size` | UserPromptSubmit | task-size-detector | Is this small/medium/large? | Choice (small/medium/large) | No | — |
-| `model-routing` | PreToolUse | delegation-enforcer | Which model tier (haiku/sonnet/opus)? | Choice (haiku/sonnet/opus) | No | — |
+| `model-routing` | PreToolUse | delegation-enforcer | Which model tier (haiku/sonnet/opus)? + How much reasoning effort? | Choice (haiku/sonnet/opus) + Score (effort 0-3) | No | — |
 | `slop-warning` | PreToolUse | jev-slop-warning | Does this tool input have advisory language? | Noul (yes/no) | No | — |
 | `context-pruning` | PostToolUse | post-tool-verifier | How stale is this context candidate? | Score (fresh/recent/aging/stale) | No | — |
 | `loop-continuation` | Stop | persistent-mode | Is task complete? + Progress level? | Noul + Score | **Yes** | — |
@@ -890,6 +895,50 @@ Every registered judgment point with its lifecycle hook, decision type, and bloc
 **Advisory vs. Blocking**:
 - **Advisory points** (Blocking=No): Jev answers are recorded in shadow log but do not affect workflow. Useful for collecting calibration data.
 - **Blocking points** (Blocking=Yes): In active mode, Jev's yes/no answer gates behavior (e.g., ralph stops when `ralph-verdict` decides completion is met). Timeout, unavailability, or budget exhaustion reverts to heuristic twin.
+
+### Model routing: subagent effort
+
+The `model-routing` point asks two questions in one request, so choosing the effort adds no Jev call:
+
+| Question | Type | Answer |
+|----------|------|--------|
+| `model-tier` | Choice | `haiku`, `sonnet`, or `opus` |
+| `effort` | Score 0-3 | 0 trivial, 1 some thought, 2 careful multi-step reasoning, 3 deep reasoning |
+
+In active mode (`OMC_JEV=model-routing:active`), `pre-tool-enforcer.mjs` rounds the effort score onto its legend and maps it onto the `effort` field of the Task/Agent call:
+
+| Score | Legend | Effort |
+|-------|--------|--------|
+| < 0.5 | trivial | `low` |
+| 0.5 to < 1.5 | some thought | `medium` |
+| 1.5 to < 2.5 | careful multi-step reasoning | `high` |
+| 2.5 to 3 | deep reasoning | top bucket: `max` when `OMC_JEV_MAX_EFFORT=max` and the effort answer's `confidence` is at least 0.95, otherwise `xhigh` when the cap is `xhigh` or `max`, otherwise the cap |
+
+Every result is capped by `OMC_JEV_MAX_EFFORT`. A missing `confidence`, or one that is not a number from 0 to 1, counts as below 0.95, so it never selects `max`.
+
+This needs a Claude Code version whose Agent/Task tool schema has an `effort` field (checked on Claude Code 2.1.316).
+
+- Answers are read by question name. An effort answer counts only when its `type` is `score` and its `score` is a number from 0 to 3. A missing or malformed answer leaves its field as it was: a response without `effort` changes only the model, and one without `model-tier` changes only the effort.
+- As with the model, Jev's effort replaces an explicit `effort` in the call.
+- `OMC_JEV_MAX_EFFORT` defaults to `high`, so by default the top bucket runs at `high`: `xhigh` and `max` can spend several times the tokens of `high` across every delegated call. Set the cap to `xhigh` to let deep-reasoning tasks run at `xhigh`, or to `max` to also allow `max` when Jev is at least 95% confident; a lower cap such as `medium` lowers every bucket above it.
+- When the point is active and Jev returns no usable effort score, an explicit `effort` above the cap is lowered to the cap, for example `max` becomes `high`. Raise the cap to let explicit `xhigh` or `max` through.
+- Shadow mode, a degraded call (timeout, HTTP error, invalid response), and plan mode with `OMC_JEV_PLAN_MODE` leave the call exactly as it was, explicit effort included.
+
+Example: `OMC_JEV=model-routing:active` with `OMC_JEV_MAX_EFFORT=medium`. A call `{ "subagent_type": "executor", "model": "haiku", "effort": "max", ... }` and the answers `{ "effort": { "type": "score", "score": 2.3, ... }, "model-tier": { "type": "choice", "choice": "opus", ... } }` run with `"model": "opus", "effort": "medium"`. With `OMC_JEV_MAX_EFFORT=max` and the effort answer `{ "type": "score", "score": 2.9, "confidence": 0.9, ... }` the same call runs with `"effort": "xhigh"`; at `"confidence": 0.97` it runs with `"effort": "max"`.
+
+### Context pruning: staleness score
+
+`post-tool-verifier.mjs` asks the `context-pruning` point only for large-output tools (read, grep, glob, bash, webfetch, and the task tools) and only once context usage reaches the warning threshold (default 70%). The `staleness` question is a Score 0-3, and a score answer carries no `choice`, so in active mode the score is rounded to the nearest label and mapped to an action:
+
+| Score | Label | Action |
+|-------|-------|--------|
+| < 0.5 | `fresh` | no message |
+| 0.5 to < 1.5 | `recent` | no message |
+| 1.5 to < 2.5 | `aging` | `[OMC WARNING]` |
+| 2.5 to 3 | `stale` | `[OMC CRITICAL]` |
+
+- Jev changes the level only below the critical threshold (default 90%). At or above it the hook always emits `[OMC CRITICAL]` and asks for `/compact`, whatever Jev answers, subject to the usual warning cooldown.
+- A score outside 0-3, a non-numeric score, or an answer of another type is ignored and the heuristic action stays, even when that answer carries a `choice`. In a score answer, a string `choice` that names one of the four labels, matched case-insensitively, takes precedence over the score.
 
 ### Request Budget and Latency
 

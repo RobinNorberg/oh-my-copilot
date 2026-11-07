@@ -7,16 +7,17 @@ import { join } from 'path';
 
 /**
  * Fork (oh-my-copilot) SessionEnd foreground budget in scripts/run.cjs:
- * 300ms on Claude Code (upstream, unchanged), 1500ms when the Copilot
- * projection sets OMC_HOOK_EVENT=SessionEnd, OMC_SESSION_END_BUDGET_MS
- * overriding both. The 124 fail-closed timeout contract is unchanged.
+ * half the manifest timeout, at least 1000ms on Claude Code (upstream #4845)
+ * and at least 1500ms when the Copilot projection sets
+ * OMC_HOOK_EVENT=SessionEnd, OMC_SESSION_END_BUDGET_MS overriding both. The
+ * 124 fail-closed timeout contract is unchanged.
  */
 const REPO_ROOT = join(__dirname, '..', '..');
 const RUN_CJS_PATH = join(REPO_ROOT, 'scripts', 'run.cjs');
 const NODE = process.execPath;
 const HAS_GENERATED_DIST = existsSync(join(REPO_ROOT, 'dist', 'hooks', 'session-end', 'foreground-bootstrap.js'));
 const { resolveSessionEndBudgetMs } = createRequire(__filename)(RUN_CJS_PATH) as {
-  resolveSessionEndBudgetMs: (env: NodeJS.ProcessEnv) => number;
+  resolveSessionEndBudgetMs: (env: NodeJS.ProcessEnv, manifestTimeoutMs?: number) => number;
 };
 
 /** A clean host env: no inherited budget knobs, no vitest NODE_ENV=test widening. */
@@ -35,10 +36,18 @@ describe('run.cjs SessionEnd foreground budget (fork)', () => {
   });
 
   describe('resolveSessionEndBudgetMs', () => {
-    it('keeps 300ms without OMC_HOOK_EVENT (Claude Code) and uses 1500ms under Copilot SessionEnd', () => {
-      expect(resolveSessionEndBudgetMs({})).toBe(300);
-      expect(resolveSessionEndBudgetMs({ OMC_HOOK_EVENT: 'Stop' })).toBe(300);
+    it('floors at 1000ms without OMC_HOOK_EVENT (Claude Code) and 1500ms under Copilot SessionEnd', () => {
+      expect(resolveSessionEndBudgetMs({})).toBe(1000);
+      expect(resolveSessionEndBudgetMs({ OMC_HOOK_EVENT: 'Stop' })).toBe(1000);
       expect(resolveSessionEndBudgetMs({ OMC_HOOK_EVENT: 'SessionEnd' })).toBe(1500);
+    });
+
+    it('uses half the manifest timeout when that is above the floor', () => {
+      expect(resolveSessionEndBudgetMs({}, 30_000)).toBe(15_000);
+      expect(resolveSessionEndBudgetMs({ OMC_HOOK_EVENT: 'SessionEnd' }, 30_000)).toBe(15_000);
+      expect(resolveSessionEndBudgetMs({}, 1_500)).toBe(1000);
+      expect(resolveSessionEndBudgetMs({ OMC_HOOK_EVENT: 'SessionEnd' }, 2_000)).toBe(1500);
+      expect(resolveSessionEndBudgetMs({ OMC_SESSION_END_BUDGET_MS: '800' }, 30_000)).toBe(800);
     });
 
     it('honours a valid OMC_SESSION_END_BUDGET_MS on both hosts', () => {
@@ -48,7 +57,7 @@ describe('run.cjs SessionEnd foreground budget (fork)', () => {
     });
 
     it.each(['', 'abc', '0', '-5', '1.5', '1e3', '60001'])('ignores invalid override %j', (value) => {
-      expect(resolveSessionEndBudgetMs({ OMC_SESSION_END_BUDGET_MS: value })).toBe(300);
+      expect(resolveSessionEndBudgetMs({ OMC_SESSION_END_BUDGET_MS: value })).toBe(1000);
       expect(resolveSessionEndBudgetMs({ OMC_SESSION_END_BUDGET_MS: value, OMC_HOOK_EVENT: 'SessionEnd' })).toBe(1500);
     });
 
@@ -60,8 +69,8 @@ describe('run.cjs SessionEnd foreground budget (fork)', () => {
   });
 
   describe('runner exit behaviour', () => {
-    // A SessionEnd hook whose foreground takes ~700ms: over the Claude budget,
-    // inside the Copilot one.
+    // A SessionEnd hook whose foreground takes ~700ms: over a 300ms budget,
+    // inside the 1500ms Copilot floor.
     function slowSessionEndPlugin(): string {
       const root = mkdtempSync(join(tmpdir(), 'omc-run-cjs-se-budget-'));
       tempDirs.push(root);
@@ -90,8 +99,8 @@ describe('run.cjs SessionEnd foreground budget (fork)', () => {
       return { status: result.status, stdout: result.stdout || '', stderr: result.stderr || '' };
     }
 
-    it('Claude Code (no OMC_HOOK_EVENT): the 300ms budget times out fail-closed (124)', () => {
-      const result = run(slowSessionEndPlugin(), {});
+    it('Claude Code (no OMC_HOOK_EVENT): a 300ms budget times out fail-closed (124)', () => {
+      const result = run(slowSessionEndPlugin(), { OMC_SESSION_END_BUDGET_MS: '300' });
       expect(result.status, result.stderr).toBe(124);
       expect(result.stderr).toContain('timed out after 300ms; exiting fail-closed (124).');
     });
@@ -103,7 +112,7 @@ describe('run.cjs SessionEnd foreground budget (fork)', () => {
       expect(JSON.parse(result.stdout.trim())).toEqual({ continue: true });
     });
 
-    it('OMC_SESSION_END_BUDGET_MS widens Claude Code and narrows Copilot', () => {
+    it('OMC_SESSION_END_BUDGET_MS overrides the budget on both hosts', () => {
       const root = slowSessionEndPlugin();
       const widened = run(root, { OMC_SESSION_END_BUDGET_MS: '2000' });
       expect(widened.status, widened.stderr).toBe(0);

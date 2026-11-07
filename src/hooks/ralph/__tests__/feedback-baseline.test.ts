@@ -412,3 +412,131 @@ describe('pytest progress lines (issue #4794)', () => {
     expect(lines).toContain(`${'.'.repeat(200)}F [ 36%]`);
   });
 });
+
+describe('vitest summary clock', () => {
+  const assertion = "AssertionError: expected 'a' to be 'b' // Object.is equality";
+  // vitest's run output (colors off). "Start at" is the wall-clock time the run started, so it differs on every run.
+  function vitestRun(startAt: string, failure: string | null = assertion): string {
+    const lines = failure ? [' FAIL  src/math.test.js > fails', failure, ''] : [];
+    lines.push(
+      failure ? ' Test Files  1 failed | 1 passed (2)' : ' Test Files  1 passed (1)',
+      failure ? '      Tests  1 failed | 2 passed (3)' : '      Tests  2 passed (2)',
+      `   Start at  ${startAt}`,
+      '   Duration  3.18s (transform 90ms, setup 0ms, import 119ms, tests 5ms, environment 0ms)',
+    );
+    return lines.join('\n');
+  }
+
+  it('fingerprints an unchanged green rerun identically', () => {
+    const first = signatureLines(vitestRun('00:09:56', null));
+    expect(first).toEqual(signatureLines(vitestRun('00:55:29', null)));
+    expect(first.some((line) => line.includes('Start at'))).toBe(false);
+  });
+
+  it('reports no new failure for an unchanged red rerun and keeps its failure lines', () => {
+    const first = signatureLines(vitestRun('00:09:56'));
+    const second = signatureLines(vitestRun('00:55:29'));
+    expect(first).toEqual(second);
+    expect(first.some((line) => line.includes('Start at'))).toBe(false);
+    expect(first).toContain('FAIL src/math.test.js > fails');
+    expect(first).toContain(assertion);
+    const diff = diffAgainstBaseline(baseline({ 'npm run test': { signatures: first } }), { 'npm run test': { signatures: second } });
+    expect(diff.newSignatures).toEqual([]);
+  });
+
+  it('keeps a Start at clock that is part of an assertion message', () => {
+    const line = "AssertionError: expected 'Start at 10:00:00' to be 'Start at 10:00:01' // Object.is equality";
+    expect(signatureLines(line)).toEqual([line]);
+  });
+
+  it('keeps a Start at line that is not exactly the summary clock', () => {
+    // vitest's diff lines for a multi-line string mismatch, a clock followed by more text, and a non-clock value.
+    const lines = ['- Start at 10:00:01', '+ Start at 10:00:00', 'Start at 10:00:00 UTC', 'Start at noon'];
+    expect(signatureLines(lines.join('\n'))).toEqual([...lines].sort());
+  });
+
+  it('still reports a changed assertion as new', () => {
+    const changed = "AssertionError: expected 'a' to be 'c' // Object.is equality";
+    const diff = diffAgainstBaseline(
+      baseline({ 'npm run test': { signatures: signatureLines(vitestRun('00:09:56')) } }),
+      { 'npm run test': { signatures: signatureLines(vitestRun('00:55:29', changed)) } },
+    );
+    expect(diff.newSignatures).toEqual([`npm run test: ${changed}`]);
+  });
+});
+
+describe('Node warning process id', () => {
+  // Node prefixes every process warning with "(node:<pid>) ", so the same warning gets a new prefix on every run.
+  const warning = (pid: number, text: string): string => `(node:${pid}) ${text}`;
+  const punycode = '[DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.';
+  const vmModules = 'ExperimentalWarning: VM Modules is an experimental feature and might change at any time';
+  // jest's ESM setup (node --experimental-vm-modules) with one known failure; the code frame is left out.
+  function jestRun(pid: number, time: string): string {
+    return [
+      warning(pid, vmModules),
+      '(Use `node --trace-warnings ...` to show where the warning was created)',
+      'FAIL test/math.test.js',
+      '  ● known failure',
+      '',
+      '    expect(received).toBe(expected) // Object.is equality',
+      '',
+      '    Expected: 3',
+      '    Received: 2',
+      '',
+      '      at Object.toBe (test/math.test.js:3:43)',
+      '',
+      'Test Suites: 1 failed, 1 total',
+      'Tests:       1 failed, 1 passed, 2 total',
+      'Snapshots:   0 total',
+      `Time:        ${time}`,
+      'Ran all test suites.',
+    ].join('\n');
+  }
+
+  it('fingerprints the same warning from two processes identically', () => {
+    const others = [
+      'MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 x listeners added to [EventEmitter]. MaxListeners is 10. Use emitter.setMaxListeners() to increase limit',
+      // Library warnings: a code with a space (the MongoDB driver) and a custom type (aws-sdk v2).
+      '[MONGODB DRIVER] Warning: cursor.count is deprecated and will be removed in the next major version, please use `collection.estimatedDocumentCount` or `collection.countDocuments` instead',
+      'NOTE: The AWS SDK for JavaScript (v2) has reached end-of-support.',
+    ];
+    for (const text of [punycode, vmModules, ...others]) {
+      const first = signatureLines(warning(12496, text));
+      expect(first).toEqual(signatureLines(warning(29272, text)));
+      expect(first).toEqual([`(node:<v>) ${text}`]);
+    }
+  });
+
+  it('reports no new failure for an unchanged red jest rerun and keeps its failure lines', () => {
+    const first = signatureLines(jestRun(32712, '9.325 s'));
+    const second = signatureLines(jestRun(22952, '11.429 s'));
+    expect(first).toEqual(second);
+    expect(first).toContain(`(node:<v>) ${vmModules}`);
+    expect(first).toContain('FAIL test/math.test.js');
+    expect(first).toContain('expect(received).toBe(expected) // Object.is equality');
+    const diff = diffAgainstBaseline(baseline({ 'npm run test': { signatures: first } }), { 'npm run test': { signatures: second } });
+    expect(diff.newSignatures).toEqual([]);
+  });
+
+  it('still reports a different warning as new', () => {
+    const buffer = '[DEP0005] DeprecationWarning: Buffer() is deprecated due to security and usability issues. Please use the Buffer.alloc(), Buffer.allocUnsafe(), or Buffer.from() methods instead.';
+    const diff = diffAgainstBaseline(
+      baseline({ 'npm run test': { signatures: signatureLines(warning(12496, punycode)) } }),
+      { 'npm run test': { signatures: signatureLines(`${warning(29272, punycode)}\n${warning(29272, buffer)}`) } },
+    );
+    expect(diff.newSignatures).toEqual([`npm run test: (node:<v>) ${buffer}`]);
+  });
+
+  it('keeps a process id that is not part of a warning prefix', () => {
+    // An assertion message and the diff lines of a multi-line string mismatch.
+    const lines = ["AssertionError: expected '(node:42) ready' to equal '(node:43) ready'", '- (node:42) ready', '+ (node:43) ready'];
+    expect(signatureLines(lines.join('\n'))).toEqual([...lines].sort());
+  });
+
+  it('normalizes a warning behind a workspace prefix', () => {
+    // pnpm -r running several packages prefixes each output line with the package and script.
+    const first = signatureLines(`packages/a test: ${warning(12496, punycode)}`);
+    expect(first).toEqual(signatureLines(`packages/a test: ${warning(29272, punycode)}`));
+    expect(first).toEqual([`packages/a test: (node:<v>) ${punycode}`]);
+  });
+});

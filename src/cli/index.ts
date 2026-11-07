@@ -15,7 +15,7 @@ import { hardenWindowsExeSearch } from '../utils/windows-search.js';
 import { Command, CommanderError, Option } from 'commander';
 import chalk from 'chalk';
 import { join } from 'path';
-import { writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { OMC_PLUGIN_ROOT_ENV } from '../lib/env-vars.js';
 import {
@@ -28,7 +28,6 @@ import {
   performUpdate,
   formatUpdateNotification,
   getInstalledVersion,
-  getOMCConfig,
   reconcileUpdateRuntime,
   CONFIG_FILE,
   type OMCConfig,
@@ -112,6 +111,23 @@ export function applyPluginDirOption(rawPath: string | undefined): void {
     );
   }
   process.env[OMC_PLUGIN_ROOT_ENV] = resolved;
+}
+
+// For commands that write the config back: getOMCConfig returns only the fields auto-update knows,
+// so writing its result would drop every other key.
+function loadConfigForUpdate(): OMCConfig {
+  try {
+    if (!existsSync(CONFIG_FILE)) return { silentAutoUpdate: false };
+    const parsed: unknown = JSON.parse(readFileSync(CONFIG_FILE, 'utf-8'));
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new Error('expected a JSON object');
+    }
+    return parsed as OMCConfig;
+  } catch (error) {
+    console.error(chalk.red(`Cannot read ${CONFIG_FILE}: ${error instanceof Error ? error.message : String(error)}`));
+    console.error(chalk.gray('Fix or remove the file, then run this command again.'));
+    process.exit(1);
+  }
 }
 
 const program = new Command();
@@ -321,7 +337,7 @@ Examples:
         process.exit(1);
       }
 
-      const config = getOMCConfig() as OMCConfig & { notificationProfiles?: Record<string, any> };
+      const config = loadConfigForUpdate() as OMCConfig & { notificationProfiles?: Record<string, any> };
       config.notificationProfiles = config.notificationProfiles || {};
       const profileName = options.profile as string;
       const profile = config.notificationProfiles[profileName] || { enabled: true };
@@ -451,7 +467,7 @@ Examples:
       process.exit(1);
     }
 
-    const config = getOMCConfig();
+    const config = loadConfigForUpdate();
     config.stopHookCallbacks = config.stopHookCallbacks || {};
 
     // Show current config
@@ -515,6 +531,7 @@ Examples:
       case 'file': {
         const current = config.stopHookCallbacks.file;
         config.stopHookCallbacks.file = {
+          ...current,
           enabled: enabled ?? current?.enabled ?? false,
           path: options.path ?? current?.path ?? join(getCopilotConfigDir(), 'session-logs/{session_id}.md'),
           format: (options.format as 'markdown' | 'json') ?? current?.format ?? 'markdown',
@@ -605,7 +622,7 @@ Examples:
   # Select profile at launch:
   $ OMC_NOTIFY_PROFILE=work claude`)
   .action(async (name: string | undefined, options) => {
-    const config = getOMCConfig() as OMCConfig & { notificationProfiles?: Record<string, any> };
+    const config = loadConfigForUpdate() as OMCConfig & { notificationProfiles?: Record<string, any> };
     const profiles = config.notificationProfiles || {};
 
     if (options.list || !name) {

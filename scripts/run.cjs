@@ -15,6 +15,7 @@ const path = require('path');
 const { join, basename, dirname } = path;
 const { pathToFileURL } = require('url');
 const { Worker } = require('worker_threads');
+const { performance } = require('perf_hooks');
 const { hardenWindowsExeSearch } = require('./lib/windows-search.cjs');
 
 hardenWindowsExeSearch();
@@ -314,17 +315,17 @@ function resolveTrustedSessionEndTarget(resolution, extraArgs) {
   }
 }
 
-// Fork (oh-my-copilot): SessionEnd foreground budget per host. Claude Code
-// kills SessionEnd hooks at exit, so upstream caps the foreground at 300ms.
-// Copilot (OMC_HOOK_EVENT=SessionEnd from copilot/hooks.json) fires SessionEnd
-// per turn and waits up to timeoutSec, so 300ms only drops the work under load.
-// 1500ms is chosen (~5x the idle foreground cost), not derived.
-// OMC_SESSION_END_BUDGET_MS overrides both hosts (integer 1..60000); the
-// manifest-derived timeout still caps the result at the call site.
-const SESSION_END_BUDGET_MS = 300;
+// SessionEnd foreground budget (upstream #4845): half the manifest timeout,
+// with a floor for Node cold start under load. Only tests may widen it, and
+// only under NODE_ENV=test. The manifest-derived timeout still caps the result
+// at the call site.
+// Fork (oh-my-copilot): Copilot (OMC_HOOK_EVENT=SessionEnd from
+// copilot/hooks.json) fires SessionEnd per turn, so its floor stays at the
+// fork's 1500ms (~5x the idle foreground cost, chosen, not derived).
+// OMC_SESSION_END_BUDGET_MS overrides both hosts (integer 1..60000).
+const MIN_SESSION_END_BUDGET_MS = 1000;
 const COPILOT_SESSION_END_BUDGET_MS = 1500;
-function resolveSessionEndBudgetMs(env = process.env) {
-  // Test-only widening (upstream contract) wins, and only under NODE_ENV=test.
+function resolveSessionEndBudgetMs(env = process.env, manifestTimeoutMs = 0) {
   const requestedTestTimeout = env.NODE_ENV === 'test'
     ? Number(env.OMC_SESSION_END_TEST_FOREGROUND_TIMEOUT_MS)
     : NaN;
@@ -334,7 +335,8 @@ function resolveSessionEndBudgetMs(env = process.env) {
     const value = Number(override);
     if (value >= 1 && value <= MAX_DECLARED_GENERIC_TIMEOUT_MS) return value;
   }
-  return env.OMC_HOOK_EVENT === 'SessionEnd' ? COPILOT_SESSION_END_BUDGET_MS : SESSION_END_BUDGET_MS;
+  const floor = env.OMC_HOOK_EVENT === 'SessionEnd' ? COPILOT_SESSION_END_BUDGET_MS : MIN_SESSION_END_BUDGET_MS;
+  return Math.max(floor, Math.floor(manifestTimeoutMs * 0.5));
 }
 
 
@@ -1245,9 +1247,11 @@ function runResolvedHook(resolution, extraArgs, io = {}) {
   }
   const sessionEndManifestHook = resolveTrustedSessionEndTarget(resolution, extraArgs);
   if (sessionEndManifestHook) {
-    // Fork: 300ms on Claude Code, 1500ms under Copilot; see resolveSessionEndBudgetMs.
-    const budgetMs = resolveSessionEndBudgetMs();
-    const timeoutMs = Math.min(resolveGenericTimeoutMs(sessionEndManifestHook), budgetMs);
+    // Reserve half the manifest budget (floor 1000ms, 1500ms under Copilot);
+    // see resolveSessionEndBudgetMs.
+    const manifestTimeoutMs = resolveGenericTimeoutMs(sessionEndManifestHook);
+    const budgetMs = resolveSessionEndBudgetMs(process.env, manifestTimeoutMs);
+    const timeoutMs = Math.min(manifestTimeoutMs, budgetMs);
     return runWorker(resolution.targetPath, sessionEndManifestHook, timeoutMs, io);
   }
   const copilotWorkerHook = resolveCopilotWorkerTarget(resolution, extraArgs);

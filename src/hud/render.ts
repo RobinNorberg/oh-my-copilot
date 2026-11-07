@@ -44,6 +44,7 @@ import { renderUltragoal } from "./elements/ultragoal.js";
 import { renderCwd } from "./elements/cwd.js";
 import { renderPremiumBudget } from "./elements/premium-budget.js";
 import { renderHostname } from "./elements/hostname.js";
+import { renderAccount } from "./elements/account.js";
 import { renderGitRepo, renderGitBranch, renderGitStatus } from "./elements/git.js";
 import { renderMultiRepo } from "./elements/multi-repo.js";
 import { renderCopilotModel, renderModel } from "./elements/model.js";
@@ -378,6 +379,11 @@ export async function render(
   if (enabledElements.apiKeySource && context.apiKeySource) {
     const keySource = isolate(() => renderApiKeySource(context.apiKeySource));
     if (keySource) rendered.set("apiKeySource", keySource);
+  }
+
+  if (enabledElements.account) {
+    const accountElement = renderAccount();
+    if (accountElement) rendered.set("account", accountElement);
   }
 
   if (enabledElements.profile && context.profileName) {

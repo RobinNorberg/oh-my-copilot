@@ -43,6 +43,7 @@ Config, manifest, worker identity, and status surfaces should expose the same lo
 - OMC must check the leader workspace before provisioning worktrees. If the leader repo is dirty, startup should refuse worktree provisioning rather than copying an unsafe base state.
 - Existing compatible clean worker worktrees may be reused.
 - Dirty worker worktrees must be preserved and surfaced as warnings/events. Cleanup must not force-remove dirty worker edits.
+- Clean worker worktrees and branches holding commits not merged into the leader HEAD are kept on purpose (`worktree_unmerged_commits`). Cleanup reports them in `retained`, not `preserved`; it is not a failure. Shutdown still completes, records them under `.omg/state/team-preserved-worktrees/`, and `omg team status <team>` names them. Merge or discard the commits, then remove the worktree.
 - Branch/path mismatches should fail instead of reusing the wrong workspace.
 - Rollback may remove newly created clean worktrees and runtime-created branches when safe; reused worktrees are preserved.
 - `orphan-cleanup` requires the same instance, provider, pane, and worktree cleanup evidence as normal shutdown. Neither force nor `acknowledge_lost_worktree_recovery` permits deleting unknown ownership records or worktree recovery backups.
