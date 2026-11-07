@@ -45,7 +45,7 @@ export interface LocalWorld {
 }
 
 /** A repository on `main` with the backlog item #7 committed, and no remote. */
-export function localWorld(gate: string[] | undefined = ['node', '--test']): LocalWorld {
+export function localWorld(gate: string[] | null = ['node', '--test']): LocalWorld {
   const dir = mkdtempSync(join(tmpdir(), 'omg-factory-local-'));
   const root = join(dir, 'repo');
   mkdirSync(root);
@@ -103,7 +103,6 @@ export function localOpts(w: LocalWorld, lanes: FakeLanes, over: Partial<Factory
     gateConfig: localTestGateConfig,
     forge: { config: w.config, options: { ...factoryForgeOptions(w.root), stateDir: w.stateDir } },
     localGate: w.gate,
-    sleep: async () => {},
     ...over,
   };
 }

@@ -89,7 +89,7 @@ describe('factory run on the local forge', () => {
   });
 
   it('no factory.forge.local.gate: the run parks at awaiting-human: gates instead of passing', async () => {
-    w = localWorld(undefined);
+    w = localWorld(null);
     const out = await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')])));
     expect(out.exitCode).toBe(EXIT_AWAITING_HUMAN);
     expect(out.gate?.name).toBe('gates');

@@ -94,7 +94,7 @@ describe('loadFactoryForgeConfig: origin parsed before any fetch (F8, F9)', () =
     const c = checkout();
     const loaded = loadFactoryForgeConfig(c.exec, c.root, 'main', { factory: { forge: { kind: 'local' } } }, undefined);
     expect(loaded.config.kind).toBe('local');
-    expect(loaded.config.repo.url).toMatch(/[\/]local[\/][^\/]+\.git$/);
+    expect(loaded.config.repo.url).toMatch(/[\\/]local[\\/][^\\/]+\.git$/);
     expect(fetches(c.calls)).toEqual([]);
   });
 
