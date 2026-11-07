@@ -412,13 +412,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
         await expect(readFile(join(teamRoot, 'events.jsonl'), 'utf8'))
             .rejects.toMatchObject({ code: 'ENOENT' });
     });
-    it.each([
-        ['capped', true],
-        ['busy', false],
-    ])('an sdk worker whose session is %s is flagged for reassignment: %s', async (state, flagged) => {
-        cwd = await mkdtemp(join(tmpdir(), `omc-runtime-v2-monitor-sdk-${state}-`));
-        isolateFixtureRoot(cwd);
-        await writeConfigAndTask('in_progress');
+    async function writeSdkWorker(state) {
         const teamRoot = teamStateRoot(cwd, 'demo-team');
         const config = JSON.parse(await readFile(join(teamRoot, 'config.json'), 'utf8'));
         config.tmux_session = 'sdk:demo-team';
@@ -434,17 +428,100 @@ describe('monitorTeamV2 pane-based stall inference', () => {
             hooks: { session_end_runs: 0, failed: 0 }, aborts: 1, permissions: [],
             last_error: state === 'capped' ? 'credit cap 10 reached (10.50)' : null, timeline: {},
         }), 'utf8');
+        return teamRoot;
+    }
+    it.each([
+        ['capped', true],
+        ['busy', false],
+    ])('an sdk worker whose session is %s is flagged for reassignment: %s', async (state, flagged) => {
+        cwd = await mkdtemp(join(tmpdir(), `omc-runtime-v2-monitor-sdk-${state}-`));
+        isolateFixtureRoot(cwd);
+        await writeConfigAndTask('in_progress');
+        await writeSdkWorker(state);
         const { monitorTeamV2 } = await import('../runtime-v2.js');
         const snapshot = await monitorTeamV2('demo-team', cwd);
         expect(snapshot?.workers[0]?.sdk?.state).toBe(state);
         expect(snapshot?.deadWorkers).toEqual([]);
         if (flagged) {
             expect(snapshot?.nonReportingWorkers).toEqual(['worker-1']);
-            expect(snapshot?.recommendations).toContain('Reassign task-1 from worker-1: sdk credit cap reached (credit cap 10 reached (10.50)); the worker takes no more prompts');
+            expect(snapshot?.recommendations).toContain(`Reassign task-1 from worker-1 or raise team.sdk.maxCreditsPerWorker: sdk credit cap reached (credit cap 10 reached (10.50)); salvage: uncommitted work, if any, is in ${cwd}`);
         }
         else {
             expect(snapshot?.nonReportingWorkers).toEqual([]);
             expect(snapshot?.recommendations.some((r) => r.includes('credit cap'))).toBe(false);
+        }
+    });
+    it("moves a capped sdk worker's in-progress task to the terminal capped status with a salvage hint, once", async () => {
+        cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-sdk-capped-task-'));
+        isolateFixtureRoot(cwd);
+        await writeConfigAndTask('in_progress');
+        const teamRoot = await writeSdkWorker('capped');
+        const { monitorTeamV2 } = await import('../runtime-v2.js');
+        const snapshot = await monitorTeamV2('demo-team', cwd);
+        expect(snapshot?.tasks).toMatchObject({ in_progress: 0, capped: 1, failed: 0 });
+        expect(snapshot?.allTasksTerminal).toBe(true);
+        expect(snapshot?.phase).toBe('failed');
+        const task = JSON.parse(await readFile(join(teamRoot, 'tasks', 'task-1.json'), 'utf8'));
+        expect(task.status).toBe('capped');
+        expect(task.claim).toBeUndefined();
+        expect(task.error).toBe(`sdk_credit_cap (credit cap 10 reached (10.50)); salvage: uncommitted work, if any, is in ${cwd}`);
+        expect(task.metadata).toMatchObject({ capped_by: 'monitor', capped_worker: 'worker-1', salvage_path: cwd });
+        const version = task.version;
+        const second = await monitorTeamV2('demo-team', cwd);
+        expect(second?.tasks).toMatchObject({ in_progress: 0, capped: 1 });
+        const again = JSON.parse(await readFile(join(teamRoot, 'tasks', 'task-1.json'), 'utf8'));
+        expect(again.version).toBe(version);
+    });
+    async function writeLeaderMessage(teamRoot, createdAt) {
+        await mkdir(join(teamRoot, 'mailbox'), { recursive: true });
+        await writeFile(join(teamRoot, 'mailbox', 'leader-fixed.json'), JSON.stringify({
+            worker: 'leader-fixed',
+            messages: [{
+                    message_id: 'm1', from_worker: 'worker-1', to_worker: 'leader-fixed',
+                    body: 'BLOCKER: which base branch?', created_at: createdAt,
+                }],
+        }), 'utf8');
+    }
+    it('lists an unanswered worker message to the leader and leaves the task alone without a timeout', async () => {
+        cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-leader-inbox-'));
+        isolateFixtureRoot(cwd);
+        await writeConfigAndTask('in_progress');
+        const teamRoot = teamStateRoot(cwd, 'demo-team');
+        await writeLeaderMessage(teamRoot, new Date(Date.now() - 3 * 60 * 60_000).toISOString());
+        const { monitorTeamV2 } = await import('../runtime-v2.js');
+        const snapshot = await monitorTeamV2('demo-team', cwd);
+        expect(snapshot?.leaderInbox).toEqual([expect.objectContaining({
+                message_id: 'm1', from: 'worker-1', body: 'BLOCKER: which base branch?',
+            })]);
+        expect(snapshot?.tasks.in_progress).toBe(1);
+    });
+    it.each([
+        [90, 'failed'],
+        [5, 'in_progress'],
+    ])('with blockerTimeoutMinutes=60 a %i-minute-old unanswered blocker leaves the task %s', async (ageMinutes, expected) => {
+        cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-blocker-timeout-'));
+        isolateFixtureRoot(cwd);
+        await writeConfigAndTask('in_progress');
+        const teamRoot = teamStateRoot(cwd, 'demo-team');
+        await writeLeaderMessage(teamRoot, new Date(Date.now() - ageMinutes * 60_000).toISOString());
+        vi.doMock('../../config/loader.js', async (importOriginal) => ({
+            ...await importOriginal(),
+            loadConfig: () => ({ team: { sdk: { blockerTimeoutMinutes: 60 } } }),
+        }));
+        try {
+            const { monitorTeamV2 } = await import('../runtime-v2.js');
+            const snapshot = await monitorTeamV2('demo-team', cwd);
+            // The leader writes the canonical task-<id>.json; the fixture wrote the legacy name.
+            const task = JSON.parse(await readFile(join(teamRoot, 'tasks', expected === 'failed' ? 'task-1.json' : '1.json'), 'utf8'));
+            expect(task.status).toBe(expected);
+            if (expected === 'failed') {
+                expect(snapshot?.tasks.failed).toBe(1);
+                expect(task.error).toBe('blocker_unanswered: no leader reply within 60 min to worker-1: BLOCKER: which base branch?');
+                expect(task.metadata).toMatchObject({ blocker_message_id: 'm1' });
+            }
+        }
+        finally {
+            vi.doUnmock('../../config/loader.js');
         }
     });
 });
