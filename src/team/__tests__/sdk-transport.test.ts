@@ -16,7 +16,7 @@ import type {
   SdkSessionLike,
 } from '../../smoke/copilot-sdk-driver.js';
 import { buildSdkExcludedTools, decideSdkPermission, type SdkPolicyContext } from '../sdk-policy.js';
-import { prependPath, readDoorbell, readHostCredentials, runSdkHost, type SdkHostDeps } from '../sdk-host.js';
+import { prependPath, readDoorbell, readHostCredentials, runSdkHost, type SdkHostDeps, type SdkHostSessionFile } from '../sdk-host.js';
 import { ledgerPath, readLedger } from '../../budget/ledger.js';
 import {
   hostCredentialHandoff,
@@ -624,6 +624,11 @@ describe('sdk host', () => {
       ['write', false], ['shell', true], ['write', false], ['shell', true],
     ]);
     expect(session.timeline.first_send_at).toBeDefined();
+    // Launch marks for the progress poller, and each doorbell turn's billed calls.
+    const hostSession = session as unknown as SdkHostSessionFile;
+    expect(hostSession.timeline.first_event_at).toBeDefined();
+    expect(hostSession.turn_usage.map((t) => [t.turn, t.calls])).toEqual([[1, 1], [2, 1]]);
+    expect(hostSession.turn_usage[0]!.credits).toBeCloseTo(0.5);
     const events = readFileSync(sdkWorkerFiles(stateRoot, WORKER).events, 'utf8').trim().split('\n');
     expect(events.length).toBeGreaterThanOrEqual(7);
 
