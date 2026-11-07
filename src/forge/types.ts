@@ -11,7 +11,8 @@ import type { GhCheck, WorkflowRun } from '../ship/gates.js';
 import type { HealJob, HealRun } from '../factory/heal/history.js';
 import type { ProviderName } from '../providers/types.js';
 
-export type ForgeKind = 'github' | 'azure-devops';
+/** `local`: the offline forge (src/forge/local), an engine-owned bare mirror plus a committed backlog directory. */
+export type ForgeKind = 'github' | 'azure-devops' | 'local';
 
 export interface ForgeRepo {
   kind: ForgeKind;
@@ -66,6 +67,8 @@ export interface ForgeItem {
   repoUrl: string;
   /** ADO System.TeamProject (work item ids are org-wide); undefined on GitHub. */
   project?: string;
+  /** Local forge only: read from the working tree and absent from, or different at, the base commit (authorTrusted is false). */
+  uncommitted?: true;
 }
 
 /** The fields the engine and merge policy read (today's MergeView plus url/headRefName). */
@@ -82,7 +85,7 @@ export interface ForgePr {
   url: string;
 }
 
-/** A check in GitHub's vocabulary (state SUCCESS/SKIPPED/FAILURE/PENDING/…). ADO maps policy evaluations into it. */
+/** A check in GitHub's vocabulary (state SUCCESS/SKIPPED/FAILURE/PENDING/…). ADO maps policy evaluations into it; the local forge reports its one `local-gate` record. */
 export interface ForgeCheck extends GhCheck {
   /** GitHub: from link (actionsIds) | ADO: buildId */
   runId?: string;
@@ -101,7 +104,9 @@ export type IntakeSource =
   | { type: 'milestone'; milestone: string }
   | { type: 'wiql-query'; queryId: string }
   | { type: 'board-column'; team: string; board: string; column: string }
-  | { type: 'area-tag'; areaPath: string; tag: string };
+  | { type: 'area-tag'; areaPath: string; tag: string }
+  /** Local forge: the open items of factory.forge.local.backlogDir, optionally only those with `label`. */
+  | { type: 'local-backlog'; label?: string };
 
 export const PROGRESS_STAGES = ['queued', 'building', 'reviewing', 'verifying', 'ready-to-merge', 'done', 'blocked', 'cancelled'] as const;
 export type ProgressStage = (typeof PROGRESS_STAGES)[number];
@@ -304,6 +309,8 @@ export interface Forge {
   readonly merge: ForgeMerge;
   readonly ci?: ForgeCi;
   readonly capabilities: ForgeCapabilities;
+  /** What this forge cannot do, one line each, for `omg factory check`/`setup`/`board` (the local forge; GitHub and ADO omit it). */
+  limitations?(): string[];
 }
 
 export interface AzureDevOpsForgeConfig {
@@ -322,6 +329,16 @@ export interface AzureDevOpsForgeConfig {
   apiVersion: '7.1';
   /** User config (default location) only; matched against createdBy.uniqueName, lowercased. */
   trustedAuthors: string[];
+}
+
+/** `factory.forge.local` after trust layering (src/forge/config.ts). */
+export interface LocalForgeConfig {
+  /** Repo-relative backlog directory, `/`-separated, no `..`; default `.copilot/backlog`. */
+  backlogDir: string;
+  /** The local gate argv (for example `["npm","test"]`), from the trusted layers only; absent = gates park at awaiting-human. */
+  gate?: string[];
+  /** 1..120, default 20. */
+  gateTimeoutMinutes: number;
 }
 
 export interface ForgeIntakeConfig {
@@ -353,6 +370,8 @@ export interface ResolvedForgeConfig {
   repo: ForgeRepo;
   /** Set when kind is azure-devops. */
   azureDevOps?: AzureDevOpsForgeConfig;
+  /** Set when kind is local. */
+  local?: LocalForgeConfig;
   intake: ForgeIntakeConfig;
   check: ForgeCheckConfig;
   progress: ForgeProgressConfig;
@@ -372,6 +391,21 @@ export interface ForgeOptions {
   stateDir?: string;
   /** `omg factory enqueue`'s body directory (its TrackerWriteContext bodyDir): an adapter that reads a tracker write's body file reads only a file directly in it. */
   trackerBodyDir?: string;
+  /** Local forge only: how its tracker reads the backlog. */
+  local?: LocalTrackerOptions;
+}
+
+/**
+ * The local tracker reads committed items at `baseSha()` (`git show
+ * <sha>:<dir>/<file>`), so they are authorTrusted. `workingTree` (check,
+ * board, enqueue) also reads the working tree: an item missing from, or
+ * different at, the base commit comes back `uncommitted`, untrusted.
+ */
+export interface LocalTrackerOptions {
+  /** The verified base commit (40 hex) the run reads items at; undefined = not known yet. */
+  baseSha?: () => string | undefined;
+  /** Also read the working tree (never for `run`). */
+  workingTree?: boolean;
 }
 
 /** Adapters are built from the caller's (guarded) Exec; they never spawn. */
