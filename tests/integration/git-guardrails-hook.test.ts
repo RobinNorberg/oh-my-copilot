@@ -128,6 +128,10 @@ const guardrailsStdinWaitMs = hookStdinTimeoutMs(
 );
 // The fixed readStdin(3000) the derived wait replaced.
 const LEGACY_GUARDRAILS_STDIN_WAIT_MS = 3000;
+// Hang watchdog for the open-stdin runs: the runner always ends by the inner
+// budget, so allow that plus scaled runner start-up and exit. The assertions,
+// not this watchdog, check that the hook (not the runner) decided.
+const OPEN_STDIN_WATCHDOG_MS = guardrailsInnerBudgetMs + scaleTiming(1000);
 
 interface TimedRunResult extends RunResult {
   elapsedMs: number;
@@ -459,7 +463,7 @@ describe('git-guardrails hook', () => {
       }),
       {},
       dir,
-      4500,
+      OPEN_STDIN_WATCHDOG_MS,
     );
     expect(result.code).toBe(2);
     expect(result.stderr).toContain('git push');
@@ -477,7 +481,7 @@ describe('git-guardrails hook', () => {
         '{"tool_name":"Bash","tool_input":{"command":"git pu',
         { ...enabled, ...extraEnv },
         dir,
-        4500,
+        OPEN_STDIN_WATCHDOG_MS,
       );
       expect(result.code).toBe(expectedCode);
       // The hook decided, not the runner's own timeout.
