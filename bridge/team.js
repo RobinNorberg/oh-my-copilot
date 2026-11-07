@@ -17029,7 +17029,7 @@ function agentTypeGuidance(agentType, reviewerRole = false) {
       return [
         "### Agent-Type Guidance (claude)",
         "- Keep reasoning focused on assigned task IDs and send concise progress acks to leader-fixed.",
-        "- Before any risky command, send a blocker/proposal message to leader-fixed and wait for updated inbox instructions."
+        "- Before any risky command, send `BLOCKER: <proposal>` to leader-fixed and wait for updated inbox instructions."
       ].join("\n");
   }
 }
@@ -17080,6 +17080,7 @@ Recovery task adopted from an owner: skip steps 1-2 and resume from Recovery Con
    - Failure: \`${failTaskCommand}\`
      Before failing, send the leader what failed and why (exact error text).
 6. Replies and ACKs are not a stop signal: keep going until the task is completed or failed.
+7. **Blocked**: if you cannot proceed, send \`BLOCKER: <what you need>\` to leader-fixed and wait for the reply. Only a body starting with \`BLOCKER:\` reaches the leader as a blocker.
 
 ## Your Tasks
 ${taskList}
@@ -17203,6 +17204,7 @@ Send messages via CLI API:
 - To leader: \`${formatOmcCliInvocation(`team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"<message>\\"}" --json`)}\`
 - Check mailbox: \`${mailboxListCommand}\`
 - Mark delivered: \`${mailboxDeliveredCommand}\`
+- Blocked: if you cannot proceed, send \`BLOCKER: <what you need>\` to leader-fixed and wait for the reply. Only a body starting with \`BLOCKER:\` reaches the leader as a blocker; ACKs and progress reports do not.
 
 ## Shutdown Protocol
 When you see a shutdown request in your inbox:
@@ -17703,6 +17705,9 @@ function messageField(message, key) {
   if (!message || typeof message !== "object") return "";
   return safeString(message[key]).trim();
 }
+function isBlockerMessageBody(body) {
+  return /^\s*blocker\s*:/i.test(body);
+}
 async function readLeaderInbox(mailboxDir, leaderName = "leader-fixed") {
   const inbox = [
     ...await readMailboxFileMessages(join35(mailboxDir, `${leaderName}.json`)),
@@ -17712,6 +17717,7 @@ async function readLeaderInbox(mailboxDir, leaderName = "leader-fixed") {
   const unread = [];
   for (const message of inbox) {
     if (!isUndelivered(message) || messageToWorker(message) !== leaderName) continue;
+    if (!isBlockerMessageBody(safeString(message.body))) continue;
     const from = messageFromWorker(message);
     if (!from || from === leaderName) continue;
     if (!latestReplyBySender.has(from)) {
@@ -27750,9 +27756,10 @@ async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
   }
   const leaderInbox = await readLeaderInbox(dirname37(absPath(cwd, TeamPaths.mailbox(sanitized, "leader-fixed"))));
   if (leaderInbox.length > 0) {
+    const sdkTeam = config.workers.some((worker) => worker.transport === "sdk" || isSdkTarget(worker.pane_id));
     let blockerTimeoutMs = null;
     try {
-      blockerTimeoutMs = resolveBlockerTimeoutMs(loadConfig());
+      if (sdkTeam) blockerTimeoutMs = resolveBlockerTimeoutMs(loadConfig());
     } catch (err) {
       process.stderr.write(`[team/runtime-v2] ${err instanceof Error ? err.message : String(err)}
 `);
@@ -27770,7 +27777,7 @@ async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
             cwd,
             task,
             "failed",
-            `blocker_unanswered: no leader reply within ${timeoutMs / 6e4} min to ${message.from}: ${message.body.slice(0, 200)}`,
+            `blocker_unanswered: no leader reply within ${Math.round(timeoutMs / 6e4)} min to ${message.from}: ${message.body.slice(0, 200)}`,
             { blocker_message_id: message.message_id, blocker_message_at: message.created_at, blocker_message: message.body }
           );
         } catch (err) {
@@ -29536,6 +29543,9 @@ async function executeTeamApiOperation(operation, args, fallbackCwd) {
         const allowed = new Set(TEAM_TASK_STATUSES);
         if (!allowed.has(from) || !allowed.has(to)) {
           return { ok: false, operation, error: { code: "invalid_input", message: "from and to must be valid task statuses" } };
+        }
+        if (to === "capped") {
+          return { ok: false, operation, error: { code: "invalid_input", message: "to=capped is set by the team monitor only; workers complete or fail their task" } };
         }
         if (transitionResult !== void 0 && typeof transitionResult !== "string") {
           return { ok: false, operation, error: { code: "invalid_input", message: "result must be a string when provided" } };

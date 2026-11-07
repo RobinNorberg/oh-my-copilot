@@ -496,12 +496,15 @@ describe('monitorTeamV2 pane-based stall inference', () => {
         expect(snapshot?.tasks.in_progress).toBe(1);
     });
     it.each([
-        [90, 'failed'],
-        [5, 'in_progress'],
-    ])('with blockerTimeoutMinutes=60 a %i-minute-old unanswered blocker leaves the task %s', async (ageMinutes, expected) => {
+        [90, 'sdk', 'failed'],
+        [5, 'sdk', 'in_progress'],
+        [90, 'pane', 'in_progress'],
+    ])('with blockerTimeoutMinutes=60 a %i-minute-old unanswered blocker on a %s team leaves the task %s', async (ageMinutes, transport, expected) => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-blocker-timeout-'));
         isolateFixtureRoot(cwd);
         await writeConfigAndTask('in_progress');
+        if (transport === 'sdk')
+            await writeSdkWorker('busy');
         const teamRoot = teamStateRoot(cwd, 'demo-team');
         await writeLeaderMessage(teamRoot, new Date(Date.now() - ageMinutes * 60_000).toISOString());
         vi.doMock('../../config/loader.js', async (importOriginal) => ({

@@ -468,9 +468,10 @@ export interface CliWorkerVerdictResult {
  */
 export declare function processCliWorkerVerdicts(teamName: string, cwd: string, expectedInstanceId?: TeamInstanceId): Promise<CliWorkerVerdictResult[]>;
 /**
- * `team.sdk.blockerTimeoutMinutes`: minutes a worker's message to the leader
- * may stay unanswered before the monitor fails the sender's in-progress
- * task. Unset (the default) disables the timeout.
+ * `team.sdk.blockerTimeoutMinutes`: minutes a worker's `BLOCKER:` message to
+ * the leader may stay unanswered before the monitor fails the sender's
+ * in-progress task. Applies to sdk-transport teams only. Unset (the default)
+ * disables the timeout.
  */
 export declare function resolveBlockerTimeoutMs(pluginCfg: PluginConfig): number | null;
 /**
