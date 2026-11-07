@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { localReviews } from '../reviews.js';
@@ -30,6 +30,24 @@ const reviews = () => {
   const rec = recordingExec();
   return { r: localReviews({ exec: rec.exec, root: fx.root, mirror: fx.mirror, storePath: store(), humanDir: humanDir() }), calls: rec.calls };
 };
+
+describe('local reviews: symbolic links under the runtime root', () => {
+  it('refuses to write a body or append a comment through a linked PR directory', () => {
+    const { r } = reviews();
+    const n = r.createDraftPr({ base: 'main', head: 'factory/1-add', title: 'Add remove', bodyFile, itemId: 1 });
+    const outside = join(fx.tmp, 'outside');
+    mkdirSync(outside, { recursive: true });
+    symlinkSync(outside, join(humanDir(), 'prs', String(n + 1)), 'junction');
+    git(fx.root, 'checkout', '-q', '-b', 'factory/2-more');
+    fx.write('src/more.js', 'export {};\n');
+    fx.push(fx.commit('more'), 'factory/2-more');
+    git(fx.root, 'checkout', '-q', 'main');
+    expect(() => r.createDraftPr({ base: 'main', head: 'factory/2-more', title: 'More', bodyFile })).toThrow(/symbolic link/);
+    expect(r.commentPr(n + 1, bodyFile)).toMatchObject({ ok: false, stderr: expect.stringMatching(/symbolic link/) });
+    expect(existsSync(join(outside, 'body.md'))).toBe(false);
+    expect(existsSync(join(outside, 'comments.md'))).toBe(false);
+  });
+});
 
 describe('local reviews', () => {
   it('creates a draft PR from mirror refs, views it, marks it ready and comments', () => {

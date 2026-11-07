@@ -147,6 +147,11 @@ export interface ForgeTracker {
    */
   addRelation?(id: number, kind: ForgeRelationKind, target: number): void;
   /**
+   * Local forge: problems the reads so far skipped instead of throwing (a
+   * committed backlog file that does not parse), for the caller to print.
+   */
+  warnings?(): string[];
+  /**
    * `omg factory board --no-check` only: a cheap batched read of the live
    * stage fields. Azure DevOps: one `GET wit/workitems?ids=…&fields=…` per
    * 200 ids. An id missing from the map could not be read. Optional: GitHub
