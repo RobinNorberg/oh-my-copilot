@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "eec785889a8f27216d5ed1145b6f579c667ad408",
-    "sourceSha256": "d7497cf09b010063354dd4391473b7baca47f27aeb96c5dbeecdb4871bee2adb",
+    "head": "863b88ef8d3fa7ee625f639dd3f4bd1167ed0f74",
+    "sourceSha256": "6d480c53f5dca5d5b9f7f665ef33c3fc48ed2b5eca3b23f7bc7c222a49738ac0",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "eec785889a8f27216d5ed1145b6f579c667ad408",
-  "sourceSha256": "d7497cf09b010063354dd4391473b7baca47f27aeb96c5dbeecdb4871bee2adb",
+  "head": "863b88ef8d3fa7ee625f639dd3f4bd1167ed0f74",
+  "sourceSha256": "6d480c53f5dca5d5b9f7f665ef33c3fc48ed2b5eca3b23f7bc7c222a49738ac0",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 1916,
-      "total": 1941
+      "srcFiles": 1918,
+      "total": 1943
     },
     "generated": {
-      "distFiles": 7040,
+      "distFiles": 7044,
       "bridgeFiles": 8,
-      "total": 7048
+      "total": 7052
     },
     "prompt": {
       "promptLikeFiles": 63
@@ -1266,6 +1266,10 @@
       "dist/__tests__/helpers/prompt-test-helpers.d.ts.map",
       "dist/__tests__/helpers/prompt-test-helpers.js",
       "dist/__tests__/helpers/prompt-test-helpers.js.map",
+      "dist/__tests__/helpers/runner-clock.d.ts",
+      "dist/__tests__/helpers/runner-clock.d.ts.map",
+      "dist/__tests__/helpers/runner-clock.js",
+      "dist/__tests__/helpers/runner-clock.js.map",
       "dist/__tests__/hook-bridge-main-module.test.d.ts",
       "dist/__tests__/hook-bridge-main-module.test.d.ts.map",
       "dist/__tests__/hook-bridge-main-module.test.js",
@@ -11109,6 +11113,26 @@
         "id": "dist/__tests__/helpers/prompt-test-helpers.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/helpers/prompt-test-helpers.js.map"
+      },
+      {
+        "id": "dist/__tests__/helpers/runner-clock.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/runner-clock.d.ts"
+      },
+      {
+        "id": "dist/__tests__/helpers/runner-clock.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/runner-clock.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/helpers/runner-clock.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/runner-clock.js"
+      },
+      {
+        "id": "dist/__tests__/helpers/runner-clock.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/runner-clock.js.map"
       },
       {
         "id": "dist/__tests__/hook-bridge-main-module.test.d.ts",
@@ -47571,6 +47595,11 @@
         "path": "src/__tests__/fixtures/hung-hooks/success-parent-stdout-orphan.cjs"
       },
       {
+        "id": "src/__tests__/fixtures/runner-clock.cjs",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/runner-clock.cjs"
+      },
+      {
         "id": "src/__tests__/fixtures/sample-transcript.jsonl",
         "kind": "src",
         "path": "src/__tests__/fixtures/sample-transcript.jsonl"
@@ -47604,6 +47633,11 @@
         "id": "src/__tests__/helpers/prompt-test-helpers.ts",
         "kind": "src",
         "path": "src/__tests__/helpers/prompt-test-helpers.ts"
+      },
+      {
+        "id": "src/__tests__/helpers/runner-clock.ts",
+        "kind": "src",
+        "path": "src/__tests__/helpers/runner-clock.ts"
       },
       {
         "id": "src/__tests__/hook-bridge-main-module.test.ts",
@@ -62713,6 +62747,16 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/fixtures/runner-clock.cjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/fixtures/runner-clock.cjs",
+        "to": "external:node:worker_threads",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/generated-artifact-authorization.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -62850,6 +62894,21 @@
       {
         "from": "src/__tests__/helpers/prompt-test-helpers.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/runner-clock.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/runner-clock.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/runner-clock.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -66364,11 +66423,6 @@
       },
       {
         "from": "src/__tests__/pre-tool-enforcer.test.ts",
-        "to": "src/__tests__/helpers/platform.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/pre-tool-enforcer.test.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
@@ -67673,6 +67727,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/run-cjs-generic-timeout.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/run-cjs-graceful-fallback.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -67700,6 +67759,11 @@
       {
         "from": "src/__tests__/run-cjs-graceful-fallback.test.ts",
         "to": "scripts/run.cjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-graceful-fallback.test.ts",
+        "to": "src/__tests__/helpers/runner-clock.ts",
         "kind": "imports"
       },
       {
@@ -67765,6 +67829,16 @@
       {
         "from": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
         "to": "scripts/run.cjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
+        "to": "src/__tests__/helpers/runner-clock.ts",
         "kind": "imports"
       },
       {
@@ -67895,6 +67969,11 @@
       {
         "from": "src/__tests__/session-end-process-exit.test.ts",
         "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-end-process-exit.test.ts",
+        "to": "src/__tests__/helpers/runner-clock.ts",
         "kind": "imports"
       },
       {
@@ -72075,11 +72154,6 @@
       {
         "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
         "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
-        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -115444,11 +115518,6 @@
       },
       {
         "from": "tests/integration/workflow-profile-lock-recovery.test.ts",
-        "to": "src/__tests__/helpers/platform.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/workflow-profile-lock-recovery.test.ts",
         "to": "src/installer/index.ts",
         "kind": "imports"
       },
@@ -116244,12 +116313,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9730,
-      "edgeCount": 11793,
-      "importEdgeCount": 9732,
+      "nodeCount": 9736,
+      "edgeCount": 11800,
+      "importEdgeCount": 9739,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "9f3153afc96a2664c9c4e974361dd0f5bb3f85bc4e4c94b96c4c0aead2cbd115",
-  "manifestSha256": "2914d072faf12fabfb6cd60838f84c3ee953a575cc4af2994bf6071549acc4f8"
+  "inventorySha256": "13adc141bdbd3ee548b3c21fd659ccefc27b14a0a6e27cbd667607f1be12cb2d",
+  "manifestSha256": "84c5286b7c3edab30b00d0ab7591ead2750ecc30b8eb672f71feb0d5d75194f8"
 }
