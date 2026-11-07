@@ -111,7 +111,7 @@ export function parseBacklogFile(path: string, text: string): BacklogItem {
   const name = path.slice(path.lastIndexOf('/') + 1);
   const id = backlogFileId(name);
   if (id === undefined) throw new BacklogParseError(path, 'the file name must be <id>-<slug>.md');
-  const lines = text.replace(/^﻿/, '').split(/\r?\n/);
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/);
   if (lines[0]?.trim() !== '---') throw new BacklogParseError(path, 'must start with a "---" frontmatter line');
   const close = lines.findIndex((l, i) => i > 0 && l.trim() === '---');
   if (close < 0) throw new BacklogParseError(path, 'the frontmatter has no closing "---" line');
