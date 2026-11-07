@@ -19,6 +19,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 - The `run.cjs` wall-time tests (`run-cjs-windows-stdio-contract`, `run-cjs-generic-timeout`, `run-cjs-graceful-fallback`, `session-end-process-exit`) no longer fail on a busy Windows machine. They check a declared hook budget on the runner's own clock, so slow process creation and a late exit event no longer count against the runner. Readiness waits and hang guards now scale with the host, and the declared budgets are unchanged. Tests only; no user-facing change.
 - `/team` now works on Copilot CLI. The skill told Copilot users to enable `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` and spawn Claude Code teammates, which Copilot CLI does not have. Under Copilot CLI it now drives `omg team`: start, `status`, `shutdown`, the `sdk`/`pane` transport choice, and `--transport sdk` in the Warp terminal. The Claude Code steps are marked as Claude Code only.
 
+### Changed
+
+- Dev tooling: `OMC_VITEST_MAX_WORKERS` (a positive integer) overrides the vitest worker count on every platform, so the release suite can run with fewer workers on a loaded Windows machine. Unset or invalid keeps the defaults. No user-facing change.
+
 # oh-my-copilot v5.19.6
 
 ## [5.19.6] - 2026-11-02
