@@ -36,7 +36,32 @@ export declare function assertFactoryForgeOptions(repoRoot: string, options: For
  * (resolveTrustedBases, as ship reads it) is neither fetched nor read: that
  * layer is empty, with a warning.
  */
-export declare function loadFactoryForgeConfig(exec: Exec, root: string, base: string, trustedUser: unknown, project: unknown): LoadedForgeConfig;
+export declare function loadFactoryForgeConfig(exec: Exec, root: string, base: string, trustedUser: unknown, project: unknown, opts?: {
+    dryRun?: boolean;
+}): LoadedForgeConfig;
+/**
+ * The run has no usable forge: no origin, an origin that is neither GitHub
+ * nor Azure DevOps, or a configured forge the origin contradicts. Every
+ * `omg factory` command exits 5 for it (F9), like check / board / setup.
+ */
+export declare class FactoryForgeUnavailableError extends Error {
+    constructor(message: string);
+}
+/** Exit code of FactoryForgeUnavailableError (EXIT_CHECK_INCOMPATIBLE, setup's 5). */
+export declare const EXIT_FORGE_UNAVAILABLE = 5;
+/**
+ * Create (once) and sync the local forge's bare mirror (offline forge plan
+ * §1.1), through the engine's guarded, hardened Exec:
+ * - `git init --bare` at `mirror` when it does not exist;
+ * - the checkout's `omg-local` remote is added when missing; an existing one
+ *   must point at `mirror` for fetch and for every push url
+ *   (remoteRepoMismatch: a planted pushurl or insteadOf refuses);
+ * - the local `<base>` is pushed to the mirror without `+`, so the sync is
+ *   fast-forward only: a diverged mirror base refuses with a message;
+ * - `git fetch omg-local <base>` updates `refs/remotes/omg-local/<base>`.
+ * Returns the base sha. Throws (a plain Error) on any refusal.
+ */
+export declare function syncLocalMirror(exec: Exec, root: string, mirror: string, base: string): string;
 /**
  * The forge kind the origin remote names; github when there is no origin or
  * it cannot be parsed (today's behaviour). For the GitHub-only commands

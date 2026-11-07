@@ -1,5 +1,5 @@
 /**
- * Factory command (spec: OMC 软件工厂闭环, tracker issue #9).
+ * Factory command (spec: the OMC software factory loop, tracker issue #9).
  *
  * `omg factorylisten` — the resident intake daemon. Transport adapters
  * (smee.io / cloudflared / direct) live outside the OMC boundary: the daemon
@@ -33,8 +33,8 @@ import { CopilotRunManager, defaultCopilotRunDeps } from '../../copilot-run/job.
 import { resolveFactoryRunLimits, runCredits } from '../../factory/run/budget.js';
 import { cleanFactoryRun } from '../../factory/run/clean.js';
 import { EXIT_AWAITING_HUMAN, runFactoryEngine } from '../../factory/run/engine.js';
-import { factoryGuardExec } from '../../factory/run/exec.js';
-import { factoryForgeOptions, loadFactoryForgeConfig, originForgeKind } from '../../factory/run/forge-roots.js';
+import { factoryGuardExec, hardenedGitExec } from '../../factory/run/exec.js';
+import { EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, factoryForgeOptions, loadFactoryForgeConfig, originForgeKind, syncLocalMirror } from '../../factory/run/forge-roots.js';
 import { CopilotLaneBackend } from '../../factory/run/lane.js';
 import { factoryCancelRequested, factoryStatePath, readFactoryState, requestFactoryCancel, verifyFactoryIntegrity } from '../../factory/run/state.js';
 import { resolveShipConfig, userConfigLayers } from '../../ship/config.js';
@@ -45,7 +45,7 @@ import { defaultFactoryCheckDeps, factoryCheckCommand, ttyConfirm } from './fact
 import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_INCOMPATIBLE, EXIT_CHECK_USAGE } from '../../factory/check/cli.js';
 import { runFactoryEnqueue } from '../../factory/enqueue.js';
 import { resolveHealConfig } from '../../factory/heal/config.js';
-import { defaultLedgerDir } from '../../factory/run/ledger.js';
+import { defaultLedgerDir, emptyHooksDir } from '../../factory/run/ledger.js';
 import { listenForgeRefusal } from '../../factory/setup/detect.js';
 import { factorySetupCommand } from './factory-setup.js';
 import { factoryBoardCommand } from './factory-board.js';
@@ -57,27 +57,27 @@ import { createForge } from '../../forge/index.js';
 import { skillSlash } from '../../utils/skill-slash.js';
 export function renderChainStatus(status) {
     const lines = [];
-    lines.push(`链状态 ${status.directory}`);
-    lines.push(`路由表（.omg/factory-routes.json，单一权威）: ${status.routeKeys.length} 键${status.routeKeys.length > 0 ? ` — ${status.routeKeys.join(', ')}` : ''}`);
-    lines.push(`活跃 ledger: ${status.activeLedgers}`);
-    lines.push(`意图（${status.intents.length}）:`);
+    lines.push(`chain status ${status.directory}`);
+    lines.push(`route table (.omg/factory-routes.json, single authority): ${status.routeKeys.length} keys${status.routeKeys.length > 0 ? ` — ${status.routeKeys.join(', ')}` : ''}`);
+    lines.push(`active ledgers: ${status.activeLedgers}`);
+    lines.push(`intents (${status.intents.length}):`);
     if (status.intents.length === 0)
-        lines.push('  （无决策记录）');
+        lines.push('  (no decisions recorded)');
     for (const intent of status.intents) {
-        const last = intent.lastDecision ? `${intent.lastDecision} @ ${intent.lastDecisionAt ?? '?'}` : '无';
-        const stopped = intent.stopped ? `  停链[${intent.stopped.reason}]` : '';
-        lines.push(`  ${intent.intentId}  决策 ${intent.decisionCount}  末次 ${last}${stopped}`);
+        const last = intent.lastDecision ? `${intent.lastDecision} @ ${intent.lastDecisionAt ?? '?'}` : 'none';
+        const stopped = intent.stopped ? `  stopped[${intent.stopped.reason}]` : '';
+        lines.push(`  ${intent.intentId}  decisions ${intent.decisionCount}  last ${last}${stopped}`);
         intent.links.forEach((link, index) => {
             const host = link.host ? ` [${link.host}]` : '';
             const ended = link.closedAt
-                ? `已结束 ${link.outcome ?? '?'}→${link.decision ?? '?'}${link.hostSessionId && link.hostSessionId !== link.chainLink ? ` session=${link.hostSessionId}` : ''}`
-                : '运行中';
-            lines.push(`    环 ${index + 1} ${link.stage}${host} link=${link.chainLink} ${ended}`);
+                ? `ended ${link.outcome ?? '?'}→${link.decision ?? '?'}${link.hostSessionId && link.hostSessionId !== link.chainLink ? ` session=${link.hostSessionId}` : ''}`
+                : 'running';
+            lines.push(`    link ${index + 1} ${link.stage}${host} link=${link.chainLink} ${ended}`);
         });
     }
-    lines.push(`停滞环（阈值 30min 未推进）: ${status.stalled.length}`);
+    lines.push(`stalled links (no progress for 30 min): ${status.stalled.length}`);
     for (const stall of status.stalled) {
-        lines.push(`  ${stall.intentId} stage=${stall.stage} 停滞 ${Math.round(stall.stalledForMs / 60_000)}min session=${stall.session}`);
+        lines.push(`  ${stall.intentId} stage=${stall.stage} stalled ${Math.round(stall.stalledForMs / 60_000)}min session=${stall.session}`);
     }
     return lines.join('\n');
 }
@@ -94,7 +94,7 @@ export const defaultFactoryRunDeps = {
         const pick = (c) => c?.ship?.base;
         return resolveShipConfig({ base: pick(projectConfig(root)) ?? pick(userConfigLayers().user) }).base;
     },
-    forge: (root, base) => loadFactoryForgeConfig(factoryGuardExec(defaultExec), root, base, userConfigLayers().trustedUser, projectConfig(root)),
+    forge: (root, base, opts) => loadFactoryForgeConfig(factoryGuardExec(defaultExec), root, base, userConfigLayers().trustedUser, projectConfig(root), opts),
 };
 class FactoryUsageError extends Error {
 }
@@ -134,11 +134,14 @@ async function factoryGuarded(json, fn) {
     }
     catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        const unavailable = error instanceof FactoryForgeUnavailableError;
+        // F9: no usable forge exits 5 with the prefix check, board and setup print.
+        const text = unavailable && !message.startsWith('unsupported forge') ? `unsupported forge: ${message}` : message;
         if (json)
-            console.log(factoryRunJson.error(message));
+            console.log(factoryRunJson.error(text));
         else
-            console.error(chalk.red(`Error: ${message}`));
-        process.exitCode = error instanceof FactoryUsageError ? 2 : 1;
+            console.error(chalk.red(unavailable ? text : `Error: ${message}`));
+        process.exitCode = error instanceof FactoryUsageError ? 2 : unavailable ? EXIT_FORGE_UNAVAILABLE : 1;
     }
 }
 export function renderFactoryRunState(state) {
@@ -218,7 +221,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         for (const w of warnings)
             console.error(chalk.yellow(w));
         const base = deps.base(root);
-        const loaded = deps.forge?.(root, base);
+        const loaded = deps.forge?.(root, base, { dryRun: Boolean(o.dryRun) });
         for (const w of loaded?.warnings ?? [])
             console.error(chalk.yellow(w));
         let issue;
@@ -363,6 +366,20 @@ export function factoryEnqueueCommand(deps) {
         }
     });
 }
+/**
+ * `omg factory poll`'s local forge base sync (FactoryPollDeps.localBaseSync):
+ * syncLocalMirror through the engine's exec shape, guarded with the base as
+ * the one branch it may push to the mirror and hardened (no hooks, the
+ * omg-local pack programs pinned), so a human merge on the base turns the
+ * local PR MERGED on the next tick.
+ */
+export function pollLocalBaseSync(exec, ledgerDir) {
+    return ({ root, base, config }) => {
+        const guarded = factoryGuardExec(hardenedGitExec(exec, emptyHooksDir(ledgerDir)), () => [base]);
+        const sha = syncLocalMirror(guarded, root, config.repo.url, base);
+        return `synced ${base} ${sha.slice(0, 12)} to the local forge mirror`;
+    };
+}
 export function factoryCommand() {
     const cmd = new Command('factory');
     cmd.description('Software factory automation (chain trigger + intake listener)');
@@ -373,6 +390,7 @@ export function factoryCommand() {
     cmd.addCommand(factoryPollCommand({
         ...defaultFactoryCheckDeps(defaultFactoryRunDeps.base),
         healScan: defaultPollHealScan(defaultExec, (root) => resolveHealConfig(userConfigLayers().trustedUser, projectConfig(root)), defaultLedgerDir()),
+        localBaseSync: pollLocalBaseSync(defaultExec, defaultLedgerDir()),
     }));
     cmd.addCommand(healCommand({
         exec: defaultExec,

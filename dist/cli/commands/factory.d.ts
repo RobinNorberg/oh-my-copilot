@@ -1,5 +1,5 @@
 /**
- * Factory command (spec: OMC 软件工厂闭环, tracker issue #9).
+ * Factory command (spec: the OMC software factory loop, tracker issue #9).
  *
  * `omg factorylisten` — the resident intake daemon. Transport adapters
  * (smee.io / cloudflared / direct) live outside the OMC boundary: the daemon
@@ -29,6 +29,7 @@ import type { GateConfigLoader } from '../../factory/run/prepare.js';
 import { type FactoryRunState } from '../../factory/run/state.js';
 import { type Exec } from '../../ship/exec.js';
 import { type FactoryCheckDeps } from '../../factory/check/cli.js';
+import type { FactoryPollDeps } from '../../factory/poll.js';
 export declare function renderChainStatus(status: ChainStatus): string;
 /** Seams for `omg factory run` (tests script gh/git and the lanes; nothing live). */
 export interface FactoryRunDeps {
@@ -47,7 +48,9 @@ export interface FactoryRunDeps {
      * project layers plus the origin remote). Omitted = GitHub through the gh
      * calls with no forge config, as before forges (the default deps set it).
      */
-    forge?: (root: string, base: string) => LoadedForgeConfig;
+    forge?: (root: string, base: string, opts?: {
+        dryRun?: boolean;
+    }) => LoadedForgeConfig;
 }
 export declare const defaultFactoryRunDeps: FactoryRunDeps;
 /**
@@ -65,6 +68,14 @@ export declare function renderFactoryRunState(state: FactoryRunState): string;
 export declare function factoryRunCommand(deps?: FactoryRunDeps): Command;
 /** `omg factory enqueue` (shipyard ↔ factory design §3.2-§3.4); the command lives in src/factory/enqueue.ts. */
 export declare function factoryEnqueueCommand(deps: FactoryCheckDeps): Command;
+/**
+ * `omg factory poll`'s local forge base sync (FactoryPollDeps.localBaseSync):
+ * syncLocalMirror through the engine's exec shape, guarded with the base as
+ * the one branch it may push to the mirror and hardened (no hooks, the
+ * omg-local pack programs pinned), so a human merge on the base turns the
+ * local PR MERGED on the next tick.
+ */
+export declare function pollLocalBaseSync(exec: Exec, ledgerDir: string): NonNullable<FactoryPollDeps['localBaseSync']>;
 export declare function factoryCommand(): Command;
 /**
  * Narrow starter route table: exactly the listener's INTAKE_ROUTE_TABLE — the

@@ -27,6 +27,7 @@ import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { isProcessAlive } from '../../platform/process-utils.js';
 import { sameRepo } from '../../ship/config.js';
 import { PROGRESS_STAGES } from '../../forge/types.js';
+import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 export const FACTORY_PHASES = [
     'intake', 'plan', 'implement', 'publish', 'review', 'fix', 'prepare', 'conflict-fix', 'gates', 'ci-fix', 'merge', 'merged', 'cancelled', 'failed',
 ];
@@ -95,6 +96,7 @@ export function createFactoryState(input, now) {
         kind: input.heal ? 'ci-heal' : 'issue',
         issue: input.heal ? 0 : input.issue,
         ...(input.heal ? { heal: input.heal } : {}),
+        ...(input.remote ? { remote: input.remote } : {}),
         repoUrl: input.repoUrl,
         base: input.base,
         branch: factoryBranch(key),
@@ -174,6 +176,10 @@ export function forgeResumeProblem(state, resolved, resolvedRepoUrl) {
     }
     return null;
 }
+/** The git remote of a run: `origin` unless the state seals the local forge's `omg-local`. */
+export function runRemote(state) {
+    return state.remote ?? 'origin';
+}
 const isStr = (v) => typeof v === 'string';
 const isCount = (v) => Number.isInteger(v) && v >= 0;
 function shapeProblem(s) {
@@ -185,8 +191,11 @@ function shapeProblem(s) {
         return 'implementer';
     if (s.kind !== undefined && s.kind !== 'issue' && s.kind !== 'ci-heal')
         return 'kind';
-    if (s.forgeKind !== undefined && s.forgeKind !== 'github' && s.forgeKind !== 'azure-devops')
+    if (s.forgeKind !== undefined && s.forgeKind !== 'github' && s.forgeKind !== 'azure-devops' && s.forgeKind !== 'local')
         return 'forgeKind';
+    // The remote follows the forge: omg-local exactly on a local run, absent (origin) on every other.
+    if (s.remote !== undefined ? s.remote !== LOCAL_REMOTE || s.forgeKind !== 'local' : s.forgeKind === 'local')
+        return 'remote';
     if (s.trackerStage !== undefined && !PROGRESS_STAGES.includes(s.trackerStage))
         return 'trackerStage';
     if (s.kind === 'ci-heal') {

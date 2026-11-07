@@ -70,6 +70,14 @@ export declare function factoryGuardExec(exec: Exec, extraProtected?: () => read
 /** Prepended to every hardened git command, after the guard checked the plain shape. */
 export declare function gitHardeningArgs(hooksDir: string): string[];
 /**
+ * Prepended to a transport command on the local forge's `omg-local` remote:
+ * the stock pack programs, so a `remote.omg-local.receivepack` or
+ * `uploadpack` planted in the checkout's .git/config never runs. Its url and
+ * every push url are compared with the mirror path before each fetch and
+ * push (remoteRepoMismatch), so a planted pushurl or insteadOf refuses.
+ */
+export declare const LOCAL_REMOTE_PACK_ARGS: readonly string[];
+/**
  * Run git with `core.hooksPath` set to an engine-owned empty directory and
  * `core.fsmonitor=false`, so no hook (pre-push, post-checkout,
  * reference-transaction) and no fsmonitor command runs in the engine.
