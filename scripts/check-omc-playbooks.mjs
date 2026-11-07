@@ -28,6 +28,9 @@ import { join, resolve, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
 import { stripLeadingUtf8Bom } from './lib/utf8-bom.mjs';
+import { hardenWindowsExeSearch } from './lib/windows-search.mjs';
+
+hardenWindowsExeSearch();
 
 const args = process.argv.slice(2);
 const allowArchiveOnly = args.includes('--allow-archive-only');
