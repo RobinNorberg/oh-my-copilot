@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSyn
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { execFileSync, spawnSync } from 'child_process';
+import { clockedRunnerArgs, readRunnerClock, RUNNER_CLOCK_ENV, runnerClockEnv } from './helpers/runner-clock.js';
 const RUN_CJS_PATH = join(__dirname, '..', '..', 'scripts', 'run.cjs');
 const NODE = process.execPath;
 const runCjsModule = require('../../scripts/run.cjs');
@@ -56,8 +57,10 @@ describe('run.cjs — graceful fallback for stale plugin paths', () => {
         expect(result.status, result.stderr).toBe(0);
         expect(readFileSync(output, 'utf8')).toBe('424242');
     });
+    // With a runner clock in env, run.cjs records its own lifetime (see helpers/runner-clock.ts).
     function runCjs(target, env = {}, args = []) {
-        const result = spawnSync(NODE, [RUN_CJS_PATH, target, ...args], {
+        const argv = env[RUNNER_CLOCK_ENV] ? clockedRunnerArgs(RUN_CJS_PATH, target, ...args) : [RUN_CJS_PATH, target, ...args];
+        const result = spawnSync(NODE, argv, {
             encoding: 'utf-8',
             env: {
                 ...process.env,
@@ -252,11 +255,14 @@ describe('run.cjs — graceful fallback for stale plugin paths', () => {
                 ],
             },
         }, null, 2));
-        const startedAt = Date.now();
+        // The 2s outer budget is asserted on the runner's own clock, which
+        // excludes process creation and the test noticing the exit.
+        const clockFile = join(tmpDir, 'runner-clock.json');
         const result = runCjs(slowTarget, {
             CLAUDE_PLUGIN_ROOT: pluginRoot,
+            ...runnerClockEnv(clockFile),
         });
-        const elapsedMs = Date.now() - startedAt;
+        const elapsedMs = readRunnerClock(clockFile).lifetimeMs;
         expect(result.status).toBe(0);
         expect(result.stdout).not.toContain('slow-stop-done');
         const innerMs = runCjsModule.resolveGenericTimeoutMs({ timeoutMs: 2000, event: 'Stop' });
@@ -295,21 +301,24 @@ describe('run.cjs — graceful fallback for stale plugin paths', () => {
                 ],
             },
         }, null, 2));
-        const tenStartedAt = Date.now();
+        // Both budgets are asserted on the runner's own clock (helpers/runner-clock.ts).
+        const tenClock = join(tmpDir, 'runner-clock-ten.json');
         const tenResult = runCjs(tenSecondTarget, {
             CLAUDE_PLUGIN_ROOT: pluginRoot,
+            ...runnerClockEnv(tenClock),
         });
-        const tenElapsedMs = Date.now() - tenStartedAt;
+        const tenElapsedMs = readRunnerClock(tenClock).lifetimeMs;
         expect(tenResult.status).toBe(0);
         expect(tenResult.stdout).not.toContain('prompt-ten-done');
         expect(tenResult.stderr).toBe('');
         expect(tenElapsedMs).toBeGreaterThanOrEqual(7500);
         expect(tenElapsedMs).toBeLessThan(10000);
-        const fifteenStartedAt = Date.now();
+        const fifteenClock = join(tmpDir, 'runner-clock-fifteen.json');
         const fifteenResult = runCjs(fifteenSecondTarget, {
             CLAUDE_PLUGIN_ROOT: pluginRoot,
+            ...runnerClockEnv(fifteenClock),
         });
-        const fifteenElapsedMs = Date.now() - fifteenStartedAt;
+        const fifteenElapsedMs = readRunnerClock(fifteenClock).lifetimeMs;
         expect(fifteenResult.status).toBe(0);
         expect(fifteenResult.stdout).not.toContain('prompt-fifteen-done');
         expect(fifteenResult.stderr).toBe('');
@@ -340,11 +349,14 @@ describe('run.cjs — graceful fallback for stale plugin paths', () => {
                 ],
             },
         }, null, 2));
-        const startedAt = Date.now();
+        // The 2s outer budget is asserted on the runner's own clock, which
+        // excludes process creation and the test noticing the exit.
+        const clockFile = join(tmpDir, 'runner-clock.json');
         const result = runCjs(slowTarget, {
             CLAUDE_PLUGIN_ROOT: pluginRoot,
+            ...runnerClockEnv(clockFile),
         });
-        const elapsedMs = Date.now() - startedAt;
+        const elapsedMs = readRunnerClock(clockFile).lifetimeMs;
         expect(result.status).toBe(0);
         expect(result.stdout).not.toContain('non-prompt-done');
         const innerMs = runCjsModule.resolveGenericTimeoutMs({ timeoutMs: 2000, event: 'Stop' });

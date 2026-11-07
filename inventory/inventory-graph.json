@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "f6259c9853b228bb1582fac88fa71b35f9d786de",
-    "sourceSha256": "fa49c58a87f85ac7f2de17fa565b528b12bdae697f4560fef01996230ee07549",
+    "head": "5d68821e7c9624de1880a8d23b77783cf6397af4",
+    "sourceSha256": "93e895ab7c357c1428979e62dc7b77ee769c433b4748724c2616738efe792b22",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "f6259c9853b228bb1582fac88fa71b35f9d786de",
-  "sourceSha256": "fa49c58a87f85ac7f2de17fa565b528b12bdae697f4560fef01996230ee07549",
+  "head": "5d68821e7c9624de1880a8d23b77783cf6397af4",
+  "sourceSha256": "93e895ab7c357c1428979e62dc7b77ee769c433b4748724c2616738efe792b22",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 1917,
-      "total": 1942
+      "srcFiles": 1918,
+      "total": 1943
     },
     "generated": {
-      "distFiles": 7040,
+      "distFiles": 7044,
       "bridgeFiles": 8,
-      "total": 7048
+      "total": 7052
     },
     "prompt": {
       "promptLikeFiles": 63
@@ -1266,6 +1266,10 @@
       "dist/__tests__/helpers/prompt-test-helpers.d.ts.map",
       "dist/__tests__/helpers/prompt-test-helpers.js",
       "dist/__tests__/helpers/prompt-test-helpers.js.map",
+      "dist/__tests__/helpers/runner-clock.d.ts",
+      "dist/__tests__/helpers/runner-clock.d.ts.map",
+      "dist/__tests__/helpers/runner-clock.js",
+      "dist/__tests__/helpers/runner-clock.js.map",
       "dist/__tests__/hook-bridge-main-module.test.d.ts",
       "dist/__tests__/hook-bridge-main-module.test.d.ts.map",
       "dist/__tests__/hook-bridge-main-module.test.js",
@@ -11109,6 +11113,26 @@
         "id": "dist/__tests__/helpers/prompt-test-helpers.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/helpers/prompt-test-helpers.js.map"
+      },
+      {
+        "id": "dist/__tests__/helpers/runner-clock.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/runner-clock.d.ts"
+      },
+      {
+        "id": "dist/__tests__/helpers/runner-clock.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/runner-clock.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/helpers/runner-clock.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/runner-clock.js"
+      },
+      {
+        "id": "dist/__tests__/helpers/runner-clock.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/runner-clock.js.map"
       },
       {
         "id": "dist/__tests__/hook-bridge-main-module.test.d.ts",
@@ -47571,6 +47595,11 @@
         "path": "src/__tests__/fixtures/hung-hooks/success-parent-stdout-orphan.cjs"
       },
       {
+        "id": "src/__tests__/fixtures/runner-clock.cjs",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/runner-clock.cjs"
+      },
+      {
         "id": "src/__tests__/fixtures/sample-transcript.jsonl",
         "kind": "src",
         "path": "src/__tests__/fixtures/sample-transcript.jsonl"
@@ -47606,6 +47635,11 @@
         "path": "src/__tests__/helpers/prompt-test-helpers.ts"
       },
       {
+        "id": "src/__tests__/helpers/runner-clock.ts",
+        "kind": "src",
+        "path": "src/__tests__/helpers/runner-clock.ts"
+      },
+      {
         "id": "src/__tests__/hook-bridge-main-module.test.ts",
         "kind": "src",
         "path": "src/__tests__/hook-bridge-main-module.test.ts"
@@ -47614,11 +47648,6 @@
         "id": "src/__tests__/hook-command-normalizer.test.ts",
         "kind": "src",
         "path": "src/__tests__/hook-command-normalizer.test.ts"
-      },
-      {
-        "id": "src/__tests__/hook-stdin-budget.test.ts",
-        "kind": "src",
-        "path": "src/__tests__/hook-stdin-budget.test.ts"
       },
       {
         "id": "src/__tests__/hooks-command-escaping.test.ts",
@@ -62718,6 +62747,16 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/fixtures/runner-clock.cjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/fixtures/runner-clock.cjs",
+        "to": "external:node:worker_threads",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/generated-artifact-authorization.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -62858,6 +62897,21 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/helpers/runner-clock.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/runner-clock.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/runner-clock.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/hook-bridge-main-module.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -62910,31 +62964,6 @@
       {
         "from": "src/__tests__/hook-command-normalizer.test.ts",
         "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/hook-stdin-budget.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/hook-stdin-budget.test.ts",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/hook-stdin-budget.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/hook-stdin-budget.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/hook-stdin-budget.test.ts",
-        "to": "scripts/run.cjs",
         "kind": "imports"
       },
       {
@@ -66394,6 +66423,11 @@
       },
       {
         "from": "src/__tests__/pre-tool-enforcer.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/pre-tool-enforcer.test.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
@@ -67698,6 +67732,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/run-cjs-generic-timeout.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/run-cjs-graceful-fallback.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -67725,6 +67764,11 @@
       {
         "from": "src/__tests__/run-cjs-graceful-fallback.test.ts",
         "to": "scripts/run.cjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-graceful-fallback.test.ts",
+        "to": "src/__tests__/helpers/runner-clock.ts",
         "kind": "imports"
       },
       {
@@ -67790,6 +67834,16 @@
       {
         "from": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
         "to": "scripts/run.cjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
+        "to": "src/__tests__/helpers/runner-clock.ts",
         "kind": "imports"
       },
       {
@@ -67920,6 +67974,11 @@
       {
         "from": "src/__tests__/session-end-process-exit.test.ts",
         "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-end-process-exit.test.ts",
+        "to": "src/__tests__/helpers/runner-clock.ts",
         "kind": "imports"
       },
       {
@@ -72100,6 +72159,11 @@
       {
         "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -114958,21 +115022,6 @@
         "kind": "imports"
       },
       {
-        "from": "tests/integration/git-guardrails-hook.test.ts",
-        "to": "scripts/lib/stdin.mjs",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/git-guardrails-hook.test.ts",
-        "to": "scripts/run.cjs",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/git-guardrails-hook.test.ts",
-        "to": "src/__tests__/helpers/platform.ts",
-        "kind": "imports"
-      },
-      {
         "from": "tests/integration/issue-4266-jev-temp-cleanup.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -115475,6 +115524,11 @@
       {
         "from": "tests/integration/workflow-profile-lock-recovery.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/workflow-profile-lock-recovery.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -116274,12 +116328,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9731,
-      "edgeCount": 11798,
-      "importEdgeCount": 9737,
+      "nodeCount": 9736,
+      "edgeCount": 11803,
+      "importEdgeCount": 9742,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "95d03f792e0def125f66c377553fed79ca4d150718a8cc4cf8e4869ce41d6004",
-  "manifestSha256": "22401c500d11aaf4f3af721c95ffeef244db528cb64a2ffc3b593b2505622bc9"
+  "inventorySha256": "13adc141bdbd3ee548b3c21fd659ccefc27b14a0a6e27cbd667607f1be12cb2d",
+  "manifestSha256": "15e8bb9f56b6caf5ace9bc6b11b0fa83460c8fd74d25a67acc4931cf45b915fb"
 }

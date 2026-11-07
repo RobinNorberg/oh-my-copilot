@@ -7,7 +7,12 @@ import { resolveFactoryRunLimits } from '../../../factory/run/budget.js';
 import { EXIT_AWAITING_HUMAN } from '../../../factory/run/engine.js';
 import { factoryCancelRequested, factoryRepoOwnerPath, readFactoryState } from '../../../factory/run/state.js';
 import { resolveForgeConfig } from '../../../forge/config.js';
+import { scaleTiming } from '../../../__tests__/helpers/platform.js';
 import { commitFile, FakeLanes, harness, ISSUE, review, testGateConfig } from '../../../factory/run/__tests__/fake-lanes.js';
+// The full engine flows below run dozens of real git commands. Alone they take 40-120 s on a
+// loaded win32 host, at the 120 s suite default; nothing in them asserts timing, so this is
+// only a hang guard.
+const ENGINE_FLOW_TIMEOUT_MS = scaleTiming(60_000);
 let h;
 let out;
 let lanes;
@@ -70,7 +75,7 @@ describe('omg factory run CLI', () => {
         out = [];
         expect(await cli(d, 'status', String(ISSUE))).toBe(0);
         expect(out.join('\n')).toMatch(/cancel requested/);
-    });
+    }, ENGINE_FLOW_TIMEOUT_MS);
     it('a gate other than merge exits 4', async () => {
         h.gh.issue.body = 'no plan';
         lanes = new FakeLanes(h.root, []);
@@ -143,7 +148,7 @@ describe('omg factory run CLI', () => {
             expect(readFactoryState(h.root, 12)).toBeNull();
             expect(readFactoryState(h.root, 2)).toBeNull();
             expect(readFactoryState(h.root, 9)).toBeNull();
-        });
+        }, ENGINE_FLOW_TIMEOUT_MS);
         it('nothing runnable exits 0 with the bucket counts; an item whose own factory PR merged is never re-run', async () => {
             items = { 100: { body: '- [ ] #7\n- [ ] #9\n' }, 7: {}, 9: { body: 'Blocked by #4\n' }, 4: {} };
             merged = ['factory/issue-7'];
@@ -169,7 +174,7 @@ describe('omg factory run CLI', () => {
             out = [];
             expect(await cli(nextDeps(), '--next', '--json')).toBe(0);
             expect(JSON.parse(out.join('\n'))).toMatchObject({ next: ISSUE, gate: { name: 'merge' }, state: { issue: ISSUE } });
-        });
+        }, ENGINE_FLOW_TIMEOUT_MS);
         it('the per-repository run lock still refuses a second engine', async () => {
             items = { 7: {} };
             listed = [7];

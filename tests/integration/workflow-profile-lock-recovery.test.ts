@@ -4,8 +4,9 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlin
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
-import { getProcessStartIdentitySync } from '../../src/platform/process-utils.js';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { getProcessStartIdentity } from '../../src/platform/process-utils.js';
+import { scaleTiming } from '../../src/__tests__/helpers/platform.js';
 import { provisionStandaloneStateLockBridge } from '../../src/installer/index.js';
 
 
@@ -22,10 +23,16 @@ const modules = [
 ];
 afterAll(() => rmSync(installedHooks, { recursive: true, force: true }));
 
-function processStart(pid = process.pid): string {
-  const identity = getProcessStartIdentitySync(pid);
-  if (identity === null) throw new Error(`unable to determine process start identity for pid ${pid}`);
-  return identity;
+// This process's start identity never changes. Probe it once: on win32 each probe is a
+// PowerShell spawn, and a dozen of them per file miss their 3 s cap on a loaded host.
+let ownProcessStart: string | null = null;
+beforeAll(async () => {
+  ownProcessStart = await getProcessStartIdentity(process.pid, Date.now() + scaleTiming(5000));
+});
+
+function processStart(): string {
+  if (ownProcessStart === null) throw new Error(`unable to determine process start identity for pid ${process.pid}`);
+  return ownProcessStart;
 }
 
 function owner(overrides: Record<string, unknown> = {}) {
@@ -172,12 +179,20 @@ describe.each(modules)('recoverable workflow mutation lock (%s)', (modulePath) =
     process.env.NODE_ENV = 'test';
     process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE = '1';
     const lockApi = await import(`${pathToFileURL(join(root, 'scripts', 'lib', 'state-lock.mjs')).href}?unavailable=${randomUUID()}`) as {
-      acquireStateFileLockSync(path: string, attempts?: number): unknown;
+      acquireStateFileLockSync(
+        path: string, attempts?: number, requireExclusive?: boolean, bypassTestOverride?: boolean,
+        busyTimeoutMs?: number, processProbeTimeoutMs?: number, overallTimeoutMs?: number,
+        testHooks?: { processStartIdentity(pid: number, timeoutMs: number): string | null },
+      ): unknown;
       getStateFileLockDiagnostic(): string | null;
       releaseStateFileLockSync(lock: unknown): boolean;
     };
 
-    const lock = lockApi.acquireStateFileLockSync(statePath, 3);
+    // The fallback, not the win32 own-identity probe, is under test: hand the lock the identity
+    // probed once in beforeAll through its test seam.
+    const lock = lockApi.acquireStateFileLockSync(statePath, 3, false, false, 2000, 3000, Infinity, {
+      processStartIdentity: (pid: number) => (pid === process.pid ? processStart() : null),
+    });
     expect(lock).not.toBeNull();
     expect(lockApi.getStateFileLockDiagnostic()).toContain('better_sqlite3.node');
     expect(existsSync(join(dirname(statePath), '.state-mutation-locks.db'))).toBe(false);
