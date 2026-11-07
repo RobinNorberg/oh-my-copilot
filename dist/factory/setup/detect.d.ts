@@ -22,18 +22,20 @@ export interface SetupPrefill {
 }
 export interface DetectedForge {
     repo: ForgeRepo;
-    originUrl: string;
+    /** Absent only for `--forge local` in a repository without an origin. */
+    originUrl?: string;
     prefill: SetupPrefill;
 }
 export declare function readOrigin(exec: Exec, cwd: string): string | undefined;
 /**
  * @param configs parsed config layers (user, project) read for prefill only
  */
-export declare function detectSetupForge(exec: Exec, cwd: string, pins: ForgePins, configs?: unknown[]): DetectedForge;
+export declare function detectSetupForge(exec: Exec, cwd: string, pins: ForgePins, configs?: unknown[], stateDir?: string): DetectedForge;
 /**
  * `omg factory listen` is GitHub-only (critic amendments §A.12): it receives
  * GitHub webhooks. The refusal text when the repository's forge, or the
- * trusted user config's `factory.forge.kind`, is Azure DevOps; undefined otherwise.
+ * trusted user config's `factory.forge.kind`, is Azure DevOps, or when the
+ * trusted user config's kind is local (offline); undefined otherwise.
  */
 export declare function listenForgeRefusal(exec: Exec, cwd: string, trustedUser: unknown): string | undefined;
 //# sourceMappingURL=detect.d.ts.map

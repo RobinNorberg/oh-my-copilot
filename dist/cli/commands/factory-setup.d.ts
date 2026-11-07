@@ -86,6 +86,8 @@ export interface FactorySetupOutcome {
     preview: PreviewRow[];
     previewError?: string;
     notes: string[];
+    /** What the forge cannot do (the local forge's offline lines); empty otherwise. */
+    limitations: string[];
     error?: string;
 }
 /** Untrusted text without terminal sequences and control or format characters. */

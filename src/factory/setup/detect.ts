@@ -7,8 +7,11 @@
  * `factory.forge` only prefill answers.
  */
 
+import { basename } from 'path';
 import { getAdoConfig } from '../../config/ado-config.js';
 import { detectForgeRepo, ForgeConfigError } from '../../forge/config.js';
+import { localMirrorPath } from '../../forge/local/index.js';
+import { unsupportedForge } from '../check/cli.js';
 import type { ForgeKind, ForgeRepo } from '../../forge/types.js';
 import type { Exec } from '../../ship/exec.js';
 import { SetupError } from './guard.js';
@@ -29,7 +32,8 @@ export interface SetupPrefill {
 
 export interface DetectedForge {
   repo: ForgeRepo;
-  originUrl: string;
+  /** Absent only for `--forge local` in a repository without an origin. */
+  originUrl?: string;
   prefill: SetupPrefill;
 }
 
@@ -54,17 +58,24 @@ function factoryForge(config: unknown): Record<string, unknown> {
 /**
  * @param configs parsed config layers (user, project) read for prefill only
  */
-export function detectSetupForge(exec: Exec, cwd: string, pins: ForgePins, configs: unknown[] = []): DetectedForge {
-  if (pins.forge !== undefined && pins.forge !== 'github' && pins.forge !== 'azure-devops') {
-    throw new SetupError(2, `--forge must be github or azure-devops, got ${JSON.stringify(pins.forge)}`);
+export function detectSetupForge(exec: Exec, cwd: string, pins: ForgePins, configs: unknown[] = [], stateDir?: string): DetectedForge {
+  if (pins.forge !== undefined && pins.forge !== 'github' && pins.forge !== 'azure-devops' && pins.forge !== 'local') {
+    throw new SetupError(2, `--forge must be github, azure-devops or local, got ${JSON.stringify(pins.forge)}`);
   }
   const originUrl = readOrigin(exec, cwd);
-  if (!originUrl) throw new SetupError(5, 'unsupported forge: this repository has no origin remote (git remote get-url origin)');
+  if (pins.forge === 'local') {
+    // The offline forge needs no origin; over a GitHub or ADO origin it counts only from the user config or the committed base file (decision D1).
+    if (pins.org !== undefined || pins.project !== undefined || pins.repo !== undefined) throw new SetupError(2, '--org, --project and --repo pin a GitHub or Azure DevOps forge; --forge local takes none');
+    if (!stateDir) throw new SetupError(1, 'the local forge needs the forge state directory');
+    const name = basename(cwd.replace(/[\\/]+$/, ''));
+    return { repo: { kind: 'local', host: 'local', owner: 'local', name, url: localMirrorPath(stateDir, cwd) }, ...(originUrl ? { originUrl } : {}), prefill: {} };
+  }
+  if (!originUrl) throw new SetupError(5, unsupportedForge('this repository has no origin remote (git remote get-url origin)'));
   let repo: ForgeRepo;
   try {
     repo = detectForgeRepo(originUrl);
   } catch (error) {
-    if (error instanceof ForgeConfigError) throw new SetupError(5, `unsupported forge: ${error.message}`);
+    if (error instanceof ForgeConfigError) throw new SetupError(5, unsupportedForge(error.message));
     throw error;
   }
   const mismatch = (flag: string, value: string, remote: string): never => {
@@ -99,7 +110,8 @@ export function detectSetupForge(exec: Exec, cwd: string, pins: ForgePins, confi
 /**
  * `omg factory listen` is GitHub-only (critic amendments §A.12): it receives
  * GitHub webhooks. The refusal text when the repository's forge, or the
- * trusted user config's `factory.forge.kind`, is Azure DevOps; undefined otherwise.
+ * trusted user config's `factory.forge.kind`, is Azure DevOps, or when the
+ * trusted user config's kind is local (offline); undefined otherwise.
  */
 export function listenForgeRefusal(exec: Exec, cwd: string, trustedUser: unknown): string | undefined {
   let kind = factoryForge(trustedUser).kind;
@@ -111,6 +123,7 @@ export function listenForgeRefusal(exec: Exec, cwd: string, trustedUser: unknown
       // Not a forge the factory knows: the listener's own repo whitelist decides.
     }
   }
+  if (kind === 'local') return 'refused: omg factory listen receives GitHub webhooks only, and this repository\'s forge.kind is local (offline: no webhooks). Run `omg factory poll`, or start work with `omg factory run`.';
   if (kind !== 'azure-devops') return undefined;
   return 'refused: omg factory listen receives GitHub webhooks only, and this repository\'s forge.kind is azure-devops. On Azure DevOps run `omg factory poll`, which polls the tracker, the PRs and CI instead (service hooks need a public endpoint); start work with `omg factory run`.';
 }

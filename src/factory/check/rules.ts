@@ -103,6 +103,8 @@ const hit = (bucket: CheckBucket, reason: string, detail: string): RuleVerdict =
 /** The bucket of one item: the first §5 rule that hits. */
 export function evaluateItem(item: ForgeItem, kind: ForgeKind, config: RuleConfig, look: RuleLookups): RuleVerdict {
   if (!item.open) return hit('blocked', 'closed', `the item is ${item.rawState || 'closed'}`);
+  // A local backlog file that is not on the base commit (new or edited): omg factory run reads items at the base, so it cannot start it.
+  if (item.uncommitted) return hit('blocked', 'uncommitted', `${item.url} is not committed on the base branch (untrusted until it is); commit it there first`);
 
   if (kind === 'azure-devops') {
     const types = config.intake.itemTypes.map((t) => t.toLowerCase());

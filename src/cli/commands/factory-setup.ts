@@ -26,6 +26,8 @@ import { getCanonicalProjectConfigPath } from '../../config/project-config-path.
 import { resolveAzEntry, type AzEntry } from '../../forge/ado/az-binary.js';
 import { DEFAULT_ADO_ITEM_TYPES, ForgeConfigError, resolveForgeConfig } from '../../forge/config.js';
 import { createForge } from '../../forge/index.js';
+import { localForgeLimitations } from '../../forge/local/index.js';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { adoGuardContext, defaultAzBinaryDeps, type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
 import type { Forge, ForgeFactory, ForgeProgressConfig, IntakeSource, ResolvedForgeConfig } from '../../forge/types.js';
 import { checkEnvFor, checkGuardExec } from '../../factory/check/cli.js';
@@ -48,7 +50,7 @@ import {
 } from '../../factory/setup/intake-pick.js';
 import { pickHealPipeline } from '../../factory/setup/pipeline-pick.js';
 import { missingGitHubLabels, pickProgress, progressFromFlag, validateAdoProgress } from '../../factory/setup/progress-pick.js';
-import { applyWrites, buildSection, parsedAfter, planWrites, type PlannedWrite, type SetupScope, type SetupSection } from '../../factory/setup/write.js';
+import { applyWrites, buildSection, parsedAfter, planBacklogSample, planWrites, type PlannedWrite, type SetupScope, type SetupSection } from '../../factory/setup/write.js';
 import { redactAdoSecrets } from '../../forge/ado/redact.js';
 import { redactTokens } from '../../notifications/redact.js';
 import { trustedUserConfigPath } from '../../ship/config.js';
@@ -112,6 +114,8 @@ export interface FactorySetupOutcome {
   preview: PreviewRow[];
   previewError?: string;
   notes: string[];
+  /** What the forge cannot do (the local forge's offline lines); empty otherwise. */
+  limitations: string[];
   error?: string;
 }
 
@@ -161,7 +165,7 @@ const readConfig = (path: string): unknown => {
 
 /** The wizard; never throws (a SetupError becomes its exit code). */
 export async function runFactorySetup(o: FactorySetupOptions, deps: FactorySetupDeps = defaultFactorySetupDeps, cwd: string = process.cwd()): Promise<FactorySetupOutcome> {
-  const outcome: FactorySetupOutcome = { exitCode: 0, written: null, diffs: [], labels: { missing: [], created: [] }, prerequisites: { ok: true, missing: [] }, preview: [], notes: [] };
+  const outcome: FactorySetupOutcome = { exitCode: 0, written: null, diffs: [], labels: { missing: [], created: [] }, prerequisites: { ok: true, missing: [] }, preview: [], notes: [], limitations: [] };
   try {
     await setup(o, deps, cwd, outcome);
   } catch (error) {
@@ -175,23 +179,22 @@ export async function runFactorySetup(o: FactorySetupOptions, deps: FactorySetup
 const redactFor = (kind: string | undefined, text: string): string => (kind === 'azure-devops' ? redactAdoSecrets(text) : redactTokens(text));
 
 /** The scorer's repository side: run state and plan files at the local origin/<base> (no fetch: the wizard stays read-only). */
-function previewEnv(guarded: Exec, root: string, config: ResolvedForgeConfig): CheckEnv {
+function previewEnv(guarded: Exec, root: string, config: ResolvedForgeConfig): { check: CheckEnv; baseSha: string | null } {
   const base = defaultFactoryRunDeps.base(root);
-  const sha = guarded('git', ['rev-parse', '--verify', `refs/remotes/origin/${base}`], { cwd: root });
+  // The local forge's base is the local branch (no origin to read).
+  const ref = config.kind === 'local' ? `refs/heads/${base}` : `refs/remotes/origin/${base}`;
+  const sha = guarded('git', ['rev-parse', '--verify', ref], { cwd: root });
   const baseSha = sha.status === 0 && /^[0-9a-f]{40}$/.test(sha.stdout.trim()) ? sha.stdout.trim() : null;
-  return checkEnvFor(guarded, root, config, base, baseSha);
+  return { check: checkEnvFor(guarded, root, config, base, baseSha), baseSha };
 }
 
 async function setup(o: FactorySetupOptions, deps: FactorySetupDeps, cwd: string, out: FactorySetupOutcome): Promise<void> {
   const interactive = deps.isTTY() && !o.yes && !o.json;
   const scope = (o.scope ?? 'project') as SetupScope;
   if (scope !== 'project' && scope !== 'user') throw new SetupError(2, `--scope must be project or user, got ${JSON.stringify(o.scope)}`);
-  if (!interactive) {
-    const missing = [...(o.intake ? [] : ['--intake']), ...(o.yes || o.dryRun ? [] : ['--yes (or --dry-run)'])];
-    if (missing.length > 0) throw new SetupError(2, `non-interactive omg factory setup needs ${missing.join(', ')}`);
-  }
 
-  // Step 1: detect (the setup guard needs the repo, so the first reads run through a git-only guard).
+  // Step 1: detect, before the flags are checked (F10: a repository with no usable forge says so first,
+  // with the --forge local hint). The setup guard needs the repo, so the first reads run through a git-only guard.
   const gitOnly: Exec = (cmd, args, opts) => {
     if (cmd !== 'git' || !((args[0] === 'rev-parse' && args[1] === '--show-toplevel' && args.length === 2) || (args.join(' ') === 'remote get-url origin'))) {
       throw new SetupError(1, `omg factory setup refuses ${cmd} ${args.join(' ')} before the forge is known`);
@@ -203,11 +206,20 @@ async function setup(o: FactorySetupOptions, deps: FactorySetupDeps, cwd: string
   const root = top.stdout.trim();
   const projectPath = getCanonicalProjectConfigPath(root);
   const userPath = deps.userConfigPath();
-  const detected = detectSetupForge(gitOnly, root, { forge: o.forge, org: o.org, project: o.project, repo: o.repo }, [readConfig(userPath), readConfig(projectPath)]);
+  const stateDir = factoryForgeOptions(root).stateDir!;
+  const detected = detectSetupForge(gitOnly, root, { forge: o.forge, org: o.org, project: o.project, repo: o.repo }, [readConfig(userPath), readConfig(projectPath)], stateDir);
   const repo = detected.repo;
   out.forge = { kind: repo.kind, host: repo.host, owner: repo.owner, ...(repo.project ? { project: repo.project } : {}), name: repo.name, url: repo.url };
   const ado = repo.kind === 'azure-devops';
-  if (!ado && (o.itemTypes || o.board || o.trustedAuthor || o.healPipeline)) throw new SetupError(2, '--item-types, --board, --trusted-author and --heal-pipeline are Azure DevOps flags; this repository is on GitHub');
+  const local = repo.kind === 'local';
+  if (!interactive) {
+    // The local forge's source defaults to its backlog directory.
+    const missing = [...(o.intake || local ? [] : ['--intake']), ...(o.yes || o.dryRun ? [] : ['--yes (or --dry-run)'])];
+    if (missing.length > 0) throw new SetupError(2, `non-interactive omg factory setup needs ${missing.join(', ')}`);
+  }
+  if (!ado && (o.itemTypes || o.board || o.trustedAuthor || o.healPipeline)) {
+    throw new SetupError(2, `--item-types, --board, --trusted-author and --heal-pipeline are Azure DevOps flags; this repository is on ${local ? 'the local forge' : 'GitHub'}`);
+  }
 
   // Step 2: auth.
   let az: AzEntry | undefined;
@@ -219,14 +231,18 @@ async function setup(o: FactorySetupOptions, deps: FactorySetupDeps, cwd: string
     }
   }
   const io: SetupIo = { exec: setupGuardExec(deps.exec, repo, az), cwd: root, repo, ...(az ? { az } : {}) };
-  out.auth = ado ? checkAdoAuth(io, deps.env) : checkGitHubAuth(io);
+  out.auth = local
+    ? { ok: true, checks: [{ name: 'local forge', ok: true, detail: 'offline: no server, so no auth' }] }
+    : ado ? checkAdoAuth(io, deps.env) : checkGitHubAuth(io);
   if (!out.auth.ok) throw new SetupError(3, `auth check failed: ${out.auth.checks.filter((c) => !c.ok).map((c) => `${c.name}: ${c.detail}`).join('; ')}${out.auth.fix ? `. Fix: ${out.auth.fix}` : ''}`);
 
   const prompter = interactive ? (deps.prompter ?? ttyPrompter()) : undefined;
 
   // Step 4: intake source.
-  const labels = ado ? undefined : githubLabels(io);
-  const source: IntakeSource = o.intake ? parseIntakeSpec(o.intake, repo.kind) : await pickIntake(io, prompter!, detected.prefill);
+  const labels = ado || local ? undefined : githubLabels(io);
+  const source: IntakeSource = o.intake
+    ? parseIntakeSpec(o.intake, repo.kind)
+    : local && !interactive ? { type: 'local-backlog' } : await pickIntake(io, prompter!, detected.prefill);
   const intakeCheck = validateIntake(io, source, labels);
   let itemTypes: string[] = [];
   if (ado) {
@@ -253,9 +269,10 @@ async function setup(o: FactorySetupOptions, deps: FactorySetupDeps, cwd: string
     if (!team || !name || rest.length > 0) throw new SetupError(2, '--board needs <team>/<board>');
     board = { team, board: name };
   } else if (source.type === 'board-column') board = { team: source.team, board: source.board };
-  const progress: ForgeProgressConfig = o.progress !== undefined || !interactive ? progressFromFlag(o.progress, repo.kind) : await pickProgress(io, prompter!, itemTypes, board);
+  // The local forge records the stage itself (no mapping to pick).
+  const progress: ForgeProgressConfig = o.progress !== undefined || !interactive || local ? progressFromFlag(o.progress, repo.kind) : await pickProgress(io, prompter!, itemTypes, board);
   if (ado) validateAdoProgress(io, progress, itemTypes, board);
-  else out.labels.missing = [...new Set([...intakeCheck.missingLabels, ...missingGitHubLabels(labels!, progress, source)])];
+  else if (!local) out.labels.missing = [...new Set([...intakeCheck.missingLabels, ...missingGitHubLabels(labels!, progress, source)])];
 
   // Trusted authors (ADO, user config only).
   let trustedAuthors = list(o.trustedAuthor);
@@ -269,18 +286,27 @@ async function setup(o: FactorySetupOptions, deps: FactorySetupDeps, cwd: string
   const healPipeline = ado ? await pickHealPipeline(io, prompter, o.healPipeline) : undefined;
   out.config = { ...buildSection(repo, { source, itemTypes }, progress, team), ...(healPipeline ? { heal: { pipeline: healPipeline } } : {}) };
   const planned: PlannedWrite[] = planWrites({ projectPath, userPath, section: out.config, ...(trustedAuthors.length > 0 ? { trustedAuthors } : {}) });
-  out.diffs = planned.map((w) => ({ path: w.path, scope: w.scope, diff: w.diff }));
   const afterUser = parsedAfter(planned, userPath);
   const afterProject = parsedAfter(planned, projectPath);
   let resolved: ResolvedForgeConfig;
   try {
     // The project file stands in for the base layer: the engine reads it from <base> once committed.
-    const loaded = resolveForgeConfig(afterUser, afterProject, afterProject, detected.originUrl);
+    const loaded = resolveForgeConfig(afterUser, afterProject, afterProject, detected.originUrl, { root, stateDir });
     resolved = loaded.config;
   } catch (error) {
     if (error instanceof ForgeConfigError) throw new SetupError(error.code === 'invalid' ? 2 : 5, error.message);
     throw error;
   }
+  if (resolved.kind === 'local' && resolved.local) {
+    // The backlog directory with one sample item (closed), when it has no item yet.
+    const sample = planBacklogSample(root, resolved.local.backlogDir);
+    if (sample) planned.push(sample);
+    out.limitations = localForgeLimitations(defaultFactoryRunDeps.base(root));
+    if (!resolved.local.gate) out.notes.push('no local gate: set factory.forge.local.gate (an argv such as ["npm","test"]) in the user config or in .copilot/omg.jsonc committed on <base>; until then gates park at awaiting-human: gates');
+    if (detected.originUrl) out.notes.push(`factory.forge.kind "local" overrides the origin remote only from the user config or from ${projectPath} committed on <base> (CI and remote review are off)`);
+    out.notes.push(`commit ${resolved.local.backlogDir}/ items on <base>: omg factory run reads backlog items at the base commit only`);
+  }
+  out.diffs = planned.map((w) => ({ path: w.path, scope: w.scope, diff: w.diff }));
   if (scope === 'user') out.notes.push(`--scope user: the forge identity, intake and progress belong to this repository, so they go to ${projectPath}; the user config ${userPath} is shared by every repository and gets only trustedAuthors.`);
   out.notes.push(`${projectPath} is a protected path: omg factory reads forge.* and progress.* from it only on <base> once it is committed there.`);
   if (trustedAuthors.length > 0) out.notes.push(`trustedAuthors go to the user config ${userPath} only.`);
@@ -316,10 +342,13 @@ async function setup(o: FactorySetupOptions, deps: FactorySetupDeps, cwd: string
     // The ADO guard needs the forge repo and the az entry; GitHub needs neither.
     const guarded = checkGuardExec(deps.exec, undefined, () => (ado && az ? adoGuardContext(resolved, az) : undefined));
     // The ADO adapter reads `entry` (its options extend ForgeOptions); GitHub ignores it.
-    const options: AzureDevOpsForgeOptions = { ...factoryForgeOptions(root), ...(az ? { entry: az } : {}) };
+    const env = previewEnv(guarded, root, resolved);
+    // The local forge reads the working tree too (the sample item is not committed yet); its base is the local branch.
+    const localOptions = local ? { local: { omgRoot: getOmcRoot(root), workingTree: true, baseSha: () => env.baseSha ?? undefined } } : {};
+    const options: AzureDevOpsForgeOptions = { ...factoryForgeOptions(root), ...localOptions, ...(az ? { entry: az } : {}) };
     const forge = deps.createForge(guarded, root, resolved, options);
     // Item titles are untrusted tracker text: no terminal sequences or control characters reach the output.
-    const check = deps.previewCheck ?? factoryCheckPreview(previewEnv(guarded, root, resolved));
+    const check = deps.previewCheck ?? factoryCheckPreview(env.check);
     out.preview = previewIntake(forge, source, check).map((row) => ({ ...row, title: plainText(row.title), url: plainText(row.url), readiness: plainText(row.readiness) }));
   } catch (error) {
     out.previewError = plainText(redactFor(repo.kind, error instanceof Error ? error.message : String(error)));
@@ -342,6 +371,7 @@ function printOutcome(o: FactorySetupOptions, r: FactorySetupOutcome): void {
   for (const l of r.labels.created) console.log(chalk.green(`created label ${l}`));
   if (!r.prerequisites.ok) console.log(chalk.gray(`omg factory init prerequisites missing (needed for the chain route table only): ${r.prerequisites.missing.join(', ')}`));
   for (const n of r.notes) console.log(chalk.gray(n));
+  for (const l of r.limitations) console.log(chalk.gray(l));
   if (r.previewError) console.log(chalk.yellow(`preview unavailable: ${r.previewError}`));
   else if (r.preview.length === 0) console.log('preview: the source has no open items');
   else {
@@ -353,11 +383,11 @@ function printOutcome(o: FactorySetupOptions, r: FactorySetupOutcome): void {
 export function factorySetupCommand(deps: FactorySetupDeps = defaultFactorySetupDeps): Command {
   return new Command('setup')
     .description('Configure the factory for this repository: forge, auth, intake source, progress mapping (writes only factory.* after a diff)')
-    .option('--forge <kind>', 'github | azure-devops (default: detected from origin; can only pin it)')
+    .option('--forge <kind>', 'github | azure-devops | local (default: detected from origin; github and azure-devops can only pin it; local is the offline forge and needs no origin)')
     .option('--org <org>', 'Azure DevOps organization (pin)')
     .option('--project <project>', 'Azure DevOps project (pin)')
     .option('--repo <repo>', 'GitHub owner/name or Azure DevOps repository (pin)')
-    .option('--intake <spec>', 'label:<name> | milestone:<title> | wiql-query:<guid> | board-column:<team>/<board>/<column> | area-tag:<area>#<tag>')
+    .option('--intake <spec>', 'label:<name> | milestone:<title> | wiql-query:<guid> | board-column:<team>/<board>/<column> | area-tag:<area>#<tag> | local-backlog[:<label>] (default with --forge local)')
     .option('--item-types <list>', 'Azure DevOps work item types, comma-separated')
     .option('--progress <mode>', 'default | none | <file.json>')
     .option('--board <team/board>', 'Azure DevOps board the progress columns live on (default: the board-column intake board)')

@@ -29,6 +29,11 @@ export function parseIntakeSpec(spec: string, kind: ForgeKind): IntakeSource {
   const at = spec.indexOf(':');
   const type = at > 0 ? spec.slice(0, at) : spec;
   const rest = at > 0 ? spec.slice(at + 1) : '';
+  if (kind === 'local') {
+    if (type !== 'local-backlog') throw new SetupError(2, `--intake ${JSON.stringify(spec)}: the local source is local-backlog or local-backlog:<label>`);
+    if (at > 0 && !rest) throw new SetupError(2, `--intake ${JSON.stringify(spec)} has an empty value`);
+    return rest ? { type: 'local-backlog', label: rest } : { type: 'local-backlog' };
+  }
   const allowed: readonly string[] = kind === 'github' ? GITHUB_INTAKE_TYPES : ADO_INTAKE_TYPES;
   if (!allowed.includes(type)) {
     const hint = type === 'project-column' ? ' (GitHub Projects v2 intake is not supported yet)' : '';
@@ -171,6 +176,11 @@ export function validateIntake(io: SetupIo, source: IntakeSource, labels?: reado
 
 /** Interactive step 4. `prefill` seeds the ADO answers (area path, team). */
 export async function pickIntake(io: SetupIo, prompter: Prompter, prefill: { team?: string; areaPath?: string } = {}): Promise<IntakeSource> {
+  if (io.repo.kind === 'local') {
+    // The backlog directory is the source; a label narrows it to the items that carry it.
+    const label = (await prompter.input('Intake label (only backlog items with it; empty = every open item)', '')).trim();
+    return label ? { type: 'local-backlog', label } : { type: 'local-backlog' };
+  }
   if (io.repo.kind === 'github') {
     const type = await prompter.select('Intake source', GITHUB_INTAKE_TYPES);
     if (type === 'milestone') {
