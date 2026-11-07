@@ -42,7 +42,7 @@ function sha(value: string): string {
 export function localRepoId(root: string, platform: NodeJS.Platform = process.platform): string {
   const abs = resolve(root).replace(/\\/g, '/').replace(/\/+$/, '');
   const key = platform === 'win32' ? abs.toLowerCase() : abs;
-  const name = basename(abs).replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '_').slice(0, 60) || 'repo';
+  const name = basename(key).replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '_').slice(0, 60) || 'repo';
   return `${name}-${createHash('sha256').update(key, 'utf8').digest('hex').slice(0, 12)}`;
 }
 

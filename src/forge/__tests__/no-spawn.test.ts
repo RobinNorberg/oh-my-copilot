@@ -1,7 +1,9 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { dirname, join, relative, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
+import { createForge } from '../index.js';
+import { git, makeFixture, recordingExec } from '../local/__tests__/git-fixture.js';
 
 // Forge adapters get the caller's guarded Exec and never spawn (design §1).
 // The rule covers adapter (production) code: tests and test helpers under
@@ -148,5 +150,70 @@ describe('src/forge never spawns', () => {
     expect(valueImports(file, text).map((f) => relative(SRC_DIR, f).replace(/\\/g, '/'))).toEqual(['providers/index.ts', 'providers/remote-url.ts']);
     // providers/index.ts spawns git, so importing it from src/forge would fail the rule above.
     expect(SPAWN_IMPORT.some((re) => re.test(readFileSync(join(SRC_DIR, 'providers', 'index.ts'), 'utf8')))).toBe(true);
+  });
+});
+
+describe('the local (offline) forge never runs gh, az or copilot', () => {
+  it('its production files reach neither the GitHub nor the Azure DevOps adapter', () => {
+    const LOCAL_DIR = join(FORGE_DIR, 'local');
+    const seen = new Set<string>();
+    const walk = (file: string): void => {
+      if (seen.has(file)) return;
+      seen.add(file);
+      for (const dep of valueImports(file, readFileSync(file, 'utf8'))) walk(dep);
+    };
+    const files = sources(LOCAL_DIR).filter((f) => !isTestFile(f));
+    expect(files.length).toBeGreaterThanOrEqual(8);
+    for (const f of files) walk(f);
+    const reached = [...seen].map((f) => relative(SRC_DIR, f).replace(/\\/g, '/'));
+    expect(reached.filter((f) => /^forge\/(?:github|ado)\//.test(f) || /^(?:providers\/index|ship\/exec)\.ts$/.test(f))).toEqual([]);
+    // No argv in local production code names another binary than git.
+    for (const f of files) expect(readFileSync(f, 'utf8'), relative(SRC_DIR, f)).not.toMatch(/exec\(\s*['"](?!git['"])/);
+  });
+
+  it('every surface sends only git through the Exec', () => {
+    const fx = makeFixture();
+    try {
+      fx.write('.copilot/backlog/1-add.md', '---\ntitle: Add\nlabels: [factory]\n---\n## Acceptance\n- [ ] `x`\n');
+      const base = fx.commit('base');
+      fx.push(base, 'main');
+      git(fx.root, 'checkout', '-q', '-b', 'factory/1-add');
+      fx.write('x.txt', 'x');
+      const head = fx.commit('x');
+      fx.push(head, 'factory/1-add');
+      git(fx.root, 'checkout', '-q', 'main');
+      const body = join(fx.tmp, 'body.md');
+      writeFileSync(body, 'body');
+      const { exec, calls } = recordingExec();
+      const forge = createForge(exec, fx.root, fx.config, { untrustedRoots: [fx.root], stateDir: fx.stateDir, local: { baseSha: () => base, workingTree: true } });
+      const t = forge.tracker;
+      t.queryItems({ type: 'local-backlog' }, 10);
+      t.viewItem(1);
+      t.comment(1, body);
+      t.setProgress(1, 'building', {});
+      t.peekItems!([1]);
+      t.findByKey!(1);
+      t.addMarker(1, 'factory-ready');
+      const pr = forge.reviews.createDraftPr({ base: 'main', head: 'factory/1-add', title: 'Add', bodyFile: body, itemId: 1 });
+      forge.reviews.viewPr(pr);
+      forge.reviews.prHead(pr);
+      forge.reviews.markReady(pr);
+      forge.reviews.commentPr(pr, body);
+      forge.reviews.findOpenPrForBranch('factory/1-add');
+      forge.reviews.findMergedPrForBranch('factory/1-add', 'main');
+      forge.checks.checks(pr, head);
+      forge.checks.runsForHead(pr, head);
+      forge.checks.jobLog(`local-gate:${head}`);
+      forge.checks.rerun(pr, '1');
+      forge.merge.humanMergeCommand(pr, head);
+      forge.merge.blockingPolicies(pr, head);
+      expect(calls.length).toBeGreaterThan(0);
+      expect([...new Set(calls.map((c) => c.cmd))]).toEqual(['git']);
+      expect(calls.filter((c) => c.args.some((a) => /^(?:gh|az|copilot)(?:\.exe|\.cmd)?$/i.test(a)))).toEqual([]);
+      // Only reads plus the ancestry check: the adapter never pushes, fetches or touches a remote.
+      expect([...new Set(calls.map((c) => c.args[0]))].sort()).toEqual(['ls-tree', 'merge-base', 'show']);
+    } finally {
+      fx.cleanup();
+    }
   });
 });
