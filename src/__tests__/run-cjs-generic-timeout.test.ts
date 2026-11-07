@@ -208,9 +208,9 @@ describe('run.cjs generic hook timeout supervisor', () => {
     try {
       // Only 500ms of the inner budget remain because the host's fuse started
       // earlier. The property is that the runner times out near those 500ms,
-      // not after the full inner budget. Both the full budget and the bound are
-      // widened by the same scaled slack so the gap between the two outcomes
-      // grows with the host's spawn and reap time.
+      // not after the full inner budget. The full budget is scaled so the gap
+      // between the two outcomes grows on slow hosts; the time allowed after the
+      // deadline stays the fixed reap allowance.
       const remainingMs = 500;
       const slackMs = scaleTiming(1000);
       const innerMs = remainingMs + 2 * slackMs + 500;
@@ -220,7 +220,7 @@ describe('run.cjs generic hook timeout supervisor', () => {
         innerMs,
       );
       expect(status).toBe(0);
-      expect(Date.now() - startedAt).toBeLessThan(remainingMs + slackMs);
+      expect(Date.now() - startedAt).toBeLessThan(remainingMs + REAP_ALLOWANCE_MS);
     } finally {
       if (previousPidfile === undefined) delete process.env.OMC_TEST_PIDFILE;
       else process.env.OMC_TEST_PIDFILE = previousPidfile;
