@@ -1,57 +1,54 @@
-# oh-my-copilot v5.19.6
+# oh-my-copilot v5.19.7
 
-An upstream port (oh-my-claudecode v5.7.18 to v5.7.30), a new haiku-tier
-fallback, and a `ralph-experiment` fix for Copilot CLI. The MCP team bridge is
-removed; `omg team` is unchanged.
+A fix release for Copilot CLI users: `/omc-setup` and `/team` no longer give
+Claude Code instructions on Copilot CLI, setup works in PowerShell, and on
+Windows hooks no longer overrun their time budget on a busy machine.
 
-Install with `npm install -g oh-my-copilot@5.19.6`, or from the plugin
+Install with `npm install -g oh-my-copilot@5.19.7`, or from the plugin
 marketplace: `copilot plugin update oh-my-copilot@omc`.
 
-## Added
+## Fixed
 
-- `omg quality-gates list --stage <deep-interview|ralplan|omc-review>` shows
-  the configured custom quality gates for a stage, with model overrides and
-  resolved skill paths. Configure them under `qualityGates` in
-  `.copilot/omg.jsonc`.
-- The mission board shows persisted missions across the newest sessions;
-  `-s, --session <id>` restricts it to one session.
+- `/omc-setup` no longer asks Claude Code questions on Copilot CLI
+  (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`, `teammateMode`, a teammate provider
+  list without Copilot). It explains the `omg team` defaults and the
+  `team.transport` and `team.ops.defaultAgentType` keys in
+  `.copilot/omg.jsonc`, and points MCP setup at `copilot mcp add` (#425).
+- `/omc-setup` finds its own scripts. It takes the plugin root from the
+  skill's base directory and writes it literally into each command, so the
+  commands run in PowerShell, bash and zsh. If the scripts are missing, it
+  stops with install instructions. Expect one permission prompt to run
+  scripts from the plugin folder (#426, #427).
+- `/team` on Copilot CLI drives `omg team` (start, `status`, `shutdown`,
+  the `sdk`/`pane` transport, `--transport sdk` in Warp). The Claude Code
+  steps are marked as Claude Code only (#429).
+- Skills no longer show the bash-only `${COPILOT_HOME:-~/.copilot}` form that
+  PowerShell cannot parse (#428, #431).
+- On Windows, the hook state lock no longer spawns PowerShell to learn its own
+  start time. That probe took 0.4-3 s per hook and, on a busy machine, made
+  the lock fail closed, so state writes were skipped. A lock acquire now takes
+  about 20 ms (#434).
+- The hook state lock handles slow owner probes: it retries an inconclusive
+  probe within its budget and never acquires after its deadline (upstream
+  #4727 tests, #424, #430).
+- Hook stdin waits now fit inside the time `run.cjs` gives each hook, so on a
+  loaded Windows machine hooks fail open on their own instead of being killed
+  past the host's budget. With `OMC_HOOK_FAIL_CLOSED=1`, `git-guardrails`
+  exits 124 when its input never arrived complete (#433).
+- Timing tests measure the runner's own lifetime and wait on readiness
+  signals, so they no longer fail on a busy Windows machine (#435, #436).
 
-## Changed
+## Known issue: mixed plugin versions
 
-- The haiku tier (explore, writer) falls back `claude-haiku-5.5`, `gpt-6-luna`,
-  `claude-haiku-4.5`, `gemini-3.8-flash` (#420).
-- `ralph-experiment` works on Copilot CLI (#408, fixes #407; thanks to the
-  field agent). It uses the Copilot tool names and discards an experiment with
-  `git revert` of its own commits by default. `git reset --hard` is used only
-  when fail-closed checks pass. Files are staged by pathspec, the tree must be
-  clean at the start, multi-repo runs record per-repo `{repo: hash}` values,
-  and the measurement commands work in PowerShell 5.1.
-- Auto-update reconciliation is faster (the plugin payload is synced once per
-  target), and reinstalls recover from a dangling hook library symlink.
-
-## Fixed (ported from upstream)
-
-- Ralph pytest signature handling (#4800-#4802) and Jev context pruning
-  (#4804, #4807).
-- The keyword detector no longer routes the retired `ultraqa`, `omc-teams`
-  and `ultrawork` names.
-- Team worker launch on Windows (PATHEXT candidate, `where` no longer
-  searches the current directory), SessionEnd manifest retries, and a single
-  project-memory writer at session start.
-- The mission board finds team missions without a session snapshot;
-  `state_clear` output is bounded.
-
-## Removed
-
-- The MCP team bridge and 37 modules nothing reached. `oh-my-copilot/team` no
-  longer exports their APIs (`getTeamStatus`, `readTask`,
-  `readNewOutboxMessages` and others). See `docs/MIGRATION.md`.
+Lock records written by 5.19.7 on Windows are version 2. An older plugin
+version reads them as malformed and gives up on that lock instead of waiting.
+After a downgrade below 5.19.7, a lock left by a crashed 5.19.7 hook stays
+held until it is cleaned up by hand. See the CHANGELOG entry for the cleanup
+steps.
 
 ## Caveats
 
 - On Node 20, libuv ignores `NoDefaultCurrentDirectoryInExePath`, so full
   protection against a planted executable on Windows needs Node 22+. The Node
   22 minimum is planned for a later release.
-- Upstream's Windows state-lock probe-budget test (#4727) is held out; a fork
-  fix follows.
 - This release was published without the live Copilot smoke.

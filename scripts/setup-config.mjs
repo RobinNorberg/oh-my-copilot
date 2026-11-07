@@ -17,10 +17,7 @@
 //   install-cli                npm install -g oh-my-copilot
 //   detect-task-tools          Look for beads (bd) and beads-rust (br)
 //   set-task-tool <tool>       Store taskTool in .omc-config.json
-//   plugin-verify              Check that settings.json mentions the plugin
-//   show-settings              Print settings.json
-//   merge-json settings.json <json>  Deep-merge a JSON patch into settings.json in the config dir
-//   verify-settings            Check settings.json parses and agent teams are enabled
+//   plugin-verify              Check that Copilot CLI installed the plugin (or settings.json mentions it)
 //   detect-upgrade             Print IS_UPGRADE=true|false (2.x command files present)
 //   copy-rules                 Copy templates/rules/*.md into ./.claude/rules
 //   star-repo                  Star the repository through gh (silent on failure)
@@ -31,18 +28,19 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, wr
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
 import { getCopilotConfigDir } from './lib/config-dir.mjs';
 
 hardenWindowsExeSearch();
 
+const PLUGIN_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const CONFIG_DIR = getCopilotConfigDir();
 const CONFIG_FILE = join(CONFIG_DIR, '.omc-config.json');
 const SETTINGS_FILE = join(CONFIG_DIR, 'settings.json');
 const WINDOWS = process.platform === 'win32';
 const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 const TASK_TOOLS = ['builtin', 'beads', 'beads-rust'];
-const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 function fail(message) {
   process.stderr.write(`${message}\n`);
@@ -209,7 +207,8 @@ function cmdUpdateCheck() {
       console.log('UPDATE AVAILABLE:');
       console.log(`  Installed: v${installed}`);
       console.log(`  Latest:    v${latest}`);
-      console.log('To update, run: claude /install-plugin oh-my-copilot');
+      console.log('To update, run: copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc');
+      console.log('(npm install: npm i -g oh-my-copilot@latest)');
     }
   } else if (latest) {
     console.log(`Latest version available: v${latest}`);
@@ -300,64 +299,20 @@ function readSettingsText() {
   }
 }
 
+/** Copilot CLI installs a plugin at <config dir>/installed-plugins/<marketplace>/<name>. */
+function copilotPluginInstalled() {
+  try {
+    const root = join(CONFIG_DIR, 'installed-plugins');
+    return readdirSync(root).some((marketplace) => existsSync(join(root, marketplace, 'oh-my-copilot', 'plugin.json')));
+  } catch {
+    return false;
+  }
+}
+
 function cmdPluginVerify() {
-  console.log(readSettingsText().includes('oh-my-copilot')
+  console.log(copilotPluginInstalled() || readSettingsText().includes('oh-my-copilot')
     ? 'Plugin verified'
-    : 'Plugin NOT found - run: claude /install-plugin oh-my-copilot');
-}
-
-function cmdShowSettings() {
-  const text = readSettingsText();
-  if (text) process.stdout.write(text);
-  else console.log(`(no settings.json at ${SETTINGS_FILE})`);
-}
-
-function mergeInto(target, patch) {
-  for (const key of Object.keys(patch)) {
-    if (UNSAFE_KEYS.has(key)) continue;
-    const value = patch[key];
-    target[key] = isPlainObject(value) ? mergeInto(isPlainObject(target[key]) ? target[key] : {}, value) : value;
-  }
-  return target;
-}
-
-function cmdMergeJson(name, raw) {
-  if (!name || raw === undefined) fail('Usage: setup-config.mjs merge-json <file-name> <json-patch>');
-  // The skill only ever merges into settings.json; any other name (an ADS suffix, a drive-relative
-  // path, a device name, a traversal) is refused before anything is opened.
-  if (name !== 'settings.json') fail('ERROR: merge-json only updates settings.json in the config directory.');
-  let patch;
-  try {
-    patch = JSON.parse(raw);
-  } catch {
-    fail('ERROR: the JSON patch is not valid JSON.');
-  }
-  if (!isPlainObject(patch)) fail('ERROR: the JSON patch must be an object.');
-
-  const target = join(CONFIG_DIR, name);
-  const current = readConfigOrFail(target, target);
-  try {
-    writeJsonAtomic(target, mergeInto(current, patch));
-  } catch {
-    fail(`ERROR: Failed to update ${target}. Existing file was not modified.`);
-  }
-  console.log(`Updated ${target}`);
-}
-
-function cmdVerifySettings() {
-  let settings;
-  try {
-    settings = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'));
-  } catch {
-    fail('ERROR: settings.json is invalid JSON or missing. Restore it from the backup before continuing.');
-  }
-  console.log('settings.json: valid JSON');
-  console.log(settings.env?.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS
-    ? 'Agent teams: ENABLED'
-    : 'WARNING: Agent teams env var not found in settings.json');
-  console.log('');
-  console.log('Final settings.json:');
-  console.log(JSON.stringify(settings, null, 2));
+    : 'Plugin NOT found - run: copilot plugin marketplace add RobinNorberg/oh-my-copilot, then: copilot plugin install oh-my-copilot@omc');
 }
 
 function cmdDetectUpgrade() {
@@ -372,8 +327,8 @@ function refuseLink(path) {
 }
 
 function cmdCopyRules() {
-  const root = process.env.OMC_SETUP_PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
-  if (!root) fail('ERROR: plugin root is not set');
+  // The plugin root is this script's parent; OMC_SETUP_PLUGIN_ROOT overrides it for tests.
+  const root = process.env.OMC_SETUP_PLUGIN_ROOT || PLUGIN_ROOT;
   const source = join(root, 'templates', 'rules');
   const destination = join('.claude', 'rules');
   refuseLink('.claude');
@@ -406,9 +361,6 @@ const commands = {
   'detect-task-tools': cmdDetectTaskTools,
   'set-task-tool': () => cmdSetTaskTool(rest[0]),
   'plugin-verify': cmdPluginVerify,
-  'show-settings': cmdShowSettings,
-  'merge-json': () => cmdMergeJson(rest[0], rest[1]),
-  'verify-settings': cmdVerifySettings,
   'detect-upgrade': cmdDetectUpgrade,
   'copy-rules': cmdCopyRules,
   'star-repo': cmdStarRepo,

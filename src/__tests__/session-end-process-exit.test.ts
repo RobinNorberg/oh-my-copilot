@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { pathToFileURL } from 'node:url';
 import { IS_WIN, scaleTiming } from './helpers/platform.js';
+import { clockedRunnerArgs, readRunnerClock, runnerClockEnv, runnerHangGuardMs } from './helpers/runner-clock.js';
 
 const REPO_ROOT = process.cwd();
 const RUN_CJS = join(REPO_ROOT, 'scripts', 'run.cjs');
@@ -14,10 +15,17 @@ const SESSION_END_SCRIPTS = [
   ['wiki-session-end', join(REPO_ROOT, 'scripts', 'wiki-session-end.mjs')],
 ] as const;
 const IS_CI = process.env.CI === 'true' || process.env.CI === '1';
-// Keep the strict local regression ceiling while allowing bounded GitHub-hosted
-// process startup contention during the full parallel suite.
-const COMMAND_CEILING_MS = scaleTiming(IS_CI ? 1_500 : 500);
-const SEQUENTIAL_CEILING_MS = scaleTiming(IS_CI ? 3_000 : 1_000);
+// Process-exit ceilings for #3477 (a SessionEnd runner that never exits).
+// They are test bounds, not the shipped 300 ms foreground budget, which these
+// tests widen through the test-only knob and which run-cjs-session-end-budget
+// pins. POSIX developer machines keep the strict local bound. A Windows
+// developer machine creates the runner and its Worker as slowly as a
+// GitHub-hosted runner (busy hosts measured 0.5-2 s per process start), so
+// win32 gets the hosted bound; a hang still overruns it. Measured on the
+// runner's own clock (runUntilClose).
+const HOSTED_BOUNDS = IS_CI || IS_WIN;
+const COMMAND_CEILING_MS = scaleTiming(HOSTED_BOUNDS ? 1_500 : 500);
+const SEQUENTIAL_CEILING_MS = scaleTiming(HOSTED_BOUNDS ? 3_000 : 1_000);
 const HAS_GENERATED_DIST = existsSync(join(REPO_ROOT, 'dist', 'hooks', 'session-end', 'worker.js'));
 const TEST_PRODUCER_GRACE_MS = '25';
 // The worker's required actions have a 9s budget; allow that bounded contract
@@ -40,6 +48,7 @@ const WIN_REAPER = [
 ].join('\n');
 
 interface ExitResult {
+  /** The runner's lifetime on its own clock (helpers/runner-clock.ts); -1 when it was killed. */
   elapsedMs: number;
   code: number | null;
   signal: NodeJS.Signals | null;
@@ -54,8 +63,8 @@ function runUntilClose(
   extraEnv: NodeJS.ProcessEnv = {},
 ): Promise<ExitResult> {
   return new Promise((resolve) => {
-    const startedAt = Date.now();
-    const child = spawn(process.execPath, [RUN_CJS, script], {
+    const clockFile = join(cwd, `runner-clock-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+    const child = spawn(process.execPath, clockedRunnerArgs(RUN_CJS, script), {
       cwd,
       env: {
         ...process.env,
@@ -64,19 +73,21 @@ function runUntilClose(
         ...extraEnv,
         CLAUDE_PLUGIN_ROOT: REPO_ROOT,
         COPILOT_HOME: join(cwd, '.claude'),
+        ...runnerClockEnv(clockFile),
       },
       stdio: ['pipe', 'ignore', 'ignore'],
       windowsHide: true,
     });
     let timedOut = false;
+    // Hang guard only; expectPromptExit checks the ceiling on the runner's clock.
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill('SIGKILL');
-    }, ceilingMs);
+    }, runnerHangGuardMs(ceilingMs));
 
     child.once('close', (code, signal) => {
       clearTimeout(timer);
-      resolve({ elapsedMs: Date.now() - startedAt, code, signal, timedOut });
+      resolve({ elapsedMs: timedOut ? -1 : readRunnerClock(clockFile).lifetimeMs, code, signal, timedOut });
     });
 
     if (input !== undefined) child.stdin.end(input);
@@ -235,7 +246,7 @@ describe('SessionEnd run.cjs process exit regressions (#3477)', () => {
 
     if (_name === 'session-end') {
       const manifestPath = join(getOmcRoot(cwd), 'state', 'session-end-jobs', `${sessionId}.json`);
-      const deadline = Date.now() + scaleTiming(IS_CI ? 1_000 : 250);
+      const deadline = Date.now() + scaleTiming(HOSTED_BOUNDS ? 1_000 : 250);
       while (!existsSync(manifestPath) && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
@@ -415,12 +426,14 @@ describe('SessionEnd run.cjs process exit regressions (#3477)', () => {
   it.skipIf(!HAS_GENERATED_DIST)('runs the SessionEnd pair sequentially within the combined foreground budget', async () => {
     const cwd = createProject();
     configureDeferredAdapters(cwd);
-    const startedAt = Date.now();
+    let combinedMs = 0;
 
     for (const [name, script] of SESSION_END_SCRIPTS) {
-      expectPromptExit(await runUntilClose(script, cwd, validSessionEndInput(cwd, `sequential-${name}`)));
+      const result = await runUntilClose(script, cwd, validSessionEndInput(cwd, `sequential-${name}`));
+      expectPromptExit(result);
+      combinedMs += result.elapsedMs;
     }
 
-    expect(Date.now() - startedAt).toBeLessThanOrEqual(SEQUENTIAL_CEILING_MS);
+    expect(combinedMs).toBeLessThanOrEqual(SEQUENTIAL_CEILING_MS);
   });
 });

@@ -3,6 +3,7 @@ import { basename, dirname, join, resolve } from 'path';
 import { randomUUID } from 'crypto';
 import { spawnSync } from 'child_process';
 import { createRequire } from 'module';
+import { performance } from 'perf_hooks';
 
 const require = createRequire(import.meta.url);
 const SQLITE_NATIVE_BINDING = 'better_sqlite3.node';
@@ -51,6 +52,11 @@ let lastLockFailureReason = null;
 // process for its lifetime. Keyed by nonce, not pid+processStart, so another thread's live lock
 // in the same process is never mistaken for an orphan.
 const abandonedOwnNonces = new Set();
+// Fork fix: an inconclusive (null) owner probe is retried at most this many times per acquire.
+// A slow win32 probe can turn conclusive on a retry (#4727), but most nulls never can (a legacy
+// owner on a platform without a start-time tolerance, an unreadable procfs entry, an invalid
+// pid), and retrying those on every one of 50 attempts stalled the acquire for 0.5-1 s.
+const INCONCLUSIVE_PROBE_RETRY_LIMIT = 2;
 
 function wallClockNowMs(testHooks) {
   return typeof testHooks?.nowMs === 'function' ? testHooks.nowMs() : Date.now();
@@ -65,6 +71,71 @@ function startProcessIdentity(pid, timeoutMs, testHooks) {
 function ownProcessStartIdentity(timeoutMs = 3000, testHooks) {
   if (ownIdentityCache === null) ownIdentityCache = startProcessIdentity(process.pid, timeoutMs, testHooks);
   return ownIdentityCache;
+}
+
+// Fork fix: on win32 the exact own identity (GetProcessTimes CreationTime) is reachable only
+// through a PowerShell spawn, 0.4-3 s per hook process, which made lock acquires fail closed
+// under load. A lock owner record instead carries `ticksmax:<n>` (version 2), an upper bound on
+// this process's creation time in the .NET UTC ticks the PowerShell probe returns:
+// performance.timeOrigin is the wall clock Node read during bootstrap, after the kernel stamped
+// CreationTime. A foreign prober reads the owner as live iff the pid's exact creation ticks are
+// <= the bound (startIdentityMatches). That holds for this process and fails for any later
+// process reusing the pid: the bound lies before the first publication (the slack is waited out
+// below), and a reuser is created after this process exits. Old readers reject version 2 as
+// malformed, which fails closed.
+// Residual risk: the bound comes from the wall clock, so if the clock steps backward after this
+// process starts and the process dies, a later process reusing the pid can get creation ticks
+// <= the bound and read as this (dead) owner. The lock then stays held while that unrelated
+// process lives. This fails closed (no second holder); the lock frees when the reuser exits.
+// The bound is built in BigInt from whole milliseconds, rounded up, so it stays an upper bound
+// without the double-precision loss of a ticks value above 2^53.
+export const START_BOUND_PREFIX = 'ticksmax:';
+// Covers the 15.6 ms default clock tick between a coarse and a precise system time read.
+const START_BOUND_SLACK_MS = 20;
+// performance.timeOrigin must agree with Date.now() - uptime: a stale (snapshot-time) origin
+// would make every live owner read as dead, so a mismatch falls back to the exact probe.
+const START_BOUND_ORIGIN_TOLERANCE_MS = 1000;
+let ownStartBoundCache = null;
+
+function ownStartBoundIdentity() {
+  if (process.env.NODE_ENV === 'test' && process.env.OMC_TEST_EMERGENCY_PROCESS_START_UNKNOWN_PID === String(process.pid)) return null;
+  if (ownStartBoundCache !== null) return ownStartBoundCache;
+  const origin = performance.timeOrigin;
+  const uptimeOrigin = Date.now() - process.uptime() * 1000;
+  if (!Number.isFinite(origin) || origin <= 0 || Math.abs(origin - uptimeOrigin) > START_BOUND_ORIGIN_TOLERANCE_MS) return null;
+  const wait = Math.ceil(START_BOUND_SLACK_MS - performance.now());
+  if (wait > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait);
+  ownStartBoundCache = `${START_BOUND_PREFIX}${BigInt(Math.ceil(origin + START_BOUND_SLACK_MS)) * 10000n + 621355968000000000n}`;
+  return ownStartBoundCache;
+}
+
+/** The identity this process records in lock owners: the win32 bound, else the exact probe. */
+function ownLockStartIdentity(timeoutMs = 3000, testHooks) {
+  if (process.platform === 'win32' && typeof testHooks?.processStartIdentity !== 'function') {
+    const bound = ownStartBoundIdentity();
+    if (bound !== null) return bound;
+  }
+  return ownProcessStartIdentity(timeoutMs, testHooks);
+}
+
+function lockOwnerVersion(processStart) {
+  return processStart.startsWith(START_BOUND_PREFIX) ? 2 : 1;
+}
+
+/** Version 1 owners carry an exact identity; version 2 owners carry the win32 creation bound. */
+function validOwnerIdentity(version, processStart) {
+  if (typeof processStart !== 'string') return false;
+  if (version === 2) return /^ticksmax:\d+$/.test(processStart);
+  return version === 1 && /^\S+$/.test(processStart) && !processStart.startsWith(START_BOUND_PREFIX);
+}
+
+/** Whether exact probe result `current` proves the recorded identity live; null when incomparable. */
+export function startIdentityMatches(recorded, current) {
+  if (!recorded.startsWith(START_BOUND_PREFIX)) return current === recorded;
+  const ticks = current.match(/^ticks:(\d+)$/)?.[1];
+  const bound = recorded.slice(START_BOUND_PREFIX.length);
+  if (!ticks || !/^\d+$/.test(bound)) return null;
+  return BigInt(ticks) <= BigInt(bound);
 }
 
 function writeAllSync(fd, content, label) {
@@ -152,8 +223,7 @@ function readOwner(path) {
       return { version: 0, pid, timestamp: value.timestamp };
     }
     if (
-      value.version !== 1 || !Number.isSafeInteger(pid) || pid <= 0 ||
-      typeof value.processStart !== 'string' || !/^\S+$/.test(value.processStart) ||
+      !validOwnerIdentity(value.version, value.processStart) || !Number.isSafeInteger(pid) || pid <= 0 ||
       typeof value.createdAt !== 'string' || !Number.isFinite(Date.parse(value.createdAt)) ||
       typeof value.nonce !== 'string' || !/^[0-9a-f-]{36}$/i.test(value.nonce)
     ) return null;
@@ -177,12 +247,14 @@ function ownerLive(owner, timeoutMs = 3000, testHooks) {
     return startedAt - owner.timestamp <= uncertainty;
   }
   // Fork fix: an owner this module abandoned is orphaned-by-self (see abandonedOwnNonces).
-  if (owner.pid === process.pid && abandonedOwnNonces.has(owner.nonce) && owner.processStart === ownProcessStartIdentity(timeoutMs, testHooks)) return false;
+  if (owner.pid === process.pid && abandonedOwnNonces.has(owner.nonce) && owner.processStart === ownLockStartIdentity(timeoutMs, testHooks)) return false;
   // Fork fix: this process's identity is already cached; re-probing it costs a PowerShell
   // spawn per retry on win32, turning a 50-attempt contended acquire into a ~30s stall.
   const simulatedUnknown = process.env.NODE_ENV === 'test' && process.env.OMC_TEST_EMERGENCY_PROCESS_START_UNKNOWN_PID === String(owner.pid);
+  if (owner.pid === process.pid && !simulatedUnknown && owner.processStart === ownLockStartIdentity(timeoutMs, testHooks)) return true;
+  // Any other record for this pid (another thread's bound, a dead predecessor) needs the exact probe.
   const current = owner.pid === process.pid && !simulatedUnknown ? ownProcessStartIdentity(timeoutMs, testHooks) : startProcessIdentity(owner.pid, timeoutMs, testHooks);
-  return current === null ? null : current === 'absent' ? false : current === owner.processStart;
+  return current === null ? null : current === 'absent' ? false : startIdentityMatches(owner.processStart, current);
 }
 
 function processStartTimestamp(pid, expectedIdentity) {
@@ -448,20 +520,22 @@ function acquireFileLock(lockPath, attempts, processProbeDeadline, operationDead
   // processes still serialize on one exact owner artifact.
   lastLockFailureDetail = null;
   const key = canonicalKey(lockPath);
-  const processStart = ownProcessStartIdentity(remainingProcessProbeMs(processProbeDeadline, operationDeadline, testHooks), testHooks);
+  const processStart = ownLockStartIdentity(remainingProcessProbeMs(processProbeDeadline, operationDeadline, testHooks), testHooks);
   if (!processStart || processStart === 'absent') {
     recordFailure('unverifiable');
     return null;
   }
 
   let verifiedLiveOwner = null;
+  let inconclusiveRetries = 0;
+  let reclaimRetried = false;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (remainingOperationTimeoutMs(operationDeadline) <= 0) {
       recordFailure('contention');
       return null;
     }
     const owner = {
-      version: 1,
+      version: lockOwnerVersion(processStart),
       pid: process.pid,
       processStart,
       createdAt: new Date().toISOString(),
@@ -518,7 +592,20 @@ function acquireFileLock(lockPath, attempts, processProbeDeadline, operationDead
       // already verified live in this loop is treated as still live (fail closed).
       const live = sameOwner(existing, verifiedLiveOwner) ? true : ownerLive(existing, remainingProcessProbeMs(processProbeDeadline, operationDeadline, testHooks), testHooks);
       if (live === null) {
+        // Fork fix: a deadline spent during the probe is contention, as after a conclusive probe.
+        const remainingMs = remainingOperationTimeoutMs(operationDeadline);
+        if (remainingMs <= 0) {
+          recordFailure('contention');
+          return null;
+        }
         recordFailure('unverifiable');
+        // Fork fix (#4727): retry an inconclusive probe while attempts and probe budget remain.
+        if (attempt + 1 < attempts && inconclusiveRetries < INCONCLUSIVE_PROBE_RETRY_LIMIT &&
+            remainingProcessProbeMs(processProbeDeadline, operationDeadline, testHooks) > 0) {
+          inconclusiveRetries += 1;
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.min(10, Math.floor(remainingMs)));
+          continue;
+        }
         return null;
       }
       if (live) {
@@ -536,6 +623,13 @@ function acquireFileLock(lockPath, attempts, processProbeDeadline, operationDead
       if (reclaimed === 'failed') {
         recordFailure('unverifiable');
         return null;
+      }
+      // Fork fix: a reclaim frees the path, so the link is retried without spending an attempt;
+      // otherwise attempts=1 could never take over a dead owner. Once per acquire, so a stream of
+      // dead owners cannot keep the loop alive.
+      if (reclaimed === 'removed' && !reclaimRetried) {
+        reclaimRetried = true;
+        attempt -= 1;
       }
     }
   }
@@ -567,6 +661,7 @@ export function acquireStateFileLockAtPathSync(lockPath, attempts = 50, requireE
 // never revives; an abandoned nonce stays abandoned). Each liveness probe is a PowerShell spawn
 // on win32, so re-probing on all 50 attempts stalled for ~10 s. A cached live owner is treated as
 // still live (fail closed). `probe` false returns undefined for an owner with no cached verdict.
+// `inconclusiveRetries` counts the retries spent on null verdicts (INCONCLUSIVE_PROBE_RETRY_LIMIT).
 function cachedOwnerLive(owner, verified, slot, probe, timeoutMs = 3000, testHooks) {
   if (sameOwner(owner, verified[slot])) return true;
   if (verified.dead.some(dead => sameOwner(owner, dead))) return false;
@@ -577,7 +672,7 @@ function cachedOwnerLive(owner, verified, slot, probe, timeoutMs = 3000, testHoo
   return live;
 }
 
-function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclusive, bypassTestOverride, busyTimeoutMs, processProbeDeadline, operationDeadline, testHooks, verified = { row: null, artifact: null, dead: [] }) {
+function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclusive, bypassTestOverride, busyTimeoutMs, processProbeDeadline, operationDeadline, testHooks, verified = { row: null, artifact: null, dead: [], inconclusiveRetries: 0 }) {
   lastLockFailureDetail = null;
   lastLockFailure = null;
   lastLockFailureReason = null;
@@ -637,7 +732,7 @@ function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclu
     return retryAcquisition();
   }
 
-  const processStart = ownProcessStartIdentity(remainingProcessProbeMs(processProbeDeadline, operationDeadline, testHooks), testHooks);
+  const processStart = ownLockStartIdentity(remainingProcessProbeMs(processProbeDeadline, operationDeadline, testHooks), testHooks);
   if (!processStart || processStart === 'absent') {
     try { db.close(); } catch {}
     if (attempts <= 1) {
@@ -648,7 +743,7 @@ function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclu
   }
 
   const owner = {
-    version: 1,
+    version: lockOwnerVersion(processStart),
     pid: process.pid,
     processStart,
     createdAt: new Date().toISOString(),
@@ -656,7 +751,7 @@ function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclu
   };
   const retry = code => code === 'SQLITE_BUSY' || code === 'SQLITE_LOCKED' || code === 'OMC_LOCK_PUBLICATION_RACE' || code === 'OMC_LOCK_RECLAIM_RACE';
   const selectRow = () => db.prepare('SELECT version, pid, process_start, created_at, nonce FROM state_mutation_locks WHERE lock_key = ?').get(key);
-  const validRow = row => row.version === 1 && Number.isSafeInteger(row.pid) && typeof row.process_start === 'string' && typeof row.created_at === 'string' && typeof row.nonce === 'string';
+  const validRow = row => validOwnerIdentity(row.version, row.process_start) && Number.isSafeInteger(row.pid) && typeof row.created_at === 'string' && typeof row.nonce === 'string';
   // Fork fix: adjudicate liveness before BEGIN IMMEDIATE, so the slow win32 probe does not hold
   // the write lock (which also blocks the holder's own release). Inside the transaction only the
   // cached verdict for an unchanged owner is acted on; a changed owner is re-probed on a retry.
@@ -673,13 +768,30 @@ function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclu
   }
   if (preLive === null || preLive) {
     try { db.close(); } catch {}
-    if (preLive === null || attempts <= 1) {
+    // Fork fix: a deadline spent during the probe is contention whatever the verdict was.
+    if (remainingOperationTimeoutMs(operationDeadline) <= 0) {
+      recordFailure('contention');
+      return null;
+    }
+    // Fork fix (#4727): an inconclusive verdict is never cached, so a retry re-probes the owner;
+    // one slow win32 probe must not sink the acquire while attempts and probe budget remain.
+    if (attempts <= 1 || (preLive === null && (verified.inconclusiveRetries >= INCONCLUSIVE_PROBE_RETRY_LIMIT ||
+        remainingProcessProbeMs(processProbeDeadline, operationDeadline, testHooks) <= 0))) {
       recordFailure(preLive === null ? 'unverifiable' : 'contention');
       return null;
     }
+    if (preLive === null) verified.inconclusiveRetries += 1;
     return retryAcquisition();
   }
+  // Fork fix (#4727): the probe above can spend the overall budget. Never re-enter the write
+  // transaction after the deadline, and bound its busy wait by what remains of the budget.
+  if (remainingOperationTimeoutMs(operationDeadline) <= 0) {
+    try { db.close(); } catch {}
+    recordFailure('contention');
+    return null;
+  }
   try {
+    db.pragma(`busy_timeout = ${boundedBusyTimeoutMs(busyTimeoutMs, operationDeadline)}`);
     db.exec('BEGIN IMMEDIATE');
     const row = selectRow();
     if (row) {
@@ -744,7 +856,7 @@ function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclu
       }
     }
 
-    db.prepare('INSERT INTO state_mutation_locks (lock_key, version, pid, process_start, created_at, nonce) VALUES (?, 1, ?, ?, ?, ?)').run(key, owner.pid, owner.processStart, owner.createdAt, owner.nonce);
+    db.prepare('INSERT INTO state_mutation_locks (lock_key, version, pid, process_start, created_at, nonce) VALUES (?, ?, ?, ?, ?, ?)').run(key, owner.version, owner.pid, owner.processStart, owner.createdAt, owner.nonce);
     if (!publishOwner(lockPath, owner)) {
       abandonedOwnNonces.add(owner.nonce); // Fork fix: publication may have linked before failing.
       db.exec('ROLLBACK');
@@ -823,7 +935,7 @@ export function releaseStateFileLockSync(lock, operationDeadline = undefined) {
         // Fork fix: an already-absent artifact must not strand a row this process still owns, and
         // the row is deleted in the same transaction as the unlink so a failed unlink rolls back.
         const artifactOk = current === 'absent' || sameOwner(current, lock.owner);
-        if (!row || row.version !== 1 || !sameOwner({ pid: row.pid, processStart: row.process_start, nonce: row.nonce }, lock.owner) || !artifactOk) {
+        if (!row || row.version !== lock.owner.version || !sameOwner({ pid: row.pid, processStart: row.process_start, nonce: row.nonce }, lock.owner) || !artifactOk) {
           abandonedOwnNonces.add(lock.owner.nonce); // Fork fix: a row still ours must stay reclaimable.
           lock.db.exec('ROLLBACK');
           localLocks.delete(lock.key);

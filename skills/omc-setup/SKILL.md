@@ -10,13 +10,13 @@ This is the **only command you need to learn**. After running this, everything e
 
 **When this skill is invoked, immediately execute the workflow below. Do not only restate or summarize these instructions back to the user.**
 
-Note: All `~/.claude/...` paths in this guide respect `COPILOT_HOME` when that environment variable is set.
+Note: All `~/.copilot/...` paths in this guide respect `COPILOT_HOME` when that environment variable is set.
 
 ## Best-Fit Use
 
 Choose this setup flow when the user wants to **install, refresh, or repair OMC itself**.
 
-- Marketplace/plugin install users should land here after `/plugin install oh-my-copilot`
+- Marketplace/plugin install users should land here after `/plugin install oh-my-copilot@omc` (from a shell: `copilot plugin install oh-my-copilot@omc`)
 - npm users should land here after `npm i -g oh-my-copilot@latest`
 - local-dev and worktree users should land here after updating the checked-out repo and rerunning setup
 
@@ -39,7 +39,7 @@ OMC Setup - Configure oh-my-copilot
 USAGE:
   /omc-setup           Run initial setup wizard (or update if already configured)
   /omc-setup --local   Configure local project (.claude/CLAUDE.md)
-  /omc-setup --global  Configure global settings (~/.claude/CLAUDE.md)
+  /omc-setup --global  Configure global settings (~/.copilot/CLAUDE.md)
   /omc-setup --force   Force full setup wizard even if already configured
   /omc-setup --help    Show this help
 
@@ -49,8 +49,8 @@ MODES:
     - Configures CLAUDE.md (local or global)
     - Sets up HUD statusline
     - Checks for updates
-    - Clears retired setup values (5.0.0 removed defaultExecutionMode) and points MCP registration at Claude Code's native config
-    - Configures team mode defaults (agent count, type, model)
+    - Clears retired setup values (5.0.0 removed defaultExecutionMode) and points MCP registration at Copilot CLI's native config (`copilot mcp add`)
+    - Explains the `omg team` defaults (teams need no setting on Copilot CLI)
     - If already configured, offers quick update option
 
   Local Configuration (--local)
@@ -62,9 +62,9 @@ MODES:
   Global Configuration (--global)
     - Invokes the plugin-local coordinator through `scripts/setup-claude-md.mjs`; the script validates the coordinator response and its exit status before any post-install work
     - Reports coordinator-created byte-identical backups only for changed global files
-    - Default: explicitly overwrites ~/.claude/CLAUDE.md so plain `claude` also uses OMC
-    - Optional preserve mode keeps the user's base `CLAUDE.md` and installs OMC into `CLAUDE-omc.md` for `omc` launches
-    - Applies to all Claude Code sessions
+    - Default: explicitly overwrites ~/.copilot/CLAUDE.md so plain `copilot` also uses OMC
+    - Optional preserve mode keeps the user's base `CLAUDE.md` and installs OMC into `CLAUDE-omc.md` for `omg` launches
+    - Applies to all Copilot CLI sessions
     - Preserves same-named legacy hook files unless their exact historical contents are independently verified
     - Use this to update global config after OMC upgrades
 
@@ -83,12 +83,22 @@ For more info: https://github.com/RobinNorberg/oh-my-copilot
 ```
 
 
+## Plugin Root
+
+Every command and file path in this skill and its phases starts with `<plugin-root>`, the oh-my-copilot plugin directory. Resolve it once, before the first command:
+
+1. The host shows this skill's directory as `Base directory for this skill: <dir>` (Copilot CLI and Claude Code both do). `<plugin-root>` is two levels above it: `<dir>` without its trailing `skills/omc-setup`.
+2. Only if no base directory is shown: if you read this SKILL.md from a file path, `<plugin-root>` is two levels above that file's directory (`<plugin-root>/skills/omc-setup/SKILL.md`). Otherwise use `CLAUDE_PLUGIN_ROOT` or `OMC_PLUGIN_ROOT` when one is set, else the `oh-my-copilot` directory under the Copilot installed-plugins path (COPILOT_HOME if set, else `~/.copilot`, then `installed-plugins/<marketplace>/`) or the Claude Code cache (`~/.claude/plugins/cache/<marketplace>/oh-my-copilot/<version>/`).
+3. Check that `<plugin-root>/scripts/setup-config.mjs` exists. If it does not, stop and tell the user: "Cannot find the oh-my-copilot plugin scripts. Run `copilot plugin marketplace add RobinNorberg/oh-my-copilot` and `copilot plugin install oh-my-copilot@omc`, then rerun /omc-setup."
+
+Write the resolved absolute path literally in every command, never as a shell variable, so the commands run the same in bash, zsh and PowerShell. If the path contains `$` or a backtick, use single quotes instead of double quotes.
+
 ## Setup Invocation
 
-Do not independently scan plugin cache directories or select a plugin root in this skill. Invoke the setup script from the plugin root supplied by the running plugin environment:
+Do not scan plugin cache directories to choose which plugin version to install from; the setup script does that. Invoke it from `<plugin-root>`:
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.mjs" <local|global> [overwrite|preserve]
+node "<plugin-root>/scripts/setup-claude-md.mjs" <local|global> [overwrite|preserve]
 ```
 
 This runs unchanged on Windows, macOS, and Linux: it needs only Node, never bash or jq. (`scripts/setup-claude-md.sh` remains for back-compat with older invocations; the Node entry point above is the supported path.)
@@ -100,7 +110,7 @@ The script is the sole cache resolver. It accepts only complete plugin roots (ca
 **CRITICAL**: Before doing anything else, check if setup has already been completed. This prevents users from having to re-run the full setup wizard after every update.
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" configured
+node "<plugin-root>/scripts/setup-config.mjs" configured
 ```
 
 All setup checks and config writes run through `scripts/setup-config.mjs` subcommands, never inline interpreter code, so setup also works on hosts that block inline interpreter execution.
@@ -123,9 +133,9 @@ Use AskUserQuestion to prompt:
 3. **Cancel** - Exit without changes
 
 **If user chooses "Update CLAUDE.md and clear retired setup values":**
-- Detect if local (.claude/CLAUDE.md) or global (~/.claude/CLAUDE.md) config exists
-- If local exists, run: `node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.mjs" local`
-- If only global exists, run: `node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.mjs" global`
+- Detect if local (.claude/CLAUDE.md) or global (`CLAUDE.md` in COPILOT_HOME if set, else `~/.copilot`) config exists
+- If local exists, run: `node "<plugin-root>/scripts/setup-claude-md.mjs" local`
+- If only global exists, run: `node "<plugin-root>/scripts/setup-claude-md.mjs" global`
 - Run Phase 2 Step 2.4 to clear the retired `defaultExecutionMode` key
 - Skip all other steps after the cleanup
 - Report success and exit
@@ -145,7 +155,7 @@ If user passes `--force` flag, skip this check and proceed directly to setup.
 Before starting any phase, check for existing state:
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" resume
+node "<plugin-root>/scripts/setup-progress.mjs" resume
 ```
 
 If state exists (output is not "fresh"), use AskUserQuestion to prompt:
@@ -158,29 +168,29 @@ If state exists (output is not "fresh"), use AskUserQuestion to prompt:
 
 If user chooses "Start fresh":
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" clear
+node "<plugin-root>/scripts/setup-progress.mjs" clear
 ```
 
 ## Phase Execution
 
 ### For `--local` or `--global` flags:
-Read the file at `${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/skills/omc-setup/phases/01-install-claude-md.md` and follow its instructions.
+Read the file at `<plugin-root>/skills/omc-setup/phases/01-install-claude-md.md` and follow its instructions.
 (The phase file handles early exit for flag mode.)
 
 ### For full setup (default or --force):
 Execute phases sequentially. For each phase, read the corresponding file and follow its instructions:
 
-1. **Phase 1 - Install CLAUDE.md**: Read `${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/skills/omc-setup/phases/01-install-claude-md.md` and follow its instructions.
+1. **Phase 1 - Install CLAUDE.md**: Read `<plugin-root>/skills/omc-setup/phases/01-install-claude-md.md` and follow its instructions.
 
-2. **Phase 2 - Environment Configuration**: Read `${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/skills/omc-setup/phases/02-configure.md` and follow its instructions. Phase 2 must delegate HUD/statusLine setup to the `hud` skill; do not generate or patch `statusLine` paths inline here.
+2. **Phase 2 - Environment Configuration**: Read `<plugin-root>/skills/omc-setup/phases/02-configure.md` and follow its instructions. Phase 2 must delegate HUD/statusLine setup to the `hud` skill; do not generate or patch `statusLine` paths inline here.
 
-3. **Phase 3 - Integration Setup**: Read `${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/skills/omc-setup/phases/03-integrations.md` and follow its instructions.
+3. **Phase 3 - Integration Setup**: Read `<plugin-root>/skills/omc-setup/phases/03-integrations.md` and follow its instructions.
 
-4. **Phase 4 - Completion**: Read `${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/skills/omc-setup/phases/04-welcome.md` and follow its instructions.
+4. **Phase 4 - Completion**: Read `<plugin-root>/skills/omc-setup/phases/04-welcome.md` and follow its instructions.
 
 ## Graceful Interrupt Handling
 
-**IMPORTANT**: This setup process saves progress after each phase via `${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs`. If interrupted (Ctrl+C or connection loss), the setup can resume from where it left off.
+**IMPORTANT**: This setup process saves progress after each phase via `<plugin-root>/scripts/setup-progress.mjs`. If interrupted (Ctrl+C or connection loss), the setup can resume from where it left off.
 
 ## Keeping Up to Date
 

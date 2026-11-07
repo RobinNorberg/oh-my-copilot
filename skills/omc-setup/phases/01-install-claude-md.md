@@ -1,5 +1,7 @@
 # Phase 1: Install CLAUDE.md
 
+`<plugin-root>` is the plugin directory resolved in the omc-setup skill's "Plugin Root" step. Write it as a literal absolute path in every command below, never as a shell variable.
+
 ## Determine Configuration Target
 
 If `--local` flag was passed, set `CONFIG_TARGET=local`.
@@ -11,7 +13,7 @@ Otherwise (initial setup wizard), use AskUserQuestion to prompt:
 
 **Options:**
 1. **Local (this project)** - Creates `.claude/CLAUDE.md` in current project directory. Best for project-specific configurations.
-2. **Global (all projects)** - Creates `${COPILOT_HOME:-~/.copilot}/CLAUDE.md` for all Copilot CLI sessions. Best for consistent behavior everywhere.
+2. **Global (all projects)** - Creates `CLAUDE.md` in COPILOT_HOME if set, else `~/.copilot` for all Copilot CLI sessions. Best for consistent behavior everywhere.
 
 Set `CONFIG_TARGET` to `local` or `global` based on the user's choice.
 
@@ -20,12 +22,12 @@ Set `CONFIG_TARGET` to `local` or `global` based on the user's choice.
 Only when `CONFIG_TARGET=global`, run this probe before any overwrite/preserve question. It checks the same `.omc-config.json` used by the installer and respects `COPILOT_HOME`, including `~`, `~/...`, and `~\...` values:
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-config.mjs" claude-md-enabled
+node "<plugin-root>/scripts/setup-config.mjs" claude-md-enabled
 ```
 
 If the probe prints `disabled`, do not ask the overwrite/preserve question; set `GLOBAL_INSTALL_STYLE=overwrite` and continue through the coordinator so it can report the skip. If it prints `enabled`, continue below. If the probe fails or prints neither status, stop before asking or running setup; do not assume management is enabled.
 
-If `CONFIG_TARGET=global`, the probe printed `enabled`, and `${COPILOT_HOME:-~/.copilot}/CLAUDE.md` already exists without OMC markers, ask a second explicit question before running setup:
+If `CONFIG_TARGET=global`, the probe printed `enabled`, and the global `CLAUDE.md` (in COPILOT_HOME if set, else `~/.copilot`) already exists without OMC markers, ask a second explicit question before running setup:
 
 **Question:** "Global setup will change your base Claude config. Which behavior do you want?"
 
@@ -40,7 +42,7 @@ Set `GLOBAL_INSTALL_STYLE=overwrite` or `preserve` based on the user's choice. I
 **MANDATORY**: Always run this command. Do NOT skip. Do NOT use the Write tool. The script is the sole plugin-cache resolver and invokes the selected plugin root's `bridge/claude-md-coordinator.cjs` with one versioned JSON request. It fails closed when required plugin assets, the canonical-source handshake, coordinator response validation, or coordinator exit/`ok` agreement fails.
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.mjs" <CONFIG_TARGET> [GLOBAL_INSTALL_STYLE]
+node "<plugin-root>/scripts/setup-claude-md.mjs" <CONFIG_TARGET> [GLOBAL_INSTALL_STYLE]
 ```
 
 This entry point needs only Node, so it works the same on Windows, macOS, and Linux. The older `scripts/setup-claude-md.sh` still exists for back-compat but requires bash and jq.
@@ -78,8 +80,8 @@ If the coordinator reported the `claudeMdEnabled` skip, report `CLAUDE.md: Skipp
 
 ```
 OMC Global Configuration Complete
-- CLAUDE.md: Updated at ${COPILOT_HOME:-~/.copilot}/CLAUDE.md, or preserved with explicit preserve mode
-- Companion: May install ${COPILOT_HOME:-~/.copilot}/CLAUDE-omc.md when preserve mode is chosen
+- CLAUDE.md: Updated at CLAUDE.md in COPILOT_HOME if set (else ~/.copilot), or preserved with explicit preserve mode
+- Companion: May install CLAUDE-omc.md alongside it when preserve mode is chosen
 - Backup: Coordinator reported byte-identical backups only for global files that required mutation
 - Scope: GLOBAL - applies to all Copilot CLI sessions
 - Hooks: Provided by plugin (no manual installation needed)
@@ -92,13 +94,13 @@ Note: Hooks are now managed by the plugin system automatically. No manual hook i
 ## Save Progress
 
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" save 2 <CONFIG_TARGET>
+node "<plugin-root>/scripts/setup-progress.mjs" save 2 <CONFIG_TARGET>
 ```
 
 ## Early Exit for Flag Mode
 
 If `--local` or `--global` flag was used, clear state and **STOP HERE**:
 ```bash
-node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" clear
+node "<plugin-root>/scripts/setup-progress.mjs" clear
 ```
 Do not continue to Phase 2 or other phases.

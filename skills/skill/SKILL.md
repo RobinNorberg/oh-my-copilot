@@ -6,6 +6,7 @@ level: 2
 ---
 
 # Skill Management CLI
+`<copilot-home>` means COPILOT_HOME if set, else `~/.copilot`.
 
 Meta-skill for managing oh-my-copilot skills via CLI-like commands.
 
@@ -17,7 +18,7 @@ Show all available skills organized by scope.
 
 **Behavior:**
 1. Scan bundled built-in skills in the plugin `skills/` directory (read-only)
-2. Scan user skills at `${COPILOT_HOME:-~/.copilot}/skills/omc-learned/`
+2. Scan user skills at `<copilot-home>/skills/omc-learned/`
 3. Scan project skills at `.omg/skills/`
 4. Parse YAML frontmatter for metadata
 5. Display in organized table format:
@@ -61,7 +62,7 @@ Interactive wizard for creating a new skill.
 4. **Ask for argument hint** (optional)
    - Example: "<file> [options]"
 5. **Ask for scope:**
-   - `user` → `${COPILOT_HOME:-~/.copilot}/skills/omc-learned/<name>/SKILL.md`
+   - `user` → `<copilot-home>/skills/omc-learned/<name>/SKILL.md`
    - `project` → `.omg/skills/<name>/SKILL.md`
 6. **Create skill file** with template:
 
@@ -127,13 +128,13 @@ Remove a skill by name.
 
 **Behavior:**
 1. **Search for skill** in both scopes:
-   - `${COPILOT_HOME:-~/.copilot}/skills/omc-learned/<name>/SKILL.md`
+   - `<copilot-home>/skills/omc-learned/<name>/SKILL.md`
    - `.omg/skills/<name>/SKILL.md`
 2. **If found:**
    - Display skill info (name, description, scope)
    - **Ask for confirmation:** "Delete '<name>' skill from <scope>? (yes/no)"
 3. **If confirmed:**
-   - Delete entire skill directory (e.g., `${COPILOT_HOME:-~/.copilot}/skills/omc-learned/<name>/`)
+   - Delete entire skill directory (e.g., `<copilot-home>/skills/omc-learned/<name>/`)
    - Report: "✓ Removed skill '<name>' from <scope>"
 4. **If not found:**
    - Report: "✗ Skill '<name>' not found in user or project scope"
@@ -300,7 +301,7 @@ Sync skills between user and project scopes.
 
 **Behavior:**
 1. **Scan both scopes:**
-   - User skills: `${COPILOT_HOME:-~/.copilot}/skills/omc-learned/`
+   - User skills: `<copilot-home>/skills/omc-learned/`
    - Project skills: `.omg/skills/`
 2. **Compare and categorize:**
    - User-only skills (not in project)

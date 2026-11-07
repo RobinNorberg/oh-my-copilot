@@ -8,7 +8,9 @@ This compatibility command keeps `/oh-my-copilot:omc-setup` available without lo
 
 ## Dispatch
 
-1. Read the full bundled skill instructions from the active OMC plugin/install: `skills/omc-setup/SKILL.md`.
+<!-- Claude Code docs (plugins-reference, "Where each variable resolves"): for "Skill, command, and agent content", `${...}` resolves "Anywhere in the Markdown body". -->
+
+1. Read the full bundled skill instructions from `${CLAUDE_PLUGIN_ROOT}/skills/omc-setup/SKILL.md` (Claude Code substitutes the plugin root; if the placeholder is still literal, use the fallback below).
 2. Follow that SKILL.md exactly, treating the user's arguments as:
 
 ```text

@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import { IS_WIN, TIMING_SCALE } from './src/__tests__/helpers/platform.js';
 import DurationSequencer from './scripts/ci/duration-sequencer.mjs';
+import { parseMaxWorkers } from './scripts/ci/parse-max-workers.mjs';
 
 const INCLUDE = [
   'src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
@@ -11,11 +12,13 @@ const INCLUDE = [
 ];
 // tests/live/** drives real host binaries; run it with `npm run test:live`.
 const EXCLUDE = ['node_modules', 'dist', '.omc', 'tests/live/**'];
-// Wall-time budget tests: they assert run.cjs's production cushions (500 ms
+// Load-sensitive files that run one at a time after the `main` project
+// (groupOrder 1) instead of having their budgets widened. Two kinds are listed:
+// wall-time budget tests that assert run.cjs's production cushions (500 ms
 // Windows inner timeout, fail-closed SessionEnd budgets, grandchild reap
-// deadlines) and miss them when the parallel suite loads the host. They run
-// one file at a time after the `main` project (groupOrder 1) instead of
-// widening those budgets.
+// deadlines), and spawned-hook tests whose hooks miss a short production probe
+// cap when the parallel suite starves the host (see the comment on the second
+// group below).
 const SERIAL_BUDGET = [
   'src/__tests__/run-cjs-graceful-fallback.test.ts',
   'src/__tests__/run-cjs-windows-stdio-contract.test.ts',
@@ -24,7 +27,17 @@ const SERIAL_BUDGET = [
   'src/__tests__/session-end-process-exit.test.ts',
   'src/__tests__/windows-prompt-hook-runner.test.ts',
   'tests/integration/git-guardrails-hook.test.ts',
+  // Spawned-hook tests, serialized because of load: on win32 each hook's state lock
+  // first probes the process's own start identity through PowerShell (3 s cap, 2 s in
+  // SessionStart). A loaded suite starves that probe until the lock fails closed. The
+  // HUD wrapper's `npm root -g` has a 1.5 s cap and starves the same way.
+  'src/__tests__/hud-marketplace-resolution.test.ts',
+  'src/__tests__/post-tool-use-failure.test.ts',
+  'src/__tests__/session-start-script-context.test.ts',
+  'src/__tests__/workflow-profile-activation-script.test.ts',
 ];
+
+const ENV_MAX_WORKERS = parseMaxWorkers(process.env.OMC_VITEST_MAX_WORKERS);
 
 export default defineConfig({
   // Vitest applies a CLI `--exclude` (the `tests/perf/**` in `npm test` and
@@ -43,11 +56,13 @@ export default defineConfig({
     // fork per logical core starves the spawn-heavy suites (git fixtures, hook
     // scripts, worker launches) until they miss their own deadlines. Scale the
     // timeouts and cap the pool. POSIX keeps the vitest defaults.
+    // OMC_VITEST_MAX_WORKERS (positive integer) overrides the worker count on every platform.
     ...(IS_WIN ? {
       testTimeout: 30000 * TIMING_SCALE,
       hookTimeout: 10000 * TIMING_SCALE,
       maxWorkers: Math.min(16, Math.max(1, availableParallelism() - 1)),
     } : {}),
+    ...(ENV_MAX_WORKERS ? { maxWorkers: ENV_MAX_WORKERS } : {}),
     // Files start longest first and CI shards (`--shard=<i>/<n>`) split by
     // measured file duration (a Windows table on win32).
     sequence: { sequencer: DurationSequencer },

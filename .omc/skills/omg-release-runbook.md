@@ -149,7 +149,9 @@ reference for what each phase asserts.
    swept into a later release commit or left out of what `pr` pushes. Every
    child runs under the ship scrub (GIT_NO_REPLACE_OBJECTS=1, redirecting
    GIT_*/GH_* dropped); the vitest suite drops only GIT_NO_REPLACE_OBJECTS,
-   as in CI. State is `.omg/release/X.Y.Z.json`; a run without `--from`
+   as in CI. `OMC_VITEST_MAX_WORKERS=<n>` (not scrubbed) lowers the vitest
+   worker count on a loaded machine (default: 16 max on Windows, vitest's on POSIX).
+   State is `.omg/release/X.Y.Z.json`; a run without `--from`
    resumes at the first phase not yet ok; `--from <phase>` re-runs one and
    voids the records of every later phase, so they run again.
    Progress lines go to `$OMG_PROGRESS_FILE` or `.omg/progress/release.log`.

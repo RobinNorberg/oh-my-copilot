@@ -3,11 +3,25 @@ import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { scaleTiming } from './helpers/platform.js';
 const runCjs = require('../../scripts/run.cjs');
 const RUN_CJS_PATH = join(process.cwd(), 'scripts', 'run.cjs');
 const HUNG_PARENT = join(process.cwd(), 'src', '__tests__', 'fixtures', 'hung-hooks', 'hung-parent.cjs');
 const EPIPE_EXIT_PARENT = join(process.cwd(), 'src', '__tests__', 'fixtures', 'hung-hooks', 'epipe-exit-parent.cjs');
-function withWatchdog(promise, timeoutMs = 5000) {
+/**
+ * Inner timeouts below are test parameters, not shipped budgets. Where a test
+ * proves something other than timing (exit-code propagation, a reap), the
+ * inner timeout only has to outlast the Windows supervisor→hook(→grandchild)
+ * cold start, which passes 2s on a loaded host, so it is scaled for the host.
+ * The time the runner may take after its timeout fires stays fixed.
+ */
+const STARTUP_INNER_MS = scaleTiming(2000);
+const REAP_INNER_MS = scaleTiming(1500);
+const REAP_ALLOWANCE_MS = 1500;
+// Readiness waits and hang guards only; they never bound a budget under test.
+const READY_WAIT_MS = scaleTiming(4000);
+const HANG_GUARD_MS = scaleTiming(5000);
+function withWatchdog(promise, timeoutMs = HANG_GUARD_MS) {
     let timer;
     const watchdog = new Promise((_, reject) => {
         timer = setTimeout(() => reject(new Error(`runGenericChild exceeded ${timeoutMs}ms watchdog`)), timeoutMs);
@@ -99,7 +113,7 @@ describe('run.cjs generic hook timeout supervisor', () => {
             env: { ...process.env, OMC_TEST_PIDFILE: pidfile },
         });
         try {
-            const deadline = Date.now() + 4000;
+            const deadline = Date.now() + READY_WAIT_MS;
             while (Date.now() < deadline && !existsSync(pidfile)) {
                 await new Promise(resolve => setTimeout(resolve, 25));
             }
@@ -165,8 +179,8 @@ describe('run.cjs generic hook timeout supervisor', () => {
         let grandchildPid;
         process.env.OMC_TEST_PIDFILE = pidfile;
         try {
-            const innerMs = 1500;
-            const outerMs = 3000;
+            const innerMs = REAP_INNER_MS;
+            const outerMs = innerMs + REAP_ALLOWANCE_MS;
             const startedAt = Date.now();
             const status = await withWatchdog(runCjs.runGenericChild(HUNG_PARENT, [], innerMs, null), outerMs);
             const elapsed = Date.now() - startedAt;
@@ -192,12 +206,18 @@ describe('run.cjs generic hook timeout supervisor', () => {
         const previousPidfile = process.env.OMC_TEST_PIDFILE;
         process.env.OMC_TEST_PIDFILE = pidfile;
         try {
-            const innerMs = 2000;
+            // Only 500ms of the inner budget remain because the host's fuse started
+            // earlier. The property is that the runner times out near those 500ms,
+            // not after the full inner budget. The full budget is scaled so the gap
+            // between the two outcomes grows on slow hosts; the time allowed after the
+            // deadline stays the fixed reap allowance.
+            const remainingMs = 500;
+            const slackMs = scaleTiming(1000);
+            const innerMs = remainingMs + 2 * slackMs + 500;
             const startedAt = Date.now();
-            // The host's fuse started 1500ms ago, so only 500ms of the inner budget remain.
-            const status = await withWatchdog(runCjs.runGenericChild(HUNG_PARENT, [], innerMs, null, { startedAtMs: startedAt - 1500 }), innerMs);
+            const status = await withWatchdog(runCjs.runGenericChild(HUNG_PARENT, [], innerMs, null, { startedAtMs: startedAt - (innerMs - remainingMs) }), innerMs);
             expect(status).toBe(0);
-            expect(Date.now() - startedAt).toBeLessThan(1500);
+            expect(Date.now() - startedAt).toBeLessThan(remainingMs + REAP_ALLOWANCE_MS);
         }
         finally {
             if (previousPidfile === undefined)
@@ -216,19 +236,19 @@ describe('run.cjs generic hook timeout supervisor', () => {
             const signalExit = join(directory, 'signal-exit.cjs');
             writeFileSync(numericExit, 'process.exit(3);');
             writeFileSync(signalExit, "process.kill(process.pid, 'SIGKILL');");
-            await expect(withWatchdog(runCjs.runGenericChild(numericExit, [], 2000, null))).resolves.toBe(3);
+            await expect(withWatchdog(runCjs.runGenericChild(numericExit, [], STARTUP_INNER_MS, null))).resolves.toBe(3);
             // POSIX SIGKILL reports a null exit code (fail-open 0). Windows Node
             // terminates with a numeric status instead of a POSIX signal.
             if (process.platform === 'win32') {
-                await expect(withWatchdog(runCjs.runGenericChild(signalExit, [], 2000, null))).resolves.toBe(1);
+                await expect(withWatchdog(runCjs.runGenericChild(signalExit, [], STARTUP_INNER_MS, null))).resolves.toBe(1);
             }
             else {
-                await expect(withWatchdog(runCjs.runGenericChild(signalExit, [], 2000, null))).resolves.toBe(0);
+                await expect(withWatchdog(runCjs.runGenericChild(signalExit, [], STARTUP_INNER_MS, null))).resolves.toBe(0);
             }
             const originalExecPath = process.execPath;
             Object.defineProperty(process, 'execPath', { configurable: true, value: join(directory, 'missing-node') });
             try {
-                await expect(withWatchdog(runCjs.runGenericChild(join(directory, 'missing.cjs'), [], 2000, null))).resolves.toBe(0);
+                await expect(withWatchdog(runCjs.runGenericChild(join(directory, 'missing.cjs'), [], STARTUP_INNER_MS, null))).resolves.toBe(0);
             }
             finally {
                 Object.defineProperty(process, 'execPath', { configurable: true, value: originalExecPath });
@@ -353,7 +373,7 @@ process.exit(0);
             windowsHide: true,
         });
         try {
-            const deadline = Date.now() + 4000;
+            const deadline = Date.now() + READY_WAIT_MS;
             while (Date.now() < deadline && !existsSync(pidfile)) {
                 await new Promise(resolve => setTimeout(resolve, 25));
             }
@@ -362,14 +382,14 @@ process.exit(0);
             expect(grandchildPid).toBeGreaterThan(0);
             const runnerExit = new Promise(resolve => runner.once('exit', () => resolve()));
             if (process.platform === 'win32') {
-                spawnSync('taskkill', ['/F', '/PID', String(runner.pid)], { windowsHide: true, stdio: 'ignore', timeout: 2000 });
+                spawnSync('taskkill', ['/F', '/PID', String(runner.pid)], { windowsHide: true, stdio: 'ignore', timeout: HANG_GUARD_MS });
             }
             else {
                 runner.kill('SIGTERM');
             }
             await Promise.race([
                 runnerExit,
-                new Promise((_, reject) => setTimeout(() => reject(new Error('runner did not exit after cancel')), 5000)),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('runner did not exit after cancel')), HANG_GUARD_MS)),
             ]);
             await waitForDeath(grandchildPid);
         }

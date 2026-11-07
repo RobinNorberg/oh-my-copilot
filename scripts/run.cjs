@@ -128,6 +128,18 @@ const NESTED_OPERATION_TIMEOUT_MS = 2000;
 const NESTED_OPERATION_MARGIN_MS = 200;
 const NESTED_INNER_FLOOR_MS = NESTED_OPERATION_TIMEOUT_MS + NESTED_OPERATION_MARGIN_MS + WINDOWS_GENERIC_STARTUP_MS;
 const TIMEOUT_CUSHION_MS = POSIX_TIMEOUT_CUSHION_MS;
+// The hook's inner budget in ms and the epoch ms its clock started, exported
+// in its env so scripts/lib/stdin.mjs can size the stdin wait to fit in what
+// is left of it after start-up (hookStdinTimeoutMs).
+const HOOK_INNER_BUDGET_ENV = 'OMC_HOOK_INNER_BUDGET_MS';
+const HOOK_INNER_BUDGET_START_ENV = 'OMC_HOOK_INNER_BUDGET_START_MS';
+
+function hookBudgetEnv(timeoutMs, startedAtMs) {
+  return {
+    [HOOK_INNER_BUDGET_ENV]: String(Math.max(1, Math.floor(timeoutMs))),
+    [HOOK_INNER_BUDGET_START_ENV]: String(Math.floor(startedAtMs)),
+  };
+}
 const DEFAULT_GENERIC_TIMEOUT_MS = MAX_DECLARED_GENERIC_TIMEOUT_MS - POSIX_TIMEOUT_CUSHION_MS;
 
 function platformTimeoutCushionMs(platform = process.platform) {
@@ -863,6 +875,8 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook, options
       env: {
         ...process.env,
         OMC_SESSION_OWNER_PID: process.env.OMC_SESSION_OWNER_PID || String(process.ppid),
+        // The protocol deadline counts runner start-up, so does the budget.
+        ...hookBudgetEnv(timeoutMs, startedAtMs),
       },
       windowsHide: true,
       detached: true,
@@ -1140,6 +1154,7 @@ async function runWorker(targetPath, manifestHook, timeoutMs, options = {}) {
         resolve(status);
       };
 
+      const budgetStartedAtMs = Date.now();
       timer = setTimeout(async () => {
         if (terminal) return;
         discardOutput = true;
@@ -1162,7 +1177,7 @@ async function runWorker(targetPath, manifestHook, timeoutMs, options = {}) {
           stdin: true,
           stdout: true,
           stderr: true,
-          env: options.env || process.env,
+          env: { ...(options.env || process.env), ...hookBudgetEnv(timeoutMs, budgetStartedAtMs) },
           // Appended after [worker eval] → argv[1] is the hook path, argv[2..] the extra args.
           ...(options.argv && options.argv.length ? { argv: options.argv } : {}),
           workerData: { omcWorkerTarget: pathToFileURL(targetPath).href },
@@ -1270,6 +1285,9 @@ module.exports = {
   isClosedDestinationError,
   DEFAULT_GENERIC_TIMEOUT_MS,
   TIMEOUT_CUSHION_MS,
+  HOOK_INNER_BUDGET_ENV,
+  HOOK_INNER_BUDGET_START_ENV,
+  hookBudgetEnv,
   WINDOWS_TIMEOUT_CUSHION_MS,
   WINDOWS_REAP_TIMEOUT_MS,
   MIN_HOOK_INNER_MS,
