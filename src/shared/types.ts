@@ -615,11 +615,6 @@ export interface TeamConfigBlock {
      * rules stay). Default false.
      */
     compactProtocol?: boolean;
-    /**
-     * Minutes a worker's message to the leader may stay unanswered before the
-     * monitor fails its task with reason `blocker_unanswered`. Default off.
-     */
-    blockerTimeoutMinutes?: number;
   };
   roleRouting?: Partial<Record<CanonicalTeamRole, TeamRoleAssignmentSpec>> & {
     orchestrator?: OrchestratorSpec;
