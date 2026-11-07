@@ -32,13 +32,15 @@ describe('local reviews: symbolic links under the runtime root', () => {
     it('refuses to write a body or append a comment through a linked PR directory', () => {
         const { r } = reviews();
         const n = r.createDraftPr({ base: 'main', head: 'factory/1-add', title: 'Add remove', bodyFile, itemId: 1 });
-        const outside = join(fx.tmp, 'outside');
-        mkdirSync(outside, { recursive: true });
-        symlinkSync(outside, join(humanDir(), 'prs', String(n + 1)), 'junction');
         git(fx.root, 'checkout', '-q', '-b', 'factory/2-more');
         fx.write('src/more.js', 'export {};\n');
         fx.push(fx.commit('more'), 'factory/2-more');
         git(fx.root, 'checkout', '-q', 'main');
+        // Planted after the git steps: a committed link would leave the tree with the checkout.
+        const outside = join(fx.tmp, 'outside');
+        mkdirSync(outside, { recursive: true });
+        mkdirSync(join(humanDir(), 'prs'), { recursive: true });
+        symlinkSync(outside, join(humanDir(), 'prs', String(n + 1)), 'junction');
         expect(() => r.createDraftPr({ base: 'main', head: 'factory/2-more', title: 'More', bodyFile })).toThrow(/symbolic link/);
         expect(r.commentPr(n + 1, bodyFile)).toMatchObject({ ok: false, stderr: expect.stringMatching(/symbolic link/) });
         expect(existsSync(join(outside, 'body.md'))).toBe(false);
