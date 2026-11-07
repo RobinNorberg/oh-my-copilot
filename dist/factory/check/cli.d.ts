@@ -35,6 +35,12 @@ export declare class CheckUsageError extends Error {
 export declare class CheckIncompatibleError extends Error {
 }
 /**
+ * The local forge's read shapes (src/forge/local): the backlog listing at a
+ * commit, and the local base branch (an offline repository has no origin to
+ * fetch). The check guard allows them itself, with ship's trusted-read env only.
+ */
+export declare function isLocalReadShape(args: readonly string[]): boolean;
+/**
  * The `omg factory check` guard. `marker` is set only after `--mark` was
  * confirmed: then, and only then, `gh issue edit <n> --add-label <marker>`
  * and az writes pass (the wit.wiql.POST query is a read and passes without it).
@@ -75,6 +81,8 @@ export interface CheckJson {
     schemaVersion: number;
     ok: boolean;
     forge: string;
+    /** What the forge cannot do (the local forge's offline lines); empty on GitHub and Azure DevOps. */
+    limitations: string[];
     repo: string;
     source: Record<string, unknown> | null;
     counts: Record<string, number>;
@@ -97,7 +105,12 @@ export interface CheckJson {
  * files at `origin/<base>` (null = no base: every omg-plan is plan-missing).
  * The setup wizard builds its preview env with this too.
  */
-export declare function checkEnvFor(exec: Exec, root: string, config: CheckEnv['config'], base: string, baseSha: string | null): CheckEnv;
+export declare function checkEnvFor(exec: Exec, root: string, config: CheckEnv['config'] & {
+    kind?: string;
+    repo?: {
+        url: string;
+    };
+}, base: string, baseSha: string | null): CheckEnv;
 /** Fetch `origin/<base>` (read-only) and resolve it; null with a warning when it cannot be read. */
 export declare function fetchBase(exec: Exec, root: string, base: string, warnings: string[]): string | null;
 /** The base branch's committed `.copilot/omg.jsonc`, when the base is in ship.trustedBases (as loadTrustedShipConfig). */
@@ -135,6 +148,12 @@ export interface ReadForge {
  * (the board passes none). Throws CheckUsageError / CheckIncompatibleError.
  */
 export declare function openReadForge(o: Pick<FactoryCheckOptions, 'source' | 'limit'>, deps: FactoryCheckDeps, warnings: string[], command: string, marker?: () => string | undefined): ReadForge;
+/** The F9/F10 text of "no usable forge" (exit 5 in check, board, poll and setup), with the offline hint. */
+export declare function unsupportedForge(why: string): string;
+/** The local branch `<base>` (the local forge's base; no fetch); null with a warning when it does not exist. */
+export declare function localBase(exec: Exec, root: string, base: string, warnings: string[]): string | null;
+/** The forge's limitations (the local forge's offline lines), or none. */
+export declare function forgeLimitations(forge: Forge, base: string): string[];
 /** Run one check; returns the exit code. Errors other than usage / incompatible propagate (exit 1 at the CLI). */
 export declare function runFactoryCheck(o: FactoryCheckOptions, deps: FactoryCheckDeps): Promise<number>;
 //# sourceMappingURL=cli.d.ts.map

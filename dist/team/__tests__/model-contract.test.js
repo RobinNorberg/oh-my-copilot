@@ -219,6 +219,30 @@ describe('model-contract', () => {
                 vi.unstubAllEnvs();
             }
         });
+        it('trusts the per-user and machine-wide WinGet package and link roots', () => {
+            const restorePlatform = setProcessPlatform('win32');
+            vi.stubEnv('USERPROFILE', 'C:\\Users\\tester');
+            vi.stubEnv('LOCALAPPDATA', 'C:\\Users\\tester\\AppData\\Local');
+            vi.stubEnv('ProgramFiles', 'C:\\Program Files');
+            vi.stubEnv('OMC_TRUSTED_CLI_DIRS', '');
+            try {
+                const { isTrustedPrefix } = _testInternals;
+                expect(isTrustedPrefix('C:\\Users\\tester\\AppData\\Local\\Microsoft\\WinGet\\Packages\\GitHub.Copilot_Microsoft.Winget.Source_8wekyb3d8bbwe\\copilot.exe')).toBe(true);
+                expect(isTrustedPrefix('C:\\Users\\tester\\AppData\\Local\\Microsoft\\WinGet\\Links\\copilot.exe')).toBe(true);
+                expect(isTrustedPrefix('C:\\Program Files\\WinGet\\Packages\\GitHub.Copilot_x\\copilot.exe')).toBe(true);
+                expect(isTrustedPrefix('C:\\Program Files\\WinGet\\Links\\copilot.exe')).toBe(true);
+                // The directory boundary still holds for the new roots.
+                expect(isTrustedPrefix('C:\\Users\\tester\\AppData\\Local\\Microsoft\\WinGet\\Packages-evil\\copilot.exe')).toBe(false);
+                expect(isTrustedPrefix('C:\\Program Files\\WinGetX\\Packages\\copilot.exe')).toBe(false);
+                // `..` traversal out of the root and a different drive are both rejected.
+                expect(isTrustedPrefix('C:\\Users\\tester\\AppData\\Local\\Microsoft\\WinGet\\Packages\\..\\..\\evil.exe')).toBe(false);
+                expect(isTrustedPrefix('D:\\Users\\tester\\AppData\\Local\\Microsoft\\WinGet\\Packages\\x.exe')).toBe(false);
+            }
+            finally {
+                restorePlatform();
+                vi.unstubAllEnvs();
+            }
+        });
     });
     describe('getContract', () => {
         it('returns contract for claude', () => {

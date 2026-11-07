@@ -118,7 +118,8 @@ export function assertSetupCommand(cmd, args, repo, az, env) {
     const base = file.replace(/\.exe$/, '');
     const ok = isAz
         ? azAllowed(args.slice(az.prefix.length), repo)
-        : base === 'gh' ? ghAllowed(args, repo)
+        // The local forge has no server: the wizard runs neither gh nor az for it.
+        : base === 'gh' ? repo.kind === 'github' && ghAllowed(args, repo)
             : base === 'git' ? same(args, ['remote', 'get-url', 'origin']) || same(args, ['rev-parse', '--show-toplevel'])
                 : false;
     if (!ok)

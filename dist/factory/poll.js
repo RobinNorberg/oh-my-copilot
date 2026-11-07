@@ -469,6 +469,16 @@ export async function pollTick(ctx) {
             }
         }
     }
+    // 2b. the local forge: sync the mirror base first, so a PR the human merged on <base> reads as MERGED below.
+    let baseSync;
+    if (forge.kind === 'local') {
+        if (!ctx.localBaseSync)
+            baseSync = { ran: false, reason: 'no base sync wired; omg factory run syncs the mirror base' };
+        else {
+            const synced = step('base sync', ctx.localBaseSync);
+            baseSync = synced === undefined ? { ran: false, reason: 'the base sync failed' } : { ran: true, message: plainText(synced) };
+        }
+    }
     // 3. PRs (and the idle seam): the runs in flight.
     const { runs, broken } = readRuns(root, warnings);
     const live = [...runs].filter(([, s]) => !TERMINAL_FACTORY_PHASES.includes(s.phase));
@@ -559,7 +569,7 @@ export async function pollTick(ctx) {
     }
     return {
         schemaVersion: POLL_JSON_SCHEMA_VERSION, tick: ctx.tick, at, forge: config.kind, repo: config.repo.url,
-        heal, intake, prs, board, idle, autoStart, rateLimited, errors: errors.map(plainText), warnings: warnings.map(plainText),
+        heal, intake, ...(baseSync ? { baseSync } : {}), prs, board, idle, autoStart, rateLimited, errors: errors.map(plainText), warnings: warnings.map(plainText),
     };
 }
 export function renderTick(t) {
@@ -570,6 +580,8 @@ export function renderTick(t) {
     if (t.intake.ran)
         for (const n of t.intake.new)
             lines.push(`  intake: new #${n.id} ${n.bucket}${n.reasons[0] ? ` ${n.reasons[0]}` : ''}`);
+    if (t.baseSync)
+        lines.push(`  base sync: ${t.baseSync.ran ? t.baseSync.message : `not run (${t.baseSync.reason})`}`);
     for (const p of t.prs) {
         if (p.hint)
             lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)} is ${p.state === 'MERGED' ? 'merged' : 'closed'} by a human: run \`${p.hint}\` to record it`);
@@ -636,6 +648,7 @@ export async function runFactoryPoll(o, deps) {
         forge: read.forge, config: read.config, root: read.root, base: read.base, exec: read.exec, baseSha: read.baseSha,
         heal: o.heal !== false, intake: o.intake !== false, prs: o.prs !== false,
         healScan: deps.healScan,
+        ...(deps.localBaseSync && read.config.kind === 'local' ? { localBaseSync: () => deps.localBaseSync({ root: read.root, base: read.base, config: read.config }) } : {}),
         autoStart: deps.autoStart ?? defaultPollAutoStart(process.argv[1], {
             timeoutMs: () => autoStartTimeoutMs(runLimits()),
             signals: (forward) => { forwards.add(forward); return () => { forwards.delete(forward); }; },
