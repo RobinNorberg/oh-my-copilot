@@ -4,6 +4,37 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+# oh-my-copilot v5.19.8
+
+## [5.19.8] - 2026-11-07
+
+Fork **v5.19.8** (from v5.19.7) is an upstream port of oh-my-claudecode `27e7f235e..4d5d22187` (22 commits, #440). It brings about 30 new skills, the verification ledger and watch-pr policy, and fixes for ralph, jev, team worktrees and resume, session-end and Windows. This release was published without the live Copilot smoke.
+
+### Added
+
+- **New skills (port; 96 bundled now):**
+  - PR care: `babysit`, `fix-ci`, `fix-merge-conflicts`, `get-pr-comments`.
+  - The pstack series, the panel, generator and utility suite, and the review-and-climb suite (`hillclimb`, `reflect`, `personal-mode`, `stacked-delivery`, …). See `docs/REFERENCE.md` "Skills (96 Total)".
+  - Adapted for Copilot CLI:
+    - `arena` and `interrogate` start with a `copilot` seat, and `models` uses `omg config`.
+    - The verification skills write project skills to `.github/skills/`, which Copilot CLI loads.
+    - `personal-mode` and `reflect` note that they read Claude Code transcripts.
+- **Verification ledger, watch-pr policy, playbook checker and credits registry** (port of upstream #4578).
+- **HUD account element** (port of upstream #4833). It shows the signed-in Claude Code account. It is opt-in, and hidden under Copilot CLI, which has no such account file.
+- **`omg team resume`** now resumes runtime v2 teams (port of upstream #4821). An SDK-transport team counts as resumed only when a worker host is still alive; otherwise the command reports why.
+
+### Changed
+
+- **SessionEnd foreground budget on Claude Code** (port of upstream #4845). It is now max(1000 ms, half the hook's manifest timeout), up from a fixed 300 ms, and orphaned session-end claims are recovered. Copilot CLI keeps its flat 1500 ms because it runs SessionEnd after every turn; `OMC_SESSION_END_BUDGET_MS` still overrides both. See `docs/HOOKS.md`.
+
+### Fixed (ported from upstream)
+
+- Team: worktrees and branches that hold unmerged worker commits are kept. The fork reports them under `retained` with reason `worktree_unmerged_commits` (#4842).
+- Ralph failure signatures ignore vitest's start clock and the Node warning process id (#4819, #4834).
+- Jev uses the full effort range in model routing, consumes active-mode answers in plugin hooks, and maps the context-pruning staleness score (#4808, #4810, #4818, #4820).
+- `.omc-config.json` rewrites keep unmanaged keys (#4843). A run awaiting confirmation is no longer flagged as crashed (#4799). cmux surface targets are no longer misclassified (#4817).
+- Windows: the HUD npm-root fallback hides its console window, and the epic closure verifier runs (#4846, #4848). The task-size opt-out is read from `.copilot/omg.jsonc`.
+
 # oh-my-copilot v5.19.7
 
 ## [5.19.7] - 2026-11-07
