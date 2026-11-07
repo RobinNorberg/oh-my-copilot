@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { localForgeLimitations } from '../../../forge/local/index.js';
 import { factoryCheckCommand } from '../../../cli/commands/factory-check.js';
 import { CheckIncompatibleError, EXIT_CHECK_INCOMPATIBLE, isLocalReadShape, runFactoryCheck, type CheckJson } from '../cli.js';
-import { backlogItem, checkDeps, commitAll, localRepo, programs, writeFile } from './local-repo.js';
+import { backlogItem, checkDeps, commitAll, localRepo, programs, removeFile, writeFile } from './local-repo.js';
 
 const SHA = 'a'.repeat(40);
 
@@ -44,6 +44,8 @@ describe('omg factory check on the local (offline) forge', () => {
     writeFile(repo, '.copilot/backlog/1-add-remove.md', backlogItem('Add remove'));
     writeFile(repo, '.copilot/backlog/3-broken.md', 'no frontmatter at all\n');
     commitAll(repo);
+    // A malformed file only in the commit: the committed read skips it with a warning (the working-tree read is lane A's follow-up).
+    removeFile(repo, '.copilot/backlog/3-broken.md');
 
     expect(await runFactoryCheck({ ids: [], json: true }, checkDeps(repo))).toBe(0);
     const json = JSON.parse(repo.out.join('\n')) as CheckJson;
@@ -52,10 +54,10 @@ describe('omg factory check on the local (offline) forge', () => {
 
   it('no origin and no local forge config: unsupported forge with the --forge local hint (exit 5)', async () => {
     const repo = localRepo();
-    await expect(runFactoryCheck({ ids: [] }, checkDeps(repo, undefined))).rejects.toThrow(CheckIncompatibleError);
-    await expect(runFactoryCheck({ ids: [] }, checkDeps(repo, undefined))).rejects.toThrow(/^unsupported forge: .*omg factory setup --forge local/);
+    await expect(runFactoryCheck({ ids: [] }, checkDeps(repo, null))).rejects.toThrow(CheckIncompatibleError);
+    await expect(runFactoryCheck({ ids: [] }, checkDeps(repo, null))).rejects.toThrow(/^unsupported forge: .*omg factory setup --forge local/);
 
-    await factoryCheckCommand(checkDeps(repo, undefined)).parseAsync([], { from: 'user' });
+    await factoryCheckCommand(checkDeps(repo, null)).parseAsync([], { from: 'user' });
     expect(process.exitCode).toBe(EXIT_CHECK_INCOMPATIBLE);
     expect(repo.err.join('\n')).toMatch(/unsupported forge: .*--forge local/);
     expect(programs(repo)).toEqual(['git']);

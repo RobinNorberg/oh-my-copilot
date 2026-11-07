@@ -7,7 +7,7 @@
  */
 
 import { execFileSync } from 'child_process';
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { vi } from 'vitest';
@@ -85,4 +85,9 @@ export function checkDeps(repo: LocalRepo, project: unknown = LOCAL_PROJECT_CONF
 /** Every spawned program, by base name: the offline surfaces run git only. */
 export function programs(repo: LocalRepo): string[] {
   return [...new Set(repo.calls.map((c) => c.cmd.replace(/\\/g, '/').split('/').pop()!.toLowerCase().replace(/\.(exe|cmd|bat)$/, '')))];
+}
+
+/** Delete a working-tree file (it stays in the last commit). */
+export function removeFile(repo: LocalRepo, path: string): void {
+  rmSync(join(repo.root, ...path.split('/')));
 }

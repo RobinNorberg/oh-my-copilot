@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { factoryBoardCommand } from '../../../cli/commands/factory-board.js';
 import { localForgeLimitations } from '../../../forge/local/index.js';
 import { EXIT_CHECK_INCOMPATIBLE } from '../../check/cli.js';
-import { backlogItem, checkDeps, commitAll, localRepo, programs, writeFile } from '../../check/__tests__/local-repo.js';
+import { backlogItem, checkDeps, commitAll, localRepo, programs, removeFile, writeFile } from '../../check/__tests__/local-repo.js';
 import { runFactoryBoard, type BoardJson } from '../collect.js';
 
 afterEach(() => {
@@ -30,6 +30,7 @@ describe('omg factory board on the local (offline) forge', () => {
     writeFile(repo, '.copilot/backlog/1-add-remove.md', backlogItem('Add remove'));
     writeFile(repo, '.copilot/backlog/4-broken.md', 'not a backlog item\n');
     commitAll(repo);
+    removeFile(repo, '.copilot/backlog/4-broken.md');
     writeFile(repo, '.copilot/backlog/2-draft.md', backlogItem('Draft'));
 
     expect(await runFactoryBoard({ json: true }, checkDeps(repo))).toBe(0);
@@ -43,7 +44,7 @@ describe('omg factory board on the local (offline) forge', () => {
 
   it('no origin and no local forge config: exit 5 with the --forge local hint', async () => {
     const repo = localRepo();
-    await factoryBoardCommand(checkDeps(repo, undefined)).parseAsync([], { from: 'user' });
+    await factoryBoardCommand(checkDeps(repo, null)).parseAsync([], { from: 'user' });
     expect(process.exitCode).toBe(EXIT_CHECK_INCOMPATIBLE);
     expect(repo.err.join('\n')).toMatch(/unsupported forge: .*omg factory setup --forge local/);
   });

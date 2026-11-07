@@ -49,7 +49,8 @@ describe('omg factory setup: the local (offline) forge', () => {
     expect(r.written).toBeNull();
     expect(existsSync(projectPath(repo))).toBe(false);
     expect(existsSync(samplePath(repo))).toBe(false);
-    expect(r.limitations).toEqual(localForgeLimitations('main'));
+    // The base is ship.base (default dev here: no config names main).
+    expect(r.limitations).toEqual(localForgeLimitations('dev'));
     expect(r.notes.some((n) => n.startsWith('no local gate:'))).toBe(true);
     expect(r.auth?.ok).toBe(true);
     expect(programs(repo)).toEqual(['git']);

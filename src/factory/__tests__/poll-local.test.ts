@@ -1,3 +1,4 @@
+import { resolve } from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { backlogItem, checkDeps, commitAll, localRepo, programs, writeFile, type LocalRepo } from '../check/__tests__/local-repo.js';
 import { runFactoryPoll, type FactoryPollDeps, type PollTick } from '../poll.js';
@@ -36,7 +37,8 @@ describe('omg factory poll on the local (offline) forge', () => {
     expect(t.intake).toMatchObject({ ran: true, items: 1, new: [{ id: 1, bucket: 'runnable' }] });
     expect(t.baseSync).toEqual({ ran: true, message: 'main synced (local)' });
     expect(sync).toHaveBeenCalledTimes(1);
-    expect(sync.mock.calls[0][0]).toMatchObject({ root: repo.root, base: 'main' });
+    expect(resolve(sync.mock.calls[0][0].root)).toBe(resolve(repo.root));
+    expect(sync.mock.calls[0][0].base).toBe('main');
     expect(programs(repo)).toEqual(['git']);
   });
 
