@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "a5d117a552bfb9065c3364702ab599de83af29c7",
-    "sourceSha256": "2b44e2586e54f5ac2e8d44c9c56d58bdf5a3dffd4491da7d82154b7bc44d0f52",
+    "head": "a0e777f4e4586c5503546775027140037d84f37a",
+    "sourceSha256": "99d6baba73cbd59bb488fdd019026fefa33605497306eae4e18eafd2e7d483e3",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "a5d117a552bfb9065c3364702ab599de83af29c7",
-  "sourceSha256": "2b44e2586e54f5ac2e8d44c9c56d58bdf5a3dffd4491da7d82154b7bc44d0f52",
+  "head": "a0e777f4e4586c5503546775027140037d84f37a",
+  "sourceSha256": "99d6baba73cbd59bb488fdd019026fefa33605497306eae4e18eafd2e7d483e3",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 1919,
-      "total": 1944
+      "srcFiles": 1918,
+      "total": 1943
     },
     "generated": {
       "distFiles": 7044,
@@ -47650,11 +47650,6 @@
         "path": "src/__tests__/hook-command-normalizer.test.ts"
       },
       {
-        "id": "src/__tests__/hook-stdin-budget.test.ts",
-        "kind": "src",
-        "path": "src/__tests__/hook-stdin-budget.test.ts"
-      },
-      {
         "id": "src/__tests__/hooks-command-escaping.test.ts",
         "kind": "src",
         "path": "src/__tests__/hooks-command-escaping.test.ts"
@@ -62969,31 +62964,6 @@
       {
         "from": "src/__tests__/hook-command-normalizer.test.ts",
         "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/hook-stdin-budget.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/hook-stdin-budget.test.ts",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/hook-stdin-budget.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/hook-stdin-budget.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/hook-stdin-budget.test.ts",
-        "to": "scripts/run.cjs",
         "kind": "imports"
       },
       {
@@ -115052,21 +115022,6 @@
         "kind": "imports"
       },
       {
-        "from": "tests/integration/git-guardrails-hook.test.ts",
-        "to": "scripts/lib/stdin.mjs",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/git-guardrails-hook.test.ts",
-        "to": "scripts/run.cjs",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/git-guardrails-hook.test.ts",
-        "to": "src/__tests__/helpers/platform.ts",
-        "kind": "imports"
-      },
-      {
         "from": "tests/integration/issue-4266-jev-temp-cleanup.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -116373,12 +116328,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9737,
-      "edgeCount": 11811,
-      "importEdgeCount": 9750,
+      "nodeCount": 9736,
+      "edgeCount": 11803,
+      "importEdgeCount": 9742,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "5ff0bfba0fc54cafa6d19f1862a3ae1894b627cf49487a36f111bba4c372229e",
-  "manifestSha256": "e5ac6c530164bd15923f7ee6558538b4c9bd61f441ae017be04714681c909884"
+  "inventorySha256": "13adc141bdbd3ee548b3c21fd659ccefc27b14a0a6e27cbd667607f1be12cb2d",
+  "manifestSha256": "e3b07dc415fd6002743688ec29bd103c618cc94382001b9b5358d87d90396554"
 }
