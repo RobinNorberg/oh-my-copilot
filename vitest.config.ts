@@ -24,6 +24,13 @@ const SERIAL_BUDGET = [
   'src/__tests__/session-end-process-exit.test.ts',
   'src/__tests__/windows-prompt-hook-runner.test.ts',
   'tests/integration/git-guardrails-hook.test.ts',
+  // Spawned hooks that take a state lock: on win32 each first probes its own start
+  // identity through PowerShell (3 s cap, 2 s in SessionStart), which a loaded suite
+  // starves until the lock fails closed. The HUD wrapper's `npm root -g` has a 1.5 s cap.
+  'src/__tests__/hud-marketplace-resolution.test.ts',
+  'src/__tests__/post-tool-use-failure.test.ts',
+  'src/__tests__/session-start-script-context.test.ts',
+  'src/__tests__/workflow-profile-activation-script.test.ts',
 ];
 
 export default defineConfig({
