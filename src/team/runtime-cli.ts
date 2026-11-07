@@ -1221,7 +1221,7 @@ async function main(): Promise<void> {
       } catch { /* best-effort panes file write */ }
 
       process.stderr.write(
-        `[runtime-cli/v2] phase=${snap.phase} pending=${snap.tasks.pending} blocked=${snap.tasks.blocked} in_progress=${snap.tasks.in_progress} completed=${snap.tasks.completed} failed=${snap.tasks.failed} dead=${snap.deadWorkers.length} totalMs=${snap.performance.total_ms}\n`,
+        `[runtime-cli/v2] phase=${snap.phase} pending=${snap.tasks.pending} blocked=${snap.tasks.blocked} in_progress=${snap.tasks.in_progress} completed=${snap.tasks.completed} failed=${snap.tasks.failed} capped=${snap.tasks.capped} dead=${snap.deadWorkers.length} totalMs=${snap.performance.total_ms}\n`,
       );
       const leaderGuidance = deriveTeamLeaderGuidance({
         tasks: {
@@ -1230,6 +1230,7 @@ async function main(): Promise<void> {
           inProgress: snap.tasks.in_progress,
           completed: snap.tasks.completed,
           failed: snap.tasks.failed,
+          capped: snap.tasks.capped,
         },
         workers: {
           total: snap.workers.length,
@@ -1237,6 +1238,7 @@ async function main(): Promise<void> {
           idle: snap.workers.filter((worker) => worker.alive && (worker.status.state === 'idle' || worker.status.state === 'done')).length,
           nonReporting: snap.nonReportingWorkers.length,
         },
+        leaderInbox: { unread: snap.leaderInbox.length },
       });
       process.stderr.write(
         `[runtime-cli/v2] leader_next_action=${leaderGuidance.nextAction} reason=${leaderGuidance.reason}\n`,

@@ -766,9 +766,13 @@ async function handleTeamStart(parsed, cwd) {
         }));
         return;
     }
+    // An SDK team has no tmux session: its session name is only an `sdk:` marker.
+    const transportLine = runtime.sessionName.startsWith('sdk:')
+        ? 'transport: sdk (headless)'
+        : `tmux session: ${runtime.sessionName}`;
     if (!ok) {
         console.error(`Team start incomplete: ${runtime.teamName}`);
-        console.error(`tmux session: ${runtime.sessionName}`);
+        console.error(transportLine);
         console.error(`instance id: ${runtime.instanceId}`);
         console.error(`workers: ${runtime.config.worker_count}`);
         console.error(`agent_type: ${uniqueTypes}`);
@@ -779,7 +783,7 @@ async function handleTeamStart(parsed, cwd) {
         return;
     }
     console.log(`Team started: ${runtime.teamName}`);
-    console.log(`tmux session: ${runtime.sessionName}`);
+    console.log(transportLine);
     console.log(`instance id: ${runtime.instanceId}`);
     console.log(`workers: ${runtime.config.worker_count}`);
     console.log(`agent_type: ${uniqueTypes}`);
@@ -888,6 +892,25 @@ async function printNoTeamState(teamName, cwd, json) {
         console.log(`preserved_worktree=${wt.path} worker=${wt.workerName} branch=${wt.branch ?? 'detached'} unmerged_commits=${wt.commits}`);
     }
 }
+/**
+ * Worker counts for the leader guidance. An SDK worker reports idleness
+ * through its host session (`sdk.state`), not its status file, so an idle
+ * session with nothing queued counts as idle; a capped session is counted
+ * on its own and never as non-reporting (its task is `capped`).
+ */
+export function classifyStatusWorkers(snapshot) {
+    const alive = snapshot.workers.filter((worker) => worker.alive);
+    const capped = new Set(alive.filter((worker) => worker.sdk?.state === 'capped').map((worker) => worker.name));
+    const idle = alive.filter((worker) => !capped.has(worker.name) && (worker.status.state === 'idle'
+        || worker.status.state === 'done'
+        || (worker.sdk?.state === 'idle' && worker.sdk.queued === 0)));
+    return {
+        alive: alive.length - capped.size,
+        idle: idle.length,
+        nonReporting: snapshot.nonReportingWorkers.filter((name) => !capped.has(name)).length,
+        capped: capped.size,
+    };
+}
 async function handleTeamStatus(teamName, cwd, json) {
     const { isRuntimeV2Enabled } = await import('../../team/runtime-v2.js');
     if (isRuntimeV2Enabled()) {
@@ -899,6 +922,7 @@ async function handleTeamStatus(teamName, cwd, json) {
             await printNoTeamState(teamName, cwd, json);
             return;
         }
+        const workerCounts = classifyStatusWorkers(snapshot);
         const leaderGuidance = deriveTeamLeaderGuidance({
             tasks: {
                 pending: snapshot.tasks.pending,
@@ -906,13 +930,15 @@ async function handleTeamStatus(teamName, cwd, json) {
                 inProgress: snapshot.tasks.in_progress,
                 completed: snapshot.tasks.completed,
                 failed: snapshot.tasks.failed,
+                capped: snapshot.tasks.capped,
             },
             workers: {
                 total: snapshot.workers.length,
-                alive: snapshot.workers.filter((worker) => worker.alive).length,
-                idle: snapshot.workers.filter((worker) => worker.alive && (worker.status.state === 'idle' || worker.status.state === 'done')).length,
-                nonReporting: snapshot.nonReportingWorkers.length,
+                alive: workerCounts.alive,
+                idle: workerCounts.idle,
+                nonReporting: workerCounts.nonReporting,
             },
+            leaderInbox: { unread: snapshot.leaderInbox.length },
         });
         const latestLeaderNudge = (await readTeamEventsByType(teamName, 'team_leader_nudge', cwd)).at(-1);
         const { readTeamConfig } = await import('../../team/monitor.js');
@@ -968,7 +994,15 @@ async function handleTeamStatus(teamName, cwd, json) {
                     in_progress: snapshot.tasks.in_progress,
                     completed: snapshot.tasks.completed,
                     failed: snapshot.tasks.failed,
+                    capped: snapshot.tasks.capped,
                 },
+                workers_capped: workerCounts.capped,
+                leader_inbox: snapshot.leaderInbox.map((message) => ({
+                    message_id: message.message_id,
+                    from: message.from,
+                    at: message.created_at,
+                    body: message.body,
+                })),
                 leader_next_action: leaderGuidance.nextAction,
                 leader_guidance: leaderGuidance.message,
                 latest_leader_nudge: latestLeaderNudge
@@ -993,7 +1027,14 @@ async function handleTeamStatus(teamName, cwd, json) {
             const sdk = worker.sdk;
             console.log(`sdk_worker=${worker.name} provider=${worker.providerLiveness} host_pid=${sdk.host_pid} session=${sdk.session_id ?? 'n/a'} state=${sdk.state} turns=${sdk.turns} queued=${sdk.queued} credits=${sdk.credits.toFixed(2)} premium_requests=${sdk.premium_requests} model=${sdk.model ?? 'auto'} last_event=${sdk.last_event_type ?? 'n/a'}@${sdk.last_event_at ?? 'n/a'}${sdk.last_error ? ` last_error=${JSON.stringify(sdk.last_error)}` : ''}`);
         }
-        console.log(`tasks: total=${snapshot.tasks.total} pending=${snapshot.tasks.pending} blocked=${snapshot.tasks.blocked} in_progress=${snapshot.tasks.in_progress} completed=${snapshot.tasks.completed} failed=${snapshot.tasks.failed}`);
+        console.log(`tasks: total=${snapshot.tasks.total} pending=${snapshot.tasks.pending} blocked=${snapshot.tasks.blocked} in_progress=${snapshot.tasks.in_progress} completed=${snapshot.tasks.completed} failed=${snapshot.tasks.failed} capped=${snapshot.tasks.capped}`);
+        for (const task of snapshot.tasks.items) {
+            if (task.status === 'capped')
+                console.log(`capped_task=task-${task.id} owner=${task.owner ?? 'n/a'} error=${JSON.stringify(task.error ?? '')}`);
+        }
+        for (const message of snapshot.leaderInbox) {
+            console.log(`leader_inbox: ${message.from} ${message.created_at} ${JSON.stringify(message.body.slice(0, 200))}`);
+        }
         console.log(`leader_next_action=${leaderGuidance.nextAction}`);
         console.log(`leader_guidance=${leaderGuidance.message}`);
         if (latestLeaderNudge) {
@@ -1050,11 +1091,24 @@ async function handleTeamShutdown(teamName, cwd, force) {
         console.log(`Team ${teamName} has no valid instance ID; no shutdown needed`);
         return;
     }
+    // Failed and capped tasks no longer block a graceful shutdown: name them.
+    const { teamListTasks } = await import('../../team/team-ops.js');
+    const unfinished = (await teamListTasks(teamName, cwd).catch(() => []))
+        .filter((task) => task.status === 'failed' || task.status === 'capped');
     const shutdown = await shutdownTeamV2(teamName, cwd, {
         instanceId,
         force,
         timeoutMs: force ? 0 : 30_000,
     });
+    if (shutdown.outcome === 'preserved' && shutdown.reason === 'worktrees_preserved') {
+        // Action needed, not a failure: exit 3 and keep the team state.
+        for (const wt of shutdown.worktrees ?? []) {
+            console.error(`preserved_worktree=${wt.path} worker=${wt.workerName} reason=${wt.reason}`);
+        }
+        console.error(`Team shutdown preserved: ${teamName} kept ${shutdown.worktrees?.length ?? 0} worker worktree(s) with uncommitted changes (workers: ${shutdown.workers.join(',') || 'n/a'}). Commit or discard the changes, then run omg team shutdown ${teamName}.`);
+        process.exitCode = 3;
+        return;
+    }
     if (shutdown.outcome !== 'cleaned') {
         const detail = shutdown.outcome === 'preserved'
             ? `${shutdown.reason}:${shutdown.workers.join(',')}`
@@ -1064,6 +1118,9 @@ async function handleTeamShutdown(teamName, cwd, force) {
     const kept = shutdown.preservedWorktrees ?? [];
     for (const wt of kept) {
         process.stderr.write(`[omg team] preserved worktree ${wt.path}: ${wt.commits} worker commit(s) not merged into the leader HEAD, ${wt.branch ? `branch ${wt.branch} kept` : 'detached HEAD'}. Merge or cherry-pick them, then run git worktree remove.\n`);
+    }
+    if (unfinished.length > 0) {
+        console.log(`shutdown with ${unfinished.length} failed or capped task(s): ${unfinished.map((task) => `task-${task.id} (${task.status})`).join(' ')}`);
     }
     console.log(kept.length > 0
         ? `Team shutdown complete: ${teamName} (preserved_worktrees=${kept.length}: worker commits retained, see stderr or omg team status ${teamName} --json)`

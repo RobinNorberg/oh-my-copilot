@@ -65,8 +65,17 @@ const baseSnapshot = {
     },
   ],
   nonReportingWorkers: [],
-  tasks: { total: 2, pending: 1, blocked: 0, in_progress: 0, completed: 1, failed: 0 },
+  tasks: { total: 2, pending: 1, blocked: 0, in_progress: 0, completed: 1, failed: 0, capped: 0, items: [] as unknown[] },
+  leaderInbox: [] as Array<{ message_id: string; from: string; created_at: string; body: string }>,
 };
+
+function sdkSnapshot(sdkState: string, overrides: Record<string, unknown> = {}) {
+  return {
+    ...baseSnapshot,
+    workers: [{ ...baseSnapshot.workers[0], sdk: { ...baseSnapshot.workers[0].sdk, state: sdkState } }],
+    ...overrides,
+  };
+}
 
 const baseConfig = {
   instance_id: 'inst-123',
@@ -149,6 +158,52 @@ describe('omg team status --json', () => {
 
     const logs = await captureLog(() => teamCommand(['status', 'demo-team']));
     expect(logs.find((line) => line.startsWith('sdk_worker='))).toMatch(/host_pid=4242 session=sess-1 state=ready/);
+  });
+
+  it('shows an unanswered worker message to the leader and asks the leader to answer it', async () => {
+    const blocker = { message_id: 'm1', from: 'worker-1', created_at: '2026-11-07T10:00:00.000Z', body: 'BLOCKER: which base?' };
+    runtimeV2Mocks.monitorTeamV2.mockResolvedValue(sdkSnapshot('idle', {
+      tasks: { ...baseSnapshot.tasks, pending: 0, in_progress: 1 },
+      leaderInbox: [blocker],
+    }));
+    monitorMocks.readTeamConfig.mockResolvedValue(baseConfig);
+
+    const status = JSON.parse((await captureLog(() => teamCommand(['status', 'demo-team', '--json'])))[0]);
+    expect(status.leader_inbox).toEqual([{ message_id: 'm1', from: 'worker-1', at: '2026-11-07T10:00:00.000Z', body: 'BLOCKER: which base?' }]);
+    expect(status.leader_next_action).toBe('answer-blocker');
+    expect(status.leader_guidance).toContain('omg team api send-message');
+
+    const logs = await captureLog(() => teamCommand(['status', 'demo-team']));
+    expect(logs).toContain('leader_inbox: worker-1 2026-11-07T10:00:00.000Z "BLOCKER: which base?"');
+    expect(logs).toContain('leader_next_action=answer-blocker');
+  });
+
+  it('counts an idle sdk worker as idle: reuse the team, not launch a new one', async () => {
+    runtimeV2Mocks.monitorTeamV2.mockResolvedValue(sdkSnapshot('idle', { nonReportingWorkers: ['worker-1'] }));
+    monitorMocks.readTeamConfig.mockResolvedValue(baseConfig);
+
+    const status = JSON.parse((await captureLog(() => teamCommand(['status', 'demo-team', '--json'])))[0]);
+    expect(status.leader_next_action).toBe('reuse-current-team');
+  });
+
+  it('reports capped tasks and workers and offers reassign or a raised cap', async () => {
+    runtimeV2Mocks.monitorTeamV2.mockResolvedValue(sdkSnapshot('capped', {
+      nonReportingWorkers: ['worker-1'],
+      tasks: {
+        ...baseSnapshot.tasks, pending: 0, capped: 1,
+        items: [{ id: '2', status: 'capped', owner: 'worker-1', error: 'sdk_credit_cap (cap); salvage: uncommitted work, if any, is in /repo' }],
+      },
+    }));
+    monitorMocks.readTeamConfig.mockResolvedValue(baseConfig);
+
+    const status = JSON.parse((await captureLog(() => teamCommand(['status', 'demo-team', '--json'])))[0]);
+    expect(status.tasks.capped).toBe(1);
+    expect(status.workers_capped).toBe(1);
+    expect(status.leader_next_action).toBe('reassign-capped');
+
+    const logs = await captureLog(() => teamCommand(['status', 'demo-team']));
+    expect(logs.find((line) => line.startsWith('tasks:'))).toContain('capped=1');
+    expect(logs).toContain('capped_task=task-2 owner=worker-1 error="sdk_credit_cap (cap); salvage: uncommitted work, if any, is in /repo"');
   });
 
   it('accepts --json before the team name', async () => {

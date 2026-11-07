@@ -42,4 +42,59 @@ describe('deriveTeamLeaderGuidance', () => {
     expect(guidance.nextAction).toBe('keep-checking-status');
     expect(guidance.reason).toContain('workers_still_active');
   });
+
+  it('returns answer-blocker over every relaunch advice while a worker waits on the leader', () => {
+    const guidance = deriveTeamLeaderGuidance({
+      tasks: { pending: 0, blocked: 0, inProgress: 1, completed: 0, failed: 0 },
+      workers: { total: 1, alive: 1, idle: 0, nonReporting: 1 },
+      leaderInbox: { unread: 2 },
+    });
+
+    expect(guidance.nextAction).toBe('answer-blocker');
+    expect(guidance.reason).toBe('leader_inbox_unread:unread=2,active=1');
+    expect(guidance.message).toContain('omg team api send-message');
+    expect(guidance.message).toContain('"from_worker":"leader-fixed"');
+  });
+
+  it('does not ask to answer a blocker once nothing is active', () => {
+    const guidance = deriveTeamLeaderGuidance({
+      tasks: { pending: 0, blocked: 0, inProgress: 0, completed: 1, failed: 0 },
+      workers: { total: 1, alive: 1, idle: 1, nonReporting: 0 },
+      leaderInbox: { unread: 1 },
+    });
+
+    expect(guidance.nextAction).toBe('shutdown');
+  });
+
+  it('returns reassign-capped when a task is capped, offering reassign or a raised cap', () => {
+    const guidance = deriveTeamLeaderGuidance({
+      tasks: { pending: 0, blocked: 0, inProgress: 0, completed: 1, failed: 0, capped: 1 },
+      workers: { total: 2, alive: 1, idle: 1, nonReporting: 0 },
+    });
+
+    expect(guidance.nextAction).toBe('reassign-capped');
+    expect(guidance.reason).toBe('tasks_capped:capped=1,active=0');
+    expect(guidance.message).toContain('Reassign');
+    expect(guidance.message).toContain('team.sdk.maxCreditsPerWorker');
+  });
+
+  it('ranks answer-blocker above reassign-capped', () => {
+    const guidance = deriveTeamLeaderGuidance({
+      tasks: { pending: 1, blocked: 0, inProgress: 0, completed: 0, failed: 0, capped: 1 },
+      workers: { total: 2, alive: 1, idle: 1, nonReporting: 0 },
+      leaderInbox: { unread: 1 },
+    });
+
+    expect(guidance.nextAction).toBe('answer-blocker');
+  });
+
+  it('returns shutdown when every task is terminal including failed ones', () => {
+    const guidance = deriveTeamLeaderGuidance({
+      tasks: { pending: 0, blocked: 0, inProgress: 0, completed: 2, failed: 1, capped: 0 },
+      workers: { total: 2, alive: 2, idle: 2, nonReporting: 0 },
+    });
+
+    expect(guidance.nextAction).toBe('shutdown');
+    expect(guidance.reason).toBe('all_tasks_terminal:completed=2,failed=1,workers=2');
+  });
 });

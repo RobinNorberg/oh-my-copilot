@@ -1,4 +1,6 @@
 export type TeamLeaderNextAction =
+  | 'answer-blocker'
+  | 'reassign-capped'
   | 'shutdown'
   | 'reuse-current-team'
   | 'launch-new-team'
@@ -11,12 +13,18 @@ export interface TeamLeaderGuidanceInput {
     inProgress: number;
     completed: number;
     failed: number;
+    /** Terminal: the owning SDK worker hit its credit cap (`team.sdk.maxCreditsPerWorker`). */
+    capped?: number;
   };
   workers: {
     total: number;
     alive: number;
     idle: number;
     nonReporting: number;
+  };
+  /** Worker messages to the leader that nobody answered yet (blockers, questions). */
+  leaderInbox?: {
+    unread: number;
   };
 }
 
@@ -36,6 +44,28 @@ export function deriveTeamLeaderGuidance(input: TeamLeaderGuidanceInput): TeamLe
   const aliveWorkers = Math.max(0, input.workers.alive);
   const idleWorkers = Math.max(0, input.workers.idle);
   const nonReportingWorkers = Math.max(0, input.workers.nonReporting);
+  const cappedTasks = Math.max(0, input.tasks.capped ?? 0);
+  const unreadLeaderMessages = Math.max(0, input.leaderInbox?.unread ?? 0);
+
+  // A worker waiting on the leader is not stuck: replacing it would throw
+  // away a correct wait, so an unanswered message outranks relaunch advice.
+  if (unreadLeaderMessages > 0 && activeTasks > 0) {
+    return {
+      nextAction: 'answer-blocker',
+      reason: `leader_inbox_unread:unread=${unreadLeaderMessages},active=${activeTasks}`,
+      message:
+        'A worker is waiting for the leader. Read leader_inbox, then reply with `omg team api send-message --input \'{"team_name":"<team>","from_worker":"leader-fixed","to_worker":"<worker>","body":"<answer>"}\' --json`.',
+    };
+  }
+
+  if (cappedTasks > 0) {
+    return {
+      nextAction: 'reassign-capped',
+      reason: `tasks_capped:capped=${cappedTasks},active=${activeTasks}`,
+      message:
+        'A worker hit its sdk credit cap and its task is `capped`; its uncommitted work stays where the task error says. Reassign the work (a new task or team), or raise team.sdk.maxCreditsPerWorker and relaunch. Shutdown is allowed once nothing is active.',
+    };
+  }
 
   if (activeTasks === 0) {
     return {

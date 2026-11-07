@@ -16,4 +16,25 @@ export declare const ZERO_OUTSTANDING: OutstandingMailboxCount;
 export declare function scanMailboxOutstanding(mailboxDir: string): Promise<Record<string, OutstandingMailboxCount>>;
 /** Outstanding directed-work counts for a single worker (0/0 when absent or unreadable). */
 export declare function countOutstandingForWorker(mailboxDir: string, workerName: string): Promise<OutstandingMailboxCount>;
+/** A worker message to the leader that is not delivered and has no later leader reply. */
+export interface LeaderInboxMessage {
+    message_id: string;
+    from: string;
+    created_at: string;
+    body: string;
+}
+/**
+ * Worker blocker convention: a message to the leader whose body starts with
+ * `BLOCKER:` (case-insensitive). Startup ACKs, progress acks and milestone
+ * reports also go to the leader and are not blockers.
+ */
+export declare function isBlockerMessageBody(body: string): boolean;
+/**
+ * Unanswered worker blockers addressed to the leader (`leader-fixed` by
+ * default), oldest first. Only `BLOCKER:` messages count (see
+ * {@link isBlockerMessageBody}). A blocker counts as answered once it is
+ * marked delivered or the leader sent its sender a message at or after its
+ * `created_at`; it then stops showing in `omg team status`.
+ */
+export declare function readLeaderInbox(mailboxDir: string, leaderName?: string): Promise<LeaderInboxMessage[]>;
 //# sourceMappingURL=mailbox-outstanding.d.ts.map

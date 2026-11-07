@@ -1,7 +1,8 @@
 export declare const TEAM_NAME_SAFE_PATTERN: RegExp;
 export declare const WORKER_NAME_SAFE_PATTERN: RegExp;
 export declare const TASK_ID_SAFE_PATTERN: RegExp;
-export declare const TEAM_TASK_STATUSES: readonly ["pending", "blocked", "in_progress", "completed", "failed"];
+/** `capped`: terminal; the owning SDK worker hit its credit cap (the leader reassigns or raises the cap). */
+export declare const TEAM_TASK_STATUSES: readonly ["pending", "blocked", "in_progress", "completed", "failed", "capped"];
 export type TeamTaskStatus = (typeof TEAM_TASK_STATUSES)[number];
 export declare const TEAM_TERMINAL_TASK_STATUSES: ReadonlySet<TeamTaskStatus>;
 export declare const TEAM_TASK_STATUS_TRANSITIONS: Readonly<Record<TeamTaskStatus, readonly TeamTaskStatus[]>>;

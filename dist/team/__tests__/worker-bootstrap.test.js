@@ -405,6 +405,11 @@ describe('worker-bootstrap', () => {
             expect(compact).not.toContain('tmux split-window');
             expect(compact).not.toContain('FIRST ACTION REQUIRED');
         });
+        it('tells workers to report blockers as `BLOCKER: <what you need>` in both the full and compact overlay', () => {
+            for (const overlay of [generateWorkerOverlay(sdkParams), generateWorkerOverlay({ ...sdkParams, compactProtocol: true })]) {
+                expect(overlay).toContain('send `BLOCKER: <what you need>` to leader-fixed');
+            }
+        });
         it('is off unless asked for, and never applies to cursor workers', () => {
             expect(generateWorkerOverlay(sdkParams)).toContain('FIRST ACTION REQUIRED');
             expect(generateWorkerOverlay({ ...sdkParams, compactProtocol: false })).toContain('FIRST ACTION REQUIRED');

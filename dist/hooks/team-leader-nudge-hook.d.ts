@@ -19,10 +19,14 @@ interface LeaderStalenessResult {
     inProgressTaskCount: number;
     completedTaskCount: number;
     failedTaskCount: number;
+    /** Terminal tasks whose SDK worker hit its credit cap. */
+    cappedTaskCount: number;
     idleWorkerCount: number;
     aliveWorkerCount: number;
     nonReportingWorkerCount: number;
     totalWorkerCount: number;
+    /** Worker messages to the leader with no delivery and no later leader reply. */
+    leaderInboxUnread: number;
 }
 export declare function checkLeaderStaleness(params: {
     stateDir: string;

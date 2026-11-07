@@ -2,16 +2,18 @@ export const TEAM_NAME_SAFE_PATTERN = /^[a-z0-9][a-z0-9-]{0,29}$/;
 export const WORKER_NAME_SAFE_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 export const TASK_ID_SAFE_PATTERN = /^\d{1,20}$/;
 
-export const TEAM_TASK_STATUSES = ['pending', 'blocked', 'in_progress', 'completed', 'failed'] as const;
+/** `capped`: terminal; the owning SDK worker hit its credit cap (the leader reassigns or raises the cap). */
+export const TEAM_TASK_STATUSES = ['pending', 'blocked', 'in_progress', 'completed', 'failed', 'capped'] as const;
 export type TeamTaskStatus = (typeof TEAM_TASK_STATUSES)[number];
 
-export const TEAM_TERMINAL_TASK_STATUSES: ReadonlySet<TeamTaskStatus> = new Set<TeamTaskStatus>(['completed', 'failed']);
+export const TEAM_TERMINAL_TASK_STATUSES: ReadonlySet<TeamTaskStatus> = new Set<TeamTaskStatus>(['completed', 'failed', 'capped']);
 export const TEAM_TASK_STATUS_TRANSITIONS: Readonly<Record<TeamTaskStatus, readonly TeamTaskStatus[]>> = {
   pending: [],
   blocked: [],
-  in_progress: ['completed', 'failed'],
+  in_progress: ['completed', 'failed', 'capped'],
   completed: [],
   failed: [],
+  capped: [],
 };
 
 export function isTerminalTeamTaskStatus(status: TeamTaskStatus): boolean {
