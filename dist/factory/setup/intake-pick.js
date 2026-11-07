@@ -56,6 +56,7 @@ export function formatIntakeSpec(s) {
         case 'wiql-query': return `wiql-query:${s.queryId}`;
         case 'board-column': return `board-column:${s.team}/${s.board}/${s.column}`;
         case 'area-tag': return `area-tag:${s.areaPath}#${s.tag}`;
+        case 'local-backlog': return s.label === undefined ? 'local-backlog' : `local-backlog:${s.label}`;
     }
 }
 // ---- forge listings (read-only, through the setup guard) ----
@@ -149,6 +150,9 @@ export function validateIntake(io, source, labels) {
         case 'area-tag':
             if (!has(adoAreaPaths(io), source.areaPath))
                 throw new SetupError(5, `unknown area path ${JSON.stringify(source.areaPath)} in project ${io.repo.project}`);
+            return { missingLabels: [] };
+        case 'local-backlog':
+            // Nothing on a server to check: the backlog is files in the repository.
             return { missingLabels: [] };
     }
 }
