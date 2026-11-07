@@ -10,6 +10,7 @@ import { execFileSync } from 'child_process';
 // @ts-expect-error Local hook helper is a JS module loaded directly by the tests.
 import { evaluateAgentHeavyPreflight } from '../../scripts/lib/pre-tool-enforcer-preflight.mjs';
 import { clearWorktreeCache, getOmcRoot } from '../lib/worktree-paths.js';
+import { scaleTiming } from './helpers/platform.js';
 
 const SCRIPT_PATH = join(process.cwd(), 'scripts', 'pre-tool-enforcer.mjs');
 const RUNNER_PATH = join(process.cwd(), 'scripts', 'run.cjs');
@@ -34,7 +35,9 @@ function runPreToolEnforcerWithEnv(
     cwd,
     input: JSON.stringify(input),
     encoding: 'utf-8',
-    timeout: 5000,
+    // A hang guard, not the hook's deadline: no test here asserts timing, and a loaded win32
+    // host spends seconds on node start-up and the hook's PowerShell identity probe.
+    timeout: scaleTiming(5000),
     env: {
       ...process.env,
       HOME: homeDir,
@@ -97,7 +100,8 @@ function runCodexPreToolEnforcer(
     cwd,
     input: JSON.stringify(input),
     encoding: 'utf-8',
-    timeout: 10_000,
+    // run.cjs enforces the hook's own deadline; this only guards against a hang.
+    timeout: scaleTiming(10_000),
     env: {
       ...process.env,
       HOME: homeDir,

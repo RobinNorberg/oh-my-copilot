@@ -5,6 +5,8 @@
  * Centralises path resolution, ghost-legacy cleanup, directory creation,
  * and file permissions so that individual mode modules don't duplicate this logic.
  */
+/** Whether exact probe result `current` proves the recorded identity live; null when incomparable. */
+export declare function startIdentityMatches(recorded: string, current: string): boolean | null;
 /**
  * True when state mutations can be serialized across processes on this platform. The SQLite
  * lock backend is platform-independent, so only the test-only 'none' switch reports unsupported.

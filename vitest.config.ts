@@ -11,11 +11,13 @@ const INCLUDE = [
 ];
 // tests/live/** drives real host binaries; run it with `npm run test:live`.
 const EXCLUDE = ['node_modules', 'dist', '.omc', 'tests/live/**'];
-// Wall-time budget tests: they assert run.cjs's production cushions (500 ms
+// Load-sensitive files that run one at a time after the `main` project
+// (groupOrder 1) instead of having their budgets widened. Two kinds are listed:
+// wall-time budget tests that assert run.cjs's production cushions (500 ms
 // Windows inner timeout, fail-closed SessionEnd budgets, grandchild reap
-// deadlines) and miss them when the parallel suite loads the host. They run
-// one file at a time after the `main` project (groupOrder 1) instead of
-// widening those budgets.
+// deadlines), and spawned-hook tests whose hooks miss a short production probe
+// cap when the parallel suite starves the host (see the comment on the second
+// group below).
 const SERIAL_BUDGET = [
   'src/__tests__/run-cjs-graceful-fallback.test.ts',
   'src/__tests__/run-cjs-windows-stdio-contract.test.ts',
@@ -24,6 +26,14 @@ const SERIAL_BUDGET = [
   'src/__tests__/session-end-process-exit.test.ts',
   'src/__tests__/windows-prompt-hook-runner.test.ts',
   'tests/integration/git-guardrails-hook.test.ts',
+  // Spawned-hook tests, serialized because of load: on win32 each hook's state lock
+  // first probes the process's own start identity through PowerShell (3 s cap, 2 s in
+  // SessionStart). A loaded suite starves that probe until the lock fails closed. The
+  // HUD wrapper's `npm root -g` has a 1.5 s cap and starves the same way.
+  'src/__tests__/hud-marketplace-resolution.test.ts',
+  'src/__tests__/post-tool-use-failure.test.ts',
+  'src/__tests__/session-start-script-context.test.ts',
+  'src/__tests__/workflow-profile-activation-script.test.ts',
 ];
 
 export default defineConfig({

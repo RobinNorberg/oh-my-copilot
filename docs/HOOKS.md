@@ -98,7 +98,8 @@ The adapter fails **open** on a hook's internal error. Copilot treats a PreToolU
 | Variable | Effect |
 |---|---|
 | `OMC_HOOK_EVENT` | Set by `copilot/hooks.json`; activates the adapter. |
-| `OMC_HOOK_FAIL_CLOSED=1` | Keep the hook's original non-zero exit code (fail closed). The hook runner `scripts/run.cjs` also exits `124` when a hook times out, instead of the default fail-open `0`, and its stderr line says `exiting fail-closed (124)`. |
+| `OMC_HOOK_FAIL_CLOSED=1` | Keep the hook's original non-zero exit code (fail closed). The hook runner `scripts/run.cjs` also exits `124` when a hook times out, instead of the default fail-open `0`, and its stderr line says `exiting fail-closed (124)`. `git-guardrails` also exits `124` when its stdin wait ran out before a complete payload. |
+| `OMC_HOOK_INNER_BUDGET_MS`, `OMC_HOOK_INNER_BUDGET_START_MS` | Set by `scripts/run.cjs` for the hook it starts: its inner budget in ms and the epoch ms that budget started. `readStdin()` in `scripts/lib/stdin.mjs` caps its wait at what is left of the budget minus 1500 ms on Windows (500 ms elsewhere), never under 250 ms. Not meant to be set by hand. |
 | `OMC_HOOK_STRICT=1` | A hook target that is missing or not a file exits 1 instead of 0 plus a stderr line. |
 | `OMC_COPILOT_HOOK_DISPATCH=0` | The dispatcher runs each hook as its own `node --require <adapter> run.cjs <script>` process, one after another, as before the dispatcher, and still merges the outputs (see [Per-event dispatcher](#per-event-dispatcher)). No regeneration needed. |
 | `OMC_COPILOT_HOOK_WORKER=0` | Run every generic hook as a child process under Copilot, as under Claude Code (see [Latency](#latency)). |

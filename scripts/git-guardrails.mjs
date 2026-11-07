@@ -18,12 +18,16 @@
  *   git branch -D                 - force-deletes a branch
  *   git checkout/restore .        - discards working-tree changes
  *
+ * A payload cut short by the stdin wait cannot be judged. It fails open,
+ * unless OMC_HOOK_FAIL_CLOSED=1: then it exits 124, the code run.cjs uses
+ * for a hook timeout under the same flag.
+ *
  * A guardrail must bite to count: feed it a planted violation and watch it
  * block before trusting it in a session (see refit's landing rule).
  */
 
 import { existsSync, readFileSync } from 'fs';
-import { readStdin } from './lib/stdin.mjs';
+import { HOOK_STDIN_TIMEOUT_MS, hookStdinTimeoutMs, readStdinWithStatus } from './lib/stdin.mjs';
 import { resolveSessionStatePathsForHook } from './lib/state-root.mjs';
 
 const LABELS = {
@@ -546,11 +550,15 @@ function destructiveCommandLabel(command) {
 async function main() {
   if (process.env.OMC_GIT_GUARDRAILS === '0') process.exit(0);
 
-  const raw = await readStdin(3000);
+  const { input: raw, timedOut } = await readStdinWithStatus(hookStdinTimeoutMs(HOOK_STDIN_TIMEOUT_MS));
   let payload = null;
   try {
     payload = JSON.parse(raw);
   } catch {
+    if (timedOut && process.env.OMC_HOOK_FAIL_CLOSED === '1') {
+      process.stderr.write('[git-guardrails] stdin timed out before a complete payload; failing closed (OMC_HOOK_FAIL_CLOSED=1).\n');
+      process.exit(124);
+    }
     process.exit(0);
   }
 
