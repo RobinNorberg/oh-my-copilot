@@ -23,9 +23,22 @@
  * every `project` route parameter to the repo's project (routes.ts), so work
  * items tracked in another project are not supported yet; a different value
  * is refused (`forge-unsupported`) rather than failing later at the guard.
+ *
+ * The local (offline) forge, `forge.kind: "local"` (decision D1):
+ * | Keys                               | Sources                              | Working-tree file          |
+ * |------------------------------------|--------------------------------------|----------------------------|
+ * | forge.kind "local", no parseable   | user -> base -> project              | allowed (nothing to        |
+ * |   GitHub/ADO origin                |                                      |   downgrade)               |
+ * | forge.kind "local" over a GitHub   | user -> base                         | refused (`forge-mismatch`) |
+ * |   or ADO origin (drops CI, review) |                                      |                            |
+ * | forge.local.gate (a command)       | user -> base                         | ignored, warned on a diff  |
+ * | forge.local.backlogDir,            | project -> user -> base -> defaults  | allowed (the run reads     |
+ * |   forge.local.gateTimeoutMinutes   |                                      |   items at the base commit)|
  */
 
 import { ADO_SEGMENT, ambiguousAuthority, parseAzureDevOpsRepoUrl, parseRemoteUrl } from '../providers/remote-url.js';
+import { basename } from 'path';
+import { localMirrorPath } from './local/mirror.js';
 import {
   PROGRESS_STAGES,
   type AzureDevOpsForgeConfig,
@@ -35,6 +48,7 @@ import {
   type ForgeProgressConfig,
   type ForgeRepo,
   type IntakeSource,
+  type LocalForgeConfig,
   type ProgressMapping,
   type ProgressStage,
   type ResolvedForgeConfig,
@@ -55,6 +69,10 @@ export const MAX_INTAKE_LIMIT = 200;
 export const DEFAULT_INTAKE_MARKER = 'factory-ready';
 export const DEFAULT_ADO_ITEM_TYPES: readonly string[] = ['User Story', 'Bug', 'Product Backlog Item'];
 export const DEFAULT_CHECK_CONFIG: Readonly<ForgeCheckConfig> = Object.freeze({ maxAcceptanceItems: 12, maxSize: 8, maxBodyChars: 20_000 });
+export const DEFAULT_LOCAL_BACKLOG_DIR = '.copilot/backlog';
+export const DEFAULT_LOCAL_GATE_TIMEOUT_MINUTES = 20;
+export const MAX_LOCAL_GATE_TIMEOUT_MINUTES = 120;
+const FORGE_KINDS: readonly ForgeKind[] = ['github', 'azure-devops', 'local'];
 
 /** GitHub default label family (design §7); `cancelled` removes the family, so it has no label. */
 export function defaultProgressStages(kind: ForgeKind): Partial<Record<ProgressStage, ProgressMapping>> {
@@ -183,8 +201,11 @@ function intakeSource(value: unknown, kind: ForgeKind, source: string): IntakeSo
     case 'area-tag':
       want('azure-devops');
       return { type: 'area-tag', areaPath: text(s.areaPath, TEXT, `${key}.areaPath`, source), tag: text(s.tag, TRACKER_NAME, `${key}.tag`, source) };
+    case 'local-backlog':
+      want('local');
+      return s.label === undefined ? { type: 'local-backlog' } : { type: 'local-backlog', label: text(s.label, TRACKER_NAME, `${key}.label`, source) };
     default:
-      throw new ForgeConfigError('invalid', `${source}: factory.intake.source.type must be one of ${ado ? 'wiql-query, board-column, area-tag' : 'label, milestone'}`);
+      throw new ForgeConfigError('invalid', `${source}: factory.intake.source.type must be one of ${ado ? 'wiql-query, board-column, area-tag' : kind === 'local' ? 'local-backlog' : 'label, milestone'}`);
   }
 }
 
@@ -225,9 +246,10 @@ function resolveProgress(layer: Block, configured: boolean, kind: ForgeKind, sou
     if (!(PROGRESS_STAGES as readonly string[]).includes(stage)) throw new ForgeConfigError('invalid', `${source}: factory.progress.stages.${stage} is not a stage (${PROGRESS_STAGES.join(', ')})`);
     const m = object(raw, `${source}: factory.progress.stages.${stage}`);
     const key = `progress.stages.${stage}`;
-    const allowed = kind === 'github' ? ['label'] : ['column', 'state'];
+    // The local forge records the stage itself (.omg/factory/local/items/<id>/progress.json); a mapping has nothing to name.
+    const allowed = kind === 'github' ? ['label'] : kind === 'local' ? [] : ['column', 'state'];
     const extra = Object.keys(m).find((k) => !allowed.includes(k));
-    if (extra) throw new ForgeConfigError('invalid', `${source}: factory.${key}.${extra} is not used on ${kind} (allowed: ${allowed.join(', ')})`);
+    if (extra) throw new ForgeConfigError('invalid', `${source}: factory.${key}.${extra} is not used on ${kind} (allowed: ${allowed.join(', ') || 'none'})`);
     // blocked and cancelled never change the work item state (design §4 step 5).
     if (m.state !== undefined && (stage === 'blocked' || stage === 'cancelled')) {
       throw new ForgeConfigError('invalid', `${source}: factory.${key}.state is not allowed; ${stage} never changes the work item state`);
@@ -241,6 +263,41 @@ function resolveProgress(layer: Block, configured: boolean, kind: ForgeKind, sou
   return progress;
 }
 
+/** `factory.forge.local.backlogDir`: repo-relative, `/`-separated, no `.`/`..`/`.git` segment. */
+function backlogDir(value: unknown, source: string): string {
+  const bad = (): never => {
+    throw new ForgeConfigError('invalid', `${source}: factory.forge.local.backlogDir must be a repo-relative directory (no absolute path, no "..")`);
+  };
+  if (typeof value !== 'string' || value.trim() !== value) return bad();
+  const dir = value.replace(/\\/g, '/').replace(/\/+$/, '');
+  if (dir === '' || dir.startsWith('/') || /^[A-Za-z]:/.test(dir) || /[\p{Cc}:*?"<>|]/u.test(dir)) return bad();
+  if (dir.split('/').some((s) => s === '' || s === '.' || s === '..' || s.toLowerCase() === '.git')) return bad();
+  return dir;
+}
+
+/** `factory.forge.local.gate`: a non-empty argv of plain strings. */
+function gateArgv(value: unknown, source: string): string[] {
+  const ok = Array.isArray(value) && value.length > 0 && value.length <= 64
+    && value.every((a) => typeof a === 'string' && a.length > 0 && a.length <= 4096 && !/\p{Cc}/u.test(a));
+  if (!ok) throw new ForgeConfigError('invalid', `${source}: factory.forge.local.gate must be an argv array of non-empty strings, for example ["npm","test"]`);
+  return [...(value as string[])];
+}
+
+/** forge.* without the parts the working tree may set (or that get their own warning), for the "ignored" warning. */
+function forgeIdentity(forge: Block, ado: Block, dropKind: boolean): Block {
+  const { azureDevOps: _drop, local: _local, ...rest } = forge;
+  if (dropKind) delete rest.kind;
+  return Object.keys(ado).length > 0 ? { ...rest, azureDevOps: ado } : rest;
+}
+
+/** Where the caller's repository lives: the local forge names its mirror from it. */
+export interface ForgeConfigContext {
+  /** The repository root (the checkout the factory runs in). */
+  root: string;
+  /** The engine-owned forge state directory (getGlobalOmcStatePath('forge')). */
+  stateDir: string;
+}
+
 export interface LoadedForgeConfig {
   config: ResolvedForgeConfig;
   warnings: string[];
@@ -251,12 +308,15 @@ export interface LoadedForgeConfig {
  * @param trustedUser the user config at its default location (userConfigLayers().trustedUser)
  * @param base the parsed `.copilot/omg.jsonc` committed on the verified base, or undefined when that layer was skipped
  * @param project the parsed working-tree project config
- * @param originUrl `git remote get-url origin`
+ * @param originUrl `git remote get-url origin`; undefined (or '') when the repository has no origin
+ * @param context the repository root and forge stateDir; required when the forge resolves to `local`
  * Throws ForgeConfigError: `forge-mismatch` when config disagrees with the
- * remote, `forge-unsupported` for a remote that is neither GitHub nor Azure
- * DevOps, `invalid` for an ill-typed value.
+ * remote (including a working-tree `kind: "local"` over a GitHub or ADO
+ * origin), `forge-unsupported` for a missing remote or one that is neither
+ * GitHub nor Azure DevOps (without `kind: "local"`), `invalid` for an
+ * ill-typed value.
  */
-export function resolveForgeConfig(trustedUser: unknown, base: unknown, project: unknown, originUrl: string): LoadedForgeConfig {
+export function resolveForgeConfig(trustedUser: unknown, base: unknown, project: unknown, originUrl: string | undefined, context?: ForgeConfigContext): LoadedForgeConfig {
   const warnings: string[] = [];
   const baseSource = 'base-branch .copilot/omg.jsonc';
 
@@ -275,25 +335,71 @@ export function resolveForgeConfig(trustedUser: unknown, base: unknown, project:
   delete uAdo.trustedAuthors;
   delete bAdo.trustedAuthors;
   delete pAdo.trustedAuthors;
-  const withAdo = (f: Block, ado: Block): Block => {
-    const { azureDevOps: _drop, ...rest } = f;
-    return Object.keys(ado).length > 0 ? { ...rest, azureDevOps: ado } : rest;
-  };
-  if (Object.keys(pForge).length > 0 && !same(withAdo(pForge, pAdo), withAdo(bForge, bAdo))) {
+  const uLocal = object(uForge.local, 'user config: factory.forge.local');
+  const bLocal = object(bForge.local, `${baseSource}: factory.forge.local`);
+  const pLocal = object(pForge.local, 'project config: factory.forge.local');
+
+  // The origin: parsed (GitHub or ADO), or none/unparseable (only the local forge can work then).
+  let parsed: ForgeRepo | undefined;
+  let detectError: ForgeConfigError | undefined;
+  if (originUrl === undefined || originUrl.trim() === '') {
+    detectError = new ForgeConfigError('forge-unsupported', 'no origin remote: omg factory needs a GitHub or Azure DevOps origin, or factory.forge.kind "local" for the offline forge');
+  } else {
+    try {
+      parsed = detectForgeRepo(originUrl);
+    } catch (err) {
+      if (!(err instanceof ForgeConfigError)) throw err;
+      detectError = err;
+    }
+  }
+
+  const kindRaw = uForge.kind ?? bForge.kind;
+  if (kindRaw !== undefined && !(FORGE_KINDS as readonly unknown[]).includes(kindRaw)) {
+    throw new ForgeConfigError('invalid', 'factory.forge.kind must be "github", "azure-devops" or "local"');
+  }
+  // D1: the working tree may choose local only when there is no GitHub/ADO origin to downgrade from.
+  const projectLocal = kindRaw === undefined && pForge.kind === 'local';
+  if (projectLocal && parsed) {
+    throw new ForgeConfigError(
+      'forge-mismatch',
+      `factory.forge.kind "local" in the working-tree project config cannot override the ${parsed.kind} origin (it would drop CI and remote review); set it in the user config or commit it to the base branch`,
+    );
+  }
+  if (Object.keys(pForge).length > 0 && !same(forgeIdentity(pForge, pAdo, projectLocal), forgeIdentity(bForge, bAdo, projectLocal))) {
     warnings.push(`omg factory: ignoring factory.forge from the working-tree project config; it is read only from the user config or ${baseSource}`);
   }
 
-  const remote = detectForgeRepo(originUrl);
-  const kindRaw = uForge.kind ?? bForge.kind;
-  if (kindRaw !== undefined && kindRaw !== 'github' && kindRaw !== 'azure-devops') {
-    throw new ForgeConfigError('invalid', 'factory.forge.kind must be "github" or "azure-devops"');
+  let kind: ForgeKind;
+  let remote: ForgeRepo;
+  if (kindRaw === 'local' || projectLocal) {
+    kind = 'local';
+    if (!context) throw new ForgeConfigError('invalid', 'the local forge needs the repository root and forge state directory (resolveForgeConfig context)');
+    if (parsed) warnings.push(`omg factory: factory.forge.kind "local" overrides the ${parsed.kind} origin; CI, remote review threads and tracker sync are off`);
+    remote = { kind: 'local', host: 'local', owner: 'local', name: basename(context.root.replace(/[\\/]+$/, '')), url: localMirrorPath(context.stateDir, context.root) };
+  } else {
+    if (!parsed) throw detectError!;
+    if (kindRaw !== undefined && kindRaw !== parsed.kind) mismatch('kind', String(kindRaw), parsed.kind);
+    kind = parsed.kind;
+    remote = parsed;
   }
-  if (kindRaw !== undefined && kindRaw !== remote.kind) mismatch('kind', kindRaw, remote.kind);
-  const kind = remote.kind;
   const source = 'factory config';
 
   let azureDevOps: AzureDevOpsForgeConfig | undefined;
-  if (kind === 'github') {
+  let local: LocalForgeConfig | undefined;
+  if (kind === 'local') {
+    // The gate is a command: user -> base only (like ship's safety keys).
+    if (pLocal.gate !== undefined && !same(pLocal.gate, bLocal.gate)) {
+      warnings.push(`omg factory: ignoring factory.forge.local.gate from the working-tree project config; it is read only from the user config or ${baseSource}`);
+    }
+    const gateRaw = uLocal.gate ?? bLocal.gate;
+    const dirRaw = pLocal.backlogDir ?? uLocal.backlogDir ?? bLocal.backlogDir;
+    const timeoutRaw = pLocal.gateTimeoutMinutes ?? uLocal.gateTimeoutMinutes ?? bLocal.gateTimeoutMinutes;
+    local = {
+      backlogDir: dirRaw === undefined ? DEFAULT_LOCAL_BACKLOG_DIR : backlogDir(dirRaw, source),
+      ...(gateRaw === undefined ? {} : { gate: gateArgv(gateRaw, source) }),
+      gateTimeoutMinutes: timeoutRaw === undefined ? DEFAULT_LOCAL_GATE_TIMEOUT_MINUTES : count(timeoutRaw, 'forge.local.gateTimeoutMinutes', source, 1, MAX_LOCAL_GATE_TIMEOUT_MINUTES),
+    };
+  } else if (kind === 'github') {
     const gh = { ...object(bForge.github, `${baseSource}: factory.forge.github`), ...object(uForge.github, 'user config: factory.forge.github') };
     if (gh.repo !== undefined) {
       const repo = text(gh.repo, /^[^/\s]+\/[^/\s]+$/, 'forge.github.repo', source);
@@ -390,6 +496,7 @@ export function resolveForgeConfig(trustedUser: unknown, base: unknown, project:
       kind,
       repo: remote,
       ...(azureDevOps ? { azureDevOps } : {}),
+      ...(local ? { local } : {}),
       intake: { ...resolveIntake(intake, kind), ...(autoStart === true ? { autoStart } : {}) },
       check: resolveCheck(check),
       progress: resolveProgress({ ...bProgress, ...uProgress }, hasFactoryKey(base, 'progress') || hasFactoryKey(trustedUser, 'progress'), kind, source),

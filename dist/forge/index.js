@@ -8,12 +8,15 @@
 import { createGitHubForge } from './github/index.js';
 // Azure DevOps adapter import (PR 5).
 import { createAzureDevOpsForge } from './ado/index.js';
+// Local (offline) forge import.
+import { createLocalForge } from './local/index.js';
 export { detectForgeRepo, ForgeConfigError, isTrustedAdoAuthor, resolveForgeConfig } from './config.js';
 /** One slot per forge kind; undefined until that adapter lands. */
 const ADAPTERS = {
     github: createGitHubForge,
     // (slots kept on separate lines for the PR 2 / PR 5 edits)
     'azure-devops': (exec, cwd, config, options) => createAzureDevOpsForge(exec, cwd, config, options),
+    local: createLocalForge,
 };
 /** `options.untrustedRoots` is required: the factory builds it with factoryForgeOptions (src/factory/run/forge-roots.ts). */
 export function createForge(exec, cwd, config, options) {

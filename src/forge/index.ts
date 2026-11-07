@@ -10,6 +10,8 @@ import { createGitHubForge } from './github/index.js';
 import type { Exec } from '../ship/exec.js';
 // Azure DevOps adapter import (PR 5).
 import { createAzureDevOpsForge } from './ado/index.js';
+// Local (offline) forge import.
+import { createLocalForge } from './local/index.js';
 import type { Forge, ForgeFactory, ForgeKind, ForgeOptions, ResolvedForgeConfig } from './types.js';
 
 export type * from './types.js';
@@ -20,6 +22,7 @@ const ADAPTERS: Readonly<Record<ForgeKind, ForgeFactory | undefined>> = {
   github: createGitHubForge,
   // (slots kept on separate lines for the PR 2 / PR 5 edits)
   'azure-devops': (exec, cwd, config, options) => createAzureDevOpsForge(exec, cwd, config, options),
+  local: createLocalForge,
 };
 
 /** `options.untrustedRoots` is required: the factory builds it with factoryForgeOptions (src/factory/run/forge-roots.ts). */
