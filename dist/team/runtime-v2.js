@@ -6218,11 +6218,11 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
 export async function resumeTeamV2(teamName, cwd) {
     const sanitized = sanitizeTeamName(teamName);
     const config = await readTeamConfig(sanitized, cwd);
-    if (!config?.instance_id)
+    if (!config?.instance_id || (config.lifecycle_state ?? 'active') !== 'active')
         return null;
-    // Verify tmux session is alive
     const sessionName = config.tmux_session || `omc-team-${sanitized}`;
-    if (sessionName.startsWith('cmux:') || isSdkTarget(sessionName)) {
+    // Fork (SDK teams): an SDK host has no leader pane to verify.
+    if (isSdkTarget(sessionName)) {
         return {
             teamName: sanitized,
             sanitizedName: sanitized,
@@ -6233,19 +6233,16 @@ export async function resumeTeamV2(teamName, cwd) {
             cwd,
         };
     }
-    if (!isValidTmuxServerIdentity(config.tmux_server_identity)
-        || await observeTmuxServerIdentity(config.tmux_server_identity) !== 'matching') {
-        return null;
-    }
     if (!config.leader_pane_id)
         return null;
+    const provider = config.leader_pane_id.startsWith('%') ? 'tmux' : 'cmux';
     const targetOwnership = await verifyTeamTargetOwnership({
-        provider: 'tmux',
+        provider,
         providerTarget: sessionName,
         recipient: 'leader-fixed',
         recipientRole: 'leader',
         paneId: config.leader_pane_id,
-        tmuxServerIdentity: config.tmux_server_identity,
+        ...(provider === 'tmux' ? { tmuxServerIdentity: config.tmux_server_identity } : {}),
     });
     if (targetOwnership.kind !== 'owned')
         return null;

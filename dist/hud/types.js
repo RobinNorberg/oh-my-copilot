@@ -67,7 +67,7 @@ export function resolveHudLabels(locale, labels) {
  * Used as fallback when no layout is configured.
  */
 export const DEFAULT_ELEMENT_ORDER = {
-    line1: ['hostname', 'cwd', 'gitRepo', 'gitBranch', 'gitStatus', 'apiKeySource', 'profile'],
+    line1: ['hostname', 'cwd', 'gitRepo', 'gitBranch', 'gitStatus', 'apiKeySource', 'account', 'profile'],
     main: [
         'omgLabel', 'model', 'effort', 'claudeLabel', 'enterpriseCost', 'creditBudget', 'copilotMode', 'rateLimits', 'customBuckets', 'permission', 'thinking',
         'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'team', 'ultragoal', 'prd',
@@ -140,6 +140,7 @@ export const DEFAULT_HUD_CONFIG = {
         thinking: true,
         thinkingFormat: 'text', // Text format for backward compatibility
         apiKeySource: false, // Disabled by default
+        account: false, // Opt-in to avoid exposing email on screen shares/streams
         hostname: false,
         profile: true, // Show profile name when COPILOT_HOME is set
         missionBoard: false, // Opt-in mission board for whole-run progress tracking
@@ -204,6 +205,7 @@ export const PRESET_CONFIGS = {
         thinking: false,
         thinkingFormat: 'text',
         apiKeySource: false,
+        account: false,
         hostname: false,
         profile: true,
         missionBoard: false,
@@ -251,6 +253,7 @@ export const PRESET_CONFIGS = {
         thinking: true,
         thinkingFormat: 'text',
         apiKeySource: false,
+        account: false,
         hostname: false,
         profile: true,
         missionBoard: false,
@@ -298,6 +301,7 @@ export const PRESET_CONFIGS = {
         thinking: true,
         thinkingFormat: 'text',
         apiKeySource: true,
+        account: false,
         hostname: false,
         profile: true,
         missionBoard: false,
@@ -345,6 +349,7 @@ export const PRESET_CONFIGS = {
         thinking: true,
         thinkingFormat: 'text',
         apiKeySource: false,
+        account: false,
         hostname: false,
         profile: true,
         missionBoard: false,
@@ -392,6 +397,7 @@ export const PRESET_CONFIGS = {
         thinking: true,
         thinkingFormat: 'text',
         apiKeySource: true,
+        account: false,
         hostname: false,
         profile: true,
         missionBoard: false,
