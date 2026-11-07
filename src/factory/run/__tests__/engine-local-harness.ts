@@ -62,7 +62,7 @@ export function localWorld(gate: string[] | null = ['node', '--test']): LocalWor
   const w: LocalWorld = {
     dir, root, stateDir, ledgerDir: join(dir, 'ledger'), config, raw: [], calls: [], gateRuns: [], gateStatus: [0],
     exec: () => ({ status: 1, stdout: '', stderr: '' }),
-    gate: () => ({ status: 1, stdout: '', stderr: '', timedOut: false }),
+    gate: async () => ({ status: 1, stdout: '', stderr: '', timedOut: false }),
   };
   w.exec = (cmd, rawArgs, opts) => {
     w.raw.push({ cmd, args: rawArgs });
@@ -74,7 +74,7 @@ export function localWorld(gate: string[] | null = ['node', '--test']): LocalWor
     if (cmd === 'git') return defaultExec(cmd, rawArgs, opts);
     return { status: 1, stdout: '', stderr: `unscripted: ${cmd} ${args.join(' ')}` };
   };
-  w.gate = (argv, cwd) => {
+  w.gate = async (argv, cwd) => {
     const status = w.gateStatus[Math.min(w.gateRuns.length, w.gateStatus.length - 1)];
     w.gateRuns.push({ argv, cwd, head: gitIn(cwd, 'rev-parse', 'HEAD') });
     return { status, stdout: status === 0 ? 'ok 1 - greet\n' : 'not ok 1 - greet\n', stderr: '', timedOut: false };

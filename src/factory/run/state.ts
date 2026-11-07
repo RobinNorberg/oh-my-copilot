@@ -167,6 +167,12 @@ export interface FactoryRunState {
    * engine-owned bare mirror. Sealed at creation, never changed.
    */
   remote?: typeof LOCAL_REMOTE;
+  /**
+   * The local forge only: the factory.forge.local.gate argv this run first
+   * ran its gate with. Every later gate run must find the same argv in the
+   * trusted config (local-gate.ts assertLocalGateCommand); absent until then.
+   */
+  localGate?: string[];
   repoUrl: string;
   base: string;
   branch: string;
@@ -384,6 +390,7 @@ function shapeProblem(s: Record<string, unknown>): string | null {
   if (s.forgeKind !== undefined && s.forgeKind !== 'github' && s.forgeKind !== 'azure-devops' && s.forgeKind !== 'local') return 'forgeKind';
   // The remote follows the forge: omg-local exactly on a local run, absent (origin) on every other.
   if (s.remote !== undefined ? s.remote !== LOCAL_REMOTE || s.forgeKind !== 'local' : s.forgeKind === 'local') return 'remote';
+  if (s.localGate !== undefined && (s.forgeKind !== 'local' || !Array.isArray(s.localGate) || s.localGate.length === 0 || !s.localGate.every(isStr))) return 'localGate';
   if (s.trackerStage !== undefined && !(PROGRESS_STAGES as readonly unknown[]).includes(s.trackerStage)) return 'trackerStage';
   if (s.kind === 'ci-heal') {
     const h = s.heal as Record<string, unknown> | undefined;

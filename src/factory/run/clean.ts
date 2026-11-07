@@ -15,10 +15,12 @@
 
 import { existsSync } from 'fs';
 import { WORKTREE_TEAM } from '../../copilot-run/job.js';
+import { LOCAL_REMOTE } from '../../forge/local/index.js';
 import { remoteRepoMismatch } from '../../ship/config.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { getWorktreePath, removeWorkerWorktree } from '../../team/git-worktree.js';
 import { factoryGuardExec, hardenedGitExec } from './exec.js';
+import { localRemoteMismatch } from './forge-roots.js';
 import { defaultLedgerDir, emptyHooksDir } from './ledger.js';
 import { checkoutWorker, FACTORY_CHECKOUT_TEAM } from './prepare.js';
 import { acquireFactoryOwner, FactoryStateError, readFactoryState, runRemote, verifyFactoryIntegrity, type OwnerDeps } from './state.js';
@@ -59,7 +61,7 @@ export function cleanFactoryRun(o: FactoryCleanOptions): FactoryCleanResult {
     const exec = factoryGuardExec(hardenedGitExec(o.exec, emptyHooksDir(o.ledgerDir ?? defaultLedgerDir())), () => [state.base]);
     const git = (args: string[]) => exec('git', args, { cwd: o.root, env: TRUSTED_READ_ENV });
     const remote = runRemote(state);
-    const mismatch = remoteRepoMismatch(exec, o.root, remote, state.repoUrl);
+    const mismatch = state.remote === LOCAL_REMOTE ? localRemoteMismatch(exec, o.root, state.repoUrl) : remoteRepoMismatch(exec, o.root, remote, state.repoUrl);
     if (mismatch) throw new FactoryStateError(`refusing to fetch: ${mismatch}`);
     const fetched = git(['fetch', remote, state.base]);
     if (fetched.status !== 0) throw new FactoryStateError(`git fetch ${remote} ${state.base} failed: ${fetched.stderr.trim().split('\n')[0]}`);
