@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "ba9aa15ddde4dafa05a12035ff97464897912bb1",
-    "sourceSha256": "7747b880d195a9df7bf87ddbac5bb438b10a8025c8353753eea108061a4ddd6f",
+    "head": "a0e777f4e4586c5503546775027140037d84f37a",
+    "sourceSha256": "99d6baba73cbd59bb488fdd019026fefa33605497306eae4e18eafd2e7d483e3",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "ba9aa15ddde4dafa05a12035ff97464897912bb1",
-  "sourceSha256": "7747b880d195a9df7bf87ddbac5bb438b10a8025c8353753eea108061a4ddd6f",
+  "head": "a0e777f4e4586c5503546775027140037d84f37a",
+  "sourceSha256": "99d6baba73cbd59bb488fdd019026fefa33605497306eae4e18eafd2e7d483e3",
   "counts": {
     "public": {
       "skills": 63,
@@ -57100,11 +57100,6 @@
         "path": "tests/integration/task-list-identity-stop.test.ts"
       },
       {
-        "id": "tests/integration/win32-own-identity-bound.test.ts",
-        "kind": "other",
-        "path": "tests/integration/win32-own-identity-bound.test.ts"
-      },
-      {
         "id": "tests/integration/workflow-profile-keyword-activation.test.ts",
         "kind": "other",
         "path": "tests/integration/workflow-profile-keyword-activation.test.ts"
@@ -59109,11 +59104,6 @@
       {
         "from": "scripts/lib/state-lock.mjs",
         "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/lib/state-lock.mjs",
-        "to": "external:perf_hooks",
         "kind": "imports"
       },
       {
@@ -115467,56 +115457,6 @@
         "kind": "imports"
       },
       {
-        "from": "tests/integration/win32-own-identity-bound.test.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/win32-own-identity-bound.test.ts",
-        "to": "external:child_process",
-        "kind": "type-imports"
-      },
-      {
-        "from": "tests/integration/win32-own-identity-bound.test.ts",
-        "to": "external:crypto",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/win32-own-identity-bound.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/win32-own-identity-bound.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/win32-own-identity-bound.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/win32-own-identity-bound.test.ts",
-        "to": "external:url",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/win32-own-identity-bound.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/win32-own-identity-bound.test.ts",
-        "to": "scripts/lib/state-lock.mjs",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/win32-own-identity-bound.test.ts",
-        "to": "src/lib/mode-state-io.ts",
-        "kind": "imports"
-      },
-      {
         "from": "tests/integration/workflow-profile-keyword-activation.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -116388,12 +116328,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9737,
-      "edgeCount": 11814,
-      "importEdgeCount": 9752,
+      "nodeCount": 9736,
+      "edgeCount": 11803,
+      "importEdgeCount": 9742,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "a4fd018ecbb87054b24299cb35c8573bfdb1d7d3d5072ea916904f5af958fd1b",
-  "manifestSha256": "7a5ebd2a60ee23998b59cf1f4c3ee0b620995a0cf88cb26ed69df9235fdce6f0"
+  "inventorySha256": "13adc141bdbd3ee548b3c21fd659ccefc27b14a0a6e27cbd667607f1be12cb2d",
+  "manifestSha256": "e3b07dc415fd6002743688ec29bd103c618cc94382001b9b5358d87d90396554"
 }
