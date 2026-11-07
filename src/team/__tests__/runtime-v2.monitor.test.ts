@@ -520,7 +520,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     expect(snapshot?.tasks).toMatchObject({ in_progress: 0, capped: 1, failed: 0 });
     expect(snapshot?.allTasksTerminal).toBe(true);
     expect(snapshot?.phase).toBe('failed');
-    const task = JSON.parse(await readFile(join(teamRoot, 'tasks', '1.json'), 'utf8')) as Record<string, unknown>;
+    const task = JSON.parse(await readFile(join(teamRoot, 'tasks', 'task-1.json'), 'utf8')) as Record<string, unknown>;
     expect(task.status).toBe('capped');
     expect(task.claim).toBeUndefined();
     expect(task.error).toBe(`sdk_credit_cap (credit cap 10 reached (10.50)); salvage: uncommitted work, if any, is in ${cwd}`);
@@ -529,7 +529,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
 
     const second = await monitorTeamV2('demo-team', cwd);
     expect(second?.tasks).toMatchObject({ in_progress: 0, capped: 1 });
-    const again = JSON.parse(await readFile(join(teamRoot, 'tasks', '1.json'), 'utf8')) as Record<string, unknown>;
+    const again = JSON.parse(await readFile(join(teamRoot, 'tasks', 'task-1.json'), 'utf8')) as Record<string, unknown>;
     expect(again.version).toBe(version);
   });
 
@@ -577,7 +577,8 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     try {
       const { monitorTeamV2 } = await import('../runtime-v2.js');
       const snapshot = await monitorTeamV2('demo-team', cwd);
-      const task = JSON.parse(await readFile(join(teamRoot, 'tasks', '1.json'), 'utf8')) as Record<string, unknown>;
+      // The leader writes the canonical task-<id>.json; the fixture wrote the legacy name.
+      const task = JSON.parse(await readFile(join(teamRoot, 'tasks', expected === 'failed' ? 'task-1.json' : '1.json'), 'utf8')) as Record<string, unknown>;
       expect(task.status).toBe(expected);
       if (expected === 'failed') {
         expect(snapshot?.tasks.failed).toBe(1);

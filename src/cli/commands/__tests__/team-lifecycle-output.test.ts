@@ -127,6 +127,9 @@ describe('omg team lifecycle output', () => {
     runtimeV2Mocks.shutdownTeamV2.mockResolvedValue({ outcome: 'preserved', reason: 'worker_panes_alive', workers: ['worker-1'] });
     const { teamCommand } = await import('../team.js');
 
-    await expect(teamCommand(['shutdown', 'demo'])).rejects.toThrow('Team shutdown preserved: worker_panes_alive:worker-1');
+    await teamCommand(['shutdown', 'demo']);
+
+    expect(errors.join(' ')).toContain('Team shutdown preserved: worker_panes_alive:worker-1');
+    expect(process.exitCode).toBe(1);
   });
 });

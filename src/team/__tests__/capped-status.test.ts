@@ -3,7 +3,7 @@
  * and reachable only from in_progress, and the mission board shows it as
  * blocked (it waits on a leader decision).
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -29,12 +29,18 @@ describe('mission board with a capped task', () => {
   let dir: string | undefined;
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     if (dir) rmSync(dir, { recursive: true, force: true });
     dir = undefined;
   });
 
   it('counts the capped task as blocked and marks the team blocked', () => {
     dir = mkdtempSync(join(tmpdir(), 'omc-capped-mission-'));
+    // The board resolves the state root from the environment: pin it to dir.
+    vi.stubEnv('OMC_STATE_DIR', '');
+    vi.stubEnv('OMC_DISABLE_MULTIREPO', '1');
+    vi.stubEnv('HOME', dir);
+    vi.stubEnv('USERPROFILE', dir);
     const teamRoot = join(dir, '.omg', 'state', 'team', 'demo');
     mkdirSync(join(teamRoot, 'tasks'), { recursive: true });
     writeFileSync(join(teamRoot, 'config.json'), JSON.stringify({
@@ -44,7 +50,7 @@ describe('mission board with a capped task', () => {
     writeFileSync(join(teamRoot, 'tasks', '1.json'), JSON.stringify({ id: '1', subject: 'done', status: 'completed', owner: 'worker-1' }));
     writeFileSync(join(teamRoot, 'tasks', '2.json'), JSON.stringify({ id: '2', subject: 'capped', status: 'capped', owner: 'worker-1', error: 'sdk_credit_cap' }));
 
-    const [mission] = readTeamMissions(dir);
+    const mission = readTeamMissions(dir).find((entry) => entry.name === 'demo');
 
     expect(mission?.taskCounts).toMatchObject({ total: 2, blocked: 1, completed: 1, failed: 0 });
     expect(mission?.status).toBe('blocked');
