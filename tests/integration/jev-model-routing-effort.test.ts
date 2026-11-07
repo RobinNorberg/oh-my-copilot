@@ -137,8 +137,10 @@ describe("pre-tool-enforcer.mjs: Jev model-routing chooses subagent effort", () 
     // dir as its cwd and cannot be deleted until it exits, so removal is best effort.
     try {
       rmSync(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-    } catch {
-      /* the detached shadow child still holds the dir */
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      // Only the Windows lock from the detached shadow child is expected.
+      if (!(process.platform === "win32" && ["EPERM", "EBUSY"].includes(code ?? ""))) throw error;
     }
   });
 

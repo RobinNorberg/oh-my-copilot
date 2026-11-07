@@ -55,7 +55,7 @@ verify it, and leave the verification behind as structure.
    A violated property is a finding: minimize the counterexample, check
    whether the code shares the flaw, and report before adjusting the model.
 5. **Generate the project skill** at
-   `.copilot/skills/verify-formal-<property>/SKILL.md` containing: the
+   `.github/skills/verify-formal-<property>/SKILL.md` containing: the
    property in one sentence, the spec file path, the exact run command, the
    pass criteria, the assumption list, and the source lines the model
    tracks. The next agent reruns the command; it never re-derives the model.

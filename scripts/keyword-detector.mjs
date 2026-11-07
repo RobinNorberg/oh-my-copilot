@@ -1706,7 +1706,7 @@ function loadDisabledKeywords(directory) {
 function loadTaskSizeDetectionConfig(directory) {
   const configPaths = [
     join(getOmcUserConfigDir(), 'claude-omc', 'config.jsonc'),
-    join(directory || process.cwd(), '.claude', 'omc.jsonc'),
+    resolveProjectConfigFile(directory || process.cwd()),
   ];
   const result = {
     enabled: true,

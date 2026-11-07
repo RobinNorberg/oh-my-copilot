@@ -657,6 +657,11 @@ describe('spawnWorkerInPane', () => {
   });
 
   it.each(['copilot', 'claude'] as const)('refuses an unsupervised %s pane launch without mutating the pane', async provider => {
+    // A pane id is a cmux surface only inside a cmux session (upstream #4816);
+    // without one the tmux identity guard refuses first and the launch-attempt
+    // guard under test is never reached.
+    vi.stubEnv('TMUX', '');
+    vi.stubEnv('CMUX_SURFACE_ID', 'cmux-leader');
     await expect(spawnWorkerInPane('cmux:workspace-1', 'cmux-worker-1', {
       teamName: 'safe-team',
       workerName: 'worker-1',

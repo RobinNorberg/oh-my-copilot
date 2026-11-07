@@ -144,8 +144,12 @@ async function planDeferredChain(payload: SessionEndWorkerPayload): Promise<void
   if (landed?.sessionId !== chain.sessionId) recordChainHandoffFailure(payload.directory, chain, 'manifest-unavailable', { hostSessionId: payload.sessionId });
 }
 
-/** An ownerless job whose claim is refused by a still-bounded runner gets one retry once every such runner deadline has passed. */
-function retryAfterBoundedRunners(payload: SessionEndWorkerPayload, job: ReturnType<typeof readSessionEndJob>): void {
+/**
+ * An ownerless job whose claim is refused by a still-bounded runner gets one
+ * retry once every such runner deadline has passed. The retry keeps the
+ * caller's Copilot live-recheck count, so it cannot restart the 30 s window.
+ */
+function retryAfterBoundedRunners(payload: SessionEndWorkerPayload, job: ReturnType<typeof readSessionEndJob>, liveRechecks: number): void {
   if (!job || job.owner || job.phase === 'complete') return;
   const now = Date.now();
   const deadlines = Object.values(job.actions)
@@ -153,7 +157,7 @@ function retryAfterBoundedRunners(payload: SessionEndWorkerPayload, job: ReturnT
     .map(action => Date.parse(action.runner!.deadlineAt))
     .filter(deadline => deadline > now);
   if (deadlines.length === 0) return;
-  setTimeout(() => { void processSessionEndWorker(payload); }, Math.max(...deadlines) - now + 1);
+  setTimeout(() => { void processSessionEndWorker(payload, liveRechecks); }, Math.max(...deadlines) - now + 1);
 }
 
 /** Copilot mid-session SessionEnd: recheck for the real end every 5 s for 30 s, then leave it to the next SessionEnd or SessionStart reconcile. */
@@ -183,7 +187,7 @@ export async function processSessionEndWorker(payload: SessionEndWorkerPayload, 
   if (!identity) return;
   let claimed = claimSessionEndJob(payload.directory, payload.sessionId, nonce, identity, deadlineAt);
   if (!claimed) { await reapIfProvenStale(payload, deadlineAt); claimed = claimSessionEndJob(payload.directory, payload.sessionId, nonce, identity, deadlineAt); }
-  if (!claimed || !claimed.owner) { retryAfterBoundedRunners(payload, readSessionEndJob(payload.directory, payload.sessionId)); return; }
+  if (!claimed || !claimed.owner) { retryAfterBoundedRunners(payload, readSessionEndJob(payload.directory, payload.sessionId), liveRechecks); return; }
   let admitted = readSessionEndJob(payload.directory, payload.sessionId);
   const graceExpired = admitted ? Date.now() >= Date.parse(admitted.producerGraceExpiresAt) : false;
   if (admitted && graceExpired) {

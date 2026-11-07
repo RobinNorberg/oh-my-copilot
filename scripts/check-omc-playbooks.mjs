@@ -69,7 +69,7 @@ function unescapeAnchor(value) {
  * skills tree for source and standalone layouts.
  */
 function resolveSkillBodyPath(skillsRoot, base) {
-  // Installer layout: `omc setup` archives full bodies in `skill-bodies/`
+  // Installer layout: `omg setup` archives full bodies in `skill-bodies/`
   // as a SIBLING of `skills/` inside the plugin root; self-contained roots
   // may also nest it under `skills/`. Probe both, prefer an archive over
   // the compact shim.

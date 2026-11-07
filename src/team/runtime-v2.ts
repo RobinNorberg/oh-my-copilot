@@ -7261,14 +7261,34 @@ export async function shutdownTeamV2(
 export async function resumeTeamV2(
   teamName: string,
   cwd: string,
+  /** Filled with why the team is not resumable, when the caller wants to say so. */
+  diagnostics?: { reason?: string },
 ): Promise<TeamRuntimeV2 | null> {
   const sanitized = sanitizeTeamName(teamName);
   const config = await readTeamConfig(sanitized, cwd);
   if (!config?.instance_id || (config.lifecycle_state ?? 'active') !== 'active') return null;
 
   const sessionName = config.tmux_session || `omc-team-${sanitized}`;
-  // Fork (SDK teams): an SDK host has no leader pane to verify.
+  // Fork (SDK teams): an SDK host has no leader pane to verify; the team is
+  // resumable while at least one worker's SDK host is alive by its provider
+  // record and its session file has not failed or closed.
   if (isSdkTarget(sessionName)) {
+    const stateRoot = teamStateRoot(cwd, sanitized);
+    const sdkWorkers = config.workers.filter((worker) => isSdkTarget(worker.pane_id));
+    const liveness = await Promise.all(sdkWorkers.map(async (worker) => {
+      if (await getWorkerProviderLiveness(sanitized, cwd, config.instance_id, worker) !== 'alive') return false;
+      const session = readSdkSession(stateRoot, worker.name);
+      const current = session && (!worker.launch_attempt_id || session.attempt_id === worker.launch_attempt_id) ? session : null;
+      return current?.state !== 'failed' && current?.state !== 'closed';
+    }));
+    if (!liveness.some(Boolean)) {
+      if (diagnostics) {
+        diagnostics.reason = sdkWorkers.length === 0
+          ? 'sdk_team_has_no_worker_hosts'
+          : 'sdk_worker_hosts_not_alive';
+      }
+      return null;
+    }
     return {
       teamName: sanitized,
       sanitizedName: sanitized,

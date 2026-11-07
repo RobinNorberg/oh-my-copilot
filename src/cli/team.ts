@@ -992,12 +992,14 @@ export async function teamResumeByName(teamName: string, cwd = process.cwd()): P
   validateTeamName(teamName);
   const runtimeV2 = await import('../team/runtime-v2.js');
   if (runtimeV2.isRuntimeV2Enabled()) {
-    const runtime = await runtimeV2.resumeTeamV2(teamName, cwd);
+    const diagnostics: { reason?: string } = {};
+    const runtime = await runtimeV2.resumeTeamV2(teamName, cwd, diagnostics);
     if (!runtime) {
       return {
         teamName,
         resumed: false,
         error: 'Team session is not currently resumable',
+        ...(diagnostics.reason ? { reason: diagnostics.reason } : {}),
       };
     }
     return {

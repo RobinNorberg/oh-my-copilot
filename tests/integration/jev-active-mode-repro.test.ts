@@ -695,10 +695,10 @@ describe("jev active-mode subprocess repro", () => {
       cwd,
       session_id: "test-sess-keyword",
     };
-    const configDir = join(cwd, ".claude");
+    const configDir = join(cwd, ".copilot");
     mkdirSync(configDir, { recursive: true });
     writeFileSync(
-      join(configDir, "omc.jsonc"),
+      join(configDir, "omg.jsonc"),
       JSON.stringify({
         taskSizeDetection: { suppressHeavyModesForSmallTasks: false },
       }),
@@ -723,10 +723,10 @@ describe("jev active-mode subprocess repro", () => {
       cwd,
       session_id: "test-sess-keyword",
     };
-    const configDir = join(cwd, ".claude");
+    const configDir = join(cwd, ".copilot");
     mkdirSync(configDir, { recursive: true });
     writeFileSync(
-      join(configDir, "omc.jsonc"),
+      join(configDir, "omg.jsonc"),
       JSON.stringify({ taskSizeDetection: { enabled: false } }),
     );
     choice = "small";

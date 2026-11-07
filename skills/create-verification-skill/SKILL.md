@@ -21,7 +21,7 @@ by guessing from a README.
 
 ## When to use
 
-- a repo has no `.copilot/skills/verify/` and work will be verified here
+- a repo has no `.github/skills/verify/` and work will be verified here
   more than once
 - the generic verification flow keeps guessing commands wrong for this repo
 
@@ -42,12 +42,13 @@ by guessing from a README.
 3. **Write the feature map.** A table of what each check actually covers —
    which entry points, which layers, what it cannot see. The map is the
    skill's honesty: verification strength is knowable, not assumed.
-4. **Generate** `.copilot/skills/verify/SKILL.md` containing: the exact
+4. **Generate** `.github/skills/verify/SKILL.md` containing: the exact
    commands with expected outcomes, the manual checks, the feature map, and
    the escalation path (which failure means what, who owns it). Keep it
    short enough that a fresh session reads it whole. If a verify skill
-   already exists at the canonical root (`.omg/skills/verify/SKILL.md` or
-   `.copilot/skills/verify/SKILL.md`), respect it: update its commands and
+   already exists (`.github/skills/verify/SKILL.md`, or an older copy at
+   `.omg/skills/verify/SKILL.md` or `.copilot/skills/verify/SKILL.md`),
+   respect it: update its commands and
    feature map in place rather than overwriting, and say what changed.
 5. **Prove it.** Run the generated skill's own flow once end to end on a
    real change and record the result through the ledger's locked writer —

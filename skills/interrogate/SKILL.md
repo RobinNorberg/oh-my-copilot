@@ -42,7 +42,7 @@ Spawn three reviewers in one message, in the background, each read-only:
 
 - prefer different models, and where available different provider families
   (Claude + Codex + Gemini via
-  `OMC_TEAM_WORKTREE_MODE=detached omg team --no-decompose 1:claude,1:codex,1:gemini "<the framed target, the invariants, and one lens per seat>"`,
+  `OMC_TEAM_WORKTREE_MODE=detached omg team --no-decompose 1:copilot,1:codex,1:gemini "<the framed target, the invariants, and one lens per seat>"`,
   or in-session `Task` dispatches to `oh-my-copilot:code-reviewer` and
   `oh-my-copilot:security-reviewer` on different models) — the team
   command needs the task text; pass target, invariants, and lens allocation

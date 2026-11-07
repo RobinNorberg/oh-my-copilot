@@ -320,9 +320,10 @@ function resolveTrustedSessionEndTarget(resolution, extraArgs) {
 // only under NODE_ENV=test. The manifest-derived timeout still caps the result
 // at the call site.
 // Fork (oh-my-copilot): Copilot (OMC_HOOK_EVENT=SessionEnd from
-// copilot/hooks.json) fires SessionEnd per turn, so its floor stays at the
-// fork's 1500ms (~5x the idle foreground cost, chosen, not derived).
-// OMC_SESSION_END_BUDGET_MS overrides both hosts (integer 1..60000).
+// copilot/hooks.json) fires SessionEnd per turn and waits for it, so its
+// budget is a flat 1500ms (~5x the idle foreground cost, chosen, not
+// derived), not half the manifest: half of 30s would put up to ~14s on every
+// turn. OMC_SESSION_END_BUDGET_MS overrides both hosts (integer 1..60000).
 const MIN_SESSION_END_BUDGET_MS = 1000;
 const COPILOT_SESSION_END_BUDGET_MS = 1500;
 function resolveSessionEndBudgetMs(env = process.env, manifestTimeoutMs = 0) {
@@ -335,8 +336,8 @@ function resolveSessionEndBudgetMs(env = process.env, manifestTimeoutMs = 0) {
     const value = Number(override);
     if (value >= 1 && value <= MAX_DECLARED_GENERIC_TIMEOUT_MS) return value;
   }
-  const floor = env.OMC_HOOK_EVENT === 'SessionEnd' ? COPILOT_SESSION_END_BUDGET_MS : MIN_SESSION_END_BUDGET_MS;
-  return Math.max(floor, Math.floor(manifestTimeoutMs * 0.5));
+  if (env.OMC_HOOK_EVENT === 'SessionEnd') return COPILOT_SESSION_END_BUDGET_MS;
+  return Math.max(MIN_SESSION_END_BUDGET_MS, Math.floor(manifestTimeoutMs * 0.5));
 }
 
 
@@ -1247,8 +1248,8 @@ function runResolvedHook(resolution, extraArgs, io = {}) {
   }
   const sessionEndManifestHook = resolveTrustedSessionEndTarget(resolution, extraArgs);
   if (sessionEndManifestHook) {
-    // Reserve half the manifest budget (floor 1000ms, 1500ms under Copilot);
-    // see resolveSessionEndBudgetMs.
+    // Half the manifest budget (floor 1000ms) on Claude Code, a flat 1500ms
+    // under Copilot; see resolveSessionEndBudgetMs.
     const manifestTimeoutMs = resolveGenericTimeoutMs(sessionEndManifestHook);
     const budgetMs = resolveSessionEndBudgetMs(process.env, manifestTimeoutMs);
     const timeoutMs = Math.min(manifestTimeoutMs, budgetMs);
