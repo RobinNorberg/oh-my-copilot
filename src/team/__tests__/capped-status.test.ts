@@ -56,3 +56,14 @@ describe('mission board with a capped task', () => {
     expect(mission?.status).toBe('blocked');
   });
 });
+
+describe('worker team api and the capped status', () => {
+  it('rejects a worker transition to capped: only the monitor caps a task', async () => {
+    const { executeTeamApiOperation } = await import('../api-interop.js');
+    const result = await executeTeamApiOperation('transition-task-status', {
+      team_name: 'demo-team', task_id: '1', from: 'in_progress', to: 'capped', claim_token: 'tok',
+    }, tmpdir());
+    expect(result.ok).toBe(false);
+    expect(result).toMatchObject({ error: { code: 'invalid_input', message: expect.stringContaining('to=capped') } });
+  });
+});

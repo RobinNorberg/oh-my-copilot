@@ -599,8 +599,10 @@ export interface TeamConfigBlock {
     /** Per-worker credit cap; the runtime gets `--max-ai-credits max(30, cap)`. Default 50. */
     maxCreditsPerWorker?: number;
     /**
-     * Minutes a worker's message to the leader may stay unanswered before the
-     * monitor fails the sender's in-progress task (`blocker_unanswered`). Default off.
+     * Minutes a worker's `BLOCKER:` message to the leader may stay unanswered
+     * before the monitor fails the sender's in-progress task
+     * (`blocker_unanswered`). SDK-transport teams only; pane teams ignore it.
+     * Default off.
      */
     blockerTimeoutMinutes?: number;
     /** Explicit model for every sdk worker (default: the worker's resolved model, else runtime auto). */

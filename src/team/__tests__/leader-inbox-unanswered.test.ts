@@ -31,21 +31,21 @@ describe('readLeaderInbox', () => {
 
   it('lists undelivered worker messages to the leader, oldest first', async () => {
     mailbox(dir, 'leader-fixed', [
-      { message_id: 'm2', from_worker: 'worker-2', to_worker: 'leader-fixed', body: 'question', created_at: '2026-11-07T10:05:00.000Z' },
+      { message_id: 'm2', from_worker: 'worker-2', to_worker: 'leader-fixed', body: 'blocker: which file?', created_at: '2026-11-07T10:05:00.000Z' },
       { message_id: 'm1', from_worker: 'worker-1', to_worker: 'leader-fixed', body: 'BLOCKER: base?', created_at: '2026-11-07T10:00:00.000Z' },
-      { message_id: 'm3', from_worker: 'worker-1', to_worker: 'leader-fixed', body: 'seen', created_at: '2026-11-07T10:01:00.000Z', delivered_at: '2026-11-07T10:02:00.000Z' },
+      { message_id: 'm3', from_worker: 'worker-1', to_worker: 'leader-fixed', body: 'BLOCKER: seen', created_at: '2026-11-07T10:01:00.000Z', delivered_at: '2026-11-07T10:02:00.000Z' },
     ]);
 
     expect(await readLeaderInbox(dir)).toEqual([
       { message_id: 'm1', from: 'worker-1', created_at: '2026-11-07T10:00:00.000Z', body: 'BLOCKER: base?' },
-      { message_id: 'm2', from: 'worker-2', created_at: '2026-11-07T10:05:00.000Z', body: 'question' },
+      { message_id: 'm2', from: 'worker-2', created_at: '2026-11-07T10:05:00.000Z', body: 'blocker: which file?' },
     ]);
   });
 
   it('treats a leader reply to the sender at or after the message as an answer', async () => {
     mailbox(dir, 'leader-fixed', [
-      { message_id: 'm1', from_worker: 'worker-1', to_worker: 'leader-fixed', body: 'old blocker', created_at: '2026-11-07T10:00:00.000Z' },
-      { message_id: 'm2', from_worker: 'worker-1', to_worker: 'leader-fixed', body: 'new blocker', created_at: '2026-11-07T10:10:00.000Z' },
+      { message_id: 'm1', from_worker: 'worker-1', to_worker: 'leader-fixed', body: 'BLOCKER: old', created_at: '2026-11-07T10:00:00.000Z' },
+      { message_id: 'm2', from_worker: 'worker-1', to_worker: 'leader-fixed', body: 'BLOCKER: new', created_at: '2026-11-07T10:10:00.000Z' },
     ]);
     mailbox(dir, 'worker-1', [
       { message_id: 'r1', from_worker: 'leader-fixed', to_worker: 'worker-1', body: 'use dev', created_at: '2026-11-07T10:05:00.000Z' },
@@ -54,6 +54,29 @@ describe('readLeaderInbox', () => {
 
     const inbox = await readLeaderInbox(dir);
     expect(inbox.map((message) => message.message_id)).toEqual(['m2']);
+  });
+
+  it('ignores startup ACKs, progress acks and milestone reports; only BLOCKER: messages count', async () => {
+    mailbox(dir, 'leader-fixed', [
+      { message_id: 'a1', from_worker: 'worker-1', to_worker: 'leader-fixed', body: 'ACK: worker-1 initialized', created_at: '2026-11-07T10:00:00.000Z' },
+      { message_id: 'p1', from_worker: 'worker-1', to_worker: 'leader-fixed', body: 'progress: tests written, implementing next', created_at: '2026-11-07T10:01:00.000Z' },
+      { message_id: 'p2', from_worker: 'worker-2', to_worker: 'leader-fixed', body: 'Milestone: no blocker here, BLOCKER: mentioned mid-body', created_at: '2026-11-07T10:02:00.000Z' },
+      { message_id: 'b1', from_worker: 'worker-2', to_worker: 'leader-fixed', body: '  BLOCKER: test/todo.test.js:31 contradicts the task', created_at: '2026-11-07T10:03:00.000Z' },
+    ]);
+
+    expect((await readLeaderInbox(dir)).map((message) => message.message_id)).toEqual(['b1']);
+  });
+
+  it('clears a blocker once the leader replies to its sender', async () => {
+    mailbox(dir, 'leader-fixed', [
+      { message_id: 'b1', from_worker: 'worker-1', to_worker: 'leader-fixed', body: 'BLOCKER: which base?', created_at: '2026-11-07T10:00:00.000Z' },
+    ]);
+    expect((await readLeaderInbox(dir)).map((message) => message.message_id)).toEqual(['b1']);
+
+    mailbox(dir, 'worker-1', [
+      { message_id: 'r1', from_worker: 'leader-fixed', to_worker: 'worker-1', body: 'use dev', created_at: '2026-11-07T10:01:00.000Z' },
+    ]);
+    expect(await readLeaderInbox(dir)).toEqual([]);
   });
 
   it('tolerates a malformed leader mailbox', async () => {

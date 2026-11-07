@@ -37,7 +37,7 @@ function seedSdkTeam(cwd: string, options: {
   if (options.leaderMessage) {
     writeJsonSync(join(teamDir, 'mailbox', 'leader-fixed.json'), {
       worker: 'leader-fixed',
-      messages: [{ message_id: 'm1', from_worker: WORKER, to_worker: 'leader-fixed', body: 'BLOCKER', created_at: nowIso }],
+      messages: [{ message_id: 'm1', from_worker: WORKER, to_worker: 'leader-fixed', body: 'BLOCKER: need a decision', created_at: nowIso }],
     });
   }
   return stateDir;

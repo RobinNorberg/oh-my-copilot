@@ -177,10 +177,20 @@ function messageField(message: unknown, key: string): string {
 }
 
 /**
- * Unanswered messages addressed to the leader (`leader-fixed` by default),
- * oldest first. A message counts as answered once it is marked delivered or
- * the leader sent its sender a message at or after its `created_at`; worker
- * blockers then stop showing in `omg team status`.
+ * Worker blocker convention: a message to the leader whose body starts with
+ * `BLOCKER:` (case-insensitive). Startup ACKs, progress acks and milestone
+ * reports also go to the leader and are not blockers.
+ */
+export function isBlockerMessageBody(body: string): boolean {
+  return /^\s*blocker\s*:/i.test(body);
+}
+
+/**
+ * Unanswered worker blockers addressed to the leader (`leader-fixed` by
+ * default), oldest first. Only `BLOCKER:` messages count (see
+ * {@link isBlockerMessageBody}). A blocker counts as answered once it is
+ * marked delivered or the leader sent its sender a message at or after its
+ * `created_at`; it then stops showing in `omg team status`.
  */
 export async function readLeaderInbox(
   mailboxDir: string,
@@ -194,6 +204,7 @@ export async function readLeaderInbox(
   const unread: LeaderInboxMessage[] = [];
   for (const message of inbox) {
     if (!isUndelivered(message) || messageToWorker(message) !== leaderName) continue;
+    if (!isBlockerMessageBody(safeString((message as Record<string, unknown>).body))) continue;
     const from = messageFromWorker(message);
     if (!from || from === leaderName) continue;
     if (!latestReplyBySender.has(from)) {

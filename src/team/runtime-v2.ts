@@ -6331,9 +6331,10 @@ async function terminalizeTaskForLeader(
 }
 
 /**
- * `team.sdk.blockerTimeoutMinutes`: minutes a worker's message to the leader
- * may stay unanswered before the monitor fails the sender's in-progress
- * task. Unset (the default) disables the timeout.
+ * `team.sdk.blockerTimeoutMinutes`: minutes a worker's `BLOCKER:` message to
+ * the leader may stay unanswered before the monitor fails the sender's
+ * in-progress task. Applies to sdk-transport teams only. Unset (the default)
+ * disables the timeout.
  */
 export function resolveBlockerTimeoutMs(pluginCfg: PluginConfig): number | null {
   const value = pluginCfg.team?.sdk?.blockerTimeoutMinutes as unknown;
@@ -6562,14 +6563,16 @@ export async function monitorTeamV2(
     }
   }
 
-  // Worker messages to the leader. With `team.sdk.blockerTimeoutMinutes`
-  // set, a message left unanswered past the timeout fails its sender's
-  // in-progress task, so a headless leader never waits forever.
+  // Worker `BLOCKER:` messages to the leader. On an sdk-transport team with
+  // `team.sdk.blockerTimeoutMinutes` set, a blocker left unanswered past the
+  // timeout fails its sender's in-progress task, so a headless leader never
+  // waits forever. Pane teams only list them.
   const leaderInbox = await readLeaderInbox(dirname(absPath(cwd, TeamPaths.mailbox(sanitized, 'leader-fixed'))));
   if (leaderInbox.length > 0) {
+    const sdkTeam = config.workers.some((worker) => worker.transport === 'sdk' || isSdkTarget(worker.pane_id));
     let blockerTimeoutMs: number | null = null;
     try {
-      blockerTimeoutMs = resolveBlockerTimeoutMs(loadConfig());
+      if (sdkTeam) blockerTimeoutMs = resolveBlockerTimeoutMs(loadConfig());
     } catch (err) {
       process.stderr.write(`[team/runtime-v2] ${err instanceof Error ? err.message : String(err)}\n`);
     }
@@ -6582,7 +6585,7 @@ export async function monitorTeamV2(
         let written: TeamTask | null = null;
         try {
           written = await terminalizeTaskForLeader(sanitized, cwd, task, 'failed',
-            `blocker_unanswered: no leader reply within ${timeoutMs / 60_000} min to ${message.from}: ${message.body.slice(0, 200)}`,
+            `blocker_unanswered: no leader reply within ${Math.round(timeoutMs / 60_000)} min to ${message.from}: ${message.body.slice(0, 200)}`,
             { blocker_message_id: message.message_id, blocker_message_at: message.created_at, blocker_message: message.body });
         } catch (err) {
           if (isTeamInstanceBoundaryError(err)) throw err;
@@ -6607,7 +6610,7 @@ export async function monitorTeamV2(
     capped: allTasks.filter((t) => t.status === 'capped').length,
   };
 
-  const allTasksTerminal =taskCounts.pending === 0 && taskCounts.blocked === 0 && taskCounts.in_progress === 0;
+  const allTasksTerminal = taskCounts.pending === 0 && taskCounts.blocked === 0 && taskCounts.in_progress === 0;
 
   for (const task of allTasks) {
     const missingDependencyIds = getMissingDependencyIds(task, taskById);
