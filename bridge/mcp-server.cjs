@@ -18687,13 +18687,14 @@ function ownProcessStartIdentity() {
   return ownProcessStartIdentityCache;
 }
 function ownStartBoundIdentity() {
+  if (process.env.NODE_ENV === "test" && process.env.OMC_TEST_EMERGENCY_PROCESS_START_UNKNOWN_PID === String(process.pid)) return null;
   if (ownStartBoundCache !== null) return ownStartBoundCache;
   const origin = performance.timeOrigin;
   const uptimeOrigin = Date.now() - process.uptime() * 1e3;
   if (!Number.isFinite(origin) || origin <= 0 || Math.abs(origin - uptimeOrigin) > START_BOUND_ORIGIN_TOLERANCE_MS) return null;
   const wait = Math.ceil(START_BOUND_SLACK_MS - performance.now());
   if (wait > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait);
-  ownStartBoundCache = `${START_BOUND_PREFIX}${BigInt(Math.ceil((origin + START_BOUND_SLACK_MS) * 1e4)) + 621355968000000000n}`;
+  ownStartBoundCache = `${START_BOUND_PREFIX}${BigInt(Math.ceil(origin + START_BOUND_SLACK_MS)) * 10000n + 621355968000000000n}`;
   return ownStartBoundCache;
 }
 function ownLockStartIdentity() {

@@ -93,11 +93,16 @@ function ownProcessStartIdentity() {
 // win32 lock owner carries `ticksmax:<n>` (version 2), an upper bound on this process's creation
 // time, instead of the exact identity behind a PowerShell spawn. Both copies must stay in step:
 // hooks and the bridge adjudicate each other's owner records.
+// Residual risk (same as the mjs): after a backward wall-clock step, a dead owner's pid reused by
+// a later process can read as live, so the lock stays held while that process lives. It fails
+// closed. The bound is built in BigInt from whole milliseconds, rounded up (no loss above 2^53).
 const START_BOUND_PREFIX = 'ticksmax:';
 const START_BOUND_SLACK_MS = 20;
 const START_BOUND_ORIGIN_TOLERANCE_MS = 1000;
 let ownStartBoundCache = null;
 function ownStartBoundIdentity() {
+    if (process.env.NODE_ENV === 'test' && process.env.OMC_TEST_EMERGENCY_PROCESS_START_UNKNOWN_PID === String(process.pid))
+        return null;
     if (ownStartBoundCache !== null)
         return ownStartBoundCache;
     const origin = performance.timeOrigin;
@@ -107,7 +112,7 @@ function ownStartBoundIdentity() {
     const wait = Math.ceil(START_BOUND_SLACK_MS - performance.now());
     if (wait > 0)
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait);
-    ownStartBoundCache = `${START_BOUND_PREFIX}${BigInt(Math.ceil((origin + START_BOUND_SLACK_MS) * 10000)) + 621355968000000000n}`;
+    ownStartBoundCache = `${START_BOUND_PREFIX}${BigInt(Math.ceil(origin + START_BOUND_SLACK_MS)) * 10000n + 621355968000000000n}`;
     return ownStartBoundCache;
 }
 /** The identity this process records in lock owners: the win32 bound, else the exact probe. */
