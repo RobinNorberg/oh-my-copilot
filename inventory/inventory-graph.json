@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "69f6f4aadf30e1866c31a1e78221245d18faba15",
-    "sourceSha256": "4df8943d12ad8a03d4b8e1592a31bc9ce0ebe9719f4e685078f452e7e45973a3",
+    "head": "87dd0cf840eec73351d10ce531c6e5cd889d1b9c",
+    "sourceSha256": "17cbfcba6cb839ae61d1f0ddff08b7c96d723492387e22aaa0142efc1791f448",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "69f6f4aadf30e1866c31a1e78221245d18faba15",
-  "sourceSha256": "4df8943d12ad8a03d4b8e1592a31bc9ce0ebe9719f4e685078f452e7e45973a3",
+  "head": "87dd0cf840eec73351d10ce531c6e5cd889d1b9c",
+  "sourceSha256": "17cbfcba6cb839ae61d1f0ddff08b7c96d723492387e22aaa0142efc1791f448",
   "counts": {
     "public": {
       "skills": 63,
@@ -32,9 +32,9 @@
       "total": 1944
     },
     "generated": {
-      "distFiles": 7044,
+      "distFiles": 7048,
       "bridgeFiles": 8,
-      "total": 7052
+      "total": 7056
     },
     "prompt": {
       "promptLikeFiles": 63
@@ -1278,6 +1278,10 @@
       "dist/__tests__/hook-command-normalizer.test.d.ts.map",
       "dist/__tests__/hook-command-normalizer.test.js",
       "dist/__tests__/hook-command-normalizer.test.js.map",
+      "dist/__tests__/hook-stdin-budget.test.d.ts",
+      "dist/__tests__/hook-stdin-budget.test.d.ts.map",
+      "dist/__tests__/hook-stdin-budget.test.js",
+      "dist/__tests__/hook-stdin-budget.test.js.map",
       "dist/__tests__/hooks-command-escaping.test.d.ts",
       "dist/__tests__/hooks-command-escaping.test.d.ts.map",
       "dist/__tests__/hooks-command-escaping.test.js",
@@ -11173,6 +11177,26 @@
         "id": "dist/__tests__/hook-command-normalizer.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/hook-command-normalizer.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/hook-stdin-budget.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hook-stdin-budget.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hook-stdin-budget.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hook-stdin-budget.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hook-stdin-budget.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hook-stdin-budget.test.js"
+      },
+      {
+        "id": "dist/__tests__/hook-stdin-budget.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hook-stdin-budget.test.js.map"
       },
       {
         "id": "dist/__tests__/hooks-command-escaping.test.d.ts",
@@ -116433,12 +116457,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9738,
+      "nodeCount": 9742,
       "edgeCount": 11822,
       "importEdgeCount": 9760,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "69af7cddf22771134544b9217fe3ecca7e85f4f95275816e92752be56ef7488a",
-  "manifestSha256": "0c1c5e7e2595629272b5d316a30eb3a10e9971d027eac9e8c276208266820eea"
+  "manifestSha256": "f081d67e3b2a2de8346134291b6ec8545c50df7c8ea56cd626d80120245f844c"
 }
