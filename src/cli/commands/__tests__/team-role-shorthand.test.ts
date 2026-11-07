@@ -60,7 +60,8 @@ describe('teamCommand role-only shorthand', () => {
       phase: 'team-exec',
       workers: [],
       nonReportingWorkers: [],
-      tasks: { total: 2, pending: 0, blocked: 0, in_progress: 2, completed: 0, failed: 0 },
+      leaderInbox: [],
+      tasks: { total: 2, pending: 0, blocked: 0, in_progress: 2, completed: 0, failed: 0, capped: 0, items: [] },
     });
     agentUtilsMocks.loadAgentPrompt.mockImplementation((role: string) => `prompt:${role}`);
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);

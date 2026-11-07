@@ -181,7 +181,7 @@ function agentTypeGuidance(agentType: CliAgentType, reviewerRole = false): strin
       return [
         '### Agent-Type Guidance (claude)',
         '- Keep reasoning focused on assigned task IDs and send concise progress acks to leader-fixed.',
-        '- Before any risky command, send a blocker/proposal message to leader-fixed and wait for updated inbox instructions.',
+        '- Before any risky command, send `BLOCKER: <proposal>` to leader-fixed and wait for updated inbox instructions.',
       ].join('\n');
   }
 }
@@ -244,6 +244,7 @@ Recovery task adopted from an owner: skip steps 1-2 and resume from Recovery Con
    - Failure: \`${failTaskCommand}\`
      Before failing, send the leader what failed and why (exact error text).
 6. Replies and ACKs are not a stop signal: keep going until the task is completed or failed.
+7. **Blocked**: if you cannot proceed, send \`BLOCKER: <what you need>\` to leader-fixed and wait for the reply. Only a body starting with \`BLOCKER:\` reaches the leader as a blocker.
 
 ## Your Tasks
 ${taskList}
@@ -375,6 +376,7 @@ Send messages via CLI API:
 - To leader: \`${formatOmcCliInvocation(`team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"<message>\\"}" --json`)}\`
 - Check mailbox: \`${mailboxListCommand}\`
 - Mark delivered: \`${mailboxDeliveredCommand}\`
+- Blocked: if you cannot proceed, send \`BLOCKER: <what you need>\` to leader-fixed and wait for the reply. Only a body starting with \`BLOCKER:\` reaches the leader as a blocker; ACKs and progress reports do not.
 
 ## Shutdown Protocol
 When you see a shutdown request in your inbox:

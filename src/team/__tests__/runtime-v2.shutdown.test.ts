@@ -1026,6 +1026,39 @@ describe('shutdownTeamV2 detached worktree cleanup', () => {
     expect(persisted.active_recovery).toBeUndefined();
   });
 
+  it('lets failed and capped terminal tasks through the normal shutdown gate and names them', async () => {
+    const teamName = 'shutdown-gate-terminal';
+    await reserveFixtureInstance(teamName, repoDir);
+    const teamRoot = fixtureTeamRoot(repoDir, teamName);
+    const tasksRoot = join(teamRoot, 'tasks');
+    mkdirSync(tasksRoot, { recursive: true });
+    writeFileSync(join(teamRoot, 'config.json'), JSON.stringify({
+      name: teamName, instance_id: TEAM_INSTANCE_ID, tmux_server_identity: tmuxMocks.tmuxServerIdentity,
+      task: 'demo', agent_type: 'claude', worker_launch_mode: 'interactive',
+      worker_count: 1, max_workers: 20,
+      workers: [{ name: 'worker-1', index: 1, role: 'executor', assigned_tasks: ['1'], pane_id: '%77' }],
+      created_at: new Date().toISOString(), tmux_session: `${teamName}:0`, lifecycle_state: 'active', state_revision: 4,
+      next_task_id: 4,
+    }));
+    for (const [id, status] of [['1', 'completed'], ['2', 'failed'], ['3', 'capped']] as const) {
+      writeFileSync(join(tasksRoot, `task-${id}.json`), JSON.stringify({
+        id, subject: status, description: status, status,
+        owner: 'worker-1', blocked_by: [], depends_on: [], created_at: new Date().toISOString(), version: 2,
+      }));
+    }
+
+    const { shutdownTeamV2 } = await import('../runtime-v2.js');
+    const outcome = await shutdownTeamV2(teamName, repoDir, { timeoutMs: 0 }).catch((error: unknown) => error);
+
+    expect(String(outcome instanceof Error ? outcome.message : '')).not.toContain('shutdown_gate_blocked');
+    const gateEvent = readFileSync(join(teamRoot, 'events.jsonl'), 'utf8').split('\n')
+      .filter(Boolean).map((line) => JSON.parse(line) as { type: string; reason?: string })
+      .find((event) => event.type === 'shutdown_gate');
+    expect(gateEvent?.reason).toContain('allowed=true');
+    expect(gateEvent?.reason).toContain('failed=1 capped=1');
+    expect(gateEvent?.reason).toContain('unfinished=task-2:failed,task-3:capped');
+  });
+
   it('commits the stopped fence when the post-cleanup Ralph summary cannot read tasks', async () => {
     const teamName = 'shutdown-ralph-summary-failure';
     await reserveFixtureInstance(teamName, repoDir);
@@ -1086,7 +1119,12 @@ describe('shutdownTeamV2 detached worktree cleanup', () => {
 
     const { shutdownTeamV2 } = await import('../runtime-v2.js');
     await expect(shutdownTeamV2(teamName, repoDir, { timeoutMs: 0, ralph: true }))
-      .resolves.toEqual({ outcome: 'preserved', reason: 'worktrees_preserved', workers: [] });
+      .resolves.toEqual({
+        outcome: 'preserved',
+        reason: 'worktrees_preserved',
+        workers: ['worker-1'],
+        worktrees: [{ workerName: 'worker-1', path: worktree.path, reason: expect.any(String) }],
+      });
 
     const stoppedConfig = JSON.parse(readFileSync(configPath, 'utf8')) as {
       lifecycle_state?: string;

@@ -1085,7 +1085,7 @@ async function main() {
             await writePanesFile(jobId, instanceId, teamName, cwd, runtime.workerPaneIds, runtime.leaderPaneId, runtime.sessionName, Boolean(runtime.ownsWindow));
         }
         catch { /* best-effort panes file write */ }
-        process.stderr.write(`[runtime-cli/v2] phase=${snap.phase} pending=${snap.tasks.pending} blocked=${snap.tasks.blocked} in_progress=${snap.tasks.in_progress} completed=${snap.tasks.completed} failed=${snap.tasks.failed} dead=${snap.deadWorkers.length} totalMs=${snap.performance.total_ms}\n`);
+        process.stderr.write(`[runtime-cli/v2] phase=${snap.phase} pending=${snap.tasks.pending} blocked=${snap.tasks.blocked} in_progress=${snap.tasks.in_progress} completed=${snap.tasks.completed} failed=${snap.tasks.failed} capped=${snap.tasks.capped} dead=${snap.deadWorkers.length} totalMs=${snap.performance.total_ms}\n`);
         const leaderGuidance = deriveTeamLeaderGuidance({
             tasks: {
                 pending: snap.tasks.pending,
@@ -1093,6 +1093,7 @@ async function main() {
                 inProgress: snap.tasks.in_progress,
                 completed: snap.tasks.completed,
                 failed: snap.tasks.failed,
+                capped: snap.tasks.capped,
             },
             workers: {
                 total: snap.workers.length,
@@ -1100,6 +1101,7 @@ async function main() {
                 idle: snap.workers.filter((worker) => worker.alive && (worker.status.state === 'idle' || worker.status.state === 'done')).length,
                 nonReporting: snap.nonReportingWorkers.length,
             },
+            leaderInbox: { unread: snap.leaderInbox.length },
         });
         process.stderr.write(`[runtime-cli/v2] leader_next_action=${leaderGuidance.nextAction} reason=${leaderGuidance.reason}\n`);
         for (const recommendation of snap.recommendations) {

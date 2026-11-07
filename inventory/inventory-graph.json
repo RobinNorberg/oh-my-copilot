@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "4b52162cb203fc13dbb21a0e89cc48b943d97352",
-    "sourceSha256": "25c784d921e731a48b55a79de355c7b68f1d1dedb0ddca29a5ef21cdc7adb8fc",
+    "head": "ee9b007fd1f35589d88f1964674927a92ae3bab0",
+    "sourceSha256": "189d6636ef2465db49af1243c38b7f31270c91c1160848bcbd4aec4e1c2fbf28",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "4b52162cb203fc13dbb21a0e89cc48b943d97352",
-  "sourceSha256": "25c784d921e731a48b55a79de355c7b68f1d1dedb0ddca29a5ef21cdc7adb8fc",
+  "head": "ee9b007fd1f35589d88f1964674927a92ae3bab0",
+  "sourceSha256": "189d6636ef2465db49af1243c38b7f31270c91c1160848bcbd4aec4e1c2fbf28",
   "counts": {
     "public": {
       "skills": 96,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 1958,
-      "total": 1983
+      "srcFiles": 1963,
+      "total": 1988
     },
     "generated": {
-      "distFiles": 7204,
+      "distFiles": 7224,
       "bridgeFiles": 8,
-      "total": 7212
+      "total": 7232
     },
     "prompt": {
       "promptLikeFiles": 68
@@ -2790,6 +2790,10 @@
       "dist/cli/commands/__tests__/team-budget-governor.test.d.ts.map",
       "dist/cli/commands/__tests__/team-budget-governor.test.js",
       "dist/cli/commands/__tests__/team-budget-governor.test.js.map",
+      "dist/cli/commands/__tests__/team-lifecycle-output.test.d.ts",
+      "dist/cli/commands/__tests__/team-lifecycle-output.test.d.ts.map",
+      "dist/cli/commands/__tests__/team-lifecycle-output.test.js",
+      "dist/cli/commands/__tests__/team-lifecycle-output.test.js.map",
       "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts",
       "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts.map",
       "dist/cli/commands/__tests__/team-role-shorthand.test.js",
@@ -7082,6 +7086,10 @@
       "dist/team/__tests__/behavior-snapshot.test.d.ts.map",
       "dist/team/__tests__/behavior-snapshot.test.js",
       "dist/team/__tests__/behavior-snapshot.test.js.map",
+      "dist/team/__tests__/capped-status.test.d.ts",
+      "dist/team/__tests__/capped-status.test.d.ts.map",
+      "dist/team/__tests__/capped-status.test.js",
+      "dist/team/__tests__/capped-status.test.js.map",
       "dist/team/__tests__/cli-detection.test.d.ts",
       "dist/team/__tests__/cli-detection.test.d.ts.map",
       "dist/team/__tests__/cli-detection.test.js",
@@ -7158,6 +7166,10 @@
       "dist/team/__tests__/issue-4816-isCmuxSurfaceTarget.test.d.ts.map",
       "dist/team/__tests__/issue-4816-isCmuxSurfaceTarget.test.js",
       "dist/team/__tests__/issue-4816-isCmuxSurfaceTarget.test.js.map",
+      "dist/team/__tests__/leader-inbox-unanswered.test.d.ts",
+      "dist/team/__tests__/leader-inbox-unanswered.test.d.ts.map",
+      "dist/team/__tests__/leader-inbox-unanswered.test.js",
+      "dist/team/__tests__/leader-inbox-unanswered.test.js.map",
       "dist/team/__tests__/leader-inbox.test.d.ts",
       "dist/team/__tests__/leader-inbox.test.d.ts.map",
       "dist/team/__tests__/leader-inbox.test.js",
@@ -7310,6 +7322,10 @@
       "dist/team/__tests__/runtime-v2.permission-lines.test.d.ts.map",
       "dist/team/__tests__/runtime-v2.permission-lines.test.js",
       "dist/team/__tests__/runtime-v2.permission-lines.test.js.map",
+      "dist/team/__tests__/runtime-v2.sdk-defaults.test.d.ts",
+      "dist/team/__tests__/runtime-v2.sdk-defaults.test.d.ts.map",
+      "dist/team/__tests__/runtime-v2.sdk-defaults.test.js",
+      "dist/team/__tests__/runtime-v2.sdk-defaults.test.js.map",
       "dist/team/__tests__/runtime-v2.service-repair.test.d.ts",
       "dist/team/__tests__/runtime-v2.service-repair.test.d.ts.map",
       "dist/team/__tests__/runtime-v2.service-repair.test.js",
@@ -7418,6 +7434,10 @@
       "dist/team/__tests__/team-leader-nudge-outstanding.test.d.ts.map",
       "dist/team/__tests__/team-leader-nudge-outstanding.test.js",
       "dist/team/__tests__/team-leader-nudge-outstanding.test.js.map",
+      "dist/team/__tests__/team-leader-nudge-sdk-blocker.test.d.ts",
+      "dist/team/__tests__/team-leader-nudge-sdk-blocker.test.d.ts.map",
+      "dist/team/__tests__/team-leader-nudge-sdk-blocker.test.js",
+      "dist/team/__tests__/team-leader-nudge-sdk-blocker.test.js.map",
       "dist/team/__tests__/team-name.test.d.ts",
       "dist/team/__tests__/team-name.test.d.ts.map",
       "dist/team/__tests__/team-name.test.js",
@@ -18714,6 +18734,26 @@
         "id": "dist/cli/commands/__tests__/team-budget-governor.test.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/team-budget-governor.test.js.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/team-lifecycle-output.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/team-lifecycle-output.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/team-lifecycle-output.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/team-lifecycle-output.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/team-lifecycle-output.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/team-lifecycle-output.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/team-lifecycle-output.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/team-lifecycle-output.test.js.map"
       },
       {
         "id": "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts",
@@ -40176,6 +40216,26 @@
         "path": "dist/team/__tests__/behavior-snapshot.test.js.map"
       },
       {
+        "id": "dist/team/__tests__/capped-status.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/capped-status.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/capped-status.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/capped-status.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/capped-status.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/capped-status.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/capped-status.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/capped-status.test.js.map"
+      },
+      {
         "id": "dist/team/__tests__/cli-detection.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/cli-detection.test.d.ts"
@@ -40554,6 +40614,26 @@
         "id": "dist/team/__tests__/issue-4816-isCmuxSurfaceTarget.test.js.map",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/issue-4816-isCmuxSurfaceTarget.test.js.map"
+      },
+      {
+        "id": "dist/team/__tests__/leader-inbox-unanswered.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/leader-inbox-unanswered.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/leader-inbox-unanswered.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/leader-inbox-unanswered.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/leader-inbox-unanswered.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/leader-inbox-unanswered.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/leader-inbox-unanswered.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/leader-inbox-unanswered.test.js.map"
       },
       {
         "id": "dist/team/__tests__/leader-inbox.test.d.ts",
@@ -41316,6 +41396,26 @@
         "path": "dist/team/__tests__/runtime-v2.permission-lines.test.js.map"
       },
       {
+        "id": "dist/team/__tests__/runtime-v2.sdk-defaults.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/runtime-v2.sdk-defaults.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/runtime-v2.sdk-defaults.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/runtime-v2.sdk-defaults.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/runtime-v2.sdk-defaults.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/runtime-v2.sdk-defaults.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/runtime-v2.sdk-defaults.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/runtime-v2.sdk-defaults.test.js.map"
+      },
+      {
         "id": "dist/team/__tests__/runtime-v2.service-repair.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/runtime-v2.service-repair.test.d.ts"
@@ -41854,6 +41954,26 @@
         "id": "dist/team/__tests__/team-leader-nudge-outstanding.test.js.map",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/team-leader-nudge-outstanding.test.js.map"
+      },
+      {
+        "id": "dist/team/__tests__/team-leader-nudge-sdk-blocker.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/team-leader-nudge-sdk-blocker.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/team-leader-nudge-sdk-blocker.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/team-leader-nudge-sdk-blocker.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/team-leader-nudge-sdk-blocker.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/team-leader-nudge-sdk-blocker.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/team-leader-nudge-sdk-blocker.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/team-leader-nudge-sdk-blocker.test.js.map"
       },
       {
         "id": "dist/team/__tests__/team-name.test.d.ts",
@@ -50826,6 +50946,11 @@
         "path": "src/cli/commands/__tests__/team-budget-governor.test.ts"
       },
       {
+        "id": "src/cli/commands/__tests__/team-lifecycle-output.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/team-lifecycle-output.test.ts"
+      },
+      {
         "id": "src/cli/commands/__tests__/team-role-shorthand.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/team-role-shorthand.test.ts"
@@ -56761,6 +56886,11 @@
         "path": "src/team/__tests__/behavior-snapshot.test.ts"
       },
       {
+        "id": "src/team/__tests__/capped-status.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/capped-status.test.ts"
+      },
+      {
         "id": "src/team/__tests__/cli-detection.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/cli-detection.test.ts"
@@ -56859,6 +56989,11 @@
         "id": "src/team/__tests__/issue-4816-isCmuxSurfaceTarget.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/issue-4816-isCmuxSurfaceTarget.test.ts"
+      },
+      {
+        "id": "src/team/__tests__/leader-inbox-unanswered.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/leader-inbox-unanswered.test.ts"
       },
       {
         "id": "src/team/__tests__/leader-inbox.test.ts",
@@ -57051,6 +57186,11 @@
         "path": "src/team/__tests__/runtime-v2.permission-lines.test.ts"
       },
       {
+        "id": "src/team/__tests__/runtime-v2.sdk-defaults.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/runtime-v2.sdk-defaults.test.ts"
+      },
+      {
         "id": "src/team/__tests__/runtime-v2.service-repair.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/runtime-v2.service-repair.test.ts"
@@ -57184,6 +57324,11 @@
         "id": "src/team/__tests__/team-leader-nudge-outstanding.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/team-leader-nudge-outstanding.test.ts"
+      },
+      {
+        "id": "src/team/__tests__/team-leader-nudge-sdk-blocker.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/team-leader-nudge-sdk-blocker.test.ts"
       },
       {
         "id": "src/team/__tests__/team-name.test.ts",
@@ -74403,6 +74548,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/__tests__/team-lifecycle-output.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-lifecycle-output.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-lifecycle-output.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-lifecycle-output.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-lifecycle-output.test.ts",
+        "to": "src/cli/commands/team.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/team-role-shorthand.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -75946,6 +76116,11 @@
         "from": "src/cli/commands/team.ts",
         "to": "src/team/runtime-v2.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/team.ts",
+        "to": "src/team/runtime-v2.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/cli/commands/team.ts",
@@ -107763,6 +107938,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/team/__tests__/capped-status.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/capped-status.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/capped-status.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/capped-status.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/capped-status.test.ts",
+        "to": "src/hud/mission-board.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/capped-status.test.ts",
+        "to": "src/team/api-interop.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/capped-status.test.ts",
+        "to": "src/team/contracts.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/team/__tests__/cli-detection.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -108240,6 +108450,31 @@
       {
         "from": "src/team/__tests__/issue-4816-isCmuxSurfaceTarget.test.ts",
         "to": "src/team/tmux-session.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/leader-inbox-unanswered.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/leader-inbox-unanswered.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/leader-inbox-unanswered.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/leader-inbox-unanswered.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/leader-inbox-unanswered.test.ts",
+        "to": "src/team/mailbox-outstanding.ts",
         "kind": "imports"
       },
       {
@@ -109573,6 +109808,21 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/team/__tests__/runtime-v2.sdk-defaults.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.sdk-defaults.test.ts",
+        "to": "src/shared/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.sdk-defaults.test.ts",
+        "to": "src/team/runtime-v2.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/team/__tests__/runtime-v2.service-repair.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -110596,6 +110846,31 @@
         "from": "src/team/__tests__/team-leader-nudge-outstanding.test.ts",
         "to": "src/hooks/team-leader-nudge-hook.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/team-leader-nudge-sdk-blocker.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/team-leader-nudge-sdk-blocker.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/team-leader-nudge-sdk-blocker.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/team-leader-nudge-sdk-blocker.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/team-leader-nudge-sdk-blocker.test.ts",
+        "to": "src/hooks/team-leader-nudge-hook.ts",
+        "kind": "imports"
       },
       {
         "from": "src/team/__tests__/team-name.test.ts",
@@ -112894,6 +113169,16 @@
       },
       {
         "from": "src/team/runtime-v2.ts",
+        "to": "src/team/mailbox-outstanding.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/runtime-v2.ts",
+        "to": "src/team/mailbox-outstanding.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/runtime-v2.ts",
         "to": "src/team/mcp-comm.ts",
         "kind": "imports"
       },
@@ -112985,6 +113270,11 @@
       {
         "from": "src/team/runtime-v2.ts",
         "to": "src/team/scaling.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/runtime-v2.ts",
+        "to": "src/team/sdk-launch-progress.ts",
         "kind": "imports"
       },
       {
@@ -119429,12 +119719,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9992,
-      "edgeCount": 12123,
-      "importEdgeCount": 9976,
+      "nodeCount": 10017,
+      "edgeCount": 12152,
+      "importEdgeCount": 10002,
       "registerEdgeCount": 117
     }
   },
-  "inventorySha256": "c696dca6cfdc193bf661a58359cfd90df5853da7f18a5eee335ddc5e8ea65946",
-  "manifestSha256": "bc32ee018fe5540c0b77fac9cc08f1fe6e87ef699b908f0125cd3f1fd0521384"
+  "inventorySha256": "3ef1e31150cdbb6821af9254054f6730b937039fb024f5e6dfe7415d13f6019a",
+  "manifestSha256": "c96e34886bfd129d140a8eb1a560457e0761e01e4ae6b012c0d791ad879d34ac"
 }

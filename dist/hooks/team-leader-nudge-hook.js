@@ -14,7 +14,7 @@ import { join } from 'path';
 import { appendTeamEvent } from '../team/events.js';
 import { deriveTeamLeaderGuidance } from '../team/leader-nudge-guidance.js';
 import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
-import { scanMailboxOutstanding } from '../team/mailbox-outstanding.js';
+import { readLeaderInbox, scanMailboxOutstanding } from '../team/mailbox-outstanding.js';
 // ── Helpers ────────────────────────────────────────────────────────────────
 function safeString(value, fallback = '') {
     if (typeof value === 'string')
@@ -100,10 +100,12 @@ export async function checkLeaderStaleness(params) {
         inProgressTaskCount: 0,
         completedTaskCount: 0,
         failedTaskCount: 0,
+        cappedTaskCount: 0,
         idleWorkerCount: 0,
         aliveWorkerCount: 0,
         nonReportingWorkerCount: 0,
         totalWorkerCount: 0,
+        leaderInboxUnread: 0,
     };
     // Read config to get worker list
     const configPath = join(teamDir, 'config.json');
@@ -123,6 +125,7 @@ export async function checkLeaderStaleness(params) {
     // queued/unanswered directed mailbox messages is not idle/available.
     const mailboxDir = join(teamDir, 'mailbox');
     const outstandingByWorker = await scanMailboxOutstanding(mailboxDir);
+    const leaderInboxUnread = (await readLeaderInbox(mailboxDir)).length;
     for (const worker of workers) {
         const statusPath = join(teamDir, 'workers', worker.name, 'status.json');
         const status = await readJsonSafe(statusPath, {});
@@ -136,7 +139,11 @@ export async function checkLeaderStaleness(params) {
                 nonReportingWorkerCount++;
             }
         }
-        if (status.state === 'idle' || status.state === 'done') {
+        // An SDK worker reports idleness through its host's session file, not
+        // its status file: an idle session with nothing queued is idle.
+        const sdkSession = await readJsonSafe(join(teamDir, 'workers', worker.name, 'sdk-session.json'), {});
+        const sdkIdle = sdkSession.state === 'idle' && (sdkSession.queued ?? 0) === 0;
+        if (status.state === 'idle' || status.state === 'done' || sdkIdle) {
             // Queued/unanswered directed work means the worker is not truly idle.
             const outstanding = outstandingByWorker[worker.name]?.undeliveredInbound ?? 0;
             if (outstanding === 0) {
@@ -151,6 +158,7 @@ export async function checkLeaderStaleness(params) {
     let inProgressTaskCount = 0;
     let completedTaskCount = 0;
     let failedTaskCount = 0;
+    let cappedTaskCount = 0;
     try {
         if (existsSync(tasksDir)) {
             const { readdir } = await import('fs/promises');
@@ -174,26 +182,42 @@ export async function checkLeaderStaleness(params) {
                 else if (task.status === 'failed') {
                     failedTaskCount++;
                 }
+                else if (task.status === 'capped') {
+                    cappedTaskCount++;
+                }
             }
         }
     }
     catch { /* ignore */ }
     const totalWorkerCount = workers.length;
     const activeTaskCount = pendingTaskCount + blockedTaskCount + inProgressTaskCount;
+    const counts = {
+        pendingTaskCount,
+        blockedTaskCount,
+        inProgressTaskCount,
+        completedTaskCount,
+        failedTaskCount,
+        cappedTaskCount,
+        idleWorkerCount,
+        aliveWorkerCount,
+        nonReportingWorkerCount,
+        totalWorkerCount,
+        leaderInboxUnread,
+    };
+    // A worker waits on the leader (a blocker or question): the leader must answer.
+    if (leaderInboxUnread > 0 && activeTaskCount > 0) {
+        return { stale: true, reason: `leader_inbox_unread:unread=${leaderInboxUnread},active=${activeTaskCount}`, ...counts };
+    }
+    // A capped task needs a leader decision (reassign or raise the cap).
+    if (cappedTaskCount > 0) {
+        return { stale: true, reason: `tasks_capped:capped=${cappedTaskCount},active=${activeTaskCount}`, ...counts };
+    }
     // Leader should step in if the team has reached a terminal task state and all workers are idle.
-    if (idleWorkerCount === totalWorkerCount && activeTaskCount === 0 && (completedTaskCount + failedTaskCount) > 0) {
+    if (idleWorkerCount === totalWorkerCount && activeTaskCount === 0 && (completedTaskCount + failedTaskCount + cappedTaskCount) > 0) {
         return {
             stale: true,
             reason: `all_workers_idle_with_terminal_tasks:idle=${idleWorkerCount},completed=${completedTaskCount},failed=${failedTaskCount}`,
-            pendingTaskCount,
-            blockedTaskCount,
-            inProgressTaskCount,
-            completedTaskCount,
-            failedTaskCount,
-            idleWorkerCount,
-            aliveWorkerCount,
-            nonReportingWorkerCount,
-            totalWorkerCount,
+            ...counts,
         };
     }
     // Leader is stale if: all workers are idle AND active tasks remain
@@ -201,15 +225,7 @@ export async function checkLeaderStaleness(params) {
         return {
             stale: true,
             reason: `all_workers_idle_with_active_tasks:idle=${idleWorkerCount},active=${activeTaskCount}`,
-            pendingTaskCount,
-            blockedTaskCount,
-            inProgressTaskCount,
-            completedTaskCount,
-            failedTaskCount,
-            idleWorkerCount,
-            aliveWorkerCount,
-            nonReportingWorkerCount,
-            totalWorkerCount,
+            ...counts,
         };
     }
     // Leader is stale if: alive workers exist, but none are reporting progress while active tasks remain.
@@ -217,30 +233,10 @@ export async function checkLeaderStaleness(params) {
         return {
             stale: true,
             reason: `no_fresh_workers_with_active_tasks:alive=${aliveWorkerCount},active=${activeTaskCount}`,
-            pendingTaskCount,
-            blockedTaskCount,
-            inProgressTaskCount,
-            completedTaskCount,
-            failedTaskCount,
-            idleWorkerCount,
-            aliveWorkerCount,
-            nonReportingWorkerCount,
-            totalWorkerCount,
+            ...counts,
         };
     }
-    return {
-        stale: false,
-        reason: 'ok',
-        pendingTaskCount,
-        blockedTaskCount,
-        inProgressTaskCount,
-        completedTaskCount,
-        failedTaskCount,
-        idleWorkerCount,
-        aliveWorkerCount,
-        nonReportingWorkerCount,
-        totalWorkerCount,
-    };
+    return { stale: false, reason: 'ok', ...counts };
 }
 export async function maybeNudgeLeader(params) {
     const { stateDir, teamName, tmux = defaultTmux } = params;
@@ -259,6 +255,7 @@ export async function maybeNudgeLeader(params) {
             inProgress: staleness.inProgressTaskCount,
             completed: staleness.completedTaskCount,
             failed: staleness.failedTaskCount,
+            capped: staleness.cappedTaskCount,
         },
         workers: {
             total: staleness.totalWorkerCount,
@@ -266,6 +263,7 @@ export async function maybeNudgeLeader(params) {
             idle: staleness.idleWorkerCount,
             nonReporting: staleness.nonReportingWorkerCount,
         },
+        leaderInbox: { unread: staleness.leaderInboxUnread },
     });
     // Check cooldown
     const nudgeStatePath = join(teamDir, 'leader-nudge-state.json');
