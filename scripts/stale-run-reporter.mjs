@@ -13,13 +13,13 @@
  * are documented in docs/HOOKS.md.
  */
 
-import { readStdin } from './lib/stdin.mjs';
+import { HOOK_STDIN_TIMEOUT_MS, hookStdinTimeoutMs, readStdin } from './lib/stdin.mjs';
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
 import { findStaleRuns } from './lib/run-reaper.mjs';
 import { skillSlash } from './lib/skill-slash.mjs';
 
 async function main() {
-  const raw = await readStdin(3000);
+  const raw = await readStdin(hookStdinTimeoutMs(HOOK_STDIN_TIMEOUT_MS));
   let payload = null;
   try {
     payload = JSON.parse(raw);

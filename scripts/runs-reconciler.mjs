@@ -11,7 +11,7 @@
 
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { readStdin } from './lib/stdin.mjs';
+import { HOOK_STDIN_TIMEOUT_MS, hookStdinTimeoutMs, readStdin } from './lib/stdin.mjs';
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
 
 const LOOKBACK_MS = 7 * 24 * 3600_000;
@@ -58,7 +58,7 @@ function reconcile(entries) {
 }
 
 async function main() {
-  const raw = await readStdin(3000);
+  const raw = await readStdin(hookStdinTimeoutMs(HOOK_STDIN_TIMEOUT_MS));
   let payload = null;
   try {
     payload = JSON.parse(raw);
