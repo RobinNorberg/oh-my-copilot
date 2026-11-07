@@ -4,6 +4,44 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+**Default changes.** `team.sdk.maxCreditsPerWorker` now defaults to 50 (was 10). SDK-transport teams now use branch worktrees when `team.ops.worktreeMode` is unset. `omg factory run` exits 5 (was 1) when there is no usable forge. `omg team shutdown` exits 3 (was 1) when it keeps a dirty worker worktree. `omg factory setup` with no origin and no flags exits 5 (was 2).
+
+### Added
+
+- **Offline factory: the `local` forge** (#442, #444, #446). `omg factory` runs without GitHub or Azure DevOps, using a committed backlog directory (`.copilot/backlog/<id>-<slug>.md` with frontmatter), a bare mirror the engine owns as the git remote `omg-local`, a local gate command (`factory.forge.local.gate`, recorded as the check `local-gate`) and a `git merge --no-ff` you run yourself. `omg factory setup --forge local` writes the config and a closed sample item. `check`, `board`, `enqueue` and `poll` work with no origin; `poll` syncs the mirror base fast-forward only each tick. Over a GitHub or Azure DevOps origin, `kind: "local"` counts only from the user config or the base-committed `.copilot/omg.jsonc`. `check`, `board` and `setup` print what offline mode does not do, and their JSON gains a top-level `limitations` array (empty on GitHub and Azure DevOps; schemaVersion stays 1). See [docs/FACTORY-OFFLINE.md](docs/FACTORY-OFFLINE.md).
+- **`capped` task status** (#445). When an SDK worker hits its credit cap, the leader's monitor marks its in-progress task `capped`, a terminal status, with the salvage path and branch of any uncommitted work in the task error. Status shows `capped=N` and `capped_task=` lines, and the new guidance `reassign-capped` says to reassign the work or raise the cap. Workers cannot set `capped`.
+- **Leader inbox** (#445). A worker that cannot proceed sends `BLOCKER: <what you need>` to `leader-fixed`. `omg team status` lists unanswered blockers as `leader_inbox:` lines (JSON `leader_inbox[]`), and the new guidance `answer-blocker` prints the reply command and outranks every other action. `team.sdk.blockerTimeoutMinutes` (SDK teams only, default off) fails a task whose blocker stays unanswered.
+- **SDK launch progress** (#443, #445). While an SDK worker starts, stderr shows one line per launch phase, a heartbeat every 15 s and a final `ready in Ns (...)` breakdown.
+- **`team.sdk.compactProtocol`** (#443, #445). Opt-in (default off) compact worker protocol for SDK workers, about 40 lines instead of about 110. Measured saving: about 0.7 AI credits per worker session, about 10% of the first call only.
+- **Per-turn SDK usage** (#443). `sdk-session.json` records `turn_usage[]` per turn: calls, AI credits, tokens, cache reads and writes, and model.
+- **WinGet trust** (#443). The Copilot CLI installed by WinGet (`%LOCALAPPDATA%\Microsoft\WinGet\{Packages,Links}`, `%ProgramFiles%\WinGet\{Packages,Links}`) counts as a standard install location.
+- **Docs: `team.sdk.model` / `OMC_TEAM_SDK_MODEL`** (F17) is now documented in REFERENCE.md as the main cost lever for SDK workers.
+
+### Changed
+
+- **`team.sdk.maxCreditsPerWorker` defaults to 50** (#445), up from 10. One small measured task cost 9 to 13 AI credits, so 10 capped workers before they could commit. The runtime still gets `--max-ai-credits` of at least 30.
+- **SDK teams default to branch worktrees** (#445). With neither `OMC_TEAM_WORKTREE_MODE` nor `team.ops.worktreeMode` set, SDK workers get `omc-team/<team>/<worker>` worktrees instead of committing on the leader's branch. A dirty leader checkout keeps the shared checkout and says why. Pane teams and explicit settings are unchanged.
+- **`omg factory run` exits 5 with `unsupported forge:`** (#446) when there is no usable forge, like `setup`, `check`, `board`, `enqueue` and `poll` (#444). Before, a missing origin exited 1.
+- **`omg team shutdown` exits 3** (#445) when it keeps a worker worktree with uncommitted changes, and names each kept path. Other preserved outcomes still exit 1.
+- **`omg factory chain status` labels are English** (#446).
+
+### Fixed
+
+- **F2:** a worker's blocker message to the leader is now visible in `omg team status` and guidance, instead of advice to launch a replacement team (#445).
+- **F3:** an SDK worker with `state=idle` counts as idle, not non-reporting, and a capped worker as neither, so guidance says `reuse-current-team` when it should (#445).
+- **F4:** the per-turn cost floor is measured per turn (`turn_usage`), and the compact protocol is available; the floor is the cold-cache first call of each new session (#443, #445).
+- **F5:** a capped task no longer stays `in_progress` forever; it becomes `capped` with a reassign recommendation (#445).
+- **F6:** `omg team shutdown` no longer needs `--force` when every task is terminal but some failed or were capped (#445).
+- **F7:** a shutdown that keeps a dirty worktree now names the workers and paths, exits 3 and reports the phase as completed or failed instead of `executing` (#445).
+- **F8:** `omg factory run --dry-run` no longer fetches, and a missing base branch says `base branch '<base>' not found; set ship.base in .copilot/omg.jsonc (branches here: ...)` (#446).
+- **F9:** the same exit code (5) for a missing forge across the factory commands (#444, #446).
+- **F10:** `omg factory setup` reports a missing or unsupported forge before it asks for `--intake` (#444).
+- **F11:** SDK workers no longer commit directly on the leader's branch by default (#445).
+- **F12:** SDK team starts show launch progress instead of 1-3 silent minutes (#443, #445).
+- **F13:** `omg factory status` no longer prints Chinese labels (#446).
+- **F14:** an SDK team start prints `transport: sdk (headless)` instead of `tmux session: sdk:<team>` (#445).
+- **F15:** a WinGet-installed `copilot` no longer triggers the non-standard path warning (#443).
+
 # oh-my-copilot v5.19.7
 
 ## [5.19.7] - 2026-11-07

@@ -652,6 +652,40 @@ text, with `ok: false` when no team state is found. `--json` can appear before o
 after the team name and is never mistaken for one; when the team name is omitted
 and exactly one team is active, it is resolved automatically.
 
+**Worker blockers and the leader inbox.** A worker that cannot proceed sends
+`BLOCKER: <what you need>` to `leader-fixed` and waits for the reply. Only a
+message whose body starts with `BLOCKER:` (case-insensitive) counts; ACKs and
+progress reports do not. `omg team status` prints each undelivered blocker that
+has no later leader reply to its sender as
+`leader_inbox: <from> <at> "<first 200 chars>"`, oldest first, and `--json` lists
+them in `leader_inbox: [{ message_id, from, at, body }]`. Reply with
+`omg team api send-message --input '{"team_name":"<team>","from_worker":"leader-fixed","to_worker":"<worker>","body":"<answer>"}' --json`.
+
+**Capped tasks.** `capped` is a terminal task status: the leader's monitor sets
+it when an SDK worker hits its credit cap. Workers cannot set it
+(`transition-task-status` refuses `to=capped`), and it is never retried. The task
+error reads `sdk_credit_cap (<reason>); salvage: uncommitted work, if any, is in
+<path> (branch <branch>)`. Status prints `capped=N` on the tasks line and one
+`capped_task=task-<id> owner=<worker> error="..."` line per capped task; `--json`
+adds `tasks.capped` and `workers_capped`. A capped SDK worker counts as neither
+idle nor non-reporting, and an SDK worker with `state=idle` and nothing queued
+counts as idle. To continue the work, create a new task or team, or raise
+`team.sdk.maxCreditsPerWorker` and relaunch.
+
+**Leader guidance.** `leader_next_action` is the first that applies:
+
+| Action | When |
+|---|---|
+| `answer-blocker` | A worker's `BLOCKER:` message is unanswered while tasks are active. Read `leader_inbox` and reply with the `send-message` command above |
+| `reassign-capped` | A task is `capped`. Reassign the work, or raise `team.sdk.maxCreditsPerWorker` |
+| `shutdown` | No task is active |
+| `launch-new-team` | No worker is alive |
+| `reuse-current-team` | Every alive worker is idle |
+| `launch-new-team` | Every alive worker is non-reporting |
+| `keep-checking-status` | Workers are still active |
+
+The leader nudge hook also flags an unread inbox (`leader_inbox_unread`).
+
 Startup reserves the team name for an immutable instance. Shutdown and job cleanup
 require matching instance and worker-launch evidence; `--force` skips graceful
 waits but does not bypass ownership checks. Missing or corrupt evidence preserves
@@ -664,7 +698,7 @@ delegating instance-bound shutdown.
 Tmux effects require the original socket and precise server process identity;
 reused pane IDs after a server restart do not grant ownership.
 
-Native team worker worktrees are an opt-in/config-gated runtime-v2 rollout. See [Native Team Worktree Mode](TEAM-WORKTREE-MODE.md) for the worktree path contract, canonical `OMC_TEAM_STATE_ROOT` behavior, status fields, and dirty-worktree cleanup policy.
+Native team worker worktrees are opt-in for pane teams. SDK-transport teams use branch worktrees by default when neither `OMC_TEAM_WORKTREE_MODE` nor `team.ops.worktreeMode` is set. See [Native Team Worktree Mode](TEAM-WORKTREE-MODE.md) for the worktree path contract, canonical `OMC_TEAM_STATE_ROOT` behavior, status fields, and dirty-worktree cleanup policy.
 
 Topology behavior:
 
@@ -737,7 +771,9 @@ Pane workers are not sandboxed; their env is hygiene, not a boundary.
 
 `auto` never fails a start the sdk transport would reject. It falls back to `pane` and prints the reason on stderr (`[omg team] transport auto: using pane workers, not sdk (<reason>)`) for `--auto-merge`, a non-copilot worker, an explicitly assigned reviewer-contract role, or `@github/copilot-sdk` not installed. An explicit `--transport sdk` still rejects those. Programmatic `startTeamV2` callers and the `omc team` job runner keep the `pane` default.
 
-**Launch.** SDK hosts start concurrently, up to `team.sdk.launchConcurrency` at once (default 4, a positive integer; env `OMC_TEAM_SDK_LAUNCH_CONCURRENCY`; 1 restores serial launch). Each launch still waits for its own worker's task claim. A worker whose launch fails is a startup failure of that worker only. A launch whose cleanup cannot be verified stops further launches, lets the running ones finish, and rolls the team back. The start prints `[omg team] sdk workers launched: N in X ms` on stderr.
+**Launch.** SDK hosts start concurrently, up to `team.sdk.launchConcurrency` at once (default 4, a positive integer; env `OMC_TEAM_SDK_LAUNCH_CONCURRENCY`; 1 restores serial launch). Each launch still waits for its own worker's task claim. A worker whose launch fails is a startup failure of that worker only. A launch whose cleanup cannot be verified stops further launches, lets the running ones finish, and rolls the team back. The start prints `[omg team] sdk workers launched: N in X ms` on stderr, and the start summary says `transport: sdk (headless)` instead of a tmux session. While a worker starts, stderr gets one line per launch phase (`[omg team] worker-1: 18s, session created`; the phases are host started, runtime started, session created, bootstrap sent, first turn started), a heartbeat every 15 s, and then `ready in Ns (runtime ..., session ..., bootstrap ..., first turn ..., first reply ...)` or `host failed after Ns: <error>`.
+
+**Worktrees.** With neither `OMC_TEAM_WORKTREE_MODE` nor `team.ops.worktreeMode` set, sdk workers get branch worktrees (`omc-team/<team>/<worker>`) and stderr says `[omg team] sdk workers use branch worktrees (set team.ops.worktreeMode to change)`. If the leader checkout has uncommitted changes, the team keeps the shared checkout and says why; outside a git repository or before the first commit it keeps the shared checkout silently. See [Native Team Worktree Mode](TEAM-WORKTREE-MODE.md).
 
 **In-process tools.** `team.sdk.inProcessTools: true` (env `OMC_TEAM_SDK_INPROCESS_TOOLS=1`/`true` or `0`/`false`; default `false`) runs the plugin MCP tools inside each sdk host instead of a `t` MCP server per worker. Tool names, schemas and results are unchanged. It saves one node process per worker, not start time; see [DEVELOPERS.md](./DEVELOPERS.md#sdk-in-process-tools).
 
@@ -746,6 +782,8 @@ Pane workers are not sandboxed; their env is hygiene, not a boundary.
 **One team per leader session.** The `one_team_per_leader_session` guard counts an sdk team as live while any of its hosts is: its session file belongs to the worker's current launch attempt and is not `closed`/`failed`, and the host pid still has the process start identity recorded in the attempt's `provider-started.json`. A crashed host whose pid was reused does not block a new team.
 
 **Worker commits at shutdown.** Workers often commit in their worktrees, and the sdk transport has no `--auto-merge`. `omg team shutdown` keeps a clean worker worktree whose HEAD has commits the leader HEAD does not contain, along with its `omc-team/<team>/<worker>` branch in named mode. The shutdown still succeeds and disposes the team state. stderr names each kept path, branch and commit count, and `omg team status <team> --json` then answers `ok: false` with a `preserved_worktrees` list. Merge or cherry-pick the commits, then `git worktree remove` the path. Untracked files under the worktree's `.omg/state/` are runtime state and never keep a worktree; anything else untracked, including `.omg/skills/`, `.omg/plans/` or `.omg/notepad.md`, does.
+
+**Shutdown outcomes.** A team whose tasks are all terminal shuts down without `--force`, also when some are `failed` or `capped`; it prints `shutdown with N failed or capped task(s): task-2 (failed) task-3 (capped)` and exits 0. A worker worktree with uncommitted changes is kept: shutdown prints one `preserved_worktree=<path> worker=<worker> reason=<reason>` line per worktree to stderr, then `Team shutdown preserved: <team> kept N worker worktree(s) with uncommitted changes (workers: ...). Commit or discard the changes, then run omg team shutdown <team>.`, keeps the team state and exits **3**. Other preserved outcomes exit 1, as before.
 
 - **No allow-all.** The host answers every permission request. Writes are allowed only inside the worker's worktree and the team state root. Reads also allow the plugin root. MCP calls are allowed only to the plugin server.
 - **The shell policy is a denylist, not a sandbox.** It rejects team control other than `team api`, `omg smoke`, `tmux`/`psmux` and `git push`, git aliases and includes (`git -c alias.*`, `--config-env`, `git config alias.*`) and `GIT_CONFIG_*` env overrides, plus `shell(<prefix>)` entries of `workerDenyTools`, including quoted spellings such as `"omg" team shutdown`. A command built indirectly (a script file, `Invoke-Expression`, an encoded command, a shell escape) is not caught. Treat the write-path check, the credit cap and the per-worker `COPILOT_HOME` as the boundaries. This holds for team workers, which are not OS-sandboxed. `copilot_run` jobs and `omg factory run` lanes add the OS sandbox: see [Sandboxed lanes](#sandboxed-lanes).
@@ -769,7 +807,11 @@ Pane workers are not sandboxed; their env is hygiene, not a boundary.
   - **The leader's settings.** The leader's `COPILOT_HOME` and `COPILOT_MODEL` never replace the worker's own home or its `--model`.
   - **Denied commands.** The shell denylist also refuses `git credential fill`/`approve`/`reject`, `git config … extraheader`, `gh auth token`, `gh auth git-credential`, `gh auth status -t`/`--show-token` and `az account get-access-token`. A helper such as `-c credential.helper=!gh auth git-credential` is already refused by the `-c credential.*` rule.
 - **Sub-agent tools are removed**: `task`, `run_dynamic_workflow`, `dynamic_workflows_manage`, `write_agent`, `read_agent`, `list_agents`, `search_code_subagent` and the plugin's `host_smoke` and `copilot_run_*` tools.
-- **Credit cap.** `team.sdk.maxCreditsPerWorker` (default 10, must be a positive number; env `OMC_TEAM_SDK_MAX_CREDITS`) is enforced by the host: at the cap it aborts the turn and takes no more prompts, and `omg team status` shows the worker as `capped` with a reassign recommendation.
+- **Credit cap.** `team.sdk.maxCreditsPerWorker` (default **50**, must be a positive number; env `OMC_TEAM_SDK_MAX_CREDITS`) is enforced by the host: at the cap it aborts the turn and takes no more prompts. The runtime itself gets `--max-ai-credits` of at least 30, the Copilot CLI minimum. The monitor marks the worker's in-progress task `capped` with the salvage path, and `omg team status` recommends `reassign-capped`. One small measured task cost 9 to 13 credits, which is why the default moved from 10 to 50.
+- **Model.** `team.sdk.model` (env `OMC_TEAM_SDK_MODEL`, which wins) is the model every sdk worker session uses, for example `"gpt-5-mini"`. Unset, a worker uses its role's resolved model, else the runtime's `auto`. This is the main cost lever: each new worker session pays a cold-cache first call of about 25k prompt tokens (about 6-7 AI credits on claude-sonnet-5.5), and later calls in the same session cost far less (about 0.5-2 credits each), so a cheaper model lowers that floor directly. `omg team status` shows `model=auto` when unset; `--json` shows `"model": null`.
+- **Cost per turn.** Each sdk worker's `sdk-session.json` has `turn_usage[]` (the last 50 turns): per turn the calls, AI credits, input and output tokens, cache read and write tokens, and model. The first turn of a new session is the expensive one, so prefer messaging an idle worker over launching a new team.
+- **Compact protocol.** `team.sdk.compactProtocol: true` (default `false`) gives sdk workers a compact worker protocol, about 40 lines instead of about 110, without the pane, tmux, sentinel and heartbeat sections. It keeps the claim, ACK, mailbox, commit-before-complete, completion-evidence and failure-report rules. Measured saving: about 0.7 AI credits per worker session (about 10% of the first call only).
+- **Blocker timeout.** `team.sdk.blockerTimeoutMinutes` (a positive number; default off) fails the sender's in-progress task with `blocker_unanswered: no leader reply within N min to <worker>: <body>` when a `BLOCKER:` message to the leader stays unanswered that long. SDK-transport teams only; pane teams ignore it.
 - **Unsupported under sdk:** `--auto-merge`, non-copilot workers, scaling, dead-worker recovery, and an **explicitly** assigned reviewer role with a verdict contract (`critic`, `code-reviewer`, `security-reviewer`, `test-engineer` — set directly via a task's `role` or via `team.roleRouting`); startup rejects them. A contract role merely *inferred* from task text (with no explicit assignment) is not rejected: the role is dropped and the worker runs as a plain executor instead, since an SDK host never exits between turns and so could never have its verdict file read anyway.
 
 ### `omg session search`
@@ -959,7 +1001,7 @@ Copilot's SessionEnd reason for a finished `-p` link is `complete` (CLI 1.0.91),
 
 #### `omg factory run` (experimental)
 
-`omg factory run <issue>` drives one GitHub issue to a PR that is ready to merge. An implement lane commits in its own worktree. The engine pushes `factory/issue-<n>` and opens a draft PR. A fresh review lane checks the exact head, and fix rounds run on fresh lanes. The engine then runs ship's prepare step, watches the CI gates, and parks at `awaiting-human: merge`. Merge is always a human step. The run starts only when you start it by hand; the listener never starts it.
+`omg factory run <issue>` drives one GitHub issue to a PR that is ready to merge. An implement lane commits in its own worktree. The engine pushes `factory/issue-<n>` and opens a draft PR. A fresh review lane checks the exact head, and fix rounds run on fresh lanes. The engine then runs ship's prepare step, watches the CI gates, and parks at `awaiting-human: merge`. Merge is always a human step. The run starts only when you start it by hand; the listener never starts it. With no GitHub or Azure DevOps forge, the same engine runs offline on the `local` forge: backlog files as items, a local bare mirror as the remote `omg-local`, a configured gate command as the only check, and a `git merge` you run yourself. See [Offline factory](FACTORY-OFFLINE.md).
 
 The engine is deterministic code that owns every transition. LLM work happens only inside lanes, and the engine treats a lane's output as untrusted data that it validates. Lanes are `copilot_run` jobs used in-process, behind a host-neutral lane interface.
 
@@ -978,6 +1020,9 @@ omg factory run clean <issue> [--json]    # remove the worktrees and local branc
 | `4` | Any other `awaiting-human` stop, or `clean` kept a worktree |
 | `1` | A failure: an engine step failed, or the state is `failed` |
 | `2` | A usage error, such as a missing issue number, or `status` for an issue with no run |
+| `5` | No usable forge: no origin, an origin that is neither GitHub nor Azure DevOps, or a forge config that does not match it. stderr starts with `unsupported forge:`. Also for `--dry-run` and `--next`. (Before, a missing origin exited 1.) |
+
+`--dry-run` never fetches and writes nothing. It reads the committed `.copilot/omg.jsonc` from an existing `origin/<base>` tracking ref, with a warning that it may be stale, or from the local `<base>` branch when there is no parseable origin. A base branch that does not exist stops with `base branch '<base>' not found; set ship.base in .copilot/omg.jsonc (branches here: ...)`.
 
 `omg factory run --next` picks the first `runnable` item in `omg factory check` order (priority, then id) among the children of `--parent <spec>`, or else the `factory.intake.source` items, and runs it. A run parked at `blocked-by` is picked again, and resumed, once its dependencies are satisfied; a finished or otherwise active run, or an item whose factory PR is open or merged, is never picked. With nothing runnable it prints the bucket counts and exits 0.
 
@@ -1261,7 +1306,8 @@ omg smoke copilot --tier 2 --scenario sandbox-lane      # review, write and cana
 omg factory check [<id>...] [--json]           # the given ids, or the items of factory.intake.source
 omg factory check --parent <spec> [--json]     # the spec's children (GitHub `- [ ] #n` task list | ADO child links)
 omg factory check --source label:factory       # label:<name> | milestone:<name> | wiql-query:<guid> |
-                                               # board-column:<team>/<board>/<column> | area-tag:<area path>#<tag>
+                                               # board-column:<team>/<board>/<column> | area-tag:<area path>#<tag> |
+                                               # local-backlog[:<label>]
 omg factory check --limit 20                   # read at most 20 items from the source (1..200; default factory.intake.limit)
 omg factory check --mark [--yes]               # add factory.intake.marker to the runnable items, after confirming
 ```
@@ -1271,6 +1317,7 @@ The rules are evaluated in order, and the first one that matches sets the bucket
 | Reason | Bucket | When |
 |---|---|---|
 | `closed` | blocked | The item is closed (GitHub `CLOSED`, or an ADO Completed/Removed state). |
+| `uncommitted` | blocked | Local forge only: the backlog file is new or edited in the working tree and not committed on `<base>`. `omg factory run` reads items at the base commit, so it is untrusted until it is committed. |
 | `wrong-type` | blocked | The ADO type is not in `factory.intake.itemTypes`, or the GitHub id is a pull request. |
 | `run-finished:<phase>` | blocked | A factory run for the item is merged, cancelled or failed. The engine never restarts one. |
 | `run-active:<phase>[/<gate>]` | blocked | Any other factory run for the item exists. A run parked at `intake` / `blocked-by` is not counted: the rules below re-read its dependencies, so it becomes `runnable` once they are satisfied. |
@@ -1340,7 +1387,8 @@ omg factory board --no-check                # no check rules: one batched tracke
 - **Flags.** `drift`: the live stage is not the one the run recorded (a human moved the card). `unsynced`: the recorded stage is not the expected one (a progress write failed or is pending). `seal!`: the run state fails its integrity check, is unreadable, or has no seal at all (`integrity: 'none'`, a legacy state), so do not act on it. `stale`: a run that is not finished and not at a gate has not changed for 24 hours.
 - **Runs not in the intake source.** Runs in flight whose key is not in the source (a run started with an explicit id, a ci-heal `heal-<sig8>` run) get their own section. Finished runs outside the source are not shown.
 - **`--no-check`** skips the check rules (no comment, plan or PR reads). On Azure DevOps the items are read with one `GET wit/workitems?ids=…&fields=…&errorPolicy=omit` per 200 ids; on GitHub with one `gh issue view` per item.
-- **`--json`** (schemaVersion 1): `{ schemaVersion, ok, forge, repo, source, parent, columns: [{ stage, title, items }], outside, warnings }`. Each row has `id`, `title`, `url`, optional `error`, `check` (`{ bucket, priority, reasons, detail }`; absent with `--no-check`), `run` (including `gate: { name, reason }` when the run is parked at a gate), `stage` (`expected`, `recorded`, `live`), `liveText`, `flags` and `gates`. Tracker and state text is plain (ANSI and control characters removed).
+- **Local forge.** The board works with no origin and reads the local `<base>` branch. An uncommitted backlog file gets the warning `#n (path) is uncommitted: untrusted until it is committed on <base>`, and the [offline limitations](FACTORY-OFFLINE.md#what-offline-mode-does-not-do) print above the board.
+- **`--json`** (schemaVersion 1): `{ schemaVersion, ok, forge, repo, source, parent, columns: [{ stage, title, items }], outside, warnings, limitations }`. `limitations` is a string array, empty on GitHub and Azure DevOps. Each row has `id`, `title`, `url`, optional `error`, `check` (`{ bucket, priority, reasons, detail }`; absent with `--no-check`), `run` (including `gate: { name, reason }` when the run is parked at a gate), `stage` (`expected`, `recorded`, `live`), `liveText`, `flags` and `gates`. Tracker and state text is plain (ANSI and control characters removed).
 - **Exit codes:** `0` shown; `1` an item could not be read (`read-failed`); `2` usage; `5` incompatible (an unsupported remote or forge, or no intake source and no runs).
 
 #### `omg factory poll` (experimental)
@@ -1386,6 +1434,7 @@ One tick, in this order:
 - **One poller per repository.** The poll file records the owner's pid and host, and the owner writes a `beatAt` heartbeat each tick. A second poller, including `--once`, is refused while the first runs; the refusal names the poll file to delete if no poller runs. An owner whose process has died on this host, or whose heartbeat is older than 2 h (twice the 60 min ceiling), is taken over.
 - **Config.** The poller resolves the forge and intake config once, at start, including `factory.intake.autoStart` and the budget gate's `budget.softLimit` and `factory.run` layers. Only the heal config and the budget ledger are read again each tick. Restart the poller after config changes.
 - **Stopping.** SIGINT or SIGTERM ends the loop after the current tick. A second signal exits at once.
+- **Local forge.** Each tick first syncs the engine's mirror from your local `<base>` (fast-forward only), so a PR you merged reads as merged. The tick's JSON gets `baseSync` (ran, with a message, or not ran, with a reason), shown as `base sync: ...`; a refused sync counts as a tick error. Heal and review threads are skipped. See [Offline factory](FACTORY-OFFLINE.md).
 - **Exit codes:** `0` stopped by a signal, or a clean `--once` tick; `1` a read failed in the `--once` tick, or another poller runs; `2` usage (a bad `--interval`); `5` incompatible.
 
 #### `omg factory enqueue`
@@ -1425,6 +1474,7 @@ Pushes launch's C3-approved tickets to the tracker as children of the spec issue
 - `--dry-run` prints every planned write (title, labels and the exact body; new issues show as `#<key>` in edges; on Azure DevOps also the criteria, the priority and the links to add) and writes nothing. The guard refuses any create or edit during a dry run.
 - `--json` prints `{ schemaVersion: 1, ok, dryRun, spec: { id, taskList, planned? }, items, ignored, mark, warnings }`. Each item is `{ key, id, action, bucket, reasons, markCandidate }`, plus `planned` on a dry run. `bucket` and `reasons` come from the mark step's check.
 - Calls: every gh and git read is one of `omg factory check`'s shapes. Writes are the three tracker write shapes above, plus check's marker edit in the mark step. Nothing closes, deletes or merges anything.
+- **On the local forge** enqueue works with no origin and writes each ticket as a backlog file `<id>-<slug>.md` in the working tree, with `Part of #<spec>` and `Blocked by #n` lines that give its `parent` and `dependsOn`. The spec must be committed on `<base>` (an uncommitted spec is refused with "not committed on `<base>`") and is never rewritten, so it gets no task list: its children are the files whose `parent` names it. A file enqueue wrote but you have not committed yet still holds its key, so a rerun before the commit creates nothing twice. Commit the new files on `<base>` before `omg factory run` can take them. See [Offline factory](FACTORY-OFFLINE.md).
 
 | Exit code | Meaning |
 |---|---|
@@ -1433,14 +1483,14 @@ Pushes launch's C3-approved tickets to the tracker as children of the spec issue
 | 2 | usage, or a refused ticket file (nothing written) |
 | 5 | incompatible: no forge, or an unsupported one |
 
-`--json` prints `{ schemaVersion: 1, ok, forge, repo, source, counts, items, mark, warnings }` (`source` is `null` for ids and `--parent`). Each item is `{ id, title, url, bucket, reasons, detail, priority, planSource }`. `reasons` holds the exact reason code (empty when the item is runnable), and `planSource` is `omg-plan`, `issue-body` or `ado-acceptance`. `mark` is `{ marker, requested, confirmed, marked, alreadyMarked, failed }`.
+`--json` prints `{ schemaVersion: 1, ok, forge, repo, source, counts, items, mark, warnings, limitations }` (`source` is `null` for ids and `--parent`). `limitations` is a string array: on the local forge the [offline limitations](FACTORY-OFFLINE.md#what-offline-mode-does-not-do), which the text output also prints; empty on GitHub and Azure DevOps. On the local forge, check works with no origin, reads the local `<base>` branch without fetching, and adds the tracker's warnings about skipped malformed backlog files to `warnings`. Each item is `{ id, title, url, bucket, reasons, detail, priority, planSource }`. `reasons` holds the exact reason code (empty when the item is runnable), and `planSource` is `omg-plan`, `issue-body` or `ado-acceptance`. `mark` is `{ marker, requested, confirmed, marked, alreadyMarked, failed }`.
 
 | Exit code | Meaning |
 |---|---|
 | `0` | The check ran (whatever the buckets), including a `--mark` you declined |
 | `1` | An item is `read-failed`, a marker write failed, or the setup itself failed (for example the label list) |
 | `2` | A usage error: a bad id, `--parent`, `--source` or limit; `--parent` with ids, `--source` or `--limit`; no ids and no intake source; or `--mark` without `--yes` when there is no terminal or with `--json` |
-| `5` | Incompatible: the forge config does not match the origin remote, the remote is neither GitHub nor Azure DevOps, this build has no adapter for the forge, or the `--mark` label does not exist |
+| `5` | Incompatible: no origin and no local forge, the forge config does not match the origin remote, the remote is neither GitHub nor Azure DevOps, this build has no adapter for the forge, or the `--mark` label does not exist. A missing forge prints `unsupported forge: ...; for the offline (local) forge run omg factory setup --forge local` |
 
 #### `omg factory heal` (experimental)
 
@@ -1476,7 +1526,7 @@ omg factory heal close <sig8> [--json]           # close a heal run parked at he
 
 #### `omg factory setup`
 
-`omg factory setup` configures the factory for one repository on GitHub or Azure DevOps. It writes only the `factory` keys of the config and runs no lane.
+`omg factory setup` configures the factory for one repository on GitHub, Azure DevOps or the offline `local` forge. It writes only the `factory` keys of the config and runs no lane.
 
 ```bash
 omg factory setup                                     # interactive on a TTY
@@ -1486,9 +1536,10 @@ omg factory setup --forge azure-devops --org contoso --project Web --repo web-ap
   [--item-types "User Story,Bug"] [--progress default|none|<file.json>] [--board "Web Team/Stories"] \
   [--trusted-author owner@example.com] [--heal-pipeline <definitionId>|none] [--scope project|user] [--dry-run] [--yes] [--json]
 omg factory setup --intake label:factory | milestone:v5.18 ...   # GitHub
+omg factory setup --forge local [--intake local-backlog[:<label>]] [--dry-run] [--yes]   # offline, no origin needed
 ```
 
-1. **Detect.** The forge comes from `git remote get-url origin`. `--forge`, `--org`, `--project` and `--repo` can only pin it: a value that disagrees with the remote exits 5. Any other remote also exits 5 (`unsupported forge`). On Azure DevOps, `.omg/config.json` `ado` and an existing `factory.forge.azureDevOps.team` prefill the answers.
+1. **Detect.** The forge comes from `git remote get-url origin`. `--forge`, `--org`, `--project` and `--repo` can only pin it: a value that disagrees with the remote exits 5. Any other remote, or no origin, also exits 5 (`unsupported forge: ...; for the offline (local) forge run omg factory setup --forge local`). Setup reports this before it asks for `--intake` or other missing flags. `--forge local` needs no origin and refuses `--org`, `--project` and `--repo`; see [Offline factory](FACTORY-OFFLINE.md). On Azure DevOps, `.omg/config.json` `ado` and an existing `factory.forge.azureDevOps.team` prefill the answers.
 2. **Auth.** On GitHub this runs `gh auth status --hostname <host>`. On Azure DevOps it checks `az extension show --name azure-devops`, then `az account show` or a set `AZURE_DEVOPS_EXT_PAT`, then reads the project and the repository. A failure exits 3 and prints the command that fixes it. Nothing an auth command prints is shown, so no token reaches the output.
 3. **Intake.** On GitHub the source is a label or an open milestone. GitHub Projects v2 is not supported yet. On Azure DevOps it is a flat saved query (its GUID), a board column (`<team>/<board>/<column>`), or an area path plus a tag (`<area>#<tag>`). Each value is checked against the forge, and an unknown query, milestone, board, column or area exits 5. On Azure DevOps, `--item-types` must name existing types. Without it, the defaults that exist in the project are used.
 4. **Progress.** `default` on GitHub is the `factory:<stage>` label family. On Azure DevOps it maps nothing, so you map columns and states yourself. `none` turns progress off. A file holds `{ "enabled"?: boolean, "stages": { "<stage>": { "label" | "column" | "state": "…" } } }`. On Azure DevOps a column must be on the board: either the intake board, or the board given with `--board <team>/<board>`. A state must exist for every item type. A Completed or Removed state is allowed only for `done`, and `blocked` and `cancelled` never change the state. A validation failure exits 5. On GitHub, missing intake and progress labels are created with `gh label create <name> --color 7c7c7c` only after confirmation or `--yes`. This reuses the harbor label helper of `omg intake`.
@@ -1496,12 +1547,14 @@ omg factory setup --intake label:factory | milestone:v5.18 ...   # GitHub
 5. **Write.** The wizard edits with `jsonc-parser`, so comments and every other key stay as they were. It prints the diff and asks before writing; `--yes` confirms without asking. An edit that would change anything but `factory.forge`, `factory.intake`, `factory.progress` and `factory.heal.pipeline` (or `trustedAuthors` in the user config) is refused, so the `ship.*` safety keys never move. A config with duplicate keys, a `factory` that is not an object, or a symlinked `.copilot/omg.jsonc` (or `.copilot` directory) is refused with exit 5; a leading UTF-8 BOM is kept. The forge identity, intake and progress always go to `.copilot/omg.jsonc`, whatever `--scope` says. That file is protected, so the engine reads its `forge.*` and `progress.*` only from `<base>` once the file is committed there. The user config at its default location is shared by every repository, so it gets only `factory.forge.azureDevOps.trustedAuthors` (`--trusted-author`); `--scope user` is accepted and only notes this. The config is written before any missing label is created. The result must pass the same resolver the engine uses.
 6. **Preview.** The wizard lists the source's first 10 items through the forge adapter and the engine's guard. For now each row says `readiness: run omg factory check`. A forge without an adapter in this build loses only the preview. The wizard also reports any `omg factory init` prerequisites that are missing. Those are needed only for the chain route table.
 
-- **Non-interactive:** `--yes`, `--json` or no TTY takes every answer from flags. A missing `--intake`, or a missing `--yes` without `--dry-run`, exits 2 and names the missing flags.
+**Local forge.** `--forge local` skips auth and labels. It writes `factory.forge.kind: "local"`, `factory.forge.local.backlogDir: ".copilot/backlog"` and the intake `local-backlog` (the default without `--intake`), and adds a closed sample item `.copilot/backlog/1-example.md` when the backlog has no item yet (a symlinked or junctioned path is refused). It never writes `factory.forge.local.gate`: set the gate (an argv such as `["node","--test"]`) in the user config or in `.copilot/omg.jsonc` committed on `<base>`; until then gates park at `awaiting-human: gates`. Over a GitHub or Azure DevOps origin, `kind: "local"` counts only from the user config or the committed base file. The output prints the [offline limitations](FACTORY-OFFLINE.md#what-offline-mode-does-not-do) and the JSON has them in `limitations`.
+
+- **Non-interactive:** `--yes`, `--json` or no TTY takes every answer from flags. A missing `--intake` (except with `--forge local`), or a missing `--yes` without `--dry-run`, exits 2 and names the missing flags. A repository with no usable forge exits 5 first.
 - **Dry run:** `--dry-run` shows the diff and the preview, writes no file and creates no label.
 - **Guard:** every forge call goes through a setup allowlist. On GitHub it allows `gh auth status`, `gh label list`, `gh label create` with the fixed color, and one GET of this repository's open milestones. On Azure DevOps it allows `az devops invoke` GETs of routes in `src/forge/ado/routes.ts`. Each GET is pinned to the detected org and project, uses the route's API version and `--detect false`, and has no `--in-file`, `--debug` or `--verbose`.
-- **JSON:** `{ exitCode, forge, auth, config, written: <paths>|null, diffs, labels: { missing, created }, prerequisites, preview, previewError?, notes, error? }`.
+- **JSON:** `{ exitCode, forge, auth, config, written: <paths>|null, diffs, labels: { missing, created }, prerequisites, preview, previewError?, notes, limitations, error? }`. `limitations` is empty except on the local forge.
 - **Exit codes:** `0` written or dry run, `2` usage error, `3` auth or Azure DevOps extension missing, `5` incompatible (unsupported forge, mismatch, unknown query, state validation failed), `1` other failures.
-- **Listener:** `omg factory listen` receives GitHub webhooks only. It refuses when the origin remote or the user config's `factory.forge.kind` is `azure-devops`, and points at `omg factory poll`.
+- **Listener:** `omg factory listen` receives GitHub webhooks only. It refuses when the origin remote or the user config's `factory.forge.kind` is `azure-devops`, or when the user config's kind is `local`, and points at `omg factory poll`.
 
 #### Live acceptance on Azure DevOps (maintainers)
 
