@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import { IS_WIN, TIMING_SCALE } from './src/__tests__/helpers/platform.js';
 import DurationSequencer from './scripts/ci/duration-sequencer.mjs';
+import { parseMaxWorkers } from './scripts/ci/parse-max-workers.mjs';
 
 const INCLUDE = [
   'src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
@@ -36,7 +37,7 @@ const SERIAL_BUDGET = [
   'src/__tests__/workflow-profile-activation-script.test.ts',
 ];
 
-const ENV_MAX_WORKERS = /^[1-9]d*$/.test(process.env.OMC_VITEST_MAX_WORKERS ?? '') ? Number(process.env.OMC_VITEST_MAX_WORKERS) : 0;
+const ENV_MAX_WORKERS = parseMaxWorkers(process.env.OMC_VITEST_MAX_WORKERS);
 
 export default defineConfig({
   // Vitest applies a CLI `--exclude` (the `tests/perf/**` in `npm test` and
