@@ -83,6 +83,12 @@ function ownProcessStartIdentity(timeoutMs = 3000, testHooks) {
 // process reusing the pid: the bound lies before the first publication (the slack is waited out
 // below), and a reuser is created after this process exits. Old readers reject version 2 as
 // malformed, which fails closed.
+// Residual risk: the bound comes from the wall clock, so if the clock steps backward after this
+// process starts and the process dies, a later process reusing the pid can get creation ticks
+// <= the bound and read as this (dead) owner. The lock then stays held while that unrelated
+// process lives. This fails closed (no second holder); the lock frees when the reuser exits.
+// The bound is built in BigInt from whole milliseconds, rounded up, so it stays an upper bound
+// without the double-precision loss of a ticks value above 2^53.
 export const START_BOUND_PREFIX = 'ticksmax:';
 // Covers the 15.6 ms default clock tick between a coarse and a precise system time read.
 const START_BOUND_SLACK_MS = 20;
@@ -99,7 +105,7 @@ function ownStartBoundIdentity() {
   if (!Number.isFinite(origin) || origin <= 0 || Math.abs(origin - uptimeOrigin) > START_BOUND_ORIGIN_TOLERANCE_MS) return null;
   const wait = Math.ceil(START_BOUND_SLACK_MS - performance.now());
   if (wait > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait);
-  ownStartBoundCache = `${START_BOUND_PREFIX}${BigInt(Math.ceil((origin + START_BOUND_SLACK_MS) * 10000)) + 621355968000000000n}`;
+  ownStartBoundCache = `${START_BOUND_PREFIX}${BigInt(Math.ceil(origin + START_BOUND_SLACK_MS)) * 10000n + 621355968000000000n}`;
   return ownStartBoundCache;
 }
 

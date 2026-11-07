@@ -5,9 +5,10 @@
  * creation time, and a foreign prober compares its exact `ticks:<n>` probe against that bound.
  * These tests pin: no spawn on the own-identity path, a record this process wrote still reads
  * live to a foreign-style exact probe of its pid, a dead or pid-reusing owner still reads dead,
- * and the TS twin adjudicates records the hook copy wrote.
+ * a version 1 record carrying a bound is malformed, and each twin adjudicates records the other
+ * wrote.
  */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
@@ -32,6 +33,7 @@ import {
   acquireStateFileLockAtPathSync,
   acquireStateFileLockSync,
   getStateFileLockFailureKind,
+  getStateFileLockFailureReason,
   processStartIdentity,
   releaseStateFileLockSync,
   startIdentityMatches,
@@ -81,6 +83,35 @@ async function holdLockInChild(filePath: string): Promise<{ child: ChildProcessW
   });
   expect(line).toBe('held');
   return { child, record: readRecord(`${filePath}.mutation.lock`) };
+}
+
+/** Holds the lock through the TS twin in a child; `mode` 'release' waits for `releaseFlag`, 'exit' dies holding it. */
+async function holdTsLockInChild(filePath: string, releaseFlag: string, mode: 'release' | 'exit'): Promise<ChildProcessWithoutNullStreams> {
+  const script = join(tmpRoot, `ts-holder-${randomUUID()}.mts`);
+  const tsModule = pathToFileURL(join(REPO_ROOT, 'src', 'lib', 'mode-state-io.ts')).href;
+  writeFileSync(script, [
+    `import { existsSync, writeSync } from 'fs';`,
+    `const { withStateFileMutationLock } = await import(${JSON.stringify(tsModule)});`,
+    `const result = withStateFileMutationLock(${JSON.stringify(filePath)}, () => {`,
+    `  writeSync(1, 'held\\n');`,
+    `  ${mode === 'exit' ? 'process.exit(0);' : ''}`,
+    `  while (!existsSync(${JSON.stringify(releaseFlag)})) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);`,
+    `});`,
+    `if (!result.acquired) writeSync(1, 'failed\\n');`,
+  ].join('\n'));
+  const env = { ...process.env };
+  delete env.NODE_ENV;
+  const child = spawn(process.execPath, ['--import', pathToFileURL(join(REPO_ROOT, 'node_modules', 'tsx', 'dist', 'loader.mjs')).href, script], { cwd: REPO_ROOT, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+  children.push(child);
+  const line = await new Promise<string>((resolve, reject) => {
+    let out = '';
+    let err = '';
+    child.stdout.on('data', (chunk) => { out += chunk; if (out.includes('\n')) resolve(out.trim()); });
+    child.stderr.on('data', (chunk) => { err += chunk; });
+    child.once('exit', (code) => { if (!out.includes('\n')) reject(new Error(`TS holder exited ${code}: ${err}`)); });
+  });
+  expect(line).toBe('held');
+  return child;
 }
 
 async function stop(child: ChildProcessWithoutNullStreams): Promise<void> {
@@ -186,6 +217,43 @@ describe('foreign adjudication of a bound owner record', () => {
     const lock = acquireStateFileLockSync(target, 5, true, false, 2000, 15_000);
     expect(lock).not.toBeNull();
     expect(readRecord(`${target}.mutation.lock`).pid).toBe(process.pid);
+    expect(releaseStateFileLockSync(lock)).toBe(true);
+  }, 90_000);
+  it('rejects a version 1 record that carries a bound as malformed in both twins', () => {
+    process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
+    const target = join(stateDir, 'v1-bound.json');
+    writeFileSync(`${target}.mutation.lock`, JSON.stringify({
+      version: 1, pid: 2_000_000_005, processStart: `${START_BOUND_PREFIX}639296028002683759`, createdAt: new Date().toISOString(), nonce: randomUUID(),
+    }));
+
+    expect(acquireStateFileLockSync(target, 1, true)).toBeNull();
+    expect(getStateFileLockFailureKind()).toBe('unverifiable');
+    expect(getStateFileLockFailureReason()).toBe('malformed-owner');
+    expect(withStateFileMutationLock(target, () => 'ran').acquired).toBe(false);
+  });
+
+  it('judges a record the TS twin wrote: live while its owner runs, dead once it exits', async () => {
+    const target = join(stateDir, 'ts-owner.json');
+    const releaseFlag = join(tmpRoot, `release-${randomUUID()}`);
+    const holder = await holdTsLockInChild(target, releaseFlag, 'release');
+    const record = readRecord(`${target}.mutation.lock`);
+    expect(record.pid).toBe(holder.pid);
+    if (isWin) expect(record.version).toBe(2);
+    expect(acquireStateFileLockSync(target, 1, true, false, 2000, 15_000)).toBeNull();
+    expect(getStateFileLockFailureKind()).toBe('contention');
+    const released = new Promise<void>(resolve => holder.once('exit', () => resolve()));
+    writeFileSync(releaseFlag, '');
+    await released;
+
+    // An owner that dies holding the lock leaves its record behind; the hook copy reclaims it.
+    const crashed = join(stateDir, 'ts-owner-crashed.json');
+    const dead = await holdTsLockInChild(crashed, releaseFlag, 'exit');
+    if (dead.exitCode === null) await new Promise<void>(resolve => dead.once('exit', () => resolve()));
+    expect(existsSync(`${crashed}.mutation.lock`)).toBe(true);
+    expect(readRecord(`${crashed}.mutation.lock`).pid).toBe(dead.pid);
+    const lock = acquireStateFileLockSync(crashed, 5, true, false, 2000, 15_000);
+    expect(lock).not.toBeNull();
+    expect(readRecord(`${crashed}.mutation.lock`).pid).toBe(process.pid);
     expect(releaseStateFileLockSync(lock)).toBe(true);
   }, 90_000);
 });
