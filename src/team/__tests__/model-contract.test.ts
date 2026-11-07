@@ -268,6 +268,9 @@ describe('model-contract', () => {
         // The directory boundary still holds for the new roots.
         expect(isTrustedPrefix('C:\\Users\\tester\\AppData\\Local\\Microsoft\\WinGet\\Packages-evil\\copilot.exe')).toBe(false);
         expect(isTrustedPrefix('C:\\Program Files\\WinGetX\\Packages\\copilot.exe')).toBe(false);
+        // `..` traversal out of the root and a different drive are both rejected.
+        expect(isTrustedPrefix('C:\\Users\\tester\\AppData\\Local\\Microsoft\\WinGet\\Packages\\..\\..\\evil.exe')).toBe(false);
+        expect(isTrustedPrefix('D:\\Users\\tester\\AppData\\Local\\Microsoft\\WinGet\\Packages\\x.exe')).toBe(false);
       } finally {
         restorePlatform();
         vi.unstubAllEnvs();
