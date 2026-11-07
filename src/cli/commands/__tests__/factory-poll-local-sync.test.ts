@@ -72,7 +72,10 @@ describe('omg factory poll: local forge base sync', () => {
     gitIn(w.root, 'config', '--replace-all', 'remote.omg-local.fetch', '+refs/heads/*:refs/heads/x/*');
     const head = gitIn(w.root, 'rev-parse', 'main');
     w.sync({ root: w.root, base: 'main', config: w.config });
-    expect(gitIn(w.root, 'for-each-ref', '--format=%(refname)', 'refs/heads/x/')).toBe('');
+    const planted = gitIn(w.root, 'for-each-ref', '--format=%(refname)', 'refs/heads/x/');
+    // On a failure, say which command wrote the ref (its reflog) and what ran.
+    const why = planted ? `${gitIn(w.root, 'reflog', 'show', '--format=%gs', planted)}\n${gitIn(w.root, 'version')}\n${w.raw.map((a) => a.join(' ')).join('\n')}` : '';
+    expect(planted, why).toBe('');
     expect(gitIn(w.root, 'rev-parse', 'refs/remotes/omg-local/main')).toBe(head);
     const fetch = w.raw.find((a) => a.includes('fetch'))!;
     expect(fetch).toContain('--refmap=');
