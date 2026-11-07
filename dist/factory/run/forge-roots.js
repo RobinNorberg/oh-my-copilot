@@ -13,13 +13,13 @@
  * Also the factory's forge config load (factory forges design §3) and the
  * origin's forge kind for the GitHub-only commands.
  */
-import { existsSync } from 'fs';
-import { join, resolve } from 'path';
+import { existsSync, realpathSync } from 'fs';
+import { isAbsolute, join, resolve } from 'path';
 import { detectForgeRepo, ForgeConfigError, resolveForgeConfig } from '../../forge/config.js';
 import { LOCAL_REMOTE, mirrorFetchArgs, mirrorInitArgs, mirrorPushArgs, mirrorRemoteAddArgs, mirrorRemoteGetUrlArgs, readMirrorRef } from '../../forge/local/index.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
-import { BASE_CONFIG_PATH, readBaseFile, remoteRepoMismatch, resolveTrustedBases } from '../../ship/config.js';
-import { FOR_EACH_REF_FORMAT } from './exec.js';
+import { BASE_CONFIG_PATH, readBaseFile, resolveTrustedBases } from '../../ship/config.js';
+import { FOR_EACH_REF_FORMAT, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, sameFsPath } from './exec.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { getGlobalOmcStatePath } from '../../utils/paths.js';
@@ -160,18 +160,71 @@ export class FactoryForgeUnavailableError extends Error {
 /** Exit code of FactoryForgeUnavailableError (EXIT_CHECK_INCOMPATIBLE, setup's 5). */
 export const EXIT_FORGE_UNAVAILABLE = 5;
 /**
+ * Null when the checkout's `omg-local` remote fetches from and pushes to
+ * exactly `mirror`; otherwise why not. Unlike remoteRepoMismatch (ship's
+ * sameRepo drops `.git` and case for forge URLs), the url and every push url
+ * (insteadOf / pushInsteadOf applied by git) must be the mirror's own path:
+ * real paths compared, case-insensitively only on Windows and macOS. So
+ * `<stateDir>/local/<id>` (no `.git`) or a case variant on Linux refuses.
+ */
+export function localRemoteMismatch(exec, root, mirror) {
+    const same = (url) => sameFsPath(realOr(url), realOr(mirror));
+    const got = exec('git', ['remote', 'get-url', LOCAL_REMOTE], { cwd: root, env: TRUSTED_READ_ENV });
+    if (got.status !== 0)
+        return `git remote get-url ${LOCAL_REMOTE} failed: ${got.stderr.trim().split('\n')[0]}`;
+    const url = got.stdout.trim();
+    if (!url || !same(url))
+        return `remote ${LOCAL_REMOTE} points at ${url}, not the mirror ${mirror}`;
+    const push = exec('git', ['remote', 'get-url', '--push', '--all', LOCAL_REMOTE], { cwd: root, env: TRUSTED_READ_ENV });
+    if (push.status !== 0)
+        return `git remote get-url --push --all ${LOCAL_REMOTE} failed: ${push.stderr.trim().split('\n')[0]}`;
+    const pushUrls = push.stdout.split(/\r?\n/).map((u) => u.trim()).filter(Boolean);
+    if (pushUrls.length === 0)
+        return `git remote get-url --push --all ${LOCAL_REMOTE} printed no push URL`;
+    const foreign = pushUrls.find((u) => !same(u));
+    return foreign ? `remote ${LOCAL_REMOTE} pushes to ${foreign}, not the mirror ${mirror}` : null;
+}
+/** A path's real path when it exists (junctions and symlinks resolved), else the path resolved. */
+function realOr(p) {
+    if (!isAbsolute(p))
+        return p;
+    try {
+        return realpathSync.native(p);
+    }
+    catch {
+        return resolve(p);
+    }
+}
+/**
+ * The `remote.omg-local.vcs` / `.mirror` keys the checkout sets (any include
+ * counts), or null. Refused: vcs hands the transport to `git remote-<vcs>`
+ * (remote-ext runs a command), mirror turns a push into a mirror push.
+ */
+export function localRemoteRefusedConfig(exec, root) {
+    const r = exec('git', [...LOCAL_REMOTE_REFUSED_CONFIG_ARGS], { cwd: root, env: TRUSTED_READ_ENV });
+    if (r.status > 1)
+        return `git ${LOCAL_REMOTE_REFUSED_CONFIG_ARGS.join(' ')} failed: ${r.stderr.trim().split('\n')[0]}`;
+    const keys = r.stdout.split(/\r?\n/).map((l) => l.trim().split(/\s+/)[0]).filter(Boolean);
+    return keys.length > 0 ? `the checkout's git config sets ${keys.join(', ')}` : null;
+}
+/**
  * Create (once) and sync the local forge's bare mirror (offline forge plan
  * §1.1), through the engine's guarded, hardened Exec:
  * - `git init --bare` at `mirror` when it does not exist;
+ * - `remote.omg-local.vcs` / `.mirror` in the checkout refuse with
+ *   FactoryForgeUnavailableError (exit 5);
  * - the checkout's `omg-local` remote is added when missing; an existing one
- *   must point at `mirror` for fetch and for every push url
- *   (remoteRepoMismatch: a planted pushurl or insteadOf refuses);
+ *   must point at exactly `mirror` for fetch and for every push url
+ *   (localRemoteMismatch: a planted pushurl or insteadOf refuses);
  * - the local `<base>` is pushed to the mirror without `+`, so the sync is
- *   fast-forward only: a diverged mirror base refuses with a message;
- * - `git fetch omg-local <base>` updates `refs/remotes/omg-local/<base>`.
- * Returns the base sha. Throws (a plain Error) on any refusal.
+ *   fast-forward only: a diverged mirror base refuses with a message. Before
+ *   the push, `onBase` gets the sha read from the local base: the guard lets
+ *   only that sha be pushed there (LocalGuardContext.baseSha);
+ * - `git fetch omg-local <base>` updates `refs/remotes/omg-local/<base>`
+ *   (hardenedGitExec makes it an explicit refspec with `--refmap=`).
+ * Returns the base sha. Throws (a plain Error) on any other refusal.
  */
-export function syncLocalMirror(exec, root, mirror, base) {
+export function syncLocalMirror(exec, root, mirror, base, onBase) {
     const git = (args, env) => exec('git', args, { cwd: root, ...(env ? { env } : {}) });
     const must = (args, what, env) => {
         const r = git(args, env);
@@ -179,17 +232,21 @@ export function syncLocalMirror(exec, root, mirror, base) {
             throw new Error(`${what}: git ${args.join(' ')} failed: ${(r.stderr || r.stdout).trim().split('\n')[0]}`);
         return r.stdout;
     };
+    const refused = localRemoteRefusedConfig(exec, root);
+    if (refused)
+        throw new FactoryForgeUnavailableError(`refusing the local forge: ${refused}; remove it (git config --unset remote.${LOCAL_REMOTE}.<key>)`);
     if (!existsSync(join(mirror, 'HEAD')))
         must(mirrorInitArgs(mirror), 'local forge mirror');
     const current = git(mirrorRemoteGetUrlArgs(), TRUSTED_READ_ENV);
     if (current.status !== 0)
         must(mirrorRemoteAddArgs(mirror), 'local forge remote');
-    const mismatch = remoteRepoMismatch(exec, root, LOCAL_REMOTE, mirror);
+    const mismatch = localRemoteMismatch(exec, root, mirror);
     if (mismatch)
         throw new Error(`refusing to sync the local forge mirror: ${mismatch}; point the ${LOCAL_REMOTE} remote at ${mirror} (git remote set-url ${LOCAL_REMOTE} ${mirror}) and remove any pushurl`);
     const local = must(['rev-parse', '--verify', `refs/heads/${base}`], `local base ${base}`, TRUSTED_READ_ENV).trim();
     if (!HEX40.test(local))
         throw new Error(`local base ${base} did not resolve to a commit`);
+    onBase?.(local);
     if (readMirrorRef(mirror, base) !== local) {
         const pushed = git(mirrorPushArgs(local, base));
         if (pushed.status !== 0) {

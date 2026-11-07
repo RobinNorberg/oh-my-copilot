@@ -196,6 +196,8 @@ function shapeProblem(s) {
     // The remote follows the forge: omg-local exactly on a local run, absent (origin) on every other.
     if (s.remote !== undefined ? s.remote !== LOCAL_REMOTE || s.forgeKind !== 'local' : s.forgeKind === 'local')
         return 'remote';
+    if (s.localGate !== undefined && (s.forgeKind !== 'local' || !Array.isArray(s.localGate) || s.localGate.length === 0 || !s.localGate.every(isStr)))
+        return 'localGate';
     if (s.trackerStage !== undefined && !PROGRESS_STAGES.includes(s.trackerStage))
         return 'trackerStage';
     if (s.kind === 'ci-heal') {

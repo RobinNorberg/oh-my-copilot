@@ -6,56 +6,218 @@
  * (writeLocalCheckRecord, under the engine-owned forge state dir). The local
  * forge's checks() read that record back, so gates-driver and ship's
  * watchGates keep their head discipline unchanged. A head with no record
- * (never run, or `checks.rerun` removed it) is run again.
+ * (never run, or `checks.rerun` removed it) or with a stale PENDING record
+ * (localGateDue) is run again.
  *
- * The gate runs the PR's own code, like prepare's tsc and tests: only in the
+ * The gate runs the PR's own code, like prepare's tsc and tests: the argv is
+ * trusted, but what it executes is the pushed head. `["npm","test"]` runs the
+ * PR's package.json `test` script, so a lane that edits package.json scripts
+ * (or the test files) changes what the gate does. It runs only in the
  * engine-owned checkout (assertLocalGateCommand), never in the user's
  * checkout or a lane worktree, with the scrubbed environment ship gives every
  * command, and without a shell.
+ *
+ * No shell on Windows means no `.cmd`/`.bat` (cmd.exe would parse the
+ * arguments; the 5.12.1 cmd-injection fix). `npm`/`npx` run as
+ * `<node> <node dir>/node_modules/npm/bin/npm-cli.js` (npx-cli.js), `pnpm`/
+ * `yarn` as a real .exe on PATH or corepack's script beside node
+ * (resolveLocalGateArgv). A gate whose executable cannot start is never a
+ * FAILURE: the run parks at awaiting-human with the reason.
  */
-import { spawnSync } from 'child_process';
-import { resolve } from 'path';
-import { LOCAL_GATE_CHECK, readLocalCheckRecord, writeLocalCheckRecord } from '../../forge/local/index.js';
+import { spawn } from 'child_process';
+import { existsSync, realpathSync, rmSync } from 'fs';
+import { posix, resolve, win32 } from 'path';
+import { LOCAL_GATE_CHECK, localCheckRecordPath, readLocalCheckRecord, writeLocalCheckRecord } from '../../forge/local/index.js';
+import { getProcessStartIdentity, terminateOwnedProcessTree } from '../../platform/process-utils.js';
 import { scrubShipEnv } from '../../ship/exec.js';
-import { childEnv, hardenWindowsExeSearch, resolveBareExe } from '../../utils/windows-search.js';
-import { FactorySafetyError } from './exec.js';
+import { childEnv, findOnPath, hardenWindowsExeSearch, resolveBareExe } from '../../utils/windows-search.js';
+import { FactorySafetyError, sameFsPath } from './exec.js';
 /** The record keeps this many characters of the gate's output (jobLog, the ci-fix prompt). */
 export const LOCAL_GATE_TAIL_CHARS = 8_000;
-export const defaultLocalGateRunner = (argv, cwd, timeoutMs) => {
+/** How long after the gate's timeout a PENDING record is taken as left by a crashed engine (localGateDue). */
+export const LOCAL_GATE_STALE_GRACE_MS = 60_000;
+/** Each output stream keeps at most this many characters while the gate runs (the record keeps less). */
+const STREAM_KEEP_CHARS = 64 * 1024;
+/** How long the tree kill of a timed-out gate may take. */
+const KILL_DEADLINE_MS = 30_000;
+/** Package-manager CLIs that are `.cmd` shims on Windows, and the node script each one runs. */
+const NODE_SCRIPTS = {
+    npm: { script: ['node_modules', 'npm', 'bin', 'npm-cli.js'], exeFirst: false },
+    npx: { script: ['node_modules', 'npm', 'bin', 'npx-cli.js'], exeFirst: false },
+    pnpm: { script: ['node_modules', 'corepack', 'dist', 'pnpm.js'], exeFirst: true },
+    yarn: { script: ['node_modules', 'corepack', 'dist', 'yarn.js'], exeFirst: true },
+};
+const npmCliHint = (P, execPath) => JSON.stringify(['node', P.join(P.dirname(execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'), 'test']);
+/**
+ * The executable and arguments the gate argv runs as, or why it cannot start.
+ * Never a `.cmd`/`.bat` on Windows and never a name found in the checkout.
+ */
+export function resolveLocalGateArgv(argv, o) {
+    const platform = o.platform ?? process.platform;
+    const env = o.env ?? process.env;
+    const execPath = o.execPath ?? process.execPath;
+    const exists = o.exists ?? existsSync;
+    const P = platform === 'win32' ? win32 : posix;
+    const [cmd, ...args] = argv;
+    if (!cmd)
+        return { missing: 'the local gate argv is empty' };
+    const hasPath = /[\\/]/.test(cmd) || (platform === 'win32' && cmd.includes(':'));
+    if (hasPath) {
+        const at = P.isAbsolute(cmd) ? cmd : P.resolve(o.cwd, cmd);
+        return exists(at) ? { exe: cmd, args } : { missing: `the local gate executable ${cmd} does not exist (resolved in the prepare checkout to ${at})` };
+    }
+    if (platform !== 'win32') {
+        return findOnPath(cmd, env, platform, exists) ? { exe: cmd, args } : { missing: `the local gate executable ${cmd} is not on PATH` };
+    }
+    const name = cmd.toLowerCase().replace(/\.(cmd|bat)$/, '');
+    const known = NODE_SCRIPTS[name];
+    const exe = () => findOnPath(name === cmd.toLowerCase() ? cmd : name, { ...env, PATHEXT: '.COM;.EXE' }, 'win32', exists);
+    if (known) {
+        const fromExe = known.exeFirst ? exe() : null;
+        if (fromExe)
+            return { exe: fromExe, args };
+        const script = P.join(P.dirname(execPath), ...known.script);
+        if (exists(script))
+            return { exe: execPath, args: [script, ...args] };
+        return { missing: `the local gate executable ${cmd} cannot start: on Windows the gate runs without a shell, so ${name}.cmd is never run, and ${script} does not exist; set factory.forge.local.gate to run node directly, such as ${npmCliHint(P, execPath)}` };
+    }
+    if (/\.(cmd|bat)$/i.test(cmd)) {
+        return { missing: `the local gate executable ${cmd} is a cmd.exe script, which the gate never runs (no shell); set factory.forge.local.gate to run node or an .exe directly, such as ${npmCliHint(P, execPath)}` };
+    }
+    const found = exe();
+    return found ? { exe: found, args } : { missing: `the local gate executable ${cmd} is not on PATH as an .exe or .com (on Windows the gate runs without a shell, so .cmd/.bat shims are skipped); set factory.forge.local.gate to run node directly, such as ${npmCliHint(P, execPath)}` };
+}
+const keepTail = (text) => (text.length > STREAM_KEEP_CHARS ? text.slice(-STREAM_KEEP_CHARS) : text);
+/** Kill the gate's whole process tree: the identity-checked tree kill while the root lives, the process group on POSIX after it exited. */
+async function killGateTree(child, rootExited) {
+    const pid = child.pid;
+    if (!pid)
+        return;
+    if (!rootExited) {
+        // Our own unreaped child: its pid cannot be reused yet, so its identity is the one we started.
+        const identity = await getProcessStartIdentity(pid, Date.now() + KILL_DEADLINE_MS);
+        if (identity) {
+            const done = await terminateOwnedProcessTree({ pid, expectedStartIdentity: identity, deadlineAt: new Date(Date.now() + KILL_DEADLINE_MS).toISOString(), force: true });
+            if (done === 'terminated' || done === 'already-dead')
+                return;
+        }
+        try {
+            child.kill('SIGKILL');
+        }
+        catch { /* already gone */ }
+    }
+    // The root exited but a descendant still holds the output pipes: its process group (POSIX, detached).
+    if (process.platform !== 'win32') {
+        try {
+            process.kill(-pid, 'SIGKILL');
+        }
+        catch { /* the group is gone */ }
+    }
+}
+/** Spawn without a shell; at `timeoutMs` kill the whole tree (test workers too) and stop waiting for its output. */
+function runOwned(exe, args, cwd, env, timeoutMs) {
+    return new Promise((done) => {
+        let child;
+        try {
+            // detached on POSIX: the gate leads its own process group, so the timeout reaches its grandchildren.
+            child = spawn(exe, args, { cwd, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
+        }
+        catch (error) {
+            done({ status: 127, stdout: '', stderr: '', timedOut: false, startError: `${exe}: ${error.message}` });
+            return;
+        }
+        let stdout = '';
+        let stderr = '';
+        let exitStatus = null;
+        let timedOut = false;
+        let settled = false;
+        const finish = (r) => {
+            if (settled)
+                return;
+            settled = true;
+            clearTimeout(timer);
+            done(r);
+        };
+        child.stdout.setEncoding('utf8').on('data', (d) => { stdout = keepTail(stdout + d); });
+        child.stderr.setEncoding('utf8').on('data', (d) => { stderr = keepTail(stderr + d); });
+        child.on('error', (error) => {
+            // No pid: it never started (ENOENT, EACCES, EINVAL for a .cmd). With a pid it is a kill/IO error, reported by close.
+            if (!child.pid)
+                finish({ status: 127, stdout, stderr, timedOut: false, startError: `${exe}: ${error.message}` });
+        });
+        child.on('exit', (code, signal) => { exitStatus = code ?? (signal ? 128 : 1); });
+        child.on('close', (code, signal) => {
+            finish({ status: timedOut ? 124 : (exitStatus ?? code ?? (signal ? 128 : 1)), stdout, stderr, timedOut });
+        });
+        const timer = setTimeout(() => {
+            timedOut = true;
+            void killGateTree(child, exitStatus !== null).finally(() => {
+                // Whatever still holds the pipes (an orphan on Windows) no longer delays the verdict.
+                child.stdout?.destroy();
+                child.stderr?.destroy();
+                finish({ status: 124, stdout, stderr, timedOut: true });
+            });
+        }, timeoutMs);
+    });
+}
+export const defaultLocalGateRunner = async (argv, cwd, timeoutMs) => {
     // A bare name is never resolved from the checkout (a planted npm.cmd / node.exe there).
     hardenWindowsExeSearch();
-    const exe = resolveBareExe(argv[0]);
-    if (exe === null)
-        return { status: 127, stdout: '', stderr: `${argv[0]}: not found on PATH`, timedOut: false };
-    const r = spawnSync(exe, argv.slice(1), {
-        cwd,
-        env: childEnv(scrubShipEnv(process.env)),
-        encoding: 'utf8',
-        windowsHide: true,
-        timeout: timeoutMs,
-        killSignal: 'SIGKILL',
-        maxBuffer: 64 * 1024 * 1024,
-    });
-    const timedOut = r.error?.code === 'ETIMEDOUT';
-    return { status: r.status ?? 1, stdout: r.stdout ?? '', stderr: `${r.stderr ?? ''}${r.error && !timedOut ? r.error.message : ''}`, timedOut };
+    const target = resolveLocalGateArgv(argv, { cwd });
+    if ('missing' in target)
+        return { status: 127, stdout: '', stderr: '', timedOut: false, startError: target.missing };
+    // resolveLocalGateArgv already gave an absolute path on Windows; resolveBareExe keeps a path unchanged.
+    const exe = resolveBareExe(target.exe) ?? target.exe;
+    return runOwned(exe, target.args, cwd, childEnv(scrubShipEnv(process.env)), timeoutMs);
 };
-const samePath = (a, b) => process.platform === 'win32' ? resolve(a).toLowerCase() === resolve(b).toLowerCase() : resolve(a) === resolve(b);
+const realOrResolved = (p) => {
+    try {
+        return realpathSync.native(p);
+    }
+    catch {
+        return resolve(p);
+    }
+};
 /**
- * The exec guard's allowance for the gate: exactly the configured argv, in
- * exactly the engine's prepare checkout. Throws FactorySafetyError otherwise.
+ * The exec guard's allowance for the gate. `recorded` is the gate argv the
+ * run sealed when it first ran the gate (FactoryRunState.localGate); the
+ * current trusted config must still name exactly that argv, so a gate
+ * changed mid-run is refused rather than run against a head the old gate
+ * judged. `checkout` must really be the engine's prepare checkout
+ * (`expectedCheckout`): its real path, so a junction or symlink pointing it
+ * at the user's checkout or a lane worktree is refused. Throws
+ * FactorySafetyError otherwise.
  */
-export function assertLocalGateCommand(argv, cwd, configured, checkout) {
+export function assertLocalGateCommand(recorded, configured, checkout, expectedCheckout) {
     if (!configured || configured.length === 0)
         throw new FactorySafetyError('omg factory run refuses the local gate: factory.forge.local.gate is not set in a trusted config layer');
-    if (argv.length !== configured.length || argv.some((a, i) => a !== configured[i])) {
-        throw new FactorySafetyError(`omg factory run refuses \`${argv.join(' ')}\`: it is not factory.forge.local.gate`);
+    if (recorded.length !== configured.length || recorded.some((a, i) => a !== configured[i])) {
+        throw new FactorySafetyError(`omg factory run refuses the local gate \`${configured.join(' ')}\`: this run recorded \`${recorded.join(' ')}\`; restore factory.forge.local.gate, or cancel the run (omg factory run cancel) and start a new one`);
     }
-    if (!samePath(cwd, checkout))
-        throw new FactorySafetyError(`omg factory run refuses the local gate in ${cwd}: it runs only in the engine's prepare checkout ${checkout}`);
+    const real = realOrResolved(checkout);
+    if (!sameFsPath(real, expectedCheckout))
+        throw new FactorySafetyError(`omg factory run refuses the local gate in ${checkout} (really ${real}): it runs only in the engine's prepare checkout ${expectedCheckout}`);
 }
 /** The record of `head`, or undefined when the gate has not run for it (or a rerun removed it). */
 export function localGateRecord(stateDir, root, head) {
     return readLocalCheckRecord(stateDir, root, head);
+}
+/**
+ * True when the gate must run for `head`: no record, or a PENDING record
+ * left behind by an engine that died mid-gate. A PENDING record is stale
+ * once its `startedAt` is older than the gate's timeout plus
+ * LOCAL_GATE_STALE_GRACE_MS: a live engine always replaces PENDING with
+ * SUCCESS or FAILURE by then (it kills the gate at the timeout). The record
+ * shape carries no pid on purpose: a pid can be reused, the clock cannot.
+ */
+export function localGateDue(stateDir, root, head, timeoutMinutes, now) {
+    const r = localGateRecord(stateDir, root, head);
+    if (!r)
+        return true;
+    if (r.state !== 'PENDING')
+        return false;
+    const started = Date.parse(r.startedAt);
+    return !Number.isFinite(started) || now.getTime() - started > timeoutMinutes * 60_000 + LOCAL_GATE_STALE_GRACE_MS;
 }
 /** A run id unique enough per head: positive, from the clock (ForgeRun.databaseId). */
 const runIdAt = (d) => Math.max(1, Math.floor(d.getTime() / 1000));
@@ -63,16 +225,28 @@ const tailOf = (text) => (text.length > LOCAL_GATE_TAIL_CHARS ? text.slice(-LOCA
 /**
  * Run the gate for `head` and record SUCCESS or FAILURE (a PENDING record is
  * written first, so a crash mid-gate leaves the head visibly unfinished and
- * the next run sees a pending check, not a pass).
+ * the next run sees a pending check, not a pass, until it goes stale). A
+ * gate that cannot start records nothing.
  */
-export function runLocalGate(i) {
+export async function runLocalGate(i) {
     if (i.gate.length === 0)
         throw new FactorySafetyError('omg factory run refuses an empty local gate');
     const now = i.now ?? (() => new Date());
     const started = now();
     const base = { name: LOCAL_GATE_CHECK, head: i.head, state: 'PENDING', argv: [...i.gate], runId: runIdAt(started), startedAt: started.toISOString() };
     writeLocalCheckRecord(i.stateDir, i.root, base);
-    const r = (i.runner ?? defaultLocalGateRunner)(i.gate, i.checkout, i.timeoutMinutes * 60_000);
+    let r;
+    try {
+        r = await (i.runner ?? defaultLocalGateRunner)(i.gate, i.checkout, i.timeoutMinutes * 60_000);
+    }
+    catch (error) {
+        rmSync(localCheckRecordPath(i.stateDir, i.root, i.head), { force: true });
+        throw error;
+    }
+    if (r.startError !== undefined) {
+        rmSync(localCheckRecordPath(i.stateDir, i.root, i.head), { force: true });
+        return { started: false, reason: r.startError };
+    }
     const output = `${r.stdout}${r.stderr ? `\n${r.stderr}` : ''}${r.timedOut ? `\nlocal gate timed out after ${i.timeoutMinutes} min` : ''}`;
     const done = {
         ...base,
@@ -82,6 +256,6 @@ export function runLocalGate(i) {
         tail: tailOf(output.trim()),
     };
     writeLocalCheckRecord(i.stateDir, i.root, done);
-    return done;
+    return { started: true, record: done };
 }
 //# sourceMappingURL=local-gate.js.map

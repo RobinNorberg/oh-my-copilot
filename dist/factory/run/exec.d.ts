@@ -53,30 +53,62 @@ export interface TrackerWriteContext {
     itemTypes?: readonly string[];
 }
 /**
+ * What the guard knows about the local forge: the exact mirror path the
+ * resolved config names (localMirrorPath), and the base commit the mirror
+ * sync read from the local base branch, the one sha it may push there.
+ */
+export interface LocalGuardContext {
+    mirror: string;
+    baseSha?: string;
+}
+/** Same path, case-insensitively only where the file system usually is (Windows, macOS); both sides resolved. */
+export declare function sameFsPath(a: string, b: string): boolean;
+/**
+ * `git config --get-regexp` of the `omg-local` keys the engine refuses:
+ * `vcs` hands the transport to a `git remote-<vcs>` helper (remote-ext runs
+ * a command) and `mirror` turns a push into a mirror push.
+ */
+export declare const LOCAL_REMOTE_REFUSED_CONFIG_ARGS: readonly string[];
+/**
  * Throws FactorySafetyError unless the command is a factory shape or a
  * non-push, non-merge ship shape. `extraProtected` adds the run's base.
  * `az` and python go to the Azure DevOps guard (src/forge/ado/guard.ts),
  * which refuses them unless `ado` names the run's forge and az entry.
  * `writes` (enqueue only) adds the tracker write shapes.
  */
-export declare function assertFactoryCommand(cmd: string, args: string[], extraProtected?: readonly string[], env?: Readonly<Record<string, string>>, ado?: AdoGuardContext, writes?: TrackerWriteContext): void;
+export declare function assertFactoryCommand(cmd: string, args: string[], extraProtected?: readonly string[], env?: Readonly<Record<string, string>>, ado?: AdoGuardContext, writes?: TrackerWriteContext, local?: LocalGuardContext): void;
 /**
  * Wrap an Exec so every call passes assertFactoryCommand first; `extraProtected` is read per call.
  * An `az devops invoke` write runs with the guard's own copy of its validated --in-file body,
  * and a tracker write (gh issue create/edit) with the guard's own copy of its checked --body-file.
  * `writes` is set only by `omg factory enqueue`: the tracker write shapes pass while it returns a context.
+ * `local` (the local forge only) binds the mirror init, the remote add and the base push to this run's mirror and synced base.
  */
-export declare function factoryGuardExec(exec: Exec, extraProtected?: () => readonly string[], ado?: () => AdoGuardContext | undefined, writes?: () => TrackerWriteContext | undefined): Exec;
+export declare function factoryGuardExec(exec: Exec, extraProtected?: () => readonly string[], ado?: () => AdoGuardContext | undefined, writes?: () => TrackerWriteContext | undefined, local?: () => LocalGuardContext | undefined): Exec;
 /** Prepended to every hardened git command, after the guard checked the plain shape. */
 export declare function gitHardeningArgs(hooksDir: string): string[];
 /**
  * Prepended to a transport command on the local forge's `omg-local` remote:
  * the stock pack programs, so a `remote.omg-local.receivepack` or
  * `uploadpack` planted in the checkout's .git/config never runs. Its url and
- * every push url are compared with the mirror path before each fetch and
- * push (remoteRepoMismatch), so a planted pushurl or insteadOf refuses.
+ * every push url are compared with the exact mirror path before each fetch
+ * and push (localRemoteMismatch), so a planted pushurl or insteadOf refuses.
  */
 export declare const LOCAL_REMOTE_PACK_ARGS: readonly string[];
+/**
+ * The transport git really runs for an `omg-local` command. A fetch never
+ * uses the checkout's `remote.omg-local.fetch` refspec (`--refmap=`) or
+ * follows tags: a bare branch becomes the explicit
+ * `+refs/heads/<b>:refs/remotes/omg-local/<b>`, so only that tracking ref
+ * moves, never a planted destination such as `refs/heads/x/*`. A push names
+ * the mirror path itself (`mirror`), because a push through the named remote
+ * also moves the local refs that remote's fetch refspec maps the pushed
+ * branch to (an empty `-c remote.omg-local.fetch=` does not reset it).
+ * The remote's url and push urls, with insteadOf / pushInsteadOf applied,
+ * are checked to be that path before every push (localRemoteMismatch), so
+ * a rewrite that would apply to the path refuses first.
+ */
+export declare function localTransportArgs(args: readonly string[], mirror?: string): string[];
 /**
  * Run git with `core.hooksPath` set to an engine-owned empty directory and
  * `core.fsmonitor=false`, so no hook (pre-push, post-checkout,
@@ -93,6 +125,9 @@ export declare const LOCAL_REMOTE_PACK_ARGS: readonly string[];
  * the global one and every file a config includes are hashed into the lane
  * snapshot instead (review-guard.ts), so a lane that plants a helper,
  * sshCommand, pushInsteadOf or clean filter there parks the run.
+ *
+ * `localMirror` (the local forge) is the engine-owned mirror path a push on
+ * `omg-local` goes to (localTransportArgs).
  */
-export declare function hardenedGitExec(exec: Exec, hooksDir: string): Exec;
+export declare function hardenedGitExec(exec: Exec, hooksDir: string, localMirror?: () => string | undefined): Exec;
 //# sourceMappingURL=exec.d.ts.map

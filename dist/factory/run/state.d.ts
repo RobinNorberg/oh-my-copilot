@@ -164,6 +164,12 @@ export interface FactoryRunState {
      * engine-owned bare mirror. Sealed at creation, never changed.
      */
     remote?: typeof LOCAL_REMOTE;
+    /**
+     * The local forge only: the factory.forge.local.gate argv this run first
+     * ran its gate with. Every later gate run must find the same argv in the
+     * trusted config (local-gate.ts assertLocalGateCommand); absent until then.
+     */
+    localGate?: string[];
     repoUrl: string;
     base: string;
     branch: string;

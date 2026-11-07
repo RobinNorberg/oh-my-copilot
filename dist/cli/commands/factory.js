@@ -375,8 +375,9 @@ export function factoryEnqueueCommand(deps) {
  */
 export function pollLocalBaseSync(exec, ledgerDir) {
     return ({ root, base, config }) => {
-        const guarded = factoryGuardExec(hardenedGitExec(exec, emptyHooksDir(ledgerDir)), () => [base]);
-        const sha = syncLocalMirror(guarded, root, config.repo.url, base);
+        let basePush;
+        const guarded = factoryGuardExec(hardenedGitExec(exec, emptyHooksDir(ledgerDir), () => config.repo.url), () => [base], undefined, undefined, () => ({ mirror: config.repo.url, baseSha: basePush }));
+        const sha = syncLocalMirror(guarded, root, config.repo.url, base, (s) => { basePush = s; });
         return `synced ${base} ${sha.slice(0, 12)} to the local forge mirror`;
     };
 }

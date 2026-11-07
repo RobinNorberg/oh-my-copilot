@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readLocalCheckRecord, readMirrorRef } from '../../../forge/local/index.js';
 import { runFactoryEngine, EXIT_AWAITING_HUMAN } from '../engine.js';
+import { factoryForgeOptions } from '../forge-roots.js';
 import { checkoutPath } from '../prepare.js';
 import { readFactoryState } from '../state.js';
 import { commitFile, gitIn, review } from './fake-lanes.js';
@@ -44,10 +45,14 @@ describe('factory run on the local forge', () => {
         // Offline: no gh/az/copilot, nothing on origin, every mirror transport pinned to the stock pack programs.
         expect(foreignCommands(w)).toEqual([]);
         expect(w.calls.filter((c) => /\borigin\b/.test(c))).toEqual([]);
-        const transports = w.raw.filter((c) => c.cmd === 'git' && c.args.some((a, i) => (a === 'push' || a === 'fetch' || a === 'ls-remote') && c.args[i + 1] === 'omg-local'));
+        const transports = w.raw.filter((c) => c.cmd === 'git' && c.args.some((a, i) => (a === 'push' || a === 'fetch' || a === 'ls-remote') && (c.args[i + 1] === 'omg-local' || c.args[i + 1] === mirror)));
         expect(transports.length).toBeGreaterThan(0);
         for (const t of transports)
             expect(t.args).toContain('remote.omg-local.receivepack=git-receive-pack');
+        // Every push names the mirror path (no remote fetch refspec moves a local ref), every fetch an explicit refspec.
+        expect(w.calls.filter((c) => c.startsWith('git push omg-local'))).toEqual([]);
+        expect(w.calls.filter((c) => c.startsWith(`git push ${mirror} `)).length).toBeGreaterThan(0);
+        expect(w.calls.filter((c) => c.startsWith('git fetch') && !c.includes('--refmap= omg-local +refs/heads/'))).toEqual([]);
     });
     it('after the human merge on the base, the next run syncs the mirror and finishes the run as merged', async () => {
         w = localWorld();
@@ -97,6 +102,41 @@ describe('factory run on the local forge', () => {
         expect(w.calls.filter((c) => c.startsWith('git push'))).toEqual([]);
         expect(readdirSync(join(evil, 'refs', 'heads'))).toEqual([]);
         expect(existsSync(join(evil, 'packed-refs'))).toBe(false);
+    });
+    it('a gate that cannot start parks at awaiting-human: gates (no FAILURE, no ci-fix); a gate changed after that is refused', async () => {
+        w = localWorld();
+        w.gate = async () => ({ status: 127, stdout: '', stderr: '', timedOut: false, startError: 'the local gate executable npm is not on PATH' });
+        const lanes = lanesFor(w, [greet(), review('approve')]);
+        const out = await runFactoryEngine(localOpts(w, lanes));
+        expect(out.exitCode, out.message).toBe(EXIT_AWAITING_HUMAN);
+        expect(out.gate?.name).toBe('gates');
+        expect(out.gate?.reason).toMatch(/the local gate could not start: the local gate executable npm is not on PATH/);
+        const state = readFactoryState(w.root, LOCAL_ISSUE);
+        expect(readLocalCheckRecord(w.stateDir, w.root, state.head)).toBeUndefined();
+        expect(lanes.started.map((s) => s.laneId).filter((id) => id.includes('ci-fix'))).toEqual([]);
+        // The run recorded the gate it tried.
+        expect(state.localGate).toEqual(['node', '--test']);
+        // The trusted config now names another gate: the rerun refuses it instead of judging the head with it.
+        const changed = { ...w.config, local: { ...w.config.local, gate: ['node', '--test', '--experimental'] } };
+        let ran = 0;
+        const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), {
+            forge: { config: changed, options: { ...factoryForgeOptions(w.root), stateDir: w.stateDir } },
+            localGate: async () => { ran += 1; return { status: 0, stdout: '', stderr: '', timedOut: false }; },
+        }));
+        expect(again.exitCode, again.message).toBe(EXIT_AWAITING_HUMAN);
+        expect(again.gate?.reason).toMatch(/refuses the local gate `node --test --experimental`: this run recorded `node --test`/);
+        expect(ran).toBe(0);
+    });
+    it('remote.omg-local.vcs in the checkout refuses the run as an unusable forge (exit 5) before any transport', async () => {
+        w = localWorld();
+        gitIn(w.root, 'remote', 'add', 'omg-local', w.config.repo.url);
+        gitIn(w.root, 'config', 'remote.omg-local.vcs', 'ext');
+        const lanes = lanesFor(w, [greet(), review('approve')]);
+        const out = await runFactoryEngine(localOpts(w, lanes));
+        expect(out.exitCode, out.message).toBe(5);
+        expect(out.message).toMatch(/unsupported forge: refusing the local forge: the checkout's git config sets remote\.omg-local\.vcs/);
+        expect(lanes.started).toEqual([]);
+        expect(w.calls.filter((c) => /^git (push|fetch|ls-remote)\b/.test(c))).toEqual([]);
     });
     it('a mirror base that is not an ancestor of the local base refuses the sync (fast-forward only)', async () => {
         w = localWorld();
