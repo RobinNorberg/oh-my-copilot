@@ -4,6 +4,12 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+# oh-my-copilot v5.19.7
+
+## [5.19.7] - 2026-11-07
+
+Fork **v5.19.7** (from v5.19.6) is a fix release for Copilot CLI users. `/omc-setup` and `/team` no longer give Claude Code instructions on Copilot CLI, and setup finds its own scripts in PowerShell. On Windows, hooks no longer overrun their time budget on a busy machine: the hook state lock handles slow owner probes (upstream #4727) and no longer spawns PowerShell for its own identity, and hook stdin waits fit inside the runner's budget. Lock records move to version 2; see the note on mixed plugin versions below. This release was published without the live Copilot smoke.
+
 ### Fixed
 
 - Hook stdin waits now fit inside the timeout `run.cjs` gives each hook. `run.cjs` exports the hook's inner budget as `OMC_HOOK_INNER_BUDGET_MS` and the time its clock started as `OMC_HOOK_INNER_BUDGET_START_MS`, and `readStdin()` in `scripts/lib/stdin.mjs` (and its template copy) waits at most what is left of the budget after start-up, minus a margin for the hook's work and exit (1.5 s on Windows, 0.5 s elsewhere), never under 250 ms. Before, `git-guardrails`, `budget-guard`, `premium-budget`, `runs-reconciler` and `stale-run-reporter` waited a fixed 3 s inside a 3.5 s Windows budget, and the 3 s PostToolUse, Stop and subagent hooks waited 2 s inside 2.5 s, so on a loaded machine the runner killed them instead of letting them fail open. Now the 5 s hooks wait at most 1.5 s on Windows and 3 s elsewhere, and the 3 s hooks at most 1 s on Windows; `scripts/persistent-mode.cjs` applies the same rule. On Linux and macOS the waits shrink only by the hook's own start-up time. With `OMC_HOOK_FAIL_CLOSED=1`, `git-guardrails` now exits 124 when its stdin wait ran out before a complete payload, instead of failing open.
