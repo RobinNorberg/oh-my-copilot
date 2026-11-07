@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // @ts-expect-error Standalone hook runtime source is intentionally JavaScript-only.
 import { pathIdentity, publishCacheOccupancy } from '../../scripts/lib/cache-occupancy.mjs';
-import { removeTempDir } from './helpers/platform.js';
+import { removeTempDir, scaleTiming } from './helpers/platform.js';
 const SCRIPT_PATH = join(__dirname, '..', '..', 'scripts', 'session-start.mjs');
 const NODE = process.execPath;
 function startPostToolFailureLockHolder(statePath) {
@@ -185,6 +185,22 @@ async function waitForFilesToAppear(paths, timeoutMs) {
         await new Promise(resolve => setTimeout(resolve, 25));
     }
     return paths.every(path => existsSync(path));
+}
+// The stabilization worker writes the ready file once it holds its cleanup lock, inside its
+// lifetime (waitForTestArtifactScanRelease('INITIAL') in scripts/session-start.mjs). The release
+// file exists up front, so the worker goes on at once. Unlike the short-lived worker lock, the
+// ready file stays, so a slow worker start cannot slip between the test's polls.
+function initialScanReadySignal(dir) {
+    const readyPath = join(dir, 'initial-scan-ready');
+    const releasePath = join(dir, 'initial-scan-release');
+    writeFileSync(releasePath, 'continue');
+    return {
+        readyPath,
+        env: {
+            OMC_TEST_TOOL_FAILURE_INITIAL_SCAN_READY_PATH: readyPath,
+            OMC_TEST_TOOL_FAILURE_INITIAL_SCAN_RELEASE_PATH: releasePath,
+        },
+    };
 }
 describe('session-start.mjs regression #1386', () => {
     let tempDir;
@@ -529,7 +545,9 @@ describe('session-start.mjs regression #1386', () => {
             worker.once('exit', code => resolve({ code, at: Date.now() }));
         });
         try {
-            expect(await waitForFilesToAppear([workerLockPath], 5000)).toBe(true);
+            // The lock stays held while the unverifiable holder blocks the worker, so a longer wait
+            // only gives a slow worker start (its win32 PowerShell probes) room to get there.
+            expect(await waitForFilesToAppear([workerLockPath], scaleTiming(5000))).toBe(true);
             // Past the 500 ms window the unverifiable holder still keeps the worker waiting.
             await new Promise(resolve => setTimeout(resolve, 1500));
             expect(worker.exitCode).toBeNull();
@@ -607,8 +625,13 @@ describe('session-start.mjs regression #1386', () => {
         const omcRoot = join(fakeProject, '.omg');
         const workerLockPath = join(omcRoot, 'state', '.legacy-tool-failure-cleanup-worker.lock');
         expect(publishCacheOccupancy(olderPluginRoot, configDir, process.pid)).toBe(true);
+        const initialScan = initialScanReadySignal(tempDir);
+        // The lifetime is this test's input. Before its lock the worker spends a win32 PowerShell
+        // owner probe of the registry pid, so the lifetime must leave room for that start-up plus
+        // the 1000 ms observation below; it scales with the host like the other slack.
+        const hardLifetimeMs = scaleTiming(3000);
         const startedAt = Date.now();
-        const worker = spawn(NODE, [SCRIPT_PATH, '--stabilize-legacy-tool-failure-state', omcRoot, '500', '3000'], {
+        const worker = spawn(NODE, [SCRIPT_PATH, '--stabilize-legacy-tool-failure-state', omcRoot, '500', String(hardLifetimeMs)], {
             stdio: 'ignore',
             env: {
                 ...process.env,
@@ -617,6 +640,7 @@ describe('session-start.mjs regression #1386', () => {
                 COPILOT_HOME: configDir,
                 CLAUDE_PLUGIN_ROOT: currentPluginRoot,
                 OMC_HOOK_BACKGROUND_CHILD: '1',
+                ...initialScan.env,
             },
         });
         const workerExit = new Promise((resolve, reject) => {
@@ -624,16 +648,16 @@ describe('session-start.mjs regression #1386', () => {
             worker.once('exit', code => resolve(code));
         });
         try {
-            expect(await waitForFilesToAppear([workerLockPath], 5000)).toBe(true);
+            expect(await waitForFilesToAppear([initialScan.readyPath], scaleTiming(5000))).toBe(true);
             // Past the 500 ms stabilization window the older version still holds the worker.
             await new Promise(resolve => setTimeout(resolve, 1000));
             expect(worker.exitCode).toBeNull();
             const exitCode = await Promise.race([
                 workerExit,
-                new Promise(resolve => setTimeout(() => resolve(undefined), 7000)),
+                new Promise(resolve => setTimeout(() => resolve(undefined), hardLifetimeMs + scaleTiming(4000))),
             ]);
             expect(exitCode).toBe(0);
-            expect(Date.now() - startedAt).toBeGreaterThanOrEqual(3000);
+            expect(Date.now() - startedAt).toBeGreaterThanOrEqual(hardLifetimeMs);
             expect(existsSync(workerLockPath)).toBe(false);
             // The older version never exited: the worker gave up waiting for it.
             expect(readdirSync(registryDir)).toHaveLength(1);
@@ -699,6 +723,7 @@ describe('session-start.mjs regression #1386', () => {
         const workerLockPath = join(stateDir, '.legacy-tool-failure-cleanup-worker.lock');
         writeFileSync(legacyPath, JSON.stringify({ tool_input_preview: 'legacy payload that outlives the worker' }));
         const holder = startPostToolFailureLockHolder(legacyPath);
+        const initialScan = initialScanReadySignal(tempDir);
         let worker;
         let workerExit;
         try {
@@ -712,6 +737,7 @@ describe('session-start.mjs regression #1386', () => {
                     COPILOT_HOME: join(fakeHome, '.claude'),
                     CLAUDE_PLUGIN_ROOT: join(tempDir, 'plugin-cache', 'oh-my-copilot', 'current'),
                     OMC_HOOK_BACKGROUND_CHILD: '1',
+                    ...initialScan.env,
                 },
             });
             const child = worker;
@@ -719,8 +745,11 @@ describe('session-start.mjs regression #1386', () => {
                 child.once('error', reject);
                 child.once('exit', code => resolve({ code, at: Date.now() }));
             });
-            expect(await waitForFilesToAppear([workerLockPath], 5000)).toBe(true);
-            // Free the lock after the 1000 ms lifetime but before the 2500 ms cleanup wait runs out.
+            // The worker held its cleanup lock inside its lifetime. The lock itself lives under a
+            // second, so a loaded host can miss it; the ready file stays.
+            expect(await waitForFilesToAppear([initialScan.readyPath], scaleTiming(5000))).toBe(true);
+            // The ready file is written inside the 1000 ms lifetime, so 1700 ms after it the lifetime
+            // has ended. The purge started right after it, so its 2500 ms lock wait has not run out.
             await new Promise(resolve => setTimeout(resolve, 1700));
             const releasedAt = Date.now();
             expect(await holder.release()).toEqual({ code: 0, signal: null });
