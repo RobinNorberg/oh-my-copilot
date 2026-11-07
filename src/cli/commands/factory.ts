@@ -34,8 +34,8 @@ import { CopilotRunManager, defaultCopilotRunDeps } from '../../copilot-run/job.
 import { resolveFactoryRunLimits, runCredits, type LoadedFactoryRunLimits } from '../../factory/run/budget.js';
 import { cleanFactoryRun } from '../../factory/run/clean.js';
 import { EXIT_AWAITING_HUMAN, runFactoryEngine, type FactoryRunOutcome } from '../../factory/run/engine.js';
-import { factoryGuardExec } from '../../factory/run/exec.js';
-import { EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, factoryForgeOptions, loadFactoryForgeConfig, originForgeKind } from '../../factory/run/forge-roots.js';
+import { factoryGuardExec, hardenedGitExec } from '../../factory/run/exec.js';
+import { EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, factoryForgeOptions, loadFactoryForgeConfig, originForgeKind, syncLocalMirror } from '../../factory/run/forge-roots.js';
 import type { LoadedForgeConfig } from '../../forge/config.js';
 import { CopilotLaneBackend, type LaneBackend } from '../../factory/run/lane.js';
 import type { GateConfigLoader } from '../../factory/run/prepare.js';
@@ -48,7 +48,8 @@ import { defaultFactoryCheckDeps, factoryCheckCommand, ttyConfirm } from './fact
 import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_INCOMPATIBLE, EXIT_CHECK_USAGE, type FactoryCheckDeps } from '../../factory/check/cli.js';
 import { runFactoryEnqueue } from '../../factory/enqueue.js';
 import { resolveHealConfig } from '../../factory/heal/config.js';
-import { defaultLedgerDir } from '../../factory/run/ledger.js';
+import { defaultLedgerDir, emptyHooksDir } from '../../factory/run/ledger.js';
+import type { FactoryPollDeps } from '../../factory/poll.js';
 import { listenForgeRefusal } from '../../factory/setup/detect.js';
 import { factorySetupCommand } from './factory-setup.js';
 import { factoryBoardCommand } from './factory-board.js';
@@ -372,6 +373,21 @@ export function factoryEnqueueCommand(deps: FactoryCheckDeps): Command {
     });
 }
 
+/**
+ * `omg factory poll`'s local forge base sync (FactoryPollDeps.localBaseSync):
+ * syncLocalMirror through the engine's exec shape, guarded with the base as
+ * the one branch it may push to the mirror and hardened (no hooks, the
+ * omg-local pack programs pinned), so a human merge on the base turns the
+ * local PR MERGED on the next tick.
+ */
+export function pollLocalBaseSync(exec: Exec, ledgerDir: string): NonNullable<FactoryPollDeps['localBaseSync']> {
+  return ({ root, base, config }) => {
+    const guarded = factoryGuardExec(hardenedGitExec(exec, emptyHooksDir(ledgerDir)), () => [base]);
+    const sha = syncLocalMirror(guarded, root, config.repo.url, base);
+    return `synced ${base} ${sha.slice(0, 12)} to the local forge mirror`;
+  };
+}
+
 export function factoryCommand(): Command {
   const cmd = new Command('factory');
   cmd.description('Software factory automation (chain trigger + intake listener)');
@@ -382,6 +398,7 @@ export function factoryCommand(): Command {
   cmd.addCommand(factoryPollCommand({
     ...defaultFactoryCheckDeps(defaultFactoryRunDeps.base),
     healScan: defaultPollHealScan(defaultExec, (root) => resolveHealConfig(userConfigLayers().trustedUser, projectConfig(root)), defaultLedgerDir()),
+    localBaseSync: pollLocalBaseSync(defaultExec, defaultLedgerDir()),
   }));
   cmd.addCommand(healCommand({
     exec: defaultExec,
