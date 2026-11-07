@@ -8,12 +8,12 @@
  * `.omg/factory/local/items/<id>/`; enqueue writes backlog files that the
  * human commits.
  */
-import { appendFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, lstatSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { shipyardKeys, } from '../types.js';
 import { acceptanceSectionOf, backlogFileId, backlogSlug, BacklogParseError, parseBacklogFile, renderBacklogFile } from './backlog.js';
 import { backlogListArgs, backlogShowArgs } from './mirror.js';
-import { writeAtomic } from './store.js';
+import { appendNoFollow, noLinkPath, writeAtomic } from './store.js';
 const TRUSTED_READ_ENV = Object.freeze({ GIT_NO_REPLACE_OBJECTS: '1' });
 const HEX40 = /^[0-9a-f]{40}$/;
 const lf = (s) => s.replace(/\r\n/g, '\n');
@@ -30,6 +30,10 @@ function byId(items) {
 }
 export function localTracker(ctx) {
     const committedCache = new Map();
+    /** Committed backlog files that did not parse (skipped, so one bad file does not block intake). */
+    const warnings = [];
+    /** The runtime root (`humanDir` is `<omgRoot>/factory/local`): no link below it is followed. */
+    const omgRoot = join(ctx.humanDir, '..', '..');
     const git = (args) => {
         const r = ctx.exec('git', args, { cwd: ctx.root, env: TRUSTED_READ_ENV });
         if (r.status !== 0)
@@ -49,17 +53,24 @@ export function localTracker(ctx) {
                 continue;
             const body = git(backlogShowArgs(sha, path));
             text.set(path, lf(body));
-            items.push(parseBacklogFile(path, body));
+            try {
+                items.push(parseBacklogFile(path, body));
+            }
+            catch (err) {
+                if (!(err instanceof BacklogParseError))
+                    throw err;
+                warnings.push(`local backlog: skipped ${err.message}`);
+            }
         }
         const result = { items: byId(items), text };
         committedCache.set(sha, result);
         return result;
     };
     const dirOnDisk = () => join(ctx.root, ...ctx.backlogDir.split('/'));
-    /** The working-tree items (regular files only; a symlink is never followed). */
+    /** The working-tree items (regular files only; a symlink is never followed, at any level below the root). */
     const working = () => {
         const dir = dirOnDisk();
-        if (!existsSync(dir) || !lstatSync(dir).isDirectory())
+        if (!noLinkPath(ctx.root, dir, false) || !existsSync(dir) || !lstatSync(dir).isDirectory())
             return [];
         const out = [];
         for (const name of readdirSync(dir).sort()) {
@@ -165,9 +176,7 @@ export function localTracker(ctx) {
         },
         comment(id, bodyFile) {
             try {
-                const dir = itemDir(id);
-                mkdirSync(dir, { recursive: true });
-                appendFileSync(join(dir, 'comments.md'), `\n<!-- ${new Date().toISOString()} -->\n${readFileSync(bodyFile, 'utf8').replace(/\n*$/, '\n')}`);
+                appendNoFollow(omgRoot, join(itemDir(id), 'comments.md'), `\n<!-- ${new Date().toISOString()} -->\n${readFileSync(bodyFile, 'utf8').replace(/\n*$/, '\n')}`);
                 return { ok: true, stderr: '' };
             }
             catch (err) {
@@ -176,7 +185,7 @@ export function localTracker(ctx) {
         },
         setProgress(id, stage, _mapping) {
             try {
-                writeAtomic(join(itemDir(id), 'progress.json'), `${JSON.stringify({ id, stage, updatedAt: new Date().toISOString() }, null, 2)}\n`);
+                writeAtomic(join(itemDir(id), 'progress.json'), `${JSON.stringify({ id, stage, updatedAt: new Date().toISOString() }, null, 2)}\n`, omgRoot);
                 return { ok: true, detail: `local item #${id}: ${stage}` };
             }
             catch (err) {
@@ -189,7 +198,7 @@ export function localTracker(ctx) {
                 const fields = entry.item.fields;
                 if (fields.labels.includes(marker))
                     return { ok: true, stderr: '' };
-                writeFileSync(file, renderBacklogFile({ ...fields, labels: [...fields.labels, marker] }, entry.item.body));
+                writeAtomic(file, renderBacklogFile({ ...fields, labels: [...fields.labels, marker] }, entry.item.body), ctx.root);
                 return { ok: true, stderr: '' };
             }
             catch (err) {
@@ -206,10 +215,10 @@ export function localTracker(ctx) {
             const onDisk = working().map((d) => d.item.id);
             const id = Math.max(0, ...all.keys(), ...onDisk) + 1;
             const name = `${id}-${backlogSlug(draft.title)}.md`;
-            const dir = dirOnDisk();
-            mkdirSync(dir, { recursive: true });
+            const file = join(dirOnDisk(), name);
+            noLinkPath(ctx.root, file);
             const text = renderBacklogFile({ title: draft.title, state: 'open', labels: [...new Set(draft.labels)], dependsOn: [], ...(draft.priority === undefined ? {} : { priority: draft.priority }) }, body);
-            writeFileSync(join(dir, name), text, { flag: 'wx' });
+            writeFileSync(file, text, { flag: 'wx' });
             return id;
         },
         updateItem(id, update) {
@@ -218,8 +227,10 @@ export function localTracker(ctx) {
             const remove = new Set(update.removeLabels);
             const labels = [...new Set([...fields.labels.filter((l) => !remove.has(l)), ...update.addLabels])];
             const body = withAcceptance(readBody(update.bodyFile), update.acceptance);
-            mkdirSync(dirname(file), { recursive: true });
-            writeFileSync(file, renderBacklogFile({ ...fields, title: update.title, labels, ...(update.priority === undefined ? {} : { priority: update.priority }) }, body));
+            writeAtomic(file, renderBacklogFile({ ...fields, title: update.title, labels, ...(update.priority === undefined ? {} : { priority: update.priority }) }, body), ctx.root);
+        },
+        warnings() {
+            return [...warnings];
         },
         peekItems(ids) {
             const all = entries();

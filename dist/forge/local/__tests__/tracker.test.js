@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { localTracker } from '../tracker.js';
@@ -55,10 +55,16 @@ describe('local tracker: committed items (run)', () => {
         expect(() => tracker({ baseSha: () => 'main' }).t.viewItem(1)).toThrow(/40-hex/);
         expect(() => tracker({ baseSha: () => base }).t.queryItems({ type: 'label', label: 'x' }, 5)).toThrow(/local-backlog/);
     });
-    it('names the file when a committed item is malformed, and refuses duplicate ids', () => {
+    it('skips a malformed committed item with a warning naming the file, and refuses duplicate ids', () => {
         fx.write('.copilot/backlog/5-bad.md', '---\ntitle: x\nowner: me\n---\n');
         const bad = fx.commit('bad');
-        expect(() => tracker({ baseSha: () => bad }).t.queryItems({ type: 'local-backlog' }, 9)).toThrow(/\.copilot\/backlog\/5-bad\.md: line 3: unknown key owner/);
+        const { t } = tracker({ baseSha: () => bad });
+        expect(t.warnings()).toEqual([]);
+        expect(t.queryItems({ type: 'local-backlog' }, 9)).toEqual([1, 2]);
+        expect(t.queryItems({ type: 'local-backlog' }, 9)).toEqual([1, 2]);
+        expect(t.warnings()).toHaveLength(1);
+        expect(t.warnings()[0]).toMatch(/skipped .*\.copilot\/backlog\/5-bad\.md: line 3: unknown key owner/);
+        expect(() => t.viewItem(5)).toThrow(/not in/);
         fx.write('.copilot/backlog/5-bad.md', '---\ntitle: x\n---\n');
         fx.write('.copilot/backlog/1-dup.md', '---\ntitle: dup\n---\n');
         const dup = fx.commit('dup');
@@ -104,6 +110,41 @@ describe('local tracker: working tree (check, board, enqueue)', () => {
         ]);
         expect(t.findByKey(3).map((r) => [r.key, r.item.id])).toEqual([['child-key', 2]]);
         expect(t.findByKey(4)).toEqual([]);
+    });
+});
+describe('local tracker: symbolic links in the working tree', () => {
+    const plant = (link, target) => {
+        mkdirSync(target, { recursive: true });
+        symlinkSync(target, link, 'junction');
+    };
+    it('refuses comment and setProgress through a linked directory under the runtime root', () => {
+        const outside = join(fx.tmp, 'outside');
+        mkdirSync(join(fx.root, '.omg', 'factory', 'local', 'items'), { recursive: true });
+        plant(join(fx.root, '.omg', 'factory', 'local', 'items', '1'), outside);
+        const { t } = tracker({ baseSha: () => base });
+        const body = join(fx.tmp, 'c.md');
+        writeFileSync(body, 'lane text');
+        expect(t.comment(1, body)).toMatchObject({ ok: false, stderr: expect.stringMatching(/symbolic link/) });
+        expect(t.setProgress(1, 'building', {})).toMatchObject({ ok: false, detail: expect.stringMatching(/symbolic link/) });
+        expect(existsSync(join(outside, 'comments.md'))).toBe(false);
+        expect(existsSync(join(outside, 'progress.json'))).toBe(false);
+    });
+    it('refuses backlog reads and writes through a linked .copilot parent', () => {
+        const outside = join(fx.tmp, 'outside-copilot');
+        mkdirSync(join(outside, 'backlog'), { recursive: true });
+        writeFileSync(join(outside, 'backlog', '1-add-remove.md'), ITEM1);
+        rmSync(join(fx.root, '.copilot'), { recursive: true, force: true });
+        plant(join(fx.root, '.copilot'), outside);
+        const body = join(fx.tmp, 'b.md');
+        writeFileSync(body, 'Body.');
+        const { t } = tracker({ baseSha: () => base, workingTree: true });
+        expect(() => t.queryItems({ type: 'local-backlog' }, 9)).toThrow(/symbolic link/);
+        const committedOnly = tracker({ baseSha: () => base }).t;
+        expect(() => committedOnly.createItem({ title: 'New', bodyFile: body, labels: [] })).toThrow(/symbolic link/);
+        expect(committedOnly.addMarker(1, 'factory:planned')).toMatchObject({ ok: false, stderr: expect.stringMatching(/symbolic link/) });
+        expect(() => committedOnly.updateItem(1, { title: 'X', bodyFile: body, addLabels: [], removeLabels: [] })).toThrow(/symbolic link/);
+        expect(readFileSync(join(outside, 'backlog', '1-add-remove.md'), 'utf8')).toBe(ITEM1);
+        expect(existsSync(join(outside, 'backlog', '4-new.md'))).toBe(false);
     });
 });
 describe('local tracker: writes', () => {

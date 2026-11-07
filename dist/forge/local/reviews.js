@@ -6,10 +6,10 @@
  * comments are written for the human under `.omg/factory/local/prs/<n>/`.
  * There are no review threads (listThreads is omitted).
  */
-import { appendFileSync, mkdirSync, readFileSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
 import { isLocalBranchName, mergedArgs, readMirrorRef } from './mirror.js';
-import { readPrStore, updatePrStore, writeAtomic } from './store.js';
+import { appendNoFollow, readPrStore, updatePrStore, writeAtomic } from './store.js';
 /** ship's TRUSTED_READ_ENV, by value (importing ship/exec.ts would load child_process into src/forge). */
 const TRUSTED_READ_ENV = Object.freeze({ GIT_NO_REPLACE_OBJECTS: '1' });
 export const localPrUrl = (pr) => `omg-local://pr/${pr}`;
@@ -52,6 +52,8 @@ export function localReviews(ctx) {
         return { number: p.number, state: p.state, isDraft: p.isDraft, baseRefName: p.base, baseRefOid: base, headRefName: p.head, headRefOid: head, url: localPrUrl(p.number) };
     };
     const humanFile = (pr, name) => join(ctx.humanDir, 'prs', String(pr), name);
+    /** The runtime root (`humanDir` is `<omgRoot>/factory/local`): no link below it is followed. */
+    const omgRoot = join(ctx.humanDir, '..', '..');
     return {
         findOpenPrForBranch(branch) {
             return readPrStore(ctx.storePath).prs.filter((p) => p.head === branch && p.state === 'OPEN').map(refresh).find((p) => p.state === 'OPEN')?.number;
@@ -79,7 +81,7 @@ export function localReviews(ctx) {
                 store.prs.push({ number: n, head: o.head, base: o.base, title: o.title, state: 'OPEN', isDraft: true, ...(o.itemId === undefined ? {} : { itemId: o.itemId }), createdAt: new Date().toISOString() });
                 return n;
             });
-            writeAtomic(humanFile(number, 'body.md'), `# ${o.title}\n\n${body}`);
+            writeAtomic(humanFile(number, 'body.md'), `# ${o.title}\n\n${body}`, omgRoot);
             return number;
         },
         viewPr: view,
@@ -99,9 +101,7 @@ export function localReviews(ctx) {
             try {
                 if (!readPrStore(ctx.storePath).prs.some((x) => x.number === pr))
                     return { ok: false, stderr: `local PR #${pr} does not exist` };
-                const file = humanFile(pr, 'comments.md');
-                mkdirSync(join(file, '..'), { recursive: true });
-                appendFileSync(file, `\n<!-- ${new Date().toISOString()} -->\n${readFileSync(bodyFile, 'utf8').replace(/\n*$/, '\n')}`);
+                appendNoFollow(omgRoot, humanFile(pr, 'comments.md'), `\n<!-- ${new Date().toISOString()} -->\n${readFileSync(bodyFile, 'utf8').replace(/\n*$/, '\n')}`);
                 return { ok: true, stderr: '' };
             }
             catch (err) {

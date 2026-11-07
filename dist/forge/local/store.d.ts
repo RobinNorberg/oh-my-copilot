@@ -15,12 +15,31 @@ export declare function isUnder(path: string, root: string): boolean;
  * when it exists, else the resolved one.
  */
 export declare function engineOwnedDir(dir: string, untrustedRoots: readonly string[]): string;
-/** Write a file atomically; the parent is created. */
-export declare function writeAtomic(path: string, content: string): void;
+/**
+ * Refuse a path under `anchor` (the checkout or the runtime root, both in
+ * the untrusted working tree) when any component below `anchor`, the leaf
+ * included, is a symbolic link (or a junction), or a parent is not a
+ * directory: a planted link must not redirect a write or a read outside the
+ * tree. With `create`, the anchor is made when missing and the parents below
+ * it one at a time, each checked again; without it, false when a parent is
+ * missing. The leaf may be absent.
+ */
+export declare function noLinkPath(anchor: string, path: string, create?: boolean): boolean;
+/**
+ * Write a file atomically; the parent is created. With `anchor`, no
+ * component below it may be a symbolic link (noLinkPath).
+ */
+export declare function writeAtomic(path: string, content: string, anchor?: string): void;
+/** Append to a file under `anchor` without following a link below it (O_NOFOLLOW on the leaf where the platform has it). */
+export declare function appendNoFollow(anchor: string, path: string, text: string): void;
 export declare const LOCK_TIMEOUT_MS = 15000;
 /** A lock directory older than this is left over from a crashed writer. */
 export declare const LOCK_STALE_MS = 60000;
-/** Run `fn` while holding `<path>.lock` (an exclusive mkdir). */
+/**
+ * Run `fn` while holding `<path>.lock` (an exclusive mkdir holding an owner
+ * token). Only the owner releases the lock; a lock older than `staleMs` is
+ * broken by one waiter.
+ */
 export declare function withFileLock<T>(path: string, fn: () => T, o?: {
     timeoutMs?: number;
     staleMs?: number;
