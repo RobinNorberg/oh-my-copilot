@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
+import { scaleTiming } from './helpers/platform.js';
+import { clockedRunnerArgs, readRunnerClock, runnerClockEnv, runnerHangGuardMs } from './helpers/runner-clock.js';
 
 const runCjs = require('../../scripts/run.cjs');
 const RUN_CJS_PATH = join(process.cwd(), 'scripts', 'run.cjs');
@@ -42,7 +44,9 @@ async function waitForDeath(pid: number, timeoutMs = 3000): Promise<void> {
   throw new Error(`PID ${pid} survived process-tree reap`);
 }
 
-async function waitForFile(path: string, timeoutMs = 4000): Promise<void> {
+// A readiness wait, not a budget: scaled because a loaded host starts the
+// runner -> supervisor -> hook chain slowly.
+async function waitForFile(path: string, timeoutMs = scaleTiming(4000)): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (existsSync(path)) return;
@@ -56,20 +60,31 @@ async function waitForFile(path: string, timeoutMs = 4000): Promise<void> {
  * timeout. A declared budget far above the bound keeps a loaded host's
  * process starts from passing for the runner waiting that timeout out.
  * EARLY_CLOSE_BOUND_MS only stops a hung runner. The real bound is
- * EARLY_CLOSE_EXCESS_MS, measured from the consumer close or above a
- * baseline run, so slow process starts stay out of it. Runner exit time
+ * EARLY_CLOSE_EXCESS_MS, measured on the runner's own clock from the consumer
+ * close or above a baseline run, so slow process starts stay out of it. Runner exit time
  * lifts the real detection floor to about 2.3-2.5 s, so a fixed 2 s drain
  * fails only with the 1.5 s excess; a shorter drain goes unnoticed.
  */
+/**
+ * In-process runGenericChild reap cases. The inner timeout here is a test
+ * parameter, not a shipped budget: it only has to outlast the
+ * supervisor→hook→grandchild cold start (361–559ms on hosted Windows CI,
+ * over 1.5s on a loaded host) so the grandchild exists to be reaped, so it is
+ * scaled for the host. REAP_ALLOWANCE_MS, the time the runner may take to reap
+ * the tree and return after the timeout fires, is the property and stays fixed.
+ */
+const REAP_INNER_MS = scaleTiming(1500);
+const REAP_ALLOWANCE_MS = 1500;
+
 const EARLY_CLOSE_HOOK_SEC = 30;
 const EARLY_CLOSE_BOUND_MS = 10_000;
 const EARLY_CLOSE_EXCESS_MS = 1_500;
 const BASELINE_CLAMP_MS = 2_000;
 
 /**
- * Spawn-to-exit time of the runner for a hook that writes once and exits,
- * consumers open: the minimum of two runs, clamped so a load spike cannot
- * hide a drain regression.
+ * Lifetime of the runner (on its own clock, see helpers/runner-clock.ts) for a
+ * hook that writes once and exits, consumers open: the minimum of two runs,
+ * clamped so a load spike cannot hide a drain regression.
  */
 async function runnerBaselineMs(directory: string): Promise<number> {
   const first = await runnerBaselineOnceMs(directory);
@@ -80,16 +95,16 @@ async function runnerBaselineMs(directory: string): Promise<number> {
 async function runnerBaselineOnceMs(directory: string): Promise<number> {
   const pluginRoot = join(directory, 'baseline-plugin');
   const target = writePluginHook(pluginRoot, 'baseline.cjs', "process.stdout.write('BASE');\n", EARLY_CLOSE_HOOK_SEC);
-  const startedAt = Date.now();
-  const runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
+  const clockFile = join(directory, `baseline-clock-${Date.now()}.json`);
+  const runner = spawn(process.execPath, clockedRunnerArgs(RUN_CJS_PATH, target), {
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+    env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot, ...runnerClockEnv(clockFile) },
     windowsHide: true,
   });
   runner.stdout.resume();
   runner.stderr.resume();
   await new Promise(resolve => runner.once('exit', resolve));
-  return Date.now() - startedAt;
+  return readRunnerClock(clockFile).lifetimeMs;
 }
 
 function writePluginHook(root: string, scriptName: string, source: string, timeoutSec: number): string {
@@ -111,6 +126,13 @@ function writePluginHook(root: string, scriptName: string, source: string, timeo
   }));
   return target;
 }
+/**
+ * Spawn run.cjs on a hook that leaves a detached grandchild holding protocol
+ * stdout. `elapsed` is the runner's lifetime on its own clock (see
+ * helpers/runner-clock.ts), so the declared budget is asserted unchanged
+ * without counting process creation or the test noticing the exit; the
+ * test-side timers only stop a hung runner.
+ */
 async function runDeclaredOrphan(declaredSec: number): Promise<{
   elapsed: number;
   stdout: string;
@@ -121,18 +143,19 @@ async function runDeclaredOrphan(declaredSec: number): Promise<{
 }> {
   const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-budget-'));
   const pidfile = join(directory, 'orphan.pid');
+  const clockFile = join(directory, 'runner-clock.json');
   const pluginRoot = join(directory, 'plugin');
   const declaredMs = Math.round(declaredSec * 1000);
+  const hangGuardMs = runnerHangGuardMs(declaredMs);
   const target = writePluginHook(
     pluginRoot,
     'orphan-hook.cjs',
     readFileSync(DETACHED_ORPHAN, 'utf8'),
     declaredSec,
   );
-  const startedAt = Date.now();
-  const runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
+  const runner = spawn(process.execPath, clockedRunnerArgs(RUN_CJS_PATH, target), {
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, OMC_TEST_PIDFILE: pidfile, CLAUDE_PLUGIN_ROOT: pluginRoot },
+    env: { ...process.env, OMC_TEST_PIDFILE: pidfile, CLAUDE_PLUGIN_ROOT: pluginRoot, ...runnerClockEnv(clockFile) },
     windowsHide: true,
   });
   let orphanPid: number | undefined;
@@ -147,20 +170,20 @@ async function runDeclaredOrphan(declaredSec: number): Promise<{
     runner.stdout.on('end', () => { stdoutEnded = true; });
     const exitPromise = new Promise<number | null>((resolve, reject) => {
       const timer = setTimeout(
-        () => reject(new Error(`run.cjs exceeded declared ${declaredMs}ms outer budget`)),
-        declaredMs,
+        () => reject(new Error(`run.cjs hung past its ${declaredMs}ms declared budget plus ${hangGuardMs - declaredMs}ms slack`)),
+        hangGuardMs,
       );
       runner.once('exit', code => {
         clearTimeout(timer);
         resolve(code);
       });
     });
-    await waitForFile(pidfile, declaredMs);
+    await waitForFile(pidfile, hangGuardMs);
     orphanPid = Number(readFileSync(pidfile, 'utf8'));
     const exitCode = await exitPromise;
     await new Promise(resolve => setTimeout(resolve, 50));
     return {
-      elapsed: Date.now() - startedAt,
+      elapsed: readRunnerClock(clockFile).lifetimeMs,
       stdout,
       stderr,
       orphanPid,
@@ -236,16 +259,18 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
     try {
       const pluginRoot = join(directory, 'plugin');
       const target = writePluginHook(pluginRoot, 'hang-hook.cjs', 'setInterval(() => {}, 1e9);', 1);
-      const startedAt = Date.now();
-      const result = spawnSync(process.execPath, [RUN_CJS_PATH, target], {
+      const clockFile = join(directory, 'runner-clock.json');
+      // The 1s budget is asserted on the runner's own clock (see
+      // helpers/runner-clock.ts); the spawnSync timeout only stops a hang.
+      const result = spawnSync(process.execPath, clockedRunnerArgs(RUN_CJS_PATH, target), {
         encoding: 'utf8',
-        timeout: 1000,
-        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+        timeout: runnerHangGuardMs(1000),
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot, ...runnerClockEnv(clockFile) },
         windowsHide: true,
       });
       expect(result.error, result.error?.message).toBeUndefined();
       expect(result.status).toBe(0);
-      expect(Date.now() - startedAt).toBeLessThan(1000);
+      expect(readRunnerClock(clockFile).lifetimeMs).toBeLessThan(1000);
       expect(result.stderr).toMatch(/timed out after 500ms; exiting fail-open/);
     } finally {
       rmSync(directory, { recursive: true, force: true });
@@ -271,18 +296,20 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
     const pidfile = join(directory, 'orphan.pid');
     let orphanPid: number | undefined;
     const pluginRoot = join(directory, 'plugin');
+    const clockFile = join(directory, 'runner-clock.json');
     const declaredSec = 3;
     const declaredMs = declaredSec * 1000;
+    // Budget on the runner's clock; test-side timers only stop a hang.
+    const hangGuardMs = runnerHangGuardMs(declaredMs);
     const target = writePluginHook(
       pluginRoot,
       'orphan-hook.cjs',
       readFileSync(DETACHED_ORPHAN, 'utf8'),
       declaredSec,
     );
-    const startedAt = Date.now();
-    const runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
+    const runner = spawn(process.execPath, clockedRunnerArgs(RUN_CJS_PATH, target), {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, OMC_TEST_PIDFILE: pidfile, CLAUDE_PLUGIN_ROOT: pluginRoot },
+      env: { ...process.env, OMC_TEST_PIDFILE: pidfile, CLAUDE_PLUGIN_ROOT: pluginRoot, ...runnerClockEnv(clockFile) },
       windowsHide: true,
     });
     try {
@@ -295,23 +322,23 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
       runner.stderr.on('data', chunk => { stderr += chunk; });
       runner.stdout.on('end', () => { stdoutEnded = true; });
 
-      await waitForFile(pidfile, declaredMs);
-      orphanPid = Number(readFileSync(pidfile, 'utf8'));
-      expect(orphanPid).toBeGreaterThan(0);
-
-      const remainingMs = Math.max(1, declaredMs - (Date.now() - startedAt));
-      const exitCode = await new Promise<number | null>((resolve, reject) => {
+      const exitPromise = new Promise<number | null>((resolve, reject) => {
         const timer = setTimeout(
-          () => reject(new Error(`run.cjs exceeded declared ${declaredMs}ms outer budget`)),
-          remainingMs,
+          () => reject(new Error(`run.cjs hung past its ${declaredMs}ms declared budget plus slack`)),
+          hangGuardMs,
         );
         runner.once('exit', code => {
           clearTimeout(timer);
           resolve(code);
         });
       });
+      await waitForFile(pidfile, hangGuardMs);
+      orphanPid = Number(readFileSync(pidfile, 'utf8'));
+      expect(orphanPid).toBeGreaterThan(0);
+
+      const exitCode = await exitPromise;
       expect(exitCode).toBe(0);
-      expect(Date.now() - startedAt).toBeLessThan(declaredMs);
+      expect(readRunnerClock(clockFile).lifetimeMs).toBeLessThan(declaredMs);
       await new Promise(resolve => setTimeout(resolve, 50));
       expect(stdoutEnded).toBe(true);
       expect(stdout).toContain('hook-ready');
@@ -335,23 +362,23 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
     const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-success-eof-'));
     const pidfile = join(directory, 'orphan.pid');
     const outerTimeoutMs = 2000;
+    const clockFile = join(directory, 'runner-clock.json');
     let orphanPid: number | undefined;
     try {
-      const startedAt = Date.now();
-      const result = spawnSync(process.execPath, [RUN_CJS_PATH, SUCCESS_ORPHAN], {
+      const result = spawnSync(process.execPath, clockedRunnerArgs(RUN_CJS_PATH, SUCCESS_ORPHAN), {
         encoding: 'utf8',
-        timeout: outerTimeoutMs,
-        env: { ...process.env, OMC_TEST_PIDFILE: pidfile },
+        timeout: runnerHangGuardMs(outerTimeoutMs),
+        env: { ...process.env, OMC_TEST_PIDFILE: pidfile, ...runnerClockEnv(clockFile) },
         windowsHide: true,
       });
-      const elapsed = Date.now() - startedAt;
+      const elapsed = readRunnerClock(clockFile).lifetimeMs;
       expect(result.error, result.error?.message).toBeUndefined();
       expect(result.status).toBe(0);
       expect(elapsed).toBeLessThan(outerTimeoutMs);
       expect(result.stdout).toContain('hook-ok');
       expect(result.stderr).toContain('hook-err');
       expect(result.stderr).not.toMatch(/timed out after \d+ms/);
-      await waitForFile(pidfile, 2000);
+      await waitForFile(pidfile);
       const pid = Number(readFileSync(pidfile, 'utf8'));
       orphanPid = pid;
       expect(pid).toBeGreaterThan(0);
@@ -370,7 +397,8 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
       const result = spawnSync(process.execPath, [RUN_CJS_PATH, fixture], {
         encoding: 'utf8',
         windowsHide: true,
-        timeout: 5000,
+        // Hang guard only; this test bounds no budget.
+        timeout: scaleTiming(5000),
       });
       expect(result.status).toBe(0);
       expect(result.stdout).toBe('OUT-BYTES');
@@ -541,7 +569,9 @@ writeOutput();
       runner.stdout.on('data', chunk => { stdout += chunk; });
       runner.stderr.destroy();
       const code = await new Promise<number | null>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('runner hung after stderr consumer close')), 5000);
+        // No manifest: the runner's inner timeout is 58.5s, so any bound far
+        // below it proves the early exit; scaled for a loaded host's starts.
+        const timer = setTimeout(() => reject(new Error('runner hung after stderr consumer close')), scaleTiming(5000));
         runner.once('exit', status => {
           clearTimeout(timer);
           resolve(status);
@@ -573,9 +603,10 @@ const start = () => {
 };
 start();
 `, EARLY_CLOSE_HOOK_SEC);
-      const child = runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
+      const clockFile = join(directory, 'runner-clock.json');
+      const child = runner = spawn(process.execPath, clockedRunnerArgs(RUN_CJS_PATH, target), {
         stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot, OMC_READY_FILE: readyFile, OMC_GO_FILE: goFile },
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot, OMC_READY_FILE: readyFile, OMC_GO_FILE: goFile, ...runnerClockEnv(clockFile) },
         windowsHide: true,
       });
       child.stderr!.resume();
@@ -591,7 +622,9 @@ start();
         });
       });
       expect(code).toBe(0);
-      expect(Date.now() - closedAt).toBeLessThan(EARLY_CLOSE_EXCESS_MS);
+      // Close-to-exit on the runner's clock (same host wall clock as closedAt),
+      // so the test noticing the exit late does not count.
+      expect(readRunnerClock(clockFile).exitedAt - closedAt).toBeLessThan(EARLY_CLOSE_EXCESS_MS);
     } finally {
       try { runner?.kill('SIGKILL'); } catch { /* already gone */ }
       rmSync(directory, { recursive: true, force: true });
@@ -620,10 +653,10 @@ const pump = () => {
 pump();
 `, EARLY_CLOSE_HOOK_SEC);
       const baselineMs = await runnerBaselineMs(directory);
-      const startedAt = Date.now();
-      const runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
+      const clockFile = join(directory, 'runner-clock.json');
+      const runner = spawn(process.execPath, clockedRunnerArgs(RUN_CJS_PATH, target), {
         stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot, ...runnerClockEnv(clockFile) },
         windowsHide: true,
       });
       let stderr = '';
@@ -638,7 +671,7 @@ pump();
         });
       });
       expect(code).toBe(0);
-      expect(Date.now() - startedAt - baselineMs).toBeLessThan(EARLY_CLOSE_EXCESS_MS);
+      expect(readRunnerClock(clockFile).lifetimeMs - baselineMs).toBeLessThan(EARLY_CLOSE_EXCESS_MS);
       expect(stderr).toContain('ERR-KEEP');
     } finally {
       rmSync(directory, { recursive: true, force: true });
@@ -667,10 +700,10 @@ const pump = () => {
 pump();
 `, EARLY_CLOSE_HOOK_SEC);
       const baselineMs = await runnerBaselineMs(directory);
-      const startedAt = Date.now();
-      const runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
+      const clockFile = join(directory, 'runner-clock.json');
+      const runner = spawn(process.execPath, clockedRunnerArgs(RUN_CJS_PATH, target), {
         stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot, ...runnerClockEnv(clockFile) },
         windowsHide: true,
       });
       let stdout = '';
@@ -685,7 +718,7 @@ pump();
         });
       });
       expect(code).toBe(0);
-      expect(Date.now() - startedAt - baselineMs).toBeLessThan(EARLY_CLOSE_EXCESS_MS);
+      expect(readRunnerClock(clockFile).lifetimeMs - baselineMs).toBeLessThan(EARLY_CLOSE_EXCESS_MS);
       expect(stdout).toContain('OUT-KEEP');
     } finally {
       rmSync(directory, { recursive: true, force: true });
@@ -725,16 +758,16 @@ pump();
     try {
       const pluginRoot = join(directory, 'plugin');
       const target = writePluginHook(pluginRoot, 'hang-hook.cjs', 'setInterval(() => {}, 1e9);', 1);
-      const startedAt = Date.now();
-      const result = spawnSync(process.execPath, [RUN_CJS_PATH, target], {
+      const clockFile = join(directory, 'runner-clock.json');
+      const result = spawnSync(process.execPath, clockedRunnerArgs(RUN_CJS_PATH, target), {
         encoding: 'utf8',
-        timeout: 2000,
-        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+        timeout: runnerHangGuardMs(2000),
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot, ...runnerClockEnv(clockFile) },
         windowsHide: true,
       });
       expect(result.error, result.error?.message).toBeUndefined();
       expect(result.status).toBe(0);
-      expect(Date.now() - startedAt).toBeLessThan(2000);
+      expect(readRunnerClock(clockFile).lifetimeMs).toBeLessThan(2000);
       expect(result.stderr).toMatch(/timed out after \d+ms; exiting fail-open/);
     } finally {
       rmSync(directory, { recursive: true, force: true });
@@ -746,22 +779,22 @@ pump();
     try {
       const pluginRoot = join(directory, 'plugin');
       const target = writePluginHook(pluginRoot, 'hang-hook.cjs', 'setInterval(() => {}, 1e9);', 1);
-      const startedAt = Date.now();
-      const runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
+      const clockFile = join(directory, 'runner-clock.json');
+      const runner = spawn(process.execPath, clockedRunnerArgs(RUN_CJS_PATH, target), {
         stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot, ...runnerClockEnv(clockFile) },
         windowsHide: true,
       });
       runner.stderr.destroy();
       const code = await new Promise<number | null>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('timed-out runner crashed or hung after stderr close')), 2000);
+        const timer = setTimeout(() => reject(new Error('timed-out runner crashed or hung after stderr close')), runnerHangGuardMs(2000));
         runner.once('exit', status => {
           clearTimeout(timer);
           resolve(status);
         });
       });
       expect(code).toBe(0);
-      expect(Date.now() - startedAt).toBeLessThan(2000);
+      expect(readRunnerClock(clockFile).lifetimeMs).toBeLessThan(2000);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -771,15 +804,15 @@ pump();
     try {
       const pluginRoot = join(directory, 'plugin');
       const target = writePluginHook(pluginRoot, 'hang-hook.cjs', 'setInterval(() => {}, 1e9);', 1);
-      const startedAt = Date.now();
-      const runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
+      const clockFile = join(directory, 'runner-clock.json');
+      const runner = spawn(process.execPath, clockedRunnerArgs(RUN_CJS_PATH, target), {
         stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot, ...runnerClockEnv(clockFile) },
         windowsHide: true,
       });
       runner.stderr.pause();
       const exitPromise = new Promise<number | null>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('runner hung after delayed stderr close')), 2000);
+        const timer = setTimeout(() => reject(new Error('runner hung after delayed stderr close')), runnerHangGuardMs(2000));
         runner.once('exit', status => {
           clearTimeout(timer);
           resolve(status);
@@ -790,7 +823,7 @@ pump();
       if (runner.exitCode === null) runner.stderr.destroy();
       const code = await exitPromise;
       expect(code).toBe(0);
-      expect(Date.now() - startedAt).toBeLessThan(2000);
+      expect(readRunnerClock(clockFile).lifetimeMs).toBeLessThan(2000);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -806,22 +839,22 @@ pump();
         'process.stderr.write("n".repeat(8192)); setInterval(() => { process.stderr.write("n".repeat(256)); }, 20);',
         1,
       );
-      const startedAt = Date.now();
-      runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
+      const clockFile = join(directory, 'runner-clock.json');
+      runner = spawn(process.execPath, clockedRunnerArgs(RUN_CJS_PATH, target), {
         stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot, ...runnerClockEnv(clockFile) },
         windowsHide: true,
       });
       runner.stderr!.pause();
       const code = await new Promise<number | null>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('noisy hook kept runner alive past outer deadline')), 2000);
+        const timer = setTimeout(() => reject(new Error('noisy hook kept runner alive past outer deadline')), runnerHangGuardMs(2000));
         runner!.once('exit', status => {
           clearTimeout(timer);
           resolve(status);
         });
       });
       expect(code).toBe(0);
-      expect(Date.now() - startedAt).toBeLessThan(2000);
+      expect(readRunnerClock(clockFile).lifetimeMs).toBeLessThan(2000);
     } finally {
       try { runner?.kill('SIGKILL'); } catch { /* already gone */ }
       rmSync(directory, { recursive: true, force: true });
@@ -834,8 +867,8 @@ pump();
     const previousPidfile = process.env.OMC_TEST_PIDFILE;
     let grandchildPid: number | undefined;
     process.env.OMC_TEST_PIDFILE = pidfile;
-    const innerMs = 1500;
-    const outerMs = 3000;
+    const innerMs = REAP_INNER_MS;
+    const outerMs = innerMs + REAP_ALLOWANCE_MS;
     try {
       const startedAt = Date.now();
       let deadline: NodeJS.Timeout | undefined;
@@ -867,11 +900,11 @@ pump();
     const previousPidfile = process.env.OMC_TEST_PIDFILE;
     let grandchildPid: number | undefined;
     process.env.OMC_TEST_PIDFILE = pidfile;
-    // 250ms is below observed Windows supervisor→hook→grandchild cold start
-    // (361–559ms). Inner budget must cover that spawn chain; outer deadline
-    // is a separate assertion so a hung reap cannot hide behind a long inner.
-    const innerMs = 1500;
-    const outerMs = 3000;
+    // The inner timeout must cover the supervisor→hook→grandchild spawn chain
+    // (see REAP_INNER_MS); the outer deadline is a separate assertion so a hung
+    // reap cannot hide behind a long inner.
+    const innerMs = REAP_INNER_MS;
+    const outerMs = innerMs + REAP_ALLOWANCE_MS;
     try {
       const startedAt = Date.now();
       let deadline: NodeJS.Timeout | undefined;
