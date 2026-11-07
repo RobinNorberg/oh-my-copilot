@@ -221,6 +221,14 @@ export interface PollTick {
         ran: false;
         reason: string;
     };
+    /** The local forge: the base sync of the engine's mirror (ff-only) before the PR reads; absent on GitHub and Azure DevOps. */
+    baseSync?: {
+        ran: true;
+        message: string;
+    } | {
+        ran: false;
+        reason: string;
+    };
     prs: PollPr[];
     /** Board rows that changed since the previous tick (every row on the first). */
     board: Array<{
@@ -264,6 +272,8 @@ export interface PollContext {
     prs: boolean;
     healScan: PollHealScan;
     autoStart: PollAutoStart;
+    /** The local forge's base sync (FactoryPollDeps.localBaseSync), bound to the root and base. */
+    localBaseSync?: () => string;
     budget: PollBudget;
     owner: OwnerDeps;
     now: () => number;
@@ -294,6 +304,16 @@ export interface FactoryPollOptions {
 /** board's deps plus the heal tick, the owner identity, the wait and the stop signals. */
 export type FactoryPollDeps = FactoryBoardDeps & {
     healScan: PollHealScan;
+    /**
+     * The local forge: sync the engine's mirror base from the local `<base>` (fast-forward only) once per tick, so a PR the
+     * human merged reads as MERGED. Returns what it did; throws when it refuses (a divergence). The engine owns the mirror,
+     * so the CLI wires the engine's helper here; without it the tick reports the sync as not run.
+     */
+    localBaseSync?: (o: {
+        root: string;
+        base: string;
+        config: ResolvedForgeConfig;
+    }) => string;
     /** factory.intake.autoStart's start (default defaultPollAutoStart) and budget gate (default defaultPollBudget over trustedUser, the base layer and projectConfig, read at start). */
     autoStart?: PollAutoStart;
     budget?: PollBudget;
