@@ -198,7 +198,6 @@ describe('post-tool-use-failure.mjs', () => {
             const databasePath = join(stateRoot, '.state-mutation-locks.db');
             const probeDirectory = join(cwd, 'fake-bin');
             const probeCountPath = join(probeDirectory, 'calls');
-            const slowProbeMarkerPath = join(probeDirectory, 'slow-probe-started');
             mkdirSync(probeDirectory);
             const processStart = 'ticks:638933184000000001';
             const nonce = '123e4567-e89b-12d3-a456-426614174000';
@@ -224,15 +223,12 @@ describe('post-tool-use-failure.mjs', () => {
                 '--input-type=module', '-e', setupScript, lockPath, databasePath, String(process.pid), processStart, nonce,
             ], { encoding: 'utf8', timeout: 10000 });
             const powershellPath = join(probeDirectory, 'powershell');
+            // The hook learns its own win32 identity without PowerShell (a start-time bound), so the
+            // only spawn is the probe of the foreign owner, and that one outlasts the budget.
             writeFileSync(powershellPath, `#!/bin/sh
 printf x >> '${probeCountPath}'
-if [ ! -f '${slowProbeMarkerPath}' ]; then
-  : > '${slowProbeMarkerPath}'
-  printf '638933184000000001\\n'
-else
-  /usr/bin/sleep 3
-  printf '638933184000000001\\n'
-fi
+/usr/bin/sleep 3
+printf '638933184000000001\\n'
 `);
             chmodSync(powershellPath, 0o755);
             const startedAt = Date.now();
@@ -265,7 +261,7 @@ fi
             expect(result.hookSpecificOutput?.hookEventName).toBe('PostToolUseFailure');
             expect(result.hookSpecificOutput?.additionalContext).toContain('Tool "Bash" failed.');
             expect(existsSync(statePath)).toBe(false);
-            expect(readFileSync(probeCountPath, 'utf8')).toHaveLength(2);
+            expect(readFileSync(probeCountPath, 'utf8')).toHaveLength(1);
             expect(elapsedMs).toBeLessThan(2200);
         }
     }, 15000);

@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "3891affd6e9c1c6384b6caee7491a2f8db1acf38",
-    "sourceSha256": "293217c4cd4d1a770bfd932ad8c09244ae17060e61f73b0e32a5c5167f5a61d0",
+    "head": "69f6f4aadf30e1866c31a1e78221245d18faba15",
+    "sourceSha256": "4df8943d12ad8a03d4b8e1592a31bc9ce0ebe9719f4e685078f452e7e45973a3",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "3891affd6e9c1c6384b6caee7491a2f8db1acf38",
-  "sourceSha256": "293217c4cd4d1a770bfd932ad8c09244ae17060e61f73b0e32a5c5167f5a61d0",
+  "head": "69f6f4aadf30e1866c31a1e78221245d18faba15",
+  "sourceSha256": "4df8943d12ad8a03d4b8e1592a31bc9ce0ebe9719f4e685078f452e7e45973a3",
   "counts": {
     "public": {
       "skills": 63,
@@ -57105,6 +57105,11 @@
         "path": "tests/integration/task-list-identity-stop.test.ts"
       },
       {
+        "id": "tests/integration/win32-own-identity-bound.test.ts",
+        "kind": "other",
+        "path": "tests/integration/win32-own-identity-bound.test.ts"
+      },
+      {
         "id": "tests/integration/workflow-profile-keyword-activation.test.ts",
         "kind": "other",
         "path": "tests/integration/workflow-profile-keyword-activation.test.ts"
@@ -59109,6 +59114,11 @@
       {
         "from": "scripts/lib/state-lock.mjs",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/state-lock.mjs",
+        "to": "external:perf_hooks",
         "kind": "imports"
       },
       {
@@ -115502,6 +115512,56 @@
         "kind": "imports"
       },
       {
+        "from": "tests/integration/win32-own-identity-bound.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/win32-own-identity-bound.test.ts",
+        "to": "external:child_process",
+        "kind": "type-imports"
+      },
+      {
+        "from": "tests/integration/win32-own-identity-bound.test.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/win32-own-identity-bound.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/win32-own-identity-bound.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/win32-own-identity-bound.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/win32-own-identity-bound.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/win32-own-identity-bound.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/win32-own-identity-bound.test.ts",
+        "to": "scripts/lib/state-lock.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/win32-own-identity-bound.test.ts",
+        "to": "src/lib/mode-state-io.ts",
+        "kind": "imports"
+      },
+      {
         "from": "tests/integration/workflow-profile-keyword-activation.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -116373,12 +116433,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9737,
-      "edgeCount": 11811,
-      "importEdgeCount": 9750,
+      "nodeCount": 9738,
+      "edgeCount": 11822,
+      "importEdgeCount": 9760,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "5ff0bfba0fc54cafa6d19f1862a3ae1894b627cf49487a36f111bba4c372229e",
-  "manifestSha256": "b7a80d576a152562737a0e1de509c9c81ee7b2dee1e61dd9feb416a3245f498c"
+  "inventorySha256": "69af7cddf22771134544b9217fe3ecca7e85f4f95275816e92752be56ef7488a",
+  "manifestSha256": "0c1c5e7e2595629272b5d316a30eb3a10e9971d027eac9e8c276208266820eea"
 }
