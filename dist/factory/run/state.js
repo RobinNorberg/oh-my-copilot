@@ -121,10 +121,10 @@ export function moveTo(state, to, note, now) {
     return { ...rest, phase: to, updatedAt: now, history: [...state.history, { at: now, from: state.phase, to, note }] };
 }
 /** Park at a named human gate; the phase stays so a rerun re-evaluates it. */
-export function setGate(state, name, reason, now) {
+export function setGate(state, name, reason, now, extra = {}) {
     return {
         ...state,
-        gate: { name, reason, at: now },
+        gate: { name, reason, at: now, ...extra },
         updatedAt: now,
         history: [...state.history, { at: now, from: state.phase, to: state.phase, note: `awaiting-human: ${name}: ${reason}` }],
     };
@@ -181,6 +181,7 @@ export function runRemote(state) {
     return state.remote ?? 'origin';
 }
 const isStr = (v) => typeof v === 'string';
+const HEX64 = /^[0-9a-f]{64}$/;
 const isCount = (v) => Number.isInteger(v) && v >= 0;
 function shapeProblem(s) {
     if (!isStr(s.repoUrl) || !isStr(s.base) || !s.base || !isStr(s.branch) || !s.branch)
@@ -198,8 +199,11 @@ function shapeProblem(s) {
         return 'remote';
     if (s.localGate !== undefined && (s.forgeKind !== 'local' || !Array.isArray(s.localGate) || s.localGate.length === 0 || !s.localGate.every(isStr)))
         return 'localGate';
-    if (s.gateChangeApproved !== undefined && (s.forgeKind !== 'local' || !isStr(s.gateChangeApproved)))
+    if (s.gateChangeApproved !== undefined && (s.forgeKind !== 'local' || !isStr(s.gateChangeApproved) || !HEX64.test(s.gateChangeApproved)))
         return 'gateChangeApproved';
+    const gateDef = s.gate?.definition;
+    if (gateDef !== undefined && (s.forgeKind !== 'local' || !isStr(gateDef) || !HEX64.test(gateDef)))
+        return 'gate.definition';
     if (s.prepareChecks !== undefined && s.prepareChecks !== 'auto' && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr))))
         return 'prepareChecks';
     if (s.trackerStage !== undefined && !PROGRESS_STAGES.includes(s.trackerStage))

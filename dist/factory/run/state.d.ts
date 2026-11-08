@@ -75,6 +75,11 @@ export interface FactoryGate {
     name: string;
     reason: string;
     at: string;
+    /**
+     * gate-definition-changed only: the sha256 of the parked head's gate
+     * definition, the one definition `--allow-gate-change` may accept.
+     */
+    definition?: string;
 }
 export interface FactoryFinding {
     severity: 'blocker' | 'major' | 'minor' | 'nit';
@@ -171,10 +176,11 @@ export interface FactoryRunState {
      */
     localGate?: string[];
     /**
-     * The local forge only: the gate definition (local-gate.ts gateDefinition)
-     * a human accepted with `omg factory run --allow-gate-change` after the run
-     * parked at gate-definition-changed. A head whose definition equals it is
-     * not parked again; any other change is.
+     * The local forge only: the sha256 of the gate definition (local-gate.ts
+     * gateDefinition) a human accepted with `omg factory run
+     * --allow-gate-change` after the run parked at gate-definition-changed on
+     * it. A head whose definition hashes to it is not parked again; any other
+     * change is.
      */
     gateChangeApproved?: string;
     /**
@@ -276,7 +282,7 @@ export declare function createFactoryState(input: {
 /** Move to `to` (clearing any gate), appending history. Terminal phases never move. */
 export declare function moveTo(state: FactoryRunState, to: FactoryPhase, note: string, now: string): FactoryRunState;
 /** Park at a named human gate; the phase stays so a rerun re-evaluates it. */
-export declare function setGate(state: FactoryRunState, name: string, reason: string, now: string): FactoryRunState;
+export declare function setGate(state: FactoryRunState, name: string, reason: string, now: string, extra?: Pick<FactoryGate, 'definition'>): FactoryRunState;
 /**
  * The tracker progress stage of a run (factory forges design §7): a merge
  * gate or the merge phase is ready-to-merge, any other gate and failed are

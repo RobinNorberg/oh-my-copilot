@@ -12,6 +12,7 @@ import { getOmcRoot } from '../../../lib/worktree-paths.js';
 import { cleanFactoryRun } from '../clean.js';
 import { runFactoryEngine, EXIT_AWAITING_HUMAN } from '../engine.js';
 import { factoryForgeOptions } from '../forge-roots.js';
+import { ledgerFilePath } from '../ledger.js';
 import { resetFactoryRun } from '../reset.js';
 import { factoryStatePath, readFactoryState, requestFactoryCancel } from '../state.js';
 import { commitFile, gitIn, review } from './fake-lanes.js';
@@ -81,6 +82,30 @@ describe('F38: cancel closes the local PR; clean + reset make the item runnable 
         expect(readFactoryState(w.root, LOCAL_ISSUE).pr).toBe(2);
         expect(prStore().prs.map((p) => [p.number, p.state])).toEqual([[1, 'CLOSED'], [2, 'OPEN']]);
     }, MULTI_RUN_MS);
+    it('a reset rerun after one that stopped midway finishes, reusing the kept branch at the same sha', async () => {
+        w = localWorld();
+        await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')])));
+        const oldHead = readFactoryState(w.root, LOCAL_ISSUE).head;
+        requestFactoryCancel(w.root, LOCAL_ISSUE, new Date().toISOString());
+        expect((await runFactoryEngine(localOpts(w, lanesFor(w, [])))).phase).toBe('cancelled');
+        cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, ledgerDir: w.ledgerDir, owner: OWNER });
+        // The first reset kept the branch and moved the ledger aside, then stopped before moving the state.
+        const earlier = `factory/cancelled/issue-${LOCAL_ISSUE}-2026-11-08t09-00-00-000z`;
+        gitIn(w.root, 'push', '-q', w.config.repo.url, `${oldHead}:refs/heads/${earlier}`);
+        const ledger = ledgerFilePath(w.ledgerDir, w.root, LOCAL_ISSUE);
+        renameSync(ledger, `${ledger}.reset-2026-11-08T09-00-00-000Z`);
+        const forge = createForge(w.exec, w.root, w.config, { ...factoryForgeOptions(w.root), stateDir: w.stateDir, local: { omgRoot: getOmcRoot(w.root) } });
+        const reset = resetFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, forge, mirror: w.config.repo.url, ledgerDir: w.ledgerDir, owner: OWNER, now: '2026-11-08T10:00:00.000Z' });
+        expect(reset.keptBranch).toBe(earlier);
+        expect(readMirrorRef(w.config.repo.url, 'factory/cancelled/issue-7-2026-11-08t10-00-00-000z')).toBeUndefined();
+        expect(readMirrorRef(w.config.repo.url, BRANCH)).toBeUndefined();
+        expect(readFactoryState(w.root, LOCAL_ISSUE)).toBeNull();
+        // A state the engine never wrote (no ledger, no matching aside) is still refused.
+        writeFileSync(factoryStatePath(w.root, LOCAL_ISSUE), readFileSync(reset.stateMovedTo, 'utf8'));
+        rmSync(`${ledger}.reset-2026-11-08T09-00-00-000Z`);
+        expect(() => resetFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, forge, mirror: w.config.repo.url, ledgerDir: w.ledgerDir, owner: OWNER }))
+            .toThrow(/is not the engine's last write/);
+    }, MULTI_RUN_MS);
     it('reset refuses a run that is not cancelled', async () => {
         w = localWorld();
         await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')])));
@@ -97,18 +122,62 @@ describe('F41: a lane may not redefine the local gate', () => {
         const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('package.json', withLint)])));
         expect(out.exitCode, out.message).toBe(EXIT_AWAITING_HUMAN);
         expect(out.gate?.name).toBe('gate-definition-changed');
-        expect(out.gate?.reason).toMatch(/redefines the local gate "npm run lint" \(package\.json scripts prelint\/lint\/postlint differ from main\).*--allow-gate-change/);
+        expect(out.gate?.reason).toMatch(/redefines the local gate "npm run lint" \(package\.json scripts prelint\/lint\/postlint, \.npmrc, \.yarnrc, \.yarnrc\.yml, \.pnpmfile\.cjs differ from main\).*--allow-gate-change/);
+        expect(out.state?.gate?.definition).toMatch(/^[0-9a-f]{64}$/);
         expect(readMirrorRef(w.config.repo.url, BRANCH)).toBeUndefined();
         // A plain rerun parks again; the explicit flag accepts this definition.
         const plain = await runFactoryEngine(localOpts(w, lanesFor(w, [])));
         expect(plain.gate?.name).toBe('gate-definition-changed');
+        const parkedOn = plain.state.gate.definition;
         const allowed = await runFactoryEngine(localOpts(w, lanesFor(w, [review('approve')]), { allowGateChange: true }));
         expect(allowed.exitCode, allowed.message).toBe(0);
         expect(allowed.gate?.name).toBe('merge');
         const state = readFactoryState(w.root, LOCAL_ISSUE);
-        expect(state.gateChangeApproved).toBeDefined();
+        // The hash of the accepted definition, never the definition text.
+        expect(state.gateChangeApproved).toBe(parkedOn);
         expect(state.history.some((h) => /gate definition change in [0-9a-f]{12} accepted \(--allow-gate-change\): package\.json/.test(h.note))).toBe(true);
     }, MULTI_RUN_MS);
+    it('--allow-gate-change without a gate-definition-changed park is ignored with a warning and approves nothing in advance', async () => {
+        w = localWorld(['npm', 'run', 'lint']);
+        const base = basePackage({ test: 'node --test' });
+        const withLint = base.replace('"test": "node --test"', '"test": "node --test",\n    "lint": "exit 0"');
+        const warnings = [];
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('package.json', withLint)]), { allowGateChange: true, warn: (m) => warnings.push(m) }));
+        expect(out.gate?.name, out.message).toBe('gate-definition-changed');
+        expect(warnings.some((m) => /--allow-gate-change is ignored: the run for .* is not parked at awaiting-human: gate-definition-changed/.test(m))).toBe(true);
+        expect(readFactoryState(w.root, LOCAL_ISSUE).gateChangeApproved).toBeUndefined();
+        expect(readMirrorRef(w.config.repo.url, BRANCH)).toBeUndefined();
+    }, MULTI_RUN_MS);
+    it('the flag accepts the parked change once: a second change by a later fix lane in the same run parks again', async () => {
+        w = localWorld(['npm', 'run', 'lint']);
+        const base = basePackage({ test: 'node --test' });
+        const withLint = base.replace('"test": "node --test"', '"test": "node --test",\n    "lint": "exit 0"');
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('package.json', withLint)])));
+        expect(out.gate?.name, out.message).toBe('gate-definition-changed');
+        const first = out.state.gate.definition;
+        const finding = { severity: 'major', file: 'package.json', line: 1, summary: 'lint must check something' };
+        const again = await runFactoryEngine(localOpts(w, lanesFor(w, [
+            review('request-changes', [finding]),
+            commitFile('package.json', withLint.replace('"lint": "exit 0"', '"lint": "node -e 0"')),
+        ]), { allowGateChange: true }));
+        expect(again.exitCode, again.message).toBe(EXIT_AWAITING_HUMAN);
+        expect(again.gate?.name).toBe('gate-definition-changed');
+        const state = readFactoryState(w.root, LOCAL_ISSUE);
+        expect(state.gateChangeApproved).toBe(first);
+        expect(state.gate.definition).toMatch(/^[0-9a-f]{64}$/);
+        expect(state.gate.definition).not.toBe(first);
+        // The accepted head was published; the fix lane's head was not.
+        expect(readMirrorRef(w.config.repo.url, BRANCH)).toBe(state.head);
+        expect(state.pendingHead).not.toBe(state.head);
+    }, MULTI_RUN_MS);
+    it('an npm-style gate whose script cannot be told from its argv parks at gate-definition-unknown, nothing pushed', async () => {
+        w = localWorld(['npm', '--workspace', 'app', 'test']);
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [greet()])));
+        expect(out.exitCode, out.message).toBe(EXIT_AWAITING_HUMAN);
+        expect(out.gate?.name).toBe('gate-definition-unknown');
+        expect(out.gate?.reason).toMatch(/selects workspace packages \(--workspace\).*nothing was pushed/);
+        expect(readMirrorRef(w.config.repo.url, BRANCH)).toBeUndefined();
+    });
     it('an unrelated package.json change does not park', async () => {
         w = localWorld(['npm', 'run', 'lint']);
         const base = basePackage({ lint: 'node --check index.js' });

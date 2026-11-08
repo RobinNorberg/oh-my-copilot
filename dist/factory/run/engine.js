@@ -52,6 +52,7 @@
  * is the forge lagging (pending), anything else is head-moved-externally.
  * GitHub runs keep the gh calls unchanged.
  */
+import { createHash } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, readBaseFile, remoteRepoMismatch, userConfigLayers } from '../../ship/config.js';
@@ -517,6 +518,12 @@ class FactoryEngine {
     localBase;
     /** Local forge: the local base sha syncLocalMirror read, the only sha the guard lets it push to the mirror's base. */
     basePushSha;
+    /**
+     * `--allow-gate-change` on a rerun of a run parked at
+     * gate-definition-changed: the parked definition's hash, the one change
+     * this invocation may accept; spent by the first gate-definition check.
+     */
+    gateChangeAllowed;
     constructor(o, ledger, hooksDir) {
         this.o = o;
         this.ledger = ledger;
@@ -836,6 +843,14 @@ class FactoryEngine {
         if (existing && swapped) {
             this.progress.emit(existing.phase, 'fail', 'forge changed');
             return { exitCode: 1, phase: existing.phase, state: existing, message: swapped };
+        }
+        // --allow-gate-change answers one gate-definition-changed park, never a later change and never in advance.
+        if (this.o.allowGateChange) {
+            const parked = existing?.gate?.name === 'gate-definition-changed' ? existing.gate.definition : undefined;
+            if (parked)
+                this.gateChangeAllowed = parked;
+            else
+                this.o.warn?.(`omg factory run: --allow-gate-change is ignored: the run for ${this.what} is not parked at awaiting-human: gate-definition-changed`);
         }
         try {
             if (!existing) {
@@ -1523,20 +1538,30 @@ class FactoryEngine {
      * (gateDefinitionSources: package.json's script entry for an npm-style
      * gate, the script file for a node gate) must define it at `cand` as at
      * the run's base or the mirror's current base. A change parks at
-     * gate-definition-changed; `--allow-gate-change` records the head's
-     * definition and lets it through. True when it parked.
+     * gate-definition-changed with the head definition's hash; a rerun with
+     * `--allow-gate-change` accepts exactly that parked definition once
+     * (gateChangeAllowed, captured at resume), records its hash and lets it
+     * through. An npm-style gate whose definition cannot be pinned parks at
+     * gate-definition-unknown. True when it parked.
      */
     gateDefinitionParked(s, cand) {
+        // One acceptance per park: whatever this check decides, the flag is spent.
+        const allowed = this.gateChangeAllowed;
+        this.gateChangeAllowed = undefined;
         const gate = this.o.forge?.config.kind === 'local' ? this.o.forge.config.local?.gate : undefined;
         if (!gate || gate.length === 0 || !s.baseSha)
             return false;
-        const sources = gateDefinitionSources(gate);
+        const { sources, unresolved } = gateDefinitionSources(gate);
+        if (unresolved) {
+            this.gate('gate-definition-unknown', `${unresolved}; offline the gate is the only check and its definition cannot be compared with ${s.base}, so nothing was pushed. Set factory.forge.local.gate to name its script (npm test, npm run <script>, npm --prefix <dir> run <script>) or a node script file, then rerun ${this.resume}, or omg factory run cancel ${this.key}`);
+            return true;
+        }
         if (sources.length === 0)
             return false;
-        const at = (sha) => gateDefinition(sources, (path) => {
+        const at = (sha) => createHash('sha256').update(gateDefinition(sources, (path) => {
             const r = this.exec('git', ['show', `${sha}:${path}`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
             return r.status === 0 ? r.stdout : undefined;
-        });
+        }), 'utf8').digest('hex');
         const head = at(cand);
         if (head === at(s.baseSha) || head === s.gateChangeApproved)
             return false;
@@ -1547,11 +1572,12 @@ class FactoryEngine {
         catch { /* compared with the run's base only */ }
         if (mirrorBase && HEX40.test(mirrorBase) && mirrorBase !== s.baseSha && head === at(mirrorBase))
             return false;
-        if (this.o.allowGateChange) {
+        if (allowed === head) {
             this.save((x) => ({ ...x, gateChangeApproved: head, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `gate definition change in ${cand.slice(0, 12)} accepted (--allow-gate-change): ${describeGateSources(sources)}` }] }));
             return false;
         }
-        this.gate('gate-definition-changed', `the change redefines the local gate "${gate.join(' ')}" (${describeGateSources(sources)} differ from ${s.base}); offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha.slice(0, 12)} ${cand.slice(0, 12)} -- ${[...new Set(sources.map((x) => x.path))].join(' ')}, then rerun ${this.resume} --allow-gate-change to accept it, or omg factory run cancel ${this.key}`);
+        const stale = allowed !== undefined ? ' (--allow-gate-change accepted only the definition the run parked on, and this one differs)' : '';
+        this.save((x) => setGate(x, 'gate-definition-changed', `the change redefines the local gate "${gate.join(' ')}" (${describeGateSources(sources)} differ from ${s.base})${stale}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha.slice(0, 12)} ${cand.slice(0, 12)} -- ${[...new Set(sources.map((x) => x.path))].join(' ')}, then rerun ${this.resume} --allow-gate-change to accept it, or omg factory run cancel ${this.key}`, this.iso(), { definition: head }));
         return true;
     }
     async review() {

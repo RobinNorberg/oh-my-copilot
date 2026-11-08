@@ -109,8 +109,10 @@ export interface FactoryEngineOptions {
     dryRun?: boolean;
     /**
      * The human accepts a lane's change to the local gate's own definition
-     * (`--allow-gate-change`): the head's definition is recorded in the state
-     * and that head is published instead of parking at gate-definition-changed.
+     * (`--allow-gate-change`) on a rerun of a run parked at
+     * gate-definition-changed: exactly the parked definition is accepted once
+     * (its hash recorded in the state); without such a park the flag is
+     * ignored with a warning.
      */
     allowGateChange?: boolean;
     now?: () => number;

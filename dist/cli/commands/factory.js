@@ -204,7 +204,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         .option('--next', 'Run the next runnable item (omg factory check order: priority, then id); exit 0 when nothing is runnable')
         .option('--parent <spec>', 'With --next: pick among the children of this spec item instead of factory.intake.source')
         .option('--dry-run', 'Resolve the issue and plan and print the next step; no state, lanes or pushes')
-        .option('--allow-gate-change', 'Local forge: accept a lane change to the definition of the local gate (package.json script or gate file) that parked the run at gate-definition-changed; recorded in the run state')
+        .option('--allow-gate-change', 'Local forge: accept the one change to the local gate\'s definition (package.json script, package-manager config or gate file) that parked the run at gate-definition-changed; a later change parks again')
         .option('--json', 'JSON output')
         .action((issueRaw, o) => factoryGuarded(Boolean(o.json), async () => {
         if (o.next && issueRaw !== undefined)
