@@ -533,7 +533,9 @@ export function ciFixPrompt(s: FactoryRunState): string {
   const f = s.ciFailure;
   const where = f?.source === 'prepare'
     ? 'the pull request head with the base branch merged in by the engine; the failure is from the engine\'s local checks'
-    : 'the pull request head; the failure is from CI on GitHub';
+    : s.forgeKind === 'local'
+      ? 'the pull request head; the failure is from the local gate (factory.forge.local.gate) the engine ran on it'
+      : `the pull request head; the failure is from CI on ${forgeTerms(s.forgeKind ?? 'github').name}`;
   // The tail: test runners and compilers print the failure summary last.
   const detail = (f?.detail ?? '').slice(-MAX_CI_DETAIL_CHARS);
   const fence = fenceFor(detail);
@@ -2165,7 +2167,9 @@ class FactoryEngine {
         });
         return;
       case 'failed':
-        this.ciFailed({ source: 'ci', startSha: head, checks: out.report.failed, tests: out.tests }, `checks failed at ${at}`);
+        // F43: the local gate has no CI page to read; its output tail is the ci-fix lane's only evidence.
+        const gateLog = this.forge?.kind === 'local' ? this.forge.checks.jobLog(`${LOCAL_GATE_CHECK}:${head}`) : undefined;
+        this.ciFailed({ source: 'ci', startSha: head, checks: out.report.failed, tests: out.tests, ...(gateLog?.ok && gateLog.text ? { detail: gateLog.text } : {}) }, `checks failed at ${at}`);
         return;
       case 'flaky':
         this.gate('ci-flaky', `known-flaky failures at ${at} are out of rerun budget (${out.report.failed.join(', ')}); rerun the failed jobs by hand`);

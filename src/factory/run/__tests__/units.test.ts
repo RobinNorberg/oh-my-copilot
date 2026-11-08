@@ -760,6 +760,17 @@ describe('prompts hold untrusted text', () => {
     // The titles hold a backtick run, so their fence is longer than it.
     expect(ci).toContain('## Failing tests\n\n````text\nt0.test.ts');
   });
+
+  it('the ci-fix prompt names where a gate failure came from on each forge (F43)', () => {
+    const ci = (forgeKind?: 'github' | 'azure-devops' | 'local') => ciFixPrompt(state({
+      head: SHA, ciFixRounds: 1, ...(forgeKind ? { forgeKind } : {}),
+      ciFailure: { source: 'ci', startSha: SHA, checks: ['local-gate'], tests: [], detail: 'npm error Missing script: "lint"' },
+    }));
+    expect(ci()).toContain('the failure is from CI on GitHub');
+    expect(ci('azure-devops')).toContain('the failure is from CI on Azure DevOps');
+    expect(ci('local')).toContain('the failure is from the local gate (factory.forge.local.gate) the engine ran on it');
+    expect(ci('local')).toContain('npm error Missing script: "lint"');
+  });
 });
 
 describe('gates timeout config', () => {

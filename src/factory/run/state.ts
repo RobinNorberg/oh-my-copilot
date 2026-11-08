@@ -109,7 +109,7 @@ export interface FactoryCiFailure {
   checks: string[];
   /** Failing test titles (`file > title`) read from the failed jobs' logs. */
   tests: string[];
-  /** The failed prepare step's output tail. */
+  /** The output tail: the failed prepare step's, or the local gate's (F43). */
   detail?: string;
 }
 

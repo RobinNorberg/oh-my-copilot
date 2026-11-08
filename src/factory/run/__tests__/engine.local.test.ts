@@ -95,6 +95,10 @@ describe('factory run on the local forge', () => {
     const out = await runFactoryEngine(localOpts(w, lanes));
 
     expect(lanes.started.map((s) => s.laneId)).toContain(`issue-${LOCAL_ISSUE}-ci-fix-1`);
+    // F43: the ci-fix lane sees the local gate's output tail and where the failure came from.
+    const ciFix = lanes.started.find((s) => s.laneId === `issue-${LOCAL_ISSUE}-ci-fix-1`)!;
+    expect(ciFix.prompt).toContain('the failure is from the local gate (factory.forge.local.gate)');
+    expect(ciFix.prompt).toMatch(/## Output\n\n`+text\n[\s\S]*not ok 1 - greet/);
     const [failed, passed] = w.gateRuns;
     expect(readLocalCheckRecord(w.stateDir, w.root, failed.head)).toMatchObject({ state: 'FAILURE', exitCode: 1 });
     expect(passed.head).not.toBe(failed.head);
