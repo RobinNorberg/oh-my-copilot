@@ -35,7 +35,7 @@ import { tmpdir } from 'os';
 import { isAbsolute, join, resolve } from 'path';
 import { checkAdoCommand, isAdoCommand, runGuardedAdo, type AdoGuardContext } from '../../forge/ado/guard.js';
 import { isBodyFileIn, readTrackerBody } from '../../forge/body-file.js';
-import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
+import { LOCAL_REMOTE, STATE_CHANGE_LOG_FLAGS } from '../../forge/local/mirror.js';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
@@ -54,6 +54,8 @@ const NUMBER = /^\d+$/;
 const JSON_FIELDS = /^[A-Za-z]+(?:,[A-Za-z]+)*$/;
 const BRANCH = /^[\w.][\w./-]*$/;
 const REPO_PATH = /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/;
+/** A plain repo-relative path for the local backlog shapes, shared with the check guard: no `.` or `..` segment. */
+export const isPlainRepoPath = (p: string): boolean => REPO_PATH.test(p) && !p.split('/').some((seg) => seg === '.' || seg === '..');
 export const FOR_EACH_REF_FORMAT = '--format=%(refname) %(objectname)';
 /** The local branch of the engine-owned prepare checkout (getBranchName(FACTORY_CHECKOUT_TEAM, `issue-<n>` or `heal-<sig8>`)). */
 const CHECKOUT_BRANCH = /^omc-team\/factory-run\/(?:issue-\d+|heal-[0-9a-f]{8})$/;
@@ -314,9 +316,10 @@ function factoryGit(a: string[], protectedBranches: readonly string[], extraProt
     case 'status':
       return same(r, ['--porcelain=v1', '-z', '--untracked-files=all']) ? true : null;
     case 'log':
-      // The local forge: the last commit that changed one backlog file on the base (lastChangeArgs, F31 reopen).
-      return r.length === 6 && same(r.slice(0, 3), ['-1', '--no-show-signature', '--format=%H']) && /^[0-9a-f]{40}$/.test(r[3]) && r[4] === '--'
-        && REPO_PATH.test(r[5]) && !r[5].split('/').includes('..') ? true : null;
+      // The local forge: the last commit that changed one backlog file's state: line on the base (lastStateChangeArgs, F31 reopen).
+      return r.length === STATE_CHANGE_LOG_FLAGS.length + 3 && same(r.slice(0, STATE_CHANGE_LOG_FLAGS.length), [...STATE_CHANGE_LOG_FLAGS])
+        && /^[0-9a-f]{40}$/.test(r[STATE_CHANGE_LOG_FLAGS.length]) && r[STATE_CHANGE_LOG_FLAGS.length + 1] === '--'
+        && isPlainRepoPath(r[STATE_CHANGE_LOG_FLAGS.length + 2]) ? true : null;
     case 'diff':
       return r.length === 3 && r[0] === '--no-ext-diff' && r[1] === '--no-textconv' && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[2]) ? true : null;
     case 'ls-tree':
@@ -324,8 +327,7 @@ function factoryGit(a: string[], protectedBranches: readonly string[], extraProt
       if (r.length === 6 && same(r.slice(0, 3), ['-r', '-z', '--name-only']) && /^[0-9a-f]{40}$/.test(r[3]) && same(r.slice(4), ['--', 'docs/standards/'])) return true;
       // The local forge's backlog at the base commit (backlogListArgs): one plain repo directory, never `..`.
       if (r.length === 5 && same(r.slice(0, 2), ['-z', '--name-only']) && /^[0-9a-f]{40}$/.test(r[2]) && r[3] === '--' && r[4].endsWith('/')) {
-        const dir = r[4].slice(0, -1);
-        return REPO_PATH.test(dir) && !dir.split('/').includes('..');
+        return isPlainRepoPath(r[4].slice(0, -1));
       }
       return null;
     case 'rev-list':

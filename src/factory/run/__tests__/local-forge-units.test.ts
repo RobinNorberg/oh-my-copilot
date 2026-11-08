@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join, posix, resolve, win32 } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readLocalCheckRecord, writeLocalCheckRecord } from '../../../forge/local/index.js';
+import { STATE_CHANGE_LOG_FLAGS } from '../../../forge/local/mirror.js';
 import { isProcessAlive } from '../../../platform/process-utils.js';
 import type { Exec } from '../../../ship/exec.js';
 import { assertFactoryCommand, FactorySafetyError, hardenedGitExec, LOCAL_REMOTE_PACK_ARGS, localRemoteRefusedKeys, localTransportArgs, mirrorNamedRemoteKeys, mirrorRewriteKeys, type LocalGuardContext } from '../exec.js';
@@ -34,7 +35,7 @@ describe('the factory guard on the local forge shapes', () => {
     ['the backlog list at a commit', ['ls-tree', '-z', '--name-only', SHA, '--', '.copilot/backlog/'], []],
     ['one backlog file at a commit', ['show', `${SHA}:.copilot/backlog/1-add-remove.md`], []],
     ['the merged check', ['merge-base', '--is-ancestor', SHA, SHA2], []],
-    ['the last change of one backlog file (F31 reopen)', ['log', '-1', '--no-show-signature', '--format=%H', SHA, '--', '.copilot/backlog/1-add-remove.md'], []],
+    ['the last state change of one backlog file (F31 reopen)', ['log', ...STATE_CHANGE_LOG_FLAGS, SHA, '--', '.copilot/backlog/1-add-remove.md'], []],
     ['the local base branch', ['rev-parse', '--verify', 'refs/heads/main'], []],
     ['the mirror fetch', ['fetch', 'omg-local', 'main'], []],
     ['the refused omg-local config read', ['config', '--get-regexp', '^remote\\.omg-local\\.(vcs|mirror|fetch)$'], []],
@@ -64,9 +65,14 @@ describe('the factory guard on the local forge shapes', () => {
     ['a remote set-url', ['remote', 'set-url', 'omg-local', MIRROR], [], LOCAL],
     ['a backlog list that climbs out', ['ls-tree', '-z', '--name-only', SHA, '--', '../x/'], [], LOCAL],
     ['a backlog list without the trailing slash', ['ls-tree', '-z', '--name-only', SHA, '--', '.copilot/backlog'], [], LOCAL],
-    ['a log of a file that climbs out', ['log', '-1', '--no-show-signature', '--format=%H', SHA, '--', '../x.md'], [], LOCAL],
-    ['a log that may verify signatures', ['log', '-1', '--format=%H', SHA, '--', '.copilot/backlog/1-add-remove.md'], [], LOCAL],
-    ['a log of a symbolic ref', ['log', '-1', '--no-show-signature', '--format=%H', 'HEAD', '--', '.copilot/backlog/1-add-remove.md'], [], LOCAL],
+    ['a log of a file that climbs out', ['log', ...STATE_CHANGE_LOG_FLAGS, SHA, '--', '../x.md'], [], LOCAL],
+    ['a log of a file with a . segment (as the check guard)', ['log', ...STATE_CHANGE_LOG_FLAGS, SHA, '--', '.copilot/./backlog/1-add-remove.md'], [], LOCAL],
+    ['a backlog list with a . segment (as the check guard)', ['ls-tree', '-z', '--name-only', SHA, '--', '.copilot/./backlog/'], [], LOCAL],
+    ['a log that may verify signatures', ['log', '-1', '--no-ext-diff', '--no-textconv', '-G^state:', '--format=%H', SHA, '--', '.copilot/backlog/1-add-remove.md'], [], LOCAL],
+    ['a log of a symbolic ref', ['log', ...STATE_CHANGE_LOG_FLAGS, 'HEAD', '--', '.copilot/backlog/1-add-remove.md'], [], LOCAL],
+    ['the any-change log of a backlog file (pre-review shape)', ['log', '-1', '--no-show-signature', '--format=%H', SHA, '--', '.copilot/backlog/1-add-remove.md'], [], LOCAL],
+    ['a state log that may run an external diff', ['log', '-1', '--no-show-signature', '--no-textconv', '-G^state:', '--format=%H', SHA, '--', '.copilot/backlog/1-add-remove.md'], [], LOCAL],
+    ['a log with another pickaxe', ['log', '-1', '--no-show-signature', '--no-ext-diff', '--no-textconv', '-G.', '--format=%H', SHA, '--', '.copilot/backlog/1-add-remove.md'], [], LOCAL],
   ] as Array<[string, string[], string[], LocalGuardContext | null]>)('refuses %s', (_what, args, extra, local) => {
     expect(ok('git', args, extra, local)).toThrow(FactorySafetyError);
   });

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { localForgeLimitations } from '../../../forge/local/index.js';
+import { STATE_CHANGE_LOG_FLAGS } from '../../../forge/local/mirror.js';
 import { factoryCheckCommand } from '../../../cli/commands/factory-check.js';
 import { CheckIncompatibleError, EXIT_CHECK_INCOMPATIBLE, isLocalReadShape, runFactoryCheck, type CheckJson } from '../cli.js';
 import { execFileSync } from 'child_process';
@@ -125,12 +126,32 @@ describe('omg factory check on the local (offline) forge', () => {
     expect(now[3]).toBe('closed');
     expect(now[4]).not.toBe('closed');
 
-    // Reopened after the merge: the human changes the file on main, and the file wins.
+    expect(repo.out.join('\n')).toContain('to reopen #3 later, commit state: open again after that: only a change of the state: line after the merge reopens it');
+
+    // An edit of the body after the merge does not reopen it (review-450b): only the state: line counts.
+    writeFile(repo, file3, backlogItem('add a --version flag', 'open', 'A note after the merge.\n\n'));
+    commitAll(repo, 'backlog: note on #3');
+    expect((await reasons())[3]).toBe('closed');
+
+    // Nor does a merge commit whose side branch changed only the body (the merge commit itself has no diff for -G).
+    git('checkout', '-q', '-b', 'notes');
+    writeFile(repo, file3, backlogItem('add a --version flag', 'open', 'A note from a side branch.\n\n'));
+    commitAll(repo, 'backlog: side note on #3');
+    git('checkout', '-q', 'main');
+    writeFile(repo, 'other.txt', 'x\n');
+    commitAll(repo, 'other');
+    git('merge', '-q', '--no-ff', '-m', 'merge notes', 'notes');
+    expect((await reasons())[3]).toBe('closed');
+
+    // Reopened after the merge: the human closes the file, then sets state: open again; the file wins.
+    writeFile(repo, file3, backlogItem('add a --version flag', 'closed', 'Done.\n\n'));
+    commitAll(repo, 'backlog: close #3');
+    expect((await reasons())[3]).toBe('closed');
     writeFile(repo, file3, backlogItem('add a --version flag', 'open', 'Reverted; do it again.\n\n'));
     commitAll(repo, 'backlog: reopen #3');
     now = await reasons();
     expect(now[3]).not.toBe('closed');
-    expect(repo.err.join('\n')).not.toContain('#3 is merged (local PR #1)');
+    expect([...repo.out, ...repo.err].join('\n')).not.toContain('#3 is merged (local PR #1)');
     expect(programs(repo)).toEqual(['git']);
   });
 
@@ -195,13 +216,23 @@ describe('isLocalReadShape', () => {
     expect(isLocalReadShape(['rev-parse', '--verify', 'refs/tags/main'])).toBe(false);
   });
 
-  it('passes the last change of one backlog file at a commit (F31 reopen), nothing looser', () => {
-    const log = (commit: string, path: string, flags = ['-1', '--no-show-signature', '--format=%H']) => isLocalReadShape(['log', ...flags, commit, '--', path]);
+  it('passes the last state: change of one backlog file at a commit (F31 reopen), nothing looser', () => {
+    const log = (commit: string, path: string, flags: readonly string[] = STATE_CHANGE_LOG_FLAGS) => isLocalReadShape(['log', ...flags, commit, '--', path]);
     expect(log(SHA, '.copilot/backlog/3-x.md')).toBe(true);
     expect(log('HEAD', '.copilot/backlog/3-x.md')).toBe(false);
     expect(log(SHA, '../outside.md')).toBe(false);
     expect(log(SHA, '-x.md')).toBe(false);
-    expect(log(SHA, '.copilot/backlog/3-x.md', ['-1', '--format=%H'])).toBe(false);
-    expect(log(SHA, '.copilot/backlog/3-x.md', ['-1', '--no-show-signature', '--format=%G?'])).toBe(false);
+    expect(log(SHA, '.copilot/./backlog/3-x.md')).toBe(false);
+    // The pre-review any-change shape, a log without the no-driver flags, another pickaxe or format.
+    expect(log(SHA, '.copilot/backlog/3-x.md', ['-1', '--no-show-signature', '--format=%H'])).toBe(false);
+    expect(log(SHA, '.copilot/backlog/3-x.md', ['-1', '--no-show-signature', '-G^state:', '--format=%H'])).toBe(false);
+    expect(log(SHA, '.copilot/backlog/3-x.md', STATE_CHANGE_LOG_FLAGS.map((f) => (f === '-G^state:' ? '-G.' : f)))).toBe(false);
+    expect(log(SHA, '.copilot/backlog/3-x.md', STATE_CHANGE_LOG_FLAGS.map((f) => (f === '--format=%H' ? '--format=%G?' : f)))).toBe(false);
+  });
+
+  it('refuses a . segment in a backlog path, like the engine guard (both share isPlainRepoPath)', () => {
+    expect(isLocalReadShape(['ls-tree', '-z', '--name-only', SHA, '--', '.copilot/./backlog/'])).toBe(false);
+    expect(isLocalReadShape(['ls-tree', '-z', '--name-only', SHA, '--', './backlog/'])).toBe(false);
+    expect(isLocalReadShape(['ls-tree', '-z', '--name-only', SHA, '--', '.copilot/backlog/'])).toBe(true);
   });
 });
