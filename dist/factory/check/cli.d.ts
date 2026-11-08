@@ -83,6 +83,8 @@ export interface CheckJson {
     forge: string;
     /** What the forge cannot do (the local forge's offline lines); empty on GitHub and Azure DevOps. */
     limitations: string[];
+    /** What a run's prepare step will run in this repository (ship.prepare.checks, else the detected built-ins); [] = none. */
+    prepareChecks: string[];
     repo: string;
     source: Record<string, unknown> | null;
     counts: Record<string, number>;

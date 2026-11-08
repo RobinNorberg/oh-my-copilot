@@ -26,7 +26,10 @@ import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { resolveAzEntry } from '../../forge/ado/az-binary.js';
 import { adoGuardContext, defaultAzBinaryDeps } from '../../forge/ado/index.js';
 import { factoryForgeOptions } from '../run/forge-roots.js';
-import { BASE_CONFIG_PATH, isPlainBranchName, readBaseFile, resolveShipConfig } from '../../ship/config.js';
+import { existsSync } from 'fs';
+import { join } from 'path';
+import { BASE_CONFIG_PATH, isPlainBranchName, readBaseFile, resolveShipConfig, trustedPrepareChecks } from '../../ship/config.js';
+import { describePrepareChecks } from '../../ship/prepare.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { isAdoCommand, runGuardedAdo } from '../../forge/ado/guard.js';
@@ -367,7 +370,14 @@ export async function runFactoryCheck(o, deps) {
         throw new CheckUsageError('--limit applies to an intake source; --parent checks every child of the spec');
     const warnings = [];
     let marker;
-    const { root, base, baseSha, config, forge, exec } = openReadForge(o, deps, warnings, 'omg factory check', () => marker);
+    const { root, base, baseSha, config, baseConfig, forge, exec } = openReadForge(o, deps, warnings, 'omg factory check', () => marker);
+    let prepareChecks;
+    try {
+        prepareChecks = describePrepareChecks(trustedPrepareChecks(deps.trustedUser(), baseConfig), (p) => existsSync(join(root, p)));
+    }
+    catch (error) {
+        throw new CheckUsageError(error instanceof Error ? error.message : String(error));
+    }
     const source = config.intake.source;
     if (ids.length === 0 && parent === undefined && !source)
         throw new CheckUsageError('no item ids and no intake source: pass ids, --parent <spec>, --source <spec>, or set factory.intake.source');
@@ -415,6 +425,7 @@ export async function runFactoryCheck(o, deps) {
             ok,
             forge: config.kind,
             limitations,
+            prepareChecks,
             repo: config.repo.url,
             source: ids.length > 0 || parent !== undefined || !source ? null : { ...source },
             counts: Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length])),
@@ -429,6 +440,7 @@ export async function runFactoryCheck(o, deps) {
             deps.err(chalk.yellow(plainText(w)));
         for (const l of limitations)
             deps.out(chalk.gray(l));
+        deps.out(chalk.gray(`prepare checks: ${prepareChecks.length > 0 ? prepareChecks.join('; ') : 'none'}`));
         deps.out(renderCheckTable(items));
         if (o.mark) {
             if (m.marked.length > 0)

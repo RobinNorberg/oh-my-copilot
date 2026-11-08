@@ -288,6 +288,14 @@ describe('omg ship CLI (scripted gh/git, no network)', () => {
         expect(await run('prepare', '42')).toBe(2);
         expect(logs.join('\n')).toMatch(/prepare runs after an approve verdict/);
     });
+    it('prepare runs ship.prepare.checks through the raw exec instead of the built-in checks', async () => {
+        shipBlock = { prepare: { checks: [[process.execPath, 'tools/check.mjs', '--strict']] } };
+        expect(await run('init', '42', '--implementer', 'executor-1')).toBe(0);
+        expect(await run('verdict', '42', '--reviewer', 'verifier-1', '--sha', HEAD, '--approve')).toBe(0);
+        expect(await run('prepare', '42')).toBe(0);
+        expect(calls).toContain('node tools/check.mjs --strict');
+        expect(calls.some((c) => c.includes('typescript/bin/tsc'))).toBe(false);
+    });
     it('usage errors exit 2', async () => {
         expect(await run('status', 'abc')).toBe(2);
         expect(await run('status', '42')).toBe(2);

@@ -5,9 +5,10 @@
  *   no merge / rebase / cherry-pick / revert in progress) -> remote check
  *   (the remote is the PR's repository) -> fetch (refs/remotes/origin/<base>
  *   must equal GitHub's base sha) -> merge that sha in (--no-ff, never
- *   rebase; never a ref name a local tag could shadow) -> tsc / lint /
- *   targeted tests -> inventory regeneration as the LAST commit -> optional
- *   plain push.
+ *   rebase; never a ref name a local tag could shadow) -> checks
+ *   (ship.prepare.checks, else the tsc / lint / targeted tests the repository
+ *   has) -> inventory regeneration as the LAST commit (when the repository
+ *   has the generator) -> optional plain push.
  * Every command goes through the guarded Exec, so force pushes and rebases
  * are refused before they spawn. Engine merges and commits run with
  * `--no-verify` (pre-commit / pre-merge-commit / commit-msg hooks never shape
@@ -22,6 +23,42 @@ import { isPlainBranchName, remoteRepoMismatch } from './config.js';
 export const INVENTORY_DIR = 'inventory';
 export const INVENTORY_SCRIPT = 'scripts/generate-inventory-graph.mjs';
 export const INVENTORY_COMMIT_MESSAGE = 'chore(inventory): regenerate inventory graph baseline';
+/** The step a configured check that cannot start fails: a config problem for a human, not a fix lane. */
+export const PREPARE_CONFIG_STEP = 'checks-config';
+export const TSC_SCRIPT = 'node_modules/typescript/bin/tsc';
+export const ESLINT_SCRIPT = 'node_modules/eslint/bin/eslint.js';
+export const VITEST_SCRIPT = 'node_modules/vitest/vitest.mjs';
+const ESLINT_CONFIGS = [
+    'eslint.config.js', 'eslint.config.mjs', 'eslint.config.cjs', 'eslint.config.ts', 'eslint.config.mts', 'eslint.config.cts',
+    '.eslintrc', '.eslintrc.js', '.eslintrc.cjs', '.eslintrc.json', '.eslintrc.yml', '.eslintrc.yaml',
+];
+/**
+ * The built-in checks a checkout has (ship.prepare.checks unset): each runs
+ * only when the repository has its tool, so a repository without this one's
+ * tooling runs none of it. `npm test`-style gates are the local gate's job.
+ */
+export function detectPrepareChecks(exists) {
+    return {
+        tsc: exists('tsconfig.json') && exists(TSC_SCRIPT),
+        lint: exists(ESLINT_SCRIPT) && ESLINT_CONFIGS.some(exists),
+        tests: exists(VITEST_SCRIPT),
+        inventory: exists(INVENTORY_SCRIPT),
+    };
+}
+/** What prepare runs, one line per check (`omg factory check`); [] = none. */
+export function describePrepareChecks(configured, exists) {
+    const found = detectPrepareChecks(exists);
+    const out = configured
+        ? configured.map((argv) => argv.join(' '))
+        : [
+            ...(found.tsc ? ['tsc --noEmit'] : []),
+            ...(found.lint ? ['eslint on the changed src TypeScript'] : []),
+            ...(found.tests ? ['vitest on the tests mapped from the diff'] : []),
+        ];
+    if (found.inventory)
+        out.push(`${INVENTORY_SCRIPT} --verify (regenerated as the last commit)`);
+    return out;
+}
 const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
 /**
  * Tests to run for a diff: changed test files, plus `X.test.ts` beside or in
@@ -160,16 +197,37 @@ export function runPrepare(opts) {
         }
         housekeepingCommits.push(head());
     }
-    // 4. checks chosen from the diff against the base
-    if (opts.checks !== false) {
+    // 4. checks: the configured commands, else the built-ins the checkout has, chosen from the diff against the base
+    const found = detectPrepareChecks(exists);
+    if (opts.checks === false) {
+        steps.push({ name: 'checks', status: 'skipped', detail: '--no-checks' });
+    }
+    else if (opts.commands) {
+        const missing = opts.commands.find((c) => 'missing' in c);
+        if (missing && 'missing' in missing)
+            return fail(PREPARE_CONFIG_STEP, `ship.prepare.checks ${JSON.stringify(missing.argv)}: ${missing.missing}`);
+        if (opts.commands.length === 0)
+            steps.push({ name: 'checks', status: 'skipped', detail: 'ship.prepare.checks is empty' });
+        const run = opts.commandExec ?? exec;
+        for (const c of opts.commands) {
+            if ('missing' in c)
+                continue;
+            const name = c.argv.join(' ').slice(0, 80);
+            const r = run(c.exe, c.args, { cwd });
+            if (r.status !== 0)
+                return fail(name, tail(`${r.stdout}\n${r.stderr}`));
+            steps.push({ name, status: 'ok' });
+        }
+    }
+    else {
         const changed = lines(git('diff', '--name-only', `${baseSha}...HEAD`).stdout);
         const lintable = changed.filter((f) => /^src\/.*\.(?:ts|tsx|mts)$/.test(f) && !f.endsWith('.d.ts') && exists(f));
         const tests = selectTargetedTests(changed, exists);
         const plan = [
-            ['tsc', ['node_modules/typescript/bin/tsc', '--noEmit'], ''],
-            ['lint', lintable.length > 0 ? ['node_modules/eslint/bin/eslint.js', ...lintable] : null, 'no changed src TypeScript'],
-            ['tests', tests.length > 0 ? ['node_modules/vitest/vitest.mjs', 'run', ...tests] : null, 'no targeted tests for the diff'],
-            ...selectGeneratorChecks(changed).map((args) => [posix.basename(args[0]), args, '']),
+            ['tsc', found.tsc ? [TSC_SCRIPT, '--noEmit'] : null, 'no tsconfig.json or typescript package'],
+            ['lint', !found.lint ? null : lintable.length > 0 ? [ESLINT_SCRIPT, ...lintable] : null, found.lint ? 'no changed src TypeScript' : 'no eslint package or config'],
+            ['tests', !found.tests ? null : tests.length > 0 ? [VITEST_SCRIPT, 'run', ...tests] : null, found.tests ? 'no targeted tests for the diff' : 'no vitest package'],
+            ...selectGeneratorChecks(changed).filter((args) => exists(args[0])).map((args) => [posix.basename(args[0]), args, '']),
         ];
         for (const [name, args, skipReason] of plan) {
             if (!args) {
@@ -182,11 +240,11 @@ export function runPrepare(opts) {
             steps.push({ name, status: 'ok', detail: args.slice(1).join(' ').slice(0, 300) });
         }
     }
-    else {
-        steps.push({ name: 'checks', status: 'skipped', detail: '--no-checks' });
+    // 5. inventory regeneration, always the last commit (only in a repository that has the generator)
+    if (!found.inventory) {
+        steps.push({ name: 'inventory', status: 'skipped', detail: `no ${INVENTORY_SCRIPT}` });
     }
-    // 5. inventory regeneration, always the last commit
-    if (exec(node, [INVENTORY_SCRIPT, '--verify'], { cwd }).status === 0) {
+    else if (exec(node, [INVENTORY_SCRIPT, '--verify'], { cwd }).status === 0) {
         steps.push({ name: 'inventory', status: 'skipped', detail: 'baseline is current' });
     }
     else {

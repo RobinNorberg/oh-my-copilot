@@ -46,6 +46,10 @@ export interface ResolveGateOptions {
     /** The running node (process.execPath): `npm`/`npx`/corepack scripts run under it. */
     execPath?: string;
     exists?: (p: string) => boolean;
+    /** Who the messages name (default `the local gate`; prepare passes `the prepare check`). */
+    subject?: string;
+    /** The config key the messages point at (default `factory.forge.local.gate`). */
+    configKey?: string;
 }
 /**
  * The executable and arguments the gate argv runs as, or why it cannot start.
