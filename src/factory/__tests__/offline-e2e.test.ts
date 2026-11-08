@@ -103,6 +103,7 @@ function world(gate: string[] | null): World {
   const home = join(dir, 'home');
   mkdirSync(home);
   vi.stubEnv('OMC_HOME', home);
+  vi.stubEnv('OMC_STATE_DIR', '');
   const repo = join(dir, 'repo');
   mkdirSync(repo);
   git(repo, 'init', '-q', '-b', BASE);
@@ -217,7 +218,7 @@ async function setUpLocalForge(w: World): Promise<void> {
 function stateFiles(w: World): string {
   const dir = join(w.root, '.omg', 'state', 'factory');
   if (!existsSync(dir)) return '(no .omg/state/factory)';
-  return readdirSync(dir).map((n) => `--- ${n}\n${readFileSync(join(dir, n), 'utf8').slice(0, 4000)}`).join('\n');
+  return readdirSync(dir).map((n) => `--- ${n}\n${readFileSync(join(dir, n), 'utf8').slice(0, n.includes('.tampered-') ? Infinity : 4000)}`).join('\n');
 }
 
 /** No forbidden program anywhere: neither at the Exec seam nor as any child process of this test. */
@@ -248,7 +249,7 @@ describe('omg factory on the local (offline) forge, end to end', () => {
     });
     afterAll(() => {
       vi.unstubAllEnvs();
-      rmSync(w.dir, { recursive: true, force: true });
+      if (w) rmSync(w.dir, { recursive: true, force: true });
     });
 
     it('setup --forge local writes the local forge config and a closed sample item, with git only', async () => {
@@ -399,7 +400,7 @@ describe('omg factory on the local (offline) forge, end to end', () => {
       assertOffline(w);
     } finally {
       vi.unstubAllEnvs();
-      rmSync(w.dir, { recursive: true, force: true });
+      if (w) rmSync(w.dir, { recursive: true, force: true });
     }
   });
 });
