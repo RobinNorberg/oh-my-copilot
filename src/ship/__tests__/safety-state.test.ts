@@ -526,7 +526,7 @@ describe('trusted ship config (safety keys never from the working tree or the PR
   });
 
   it('every safety key is covered', () => {
-    expect([...SHIP_SAFETY_KEYS].sort()).toEqual(['advisoryChecks', 'allowAdminMerge', 'knownFlakyFile', 'requiredChecks']);
+    expect([...SHIP_SAFETY_KEYS].sort()).toEqual(['advisoryChecks', 'allowAdminMerge', 'knownFlakyFile', 'prepare', 'requiredChecks']);
   });
 });
 
