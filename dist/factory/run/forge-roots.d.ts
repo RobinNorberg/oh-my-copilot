@@ -60,6 +60,12 @@ export declare const EXIT_FORGE_UNAVAILABLE = 5;
  */
 export declare function localRemoteMismatch(exec: Exec, root: string, mirror: string): string | null;
 /**
+ * The commands that point the checkout's `omg-local` remote back at
+ * `mirror`, per cause (read from the config, any scope): set the url, unset
+ * a planted pushurl, unset a pushInsteadOf that rewrites the url.
+ */
+export declare function localRemoteFixes(exec: Exec, root: string, mirror: string): string[];
+/**
  * The refused `remote.omg-local.*` settings of the checkout (any include
  * counts), or null: `vcs` hands the transport to `git remote-<vcs>`
  * (remote-ext runs a command), `mirror` turns a push into a mirror push, and

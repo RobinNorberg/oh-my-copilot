@@ -176,6 +176,11 @@ const ROWS = [
     },
     { rule: 'needs-split (open children)', world: { items: [item(1, { children: [140, 141] }), item(140, { open: false }), item(141)] }, bucket: 'blocked', reasons: ['needs-split'], detail: 'has open children #141' },
     {
+        rule: 'children-done (F30: a spec whose children are all closed is never runnable again)',
+        world: { items: [item(1, { children: [140, 141] }), item(140, { open: false }), item(141, { open: false })] },
+        bucket: 'blocked', reasons: ['children-done'], detail: 'every child (#140,#141) is closed: close this spec item; the factory never runs a spec that was split',
+    },
+    {
         rule: 'needs-split (ADO Epic)',
         world: { kind: 'azure-devops', itemTypes: ['Epic', 'User Story'], items: [item(1, { type: 'Epic' })] },
         bucket: 'blocked', reasons: ['needs-split'],

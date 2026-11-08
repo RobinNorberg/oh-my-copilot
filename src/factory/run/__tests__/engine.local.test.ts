@@ -77,6 +77,8 @@ describe('factory run on the local forge', () => {
     expect(readMirrorRef(w.config.repo.url, BASE)).toBe(gitIn(w.root, 'rev-parse', BASE));
     const store = JSON.parse(readFileSync(join(w.config.repo.url.slice(0, -'.git'.length), 'prs.json'), 'utf8')) as { prs: Array<{ number: number; state: string }> };
     expect(store.prs.find((p) => p.number === 1)?.state).toBe('MERGED');
+    // F31: the backlog file still says open, so the outcome names the change the human commits.
+    expect(second.message).toContain(`set state: closed in .copilot/backlog/${LOCAL_ISSUE}-add-greet.md and commit it on ${BASE}`);
   });
 
   it('a failing gate is a failed check: the run takes the ci-fix path, and the new head gets its own gate run', async () => {

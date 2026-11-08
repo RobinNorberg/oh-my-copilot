@@ -89,6 +89,11 @@ export function isLocalReadShape(args) {
         return args.length === 6 && same(args.slice(1, 3), ['-z', '--name-only']) && /^[0-9a-f]{40}$/.test(args[3]) && args[4] === '--'
             && dir.endsWith('/') && REPO_DIR.test(dir.slice(0, -1)) && !dir.slice(0, -1).split('/').some((seg) => seg === '.' || seg === '..');
     }
+    // F31: the last commit that changed one backlog file on the base (lastChangeArgs: a reopen after a merge).
+    if (args[0] === 'log') {
+        return args.length === 7 && same(args.slice(1, 4), ['-1', '--no-show-signature', '--format=%H']) && /^[0-9a-f]{40}$/.test(args[4]) && args[5] === '--'
+            && REPO_DIR.test(args[6]) && !args[6].split('/').some((seg) => seg === '.' || seg === '..');
+    }
     return args.length === 3 && args[0] === 'rev-parse' && args[1] === '--verify' && args[2].startsWith('refs/heads/') && isPlainBranchName(args[2].slice('refs/heads/'.length));
 }
 /**
@@ -331,15 +336,33 @@ export function openReadForge(o, deps, warnings, command, marker) {
     // The local forge's base is the local branch (the human merges there; the engine syncs its mirror from it).
     if (config.kind === 'local' && originUrl)
         baseSha = localBase(pre, root, base, warnings);
+    // F20: without its base the local forge reads no committed item or config, so nothing could ever be checked.
+    if (config.kind === 'local' && !baseSha)
+        throw new CheckUsageError(missingLocalBase(base));
     try {
         const read = forgeReadExec(deps.exec, config, root, deps.resolveAz, marker, command);
-        const local = { omgRoot: getOmcRoot(root), workingTree: true, baseSha: () => baseSha ?? undefined };
-        const options = config.kind === 'local' ? { ...read.options, local } : read.options;
-        return { root, base, baseSha, config, baseConfig, forge: deps.createForge(read.exec, root, config, options), exec: read.exec };
+        return { root, base, baseSha, config, baseConfig, forge: deps.createForge(read.exec, root, config, readForgeOptions(config, root, read.options, base, baseSha)), exec: read.exec };
     }
     catch (error) {
         throw new CheckIncompatibleError(error instanceof Error ? error.message : String(error));
     }
+}
+/**
+ * The options a read-only command (check, board, poll, `run --next`) builds
+ * its forge with: the local forge also needs the runtime root, reads the
+ * working tree (an uncommitted item is listed, never runnable) and reads
+ * committed items at `baseSha`, the local base branch `base` (only a local
+ * PR into `base` closes an item). `run --next` passes workingTree: false: a
+ * working-tree item is never runnable, nor does it satisfy a dependency.
+ */
+export function readForgeOptions(config, root, options, base, baseSha, workingTree = true) {
+    if (config.kind !== 'local')
+        return options;
+    return { ...options, local: { omgRoot: getOmcRoot(root), workingTree, base, baseSha: () => baseSha ?? undefined } };
+}
+/** F20: the local forge's base branch is missing (exit 2 in check, board, poll and `run --next`). */
+export function missingLocalBase(base) {
+    return `the base branch ${base} does not exist in this repository, so no committed backlog item or config can be read; set ship.base in .copilot/omg.jsonc to the branch you merge into (omg factory setup --forge local writes it)`;
 }
 /** The F9/F10 text of "no usable forge" (exit 5 in check, board, poll and setup), with the offline hint. */
 export function unsupportedForge(why) {

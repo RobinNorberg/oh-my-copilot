@@ -8,6 +8,7 @@
  */
 import type { Exec } from '../../ship/exec.js';
 import type { ForgeReviews } from '../types.js';
+import { type LocalPr } from './store.js';
 export interface LocalReviewsContext {
     exec: Exec;
     /** The user's checkout (the merge happens there). */
@@ -20,5 +21,7 @@ export interface LocalReviewsContext {
     humanDir: string;
 }
 export declare const localPrUrl: (pr: number) => string;
-export declare function localReviews(ctx: LocalReviewsContext): ForgeReviews;
+export declare function localReviews(ctx: LocalReviewsContext): ForgeReviews & {
+    refreshPr(pr: LocalPr): LocalPr;
+};
 //# sourceMappingURL=reviews.d.ts.map

@@ -1,8 +1,8 @@
-import { writeFileSync } from 'fs';
-import { join } from 'path';
+import { mkdirSync, writeFileSync } from 'fs';
+import { dirname, join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createForge } from '../../index.js';
-import { createLocalForge, localForgeLimitations, writeLocalCheckRecord } from '../index.js';
+import { createLocalForge, localForgeLimitations, localPrStorePath, writeLocalCheckRecord } from '../index.js';
 import { localMerge } from '../merge.js';
 import { git, makeFixture, recordingExec } from './git-fixture.js';
 let fx;
@@ -47,6 +47,31 @@ describe('createForge with a local config', () => {
         expect(forge.checks.checks(pr, forge.reviews.prHead(pr).headRefOid)).toMatchObject([{ name: 'local-gate', state: 'SUCCESS' }]);
         expect(forge.merge.humanMergeCommand(pr, head)).toEqual(['git', '-C', fx.root, 'merge', '--no-ff', head]);
         expect(forge.merge.blockingPolicies(pr, head)).toEqual([]);
+    });
+});
+describe('F31: the PR store behind a merged item', () => {
+    const item = (title, state) => `---\ntitle: ${JSON.stringify(title)}\nstate: ${state}\n---\nDo it.\n`;
+    const pr = (number, base) => ({ number, head: `factory/issue-1-${number}`, base, title: 't', state: 'MERGED', isDraft: false, itemId: 1, createdAt: 'now' });
+    it('a malformed store fails only the open items that need it, with one error; once fixed, only a PR into the current base closes the item', () => {
+        fx.write('.copilot/backlog/1-open.md', item('open one', 'open'));
+        fx.write('.copilot/backlog/2-done.md', item('done one', 'closed'));
+        const sha = fx.commit('backlog');
+        const store = localPrStorePath(fx.stateDir, fx.root);
+        mkdirSync(dirname(store), { recursive: true });
+        writeFileSync(store, '{ not json');
+        const forge = (base) => createForge(recordingExec().exec, fx.root, fx.config, { untrustedRoots: [fx.root], local: { omgRoot: fx.omgRoot, base, baseSha: () => sha } });
+        const main = forge('main');
+        expect(main.tracker.viewItem(2).open).toBe(false);
+        expect(() => main.tracker.viewItem(1)).toThrow(/the PR store .* is not valid JSON/);
+        expect(() => main.tracker.queryItems({ type: 'local-backlog' }, 10)).toThrow(/the PR store .* is not valid JSON/);
+        // The store changed (another size): read again, and only the PR into main counts.
+        writeFileSync(store, JSON.stringify({ version: 1, next: 3, prs: [pr(1, 'release')] }));
+        expect(main.tracker.viewItem(1).open).toBe(true);
+        writeFileSync(store, JSON.stringify({ version: 1, next: 3, prs: [pr(1, 'release'), pr(2, 'main')] }));
+        expect(main.tracker.viewItem(1)).toMatchObject({ open: false, rawState: 'merged (local PR #2)' });
+        expect(forge('release').tracker.viewItem(1)).toMatchObject({ open: false, rawState: 'merged (local PR #1)' });
+        // Without the base branch no PR closes an item.
+        expect(createForge(recordingExec().exec, fx.root, fx.config, { untrustedRoots: [fx.root], local: { omgRoot: fx.omgRoot, baseSha: () => sha } }).tracker.viewItem(1).open).toBe(true);
     });
 });
 describe('localMerge and limitations', () => {

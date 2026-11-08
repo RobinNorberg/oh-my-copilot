@@ -418,6 +418,8 @@ export interface LocalTrackerOptions {
   baseSha?: () => string | undefined;
   /** Also read the working tree (never for `run`). */
   workingTree?: boolean;
+  /** The base branch name (ship.base): only a local PR into it marks its item closed (F31); without it none does. */
+  base?: string;
   /**
    * The repository's runtime root, `getOmcRoot(root)` (src/lib/worktree-paths.ts,
    * which spawns git, so src/forge cannot call it). Required by createLocalForge:

@@ -56,7 +56,7 @@ import { factorySetupCommand } from './factory-setup.js';
 import { factoryBoardCommand } from './factory-board.js';
 import { factoryPollCommand } from './factory-poll.js';
 import { defaultPollHealScan } from '../../factory/poll.js';
-import { checkEnvFor, fetchBase, forgeReadExec, parseItemId } from '../../factory/check/cli.js';
+import { checkEnvFor, fetchBase, forgeReadExec, localBase, missingLocalBase, parseItemId, readForgeOptions } from '../../factory/check/cli.js';
 import { BUCKET_ORDER, checkItems, plainText, type CheckResult } from '../../factory/check/score.js';
 import { createForge } from '../../forge/index.js';
 import { skillSlash } from '../../utils/skill-slash.js';
@@ -199,9 +199,12 @@ function pickNext(deps: FactoryRunDeps, root: string, base: string, loaded: Load
   const source = config.intake.source;
   if (parent === undefined && !source) throw new FactoryUsageError('--next needs --parent <spec> or factory.intake.source');
   const read = forgeReadExec(deps.exec, config, root);
-  const forge = createForge(read.exec, root, config, read.options);
   const warnings: string[] = [];
-  const baseSha = fetchBase(read.exec, root, base, warnings);
+  // F29: the local forge's base is the local branch (it has no server to fetch from), read as check reads it.
+  const baseSha = config.kind === 'local' ? localBase(read.exec, root, base, warnings) : fetchBase(read.exec, root, base, warnings);
+  if (config.kind === 'local' && !baseSha) throw new FactoryUsageError(missingLocalBase(base));
+  // Committed items only: a working-tree item is never runnable, and a dependency closed only on disk is not met.
+  const forge = createForge(read.exec, root, config, readForgeOptions(config, root, read.options, base, baseSha, false));
   const ids = parent !== undefined ? forge.tracker.viewItem(parent).children : forge.tracker.queryItems(source!, config.intake.limit);
   const items = checkItems(forge, ids, checkEnvFor(read.exec, root, config, base, baseSha));
   return { next: items.find((r) => r.bucket === 'runnable') ?? null, items, warnings };

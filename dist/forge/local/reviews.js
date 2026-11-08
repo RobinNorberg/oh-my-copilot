@@ -55,6 +55,7 @@ export function localReviews(ctx) {
     /** The runtime root (`humanDir` is `<omgRoot>/factory/local`): no link below it is followed. */
     const omgRoot = join(ctx.humanDir, '..', '..');
     return {
+        refreshPr: refresh,
         findOpenPrForBranch(branch) {
             return readPrStore(ctx.storePath).prs.filter((p) => p.head === branch && p.state === 'OPEN').map(refresh).find((p) => p.state === 'OPEN')?.number;
         },

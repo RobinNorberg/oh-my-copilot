@@ -38,6 +38,8 @@ export declare const backlogListArgs: (commit: string, dir: string) => string[];
 export declare const backlogShowArgs: (commit: string, path: string) => string[];
 /** Whether `head` is in `base` (a local PR is MERGED): `git merge-base --is-ancestor <head> <base>`, exit 0 yes, 1 no. */
 export declare const mergedArgs: (head: string, base: string) => string[];
+/** The last commit at or before `commit` that changed `path` (empty when none): `git log -1 --no-show-signature --format=%H <sha> -- <path>`. */
+export declare const lastChangeArgs: (commit: string, path: string) => string[];
 /**
  * The commit `refs/heads/<branch>` names in the bare mirror, read from the
  * loose ref or packed-refs; undefined when the mirror or the branch is absent.
