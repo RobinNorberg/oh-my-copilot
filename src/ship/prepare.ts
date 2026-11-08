@@ -20,7 +20,7 @@
 
 import { existsSync } from 'fs';
 import { isAbsolute, join, posix } from 'path';
-import { isPlainBranchName, remoteRepoMismatch } from './config.js';
+import { isPlainBranchName, readBaseFile, remoteRepoMismatch } from './config.js';
 import type { Exec } from './exec.js';
 
 export type StepStatus = 'ok' | 'skipped' | 'failed';
@@ -50,7 +50,7 @@ export interface PrepareOptions {
    * ship.prepare.checks, each argv resolved by the caller (resolveLocalGateArgv:
    * no shell, never a .cmd/.bat): they run instead of the built-in tsc /
    * eslint / vitest / generator checks. Undefined = the built-ins the
-   * checkout has (detectPrepareChecks). The inventory step is separate.
+   * base has (detectPrepareChecks). The inventory step is separate.
    */
   commands?: readonly PrepareCommand[];
   /** Runs `commands`: the caller's raw Exec (the ship and factory guards allow only the built-in shapes). Default: exec. */
@@ -59,6 +59,8 @@ export interface PrepareOptions {
   /** Node binary for repo scripts (default process.execPath). */
   node?: string;
   exists?: (path: string) => boolean;
+  /** Whether a repository file is committed at baseSha (default: baseFileExists through exec). */
+  baseExists?: (relPath: string) => boolean;
 }
 
 export interface PrepareResult {
@@ -80,6 +82,9 @@ export type PrepareCommand = { argv: readonly string[] } & ({ exe: string; args:
 /** The step a configured check that cannot start fails: a config problem for a human, not a fix lane. */
 export const PREPARE_CONFIG_STEP = 'checks-config';
 
+/** The step a base that cannot be read fails: an engine problem, not a fix lane. */
+export const PREPARE_DETECT_STEP = 'detect';
+
 export const TSC_SCRIPT = 'node_modules/typescript/bin/tsc';
 export const ESLINT_SCRIPT = 'node_modules/eslint/bin/eslint.js';
 export const VITEST_SCRIPT = 'node_modules/vitest/vitest.mjs';
@@ -89,33 +94,59 @@ const ESLINT_CONFIGS = [
 ];
 
 export interface DetectedPrepareChecks {
-  /** tsconfig.json and the typescript package. */
+  /** tsconfig.json on the base and the typescript package. */
   tsc: boolean;
-  /** The eslint package and an eslint config. */
+  /** The eslint package and an eslint config on the base. */
   lint: boolean;
   /** The vitest package (the tests mapped from the diff). */
   tests: boolean;
-  /** scripts/generate-inventory-graph.mjs. */
+  /** scripts/generate-inventory-graph.mjs on the base. */
   inventory: boolean;
+  /** A check the base enables whose marker file the checkout lost: why it fails (never skipped). */
+  lost: Partial<Record<'tsc' | 'lint' | 'inventory', string>>;
 }
 
 /**
- * The built-in checks a checkout has (ship.prepare.checks unset): each runs
- * only when the repository has its tool, so a repository without this one's
+ * The built-in checks prepare runs (ship.prepare.checks unset). The
+ * repository markers (tsconfig.json, an eslint config, the inventory
+ * generator) are read from the trusted base (`baseHas`), never the PR's
+ * checkout, so a PR that deletes one cannot turn its check into a skip: a
+ * marker the base has and the checkout (`exists`) lost is a failure
+ * (`lost`). The tool packages under node_modules come from `exists` (the
+ * checkout links the root's node_modules). A repository without this one's
  * tooling runs none of it. `npm test`-style gates are the local gate's job.
  */
-export function detectPrepareChecks(exists: (relPath: string) => boolean): DetectedPrepareChecks {
-  return {
-    tsc: exists('tsconfig.json') && exists(TSC_SCRIPT),
-    lint: exists(ESLINT_SCRIPT) && ESLINT_CONFIGS.some(exists),
-    tests: exists(VITEST_SCRIPT),
-    inventory: exists(INVENTORY_SCRIPT),
+export function detectPrepareChecks(baseHas: (relPath: string) => boolean, exists: (relPath: string) => boolean = baseHas): DetectedPrepareChecks {
+  const lost: DetectedPrepareChecks['lost'] = {};
+  const gone = (marker: string) => `${marker} is committed on the base but missing from the checkout; restore it (prepare never skips a check the base has)`;
+  const tsc = baseHas('tsconfig.json') && exists(TSC_SCRIPT);
+  if (tsc && !exists('tsconfig.json')) lost.tsc = gone('tsconfig.json');
+  const baseEslint = exists(ESLINT_SCRIPT) ? ESLINT_CONFIGS.filter(baseHas) : [];
+  if (baseEslint.length > 0 && !ESLINT_CONFIGS.some(exists)) lost.lint = gone(baseEslint.join(', '));
+  const inventory = baseHas(INVENTORY_SCRIPT);
+  if (inventory && !exists(INVENTORY_SCRIPT)) lost.inventory = gone(INVENTORY_SCRIPT);
+  return { tsc, lint: baseEslint.length > 0, tests: exists(VITEST_SCRIPT), inventory, lost };
+}
+
+/**
+ * Whether a repository file is committed at `commit` (readBaseFile: replace
+ * refs off, any failure but "missing" throws), memoized per path.
+ */
+export function baseFileExists(exec: Exec, cwd: string, commit: string): (relPath: string) => boolean {
+  const seen = new Map<string, boolean>();
+  return (p) => {
+    let found = seen.get(p);
+    if (found === undefined) {
+      found = readBaseFile(exec, cwd, commit, p) !== null;
+      seen.set(p, found);
+    }
+    return found;
   };
 }
 
-/** What prepare runs, one line per check (`omg factory check`); [] = none. */
-export function describePrepareChecks(configured: readonly (readonly string[])[] | undefined, exists: (relPath: string) => boolean): string[] {
-  const found = detectPrepareChecks(exists);
+/** What prepare runs, one line per check (`omg factory check`, from the same base detection); [] = none. */
+export function describePrepareChecks(configured: readonly (readonly string[])[] | undefined, baseHas: (relPath: string) => boolean, exists: (relPath: string) => boolean = baseHas): string[] {
+  const found = detectPrepareChecks(baseHas, exists);
   const out = configured
     ? configured.map((argv) => argv.join(' '))
     : [
@@ -248,8 +279,13 @@ export function runPrepare(opts: PrepareOptions): PrepareResult {
     housekeepingCommits.push(head());
   }
 
-  // 4. checks: the configured commands, else the built-ins the checkout has, chosen from the diff against the base
-  const found = detectPrepareChecks(exists);
+  // 4. checks: the configured commands, else the built-ins the trusted base has, chosen from the diff against the base
+  let found: DetectedPrepareChecks;
+  try {
+    found = detectPrepareChecks(opts.baseExists ?? baseFileExists(exec, cwd, baseSha), exists);
+  } catch (error) {
+    return fail(PREPARE_DETECT_STEP, `cannot read the base ${baseSha.slice(0, 12)}: ${error instanceof Error ? error.message : String(error)}`);
+  }
   if (opts.checks === false) {
     steps.push({ name: 'checks', status: 'skipped', detail: '--no-checks' });
   } else if (opts.commands) {
@@ -269,12 +305,14 @@ export function runPrepare(opts: PrepareOptions): PrepareResult {
     const lintable = changed.filter((f) => /^src\/.*\.(?:ts|tsx|mts)$/.test(f) && !f.endsWith('.d.ts') && exists(f));
     const tests = selectTargetedTests(changed, exists);
     const plan: Array<[string, string[] | null, string]> = [
-      ['tsc', found.tsc ? [TSC_SCRIPT, '--noEmit'] : null, 'no tsconfig.json or typescript package'],
-      ['lint', !found.lint ? null : lintable.length > 0 ? [ESLINT_SCRIPT, ...lintable] : null, found.lint ? 'no changed src TypeScript' : 'no eslint package or config'],
+      ['tsc', found.tsc ? [TSC_SCRIPT, '--noEmit'] : null, 'no tsconfig.json on the base or no typescript package'],
+      ['lint', !found.lint ? null : lintable.length > 0 ? [ESLINT_SCRIPT, ...lintable] : null, found.lint ? 'no changed src TypeScript' : 'no eslint package or no eslint config on the base'],
       ['tests', !found.tests ? null : tests.length > 0 ? [VITEST_SCRIPT, 'run', ...tests] : null, found.tests ? 'no targeted tests for the diff' : 'no vitest package'],
       ...selectGeneratorChecks(changed).filter((args) => exists(args[0])).map((args): [string, string[], string] => [posix.basename(args[0]), args, '']),
     ];
     for (const [name, args, skipReason] of plan) {
+      const lost = found.lost[name as keyof DetectedPrepareChecks['lost']];
+      if (lost) return fail(name, lost);
       if (!args) { steps.push({ name, status: 'skipped', detail: skipReason }); continue; }
       const r = exec(node, args, { cwd });
       if (r.status !== 0) return fail(name, tail(`${r.stdout}\n${r.stderr}`));
@@ -283,8 +321,9 @@ export function runPrepare(opts: PrepareOptions): PrepareResult {
   }
 
   // 5. inventory regeneration, always the last commit (only in a repository that has the generator)
+  if (found.lost.inventory) return fail('inventory', found.lost.inventory);
   if (!found.inventory) {
-    steps.push({ name: 'inventory', status: 'skipped', detail: `no ${INVENTORY_SCRIPT}` });
+    steps.push({ name: 'inventory', status: 'skipped', detail: `no ${INVENTORY_SCRIPT} on the base` });
   } else if (exec(node, [INVENTORY_SCRIPT, '--verify'], { cwd }).status === 0) {
     steps.push({ name: 'inventory', status: 'skipped', detail: 'baseline is current' });
   } else {
