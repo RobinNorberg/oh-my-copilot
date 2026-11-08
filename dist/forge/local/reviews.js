@@ -98,6 +98,18 @@ export function localReviews(ctx) {
                 p.isDraft = false;
             });
         },
+        closePr(pr, reason) {
+            // A PR the base already contains is MERGED, never closed.
+            const current = find(pr);
+            if (current.state !== 'OPEN')
+                return;
+            const head = ref(current.head);
+            updatePrStore(ctx.storePath, (store) => {
+                const p = store.prs.find((x) => x.number === pr);
+                if (p.state === 'OPEN')
+                    Object.assign(p, { state: 'CLOSED', closedReason: reason, closedAt: new Date().toISOString(), ...(head ? { closedHead: head } : {}) });
+            });
+        },
         commentPr(pr, bodyFile) {
             try {
                 if (!readPrStore(ctx.storePath).prs.some((x) => x.number === pr))

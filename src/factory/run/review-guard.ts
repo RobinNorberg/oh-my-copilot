@@ -386,6 +386,14 @@ export function samePath(a: string, b: string): boolean {
 export interface CompareAllowance {
   /** Created refs a predicate allows (a lost lane's branch, whose sha the engine never saw). */
   refAllowed?: (name: string, sha: string) => boolean;
+  /**
+   * Remote-tracking refs created or moved to exactly the sha the remote holds
+   * for that branch (a `git fetch` that moved no branch on the remote, by the
+   * user or anyone else): the value is what the engine's own fetch would
+   * write, so it steers nothing (dogfood F42). Deletions and any other sha
+   * still count.
+   */
+  fetchedRef?: (name: string, sha: string) => boolean;
   /** The lane's own new worktree entry, by its worktree path or by its entry id. */
   newWorktree?: { path?: string | null; id?: string };
 }
@@ -404,6 +412,7 @@ export function compareSnapshots(before: RepoSnapshot, after: RepoSnapshot, allo
     if (was === now) continue;
     if (was === undefined && name in allowedNewRefs && (allowedNewRefs[name] === '*' || now === allowedNewRefs[name])) continue;
     if (was === undefined && now !== undefined && allow.refAllowed?.(name, now)) continue;
+    if (now !== undefined && name.startsWith('refs/remotes/') && allow.fetchedRef?.(name, now)) continue;
     if (was === undefined) problems.push(`ref ${name} was created (${now.slice(0, 12)})`);
     else if (now === undefined) problems.push(`ref ${name} was deleted (was ${was.slice(0, 12)})`);
     else problems.push(`ref ${name} moved ${was.slice(0, 12)} -> ${now.slice(0, 12)}`);

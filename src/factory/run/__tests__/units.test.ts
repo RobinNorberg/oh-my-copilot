@@ -543,6 +543,21 @@ describe('per-run limits (no governor)', () => {
     expect(() => resolveFactoryRunLimits({ factory: { run: { laneTimeoutMinutes: 90 } } }, undefined)).toThrow(/at most 60/);
   });
 
+  it('refuses a run cap that cannot fit two lanes (laneMaxCredits + the runtime floor), with the arithmetic', () => {
+    expect(() => resolveFactoryRunLimits({ factory: { run: { laneMaxCredits: 30, maxRunCredits: 30 } } }, undefined))
+      .toThrow(/maxRunCredits 30 is too low: .*at least 30 \+ 30 = 60/);
+    expect(() => resolveFactoryRunLimits({ factory: { run: { laneMaxCredits: 40 } } }, { factory: { run: { maxRunCredits: 69 } } }))
+      .toThrow(/at least 40 \+ 30 = 70/);
+    expect(resolveFactoryRunLimits({ factory: { run: { laneMaxCredits: 30, maxRunCredits: 60 } } }, undefined).limits.maxRunCredits).toBe(60);
+  });
+
+  it('the budget park names where to raise factory.run.maxRunCredits', () => {
+    const lane = (credits: number) => ({ usage: { credits, premiumRequests: 1, source: 'measured' } } as FactoryLaneRecord);
+    const decision = nextLaneCap({ lanes: [lane(40)] }, { ...DEFAULT_FACTORY_RUN_LIMITS, maxRunCredits: 60 });
+    expect(decision.ok).toBe(false);
+    expect(!decision.ok && decision.reason).toMatch(/raise factory\.run\.maxRunCredits in the user config .*config\.jsonc, or in \.copilot\/omg\.jsonc when the user config sets none/);
+  });
+
   it('caps the next lane at what the run cap leaves, and stops below the runtime floor', () => {
     const lane = (credits: number) => ({ usage: { credits, premiumRequests: 1, source: 'measured' } } as FactoryLaneRecord);
     const limits = { ...DEFAULT_FACTORY_RUN_LIMITS, laneMaxCredits: 40, maxRunCredits: 100 };
