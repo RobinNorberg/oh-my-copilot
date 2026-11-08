@@ -97,7 +97,8 @@ describe('factory run on the local forge', () => {
         gitIn(w.root, 'config', 'remote.omg-local.pushurl', evil);
         const lanes = lanesFor(w, [greet(), review('approve')]);
         const out = await runFactoryEngine(localOpts(w, lanes));
-        expect(out.exitCode).toBe(1);
+        // An unusable forge (exit 5), like every other refusal of the mirror remote.
+        expect(out.exitCode).toBe(5);
         expect(out.message).toMatch(/refusing to sync the local forge mirror: remote omg-local pushes to/);
         expect(lanes.started).toEqual([]);
         expect(w.calls.filter((c) => c.startsWith('git push'))).toEqual([]);
