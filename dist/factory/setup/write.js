@@ -31,7 +31,7 @@ export function buildSection(repo, intake, progress, team) {
     return {
         forge,
         intake: { source: intake.source, ...(repo.kind === 'azure-devops' ? { itemTypes: [...intake.itemTypes] } : {}) },
-        progress: { enabled: progress.enabled, stages: progress.stages },
+        ...(repo.kind === 'local' ? {} : { progress: { enabled: progress.enabled, stages: progress.stages } }),
     };
 }
 /**
@@ -53,8 +53,10 @@ export function sectionEdits(section) {
     edits.push([['factory', 'intake', 'source'], section.intake.source]);
     if (section.intake.itemTypes)
         edits.push([['factory', 'intake', 'itemTypes'], section.intake.itemTypes]);
-    edits.push([['factory', 'progress', 'enabled'], section.progress.enabled]);
-    edits.push([['factory', 'progress', 'stages'], section.progress.stages]);
+    if (section.progress) {
+        edits.push([['factory', 'progress', 'enabled'], section.progress.enabled]);
+        edits.push([['factory', 'progress', 'stages'], section.progress.stages]);
+    }
     if (section.heal)
         edits.push([['factory', 'heal', 'pipeline'], section.heal.pipeline]);
     if (section.ship)

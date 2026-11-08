@@ -11,6 +11,7 @@ import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { runFactoryEngine, EXIT_AWAITING_HUMAN } from '../engine.js';
 import { factoryForgeOptions } from '../forge-roots.js';
 import { checkoutPath } from '../prepare.js';
+import { getOmcRoot } from '../../../lib/worktree-paths.js';
 import { readFactoryState } from '../state.js';
 import { commitFile, gitIn, review } from './fake-lanes.js';
 import { BASE, foreignCommands, lanesFor, LOCAL_ISSUE, localOpts, localWorld } from './engine-local-harness.js';
@@ -29,6 +30,12 @@ describe('factory run on the local forge', () => {
         const state = readFactoryState(w.root, LOCAL_ISSUE);
         expect(state).toMatchObject({ phase: 'merge', forgeKind: 'local', remote: 'omg-local', repoUrl: w.config.repo.url, pr: 1 });
         expect(state.plan?.source).toBe('issue-body');
+        // F23/F35: local wording, never GitHub's issue or Azure DevOps' work item.
+        expect(state.history[0].note).toBe(`backlog item #${LOCAL_ISSUE}`);
+        expect(state.history.find((h) => h.to === 'plan')?.note).toMatch(/^backlog item \.copilot\/backlog\//);
+        const prBody = readFileSync(join(getOmcRoot(w.root), 'factory', 'local', 'prs', '1', 'body.md'), 'utf8');
+        expect(prBody).toContain(`\n\nBacklog item #${LOCAL_ISSUE}\n`);
+        expect(JSON.stringify(state.history)).not.toMatch(/work item|issue #/);
         // The mirror is engine-owned, under the forge state dir, and holds the base and the pushed head.
         const mirror = w.config.repo.url;
         expect(mirror.startsWith(w.stateDir)).toBe(true);
@@ -42,7 +49,7 @@ describe('factory run on the local forge', () => {
         // The configured GitHub check name is replaced, with a warning.
         expect(warnings.join('\n')).toMatch(/ignores ship\.requiredChecks Test; the gates wait for local-gate only/);
         // The human merge is a local git merge of the exact head; the engine never merges.
-        expect(out.mergeCommand).toBe(`git -C ${w.root} merge --no-ff ${state.head}`);
+        expect(out.mergeCommand).toBe(`git -C ${w.root} merge --no-ff --no-edit ${state.head}`);
         // Offline: no gh/az/copilot, nothing on origin, every mirror transport pinned to the stock pack programs.
         expect(foreignCommands(w)).toEqual([]);
         expect(w.calls.filter((c) => /\borigin\b/.test(c))).toEqual([]);
@@ -76,6 +83,10 @@ describe('factory run on the local forge', () => {
         const lanes = lanesFor(w, [greet(), review('approve'), commitFile('src/greet.js', 'export const greet = () => "hi!";\n'), review('approve')]);
         const out = await runFactoryEngine(localOpts(w, lanes));
         expect(lanes.started.map((s) => s.laneId)).toContain(`issue-${LOCAL_ISSUE}-ci-fix-1`);
+        // F43: the ci-fix lane sees the local gate's output tail and where the failure came from.
+        const ciFix = lanes.started.find((s) => s.laneId === `issue-${LOCAL_ISSUE}-ci-fix-1`);
+        expect(ciFix.prompt).toContain('the failure is from the local gate (factory.forge.local.gate)');
+        expect(ciFix.prompt).toMatch(/## Output\n\n`+text\n[\s\S]*not ok 1 - greet/);
         const [failed, passed] = w.gateRuns;
         expect(readLocalCheckRecord(w.stateDir, w.root, failed.head)).toMatchObject({ state: 'FAILURE', exitCode: 1 });
         expect(passed.head).not.toBe(failed.head);
@@ -212,6 +223,7 @@ describe('factory run on the local forge', () => {
         const out = await runFactoryEngine(localOpts(w, lanesFor(w, []), { dryRun: true }));
         expect(out.exitCode, out.message).toBe(0);
         expect(out.plan?.next).toBe('implement');
+        expect(out.message).toContain('dry run: plan from backlog item body (Acceptance criteria);');
         expect(existsSync(w.config.repo.url)).toBe(false);
         expect(existsSync(w.stateDir)).toBe(false);
         expect(gitIn(w.root, 'remote')).toBe('');

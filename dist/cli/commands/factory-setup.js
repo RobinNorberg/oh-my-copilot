@@ -28,7 +28,7 @@ import { createForge } from '../../forge/index.js';
 import { localForgeLimitations } from '../../forge/local/index.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { adoGuardContext, defaultAzBinaryDeps } from '../../forge/ado/index.js';
-import { checkEnvFor, checkGuardExec } from '../../factory/check/cli.js';
+import { checkEnvFor, checkGuardExec, factoryErrorLine } from '../../factory/check/cli.js';
 import { factoryCheckPreview } from '../../factory/check/score.js';
 import { factoryForgeOptions } from '../../factory/run/forge-roots.js';
 import { checkAdoAuth, checkGitHubAuth } from '../../factory/setup/auth.js';
@@ -348,7 +348,7 @@ function printOutcome(o, r) {
         return;
     }
     if (r.error) {
-        console.error(chalk.red(`Error: ${r.error}`));
+        console.error(chalk.red(factoryErrorLine(r.error)));
         return;
     }
     for (const c of r.auth?.checks ?? [])
@@ -360,8 +360,10 @@ function printOutcome(o, r) {
         console.log(chalk.yellow(o.dryRun ? 'dry run: nothing written' : 'nothing written'));
     for (const l of r.labels.created)
         console.log(chalk.green(`created label ${l}`));
-    if (!r.prerequisites.ok)
-        console.log(chalk.gray(`omg factory init prerequisites missing (needed for the chain route table only): ${r.prerequisites.missing.join(', ')}`));
+    // F22: informational only, and not part of the offline flow, so the local forge does not print it (--json keeps it).
+    if (!r.prerequisites.ok && r.forge?.kind !== 'local') {
+        console.log(chalk.gray(`note: omg factory run does not need these; only omg factory init (the chain route table) reads them: ${r.prerequisites.missing.join(', ')}`));
+    }
     for (const n of r.notes)
         console.log(chalk.gray(n));
     for (const l of r.limitations)

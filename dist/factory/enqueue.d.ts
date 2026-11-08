@@ -119,9 +119,10 @@ export interface EnqueueJson {
     schemaVersion: number;
     ok: boolean;
     dryRun: boolean;
+    /** `not-used` on the local forge: a backlog spec has no task list; each ticket's `Part of #n` line links it (F25). */
     spec: {
         id: number;
-        taskList: 'unchanged' | 'updated';
+        taskList: 'unchanged' | 'updated' | 'not-used';
         planned?: string;
     };
     items: EnqueueRow[];

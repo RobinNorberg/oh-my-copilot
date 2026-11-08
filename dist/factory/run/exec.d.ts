@@ -37,6 +37,8 @@ export { MAX_TRACKER_BODY_CHARS } from '../../forge/body-file.js';
 export declare class FactorySafetyError extends ShipSafetyError {
     constructor(message: string);
 }
+/** A plain repo-relative path for the local backlog shapes, shared with the check guard: no `.` or `..` segment. */
+export declare const isPlainRepoPath: (p: string) => boolean;
 export declare const FOR_EACH_REF_FORMAT = "--format=%(refname) %(objectname)";
 /**
  * What `omg factory enqueue` may write (shipyard-factory design §3.3, PR 7a).

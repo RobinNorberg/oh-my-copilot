@@ -22,6 +22,7 @@
 import type { Forge, ForgeFactory, ResolvedForgeConfig } from '../../forge/types.js';
 import { type AzEntry } from '../../forge/ado/az-binary.js';
 import { type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
+import { unsupportedForge } from '../run/forge-roots.js';
 import { type Exec } from '../../ship/exec.js';
 import { type AdoGuardContext } from '../../forge/ado/guard.js';
 import { type CheckEnv, type CheckResult } from './score.js';
@@ -38,6 +39,7 @@ export declare class CheckIncompatibleError extends Error {
  * The local forge's read shapes (src/forge/local): the backlog listing at a
  * commit, and the local base branch (an offline repository has no origin to
  * fetch). The check guard allows them itself, with ship's trusted-read env only.
+ * Paths use the engine guard's isPlainRepoPath, so both guards agree.
  */
 export declare function isLocalReadShape(args: readonly string[]): boolean;
 /**
@@ -161,8 +163,12 @@ export declare function openReadForge(o: Pick<FactoryCheckOptions, 'source' | 'l
 export declare function readForgeOptions(config: ResolvedForgeConfig, root: string, options: AzureDevOpsForgeOptions, base: string, baseSha: string | null, workingTree?: boolean): AzureDevOpsForgeOptions;
 /** F20: the local forge's base branch is missing (exit 2 in check, board, poll and `run --next`). */
 export declare function missingLocalBase(base: string): string;
-/** The F9/F10 text of "no usable forge" (exit 5 in check, board, poll and setup), with the offline hint. */
-export declare function unsupportedForge(why: string): string;
+/**
+ * The stderr line of a factory command's error: `Error: <message>`, except that "no usable forge" starts with
+ * `unsupported forge:` in every command, as `omg factory run` prints it (F28).
+ */
+export declare function factoryErrorLine(message: string): string;
+export { unsupportedForge };
 /** The local branch `<base>` (the local forge's base; no fetch); null with a warning when it does not exist. */
 export declare function localBase(exec: Exec, root: string, base: string, warnings: string[]): string | null;
 /** The forge's limitations (the local forge's offline lines), or none. */

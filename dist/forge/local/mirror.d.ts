@@ -38,8 +38,14 @@ export declare const backlogListArgs: (commit: string, dir: string) => string[];
 export declare const backlogShowArgs: (commit: string, path: string) => string[];
 /** Whether `head` is in `base` (a local PR is MERGED): `git merge-base --is-ancestor <head> <base>`, exit 0 yes, 1 no. */
 export declare const mergedArgs: (head: string, base: string) => string[];
-/** The last commit at or before `commit` that changed `path` (empty when none): `git log -1 --no-show-signature --format=%H <sha> -- <path>`. */
-export declare const lastChangeArgs: (commit: string, path: string) => string[];
+/**
+ * The flags of lastStateChangeArgs, which both guards match exactly: `-G^state:` keeps only commits whose own
+ * diff adds or removes a `state:` line (a merge commit has no diff here, so it never counts); no external diff
+ * or textconv driver and no signature check run.
+ */
+export declare const STATE_CHANGE_LOG_FLAGS: readonly string[];
+/** The last commit at or before `commit` that changed the `state:` line of `path` (empty when none). */
+export declare const lastStateChangeArgs: (commit: string, path: string) => string[];
 /**
  * The commit `refs/heads/<branch>` names in the bare mirror, read from the
  * loose ref or packed-refs; undefined when the mirror or the branch is absent.

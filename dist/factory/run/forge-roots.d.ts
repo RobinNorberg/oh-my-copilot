@@ -24,6 +24,8 @@ export declare function factoryForgeOptions(repoRoot: string, env?: NodeJS.Proce
  * merge body under, a root a lane writes.
  */
 export declare function assertFactoryForgeOptions(repoRoot: string, options: ForgeOptions, env?: NodeJS.ProcessEnv): void;
+/** The F9/F10 text of "no usable forge" (exit 5 in run, check, board, poll and setup), with the offline hint. */
+export declare function unsupportedForge(why: string): string;
 /**
  * The forge config of a factory run: the user config at its default
  * location, `.copilot/omg.jsonc` committed on `origin/<base>` after a fetch
