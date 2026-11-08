@@ -191,12 +191,27 @@ function isMirrorPath(p: string | undefined, local: LocalGuardContext | undefine
     && local !== undefined && sameFsPath(p, local.mirror);
 }
 
+/** The fetch refspec `git remote add omg-local` writes: the only one the engine accepts. */
+export const LOCAL_REMOTE_DEFAULT_FETCH = `+refs/heads/*:refs/remotes/${LOCAL_REMOTE}/*`;
+
 /**
- * `git config --get-regexp` of the `omg-local` keys the engine refuses:
+ * `git config --get-regexp` of the `omg-local` keys the engine checks:
  * `vcs` hands the transport to a `git remote-<vcs>` helper (remote-ext runs
- * a command) and `mirror` turns a push into a mirror push.
+ * a command), `mirror` turns a push into a mirror push, and a `fetch`
+ * refspec other than LOCAL_REMOTE_DEFAULT_FETCH could map a branch onto
+ * local refs: git moves the refs it maps to after a push to the remote or to
+ * its url (git 2.56 does that for a push to the mirror path too), and
+ * `--refmap=` covers fetches only.
  */
-export const LOCAL_REMOTE_REFUSED_CONFIG_ARGS: readonly string[] = ['config', '--get-regexp', `^remote\\.${LOCAL_REMOTE}\\.(vcs|mirror)$`];
+export const LOCAL_REMOTE_REFUSED_CONFIG_ARGS: readonly string[] = ['config', '--get-regexp', `^remote\\.${LOCAL_REMOTE}\\.(vcs|mirror|fetch)$`];
+
+/** The refused `key=value`s in the output of LOCAL_REMOTE_REFUSED_CONFIG_ARGS: every vcs or mirror, and any fetch refspec but the default. */
+export function localRemoteRefusedKeys(stdout: string): string[] {
+  const refused = stdout.split(/\r?\n/).map((l) => l.trim().split(/\s+/)).filter(([key]) => Boolean(key))
+    .filter(([key, ...value]) => !(key === `remote.${LOCAL_REMOTE}.fetch` && value.join(' ') === LOCAL_REMOTE_DEFAULT_FETCH))
+    .map(([key, ...value]) => `${key}=${value.join(' ')}`);
+  return [...new Set(refused)];
+}
 
 /** Factory-only git shapes; null = not a factory shape (ship's allowlist decides), false = refused outright. */
 function factoryGit(a: string[], protectedBranches: readonly string[], extraProtected: readonly string[] = [], local?: LocalGuardContext): boolean | null {
@@ -430,10 +445,11 @@ export function hardenedGitExec(exec: Exec, hooksDir: string, localMirror: () =>
     }
     const hardening = gitHardeningArgs(hooksDir);
     if (!onLocalRemote(args)) return exec(cmd, [...hardening, ...args], opts);
-    // remote.omg-local.vcs / .mirror change what the transport is: syncLocalMirror refuses them first (exit 5), this is the backstop.
-    const refused = exec(cmd, [...hardening, ...LOCAL_REMOTE_REFUSED_CONFIG_ARGS], { ...(opts?.cwd ? { cwd: opts.cwd } : {}), env: TRUSTED_READ_ENV });
-    if (refused.status > 1 || refused.stdout.trim()) {
-      throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(' ')}\`: the ${LOCAL_REMOTE} remote sets ${refused.stdout.trim().split(/\s+/)[0] || 'a config git could not read'}; remove it (git config --unset)`);
+    // vcs / mirror / a foreign fetch refspec change what the transport does: syncLocalMirror refuses them first (exit 5), this is the backstop.
+    const checked = exec(cmd, [...hardening, ...LOCAL_REMOTE_REFUSED_CONFIG_ARGS], { ...(opts?.cwd ? { cwd: opts.cwd } : {}), env: TRUSTED_READ_ENV });
+    const refused = checked.status > 1 ? ['a config git could not read'] : localRemoteRefusedKeys(checked.stdout);
+    if (refused.length > 0) {
+      throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(' ')}\`: the ${LOCAL_REMOTE} remote sets ${refused.join(', ')}; remove it (git config --unset)`);
     }
     return exec(cmd, [...hardening, ...LOCAL_REMOTE_PACK_ARGS, ...localTransportArgs(args, localMirror())], opts);
   };

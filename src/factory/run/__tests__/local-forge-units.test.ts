@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { readLocalCheckRecord, writeLocalCheckRecord } from '../../../forge/local/index.js';
 import { isProcessAlive } from '../../../platform/process-utils.js';
 import type { Exec } from '../../../ship/exec.js';
-import { assertFactoryCommand, FactorySafetyError, hardenedGitExec, LOCAL_REMOTE_PACK_ARGS, localTransportArgs, type LocalGuardContext } from '../exec.js';
+import { assertFactoryCommand, FactorySafetyError, hardenedGitExec, LOCAL_REMOTE_PACK_ARGS, localRemoteRefusedKeys, localTransportArgs, type LocalGuardContext } from '../exec.js';
 import {
   assertLocalGateCommand, defaultLocalGateRunner, LOCAL_GATE_STALE_GRACE_MS, LOCAL_GATE_TAIL_CHARS, localGateDue, localGateRecord,
   resolveLocalGateArgv, runLocalGate, type LocalGateRunner,
@@ -36,7 +36,7 @@ describe('the factory guard on the local forge shapes', () => {
     ['the merged check', ['merge-base', '--is-ancestor', SHA, SHA2], []],
     ['the local base branch', ['rev-parse', '--verify', 'refs/heads/main'], []],
     ['the mirror fetch', ['fetch', 'omg-local', 'main'], []],
-    ['the refused omg-local config read', ['config', '--get-regexp', '^remote\\.omg-local\\.(vcs|mirror)$'], []],
+    ['the refused omg-local config read', ['config', '--get-regexp', '^remote\\.omg-local\\.(vcs|mirror|fetch)$'], []],
   ])('allows %s', (_what, args, extra) => {
     expect(ok('git', args, extra)).not.toThrow();
   });
@@ -123,6 +123,14 @@ describe('hardenedGitExec on omg-local', () => {
     // Other git commands are not concerned.
     exec('git', ['status']);
     expect(commands()).toHaveLength(1);
+  });
+
+  it('accepts only the default omg-local fetch refspec; vcs, mirror and any other refspec are refused', () => {
+    expect(localRemoteRefusedKeys('remote.omg-local.fetch +refs/heads/*:refs/remotes/omg-local/*\n')).toEqual([]);
+    expect(localRemoteRefusedKeys('')).toEqual([]);
+    expect(localRemoteRefusedKeys('remote.omg-local.fetch +refs/heads/*:refs/remotes/omg-local/*\nremote.omg-local.fetch +refs/heads/*:refs/heads/x/*\n'))
+      .toEqual(['remote.omg-local.fetch=+refs/heads/*:refs/heads/x/*']);
+    expect(localRemoteRefusedKeys('remote.omg-local.vcs ext\r\nremote.omg-local.mirror true\n')).toEqual(['remote.omg-local.vcs=ext', 'remote.omg-local.mirror=true']);
   });
 });
 

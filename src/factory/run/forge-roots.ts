@@ -21,7 +21,7 @@ import { LOCAL_REMOTE, mirrorFetchArgs, mirrorInitArgs, mirrorPushArgs, mirrorRe
 import type { ForgeKind, ForgeOptions } from '../../forge/types.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { BASE_CONFIG_PATH, readBaseFile, resolveTrustedBases } from '../../ship/config.js';
-import { FOR_EACH_REF_FORMAT, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, sameFsPath } from './exec.js';
+import { FOR_EACH_REF_FORMAT, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, localRemoteRefusedKeys, sameFsPath } from './exec.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { getGlobalOmcStatePath } from '../../utils/paths.js';
@@ -196,14 +196,16 @@ function realOr(p: string): string {
 }
 
 /**
- * The `remote.omg-local.vcs` / `.mirror` keys the checkout sets (any include
- * counts), or null. Refused: vcs hands the transport to `git remote-<vcs>`
- * (remote-ext runs a command), mirror turns a push into a mirror push.
+ * The refused `remote.omg-local.*` settings of the checkout (any include
+ * counts), or null: `vcs` hands the transport to `git remote-<vcs>`
+ * (remote-ext runs a command), `mirror` turns a push into a mirror push, and
+ * a `fetch` refspec other than the default could map a pushed branch onto
+ * local refs (localRemoteRefusedKeys).
  */
 export function localRemoteRefusedConfig(exec: Exec, root: string): string | null {
   const r = exec('git', [...LOCAL_REMOTE_REFUSED_CONFIG_ARGS], { cwd: root, env: TRUSTED_READ_ENV });
   if (r.status > 1) return `git ${LOCAL_REMOTE_REFUSED_CONFIG_ARGS.join(' ')} failed: ${r.stderr.trim().split('\n')[0]}`;
-  const keys = r.stdout.split(/\r?\n/).map((l) => l.trim().split(/\s+/)[0]).filter(Boolean);
+  const keys = localRemoteRefusedKeys(r.stdout);
   return keys.length > 0 ? `the checkout's git config sets ${keys.join(', ')}` : null;
 }
 
@@ -211,7 +213,8 @@ export function localRemoteRefusedConfig(exec: Exec, root: string): string | nul
  * Create (once) and sync the local forge's bare mirror (offline forge plan
  * §1.1), through the engine's guarded, hardened Exec:
  * - `git init --bare` at `mirror` when it does not exist;
- * - `remote.omg-local.vcs` / `.mirror` in the checkout refuse with
+ * - `remote.omg-local.vcs` / `.mirror`, or a `remote.omg-local.fetch` other
+ *   than the default, in the checkout refuse with
  *   FactoryForgeUnavailableError (exit 5);
  * - the checkout's `omg-local` remote is added when missing; an existing one
  *   must point at exactly `mirror` for fetch and for every push url
