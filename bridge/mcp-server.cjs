@@ -41784,6 +41784,10 @@ function sameFsPath(a, b) {
 function isMirrorPath(p, local) {
   return isFile2(p) && (0, import_path85.isAbsolute)(p) && /[\\/]local[\\/][A-Za-z0-9_][A-Za-z0-9._-]*-[0-9a-f]{12}\.git$/.test(p) && local !== void 0 && sameFsPath(p, local.mirror);
 }
+function localRemoteRefusedKeys(stdout) {
+  const refused = stdout.split(/\r?\n/).map((l) => l.trim().split(/\s+/)).filter(([key]) => Boolean(key)).filter(([key, ...value]) => !(key === `remote.${LOCAL_REMOTE}.fetch` && value.join(" ") === LOCAL_REMOTE_DEFAULT_FETCH)).map(([key, ...value]) => `${key}=${value.join(" ")}`);
+  return [...new Set(refused)];
+}
 function factoryGit(a, protectedBranches, extraProtected = [], local) {
   const [sub, ...r] = a;
   const remote = r[0] === "origin" || r[0] === LOCAL_REMOTE;
@@ -41929,14 +41933,15 @@ function hardenedGitExec(exec, hooksDir, localMirror = () => void 0) {
     }
     const hardening = gitHardeningArgs(hooksDir);
     if (!onLocalRemote(args)) return exec(cmd, [...hardening, ...args], opts);
-    const refused = exec(cmd, [...hardening, ...LOCAL_REMOTE_REFUSED_CONFIG_ARGS], { ...opts?.cwd ? { cwd: opts.cwd } : {}, env: TRUSTED_READ_ENV });
-    if (refused.status > 1 || refused.stdout.trim()) {
-      throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(" ")}\`: the ${LOCAL_REMOTE} remote sets ${refused.stdout.trim().split(/\s+/)[0] || "a config git could not read"}; remove it (git config --unset)`);
+    const checked = exec(cmd, [...hardening, ...LOCAL_REMOTE_REFUSED_CONFIG_ARGS], { ...opts?.cwd ? { cwd: opts.cwd } : {}, env: TRUSTED_READ_ENV });
+    const refused = checked.status > 1 ? ["a config git could not read"] : localRemoteRefusedKeys(checked.stdout);
+    if (refused.length > 0) {
+      throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(" ")}\`: the ${LOCAL_REMOTE} remote sets ${refused.join(", ")}; remove it (git config --unset)`);
     }
     return exec(cmd, [...hardening, ...LOCAL_REMOTE_PACK_ARGS, ...localTransportArgs(args, localMirror())], opts);
   };
 }
-var import_fs68, import_os14, import_path85, FACTORY_BRANCH_PREFIX, FactorySafetyError, NUMBER2, JSON_FIELDS2, BRANCH3, REPO_PATH, FOR_EACH_REF_FORMAT, CHECKOUT_BRANCH, isBranch2, isFile2, isTitle, same2, FACTORY_LABEL, KEY_SEARCH, MAX_WRITE_LABELS, isWriteLabel, isBodyFile, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, adoRefusal, LOCAL_REMOTE_PACK_ARGS, onLocalRemote;
+var import_fs68, import_os14, import_path85, FACTORY_BRANCH_PREFIX, FactorySafetyError, NUMBER2, JSON_FIELDS2, BRANCH3, REPO_PATH, FOR_EACH_REF_FORMAT, CHECKOUT_BRANCH, isBranch2, isFile2, isTitle, same2, FACTORY_LABEL, KEY_SEARCH, MAX_WRITE_LABELS, isWriteLabel, isBodyFile, LOCAL_REMOTE_DEFAULT_FETCH, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, adoRefusal, LOCAL_REMOTE_PACK_ARGS, onLocalRemote;
 var init_exec2 = __esm({
   "src/factory/run/exec.ts"() {
     "use strict";
@@ -41970,7 +41975,8 @@ var init_exec2 = __esm({
     MAX_WRITE_LABELS = 4;
     isWriteLabel = (s, ctx) => typeof s === "string" && ctx.labels.includes(s) && !/^(?:factory|harbor):/i.test(s) && /^[^,\s-][^,\r\n\0]{0,49}$/.test(s);
     isBodyFile = (s, ctx) => isFile2(s) && isBodyFileIn(s, ctx.bodyDir);
-    LOCAL_REMOTE_REFUSED_CONFIG_ARGS = ["config", "--get-regexp", `^remote\\.${LOCAL_REMOTE}\\.(vcs|mirror)$`];
+    LOCAL_REMOTE_DEFAULT_FETCH = `+refs/heads/*:refs/remotes/${LOCAL_REMOTE}/*`;
+    LOCAL_REMOTE_REFUSED_CONFIG_ARGS = ["config", "--get-regexp", `^remote\\.${LOCAL_REMOTE}\\.(vcs|mirror|fetch)$`];
     adoRefusal = (cmd, args) => (reason) => new FactorySafetyError(`omg factory run refuses \`${cmd.replace(/\\/g, "/").split("/").pop()} ${args.join(" ")}\`: ${reason}`);
     LOCAL_REMOTE_PACK_ARGS = ["-c", `remote.${LOCAL_REMOTE}.receivepack=git-receive-pack`, "-c", `remote.${LOCAL_REMOTE}.uploadpack=git-upload-pack`];
     onLocalRemote = (args) => (args[0] === "push" || args[0] === "fetch" || args[0] === "ls-remote") && args[1] === LOCAL_REMOTE;
@@ -44825,7 +44831,7 @@ function realOr2(p) {
 function localRemoteRefusedConfig(exec, root) {
   const r = exec("git", [...LOCAL_REMOTE_REFUSED_CONFIG_ARGS], { cwd: root, env: TRUSTED_READ_ENV });
   if (r.status > 1) return `git ${LOCAL_REMOTE_REFUSED_CONFIG_ARGS.join(" ")} failed: ${r.stderr.trim().split("\n")[0]}`;
-  const keys = r.stdout.split(/\r?\n/).map((l) => l.trim().split(/\s+/)[0]).filter(Boolean);
+  const keys = localRemoteRefusedKeys(r.stdout);
   return keys.length > 0 ? `the checkout's git config sets ${keys.join(", ")}` : null;
 }
 function syncLocalMirror(exec, root, mirror, base, onBase) {

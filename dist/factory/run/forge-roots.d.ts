@@ -59,16 +59,19 @@ export declare const EXIT_FORGE_UNAVAILABLE = 5;
  */
 export declare function localRemoteMismatch(exec: Exec, root: string, mirror: string): string | null;
 /**
- * The `remote.omg-local.vcs` / `.mirror` keys the checkout sets (any include
- * counts), or null. Refused: vcs hands the transport to `git remote-<vcs>`
- * (remote-ext runs a command), mirror turns a push into a mirror push.
+ * The refused `remote.omg-local.*` settings of the checkout (any include
+ * counts), or null: `vcs` hands the transport to `git remote-<vcs>`
+ * (remote-ext runs a command), `mirror` turns a push into a mirror push, and
+ * a `fetch` refspec other than the default could map a pushed branch onto
+ * local refs (localRemoteRefusedKeys).
  */
 export declare function localRemoteRefusedConfig(exec: Exec, root: string): string | null;
 /**
  * Create (once) and sync the local forge's bare mirror (offline forge plan
  * §1.1), through the engine's guarded, hardened Exec:
  * - `git init --bare` at `mirror` when it does not exist;
- * - `remote.omg-local.vcs` / `.mirror` in the checkout refuse with
+ * - `remote.omg-local.vcs` / `.mirror`, or a `remote.omg-local.fetch` other
+ *   than the default, in the checkout refuse with
  *   FactoryForgeUnavailableError (exit 5);
  * - the checkout's `omg-local` remote is added when missing; an existing one
  *   must point at exactly `mirror` for fetch and for every push url

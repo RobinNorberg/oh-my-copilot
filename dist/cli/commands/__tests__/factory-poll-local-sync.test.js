@@ -11,7 +11,7 @@ import { resolveForgeConfig } from '../../../forge/config.js';
 import { readMirrorRef } from '../../../forge/local/index.js';
 import { defaultExec } from '../../../ship/exec.js';
 import { gitIn } from '../../../factory/run/__tests__/fake-lanes.js';
-import { hardenedGitExec, sameFsPath } from '../../../factory/run/exec.js';
+import { FactorySafetyError, hardenedGitExec, sameFsPath } from '../../../factory/run/exec.js';
 import { FactoryForgeUnavailableError, localRemoteMismatch } from '../../../factory/run/forge-roots.js';
 import { emptyHooksDir } from '../../../factory/run/ledger.js';
 import { pollLocalBaseSync } from '../factory.js';
@@ -59,17 +59,45 @@ describe('omg factory poll: local forge base sync', () => {
         const exec = (cmd, args, opts) => { raw.push(args); return defaultExec(cmd, args, opts); };
         return { root, config, raw, sync: pollLocalBaseSync(exec, join(dir, 'ledger')) };
     }
-    it('a planted remote.omg-local.fetch refspec never creates local branches: only the tracking ref moves', () => {
+    /** The planted refs under refs/heads/x/, and on a failure which command wrote them (reflog), the git version and what ran. */
+    const plantedRefs = (w) => {
+        const planted = gitIn(w.root, 'for-each-ref', '--format=%(refname)', 'refs/heads/x/');
+        const why = planted ? `${gitIn(w.root, 'reflog', 'show', '--format=%gs', planted.split('\n')[0])}\n${gitIn(w.root, 'version')}\n${w.raw.map((a) => a.join(' ')).join('\n')}` : '';
+        return { planted, why };
+    };
+    it('the default omg-local refspec syncs: the fetch takes an explicit tracking refspec and --refmap=', () => {
         const w = world();
         gitIn(w.root, 'remote', 'add', 'omg-local', w.config.repo.url);
-        gitIn(w.root, 'config', '--replace-all', 'remote.omg-local.fetch', '+refs/heads/*:refs/heads/x/*');
         const head = gitIn(w.root, 'rev-parse', 'main');
         w.sync({ root: w.root, base: 'main', config: w.config });
-        expect(gitIn(w.root, 'for-each-ref', '--format=%(refname)', 'refs/heads/x/')).toBe('');
         expect(gitIn(w.root, 'rev-parse', 'refs/remotes/omg-local/main')).toBe(head);
         const fetch = w.raw.find((a) => a.includes('fetch'));
-        expect(fetch).toContain('--refmap=');
-        expect(fetch).toContain('+refs/heads/main:refs/remotes/omg-local/main');
+        expect(fetch.slice(fetch.indexOf('fetch'))).toEqual(['fetch', '--no-tags', '--refmap=', 'omg-local', '+refs/heads/main:refs/remotes/omg-local/main']);
+    });
+    it.each([
+        ['replacing the default', ['--replace-all']],
+        ['beside the default', ['--add']],
+    ])('a planted remote.omg-local.fetch refspec (%s) refuses the sync (exit 5): no local branch is created', (_how, mode) => {
+        const w = world();
+        gitIn(w.root, 'remote', 'add', 'omg-local', w.config.repo.url);
+        gitIn(w.root, 'config', ...mode, 'remote.omg-local.fetch', '+refs/heads/*:refs/heads/x/*');
+        expect(() => w.sync({ root: w.root, base: 'main', config: w.config })).toThrow(FactoryForgeUnavailableError);
+        const { planted, why } = plantedRefs(w);
+        expect(planted, why).toBe('');
+        expect(w.raw.filter((a) => a.includes('push') || a.includes('fetch'))).toEqual([]);
+    });
+    it('the refspec backstop: a push or fetch on omg-local refuses a planted refspec even when the sync check is bypassed', () => {
+        const w = world();
+        gitIn(w.root, 'remote', 'add', 'omg-local', w.config.repo.url);
+        gitIn(w.root, 'init', '-q', '--bare', w.config.repo.url);
+        gitIn(w.root, 'config', '--replace-all', 'remote.omg-local.fetch', '+refs/heads/*:refs/heads/x/*');
+        const hardened = hardenedGitExec((cmd, args, opts) => { w.raw.push(args); return defaultExec(cmd, args, opts); }, emptyHooksDir(join(dir, 'ledger')), () => w.config.repo.url);
+        const head = gitIn(w.root, 'rev-parse', 'main');
+        expect(() => hardened('git', ['push', 'omg-local', `${head}:refs/heads/main`], { cwd: w.root })).toThrow(/sets remote\.omg-local\.fetch=\+refs\/heads\/\*:refs\/heads\/x\/\*/);
+        expect(() => hardened('git', ['fetch', 'omg-local', 'main'], { cwd: w.root })).toThrow(FactorySafetyError);
+        const { planted, why } = plantedRefs(w);
+        expect(planted, why).toBe('');
+        expect(w.raw.filter((a) => a.includes('push') || a.includes('fetch'))).toEqual([]);
     });
     it.each([
         ['remote.omg-local.vcs', 'ext'],

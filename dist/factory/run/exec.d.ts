@@ -63,12 +63,20 @@ export interface LocalGuardContext {
 }
 /** Same path, case-insensitively only where the file system usually is (Windows, macOS); both sides resolved. */
 export declare function sameFsPath(a: string, b: string): boolean;
+/** The fetch refspec `git remote add omg-local` writes: the only one the engine accepts. */
+export declare const LOCAL_REMOTE_DEFAULT_FETCH = "+refs/heads/*:refs/remotes/omg-local/*";
 /**
- * `git config --get-regexp` of the `omg-local` keys the engine refuses:
+ * `git config --get-regexp` of the `omg-local` keys the engine checks:
  * `vcs` hands the transport to a `git remote-<vcs>` helper (remote-ext runs
- * a command) and `mirror` turns a push into a mirror push.
+ * a command), `mirror` turns a push into a mirror push, and a `fetch`
+ * refspec other than LOCAL_REMOTE_DEFAULT_FETCH could map a branch onto
+ * local refs: git moves the refs it maps to after a push to the remote or to
+ * its url (git 2.56 does that for a push to the mirror path too), and
+ * `--refmap=` covers fetches only.
  */
 export declare const LOCAL_REMOTE_REFUSED_CONFIG_ARGS: readonly string[];
+/** The refused `key=value`s in the output of LOCAL_REMOTE_REFUSED_CONFIG_ARGS: every vcs or mirror, and any fetch refspec but the default. */
+export declare function localRemoteRefusedKeys(stdout: string): string[];
 /**
  * Throws FactorySafetyError unless the command is a factory shape or a
  * non-push, non-merge ship shape. `extraProtected` adds the run's base.
