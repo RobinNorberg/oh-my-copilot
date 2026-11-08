@@ -114,7 +114,9 @@ export function formatAmount(value: number, unit: BudgetUnit): string {
 export function summaryLine(ledger: BudgetLedger, settings: BudgetSettings): string {
   const t = ledgerTotals(ledger);
   const estimated = t.estimatedRecords > 0 ? `; ${t.estimatedRecords} record(s) estimated` : '';
-  const threshold = settings.softLimit !== undefined ? `soft limit ${formatAmount(settings.softLimit, 'credits')}` : 'no soft limit';
+  // F45: say when usage is past the soft limit, not only what the limit is.
+  const over = settings.softLimit !== undefined && t.credits >= settings.softLimit;
+  const threshold = settings.softLimit !== undefined ? `soft limit ${formatAmount(settings.softLimit, 'credits')}${over ? ' exceeded' : ''}` : 'no soft limit';
   const deprecated = settings.deprecated.length > 0 ? ` ${deprecationNotice(settings.deprecated)}.` : '';
   return `[BUDGET] Copilot usage since ${ledger.since.slice(0, 10)}: ${formatAmount(Number(t.credits.toFixed(3)), 'credits')} `
     + `(${t.sessions} session(s), ${Object.keys(t.teams).length} team(s)${estimated}). `
