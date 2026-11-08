@@ -37,8 +37,8 @@ Then:
 
    You can also write items by hand and skip enqueue. Commit them the same way. Enqueue numbers each new file one past the highest existing id: with the sample as #1 and the spec as #2, the first ticket is #3, which the steps below use as the example id.
 4. `omg factory check` lists each ticket without an open dependency as `runnable` and prints `prepare checks: ...`. `omg factory board` shows the same items.
-5. `omg factory run <id>` (here `omg factory run 3`, or `omg factory run --next`) drives the ticket to `awaiting-human: merge` and prints the merge command, `git -C <root> merge --no-ff <sha>`.
-6. Merge on the base branch. Add `--no-edit`, or `-m "<message>"`, to the printed command: without either, git opens an editor in an interactive shell and the default message is `Merge commit '<sha>'`.
+5. `omg factory run <id>` (here `omg factory run 3`, or `omg factory run --next`) drives the ticket to `awaiting-human: merge` and prints the merge command.
+6. Run the printed command on the base branch. It has `--no-edit`, so git opens no editor and the message is `Merge commit '<sha>'`. Replace `--no-edit` with `-m "<message>"` for your own message.
 
    ```bash
    git -C <root> merge --no-ff --no-edit <sha>
@@ -72,6 +72,8 @@ Then:
 | `factory.intake.source` | | `{ "type": "local-backlog" }` takes every open item; with `"label"`, only open items carrying that label (compared without regard to case) |
 
 `--source local-backlog` or `--source local-backlog:<label>` works on `omg factory check` and `omg factory board`, and `--intake local-backlog[:<label>]` on `omg factory setup` (the default with `--forge local`).
+
+**The gate names a script.** The gate must name a `package.json` script (`npm test`, `npm run <script>`, `pnpm <script>`, `yarn <script>`, `npm --prefix <dir> run <script>`) or a node script file, so the run can compare the gate's definition (see [The gate](#how-a-run-works-offline)). A gate with no script, a workspace selector (`-w`, `-ws`, `--workspace`, `--filter`, `-r`, `yarn workspace`), `exec`, `dlx`, `create`, `yarn node`, or a package directory outside the repository cannot be compared. The run then parks at `awaiting-human: gate-definition-unknown` before it starts any lane, so no AI credits are spent. `omg factory check` prints `gate: ok`, `gate: unresolved (<why>)` or `gate: not set`.
 
 **The gate runs without a shell.** On Windows, `["npm","test"]` and `npx ...` run through node and npm's own `npm-cli.js` (or `npx-cli.js`) in node's directory. `pnpm` and `yarn` need a real `.exe` on PATH, or corepack's script beside node. A `.cmd` or `.bat` gate is never run. A gate whose executable cannot start parks the run at `awaiting-human: gates` with the reason. It records no `FAILURE` and starts no ci-fix lane.
 
@@ -124,6 +126,7 @@ The `## Acceptance` (or `## Acceptance criteria`) section is the item's acceptan
 A spec is an item that other items name as their `parent`. Check reads it by its children:
 
 - **No children yet.** The spec is an ordinary item. With an `## Acceptance` section it is `runnable`, so `omg factory run --next` would implement the whole spec. Enqueue its tickets and commit them before you use `--next`, or write the spec without an `## Acceptance` section: it then reads `needs-plan` (`no-plan`) until it has children. Enqueue does not need the section.
+- **The label `spec`.** A spec item labelled `spec` is `blocked` with `needs-split` (`labelled spec: add its tickets with omg factory enqueue and commit them`) until it has children, like the GitHub label `epic`. Without the label, a spec stays runnable until it has children, as above.
 - **Open children.** The spec is `blocked` with `needs-split`.
 - **Every child closed.** The spec is `blocked` with `children-done`: `every child (#3) is closed: close this spec item; the factory never runs a spec that was split`. Set `state: closed` in the spec's file and commit it.
 
@@ -131,9 +134,9 @@ A spec is an item that other items name as their `parent`. Check reads it by its
 
 After you merge an item's local PR, its backlog file still says `state: open`. The item reads as closed anyway for `check`, `board`, dependencies and its spec, once the engine has recorded the merge in its PR store. The next `omg factory poll` tick or `omg factory run <id>` records it. Only the item's own PR counts (`factory/issue-<n>` for that item), and only a merge into the current base (`ship.base`).
 
-- `check`, `board`, `enqueue` and the run intake print a warning: `local backlog: #3 is merged (local PR #1) but .copilot/backlog/3-x.md still says state: open; set state: closed there and commit it on the base branch`.
+- `check`, `board`, `enqueue` and the run intake print a warning: `local backlog: #3 is merged (local PR #1) but .copilot/backlog/3-x.md still says state: open; set state: closed there and commit it on the base branch (to reopen #3 later, commit state: open again after that: only a change of the state: line after the merge reopens it)`.
 - The merged run ends with `; set state: closed in <path> and commit it on <base> (omg factory check already counts #3 as closed)`.
-- A commit on the base that changes the file after the merge wins: the item reads from its file again. This is how you reopen an item. An edit to the file on the base while the PR was still open does not reopen it.
+- To reopen the item, commit a change of its `state:` line on the base after the merge: set `state: closed`, commit it, then commit `state: open` again. The item then reads from its file again. Other edits of the file after the merge, such as the body or the labels, keep it closed. So does a `state:` change made before the merge, in the PR's own commits, or only in a merge commit.
 
 ## How a run works offline
 
@@ -150,25 +153,43 @@ After you merge an item's local PR, its backlog file still says `state: open`. T
 - **PRs.** A PR is the branch `factory/issue-<n>` pushed to the mirror plus an entry in a JSON store next to it (`<repo>-<hash>/prs.json`). Its draft and ready state are kept there.
 - **Prepare.** Before the gate, the engine runs ship's prepare in its checkout: it merges the base, then runs the checks. With `ship.prepare.checks` set, it runs those argv commands (`[]` runs none). Otherwise it runs only the built-in checks your base branch has: `tsc --noEmit` when the base has `tsconfig.json` and `node_modules` has the typescript package, eslint on changed `src` TypeScript when the base has an eslint config and `node_modules` has eslint, and vitest on the tests mapped from the diff when `node_modules` has vitest. A repository without them runs none. A check the base has whose file the PR deleted fails prepare instead of being skipped. Your test command belongs in `factory.forge.local.gate`, not here. `omg factory check` prints `prepare checks: ...` so you can see the base-level checks that will run (the generator `--verify` scripts depend on the diff and are not listed). See `ship.prepare.checks` under [`omg ship`](REFERENCE.md#omg-ship).
 - **The gate.** The engine runs `factory.forge.local.gate` once per pushed head, in its own prepare checkout, with a scrubbed environment and the timeout. The result is the check `local-gate` (`SUCCESS` or `FAILURE` with the last 8000 characters of output), recorded under `<repo>-<hash>/checks/<sha>.json`. A rerun removes the record and the gate runs again. `ship.requiredChecks` and `advisoryChecks` are ignored on the local forge: the gates wait for `local-gate` only, with a warning when you configured other required checks.
-  - The gate runs the PR's own code. `["npm","test"]` runs the `package.json` script of the pushed head, so a lane that edits scripts or tests changes what the gate does.
-  - The run records the gate argv it first ran (state `localGate`). If `factory.forge.local.gate` changes mid-run, the run parks at `awaiting-human: gates`. Restore the gate, or run `omg factory run cancel` and start a new run.
+  - The gate runs the PR's own code. Offline the gate is the only check, so a lane may not change the gate's own definition. For an npm, pnpm or yarn gate that is the `package.json` script it runs with its `pre` and `post` scripts, plus `.npmrc`, `.yarnrc`, `.yarnrc.yml` and `.pnpmfile.cjs` (at the top and in the package directory) and an argv `--script-shell` inside the repository. For a node gate it is the script file. Before anything is pushed, the head's definition must equal the one on the base. Otherwise the run parks at `awaiting-human: gate-definition-changed`, and the message names the files and a `git diff` to inspect.
+  - `omg factory run <n> --allow-gate-change` accepts that one definition. It works only on a rerun of a run parked at `gate-definition-changed`, and accepts exactly the parked definition; otherwise it is ignored with a warning. A later change in the same run parks again.
+  - The definition check does not cover what the script itself runs, such as the tests, a test config or `node_modules`, nor a file a config line points at (a `yarnPath` release, a `script-shell`). Config files compare by their text. Review covers the rest.
+  - The run records the gate argv the first time the gate actually starts (state `localGate`). If the gate could not start (the run parked at `awaiting-human: gates` with "the local gate could not start"), fix `factory.forge.local.gate` and rerun: the run adopts the new gate. Once a gate has started, a changed `factory.forge.local.gate` parks the run at `awaiting-human: gates`. Restore the gate, or cancel the run and start over (see [Cancelling and retrying an item](#cancelling-and-retrying-an-item)).
+  - A failed gate starts the ci-fix lane with the gate's output tail as the failure.
   - A `PENDING` record older than the gate timeout plus 1 minute counts as left by a crashed engine, and the next run reruns the gate.
   - A rerun inside the gates phase starts only if a full gate timeout still ends before the gates deadline. Otherwise the run parks at `gates-timeout`.
   - The verdict is the exit status of the gate's root process. Output written more than 2 s after the root exits is dropped. At the timeout the whole process tree is killed. After the root has exited, leftover descendants are killed on POSIX only. On Windows they survive and are no longer waited for.
-- **Review.** The factory's own review lane still runs. There are no human or remote review threads.
-- **Merge.** The run parks at `awaiting-human: merge` and prints the command, `git -C <root> merge --no-ff <sha>`. Run it on the base branch with `--no-edit` or `-m "<message>"` added, so git opens no editor. The next `omg factory run <n>` or `omg factory poll` tick syncs the base to the mirror and reads the PR as `MERGED`. Then set `state: closed` in the item's file (see [Merged items](#merged-items)).
+- **Review.** The factory's own review lane still runs. There are no human or remote review threads. The review lane is static: its shell runs read-only commands only (no npm or node), and the gate runs the tests after review.
+- **Inspecting a run.** `git fetch omg-local factory/issue-<n>` during a run is safe: a tracking ref moved to the mirror's own sha does not count as tampering. Any other move, or a deletion, of such a ref while a lane runs still parks the run at `lane-tampered` or `review-tampered`, whoever did it. To read without touching refs, use `git --git-dir <mirror> log factory/issue-<n>`.
+- **Wording.** Lane prompts, the PR body and the run history call the item a backlog item, not an issue or a work item.
+- **Merge.** The run parks at `awaiting-human: merge` and prints the command, `git -C <root> merge --no-ff --no-edit <sha>`. Run it on the base branch. The next `omg factory run <n>` or `omg factory poll` tick syncs the base to the mirror and reads the PR as `MERGED`. Then set `state: closed` in the item's file (see [Merged items](#merged-items)).
 - **Comments and progress** go to `.omg/factory/local/` in the repository (`items/<id>/` and `prs/`), not to a server.
 - **Run state** is where it is on GitHub, under the state root `.omg/`: the state file `.omg/state/factory/run-<n>.json` and the progress log `.omg/progress/factory-<n>.log`.
+
+## Cancelling and retrying an item
+
+`omg factory run cancel <n>` closes the item's local PR (state `CLOSED`, reason `cancelled`) once the cancel finishes. The branch and the worktrees are kept. To run the item again:
+
+```bash
+omg factory run clean 3   # remove the run's worktrees and local lane branches
+omg factory run reset 3   # start the cancelled run over
+omg factory run 3         # a new run with a new local PR
+```
+
+Reset keeps the old branch in the mirror as `factory/cancelled/issue-<n>-<time>`, deletes `factory/issue-<n>` there, closes the local PR if it is still open, and moves the run state aside as `run-<n>.json.reset-<time>`. It is for the local forge only (exit 2 elsewhere). It refuses, with exit 1, a run that is not cancelled, a run that still has worktrees (`run clean` first), a run state that fails its seal or is not the engine's last write, and a live engine. A reset stopped part way is finished by running it again. After a reset, `omg factory check` reads the item as new.
 
 ## Commands
 
 | Command | On the local forge |
 |---|---|
 | `omg factory setup --forge local` | Needs no origin. Refuses `--org`, `--project` and `--repo`. Writes `ship.base` when no config names one (see [Quick start](#quick-start)). Prints the limitations, a note when no gate is set, a reminder to commit backlog items on `<base>`, and an override note when an origin exists |
-| `omg factory check`, `board` | Work with no origin; the base is your local `<base>` branch (no fetch). A missing base branch exits 2 (see [Exit code 2](#exit-code-2)). Text output prints the limitations; `--json` has them in the top-level `limitations` array |
+| `omg factory check`, `board` | Work with no origin; the base is your local `<base>` branch (no fetch). A missing base branch exits 2 (see [Exit code 2](#exit-code-2)). Text output prints the limitations; `--json` has them in the top-level `limitations` array. Check also prints `gate: ok`, `gate: unresolved (<why>)` or `gate: not set` (`gate` in `--json`) |
 | `omg factory enqueue` | Writes the tickets as backlog files in the working tree, with `Part of #<spec>` and `Blocked by #n` lines. The spec must be committed on `<base>`. Commit the new files on `<base>` before a run can take them. A rerun before the commit does not duplicate them |
-| `omg factory run` | As above. `--dry-run` reads the local base, fetches nothing and writes nothing (no mirror, no remote). `--next` reads the local base like `check` (no fetch) and committed items only; a missing base branch exits 2. `poll`'s `factory.intake.autoStart` runs `--next` too |
-| `omg factory poll` | Each tick first syncs the mirror base (JSON `baseSync`), so a PR you merged reads as merged. A plain sync error, such as a non-fast-forward base, is a tick error. A refused git config or a mirror remote mismatch exits 5 and stops `--loop`; fix the config, then restart the poller. A missing base branch exits 2. No heal, no review threads |
+| `omg factory run` | As above. `--dry-run` reads the local base, fetches nothing and writes nothing (no mirror, no remote). It reports an open local PR as `pr-exists`, a gate whose definition cannot be read as `gate-definition-unknown`, and a gate that cannot start (`plan.gateProblem` in `--json`), without running the gate. `--next` reads the local base like `check` (no fetch) and committed items only; a missing base branch exits 2. `poll`'s `factory.intake.autoStart` runs `--next` too |
+| `omg factory run cancel`, `reset` | Cancel closes the local PR; reset starts a cancelled run over (see [Cancelling and retrying an item](#cancelling-and-retrying-an-item)) |
+| `omg factory poll` | Each tick first syncs the mirror base (JSON `baseSync`), so a PR you merged reads as merged. A tick with nothing new on the base skips the fetch. A plain sync error, such as a non-fast-forward base, is a tick error. A refused git config or a mirror remote mismatch exits 5 and stops `--loop`; fix the config, then restart the poller. A missing base branch exits 2. No heal, no review threads |
 | `omg factory listen` | Refused when your user config sets `factory.forge.kind: "local"`: there are no webhooks. Use `omg factory poll` |
 
 ## What offline mode does not do
