@@ -83,7 +83,7 @@ describe('workflow registry — risk classes and gate policy', () => {
 });
 
 describe('workflow registry — aliases and classification', () => {
-  it('classifies all 96 installed skills and 21 installed commands exactly once', () => {
+  it('classifies all 98 installed skills and 21 installed commands exactly once', () => {
     const skills = WORKFLOW_ENTRIES.filter((e) => e.kind === 'skill' && !e.declaredOnly);
     const commands = WORKFLOW_ENTRIES.filter((e) => e.kind === 'command' && !e.declaredOnly);
     // execute/review/research and graph ship as real skill directories, as do
@@ -93,9 +93,9 @@ describe('workflow registry — aliases and classification', () => {
     // ask-navigator and loft, upstream v5.4.0's harbor and
     // agent-doc-discipline, upstream v5.5.0's architecture-survey,
     // diagram, intent, and minimal-prose-discipline, upstream dev's
-    // map, pr, refit, tdd, and session-flow, and upstream's 33 pstack-derived
-    // skills (81 upstream canonical in total).
-    expect(skills).toHaveLength(96);
+    // map, pr, refit, tdd, and session-flow, and upstream's 35 pstack-derived
+    // skills (83 upstream canonical in total).
+    expect(skills).toHaveLength(98);
     expect(getEntry('tdd', 'skill')).toMatchObject({ decision: 'keep', riskClass: 'advisory' });
     for (const name of ['pr', 'refit']) {
       expect(getEntry(name, 'skill')).toMatchObject({ decision: 'keep', riskClass: 'advisory' });

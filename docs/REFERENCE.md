@@ -2,7 +2,7 @@
 
 Complete reference for oh-my-copilot. For quick start, see the main [README.md](../README.md).
 
-For v5.12.1, the plugin ships 20 agents, 96 skills, 21 command files, and one configured MCP server exposing exactly 56 tools.
+For v5.12.1, the plugin ships 20 agents, 98 skills, 21 command files, and one configured MCP server exposing exactly 56 tools.
 
 ---
 
@@ -16,7 +16,7 @@ For v5.12.1, the plugin ships 20 agents, 96 skills, 21 command files, and one co
 - [Legacy MCP Team Runtime Tools (Deprecated)](#legacy-mcp-team-runtime-tools-deprecated-opt-in-only)
 - [Agents (20 Total)](#agents-20-total)
 - [Goal Workflow UX: `/goal`, Ralph, Team, Ultragoal](#goal-workflow-ux-goal-ralph-team-ultragoal)
-- [Skills (96 Total)](#skills-96-total)
+- [Skills (98 Total)](#skills-98-total)
 - [Slash Commands](#slash-commands)
 - [Shipyard Methodology](./shipyard.md) — governed delivery & shared harness map
 - [Claude Code `/goal` Adapter Design](#claude-code-goal-adapter-design)
@@ -885,7 +885,7 @@ omg ship status 241 --json
 ```
 
 - **Phases:** `review` → `fix` (changes requested; up to `ship.maxFixRounds`, default 2, then `blocked`) → `prepare` (approved) → `gates` → `ready` → `merged`. A later changes-requested verdict reopens any non-terminal phase.
-- **Merge rule (`gates`):** green only when every check outside `ship.advisoryChecks` (default `No Committed Build Artifacts`, `Authorize generated artifacts from base trust root`, and the Socket Security GitHub App checks `Socket Security: Pull Request Alerts` / `Socket Security: Project Report`) is `SUCCESS` or `SKIPPED`, every name in `ship.requiredChecks` has been reported (default: the 18 checks this repo's CI reports on a PR, including the late `needs:` jobs `Build`, `npm pack + install test` and `Copilot smoke (tier 2)`; a missing one is pending), and every Actions workflow run for the head sha (`gh run list --commit <head>`) has status `completed`. Pending: `PENDING`, `QUEUED`, `IN_PROGRESS`, `WAITING`, `REQUESTED`, `EXPECTED`. Any other state is failed. No required checks yet is pending, never green. The latest run of a workflow that completed with a conclusion other than `success` / `skipped` / `neutral` and reported no check (a startup failure) is failed. `gates` resolves the head (`headRefOid`) first, reads the checks and runs for it, and re-reads the head; a head that moved is pending. No checks and no workflow runs at all is pending with the reason `no-workflows-triggered` (a PR opened or pushed with the Actions `GITHUB_TOKEN` triggers no workflows: push from a PAT, or close and reopen the PR). A test (`src/ship/__tests__/workflow-checks.test.ts`) parses `.github/workflows/*.yml` and fails when the PR jobs (matrix names expanded like GitHub) differ from the default required + advisory lists; the tag-only `Create GitHub Release` and the external Socket checks are the documented exclusions.
+- **Merge rule (`gates`):** green only when every check outside `ship.advisoryChecks` (default `No Committed Build Artifacts`, `Authorize generated artifacts from base trust root`, and the Socket Security GitHub App checks `Socket Security: Pull Request Alerts` / `Socket Security: Project Report`) is `SUCCESS` or `SKIPPED`, every name in `ship.requiredChecks` has been reported (default: the 19 checks this repo's CI reports on a PR, including the late `needs:` jobs `Build`, `npm pack + install test` and `Copilot smoke (tier 2)` and the blocking `Statechart suite (Node 24)` job; a missing one is pending), and every Actions workflow run for the head sha (`gh run list --commit <head>`) has status `completed`. Pending: `PENDING`, `QUEUED`, `IN_PROGRESS`, `WAITING`, `REQUESTED`, `EXPECTED`. Any other state is failed. No required checks yet is pending, never green. The latest run of a workflow that completed with a conclusion other than `success` / `skipped` / `neutral` and reported no check (a startup failure) is failed. `gates` resolves the head (`headRefOid`) first, reads the checks and runs for it, and re-reads the head; a head that moved is pending. No checks and no workflow runs at all is pending with the reason `no-workflows-triggered` (a PR opened or pushed with the Actions `GITHUB_TOKEN` triggers no workflows: push from a PAT, or close and reopen the PR). A test (`src/ship/__tests__/workflow-checks.test.ts`) parses `.github/workflows/*.yml` and fails when the PR jobs (matrix names expanded like GitHub) differ from the default required + advisory lists; the tag-only `Create GitHub Release` and the external Socket checks are the documented exclusions.
 - **Known-flaky failures:** for a failed Actions job, `gates` reads `gh run view --job <id> --log` and parses the vitest `FAIL` lines. When every failing test of every failed required check matches `.github/known-flaky-tests.json` as committed on the base branch (`git show origin/<base>:<file>`, never the PR head; `file` plus a required `title` substring, so a file-level collection error never matches) and the log shows no `Unhandled Errors`, no `Failed Suites` and no `##[error]` in a step without a failing test, the verdict is `flaky` and the output suggests `gh run rerun <id> --failed`. Analyses are matched to checks by job id. `--watch` reruns each such run once (the budget is recorded in the run state before the rerun is issued, and holds across invocations) once the run has no pending jobs; the same test failing again is a real failure. `--no-rerun` or `ship.autoRerunFlaky: false` turns the rerun off.
 - **Watch window:** one `--watch` lasts `ship.watchTimeoutMinutes` (default 9, below the 10-minute cap of background watchers), polling every `ship.pollIntervalSeconds` (30). Exit 8 = still pending (also when the window ends while a flaky run's rerun or sibling jobs are still going): run the same command again.
 - **Drive (`gates --drive`):** `--watch` without the watch window: it polls until green (exit 0) or a real failure (exit 1), never exit 8, with the same rerun budget, and stops as blocked (exit 1) after `--drive-max <hours>` (default 6). A transient GitHub error while reading the gates (5xx, GraphQL "Something went wrong") is retried at the next poll instead of stopping. Progress events go to `.omg/progress/ship-<pr>.log` (or `$OMG_PROGRESS_FILE`) under `agent=ship-<pr>`: `start`, a `heartbeat` at most every 5 minutes, and a terminal `done` / `fail` / `blocked` whose note names the next command. A single-driver lock `.omg/state/ship/<pr>.drive.json` refuses a second driver while the first lives. `--detach` runs the drive as a detached process (log `.omg/state/ship/<pr>.drive.log`) and prints the `omg progress watch --file <log> --until settled` command to arm; `--status` prints the lock and the last events, `--stop` ends the driver.
@@ -2032,7 +2032,7 @@ Autopilot continues to own cancel, resume, cleanup, state inspection, HUD, and S
 
 V1 deliberately defers `stageModels` and all model/provider/role routing, inline/no-spawn execution, dynamic commands/modes/state files, arbitrary stages/prompts/plugins and control-flow extensions, and the separate custom-skill inline-array frontmatter parser mismatch. See [ADR 03487](./adr/03487-named-autopilot-stage-profiles.md) for the decision record.
 
-## Skills (96 Total)
+## Skills (98 Total)
 
 Includes bundled workflow, utility, domain, and compatibility skills. Runtime truth comes from the builtin skill loader scanning `skills/*/SKILL.md` and expanding aliases declared in frontmatter.
 
@@ -2082,8 +2082,9 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | `hud`                     | Configure HUD/statusline                                                        | `/hud`                     |
 | `in-your-own-words`       | Play back the goal, problem, and success check before work starts              | `/in-your-own-words`       |
 | `intent`                  | Internal requirements intake for non-engineer contributors                      | `/intent`                  |
-| `interrogate`             | Adversarial three-reviewer panel over a diff or design; severity-merged verdict | `/interrogate`             |
+| `interrogate`             | Adversarial three-reviewer panel over a diff or design; run-proven findings, severity-merged verdict | `/interrogate`             |
 | `ketchup`                 | Catch up on everything since your last message, with status lines              | `/ketchup`                 |
+| `ketchup-video`           | Catch up like `ketchup`, as a short subtitled video of slides                  | `/ketchup-video`           |
 | `launch`                  | Shipyard governed delivery pipeline: spec, tickets, frontier execution          | `/launch`                  |
 | `loft`                    | Shipyard shape-before-steel discipline: throwaway artifacts answer design questions | `/loft`              |
 | `maintain-formal-verification-skill` | Re-sync an existing formal verification skill after the covered code changed | `/maintain-formal-verification-skill` |
@@ -2121,12 +2122,13 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | `remember`                | Save and retrieve durable session memory                                        | `/remember`                |
 | `research`                | Investigate an open question and return grounded findings                       | `/research`               |
 | `self-improve`            | Autonomous evolutionary code improvement engine                                | `/self-improve`           |
-| `sharpen`                 | Aim a task at its real objective: consumer, done-check, non-goals              | `/sharpen`                 |
+| `sharpen`                 | Aim a task at its real objective: consumer, expert lens, done-check, non-goals | `/sharpen`                 |
 | `ship`                    | Task or PR to merge-ready: executor lane, independent verifier lane, bounded fix rounds, `omg ship` gates | `/ship` |
 | `session-flow`            | Reorient in the current session with an evidence-backed map of its flow        | `/session-flow`           |
 | `show-me-your-work`       | Append-only TSV decision trail for auditable autonomous work                   | `/show-me-your-work`       |
 | `skill`                   | Manage local skills (list/add/remove/search/edit)                              | `/skill`                   |
 | `skillify`                | Extract a reusable skill from the current session                              | `/skillify`                |
+| `statechart`              | Check a TLA+ model as a Mermaid statechart; shortest path to each broken rule  | `/statechart`              |
 | `stacked-delivery`         | Deliver a queue as one linear stacked PR chain, bottom-up landing              | `/stacked-delivery`        |
 | `teach`                   | Explain a subsystem by composing how and why, with a landing check             | `/teach`                   |
 | `team`                    | Coordinated multi-agent workflow                                               | `/team`                    |
@@ -2188,6 +2190,8 @@ Most installed skills are exposed as `/<registered-name>` (on Claude Code: `/oh-
 | `/in-your-own-words`                     | Play back the goal, problem, and success check before starting                                |
 | `/interrogate [path]`                   | Adversarial three-reviewer panel over a diff or design                                        |
 | `/ketchup`                               | Catch up on everything since your last message                                                |
+| `/ketchup-video`                         | Catch up as a short subtitled video of slides                                                 |
+| `/statechart <spec.tla>`                 | Check a TLA+ model and draw the statechart with bug paths                                     |
 | `/launch <brief\|spec-path> [--serial]` | Run the shipyard governed delivery pipeline (spec -> tickets -> frontier)                      |
 | `/loft <design-question>`               | Loft the shape before cutting steel: a throwaway artifact answers a design question prose cannot settle |
 | `/maintain-formal-verification-skill`   | Re-sync a formal verification skill after the covered code changed                            |
@@ -2213,7 +2217,7 @@ Most installed skills are exposed as `/<registered-name>` (on Claude Code: `/oh-
 | `/remember <note>`                      | Save durable session memory                                                                   |
 | `/research <question>`                  | Investigate an open question and return grounded findings                                      |
 | `/self-improve <topic>`                 | Run the autonomous code-improvement workflow                                                   |
-| `/sharpen <brief>`                      | Aim a task at its real objective: consumer, done-check, non-goals                             |
+| `/sharpen <brief>`                      | Aim a task at its real objective: consumer, expert lens, done-check, non-goals                |
 | `/ship <task> \| --pr <n>`              | Take a task or PR to merge-ready through independent review and the `omg ship` gate engine     |
 | `/show-me-your-work`                    | Start (or read) the append-only decision trail                                                |
 | `/skill <action>`                       | Manage local skills                                                                           |

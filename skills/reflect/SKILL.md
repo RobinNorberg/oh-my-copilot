@@ -36,8 +36,7 @@ into proposed edits to OMC's own skills — before the lessons evaporate.
    `events.jsonl` in the session's `session-state/<session id>/` directory
    under COPILOT_HOME (else `~/.copilot`).
 2. **Seat the panel**: three read-only reviewers in one message, in the
-   background, each with one lens (the lens briefs live in
-   `references/reviewer-lenses.md`):
+   background, each with one lens:
    - **tooling reviewer** — which commands, skills, and agents helped or
      wasted time; what a script or skill should have existed
    - **judgment reviewer** — where calls were wrong, late, or unverifiable;
@@ -65,5 +64,10 @@ into proposed edits to OMC's own skills — before the lessons evaporate.
 - Reviewers cite the transcript; a finding without a citation is dropped.
 - The panel never edits skills itself — proposals go to the user and then
   to `skillify` for execution.
+- Never edit a skill inside the installed plugin cache. Before the user
+  approves an edit, show its destination — the repo's `skills/<name>/` for
+  a shipped skill, or the user's `.copilot/skills/<name>/` copy — and after
+  approval edit that destination in place. Reflection never opens a PR or
+  pushes.
 - Findings about the user's own choices are reported as observations, not
   corrections.

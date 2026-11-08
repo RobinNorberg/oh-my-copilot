@@ -216,6 +216,10 @@
     "source": "plugin"
   },
   {
+    "name": "statechart",
+    "source": "plugin"
+  },
+  {
     "name": "skill",
     "source": "plugin"
   },
@@ -329,6 +333,10 @@
   },
   {
     "name": "ketchup",
+    "source": "plugin"
+  },
+  {
+    "name": "ketchup-video",
     "source": "plugin"
   },
   {

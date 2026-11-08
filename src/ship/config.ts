@@ -98,6 +98,7 @@ export const DEFAULT_SHIP_CONFIG: Readonly<ShipConfig> = Object.freeze({
     'Size Check',
     'Draft PR Check',
     'omg update + session-start hook',
+    'Statechart suite (Node 24)',
   ],
   knownFlakyFile: '.github/known-flaky-tests.json',
   maxFixRounds: 2,

@@ -30961,7 +30961,8 @@ var init_config2 = __esm({
         "Base Branch Check",
         "Size Check",
         "Draft PR Check",
-        "omg update + session-start hook"
+        "omg update + session-start hook",
+        "Statechart suite (Node 24)"
       ],
       knownFlakyFile: ".github/known-flaky-tests.json",
       maxFixRounds: 2,
