@@ -221,7 +221,8 @@ export function localRemoteRefusedConfig(exec: Exec, root: string, mirror: strin
  *   FactoryForgeUnavailableError (exit 5);
  * - the checkout's `omg-local` remote is added when missing; an existing one
  *   must point at exactly `mirror` for fetch and for every push url
- *   (localRemoteMismatch: a planted pushurl or insteadOf refuses);
+ *   (localRemoteMismatch: a planted pushurl, an insteadOf or a remote added
+ *   under another spelling of the mirror path refuses, exit 5);
  * - the local `<base>` is pushed to the mirror without `+`, so the sync is
  *   fast-forward only: a diverged mirror base refuses with a message. Before
  *   the push, `onBase` gets the sha read from the local base: the guard lets
@@ -243,7 +244,7 @@ export function syncLocalMirror(exec: Exec, root: string, mirror: string, base: 
   const current = git(mirrorRemoteGetUrlArgs(), TRUSTED_READ_ENV);
   if (current.status !== 0) must(mirrorRemoteAddArgs(mirror), 'local forge remote');
   const mismatch = localRemoteMismatch(exec, root, mirror);
-  if (mismatch) throw new Error(`refusing to sync the local forge mirror: ${mismatch}; point the ${LOCAL_REMOTE} remote at ${mirror} (git remote set-url ${LOCAL_REMOTE} ${mirror}) and remove any pushurl`);
+  if (mismatch) throw new FactoryForgeUnavailableError(`refusing to sync the local forge mirror: ${mismatch}; point the ${LOCAL_REMOTE} remote at ${mirror} (git remote set-url ${LOCAL_REMOTE} ${mirror}) and remove any pushurl`);
   const local = must(['rev-parse', '--verify', `refs/heads/${base}`], `local base ${base}`, TRUSTED_READ_ENV).trim();
   if (!HEX40.test(local)) throw new Error(`local base ${base} did not resolve to a commit`);
   onBase?.(local);

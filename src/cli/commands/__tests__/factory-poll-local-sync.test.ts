@@ -259,11 +259,12 @@ describe('omg factory poll: local forge base sync', () => {
     expect(readMirrorRef(w.config.repo.url, 'main')).toBe(head);
   });
 
-  it('a remote url that is another spelling of the mirror path refuses the sync (exact mirror string)', () => {
+  it('a remote url that is another spelling of the mirror path refuses the sync (exact mirror string, exit 5, set-url hint)', () => {
     const w = world();
     const other = process.platform === 'win32' ? w.config.repo.url.replace(/\\/g, '/') : `${w.config.repo.url}/`;
     gitIn(w.root, 'remote', 'add', 'omg-local', other);
-    expect(() => w.sync({ root: w.root, base: 'main', config: w.config })).toThrow(/points at .*not the mirror/);
+    expect(() => w.sync({ root: w.root, base: 'main', config: w.config })).toThrow(/points at .*not the mirror.*git remote set-url omg-local/);
+    expect(() => w.sync({ root: w.root, base: 'main', config: w.config })).toThrow(FactoryForgeUnavailableError);
     expect(w.raw.filter((a) => a.includes('push') && !a.includes('get-url'))).toEqual([]);
   });
 });
