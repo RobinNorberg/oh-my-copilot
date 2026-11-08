@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "29db3cbb73dfd78c6c6628359cd3ef863db03e03",
-    "sourceSha256": "e9b3db57d6e3461e98d00d3147c265e7173d024f519d45a26495abc9380297ae",
+    "head": "c5dd4c9d1788db6db42c71156041e96a16916415",
+    "sourceSha256": "414d76fc5f0e53f4840e61877f7cbdc432e09bd8ebb862d71ae864d22213b98e",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "29db3cbb73dfd78c6c6628359cd3ef863db03e03",
-  "sourceSha256": "e9b3db57d6e3461e98d00d3147c265e7173d024f519d45a26495abc9380297ae",
+  "head": "c5dd4c9d1788db6db42c71156041e96a16916415",
+  "sourceSha256": "414d76fc5f0e53f4840e61877f7cbdc432e09bd8ebb862d71ae864d22213b98e",
   "counts": {
     "public": {
       "skills": 96,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 1968,
-      "total": 1993
+      "srcFiles": 1969,
+      "total": 1994
     },
     "generated": {
       "distFiles": 7244,
@@ -51486,6 +51486,11 @@
         "path": "src/factory/__tests__/map-run.test.ts"
       },
       {
+        "id": "src/factory/__tests__/offline-e2e.test.ts",
+        "kind": "src",
+        "path": "src/factory/__tests__/offline-e2e.test.ts"
+      },
+      {
         "id": "src/factory/__tests__/poll-ado.test.ts",
         "kind": "src",
         "path": "src/factory/__tests__/poll-ado.test.ts"
@@ -78375,6 +78380,161 @@
       {
         "from": "src/factory/__tests__/map-run.test.ts",
         "to": "src/hooks/ralph/prd.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/cli/commands/factory-poll.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/cli/commands/factory-setup.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/cli/commands/factory-setup.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/cli/commands/factory.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/config/project-config-path.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/factory/enqueue.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/factory/enqueue.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/factory/poll.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/factory/poll.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/forge/local/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/offline-e2e.test.ts",
+        "to": "src/utils/jsonc.ts",
         "kind": "imports"
       },
       {
@@ -120274,12 +120434,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10042,
-      "edgeCount": 12234,
-      "importEdgeCount": 10068,
+      "nodeCount": 10043,
+      "edgeCount": 12265,
+      "importEdgeCount": 10091,
       "registerEdgeCount": 117
     }
   },
-  "inventorySha256": "f7579c5945674b472e26643d6aadd04f067401b3239467576b6b5d06f5ab9716",
-  "manifestSha256": "170f92e651b6748afb7a7bc5e8f2eefae0ebc3a81780f1ba25652eb5a864bbae"
+  "inventorySha256": "7d209f35920e3a76b35a7c8667a1bbf73e5ff03c463eca91306b199fb3a2c46f",
+  "manifestSha256": "02caa4568a38dfa2a9d7ead2ceb8a793e614c9ba1341c5270f8d397215ae698c"
 }
