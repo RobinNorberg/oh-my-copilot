@@ -49,8 +49,8 @@ export interface LocalTrackerContext {
    * item whose PR merged reads as closed (as a GitHub issue closes at the
    * merge), while its backlog file still says `state: open` until the human
    * commits the change; a warning names the file. `mergedHead` is the PR
-   * head the merge was detected at: a later change of the file on the base
-   * (a reopen) wins over the merge.
+   * head the merge was detected at: a later commit on the base that changes
+   * the file's `state:` line (a reopen) wins over the merge; other edits do not.
    */
   mergedPr?: (id: number) => { number: number; mergedHead?: string } | undefined;
 }
