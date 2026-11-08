@@ -26,7 +26,7 @@
  */
 
 import { spawn, type ChildProcess } from 'child_process';
-import { existsSync, realpathSync, rmSync } from 'fs';
+import { existsSync, lstatSync, realpathSync, rmSync } from 'fs';
 import { posix, resolve, win32 } from 'path';
 import { LOCAL_GATE_CHECK, localCheckRecordPath, readLocalCheckRecord, writeLocalCheckRecord, type LocalCheckRecord } from '../../forge/local/index.js';
 import { getProcessStartIdentity, terminateOwnedProcessTree } from '../../platform/process-utils.js';
@@ -45,6 +45,9 @@ const STREAM_KEEP_CHARS = 64 * 1024;
 
 /** How long the tree kill of a timed-out gate may take. */
 const KILL_DEADLINE_MS = 30_000;
+
+/** How long after the gate's root process exits its output may still drain before the verdict settles. */
+const EXIT_DRAIN_MS = 2_000;
 
 export interface LocalGateRunResult {
   status: number;
@@ -151,10 +154,12 @@ function runOwned(exe: string, args: string[], cwd: string, env: NodeJS.ProcessE
     let exitStatus: number | null = null;
     let timedOut = false;
     let settled = false;
+    let drain: NodeJS.Timeout | undefined;
     const finish = (r: LocalGateRunResult) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      clearTimeout(drain);
       done(r);
     };
     child.stdout!.setEncoding('utf8').on('data', (d: string) => { stdout = keepTail(stdout + d); });
@@ -163,7 +168,18 @@ function runOwned(exe: string, args: string[], cwd: string, env: NodeJS.ProcessE
       // No pid: it never started (ENOENT, EACCES, EINVAL for a .cmd). With a pid it is a kill/IO error, reported by close.
       if (!child.pid) finish({ status: 127, stdout, stderr, timedOut: false, startError: `${exe}: ${error.message}` });
     });
-    child.on('exit', (code, signal) => { exitStatus = code ?? (signal ? 128 : 1); });
+    child.on('exit', (code, signal) => {
+      exitStatus = code ?? (signal ? 128 : 1);
+      // The root's exit status is the verdict: a descendant still holding the pipes gets a short drain, then is
+      // killed best-effort (its process group on POSIX) and no longer delays the verdict or turns it into a timeout.
+      drain = setTimeout(() => {
+        if (settled || timedOut) return;
+        void killGateTree(child, true);
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+        finish({ status: exitStatus!, stdout, stderr, timedOut: false });
+      }, EXIT_DRAIN_MS);
+    });
     child.on('close', (code, signal) => {
       finish({ status: timedOut ? 124 : (exitStatus ?? code ?? (signal ? 128 : 1)), stdout, stderr, timedOut });
     });
@@ -197,14 +213,24 @@ const realOrResolved = (p: string): string => {
   }
 };
 
+const isLink = (p: string): boolean => {
+  try {
+    return lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
+};
+
 /**
  * The exec guard's allowance for the gate. `recorded` is the gate argv the
  * run sealed when it first ran the gate (FactoryRunState.localGate); the
  * current trusted config must still name exactly that argv, so a gate
  * changed mid-run is refused rather than run against a head the old gate
  * judged. `checkout` must really be the engine's prepare checkout
- * (`expectedCheckout`): its real path, so a junction or symlink pointing it
- * at the user's checkout or a lane worktree is refused. Throws
+ * (`expectedCheckout`): neither path may itself be a junction or symlink
+ * (one pointing at the user's checkout or a lane worktree is refused), and
+ * their real paths must match, so a root reached through a junction,
+ * symlink, subst drive or 8.3 name still matches itself. Throws
  * FactorySafetyError otherwise.
  */
 export function assertLocalGateCommand(recorded: readonly string[], configured: readonly string[] | undefined, checkout: string, expectedCheckout: string): void {
@@ -213,7 +239,10 @@ export function assertLocalGateCommand(recorded: readonly string[], configured: 
     throw new FactorySafetyError(`omg factory run refuses the local gate \`${configured.join(' ')}\`: this run recorded \`${recorded.join(' ')}\`; restore factory.forge.local.gate, or cancel the run (omg factory run cancel) and start a new one`);
   }
   const real = realOrResolved(checkout);
-  if (!sameFsPath(real, expectedCheckout)) throw new FactorySafetyError(`omg factory run refuses the local gate in ${checkout} (really ${real}): it runs only in the engine's prepare checkout ${expectedCheckout}`);
+  for (const p of [checkout, expectedCheckout]) {
+    if (isLink(p)) throw new FactorySafetyError(`omg factory run refuses the local gate in ${checkout} (really ${real}): ${p} is a junction or symlink, never the engine's prepare checkout`);
+  }
+  if (!sameFsPath(real, realOrResolved(expectedCheckout))) throw new FactorySafetyError(`omg factory run refuses the local gate in ${checkout} (really ${real}): it runs only in the engine's prepare checkout ${expectedCheckout}`);
 }
 
 export interface LocalGateInput {
