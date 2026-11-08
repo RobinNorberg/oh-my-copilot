@@ -56,7 +56,7 @@ describe('alias-retirement registry', () => {
             expect(allAliases.has(rec.alias.toLowerCase())).toBe(true);
         }
     });
-    it('built-in loader exposes 98 entries (96 canonical + 2 aliases) after the 5.0.0 retirement', () => {
+    it('built-in loader exposes 100 entries (98 canonical + 2 aliases) after the 5.0.0 retirement', () => {
         // This is the baseline that retirement must not silently change without an eligibility receipt.
         // Raised 37 -> 40 canonical when execute/review/research shipped as real
         // skill directories; this is an addition, not an alias retirement.
@@ -85,11 +85,14 @@ describe('alias-retirement registry', () => {
         // get-pr-comments and hillclimb/reflect/personal-mode/stacked-delivery)
         // shipped as real skill directories (upstream 4d5d22187); additions, not
         // retirements.
+        // Raised 96 -> 98 canonical when upstream's statechart and ketchup-video
+        // shipped as real skill directories (upstream c5b71636e); additions, not
+        // retirements.
         const all = createBuiltinSkills();
-        expect(all).toHaveLength(98);
+        expect(all).toHaveLength(100);
         const canonical = all.filter((s) => !s.aliasOf);
         const aliases = all.filter((s) => !!s.aliasOf);
-        expect(canonical).toHaveLength(96);
+        expect(canonical).toHaveLength(98);
         expect(aliases).toHaveLength(2);
         expect(aliases.map((s) => s.name).sort()).toEqual(['cancel-ralph', 'psm'].sort());
     });

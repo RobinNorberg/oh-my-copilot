@@ -22,8 +22,10 @@ export const NO_CHECKS_FIRST_SIGHTING_REASON = 'no checks configured — first s
  * ready with the head SHA as proof.
  */
 export function decideWatchVerdict(rawFacts, options) {
-    // Normalize every enum-shaped field once: raw GitHub values arrive
-    // uppercase, and an empty mergeability means GitHub is still computing.
+    // Callers following skills/babysit pass GitHub's raw JSON, whose enums are
+    // uppercase (OPEN, CHANGES_REQUESTED, CONFLICTING, BEHIND, ...). Normalize
+    // every enum-shaped field once here so a literal uppercase value can never
+    // fall through to the wrong gate.
     const lower = (v) => v.toLowerCase();
     const facts = {
         ...rawFacts,
