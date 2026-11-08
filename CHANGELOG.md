@@ -15,6 +15,8 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **`team.sdk.compactProtocol`** (#443, #445). Opt-in (default off) compact worker protocol for SDK workers, about 40 lines instead of about 110. Measured saving: about 0.7 AI credits per worker session, about 10% of the first call only.
 - **Per-turn SDK usage** (#443). `sdk-session.json` records `turn_usage[]` per turn: calls, AI credits, tokens, cache reads and writes, and model.
 - **WinGet trust** (#443). The Copilot CLI installed by WinGet (`%LOCALAPPDATA%\Microsoft\WinGet\{Packages,Links}`, `%ProgramFiles%\WinGet\{Packages,Links}`) counts as a standard install location.
+- **`ship.prepare.checks`** (#449). An array of argv commands that ship's prepare runs instead of its built-in checks, for `omg ship prepare` and the factory engine (`[]` runs none). It is a safety key: read only from the user config or the base's committed `.copilot/omg.jsonc`. Commands run without a shell, and on Windows never as `.cmd` or `.bat`. `omg factory check` prints `prepare checks: ...` and its JSON gains `prepareChecks` (schemaVersion stays 1). A factory run records the checks at its first prepare and parks at the new gate `prepare-checks` when they change.
+- **`children-done`** (#450). `omg factory check` gives a spec whose children are all closed the reason `children-done` (blocked), on every forge. Before, such a spec became `runnable` again, so `run --next` could implement the whole spec.
 - **Docs: `team.sdk.model` / `OMC_TEAM_SDK_MODEL`** (F17) is now documented in REFERENCE.md as the main cost lever for SDK workers.
 
 ### Changed
@@ -24,6 +26,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **`omg factory run` exits 5 with `unsupported forge:`** (#446) when there is no usable forge, like `setup`, `check`, `board`, `enqueue` and `poll` (#444). Before, a missing origin exited 1.
 - **`omg team shutdown` exits 3** (#445) when it keeps a worker worktree with uncommitted changes, and names each kept path. Other preserved outcomes still exit 1.
 - **`omg factory chain status` labels are English** (#446).
+- **Prepare runs only the checks the target repository has** (#449). With `ship.prepare.checks` unset, `tsc --noEmit` runs only when the base branch has `tsconfig.json` and `node_modules` has typescript, eslint only with an eslint config on the base and eslint in `node_modules`, the targeted vitest run only with vitest in `node_modules`, and each generator `--verify` script only when it exists. The inventory step runs only when the base has `scripts/generate-inventory-graph.mjs`. The markers are read at the base commit, never the PR: a check the base has whose file the PR deleted fails prepare, and a base that cannot be read fails the step `detect`. Before, prepare ran this repository's tsc and inventory scripts in any repository, so a factory run in another repository failed prepare.
+- **`omg ship prepare` honours `ship.prepare.checks`** (#449) and loads the trusted ship config first, so an invalid base `.copilot/omg.jsonc` stops it with the parse error.
+- **`omg factory setup --forge local` writes `ship.base`** (#450) when no config names one: `dev` if that branch exists, else the current branch. It keeps a `ship.base` that is set and exits 2 when that value is not a plain branch name. Its notes now name the real base instead of `<base>`.
+- **The local forge exits 2 on a missing base branch** (#450). `omg factory check`, `board`, `poll` and `run --next` name `ship.base` in the message. Before, check exited 0 with `no items to check`.
 
 ### Fixed
 
@@ -41,6 +47,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **F13:** `omg factory status` no longer prints Chinese labels (#446).
 - **F14:** an SDK team start prints `transport: sdk (headless)` instead of `tmux session: sdk:<team>` (#445).
 - **F15:** a WinGet-installed `copilot` no longer triggers the non-standard path warning (#443).
+- **Factory prepare on Linux and macOS** (#449): the engine removes its `node_modules` symlink from the prepare checkout before it discards or cleans the checkout. Before, a repository whose `.gitignore` says `node_modules/` saw the link as untracked, so the second prepare failed with "could not discard the engine's prepare checkout" and `omg factory run clean` kept the checkout. Windows junctions were not affected.
+- **`omg factory run --next` on the local forge** (#450) no longer fails with `options.local.omgRoot is required`. It reads the local base like `check`, with no fetch, and committed backlog items only. `poll`'s `factory.intake.autoStart` works offline again.
+- **A merged local PR closes its backlog item** (#450) for `check`, dependencies and its spec, while the file still says `state: open`. Only the item's own PR merged into the current base counts, and a later commit on the base that changes the file reopens it. `check`, `board`, `enqueue`, the run intake and the merged run name the file to set `state: closed` in.
+- **The `omg-local` remote refusal names the planted value** (#450): a push url that is neither the mirror nor the remote url is reported as `pushes to <value>`, and the refusal lists one fix per cause (`git remote set-url`, `git config --unset-all remote.omg-local.pushurl`, or the `pushInsteadOf` key).
 
 # oh-my-copilot v5.19.7
 
