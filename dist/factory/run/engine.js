@@ -52,6 +52,7 @@
  * is the forge lagging (pending), anything else is head-moved-externally.
  * GitHub runs keep the gh calls unchanged.
  */
+import { createHash } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, readBaseFile, remoteRepoMismatch, userConfigLayers } from '../../ship/config.js';
@@ -78,8 +79,8 @@ import { checkDiagnosis } from '../heal/diagnosis-output.js';
 import { assertLaneCreditCap, nextLaneCap, runCredits, runCreditsExceeded } from './budget.js';
 import { FactorySafetyError, factoryGuardExec, hardenedGitExec } from './exec.js';
 import { assertFactoryForgeOptions, EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, localRemoteMismatch, syncLocalMirror } from './forge-roots.js';
-import { assertLocalGateCommand, localGateDue, resolveLocalGateArgv, runLocalGate } from './local-gate.js';
-import { LOCAL_GATE_CHECK, LOCAL_REMOTE } from '../../forge/local/index.js';
+import { assertLocalGateCommand, describeGateSources, gateDefinition, gateDefinitionSources, localGateDue, localGateRecord, resolveLocalGateArgv, runLocalGate } from './local-gate.js';
+import { isLocalBranchName, LOCAL_GATE_CHECK, LOCAL_REMOTE, readMirrorRef } from '../../forge/local/index.js';
 import { getGlobalOmcStatePath } from '../../utils/paths.js';
 import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
 import { isTerminalLaneState, LaneLostError } from './lane.js';
@@ -90,7 +91,7 @@ import { createFactoryProgress } from './progress.js';
 import { compareSnapshots, snapshotRepo, verifyReviewWorktree } from './review-guard.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted } from './plan-rules.js';
-import { acquireFactoryOwner, acquireFactoryRepoOwner, createFactoryState, factoryCancelRequested, forgeResumeProblem, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, healRunKey, moveTo, overwriteFactoryState, parseFactoryState, readFactoryState, reviewerName, runLabel, runSlug, setGate, shipVerdictHash, TERMINAL_FACTORY_PHASES, trackerStageOf, updateFactoryState, runRemote, verifyFactoryIntegrity, } from './state.js';
+import { acquireFactoryOwner, acquireFactoryRepoOwner, createFactoryState, factoryCancelRequested, forgeResumeProblem, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, healRunKey, moveTo, overwriteFactoryState, parseFactoryState, readFactoryState, reviewerName, runLabel, runSlug, setGate, shipVerdictHash, TERMINAL_FACTORY_PHASES, factoryBranch, trackerStageOf, updateFactoryState, runRemote, verifyFactoryIntegrity, } from './state.js';
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export const EXIT_AWAITING_HUMAN = 4;
 /** The prepare steps that are checks (a failure there starts a ci-fix lane); the rest are engine steps. */
@@ -517,6 +518,12 @@ class FactoryEngine {
     localBase;
     /** Local forge: the local base sha syncLocalMirror read, the only sha the guard lets it push to the mirror's base. */
     basePushSha;
+    /**
+     * `--allow-gate-change` on a rerun of a run parked at
+     * gate-definition-changed: the parked definition's hash, the one change
+     * this invocation may accept; spent by the first gate-definition check.
+     */
+    gateChangeAllowed;
     constructor(o, ledger, hooksDir) {
         this.o = o;
         this.ledger = ledger;
@@ -802,7 +809,7 @@ class FactoryEngine {
         const existing = bytes === null ? null : parseFactoryState(this.statePath, this.key, bytes.toString('utf8'));
         if (existing && !this.ledger.tracks(this.statePath)) {
             this.progress.emit(existing.phase, 'fail', 'no engine record');
-            return { exitCode: 1, phase: 'failed', state: existing, message: `the factory run state for ${this.what} has no engine record in ${this.ledger.file} (written outside omg factory run or by an older version); the run is not resumed. Move ${this.statePath} aside to start over` };
+            return { exitCode: 1, phase: 'failed', state: existing, message: `the factory run state for ${this.what} has no engine record in ${this.ledger.file} (written outside omg factory run, by an older version, or left by an interrupted reset); the run is not resumed. ${typeof this.key === 'number' ? `Run omg factory run reset ${this.key} to finish a reset (it recognizes the ledger it moved aside), or move` : 'Move'} ${this.statePath} aside to start over` };
         }
         if (existing && !verifyFactoryIntegrity(existing)) {
             this.progress.emit(existing.phase, 'fail', 'state integrity mismatch');
@@ -836,6 +843,14 @@ class FactoryEngine {
         if (existing && swapped) {
             this.progress.emit(existing.phase, 'fail', 'forge changed');
             return { exitCode: 1, phase: existing.phase, state: existing, message: swapped };
+        }
+        // --allow-gate-change answers one gate-definition-changed park, never a later change and never in advance.
+        if (this.o.allowGateChange) {
+            const parked = existing?.gate?.name === 'gate-definition-changed' ? existing.gate.definition : undefined;
+            if (parked)
+                this.gateChangeAllowed = parked;
+            else
+                this.o.warn?.(`omg factory run: --allow-gate-change is ignored: the run for ${this.what} is not parked at awaiting-human: gate-definition-changed`);
         }
         try {
             if (!existing) {
@@ -1004,6 +1019,8 @@ class FactoryEngine {
                 // A detached lane child may edit shared git state after its lane's check: re-compare at every step boundary.
                 if (this.recheckFailed('at the next step boundary'))
                     continue;
+                if (this.gateDefinitionUnknownParked('no lane was started'))
+                    continue;
                 this.progress.emit(phase, 'start', undefined, this.fields());
                 await this.step(phase);
                 const after = this.state;
@@ -1159,10 +1176,23 @@ class FactoryEngine {
             lanes: s.lanes.map((l) => (l.status === 'running' ? { ...l, status: 'cancelled', endedAt: at, ...(usage.has(l.id) ? { usage: usage.get(l.id) } : {}) } : l)),
         }, 'cancelled', why, at));
         if (this.state.pr) {
-            const body = this.writeBody('cancel', `Factory run for ${runLabel(this.key)} was cancelled. The PR, its branch and the lane worktrees are kept.\n`);
+            // Offline nothing else ever closes the local PR, and an open one blocks the item for good (pr-exists; dogfood F38).
+            const local = this.forge?.kind === 'local' && this.forge.reviews.closePr !== undefined;
+            const kept = local
+                ? `The local PR is closed (cancelled); its branch and the lane worktrees are kept. omg factory run clean ${this.key}, then omg factory run reset ${this.key}, makes the item runnable again.`
+                : 'The PR, its branch and the lane worktrees are kept.';
+            const body = this.writeBody('cancel', `Factory run for ${runLabel(this.key)} was cancelled. ${kept}\n`);
             const res = this.commentPr(this.state.pr, body);
             if (!res.ok)
                 this.o.warn?.(`omg factory run: could not comment on PR #${this.state.pr}: ${res.stderr.trim()}`);
+            if (local) {
+                try {
+                    this.forge.reviews.closePr(this.state.pr, 'cancelled');
+                }
+                catch (error) {
+                    this.o.warn?.(`omg factory run: could not close local PR #${this.state.pr}: ${errText(error)}; omg factory run reset ${this.key} closes it`);
+                }
+            }
         }
         this.progress.emit('cancelled', 'done', 'cancelled', this.fields());
     }
@@ -1469,6 +1499,8 @@ class FactoryEngine {
             this.gate('protected-paths', `the change touches merge-rule paths: ${hit.join(', ')}; nothing was pushed`);
             return;
         }
+        if (this.gateDefinitionParked(s, cand))
+            return;
         const mismatch = this.pushRemoteMismatch(s);
         if (mismatch)
             throw new FactoryStepError(`refusing to push: ${mismatch}`);
@@ -1517,6 +1549,66 @@ class FactoryEngine {
             const { pendingHead: _p, ...rest } = x;
             return moveTo({ ...rest, head: cand }, 'review', `pushed ${cand.slice(0, 12)} to ${s.branch} (PR #${prNumber})`, this.iso());
         });
+    }
+    /**
+     * Offline the local gate is the only check, so a lane may not redefine it
+     * (dogfood F41): the files that define factory.forge.local.gate
+     * (gateDefinitionSources: package.json's script entry for an npm-style
+     * gate, the script file for a node gate) must define it at `cand` as at
+     * the run's base or the mirror's current base. A change parks at
+     * gate-definition-changed with the head definition's hash; a rerun with
+     * `--allow-gate-change` accepts exactly that parked definition once
+     * (gateChangeAllowed, captured at resume), records its hash and lets it
+     * through. An npm-style gate whose definition cannot be pinned parks at
+     * gate-definition-unknown. True when it parked.
+     */
+    /**
+     * An offline gate whose definition cannot be pinned (gateDefinitionSources'
+     * `unresolved`) parks at gate-definition-unknown. The verdict depends only
+     * on the config, so the loop asks before every step: no lane spends
+     * credits on a run whose publish would park. True when it parked.
+     */
+    gateDefinitionUnknownParked(outcome) {
+        const gate = this.o.forge?.config.kind === 'local' ? this.o.forge.config.local?.gate : undefined;
+        const unresolved = gate && gate.length > 0 ? gateDefinitionSources(gate).unresolved : undefined;
+        if (!unresolved)
+            return false;
+        this.gate('gate-definition-unknown', `${unresolved}; offline the gate is the only check and its definition cannot be compared with ${this.state.base}, so ${outcome}. Set factory.forge.local.gate to name its script (npm test, npm run <script>, npm --prefix <dir> run <script>) or a node script file, then rerun ${this.resume}, or omg factory run cancel ${this.key}`);
+        return true;
+    }
+    gateDefinitionParked(s, cand) {
+        // One acceptance per park: whatever this check decides, the flag is spent.
+        const allowed = this.gateChangeAllowed;
+        this.gateChangeAllowed = undefined;
+        const gate = this.o.forge?.config.kind === 'local' ? this.o.forge.config.local?.gate : undefined;
+        if (!gate || gate.length === 0 || !s.baseSha)
+            return false;
+        if (this.gateDefinitionUnknownParked('nothing was pushed'))
+            return true;
+        const { sources } = gateDefinitionSources(gate);
+        if (sources.length === 0)
+            return false;
+        const at = (sha) => createHash('sha256').update(gateDefinition(sources, (path) => {
+            const r = this.exec('git', ['show', `${sha}:${path}`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+            return r.status === 0 ? r.stdout : undefined;
+        }), 'utf8').digest('hex');
+        const head = at(cand);
+        if (head === at(s.baseSha) || head === s.gateChangeApproved)
+            return false;
+        let mirrorBase;
+        try {
+            mirrorBase = readMirrorRef(this.o.forge.config.repo.url, s.base);
+        }
+        catch { /* compared with the run's base only */ }
+        if (mirrorBase && HEX40.test(mirrorBase) && mirrorBase !== s.baseSha && head === at(mirrorBase))
+            return false;
+        if (allowed === head) {
+            this.save((x) => ({ ...x, gateChangeApproved: head, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `gate definition change in ${cand.slice(0, 12)} accepted (--allow-gate-change): ${describeGateSources(sources)}` }] }));
+            return false;
+        }
+        const stale = allowed !== undefined ? ' (--allow-gate-change accepted only the definition the run parked on, and this one differs)' : '';
+        this.save((x) => setGate(x, 'gate-definition-changed', `the change redefines the local gate "${gate.join(' ')}" (${describeGateSources(sources)} differ from ${s.base})${stale}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha.slice(0, 12)} ${cand.slice(0, 12)} -- ${[...new Set(sources.map((x) => x.path))].join(' ')}, then rerun ${this.resume} --allow-gate-change to accept it, or omg factory run cancel ${this.key}`, this.iso(), { definition: head }));
+        return true;
     }
     async review() {
         const s = this.state;
@@ -1983,6 +2075,16 @@ class FactoryEngine {
     localGateStateDir() {
         return this.o.forge.options.stateDir ?? getGlobalOmcStatePath('forge');
     }
+    /**
+     * True once the sealed gate argv really started: a verdict in the run's
+     * history, or a record for `head` (PENDING included: an engine died
+     * mid-gate). A gate whose executable never started judged no head, so its
+     * seal does not bind the run (dogfood F37).
+     */
+    localGateEverStarted(head) {
+        return this.state.history.some((h) => /^local gate (SUCCESS|FAILURE) on /.test(h.note))
+            || localGateRecord(this.localGateStateDir(), this.o.root, head) !== undefined;
+    }
     /** The gate must run for `head`: no record, or a PENDING one an engine left when it died mid-gate (localGateDue). */
     localGateDueFor(head) {
         return localGateDue(this.localGateStateDir(), this.o.root, head, this.localGateTimeout(), new Date(this.clock()));
@@ -2012,8 +2114,10 @@ class FactoryEngine {
             this.gate('gates', `the local gate runs in the engine's prepare checkout ${checkout}, which is ${at ? `at ${at.slice(0, 12)}` : 'missing'}, not at the pushed head ${head.slice(0, 12)}; rerun ${this.resume} after omg factory run clean, or run the gate by hand`);
             return false;
         }
+        // A sealed gate that never started judged nothing: the run adopts the current trusted gate.
+        const sealed = this.state.localGate && this.localGateEverStarted(head) ? this.state.localGate : undefined;
         try {
-            assertLocalGateCommand(this.state.localGate ?? gate, gate, checkout, checkoutPath(this.o.root, this.key));
+            assertLocalGateCommand(sealed ?? gate, gate, checkout, checkoutPath(this.o.root, this.key));
         }
         catch (error) {
             if (!(error instanceof FactorySafetyError))
@@ -2021,8 +2125,14 @@ class FactoryEngine {
             this.gate('gates', error.message);
             return false;
         }
-        if (!this.state.localGate)
-            this.save((x) => ({ ...x, localGate: [...gate] }));
+        if (!sealed && this.state.localGate?.join('\0') !== gate.join('\0')) {
+            const was = this.state.localGate;
+            this.save((x) => ({
+                ...x,
+                localGate: [...gate],
+                ...(was ? { history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `local gate re-sealed as ${gate.join(' ')}: the recorded ${was.join(' ')} never started` }] } : {}),
+            }));
+        }
         const timeoutMinutes = this.localGateTimeout();
         this.progress.heartbeat('gates', `local gate ${gate.join(' ')} on ${head.slice(0, 12)}`, this.fields());
         const out = await runLocalGate({ stateDir, root: this.o.root, head, gate, timeoutMinutes, checkout, ...(this.o.localGate ? { runner: this.o.localGate } : {}), now: () => new Date(this.clock()) });
@@ -2204,13 +2314,38 @@ class FactoryEngine {
         this.progress.emit('merged', 'done', `PR #${pr} merged`, this.fields());
     }
     // --- Shared git state around lanes -------------------------------------------------------------
+    /**
+     * A remote-tracking ref of the run's remote at exactly the sha that remote
+     * holds for the branch (a fetch that moved nothing on the remote): the
+     * local forge's mirror is read from disk; on other forges only the run's
+     * own PR branch at the head the engine pushed counts (dogfood F42).
+     */
+    fetchedRef = (name, sha) => {
+        const s = this.state;
+        if (!s)
+            return false;
+        const prefix = `refs/remotes/${runRemote(s)}/`;
+        if (!name.startsWith(prefix))
+            return false;
+        const branch = name.slice(prefix.length);
+        if (branch === s.branch && s.head !== undefined && sha === s.head)
+            return true;
+        if (s.remote !== LOCAL_REMOTE || this.o.forge?.config.kind !== 'local')
+            return false;
+        try {
+            return isLocalBranchName(branch) && readMirrorRef(this.o.forge.config.repo.url, branch) === sha;
+        }
+        catch {
+            return false;
+        }
+    };
     /** The lane's comparison against its before-snapshot: its own branch and worktree entry may appear. */
     laneProblems(kind, before, result, startRef) {
         const allowed = result.branch ? { [`refs/heads/${result.branch}`]: kind === 'review' ? startRef : (result.headSha ?? '*') } : {};
         try {
             const after = snapshotRepo(this.exec, this.o.root, this.stateRootRel, before);
             const newWorktree = result.worktree ? { path: result.worktree } : result.remoteId ? { id: result.remoteId } : undefined;
-            return { after, problems: compareSnapshots(before, after, allowed, newWorktree ? { newWorktree } : {}) };
+            return { after, problems: compareSnapshots(before, after, allowed, { fetchedRef: this.fetchedRef, ...(newWorktree ? { newWorktree } : {}) }) };
         }
         catch (error) {
             return { problems: [`the post-lane snapshot failed: ${errText(error)}`] };
@@ -2220,7 +2355,7 @@ class FactoryEngine {
     laneTampered(laneId, kind, problems) {
         if (kind === 'review') {
             this.markVerdict(laneId, 'invalid', `tampered: ${problems.join('; ')}`);
-            this.gate('review-tampered', `review lane ${laneId} changed shared git state, so its verdict is discarded: ${problems.slice(0, 5).join('; ')}`);
+            this.gate('review-tampered', `shared git state changed while review lane ${laneId} ran (by the lane or anyone else working in this repository), so its verdict is discarded: ${problems.slice(0, 5).join('; ')}`);
             return;
         }
         this.updateLane(laneId, { note: `tampered: ${problems.join('; ')}` });
@@ -2242,7 +2377,7 @@ class FactoryEngine {
             // The engine's own prepare push (recorded before it) moves the PR branch's tracking ref; a crash right after it skips the rebase.
             const tracking = `refs/remotes/${runRemote(this.state)}/${this.state.branch}`;
             const own = this.state.prepared !== undefined && now.refs[tracking] === this.state.prepared.head;
-            problems = compareSnapshots(own ? { ...r.snapshot, refs: { ...r.snapshot.refs, [tracking]: now.refs[tracking] } } : r.snapshot, now);
+            problems = compareSnapshots(own ? { ...r.snapshot, refs: { ...r.snapshot.refs, [tracking]: now.refs[tracking] } } : r.snapshot, now, {}, { fetchedRef: this.fetchedRef });
         }
         catch (error) {
             problems = [`the snapshot failed: ${errText(error)}`];
@@ -2339,6 +2474,7 @@ class FactoryEngine {
                 after = snapshotRepo(this.exec, this.o.root, this.stateRootRel, baseline);
                 problems = compareSnapshots(baseline, after, {}, {
                     refAllowed: jobRef,
+                    fetchedRef: this.fetchedRef,
                     ...(lane.jobId ? { newWorktree: { id: lane.jobId } } : {}),
                 });
             }
@@ -2582,6 +2718,16 @@ function dryRun(o) {
     const swapped = existing ? forgeResumeProblem(existing, o.forge?.config.kind ?? 'github', o.forge?.config.repo.url) : null;
     if (existing && swapped)
         return { exitCode: 1, phase: existing.phase, state: existing, message: `dry run: ${swapped}` };
+    // The real run parks before its first step, so before any lane (dogfood F41).
+    const localGate = forge?.kind === 'local' ? o.forge.config.local?.gate : undefined;
+    const gateUnknown = localGate && localGate.length > 0 ? gateDefinitionSources(localGate).unresolved : undefined;
+    if (gateUnknown) {
+        return {
+            exitCode: 0, phase: existing?.phase ?? null, state: existing ?? null,
+            message: `dry run: ${gateUnknown}; the run would stop at awaiting-human: gate-definition-unknown before any lane`,
+            plan: { next: 'awaiting-human', reason: 'gate-definition-unknown', ...caps },
+        };
+    }
     if (existing) {
         return {
             exitCode: 0, phase: existing.phase, state: existing, ...(existing.gate ? { gate: existing.gate } : {}),
@@ -2602,10 +2748,24 @@ function dryRun(o) {
         const item = forge.tracker.viewItem(o.issue);
         if (!item.open)
             return { exitCode: 0, phase: null, state: null, message: 'dry run: the work item is closed; the run would be cancelled', plan: { next: 'cancelled', ...caps } };
+        // The intake gate the real run applies first (foreignPr; dogfood F39).
+        const branch = factoryBranch(key);
+        const open = forge.reviews.findOpenPrForBranch(branch);
+        if (open !== undefined)
+            return { exitCode: 0, phase: null, state: null, message: `dry run: open PR #${open} already uses ${branch}; the run would stop at awaiting-human: pr-exists`, plan: { next: 'awaiting-human', reason: 'pr-exists', ...caps } };
         const link = findPlanLink(item.body, item.comments, item.authorTrusted);
         const source = link ? `omg-plan ${link}` : item.acceptance ? 'work item Acceptance Criteria' : hasAcceptanceCriteria(item.body) ? 'work item description (Acceptance criteria)' : undefined;
+        // The local gate's executable, probed by the resolver the real gate run uses, without spawning it (dogfood F40).
+        let gateProblem;
+        if (forge.kind === 'local') {
+            const gate = o.forge.config.local?.gate;
+            const probe = gate && gate.length > 0 ? resolveLocalGateArgv(gate, { cwd: o.root }) : { missing: 'factory.forge.local.gate is not set' };
+            if ('missing' in probe)
+                gateProblem = probe.missing;
+        }
+        const gateNote = gateProblem ? `; but the local gate cannot start (${gateProblem}), so after review the run would park at awaiting-human: gates` : '';
         return source
-            ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits`, plan: { next: 'implement', planSource: source, ...caps } }
+            ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${gateNote}`, plan: { next: 'implement', planSource: source, ...caps, ...(gateProblem ? { gateProblem } : {}) } }
             : { exitCode: 0, phase: null, state: null, message: 'dry run: no plan (no Acceptance Criteria, "Acceptance criteria" heading or trusted omg-plan: link); the run would stop at awaiting-human: needs-plan', plan: { next: 'awaiting-human', reason: 'needs-plan', ...caps } };
     }
     const res = ghIssueView(exec, o.issue, o.root);

@@ -33,6 +33,7 @@ import { resolveProjectConfigPath } from '../../config/project-config-path.js';
 import { CopilotRunManager, defaultCopilotRunDeps } from '../../copilot-run/job.js';
 import { resolveFactoryRunLimits, runCredits, type LoadedFactoryRunLimits } from '../../factory/run/budget.js';
 import { cleanFactoryRun } from '../../factory/run/clean.js';
+import { resetFactoryRun } from '../../factory/run/reset.js';
 import { EXIT_AWAITING_HUMAN, runFactoryEngine, type FactoryRunOutcome } from '../../factory/run/engine.js';
 import { factoryGuardExec, hardenedGitExec } from '../../factory/run/exec.js';
 import { EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, factoryForgeOptions, loadFactoryForgeConfig, originForgeKind, syncLocalMirror } from '../../factory/run/forge-roots.js';
@@ -232,8 +233,9 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
     .option('--next', 'Run the next runnable item (omg factory check order: priority, then id); exit 0 when nothing is runnable')
     .option('--parent <spec>', 'With --next: pick among the children of this spec item instead of factory.intake.source')
     .option('--dry-run', 'Resolve the issue and plan and print the next step; no state, lanes or pushes')
+    .option('--allow-gate-change', 'Local forge: accept the one change to the local gate\'s definition (package.json script, package-manager config or gate file) that parked the run at gate-definition-changed; a later change parks again')
     .option('--json', 'JSON output')
-    .action((issueRaw: string | undefined, o: { next?: boolean; parent?: string; dryRun?: boolean; json?: boolean }) =>
+    .action((issueRaw: string | undefined, o: { next?: boolean; parent?: string; dryRun?: boolean; allowGateChange?: boolean; json?: boolean }) =>
       factoryGuarded(Boolean(o.json), async () => {
         if (o.next && issueRaw !== undefined) throw new FactoryUsageError('--next takes no issue: it picks the next runnable item');
         if (o.parent !== undefined && !o.next) throw new FactoryUsageError('--parent applies to --next');
@@ -278,6 +280,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         try {
           const outcome = await runFactoryEngine({
             root, issue, exec: deps.exec, limits, base, dryRun: Boolean(o.dryRun),
+            ...(o.allowGateChange ? { allowGateChange: true } : {}),
             lanes: o.dryRun ? NO_LANES : deps.lanes(root),
             ...(forge ? { forge } : {}),
             ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}),
@@ -321,6 +324,28 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
           if (result.removed.length === 0 && result.kept.length === 0) console.log(`nothing to clean for factory run #${issue}`);
         }
         return result.kept.length === 0 ? 0 : EXIT_AWAITING_HUMAN;
+      }));
+
+  run
+    .command('reset <issue>')
+    .description('Local forge only: start a cancelled run over (after run clean): close its local PR, keep its mirror branch as factory/cancelled/..., move the run state aside')
+    .option('--json', 'JSON output')
+    .action((issueRaw: string, _o: unknown, c: Command) =>
+      factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
+        const issue = parseIssue(issueRaw);
+        const root = factoryRoot(exec);
+        const loaded = deps.forge?.(root, deps.base(root), { dryRun: false });
+        if (!loaded || loaded.config.kind !== 'local') throw new FactoryUsageError('omg factory run reset is for the local forge only (factory.forge.kind "local")');
+        const read = forgeReadExec(deps.exec, loaded.config, root);
+        const forge = createForge(read.exec, root, loaded.config, { ...read.options, local: { omgRoot: getOmcRoot(root) } });
+        const result = resetFactoryRun({ root, issue, exec: deps.exec, forge, mirror: loaded.config.repo.url, ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
+        if (c.optsWithGlobals().json) console.log(JSON.stringify({ ok: true, ...result }, null, 2));
+        else {
+          if (result.closedPr !== undefined) console.log(chalk.green(`closed local PR #${result.closedPr} (cancelled)`));
+          if (result.keptBranch) console.log(chalk.green(`kept the run's branch as ${result.keptBranch} in the mirror`));
+          console.log(chalk.green(`moved the run state to ${result.stateMovedTo}; omg factory run ${issue} starts a new run`));
+        }
+        return 0;
       }));
 
   run

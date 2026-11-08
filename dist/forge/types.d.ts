@@ -240,6 +240,13 @@ export interface ForgeReviews {
     };
     /** `omg factory poll` only: the PR's review threads, read-only. Optional: GitHub omits it for now. Throws on a failed read. */
     listThreads?(pr: number): ForgeThread[];
+    /**
+     * The local forge only: close an OPEN PR in its store (state CLOSED, the
+     * reason and the head it was closed at recorded). A PR that is not OPEN is
+     * left as it is. GitHub and Azure DevOps omit it: the factory never closes
+     * their PRs.
+     */
+    closePr?(pr: number, reason: string): void;
 }
 /** One PR review thread (ADO Pull Request Threads - List; deleted threads are left out). */
 export interface ForgeThread {

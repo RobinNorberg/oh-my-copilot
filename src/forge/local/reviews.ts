@@ -107,6 +107,16 @@ export function localReviews(ctx: LocalReviewsContext): ForgeReviews & { refresh
         p.isDraft = false;
       });
     },
+    closePr(pr: number, reason: string): void {
+      // A PR the base already contains is MERGED, never closed.
+      const current = find(pr);
+      if (current.state !== 'OPEN') return;
+      const head = ref(current.head);
+      updatePrStore(ctx.storePath, (store) => {
+        const p = store.prs.find((x) => x.number === pr)!;
+        if (p.state === 'OPEN') Object.assign(p, { state: 'CLOSED', closedReason: reason, closedAt: new Date().toISOString(), ...(head ? { closedHead: head } : {}) });
+      });
+    },
     commentPr(pr: number, bodyFile: string): { ok: boolean; stderr: string } {
       try {
         if (!readPrStore(ctx.storePath).prs.some((x) => x.number === pr)) return { ok: false, stderr: `local PR #${pr} does not exist` };

@@ -90,6 +90,11 @@ export interface FactoryGate {
   name: string;
   reason: string;
   at: string;
+  /**
+   * gate-definition-changed only: the sha256 of the parked head's gate
+   * definition, the one definition `--allow-gate-change` may accept.
+   */
+  definition?: string;
 }
 
 export interface FactoryFinding {
@@ -173,6 +178,14 @@ export interface FactoryRunState {
    * trusted config (local-gate.ts assertLocalGateCommand); absent until then.
    */
   localGate?: string[];
+  /**
+   * The local forge only: the sha256 of the gate definition (local-gate.ts
+   * gateDefinition) a human accepted with `omg factory run
+   * --allow-gate-change` after the run parked at gate-definition-changed on
+   * it. A head whose definition hashes to it is not parked again; any other
+   * change is.
+   */
+  gateChangeApproved?: string;
   /**
    * The trusted ship.prepare.checks this run first prepared with (`auto` =
    * unset, the built-ins the base has). Every later prepare must resolve the
@@ -328,10 +341,10 @@ export function moveTo(state: FactoryRunState, to: FactoryPhase, note: string, n
 }
 
 /** Park at a named human gate; the phase stays so a rerun re-evaluates it. */
-export function setGate(state: FactoryRunState, name: string, reason: string, now: string): FactoryRunState {
+export function setGate(state: FactoryRunState, name: string, reason: string, now: string, extra: Pick<FactoryGate, 'definition'> = {}): FactoryRunState {
   return {
     ...state,
-    gate: { name, reason, at: now },
+    gate: { name, reason, at: now, ...extra },
     updatedAt: now,
     history: [...state.history, { at: now, from: state.phase, to: state.phase, note: `awaiting-human: ${name}: ${reason}` }],
   };
@@ -386,6 +399,7 @@ export function runRemote(state: Pick<FactoryRunState, 'remote'>): string {
 }
 
 const isStr = (v: unknown): v is string => typeof v === 'string';
+const HEX64 = /^[0-9a-f]{64}$/;
 const isCount = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
 
 function shapeProblem(s: Record<string, unknown>): string | null {
@@ -397,6 +411,9 @@ function shapeProblem(s: Record<string, unknown>): string | null {
   // The remote follows the forge: omg-local exactly on a local run, absent (origin) on every other.
   if (s.remote !== undefined ? s.remote !== LOCAL_REMOTE || s.forgeKind !== 'local' : s.forgeKind === 'local') return 'remote';
   if (s.localGate !== undefined && (s.forgeKind !== 'local' || !Array.isArray(s.localGate) || s.localGate.length === 0 || !s.localGate.every(isStr))) return 'localGate';
+  if (s.gateChangeApproved !== undefined && (s.forgeKind !== 'local' || !isStr(s.gateChangeApproved) || !HEX64.test(s.gateChangeApproved))) return 'gateChangeApproved';
+  const gateDef = (s.gate as { definition?: unknown } | undefined)?.definition;
+  if (gateDef !== undefined && (s.forgeKind !== 'local' || !isStr(gateDef) || !HEX64.test(gateDef))) return 'gate.definition';
   if (s.prepareChecks !== undefined && s.prepareChecks !== 'auto' && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr)))) return 'prepareChecks';
   if (s.trackerStage !== undefined && !(PROGRESS_STAGES as readonly unknown[]).includes(s.trackerStage)) return 'trackerStage';
   if (s.kind === 'ci-heal') {

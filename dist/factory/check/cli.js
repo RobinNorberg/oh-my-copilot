@@ -35,6 +35,7 @@ import { parseJsonc } from '../../utils/jsonc.js';
 import { isAdoCommand, runGuardedAdo } from '../../forge/ado/guard.js';
 import { assertFactoryCommand, FactorySafetyError } from '../run/exec.js';
 import { readFactoryState } from '../run/state.js';
+import { gateDefinitionSources } from '../run/local-gate.js';
 import { BUCKET_ORDER, checkItems, plainText } from './score.js';
 export const EXIT_CHECK_FAILED = 1;
 export const EXIT_CHECK_USAGE = 2;
@@ -444,6 +445,13 @@ export async function runFactoryCheck(o, deps) {
     // Skipped backlog files (the local tracker), after every read.
     warnings.push(...(forge.tracker.warnings?.() ?? []));
     const limitations = forgeLimitations(forge, base);
+    // The verdict a run parks on before its first lane (gate-definition-unknown).
+    let gate;
+    if (config.kind === 'local') {
+        const argv = config.local?.gate;
+        const unresolved = argv && argv.length > 0 ? gateDefinitionSources(argv).unresolved : undefined;
+        gate = !argv || argv.length === 0 ? 'not set' : unresolved ? `unresolved (${unresolved})` : 'ok';
+    }
     if (o.json) {
         const json = {
             schemaVersion: CHECK_JSON_SCHEMA_VERSION,
@@ -451,6 +459,7 @@ export async function runFactoryCheck(o, deps) {
             forge: config.kind,
             limitations,
             prepareChecks,
+            ...(gate ? { gate } : {}),
             repo: config.repo.url,
             source: ids.length > 0 || parent !== undefined || !source ? null : { ...source },
             counts: Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length])),
@@ -466,6 +475,8 @@ export async function runFactoryCheck(o, deps) {
         for (const l of limitations)
             deps.out(chalk.gray(l));
         deps.out(chalk.gray(`prepare checks: ${prepareChecks.length > 0 ? prepareChecks.join('; ') : 'none'}`));
+        if (gate)
+            deps.out((gate.startsWith('unresolved') ? chalk.yellow : chalk.gray)(`gate: ${plainText(gate)}`));
         deps.out(renderCheckTable(items));
         if (o.mark) {
             if (m.marked.length > 0)

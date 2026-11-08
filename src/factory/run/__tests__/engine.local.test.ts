@@ -6,7 +6,7 @@
 import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { localCheckRecordPath, readLocalCheckRecord, readMirrorRef } from '../../../forge/local/index.js';
+import { localCheckRecordPath, readLocalCheckRecord, readMirrorRef, writeLocalCheckRecord } from '../../../forge/local/index.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { runFactoryEngine, EXIT_AWAITING_HUMAN } from '../engine.js';
 import { factoryForgeOptions } from '../forge-roots.js';
@@ -124,7 +124,7 @@ describe('factory run on the local forge', () => {
     expect(existsSync(join(evil, 'packed-refs'))).toBe(false);
   });
 
-  it('a gate that cannot start parks at awaiting-human: gates (no FAILURE, no ci-fix); a gate changed after that is refused', async () => {
+  it('a gate that cannot start parks at awaiting-human: gates (no FAILURE, no ci-fix); a gate changed after it STARTED is refused', async () => {
     w = localWorld();
     w.gate = async () => ({ status: 127, stdout: '', stderr: '', timedOut: false, startError: 'the local gate executable npm is not on PATH' });
     const lanes = lanesFor(w, [greet(), review('approve')]);
@@ -138,6 +138,8 @@ describe('factory run on the local forge', () => {
     // The run recorded the gate it tried.
     expect(state.localGate).toEqual(['node', '--test']);
 
+    // An engine died mid-gate with the sealed argv (a PENDING record, stale): that gate started, so its seal binds.
+    writeLocalCheckRecord(w.stateDir, w.root, { name: 'local-gate', head: state.head!, state: 'PENDING', argv: ['node', '--test'], runId: 1, startedAt: '2020-01-01T00:00:00.000Z' });
     // The trusted config now names another gate: the rerun refuses it instead of judging the head with it.
     const changed = { ...w.config, local: { ...w.config.local!, gate: ['node', '--test', '--experimental'] } };
     let ran = 0;

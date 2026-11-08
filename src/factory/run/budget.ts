@@ -19,7 +19,7 @@
 
 import { RUNTIME_MIN_MAX_CREDITS } from '../../smoke/copilot-sdk-scenarios.js';
 import { MAX_TIMEOUT_MS } from '../../copilot-run/job.js';
-import { DEFAULT_SHIP_CONFIG } from '../../ship/config.js';
+import { DEFAULT_SHIP_CONFIG, trustedUserConfigPath } from '../../ship/config.js';
 import type { FactoryRunState } from './state.js';
 
 export { RUNTIME_MIN_MAX_CREDITS };
@@ -133,6 +133,12 @@ export function resolveFactoryRunLimits(trustedUser: unknown, project: unknown):
     throw new Error(`factory.run.laneTimeoutMinutes must be above 0 and at most ${MAX_TIMEOUT_MS / 60_000}`);
   }
   assertLaneCreditCap(limits);
+  // Every run needs at least two lanes (implement, then review): the first may spend a whole lane cap, and the next
+  // lane cannot start with less than the runtime floor left, so a smaller run cap can park before review (dogfood F44).
+  const minRun = limits.laneMaxCredits + RUNTIME_MIN_MAX_CREDITS;
+  if (limits.maxRunCredits !== undefined && limits.maxRunCredits < minRun) {
+    throw new Error(`factory.run.maxRunCredits ${limits.maxRunCredits} is too low: a run needs at least two lanes (implement, then review), the first may spend factory.run.laneMaxCredits ${limits.laneMaxCredits} and the next needs at least the Copilot CLI minimum of ${RUNTIME_MIN_MAX_CREDITS} left, so set it to at least ${limits.laneMaxCredits} + ${RUNTIME_MIN_MAX_CREDITS} = ${minRun} (more for fix rounds)`);
+  }
   return { limits, warnings };
 }
 
@@ -168,7 +174,7 @@ export function nextLaneCap(state: Pick<FactoryRunState, 'lanes'>, limits: Facto
   const spent = runCredits(state);
   const left = limits.maxRunCredits - spent;
   if (left < RUNTIME_MIN_MAX_CREDITS) {
-    return { ok: false, reason: `run spent ${spent.toFixed(2)} of factory.run.maxRunCredits ${limits.maxRunCredits} AI credits; a lane needs at least ${RUNTIME_MIN_MAX_CREDITS} (raise the limit and rerun)` };
+    return { ok: false, reason: `run spent ${spent.toFixed(2)} of factory.run.maxRunCredits ${limits.maxRunCredits} AI credits; a lane needs at least ${RUNTIME_MIN_MAX_CREDITS} (raise factory.run.maxRunCredits in the user config ${trustedUserConfigPath()}, or in .copilot/omg.jsonc when the user config sets none, then rerun)` };
   }
   return { ok: true, cap: Math.min(limits.laneMaxCredits, Math.floor(left)) };
 }

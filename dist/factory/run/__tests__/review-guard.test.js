@@ -122,6 +122,21 @@ describe('review-lane tamper check', () => {
         const after = snapshotRepo(exec, h.root);
         expect(compareSnapshots(before, after, { [`refs/heads/${branch}`]: head }, { newWorktree: { path: wt } }).join('\n')).toMatch(/points its commondir at \/evil\/\.git/);
     });
+    it('a remote-tracking ref fetched to the sha the remote holds is no change; another sha or a deletion is (dogfood F42)', () => {
+        const before = snapshotRepo(exec, h.root);
+        const sha = Object.values(before.refs)[0];
+        const name = 'refs/remotes/omg-local/factory/issue-5';
+        const atRemote = (n, s) => n === name && s === sha;
+        const created = { ...before, refs: { ...before.refs, [name]: sha } };
+        expect(compareSnapshots(before, created, {}, { fetchedRef: atRemote })).toEqual([]);
+        expect(compareSnapshots(before, created)).toEqual([`ref ${name} was created (${sha.slice(0, 12)})`]);
+        const other = { ...before, refs: { ...before.refs, [name]: 'f'.repeat(40) } };
+        expect(compareSnapshots(before, other, {}, { fetchedRef: atRemote })).toEqual([`ref ${name} was created (ffffffffffff)`]);
+        expect(compareSnapshots(created, before, {}, { fetchedRef: atRemote })).toEqual([`ref ${name} was deleted (was ${sha.slice(0, 12)})`]);
+        // Only refs/remotes/ ever qualifies, whatever the predicate says.
+        const local = { ...before, refs: { ...before.refs, 'refs/heads/x': sha } };
+        expect(compareSnapshots(before, local, {}, { fetchedRef: () => true })).toEqual([`ref refs/heads/x was created (${sha.slice(0, 12)})`]);
+    });
     it('skips git status when the config already differs (a changed config may name a clean filter)', () => {
         const before = snapshotRepo(exec, h.root);
         appendFileSync(join(h.root, '.git', 'config'), '[filter "evil"]\n\tclean = sh -c "touch pwned"\n');

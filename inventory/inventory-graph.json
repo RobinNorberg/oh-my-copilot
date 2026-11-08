@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "f113687816d8ef7ebae01c4bd594a039effee4ba",
-    "sourceSha256": "0e1faf72382fe3e7d5c43328f11646a75a3661120e15a2268dd94495fb51a717",
+    "head": "52e9abaf1ca5c763e3932a79065a4e3818e2b761",
+    "sourceSha256": "2cf509bbf39f630add91eeaf1daf83bc2f4931ec3977ed99fced637704ef771c",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "f113687816d8ef7ebae01c4bd594a039effee4ba",
-  "sourceSha256": "0e1faf72382fe3e7d5c43328f11646a75a3661120e15a2268dd94495fb51a717",
+  "head": "52e9abaf1ca5c763e3932a79065a4e3818e2b761",
+  "sourceSha256": "2cf509bbf39f630add91eeaf1daf83bc2f4931ec3977ed99fced637704ef771c",
   "counts": {
     "public": {
       "skills": 96,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 1970,
-      "total": 1995
+      "srcFiles": 1972,
+      "total": 1997
     },
     "generated": {
-      "distFiles": 7248,
+      "distFiles": 7256,
       "bridgeFiles": 8,
-      "total": 7256
+      "total": 7264
     },
     "prompt": {
       "promptLikeFiles": 68
@@ -3348,6 +3348,10 @@
       "dist/factory/run/__tests__/engine.lanes.test.d.ts.map",
       "dist/factory/run/__tests__/engine.lanes.test.js",
       "dist/factory/run/__tests__/engine.lanes.test.js.map",
+      "dist/factory/run/__tests__/engine.local.dogfood.test.d.ts",
+      "dist/factory/run/__tests__/engine.local.dogfood.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.local.dogfood.test.js",
+      "dist/factory/run/__tests__/engine.local.dogfood.test.js.map",
       "dist/factory/run/__tests__/engine.local.test.d.ts",
       "dist/factory/run/__tests__/engine.local.test.d.ts.map",
       "dist/factory/run/__tests__/engine.local.test.js",
@@ -3512,6 +3516,10 @@
       "dist/factory/run/progress.d.ts.map",
       "dist/factory/run/progress.js",
       "dist/factory/run/progress.js.map",
+      "dist/factory/run/reset.d.ts",
+      "dist/factory/run/reset.d.ts.map",
+      "dist/factory/run/reset.js",
+      "dist/factory/run/reset.js.map",
       "dist/factory/run/review-guard.d.ts",
       "dist/factory/run/review-guard.d.ts.map",
       "dist/factory/run/review-guard.js",
@@ -21550,6 +21558,26 @@
         "path": "dist/factory/run/__tests__/engine.lanes.test.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/engine.local.dogfood.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.local.dogfood.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.local.dogfood.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.local.dogfood.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.local.dogfood.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.local.dogfood.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.local.dogfood.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.local.dogfood.test.js.map"
+      },
+      {
         "id": "dist/factory/run/__tests__/engine.local.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.local.test.d.ts"
@@ -22368,6 +22396,26 @@
         "id": "dist/factory/run/progress.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/progress.js.map"
+      },
+      {
+        "id": "dist/factory/run/reset.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/reset.d.ts"
+      },
+      {
+        "id": "dist/factory/run/reset.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/reset.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/reset.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/reset.js"
+      },
+      {
+        "id": "dist/factory/run/reset.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/reset.js.map"
       },
       {
         "id": "dist/factory/run/review-guard.d.ts",
@@ -51915,6 +51963,11 @@
         "path": "src/factory/run/__tests__/engine.lanes.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/engine.local.dogfood.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.local.dogfood.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/engine.local.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.local.test.ts"
@@ -52118,6 +52171,11 @@
         "id": "src/factory/run/progress.ts",
         "kind": "src",
         "path": "src/factory/run/progress.ts"
+      },
+      {
+        "id": "src/factory/run/reset.ts",
+        "kind": "src",
+        "path": "src/factory/run/reset.ts"
       },
       {
         "id": "src/factory/run/review-guard.ts",
@@ -75703,6 +75761,11 @@
       },
       {
         "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/run/reset.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
         "to": "src/factory/run/state.ts",
         "kind": "imports"
       },
@@ -79618,6 +79681,11 @@
       },
       {
         "from": "src/factory/check/cli.ts",
+        "to": "src/factory/run/local-gate.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
         "to": "src/factory/run/state.ts",
         "kind": "imports"
       },
@@ -82062,6 +82130,81 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/__tests__/engine.local.dogfood.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.dogfood.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.dogfood.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.dogfood.test.ts",
+        "to": "src/factory/run/__tests__/engine-local-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.dogfood.test.ts",
+        "to": "src/factory/run/__tests__/engine-local-harness.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.dogfood.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.dogfood.test.ts",
+        "to": "src/factory/run/clean.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.dogfood.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.dogfood.test.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.dogfood.test.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.dogfood.test.ts",
+        "to": "src/factory/run/reset.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.dogfood.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.dogfood.test.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.dogfood.test.ts",
+        "to": "src/forge/local/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.dogfood.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/__tests__/engine.local.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -83388,6 +83531,11 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -84100,6 +84248,76 @@
         "from": "src/factory/run/progress.ts",
         "to": "src/lib/agent-progress.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/reset.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/reset.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/reset.ts",
+        "to": "src/copilot-run/job.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/reset.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/reset.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/reset.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/reset.ts",
+        "to": "src/factory/run/prepare.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/reset.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/reset.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/reset.ts",
+        "to": "src/forge/local/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/reset.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/reset.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/reset.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/reset.ts",
+        "to": "src/team/git-worktree.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/review-guard.ts",
@@ -120613,12 +120831,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10049,
-      "edgeCount": 12294,
-      "importEdgeCount": 10117,
+      "nodeCount": 10059,
+      "edgeCount": 12326,
+      "importEdgeCount": 10145,
       "registerEdgeCount": 117
     }
   },
-  "inventorySha256": "2adbc59fd0217a5a43d83b5a90eab0c59d539b1cf3dad2cbda3a1e5759c8f565",
-  "manifestSha256": "9c327c643e68c4714fff17875cb4ba5a4ff7817ab601107874510ebbdadf59c5"
+  "inventorySha256": "a62e6631b84dce0edd630dade4019100cc9a55e935d74e7aecb6b5ad0c048445",
+  "manifestSha256": "c59c8a52151f9e47a08c2cafdfe7009b8d005a17f17285cca3eb86a269952dc1"
 }

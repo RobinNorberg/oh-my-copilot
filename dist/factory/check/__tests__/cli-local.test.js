@@ -51,6 +51,23 @@ describe('omg factory check on the local (offline) forge', () => {
         expect(await runFactoryCheck({ ids: ['1'], json: true }, checkDeps(repo))).toBe(0);
         expect(JSON.parse(repo.out.join('\n')).prepareChecks).toEqual([]);
     });
+    it('prints the gate definition status: not set, ok, or unresolved with the reason', async () => {
+        const repo = localRepo();
+        writeFile(repo, '.copilot/backlog/1-add-remove.md', backlogItem('Add remove'));
+        commitAll(repo);
+        expect(await runFactoryCheck({ ids: ['1'] }, checkDeps(repo))).toBe(0);
+        expect(repo.out.join('\n')).toContain('gate: not set');
+        const withGate = (gate) => ({ ...checkDeps(repo), trustedUser: () => ({ ship: { trustedBases: ['main'] }, factory: { forge: { local: { gate } } } }) });
+        repo.out.length = 0;
+        expect(await runFactoryCheck({ ids: ['1'] }, withGate(['npm', 'test']))).toBe(0);
+        expect(repo.out.join('\n')).toContain('gate: ok');
+        repo.out.length = 0;
+        expect(await runFactoryCheck({ ids: ['1'], json: true }, withGate(['yarn', 'workspace', 'app', 'test']))).toBe(0);
+        expect(JSON.parse(repo.out.join('\n')).gate).toMatch(/^unresolved \(the gate "yarn workspace app test" runs yarn workspace, not a package.json script/);
+        repo.out.length = 0;
+        expect(await runFactoryCheck({ ids: ['1'] }, withGate(['npm', '-ws', 'test']))).toBe(0);
+        expect(repo.out.join('\n')).toMatch(/gate: unresolved \(.*selects workspace packages \(-ws\)/);
+    });
     it('F31 + F30: a child whose local PR merged reads as closed (warning names the file); its spec is children-done, never runnable', async () => {
         const repo = localRepo();
         writeFile(repo, '.copilot/backlog/2-cli-flags.md', backlogItem('CLI flags'));

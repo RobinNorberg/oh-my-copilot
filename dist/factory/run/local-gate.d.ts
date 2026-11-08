@@ -115,4 +115,46 @@ export type LocalGateOutcome = {
  * gate that cannot start records nothing.
  */
 export declare function runLocalGate(i: LocalGateInput): Promise<LocalGateOutcome>;
+/**
+ * Where the gate argv is defined inside the repository (dogfood F41): an
+ * npm-style gate (`npm test`, `npm run <s>`, `pnpm <s>`, `yarn <s>`, or node
+ * with npm's own CLI script) is defined by its package.json's `scripts` entry
+ * for that script and its `pre`/`post` hooks, plus the package managers'
+ * project config (`.npmrc` script-shell/node-options, `.yarnrc`,
+ * `.yarnrc.yml`, `.pnpmfile.cjs`) at the repository top and in the package
+ * directory; a node gate by the script file it runs; a gate executable given
+ * as a repository path by that file. What the script itself runs
+ * (vitest.config, scripts/test.mjs) is covered by review, not here.
+ * Empty when the argv names nothing in the repository (`node --test`).
+ *
+ * Config files compare by their text, so a changed `script-shell=` or
+ * `userconfig=` line (.npmrc) or `yarnPath:` line (.yarnrc.yml) is caught,
+ * but the file such a line points at is not tracked. A `--userconfig` or
+ * `--globalconfig` outside the repository is not a repository file and is
+ * not compared; an argv `--script-shell` inside the repository is.
+ */
+export type GateDefinitionSource = {
+    path: string;
+    scripts?: string[];
+};
+/**
+ * The gate's definition sources, or why an npm-style gate's definition
+ * cannot be pinned (`unresolved`: no script named, a workspace selector, a
+ * package directory outside the repository). The engine parks on that
+ * rather than run without the check.
+ */
+export interface GateDefinitionSources {
+    sources: GateDefinitionSource[];
+    unresolved?: string;
+}
+export declare function gateDefinitionSources(gate: readonly string[]): GateDefinitionSources;
+/**
+ * The gate's definition at one commit, comparable across commits: per source
+ * the named package.json scripts (a file that is not JSON compares by its
+ * text), or the file's text. `read` returns a path's content at that commit,
+ * undefined when the file is absent there.
+ */
+export declare function gateDefinition(sources: readonly GateDefinitionSource[], read: (path: string) => string | undefined): string;
+/** What a gate change touches, for the park message: `package.json scripts lint` or the file path. */
+export declare const describeGateSources: (sources: readonly GateDefinitionSource[]) => string;
 //# sourceMappingURL=local-gate.d.ts.map

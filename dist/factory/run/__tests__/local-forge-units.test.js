@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readLocalCheckRecord, writeLocalCheckRecord } from '../../../forge/local/index.js';
 import { isProcessAlive } from '../../../platform/process-utils.js';
 import { assertFactoryCommand, FactorySafetyError, hardenedGitExec, LOCAL_REMOTE_PACK_ARGS, localRemoteRefusedKeys, localTransportArgs, mirrorNamedRemoteKeys, mirrorRewriteKeys } from '../exec.js';
-import { assertLocalGateCommand, defaultLocalGateRunner, LOCAL_GATE_STALE_GRACE_MS, LOCAL_GATE_TAIL_CHARS, localGateDue, localGateRecord, resolveLocalGateArgv, runLocalGate, } from '../local-gate.js';
+import { assertLocalGateCommand, defaultLocalGateRunner, LOCAL_GATE_STALE_GRACE_MS, LOCAL_GATE_TAIL_CHARS, localGateDue, localGateRecord, describeGateSources, gateDefinition, gateDefinitionSources, resolveLocalGateArgv, runLocalGate, } from '../local-gate.js';
 import { createFactoryState, parseFactoryState, runRemote } from '../state.js';
 const SHA = 'a'.repeat(40);
 const SHA2 = 'b'.repeat(40);
@@ -31,6 +31,7 @@ describe('the factory guard on the local forge shapes', () => {
         ['the local base branch', ['rev-parse', '--verify', 'refs/heads/main'], []],
         ['the mirror fetch', ['fetch', 'omg-local', 'main'], []],
         ['the refused omg-local config read', ['config', '--get-regexp', '^remote\\.omg-local\\.(vcs|mirror|fetch)$'], []],
+        ['the reset delete of a factory branch on the mirror, under a lease', ['push', 'omg-local', `--force-with-lease=refs/heads/factory/issue-7:${SHA}`, ':refs/heads/factory/issue-7'], []],
         ['the url rewrite config read', ['config', '-z', '--get-regexp', '^url\\..*\\.(insteadof|pushinsteadof)$'], []],
     ])('allows %s', (_what, args, extra) => {
         expect(ok('git', args, extra)).not.toThrow();
@@ -44,6 +45,12 @@ describe('the factory guard on the local forge shapes', () => {
         ['another sha than the synced base to the mirror base', ['push', 'omg-local', `${SHA2}:refs/heads/main`], ['main'], LOCAL],
         ['a base push before a sync read the base', ['push', 'omg-local', `${SHA}:refs/heads/main`], ['main'], { mirror: MIRROR }],
         ['a base push with no local forge context', ['push', 'omg-local', `${SHA}:refs/heads/main`], ['main'], null],
+        ['a delete without a lease', ['push', 'omg-local', ':refs/heads/factory/issue-7'], [], LOCAL],
+        ['a lease on another branch than the delete', ['push', 'omg-local', `--force-with-lease=refs/heads/factory/issue-8:${SHA}`, ':refs/heads/factory/issue-7'], [], LOCAL],
+        ['a leased delete of the run base', ['push', 'omg-local', `--force-with-lease=refs/heads/main:${SHA}`, ':refs/heads/main'], ['main'], LOCAL],
+        ['a leased delete of a non-factory branch', ['push', 'omg-local', `--force-with-lease=refs/heads/feature:${SHA}`, ':refs/heads/feature'], [], LOCAL],
+        ['a leased delete on origin', ['push', 'origin', `--force-with-lease=refs/heads/factory/issue-7:${SHA}`, ':refs/heads/factory/issue-7'], [], LOCAL],
+        ['a lease without an expected sha', ['push', 'omg-local', '--force-with-lease=refs/heads/factory/issue-7', ':refs/heads/factory/issue-7'], [], LOCAL],
         ['another remote name', ['push', 'evil', `${SHA}:refs/heads/factory/issue-7`], [], LOCAL],
         ['an init outside the forge state layout', ['init', '--bare', '--quiet', resolve(tmpdir(), 'elsewhere.git')], [], LOCAL],
         ['an init of another mirror in the same layout', ['init', '--bare', '--quiet', variant], [], LOCAL],
@@ -421,6 +428,10 @@ describe('resolveLocalGateArgv', () => {
         const shimOnly = resolveLocalGateArgv(['vitest', 'run'], win([win32.join('C:\\Program Files\\nodejs', 'vitest.cmd')]));
         expect('missing' in shimOnly && shimOnly.missing).toMatch(/not on PATH as an \.exe/);
     });
+    it('on Windows the hint suggests ["npm","test"] when the npm CLI script is beside node (dogfood F37)', () => {
+        const r = resolveLocalGateArgv(['pnpm', 'test'], win([NPM_CLI]));
+        expect('missing' in r && r.missing).toMatch(/such as \["npm","test"\]$/);
+    });
     it('off Windows a bare name must be on PATH and a path must exist; nothing is rewritten', () => {
         const onLinux = (files) => ({ cwd: '/work/checkout', platform: 'linux', env: { PATH: '/usr/bin' }, execPath: '/usr/bin/node', exists: (p) => files.includes(p) });
         expect(resolveLocalGateArgv(['npm', 'test'], onLinux(['/usr/bin/npm']))).toEqual({ exe: 'npm', args: ['test'] });
@@ -453,6 +464,80 @@ describe('the sealed run remote', () => {
         expect(parse({ ...s, localGate: ['npm', 3] })).toThrow(/field localGate/);
         const gh = createFactoryState({ issue: 7, repoUrl: '', base: 'dev' }, at);
         expect(parse({ ...gh, localGate: ['npm', 'test'] })).toThrow(/field localGate/);
+    });
+});
+describe('the gate definition (dogfood F41)', () => {
+    const PM = ['.npmrc', '.yarnrc', '.yarnrc.yml', '.pnpmfile.cjs'].map((path) => ({ path }));
+    const pkgScripts = (script, dir = '') => ({ path: `${dir}package.json`, scripts: [`pre${script}`, script, `post${script}`] });
+    it('names package.json scripts plus the package-manager config for npm-style gates, the script file for node gates', () => {
+        expect(gateDefinitionSources(['npm', 'run', 'lint'])).toEqual({ sources: [pkgScripts('lint'), ...PM] });
+        expect(gateDefinitionSources(['npm', 'test'])).toEqual({ sources: [pkgScripts('test'), ...PM] });
+        expect(gateDefinitionSources(['npm.cmd', '--silent', 't'])).toEqual({ sources: [pkgScripts('test'), ...PM] });
+        expect(gateDefinitionSources(['pnpm', 'lint'])).toEqual({ sources: [pkgScripts('lint'), ...PM] });
+        expect(gateDefinitionSources(['yarn', 'run', 'check'])).toEqual({ sources: [pkgScripts('check'), ...PM] });
+        expect(gateDefinitionSources(['node', 'C:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js', 'run', 'lint'])).toEqual({ sources: [pkgScripts('lint'), ...PM] });
+        expect(gateDefinitionSources(['node', 'scripts\\gate.mjs', '--fast'])).toEqual({ sources: [{ path: 'scripts/gate.mjs' }] });
+        expect(gateDefinitionSources(['./ci/gate.sh'])).toEqual({ sources: [{ path: 'ci/gate.sh' }] });
+        expect(gateDefinitionSources(['node', '--test'])).toEqual({ sources: [] });
+        expect(gateDefinitionSources(['node', '../outside.js'])).toEqual({ sources: [] });
+        expect(describeGateSources(gateDefinitionSources(['npm', 'run', 'lint']).sources)).toBe('package.json scripts prelint/lint/postlint, .npmrc, .yarnrc, .yarnrc.yml, .pnpmfile.cjs');
+    });
+    it('parses npm-style options: a flag value is never the script, --prefix moves package.json and adds that dir\'s config', () => {
+        const inApp = { sources: [pkgScripts('test', 'app/'), ...PM, ...PM.map((p) => ({ path: `app/${p.path}` }))] };
+        expect(gateDefinitionSources(['npm', '--prefix', 'app', 'test'])).toEqual(inApp);
+        expect(gateDefinitionSources(['npm', '--prefix=app', 'test'])).toEqual(inApp);
+        expect(gateDefinitionSources(['npm', 'test', '--prefix', 'app'])).toEqual(inApp);
+        expect(gateDefinitionSources(['pnpm', '-C', 'app\\', 'test'])).toEqual(inApp);
+        expect(gateDefinitionSources(['npm', '--prefix', '.', 'run', 'lint'])).toEqual({ sources: [pkgScripts('lint'), ...PM] });
+        expect(gateDefinitionSources(['npm', '--loglevel', 'warn', 'run', 'lint'])).toEqual({ sources: [pkgScripts('lint'), ...PM] });
+        expect(gateDefinitionSources(['npm', '--userconfig', 'ci/npmrc', 'test'])).toEqual({ sources: [pkgScripts('test'), ...PM, { path: 'ci/npmrc' }] });
+        // pnpm and yarn hand options after the script name to the script.
+        expect(gateDefinitionSources(['pnpm', 'lint', '--dir', 'x'])).toEqual({ sources: [pkgScripts('lint'), ...PM] });
+        expect(gateDefinitionSources(['npm', 'test', '--', '--prefix', 'x'])).toEqual({ sources: [pkgScripts('test'), ...PM] });
+    });
+    it('an npm-style gate whose definition cannot be pinned is unresolved, never silently unchecked', () => {
+        expect(gateDefinitionSources(['npm', 'ci']).unresolved).toMatch(/the gate "npm ci" names no package.json script/);
+        expect(gateDefinitionSources(['npm', '--prefix', 'app']).unresolved).toMatch(/names no package.json script/);
+        expect(gateDefinitionSources(['npm', '-w', 'app', 'test']).unresolved).toMatch(/selects workspace packages \(-w\)/);
+        expect(gateDefinitionSources(['pnpm', '--filter=app', 'test']).unresolved).toMatch(/selects workspace packages \(--filter\)/);
+        expect(gateDefinitionSources(['npm', '--prefix', '../other', 'test']).unresolved).toMatch(/runs in "..\/other", which is not a directory inside the repository/);
+        expect(gateDefinitionSources(['npm', '--prefix', 'C:\\elsewhere', 'test']).unresolved).toMatch(/not a directory inside the repository/);
+        for (const g of [['npm', 'ci'], ['npm', '-w', 'app', 'test']])
+            expect(gateDefinitionSources(g).sources).toEqual([]);
+    });
+    it('a package-manager subcommand is never pinned as the script name (yarn workspace, pnpm exec, npm -ws)', () => {
+        expect(gateDefinitionSources(['yarn', 'workspace', 'app', 'test']).unresolved).toMatch(/runs yarn workspace, not a package.json script/);
+        expect(gateDefinitionSources(['yarn', 'workspaces', 'foreach', 'run', 'test']).unresolved).toMatch(/runs yarn workspaces/);
+        expect(gateDefinitionSources(['yarn', 'node', 'scripts/test.js']).unresolved).toMatch(/runs yarn node/);
+        expect(gateDefinitionSources(['yarn', 'dlx', 'vitest']).unresolved).toMatch(/runs yarn dlx/);
+        expect(gateDefinitionSources(['pnpm', 'exec', 'vitest']).unresolved).toMatch(/runs pnpm exec/);
+        expect(gateDefinitionSources(['pnpm', 'dlx', 'vitest']).unresolved).toMatch(/runs pnpm dlx/);
+        expect(gateDefinitionSources(['pnpm', 'recursive', 'test']).unresolved).toMatch(/runs pnpm recursive/);
+        expect(gateDefinitionSources(['npm', 'exec', 'vitest']).unresolved).toMatch(/runs npm exec/);
+        expect(gateDefinitionSources(['npm', '-ws', 'test']).unresolved).toMatch(/selects workspace packages \(-ws\)/);
+        expect(gateDefinitionSources(['npm', 'run']).unresolved).toMatch(/names no package.json script/);
+        expect(gateDefinitionSources(['yarn', 'run']).unresolved).toMatch(/names no package.json script/);
+        // A script named like a subcommand is still reachable through run.
+        expect(gateDefinitionSources(['yarn', 'run', 'node']).sources[0]).toEqual(pkgScripts('node'));
+    });
+    it('an argv --script-shell inside the repository is a definition source; one outside is not', () => {
+        expect(gateDefinitionSources(['npm', '--script-shell', 'tools/sh', 'test'])).toEqual({ sources: [pkgScripts('test'), ...PM, { path: 'tools/sh' }] });
+        expect(gateDefinitionSources(['npm', '--script-shell=/bin/bash', 'test'])).toEqual({ sources: [pkgScripts('test'), ...PM] });
+    });
+    it('compares only the named scripts and the config files: an added lint script or .npmrc changes it, another package.json edit does not', () => {
+        const { sources } = gateDefinitionSources(['npm', 'run', 'lint']);
+        const pkg = (scripts, extra = {}) => JSON.stringify({ name: 'x', ...extra, scripts });
+        const files = (pkgText, more = {}) => (path) => (path === 'package.json' ? pkgText : more[path]);
+        const base = gateDefinition(sources, files(pkg({ test: 'node --test' })));
+        expect(gateDefinition(sources, files(pkg({ test: 'node --test', lint: 'exit 0' })))).not.toBe(base);
+        expect(gateDefinition(sources, files(pkg({ test: 'node --test', prelint: 'exit 0' })))).not.toBe(base);
+        expect(gateDefinition(sources, files(pkg({ test: 'node --test --x' }, { version: '2.0.0' })))).toBe(base);
+        expect(gateDefinition(sources, files(pkg({ test: 'node --test' }), { '.npmrc': 'script-shell=./evil.sh\n' }))).not.toBe(base);
+        expect(gateDefinition(sources, files(pkg({ test: 'node --test' }), { '.yarnrc.yml': 'x: 1\n' }))).not.toBe(base);
+        expect(gateDefinition(sources, files(pkg({ test: 'node --test' }), { '.pnpmfile.cjs': 'module.exports={}' }))).not.toBe(base);
+        expect(gateDefinition(sources, () => undefined)).not.toBe(base);
+        const file = gateDefinitionSources(['node', 'scripts/gate.mjs']).sources;
+        expect(gateDefinition(file, () => 'a')).not.toBe(gateDefinition(file, () => 'b'));
     });
 });
 //# sourceMappingURL=local-forge-units.test.js.map
