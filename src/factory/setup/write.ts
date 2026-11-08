@@ -30,7 +30,8 @@ export type SetupScope = 'project' | 'user';
 export interface SetupSection {
   forge: Record<string, unknown>;
   intake: { source: IntakeSource; itemTypes?: string[] };
-  progress: Pick<ForgeProgressConfig, 'enabled' | 'stages'>;
+  /** Absent on the local forge: it records the stage itself and syncs no board, so the key would only be ignored (F21). */
+  progress?: Pick<ForgeProgressConfig, 'enabled' | 'stages'>;
   /** Azure DevOps: the build definition heal reads as CI (factory.heal.pipeline; read from <base> once committed). */
   heal?: { pipeline: { definitionId: number } };
   /** The local forge: the detected base branch when no config names one (F20); the one key outside `factory` setup writes. */
@@ -47,7 +48,7 @@ export function buildSection(repo: ForgeRepo, intake: Pick<ForgeIntakeConfig, 's
   return {
     forge,
     intake: { source: intake.source, ...(repo.kind === 'azure-devops' ? { itemTypes: [...intake.itemTypes] } : {}) },
-    progress: { enabled: progress.enabled, stages: progress.stages },
+    ...(repo.kind === 'local' ? {} : { progress: { enabled: progress.enabled, stages: progress.stages } }),
   };
 }
 
@@ -66,8 +67,10 @@ export function sectionEdits(section: SetupSection): Array<[JSONPath, unknown]> 
   }
   edits.push([['factory', 'intake', 'source'], section.intake.source]);
   if (section.intake.itemTypes) edits.push([['factory', 'intake', 'itemTypes'], section.intake.itemTypes]);
-  edits.push([['factory', 'progress', 'enabled'], section.progress.enabled]);
-  edits.push([['factory', 'progress', 'stages'], section.progress.stages]);
+  if (section.progress) {
+    edits.push([['factory', 'progress', 'enabled'], section.progress.enabled]);
+    edits.push([['factory', 'progress', 'stages'], section.progress.stages]);
+  }
   if (section.heal) edits.push([['factory', 'heal', 'pipeline'], section.heal.pipeline]);
   if (section.ship) edits.push([SHIP_BASE, section.ship.base]);
   return edits;
