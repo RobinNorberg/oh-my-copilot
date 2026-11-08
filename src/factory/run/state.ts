@@ -174,6 +174,13 @@ export interface FactoryRunState {
    */
   localGate?: string[];
   /**
+   * The local forge only: the gate definition (local-gate.ts gateDefinition)
+   * a human accepted with `omg factory run --allow-gate-change` after the run
+   * parked at gate-definition-changed. A head whose definition equals it is
+   * not parked again; any other change is.
+   */
+  gateChangeApproved?: string;
+  /**
    * The trusted ship.prepare.checks this run first prepared with (`auto` =
    * unset, the built-ins the base has). Every later prepare must resolve the
    * same value; a change mid-run parks at prepare-checks. Absent until then.
@@ -397,6 +404,7 @@ function shapeProblem(s: Record<string, unknown>): string | null {
   // The remote follows the forge: omg-local exactly on a local run, absent (origin) on every other.
   if (s.remote !== undefined ? s.remote !== LOCAL_REMOTE || s.forgeKind !== 'local' : s.forgeKind === 'local') return 'remote';
   if (s.localGate !== undefined && (s.forgeKind !== 'local' || !Array.isArray(s.localGate) || s.localGate.length === 0 || !s.localGate.every(isStr))) return 'localGate';
+  if (s.gateChangeApproved !== undefined && (s.forgeKind !== 'local' || !isStr(s.gateChangeApproved))) return 'gateChangeApproved';
   if (s.prepareChecks !== undefined && s.prepareChecks !== 'auto' && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr)))) return 'prepareChecks';
   if (s.trackerStage !== undefined && !(PROGRESS_STAGES as readonly unknown[]).includes(s.trackerStage)) return 'trackerStage';
   if (s.kind === 'ci-heal') {
