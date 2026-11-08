@@ -107,6 +107,7 @@ A ruling that answers scope questions returns the ship to the desk for re-dispos
 | `needs-plan`, the requirements belong to a non-engineer | `/intent`, linking the issue as the intent's source |
 | `needs-plan`, foggy (fog test Q1 or Q2 fails) | `harbor:needs-exploration` + `/ask-navigator` |
 | `blocked` with `too-big` or `needs-split` | `/launch` |
+| `blocked` with `children-done` | close the spec: every child is closed, so nothing is left to launch |
 
 Once launch has enqueued the work, delivery state lives in the factory: harbor never writes `factory:*` labels and stops tracking the ship. The docket may show one read-only line counting accepted ships by factory bucket.
 
