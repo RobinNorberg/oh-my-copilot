@@ -21,7 +21,7 @@ import { LOCAL_REMOTE, mirrorFetchArgs, mirrorInitArgs, mirrorPushArgs, mirrorRe
 import type { ForgeKind, ForgeOptions } from '../../forge/types.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { BASE_CONFIG_PATH, readBaseFile, resolveTrustedBases } from '../../ship/config.js';
-import { FOR_EACH_REF_FORMAT, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, localRemoteRefusedKeys, mirrorRewriteKeys, URL_REWRITE_CONFIG_ARGS } from './exec.js';
+import { FOR_EACH_REF_FORMAT, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, localRemoteRefusedKeys, mirrorNamedRemoteKeys, mirrorRewriteKeys, REMOTE_CONFIG_ARGS, URL_REWRITE_CONFIG_ARGS } from './exec.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { getGlobalOmcStatePath } from '../../utils/paths.js';
@@ -194,6 +194,8 @@ export function localRemoteMismatch(exec: Exec, root: string, mirror: string): s
  * local refs (localRemoteRefusedKeys). Also any `url.<x>.insteadOf` /
  * `pushInsteadOf` whose value is a prefix of `mirror` (mirrorRewriteKeys):
  * git would rewrite the push to the mirror path into another repository.
+ * And any `remote.<name>.*` whose name is a spelling of `mirror`
+ * (mirrorNamedRemoteKeys): Windows git would push through that remote.
  */
 export function localRemoteRefusedConfig(exec: Exec, root: string, mirror: string): string | null {
   const read = (args: readonly string[], parse: (stdout: string) => string[]): string[] | string => {
@@ -204,7 +206,9 @@ export function localRemoteRefusedConfig(exec: Exec, root: string, mirror: strin
   if (typeof keys === 'string') return keys;
   const rewrites = read(URL_REWRITE_CONFIG_ARGS, (stdout) => mirrorRewriteKeys(stdout, mirror));
   if (typeof rewrites === 'string') return rewrites;
-  const all = [...keys, ...rewrites];
+  const named = read(REMOTE_CONFIG_ARGS, (stdout) => mirrorNamedRemoteKeys(stdout, mirror));
+  if (typeof named === 'string') return named;
+  const all = [...keys, ...rewrites, ...named];
   return all.length > 0 ? `the git config sets ${all.join(', ')}` : null;
 }
 

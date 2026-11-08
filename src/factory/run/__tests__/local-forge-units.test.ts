@@ -6,11 +6,11 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, posix, resolve, win32 } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readLocalCheckRecord, writeLocalCheckRecord } from '../../../forge/local/index.js';
 import { isProcessAlive } from '../../../platform/process-utils.js';
 import type { Exec } from '../../../ship/exec.js';
-import { assertFactoryCommand, FactorySafetyError, hardenedGitExec, LOCAL_REMOTE_PACK_ARGS, localRemoteRefusedKeys, localTransportArgs, mirrorRewriteKeys, type LocalGuardContext } from '../exec.js';
+import { assertFactoryCommand, FactorySafetyError, hardenedGitExec, LOCAL_REMOTE_PACK_ARGS, localRemoteRefusedKeys, localTransportArgs, mirrorNamedRemoteKeys, mirrorRewriteKeys, type LocalGuardContext } from '../exec.js';
 import {
   assertLocalGateCommand, defaultLocalGateRunner, LOCAL_GATE_STALE_GRACE_MS, LOCAL_GATE_TAIL_CHARS, localGateDue, localGateRecord,
   resolveLocalGateArgv, runLocalGate, type LocalGateRunner,
@@ -151,6 +151,36 @@ describe('hardenedGitExec on omg-local', () => {
     expect(mirrorRewriteKeys(rec('url./evil.insteadof', `${MIRROR}x`) + rec('url./evil.insteadof', resolve(tmpdir(), 'other')), MIRROR)).toEqual([]);
     // Another case: refused only where the file system is case-insensitive.
     expect(mirrorRewriteKeys(rec('url./evil.insteadof', MIRROR.toUpperCase()), MIRROR)).toHaveLength(process.platform === 'linux' ? 0 : 1);
+  });
+
+  it('mirrorNamedRemoteKeys: a remote whose name is any spelling of the mirror path is refused, other remotes are not', () => {
+    const rec = (key: string, value?: string) => (value === undefined ? `${key}\0` : `${key}\n${value}\0`);
+    const fwd = MIRROR.replace(/\\/g, '/');
+    expect(mirrorNamedRemoteKeys('', MIRROR)).toEqual([]);
+    // Ordinary remotes and remote.pushDefault (no subsection) never match.
+    expect(mirrorNamedRemoteKeys(rec('remote.origin.url', MIRROR) + rec('remote.omg-local.url', MIRROR) + rec('remote.pushdefault', 'origin'), MIRROR)).toEqual([]);
+    expect(mirrorNamedRemoteKeys(rec(`remote.${MIRROR}.url`, '/evil.git'), MIRROR)).toEqual([`remote.${MIRROR}.url=/evil.git`]);
+    expect(mirrorNamedRemoteKeys(rec(`remote.${MIRROR}.receivepack`, 'echo x; false'), MIRROR)).toHaveLength(1);
+    // Other slash form, trailing slash, doubled slash, file:// forms.
+    for (const name of [fwd, `${MIRROR}/`, fwd.replace('/forge/', '//forge/'), `file://${fwd}`, `file:///${fwd.replace(/^\//, '')}`]) {
+      expect(mirrorNamedRemoteKeys(rec(`remote.${name}.pushurl`, '/evil.git'), MIRROR), name).toHaveLength(1);
+    }
+    // Another path, or the mirror plus a suffix: not the mirror.
+    expect(mirrorNamedRemoteKeys(rec(`remote.${MIRROR}x.url`, '/e') + rec(`remote.${resolve(tmpdir(), 'other')}.url`, '/e'), MIRROR)).toEqual([]);
+    // Another case: refused only where the file system is case-insensitive.
+    expect(mirrorNamedRemoteKeys(rec(`remote.${MIRROR.toUpperCase()}.url`, '/e'), MIRROR)).toHaveLength(process.platform === 'linux' ? 0 : 1);
+  });
+
+  it('the backstop refuses an omg-local push while a remote named after the mirror path is configured', () => {
+    dir = mkdtempSync(join(tmpdir(), 'omg-hooks-'));
+    const named: Exec = (_cmd, args) => {
+      seen.push(args);
+      if (args.includes('^remote\\..*')) return { status: 0, stdout: `remote.${MIRROR}.receivepack\necho x; false\0`, stderr: '' };
+      if (args.includes('--get-regexp')) return { status: 1, stdout: '', stderr: '' };
+      return { status: 0, stdout: '', stderr: '' };
+    };
+    expect(() => hardenedGitExec(named, dir, () => MIRROR)('git', ['push', 'omg-local', `${SHA}:refs/heads/factory/issue-7`])).toThrow(/remote named after the local forge mirror .*receivepack/);
+    expect(commands()).toEqual([]);
   });
 
   it('the backstop refuses an omg-local transport while a url rewrite of the mirror path is configured', () => {
@@ -336,6 +366,38 @@ describe('the local gate', () => {
       expect(Date.now() - started).toBeLessThan(30_000);
     } finally {
       // POSIX killed the group; on Windows the orphan is ours to stop.
+      try { process.kill(Number(readFileSync(pidFile, 'utf8')), 'SIGKILL'); } catch { /* gone */ }
+    }
+  }, 90_000);
+
+  it('a timeout that fires inside the post-exit drain keeps the root\'s real exit status (not 124)', async () => {
+    const w = world();
+    mkdirSync(w.checkout, { recursive: true });
+    const pidFile = join(w.checkout, 'grandchild.pid');
+    const rootPidFile = join(w.checkout, 'root.pid');
+    writeFileSync(join(w.checkout, 'grandchild.js'), 'setTimeout(() => {}, 120000);\n');
+    writeFileSync(join(w.checkout, 'gate.js'), [
+      "const { spawn } = require('child_process');",
+      "const g = spawn(process.execPath, [require('path').join(__dirname, 'grandchild.js')], { stdio: ['ignore', 'inherit', 'inherit'] });",
+      `require('fs').writeFileSync(${JSON.stringify(pidFile)}, String(g.pid));`,
+      `require('fs').writeFileSync(${JSON.stringify(rootPidFile)}, String(process.pid));`,
+      'process.exit(3);',
+    ].join('\n'));
+    // Only the runner's timers are faked: the timeout and the drain fire when the test says so, after the root exited.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const tick = () => new Promise<void>((r) => setImmediate(r));
+    try {
+      const pending = defaultLocalGateRunner([process.execPath, join(w.checkout, 'gate.js')], w.checkout, 1_000);
+      const until = Date.now() + 60_000;
+      while (!(existsSync(rootPidFile) && readFileSync(rootPidFile, 'utf8') && !isProcessAlive(Number(readFileSync(rootPidFile, 'utf8')))) && Date.now() < until) await tick();
+      // Let the exit event reach the runner before its timeout fires.
+      const settle = Date.now() + 500;
+      while (Date.now() < settle) await tick();
+      vi.advanceTimersByTime(1_000);
+      const r = await pending;
+      expect(r).toMatchObject({ status: 3, timedOut: false });
+    } finally {
+      vi.useRealTimers();
       try { process.kill(Number(readFileSync(pidFile, 'utf8')), 'SIGKILL'); } catch { /* gone */ }
     }
   }, 90_000);

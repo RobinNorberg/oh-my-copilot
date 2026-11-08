@@ -174,7 +174,25 @@ describe('factory run on the local forge', () => {
     expect(gitIn(evil, 'for-each-ref', '--format=%(refname)')).toBe('');
   });
 
-  it('a gate due again (its record removed) after the gates deadline is a gates timeout, not one more gate run', async () => {
+  it('a remote named after the mirror path with a planted url refuses the run (exit 5): nothing reaches that url', async () => {
+    w = localWorld();
+    const evil = join(w.dir, 'evil.git');
+    gitIn(w.dir, 'init', '-q', '--bare', evil);
+    gitIn(w.root, 'config', `remote.${w.config.repo.url}.url`, evil);
+    const lanes = lanesFor(w, [greet(), review('approve')]);
+    const out = await runFactoryEngine(localOpts(w, lanes));
+    expect(out.exitCode, out.message).toBe(5);
+    expect(out.message).toMatch(/refusing the local forge: the git config sets remote\..*\.url=/);
+    expect(lanes.started).toEqual([]);
+    expect(w.calls.filter((c) => /^git (push|fetch|ls-remote)\b/.test(c))).toEqual([]);
+    expect(gitIn(evil, 'for-each-ref', '--format=%(refname)')).toBe('');
+  });
+
+  it.each([
+    ['after the gates deadline',DEFAULT_FACTORY_RUN_LIMITS.gatesTimeoutMs + 60_000],
+    // The default gate timeout is 20 minutes: a full gate starting 19 minutes before the deadline would overrun it.
+    ['less than one gate timeout before the gates deadline', DEFAULT_FACTORY_RUN_LIMITS.gatesTimeoutMs - 19 * 60_000],
+  ])('a gate due again (its record removed) %s is a gates timeout, not one more gate run', async (_when, jump) => {
     w = localWorld();
     let offset = 0;
     let removed = false;
@@ -189,7 +207,7 @@ describe('factory run on the local forge', () => {
       // ...and ship's watch, which reads the checks next, starts after the gates deadline.
       if (removed && !jumped && new Error().stack?.includes('watchGates')) {
         jumped = true;
-        offset += DEFAULT_FACTORY_RUN_LIMITS.gatesTimeoutMs + 60_000;
+        offset += jump;
       }
       return Date.now() + offset;
     };
