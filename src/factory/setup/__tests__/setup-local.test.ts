@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'fs';
+import { execFileSync } from 'child_process';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runFactorySetup, type FactorySetupDeps } from '../../../cli/commands/factory-setup.js';
@@ -49,8 +50,12 @@ describe('omg factory setup: the local (offline) forge', () => {
     expect(r.written).toBeNull();
     expect(existsSync(projectPath(repo))).toBe(false);
     expect(existsSync(samplePath(repo))).toBe(false);
-    // The base is ship.base (default dev here: no config names main).
-    expect(r.limitations).toEqual(localForgeLimitations('dev'));
+    // F20: no config names a base and there is no dev branch: the current branch main, written as ship.base.
+    expect(r.config?.ship).toEqual({ base: 'main' });
+    expect(r.limitations).toEqual(localForgeLimitations('main'));
+    expect(r.notes.join('\n')).not.toContain('<base>');
+    expect(r.notes).toContain(`commit .copilot/backlog/ items on main: omg factory run reads backlog items at the base commit only`);
+    expect(r.notes.some((n) => n.startsWith('base branch main (ship.base, detected: the current branch)'))).toBe(true);
     expect(r.notes.some((n) => n.startsWith('no local gate:'))).toBe(true);
     expect(r.auth?.ok).toBe(true);
     expect(programs(repo)).toEqual(['git']);
@@ -63,8 +68,9 @@ describe('omg factory setup: the local (offline) forge', () => {
     const r = await runFactorySetup({ forge: 'local', yes: true }, deps(repo), repo.root);
     expect(r.error).toBeUndefined();
     expect(r.written).toEqual([projectPath(repo), samplePath(repo)]);
-    const config = parseJsonc(readFileSync(projectPath(repo), 'utf8')) as { factory: Record<string, unknown> };
+    const config = parseJsonc(readFileSync(projectPath(repo), 'utf8')) as { factory: Record<string, unknown>; ship?: unknown };
     expect(config.factory).toMatchObject({ forge: { kind: 'local', local: { backlogDir: '.copilot/backlog' } }, intake: { source: { type: 'local-backlog' } } });
+    expect(config.ship).toEqual({ base: 'main' });
     const sample = readFileSync(samplePath(repo), 'utf8');
     expect(sample).toBe(SAMPLE_BACKLOG_TEXT);
     expect(parseBacklogFile(`.copilot/backlog/${SAMPLE_BACKLOG_FILE}`, sample)).toMatchObject({ id: 1, state: 'closed' });
@@ -76,6 +82,27 @@ describe('omg factory setup: the local (offline) forge', () => {
     expect(again.exitCode).toBe(0);
     expect(again.diffs).toEqual([]);
     expect(again.written).toBeNull();
+    expect(programs(repo)).toEqual(['git']);
+  });
+
+  it('F20: base detection prefers an existing dev, and never overrides a ship.base the config already names', async () => {
+    const repo = localRepo();
+    execFileSync('git', ['branch', 'dev'], { cwd: repo.root, stdio: 'ignore' });
+    const withDev = await runFactorySetup({ forge: 'local', dryRun: true }, deps(repo), repo.root);
+    expect(withDev.error).toBeUndefined();
+    expect(withDev.config?.ship).toEqual({ base: 'dev' });
+    expect(withDev.limitations).toEqual(localForgeLimitations('dev'));
+
+    mkdirSync(join(repo.root, '.copilot'), { recursive: true });
+    writeFileSync(projectPath(repo), '{\n  // keep me\n  "ship": { "base": "release", "requiredChecks": ["ci"] }\n}\n');
+    const named = await runFactorySetup({ forge: 'local', yes: true }, deps(repo), repo.root);
+    expect(named.error).toBeUndefined();
+    expect(named.config?.ship).toBeUndefined();
+    expect(named.limitations).toEqual(localForgeLimitations('release'));
+    expect(named.notes.some((n) => n.startsWith('release is not in ship.trustedBases'))).toBe(true);
+    const text = readFileSync(projectPath(repo), 'utf8');
+    expect(text).toContain('// keep me');
+    expect((parseJsonc(text) as { ship: unknown }).ship).toEqual({ base: 'release', requiredChecks: ['ci'] });
     expect(programs(repo)).toEqual(['git']);
   });
 
