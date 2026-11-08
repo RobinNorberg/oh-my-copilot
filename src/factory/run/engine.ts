@@ -960,7 +960,7 @@ class FactoryEngine {
     const existing = bytes === null ? null : parseFactoryState(this.statePath, this.key, bytes.toString('utf8'));
     if (existing && !this.ledger.tracks(this.statePath)) {
       this.progress.emit(existing.phase, 'fail', 'no engine record');
-      return { exitCode: 1, phase: 'failed', state: existing, message: `the factory run state for ${this.what} has no engine record in ${this.ledger.file} (written outside omg factory run or by an older version); the run is not resumed. Move ${this.statePath} aside to start over` };
+      return { exitCode: 1, phase: 'failed', state: existing, message: `the factory run state for ${this.what} has no engine record in ${this.ledger.file} (written outside omg factory run, by an older version, or left by an interrupted reset); the run is not resumed. ${typeof this.key === 'number' ? `Run omg factory run reset ${this.key} to finish a reset (it recognizes the ledger it moved aside), or move` : 'Move'} ${this.statePath} aside to start over` };
     }
     if (existing && !verifyFactoryIntegrity(existing)) {
       this.progress.emit(existing.phase, 'fail', 'state integrity mismatch');
@@ -1140,6 +1140,7 @@ class FactoryEngine {
         }
         // A detached lane child may edit shared git state after its lane's check: re-compare at every step boundary.
         if (this.recheckFailed('at the next step boundary')) continue;
+        if (this.gateDefinitionUnknownParked('no lane was started')) continue;
         this.progress.emit(phase, 'start', undefined, this.fields());
         await this.step(phase);
         const after = this.state;
@@ -1618,17 +1619,28 @@ class FactoryEngine {
    * through. An npm-style gate whose definition cannot be pinned parks at
    * gate-definition-unknown. True when it parked.
    */
+  /**
+   * An offline gate whose definition cannot be pinned (gateDefinitionSources'
+   * `unresolved`) parks at gate-definition-unknown. The verdict depends only
+   * on the config, so the loop asks before every step: no lane spends
+   * credits on a run whose publish would park. True when it parked.
+   */
+  private gateDefinitionUnknownParked(outcome: string): boolean {
+    const gate = this.o.forge?.config.kind === 'local' ? this.o.forge.config.local?.gate : undefined;
+    const unresolved = gate && gate.length > 0 ? gateDefinitionSources(gate).unresolved : undefined;
+    if (!unresolved) return false;
+    this.gate('gate-definition-unknown', `${unresolved}; offline the gate is the only check and its definition cannot be compared with ${this.state.base}, so ${outcome}. Set factory.forge.local.gate to name its script (npm test, npm run <script>, npm --prefix <dir> run <script>) or a node script file, then rerun ${this.resume}, or omg factory run cancel ${this.key}`);
+    return true;
+  }
+
   private gateDefinitionParked(s: FactoryRunState, cand: string): boolean {
     // One acceptance per park: whatever this check decides, the flag is spent.
     const allowed = this.gateChangeAllowed;
     this.gateChangeAllowed = undefined;
     const gate = this.o.forge?.config.kind === 'local' ? this.o.forge.config.local?.gate : undefined;
     if (!gate || gate.length === 0 || !s.baseSha) return false;
-    const { sources, unresolved } = gateDefinitionSources(gate);
-    if (unresolved) {
-      this.gate('gate-definition-unknown', `${unresolved}; offline the gate is the only check and its definition cannot be compared with ${s.base}, so nothing was pushed. Set factory.forge.local.gate to name its script (npm test, npm run <script>, npm --prefix <dir> run <script>) or a node script file, then rerun ${this.resume}, or omg factory run cancel ${this.key}`);
-      return true;
-    }
+    if (this.gateDefinitionUnknownParked('nothing was pushed')) return true;
+    const { sources } = gateDefinitionSources(gate);
     if (sources.length === 0) return false;
     const at = (sha: string) => createHash('sha256').update(gateDefinition(sources, (path) => {
       const r = this.exec('git', ['show', `${sha}:${path}`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
@@ -2688,6 +2700,16 @@ function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
   const caps = { laneMaxCredits: o.limits.laneMaxCredits, ...(o.limits.maxRunCredits !== undefined ? { maxRunCredits: o.limits.maxRunCredits } : {}) };
   const swapped = existing ? forgeResumeProblem(existing, o.forge?.config.kind ?? 'github', o.forge?.config.repo.url) : null;
   if (existing && swapped) return { exitCode: 1, phase: existing.phase, state: existing, message: `dry run: ${swapped}` };
+  // The real run parks before its first step, so before any lane (dogfood F41).
+  const localGate = forge?.kind === 'local' ? o.forge!.config.local?.gate : undefined;
+  const gateUnknown = localGate && localGate.length > 0 ? gateDefinitionSources(localGate).unresolved : undefined;
+  if (gateUnknown) {
+    return {
+      exitCode: 0, phase: existing?.phase ?? null, state: existing ?? null,
+      message: `dry run: ${gateUnknown}; the run would stop at awaiting-human: gate-definition-unknown before any lane`,
+      plan: { next: 'awaiting-human', reason: 'gate-definition-unknown', ...caps },
+    };
+  }
   if (existing) {
     return {
       exitCode: 0, phase: existing.phase, state: existing, ...(existing.gate ? { gate: existing.gate } : {}),

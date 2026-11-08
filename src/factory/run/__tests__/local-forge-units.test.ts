@@ -528,6 +528,27 @@ describe('the gate definition (dogfood F41)', () => {
     for (const g of [['npm', 'ci'], ['npm', '-w', 'app', 'test']]) expect(gateDefinitionSources(g).sources).toEqual([]);
   });
 
+  it('a package-manager subcommand is never pinned as the script name (yarn workspace, pnpm exec, npm -ws)', () => {
+    expect(gateDefinitionSources(['yarn', 'workspace', 'app', 'test']).unresolved).toMatch(/runs yarn workspace, not a package.json script/);
+    expect(gateDefinitionSources(['yarn', 'workspaces', 'foreach', 'run', 'test']).unresolved).toMatch(/runs yarn workspaces/);
+    expect(gateDefinitionSources(['yarn', 'node', 'scripts/test.js']).unresolved).toMatch(/runs yarn node/);
+    expect(gateDefinitionSources(['yarn', 'dlx', 'vitest']).unresolved).toMatch(/runs yarn dlx/);
+    expect(gateDefinitionSources(['pnpm', 'exec', 'vitest']).unresolved).toMatch(/runs pnpm exec/);
+    expect(gateDefinitionSources(['pnpm', 'dlx', 'vitest']).unresolved).toMatch(/runs pnpm dlx/);
+    expect(gateDefinitionSources(['pnpm', 'recursive', 'test']).unresolved).toMatch(/runs pnpm recursive/);
+    expect(gateDefinitionSources(['npm', 'exec', 'vitest']).unresolved).toMatch(/runs npm exec/);
+    expect(gateDefinitionSources(['npm', '-ws', 'test']).unresolved).toMatch(/selects workspace packages \(-ws\)/);
+    expect(gateDefinitionSources(['npm', 'run']).unresolved).toMatch(/names no package.json script/);
+    expect(gateDefinitionSources(['yarn', 'run']).unresolved).toMatch(/names no package.json script/);
+    // A script named like a subcommand is still reachable through run.
+    expect(gateDefinitionSources(['yarn', 'run', 'node']).sources[0]).toEqual(pkgScripts('node'));
+  });
+
+  it('an argv --script-shell inside the repository is a definition source; one outside is not', () => {
+    expect(gateDefinitionSources(['npm', '--script-shell', 'tools/sh', 'test'])).toEqual({ sources: [pkgScripts('test'), ...PM, { path: 'tools/sh' }] });
+    expect(gateDefinitionSources(['npm', '--script-shell=/bin/bash', 'test'])).toEqual({ sources: [pkgScripts('test'), ...PM] });
+  });
+
   it('compares only the named scripts and the config files: an added lint script or .npmrc changes it, another package.json edit does not', () => {
     const { sources } = gateDefinitionSources(['npm', 'run', 'lint']);
     const pkg = (scripts: Record<string, string>, extra: Record<string, unknown> = {}) => JSON.stringify({ name: 'x', ...extra, scripts });

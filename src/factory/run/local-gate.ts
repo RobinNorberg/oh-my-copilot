@@ -352,6 +352,12 @@ export async function runLocalGate(i: LocalGateInput): Promise<LocalGateOutcome>
  * as a repository path by that file. What the script itself runs
  * (vitest.config, scripts/test.mjs) is covered by review, not here.
  * Empty when the argv names nothing in the repository (`node --test`).
+ *
+ * Config files compare by their text, so a changed `script-shell=` or
+ * `userconfig=` line (.npmrc) or `yarnPath:` line (.yarnrc.yml) is caught,
+ * but the file such a line points at is not tracked. A `--userconfig` or
+ * `--globalconfig` outside the repository is not a repository file and is
+ * not compared; an argv `--script-shell` inside the repository is.
  */
 export type GateDefinitionSource = { path: string; scripts?: string[] };
 
@@ -372,7 +378,13 @@ const DIR_FLAGS = new Set(['--prefix', '-C', '--dir', '--cwd']);
 /** Options that name a config file the package manager reads. */
 const CONFIG_FLAGS = new Set(['--userconfig', '--globalconfig']);
 /** Options that select workspace packages: the script's package.json is not known from the argv. */
-const WORKSPACE_FLAGS = new Set(['--workspace', '-w', '--workspaces', '--ws', '--filter', '-F', '--recursive', '-r', '--include-workspace-root']);
+const WORKSPACE_FLAGS = new Set(['--workspace', '-w', '--workspaces', '--ws', '-ws', '--filter', '-F', '--recursive', '-r', '--include-workspace-root']);
+/**
+ * pnpm/yarn commands that are not a script of the package.json: a workspace
+ * selector (`yarn workspace app test`) or a binary or file run outside
+ * `scripts` (`pnpm exec`, `yarn dlx`, `yarn node`).
+ */
+const PM_NON_SCRIPT = new Set(['workspace', 'workspaces', 'recursive', 'exec', 'dlx', 'node', 'create']);
 /** Options that take the next argument as their value. */
 const VALUE_FLAGS = new Set([...DIR_FLAGS, ...CONFIG_FLAGS, '--workspace', '-w', '--filter', '-F', '--registry', '--cache', '--loglevel', '--script-shell', '--node-options', '--tag', '--otp', '--reporter']);
 
@@ -406,7 +418,7 @@ function scriptSource(manager: string, args: readonly string[], shown: string): 
       const p = value === undefined ? undefined : /^\.\/?$/.test(posix.normalize(value.replace(/\\/g, '/'))) ? '' : repoPath(value)?.replace(/\/+$/, '');
       if (p === undefined) return { sources: [], unresolved: `${shown} runs in ${JSON.stringify(value ?? '')}, which is not a directory inside the repository` };
       dir = p;
-    } else if (CONFIG_FLAGS.has(flag) && value !== undefined) {
+    } else if ((CONFIG_FLAGS.has(flag) || flag === '--script-shell') && value !== undefined) {
       const p = repoPath(value);
       if (p) configs.push(p);
     }
@@ -417,6 +429,7 @@ function scriptSource(manager: string, args: readonly string[], shown: string): 
   else if (NPM_TEST.has(sub)) script = 'test';
   else if (sub === 'start') script = 'start';
   else if (NPM_RUN.has(sub)) script = next;
+  else if (PM_NON_SCRIPT.has(sub)) return { sources: [], unresolved: `${shown} runs ${manager} ${sub}, not a package.json script, so its definition is not known` };
   else if (manager !== 'npm') script = sub;
   if (!script) return { sources: [], unresolved: `${shown} names no package.json script (such as npm test or npm run <script>)` };
   const at = (f: string) => (dir ? `${dir}/${f}` : f);
