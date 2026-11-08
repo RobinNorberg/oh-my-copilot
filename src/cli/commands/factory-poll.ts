@@ -13,7 +13,7 @@ import { FactoryForgeUnavailableError } from '../../factory/run/forge-roots.js';
 
 export function factoryPollCommand(deps: FactoryPollDeps): Command {
   return new Command('poll')
-    .description('Poll heal, intake, PRs and the board each interval (GitHub and Azure DevOps); never writes to the tracker or forge, and starts no lane unless factory.intake.autoStart (trusted config) starts omg factory run --next on an idle tick')
+    .description('Poll heal, intake, PRs and the board each interval (GitHub, Azure DevOps or the local forge); never writes to the tracker or forge (on the local forge each tick only fast-forwards the mirror to the local base, to see a human merge), and starts no lane unless factory.intake.autoStart (trusted config) starts omg factory run --next on an idle tick')
     .option('--interval <duration>', 'wait between ticks: <n>s, <n>m or <n>h, 2 min to 60 min (default 5m; doubles while rate-limited)')
     .option('--once', 'run one tick and exit')
     .option('--no-heal', 'skip the heal scan')

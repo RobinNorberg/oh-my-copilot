@@ -265,6 +265,11 @@ const ROWS: Row[] = [
     world: { kind: 'azure-devops', items: [item(1, { type: 'User Story', body: 'desc', acceptance: '- returns HTTP 404 for a missing id' })] },
     bucket: 'runnable', reasons: [], planSource: 'ado-acceptance',
   },
+  {
+    rule: 'runnable (local backlog Acceptance section, no Azure DevOps wording: F23)',
+    world: { kind: 'local', items: [item(1, { body: 'desc', acceptance: '- returns HTTP 404 for a missing id' })] },
+    bucket: 'runnable', reasons: [], detail: 'plan: 1 acceptance item (backlog-acceptance)', planSource: 'backlog-acceptance',
+  },
 ];
 
 describe('omg factory check rules (forges §5)', () => {

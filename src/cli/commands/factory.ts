@@ -228,7 +228,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
   const run = new Command('run');
   run
     .description('Experimental: drive one issue through implement -> draft PR -> independent review / fix rounds -> prepare -> CI gates, then park for the human merge')
-    .argument('[issue]', 'GitHub issue or Azure DevOps work item number')
+    .argument('[issue]', 'the item number: a GitHub issue, an Azure DevOps work item or a local backlog item')
     .option('--next', 'Run the next runnable item (omg factory check order: priority, then id); exit 0 when nothing is runnable')
     .option('--parent <spec>', 'With --next: pick among the children of this spec item instead of factory.intake.source')
     .option('--dry-run', 'Resolve the issue and plan and print the next step; no state, lanes or pushes')

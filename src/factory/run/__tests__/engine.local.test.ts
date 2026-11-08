@@ -11,6 +11,7 @@ import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { runFactoryEngine, EXIT_AWAITING_HUMAN } from '../engine.js';
 import { factoryForgeOptions } from '../forge-roots.js';
 import { checkoutPath } from '../prepare.js';
+import { getOmcRoot } from '../../../lib/worktree-paths.js';
 import { readFactoryState } from '../state.js';
 import { commitFile, gitIn, review } from './fake-lanes.js';
 import { BASE, foreignCommands, lanesFor, LOCAL_ISSUE, localOpts, localWorld, type LocalWorld } from './engine-local-harness.js';
@@ -33,6 +34,12 @@ describe('factory run on the local forge', () => {
     const state = readFactoryState(w.root, LOCAL_ISSUE)!;
     expect(state).toMatchObject({ phase: 'merge', forgeKind: 'local', remote: 'omg-local', repoUrl: w.config.repo.url, pr: 1 });
     expect(state.plan?.source).toBe('issue-body');
+    // F23/F35: local wording, never GitHub's issue or Azure DevOps' work item.
+    expect(state.history[0].note).toBe(`backlog item #${LOCAL_ISSUE}`);
+    expect(state.history.find((h) => h.to === 'plan')?.note).toMatch(/^backlog item \.copilot\/backlog\//);
+    const prBody = readFileSync(join(getOmcRoot(w.root), 'factory', 'local', 'prs', '1', 'body.md'), 'utf8');
+    expect(prBody).toContain(`\n\nBacklog item #${LOCAL_ISSUE}\n`);
+    expect(JSON.stringify(state.history)).not.toMatch(/work item|issue #/);
 
     // The mirror is engine-owned, under the forge state dir, and holds the base and the pushed head.
     const mirror = w.config.repo.url;
@@ -236,6 +243,7 @@ describe('factory run on the local forge', () => {
     const out = await runFactoryEngine(localOpts(w, lanesFor(w, []), { dryRun: true }));
     expect(out.exitCode, out.message).toBe(0);
     expect(out.plan?.next).toBe('implement');
+    expect(out.message).toContain('dry run: plan from backlog item body (Acceptance criteria);');
     expect(existsSync(w.config.repo.url)).toBe(false);
     expect(existsSync(w.stateDir)).toBe(false);
     expect(gitIn(w.root, 'remote')).toBe('');

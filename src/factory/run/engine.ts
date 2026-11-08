@@ -66,6 +66,7 @@ import { resolveAzEntry, type AzEntry } from '../../forge/ado/az-binary.js';
 import { adoGuardContext, defaultAzBinaryDeps, type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
 import { adoBuildUrl } from '../../forge/ado/checks.js';
 import { createForge } from '../../forge/index.js';
+import { forgeTerms } from '../../forge/terms.js';
 import type { Forge, ForgeOptions, ForgeProgressConfig, ForgeTracker, ProgressStage, ResolvedForgeConfig } from '../../forge/types.js';
 import { GhCommandError } from '../../forge/github/gh.js';
 import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, ghOpenPrs, ghPrHeadState, ghRepoView, githubReviews } from '../../forge/github/reviews.js';
@@ -674,7 +675,7 @@ class FactoryEngine {
     const built = engineExec(o, hardenedGitExec(o.exec, hooksDir, () => (o.forge?.config.kind === 'local' ? o.forge.config.repo.url : undefined)), () => this.localBase ?? this.state?.baseSha, () => this.basePushSha);
     this.exec = built.exec;
     this.forge = built.forge;
-    this.forgeName = !this.forge ? 'GitHub' : this.forge.kind === 'local' ? 'the local forge' : 'Azure DevOps';
+    this.forgeName = forgeTerms(this.forge ? this.forge.kind : 'github').name;
     this.clock = o.now ?? Date.now;
     this.lastTick = this.clock();
     this.key = engineRunKey(o);
@@ -683,7 +684,7 @@ class FactoryEngine {
       this.sync = { tracker: this.forge ? this.forge.tracker : githubTracker(this.exec, o.root, cfg), progress: cfg.progress };
     }
     this.resume = resumeCommand(this.key);
-    this.what = typeof this.key === 'number' ? `issue #${this.key}` : `ci-heal ${this.key}`;
+    this.what = typeof this.key === 'number' ? `${forgeTerms(this.forge ? this.forge.kind : 'github').item} #${this.key}` : `ci-heal ${this.key}`;
     this.progress = createFactoryProgress({ root: o.root, issue: this.key, file: o.progressFile, now: this.clock });
     const rel = relative(o.root, getOmcRoot(o.root)).replace(/\\/g, '/');
     this.stateRootRel = rel && !rel.startsWith('..') && !isAbsolute(rel) ? rel : null;
@@ -984,7 +985,7 @@ class FactoryEngine {
         if (heal && heal.record?.sig8 !== heal.sig8) throw new FactoryStepError(`no ci-heal run ${this.key} exists, and no diagnosis record for signature ${heal.sig8} was given to start one`);
         this.check();
         const forgeKind = this.o.forge ? { forgeKind: this.o.forge.config.kind } : {};
-        this.state = updateFactoryState(this.o.root, this.key, () => ({ ...createFactoryState({ issue: this.o.issue ?? 0, repoUrl: '', base: this.o.base, ...(heal?.record ? { heal: heal.record } : {}), ...(this.o.forge?.config.kind === 'local' ? { remote: LOCAL_REMOTE } : {}) }, this.iso()), ...forgeKind }), {
+        this.state = updateFactoryState(this.o.root, this.key, () => ({ ...createFactoryState({ issue: this.o.issue ?? 0, repoUrl: '', base: this.o.base, ...(heal?.record ? { heal: heal.record } : {}), ...(this.o.forge?.config.kind === 'local' ? { remote: LOCAL_REMOTE } : {}), ...(this.forge ? { itemNoun: forgeTerms(this.forge.kind).item } : {}) }, this.iso()), ...forgeKind }), {
           verify: (b) => { if (b !== null) throw new StateTamperedError([resolve(this.statePath)]); },
           onWrite: (path, content) => this.ledger.record(path, content),
         });
@@ -1379,17 +1380,18 @@ class FactoryEngine {
    */
   private adoIntake(forge: Forge): void {
     const item = forge.tracker.viewItem(this.o.issue!);
-    if (item.id !== this.o.issue) throw new FactoryStepError(`work item ${this.o.issue}: the tracker returned item ${item.id}`);
+    const noun = forgeTerms(forge.kind).item;
+    if (item.id !== this.o.issue) throw new FactoryStepError(`${noun} ${this.o.issue}: the tracker returned item ${item.id}`);
     if (!item.open) {
-      this.save((s) => moveTo(s, 'cancelled', `work item is ${item.rawState.toLowerCase() || 'closed'}`, this.iso()));
-      this.progress.emit('intake', 'done', 'work item closed');
+      this.save((s) => moveTo(s, 'cancelled', `${noun} is ${item.rawState.toLowerCase() || 'closed'}`, this.iso()));
+      this.progress.emit('intake', 'done', `${noun} closed`);
       return;
     }
     const body = item.acceptance ? `${item.body.trim()}\n\n## Acceptance criteria\n\n${item.acceptance}\n` : item.body;
     const planLink = findPlanLink(item.body, item.comments, item.authorTrusted);
     if (this.foreignPr(item.repoUrl)) return;
     if (this.blockedBy(item.dependsOn, item.repoUrl)) return;
-    this.save((s) => moveTo({ ...s, repoUrl: item.repoUrl, issueTitle: item.title, issueBody: body, ...(planLink ? { planLink } : {}) }, 'plan', `work item ${item.url}`, this.iso()));
+    this.save((s) => moveTo({ ...s, repoUrl: item.repoUrl, issueTitle: item.title, issueBody: body, ...(planLink ? { planLink } : {}) }, 'plan', `${noun} ${item.url}`, this.iso()));
   }
 
   private async intake(): Promise<void> {
@@ -1563,8 +1565,8 @@ class FactoryEngine {
         const unsandboxed = s.lanes.filter((l) => l.sandbox?.mode === 'detect-only').map((l) => l.id);
         const sandboxNote = unsandboxed.length > 0 ? `\n**Sandbox: detect-only.** Lane(s) ${unsandboxed.join(', ')} ran without an OS sandbox (\`writeUnsandboxed: "detect-only"\`).\n` : '';
         const heal = s.kind === 'ci-heal';
-        // Azure DevOps links the work item through workItemRefs; `Closes #n` is GitHub's issue link.
-        const link = forge ? `Work item #${s.issue}` : `Closes #${s.issue}`;
+        // Azure DevOps links the work item through workItemRefs and the local store through itemId; `Closes #n` is GitHub's issue link.
+        const link = forge ? `${forgeTerms(forge.kind).item.replace(/^./, (c) => c.toUpperCase())} #${s.issue}` : `Closes #${s.issue}`;
         const body = this.writeBody('pr-body', `${heal ? (forge ? healPrBody(s, (id) => adoBuildUrl(forge.repo, id)) : healPrBody(s)) : `${link}\n\nOpened by \`omg factory run ${s.issue}\` (draft until the factory review approves).\n`}${sandboxNote}`);
         // A ci-heal title is fixed: the diagnosis is untrusted lane output.
         const title = heal ? `fix(ci): self-heal for CI signature ${s.heal?.sig8}` : `${oneLine(s.issueTitle ?? `issue ${s.issue}`).replace(/^[-\s]+/, '') || `issue ${s.issue}`} (#${s.issue})`;
@@ -2601,9 +2603,10 @@ function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
   }
   if (forge) {
     const item = forge.tracker.viewItem(o.issue!);
-    if (!item.open) return { exitCode: 0, phase: null, state: null, message: 'dry run: the work item is closed; the run would be cancelled', plan: { next: 'cancelled', ...caps } };
+    const terms = forgeTerms(forge.kind);
+    if (!item.open) return { exitCode: 0, phase: null, state: null, message: `dry run: the ${terms.item} is closed; the run would be cancelled`, plan: { next: 'cancelled', ...caps } };
     const link = findPlanLink(item.body, item.comments, item.authorTrusted);
-    const source = link ? `omg-plan ${link}` : item.acceptance ? 'work item Acceptance Criteria' : hasAcceptanceCriteria(item.body) ? 'work item description (Acceptance criteria)' : undefined;
+    const source = link ? `omg-plan ${link}` : item.acceptance ? terms.acceptance : hasAcceptanceCriteria(item.body) ? `${terms.body} (Acceptance criteria)` : undefined;
     return source
       ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits`, plan: { next: 'implement', planSource: source, ...caps } }
       : { exitCode: 0, phase: null, state: null, message: 'dry run: no plan (no Acceptance Criteria, "Acceptance criteria" heading or trusted omg-plan: link); the run would stop at awaiting-human: needs-plan', plan: { next: 'awaiting-human', reason: 'needs-plan', ...caps } };

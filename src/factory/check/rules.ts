@@ -39,7 +39,7 @@ import { ACCEPTANCE, findPlanLink, hasAcceptanceCriteria } from '../run/plan-rul
 import { factoryBranch, TERMINAL_FACTORY_PHASES, type FactoryPhase } from '../run/state.js';
 
 export type CheckBucket = 'runnable' | 'needs-plan' | 'blocked';
-export type PlanSource = 'omg-plan' | 'issue-body' | 'ado-acceptance';
+export type PlanSource = 'omg-plan' | 'issue-body' | 'ado-acceptance' | 'backlog-acceptance';
 
 export interface RuleVerdict {
   bucket: CheckBucket;
@@ -148,7 +148,8 @@ export function evaluateItem(item: ForgeItem, kind: ForgeKind, config: RuleConfi
 
   const link = findPlanLink(item.body, item.comments, item.authorTrusted);
   const adoAc = item.acceptance?.trim() ? item.acceptance : undefined;
-  const planSource: PlanSource | undefined = link ? 'omg-plan' : adoAc ? 'ado-acceptance' : hasAcceptanceCriteria(item.body) ? 'issue-body' : undefined;
+  // The tracker's own acceptance field: Azure DevOps Acceptance Criteria, or the local backlog file's Acceptance section (F23).
+  const planSource: PlanSource | undefined = link ? 'omg-plan' : adoAc ? (kind === 'local' ? 'backlog-acceptance' : 'ado-acceptance') : hasAcceptanceCriteria(item.body) ? 'issue-body' : undefined;
   if (!planSource) return hit('needs-plan', 'no-plan', 'no trusted omg-plan: line and no "Acceptance criteria"');
 
   if (link) {
