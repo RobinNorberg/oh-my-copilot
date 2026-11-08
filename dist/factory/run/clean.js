@@ -7,20 +7,22 @@
  * junctions such as a linked node_modules are unlinked before
  * `git worktree remove`, a dirty tree is kept, and a worktree or branch
  * holding a commit that neither the main checkout's HEAD nor a verified
- * remote ref (GitHub's base after a fetch, the PR branch on origin) holds is
+ * remote ref (GitHub's base after a fetch, the PR branch on the run's remote, origin or the local forge's omg-local mirror) holds is
  * kept. The remote PR branch itself is never deleted. clean's own git
  * (remote check, fetch, ls-remote) runs guarded and hardened like the
  * engine's: no hooks, no fsmonitor.
  */
 import { existsSync } from 'fs';
 import { WORKTREE_TEAM } from '../../copilot-run/job.js';
+import { LOCAL_REMOTE } from '../../forge/local/index.js';
 import { remoteRepoMismatch } from '../../ship/config.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { getWorktreePath, removeWorkerWorktree } from '../../team/git-worktree.js';
 import { factoryGuardExec, hardenedGitExec } from './exec.js';
+import { localRemoteMismatch } from './forge-roots.js';
 import { defaultLedgerDir, emptyHooksDir } from './ledger.js';
-import { checkoutWorker, FACTORY_CHECKOUT_TEAM } from './prepare.js';
-import { acquireFactoryOwner, FactoryStateError, readFactoryState, verifyFactoryIntegrity } from './state.js';
+import { checkoutWorker, FACTORY_CHECKOUT_TEAM, unlinkNodeModules } from './prepare.js';
+import { acquireFactoryOwner, FactoryStateError, readFactoryState, runRemote, verifyFactoryIntegrity } from './state.js';
 const HEX40 = /^[0-9a-f]{40}$/;
 export function cleanFactoryRun(o) {
     const state = readFactoryState(o.root, o.issue);
@@ -37,18 +39,19 @@ export function cleanFactoryRun(o) {
         // No hook or fsmonitor a lane planted runs in clean's fetch and ls-remote.
         const exec = factoryGuardExec(hardenedGitExec(o.exec, emptyHooksDir(o.ledgerDir ?? defaultLedgerDir())), () => [state.base]);
         const git = (args) => exec('git', args, { cwd: o.root, env: TRUSTED_READ_ENV });
-        const mismatch = remoteRepoMismatch(exec, o.root, 'origin', state.repoUrl);
+        const remote = runRemote(state);
+        const mismatch = state.remote === LOCAL_REMOTE ? localRemoteMismatch(exec, o.root, state.repoUrl) : remoteRepoMismatch(exec, o.root, remote, state.repoUrl);
         if (mismatch)
             throw new FactoryStateError(`refusing to fetch: ${mismatch}`);
-        const fetched = git(['fetch', 'origin', state.base]);
+        const fetched = git(['fetch', remote, state.base]);
         if (fetched.status !== 0)
-            throw new FactoryStateError(`git fetch origin ${state.base} failed: ${fetched.stderr.trim().split('\n')[0]}`);
+            throw new FactoryStateError(`git fetch ${remote} ${state.base} failed: ${fetched.stderr.trim().split('\n')[0]}`);
         const contained = [];
-        const base = git(['rev-parse', '--verify', `refs/remotes/origin/${state.base}`]).stdout.trim();
+        const base = git(['rev-parse', '--verify', `refs/remotes/${remote}/${state.base}`]).stdout.trim();
         if (HEX40.test(base))
             contained.push(base);
-        const remote = exec('git', ['ls-remote', 'origin', `refs/heads/${state.branch}`], { cwd: o.root });
-        const pushed = remote.status === 0 ? remote.stdout.trim().split(/\s+/)[0] : '';
+        const listed = exec('git', ['ls-remote', remote, `refs/heads/${state.branch}`], { cwd: o.root });
+        const pushed = listed.status === 0 ? listed.stdout.trim().split(/\s+/)[0] : '';
         if (HEX40.test(pushed) && git(['cat-file', '-e', `${pushed}^{commit}`]).status === 0)
             contained.push(pushed);
         const targets = [
@@ -59,6 +62,9 @@ export function cleanFactoryRun(o) {
         for (const [team, worker] of targets) {
             const path = getWorktreePath(o.root, team, worker);
             const existed = existsSync(path);
+            // The engine's node_modules link in its prepare checkout (untracked on POSIX for a `node_modules/` ignore line).
+            if (team === FACTORY_CHECKOUT_TEAM)
+                unlinkNodeModules(o.root, path);
             try {
                 removeWorkerWorktree(team, worker, o.root, { contained });
                 if (existed)

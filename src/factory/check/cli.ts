@@ -28,7 +28,10 @@ import type { Forge, ForgeFactory, ResolvedForgeConfig } from '../../forge/types
 import { resolveAzEntry, type AzEntry } from '../../forge/ado/az-binary.js';
 import { adoGuardContext, defaultAzBinaryDeps, type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
 import { factoryForgeOptions } from '../run/forge-roots.js';
-import { BASE_CONFIG_PATH, isPlainBranchName, readBaseFile, resolveShipConfig } from '../../ship/config.js';
+import { existsSync } from 'fs';
+import { join } from 'path';
+import { BASE_CONFIG_PATH, isPlainBranchName, readBaseFile, resolveShipConfig, trustedPrepareChecks } from '../../ship/config.js';
+import { baseFileExists, describePrepareChecks } from '../../ship/prepare.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { isAdoCommand, runGuardedAdo, type AdoGuardContext } from '../../forge/ado/guard.js';
@@ -85,6 +88,11 @@ export function isLocalReadShape(args: readonly string[]): boolean {
     const dir = args[5] ?? '';
     return args.length === 6 && same(args.slice(1, 3), ['-z', '--name-only']) && /^[0-9a-f]{40}$/.test(args[3]) && args[4] === '--'
       && dir.endsWith('/') && REPO_DIR.test(dir.slice(0, -1)) && !dir.slice(0, -1).split('/').some((seg) => seg === '.' || seg === '..');
+  }
+  // F31: the last commit that changed one backlog file on the base (lastChangeArgs: a reopen after a merge).
+  if (args[0] === 'log') {
+    return args.length === 7 && same(args.slice(1, 4), ['-1', '--no-show-signature', '--format=%H']) && /^[0-9a-f]{40}$/.test(args[4]) && args[5] === '--'
+      && REPO_DIR.test(args[6]) && !args[6].split('/').some((seg) => seg === '.' || seg === '..');
   }
   return args.length === 3 && args[0] === 'rev-parse' && args[1] === '--verify' && args[2].startsWith('refs/heads/') && isPlainBranchName(args[2].slice('refs/heads/'.length));
 }
@@ -194,6 +202,8 @@ export interface CheckJson {
   forge: string;
   /** What the forge cannot do (the local forge's offline lines); empty on GitHub and Azure DevOps. */
   limitations: string[];
+  /** What a run's prepare step will run in this repository (ship.prepare.checks, else the detected built-ins); [] = none. */
+  prepareChecks: string[];
   repo: string;
   source: Record<string, unknown> | null;
   counts: Record<string, number>;
@@ -366,14 +376,32 @@ export function openReadForge(o: Pick<FactoryCheckOptions, 'source' | 'limit'>, 
   }
   // The local forge's base is the local branch (the human merges there; the engine syncs its mirror from it).
   if (config.kind === 'local' && originUrl) baseSha = localBase(pre, root, base, warnings);
+  // F20: without its base the local forge reads no committed item or config, so nothing could ever be checked.
+  if (config.kind === 'local' && !baseSha) throw new CheckUsageError(missingLocalBase(base));
   try {
     const read = forgeReadExec(deps.exec, config, root, deps.resolveAz, marker, command);
-    const local = { omgRoot: getOmcRoot(root), workingTree: true, baseSha: () => baseSha ?? undefined };
-    const options = config.kind === 'local' ? { ...read.options, local } : read.options;
-    return { root, base, baseSha, config, baseConfig, forge: deps.createForge(read.exec, root, config, options), exec: read.exec };
+    return { root, base, baseSha, config, baseConfig, forge: deps.createForge(read.exec, root, config, readForgeOptions(config, root, read.options, base, baseSha)), exec: read.exec };
   } catch (error) {
     throw new CheckIncompatibleError(error instanceof Error ? error.message : String(error));
   }
+}
+
+/**
+ * The options a read-only command (check, board, poll, `run --next`) builds
+ * its forge with: the local forge also needs the runtime root, reads the
+ * working tree (an uncommitted item is listed, never runnable) and reads
+ * committed items at `baseSha`, the local base branch `base` (only a local
+ * PR into `base` closes an item). `run --next` passes workingTree: false: a
+ * working-tree item is never runnable, nor does it satisfy a dependency.
+ */
+export function readForgeOptions(config: ResolvedForgeConfig, root: string, options: AzureDevOpsForgeOptions, base: string, baseSha: string | null, workingTree = true): AzureDevOpsForgeOptions {
+  if (config.kind !== 'local') return options;
+  return { ...options, local: { omgRoot: getOmcRoot(root), workingTree, base, baseSha: () => baseSha ?? undefined } };
+}
+
+/** F20: the local forge's base branch is missing (exit 2 in check, board, poll and `run --next`). */
+export function missingLocalBase(base: string): string {
+  return `the base branch ${base} does not exist in this repository, so no committed backlog item or config can be read; set ship.base in .copilot/omg.jsonc to the branch you merge into (omg factory setup --forge local writes it)`;
 }
 
 /** The F9/F10 text of "no usable forge" (exit 5 in check, board, poll and setup), with the offline hint. */
@@ -404,7 +432,15 @@ export async function runFactoryCheck(o: FactoryCheckOptions, deps: FactoryCheck
   if (parent !== undefined && o.limit !== undefined) throw new CheckUsageError('--limit applies to an intake source; --parent checks every child of the spec');
   const warnings: string[] = [];
   let marker: string | undefined;
-  const { root, base, baseSha, config, forge, exec } = openReadForge(o, deps, warnings, 'omg factory check', () => marker);
+  const { root, base, baseSha, config, baseConfig, forge, exec } = openReadForge(o, deps, warnings, 'omg factory check', () => marker);
+  let prepareChecks: string[];
+  try {
+    // The same detection prepare runs: repository markers from the base commit, the tool packages from the root's node_modules.
+    const baseHas = baseSha ? baseFileExists(exec, root, baseSha) : () => false;
+    prepareChecks = describePrepareChecks(trustedPrepareChecks(deps.trustedUser(), baseConfig), baseHas, (p) => existsSync(join(root, p)));
+  } catch (error) {
+    throw new CheckUsageError(error instanceof Error ? error.message : String(error));
+  }
 
   const source = config.intake.source;
   if (ids.length === 0 && parent === undefined && !source) throw new CheckUsageError('no item ids and no intake source: pass ids, --parent <spec>, --source <spec>, or set factory.intake.source');
@@ -448,6 +484,7 @@ export async function runFactoryCheck(o: FactoryCheckOptions, deps: FactoryCheck
       ok,
       forge: config.kind,
       limitations,
+      prepareChecks,
       repo: config.repo.url,
       source: ids.length > 0 || parent !== undefined || !source ? null : { ...source },
       counts: Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length])),
@@ -459,6 +496,7 @@ export async function runFactoryCheck(o: FactoryCheckOptions, deps: FactoryCheck
   } else {
     for (const w of warnings) deps.err(chalk.yellow(plainText(w)));
     for (const l of limitations) deps.out(chalk.gray(l));
+    deps.out(chalk.gray(`prepare checks: ${prepareChecks.length > 0 ? prepareChecks.join('; ') : 'none'}`));
     deps.out(renderCheckTable(items));
     if (o.mark) {
       if (m.marked.length > 0) deps.out(chalk.green(`marked ${m.marker}: ${m.marked.map((id) => `#${id}`).join(', ')}`));

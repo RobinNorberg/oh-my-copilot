@@ -10,13 +10,14 @@
  * resolveForgeConfig computed from the root and stateDir), so the adapter
  * and the engine (localMirrorPath/localCheckRecordPath) always agree.
  */
+import { statSync } from 'fs';
 import { join } from 'path';
 import { localChecks, readCheckRecordAt } from './checks.js';
 import { localMerge } from './merge.js';
 import { localReviews } from './reviews.js';
-import { engineOwnedDir } from './store.js';
+import { engineOwnedDir, readPrStore } from './store.js';
 import { localTracker } from './tracker.js';
-export { LOCAL_REMOTE, backlogListArgs, backlogShowArgs, isLocalBranchName, localCheckRecordPath, localMirrorPath, localPrStorePath, localRepoId, localStoreDir, mergedArgs, mirrorFetchArgs, mirrorInitArgs, mirrorPushArgs, mirrorRemoteAddArgs, mirrorRemoteGetUrlArgs, readMirrorRef, } from './mirror.js';
+export { LOCAL_REMOTE, backlogListArgs, backlogShowArgs, isLocalBranchName, lastChangeArgs, localCheckRecordPath, localMirrorPath, localPrStorePath, localRepoId, localStoreDir, mergedArgs, mirrorFetchArgs, mirrorInitArgs, mirrorPushArgs, mirrorRemoteAddArgs, mirrorRemoteGetUrlArgs, readMirrorRef, } from './mirror.js';
 export { LOCAL_GATE_CHECK, readCheckRecordAt, readLocalCheckRecord, writeLocalCheckRecord } from './checks.js';
 export { BacklogParseError, parseBacklogFile, renderBacklogFile, backlogSlug } from './backlog.js';
 export { localPrUrl } from './reviews.js';
@@ -49,6 +50,38 @@ export const createLocalForge = (exec, cwd, config, options) => {
     if (!omgRoot)
         throw new Error('local forge: options.local.omgRoot is required (getOmcRoot(root))');
     const humanDir = join(omgRoot, 'factory', 'local');
+    const storePath = join(storeDir, 'prs.json');
+    const reviews = localReviews({ exec, root: cwd, mirror, storePath, humanDir });
+    // The PR store, read once per change of the file (size and mtime): one read per check, and a malformed store
+    // is one error, thrown only to the lookups that need the store.
+    let store;
+    const prStore = () => {
+        const st = statSync(storePath, { throwIfNoEntry: false });
+        const key = st ? `${st.size}:${st.mtimeMs}` : 'absent';
+        if (store?.key !== key) {
+            try {
+                store = { key, value: readPrStore(storePath) };
+            }
+            catch (err) {
+                store = { key, value: err };
+            }
+        }
+        if (store.value instanceof Error)
+            throw store.value;
+        return store.value;
+    };
+    // F31: the item's own PR (itemId) merged into the current base, read from the engine-owned store (brought up to date from the mirror).
+    const base = options.local?.base;
+    const mergedPr = (id) => {
+        if (base === undefined)
+            return undefined;
+        for (const p of prStore().prs.filter((x) => x.itemId === id && x.base === base && x.state !== 'CLOSED')) {
+            const r = reviews.refreshPr(p);
+            if (r.state === 'MERGED')
+                return { number: r.number, ...(r.mergedHead === undefined ? {} : { mergedHead: r.mergedHead }) };
+        }
+        return undefined;
+    };
     return {
         kind: 'local',
         provider: 'unknown',
@@ -61,8 +94,9 @@ export const createLocalForge = (exec, cwd, config, options) => {
             humanDir,
             options: options.local ?? {},
             ...(options.trackerBodyDir === undefined ? {} : { trackerBodyDir: options.trackerBodyDir }),
+            mergedPr,
         }),
-        reviews: localReviews({ exec, root: cwd, mirror, storePath: join(storeDir, 'prs.json'), humanDir }),
+        reviews,
         checks: localChecks(join(storeDir, 'checks'), recordFor),
         merge: localMerge(cwd),
         capabilities: { heal: false, projectsV2: false, boardColumns: false, webhookIntake: false },

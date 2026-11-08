@@ -13,6 +13,7 @@ import { createFactoryProgress } from '../progress.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from '../review-output.js';
 import { acquireFactoryOwner, acquireFactoryRepoOwner, createFactoryState, factoryCancelRequested, factoryStatePath, moveTo, requestFactoryCancel, setGate, updateFactoryState, } from '../state.js';
 import { gitIn } from './fake-lanes.js';
+import { linkNodeModules, unlinkNodeModules } from '../prepare.js';
 const SHA = '0123456789abcdef0123456789abcdef01234567';
 const block = (o) => `Review done.\n\n\`\`\`json\n${JSON.stringify(o)}\n\`\`\`\n`;
 describe('review output parser and verdict mapping', () => {
@@ -694,6 +695,40 @@ describe('gates timeout config', () => {
         expect(raised.limits.gatesTimeoutMs).toBe(120 * 60_000);
         expect(raised.warnings.join('\n')).toMatch(/gatesTimeoutMinutes 300 .* can only lower a limit/);
         expect(resolveFactoryRunLimits(user, { factory: { run: { gatesTimeoutMinutes: 30 } } }).limits.gatesTimeoutMs).toBe(30 * 60_000);
+    });
+});
+describe('the prepare checkout\'s node_modules link', () => {
+    const dirs = [];
+    afterEach(() => { for (const d of dirs.splice(0))
+        rmSync(d, { recursive: true, force: true }); });
+    function setup() {
+        const dir = mkdtempSync(join(tmpdir(), 'omg-nm-link-'));
+        dirs.push(dir);
+        const root = join(dir, 'root');
+        const checkout = join(dir, 'checkout');
+        mkdirSync(join(root, 'node_modules', 'typescript'), { recursive: true });
+        writeFileSync(join(root, 'node_modules', 'typescript', 'package.json'), '{}\n');
+        mkdirSync(checkout);
+        return { root, checkout };
+    }
+    it('unlinkNodeModules removes the link linkNodeModules made and never its target', () => {
+        const { root, checkout } = setup();
+        linkNodeModules(root, checkout);
+        expect(existsSync(join(checkout, 'node_modules', 'typescript', 'package.json'))).toBe(true);
+        unlinkNodeModules(root, checkout);
+        expect(existsSync(join(checkout, 'node_modules'))).toBe(false);
+        expect(readFileSync(join(root, 'node_modules', 'typescript', 'package.json'), 'utf-8')).toBe('{}\n');
+    });
+    it('leaves a real node_modules directory and a link to anything else', () => {
+        const { root, checkout } = setup();
+        mkdirSync(join(checkout, 'node_modules'));
+        unlinkNodeModules(root, checkout);
+        expect(existsSync(join(checkout, 'node_modules'))).toBe(true);
+        const other = setup();
+        mkdirSync(join(other.root, 'elsewhere'));
+        symlinkSync(join(other.root, 'elsewhere'), join(other.checkout, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+        unlinkNodeModules(other.root, other.checkout);
+        expect(existsSync(join(other.checkout, 'node_modules'))).toBe(true);
     });
 });
 //# sourceMappingURL=units.test.js.map

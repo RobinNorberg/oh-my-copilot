@@ -69,6 +69,7 @@ import {
 } from '../../release/drive.js';
 import { decideMerge, listChangedFiles, readCommitsSinceReview, type PrView } from '../../ship/merge.js';
 import { runPrepare } from '../../ship/prepare.js';
+import { resolveLocalGateArgv } from '../../factory/run/local-gate.js';
 import {
   createShipState,
   latestVerdict,
@@ -333,8 +334,8 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
 
   cmd
     .command('prepare <pr>')
-    .description('Merge origin/<base> in (never rebase), run tsc/lint/targeted tests, regenerate the inventory as the last commit')
-    .option('--no-checks', 'Skip tsc/lint/tests (merge + inventory only)')
+    .description('Merge origin/<base> in (never rebase), run ship.prepare.checks or the tsc/lint/targeted tests the repository has, regenerate the inventory as the last commit')
+    .option('--no-checks', 'Skip the checks (merge + inventory only)')
     .option('--push', 'Plain push of the branch afterwards (never forced)')
     .option('--json', 'JSON output')
     .action((prRaw: string, o: { checks?: boolean; push?: boolean; json?: boolean }) =>
@@ -352,7 +353,10 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
         // GitHub's base sha is what gets merged; the local ref only has to agree with it.
         const { base: prBaseBranch, baseSha, repoUrl } = prBaseInfo(exec, pr);
         if (prBaseBranch !== state.base) throw new Error(`PR #${pr} targets ${prBaseBranch} on GitHub, but the ship run expects ${state.base}; re-run omg ship init ${pr} --force`);
-        const result = runPrepare({ exec, cwd: root, base: state.base, branch: state.branch, reviewedSha, baseSha, repoUrl, checks: o.checks, push: o.push });
+        // ship.prepare.checks (a safety key) runs through the raw exec without a shell; unset = the built-ins the repository has.
+        const configured = o.checks === false ? undefined : loadShipConfig({ exec, root, base: state.base, baseSha, repoUrl }).prepareChecks;
+        const commands = configured?.map((argv) => ({ argv, ...resolveLocalGateArgv(argv, { cwd: root, subject: 'the prepare check', configKey: 'ship.prepare.checks' }) }));
+        const result = runPrepare({ exec, cwd: root, base: state.base, branch: state.branch, reviewedSha, baseSha, repoUrl, checks: o.checks, push: o.push, commands, commandExec: execImpl });
         const next = updateShipState(root, pr, (current) => {
           const s = current ?? state;
           const withCommits = { ...s, housekeepingCommits: [...s.housekeepingCommits, ...result.housekeepingCommits] };

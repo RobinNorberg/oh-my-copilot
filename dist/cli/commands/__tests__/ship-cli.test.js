@@ -14,6 +14,8 @@ const HEAD = '1234567890abcdef1234567890abcdef12345678';
 const BASE = 'abcdefabcdefabcdefabcdefabcdefabcdefabcd';
 const PR_URL = 'https://github.com/RobinNorberg/oh-my-copilot/pull/42';
 const ok = (stdout = '') => ({ status: 0, stdout, stderr: '' });
+/** prepare's reads of the tooling markers at the base sha (detectPrepareChecks), not config. */
+const PREPARE_MARKER_READ = /^git show [0-9a-f]{40}:(?:tsconfig\.json|eslint\.config\.[cm]?[jt]s|\.eslintrc(?:\.\w+)?|scripts\/generate-inventory-graph\.mjs)$/;
 describe('omg ship CLI (scripted gh/git, no network)', () => {
     let root;
     let calls;
@@ -288,6 +290,14 @@ describe('omg ship CLI (scripted gh/git, no network)', () => {
         expect(await run('prepare', '42')).toBe(2);
         expect(logs.join('\n')).toMatch(/prepare runs after an approve verdict/);
     });
+    it('prepare runs ship.prepare.checks through the raw exec instead of the built-in checks', async () => {
+        shipBlock = { prepare: { checks: [[process.execPath, 'tools/check.mjs', '--strict']] } };
+        expect(await run('init', '42', '--implementer', 'executor-1')).toBe(0);
+        expect(await run('verdict', '42', '--reviewer', 'verifier-1', '--sha', HEAD, '--approve')).toBe(0);
+        expect(await run('prepare', '42')).toBe(0);
+        expect(calls).toContain('node tools/check.mjs --strict');
+        expect(calls.some((c) => c.includes('typescript/bin/tsc'))).toBe(false);
+    });
     it('usage errors exit 2', async () => {
         expect(await run('status', 'abc')).toBe(2);
         expect(await run('status', '42')).toBe(2);
@@ -410,7 +420,8 @@ describe('omg ship CLI (scripted gh/git, no network)', () => {
         expect(out).toMatch(/base release\/x is not in ship\.trustedBases/);
         expect(out).toContain(`gh pr merge 42 --admin --merge --match-head-commit ${HEAD}`);
         expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
-        expect(calls.some((c) => c.startsWith('git show '))).toBe(false);
+        // Config is never read from it; prepare's tooling markers (tsconfig.json, eslint config, the inventory generator) come from the merged base sha.
+        expect(calls.filter((c) => c.startsWith('git show ') && !PREPARE_MARKER_READ.test(c))).toEqual([]);
         // The owner trusts the base in the user config: admin merge runs.
         userBlock = { ship: { allowAdminMerge: true, trustedBases: ['release/x'] } };
         expect(await runTrusted('merge', '42')).toBe(0);
@@ -424,7 +435,8 @@ describe('omg ship CLI (scripted gh/git, no network)', () => {
         logs = [];
         await runTrusted('gates', '42');
         expect(logs.join('\n')).toMatch(/base evil is not in ship\.trustedBases \(dev, main, master\)/);
-        expect(calls.some((c) => c.startsWith('git show '))).toBe(false);
+        // Config is never read from it; prepare's tooling markers (tsconfig.json, eslint config, the inventory generator) come from the merged base sha.
+        expect(calls.filter((c) => c.startsWith('git show ') && !PREPARE_MARKER_READ.test(c))).toEqual([]);
     });
     it('M1: init --base must equal the PR\'s base on GitHub; gates use GitHub\'s base, not the state', async () => {
         expect(await runTrusted('init', '42', '--implementer', 'executor-1', '--base', 'main')).toBe(2);

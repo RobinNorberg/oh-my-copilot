@@ -6,7 +6,7 @@ import { readShipState } from '../../../ship/state.js';
 import { cleanFactoryRun } from '../clean.js';
 import { checkoutPath } from '../prepare.js';
 import { readFactoryState } from '../state.js';
-import { commitFile, gitIn, ISSUE, PR, remoteHead, review } from './fake-lanes.js';
+import { commitFile, gitIn, ISSUE, PR, remoteHead, review, testGateConfig } from './fake-lanes.js';
 import { scaleTiming } from '../../../__tests__/helpers/platform.js';
 import { h, usePrepareGatesHarness, run, moveBase, PREPARE_VIEW, before } from './prepare-gates-harness.js';
 
@@ -34,6 +34,17 @@ describe('prepare in the engine-owned checkout', () => {
     expect(h.calls.some((c) => c.includes('HEAD:refs/heads/'))).toBe(false);
     expect(readShipState(h.root, PR)!.housekeepingCommits).toEqual([]);
     expect(existsSync(checkoutPath(h.root, ISSUE))).toBe(true);
+  });
+
+  it('ship.prepare.checks from the trusted ship config replaces the built-in checks, run in the checkout without a shell', async () => {
+    const gateConfig = () => ({ ...testGateConfig(undefined as never), config: { ...testGateConfig(undefined as never).config, prepareChecks: [['node', 'tools/check.mjs', '--strict']] } });
+    const { done } = run([commitFile('src/greet.ts', 'export const greet = () => "hi";\n'), review('approve')], { gateConfig });
+    const out = await done;
+    expect(out.gate?.name, out.message).toBe('merge');
+    expect(h.calls).toContain('node tools/check.mjs --strict');
+    expect(h.calls.some((c) => c.includes('typescript/bin/tsc') || c.includes('eslint/bin/eslint.js'))).toBe(false);
+    const ran = h.raw.find((r) => r.args.join(' ') === 'tools/check.mjs --strict')!;
+    expect(ran.cmd).not.toMatch(/\.(cmd|bat)$/i);
   });
 
   it('a checkout branch rewritten as a symref to main is refused before `worktree add -B`; main does not move', async () => {

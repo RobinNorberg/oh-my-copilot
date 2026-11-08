@@ -34,6 +34,17 @@ describe('jsonc writes', () => {
         expect(parsed.factory.forge).toEqual({ azureDevOps: { apiVersion: '7.1' }, kind: 'github' });
         expect(parsed.factory.intake.source).toEqual({ type: 'label', label: 'factory' });
     });
+    it('F20: adds ship.base only to a file that names none, keeping the other ship keys', () => {
+        const noBase = '{\n  // keep\n  "ship": { "requiredChecks": ["build"] }\n}\n';
+        const out = applyFactoryEdits(noBase, [[['ship', 'base'], 'main']]);
+        expect(out).toContain('// keep');
+        expect(parse(out)).toEqual({ ship: { requiredChecks: ['build'], base: 'main' } });
+        expect(() => assertFactoryOnly(noBase, out, 'project')).not.toThrow();
+        expect(() => assertFactoryOnly('', applyFactoryEdits('', [[['ship', 'base'], 'main']]), 'project')).not.toThrow();
+        // Adding the base never covers another ship key, and the user scope never gains one.
+        expect(() => assertFactoryOnly(noBase, out.replace('"build"', '"none"'), 'project')).toThrow(SetupError);
+        expect(() => assertFactoryOnly('', applyFactoryEdits('', [[['ship', 'base'], 'main']]), 'user')).toThrow(SetupError);
+    });
     it('refuses an edit outside factory.*', () => {
         expect(() => applyFactoryEdits(EXISTING, [[['ship', 'base'], 'main']])).toThrow(SetupError);
         const changed = EXISTING.replace('"base": "dev"', '"base": "main"');
