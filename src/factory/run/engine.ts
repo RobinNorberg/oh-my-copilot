@@ -2166,11 +2166,12 @@ class FactoryEngine {
           return moveTo(rest, 'merge', `gates green at ${at}`, this.iso());
         });
         return;
-      case 'failed':
+      case 'failed': {
         // F43: the local gate has no CI page to read; its output tail is the ci-fix lane's only evidence.
         const gateLog = this.forge?.kind === 'local' ? this.forge.checks.jobLog(`${LOCAL_GATE_CHECK}:${head}`) : undefined;
         this.ciFailed({ source: 'ci', startSha: head, checks: out.report.failed, tests: out.tests, ...(gateLog?.ok && gateLog.text ? { detail: gateLog.text } : {}) }, `checks failed at ${at}`);
         return;
+      }
       case 'flaky':
         this.gate('ci-flaky', `known-flaky failures at ${at} are out of rerun budget (${out.report.failed.join(', ')}); rerun the failed jobs by hand`);
         return;
