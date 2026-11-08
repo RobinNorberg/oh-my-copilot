@@ -162,9 +162,14 @@ describe('prepare and merge against a real git: the base is GitHub\'s sha, from 
     git(up, 'init', '-q', '-b', 'dev');
     write(up, 'a.txt', 'a\n');
     write(up, 'inventory/graph.json', '{}\n');
+    // This repository's tooling, so prepare's auto-detection runs tsc and the inventory step (the stub answers them).
+    write(up, 'tsconfig.json', '{}\n');
+    write(up, INVENTORY_SCRIPT, '\n');
+    write(up, '.gitignore', 'node_modules\n');
     git(up, 'add', '-A');
     git(up, 'commit', '-q', '-m', 'base');
     git(dir, 'clone', '-q', up, clone);
+    write(clone, 'node_modules/typescript/bin/tsc', '\n');
     for (const [k, v] of [['user.name', 't'], ['user.email', 't@example.com'], ['commit.gpgsign', 'false']]) git(clone, 'config', k, v);
     git(clone, 'checkout', '-q', '-b', 'feat/x');
     write(clone, 'feature.txt', 'feature\n');

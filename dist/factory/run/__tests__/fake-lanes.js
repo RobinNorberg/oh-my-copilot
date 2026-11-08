@@ -177,9 +177,19 @@ export function harness(prefix = 'omg-factory-run-') {
     mkdirSync(root);
     gitIn(root, 'init', '-q', '-b', 'dev');
     writeFileSync(join(root, 'README.md'), 'hello\n');
-    writeFileSync(join(root, '.gitignore'), '.omg/\n');
+    // `node_modules/` (directory-only), the common spelling: on POSIX the prepare checkout's node_modules symlink is untracked for it, which discard must handle.
+    writeFileSync(join(root, '.gitignore'), '.omg/\nnode_modules/\n');
     mkdirSync(join(root, 'docs'));
     writeFileSync(join(root, 'docs', 'plan.md'), '# Plan\n\nAdd greet().\n');
+    // This repository's tooling, so prepare's auto-detection runs its built-in checks (the scripted `node` answers them).
+    writeFileSync(join(root, 'tsconfig.json'), '{}\n');
+    writeFileSync(join(root, 'eslint.config.js'), 'export default [];\n');
+    mkdirSync(join(root, 'scripts'));
+    writeFileSync(join(root, 'scripts', 'generate-inventory-graph.mjs'), '\n');
+    for (const tool of ['typescript/bin/tsc', 'eslint/bin/eslint.js', 'vitest/vitest.mjs']) {
+        mkdirSync(join(root, 'node_modules', tool, '..'), { recursive: true });
+        writeFileSync(join(root, 'node_modules', tool), '\n');
+    }
     gitIn(root, 'add', '.');
     gitIn(root, 'commit', '-q', '-m', 'init');
     gitIn(root, 'remote', 'add', 'origin', bare);

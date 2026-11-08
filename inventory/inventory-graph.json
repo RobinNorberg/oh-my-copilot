@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "29db3cbb73dfd78c6c6628359cd3ef863db03e03",
-    "sourceSha256": "e9b3db57d6e3461e98d00d3147c265e7173d024f519d45a26495abc9380297ae",
+    "head": "47f519b283dcbacc9c94a67a4e9a782cd5c391a6",
+    "sourceSha256": "4965caba4d5839d05b41f35a0f853a449db2a3a0b79df0b8b3b3a30f6b88e98e",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "29db3cbb73dfd78c6c6628359cd3ef863db03e03",
-  "sourceSha256": "e9b3db57d6e3461e98d00d3147c265e7173d024f519d45a26495abc9380297ae",
+  "head": "47f519b283dcbacc9c94a67a4e9a782cd5c391a6",
+  "sourceSha256": "4965caba4d5839d05b41f35a0f853a449db2a3a0b79df0b8b3b3a30f6b88e98e",
   "counts": {
     "public": {
       "skills": 96,
@@ -76139,6 +76139,11 @@
       },
       {
         "from": "src/cli/commands/ship.ts",
+        "to": "src/factory/run/local-gate.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
         "to": "src/forge/github/reviews.ts",
         "kind": "imports"
       },
@@ -79304,6 +79309,16 @@
       },
       {
         "from": "src/factory/check/cli.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
         "to": "src/factory/check/score.ts",
         "kind": "imports"
       },
@@ -79391,6 +79406,11 @@
         "from": "src/factory/check/cli.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/ship/prepare.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/check/cli.ts",
@@ -82960,6 +82980,11 @@
       {
         "from": "src/factory/run/__tests__/units.test.ts",
         "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/units.test.ts",
+        "to": "src/factory/run/prepare.ts",
         "kind": "imports"
       },
       {
@@ -106024,6 +106049,21 @@
       },
       {
         "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
@@ -120275,11 +120315,11 @@
     ],
     "stats": {
       "nodeCount": 10042,
-      "edgeCount": 12234,
-      "importEdgeCount": 10068,
+      "edgeCount": 12242,
+      "importEdgeCount": 10076,
       "registerEdgeCount": 117
     }
   },
   "inventorySha256": "f7579c5945674b472e26643d6aadd04f067401b3239467576b6b5d06f5ab9716",
-  "manifestSha256": "170f92e651b6748afb7a7bc5e8f2eefae0ebc3a81780f1ba25652eb5a864bbae"
+  "manifestSha256": "edd850937e32b1510d40b2b4e5b395eeacefc1db000afcaa5aa0af6a6a712abe"
 }

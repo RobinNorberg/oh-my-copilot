@@ -1,10 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
 import { guardExec } from '../exec.js';
 import { evaluateChecks } from '../gates.js';
 import { decideMerge, mergeCommand, protectedChanges } from '../merge.js';
-import { INVENTORY_COMMIT_MESSAGE, INVENTORY_SCRIPT, runPrepare, selectGeneratorChecks, selectTargetedTests } from '../prepare.js';
+import { describePrepareChecks, detectPrepareChecks, ESLINT_SCRIPT, INVENTORY_COMMIT_MESSAGE, INVENTORY_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, runPrepare, selectGeneratorChecks, selectTargetedTests, TSC_SCRIPT } from '../prepare.js';
 import { createShipState, recordVerdict, sealShipState, transition } from '../state.js';
-import { resolveShipConfig } from '../config.js';
+import { loadTrustedShipConfig, resolveShipConfig, trustedPrepareChecks } from '../config.js';
 const NODE = process.execPath;
 const T = '2026-10-11T00:00:00.000Z';
 /** The sha the reviewer approved; the fake repo's HEAD contains it unless overridden. */
@@ -143,7 +146,7 @@ describe('runPrepare', () => {
         const r = runPrepare({ ...base, exec });
         expect(r.ok).toBe(false);
         expect(r.steps.at(-1)).toMatchObject({ name: 'tsc', status: 'failed' });
-        expect(calls.some((c) => c.includes(INVENTORY_SCRIPT))).toBe(false);
+        expect(calls.some((c) => c.startsWith('node ') && c.includes(INVENTORY_SCRIPT))).toBe(false);
     });
     it.each([
         ['detached HEAD', { 'git rev-parse --abbrev-ref HEAD': res(0, 'HEAD\n') }, /detached/],
@@ -211,6 +214,149 @@ describe('runPrepare', () => {
         const { exec, calls } = fakeRepo({ 'git merge-base --is-ancestor': res(0) });
         expect(runPrepare({ ...base, exec, checks: false, push: true }).ok).toBe(true);
         expect(calls).toContain('git push origin HEAD:refs/heads/feat/x');
+    });
+});
+describe('prepare checks: auto-detected or ship.prepare.checks', () => {
+    const dirs = [];
+    afterEach(() => { for (const d of dirs.splice(0))
+        rmSync(d, { recursive: true, force: true }); });
+    /** The base commit's files per checkout (the scripted git answers no `git show`): the checkout's own files unless given. */
+    const baseFiles = new Map();
+    /** A checkout on disk holding `files`; prepare's default exists() reads it. */
+    function checkout(files, onBase = files) {
+        const dir = mkdtempSync(join(tmpdir(), 'omg-prepare-checks-'));
+        dirs.push(dir);
+        baseFiles.set(dir, onBase);
+        for (const f of files) {
+            mkdirSync(join(dir, f, '..'), { recursive: true });
+            writeFileSync(join(dir, f), '\n');
+        }
+        return dir;
+    }
+    const opts = (cwd) => ({ cwd, base: 'dev', branch: 'feat/x', reviewedSha: REVIEWED_SHA, baseSha: BASE_SHA, repoUrl: REPO_URL, node: NODE, baseExists: (p) => (baseFiles.get(cwd) ?? []).includes(p) });
+    const nodeCalls = (calls) => calls.filter((c) => c.startsWith('node '));
+    /** The scripted checkout at /repo where every file exists (this repository's layout). */
+    const base = { ...opts('/repo'), exists, baseExists: exists };
+    it('a repository without this one\'s tooling runs no checks and no inventory', () => {
+        const { exec, calls } = fakeRepo();
+        const r = runPrepare({ ...opts(checkout(['README.md'])), exec });
+        expect(r.ok, r.blockedReason).toBe(true);
+        expect(nodeCalls(calls)).toEqual([]);
+        expect(r.steps.map((s) => `${s.name}:${s.status}`)).toEqual(['preflight:ok', 'fetch:ok', 'merge-base:ok', 'tsc:skipped', 'lint:skipped', 'tests:skipped', 'inventory:skipped']);
+        expect(r.housekeepingCommits).toHaveLength(1);
+    });
+    it('tsconfig.json plus the typescript package runs tsc only', () => {
+        const { exec, calls } = fakeRepo();
+        const r = runPrepare({ ...opts(checkout(['tsconfig.json', TSC_SCRIPT, 'src/ship/gates.ts'])), exec });
+        expect(r.ok, r.blockedReason).toBe(true);
+        expect(nodeCalls(calls)).toEqual([`node ${TSC_SCRIPT} --noEmit`]);
+    });
+    it('typescript without a tsconfig.json, or eslint without a config, is not run', () => {
+        expect(detectPrepareChecks((p) => [TSC_SCRIPT, ESLINT_SCRIPT].includes(p))).toEqual({ tsc: false, lint: false, tests: false, inventory: false, lost: {} });
+        expect(detectPrepareChecks((p) => [ESLINT_SCRIPT, 'eslint.config.mjs'].includes(p)).lint).toBe(true);
+    });
+    it('a tsconfig.json the base has but the checkout deleted fails tsc instead of skipping it', () => {
+        const { exec, calls } = fakeRepo();
+        const r = runPrepare({ ...opts(checkout([TSC_SCRIPT, 'src/ship/gates.ts'], ['tsconfig.json'])), exec });
+        expect(r.ok).toBe(false);
+        expect(r.steps.at(-1)).toMatchObject({ name: 'tsc', status: 'failed' });
+        expect(r.blockedReason).toContain('tsconfig.json is committed on the base but missing from the checkout');
+        expect(nodeCalls(calls)).toEqual([]);
+    });
+    it('a tsconfig.json only the PR adds does not turn tsc on (the base decides)', () => {
+        const { exec, calls } = fakeRepo();
+        const r = runPrepare({ ...opts(checkout(['tsconfig.json', TSC_SCRIPT], [])), exec });
+        expect(r.ok, r.blockedReason).toBe(true);
+        expect(r.steps.find((s) => s.name === 'tsc')).toMatchObject({ status: 'skipped', detail: 'no tsconfig.json on the base or no typescript package' });
+        expect(nodeCalls(calls)).toEqual([]);
+    });
+    it('an eslint config or inventory generator the base has and the checkout lost fails its step', () => {
+        const lint = runPrepare({ ...opts(checkout([ESLINT_SCRIPT], ['eslint.config.js'])), exec: fakeRepo().exec });
+        expect(lint.steps.at(-1)).toMatchObject({ name: 'lint', status: 'failed' });
+        expect(lint.blockedReason).toContain('eslint.config.js is committed on the base');
+        const inventory = runPrepare({ ...opts(checkout(['README.md'], [INVENTORY_SCRIPT])), exec: fakeRepo().exec, checks: false });
+        expect(inventory.steps.at(-1)).toMatchObject({ name: 'inventory', status: 'failed' });
+        expect(inventory.blockedReason).toContain(`${INVENTORY_SCRIPT} is committed on the base`);
+    });
+    it('reads the markers at the base sha through git show, and a base it cannot read fails the detect step', () => {
+        // Only tsconfig.json is committed at the base sha.
+        const show = (args) => args[1] === `${BASE_SHA}:tsconfig.json` ? res(0, '{}') : res(128, '', `fatal: path '${args[1].slice(41)}' does not exist in '${BASE_SHA}'`);
+        const { exec, calls } = fakeRepo({ 'git show': show });
+        const dir = checkout(['tsconfig.json', TSC_SCRIPT, INVENTORY_SCRIPT]);
+        const r = runPrepare({ ...opts(dir), baseExists: undefined, exec });
+        expect(r.ok, r.blockedReason).toBe(true);
+        expect(calls).toContain(`git show ${BASE_SHA}:tsconfig.json`);
+        // The checkout's own generator is not the base's: no inventory step runs.
+        expect(nodeCalls(calls)).toEqual([`node ${TSC_SCRIPT} --noEmit`]);
+        const broken = fakeRepo({ 'git show': res(128, '', 'fatal: bad object') });
+        const failed = runPrepare({ ...opts(dir), baseExists: undefined, exec: broken.exec });
+        expect(failed.steps.at(-1)).toMatchObject({ name: PREPARE_DETECT_STEP, status: 'failed' });
+        expect(nodeCalls(broken.calls)).toEqual([]);
+    });
+    it('configured commands replace the built-ins and run through commandExec; the inventory step stays', () => {
+        const { exec, calls } = fakeRepo({ [`node ${INVENTORY_SCRIPT} --verify`]: res(0) });
+        const ran = [];
+        const commandExec = (cmd, args, o) => { ran.push(`${cmd} ${args.join(' ')} @${o?.cwd}`); return res(0); };
+        const commands = [{ argv: ['cargo', 'check'], exe: '/usr/bin/cargo', args: ['check'] }, { argv: ['make', 'lint'], exe: '/usr/bin/make', args: ['lint'] }];
+        const r = runPrepare({ ...base, exec, commands, commandExec });
+        expect(r.ok, r.blockedReason).toBe(true);
+        expect(ran).toEqual(['/usr/bin/cargo check @/repo', '/usr/bin/make lint @/repo']);
+        expect(nodeCalls(calls)).toEqual([`node ${INVENTORY_SCRIPT} --verify`]);
+        expect(r.steps.map((s) => `${s.name}:${s.status}`)).toEqual(['preflight:ok', 'fetch:ok', 'merge-base:ok', 'cargo check:ok', 'make lint:ok', 'inventory:skipped']);
+    });
+    it('a failing configured command fails its own step (a ci-fix), before the inventory', () => {
+        const { exec, calls } = fakeRepo();
+        const commandExec = () => res(1, 'error[E0308]: mismatched types');
+        const r = runPrepare({ ...base, exec, commands: [{ argv: ['cargo', 'check'], exe: 'cargo', args: ['check'] }], commandExec });
+        expect(r.ok).toBe(false);
+        expect(r.steps.at(-1)).toMatchObject({ name: 'cargo check', status: 'failed' });
+        expect(r.steps.at(-1).detail).toContain('E0308');
+        expect(calls.some((c) => c.includes(INVENTORY_SCRIPT))).toBe(false);
+    });
+    it('a configured command that cannot start fails checks-config before any check runs', () => {
+        const { exec } = fakeRepo();
+        const ran = [];
+        const commandExec = (cmd) => { ran.push(cmd); return res(0); };
+        const r = runPrepare({ ...base, exec, commandExec, commands: [{ argv: ['cargo', 'check'], exe: 'cargo', args: ['check'] }, { argv: ['npm.cmd', 'test'], missing: 'the prepare check executable npm.cmd is a cmd.exe script' }] });
+        expect(r.ok).toBe(false);
+        expect(r.steps.at(-1)).toMatchObject({ name: PREPARE_CONFIG_STEP, status: 'failed' });
+        expect(r.blockedReason).toContain('npm.cmd');
+        expect(ran).toEqual([]);
+    });
+    it('an empty ship.prepare.checks runs no checks', () => {
+        const { exec, calls } = fakeRepo();
+        const r = runPrepare({ ...base, exec, commands: [] });
+        expect(r.ok, r.blockedReason).toBe(true);
+        expect(r.steps.find((s) => s.name === 'checks')).toMatchObject({ status: 'skipped', detail: 'ship.prepare.checks is empty' });
+        expect(nodeCalls(calls).filter((c) => !c.includes(INVENTORY_SCRIPT))).toEqual([]);
+    });
+    it('describes what will run, or nothing', () => {
+        expect(describePrepareChecks(undefined, () => false)).toEqual([]);
+        expect(describePrepareChecks(undefined, (p) => ['tsconfig.json', TSC_SCRIPT].includes(p))).toEqual(['tsc --noEmit']);
+        expect(describePrepareChecks([['cargo', 'check']], (p) => p === INVENTORY_SCRIPT)).toEqual(['cargo check', `${INVENTORY_SCRIPT} --verify (regenerated as the last commit)`]);
+    });
+    it('ship.prepare.checks parses as argv arrays and rejects anything else', () => {
+        expect(resolveShipConfig({}).prepareChecks).toBeUndefined();
+        expect(resolveShipConfig({ prepare: { checks: [['cargo', 'check']] } }).prepareChecks).toEqual([['cargo', 'check']]);
+        expect(resolveShipConfig({ prepare: { checks: [] } }).prepareChecks).toEqual([]);
+        for (const bad of ['cargo check', [['']], [[]], [['cargo', 1]], ['cargo']]) {
+            expect(() => resolveShipConfig({ prepare: { checks: bad } })).toThrow(/ship\.prepare\.checks must be/);
+        }
+        expect(() => resolveShipConfig({ prepare: [] })).toThrow(/ship\.prepare must be/);
+    });
+    it('ship.prepare is read from the user config, else the base, never the working tree', () => {
+        const user = { ship: { prepare: { checks: [['make', 'check']] } } };
+        const baseLayer = { ship: { prepare: { checks: [['cargo', 'check']] } } };
+        expect(trustedPrepareChecks(user, baseLayer)).toEqual([['make', 'check']]);
+        expect(trustedPrepareChecks(null, baseLayer)).toEqual([['cargo', 'check']]);
+        expect(trustedPrepareChecks(null, undefined)).toBeUndefined();
+        const warnings = [];
+        const loaded = loadTrustedShipConfig({
+            exec: () => res(0), root: '/repo', base: 'dev', user: {}, trustedUser: {},
+            project: { ship: { prepare: { checks: [['node', 'evil.js']] } } }, warn: (m) => warnings.push(m),
+        });
+        expect(loaded.prepareChecks).toBeUndefined();
+        expect(warnings.join('\n')).toMatch(/ignoring ship\.prepare from the working-tree project config/);
     });
 });
 describe('decideMerge', () => {

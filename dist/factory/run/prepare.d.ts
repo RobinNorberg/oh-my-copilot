@@ -26,6 +26,14 @@ export declare function checkoutBranch(issue: FactoryRunKey): string;
  * is never emptied.
  */
 export declare function linkNodeModules(root: string, checkout: string): void;
+/**
+ * Remove the link linkNodeModules made before the checkout is discarded:
+ * on POSIX a symlink named node_modules is untracked for a `node_modules/`
+ * gitignore line (directory-only), so removeWorkerWorktree would see a dirty
+ * tree. Only a link that resolves to the root's node_modules goes; the
+ * target is never touched, and anything else is left to the dirty check.
+ */
+export declare function unlinkNodeModules(root: string, checkout: string): void;
 export interface GateConfig {
     config: ShipConfig;
     known: KnownFlakyTest[];

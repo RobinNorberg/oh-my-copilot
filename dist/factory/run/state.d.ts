@@ -170,6 +170,12 @@ export interface FactoryRunState {
      * trusted config (local-gate.ts assertLocalGateCommand); absent until then.
      */
     localGate?: string[];
+    /**
+     * The trusted ship.prepare.checks this run first prepared with (`auto` =
+     * unset, the built-ins the base has). Every later prepare must resolve the
+     * same value; a change mid-run parks at prepare-checks. Absent until then.
+     */
+    prepareChecks?: string[][] | 'auto';
     repoUrl: string;
     base: string;
     branch: string;
