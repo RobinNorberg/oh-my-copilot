@@ -6,7 +6,8 @@
 import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { readLocalCheckRecord, readMirrorRef } from '../../../forge/local/index.js';
+import { localCheckRecordPath, readLocalCheckRecord, readMirrorRef } from '../../../forge/local/index.js';
+import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { runFactoryEngine, EXIT_AWAITING_HUMAN } from '../engine.js';
 import { factoryForgeOptions } from '../forge-roots.js';
 import { checkoutPath } from '../prepare.js';
@@ -153,9 +154,50 @@ describe('factory run on the local forge', () => {
     const lanes = lanesFor(w, [greet(), review('approve')]);
     const out = await runFactoryEngine(localOpts(w, lanes));
     expect(out.exitCode, out.message).toBe(5);
-    expect(out.message).toMatch(/unsupported forge: refusing the local forge: the checkout's git config sets remote\.omg-local\.vcs/);
+    expect(out.message).toMatch(/unsupported forge: refusing the local forge: the git config sets remote\.omg-local\.vcs/);
     expect(lanes.started).toEqual([]);
     expect(w.calls.filter((c) => /^git (push|fetch|ls-remote)\b/.test(c))).toEqual([]);
+  });
+
+  it('a planted url.<evil>.insteadOf of the mirror path refuses the run (exit 5): nothing reaches the rewrite target', async () => {
+    w = localWorld();
+    const evil = join(w.dir, 'evil.git');
+    gitIn(w.dir, 'init', '-q', '--bare', evil);
+    gitIn(w.root, 'remote', 'add', 'omg-local', w.config.repo.url.replace(/\\/g, '/'));
+    gitIn(w.root, 'config', `url.${evil}.insteadOf`, w.config.repo.url);
+    const lanes = lanesFor(w, [greet(), review('approve')]);
+    const out = await runFactoryEngine(localOpts(w, lanes));
+    expect(out.exitCode, out.message).toBe(5);
+    expect(out.message).toMatch(/refusing the local forge: the git config sets url\..*\.insteadof=/);
+    expect(lanes.started).toEqual([]);
+    expect(w.calls.filter((c) => /^git (push|fetch|ls-remote)\b/.test(c))).toEqual([]);
+    expect(gitIn(evil, 'for-each-ref', '--format=%(refname)')).toBe('');
+  });
+
+  it('a gate due again (its record removed) after the gates deadline is a gates timeout, not one more gate run', async () => {
+    w = localWorld();
+    let offset = 0;
+    let removed = false;
+    let jumped = false;
+    const now = () => {
+      const head = readFactoryState(w.root, LOCAL_ISSUE)?.head;
+      // Once the gate recorded its verdict, a rerun removes the record (checks.rerun)...
+      if (!removed && head && readLocalCheckRecord(w.stateDir, w.root, head)?.state === 'SUCCESS') {
+        removed = true;
+        rmSync(localCheckRecordPath(w.stateDir, w.root, head), { force: true });
+      }
+      // ...and ship's watch, which reads the checks next, starts after the gates deadline.
+      if (removed && !jumped && new Error().stack?.includes('watchGates')) {
+        jumped = true;
+        offset += DEFAULT_FACTORY_RUN_LIMITS.gatesTimeoutMs + 60_000;
+      }
+      return Date.now() + offset;
+    };
+    const out = await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')]), { now }));
+    expect(jumped).toBe(true);
+    expect(out.exitCode, out.message).toBe(EXIT_AWAITING_HUMAN);
+    expect(out.gate?.name).toBe('gates-timeout');
+    expect(w.gateRuns).toHaveLength(1);
   });
 
   it('a mirror base that is not an ancestor of the local base refuses the sync (fast-forward only)', async () => {

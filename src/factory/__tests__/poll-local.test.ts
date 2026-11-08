@@ -1,7 +1,9 @@
 import { resolve } from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { backlogItem, checkDeps, commitAll, localRepo, programs, writeFile, type LocalRepo } from '../check/__tests__/local-repo.js';
+import { factoryPollCommand } from '../../cli/commands/factory-poll.js';
 import { runFactoryPoll, type FactoryPollDeps, type PollTick } from '../poll.js';
+import { FactoryForgeUnavailableError } from '../run/forge-roots.js';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -54,5 +56,23 @@ describe('omg factory poll on the local (offline) forge', () => {
     expect(refused.code).toBe(1);
     expect(refused.t.baseSync).toEqual({ ran: false, reason: 'the base sync failed' });
     expect(refused.t.errors).toContain('base sync: main diverged from the mirror');
+  });
+
+  it('an unusable local forge (a refused git config) is not a tick error: omg factory poll exits 5 like omg factory run', async () => {
+    const repo = localRepo();
+    writeFile(repo, '.copilot/backlog/1-add-remove.md', backlogItem('Add remove'));
+    commitAll(repo);
+    const unusable = () => { throw new FactoryForgeUnavailableError('refusing the local forge: the git config sets url./evil.insteadof=/mirror'); };
+    await expect(runFactoryPoll({ once: true, json: true }, deps(repo, unusable))).rejects.toBeInstanceOf(FactoryForgeUnavailableError);
+
+    repo.out.length = 0;
+    const before = process.exitCode;
+    try {
+      await factoryPollCommand(deps(repo, unusable)).parseAsync(['--once', '--json'], { from: 'user' });
+      expect(process.exitCode).toBe(5);
+      expect(JSON.parse(repo.out[repo.out.length - 1])).toMatchObject({ ok: false, error: expect.stringContaining('refusing the local forge') });
+    } finally {
+      process.exitCode = before;
+    }
   });
 });
