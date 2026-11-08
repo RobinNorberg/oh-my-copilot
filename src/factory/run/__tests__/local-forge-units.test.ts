@@ -487,30 +487,60 @@ describe('the sealed run remote', () => {
 });
 
 describe('the gate definition (dogfood F41)', () => {
-  it('names package.json scripts for npm-style gates and the script file for node gates', () => {
-    expect(gateDefinitionSources(['npm', 'run', 'lint'])).toEqual([{ path: 'package.json', scripts: ['prelint', 'lint', 'postlint'] }]);
-    expect(gateDefinitionSources(['npm', 'test'])).toEqual([{ path: 'package.json', scripts: ['pretest', 'test', 'posttest'] }]);
-    expect(gateDefinitionSources(['npm.cmd', '--silent', 't'])).toEqual([{ path: 'package.json', scripts: ['pretest', 'test', 'posttest'] }]);
-    expect(gateDefinitionSources(['pnpm', 'lint'])).toEqual([{ path: 'package.json', scripts: ['prelint', 'lint', 'postlint'] }]);
-    expect(gateDefinitionSources(['yarn', 'run', 'check'])).toEqual([{ path: 'package.json', scripts: ['precheck', 'check', 'postcheck'] }]);
-    expect(gateDefinitionSources(['node', 'C:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js', 'run', 'lint'])).toEqual([{ path: 'package.json', scripts: ['prelint', 'lint', 'postlint'] }]);
-    expect(gateDefinitionSources(['node', 'scripts\\gate.mjs', '--fast'])).toEqual([{ path: 'scripts/gate.mjs' }]);
-    expect(gateDefinitionSources(['./ci/gate.sh'])).toEqual([{ path: 'ci/gate.sh' }]);
-    expect(gateDefinitionSources(['node', '--test'])).toEqual([]);
-    expect(gateDefinitionSources(['npm', 'ci'])).toEqual([]);
-    expect(gateDefinitionSources(['node', '../outside.js'])).toEqual([]);
-    expect(describeGateSources(gateDefinitionSources(['npm', 'run', 'lint']))).toBe('package.json scripts prelint/lint/postlint');
+  const PM = ['.npmrc', '.yarnrc', '.yarnrc.yml', '.pnpmfile.cjs'].map((path) => ({ path }));
+  const pkgScripts = (script: string, dir = '') => ({ path: `${dir}package.json`, scripts: [`pre${script}`, script, `post${script}`] });
+
+  it('names package.json scripts plus the package-manager config for npm-style gates, the script file for node gates', () => {
+    expect(gateDefinitionSources(['npm', 'run', 'lint'])).toEqual({ sources: [pkgScripts('lint'), ...PM] });
+    expect(gateDefinitionSources(['npm', 'test'])).toEqual({ sources: [pkgScripts('test'), ...PM] });
+    expect(gateDefinitionSources(['npm.cmd', '--silent', 't'])).toEqual({ sources: [pkgScripts('test'), ...PM] });
+    expect(gateDefinitionSources(['pnpm', 'lint'])).toEqual({ sources: [pkgScripts('lint'), ...PM] });
+    expect(gateDefinitionSources(['yarn', 'run', 'check'])).toEqual({ sources: [pkgScripts('check'), ...PM] });
+    expect(gateDefinitionSources(['node', 'C:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js', 'run', 'lint'])).toEqual({ sources: [pkgScripts('lint'), ...PM] });
+    expect(gateDefinitionSources(['node', 'scripts\\gate.mjs', '--fast'])).toEqual({ sources: [{ path: 'scripts/gate.mjs' }] });
+    expect(gateDefinitionSources(['./ci/gate.sh'])).toEqual({ sources: [{ path: 'ci/gate.sh' }] });
+    expect(gateDefinitionSources(['node', '--test'])).toEqual({ sources: [] });
+    expect(gateDefinitionSources(['node', '../outside.js'])).toEqual({ sources: [] });
+    expect(describeGateSources(gateDefinitionSources(['npm', 'run', 'lint']).sources)).toBe('package.json scripts prelint/lint/postlint, .npmrc, .yarnrc, .yarnrc.yml, .pnpmfile.cjs');
   });
 
-  it('compares only the named scripts: an added lint script changes it, another package.json edit does not', () => {
-    const sources = gateDefinitionSources(['npm', 'run', 'lint']);
+  it('parses npm-style options: a flag value is never the script, --prefix moves package.json and adds that dir\'s config', () => {
+    const inApp = { sources: [pkgScripts('test', 'app/'), ...PM, ...PM.map((p) => ({ path: `app/${p.path}` }))] };
+    expect(gateDefinitionSources(['npm', '--prefix', 'app', 'test'])).toEqual(inApp);
+    expect(gateDefinitionSources(['npm', '--prefix=app', 'test'])).toEqual(inApp);
+    expect(gateDefinitionSources(['npm', 'test', '--prefix', 'app'])).toEqual(inApp);
+    expect(gateDefinitionSources(['pnpm', '-C', 'app\\', 'test'])).toEqual(inApp);
+    expect(gateDefinitionSources(['npm', '--prefix', '.', 'run', 'lint'])).toEqual({ sources: [pkgScripts('lint'), ...PM] });
+    expect(gateDefinitionSources(['npm', '--loglevel', 'warn', 'run', 'lint'])).toEqual({ sources: [pkgScripts('lint'), ...PM] });
+    expect(gateDefinitionSources(['npm', '--userconfig', 'ci/npmrc', 'test'])).toEqual({ sources: [pkgScripts('test'), ...PM, { path: 'ci/npmrc' }] });
+    // pnpm and yarn hand options after the script name to the script.
+    expect(gateDefinitionSources(['pnpm', 'lint', '--dir', 'x'])).toEqual({ sources: [pkgScripts('lint'), ...PM] });
+    expect(gateDefinitionSources(['npm', 'test', '--', '--prefix', 'x'])).toEqual({ sources: [pkgScripts('test'), ...PM] });
+  });
+
+  it('an npm-style gate whose definition cannot be pinned is unresolved, never silently unchecked', () => {
+    expect(gateDefinitionSources(['npm', 'ci']).unresolved).toMatch(/the gate "npm ci" names no package.json script/);
+    expect(gateDefinitionSources(['npm', '--prefix', 'app']).unresolved).toMatch(/names no package.json script/);
+    expect(gateDefinitionSources(['npm', '-w', 'app', 'test']).unresolved).toMatch(/selects workspace packages \(-w\)/);
+    expect(gateDefinitionSources(['pnpm', '--filter=app', 'test']).unresolved).toMatch(/selects workspace packages \(--filter\)/);
+    expect(gateDefinitionSources(['npm', '--prefix', '../other', 'test']).unresolved).toMatch(/runs in "..\/other", which is not a directory inside the repository/);
+    expect(gateDefinitionSources(['npm', '--prefix', 'C:\\elsewhere', 'test']).unresolved).toMatch(/not a directory inside the repository/);
+    for (const g of [['npm', 'ci'], ['npm', '-w', 'app', 'test']]) expect(gateDefinitionSources(g).sources).toEqual([]);
+  });
+
+  it('compares only the named scripts and the config files: an added lint script or .npmrc changes it, another package.json edit does not', () => {
+    const { sources } = gateDefinitionSources(['npm', 'run', 'lint']);
     const pkg = (scripts: Record<string, string>, extra: Record<string, unknown> = {}) => JSON.stringify({ name: 'x', ...extra, scripts });
-    const base = gateDefinition(sources, () => pkg({ test: 'node --test' }));
-    expect(gateDefinition(sources, () => pkg({ test: 'node --test', lint: 'exit 0' }))).not.toBe(base);
-    expect(gateDefinition(sources, () => pkg({ test: 'node --test', prelint: 'exit 0' }))).not.toBe(base);
-    expect(gateDefinition(sources, () => pkg({ test: 'node --test --x' }, { version: '2.0.0' }))).toBe(base);
+    const files = (pkgText: string, more: Record<string, string> = {}) => (path: string) => (path === 'package.json' ? pkgText : more[path]);
+    const base = gateDefinition(sources, files(pkg({ test: 'node --test' })));
+    expect(gateDefinition(sources, files(pkg({ test: 'node --test', lint: 'exit 0' })))).not.toBe(base);
+    expect(gateDefinition(sources, files(pkg({ test: 'node --test', prelint: 'exit 0' })))).not.toBe(base);
+    expect(gateDefinition(sources, files(pkg({ test: 'node --test --x' }, { version: '2.0.0' })))).toBe(base);
+    expect(gateDefinition(sources, files(pkg({ test: 'node --test' }), { '.npmrc': 'script-shell=./evil.sh\n' }))).not.toBe(base);
+    expect(gateDefinition(sources, files(pkg({ test: 'node --test' }), { '.yarnrc.yml': 'x: 1\n' }))).not.toBe(base);
+    expect(gateDefinition(sources, files(pkg({ test: 'node --test' }), { '.pnpmfile.cjs': 'module.exports={}' }))).not.toBe(base);
     expect(gateDefinition(sources, () => undefined)).not.toBe(base);
-    const file = gateDefinitionSources(['node', 'scripts/gate.mjs']);
+    const file = gateDefinitionSources(['node', 'scripts/gate.mjs']).sources;
     expect(gateDefinition(file, () => 'a')).not.toBe(gateDefinition(file, () => 'b'));
   });
 });

@@ -18,19 +18,59 @@
  * Every git command runs guarded and hardened like the engine's.
  */
 
-import { existsSync, renameSync, rmSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, renameSync, rmSync } from 'fs';
+import { basename, dirname, join, resolve } from 'path';
 import { WORKTREE_TEAM } from '../../copilot-run/job.js';
-import { LOCAL_REMOTE, readMirrorRef } from '../../forge/local/index.js';
+import { isLocalBranchName, LOCAL_REMOTE, readMirrorRef } from '../../forge/local/index.js';
 import type { Forge } from '../../forge/types.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { getWorktreePath } from '../../team/git-worktree.js';
 import { factoryGuardExec, hardenedGitExec } from './exec.js';
 import { localRemoteMismatch } from './forge-roots.js';
-import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir, ledgerFilePath } from './ledger.js';
+import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir, ledgerFilePath, sha256 } from './ledger.js';
 import { checkoutWorker, FACTORY_CHECKOUT_TEAM } from './prepare.js';
 import { acquireFactoryOwner, factoryCancelPath, factoryStatePath, FactoryStateError, readFactoryState, runSlug, verifyFactoryIntegrity, type OwnerDeps } from './state.js';
 
 const HEX40 = /^[0-9a-f]{40}$/;
+
+/**
+ * True when a ledger an earlier reset moved aside (`<ledger>.reset-<stamp>`)
+ * records exactly `bytes` as the run state: that reset stopped between
+ * moving the ledger and moving the state.
+ */
+function asideRecords(ledgerFile: string, statePath: string, bytes: Buffer | null): boolean {
+  if (bytes === null) return false;
+  const dir = dirname(ledgerFile);
+  const prefix = `${basename(ledgerFile)}.reset-`;
+  if (!existsSync(dir)) return false;
+  const want = sha256(bytes);
+  return readdirSync(dir).filter((n) => n.startsWith(prefix)).some((n) => {
+    try {
+      const data = JSON.parse(readFileSync(join(dir, n), 'utf8')) as { files?: Record<string, { sha256?: unknown }> };
+      return data.files?.[resolve(statePath)]?.sha256 === want;
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** A `factory/cancelled/<slug>-*` branch of the mirror already at `sha` (loose or packed), if any. */
+function keptBranchAt(mirror: string, slug: string, sha: string): string | undefined {
+  const prefix = `factory/cancelled/${slug}-`;
+  const names = new Set<string>();
+  const loose = join(mirror, 'refs', 'heads', 'factory', 'cancelled');
+  if (existsSync(loose)) for (const n of readdirSync(loose)) names.add(`factory/cancelled/${n}`);
+  const packed = join(mirror, 'packed-refs');
+  if (existsSync(packed)) {
+    for (const line of readFileSync(packed, 'utf8').split(/\r?\n/)) {
+      const m = /^[0-9a-f]{40} refs\/heads\/(\S+)$/.exec(line);
+      if (m) names.add(m[1]);
+    }
+  }
+  return [...names].filter((n) => n.startsWith(prefix) && isLocalBranchName(n)).sort().find((n) => {
+    try { return readMirrorRef(mirror, n) === sha; } catch { return false; }
+  });
+}
 
 export interface FactoryResetResult {
   /** The local PR this reset closed (absent: none, or the cancel already closed it). */
@@ -68,7 +108,10 @@ export function resetFactoryRun(o: FactoryResetOptions): FactoryResetResult {
   if (o.mirror !== state.repoUrl) throw new FactoryStateError(`the run's mirror ${state.repoUrl} is not the configured local forge mirror ${o.mirror}; nothing is reset`);
   const ledgerDir = o.ledgerDir ?? defaultLedgerDir();
   const ledger = EngineLedger.open(ledgerDir, o.root, o.issue);
-  if (!ledger.tracks(statePath) || !ledger.matches(statePath, currentBytes(statePath))) {
+  const ledgerFile = ledgerFilePath(ledgerDir, o.root, o.issue);
+  const bytes = currentBytes(statePath);
+  const own = ledger.tracks(statePath) ? ledger.matches(statePath, bytes) : asideRecords(ledgerFile, statePath, bytes);
+  if (!own) {
     throw new FactoryStateError(`the factory run state for issue #${o.issue} is not the engine's last write (${ledger.file}); nothing is reset`);
   }
   const now = o.now ?? new Date().toISOString();
@@ -102,17 +145,19 @@ export function resetFactoryRun(o: FactoryResetOptions): FactoryResetResult {
       };
       const mismatch = localRemoteMismatch(exec, o.root, mirror);
       if (mismatch) throw new FactoryStateError(`refusing to push: ${mismatch}`);
-      const kept = `factory/cancelled/${runSlug(o.issue)}-${stamp.toLowerCase()}`;
-      git(['push', LOCAL_REMOTE, `${sha}:refs/heads/${kept}`]);
+      // A reset that stopped after its keep push left that branch: reuse it rather than keep the sha twice.
+      const kept = keptBranchAt(mirror, runSlug(o.issue), sha) ?? `factory/cancelled/${runSlug(o.issue)}-${stamp.toLowerCase()}`;
+      if (readMirrorRef(mirror, kept) !== sha) git(['push', LOCAL_REMOTE, `${sha}:refs/heads/${kept}`]);
       git(['push', LOCAL_REMOTE, `--force-with-lease=refs/heads/${state.branch}:${sha}`, `:refs/heads/${state.branch}`]);
       result.keptBranch = kept;
     }
 
+    // The ledger first: a stop after it leaves the state, which a rerun of reset recognizes by the aside (asideRecords);
+    // the state first would leave a ledger record of a missing state, which the engine reads as tampering.
+    if (existsSync(ledgerFile)) renameSync(ledgerFile, `${ledgerFile}.reset-${stamp}`);
+    rmSync(factoryCancelPath(o.root, o.issue), { force: true });
     const movedTo = `${statePath}.reset-${stamp}`;
     renameSync(statePath, movedTo);
-    rmSync(factoryCancelPath(o.root, o.issue), { force: true });
-    const ledgerFile = ledgerFilePath(ledgerDir, o.root, o.issue);
-    if (existsSync(ledgerFile)) renameSync(ledgerFile, `${ledgerFile}.reset-${stamp}`);
     return { ...result, stateMovedTo: movedTo };
   } finally {
     owner.release();

@@ -344,15 +344,37 @@ export async function runLocalGate(i: LocalGateInput): Promise<LocalGateOutcome>
 /**
  * Where the gate argv is defined inside the repository (dogfood F41): an
  * npm-style gate (`npm test`, `npm run <s>`, `pnpm <s>`, `yarn <s>`, or node
- * with npm's own CLI script) is defined by package.json's `scripts` entry
- * for that script and its `pre`/`post` hooks; a node gate by the script file
- * it runs; a gate executable given as a repository path by that file.
+ * with npm's own CLI script) is defined by its package.json's `scripts` entry
+ * for that script and its `pre`/`post` hooks, plus the package managers'
+ * project config (`.npmrc` script-shell/node-options, `.yarnrc`,
+ * `.yarnrc.yml`, `.pnpmfile.cjs`) at the repository top and in the package
+ * directory; a node gate by the script file it runs; a gate executable given
+ * as a repository path by that file. What the script itself runs
+ * (vitest.config, scripts/test.mjs) is covered by review, not here.
  * Empty when the argv names nothing in the repository (`node --test`).
  */
 export type GateDefinitionSource = { path: string; scripts?: string[] };
 
+/**
+ * The gate's definition sources, or why an npm-style gate's definition
+ * cannot be pinned (`unresolved`: no script named, a workspace selector, a
+ * package directory outside the repository). The engine parks on that
+ * rather than run without the check.
+ */
+export interface GateDefinitionSources { sources: GateDefinitionSource[]; unresolved?: string }
+
 const NPM_TEST = new Set(['test', 't', 'tst']);
 const NPM_RUN = new Set(['run', 'run-script', 'rum', 'urn']);
+/** Package-manager project config that can redirect how a script runs. */
+const PM_CONFIG_FILES = ['.npmrc', '.yarnrc', '.yarnrc.yml', '.pnpmfile.cjs'];
+/** Options that move the package directory (npm --prefix/-C, pnpm --dir/-C, yarn --cwd). */
+const DIR_FLAGS = new Set(['--prefix', '-C', '--dir', '--cwd']);
+/** Options that name a config file the package manager reads. */
+const CONFIG_FLAGS = new Set(['--userconfig', '--globalconfig']);
+/** Options that select workspace packages: the script's package.json is not known from the argv. */
+const WORKSPACE_FLAGS = new Set(['--workspace', '-w', '--workspaces', '--ws', '--filter', '-F', '--recursive', '-r', '--include-workspace-root']);
+/** Options that take the next argument as their value. */
+const VALUE_FLAGS = new Set([...DIR_FLAGS, ...CONFIG_FLAGS, '--workspace', '-w', '--filter', '-F', '--registry', '--cache', '--loglevel', '--script-shell', '--node-options', '--tag', '--otp', '--reporter']);
 
 /** A repository-relative POSIX path, or undefined for an absolute path or one leaving the repository. */
 function repoPath(p: string): string | undefined {
@@ -361,8 +383,34 @@ function repoPath(p: string): string | undefined {
   return norm === '.' || norm.startsWith('../') || norm === '..' ? undefined : norm;
 }
 
-function scriptSource(manager: string, args: readonly string[]): GateDefinitionSource[] {
-  const words = args.filter((a) => !a.startsWith('-'));
+function scriptSource(manager: string, args: readonly string[], shown: string): GateDefinitionSources {
+  const words: string[] = [];
+  let dir = '';
+  const configs: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--') break;
+    if (!a.startsWith('-') || a === '-') {
+      words.push(a);
+      continue;
+    }
+    // pnpm and yarn pass options after the script name to the script; npm reads them anywhere before `--`.
+    if (manager !== 'npm' && words.length > 0) break;
+    const eq = a.indexOf('=');
+    const flag = eq > 0 ? a.slice(0, eq) : a;
+    let value: string | undefined;
+    if (eq > 0) value = a.slice(eq + 1);
+    else if (VALUE_FLAGS.has(flag)) value = args[++i];
+    if (WORKSPACE_FLAGS.has(flag)) return { sources: [], unresolved: `${shown} selects workspace packages (${flag}), so the script's package.json is not known` };
+    if (DIR_FLAGS.has(flag)) {
+      const p = value === undefined ? undefined : /^\.\/?$/.test(posix.normalize(value.replace(/\\/g, '/'))) ? '' : repoPath(value)?.replace(/\/+$/, '');
+      if (p === undefined) return { sources: [], unresolved: `${shown} runs in ${JSON.stringify(value ?? '')}, which is not a directory inside the repository` };
+      dir = p;
+    } else if (CONFIG_FLAGS.has(flag) && value !== undefined) {
+      const p = repoPath(value);
+      if (p) configs.push(p);
+    }
+  }
   const [sub, next] = words;
   let script: string | undefined;
   if (!sub) script = undefined;
@@ -370,26 +418,29 @@ function scriptSource(manager: string, args: readonly string[]): GateDefinitionS
   else if (sub === 'start') script = 'start';
   else if (NPM_RUN.has(sub)) script = next;
   else if (manager !== 'npm') script = sub;
-  if (!script) return [];
-  return [{ path: 'package.json', scripts: [`pre${script}`, script, `post${script}`] }];
+  if (!script) return { sources: [], unresolved: `${shown} names no package.json script (such as npm test or npm run <script>)` };
+  const at = (f: string) => (dir ? `${dir}/${f}` : f);
+  const files = [...new Set([...PM_CONFIG_FILES, ...PM_CONFIG_FILES.map(at), ...configs])];
+  return { sources: [{ path: at('package.json'), scripts: [`pre${script}`, script, `post${script}`] }, ...files.map((path) => ({ path }))] };
 }
 
-export function gateDefinitionSources(gate: readonly string[]): GateDefinitionSource[] {
+export function gateDefinitionSources(gate: readonly string[]): GateDefinitionSources {
   const [cmd, ...args] = gate;
-  if (!cmd) return [];
+  if (!cmd) return { sources: [] };
+  const shown = `the gate "${gate.join(' ')}"`;
   const name = (cmd.split(/[\\/]/).pop() ?? cmd).toLowerCase().replace(/\.(cmd|bat|exe)$/, '');
-  if (name === 'npm' || name === 'pnpm' || name === 'yarn') return scriptSource(name, args);
+  if (name === 'npm' || name === 'pnpm' || name === 'yarn') return scriptSource(name, args, shown);
   if (name === 'node') {
     const at = args.findIndex((a) => !a.startsWith('-'));
-    if (at < 0) return [];
+    if (at < 0) return { sources: [] };
     const target = args[at];
     const base = (target.split(/[\\/]/).pop() ?? '').toLowerCase();
-    if (base === 'npm-cli.js') return scriptSource('npm', args.slice(at + 1));
+    if (base === 'npm-cli.js') return scriptSource('npm', args.slice(at + 1), shown);
     const p = repoPath(target);
-    return p ? [{ path: p }] : [];
+    return { sources: p ? [{ path: p }] : [] };
   }
   const own = /[\\/]/.test(cmd) ? repoPath(cmd) : undefined;
-  return own ? [{ path: own }] : [];
+  return { sources: own ? [{ path: own }] : [] };
 }
 
 /**
