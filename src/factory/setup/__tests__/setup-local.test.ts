@@ -106,6 +106,26 @@ describe('omg factory setup: the local (offline) forge', () => {
     expect(programs(repo)).toEqual(['git']);
   });
 
+  it('F20: an invalid ship.base in the config is reported (exit 2, naming the file), never replaced by a planned write', async () => {
+    const repo = localRepo();
+    mkdirSync(join(repo.root, '.copilot'), { recursive: true });
+    const before = '{\n  "ship": { "base": "-bad" }\n}\n';
+    writeFileSync(projectPath(repo), before);
+    const r = await runFactorySetup({ forge: 'local', yes: true }, deps(repo), repo.root);
+    expect(r.exitCode).toBe(2);
+    expect(r.error).toBe(`ship.base "-bad" in ${projectPath(repo)} is not a plain branch name: set it to the branch you merge into (or remove it to let setup detect one)`);
+    expect(r.error).not.toMatch(/writes only factory/);
+    expect(r.written).toBeNull();
+    expect(readFileSync(projectPath(repo), 'utf8')).toBe(before);
+
+    // In the user config too.
+    writeFileSync(projectPath(repo), '{}\n');
+    writeFileSync(join(repo.home, 'user-config.jsonc'), '{ "ship": { "base": 42 } }\n');
+    const u = await runFactorySetup({ forge: 'local', dryRun: true }, deps(repo), repo.root);
+    expect(u.exitCode).toBe(2);
+    expect(u.error).toContain(`ship.base 42 in ${join(repo.home, 'user-config.jsonc')} is not a plain branch name`);
+  });
+
   it('--intake local-backlog:<label> is kept; GitHub and ADO pins are refused with --forge local', async () => {
     const repo = localRepo();
     const r = await runFactorySetup({ forge: 'local', intake: 'local-backlog:factory', dryRun: true }, deps(repo), repo.root);
