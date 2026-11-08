@@ -201,6 +201,36 @@ export function mirrorRewriteKeys(stdout, mirror) {
     }).filter(({ value }) => forms.some((f) => f.startsWith(fold(value)))).map(({ key, value }) => `${key}=${value}`);
     return [...new Set(refused)];
 }
+/**
+ * `git config -z --get-regexp` of every `remote.*` key, any scope or include.
+ * A push names the mirror path (localTransportArgs), and git first looks up a
+ * configured remote of exactly that name: POSIX git skips names that start
+ * with `/`, but a Windows path (`C:\...`) is found, so its `url` / `pushurl`
+ * redirect the push and its `receivepack` runs a command. Pinning
+ * `-c remote.<mirror>.receivepack` cannot cover every spelling of the name,
+ * so such a remote is refused instead (mirrorNamedRemoteKeys).
+ */
+export const REMOTE_CONFIG_ARGS = ['config', '-z', '--get-regexp', '^remote\\..*'];
+/**
+ * The `key=value`s in the output of REMOTE_CONFIG_ARGS whose remote NAME is
+ * a spelling of `mirror`: either slash form, a trailing or doubled slash, the
+ * `file://` form, case-insensitively on Windows and macOS.
+ */
+export function mirrorNamedRemoteKeys(stdout, mirror) {
+    const spelling = (s) => {
+        const p = s.replace(/\\/g, '/').replace(/^file:\/\//i, '').replace(/^\/(?=[A-Za-z]:)/, '').replace(/\/{2,}/g, '/').replace(/\/+$/, '');
+        return process.platform === 'win32' || process.platform === 'darwin' ? p.toLowerCase() : p;
+    };
+    const target = spelling(mirror);
+    const refused = stdout.split('\0').filter(Boolean).map((rec) => {
+        const nl = rec.indexOf('\n');
+        return nl < 0 ? { key: rec, value: '' } : { key: rec.slice(0, nl), value: rec.slice(nl + 1) };
+    }).filter(({ key }) => {
+        const dot = key.lastIndexOf('.');
+        return dot > 'remote.'.length && spelling(key.slice('remote.'.length, dot)) === target;
+    }).map(({ key, value }) => `${key}=${value}`);
+    return [...new Set(refused)];
+}
 /** Factory-only git shapes; null = not a factory shape (ship's allowlist decides), false = refused outright. */
 function factoryGit(a, protectedBranches, extraProtected = [], local) {
     const [sub, ...r] = a;
@@ -243,7 +273,7 @@ function factoryGit(a, protectedBranches, extraProtected = [], local) {
             return null;
         case 'config':
             // The tamper check hashes the file core.excludesFile names; ship decides the rest.
-            if (same(a, [...LOCAL_REMOTE_REFUSED_CONFIG_ARGS]) || same(a, [...URL_REWRITE_CONFIG_ARGS]))
+            if (same(a, [...LOCAL_REMOTE_REFUSED_CONFIG_ARGS]) || same(a, [...URL_REWRITE_CONFIG_ARGS]) || same(a, [...REMOTE_CONFIG_ARGS]))
                 return true;
             return same(r, ['--get', 'core.excludesFile']) ? true : null;
         case 'for-each-ref':
@@ -462,6 +492,12 @@ export function hardenedGitExec(exec, hooksDir, localMirror = () => undefined) {
             const rewritten = rewrites.status > 1 ? ['a config git could not read'] : mirrorRewriteKeys(rewrites.stdout, mirror);
             if (rewritten.length > 0) {
                 throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(' ')}\`: the git config rewrites the local forge mirror ${mirror} (${rewritten.join(', ')}); remove it (git config --unset)`);
+            }
+            // A remote named after the mirror path would take over the push to it (Windows git): syncLocalMirror refuses it first (exit 5).
+            const remotes = exec(cmd, [...hardening, ...REMOTE_CONFIG_ARGS], { ...(opts?.cwd ? { cwd: opts.cwd } : {}), env: TRUSTED_READ_ENV });
+            const named = remotes.status > 1 ? ['a config git could not read'] : mirrorNamedRemoteKeys(remotes.stdout, mirror);
+            if (named.length > 0) {
+                throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(' ')}\`: the git config has a remote named after the local forge mirror ${mirror} (${named.join(', ')}); remove it (git config --remove-section)`);
             }
         }
         return exec(cmd, [...hardening, ...LOCAL_REMOTE_PACK_ARGS, ...localTransportArgs(args, mirror)], opts);

@@ -94,6 +94,22 @@ export declare const URL_REWRITE_CONFIG_ARGS: readonly string[];
  */
 export declare function mirrorRewriteKeys(stdout: string, mirror: string): string[];
 /**
+ * `git config -z --get-regexp` of every `remote.*` key, any scope or include.
+ * A push names the mirror path (localTransportArgs), and git first looks up a
+ * configured remote of exactly that name: POSIX git skips names that start
+ * with `/`, but a Windows path (`C:\...`) is found, so its `url` / `pushurl`
+ * redirect the push and its `receivepack` runs a command. Pinning
+ * `-c remote.<mirror>.receivepack` cannot cover every spelling of the name,
+ * so such a remote is refused instead (mirrorNamedRemoteKeys).
+ */
+export declare const REMOTE_CONFIG_ARGS: readonly string[];
+/**
+ * The `key=value`s in the output of REMOTE_CONFIG_ARGS whose remote NAME is
+ * a spelling of `mirror`: either slash form, a trailing or doubled slash, the
+ * `file://` form, case-insensitively on Windows and macOS.
+ */
+export declare function mirrorNamedRemoteKeys(stdout: string, mirror: string): string[];
+/**
  * Throws FactorySafetyError unless the command is a factory shape or a
  * non-push, non-merge ship shape. `extraProtected` adds the run's base.
  * `az` and python go to the Azure DevOps guard (src/forge/ado/guard.ts),

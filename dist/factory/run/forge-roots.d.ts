@@ -67,6 +67,8 @@ export declare function localRemoteMismatch(exec: Exec, root: string, mirror: st
  * local refs (localRemoteRefusedKeys). Also any `url.<x>.insteadOf` /
  * `pushInsteadOf` whose value is a prefix of `mirror` (mirrorRewriteKeys):
  * git would rewrite the push to the mirror path into another repository.
+ * And any `remote.<name>.*` whose name is a spelling of `mirror`
+ * (mirrorNamedRemoteKeys): Windows git would push through that remote.
  */
 export declare function localRemoteRefusedConfig(exec: Exec, root: string, mirror: string): string | null;
 /**
@@ -78,7 +80,8 @@ export declare function localRemoteRefusedConfig(exec: Exec, root: string, mirro
  *   FactoryForgeUnavailableError (exit 5);
  * - the checkout's `omg-local` remote is added when missing; an existing one
  *   must point at exactly `mirror` for fetch and for every push url
- *   (localRemoteMismatch: a planted pushurl or insteadOf refuses);
+ *   (localRemoteMismatch: a planted pushurl, an insteadOf or a remote added
+ *   under another spelling of the mirror path refuses, exit 5);
  * - the local `<base>` is pushed to the mirror without `+`, so the sync is
  *   fast-forward only: a diverged mirror base refuses with a message. Before
  *   the push, `onBase` gets the sha read from the local base: the guard lets

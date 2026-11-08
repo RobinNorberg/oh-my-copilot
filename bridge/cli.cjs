@@ -118990,6 +118990,21 @@ function mirrorRewriteKeys(stdout, mirror) {
   }).filter(({ value }) => forms.some((f) => f.startsWith(fold7(value)))).map(({ key, value }) => `${key}=${value}`);
   return [...new Set(refused)];
 }
+function mirrorNamedRemoteKeys(stdout, mirror) {
+  const spelling = (s) => {
+    const p = s.replace(/\\/g, "/").replace(/^file:\/\//i, "").replace(/^\/(?=[A-Za-z]:)/, "").replace(/\/{2,}/g, "/").replace(/\/+$/, "");
+    return process.platform === "win32" || process.platform === "darwin" ? p.toLowerCase() : p;
+  };
+  const target = spelling(mirror);
+  const refused = stdout.split("\0").filter(Boolean).map((rec) => {
+    const nl = rec.indexOf("\n");
+    return nl < 0 ? { key: rec, value: "" } : { key: rec.slice(0, nl), value: rec.slice(nl + 1) };
+  }).filter(({ key }) => {
+    const dot = key.lastIndexOf(".");
+    return dot > "remote.".length && spelling(key.slice("remote.".length, dot)) === target;
+  }).map(({ key, value }) => `${key}=${value}`);
+  return [...new Set(refused)];
+}
 function factoryGit(a, protectedBranches, extraProtected = [], local) {
   const [sub, ...r] = a;
   const remote = r[0] === "origin" || r[0] === LOCAL_REMOTE;
@@ -119019,7 +119034,7 @@ function factoryGit(a, protectedBranches, extraProtected = [], local) {
       }
       return null;
     case "config":
-      if (same2(a, [...LOCAL_REMOTE_REFUSED_CONFIG_ARGS]) || same2(a, [...URL_REWRITE_CONFIG_ARGS])) return true;
+      if (same2(a, [...LOCAL_REMOTE_REFUSED_CONFIG_ARGS]) || same2(a, [...URL_REWRITE_CONFIG_ARGS]) || same2(a, [...REMOTE_CONFIG_ARGS])) return true;
       return same2(r, ["--get", "core.excludesFile"]) ? true : null;
     case "for-each-ref":
       return same2(r, [FOR_EACH_REF_FORMAT]);
@@ -119147,11 +119162,16 @@ function hardenedGitExec(exec3, hooksDir, localMirror = () => void 0) {
       if (rewritten.length > 0) {
         throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(" ")}\`: the git config rewrites the local forge mirror ${mirror} (${rewritten.join(", ")}); remove it (git config --unset)`);
       }
+      const remotes = exec3(cmd, [...hardening, ...REMOTE_CONFIG_ARGS], { ...opts?.cwd ? { cwd: opts.cwd } : {}, env: TRUSTED_READ_ENV });
+      const named = remotes.status > 1 ? ["a config git could not read"] : mirrorNamedRemoteKeys(remotes.stdout, mirror);
+      if (named.length > 0) {
+        throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(" ")}\`: the git config has a remote named after the local forge mirror ${mirror} (${named.join(", ")}); remove it (git config --remove-section)`);
+      }
     }
     return exec3(cmd, [...hardening, ...LOCAL_REMOTE_PACK_ARGS, ...localTransportArgs(args, mirror)], opts);
   };
 }
-var import_fs144, import_os31, import_path171, FACTORY_BRANCH_PREFIX, FactorySafetyError, NUMBER2, JSON_FIELDS2, BRANCH3, REPO_PATH, FOR_EACH_REF_FORMAT, CHECKOUT_BRANCH, isBranch2, isFile2, isTitle, same2, FACTORY_LABEL, KEY_SEARCH, MAX_WRITE_LABELS, isWriteLabel, isBodyFile, LOCAL_REMOTE_DEFAULT_FETCH, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, URL_REWRITE_CONFIG_ARGS, adoRefusal, LOCAL_REMOTE_PACK_ARGS, onLocalRemote;
+var import_fs144, import_os31, import_path171, FACTORY_BRANCH_PREFIX, FactorySafetyError, NUMBER2, JSON_FIELDS2, BRANCH3, REPO_PATH, FOR_EACH_REF_FORMAT, CHECKOUT_BRANCH, isBranch2, isFile2, isTitle, same2, FACTORY_LABEL, KEY_SEARCH, MAX_WRITE_LABELS, isWriteLabel, isBodyFile, LOCAL_REMOTE_DEFAULT_FETCH, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, URL_REWRITE_CONFIG_ARGS, REMOTE_CONFIG_ARGS, adoRefusal, LOCAL_REMOTE_PACK_ARGS, onLocalRemote;
 var init_exec2 = __esm({
   "src/factory/run/exec.ts"() {
     "use strict";
@@ -119188,6 +119208,7 @@ var init_exec2 = __esm({
     LOCAL_REMOTE_DEFAULT_FETCH = `+refs/heads/*:refs/remotes/${LOCAL_REMOTE}/*`;
     LOCAL_REMOTE_REFUSED_CONFIG_ARGS = ["config", "--get-regexp", `^remote\\.${LOCAL_REMOTE}\\.(vcs|mirror|fetch)$`];
     URL_REWRITE_CONFIG_ARGS = ["config", "-z", "--get-regexp", "^url\\..*\\.(insteadof|pushinsteadof)$"];
+    REMOTE_CONFIG_ARGS = ["config", "-z", "--get-regexp", "^remote\\..*"];
     adoRefusal = (cmd, args) => (reason) => new FactorySafetyError(`omg factory run refuses \`${cmd.replace(/\\/g, "/").split("/").pop()} ${args.join(" ")}\`: ${reason}`);
     LOCAL_REMOTE_PACK_ARGS = ["-c", `remote.${LOCAL_REMOTE}.receivepack=git-receive-pack`, "-c", `remote.${LOCAL_REMOTE}.uploadpack=git-upload-pack`];
     onLocalRemote = (args) => (args[0] === "push" || args[0] === "fetch" || args[0] === "ls-remote") && args[1] === LOCAL_REMOTE;
@@ -122531,7 +122552,9 @@ function localRemoteRefusedConfig(exec3, root2, mirror) {
   if (typeof keys === "string") return keys;
   const rewrites = read(URL_REWRITE_CONFIG_ARGS, (stdout) => mirrorRewriteKeys(stdout, mirror));
   if (typeof rewrites === "string") return rewrites;
-  const all = [...keys, ...rewrites];
+  const named = read(REMOTE_CONFIG_ARGS, (stdout) => mirrorNamedRemoteKeys(stdout, mirror));
+  if (typeof named === "string") return named;
+  const all = [...keys, ...rewrites, ...named];
   return all.length > 0 ? `the git config sets ${all.join(", ")}` : null;
 }
 function syncLocalMirror(exec3, root2, mirror, base, onBase) {
@@ -122547,7 +122570,7 @@ function syncLocalMirror(exec3, root2, mirror, base, onBase) {
   const current = git7(mirrorRemoteGetUrlArgs(), TRUSTED_READ_ENV);
   if (current.status !== 0) must(mirrorRemoteAddArgs(mirror), "local forge remote");
   const mismatch2 = localRemoteMismatch(exec3, root2, mirror);
-  if (mismatch2) throw new Error(`refusing to sync the local forge mirror: ${mismatch2}; point the ${LOCAL_REMOTE} remote at ${mirror} (git remote set-url ${LOCAL_REMOTE} ${mirror}) and remove any pushurl`);
+  if (mismatch2) throw new FactoryForgeUnavailableError(`refusing to sync the local forge mirror: ${mismatch2}; point the ${LOCAL_REMOTE} remote at ${mirror} (git remote set-url ${LOCAL_REMOTE} ${mirror}) and remove any pushurl`);
   const local = must(["rev-parse", "--verify", `refs/heads/${base}`], `local base ${base}`, TRUSTED_READ_ENV).trim();
   if (!HEX405.test(local)) throw new Error(`local base ${base} did not resolve to a commit`);
   onBase?.(local);
@@ -126148,11 +126171,12 @@ function runOwned(exe, args, cwd2, env2, timeoutMs) {
       finish2({ status: timedOut ? 124 : exitStatus ?? code ?? (signal ? 128 : 1), stdout, stderr, timedOut });
     });
     const timer = setTimeout(() => {
-      timedOut = true;
-      void killGateTree(child, exitStatus !== null).finally(() => {
+      const exited = exitStatus !== null;
+      if (!exited) timedOut = true;
+      void killGateTree(child, exited).finally(() => {
         child.stdout?.destroy();
         child.stderr?.destroy();
-        finish2({ status: 124, stdout, stderr, timedOut: true });
+        finish2(exited ? { status: exitStatus, stdout, stderr, timedOut: false } : { status: 124, stdout, stderr, timedOut: true });
       });
     }, timeoutMs);
   });
@@ -128421,7 +128445,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
             });
           } catch (error2) {
             if (!(error2 instanceof LocalGateDue)) throw error2;
-            if (this.clock() < deadline) continue;
+            if (this.clock() + this.localGateTimeout() * 6e4 <= deadline) continue;
             out = { kind: "timeout" };
           }
           break;

@@ -3,7 +3,8 @@
  * local base is pushed fast-forward only to the engine-owned mirror through
  * the engine's guarded, hardened exec, and the tick reports the synced base.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -181,6 +182,58 @@ describe('omg factory poll: local forge base sync', () => {
         expect(w.raw.filter((a) => a.includes('push'))).toEqual([]);
         expect(refs()).toBe('');
     });
+    /**
+     * A remote NAMED after the mirror path: Windows git looks that name up when
+     * the engine pushes to the path, so its url redirects the push and its
+     * receivepack runs. Planted: `url` -> evil repo, or `receivepack` -> a
+     * command that writes a marker file.
+     */
+    const plantMirrorNamedRemote = (w, variable) => {
+        const { evil, refs } = evilRepo(w);
+        const marker = join(dir, 'planted.txt');
+        const value = variable === 'url' ? evil : `echo PLANTED > "${marker.replace(/\\/g, '/')}"; false`;
+        gitIn(w.root, 'config', `remote.${w.config.repo.url}.${variable}`, value);
+        // The plant is live on Windows: a plain push to the mirror path goes through it (control, outside the engine).
+        const control = () => {
+            const head = gitIn(w.root, 'rev-parse', 'main');
+            spawnSync('git', ['push', w.config.repo.url, `${head}:refs/heads/control`], { cwd: w.root, stdio: 'pipe' });
+            return variable === 'url' ? refs() !== '' : existsSync(marker);
+        };
+        return { refs, ran: () => existsSync(marker), control };
+    };
+    it.each(['url', 'receivepack'])('a remote named after the mirror path with a planted %s refuses the sync (exit 5): nothing pushed, nothing run', (variable) => {
+        const w = world();
+        const plant = plantMirrorNamedRemote(w, variable);
+        let error;
+        try {
+            w.sync({ root: w.root, base: 'main', config: w.config });
+        }
+        catch (e) {
+            error = e;
+        }
+        expect(error).toBeInstanceOf(FactoryForgeUnavailableError);
+        expect(error.message).toContain(`.${variable}=`);
+        expect(w.raw.filter((a) => a.includes('push') && !a.includes('get-url'))).toEqual([]);
+        expect(plant.refs()).toBe('');
+        expect(plant.ran()).toBe(false);
+        if (process.platform === 'win32') {
+            gitIn(w.root, 'init', '-q', '--bare', w.config.repo.url);
+            expect(plant.control()).toBe(true);
+        }
+    });
+    it.each(['url', 'receivepack'])('the named-remote backstop: a push to the mirror path refuses a remote named after it (%s) even when the sync check is bypassed', (variable) => {
+        const w = world();
+        const plant = plantMirrorNamedRemote(w, variable);
+        gitIn(w.root, 'remote', 'add', 'omg-local', w.config.repo.url);
+        gitIn(w.root, 'init', '-q', '--bare', w.config.repo.url);
+        const hardened = hardenedGitExec((cmd, args, opts) => { w.raw.push(args); return defaultExec(cmd, args, opts); }, emptyHooksDir(join(dir, 'ledger')), () => w.config.repo.url);
+        const head = gitIn(w.root, 'rev-parse', 'main');
+        expect(() => hardened('git', ['push', 'omg-local', `${head}:refs/heads/main`], { cwd: w.root })).toThrow(/remote named after the local forge mirror/);
+        expect(w.raw.filter((a) => a.includes('push'))).toEqual([]);
+        expect(plant.refs()).toBe('');
+        expect(plant.ran()).toBe(false);
+        expect(readMirrorRef(w.config.repo.url, 'main')).toBeUndefined();
+    });
     it('an unrelated url rewrite (a forge host) does not refuse the sync', () => {
         const w = world();
         gitIn(w.root, 'config', 'url.git@github.com:.insteadOf', 'https://github.com/');
@@ -188,11 +241,12 @@ describe('omg factory poll: local forge base sync', () => {
         w.sync({ root: w.root, base: 'main', config: w.config });
         expect(readMirrorRef(w.config.repo.url, 'main')).toBe(head);
     });
-    it('a remote url that is another spelling of the mirror path refuses the sync (exact mirror string)', () => {
+    it('a remote url that is another spelling of the mirror path refuses the sync (exact mirror string, exit 5, set-url hint)', () => {
         const w = world();
         const other = process.platform === 'win32' ? w.config.repo.url.replace(/\\/g, '/') : `${w.config.repo.url}/`;
         gitIn(w.root, 'remote', 'add', 'omg-local', other);
-        expect(() => w.sync({ root: w.root, base: 'main', config: w.config })).toThrow(/points at .*not the mirror/);
+        expect(() => w.sync({ root: w.root, base: 'main', config: w.config })).toThrow(/points at .*not the mirror.*git remote set-url omg-local/);
+        expect(() => w.sync({ root: w.root, base: 'main', config: w.config })).toThrow(FactoryForgeUnavailableError);
         expect(w.raw.filter((a) => a.includes('push') && !a.includes('get-url'))).toEqual([]);
     });
 });

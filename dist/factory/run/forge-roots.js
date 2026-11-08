@@ -19,7 +19,7 @@ import { detectForgeRepo, ForgeConfigError, resolveForgeConfig } from '../../for
 import { LOCAL_REMOTE, mirrorFetchArgs, mirrorInitArgs, mirrorPushArgs, mirrorRemoteAddArgs, mirrorRemoteGetUrlArgs, readMirrorRef } from '../../forge/local/index.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { BASE_CONFIG_PATH, readBaseFile, resolveTrustedBases } from '../../ship/config.js';
-import { FOR_EACH_REF_FORMAT, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, localRemoteRefusedKeys, mirrorRewriteKeys, URL_REWRITE_CONFIG_ARGS } from './exec.js';
+import { FOR_EACH_REF_FORMAT, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, localRemoteRefusedKeys, mirrorNamedRemoteKeys, mirrorRewriteKeys, REMOTE_CONFIG_ARGS, URL_REWRITE_CONFIG_ARGS } from './exec.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { getGlobalOmcStatePath } from '../../utils/paths.js';
@@ -193,6 +193,8 @@ export function localRemoteMismatch(exec, root, mirror) {
  * local refs (localRemoteRefusedKeys). Also any `url.<x>.insteadOf` /
  * `pushInsteadOf` whose value is a prefix of `mirror` (mirrorRewriteKeys):
  * git would rewrite the push to the mirror path into another repository.
+ * And any `remote.<name>.*` whose name is a spelling of `mirror`
+ * (mirrorNamedRemoteKeys): Windows git would push through that remote.
  */
 export function localRemoteRefusedConfig(exec, root, mirror) {
     const read = (args, parse) => {
@@ -205,7 +207,10 @@ export function localRemoteRefusedConfig(exec, root, mirror) {
     const rewrites = read(URL_REWRITE_CONFIG_ARGS, (stdout) => mirrorRewriteKeys(stdout, mirror));
     if (typeof rewrites === 'string')
         return rewrites;
-    const all = [...keys, ...rewrites];
+    const named = read(REMOTE_CONFIG_ARGS, (stdout) => mirrorNamedRemoteKeys(stdout, mirror));
+    if (typeof named === 'string')
+        return named;
+    const all = [...keys, ...rewrites, ...named];
     return all.length > 0 ? `the git config sets ${all.join(', ')}` : null;
 }
 /**
@@ -217,7 +222,8 @@ export function localRemoteRefusedConfig(exec, root, mirror) {
  *   FactoryForgeUnavailableError (exit 5);
  * - the checkout's `omg-local` remote is added when missing; an existing one
  *   must point at exactly `mirror` for fetch and for every push url
- *   (localRemoteMismatch: a planted pushurl or insteadOf refuses);
+ *   (localRemoteMismatch: a planted pushurl, an insteadOf or a remote added
+ *   under another spelling of the mirror path refuses, exit 5);
  * - the local `<base>` is pushed to the mirror without `+`, so the sync is
  *   fast-forward only: a diverged mirror base refuses with a message. Before
  *   the push, `onBase` gets the sha read from the local base: the guard lets
@@ -244,7 +250,7 @@ export function syncLocalMirror(exec, root, mirror, base, onBase) {
         must(mirrorRemoteAddArgs(mirror), 'local forge remote');
     const mismatch = localRemoteMismatch(exec, root, mirror);
     if (mismatch)
-        throw new Error(`refusing to sync the local forge mirror: ${mismatch}; point the ${LOCAL_REMOTE} remote at ${mirror} (git remote set-url ${LOCAL_REMOTE} ${mirror}) and remove any pushurl`);
+        throw new FactoryForgeUnavailableError(`refusing to sync the local forge mirror: ${mismatch}; point the ${LOCAL_REMOTE} remote at ${mirror} (git remote set-url ${LOCAL_REMOTE} ${mirror}) and remove any pushurl`);
     const local = must(['rev-parse', '--verify', `refs/heads/${base}`], `local base ${base}`, TRUSTED_READ_ENV).trim();
     if (!HEX40.test(local))
         throw new Error(`local base ${base} did not resolve to a commit`);

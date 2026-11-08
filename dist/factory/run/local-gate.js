@@ -90,7 +90,12 @@ export function resolveLocalGateArgv(argv, o) {
     return found ? { exe: found, args } : { missing: `the local gate executable ${cmd} is not on PATH as an .exe or .com (on Windows the gate runs without a shell, so .cmd/.bat shims are skipped); set factory.forge.local.gate to run node directly, such as ${npmCliHint(P, execPath)}` };
 }
 const keepTail = (text) => (text.length > STREAM_KEEP_CHARS ? text.slice(-STREAM_KEEP_CHARS) : text);
-/** Kill the gate's whole process tree: the identity-checked tree kill while the root lives, the process group on POSIX after it exited. */
+/**
+ * Kill the gate's whole process tree: the identity-checked tree kill while
+ * the root lives. After the root exited only POSIX can still reach its
+ * descendants (the detached process group); on Windows an orphan that
+ * outlived the root is not killed, only no longer waited for.
+ */
 async function killGateTree(child, rootExited) {
     const pid = child.pid;
     if (!pid)
@@ -108,7 +113,7 @@ async function killGateTree(child, rootExited) {
         }
         catch { /* already gone */ }
     }
-    // The root exited but a descendant still holds the output pipes: its process group (POSIX, detached).
+    // The root exited but a descendant still holds the output pipes: its process group (POSIX only, detached; Windows has no group to signal).
     if (process.platform !== 'win32') {
         try {
             process.kill(-pid, 'SIGKILL');
@@ -152,7 +157,7 @@ function runOwned(exe, args, cwd, env, timeoutMs) {
         child.on('exit', (code, signal) => {
             exitStatus = code ?? (signal ? 128 : 1);
             // The root's exit status is the verdict: a descendant still holding the pipes gets a short drain, then is
-            // killed best-effort (its process group on POSIX) and no longer delays the verdict or turns it into a timeout.
+            // killed best-effort (its process group, POSIX only; a Windows orphan survives) and no longer delays the verdict or turns it into a timeout.
             drain = setTimeout(() => {
                 if (settled || timedOut)
                     return;
@@ -166,12 +171,15 @@ function runOwned(exe, args, cwd, env, timeoutMs) {
             finish({ status: timedOut ? 124 : (exitStatus ?? code ?? (signal ? 128 : 1)), stdout, stderr, timedOut });
         });
         const timer = setTimeout(() => {
-            timedOut = true;
-            void killGateTree(child, exitStatus !== null).finally(() => {
+            // Firing inside the post-exit drain: the root already exited, so its exit status stays the verdict.
+            const exited = exitStatus !== null;
+            if (!exited)
+                timedOut = true;
+            void killGateTree(child, exited).finally(() => {
                 // Whatever still holds the pipes (an orphan on Windows) no longer delays the verdict.
                 child.stdout?.destroy();
                 child.stderr?.destroy();
-                finish({ status: 124, stdout, stderr, timedOut: true });
+                finish(exited ? { status: exitStatus, stdout, stderr, timedOut: false } : { status: 124, stdout, stderr, timedOut: true });
             });
         }, timeoutMs);
     });
