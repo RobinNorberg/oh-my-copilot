@@ -53,9 +53,10 @@ export declare const EXIT_FORGE_UNAVAILABLE = 5;
  * Null when the checkout's `omg-local` remote fetches from and pushes to
  * exactly `mirror`; otherwise why not. Unlike remoteRepoMismatch (ship's
  * sameRepo drops `.git` and case for forge URLs), the url and every push url
- * (insteadOf / pushInsteadOf applied by git) must be the mirror's own path:
- * real paths compared, case-insensitively only on Windows and macOS. So
- * `<stateDir>/local/<id>` (no `.git`) or a case variant on Linux refuses.
+ * (insteadOf / pushInsteadOf applied by git) must be exactly the mirror
+ * string the engine registers: not another spelling of the same directory
+ * (forward slashes, a trailing slash, a case variant, a junction), which a
+ * `url.<x>.insteadOf` of the literal mirror path would not rewrite.
  */
 export declare function localRemoteMismatch(exec: Exec, root: string, mirror: string): string | null;
 /**
@@ -63,9 +64,11 @@ export declare function localRemoteMismatch(exec: Exec, root: string, mirror: st
  * counts), or null: `vcs` hands the transport to `git remote-<vcs>`
  * (remote-ext runs a command), `mirror` turns a push into a mirror push, and
  * a `fetch` refspec other than the default could map a pushed branch onto
- * local refs (localRemoteRefusedKeys).
+ * local refs (localRemoteRefusedKeys). Also any `url.<x>.insteadOf` /
+ * `pushInsteadOf` whose value is a prefix of `mirror` (mirrorRewriteKeys):
+ * git would rewrite the push to the mirror path into another repository.
  */
-export declare function localRemoteRefusedConfig(exec: Exec, root: string): string | null;
+export declare function localRemoteRefusedConfig(exec: Exec, root: string, mirror: string): string | null;
 /**
  * Create (once) and sync the local forge's bare mirror (offline forge plan
  * §1.1), through the engine's guarded, hardened Exec:

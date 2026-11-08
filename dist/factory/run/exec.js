@@ -177,6 +177,30 @@ export function localRemoteRefusedKeys(stdout) {
         .map(([key, ...value]) => `${key}=${value.join(' ')}`);
     return [...new Set(refused)];
 }
+/**
+ * `git config -z --get-regexp` of every url rewrite (`url.<base>.insteadOf`
+ * / `pushInsteadOf`, any scope or include). A push names the mirror path
+ * itself (localTransportArgs), and git rewrites that literal string too: a
+ * rewrite whose value is a prefix of it sends the push elsewhere, and an
+ * identity `-c url.<mirror>.insteadOf=<mirror>` does not override a longer
+ * planted one. `-z`: a url subsection may contain spaces.
+ */
+export const URL_REWRITE_CONFIG_ARGS = ['config', '-z', '--get-regexp', '^url\\..*\\.(insteadof|pushinsteadof)$'];
+/**
+ * The `key=value`s in the output of URL_REWRITE_CONFIG_ARGS that would
+ * rewrite `mirror`: the value is a prefix of the mirror path in either slash
+ * form, case-insensitively on Windows and macOS. A key without a value counts
+ * (an empty prefix matches everything).
+ */
+export function mirrorRewriteKeys(stdout, mirror) {
+    const fold = (s) => (process.platform === 'win32' || process.platform === 'darwin' ? s.toLowerCase() : s);
+    const forms = [mirror, mirror.replace(/\\/g, '/'), mirror.replace(/\//g, '\\')].map(fold);
+    const refused = stdout.split('\0').filter(Boolean).map((rec) => {
+        const nl = rec.indexOf('\n');
+        return nl < 0 ? { key: rec, value: '' } : { key: rec.slice(0, nl), value: rec.slice(nl + 1) };
+    }).filter(({ value }) => forms.some((f) => f.startsWith(fold(value)))).map(({ key, value }) => `${key}=${value}`);
+    return [...new Set(refused)];
+}
 /** Factory-only git shapes; null = not a factory shape (ship's allowlist decides), false = refused outright. */
 function factoryGit(a, protectedBranches, extraProtected = [], local) {
     const [sub, ...r] = a;
@@ -219,7 +243,7 @@ function factoryGit(a, protectedBranches, extraProtected = [], local) {
             return null;
         case 'config':
             // The tamper check hashes the file core.excludesFile names; ship decides the rest.
-            if (same(a, [...LOCAL_REMOTE_REFUSED_CONFIG_ARGS]))
+            if (same(a, [...LOCAL_REMOTE_REFUSED_CONFIG_ARGS]) || same(a, [...URL_REWRITE_CONFIG_ARGS]))
                 return true;
             return same(r, ['--get', 'core.excludesFile']) ? true : null;
         case 'for-each-ref':
@@ -431,7 +455,16 @@ export function hardenedGitExec(exec, hooksDir, localMirror = () => undefined) {
         if (refused.length > 0) {
             throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(' ')}\`: the ${LOCAL_REMOTE} remote sets ${refused.join(', ')}; remove it (git config --unset)`);
         }
-        return exec(cmd, [...hardening, ...LOCAL_REMOTE_PACK_ARGS, ...localTransportArgs(args, localMirror())], opts);
+        // A url rewrite of the mirror path would send the transport elsewhere: syncLocalMirror refuses it first (exit 5).
+        const mirror = localMirror();
+        if (mirror) {
+            const rewrites = exec(cmd, [...hardening, ...URL_REWRITE_CONFIG_ARGS], { ...(opts?.cwd ? { cwd: opts.cwd } : {}), env: TRUSTED_READ_ENV });
+            const rewritten = rewrites.status > 1 ? ['a config git could not read'] : mirrorRewriteKeys(rewrites.stdout, mirror);
+            if (rewritten.length > 0) {
+                throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(' ')}\`: the git config rewrites the local forge mirror ${mirror} (${rewritten.join(', ')}); remove it (git config --unset)`);
+            }
+        }
+        return exec(cmd, [...hardening, ...LOCAL_REMOTE_PACK_ARGS, ...localTransportArgs(args, mirror)], opts);
     };
 }
 //# sourceMappingURL=exec.js.map

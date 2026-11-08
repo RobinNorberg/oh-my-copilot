@@ -118981,6 +118981,15 @@ function localRemoteRefusedKeys(stdout) {
   const refused = stdout.split(/\r?\n/).map((l) => l.trim().split(/\s+/)).filter(([key]) => Boolean(key)).filter(([key, ...value]) => !(key === `remote.${LOCAL_REMOTE}.fetch` && value.join(" ") === LOCAL_REMOTE_DEFAULT_FETCH)).map(([key, ...value]) => `${key}=${value.join(" ")}`);
   return [...new Set(refused)];
 }
+function mirrorRewriteKeys(stdout, mirror) {
+  const fold7 = (s) => process.platform === "win32" || process.platform === "darwin" ? s.toLowerCase() : s;
+  const forms = [mirror, mirror.replace(/\\/g, "/"), mirror.replace(/\//g, "\\")].map(fold7);
+  const refused = stdout.split("\0").filter(Boolean).map((rec) => {
+    const nl = rec.indexOf("\n");
+    return nl < 0 ? { key: rec, value: "" } : { key: rec.slice(0, nl), value: rec.slice(nl + 1) };
+  }).filter(({ value }) => forms.some((f) => f.startsWith(fold7(value)))).map(({ key, value }) => `${key}=${value}`);
+  return [...new Set(refused)];
+}
 function factoryGit(a, protectedBranches, extraProtected = [], local) {
   const [sub, ...r] = a;
   const remote = r[0] === "origin" || r[0] === LOCAL_REMOTE;
@@ -119010,7 +119019,7 @@ function factoryGit(a, protectedBranches, extraProtected = [], local) {
       }
       return null;
     case "config":
-      if (same2(a, [...LOCAL_REMOTE_REFUSED_CONFIG_ARGS])) return true;
+      if (same2(a, [...LOCAL_REMOTE_REFUSED_CONFIG_ARGS]) || same2(a, [...URL_REWRITE_CONFIG_ARGS])) return true;
       return same2(r, ["--get", "core.excludesFile"]) ? true : null;
     case "for-each-ref":
       return same2(r, [FOR_EACH_REF_FORMAT]);
@@ -119131,10 +119140,18 @@ function hardenedGitExec(exec3, hooksDir, localMirror = () => void 0) {
     if (refused.length > 0) {
       throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(" ")}\`: the ${LOCAL_REMOTE} remote sets ${refused.join(", ")}; remove it (git config --unset)`);
     }
-    return exec3(cmd, [...hardening, ...LOCAL_REMOTE_PACK_ARGS, ...localTransportArgs(args, localMirror())], opts);
+    const mirror = localMirror();
+    if (mirror) {
+      const rewrites = exec3(cmd, [...hardening, ...URL_REWRITE_CONFIG_ARGS], { ...opts?.cwd ? { cwd: opts.cwd } : {}, env: TRUSTED_READ_ENV });
+      const rewritten = rewrites.status > 1 ? ["a config git could not read"] : mirrorRewriteKeys(rewrites.stdout, mirror);
+      if (rewritten.length > 0) {
+        throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(" ")}\`: the git config rewrites the local forge mirror ${mirror} (${rewritten.join(", ")}); remove it (git config --unset)`);
+      }
+    }
+    return exec3(cmd, [...hardening, ...LOCAL_REMOTE_PACK_ARGS, ...localTransportArgs(args, mirror)], opts);
   };
 }
-var import_fs144, import_os31, import_path171, FACTORY_BRANCH_PREFIX, FactorySafetyError, NUMBER2, JSON_FIELDS2, BRANCH3, REPO_PATH, FOR_EACH_REF_FORMAT, CHECKOUT_BRANCH, isBranch2, isFile2, isTitle, same2, FACTORY_LABEL, KEY_SEARCH, MAX_WRITE_LABELS, isWriteLabel, isBodyFile, LOCAL_REMOTE_DEFAULT_FETCH, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, adoRefusal, LOCAL_REMOTE_PACK_ARGS, onLocalRemote;
+var import_fs144, import_os31, import_path171, FACTORY_BRANCH_PREFIX, FactorySafetyError, NUMBER2, JSON_FIELDS2, BRANCH3, REPO_PATH, FOR_EACH_REF_FORMAT, CHECKOUT_BRANCH, isBranch2, isFile2, isTitle, same2, FACTORY_LABEL, KEY_SEARCH, MAX_WRITE_LABELS, isWriteLabel, isBodyFile, LOCAL_REMOTE_DEFAULT_FETCH, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, URL_REWRITE_CONFIG_ARGS, adoRefusal, LOCAL_REMOTE_PACK_ARGS, onLocalRemote;
 var init_exec2 = __esm({
   "src/factory/run/exec.ts"() {
     "use strict";
@@ -119170,6 +119187,7 @@ var init_exec2 = __esm({
     isBodyFile = (s, ctx) => isFile2(s) && isBodyFileIn(s, ctx.bodyDir);
     LOCAL_REMOTE_DEFAULT_FETCH = `+refs/heads/*:refs/remotes/${LOCAL_REMOTE}/*`;
     LOCAL_REMOTE_REFUSED_CONFIG_ARGS = ["config", "--get-regexp", `^remote\\.${LOCAL_REMOTE}\\.(vcs|mirror|fetch)$`];
+    URL_REWRITE_CONFIG_ARGS = ["config", "-z", "--get-regexp", "^url\\..*\\.(insteadof|pushinsteadof)$"];
     adoRefusal = (cmd, args) => (reason) => new FactorySafetyError(`omg factory run refuses \`${cmd.replace(/\\/g, "/").split("/").pop()} ${args.join(" ")}\`: ${reason}`);
     LOCAL_REMOTE_PACK_ARGS = ["-c", `remote.${LOCAL_REMOTE}.receivepack=git-receive-pack`, "-c", `remote.${LOCAL_REMOTE}.uploadpack=git-upload-pack`];
     onLocalRemote = (args) => (args[0] === "push" || args[0] === "fetch" || args[0] === "ls-remote") && args[1] === LOCAL_REMOTE;
@@ -122492,7 +122510,7 @@ function missingBaseHint(exec3, root2, base) {
   return `base branch '${base}' not found; set ship.base in ${BASE_CONFIG_PATH} (branches here: ${branches.length > 0 ? branches.join(", ") : "none"})`;
 }
 function localRemoteMismatch(exec3, root2, mirror) {
-  const same8 = (url2) => sameFsPath(realOr2(url2), realOr2(mirror));
+  const same8 = (url2) => url2 === mirror;
   const got = exec3("git", ["remote", "get-url", LOCAL_REMOTE], { cwd: root2, env: TRUSTED_READ_ENV });
   if (got.status !== 0) return `git remote get-url ${LOCAL_REMOTE} failed: ${got.stderr.trim().split("\n")[0]}`;
   const url = got.stdout.trim();
@@ -122504,19 +122522,17 @@ function localRemoteMismatch(exec3, root2, mirror) {
   const foreign = pushUrls.find((u) => !same8(u));
   return foreign ? `remote ${LOCAL_REMOTE} pushes to ${foreign}, not the mirror ${mirror}` : null;
 }
-function realOr2(p) {
-  if (!(0, import_path179.isAbsolute)(p)) return p;
-  try {
-    return import_fs150.realpathSync.native(p);
-  } catch {
-    return (0, import_path179.resolve)(p);
-  }
-}
-function localRemoteRefusedConfig(exec3, root2) {
-  const r = exec3("git", [...LOCAL_REMOTE_REFUSED_CONFIG_ARGS], { cwd: root2, env: TRUSTED_READ_ENV });
-  if (r.status > 1) return `git ${LOCAL_REMOTE_REFUSED_CONFIG_ARGS.join(" ")} failed: ${r.stderr.trim().split("\n")[0]}`;
-  const keys = localRemoteRefusedKeys(r.stdout);
-  return keys.length > 0 ? `the checkout's git config sets ${keys.join(", ")}` : null;
+function localRemoteRefusedConfig(exec3, root2, mirror) {
+  const read = (args, parse13) => {
+    const r = exec3("git", [...args], { cwd: root2, env: TRUSTED_READ_ENV });
+    return r.status > 1 ? `git ${args.join(" ")} failed: ${r.stderr.trim().split("\n")[0]}` : parse13(r.stdout);
+  };
+  const keys = read(LOCAL_REMOTE_REFUSED_CONFIG_ARGS, localRemoteRefusedKeys);
+  if (typeof keys === "string") return keys;
+  const rewrites = read(URL_REWRITE_CONFIG_ARGS, (stdout) => mirrorRewriteKeys(stdout, mirror));
+  if (typeof rewrites === "string") return rewrites;
+  const all = [...keys, ...rewrites];
+  return all.length > 0 ? `the git config sets ${all.join(", ")}` : null;
 }
 function syncLocalMirror(exec3, root2, mirror, base, onBase) {
   const git7 = (args, env2) => exec3("git", args, { cwd: root2, ...env2 ? { env: env2 } : {} });
@@ -122525,8 +122541,8 @@ function syncLocalMirror(exec3, root2, mirror, base, onBase) {
     if (r.status !== 0) throw new Error(`${what}: git ${args.join(" ")} failed: ${(r.stderr || r.stdout).trim().split("\n")[0]}`);
     return r.stdout;
   };
-  const refused = localRemoteRefusedConfig(exec3, root2);
-  if (refused) throw new FactoryForgeUnavailableError(`refusing the local forge: ${refused}; remove it (git config --unset remote.${LOCAL_REMOTE}.<key>)`);
+  const refused = localRemoteRefusedConfig(exec3, root2, mirror);
+  if (refused) throw new FactoryForgeUnavailableError(`refusing the local forge: ${refused}; remove it (git config --unset <key>, in the config file that sets it: git config --show-origin --get-regexp <key>)`);
   if (!(0, import_fs150.existsSync)((0, import_path179.join)(mirror, "HEAD"))) must(mirrorInitArgs(mirror), "local forge mirror");
   const current = git7(mirrorRemoteGetUrlArgs(), TRUSTED_READ_ENV);
   if (current.status !== 0) must(mirrorRemoteAddArgs(mirror), "local forge remote");
@@ -124762,7 +124778,7 @@ function mergeBodyDirProblem(dir, platform = process.platform) {
 function writeBody(ctx, o, pr, headSha) {
   if (!(0, import_path187.isAbsolute)(o.stateDir)) throw new Error(`merge body directory ${o.stateDir} is not absolute`);
   (0, import_fs159.mkdirSync)(o.stateDir, { recursive: true, mode: 448 });
-  const dir = realOr3(o.stateDir);
+  const dir = realOr2(o.stateDir);
   const root2 = o.untrustedRoots.find((r) => r.trim() !== "" && under(dir, r));
   if (root2) throw new Error(`merge body directory ${dir} is under the untrusted root ${root2}`);
   const problem = mergeBodyDirProblem(dir);
@@ -124800,7 +124816,7 @@ function adoMerge(ctx, o) {
     }
   };
 }
-var import_crypto50, import_fs159, import_path187, SATISFIED, realOr3, under, fileSafe;
+var import_crypto50, import_fs159, import_path187, SATISFIED, realOr2, under, fileSafe;
 var init_merge4 = __esm({
   "src/forge/ado/merge.ts"() {
     "use strict";
@@ -124811,7 +124827,7 @@ var init_merge4 = __esm({
     init_invoke();
     init_reviews3();
     SATISFIED = /* @__PURE__ */ new Set(["approved", "notApplicable"]);
-    realOr3 = (p) => {
+    realOr2 = (p) => {
       try {
         return import_fs159.realpathSync.native(p);
       } catch {
@@ -124819,7 +124835,7 @@ var init_merge4 = __esm({
       }
     };
     under = (path30, root2) => {
-      const rel = (0, import_path187.relative)(realOr3(root2), path30);
+      const rel = (0, import_path187.relative)(realOr2(root2), path30);
       return rel === "" || !rel.startsWith("..") && !(0, import_path187.isAbsolute)(rel);
     };
     fileSafe = (s) => s.replace(/[^A-Za-z0-9._-]+/g, "_");
@@ -126101,10 +126117,12 @@ function runOwned(exe, args, cwd2, env2, timeoutMs) {
     let exitStatus = null;
     let timedOut = false;
     let settled = false;
+    let drain;
     const finish2 = (r) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      clearTimeout(drain);
       done(r);
     };
     child.stdout.setEncoding("utf8").on("data", (d) => {
@@ -126118,6 +126136,13 @@ function runOwned(exe, args, cwd2, env2, timeoutMs) {
     });
     child.on("exit", (code, signal) => {
       exitStatus = code ?? (signal ? 128 : 1);
+      drain = setTimeout(() => {
+        if (settled || timedOut) return;
+        void killGateTree(child, true);
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+        finish2({ status: exitStatus, stdout, stderr, timedOut: false });
+      }, EXIT_DRAIN_MS);
     });
     child.on("close", (code, signal) => {
       finish2({ status: timedOut ? 124 : exitStatus ?? code ?? (signal ? 128 : 1), stdout, stderr, timedOut });
@@ -126138,7 +126163,10 @@ function assertLocalGateCommand(recorded, configured, checkout, expectedCheckout
     throw new FactorySafetyError(`omg factory run refuses the local gate \`${configured.join(" ")}\`: this run recorded \`${recorded.join(" ")}\`; restore factory.forge.local.gate, or cancel the run (omg factory run cancel) and start a new one`);
   }
   const real2 = realOrResolved(checkout);
-  if (!sameFsPath(real2, expectedCheckout)) throw new FactorySafetyError(`omg factory run refuses the local gate in ${checkout} (really ${real2}): it runs only in the engine's prepare checkout ${expectedCheckout}`);
+  for (const p of [checkout, expectedCheckout]) {
+    if (isLink(p)) throw new FactorySafetyError(`omg factory run refuses the local gate in ${checkout} (really ${real2}): ${p} is a junction or symlink, never the engine's prepare checkout`);
+  }
+  if (!sameFsPath(real2, realOrResolved(expectedCheckout))) throw new FactorySafetyError(`omg factory run refuses the local gate in ${checkout} (really ${real2}): it runs only in the engine's prepare checkout ${expectedCheckout}`);
 }
 function localGateRecord(stateDir, root2, head) {
   return readLocalCheckRecord(stateDir, root2, head);
@@ -126180,7 +126208,7 @@ local gate timed out after ${i.timeoutMinutes} min` : ""}`;
   writeLocalCheckRecord(i.stateDir, i.root, done);
   return { started: true, record: done };
 }
-var import_child_process45, import_fs163, import_path190, LOCAL_GATE_TAIL_CHARS, LOCAL_GATE_STALE_GRACE_MS, STREAM_KEEP_CHARS, KILL_DEADLINE_MS, NODE_SCRIPTS2, npmCliHint, keepTail, defaultLocalGateRunner, realOrResolved, runIdAt, tailOf;
+var import_child_process45, import_fs163, import_path190, LOCAL_GATE_TAIL_CHARS, LOCAL_GATE_STALE_GRACE_MS, STREAM_KEEP_CHARS, KILL_DEADLINE_MS, EXIT_DRAIN_MS, NODE_SCRIPTS2, npmCliHint, keepTail, defaultLocalGateRunner, realOrResolved, isLink, runIdAt, tailOf;
 var init_local_gate = __esm({
   "src/factory/run/local-gate.ts"() {
     "use strict";
@@ -126196,6 +126224,7 @@ var init_local_gate = __esm({
     LOCAL_GATE_STALE_GRACE_MS = 6e4;
     STREAM_KEEP_CHARS = 64 * 1024;
     KILL_DEADLINE_MS = 3e4;
+    EXIT_DRAIN_MS = 2e3;
     NODE_SCRIPTS2 = {
       npm: { script: ["node_modules", "npm", "bin", "npm-cli.js"], exeFirst: false },
       npx: { script: ["node_modules", "npm", "bin", "npx-cli.js"], exeFirst: false },
@@ -126216,6 +126245,13 @@ var init_local_gate = __esm({
         return import_fs163.realpathSync.native(p);
       } catch {
         return (0, import_path190.resolve)(p);
+      }
+    };
+    isLink = (p) => {
+      try {
+        return (0, import_fs163.lstatSync)(p).isSymbolicLink();
+      } catch {
+        return false;
       }
     };
     runIdAt = (d) => Math.max(1, Math.floor(d.getTime() / 1e3));
@@ -128384,8 +128420,9 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
               cancelled: () => this.cancelWanted(this.reload())
             });
           } catch (error2) {
-            if (error2 instanceof LocalGateDue) continue;
-            throw error2;
+            if (!(error2 instanceof LocalGateDue)) throw error2;
+            if (this.clock() < deadline) continue;
+            out = { kind: "timeout" };
           }
           break;
         }
@@ -133305,7 +133342,7 @@ async function pollTick(ctx) {
     try {
       return fn();
     } catch (error2) {
-      if (error2 instanceof ShipSafetyError) throw error2;
+      if (error2 instanceof ShipSafetyError || error2 instanceof FactoryForgeUnavailableError) throw error2;
       errors.push(`${name}: ${message3(error2)}`);
       return void 0;
     }
@@ -133561,6 +133598,7 @@ var init_poll = __esm({
     init_cli2();
     init_run2();
     init_budget();
+    init_forge_roots();
     init_state6();
     POLL_JSON_SCHEMA_VERSION = 1;
     POLL_DEFAULT_INTERVAL_MS = 5 * 6e4;
@@ -133616,7 +133654,7 @@ function factoryPollCommand(deps) {
       const message4 = plainText(error2 instanceof Error ? error2.message : String(error2));
       if (o.json) deps.out(JSON.stringify({ ok: false, error: message4 }));
       else deps.err(source_default.red(`Error: ${message4}`));
-      process.exitCode = error2 instanceof CheckUsageError ? EXIT_CHECK_USAGE : error2 instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
+      process.exitCode = error2 instanceof CheckUsageError ? EXIT_CHECK_USAGE : error2 instanceof CheckIncompatibleError || error2 instanceof FactoryForgeUnavailableError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
     }
   });
 }
@@ -133628,6 +133666,7 @@ var init_factory_poll = __esm({
     init_cli();
     init_score();
     init_poll();
+    init_forge_roots();
   }
 });
 

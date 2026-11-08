@@ -64,8 +64,10 @@ export declare const defaultLocalGateRunner: LocalGateRunner;
  * current trusted config must still name exactly that argv, so a gate
  * changed mid-run is refused rather than run against a head the old gate
  * judged. `checkout` must really be the engine's prepare checkout
- * (`expectedCheckout`): its real path, so a junction or symlink pointing it
- * at the user's checkout or a lane worktree is refused. Throws
+ * (`expectedCheckout`): neither path may itself be a junction or symlink
+ * (one pointing at the user's checkout or a lane worktree is refused), and
+ * their real paths must match, so a root reached through a junction,
+ * symlink, subst drive or 8.3 name still matches itself. Throws
  * FactorySafetyError otherwise.
  */
 export declare function assertLocalGateCommand(recorded: readonly string[], configured: readonly string[] | undefined, checkout: string, expectedCheckout: string): void;

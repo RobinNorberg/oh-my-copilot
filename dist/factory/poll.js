@@ -70,6 +70,7 @@ import { checkItems, plainText } from './check/score.js';
 import { adoHealFor, ciDeps, HEAL_PIPELINE_MISSING, runHealScan } from './heal/cli.js';
 import { HealRunRefused } from './heal/run.js';
 import { DEFAULT_FACTORY_RUN_LIMITS, resolveFactoryRunLimits } from './run/budget.js';
+import { FactoryForgeUnavailableError } from './run/forge-roots.js';
 import { acquireFactoryRepoOwner, defaultOwnerDeps, factoryRepoOwnerPath, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, } from './run/state.js';
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
 export const POLL_JSON_SCHEMA_VERSION = 1;
@@ -402,7 +403,8 @@ export async function pollTick(ctx) {
             return fn();
         }
         catch (error) {
-            if (error instanceof ShipSafetyError)
+            // A guard refusal is a bug; an unusable forge (a refused local forge config) exits 5, like omg factory run.
+            if (error instanceof ShipSafetyError || error instanceof FactoryForgeUnavailableError)
                 throw error;
             errors.push(`${name}: ${message(error)}`);
             return undefined;

@@ -13,13 +13,13 @@
  * Also the factory's forge config load (factory forges design §3) and the
  * origin's forge kind for the GitHub-only commands.
  */
-import { existsSync, realpathSync } from 'fs';
-import { isAbsolute, join, resolve } from 'path';
+import { existsSync } from 'fs';
+import { join, resolve } from 'path';
 import { detectForgeRepo, ForgeConfigError, resolveForgeConfig } from '../../forge/config.js';
 import { LOCAL_REMOTE, mirrorFetchArgs, mirrorInitArgs, mirrorPushArgs, mirrorRemoteAddArgs, mirrorRemoteGetUrlArgs, readMirrorRef } from '../../forge/local/index.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { BASE_CONFIG_PATH, readBaseFile, resolveTrustedBases } from '../../ship/config.js';
-import { FOR_EACH_REF_FORMAT, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, localRemoteRefusedKeys, sameFsPath } from './exec.js';
+import { FOR_EACH_REF_FORMAT, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, localRemoteRefusedKeys, mirrorRewriteKeys, URL_REWRITE_CONFIG_ARGS } from './exec.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { getGlobalOmcStatePath } from '../../utils/paths.js';
@@ -163,12 +163,13 @@ export const EXIT_FORGE_UNAVAILABLE = 5;
  * Null when the checkout's `omg-local` remote fetches from and pushes to
  * exactly `mirror`; otherwise why not. Unlike remoteRepoMismatch (ship's
  * sameRepo drops `.git` and case for forge URLs), the url and every push url
- * (insteadOf / pushInsteadOf applied by git) must be the mirror's own path:
- * real paths compared, case-insensitively only on Windows and macOS. So
- * `<stateDir>/local/<id>` (no `.git`) or a case variant on Linux refuses.
+ * (insteadOf / pushInsteadOf applied by git) must be exactly the mirror
+ * string the engine registers: not another spelling of the same directory
+ * (forward slashes, a trailing slash, a case variant, a junction), which a
+ * `url.<x>.insteadOf` of the literal mirror path would not rewrite.
  */
 export function localRemoteMismatch(exec, root, mirror) {
-    const same = (url) => sameFsPath(realOr(url), realOr(mirror));
+    const same = (url) => url === mirror;
     const got = exec('git', ['remote', 'get-url', LOCAL_REMOTE], { cwd: root, env: TRUSTED_READ_ENV });
     if (got.status !== 0)
         return `git remote get-url ${LOCAL_REMOTE} failed: ${got.stderr.trim().split('\n')[0]}`;
@@ -184,30 +185,28 @@ export function localRemoteMismatch(exec, root, mirror) {
     const foreign = pushUrls.find((u) => !same(u));
     return foreign ? `remote ${LOCAL_REMOTE} pushes to ${foreign}, not the mirror ${mirror}` : null;
 }
-/** A path's real path when it exists (junctions and symlinks resolved), else the path resolved. */
-function realOr(p) {
-    if (!isAbsolute(p))
-        return p;
-    try {
-        return realpathSync.native(p);
-    }
-    catch {
-        return resolve(p);
-    }
-}
 /**
  * The refused `remote.omg-local.*` settings of the checkout (any include
  * counts), or null: `vcs` hands the transport to `git remote-<vcs>`
  * (remote-ext runs a command), `mirror` turns a push into a mirror push, and
  * a `fetch` refspec other than the default could map a pushed branch onto
- * local refs (localRemoteRefusedKeys).
+ * local refs (localRemoteRefusedKeys). Also any `url.<x>.insteadOf` /
+ * `pushInsteadOf` whose value is a prefix of `mirror` (mirrorRewriteKeys):
+ * git would rewrite the push to the mirror path into another repository.
  */
-export function localRemoteRefusedConfig(exec, root) {
-    const r = exec('git', [...LOCAL_REMOTE_REFUSED_CONFIG_ARGS], { cwd: root, env: TRUSTED_READ_ENV });
-    if (r.status > 1)
-        return `git ${LOCAL_REMOTE_REFUSED_CONFIG_ARGS.join(' ')} failed: ${r.stderr.trim().split('\n')[0]}`;
-    const keys = localRemoteRefusedKeys(r.stdout);
-    return keys.length > 0 ? `the checkout's git config sets ${keys.join(', ')}` : null;
+export function localRemoteRefusedConfig(exec, root, mirror) {
+    const read = (args, parse) => {
+        const r = exec('git', [...args], { cwd: root, env: TRUSTED_READ_ENV });
+        return r.status > 1 ? `git ${args.join(' ')} failed: ${r.stderr.trim().split('\n')[0]}` : parse(r.stdout);
+    };
+    const keys = read(LOCAL_REMOTE_REFUSED_CONFIG_ARGS, localRemoteRefusedKeys);
+    if (typeof keys === 'string')
+        return keys;
+    const rewrites = read(URL_REWRITE_CONFIG_ARGS, (stdout) => mirrorRewriteKeys(stdout, mirror));
+    if (typeof rewrites === 'string')
+        return rewrites;
+    const all = [...keys, ...rewrites];
+    return all.length > 0 ? `the git config sets ${all.join(', ')}` : null;
 }
 /**
  * Create (once) and sync the local forge's bare mirror (offline forge plan
@@ -235,9 +234,9 @@ export function syncLocalMirror(exec, root, mirror, base, onBase) {
             throw new Error(`${what}: git ${args.join(' ')} failed: ${(r.stderr || r.stdout).trim().split('\n')[0]}`);
         return r.stdout;
     };
-    const refused = localRemoteRefusedConfig(exec, root);
+    const refused = localRemoteRefusedConfig(exec, root, mirror);
     if (refused)
-        throw new FactoryForgeUnavailableError(`refusing the local forge: ${refused}; remove it (git config --unset remote.${LOCAL_REMOTE}.<key>)`);
+        throw new FactoryForgeUnavailableError(`refusing the local forge: ${refused}; remove it (git config --unset <key>, in the config file that sets it: git config --show-origin --get-regexp <key>)`);
     if (!existsSync(join(mirror, 'HEAD')))
         must(mirrorInitArgs(mirror), 'local forge mirror');
     const current = git(mirrorRemoteGetUrlArgs(), TRUSTED_READ_ENV);

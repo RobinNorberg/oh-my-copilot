@@ -2075,9 +2075,12 @@ class FactoryEngine {
             }
             catch (error) {
                 // The local gate is due again (a rerun removed its record): run it, then drive on to the same deadline.
-                if (error instanceof LocalGateDue)
+                // Past that deadline it is a gates timeout, never one more full gate run.
+                if (!(error instanceof LocalGateDue))
+                    throw error;
+                if (this.clock() < deadline)
                     continue;
-                throw error;
+                out = { kind: 'timeout' };
             }
             break;
         }

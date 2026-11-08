@@ -78,6 +78,22 @@ export declare const LOCAL_REMOTE_REFUSED_CONFIG_ARGS: readonly string[];
 /** The refused `key=value`s in the output of LOCAL_REMOTE_REFUSED_CONFIG_ARGS: every vcs or mirror, and any fetch refspec but the default. */
 export declare function localRemoteRefusedKeys(stdout: string): string[];
 /**
+ * `git config -z --get-regexp` of every url rewrite (`url.<base>.insteadOf`
+ * / `pushInsteadOf`, any scope or include). A push names the mirror path
+ * itself (localTransportArgs), and git rewrites that literal string too: a
+ * rewrite whose value is a prefix of it sends the push elsewhere, and an
+ * identity `-c url.<mirror>.insteadOf=<mirror>` does not override a longer
+ * planted one. `-z`: a url subsection may contain spaces.
+ */
+export declare const URL_REWRITE_CONFIG_ARGS: readonly string[];
+/**
+ * The `key=value`s in the output of URL_REWRITE_CONFIG_ARGS that would
+ * rewrite `mirror`: the value is a prefix of the mirror path in either slash
+ * form, case-insensitively on Windows and macOS. A key without a value counts
+ * (an empty prefix matches everything).
+ */
+export declare function mirrorRewriteKeys(stdout: string, mirror: string): string[];
+/**
  * Throws FactorySafetyError unless the command is a factory shape or a
  * non-push, non-merge ship shape. `extraProtected` adds the run's base.
  * `az` and python go to the Azure DevOps guard (src/forge/ado/guard.ts),
