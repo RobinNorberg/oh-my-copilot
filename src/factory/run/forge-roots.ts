@@ -185,9 +185,38 @@ export function localRemoteMismatch(exec: Exec, root: string, mirror: string): s
   // F26: a push url other than the remote url is planted (pushurl or pushInsteadOf); name it first, whatever the url says.
   const planted = pushUrls.find((u) => !same(u) && u !== url);
   if (planted) return `remote ${LOCAL_REMOTE} pushes to ${planted} (a remote.${LOCAL_REMOTE}.pushurl or pushInsteadOf), not the mirror ${mirror}${urlNote}`;
-  if (!same(url)) return `remote ${LOCAL_REMOTE} points at ${url || '(no url)'}, not the mirror ${mirror}`;
+  if (!url || url === LOCAL_REMOTE) return `remote ${LOCAL_REMOTE} has no url, not the mirror ${mirror}`;
+  if (!same(url)) return `remote ${LOCAL_REMOTE} points at ${url}, not the mirror ${mirror}`;
   if (pushUrls.length === 0) return `git remote get-url --push --all ${LOCAL_REMOTE} printed no push URL`;
   return null;
+}
+
+/** `key\nvalue` records of `git config -z --get-regexp` output. */
+const configRecords = (stdout: string): Array<{ key: string; value: string }> =>
+  stdout.split('\0').filter(Boolean).map((rec) => {
+    const nl = rec.indexOf('\n');
+    return nl < 0 ? { key: rec, value: '' } : { key: rec.slice(0, nl), value: rec.slice(nl + 1) };
+  });
+
+/**
+ * The commands that point the checkout's `omg-local` remote back at
+ * `mirror`, per cause (read from the config, any scope): set the url, unset
+ * a planted pushurl, unset a pushInsteadOf that rewrites the url.
+ */
+export function localRemoteFixes(exec: Exec, root: string, mirror: string): string[] {
+  const read = (args: readonly string[]) => {
+    const r = exec('git', [...args], { cwd: root, env: TRUSTED_READ_ENV });
+    return r.status === 0 ? configRecords(r.stdout) : [];
+  };
+  const remote = read(REMOTE_CONFIG_ARGS);
+  const urls = remote.filter((r) => r.key === `remote.${LOCAL_REMOTE}.url`).map((r) => r.value);
+  const fixes: string[] = [];
+  if (!urls.includes(mirror)) fixes.push(urls.length > 0 ? `git remote set-url ${LOCAL_REMOTE} ${mirror}` : `git config remote.${LOCAL_REMOTE}.url ${mirror}`);
+  if (remote.some((r) => r.key === `remote.${LOCAL_REMOTE}.pushurl`)) fixes.push(`git config --unset-all remote.${LOCAL_REMOTE}.pushurl`);
+  // A pushInsteadOf applies only without a pushurl, to the url git would push to.
+  const rewrites = read(URL_REWRITE_CONFIG_ARGS).filter((r) => r.key.endsWith('.pushinsteadof') && r.value !== '' && urls.some((u) => u.startsWith(r.value)));
+  for (const key of new Set(rewrites.map((r) => r.key))) fixes.push(`git config --unset-all ${key}`);
+  return fixes;
 }
 
 /**
@@ -248,7 +277,11 @@ export function syncLocalMirror(exec: Exec, root: string, mirror: string, base: 
   const current = git(mirrorRemoteGetUrlArgs(), TRUSTED_READ_ENV);
   if (current.status !== 0) must(mirrorRemoteAddArgs(mirror), 'local forge remote');
   const mismatch = localRemoteMismatch(exec, root, mirror);
-  if (mismatch) throw new FactoryForgeUnavailableError(`refusing to sync the local forge mirror: ${mismatch}; point the ${LOCAL_REMOTE} remote at ${mirror} (git remote set-url ${LOCAL_REMOTE} ${mirror}) and remove any pushurl (git config --unset-all remote.${LOCAL_REMOTE}.pushurl)`);
+  if (mismatch) {
+    const fixes = localRemoteFixes(exec, root, mirror);
+    const how = fixes.length > 0 ? fixes.join('; ') : `git config --show-origin --get-regexp "^remote\\.${LOCAL_REMOTE}\\.|pushinsteadof$" names the settings`;
+    throw new FactoryForgeUnavailableError(`refusing to sync the local forge mirror: ${mismatch}; point the ${LOCAL_REMOTE} remote back at the mirror: ${how} (a key set in another config file: add --global, or --file from git config --show-origin)`);
+  }
   const local = must(['rev-parse', '--verify', `refs/heads/${base}`], `local base ${base}`, TRUSTED_READ_ENV).trim();
   if (!HEX40.test(local)) throw new Error(`local base ${base} did not resolve to a commit`);
   onBase?.(local);
