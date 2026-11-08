@@ -4,7 +4,18 @@ Native team worktree mode is the opt-in rollout path for running `omg team` work
 
 ## Availability
 
-- The rollout is **opt-in / config-gated** for the first slice. Do not assume worktree mode is the default behavior.
+The mode comes from `OMC_TEAM_WORKTREE_MODE` (env) or `team.ops.worktreeMode` (config). `branch` (also `named`) gives each worker the branch `omc-team/<team>/<worker>`; `detached` uses a detached HEAD; `disabled` shares the leader checkout. An explicit env or config value always wins. With neither set:
+
+| Transport | Leader checkout | Mode | stderr |
+| --- | --- | --- | --- |
+| `sdk` | clean git repository with a commit | branch worktrees | `[omg team] sdk workers use branch worktrees (set team.ops.worktreeMode to change)` |
+| `sdk` | uncommitted changes | shared checkout | `[omg team] sdk workers share the leader checkout and commit on its branch: it has uncommitted changes (commit them for branch worktrees, or set team.ops.worktreeMode)` |
+| `sdk` | not a git repository, or no commit yet | shared checkout | nothing |
+| `pane` | any | shared checkout (unchanged) | nothing |
+
+The SDK default exists so a headless worker never commits straight onto the leader's branch. It falls back to the shared checkout for a dirty leader instead of failing the start, because an explicit worktree mode refuses a dirty leader (`leader_worktree_dirty`).
+
+- Pane teams keep worktree mode **opt-in / config-gated**.
 - The target runtime is `runtime-v2`. Legacy `runtime.ts` remains limited to read/status and cleanup compatibility unless a later plan explicitly expands it.
 - No new dependency is required; lifecycle operations use git worktrees plus the existing team CLI/API surfaces.
 
@@ -44,6 +55,7 @@ Config, manifest, worker identity, and status surfaces should expose the same lo
 - Existing compatible clean worker worktrees may be reused.
 - Dirty worker worktrees must be preserved and surfaced as warnings/events. Cleanup must not force-remove dirty worker edits.
 - Clean worker worktrees and branches holding commits not merged into the leader HEAD are kept on purpose (`worktree_unmerged_commits`). Cleanup reports them in `retained`, not `preserved`; it is not a failure. Shutdown still completes, records them under `.omg/state/team-preserved-worktrees/`, and `omg team status <team>` names them. Merge or discard the commits, then remove the worktree.
+- Shutdown that keeps a dirty worker worktree exits **3**, not 1, and keeps the team state. It prints one line per kept worktree to stderr, `preserved_worktree=<repo>/.omg/team/<team>/worktrees/<worker> worker=<worker> reason=<reason>`, then names the workers and asks you to commit or discard the changes and rerun `omg team shutdown <team>`. In branch mode the work is on `omc-team/<team>/<worker>`. Other preserved outcomes still exit 1.
 - Branch/path mismatches should fail instead of reusing the wrong workspace.
 - Rollback may remove newly created clean worktrees and runtime-created branches when safe; reused worktrees are preserved.
 - `orphan-cleanup` requires the same instance, provider, pane, and worktree cleanup evidence as normal shutdown. Neither force nor `acknowledge_lost_worktree_recovery` permits deleting unknown ownership records or worktree recovery backups.
