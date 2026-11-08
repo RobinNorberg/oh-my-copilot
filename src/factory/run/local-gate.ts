@@ -119,7 +119,12 @@ export function resolveLocalGateArgv(argv: readonly string[], o: ResolveGateOpti
 
 const keepTail = (text: string): string => (text.length > STREAM_KEEP_CHARS ? text.slice(-STREAM_KEEP_CHARS) : text);
 
-/** Kill the gate's whole process tree: the identity-checked tree kill while the root lives, the process group on POSIX after it exited. */
+/**
+ * Kill the gate's whole process tree: the identity-checked tree kill while
+ * the root lives. After the root exited only POSIX can still reach its
+ * descendants (the detached process group); on Windows an orphan that
+ * outlived the root is not killed, only no longer waited for.
+ */
 async function killGateTree(child: ChildProcess, rootExited: boolean): Promise<void> {
   const pid = child.pid;
   if (!pid) return;
@@ -132,7 +137,7 @@ async function killGateTree(child: ChildProcess, rootExited: boolean): Promise<v
     }
     try { child.kill('SIGKILL'); } catch { /* already gone */ }
   }
-  // The root exited but a descendant still holds the output pipes: its process group (POSIX, detached).
+  // The root exited but a descendant still holds the output pipes: its process group (POSIX only, detached; Windows has no group to signal).
   if (process.platform !== 'win32') {
     try { process.kill(-pid, 'SIGKILL'); } catch { /* the group is gone */ }
   }
@@ -171,7 +176,7 @@ function runOwned(exe: string, args: string[], cwd: string, env: NodeJS.ProcessE
     child.on('exit', (code, signal) => {
       exitStatus = code ?? (signal ? 128 : 1);
       // The root's exit status is the verdict: a descendant still holding the pipes gets a short drain, then is
-      // killed best-effort (its process group on POSIX) and no longer delays the verdict or turns it into a timeout.
+      // killed best-effort (its process group, POSIX only; a Windows orphan survives) and no longer delays the verdict or turns it into a timeout.
       drain = setTimeout(() => {
         if (settled || timedOut) return;
         void killGateTree(child, true);
@@ -184,12 +189,14 @@ function runOwned(exe: string, args: string[], cwd: string, env: NodeJS.ProcessE
       finish({ status: timedOut ? 124 : (exitStatus ?? code ?? (signal ? 128 : 1)), stdout, stderr, timedOut });
     });
     const timer = setTimeout(() => {
-      timedOut = true;
-      void killGateTree(child, exitStatus !== null).finally(() => {
+      // Firing inside the post-exit drain: the root already exited, so its exit status stays the verdict.
+      const exited = exitStatus !== null;
+      if (!exited) timedOut = true;
+      void killGateTree(child, exited).finally(() => {
         // Whatever still holds the pipes (an orphan on Windows) no longer delays the verdict.
         child.stdout?.destroy();
         child.stderr?.destroy();
-        finish({ status: 124, stdout, stderr, timedOut: true });
+        finish(exited ? { status: exitStatus!, stdout, stderr, timedOut: false } : { status: 124, stdout, stderr, timedOut: true });
       });
     }, timeoutMs);
   });
