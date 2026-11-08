@@ -19,7 +19,7 @@ Setup writes `factory.forge.kind: "local"`, `factory.forge.local.backlogDir: ".c
 
 Then:
 
-1. Add the gate to the `factory.forge` section of `.copilot/omg.jsonc`, or to your user config:
+1. Add the gate to the `factory.forge` section of `.copilot/omg.jsonc`, or to your user config (there it is nested under `"factory": { "forge": { ... } }`):
 
    ```jsonc
    "local": { "backlogDir": ".copilot/backlog", "gate": ["npm", "test"] }
@@ -35,9 +35,9 @@ Then:
    git commit -m "factory: tickets for #2"
    ```
 
-   You can also write items by hand and skip enqueue. Commit them the same way.
+   You can also write items by hand and skip enqueue. Commit them the same way. Enqueue numbers each new file one past the highest existing id: with the sample as #1 and the spec as #2, the first ticket is #3, which the steps below use as the example id.
 4. `omg factory check` lists each ticket without an open dependency as `runnable` and prints `prepare checks: ...`. `omg factory board` shows the same items.
-5. `omg factory run 3` (or `omg factory run --next`) drives the ticket to `awaiting-human: merge` and prints the merge command, `git -C <root> merge --no-ff <sha>`.
+5. `omg factory run <id>` (here `omg factory run 3`, or `omg factory run --next`) drives the ticket to `awaiting-human: merge` and prints the merge command, `git -C <root> merge --no-ff <sha>`.
 6. Merge on the base branch. Add `--no-edit`, or `-m "<message>"`, to the printed command: without either, git opens an editor in an interactive shell and the default message is `Merge commit '<sha>'`.
 
    ```bash
@@ -148,7 +148,7 @@ After you merge an item's local PR, its backlog file still says `state: open`. T
 
   A base that is not a fast-forward of the mirror's base is a plain error, not exit 5.
 - **PRs.** A PR is the branch `factory/issue-<n>` pushed to the mirror plus an entry in a JSON store next to it (`<repo>-<hash>/prs.json`). Its draft and ready state are kept there.
-- **Prepare.** Before the gate, the engine runs ship's prepare in its checkout: it merges the base, then runs the checks. With `ship.prepare.checks` set, it runs those argv commands (`[]` runs none). Otherwise it runs only the built-in checks your base branch has: `tsc --noEmit` when the base has `tsconfig.json` and `node_modules` has the typescript package, eslint on changed `src` TypeScript when the base has an eslint config and `node_modules` has eslint, and vitest on the tests mapped from the diff when `node_modules` has vitest. A repository without them runs none. A check the base has whose file the PR deleted fails prepare instead of being skipped. Your test command belongs in `factory.forge.local.gate`, not here. `omg factory check` prints `prepare checks: ...` so you can see what will run. See `ship.prepare.checks` under [`omg ship`](REFERENCE.md#omg-ship).
+- **Prepare.** Before the gate, the engine runs ship's prepare in its checkout: it merges the base, then runs the checks. With `ship.prepare.checks` set, it runs those argv commands (`[]` runs none). Otherwise it runs only the built-in checks your base branch has: `tsc --noEmit` when the base has `tsconfig.json` and `node_modules` has the typescript package, eslint on changed `src` TypeScript when the base has an eslint config and `node_modules` has eslint, and vitest on the tests mapped from the diff when `node_modules` has vitest. A repository without them runs none. A check the base has whose file the PR deleted fails prepare instead of being skipped. Your test command belongs in `factory.forge.local.gate`, not here. `omg factory check` prints `prepare checks: ...` so you can see the base-level checks that will run (the generator `--verify` scripts depend on the diff and are not listed). See `ship.prepare.checks` under [`omg ship`](REFERENCE.md#omg-ship).
 - **The gate.** The engine runs `factory.forge.local.gate` once per pushed head, in its own prepare checkout, with a scrubbed environment and the timeout. The result is the check `local-gate` (`SUCCESS` or `FAILURE` with the last 8000 characters of output), recorded under `<repo>-<hash>/checks/<sha>.json`. A rerun removes the record and the gate runs again. `ship.requiredChecks` and `advisoryChecks` are ignored on the local forge: the gates wait for `local-gate` only, with a warning when you configured other required checks.
   - The gate runs the PR's own code. `["npm","test"]` runs the `package.json` script of the pushed head, so a lane that edits scripts or tests changes what the gate does.
   - The run records the gate argv it first ran (state `localGate`). If `factory.forge.local.gate` changes mid-run, the run parks at `awaiting-human: gates`. Restore the gate, or run `omg factory run cancel` and start a new run.
