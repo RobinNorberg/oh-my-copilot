@@ -59,17 +59,19 @@ export function resolveLocalGateArgv(argv, o) {
     const env = o.env ?? process.env;
     const execPath = o.execPath ?? process.execPath;
     const exists = o.exists ?? existsSync;
+    const what = o.subject ?? 'the local gate';
+    const key = o.configKey ?? 'factory.forge.local.gate';
     const P = platform === 'win32' ? win32 : posix;
     const [cmd, ...args] = argv;
     if (!cmd)
-        return { missing: 'the local gate argv is empty' };
+        return { missing: `${what} argv is empty` };
     const hasPath = /[\\/]/.test(cmd) || (platform === 'win32' && cmd.includes(':'));
     if (hasPath) {
         const at = P.isAbsolute(cmd) ? cmd : P.resolve(o.cwd, cmd);
-        return exists(at) ? { exe: cmd, args } : { missing: `the local gate executable ${cmd} does not exist (resolved in the prepare checkout to ${at})` };
+        return exists(at) ? { exe: cmd, args } : { missing: `${what} executable ${cmd} does not exist (resolved in the prepare checkout to ${at})` };
     }
     if (platform !== 'win32') {
-        return findOnPath(cmd, env, platform, exists) ? { exe: cmd, args } : { missing: `the local gate executable ${cmd} is not on PATH` };
+        return findOnPath(cmd, env, platform, exists) ? { exe: cmd, args } : { missing: `${what} executable ${cmd} is not on PATH` };
     }
     const name = cmd.toLowerCase().replace(/\.(cmd|bat)$/, '');
     const known = NODE_SCRIPTS[name];
@@ -81,13 +83,13 @@ export function resolveLocalGateArgv(argv, o) {
         const script = P.join(P.dirname(execPath), ...known.script);
         if (exists(script))
             return { exe: execPath, args: [script, ...args] };
-        return { missing: `the local gate executable ${cmd} cannot start: on Windows the gate runs without a shell, so ${name}.cmd is never run, and ${script} does not exist; set factory.forge.local.gate to run node directly, such as ${npmCliHint(P, execPath)}` };
+        return { missing: `${what} executable ${cmd} cannot start: on Windows ${what} runs without a shell, so ${name}.cmd is never run, and ${script} does not exist; set ${key} to run node directly, such as ${npmCliHint(P, execPath)}` };
     }
     if (/\.(cmd|bat)$/i.test(cmd)) {
-        return { missing: `the local gate executable ${cmd} is a cmd.exe script, which the gate never runs (no shell); set factory.forge.local.gate to run node or an .exe directly, such as ${npmCliHint(P, execPath)}` };
+        return { missing: `${what} executable ${cmd} is a cmd.exe script, which ${what} never runs (no shell); set ${key} to run node or an .exe directly, such as ${npmCliHint(P, execPath)}` };
     }
     const found = exe();
-    return found ? { exe: found, args } : { missing: `the local gate executable ${cmd} is not on PATH as an .exe or .com (on Windows the gate runs without a shell, so .cmd/.bat shims are skipped); set factory.forge.local.gate to run node directly, such as ${npmCliHint(P, execPath)}` };
+    return found ? { exe: found, args } : { missing: `${what} executable ${cmd} is not on PATH as an .exe or .com (on Windows ${what} runs without a shell, so .cmd/.bat shims are skipped); set ${key} to run node directly, such as ${npmCliHint(P, execPath)}` };
 }
 const keepTail = (text) => (text.length > STREAM_KEEP_CHARS ? text.slice(-STREAM_KEEP_CHARS) : text);
 /**

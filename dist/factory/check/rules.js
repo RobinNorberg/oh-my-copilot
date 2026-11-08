@@ -19,6 +19,7 @@
  * | into the base, no merged run state; score.ts isSatisfied)    |            |                            |
  * | the item depends on itself                                   | blocked    | blocked-by:self            |
  * | open children, ADO type Epic/Feature, or GitHub label epic   | blocked    | needs-split                |
+ * | children, all closed (the spec is done; a human closes it)   | blocked    | children-done              |
  * | no trusted omg-plan: line, no AC heading, empty ADO AC field | needs-plan | no-plan                    |
  * | omg-plan: path not repo-relative, or missing/empty on base   | needs-plan | plan-missing               |
  * | the AC section has no list or checkbox items                 | needs-plan | ac-not-testable            |
@@ -99,6 +100,9 @@ export function evaluateItem(item, kind, config, look) {
     const children = item.children.filter((c) => look.isOpen(c));
     if (children.length > 0)
         return hit('blocked', 'needs-split', `has open children ${ids(children)}`);
+    // F30: a split spec is never run itself; once every child is closed the human closes the spec.
+    if (item.children.length > 0)
+        return hit('blocked', 'children-done', `every child (${ids(item.children)}) is closed: close this spec item; the factory never runs a spec that was split`);
     if (kind === 'azure-devops' && item.type && SPLIT_TYPES.has(item.type.toLowerCase()))
         return hit('blocked', 'needs-split', `work item type ${item.type} needs splitting`);
     if (kind === 'github' && item.labels.some((l) => l.toLowerCase() === 'epic'))

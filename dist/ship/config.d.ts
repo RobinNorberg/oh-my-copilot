@@ -42,6 +42,13 @@ export interface ShipConfig {
      * prints the command instead (a lane can create a branch and target it).
      */
     trustedBases: string[];
+    /**
+     * `ship.prepare.checks`: argv commands prepare runs in the checkout instead
+     * of its built-in tsc / eslint / vitest / generator checks; [] = none.
+     * Unset = auto-detect the built-ins the repository has (prepare.ts). A
+     * command, so a safety key: user config or the trusted base only.
+     */
+    prepareChecks?: string[][];
 }
 export type ShipConfigInput = Partial<ShipConfig>;
 export declare const DEFAULT_SHIP_CONFIG: Readonly<ShipConfig>;
@@ -65,7 +72,7 @@ export interface KnownFlakyTest {
 /** Parse a known-flaky list (`{ "tests": [...] }`); malformed content throws. */
 export declare function parseKnownFlaky(content: string, file: string): KnownFlakyTest[];
 /** Ship keys a lane or PR could use to merge a red PR; never read from the working tree or the PR head. */
-export declare const SHIP_SAFETY_KEYS: readonly ["allowAdminMerge", "advisoryChecks", "requiredChecks", "knownFlakyFile"];
+export declare const SHIP_SAFETY_KEYS: readonly ["allowAdminMerge", "advisoryChecks", "requiredChecks", "knownFlakyFile", "prepare"];
 /** Keys only the user config (default location) sets: ignored in the base-branch and working-tree files. */
 export declare const SHIP_USER_ONLY_KEYS: readonly ["trustedBases"];
 /** Project config path inside the repo, read from the base branch for the safety keys. */
@@ -157,6 +164,12 @@ export interface LoadedShipConfig extends ShipConfig {
  * bases whose committed `.copilot/omg.jsonc` is read.
  */
 export declare function resolveTrustedBases(trustedUser: unknown): string[];
+/**
+ * ship.prepare.checks as loadTrustedShipConfig resolves it (a safety key):
+ * the user config at its default location, else the base's committed
+ * `.copilot/omg.jsonc`; undefined = prepare auto-detects. For `omg factory check`.
+ */
+export declare function trustedPrepareChecks(trustedUser: unknown, base: unknown): string[][] | undefined;
 /**
  * Resolve the ship config for a run. Precedence:
  * - safety keys (SHIP_SAFETY_KEYS): the user config at its default location,

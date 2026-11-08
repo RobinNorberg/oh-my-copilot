@@ -101,7 +101,7 @@ describe('omg factory check (GitHub through forge.tracker)', () => {
     const rec = recordingExec(scripted(root, ISSUES, { prs: { 3: 9 } }), {}, ['gh']);
     expect(await run(rec.exec, { source: 'label:factory', json: true })).toBe(0);
     const json = JSON.parse(out.join('\n')) as CheckJson;
-    expect(Object.keys(json)).toEqual(['schemaVersion', 'ok', 'forge', 'limitations', 'repo', 'source', 'counts', 'items', 'mark', 'warnings']);
+    expect(Object.keys(json)).toEqual(['schemaVersion', 'ok', 'forge', 'limitations', 'prepareChecks', 'repo', 'source', 'counts', 'items', 'mark', 'warnings']);
     // An additive key (empty off the local forge): schemaVersion 1 readers keep working.
     expect(json.limitations).toEqual([]);
     expect(json.schemaVersion).toBe(CHECK_JSON_SCHEMA_VERSION);
@@ -235,7 +235,7 @@ describe('omg factory check (GitHub through forge.tracker)', () => {
       const rec = recordingExec(scripted(root, SPEC), {}, ['gh']);
       expect(await run(rec.exec, { parent: '#10', json: true })).toBe(0);
       const json = JSON.parse(out.join('\n')) as CheckJson;
-      expect(Object.keys(json)).toEqual(['schemaVersion', 'ok', 'forge', 'limitations', 'repo', 'source', 'counts', 'items', 'mark', 'warnings']);
+      expect(Object.keys(json)).toEqual(['schemaVersion', 'ok', 'forge', 'limitations', 'prepareChecks', 'repo', 'source', 'counts', 'items', 'mark', 'warnings']);
       expect(json.schemaVersion).toBe(1);
       expect(json.source).toBeNull();
       expect(json.items.map((r) => [r.id, r.bucket, r.reasons])).toEqual([[11, 'runnable', []], [12, 'blocked', ['depends-on:#11']]]);

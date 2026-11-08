@@ -362,11 +362,11 @@ describe('omg factory on the local (offline) forge, end to end', () => {
       assertOffline(w);
     });
 
-    it('check no longer offers the merged item: it is blocked as a finished run', async () => {
+    it('check no longer offers the merged item: its merged local PR closes it', async () => {
       const code = await runFactoryCheck({ ids: [String(ITEM)], json: true }, checkDeps(w));
       const json = lastJson<CheckJson>(w);
       expect(code).toBe(0);
-      expect(json.items.map((i) => [i.id, i.bucket, i.reasons[0]])).toEqual([[ITEM, 'blocked', 'run-finished:merged']]);
+      expect(json.items.map((i) => [i.id, i.bucket, i.reasons[0]])).toEqual([[ITEM, 'blocked', 'closed']]);
       assertOffline(w);
     });
   });

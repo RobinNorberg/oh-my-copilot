@@ -507,7 +507,7 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
     // Azure DevOps: the az entry is resolved once; the guard and the adapter use the same one.
     const entry = ado ? (deps.resolveAz ?? defaultResolveAz)(root) : undefined;
     if (entry) adoGuard = adoGuardContext(config, entry);
-    const localOptions = local ? { local: { omgRoot: getOmcRoot(root), workingTree: true, baseSha: () => baseSha ?? undefined } } : {};
+    const localOptions = local ? { local: { omgRoot: getOmcRoot(root), workingTree: true, base, baseSha: () => baseSha ?? undefined } } : {};
     forgeOptions = { ...factoryForgeOptions(root), ...localOptions, ...(entry ? { entry } : {}) };
     forge = deps.createForge(exec, root, config, forgeOptions);
   } catch (error) {

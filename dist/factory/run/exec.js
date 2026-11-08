@@ -280,6 +280,10 @@ function factoryGit(a, protectedBranches, extraProtected = [], local) {
             return same(r, [FOR_EACH_REF_FORMAT]);
         case 'status':
             return same(r, ['--porcelain=v1', '-z', '--untracked-files=all']) ? true : null;
+        case 'log':
+            // The local forge: the last commit that changed one backlog file on the base (lastChangeArgs, F31 reopen).
+            return r.length === 6 && same(r.slice(0, 3), ['-1', '--no-show-signature', '--format=%H']) && /^[0-9a-f]{40}$/.test(r[3]) && r[4] === '--'
+                && REPO_PATH.test(r[5]) && !r[5].split('/').includes('..') ? true : null;
         case 'diff':
             return r.length === 3 && r[0] === '--no-ext-diff' && r[1] === '--no-textconv' && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[2]) ? true : null;
         case 'ls-tree':
