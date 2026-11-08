@@ -62,6 +62,11 @@ function originUrl(exec: Exec, root: string): string | null {
   return got.status === 0 && got.stdout.trim() ? got.stdout.trim() : null;
 }
 
+/** The F9/F10 text of "no usable forge" (exit 5 in run, check, board, poll and setup), with the offline hint. */
+export function unsupportedForge(why: string): string {
+  return `unsupported forge: ${why.replace(/^unsupported forge: /, '')}; for the offline (local) forge run \`omg factory setup --forge local\``;
+}
+
 /**
  * The forge config of a factory run: the user config at its default
  * location, `.copilot/omg.jsonc` committed on `origin/<base>` after a fetch
@@ -81,7 +86,8 @@ export function loadFactoryForgeConfig(exec: Exec, root: string, base: string, t
     try {
       return resolveForgeConfig(trustedUser, baseLayer, project, url, context);
     } catch (error) {
-      if (error instanceof ForgeConfigError && error.code !== 'invalid') throw new FactoryForgeUnavailableError(error.message);
+      // F28: no usable forge carries the same offline hint as check and board.
+      if (error instanceof ForgeConfigError && error.code !== 'invalid') throw new FactoryForgeUnavailableError(error.code === 'forge-unsupported' ? unsupportedForge(error.message) : error.message);
       throw error;
     }
   };

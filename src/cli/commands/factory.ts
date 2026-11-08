@@ -45,7 +45,7 @@ import { defaultExec, type Exec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { healCommand } from '../../factory/heal/cli.js';
 import { defaultFactoryCheckDeps, factoryCheckCommand, ttyConfirm } from './factory-check.js';
-import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_INCOMPATIBLE, EXIT_CHECK_USAGE, type FactoryCheckDeps } from '../../factory/check/cli.js';
+import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_INCOMPATIBLE, EXIT_CHECK_USAGE, factoryErrorLine, type FactoryCheckDeps } from '../../factory/check/cli.js';
 import { runFactoryEnqueue } from '../../factory/enqueue.js';
 import { resolveHealConfig } from '../../factory/heal/config.js';
 import { defaultLedgerDir, emptyHooksDir } from '../../factory/run/ledger.js';
@@ -370,7 +370,7 @@ export function factoryEnqueueCommand(deps: FactoryCheckDeps): Command {
       } catch (error) {
         const message = plainText(error instanceof Error ? error.message : String(error));
         if (o.json) deps.out(JSON.stringify({ ok: false, error: message }, null, 2));
-        else deps.err(chalk.red(`Error: ${message}`));
+        else deps.err(chalk.red(factoryErrorLine(message)));
         process.exitCode = error instanceof CheckUsageError ? EXIT_CHECK_USAGE : error instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
       }
     });

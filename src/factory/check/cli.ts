@@ -28,7 +28,7 @@ import { getOmcRoot } from '../../lib/worktree-paths.js';
 import type { Forge, ForgeFactory, ResolvedForgeConfig } from '../../forge/types.js';
 import { resolveAzEntry, type AzEntry } from '../../forge/ado/az-binary.js';
 import { adoGuardContext, defaultAzBinaryDeps, type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
-import { factoryForgeOptions } from '../run/forge-roots.js';
+import { factoryForgeOptions, unsupportedForge } from '../run/forge-roots.js';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { BASE_CONFIG_PATH, isPlainBranchName, readBaseFile, resolveShipConfig, trustedPrepareChecks } from '../../ship/config.js';
@@ -404,10 +404,15 @@ export function missingLocalBase(base: string): string {
   return `the base branch ${base} does not exist in this repository, so no committed backlog item or config can be read; set ship.base in .copilot/omg.jsonc to the branch you merge into (omg factory setup --forge local writes it)`;
 }
 
-/** The F9/F10 text of "no usable forge" (exit 5 in check, board, poll and setup), with the offline hint. */
-export function unsupportedForge(why: string): string {
-  return `unsupported forge: ${why.replace(/^unsupported forge: /, '')}; for the offline (local) forge run \`omg factory setup --forge local\``;
+/**
+ * The stderr line of a factory command's error: `Error: <message>`, except that "no usable forge" starts with
+ * `unsupported forge:` in every command, as `omg factory run` prints it (F28).
+ */
+export function factoryErrorLine(message: string): string {
+  return message.startsWith('unsupported forge:') ? message : `Error: ${message}`;
 }
+
+export { unsupportedForge };
 
 /** The local branch `<base>` (the local forge's base; no fetch); null with a warning when it does not exist. */
 export function localBase(exec: Exec, root: string, base: string, warnings: string[]): string | null {

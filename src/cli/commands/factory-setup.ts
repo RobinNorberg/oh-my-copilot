@@ -30,7 +30,7 @@ import { localForgeLimitations } from '../../forge/local/index.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { adoGuardContext, defaultAzBinaryDeps, type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
 import type { ForgeFactory, ForgeProgressConfig, IntakeSource, ResolvedForgeConfig } from '../../forge/types.js';
-import { checkEnvFor, checkGuardExec } from '../../factory/check/cli.js';
+import { checkEnvFor, checkGuardExec, factoryErrorLine } from '../../factory/check/cli.js';
 import { factoryCheckPreview, type CheckEnv } from '../../factory/check/score.js';
 import { factoryForgeOptions } from '../../factory/run/forge-roots.js';
 import { checkAdoAuth, checkGitHubAuth, type AuthReport } from '../../factory/setup/auth.js';
@@ -395,7 +395,7 @@ function printOutcome(o: FactorySetupOptions, r: FactorySetupOutcome): void {
     return;
   }
   if (r.error) {
-    console.error(chalk.red(`Error: ${r.error}`));
+    console.error(chalk.red(factoryErrorLine(r.error)));
     return;
   }
   for (const c of r.auth?.checks ?? []) console.log(`${c.ok ? chalk.green('ok') : chalk.red('fail')} ${c.name}: ${c.detail}`);
