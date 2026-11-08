@@ -2,7 +2,7 @@
 
 Complete reference for oh-my-copilot. For quick start, see the main [README.md](../README.md).
 
-For v5.12.1, the plugin ships 20 agents, 96 skills, 21 command files, and one configured MCP server exposing exactly 56 tools.
+For v5.12.1, the plugin ships 20 agents, 98 skills, 21 command files, and one configured MCP server exposing exactly 56 tools.
 
 ---
 
@@ -16,7 +16,7 @@ For v5.12.1, the plugin ships 20 agents, 96 skills, 21 command files, and one co
 - [Legacy MCP Team Runtime Tools (Deprecated)](#legacy-mcp-team-runtime-tools-deprecated-opt-in-only)
 - [Agents (20 Total)](#agents-20-total)
 - [Goal Workflow UX: `/goal`, Ralph, Team, Ultragoal](#goal-workflow-ux-goal-ralph-team-ultragoal)
-- [Skills (96 Total)](#skills-96-total)
+- [Skills (98 Total)](#skills-98-total)
 - [Slash Commands](#slash-commands)
 - [Shipyard Methodology](./shipyard.md) — governed delivery & shared harness map
 - [Claude Code `/goal` Adapter Design](#claude-code-goal-adapter-design)
@@ -1971,7 +1971,7 @@ Autopilot continues to own cancel, resume, cleanup, state inspection, HUD, and S
 
 V1 deliberately defers `stageModels` and all model/provider/role routing, inline/no-spawn execution, dynamic commands/modes/state files, arbitrary stages/prompts/plugins and control-flow extensions, and the separate custom-skill inline-array frontmatter parser mismatch. See [ADR 03487](./adr/03487-named-autopilot-stage-profiles.md) for the decision record.
 
-## Skills (96 Total)
+## Skills (98 Total)
 
 Includes bundled workflow, utility, domain, and compatibility skills. Runtime truth comes from the builtin skill loader scanning `skills/*/SKILL.md` and expanding aliases declared in frontmatter.
 
@@ -2021,8 +2021,9 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | `hud`                     | Configure HUD/statusline                                                        | `/hud`                     |
 | `in-your-own-words`       | Play back the goal, problem, and success check before work starts              | `/in-your-own-words`       |
 | `intent`                  | Internal requirements intake for non-engineer contributors                      | `/intent`                  |
-| `interrogate`             | Adversarial three-reviewer panel over a diff or design; severity-merged verdict | `/interrogate`             |
+| `interrogate`             | Adversarial three-reviewer panel over a diff or design; run-proven findings, severity-merged verdict | `/interrogate`             |
 | `ketchup`                 | Catch up on everything since your last message, with status lines              | `/ketchup`                 |
+| `ketchup-video`           | Catch up like `ketchup`, as a short subtitled video of slides                  | `/ketchup-video`           |
 | `launch`                  | Shipyard governed delivery pipeline: spec, tickets, frontier execution          | `/launch`                  |
 | `loft`                    | Shipyard shape-before-steel discipline: throwaway artifacts answer design questions | `/loft`              |
 | `maintain-formal-verification-skill` | Re-sync an existing formal verification skill after the covered code changed | `/maintain-formal-verification-skill` |
@@ -2060,12 +2061,13 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | `remember`                | Save and retrieve durable session memory                                        | `/remember`                |
 | `research`                | Investigate an open question and return grounded findings                       | `/research`               |
 | `self-improve`            | Autonomous evolutionary code improvement engine                                | `/self-improve`           |
-| `sharpen`                 | Aim a task at its real objective: consumer, done-check, non-goals              | `/sharpen`                 |
+| `sharpen`                 | Aim a task at its real objective: consumer, expert lens, done-check, non-goals | `/sharpen`                 |
 | `ship`                    | Task or PR to merge-ready: executor lane, independent verifier lane, bounded fix rounds, `omg ship` gates | `/ship` |
 | `session-flow`            | Reorient in the current session with an evidence-backed map of its flow        | `/session-flow`           |
 | `show-me-your-work`       | Append-only TSV decision trail for auditable autonomous work                   | `/show-me-your-work`       |
 | `skill`                   | Manage local skills (list/add/remove/search/edit)                              | `/skill`                   |
 | `skillify`                | Extract a reusable skill from the current session                              | `/skillify`                |
+| `statechart`              | Check a TLA+ model as a Mermaid statechart; shortest path to each broken rule  | `/statechart`              |
 | `stacked-delivery`         | Deliver a queue as one linear stacked PR chain, bottom-up landing              | `/stacked-delivery`        |
 | `teach`                   | Explain a subsystem by composing how and why, with a landing check             | `/teach`                   |
 | `team`                    | Coordinated multi-agent workflow                                               | `/team`                    |
@@ -2127,6 +2129,8 @@ Most installed skills are exposed as `/<registered-name>` (on Claude Code: `/oh-
 | `/in-your-own-words`                     | Play back the goal, problem, and success check before starting                                |
 | `/interrogate [path]`                   | Adversarial three-reviewer panel over a diff or design                                        |
 | `/ketchup`                               | Catch up on everything since your last message                                                |
+| `/ketchup-video`                         | Catch up as a short subtitled video of slides                                                 |
+| `/statechart <spec.tla>`                 | Check a TLA+ model and draw the statechart with bug paths                                     |
 | `/launch <brief\|spec-path> [--serial]` | Run the shipyard governed delivery pipeline (spec -> tickets -> frontier)                      |
 | `/loft <design-question>`               | Loft the shape before cutting steel: a throwaway artifact answers a design question prose cannot settle |
 | `/maintain-formal-verification-skill`   | Re-sync a formal verification skill after the covered code changed                            |
@@ -2152,7 +2156,7 @@ Most installed skills are exposed as `/<registered-name>` (on Claude Code: `/oh-
 | `/remember <note>`                      | Save durable session memory                                                                   |
 | `/research <question>`                  | Investigate an open question and return grounded findings                                      |
 | `/self-improve <topic>`                 | Run the autonomous code-improvement workflow                                                   |
-| `/sharpen <brief>`                      | Aim a task at its real objective: consumer, done-check, non-goals                             |
+| `/sharpen <brief>`                      | Aim a task at its real objective: consumer, expert lens, done-check, non-goals                |
 | `/ship <task> \| --pr <n>`              | Take a task or PR to merge-ready through independent review and the `omg ship` gate engine     |
 | `/show-me-your-work`                    | Start (or read) the append-only decision trail                                                |
 | `/skill <action>`                       | Manage local skills                                                                           |

@@ -69,13 +69,13 @@ describe('Builtin Skills', () => {
   });
 
   describe('createBuiltinSkills()', () => {
-    it('should return correct number of skills (96 canonical + 2 aliases)', () => {
+    it('should return correct number of skills (98 canonical + 2 aliases)', () => {
       const skills = createBuiltinSkills();
-      // 98 entries: 96 canonical skills (upstream's 81, incl. the pstack-derived
-      // series through 4d5d22187, plus the fork's 15 exclusive skills: critique,
+      // 100 entries: 98 canonical skills (upstream's 83, incl. the pstack-derived
+      // series through c5b71636e, plus the fork's 15 exclusive skills: critique,
       // deep-review, discover, ralph-experiment, ship, omc-ado-*, omc-gh-*)
       // + 2 aliases (cancel-ralph, psm)
-      expect(skills).toHaveLength(98);
+      expect(skills).toHaveLength(100);
     });
 
     it('should return an array of BuiltinSkill objects', () => {
@@ -169,6 +169,7 @@ describe('Builtin Skills', () => {
         'intent',
         'interrogate',
         'ketchup',
+        'ketchup-video',
         'launch',
         'loft',
         'maintain-formal-verification-skill',
@@ -209,6 +210,7 @@ describe('Builtin Skills', () => {
         'session-flow',
         'sharpen',
         'ship',
+        'statechart',
         'show-me-your-work',
         'stacked-delivery',
         'skill',
@@ -905,10 +907,10 @@ describe('Builtin Skills', () => {
     it('should return canonical skill names by default', () => {
       const names = listBuiltinSkillNames();
 
-      // 96 canonical skills: upstream's 81 (incl. the pstack-derived series
-      // through 4d5d22187) plus the fork's 15 exclusive skills (critique,
+      // 98 canonical skills: upstream's 83 (incl. the pstack-derived series
+      // through c5b71636e) plus the fork's 15 exclusive skills (critique,
       // deep-review, discover, ralph-experiment, ship, omc-ado-*, omc-gh-*)
-      expect(names).toHaveLength(96);
+      expect(names).toHaveLength(98);
       expect(names).toContain('ship');
       expect(names).toContain('ai-slop-cleaner');
       expect(names).toContain('minimal-code-discipline');
@@ -951,7 +953,7 @@ describe('Builtin Skills', () => {
       const names = listBuiltinSkillNames({ includeAliases: true });
 
       // swarm alias removed in #1131; learner retired in 5.0.0; cancel-ralph and psm remain
-      expect(names).toHaveLength(98);
+      expect(names).toHaveLength(100);
       expect(names).toContain('ai-slop-cleaner');
       expect(names).toContain('autoresearch');
       expect(names).toContain('self-improve');
