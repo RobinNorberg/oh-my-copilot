@@ -58,7 +58,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, readBaseFile, remoteRepoMismatch, userConfigLayers } from '../../ship/config.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
-import { runPrepare } from '../../ship/prepare.js';
+import { PREPARE_CONFIG_STEP, runPrepare } from '../../ship/prepare.js';
 import { removeWorkerWorktree } from '../../team/git-worktree.js';
 import { driveGates, MAX_FAILING_TITLES } from './gates-driver.js';
 import { mergeComment, mergeDecision, type MergeView } from './merge-policy.js';
@@ -92,7 +92,7 @@ import { checkDiagnosis } from '../heal/diagnosis-output.js';
 import { assertLaneCreditCap, nextLaneCap, runCredits, runCreditsExceeded, type FactoryRunLimits } from './budget.js';
 import { FactorySafetyError, factoryGuardExec, hardenedGitExec } from './exec.js';
 import { assertFactoryForgeOptions, EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, localRemoteMismatch, syncLocalMirror } from './forge-roots.js';
-import { assertLocalGateCommand, localGateDue, runLocalGate, type LocalGateRunner } from './local-gate.js';
+import { assertLocalGateCommand, localGateDue, resolveLocalGateArgv, runLocalGate, type LocalGateRunner } from './local-gate.js';
 import { LOCAL_GATE_CHECK, LOCAL_REMOTE } from '../../forge/local/index.js';
 import { getGlobalOmcStatePath } from '../../utils/paths.js';
 import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
@@ -145,7 +145,7 @@ import {
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export const EXIT_AWAITING_HUMAN = 4;
 /** The prepare steps that are checks (a failure there starts a ci-fix lane); the rest are engine steps. */
-const PREPARE_ENGINE_STEPS = new Set(['preflight', 'remote', 'fetch', 'merge-base', 'push']);
+const PREPARE_ENGINE_STEPS = new Set(['preflight', 'remote', 'fetch', 'merge-base', 'push', PREPARE_CONFIG_STEP]);
 /** A failed prepare step's output in the ci-fix prompt is cut at this many characters. */
 const MAX_CI_DETAIL_CHARS = 8_000;
 /** Conflict-fix lanes (distinct start heads) before base conflicts park at awaiting-human: merge-conflicts. */
@@ -1820,6 +1820,8 @@ class FactoryEngine {
 
     // A restarted prepare no longer owns a recorded push: the recheck stops tolerating its tracking-ref move.
     if (s.prepared) this.save((x) => { const { prepared: _p, ...rest } = x; return rest; });
+    // ship.prepare.checks is a safety key (user config or the base at GitHub's base sha): the PR never picks what prepare runs.
+    const configured = this.gateConfig(view).config.prepareChecks;
     if (this.recheckFailed('before prepare')) return;
     this.discardCheckout();
     const path = checkoutPath(this.o.root, this.key);
@@ -1842,7 +1844,9 @@ class FactoryEngine {
     this.run(['worktree', 'add', '-B', branch, path, head]);
     this.save((x) => ({ ...x, checkoutHead: head }));
     linkNodeModules(this.o.root, path);
-    const result = runPrepare({ exec: this.exec, cwd: path, base: s.base, branch, reviewedSha: head, baseSha: view.baseRefOid, repoUrl: s.repoUrl, remote: runRemote(s), push: false });
+    // Configured checks run through the raw exec (the factory guard allows only the built-in shapes), without a shell.
+    const commands = configured?.map((argv) => ({ argv, ...resolveLocalGateArgv(argv, { cwd: path, subject: 'the prepare check', configKey: 'ship.prepare.checks' }) }));
+    const result = runPrepare({ exec: this.exec, cwd: path, base: s.base, branch, reviewedSha: head, baseSha: view.baseRefOid, repoUrl: s.repoUrl, remote: runRemote(s), push: false, commands, commandExec: this.o.exec });
     if (this.prepareTampered(before, path, branch, view.baseRefOid)) return;
     const checkoutHead = this.run(['rev-parse', 'HEAD'], 'git', undefined, path).trim();
     const fetched = result.steps.some((st) => st.name === 'fetch' && st.status === 'ok');
