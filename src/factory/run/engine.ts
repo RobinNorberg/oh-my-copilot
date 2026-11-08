@@ -969,7 +969,7 @@ class FactoryEngine {
         this.postOutcome(final.phase as OutcomeEvent);
         final = this.state;
       }
-      return { exitCode: final.phase === 'failed' ? 1 : 0, phase: final.phase, state: final, message: `the factory run for ${this.what} is ${final.phase}` };
+      return { exitCode: final.phase === 'failed' ? 1 : 0, phase: final.phase, state: final, message: `the factory run for ${this.what} is ${final.phase}${this.localMergedNote(final)}` };
     }
     // A config change cannot swap adapters mid-run (critic amendments §A.9).
     const swapped = existing ? forgeResumeProblem(existing, this.o.forge?.config.kind ?? 'github', this.o.forge?.config.repo.url) : null;
@@ -1100,7 +1100,7 @@ class FactoryEngine {
         phase = s.phase;
         if (TERMINAL_FACTORY_PHASES.includes(s.phase)) {
           this.postOutcome(s.phase as OutcomeEvent);
-          return { exitCode: s.phase === 'failed' ? 1 : 0, phase: s.phase, state: s, message: `factory run for ${this.what} is ${s.phase}` };
+          return { exitCode: s.phase === 'failed' ? 1 : 0, phase: s.phase, state: s, message: `factory run for ${this.what} is ${s.phase}${this.localMergedNote(s)}` };
         }
         if (this.cancelWanted(s)) {
           await this.cancel();
@@ -1192,6 +1192,21 @@ class FactoryEngine {
    * read for its parent and comments; any failure is a warning and never
    * blocks or changes a transition.
    */
+  /**
+   * F31: a merged local-forge run whose backlog file still says `state: open`
+   * (the tracker reads it as closed from the PR store): the file change the
+   * human commits. Empty otherwise, or when the item cannot be read.
+   */
+  private localMergedNote(s: FactoryRunState): string {
+    if (s.phase !== 'merged' || s.kind === 'ci-heal' || this.forge?.kind !== 'local' || !this.o.issue) return '';
+    try {
+      const item = this.forge.tracker.viewItem(this.o.issue);
+      return item.rawState.startsWith('merged') ? `; set state: closed in ${item.url} and commit it on ${s.base} (omg factory check already counts #${item.id} as closed)` : '';
+    } catch {
+      return '';
+    }
+  }
+
   private postOutcome(event: OutcomeEvent): void {
     const s = this.state;
     if (s.kind === 'ci-heal' || !this.o.issue || !s.repoUrl) return;
