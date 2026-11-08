@@ -52,6 +52,12 @@ are summarized once per upstream source here rather than file-by-file.
 | `fix-ci` skill | idea | pstack fix-ci | real/flaky/environmental CI failure classification |
 | `fix-merge-conflicts` skill | idea | pstack fix-merge-conflicts | both-intent-preserving non-interactive resolution |
 | `get-pr-comments` skill | idea | pstack get-pr-comments | review-thread dedupe and fix/dismiss/ask triage |
+| `principles` skill | idea | pstack principles | grouped engineering principles and carrying lanes |
+| `benchmark-checklist` skill | idea | pstack benchmark-checklist | benchmark acceptance checklist |
 | `src/features/watch-pr/policy.ts` | mechanism | pstack watch-pr | gate ordering, mergeability-unknown wait, no-checks confirmation window; pure reimplementation |
 | `src/features/verification-ledger/ledger.ts` | mechanism | pstack orch ledger | verdict vocabulary, append-only TSV shape, formula-cell guard |
 | `scripts/check-omc-playbooks.mjs` | mechanism | pstack check-playbooks | extends/anchor validation for project playbook extensions |
+| `hillclimb` skill | idea | pstack hillclimb | single-metric climbing loop with fixed baseline and decision trail |
+| `reflect` skill | idea | pstack reflect | three-reviewer transcript audit feeding skill edits |
+| `personal-mode` skill | idea | pstack automate-me | cross-project user behavior profile drafted from transcript evidence |
+| `stacked-delivery` skill | idea | pstack autopilot-stack | linear stacked-PR delivery with patch-id verdicts and bottom-up landing |
