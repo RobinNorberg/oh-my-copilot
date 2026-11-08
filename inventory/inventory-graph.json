@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "5dc78b44e945702030aa8522faaf32870fdb056d",
-    "sourceSha256": "d55660093d51590d0d9352689492dad46fdf73303c85c57840f830bbe9ab5807",
+    "head": "aeda0a61f90b849b2368e201095ccfc71df6ec73",
+    "sourceSha256": "686707771d8489c1c5e24e12ff2ef59b179fd25c2c40da7fa668f5d5ca2f41b6",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "5dc78b44e945702030aa8522faaf32870fdb056d",
-  "sourceSha256": "d55660093d51590d0d9352689492dad46fdf73303c85c57840f830bbe9ab5807",
+  "head": "aeda0a61f90b849b2368e201095ccfc71df6ec73",
+  "sourceSha256": "686707771d8489c1c5e24e12ff2ef59b179fd25c2c40da7fa668f5d5ca2f41b6",
   "counts": {
     "public": {
       "skills": 96,
@@ -46258,6 +46258,11 @@
         "id": "docs/DEVELOPERS.md",
         "kind": "other",
         "path": "docs/DEVELOPERS.md"
+      },
+      {
+        "id": "docs/FACTORY-OFFLINE.md",
+        "kind": "other",
+        "path": "docs/FACTORY-OFFLINE.md"
       },
       {
         "id": "docs/FEATURES.md",
@@ -120448,12 +120453,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10047,
+      "nodeCount": 10048,
       "edgeCount": 12263,
       "importEdgeCount": 10094,
       "registerEdgeCount": 117
     }
   },
-  "inventorySha256": "daea3501b9c33692e9b6adf0605dc0088a03b6d96746d63cdb90b4323ccd2fa9",
-  "manifestSha256": "d164f684f7de7b12c98e68fa6c362c43f932e8fcd0bcf80c88b8109c7b9c0ce9"
+  "inventorySha256": "2c9864ea5551e92f6baff3751e59188838ccbe874ee73052bbb1d40c9d2d9f89",
+  "manifestSha256": "03885f0ab8759ffcf115ce1d82b884ab2721b9df6b69b1acd6410ca41c039642"
 }
