@@ -115,25 +115,38 @@ export function localTracker(ctx) {
         }
         return out;
     };
-    const toForgeItem = (e, all) => ({
-        id: e.item.id,
-        url: e.item.path,
-        title: e.item.title,
-        body: e.item.body,
-        ...(e.item.acceptance ? { acceptance: e.item.acceptance } : {}),
-        open: e.item.state === 'open',
-        rawState: e.item.state,
-        authorTrusted: e.trusted,
-        comments: [],
-        labels: e.item.labels,
-        ...(e.item.priority === undefined ? {} : { priority: e.item.priority }),
-        ...(e.item.size === undefined ? {} : { size: e.item.size }),
-        dependsOn: e.item.dependsOn,
-        children: [...all.values()].filter((c) => c.item.parent === e.item.id).map((c) => c.item.id).sort((a, b) => a - b),
-        ...(e.item.parent === undefined ? {} : { parent: e.item.parent }),
-        repoUrl: ctx.repoUrl,
-        ...(e.uncommitted ? { uncommitted: true } : {}),
-    });
+    /** The merged local PR of an item whose file still says open (F31), with a warning naming the file to change. */
+    const mergedOpen = (item) => {
+        if (item.state !== 'open')
+            return undefined;
+        const pr = ctx.mergedPr?.(item.id);
+        const warning = pr === undefined ? undefined : `local backlog: #${item.id} is merged (local PR #${pr}) but ${item.path} still says state: open; set state: closed there and commit it on the base branch`;
+        if (warning !== undefined && !warnings.includes(warning))
+            warnings.push(warning);
+        return pr;
+    };
+    const toForgeItem = (e, all) => {
+        const merged = mergedOpen(e.item);
+        return {
+            id: e.item.id,
+            url: e.item.path,
+            title: e.item.title,
+            body: e.item.body,
+            ...(e.item.acceptance ? { acceptance: e.item.acceptance } : {}),
+            open: e.item.state === 'open' && merged === undefined,
+            rawState: merged === undefined ? e.item.state : `merged (local PR #${merged})`,
+            authorTrusted: e.trusted,
+            comments: [],
+            labels: e.item.labels,
+            ...(e.item.priority === undefined ? {} : { priority: e.item.priority }),
+            ...(e.item.size === undefined ? {} : { size: e.item.size }),
+            dependsOn: e.item.dependsOn,
+            children: [...all.values()].filter((c) => c.item.parent === e.item.id).map((c) => c.item.id).sort((a, b) => a - b),
+            ...(e.item.parent === undefined ? {} : { parent: e.item.parent }),
+            repoUrl: ctx.repoUrl,
+            ...(e.uncommitted ? { uncommitted: true } : {}),
+        };
+    };
     const view = (id) => {
         const all = entries();
         const e = all.get(id);
@@ -169,7 +182,7 @@ export function localTracker(ctx) {
                 throw new Error(`the local forge reads intake source local-backlog, not ${source.type}`);
             const want = source.label?.toLowerCase();
             return [...entries().values()]
-                .filter((e) => e.item.state === 'open' && (want === undefined || e.item.labels.some((l) => l.toLowerCase() === want)))
+                .filter((e) => e.item.state === 'open' && (want === undefined || e.item.labels.some((l) => l.toLowerCase() === want)) && mergedOpen(e.item) === undefined)
                 .map((e) => e.item.id)
                 .sort((a, b) => a - b)
                 .slice(0, Math.max(0, limit));

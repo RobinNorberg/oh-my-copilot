@@ -121884,25 +121884,35 @@ function localTracker(ctx) {
     }
     return out;
   };
-  const toForgeItem = (e, all) => ({
-    id: e.item.id,
-    url: e.item.path,
-    title: e.item.title,
-    body: e.item.body,
-    ...e.item.acceptance ? { acceptance: e.item.acceptance } : {},
-    open: e.item.state === "open",
-    rawState: e.item.state,
-    authorTrusted: e.trusted,
-    comments: [],
-    labels: e.item.labels,
-    ...e.item.priority === void 0 ? {} : { priority: e.item.priority },
-    ...e.item.size === void 0 ? {} : { size: e.item.size },
-    dependsOn: e.item.dependsOn,
-    children: [...all.values()].filter((c) => c.item.parent === e.item.id).map((c) => c.item.id).sort((a, b) => a - b),
-    ...e.item.parent === void 0 ? {} : { parent: e.item.parent },
-    repoUrl: ctx.repoUrl,
-    ...e.uncommitted ? { uncommitted: true } : {}
-  });
+  const mergedOpen = (item) => {
+    if (item.state !== "open") return void 0;
+    const pr = ctx.mergedPr?.(item.id);
+    const warning = pr === void 0 ? void 0 : `local backlog: #${item.id} is merged (local PR #${pr}) but ${item.path} still says state: open; set state: closed there and commit it on the base branch`;
+    if (warning !== void 0 && !warnings.includes(warning)) warnings.push(warning);
+    return pr;
+  };
+  const toForgeItem = (e, all) => {
+    const merged = mergedOpen(e.item);
+    return {
+      id: e.item.id,
+      url: e.item.path,
+      title: e.item.title,
+      body: e.item.body,
+      ...e.item.acceptance ? { acceptance: e.item.acceptance } : {},
+      open: e.item.state === "open" && merged === void 0,
+      rawState: merged === void 0 ? e.item.state : `merged (local PR #${merged})`,
+      authorTrusted: e.trusted,
+      comments: [],
+      labels: e.item.labels,
+      ...e.item.priority === void 0 ? {} : { priority: e.item.priority },
+      ...e.item.size === void 0 ? {} : { size: e.item.size },
+      dependsOn: e.item.dependsOn,
+      children: [...all.values()].filter((c) => c.item.parent === e.item.id).map((c) => c.item.id).sort((a, b) => a - b),
+      ...e.item.parent === void 0 ? {} : { parent: e.item.parent },
+      repoUrl: ctx.repoUrl,
+      ...e.uncommitted ? { uncommitted: true } : {}
+    };
+  };
   const view = (id) => {
     const all = entries();
     const e = all.get(id);
@@ -121933,7 +121943,7 @@ ${acceptance.map((a) => `- [ ] ${a}`).join("\n")}
     queryItems(source, limit) {
       if (source.type !== "local-backlog") throw new Error(`the local forge reads intake source local-backlog, not ${source.type}`);
       const want = source.label?.toLowerCase();
-      return [...entries().values()].filter((e) => e.item.state === "open" && (want === void 0 || e.item.labels.some((l) => l.toLowerCase() === want))).map((e) => e.item.id).sort((a, b) => a - b).slice(0, Math.max(0, limit));
+      return [...entries().values()].filter((e) => e.item.state === "open" && (want === void 0 || e.item.labels.some((l) => l.toLowerCase() === want)) && mergedOpen(e.item) === void 0).map((e) => e.item.id).sort((a, b) => a - b).slice(0, Math.max(0, limit));
     },
     comment(id, bodyFile) {
       try {
@@ -122054,6 +122064,15 @@ var init_local = __esm({
       const omgRoot = options.local?.omgRoot;
       if (!omgRoot) throw new Error("local forge: options.local.omgRoot is required (getOmcRoot(root))");
       const humanDir = (0, import_path177.join)(omgRoot, "factory", "local");
+      const storePath = (0, import_path177.join)(storeDir, "prs.json");
+      const reviews = localReviews({ exec: exec3, root: cwd2, mirror, storePath, humanDir });
+      const mergedPr = (id) => {
+        for (const p of readPrStore(storePath).prs.filter((x) => x.itemId === id)) {
+          const merged = reviews.findMergedPrForBranch(p.head, p.base);
+          if (merged !== void 0) return merged;
+        }
+        return void 0;
+      };
       return {
         kind: "local",
         provider: "unknown",
@@ -122065,9 +122084,10 @@ var init_local = __esm({
           repoUrl: config2.repo.url,
           humanDir,
           options: options.local ?? {},
-          ...options.trackerBodyDir === void 0 ? {} : { trackerBodyDir: options.trackerBodyDir }
+          ...options.trackerBodyDir === void 0 ? {} : { trackerBodyDir: options.trackerBodyDir },
+          mergedPr
         }),
-        reviews: localReviews({ exec: exec3, root: cwd2, mirror, storePath: (0, import_path177.join)(storeDir, "prs.json"), humanDir }),
+        reviews,
         checks: localChecks((0, import_path177.join)(storeDir, "checks"), recordFor),
         merge: localMerge(cwd2),
         capabilities: { heal: false, projectsV2: false, boardColumns: false, webhookIntake: false },
@@ -122547,13 +122567,15 @@ function localRemoteMismatch(exec3, root2, mirror) {
   const got = exec3("git", ["remote", "get-url", LOCAL_REMOTE], { cwd: root2, env: TRUSTED_READ_ENV });
   if (got.status !== 0) return `git remote get-url ${LOCAL_REMOTE} failed: ${got.stderr.trim().split("\n")[0]}`;
   const url = got.stdout.trim();
-  if (!url || !same8(url)) return `remote ${LOCAL_REMOTE} points at ${url}, not the mirror ${mirror}`;
+  const urlNote = same8(url) ? "" : !url || url === LOCAL_REMOTE ? "; the remote has no url" : `; its url ${url} is not the mirror either`;
   const push = exec3("git", ["remote", "get-url", "--push", "--all", LOCAL_REMOTE], { cwd: root2, env: TRUSTED_READ_ENV });
   if (push.status !== 0) return `git remote get-url --push --all ${LOCAL_REMOTE} failed: ${push.stderr.trim().split("\n")[0]}`;
   const pushUrls = push.stdout.split(/\r?\n/).map((u) => u.trim()).filter(Boolean);
+  const planted = pushUrls.find((u) => !same8(u) && u !== url);
+  if (planted) return `remote ${LOCAL_REMOTE} pushes to ${planted} (a remote.${LOCAL_REMOTE}.pushurl or pushInsteadOf), not the mirror ${mirror}${urlNote}`;
+  if (!same8(url)) return `remote ${LOCAL_REMOTE} points at ${url || "(no url)"}, not the mirror ${mirror}`;
   if (pushUrls.length === 0) return `git remote get-url --push --all ${LOCAL_REMOTE} printed no push URL`;
-  const foreign = pushUrls.find((u) => !same8(u));
-  return foreign ? `remote ${LOCAL_REMOTE} pushes to ${foreign}, not the mirror ${mirror}` : null;
+  return null;
 }
 function localRemoteRefusedConfig(exec3, root2, mirror) {
   const read = (args, parse13) => {
@@ -122582,7 +122604,7 @@ function syncLocalMirror(exec3, root2, mirror, base, onBase) {
   const current = git7(mirrorRemoteGetUrlArgs(), TRUSTED_READ_ENV);
   if (current.status !== 0) must(mirrorRemoteAddArgs(mirror), "local forge remote");
   const mismatch2 = localRemoteMismatch(exec3, root2, mirror);
-  if (mismatch2) throw new FactoryForgeUnavailableError(`refusing to sync the local forge mirror: ${mismatch2}; point the ${LOCAL_REMOTE} remote at ${mirror} (git remote set-url ${LOCAL_REMOTE} ${mirror}) and remove any pushurl`);
+  if (mismatch2) throw new FactoryForgeUnavailableError(`refusing to sync the local forge mirror: ${mismatch2}; point the ${LOCAL_REMOTE} remote at ${mirror} (git remote set-url ${LOCAL_REMOTE} ${mirror}) and remove any pushurl (git config --unset-all remote.${LOCAL_REMOTE}.pushurl)`);
   const local = must(["rev-parse", "--verify", `refs/heads/${base}`], `local base ${base}`, TRUSTED_READ_ENV).trim();
   if (!HEX405.test(local)) throw new Error(`local base ${base} did not resolve to a commit`);
   onBase?.(local);
@@ -125777,6 +125799,7 @@ function evaluateItem(item, kind, config2, look) {
   if (deps.length > 0) return hit("blocked", `depends-on:${ids(deps)}`, `depends on unfinished item${deps.length > 1 ? "s" : ""} ${ids(deps)} (open, no merged factory PR)`);
   const children = item.children.filter((c) => look.isOpen(c));
   if (children.length > 0) return hit("blocked", "needs-split", `has open children ${ids(children)}`);
+  if (item.children.length > 0) return hit("blocked", "children-done", `every child (${ids(item.children)}) is closed: close this spec item; the factory never runs a spec that was split`);
   if (kind === "azure-devops" && item.type && SPLIT_TYPES.has(item.type.toLowerCase())) return hit("blocked", "needs-split", `work item type ${item.type} needs splitting`);
   if (kind === "github" && item.labels.some((l) => l.toLowerCase() === "epic")) return hit("blocked", "needs-split", "labelled epic");
   const link6 = findPlanLink(item.body, item.comments, item.authorTrusted);
@@ -127433,7 +127456,7 @@ var init_engine = __esm({
             this.postOutcome(final.phase);
             final = this.state;
           }
-          return { exitCode: final.phase === "failed" ? 1 : 0, phase: final.phase, state: final, message: `the factory run for ${this.what} is ${final.phase}` };
+          return { exitCode: final.phase === "failed" ? 1 : 0, phase: final.phase, state: final, message: `the factory run for ${this.what} is ${final.phase}${this.localMergedNote(final)}` };
         }
         const swapped = existing ? forgeResumeProblem(existing, this.o.forge?.config.kind ?? "github", this.o.forge?.config.repo.url) : null;
         if (existing && swapped) {
@@ -127566,7 +127589,7 @@ var init_engine = __esm({
             phase = s.phase;
             if (TERMINAL_FACTORY_PHASES.includes(s.phase)) {
               this.postOutcome(s.phase);
-              return { exitCode: s.phase === "failed" ? 1 : 0, phase: s.phase, state: s, message: `factory run for ${this.what} is ${s.phase}` };
+              return { exitCode: s.phase === "failed" ? 1 : 0, phase: s.phase, state: s, message: `factory run for ${this.what} is ${s.phase}${this.localMergedNote(s)}` };
             }
             if (this.cancelWanted(s)) {
               await this.cancel();
@@ -127652,6 +127675,20 @@ var init_engine = __esm({
        * read for its parent and comments; any failure is a warning and never
        * blocks or changes a transition.
        */
+      /**
+       * F31: a merged local-forge run whose backlog file still says `state: open`
+       * (the tracker reads it as closed from the PR store): the file change the
+       * human commits. Empty otherwise, or when the item cannot be read.
+       */
+      localMergedNote(s) {
+        if (s.phase !== "merged" || s.kind === "ci-heal" || this.forge?.kind !== "local" || !this.o.issue) return "";
+        try {
+          const item = this.forge.tracker.viewItem(this.o.issue);
+          return item.rawState.startsWith("merged") ? `; set state: closed in ${item.url} and commit it on ${s.base} (omg factory check already counts #${item.id} as closed)` : "";
+        } catch {
+          return "";
+        }
+      }
       postOutcome(event) {
         const s = this.state;
         if (s.kind === "ci-heal" || !this.o.issue || !s.repoUrl) return;
@@ -129177,14 +129214,20 @@ function openReadForge(o, deps, warnings, command, marker) {
     throw new CheckIncompatibleError(error2.code === "forge-unsupported" ? unsupportedForge(error2.message) : `${error2.code}: ${error2.message}`);
   }
   if (config2.kind === "local" && originUrl2) baseSha = localBase(pre, root2, base, warnings);
+  if (config2.kind === "local" && !baseSha) throw new CheckUsageError(missingLocalBase(base));
   try {
     const read = forgeReadExec(deps.exec, config2, root2, deps.resolveAz, marker, command);
-    const local = { omgRoot: getOmcRoot(root2), workingTree: true, baseSha: () => baseSha ?? void 0 };
-    const options = config2.kind === "local" ? { ...read.options, local } : read.options;
-    return { root: root2, base, baseSha, config: config2, baseConfig, forge: deps.createForge(read.exec, root2, config2, options), exec: read.exec };
+    return { root: root2, base, baseSha, config: config2, baseConfig, forge: deps.createForge(read.exec, root2, config2, readForgeOptions(config2, root2, read.options, baseSha)), exec: read.exec };
   } catch (error2) {
     throw new CheckIncompatibleError(error2 instanceof Error ? error2.message : String(error2));
   }
+}
+function readForgeOptions(config2, root2, options, baseSha) {
+  if (config2.kind !== "local") return options;
+  return { ...options, local: { omgRoot: getOmcRoot(root2), workingTree: true, baseSha: () => baseSha ?? void 0 } };
+}
+function missingLocalBase(base) {
+  return `the base branch ${base} does not exist in this repository, so no committed backlog item or config can be read; set ship.base in .copilot/omg.jsonc to the branch you merge into (omg factory setup --forge local writes it)`;
 }
 function unsupportedForge(why) {
   return `unsupported forge: ${why.replace(/^unsupported forge: /, "")}; for the offline (local) forge run \`omg factory setup --forge local\``;
@@ -131637,7 +131680,7 @@ function assertSetupCommand(cmd, args, repo, az, env2) {
   const isAz = az !== void 0 && cmd === az.command && az.prefix.every((p, i) => args[i] === p);
   if (env2 !== void 0 && !(isAz && same6(Object.entries(env2).flat(), Object.entries(az.env).flat()))) refuse(`environment ${JSON.stringify(env2)} is not allowed`);
   const base = file.replace(/\.exe$/, "");
-  const ok2 = isAz ? azAllowed(args.slice(az.prefix.length), repo) : base === "gh" ? repo.kind === "github" && ghAllowed3(args, repo) : base === "git" ? same6(args, ["remote", "get-url", "origin"]) || same6(args, ["rev-parse", "--show-toplevel"]) : false;
+  const ok2 = isAz ? azAllowed(args.slice(az.prefix.length), repo) : base === "gh" ? repo.kind === "github" && ghAllowed3(args, repo) : base === "git" ? same6(args, ["remote", "get-url", "origin"]) || same6(args, ["rev-parse", "--show-toplevel"]) || repo.kind === "local" && (same6(args, ["symbolic-ref", "--quiet", "--short", "HEAD"]) || args.length === 4 && same6(args.slice(0, 3), ["rev-parse", "--verify", "--quiet"]) && args[3].startsWith("refs/heads/") && isPlainBranchName(args[3].slice("refs/heads/".length))) : false;
   if (!ok2) refuse("not one of the command shapes the setup wizard runs");
 }
 function setupGuardExec(exec3, repo, az) {
@@ -131699,6 +131742,7 @@ var init_guard2 = __esm({
     "use strict";
     init_exec();
     init_routes();
+    init_config4();
     SetupError = class extends Error {
       constructor(exitCode, message4) {
         super(message4);
@@ -132468,6 +132512,7 @@ function sectionEdits(section) {
   edits.push([["factory", "progress", "enabled"], section.progress.enabled]);
   edits.push([["factory", "progress", "stages"], section.progress.stages]);
   if (section.heal) edits.push([["factory", "heal", "pipeline"], section.heal.pipeline]);
+  if (section.ship) edits.push([SHIP_BASE, section.ship.base]);
   return edits;
 }
 function trustedAuthorsEdit(authors) {
@@ -132499,13 +132544,14 @@ function parseStrict(text4, path30) {
   return value;
 }
 function applyFactoryEdits(text4, edits, path30 = "config") {
-  parseStrict(text4, path30);
+  const parsed2 = parseStrict(text4, path30);
   const bom = text4.startsWith(BOM) ? BOM : "";
   const body = text4.slice(bom.length);
   const eol = body.includes("\r\n") ? "\r\n" : "\n";
   let out = body.trim() === "" ? "{}" : body;
   for (const [jsonPath, value] of edits) {
-    if (jsonPath[0] !== "factory") throw new SetupError(1, `omg factory setup writes only factory.*, not ${jsonPath.join(".")}`);
+    const addsBase = isShipBase(jsonPath) && !hasShipBase(parsed2);
+    if (jsonPath[0] !== "factory" && !addsBase) throw new SetupError(1, `omg factory setup writes only factory.* (and ship.base where none is set), not ${jsonPath.join(".")}`);
     try {
       out = (0, import_jsonc_parser.applyEdits)(out, (0, import_jsonc_parser.modify)(out, jsonPath, value, { formattingOptions: { insertSpaces: true, tabSize: 2, eol } }));
     } catch (error2) {
@@ -132526,9 +132572,11 @@ function without(root2, path30) {
   for (let i = chain.length - 1; i > 0 && Object.keys(chain[i]).length === 0; i--) delete chain[i - 1][path30[i - 1]];
 }
 function assertFactoryOnly(before, after, scope, path30 = "config") {
+  const baseAdded = scope === "project" && !hasShipBase(parseStrict(before, path30));
   const strip = (text4) => {
     const value = structuredClone(parseStrict(text4, path30));
     for (const owned of OWNED[scope]) without(value, owned);
+    if (baseAdded) without(value, SHIP_BASE);
     return JSON.stringify(canonical2(value));
   };
   if (strip(before) !== strip(after)) throw new SetupError(1, `refusing to write ${path30}: the edit changed keys outside ${OWNED[scope].map((p) => p.join(".")).join(", ")}`);
@@ -132600,7 +132648,7 @@ function parsedAfter(planned, path30) {
   const text4 = w ? w.after : readText(path30);
   return (text4.startsWith(BOM) ? text4.slice(1) : text4).trim() === "" ? void 0 : parseStrict(text4, path30);
 }
-var import_fs173, import_path203, import_jsonc_parser, TRUSTED_AUTHORS, OWNED, BOM, canonical2, readText, SAMPLE_BACKLOG_FILE, SAMPLE_BACKLOG_TEXT;
+var import_fs173, import_path203, import_jsonc_parser, TRUSTED_AUTHORS, SHIP_BASE, isShipBase, hasShipBase, OWNED, BOM, canonical2, readText, SAMPLE_BACKLOG_FILE, SAMPLE_BACKLOG_TEXT;
 var init_write = __esm({
   "src/factory/setup/write.ts"() {
     "use strict";
@@ -132612,6 +132660,12 @@ var init_write = __esm({
     init_local();
     init_guard2();
     TRUSTED_AUTHORS = ["factory", "forge", "azureDevOps", "trustedAuthors"];
+    SHIP_BASE = ["ship", "base"];
+    isShipBase = (p) => p.length === 2 && p[0] === "ship" && p[1] === "base";
+    hasShipBase = (config2) => {
+      const ship = config2.ship;
+      return ship !== null && typeof ship === "object" && "base" in ship;
+    };
     OWNED = {
       project: [["factory", "forge"], ["factory", "intake"], ["factory", "progress"], ["factory", "heal", "pipeline"]],
       user: [TRUSTED_AUTHORS]
@@ -132673,8 +132727,17 @@ async function runFactorySetup(o, deps = defaultFactorySetupDeps, cwd2 = process
   }
   return outcome;
 }
-function previewEnv(guarded5, root2, config2) {
-  const base = defaultFactoryRunDeps.base(root2);
+function detectLocalBase(exec3, root2, configs) {
+  for (const c of configs) {
+    const base = c?.ship?.base;
+    if (isPlainBranchName(base)) return { base, write: false };
+  }
+  if (exec3("git", ["rev-parse", "--verify", "--quiet", "refs/heads/dev"], { cwd: root2 }).status === 0) return { base: "dev", write: true };
+  const head = exec3("git", ["symbolic-ref", "--quiet", "--short", "HEAD"], { cwd: root2 });
+  const current = head.stdout.trim();
+  return head.status === 0 && isPlainBranchName(current) ? { base: current, write: true } : null;
+}
+function previewEnv(guarded5, root2, config2, base) {
   const ref = config2.kind === "local" ? `refs/heads/${base}` : `refs/remotes/origin/${base}`;
   const sha3 = guarded5("git", ["rev-parse", "--verify", ref], { cwd: root2 });
   const baseSha = sha3.status === 0 && /^[0-9a-f]{40}$/.test(sha3.stdout.trim()) ? sha3.stdout.trim() : null;
@@ -132755,7 +132818,14 @@ async function setup(o, deps, cwd2, out) {
   }
   const team = source.type === "board-column" ? source.team : board?.team ?? detected.prefill.team;
   const healPipeline = ado ? await pickHealPipeline(io, prompter, o.healPipeline) : void 0;
-  out.config = { ...buildSection(repo, { source, itemTypes }, progress, team), ...healPipeline ? { heal: { pipeline: healPipeline } } : {} };
+  const localBase2 = local ? detectLocalBase(io.exec, root2, [readConfig(projectPath), readConfig(userPath)]) : null;
+  const base = localBase2?.base ?? defaultFactoryRunDeps.base(root2);
+  if (local && !localBase2) out.notes.push(`no base branch detected (detached HEAD and no dev branch): set ship.base in ${projectPath} to the branch you merge into`);
+  out.config = {
+    ...buildSection(repo, { source, itemTypes }, progress, team),
+    ...healPipeline ? { heal: { pipeline: healPipeline } } : {},
+    ...localBase2?.write ? { ship: { base: localBase2.base } } : {}
+  };
   const planned = planWrites({ projectPath, userPath, section: out.config, ...trustedAuthors.length > 0 ? { trustedAuthors } : {} });
   const afterUser = parsedAfter(planned, userPath);
   const afterProject = parsedAfter(planned, projectPath);
@@ -132770,16 +132840,20 @@ async function setup(o, deps, cwd2, out) {
   if (resolved.kind === "local" && resolved.local) {
     const sample = planBacklogSample(root2, resolved.local.backlogDir);
     if (sample) planned.push(sample);
-    out.limitations = localForgeLimitations(defaultFactoryRunDeps.base(root2));
-    if (!resolved.local.gate) out.notes.push('no local gate: set factory.forge.local.gate (an argv such as ["npm","test"]) in the user config or in .copilot/omg.jsonc committed on <base>; until then gates park at awaiting-human: gates');
-    if (detected.originUrl) out.notes.push(`factory.forge.kind "local" overrides the origin remote only from the user config or from ${projectPath} committed on <base> (CI and remote review are off)`);
-    out.notes.push(`commit ${resolved.local.backlogDir}/ items on <base>: omg factory run reads backlog items at the base commit only`);
+    out.limitations = localForgeLimitations(base);
+    if (localBase2?.write) out.notes.push(`base branch ${base} (ship.base, detected: ${base === "dev" ? "the dev branch exists" : "the current branch"}); change ship.base in ${projectPath} if you merge into another branch`);
+    const userTrusted = readConfig(userPath)?.ship?.trustedBases;
+    const trustedBases = Array.isArray(userTrusted) ? userTrusted : resolveShipConfig({}).trustedBases;
+    if (localBase2 && !trustedBases.includes(base)) out.notes.push(`${base} is not in ship.trustedBases: add it there in the user config ${userPath}, or the committed ${projectPath} on ${base} is not read`);
+    if (!resolved.local.gate) out.notes.push(`no local gate: set factory.forge.local.gate (an argv such as ["npm","test"]) in the user config or in .copilot/omg.jsonc committed on ${base}; until then gates park at awaiting-human: gates`);
+    if (detected.originUrl) out.notes.push(`factory.forge.kind "local" overrides the origin remote only from the user config or from ${projectPath} committed on ${base} (CI and remote review are off)`);
+    out.notes.push(`commit ${resolved.local.backlogDir}/ items on ${base}: omg factory run reads backlog items at the base commit only`);
   }
   out.diffs = planned.map((w) => ({ path: w.path, scope: w.scope, diff: w.diff }));
   if (scope === "user") out.notes.push(`--scope user: the forge identity, intake and progress belong to this repository, so they go to ${projectPath}; the user config ${userPath} is shared by every repository and gets only trustedAuthors.`);
-  out.notes.push(`${projectPath} is a protected path: omg factory reads forge.* and progress.* from it only on <base> once it is committed there.`);
+  out.notes.push(`${projectPath} is a protected path: omg factory reads forge.* and progress.* from it only on ${base} once it is committed there.`);
   if (trustedAuthors.length > 0) out.notes.push(`trustedAuthors go to the user config ${userPath} only.`);
-  if (healPipeline) out.notes.push(`factory.heal.pipeline (build definition ${healPipeline.definitionId}) counts once ${projectPath} is committed on <base>; omg factory heal ignores it in the working tree.`);
+  if (healPipeline) out.notes.push(`factory.heal.pipeline (build definition ${healPipeline.definitionId}) counts once ${projectPath} is committed on ${base}; omg factory heal ignores it in the working tree.`);
   if (!o.json) {
     for (const w of planned) {
       console.log(source_default.bold(`--- ${w.path} (${w.scope})`));
@@ -132801,7 +132875,7 @@ async function setup(o, deps, cwd2, out) {
   out.prerequisites = validateFactoryPrerequisites(root2);
   try {
     const guarded5 = checkGuardExec(deps.exec, void 0, () => ado && az ? adoGuardContext(resolved, az) : void 0);
-    const env2 = previewEnv(guarded5, root2, resolved);
+    const env2 = previewEnv(guarded5, root2, resolved, base);
     const localOptions = local ? { local: { omgRoot: getOmcRoot(root2), workingTree: true, baseSha: () => env2.baseSha ?? void 0 } } : {};
     const options = { ...factoryForgeOptions(root2), ...localOptions, ...az ? { entry: az } : {} };
     const forge = deps.createForge(guarded5, root2, resolved, options);
@@ -133891,9 +133965,10 @@ function pickNext(deps, root2, base, loaded2, parent) {
   const source = config2.intake.source;
   if (parent === void 0 && !source) throw new FactoryUsageError("--next needs --parent <spec> or factory.intake.source");
   const read = forgeReadExec(deps.exec, config2, root2);
-  const forge = createForge(read.exec, root2, config2, read.options);
   const warnings = [];
-  const baseSha = fetchBase(read.exec, root2, base, warnings);
+  const baseSha = config2.kind === "local" ? localBase(read.exec, root2, base, warnings) : fetchBase(read.exec, root2, base, warnings);
+  if (config2.kind === "local" && !baseSha) throw new FactoryUsageError(missingLocalBase(base));
+  const forge = createForge(read.exec, root2, config2, readForgeOptions(config2, root2, read.options, baseSha));
   const ids2 = parent !== void 0 ? forge.tracker.viewItem(parent).children : forge.tracker.queryItems(source, config2.intake.limit);
   const items = checkItems(forge, ids2, checkEnvFor(read.exec, root2, config2, base, baseSha));
   return { next: items.find((r) => r.bucket === "runnable") ?? null, items, warnings };

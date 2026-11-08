@@ -14,7 +14,7 @@ import { join } from 'path';
 import { localChecks, readCheckRecordAt } from './checks.js';
 import { localMerge } from './merge.js';
 import { localReviews } from './reviews.js';
-import { engineOwnedDir } from './store.js';
+import { engineOwnedDir, readPrStore } from './store.js';
 import { localTracker } from './tracker.js';
 export { LOCAL_REMOTE, backlogListArgs, backlogShowArgs, isLocalBranchName, localCheckRecordPath, localMirrorPath, localPrStorePath, localRepoId, localStoreDir, mergedArgs, mirrorFetchArgs, mirrorInitArgs, mirrorPushArgs, mirrorRemoteAddArgs, mirrorRemoteGetUrlArgs, readMirrorRef, } from './mirror.js';
 export { LOCAL_GATE_CHECK, readCheckRecordAt, readLocalCheckRecord, writeLocalCheckRecord } from './checks.js';
@@ -49,6 +49,17 @@ export const createLocalForge = (exec, cwd, config, options) => {
     if (!omgRoot)
         throw new Error('local forge: options.local.omgRoot is required (getOmcRoot(root))');
     const humanDir = join(omgRoot, 'factory', 'local');
+    const storePath = join(storeDir, 'prs.json');
+    const reviews = localReviews({ exec, root: cwd, mirror, storePath, humanDir });
+    // F31: the item's own PR (itemId) merged into its base, read from the engine-owned store (brought up to date from the mirror).
+    const mergedPr = (id) => {
+        for (const p of readPrStore(storePath).prs.filter((x) => x.itemId === id)) {
+            const merged = reviews.findMergedPrForBranch(p.head, p.base);
+            if (merged !== undefined)
+                return merged;
+        }
+        return undefined;
+    };
     return {
         kind: 'local',
         provider: 'unknown',
@@ -61,8 +72,9 @@ export const createLocalForge = (exec, cwd, config, options) => {
             humanDir,
             options: options.local ?? {},
             ...(options.trackerBodyDir === undefined ? {} : { trackerBodyDir: options.trackerBodyDir }),
+            mergedPr,
         }),
-        reviews: localReviews({ exec, root: cwd, mirror, storePath: join(storeDir, 'prs.json'), humanDir }),
+        reviews,
         checks: localChecks(join(storeDir, 'checks'), recordFor),
         merge: localMerge(cwd),
         capabilities: { heal: false, projectsV2: false, boardColumns: false, webhookIntake: false },

@@ -31,6 +31,10 @@ export interface SetupSection {
             definitionId: number;
         };
     };
+    /** The local forge: the detected base branch when no config names one (F20); the one key outside `factory` setup writes. */
+    ship?: {
+        base: string;
+    };
 }
 export declare function buildSection(repo: ForgeRepo, intake: Pick<ForgeIntakeConfig, 'source' | 'itemTypes'> & {
     source: IntakeSource;

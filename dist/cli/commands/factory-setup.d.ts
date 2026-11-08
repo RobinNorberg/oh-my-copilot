@@ -94,5 +94,15 @@ export interface FactorySetupOutcome {
 export declare const plainText: (s: unknown) => string;
 /** The wizard; never throws (a SetupError becomes its exit code). */
 export declare function runFactorySetup(o: FactorySetupOptions, deps?: FactorySetupDeps, cwd?: string): Promise<FactorySetupOutcome>;
+/**
+ * F20: the local forge's base. A ship.base in the project or user config
+ * wins (written: false); else `dev` when that branch exists, else the
+ * current branch (an unborn one is init.defaultBranch), and setup writes it
+ * as ship.base. Null on a detached HEAD with no dev.
+ */
+export declare function detectLocalBase(exec: Exec, root: string, configs: readonly unknown[]): {
+    base: string;
+    write: boolean;
+} | null;
 export declare function factorySetupCommand(deps?: FactorySetupDeps): Command;
 //# sourceMappingURL=factory-setup.d.ts.map

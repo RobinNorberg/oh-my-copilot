@@ -44623,25 +44623,35 @@ function localTracker(ctx) {
     }
     return out;
   };
-  const toForgeItem = (e, all) => ({
-    id: e.item.id,
-    url: e.item.path,
-    title: e.item.title,
-    body: e.item.body,
-    ...e.item.acceptance ? { acceptance: e.item.acceptance } : {},
-    open: e.item.state === "open",
-    rawState: e.item.state,
-    authorTrusted: e.trusted,
-    comments: [],
-    labels: e.item.labels,
-    ...e.item.priority === void 0 ? {} : { priority: e.item.priority },
-    ...e.item.size === void 0 ? {} : { size: e.item.size },
-    dependsOn: e.item.dependsOn,
-    children: [...all.values()].filter((c) => c.item.parent === e.item.id).map((c) => c.item.id).sort((a, b) => a - b),
-    ...e.item.parent === void 0 ? {} : { parent: e.item.parent },
-    repoUrl: ctx.repoUrl,
-    ...e.uncommitted ? { uncommitted: true } : {}
-  });
+  const mergedOpen = (item) => {
+    if (item.state !== "open") return void 0;
+    const pr = ctx.mergedPr?.(item.id);
+    const warning = pr === void 0 ? void 0 : `local backlog: #${item.id} is merged (local PR #${pr}) but ${item.path} still says state: open; set state: closed there and commit it on the base branch`;
+    if (warning !== void 0 && !warnings.includes(warning)) warnings.push(warning);
+    return pr;
+  };
+  const toForgeItem = (e, all) => {
+    const merged = mergedOpen(e.item);
+    return {
+      id: e.item.id,
+      url: e.item.path,
+      title: e.item.title,
+      body: e.item.body,
+      ...e.item.acceptance ? { acceptance: e.item.acceptance } : {},
+      open: e.item.state === "open" && merged === void 0,
+      rawState: merged === void 0 ? e.item.state : `merged (local PR #${merged})`,
+      authorTrusted: e.trusted,
+      comments: [],
+      labels: e.item.labels,
+      ...e.item.priority === void 0 ? {} : { priority: e.item.priority },
+      ...e.item.size === void 0 ? {} : { size: e.item.size },
+      dependsOn: e.item.dependsOn,
+      children: [...all.values()].filter((c) => c.item.parent === e.item.id).map((c) => c.item.id).sort((a, b) => a - b),
+      ...e.item.parent === void 0 ? {} : { parent: e.item.parent },
+      repoUrl: ctx.repoUrl,
+      ...e.uncommitted ? { uncommitted: true } : {}
+    };
+  };
   const view = (id) => {
     const all = entries();
     const e = all.get(id);
@@ -44672,7 +44682,7 @@ ${acceptance.map((a) => `- [ ] ${a}`).join("\n")}
     queryItems(source, limit) {
       if (source.type !== "local-backlog") throw new Error(`the local forge reads intake source local-backlog, not ${source.type}`);
       const want = source.label?.toLowerCase();
-      return [...entries().values()].filter((e) => e.item.state === "open" && (want === void 0 || e.item.labels.some((l) => l.toLowerCase() === want))).map((e) => e.item.id).sort((a, b) => a - b).slice(0, Math.max(0, limit));
+      return [...entries().values()].filter((e) => e.item.state === "open" && (want === void 0 || e.item.labels.some((l) => l.toLowerCase() === want)) && mergedOpen(e.item) === void 0).map((e) => e.item.id).sort((a, b) => a - b).slice(0, Math.max(0, limit));
     },
     comment(id, bodyFile) {
       try {
@@ -44793,6 +44803,15 @@ var init_local = __esm({
       const omgRoot = options.local?.omgRoot;
       if (!omgRoot) throw new Error("local forge: options.local.omgRoot is required (getOmcRoot(root))");
       const humanDir = (0, import_path91.join)(omgRoot, "factory", "local");
+      const storePath = (0, import_path91.join)(storeDir, "prs.json");
+      const reviews = localReviews({ exec, root: cwd, mirror, storePath, humanDir });
+      const mergedPr = (id) => {
+        for (const p of readPrStore(storePath).prs.filter((x) => x.itemId === id)) {
+          const merged = reviews.findMergedPrForBranch(p.head, p.base);
+          if (merged !== void 0) return merged;
+        }
+        return void 0;
+      };
       return {
         kind: "local",
         provider: "unknown",
@@ -44804,9 +44823,10 @@ var init_local = __esm({
           repoUrl: config2.repo.url,
           humanDir,
           options: options.local ?? {},
-          ...options.trackerBodyDir === void 0 ? {} : { trackerBodyDir: options.trackerBodyDir }
+          ...options.trackerBodyDir === void 0 ? {} : { trackerBodyDir: options.trackerBodyDir },
+          mergedPr
         }),
-        reviews: localReviews({ exec, root: cwd, mirror, storePath: (0, import_path91.join)(storeDir, "prs.json"), humanDir }),
+        reviews,
         checks: localChecks((0, import_path91.join)(storeDir, "checks"), recordFor),
         merge: localMerge(cwd),
         capabilities: { heal: false, projectsV2: false, boardColumns: false, webhookIntake: false },
@@ -44859,13 +44879,15 @@ function localRemoteMismatch(exec, root, mirror) {
   const got = exec("git", ["remote", "get-url", LOCAL_REMOTE], { cwd: root, env: TRUSTED_READ_ENV });
   if (got.status !== 0) return `git remote get-url ${LOCAL_REMOTE} failed: ${got.stderr.trim().split("\n")[0]}`;
   const url = got.stdout.trim();
-  if (!url || !same3(url)) return `remote ${LOCAL_REMOTE} points at ${url}, not the mirror ${mirror}`;
+  const urlNote = same3(url) ? "" : !url || url === LOCAL_REMOTE ? "; the remote has no url" : `; its url ${url} is not the mirror either`;
   const push = exec("git", ["remote", "get-url", "--push", "--all", LOCAL_REMOTE], { cwd: root, env: TRUSTED_READ_ENV });
   if (push.status !== 0) return `git remote get-url --push --all ${LOCAL_REMOTE} failed: ${push.stderr.trim().split("\n")[0]}`;
   const pushUrls = push.stdout.split(/\r?\n/).map((u) => u.trim()).filter(Boolean);
+  const planted = pushUrls.find((u) => !same3(u) && u !== url);
+  if (planted) return `remote ${LOCAL_REMOTE} pushes to ${planted} (a remote.${LOCAL_REMOTE}.pushurl or pushInsteadOf), not the mirror ${mirror}${urlNote}`;
+  if (!same3(url)) return `remote ${LOCAL_REMOTE} points at ${url || "(no url)"}, not the mirror ${mirror}`;
   if (pushUrls.length === 0) return `git remote get-url --push --all ${LOCAL_REMOTE} printed no push URL`;
-  const foreign = pushUrls.find((u) => !same3(u));
-  return foreign ? `remote ${LOCAL_REMOTE} pushes to ${foreign}, not the mirror ${mirror}` : null;
+  return null;
 }
 function localRemoteRefusedConfig(exec, root, mirror) {
   const read = (args, parse13) => {
@@ -44894,7 +44916,7 @@ function syncLocalMirror(exec, root, mirror, base, onBase) {
   const current = git3(mirrorRemoteGetUrlArgs(), TRUSTED_READ_ENV);
   if (current.status !== 0) must(mirrorRemoteAddArgs(mirror), "local forge remote");
   const mismatch = localRemoteMismatch(exec, root, mirror);
-  if (mismatch) throw new FactoryForgeUnavailableError(`refusing to sync the local forge mirror: ${mismatch}; point the ${LOCAL_REMOTE} remote at ${mirror} (git remote set-url ${LOCAL_REMOTE} ${mirror}) and remove any pushurl`);
+  if (mismatch) throw new FactoryForgeUnavailableError(`refusing to sync the local forge mirror: ${mismatch}; point the ${LOCAL_REMOTE} remote at ${mirror} (git remote set-url ${LOCAL_REMOTE} ${mirror}) and remove any pushurl (git config --unset-all remote.${LOCAL_REMOTE}.pushurl)`);
   const local = must(["rev-parse", "--verify", `refs/heads/${base}`], `local base ${base}`, TRUSTED_READ_ENV).trim();
   if (!HEX405.test(local)) throw new Error(`local base ${base} did not resolve to a commit`);
   onBase?.(local);
@@ -49344,7 +49366,7 @@ var init_engine = __esm({
             this.postOutcome(final.phase);
             final = this.state;
           }
-          return { exitCode: final.phase === "failed" ? 1 : 0, phase: final.phase, state: final, message: `the factory run for ${this.what} is ${final.phase}` };
+          return { exitCode: final.phase === "failed" ? 1 : 0, phase: final.phase, state: final, message: `the factory run for ${this.what} is ${final.phase}${this.localMergedNote(final)}` };
         }
         const swapped = existing ? forgeResumeProblem(existing, this.o.forge?.config.kind ?? "github", this.o.forge?.config.repo.url) : null;
         if (existing && swapped) {
@@ -49477,7 +49499,7 @@ var init_engine = __esm({
             phase = s.phase;
             if (TERMINAL_FACTORY_PHASES.includes(s.phase)) {
               this.postOutcome(s.phase);
-              return { exitCode: s.phase === "failed" ? 1 : 0, phase: s.phase, state: s, message: `factory run for ${this.what} is ${s.phase}` };
+              return { exitCode: s.phase === "failed" ? 1 : 0, phase: s.phase, state: s, message: `factory run for ${this.what} is ${s.phase}${this.localMergedNote(s)}` };
             }
             if (this.cancelWanted(s)) {
               await this.cancel();
@@ -49563,6 +49585,20 @@ var init_engine = __esm({
        * read for its parent and comments; any failure is a warning and never
        * blocks or changes a transition.
        */
+      /**
+       * F31: a merged local-forge run whose backlog file still says `state: open`
+       * (the tracker reads it as closed from the PR store): the file change the
+       * human commits. Empty otherwise, or when the item cannot be read.
+       */
+      localMergedNote(s) {
+        if (s.phase !== "merged" || s.kind === "ci-heal" || this.forge?.kind !== "local" || !this.o.issue) return "";
+        try {
+          const item = this.forge.tracker.viewItem(this.o.issue);
+          return item.rawState.startsWith("merged") ? `; set state: closed in ${item.url} and commit it on ${s.base} (omg factory check already counts #${item.id} as closed)` : "";
+        } catch {
+          return "";
+        }
+      }
       postOutcome(event) {
         const s = this.state;
         if (s.kind === "ci-heal" || !this.o.issue || !s.repoUrl) return;
@@ -51158,6 +51194,7 @@ var init_guard2 = __esm({
     "use strict";
     init_exec();
     init_routes();
+    init_config2();
   }
 });
 

@@ -143,6 +143,28 @@ describe('omg factory poll: local forge base sync', () => {
         expect(w.raw.filter((a) => a.includes('push') && !a.includes('get-url'))).toEqual([]);
         expect(localRemoteMismatch(defaultExec, w.root, w.config.repo.url)).toMatch(/not the mirror/);
     });
+    it('F26: a pushurl planted on a remote with no url names the planted value, not the remote name', () => {
+        const w = world();
+        const evil = join(dir, 'evil.git');
+        gitIn(w.root, 'config', 'remote.omg-local.pushurl', evil);
+        let error;
+        try {
+            w.sync({ root: w.root, base: 'main', config: w.config });
+        }
+        catch (e) {
+            error = e;
+        }
+        expect(error).toBeInstanceOf(FactoryForgeUnavailableError);
+        const message = error.message;
+        expect(message).toContain(`pushes to ${evil} (a remote.omg-local.pushurl or pushInsteadOf), not the mirror`);
+        expect(message).toContain('; the remote has no url');
+        expect(message).toContain('git config --unset-all remote.omg-local.pushurl');
+        expect(message).not.toMatch(/points at omg-local/);
+        expect(w.raw.filter((a) => a.includes('push') && !a.includes('get-url'))).toEqual([]);
+        // Fixing only the url (the old first-round advice) still names the same planted pushurl.
+        gitIn(w.root, 'config', 'remote.omg-local.url', w.config.repo.url);
+        expect(localRemoteMismatch(defaultExec, w.root, w.config.repo.url)).toBe(`remote omg-local pushes to ${evil} (a remote.omg-local.pushurl or pushInsteadOf), not the mirror ${w.config.repo.url}`);
+    });
     /** A bare repository the planted rewrite points at, and whether anything landed in it. */
     const evilRepo = (w) => {
         const evil = join(dir, 'evil.git');
