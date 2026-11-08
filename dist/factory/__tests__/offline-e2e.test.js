@@ -293,7 +293,7 @@ describe('omg factory on the local (offline) forge, end to end', () => {
             expect(readLocalCheckRecord(stateDir, w.root, head)).toMatchObject({ state: 'SUCCESS', exitCode: 0 });
             const gates = spawned.slice(w.spawnMark).filter((c) => isNode(c.cmd));
             expect(gates.map((g) => g.args.slice(-2))).toEqual([['-e', 'process.exit(0)']]);
-            expect(mergeCommand).toBe(`git -C ${w.root} merge --no-ff ${head}`);
+            expect(mergeCommand).toBe(`git -C ${w.root} merge --no-ff --no-edit ${head}`);
             assertOffline(w);
         });
         it('after the human merge, poll syncs the mirror base (production wiring) and reads PR #1 as merged', async () => {
