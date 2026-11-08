@@ -8,6 +8,7 @@ import chalk from 'chalk';
 import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_INCOMPATIBLE, EXIT_CHECK_USAGE } from '../../factory/check/cli.js';
 import { plainText } from '../../factory/check/score.js';
 import { runFactoryPoll } from '../../factory/poll.js';
+import { FactoryForgeUnavailableError } from '../../factory/run/forge-roots.js';
 export function factoryPollCommand(deps) {
     return new Command('poll')
         .description('Poll heal, intake, PRs and the board each interval (GitHub and Azure DevOps); never writes to the tracker or forge, and starts no lane unless factory.intake.autoStart (trusted config) starts omg factory run --next on an idle tick')
@@ -27,7 +28,8 @@ export function factoryPollCommand(deps) {
                 deps.out(JSON.stringify({ ok: false, error: message }));
             else
                 deps.err(chalk.red(`Error: ${message}`));
-            process.exitCode = error instanceof CheckUsageError ? EXIT_CHECK_USAGE : error instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
+            process.exitCode = error instanceof CheckUsageError ? EXIT_CHECK_USAGE
+                : error instanceof CheckIncompatibleError || error instanceof FactoryForgeUnavailableError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
         }
     });
 }

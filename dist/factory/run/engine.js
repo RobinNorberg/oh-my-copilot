@@ -54,7 +54,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
-import { configuredProtectedPaths, isPlainBranchName, isRepoPath, readBaseFile, remoteRepoMismatch } from '../../ship/config.js';
+import { configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, readBaseFile, remoteRepoMismatch, userConfigLayers } from '../../ship/config.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { runPrepare } from '../../ship/prepare.js';
@@ -76,8 +76,11 @@ import { lockPathFor } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { checkDiagnosis } from '../heal/diagnosis-output.js';
 import { assertLaneCreditCap, nextLaneCap, runCredits, runCreditsExceeded } from './budget.js';
-import { factoryGuardExec, hardenedGitExec } from './exec.js';
-import { assertFactoryForgeOptions } from './forge-roots.js';
+import { FactorySafetyError, factoryGuardExec, hardenedGitExec } from './exec.js';
+import { assertFactoryForgeOptions, EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, localRemoteMismatch, syncLocalMirror } from './forge-roots.js';
+import { assertLocalGateCommand, localGateDue, runLocalGate } from './local-gate.js';
+import { LOCAL_GATE_CHECK, LOCAL_REMOTE } from '../../forge/local/index.js';
+import { getGlobalOmcStatePath } from '../../utils/paths.js';
 import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
 import { isTerminalLaneState, LaneLostError } from './lane.js';
 import { jobRefProblem } from '../../copilot-run/job.js';
@@ -87,7 +90,7 @@ import { createFactoryProgress } from './progress.js';
 import { compareSnapshots, snapshotRepo, verifyReviewWorktree } from './review-guard.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted } from './plan-rules.js';
-import { acquireFactoryOwner, acquireFactoryRepoOwner, createFactoryState, factoryCancelRequested, forgeResumeProblem, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, healRunKey, moveTo, overwriteFactoryState, parseFactoryState, readFactoryState, reviewerName, runLabel, runSlug, setGate, shipVerdictHash, TERMINAL_FACTORY_PHASES, trackerStageOf, updateFactoryState, verifyFactoryIntegrity, } from './state.js';
+import { acquireFactoryOwner, acquireFactoryRepoOwner, createFactoryState, factoryCancelRequested, forgeResumeProblem, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, healRunKey, moveTo, overwriteFactoryState, parseFactoryState, readFactoryState, reviewerName, runLabel, runSlug, setGate, shipVerdictHash, TERMINAL_FACTORY_PHASES, trackerStageOf, updateFactoryState, runRemote, verifyFactoryIntegrity, } from './state.js';
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export const EXIT_AWAITING_HUMAN = 4;
 /** The prepare steps that are checks (a failure there starts a ci-fix lane); the rest are engine steps. */
@@ -110,6 +113,20 @@ const MAX_TITLE_CHARS = 200;
 /** Re-reads of a lagging Azure DevOps PR head (an ancestor of the engine's push) before the step stops as pending. */
 export const ADO_HEAD_LAG_POLLS = 12;
 /**
+ * defaultGateConfigLoader on the local forge: ship's strict safety-key loader
+ * with the base verified on the `omg-local` mirror instead of origin (the
+ * user config at its default location or the base committed at the mirror's
+ * base sha, never the working tree).
+ */
+const localGateConfigLoader = (i) => {
+    const layers = userConfigLayers();
+    const config = loadTrustedShipConfig({
+        exec: i.exec, root: i.root, base: i.base, baseSha: i.baseSha, repoUrl: i.repoUrl, strict: true, remote: LOCAL_REMOTE,
+        user: layers.user, trustedUser: layers.trustedUser, warn: i.warn,
+    });
+    return { config, known: loadBaseKnownFlaky(i.exec, i.root, config.trustedBaseCommit, config.knownFlakyFile) };
+};
+/**
  * The engine's guarded Exec and, on Azure DevOps, its forge built on that
  * Exec. The az guard gets the run's forge repo, az entry and progress
  * mapping (src/forge/ado/guard.ts); without it every az call is refused.
@@ -117,10 +134,16 @@ export const ADO_HEAD_LAG_POLLS = 12;
  * gh calls. A ci-heal run on Azure DevOps uses the forge `omg factory heal`
  * read its CI from (ADO parity design §3.6).
  */
-function engineExec(o, inner) {
+function engineExec(o, inner, baseSha, basePush = () => undefined) {
     const f = o.forge;
     if (f)
         assertFactoryForgeOptions(o.root, f.options);
+    if (f?.config.kind === 'local') {
+        // The local forge reads the backlog at the run's verified base commit (offline forge plan §1.1).
+        // The guard binds the mirror init / remote add to this mirror and the base push to the sha the sync read.
+        const exec = factoryGuardExec(inner, () => [o.base], undefined, undefined, () => ({ mirror: f.config.repo.url, baseSha: basePush() }));
+        return { exec, forge: createForge(exec, o.root, f.config, { ...f.options, local: { omgRoot: getOmcRoot(o.root), baseSha } }) };
+    }
     if (!f || f.config.kind !== 'azure-devops')
         return { exec: factoryGuardExec(inner, () => [o.base]) };
     const entry = f.entry ?? resolveAzEntry(defaultAzBinaryDeps([o.root, ...f.options.untrustedRoots]));
@@ -160,6 +183,15 @@ export class StateTamperedError extends Error {
         super(`engine-owned state changed outside the engine: ${paths.join(', ')}`);
         this.paths = paths;
         this.name = 'StateTamperedError';
+    }
+}
+/** Thrown out of the gates driver when the local gate is due again for the pushed head (gates() runs it and drives on). */
+class LocalGateDue extends Error {
+    head;
+    constructor(head) {
+        super(`the local gate is due for ${head.slice(0, 12)}`);
+        this.head = head;
+        this.name = 'LocalGateDue';
     }
 }
 const HEX40 = /^[0-9a-f]{40}$/;
@@ -481,13 +513,17 @@ class FactoryEngine {
     syncing = false;
     /** The missing-label hint was warned in this invocation. */
     labelHint = false;
+    /** Local forge: the base this invocation synced to the mirror (the backlog is read at it before the state records a baseSha). */
+    localBase;
+    /** Local forge: the local base sha syncLocalMirror read, the only sha the guard lets it push to the mirror's base. */
+    basePushSha;
     constructor(o, ledger, hooksDir) {
         this.o = o;
         this.ledger = ledger;
-        const built = engineExec(o, hardenedGitExec(o.exec, hooksDir));
+        const built = engineExec(o, hardenedGitExec(o.exec, hooksDir, () => (o.forge?.config.kind === 'local' ? o.forge.config.repo.url : undefined)), () => this.localBase ?? this.state?.baseSha, () => this.basePushSha);
         this.exec = built.exec;
         this.forge = built.forge;
-        this.forgeName = this.forge ? 'Azure DevOps' : 'GitHub';
+        this.forgeName = !this.forge ? 'GitHub' : this.forge.kind === 'local' ? 'the local forge' : 'Azure DevOps';
         this.clock = o.now ?? Date.now;
         this.lastTick = this.clock();
         this.key = engineRunKey(o);
@@ -637,6 +673,10 @@ class FactoryEngine {
             onWrite: (p, content) => this.ledger.record(p, content),
         });
     }
+    /** Why the run's remote must not be pushed to (null: it may): the exact mirror on the local forge, the PR's repository otherwise. */
+    pushRemoteMismatch(s) {
+        return s.remote === LOCAL_REMOTE ? localRemoteMismatch(this.exec, this.o.root, s.repoUrl) : remoteRepoMismatch(this.exec, this.o.root, runRemote(s), s.repoUrl);
+    }
     gate(name, reason) {
         this.save((s) => setGate(s, name, reason, this.iso()));
     }
@@ -698,15 +738,36 @@ class FactoryEngine {
     }
     /** Fetch the base after checking origin is the issue's repository; GitHub's own record of the base is read in PR 3. */
     fetchBase() {
-        const mismatch = remoteRepoMismatch(this.exec, this.o.root, 'origin', this.state.repoUrl);
-        if (mismatch)
-            throw new FactoryStepError(`refusing to fetch or push: ${mismatch}`);
-        // The step boundary just re-compared the shared git state (loop); the fetch moves origin/<base>, so rebase after it.
-        this.run(['fetch', 'origin', this.state.base], 'git', TRUSTED_READ_ENV);
+        const remote = runRemote(this.state);
+        if (remote === LOCAL_REMOTE) {
+            // The local forge: create the engine-owned mirror once, then sync the local base into it (fast-forward only)
+            // and fetch it back; the mirror path comes from the resolved config, never from the checkout.
+            const mirror = this.o.forge.config.repo.url;
+            if (this.state.repoUrl && this.state.repoUrl !== mirror)
+                throw new FactoryStepError(`refusing to fetch or push: the run's mirror is ${this.state.repoUrl}, the config names ${mirror}`);
+            try {
+                syncLocalMirror(this.exec, this.o.root, mirror, this.state.base, (sha) => { this.basePushSha = sha; });
+            }
+            catch (error) {
+                if (error instanceof FactoryForgeUnavailableError)
+                    throw error;
+                throw new FactoryStepError(errText(error));
+            }
+        }
+        else {
+            const mismatch = remoteRepoMismatch(this.exec, this.o.root, remote, this.state.repoUrl);
+            if (mismatch)
+                throw new FactoryStepError(`refusing to fetch or push: ${mismatch}`);
+            // The step boundary just re-compared the shared git state (loop); the fetch moves origin/<base>, so rebase after it.
+            this.run(['fetch', remote, this.state.base], 'git', TRUSTED_READ_ENV);
+        }
+        // The fetch moved <remote>/<base> (and the mirror sync may have added the omg-local remote): rebase the recheck.
         this.rebaseRecheck();
-        const sha = this.run(['rev-parse', '--verify', `refs/remotes/origin/${this.state.base}`], 'git', TRUSTED_READ_ENV).trim();
+        const sha = this.run(['rev-parse', '--verify', `refs/remotes/${remote}/${this.state.base}`], 'git', TRUSTED_READ_ENV).trim();
         if (!HEX40.test(sha))
-            throw new FactoryStepError(`origin/${this.state.base} did not resolve to a commit`);
+            throw new FactoryStepError(`${remote}/${this.state.base} did not resolve to a commit`);
+        if (remote === LOCAL_REMOTE)
+            this.localBase = sha;
         return sha;
     }
     async start(tookOver) {
@@ -785,7 +846,7 @@ class FactoryEngine {
                     throw new FactoryStepError(`no ci-heal run ${this.key} exists, and no diagnosis record for signature ${heal.sig8} was given to start one`);
                 this.check();
                 const forgeKind = this.o.forge ? { forgeKind: this.o.forge.config.kind } : {};
-                this.state = updateFactoryState(this.o.root, this.key, () => ({ ...createFactoryState({ issue: this.o.issue ?? 0, repoUrl: '', base: this.o.base, ...(heal?.record ? { heal: heal.record } : {}) }, this.iso()), ...forgeKind }), {
+                this.state = updateFactoryState(this.o.root, this.key, () => ({ ...createFactoryState({ issue: this.o.issue ?? 0, repoUrl: '', base: this.o.base, ...(heal?.record ? { heal: heal.record } : {}), ...(this.o.forge?.config.kind === 'local' ? { remote: LOCAL_REMOTE } : {}) }, this.iso()), ...forgeKind }), {
                     verify: (b) => { if (b !== null)
                         throw new StateTamperedError([resolve(this.statePath)]); },
                     onWrite: (path, content) => this.ledger.record(path, content),
@@ -953,6 +1014,8 @@ class FactoryEngine {
                 if (error instanceof StateTamperedError)
                     return this.onTampered(error);
                 this.progress.emit(phase, 'fail', errText(error), this.fields());
+                if (error instanceof FactoryForgeUnavailableError)
+                    return { exitCode: EXIT_FORGE_UNAVAILABLE, phase, state: this.state, message: `unsupported forge: ${errText(error)} (rerun ${this.resume} once fixed)` };
                 return { exitCode: 1, phase, state: this.state, message: `factory run step ${phase} failed: ${errText(error)} (rerun ${this.resume} to resume)` };
             }
         }
@@ -1227,6 +1290,18 @@ class FactoryEngine {
     async intake() {
         if (this.state.kind === 'ci-heal')
             return this.healIntake();
+        if (this.forge?.kind === 'local') {
+            // The backlog is read at the synced base commit; skipped malformed items are reported once.
+            this.fetchBase();
+            try {
+                this.adoIntake(this.forge);
+            }
+            finally {
+                for (const w of this.forge.tracker.warnings?.() ?? [])
+                    this.o.warn?.(`omg factory run: ${w}`);
+            }
+            return;
+        }
         if (this.forge)
             return this.adoIntake(this.forge);
         const v = this.gh((exec, cwd) => ghIssueJson(exec, this.o.issue, cwd));
@@ -1378,20 +1453,20 @@ class FactoryEngine {
             this.gate('protected-paths', `the change touches merge-rule paths: ${hit.join(', ')}; nothing was pushed`);
             return;
         }
-        const mismatch = remoteRepoMismatch(this.exec, this.o.root, 'origin', s.repoUrl);
+        const mismatch = this.pushRemoteMismatch(s);
         if (mismatch)
             throw new FactoryStepError(`refusing to push: ${mismatch}`);
         // Re-read before acting: a crash between push and record repeats nothing.
-        const remote = this.run(['ls-remote', 'origin', `refs/heads/${s.branch}`]).trim().split(/\s+/)[0] || null;
+        const remote = this.run(['ls-remote', runRemote(s), `refs/heads/${s.branch}`]).trim().split(/\s+/)[0] || null;
         if (remote && remote !== cand && remote !== s.head) {
-            this.gate('head-moved-externally', `origin/${s.branch} is at ${remote.slice(0, 12)}, which the engine did not push`);
+            this.gate('head-moved-externally', `${runRemote(s)}/${s.branch} is at ${remote.slice(0, 12)}, which the engine did not push`);
             return;
         }
         if (remote !== cand) {
             // Last look at the shared git state right before the push (a late hook, config or ref edit).
             if (this.recheckFailed('right before the push'))
                 return;
-            this.run(['push', 'origin', `${cand}:refs/heads/${s.branch}`]);
+            this.run(['push', runRemote(s), `${cand}:refs/heads/${s.branch}`]);
             this.rebaseRecheck();
         }
         let pr = s.pr;
@@ -1559,6 +1634,9 @@ class FactoryEngine {
     prView(pr) {
         if (!this.forge)
             return this.gh((exec, cwd) => ghMergeView(exec, pr, cwd));
+        // The local forge: the human merged on the local base, so sync it to the mirror first (fast-forward only); the PR then reads MERGED.
+        if (this.forge.kind === 'local')
+            this.fetchBase();
         const v = this.forge.reviews.viewPr(pr);
         return { number: v.number, state: v.state, isDraft: v.isDraft, baseRefName: v.baseRefName, baseRefOid: v.baseRefOid, headRefOid: v.headRefOid };
     }
@@ -1585,8 +1663,9 @@ class FactoryEngine {
     gateConfig(view) {
         if (this.gateCfg?.baseSha === view.baseRefOid)
             return this.gateCfg.loaded;
-        const load = this.o.gateConfig ?? defaultGateConfigLoader;
-        const tracking = () => this.exec('git', ['rev-parse', '--verify', `refs/remotes/origin/${this.state.base}`], { cwd: this.o.root, env: TRUSTED_READ_ENV }).stdout.trim();
+        const local = runRemote(this.state) === LOCAL_REMOTE;
+        const load = this.o.gateConfig ?? (local ? localGateConfigLoader : defaultGateConfigLoader);
+        const tracking = () => this.exec('git', ['rev-parse', '--verify', `refs/remotes/${runRemote(this.state)}/${this.state.base}`], { cwd: this.o.root, env: TRUSTED_READ_ENV }).stdout.trim();
         const before = tracking();
         let loaded;
         try {
@@ -1594,6 +1673,13 @@ class FactoryEngine {
         }
         catch (error) {
             throw new FactoryStepError(`the trusted ship config could not be loaded: ${errText(error)}`);
+        }
+        if (local) {
+            // The local forge reports one check, so the gates wait for exactly it (offline forge plan §1.2).
+            const configured = loaded.config.requiredChecks.filter((c) => c !== LOCAL_GATE_CHECK);
+            if (configured.length > 0 && JSON.stringify(loaded.config.requiredChecks) !== JSON.stringify(DEFAULT_SHIP_CONFIG.requiredChecks))
+                this.o.warn?.(`omg factory run: the local forge ignores ship.requiredChecks ${configured.join(', ')}; the gates wait for ${LOCAL_GATE_CHECK} only`);
+            loaded = { ...loaded, config: { ...loaded.config, requiredChecks: [LOCAL_GATE_CHECK], advisoryChecks: [] } };
         }
         if (tracking() !== before)
             this.rebaseRecheck();
@@ -1704,7 +1790,7 @@ class FactoryEngine {
         this.run(['worktree', 'add', '-B', branch, path, head]);
         this.save((x) => ({ ...x, checkoutHead: head }));
         linkNodeModules(this.o.root, path);
-        const result = runPrepare({ exec: this.exec, cwd: path, base: s.base, branch, reviewedSha: head, baseSha: view.baseRefOid, repoUrl: s.repoUrl, push: false });
+        const result = runPrepare({ exec: this.exec, cwd: path, base: s.base, branch, reviewedSha: head, baseSha: view.baseRefOid, repoUrl: s.repoUrl, remote: runRemote(s), push: false });
         if (this.prepareTampered(before, path, branch, view.baseRefOid))
             return;
         const checkoutHead = this.run(['rev-parse', 'HEAD'], 'git', undefined, path).trim();
@@ -1739,7 +1825,7 @@ class FactoryEngine {
      */
     prepareTampered(before, path, branch, baseSha) {
         const branchRef = `refs/heads/${branch}`;
-        const tracking = `refs/remotes/origin/${this.state.base}`;
+        const tracking = `refs/remotes/${runRemote(this.state)}/${this.state.base}`;
         const strip = (snap) => ({ ...snap, refs: Object.fromEntries(Object.entries(snap.refs).filter(([n]) => n !== branchRef && n !== tracking)) });
         let problems;
         let after;
@@ -1756,7 +1842,7 @@ class FactoryEngine {
             problems = [`the post-prepare snapshot failed: ${errText(error)}`];
         }
         if (problems.length > 0) {
-            this.gate('lane-tampered', `prepare's checks (the PR's own code) changed shared git state outside the checkout's worktree entry, its branch and origin/${this.state.base}, so nothing is pushed; inspect and remove ${path} by hand: ${problems.slice(0, 5).join('; ')}`);
+            this.gate('lane-tampered', `prepare's checks (the PR's own code) changed shared git state outside the checkout's worktree entry, its branch and ${runRemote(this.state)}/${this.state.base}, so nothing is pushed; inspect and remove ${path} by hand: ${problems.slice(0, 5).join('; ')}`);
             return true;
         }
         const r = this.ledger.recheck;
@@ -1782,12 +1868,12 @@ class FactoryEngine {
                 this.gate('protected-paths', `the prepared head touches merge-rule paths: ${hit.join(', ')}; nothing was pushed`);
                 return;
             }
-            const mismatch = remoteRepoMismatch(this.exec, this.o.root, 'origin', s.repoUrl);
+            const mismatch = this.pushRemoteMismatch(s);
             if (mismatch)
                 throw new FactoryStepError(`refusing to push: ${mismatch}`);
-            const remote = this.run(['ls-remote', 'origin', `refs/heads/${s.branch}`]).trim().split(/\s+/)[0] || null;
+            const remote = this.run(['ls-remote', runRemote(s), `refs/heads/${s.branch}`]).trim().split(/\s+/)[0] || null;
             if (remote !== reviewed && remote !== next) {
-                this.gate('head-moved-externally', `origin/${s.branch} is at ${remote?.slice(0, 12) ?? 'nothing'}, which the engine did not push`);
+                this.gate('head-moved-externally', `${runRemote(s)}/${s.branch} is at ${remote?.slice(0, 12) ?? 'nothing'}, which the engine did not push`);
                 return;
             }
             if (remote !== next) {
@@ -1795,7 +1881,7 @@ class FactoryEngine {
                     return;
                 // Recorded before the push: a crash right after it resumes from this record, not at head-moved-externally.
                 this.save((x) => ({ ...x, prepared: { head: next, housekeeping } }));
-                this.run(['push', 'origin', `${next}:refs/heads/${s.branch}`]);
+                this.run(['push', runRemote(s), `${next}:refs/heads/${s.branch}`]);
                 this.rebaseRecheck();
             }
         }
@@ -1857,6 +1943,86 @@ class FactoryEngine {
         if (out.kind === 'done')
             this.acceptWriteLane(out, key, f.startSha);
     }
+    /** The gate timeout of the local forge config (minutes). */
+    localGateTimeout() {
+        return this.o.forge.config.local?.gateTimeoutMinutes ?? 20;
+    }
+    localGateStateDir() {
+        return this.o.forge.options.stateDir ?? getGlobalOmcStatePath('forge');
+    }
+    /** The gate must run for `head`: no record, or a PENDING one an engine left when it died mid-gate (localGateDue). */
+    localGateDueFor(head) {
+        return localGateDue(this.localGateStateDir(), this.o.root, head, this.localGateTimeout(), new Date(this.clock()));
+    }
+    /**
+     * The local forge's gate for `head` (offline forge plan §1.1): when the
+     * gate is due for the head (no `local-gate` record, checks.rerun removed
+     * it, or a stale PENDING record), run factory.forge.local.gate once in the
+     * engine's prepare checkout, which must be at exactly that head, and
+     * record it. False when the run parked instead (no gate configured, a gate
+     * changed since the run recorded it, the checkout is gone or elsewhere, the
+     * gate's executable cannot start, or the gate changed shared git state).
+     */
+    async ensureLocalGate(head) {
+        const f = this.o.forge;
+        const stateDir = this.localGateStateDir();
+        if (!this.localGateDueFor(head))
+            return true;
+        const gate = f.config.local?.gate;
+        if (!gate || gate.length === 0) {
+            this.gate('gates', `no local gate: set factory.forge.local.gate (an argv such as ["npm","test"]) in the user config or .copilot/omg.jsonc committed on ${this.state.base}, then rerun ${this.resume}`);
+            return false;
+        }
+        const checkout = checkoutPath(this.o.root, this.key);
+        const at = existsSync(checkout) ? this.exec('git', ['rev-parse', 'HEAD'], { cwd: checkout }).stdout.trim() : '';
+        if (at !== head) {
+            this.gate('gates', `the local gate runs in the engine's prepare checkout ${checkout}, which is ${at ? `at ${at.slice(0, 12)}` : 'missing'}, not at the pushed head ${head.slice(0, 12)}; rerun ${this.resume} after omg factory run clean, or run the gate by hand`);
+            return false;
+        }
+        try {
+            assertLocalGateCommand(this.state.localGate ?? gate, gate, checkout, checkoutPath(this.o.root, this.key));
+        }
+        catch (error) {
+            if (!(error instanceof FactorySafetyError))
+                throw error;
+            this.gate('gates', error.message);
+            return false;
+        }
+        if (!this.state.localGate)
+            this.save((x) => ({ ...x, localGate: [...gate] }));
+        const timeoutMinutes = this.localGateTimeout();
+        this.progress.heartbeat('gates', `local gate ${gate.join(' ')} on ${head.slice(0, 12)}`, this.fields());
+        const out = await runLocalGate({ stateDir, root: this.o.root, head, gate, timeoutMinutes, checkout, ...(this.o.localGate ? { runner: this.o.localGate } : {}), now: () => new Date(this.clock()) });
+        if (!out.started) {
+            // A config problem, not a verdict on the head: no FAILURE, no ci-fix lane.
+            this.gate('gates', `the local gate could not start: ${out.reason}; fix factory.forge.local.gate, then rerun ${this.resume}`);
+            return false;
+        }
+        const record = out.record;
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `local gate ${record.state} on ${head.slice(0, 12)} (exit ${record.exitCode})` }] }));
+        // The gate ran the PR's own code: the shared git state must be what the engine left.
+        return !this.recheckFailed('after the local gate');
+    }
+    /**
+     * The local forge with checks that stop the gates driver when the gate is
+     * due again for the pushed head (checks.rerun removed its record): the
+     * driver's checks are synchronous, so gates() runs the gate (awaited, with
+     * its tree-killing timeout) and drives again.
+     */
+    localGateForge(forge) {
+        const due = (h) => {
+            if (h === this.state.head && !this.state.gate && this.localGateDueFor(h))
+                throw new LocalGateDue(h);
+        };
+        return {
+            ...forge,
+            checks: {
+                ...forge.checks,
+                checks: (pr, h) => { due(h); return forge.checks.checks(pr, h); },
+                runsForHead: (pr, h) => { due(h); return forge.checks.runsForHead(pr, h); },
+            },
+        };
+    }
     /** The gates driver on the pushed head; green moves ship to ready and the run to merge. */
     async gates() {
         const { pr, head } = this.state;
@@ -1876,26 +2042,48 @@ class FactoryEngine {
             throw new FactoryStepError(`ship state for PR #${pr} is ${ship.phase}, not gates`);
         const { config, known } = this.gateConfig(view);
         const fields = () => ({ ...this.fields() });
-        const out = await driveGates({
-            exec: this.exec, cwd: this.o.root, pr, head, config, known,
-            ...(this.forge ? { forge: this.forge } : {}),
-            deadline: this.clock() + this.o.limits.gatesTimeoutMs,
-            now: this.clock,
-            sleep: this.o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))),
-            reruns: {
-                count: (id) => this.readShip(pr)?.reruns[id] ?? 0,
-                record: (id) => { this.writeShip(pr, (cur) => ({ ...cur, reruns: { ...cur.reruns, [id]: (cur.reruns[id] ?? 0) + 1 } })); },
-            },
-            onReport: (r, note) => {
-                this.writeShip(pr, (cur) => ({ ...cur, lastGates: { verdict: r.verdict, at: this.iso(), failed: r.failed, pending: r.pending } }));
-                this.progress.heartbeat('gates', `${note}; failed ${r.failed.length}, pending ${r.pending.length}`, fields());
-            },
-            onWait: (note) => {
-                this.reload();
-                this.progress.heartbeat('gates', note, fields());
-            },
-            cancelled: () => this.cancelWanted(this.reload()),
-        });
+        const local = this.forge?.kind === 'local';
+        const forge = local ? this.localGateForge(this.forge) : this.forge;
+        const deadline = this.clock() + this.o.limits.gatesTimeoutMs;
+        let out;
+        for (;;) {
+            if (local && !(await this.ensureLocalGate(head)))
+                return;
+            if (this.state.gate)
+                return;
+            try {
+                out = await driveGates({
+                    exec: this.exec, cwd: this.o.root, pr, head, config, known,
+                    ...(forge ? { forge } : {}),
+                    deadline,
+                    now: this.clock,
+                    sleep: this.o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))),
+                    reruns: {
+                        count: (id) => this.readShip(pr)?.reruns[id] ?? 0,
+                        record: (id) => { this.writeShip(pr, (cur) => ({ ...cur, reruns: { ...cur.reruns, [id]: (cur.reruns[id] ?? 0) + 1 } })); },
+                    },
+                    onReport: (r, note) => {
+                        this.writeShip(pr, (cur) => ({ ...cur, lastGates: { verdict: r.verdict, at: this.iso(), failed: r.failed, pending: r.pending } }));
+                        this.progress.heartbeat('gates', `${note}; failed ${r.failed.length}, pending ${r.pending.length}`, fields());
+                    },
+                    onWait: (note) => {
+                        this.reload();
+                        this.progress.heartbeat('gates', note, fields());
+                    },
+                    cancelled: () => this.cancelWanted(this.reload()),
+                });
+            }
+            catch (error) {
+                // The local gate is due again (a rerun removed its record): run it, then drive on to the same deadline.
+                // A full gate run that would end past that deadline is a gates timeout instead, so the deadline is never overrun.
+                if (!(error instanceof LocalGateDue))
+                    throw error;
+                if (this.clock() + this.localGateTimeout() * 60_000 <= deadline)
+                    continue;
+                out = { kind: 'timeout' };
+            }
+            break;
+        }
         const at = head.slice(0, 12);
         switch (out.kind) {
             case 'cancelled': return;
@@ -2019,7 +2207,7 @@ class FactoryEngine {
         try {
             const now = snapshotRepo(this.exec, this.o.root, this.stateRootRel, r.snapshot);
             // The engine's own prepare push (recorded before it) moves the PR branch's tracking ref; a crash right after it skips the rebase.
-            const tracking = `refs/remotes/origin/${this.state.branch}`;
+            const tracking = `refs/remotes/${runRemote(this.state)}/${this.state.branch}`;
             const own = this.state.prepared !== undefined && now.refs[tracking] === this.state.prepared.head;
             problems = compareSnapshots(own ? { ...r.snapshot, refs: { ...r.snapshot.refs, [tracking]: now.refs[tracking] } } : r.snapshot, now);
         }
@@ -2346,7 +2534,15 @@ class FactoryEngine {
 }
 /** Read-only preview: issue and plan resolution, the resolved caps; no state, lanes or pushes. */
 function dryRun(o) {
-    const { exec, forge } = engineExec(o, o.exec);
+    // The local forge reads the backlog at the local base branch: a dry run neither creates nor syncs the mirror (F8).
+    let localBase;
+    const { exec, forge } = engineExec(o, o.exec, () => localBase);
+    if (forge?.kind === 'local') {
+        const sha = exec('git', ['rev-parse', '--verify', `refs/heads/${o.base}`], { cwd: o.root, env: TRUSTED_READ_ENV }).stdout.trim();
+        if (!HEX40.test(sha))
+            throw new FactoryStepError(`base branch '${o.base}' not found; set ship.base in .copilot/omg.jsonc`);
+        localBase = sha;
+    }
     const key = engineRunKey(o);
     const existing = readFactoryState(o.root, key);
     const caps = { laneMaxCredits: o.limits.laneMaxCredits, ...(o.limits.maxRunCredits !== undefined ? { maxRunCredits: o.limits.maxRunCredits } : {}) };

@@ -7,7 +7,7 @@
  * junctions such as a linked node_modules are unlinked before
  * `git worktree remove`, a dirty tree is kept, and a worktree or branch
  * holding a commit that neither the main checkout's HEAD nor a verified
- * remote ref (GitHub's base after a fetch, the PR branch on origin) holds is
+ * remote ref (GitHub's base after a fetch, the PR branch on the run's remote, origin or the local forge's omg-local mirror) holds is
  * kept. The remote PR branch itself is never deleted. clean's own git
  * (remote check, fetch, ls-remote) runs guarded and hardened like the
  * engine's: no hooks, no fsmonitor.
@@ -15,13 +15,15 @@
 
 import { existsSync } from 'fs';
 import { WORKTREE_TEAM } from '../../copilot-run/job.js';
+import { LOCAL_REMOTE } from '../../forge/local/index.js';
 import { remoteRepoMismatch } from '../../ship/config.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { getWorktreePath, removeWorkerWorktree } from '../../team/git-worktree.js';
 import { factoryGuardExec, hardenedGitExec } from './exec.js';
+import { localRemoteMismatch } from './forge-roots.js';
 import { defaultLedgerDir, emptyHooksDir } from './ledger.js';
 import { checkoutWorker, FACTORY_CHECKOUT_TEAM } from './prepare.js';
-import { acquireFactoryOwner, FactoryStateError, readFactoryState, verifyFactoryIntegrity, type OwnerDeps } from './state.js';
+import { acquireFactoryOwner, FactoryStateError, readFactoryState, runRemote, verifyFactoryIntegrity, type OwnerDeps } from './state.js';
 
 const HEX40 = /^[0-9a-f]{40}$/;
 
@@ -30,7 +32,7 @@ export interface FactoryCleanResult {
   removed: string[];
   /** What was kept and why (dirty, unmerged commits, ...). */
   kept: Array<{ worktree: string; reason: string }>;
-  /** Commits whose history counted as kept: the fetched base and the PR branch on origin. */
+  /** Commits whose history counted as kept: the fetched base and the PR branch on the run's remote. */
   contained: string[];
 }
 
@@ -58,15 +60,16 @@ export function cleanFactoryRun(o: FactoryCleanOptions): FactoryCleanResult {
     // No hook or fsmonitor a lane planted runs in clean's fetch and ls-remote.
     const exec = factoryGuardExec(hardenedGitExec(o.exec, emptyHooksDir(o.ledgerDir ?? defaultLedgerDir())), () => [state.base]);
     const git = (args: string[]) => exec('git', args, { cwd: o.root, env: TRUSTED_READ_ENV });
-    const mismatch = remoteRepoMismatch(exec, o.root, 'origin', state.repoUrl);
+    const remote = runRemote(state);
+    const mismatch = state.remote === LOCAL_REMOTE ? localRemoteMismatch(exec, o.root, state.repoUrl) : remoteRepoMismatch(exec, o.root, remote, state.repoUrl);
     if (mismatch) throw new FactoryStateError(`refusing to fetch: ${mismatch}`);
-    const fetched = git(['fetch', 'origin', state.base]);
-    if (fetched.status !== 0) throw new FactoryStateError(`git fetch origin ${state.base} failed: ${fetched.stderr.trim().split('\n')[0]}`);
+    const fetched = git(['fetch', remote, state.base]);
+    if (fetched.status !== 0) throw new FactoryStateError(`git fetch ${remote} ${state.base} failed: ${fetched.stderr.trim().split('\n')[0]}`);
     const contained: string[] = [];
-    const base = git(['rev-parse', '--verify', `refs/remotes/origin/${state.base}`]).stdout.trim();
+    const base = git(['rev-parse', '--verify', `refs/remotes/${remote}/${state.base}`]).stdout.trim();
     if (HEX40.test(base)) contained.push(base);
-    const remote = exec('git', ['ls-remote', 'origin', `refs/heads/${state.branch}`], { cwd: o.root });
-    const pushed = remote.status === 0 ? remote.stdout.trim().split(/\s+/)[0] : '';
+    const listed = exec('git', ['ls-remote', remote, `refs/heads/${state.branch}`], { cwd: o.root });
+    const pushed = listed.status === 0 ? listed.stdout.trim().split(/\s+/)[0] : '';
     if (HEX40.test(pushed) && git(['cat-file', '-e', `${pushed}^{commit}`]).status === 0) contained.push(pushed);
 
     const targets: Array<[string, string]> = [

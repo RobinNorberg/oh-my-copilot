@@ -57,6 +57,7 @@ import { type AzEntry } from '../../forge/ado/az-binary.js';
 import type { ForgeOptions, ResolvedForgeConfig } from '../../forge/types.js';
 import { type GateConfigLoader } from './prepare.js';
 import { type FactoryRunLimits } from './budget.js';
+import { type LocalGateRunner } from './local-gate.js';
 import { type LaneBackend, type LaneProcess } from './lane.js';
 import { type FactoryGate, type FactoryHealRecord, type FactoryPhase, type FactoryRunKey, type FactoryRunState, type OwnerDeps } from './state.js';
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
@@ -129,6 +130,8 @@ export interface FactoryEngineOptions {
      * resolveAzEntry outside those roots).
      */
     forge?: FactoryForgeInput;
+    /** The local forge's gate process (default: defaultLocalGateRunner, no shell); tests substitute it. */
+    localGate?: LocalGateRunner;
 }
 export interface FactoryForgeInput {
     config: ResolvedForgeConfig;
