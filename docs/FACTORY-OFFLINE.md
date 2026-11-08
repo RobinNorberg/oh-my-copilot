@@ -178,7 +178,7 @@ omg factory run reset 3   # start the cancelled run over
 omg factory run 3         # a new run with a new local PR
 ```
 
-Reset keeps the old branch in the mirror as `factory/cancelled/issue-<n>-<time>`, deletes `factory/issue-<n>` there, closes the local PR if it is still open, and moves the run state aside as `run-<n>.json.reset-<time>`. It is for the local forge only. It refuses, with exit 1, a run whose recorded forge is not local, a run whose mirror differs from the configured one, no run at all, a run that is not cancelled, a run that still has worktrees (`run clean` first), a run state that fails its seal or is not the engine's last write, and a live engine. A reset stopped part way is finished by running it again. After a reset, `omg factory check` reads the item as new.
+Reset keeps the old branch in the mirror as `factory/cancelled/issue-<n>-<time>`, deletes `factory/issue-<n>` there, closes the local PR if it is still open, and moves the run state aside as `run-<n>.json.reset-<time>`. It is for the local forge only: with another configured forge it exits 2. It refuses, with exit 1, a run whose recorded forge is not local, a run whose mirror differs from the configured one, no run at all, a run that is not cancelled, a run that still has worktrees (`run clean` first), a run state that fails its seal or is not the engine's last write, and a live engine. A reset stopped part way is finished by running it again. After a reset, `omg factory check` reads the item as new.
 
 ## Commands
 
