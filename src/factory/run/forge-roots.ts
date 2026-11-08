@@ -177,13 +177,17 @@ export function localRemoteMismatch(exec: Exec, root: string, mirror: string): s
   const got = exec('git', ['remote', 'get-url', LOCAL_REMOTE], { cwd: root, env: TRUSTED_READ_ENV });
   if (got.status !== 0) return `git remote get-url ${LOCAL_REMOTE} failed: ${got.stderr.trim().split('\n')[0]}`;
   const url = got.stdout.trim();
-  if (!url || !same(url)) return `remote ${LOCAL_REMOTE} points at ${url}, not the mirror ${mirror}`;
+  // git prints the remote's name when it has no url (only a planted pushurl, say).
+  const urlNote = same(url) ? '' : !url || url === LOCAL_REMOTE ? '; the remote has no url' : `; its url ${url} is not the mirror either`;
   const push = exec('git', ['remote', 'get-url', '--push', '--all', LOCAL_REMOTE], { cwd: root, env: TRUSTED_READ_ENV });
   if (push.status !== 0) return `git remote get-url --push --all ${LOCAL_REMOTE} failed: ${push.stderr.trim().split('\n')[0]}`;
   const pushUrls = push.stdout.split(/\r?\n/).map((u) => u.trim()).filter(Boolean);
+  // F26: a push url other than the remote url is planted (pushurl or pushInsteadOf); name it first, whatever the url says.
+  const planted = pushUrls.find((u) => !same(u) && u !== url);
+  if (planted) return `remote ${LOCAL_REMOTE} pushes to ${planted} (a remote.${LOCAL_REMOTE}.pushurl or pushInsteadOf), not the mirror ${mirror}${urlNote}`;
+  if (!same(url)) return `remote ${LOCAL_REMOTE} points at ${url || '(no url)'}, not the mirror ${mirror}`;
   if (pushUrls.length === 0) return `git remote get-url --push --all ${LOCAL_REMOTE} printed no push URL`;
-  const foreign = pushUrls.find((u) => !same(u));
-  return foreign ? `remote ${LOCAL_REMOTE} pushes to ${foreign}, not the mirror ${mirror}` : null;
+  return null;
 }
 
 /**
@@ -244,7 +248,7 @@ export function syncLocalMirror(exec: Exec, root: string, mirror: string, base: 
   const current = git(mirrorRemoteGetUrlArgs(), TRUSTED_READ_ENV);
   if (current.status !== 0) must(mirrorRemoteAddArgs(mirror), 'local forge remote');
   const mismatch = localRemoteMismatch(exec, root, mirror);
-  if (mismatch) throw new FactoryForgeUnavailableError(`refusing to sync the local forge mirror: ${mismatch}; point the ${LOCAL_REMOTE} remote at ${mirror} (git remote set-url ${LOCAL_REMOTE} ${mirror}) and remove any pushurl`);
+  if (mismatch) throw new FactoryForgeUnavailableError(`refusing to sync the local forge mirror: ${mismatch}; point the ${LOCAL_REMOTE} remote at ${mirror} (git remote set-url ${LOCAL_REMOTE} ${mirror}) and remove any pushurl (git config --unset-all remote.${LOCAL_REMOTE}.pushurl)`);
   const local = must(['rev-parse', '--verify', `refs/heads/${base}`], `local base ${base}`, TRUSTED_READ_ENV).trim();
   if (!HEX40.test(local)) throw new Error(`local base ${base} did not resolve to a commit`);
   onBase?.(local);
