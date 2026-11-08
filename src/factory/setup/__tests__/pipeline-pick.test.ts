@@ -33,7 +33,7 @@ describe('omg factory setup: heal pipeline pick (Azure DevOps fixtures)', () => 
     expect(r.exitCode).toBe(0);
     expect(r.config!.heal).toEqual({ pipeline: { definitionId: 9 } });
     expect((parse(readFileSync(projectFile(w), 'utf8')) as { factory: { heal: unknown } }).factory.heal).toEqual({ pipeline: { definitionId: 9 } });
-    expect(r.notes.some((n) => /factory\.heal\.pipeline \(build definition 9\) counts once .* is committed on <base>/.test(n))).toBe(true);
+    expect(r.notes.some((n) => /factory\.heal\.pipeline \(build definition 9\) counts once .* is committed on [\w.-]+;/.test(n))).toBe(true);
     // The repositoryId is the GUID git.repositories.GET answered for web-app, not a value from anywhere else.
     const [defs] = invokes(w, 'definitions');
     expect(query(defs.args)).toEqual({ repositoryId: REPO_GUID, repositoryType: 'TfsGit', includeAllProperties: 'true' });

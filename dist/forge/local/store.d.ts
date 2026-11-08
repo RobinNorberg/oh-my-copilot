@@ -57,6 +57,10 @@ export interface LocalPr {
     /** The head sha MERGED was detected at. */
     mergedHead?: string;
     mergedAt?: string;
+    /** Why a CLOSED PR was closed (`cancelled`: omg factory run cancel), when, and its head then. */
+    closedReason?: string;
+    closedAt?: string;
+    closedHead?: string;
 }
 export interface LocalPrStore {
     version: 1;

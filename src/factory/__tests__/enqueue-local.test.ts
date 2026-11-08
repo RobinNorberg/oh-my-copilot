@@ -41,6 +41,10 @@ describe('omg factory enqueue on the local (offline) forge', () => {
     expect(dry.code).toBe(0);
     expect(dry.json.items.map((i) => i.action)).toEqual(['created', 'created']);
     expect(readdirSync(backlogDir(repo))).toEqual(['1-spec.md']);
+    // F25: a dry run does not claim files are uncommitted (nothing was written); the spec has no task list offline.
+    expect(dry.json.warnings.some((w) => /^after enqueue writes them, commit the new and changed backlog files on main/.test(w))).toBe(true);
+    expect(dry.json.warnings.some((w) => /are uncommitted/.test(w))).toBe(false);
+    expect(dry.json.spec.taskList).toBe('not-used');
 
     const first = await enqueue(repo, [ticket('store'), ticket('refresh', ['store'])]);
     expect(first.code).toBe(0);
@@ -48,7 +52,7 @@ describe('omg factory enqueue on the local (offline) forge', () => {
     // New files are uncommitted: untrusted, so check blocks them and marks nothing.
     expect(first.json.items.map((i) => i.reasons[0])).toEqual(['uncommitted', 'uncommitted']);
     expect(first.json.warnings.some((w) => /uncommitted: commit them on main/.test(w))).toBe(true);
-    expect(first.json.spec.taskList).toBe('unchanged');
+    expect(first.json.spec.taskList).toBe('not-used');
     const third = readdirSync(backlogDir(repo)).find((n) => n.startsWith('3-'))!;
     const item = parseBacklogFile(`.copilot/backlog/${third}`, readFileSync(join(backlogDir(repo), third), 'utf8'));
     expect(item).toMatchObject({ id: 3, title: 'Do refresh', state: 'open', parent: 1, dependsOn: [2] });

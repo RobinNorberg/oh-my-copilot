@@ -30,9 +30,12 @@ export type SetupScope = 'project' | 'user';
 export interface SetupSection {
   forge: Record<string, unknown>;
   intake: { source: IntakeSource; itemTypes?: string[] };
-  progress: Pick<ForgeProgressConfig, 'enabled' | 'stages'>;
+  /** Absent on the local forge: it records the stage itself and syncs no board, so the key would only be ignored (F21). */
+  progress?: Pick<ForgeProgressConfig, 'enabled' | 'stages'>;
   /** Azure DevOps: the build definition heal reads as CI (factory.heal.pipeline; read from <base> once committed). */
   heal?: { pipeline: { definitionId: number } };
+  /** The local forge: the detected base branch when no config names one (F20); the one key outside `factory` setup writes. */
+  ship?: { base: string };
 }
 
 export function buildSection(repo: ForgeRepo, intake: Pick<ForgeIntakeConfig, 'source' | 'itemTypes'> & { source: IntakeSource }, progress: ForgeProgressConfig, team?: string): SetupSection {
@@ -45,7 +48,7 @@ export function buildSection(repo: ForgeRepo, intake: Pick<ForgeIntakeConfig, 's
   return {
     forge,
     intake: { source: intake.source, ...(repo.kind === 'azure-devops' ? { itemTypes: [...intake.itemTypes] } : {}) },
-    progress: { enabled: progress.enabled, stages: progress.stages },
+    ...(repo.kind === 'local' ? {} : { progress: { enabled: progress.enabled, stages: progress.stages } }),
   };
 }
 
@@ -64,13 +67,23 @@ export function sectionEdits(section: SetupSection): Array<[JSONPath, unknown]> 
   }
   edits.push([['factory', 'intake', 'source'], section.intake.source]);
   if (section.intake.itemTypes) edits.push([['factory', 'intake', 'itemTypes'], section.intake.itemTypes]);
-  edits.push([['factory', 'progress', 'enabled'], section.progress.enabled]);
-  edits.push([['factory', 'progress', 'stages'], section.progress.stages]);
+  if (section.progress) {
+    edits.push([['factory', 'progress', 'enabled'], section.progress.enabled]);
+    edits.push([['factory', 'progress', 'stages'], section.progress.stages]);
+  }
   if (section.heal) edits.push([['factory', 'heal', 'pipeline'], section.heal.pipeline]);
+  if (section.ship) edits.push([SHIP_BASE, section.ship.base]);
   return edits;
 }
 
 const TRUSTED_AUTHORS: JSONPath = ['factory', 'forge', 'azureDevOps', 'trustedAuthors'];
+/** ship.base: the branch runs start from and the human merges into (not a safety key; trustedBases stays user-only). */
+const SHIP_BASE: JSONPath = ['ship', 'base'];
+const isShipBase = (p: JSONPath): boolean => p.length === 2 && p[0] === 'ship' && p[1] === 'base';
+const hasShipBase = (config: Record<string, unknown>): boolean => {
+  const ship = config.ship;
+  return ship !== null && typeof ship === 'object' && 'base' in ship;
+};
 
 export function trustedAuthorsEdit(authors: readonly string[]): [JSONPath, unknown] {
   return [TRUSTED_AUTHORS, [...authors]];
@@ -114,13 +127,15 @@ function parseStrict(text: string, path: string): Record<string, unknown> {
 
 /** Apply edits to JSONC text, keeping comments, formatting and a leading BOM. */
 export function applyFactoryEdits(text: string, edits: ReadonlyArray<[JSONPath, unknown]>, path = 'config'): string {
-  parseStrict(text, path);
+  const parsed = parseStrict(text, path);
   const bom = text.startsWith(BOM) ? BOM : '';
   const body = text.slice(bom.length);
   const eol = body.includes('\r\n') ? '\r\n' : '\n';
   let out = body.trim() === '' ? '{}' : body;
   for (const [jsonPath, value] of edits) {
-    if (jsonPath[0] !== 'factory') throw new SetupError(1, `omg factory setup writes only factory.*, not ${jsonPath.join('.')}`);
+    // ship.base only where the file names none (F20: the local forge's detected base); an existing one is never changed.
+    const addsBase = isShipBase(jsonPath) && !hasShipBase(parsed);
+    if (jsonPath[0] !== 'factory' && !addsBase) throw new SetupError(1, `omg factory setup writes only factory.* (and ship.base where none is set), not ${jsonPath.join('.')}`);
     try {
       out = applyEdits(out, modify(out, jsonPath, value, { formattingOptions: { insertSpaces: true, tabSize: 2, eol } }));
     } catch (error) {
@@ -152,9 +167,12 @@ function without(root: Record<string, unknown>, path: JSONPath): void {
 
 /** Throws unless `before` and `after` differ only in the subtrees `scope` owns. */
 export function assertFactoryOnly(before: string, after: string, scope: SetupScope, path = 'config'): void {
+  // A project file without ship.base may gain one (F20); one that has it must keep it.
+  const baseAdded = scope === 'project' && !hasShipBase(parseStrict(before, path));
   const strip = (text: string) => {
     const value = structuredClone(parseStrict(text, path));
     for (const owned of OWNED[scope]) without(value, owned);
+    if (baseAdded) without(value, SHIP_BASE);
     return JSON.stringify(canonical(value));
   };
   if (strip(before) !== strip(after)) throw new SetupError(1, `refusing to write ${path}: the edit changed keys outside ${OWNED[scope].map((p) => p.join('.')).join(', ')}`);

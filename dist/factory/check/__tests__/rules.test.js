@@ -92,6 +92,12 @@ const ROWS = [
     { rule: 'run-active with a gate', world: { items: [item(1)], runs: { 1: { phase: 'merge', gate: { name: 'merge' } } } }, bucket: 'blocked', reasons: ['run-active:merge/merge'] },
     { rule: 'run-finished (merged: the engine never restarts it)', world: { items: [item(1)], runs: { 1: { phase: 'merged' } } }, bucket: 'blocked', reasons: ['run-finished:merged'] },
     { rule: 'run-finished (cancelled)', world: { items: [item(1)], runs: { 1: { phase: 'cancelled' } } }, bucket: 'blocked', reasons: ['run-finished:cancelled'] },
+    {
+        rule: 'run-finished (cancelled, local forge: not terminal, run reset reopens the item)',
+        world: { kind: 'local', items: [item(1)], runs: { 1: { phase: 'cancelled' } } },
+        bucket: 'blocked', reasons: ['run-finished:cancelled'],
+        detail: 'the factory run was cancelled; omg factory run clean 1, then omg factory run reset 1, makes the item runnable again',
+    },
     { rule: 'run-finished (failed)', world: { items: [item(1)], runs: { 1: { phase: 'failed' } } }, bucket: 'blocked', reasons: ['run-finished:failed'] },
     {
         rule: 'branch-exists (a leftover origin branch without a PR)',
@@ -170,6 +176,11 @@ const ROWS = [
     },
     { rule: 'needs-split (open children)', world: { items: [item(1, { children: [140, 141] }), item(140, { open: false }), item(141)] }, bucket: 'blocked', reasons: ['needs-split'], detail: 'has open children #141' },
     {
+        rule: 'children-done (F30: a spec whose children are all closed is never runnable again)',
+        world: { items: [item(1, { children: [140, 141] }), item(140, { open: false }), item(141, { open: false })] },
+        bucket: 'blocked', reasons: ['children-done'], detail: 'every child (#140,#141) is closed: close this spec item; the factory never runs a spec that was split',
+    },
+    {
         rule: 'needs-split (ADO Epic)',
         world: { kind: 'azure-devops', itemTypes: ['Epic', 'User Story'], items: [item(1, { type: 'Epic' })] },
         bucket: 'blocked', reasons: ['needs-split'],
@@ -229,6 +240,17 @@ const ROWS = [
         rule: 'runnable (ADO acceptance field)',
         world: { kind: 'azure-devops', items: [item(1, { type: 'User Story', body: 'desc', acceptance: '- returns HTTP 404 for a missing id' })] },
         bucket: 'runnable', reasons: [], planSource: 'ado-acceptance',
+    },
+    {
+        rule: 'needs-split (a local spec before its tickets exist: F24)',
+        world: { kind: 'local', items: [item(1, { labels: ['spec'], body: 'desc', acceptance: '- returns HTTP 404 for a missing id' })] },
+        bucket: 'blocked', reasons: ['needs-split'], detail: 'labelled spec: add its tickets with omg factory enqueue and commit them',
+    },
+    { rule: 'the spec label means nothing on GitHub', world: { items: [item(1, { labels: ['spec'] })] }, bucket: 'runnable', reasons: [] },
+    {
+        rule: 'runnable (local backlog Acceptance section, no Azure DevOps wording: F23)',
+        world: { kind: 'local', items: [item(1, { body: 'desc', acceptance: '- returns HTTP 404 for a missing id' })] },
+        bucket: 'runnable', reasons: [], detail: 'plan: 1 acceptance item (backlog-acceptance)', planSource: 'backlog-acceptance',
     },
 ];
 describe('omg factory check rules (forges §5)', () => {

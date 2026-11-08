@@ -163,6 +163,9 @@ describe('omg factory poll on GitHub', () => {
         out.length = 0;
         expect(await poll(scripted({ prState: 'CLOSED' }).exec, { once: true })).toBe(0);
         expect(out.join('\n')).toContain('PR #9 of #4 is closed by a human: run `omg factory run 4` to record it');
+        // F33: the board row of #4 no longer repeats its stale merge gate reason.
+        expect(out.join('\n')).not.toContain('gates green; a human merges');
+        expect(out.join('\n')).toContain('the PR is closed: run `omg factory run 4` to record it');
     });
     it('never spawns and never writes: every command is a read, and the guard refuses writes before gh', async () => {
         seedParked();

@@ -18,7 +18,9 @@
  * | a dependsOn item is unsatisfied (open, no merged factory PR  | blocked    | depends-on:#n,...          |
  * | into the base, no merged run state; score.ts isSatisfied)    |            |                            |
  * | the item depends on itself                                   | blocked    | blocked-by:self            |
- * | open children, ADO type Epic/Feature, or GitHub label epic   | blocked    | needs-split                |
+ * | open children, ADO type Epic/Feature, GitHub label epic, or  | blocked    | needs-split                |
+ * | a local backlog label spec (F24)                             |            |                            |
+ * | children, all closed (the spec is done; a human closes it)   | blocked    | children-done              |
  * | no trusted omg-plan: line, no AC heading, empty ADO AC field | needs-plan | no-plan                    |
  * | omg-plan: path not repo-relative, or missing/empty on base   | needs-plan | plan-missing               |
  * | the AC section has no list or checkbox items                 | needs-plan | ac-not-testable            |
@@ -71,7 +73,11 @@ export function evaluateItem(item, kind, config, look) {
     }
     const run = look.runState(item.id);
     if (run && TERMINAL_FACTORY_PHASES.includes(run.phase)) {
-        // The engine never restarts a merged, cancelled or failed run (engine.ts start()).
+        // The engine never restarts a merged, cancelled or failed run (engine.ts start()). Offline a cancelled
+        // run is not terminal for the item: run reset moves it aside, then the item is checked as new.
+        if (kind === 'local' && run.phase === 'cancelled') {
+            return hit('blocked', 'run-finished:cancelled', `the factory run was cancelled; omg factory run clean ${item.id}, then omg factory run reset ${item.id}, makes the item runnable again`);
+        }
         return hit('blocked', `run-finished:${run.phase}`, `the factory run is ${run.phase} and is not restarted; see omg factory run status ${item.id}`);
     }
     // A run parked at the intake blocked-by gate stays a candidate: its dependencies are re-read
@@ -99,13 +105,20 @@ export function evaluateItem(item, kind, config, look) {
     const children = item.children.filter((c) => look.isOpen(c));
     if (children.length > 0)
         return hit('blocked', 'needs-split', `has open children ${ids(children)}`);
+    // F30: a split spec is never run itself; once every child is closed the human closes the spec.
+    if (item.children.length > 0)
+        return hit('blocked', 'children-done', `every child (${ids(item.children)}) is closed: close this spec item; the factory never runs a spec that was split`);
     if (kind === 'azure-devops' && item.type && SPLIT_TYPES.has(item.type.toLowerCase()))
         return hit('blocked', 'needs-split', `work item type ${item.type} needs splitting`);
     if (kind === 'github' && item.labels.some((l) => l.toLowerCase() === 'epic'))
         return hit('blocked', 'needs-split', 'labelled epic');
+    // F24: a local spec before its tickets exist (as GitHub's epic label): never run the whole spec as one item.
+    if (kind === 'local' && item.labels.some((l) => l.toLowerCase() === 'spec'))
+        return hit('blocked', 'needs-split', 'labelled spec: add its tickets with omg factory enqueue and commit them');
     const link = findPlanLink(item.body, item.comments, item.authorTrusted);
     const adoAc = item.acceptance?.trim() ? item.acceptance : undefined;
-    const planSource = link ? 'omg-plan' : adoAc ? 'ado-acceptance' : hasAcceptanceCriteria(item.body) ? 'issue-body' : undefined;
+    // The tracker's own acceptance field: Azure DevOps Acceptance Criteria, or the local backlog file's Acceptance section (F23).
+    const planSource = link ? 'omg-plan' : adoAc ? (kind === 'local' ? 'backlog-acceptance' : 'ado-acceptance') : hasAcceptanceCriteria(item.body) ? 'issue-body' : undefined;
     if (!planSource)
         return hit('needs-plan', 'no-plan', 'no trusted omg-plan: line and no "Acceptance criteria"');
     if (link) {

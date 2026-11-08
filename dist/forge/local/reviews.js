@@ -55,6 +55,7 @@ export function localReviews(ctx) {
     /** The runtime root (`humanDir` is `<omgRoot>/factory/local`): no link below it is followed. */
     const omgRoot = join(ctx.humanDir, '..', '..');
     return {
+        refreshPr: refresh,
         findOpenPrForBranch(branch) {
             return readPrStore(ctx.storePath).prs.filter((p) => p.head === branch && p.state === 'OPEN').map(refresh).find((p) => p.state === 'OPEN')?.number;
         },
@@ -95,6 +96,18 @@ export function localReviews(ctx) {
                 if (!p)
                     throw new Error(`local PR #${pr} does not exist`);
                 p.isDraft = false;
+            });
+        },
+        closePr(pr, reason) {
+            // A PR the base already contains is MERGED, never closed.
+            const current = find(pr);
+            if (current.state !== 'OPEN')
+                return;
+            const head = ref(current.head);
+            updatePrStore(ctx.storePath, (store) => {
+                const p = store.prs.find((x) => x.number === pr);
+                if (p.state === 'OPEN')
+                    Object.assign(p, { state: 'CLOSED', closedReason: reason, closedAt: new Date().toISOString(), ...(head ? { closedHead: head } : {}) });
             });
         },
         commentPr(pr, bodyFile) {

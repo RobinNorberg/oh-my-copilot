@@ -253,7 +253,7 @@ describe('omg factory setup: Azure DevOps (fixtures)', () => {
     const r = await run(w, { intake: 'board-column:Web Team/Stories/Ready', progress, dryRun: true, json: true });
     expect(r.error).toBeUndefined();
     expect(r.config!.forge).toEqual({ kind: 'azure-devops', azureDevOps: { org: 'contoso', project: 'Web', repo: 'web-app', team: 'Web Team' } });
-    expect(r.config!.progress.stages.done).toEqual({ state: 'Closed' });
+    expect(r.config!.progress!.stages.done).toEqual({ state: 'Closed' });
     expect(r.config!.intake.itemTypes).toEqual(['User Story', 'Bug']);
     expect(existsSync(projectFile(w))).toBe(false);
   });

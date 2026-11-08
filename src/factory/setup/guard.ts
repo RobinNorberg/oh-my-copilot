@@ -16,6 +16,7 @@ import { ShipSafetyError, type Exec, type ExecResult } from '../../ship/exec.js'
 import type { AzEntry } from '../../forge/ado/az-binary.js';
 import { adoRouteById, findAdoRoute } from '../../forge/ado/routes.js';
 import type { ForgeRepo } from '../../forge/types.js';
+import { isPlainBranchName } from '../../ship/config.js';
 
 /** Exit codes (design §4): 2 usage, 3 auth or extension missing, 5 incompatible. */
 export type SetupExitCode = 1 | 2 | 3 | 5;
@@ -129,6 +130,9 @@ export function assertSetupCommand(cmd: string, args: string[], repo: ForgeRepo,
     // The local forge has no server: the wizard runs neither gh nor az for it.
     : base === 'gh' ? repo.kind === 'github' && ghAllowed(args, repo)
       : base === 'git' ? same(args, ['remote', 'get-url', 'origin']) || same(args, ['rev-parse', '--show-toplevel'])
+        // F20: the local forge's base detection (does dev exist, else the current branch).
+        || (repo.kind === 'local' && (same(args, ['symbolic-ref', '--quiet', '--short', 'HEAD'])
+          || (args.length === 4 && same(args.slice(0, 3), ['rev-parse', '--verify', '--quiet']) && args[3].startsWith('refs/heads/') && isPlainBranchName(args[3].slice('refs/heads/'.length)))))
         : false;
   if (!ok) refuse('not one of the command shapes the setup wizard runs');
 }

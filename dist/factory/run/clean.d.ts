@@ -7,7 +7,7 @@
  * junctions such as a linked node_modules are unlinked before
  * `git worktree remove`, a dirty tree is kept, and a worktree or branch
  * holding a commit that neither the main checkout's HEAD nor a verified
- * remote ref (GitHub's base after a fetch, the PR branch on origin) holds is
+ * remote ref (GitHub's base after a fetch, the PR branch on the run's remote, origin or the local forge's omg-local mirror) holds is
  * kept. The remote PR branch itself is never deleted. clean's own git
  * (remote check, fetch, ls-remote) runs guarded and hardened like the
  * engine's: no hooks, no fsmonitor.
@@ -22,7 +22,7 @@ export interface FactoryCleanResult {
         worktree: string;
         reason: string;
     }>;
-    /** Commits whose history counted as kept: the fetched base and the PR branch on origin. */
+    /** Commits whose history counted as kept: the fetched base and the PR branch on the run's remote. */
     contained: string[];
 }
 export interface FactoryCleanOptions {

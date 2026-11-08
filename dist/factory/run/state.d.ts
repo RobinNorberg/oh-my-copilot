@@ -20,6 +20,7 @@
 import type { CopilotRunSandboxState } from '../../copilot-run/sandbox.js';
 import type { ShipVerdict } from '../../ship/state.js';
 import { type ForgeKind, type ProgressStage } from '../../forge/types.js';
+import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 export declare const FACTORY_PHASES: readonly ["intake", "plan", "implement", "publish", "review", "fix", "prepare", "conflict-fix", "gates", "ci-fix", "merge", "merged", "cancelled", "failed"];
 export type FactoryPhase = (typeof FACTORY_PHASES)[number];
 export declare const TERMINAL_FACTORY_PHASES: readonly FactoryPhase[];
@@ -74,6 +75,11 @@ export interface FactoryGate {
     name: string;
     reason: string;
     at: string;
+    /**
+     * gate-definition-changed only: the sha256 of the parked head's gate
+     * definition, the one definition `--allow-gate-change` may accept.
+     */
+    definition?: string;
 }
 export interface FactoryFinding {
     severity: 'blocker' | 'major' | 'minor' | 'nit';
@@ -91,7 +97,7 @@ export interface FactoryCiFailure {
     checks: string[];
     /** Failing test titles (`file > title`) read from the failed jobs' logs. */
     tests: string[];
-    /** The failed prepare step's output tail. */
+    /** The output tail: the failed prepare step's, or the local gate's (F43). */
     detail?: string;
 }
 export interface FactoryHistoryEntry {
@@ -156,6 +162,33 @@ export interface FactoryRunState {
      * integrity seal still verifies.
      */
     forgeKind?: ForgeKind;
+    /**
+     * The git remote the run fetches from and pushes to. Absent = `origin`
+     * (every GitHub and Azure DevOps run, and states written before the local
+     * forge, whose seal still verifies); `omg-local` = the local forge's
+     * engine-owned bare mirror. Sealed at creation, never changed.
+     */
+    remote?: typeof LOCAL_REMOTE;
+    /**
+     * The local forge only: the factory.forge.local.gate argv this run first
+     * ran its gate with. Every later gate run must find the same argv in the
+     * trusted config (local-gate.ts assertLocalGateCommand); absent until then.
+     */
+    localGate?: string[];
+    /**
+     * The local forge only: the sha256 of the gate definition (local-gate.ts
+     * gateDefinition) a human accepted with `omg factory run
+     * --allow-gate-change` after the run parked at gate-definition-changed on
+     * it. A head whose definition hashes to it is not parked again; any other
+     * change is.
+     */
+    gateChangeApproved?: string;
+    /**
+     * The trusted ship.prepare.checks this run first prepared with (`auto` =
+     * unset, the built-ins the base has). Every later prepare must resolve the
+     * same value; a change mid-run parks at prepare-checks. Absent until then.
+     */
+    prepareChecks?: string[][] | 'auto';
     repoUrl: string;
     base: string;
     branch: string;
@@ -244,11 +277,13 @@ export declare function createFactoryState(input: {
     repoUrl: string;
     base: string;
     heal?: FactoryHealRecord;
+    remote?: typeof LOCAL_REMOTE;
+    itemNoun?: string;
 }, now: string): FactoryRunState;
 /** Move to `to` (clearing any gate), appending history. Terminal phases never move. */
 export declare function moveTo(state: FactoryRunState, to: FactoryPhase, note: string, now: string): FactoryRunState;
 /** Park at a named human gate; the phase stays so a rerun re-evaluates it. */
-export declare function setGate(state: FactoryRunState, name: string, reason: string, now: string): FactoryRunState;
+export declare function setGate(state: FactoryRunState, name: string, reason: string, now: string, extra?: Pick<FactoryGate, 'definition'>): FactoryRunState;
 /**
  * The tracker progress stage of a run (factory forges design §7): a merge
  * gate or the merge phase is ready-to-merge, any other gate and failed are
@@ -264,6 +299,8 @@ export declare function verifyFactoryIntegrity(state: FactoryRunState): boolean;
  * recorded repoUrl names another repository (repoIdentity) refuses too.
  */
 export declare function forgeResumeProblem(state: Pick<FactoryRunState, 'forgeKind' | 'issue' | 'kind' | 'heal' | 'repoUrl'>, resolved: ForgeKind, resolvedRepoUrl?: string): string | null;
+/** The git remote of a run: `origin` unless the state seals the local forge's `omg-local`. */
+export declare function runRemote(state: Pick<FactoryRunState, 'remote'>): string;
 /** Read and shape-check the state file; throws FactoryStateError on malformed content. */
 export declare function readFactoryState(root: string, key: FactoryRunKey): FactoryRunState | null;
 /** Parse and shape-check the bytes of a state file (read once by the caller). */

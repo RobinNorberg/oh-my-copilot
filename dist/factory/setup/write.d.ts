@@ -24,12 +24,17 @@ export interface SetupSection {
         source: IntakeSource;
         itemTypes?: string[];
     };
-    progress: Pick<ForgeProgressConfig, 'enabled' | 'stages'>;
+    /** Absent on the local forge: it records the stage itself and syncs no board, so the key would only be ignored (F21). */
+    progress?: Pick<ForgeProgressConfig, 'enabled' | 'stages'>;
     /** Azure DevOps: the build definition heal reads as CI (factory.heal.pipeline; read from <base> once committed). */
     heal?: {
         pipeline: {
             definitionId: number;
         };
+    };
+    /** The local forge: the detected base branch when no config names one (F20); the one key outside `factory` setup writes. */
+    ship?: {
+        base: string;
     };
 }
 export declare function buildSection(repo: ForgeRepo, intake: Pick<ForgeIntakeConfig, 'source' | 'itemTypes'> & {

@@ -456,7 +456,7 @@ export async function runFactoryEnqueue(o, deps) {
         const entry = ado ? (deps.resolveAz ?? defaultResolveAz)(root) : undefined;
         if (entry)
             adoGuard = adoGuardContext(config, entry);
-        const localOptions = local ? { local: { omgRoot: getOmcRoot(root), workingTree: true, baseSha: () => baseSha ?? undefined } } : {};
+        const localOptions = local ? { local: { omgRoot: getOmcRoot(root), workingTree: true, base, baseSha: () => baseSha ?? undefined } } : {};
         forgeOptions = { ...factoryForgeOptions(root), ...localOptions, ...(entry ? { entry } : {}) };
         forge = deps.createForge(exec, root, config, forgeOptions);
     }
@@ -614,12 +614,14 @@ export async function runFactoryEnqueue(o, deps) {
         throw new CheckUsageError(`spec #${specId}'s body would exceed ${MAX_TRACKER_BODY_CHARS} characters with the task list`);
     // Skipped backlog files (the local tracker).
     const trackerWarnings = () => tracker.warnings?.() ?? [];
-    if (local && planned.some((p) => p.action === 'created' || p.action === 'updated'))
-        warnings.push(`the new and changed backlog files are uncommitted: commit them on ${base}, where omg factory run reads them`);
+    if (local && planned.some((p) => p.action === 'created' || p.action === 'updated')) {
+        // F25: a dry run has written nothing yet.
+        warnings.push(o.dryRun ? `after enqueue writes them, commit the new and changed backlog files on ${base}, where omg factory run reads them` : `the new and changed backlog files are uncommitted: commit them on ${base}, where omg factory run reads them`);
+    }
     if (o.dryRun) {
         warnings.push(...trackerWarnings());
         // Ids a create would assign are unknown: the planned spec body lists the known ones and names the new keys.
-        const taskList = !ado && !local && (newKeys.length > 0 || normalized(specBody(ids)) !== normalized(spec.body)) ? 'updated' : 'unchanged';
+        const taskList = local ? 'not-used' : !ado && (newKeys.length > 0 || normalized(specBody(ids)) !== normalized(spec.body)) ? 'updated' : 'unchanged';
         const specPlanned = () => `${specBody(ids)}${newKeys.length > 0 ? `\n(plus the new ${newKeys.join(', ')} once created)` : ''}`;
         const rows = [
             ...planned.map((p) => ({
@@ -649,7 +651,7 @@ export async function runFactoryEnqueue(o, deps) {
     const bodyDir = mkdtempSync(join(tmpdir(), 'omg-enqueue-'));
     const rel = relative(root, bodyDir);
     const rows = [];
-    let taskList = 'unchanged';
+    let taskList = local ? 'not-used' : 'unchanged';
     let failed = false;
     try {
         if (!rel.startsWith('..') && !isAbsolute(rel))
@@ -790,7 +792,7 @@ function report(o, deps, json) {
         deps.out(`${pad(row)}  ${plainText(row[4])}`);
     for (const i of json.ignored)
         deps.err(chalk.yellow(`ignored #${i.id} (key ${i.key}): ${i.reason}`));
-    deps.out(`spec #${json.spec.id} task list: ${json.spec.taskList}`);
+    deps.out(`spec #${json.spec.id} task list: ${json.spec.taskList === 'not-used' ? `not used (each ticket's "Part of #${json.spec.id}" line links it to the spec)` : json.spec.taskList}`);
     if (json.dryRun) {
         deps.out(chalk.bold('dry run: nothing was written. The writes:'));
         for (const r of json.items.filter((x) => x.planned)) {

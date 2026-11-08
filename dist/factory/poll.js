@@ -70,6 +70,7 @@ import { checkItems, plainText } from './check/score.js';
 import { adoHealFor, ciDeps, HEAL_PIPELINE_MISSING, runHealScan } from './heal/cli.js';
 import { HealRunRefused } from './heal/run.js';
 import { DEFAULT_FACTORY_RUN_LIMITS, resolveFactoryRunLimits } from './run/budget.js';
+import { FactoryForgeUnavailableError } from './run/forge-roots.js';
 import { acquireFactoryRepoOwner, defaultOwnerDeps, factoryRepoOwnerPath, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, } from './run/state.js';
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
 export const POLL_JSON_SCHEMA_VERSION = 1;
@@ -402,7 +403,8 @@ export async function pollTick(ctx) {
             return fn();
         }
         catch (error) {
-            if (error instanceof ShipSafetyError)
+            // A guard refusal is a bug; an unusable forge (a refused local forge config) exits 5, like omg factory run.
+            if (error instanceof ShipSafetyError || error instanceof FactoryForgeUnavailableError)
                 throw error;
             errors.push(`${name}: ${message(error)}`);
             return undefined;
@@ -588,8 +590,14 @@ export function renderTick(t) {
         else if (p.threads)
             lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)}: ${p.threads} open human thread(s)`);
     }
-    for (const b of t.board)
-        lines.push(`  ${b.stage.toUpperCase()}${b.stage === 'backlog' ? backlogLine(b.row) : runLine(b.row, prefix)}`);
+    // F33: a run whose PR a human already merged or closed shows the record step, not its stale gate reason (a merge command).
+    const done = new Map(t.prs.filter((p) => p.hint).map((p) => [runLabel(p.id), p]));
+    for (const b of t.board) {
+        const p = done.get(runLabel(b.row.id));
+        const gate = b.row.run?.gate;
+        const row = p && gate ? { ...b.row, run: { ...b.row.run, gate: { name: gate.name, reason: `the PR is ${p.state === 'MERGED' ? 'merged' : 'closed'}: run \`${p.hint}\` to record it` } } } : b.row;
+        lines.push(`  ${b.stage.toUpperCase()}${b.stage === 'backlog' ? backlogLine(row) : runLine(row, prefix)}`);
+    }
     if (t.autoStart.started) {
         const a = t.autoStart;
         const took = !a.parsed ? 'outcome unreadable' : a.next !== null ? `took #${a.next}` : a.exitCode === 0 ? 'found nothing runnable' : 'took no item';

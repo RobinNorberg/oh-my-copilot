@@ -37,7 +37,7 @@ function isAncestor(ctx: LocalReviewsContext, head: string, base: string): boole
   return r.status === 0 ? true : r.status === 1 ? false : undefined;
 }
 
-export function localReviews(ctx: LocalReviewsContext): ForgeReviews {
+export function localReviews(ctx: LocalReviewsContext): ForgeReviews & { refreshPr(pr: LocalPr): LocalPr } {
   const ref = (branch: string): string | undefined => readMirrorRef(ctx.mirror, branch);
 
   /** The PR with its state brought up to date (OPEN -> MERGED once the base contains the head). */
@@ -70,6 +70,7 @@ export function localReviews(ctx: LocalReviewsContext): ForgeReviews {
   const omgRoot = join(ctx.humanDir, '..', '..');
 
   return {
+    refreshPr: refresh,
     findOpenPrForBranch(branch: string): number | undefined {
       return readPrStore(ctx.storePath).prs.filter((p) => p.head === branch && p.state === 'OPEN').map(refresh).find((p) => p.state === 'OPEN')?.number;
     },
@@ -104,6 +105,16 @@ export function localReviews(ctx: LocalReviewsContext): ForgeReviews {
         const p = store.prs.find((x) => x.number === pr);
         if (!p) throw new Error(`local PR #${pr} does not exist`);
         p.isDraft = false;
+      });
+    },
+    closePr(pr: number, reason: string): void {
+      // A PR the base already contains is MERGED, never closed.
+      const current = find(pr);
+      if (current.state !== 'OPEN') return;
+      const head = ref(current.head);
+      updatePrStore(ctx.storePath, (store) => {
+        const p = store.prs.find((x) => x.number === pr)!;
+        if (p.state === 'OPEN') Object.assign(p, { state: 'CLOSED', closedReason: reason, closedAt: new Date().toISOString(), ...(head ? { closedHead: head } : {}) });
       });
     },
     commentPr(pr: number, bodyFile: string): { ok: boolean; stderr: string } {

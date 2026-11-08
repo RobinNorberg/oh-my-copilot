@@ -72,11 +72,11 @@ describe('omg factory run on Azure DevOps (fake ADO, real git)', () => {
     expect(dry.exitCode).toBe(1);
   });
 
-  it('--dry-run reads the work item through the tracker and names the plan', async () => {
+  it('--dry-run reads the work item through the tracker, applies the pr-exists gate and names the plan', async () => {
     const out = await run([], { dryRun: true });
     expect(out.exitCode).toBe(0);
     expect(out.plan).toMatchObject({ next: 'implement', planSource: 'omg-plan docs/plan.md' });
-    expect(ado.calls.map((c) => c.route)).toEqual(['wit.workItems.GET', 'wit.workItemTypeStates.GET', 'wit.comments.GET']);
+    expect(ado.calls.map((c) => c.route)).toEqual(['wit.workItems.GET', 'wit.workItemTypeStates.GET', 'wit.comments.GET', 'git.pullRequests.GET']);
     expect(readFactoryState(h.root, ISSUE)).toBeNull();
   });
 });

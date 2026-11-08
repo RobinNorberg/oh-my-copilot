@@ -29,8 +29,8 @@ import { createForge } from '../../forge/index.js';
 import { localForgeLimitations } from '../../forge/local/index.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { adoGuardContext, defaultAzBinaryDeps, type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
-import type { Forge, ForgeFactory, ForgeProgressConfig, IntakeSource, ResolvedForgeConfig } from '../../forge/types.js';
-import { checkEnvFor, checkGuardExec } from '../../factory/check/cli.js';
+import type { ForgeFactory, ForgeProgressConfig, IntakeSource, ResolvedForgeConfig } from '../../forge/types.js';
+import { checkEnvFor, checkGuardExec, factoryErrorLine } from '../../factory/check/cli.js';
 import { factoryCheckPreview, type CheckEnv } from '../../factory/check/score.js';
 import { factoryForgeOptions } from '../../factory/run/forge-roots.js';
 import { checkAdoAuth, checkGitHubAuth, type AuthReport } from '../../factory/setup/auth.js';
@@ -53,7 +53,7 @@ import { missingGitHubLabels, pickProgress, progressFromFlag, validateAdoProgres
 import { applyWrites, buildSection, parsedAfter, planBacklogSample, planWrites, type PlannedWrite, type SetupScope, type SetupSection } from '../../factory/setup/write.js';
 import { redactAdoSecrets } from '../../forge/ado/redact.js';
 import { redactTokens } from '../../notifications/redact.js';
-import { trustedUserConfigPath } from '../../ship/config.js';
+import { isPlainBranchName, resolveShipConfig, trustedUserConfigPath } from '../../ship/config.js';
 import { defaultExec, type Exec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { checkOrCreateHarborLabels } from './intake.js';
@@ -178,9 +178,30 @@ export async function runFactorySetup(o: FactorySetupOptions, deps: FactorySetup
 /** Adapter and tool text can carry credentials: the forge's own redactor (ADO PATs and auth headers, else GitHub tokens). */
 const redactFor = (kind: string | undefined, text: string): string => (kind === 'azure-devops' ? redactAdoSecrets(text) : redactTokens(text));
 
+/**
+ * F20: the local forge's base. A ship.base in the project or user config
+ * wins (written: false); else `dev` when that branch exists, else the
+ * current branch (an unborn one is init.defaultBranch), and setup writes it
+ * as ship.base. Null on a detached HEAD with no dev. A ship.base that is set
+ * but not a plain branch name is a usage error naming it (exit 2): setup
+ * never replaces a value the human wrote.
+ */
+export function detectLocalBase(exec: Exec, root: string, configs: ReadonlyArray<{ path: string; config: unknown }>): { base: string; write: boolean } | null {
+  for (const { path, config } of configs) {
+    const ship = (config as { ship?: unknown } | null | undefined)?.ship;
+    if (ship === null || typeof ship !== 'object' || !('base' in ship)) continue;
+    const base = (ship as { base?: unknown }).base;
+    if (!isPlainBranchName(base)) throw new SetupError(2, `ship.base ${JSON.stringify(base)} in ${path} is not a plain branch name: set it to the branch you merge into (or remove it to let setup detect one)`);
+    return { base, write: false };
+  }
+  if (exec('git', ['rev-parse', '--verify', '--quiet', 'refs/heads/dev'], { cwd: root }).status === 0) return { base: 'dev', write: true };
+  const head = exec('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], { cwd: root });
+  const current = head.stdout.trim();
+  return head.status === 0 && isPlainBranchName(current) ? { base: current, write: true } : null;
+}
+
 /** The scorer's repository side: run state and plan files at the local origin/<base> (no fetch: the wizard stays read-only). */
-function previewEnv(guarded: Exec, root: string, config: ResolvedForgeConfig): { check: CheckEnv; baseSha: string | null } {
-  const base = defaultFactoryRunDeps.base(root);
+function previewEnv(guarded: Exec, root: string, config: ResolvedForgeConfig, base: string): { check: CheckEnv; baseSha: string | null } {
   // The local forge's base is the local branch (no origin to read).
   const ref = config.kind === 'local' ? `refs/heads/${base}` : `refs/remotes/origin/${base}`;
   const sha = guarded('git', ['rev-parse', '--verify', ref], { cwd: root });
@@ -284,7 +305,15 @@ async function setup(o: FactorySetupOptions, deps: FactorySetupDeps, cwd: string
   const team = source.type === 'board-column' ? source.team : board?.team ?? detected.prefill.team;
   // The heal pipeline (optional): only a build definition of the forge repository; it goes to the project file, which is read from <base>.
   const healPipeline = ado ? await pickHealPipeline(io, prompter, o.healPipeline) : undefined;
-  out.config = { ...buildSection(repo, { source, itemTypes }, progress, team), ...(healPipeline ? { heal: { pipeline: healPipeline } } : {}) };
+  // F20: the base the notes name; on the local forge detected and, when no config names it, written as ship.base.
+  const localBase = local ? detectLocalBase(io.exec, root, [{ path: projectPath, config: readConfig(projectPath) }, { path: userPath, config: readConfig(userPath) }]) : null;
+  const base = localBase?.base ?? defaultFactoryRunDeps.base(root);
+  if (local && !localBase) out.notes.push(`no base branch detected (detached HEAD and no dev branch): set ship.base in ${projectPath} to the branch you merge into`);
+  out.config = {
+    ...buildSection(repo, { source, itemTypes }, progress, team),
+    ...(healPipeline ? { heal: { pipeline: healPipeline } } : {}),
+    ...(localBase?.write ? { ship: { base: localBase.base } } : {}),
+  };
   const planned: PlannedWrite[] = planWrites({ projectPath, userPath, section: out.config, ...(trustedAuthors.length > 0 ? { trustedAuthors } : {}) });
   const afterUser = parsedAfter(planned, userPath);
   const afterProject = parsedAfter(planned, projectPath);
@@ -301,16 +330,20 @@ async function setup(o: FactorySetupOptions, deps: FactorySetupDeps, cwd: string
     // The backlog directory with one sample item (closed), when it has no item yet.
     const sample = planBacklogSample(root, resolved.local.backlogDir);
     if (sample) planned.push(sample);
-    out.limitations = localForgeLimitations(defaultFactoryRunDeps.base(root));
-    if (!resolved.local.gate) out.notes.push('no local gate: set factory.forge.local.gate (an argv such as ["npm","test"]) in the user config or in .copilot/omg.jsonc committed on <base>; until then gates park at awaiting-human: gates');
-    if (detected.originUrl) out.notes.push(`factory.forge.kind "local" overrides the origin remote only from the user config or from ${projectPath} committed on <base> (CI and remote review are off)`);
-    out.notes.push(`commit ${resolved.local.backlogDir}/ items on <base>: omg factory run reads backlog items at the base commit only`);
+    out.limitations = localForgeLimitations(base);
+    if (localBase?.write) out.notes.push(`base branch ${base} (ship.base, detected: ${base === 'dev' ? 'the dev branch exists' : 'the current branch'}); change ship.base in ${projectPath} if you merge into another branch`);
+    const userTrusted = (readConfig(userPath) as { ship?: { trustedBases?: unknown } } | undefined)?.ship?.trustedBases;
+    const trustedBases = Array.isArray(userTrusted) ? userTrusted : resolveShipConfig({}).trustedBases;
+    if (localBase && !trustedBases.includes(base)) out.notes.push(`${base} is not in ship.trustedBases: add it there in the user config ${userPath}, or the committed ${projectPath} on ${base} is not read`);
+    if (!resolved.local.gate) out.notes.push(`no local gate: set factory.forge.local.gate (an argv such as ["npm","test"]) in the user config or in .copilot/omg.jsonc committed on ${base}; until then gates park at awaiting-human: gates`);
+    if (detected.originUrl) out.notes.push(`factory.forge.kind "local" overrides the origin remote only from the user config or from ${projectPath} committed on ${base} (CI and remote review are off)`);
+    out.notes.push(`commit ${resolved.local.backlogDir}/ items on ${base}: omg factory run reads backlog items at the base commit only`);
   }
   out.diffs = planned.map((w) => ({ path: w.path, scope: w.scope, diff: w.diff }));
   if (scope === 'user') out.notes.push(`--scope user: the forge identity, intake and progress belong to this repository, so they go to ${projectPath}; the user config ${userPath} is shared by every repository and gets only trustedAuthors.`);
-  out.notes.push(`${projectPath} is a protected path: omg factory reads forge.* and progress.* from it only on <base> once it is committed there.`);
+  out.notes.push(`${projectPath} is a protected path: omg factory reads forge.* and progress.* from it only on ${base} once it is committed there.`);
   if (trustedAuthors.length > 0) out.notes.push(`trustedAuthors go to the user config ${userPath} only.`);
-  if (healPipeline) out.notes.push(`factory.heal.pipeline (build definition ${healPipeline.definitionId}) counts once ${projectPath} is committed on <base>; omg factory heal ignores it in the working tree.`);
+  if (healPipeline) out.notes.push(`factory.heal.pipeline (build definition ${healPipeline.definitionId}) counts once ${projectPath} is committed on ${base}; omg factory heal ignores it in the working tree.`);
 
   if (!o.json) {
     for (const w of planned) {
@@ -342,9 +375,9 @@ async function setup(o: FactorySetupOptions, deps: FactorySetupDeps, cwd: string
     // The ADO guard needs the forge repo and the az entry; GitHub needs neither.
     const guarded = checkGuardExec(deps.exec, undefined, () => (ado && az ? adoGuardContext(resolved, az) : undefined));
     // The ADO adapter reads `entry` (its options extend ForgeOptions); GitHub ignores it.
-    const env = previewEnv(guarded, root, resolved);
+    const env = previewEnv(guarded, root, resolved, base);
     // The local forge reads the working tree too (the sample item is not committed yet); its base is the local branch.
-    const localOptions = local ? { local: { omgRoot: getOmcRoot(root), workingTree: true, baseSha: () => env.baseSha ?? undefined } } : {};
+    const localOptions = local ? { local: { omgRoot: getOmcRoot(root), workingTree: true, base, baseSha: () => env.baseSha ?? undefined } } : {};
     const options: AzureDevOpsForgeOptions = { ...factoryForgeOptions(root), ...localOptions, ...(az ? { entry: az } : {}) };
     const forge = deps.createForge(guarded, root, resolved, options);
     // Item titles are untrusted tracker text: no terminal sequences or control characters reach the output.
@@ -362,14 +395,17 @@ function printOutcome(o: FactorySetupOptions, r: FactorySetupOutcome): void {
     return;
   }
   if (r.error) {
-    console.error(chalk.red(`Error: ${r.error}`));
+    console.error(chalk.red(factoryErrorLine(r.error)));
     return;
   }
   for (const c of r.auth?.checks ?? []) console.log(`${c.ok ? chalk.green('ok') : chalk.red('fail')} ${c.name}: ${c.detail}`);
   if (r.written) for (const p of r.written) console.log(chalk.green(`wrote ${p}`));
   else console.log(chalk.yellow(o.dryRun ? 'dry run: nothing written' : 'nothing written'));
   for (const l of r.labels.created) console.log(chalk.green(`created label ${l}`));
-  if (!r.prerequisites.ok) console.log(chalk.gray(`omg factory init prerequisites missing (needed for the chain route table only): ${r.prerequisites.missing.join(', ')}`));
+  // F22: informational only, and not part of the offline flow, so the local forge does not print it (--json keeps it).
+  if (!r.prerequisites.ok && r.forge?.kind !== 'local') {
+    console.log(chalk.gray(`note: omg factory run does not need these; only omg factory init (the chain route table) reads them: ${r.prerequisites.missing.join(', ')}`));
+  }
   for (const n of r.notes) console.log(chalk.gray(n));
   for (const l of r.limitations) console.log(chalk.gray(l));
   if (r.previewError) console.log(chalk.yellow(`preview unavailable: ${r.previewError}`));
