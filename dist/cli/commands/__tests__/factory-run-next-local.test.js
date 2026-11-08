@@ -54,7 +54,8 @@ describe('omg factory run --next on the local forge (F29)', () => {
         commitAll(repo);
         writeFile(repo, '.copilot/backlog/2-draft.md', backlogItem('draft'));
         expect(await cli(deps(), '--next', '--dry-run'), out.join('\n')).toBe(0);
-        expect(out.join('\n')).toMatch(/nothing runnable \(0 runnable, 0 needs-plan, 1 blocked\)/);
+        // --next reads committed items only: the closed #1 is not intake, the uncommitted #2 is not read at all.
+        expect(out.join('\n')).toMatch(/nothing runnable \(0 runnable, 0 needs-plan, 0 blocked\)/);
         expect(out.join('\n')).not.toMatch(/omgRoot/);
         out = [];
         expect(await cli(deps(), '--next', '--json'), out.join('\n')).toBe(0);
@@ -72,6 +73,21 @@ describe('omg factory run --next on the local forge (F29)', () => {
         expect(result).toMatchObject({ next: 3, plan: { next: 'implement' } });
         expect(readFactoryState(repo.root, 3)).toBeNull();
         expect(repo.calls.some((c) => c.args.includes('fetch'))).toBe(false);
+    });
+    it('reads committed items only: a dependency closed only in the working tree leaves its dependent blocked', async () => {
+        writeFile(repo, '.copilot/backlog/4-flags.md', backlogItem('CLI flags'));
+        writeFile(repo, '.copilot/backlog/5-parser.md', backlogItem('a flag parser'));
+        writeFile(repo, '.copilot/backlog/6-version-flag.md', backlogItem('add a --version flag', 'open', 'Part of #4\nDepends on #5\n\n'));
+        commitAll(repo);
+        // #5 closed on disk, not committed: --parent 4 has nothing runnable.
+        writeFile(repo, '.copilot/backlog/5-parser.md', backlogItem('a flag parser', 'closed'));
+        expect(await cli(deps(), '--next', '--parent', '4', '--dry-run', '--json'), out.join('\n')).toBe(0);
+        expect(JSON.parse(out.join('\n'))).toMatchObject({ ok: true, next: null });
+        // Committed on main, the dependency is met.
+        commitAll(repo);
+        out = [];
+        expect(await cli(deps(), '--next', '--parent', '4', '--dry-run', '--json'), out.join('\n')).toBe(0);
+        expect(JSON.parse(out.join('\n'))).toMatchObject({ next: 6 });
     });
     it('a missing base exits 2 naming ship.base', async () => {
         expect(await cli(deps('dev'), '--next', '--dry-run'), out.join('\n')).toBe(2);

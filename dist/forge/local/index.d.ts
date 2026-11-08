@@ -11,7 +11,7 @@
  * and the engine (localMirrorPath/localCheckRecordPath) always agree.
  */
 import type { ForgeFactory } from '../types.js';
-export { LOCAL_REMOTE, backlogListArgs, backlogShowArgs, isLocalBranchName, localCheckRecordPath, localMirrorPath, localPrStorePath, localRepoId, localStoreDir, mergedArgs, mirrorFetchArgs, mirrorInitArgs, mirrorPushArgs, mirrorRemoteAddArgs, mirrorRemoteGetUrlArgs, readMirrorRef, } from './mirror.js';
+export { LOCAL_REMOTE, backlogListArgs, backlogShowArgs, isLocalBranchName, lastChangeArgs, localCheckRecordPath, localMirrorPath, localPrStorePath, localRepoId, localStoreDir, mergedArgs, mirrorFetchArgs, mirrorInitArgs, mirrorPushArgs, mirrorRemoteAddArgs, mirrorRemoteGetUrlArgs, readMirrorRef, } from './mirror.js';
 export { LOCAL_GATE_CHECK, readCheckRecordAt, readLocalCheckRecord, writeLocalCheckRecord, type LocalCheckRecord } from './checks.js';
 export { BacklogParseError, parseBacklogFile, renderBacklogFile, backlogSlug, type BacklogItem, type BacklogFields } from './backlog.js';
 export { localPrUrl } from './reviews.js';

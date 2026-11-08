@@ -180,7 +180,8 @@ function pickNext(deps, root, base, loaded, parent) {
     const baseSha = config.kind === 'local' ? localBase(read.exec, root, base, warnings) : fetchBase(read.exec, root, base, warnings);
     if (config.kind === 'local' && !baseSha)
         throw new FactoryUsageError(missingLocalBase(base));
-    const forge = createForge(read.exec, root, config, readForgeOptions(config, root, read.options, baseSha));
+    // Committed items only: a working-tree item is never runnable, and a dependency closed only on disk is not met.
+    const forge = createForge(read.exec, root, config, readForgeOptions(config, root, read.options, base, baseSha, false));
     const ids = parent !== undefined ? forge.tracker.viewItem(parent).children : forge.tracker.queryItems(source, config.intake.limit);
     const items = checkItems(forge, ids, checkEnvFor(read.exec, root, config, base, baseSha));
     return { next: items.find((r) => r.bucket === 'runnable') ?? null, items, warnings };

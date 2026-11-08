@@ -116,13 +116,19 @@ const redactFor = (kind, text) => (kind === 'azure-devops' ? redactAdoSecrets(te
  * F20: the local forge's base. A ship.base in the project or user config
  * wins (written: false); else `dev` when that branch exists, else the
  * current branch (an unborn one is init.defaultBranch), and setup writes it
- * as ship.base. Null on a detached HEAD with no dev.
+ * as ship.base. Null on a detached HEAD with no dev. A ship.base that is set
+ * but not a plain branch name is a usage error naming it (exit 2): setup
+ * never replaces a value the human wrote.
  */
 export function detectLocalBase(exec, root, configs) {
-    for (const c of configs) {
-        const base = c?.ship?.base;
-        if (isPlainBranchName(base))
-            return { base, write: false };
+    for (const { path, config } of configs) {
+        const ship = config?.ship;
+        if (ship === null || typeof ship !== 'object' || !('base' in ship))
+            continue;
+        const base = ship.base;
+        if (!isPlainBranchName(base))
+            throw new SetupError(2, `ship.base ${JSON.stringify(base)} in ${path} is not a plain branch name: set it to the branch you merge into (or remove it to let setup detect one)`);
+        return { base, write: false };
     }
     if (exec('git', ['rev-parse', '--verify', '--quiet', 'refs/heads/dev'], { cwd: root }).status === 0)
         return { base: 'dev', write: true };
@@ -241,7 +247,7 @@ async function setup(o, deps, cwd, out) {
     // The heal pipeline (optional): only a build definition of the forge repository; it goes to the project file, which is read from <base>.
     const healPipeline = ado ? await pickHealPipeline(io, prompter, o.healPipeline) : undefined;
     // F20: the base the notes name; on the local forge detected and, when no config names it, written as ship.base.
-    const localBase = local ? detectLocalBase(io.exec, root, [readConfig(projectPath), readConfig(userPath)]) : null;
+    const localBase = local ? detectLocalBase(io.exec, root, [{ path: projectPath, config: readConfig(projectPath) }, { path: userPath, config: readConfig(userPath) }]) : null;
     const base = localBase?.base ?? defaultFactoryRunDeps.base(root);
     if (local && !localBase)
         out.notes.push(`no base branch detected (detached HEAD and no dev branch): set ship.base in ${projectPath} to the branch you merge into`);
@@ -324,7 +330,7 @@ async function setup(o, deps, cwd, out) {
         // The ADO adapter reads `entry` (its options extend ForgeOptions); GitHub ignores it.
         const env = previewEnv(guarded, root, resolved, base);
         // The local forge reads the working tree too (the sample item is not committed yet); its base is the local branch.
-        const localOptions = local ? { local: { omgRoot: getOmcRoot(root), workingTree: true, baseSha: () => env.baseSha ?? undefined } } : {};
+        const localOptions = local ? { local: { omgRoot: getOmcRoot(root), workingTree: true, base, baseSha: () => env.baseSha ?? undefined } } : {};
         const options = { ...factoryForgeOptions(root), ...localOptions, ...(az ? { entry: az } : {}) };
         const forge = deps.createForge(guarded, root, resolved, options);
         // Item titles are untrusted tracker text: no terminal sequences or control characters reach the output.

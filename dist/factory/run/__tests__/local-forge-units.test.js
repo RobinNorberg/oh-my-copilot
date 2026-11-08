@@ -27,6 +27,7 @@ describe('the factory guard on the local forge shapes', () => {
         ['the backlog list at a commit', ['ls-tree', '-z', '--name-only', SHA, '--', '.copilot/backlog/'], []],
         ['one backlog file at a commit', ['show', `${SHA}:.copilot/backlog/1-add-remove.md`], []],
         ['the merged check', ['merge-base', '--is-ancestor', SHA, SHA2], []],
+        ['the last change of one backlog file (F31 reopen)', ['log', '-1', '--no-show-signature', '--format=%H', SHA, '--', '.copilot/backlog/1-add-remove.md'], []],
         ['the local base branch', ['rev-parse', '--verify', 'refs/heads/main'], []],
         ['the mirror fetch', ['fetch', 'omg-local', 'main'], []],
         ['the refused omg-local config read', ['config', '--get-regexp', '^remote\\.omg-local\\.(vcs|mirror|fetch)$'], []],
@@ -55,6 +56,9 @@ describe('the factory guard on the local forge shapes', () => {
         ['a remote set-url', ['remote', 'set-url', 'omg-local', MIRROR], [], LOCAL],
         ['a backlog list that climbs out', ['ls-tree', '-z', '--name-only', SHA, '--', '../x/'], [], LOCAL],
         ['a backlog list without the trailing slash', ['ls-tree', '-z', '--name-only', SHA, '--', '.copilot/backlog'], [], LOCAL],
+        ['a log of a file that climbs out', ['log', '-1', '--no-show-signature', '--format=%H', SHA, '--', '../x.md'], [], LOCAL],
+        ['a log that may verify signatures', ['log', '-1', '--format=%H', SHA, '--', '.copilot/backlog/1-add-remove.md'], [], LOCAL],
+        ['a log of a symbolic ref', ['log', '-1', '--no-show-signature', '--format=%H', 'HEAD', '--', '.copilot/backlog/1-add-remove.md'], [], LOCAL],
     ])('refuses %s', (_what, args, extra, local) => {
         expect(ok('git', args, extra, local)).toThrow(FactorySafetyError);
     });

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { localForgeLimitations } from '../../../forge/local/index.js';
 import { factoryCheckCommand } from '../../../cli/commands/factory-check.js';
 import { CheckIncompatibleError, EXIT_CHECK_INCOMPATIBLE, isLocalReadShape, runFactoryCheck } from '../cli.js';
+import { execFileSync } from 'child_process';
 import { mkdirSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { resolveForgeConfig } from '../../../forge/config.js';
@@ -76,6 +77,48 @@ describe('omg factory check on the local (offline) forge', () => {
         const json = JSON.parse(repo.out.join('\n'));
         expect(json.items.map((r) => [r.id, r.bucket, r.reasons[0]])).toEqual([[2, 'blocked', 'children-done']]);
     });
+    it('F31: only a PR merged into the current base closes its item, and a change of the file on the base after the merge reopens it', async () => {
+        const repo = localRepo();
+        const git = (...args) => execFileSync('git', args, { cwd: repo.root, encoding: 'utf8' }).trim();
+        const file3 = '.copilot/backlog/3-version-flag.md';
+        writeFile(repo, file3, backlogItem('add a --version flag'));
+        writeFile(repo, '.copilot/backlog/4-help-flag.md', backlogItem('add a --help flag'));
+        commitAll(repo);
+        // The factory branch of #3, and a change of #3's file on main while the PR is open (before the merge).
+        git('checkout', '-q', '-b', 'factory/issue-3');
+        writeFile(repo, 'version.txt', '1\n');
+        commitAll(repo, 'feat: version');
+        const head = git('rev-parse', 'HEAD');
+        git('checkout', '-q', 'main');
+        writeFile(repo, file3, backlogItem('add a --version flag', 'open', 'Edited while the PR was open.\n\n'));
+        commitAll(repo, 'backlog: edit #3');
+        git('merge', '-q', '--no-ff', '-m', 'merge factory/issue-3', 'factory/issue-3');
+        const config = resolveForgeConfig(undefined, undefined, LOCAL_PROJECT_CONFIG, undefined, { root: repo.root, stateDir: getGlobalOmcStatePath('forge') }).config;
+        const store = join(config.repo.url.slice(0, -'.git'.length), 'prs.json');
+        mkdirSync(dirname(store), { recursive: true });
+        const at = new Date().toISOString();
+        writeFileSync(store, JSON.stringify({ version: 1, next: 3, prs: [
+                { number: 1, head: 'factory/issue-3', base: 'main', title: 't', state: 'MERGED', isDraft: false, itemId: 3, createdAt: at, mergedHead: head },
+                // #4's PR merged into another base: it does not close #4 on main.
+                { number: 2, head: 'factory/issue-4', base: 'release', title: 't', state: 'MERGED', isDraft: false, itemId: 4, createdAt: at },
+            ] }));
+        const reasons = async () => {
+            repo.out.length = 0;
+            expect(await runFactoryCheck({ ids: ['3', '4'], json: true }, checkDeps(repo))).toBe(0);
+            return Object.fromEntries(JSON.parse(repo.out.join('\n')).items.map((r) => [r.id, r.reasons[0]]));
+        };
+        // Merged: closed, though the base edited the file before the merge.
+        let now = await reasons();
+        expect(now[3]).toBe('closed');
+        expect(now[4]).not.toBe('closed');
+        // Reopened after the merge: the human changes the file on main, and the file wins.
+        writeFile(repo, file3, backlogItem('add a --version flag', 'open', 'Reverted; do it again.\n\n'));
+        commitAll(repo, 'backlog: reopen #3');
+        now = await reasons();
+        expect(now[3]).not.toBe('closed');
+        expect(repo.err.join('\n')).not.toContain('#3 is merged (local PR #1)');
+        expect(programs(repo)).toEqual(['git']);
+    });
     it('F20: a missing local base exits 2 naming ship.base (not exit 0 with "no items")', async () => {
         const repo = localRepo();
         writeFile(repo, '.copilot/backlog/1-add-remove.md', backlogItem('Add remove'));
@@ -128,6 +171,15 @@ describe('isLocalReadShape', () => {
         expect(isLocalReadShape(['ls-tree', '-r', '-z', '--name-only', SHA, '--', 'docs/'])).toBe(false);
         expect(isLocalReadShape(['rev-parse', '--verify', 'refs/heads/-x'])).toBe(false);
         expect(isLocalReadShape(['rev-parse', '--verify', 'refs/tags/main'])).toBe(false);
+    });
+    it('passes the last change of one backlog file at a commit (F31 reopen), nothing looser', () => {
+        const log = (commit, path, flags = ['-1', '--no-show-signature', '--format=%H']) => isLocalReadShape(['log', ...flags, commit, '--', path]);
+        expect(log(SHA, '.copilot/backlog/3-x.md')).toBe(true);
+        expect(log('HEAD', '.copilot/backlog/3-x.md')).toBe(false);
+        expect(log(SHA, '../outside.md')).toBe(false);
+        expect(log(SHA, '-x.md')).toBe(false);
+        expect(log(SHA, '.copilot/backlog/3-x.md', ['-1', '--format=%H'])).toBe(false);
+        expect(log(SHA, '.copilot/backlog/3-x.md', ['-1', '--no-show-signature', '--format=%G?'])).toBe(false);
     });
 });
 //# sourceMappingURL=cli-local.test.js.map

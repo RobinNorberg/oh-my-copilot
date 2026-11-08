@@ -12,7 +12,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join, resolve } from 'path';
 import { shipyardKeys, } from '../types.js';
 import { acceptanceSectionOf, backlogFileId, backlogSlug, BacklogParseError, parseBacklogFile, renderBacklogFile } from './backlog.js';
-import { backlogListArgs, backlogShowArgs } from './mirror.js';
+import { backlogListArgs, backlogShowArgs, lastChangeArgs, mergedArgs } from './mirror.js';
 import { appendNoFollow, noLinkPath, writeAtomic } from './store.js';
 const TRUSTED_READ_ENV = Object.freeze({ GIT_NO_REPLACE_OBJECTS: '1' });
 const HEX40 = /^[0-9a-f]{40}$/;
@@ -115,11 +115,33 @@ export function localTracker(ctx) {
         }
         return out;
     };
+    /**
+     * Whether the base changed `path` after the merge of `mergedHead`: the
+     * file's last commit on the base descends from the merged head (a commit
+     * on the base before the merge, or one of the PR's own, does not). Unknown
+     * (no base commit, no head, git cannot tell) keeps the merge.
+     */
+    const changedAfter = new Map();
+    const changedAfterMerge = (path, mergedHead) => {
+        const sha = baseSha();
+        if (!sha || !mergedHead || !HEX40.test(mergedHead))
+            return false;
+        const key = `${sha}:${mergedHead}:${path}`;
+        const known = changedAfter.get(key);
+        if (known !== undefined)
+            return known;
+        const last = git(lastChangeArgs(sha, path)).trim();
+        const after = HEX40.test(last) && last !== mergedHead
+            && ctx.exec('git', mergedArgs(mergedHead, last), { cwd: ctx.root, env: TRUSTED_READ_ENV }).status === 0;
+        changedAfter.set(key, after);
+        return after;
+    };
     /** The merged local PR of an item whose file still says open (F31), with a warning naming the file to change. */
     const mergedOpen = (item) => {
         if (item.state !== 'open')
             return undefined;
-        const pr = ctx.mergedPr?.(item.id);
+        const merged = ctx.mergedPr?.(item.id);
+        const pr = merged === undefined || changedAfterMerge(item.path, merged.mergedHead) ? undefined : merged.number;
         const warning = pr === undefined ? undefined : `local backlog: #${item.id} is merged (local PR #${pr}) but ${item.path} still says state: open; set state: closed there and commit it on the base branch`;
         if (warning !== undefined && !warnings.includes(warning))
             warnings.push(warning);

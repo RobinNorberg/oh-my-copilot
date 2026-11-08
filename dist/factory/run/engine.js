@@ -142,7 +142,7 @@ function engineExec(o, inner, baseSha, basePush = () => undefined) {
         // The local forge reads the backlog at the run's verified base commit (offline forge plan §1.1).
         // The guard binds the mirror init / remote add to this mirror and the base push to the sha the sync read.
         const exec = factoryGuardExec(inner, () => [o.base], undefined, undefined, () => ({ mirror: f.config.repo.url, baseSha: basePush() }));
-        return { exec, forge: createForge(exec, o.root, f.config, { ...f.options, local: { omgRoot: getOmcRoot(o.root), baseSha } }) };
+        return { exec, forge: createForge(exec, o.root, f.config, { ...f.options, local: { omgRoot: getOmcRoot(o.root), base: o.base, baseSha } }) };
     }
     if (!f || f.config.kind !== 'azure-devops')
         return { exec: factoryGuardExec(inner, () => [o.base]) };
