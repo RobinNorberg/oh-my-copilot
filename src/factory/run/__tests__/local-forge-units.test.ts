@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { readLocalCheckRecord, writeLocalCheckRecord } from '../../../forge/local/index.js';
 import { isProcessAlive } from '../../../platform/process-utils.js';
 import type { Exec } from '../../../ship/exec.js';
-import { assertFactoryCommand, FactorySafetyError, hardenedGitExec, LOCAL_REMOTE_PACK_ARGS, localRemoteRefusedKeys, localTransportArgs, type LocalGuardContext } from '../exec.js';
+import { assertFactoryCommand, FactorySafetyError, hardenedGitExec, LOCAL_REMOTE_PACK_ARGS, localRemoteRefusedKeys, localTransportArgs, mirrorRewriteKeys, type LocalGuardContext } from '../exec.js';
 import {
   assertLocalGateCommand, defaultLocalGateRunner, LOCAL_GATE_STALE_GRACE_MS, LOCAL_GATE_TAIL_CHARS, localGateDue, localGateRecord,
   resolveLocalGateArgv, runLocalGate, type LocalGateRunner,
@@ -37,6 +37,7 @@ describe('the factory guard on the local forge shapes', () => {
     ['the local base branch', ['rev-parse', '--verify', 'refs/heads/main'], []],
     ['the mirror fetch', ['fetch', 'omg-local', 'main'], []],
     ['the refused omg-local config read', ['config', '--get-regexp', '^remote\\.omg-local\\.(vcs|mirror|fetch)$'], []],
+    ['the url rewrite config read', ['config', '-z', '--get-regexp', '^url\\..*\\.(insteadof|pushinsteadof)$'], []],
   ])('allows %s', (_what, args, extra) => {
     expect(ok('git', args, extra)).not.toThrow();
   });
@@ -131,6 +132,39 @@ describe('hardenedGitExec on omg-local', () => {
     expect(localRemoteRefusedKeys('remote.omg-local.fetch +refs/heads/*:refs/remotes/omg-local/*\nremote.omg-local.fetch +refs/heads/*:refs/heads/x/*\n'))
       .toEqual(['remote.omg-local.fetch=+refs/heads/*:refs/heads/x/*']);
     expect(localRemoteRefusedKeys('remote.omg-local.vcs ext\r\nremote.omg-local.mirror true\n')).toEqual(['remote.omg-local.vcs=ext', 'remote.omg-local.mirror=true']);
+  });
+
+  it('mirrorRewriteKeys: a url rewrite whose value prefixes the mirror path (either slash form) is refused, others are not', () => {
+    const fwd = MIRROR.replace(/\\/g, '/');
+    const rec = (key: string, value?: string) => (value === undefined ? `${key}\0` : `${key}\n${value}\0`);
+    expect(mirrorRewriteKeys('', MIRROR)).toEqual([]);
+    // A user's ordinary rewrites never touch a local path.
+    expect(mirrorRewriteKeys(rec('url.git@github.com:.insteadof', 'https://github.com/') + rec('url.ssh://x/.pushinsteadof', 'https://dev.azure.com/'), MIRROR)).toEqual([]);
+    // The literal mirror, a parent directory of it, and the other slash form; a subsection with spaces stays one key.
+    expect(mirrorRewriteKeys(rec('url./evil repo.insteadof', MIRROR), MIRROR)).toEqual([`url./evil repo.insteadof=${MIRROR}`]);
+    expect(mirrorRewriteKeys(rec('url./evil.pushinsteadof', resolve(MIRROR, '..', '..')), MIRROR)).toHaveLength(1);
+    expect(mirrorRewriteKeys(rec('url./evil.insteadof', fwd), MIRROR)).toHaveLength(1);
+    expect(mirrorRewriteKeys(rec('url./evil.insteadof', MIRROR.replace(/\//g, '\\')), fwd)).toHaveLength(1);
+    // No value: an empty prefix matches everything.
+    expect(mirrorRewriteKeys(rec('url./evil.insteadof'), MIRROR)).toEqual(['url./evil.insteadof=']);
+    // Longer than the mirror, or another path: not a prefix.
+    expect(mirrorRewriteKeys(rec('url./evil.insteadof', `${MIRROR}x`) + rec('url./evil.insteadof', resolve(tmpdir(), 'other')), MIRROR)).toEqual([]);
+    // Another case: refused only where the file system is case-insensitive.
+    expect(mirrorRewriteKeys(rec('url./evil.insteadof', MIRROR.toUpperCase()), MIRROR)).toHaveLength(process.platform === 'linux' ? 0 : 1);
+  });
+
+  it('the backstop refuses an omg-local transport while a url rewrite of the mirror path is configured', () => {
+    dir = mkdtempSync(join(tmpdir(), 'omg-hooks-'));
+    const rewrite: Exec = (_cmd, args) => {
+      seen.push(args);
+      if (args.includes('-z')) return { status: 0, stdout: `url./evil.git.insteadof\n${MIRROR}\0`, stderr: '' };
+      if (args.includes('--get-regexp')) return { status: 1, stdout: '', stderr: '' };
+      return { status: 0, stdout: '', stderr: '' };
+    };
+    const exec = hardenedGitExec(rewrite, dir, () => MIRROR);
+    expect(() => exec('git', ['push', 'omg-local', `${SHA}:refs/heads/factory/issue-7`])).toThrow(/rewrites the local forge mirror .*url\.\/evil\.git\.insteadof/);
+    expect(() => exec('git', ['fetch', 'omg-local', 'main'])).toThrow(FactorySafetyError);
+    expect(commands()).toEqual([]);
   });
 });
 
@@ -264,7 +298,47 @@ describe('the local gate', () => {
     symlinkSync(w.root, w.checkout, process.platform === 'win32' ? 'junction' : 'dir');
     expect(existsSync(w.checkout)).toBe(true);
     expect(() => assertLocalGateCommand(['npm', 'test'], ['npm', 'test'], w.checkout, w.checkout)).toThrow(/really/);
+    expect(() => assertLocalGateCommand(['npm', 'test'], ['npm', 'test'], w.checkout, w.checkout)).toThrow(/is a junction or symlink/);
   });
+
+  it('assertLocalGateCommand allows the real checkout of a root reached through a junction or symlink', () => {
+    world();
+    const realRoot = join(dir, 'real-root');
+    mkdirSync(join(realRoot, 'checkout'), { recursive: true });
+    const linkedRoot = join(dir, 'linked-root');
+    symlinkSync(realRoot, linkedRoot, process.platform === 'win32' ? 'junction' : 'dir');
+    const checkout = join(linkedRoot, 'checkout');
+    // The engine names its checkout under the linked root on both sides: the gate runs.
+    expect(() => assertLocalGateCommand(['npm', 'test'], ['npm', 'test'], checkout, checkout)).not.toThrow();
+    expect(() => assertLocalGateCommand(['npm', 'test'], ['npm', 'test'], join(realRoot, 'checkout'), checkout)).not.toThrow();
+    // Another directory under the same linked root is still refused.
+    mkdirSync(join(realRoot, 'other'));
+    expect(() => assertLocalGateCommand(['npm', 'test'], ['npm', 'test'], join(linkedRoot, 'other'), checkout)).toThrow(/only in the engine's prepare checkout/);
+  });
+
+  it('a root that exits while a grandchild holds its output settles with the real exit status after a short drain', async () => {
+    const w = world();
+    mkdirSync(w.checkout, { recursive: true });
+    const pidFile = join(w.checkout, 'grandchild.pid');
+    writeFileSync(join(w.checkout, 'grandchild.js'), 'setTimeout(() => {}, 120000);\n');
+    writeFileSync(join(w.checkout, 'gate.js'), [
+      "const { spawn } = require('child_process');",
+      "const g = spawn(process.execPath, [require('path').join(__dirname, 'grandchild.js')], { stdio: ['ignore', 'inherit', 'inherit'] });",
+      `require('fs').writeFileSync(${JSON.stringify(pidFile)}, String(g.pid));`,
+      "console.log('done');",
+      'process.exit(0);',
+    ].join('\n'));
+    const started = Date.now();
+    try {
+      const r = await defaultLocalGateRunner([process.execPath, join(w.checkout, 'gate.js')], w.checkout, 60_000);
+      expect(r).toMatchObject({ status: 0, timedOut: false });
+      expect(r.stdout).toContain('done');
+      expect(Date.now() - started).toBeLessThan(30_000);
+    } finally {
+      // POSIX killed the group; on Windows the orphan is ours to stop.
+      try { process.kill(Number(readFileSync(pidFile, 'utf8')), 'SIGKILL'); } catch { /* gone */ }
+    }
+  }, 90_000);
 });
 
 describe('resolveLocalGateArgv', () => {

@@ -154,4 +154,61 @@ describe('omg factory poll: local forge base sync', () => {
     expect(w.raw.filter((a) => a.includes('push') && !a.includes('get-url'))).toEqual([]);
     expect(localRemoteMismatch(defaultExec, w.root, w.config.repo.url)).toMatch(/not the mirror/);
   });
+
+  /** A bare repository the planted rewrite points at, and whether anything landed in it. */
+  const evilRepo = (w: ReturnType<typeof world>) => {
+    const evil = join(dir, 'evil.git');
+    gitIn(w.root, 'init', '-q', '--bare', evil);
+    return { evil, refs: () => gitIn(evil, 'for-each-ref', '--format=%(refname)') };
+  };
+
+  it.each([
+    ['insteadOf of the literal mirror path, with the remote url spelled with forward slashes', 'insteadOf', (m: string) => m, (m: string) => m.replace(/\\/g, '/')],
+    ['pushInsteadOf of the mirror\'s parent directory', 'pushInsteadOf', (m: string) => join(m, '..'), (m: string) => m],
+    ['insteadOf of the mirror path in the other slash form', 'insteadOf', (m: string) => m.replace(/\\/g, '/'), (m: string) => m],
+  ])('a planted url %s refuses the sync (exit 5): nothing is pushed to the rewrite target', (_what, kind, value, remoteUrl) => {
+    const w = world();
+    const { evil, refs } = evilRepo(w);
+    gitIn(w.root, 'remote', 'add', 'omg-local', remoteUrl(w.config.repo.url));
+    gitIn(w.root, 'config', `url.${evil}.${kind}`, value(w.config.repo.url));
+    let error: unknown;
+    try {
+      w.sync({ root: w.root, base: 'main', config: w.config });
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(FactoryForgeUnavailableError);
+    expect((error as Error).message).toMatch(new RegExp(`url\\..*\\.${kind.toLowerCase()}=`));
+    expect(w.raw.filter((a) => a.includes('push') && !a.includes('get-url'))).toEqual([]);
+    expect(refs()).toBe('');
+  });
+
+  it('the rewrite backstop: a push to the mirror path refuses a planted insteadOf even when the sync check is bypassed', () => {
+    const w = world();
+    const { evil, refs } = evilRepo(w);
+    gitIn(w.root, 'remote', 'add', 'omg-local', w.config.repo.url);
+    gitIn(w.root, 'init', '-q', '--bare', w.config.repo.url);
+    gitIn(w.root, 'config', `url.${evil}.insteadOf`, w.config.repo.url);
+    const hardened = hardenedGitExec((cmd, args, opts) => { w.raw.push(args); return defaultExec(cmd, args, opts); }, emptyHooksDir(join(dir, 'ledger')), () => w.config.repo.url);
+    const head = gitIn(w.root, 'rev-parse', 'main');
+    expect(() => hardened('git', ['push', 'omg-local', `${head}:refs/heads/main`], { cwd: w.root })).toThrow(/rewrites the local forge mirror/);
+    expect(w.raw.filter((a) => a.includes('push'))).toEqual([]);
+    expect(refs()).toBe('');
+  });
+
+  it('an unrelated url rewrite (a forge host) does not refuse the sync', () => {
+    const w = world();
+    gitIn(w.root, 'config', 'url.git@github.com:.insteadOf', 'https://github.com/');
+    const head = gitIn(w.root, 'rev-parse', 'main');
+    w.sync({ root: w.root, base: 'main', config: w.config });
+    expect(readMirrorRef(w.config.repo.url, 'main')).toBe(head);
+  });
+
+  it('a remote url that is another spelling of the mirror path refuses the sync (exact mirror string)', () => {
+    const w = world();
+    const other = process.platform === 'win32' ? w.config.repo.url.replace(/\\/g, '/') : `${w.config.repo.url}/`;
+    gitIn(w.root, 'remote', 'add', 'omg-local', other);
+    expect(() => w.sync({ root: w.root, base: 'main', config: w.config })).toThrow(/points at .*not the mirror/);
+    expect(w.raw.filter((a) => a.includes('push') && !a.includes('get-url'))).toEqual([]);
+  });
 });
