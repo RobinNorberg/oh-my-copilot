@@ -62,6 +62,11 @@ function originUrl(exec: Exec, root: string): string | null {
   return got.status === 0 && got.stdout.trim() ? got.stdout.trim() : null;
 }
 
+/** The F9/F10 text of "no usable forge" (exit 5 in run, check, board, poll and setup), with the offline hint. */
+export function unsupportedForge(why: string): string {
+  return `unsupported forge: ${why.replace(/^unsupported forge: /, '')}; for the offline (local) forge run \`omg factory setup --forge local\``;
+}
+
 /**
  * The forge config of a factory run: the user config at its default
  * location, `.copilot/omg.jsonc` committed on `origin/<base>` after a fetch
@@ -81,7 +86,8 @@ export function loadFactoryForgeConfig(exec: Exec, root: string, base: string, t
     try {
       return resolveForgeConfig(trustedUser, baseLayer, project, url, context);
     } catch (error) {
-      if (error instanceof ForgeConfigError && error.code !== 'invalid') throw new FactoryForgeUnavailableError(error.message);
+      // F28: no usable forge carries the same offline hint as check and board.
+      if (error instanceof ForgeConfigError && error.code !== 'invalid') throw new FactoryForgeUnavailableError(error.code === 'forge-unsupported' ? unsupportedForge(error.message) : error.message);
       throw error;
     }
   };
@@ -285,7 +291,11 @@ export function syncLocalMirror(exec: Exec, root: string, mirror: string, base: 
   const local = must(['rev-parse', '--verify', `refs/heads/${base}`], `local base ${base}`, TRUSTED_READ_ENV).trim();
   if (!HEX40.test(local)) throw new Error(`local base ${base} did not resolve to a commit`);
   onBase?.(local);
-  if (readMirrorRef(mirror, base) !== local) {
+  // F27, an idle tick: the mirror base and the tracking ref already name the local base, so the fetch (and the
+  // config reads its hardened transport repeats) would change nothing; on Windows each git spawn costs ~0.2-1 s.
+  const upToDate = readMirrorRef(mirror, base) === local;
+  if (upToDate && git(['rev-parse', '--verify', `refs/remotes/${LOCAL_REMOTE}/${base}`], TRUSTED_READ_ENV).stdout.trim() === local) return local;
+  if (!upToDate) {
     const pushed = git(mirrorPushArgs(local, base));
     if (pushed.status !== 0) {
       const detail = (pushed.stderr || pushed.stdout).trim().split('\n')[0];

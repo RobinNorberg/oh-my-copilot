@@ -2,7 +2,7 @@ import { execFileSync } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { runFactorySetup, type FactorySetupDeps } from '../../../cli/commands/factory-setup.js';
+import { factorySetupCommand, runFactorySetup, type FactorySetupDeps } from '../../../cli/commands/factory-setup.js';
 import { createForge } from '../../../forge/index.js';
 import { localForgeLimitations, parseBacklogFile } from '../../../forge/local/index.js';
 import { parseJsonc } from '../../../utils/jsonc.js';
@@ -63,6 +63,22 @@ describe('omg factory setup: the local (offline) forge', () => {
     expect(existsSync(join(repo.home, 'state', 'forge'))).toBe(false);
   });
 
+  it('F22: the local forge does not print the omg factory init prerequisites (the offline flow does not use them)', async () => {
+    const repo = localRepo();
+    const r = await runFactorySetup({ forge: 'local', dryRun: true }, deps(repo), repo.root);
+    expect(r.prerequisites.ok).toBe(false);
+    const out: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => { out.push(a.join(' ')); });
+    vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => { out.push(a.join(' ')); });
+    try {
+      await factorySetupCommand(deps(repo)).parseAsync(['--forge', 'local', '--dry-run'], { from: 'user' });
+    } finally {
+      vi.restoreAllMocks();
+    }
+    expect(out.join('\n')).toContain('dry run: nothing written');
+    expect(out.join('\n')).not.toMatch(/prerequisites|chain route table|CLAUDE\.md/);
+  });
+
   it('--forge local --yes writes factory.forge.kind local and a closed sample item; a second run changes nothing', async () => {
     const repo = localRepo();
     const r = await runFactorySetup({ forge: 'local', yes: true }, deps(repo), repo.root);
@@ -71,6 +87,9 @@ describe('omg factory setup: the local (offline) forge', () => {
     const config = parseJsonc(readFileSync(projectPath(repo), 'utf8')) as { factory: Record<string, unknown>; ship?: unknown };
     expect(config.factory).toMatchObject({ forge: { kind: 'local', local: { backlogDir: '.copilot/backlog' } }, intake: { source: { type: 'local-backlog' } } });
     expect(config.ship).toEqual({ base: 'main' });
+    // F21: no factory.progress on the local forge (check would only warn that it is ignored).
+    expect(config.factory.progress).toBeUndefined();
+    expect(r.config?.progress).toBeUndefined();
     const sample = readFileSync(samplePath(repo), 'utf8');
     expect(sample).toBe(SAMPLE_BACKLOG_TEXT);
     expect(parseBacklogFile(`.copilot/backlog/${SAMPLE_BACKLOG_FILE}`, sample)).toMatchObject({ id: 1, state: 'closed' });

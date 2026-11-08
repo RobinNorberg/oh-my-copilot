@@ -141,7 +141,8 @@ export interface EnqueueJson {
   schemaVersion: number;
   ok: boolean;
   dryRun: boolean;
-  spec: { id: number; taskList: 'unchanged' | 'updated'; planned?: string };
+  /** `not-used` on the local forge: a backlog spec has no task list; each ticket's `Part of #n` line links it (F25). */
+  spec: { id: number; taskList: 'unchanged' | 'updated' | 'not-used'; planned?: string };
   items: EnqueueRow[];
   /** Key holders that do not count: untrusted author, or not a child of the spec. */
   ignored: Array<{ id: number; key: string; reason: string }>;
@@ -648,11 +649,14 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
 
   // Skipped backlog files (the local tracker).
   const trackerWarnings = (): string[] => tracker.warnings?.() ?? [];
-  if (local && planned.some((p) => p.action === 'created' || p.action === 'updated')) warnings.push(`the new and changed backlog files are uncommitted: commit them on ${base}, where omg factory run reads them`);
+  if (local && planned.some((p) => p.action === 'created' || p.action === 'updated')) {
+    // F25: a dry run has written nothing yet.
+    warnings.push(o.dryRun ? `after enqueue writes them, commit the new and changed backlog files on ${base}, where omg factory run reads them` : `the new and changed backlog files are uncommitted: commit them on ${base}, where omg factory run reads them`);
+  }
   if (o.dryRun) {
     warnings.push(...trackerWarnings());
     // Ids a create would assign are unknown: the planned spec body lists the known ones and names the new keys.
-    const taskList = !ado && !local && (newKeys.length > 0 || normalized(specBody(ids)) !== normalized(spec.body)) ? 'updated' : 'unchanged';
+    const taskList = local ? 'not-used' : !ado && (newKeys.length > 0 || normalized(specBody(ids)) !== normalized(spec.body)) ? 'updated' : 'unchanged';
     const specPlanned = () => `${specBody(ids)}${newKeys.length > 0 ? `\n(plus the new ${newKeys.join(', ')} once created)` : ''}`;
     const rows: EnqueueRow[] = [
       ...planned.map((p): EnqueueRow => ({
@@ -683,7 +687,7 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
   const bodyDir = mkdtempSync(join(tmpdir(), 'omg-enqueue-'));
   const rel = relative(root, bodyDir);
   const rows: EnqueueRow[] = [];
-  let taskList: 'unchanged' | 'updated' = 'unchanged';
+  let taskList: EnqueueJson['spec']['taskList'] = local ? 'not-used' : 'unchanged';
   let failed = false;
   try {
     if (!rel.startsWith('..') && !isAbsolute(rel)) throw new CheckIncompatibleError(`the temporary directory ${bodyDir} is inside the worktree ${root}; set TMPDIR elsewhere`);
@@ -808,7 +812,7 @@ function report(o: FactoryEnqueueOptions, deps: FactoryCheckDeps, json: EnqueueJ
   deps.out(chalk.bold(`${pad(['KEY', 'ID', 'ACTION', 'BUCKET'])}  REASON`));
   for (const row of rows) deps.out(`${pad(row)}  ${plainText(row[4])}`);
   for (const i of json.ignored) deps.err(chalk.yellow(`ignored #${i.id} (key ${i.key}): ${i.reason}`));
-  deps.out(`spec #${json.spec.id} task list: ${json.spec.taskList}`);
+  deps.out(`spec #${json.spec.id} task list: ${json.spec.taskList === 'not-used' ? `not used (each ticket's "Part of #${json.spec.id}" line links it to the spec)` : json.spec.taskList}`);
   if (json.dryRun) {
     deps.out(chalk.bold('dry run: nothing was written. The writes:'));
     for (const r of json.items.filter((x) => x.planned)) {

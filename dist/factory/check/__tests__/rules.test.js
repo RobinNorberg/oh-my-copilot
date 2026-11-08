@@ -241,6 +241,17 @@ const ROWS = [
         world: { kind: 'azure-devops', items: [item(1, { type: 'User Story', body: 'desc', acceptance: '- returns HTTP 404 for a missing id' })] },
         bucket: 'runnable', reasons: [], planSource: 'ado-acceptance',
     },
+    {
+        rule: 'needs-split (a local spec before its tickets exist: F24)',
+        world: { kind: 'local', items: [item(1, { labels: ['spec'], body: 'desc', acceptance: '- returns HTTP 404 for a missing id' })] },
+        bucket: 'blocked', reasons: ['needs-split'], detail: 'labelled spec: add its tickets with omg factory enqueue and commit them',
+    },
+    { rule: 'the spec label means nothing on GitHub', world: { items: [item(1, { labels: ['spec'] })] }, bucket: 'runnable', reasons: [] },
+    {
+        rule: 'runnable (local backlog Acceptance section, no Azure DevOps wording: F23)',
+        world: { kind: 'local', items: [item(1, { body: 'desc', acceptance: '- returns HTTP 404 for a missing id' })] },
+        bucket: 'runnable', reasons: [], detail: 'plan: 1 acceptance item (backlog-acceptance)', planSource: 'backlog-acceptance',
+    },
 ];
 describe('omg factory check rules (forges §5)', () => {
     it.each(ROWS)('$rule -> $bucket $reasons', (row) => {

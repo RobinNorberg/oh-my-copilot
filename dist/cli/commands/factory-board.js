@@ -6,7 +6,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { runFactoryBoard } from '../../factory/board/collect.js';
-import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_INCOMPATIBLE, EXIT_CHECK_USAGE } from '../../factory/check/cli.js';
+import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_INCOMPATIBLE, EXIT_CHECK_USAGE, factoryErrorLine } from '../../factory/check/cli.js';
 import { plainText } from '../../factory/check/score.js';
 import { integerOption } from '../utils/integer-option.js';
 export function factoryBoardCommand(deps) {
@@ -26,7 +26,7 @@ export function factoryBoardCommand(deps) {
             if (o.json)
                 deps.out(JSON.stringify({ ok: false, error: message }, null, 2));
             else
-                deps.err(chalk.red(`Error: ${message}`));
+                deps.err(chalk.red(factoryErrorLine(message)));
             process.exitCode = error instanceof CheckUsageError ? EXIT_CHECK_USAGE : error instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
         }
     });

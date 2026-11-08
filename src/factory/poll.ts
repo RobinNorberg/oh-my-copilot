@@ -675,7 +675,14 @@ export function renderTick(t: PollTick): string {
     if (p.hint) lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)} is ${p.state === 'MERGED' ? 'merged' : 'closed'} by a human: run \`${p.hint}\` to record it`);
     else if (p.threads) lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)}: ${p.threads} open human thread(s)`);
   }
-  for (const b of t.board) lines.push(`  ${b.stage.toUpperCase()}${b.stage === 'backlog' ? backlogLine(b.row) : runLine(b.row, prefix)}`);
+  // F33: a run whose PR a human already merged or closed shows the record step, not its stale gate reason (a merge command).
+  const done = new Map(t.prs.filter((p) => p.hint).map((p) => [runLabel(p.id), p]));
+  for (const b of t.board) {
+    const p = done.get(runLabel(b.row.id));
+    const gate = b.row.run?.gate;
+    const row = p && gate ? { ...b.row, run: { ...b.row.run!, gate: { name: gate.name, reason: `the PR is ${p.state === 'MERGED' ? 'merged' : 'closed'}: run \`${p.hint}\` to record it` } } } : b.row;
+    lines.push(`  ${b.stage.toUpperCase()}${b.stage === 'backlog' ? backlogLine(row) : runLine(row, prefix)}`);
+  }
   if (t.autoStart.started) {
     const a = t.autoStart;
     const took = !a.parsed ? 'outcome unreadable' : a.next !== null ? `took #${a.next}` : a.exitCode === 0 ? 'found nothing runnable' : 'took no item';

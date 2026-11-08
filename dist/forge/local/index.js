@@ -17,7 +17,7 @@ import { localMerge } from './merge.js';
 import { localReviews } from './reviews.js';
 import { engineOwnedDir, readPrStore } from './store.js';
 import { localTracker } from './tracker.js';
-export { LOCAL_REMOTE, backlogListArgs, backlogShowArgs, isLocalBranchName, lastChangeArgs, localCheckRecordPath, localMirrorPath, localPrStorePath, localRepoId, localStoreDir, mergedArgs, mirrorFetchArgs, mirrorInitArgs, mirrorPushArgs, mirrorRemoteAddArgs, mirrorRemoteGetUrlArgs, readMirrorRef, } from './mirror.js';
+export { LOCAL_REMOTE, STATE_CHANGE_LOG_FLAGS, backlogListArgs, backlogShowArgs, isLocalBranchName, lastStateChangeArgs, localCheckRecordPath, localMirrorPath, localPrStorePath, localRepoId, localStoreDir, mergedArgs, mirrorFetchArgs, mirrorInitArgs, mirrorPushArgs, mirrorRemoteAddArgs, mirrorRemoteGetUrlArgs, readMirrorRef, } from './mirror.js';
 export { LOCAL_GATE_CHECK, readCheckRecordAt, readLocalCheckRecord, writeLocalCheckRecord } from './checks.js';
 export { BacklogParseError, parseBacklogFile, renderBacklogFile, backlogSlug } from './backlog.js';
 export { localPrUrl } from './reviews.js';
@@ -52,12 +52,13 @@ export const createLocalForge = (exec, cwd, config, options) => {
     const humanDir = join(omgRoot, 'factory', 'local');
     const storePath = join(storeDir, 'prs.json');
     const reviews = localReviews({ exec, root: cwd, mirror, storePath, humanDir });
-    // The PR store, read once per change of the file (size and mtime): one read per check, and a malformed store
+    // The PR store, read once per change of the file (inode, size, mtime and ctime; bigint keeps a 64-bit Windows
+    // file id and nanosecond times exact): one read per check, and a malformed store
     // is one error, thrown only to the lookups that need the store.
     let store;
     const prStore = () => {
-        const st = statSync(storePath, { throwIfNoEntry: false });
-        const key = st ? `${st.size}:${st.mtimeMs}` : 'absent';
+        const st = statSync(storePath, { throwIfNoEntry: false, bigint: true });
+        const key = st ? `${st.ino}:${st.size}:${st.mtimeNs}:${st.ctimeNs}` : 'absent';
         if (store?.key !== key) {
             try {
                 store = { key, value: readPrStore(storePath) };

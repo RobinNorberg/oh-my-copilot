@@ -336,7 +336,7 @@ describe('omg factory on the local (offline) forge, end to end', () => {
       const gates = spawned.slice(w.spawnMark).filter((c) => isNode(c.cmd));
       expect(gates.map((g) => g.args.slice(-2))).toEqual([['-e', 'process.exit(0)']]);
 
-      expect(mergeCommand).toBe(`git -C ${w.root} merge --no-ff ${head}`);
+      expect(mergeCommand).toBe(`git -C ${w.root} merge --no-ff --no-edit ${head}`);
       assertOffline(w);
     });
 

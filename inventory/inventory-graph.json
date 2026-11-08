@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "52e9abaf1ca5c763e3932a79065a4e3818e2b761",
-    "sourceSha256": "2cf509bbf39f630add91eeaf1daf83bc2f4931ec3977ed99fced637704ef771c",
+    "head": "004848745828df40163d51367bf081a63d032de9",
+    "sourceSha256": "518ce8e1805a4ce7acc32de82fd7fad60495aa1c8834c264499e125dc968d271",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "52e9abaf1ca5c763e3932a79065a4e3818e2b761",
-  "sourceSha256": "2cf509bbf39f630add91eeaf1daf83bc2f4931ec3977ed99fced637704ef771c",
+  "head": "004848745828df40163d51367bf081a63d032de9",
+  "sourceSha256": "518ce8e1805a4ce7acc32de82fd7fad60495aa1c8834c264499e125dc968d271",
   "counts": {
     "public": {
       "skills": 96,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 1972,
-      "total": 1997
+      "srcFiles": 1973,
+      "total": 1998
     },
     "generated": {
-      "distFiles": 7256,
+      "distFiles": 7264,
       "bridgeFiles": 8,
-      "total": 7264
+      "total": 7272
     },
     "prompt": {
       "promptLikeFiles": 68
@@ -3124,6 +3124,10 @@
       "dist/factory/__tests__/map-run.test.d.ts.map",
       "dist/factory/__tests__/map-run.test.js",
       "dist/factory/__tests__/map-run.test.js.map",
+      "dist/factory/__tests__/offline-e2e.test.d.ts",
+      "dist/factory/__tests__/offline-e2e.test.d.ts.map",
+      "dist/factory/__tests__/offline-e2e.test.js",
+      "dist/factory/__tests__/offline-e2e.test.js.map",
       "dist/factory/__tests__/poll-ado.test.d.ts",
       "dist/factory/__tests__/poll-ado.test.d.ts.map",
       "dist/factory/__tests__/poll-ado.test.js",
@@ -4248,6 +4252,10 @@
       "dist/forge/local/tracker.d.ts.map",
       "dist/forge/local/tracker.js",
       "dist/forge/local/tracker.js.map",
+      "dist/forge/terms.d.ts",
+      "dist/forge/terms.d.ts.map",
+      "dist/forge/terms.js",
+      "dist/forge/terms.js.map",
       "dist/forge/types.d.ts",
       "dist/forge/types.d.ts.map",
       "dist/forge/types.js",
@@ -20438,6 +20446,26 @@
         "path": "dist/factory/__tests__/map-run.test.js.map"
       },
       {
+        "id": "dist/factory/__tests__/offline-e2e.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/offline-e2e.test.d.ts"
+      },
+      {
+        "id": "dist/factory/__tests__/offline-e2e.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/offline-e2e.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/__tests__/offline-e2e.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/offline-e2e.test.js"
+      },
+      {
+        "id": "dist/factory/__tests__/offline-e2e.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/offline-e2e.test.js.map"
+      },
+      {
         "id": "dist/factory/__tests__/poll-ado.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/__tests__/poll-ado.test.d.ts"
@@ -26056,6 +26084,26 @@
         "id": "dist/forge/local/tracker.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/local/tracker.js.map"
+      },
+      {
+        "id": "dist/forge/terms.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/terms.d.ts"
+      },
+      {
+        "id": "dist/forge/terms.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/terms.d.ts.map"
+      },
+      {
+        "id": "dist/forge/terms.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/terms.js"
+      },
+      {
+        "id": "dist/forge/terms.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/terms.js.map"
       },
       {
         "id": "dist/forge/types.d.ts",
@@ -53318,6 +53366,11 @@
         "path": "src/forge/local/tracker.ts"
       },
       {
+        "id": "src/forge/terms.ts",
+        "kind": "src",
+        "path": "src/forge/terms.ts"
+      },
+      {
         "id": "src/forge/types.ts",
         "kind": "src",
         "path": "src/forge/types.ts"
@@ -79501,6 +79554,11 @@
       },
       {
         "from": "src/factory/check/__tests__/cli-local.test.ts",
+        "to": "src/forge/local/mirror.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli-local.test.ts",
         "to": "src/utils/paths.ts",
         "kind": "imports"
       },
@@ -79727,6 +79785,11 @@
       {
         "from": "src/factory/check/cli.ts",
         "to": "src/forge/local/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/forge/local/mirror.ts",
         "kind": "imports"
       },
       {
@@ -82265,6 +82328,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/__tests__/engine.local.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/__tests__/engine.outcome.marker.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -82816,6 +82884,11 @@
       },
       {
         "from": "src/factory/run/__tests__/forge-roots.test.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/forge-roots.test.ts",
         "to": "src/factory/run/exec.ts",
         "kind": "imports"
       },
@@ -82937,6 +83010,11 @@
       {
         "from": "src/factory/run/__tests__/local-forge-units.test.ts",
         "to": "src/forge/local/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/local-forge-units.test.ts",
+        "to": "src/forge/local/mirror.ts",
         "kind": "imports"
       },
       {
@@ -83752,6 +83830,11 @@
       {
         "from": "src/factory/run/engine.ts",
         "to": "src/forge/local/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/forge/terms.ts",
         "kind": "imports"
       },
       {
@@ -88987,6 +89070,11 @@
       {
         "from": "src/forge/local/tracker.ts",
         "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/terms.ts",
+        "to": "src/forge/types.ts",
         "kind": "type-imports"
       },
       {
@@ -120831,12 +120919,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10059,
-      "edgeCount": 12326,
-      "importEdgeCount": 10145,
+      "nodeCount": 10068,
+      "edgeCount": 12333,
+      "importEdgeCount": 10151,
       "registerEdgeCount": 117
     }
   },
-  "inventorySha256": "a62e6631b84dce0edd630dade4019100cc9a55e935d74e7aecb6b5ad0c048445",
-  "manifestSha256": "c59c8a52151f9e47a08c2cafdfe7009b8d005a17f17285cca3eb86a269952dc1"
+  "inventorySha256": "f9b7cb04379b86d9fea10b69fb4614c93575d08b158e4ea719be60a33df96d4d",
+  "manifestSha256": "1464e92c101827aae3c184c21163714ad9deead79b3375f65f33259c2680b5cb"
 }

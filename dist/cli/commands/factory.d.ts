@@ -63,7 +63,9 @@ export declare const factoryRunJson: {
     outcome: (outcome: FactoryRunOutcome, next?: number) => string;
     error: (message: string) => string;
 };
-export declare function renderFactoryRunState(state: FactoryRunState): string;
+export declare function renderFactoryRunState(state: FactoryRunState, o?: {
+    gate?: boolean;
+}): string;
 /** `omg factory run <issue>`, `run cancel|clean|status <issue>` (experimental; manual trigger only; merge is always human). */
 export declare function factoryRunCommand(deps?: FactoryRunDeps): Command;
 /** `omg factory enqueue` (shipyard ↔ factory design §3.2-§3.4); the command lives in src/factory/enqueue.ts. */

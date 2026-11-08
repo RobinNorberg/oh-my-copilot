@@ -114,7 +114,7 @@ export interface FactoryCiFailure {
   checks: string[];
   /** Failing test titles (`file > title`) read from the failed jobs' logs. */
   tests: string[];
-  /** The failed prepare step's output tail. */
+  /** The output tail: the failed prepare step's, or the local gate's (F43). */
   detail?: string;
 }
 
@@ -307,7 +307,7 @@ export function shipVerdictHash(v: Pick<ShipVerdict, 'reviewer' | 'verdict' | 's
   return createHash('sha256').update(JSON.stringify([v.reviewer, v.verdict, v.sha, v.at, v.notes ?? null])).digest('hex');
 }
 
-export function createFactoryState(input: { issue: number; repoUrl: string; base: string; heal?: FactoryHealRecord; remote?: typeof LOCAL_REMOTE }, now: string): FactoryRunState {
+export function createFactoryState(input: { issue: number; repoUrl: string; base: string; heal?: FactoryHealRecord; remote?: typeof LOCAL_REMOTE; itemNoun?: string }, now: string): FactoryRunState {
   const key = input.heal ? healRunKey(input.heal.sig8) : input.issue;
   return {
     version: 1,
@@ -325,7 +325,7 @@ export function createFactoryState(input: { issue: number; repoUrl: string; base
     lostStreak: {},
     elapsedMs: 0,
     ciFixRounds: 0,
-    history: [{ at: now, from: null, to: 'intake', note: input.heal ? `ci-heal for CI signature ${input.heal.sig8}` : `issue #${input.issue}` }],
+    history: [{ at: now, from: null, to: 'intake', note: input.heal ? `ci-heal for CI signature ${input.heal.sig8}` : `${input.itemNoun ?? 'issue'} #${input.issue}` }],
     createdAt: now,
     updatedAt: now,
   };

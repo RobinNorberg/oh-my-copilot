@@ -245,6 +245,13 @@ describe('runBudgetHook', () => {
         expect(out.hookSpecificOutput.additionalContext).toBe(`[BUDGET] Copilot usage since ${readLedger(ledgerPath(project)).since.slice(0, 10)}: 0.617 AI credits (1 session(s), 0 team(s)). Reporting only, soft limit 50 AI credits. Details: omg budget status.`);
         expect(readLedger(ledgerPath(project)).sessions[SID]?.source).toBe('measured');
     });
+    it('F45: the summary says when usage is past the soft limit', () => {
+        writeBudget({ softLimit: 0.5 });
+        writeEvents(SID, [PROMPT, SHUTDOWN]);
+        runBudgetHook({ phase: 'turn', payload: payload() });
+        const out = runBudgetHook({ phase: 'start', payload: payload({ session_id: 'new-session' }) });
+        expect(out.hookSpecificOutput.additionalContext).toContain('0.617 AI credits (1 session(s), 0 team(s)). Reporting only, soft limit 0.500 AI credits exceeded.');
+    });
     it('names retired keys once in the session-start summary and never blocks past a deprecated hard limit', () => {
         writeBudget({ mode: 'enforce', hardLimit: 1 });
         writeEvents(SID, [PROMPT, PROMPT, PROMPT]);

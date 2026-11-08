@@ -9,7 +9,7 @@ import chalk from 'chalk';
 import { existsSync, readFileSync } from 'fs';
 import { createInterface } from 'readline/promises';
 import { resolveProjectConfigPath } from '../../config/project-config-path.js';
-import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_INCOMPATIBLE, EXIT_CHECK_USAGE, runFactoryCheck, type FactoryCheckDeps } from '../../factory/check/cli.js';
+import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_INCOMPATIBLE, EXIT_CHECK_USAGE, factoryErrorLine, runFactoryCheck, type FactoryCheckDeps } from '../../factory/check/cli.js';
 import { plainText } from '../../factory/check/score.js';
 import { createForge } from '../../forge/index.js';
 import { userConfigLayers } from '../../ship/config.js';
@@ -46,7 +46,7 @@ export function defaultFactoryCheckDeps(base: (root: string) => string): Factory
 export function factoryCheckCommand(deps: FactoryCheckDeps): Command {
   return new Command('check')
     .description('Bucket intake items as runnable / needs-plan / blocked (read-only; --mark tags the runnable ones)')
-    .argument('[ids...]', 'item ids (GitHub issue numbers or ADO work item ids); default: the intake source')
+    .argument('[ids...]', 'item ids (GitHub issue numbers, Azure DevOps work item ids or local backlog item ids); default: the intake source')
     .option('--parent <spec>', 'check the children of this spec item (GitHub task list `- [ ] #n` | ADO child links)')
     .option('--source <spec>', 'intake source: label:<name> | milestone:<name> | wiql-query:<guid> | board-column:<team>/<board>/<column> | area-tag:<area path>#<tag> | local-backlog[:<label>]')
     .option('--limit <n>', 'items read from the source (1..200)', integerOption(1, 200))
@@ -59,7 +59,7 @@ export function factoryCheckCommand(deps: FactoryCheckDeps): Command {
       } catch (error) {
         const message = plainText(error instanceof Error ? error.message : String(error));
         if (o.json) deps.out(JSON.stringify({ ok: false, error: message }, null, 2));
-        else deps.err(chalk.red(`Error: ${message}`));
+        else deps.err(chalk.red(factoryErrorLine(message)));
         process.exitCode = error instanceof CheckUsageError ? EXIT_CHECK_USAGE : error instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
       }
     });

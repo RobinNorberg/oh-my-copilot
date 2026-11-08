@@ -7,6 +7,7 @@ import { resolveAzEntry, type AzBinaryDeps } from '../../../forge/ado/az-binary.
 import { getOmcRoot } from '../../../lib/worktree-paths.js';
 import { defaultExec, type Exec } from '../../../ship/exec.js';
 import { factoryGuardExec } from '../exec.js';
+import { factoryErrorLine } from '../../check/cli.js';
 import { EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, factoryForgeOptions, loadFactoryForgeConfig, syncLocalMirror } from '../forge-roots.js';
 
 const repo = realpathSync.native(mkdtempSync(join(tmpdir(), 'omg-forge-roots-')));
@@ -96,6 +97,15 @@ describe('loadFactoryForgeConfig: origin parsed before any fetch (F8, F9)', () =
     expect(loaded.config.kind).toBe('local');
     expect(loaded.config.repo.url).toMatch(/[\\/]local[\\/][^\\/]+\.git$/);
     expect(fetches(c.calls)).toEqual([]);
+  });
+
+  it('F28: no origin and no local forge config: unsupported forge with the setup --forge local hint, like check', () => {
+    const c = checkout();
+    expect(() => loadFactoryForgeConfig(c.exec, c.root, 'main', undefined, undefined)).toThrow(FactoryForgeUnavailableError);
+    expect(() => loadFactoryForgeConfig(c.exec, c.root, 'main', undefined, undefined))
+      .toThrow(/^unsupported forge: no origin remote: .*; for the offline \(local\) forge run `omg factory setup --forge local`$/);
+    expect(factoryErrorLine('unsupported forge: x')).toBe('unsupported forge: x');
+    expect(factoryErrorLine('boom')).toBe('Error: boom');
   });
 
   it('a missing base names ship.base and the branches that exist', () => {

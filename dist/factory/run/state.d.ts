@@ -97,7 +97,7 @@ export interface FactoryCiFailure {
     checks: string[];
     /** Failing test titles (`file > title`) read from the failed jobs' logs. */
     tests: string[];
-    /** The failed prepare step's output tail. */
+    /** The output tail: the failed prepare step's, or the local gate's (F43). */
     detail?: string;
 }
 export interface FactoryHistoryEntry {
@@ -278,6 +278,7 @@ export declare function createFactoryState(input: {
     base: string;
     heal?: FactoryHealRecord;
     remote?: typeof LOCAL_REMOTE;
+    itemNoun?: string;
 }, now: string): FactoryRunState;
 /** Move to `to` (clearing any gate), appending history. Terminal phases never move. */
 export declare function moveTo(state: FactoryRunState, to: FactoryPhase, note: string, now: string): FactoryRunState;

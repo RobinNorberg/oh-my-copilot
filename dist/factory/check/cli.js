@@ -22,10 +22,11 @@
 import chalk from 'chalk';
 import { ForgeConfigError, resolveForgeConfig } from '../../forge/config.js';
 import { localForgeLimitations, readMirrorRef } from '../../forge/local/index.js';
+import { STATE_CHANGE_LOG_FLAGS } from '../../forge/local/mirror.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { resolveAzEntry } from '../../forge/ado/az-binary.js';
 import { adoGuardContext, defaultAzBinaryDeps } from '../../forge/ado/index.js';
-import { factoryForgeOptions } from '../run/forge-roots.js';
+import { factoryForgeOptions, unsupportedForge } from '../run/forge-roots.js';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { BASE_CONFIG_PATH, isPlainBranchName, readBaseFile, resolveShipConfig, trustedPrepareChecks } from '../../ship/config.js';
@@ -33,7 +34,7 @@ import { baseFileExists, describePrepareChecks } from '../../ship/prepare.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { isAdoCommand, runGuardedAdo } from '../../forge/ado/guard.js';
-import { assertFactoryCommand, FactorySafetyError } from '../run/exec.js';
+import { assertFactoryCommand, FactorySafetyError, isPlainRepoPath } from '../run/exec.js';
 import { readFactoryState } from '../run/state.js';
 import { gateDefinitionSources } from '../run/local-gate.js';
 import { BUCKET_ORDER, checkItems, plainText } from './score.js';
@@ -76,23 +77,23 @@ function checkGh(a, marker) {
     return false;
 }
 const CHECK_GIT = new Set(['rev-parse', 'remote', 'fetch', 'cat-file', 'show', 'ls-remote', 'merge-base']);
-/** A repo-relative directory (the local backlog): plain segments, no leading `-`, no `.` or `..` segment. */
-const REPO_DIR = /^(?!-)[\w.-]+(?:\/[\w.-]+)*$/;
 /**
  * The local forge's read shapes (src/forge/local): the backlog listing at a
  * commit, and the local base branch (an offline repository has no origin to
  * fetch). The check guard allows them itself, with ship's trusted-read env only.
+ * Paths use the engine guard's isPlainRepoPath, so both guards agree.
  */
 export function isLocalReadShape(args) {
     if (args[0] === 'ls-tree') {
         const dir = args[5] ?? '';
         return args.length === 6 && same(args.slice(1, 3), ['-z', '--name-only']) && /^[0-9a-f]{40}$/.test(args[3]) && args[4] === '--'
-            && dir.endsWith('/') && REPO_DIR.test(dir.slice(0, -1)) && !dir.slice(0, -1).split('/').some((seg) => seg === '.' || seg === '..');
+            && dir.endsWith('/') && isPlainRepoPath(dir.slice(0, -1));
     }
-    // F31: the last commit that changed one backlog file on the base (lastChangeArgs: a reopen after a merge).
+    // F31: the last commit that changed one backlog file's state: line on the base (lastStateChangeArgs: a reopen after a merge).
     if (args[0] === 'log') {
-        return args.length === 7 && same(args.slice(1, 4), ['-1', '--no-show-signature', '--format=%H']) && /^[0-9a-f]{40}$/.test(args[4]) && args[5] === '--'
-            && REPO_DIR.test(args[6]) && !args[6].split('/').some((seg) => seg === '.' || seg === '..');
+        const n = STATE_CHANGE_LOG_FLAGS.length;
+        return args.length === n + 4 && same(args.slice(1, n + 1), [...STATE_CHANGE_LOG_FLAGS]) && /^[0-9a-f]{40}$/.test(args[n + 1]) && args[n + 2] === '--'
+            && isPlainRepoPath(args[n + 3]);
     }
     return args.length === 3 && args[0] === 'rev-parse' && args[1] === '--verify' && args[2].startsWith('refs/heads/') && isPlainBranchName(args[2].slice('refs/heads/'.length));
 }
@@ -364,10 +365,14 @@ export function readForgeOptions(config, root, options, base, baseSha, workingTr
 export function missingLocalBase(base) {
     return `the base branch ${base} does not exist in this repository, so no committed backlog item or config can be read; set ship.base in .copilot/omg.jsonc to the branch you merge into (omg factory setup --forge local writes it)`;
 }
-/** The F9/F10 text of "no usable forge" (exit 5 in check, board, poll and setup), with the offline hint. */
-export function unsupportedForge(why) {
-    return `unsupported forge: ${why.replace(/^unsupported forge: /, '')}; for the offline (local) forge run \`omg factory setup --forge local\``;
+/**
+ * The stderr line of a factory command's error: `Error: <message>`, except that "no usable forge" starts with
+ * `unsupported forge:` in every command, as `omg factory run` prints it (F28).
+ */
+export function factoryErrorLine(message) {
+    return message.startsWith('unsupported forge:') ? message : `Error: ${message}`;
 }
+export { unsupportedForge };
 /** The local branch `<base>` (the local forge's base; no fetch); null with a warning when it does not exist. */
 export function localBase(exec, root, base, warnings) {
     const sha = git(exec, root, ['rev-parse', '--verify', `refs/heads/${base}`]);

@@ -25,7 +25,7 @@ import {
   type ProgressStage,
 } from '../types.js';
 import { acceptanceSectionOf, backlogFileId, backlogSlug, BacklogParseError, parseBacklogFile, renderBacklogFile, type BacklogItem } from './backlog.js';
-import { backlogListArgs, backlogShowArgs, lastChangeArgs, mergedArgs } from './mirror.js';
+import { backlogListArgs, backlogShowArgs, lastStateChangeArgs, mergedArgs } from './mirror.js';
 import { appendNoFollow, noLinkPath, writeAtomic } from './store.js';
 
 const TRUSTED_READ_ENV: Readonly<Record<string, string>> = Object.freeze({ GIT_NO_REPLACE_OBJECTS: '1' });
@@ -49,8 +49,8 @@ export interface LocalTrackerContext {
    * item whose PR merged reads as closed (as a GitHub issue closes at the
    * merge), while its backlog file still says `state: open` until the human
    * commits the change; a warning names the file. `mergedHead` is the PR
-   * head the merge was detected at: a later change of the file on the base
-   * (a reopen) wins over the merge.
+   * head the merge was detected at: a later commit on the base that changes
+   * the file's `state:` line (a reopen) wins over the merge; other edits do not.
    */
   mergedPr?: (id: number) => { number: number; mergedHead?: string } | undefined;
 }
@@ -156,10 +156,12 @@ export function localTracker(ctx: LocalTrackerContext): ForgeTracker {
   };
 
   /**
-   * Whether the base changed `path` after the merge of `mergedHead`: the
-   * file's last commit on the base descends from the merged head (a commit
-   * on the base before the merge, or one of the PR's own, does not). Unknown
-   * (no base commit, no head, git cannot tell) keeps the merge.
+   * Whether the base reopened `path` after the merge of `mergedHead`: the
+   * last commit on the base whose own diff changed the file's `state:` line
+   * descends from the merged head. Any other edit of the file after the merge
+   * (body, labels, a merge commit), a state change on the base before the
+   * merge, or one of the PR's own commits keeps the merge. Unknown (no base
+   * commit, no head, git cannot tell) keeps the merge too.
    */
   const changedAfter = new Map<string, boolean>();
   const changedAfterMerge = (path: string, mergedHead: string | undefined): boolean => {
@@ -168,7 +170,7 @@ export function localTracker(ctx: LocalTrackerContext): ForgeTracker {
     const key = `${sha}:${mergedHead}:${path}`;
     const known = changedAfter.get(key);
     if (known !== undefined) return known;
-    const last = git(lastChangeArgs(sha, path)).trim();
+    const last = git(lastStateChangeArgs(sha, path)).trim();
     const after = HEX40.test(last) && last !== mergedHead
       && ctx.exec('git', mergedArgs(mergedHead, last), { cwd: ctx.root, env: TRUSTED_READ_ENV }).status === 0;
     changedAfter.set(key, after);
@@ -180,7 +182,7 @@ export function localTracker(ctx: LocalTrackerContext): ForgeTracker {
     if (item.state !== 'open') return undefined;
     const merged = ctx.mergedPr?.(item.id);
     const pr = merged === undefined || changedAfterMerge(item.path, merged.mergedHead) ? undefined : merged.number;
-    const warning = pr === undefined ? undefined : `local backlog: #${item.id} is merged (local PR #${pr}) but ${item.path} still says state: open; set state: closed there and commit it on the base branch`;
+    const warning = pr === undefined ? undefined : `local backlog: #${item.id} is merged (local PR #${pr}) but ${item.path} still says state: open; set state: closed there and commit it on the base branch (to reopen #${item.id} later, commit state: open again after that: only a change of the state: line after the merge reopens it)`;
     if (warning !== undefined && !warnings.includes(warning)) warnings.push(warning);
     return pr;
   };

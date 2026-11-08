@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'fs';
+import { mkdirSync, renameSync, statSync, utimesSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createForge } from '../../index.js';
@@ -51,7 +51,7 @@ describe('createForge with a local config', () => {
     expect(forge.checks.checks(pr, head)).toEqual([]);
     writeLocalCheckRecord(fx.stateDir, fx.root, { name: 'local-gate', head, state: 'SUCCESS', argv: ['node', '--test'], runId: 1, startedAt: 'now', completedAt: 'now', exitCode: 0 });
     expect(forge.checks.checks(pr, forge.reviews.prHead(pr).headRefOid)).toMatchObject([{ name: 'local-gate', state: 'SUCCESS' }]);
-    expect(forge.merge.humanMergeCommand(pr, head)).toEqual(['git', '-C', fx.root, 'merge', '--no-ff', head]);
+    expect(forge.merge.humanMergeCommand(pr, head)).toEqual(['git', '-C', fx.root, 'merge', '--no-ff', '--no-edit', head]);
     expect(forge.merge.blockingPolicies(pr, head)).toEqual([]);
   });
 });
@@ -77,8 +77,21 @@ describe('F31: the PR store behind a merged item', () => {
     writeFileSync(store, JSON.stringify({ version: 1, next: 3, prs: [pr(1, 'release')] }));
     expect(main.tracker.viewItem(1).open).toBe(true);
     writeFileSync(store, JSON.stringify({ version: 1, next: 3, prs: [pr(1, 'release'), pr(2, 'main')] }));
+    const pinned = new Date('2026-01-01T00:00:00Z');
+    utimesSync(store, pinned, pinned);
     expect(main.tracker.viewItem(1)).toMatchObject({ open: false, rawState: 'merged (local PR #2)' });
     expect(forge('release').tracker.viewItem(1)).toMatchObject({ open: false, rawState: 'merged (local PR #1)' });
+    // A replacement of the same size with the old mtime (a rename over the store) is still read again: the key has the inode and ctime.
+    const before = JSON.stringify({ version: 1, next: 3, prs: [pr(1, 'release'), pr(2, 'main')] });
+    const after = before.replace('"main"', '"mxin"');
+    expect(after.length).toBe(before.length);
+    const old = statSync(store);
+    writeFileSync(`${store}.new`, after);
+    utimesSync(`${store}.new`, pinned, pinned);
+    renameSync(`${store}.new`, store);
+    expect(statSync(store).size).toBe(old.size);
+    expect(statSync(store).mtimeMs).toBe(old.mtimeMs);
+    expect(main.tracker.viewItem(1).open).toBe(true);
     // Without the base branch no PR closes an item.
     expect(createForge(recordingExec().exec, fx.root, fx.config, { untrustedRoots: [fx.root], local: { omgRoot: fx.omgRoot, baseSha: () => sha } }).tracker.viewItem(1).open).toBe(true);
   });

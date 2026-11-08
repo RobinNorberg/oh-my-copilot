@@ -107,7 +107,7 @@ export function createFactoryState(input, now) {
         lostStreak: {},
         elapsedMs: 0,
         ciFixRounds: 0,
-        history: [{ at: now, from: null, to: 'intake', note: input.heal ? `ci-heal for CI signature ${input.heal.sig8}` : `issue #${input.issue}` }],
+        history: [{ at: now, from: null, to: 'intake', note: input.heal ? `ci-heal for CI signature ${input.heal.sig8}` : `${input.itemNoun ?? 'issue'} #${input.issue}` }],
         createdAt: now,
         updatedAt: now,
     };

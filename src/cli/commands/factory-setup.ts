@@ -30,7 +30,7 @@ import { localForgeLimitations } from '../../forge/local/index.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { adoGuardContext, defaultAzBinaryDeps, type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
 import type { ForgeFactory, ForgeProgressConfig, IntakeSource, ResolvedForgeConfig } from '../../forge/types.js';
-import { checkEnvFor, checkGuardExec } from '../../factory/check/cli.js';
+import { checkEnvFor, checkGuardExec, factoryErrorLine } from '../../factory/check/cli.js';
 import { factoryCheckPreview, type CheckEnv } from '../../factory/check/score.js';
 import { factoryForgeOptions } from '../../factory/run/forge-roots.js';
 import { checkAdoAuth, checkGitHubAuth, type AuthReport } from '../../factory/setup/auth.js';
@@ -395,14 +395,17 @@ function printOutcome(o: FactorySetupOptions, r: FactorySetupOutcome): void {
     return;
   }
   if (r.error) {
-    console.error(chalk.red(`Error: ${r.error}`));
+    console.error(chalk.red(factoryErrorLine(r.error)));
     return;
   }
   for (const c of r.auth?.checks ?? []) console.log(`${c.ok ? chalk.green('ok') : chalk.red('fail')} ${c.name}: ${c.detail}`);
   if (r.written) for (const p of r.written) console.log(chalk.green(`wrote ${p}`));
   else console.log(chalk.yellow(o.dryRun ? 'dry run: nothing written' : 'nothing written'));
   for (const l of r.labels.created) console.log(chalk.green(`created label ${l}`));
-  if (!r.prerequisites.ok) console.log(chalk.gray(`omg factory init prerequisites missing (needed for the chain route table only): ${r.prerequisites.missing.join(', ')}`));
+  // F22: informational only, and not part of the offline flow, so the local forge does not print it (--json keeps it).
+  if (!r.prerequisites.ok && r.forge?.kind !== 'local') {
+    console.log(chalk.gray(`note: omg factory run does not need these; only omg factory init (the chain route table) reads them: ${r.prerequisites.missing.join(', ')}`));
+  }
   for (const n of r.notes) console.log(chalk.gray(n));
   for (const l of r.limitations) console.log(chalk.gray(l));
   if (r.previewError) console.log(chalk.yellow(`preview unavailable: ${r.previewError}`));

@@ -24,7 +24,8 @@ export interface SetupSection {
         source: IntakeSource;
         itemTypes?: string[];
     };
-    progress: Pick<ForgeProgressConfig, 'enabled' | 'stages'>;
+    /** Absent on the local forge: it records the stage itself and syncs no board, so the key would only be ignored (F21). */
+    progress?: Pick<ForgeProgressConfig, 'enabled' | 'stages'>;
     /** Azure DevOps: the build definition heal reads as CI (factory.heal.pipeline; read from <base> once committed). */
     heal?: {
         pipeline: {

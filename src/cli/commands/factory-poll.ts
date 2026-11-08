@@ -6,14 +6,14 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_INCOMPATIBLE, EXIT_CHECK_USAGE } from '../../factory/check/cli.js';
+import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_INCOMPATIBLE, EXIT_CHECK_USAGE, factoryErrorLine } from '../../factory/check/cli.js';
 import { plainText } from '../../factory/check/score.js';
 import { runFactoryPoll, type FactoryPollDeps } from '../../factory/poll.js';
 import { FactoryForgeUnavailableError } from '../../factory/run/forge-roots.js';
 
 export function factoryPollCommand(deps: FactoryPollDeps): Command {
   return new Command('poll')
-    .description('Poll heal, intake, PRs and the board each interval (GitHub and Azure DevOps); never writes to the tracker or forge, and starts no lane unless factory.intake.autoStart (trusted config) starts omg factory run --next on an idle tick')
+    .description('Poll heal, intake, PRs and the board each interval (GitHub, Azure DevOps or the local forge); never writes to the tracker or forge (on the local forge each tick only fast-forwards the mirror to the local base, to see a human merge), and starts no lane unless factory.intake.autoStart (trusted config) starts omg factory run --next on an idle tick')
     .option('--interval <duration>', 'wait between ticks: <n>s, <n>m or <n>h, 2 min to 60 min (default 5m; doubles while rate-limited)')
     .option('--once', 'run one tick and exit')
     .option('--no-heal', 'skip the heal scan')
@@ -26,7 +26,7 @@ export function factoryPollCommand(deps: FactoryPollDeps): Command {
       } catch (error) {
         const message = plainText(error instanceof Error ? error.message : String(error));
         if (o.json) deps.out(JSON.stringify({ ok: false, error: message }));
-        else deps.err(chalk.red(`Error: ${message}`));
+        else deps.err(chalk.red(factoryErrorLine(message)));
         process.exitCode = error instanceof CheckUsageError ? EXIT_CHECK_USAGE
           : error instanceof CheckIncompatibleError || error instanceof FactoryForgeUnavailableError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
       }
