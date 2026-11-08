@@ -56,7 +56,7 @@ describe('factory run on the local forge', () => {
     expect(warnings.join('\n')).toMatch(/ignores ship\.requiredChecks Test; the gates wait for local-gate only/);
 
     // The human merge is a local git merge of the exact head; the engine never merges.
-    expect(out.mergeCommand).toBe(`git -C ${w.root} merge --no-ff ${state.head}`);
+    expect(out.mergeCommand).toBe(`git -C ${w.root} merge --no-ff --no-edit ${state.head}`);
 
     // Offline: no gh/az/copilot, nothing on origin, every mirror transport pinned to the stock pack programs.
     expect(foreignCommands(w)).toEqual([]);

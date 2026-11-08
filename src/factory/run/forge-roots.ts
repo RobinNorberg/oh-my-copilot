@@ -285,7 +285,11 @@ export function syncLocalMirror(exec: Exec, root: string, mirror: string, base: 
   const local = must(['rev-parse', '--verify', `refs/heads/${base}`], `local base ${base}`, TRUSTED_READ_ENV).trim();
   if (!HEX40.test(local)) throw new Error(`local base ${base} did not resolve to a commit`);
   onBase?.(local);
-  if (readMirrorRef(mirror, base) !== local) {
+  // F27, an idle tick: the mirror base and the tracking ref already name the local base, so the fetch (and the
+  // config reads its hardened transport repeats) would change nothing; on Windows each git spawn costs ~0.2-1 s.
+  const upToDate = readMirrorRef(mirror, base) === local;
+  if (upToDate && git(['rev-parse', '--verify', `refs/remotes/${LOCAL_REMOTE}/${base}`], TRUSTED_READ_ENV).stdout.trim() === local) return local;
+  if (!upToDate) {
     const pushed = git(mirrorPushArgs(local, base));
     if (pushed.status !== 0) {
       const detail = (pushed.stderr || pushed.stdout).trim().split('\n')[0];

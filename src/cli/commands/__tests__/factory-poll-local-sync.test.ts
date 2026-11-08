@@ -47,6 +47,18 @@ describe('omg factory poll: local forge base sync', () => {
     expect(sync({ root, base: 'main', config })).toContain(next.slice(0, 12));
     expect(readMirrorRef(config.repo.url, 'main')).toBe(next);
 
+    // F27, an idle tick: nothing moved, so no push and no fetch (the mirror and the tracking ref already name main).
+    raw.length = 0;
+    expect(sync({ root, base: 'main', config })).toContain(next.slice(0, 12));
+    expect(raw.filter((a) => a.includes('push') || a.includes('fetch'))).toEqual([]);
+    expect(raw.some((a) => a.includes(`refs/remotes/omg-local/main`))).toBe(true);
+    // A tracking ref that lags (deleted here) is fetched again.
+    gitIn(root, 'update-ref', '-d', 'refs/remotes/omg-local/main');
+    raw.length = 0;
+    sync({ root, base: 'main', config });
+    expect(raw.filter((a) => a.includes('fetch')).length).toBe(1);
+    expect(gitIn(root, 'rev-parse', 'refs/remotes/omg-local/main')).toBe(next);
+
     // A rewritten base is not a fast-forward: the tick refuses instead of overwriting the mirror.
     gitIn(root, 'commit', '-q', '--amend', '--allow-empty', '-m', 'rewritten');
     expect(() => sync({ root, base: 'main', config })).toThrow(/fast-forward only/);

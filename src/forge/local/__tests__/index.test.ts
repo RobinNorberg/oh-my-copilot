@@ -51,7 +51,7 @@ describe('createForge with a local config', () => {
     expect(forge.checks.checks(pr, head)).toEqual([]);
     writeLocalCheckRecord(fx.stateDir, fx.root, { name: 'local-gate', head, state: 'SUCCESS', argv: ['node', '--test'], runId: 1, startedAt: 'now', completedAt: 'now', exitCode: 0 });
     expect(forge.checks.checks(pr, forge.reviews.prHead(pr).headRefOid)).toMatchObject([{ name: 'local-gate', state: 'SUCCESS' }]);
-    expect(forge.merge.humanMergeCommand(pr, head)).toEqual(['git', '-C', fx.root, 'merge', '--no-ff', head]);
+    expect(forge.merge.humanMergeCommand(pr, head)).toEqual(['git', '-C', fx.root, 'merge', '--no-ff', '--no-edit', head]);
     expect(forge.merge.blockingPolicies(pr, head)).toEqual([]);
   });
 });
