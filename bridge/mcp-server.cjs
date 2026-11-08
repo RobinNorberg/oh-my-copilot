@@ -48406,7 +48406,7 @@ function scriptSource(manager2, args, shown) {
       const p = value === void 0 ? void 0 : /^\.\/?$/.test(import_path105.posix.normalize(value.replace(/\\/g, "/"))) ? "" : repoPath(value)?.replace(/\/+$/, "");
       if (p === void 0) return { sources: [], unresolved: `${shown} runs in ${JSON.stringify(value ?? "")}, which is not a directory inside the repository` };
       dir = p;
-    } else if (CONFIG_FLAGS.has(flag) && value !== void 0) {
+    } else if ((CONFIG_FLAGS.has(flag) || flag === "--script-shell") && value !== void 0) {
       const p = repoPath(value);
       if (p) configs.push(p);
     }
@@ -48417,6 +48417,7 @@ function scriptSource(manager2, args, shown) {
   else if (NPM_TEST.has(sub)) script = "test";
   else if (sub === "start") script = "start";
   else if (NPM_RUN.has(sub)) script = next;
+  else if (PM_NON_SCRIPT.has(sub)) return { sources: [], unresolved: `${shown} runs ${manager2} ${sub}, not a package.json script, so its definition is not known` };
   else if (manager2 !== "npm") script = sub;
   if (!script) return { sources: [], unresolved: `${shown} names no package.json script (such as npm test or npm run <script>)` };
   const at = (f) => dir ? `${dir}/${f}` : f;
@@ -48455,7 +48456,7 @@ function gateDefinition(sources, read) {
     return [s.path, s.scripts.map((k) => [k, Object.prototype.hasOwnProperty.call(scripts, k) ? scripts[k] : null])];
   }));
 }
-var import_child_process21, import_fs88, import_path105, LOCAL_GATE_TAIL_CHARS, LOCAL_GATE_STALE_GRACE_MS, STREAM_KEEP_CHARS, KILL_DEADLINE_MS, EXIT_DRAIN_MS, NODE_SCRIPTS2, npmCliHint, keepTail, defaultLocalGateRunner, realOrResolved, isLink, runIdAt, tailOf, NPM_TEST, NPM_RUN, PM_CONFIG_FILES, DIR_FLAGS, CONFIG_FLAGS, WORKSPACE_FLAGS, VALUE_FLAGS, describeGateSources;
+var import_child_process21, import_fs88, import_path105, LOCAL_GATE_TAIL_CHARS, LOCAL_GATE_STALE_GRACE_MS, STREAM_KEEP_CHARS, KILL_DEADLINE_MS, EXIT_DRAIN_MS, NODE_SCRIPTS2, npmCliHint, keepTail, defaultLocalGateRunner, realOrResolved, isLink, runIdAt, tailOf, NPM_TEST, NPM_RUN, PM_CONFIG_FILES, DIR_FLAGS, CONFIG_FLAGS, WORKSPACE_FLAGS, PM_NON_SCRIPT, VALUE_FLAGS, describeGateSources;
 var init_local_gate = __esm({
   "src/factory/run/local-gate.ts"() {
     "use strict";
@@ -48511,7 +48512,8 @@ var init_local_gate = __esm({
     PM_CONFIG_FILES = [".npmrc", ".yarnrc", ".yarnrc.yml", ".pnpmfile.cjs"];
     DIR_FLAGS = /* @__PURE__ */ new Set(["--prefix", "-C", "--dir", "--cwd"]);
     CONFIG_FLAGS = /* @__PURE__ */ new Set(["--userconfig", "--globalconfig"]);
-    WORKSPACE_FLAGS = /* @__PURE__ */ new Set(["--workspace", "-w", "--workspaces", "--ws", "--filter", "-F", "--recursive", "-r", "--include-workspace-root"]);
+    WORKSPACE_FLAGS = /* @__PURE__ */ new Set(["--workspace", "-w", "--workspaces", "--ws", "-ws", "--filter", "-F", "--recursive", "-r", "--include-workspace-root"]);
+    PM_NON_SCRIPT = /* @__PURE__ */ new Set(["workspace", "workspaces", "recursive", "exec", "dlx", "node", "create"]);
     VALUE_FLAGS = /* @__PURE__ */ new Set([...DIR_FLAGS, ...CONFIG_FLAGS, "--workspace", "-w", "--filter", "-F", "--registry", "--cache", "--loglevel", "--script-shell", "--node-options", "--tag", "--otp", "--reporter"]);
     describeGateSources = (sources) => sources.map((s) => s.scripts ? `${s.path} scripts ${s.scripts.join("/")}` : s.path).join(", ");
   }
@@ -48991,6 +48993,17 @@ function dryRun(o) {
   const caps = { laneMaxCredits: o.limits.laneMaxCredits, ...o.limits.maxRunCredits !== void 0 ? { maxRunCredits: o.limits.maxRunCredits } : {} };
   const swapped = existing ? forgeResumeProblem(existing, o.forge?.config.kind ?? "github", o.forge?.config.repo.url) : null;
   if (existing && swapped) return { exitCode: 1, phase: existing.phase, state: existing, message: `dry run: ${swapped}` };
+  const localGate = forge?.kind === "local" ? o.forge.config.local?.gate : void 0;
+  const gateUnknown = localGate && localGate.length > 0 ? gateDefinitionSources(localGate).unresolved : void 0;
+  if (gateUnknown) {
+    return {
+      exitCode: 0,
+      phase: existing?.phase ?? null,
+      state: existing ?? null,
+      message: `dry run: ${gateUnknown}; the run would stop at awaiting-human: gate-definition-unknown before any lane`,
+      plan: { next: "awaiting-human", reason: "gate-definition-unknown", ...caps }
+    };
+  }
   if (existing) {
     return {
       exitCode: 0,
@@ -49463,7 +49476,7 @@ var init_engine = __esm({
         const existing = bytes === null ? null : parseFactoryState(this.statePath, this.key, bytes.toString("utf8"));
         if (existing && !this.ledger.tracks(this.statePath)) {
           this.progress.emit(existing.phase, "fail", "no engine record");
-          return { exitCode: 1, phase: "failed", state: existing, message: `the factory run state for ${this.what} has no engine record in ${this.ledger.file} (written outside omg factory run or by an older version); the run is not resumed. Move ${this.statePath} aside to start over` };
+          return { exitCode: 1, phase: "failed", state: existing, message: `the factory run state for ${this.what} has no engine record in ${this.ledger.file} (written outside omg factory run, by an older version, or left by an interrupted reset); the run is not resumed. ${typeof this.key === "number" ? `Run omg factory run reset ${this.key} to finish a reset (it recognizes the ledger it moved aside), or move` : "Move"} ${this.statePath} aside to start over` };
         }
         if (existing && !verifyFactoryIntegrity(existing)) {
           this.progress.emit(existing.phase, "fail", "state integrity mismatch");
@@ -49641,6 +49654,7 @@ var init_engine = __esm({
               continue;
             }
             if (this.recheckFailed("at the next step boundary")) continue;
+            if (this.gateDefinitionUnknownParked("no lane was started")) continue;
             this.progress.emit(phase, "start", void 0, this.fields());
             await this.step(phase);
             const after = this.state;
@@ -50120,16 +50134,26 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
        * through. An npm-style gate whose definition cannot be pinned parks at
        * gate-definition-unknown. True when it parked.
        */
+      /**
+       * An offline gate whose definition cannot be pinned (gateDefinitionSources'
+       * `unresolved`) parks at gate-definition-unknown. The verdict depends only
+       * on the config, so the loop asks before every step: no lane spends
+       * credits on a run whose publish would park. True when it parked.
+       */
+      gateDefinitionUnknownParked(outcome) {
+        const gate = this.o.forge?.config.kind === "local" ? this.o.forge.config.local?.gate : void 0;
+        const unresolved = gate && gate.length > 0 ? gateDefinitionSources(gate).unresolved : void 0;
+        if (!unresolved) return false;
+        this.gate("gate-definition-unknown", `${unresolved}; offline the gate is the only check and its definition cannot be compared with ${this.state.base}, so ${outcome}. Set factory.forge.local.gate to name its script (npm test, npm run <script>, npm --prefix <dir> run <script>) or a node script file, then rerun ${this.resume}, or omg factory run cancel ${this.key}`);
+        return true;
+      }
       gateDefinitionParked(s, cand) {
         const allowed = this.gateChangeAllowed;
         this.gateChangeAllowed = void 0;
         const gate = this.o.forge?.config.kind === "local" ? this.o.forge.config.local?.gate : void 0;
         if (!gate || gate.length === 0 || !s.baseSha) return false;
-        const { sources, unresolved } = gateDefinitionSources(gate);
-        if (unresolved) {
-          this.gate("gate-definition-unknown", `${unresolved}; offline the gate is the only check and its definition cannot be compared with ${s.base}, so nothing was pushed. Set factory.forge.local.gate to name its script (npm test, npm run <script>, npm --prefix <dir> run <script>) or a node script file, then rerun ${this.resume}, or omg factory run cancel ${this.key}`);
-          return true;
-        }
+        if (this.gateDefinitionUnknownParked("nothing was pushed")) return true;
+        const { sources } = gateDefinitionSources(gate);
         if (sources.length === 0) return false;
         const at = (sha3) => (0, import_crypto26.createHash)("sha256").update(gateDefinition(sources, (path15) => {
           const r = this.exec("git", ["show", `${sha3}:${path15}`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
@@ -51141,6 +51165,7 @@ var init_cli = __esm({
     init_guard();
     init_exec2();
     init_state5();
+    init_local_gate();
     init_score();
   }
 });

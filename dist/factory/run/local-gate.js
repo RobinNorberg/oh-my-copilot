@@ -311,7 +311,13 @@ const DIR_FLAGS = new Set(['--prefix', '-C', '--dir', '--cwd']);
 /** Options that name a config file the package manager reads. */
 const CONFIG_FLAGS = new Set(['--userconfig', '--globalconfig']);
 /** Options that select workspace packages: the script's package.json is not known from the argv. */
-const WORKSPACE_FLAGS = new Set(['--workspace', '-w', '--workspaces', '--ws', '--filter', '-F', '--recursive', '-r', '--include-workspace-root']);
+const WORKSPACE_FLAGS = new Set(['--workspace', '-w', '--workspaces', '--ws', '-ws', '--filter', '-F', '--recursive', '-r', '--include-workspace-root']);
+/**
+ * pnpm/yarn commands that are not a script of the package.json: a workspace
+ * selector (`yarn workspace app test`) or a binary or file run outside
+ * `scripts` (`pnpm exec`, `yarn dlx`, `yarn node`).
+ */
+const PM_NON_SCRIPT = new Set(['workspace', 'workspaces', 'recursive', 'exec', 'dlx', 'node', 'create']);
 /** Options that take the next argument as their value. */
 const VALUE_FLAGS = new Set([...DIR_FLAGS, ...CONFIG_FLAGS, '--workspace', '-w', '--filter', '-F', '--registry', '--cache', '--loglevel', '--script-shell', '--node-options', '--tag', '--otp', '--reporter']);
 /** A repository-relative POSIX path, or undefined for an absolute path or one leaving the repository. */
@@ -351,7 +357,7 @@ function scriptSource(manager, args, shown) {
                 return { sources: [], unresolved: `${shown} runs in ${JSON.stringify(value ?? '')}, which is not a directory inside the repository` };
             dir = p;
         }
-        else if (CONFIG_FLAGS.has(flag) && value !== undefined) {
+        else if ((CONFIG_FLAGS.has(flag) || flag === '--script-shell') && value !== undefined) {
             const p = repoPath(value);
             if (p)
                 configs.push(p);
@@ -367,6 +373,8 @@ function scriptSource(manager, args, shown) {
         script = 'start';
     else if (NPM_RUN.has(sub))
         script = next;
+    else if (PM_NON_SCRIPT.has(sub))
+        return { sources: [], unresolved: `${shown} runs ${manager} ${sub}, not a package.json script, so its definition is not known` };
     else if (manager !== 'npm')
         script = sub;
     if (!script)

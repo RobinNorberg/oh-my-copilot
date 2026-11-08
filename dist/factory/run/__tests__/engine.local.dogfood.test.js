@@ -94,6 +94,10 @@ describe('F38: cancel closes the local PR; clean + reset make the item runnable 
         gitIn(w.root, 'push', '-q', w.config.repo.url, `${oldHead}:refs/heads/${earlier}`);
         const ledger = ledgerFilePath(w.ledgerDir, w.root, LOCAL_ISSUE);
         renameSync(ledger, `${ledger}.reset-2026-11-08T09-00-00-000Z`);
+        // A run in between refuses and points at the reset that finishes it.
+        const refused = await runFactoryEngine(localOpts(w, lanesFor(w, [])));
+        expect(refused.exitCode).toBe(1);
+        expect(refused.message).toMatch(new RegExp(`Run omg factory run reset ${LOCAL_ISSUE} to finish a reset`));
         const forge = createForge(w.exec, w.root, w.config, { ...factoryForgeOptions(w.root), stateDir: w.stateDir, local: { omgRoot: getOmcRoot(w.root) } });
         const reset = resetFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, forge, mirror: w.config.repo.url, ledgerDir: w.ledgerDir, owner: OWNER, now: '2026-11-08T10:00:00.000Z' });
         expect(reset.keptBranch).toBe(earlier);
@@ -170,13 +174,30 @@ describe('F41: a lane may not redefine the local gate', () => {
         expect(readMirrorRef(w.config.repo.url, BRANCH)).toBe(state.head);
         expect(state.pendingHead).not.toBe(state.head);
     }, MULTI_RUN_MS);
-    it('an npm-style gate whose script cannot be told from its argv parks at gate-definition-unknown, nothing pushed', async () => {
+    it('an npm-style gate whose script cannot be told from its argv parks at gate-definition-unknown before any lane', async () => {
         w = localWorld(['npm', '--workspace', 'app', 'test']);
-        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [greet()])));
+        const lanes = lanesFor(w, [greet()]);
+        const out = await runFactoryEngine(localOpts(w, lanes));
         expect(out.exitCode, out.message).toBe(EXIT_AWAITING_HUMAN);
         expect(out.gate?.name).toBe('gate-definition-unknown');
-        expect(out.gate?.reason).toMatch(/selects workspace packages \(--workspace\).*nothing was pushed/);
+        expect(out.gate?.reason).toMatch(/selects workspace packages \(--workspace\).*no lane was started/);
+        expect(lanes.started).toEqual([]);
+        expect(readFactoryState(w.root, LOCAL_ISSUE).lanes).toEqual([]);
         expect(readMirrorRef(w.config.repo.url, BRANCH)).toBeUndefined();
+        // A rerun with the gate still unresolved parks again, still before any lane.
+        const again = await runFactoryEngine(localOpts(w, lanes));
+        expect(again.gate?.name).toBe('gate-definition-unknown');
+        expect(lanes.started).toEqual([]);
+    });
+    it('--dry-run reports the gate-definition-unknown park', async () => {
+        w = localWorld(['yarn', 'workspace', 'app', 'test']);
+        const lanes = lanesFor(w, []);
+        const out = await runFactoryEngine(localOpts(w, lanes, { dryRun: true }));
+        expect(out.exitCode, out.message).toBe(0);
+        expect(out.message).toMatch(/runs yarn workspace, not a package.json script.*awaiting-human: gate-definition-unknown before any lane/);
+        expect(out.plan).toMatchObject({ next: 'awaiting-human', reason: 'gate-definition-unknown' });
+        expect(lanes.started).toEqual([]);
+        expect(readFactoryState(w.root, LOCAL_ISSUE)).toBeNull();
     });
     it('an unrelated package.json change does not park', async () => {
         w = localWorld(['npm', 'run', 'lint']);

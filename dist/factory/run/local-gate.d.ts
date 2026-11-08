@@ -126,6 +126,12 @@ export declare function runLocalGate(i: LocalGateInput): Promise<LocalGateOutcom
  * as a repository path by that file. What the script itself runs
  * (vitest.config, scripts/test.mjs) is covered by review, not here.
  * Empty when the argv names nothing in the repository (`node --test`).
+ *
+ * Config files compare by their text, so a changed `script-shell=` or
+ * `userconfig=` line (.npmrc) or `yarnPath:` line (.yarnrc.yml) is caught,
+ * but the file such a line points at is not tracked. A `--userconfig` or
+ * `--globalconfig` outside the repository is not a repository file and is
+ * not compared; an argv `--script-shell` inside the repository is.
  */
 export type GateDefinitionSource = {
     path: string;
