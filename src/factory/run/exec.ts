@@ -277,6 +277,13 @@ function factoryGit(a: string[], protectedBranches: readonly string[], extraProt
   const remote = r[0] === 'origin' || r[0] === LOCAL_REMOTE;
   switch (sub) {
     case 'push': {
+      // `omg factory run reset` on the local forge only: delete a factory branch of the engine-owned mirror,
+      // and only while it is still at the sha the reset read (a lease, never a plain force).
+      if (r.length === 3 && r[0] === LOCAL_REMOTE) {
+        const lease = /^--force-with-lease=refs\/heads\/(.+):([0-9a-f]{40})$/.exec(r[1]);
+        const del = /^:refs\/heads\/(.+)$/.exec(r[2]);
+        return Boolean(lease && del) && lease![1] === del![1] && isFactoryBranch(del![1], protectedBranches) && !extraProtected.includes(del![1]);
+      }
       const m = r.length === 2 && remote ? /^([0-9a-f]{40}):refs\/heads\/(.+)$/.exec(r[1]) : null;
       if (!m) return false;
       // The local forge's base sync: exactly the run's base (extraProtected) into the engine-owned mirror,
