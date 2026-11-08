@@ -247,7 +247,7 @@ describe('factory run on the local forge', () => {
     const out = await runFactoryEngine(localOpts(w, lanesFor(w, []), { dryRun: true }));
     expect(out.exitCode, out.message).toBe(0);
     expect(out.plan?.next).toBe('implement');
-    expect(out.message).toContain('dry run: plan from backlog item body (Acceptance criteria);');
+    expect(out.message).toContain('dry run: plan from backlog item Acceptance section;');
     expect(existsSync(w.config.repo.url)).toBe(false);
     expect(existsSync(w.stateDir)).toBe(false);
     expect(gitIn(w.root, 'remote')).toBe('');
