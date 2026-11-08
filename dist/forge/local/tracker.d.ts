@@ -22,6 +22,18 @@ export interface LocalTrackerContext {
     options: LocalTrackerOptions;
     /** enqueue's body directory: createItem/updateItem read a body file only directly in it. */
     trackerBodyDir?: string;
+    /**
+     * F31: the item's merged local PR in the engine-owned PR store, if any. An
+     * item whose PR merged reads as closed (as a GitHub issue closes at the
+     * merge), while its backlog file still says `state: open` until the human
+     * commits the change; a warning names the file. `mergedHead` is the PR
+     * head the merge was detected at: a later change of the file on the base
+     * (a reopen) wins over the merge.
+     */
+    mergedPr?: (id: number) => {
+        number: number;
+        mergedHead?: string;
+    } | undefined;
 }
 export declare function localTracker(ctx: LocalTrackerContext): ForgeTracker;
 //# sourceMappingURL=tracker.d.ts.map

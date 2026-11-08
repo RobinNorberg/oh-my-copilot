@@ -7,7 +7,7 @@ import { resolveAzEntry, type AzBinaryDeps } from '../../../forge/ado/az-binary.
 import { getOmcRoot } from '../../../lib/worktree-paths.js';
 import { defaultExec, type Exec } from '../../../ship/exec.js';
 import { factoryGuardExec } from '../exec.js';
-import { EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, factoryForgeOptions, loadFactoryForgeConfig } from '../forge-roots.js';
+import { EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, factoryForgeOptions, loadFactoryForgeConfig, syncLocalMirror } from '../forge-roots.js';
 
 const repo = realpathSync.native(mkdtempSync(join(tmpdir(), 'omg-forge-roots-')));
 // A real checkout, so its omg root is <repo>/.omg (outside a repository it falls back to the user's).
@@ -102,5 +102,56 @@ describe('loadFactoryForgeConfig: origin parsed before any fetch (F8, F9)', () =
     const c = checkout();
     expect(() => loadFactoryForgeConfig(c.exec, c.root, 'dev', { factory: { forge: { kind: 'local' } } }, undefined))
       .toThrow("base branch 'dev' not found; set ship.base in .copilot/omg.jsonc (branches here: main)");
+  });
+});
+
+describe('syncLocalMirror: the refusal names the fix for its cause', () => {
+  const setup = (...configs: string[][]): { root: string; mirror: string; refusal: () => string } => {
+    const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'omg-sync-refusal-')));
+    execFileSync('git', ['init', '-q', '-b', 'main', root]);
+    for (const c of configs) execFileSync('git', ['config', ...c], { cwd: root });
+    const mirror = join(root, '..', `${root.split(/[\\/]/).pop()}-mirror.git`);
+    return {
+      root,
+      mirror,
+      refusal: () => {
+        try {
+          syncLocalMirror(defaultExec, root, mirror, 'main');
+        } catch (err) {
+          expect(err).toBeInstanceOf(FactoryForgeUnavailableError);
+          return (err as Error).message;
+        }
+        throw new Error('syncLocalMirror did not refuse');
+      },
+    };
+  };
+
+  it('a planted pushurl: unset the pushurl, and the url is left alone', () => {
+    const s = setup();
+    execFileSync('git', ['remote', 'add', 'omg-local', s.mirror], { cwd: s.root });
+    execFileSync('git', ['config', 'remote.omg-local.pushurl', '/evil/x.git'], { cwd: s.root });
+    const m = s.refusal();
+    expect(m).toContain('pushes to /evil/x.git');
+    expect(m).toContain('git config --unset-all remote.omg-local.pushurl');
+    expect(m).not.toContain('set-url');
+    expect(m).not.toContain('pushinsteadof');
+  });
+
+  it('a pushInsteadOf rewriting another url: set the url and unset that rewrite, no pushurl command', () => {
+    const s = setup(['url./evil/.pushInsteadOf', '/other/']);
+    execFileSync('git', ['remote', 'add', 'omg-local', '/other/x.git'], { cwd: s.root });
+    const m = s.refusal();
+    expect(m).toContain('pushes to /evil/x.git');
+    expect(m).toContain(`git remote set-url omg-local ${s.mirror}`);
+    expect(m).toContain('git config --unset-all url./evil/.pushinsteadof');
+    expect(m).not.toContain('--unset-all remote.omg-local.pushurl');
+  });
+
+  it('a remote with no url says so (not "points at omg-local") and sets the url', () => {
+    const s = setup(['remote.omg-local.fetch', '+refs/heads/*:refs/remotes/omg-local/*']);
+    const m = s.refusal();
+    expect(m).toContain('remote omg-local has no url');
+    expect(m).not.toContain('points at omg-local');
+    expect(m).toContain(`git config remote.omg-local.url ${s.mirror}`);
   });
 });

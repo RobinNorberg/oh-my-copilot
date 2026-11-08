@@ -19,6 +19,7 @@
  * | into the base, no merged run state; score.ts isSatisfied)    |            |                            |
  * | the item depends on itself                                   | blocked    | blocked-by:self            |
  * | open children, ADO type Epic/Feature, or GitHub label epic   | blocked    | needs-split                |
+ * | children, all closed (the spec is done; a human closes it)   | blocked    | children-done              |
  * | no trusted omg-plan: line, no AC heading, empty ADO AC field | needs-plan | no-plan                    |
  * | omg-plan: path not repo-relative, or missing/empty on base   | needs-plan | plan-missing               |
  * | the AC section has no list or checkbox items                 | needs-plan | ac-not-testable            |

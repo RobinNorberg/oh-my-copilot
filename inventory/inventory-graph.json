@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "47f519b283dcbacc9c94a67a4e9a782cd5c391a6",
-    "sourceSha256": "4965caba4d5839d05b41f35a0f853a449db2a3a0b79df0b8b3b3a30f6b88e98e",
+    "head": "5dc78b44e945702030aa8522faaf32870fdb056d",
+    "sourceSha256": "d55660093d51590d0d9352689492dad46fdf73303c85c57840f830bbe9ab5807",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "47f519b283dcbacc9c94a67a4e9a782cd5c391a6",
-  "sourceSha256": "4965caba4d5839d05b41f35a0f853a449db2a3a0b79df0b8b3b3a30f6b88e98e",
+  "head": "5dc78b44e945702030aa8522faaf32870fdb056d",
+  "sourceSha256": "d55660093d51590d0d9352689492dad46fdf73303c85c57840f830bbe9ab5807",
   "counts": {
     "public": {
       "skills": 96,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 1968,
-      "total": 1993
+      "srcFiles": 1969,
+      "total": 1994
     },
     "generated": {
-      "distFiles": 7244,
+      "distFiles": 7248,
       "bridgeFiles": 8,
-      "total": 7252
+      "total": 7256
     },
     "prompt": {
       "promptLikeFiles": 68
@@ -2750,6 +2750,10 @@
       "dist/cli/commands/__tests__/factory-run-cli.test.d.ts.map",
       "dist/cli/commands/__tests__/factory-run-cli.test.js",
       "dist/cli/commands/__tests__/factory-run-cli.test.js.map",
+      "dist/cli/commands/__tests__/factory-run-next-local.test.d.ts",
+      "dist/cli/commands/__tests__/factory-run-next-local.test.d.ts.map",
+      "dist/cli/commands/__tests__/factory-run-next-local.test.js",
+      "dist/cli/commands/__tests__/factory-run-next-local.test.js.map",
       "dist/cli/commands/__tests__/hooks-doctor.test.d.ts",
       "dist/cli/commands/__tests__/hooks-doctor.test.d.ts.map",
       "dist/cli/commands/__tests__/hooks-doctor.test.js",
@@ -18554,6 +18558,26 @@
         "id": "dist/cli/commands/__tests__/factory-run-cli.test.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/factory-run-cli.test.js.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/factory-run-next-local.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-run-next-local.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/factory-run-next-local.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-run-next-local.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/factory-run-next-local.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-run-next-local.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/factory-run-next-local.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-run-next-local.test.js.map"
       },
       {
         "id": "dist/cli/commands/__tests__/hooks-doctor.test.d.ts",
@@ -51016,6 +51040,11 @@
         "path": "src/cli/commands/__tests__/factory-run-cli.test.ts"
       },
       {
+        "id": "src/cli/commands/__tests__/factory-run-next-local.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/factory-run-next-local.test.ts"
+      },
+      {
         "id": "src/cli/commands/__tests__/hooks-doctor.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/hooks-doctor.test.ts"
@@ -74358,6 +74387,66 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/cli/commands/__tests__/factory-run-next-local.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-next-local.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-next-local.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-next-local.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-next-local.test.ts",
+        "to": "src/cli/commands/factory.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-next-local.test.ts",
+        "to": "src/cli/commands/factory.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-next-local.test.ts",
+        "to": "src/factory/check/__tests__/local-repo.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-next-local.test.ts",
+        "to": "src/factory/check/__tests__/local-repo.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-next-local.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-next-local.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-next-local.test.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-next-local.test.ts",
+        "to": "src/utils/paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/hooks-doctor.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -79134,6 +79223,21 @@
       },
       {
         "from": "src/factory/check/__tests__/cli-local.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli-local.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli-local.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli-local.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
@@ -79159,7 +79263,17 @@
       },
       {
         "from": "src/factory/check/__tests__/cli-local.test.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli-local.test.ts",
         "to": "src/forge/local/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli-local.test.ts",
+        "to": "src/utils/paths.ts",
         "kind": "imports"
       },
       {
@@ -84114,6 +84228,11 @@
       },
       {
         "from": "src/factory/setup/__tests__/setup-local.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/setup-local.test.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -84336,6 +84455,11 @@
         "from": "src/factory/setup/guard.ts",
         "to": "src/forge/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/guard.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/setup/guard.ts",
@@ -88279,6 +88403,11 @@
       },
       {
         "from": "src/forge/local/index.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/local/index.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -88336,6 +88465,11 @@
         "from": "src/forge/local/index.ts",
         "to": "src/forge/local/store.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/forge/local/index.ts",
+        "to": "src/forge/local/store.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/forge/local/index.ts",
@@ -120314,12 +120448,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10042,
-      "edgeCount": 12242,
-      "importEdgeCount": 10076,
+      "nodeCount": 10047,
+      "edgeCount": 12263,
+      "importEdgeCount": 10094,
       "registerEdgeCount": 117
     }
   },
-  "inventorySha256": "f7579c5945674b472e26643d6aadd04f067401b3239467576b6b5d06f5ab9716",
-  "manifestSha256": "edd850937e32b1510d40b2b4e5b395eeacefc1db000afcaa5aa0af6a6a712abe"
+  "inventorySha256": "daea3501b9c33692e9b6adf0605dc0088a03b6d96746d63cdb90b4323ccd2fa9",
+  "manifestSha256": "d164f684f7de7b12c98e68fa6c362c43f932e8fcd0bcf80c88b8109c7b9c0ce9"
 }

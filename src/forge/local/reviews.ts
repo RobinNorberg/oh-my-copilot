@@ -37,7 +37,7 @@ function isAncestor(ctx: LocalReviewsContext, head: string, base: string): boole
   return r.status === 0 ? true : r.status === 1 ? false : undefined;
 }
 
-export function localReviews(ctx: LocalReviewsContext): ForgeReviews {
+export function localReviews(ctx: LocalReviewsContext): ForgeReviews & { refreshPr(pr: LocalPr): LocalPr } {
   const ref = (branch: string): string | undefined => readMirrorRef(ctx.mirror, branch);
 
   /** The PR with its state brought up to date (OPEN -> MERGED once the base contains the head). */
@@ -70,6 +70,7 @@ export function localReviews(ctx: LocalReviewsContext): ForgeReviews {
   const omgRoot = join(ctx.humanDir, '..', '..');
 
   return {
+    refreshPr: refresh,
     findOpenPrForBranch(branch: string): number | undefined {
       return readPrStore(ctx.storePath).prs.filter((p) => p.head === branch && p.state === 'OPEN').map(refresh).find((p) => p.state === 'OPEN')?.number;
     },

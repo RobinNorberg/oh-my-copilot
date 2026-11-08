@@ -150,6 +150,17 @@ export interface ReadForge {
  * (the board passes none). Throws CheckUsageError / CheckIncompatibleError.
  */
 export declare function openReadForge(o: Pick<FactoryCheckOptions, 'source' | 'limit'>, deps: FactoryCheckDeps, warnings: string[], command: string, marker?: () => string | undefined): ReadForge;
+/**
+ * The options a read-only command (check, board, poll, `run --next`) builds
+ * its forge with: the local forge also needs the runtime root, reads the
+ * working tree (an uncommitted item is listed, never runnable) and reads
+ * committed items at `baseSha`, the local base branch `base` (only a local
+ * PR into `base` closes an item). `run --next` passes workingTree: false: a
+ * working-tree item is never runnable, nor does it satisfy a dependency.
+ */
+export declare function readForgeOptions(config: ResolvedForgeConfig, root: string, options: AzureDevOpsForgeOptions, base: string, baseSha: string | null, workingTree?: boolean): AzureDevOpsForgeOptions;
+/** F20: the local forge's base branch is missing (exit 2 in check, board, poll and `run --next`). */
+export declare function missingLocalBase(base: string): string;
 /** The F9/F10 text of "no usable forge" (exit 5 in check, board, poll and setup), with the offline hint. */
 export declare function unsupportedForge(why: string): string;
 /** The local branch `<base>` (the local forge's base; no fetch); null with a warning when it does not exist. */
