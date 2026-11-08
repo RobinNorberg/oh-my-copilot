@@ -171,9 +171,9 @@ async function factoryGuarded(json: boolean, fn: () => Promise<number> | number)
   }
 }
 
-export function renderFactoryRunState(state: FactoryRunState): string {
+export function renderFactoryRunState(state: FactoryRunState, o: { gate?: boolean } = {}): string {
   const lines = [`${chalk.bold(`factory run #${state.issue}`)}  phase=${chalk.cyan(state.phase)}  base=${state.base}  branch=${state.branch}${state.pr ? `  PR #${state.pr}` : ''}`];
-  if (state.gate) lines.push(chalk.yellow(`awaiting-human: ${state.gate.name}: ${state.gate.reason}`));
+  if (state.gate && o.gate !== false) lines.push(chalk.yellow(`awaiting-human: ${state.gate.name}: ${state.gate.reason}`));
   if (state.cancelRequested && state.phase !== 'cancelled') lines.push(chalk.yellow('cancel requested'));
   if (state.head) lines.push(`head ${state.head.slice(0, 12)}`);
   lines.push(`lanes ${state.lanes.length}  run AI credits ${runCredits(state).toFixed(2)}  elapsed ${Math.round(state.elapsedMs / 60_000)} min`);
@@ -217,7 +217,9 @@ function printOutcome(json: boolean, outcome: FactoryRunOutcome, next?: number):
     console.log(factoryRunJson.outcome(outcome, next));
     return;
   }
-  if (outcome.state) console.log(renderFactoryRunState(outcome.state));
+  // F35: the message already names the gate when it parks there; print it once.
+  const parked = outcome.state?.gate !== undefined && outcome.message.startsWith(`awaiting-human: ${outcome.state.gate.name}:`);
+  if (outcome.state) console.log(renderFactoryRunState(outcome.state, { gate: !parked }));
   const color = outcome.exitCode === 0 ? chalk.green : outcome.exitCode === 1 ? chalk.red : chalk.yellow;
   console.log(color(outcome.message));
 }
