@@ -269,6 +269,7 @@ describe('ship config', () => {
             'Authorize generated artifacts from base trust root',
             'Socket Security: Pull Request Alerts',
             'Socket Security: Project Report',
+            'Statechart suite (Node 24)',
         ]);
         expect(c.allowAdminMerge).toBe(false);
         expect(c.maxFixRounds).toBe(2);

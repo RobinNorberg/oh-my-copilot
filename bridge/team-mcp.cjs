@@ -19929,7 +19929,8 @@ var init_config2 = __esm({
         "No Committed Build Artifacts",
         "Authorize generated artifacts from base trust root",
         "Socket Security: Pull Request Alerts",
-        "Socket Security: Project Report"
+        "Socket Security: Project Report",
+        "Statechart suite (Node 24)"
       ],
       // Every check this repo's CI reports on a PR to dev (ci.yml, pr-check.yml);
       // the jobs that consume the Build output start late (`needs: [build]`).
