@@ -171,6 +171,13 @@ export interface FactoryRunState {
      */
     localGate?: string[];
     /**
+     * The local forge only: the gate definition (local-gate.ts gateDefinition)
+     * a human accepted with `omg factory run --allow-gate-change` after the run
+     * parked at gate-definition-changed. A head whose definition equals it is
+     * not parked again; any other change is.
+     */
+    gateChangeApproved?: string;
+    /**
      * The trusted ship.prepare.checks this run first prepared with (`auto` =
      * unset, the built-ins the base has). Every later prepare must resolve the
      * same value; a change mid-run parks at prepare-checks. Absent until then.

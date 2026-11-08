@@ -115,4 +115,26 @@ export type LocalGateOutcome = {
  * gate that cannot start records nothing.
  */
 export declare function runLocalGate(i: LocalGateInput): Promise<LocalGateOutcome>;
+/**
+ * Where the gate argv is defined inside the repository (dogfood F41): an
+ * npm-style gate (`npm test`, `npm run <s>`, `pnpm <s>`, `yarn <s>`, or node
+ * with npm's own CLI script) is defined by package.json's `scripts` entry
+ * for that script and its `pre`/`post` hooks; a node gate by the script file
+ * it runs; a gate executable given as a repository path by that file.
+ * Empty when the argv names nothing in the repository (`node --test`).
+ */
+export type GateDefinitionSource = {
+    path: string;
+    scripts?: string[];
+};
+export declare function gateDefinitionSources(gate: readonly string[]): GateDefinitionSource[];
+/**
+ * The gate's definition at one commit, comparable across commits: per source
+ * the named package.json scripts (a file that is not JSON compares by its
+ * text), or the file's text. `read` returns a path's content at that commit,
+ * undefined when the file is absent there.
+ */
+export declare function gateDefinition(sources: readonly GateDefinitionSource[], read: (path: string) => string | undefined): string;
+/** What a gate change touches, for the park message: `package.json scripts lint` or the file path. */
+export declare const describeGateSources: (sources: readonly GateDefinitionSource[]) => string;
 //# sourceMappingURL=local-gate.d.ts.map

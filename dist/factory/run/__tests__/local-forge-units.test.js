@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readLocalCheckRecord, writeLocalCheckRecord } from '../../../forge/local/index.js';
 import { isProcessAlive } from '../../../platform/process-utils.js';
 import { assertFactoryCommand, FactorySafetyError, hardenedGitExec, LOCAL_REMOTE_PACK_ARGS, localRemoteRefusedKeys, localTransportArgs, mirrorNamedRemoteKeys, mirrorRewriteKeys } from '../exec.js';
-import { assertLocalGateCommand, defaultLocalGateRunner, LOCAL_GATE_STALE_GRACE_MS, LOCAL_GATE_TAIL_CHARS, localGateDue, localGateRecord, resolveLocalGateArgv, runLocalGate, } from '../local-gate.js';
+import { assertLocalGateCommand, defaultLocalGateRunner, LOCAL_GATE_STALE_GRACE_MS, LOCAL_GATE_TAIL_CHARS, localGateDue, localGateRecord, describeGateSources, gateDefinition, gateDefinitionSources, resolveLocalGateArgv, runLocalGate, } from '../local-gate.js';
 import { createFactoryState, parseFactoryState, runRemote } from '../state.js';
 const SHA = 'a'.repeat(40);
 const SHA2 = 'b'.repeat(40);
@@ -30,6 +30,7 @@ describe('the factory guard on the local forge shapes', () => {
         ['the local base branch', ['rev-parse', '--verify', 'refs/heads/main'], []],
         ['the mirror fetch', ['fetch', 'omg-local', 'main'], []],
         ['the refused omg-local config read', ['config', '--get-regexp', '^remote\\.omg-local\\.(vcs|mirror|fetch)$'], []],
+        ['the reset delete of a factory branch on the mirror, under a lease', ['push', 'omg-local', `--force-with-lease=refs/heads/factory/issue-7:${SHA}`, ':refs/heads/factory/issue-7'], []],
         ['the url rewrite config read', ['config', '-z', '--get-regexp', '^url\\..*\\.(insteadof|pushinsteadof)$'], []],
     ])('allows %s', (_what, args, extra) => {
         expect(ok('git', args, extra)).not.toThrow();
@@ -43,6 +44,12 @@ describe('the factory guard on the local forge shapes', () => {
         ['another sha than the synced base to the mirror base', ['push', 'omg-local', `${SHA2}:refs/heads/main`], ['main'], LOCAL],
         ['a base push before a sync read the base', ['push', 'omg-local', `${SHA}:refs/heads/main`], ['main'], { mirror: MIRROR }],
         ['a base push with no local forge context', ['push', 'omg-local', `${SHA}:refs/heads/main`], ['main'], null],
+        ['a delete without a lease', ['push', 'omg-local', ':refs/heads/factory/issue-7'], [], LOCAL],
+        ['a lease on another branch than the delete', ['push', 'omg-local', `--force-with-lease=refs/heads/factory/issue-8:${SHA}`, ':refs/heads/factory/issue-7'], [], LOCAL],
+        ['a leased delete of the run base', ['push', 'omg-local', `--force-with-lease=refs/heads/main:${SHA}`, ':refs/heads/main'], ['main'], LOCAL],
+        ['a leased delete of a non-factory branch', ['push', 'omg-local', `--force-with-lease=refs/heads/feature:${SHA}`, ':refs/heads/feature'], [], LOCAL],
+        ['a leased delete on origin', ['push', 'origin', `--force-with-lease=refs/heads/factory/issue-7:${SHA}`, ':refs/heads/factory/issue-7'], [], LOCAL],
+        ['a lease without an expected sha', ['push', 'omg-local', '--force-with-lease=refs/heads/factory/issue-7', ':refs/heads/factory/issue-7'], [], LOCAL],
         ['another remote name', ['push', 'evil', `${SHA}:refs/heads/factory/issue-7`], [], LOCAL],
         ['an init outside the forge state layout', ['init', '--bare', '--quiet', resolve(tmpdir(), 'elsewhere.git')], [], LOCAL],
         ['an init of another mirror in the same layout', ['init', '--bare', '--quiet', variant], [], LOCAL],
@@ -417,6 +424,10 @@ describe('resolveLocalGateArgv', () => {
         const shimOnly = resolveLocalGateArgv(['vitest', 'run'], win([win32.join('C:\\Program Files\\nodejs', 'vitest.cmd')]));
         expect('missing' in shimOnly && shimOnly.missing).toMatch(/not on PATH as an \.exe/);
     });
+    it('on Windows the hint suggests ["npm","test"] when the npm CLI script is beside node (dogfood F37)', () => {
+        const r = resolveLocalGateArgv(['pnpm', 'test'], win([NPM_CLI]));
+        expect('missing' in r && r.missing).toMatch(/such as \["npm","test"\]$/);
+    });
     it('off Windows a bare name must be on PATH and a path must exist; nothing is rewritten', () => {
         const onLinux = (files) => ({ cwd: '/work/checkout', platform: 'linux', env: { PATH: '/usr/bin' }, execPath: '/usr/bin/node', exists: (p) => files.includes(p) });
         expect(resolveLocalGateArgv(['npm', 'test'], onLinux(['/usr/bin/npm']))).toEqual({ exe: 'npm', args: ['test'] });
@@ -449,6 +460,33 @@ describe('the sealed run remote', () => {
         expect(parse({ ...s, localGate: ['npm', 3] })).toThrow(/field localGate/);
         const gh = createFactoryState({ issue: 7, repoUrl: '', base: 'dev' }, at);
         expect(parse({ ...gh, localGate: ['npm', 'test'] })).toThrow(/field localGate/);
+    });
+});
+describe('the gate definition (dogfood F41)', () => {
+    it('names package.json scripts for npm-style gates and the script file for node gates', () => {
+        expect(gateDefinitionSources(['npm', 'run', 'lint'])).toEqual([{ path: 'package.json', scripts: ['prelint', 'lint', 'postlint'] }]);
+        expect(gateDefinitionSources(['npm', 'test'])).toEqual([{ path: 'package.json', scripts: ['pretest', 'test', 'posttest'] }]);
+        expect(gateDefinitionSources(['npm.cmd', '--silent', 't'])).toEqual([{ path: 'package.json', scripts: ['pretest', 'test', 'posttest'] }]);
+        expect(gateDefinitionSources(['pnpm', 'lint'])).toEqual([{ path: 'package.json', scripts: ['prelint', 'lint', 'postlint'] }]);
+        expect(gateDefinitionSources(['yarn', 'run', 'check'])).toEqual([{ path: 'package.json', scripts: ['precheck', 'check', 'postcheck'] }]);
+        expect(gateDefinitionSources(['node', 'C:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js', 'run', 'lint'])).toEqual([{ path: 'package.json', scripts: ['prelint', 'lint', 'postlint'] }]);
+        expect(gateDefinitionSources(['node', 'scripts\\gate.mjs', '--fast'])).toEqual([{ path: 'scripts/gate.mjs' }]);
+        expect(gateDefinitionSources(['./ci/gate.sh'])).toEqual([{ path: 'ci/gate.sh' }]);
+        expect(gateDefinitionSources(['node', '--test'])).toEqual([]);
+        expect(gateDefinitionSources(['npm', 'ci'])).toEqual([]);
+        expect(gateDefinitionSources(['node', '../outside.js'])).toEqual([]);
+        expect(describeGateSources(gateDefinitionSources(['npm', 'run', 'lint']))).toBe('package.json scripts prelint/lint/postlint');
+    });
+    it('compares only the named scripts: an added lint script changes it, another package.json edit does not', () => {
+        const sources = gateDefinitionSources(['npm', 'run', 'lint']);
+        const pkg = (scripts, extra = {}) => JSON.stringify({ name: 'x', ...extra, scripts });
+        const base = gateDefinition(sources, () => pkg({ test: 'node --test' }));
+        expect(gateDefinition(sources, () => pkg({ test: 'node --test', lint: 'exit 0' }))).not.toBe(base);
+        expect(gateDefinition(sources, () => pkg({ test: 'node --test', prelint: 'exit 0' }))).not.toBe(base);
+        expect(gateDefinition(sources, () => pkg({ test: 'node --test --x' }, { version: '2.0.0' }))).toBe(base);
+        expect(gateDefinition(sources, () => undefined)).not.toBe(base);
+        const file = gateDefinitionSources(['node', 'scripts/gate.mjs']);
+        expect(gateDefinition(file, () => 'a')).not.toBe(gateDefinition(file, () => 'b'));
     });
 });
 //# sourceMappingURL=local-forge-units.test.js.map

@@ -198,6 +198,8 @@ function shapeProblem(s) {
         return 'remote';
     if (s.localGate !== undefined && (s.forgeKind !== 'local' || !Array.isArray(s.localGate) || s.localGate.length === 0 || !s.localGate.every(isStr)))
         return 'localGate';
+    if (s.gateChangeApproved !== undefined && (s.forgeKind !== 'local' || !isStr(s.gateChangeApproved)))
+        return 'gateChangeApproved';
     if (s.prepareChecks !== undefined && s.prepareChecks !== 'auto' && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr))))
         return 'prepareChecks';
     if (s.trackerStage !== undefined && !PROGRESS_STAGES.includes(s.trackerStage))

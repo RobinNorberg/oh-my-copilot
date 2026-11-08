@@ -395,6 +395,8 @@ export function compareSnapshots(before, after, allowedNewRefs = {}, allow = {})
             continue;
         if (was === undefined && now !== undefined && allow.refAllowed?.(name, now))
             continue;
+        if (now !== undefined && name.startsWith('refs/remotes/') && allow.fetchedRef?.(name, now))
+            continue;
         if (was === undefined)
             problems.push(`ref ${name} was created (${now.slice(0, 12)})`);
         else if (now === undefined)

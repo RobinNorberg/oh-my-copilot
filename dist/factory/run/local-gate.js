@@ -49,7 +49,11 @@ const NODE_SCRIPTS = {
     pnpm: { script: ['node_modules', 'corepack', 'dist', 'pnpm.js'], exeFirst: true },
     yarn: { script: ['node_modules', 'corepack', 'dist', 'yarn.js'], exeFirst: true },
 };
-const npmCliHint = (P, execPath) => JSON.stringify(['node', P.join(P.dirname(execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'), 'test']);
+/** The gate argv a hint suggests: `["npm","test"]` when npm's own script is beside node (it runs without a shell), else node with that script. */
+const npmCliHint = (P, execPath, exists) => {
+    const script = P.join(P.dirname(execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+    return exists(script) ? JSON.stringify(['npm', 'test']) : JSON.stringify(['node', script, 'test']);
+};
 /**
  * The executable and arguments the gate argv runs as, or why it cannot start.
  * Never a `.cmd`/`.bat` on Windows and never a name found in the checkout.
@@ -83,13 +87,13 @@ export function resolveLocalGateArgv(argv, o) {
         const script = P.join(P.dirname(execPath), ...known.script);
         if (exists(script))
             return { exe: execPath, args: [script, ...args] };
-        return { missing: `${what} executable ${cmd} cannot start: on Windows ${what} runs without a shell, so ${name}.cmd is never run, and ${script} does not exist; set ${key} to run node directly, such as ${npmCliHint(P, execPath)}` };
+        return { missing: `${what} executable ${cmd} cannot start: on Windows ${what} runs without a shell, so ${name}.cmd is never run, and ${script} does not exist; set ${key} to a command that starts without a shell, such as ${npmCliHint(P, execPath, exists)}` };
     }
     if (/\.(cmd|bat)$/i.test(cmd)) {
-        return { missing: `${what} executable ${cmd} is a cmd.exe script, which ${what} never runs (no shell); set ${key} to run node or an .exe directly, such as ${npmCliHint(P, execPath)}` };
+        return { missing: `${what} executable ${cmd} is a cmd.exe script, which ${what} never runs (no shell); set ${key} to node, an .exe or npm (none needs a shell), such as ${npmCliHint(P, execPath, exists)}` };
     }
     const found = exe();
-    return found ? { exe: found, args } : { missing: `${what} executable ${cmd} is not on PATH as an .exe or .com (on Windows ${what} runs without a shell, so .cmd/.bat shims are skipped); set ${key} to run node directly, such as ${npmCliHint(P, execPath)}` };
+    return found ? { exe: found, args } : { missing: `${what} executable ${cmd} is not on PATH as an .exe or .com (on Windows ${what} runs without a shell, so .cmd/.bat shims are skipped); set ${key} to a command that starts without a shell, such as ${npmCliHint(P, execPath, exists)}` };
 }
 const keepTail = (text) => (text.length > STREAM_KEEP_CHARS ? text.slice(-STREAM_KEEP_CHARS) : text);
 /**
@@ -298,4 +302,76 @@ export async function runLocalGate(i) {
     writeLocalCheckRecord(i.stateDir, i.root, done);
     return { started: true, record: done };
 }
+const NPM_TEST = new Set(['test', 't', 'tst']);
+const NPM_RUN = new Set(['run', 'run-script', 'rum', 'urn']);
+/** A repository-relative POSIX path, or undefined for an absolute path or one leaving the repository. */
+function repoPath(p) {
+    if (posix.isAbsolute(p) || win32.isAbsolute(p) || /^[a-z]:/i.test(p))
+        return undefined;
+    const norm = posix.normalize(p.replace(/\\/g, '/'));
+    return norm === '.' || norm.startsWith('../') || norm === '..' ? undefined : norm;
+}
+function scriptSource(manager, args) {
+    const words = args.filter((a) => !a.startsWith('-'));
+    const [sub, next] = words;
+    let script;
+    if (!sub)
+        script = undefined;
+    else if (NPM_TEST.has(sub))
+        script = 'test';
+    else if (sub === 'start')
+        script = 'start';
+    else if (NPM_RUN.has(sub))
+        script = next;
+    else if (manager !== 'npm')
+        script = sub;
+    if (!script)
+        return [];
+    return [{ path: 'package.json', scripts: [`pre${script}`, script, `post${script}`] }];
+}
+export function gateDefinitionSources(gate) {
+    const [cmd, ...args] = gate;
+    if (!cmd)
+        return [];
+    const name = (cmd.split(/[\\/]/).pop() ?? cmd).toLowerCase().replace(/\.(cmd|bat|exe)$/, '');
+    if (name === 'npm' || name === 'pnpm' || name === 'yarn')
+        return scriptSource(name, args);
+    if (name === 'node') {
+        const at = args.findIndex((a) => !a.startsWith('-'));
+        if (at < 0)
+            return [];
+        const target = args[at];
+        const base = (target.split(/[\\/]/).pop() ?? '').toLowerCase();
+        if (base === 'npm-cli.js')
+            return scriptSource('npm', args.slice(at + 1));
+        const p = repoPath(target);
+        return p ? [{ path: p }] : [];
+    }
+    const own = /[\\/]/.test(cmd) ? repoPath(cmd) : undefined;
+    return own ? [{ path: own }] : [];
+}
+/**
+ * The gate's definition at one commit, comparable across commits: per source
+ * the named package.json scripts (a file that is not JSON compares by its
+ * text), or the file's text. `read` returns a path's content at that commit,
+ * undefined when the file is absent there.
+ */
+export function gateDefinition(sources, read) {
+    return JSON.stringify(sources.map((s) => {
+        const text = read(s.path);
+        if (!s.scripts || text === undefined)
+            return [s.path, text ?? null];
+        let scripts;
+        try {
+            const parsed = JSON.parse(text);
+            scripts = parsed && typeof parsed.scripts === 'object' && parsed.scripts !== null ? parsed.scripts : {};
+        }
+        catch {
+            return [s.path, text];
+        }
+        return [s.path, s.scripts.map((k) => [k, Object.prototype.hasOwnProperty.call(scripts, k) ? scripts[k] : null])];
+    }));
+}
+/** What a gate change touches, for the park message: `package.json scripts lint` or the file path. */
+export const describeGateSources = (sources) => sources.map((s) => (s.scripts ? `${s.path} scripts ${s.scripts.join('/')}` : s.path)).join(', ');
 //# sourceMappingURL=local-gate.js.map

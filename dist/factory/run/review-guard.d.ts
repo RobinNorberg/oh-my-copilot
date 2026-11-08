@@ -138,6 +138,14 @@ export declare function samePath(a: string, b: string): boolean;
 export interface CompareAllowance {
     /** Created refs a predicate allows (a lost lane's branch, whose sha the engine never saw). */
     refAllowed?: (name: string, sha: string) => boolean;
+    /**
+     * Remote-tracking refs created or moved to exactly the sha the remote holds
+     * for that branch (a `git fetch` that moved no branch on the remote, by the
+     * user or anyone else): the value is what the engine's own fetch would
+     * write, so it steers nothing (dogfood F42). Deletions and any other sha
+     * still count.
+     */
+    fetchedRef?: (name: string, sha: string) => boolean;
     /** The lane's own new worktree entry, by its worktree path or by its entry id. */
     newWorktree?: {
         path?: string | null;

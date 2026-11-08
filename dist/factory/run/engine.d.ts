@@ -107,6 +107,12 @@ export interface FactoryEngineOptions {
     /** Integration branch (ship.base). */
     base: string;
     dryRun?: boolean;
+    /**
+     * The human accepts a lane's change to the local gate's own definition
+     * (`--allow-gate-change`): the head's definition is recorded in the state
+     * and that head is published instead of parking at gate-definition-changed.
+     */
+    allowGateChange?: boolean;
     now?: () => number;
     pollMs?: number;
     progressFile?: string;
@@ -169,6 +175,7 @@ export interface FactoryRunOutcome {
         maxRunCredits?: number;
         planSource?: string;
         reason?: string;
+        gateProblem?: string;
     };
 }
 /** A gh / git failure in an engine step: phase `fail`, state unchanged, exit 1; a rerun resumes at the phase. */
