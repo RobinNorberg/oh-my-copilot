@@ -19,12 +19,14 @@
  */
 import { existsSync } from 'fs';
 import { isAbsolute, join, posix } from 'path';
-import { isPlainBranchName, remoteRepoMismatch } from './config.js';
+import { isPlainBranchName, readBaseFile, remoteRepoMismatch } from './config.js';
 export const INVENTORY_DIR = 'inventory';
 export const INVENTORY_SCRIPT = 'scripts/generate-inventory-graph.mjs';
 export const INVENTORY_COMMIT_MESSAGE = 'chore(inventory): regenerate inventory graph baseline';
 /** The step a configured check that cannot start fails: a config problem for a human, not a fix lane. */
 export const PREPARE_CONFIG_STEP = 'checks-config';
+/** The step a base that cannot be read fails: an engine problem, not a fix lane. */
+export const PREPARE_DETECT_STEP = 'detect';
 export const TSC_SCRIPT = 'node_modules/typescript/bin/tsc';
 export const ESLINT_SCRIPT = 'node_modules/eslint/bin/eslint.js';
 export const VITEST_SCRIPT = 'node_modules/vitest/vitest.mjs';
@@ -33,21 +35,47 @@ const ESLINT_CONFIGS = [
     '.eslintrc', '.eslintrc.js', '.eslintrc.cjs', '.eslintrc.json', '.eslintrc.yml', '.eslintrc.yaml',
 ];
 /**
- * The built-in checks a checkout has (ship.prepare.checks unset): each runs
- * only when the repository has its tool, so a repository without this one's
+ * The built-in checks prepare runs (ship.prepare.checks unset). The
+ * repository markers (tsconfig.json, an eslint config, the inventory
+ * generator) are read from the trusted base (`baseHas`), never the PR's
+ * checkout, so a PR that deletes one cannot turn its check into a skip: a
+ * marker the base has and the checkout (`exists`) lost is a failure
+ * (`lost`). The tool packages under node_modules come from `exists` (the
+ * checkout links the root's node_modules). A repository without this one's
  * tooling runs none of it. `npm test`-style gates are the local gate's job.
  */
-export function detectPrepareChecks(exists) {
-    return {
-        tsc: exists('tsconfig.json') && exists(TSC_SCRIPT),
-        lint: exists(ESLINT_SCRIPT) && ESLINT_CONFIGS.some(exists),
-        tests: exists(VITEST_SCRIPT),
-        inventory: exists(INVENTORY_SCRIPT),
+export function detectPrepareChecks(baseHas, exists = baseHas) {
+    const lost = {};
+    const gone = (marker) => `${marker} is committed on the base but missing from the checkout; restore it (prepare never skips a check the base has)`;
+    const tsc = baseHas('tsconfig.json') && exists(TSC_SCRIPT);
+    if (tsc && !exists('tsconfig.json'))
+        lost.tsc = gone('tsconfig.json');
+    const baseEslint = exists(ESLINT_SCRIPT) ? ESLINT_CONFIGS.filter(baseHas) : [];
+    if (baseEslint.length > 0 && !ESLINT_CONFIGS.some(exists))
+        lost.lint = gone(baseEslint.join(', '));
+    const inventory = baseHas(INVENTORY_SCRIPT);
+    if (inventory && !exists(INVENTORY_SCRIPT))
+        lost.inventory = gone(INVENTORY_SCRIPT);
+    return { tsc, lint: baseEslint.length > 0, tests: exists(VITEST_SCRIPT), inventory, lost };
+}
+/**
+ * Whether a repository file is committed at `commit` (readBaseFile: replace
+ * refs off, any failure but "missing" throws), memoized per path.
+ */
+export function baseFileExists(exec, cwd, commit) {
+    const seen = new Map();
+    return (p) => {
+        let found = seen.get(p);
+        if (found === undefined) {
+            found = readBaseFile(exec, cwd, commit, p) !== null;
+            seen.set(p, found);
+        }
+        return found;
     };
 }
-/** What prepare runs, one line per check (`omg factory check`); [] = none. */
-export function describePrepareChecks(configured, exists) {
-    const found = detectPrepareChecks(exists);
+/** What prepare runs, one line per check (`omg factory check`, from the same base detection); [] = none. */
+export function describePrepareChecks(configured, baseHas, exists = baseHas) {
+    const found = detectPrepareChecks(baseHas, exists);
     const out = configured
         ? configured.map((argv) => argv.join(' '))
         : [
@@ -197,8 +225,14 @@ export function runPrepare(opts) {
         }
         housekeepingCommits.push(head());
     }
-    // 4. checks: the configured commands, else the built-ins the checkout has, chosen from the diff against the base
-    const found = detectPrepareChecks(exists);
+    // 4. checks: the configured commands, else the built-ins the trusted base has, chosen from the diff against the base
+    let found;
+    try {
+        found = detectPrepareChecks(opts.baseExists ?? baseFileExists(exec, cwd, baseSha), exists);
+    }
+    catch (error) {
+        return fail(PREPARE_DETECT_STEP, `cannot read the base ${baseSha.slice(0, 12)}: ${error instanceof Error ? error.message : String(error)}`);
+    }
     if (opts.checks === false) {
         steps.push({ name: 'checks', status: 'skipped', detail: '--no-checks' });
     }
@@ -224,12 +258,15 @@ export function runPrepare(opts) {
         const lintable = changed.filter((f) => /^src\/.*\.(?:ts|tsx|mts)$/.test(f) && !f.endsWith('.d.ts') && exists(f));
         const tests = selectTargetedTests(changed, exists);
         const plan = [
-            ['tsc', found.tsc ? [TSC_SCRIPT, '--noEmit'] : null, 'no tsconfig.json or typescript package'],
-            ['lint', !found.lint ? null : lintable.length > 0 ? [ESLINT_SCRIPT, ...lintable] : null, found.lint ? 'no changed src TypeScript' : 'no eslint package or config'],
+            ['tsc', found.tsc ? [TSC_SCRIPT, '--noEmit'] : null, 'no tsconfig.json on the base or no typescript package'],
+            ['lint', !found.lint ? null : lintable.length > 0 ? [ESLINT_SCRIPT, ...lintable] : null, found.lint ? 'no changed src TypeScript' : 'no eslint package or no eslint config on the base'],
             ['tests', !found.tests ? null : tests.length > 0 ? [VITEST_SCRIPT, 'run', ...tests] : null, found.tests ? 'no targeted tests for the diff' : 'no vitest package'],
             ...selectGeneratorChecks(changed).filter((args) => exists(args[0])).map((args) => [posix.basename(args[0]), args, '']),
         ];
         for (const [name, args, skipReason] of plan) {
+            const lost = found.lost[name];
+            if (lost)
+                return fail(name, lost);
             if (!args) {
                 steps.push({ name, status: 'skipped', detail: skipReason });
                 continue;
@@ -241,8 +278,10 @@ export function runPrepare(opts) {
         }
     }
     // 5. inventory regeneration, always the last commit (only in a repository that has the generator)
+    if (found.lost.inventory)
+        return fail('inventory', found.lost.inventory);
     if (!found.inventory) {
-        steps.push({ name: 'inventory', status: 'skipped', detail: `no ${INVENTORY_SCRIPT}` });
+        steps.push({ name: 'inventory', status: 'skipped', detail: `no ${INVENTORY_SCRIPT} on the base` });
     }
     else if (exec(node, [INVENTORY_SCRIPT, '--verify'], { cwd }).status === 0) {
         steps.push({ name: 'inventory', status: 'skipped', detail: 'baseline is current' });

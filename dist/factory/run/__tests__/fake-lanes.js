@@ -177,8 +177,8 @@ export function harness(prefix = 'omg-factory-run-') {
     mkdirSync(root);
     gitIn(root, 'init', '-q', '-b', 'dev');
     writeFileSync(join(root, 'README.md'), 'hello\n');
-    // No trailing slash: the prepare checkout's node_modules is a symlink on POSIX, which `node_modules/` does not match.
-    writeFileSync(join(root, '.gitignore'), '.omg/\nnode_modules\n');
+    // `node_modules/` (directory-only), the common spelling: on POSIX the prepare checkout's node_modules symlink is untracked for it, which discard must handle.
+    writeFileSync(join(root, '.gitignore'), '.omg/\nnode_modules/\n');
     mkdirSync(join(root, 'docs'));
     writeFileSync(join(root, 'docs', 'plan.md'), '# Plan\n\nAdd greet().\n');
     // This repository's tooling, so prepare's auto-detection runs its built-in checks (the scripted `node` answers them).

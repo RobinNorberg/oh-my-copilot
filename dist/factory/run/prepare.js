@@ -11,7 +11,7 @@
  * (`git worktree add -B <branch> <path> <sha>`); ship's runPrepare then runs
  * in it with push off, and the engine pushes the result itself.
  */
-import { existsSync, symlinkSync } from 'fs';
+import { existsSync, lstatSync, realpathSync, rmdirSync, symlinkSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { loadBaseKnownFlaky, loadTrustedShipConfig, userConfigLayers } from '../../ship/config.js';
 import { getBranchName, getWorktreePath } from '../../team/git-worktree.js';
@@ -37,6 +37,33 @@ export function linkNodeModules(root, checkout) {
     if (!existsSync(source) || !existsSync(checkout) || existsSync(target))
         return;
     symlinkSync(source, target, process.platform === 'win32' ? 'junction' : 'dir');
+}
+/**
+ * Remove the link linkNodeModules made before the checkout is discarded:
+ * on POSIX a symlink named node_modules is untracked for a `node_modules/`
+ * gitignore line (directory-only), so removeWorkerWorktree would see a dirty
+ * tree. Only a link that resolves to the root's node_modules goes; the
+ * target is never touched, and anything else is left to the dirty check.
+ */
+export function unlinkNodeModules(root, checkout) {
+    const target = join(checkout, 'node_modules');
+    try {
+        if (!lstatSync(target).isSymbolicLink())
+            return;
+        const real = (p) => (process.platform === 'win32' ? realpathSync(p).toLowerCase() : realpathSync(p));
+        if (real(target) !== real(join(root, 'node_modules')))
+            return;
+    }
+    catch {
+        return;
+    }
+    // A junction or directory symlink on win32: rmdir removes the link itself.
+    try {
+        unlinkSync(target);
+    }
+    catch {
+        rmdirSync(target);
+    }
 }
 /**
  * Ship's safety-key loader in strict mode: requiredChecks, advisoryChecks

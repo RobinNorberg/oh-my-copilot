@@ -45205,6 +45205,7 @@ function shapeProblem2(s) {
   if (s.forgeKind !== void 0 && s.forgeKind !== "github" && s.forgeKind !== "azure-devops" && s.forgeKind !== "local") return "forgeKind";
   if (s.remote !== void 0 ? s.remote !== LOCAL_REMOTE || s.forgeKind !== "local" : s.forgeKind === "local") return "remote";
   if (s.localGate !== void 0 && (s.forgeKind !== "local" || !Array.isArray(s.localGate) || s.localGate.length === 0 || !s.localGate.every(isStr2))) return "localGate";
+  if (s.prepareChecks !== void 0 && s.prepareChecks !== "auto" && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr2)))) return "prepareChecks";
   if (s.trackerStage !== void 0 && !PROGRESS_STAGES.includes(s.trackerStage)) return "trackerStage";
   if (s.kind === "ci-heal") {
     const h = s.heal;
@@ -45365,6 +45366,21 @@ function linkNodeModules(root, checkout) {
   if (!(0, import_fs77.existsSync)(source) || !(0, import_fs77.existsSync)(checkout) || (0, import_fs77.existsSync)(target)) return;
   (0, import_fs77.symlinkSync)(source, target, process.platform === "win32" ? "junction" : "dir");
 }
+function unlinkNodeModules(root, checkout) {
+  const target = (0, import_path96.join)(checkout, "node_modules");
+  try {
+    if (!(0, import_fs77.lstatSync)(target).isSymbolicLink()) return;
+    const real2 = (p) => process.platform === "win32" ? (0, import_fs77.realpathSync)(p).toLowerCase() : (0, import_fs77.realpathSync)(p);
+    if (real2(target) !== real2((0, import_path96.join)(root, "node_modules"))) return;
+  } catch {
+    return;
+  }
+  try {
+    (0, import_fs77.unlinkSync)(target);
+  } catch {
+    (0, import_fs77.rmdirSync)(target);
+  }
+}
 var import_fs77, import_path96, FACTORY_CHECKOUT_TEAM, checkoutWorker, defaultGateConfigLoader;
 var init_prepare = __esm({
   "src/factory/run/prepare.ts"() {
@@ -45414,12 +45430,26 @@ var init_clean = __esm({
 });
 
 // src/ship/prepare.ts
-function detectPrepareChecks(exists) {
-  return {
-    tsc: exists("tsconfig.json") && exists(TSC_SCRIPT),
-    lint: exists(ESLINT_SCRIPT) && ESLINT_CONFIGS.some(exists),
-    tests: exists(VITEST_SCRIPT),
-    inventory: exists(INVENTORY_SCRIPT)
+function detectPrepareChecks(baseHas, exists = baseHas) {
+  const lost = {};
+  const gone = (marker) => `${marker} is committed on the base but missing from the checkout; restore it (prepare never skips a check the base has)`;
+  const tsc = baseHas("tsconfig.json") && exists(TSC_SCRIPT);
+  if (tsc && !exists("tsconfig.json")) lost.tsc = gone("tsconfig.json");
+  const baseEslint = exists(ESLINT_SCRIPT) ? ESLINT_CONFIGS.filter(baseHas) : [];
+  if (baseEslint.length > 0 && !ESLINT_CONFIGS.some(exists)) lost.lint = gone(baseEslint.join(", "));
+  const inventory = baseHas(INVENTORY_SCRIPT);
+  if (inventory && !exists(INVENTORY_SCRIPT)) lost.inventory = gone(INVENTORY_SCRIPT);
+  return { tsc, lint: baseEslint.length > 0, tests: exists(VITEST_SCRIPT), inventory, lost };
+}
+function baseFileExists(exec, cwd, commit) {
+  const seen = /* @__PURE__ */ new Map();
+  return (p) => {
+    let found = seen.get(p);
+    if (found === void 0) {
+      found = readBaseFile(exec, cwd, commit, p) !== null;
+      seen.set(p, found);
+    }
+    return found;
   };
 }
 function selectTargetedTests(changed, exists) {
@@ -45530,7 +45560,12 @@ ${dirty}`);
     }
     housekeepingCommits.push(head());
   }
-  const found = detectPrepareChecks(exists);
+  let found;
+  try {
+    found = detectPrepareChecks(opts.baseExists ?? baseFileExists(exec, cwd, baseSha), exists);
+  } catch (error2) {
+    return fail2(PREPARE_DETECT_STEP, `cannot read the base ${baseSha.slice(0, 12)}: ${error2 instanceof Error ? error2.message : String(error2)}`);
+  }
   if (opts.checks === false) {
     steps.push({ name: "checks", status: "skipped", detail: "--no-checks" });
   } else if (opts.commands) {
@@ -45551,12 +45586,14 @@ ${r.stderr}`));
     const lintable = changed.filter((f) => /^src\/.*\.(?:ts|tsx|mts)$/.test(f) && !f.endsWith(".d.ts") && exists(f));
     const tests = selectTargetedTests(changed, exists);
     const plan = [
-      ["tsc", found.tsc ? [TSC_SCRIPT, "--noEmit"] : null, "no tsconfig.json or typescript package"],
-      ["lint", !found.lint ? null : lintable.length > 0 ? [ESLINT_SCRIPT, ...lintable] : null, found.lint ? "no changed src TypeScript" : "no eslint package or config"],
+      ["tsc", found.tsc ? [TSC_SCRIPT, "--noEmit"] : null, "no tsconfig.json on the base or no typescript package"],
+      ["lint", !found.lint ? null : lintable.length > 0 ? [ESLINT_SCRIPT, ...lintable] : null, found.lint ? "no changed src TypeScript" : "no eslint package or no eslint config on the base"],
       ["tests", !found.tests ? null : tests.length > 0 ? [VITEST_SCRIPT, "run", ...tests] : null, found.tests ? "no targeted tests for the diff" : "no vitest package"],
       ...selectGeneratorChecks(changed).filter((args) => exists(args[0])).map((args) => [import_path97.posix.basename(args[0]), args, ""])
     ];
     for (const [name, args, skipReason] of plan) {
+      const lost = found.lost[name];
+      if (lost) return fail2(name, lost);
       if (!args) {
         steps.push({ name, status: "skipped", detail: skipReason });
         continue;
@@ -45567,8 +45604,9 @@ ${r.stderr}`));
       steps.push({ name, status: "ok", detail: args.slice(1).join(" ").slice(0, 300) });
     }
   }
+  if (found.lost.inventory) return fail2("inventory", found.lost.inventory);
   if (!found.inventory) {
-    steps.push({ name: "inventory", status: "skipped", detail: `no ${INVENTORY_SCRIPT}` });
+    steps.push({ name: "inventory", status: "skipped", detail: `no ${INVENTORY_SCRIPT} on the base` });
   } else if (exec(node, [INVENTORY_SCRIPT, "--verify"], { cwd }).status === 0) {
     steps.push({ name: "inventory", status: "skipped", detail: "baseline is current" });
   } else {
@@ -45593,7 +45631,7 @@ ${tail(verified.stderr || verified.stdout)}`);
   }
   return { ok: true, steps, housekeepingCommits };
 }
-var import_fs79, import_path97, INVENTORY_DIR, INVENTORY_SCRIPT, INVENTORY_COMMIT_MESSAGE, PREPARE_CONFIG_STEP, TSC_SCRIPT, ESLINT_SCRIPT, VITEST_SCRIPT, ESLINT_CONFIGS, TEST_FILE;
+var import_fs79, import_path97, INVENTORY_DIR, INVENTORY_SCRIPT, INVENTORY_COMMIT_MESSAGE, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, TSC_SCRIPT, ESLINT_SCRIPT, VITEST_SCRIPT, ESLINT_CONFIGS, TEST_FILE;
 var init_prepare2 = __esm({
   "src/ship/prepare.ts"() {
     "use strict";
@@ -45604,6 +45642,7 @@ var init_prepare2 = __esm({
     INVENTORY_SCRIPT = "scripts/generate-inventory-graph.mjs";
     INVENTORY_COMMIT_MESSAGE = "chore(inventory): regenerate inventory graph baseline";
     PREPARE_CONFIG_STEP = "checks-config";
+    PREPARE_DETECT_STEP = "detect";
     TSC_SCRIPT = "node_modules/typescript/bin/tsc";
     ESLINT_SCRIPT = "node_modules/eslint/bin/eslint.js";
     VITEST_SCRIPT = "node_modules/vitest/vitest.mjs";
@@ -48936,7 +48975,7 @@ var init_engine = __esm({
     init_state5();
     init_plan_rules();
     EXIT_AWAITING_HUMAN = 4;
-    PREPARE_ENGINE_STEPS = /* @__PURE__ */ new Set(["preflight", "remote", "fetch", "merge-base", "push", PREPARE_CONFIG_STEP]);
+    PREPARE_ENGINE_STEPS = /* @__PURE__ */ new Set(["preflight", "remote", "fetch", "merge-base", "push", PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP]);
     MAX_CI_DETAIL_CHARS = 8e3;
     MAX_CONFLICT_FIX_ROUNDS = 2;
     MAX_MERGE_BOUNCES = 2;
@@ -50087,9 +50126,11 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         if (head !== this.state.head && head !== this.state.checkoutHead) {
           throw new FactoryStepError(`the engine's prepare checkout ${path15} is at ${head.slice(0, 12)}, which the engine did not leave there; inspect it and remove it by hand`);
         }
+        unlinkNodeModules(this.o.root, path15);
         try {
           removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [head] });
         } catch (error2) {
+          linkNodeModules(this.o.root, path15);
           throw new FactoryStepError(`could not discard the engine's prepare checkout ${path15}: ${errText5(error2)}`);
         }
         this.save((x) => {
@@ -50140,6 +50181,13 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           return rest;
         });
         const configured = this.gateConfig(view).config.prepareChecks;
+        const checksNow = configured ? configured.map((argv) => [...argv]) : "auto";
+        const checksText = (c) => c === "auto" ? "unset (the built-ins the base has)" : JSON.stringify(c);
+        if (s.prepareChecks !== void 0 && JSON.stringify(s.prepareChecks) !== JSON.stringify(checksNow)) {
+          this.gate("prepare-checks", `ship.prepare.checks is now ${checksText(checksNow)}, but this run recorded ${checksText(s.prepareChecks)}; restore it, or cancel the run (omg factory run cancel) and start a new one`);
+          return;
+        }
+        if (s.prepareChecks === void 0) this.save((x) => ({ ...x, prepareChecks: checksNow }));
         if (this.recheckFailed("before prepare")) return;
         this.discardCheckout();
         const path15 = checkoutPath(this.o.root, this.key);

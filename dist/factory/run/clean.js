@@ -21,7 +21,7 @@ import { getWorktreePath, removeWorkerWorktree } from '../../team/git-worktree.j
 import { factoryGuardExec, hardenedGitExec } from './exec.js';
 import { localRemoteMismatch } from './forge-roots.js';
 import { defaultLedgerDir, emptyHooksDir } from './ledger.js';
-import { checkoutWorker, FACTORY_CHECKOUT_TEAM } from './prepare.js';
+import { checkoutWorker, FACTORY_CHECKOUT_TEAM, unlinkNodeModules } from './prepare.js';
 import { acquireFactoryOwner, FactoryStateError, readFactoryState, runRemote, verifyFactoryIntegrity } from './state.js';
 const HEX40 = /^[0-9a-f]{40}$/;
 export function cleanFactoryRun(o) {
@@ -62,6 +62,9 @@ export function cleanFactoryRun(o) {
         for (const [team, worker] of targets) {
             const path = getWorktreePath(o.root, team, worker);
             const existed = existsSync(path);
+            // The engine's node_modules link in its prepare checkout (untracked on POSIX for a `node_modules/` ignore line).
+            if (team === FACTORY_CHECKOUT_TEAM)
+                unlinkNodeModules(o.root, path);
             try {
                 removeWorkerWorktree(team, worker, o.root, { contained });
                 if (existed)

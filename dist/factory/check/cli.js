@@ -29,7 +29,7 @@ import { factoryForgeOptions } from '../run/forge-roots.js';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { BASE_CONFIG_PATH, isPlainBranchName, readBaseFile, resolveShipConfig, trustedPrepareChecks } from '../../ship/config.js';
-import { describePrepareChecks } from '../../ship/prepare.js';
+import { baseFileExists, describePrepareChecks } from '../../ship/prepare.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { isAdoCommand, runGuardedAdo } from '../../forge/ado/guard.js';
@@ -373,7 +373,9 @@ export async function runFactoryCheck(o, deps) {
     const { root, base, baseSha, config, baseConfig, forge, exec } = openReadForge(o, deps, warnings, 'omg factory check', () => marker);
     let prepareChecks;
     try {
-        prepareChecks = describePrepareChecks(trustedPrepareChecks(deps.trustedUser(), baseConfig), (p) => existsSync(join(root, p)));
+        // The same detection prepare runs: repository markers from the base commit, the tool packages from the root's node_modules.
+        const baseHas = baseSha ? baseFileExists(exec, root, baseSha) : () => false;
+        prepareChecks = describePrepareChecks(trustedPrepareChecks(deps.trustedUser(), baseConfig), baseHas, (p) => existsSync(join(root, p)));
     }
     catch (error) {
         throw new CheckUsageError(error instanceof Error ? error.message : String(error));

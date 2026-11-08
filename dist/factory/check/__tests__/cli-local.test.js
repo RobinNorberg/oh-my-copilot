@@ -37,6 +37,15 @@ describe('omg factory check on the local (offline) forge', () => {
         expect(await runFactoryCheck({ ids: ['1'] }, deps)).toBe(0);
         expect(repo.out.join('\n')).toContain('prepare checks: cargo check');
     });
+    it('describes the prepare checks from the base commit, like prepare: an uncommitted tsconfig.json adds nothing', async () => {
+        const repo = localRepo();
+        writeFile(repo, '.copilot/backlog/1-add-remove.md', backlogItem('Add remove'));
+        commitAll(repo);
+        writeFile(repo, 'tsconfig.json', '{}\n');
+        writeFile(repo, 'node_modules/typescript/bin/tsc', '\n');
+        expect(await runFactoryCheck({ ids: ['1'], json: true }, checkDeps(repo))).toBe(0);
+        expect(JSON.parse(repo.out.join('\n')).prepareChecks).toEqual([]);
+    });
     it('puts the limitations in --json and checks one id', async () => {
         const repo = localRepo();
         writeFile(repo, '.copilot/backlog/1-add-remove.md', backlogItem('Add remove'));

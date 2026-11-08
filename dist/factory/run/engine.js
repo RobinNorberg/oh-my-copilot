@@ -57,7 +57,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, readBaseFile, remoteRepoMismatch, userConfigLayers } from '../../ship/config.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
-import { PREPARE_CONFIG_STEP, runPrepare } from '../../ship/prepare.js';
+import { PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, runPrepare } from '../../ship/prepare.js';
 import { removeWorkerWorktree } from '../../team/git-worktree.js';
 import { driveGates, MAX_FAILING_TITLES } from './gates-driver.js';
 import { mergeComment, mergeDecision } from './merge-policy.js';
@@ -70,7 +70,7 @@ import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, g
 import { ghDependsOn, ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, githubTracker } from '../../forge/github/tracker.js';
 import { isSatisfied } from '../check/score.js';
 import { outcomePosts, postedBefore } from './outcome.js';
-import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, linkNodeModules } from './prepare.js';
+import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, linkNodeModules, unlinkNodeModules } from './prepare.js';
 import { canTransition, createShipState, transition, latestVerdict, parseShipState, recordVerdict, shipStatePath, updateShipState, verifyShipIntegrity, } from '../../ship/state.js';
 import { lockPathFor } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -94,7 +94,7 @@ import { acquireFactoryOwner, acquireFactoryRepoOwner, createFactoryState, facto
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export const EXIT_AWAITING_HUMAN = 4;
 /** The prepare steps that are checks (a failure there starts a ci-fix lane); the rest are engine steps. */
-const PREPARE_ENGINE_STEPS = new Set(['preflight', 'remote', 'fetch', 'merge-base', 'push', PREPARE_CONFIG_STEP]);
+const PREPARE_ENGINE_STEPS = new Set(['preflight', 'remote', 'fetch', 'merge-base', 'push', PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP]);
 /** A failed prepare step's output in the ci-fix prompt is cut at this many characters. */
 const MAX_CI_DETAIL_CHARS = 8_000;
 /** Conflict-fix lanes (distinct start heads) before base conflicts park at awaiting-human: merge-conflicts. */
@@ -1702,11 +1702,15 @@ class FactoryEngine {
         if (head !== this.state.head && head !== this.state.checkoutHead) {
             throw new FactoryStepError(`the engine's prepare checkout ${path} is at ${head.slice(0, 12)}, which the engine did not leave there; inspect it and remove it by hand`);
         }
+        // The engine's own node_modules link would count as untracked on POSIX (a `node_modules/` ignore line skips symlinks).
+        unlinkNodeModules(this.o.root, path);
         try {
             // Only engine-made commits are in it (checked above); nothing else holds them.
             removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [head] });
         }
         catch (error) {
+            // A kept checkout keeps its tooling (the local gate runs in it).
+            linkNodeModules(this.o.root, path);
             throw new FactoryStepError(`could not discard the engine's prepare checkout ${path}: ${errText(error)}`);
         }
         this.save((x) => {
@@ -1768,6 +1772,15 @@ class FactoryEngine {
             this.save((x) => { const { prepared: _p, ...rest } = x; return rest; });
         // ship.prepare.checks is a safety key (user config or the base at GitHub's base sha): the PR never picks what prepare runs.
         const configured = this.gateConfig(view).config.prepareChecks;
+        // Sealed at the first prepare like the local gate: a ship.prepare.checks changed mid-run is refused, not followed.
+        const checksNow = configured ? configured.map((argv) => [...argv]) : 'auto';
+        const checksText = (c) => (c === 'auto' ? 'unset (the built-ins the base has)' : JSON.stringify(c));
+        if (s.prepareChecks !== undefined && JSON.stringify(s.prepareChecks) !== JSON.stringify(checksNow)) {
+            this.gate('prepare-checks', `ship.prepare.checks is now ${checksText(checksNow)}, but this run recorded ${checksText(s.prepareChecks)}; restore it, or cancel the run (omg factory run cancel) and start a new one`);
+            return;
+        }
+        if (s.prepareChecks === undefined)
+            this.save((x) => ({ ...x, prepareChecks: checksNow }));
         if (this.recheckFailed('before prepare'))
             return;
         this.discardCheckout();

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { readShipState } from '../../../ship/state.js';
 import { checkoutPath } from '../prepare.js';
 import { readFactoryState } from '../state.js';
-import { commitFile, gitIn, ISSUE, PR, remoteHead, review } from './fake-lanes.js';
+import { commitFile, gitIn, ISSUE, PR, remoteHead, review, testGateConfig } from './fake-lanes.js';
 import { scaleTiming } from '../../../__tests__/helpers/platform.js';
 import { h, usePrepareGatesHarness, run, moveBase, PREPARE_VIEW, before, okRun, isTsc, pushes } from './prepare-gates-harness.js';
 // Every engine run here drives a few hundred real git processes (the lane
@@ -121,6 +121,29 @@ describe('prepare: crash window, PR code and failing checks', () => {
         expect(lanes.started[2].prompt).toContain('engine\'s local checks');
         expect(state.ciFixRounds).toBe(1);
         expect(tsc).toBe(2);
+        expect(state.prepareChecks).toBe('auto');
+    });
+    it('a ship.prepare.checks changed mid-run parks the next prepare at prepare-checks instead of running the new checks', async () => {
+        let firstBase;
+        // The base moves during the first prepare; its config sets ship.prepare.checks, which the run did not start with.
+        const gateConfig = (i) => {
+            firstBase ??= i.baseSha;
+            const loaded = testGateConfig(i);
+            return i.baseSha === firstBase ? loaded : { ...loaded, config: { ...loaded.config, prepareChecks: [['node', 'tools/check.mjs']] } };
+        };
+        let tsc = 0;
+        h.node = (args) => {
+            if (!isTsc(args) || ++tsc !== 1)
+                return okRun;
+            moveBase('docs/other.md', 'base moved\n');
+            return { status: 1, stdout: 'src/greet.ts(1,1): error TS1005: expected', stderr: '' };
+        };
+        const out = await run([commitFile('src/greet.ts', 'x\n'), review('approve'), commitFile('src/greet.ts', 'fixed\n'), review('approve')], { gateConfig }).done;
+        expect(out.gate?.name, out.message).toBe('prepare-checks');
+        expect(out.gate?.reason).toContain('ship.prepare.checks is now [["node","tools/check.mjs"]], but this run recorded unset');
+        expect(readFactoryState(h.root, ISSUE).prepareChecks).toBe('auto');
+        expect(h.calls).not.toContain('node tools/check.mjs');
+        expect(tsc).toBe(1);
     });
 });
 //# sourceMappingURL=prepare-gates.crash.test.js.map
