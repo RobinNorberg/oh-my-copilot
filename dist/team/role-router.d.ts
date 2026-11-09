@@ -10,6 +10,25 @@ export interface RoleRouterResult {
     confidence: 'high' | 'medium' | 'low';
     reason: string;
 }
+/** A committed path rule: files matching `glob` go to `role` (.copilot/team/routing.md, read by src/factory/team/routing.ts). */
+export interface PathRoleRule {
+    glob: string;
+    role: string;
+}
+/** Why `glob` is over the routing limits (more than 8 wildcards or 2 `**` segments), or undefined. */
+export declare function globLimitProblem(glob: string): string | undefined;
+/**
+ * Whether `path` (repo-relative, `/` or `\` separated) matches `glob`:
+ * a `**` segment spans any number of whole segments (a trailing one at least
+ * one, so `src/**` is the contents of src, not `src`), `*` and `?` stay inside
+ * one segment (a `**` inside a longer segment counts as `*`), everything else
+ * is literal. Case-sensitive, matched segment by segment without building a
+ * RegExp. A glob that is empty, absolute, has a `..` segment or is over the
+ * limits (globLimitProblem), or a path over 1024 characters, matches nothing.
+ */
+export declare function matchPathGlob(glob: string, path: string): boolean;
+/** The role of the first rule matching any of `paths` (rule order, then path order), or undefined. */
+export declare function routePathsToRole(paths: readonly string[], rules: readonly PathRoleRule[]): string | undefined;
 /** Role-to-keyword mapping for keyword-count scoring fallback */
 export declare const ROLE_KEYWORDS: Record<string, RegExp[]>;
 /**

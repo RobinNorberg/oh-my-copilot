@@ -176,6 +176,16 @@ describe('two-axis review (docs/standards/ on the base)', () => {
       ['ls-tree', '-r', '-z', '--name-only', SHA, '--', 'docs/standards/', 'x'],
     ]) expect(() => assertFactoryCommand('git', args)).toThrow(FactorySafetyError);
   });
+
+  it('the guard allows one ls-tree entry of a plain path at a base sha, nothing broader', () => {
+    expect(() => assertFactoryCommand('git', ['ls-tree', '-z', SHA, '--', '.copilot/team/decisions.md'])).not.toThrow();
+    for (const args of [
+      ['ls-tree', '-z', 'HEAD', '--', '.copilot/team/decisions.md'],
+      ['ls-tree', '-z', SHA, '--', '../x'],
+      ['ls-tree', '-z', SHA, '--', '-r'],
+      ['ls-tree', '-r', '-z', SHA, '--', 'a/b'],
+    ]) expect(() => assertFactoryCommand('git', args)).toThrow(FactorySafetyError);
+  });
 });
 
 describe('plan resolution', () => {

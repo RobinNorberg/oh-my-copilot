@@ -52,7 +52,7 @@ import { DEFAULT_HEARTBEAT_CRON, parseHeartbeatMode, planHeartbeat, validateOmgV
 import { getRuntimePackageVersion, isRuntimePackageLocal } from '../../lib/version.js';
 import { pickHealPipeline } from '../../factory/setup/pipeline-pick.js';
 import { missingGitHubLabels, pickProgress, progressFromFlag, validateAdoProgress } from '../../factory/setup/progress-pick.js';
-import { applyWrites, buildSection, parsedAfter, planBacklogSample, planWrites, type PlannedWrite, type SetupScope, type SetupSection } from '../../factory/setup/write.js';
+import { applyWrites, buildSection, parsedAfter, planBacklogSample, planTeamSeeds, planWrites, type PlannedWrite, type SetupScope, type SetupSection } from '../../factory/setup/write.js';
 import { redactAdoSecrets } from '../../forge/ado/redact.js';
 import { redactTokens } from '../../notifications/redact.js';
 import { isPlainBranchName, resolveShipConfig, trustedUserConfigPath } from '../../ship/config.js';
@@ -110,6 +110,8 @@ export interface FactorySetupOptions {
   branch?: string;
   /** --workflows: replace a file this command did not write. */
   force?: boolean;
+  /** Also seed .copilot/team/routing.md and decisions.md when missing. */
+  team?: boolean;
   dryRun?: boolean;
   yes?: boolean;
   json?: boolean;
@@ -248,6 +250,7 @@ async function setup(o: FactorySetupOptions, deps: FactorySetupDeps, cwd: string
   const ado = repo.kind === 'azure-devops';
   const local = repo.kind === 'local';
   if (o.workflows) {
+    if (o.team) throw new SetupError(2, '--team belongs to the wizard, not --workflows');
     await setupWorkflows(o, deps, root, repo.kind, interactive, out);
     return;
   }
@@ -357,6 +360,10 @@ async function setup(o: FactorySetupOptions, deps: FactorySetupDeps, cwd: string
     if (!resolved.local.gate) out.notes.push(`no local gate: set factory.forge.local.gate (an argv such as ["npm","test"]) in the user config or in .copilot/omg.jsonc committed on ${base}; until then gates park at awaiting-human: gates`);
     if (detected.originUrl) out.notes.push(`factory.forge.kind "local" overrides the origin remote only from the user config or from ${projectPath} committed on ${base} (CI and remote review are off)`);
     out.notes.push(`commit ${resolved.local.backlogDir}/ items on ${base}: omg factory run reads backlog items at the base commit only`);
+  }
+  if (o.team) {
+    planned.push(...planTeamSeeds(root));
+    out.notes.push(`commit .copilot/team/routing.md and decisions.md on ${base}: the factory reads them from the base commit only`);
   }
   out.diffs = planned.map((w) => ({ path: w.path, scope: w.scope, diff: w.diff }));
   if (scope === 'user') out.notes.push(`--scope user: the forge identity, intake and progress belong to this repository, so they go to ${projectPath}; the user config ${userPath} is shared by every repository and gets only trustedAuthors.`);
@@ -510,6 +517,7 @@ export function factorySetupCommand(deps: FactorySetupDeps = defaultFactorySetup
     .option('--omg-version <x.y.z>', 'with --workflows: the published omg version the file installs (default: the version of this build)')
     .option('--branch <name>', 'with --workflows on Azure DevOps: the branch the schedule runs (default: the repository default branch from origin/HEAD)')
     .option('--force', 'with --workflows: replace a heartbeat file this command did not write')
+    .option('--team', 'also create .copilot/team/routing.md and decisions.md (committed team routing and the append-only decision log) when missing')
     .option('--dry-run', 'Show the diff and the preview; write nothing')
     .option('--yes', 'Non-interactive: take every answer from flags and confirm the write')
     .option('--json', 'JSON output (non-interactive)')

@@ -330,6 +330,9 @@ function factoryGit(a, protectedBranches, extraProtected = [], local, agent) {
             if (r.length === 5 && same(r.slice(0, 2), ['-z', '--name-only']) && /^[0-9a-f]{40}$/.test(r[2]) && r[3] === '--' && r[4].endsWith('/')) {
                 return isPlainRepoPath(r[4].slice(0, -1));
             }
+            // One entry of the tree at a commit (the team files: exit status and mode tell absent from a gitlink, a tree or a link, whatever the locale): one plain file path.
+            if (r.length === 4 && r[0] === '-z' && /^[0-9a-f]{40}$/.test(r[1]) && r[2] === '--')
+                return isPlainRepoPath(r[3]);
             return null;
         case 'rev-list':
             // Publish check: the commits of the prepared head beyond the reviewed head and GitHub's base.

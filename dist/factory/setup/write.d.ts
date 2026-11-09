@@ -78,6 +78,11 @@ export declare const SAMPLE_BACKLOG_TEXT: string;
  * no backlog file yet (`<n>-<slug>.md`); undefined otherwise. Written by applyWrites.
  */
 export declare function planBacklogSample(root: string, backlogDir: string): PlannedWrite | undefined;
+/** Seeds for `omg factory setup --team`: the committed team files (read from the base commit only). */
+export declare const TEAM_ROUTING_SEED: string;
+export declare const TEAM_DECISIONS_SEED: string;
+/** The two team files, for each one that does not exist yet; undefined entries are left out. Written by applyWrites. */
+export declare function planTeamSeeds(root: string): PlannedWrite[];
 export declare function applyWrites(planned: readonly PlannedWrite[]): string[];
 /** The parsed config a planned write would leave (for validation through resolveForgeConfig). */
 export declare function parsedAfter(planned: readonly PlannedWrite[], path: string): unknown;

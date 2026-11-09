@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "85b94bad5ac2015bc292a127817f6a9fbffdd2ed",
-    "sourceSha256": "fa092299fd62d97a2ad7d91706f58606288bb7394f6b38144f3c370223ae38cb",
+    "head": "f3ad3d4c5d285ccfc0d8ad25c13592d85852be58",
+    "sourceSha256": "5b180484b25781d969ef712e39dff93cdfd90dd683928871f7a711a8934d306c",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "85b94bad5ac2015bc292a127817f6a9fbffdd2ed",
-  "sourceSha256": "fa092299fd62d97a2ad7d91706f58606288bb7394f6b38144f3c370223ae38cb",
+  "head": "f3ad3d4c5d285ccfc0d8ad25c13592d85852be58",
+  "sourceSha256": "5b180484b25781d969ef712e39dff93cdfd90dd683928871f7a711a8934d306c",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,23 +28,23 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2014,
-      "total": 2039
+      "srcFiles": 2023,
+      "total": 2048
     },
     "generated": {
-      "distFiles": 7424,
+      "distFiles": 7460,
       "bridgeFiles": 8,
-      "total": 7432
+      "total": 7468
     },
     "prompt": {
-      "promptLikeFiles": 71
+      "promptLikeFiles": 72
     },
     "skills": 98,
     "commands": 21,
     "hookFiles": 346,
     "workflows": 8,
     "agentDefinitions": 18,
-    "promptLikeFiles": 71
+    "promptLikeFiles": 72
   },
   "public": {
     "skills": [
@@ -856,6 +856,7 @@
       "src/factory/run/__tests__/prompts.snapshot.json",
       "src/factory/run/__tests__/prompts.test.ts",
       "src/factory/run/prompts.ts",
+      "src/factory/team/__tests__/team-prompts.test.ts",
       "src/features/model-routing/prompts/haiku.ts",
       "src/features/model-routing/prompts/index.ts",
       "src/features/model-routing/prompts/opus.ts",
@@ -3167,6 +3168,10 @@
       "dist/factory/__tests__/poll-local.test.d.ts.map",
       "dist/factory/__tests__/poll-local.test.js",
       "dist/factory/__tests__/poll-local.test.js.map",
+      "dist/factory/__tests__/poll.reminders.test.d.ts",
+      "dist/factory/__tests__/poll.reminders.test.d.ts.map",
+      "dist/factory/__tests__/poll.reminders.test.js",
+      "dist/factory/__tests__/poll.reminders.test.js.map",
       "dist/factory/__tests__/poll.test.d.ts",
       "dist/factory/__tests__/poll.test.d.ts.map",
       "dist/factory/__tests__/poll.test.js",
@@ -3355,10 +3360,6 @@
       "dist/factory/run/__tests__/claims.test.d.ts.map",
       "dist/factory/run/__tests__/claims.test.js",
       "dist/factory/run/__tests__/claims.test.js.map",
-      "dist/factory/run/__tests__/coding-agent-lane.test.d.ts",
-      "dist/factory/run/__tests__/coding-agent-lane.test.d.ts.map",
-      "dist/factory/run/__tests__/coding-agent-lane.test.js",
-      "dist/factory/run/__tests__/coding-agent-lane.test.js.map",
       "dist/factory/run/__tests__/engine-ado-harness.d.ts",
       "dist/factory/run/__tests__/engine-ado-harness.d.ts.map",
       "dist/factory/run/__tests__/engine-ado-harness.js",
@@ -3395,10 +3396,6 @@
       "dist/factory/run/__tests__/engine.ado.test.d.ts.map",
       "dist/factory/run/__tests__/engine.ado.test.js",
       "dist/factory/run/__tests__/engine.ado.test.js.map",
-      "dist/factory/run/__tests__/engine.coding-agent.test.d.ts",
-      "dist/factory/run/__tests__/engine.coding-agent.test.d.ts.map",
-      "dist/factory/run/__tests__/engine.coding-agent.test.js",
-      "dist/factory/run/__tests__/engine.coding-agent.test.js.map",
       "dist/factory/run/__tests__/engine.intake.test.d.ts",
       "dist/factory/run/__tests__/engine.intake.test.d.ts.map",
       "dist/factory/run/__tests__/engine.intake.test.js",
@@ -3451,14 +3448,14 @@
       "dist/factory/run/__tests__/engine.state.test.d.ts.map",
       "dist/factory/run/__tests__/engine.state.test.js",
       "dist/factory/run/__tests__/engine.state.test.js.map",
+      "dist/factory/run/__tests__/engine.team.test.d.ts",
+      "dist/factory/run/__tests__/engine.team.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.team.test.js",
+      "dist/factory/run/__tests__/engine.team.test.js.map",
       "dist/factory/run/__tests__/engine.test.d.ts",
       "dist/factory/run/__tests__/engine.test.d.ts.map",
       "dist/factory/run/__tests__/engine.test.js",
       "dist/factory/run/__tests__/engine.test.js.map",
-      "dist/factory/run/__tests__/fake-coding-agent.d.ts",
-      "dist/factory/run/__tests__/fake-coding-agent.d.ts.map",
-      "dist/factory/run/__tests__/fake-coding-agent.js",
-      "dist/factory/run/__tests__/fake-coding-agent.js.map",
       "dist/factory/run/__tests__/fake-lanes.d.ts",
       "dist/factory/run/__tests__/fake-lanes.d.ts.map",
       "dist/factory/run/__tests__/fake-lanes.js",
@@ -3543,10 +3540,6 @@
       "dist/factory/run/clean.d.ts.map",
       "dist/factory/run/clean.js",
       "dist/factory/run/clean.js.map",
-      "dist/factory/run/coding-agent-lane.d.ts",
-      "dist/factory/run/coding-agent-lane.d.ts.map",
-      "dist/factory/run/coding-agent-lane.js",
-      "dist/factory/run/coding-agent-lane.js.map",
       "dist/factory/run/engine.d.ts",
       "dist/factory/run/engine.d.ts.map",
       "dist/factory/run/engine.js",
@@ -3695,6 +3688,46 @@
       "dist/factory/status.d.ts.map",
       "dist/factory/status.js",
       "dist/factory/status.js.map",
+      "dist/factory/team/__tests__/context.test.d.ts",
+      "dist/factory/team/__tests__/context.test.d.ts.map",
+      "dist/factory/team/__tests__/context.test.js",
+      "dist/factory/team/__tests__/context.test.js.map",
+      "dist/factory/team/__tests__/decisions.test.d.ts",
+      "dist/factory/team/__tests__/decisions.test.d.ts.map",
+      "dist/factory/team/__tests__/decisions.test.js",
+      "dist/factory/team/__tests__/decisions.test.js.map",
+      "dist/factory/team/__tests__/reminders.test.d.ts",
+      "dist/factory/team/__tests__/reminders.test.d.ts.map",
+      "dist/factory/team/__tests__/reminders.test.js",
+      "dist/factory/team/__tests__/reminders.test.js.map",
+      "dist/factory/team/__tests__/routing.test.d.ts",
+      "dist/factory/team/__tests__/routing.test.d.ts.map",
+      "dist/factory/team/__tests__/routing.test.js",
+      "dist/factory/team/__tests__/routing.test.js.map",
+      "dist/factory/team/__tests__/seeds.test.d.ts",
+      "dist/factory/team/__tests__/seeds.test.d.ts.map",
+      "dist/factory/team/__tests__/seeds.test.js",
+      "dist/factory/team/__tests__/seeds.test.js.map",
+      "dist/factory/team/__tests__/team-prompts.test.d.ts",
+      "dist/factory/team/__tests__/team-prompts.test.d.ts.map",
+      "dist/factory/team/__tests__/team-prompts.test.js",
+      "dist/factory/team/__tests__/team-prompts.test.js.map",
+      "dist/factory/team/context.d.ts",
+      "dist/factory/team/context.d.ts.map",
+      "dist/factory/team/context.js",
+      "dist/factory/team/context.js.map",
+      "dist/factory/team/decisions.d.ts",
+      "dist/factory/team/decisions.d.ts.map",
+      "dist/factory/team/decisions.js",
+      "dist/factory/team/decisions.js.map",
+      "dist/factory/team/reminders.d.ts",
+      "dist/factory/team/reminders.d.ts.map",
+      "dist/factory/team/reminders.js",
+      "dist/factory/team/reminders.js.map",
+      "dist/factory/team/routing.d.ts",
+      "dist/factory/team/routing.d.ts.map",
+      "dist/factory/team/routing.js",
+      "dist/factory/team/routing.js.map",
       "dist/factory/triage/__tests__/rules.test.d.ts",
       "dist/factory/triage/__tests__/rules.test.d.ts.map",
       "dist/factory/triage/__tests__/rules.test.js",
@@ -7477,6 +7510,10 @@
       "dist/team/__tests__/resolved-routing-snapshot.test.d.ts.map",
       "dist/team/__tests__/resolved-routing-snapshot.test.js",
       "dist/team/__tests__/resolved-routing-snapshot.test.js.map",
+      "dist/team/__tests__/role-router.paths.test.d.ts",
+      "dist/team/__tests__/role-router.paths.test.d.ts.map",
+      "dist/team/__tests__/role-router.paths.test.js",
+      "dist/team/__tests__/role-router.paths.test.js.map",
       "dist/team/__tests__/role-router.test.d.ts",
       "dist/team/__tests__/role-router.test.d.ts.map",
       "dist/team/__tests__/role-router.test.js",
@@ -8886,6 +8923,7 @@
       "src/factory/run/__tests__/prompts.snapshot.json",
       "src/factory/run/__tests__/prompts.test.ts",
       "src/factory/run/prompts.ts",
+      "src/factory/team/__tests__/team-prompts.test.ts",
       "src/features/model-routing/prompts/haiku.ts",
       "src/features/model-routing/prompts/index.ts",
       "src/features/model-routing/prompts/opus.ts",
@@ -20798,6 +20836,26 @@
         "path": "dist/factory/__tests__/poll-local.test.js.map"
       },
       {
+        "id": "dist/factory/__tests__/poll.reminders.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/poll.reminders.test.d.ts"
+      },
+      {
+        "id": "dist/factory/__tests__/poll.reminders.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/poll.reminders.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/__tests__/poll.reminders.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/poll.reminders.test.js"
+      },
+      {
+        "id": "dist/factory/__tests__/poll.reminders.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/poll.reminders.test.js.map"
+      },
+      {
         "id": "dist/factory/__tests__/poll.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/__tests__/poll.test.d.ts"
@@ -21738,26 +21796,6 @@
         "path": "dist/factory/run/__tests__/claims.test.js.map"
       },
       {
-        "id": "dist/factory/run/__tests__/coding-agent-lane.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/coding-agent-lane.test.d.ts"
-      },
-      {
-        "id": "dist/factory/run/__tests__/coding-agent-lane.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/coding-agent-lane.test.d.ts.map"
-      },
-      {
-        "id": "dist/factory/run/__tests__/coding-agent-lane.test.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/coding-agent-lane.test.js"
-      },
-      {
-        "id": "dist/factory/run/__tests__/coding-agent-lane.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/coding-agent-lane.test.js.map"
-      },
-      {
         "id": "dist/factory/run/__tests__/engine-ado-harness.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine-ado-harness.d.ts"
@@ -21936,26 +21974,6 @@
         "id": "dist/factory/run/__tests__/engine.ado.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.ado.test.js.map"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.coding-agent.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.coding-agent.test.d.ts"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.coding-agent.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.coding-agent.test.d.ts.map"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.coding-agent.test.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.coding-agent.test.js"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.coding-agent.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.coding-agent.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/engine.intake.test.d.ts",
@@ -22218,6 +22236,26 @@
         "path": "dist/factory/run/__tests__/engine.state.test.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/engine.team.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.team.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.team.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.team.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.team.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.team.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.team.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.team.test.js.map"
+      },
+      {
         "id": "dist/factory/run/__tests__/engine.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.test.d.ts"
@@ -22236,26 +22274,6 @@
         "id": "dist/factory/run/__tests__/engine.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.test.js.map"
-      },
-      {
-        "id": "dist/factory/run/__tests__/fake-coding-agent.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/fake-coding-agent.d.ts"
-      },
-      {
-        "id": "dist/factory/run/__tests__/fake-coding-agent.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/fake-coding-agent.d.ts.map"
-      },
-      {
-        "id": "dist/factory/run/__tests__/fake-coding-agent.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/fake-coding-agent.js"
-      },
-      {
-        "id": "dist/factory/run/__tests__/fake-coding-agent.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/fake-coding-agent.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/fake-lanes.d.ts",
@@ -22676,26 +22694,6 @@
         "id": "dist/factory/run/clean.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/clean.js.map"
-      },
-      {
-        "id": "dist/factory/run/coding-agent-lane.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/coding-agent-lane.d.ts"
-      },
-      {
-        "id": "dist/factory/run/coding-agent-lane.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/coding-agent-lane.d.ts.map"
-      },
-      {
-        "id": "dist/factory/run/coding-agent-lane.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/coding-agent-lane.js"
-      },
-      {
-        "id": "dist/factory/run/coding-agent-lane.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/coding-agent-lane.js.map"
       },
       {
         "id": "dist/factory/run/engine.d.ts",
@@ -23436,6 +23434,206 @@
         "id": "dist/factory/status.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/status.js.map"
+      },
+      {
+        "id": "dist/factory/team/__tests__/context.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/context.test.d.ts"
+      },
+      {
+        "id": "dist/factory/team/__tests__/context.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/context.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/team/__tests__/context.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/context.test.js"
+      },
+      {
+        "id": "dist/factory/team/__tests__/context.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/context.test.js.map"
+      },
+      {
+        "id": "dist/factory/team/__tests__/decisions.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/decisions.test.d.ts"
+      },
+      {
+        "id": "dist/factory/team/__tests__/decisions.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/decisions.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/team/__tests__/decisions.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/decisions.test.js"
+      },
+      {
+        "id": "dist/factory/team/__tests__/decisions.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/decisions.test.js.map"
+      },
+      {
+        "id": "dist/factory/team/__tests__/reminders.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/reminders.test.d.ts"
+      },
+      {
+        "id": "dist/factory/team/__tests__/reminders.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/reminders.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/team/__tests__/reminders.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/reminders.test.js"
+      },
+      {
+        "id": "dist/factory/team/__tests__/reminders.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/reminders.test.js.map"
+      },
+      {
+        "id": "dist/factory/team/__tests__/routing.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/routing.test.d.ts"
+      },
+      {
+        "id": "dist/factory/team/__tests__/routing.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/routing.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/team/__tests__/routing.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/routing.test.js"
+      },
+      {
+        "id": "dist/factory/team/__tests__/routing.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/routing.test.js.map"
+      },
+      {
+        "id": "dist/factory/team/__tests__/seeds.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/seeds.test.d.ts"
+      },
+      {
+        "id": "dist/factory/team/__tests__/seeds.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/seeds.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/team/__tests__/seeds.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/seeds.test.js"
+      },
+      {
+        "id": "dist/factory/team/__tests__/seeds.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/seeds.test.js.map"
+      },
+      {
+        "id": "dist/factory/team/__tests__/team-prompts.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/team-prompts.test.d.ts"
+      },
+      {
+        "id": "dist/factory/team/__tests__/team-prompts.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/team-prompts.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/team/__tests__/team-prompts.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/team-prompts.test.js"
+      },
+      {
+        "id": "dist/factory/team/__tests__/team-prompts.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/__tests__/team-prompts.test.js.map"
+      },
+      {
+        "id": "dist/factory/team/context.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/context.d.ts"
+      },
+      {
+        "id": "dist/factory/team/context.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/context.d.ts.map"
+      },
+      {
+        "id": "dist/factory/team/context.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/context.js"
+      },
+      {
+        "id": "dist/factory/team/context.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/context.js.map"
+      },
+      {
+        "id": "dist/factory/team/decisions.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/decisions.d.ts"
+      },
+      {
+        "id": "dist/factory/team/decisions.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/decisions.d.ts.map"
+      },
+      {
+        "id": "dist/factory/team/decisions.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/decisions.js"
+      },
+      {
+        "id": "dist/factory/team/decisions.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/decisions.js.map"
+      },
+      {
+        "id": "dist/factory/team/reminders.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/reminders.d.ts"
+      },
+      {
+        "id": "dist/factory/team/reminders.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/reminders.d.ts.map"
+      },
+      {
+        "id": "dist/factory/team/reminders.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/reminders.js"
+      },
+      {
+        "id": "dist/factory/team/reminders.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/reminders.js.map"
+      },
+      {
+        "id": "dist/factory/team/routing.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/routing.d.ts"
+      },
+      {
+        "id": "dist/factory/team/routing.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/routing.d.ts.map"
+      },
+      {
+        "id": "dist/factory/team/routing.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/routing.js"
+      },
+      {
+        "id": "dist/factory/team/routing.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/team/routing.js.map"
       },
       {
         "id": "dist/factory/triage/__tests__/rules.test.d.ts",
@@ -42348,6 +42546,26 @@
         "path": "dist/team/__tests__/resolved-routing-snapshot.test.js.map"
       },
       {
+        "id": "dist/team/__tests__/role-router.paths.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/role-router.paths.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/role-router.paths.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/role-router.paths.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/role-router.paths.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/role-router.paths.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/role-router.paths.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/role-router.paths.test.js.map"
+      },
+      {
         "id": "dist/team/__tests__/role-router.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/role-router.test.d.ts"
@@ -54703,6 +54921,11 @@
         "path": "src/factory/__tests__/poll-local.test.ts"
       },
       {
+        "id": "src/factory/__tests__/poll.reminders.test.ts",
+        "kind": "src",
+        "path": "src/factory/__tests__/poll.reminders.test.ts"
+      },
+      {
         "id": "src/factory/__tests__/poll.test.ts",
         "kind": "src",
         "path": "src/factory/__tests__/poll.test.ts"
@@ -55048,11 +55271,6 @@
         "path": "src/factory/run/__tests__/claims.test.ts"
       },
       {
-        "id": "src/factory/run/__tests__/coding-agent-lane.test.ts",
-        "kind": "src",
-        "path": "src/factory/run/__tests__/coding-agent-lane.test.ts"
-      },
-      {
         "id": "src/factory/run/__tests__/engine-ado-harness.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine-ado-harness.ts"
@@ -55096,11 +55314,6 @@
         "id": "src/factory/run/__tests__/engine.ado.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.ado.test.ts"
-      },
-      {
-        "id": "src/factory/run/__tests__/engine.coding-agent.test.ts",
-        "kind": "src",
-        "path": "src/factory/run/__tests__/engine.coding-agent.test.ts"
       },
       {
         "id": "src/factory/run/__tests__/engine.intake.test.ts",
@@ -55168,14 +55381,14 @@
         "path": "src/factory/run/__tests__/engine.state.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/engine.team.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.team.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/engine.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.test.ts"
-      },
-      {
-        "id": "src/factory/run/__tests__/fake-coding-agent.ts",
-        "kind": "src",
-        "path": "src/factory/run/__tests__/fake-coding-agent.ts"
       },
       {
         "id": "src/factory/run/__tests__/fake-lanes.ts",
@@ -55286,11 +55499,6 @@
         "id": "src/factory/run/clean.ts",
         "kind": "src",
         "path": "src/factory/run/clean.ts"
-      },
-      {
-        "id": "src/factory/run/coding-agent-lane.ts",
-        "kind": "src",
-        "path": "src/factory/run/coding-agent-lane.ts"
       },
       {
         "id": "src/factory/run/engine.ts",
@@ -55531,6 +55739,56 @@
         "id": "src/factory/status.ts",
         "kind": "src",
         "path": "src/factory/status.ts"
+      },
+      {
+        "id": "src/factory/team/__tests__/context.test.ts",
+        "kind": "src",
+        "path": "src/factory/team/__tests__/context.test.ts"
+      },
+      {
+        "id": "src/factory/team/__tests__/decisions.test.ts",
+        "kind": "src",
+        "path": "src/factory/team/__tests__/decisions.test.ts"
+      },
+      {
+        "id": "src/factory/team/__tests__/reminders.test.ts",
+        "kind": "src",
+        "path": "src/factory/team/__tests__/reminders.test.ts"
+      },
+      {
+        "id": "src/factory/team/__tests__/routing.test.ts",
+        "kind": "src",
+        "path": "src/factory/team/__tests__/routing.test.ts"
+      },
+      {
+        "id": "src/factory/team/__tests__/seeds.test.ts",
+        "kind": "src",
+        "path": "src/factory/team/__tests__/seeds.test.ts"
+      },
+      {
+        "id": "src/factory/team/__tests__/team-prompts.test.ts",
+        "kind": "src",
+        "path": "src/factory/team/__tests__/team-prompts.test.ts"
+      },
+      {
+        "id": "src/factory/team/context.ts",
+        "kind": "src",
+        "path": "src/factory/team/context.ts"
+      },
+      {
+        "id": "src/factory/team/decisions.ts",
+        "kind": "src",
+        "path": "src/factory/team/decisions.ts"
+      },
+      {
+        "id": "src/factory/team/reminders.ts",
+        "kind": "src",
+        "path": "src/factory/team/reminders.ts"
+      },
+      {
+        "id": "src/factory/team/routing.ts",
+        "kind": "src",
+        "path": "src/factory/team/routing.ts"
       },
       {
         "id": "src/factory/triage/__tests__/rules.test.ts",
@@ -60661,6 +60919,11 @@
         "id": "src/team/__tests__/resolved-routing-snapshot.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/resolved-routing-snapshot.test.ts"
+      },
+      {
+        "id": "src/team/__tests__/role-router.paths.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/role-router.paths.test.ts"
       },
       {
         "id": "src/team/__tests__/role-router.test.ts",
@@ -83650,6 +83913,66 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/__tests__/poll.reminders.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.reminders.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.reminders.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.reminders.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.reminders.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.reminders.test.ts",
+        "to": "src/factory/poll.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.reminders.test.ts",
+        "to": "src/factory/poll.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.reminders.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.reminders.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.reminders.test.ts",
+        "to": "src/factory/team/reminders.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.reminders.test.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.reminders.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/factory/__tests__/poll.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -86321,6 +86644,21 @@
       },
       {
         "from": "src/factory/poll.ts",
+        "to": "src/factory/team/context.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/factory/team/reminders.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/factory/team/reminders.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
         "to": "src/forge/ado/az-binary.ts",
         "kind": "type-imports"
       },
@@ -86357,6 +86695,11 @@
       {
         "from": "src/factory/poll.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/ship/config.ts",
         "kind": "imports"
       },
       {
@@ -86556,71 +86899,6 @@
       },
       {
         "from": "src/factory/run/__tests__/claims.test.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
-        "to": "src/factory/run/__tests__/fake-coding-agent.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
-        "to": "src/factory/run/coding-agent-lane.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
-        "to": "src/factory/run/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
-        "to": "src/forge/github/coding-agent.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
-        "to": "src/forge/github/coding-agent.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
-        "to": "src/lib/file-lock.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
       },
@@ -87177,71 +87455,6 @@
       {
         "from": "src/factory/run/__tests__/engine.ado.test.ts",
         "to": "src/ship/state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
-        "to": "src/__tests__/helpers/platform.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
-        "to": "src/budget/ledger.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
-        "to": "src/factory/run/__tests__/engine-harness.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
-        "to": "src/factory/run/__tests__/fake-coding-agent.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
-        "to": "src/factory/run/coding-agent-lane.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
-        "to": "src/factory/run/state.ts",
         "kind": "imports"
       },
       {
@@ -87890,6 +88103,46 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/factory/run/__tests__/engine.team.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.team.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.team.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.team.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.team.test.ts",
+        "to": "src/factory/run/__tests__/engine-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.team.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.team.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.team.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/__tests__/engine.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -87933,36 +88186,6 @@
         "from": "src/factory/run/__tests__/engine.test.ts",
         "to": "src/ship/state.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/fake-coding-agent.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/fake-coding-agent.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/fake-coding-agent.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/fake-coding-agent.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/fake-coding-agent.ts",
-        "to": "src/forge/github/coding-agent.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/fake-coding-agent.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/fake-lanes.ts",
@@ -88945,56 +89168,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/factory/run/coding-agent-lane.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/coding-agent-lane.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/coding-agent-lane.ts",
-        "to": "src/budget/ledger.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/coding-agent-lane.ts",
-        "to": "src/config/project-config-path.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/coding-agent-lane.ts",
-        "to": "src/forge/github/coding-agent.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/coding-agent-lane.ts",
-        "to": "src/forge/github/coding-agent.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/coding-agent-lane.ts",
-        "to": "src/lib/atomic-write.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/coding-agent-lane.ts",
-        "to": "src/lib/file-lock.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/coding-agent-lane.ts",
-        "to": "src/ship/config.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/coding-agent-lane.ts",
-        "to": "src/utils/jsonc.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/factory/run/engine.ts",
         "to": "external:crypto",
         "kind": "imports"
@@ -89051,23 +89224,8 @@
       },
       {
         "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/coding-agent-lane.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/coding-agent-lane.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/exec.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/exec.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/engine.ts",
@@ -89206,6 +89364,16 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/factory/team/context.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/team/context.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/forge/ado/az-binary.ts",
         "kind": "imports"
       },
@@ -89227,16 +89395,6 @@
       {
         "from": "src/factory/run/engine.ts",
         "to": "src/forge/ado/index.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/forge/github/coding-agent.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/forge/github/coding-agent.ts",
         "kind": "type-imports"
       },
       {
@@ -89348,16 +89506,6 @@
         "from": "src/factory/run/exec.ts",
         "to": "external:path",
         "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/exec.ts",
-        "to": "src/factory/run/coding-agent-lane.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/exec.ts",
-        "to": "src/factory/run/coding-agent-lane.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/exec.ts",
@@ -89851,6 +89999,16 @@
       },
       {
         "from": "src/factory/run/prompts.ts",
+        "to": "src/factory/team/context.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/prompts.ts",
+        "to": "src/forge/review-feedback.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/prompts.ts",
         "to": "src/forge/terms.ts",
         "kind": "imports"
       },
@@ -90002,16 +90160,6 @@
       {
         "from": "src/factory/run/state.ts",
         "to": "src/copilot-run/sandbox.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/state.ts",
-        "to": "src/factory/run/coding-agent-lane.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/state.ts",
-        "to": "src/factory/run/coding-agent-lane.ts",
         "kind": "type-imports"
       },
       {
@@ -90717,6 +90865,226 @@
       {
         "from": "src/factory/status.ts",
         "to": "src/hooks/session-end/chain-enqueuer.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/context.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/context.test.ts",
+        "to": "src/factory/team/context.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/context.test.ts",
+        "to": "src/factory/team/context.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/decisions.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/decisions.test.ts",
+        "to": "src/factory/team/decisions.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/reminders.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/reminders.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/reminders.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/reminders.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/reminders.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/reminders.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/reminders.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/reminders.test.ts",
+        "to": "src/factory/team/context.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/reminders.test.ts",
+        "to": "src/factory/team/reminders.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/routing.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/routing.test.ts",
+        "to": "src/factory/team/routing.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/seeds.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/seeds.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/seeds.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/seeds.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/seeds.test.ts",
+        "to": "src/factory/setup/write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/seeds.test.ts",
+        "to": "src/factory/team/decisions.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/seeds.test.ts",
+        "to": "src/factory/team/routing.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/team-prompts.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/team-prompts.test.ts",
+        "to": "src/factory/run/prompts.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/team-prompts.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/team-prompts.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/team/__tests__/team-prompts.test.ts",
+        "to": "src/factory/team/context.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/team/context.ts",
+        "to": "src/factory/team/decisions.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/context.ts",
+        "to": "src/factory/team/routing.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/context.ts",
+        "to": "src/factory/team/routing.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/team/decisions.ts",
+        "to": "src/forge/review-feedback.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/reminders.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/reminders.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/reminders.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/reminders.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/team/reminders.ts",
+        "to": "src/factory/team/context.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/reminders.ts",
+        "to": "src/factory/team/context.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/team/reminders.ts",
+        "to": "src/factory/team/routing.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/reminders.ts",
+        "to": "src/forge/review-feedback.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/reminders.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/reminders.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/routing.ts",
+        "to": "src/forge/review-feedback.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/team/routing.ts",
+        "to": "src/team/role-router.ts",
         "kind": "imports"
       },
       {
@@ -92801,11 +93169,6 @@
       },
       {
         "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
-        "to": "src/factory/run/__tests__/fake-coding-agent.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
         "to": "src/factory/run/__tests__/fake-lanes.ts",
         "kind": "imports"
       },
@@ -92847,11 +93210,6 @@
       {
         "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
         "to": "src/forge/__tests__/recording-exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
-        "to": "src/forge/github/coding-agent.ts",
         "kind": "imports"
       },
       {
@@ -116620,6 +116978,16 @@
         "kind": "imports"
       },
       {
+        "from": "src/team/__tests__/role-router.paths.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/role-router.paths.test.ts",
+        "to": "src/team/role-router.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/team/__tests__/role-router.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -127111,12 +127479,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10689,
-      "edgeCount": 12916,
-      "importEdgeCount": 10628,
+      "nodeCount": 10734,
+      "edgeCount": 12937,
+      "importEdgeCount": 10648,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "7e6d67eecc27d81a0dacbe5959785bda916694b9e254f1ba64746e2c9a67a12b",
-  "manifestSha256": "c008c00ff750bd170ff4ff43225434308f39ba3974172a66cd31a613db679556"
+  "inventorySha256": "2d0d1009ebbe68e148db7c4d84285b41d7adeb77715f5306ab0ebfe8f4ef34e7",
+  "manifestSha256": "77df3d67ebefcdc608ae2d55b43dc1feeaa7d7e099ce164583ef5728f8d962b3"
 }
