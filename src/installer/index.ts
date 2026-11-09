@@ -2874,8 +2874,9 @@ export function install(options: InstallOptions = {}): InstallResult {
     // agents.<name>.model overrides into its native subagents.agents setting.
     if (!projectScoped) {
       try {
-        const { overrides, skipped } = resolveAgentModelOverrides(loadJsoncFile(getConfigPaths().user)?.agents);
-        for (const entry of skipped) log(`  Warning: agents.${entry} is not a known Copilot model or tier alias; not synced`);
+        const userConfig = loadJsoncFile(getConfigPaths().user);
+        const { overrides, skipped } = resolveAgentModelOverrides(userConfig?.agents, userConfig?.modelProfile);
+        for (const entry of skipped) log(`  Warning: ${entry.startsWith('modelProfile') ? '' : 'agents.'}${entry} is not a known Copilot model or tier alias${entry.startsWith('modelProfile') ? ' (use quality-first, balanced or economy)' : ''}; not synced`);
         const { written, error } = syncCopilotAgentModels(SETTINGS_FILE, overrides);
         if (error) log(`  Warning: per-agent model overrides not synced: ${error}`);
         if (written.length > 0) log(`  Synced ${written.length} per-agent model override(s) to settings.json subagents.agents`);
