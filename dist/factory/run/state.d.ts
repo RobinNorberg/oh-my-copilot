@@ -21,6 +21,7 @@ import type { CopilotRunSandboxState } from '../../copilot-run/sandbox.js';
 import type { ShipVerdict } from '../../ship/state.js';
 import { type ForgeKind, type ProgressStage } from '../../forge/types.js';
 import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
+import { type CodingAgentRunRecord } from './coding-agent-lane.js';
 export declare const FACTORY_PHASES: readonly ["intake", "plan", "implement", "publish", "review", "fix", "prepare", "conflict-fix", "gates", "ci-fix", "merge", "merged", "cancelled", "failed"];
 export type FactoryPhase = (typeof FACTORY_PHASES)[number];
 export declare const TERMINAL_FACTORY_PHASES: readonly FactoryPhase[];
@@ -242,6 +243,8 @@ export interface FactoryRunState {
         head: string;
         digest: string;
     };
+    /** The Copilot coding agent session of an issue run whose implementer is the agent (coding-agent-lane.ts); sealed, shape-checked on load. */
+    codingAgent?: CodingAgentRunRecord;
     /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */
     gateComments?: string[];
     /**

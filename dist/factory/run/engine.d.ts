@@ -150,6 +150,11 @@ export interface FactoryEngineOptions {
     forge?: FactoryForgeInput;
     /** The local forge's gate process (default: defaultLocalGateRunner, no shell); tests substitute it. */
     localGate?: LocalGateRunner;
+    /**
+     * The trusted user config the coding agent opt-in is read from (factory.run.implementer, factory.codingAgent.*);
+     * omitted = the user's own trusted config, read at the first implement step (tests pass one).
+     */
+    codingAgentUserConfig?: unknown;
 }
 export interface FactoryForgeInput {
     config: ResolvedForgeConfig;
@@ -182,7 +187,7 @@ export interface FactoryRunOutcome {
     mergeCommand?: string;
     /** --dry-run: what the run would do next. */
     plan?: {
-        next: FactoryPhase | 'awaiting-human';
+        next: FactoryPhase | 'awaiting-human' | 'coding-agent';
         laneMaxCredits: number;
         maxRunCredits?: number;
         planSource?: string;
