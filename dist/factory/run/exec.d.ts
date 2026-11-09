@@ -27,6 +27,12 @@
  *   assign of exactly the context's issue on exactly its base, and
  *   `gh pr close` of exactly its `pr` (the agent's own PR; the tracker never
  *   closes). Without that context both writes are refused.
+ * - Adopting the coding agent's PR (src/factory/run/coding-agent-lane.ts):
+ *   `git fetch --no-tags --refmap= origin refs/pull/<n>/head` (only
+ *   FETCH_HEAD moves), `git rev-parse --verify FETCH_HEAD^{commit}`,
+ *   `git ls-tree -r -z --full-tree <sha40>`, and the link comment
+ *   `gh pr comment <pr> --repo <HOST/OWNER/NAME> --body-file <f>` only with a
+ *   CodingAgentContext naming that `pr`, run with the guard's own copy of the body.
  * - Azure DevOps: `az devops invoke` on the routes.ts allowlist only, as the
  *   resolved az entry, for the run's forge repo (src/forge/ado/guard.ts).
  *   The work item create and the PATCH's item fields and links pass only with

@@ -55,6 +55,7 @@
 import { type Exec } from '../../ship/exec.js';
 import { type AzEntry } from '../../forge/ado/az-binary.js';
 import type { ForgeOptions, ResolvedForgeConfig } from '../../forge/types.js';
+import { type CodingAgentConfig } from './coding-agent-lane.js';
 import { type GateConfigLoader } from './prepare.js';
 import { type FactoryRunLimits } from './budget.js';
 import { type LocalGateRunner } from './local-gate.js';
@@ -150,6 +151,11 @@ export interface FactoryEngineOptions {
     forge?: FactoryForgeInput;
     /** The local forge's gate process (default: defaultLocalGateRunner, no shell); tests substitute it. */
     localGate?: LocalGateRunner;
+    /**
+     * The coding agent keys (factory.run.implementer, factory.codingAgent.*);
+     * omitted = loadCodingAgentConfig(root) at the first implement step.
+     */
+    codingAgent?: CodingAgentConfig;
 }
 export interface FactoryForgeInput {
     config: ResolvedForgeConfig;
