@@ -47,7 +47,9 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     crashDuringLane();
     const { lanes, done } = run([commitFile('a.ts'), review('approve')]);
     const out = await done;
-    expect(out.gate?.name).toBe('merge');
+    // The lost lane never reported its sandbox, so the merge read cannot vouch for it (PR #471 M-C).
+    expect(out.gate?.reason, out.message).toContain(`implement-1 (sandbox not recorded, network not recorded)`);
+    expect(out.gate?.name).toBe('human-review');
     const state = readFactoryState(h.root, ISSUE)!;
     expect(state.lanes[0].status).toBe('lost');
     expect(state.history.some((e) => /lost at resume/.test(e.note))).toBe(true);
@@ -103,7 +105,7 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
       procs.live.add(DEAD_CHILD.pid);
       const { lanes, done } = run([commitFile('a.ts'), review('approve')]);
       const out = await done;
-      expect(out.gate?.name).toBe('merge');
+      expect(out.gate?.reason, out.message).toContain('implement-1 (sandbox not recorded');
       expect(procs.killed).toEqual([DEAD_CHILD.pid]);
       const lane = readFactoryState(h.root, ISSUE)!.lanes[0];
       expect(lane.status).toBe('lost');
@@ -136,7 +138,7 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
       expect(procs.killed).toEqual([]);
       const { lanes, done } = run([commitFile('a.ts'), review('approve')]);
       const out = await done;
-      expect(out.gate?.name).toBe('merge');
+      expect(out.gate?.reason, out.message).toContain('implement-1 (sandbox not recorded');
       const lane = readFactoryState(h.root, ISSUE)!.lanes[0];
       expect(lane.status).toBe('lost');
       expect(lane.note).toMatch(/taken as the human's word that it stopped/);
