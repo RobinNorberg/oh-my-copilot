@@ -228,8 +228,18 @@ export interface FactoryRunState {
   mergeBounces?: number;
   /** The engine-owned prepare checkout's HEAD when the engine last left it. */
   checkoutHead?: string;
-  /** The last human feedback round consumed (sealed with the rest of the state). */
-  humanReview?: { seenAt: string; head: string; digest: string };
+  /**
+   * The last human feedback round consumed (sealed with the rest of the
+   * state): when, at which head, the digest of what the fix lane got, and
+   * the ids of the threads handed to it (at most MAX_HUMAN_THREAD_IDS).
+   */
+  humanReview?: { seenAt: string; head: string; digest: string; threadIds: string[] };
+  /**
+   * The head at which the human accepted, with `omg factory run
+   * --allow-unsandboxed-lanes`, that write lanes ran without the enforced
+   * sandbox (460-7); a new head parks again.
+   */
+  unsandboxedAck?: string;
   /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */
   gateComments?: string[];
   /**
@@ -460,13 +470,18 @@ function shapeProblem(s: Record<string, unknown>): string | null {
 // --- Human review fields (night 3 L2b): checked here, before the engine reads them -------------
 
 const HEX40 = /^[0-9a-f]{40}$/;
+/** Thread ids one human round may record: 100 review threads and 50 review bodies fit. */
+export const MAX_HUMAN_THREAD_IDS = 200;
+const THREAD_ID = (v: unknown): boolean => typeof v === 'string' && v.length > 0 && v.length <= 200;
 const FEEDBACK_FORGES: readonly unknown[] = ['github', 'azure-devops', 'local'];
 
-/** `humanReview` and every lane's `feedback`: absent, or exactly their shape. */
+/** `humanReview`, `unsandboxedAck` and every lane's `feedback`: absent, or exactly their shape. */
 function humanReviewShapeProblem(s: Record<string, unknown>): string | null {
   const h = s.humanReview as Record<string, unknown> | undefined;
   if (h !== undefined && (typeof h !== 'object' || h === null || Array.isArray(h) || !isStr(h.seenAt) || !isStr(h.head) || !HEX40.test(h.head)
-    || !isStr(h.digest) || !HEX64.test(h.digest) || Object.keys(h).some((k) => k !== 'seenAt' && k !== 'head' && k !== 'digest'))) return 'humanReview';
+    || !isStr(h.digest) || !HEX64.test(h.digest) || !Array.isArray(h.threadIds) || h.threadIds.length > MAX_HUMAN_THREAD_IDS || !h.threadIds.every(THREAD_ID)
+    || Object.keys(h).some((k) => k !== 'seenAt' && k !== 'head' && k !== 'digest' && k !== 'threadIds'))) return 'humanReview';
+  if (s.unsandboxedAck !== undefined && (!isStr(s.unsandboxedAck) || !HEX40.test(s.unsandboxedAck))) return 'unsandboxedAck';
   const lanes = s.lanes as Array<Record<string, unknown>>;
   if (!lanes.every((l) => {
     const f = l.feedback as Record<string, unknown> | undefined;

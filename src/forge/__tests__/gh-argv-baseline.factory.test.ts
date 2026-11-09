@@ -84,7 +84,7 @@ const MERGE_PARK = (key: string) => [MERGE_VIEW, CHECKS, runList('<head>'), VIEW
 
 /** The review-feedback query as literal text: any change to REVIEW_FEEDBACK_QUERY must break this test (the query is part of the pinned gh argv). */
 const PINNED_REVIEW_FEEDBACK_QUERY =
-  'query($owner:String!,$name:String!,$number:Int!){viewer{login} repository(owner:$owner,name:$name){viewerPermission collaborators(first:100){pageInfo{hasNextPage} edges{permission node{login}}} pullRequest(number:$number){headRefOid latestReviews(first:50){pageInfo{hasNextPage} nodes{id state submittedAt body author{__typename login} commit{oid}}} reviewRequests(first:20){pageInfo{hasNextPage} nodes{requestedReviewer{__typename ... on User{login} ... on Bot{login} ... on Mannequin{login} ... on Team{slug}}}} reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated comments(first:20){pageInfo{hasNextPage} nodes{body path line originalLine createdAt author{__typename login}}}}}}}}';
+  'query($owner:String!,$name:String!,$number:Int!){viewer{login} repository(owner:$owner,name:$name){viewerPermission collaborators(first:100){pageInfo{hasNextPage} edges{permission node{login}}} pullRequest(number:$number){headRefOid latestReviews(first:50){pageInfo{hasNextPage} nodes{id state submittedAt body author{__typename login} commit{oid}}} latestOpinionatedReviews(first:50){pageInfo{hasNextPage} nodes{state submittedAt body author{__typename login} commit{oid}}} reviewRequests(first:20){pageInfo{hasNextPage} nodes{requestedReviewer{__typename ... on User{login} ... on Bot{login} ... on Mannequin{login} ... on Team{slug}}}} reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated comments(first:20){pageInfo{hasNextPage} nodes{body path line originalLine createdAt author{__typename login}}}}}}}}';
 
 describe('gh argv baseline: factory engine (issue run)', () => {
   it('happy path to the merge park: intake, publish, review, prepare, gates, merge gate', async () => {
@@ -218,7 +218,7 @@ describe('gh argv baseline: the human review read (night 3 goal 2; the engine ca
         viewer: { login: 't' },
         repository: {
           viewerPermission: 'ADMIN', collaborators: { pageInfo: done, edges: [] },
-          pullRequest: { headRefOid: head, latestReviews: { pageInfo: done, nodes: [] }, reviewRequests: { pageInfo: done, nodes: [] }, reviewThreads: { pageInfo: done, nodes: [] } },
+          pullRequest: { headRefOid: head, latestReviews: { pageInfo: done, nodes: [] }, latestOpinionatedReviews: { pageInfo: done, nodes: [] }, reviewRequests: { pageInfo: done, nodes: [] }, reviewThreads: { pageInfo: done, nodes: [] } },
         },
       },
     });

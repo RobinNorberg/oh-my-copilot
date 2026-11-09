@@ -341,8 +341,9 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
     .option('--parent <spec>', 'With --next: pick among the children of this spec item instead of factory.intake.source')
     .option('--dry-run', 'Resolve the issue and plan and print the next step; no state, lanes or pushes')
     .option('--allow-gate-change', 'Local forge: accept the one change to the local gate\'s definition (package.json script, package-manager config or gate file) that parked the run at gate-definition-changed; a later change parks again')
+    .option('--allow-unsandboxed-lanes', 'Accept, for the parked head only, that write lanes ran without the enforced sandbox (the run parked at human-review for it): you checked the threads and reviews of the PR yourself; a new head parks again')
     .option('--json', 'JSON output')
-    .action((issueRaw: string | undefined, o: { next?: boolean; parent?: string; dryRun?: boolean; allowGateChange?: boolean; json?: boolean }) =>
+    .action((issueRaw: string | undefined, o: { next?: boolean; parent?: string; dryRun?: boolean; allowGateChange?: boolean; allowUnsandboxedLanes?: boolean; json?: boolean }) =>
       factoryGuarded(Boolean(o.json), async () => {
         if (o.next && issueRaw !== undefined) throw new FactoryUsageError('--next takes no issue: it picks the next runnable item');
         if (o.parent !== undefined && !o.next) throw new FactoryUsageError('--parent applies to --next');
@@ -412,6 +413,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
                 root, issue: issue!, exec: deps.exec, limits, base, dryRun: Boolean(o.dryRun), claimRepo,
                 ...(held ? { repoOwner: held } : {}),
                 ...(o.allowGateChange ? { allowGateChange: true } : {}),
+                ...(o.allowUnsandboxedLanes ? { allowUnsandboxedLanes: true } : {}),
                 lanes: o.dryRun ? NO_LANES : deps.lanes(root),
                 ...(forge ? { forge } : {}),
                 ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}),

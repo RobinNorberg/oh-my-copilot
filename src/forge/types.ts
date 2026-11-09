@@ -215,9 +215,14 @@ export function shipyardKeys(body: string): Array<[number, string]> {
 export interface ForgeReviewFeedback {
   /** Latest review per human reviewer (GitHub latestReviews; ADO reviewer votes; local playback). */
   decisions: Array<{ author: string; state: 'approved' | 'changes-requested' | 'commented' | 'dismissed' | 'pending'; at: string; head?: string }>;
-  /** Open human threads only: GitHub unresolved and not outdated; ADO active/pending text threads not byFactory; local playback notes. */
-  threads: Array<{ id: string; author: string; body: string; file?: string; line?: number; at: string }>;
-  /** Reviewers requested but not yet submitted. */
+  /**
+   * Open human threads: GitHub unresolved (an outdated one, whose lines a
+   * later push changed, carries `outdated: true`; resolved ones are dropped)
+   * plus a review body submitted on the head (id `review:<id>`); ADO
+   * active/pending text threads not byFactory; local playback notes.
+   */
+  threads: Array<{ id: string; author: string; body: string; file?: string; line?: number; at: string; outdated?: true }>;
+  /** Reviewers requested but not yet submitted (GitHub: a login, `<slug>[bot]` for a bot, `team:<slug>` for a team). */
   pendingReviewers: string[];
   /** Authors whose input was dropped (not trusted), for poll and status output. */
   ignored: string[];
