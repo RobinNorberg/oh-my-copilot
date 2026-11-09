@@ -59512,15 +59512,74 @@ var init_model_contract = __esm({
   }
 });
 
+// src/features/model-routing/profiles.ts
+function parseModelProfile(value) {
+  return typeof value === "string" && MODEL_PROFILES.includes(value) ? value : void 0;
+}
+function profileAgentModels(profile) {
+  const tiers = PROFILE_TIERS[profile];
+  const out = {};
+  for (const [agent, tier] of Object.entries(AGENT_TIERS)) {
+    const model = tiers[tier];
+    if (model) out[agent] = model;
+  }
+  return out;
+}
+var MODEL_PROFILES, AGENT_TIERS, PROFILE_TIERS;
+var init_profiles = __esm({
+  "src/features/model-routing/profiles.ts"() {
+    "use strict";
+    MODEL_PROFILES = ["quality-first", "balanced", "economy"];
+    AGENT_TIERS = {
+      analyst: "high",
+      planner: "high",
+      architect: "high",
+      critic: "high",
+      "code-reviewer": "high",
+      "code-simplifier": "high",
+      "devils-advocate": "high",
+      debugger: "medium",
+      executor: "medium",
+      verifier: "medium",
+      "security-reviewer": "high",
+      "test-engineer": "medium",
+      designer: "medium",
+      "qa-tester": "medium",
+      scientist: "medium",
+      tracer: "medium",
+      "git-master": "medium",
+      "document-specialist": "medium",
+      explore: "low",
+      writer: "low"
+    };
+    PROFILE_TIERS = {
+      "quality-first": { high: "opus", medium: "opus", low: "sonnet" },
+      balanced: {},
+      economy: { high: "sonnet", medium: "haiku", low: "haiku" }
+    };
+  }
+});
+
 // src/installer/copilot-agent-models.ts
 function isRecord3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-function resolveAgentModelOverrides(agents) {
+function resolveAgentModelPlan(agents, modelProfile) {
   const overrides = {};
+  const profileEntries = {};
   const skipped = [];
+  const profile = parseModelProfile(modelProfile);
+  const profileProblem = modelProfile !== void 0 && !profile ? `modelProfile ${JSON.stringify(modelProfile)} is not quality-first, balanced or economy; no profile applied` : void 0;
+  if (profile) {
+    for (const [name, tier] of Object.entries(profileAgentModels(profile))) {
+      overrides[name] = toCopilotModelId(tier);
+      profileEntries[name] = overrides[name];
+    }
+  }
   for (const [key, value] of Object.entries(agents ?? {})) {
     if (key === "omc" || value?.model === void 0) continue;
+    delete overrides[toAgentName(key)];
+    delete profileEntries[toAgentName(key)];
     if (typeof value.model !== "string") {
       skipped.push(`${key}: ${JSON.stringify(value.model)}`);
       continue;
@@ -59531,7 +59590,7 @@ function resolveAgentModelOverrides(agents) {
     if (KNOWN_MODELS.has(resolved)) overrides[toAgentName(key)] = resolved;
     else skipped.push(`${key}: "${model}"`);
   }
-  return { overrides, skipped };
+  return { overrides, skipped, profileEntries, profileProblem };
 }
 function mergeSubagentModels(settings, overrides) {
   const names = Object.keys(overrides);
@@ -59549,22 +59608,61 @@ function mergeSubagentModels(settings, overrides) {
   if (!changed) return { settings, changed };
   return { settings: { ...settings, subagents: { ...subagents, agents } }, changed };
 }
-function syncCopilotAgentModels(settingsFile, overrides) {
-  if (Object.keys(overrides).length === 0) return { written: [] };
+function readProfileRecord(recordFile) {
+  try {
+    const parsed2 = JSON.parse((0, import_fs56.readFileSync)(recordFile, "utf-8"));
+    const entries = isRecord3(parsed2) && isRecord3(parsed2.entries) ? parsed2.entries : {};
+    return Object.fromEntries(Object.entries(entries).filter(([k, v]) => Object.hasOwn(AGENT_TIERS, k) && typeof v === "string" && v !== ""));
+  } catch {
+    return {};
+  }
+}
+function modelOf(settings, name) {
+  const agents = isRecord3(settings.subagents) && isRecord3(settings.subagents.agents) ? settings.subagents.agents : void 0;
+  const entry2 = agents?.[`${COPILOT_PLUGIN_AGENT_PREFIX}${name}`];
+  return isRecord3(entry2) ? entry2.model : void 0;
+}
+function syncCopilotAgentModels(settingsFile, overrides, profileEntries = {}, recordFile) {
+  const recorded = recordFile ? readProfileRecord(recordFile) : {};
+  if (Object.keys(overrides).length === 0 && Object.keys(recorded).length === 0) return { written: [], removed: [] };
   let current = {};
   if ((0, import_fs56.existsSync)(settingsFile)) {
     try {
       current = JSON.parse((0, import_fs56.readFileSync)(settingsFile, "utf-8"));
     } catch {
-      return { written: [], error: `${settingsFile} is not valid JSON; left untouched` };
+      return { written: [], removed: [], error: `${settingsFile} is not valid JSON; left untouched` };
     }
-    if (!isRecord3(current)) return { written: [], error: `${settingsFile} is not a JSON object; left untouched` };
+    if (!isRecord3(current)) return { written: [], removed: [], error: `${settingsFile} is not a JSON object; left untouched` };
   }
-  const { settings, changed } = mergeSubagentModels(current, overrides);
-  if (!changed) return { written: [] };
-  if ((0, import_fs56.existsSync)(settingsFile)) (0, import_fs56.copyFileSync)(settingsFile, `${settingsFile}.bak`);
-  atomicWriteJsonSync(settingsFile, settings);
-  return { written: Object.keys(overrides) };
+  const base = current;
+  const removed = Object.keys(recorded).filter((name) => !(name in overrides) && modelOf(base, name) === recorded[name]);
+  let afterRemoval = base;
+  if (removed.length > 0) {
+    const subagents = { ...base.subagents };
+    const agents = { ...subagents.agents };
+    for (const name of removed) {
+      const id = `${COPILOT_PLUGIN_AGENT_PREFIX}${name}`;
+      const { model: _model, ...rest } = agents[id];
+      if (Object.keys(rest).length > 0) agents[id] = rest;
+      else delete agents[id];
+    }
+    afterRemoval = { ...base, subagents: { ...subagents, agents } };
+  }
+  const { settings, changed } = mergeSubagentModels(afterRemoval, overrides);
+  const nextRecord = {};
+  for (const [name, value] of Object.entries(profileEntries)) {
+    const current2 = modelOf(base, name);
+    if (current2 !== value || recorded[name] === value) nextRecord[name] = value;
+  }
+  if (changed || removed.length > 0) {
+    if ((0, import_fs56.existsSync)(settingsFile)) (0, import_fs56.copyFileSync)(settingsFile, `${settingsFile}.bak`);
+    atomicWriteJsonSync(settingsFile, settings);
+  }
+  if (recordFile && JSON.stringify(nextRecord) !== JSON.stringify(recorded)) {
+    atomicWriteJsonSync(recordFile, { entries: nextRecord });
+  }
+  if (!changed && removed.length === 0) return { written: [], removed };
+  return { written: changed ? Object.keys(overrides) : [], removed };
 }
 var import_fs56, COPILOT_PLUGIN_AGENT_PREFIX, KNOWN_MODELS, toAgentName;
 var init_copilot_agent_models = __esm({
@@ -59573,6 +59671,7 @@ var init_copilot_agent_models = __esm({
     import_fs56 = require("fs");
     init_atomic_write();
     init_model_contract();
+    init_profiles();
     init_copilot_models();
     COPILOT_PLUGIN_AGENT_PREFIX = "oh-my-copilot:";
     KNOWN_MODELS = new Set(copilot_models_default.knownModels);
@@ -61511,10 +61610,13 @@ function install(options = {}) {
     }
     if (!projectScoped) {
       try {
-        const { overrides, skipped } = resolveAgentModelOverrides(loadJsoncFile(getConfigPaths().user)?.agents);
+        const userConfig = loadJsoncFile(getConfigPaths().user);
+        const { overrides, skipped, profileEntries, profileProblem } = resolveAgentModelPlan(userConfig?.agents, userConfig?.modelProfile);
+        if (profileProblem) log3(`  Warning: ${profileProblem}`);
         for (const entry2 of skipped) log3(`  Warning: agents.${entry2} is not a known Copilot model or tier alias; not synced`);
-        const { written, error: error2 } = syncCopilotAgentModels(SETTINGS_FILE, overrides);
+        const { written, removed, error: error2 } = syncCopilotAgentModels(SETTINGS_FILE, overrides, profileEntries, (0, import_path72.join)(COPILOT_HOME, ".omg-profile-models.json"));
         if (error2) log3(`  Warning: per-agent model overrides not synced: ${error2}`);
+        if (removed.length > 0) log3(`  Removed ${removed.length} per-agent model override(s) the model profile wrote earlier`);
         if (written.length > 0) log3(`  Synced ${written.length} per-agent model override(s) to settings.json subagents.agents`);
       } catch {
         log3("  Warning: Could not sync per-agent model overrides (non-fatal)");
@@ -72053,6 +72155,11 @@ function updateLedger(path30, fn, opts = {}) {
   }, { timeoutMs: opts.timeoutMs ?? 1e3 });
 }
 function mergeRecord(existing, next) {
+  const merged = mergeUsage(existing, next);
+  const kept = sanitizeTag(existing?.tag);
+  return kept && !merged.tag ? { ...merged, tag: kept } : merged;
+}
+function mergeUsage(existing, next) {
   if (!existing) return next;
   if (existing.source === "measured" && next.source === "estimated") {
     return next.scan ? { ...existing, scan: next.scan } : existing;
@@ -72086,7 +72193,9 @@ function applyBaseline(usage, baseline) {
 function putRecord(ledger, key, usage, team) {
   if (!SAFE_KEY.test(key) || team !== void 0 && !SAFE_KEY.test(team)) return false;
   if (usage.scan && usage.scan.since !== scanSince(ledger)) return false;
-  const net2 = applyBaseline(usage, ledger.baselines?.[baselineKey(key, team)]);
+  const { tag: rawTag, ...untagged } = usage;
+  const tag = sanitizeTag(rawTag);
+  const net2 = applyBaseline(tag ? { ...untagged, tag } : untagged, ledger.baselines?.[baselineKey(key, team)]);
   if (team) {
     const bucket = ledger.teams[team] ??= {};
     bucket[key] = mergeRecord(bucket[key], net2);
@@ -72119,6 +72228,30 @@ function resetLedger(ledger, now2 = /* @__PURE__ */ new Date()) {
   delete ledger.baselines;
   Object.assign(ledger, emptyLedger(now2), { resetAt: now2.toISOString() }, Object.keys(baselines).length ? { baselines } : {});
   return before;
+}
+function sanitizeTag(raw) {
+  if (!isObject3(raw) || !TAG_KINDS.includes(raw.kind)) return void 0;
+  const tag = { kind: raw.kind };
+  if (typeof raw.role === "string" && TAG_TEXT.test(raw.role)) tag.role = raw.role;
+  if (typeof raw.run === "string" && TAG_TEXT.test(raw.run)) tag.run = raw.run;
+  return tag;
+}
+function ledgerByTag(ledger, by) {
+  const groups = /* @__PURE__ */ new Map();
+  const add = (r) => {
+    if (!isObject3(r)) return;
+    const tag = sanitizeTag(r.tag);
+    const key = (by === "kind" ? tag?.kind : by === "run" ? tag?.run : tag?.role ?? tag?.kind) ?? UNTAGGED;
+    const g = groups.get(key) ?? { key, credits: 0, premiumRequests: 0, records: 0, estimatedRecords: 0 };
+    g.credits += num(r.credits);
+    g.premiumRequests += num(r.premiumRequests);
+    g.records += 1;
+    if (r.source !== "measured") g.estimatedRecords += 1;
+    groups.set(key, g);
+  };
+  for (const r of Object.values(ledger.sessions)) add(r);
+  for (const bucket of Object.values(ledger.teams)) if (isObject3(bucket)) for (const r of Object.values(bucket)) add(r);
+  return [...groups.values()].sort((a, b) => b.credits - a.credits || a.key.localeCompare(b.key));
 }
 function ledgerTotals(ledger) {
   const totals = { premiumRequests: 0, credits: 0, sessions: 0, estimatedRecords: 0, teams: {} };
@@ -72153,7 +72286,7 @@ function copilotEventsPath(sessionId) {
 function num(v) {
   return typeof v === "number" && Number.isFinite(v) ? v : 0;
 }
-var import_node_fs10, import_node_os2, import_node_path14, NANO_AIU_PER_CREDIT, ESTIMATED_CREDITS_PER_PROMPT, MAX_SCAN_BYTES, TAIL_BYTES, SAFE_KEY, isObject3, EPOCH, baselineKey;
+var import_node_fs10, import_node_os2, import_node_path14, NANO_AIU_PER_CREDIT, ESTIMATED_CREDITS_PER_PROMPT, MAX_SCAN_BYTES, TAIL_BYTES, SAFE_KEY, isObject3, EPOCH, baselineKey, TAG_KINDS, TAG_TEXT, USAGE_GROUP_BYS, UNTAGGED;
 var init_ledger = __esm({
   "src/budget/ledger.ts"() {
     "use strict";
@@ -72172,6 +72305,10 @@ var init_ledger = __esm({
     isObject3 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
     EPOCH = (/* @__PURE__ */ new Date(0)).toISOString();
     baselineKey = (key, team) => team ? `t:${team}/${key}` : `s:${key}`;
+    TAG_KINDS = ["factory-lane", "team-worker", "session"];
+    TAG_TEXT = /^[A-Za-z0-9._:-]{1,64}$/;
+    USAGE_GROUP_BYS = ["role", "kind", "run"];
+    UNTAGGED = "untagged";
   }
 });
 
@@ -120627,6 +120764,7 @@ var init_job = __esm({
           scrubCredentials: options.scrubCredentials === true,
           hostCommits: options.hostCommits === true,
           ledgerKey: options.ledgerKey ?? `copilot-run:${id}`,
+          ledgerTag: options.ledgerTag ?? null,
           model: input.model ?? null,
           timeoutMs,
           maxCredits,
@@ -120841,6 +120979,7 @@ var init_job = __esm({
           source: job.usage.measured ? "measured" : "estimated",
           detail: job.usage.measured ? "session.shutdown" : "copilot_run sdk assistant.usage: AI credits as billed, user-initiated calls x1 each (multiplier unknown)",
           ...job.model ? { model: job.model } : {},
+          ...job.ledgerTag ? { tag: job.ledgerTag } : {},
           updatedAt: (/* @__PURE__ */ new Date()).toISOString()
         };
         try {
@@ -126996,7 +127135,7 @@ var init_lane = __esm({
             maxCredits: input.maxCredits,
             ...input.model ? { model: input.model } : {}
           },
-          { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, sandboxScope: "factory", ...input.scrubCredentials ? { scrubCredentials: true } : {}, ...input.engineCommits ? { hostCommits: true } : {} }
+          { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, ...input.ledgerTag ? { ledgerTag: { kind: "factory-lane", ...input.ledgerTag } } : {}, sandboxScope: "factory", ...input.scrubCredentials ? { scrubCredentials: true } : {}, ...input.engineCommits ? { hostCommits: true } : {} }
         );
         return { remoteId: snap.jobId };
       }
@@ -129485,6 +129624,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
             profile,
             timeoutMs: this.o.limits.laneTimeoutMs,
             maxCredits: cap.cap,
+            ledgerTag: { role: kind, run: runSlug(this.key) },
             ...profile === "write" ? { engineCommits: true } : {}
           }));
         } catch (error2) {
@@ -138094,6 +138234,7 @@ async function runSdkHost(spec, deps) {
         source: measured ? "measured" : "estimated",
         detail: measured ? "session.shutdown" : "sdk assistant.usage: AI credits as billed (legacy premium requests: user-initiated calls x1 each)",
         ...session.model ? { model: session.model } : {},
+        tag: { kind: "team-worker" },
         updatedAt: (/* @__PURE__ */ new Date()).toISOString()
       }, spec.team_name, { timeoutMs: 0 });
       recordedUsage = stamp;
@@ -160557,6 +160698,10 @@ async function budgetCommand(action, options, cwd2 = process.cwd()) {
   const path30 = ledgerPath2(cwd2);
   const { settings, issues } = loadBudgetSettings(cwd2);
   if (action === "reset") {
+    if (options.by !== void 0) {
+      console.error('omg budget reset takes no --by; use it with "omg budget status --by role|kind|run".');
+      return 2;
+    }
     let previous;
     try {
       previous = updateLedger(path30, (ledger2) => resetLedger(ledger2));
@@ -160573,18 +160718,28 @@ async function budgetCommand(action, options, cwd2 = process.cwd()) {
     return 0;
   }
   if (action !== "status") {
-    console.error(`Unknown budget action "${action}". Usage: omg budget [status|reset] [--json]`);
+    console.error(`Unknown budget action "${action}". Usage: omg budget [status|reset] [--json] [--by role|kind|run]`);
+    return 2;
+  }
+  const by = options.by;
+  if (by !== void 0 && !USAGE_GROUP_BYS.includes(by)) {
+    console.error(`Unknown --by "${options.by}". Use one of: ${USAGE_GROUP_BYS.join(", ")}.`);
     return 2;
   }
   const ledger = readLedger(path30);
+  const groups = by ? ledgerByTag(ledger, by) : void 0;
   const totals = ledgerTotals(ledger);
   if (options.json) {
-    console.log(JSON.stringify({ ledgerPath: path30, since: ledger.since, settings, issues, used: totals.credits, totals, notified: ledger.notified, sessions: ledger.sessions, teams: ledger.teams }, null, 2));
+    console.log(JSON.stringify({ ledgerPath: path30, since: ledger.since, settings, issues, used: totals.credits, totals, notified: ledger.notified, sessions: ledger.sessions, teams: ledger.teams, ...by && groups ? { by: { field: by, groups } } : {} }, null, 2));
     return 0;
   }
   console.log(summaryLine(ledger, settings).replace(/ Details: omg budget status\.$/, ""));
   for (const [team, t] of Object.entries(totals.teams)) {
     console.log(`  team ${team}: ${formatAmount(Number(t.credits.toFixed(3)), "credits")} over ${t.records} session(s)`);
+  }
+  if (by && groups) {
+    console.log(`  by ${by}:`);
+    for (const g of groups) console.log(`    ${g.key}: ${formatAmount(Number(g.credits.toFixed(3)), "credits")} over ${g.records} record(s)`);
   }
   if (totals.estimatedRecords > 0) {
     console.log(`  ${totals.estimatedRecords} record(s) are estimates (about ${ESTIMATED_CREDITS_PER_PROMPT} AI credit per prompt; the real cost varies by model); they become measured once the session's totals are written.`);
@@ -171765,10 +171920,11 @@ Examples:
   const exitCode = await doctorConflictsCommand({ json: opts.json ?? false });
   process.exit(exitCode);
 });
-program2.command("budget [action]").description("Show (status, the default) or reset the AI Credits budget ledger").option("--json", "Output as JSON").addHelpText("after", `
+program2.command("budget [action]").description("Show (status, the default) or reset the AI Credits budget ledger").option("--json", "Output as JSON").option("--by <field>", "Group usage by role, kind or run (status)").addHelpText("after", `
 Examples:
   $ omg budget                                  Usage since the last reset against budget.* limits
   $ omg budget status --json                    Full ledger: sessions, teams, measured vs estimated
+  $ omg budget status --by role                 Usage grouped by who spent it (untagged = records without a tag)
   $ omg budget reset                            Start a new accounting period
 
 Reporting only: always exits 0, so compare "used" from --json against your own limit. Configure the warn threshold in .copilot/omg.jsonc ("budget").`).action(async (action, options) => {

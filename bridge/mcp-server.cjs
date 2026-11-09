@@ -31089,6 +31089,11 @@ function updateLedger(path15, fn, opts = {}) {
   }, { timeoutMs: opts.timeoutMs ?? 1e3 });
 }
 function mergeRecord(existing, next) {
+  const merged = mergeUsage(existing, next);
+  const kept = sanitizeTag(existing?.tag);
+  return kept && !merged.tag ? { ...merged, tag: kept } : merged;
+}
+function mergeUsage(existing, next) {
   if (!existing) return next;
   if (existing.source === "measured" && next.source === "estimated") {
     return next.scan ? { ...existing, scan: next.scan } : existing;
@@ -31122,7 +31127,9 @@ function applyBaseline(usage, baseline) {
 function putRecord(ledger, key, usage, team) {
   if (!SAFE_KEY.test(key) || team !== void 0 && !SAFE_KEY.test(team)) return false;
   if (usage.scan && usage.scan.since !== scanSince(ledger)) return false;
-  const net2 = applyBaseline(usage, ledger.baselines?.[baselineKey(key, team)]);
+  const { tag: rawTag, ...untagged } = usage;
+  const tag = sanitizeTag(rawTag);
+  const net2 = applyBaseline(tag ? { ...untagged, tag } : untagged, ledger.baselines?.[baselineKey(key, team)]);
   if (team) {
     const bucket = ledger.teams[team] ??= {};
     bucket[key] = mergeRecord(bucket[key], net2);
@@ -31137,10 +31144,17 @@ function recordUsage(path15, key, usage, team, opts = {}) {
     putRecord(ledger, key, usage, team);
   }, opts);
 }
+function sanitizeTag(raw) {
+  if (!isObject2(raw) || !TAG_KINDS.includes(raw.kind)) return void 0;
+  const tag = { kind: raw.kind };
+  if (typeof raw.role === "string" && TAG_TEXT.test(raw.role)) tag.role = raw.role;
+  if (typeof raw.run === "string" && TAG_TEXT.test(raw.run)) tag.run = raw.run;
+  return tag;
+}
 function num(v) {
   return typeof v === "number" && Number.isFinite(v) ? v : 0;
 }
-var import_node_fs5, import_node_os, import_node_path6, NANO_AIU_PER_CREDIT, MAX_SCAN_BYTES, TAIL_BYTES, SAFE_KEY, isObject2, EPOCH, baselineKey;
+var import_node_fs5, import_node_os, import_node_path6, NANO_AIU_PER_CREDIT, MAX_SCAN_BYTES, TAIL_BYTES, SAFE_KEY, isObject2, EPOCH, baselineKey, TAG_KINDS, TAG_TEXT;
 var init_ledger = __esm({
   "src/budget/ledger.ts"() {
     "use strict";
@@ -31158,6 +31172,8 @@ var init_ledger = __esm({
     isObject2 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
     EPOCH = (/* @__PURE__ */ new Date(0)).toISOString();
     baselineKey = (key, team) => team ? `t:${team}/${key}` : `s:${key}`;
+    TAG_KINDS = ["factory-lane", "team-worker", "session"];
+    TAG_TEXT = /^[A-Za-z0-9._:-]{1,64}$/;
   }
 });
 
@@ -43426,6 +43442,7 @@ var init_job = __esm({
           scrubCredentials: options.scrubCredentials === true,
           hostCommits: options.hostCommits === true,
           ledgerKey: options.ledgerKey ?? `copilot-run:${id}`,
+          ledgerTag: options.ledgerTag ?? null,
           model: input.model ?? null,
           timeoutMs,
           maxCredits,
@@ -43640,6 +43657,7 @@ var init_job = __esm({
           source: job.usage.measured ? "measured" : "estimated",
           detail: job.usage.measured ? "session.shutdown" : "copilot_run sdk assistant.usage: AI credits as billed, user-initiated calls x1 each (multiplier unknown)",
           ...job.model ? { model: job.model } : {},
+          ...job.ledgerTag ? { tag: job.ledgerTag } : {},
           updatedAt: (/* @__PURE__ */ new Date()).toISOString()
         };
         try {
@@ -48885,7 +48903,7 @@ var init_lane = __esm({
             maxCredits: input.maxCredits,
             ...input.model ? { model: input.model } : {}
           },
-          { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, sandboxScope: "factory", ...input.scrubCredentials ? { scrubCredentials: true } : {}, ...input.engineCommits ? { hostCommits: true } : {} }
+          { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, ...input.ledgerTag ? { ledgerTag: { kind: "factory-lane", ...input.ledgerTag } } : {}, sandboxScope: "factory", ...input.scrubCredentials ? { scrubCredentials: true } : {}, ...input.engineCommits ? { hostCommits: true } : {} }
         );
         return { remoteId: snap.jobId };
       }
@@ -51282,6 +51300,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
             profile,
             timeoutMs: this.o.limits.laneTimeoutMs,
             maxCredits: cap.cap,
+            ledgerTag: { role: kind, run: runSlug(this.key) },
             ...profile === "write" ? { engineCommits: true } : {}
           }));
         } catch (error2) {

@@ -1234,10 +1234,12 @@ program
     .command('budget [action]')
     .description('Show (status, the default) or reset the AI Credits budget ledger')
     .option('--json', 'Output as JSON')
+    .option('--by <field>', 'Group usage by role, kind or run (status)')
     .addHelpText('after', `
 Examples:
   $ omg budget                                  Usage since the last reset against budget.* limits
   $ omg budget status --json                    Full ledger: sessions, teams, measured vs estimated
+  $ omg budget status --by role                 Usage grouped by who spent it (untagged = records without a tag)
   $ omg budget reset                            Start a new accounting period
 
 Reporting only: always exits 0, so compare "used" from --json against your own limit. Configure the warn threshold in .copilot/omg.jsonc ("budget").`)
