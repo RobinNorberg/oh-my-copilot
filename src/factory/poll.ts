@@ -79,6 +79,8 @@ import { HealRunRefused } from './heal/run.js';
 import { DEFAULT_FACTORY_RUN_LIMITS, resolveFactoryRunLimits, type FactoryRunLimits } from './run/budget.js';
 import { FactoryForgeUnavailableError } from './run/forge-roots.js';
 import { visibleLine } from '../forge/review-feedback.js';
+import { resolveTeamConfig, TeamConfigError } from './team/context.js';
+import { staleGateReminders, type Reminder } from './team/reminders.js';
 import {
   acquireFactoryRepoOwner, defaultOwnerDeps, factoryRepoOwnerPath, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, type FactoryOwner, type FactoryRunKey, type OwnerDeps,
 } from './run/state.js';
@@ -457,6 +459,8 @@ export interface PollTick {
   /** The local forge: the base sync of the engine's mirror (ff-only) before the PR reads; absent on GitHub and Azure DevOps. */
   baseSync?: { ran: true; message: string } | { ran: false; reason: string };
   prs: PollPr[];
+  /** Runs parked at a human gate past factory.poll.remindAfterHours (printed, never posted); absent when none is due. */
+  reminders?: Reminder[];
   /** Board rows that changed since the previous tick (every row on the first). */
   board: Array<{ stage: BoardStage | 'outside'; row: BoardRow }>;
   /**
@@ -491,6 +495,8 @@ export interface PollContext {
   /** The local forge's base sync (FactoryPollDeps.localBaseSync), bound to the root and base. */
   localBaseSync?: () => string;
   budget: PollBudget;
+  /** factory.poll.remindAfterHours; absent or 0 = no stale-gate reminders. */
+  remindAfterHours?: number;
   owner: OwnerDeps;
   now: () => number;
   /** Row signatures of the previous tick (board diff), and PR facts (audit on change); updated by pollTick. */
@@ -626,6 +632,9 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
   const unsound = broken.size > 0 || [...runs.values()].some((s) => !verifyFactoryIntegrity(s));
   const idle = !locked && !unsound && !live.some(([, s]) => !s.gate);
 
+  // 3b. stale-gate reminders: read-only on git (the base commit's routing file), printed only.
+  const reminders = step('reminders', () => staleGateReminders({ root, runs, nowMs: ctx.now(), afterHours: ctx.remindAfterHours, ...(ctx.baseSha ? { readBase: (path) => { const r = ctx.exec('git', ['show', `${ctx.baseSha}:${path}`], { cwd: root }); return r.status === 0 ? r.stdout : undefined; } } : {}), warn: (m) => warnings.push(plainText(m)) }));
+
   // 4. board: the rows that changed.
   const board: PollTick['board'] = [];
   const shown = step('board', () => collectBoard({ forge, config, root, ids, check: null, now: ctx.now(), warnings }));
@@ -675,7 +684,7 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
 
   return {
     schemaVersion: POLL_JSON_SCHEMA_VERSION, tick: ctx.tick, at, forge: config.kind, repo: config.repo.url,
-    heal, intake, ...(baseSync ? { baseSync } : {}), prs, board, idle, autoStart, rateLimited, errors: errors.map(plainText), warnings: warnings.map(plainText),
+    heal, intake, ...(baseSync ? { baseSync } : {}), prs, ...(reminders && reminders.length > 0 ? { reminders } : {}), board, idle, autoStart, rateLimited, errors: errors.map(plainText), warnings: warnings.map(plainText),
   };
 }
 
@@ -692,6 +701,7 @@ export function renderTick(t: PollTick): string {
       lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)}: ${p.threads ?? 0} human thread(s)${p.ignored ? ` (${p.ignored} ignored)` : ''}${trust}`);
     }
   }
+  for (const r of t.reminders ?? []) lines.push(`  reminder: ${runLabel(r.run)} has waited ${r.hours} h at ${r.gate}${r.handles.length ? ` ${r.handles.join(' ')}` : ''}: ${r.reason} (${resumeHint(r.run)})`);
   // F33: a run whose PR a human already merged or closed shows the record step, not its stale gate reason (a merge command).
   const done = new Map(t.prs.filter((p) => p.hint).map((p) => [runLabel(p.id), p]));
   for (const b of t.board) {
@@ -767,6 +777,13 @@ export async function runFactoryPoll(o: FactoryPollOptions, deps: FactoryPollDep
       return DEFAULT_FACTORY_RUN_LIMITS; // the budget gate refuses the start first
     }
   };
+  let teamConfig;
+  try {
+    teamConfig = resolveTeamConfig([layers.trustedUser, layers.base]);
+  } catch (error) {
+    if (error instanceof TeamConfigError) throw new CheckUsageError(error.message);
+    throw error;
+  }
   const { release } = acquirePoller(read.root, new Date(now()).toISOString(), owner);
 
   let stopping = 0;
@@ -790,6 +807,7 @@ export async function runFactoryPoll(o: FactoryPollOptions, deps: FactoryPollDep
       signals: (forward) => { forwards.add(forward); return () => { forwards.delete(forward); }; },
     }),
     budget: deps.budget ?? defaultPollBudget(() => layers),
+    remindAfterHours: teamConfig.remindAfterHours,
     owner, now, previous: { board: new Map(), prs: new Map() }, tick: 0,
   };
   let interval = base;

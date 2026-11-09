@@ -63,6 +63,7 @@ import { PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, runPrepare } from '../../ship
 import { removeWorkerWorktree } from '../../team/git-worktree.js';
 import { driveGates } from './gates-driver.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
+import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText, type ReadAt } from '../team/context.js';
 import { mergeComment, mergeDecision, type MergeView } from './merge-policy.js';
 import { resolveAzEntry, type AzEntry } from '../../forge/ado/az-binary.js';
 import { adoGuardContext, defaultAzBinaryDeps, type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
@@ -1305,10 +1306,16 @@ class FactoryEngine {
     this.gate('needs-plan', 'the issue has no "Acceptance criteria" heading and no omg-plan: link by an owner, member or collaborator');
   }
 
+  /** A file at one commit for the team context (`rev-parse --verify`, then `show`); undefined when absent there. */
+  private readAt(sha: string): ReadAt {
+    return (path) => (this.exec('git', ['rev-parse', '--verify', `${sha}:${path}`], { cwd: this.o.root, env: TRUSTED_READ_ENV }).status === 0
+      ? this.run(['show', `${sha}:${path}`], 'git', TRUSTED_READ_ENV) : undefined);
+  }
+
   private async implement(): Promise<void> {
     const baseSha = this.fetchBase();
     this.save((s) => ({ ...s, baseSha }));
-    const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state), 'implement');
+    const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, loadTeamContext(this.readAt(baseSha), pathsInText(this.state.plan?.text ?? ''))), 'implement');
     if (out.kind === 'done') this.acceptWriteLane(out, 'implement', baseSha);
   }
 
@@ -1521,7 +1528,12 @@ class FactoryEngine {
     const diff = this.run(['diff', '--no-ext-diff', '--no-textconv', `${s.baseSha}...${head}`]);
     // Two-axis review when the base (never the reviewed head) has docs/standards/.
     const standards = this.run(['ls-tree', '-r', '-z', '--name-only', s.baseSha, '--', 'docs/standards/'], 'git', TRUSTED_READ_ENV).split('\0').filter(Boolean);
-    const out = await this.runLane('review', head, 'review', reviewPrompt(s, head, diff, standards), key);
+    const decisions = decisionsViolation(this.readAt(s.baseSha), this.readAt(head));
+    if (decisions) {
+      this.gate('decisions-rewritten', `${decisions}: .copilot/team/decisions.md is append-only (the base commit's text must stay a prefix); restore it on the PR branch, then rerun ${this.resume}`);
+      return;
+    }
+    const out = await this.runLane('review', head, 'review', reviewPrompt(s, head, diff, standards, loadTeamContext(this.readAt(s.baseSha), pathsInDiff(diff))), key);
     if (out.kind !== 'done') return;
     const { result, lane, after } = out;
 
