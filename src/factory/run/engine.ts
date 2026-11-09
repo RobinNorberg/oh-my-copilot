@@ -2238,8 +2238,8 @@ class FactoryEngine {
       this.markVerdict(r.laneId, 'invalid', `late change: ${problems.join('; ')}`);
       this.save((x) => setGate(x.phase === 'review' ? x : moveTo(x, 'review', `review lane ${r.laneId}'s verdict is discarded`, at), 'review-tampered', `${what}; its verdict is discarded`, at));
     } else {
-      // Each write-lane kind is the phase that runs it.
-      const back: FactoryPhase = r.kind;
+      // Each write-lane kind is the phase that runs it (a coding-agent lane runs in implement).
+      const back: FactoryPhase = r.kind === 'coding-agent' ? 'implement' : r.kind;
       this.updateLane(r.laneId, { note: `late change: ${problems.join('; ')}` });
       this.save((x) => {
         const { pendingHead: _p, ...rest } = x;
