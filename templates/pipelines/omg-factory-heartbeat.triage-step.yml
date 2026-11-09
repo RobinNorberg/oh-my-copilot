@@ -1,0 +1,7 @@
+
+  - bash: |
+      npx --yes --package "oh-my-copilot@${OMG_VERSION}" omg factory triage --apply --json > heartbeat-triage.json
+      head -c 20000 heartbeat-triage.json
+    displayName: Factory triage
+    env:
+      AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)
