@@ -27,7 +27,8 @@ import { factoryGuardExec, hardenedGitExec } from './exec.js';
 import { localRemoteMismatch } from './forge-roots.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir, ledgerFilePath, sha256 } from './ledger.js';
 import { checkoutWorker, FACTORY_CHECKOUT_TEAM } from './prepare.js';
-import { acquireFactoryOwner, factoryCancelPath, factoryStatePath, FactoryStateError, readFactoryState, runSlug, verifyFactoryIntegrity } from './state.js';
+import { acquireFactoryOwner, acquireFactoryRepoOwner, factoryCancelPath, factoryStatePath, FactoryStateError, readFactoryState, runSlug, verifyFactoryIntegrity, FactoryBusyError } from './state.js';
+import { claimBusyMessage, factoryClaimHolder, removeFactoryClaim } from './claims.js';
 const HEX40 = /^[0-9a-f]{40}$/;
 /**
  * True when a ledger an earlier reset moved aside (`<ledger>.reset-<stamp>`)
@@ -101,8 +102,22 @@ export function resetFactoryRun(o) {
         throw new FactoryStateError(`the factory run state for issue #${o.issue} is not the engine's last write (${ledger.file}); nothing is reset`);
     }
     const now = o.now ?? new Date().toISOString();
-    // A live engine on this issue refuses here; the owner file is gone again afterwards.
-    const owner = acquireFactoryOwner(o.root, o.issue, now, o.owner);
+    // Busy (exit 6) before any git or forge operation: a live engine in this checkout (reset closes the PR and renames
+    // the mirror branch), a claim on the item that another clone holds, then a live engine on this issue.
+    const repoOwner = o.repoOwner ?? acquireFactoryRepoOwner(o.root, o.issue, now, o.owner);
+    const releaseRepoOwner = () => { if (!o.repoOwner)
+        repoOwner.release(); };
+    let owner;
+    try {
+        const claim = o.claimRepo ? factoryClaimHolder(ledgerDir, o.claimRepo, o.root, o.issue, o.owner) : null;
+        if (claim)
+            throw new FactoryBusyError(claimBusyMessage(o.issue, claim));
+        owner = acquireFactoryOwner(o.root, o.issue, now, o.owner);
+    }
+    catch (error) {
+        releaseRepoOwner();
+        throw error;
+    }
     try {
         const left = [
             ...[...new Set(state.lanes.map((l) => l.jobId).filter((id) => Boolean(id)))].map((id) => getWorktreePath(o.root, WORKTREE_TEAM, id)),
@@ -147,10 +162,13 @@ export function resetFactoryRun(o) {
         rmSync(factoryCancelPath(o.root, o.issue), { force: true });
         const movedTo = `${statePath}.reset-${stamp}`;
         renameSync(statePath, movedTo);
+        if (o.claimRepo)
+            removeFactoryClaim(ledgerDir, o.claimRepo, o.root, o.issue, { onlyRoot: true, ...(o.owner ? { deps: o.owner } : {}) });
         return { ...result, stateMovedTo: movedTo };
     }
     finally {
         owner.release();
+        releaseRepoOwner();
     }
 }
 //# sourceMappingURL=reset.js.map

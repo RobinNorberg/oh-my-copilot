@@ -3,8 +3,8 @@
  * lanes, a real repository with no origin, the engine-owned bare mirror
  * under a temp forge state dir. No gh, az or copilot runs, and no AI credits.
  */
-import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readMirrorRef } from '../../../forge/local/index.js';
 import { createForge } from '../../../forge/index.js';
@@ -14,7 +14,8 @@ import { runFactoryEngine, EXIT_AWAITING_HUMAN } from '../engine.js';
 import { factoryForgeOptions } from '../forge-roots.js';
 import { ledgerFilePath } from '../ledger.js';
 import { resetFactoryRun } from '../reset.js';
-import { factoryStatePath, readFactoryState, requestFactoryCancel } from '../state.js';
+import { FactoryBusyError, factoryRepoOwnerPath, factoryStatePath, readFactoryState, requestFactoryCancel } from '../state.js';
+import { factoryClaimPath } from '../claims.js';
 import { commitFile, gitIn, review } from './fake-lanes.js';
 import { lanesFor, LOCAL_ISSUE, localOpts, localWorld, type LocalWorld } from './engine-local-harness.js';
 
@@ -75,10 +76,24 @@ describe('F38: cancel closes the local PR; clean + reset make the item runnable 
     const resetOpts = { root: w.root, issue: LOCAL_ISSUE, exec: w.exec, forge, mirror: w.config.repo.url, ledgerDir: w.ledgerDir, owner: OWNER };
     // The worktrees go first.
     expect(() => resetFactoryRun(resetOpts)).toThrow(/still has worktrees .*omg factory run clean 7 first/);
+    // A live engine in this checkout makes clean and reset busy (exit 6) before any git, forge or ledger step.
+    const busyOwner = { ...OWNER, isAlive: () => true };
+    writeFileSync(factoryRepoOwnerPath(w.root), JSON.stringify({ pid: 99, hostname: OWNER.hostname, startedAt: 'x', run: '8' }));
+    expect(() => cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, ledgerDir: w.ledgerDir, owner: busyOwner })).toThrow(FactoryBusyError);
+    expect(() => resetFactoryRun({ ...resetOpts, owner: busyOwner })).toThrow(FactoryBusyError);
+    rmSync(factoryRepoOwnerPath(w.root));
     const cleaned = cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, ledgerDir: w.ledgerDir, owner: OWNER });
     expect(cleaned.kept, JSON.stringify(cleaned.kept)).toEqual([]);
 
-    const reset = resetFactoryRun({ ...resetOpts, now: '2026-11-08T10:00:00.000Z' });
+    // A claim on the item that a live engine in another clone holds makes reset busy; this checkout's own parked claim is deleted by it.
+    const claimRepo = 'https://github.com/o/r';
+    const claim = factoryClaimPath(w.ledgerDir, claimRepo, w.root, LOCAL_ISSUE);
+    mkdirSync(dirname(claim), { recursive: true });
+    writeFileSync(claim, JSON.stringify({ pid: 99, hostname: OWNER.hostname, startedAt: 'x', run: '7', root: join(dirname(w.root), 'other-clone') }));
+    expect(() => resetFactoryRun({ ...resetOpts, claimRepo, owner: busyOwner })).toThrow(/factory run #7 is claimed by a live engine .*claim file/);
+    writeFileSync(claim, JSON.stringify({ hostname: OWNER.hostname, startedAt: 'x', run: '7', root: w.root, parkedAt: 'x' }));
+    const reset = resetFactoryRun({ ...resetOpts, claimRepo, now: '2026-11-08T10:00:00.000Z' });
+    expect(existsSync(claim)).toBe(false);
     expect(reset.closedPr).toBeUndefined(); // the cancel already closed it
     expect(reset.keptBranch).toBe('factory/cancelled/issue-7-2026-11-08t10-00-00-000z');
     expect(readMirrorRef(w.config.repo.url, reset.keptBranch!)).toBe(oldHead);
@@ -202,7 +217,7 @@ describe('F41: a lane may not redefine the local gate', () => {
     const out = await runFactoryEngine(localOpts(w, lanes));
     expect(out.exitCode, out.message).toBe(EXIT_AWAITING_HUMAN);
     expect(out.gate?.name).toBe('gate-definition-unknown');
-    expect(out.gate?.reason).toMatch(/selects workspace packages \(--workspace\).*no lane was started/);
+    expect(out.gate?.reason).toMatch(/selects workspace packages \(--workspace\).*no further lane was started/);
     expect(lanes.started).toEqual([]);
     expect(readFactoryState(w.root, LOCAL_ISSUE)!.lanes).toEqual([]);
     expect(readMirrorRef(w.config.repo.url, BRANCH)).toBeUndefined();
@@ -210,6 +225,25 @@ describe('F41: a lane may not redefine the local gate', () => {
     // A rerun with the gate still unresolved parks again, still before any lane.
     const again = await runFactoryEngine(localOpts(w, lanes));
     expect(again.gate?.name).toBe('gate-definition-unknown');
+    expect(lanes.started).toEqual([]);
+  });
+
+  it('--dry-run reports a requested cancel and a cancelled run before the unknown gate', async () => {
+    w = localWorld(['npm', '--workspace', 'app', 'test']);
+    const lanes = lanesFor(w, []);
+    const parked = await runFactoryEngine(localOpts(w, lanes));
+    expect(parked.gate?.name).toBe('gate-definition-unknown');
+
+    requestFactoryCancel(w.root, LOCAL_ISSUE, new Date().toISOString());
+    const asked = await runFactoryEngine(localOpts(w, lanes, { dryRun: true }));
+    expect(asked.message).toMatch(/a cancel is requested/);
+    expect(asked.plan).toMatchObject({ next: 'cancelled' });
+
+    const done = await runFactoryEngine(localOpts(w, lanes));
+    expect(done.phase).toBe('cancelled');
+    const after = await runFactoryEngine(localOpts(w, lanes, { dryRun: true }));
+    expect(after.message).toBe('dry run: the run is cancelled; nothing would run');
+    expect(after.plan).toMatchObject({ next: 'cancelled' });
     expect(lanes.started).toEqual([]);
   });
 
@@ -263,9 +297,9 @@ describe('F39 + F40: --dry-run applies the pr-exists gate and probes the gate ex
   }, MULTI_RUN_MS);
 
   it('reports a gate whose executable cannot start, without spawning it', async () => {
-    w = localWorld(['omg-no-such-gate-exe-f40', 'test']);
+    w = localWorld(['./omg-no-such-gate-exe-f40', 'test']);
     const dry = await runFactoryEngine(localOpts(w, lanesFor(w, []), { dryRun: true }));
-    expect(dry.message).toMatch(/the run would start an implement lane .*; but the local gate cannot start \(the local gate executable omg-no-such-gate-exe-f40 .*not on PATH.*\), so after review the run would park at awaiting-human: gates$/);
+    expect(dry.message).toMatch(/the run would start an implement lane .*; but the local gate cannot start \(the local gate executable \.\/omg-no-such-gate-exe-f40 .*does not exist.*\), so after review the run would park at awaiting-human: gates$/);
     expect(dry.plan?.gateProblem).toMatch(/omg-no-such-gate-exe-f40/);
     expect(w.gateRuns).toEqual([]);
   });

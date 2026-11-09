@@ -32,7 +32,7 @@ import { RUNTIME_MIN_MAX_CREDITS, type LoadedFactoryRunLimits } from '../run/bud
 import { runFactoryEngine, type FactoryEngineOptions, type FactoryForgeInput, type FactoryRunOutcome, type HealLaneCapDecision } from '../run/engine.js';
 import type { LaneBackend } from '../run/lane.js';
 import type { GateConfigLoader } from '../run/prepare.js';
-import { healRunKey, readFactoryState, type FactoryHealRecord } from '../run/state.js';
+import { healRunKey, readFactoryState, type FactoryHealRecord, type HeldOwner } from '../run/state.js';
 import type { HealConfig } from './config.js';
 import { closeHeal, HealRunRefused, healTestId, ledgerHealCredits, readHealCounters, healSealSubject, readHealSealSubject, verifyHealSeal, writeHealCounters, type HealSealSubject } from './run.js';
 import { healStateDir, readHealState, type HealSignatureState } from './state.js';
@@ -63,6 +63,8 @@ export interface HealEngineOptions {
   /** `omg factory heal approve`: a human approved the diagnosis. */
   approved: boolean;
   dryRun?: boolean;
+  /** The checkout's engine lock the caller already holds (the heal CLI takes it before its loader); the engine uses it and never releases it. */
+  repoOwner?: HeldOwner;
 }
 
 /**
@@ -166,6 +168,7 @@ export async function runHealEngine(o: HealEngineOptions, deps: HealEngineDeps):
     heal: { sig8: o.sig8, ...(record ? { record } : {}), autoImplement: o.config.autoImplement, approved: o.approved, laneCap: healLaneCap(o.root, deps.ledgerDir, o.config, deps.now) },
     ledgerDir: deps.ledgerDir,
     ...(o.dryRun ? { dryRun: true } : {}),
+    ...(o.repoOwner ? { repoOwner: o.repoOwner } : {}),
     ...(deps.gateConfig ? { gateConfig: deps.gateConfig } : {}),
     ...(deps.warn ? { warn: deps.warn } : {}),
     ...(deps.forge ? { forge: deps.forge } : {}),

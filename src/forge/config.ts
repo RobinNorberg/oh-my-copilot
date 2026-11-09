@@ -13,6 +13,7 @@
  * | progress.* (tracker writes)        | user -> base                         | ignored, warned on a diff  |
  * | heal.pipeline (ADO: which is CI)   | user -> base                         | ignored, warned on a diff  |
  * | intake.autoStart (poll starts runs)| user -> base                         | ignored, warned on a diff  |
+ * | review.trustedReviewers            | user -> base                         | ignored, warned on a diff  |
  * | intake.* (the rest), check.*       | project -> user -> base -> defaults  | allowed                    |
  *
  * Config can pin the forge, never redirect it: a kind, org, project or repo
@@ -88,6 +89,9 @@ const SEGMENT = ADO_SEGMENT;
 const TRACKER_NAME = /^[^\s,;\-\p{Cc}][^,;\p{Cc}]{0,49}$/u;
 /** Free text written to config (board column, state, area path, milestone). */
 const TEXT = /^[^\p{Cc}]{1,256}$/u;
+/** A reviewer: a GitHub login or an ADO uniqueName (an email or DOMAIN\user), no space or control character. */
+const REVIEWER = /^[^\s\p{Cc}]{1,256}$/u;
+export const MAX_TRUSTED_REVIEWERS = 100;
 
 type Block = Record<string, unknown>;
 
@@ -478,6 +482,23 @@ export function resolveForgeConfig(trustedUser: unknown, base: unknown, project:
   const autoStart = uAuto ?? bAuto;
   if (autoStart !== undefined && typeof autoStart !== 'boolean') throw new ForgeConfigError('invalid', `${source}: factory.intake.autoStart must be true or false`);
 
+  // review.trustedReviewers decides whose PR feedback reaches a fix lane: user -> base only (factory night 3 D3).
+  const bTrusted = factoryBlock(base, 'review', baseSource).trustedReviewers;
+  const uTrusted = factoryBlock(trustedUser, 'review', 'user config').trustedReviewers;
+  const pTrusted = factoryBlock(project, 'review', 'project config').trustedReviewers;
+  if (pTrusted !== undefined && !same(pTrusted, bTrusted)) {
+    warnings.push(`omg factory: ignoring factory.review.trustedReviewers from the working-tree project config; it is read only from the user config or ${baseSource}`);
+  }
+  const trustedRaw = uTrusted ?? bTrusted;
+  let review: ResolvedForgeConfig['review'];
+  if (trustedRaw !== undefined && trustedRaw !== null) {
+    const from = uTrusted !== undefined ? 'user config' : baseSource;
+    if (!Array.isArray(trustedRaw) || trustedRaw.length > MAX_TRUSTED_REVIEWERS) {
+      throw new ForgeConfigError('invalid', `${from}: factory.review.trustedReviewers must be an array of at most ${MAX_TRUSTED_REVIEWERS} logins (GitHub) or uniqueNames (Azure DevOps)`);
+    }
+    review = { trustedReviewers: [...new Set(trustedRaw.map((r) => text(r, REVIEWER, 'review.trustedReviewers', from).toLowerCase()))] };
+  }
+
   const pipelineRaw = uPipeline ?? bPipeline;
   let heal: ResolvedForgeConfig['heal'];
   if (pipelineRaw !== undefined && pipelineRaw !== null) {
@@ -501,6 +522,7 @@ export function resolveForgeConfig(trustedUser: unknown, base: unknown, project:
       check: resolveCheck(check),
       progress: resolveProgress({ ...bProgress, ...uProgress }, hasFactoryKey(base, 'progress') || hasFactoryKey(trustedUser, 'progress'), kind, source),
       ...(heal ? { heal } : {}),
+      ...(review ? { review } : {}),
     },
     warnings,
   };

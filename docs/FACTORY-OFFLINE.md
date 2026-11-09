@@ -73,7 +73,13 @@ Then:
 
 `--source local-backlog` or `--source local-backlog:<label>` works on `omg factory check` and `omg factory board`, and `--intake local-backlog[:<label>]` on `omg factory setup` (the default with `--forge local`).
 
-**The gate names a script.** Name a `package.json` script (`npm test`, `npm run <script>`, pnpm/yarn equivalents) or a node script file in the repository so the run can compare its definition (see [The gate](#how-a-run-works-offline)). Another executable is compared only by its own file when it is a path inside the repository; otherwise nothing is compared, and `omg factory check` still prints `gate: ok`. A gate with no script, a workspace selector (`-w`, `-ws`, `--workspace`, `--filter`, `-r`, `yarn workspace`), `exec`, `dlx`, `create`, `yarn node`, or a package directory outside the repository cannot be compared. The run then parks at `awaiting-human: gate-definition-unknown` before it starts any lane, so no AI credits are spent. `omg factory check` prints `gate: ok`, `gate: unresolved (<why>)` or `gate: not set`.
+**The gate names a script.** The run compares the gate's definition, the files that decide what command runs, with the base (see [The gate](#how-a-run-works-offline)). `omg factory check` prints `gate: ok` only for a gate the repository defines:
+
+- a `package.json` script (`npm test`, `npm run <script>`, pnpm and yarn equivalents, or `node --run <script>`), or
+- a script file in the repository (`node scripts/gate.mjs`, `./ci/gate.sh`), compared by its own file; arguments after the script are the script's own, or
+- `node --test` with plain path or glob arguments and any `--test-*` flags (or `--experimental-test-coverage`), or `node -e`, `--eval`, `-p` or `--print` with inline code as its first option. These are known and have no source files; the code lives in your config.
+
+A gate that runs `npx`, a program found on PATH (`cargo test`, `go test`, `pytest`, `make check`), a program given by a path outside the repository (with or without arguments), or `node` with any other option before its script (`-r`, `--import`, `--loader`, `--env-file`, `--inspect`, `--watch`, `--permission` and the like) prints `gate: unresolved (<why>)`. So do a gate with no script, a workspace selector (`-w`, `-ws`, `--workspace`, `--filter`, `-r`, `yarn workspace`), `exec`, `dlx`, `create`, `yarn node`, and a package directory outside the repository. A run with an unresolved gate parks at `awaiting-human: gate-definition-unknown` before it starts any lane, so no AI credits are spent. The way out is to wrap the command in a script committed in the repository, for example `node scripts/gate.mjs`, which runs `cargo test`, and use that as `factory.forge.local.gate`. `--allow-gate-change` does not apply to an unknown definition. `omg factory check` prints `gate: ok`, `gate: unresolved (<why>)` or `gate: not set`.
 
 **The gate runs without a shell.** On Windows, `["npm","test"]` and `npx ...` run through node and npm's own `npm-cli.js` (or `npx-cli.js`) in node's directory. `pnpm` and `yarn` need a real `.exe` on PATH, or corepack's script beside node. A `.cmd` or `.bat` gate is never run. A gate whose executable cannot start parks the run at `awaiting-human: gates` with the reason. It records no `FAILURE` and starts no ci-fix lane.
 
@@ -119,7 +125,7 @@ Remove an entry by key and return whether it existed.
 
 The `## Acceptance` (or `## Acceptance criteria`) section is the item's acceptance criteria. Any other frontmatter key is an error that names the file.
 
-**Only committed items run.** `omg factory run` reads items as committed on the base branch, so an edit in the working tree cannot change what a run does. `omg factory run --next` reads committed items only: an uncommitted file is not listed, and a dependency closed only in the working tree is not met. `omg factory check` and `omg factory board` also read the working tree: a new or edited file that is not committed on the base shows as `blocked` with reason `uncommitted` in check, and with an "uncommitted: untrusted until it is committed on `<base>`" warning on the board. A malformed committed file is skipped with a warning that names it.
+**Only committed items run.** `omg factory run` reads items as committed on the base branch, so an edit in the working tree cannot change what a run does. `omg factory run --next` reads committed items only: an uncommitted file is not listed, and a dependency closed only in the working tree is not met. `omg factory check` and `omg factory board` also read the working tree: a new or edited file that is not committed on the base shows as `blocked` with reason `uncommitted` in check, and with an "uncommitted: untrusted until it is committed on `<base>`" warning on the board. A malformed committed file is skipped with a warning that names it. A malformed file in the working tree is skipped with one warning too; `enqueue` and `triage` refuse to edit it, naming the file, and leave it unchanged.
 
 ### Specs
 
@@ -136,7 +142,7 @@ After you merge an item's local PR, its backlog file still says `state: open`. T
 
 - `check`, `board`, `enqueue` and the run intake print a warning: `local backlog: #3 is merged (local PR #1) but .copilot/backlog/3-x.md still says state: open; set state: closed there and commit it on the base branch (to reopen #3 later, commit state: open again after that: only a change of the state: line after the merge reopens it)`.
 - The merged run ends with `; set state: closed in <path> and commit it on <base> (omg factory check already counts #3 as closed)`.
-- To reopen the item, commit a change of its `state:` line on the base after the merge: set `state: closed`, commit it, then commit `state: open` again. The item then reads from its file again. Other edits of the file after the merge, such as the body or the labels, keep it closed. So does a `state:` change made before the merge, in the PR's own commits, or only in a merge commit.
+- To reopen the item, commit a change of its `state:` line on the base after the merge: set `state: closed`, commit it, then commit `state: open` again. The item then reads from its file again. Other edits of the file after the merge, such as the body or the labels, keep it closed. So does a `state:` change made before the merge, in the PR's own commits, or only in a merge commit. A body line that starts with `state:` is not the `state:` line, so adding one never reopens the item, even after a real reopen. Closing the item and reopening it again later counts as a reopen: the engine looks past the latest edit of the line to the last real change of its value.
 
 ## How a run works offline
 
@@ -160,8 +166,11 @@ After you merge an item's local PR, its backlog file still says `state: open`. T
   - A failed gate starts the ci-fix lane with the gate's output tail as the failure.
   - A `PENDING` record older than the gate timeout plus 1 minute counts as left by a crashed engine, and the next run reruns the gate.
   - A rerun inside the gates phase starts only if a full gate timeout still ends before the gates deadline. Otherwise the run parks at `gates-timeout`.
-  - The verdict is the exit status of the gate's root process. Output written more than 2 s after the root exits is dropped. At the timeout the whole process tree is killed. After the root has exited, leftover descendants are killed on POSIX only. On Windows they survive and are no longer waited for.
-- **Review.** The factory's own review lane still runs. There are no human or remote review threads. The review lane is static: its shell runs read-only commands only (no npm or node), and the gate runs the tests after review.
+  - The verdict is the exit status of the gate's root process. Output written more than 2 s after the root exits is dropped. At the timeout the whole process tree is killed. When the root has exited but its output pipes stay open, the leftover processes are killed before the verdict:
+    - On POSIX the gate runs in its own process group, which is signalled while the leader still has the recorded start identity.
+    - On Windows the root's children created between the gate's start and the root's exit are listed, matched by start time, and killed with their trees. A grandchild whose parent already exited is not reachable this way.
+    - The engine records the gate's processes under the forge store (`gate-procs/<head>.json`). The next gate run for the same head, and a sweep at the first gate of each engine process, clean up leftovers of an engine that crashed. A POSIX group whose leader is already gone is not signalled, because its id cannot be told from a reused one.
+- **Review.** The factory's own review lane still runs. There are no remote review threads. You can record your own review of a local PR with `omg factory pr review` (see [Reviewing a local PR](#reviewing-a-local-pr)); `omg factory poll` counts it, but the engine does not yet act on it. The review lane is static: its shell runs read-only commands only (no npm or node), and the gate runs the tests after review.
 - **Inspecting a run.** `git fetch omg-local factory/issue-<n>` during a run is safe: a tracking ref moved to the mirror's own sha does not count as tampering. Any other move, or a deletion, of such a ref while a lane runs still parks the run at `lane-tampered` or `review-tampered`, whoever did it. To read without touching refs, use `git --git-dir <mirror> log factory/issue-<n>`.
 - **Wording.** Lane prompts, the PR body and the run history call the item a backlog item, not an issue or a work item.
 - **Merge.** The run parks at `awaiting-human: merge` and prints the command, `git -C <root> merge --no-ff --no-edit <sha>`. Run it on the base branch. The next `omg factory run <n>` or `omg factory poll` tick syncs the base to the mirror and reads the PR as `MERGED`. Then set `state: closed` in the item's file (see [Merged items](#merged-items)).
@@ -180,6 +189,22 @@ omg factory run 3         # a new run with a new local PR
 
 Reset keeps the old branch in the mirror as `factory/cancelled/issue-<n>-<time>`, deletes `factory/issue-<n>` there, closes the local PR if it is still open, and moves the run state aside as `run-<n>.json.reset-<time>`. It is for the local forge only: with another configured forge it exits 2. It refuses, with exit 1, a run whose recorded forge is not local, a run whose mirror differs from the configured one, no run at all, a run that is not cancelled, a run that still has worktrees (`run clean` first), a run state that fails its seal or is not the engine's last write, and a live engine. A reset stopped part way is finished by running it again. After a reset, `omg factory check` reads the item as new.
 
+## Reviewing a local PR
+
+```bash
+omg factory pr list
+omg factory pr view 1
+omg factory pr diff 1                     # prints the head sha first
+omg factory pr review 1 --request-changes --body-file notes.md --head <full sha>
+omg factory pr review 1 --approve --head <full sha>
+```
+
+`pr list`, `pr view` and `pr diff` read a local PR without running any hook, external diff or textconv of your checkout. `pr review` records your review (`--approve`, `--request-changes` or `--comment`, the last two with `--body-file`) on the PR's head. It needs the full 40-character head sha that `pr diff` printed as `--head`, and exits 2 with `head moved` when the PR moved since, so an approval never covers commits you did not read. A `--comment` after an `--approve` on the same head replaces the approval as your latest decision.
+
+`omg factory poll` counts a recorded review as a human thread. The engine does not yet read it: a recorded review does not start a fix round, and the next `omg factory run` does not change because of it.
+
+The local forge trusts every recorded review. Keep the state directory at its default (`~/.omg`) and run lanes in a sandbox that denies it. If `OMC_STATE_DIR` points into a place a lane can write, or the sandbox cannot deny paths, a lane could record an approval.
+
 ## Commands
 
 | Command | On the local forge |
@@ -189,8 +214,17 @@ Reset keeps the old branch in the mirror as `factory/cancelled/issue-<n>-<time>`
 | `omg factory enqueue` | Writes the tickets as backlog files in the working tree, with `Part of #<spec>` and `Blocked by #n` lines. The spec must be committed on `<base>`. Commit the new files on `<base>` before a run can take them. A rerun before the commit does not duplicate them |
 | `omg factory run` | As above. `--dry-run` reads the local base, fetches nothing and writes nothing (no mirror, no remote). It reports an open local PR as `pr-exists`, a gate whose definition cannot be read as `gate-definition-unknown`, and a gate that cannot start (`plan.gateProblem` in `--json`), without running the gate. `--next` reads the local base like `check` (no fetch) and committed items only; a missing base branch exits 2. `poll`'s `factory.intake.autoStart` runs `--next` too |
 | `omg factory run cancel`, `reset` | Cancel closes the local PR; reset starts a cancelled run over (see [Cancelling and retrying an item](#cancelling-and-retrying-an-item)) |
-| `omg factory poll` | Each tick first syncs the mirror base (JSON `baseSync`), so a PR you merged reads as merged. A tick with nothing new on the base skips the fetch. A plain sync error, such as a non-fast-forward base, is a tick error. A refused git config or a mirror remote mismatch exits 5 and stops `--loop`; fix the config, then restart the poller. A missing base branch exits 2. No heal, no review threads |
+| `omg factory poll` | Each tick first syncs the mirror base (JSON `baseSync`), so a PR you merged reads as merged. A tick with nothing new on the base skips the fetch. A plain sync error, such as a non-fast-forward base, is a tick error. A refused git config or a mirror remote mismatch exits 5 and stops `--loop`; fix the config, then restart the poller. A missing base branch exits 2. No heal. Reviews you record with `omg factory pr review` are counted as human threads |
+| `omg factory pr` | `list`, `view`, `diff` and `review` work on local PRs only (see [Reviewing a local PR](#reviewing-a-local-pr)); on another forge they exit 2 |
+| `omg factory triage` | Works with no origin. A dry run by default; `--apply` edits the backlog files in the working tree (priority, `needs-split`, `needs-plan`). Commit them on `<base>`. See [`omg factory triage`](REFERENCE.md#omg-factory-triage-experimental) |
+| `omg factory setup --workflows` | Not applicable: the cloud heartbeat needs a GitHub or Azure DevOps repository. Setup says so and writes nothing |
 | `omg factory listen` | Refused when your user config sets `factory.forge.kind: "local"`: there are no webhooks. Use `omg factory poll` |
+
+## Busy runs and parallel runs
+
+One engine runs per checkout. A second `omg factory run` in the same checkout, or a `run clean`, `reset` or `release` while an engine owns the run, exits 6 (busy) and touches nothing. `--dry-run` names the holder and exits 6. `omg factory run status` without an item lists the engines running in this checkout, and `omg factory run release` removes a lock a crash left behind (see [Parallel runs and exit 6](REFERENCE.md#parallel-runs-and-exit-6-busy)).
+
+Parallel runs need separate clones, each with its own mirror and PR store. On the local forge the clones do not coordinate with each other: a local run makes no cross-clone claim, because its mirror belongs to one checkout. Give each clone its own backlog items, or pick the items yourself. `omg factory poll` in a checkout whose engine is running skips its base sync for that tick (`skipped: engine busy`).
 
 ## What offline mode does not do
 

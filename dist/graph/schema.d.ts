@@ -716,9 +716,6 @@ export declare const graphDescriptorSchema: z.ZodObject<{
     descriptor_hash: z.ZodOptional<z.ZodString>;
 }, "strict", z.ZodTypeAny, {
     goal: string;
-    descriptor_version: 1;
-    run_id: string;
-    revision_id: string;
     nodes: ({
         title: string;
         id: string;
@@ -787,15 +784,15 @@ export declare const graphDescriptorSchema: z.ZodObject<{
         from: string;
         max_traversals: number;
     })[];
+    descriptor_version: 1;
+    run_id: string;
+    revision_id: string;
     entry_node_ids: string[];
     concurrency_limit: number;
     terminal_verification_node_id: string;
     descriptor_hash?: string | undefined;
 }, {
     goal: string;
-    descriptor_version: 1;
-    run_id: string;
-    revision_id: string;
     nodes: ({
         title: string;
         id: string;
@@ -864,6 +861,9 @@ export declare const graphDescriptorSchema: z.ZodObject<{
         from: string;
         max_traversals: number;
     })[];
+    descriptor_version: 1;
+    run_id: string;
+    revision_id: string;
     entry_node_ids: string[];
     concurrency_limit: number;
     terminal_verification_node_id: string;

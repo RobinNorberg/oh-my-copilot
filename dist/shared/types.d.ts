@@ -58,6 +58,8 @@ export interface AutopilotConfigBlock {
     };
 }
 export interface PluginConfig {
+    /** Model tier mapping for the plugin agents (`balanced` = each agent's own default). Explicit `agents.<name>.model` wins. */
+    modelProfile?: 'quality-first' | 'balanced' | 'economy';
     agents?: {
         omc?: {
             model?: string;

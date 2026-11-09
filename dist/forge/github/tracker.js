@@ -142,12 +142,22 @@ export function ghUpdateItem(exec, repo, id, update, cwd) {
         ...update.addLabels.flatMap((l) => ['--add-label', l]), ...update.removeLabels.flatMap((l) => ['--remove-label', l]),
     ], cwd);
 }
+/** `gh issue edit <n> --repo <repo>` with the triage label flags (adds, then removes). Priority is a label on GitHub, so the number is ignored. Never throws. */
+export function ghSetTriage(exec, repo, issue, change, cwd) {
+    if (change.assignee !== undefined)
+        return { ok: false, detail: 'assignee is not a triage write yet' };
+    if (change.add.length === 0 && change.remove.length === 0)
+        return { ok: true, detail: 'nothing to change' };
+    const res = editLabels(exec, issue, ['--repo', ghRepoArg(repo), ...change.add.flatMap((l) => ['--add-label', l]), ...change.remove.flatMap((l) => ['--remove-label', l])], cwd);
+    return { ok: res.ok, detail: res.ok ? 'labels updated' : res.stderr.trim() };
+}
 export function githubTracker(exec, cwd, config) {
     return {
         viewItem: (id) => ghViewItem(exec, id, cwd),
         queryItems: (source, limit) => ghQueryItems(exec, source, limit, cwd),
         comment: (id, bodyFile) => ghIssueComment(exec, id, bodyFile, cwd),
         setProgress: (id, stage, mapping) => ghSetProgress(exec, id, stage, mapping, config.progress.stages, cwd),
+        setTriage: (id, change) => ghSetTriage(exec, config.repo, id, change, cwd),
         addMarker: (id, marker) => editLabels(exec, id, ['--add-label', marker], cwd),
         findByKey: (spec) => ghFindByKey(exec, config.repo, spec, cwd),
         createItem: (draft) => ghCreateItem(exec, config.repo, draft, cwd),

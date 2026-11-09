@@ -1,16 +1,20 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { factoryCommand, factoryRunCommand, type FactoryRunDeps } from '../factory.js';
 import { resolveFactoryRunLimits } from '../../../factory/run/budget.js';
-import { EXIT_AWAITING_HUMAN } from '../../../factory/run/engine.js';
-import { factoryCancelRequested, factoryRepoOwnerPath, readFactoryState } from '../../../factory/run/state.js';
-import { resolveForgeConfig } from '../../../forge/config.js';
+import { factoryClaimPath } from '../../../factory/run/claims.js';
+import { EXIT_AWAITING_HUMAN, EXIT_BUSY } from '../../../factory/run/engine.js';
+import {
+  createFactoryState, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStatePath, moveTo, overwriteFactoryState, readFactoryState,
+} from '../../../factory/run/state.js';
+import { resolveForgeConfig, type LoadedForgeConfig } from '../../../forge/config.js';
 import { scaleTiming } from '../../../__tests__/helpers/platform.js';
 import type { Exec } from '../../../ship/exec.js';
-import { commitFile, FakeLanes, harness, ISSUE, review, testGateConfig, type Harness } from '../../../factory/run/__tests__/fake-lanes.js';
+import { commitFile, FakeLanes, harness, ISSUE, REPO_URL, review, testGateConfig, type Harness } from '../../../factory/run/__tests__/fake-lanes.js';
 
 // The full engine flows below run dozens of real git commands. Alone they take 40-120 s on a
 // loaded win32 host, at the 120 s suite default; nothing in them asserts timing, so this is
@@ -106,6 +110,20 @@ describe('omg factory run CLI', () => {
     expect(await cli(d, String(ISSUE), '--dry-run', '--json')).toBe(0);
     expect(JSON.parse(out.join('\n'))).toMatchObject({ plan: { next: 'implement', laneMaxCredits: 30 } });
     expect(readFactoryState(h.root, ISSUE)).toBeNull();
+  });
+
+  it('--dry-run of a finished run answers as the real run: a failed run exits 1, a terminal run is reported before a forge swap', async () => {
+    const T = '2026-11-09T00:00:00.000Z';
+    const save = (phase: 'failed' | 'merged', forgeKind: 'github' | 'azure-devops') =>
+      overwriteFactoryState(h.root, ISSUE, { ...moveTo(createFactoryState({ issue: ISSUE, repoUrl: REPO_URL, base: 'dev' }, T), phase, phase, T), forgeKind });
+    save('failed', 'github');
+    expect(await cli(deps(), String(ISSUE), '--dry-run', '--json')).toBe(1);
+    expect(JSON.parse(out.join('\n'))).toMatchObject({ ok: false, exitCode: 1, phase: 'failed', message: 'dry run: the run is failed; nothing would run' });
+    // A merged run recorded on another forge: the real run reports it merged (exit 0) and never reaches the swap check.
+    save('merged', 'azure-devops');
+    out = [];
+    expect(await cli(deps(), String(ISSUE), '--dry-run', '--json')).toBe(0);
+    expect(JSON.parse(out.join('\n'))).toMatchObject({ ok: true, phase: 'merged', message: 'dry run: the run is merged; nothing would run' });
   });
 
   it('usage errors exit 2; a refused cap exits 1 before anything runs', async () => {
@@ -210,9 +228,214 @@ describe('omg factory run CLI', () => {
       mkdirSync(dirname(owner), { recursive: true });
       writeFileSync(owner, JSON.stringify({ pid: process.ppid, hostname: hostname(), startedAt: new Date().toISOString(), run: '12' }));
       lanes = new FakeLanes(h.root, []);
-      expect(await cli(nextDeps(), '--next')).toBe(1);
+      expect(await cli(nextDeps(), '--next')).toBe(EXIT_BUSY);
       expect(out.join('\n')).toMatch(/another omg factory engine runs in this repository/);
       expect(readFactoryState(h.root, 7)).toBeNull();
+    });
+
+    /** A live engine in another clone holds `key` (its claim file), or a parked one there (`phase`: its run state). */
+    function otherClone(key: number, o: { phase?: string } = {}): { claim: string; other: string } {
+      const claim = factoryClaimPath(h.ledgerDir, REPO_URL, h.root, key);
+      const other = join(h.dir, 'other-clone');
+      // A git repository of its own: its run state lives in it (getOmcRoot), never in a shared .omg.
+      mkdirSync(other, { recursive: true });
+      execFileSync('git', ['init', '--quiet', other], { stdio: 'ignore' });
+      if (o.phase) {
+        mkdirSync(dirname(factoryStatePath(other, key)), { recursive: true });
+        writeFileSync(factoryStatePath(other, key), JSON.stringify({ phase: o.phase }));
+      }
+      mkdirSync(dirname(claim), { recursive: true });
+      writeFileSync(claim, JSON.stringify(o.phase
+        ? { hostname: hostname(), startedAt: '2026-11-09T00:00:00.000Z', run: String(key), root: other, parkedAt: '2026-11-09T01:00:00.000Z' }
+        : { pid: process.ppid, hostname: hostname(), startedAt: '2026-11-09T00:00:00.000Z', run: String(key), root: other }));
+      return { claim, other };
+    }
+
+    it('busy touches nothing: no git fetch (the forge-config loader\'s or the pick\'s) while an engine holds the checkout or the item', async () => {
+      items = { 7: {} };
+      listed = [7];
+      lanes = new FakeLanes(h.root, []);
+      const fetches: string[] = [];
+      let loads = 0;
+      const base = nextDeps();
+      const exec: Exec = (cmd, args, o) => {
+        if (cmd === 'git' && args.includes('fetch')) {
+          fetches.push(args.join(' '));
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        return base.exec(cmd, args, o);
+      };
+      // The loader fetches origin/<base> on a real run, as loadFactoryForgeConfig does. Its no-fetch mode (dryRun,
+      // which reads the forge kind for the claim key) is not counted: it touches nothing.
+      const d: FactoryRunDeps = {
+        ...base, exec,
+        forge: (root, b, opts) => {
+          if (!opts?.dryRun) {
+            loads += 1;
+            exec('git', ['fetch', 'origin', b], { cwd: root });
+          }
+          return base.forge!(root, b, opts);
+        },
+      };
+      const lock = factoryRepoOwnerPath(h.root);
+      mkdirSync(dirname(lock), { recursive: true });
+      writeFileSync(lock, JSON.stringify({ pid: process.ppid, hostname: hostname(), startedAt: '2026-11-09T00:00:00.000Z', run: '12' }));
+      // A cancelled run of #7 here, so clean and reset get past their state checks.
+      overwriteFactoryState(h.root, 7, { ...moveTo(createFactoryState({ issue: 7, repoUrl: REPO_URL, base: 'dev' }, '2026-11-09T00:00:00.000Z'), 'cancelled', 'cancelled', '2026-11-09T00:00:00.000Z'), forgeKind: 'github' });
+      for (const argv of [['7'], ['--next'], ['clean', '7'], ['reset', '7']]) {
+        out = [];
+        expect(await cli(d, ...argv, '--json'), argv.join(' ')).toBe(EXIT_BUSY);
+        expect(JSON.parse(out.join('\n')), argv.join(' ')).toMatchObject({ ok: false, busy: true, error: expect.stringMatching(/another omg factory engine runs in this repository \(12, pid/) });
+      }
+      expect(fetches).toEqual([]);
+      expect(loads).toBe(0);
+      expect(JSON.parse(readFileSync(lock, 'utf8'))).toMatchObject({ run: '12' });
+
+      // An item another clone claims: busy before the loader too, and the engine lock this run took is released.
+      rmSync(lock);
+      otherClone(7);
+      out = [];
+      expect(await cli(d, '7', '--json')).toBe(EXIT_BUSY);
+      expect(fetches).toEqual([]);
+      expect(loads).toBe(0);
+      expect(existsSync(lock)).toBe(false);
+
+      // The detector works: without a holder, --next loads (and fetches) as before.
+      rmSync(factoryClaimPath(h.ledgerDir, REPO_URL, h.root, 7));
+      listed = [];
+      out = [];
+      expect(await cli(d, '--next', '--json')).toBe(0);
+      expect(loads).toBe(1);
+      expect(fetches.length).toBeGreaterThan(0);
+      expect(existsSync(lock)).toBe(false);
+    });
+
+    it('an item claimed by a live engine in another clone is skipped by --next and refused by run (busy, exit 6); a dead claim is taken over; a park keeps it parked until release', async () => {
+      items = { 7: { body: '## Acceptance criteria\n\n- `greet()` returns hi\n' } };
+      listed = [7];
+      lanes = new FakeLanes(h.root, []);
+      const { claim, other } = otherClone(7);
+
+      expect(await cli(nextDeps(), '--next', '--json')).toBe(0);
+      expect(JSON.parse(out.join('\n'))).toMatchObject({ ok: true, next: null, claimed: [7], counts: { runnable: 1 } });
+      out = [];
+      expect(await cli(nextDeps(), '--next')).toBe(0);
+      expect(out.join('\n')).toMatch(/nothing runnable .*; held by another engine: #7/);
+
+      out = [];
+      expect(await cli(nextDeps(), '7', '--json')).toBe(EXIT_BUSY);
+      const busy = JSON.parse(out.join('\n')) as { ok: boolean; busy: boolean; error: string };
+      expect(busy).toMatchObject({ ok: false, busy: true });
+      expect(busy.error).toContain(`factory run #7 is claimed by a live engine (7, pid ${process.ppid} on ${hostname()} since 2026-11-09T00:00:00.000Z in ${other})`);
+      expect(busy.error).toContain(`(claim file ${claim})`);
+      // Refused before anything was touched: no state, no owner files left.
+      expect(readFactoryState(h.root, 7)).toBeNull();
+      expect(existsSync(factoryRepoOwnerPath(h.root))).toBe(false);
+      expect(existsSync(factoryOwnerPath(h.root, 7))).toBe(false);
+
+      out = [];
+      expect(await cli(nextDeps(), '7', '--dry-run', '--json')).toBe(EXIT_BUSY);
+      expect(JSON.parse(out.join('\n'))).toMatchObject({ exitCode: EXIT_BUSY, busy: true, message: expect.stringMatching(/^dry run: the cross-clone claim: factory run #7 is claimed by a live engine/) });
+
+      // A claim whose pid is dead (and no run state in that clone) is taken over; the run parks (no plan) and keeps
+      // the claim, pid-less, so another clone cannot start #7 while this run is not terminal.
+      writeFileSync(claim, JSON.stringify({ pid: 4_999_999, hostname: hostname(), startedAt: '2026-11-09T00:00:00.000Z', run: '7', root: other }));
+      items = { 7: { body: 'no plan yet' } };
+      out = [];
+      expect(await cli(nextDeps(), '7', '--json')).toBe(EXIT_AWAITING_HUMAN);
+      expect(JSON.parse(out.join('\n'))).toMatchObject({ gate: { name: 'needs-plan' } });
+      const parked = JSON.parse(readFileSync(claim, 'utf8')) as Record<string, unknown>;
+      expect(parked).toMatchObject({ run: '7', hostname: hostname(), parkedAt: expect.any(String) });
+      expect(parked.pid).toBeUndefined();
+      expect(existsSync(factoryRepoOwnerPath(h.root))).toBe(false);
+
+      // run status lists it; release (a human) removes it.
+      out = [];
+      expect(await cli(deps(), 'status', '--json')).toBe(0);
+      expect(JSON.parse(out.join('\n'))).toMatchObject({ claims: [{ key: 7, run: '7', path: claim, parkedAt: expect.any(String) }] });
+      out = [];
+      expect(await cli(deps(), 'release', '7', '--json')).toBe(0);
+      expect(JSON.parse(out.join('\n'))).toEqual({ ok: true, removed: [claim] });
+      expect(existsSync(claim)).toBe(false);
+      // A live holder is busy for release too.
+      otherClone(7);
+      out = [];
+      expect(await cli(deps(), 'release', '7')).toBe(EXIT_BUSY);
+      expect(existsSync(claim)).toBe(true);
+    }, ENGINE_FLOW_TIMEOUT_MS);
+
+    it('--next picks once more when the picked item is claimed between the pick and the engine\'s claim', async () => {
+      const ac = '## Acceptance criteria\n\n- `greet()` returns hi\n';
+      items = { 12: { body: ac, labels: ['priority:p0'] }, 7: { labels: ['priority:p1'] } };
+      listed = [12, 7];
+      // No lane script: the run of the item picked second stops at its first lane start, which is all this test needs.
+      lanes = new FakeLanes(h.root, []);
+      let built = 0;
+      // The lane backend is built after the pick and before the engine starts: another clone claims #12 right then.
+      const d: FactoryRunDeps = { ...nextDeps(), lanes: () => { if (built++ === 0) otherClone(12); return lanes; } };
+      expect(await cli(d, '--next', '--json')).not.toBe(EXIT_BUSY);
+      expect(built).toBe(2);
+      expect(lanes.started.length).toBeGreaterThan(0);
+      expect(readFactoryState(h.root, 7)).toMatchObject({ issue: 7 });
+      expect(readFactoryState(h.root, 12)).toBeNull();
+      expect(existsSync(factoryRepoOwnerPath(h.root))).toBe(false);
+    }, ENGINE_FLOW_TIMEOUT_MS);
+
+    it('run status without an issue lists the live engines, unreadable owner files and claims; JSON carries whitelisted, plain fields', async () => {
+      lanes = new FakeLanes(h.root, []);
+      expect(await cli(deps(), 'status')).toBe(0);
+      expect(out.join('\n')).toMatch(/no factory engine runs in this checkout/);
+      const live = { pid: process.ppid, hostname: hostname(), startedAt: '2026-11-09T00:00:00.000Z' };
+      mkdirSync(dirname(factoryRepoOwnerPath(h.root)), { recursive: true });
+      writeFileSync(factoryRepoOwnerPath(h.root), JSON.stringify({ ...live, run: '12', evil: 'x' }));
+      writeFileSync(factoryOwnerPath(h.root, 12), JSON.stringify({ ...live, hostname: `${hostname()}`, startedAt: 'now\u001b[2J' }));
+      writeFileSync(factoryOwnerPath(h.root, 13), JSON.stringify({ ...live, pid: 4_999_999 }));
+      writeFileSync(factoryOwnerPath(h.root, 14), '{truncated');
+      out = [];
+      expect(await cli(deps(), 'status', '--json')).toBe(0);
+      expect(JSON.parse(out.join('\n'))).toEqual({
+        ok: true,
+        engine: { ...live, run: '12' },
+        runs: [{ key: 12, ...live, startedAt: 'now' }],
+        unreadable: [factoryOwnerPath(h.root, 14)],
+        claims: [],
+      });
+      out = [];
+      expect(await cli(deps(), 'status')).toBe(0);
+      const text = out.join('\n');
+      expect(text).toMatch(/engine lock: 12, pid \d+[\s\S]*live #12: pid/);
+      expect(text).toContain(`unreadable owner file (held until removed: omg factory run release): ${factoryOwnerPath(h.root, 14)}`);
+      expect(text).not.toContain('\u001b[2J');
+    });
+    it('on the local forge the CLI keys no claim, as the engine: an origin-keyed claim on #7 makes nothing busy, is not listed and is not released', async () => {
+      lanes = new FakeLanes(h.root, []);
+      const { claim } = otherClone(7);
+      const forgeKinds: Array<boolean | undefined> = [];
+      const local: FactoryRunDeps = {
+        ...deps(),
+        forge: (root, _b, opts): LoadedForgeConfig => {
+          forgeKinds.push(opts?.dryRun);
+          return resolveForgeConfig({ factory: { forge: { kind: 'local' } } }, undefined, undefined, undefined, { root, stateDir: join(h.dir, 'forge') });
+        },
+      };
+      out = [];
+      expect(await cli(local, 'status', '--json')).toBe(0);
+      expect(JSON.parse(out.join('\n'))).toMatchObject({ ok: true, claims: [] });
+      out = [];
+      expect(await cli(local, 'release', '7', '--json')).toBe(0);
+      expect(JSON.parse(out.join('\n'))).toEqual({ ok: true, removed: [] });
+      expect(existsSync(claim)).toBe(true);
+      // A real run gets past the busy check (it may stop later on this bare local setup, never as busy).
+      out = [];
+      expect(await cli(local, '7', '--json')).not.toBe(EXIT_BUSY);
+      expect(out.join('\n')).not.toMatch(/claimed by a live engine/);
+      expect(existsSync(claim)).toBe(true);
+      expect(JSON.parse(readFileSync(claim, 'utf8'))).toMatchObject({ pid: process.ppid });
+      // The kind came from the no-fetch load first.
+      expect(forgeKinds[0]).toBe(true);
+      // The same claim on a GitHub forge is busy.
+      out = [];
+      expect(await cli(deps(), 'release', '7')).toBe(EXIT_BUSY);
     });
 
     it('usage: --next takes no issue, --parent needs --next and an id, --next needs a forge config', async () => {

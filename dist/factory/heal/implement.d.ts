@@ -29,7 +29,7 @@ import { type LoadedFactoryRunLimits } from '../run/budget.js';
 import { type FactoryEngineOptions, type FactoryForgeInput, type FactoryRunOutcome, type HealLaneCapDecision } from '../run/engine.js';
 import type { LaneBackend } from '../run/lane.js';
 import type { GateConfigLoader } from '../run/prepare.js';
-import { type FactoryHealRecord } from '../run/state.js';
+import { type FactoryHealRecord, type HeldOwner } from '../run/state.js';
 import type { HealConfig } from './config.js';
 import { type HealSealSubject } from './run.js';
 import { type HealSignatureState } from './state.js';
@@ -57,6 +57,8 @@ export interface HealEngineOptions {
     /** `omg factory heal approve`: a human approved the diagnosis. */
     approved: boolean;
     dryRun?: boolean;
+    /** The checkout's engine lock the caller already holds (the heal CLI takes it before its loader); the engine uses it and never releases it. */
+    repoOwner?: HeldOwner;
 }
 /**
  * The validated fields a ci-heal run is created from (the record's diagnosis

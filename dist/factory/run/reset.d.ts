@@ -19,7 +19,7 @@
  */
 import type { Forge } from '../../forge/types.js';
 import { type Exec } from '../../ship/exec.js';
-import { type OwnerDeps } from './state.js';
+import { type HeldOwner, type OwnerDeps } from './state.js';
 export interface FactoryResetResult {
     /** The local PR this reset closed (absent: none, or the cancel already closed it). */
     closedPr?: number;
@@ -39,6 +39,10 @@ export interface FactoryResetOptions {
     ledgerDir?: string;
     now?: string;
     owner?: OwnerDeps;
+    /** This checkout's engine lock, already held by the caller (the CLI, before its forge-config loader); else reset takes it. */
+    repoOwner?: HeldOwner;
+    /** The repository the cross-clone claim is keyed on (factoryClaimRepo): a claim another clone holds refuses; this checkout's is deleted. */
+    claimRepo?: string | null;
 }
 export declare function resetFactoryRun(o: FactoryResetOptions): FactoryResetResult;
 //# sourceMappingURL=reset.d.ts.map

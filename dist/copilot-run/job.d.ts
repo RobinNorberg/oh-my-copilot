@@ -39,6 +39,7 @@
  *   ignored files in it (build output, .env) go with it, links (a junctioned
  *   node_modules) are unlinked first so their targets survive.
  */
+import { type UsageRecord } from '../budget/ledger.js';
 import { type LoadedSdk } from '../smoke/copilot-sdk-driver.js';
 import { hostGitHardeningArgs } from '../team/git-worktree.js';
 import { type SdkPermissionRequest } from '../team/sdk-policy.js';
@@ -85,6 +86,8 @@ export interface CopilotRunStartOptions {
     disableStopContinuations?: boolean;
     /** The job's budget ledger record key (default `copilot-run:<jobId>`). */
     ledgerKey?: string;
+    /** Who spent the job's credits (cost attribution in the budget ledger). */
+    ledgerTag?: UsageRecord['tag'];
     /** Which sandbox config block applies: `factory` lanes read `factory.run.sandbox` over `copilotRun.sandbox` (default `copilot-run`). */
     sandboxScope?: SandboxScope;
     /** Start the session with a credential-free env ({@link scrubLaneCredentials}). */

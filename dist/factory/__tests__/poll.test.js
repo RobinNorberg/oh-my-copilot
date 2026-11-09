@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { factoryRunJson } from '../../cli/commands/factory.js';
 import { factoryPollCommand } from '../../cli/commands/factory-poll.js';
 import { createForge } from '../../forge/index.js';
+import { reviewFeedbackArgs } from '../../forge/github/graphql.js';
 import { FactorySafetyError } from '../run/exec.js';
 import { HealRunRefused } from '../heal/run.js';
 import { HEAL_PIPELINE_MISSING } from '../heal/cli.js';
@@ -43,7 +44,26 @@ beforeEach(() => {
     err = [];
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
-/** gh + git: issues 1 and 2 in the label source; PR 9 (run #4) with `prState`. `onCall` sees each command first. */
+/** The review feedback GraphQL answer for PR 9: `threads` as [id, login] pairs; `me` (the viewer) has write access. */
+const DONE = { hasNextPage: false };
+const feedbackJson = (threads = [], collaboratorsMore = false) => JSON.stringify({
+    data: {
+        viewer: { login: 'me' },
+        repository: {
+            viewerPermission: 'WRITE', collaborators: { pageInfo: { hasNextPage: collaboratorsMore }, edges: [] },
+            pullRequest: {
+                headRefOid: HEAD, latestReviews: { pageInfo: DONE, nodes: [] }, reviewRequests: { pageInfo: DONE, nodes: [] },
+                reviewThreads: {
+                    pageInfo: DONE,
+                    nodes: threads.map(([id, login]) => ({
+                        id, isResolved: false, isOutdated: false, comments: { pageInfo: DONE, nodes: [{ body: 'x', path: 'a.ts', line: 1, createdAt: T0, author: { __typename: 'User', login } }] },
+                    })),
+                },
+            },
+        },
+    },
+});
+/** gh + git: issues 1 and 2 in the label source; PR 9 (run #4) with `prState` and `feedback` (the GraphQL stdout). `onCall` sees each command first. */
 function scripted(o = {}) {
     const calls = [];
     const exec = (cmd, args) => {
@@ -77,6 +97,8 @@ function scripted(o = {}) {
             }
             if (args[0] === 'pr' && args[1] === 'list')
                 return ok('[]');
+            if (args[0] === 'api' && args[1] === 'graphql' && args[11] === 'number=9')
+                return ok(o.feedback ?? feedbackJson());
             if (args[0] === 'pr' && args[1] === 'view' && args[2] === '9') {
                 return ok(JSON.stringify({ number: 9, state: o.prState ?? 'OPEN', isDraft: false, baseRefName: 'dev', baseRefOid: SHA, headRefName: 'factory/issue-4', headRefOid: HEAD, url: `${REPO}/pull/9` }));
             }
@@ -159,13 +181,46 @@ describe('omg factory poll on GitHub', () => {
     it('an open PR prints no hint; text output names a merged one', async () => {
         seedParked();
         expect(await poll(scripted().exec, { once: true, json: true })).toBe(0);
-        expect(ticks()[0].prs).toEqual([{ id: 4, pr: 9, state: 'OPEN' }]);
+        expect(ticks()[0].prs).toEqual([{ id: 4, pr: 9, state: 'OPEN', threads: 0, ignored: 0 }]);
         out.length = 0;
         expect(await poll(scripted({ prState: 'CLOSED' }).exec, { once: true })).toBe(0);
         expect(out.join('\n')).toContain('PR #9 of #4 is closed by a human: run `omg factory run 4` to record it');
         // F33: the board row of #4 no longer repeats its stale merge gate reason.
         expect(out.join('\n')).not.toContain('gates green; a human merges');
         expect(out.join('\n')).toContain('the PR is closed: run `omg factory run 4` to record it');
+    });
+    it('an open PR: human threads by trusted reviewers are counted, untrusted authors as ignored (one fixed GraphQL read)', async () => {
+        seedParked();
+        const w = scripted({ feedback: feedbackJson([['T1', 'me'], ['T2', 'me'], ['T3', 'mallory']]) });
+        expect(await poll(w.exec, { once: true, json: true })).toBe(0);
+        expect(ticks()[0].prs).toEqual([{ id: 4, pr: 9, state: 'OPEN', threads: 2, ignored: 1 }]);
+        expect(ticks()[0].errors).toEqual([]);
+        expect(w.calls.filter((c) => c.startsWith('gh api'))).toEqual([`gh ${reviewFeedbackArgs({ host: 'github.com', owner: 'o', name: 'r' }, 9).join(' ')}`]);
+        out.length = 0;
+        expect(await poll(scripted({ feedback: feedbackJson([['T1', 'me'], ['T3', 'mallory']]) }).exec, { once: true })).toBe(0);
+        expect(out.join('\n')).toContain('PR #9 of #4: 1 human thread(s) (1 ignored)');
+    });
+    it('MEDIUM-4: an incomplete collaborator list is reported (JSON row, audit and text line)', async () => {
+        seedParked();
+        expect(await poll(scripted({ feedback: feedbackJson([['T1', 'mallory']], true) }).exec, { once: true, json: true })).toBe(0);
+        expect(ticks()[0].prs).toEqual([{ id: 4, pr: 9, state: 'OPEN', threads: 0, ignored: 1, trustIncomplete: true }]);
+        const audit = readFileSync(pollAuditPath(root), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+        expect(audit.find((a) => a.kind === 'pr-threads')).toMatchObject({ pr: 9, active: 0, ignored: 1, trustIncomplete: true });
+        out.length = 0;
+        expect(await poll(scripted({ feedback: feedbackJson([], true) }).exec, { once: true })).toBe(0);
+        expect(out.join('\n')).toContain('PR #9 of #4: 0 human thread(s); trust incomplete: the collaborator list was not read whole, so list reviewers in factory.review.trustedReviewers');
+    });
+    it('LOW-5 / HIGH-1: a rate-limited or truncated review read is a PR error, never "no threads"; RATE_LIMITED backs off', async () => {
+        seedParked();
+        const limited = JSON.stringify({ data: null, errors: [{ type: 'RATE_LIMITED', message: 'API rate limit exceeded for user ID 1.' }] });
+        const w = scripted({ onCall: (cmd, args) => (cmd === 'gh' && args[0] === 'api' ? { status: 1, stdout: limited, stderr: 'gh: API rate limit exceeded' } : undefined) });
+        expect(await poll(w.exec, { once: true, json: true })).toBe(1);
+        expect(ticks()[0]).toMatchObject({ rateLimited: true, prs: [{ id: 4, pr: 9, state: 'OPEN', error: expect.stringMatching(/RATE_LIMITED/) }] });
+        expect(ticks()[0].prs[0].threads).toBeUndefined();
+        out.length = 0;
+        const truncated = feedbackJson([['T1', 'me']]).replace('"reviewThreads":{"pageInfo":{"hasNextPage":false}', '"reviewThreads":{"pageInfo":{"hasNextPage":true}');
+        expect(await poll(scripted({ feedback: truncated }).exec, { once: true, json: true })).toBe(1);
+        expect(ticks()[0]).toMatchObject({ rateLimited: false, prs: [{ pr: 9, error: expect.stringMatching(/more than 100 review threads .*Delete the spam threads/) }] });
     });
     it('never spawns and never writes: every command is a read, and the guard refuses writes before gh', async () => {
         seedParked();
@@ -324,6 +379,32 @@ describe('omg factory poll on GitHub', () => {
         expect(await poll(scripted().exec, { once: true, json: true, prs: false }, { owner: { pid: 2, hostname: hostname(), isAlive: (pid) => pid === 99 } })).toBe(0);
         expect(ticks()[0].idle).toBe(false);
         expect(existsSync(factoryRepoOwnerPath(root))).toBe(true);
+    });
+    it('the heal tick runs under the engine lock: skipped (no fetch) while a live engine holds the checkout; a reused pid holds nothing', async () => {
+        const fetches = [];
+        let lockedDuringScan = 'unread';
+        // The production heal scan fetches through git; this one records each fetch it would make.
+        const fetching = (o) => {
+            fetches.push(`fetch origin ${o.base}`);
+            lockedDuringScan = JSON.parse(readFileSync(factoryRepoOwnerPath(root), 'utf8'));
+            return scan()(o);
+        };
+        mkdirSync(factoryStateDir(root), { recursive: true });
+        writeFileSync(factoryRepoOwnerPath(root), JSON.stringify({ pid: 99, hostname: hostname(), startedAt: T0, run: '4', identity: 'ticks:1' }));
+        const live = { pid: 2, hostname: hostname(), isAlive: (pid) => pid === 99, identityOf: (pid) => (pid === 99 ? 'ticks:1' : 'ticks:2') };
+        expect(await poll(scripted().exec, { once: true, json: true, prs: false }, { healScan: fetching, owner: live })).toBe(0);
+        expect(ticks().at(-1).heal).toEqual({ ran: false, reason: expect.stringMatching(/^skipped: engine busy \(another omg factory engine runs in this repository \(4, pid 99/) });
+        expect(ticks().at(-1).idle).toBe(false);
+        expect(fetches).toEqual([]);
+        expect(JSON.parse(readFileSync(factoryRepoOwnerPath(root), 'utf8'))).toMatchObject({ pid: 99, run: '4' });
+        // Pid 99 now runs another program (its start identity changed): not an engine; the tick takes the lock, scans, releases.
+        const reused = { ...live, identityOf: (pid) => (pid === 99 ? 'ticks:999' : 'ticks:2') };
+        expect(await poll(scripted().exec, { once: true, json: true, prs: false }, { healScan: fetching, owner: reused })).toBe(0);
+        expect(ticks().at(-1).heal).toMatchObject({ ran: true });
+        expect(ticks().at(-1).idle).toBe(true);
+        expect(fetches).toEqual(['fetch origin dev']);
+        expect(lockedDuringScan).toMatchObject({ pid: 2, run: 'scan' });
+        expect(existsSync(factoryRepoOwnerPath(root))).toBe(false);
     });
     it('no intake source: the intake tick is skipped and the board shows runs only', async () => {
         seedParked();
@@ -600,6 +681,10 @@ describe('omg factory poll: factory.intake.autoStart', () => {
         expect(e.starts).toHaveLength(1);
         expect(ticks().map((t) => t.autoStart.started)).toEqual([true, false]);
         expect(ticks()[1].autoStart).toEqual({ started: false, reason: 'a run is in flight' });
+    });
+    it('a busy outcome (exit 6: another engine holds the checkout or the item) renders as busy, not as a failure', async () => {
+        expect(await poll(scripted().exec, { once: true }, on(engine({ parsed: true, next: null, exitCode: 6 })))).toBe(0);
+        expect(out.join('\n')).toContain('auto-start: omg factory run --next was busy (another engine holds this checkout or the item; retried next tick), exit 6');
     });
     it('an unreadable outcome renders "outcome unreadable", never "found nothing runnable", and the audit logs no next', async () => {
         expect(await poll(scripted().exec, { once: true, json: true }, on(engine({ parsed: false, next: null, exitCode: 1 })))).toBe(0);

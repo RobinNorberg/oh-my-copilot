@@ -1024,6 +1024,7 @@ omg factory run <issue> --allow-gate-change  # local forge: accept the gate-defi
 | `1` | A failure: an engine step failed, or the state is `failed` |
 | `2` | A usage error, such as a missing issue number, `status` for an issue with no run, or `reset` when the configured forge (`factory.forge.kind`) is not local. On the local forge, also `--next` when the base branch does not exist (the message names `ship.base`) |
 | `5` | No usable forge: no origin, an origin that is neither GitHub nor Azure DevOps, or a forge config that does not match it. On the local forge, also a refused git config or a mirror remote mismatch (see [Offline factory](FACTORY-OFFLINE.md)). stderr starts with `unsupported forge:`. Also for `--dry-run` and `--next`. (Before, a missing origin exited 1.) |
+| `6` | Busy: another engine holds this checkout, the item's run or its claim, and nothing was touched. `run clean`, `reset`, `release` and the `omg factory heal` commands exit 6 for the same reason (see [Parallel runs and exit 6](#parallel-runs-and-exit-6-busy)) |
 
 `--dry-run` never fetches and writes nothing. It reads the committed `.copilot/omg.jsonc` from an existing `origin/<base>` tracking ref, with a warning that it may be stale, or from the local `<base>` branch when there is no parseable origin. A base branch that does not exist stops with `base branch '<base>' not found; set ship.base in .copilot/omg.jsonc (branches here: ...)`. An open PR on the factory branch is reported as `pr-exists` (`plan.reason` in `--json`) on every forge. On the local forge the dry run also checks the gate without running it: a gate whose definition cannot be read reports `gate-definition-unknown` before anything else, also for an existing run, and a gate whose executable cannot start is reported as `plan.gateProblem`.
 
@@ -1072,6 +1073,27 @@ any phase ─cancel─→ cancelled          any phase ─gate─→ awaiting-hu
 - **Reset.** `omg factory run reset <issue>` is for the local forge only (exit 2 with another configured forge). It refuses, with exit 1, a run whose recorded forge is not local, a run whose mirror differs from the configured one, and no run at all. It needs a cancelled run whose state passes its seal and is the engine's last write, no live engine, and no worktrees left (`run clean` first). It closes the local PR if it is still open, keeps the mirror branch as `factory/cancelled/issue-<n>-<time>`, deletes `factory/issue-<n>` from the mirror, and moves the state file and its ledger aside as `.reset-<time>`. The next `omg factory run <issue>` starts a new run with a new local PR. A reset stopped part way is finished by running it again. See [Cancelling and retrying an item](FACTORY-OFFLINE.md#cancelling-and-retrying-an-item).
 - **Progress.** The engine writes progress events to `.omg/progress/factory-<issue>.log` (`.omg/` is the state root, as for the state file). Lane waits and gate polls emit a heartbeat, so `omg progress watch` sees no false stall.
 
+##### Parallel runs and exit 6 (busy)
+
+One factory engine runs per checkout. The tamper check covers the checkout's whole git directory for the length of a run, so two engines in one checkout would flag each other. To run items in parallel, use separate clones of the repository, each with its own `omg factory poll`, on one host and with one `OMC_STATE_DIR` (or none in all of them). The clones coordinate through claim files in `<state dir>/factory-ledger/claims/` (`~/.omg/factory-ledger` without `OMC_STATE_DIR`). Claims are keyed on the clone's `origin` remote, so a clone without one claims nothing, and a run on the local forge makes no claim at all: its mirror and PR store belong to one checkout. Clones with different `OMC_STATE_DIR` values, or on different hosts, do not see each other's claims and can start the same item; give each such clone its own intake source. With `OMC_STATE_DIR` set, clones also need different folder names, because the project id is the folder name plus a hash of `origin`.
+
+```bash
+omg factory run status [--json]           # no issue: the engines running in this checkout, unreadable owner files and the claims on this repository
+omg factory run release [<issue>] [--json] # with an issue: remove its claim and owner file; without: remove this checkout's engine lock
+```
+
+- **Exit 6 (busy).** A second `omg factory run` in the same checkout, or a run of an item whose run or claim another live engine holds, exits 6 and touches nothing: no fetch, no state, no worktree. `run clean`, `run reset`, `run release` and the `omg factory heal` commands exit 6 for the same reason. `--json` adds `busy: true`. `--dry-run` names the holder and exits 6.
+- **A lock timeout is busy too.** If an owner or claim file stays locked, the command exits 6 instead of failing with a plain error.
+- **Poll and heal.** While an engine holds the checkout, `omg factory poll` skips its heal tick and its local base sync (`skipped: engine busy`), and an auto-start that exits 6 prints `was busy (... retried next tick)`. `heal scan`, `heal run` and `heal approve` take the engine lock first and exit 6 when it is held.
+- **`--next`.** `omg factory run --next` skips a runnable item another clone holds and lists it under `claimed`. If the engine then finds the picked item busy, `--next` picks once more.
+- **How long a claim lasts.** A claim ends when the run is merged, cancelled or failed, or when `run clean` or `run reset` removes it in the claiming checkout. A run parked at a gate, or a crashed engine, keeps its item claimed so another clone does not start it twice. A claim counts as held while its owner process is alive (a reused pid is detected by start time), or while the claiming checkout's run state for the item exists and is not terminal. That state counts only as the claiming engine sealed it: a state that fails its seal or its ledger entry keeps the claim held. A missing or unreadable claim file, or one whose checkout cannot be read, is held and never taken over silently. `omg factory run release <issue>` removes a claim nobody will resume, such as one from a deleted clone. `omg factory run release` without an issue removes this checkout's engine lock after a crash left it unreadable. Both refuse a live holder (exit 6).
+- **Shared state root.** The busy message and `run status` warn when the holder's checkout is another folder that shares this checkout's state root.
+- **Board.** `omg factory board` marks a run whose owner process is alive as `live pid N on host`; `--json` rows carry `run.live` with `pid`, `host` and `since` (schemaVersion stays 1).
+- **No credit cap across clones.** Each clone's run is capped by its own `factory.run.maxRunCredits`, so N clones can spend N times that cap at once.
+
+Claim and owner file text is untrusted. It is printed without control characters, and `run status --json` lists only the fields `run`, `pid`, `hostname`, `startedAt`, `root` and `parkedAt`.
+
+
 ##### Human gates
 
 Every gate posts one issue comment that names the gate, the reason and the command to resume. It is posted once per gate and head. Fix the cause, then rerun `omg factory run <issue>`.
@@ -1102,7 +1124,7 @@ Every gate posts one issue comment that names the gate, the reason and the comma
 | `gates-disagree` | The merge rule's one-shot read kept disagreeing with the gates loop | Check the PR's checks by hand |
 | `prepare-checks` | `ship.prepare.checks` changed after the run first prepared | Restore it, or cancel the run (`omg factory run cancel`) and start a new one |
 | `gate-definition-changed` | Local forge: the head changes the local gate's definition (the `package.json` script with its `pre`/`post` scripts, `.npmrc`, `.yarnrc`, `.yarnrc.yml`, `.pnpmfile.cjs`, the node script file, or an argv `--script-shell`, `--userconfig` or `--globalconfig` file inside the repository), checked before any push. What the script runs is left to review | Inspect the `git diff` the message names, then rerun with `--allow-gate-change` to accept exactly that definition once, or cancel the run |
-| `gate-definition-unknown` | Local forge: the gate's definition cannot be read from its argv (no script, a workspace selector, a package-manager `exec`, `dlx`, `node` or `create` subcommand, or a package directory outside the repository). Checked at every step boundary, so the run parks before its first lane and spends no AI credits | Set `factory.forge.local.gate` to name a script (`npm test`, `npm run <script>`, `npm --prefix <dir> run <script>`) or a node script file, then rerun |
+| `gate-definition-unknown` | Local forge: the repository holds no file that pins the gate's definition, so it cannot be compared with the base. That covers `npx`, a program looked up on PATH (`cargo test`, `go test`, `pytest`, `make check`), a program given by a path outside the repository (with or without arguments), `node` with an option before its script (other than `--run <script>`), and the package-manager cases: no script, a workspace selector, an `exec`, `dlx`, `node` or `create` subcommand, or a package directory outside the repository. Checked at every step boundary, so the run parks before its first lane and spends no AI credits | Wrap the command in a script committed in the repository (for example `node scripts/gate.mjs`, which runs `cargo test`) and set that as `factory.forge.local.gate`, or name a `package.json` script (`npm test`, `npm run <script>`, `npm --prefix <dir> run <script>`). `--allow-gate-change` does not apply to an unknown definition |
 | `budget` | The run reached `factory.run.maxRunCredits`, or less than the 30-credit lane minimum is left | Raise the limit in the user config, or in `.copilot/omg.jsonc` when the user config sets none |
 | `wall-time` | The run passed `factory.run.maxRunWallTimeMinutes` | Raise the limit in the user config |
 | `merge-refused` | Ship's merge rule refuses the head | Read the reasons in the PR comment and resolve them |
@@ -1211,6 +1233,8 @@ The trial result is cached per process, so after either fix, restart a long-live
 
 `OMG_SANDBOX=off` in the env of the MCP server or the engine switches the sandbox off for debugging. It never comes from a config file, and it is recorded as `detect-only`.
 
+**State-root read-deny.** Where the sandbox supports denied paths (not on Windows, see the residual risks below), lanes cannot read the OMC global state root (`OMC_HOME/state`, or the XDG state dir). It holds the forge mirror and PR store, the local review records and the factory ledger. When `OMC_STATE_DIR` is set, its factory ledger directory and the budget ledger are denied too. A path that holds a lane's own grant, such as its job directory, is never denied. The engine creates the forge and ledger directories before it builds the policy, so the deny covers them from the first lane. The budget ledger is a file created on first use, and is named in the deny list only once it exists.
+
 **`writeUnsandboxed: "detect-only"`.** This restores the behaviour from before the sandbox. A write lane on a host without a confirmed sandbox runs with a shell that acts as you, with your home directory and the network. The engine prints `omg factory run: <kind> lane <id> ran without an OS sandbox`, records `sandbox.mode: "detect-only"` on the lane, and names those lanes in the PR body. Unsandboxed shell calls are counted but do not stop the lane. Use it only on repositories and issues you trust.
 
 **Git 2.41 or newer.** While the sandbox is on, `copilot_run_start` refuses with an older host git. The host reads a sandboxed worktree with `GIT_ATTR_SOURCE` set to the empty tree, so no attribute the lane wrote can select a filter or a diff driver, and git before 2.41 ignores that variable. Upgrade git, or set `enabled: false`.
@@ -1272,6 +1296,9 @@ AI Credits is the unit. Premium requests are legacy and limit nothing here, and 
 
 With the default limits the worst case is 12 lanes before retries, which is 360 AI credits of caps. Lanes usually spend far less than their cap: the `factory-run` smoke scenario's implement and review lanes are estimated at about 2 AI credits together on a small model. Set `maxRunCredits` to bound a run, and use Copilot admin budgets as the hard stop.
 
+##### Copilot coding agent (adapter only)
+
+The GitHub forge adapter can read the state of the Copilot coding agent on an issue (enabled, assigned, working, finished, closed or ambiguous) and can assign the agent to an issue on a given base branch. The engine's command guard allows exactly three `gh` shapes for it: the status read, the assignment and the close of the agent's own PR, each bound to the repository, issue, base branch and PR it is called for. The engine does not use the adapter yet. No command or config key starts the coding agent, every implement lane is still a `copilot_run` lane, and nothing is assigned or billed on your behalf.
 ##### Progress sync
 
 Progress sync is opt-in. It runs only when the user config or the base-branch `.copilot/omg.jsonc` has a `factory.progress` section, which `omg factory setup` writes. Without that section nothing is written. A section without `enabled` turns it on, and `"enabled": false` turns it off. When it is on, the engine writes the run's stage to the issue or work item after each state save that changes the stage:
@@ -1378,6 +1405,57 @@ gh issue list --repo <host>/<owner>/<name> --search '"shipyard-key: <spec>/" in:
 - The area path (from an `area-tag` intake source) must be the forge project or under it. Priority is 1 to 4.
 - The body file is read like a GitHub one: a regular file with one link, at most 65536 characters. `--in-file` may not contain `:` after the drive letter, because that would name an NTFS alternate data stream. `omg factory run`, `omg factory check` and `omg ship` refuse the create route and every tracker path.
 
+#### `omg factory triage` (experimental)
+
+`omg factory triage` proposes the priority and the `needs-split` / `needs-plan` labels each intake item should carry, from the same reads as `omg factory check`. It is a dry run by default: nothing is written, and `--apply` recomputes the plan from fresh reads and writes the plan it prints. It starts no run and no lane, and makes no model call.
+
+```bash
+omg factory triage [<id>...] [--parent <spec>] [--source <spec>] [--limit <n>] [--apply] [--json]
+```
+
+The ids, `--parent`, `--source` and `--limit` work as in `omg factory check`.
+
+| Label | Meaning |
+|---|---|
+| `priority:p0` to `priority:p3` | One per item. On Azure DevOps and in the local backlog the numeric priority is p+1 (`Microsoft.VSTS.Common.Priority`, or `priority:` in the frontmatter) |
+| `needs-split` | A spec, or an item over `sizeSplitAt` or reported `too-big` by check, that has no children |
+| `needs-plan` | Check finds the plan or the Acceptance criteria missing or vague (check's `needs-plan` bucket) |
+
+- **Priority follows the item.** The tag is derived from the item's priority field (Azure DevOps and local) or its first priority label (GitHub, as `omg factory check` ranks it). Stale priority tags are removed and the matching tag is added. Triage never writes the priority field from a tag, and never resolves a conflict upward. A field above 4 leaves the labels alone. `factory.triage.defaultPriority` can add a priority to items that have none (off by default).
+- **Only adds.** Triage adds `needs-split` and `needs-plan`; humans remove them. The only labels it removes are stale priority tags.
+- **Skipped items.** Closed items, items with a live or finished run, an open or merged factory PR or an existing factory branch, and wrong-type or unreadable items. A blocked item keeps its labels.
+- **GitHub never creates labels.** A row that would add a label the repository lacks becomes `skip` with `label-missing:<name>`, in both modes, so the dry run and `--apply` agree; each missing label also adds a warning. The write is one exact shape: `gh issue edit <n> --repo <host>/<owner>/<name>` with at most six `--add-label` / `--remove-label` flags, adds first, each label on the plan's allowlist. Triage never touches a `factory:*` label.
+- **Azure DevOps** reuses the tracker-tag and priority patch routes, limited to `/rev`, `System.Tags` and `Microsoft.VSTS.Common.Priority`. This path is tested against fixtures only, not against a live organization.
+- **Local forge.** `--apply` edits the backlog files in the working tree. Commit them on the base branch, because items are read from the base commit. A rewrite drops frontmatter comments and leading blank body lines. A malformed working-tree backlog file is skipped, and triage refuses to edit it, naming the file.
+- **Not implemented.** Triage proposes no `owner:<x>` label and writes no assignee (the adapters answer `assignee is not a triage write yet`).
+
+Configuration, read from the user config and the base branch only (the working-tree project config is ignored). An unknown key under `factory.triage`, or a label name that starts with `priority`, `factory:` or `harbor`, exits 2.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `factory.triage.labels.needsSplit`, `needsPlan` | `needs-split`, `needs-plan` | The label names |
+| `factory.triage.sizeSplitAt` | `5` | An item with a size above this and no children gets `needs-split` (1..100) |
+| `factory.triage.defaultPriority` | none | `0` to `3`: the priority for items that have none. Off unless set |
+
+`--json` (schemaVersion 1): `{ schemaVersion, ok, mode: "dry-run"|"apply", forge, repo, source, config, counts: { change, unchanged, skip, applied, failed }, items, missingLabels, notes, warnings }`. Each item has `id`, `title`, `url`, `action` (`change`, `unchanged` or `skip`), `skipReason`, `bucket`, `reasons`, `current`, `add`, `remove`, `priority` and `why`, plus `result` on applied `change` rows. Exit codes: `0` the plan was made (or applied), `1` a read failed or an applied write failed, `2` usage or config, `5` incompatible (no usable forge). A guard refusal while planning stops the command with a non-zero exit instead of becoming a skip row.
+
+#### `omg factory pr` (local forge)
+
+`omg factory pr` inspects and reviews the PRs of the offline `local` forge. On GitHub and Azure DevOps it exits 2: review there happens on the forge.
+
+```bash
+omg factory pr list [--json]
+omg factory pr view <n> [--json]            # PR, head, played-back reviews and open notes
+omg factory pr diff <n>                     # git diff --no-ext-diff --no-textconv base...head
+omg factory pr review <n> (--approve | --request-changes | --comment) --head <sha> [--body-file <file>] [--json]
+```
+
+- **No hook runs.** `pr diff` runs through the hardened engine git, so no hook, fsmonitor, external diff or textconv in your checkout runs. Titles, branch names, bodies and the diff are printed without control characters.
+- **Review a head you read.** `pr diff` and `pr view` print the full head sha. `pr review` needs that full 40-character sha as `--head` and refuses with exit 2 when the PR moved since (`head moved`), so an approval never covers commits you did not read. The review is recorded on the PR's head in `<store>/prs/<n>/reviews.jsonl`.
+- **Decisions.** Exactly one of the three decision flags. `--request-changes` and `--comment` need `--body-file`. The PR must be open. Only an author's latest record on the head counts: an approval closes that author's earlier request, and a later `--comment` after an `--approve` on the same head replaces the approval.
+- **Trust.** The local forge trusts every recorded review. Keep the state directory at its default (`~/.omg`) and run lanes in a sandbox that denies it; if `OMC_STATE_DIR` points into a lane-writable place, or the sandbox cannot deny paths, a lane could record an approval.
+- **What reads it.** `omg factory poll` counts recorded reviews as human threads. The engine does not yet read them: a recorded review does not start a fix round.
+
 #### `omg factory board` (experimental)
 
 `omg factory board` shows intake items, their factory runs and their tracker stages in one view. It works the same on GitHub and Azure DevOps, and it is strictly read-only: it runs on `omg factory check`'s read guard with no marker, so every tracker or forge write (a gh edit, comment or PR call, an az POST or PATCH other than the WIQL query the `area-tag` and `board-column` sources run) is refused, and it writes no local state.
@@ -1411,7 +1489,13 @@ One tick, in this order:
 
 1. **Heal.** Only when the forge has the heal capability (GitHub; Azure DevOps with `factory.heal.pipeline`): `omg factory heal scan`, which classifies new red CI runs into heal state. A tick never runs `heal run` or `heal approve`, because diagnosis lanes are billed. On Azure DevOps the tick uses `heal scan`'s own wiring: it reads only the builds of `factory.heal.pipeline` (the read guard pins `definitions` to it), with GETs only. Without a pipeline the tick is skipped with `heal scan`'s message.
 2. **Intake.** Reads `factory.intake.source` and compares the ids with `seen` in the poll file. Each new id is checked with `omg factory check`'s rules and audited as `intake-new` with its bucket. Nothing is started here: run it with `omg factory run <id>`, or turn on `factory.intake.autoStart` (step 5).
-3. **PRs.** For every run in flight with a PR: a PR a human completed or abandoned prints the command that records it (`omg factory run <id>`, or `omg factory heal approve <sig8>` for a ci-heal run). On Azure DevOps the active and pending text threads are counted. ADO's system threads and the factory's own comments are left out: every PR comment the factory posts on Azure Repos ends with the hidden line `<!-- omg-factory: comment -->`. The author does not count, so threads you write by hand are counted even when the factory runs as your own `az` login. Review comments never start a lane.
+3. **PRs.** For every run in flight with a PR: a PR a human completed or abandoned prints the command that records it (`omg factory run <id>`, or `omg factory heal approve <sig8>` for a ci-heal run). Open human review input on the PR's current head is counted and printed as `PR #n of <run>: k human thread(s) (m ignored)`. Only reviewers the factory trusts count; everyone else's comments are counted as `ignored` and nothing more. The factory's own comments never count: every PR comment it posts on Azure Repos ends with the hidden line `<!-- omg-factory: comment -->` (the author does not count, so threads you write by hand are counted even when the factory runs as your own `az` login), and on GitHub the factory marker line is excluded. Trust, per forge:
+   - **All forges.** A login (GitHub) or `uniqueName` (Azure DevOps) listed in `factory.review.trustedReviewers`. The key is an array of at most 100 entries, default `[]`. It is read from the user config, else the base branch's `.copilot/omg.jsonc`; a working-tree value that differs is ignored with a warning. To clear a base list in your user config, set `[]` (`null` falls through to the base). A GitHub App is listed as `<slug>[bot]`; a plain login matches only a user account.
+   - **GitHub.** Also anyone with admin, maintain or write permission on the repository, read from the first 100 collaborators and from your own permission. If the repository has more than 100 collaborators, or the token cannot read the list, the row ends with `trust incomplete` and a write-access reviewer may sit in `ignored`: list your reviewers in `factory.review.trustedReviewers`. Inline review threads that are unresolved and not outdated count (a push that changes the commented lines outdates a thread, and a thread stops counting when it is resolved; a lane that holds GitHub credentials could resolve one, which factory lanes do not), and so does a "Comment" or "Changes requested" review summary from a trusted reviewer on the current head. Top-level conversation comments on the PR are not read.
+   - **Azure DevOps.** Also the `factory.forge.azureDevOps.trustedAuthors` of your user config. Active and pending text threads count. Votes are read as decisions: Approved and Approved with suggestions approve; Waiting for author and Rejected request changes. A vote carries no commit, so whether it survives a push depends on the branch policy's reset-votes setting.
+   - **Local forge.** Every review recorded with `omg factory pr review` counts (see [`omg factory pr`](#omg-factory-pr-local-forge)).
+
+   If one read returns more than the query can hold (100 review threads, 20 comments in one open thread, 50 reviews, 20 review requests), the factory reports a read error for that PR instead of acting on part of it. Resolved and outdated threads count against the 100, so delete spam threads or lock the conversation and run poll again. A rate limit backs the tick off like the Azure DevOps one. Top-level PR conversation comments on GitHub are not read, only review threads and reviews. Review feedback never starts a lane: the engine does not yet act on human review feedback.
 4. **Board.** The `omg factory board` rows that changed since the previous tick (all rows on the first tick), read without the check rules. With `--json`, each tick prints one JSON object on one line (schemaVersion 1): `{ tick, at, forge, repo, heal, intake, prs, board, idle, autoStart, rateLimited, errors, warnings, nextIntervalMs }`. `idle` is true when no engine owns the repository, no run is in flight (a run parked at a gate does not count) and every run state is readable. It is advisory: it is read without the engine's repository owner lock, so a consumer that starts a run must still take that lock and skip the tick when it is refused.
 5. **Auto-start** (off by default). With `factory.intake.autoStart: true`, an idle tick starts one `omg factory run --next --json` and waits for it to end. It starts only when all of these hold:
    - the tick is idle, and no run state is unreadable or fails its integrity seal (such a state could hide a run in flight);
@@ -1442,7 +1526,7 @@ One tick, in this order:
 - **One poller per repository.** The poll file records the owner's pid and host, and the owner writes a `beatAt` heartbeat each tick. A second poller, including `--once`, is refused while the first runs; the refusal names the poll file to delete if no poller runs. An owner whose process has died on this host, or whose heartbeat is older than 2 h (twice the 60 min ceiling), is taken over.
 - **Config.** The poller resolves the forge and intake config once, at start, including `factory.intake.autoStart` and the budget gate's `budget.softLimit` and `factory.run` layers. Only the heal config and the budget ledger are read again each tick. Restart the poller after config changes.
 - **Stopping.** SIGINT or SIGTERM ends the loop after the current tick. A second signal exits at once.
-- **Local forge.** Each tick first syncs the engine's mirror from your local `<base>` (fast-forward only), so a PR you merged reads as merged. A tick with nothing new on the base reads the mirror without fetching. The tick's JSON gets `baseSync` (ran, with a message, or not ran, with a reason), shown as `base sync: ...`. A plain sync error, such as a non-fast-forward base, counts as a tick error. A refused local git config or a mirror remote mismatch exits 5 and stops `--loop`; fix the config, then restart the poller. Heal and review threads are skipped. See [Offline factory](FACTORY-OFFLINE.md).
+- **Local forge.** Each tick first syncs the engine's mirror from your local `<base>` (fast-forward only), so a PR you merged reads as merged. A tick with nothing new on the base reads the mirror without fetching. The tick's JSON gets `baseSync` (ran, with a message, or not ran, with a reason), shown as `base sync: ...`. A plain sync error, such as a non-fast-forward base, counts as a tick error. A refused local git config or a mirror remote mismatch exits 5 and stops `--loop`; fix the config, then restart the poller. Heal is skipped. Review input comes from the reviews you record with [`omg factory pr review`](#omg-factory-pr-local-forge). See [Offline factory](FACTORY-OFFLINE.md).
 - **Exit codes:** `0` stopped by a signal, or a clean `--once` tick; `1` a read failed in the `--once` tick, or another poller runs; `2` usage (a bad `--interval`), or on the local forge a base branch that does not exist; `5` incompatible, or a refused local forge config (see [Offline factory](FACTORY-OFFLINE.md)), and a loop stops. With `--json` an error that stops poll is the `error` field of a `{"ok":false,"error":"..."}` line on stdout instead of an `Error:` line on stderr.
 
 #### `omg factory enqueue`
@@ -1545,6 +1629,7 @@ omg factory setup --forge azure-devops --org contoso --project Web --repo web-ap
   [--trusted-author owner@example.com] [--heal-pipeline <definitionId>|none] [--scope project|user] [--dry-run] [--yes] [--json]
 omg factory setup --intake label:factory | milestone:v5.18 ...   # GitHub
 omg factory setup --forge local [--intake local-backlog[:<label>]] [--dry-run] [--yes]   # offline, no origin needed
+omg factory setup --workflows [--mode read-only|triage] [--cron "<expr>"] [--dry-run] [--yes]   # cloud heartbeat file, see below
 ```
 
 1. **Detect.** The forge comes from `git remote get-url origin`. `--forge`, `--org`, `--project` and `--repo` can only pin it: a value that disagrees with the remote exits 5. Any other remote, or no origin, also exits 5 (`unsupported forge: ...; for the offline (local) forge run omg factory setup --forge local`). Setup reports this before it asks for `--intake` or other missing flags. `--forge local` needs no origin and refuses `--org`, `--project` and `--repo`; see [Offline factory](FACTORY-OFFLINE.md). On Azure DevOps, `.omg/config.json` `ado` and an existing `factory.forge.azureDevOps.team` prefill the answers.
@@ -1556,6 +1641,27 @@ omg factory setup --forge local [--intake local-backlog[:<label>]] [--dry-run] [
 6. **Preview.** The wizard lists the source's first 10 items through the forge adapter and the engine's guard. For now each row says `readiness: run omg factory check`. A forge without an adapter in this build loses only the preview. The wizard also reports any `omg factory init` prerequisites that are missing. Those are needed only for the chain route table.
 
 **Local forge.** `--forge local` skips auth and labels. It writes `factory.forge.kind: "local"`, `factory.forge.local.backlogDir: ".copilot/backlog"` and the intake `local-backlog` (the default without `--intake`), and adds a closed sample item `.copilot/backlog/1-example.md` when the backlog has no item yet (a symlinked or junctioned path is refused). When neither the project config nor the user config names `ship.base`, it writes `ship.base` to the project file: `dev` if that branch exists, else the current branch (`init.defaultBranch` on an unborn branch). It never changes a `ship.base` that is set, and stops with exit 2 when that value is not a plain branch name. With a detached HEAD and no `dev` it writes none and prints a note; it also notes a base that is not in `ship.trustedBases`. It never writes `factory.forge.local.gate`: set the gate (an argv such as `["node","--test"]`) in the user config or in `.copilot/omg.jsonc` committed on `<base>`; until then gates park at `awaiting-human: gates`. Over a GitHub or Azure DevOps origin, `kind: "local"` counts only from the user config or the committed base file. The output prints the [offline limitations](FACTORY-OFFLINE.md#what-offline-mode-does-not-do) and the JSON has them in `limitations`.
+
+**Cloud heartbeat (`--workflows`).** `omg factory setup --workflows` writes a scheduled workflow instead of running the wizard. It needs no auth and makes no forge read, and it does not edit the config.
+
+```bash
+omg factory setup --workflows [--mode read-only|triage] [--cron "<5 fields>"] [--omg-version <x.y.z>] [--branch <name>] [--dry-run] [--yes] [--force]
+```
+
+The file is `.github/workflows/omg-factory-heartbeat.yml` on GitHub and `.azure-pipelines/omg-factory-heartbeat.yml` on Azure DevOps. It runs on a schedule (default `17 */2 * * *`) and on manual dispatch, installs the omg version that wrote it, runs `omg factory check --json`, and publishes the result as a job summary and an artifact kept for 7 days. It starts no lane and calls no model. On the local forge setup prints that the heartbeat is not applicable and writes nothing.
+
+| Mode | Permissions | Extra step |
+|---|---|---|
+| `read-only` (default) | `contents`, `issues`, `pull-requests`: read | none |
+| `triage` | the same, with `issues: write` | `omg factory triage --apply --json` |
+
+- **Pinned and token-light.** Actions are pinned to full commit shas. The pinned version is installed with `npm install -g --ignore-scripts` in a step that has no token. The token reaches only the steps that run omg. The file never reads event data or secrets in a `run` block.
+- **Version.** `--mode triage` needs omg 5.22.0 or later. `--omg-version <x.y.z>` (a published release) overrides the pin. A build from a git checkout warns that the pinned version must exist on npm.
+- **Cron.** `--cron` is checked field by field and warns below a 15-minute interval.
+- **Writing.** Writes need `--yes`, or a prompt on a terminal. `--dry-run` prints the file and the path. A file this command did not write is never replaced without `--force` (exit 5); a symlinked path segment is refused. The file starts with a marker line that tells setup it wrote it. Commit the file on the default branch, because scheduled workflows run only from there. Delete the file to remove the heartbeat.
+- **Azure DevOps.** The pipeline never prints omg's JSON to the log; read it from the `omg-factory-heartbeat` pipeline artifact. Omg's stderr is filtered so a work item title cannot inject an Azure DevOps logging command. The schedule runs the repository default branch, resolved from `origin/HEAD`. Pass `--branch <name>` to choose it; it is required when `origin/HEAD` is not set, otherwise setup exits 2. `--branch` on GitHub is exit 2. The triage step uses `AZURE_DEVOPS_EXT_PAT`.
+- **Exit codes.** `0` written or dry run, `2` usage (a bad `--mode`, `--cron`, `--omg-version` or `--branch`, an unresolved branch, `--mode`, `--cron` or `--force` without `--workflows`), `5` an existing file that omg did not write.
+- **Untested.** The Azure DevOps pipeline and its `AZURE_DEVOPS_EXT_PAT` use are tested against rendered output only, not on a live agent.
 
 - **Non-interactive:** `--yes`, `--json` or no TTY takes every answer from flags. A missing `--intake` (except with `--forge local`), or a missing `--yes` without `--dry-run`, exits 2 and names the missing flags. A repository with no usable forge exits 5 first.
 - **Dry run:** `--dry-run` shows the diff and the preview, writes no file and creates no label.
@@ -1737,6 +1843,7 @@ To cap spend, use Copilot's own limits:
 omg budget                  # usage since the last reset against the soft limit
 omg budget status --json    # the full ledger: sessions, teams, measured vs estimated records
 omg budget reset            # start a new accounting period
+omg budget status --by role # usage grouped by who spent it; also --by kind or --by run
 ```
 
 Configure it in `.copilot/omg.jsonc` (or the user config). Nothing warns until you set `softLimit`:
@@ -1766,6 +1873,18 @@ Configure it in `.copilot/omg.jsonc` (or the user config). Nothing warns until y
 **Hooks.** `scripts/premium-budget.mjs` (the file keeps its name) runs in the SessionStart, UserPromptSubmit and Stop groups of the per-event dispatcher. SessionStart prints one summary line when `softLimit` or a deprecated key is set; the line carries the deprecation warning. Stop records the turn's usage and, on the first crossing of `softLimit` per period, stores a notice that the next prompt delivers as context; raising the limit re-arms the notice. The phase arguments are `start`, `turn` and `submit`. Each hook waits at most 250 ms for the ledger lock, and the SessionStart refresh is bounded (above). The hook fails open: an error, a missing build or an unreadable ledger produces no output. It never blocks a session.
 
 **HUD.** The `creditBudget` element shows `cr:4.2/150`, AI credits used against `softLimit`, yellow once the soft limit is reached. It appears only when `softLimit` is set, except under Copilot CLI, where without a limit it shows the session's credits from the statusline payload (`cr:0.4`, hidden at zero); `"creditBudget": false` under `elements` hides it. The old name `premiumBudget` still works as the toggle and in `layout` / `elementOrder` while `creditBudget` is unset.
+
+**Usage by role (`--by`).** `omg budget status --by role|kind|run` adds a block that groups the period's usage by who spent it, and `--json` adds `by: { field, groups }`. Factory lanes are tagged with the lane kind (`implement`, `fix`, `review` and so on) and the run, and SDK team workers as `team-worker`. A record written before tags existed, and a plain session, appears as `untagged`. A grouping by `role` falls back to the kind when a record has no role. Without `--by` the output is unchanged. An unknown field exits 2, and `omg budget reset --by` is refused with exit 2. A tag holds a known kind plus a role and a run name of `[A-Za-z0-9._:-]{1,64}`; anything else is dropped. SDK team workers carry no role yet, so `--by role` shows them as `team-worker`.
+
+**Model profile.** `modelProfile` in the user config or `.copilot/omg.jsonc` is one switch for the agents' models. `omg setup` applies it to the Copilot agent settings.
+
+| Profile | High-tier agents | Medium-tier | Low-tier |
+|---|---|---|---|
+| `quality-first` | opus | opus | sonnet |
+| `balanced` (default) | each agent's own default model | | |
+| `economy` | sonnet | haiku | haiku |
+
+The tier of each agent is derived from its default model (`agents/*.md`). An explicit `agents.<name>.model` always wins. While a profile is active, setup rewrites the profile's entries in the Copilot settings, so a hand edit of one of them does not last (the `.bak` copy keeps it). Switching profiles is reversible: setup records the entries a profile wrote in `COPILOT_HOME/.omg-profile-models.json` and removes them again when they still hold the recorded value, so a value you changed afterwards stays. A missing or damaged record removes nothing. An unknown profile name is warned about and ignored. Factory lanes keep the Copilot default model; a profile does not choose their model.
 
 **Teams.** `omg team` starts every requested worker whatever the ledger holds. It does not project, clamp or refuse a launch. `--budget-override` is a deprecated no-op that prints one warning.
 

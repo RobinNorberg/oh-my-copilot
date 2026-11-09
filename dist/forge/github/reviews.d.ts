@@ -7,7 +7,8 @@
  */
 import type { Exec, ExecResult } from '../../ship/exec.js';
 import type { PrView } from '../../ship/merge.js';
-import type { ForgePr, ForgeReviews } from '../types.js';
+import type { ForgePr, ForgeRepo, ForgeReviewFeedback, ForgeReviews } from '../types.js';
+import { type ReviewTrust } from './graphql.js';
 /** `gh pr view --json` fields the merge step reads. */
 export declare const MERGE_VIEW_FIELDS = "number,state,isDraft,baseRefName,baseRefOid,headRefOid";
 export interface MergeView extends PrView {
@@ -59,5 +60,18 @@ export declare function ghRepoView(exec: Exec, cwd: string): {
 export declare const PR_VIEW_FIELDS = "number,state,isDraft,baseRefName,baseRefOid,headRefName,headRefOid,url";
 /** `gh pr view <pr> --json PR_VIEW_FIELDS`; throws on a missing or malformed field. */
 export declare function ghViewPr(exec: Exec, pr: number, cwd: string): ForgePr;
-export declare function githubReviews(exec: Exec, cwd: string): ForgeReviews;
+/**
+ * The human review input on `pr` at `head` (graphql.ts): one fixed GraphQL
+ * read. A non-zero gh exit still counts only when every GraphQL error is about
+ * the collaborator list (it needs push access: then only the viewer and
+ * trustedReviewers are known, and `trustIncomplete` is set); otherwise it
+ * throws. A truncated list or a moved head throws its ReviewFeedbackError
+ * subclass unchanged; a rate limit keeps its RATE_LIMITED text (poll backs off).
+ */
+export declare function ghReviewFeedback(exec: Exec, repo: ForgeRepo, pr: number, head: string, trust: ReviewTrust, cwd: string): ForgeReviewFeedback;
+/** `o.repo` (the configured repository) turns on reviewFeedback; trust comes from `o.review` (trusted config layers). */
+export declare function githubReviews(exec: Exec, cwd: string, o?: {
+    repo?: ForgeRepo;
+    review?: ReviewTrust;
+}): ForgeReviews;
 //# sourceMappingURL=reviews.d.ts.map

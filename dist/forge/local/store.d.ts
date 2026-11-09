@@ -24,17 +24,26 @@ export declare function engineOwnedDir(dir: string, untrustedRoots: readonly str
  * it one at a time, each checked again; without it, false when a parent is
  * missing. The leaf may be absent.
  */
-export declare function noLinkPath(anchor: string, path: string, create?: boolean): boolean;
+export declare function noLinkPath(anchor: string, path: string, create?: boolean, allowLinkedAnchor?: boolean): boolean;
 /**
  * Write a file atomically; the parent is created. With `anchor`, no
  * component below it may be a symbolic link (noLinkPath).
  */
-export declare function writeAtomic(path: string, content: string, anchor?: string): void;
+export declare function writeAtomic(path: string, content: string, anchor?: string, allowLinkedAnchor?: boolean): void;
 /** Append to a file under `anchor` without following a link below it (O_NOFOLLOW on the leaf where the platform has it). */
-export declare function appendNoFollow(anchor: string, path: string, text: string): void;
+export declare function appendNoFollow(anchor: string, path: string, text: string, allowLinkedAnchor?: boolean): void;
 export declare const LOCK_TIMEOUT_MS = 15000;
 /** A lock directory older than this is left over from a crashed writer. */
 export declare const LOCK_STALE_MS = 60000;
+/** How long a Windows EPERM/EACCES on the lock directory is waited out as a pending delete. */
+export declare const PENDING_DELETE_MS = 5000;
+/**
+ * Remove a stale lock: rename it to a name only this waiter uses, so two
+ * waiters never both break one lock (the second rename fails), then check
+ * the renamed lock is still stale (a fresh lock taken in between goes back)
+ * and remove it.
+ */
+export declare function breakStaleLock(lock: string, staleMs: number, token: string, seenOwner: string | undefined): void;
 /**
  * Run `fn` while holding `<path>.lock` (an exclusive mkdir holding an owner
  * token). Only the owner releases the lock; a lock older than `staleMs` is
@@ -72,4 +81,26 @@ export interface LocalPrStore {
 export declare function readPrStore(path: string): LocalPrStore;
 /** Locked read-modify-write of the store; `fn` mutates the store and returns a result. */
 export declare function updatePrStore<T>(path: string, fn: (store: LocalPrStore) => T): T;
+/** A human review played back into the local forge (`omg factory pr review`): the local stand-in for a forge review. */
+export interface LocalReviewRecord {
+    version: 1;
+    id: string;
+    pr: number;
+    /** The OS user who ran the command, lowercased. */
+    author: string;
+    state: 'approved' | 'changes-requested' | 'commented';
+    /** The review text (untrusted data for the fix lane; may be empty on approve). */
+    body: string;
+    /** The PR head the review was given on (the mirror's branch tip then). */
+    head: string;
+    at: string;
+}
+/** At most this many characters of review text in one record. */
+export declare const MAX_LOCAL_REVIEW_CHARS = 20000;
+/** `<storeDir>/prs/<n>/reviews.jsonl`: engine-owned (outside every lane-writable root), beside prs.json. */
+export declare const localReviewsPath: (storeDir: string, pr: number) => string;
+/** The PR's played-back reviews in order; none when the file is absent. A malformed line throws (the file is engine-owned). */
+export declare function readLocalReviews(storeDir: string, pr: number): LocalReviewRecord[];
+/** Append one review record under the file's lock, without following a link below `storeDir`. */
+export declare function appendLocalReview(storeDir: string, record: LocalReviewRecord): void;
 //# sourceMappingURL=store.d.ts.map

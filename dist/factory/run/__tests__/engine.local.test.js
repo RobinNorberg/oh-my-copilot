@@ -134,14 +134,14 @@ describe('factory run on the local forge', () => {
         // An engine died mid-gate with the sealed argv (a PENDING record, stale): that gate started, so its seal binds.
         writeLocalCheckRecord(w.stateDir, w.root, { name: 'local-gate', head: state.head, state: 'PENDING', argv: ['node', '--test'], runId: 1, startedAt: '2020-01-01T00:00:00.000Z' });
         // The trusted config now names another gate: the rerun refuses it instead of judging the head with it.
-        const changed = { ...w.config, local: { ...w.config.local, gate: ['node', '--test', '--experimental'] } };
+        const changed = { ...w.config, local: { ...w.config.local, gate: ['node', '--test', '--test-reporter=spec'] } };
         let ran = 0;
         const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), {
             forge: { config: changed, options: { ...factoryForgeOptions(w.root), stateDir: w.stateDir } },
             localGate: async () => { ran += 1; return { status: 0, stdout: '', stderr: '', timedOut: false }; },
         }));
         expect(again.exitCode, again.message).toBe(EXIT_AWAITING_HUMAN);
-        expect(again.gate?.reason).toMatch(/refuses the local gate `node --test --experimental`: this run recorded `node --test`/);
+        expect(again.gate?.reason).toMatch(/refuses the local gate `node --test --test-reporter=spec`: this run recorded `node --test`/);
         expect(ran).toBe(0);
     });
     it('remote.omg-local.vcs in the checkout refuses the run as an unusable forge (exit 5) before any transport', async () => {

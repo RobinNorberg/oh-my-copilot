@@ -44,6 +44,8 @@ beforeAll(() => {
     jobHome: join(root, 'job', 'home'),
     jobDir: join(root, 'job'),
     realHome: join(root, 'me'),
+    // Under the home's .omg deny: the state-root deny adds nothing here (sandbox.state-deny.test.ts covers it).
+    omcStateRoot: join(root, 'me', '.omg', 'state'),
     platform: 'linux',
     settings: { ...DEFAULT_SANDBOX_SETTINGS, allowedHosts: [], extraReadonlyPaths: [], extraReadwritePaths: [] },
   };

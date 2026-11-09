@@ -55,6 +55,12 @@ export interface BoardRow {
         lanes: number;
         /** The lane running now, if any. */
         runningLane?: string;
+        /** The engine running the item now (its owner file held by a live process); absent when none runs. */
+        live?: {
+            pid: number;
+            host: string;
+            since: string;
+        };
         credits: number;
         integrity: 'ok' | 'bad' | 'none';
         updatedAt: string;

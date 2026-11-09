@@ -55,6 +55,11 @@ export interface LaneStartInput {
      */
     engineCommits?: boolean;
     model?: string;
+    /** Cost attribution for the budget ledger (`omg budget status --by role`); the local backend tags the lane's record. */
+    ledgerTag?: {
+        role: string;
+        run: string;
+    };
     /** Cloud backends only. */
     customAgent?: string;
     timeoutMs: number;
