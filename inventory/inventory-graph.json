@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "da1c0d9872c881468cb22a83a2ee69d1b8dd07d6",
-    "sourceSha256": "744fc254be573c1621eaca8c74239619b1afdc6eafc3b243c41a7dcc885ea211",
+    "head": "b819b486ce23623405f64f801445dea7fc8a9db6",
+    "sourceSha256": "7acb5ccc34f3c15f9053ef065098c4c637038dc34698101af9aa70d6b18d26ae",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "da1c0d9872c881468cb22a83a2ee69d1b8dd07d6",
-  "sourceSha256": "744fc254be573c1621eaca8c74239619b1afdc6eafc3b243c41a7dcc885ea211",
+  "head": "b819b486ce23623405f64f801445dea7fc8a9db6",
+  "sourceSha256": "7acb5ccc34f3c15f9053ef065098c4c637038dc34698101af9aa70d6b18d26ae",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 1976,
-      "total": 2001
+      "srcFiles": 1982,
+      "total": 2007
     },
     "generated": {
-      "distFiles": 7272,
+      "distFiles": 7296,
       "bridgeFiles": 8,
-      "total": 7280
+      "total": 7304
     },
     "prompt": {
       "promptLikeFiles": 71
@@ -2751,6 +2751,10 @@
       "dist/cli/commands/__tests__/factory-poll-local-sync.test.d.ts.map",
       "dist/cli/commands/__tests__/factory-poll-local-sync.test.js",
       "dist/cli/commands/__tests__/factory-poll-local-sync.test.js.map",
+      "dist/cli/commands/__tests__/factory-pr.test.d.ts",
+      "dist/cli/commands/__tests__/factory-pr.test.d.ts.map",
+      "dist/cli/commands/__tests__/factory-pr.test.js",
+      "dist/cli/commands/__tests__/factory-pr.test.js.map",
       "dist/cli/commands/__tests__/factory-run-cli.test.d.ts",
       "dist/cli/commands/__tests__/factory-run-cli.test.d.ts.map",
       "dist/cli/commands/__tests__/factory-run-cli.test.js",
@@ -2863,6 +2867,10 @@
       "dist/cli/commands/factory-poll.d.ts.map",
       "dist/cli/commands/factory-poll.js",
       "dist/cli/commands/factory-poll.js.map",
+      "dist/cli/commands/factory-pr.d.ts",
+      "dist/cli/commands/factory-pr.d.ts.map",
+      "dist/cli/commands/factory-pr.js",
+      "dist/cli/commands/factory-pr.js.map",
       "dist/cli/commands/factory-setup.d.ts",
       "dist/cli/commands/factory-setup.d.ts.map",
       "dist/cli/commands/factory-setup.js",
@@ -4081,6 +4089,10 @@
       "dist/forge/ado/__tests__/redact.test.d.ts.map",
       "dist/forge/ado/__tests__/redact.test.js",
       "dist/forge/ado/__tests__/redact.test.js.map",
+      "dist/forge/ado/__tests__/reviews-feedback.test.d.ts",
+      "dist/forge/ado/__tests__/reviews-feedback.test.d.ts.map",
+      "dist/forge/ado/__tests__/reviews-feedback.test.js",
+      "dist/forge/ado/__tests__/reviews-feedback.test.js.map",
       "dist/forge/ado/__tests__/routes.test.d.ts",
       "dist/forge/ado/__tests__/routes.test.d.ts.map",
       "dist/forge/ado/__tests__/routes.test.js",
@@ -4165,6 +4177,10 @@
       "dist/forge/github/__tests__/argv-parity.test.d.ts.map",
       "dist/forge/github/__tests__/argv-parity.test.js",
       "dist/forge/github/__tests__/argv-parity.test.js.map",
+      "dist/forge/github/__tests__/reviews-feedback.test.d.ts",
+      "dist/forge/github/__tests__/reviews-feedback.test.d.ts.map",
+      "dist/forge/github/__tests__/reviews-feedback.test.js",
+      "dist/forge/github/__tests__/reviews-feedback.test.js.map",
       "dist/forge/github/chain-tracker.d.ts",
       "dist/forge/github/chain-tracker.d.ts.map",
       "dist/forge/github/chain-tracker.js",
@@ -4181,6 +4197,10 @@
       "dist/forge/github/gh.d.ts.map",
       "dist/forge/github/gh.js",
       "dist/forge/github/gh.js.map",
+      "dist/forge/github/graphql.d.ts",
+      "dist/forge/github/graphql.d.ts.map",
+      "dist/forge/github/graphql.js",
+      "dist/forge/github/graphql.js.map",
       "dist/forge/github/index.d.ts",
       "dist/forge/github/index.d.ts.map",
       "dist/forge/github/index.js",
@@ -4221,6 +4241,10 @@
       "dist/forge/local/__tests__/mirror.test.d.ts.map",
       "dist/forge/local/__tests__/mirror.test.js",
       "dist/forge/local/__tests__/mirror.test.js.map",
+      "dist/forge/local/__tests__/reviews-playback.test.d.ts",
+      "dist/forge/local/__tests__/reviews-playback.test.d.ts.map",
+      "dist/forge/local/__tests__/reviews-playback.test.js",
+      "dist/forge/local/__tests__/reviews-playback.test.js.map",
       "dist/forge/local/__tests__/reviews.test.d.ts",
       "dist/forge/local/__tests__/reviews.test.d.ts.map",
       "dist/forge/local/__tests__/reviews.test.js",
@@ -18572,6 +18596,26 @@
         "path": "dist/cli/commands/__tests__/factory-poll-local-sync.test.js.map"
       },
       {
+        "id": "dist/cli/commands/__tests__/factory-pr.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-pr.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/factory-pr.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-pr.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/factory-pr.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-pr.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/factory-pr.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-pr.test.js.map"
+      },
+      {
         "id": "dist/cli/commands/__tests__/factory-run-cli.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/factory-run-cli.test.d.ts"
@@ -19130,6 +19174,26 @@
         "id": "dist/cli/commands/factory-poll.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/commands/factory-poll.js.map"
+      },
+      {
+        "id": "dist/cli/commands/factory-pr.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-pr.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/factory-pr.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-pr.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/factory-pr.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-pr.js"
+      },
+      {
+        "id": "dist/cli/commands/factory-pr.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-pr.js.map"
       },
       {
         "id": "dist/cli/commands/factory-setup.d.ts",
@@ -25222,6 +25286,26 @@
         "path": "dist/forge/ado/__tests__/redact.test.js.map"
       },
       {
+        "id": "dist/forge/ado/__tests__/reviews-feedback.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/reviews-feedback.test.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/reviews-feedback.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/reviews-feedback.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/reviews-feedback.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/reviews-feedback.test.js"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/reviews-feedback.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/reviews-feedback.test.js.map"
+      },
+      {
         "id": "dist/forge/ado/__tests__/routes.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/forge/ado/__tests__/routes.test.d.ts"
@@ -25642,6 +25726,26 @@
         "path": "dist/forge/github/__tests__/argv-parity.test.js.map"
       },
       {
+        "id": "dist/forge/github/__tests__/reviews-feedback.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/__tests__/reviews-feedback.test.d.ts"
+      },
+      {
+        "id": "dist/forge/github/__tests__/reviews-feedback.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/__tests__/reviews-feedback.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/github/__tests__/reviews-feedback.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/__tests__/reviews-feedback.test.js"
+      },
+      {
+        "id": "dist/forge/github/__tests__/reviews-feedback.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/__tests__/reviews-feedback.test.js.map"
+      },
+      {
         "id": "dist/forge/github/chain-tracker.d.ts",
         "kind": "generated-dist",
         "path": "dist/forge/github/chain-tracker.d.ts"
@@ -25720,6 +25824,26 @@
         "id": "dist/forge/github/gh.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/github/gh.js.map"
+      },
+      {
+        "id": "dist/forge/github/graphql.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/graphql.d.ts"
+      },
+      {
+        "id": "dist/forge/github/graphql.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/graphql.d.ts.map"
+      },
+      {
+        "id": "dist/forge/github/graphql.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/graphql.js"
+      },
+      {
+        "id": "dist/forge/github/graphql.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/graphql.js.map"
       },
       {
         "id": "dist/forge/github/index.d.ts",
@@ -25920,6 +26044,26 @@
         "id": "dist/forge/local/__tests__/mirror.test.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/local/__tests__/mirror.test.js.map"
+      },
+      {
+        "id": "dist/forge/local/__tests__/reviews-playback.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/local/__tests__/reviews-playback.test.d.ts"
+      },
+      {
+        "id": "dist/forge/local/__tests__/reviews-playback.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/local/__tests__/reviews-playback.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/local/__tests__/reviews-playback.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/local/__tests__/reviews-playback.test.js"
+      },
+      {
+        "id": "dist/forge/local/__tests__/reviews-playback.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/local/__tests__/reviews-playback.test.js.map"
       },
       {
         "id": "dist/forge/local/__tests__/reviews.test.d.ts",
@@ -53262,6 +53406,11 @@
         "path": "src/cli/commands/__tests__/factory-poll-local-sync.test.ts"
       },
       {
+        "id": "src/cli/commands/__tests__/factory-pr.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/factory-pr.test.ts"
+      },
+      {
         "id": "src/cli/commands/__tests__/factory-run-cli.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/factory-run-cli.test.ts"
@@ -53400,6 +53549,11 @@
         "id": "src/cli/commands/factory-poll.ts",
         "kind": "src",
         "path": "src/cli/commands/factory-poll.ts"
+      },
+      {
+        "id": "src/cli/commands/factory-pr.ts",
+        "kind": "src",
+        "path": "src/cli/commands/factory-pr.ts"
       },
       {
         "id": "src/cli/commands/factory-setup.ts",
@@ -55277,6 +55431,11 @@
         "path": "src/forge/ado/__tests__/redact.test.ts"
       },
       {
+        "id": "src/forge/ado/__tests__/reviews-feedback.test.ts",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/reviews-feedback.test.ts"
+      },
+      {
         "id": "src/forge/ado/__tests__/routes.test.ts",
         "kind": "src",
         "path": "src/forge/ado/__tests__/routes.test.ts"
@@ -55382,6 +55541,11 @@
         "path": "src/forge/github/__tests__/argv-parity.test.ts"
       },
       {
+        "id": "src/forge/github/__tests__/reviews-feedback.test.ts",
+        "kind": "src",
+        "path": "src/forge/github/__tests__/reviews-feedback.test.ts"
+      },
+      {
         "id": "src/forge/github/chain-tracker.ts",
         "kind": "src",
         "path": "src/forge/github/chain-tracker.ts"
@@ -55400,6 +55564,11 @@
         "id": "src/forge/github/gh.ts",
         "kind": "src",
         "path": "src/forge/github/gh.ts"
+      },
+      {
+        "id": "src/forge/github/graphql.ts",
+        "kind": "src",
+        "path": "src/forge/github/graphql.ts"
       },
       {
         "id": "src/forge/github/index.ts",
@@ -55450,6 +55619,11 @@
         "id": "src/forge/local/__tests__/mirror.test.ts",
         "kind": "src",
         "path": "src/forge/local/__tests__/mirror.test.ts"
+      },
+      {
+        "id": "src/forge/local/__tests__/reviews-playback.test.ts",
+        "kind": "src",
+        "path": "src/forge/local/__tests__/reviews-playback.test.ts"
       },
       {
         "id": "src/forge/local/__tests__/reviews.test.ts",
@@ -77704,6 +77878,66 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/cli/commands/__tests__/factory-pr.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-pr.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-pr.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-pr.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-pr.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-pr.test.ts",
+        "to": "src/cli/commands/factory-pr.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-pr.test.ts",
+        "to": "src/cli/commands/factory-pr.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-pr.test.ts",
+        "to": "src/factory/check/__tests__/local-repo.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-pr.test.ts",
+        "to": "src/factory/check/__tests__/local-repo.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-pr.test.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-pr.test.ts",
+        "to": "src/forge/local/store.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-pr.test.ts",
+        "to": "src/utils/paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -78734,6 +78968,81 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/factory-pr.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-pr.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-pr.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-pr.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-pr.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-pr.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-pr.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-pr.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory-pr.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-pr.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-pr.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-pr.ts",
+        "to": "src/forge/local/store.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-pr.ts",
+        "to": "src/forge/local/store.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory-pr.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory-pr.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/cli/commands/factory-setup.ts",
         "to": "external:chalk",
         "kind": "imports"
@@ -78951,6 +79260,11 @@
       {
         "from": "src/cli/commands/factory.ts",
         "to": "src/cli/commands/factory-poll.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/cli/commands/factory-pr.ts",
         "kind": "imports"
       },
       {
@@ -82250,6 +82564,11 @@
       },
       {
         "from": "src/factory/__tests__/poll.test.ts",
+        "to": "src/forge/github/graphql.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.test.ts",
         "to": "src/forge/index.ts",
         "kind": "imports"
       },
@@ -83046,6 +83365,16 @@
       {
         "from": "src/factory/check/cli.ts",
         "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/forge/github/gh.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/forge/github/graphql.ts",
         "kind": "imports"
       },
       {
@@ -87255,6 +87584,11 @@
       },
       {
         "from": "src/factory/run/exec.ts",
+        "to": "src/forge/github/graphql.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/exec.ts",
         "to": "src/forge/local/mirror.ts",
         "kind": "imports"
       },
@@ -91124,6 +91458,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/forge/ado/__tests__/reviews-feedback.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/reviews-feedback.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/reviews-feedback.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/reviews-feedback.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/reviews-feedback.test.ts",
+        "to": "src/forge/ado/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/reviews-feedback.test.ts",
+        "to": "src/forge/ado/reviews.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/reviews-feedback.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/forge/ado/__tests__/routes.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -91744,6 +92113,56 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/forge/github/__tests__/reviews-feedback.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/reviews-feedback.test.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/reviews-feedback.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/reviews-feedback.test.ts",
+        "to": "src/forge/ado/reviews.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/reviews-feedback.test.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/reviews-feedback.test.ts",
+        "to": "src/forge/github/gh.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/reviews-feedback.test.ts",
+        "to": "src/forge/github/graphql.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/reviews-feedback.test.ts",
+        "to": "src/forge/github/reviews.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/reviews-feedback.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/reviews-feedback.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/forge/github/checks.ts",
         "to": "src/forge/types.ts",
         "kind": "type-imports"
@@ -91786,6 +92205,16 @@
       {
         "from": "src/forge/github/gh.ts",
         "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/graphql.ts",
+        "to": "src/forge/ado/reviews.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/graphql.ts",
+        "to": "src/forge/types.ts",
         "kind": "type-imports"
       },
       {
@@ -91832,6 +92261,16 @@
         "from": "src/forge/github/reviews.ts",
         "to": "src/forge/github/gh.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/reviews.ts",
+        "to": "src/forge/github/graphql.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/reviews.ts",
+        "to": "src/forge/github/graphql.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/forge/github/reviews.ts",
@@ -92067,6 +92506,41 @@
         "from": "src/forge/local/__tests__/mirror.test.ts",
         "to": "src/forge/local/mirror.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/forge/local/__tests__/reviews-playback.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/local/__tests__/reviews-playback.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/local/__tests__/reviews-playback.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/local/__tests__/reviews-playback.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/local/__tests__/reviews-playback.test.ts",
+        "to": "src/forge/local/reviews.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/local/__tests__/reviews-playback.test.ts",
+        "to": "src/forge/local/store.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/local/__tests__/reviews-playback.test.ts",
+        "to": "src/forge/local/store.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/forge/local/__tests__/reviews.test.ts",
@@ -124300,12 +124774,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10495,
-      "edgeCount": 12579,
-      "importEdgeCount": 10361,
+      "nodeCount": 10525,
+      "edgeCount": 12639,
+      "importEdgeCount": 10409,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "5fcf69445547b0e08817f3e6ccb07e79ef7fe9f18f0f8ded3a2b0d462e7db2d4",
-  "manifestSha256": "d77a70bc807193bd0a907974599b01d526b3360fd596cc9bb022717545cf6d68"
+  "inventorySha256": "9678034cb840b9035b7624c11b2cea5e7a5596490bb520f83967cd856e7fb07e",
+  "manifestSha256": "65825e701c1e07a2533b470d7dc8bce1249f2ee879262bc48e1a6740e66e369d"
 }
