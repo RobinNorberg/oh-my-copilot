@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "da1c0d9872c881468cb22a83a2ee69d1b8dd07d6",
-    "sourceSha256": "744fc254be573c1621eaca8c74239619b1afdc6eafc3b243c41a7dcc885ea211",
+    "head": "50097131dcdbf0f45073951c7f54b49d85aae83f",
+    "sourceSha256": "facb4954633b8a6999eeb6c8396ecc7e91f26b41509f4463bbcebe899bc6c4e4",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "da1c0d9872c881468cb22a83a2ee69d1b8dd07d6",
-  "sourceSha256": "744fc254be573c1621eaca8c74239619b1afdc6eafc3b243c41a7dcc885ea211",
+  "head": "50097131dcdbf0f45073951c7f54b49d85aae83f",
+  "sourceSha256": "facb4954633b8a6999eeb6c8396ecc7e91f26b41509f4463bbcebe899bc6c4e4",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 1976,
-      "total": 2001
+      "srcFiles": 1978,
+      "total": 2003
     },
     "generated": {
-      "distFiles": 7272,
+      "distFiles": 7280,
       "bridgeFiles": 8,
-      "total": 7280
+      "total": 7288
     },
     "prompt": {
       "promptLikeFiles": 71
@@ -3577,6 +3577,10 @@
       "dist/factory/setup/__tests__/setup.test.d.ts.map",
       "dist/factory/setup/__tests__/setup.test.js",
       "dist/factory/setup/__tests__/setup.test.js.map",
+      "dist/factory/setup/__tests__/workflows.test.d.ts",
+      "dist/factory/setup/__tests__/workflows.test.d.ts.map",
+      "dist/factory/setup/__tests__/workflows.test.js",
+      "dist/factory/setup/__tests__/workflows.test.js.map",
       "dist/factory/setup/__tests__/write.test.d.ts",
       "dist/factory/setup/__tests__/write.test.d.ts.map",
       "dist/factory/setup/__tests__/write.test.js",
@@ -3605,6 +3609,10 @@
       "dist/factory/setup/progress-pick.d.ts.map",
       "dist/factory/setup/progress-pick.js",
       "dist/factory/setup/progress-pick.js.map",
+      "dist/factory/setup/workflows.d.ts",
+      "dist/factory/setup/workflows.d.ts.map",
+      "dist/factory/setup/workflows.js",
+      "dist/factory/setup/workflows.js.map",
       "dist/factory/setup/write.d.ts",
       "dist/factory/setup/write.d.ts.map",
       "dist/factory/setup/write.js",
@@ -22702,6 +22710,26 @@
         "path": "dist/factory/setup/__tests__/setup.test.js.map"
       },
       {
+        "id": "dist/factory/setup/__tests__/workflows.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/workflows.test.d.ts"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/workflows.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/workflows.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/workflows.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/workflows.test.js"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/workflows.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/workflows.test.js.map"
+      },
+      {
         "id": "dist/factory/setup/__tests__/write.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/setup/__tests__/write.test.d.ts"
@@ -22840,6 +22868,26 @@
         "id": "dist/factory/setup/progress-pick.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/setup/progress-pick.js.map"
+      },
+      {
+        "id": "dist/factory/setup/workflows.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/workflows.d.ts"
+      },
+      {
+        "id": "dist/factory/setup/workflows.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/workflows.d.ts.map"
+      },
+      {
+        "id": "dist/factory/setup/workflows.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/workflows.js"
+      },
+      {
+        "id": "dist/factory/setup/workflows.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/workflows.js.map"
       },
       {
         "id": "dist/factory/setup/write.d.ts",
@@ -54472,6 +54520,11 @@
         "path": "src/factory/setup/__tests__/setup.test.ts"
       },
       {
+        "id": "src/factory/setup/__tests__/workflows.test.ts",
+        "kind": "src",
+        "path": "src/factory/setup/__tests__/workflows.test.ts"
+      },
+      {
         "id": "src/factory/setup/__tests__/write.test.ts",
         "kind": "src",
         "path": "src/factory/setup/__tests__/write.test.ts"
@@ -54505,6 +54558,11 @@
         "id": "src/factory/setup/progress-pick.ts",
         "kind": "src",
         "path": "src/factory/setup/progress-pick.ts"
+      },
+      {
+        "id": "src/factory/setup/workflows.ts",
+        "kind": "src",
+        "path": "src/factory/setup/workflows.ts"
       },
       {
         "id": "src/factory/setup/write.ts",
@@ -60947,6 +61005,16 @@
         "path": "templates/hooks/workflow-drift-guard.mjs"
       },
       {
+        "id": "templates/pipelines/omg-factory-heartbeat.azure-pipelines.yml",
+        "kind": "other",
+        "path": "templates/pipelines/omg-factory-heartbeat.azure-pipelines.yml"
+      },
+      {
+        "id": "templates/pipelines/omg-factory-heartbeat.triage-step.yml",
+        "kind": "other",
+        "path": "templates/pipelines/omg-factory-heartbeat.triage-step.yml"
+      },
+      {
         "id": "templates/rules/README.md",
         "kind": "other",
         "path": "templates/rules/README.md"
@@ -60980,6 +61048,16 @@
         "id": "templates/rules/testing.md",
         "kind": "other",
         "path": "templates/rules/testing.md"
+      },
+      {
+        "id": "templates/workflows/omg-factory-heartbeat.triage-step.yml",
+        "kind": "other",
+        "path": "templates/workflows/omg-factory-heartbeat.triage-step.yml"
+      },
+      {
+        "id": "templates/workflows/omg-factory-heartbeat.yml",
+        "kind": "other",
+        "path": "templates/workflows/omg-factory-heartbeat.yml"
       },
       {
         "id": "tests/benchmark-diagnostics.test.ts",
@@ -78835,6 +78913,16 @@
       },
       {
         "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/factory/setup/workflows.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/factory/setup/workflows.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
         "to": "src/factory/setup/write.ts",
         "kind": "imports"
       },
@@ -78887,6 +78975,11 @@
         "from": "src/cli/commands/factory-setup.ts",
         "to": "src/forge/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/lib/version.ts",
+        "kind": "imports"
       },
       {
         "from": "src/cli/commands/factory-setup.ts",
@@ -88144,6 +88237,51 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/setup/__tests__/workflows.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/workflows.test.ts",
+        "to": "external:module",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/workflows.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/workflows.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/workflows.test.ts",
+        "to": "src/cli/commands/factory-setup.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/workflows.test.ts",
+        "to": "src/factory/check/__tests__/local-repo.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/workflows.test.ts",
+        "to": "src/factory/setup/__tests__/harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/workflows.test.ts",
+        "to": "src/factory/setup/workflows.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/workflows.test.ts",
+        "to": "src/lib/version.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/setup/__tests__/write.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -88352,6 +88490,36 @@
         "from": "src/factory/setup/progress-pick.ts",
         "to": "src/utils/jsonc.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/workflows.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/workflows.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/workflows.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/workflows.ts",
+        "to": "src/factory/setup/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/workflows.ts",
+        "to": "src/factory/setup/write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/workflows.ts",
+        "to": "src/factory/setup/write.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/setup/write.ts",
@@ -124300,12 +124468,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10495,
-      "edgeCount": 12579,
-      "importEdgeCount": 10361,
+      "nodeCount": 10509,
+      "edgeCount": 12597,
+      "importEdgeCount": 10377,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "5fcf69445547b0e08817f3e6ccb07e79ef7fe9f18f0f8ded3a2b0d462e7db2d4",
-  "manifestSha256": "d77a70bc807193bd0a907974599b01d526b3360fd596cc9bb022717545cf6d68"
+  "inventorySha256": "ea41c50353627678c14e6f2f5e4779309cd7d44c4f291b36118268e64fdbf5d8",
+  "manifestSha256": "4eaae36cdc0a7a759f85f4244b74578c80cd4ff00ac0d7157908fc5b010a561e"
 }
