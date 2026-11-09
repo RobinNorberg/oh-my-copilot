@@ -32,13 +32,27 @@ describe('gate definitions that the repository cannot pin park as unknown', () =
     }
   });
 
-  it('node options before the script park, except --run, which is npm run', () => {
+  it('node options before the script park, except --run, node --test and inline code', () => {
     expect(gateDefinitionSources(['node', '--run', 'test'])).toEqual(gateDefinitionSources(['npm', 'run', 'test']));
     for (const gate of [
-      ['node', '-e', "require('./scripts/gate.js')"],
+      ['node', '--test'],
+      ['node', '--test', '--test-reporter=spec', 'test/'],
+      ['node', '--test', '--test-concurrency=1', '--experimental-test-coverage'],
+      ['node', '-e', 'process.exit(0)'],
+      ['node', '--eval=1'],
+      ['node', '--print', '1'],
+      ['node', 'scripts/gate.mjs', '--flag'],
+    ]) {
+      const out = gateDefinitionSources(gate);
+      expect(out.unresolved, gate.join(' ')).toBeUndefined();
+      expect(out.sources, gate.join(' ')).toEqual(gate[1] === 'scripts/gate.mjs' ? [{ path: 'scripts/gate.mjs' }] : []);
+    }
+    for (const gate of [
       ['node', '-r', './hook.js', 'scripts/gate.mjs'],
       ['node', '--import', './x.mjs', 'scripts/gate.mjs'],
-      ['node', '--test'],
+      ['node', '--test', '-r', './hook.js'],
+      ['node', '-r', './hook.js', '-e', '1'],
+      ['node', '--watch', 'scripts/gate.mjs'],
     ]) {
       const out = gateDefinitionSources(gate);
       expect(out.sources, gate.join(' ')).toEqual([]);
