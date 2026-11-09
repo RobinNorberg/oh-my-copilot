@@ -308,7 +308,8 @@ describe('omg factory run with the Copilot coding agent as implementer', () => {
         t += 20 * 60_000;
         const head = finishedPr();
         const out = await go([review('approve')]);
-        expect(out.gate?.name, out.message).not.toBe('protected-paths');
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(state().baseSha).toBe(gitIn(h.root, 'merge-base', 'origin/dev', head));
         expect(state().codingAgent?.adopted).toEqual({ pr: AGENT_PR, head });
         expect(h.calls.some((c) => c.startsWith('git merge-base ') && c.includes(head))).toBe(true);
     });

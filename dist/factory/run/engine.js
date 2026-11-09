@@ -2941,6 +2941,8 @@ class FactoryEngine {
         this.save((x) => moveTo({
             ...x,
             pendingHead: check.head,
+            // The run's range now starts where the adopted head left the base (publish and prepare diff from it).
+            baseSha: from,
             codingAgent: { ...x.codingAgent, adopted: { pr: check.pr, head: check.head } },
             lanes: x.lanes.map((l) => (l.id === record.laneId ? { ...l, status: 'completed', endSha: check.head, endedAt: at, note: `adopted pull request #${check.pr} at ${check.head.slice(0, 12)}` } : l)),
         }, 'publish', `adopted the Copilot coding agent's pull request #${check.pr} at ${check.head.slice(0, 12)} (untrusted lane output: review, gates and the human merge follow)`, at));

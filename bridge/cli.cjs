@@ -131681,6 +131681,8 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         this.save((x) => moveTo({
           ...x,
           pendingHead: check2.head,
+          // The run's range now starts where the adopted head left the base (publish and prepare diff from it).
+          baseSha: from,
           codingAgent: { ...x.codingAgent, adopted: { pr: check2.pr, head: check2.head } },
           lanes: x.lanes.map((l) => l.id === record3.laneId ? { ...l, status: "completed", endSha: check2.head, endedAt: at, note: `adopted pull request #${check2.pr} at ${check2.head.slice(0, 12)}` } : l)
         }, "publish", `adopted the Copilot coding agent's pull request #${check2.pr} at ${check2.head.slice(0, 12)} (untrusted lane output: review, gates and the human merge follow)`, at));
