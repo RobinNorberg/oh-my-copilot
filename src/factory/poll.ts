@@ -67,6 +67,7 @@ import type { AzEntry } from '../forge/ado/az-binary.js';
 import { ADO_RATE_LIMITED } from '../forge/ado/checks.js';
 import { GITHUB_RATE_LIMITED } from '../forge/github/graphql.js';
 import type { Forge, ForgeKind, ForgePr, ResolvedForgeConfig } from '../forge/types.js';
+import { readBaseFile } from '../ship/config.js';
 import { ShipSafetyError, type Exec } from '../ship/exec.js';
 import { collectBoard, readRuns, type BoardRow, type BoardStage, type FactoryBoardDeps } from './board/collect.js';
 import { backlogLine, runLine } from './board/render.js';
@@ -633,7 +634,7 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
   const idle = !locked && !unsound && !live.some(([, s]) => !s.gate);
 
   // 3b. stale-gate reminders: read-only on git (the base commit's routing file), printed only.
-  const reminders = step('reminders', () => staleGateReminders({ root, runs, nowMs: ctx.now(), afterHours: ctx.remindAfterHours, ...(ctx.baseSha ? { readBase: (path) => { const r = ctx.exec('git', ['show', `${ctx.baseSha}:${path}`], { cwd: root }); return r.status === 0 ? r.stdout : undefined; } } : {}), warn: (m) => warnings.push(plainText(m)) }));
+  const reminders = step('reminders', () => staleGateReminders({ root, runs, nowMs: ctx.now(), afterHours: ctx.remindAfterHours, ...(ctx.baseSha ? { readBase: (path) => readBaseFile(ctx.exec, root, ctx.baseSha!, path) ?? undefined } : {}), warn: (m) => warnings.push(plainText(m)) }));
 
   // 4. board: the rows that changed.
   const board: PollTick['board'] = [];
@@ -701,7 +702,7 @@ export function renderTick(t: PollTick): string {
       lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)}: ${p.threads ?? 0} human thread(s)${p.ignored ? ` (${p.ignored} ignored)` : ''}${trust}`);
     }
   }
-  for (const r of t.reminders ?? []) lines.push(`  reminder: ${runLabel(r.run)} has waited ${r.hours} h at ${r.gate}${r.handles.length ? ` ${r.handles.join(' ')}` : ''}: ${r.reason} (${resumeHint(r.run)})`);
+  for (const r of t.reminders ?? []) lines.push(`  reminder: ${runLabel(r.run)} has waited ${r.hours} h at ${visibleLine(r.gate)}${r.handles.length ? ` ${r.handles.join(' ')}` : ''}: ${r.reason} (${resumeHint(r.run)})`);
   // F33: a run whose PR a human already merged or closed shows the record step, not its stale gate reason (a merge command).
   const done = new Map(t.prs.filter((p) => p.hint).map((p) => [runLabel(p.id), p]));
   for (const b of t.board) {

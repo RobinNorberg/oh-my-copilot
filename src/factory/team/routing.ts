@@ -9,7 +9,7 @@
  * OWNER_RE here and never taken from issue text.
  */
 
-import { matchPathGlob } from '../../team/role-router.js';
+import { globLimitProblem, matchPathGlob } from '../../team/role-router.js';
 import { visibleLine } from '../../forge/review-feedback.js';
 
 /** The file is ignored (with a warning) above this size. */
@@ -55,6 +55,8 @@ export function parseRouting(text: string): { routes: TeamRoute[]; warnings: str
     const role = dash(roleCell);
     const handle = dash(handleCell);
     if (!GLOB_RE.test(glob) || glob.startsWith('/') || glob.split('/').includes('..')) return warn(`${at}: path glob ${JSON.stringify(glob)} is not allowed`);
+    const limit = globLimitProblem(glob);
+    if (limit) return warn(`${at}: path glob ${JSON.stringify(glob)} has ${limit}; the row is dropped`);
     if (role !== undefined && !ROLE_RE.test(role)) return warn(`${at}: role ${JSON.stringify(role)} is not allowed`);
     if (!isOwnerName(owner)) return warn(`${at}: owner ${JSON.stringify(owner)} must match ${OWNER_RE}`);
     if (handle !== undefined && !HANDLE_RE.test(handle)) return warn(`${at}: handle ${JSON.stringify(handle)} must be @login or @org/team`);

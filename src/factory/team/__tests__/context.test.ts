@@ -34,6 +34,18 @@ describe('path extraction', () => {
   it('finds file paths in a plan', () => {
     expect(pathsInText('Edit `src/factory/poll.ts` and docs/a/b.md, not ../x/y.ts or version 1.2.3.')).toEqual(['src/factory/poll.ts', 'docs/a/b.md']);
   });
+  it('reads quoted, spaced and renamed diff headers', () => {
+    const diff = [
+      'diff --git "a/src/caf\\303\\251.ts" "b/src/caf\\303\\251.ts"',
+      'diff --git "a/src/tab\\there.ts" "b/src/tab\\there.ts"',
+      'diff --git a/docs/x b/y.md b/docs/x b/y.md',
+      'diff --git a/old.ts "b/docs/new\\"q.md"',
+      'diff --git "a/old name.ts" b/src/renamed.ts',
+      'diff --git a/old.ts b/docs/moved.md',
+      'diff --git a/x b/../etc/passwd',
+    ].join('\n');
+    expect(pathsInDiff(diff)).toEqual(['src/café.ts', 'src/tab\there.ts', 'docs/x b/y.md', 'docs/new"q.md', 'src/renamed.ts', 'docs/moved.md']);
+  });
   it('finds changed paths in a diff', () => {
     expect(pathsInDiff('diff --git a/src/a.ts b/src/a.ts\n+x\ndiff --git a/old b/docs/n.md\n')).toEqual(['src/a.ts', 'docs/n.md']);
   });

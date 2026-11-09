@@ -63,7 +63,7 @@ import { PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, runPrepare } from '../../ship
 import { removeWorkerWorktree } from '../../team/git-worktree.js';
 import { driveGates } from './gates-driver.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
-import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText, type ReadAt } from '../team/context.js';
+import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText, type ReadAt, type TeamContext } from '../team/context.js';
 import { mergeComment, mergeDecision, type MergeView } from './merge-policy.js';
 import { resolveAzEntry, type AzEntry } from '../../forge/ado/az-binary.js';
 import { adoGuardContext, defaultAzBinaryDeps, type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
@@ -1306,16 +1306,38 @@ class FactoryEngine {
     this.gate('needs-plan', 'the issue has no "Acceptance criteria" heading and no omg-plan: link by an owner, member or collaborator');
   }
 
-  /** A file at one commit for the team context (`rev-parse --verify`, then `show`); undefined when absent there. */
+  /**
+   * A file at one commit for the team context, read like every base file
+   * (readBaseFile: replace refs off, commit checked): undefined when the path
+   * is absent there, a throw for any other failure. Reads are cached per call.
+   */
   private readAt(sha: string): ReadAt {
-    return (path) => (this.exec('git', ['rev-parse', '--verify', `${sha}:${path}`], { cwd: this.o.root, env: TRUSTED_READ_ENV }).status === 0
-      ? this.run(['show', `${sha}:${path}`], 'git', TRUSTED_READ_ENV) : undefined);
+    const seen = new Map<string, string | undefined>();
+    return (path) => {
+      if (!seen.has(path)) {
+        const text = readBaseFile(this.exec, this.o.root, sha, path);
+        seen.set(path, text === null ? undefined : text);
+      }
+      return seen.get(path);
+    };
+  }
+
+  /** Team context for a prompt: an unreadable team file only drops the context (warned), it never parks the run. */
+  private teamContext(read: ReadAt, paths: readonly string[]): TeamContext | undefined {
+    try {
+      const team = loadTeamContext(read, paths);
+      for (const w of team?.warnings ?? []) this.o.warn?.(`omg factory run: ${w}`);
+      return team;
+    } catch (e) {
+      this.o.warn?.(`omg factory run: the team files are unreadable at the base commit, so the prompt carries no team context: ${errText(e)}`);
+      return undefined;
+    }
   }
 
   private async implement(): Promise<void> {
     const baseSha = this.fetchBase();
     this.save((s) => ({ ...s, baseSha }));
-    const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, loadTeamContext(this.readAt(baseSha), pathsInText(this.state.plan?.text ?? ''))), 'implement');
+    const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(this.readAt(baseSha), pathsInText(this.state.plan?.text ?? ''))), 'implement');
     if (out.kind === 'done') this.acceptWriteLane(out, 'implement', baseSha);
   }
 
@@ -1528,12 +1550,13 @@ class FactoryEngine {
     const diff = this.run(['diff', '--no-ext-diff', '--no-textconv', `${s.baseSha}...${head}`]);
     // Two-axis review when the base (never the reviewed head) has docs/standards/.
     const standards = this.run(['ls-tree', '-r', '-z', '--name-only', s.baseSha, '--', 'docs/standards/'], 'git', TRUSTED_READ_ENV).split('\0').filter(Boolean);
-    const decisions = decisionsViolation(this.readAt(s.baseSha), this.readAt(head));
+    const readBase = this.readAt(s.baseSha);
+    const decisions = decisionsViolation(readBase, this.readAt(head));
     if (decisions) {
-      this.gate('decisions-rewritten', `${decisions}: .copilot/team/decisions.md is append-only (the base commit's text must stay a prefix); restore it on the PR branch, then rerun ${this.resume}`);
+      this.gate('decisions-rewritten', `${decisions}: .copilot/team/decisions.md on the PR branch no longer starts with the base version (it is append-only). Cancel this run (omg factory run cancel ${this.key}), then fix the branch or the base and start again.`);
       return;
     }
-    const out = await this.runLane('review', head, 'review', reviewPrompt(s, head, diff, standards, loadTeamContext(this.readAt(s.baseSha), pathsInDiff(diff))), key);
+    const out = await this.runLane('review', head, 'review', reviewPrompt(s, head, diff, standards, this.teamContext(readBase, pathsInDiff(diff))), key);
     if (out.kind !== 'done') return;
     const { result, lane, after } = out;
 

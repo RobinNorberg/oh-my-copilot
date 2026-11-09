@@ -36,12 +36,39 @@ export function pathsInText(text: string): string[] {
   return [...out];
 }
 
-/** The changed paths of a unified diff (`diff --git a/x b/x` headers), capped. */
+/** A git C-quoted path body (the text between the quotes) back to the path: escaped quote, backslash, newline, tab and octal bytes. */
+function unquoteC(body: string): string {
+  const bytes: number[] = [];
+  const escapes: Record<string, number> = { n: 10, t: 9, '"': 34, '\\': 92, a: 7, b: 8, f: 12, r: 13, v: 11 };
+  for (let i = 0; i < body.length; i++) {
+    if (body[i] !== '\\') { bytes.push(...Buffer.from(body[i], 'utf8')); continue; }
+    const oct = /^[0-7]{3}/.exec(body.slice(i + 1));
+    if (oct) { bytes.push(parseInt(oct[0], 8) & 0xff); i += 3; continue; }
+    const esc = escapes[body[i + 1]];
+    if (esc !== undefined) { bytes.push(esc); i++; } else bytes.push(92);
+  }
+  return Buffer.from(bytes).toString('utf8');
+}
+
+/** The new path of one `diff --git` header (text after `diff --git `): quoted forms decoded, and a path containing ` b/` resolved by the symmetric split first. */
+function headerPath(rest: string): string | undefined {
+  const quotedNew = /"b\/((?:[^"\\]|\\.)*)"$/.exec(rest);
+  if (quotedNew) return unquoteC(quotedNew[1]);
+  const quotedOld = /^"a\/(?:[^"\\]|\\.)*" b\/(.+)$/.exec(rest);
+  if (quotedOld) return quotedOld[1];
+  const size = (rest.length - 5) / 2; // `a/X b/X` is 2 * |X| + 5 characters
+  if (Number.isInteger(size) && size > 0 && rest.startsWith('a/') && rest.slice(size + 2, size + 5) === ' b/' && rest.slice(2, 2 + size) === rest.slice(size + 5)) return rest.slice(size + 5);
+  const at = rest.lastIndexOf(' b/'); // a rename: the old and new paths differ
+  return rest.startsWith('a/') && at > 0 ? rest.slice(at + 3) : undefined;
+}
+
+/** The changed paths of a unified diff (`diff --git` headers), capped. */
 export function pathsInDiff(diff: string): string[] {
   const out = new Set<string>();
-  for (const m of diff.matchAll(/^diff --git a\/(.+) b\/(.+)$/gm)) {
-    if (m[2].split('/').includes('..')) continue;
-    out.add(m[2]);
+  for (const m of diff.matchAll(/^diff --git (.+)$/gm)) {
+    const path = headerPath(m[1]);
+    if (!path || path.split('/').includes('..')) continue;
+    out.add(path);
     if (out.size >= MAX_PATHS) break;
   }
   return [...out];

@@ -4,7 +4,7 @@
  * prints the reminder, honours factory.poll.remindAfterHours from the trusted
  * layers, and reminds once per window.
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -95,6 +95,45 @@ describe('poll stale-gate reminders', () => {
     const calls: string[] = [];
     await runFactoryPoll(flags, deps(scripted(calls)));
     expect(calls.filter((c) => c.includes('routing.md'))).toEqual([`git show ${SHA}:.copilot/team/routing.md`]);
+  });
+
+  it('reads the routing file with replace refs off: a planted refs/replace blob does not choose the handles', async () => {
+    seedParked();
+    const git = (...a: string[]): string => execFileSync('git', a, { cwd: root, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } }).trim();
+    mkdirSync(join(root, '.copilot', 'team'), { recursive: true });
+    writeFileSync(join(root, '.copilot', 'team', 'routing.md'), ROUTING);
+    git('add', '-f', '.copilot/team/routing.md');
+    git('commit', '-q', '-m', 'routing');
+    const commit = git('rev-parse', 'HEAD');
+    const real = git('rev-parse', `${commit}:.copilot/team/routing.md`);
+    const forged = execFileSync('git', ['hash-object', '-w', '--stdin'], { cwd: root, encoding: 'utf8', input: '| ** | - | evil | @evil |\n' }).trim();
+    git('replace', real, forged);
+    const base = scripted();
+    const exec: Exec = (cmd, args, opts) => {
+      const swapped = args.map((x) => x.split(SHA).join(commit));
+      if (cmd === 'git' && (swapped[0] === 'show' || swapped[0] === 'cat-file') && swapped.some((x) => x.includes(commit))) {
+        const r = spawnSync('git', swapped, { cwd: root, encoding: 'utf8', env: { ...process.env, ...(opts?.env ?? {}) } });
+        return { status: r.status ?? 1, stdout: r.stdout, stderr: r.stderr };
+      }
+      return base(cmd, args, opts);
+    };
+    expect(await runFactoryPoll(flags, deps(exec))).toBe(0);
+    expect(tick().reminders?.[0].handles).toEqual(['@robin']);
+  }, 60_000);
+
+  it('a failed base read is a poll warning, not "file absent"', async () => {
+    seedParked();
+    const base = scripted();
+    const exec: Exec = (cmd, args, opts) => (cmd === 'git' && args[0] === 'show' && args[1]?.endsWith('routing.md') ? { status: 128, stdout: '', stderr: 'fatal: bad object' } : base(cmd, args, opts));
+    expect(await runFactoryPoll(flags, deps(exec))).toBe(0);
+    expect(tick().reminders?.[0].handles).toEqual([]);
+    expect(tick().warnings.join('\n')).toContain('routing.md unreadable at the base commit');
+  });
+
+  it('prints a hostile gate name with visible characters', async () => {
+    save({ ...setGate(moveTo({ ...createFactoryState({ issue: 4, repoUrl: REPO, base: 'dev' }, T0), forgeKind: 'github', issueTitle: 'issue 4', plan: { source: 'issue-body', text: 'x' } }, 'gates', 'gates', T0), 'merge\u202e', 'r', T0) });
+    expect(await runFactoryPoll({ ...flags, json: false }, deps(scripted()))).toBe(0);
+    expect(out.join('\n')).toContain('at merge<U+202E>');
   });
 
   it('prints the reminder line in text mode and reminds once per window', async () => {
