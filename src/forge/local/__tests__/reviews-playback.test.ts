@@ -81,4 +81,15 @@ describe('localReviewFeedback', () => {
     // On the old head, its request is the open thread.
     expect(localReviewFeedback(records, OLD).threads.map((t) => t.id)).toEqual(['r1']);
   });
+
+  it('LOW-4: only each author\'s latest record on the head counts; an approval after a request closes it, a later note reopens', () => {
+    const asked = rec({ id: 'r1', state: 'changes-requested', body: 'Rename the flag.' });
+    const approved = rec({ id: 'r2', state: 'approved', body: '' });
+    const dana = rec({ id: 'r3', author: 'dana', state: 'changes-requested', body: 'Add a test.' });
+    expect(localReviewFeedback([asked, dana, approved], HEAD).threads.map((t) => t.id)).toEqual(['r3']);
+    const again = rec({ id: 'r4', state: 'commented', body: 'One more nit.' });
+    expect(localReviewFeedback([asked, approved, again], HEAD).threads.map((t) => t.id)).toEqual(['r4']);
+    // A record on another head never closes this head's note.
+    expect(localReviewFeedback([asked, rec({ id: 'r5', state: 'approved', body: '', head: OLD })], HEAD).threads.map((t) => t.id)).toEqual(['r1']);
+  });
 });
