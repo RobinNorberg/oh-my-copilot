@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "da1c0d9872c881468cb22a83a2ee69d1b8dd07d6",
-    "sourceSha256": "744fc254be573c1621eaca8c74239619b1afdc6eafc3b243c41a7dcc885ea211",
+    "head": "09f971b77e18e9fec406569ab95238d5b86c486c",
+    "sourceSha256": "182ccfa6bd047285e5ea3515fbc19d2465ef74bd76e1d5e4a5363e2e7248e648",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "da1c0d9872c881468cb22a83a2ee69d1b8dd07d6",
-  "sourceSha256": "744fc254be573c1621eaca8c74239619b1afdc6eafc3b243c41a7dcc885ea211",
+  "head": "09f971b77e18e9fec406569ab95238d5b86c486c",
+  "sourceSha256": "182ccfa6bd047285e5ea3515fbc19d2465ef74bd76e1d5e4a5363e2e7248e648",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 1976,
-      "total": 2001
+      "srcFiles": 1978,
+      "total": 2003
     },
     "generated": {
-      "distFiles": 7272,
+      "distFiles": 7280,
       "bridgeFiles": 8,
-      "total": 7280
+      "total": 7288
     },
     "prompt": {
       "promptLikeFiles": 71
@@ -3313,6 +3313,10 @@
       "dist/factory/run/__tests__/ci-heal.test.d.ts.map",
       "dist/factory/run/__tests__/ci-heal.test.js",
       "dist/factory/run/__tests__/ci-heal.test.js.map",
+      "dist/factory/run/__tests__/claims.test.d.ts",
+      "dist/factory/run/__tests__/claims.test.d.ts.map",
+      "dist/factory/run/__tests__/claims.test.js",
+      "dist/factory/run/__tests__/claims.test.js.map",
       "dist/factory/run/__tests__/engine-ado-harness.d.ts",
       "dist/factory/run/__tests__/engine-ado-harness.d.ts.map",
       "dist/factory/run/__tests__/engine-ado-harness.js",
@@ -3473,6 +3477,10 @@
       "dist/factory/run/budget.d.ts.map",
       "dist/factory/run/budget.js",
       "dist/factory/run/budget.js.map",
+      "dist/factory/run/claims.d.ts",
+      "dist/factory/run/claims.d.ts.map",
+      "dist/factory/run/claims.js",
+      "dist/factory/run/claims.js.map",
       "dist/factory/run/clean.d.ts",
       "dist/factory/run/clean.d.ts.map",
       "dist/factory/run/clean.js",
@@ -21382,6 +21390,26 @@
         "path": "dist/factory/run/__tests__/ci-heal.test.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/claims.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/claims.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/claims.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/claims.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/claims.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/claims.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/claims.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/claims.test.js.map"
+      },
+      {
         "id": "dist/factory/run/__tests__/engine-ado-harness.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine-ado-harness.d.ts"
@@ -22180,6 +22208,26 @@
         "id": "dist/factory/run/budget.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/budget.js.map"
+      },
+      {
+        "id": "dist/factory/run/claims.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/claims.d.ts"
+      },
+      {
+        "id": "dist/factory/run/claims.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/claims.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/claims.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/claims.js"
+      },
+      {
+        "id": "dist/factory/run/claims.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/claims.js.map"
       },
       {
         "id": "dist/factory/run/clean.d.ts",
@@ -54082,6 +54130,11 @@
         "path": "src/factory/run/__tests__/ci-heal.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/claims.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/claims.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/engine-ado-harness.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine-ado-harness.ts"
@@ -54285,6 +54338,11 @@
         "id": "src/factory/run/budget.ts",
         "kind": "src",
         "path": "src/factory/run/budget.ts"
+      },
+      {
+        "id": "src/factory/run/claims.ts",
+        "kind": "src",
+        "path": "src/factory/run/claims.ts"
       },
       {
         "id": "src/factory/run/clean.ts",
@@ -77755,6 +77813,11 @@
       },
       {
         "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
+        "to": "src/factory/run/claims.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
         "to": "src/factory/run/engine.ts",
         "kind": "imports"
       },
@@ -79032,6 +79095,11 @@
         "from": "src/cli/commands/factory.ts",
         "to": "src/factory/run/budget.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/run/claims.ts",
+        "kind": "imports"
       },
       {
         "from": "src/cli/commands/factory.ts",
@@ -84814,6 +84882,46 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/__tests__/claims.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/claims.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/claims.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/claims.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/claims.test.ts",
+        "to": "src/factory/run/claims.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/claims.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/claims.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/claims.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/factory/run/__tests__/engine-ado-harness.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -86849,6 +86957,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/claims.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/claims.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/claims.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/claims.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/claims.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/clean.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -86957,6 +87090,11 @@
         "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/budget.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/claims.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/engine.ts",
@@ -124300,12 +124438,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10495,
-      "edgeCount": 12579,
-      "importEdgeCount": 10361,
+      "nodeCount": 10505,
+      "edgeCount": 12595,
+      "importEdgeCount": 10375,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "5fcf69445547b0e08817f3e6ccb07e79ef7fe9f18f0f8ded3a2b0d462e7db2d4",
-  "manifestSha256": "d77a70bc807193bd0a907974599b01d526b3360fd596cc9bb022717545cf6d68"
+  "inventorySha256": "68355ca48e17bd5a179328f017b58247aa2a339a6df5a39cde5922eff61e52c7",
+  "manifestSha256": "48330d7ad98d8546ae3c8ee62dd88837b03a67ef9e2f7e20963c839a027802d7"
 }
