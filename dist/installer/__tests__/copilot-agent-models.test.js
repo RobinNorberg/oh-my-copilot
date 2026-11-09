@@ -115,4 +115,21 @@ describe('syncCopilotAgentModels', () => {
         }
     });
 });
+describe('resolveAgentModelOverrides with a modelProfile', () => {
+    it('balanced and absent profiles add nothing', () => {
+        expect(resolveAgentModelOverrides(undefined, 'balanced')).toEqual({ overrides: {}, skipped: [] });
+        expect(resolveAgentModelOverrides(undefined, undefined)).toEqual({ overrides: {}, skipped: [] });
+    });
+    it('economy maps tiers, and an explicit agent model wins over it', () => {
+        const { overrides, skipped } = resolveAgentModelOverrides({ architect: { model: 'opus' } }, 'economy');
+        expect(skipped).toEqual([]);
+        expect(overrides.architect).toBe('claude-opus-5.5');
+        expect(overrides.critic).toBe('claude-sonnet-5.5');
+        expect(overrides.executor).toBe('claude-haiku-5.5');
+        expect(overrides.explore).toBe('claude-haiku-5.5');
+    });
+    it('reports an unknown profile and applies none', () => {
+        expect(resolveAgentModelOverrides(undefined, 'turbo')).toEqual({ overrides: {}, skipped: ['modelProfile: "turbo"'] });
+    });
+});
 //# sourceMappingURL=copilot-agent-models.test.js.map

@@ -9,6 +9,7 @@
 import { copyFileSync, existsSync, readFileSync } from 'fs';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
 import { toCopilotModelId } from '../team/model-contract.js';
+import { parseModelProfile, profileAgentModels } from '../features/model-routing/profiles.js';
 import copilotModels from '../config/copilot-models.json' with { type: 'json' };
 /**
  * Settings key prefix for plugin agents. UNVERIFIED on a live Copilot: the other
@@ -28,11 +29,21 @@ const toAgentName = (configKey) => configKey.replace(/[A-Z]/g, c => `-${c.toLowe
  * tier's first Copilot id; dashed Claude Code ids become dotted) and are kept
  * only when the result is in copilot-models.json knownModels; everything else
  * (`inherit`, unlisted ids such as claude-opus-4-8) lands in `skipped`.
- * `omc` is the orchestrator, not a delegatable agent.
+ * `omc` is the orchestrator, not a delegatable agent. A `modelProfile`
+ * (features/model-routing/profiles.ts) sets every agent first; explicit
+ * per-agent values win over it.
  */
-export function resolveAgentModelOverrides(agents) {
+export function resolveAgentModelOverrides(agents, modelProfile) {
     const overrides = {};
     const skipped = [];
+    // The profile fills in first; an explicit agents.<name>.model below replaces it.
+    const profile = parseModelProfile(modelProfile);
+    if (modelProfile !== undefined && !profile)
+        skipped.push(`modelProfile: ${JSON.stringify(modelProfile)}`);
+    if (profile) {
+        for (const [name, tier] of Object.entries(profileAgentModels(profile)))
+            overrides[name] = toCopilotModelId(tier);
+    }
     for (const [key, value] of Object.entries(agents ?? {})) {
         if (key === 'omc' || value?.model === undefined)
             continue;

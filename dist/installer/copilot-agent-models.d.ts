@@ -11,9 +11,11 @@ export declare const COPILOT_PLUGIN_AGENT_PREFIX = "oh-my-copilot:";
  * tier's first Copilot id; dashed Claude Code ids become dotted) and are kept
  * only when the result is in copilot-models.json knownModels; everything else
  * (`inherit`, unlisted ids such as claude-opus-4-8) lands in `skipped`.
- * `omc` is the orchestrator, not a delegatable agent.
+ * `omc` is the orchestrator, not a delegatable agent. A `modelProfile`
+ * (features/model-routing/profiles.ts) sets every agent first; explicit
+ * per-agent values win over it.
  */
-export declare function resolveAgentModelOverrides(agents: PluginConfig['agents'] | undefined): {
+export declare function resolveAgentModelOverrides(agents: PluginConfig['agents'] | undefined, modelProfile?: unknown): {
     overrides: Record<string, string>;
     skipped: string[];
 };

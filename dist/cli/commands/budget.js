@@ -4,7 +4,7 @@
  * Reporting only: status always exits 0.
  */
 import { deprecationNotice, formatAmount, loadBudgetSettings, summaryLine } from '../../budget/governor.js';
-import { ESTIMATED_CREDITS_PER_PROMPT, ledgerPath, ledgerTotals, readLedger, resetLedger, updateLedger } from '../../budget/ledger.js';
+import { ESTIMATED_CREDITS_PER_PROMPT, USAGE_GROUP_BYS, ledgerByTag, ledgerPath, ledgerTotals, readLedger, resetLedger, updateLedger } from '../../budget/ledger.js';
 export async function budgetCommand(action, options, cwd = process.cwd()) {
     const path = ledgerPath(cwd);
     const { settings, issues } = loadBudgetSettings(cwd);
@@ -29,19 +29,30 @@ export async function budgetCommand(action, options, cwd = process.cwd()) {
         return 0;
     }
     if (action !== 'status') {
-        console.error(`Unknown budget action "${action}". Usage: omg budget [status|reset] [--json]`);
+        console.error(`Unknown budget action "${action}". Usage: omg budget [status|reset] [--json] [--by role|kind|run]`);
+        return 2;
+    }
+    const by = options.by;
+    if (by !== undefined && !USAGE_GROUP_BYS.includes(by)) {
+        console.error(`Unknown --by "${options.by}". Use one of: ${USAGE_GROUP_BYS.join(', ')}.`);
         return 2;
     }
     const ledger = readLedger(path);
+    const groups = by ? ledgerByTag(ledger, by) : undefined;
     const totals = ledgerTotals(ledger);
     if (options.json) {
-        console.log(JSON.stringify({ ledgerPath: path, since: ledger.since, settings, issues, used: totals.credits, totals, notified: ledger.notified, sessions: ledger.sessions, teams: ledger.teams }, null, 2));
+        console.log(JSON.stringify({ ledgerPath: path, since: ledger.since, settings, issues, used: totals.credits, totals, notified: ledger.notified, sessions: ledger.sessions, teams: ledger.teams, ...(by && groups ? { by: { field: by, groups } } : {}) }, null, 2));
         return 0;
     }
     // The deprecation notice is part of the summary line; the issue list would repeat it.
     console.log(summaryLine(ledger, settings).replace(/ Details: omg budget status\.$/, ''));
     for (const [team, t] of Object.entries(totals.teams)) {
         console.log(`  team ${team}: ${formatAmount(Number(t.credits.toFixed(3)), 'credits')} over ${t.records} session(s)`);
+    }
+    if (by && groups) {
+        console.log(`  by ${by}:`);
+        for (const g of groups)
+            console.log(`    ${g.key}: ${formatAmount(Number(g.credits.toFixed(3)), 'credits')} over ${g.records} record(s)`);
     }
     if (totals.estimatedRecords > 0) {
         console.log(`  ${totals.estimatedRecords} record(s) are estimates (about ${ESTIMATED_CREDITS_PER_PROMPT} AI credit per prompt; the real cost varies by model); they become measured once the session's totals are written.`);

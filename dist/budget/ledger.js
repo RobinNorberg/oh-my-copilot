@@ -168,6 +168,11 @@ export function updateLedger(path, fn, opts = {}) {
  * measured total that drops keeps the larger value and flags it.
  */
 export function mergeRecord(existing, next) {
+    const merged = mergeUsage(existing, next);
+    // A refresh that carries no tag (the session scan) keeps the tag the owner recorded.
+    return existing?.tag && !merged.tag ? { ...merged, tag: existing.tag } : merged;
+}
+function mergeUsage(existing, next) {
     if (!existing)
         return next;
     if (existing.source === 'measured' && next.source === 'estimated') {
@@ -215,7 +220,9 @@ export function putRecord(ledger, key, usage, team) {
     // A scan from before `omg budget reset` counted the old period.
     if (usage.scan && usage.scan.since !== scanSince(ledger))
         return false;
-    const net = applyBaseline(usage, ledger.baselines?.[baselineKey(key, team)]);
+    const { tag: rawTag, ...untagged } = usage;
+    const tag = sanitizeTag(rawTag);
+    const net = applyBaseline(tag ? { ...untagged, tag } : untagged, ledger.baselines?.[baselineKey(key, team)]);
     if (team) {
         const bucket = (ledger.teams[team] ??= {});
         bucket[key] = mergeRecord(bucket[key], net);
@@ -256,6 +263,50 @@ export function resetLedger(ledger, now = new Date()) {
     delete ledger.baselines;
     Object.assign(ledger, emptyLedger(now), { resetAt: now.toISOString() }, Object.keys(baselines).length ? { baselines } : {});
     return before;
+}
+const TAG_KINDS = ['factory-lane', 'team-worker', 'session'];
+const TAG_TEXT = /^[A-Za-z0-9._:-]{1,64}$/;
+/** The tag as the ledger stores it: a known kind and safe role/run text, or undefined (the record counts as untagged). */
+export function sanitizeTag(raw) {
+    if (!isObject(raw) || !TAG_KINDS.includes(raw.kind))
+        return undefined;
+    const tag = { kind: raw.kind };
+    if (typeof raw.role === 'string' && TAG_TEXT.test(raw.role))
+        tag.role = raw.role;
+    if (typeof raw.run === 'string' && TAG_TEXT.test(raw.run))
+        tag.run = raw.run;
+    return tag;
+}
+export const USAGE_GROUP_BYS = ['role', 'kind', 'run'];
+/** Group label of records without a tag, or whose tag lacks the grouped field. */
+export const UNTAGGED = 'untagged';
+/**
+ * Sessions and team records grouped by tag field, most credits first. Records
+ * written before tags existed (or with a malformed tag) land in `untagged`;
+ * `role` falls back to the tag's kind (a team worker without a role is `team-worker`).
+ */
+export function ledgerByTag(ledger, by) {
+    const groups = new Map();
+    const add = (r) => {
+        if (!isObject(r))
+            return;
+        const tag = sanitizeTag(r.tag);
+        const key = (by === 'kind' ? tag?.kind : by === 'run' ? tag?.run : tag?.role ?? tag?.kind) ?? UNTAGGED;
+        const g = groups.get(key) ?? { key, credits: 0, premiumRequests: 0, records: 0, estimatedRecords: 0 };
+        g.credits += num(r.credits);
+        g.premiumRequests += num(r.premiumRequests);
+        g.records += 1;
+        if (r.source !== 'measured')
+            g.estimatedRecords += 1;
+        groups.set(key, g);
+    };
+    for (const r of Object.values(ledger.sessions))
+        add(r);
+    for (const bucket of Object.values(ledger.teams))
+        if (isObject(bucket))
+            for (const r of Object.values(bucket))
+                add(r);
+    return [...groups.values()].sort((a, b) => b.credits - a.credits || a.key.localeCompare(b.key));
 }
 export function ledgerTotals(ledger) {
     const totals = { premiumRequests: 0, credits: 0, sessions: 0, estimatedRecords: 0, teams: {} };
