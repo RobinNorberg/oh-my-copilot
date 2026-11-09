@@ -51,11 +51,13 @@ export function engineOwnedDir(dir: string, untrustedRoots: readonly string[]): 
  * it one at a time, each checked again; without it, false when a parent is
  * missing. The leaf may be absent.
  */
-export function noLinkPath(anchor: string, path: string, create = true): boolean {
+export function noLinkPath(anchor: string, path: string, create = true, allowLinkedAnchor = false): boolean {
   const top = resolve(anchor);
   const rel = relative(top, resolve(path));
   if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) throw new Error(`local forge: ${path} is not under ${anchor}`);
   const parts = rel.split(sep);
+  // The anchor must not be a link to somewhere else either, unless the caller says it may be (a checkout root can legitimately be one; the runtime root `.omg`, in the untrusted tree, cannot).
+  if (!allowLinkedAnchor && lstatSync(top, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(`local forge: refusing to go through the symbolic link ${top}`);
   if (create) mkdirSync(top, { recursive: true, mode: 0o700 });
   let cur = top;
   for (const [i, part] of parts.entries()) {
@@ -81,15 +83,15 @@ export function noLinkPath(anchor: string, path: string, create = true): boolean
  * Write a file atomically; the parent is created. With `anchor`, no
  * component below it may be a symbolic link (noLinkPath).
  */
-export function writeAtomic(path: string, content: string, anchor?: string): void {
+export function writeAtomic(path: string, content: string, anchor?: string, allowLinkedAnchor = false): void {
   if (anchor === undefined) mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  else noLinkPath(anchor, path);
+  else noLinkPath(anchor, path, true, allowLinkedAnchor);
   atomicWriteFileSync(path, content);
 }
 
 /** Append to a file under `anchor` without following a link below it (O_NOFOLLOW on the leaf where the platform has it). */
-export function appendNoFollow(anchor: string, path: string, text: string): void {
-  noLinkPath(anchor, path);
+export function appendNoFollow(anchor: string, path: string, text: string, allowLinkedAnchor = false): void {
+  noLinkPath(anchor, path, true, allowLinkedAnchor);
   const fd = openSync(path, constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0), 0o600);
   try {
     writeFileSync(fd, text);
@@ -106,6 +108,9 @@ export const LOCK_TIMEOUT_MS = 15_000;
 /** A lock directory older than this is left over from a crashed writer. */
 export const LOCK_STALE_MS = 60_000;
 
+/** How long a Windows EPERM/EACCES on the lock directory is waited out as a pending delete. */
+export const PENDING_DELETE_MS = 5_000;
+
 const OWNER = 'owner';
 const ownerOf = (lock: string): string | undefined => {
   try {
@@ -121,14 +126,17 @@ const ownerOf = (lock: string): string | undefined => {
  * the renamed lock is still stale (a fresh lock taken in between goes back)
  * and remove it.
  */
-function breakStaleLock(lock: string, staleMs: number, token: string): void {
+export function breakStaleLock(lock: string, staleMs: number, token: string, seenOwner: string | undefined): void {
+  // The lock must still be the one judged stale: a release and a fresh acquire in between changes its owner token.
+  if (ownerOf(lock) !== seenOwner) return;
   const aside = `${lock}.stale-${token}`;
   try {
     renameSync(lock, aside);
   } catch {
     return; // another waiter broke it first, or it was released
   }
-  if (Date.now() - statSync(aside).mtimeMs > staleMs) {
+  // Checked again on the renamed lock: a fresh lock taken between the check above and the rename goes back.
+  if (ownerOf(aside) === seenOwner && Date.now() - statSync(aside).mtimeMs > staleMs) {
     rmSync(aside, { recursive: true, force: true });
     return;
   }
@@ -150,6 +158,7 @@ export function withFileLock<T>(path: string, fn: () => T, o: { timeoutMs?: numb
   const staleMs = o.staleMs ?? LOCK_STALE_MS;
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const deadline = Date.now() + (o.timeoutMs ?? LOCK_TIMEOUT_MS);
+  let deniedSince: number | undefined;
   for (let wait = 5; ; wait = Math.min(wait * 2, 100)) {
     try {
       mkdirSync(lock);
@@ -160,15 +169,23 @@ export function withFileLock<T>(path: string, fn: () => T, o: { timeoutMs?: numb
       // Windows: EPERM/EACCES while a removed lock directory's delete is still pending.
       const pending = process.platform === 'win32' && (code === 'EPERM' || code === 'EACCES');
       if (code !== 'EEXIST' && !pending) throw err;
-      if (!pending) {
+      if (pending) {
+        // A pending delete clears within moments; a lasting EPERM is a real permission error, not a wait.
+        deniedSince ??= Date.now();
+        // Capped by the caller's deadline; a lasting denial names the lock instead of surfacing a bare EPERM.
+        if (Date.now() - deniedSince > Math.min(PENDING_DELETE_MS, deadline - deniedSince)) throw new Error(`local forge: the lock ${lock} could not be created (${code}): its previous directory is still pending deletion or access is denied`, { cause: err });
+      } else {
+        deniedSince = undefined;
         let age: number;
+        // The owner is read before the stat that judges staleness, so a release and re-acquire in between changes the token the breaker compares.
+        const seenOwner = ownerOf(lock);
         try {
           age = Date.now() - statSync(lock).mtimeMs;
         } catch {
           continue; // released between the mkdir and the stat
         }
         if (age > staleMs) {
-          breakStaleLock(lock, staleMs, token);
+          breakStaleLock(lock, staleMs, token, seenOwner);
           continue;
         }
       }
@@ -241,4 +258,57 @@ export function updatePrStore<T>(path: string, fn: (store: LocalPrStore) => T): 
     writeAtomic(path, `${JSON.stringify(store, null, 2)}\n`);
     return result;
   });
+}
+
+/** A human review played back into the local forge (`omg factory pr review`): the local stand-in for a forge review. */
+export interface LocalReviewRecord {
+  version: 1;
+  id: string;
+  pr: number;
+  /** The OS user who ran the command, lowercased. */
+  author: string;
+  state: 'approved' | 'changes-requested' | 'commented';
+  /** The review text (untrusted data for the fix lane; may be empty on approve). */
+  body: string;
+  /** The PR head the review was given on (the mirror's branch tip then). */
+  head: string;
+  at: string;
+}
+
+/** At most this many characters of review text in one record. */
+export const MAX_LOCAL_REVIEW_CHARS = 20_000;
+
+/** `<storeDir>/prs/<n>/reviews.jsonl`: engine-owned (outside every lane-writable root), beside prs.json. */
+export const localReviewsPath = (storeDir: string, pr: number): string => join(storeDir, 'prs', String(pr), 'reviews.jsonl');
+
+function validReview(r: unknown, pr: number): r is LocalReviewRecord {
+  const v = r as Partial<LocalReviewRecord> | null;
+  return !!v && v.version === 1 && typeof v.id === 'string' && v.pr === pr && typeof v.author === 'string' && v.author !== ''
+    && (v.state === 'approved' || v.state === 'changes-requested' || v.state === 'commented') && typeof v.body === 'string'
+    && typeof v.head === 'string' && /^[0-9a-f]{40}$/.test(v.head) && typeof v.at === 'string';
+}
+
+/** The PR's played-back reviews in order; none when the file is absent. A malformed line throws (the file is engine-owned). */
+export function readLocalReviews(storeDir: string, pr: number): LocalReviewRecord[] {
+  const path = localReviewsPath(storeDir, pr);
+  if (!noLinkPath(storeDir, path, false) || !existsSync(path)) return [];
+  return readFileSync(path, 'utf8').split('\n').filter((l) => l.trim() !== '').map((line, i) => {
+    let r: unknown;
+    try {
+      r = JSON.parse(line);
+    } catch {
+      throw new Error(`local forge: review record ${i + 1} of ${path} is not valid JSON`);
+    }
+    if (!validReview(r, pr)) throw new Error(`local forge: review record ${i + 1} of ${path} is malformed`);
+    return r;
+  });
+}
+
+/** Append one review record under the file's lock, without following a link below `storeDir`. */
+export function appendLocalReview(storeDir: string, record: LocalReviewRecord): void {
+  if (!validReview(record, record.pr)) throw new Error('local forge: refusing a malformed review record');
+  if (record.body.length > MAX_LOCAL_REVIEW_CHARS) throw new Error(`local forge: the review text is over ${MAX_LOCAL_REVIEW_CHARS} characters`);
+  const path = localReviewsPath(storeDir, record.pr);
+  noLinkPath(storeDir, path);
+  withFileLock(path, () => appendNoFollow(storeDir, path, `${JSON.stringify(record)}\n`));
 }

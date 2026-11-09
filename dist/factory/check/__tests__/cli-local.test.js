@@ -215,10 +215,10 @@ describe('isLocalReadShape', () => {
         expect(log(SHA, '-x.md')).toBe(false);
         expect(log(SHA, '.copilot/./backlog/3-x.md')).toBe(false);
         // The pre-review any-change shape, a log without the no-driver flags, another pickaxe or format.
-        expect(log(SHA, '.copilot/backlog/3-x.md', ['-1', '--no-show-signature', '--format=%H'])).toBe(false);
-        expect(log(SHA, '.copilot/backlog/3-x.md', ['-1', '--no-show-signature', '-G^state:', '--format=%H'])).toBe(false);
+        expect(log(SHA, '.copilot/backlog/3-x.md', ['-1', '--no-show-signature', '--format=%H %P'])).toBe(false);
+        expect(log(SHA, '.copilot/backlog/3-x.md', ['-1', '--no-show-signature', '-G^state:', '--format=%H %P'])).toBe(false);
         expect(log(SHA, '.copilot/backlog/3-x.md', STATE_CHANGE_LOG_FLAGS.map((f) => (f === '-G^state:' ? '-G.' : f)))).toBe(false);
-        expect(log(SHA, '.copilot/backlog/3-x.md', STATE_CHANGE_LOG_FLAGS.map((f) => (f === '--format=%H' ? '--format=%G?' : f)))).toBe(false);
+        expect(log(SHA, '.copilot/backlog/3-x.md', STATE_CHANGE_LOG_FLAGS.map((f) => (f === '--format=%H %P' ? '--format=%G?' : f)))).toBe(false);
     });
     it('refuses a . segment in a backlog path, like the engine guard (both share isPlainRepoPath)', () => {
         expect(isLocalReadShape(['ls-tree', '-z', '--name-only', SHA, '--', '.copilot/./backlog/'])).toBe(false);

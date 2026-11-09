@@ -221,6 +221,12 @@ export interface ForgeReviewFeedback {
   pendingReviewers: string[];
   /** Authors whose input was dropped (not trusted), for poll and status output. */
   ignored: string[];
+  /**
+   * The forge's own trust list could not be read whole (GitHub: the
+   * collaborator list is truncated or needs push access), so a write-access
+   * reviewer may sit in `ignored`; `factory.review.trustedReviewers` still counts.
+   */
+  trustIncomplete?: boolean;
 }
 
 /** A triage write to one tracker item. */
@@ -408,6 +414,8 @@ export interface ResolvedForgeConfig {
   progress: ForgeProgressConfig;
   /** `factory.heal.pipeline` from the trusted layers (user config, base branch); absent unless configured. */
   heal?: { pipeline?: { definitionId: number } };
+  /** `factory.review.trustedReviewers` from the trusted layers (user config, base branch), lowercased; absent unless configured. */
+  review?: { trustedReviewers: readonly string[] };
 }
 
 /** What an adapter needs from its caller besides the Exec (src/factory/run/forge-roots.ts builds it for the factory). */

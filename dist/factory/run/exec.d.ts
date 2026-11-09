@@ -9,13 +9,24 @@
  *   (one `pr list` is the blocked-by gate's merged lookup on `factory/issue-<n>`)
  *   and `gh repo view --json url` (ci-heal runs) in fixed shapes, plus ship's
  *   `gh pr view|checks` and `gh run list|view|rerun`.
- *   Never `gh api`, `gh -R`, or a merge (merge is always human).
+ *   Never `gh api`, `gh -R`, or a merge (merge is always human), except the
+ *   human review read (src/forge/github/graphql.ts isReviewFeedbackArgs:
+ *   `gh api graphql` with its constant query, pinned to the GithubReadContext
+ *   repo) and the three coding-agent shapes below.
  * - Tracker writes (`omg factory enqueue` only, when its TrackerWriteContext is
  *   set): `gh issue create`, `gh issue edit` (title, body, labels) and the
  *   `shipyard-key:` search `gh issue list --search`, each in one exact shape,
  *   pinned to the configured repository, with a body file from the caller's
- *   own directory (gh reads the guard's checked copy) and labels from its allowlist. Never close, delete,
+ *   own directory (gh reads the guard's checked copy) and labels from its allowlist. Never close
+ *   (the factory's only close is the coding-agent PR close, bound to CodingAgentContext.pr), delete,
  *   transfer or lock; without the context all three shapes are refused.
+ * - The Copilot coding agent (src/forge/github/coding-agent.ts), beside the
+ *   review read: its fixed-query `gh api graphql` status read with the
+ *   repository-only GithubReadContext; its two writes only with a
+ *   CodingAgentContext, which the engine sets around that one step: the REST
+ *   assign of exactly the context's issue on exactly its base, and
+ *   `gh pr close` of exactly its `pr` (the agent's own PR; the tracker never
+ *   closes). Without that context both writes are refused.
  * - Azure DevOps: `az devops invoke` on the routes.ts allowlist only, as the
  *   resolved az entry, for the run's forge repo (src/forge/ado/guard.ts).
  *   The work item create and the PATCH's item fields and links pass only with
@@ -30,6 +41,7 @@
  *   even if the tamper check missed it.
  */
 import { type AdoGuardContext } from '../../forge/ado/guard.js';
+import { type CodingAgentContext } from '../../forge/github/coding-agent.js';
 import { ShipSafetyError, type Exec } from '../../ship/exec.js';
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
 export declare const FACTORY_BRANCH_PREFIX = "factory/";
@@ -53,6 +65,8 @@ export interface TrackerWriteContext {
     labels: readonly string[];
     /** Azure DevOps: the work item types a create may name (factory.intake.itemTypes); none = no create. */
     itemTypes?: readonly string[];
+    /** Who writes: `triage` allows only its label edit (GitHub) and tag/priority PATCH (Azure DevOps); unset or `enqueue` = enqueue's shapes. */
+    purpose?: 'triage' | 'enqueue';
 }
 /**
  * What the guard knows about the local forge: the exact mirror path the
@@ -111,6 +125,10 @@ export declare const REMOTE_CONFIG_ARGS: readonly string[];
  * `file://` form, case-insensitively on Windows and macOS.
  */
 export declare function mirrorNamedRemoteKeys(stdout: string, mirror: string): string[];
+/** The GitHub repository a run reads review feedback from: gh's `HOST/OWNER/NAME` (ghRepoArg). */
+export interface GithubReadContext {
+    repo: string;
+}
 /**
  * Throws FactorySafetyError unless the command is a factory shape or a
  * non-push, non-merge ship shape. `extraProtected` adds the run's base.
@@ -118,15 +136,19 @@ export declare function mirrorNamedRemoteKeys(stdout: string, mirror: string): s
  * which refuses them unless `ado` names the run's forge and az entry.
  * `writes` (enqueue only) adds the tracker write shapes.
  */
-export declare function assertFactoryCommand(cmd: string, args: string[], extraProtected?: readonly string[], env?: Readonly<Record<string, string>>, ado?: AdoGuardContext, writes?: TrackerWriteContext, local?: LocalGuardContext): void;
+export declare function assertFactoryCommand(cmd: string, args: string[], extraProtected?: readonly string[], env?: Readonly<Record<string, string>>, ado?: AdoGuardContext, writes?: TrackerWriteContext, local?: LocalGuardContext, github?: GithubReadContext, agent?: CodingAgentContext): void;
 /**
  * Wrap an Exec so every call passes assertFactoryCommand first; `extraProtected` is read per call.
  * An `az devops invoke` write runs with the guard's own copy of its validated --in-file body,
  * and a tracker write (gh issue create/edit) with the guard's own copy of its checked --body-file.
  * `writes` is set only by `omg factory enqueue`: the tracker write shapes pass while it returns a context.
  * `local` (the local forge only) binds the mirror init, the remote add and the base push to this run's mirror and synced base.
+ * `github` (GitHub only) names the repository the human review read may query; without it that read is refused.
+ * It is read-only: besides the review read it admits only the coding agent's status read.
+ * `agent` (GitHub only, set by the engine around one coding agent step, never for a whole run) admits the assign of its
+ * issue on its base and the close of its `pr`; without it both writes are refused.
  */
-export declare function factoryGuardExec(exec: Exec, extraProtected?: () => readonly string[], ado?: () => AdoGuardContext | undefined, writes?: () => TrackerWriteContext | undefined, local?: () => LocalGuardContext | undefined): Exec;
+export declare function factoryGuardExec(exec: Exec, extraProtected?: () => readonly string[], ado?: () => AdoGuardContext | undefined, writes?: () => TrackerWriteContext | undefined, local?: () => LocalGuardContext | undefined, github?: () => GithubReadContext | undefined, agent?: () => CodingAgentContext | undefined): Exec;
 /** Prepended to every hardened git command, after the guard checked the plain shape. */
 export declare function gitHardeningArgs(hooksDir: string): string[];
 /**

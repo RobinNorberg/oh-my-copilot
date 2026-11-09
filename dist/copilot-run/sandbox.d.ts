@@ -131,6 +131,8 @@ export interface SandboxPolicyContext {
     sshAuthSock?: string;
     /** The CA bundle files and cert dirs the caller's env names (proxyCaEnv), granted read-only like the tool dirs. */
     extraReadonly?: string[];
+    /** The OMC global state root to deny (default getGlobalOmcStateRoot()); a test seam. */
+    omcStateRoot?: string;
 }
 export declare const REGISTRY_HOSTS: readonly string[];
 /**

@@ -265,9 +265,9 @@ describe('F39 + F40: --dry-run applies the pr-exists gate and probes the gate ex
         expect(dry.plan).toMatchObject({ next: 'awaiting-human', reason: 'pr-exists' });
     }, MULTI_RUN_MS);
     it('reports a gate whose executable cannot start, without spawning it', async () => {
-        w = localWorld(['omg-no-such-gate-exe-f40', 'test']);
+        w = localWorld(['./omg-no-such-gate-exe-f40', 'test']);
         const dry = await runFactoryEngine(localOpts(w, lanesFor(w, []), { dryRun: true }));
-        expect(dry.message).toMatch(/the run would start an implement lane .*; but the local gate cannot start \(the local gate executable omg-no-such-gate-exe-f40 .*not on PATH.*\), so after review the run would park at awaiting-human: gates$/);
+        expect(dry.message).toMatch(/the run would start an implement lane .*; but the local gate cannot start \(the local gate executable \.\/omg-no-such-gate-exe-f40 .*does not exist.*\), so after review the run would park at awaiting-human: gates$/);
         expect(dry.plan?.gateProblem).toMatch(/omg-no-such-gate-exe-f40/);
         expect(w.gateRuns).toEqual([]);
     });

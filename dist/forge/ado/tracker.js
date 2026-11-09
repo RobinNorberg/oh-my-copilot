@@ -248,6 +248,28 @@ export function adoTracker(ctx, intakeSource, bodyDir) {
                 return { ok: false, stderr: failure(error) };
             }
         },
+        setTriage(id, change) {
+            if (change.assignee !== undefined)
+                return { ok: false, detail: 'assignee is not a triage write yet' };
+            try {
+                return patchItem(ctx, id, (item) => {
+                    const ops = [];
+                    const current = str(item.fields['System.Tags']) ?? '';
+                    const tags = editedTags(splitTags(current), change.add, change.remove);
+                    if (tags && tags.length === 0)
+                        throw new Error(`work item ${id}: removing its last tag is not a tracker write`);
+                    // The add replaces the whole list: the guard checks the edit against the tested current tags.
+                    if (tags)
+                        ops.push({ op: 'test', path: '/fields/System.Tags', value: current }, { op: 'add', path: '/fields/System.Tags', value: tags.join('; ') });
+                    if (change.priority !== undefined && num(item.fields['Microsoft.VSTS.Common.Priority']) !== change.priority)
+                        ops.push({ op: 'add', path: '/fields/Microsoft.VSTS.Common.Priority', value: change.priority });
+                    return ops.length ? ops : null;
+                });
+            }
+            catch (error) {
+                return { ok: false, detail: failure(error) };
+            }
+        },
         findByKey(spec) {
             const json = adoJson(adoCall(ctx, 'wit.wiql.POST', projectParams(ctx), { $top: KEY_QUERY_TOP }, { query: shipyardKeyWiql(spec) }), 'shipyard-key query');
             const ids = (isObject(json) && Array.isArray(json.workItems) ? json.workItems : [])

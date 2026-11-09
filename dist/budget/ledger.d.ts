@@ -28,6 +28,8 @@
  * as "no data" (fail-open).
  */
 export type UsageSource = 'measured' | 'estimated';
+/** Who spent a usage record (cost attribution). */
+export type UsageTag = NonNullable<UsageRecord['tag']>;
 /** Incremental read state of a session's events.jsonl. */
 export interface EventsScan {
     /** Period start the prompt count belongs to (`scanSince(ledger)`). */
@@ -168,6 +170,25 @@ export declare function recordUsage(path: string, key: string, usage: UsageRecor
 export declare function resetLedger(ledger: BudgetLedger, now?: Date): {
     since: string;
 } & LedgerTotals;
+/** The tag as the ledger stores it: a known kind and safe role/run text, or undefined (the record counts as untagged). */
+export declare function sanitizeTag(raw: unknown): UsageTag | undefined;
+export type UsageGroupBy = 'role' | 'kind' | 'run';
+export declare const USAGE_GROUP_BYS: readonly UsageGroupBy[];
+/** Group label of records without a tag, or whose tag lacks the grouped field. */
+export declare const UNTAGGED = "untagged";
+export interface UsageGroup {
+    key: string;
+    credits: number;
+    premiumRequests: number;
+    records: number;
+    estimatedRecords: number;
+}
+/**
+ * Sessions and team records grouped by tag field, most credits first. Records
+ * written before tags existed (or with a malformed tag) land in `untagged`;
+ * `role` falls back to the tag's kind (a team worker without a role is `team-worker`).
+ */
+export declare function ledgerByTag(ledger: BudgetLedger, by: UsageGroupBy): UsageGroup[];
 export declare function ledgerTotals(ledger: BudgetLedger): LedgerTotals;
 /** `$COPILOT_HOME/session-state/<id>/events.jsonl`, or null for an unsafe id. */
 export declare function copilotEventsPath(sessionId: string): string | null;

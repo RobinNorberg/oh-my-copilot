@@ -13,6 +13,7 @@
  * | progress.* (tracker writes)        | user -> base                         | ignored, warned on a diff  |
  * | heal.pipeline (ADO: which is CI)   | user -> base                         | ignored, warned on a diff  |
  * | intake.autoStart (poll starts runs)| user -> base                         | ignored, warned on a diff  |
+ * | review.trustedReviewers            | user -> base                         | ignored, warned on a diff  |
  * | intake.* (the rest), check.*       | project -> user -> base -> defaults  | allowed                    |
  *
  * Config can pin the forge, never redirect it: a kind, org, project or repo
@@ -52,6 +53,7 @@ export declare const DEFAULT_LOCAL_GATE_TIMEOUT_MINUTES = 20;
 export declare const MAX_LOCAL_GATE_TIMEOUT_MINUTES = 120;
 /** GitHub default label family (design §7); `cancelled` removes the family, so it has no label. */
 export declare function defaultProgressStages(kind: ForgeKind): Partial<Record<ProgressStage, ProgressMapping>>;
+export declare const MAX_TRUSTED_REVIEWERS = 100;
 /** The forge kind and repository the origin remote names. */
 export declare function detectForgeRepo(originUrl: string): ForgeRepo;
 /** Where the caller's repository lives: the local forge names its mirror from it. */
