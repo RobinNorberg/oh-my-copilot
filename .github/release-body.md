@@ -1,101 +1,58 @@
-# oh-my-copilot v5.21.0
+# oh-my-copilot v5.22.0
 
-The software factory now runs offline: the `local` forge works from a
-committed backlog in your repository, with no GitHub or Azure DevOps. This
-release also fixes the findings of two factory and team dogfood rounds, and
-ports two upstream ranges (oh-my-claudecode 27e7f235e..4d5d22187 and
-4d5d22187..c5b71636e). Version 5.19.8 was never published; its changes ship
-here.
+This release adds triage and a cloud heartbeat to the software factory, reads
+human review feedback on GitHub, Azure DevOps and the local forge, and hardens
+the offline mode. Parallel runs work as separate clones. One engine still runs
+per checkout.
 
-Install with `npm install -g oh-my-copilot@5.21.0`, or from the plugin
+Install with `npm install -g oh-my-copilot@5.22.0`, or from the plugin
 marketplace: `copilot plugin update oh-my-copilot@omc`.
 
-## Offline mode: the local forge
+## Factory
 
-- `omg factory setup --forge local` writes the config, a closed sample item
-  and `ship.base` (`dev` if it exists, else the current branch).
-- Backlog items are committed files, `.copilot/backlog/<id>-<slug>.md` with
-  frontmatter. The engine pushes run branches to a bare mirror it owns, the
-  git remote `omg-local`, and runs your gate command
-  (`factory.forge.local.gate`) as the check `local-gate`. You merge with the
-  `git merge --no-ff --no-edit` command the run prints.
-- `check`, `board`, `enqueue`, `poll` and `run --next` work with no origin.
-  `check`, `board` and `setup` print what offline mode does not do.
-- A head that changes the gate's definition parks at
-  `gate-definition-changed` before any push.
-- See `docs/FACTORY-OFFLINE.md`.
+- `omg factory triage [--apply]` proposes `priority:p0`..`p3`, `needs-split` and
+  `needs-plan` for intake items on GitHub, Azure DevOps and the local forge. It
+  is a dry run unless you pass `--apply`.
+- `omg factory setup --workflows` writes a scheduled heartbeat (GitHub Actions
+  or an Azure Pipelines file). It is read-only by default, starts no lane and
+  uses no model. `--mode triage` also runs `triage --apply`.
+- `omg factory poll` counts open human review threads on factory PRs
+  (`k human thread(s) (m ignored)`). Trusted reviewers come from
+  `factory.review.trustedReviewers`, write access on GitHub and
+  `trustedAuthors` on Azure DevOps.
+- `omg factory pr list|view|diff|review` inspects and reviews local-forge PRs
+  without running any hook of your checkout.
+- Parallel runs: a second engine in one checkout, or on an item another clone
+  holds, exits 6 (busy) and touches nothing. Clones on one host coordinate
+  through claim files. `run --next` skips claimed items, `run release` clears a
+  stale claim, and `run status` without an issue lists the engines and claims.
+- Local forge hardening: gates that run `npx`, a PATH program or an outside
+  program park at `gate-definition-unknown`. Leftover gate processes are
+  killed on Windows and after a crash. Lanes can no longer read the OMC state
+  root. The reopen rule and the store locks are tighter.
 
-## Dogfood fixes
+## Cost
 
-- Prepare runs only the checks the target repository has, so a factory run in
-  another repository no longer fails on this repository's tsc and inventory
-  scripts. `ship.prepare.checks` replaces the detected checks.
-- SDK workers start with launch progress instead of 1-3 silent minutes, get a
-  branch worktree by default, and get a 50 AI credit cap (was 10, which one
-  small task already exceeded).
-- A capped worker's task becomes `capped` instead of staying `in_progress`.
-  A worker blocker reaches the leader: `omg team status` lists it under
-  `leader_inbox`, and guidance says how to answer it.
-- `omg team shutdown` needs no `--force` when every task is terminal, and
-  names each dirty worktree it keeps.
-- A spec whose children are all closed, or a local spec without tickets, is
-  no longer runnable, so `run --next` does not implement the whole spec.
-- A WinGet-installed `copilot` no longer triggers the non-standard path
-  warning.
-
-## Upstream ports
-
-- About 30 new skills (98 bundled now), including the PR-care suite
-  (`babysit`, `fix-ci`, `fix-merge-conflicts`, `get-pr-comments`), the
-  review-and-climb skills, `statechart` (TLA+ model check drawn as a Mermaid
-  statechart) and `ketchup-video`. `arena`, `reflect`, `sharpen` and
-  `interrogate` follow pstack v0.9.125.
-- The verification ledger, watch-pr policy, playbook checker and credits
-  registry.
-- `omg team resume` resumes runtime v2 teams. An SDK team counts as resumed
-  only while a worker host is alive.
-- On Claude Code, the SessionEnd foreground budget is now max(1 s, half the
-  hook timeout). Copilot CLI keeps 1.5 s.
-- Fixes for team worktrees, ralph, jev, config rewrites and Windows.
-- `tsx` is now a runtime dependency, for the `statechart` launcher on Node 20.
-
-## Upgrade notes
-
-- New config keys:
-  - `ship.prepare.checks`: argv commands prepare runs instead of the detected
-    checks; `[]` runs none. Read only from the user config or the base's
-    committed `.copilot/omg.jsonc`.
-  - `factory.forge.kind: "local"` with `factory.forge.local.gate`: offline
-    mode. Over a GitHub or Azure DevOps origin it counts only from the user
-    config or the base-committed `.copilot/omg.jsonc`.
-  - `team.sdk.compactProtocol`: a shorter worker protocol for SDK workers.
-    Off by default.
-  - `team.sdk.blockerTimeoutMinutes`: fails a task whose blocker stays
-    unanswered. Off by default.
-- Changed defaults: `team.sdk.maxCreditsPerWorker` is 50. SDK teams use
-  branch worktrees when `team.ops.worktreeMode` is unset; set it to keep the
-  shared checkout. `factory.run.maxRunCredits` must be at least
-  `laneMaxCredits` + 30.
-- Exit codes:
-  - 2: the local forge's base branch is missing, or `ship.base` is not a
-    plain branch name.
-  - 3: `omg team shutdown` kept a worker worktree with uncommitted changes.
-  - 5: no usable forge, for every factory command (`omg factory run` exited
-    1 before; `omg factory setup` with no origin and no flags exited 2).
-- `omg factory run reset <n>`: starts a cancelled local run over, after
-  `omg factory run clean <n>`. Before, a cancelled offline item could never
-  run again.
-- `omg factory run <n> --allow-gate-change`: accepts a parked gate
-  definition change once.
-- A factory run parks at `prepare-checks` when `ship.prepare.checks` changes
-  during the run.
+- `omg budget status --by role|kind|run` groups usage by who spent it.
+- `modelProfile` (`quality-first`, `balanced`, `economy`) maps agent tiers to
+  Copilot models during `omg setup`, and is reversible.
 
 ## Caveats
 
-- This release was published without the live Copilot smoke.
-- The maintainer's local full test suite was not used as a release gate: it could not complete on the release machine under load. The CI test suite on the release commit is the test evidence.
-- `reflect` and `personal-mode` read Claude Code transcripts.
-- `statechart` installs TLC and Java with mise on its first run and needs the
-  network.
-- On Node 20, full protection against a planted executable on Windows needs
-  Node 22+. The Node 22 minimum is planned for a later release.
+- **Review feedback is read, not acted on.** The engine does not start a fix
+  round from human review comments yet. Poll and `omg factory pr` only show them.
+- **The Copilot coding agent is not wired in.** The GitHub adapter can read and
+  assign the agent, but no command or config key uses it. Implement lanes are
+  still `copilot_run` lanes.
+- **Parallel runs need separate clones** on one host with one `OMC_STATE_DIR`.
+  There is no credit cap across clones, and clones on different hosts do not
+  see each other's claims.
+- **Azure DevOps paths are tested against fixtures and rendered output only:**
+  triage writes, review feedback reads and the heartbeat pipeline.
+- **Triage proposes no `owner:<x>` label and writes no assignee.**
+- **Triage on the local forge edits backlog files in the working tree.** Commit
+  them on the base branch.
+- Team routing and committed team decisions are not part of this release.
+- `omg factory check`, `board` and poll start-up can still fetch while an engine runs. Avoid running them in a checkout with a live engine.
+- This release was published without the maintainer's local full test suite as a gate; the CI test suite on the release commit is the test evidence.
+- The live Copilot smoke runs in the CI publish job.
