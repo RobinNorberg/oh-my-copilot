@@ -40,7 +40,7 @@ export interface LaneOutcome {
   error?: string;
   /** wait() throws LaneLostError (the job vanished with its process). */
   lost?: boolean;
-  /** The lane's sandbox record; default enforced without network (a confirmed host), null = no record. */
+  /** The lane's sandbox record; a write lane's default is enforced without network (a confirmed host); null = no record. */
   sandbox?: CopilotRunSandboxState | null;
   /** The result carries no change summary (git could not tell). */
   noChanges?: boolean;
@@ -111,7 +111,7 @@ export class FakeLanes implements LaneBackend {
       error: o.error ?? null,
       notes: [],
       process: fakeProcess(remoteId),
-      ...(o.sandbox === null ? {} : { sandbox: o.sandbox ?? ENFORCED_SANDBOX }),
+      ...(o.sandbox ? { sandbox: o.sandbox } : o.sandbox === undefined && job.ctx.input.profile !== 'review' ? { sandbox: ENFORCED_SANDBOX } : {}),
     };
   }
 
