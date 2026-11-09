@@ -1,6 +1,6 @@
 import { execFileSync } from 'child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'fs';
-import { tmpdir } from 'os';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { hostname, tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -14,6 +14,7 @@ import { TRUSTED_READ_ENV } from '../../../ship/exec.js';
 import { assertHealCommand, healGuardExec, HealSafetyError } from '../history.js';
 import { readHealScanRecord } from '../run.js';
 import { enqueueWebhookRun, healStateDir, listHealStates, readWebhookQueue, writeHealState } from '../state.js';
+import { createFactoryState, EXIT_BUSY, factoryCancelRequested, factoryRepoOwnerPath, moveTo, overwriteFactoryState, type FactoryHealRecord } from '../../run/state.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const fixture = (name: string) => readFileSync(join(HERE, 'fixtures', name), 'utf8');
@@ -261,6 +262,37 @@ describe('omg factory heal CLI', () => {
 
   it('is registered under omg factory', () => {
     expect(factoryCommand().commands.map((c) => c.name())).toContain('heal');
+  });
+
+  it('busy is exit 6 before the Azure DevOps config loader fetches; cancel while an engine runs only drops the request', async () => {
+    const lock = factoryRepoOwnerPath(root);
+    mkdirSync(dirname(lock), { recursive: true });
+    writeFileSync(lock, JSON.stringify({ pid: process.ppid, hostname: hostname(), startedAt: NOW.toISOString(), run: '12' }));
+    let loads = 0;
+    const d: HealDeps = {
+      ...deps(fakeExec([], [])),
+      forgeKind: () => 'azure-devops',
+      forge: () => { loads += 1; throw new Error('the loader must not run while an engine holds the checkout'); },
+    };
+    expect(await cli(d, 'approve', '0123abcd', '--json')).toBe(EXIT_BUSY);
+    expect(JSON.parse(out.join('\n'))).toMatchObject({ ok: false, busy: true, error: expect.stringMatching(/another omg factory engine runs in this repository \(12, pid/) });
+    out = [];
+    expect(await cli(d, 'run', '0123abcd')).toBe(EXIT_BUSY);
+    expect(out.join('\n')).toMatch(/^busy: another omg factory engine runs/);
+    expect(loads).toBe(0);
+
+    const T = NOW.toISOString();
+    const heal: FactoryHealRecord = {
+      sig8: '0123abcd', class: 'test-failure', firstRed: { runId: '77', sha: RED_SHA }, failingTests: ['src/a.test.ts > b'], env: [],
+      diagnosis: { class: 'test-failure', rootCause: 'a flaky clock', evidence: [], reproduced: false, fix: null },
+    };
+    overwriteFactoryState(root, 'heal-0123abcd', moveTo({ ...createFactoryState({ issue: 0, repoUrl: 'https://github.com/o/r', base: 'dev', heal }, T), forgeKind: 'github' }, 'implement', 'approved', T));
+    out = [];
+    const cancelled = await cli(d, 'cancel', '0123abcd', '--json');
+    expect(cancelled, out.join('\n')).toBe(0);
+    expect(JSON.parse(out.join('\n'))).toEqual({ ok: true, sig8: '0123abcd', cancelRequested: true });
+    expect(factoryCancelRequested(root, 'heal-0123abcd')).toBe(true);
+    expect(loads).toBe(0);
   });
 
   it('scan then status [sig8] [--json] reads the classification back', async () => {

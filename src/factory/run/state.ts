@@ -25,7 +25,8 @@ import { dirname, join } from 'path';
 import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
-import { isProcessAlive } from '../../platform/process-utils.js';
+import { getProcessStartIdentitySync, isProcessAlive } from '../../platform/process-utils.js';
+import { stripAnsi } from '../../utils/string-width.js';
 import type { CopilotRunSandboxState } from '../../copilot-run/sandbox.js';
 import { sameRepo } from '../../ship/config.js';
 import type { ShipVerdict } from '../../ship/state.js';
@@ -53,7 +54,7 @@ export function healRunKey(sig8: string): FactoryRunKey {
   return key;
 }
 
-/** Every lane kind except review is a write lane, and each is also the phase that runs it. */
+/** Every lane kind except review is a write lane. Each but coding-agent is also the phase that runs it; a coding-agent lane runs in the implement phase. */
 export type FactoryLaneKind = 'implement' | 'review' | 'fix' | 'conflict-fix' | 'ci-fix' | 'coding-agent';
 export type FactoryLaneStatus = 'running' | 'completed' | 'failed' | 'lost' | 'cancelled';
 export type FactoryLaneVerdict = 'approve' | 'changes-requested' | 'invalid';
@@ -552,45 +553,110 @@ export interface FactoryOwner {
   run?: string;
   /** The checkout the engine runs in (a claim only: it may be another clone). */
   root?: string;
+  /** The owner process's start identity (getProcessStartIdentitySync) when it could be read: a reused pid does not hold the file. */
+  identity?: string;
 }
 
 export interface OwnerDeps {
   pid: number;
   hostname: string;
   isAlive: (pid: number) => boolean;
+  /** The start identity of a pid on this host (null: unknown). Absent: identities are neither written nor compared. */
+  identityOf?: (pid: number) => string | null;
 }
 
-export const defaultOwnerDeps = (): OwnerDeps => ({ pid: process.pid, hostname: hostname(), isAlive: isProcessAlive });
+let ownIdentity: string | null | undefined;
+/** getProcessStartIdentitySync (the reader the team runtime and the gate cleanup use); this process's own identity is read once. */
+const startIdentity = (pid: number): string | null => {
+  if (pid !== process.pid) return getProcessStartIdentitySync(pid);
+  if (ownIdentity === undefined) ownIdentity = getProcessStartIdentitySync(pid);
+  return ownIdentity;
+};
+
+export const defaultOwnerDeps = (): OwnerDeps => ({ pid: process.pid, hostname: hostname(), isAlive: isProcessAlive, identityOf: startIdentity });
+
+/** Owner and claim file text is data: no terminal escape or control character reaches the terminal. */
+export const ownerText = (v: unknown): string => stripAnsi(String(v)).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ');
+
+/** `<run>, pid <pid> on <host> since <time>[ in <root>]`, every field through ownerText. */
+export function describeOwner(o: Partial<FactoryOwner>): string {
+  const pid = o.pid === undefined ? 'no live process' : `pid ${ownerText(o.pid)}`;
+  return `${o.run === undefined ? 'run unknown' : ownerText(o.run)}, ${pid} on ${ownerText(o.hostname ?? 'unknown host')} since ${ownerText(o.startedAt ?? 'unknown')}${o.root ? ` in ${ownerText(o.root)}` : ''}`;
+}
+
+/** A held owner file: release() removes it while it is still this process's; relabel() rewrites its run field (`run --next` once it picked an item). */
+export interface HeldOwner {
+  release: () => void;
+  relabel: (run: string) => void;
+  tookOver?: FactoryOwner;
+}
 
 /**
  * Claim the single-runner owner file. A live owner (or one on another host,
  * whose pid cannot be checked) refuses; a dead pid on this host is taken
  * over, and `tookOver` names it for the history.
  */
-export function acquireFactoryOwner(root: string, key: FactoryRunKey, now: string, deps: OwnerDeps = defaultOwnerDeps()): { release: () => void; tookOver?: FactoryOwner } {
-  return claimOwner(factoryOwnerPath(root, key), now, deps, (prior) => `omg factory run ${key} is already running (pid ${prior.pid} on ${prior.hostname} since ${prior.startedAt})`);
+export function acquireFactoryOwner(root: string, key: FactoryRunKey, now: string, deps: OwnerDeps = defaultOwnerDeps()): HeldOwner {
+  return claimOwner(factoryOwnerPath(root, key), now, deps, (prior) => `omg factory run ${key} is already running (pid ${ownerText(prior.pid)} on ${ownerText(prior.hostname)} since ${ownerText(prior.startedAt)})`);
 }
 
 /**
  * Claim the repository's engine owner file (factoryRepoOwnerPath) for `key`
  * like acquireFactoryOwner: a second engine on the same repository refuses
- * instead of tripping the first one's shared git state checks.
+ * instead of tripping the first one's shared git state checks. `next`:
+ * `omg factory run --next` before it picked an item (then relabel()).
  */
-export function acquireFactoryRepoOwner(root: string, key: FactoryRunKey, now: string, deps: OwnerDeps = defaultOwnerDeps()): { release: () => void; tookOver?: FactoryOwner } {
-  return claimOwner(factoryRepoOwnerPath(root), now, deps, (prior) =>
-    `another omg factory engine runs in this repository (${prior.run ?? 'run unknown'}, pid ${prior.pid} on ${prior.hostname} since ${prior.startedAt}); one engine runs per checkout at a time, so start ${key} after it ends (parallel runs need separate clones)`, { run: String(key) });
+export function acquireFactoryRepoOwner(root: string, key: FactoryRunKey | 'next', now: string, deps: OwnerDeps = defaultOwnerDeps()): HeldOwner {
+  return claimOwner(factoryRepoOwnerPath(root), now, deps, (prior) => engineBusyMessage(prior, String(key)), { run: String(key) });
 }
 
-/** Whether `owner` holds its file against `deps`, as claimOwner decides: another host, or another live pid here. */
-export function ownerHolds(owner: Pick<FactoryOwner, 'pid' | 'hostname'>, deps: OwnerDeps): boolean {
-  return owner.hostname !== deps.hostname || (owner.pid !== deps.pid && deps.isAlive(owner.pid));
+const engineBusyMessage = (prior: Partial<FactoryOwner>, key?: string): string =>
+  `another omg factory engine runs in this repository (${describeOwner(prior)}); one engine runs per checkout at a time${key === 'next' ? ', so run --next after it ends' : key ? `, so start ${ownerText(key)} after it ends` : ''} (parallel runs need separate clones)`;
+
+/** The one rule for an owner or claim file that does not parse: it is held (never taken over, never "not busy") until a human removes it. */
+export const unreadableOwnerMessage = (path: string): string =>
+  `the owner file ${path} is unreadable, so it counts as held; check that no engine uses it, then remove it (omg factory run release)`;
+
+/**
+ * Throws FactoryBusyError while the checkout's engine lock is held: a live
+ * engine, or an unreadable lock file. Read-only; acquireFactoryRepoOwner
+ * stays the binding check.
+ */
+export function refuseWhileEngineRuns(root: string, deps: OwnerDeps = defaultOwnerDeps()): void {
+  const path = factoryRepoOwnerPath(root);
+  const h = ownerHolding(path, deps);
+  if (h === 'unreadable') throw new FactoryBusyError(unreadableOwnerMessage(path));
+  if (h) throw new FactoryBusyError(engineBusyMessage(h));
+}
+
+/**
+ * Whether `owner` holds its file against `deps`, as claimOwner decides:
+ * another host, or another live pid here whose start identity (when both
+ * sides know it) is still the recorded one, so a reused pid does not hold it.
+ */
+export function ownerHolds(owner: Pick<FactoryOwner, 'pid' | 'hostname' | 'identity'>, deps: OwnerDeps): boolean {
+  if (owner.hostname !== deps.hostname) return true;
+  if (owner.pid === deps.pid || !deps.isAlive(owner.pid)) return false;
+  if (typeof owner.identity !== 'string' || !deps.identityOf) return true;
+  const current = deps.identityOf(owner.pid);
+  return current === null || current === owner.identity;
+}
+
+/** A parsed owner file with the fields every holder check reads. */
+export const isOwnerRecord = (v: unknown): v is FactoryOwner =>
+  typeof v === 'object' && v !== null && Number.isInteger((v as FactoryOwner).pid) && typeof (v as FactoryOwner).hostname === 'string';
+
+/** This process's owner record, with its start identity when deps can read it. */
+export function ownerRecord(now: string, deps: OwnerDeps, fields: Pick<FactoryOwner, 'run' | 'root'> = {}): FactoryOwner {
+  const identity = deps.identityOf?.(deps.pid) ?? null;
+  return { pid: deps.pid, hostname: deps.hostname, startedAt: now, ...(fields.run ? { run: fields.run } : {}), ...(fields.root ? { root: fields.root } : {}), ...(identity ? { identity } : {}) };
 }
 
 /**
  * The owner holding the file at `path` (read-only; claimOwner stays the
  * binding check): null when there is none or it is taken over by the next
- * claim, `unreadable` when the file cannot be parsed (never taken for free
- * by a reader).
+ * claim, `unreadable` when the file cannot be parsed, which every caller
+ * treats as held (unreadableOwnerMessage).
  */
 export function ownerHolding(path: string, deps: OwnerDeps = defaultOwnerDeps()): FactoryOwner | 'unreadable' | null {
   let raw: string;
@@ -600,8 +666,8 @@ export function ownerHolding(path: string, deps: OwnerDeps = defaultOwnerDeps())
     return null;
   }
   try {
-    const owner = JSON.parse(raw) as FactoryOwner;
-    if (typeof owner !== 'object' || owner === null || !Number.isInteger(owner.pid) || typeof owner.hostname !== 'string') return 'unreadable';
+    const owner: unknown = JSON.parse(raw);
+    if (!isOwnerRecord(owner)) return 'unreadable';
     return ownerHolds(owner, deps) ? owner : null;
   } catch {
     return 'unreadable';
@@ -610,34 +676,37 @@ export function ownerHolding(path: string, deps: OwnerDeps = defaultOwnerDeps())
 
 /**
  * Claim an owner file: a live owner (or one on another host, whose pid
- * cannot be checked) refuses with a FactoryBusyError; a dead pid on this
- * host is taken over, and `tookOver` names it.
+ * cannot be checked) refuses with a FactoryBusyError, and so does a file
+ * that does not parse (unreadableOwnerMessage); a dead pid on this host is
+ * taken over, and `tookOver` names it.
  */
-export function claimOwner(path: string, now: string, deps: OwnerDeps, busy: (prior: FactoryOwner) => string, fields: Pick<FactoryOwner, 'run' | 'root'> = {}): { release: () => void; tookOver?: FactoryOwner } {
+export function claimOwner(path: string, now: string, deps: OwnerDeps, busy: (prior: FactoryOwner) => string, fields: Pick<FactoryOwner, 'run' | 'root'> = {}): HeldOwner {
   ensureDirSync(dirname(path));
   const tookOver = withFileLockSync(lockPathFor(path), () => {
     let prior: FactoryOwner | undefined;
     if (existsSync(path)) {
+      let parsed: unknown;
       try {
-        prior = JSON.parse(readFileSync(path, 'utf8')) as FactoryOwner;
+        parsed = JSON.parse(readFileSync(path, 'utf8'));
       } catch {
-        prior = undefined;
+        parsed = undefined;
       }
-      if (prior && ownerHolds(prior, deps)) {
-        throw new FactoryBusyError(busy(prior));
-      }
+      if (!isOwnerRecord(parsed)) throw new FactoryBusyError(unreadableOwnerMessage(path));
+      prior = parsed;
+      if (ownerHolds(prior, deps)) throw new FactoryBusyError(busy(prior));
     }
-    writeFileSync(path, `${JSON.stringify({ pid: deps.pid, hostname: deps.hostname, startedAt: now, ...(fields.run ? { run: fields.run } : {}), ...(fields.root ? { root: fields.root } : {}) } satisfies FactoryOwner)}
-`, 'utf8');
+    writeFileSync(path, `${JSON.stringify(ownerRecord(now, deps, fields))}\n`, 'utf8');
     return prior;
   }, { timeoutMs: 5_000 });
-  const release = () => {
+  const whileMine = (fn: (owner: FactoryOwner) => void) => {
     try {
       withFileLockSync(lockPathFor(path), () => {
-        const owner = existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as FactoryOwner) : null;
-        if (owner && owner.pid === deps.pid && owner.hostname === deps.hostname) unlinkSync(path);
+        const owner: unknown = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null;
+        if (isOwnerRecord(owner) && owner.pid === deps.pid && owner.hostname === deps.hostname) fn(owner);
       }, { timeoutMs: 5_000 });
     } catch { /* a stale owner file is taken over by the next run */ }
   };
-  return { release, ...(tookOver ? { tookOver } : {}) };
+  const release = () => whileMine(() => unlinkSync(path));
+  const relabel = (run: string) => whileMine((owner) => writeFileSync(path, `${JSON.stringify({ ...owner, run })}\n`, 'utf8'));
+  return { release, relabel, ...(tookOver ? { tookOver } : {}) };
 }
