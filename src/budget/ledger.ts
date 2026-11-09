@@ -38,6 +38,9 @@ import { getCopilotConfigDir } from '../utils/config-dir.js';
 
 export type UsageSource = 'measured' | 'estimated';
 
+/** Who spent a usage record (cost attribution). */
+export type UsageTag = NonNullable<UsageRecord['tag']>;
+
 /** Incremental read state of a session's events.jsonl. */
 export interface EventsScan {
   /** Period start the prompt count belongs to (`scanSince(ledger)`). */
@@ -237,6 +240,12 @@ export function updateLedger<T>(path: string, fn: (ledger: BudgetLedger) => T, o
  * measured total that drops keeps the larger value and flags it.
  */
 export function mergeRecord(existing: UsageRecord | undefined, next: UsageRecord): UsageRecord {
+  const merged = mergeUsage(existing, next);
+  // A refresh that carries no tag (the session scan) keeps the tag the owner recorded.
+  return existing?.tag && !merged.tag ? { ...merged, tag: existing.tag } : merged;
+}
+
+function mergeUsage(existing: UsageRecord | undefined, next: UsageRecord): UsageRecord {
   if (!existing) return next;
   if (existing.source === 'measured' && next.source === 'estimated') {
     return next.scan ? { ...existing, scan: next.scan } : existing;
@@ -280,7 +289,9 @@ export function putRecord(ledger: BudgetLedger, key: string, usage: UsageRecord,
   if (!SAFE_KEY.test(key) || (team !== undefined && !SAFE_KEY.test(team))) return false;
   // A scan from before `omg budget reset` counted the old period.
   if (usage.scan && usage.scan.since !== scanSince(ledger)) return false;
-  const net = applyBaseline(usage, ledger.baselines?.[baselineKey(key, team)]);
+  const { tag: rawTag, ...untagged } = usage;
+  const tag = sanitizeTag(rawTag);
+  const net = applyBaseline(tag ? { ...untagged, tag } : untagged, ledger.baselines?.[baselineKey(key, team)]);
   if (team) {
     const bucket = (ledger.teams[team] ??= {});
     bucket[key] = mergeRecord(bucket[key], net);
@@ -318,6 +329,48 @@ export function resetLedger(ledger: BudgetLedger, now = new Date()): { since: st
   delete ledger.baselines;
   Object.assign(ledger, emptyLedger(now), { resetAt: now.toISOString() }, Object.keys(baselines).length ? { baselines } : {});
   return before;
+}
+
+const TAG_KINDS: readonly UsageTag['kind'][] = ['factory-lane', 'team-worker', 'session'];
+const TAG_TEXT = /^[A-Za-z0-9._:-]{1,64}$/;
+
+/** The tag as the ledger stores it: a known kind and safe role/run text, or undefined (the record counts as untagged). */
+export function sanitizeTag(raw: unknown): UsageTag | undefined {
+  if (!isObject(raw) || !TAG_KINDS.includes(raw.kind as UsageTag['kind'])) return undefined;
+  const tag: UsageTag = { kind: raw.kind as UsageTag['kind'] };
+  if (typeof raw.role === 'string' && TAG_TEXT.test(raw.role)) tag.role = raw.role;
+  if (typeof raw.run === 'string' && TAG_TEXT.test(raw.run)) tag.run = raw.run;
+  return tag;
+}
+
+export type UsageGroupBy = 'role' | 'kind' | 'run';
+export const USAGE_GROUP_BYS: readonly UsageGroupBy[] = ['role', 'kind', 'run'];
+/** Group label of records without a tag, or whose tag lacks the grouped field. */
+export const UNTAGGED = 'untagged';
+
+export interface UsageGroup { key: string; credits: number; premiumRequests: number; records: number; estimatedRecords: number }
+
+/**
+ * Sessions and team records grouped by tag field, most credits first. Records
+ * written before tags existed (or with a malformed tag) land in `untagged`;
+ * `role` falls back to the tag's kind (a team worker without a role is `team-worker`).
+ */
+export function ledgerByTag(ledger: BudgetLedger, by: UsageGroupBy): UsageGroup[] {
+  const groups = new Map<string, UsageGroup>();
+  const add = (r: unknown) => {
+    if (!isObject(r)) return;
+    const tag = sanitizeTag(r.tag);
+    const key = (by === 'kind' ? tag?.kind : by === 'run' ? tag?.run : tag?.role ?? tag?.kind) ?? UNTAGGED;
+    const g = groups.get(key) ?? { key, credits: 0, premiumRequests: 0, records: 0, estimatedRecords: 0 };
+    g.credits += num(r.credits);
+    g.premiumRequests += num(r.premiumRequests);
+    g.records += 1;
+    if (r.source !== 'measured') g.estimatedRecords += 1;
+    groups.set(key, g);
+  };
+  for (const r of Object.values(ledger.sessions)) add(r);
+  for (const bucket of Object.values(ledger.teams)) if (isObject(bucket)) for (const r of Object.values(bucket)) add(r);
+  return [...groups.values()].sort((a, b) => b.credits - a.credits || a.key.localeCompare(b.key));
 }
 
 export function ledgerTotals(ledger: BudgetLedger): LedgerTotals {
