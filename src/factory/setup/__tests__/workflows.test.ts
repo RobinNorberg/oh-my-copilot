@@ -155,6 +155,7 @@ describe('omg factory setup --workflows', () => {
 
   it('Azure DevOps writes the pipeline under .azure-pipelines', async () => {
     const world = adoWorld();
+    world.answers['git symbolic-ref --quiet refs/remotes/origin/HEAD'] = { status: 0, stdout: 'refs/remotes/origin/main\n', stderr: '' };
     const r = await runFactorySetup({ workflows: true, yes: true }, setupDeps(world), world.root);
     expect(r.error).toBeUndefined();
     expect(r.written).toEqual([adoPath(world.root)]);
@@ -220,6 +221,11 @@ describe('token scope (GitHub)', () => {
     expect(fail.run).not.toMatch(/\|6\)/);
   });
 
+  it('setup-node does not turn on package-manager caching in the user repository', () => {
+    const node = ghSteps(renderHeartbeat('github', { mode: 'read-only', ...GH_DEFAULTS })).find((s) => s.uses?.startsWith('actions/setup-node'))!;
+    expect(node.with).toEqual({ 'node-version': '22', 'package-manager-cache': false });
+  });
+
   it('pins exactly these actions (tags verified with gh api git/ref/tags, lightweight tags so the object is the commit)', () => {
     const pins = ghSteps(renderHeartbeat('github', { mode: 'read-only', ...GH_DEFAULTS }))
       .filter((s) => s.uses)
@@ -266,23 +272,78 @@ describe('Azure DevOps pipeline hardening', () => {
     for (const s of omg) expect(s.env?.AZURE_DEVOPS_EXT_PAT).toBe('$(System.AccessToken)');
   });
 
-  it('the triage step keeps its exit code, prints bounded output and still runs after a failed check', () => {
+  it.each(['read-only', 'triage'] as const)('%s: no step prints the JSON to the log, every omg call filters ## on stderr and keeps omg exit code', (mode) => {
+    const text = render(mode);
+    expect(text).not.toMatch(/head -c|\bcat\b|\btail\b/);
+    expect(text).toMatch(/never printed to the log/);
+    const omg = adoSteps(text).filter((s) => s.bash?.includes('omg factory'));
+    expect(omg.length).toBe(mode === 'triage' ? 2 : 1);
+    const filter = String.raw`2> >(sed -u 's/##/#\\u0023/g' >&2)`;
+    for (const s of omg) {
+      const lines = s.bash!.split('\n');
+      const call = lines.findIndex((l) => l.startsWith('omg factory'));
+      expect(lines[call]).toMatch(/^omg factory (check|triage --apply) --json > heartbeat\/heartbeat-(check|triage)\.json /);
+      expect(lines[call].endsWith(` ${filter}`)).toBe(true);
+      // the very next line captures omg's status, not sed's
+      expect(lines[call + 1]).toBe('code=$?');
+      expect(s.bash).toContain('exit "${code}"');
+      expect(s.bash).not.toMatch(/\becho\b/);
+    }
+  });
+
+  it('the triage step keeps its exit code and still runs after a failed check', () => {
     const triage = adoSteps(render('triage')).find((s) => s.bash?.includes('factory triage'))!;
     expect(triage.bash).toContain('set +e');
     expect(triage.bash).toContain('code=$?');
-    expect(triage.bash).toContain('head -c 20000');
     expect(triage.bash).toContain('exit "${code}"');
     expect(triage.condition).toBe('succeededOrFailed()');
     expect(triage.bash).toContain('heartbeat/heartbeat-triage.json');
   });
 
-  it('the setup command renders the detected base branch', async () => {
+  const ORIGIN_HEAD = 'git symbolic-ref --quiet refs/remotes/origin/HEAD';
+  const adoWithHead = (head?: string) => {
     const world = adoWorld();
+    if (head !== undefined) world.answers[ORIGIN_HEAD] = { status: 0, stdout: `refs/remotes/origin/${head}\n`, stderr: '' };
+    return world;
+  };
+  const scheduleBranch = (root: string): string[] => (load(readFileSync(adoPath(root), 'utf8')) as { schedules: Array<{ branches: { include: string[] } }> }).schedules[0].branches.include;
+
+  it('schedules origin/HEAD even though ship.base is unset (the base defaults to dev), and prints the branch', async () => {
+    const world = adoWithHead('main');
+    expect(defaultFactoryRunDeps.base(world.root)).toBe('dev');
     const r = await runFactorySetup({ workflows: true, yes: true }, setupDeps(world), world.root);
     expect(r.error).toBeUndefined();
-    const doc = load(readFileSync(adoPath(world.root), 'utf8')) as { schedules: Array<{ branches: { include: string[] } }> };
-    expect(doc.schedules[0].branches.include).toEqual([defaultFactoryRunDeps.base(world.root)]);
+    expect(scheduleBranch(world.root)).toEqual(['main']);
+    expect(r.notes).toContain('pipeline schedule branch: main');
   });
+
+  it('--branch overrides origin/HEAD and is validated', async () => {
+    const world = adoWithHead('main');
+    const r = await runFactorySetup({ workflows: true, yes: true, branch: 'release/v2' }, setupDeps(world), world.root);
+    expect(r.error).toBeUndefined();
+    expect(scheduleBranch(world.root)).toEqual(['release/v2']);
+    for (const bad of ['a..b', 'a b', '-x', '']) {
+      const w = adoWithHead('main');
+      const br = await runFactorySetup({ workflows: true, yes: true, branch: bad }, setupDeps(w), w.root);
+      expect(br.exitCode).toBe(2);
+      expect(existsSync(adoPath(w.root))).toBe(false);
+    }
+  });
+
+  it('origin/HEAD missing and no --branch refuses with exit 2 naming --branch, and writes nothing', async () => {
+    const world = adoWithHead();
+    const r = await runFactorySetup({ workflows: true, yes: true }, setupDeps(world), world.root);
+    expect(r.exitCode).toBe(2);
+    expect(r.error).toMatch(/--branch/);
+    expect(existsSync(adoPath(world.root))).toBe(false);
+  });
+
+  it('--branch without --workflows, or on GitHub, exits 2', async () => {
+    const world = githubWorld();
+    expect((await runFactorySetup({ workflows: true, yes: true, branch: 'main' }, setupDeps(world), world.root)).exitCode).toBe(2);
+    expect((await runFactorySetup({ branch: 'main', yes: true }, setupDeps(world), world.root)).exitCode).toBe(2);
+  });
+
 });
 
 describe('cron validation', () => {
@@ -386,6 +447,7 @@ describe('linked target directories are refused at plan time', () => {
   it('a linked .azure-pipelines, dangling or not', async () => {
     for (const dangling of [false, true]) {
       const world = adoWorld();
+      world.answers['git symbolic-ref --quiet refs/remotes/origin/HEAD'] = { status: 0, stdout: 'refs/remotes/origin/main\n', stderr: '' };
       const target = link(world.root, '.azure-pipelines', dangling);
       const r = await runFactorySetup({ workflows: true, yes: true }, setupDeps(world), world.root);
       expect(r.exitCode).toBe(5);

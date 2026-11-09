@@ -2,10 +2,8 @@
   - bash: |
       set +e
       mkdir -p heartbeat
-      omg factory triage --apply --json > heartbeat/heartbeat-triage.json
+      omg factory triage --apply --json > heartbeat/heartbeat-triage.json 2> >(sed -u 's/##/#\\u0023/g' >&2)
       code=$?
-      head -c 20000 heartbeat/heartbeat-triage.json
-      echo
       exit "${code}"
     displayName: Factory triage
     condition: succeededOrFailed()
