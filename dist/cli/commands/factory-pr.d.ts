@@ -8,8 +8,12 @@
  * through ForgeReviews.reviewFeedback. GitHub and Azure DevOps have their own
  * review UI: there the command refuses (exit 2).
  *
- * Every text a lane could have written (titles, bodies, the diff) is printed
- * without control characters.
+ * Every text a lane or reviewer could have written (titles, branch names,
+ * bodies, authors, the diff with its file paths, error lines) goes through
+ * visibleText: control characters dropped, bidi and zero-width characters
+ * shown as <U+XXXX>. `pr diff` and `pr view` print the head they show;
+ * `pr review` takes that head as `--head <sha>` (the full 40-hex sha, no
+ * prefix: nothing to be ambiguous) and refuses when the PR's head moved since.
  */
 import { Command } from 'commander';
 import { type FactoryCheckDeps } from '../../factory/check/cli.js';
@@ -20,8 +24,6 @@ export interface FactoryPrDeps extends FactoryCheckDeps {
     /** The engine ledger directory (its empty hooks dir hardens the diff's git); default defaultLedgerDir(). */
     ledgerDir?: string;
 }
-/** Lane-written text for a terminal: no control characters but tab and newline. */
-export declare const printable: (text: string) => string;
 /** One `omg factory pr` action; returns the exit code. */
 export declare function runFactoryPr(action: 'list' | 'view' | 'diff' | 'review', o: {
     pr?: string;
@@ -30,6 +32,7 @@ export declare function runFactoryPr(action: 'list' | 'view' | 'diff' | 'review'
     requestChanges?: boolean;
     comment?: boolean;
     bodyFile?: string;
+    head?: string;
 }, deps: FactoryPrDeps): Promise<number>;
 export declare function factoryPrCommand(deps: FactoryPrDeps): Command;
 //# sourceMappingURL=factory-pr.d.ts.map

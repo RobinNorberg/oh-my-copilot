@@ -5,6 +5,7 @@
  * PR body (a merge in particular).
  */
 import { readFileSync } from 'fs';
+import { assertReviewHead } from '../review-feedback.js';
 import { adoCall, adoJson, isObject, listValue, repoParams, str } from './invoke.js';
 const SHA = /^[0-9a-f]{40}$/;
 /** REST `description` limit on a pull request. */
@@ -77,13 +78,18 @@ const capped = (body) => (body.length <= MAX_FEEDBACK_BODY_CHARS ? body : `${bod
  *   waiting for author and -10 rejected are changes-requested). A vote carries
  *   no time or commit; whether it survives a push is the branch policy's
  *   "reset votes" setting, so `at` is '' and `head` absent.
- * - threads: active or pending text threads, not the factory's own (marker),
- *   with the trusted authors' text comments; deleted comments are dropped.
+ * - threads: active or pending text threads with the trusted authors' text
+ *   comments; the factory's own comments (marker) and deleted ones are
+ *   dropped, so a trusted reply inside a factory-started thread still counts
+ *   (its first trusted comment names the thread).
+ * - head: `head` must be the PR's lastMergeSourceCommit, else
+ *   ReviewHeadMovedError (the feedback would describe another commit).
  * - pendingReviewers: required reviewers who have not voted or declined.
  */
-export function parseAdoReviewFeedback(prJson, threadsJson, pr, trustedReviewers) {
+export function parseAdoReviewFeedback(prJson, threadsJson, pr, head, trustedReviewers) {
     if (!isObject(prJson) || prJson.pullRequestId !== pr)
         throw new Error(`pull request ${pr}: malformed response`);
+    assertReviewHead(pr, head, isObject(prJson.lastMergeSourceCommit) ? prJson.lastMergeSourceCommit.commitId : undefined);
     const trusted = new Set(trustedReviewers.map((r) => r.toLowerCase()));
     const ignored = new Set();
     const counts = (who) => {
@@ -116,7 +122,7 @@ export function parseAdoReviewFeedback(prJson, threadsJson, pr, trustedReviewers
             continue;
         const comments = Array.isArray(t.comments) ? t.comments.filter(isObject) : [];
         const first = comments[0] ?? {};
-        if (str(first.commentType) !== 'text' || endsWithMarker(first.content))
+        if (str(first.commentType) !== 'text')
             continue;
         const kept = comments.flatMap((c) => {
             const who = (isObject(c.author) ? str(c.author.uniqueName) : undefined)?.toLowerCase() ?? '';
@@ -148,12 +154,12 @@ function description(bodyFile) {
 export function adoReviews(ctx, review = { trustedReviewers: [] }) {
     const prUrl = (pr) => `${ctx.repo.url}/pullrequest/${pr}`;
     return {
-        reviewFeedback(pr) {
+        reviewFeedback(pr, head) {
             const params = { ...repoParams(ctx), pullRequestId: String(pr) };
             const prJson = adoJson(adoCall(ctx, 'git.pullRequests.GET', params), `pull request ${pr}`);
             const threads = adoJson(adoCall(ctx, 'git.pullRequestThreads.GET', params), `threads of pull request ${pr}`);
             // No permission read on Azure DevOps: the user-config trustedAuthors (whose items the factory runs) count too.
-            return parseAdoReviewFeedback(prJson, threads, pr, [...review.trustedReviewers, ...ctx.config.trustedAuthors]);
+            return parseAdoReviewFeedback(prJson, threads, pr, head, [...review.trustedReviewers, ...ctx.config.trustedAuthors]);
         },
         findOpenPrForBranch(branch) {
             const json = adoJson(adoCall(ctx, 'git.pullRequests.GET', repoParams(ctx), { 'searchCriteria.sourceRefName': `refs/heads/${branch}`, 'searchCriteria.status': 'active' }), `pull requests for ${branch}`);

@@ -6,7 +6,8 @@
  * handling.
  */
 import { GhCommandError, ghJson, ghRun } from './gh.js';
-import { parseReviewFeedback, reviewFeedbackArgs } from './graphql.js';
+import { GITHUB_RATE_LIMITED, parseReviewFeedback, reviewFeedbackArgs } from './graphql.js';
+import { ReviewFeedbackError } from '../review-feedback.js';
 /** `gh pr view --json` fields the merge step reads. */
 export const MERGE_VIEW_FIELDS = 'number,state,isDraft,baseRefName,baseRefOid,headRefOid';
 const HEX40 = /^[0-9a-f]{40}$/;
@@ -103,19 +104,24 @@ export function ghViewPr(exec, pr, cwd) {
 }
 /**
  * The human review input on `pr` at `head` (graphql.ts): one fixed GraphQL
- * read. A non-zero gh exit still counts when the response carries the pull
- * request (a partial answer: e.g. the collaborator list needs push access, so
- * only the viewer and trustedReviewers are known); otherwise it throws.
+ * read. A non-zero gh exit still counts only when every GraphQL error is about
+ * the collaborator list (it needs push access: then only the viewer and
+ * trustedReviewers are known, and `trustIncomplete` is set); otherwise it
+ * throws. A truncated list or a moved head throws its ReviewFeedbackError
+ * subclass unchanged; a rate limit keeps its RATE_LIMITED text (poll backs off).
  */
 export function ghReviewFeedback(exec, repo, pr, head, trust, cwd) {
     const args = reviewFeedbackArgs(repo, pr);
     const res = exec('gh', args, { cwd });
     try {
-        return parseReviewFeedback(res.stdout, head, trust);
+        return parseReviewFeedback(res.stdout, pr, head, trust, res.status);
     }
     catch (error) {
-        if (res.status === 0)
-            throw new GhCommandError(error instanceof Error ? error.message : String(error));
+        if (error instanceof ReviewFeedbackError)
+            throw error;
+        const message = error instanceof Error ? error.message : String(error);
+        if (res.status === 0 || GITHUB_RATE_LIMITED.test(message))
+            throw new GhCommandError(message);
         throw new GhCommandError(`gh api graphql (review feedback of PR ${pr}) failed (exit ${res.status}): ${res.stderr.trim().split('\n')[0]}`);
     }
 }

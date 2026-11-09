@@ -42,11 +42,15 @@ export declare function parseAdoThreads(json: unknown, pr: number): ForgeThread[
  *   waiting for author and -10 rejected are changes-requested). A vote carries
  *   no time or commit; whether it survives a push is the branch policy's
  *   "reset votes" setting, so `at` is '' and `head` absent.
- * - threads: active or pending text threads, not the factory's own (marker),
- *   with the trusted authors' text comments; deleted comments are dropped.
+ * - threads: active or pending text threads with the trusted authors' text
+ *   comments; the factory's own comments (marker) and deleted ones are
+ *   dropped, so a trusted reply inside a factory-started thread still counts
+ *   (its first trusted comment names the thread).
+ * - head: `head` must be the PR's lastMergeSourceCommit, else
+ *   ReviewHeadMovedError (the feedback would describe another commit).
  * - pendingReviewers: required reviewers who have not voted or declined.
  */
-export declare function parseAdoReviewFeedback(prJson: unknown, threadsJson: unknown, pr: number, trustedReviewers: readonly string[]): ForgeReviewFeedback;
+export declare function parseAdoReviewFeedback(prJson: unknown, threadsJson: unknown, pr: number, head: string, trustedReviewers: readonly string[]): ForgeReviewFeedback;
 /** `review.trustedReviewers`: whose votes and comments reviewFeedback hands on (src/forge/config.ts, trusted layers only). */
 export declare function adoReviews(ctx: AdoContext, review?: {
     trustedReviewers: readonly string[];

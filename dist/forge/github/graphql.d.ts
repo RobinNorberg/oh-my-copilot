@@ -7,9 +7,15 @@
  * Trust (decision D3): a reviewer counts when their login is in
  * `factory.review.trustedReviewers`, or when the same query reports write
  * access or more for them (the repository's first 100 collaborators, and the
- * viewer's own permission). Anyone else's review, comment or thread reply is
- * dropped and their login listed in `ignored`. Bodies are returned as
- * untrusted data: nothing here reads meaning into them.
+ * viewer's own permission). Only a User author can be trusted that way; a Bot
+ * counts only when the list names it as `<slug>[bot]`. Anyone else's review,
+ * comment or thread reply is dropped and their login listed in `ignored`.
+ * Bodies are returned as untrusted data: nothing here reads meaning into them.
+ *
+ * Fail closed: every list carries pageInfo, and a list with more entries than
+ * one read returns throws ReviewFeedbackTruncatedError; a head other than the
+ * PR's throws ReviewHeadMovedError; a partial answer is accepted only when
+ * every error is about the collaborator list (then `trustIncomplete`).
  */
 import type { ForgeRepo, ForgeReviewFeedback } from '../types.js';
 /**
@@ -33,14 +39,18 @@ export interface ReviewTrust {
     /** `factory.review.trustedReviewers` (trusted config layers only), any case. */
     trustedReviewers: readonly string[];
 }
+/** A gh / GraphQL rate-limit answer (poll backs off on it, as on ADO_RATE_LIMITED). */
+export declare const GITHUB_RATE_LIMITED: RegExp;
 /** A body the factory posted (its hidden marker as the last line): never human input. */
 export declare function isFactoryComment(body: string): boolean;
 /**
- * The feedback in one GraphQL response (stdout of reviewFeedbackArgs) at
- * `head`. Throws when the response carries no pull request (an unknown PR, a
- * failed query). A review body counts as a thread only when the review was
+ * The feedback in one GraphQL response (stdout of reviewFeedbackArgs, the gh
+ * exit status beside it) for `pr` at `head`. Throws when the response carries
+ * no pull request (an unknown PR, a failed query), a list is missing or
+ * truncated, an error is not about the collaborator list, or `head` is not the
+ * PR's head. A review body counts as a thread only when the review was
  * submitted on `head` (an older head's summary was answered by a later push);
  * inline threads count while unresolved and not outdated.
  */
-export declare function parseReviewFeedback(stdout: string, head: string, trust: ReviewTrust): ForgeReviewFeedback;
+export declare function parseReviewFeedback(stdout: string, pr: number, head: string, trust: ReviewTrust, exitStatus?: number): ForgeReviewFeedback;
 //# sourceMappingURL=graphql.d.ts.map

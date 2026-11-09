@@ -45,14 +45,20 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 /** The review feedback GraphQL answer for PR 9: `threads` as [id, login] pairs; `me` (the viewer) has write access. */
-const feedbackJson = (threads = []) => JSON.stringify({
+const DONE = { hasNextPage: false };
+const feedbackJson = (threads = [], collaboratorsMore = false) => JSON.stringify({
     data: {
         viewer: { login: 'me' },
         repository: {
-            viewerPermission: 'WRITE', collaborators: { edges: [] },
+            viewerPermission: 'WRITE', collaborators: { pageInfo: { hasNextPage: collaboratorsMore }, edges: [] },
             pullRequest: {
-                headRefOid: HEAD, latestReviews: { nodes: [] }, reviewRequests: { nodes: [] },
-                reviewThreads: { nodes: threads.map(([id, login]) => ({ id, isResolved: false, isOutdated: false, comments: { nodes: [{ body: 'x', path: 'a.ts', line: 1, createdAt: T0, author: { login } }] } })) },
+                headRefOid: HEAD, latestReviews: { pageInfo: DONE, nodes: [] }, reviewRequests: { pageInfo: DONE, nodes: [] },
+                reviewThreads: {
+                    pageInfo: DONE,
+                    nodes: threads.map(([id, login]) => ({
+                        id, isResolved: false, isOutdated: false, comments: { pageInfo: DONE, nodes: [{ body: 'x', path: 'a.ts', line: 1, createdAt: T0, author: { __typename: 'User', login } }] },
+                    })),
+                },
             },
         },
     },
@@ -193,6 +199,28 @@ describe('omg factory poll on GitHub', () => {
         out.length = 0;
         expect(await poll(scripted({ feedback: feedbackJson([['T1', 'me'], ['T3', 'mallory']]) }).exec, { once: true })).toBe(0);
         expect(out.join('\n')).toContain('PR #9 of #4: 1 human thread(s) (1 ignored)');
+    });
+    it('MEDIUM-4: an incomplete collaborator list is reported (JSON row, audit and text line)', async () => {
+        seedParked();
+        expect(await poll(scripted({ feedback: feedbackJson([['T1', 'mallory']], true) }).exec, { once: true, json: true })).toBe(0);
+        expect(ticks()[0].prs).toEqual([{ id: 4, pr: 9, state: 'OPEN', threads: 0, ignored: 1, trustIncomplete: true }]);
+        const audit = readFileSync(pollAuditPath(root), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+        expect(audit.find((a) => a.kind === 'pr-threads')).toMatchObject({ pr: 9, active: 0, ignored: 1, trustIncomplete: true });
+        out.length = 0;
+        expect(await poll(scripted({ feedback: feedbackJson([], true) }).exec, { once: true })).toBe(0);
+        expect(out.join('\n')).toContain('PR #9 of #4: 0 human thread(s); trust incomplete: the collaborator list was not read whole, so list reviewers in factory.review.trustedReviewers');
+    });
+    it('LOW-5 / HIGH-1: a rate-limited or truncated review read is a PR error, never "no threads"; RATE_LIMITED backs off', async () => {
+        seedParked();
+        const limited = JSON.stringify({ data: null, errors: [{ type: 'RATE_LIMITED', message: 'API rate limit exceeded for user ID 1.' }] });
+        const w = scripted({ onCall: (cmd, args) => (cmd === 'gh' && args[0] === 'api' ? { status: 1, stdout: limited, stderr: 'gh: API rate limit exceeded' } : undefined) });
+        expect(await poll(w.exec, { once: true, json: true })).toBe(1);
+        expect(ticks()[0]).toMatchObject({ rateLimited: true, prs: [{ id: 4, pr: 9, state: 'OPEN', error: expect.stringMatching(/RATE_LIMITED/) }] });
+        expect(ticks()[0].prs[0].threads).toBeUndefined();
+        out.length = 0;
+        const truncated = feedbackJson([['T1', 'me']]).replace('"reviewThreads":{"pageInfo":{"hasNextPage":false}', '"reviewThreads":{"pageInfo":{"hasNextPage":true}');
+        expect(await poll(scripted({ feedback: truncated }).exec, { once: true, json: true })).toBe(1);
+        expect(ticks()[0]).toMatchObject({ rateLimited: false, prs: [{ pr: 9, error: expect.stringMatching(/truncated \(reviewThreads/) }] });
     });
     it('never spawns and never writes: every command is a read, and the guard refuses writes before gh', async () => {
         seedParked();

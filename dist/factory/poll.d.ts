@@ -193,6 +193,8 @@ export interface PollPr {
     threads?: number;
     /** Authors whose review input was dropped as untrusted (reviewFeedback only). */
     ignored?: number;
+    /** The forge's trust list was not read whole (ForgeReviewFeedback.trustIncomplete): a write-access reviewer may be among the ignored. */
+    trustIncomplete?: true;
     /** For a PR a human completed or abandoned: the command that records it. */
     hint?: string;
     error?: string;

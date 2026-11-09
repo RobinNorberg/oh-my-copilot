@@ -10,6 +10,7 @@
  */
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
+import { assertReviewHead } from '../review-feedback.js';
 import { isLocalBranchName, mergedArgs, readMirrorRef } from './mirror.js';
 import { appendNoFollow, readLocalReviews, readPrStore, updatePrStore, writeAtomic } from './store.js';
 /** ship's TRUSTED_READ_ENV, by value (importing ship/exec.ts would load child_process into src/forge). */
@@ -22,18 +23,24 @@ function isAncestor(ctx, head, base) {
 }
 /**
  * Played-back reviews as forge feedback at `head`: each author's latest
- * record is their decision; a record with text, given on `head`, that does
- * not approve is an open thread (one given on an older head was answered by
- * the push since). The author is whoever ran the command: the records live
- * outside every lane-writable root, so nobody is ignored and nobody is pending.
+ * record is their decision; each author's latest record on `head`, when it
+ * has text and does not approve, is an open thread (an approval on `head`
+ * after a request for changes closes it; one given on an older head was
+ * answered by the push since). The author is whoever ran the command: the
+ * records live outside every lane-writable root, so nobody is ignored and
+ * nobody is pending.
  */
 export function localReviewFeedback(records, head) {
     const latest = new Map();
-    for (const r of records)
+    const onHead = new Map();
+    for (const r of records) {
         latest.set(r.author, r);
+        if (r.head === head)
+            onHead.set(r.author, r);
+    }
     return {
         decisions: [...latest.values()].map((r) => ({ author: r.author, state: r.state, at: r.at, head: r.head })),
-        threads: records.filter((r) => r.head === head && r.state !== 'approved' && r.body.trim() !== '')
+        threads: [...onHead.values()].filter((r) => r.state !== 'approved' && r.body.trim() !== '')
             .map((r) => ({ id: r.id, author: r.author, body: r.body, at: r.at })),
         pendingReviewers: [],
         ignored: [],
@@ -78,7 +85,7 @@ export function localReviews(ctx) {
     return {
         refreshPr: refresh,
         reviewFeedback(pr, head) {
-            find(pr);
+            assertReviewHead(pr, head, view(pr).headRefOid);
             return localReviewFeedback(readLocalReviews(dirname(ctx.storePath), pr), head);
         },
         findOpenPrForBranch(branch) {

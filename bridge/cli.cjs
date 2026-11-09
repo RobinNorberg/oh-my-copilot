@@ -11483,38 +11483,38 @@ var init_sdk = __esm({
         }
       }
       class ParentNode extends Node {
-        constructor(nodes2 = []) {
+        constructor(nodes = []) {
           super();
-          this.nodes = nodes2;
+          this.nodes = nodes;
         }
         render(opts) {
           return this.nodes.reduce((code, n) => code + n.render(opts), "");
         }
         optimizeNodes() {
-          const { nodes: nodes2 } = this;
-          let i = nodes2.length;
+          const { nodes } = this;
+          let i = nodes.length;
           while (i--) {
-            const n = nodes2[i].optimizeNodes();
+            const n = nodes[i].optimizeNodes();
             if (Array.isArray(n))
-              nodes2.splice(i, 1, ...n);
+              nodes.splice(i, 1, ...n);
             else if (n)
-              nodes2[i] = n;
+              nodes[i] = n;
             else
-              nodes2.splice(i, 1);
+              nodes.splice(i, 1);
           }
-          return nodes2.length > 0 ? this : void 0;
+          return nodes.length > 0 ? this : void 0;
         }
         optimizeNames(names, constants13) {
-          const { nodes: nodes2 } = this;
-          let i = nodes2.length;
+          const { nodes } = this;
+          let i = nodes.length;
           while (i--) {
-            const n = nodes2[i];
+            const n = nodes[i];
             if (n.optimizeNames(names, constants13))
               continue;
             subtractNames(names, n.names);
-            nodes2.splice(i, 1);
+            nodes.splice(i, 1);
           }
-          return nodes2.length > 0 ? this : void 0;
+          return nodes.length > 0 ? this : void 0;
         }
         get names() {
           return this.nodes.reduce((names, n) => addNames(names, n.names), {});
@@ -11531,8 +11531,8 @@ var init_sdk = __esm({
       }
       Else.kind = "else";
       class If extends BlockNode {
-        constructor(condition, nodes2) {
-          super(nodes2);
+        constructor(condition, nodes) {
+          super(nodes);
           this.condition = condition;
         }
         render(opts) {
@@ -62254,8 +62254,8 @@ async function formatGitHubReleaseFetchError(response, usedToken) {
   const remaining = getHeader(response, "x-ratelimit-remaining");
   const resetAt = formatRateLimitReset(getHeader(response, "x-ratelimit-reset"));
   const bodyLooksRateLimited = /rate limit|api rate limit|secondary rate/i.test(body);
-  const isRateLimited = response.status === 429 || response.status === 403 && (remaining === "0" || bodyLooksRateLimited);
-  if (!isRateLimited) {
+  const isRateLimited2 = response.status === 429 || response.status === 403 && (remaining === "0" || bodyLooksRateLimited);
+  if (!isRateLimited2) {
     return `Failed to fetch release info: ${response.status} ${response.statusText}`;
   }
   const retrySuffix = resetAt ? ` Try again after ${resetAt}.` : "";
@@ -108139,7 +108139,7 @@ function buildTree(dir, depth, maxDepth, fileCount, maxFiles, ignorePatterns) {
     if (!a.isDir && b.isDir) return 1;
     return a.name.localeCompare(b.name);
   });
-  const nodes2 = [];
+  const nodes = [];
   for (const { name, isDir } of withMeta) {
     if (fileCount.value >= maxFiles) break;
     if (shouldSkipEntry(name, isDir, ignorePatterns)) continue;
@@ -108152,18 +108152,18 @@ function buildTree(dir, depth, maxDepth, fileCount, maxFiles, ignorePatterns) {
         maxFiles,
         ignorePatterns
       );
-      nodes2.push({ name, isDir: true, children });
+      nodes.push({ name, isDir: true, children });
     } else {
       fileCount.value++;
-      nodes2.push({ name, isDir: false });
+      nodes.push({ name, isDir: false });
     }
   }
-  return nodes2;
+  return nodes;
 }
-function renderTree(nodes2, prefix, lines4) {
-  for (let i = 0; i < nodes2.length; i++) {
-    const node = nodes2[i];
-    const isLast = i === nodes2.length - 1;
+function renderTree(nodes, prefix, lines4) {
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const isLast = i === nodes.length - 1;
     const connector = isLast ? "\u2514\u2500\u2500 " : "\u251C\u2500\u2500 ";
     const childPrefix = isLast ? "    " : "\u2502   ";
     lines4.push(`${prefix}${connector}${node.name}${node.isDir ? "/" : ""}`);
@@ -118872,6 +118872,43 @@ var init_body_file = __esm({
   }
 });
 
+// src/forge/review-feedback.ts
+function assertReviewHead(pr, head, actual) {
+  if (!REVIEW_HEAD.test(head)) throw new ReviewFeedbackError(`review feedback of PR ${pr}: ${JSON.stringify(head.slice(0, 60))} is not a full commit sha`);
+  if (actual !== head) throw new ReviewHeadMovedError(pr, head, typeof actual === "string" ? actual : "");
+}
+var ReviewFeedbackError, ReviewFeedbackTruncatedError, ReviewHeadMovedError, REVIEW_HEAD, visibleText;
+var init_review_feedback = __esm({
+  "src/forge/review-feedback.ts"() {
+    "use strict";
+    ReviewFeedbackError = class extends Error {
+      constructor(message4) {
+        super(message4);
+        this.name = "ReviewFeedbackError";
+      }
+    };
+    ReviewFeedbackTruncatedError = class extends ReviewFeedbackError {
+      constructor(pr, what) {
+        super(`review feedback of PR ${pr} is truncated (${what} has more entries than one read returns); review it on the forge`);
+        this.pr = pr;
+        this.what = what;
+        this.name = "ReviewFeedbackTruncatedError";
+      }
+    };
+    ReviewHeadMovedError = class extends ReviewFeedbackError {
+      constructor(pr, expected, actual) {
+        super(`PR ${pr} head moved: asked about ${expected.slice(0, 40)}, the forge reports ${actual.slice(0, 40) || "no head"}`);
+        this.pr = pr;
+        this.expected = expected;
+        this.actual = actual;
+        this.name = "ReviewHeadMovedError";
+      }
+    };
+    REVIEW_HEAD = /^[0-9a-f]{40}$/;
+    visibleText = (text4) => text4.replace(/[\p{Cf}\p{Zl}\p{Zp}]/gu, (c) => `<U+${c.codePointAt(0).toString(16).toUpperCase().padStart(4, "0")}>`).replace(new RegExp("(?![\\t\\n])\\p{Cc}", "gu"), "");
+  }
+});
+
 // src/forge/ado/redact.ts
 function redactAdoSecrets(text4) {
   return text4.replace(AUTH_HEADER, `$1${REDACTED}`).replace(SCHEME, `$1 ${REDACTED}`).replace(AZDO_PAT, REDACTED).replace(CLASSIC_PAT, REDACTED);
@@ -119005,8 +119042,9 @@ function parseAdoThreads(json, pr) {
     }];
   });
 }
-function parseAdoReviewFeedback(prJson, threadsJson, pr, trustedReviewers) {
+function parseAdoReviewFeedback(prJson, threadsJson, pr, head, trustedReviewers) {
   if (!isObject4(prJson) || prJson.pullRequestId !== pr) throw new Error(`pull request ${pr}: malformed response`);
+  assertReviewHead(pr, head, isObject4(prJson.lastMergeSourceCommit) ? prJson.lastMergeSourceCommit.commitId : void 0);
   const trusted = new Set(trustedReviewers.map((r) => r.toLowerCase()));
   const ignored = /* @__PURE__ */ new Set();
   const counts = (who) => {
@@ -119033,7 +119071,7 @@ function parseAdoReviewFeedback(prJson, threadsJson, pr, trustedReviewers) {
     if (t.status !== "active" && t.status !== "pending") continue;
     const comments2 = Array.isArray(t.comments) ? t.comments.filter(isObject4) : [];
     const first = comments2[0] ?? {};
-    if (str3(first.commentType) !== "text" || endsWithMarker(first.content)) continue;
+    if (str3(first.commentType) !== "text") continue;
     const kept = comments2.flatMap((c) => {
       const who = (isObject4(c.author) ? str3(c.author.uniqueName) : void 0)?.toLowerCase() ?? "";
       const body2 = str3(c.content) ?? "";
@@ -119059,11 +119097,11 @@ function description(bodyFile) {
 function adoReviews(ctx, review = { trustedReviewers: [] }) {
   const prUrl2 = (pr) => `${ctx.repo.url}/pullrequest/${pr}`;
   return {
-    reviewFeedback(pr) {
+    reviewFeedback(pr, head) {
       const params = { ...repoParams(ctx), pullRequestId: String(pr) };
       const prJson = adoJson(adoCall(ctx, "git.pullRequests.GET", params), `pull request ${pr}`);
       const threads = adoJson(adoCall(ctx, "git.pullRequestThreads.GET", params), `threads of pull request ${pr}`);
-      return parseAdoReviewFeedback(prJson, threads, pr, [...review.trustedReviewers, ...ctx.config.trustedAuthors]);
+      return parseAdoReviewFeedback(prJson, threads, pr, head, [...review.trustedReviewers, ...ctx.config.trustedAuthors]);
     },
     findOpenPrForBranch(branch2) {
       const json = adoJson(
@@ -119148,6 +119186,7 @@ var init_reviews = __esm({
   "src/forge/ado/reviews.ts"() {
     "use strict";
     import_fs144 = require("fs");
+    init_review_feedback();
     init_invoke();
     SHA = /^[0-9a-f]{40}$/;
     ADO_PR_DESCRIPTION_MAX = 4e3;
@@ -119190,7 +119229,20 @@ function isReviewFeedbackArgs(args, repoArg) {
 function isFactoryComment(body) {
   return body.trimEnd().split("\n").pop()?.trim() === ADO_FACTORY_COMMENT_MARKER;
 }
-function parseReviewFeedback(stdout, head, trust) {
+function collaboratorErrorsOnly(json, pr, exitStatus) {
+  const errors = json.errors;
+  if (errors === void 0 || errors === null) {
+    if (exitStatus !== 0) throw new ReviewFeedbackError(`review feedback of PR ${pr}: gh exited ${exitStatus} with no GraphQL error`);
+    return false;
+  }
+  if (!Array.isArray(errors) || errors.length === 0) throw new ReviewFeedbackError(`review feedback of PR ${pr}: malformed GraphQL errors`);
+  const limited = errors.find(isRateLimited);
+  if (limited !== void 0) throw new Error(`review feedback of PR ${pr}: GitHub RATE_LIMITED (${errorText(limited)})`);
+  const other = errors.find((e) => !(isObj(e) && Array.isArray(e.path) && e.path[0] === "repository" && e.path[1] === "collaborators"));
+  if (other !== void 0) throw new ReviewFeedbackError(`review feedback of PR ${pr}: partial answer (${errorText(other)})`);
+  return true;
+}
+function parseReviewFeedback(stdout, pr, head, trust, exitStatus = 0) {
   let json;
   try {
     json = JSON.parse(stdout);
@@ -119200,48 +119252,75 @@ function parseReviewFeedback(stdout, head, trust) {
   const data = isObj(json) && isObj(json.data) ? json.data : {};
   const repo = isObj(data.repository) ? data.repository : void 0;
   const pull = repo && isObj(repo.pullRequest) ? repo.pullRequest : void 0;
-  if (!repo || !pull) {
-    const first = isObj(json) && Array.isArray(json.errors) && isObj(json.errors[0]) ? str4(json.errors[0].message) : void 0;
-    throw new Error(`review feedback: no pull request in the response${first ? ` (${first.slice(0, 200)})` : ""}`);
+  if (!isObj(json) || !repo || !pull) {
+    const errors = isObj(json) && Array.isArray(json.errors) ? json.errors : [];
+    const limited = errors.some(isRateLimited);
+    const first = errorText(errors[0]);
+    throw new Error(`review feedback: no pull request in the response${limited ? " (GitHub RATE_LIMITED)" : ""}${first ? ` (${first})` : ""}`);
   }
-  const trusted = new Set(trust.trustedReviewers.map((l) => l.toLowerCase()));
-  const collaborators = isObj(repo.collaborators) && Array.isArray(repo.collaborators.edges) ? repo.collaborators.edges.filter(isObj) : [];
-  for (const e of collaborators) {
+  const collaboratorsUnreadable = collaboratorErrorsOnly(json, pr, exitStatus);
+  assertReviewHead(pr, head, pull.headRefOid);
+  const connection = (v, what) => {
+    const page = isObj(v) && isObj(v.pageInfo) ? v.pageInfo.hasNextPage : void 0;
+    if (!isObj(v) || !Array.isArray(v.nodes) || typeof page !== "boolean" || !v.nodes.every(isObj)) {
+      throw new ReviewFeedbackError(`review feedback of PR ${pr}: the answer has no complete ${what} list`);
+    }
+    if (page) throw new ReviewFeedbackTruncatedError(pr, what);
+    return v.nodes;
+  };
+  const reviews = connection(pull.latestReviews, "latestReviews");
+  const requests = connection(pull.reviewRequests, "reviewRequests");
+  const threadNodes = connection(pull.reviewThreads, "reviewThreads");
+  const configured = new Set(trust.trustedReviewers.map((l) => l.toLowerCase()));
+  const trusted = new Set(configured);
+  const c = repo.collaborators;
+  const edges = isObj(c) && Array.isArray(c.edges) ? c.edges.filter(isObj) : [];
+  const trustIncomplete = collaboratorsUnreadable || !isObj(c) || !Array.isArray(c.edges) || !isObj(c.pageInfo) || c.pageInfo.hasNextPage !== false;
+  for (const e of edges) {
     const l = login(e.node);
     if (l && WRITE_PERMISSIONS.has(str4(e.permission) ?? "")) trusted.add(l.toLowerCase());
   }
   const viewer = login(data.viewer);
   if (viewer && WRITE_PERMISSIONS.has(str4(repo.viewerPermission) ?? "")) trusted.add(viewer.toLowerCase());
   const ignored = /* @__PURE__ */ new Set();
-  const counts = (author) => {
-    if (!author) return false;
-    if (trusted.has(author.toLowerCase())) return true;
-    ignored.add(author);
-    return false;
+  const author = (v) => {
+    const l = login(v);
+    if (!l || !isObj(v)) return void 0;
+    const kind = str4(v.__typename);
+    const name = kind === "Bot" ? `${l}[bot]` : l;
+    const ok2 = kind === "User" ? trusted.has(name.toLowerCase()) : kind === "Bot" ? configured.has(name.toLowerCase()) : false;
+    if (ok2) return name;
+    ignored.add(name);
+    return void 0;
   };
   const decisions = [];
   const threads = [];
-  for (const r of nodes(pull.latestReviews)) {
-    const author = login(r.author);
+  for (const r of reviews) {
     const state = DECISION[str4(r.state) ?? ""];
     const body = str4(r.body) ?? "";
-    if (!state || isFactoryComment(body) || !counts(author)) continue;
+    if (!state || isFactoryComment(body)) continue;
+    const who = author(r.author);
+    if (!who) continue;
     const at = str4(r.submittedAt) ?? "";
     const oid = isObj(r.commit) ? str4(r.commit.oid) : void 0;
     const reviewHead = oid && HEX402.test(oid) ? oid : void 0;
-    decisions.push({ author, state, at, ...reviewHead ? { head: reviewHead } : {} });
+    decisions.push({ author: who, state, at, ...reviewHead ? { head: reviewHead } : {} });
     const id = str4(r.id);
     if (id && body.trim() && reviewHead === head && (state === "changes-requested" || state === "commented")) {
-      threads.push({ id: `review:${id}`, author, body: capped2(body), at });
+      threads.push({ id: `review:${id}`, author: who, body: capped2(body), at });
     }
   }
-  for (const t of nodes(pull.reviewThreads)) {
+  for (const t of threadNodes) {
     const id = str4(t.id);
-    if (!id || t.isResolved !== false || t.isOutdated !== false) continue;
-    const kept = nodes(t.comments).flatMap((c) => {
-      const author = login(c.author);
-      const body2 = str4(c.body) ?? "";
-      return body2.trim() && !isFactoryComment(body2) && counts(author) ? [{ author, body: body2, c }] : [];
+    if (!id || typeof t.isResolved !== "boolean" || typeof t.isOutdated !== "boolean") {
+      throw new ReviewFeedbackError(`review feedback of PR ${pr}: a review thread without its id or state`);
+    }
+    if (t.isResolved || t.isOutdated) continue;
+    const kept = connection(t.comments, `comments of thread ${id.slice(0, 40)}`).flatMap((cm) => {
+      const body2 = str4(cm.body) ?? "";
+      if (!body2.trim() || isFactoryComment(body2)) return [];
+      const who = author(cm.author);
+      return who ? [{ author: who, body: body2, c: cm }] : [];
     });
     if (kept.length === 0) continue;
     const first = kept[0];
@@ -119253,7 +119332,7 @@ ${k.body}`).join("\n\n");
     threads.push({ id, author: first.author, body: capped2(body), ...path30 ? { file: path30 } : {}, ...line2 ? { line: line2 } : {}, at });
   }
   const pending = /* @__PURE__ */ new Set();
-  for (const q of nodes(pull.reviewRequests)) {
+  for (const q of requests) {
     const who = isObj(q.requestedReviewer) ? q.requestedReviewer : {};
     const slug = str4(who.slug);
     const name = login(who) ?? (slug && NAME2.test(slug) ? `team:${slug}` : void 0);
@@ -119263,15 +119342,17 @@ ${k.body}`).join("\n\n");
     decisions,
     threads,
     pendingReviewers: [...pending],
-    ignored: [...ignored].filter((l) => !trusted.has(l.toLowerCase())).sort()
+    ignored: [...ignored].filter((l) => !trusted.has(l.toLowerCase())).sort(),
+    ...trustIncomplete ? { trustIncomplete: true } : {}
   };
 }
-var REVIEW_FEEDBACK_QUERY, NAME2, HOST, NUMBER2, HEX402, MAX_FEEDBACK_BODY_CHARS2, TRUNCATED2, WRITE_PERMISSIONS, isObj, str4, nodes, login, capped2, DECISION;
+var REVIEW_FEEDBACK_QUERY, NAME2, HOST, NUMBER2, HEX402, MAX_FEEDBACK_BODY_CHARS2, TRUNCATED2, WRITE_PERMISSIONS, GITHUB_RATE_LIMITED, isObj, str4, login, capped2, DECISION, errorText, isRateLimited;
 var init_graphql = __esm({
   "src/forge/github/graphql.ts"() {
     "use strict";
     init_reviews();
-    REVIEW_FEEDBACK_QUERY = "query($owner:String!,$name:String!,$number:Int!){viewer{login} repository(owner:$owner,name:$name){viewerPermission collaborators(first:100){edges{permission node{login}}} pullRequest(number:$number){headRefOid latestReviews(first:50){nodes{id state submittedAt body author{login} commit{oid}}} reviewRequests(first:20){nodes{requestedReviewer{__typename ... on User{login} ... on Bot{login} ... on Mannequin{login} ... on Team{slug}}}} reviewThreads(first:100){nodes{id isResolved isOutdated comments(first:20){nodes{body path line originalLine createdAt author{login}}}}}}}}";
+    init_review_feedback();
+    REVIEW_FEEDBACK_QUERY = "query($owner:String!,$name:String!,$number:Int!){viewer{login} repository(owner:$owner,name:$name){viewerPermission collaborators(first:100){pageInfo{hasNextPage} edges{permission node{login}}} pullRequest(number:$number){headRefOid latestReviews(first:50){pageInfo{hasNextPage} nodes{id state submittedAt body author{__typename login} commit{oid}}} reviewRequests(first:20){pageInfo{hasNextPage} nodes{requestedReviewer{__typename ... on User{login} ... on Bot{login} ... on Mannequin{login} ... on Team{slug}}}} reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated comments(first:20){pageInfo{hasNextPage} nodes{body path line originalLine createdAt author{__typename login}}}}}}}}";
     NAME2 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
     HOST = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
     NUMBER2 = /^[1-9]\d{0,9}$/;
@@ -119279,9 +119360,9 @@ var init_graphql = __esm({
     MAX_FEEDBACK_BODY_CHARS2 = 8e3;
     TRUNCATED2 = "\n(truncated)";
     WRITE_PERMISSIONS = /* @__PURE__ */ new Set(["ADMIN", "MAINTAIN", "WRITE"]);
+    GITHUB_RATE_LIMITED = /\bRATE_LIMITED\b|API rate limit exceeded|secondary rate limit/i;
     isObj = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
     str4 = (v) => typeof v === "string" ? v : void 0;
-    nodes = (v) => isObj(v) && Array.isArray(v.nodes) ? v.nodes.filter(isObj) : [];
     login = (v) => {
       const l = isObj(v) ? str4(v.login) : void 0;
       return l && NAME2.test(l) ? l : void 0;
@@ -119294,6 +119375,8 @@ var init_graphql = __esm({
       DISMISSED: "dismissed",
       PENDING: "pending"
     };
+    errorText = (e) => (isObj(e) ? str4(e.message) ?? "" : "").slice(0, 200);
+    isRateLimited = (e) => isObj(e) && (e.type === "RATE_LIMITED" || GITHUB_RATE_LIMITED.test(str4(e.message) ?? ""));
   }
 });
 
@@ -122030,10 +122113,14 @@ function isAncestor(ctx, head, base) {
 }
 function localReviewFeedback(records2, head) {
   const latest2 = /* @__PURE__ */ new Map();
-  for (const r of records2) latest2.set(r.author, r);
+  const onHead = /* @__PURE__ */ new Map();
+  for (const r of records2) {
+    latest2.set(r.author, r);
+    if (r.head === head) onHead.set(r.author, r);
+  }
   return {
     decisions: [...latest2.values()].map((r) => ({ author: r.author, state: r.state, at: r.at, head: r.head })),
-    threads: records2.filter((r) => r.head === head && r.state !== "approved" && r.body.trim() !== "").map((r) => ({ id: r.id, author: r.author, body: r.body, at: r.at })),
+    threads: [...onHead.values()].filter((r) => r.state !== "approved" && r.body.trim() !== "").map((r) => ({ id: r.id, author: r.author, body: r.body, at: r.at })),
     pendingReviewers: [],
     ignored: []
   };
@@ -122069,7 +122156,7 @@ function localReviews(ctx) {
   return {
     refreshPr: refresh,
     reviewFeedback(pr, head) {
-      find(pr);
+      assertReviewHead(pr, head, view2(pr).headRefOid);
       return localReviewFeedback(readLocalReviews((0, import_path176.dirname)(ctx.storePath), pr), head);
     },
     findOpenPrForBranch(branch2) {
@@ -122138,6 +122225,7 @@ var init_reviews2 = __esm({
     "use strict";
     import_fs150 = require("fs");
     import_path176 = require("path");
+    init_review_feedback();
     init_mirror();
     init_store();
     TRUSTED_READ_ENV2 = Object.freeze({ GIT_NO_REPLACE_OBJECTS: "1" });
@@ -124678,9 +124766,11 @@ function ghReviewFeedback(exec3, repo, pr, head, trust, cwd2) {
   const args = reviewFeedbackArgs(repo, pr);
   const res = exec3("gh", args, { cwd: cwd2 });
   try {
-    return parseReviewFeedback(res.stdout, head, trust);
+    return parseReviewFeedback(res.stdout, pr, head, trust, res.status);
   } catch (error2) {
-    if (res.status === 0) throw new GhCommandError(error2 instanceof Error ? error2.message : String(error2));
+    if (error2 instanceof ReviewFeedbackError) throw error2;
+    const message4 = error2 instanceof Error ? error2.message : String(error2);
+    if (res.status === 0 || GITHUB_RATE_LIMITED.test(message4)) throw new GhCommandError(message4);
     throw new GhCommandError(`gh api graphql (review feedback of PR ${pr}) failed (exit ${res.status}): ${res.stderr.trim().split("\n")[0]}`);
   }
 }
@@ -124704,6 +124794,7 @@ var init_reviews3 = __esm({
     "use strict";
     init_gh();
     init_graphql();
+    init_review_feedback();
     MERGE_VIEW_FIELDS = "number,state,isDraft,baseRefName,baseRefOid,headRefOid";
     HEX409 = /^[0-9a-f]{40}$/;
     PR_VIEW_FIELDS = "number,state,isDraft,baseRefName,baseRefOid,headRefName,headRefOid,url";
@@ -132987,8 +133078,8 @@ function githubMilestones(io) {
 function adoSavedQueries(io) {
   const body = adoGet(io, "wit.queries.GET", { project: io.repo.project }, { $depth: "2", $expand: "wiql" });
   const out = [];
-  const walk = (nodes2) => {
-    for (const n of nodes2) {
+  const walk = (nodes) => {
+    for (const n of nodes) {
       if (n.isFolder === true) walk(Array.isArray(n.children) ? n.children : []);
       else if (typeof n.id === "string" && (n.queryType === void 0 || n.queryType === "flat")) out.push({ id: n.id.toLowerCase(), path: String(n.path ?? n.name ?? n.id) });
     }
@@ -134150,15 +134241,18 @@ async function runFactoryPr(action2, o, deps) {
     if (state !== "approved" && o.bodyFile === void 0) throw new CheckUsageError(`--body-file is required with --${state === "commented" ? "comment" : "request-changes"}`);
     const body = o.bodyFile === void 0 ? "" : readBody(o.bodyFile);
     if (state !== "approved" && body.trim() === "") throw new CheckUsageError(`--body-file ${o.bodyFile} is empty`);
+    if (o.head === void 0 || !REVIEW_HEAD.test(o.head.toLowerCase())) {
+      throw new CheckUsageError("--head <sha> is required: the full 40-hex head that omg factory pr diff or view printed (what you reviewed)");
+    }
     review = { state, body };
   }
   const ctx = openLocal(deps, warnings);
-  for (const w of warnings) deps.err(source_default.yellow(printable2(w)));
+  for (const w of warnings) deps.err(source_default.yellow(visibleText(w)));
   if (action2 === "list") {
-    const prs = readPrStore((0, import_path205.join)(ctx.storeDir, "prs.json")).prs.map((p) => ({ number: p.number, state: p.state, isDraft: p.isDraft, head: p.head, base: p.base, title: printable2(p.title), itemId: p.itemId }));
+    const prs = readPrStore((0, import_path205.join)(ctx.storeDir, "prs.json")).prs.map((p) => ({ number: p.number, state: p.state, isDraft: p.isDraft, head: p.head, base: p.base, title: visibleText(p.title), itemId: p.itemId }));
     if (o.json) say(JSON.stringify({ schemaVersion: FACTORY_PR_JSON_SCHEMA_VERSION, ok: true, prs }, null, 2));
     else if (prs.length === 0) say("no local PRs");
-    else for (const p of prs) say(`#${p.number}  ${p.state}${p.isDraft ? " (draft)" : ""}  ${p.head} -> ${p.base}  ${p.title}`);
+    else for (const p of prs) say(`#${p.number}  ${p.state}${p.isDraft ? " (draft)" : ""}  ${visibleText(p.head)} -> ${visibleText(p.base)}  ${p.title}`);
     return 0;
   }
   const n = pr;
@@ -134166,16 +134260,16 @@ async function runFactoryPr(action2, o, deps) {
   if (action2 === "view") {
     const record4 = readPrStore((0, import_path205.join)(ctx.storeDir, "prs.json")).prs.find((p) => p.number === n);
     const feedback = ctx.forge.reviews.reviewFeedback?.(n, v.headRefOid);
-    const reviews = readLocalReviews(ctx.storeDir, n).map((r) => ({ ...r, body: printable2(r.body) }));
+    const reviews = readLocalReviews(ctx.storeDir, n).map((r) => ({ ...r, body: visibleText(r.body) }));
     if (o.json) {
-      say(JSON.stringify({ schemaVersion: FACTORY_PR_JSON_SCHEMA_VERSION, ok: true, pr: { ...v, title: printable2(record4.title) }, reviews, openThreads: feedback?.threads.length ?? 0 }, null, 2));
+      say(JSON.stringify({ schemaVersion: FACTORY_PR_JSON_SCHEMA_VERSION, ok: true, pr: { ...v, title: visibleText(record4.title) }, reviews, openThreads: feedback?.threads.length ?? 0 }, null, 2));
       return 0;
     }
-    say(`#${v.number}  ${v.state}${v.isDraft ? " (draft)" : ""}  ${printable2(record4.title)}`);
-    say(`  ${v.headRefName} ${v.headRefOid} -> ${v.baseRefName} ${v.baseRefOid}`);
-    for (const r of reviews) say(`  review ${r.state} by ${r.author} at ${r.head.slice(0, 8)} (${r.at})${r.body ? `
+    say(`#${v.number}  ${v.state}${v.isDraft ? " (draft)" : ""}  ${visibleText(record4.title)}`);
+    say(`  head ${v.headRefOid} (${visibleText(v.headRefName)}) -> base ${v.baseRefOid} (${visibleText(v.baseRefName)})`);
+    for (const r of reviews) say(`  review ${r.state} by ${visibleText(r.author)} at ${r.head.slice(0, 8)} (${r.at})${r.body ? `
 ${r.body.replace(/^/gm, "    ")}` : ""}`);
-    say(`  ${feedback?.threads.length ?? 0} open review note(s) on the current head; diff: omg factory pr diff ${n}`);
+    say(`  ${feedback?.threads.length ?? 0} open review note(s) on the current head; diff: omg factory pr diff ${n}; review: omg factory pr review ${n} --head ${v.headRefOid} ...`);
     return 0;
   }
   if (action2 === "diff") {
@@ -134183,18 +134277,22 @@ ${r.body.replace(/^/gm, "    ")}` : ""}`);
     const git7 = factoryGuardExec(hardenedGitExec(deps.exec, emptyHooksDir2(ledgerDir)), () => [ctx.base]);
     const r = git7("git", ["diff", "--no-ext-diff", "--no-textconv", `${v.baseRefOid}...${v.headRefOid}`], { cwd: ctx.root });
     if (r.status !== 0) {
-      deps.err(source_default.red(`git diff of local PR #${n} failed (exit ${r.status}): ${printable2(r.stderr.trim().split("\n")[0] ?? "")}`));
+      deps.err(source_default.red(`git diff of local PR #${n} failed (exit ${r.status}): ${visibleText(r.stderr.trim().split("\n")[0] ?? "")}`));
       return EXIT_CHECK_FAILED;
     }
-    say(printable2(r.stdout).replace(/\n$/, ""));
+    say(`local PR #${n} head ${v.headRefOid} base ${v.baseRefOid} (review it with --head ${v.headRefOid})`);
+    say(visibleText(r.stdout).replace(/\n$/, ""));
     return 0;
   }
   if (v.state !== "OPEN") throw new CheckUsageError(`local PR #${n} is ${v.state.toLowerCase()}; only an open PR takes a review`);
+  if (o.head.toLowerCase() !== v.headRefOid) {
+    throw new CheckUsageError(`local PR #${n} head moved: it is ${v.headRefOid} now, not the --head ${o.head.toLowerCase()} you reviewed; read omg factory pr diff ${n} again`);
+  }
   const author = (deps.user ?? defaultUser)().trim().toLowerCase() || "local";
   const record3 = { version: 1, id: (0, import_crypto57.randomUUID)(), pr: n, author, state: review.state, body: review.body, head: v.headRefOid, at: (/* @__PURE__ */ new Date()).toISOString() };
   appendLocalReview(ctx.storeDir, record3);
   if (o.json) say(JSON.stringify({ schemaVersion: FACTORY_PR_JSON_SCHEMA_VERSION, ok: true, review: { id: record3.id, pr: n, state: record3.state, author, head: record3.head } }, null, 2));
-  else say(`recorded ${record3.state} by ${author} on local PR #${n} at ${record3.head.slice(0, 8)}; the next omg factory run of its item reads it`);
+  else say(`recorded ${record3.state} by ${visibleText(author)} on local PR #${n} at ${record3.head.slice(0, 8)}; the next omg factory run of its item reads it`);
   return 0;
 }
 function action(name, deps) {
@@ -134205,7 +134303,7 @@ function action(name, deps) {
     try {
       process.exitCode = await runFactoryPr(name, { ...o, ...pr === void 0 ? {} : { pr } }, deps);
     } catch (error2) {
-      const message4 = printable2(error2 instanceof Error ? error2.message : String(error2));
+      const message4 = visibleText(error2 instanceof Error ? error2.message : String(error2));
       if (json) deps.out(JSON.stringify({ schemaVersion: FACTORY_PR_JSON_SCHEMA_VERSION, ok: false, error: message4 }, null, 2));
       else deps.err(source_default.red(factoryErrorLine(message4)));
       process.exitCode = error2 instanceof CheckUsageError ? EXIT_CHECK_USAGE : error2 instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
@@ -134217,10 +134315,10 @@ function factoryPrCommand(deps) {
   cmd.addCommand(new Command("list").description("List the local PRs").option("--json", "JSON output (schemaVersion 1)").action(action("list", deps)));
   cmd.addCommand(new Command("view").description("Show one local PR, its played-back reviews and open notes").argument("<n>", "local PR number").option("--json", "JSON output (schemaVersion 1)").action(action("view", deps)));
   cmd.addCommand(new Command("diff").description("The PR diff (base...head) with the engine's hardened git: no hooks, no external diff, no textconv").argument("<n>", "local PR number").action(action("diff", deps)));
-  cmd.addCommand(new Command("review").description("Record a human review on the PR's current head; the next omg factory run reads it").argument("<n>", "local PR number").option("--approve", "approve").option("--request-changes", "request changes (needs --body-file)").option("--comment", "comment without a decision (needs --body-file)").option("--body-file <file>", "the review text").option("--json", "JSON output (schemaVersion 1)").action(action("review", deps)));
+  cmd.addCommand(new Command("review").description("Record a human review on the PR's current head; the next omg factory run reads it").argument("<n>", "local PR number").option("--approve", "approve").option("--request-changes", "request changes (needs --body-file)").option("--comment", "comment without a decision (needs --body-file)").option("--body-file <file>", "the review text").option("--head <sha>", "the full head sha you reviewed (pr diff / pr view print it); refused when the PR moved since").option("--json", "JSON output (schemaVersion 1)").action(action("review", deps)));
   return cmd;
 }
-var import_fs178, import_os38, import_path205, import_crypto57, FACTORY_PR_JSON_SCHEMA_VERSION, printable2, view, defaultUser;
+var import_fs178, import_os38, import_path205, import_crypto57, FACTORY_PR_JSON_SCHEMA_VERSION, view, defaultUser;
 var init_factory_pr = __esm({
   "src/cli/commands/factory-pr.ts"() {
     "use strict";
@@ -134235,8 +134333,8 @@ var init_factory_pr = __esm({
     init_forge_roots();
     init_ledger2();
     init_store();
+    init_review_feedback();
     FACTORY_PR_JSON_SCHEMA_VERSION = 1;
-    printable2 = (text4) => text4.replace(new RegExp("(?![\\t\\n])\\p{Cc}", "gu"), "");
     view = (ctx, n) => {
       try {
         return ctx.forge.reviews.viewPr(n);
@@ -134543,6 +134641,7 @@ async function pollTick(ctx) {
           if (feedback) {
             row.threads = feedback.threads.length;
             row.ignored = feedback.ignored.length;
+            if (feedback.trustIncomplete === true) row.trustIncomplete = true;
           } else row.error = errors[errors.length - 1];
         } else if (forge.reviews.listThreads) {
           const threads = step(`PR ${pr} threads`, () => forge.reviews.listThreads(pr));
@@ -134550,10 +134649,10 @@ async function pollTick(ctx) {
           else row.error = errors[errors.length - 1];
         }
       }
-      const facts = JSON.stringify([row.state, row.threads, row.ignored]);
+      const facts = JSON.stringify([row.state, row.threads, row.ignored, row.trustIncomplete]);
       if (row.state !== void 0 && ctx.previous.prs.get(runLabel(key)) !== facts) {
         if (row.state !== "OPEN") audit(root2, { kind: "pr-done", id: key, pr, state: row.state, hint: row.hint }, at);
-        else if (row.threads !== void 0) audit(root2, { kind: "pr-threads", id: key, pr, active: row.threads, ...row.ignored !== void 0 ? { ignored: row.ignored } : {} }, at);
+        else if (row.threads !== void 0) audit(root2, { kind: "pr-threads", id: key, pr, active: row.threads, ...row.ignored !== void 0 ? { ignored: row.ignored } : {}, ...row.trustIncomplete ? { trustIncomplete: true } : {} }, at);
         ctx.previous.prs.set(runLabel(key), facts);
       }
       prs.push(row);
@@ -134574,7 +134673,7 @@ async function pollTick(ctx) {
     }
     ctx.previous.board = next;
   }
-  const rateLimited = [...errors, ...warnings].some((m) => ADO_RATE_LIMITED.test(m));
+  const rateLimited = [...errors, ...warnings].some((m) => ADO_RATE_LIMITED.test(m) || GITHUB_RATE_LIMITED.test(m));
   let autoStart;
   const blocked2 = !config2.intake.autoStart ? "factory.intake.autoStart is off" : locked ? "the run lock is held: an engine runs in this repository" : unsound ? "a run state is unreadable or fails its integrity check" : !idle ? "a run is in flight" : !intake.ran ? `no intake read this tick (${intake.reason})` : rateLimited ? "the tick was rate-limited" : null;
   if (blocked2) autoStart = { started: false, reason: blocked2 };
@@ -134621,7 +134720,10 @@ function renderTick(t) {
   if (t.baseSync) lines4.push(`  base sync: ${t.baseSync.ran ? t.baseSync.message : `not run (${t.baseSync.reason})`}`);
   for (const p of t.prs) {
     if (p.hint) lines4.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)} is ${p.state === "MERGED" ? "merged" : "closed"} by a human: run \`${p.hint}\` to record it`);
-    else if (p.threads || p.ignored) lines4.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)}: ${p.threads ?? 0} human thread(s)${p.ignored ? ` (${p.ignored} ignored)` : ""}`);
+    else if (p.threads || p.ignored || p.trustIncomplete) {
+      const trust = p.trustIncomplete ? "; trust incomplete: the collaborator list was not read whole, so list reviewers in factory.review.trustedReviewers" : "";
+      lines4.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)}: ${p.threads ?? 0} human thread(s)${p.ignored ? ` (${p.ignored} ignored)` : ""}${trust}`);
+    }
   }
   const done = new Map(t.prs.filter((p) => p.hint).map((p) => [runLabel(p.id), p]));
   for (const b of t.board) {
@@ -134727,6 +134829,7 @@ var init_poll = __esm({
     init_file_lock();
     init_worktree_paths();
     init_checks3();
+    init_graphql();
     init_exec();
     init_collect();
     init_render();
@@ -139733,7 +139836,7 @@ function collectBranchRegion(startNodeId, allAdjacency, joinNodeId) {
   }
   return result;
 }
-function validateOutgoingContracts(descriptor, nodes2, outgoing, issues) {
+function validateOutgoingContracts(descriptor, nodes, outgoing, issues) {
   for (const node of descriptor.nodes) {
     const edges = outgoing.get(node.id) ?? [];
     if (node.id === descriptor.terminal_verification_node_id) {
@@ -139803,17 +139906,17 @@ function validateOutgoingContracts(descriptor, nodes2, outgoing, issues) {
     }
   }
   for (const edge of descriptor.edges) {
-    if (!nodes2.has(edge.from)) {
+    if (!nodes.has(edge.from)) {
       issues.push(
         `edge ${edge.id} references missing source node ${edge.from}`
       );
     }
-    if (!nodes2.has(edge.to)) {
+    if (!nodes.has(edge.to)) {
       issues.push(`edge ${edge.id} references missing target node ${edge.to}`);
     }
   }
 }
-function validateForkRegions(descriptor, nodes2, outgoing, allAdjacency, issues) {
+function validateForkRegions(descriptor, nodes, outgoing, allAdjacency, issues) {
   const fanGroups = /* @__PURE__ */ new Map();
   const branchOwners = /* @__PURE__ */ new Map();
   for (const edge of descriptor.edges) {
@@ -139838,7 +139941,7 @@ function validateForkRegions(descriptor, nodes2, outgoing, allAdjacency, issues)
       continue;
     }
     const joinNodeId = fanEdges[0].owner_join_id;
-    const joinNode = nodes2.get(joinNodeId);
+    const joinNode = nodes.get(joinNodeId);
     if (joinNode?.kind !== "join") {
       issues.push(
         `fan-out node ${fanOutNodeId} references non-join owner ${joinNodeId}`
@@ -139884,7 +139987,7 @@ function validateForkRegions(descriptor, nodes2, outgoing, allAdjacency, issues)
         );
       }
       for (const nodeId of region.nodes) {
-        const node = nodes2.get(nodeId);
+        const node = nodes.get(nodeId);
         if (node?.kind === "join" && nodeId !== joinNodeId) {
           issues.push(
             `nested join ${nodeId} is not allowed inside fork region ${fanOutNodeId}`
@@ -139984,9 +140087,9 @@ function validateForkRegions(descriptor, nodes2, outgoing, allAdjacency, issues)
   }
   return regions;
 }
-function validateEntryEligibility(descriptor, nodes2, regions, issues) {
+function validateEntryEligibility(descriptor, nodes, regions, issues) {
   for (const entry2 of descriptor.entry_node_ids) {
-    const node = nodes2.get(entry2);
+    const node = nodes.get(entry2);
     if (node === void 0) continue;
     if (node.kind === "join") {
       issues.push(`entry node ${entry2} must not be a join node`);
@@ -140046,15 +140149,15 @@ function validateGraphDescriptor(descriptor) {
       `invalid stable ID(s): ${[...new Set(invalidIds)].sort().join(", ")}`
     );
   }
-  const nodes2 = new Map(
+  const nodes = new Map(
     descriptor.nodes.map((node) => [node.id, node])
   );
   const outgoing = groupByFrom(descriptor.edges);
-  validateOutgoingContracts(descriptor, nodes2, outgoing, issues);
+  validateOutgoingContracts(descriptor, nodes, outgoing, issues);
   for (const entry2 of descriptor.entry_node_ids) {
-    if (!nodes2.has(entry2)) issues.push(`entry node ${entry2} does not exist`);
+    if (!nodes.has(entry2)) issues.push(`entry node ${entry2} does not exist`);
   }
-  const terminalNode = nodes2.get(descriptor.terminal_verification_node_id);
+  const terminalNode = nodes.get(descriptor.terminal_verification_node_id);
   if (terminalNode === void 0) {
     issues.push(
       `terminal verification node ${descriptor.terminal_verification_node_id} does not exist`
@@ -140098,12 +140201,12 @@ function validateGraphDescriptor(descriptor) {
   }
   const regions = validateForkRegions(
     descriptor,
-    nodes2,
+    nodes,
     outgoing,
     allAdjacency,
     issues
   );
-  validateEntryEligibility(descriptor, nodes2, regions, issues);
+  validateEntryEligibility(descriptor, nodes, regions, issues);
   if (issues.length > 0) {
     throw new GraphDescriptorValidationError([...new Set(issues)]);
   }

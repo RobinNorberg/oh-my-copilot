@@ -25,10 +25,12 @@ export interface LocalReviewsContext {
 export declare const localPrUrl: (pr: number) => string;
 /**
  * Played-back reviews as forge feedback at `head`: each author's latest
- * record is their decision; a record with text, given on `head`, that does
- * not approve is an open thread (one given on an older head was answered by
- * the push since). The author is whoever ran the command: the records live
- * outside every lane-writable root, so nobody is ignored and nobody is pending.
+ * record is their decision; each author's latest record on `head`, when it
+ * has text and does not approve, is an open thread (an approval on `head`
+ * after a request for changes closes it; one given on an older head was
+ * answered by the push since). The author is whoever ran the command: the
+ * records live outside every lane-writable root, so nobody is ignored and
+ * nobody is pending.
  */
 export declare function localReviewFeedback(records: readonly LocalReviewRecord[], head: string): ForgeReviewFeedback;
 export declare function localReviews(ctx: LocalReviewsContext): ForgeReviews & {

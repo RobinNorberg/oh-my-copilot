@@ -62,9 +62,11 @@ export declare const PR_VIEW_FIELDS = "number,state,isDraft,baseRefName,baseRefO
 export declare function ghViewPr(exec: Exec, pr: number, cwd: string): ForgePr;
 /**
  * The human review input on `pr` at `head` (graphql.ts): one fixed GraphQL
- * read. A non-zero gh exit still counts when the response carries the pull
- * request (a partial answer: e.g. the collaborator list needs push access, so
- * only the viewer and trustedReviewers are known); otherwise it throws.
+ * read. A non-zero gh exit still counts only when every GraphQL error is about
+ * the collaborator list (it needs push access: then only the viewer and
+ * trustedReviewers are known, and `trustIncomplete` is set); otherwise it
+ * throws. A truncated list or a moved head throws its ReviewFeedbackError
+ * subclass unchanged; a rate limit keeps its RATE_LIMITED text (poll backs off).
  */
 export declare function ghReviewFeedback(exec: Exec, repo: ForgeRepo, pr: number, head: string, trust: ReviewTrust, cwd: string): ForgeReviewFeedback;
 /** `o.repo` (the configured repository) turns on reviewFeedback; trust comes from `o.review` (trusted config layers). */

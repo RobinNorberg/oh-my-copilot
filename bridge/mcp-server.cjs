@@ -4674,38 +4674,38 @@ var require_codegen = __commonJS({
       }
     };
     var ParentNode = class extends Node {
-      constructor(nodes2 = []) {
+      constructor(nodes = []) {
         super();
-        this.nodes = nodes2;
+        this.nodes = nodes;
       }
       render(opts) {
         return this.nodes.reduce((code, n) => code + n.render(opts), "");
       }
       optimizeNodes() {
-        const { nodes: nodes2 } = this;
-        let i = nodes2.length;
+        const { nodes } = this;
+        let i = nodes.length;
         while (i--) {
-          const n = nodes2[i].optimizeNodes();
+          const n = nodes[i].optimizeNodes();
           if (Array.isArray(n))
-            nodes2.splice(i, 1, ...n);
+            nodes.splice(i, 1, ...n);
           else if (n)
-            nodes2[i] = n;
+            nodes[i] = n;
           else
-            nodes2.splice(i, 1);
+            nodes.splice(i, 1);
         }
-        return nodes2.length > 0 ? this : void 0;
+        return nodes.length > 0 ? this : void 0;
       }
       optimizeNames(names, constants7) {
-        const { nodes: nodes2 } = this;
-        let i = nodes2.length;
+        const { nodes } = this;
+        let i = nodes.length;
         while (i--) {
-          const n = nodes2[i];
+          const n = nodes[i];
           if (n.optimizeNames(names, constants7))
             continue;
           subtractNames(names, n.names);
-          nodes2.splice(i, 1);
+          nodes.splice(i, 1);
         }
-        return nodes2.length > 0 ? this : void 0;
+        return nodes.length > 0 ? this : void 0;
       }
       get names() {
         return this.nodes.reduce((names, n) => addNames(names, n.names), {});
@@ -4722,8 +4722,8 @@ var require_codegen = __commonJS({
     };
     Else.kind = "else";
     var If = class _If extends BlockNode {
-      constructor(condition, nodes2) {
-        super(nodes2);
+      constructor(condition, nodes) {
+        super(nodes);
         this.condition = condition;
       }
       render(opts) {
@@ -41675,6 +41675,42 @@ var init_body_file = __esm({
   }
 });
 
+// src/forge/review-feedback.ts
+function assertReviewHead(pr, head, actual) {
+  if (!REVIEW_HEAD.test(head)) throw new ReviewFeedbackError(`review feedback of PR ${pr}: ${JSON.stringify(head.slice(0, 60))} is not a full commit sha`);
+  if (actual !== head) throw new ReviewHeadMovedError(pr, head, typeof actual === "string" ? actual : "");
+}
+var ReviewFeedbackError, ReviewFeedbackTruncatedError, ReviewHeadMovedError, REVIEW_HEAD;
+var init_review_feedback = __esm({
+  "src/forge/review-feedback.ts"() {
+    "use strict";
+    ReviewFeedbackError = class extends Error {
+      constructor(message) {
+        super(message);
+        this.name = "ReviewFeedbackError";
+      }
+    };
+    ReviewFeedbackTruncatedError = class extends ReviewFeedbackError {
+      constructor(pr, what) {
+        super(`review feedback of PR ${pr} is truncated (${what} has more entries than one read returns); review it on the forge`);
+        this.pr = pr;
+        this.what = what;
+        this.name = "ReviewFeedbackTruncatedError";
+      }
+    };
+    ReviewHeadMovedError = class extends ReviewFeedbackError {
+      constructor(pr, expected, actual) {
+        super(`PR ${pr} head moved: asked about ${expected.slice(0, 40)}, the forge reports ${actual.slice(0, 40) || "no head"}`);
+        this.pr = pr;
+        this.expected = expected;
+        this.actual = actual;
+        this.name = "ReviewHeadMovedError";
+      }
+    };
+    REVIEW_HEAD = /^[0-9a-f]{40}$/;
+  }
+});
+
 // src/forge/ado/redact.ts
 function redactAdoSecrets(text3) {
   return text3.replace(AUTH_HEADER, `$1${REDACTED}`).replace(SCHEME, `$1 ${REDACTED}`).replace(AZDO_PAT, REDACTED).replace(CLASSIC_PAT, REDACTED);
@@ -41808,8 +41844,9 @@ function parseAdoThreads(json, pr) {
     }];
   });
 }
-function parseAdoReviewFeedback(prJson, threadsJson, pr, trustedReviewers) {
+function parseAdoReviewFeedback(prJson, threadsJson, pr, head, trustedReviewers) {
   if (!isObject3(prJson) || prJson.pullRequestId !== pr) throw new Error(`pull request ${pr}: malformed response`);
+  assertReviewHead(pr, head, isObject3(prJson.lastMergeSourceCommit) ? prJson.lastMergeSourceCommit.commitId : void 0);
   const trusted = new Set(trustedReviewers.map((r) => r.toLowerCase()));
   const ignored = /* @__PURE__ */ new Set();
   const counts = (who) => {
@@ -41836,7 +41873,7 @@ function parseAdoReviewFeedback(prJson, threadsJson, pr, trustedReviewers) {
     if (t.status !== "active" && t.status !== "pending") continue;
     const comments2 = Array.isArray(t.comments) ? t.comments.filter(isObject3) : [];
     const first = comments2[0] ?? {};
-    if (str3(first.commentType) !== "text" || endsWithMarker(first.content)) continue;
+    if (str3(first.commentType) !== "text") continue;
     const kept = comments2.flatMap((c) => {
       const who = (isObject3(c.author) ? str3(c.author.uniqueName) : void 0)?.toLowerCase() ?? "";
       const body2 = str3(c.content) ?? "";
@@ -41862,11 +41899,11 @@ function description(bodyFile) {
 function adoReviews(ctx, review = { trustedReviewers: [] }) {
   const prUrl2 = (pr) => `${ctx.repo.url}/pullrequest/${pr}`;
   return {
-    reviewFeedback(pr) {
+    reviewFeedback(pr, head) {
       const params = { ...repoParams(ctx), pullRequestId: String(pr) };
       const prJson = adoJson(adoCall(ctx, "git.pullRequests.GET", params), `pull request ${pr}`);
       const threads = adoJson(adoCall(ctx, "git.pullRequestThreads.GET", params), `threads of pull request ${pr}`);
-      return parseAdoReviewFeedback(prJson, threads, pr, [...review.trustedReviewers, ...ctx.config.trustedAuthors]);
+      return parseAdoReviewFeedback(prJson, threads, pr, head, [...review.trustedReviewers, ...ctx.config.trustedAuthors]);
     },
     findOpenPrForBranch(branch2) {
       const json = adoJson(
@@ -41951,6 +41988,7 @@ var init_reviews = __esm({
   "src/forge/ado/reviews.ts"() {
     "use strict";
     import_fs68 = require("fs");
+    init_review_feedback();
     init_invoke();
     SHA = /^[0-9a-f]{40}$/;
     ADO_PR_DESCRIPTION_MAX = 4e3;
@@ -41993,7 +42031,20 @@ function isReviewFeedbackArgs(args, repoArg) {
 function isFactoryComment(body) {
   return body.trimEnd().split("\n").pop()?.trim() === ADO_FACTORY_COMMENT_MARKER;
 }
-function parseReviewFeedback(stdout, head, trust) {
+function collaboratorErrorsOnly(json, pr, exitStatus) {
+  const errors = json.errors;
+  if (errors === void 0 || errors === null) {
+    if (exitStatus !== 0) throw new ReviewFeedbackError(`review feedback of PR ${pr}: gh exited ${exitStatus} with no GraphQL error`);
+    return false;
+  }
+  if (!Array.isArray(errors) || errors.length === 0) throw new ReviewFeedbackError(`review feedback of PR ${pr}: malformed GraphQL errors`);
+  const limited = errors.find(isRateLimited);
+  if (limited !== void 0) throw new Error(`review feedback of PR ${pr}: GitHub RATE_LIMITED (${errorText(limited)})`);
+  const other = errors.find((e) => !(isObj(e) && Array.isArray(e.path) && e.path[0] === "repository" && e.path[1] === "collaborators"));
+  if (other !== void 0) throw new ReviewFeedbackError(`review feedback of PR ${pr}: partial answer (${errorText(other)})`);
+  return true;
+}
+function parseReviewFeedback(stdout, pr, head, trust, exitStatus = 0) {
   let json;
   try {
     json = JSON.parse(stdout);
@@ -42003,48 +42054,75 @@ function parseReviewFeedback(stdout, head, trust) {
   const data = isObj(json) && isObj(json.data) ? json.data : {};
   const repo = isObj(data.repository) ? data.repository : void 0;
   const pull = repo && isObj(repo.pullRequest) ? repo.pullRequest : void 0;
-  if (!repo || !pull) {
-    const first = isObj(json) && Array.isArray(json.errors) && isObj(json.errors[0]) ? str4(json.errors[0].message) : void 0;
-    throw new Error(`review feedback: no pull request in the response${first ? ` (${first.slice(0, 200)})` : ""}`);
+  if (!isObj(json) || !repo || !pull) {
+    const errors = isObj(json) && Array.isArray(json.errors) ? json.errors : [];
+    const limited = errors.some(isRateLimited);
+    const first = errorText(errors[0]);
+    throw new Error(`review feedback: no pull request in the response${limited ? " (GitHub RATE_LIMITED)" : ""}${first ? ` (${first})` : ""}`);
   }
-  const trusted = new Set(trust.trustedReviewers.map((l) => l.toLowerCase()));
-  const collaborators = isObj(repo.collaborators) && Array.isArray(repo.collaborators.edges) ? repo.collaborators.edges.filter(isObj) : [];
-  for (const e of collaborators) {
+  const collaboratorsUnreadable = collaboratorErrorsOnly(json, pr, exitStatus);
+  assertReviewHead(pr, head, pull.headRefOid);
+  const connection = (v, what) => {
+    const page = isObj(v) && isObj(v.pageInfo) ? v.pageInfo.hasNextPage : void 0;
+    if (!isObj(v) || !Array.isArray(v.nodes) || typeof page !== "boolean" || !v.nodes.every(isObj)) {
+      throw new ReviewFeedbackError(`review feedback of PR ${pr}: the answer has no complete ${what} list`);
+    }
+    if (page) throw new ReviewFeedbackTruncatedError(pr, what);
+    return v.nodes;
+  };
+  const reviews = connection(pull.latestReviews, "latestReviews");
+  const requests = connection(pull.reviewRequests, "reviewRequests");
+  const threadNodes = connection(pull.reviewThreads, "reviewThreads");
+  const configured = new Set(trust.trustedReviewers.map((l) => l.toLowerCase()));
+  const trusted = new Set(configured);
+  const c = repo.collaborators;
+  const edges = isObj(c) && Array.isArray(c.edges) ? c.edges.filter(isObj) : [];
+  const trustIncomplete = collaboratorsUnreadable || !isObj(c) || !Array.isArray(c.edges) || !isObj(c.pageInfo) || c.pageInfo.hasNextPage !== false;
+  for (const e of edges) {
     const l = login(e.node);
     if (l && WRITE_PERMISSIONS.has(str4(e.permission) ?? "")) trusted.add(l.toLowerCase());
   }
   const viewer = login(data.viewer);
   if (viewer && WRITE_PERMISSIONS.has(str4(repo.viewerPermission) ?? "")) trusted.add(viewer.toLowerCase());
   const ignored = /* @__PURE__ */ new Set();
-  const counts = (author) => {
-    if (!author) return false;
-    if (trusted.has(author.toLowerCase())) return true;
-    ignored.add(author);
-    return false;
+  const author = (v) => {
+    const l = login(v);
+    if (!l || !isObj(v)) return void 0;
+    const kind = str4(v.__typename);
+    const name = kind === "Bot" ? `${l}[bot]` : l;
+    const ok2 = kind === "User" ? trusted.has(name.toLowerCase()) : kind === "Bot" ? configured.has(name.toLowerCase()) : false;
+    if (ok2) return name;
+    ignored.add(name);
+    return void 0;
   };
   const decisions = [];
   const threads = [];
-  for (const r of nodes(pull.latestReviews)) {
-    const author = login(r.author);
+  for (const r of reviews) {
     const state = DECISION[str4(r.state) ?? ""];
     const body = str4(r.body) ?? "";
-    if (!state || isFactoryComment(body) || !counts(author)) continue;
+    if (!state || isFactoryComment(body)) continue;
+    const who = author(r.author);
+    if (!who) continue;
     const at = str4(r.submittedAt) ?? "";
     const oid = isObj(r.commit) ? str4(r.commit.oid) : void 0;
     const reviewHead = oid && HEX402.test(oid) ? oid : void 0;
-    decisions.push({ author, state, at, ...reviewHead ? { head: reviewHead } : {} });
+    decisions.push({ author: who, state, at, ...reviewHead ? { head: reviewHead } : {} });
     const id = str4(r.id);
     if (id && body.trim() && reviewHead === head && (state === "changes-requested" || state === "commented")) {
-      threads.push({ id: `review:${id}`, author, body: capped2(body), at });
+      threads.push({ id: `review:${id}`, author: who, body: capped2(body), at });
     }
   }
-  for (const t of nodes(pull.reviewThreads)) {
+  for (const t of threadNodes) {
     const id = str4(t.id);
-    if (!id || t.isResolved !== false || t.isOutdated !== false) continue;
-    const kept = nodes(t.comments).flatMap((c) => {
-      const author = login(c.author);
-      const body2 = str4(c.body) ?? "";
-      return body2.trim() && !isFactoryComment(body2) && counts(author) ? [{ author, body: body2, c }] : [];
+    if (!id || typeof t.isResolved !== "boolean" || typeof t.isOutdated !== "boolean") {
+      throw new ReviewFeedbackError(`review feedback of PR ${pr}: a review thread without its id or state`);
+    }
+    if (t.isResolved || t.isOutdated) continue;
+    const kept = connection(t.comments, `comments of thread ${id.slice(0, 40)}`).flatMap((cm) => {
+      const body2 = str4(cm.body) ?? "";
+      if (!body2.trim() || isFactoryComment(body2)) return [];
+      const who = author(cm.author);
+      return who ? [{ author: who, body: body2, c: cm }] : [];
     });
     if (kept.length === 0) continue;
     const first = kept[0];
@@ -42056,7 +42134,7 @@ ${k.body}`).join("\n\n");
     threads.push({ id, author: first.author, body: capped2(body), ...path15 ? { file: path15 } : {}, ...line ? { line } : {}, at });
   }
   const pending = /* @__PURE__ */ new Set();
-  for (const q of nodes(pull.reviewRequests)) {
+  for (const q of requests) {
     const who = isObj(q.requestedReviewer) ? q.requestedReviewer : {};
     const slug = str4(who.slug);
     const name = login(who) ?? (slug && NAME2.test(slug) ? `team:${slug}` : void 0);
@@ -42066,15 +42144,17 @@ ${k.body}`).join("\n\n");
     decisions,
     threads,
     pendingReviewers: [...pending],
-    ignored: [...ignored].filter((l) => !trusted.has(l.toLowerCase())).sort()
+    ignored: [...ignored].filter((l) => !trusted.has(l.toLowerCase())).sort(),
+    ...trustIncomplete ? { trustIncomplete: true } : {}
   };
 }
-var REVIEW_FEEDBACK_QUERY, NAME2, HOST, NUMBER2, HEX402, MAX_FEEDBACK_BODY_CHARS2, TRUNCATED2, WRITE_PERMISSIONS, isObj, str4, nodes, login, capped2, DECISION;
+var REVIEW_FEEDBACK_QUERY, NAME2, HOST, NUMBER2, HEX402, MAX_FEEDBACK_BODY_CHARS2, TRUNCATED2, WRITE_PERMISSIONS, GITHUB_RATE_LIMITED, isObj, str4, login, capped2, DECISION, errorText, isRateLimited;
 var init_graphql = __esm({
   "src/forge/github/graphql.ts"() {
     "use strict";
     init_reviews();
-    REVIEW_FEEDBACK_QUERY = "query($owner:String!,$name:String!,$number:Int!){viewer{login} repository(owner:$owner,name:$name){viewerPermission collaborators(first:100){edges{permission node{login}}} pullRequest(number:$number){headRefOid latestReviews(first:50){nodes{id state submittedAt body author{login} commit{oid}}} reviewRequests(first:20){nodes{requestedReviewer{__typename ... on User{login} ... on Bot{login} ... on Mannequin{login} ... on Team{slug}}}} reviewThreads(first:100){nodes{id isResolved isOutdated comments(first:20){nodes{body path line originalLine createdAt author{login}}}}}}}}";
+    init_review_feedback();
+    REVIEW_FEEDBACK_QUERY = "query($owner:String!,$name:String!,$number:Int!){viewer{login} repository(owner:$owner,name:$name){viewerPermission collaborators(first:100){pageInfo{hasNextPage} edges{permission node{login}}} pullRequest(number:$number){headRefOid latestReviews(first:50){pageInfo{hasNextPage} nodes{id state submittedAt body author{__typename login} commit{oid}}} reviewRequests(first:20){pageInfo{hasNextPage} nodes{requestedReviewer{__typename ... on User{login} ... on Bot{login} ... on Mannequin{login} ... on Team{slug}}}} reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated comments(first:20){pageInfo{hasNextPage} nodes{body path line originalLine createdAt author{__typename login}}}}}}}}";
     NAME2 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
     HOST = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
     NUMBER2 = /^[1-9]\d{0,9}$/;
@@ -42082,9 +42162,9 @@ var init_graphql = __esm({
     MAX_FEEDBACK_BODY_CHARS2 = 8e3;
     TRUNCATED2 = "\n(truncated)";
     WRITE_PERMISSIONS = /* @__PURE__ */ new Set(["ADMIN", "MAINTAIN", "WRITE"]);
+    GITHUB_RATE_LIMITED = /\bRATE_LIMITED\b|API rate limit exceeded|secondary rate limit/i;
     isObj = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
     str4 = (v) => typeof v === "string" ? v : void 0;
-    nodes = (v) => isObj(v) && Array.isArray(v.nodes) ? v.nodes.filter(isObj) : [];
     login = (v) => {
       const l = isObj(v) ? str4(v.login) : void 0;
       return l && NAME2.test(l) ? l : void 0;
@@ -42097,6 +42177,8 @@ var init_graphql = __esm({
       DISMISSED: "dismissed",
       PENDING: "pending"
     };
+    errorText = (e) => (isObj(e) ? str4(e.message) ?? "" : "").slice(0, 200);
+    isRateLimited = (e) => isObj(e) && (e.type === "RATE_LIMITED" || GITHUB_RATE_LIMITED.test(str4(e.message) ?? ""));
   }
 });
 
@@ -44756,10 +44838,14 @@ function isAncestor(ctx, head, base) {
 }
 function localReviewFeedback(records2, head) {
   const latest = /* @__PURE__ */ new Map();
-  for (const r of records2) latest.set(r.author, r);
+  const onHead = /* @__PURE__ */ new Map();
+  for (const r of records2) {
+    latest.set(r.author, r);
+    if (r.head === head) onHead.set(r.author, r);
+  }
   return {
     decisions: [...latest.values()].map((r) => ({ author: r.author, state: r.state, at: r.at, head: r.head })),
-    threads: records2.filter((r) => r.head === head && r.state !== "approved" && r.body.trim() !== "").map((r) => ({ id: r.id, author: r.author, body: r.body, at: r.at })),
+    threads: [...onHead.values()].filter((r) => r.state !== "approved" && r.body.trim() !== "").map((r) => ({ id: r.id, author: r.author, body: r.body, at: r.at })),
     pendingReviewers: [],
     ignored: []
   };
@@ -44795,7 +44881,7 @@ function localReviews(ctx) {
   return {
     refreshPr: refresh,
     reviewFeedback(pr, head) {
-      find(pr);
+      assertReviewHead(pr, head, view(pr).headRefOid);
       return localReviewFeedback(readLocalReviews((0, import_path90.dirname)(ctx.storePath), pr), head);
     },
     findOpenPrForBranch(branch2) {
@@ -44864,6 +44950,7 @@ var init_reviews2 = __esm({
     "use strict";
     import_fs74 = require("fs");
     import_path90 = require("path");
+    init_review_feedback();
     init_mirror();
     init_store();
     TRUSTED_READ_ENV2 = Object.freeze({ GIT_NO_REPLACE_OBJECTS: "1" });
@@ -46784,9 +46871,11 @@ function ghReviewFeedback(exec, repo, pr, head, trust, cwd) {
   const args = reviewFeedbackArgs(repo, pr);
   const res = exec("gh", args, { cwd });
   try {
-    return parseReviewFeedback(res.stdout, head, trust);
+    return parseReviewFeedback(res.stdout, pr, head, trust, res.status);
   } catch (error2) {
-    if (res.status === 0) throw new GhCommandError(error2 instanceof Error ? error2.message : String(error2));
+    if (error2 instanceof ReviewFeedbackError) throw error2;
+    const message = error2 instanceof Error ? error2.message : String(error2);
+    if (res.status === 0 || GITHUB_RATE_LIMITED.test(message)) throw new GhCommandError(message);
     throw new GhCommandError(`gh api graphql (review feedback of PR ${pr}) failed (exit ${res.status}): ${res.stderr.trim().split("\n")[0]}`);
   }
 }
@@ -46810,6 +46899,7 @@ var init_reviews3 = __esm({
     "use strict";
     init_gh();
     init_graphql();
+    init_review_feedback();
     MERGE_VIEW_FIELDS = "number,state,isDraft,baseRefName,baseRefOid,headRefOid";
     HEX407 = /^[0-9a-f]{40}$/;
     PR_VIEW_FIELDS = "number,state,isDraft,baseRefName,baseRefOid,headRefName,headRefOid,url";
@@ -52223,6 +52313,7 @@ var init_factory_pr = __esm({
     init_forge_roots();
     init_ledger2();
     init_store();
+    init_review_feedback();
   }
 });
 
@@ -52239,6 +52330,7 @@ var init_poll = __esm({
     init_file_lock();
     init_worktree_paths();
     init_checks3();
+    init_graphql();
     init_exec();
     init_collect();
     init_render();
