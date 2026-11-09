@@ -50,6 +50,10 @@ export class FakeAgentGithub {
   truncate = false;
   /** The assign POST: adds an Assigned event at `now()` (`assign`), returns 2xx without one (`silent`), or fails (`fail`). */
   onAssign: 'assign' | 'silent' | 'fail' = 'assign';
+  /** What a failing assign POST answers (default: gh's HTTP 422). */
+  assignFailure: ExecResult = { status: 1, stdout: '', stderr: 'gh: Validation Failed (HTTP 422)' };
+  /** The next `gh pr close` calls that fail (a network error), before closes succeed. */
+  closeFailures = 0;
   readonly assigns: string[][] = [];
   readonly closes: string[][] = [];
   readonly comments: Array<{ args: string[]; body: string }> = [];
@@ -66,12 +70,16 @@ export class FakeAgentGithub {
     }
     if (args[0] === 'api' && args[3] === '--method' && args[4] === 'POST' && /\/issues\/\d+\/assignees$/.test(args[5] ?? '')) {
       this.assigns.push([...args]);
-      if (this.onAssign === 'fail') return { status: 1, stdout: '', stderr: 'HTTP 422: Validation Failed' };
+      if (this.onAssign === 'fail') return this.assignFailure;
       if (this.onAssign === 'assign') this.events.push({ type: 'assigned', at: this.now() });
       return ok('{}');
     }
     if (args[0] === 'pr' && args[1] === 'close') {
       this.closes.push([...args]);
+      if (this.closeFailures > 0) {
+        this.closeFailures -= 1;
+        return { status: 1, stdout: '', stderr: 'error connecting to api.github.com' };
+      }
       const pr = this.prs.find((p) => String(p.number) === args[2]);
       if (pr) pr.state = 'CLOSED';
       return ok('');
@@ -151,5 +159,21 @@ export function agentCommit(h: Harness, pr: number, files: Record<string, string
   gitIn(dir, '-c', 'user.name=copilot-swe-agent[bot]', '-c', 'user.email=198982749+Copilot@users.noreply.github.com', 'commit', '-q', '-m', 'agent work');
   const sha = gitIn(dir, 'rev-parse', 'HEAD');
   gitIn(dir, 'push', '-q', 'origin', `+HEAD:refs/pull/${pr}/head`);
+  return sha;
+}
+
+/** A human commit on the remote's dev (the configured base moves); returns its sha. */
+export function humanBaseCommit(h: Harness, files: Record<string, string>): string {
+  const dir = join(h.dir, `human-${++clones}`);
+  gitIn(h.dir, 'clone', '-q', h.bare, dir);
+  gitIn(dir, 'checkout', '-q', 'origin/dev');
+  for (const [path, content] of Object.entries(files)) {
+    mkdirSync(join(dir, path, '..'), { recursive: true });
+    writeFileSync(join(dir, path), content);
+  }
+  gitIn(dir, 'add', '-A');
+  gitIn(dir, '-c', 'user.name=robin', '-c', 'user.email=robin@example.com', 'commit', '-q', '-m', 'human work on dev');
+  const sha = gitIn(dir, 'rev-parse', 'HEAD');
+  gitIn(dir, 'push', '-q', 'origin', 'HEAD:refs/heads/dev');
   return sha;
 }

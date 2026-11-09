@@ -79,8 +79,9 @@ import {
   CODING_AGENT_ADOPT_GATE, CODING_AGENT_CONFIRM_READS, CODING_AGENT_FETCH_HEAD_ARGS, CODING_AGENT_GATE, CODING_AGENT_HEAD_MOVED_GATE,
   CODING_AGENT_REASSIGNED_GATE, CODING_AGENT_SESSION_USAGE, CODING_AGENT_SESSIONS_GATE, CODING_AGENT_TIMEOUT_GATE, CODING_AGENT_UNCONFIRMED_GATE,
   CODING_AGENT_WAIT_GATE, codingAgentFetchArgs, codingAgentLinkBody, codingAgentLinkCommentArgs, codingAgentRefusal, codingAgentRepoOf,
-  codingAgentSessionsOn, codingAgentTreeArgs, linkEntries, loadCodingAgentConfig, openAgentPrs, PRE_ASSIGN_SINCE, recordCodingAgentSession,
-  type CodingAgentConfig,
+  codingAgentSessionsOn, codingAgentTreeArgs, linkEntries, loadCodingAgentChoice, openAgentPrs, PRE_ASSIGN_SINCE, recordCodingAgentSession,
+  CodingAgentSessionsBusyError, codingAgentMergeBaseArgs, isDefiniteAssignRefusal, releaseCodingAgentSession, reserveCodingAgentSession, type CodingAgentStepContext,
+  type CodingAgentChoice, type CodingAgentConfig, DEFAULT_CODING_AGENT_CONFIG,
 } from './coding-agent-lane.js';
 import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, ghOpenPrs, ghPrHeadState, ghRepoView, githubReviews } from '../../forge/github/reviews.js';
 import { ghDependsOn, ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, githubTracker } from '../../forge/github/tracker.js';
@@ -162,6 +163,8 @@ import {
   type HeldOwner,
   unreadableOwnerMessage,
   describeOwner,
+  FactoryBusyError,
+  ownerRecord,
 } from './state.js';
 
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
@@ -255,10 +258,10 @@ export interface FactoryEngineOptions {
   /** The local forge's gate process (default: defaultLocalGateRunner, no shell); tests substitute it. */
   localGate?: LocalGateRunner;
   /**
-   * The coding agent keys (factory.run.implementer, factory.codingAgent.*);
-   * omitted = loadCodingAgentConfig(root) at the first implement step.
+   * The trusted user config the coding agent opt-in is read from (factory.run.implementer, factory.codingAgent.*);
+   * omitted = the user's own trusted config, read at the first implement step (tests pass one).
    */
-  codingAgent?: CodingAgentConfig;
+  codingAgentUserConfig?: unknown;
 }
 
 export interface FactoryForgeInput {
@@ -345,7 +348,7 @@ export interface FactoryRunOutcome {
   /** Parked at awaiting-human: merge: the exact command a human runs (the engine never merges). */
   mergeCommand?: string;
   /** --dry-run: what the run would do next. */
-  plan?: { next: FactoryPhase | 'awaiting-human'; laneMaxCredits: number; maxRunCredits?: number; planSource?: string; reason?: string; gateProblem?: string };
+  plan?: { next: FactoryPhase | 'awaiting-human' | 'coding-agent'; laneMaxCredits: number; maxRunCredits?: number; planSource?: string; reason?: string; gateProblem?: string };
   /** --dry-run: a real run now would exit EXIT_BUSY (as the busy error's JSON says). */
   busy?: true;
 }
@@ -1122,6 +1125,7 @@ class FactoryEngine {
   private async cancel(): Promise<void> {
     const usage = new Map<string, NonNullable<FactoryLaneRecord['usage']>>();
     for (const lane of this.state.lanes.filter((l) => l.status === 'running')) {
+      if (lane.kind === 'coding-agent') { usage.set(lane.id, this.codingAgentCancelled(lane)); continue; }
       let u = capUsage(lane.maxCredits);
       if (lane.jobId) {
         try {
@@ -2166,6 +2170,7 @@ class FactoryEngine {
   private async merge(): Promise<void> {
     const { pr, head } = this.state;
     if (!pr || !head) throw new FactoryStepError('merge needs a published head and PR');
+    this.codingAgentHandOff();
     const view = await this.settledPr(pr, head, () => this.prView(pr));
     if (this.prGone(view)) return;
     if (view.headRefOid !== head) {
@@ -2575,9 +2580,9 @@ class FactoryEngine {
   // merge then treat like any lane's. The agent's PR gets a link comment and is closed after publish (D5).
 
   /** The coding agent write context, set ONLY around the assign and around the agent PR's link comment and close; cleared in finally. */
-  private agentStep?: CodingAgentContext;
-  /** The coding agent keys of this invocation (resolved once). */
-  private agentConfig?: CodingAgentConfig;
+  private agentStep?: CodingAgentStepContext;
+  /** Whether this invocation's run uses the coding agent, and its keys (resolved once; its warning printed once). */
+  private agentChoice?: CodingAgentChoice;
 
   /** The repository-only GitHub read context (the coding agent's status read): the run's repository as intake recorded it. */
   private githubReadContext(): GithubReadContext | undefined {
@@ -2585,7 +2590,7 @@ class FactoryEngine {
     return repo ? { repo: ghRepoArg(repo) } : undefined;
   }
 
-  private withAgentStep<T>(ctx: CodingAgentContext, call: () => T): T {
+  private withAgentStep<T>(ctx: CodingAgentStepContext, call: () => T): T {
     this.agentStep = ctx;
     try {
       return call();
@@ -2594,16 +2599,26 @@ class FactoryEngine {
     }
   }
 
+  /**
+   * chooseCodingAgent for this run (the user layer first; see
+   * coding-agent-lane.ts). Throws only on a config error after the user
+   * opted in; the dispatch parks on it.
+   */
+  private codingAgentChoice(): CodingAgentChoice {
+    if (this.agentChoice) return this.agentChoice;
+    const choice = loadCodingAgentChoice(this.o.root, { forgeKind: this.o.forge?.config.kind ?? 'github', repoUrl: this.state.repoUrl ?? '' }, this.o.codingAgentUserConfig);
+    if (choice.use) for (const w of choice.warnings) this.o.warn?.(w);
+    else if (choice.warning) this.o.warn?.(choice.warning);
+    return (this.agentChoice = choice);
+  }
+
+  /** The keys of a run that already has a session: the chosen config, or the defaults when the config no longer opts in. */
   private codingAgentSettings(): CodingAgentConfig {
-    if (this.agentConfig) return this.agentConfig;
-    if (this.o.codingAgent) return (this.agentConfig = this.o.codingAgent);
+    let choice: CodingAgentChoice | undefined;
     try {
-      const { config, warnings } = loadCodingAgentConfig(this.o.root);
-      for (const w of warnings) this.o.warn?.(w);
-      return (this.agentConfig = config);
-    } catch (error) {
-      throw new FactoryStepError(`the coding agent config could not be read: ${errText(error)}`);
-    }
+      choice = this.codingAgentChoice();
+    } catch { /* a broken config never strands a started session: the defaults apply */ }
+    return choice?.use ? choice.config : { ...DEFAULT_CODING_AGENT_CONFIG, repos: [] };
   }
 
   private codingAgentRepo(): CodingAgentRepo {
@@ -2648,7 +2663,15 @@ class FactoryEngine {
     const record = s.codingAgent;
     if (!record) {
       if (s.kind === 'ci-heal' || !this.o.issue || s.lanes.some((l) => l.kind === 'implement')) return false;
-      if (this.codingAgentSettings().implementer !== 'coding-agent') return false;
+      let choice: CodingAgentChoice;
+      try {
+        choice = this.codingAgentChoice();
+      } catch (error) {
+        // Only after the user config opted in: a broken coding agent key parks before anything is assigned.
+        this.gate(CODING_AGENT_GATE, `the coding agent config could not be read: ${oneLine(errText(error), 300)}; nothing was assigned. Fix factory.codingAgent / factory.run in the user config or the working-tree .copilot/omg.jsonc, then rerun ${this.resume}`);
+        return true;
+      }
+      if (!choice.use) return false;
     }
     const refusal = codingAgentRefusal(this.o.forge?.config.kind ?? 'github', s.kind ?? 'issue');
     if (refusal) {
@@ -2687,15 +2710,24 @@ class FactoryEngine {
       ].join(' and ');
       return this.gate(CODING_AGENT_GATE, `${what}; a new assignment could pick up that earlier session, so nothing was assigned. Unassign the agent and close its pull requests on GitHub, then rerun ${this.resume}`);
     }
-    const day = this.iso().slice(0, 10);
-    const used = codingAgentSessionsOn(this.o.root, this.o.ledgerDir ?? defaultLedgerDir(), day);
-    if (used >= cfg.maxSessionsPerDay) {
-      return this.gate(CODING_AGENT_SESSIONS_GATE, `the factory started ${used} coding agent session(s) on ${day} (UTC), factory.codingAgent.maxSessionsPerDay is ${cfg.maxSessionsPerDay}; nothing was assigned. Rerun ${this.resume} tomorrow, or raise the cap in the user config`);
-    }
     const seq = this.state.lanes.filter((l) => l.kind === 'coding-agent').length + 1;
     const laneId = `${runSlug(this.key)}-coding-agent-${seq}`;
     // The LOCAL clock just before the POST: the read's window starts at it minus the skew margin.
     const assignAt = this.iso();
+    const day = assignAt.slice(0, 10);
+    const session = { root: this.o.root, ledgerDir: this.o.ledgerDir ?? defaultLedgerDir(), laneId, run: runSlug(this.key), repo: ghRepoArg(repo), at: assignAt };
+    // The process identity is read before the lock (it may spawn); the lock only covers the count and the provisional entry.
+    const by = describeOwner(ownerRecord(assignAt, this.o.owner ?? defaultOwnerDeps(), { run: runSlug(this.key), root: this.o.root }));
+    let reserved: { ok: boolean; used: number };
+    try {
+      reserved = reserveCodingAgentSession({ ...session, by }, cfg.maxSessionsPerDay);
+    } catch (error) {
+      if (error instanceof CodingAgentSessionsBusyError) throw new FactoryBusyError(`${errText(error)}; nothing was assigned, rerun ${this.resume}`);
+      throw new FactoryStepError(`the coding agent session count could not be reserved: ${errText(error)}; nothing was assigned`);
+    }
+    if (!reserved.ok) {
+      return this.gate(CODING_AGENT_SESSIONS_GATE, `the factory started ${reserved.used} coding agent session(s) on ${day} (UTC), factory.codingAgent.maxSessionsPerDay is ${cfg.maxSessionsPerDay}; nothing was assigned. Rerun ${this.resume} tomorrow, or raise the cap in the user config`);
+    }
     const lane: FactoryLaneRecord = { id: laneId, kind: 'coding-agent', role: 'coding-agent', startSha: baseSha, status: 'running', maxCredits: 0, startedAt: assignAt };
     // Written ahead of the POST: a crash after it resumes as posted (counted, never assigned again).
     this.save((x) => ({ ...x, lanes: [...x.lanes, lane], codingAgent: { laneId, assignAt, assign: 'pending' } }));
@@ -2703,10 +2735,22 @@ class FactoryEngine {
     try {
       r = this.withAgentStep({ repo: ghRepoArg(repo), issue, base: this.state.base }, () => assignCodingAgent(this.exec, repo, issue, this.state.base, assignAt, this.o.root));
     } catch (error) {
-      // The POST itself failed: no session. A rerun pre-reads again before any new assign.
-      this.updateLane(laneId, { status: 'failed', endedAt: this.iso(), note: `assign failed: ${oneLine(errText(error), 300)}` });
-      this.save((x) => ({ ...x, codingAgent: { ...x.codingAgent!, assign: 'failed' } }));
-      return this.gate(CODING_AGENT_GATE, `assigning issue #${issue} to the Copilot coding agent failed (${oneLine(errText(error), 300)}); no session was counted. Check that the agent is enabled and the gh login may write issues, then rerun ${this.resume}`);
+      if (error instanceof StateTamperedError) throw error;
+      const why = oneLine(errText(error), 300);
+      if (error instanceof FactorySafetyError || isDefiniteAssignRefusal(errText(error))) {
+        // Refused for certain (the guard before the spawn, or GitHub's HTTP 4xx): no session. A rerun pre-reads again before any new assign.
+        try {
+          releaseCodingAgentSession(session);
+        } catch (releaseError) {
+          this.o.warn?.(`omg factory run: the provisional coding agent session ${laneId} stays counted: ${errText(releaseError)}`);
+        }
+        this.updateLane(laneId, { status: 'failed', endedAt: this.iso(), note: `assign refused: ${why}` });
+        this.save((x) => ({ ...x, codingAgent: { ...x.codingAgent!, assign: 'failed' } }));
+        return this.gate(CODING_AGENT_GATE, `assigning issue #${issue} to the Copilot coding agent was refused (${why}); no session was counted. Check that the agent is enabled and the gh login may write issues, then rerun ${this.resume}`);
+      }
+      // A timeout, signal, network error or 5xx: GitHub may have accepted it. Counted, never assigned again; the next run's read decides.
+      this.codingAgentPosted(laneId);
+      return this.gate(CODING_AGENT_UNCONFIRMED_GATE, `assigning issue #${issue} to the Copilot coding agent did not complete (${why}): the assign may have started a session; it was counted. The factory never assigns again on its own; rerun ${this.resume} to read whether the agent is on the issue, or omg factory run cancel ${this.key}`);
     }
     this.codingAgentPosted(laneId);
     let status = r.confirmed ? r.status : undefined;
@@ -2841,6 +2885,8 @@ class FactoryEngine {
     if (!check.ok) return this.gate(CODING_AGENT_ADOPT_GATE, this.codingAgentAdoptRefusal(status, check.reasons));
     if (!s.baseSha) throw new FactoryStepError('adopting the coding agent pull request needs the base sha the run assigned at');
     if (this.recheckFailed('before the coding agent fetch')) return;
+    // The configured base's tip now: the adopted range starts where the head left it (human commits on a moved base are not the agent's).
+    const baseTip = this.fetchBase();
     const mismatch = remoteRepoMismatch(this.exec, this.o.root, runRemote(s), s.repoUrl);
     if (mismatch) throw new FactoryStepError(`refusing to fetch: ${mismatch}`);
     let before: RepoSnapshot;
@@ -2849,7 +2895,8 @@ class FactoryEngine {
     } catch (error) {
       throw new FactoryStepError(`the pre-fetch snapshot failed: ${errText(error)}`);
     }
-    this.run(codingAgentFetchArgs(check.pr), 'git', TRUSTED_READ_ENV);
+    // The guard admits this fetch only with a step context naming exactly this PR.
+    this.withAgentStep({ repo: ghRepoArg(repo), issue, base: s.base, adopt: check.pr }, () => this.run(codingAgentFetchArgs(check.pr), 'git', TRUSTED_READ_ENV));
     let after: RepoSnapshot | undefined;
     let problems: string[];
     try {
@@ -2871,14 +2918,16 @@ class FactoryEngine {
     if (!recheck.ok || recheck.pr !== check.pr || recheck.head !== check.head || again.assignedAt !== record.since!.at || again.pr?.finishedAt !== status.pr?.finishedAt) {
       return this.gate(CODING_AGENT_HEAD_MOVED_GATE, `the coding agent's pull request #${check.pr} changed while the factory fetched ${check.head.slice(0, 12)} (a new read shows ${again.phase}${again.pr?.head ? ` at ${again.pr.head.slice(0, 12)}` : ''}); nothing was adopted. Rerun ${this.resume} to read it again`);
     }
-    const files = listChangedFiles(this.exec, this.o.root, s.baseSha, check.head);
-    if (files === null) throw new FactoryStepError(`git diff ${s.baseSha.slice(0, 12)}...${check.head.slice(0, 12)} failed`);
+    const from = this.run(codingAgentMergeBaseArgs(baseTip, check.head), 'git', TRUSTED_READ_ENV).trim();
+    if (!HEX40.test(from)) throw new FactoryStepError(`git merge-base ${baseTip.slice(0, 12)} ${check.head.slice(0, 12)} found no common commit`);
+    const files = listChangedFiles(this.exec, this.o.root, from, check.head);
+    if (files === null) throw new FactoryStepError(`git diff ${from.slice(0, 12)}...${check.head.slice(0, 12)} failed`);
     if (files.length === 0) return this.gate(CODING_AGENT_ADOPT_GATE, `the coding agent's pull request #${check.pr} changes nothing against ${s.base}; nothing was adopted; ${this.codingAgentRestart()}`);
     let extraProtected: string[] = [];
     try { extraProtected = configuredProtectedPaths(this.o.root); } catch { /* the defaults still apply */ }
     const hit = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...extraProtected]);
     if (hit.length > 0) return this.gate('protected-paths', `the coding agent's pull request #${check.pr} changes merge-rule or lane-protected paths: ${hit.join(', ')}; nothing was adopted or pushed`);
-    const links = linkEntries(this.run(codingAgentTreeArgs(s.baseSha), 'git', TRUSTED_READ_ENV), this.run(codingAgentTreeArgs(check.head), 'git', TRUSTED_READ_ENV));
+    const links = linkEntries(this.run(codingAgentTreeArgs(from), 'git', TRUSTED_READ_ENV), this.run(codingAgentTreeArgs(check.head), 'git', TRUSTED_READ_ENV));
     if (links.gitlinks.length > 0 || links.symlinks.length > 0) {
       const what = [...links.gitlinks.map((p) => `gitlink ${p}`), ...links.symlinks.map((p) => `symlink ${p}`)].slice(0, 5).join(', ');
       return this.gate(CODING_AGENT_ADOPT_GATE, `the coding agent's pull request #${check.pr} adds nested repositories or symlinks (${what}), which the factory does not review; nothing was adopted; ${this.codingAgentRestart()}`);
@@ -2898,7 +2947,7 @@ class FactoryEngine {
    * After publish opened the factory's own PR: the link comment on the
    * adopted agent PR, then its close (decision D5), each once, each with the
    * step context naming exactly that PR. A failure is a warning; the next
-   * publish tries again.
+   * publish and the merge step try again.
    */
   private codingAgentHandOff(): void {
     const s = this.state;
@@ -2908,10 +2957,11 @@ class FactoryEngine {
     if (!record || !adopted || record.closed || !ownPr || !this.o.issue) return;
     const repo = codingAgentRepoOf(s.repoUrl);
     if (!repo) return;
-    const ctx: CodingAgentContext = { repo: ghRepoArg(repo), issue: this.o.issue, base: s.base, pr: adopted.pr };
+    const link = { ownPr, branch: s.branch, head: adopted.head };
+    const ctx: CodingAgentStepContext = { repo: ghRepoArg(repo), issue: this.o.issue, base: s.base, pr: adopted.pr, link };
     try {
       if (!record.linked) {
-        const body = this.writeBody('coding-agent-link', codingAgentLinkBody({ issue: this.o.issue, ownPr, branch: s.branch, head: adopted.head }));
+        const body = this.writeBody('coding-agent-link', codingAgentLinkBody({ issue: this.o.issue, ...link }));
         const res = this.withAgentStep(ctx, () => this.exec('gh', codingAgentLinkCommentArgs(repo, adopted.pr, body), { cwd: this.o.root }));
         if (res.status !== 0) {
           this.o.warn?.(`omg factory run: could not comment on the coding agent's pull request #${adopted.pr}: ${res.stderr.trim().split('\n')[0]}`);
@@ -2919,12 +2969,24 @@ class FactoryEngine {
         }
         this.save((x) => ({ ...x, codingAgent: { ...x.codingAgent!, linked: true } }));
       }
-      this.withAgentStep(ctx, () => ghRun(this.exec, codingAgentCloseArgs(repo, adopted.pr), this.o.root));
+      // Idempotent: a PR someone (or an earlier attempt) already closed counts as closed.
+      const res = this.withAgentStep({ ...ctx, link: undefined }, () => this.exec('gh', codingAgentCloseArgs(repo, adopted.pr), { cwd: this.o.root }));
+      if (res.status !== 0 && !/already closed/i.test(res.stderr)) throw new FactoryStepError(`gh pr close ${adopted.pr} failed (exit ${res.status}): ${res.stderr.trim().split('\n')[0]}`);
       this.save((x) => ({ ...x, codingAgent: { ...x.codingAgent!, closed: true }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `closed the coding agent's pull request #${adopted.pr}; the work continues on #${ownPr}` }] }));
     } catch (error) {
       if (error instanceof StateTamperedError) throw error;
       this.o.warn?.(`omg factory run: could not close the coding agent's pull request #${adopted.pr}: ${errText(error)}`);
     }
+  }
+
+  /**
+   * Cancel while the agent works: the lane keeps its recorded usage (the
+   * session is billed whatever happens next), and the operator learns that
+   * the factory stops nothing on GitHub.
+   */
+  private codingAgentCancelled(lane: FactoryLaneRecord): NonNullable<FactoryLaneRecord['usage']> {
+    this.o.warn?.(`omg factory run: the Copilot coding agent may still be working on issue #${this.o.issue} on GitHub; the factory does not stop it. To stop it, unassign Copilot on the issue and close its pull request`);
+    return lane.usage ?? { ...CODING_AGENT_SESSION_USAGE };
   }
 }
 
@@ -2956,6 +3018,33 @@ function busyHolder(o: FactoryEngineOptions, key: FactoryRunKey): string | null 
   return what(factoryRepoOwnerPath(o.root), 'the engine lock of this checkout')
     ?? what(factoryOwnerPath(o.root, key), `the run of ${runLabel(key)}`)
     ?? (claim ? `the cross-clone claim: ${claimBusyMessage(key, claim)}` : null);
+}
+
+/**
+ * The dry run of a run whose implementer would be the coding agent: what the
+ * real run would assign and bill, with today's session count; undefined when
+ * the run would take the Copilot implement lane (its warning, if any, printed).
+ */
+function codingAgentDryRun(o: FactoryEngineOptions, forgeKind: string, repoUrl: string, source: string, caps: { laneMaxCredits: number; maxRunCredits?: number }): FactoryRunOutcome | undefined {
+  let choice: CodingAgentChoice;
+  try {
+    choice = loadCodingAgentChoice(o.root, { forgeKind, repoUrl }, o.codingAgentUserConfig);
+  } catch (error) {
+    const reason = `the coding agent config could not be read: ${oneLine(errText(error), 300)}`;
+    return { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; ${reason}, so the run would stop at awaiting-human: ${CODING_AGENT_GATE}`, plan: { next: 'awaiting-human', reason: CODING_AGENT_GATE, planSource: source, ...caps } };
+  }
+  if (!choice.use) {
+    if (choice.warning) o.warn?.(choice.warning);
+    return undefined;
+  }
+  for (const w of choice.warnings) o.warn?.(w);
+  const day = new Date(o.now?.() ?? Date.now()).toISOString().slice(0, 10);
+  const used = codingAgentSessionsOn(o.root, o.ledgerDir ?? defaultLedgerDir(), day);
+  return {
+    exitCode: 0, phase: null, state: null,
+    message: `dry run: plan from ${source}; the run would assign issue #${o.issue} to the Copilot coding agent, a billed GitHub session (${used} of factory.codingAgent.maxSessionsPerDay ${choice.config.maxSessionsPerDay} used today, UTC)`,
+    plan: { next: 'coding-agent', planSource: source, ...caps },
+  };
 }
 
 /** Read-only preview: issue and plan resolution, the resolved caps; no state, lanes or pushes. */
@@ -3025,6 +3114,8 @@ function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
       if ('missing' in probe) gateProblem = probe.missing;
     }
     const gateNote = gateProblem ? `; but the local gate cannot start (${gateProblem}), so after review the run would park at awaiting-human: gates` : '';
+    const agent = source ? codingAgentDryRun(o, forge.kind, o.forge!.config.repo.url, source, caps) : undefined;
+    if (agent) return agent;
     return source
       ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${gateNote}`, plan: { next: 'implement', planSource: source, ...caps, ...(gateProblem ? { gateProblem } : {}) } }
       : { exitCode: 0, phase: null, state: null, message: 'dry run: no plan (no Acceptance Criteria, "Acceptance criteria" heading or trusted omg-plan: link); the run would stop at awaiting-human: needs-plan', plan: { next: 'awaiting-human', reason: 'needs-plan', ...caps } };
@@ -3042,6 +3133,9 @@ function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
   if (v.state !== 'OPEN') return { exitCode: 0, phase: null, state: null, message: 'dry run: the issue is closed; the run would be cancelled', plan: { next: 'cancelled', ...caps } };
   const link = findPlanLink(body, Array.isArray(v.comments) ? v.comments : [], issueAuthorTrusted(v));
   const source = link ? `omg-plan ${link}` : hasAcceptanceCriteria(body) ? 'issue body (Acceptance criteria)' : undefined;
+  const repoUrl = typeof v.url === 'string' ? v.url.replace(/\/issues\/\d+$/, '') : '';
+  const agent = source ? codingAgentDryRun(o, 'github', repoUrl, source, caps) : undefined;
+  if (agent) return agent;
   return source
     ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits`, plan: { next: 'implement', planSource: source, ...caps } }
     : { exitCode: 0, phase: null, state: null, message: 'dry run: no plan (no "Acceptance criteria" heading or omg-plan: link); the run would stop at awaiting-human: needs-plan', plan: { next: 'awaiting-human', reason: 'needs-plan', ...caps } };

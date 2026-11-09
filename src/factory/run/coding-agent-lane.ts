@@ -7,20 +7,26 @@
  *
  * - config: `factory.run.implementer` (`copilot` | `coding-agent`, default
  *   `copilot`), `factory.codingAgent.maxWaitMinutes` (90) and
- *   `factory.codingAgent.maxSessionsPerDay` (5), from the trusted user config;
- *   the working-tree project config may only opt out or lower a number (a
- *   lane can drop a file into the checkout, and a session is billed);
+ *   `factory.codingAgent.maxSessionsPerDay` (5) and `factory.codingAgent.repos`
+ *   (the per-repository opt-in), from the trusted user config; the
+ *   working-tree project config may only opt out or lower a number (a lane
+ *   can drop a file into the checkout, and a session is billed);
+ *   chooseCodingAgent reads the user layer first and nothing else without
+ *   its opt-in;
  * - the sealed run-state record of the session (CodingAgentRunRecord) and its
  *   shape check, called by state.ts on every load;
  * - session metering: one premium request per session as an estimate
  *   (decision D6), recorded in the budget ledger tagged role `coding-agent`
  *   and mirrored in the engine ledger directory (outside every lane-writable
- *   root), and the per-day count the cap reads (the larger of the two);
+ *   root), the per-day count the cap reads (the larger of the two), and the
+ *   cap check made atomic across engines by a provisional mirror entry
+ *   written under the mirror's file lock;
  * - the exact git and gh shapes of the adopt and the hand-off, which the
- *   factory guard (exec.ts) admits: the fetch of one PR head, the read of
- *   FETCH_HEAD, the tree listing of one commit, and the link comment on the
- *   agent's PR (only with the step's CodingAgentContext naming that PR; the
- *   guard runs it with its own copy of the body file).
+ *   factory guard (exec.ts) admits: the fetch of one PR head (only with the
+ *   step context naming it), the read of FETCH_HEAD, the merge-base of two
+ *   commits, the tree listing of one commit, and the link comment on the
+ *   agent's PR (only with the step context naming that PR; the guard runs it
+ *   with its own copy of the body file, which must be the exact link text).
  *
  * Everything the agent wrote is untrusted lane output. Nothing here reads a
  * title, body, comment or commit message of the agent's PR.
@@ -32,7 +38,7 @@ import { ledgerPath, readLedger, recordUsage } from '../../budget/ledger.js';
 import { resolveProjectConfigPath } from '../../config/project-config-path.js';
 import { CODING_AGENT_LOGIN, type CodingAgentContext, type CodingAgentRepo } from '../../forge/github/coding-agent.js';
 import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
-import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
+import { acquireFileLockSync, lockPathFor, releaseFileLockSync, withFileLockSync } from '../../lib/file-lock.js';
 import { userConfigLayers } from '../../ship/config.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 
@@ -76,11 +82,22 @@ export interface CodingAgentConfig {
   maxWaitMinutes: number;
   /** `factory.codingAgent.maxSessionsPerDay`: sessions the factory starts per UTC day (all runs, all repositories of this user). */
   maxSessionsPerDay: number;
+  /** `factory.codingAgent.repos`: the `OWNER/NAME` repositories a billed session may start in (user config only; compared case-insensitively). */
+  repos: string[];
 }
 
-export const DEFAULT_CODING_AGENT_CONFIG: Readonly<CodingAgentConfig> = Object.freeze({ implementer: 'copilot', maxWaitMinutes: 90, maxSessionsPerDay: 5 });
+export const DEFAULT_CODING_AGENT_CONFIG: Readonly<CodingAgentConfig> = Object.freeze({ implementer: 'copilot', maxWaitMinutes: 90, maxSessionsPerDay: 5, repos: [] as string[] });
 
 const IMPLEMENTERS: readonly FactoryImplementer[] = ['copilot', 'coding-agent'];
+const REPO_NAME = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
+
+function reposOf(value: unknown, source: string): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || !value.every((r) => typeof r === 'string' && REPO_NAME.test(r))) {
+    throw new Error(`${source}: factory.codingAgent.repos must be an array of "owner/name" repository names`);
+  }
+  return [...value] as string[];
+}
 
 function block(config: unknown, path: readonly string[], source: string): Record<string, unknown> {
   let at: unknown = config;
@@ -115,12 +132,13 @@ function countOf(value: unknown, key: 'maxWaitMinutes' | 'maxSessionsPerDay', so
  */
 export function resolveCodingAgentConfig(trustedUser: unknown, project: unknown): { config: CodingAgentConfig; warnings: string[] } {
   const warnings: string[] = [];
-  const config: CodingAgentConfig = { ...DEFAULT_CODING_AGENT_CONFIG };
+  const config: CodingAgentConfig = { ...DEFAULT_CODING_AGENT_CONFIG, repos: [] };
   const userRun = block(trustedUser, ['factory', 'run'], 'user config');
   const userAgent = block(trustedUser, ['factory', 'codingAgent'], 'user config');
   config.implementer = implementerOf(userRun.implementer, 'user config') ?? config.implementer;
   config.maxWaitMinutes = countOf(userAgent.maxWaitMinutes, 'maxWaitMinutes', 'user config') ?? config.maxWaitMinutes;
   config.maxSessionsPerDay = countOf(userAgent.maxSessionsPerDay, 'maxSessionsPerDay', 'user config') ?? config.maxSessionsPerDay;
+  config.repos = reposOf(userAgent.repos, 'user config') ?? config.repos;
   const projRun = block(project, ['factory', 'run'], 'project config');
   const projAgent = block(project, ['factory', 'codingAgent'], 'project config');
   const implementer = implementerOf(projRun.implementer, 'project config');
@@ -128,6 +146,7 @@ export function resolveCodingAgentConfig(trustedUser: unknown, project: unknown)
   else if (implementer === 'coding-agent' && config.implementer !== 'coding-agent') {
     warnings.push('omg factory run: ignoring factory.run.implementer "coding-agent" from the working-tree project config; it starts billed agent sessions, so only the user config can opt in');
   }
+  if (projAgent.repos !== undefined) warnings.push('omg factory run: ignoring factory.codingAgent.repos from the working-tree project config; only the user config lists the repositories a billed session may start in');
   for (const key of ['maxWaitMinutes', 'maxSessionsPerDay'] as const) {
     const value = countOf(projAgent[key], key, 'project config');
     if (value === undefined) continue;
@@ -137,11 +156,47 @@ export function resolveCodingAgentConfig(trustedUser: unknown, project: unknown)
   return { config, warnings };
 }
 
-/** resolveCodingAgentConfig on the trusted user config and the checkout's project config (.copilot/omg.jsonc). */
-export function loadCodingAgentConfig(root: string): { config: CodingAgentConfig; warnings: string[] } {
-  const path = resolveProjectConfigPath(root);
-  const project = existsSync(path) ? parseJsonc(readFileSync(path, 'utf8')) : undefined;
-  return resolveCodingAgentConfig(userConfigLayers().trustedUser, project);
+export type CodingAgentChoice = { use: true; config: CodingAgentConfig; warnings: string[] } | { use: false; warning?: string };
+
+/**
+ * Whether this run uses the coding agent: only when the trusted user config
+ * says `factory.run.implementer: "coding-agent"`, the forge is GitHub, the
+ * run's repository is in the user's `factory.codingAgent.repos` and the
+ * project config does not opt out. The user layer is looked at first:
+ * without its opt-in nothing else is parsed (an ill-typed project value
+ * cannot fail a run that never opted in) and `use: false` comes back
+ * silently. A forge or repository miss is `use: false` with one warning (the
+ * run takes the Copilot implement lane). Throws only on a config error
+ * after the user opted in (the engine then parks).
+ */
+export function chooseCodingAgent(trustedUser: unknown, readProject: () => unknown, run: { forgeKind: string; repoUrl: string }): CodingAgentChoice {
+  const runBlock = isObj(trustedUser) && isObj(trustedUser.factory) && isObj(trustedUser.factory.run) ? trustedUser.factory.run : undefined;
+  if (runBlock?.implementer !== 'coding-agent') return { use: false };
+  if (run.forgeKind !== 'github') return { use: false, warning: `omg factory run: the coding agent is GitHub-only; using a Copilot lane (this run's forge is ${run.forgeKind})` };
+  const user = resolveCodingAgentConfig(trustedUser, undefined).config;
+  const repo = codingAgentRepoOf(run.repoUrl);
+  const name = repo ? `${repo.owner}/${repo.name}` : run.repoUrl;
+  if (!repo || !user.repos.some((r) => r.toLowerCase() === name.toLowerCase())) {
+    return { use: false, warning: `omg factory run: coding agent not enabled for ${name}: add it to factory.codingAgent.repos; using a Copilot lane` };
+  }
+  const { config, warnings } = resolveCodingAgentConfig(trustedUser, readProject());
+  return config.implementer === 'coding-agent' ? { use: true, config, warnings } : { use: false };
+}
+
+/** chooseCodingAgent on `trustedUser` (default: the user's own trusted config) and the checkout's project config (.copilot/omg.jsonc). */
+export function loadCodingAgentChoice(root: string, run: { forgeKind: string; repoUrl: string }, trustedUser?: unknown): CodingAgentChoice {
+  let user = trustedUser;
+  if (user === undefined) {
+    try {
+      user = userConfigLayers().trustedUser;
+    } catch (error) {
+      return { use: false, warning: `omg factory run: the user config could not be read (${error instanceof Error ? error.message : String(error)}); the coding agent stays off` };
+    }
+  }
+  return chooseCodingAgent(user, () => {
+    const path = resolveProjectConfigPath(root);
+    return existsSync(path) ? parseJsonc(readFileSync(path, 'utf8')) : undefined;
+  }, run);
 }
 
 /**
@@ -269,16 +324,35 @@ export function codingAgentTreeArgs(sha: string): string[] {
   return ['ls-tree', '-r', '-z', '--full-tree', sha];
 }
 
+/** `git merge-base <sha40> <sha40>`: where the adopted head left the configured base (read-only). */
+export function codingAgentMergeBaseArgs(base: string, head: string): string[] {
+  if (!HEX40.test(base) || !HEX40.test(head)) throw new Error('coding agent merge-base: both operands must be 40-hex commits');
+  return ['merge-base', base, head];
+}
+
+/**
+ * The engine's coding agent step context: CodingAgentContext plus, for the
+ * adopt's fetch, the one PR number it may fetch (`adopt`), and, for the link
+ * comment, the numbers, branch and sha its exact body is built from (`link`).
+ */
+export interface CodingAgentStepContext extends CodingAgentContext {
+  adopt?: number;
+  link?: { ownPr: number; branch: string; head: string };
+}
+
 /**
  * The git shapes the adopt adds to the factory guard (exec.ts), exact argv:
- * codingAgentFetchArgs, CODING_AGENT_FETCH_HEAD_ARGS and codingAgentTreeArgs.
+ * codingAgentFetchArgs (only with a step context whose `adopt` is that PR),
+ * CODING_AGENT_FETCH_HEAD_ARGS, codingAgentTreeArgs and codingAgentMergeBaseArgs.
  */
-export function isCodingAgentGitArgs(a: readonly string[]): boolean {
+export function isCodingAgentGitArgs(a: readonly string[], ctx?: CodingAgentStepContext): boolean {
   if (a.length === 5 && a[0] === 'fetch') {
     const m = /^refs\/pull\/([1-9]\d{0,9})\/head$/.exec(a[4]);
-    return a[1] === '--no-tags' && a[2] === '--refmap=' && a[3] === 'origin' && m !== null;
+    return a[1] === '--no-tags' && a[2] === '--refmap=' && a[3] === 'origin' && m !== null
+      && ctx?.adopt !== undefined && Number.isSafeInteger(ctx.adopt) && String(ctx.adopt) === m[1];
   }
   if (a.length === CODING_AGENT_FETCH_HEAD_ARGS.length && CODING_AGENT_FETCH_HEAD_ARGS.every((v, i) => a[i] === v)) return true;
+  if (a.length === 3 && a[0] === 'merge-base' && HEX40.test(a[1]) && HEX40.test(a[2])) return true;
   return a.length === 5 && a[0] === 'ls-tree' && a[1] === '-r' && a[2] === '-z' && a[3] === '--full-tree' && HEX40.test(a[4]);
 }
 
@@ -296,8 +370,8 @@ export const CODING_AGENT_LINK_BODY_ARG = 6;
  * for the context's repository and `pr`. Without a CodingAgentContext naming
  * the PR it is refused.
  */
-export function isCodingAgentLinkCommentArgs(a: readonly string[], ctx: CodingAgentContext | undefined): boolean {
-  if (!ctx || ctx.pr === undefined || !Number.isSafeInteger(ctx.pr) || !PR_NUMBER.test(String(ctx.pr)) || a.length !== 7) return false;
+export function isCodingAgentLinkCommentArgs(a: readonly string[], ctx: CodingAgentStepContext | undefined): boolean {
+  if (!ctx || ctx.pr === undefined || ctx.link === undefined || !Number.isSafeInteger(ctx.pr) || !PR_NUMBER.test(String(ctx.pr)) || a.length !== 7) return false;
   const file = a[CODING_AGENT_LINK_BODY_ARG];
   return a[0] === 'pr' && a[1] === 'comment' && a[2] === String(ctx.pr) && a[3] === '--repo' && a[4].toLowerCase() === ctx.repo.toLowerCase()
     && a[5] === '--body-file' && typeof file === 'string' && file.length > 0 && !file.startsWith('-') && !/[\r\n\0]/.test(file);
@@ -311,6 +385,13 @@ export function codingAgentLinkBody(o: { issue: number; ownPr: number; branch: s
     `Review, fix rounds, gates and the human merge continue on #${o.ownPr}; this pull request is closed (\`omg factory run ${o.issue}\`). Please do not push here or click "Update branch".`,
     '',
   ].join('\n');
+}
+
+/** The guard's body check of the link comment: exactly codingAgentLinkBody of the step context's numbers, branch and sha, or why not. */
+export function codingAgentLinkBodyProblem(body: string, ctx: CodingAgentStepContext | undefined): string | null {
+  if (!ctx?.link) return 'no link comment context';
+  const { ownPr, branch, head } = ctx.link;
+  return body === codingAgentLinkBody({ issue: ctx.issue, ownPr, branch, head }) ? null : 'the body is not the factory\'s link comment for this context';
 }
 
 /**
@@ -342,7 +423,7 @@ const MIRROR_KEEP_MS = 7 * 24 * 60 * 60_000;
 interface SessionMirror {
   version: 1;
   /** `<repo>#<laneId>` -> when the POST returned and for which run. */
-  sessions: Record<string, { at: string; run: string }>;
+  sessions: Record<string, { at: string; run: string; by?: string }>;
 }
 
 function readMirror(path: string): SessionMirror {
@@ -350,7 +431,9 @@ function readMirror(path: string): SessionMirror {
     const raw = JSON.parse(readFileSync(path, 'utf8')) as Partial<SessionMirror>;
     const sessions: SessionMirror['sessions'] = {};
     if (isObj(raw) && isObj(raw.sessions)) {
-      for (const [k, v] of Object.entries(raw.sessions)) if (isObj(v) && isIso(v.at) && typeof v.run === 'string') sessions[k] = { at: v.at, run: v.run };
+      for (const [k, v] of Object.entries(raw.sessions)) {
+        if (isObj(v) && isIso(v.at) && typeof v.run === 'string') sessions[k] = { at: v.at, run: v.run, ...(typeof v.by === 'string' ? { by: v.by } : {}) };
+      }
     }
     return { version: 1, sessions };
   } catch {
@@ -396,6 +479,7 @@ export function recordCodingAgentSession(s: CodingAgentSession): string[] {
       const m = readMirror(path);
       const now = Date.parse(s.at);
       for (const [k, v] of Object.entries(m.sessions)) if (now - Date.parse(v.at) > MIRROR_KEEP_MS) delete m.sessions[k];
+      // A provisional entry of reserveCodingAgentSession keeps its time (the day it was counted on).
       m.sessions[`${s.repo}#${s.laneId}`] ??= { at: s.at, run: s.run };
       atomicWriteFileSync(path, JSON.stringify(m, null, 2));
     }, { timeoutMs: 5_000 });
@@ -420,4 +504,64 @@ export function codingAgentSessionsOn(root: string, ledgerDir: string, day: stri
   } catch { /* the mirror still counts */ }
   const mirror = Object.values(readMirror(join(ledgerDir, MIRROR_FILE)).sessions).filter((v) => v.at.slice(0, 10) === day).length;
   return Math.max(budget, mirror);
+}
+
+/** The engine ledger mirror's lock could not be taken in time: another engine is reserving a session (the caller reports busy). */
+export class CodingAgentSessionsBusyError extends Error {
+  constructor(path: string) {
+    super(`the coding agent session count (${path}) is locked by another engine`);
+    this.name = 'CodingAgentSessionsBusyError';
+  }
+}
+
+function underMirrorLock<T>(ledgerDir: string, timeoutMs: number, fn: (path: string) => T): T {
+  ensureDirSync(ledgerDir);
+  const path = join(ledgerDir, MIRROR_FILE);
+  const handle = acquireFileLockSync(lockPathFor(path), { timeoutMs });
+  if (!handle) throw new CodingAgentSessionsBusyError(path);
+  try {
+    return fn(path);
+  } finally {
+    releaseFileLockSync(handle);
+  }
+}
+
+/**
+ * The cap check, atomic across engines: under the mirror's file lock, count
+ * the day's sessions and, below `max`, write a provisional mirror entry for
+ * this lane before the lock is released, so a second engine counts it before
+ * its own POST. `by` (the caller's process identity) is read by the caller
+ * BEFORE the lock. A lock timeout throws CodingAgentSessionsBusyError.
+ */
+export function reserveCodingAgentSession(s: CodingAgentSession & { by: string }, max: number, timeoutMs = 5_000): { ok: boolean; used: number } {
+  const day = s.at.slice(0, 10);
+  return underMirrorLock(s.ledgerDir, timeoutMs, (path) => {
+    const used = codingAgentSessionsOn(s.root, s.ledgerDir, day);
+    if (used >= max) return { ok: false, used };
+    const m = readMirror(path);
+    m.sessions[`${s.repo}#${s.laneId}`] = { at: s.at, run: s.run, by: s.by };
+    atomicWriteFileSync(path, JSON.stringify(m, null, 2));
+    return { ok: true, used };
+  });
+}
+
+/** Drop the provisional entry after a definite refusal of the assign (no session started), under the same lock. */
+export function releaseCodingAgentSession(s: Pick<CodingAgentSession, 'ledgerDir' | 'repo' | 'laneId'>, timeoutMs = 5_000): void {
+  underMirrorLock(s.ledgerDir, timeoutMs, (path) => {
+    const m = readMirror(path);
+    if (!(`${s.repo}#${s.laneId}` in m.sessions)) return;
+    delete m.sessions[`${s.repo}#${s.laneId}`];
+    atomicWriteFileSync(path, JSON.stringify(m, null, 2));
+  });
+}
+
+/**
+ * Whether a failed assign POST was refused for certain, so no session
+ * started: gh exited with a status and reported an HTTP 4xx for the request.
+ * A timeout or signal (no exit status), a network error or a 5xx leaves the
+ * outcome unknown. (A guard refusal before the spawn is the caller's other
+ * definite case.)
+ */
+export function isDefiniteAssignRefusal(message: string): boolean {
+  return /failed \(exit [1-9]\d*\): .*\bHTTP 4\d\d\b/.test(message);
 }
