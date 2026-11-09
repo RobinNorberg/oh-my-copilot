@@ -175,8 +175,8 @@ async function setup(o, deps, cwd, out) {
         await setupWorkflows(o, deps, root, repo.kind, interactive, out);
         return;
     }
-    if (o.mode !== undefined || o.cron !== undefined || o.force || o.omgVersion !== undefined)
-        throw new SetupError(2, '--mode, --cron, --omg-version and --force belong to --workflows');
+    if (o.mode !== undefined || o.cron !== undefined || o.force || o.omgVersion !== undefined || o.branch !== undefined)
+        throw new SetupError(2, '--mode, --cron, --omg-version, --branch and --force belong to --workflows');
     if (!interactive) {
         // The local forge's source defaults to its backlog directory.
         const missing = [...(o.intake || local ? [] : ['--intake']), ...(o.yes || o.dryRun ? [] : ['--yes (or --dry-run)'])];
@@ -361,8 +361,27 @@ async function setupWorkflows(o, deps, root, kind, interactive, out) {
         return;
     }
     const version = o.omgVersion === undefined ? getRuntimePackageVersion() : validateOmgVersionOverride(o.omgVersion);
-    // Azure DevOps schedules only the default branch (the one omg ships to).
-    const plan = planHeartbeat(root, kind, { mode, cron: o.cron ?? DEFAULT_HEARTBEAT_CRON, version, branch: kind === 'azure-devops' ? defaultFactoryRunDeps.base(root) : undefined, force: Boolean(o.force) });
+    // Azure DevOps schedules only the repository's default branch: --branch, else origin/HEAD (a fixed read-only git shape).
+    if (o.branch !== undefined && kind !== 'azure-devops')
+        throw new SetupError(2, '--branch applies to Azure DevOps pipelines only (a GitHub schedule always runs on the default branch)');
+    let branch;
+    if (kind === 'azure-devops') {
+        if (o.branch !== undefined) {
+            if (!isPlainBranchName(o.branch))
+                throw new SetupError(2, `--branch must be a plain branch name (letters, digits, ., _, / and -, without ..), got ${JSON.stringify(o.branch)}`);
+            branch = o.branch;
+        }
+        else {
+            const head = deps.exec('git', ['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'], { cwd: root });
+            const ref = head.status === 0 ? head.stdout.trim() : '';
+            const name = ref.startsWith('refs/remotes/origin/') ? ref.slice('refs/remotes/origin/'.length) : '';
+            if (!isPlainBranchName(name))
+                throw new SetupError(2, 'cannot resolve the default branch from refs/remotes/origin/HEAD: pass --branch <name> with the branch the pipeline schedule should run (the repository default branch)');
+            branch = name;
+        }
+        out.notes.push(`pipeline schedule branch: ${branch}`);
+    }
+    const plan = planHeartbeat(root, kind, { mode, cron: o.cron ?? DEFAULT_HEARTBEAT_CRON, version, branch, force: Boolean(o.force) });
     for (const w of plan.warnings)
         out.notes.push(`warning: ${w}`);
     if (o.omgVersion === undefined && isRuntimePackageLocal()) {
@@ -449,6 +468,7 @@ export function factorySetupCommand(deps = defaultFactorySetupDeps) {
         .option('--mode <mode>', 'with --workflows: read-only (default) | triage (adds issues: write for omg factory triage --apply)')
         .option('--cron <expr>', 'with --workflows: schedule cron expression (default every 2 hours)')
         .option('--omg-version <x.y.z>', 'with --workflows: the published omg version the file installs (default: the version of this build)')
+        .option('--branch <name>', 'with --workflows on Azure DevOps: the branch the schedule runs (default: the repository default branch from origin/HEAD)')
         .option('--force', 'with --workflows: replace a heartbeat file this command did not write')
         .option('--dry-run', 'Show the diff and the preview; write nothing')
         .option('--yes', 'Non-interactive: take every answer from flags and confirm the write')

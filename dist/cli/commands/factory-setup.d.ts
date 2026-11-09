@@ -60,6 +60,8 @@ export interface FactorySetupOptions {
     cron?: string;
     /** --workflows: pin this exact published omg version instead of the running build's. */
     omgVersion?: string;
+    /** --workflows, Azure DevOps: the branch the schedule runs (default: the repository's default branch from origin/HEAD). */
+    branch?: string;
     /** --workflows: replace a file this command did not write. */
     force?: boolean;
     dryRun?: boolean;
