@@ -48,6 +48,8 @@ import {
   type PreviewRow,
   type Prompter,
 } from '../../factory/setup/intake-pick.js';
+import { DEFAULT_HEARTBEAT_CRON, parseHeartbeatMode, planHeartbeat, validateOmgVersionOverride, type HeartbeatForge } from '../../factory/setup/workflows.js';
+import { getRuntimePackageVersion, isRuntimePackageLocal } from '../../lib/version.js';
 import { pickHealPipeline } from '../../factory/setup/pipeline-pick.js';
 import { missingGitHubLabels, pickProgress, progressFromFlag, validateAdoProgress } from '../../factory/setup/progress-pick.js';
 import { applyWrites, buildSection, parsedAfter, planBacklogSample, planWrites, type PlannedWrite, type SetupScope, type SetupSection } from '../../factory/setup/write.js';
@@ -96,6 +98,18 @@ export interface FactorySetupOptions {
   /** Azure DevOps: the build definition id heal reads as CI, or none. */
   healPipeline?: string;
   scope?: string;
+  /** Write the cloud heartbeat (GitHub workflow or ADO pipeline) instead of running the wizard. */
+  workflows?: boolean;
+  /** --workflows: read-only (default) | triage (the opt-in write scope). */
+  mode?: string;
+  /** --workflows: schedule cron (default every 2 hours). */
+  cron?: string;
+  /** --workflows: pin this exact published omg version instead of the running build's. */
+  omgVersion?: string;
+  /** --workflows, Azure DevOps: the branch the schedule runs (default: the repository's default branch from origin/HEAD). */
+  branch?: string;
+  /** --workflows: replace a file this command did not write. */
+  force?: boolean;
   dryRun?: boolean;
   yes?: boolean;
   json?: boolean;
@@ -233,6 +247,11 @@ async function setup(o: FactorySetupOptions, deps: FactorySetupDeps, cwd: string
   out.forge = { kind: repo.kind, host: repo.host, owner: repo.owner, ...(repo.project ? { project: repo.project } : {}), name: repo.name, url: repo.url };
   const ado = repo.kind === 'azure-devops';
   const local = repo.kind === 'local';
+  if (o.workflows) {
+    await setupWorkflows(o, deps, root, repo.kind, interactive, out);
+    return;
+  }
+  if (o.mode !== undefined || o.cron !== undefined || o.force || o.omgVersion !== undefined || o.branch !== undefined) throw new SetupError(2, '--mode, --cron, --omg-version, --branch and --force belong to --workflows');
   if (!interactive) {
     // The local forge's source defaults to its backlog directory.
     const missing = [...(o.intake || local ? [] : ['--intake']), ...(o.yes || o.dryRun ? [] : ['--yes (or --dry-run)'])];
@@ -389,6 +408,61 @@ async function setup(o: FactorySetupOptions, deps: FactorySetupDeps, cwd: string
   out.notes.push(`intake ${formatIntakeSpec(source)}`);
 }
 
+/**
+ * --workflows: plans and writes the one heartbeat file. No auth, no forge reads and no config edit: the
+ * generated file only runs `omg factory check` (and `triage --apply` in triage mode) in CI.
+ */
+async function setupWorkflows(o: FactorySetupOptions, deps: FactorySetupDeps, root: string, kind: string, interactive: boolean, out: FactorySetupOutcome): Promise<void> {
+  const mode = parseHeartbeatMode(o.mode);
+  if (kind === 'local') {
+    out.notes.push('--workflows is not applicable to the local (offline) forge: there is no CI to schedule. Run omg factory check and omg factory poll from your own scheduler if you want a heartbeat.');
+    return;
+  }
+  const version = o.omgVersion === undefined ? getRuntimePackageVersion() : validateOmgVersionOverride(o.omgVersion);
+  // Azure DevOps schedules only the repository's default branch: --branch, else origin/HEAD (a fixed read-only git shape).
+  if (o.branch !== undefined && kind !== 'azure-devops') throw new SetupError(2, '--branch applies to Azure DevOps pipelines only (a GitHub schedule always runs on the default branch)');
+  let branch: string | undefined;
+  if (kind === 'azure-devops') {
+    if (o.branch !== undefined) {
+      if (!isPlainBranchName(o.branch)) throw new SetupError(2, `--branch must be a plain branch name (letters, digits, ., _, / and -, without ..), got ${JSON.stringify(o.branch)}`);
+      branch = o.branch;
+    } else {
+      const head = deps.exec('git', ['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'], { cwd: root });
+      const ref = head.status === 0 ? head.stdout.trim() : '';
+      const name = ref.startsWith('refs/remotes/origin/') ? ref.slice('refs/remotes/origin/'.length) : '';
+      if (!isPlainBranchName(name)) throw new SetupError(2, 'cannot resolve the default branch from refs/remotes/origin/HEAD: pass --branch <name> with the branch the pipeline schedule should run (the repository default branch)');
+      branch = name;
+    }
+    out.notes.push(`pipeline schedule branch: ${branch}`);
+  }
+  const plan = planHeartbeat(root, kind as HeartbeatForge, { mode, cron: o.cron ?? DEFAULT_HEARTBEAT_CRON, version, branch, force: Boolean(o.force) });
+  for (const w of plan.warnings) out.notes.push(`warning: ${w}`);
+  if (o.omgVersion === undefined && isRuntimePackageLocal()) {
+    out.notes.push(`warning: this omg runs from a git checkout or an unreleased build; the file installs oh-my-copilot@${version} from npm, so that version must be published or the install step fails (pass --omg-version <x.y.z> to pin a published one)`);
+  }
+  const planned = plan.write ? [plan.write] : [];
+  out.diffs = planned.map((w) => ({ path: w.path, scope: w.scope, diff: w.diff }));
+  if (plan.action === 'unchanged') out.notes.push(`${plan.relPath} is already up to date`);
+  if (!o.json) {
+    for (const w of planned) {
+      console.log(chalk.bold(`--- ${w.path} (${plan.action})`));
+      for (const line of w.diff.split('\n')) console.log(line.startsWith('+') ? chalk.green(line) : line.startsWith('-') ? chalk.red(line) : chalk.gray(line));
+    }
+  }
+  if (o.dryRun) {
+    if (planned.length > 0) out.notes.push(`would write ${plan.relPath}`);
+    return;
+  }
+  if (planned.length > 0) {
+    if (!o.yes) {
+      if (!interactive) throw new SetupError(2, 'non-interactive omg factory setup --workflows needs --yes (or --dry-run)');
+      if (!(await (deps.prompter ?? ttyPrompter()).confirm(`Write ${plan.relPath}?`, false))) throw new SetupError(2, 'cancelled: nothing written');
+    }
+    out.written = applyWrites(planned);
+  }
+  out.notes.push(`heartbeat mode ${mode}: ${mode === 'triage' ? 'issues: write (opt-in)' : 'read-only permissions'}; commit ${plan.relPath} on the default branch, scheduled workflows run only there. Remove it by deleting the file.`);
+}
+
 function printOutcome(o: FactorySetupOptions, r: FactorySetupOutcome): void {
   if (o.json) {
     console.log(JSON.stringify(r, null, 2));
@@ -430,6 +504,12 @@ export function factorySetupCommand(deps: FactorySetupDeps = defaultFactorySetup
     .option('--trusted-author <list>', 'Azure DevOps uniqueNames whose omg-plan: comments count (user config only), comma-separated')
     .option('--heal-pipeline <id>', 'Azure DevOps build definition omg factory heal reads as CI (a pipeline of this repository), or none')
     .option('--scope <scope>', 'project | user; forge identity, intake and progress always go to .copilot/omg.jsonc, the user config gets only trustedAuthors', 'project')
+    .option('--workflows', 'Write the cloud heartbeat (.github/workflows/omg-factory-heartbeat.yml, or an Azure Pipelines file on ADO) instead of running the wizard')
+    .option('--mode <mode>', 'with --workflows: read-only (default) | triage (adds issues: write for omg factory triage --apply)')
+    .option('--cron <expr>', 'with --workflows: schedule cron expression (default every 2 hours)')
+    .option('--omg-version <x.y.z>', 'with --workflows: the published omg version the file installs (default: the version of this build)')
+    .option('--branch <name>', 'with --workflows on Azure DevOps: the branch the schedule runs (default: the repository default branch from origin/HEAD)')
+    .option('--force', 'with --workflows: replace a heartbeat file this command did not write')
     .option('--dry-run', 'Show the diff and the preview; write nothing')
     .option('--yes', 'Non-interactive: take every answer from flags and confirm the write')
     .option('--json', 'JSON output (non-interactive)')
