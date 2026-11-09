@@ -21,6 +21,7 @@ import type { CopilotRunSandboxState } from '../../copilot-run/sandbox.js';
 import type { ShipVerdict } from '../../ship/state.js';
 import { type ForgeKind, type ProgressStage } from '../../forge/types.js';
 import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
+import { type CodingAgentRunRecord } from './coding-agent-lane.js';
 export declare const FACTORY_PHASES: readonly ["intake", "plan", "implement", "publish", "review", "fix", "prepare", "conflict-fix", "gates", "ci-fix", "merge", "merged", "cancelled", "failed"];
 export type FactoryPhase = (typeof FACTORY_PHASES)[number];
 export declare const TERMINAL_FACTORY_PHASES: readonly FactoryPhase[];
@@ -236,23 +237,14 @@ export interface FactoryRunState {
     mergeBounces?: number;
     /** The engine-owned prepare checkout's HEAD when the engine last left it. */
     checkoutHead?: string;
-    /**
-     * The last human feedback round consumed (sealed with the rest of the
-     * state): when, at which head, the digest of what the fix lane got, and
-     * the ids of the threads handed to it (at most MAX_HUMAN_THREAD_IDS).
-     */
+    /** The last human feedback round consumed (sealed with the rest of the state). */
     humanReview?: {
         seenAt: string;
         head: string;
         digest: string;
-        threadIds: string[];
     };
-    /**
-     * The head at which the human accepted, with `omg factory run
-     * --allow-unsandboxed-lanes`, that write lanes ran without the enforced
-     * sandbox (460-7); a new head parks again.
-     */
-    unsandboxedAck?: string;
+    /** The Copilot coding agent session of an issue run whose implementer is the agent (coding-agent-lane.ts); sealed, shape-checked on load. */
+    codingAgent?: CodingAgentRunRecord;
     /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */
     gateComments?: string[];
     /**
@@ -336,8 +328,6 @@ export declare function verifyFactoryIntegrity(state: FactoryRunState): boolean;
 export declare function forgeResumeProblem(state: Pick<FactoryRunState, 'forgeKind' | 'issue' | 'kind' | 'heal' | 'repoUrl'>, resolved: ForgeKind, resolvedRepoUrl?: string): string | null;
 /** The git remote of a run: `origin` unless the state seals the local forge's `omg-local`. */
 export declare function runRemote(state: Pick<FactoryRunState, 'remote'>): string;
-/** Thread ids one human round may record: 100 review threads and 50 review bodies fit. */
-export declare const MAX_HUMAN_THREAD_IDS = 200;
 /** Read and shape-check the state file; throws FactoryStateError on malformed content. */
 export declare function readFactoryState(root: string, key: FactoryRunKey): FactoryRunState | null;
 /** Parse and shape-check the bytes of a state file (read once by the caller). */

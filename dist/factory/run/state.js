@@ -29,6 +29,7 @@ import { stripAnsi } from '../../utils/string-width.js';
 import { sameRepo } from '../../ship/config.js';
 import { PROGRESS_STAGES } from '../../forge/types.js';
 import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
+import { codingAgentRecordProblem } from './coding-agent-lane.js';
 export const FACTORY_PHASES = [
     'intake', 'plan', 'implement', 'publish', 'review', 'fix', 'prepare', 'conflict-fix', 'gates', 'ci-fix', 'merge', 'merged', 'cancelled', 'failed',
 ];
@@ -222,6 +223,8 @@ function shapeProblem(s) {
         return 'prepareChecks';
     if (s.trackerStage !== undefined && !PROGRESS_STAGES.includes(s.trackerStage))
         return 'trackerStage';
+    if (s.codingAgent !== undefined && (s.kind === 'ci-heal' || codingAgentRecordProblem(s.codingAgent) !== null))
+        return 'codingAgent';
     if (s.kind === 'ci-heal') {
         const h = s.heal;
         const d = h?.diagnosis;
