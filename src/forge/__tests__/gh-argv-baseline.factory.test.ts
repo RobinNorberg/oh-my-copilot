@@ -18,6 +18,8 @@ import {
   type Harness, type LaneScript,
 } from '../../factory/run/__tests__/fake-lanes.js';
 import { factoryGuardExec } from '../../factory/run/exec.js';
+import { FakeAgentGithub, ghTime, installFakeAgent } from '../../factory/run/__tests__/fake-coding-agent.js';
+import { CODING_AGENT_STATUS_QUERY } from '../github/coding-agent.js';
 import { ghRepoArg } from '../github/gh.js';
 import { githubReviews } from '../github/reviews.js';
 import type { ForgeRepo } from '../types.js';
@@ -204,6 +206,23 @@ describe('gh argv baseline: factory engine (ci-heal run)', () => {
       MERGE_VIEW, READY, MERGE_VIEW,
       ...GATES_GREEN,
       ...MERGE_PARK(HEAL_KEY),
+    ]);
+  });
+});
+
+describe('gh argv baseline: the Copilot coding agent as implementer (night 3 goal 6, L6b)', () => {
+  it('first run: intake, the pre-assign status read, the assign POST, the confirming read; the wait park posts no comment', async () => {
+    const fake = new FakeAgentGithub(() => ghTime(t));
+    installFakeAgent(h, fake);
+    const { out, calls } = await engine([], { codingAgent: { implementer: 'coding-agent', maxWaitMinutes: 90, maxSessionsPerDay: 5 } });
+    expect(out.gate?.name, out.message).toBe('coding-agent-wait');
+    const status = (since: string) => `gh ${JSON.stringify(['api', 'graphql', '--hostname', 'github.com', '-f', `query=${CODING_AGENT_STATUS_QUERY}`, '-f', 'owner=o', '-f', 'name=r', '-F', `number=${ISSUE}`, '-f', `since=${since}`])} cwd=<root>`;
+    expect(calls).toEqual([
+      ISSUE_VIEW, prList(BRANCH),
+      // The pre-assign read from 2008 (PRE_ASSIGN_SINCE minus the skew margin), then the assign and its read from the local clock minus 120 s.
+      status('2008-01-01T00:00:00Z'),
+      `gh ${JSON.stringify(['api', '--hostname', 'github.com', '--method', 'POST', `repos/o/r/issues/${ISSUE}/assignees`, '-f', 'assignees[]=copilot-swe-agent[bot]', '-f', 'agent_assignment[base_branch]=dev'])} cwd=<root>`,
+      status('2026-10-27T09:58:00Z'),
     ]);
   });
 });

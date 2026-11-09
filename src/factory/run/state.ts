@@ -32,6 +32,7 @@ import { sameRepo } from '../../ship/config.js';
 import type { ShipVerdict } from '../../ship/state.js';
 import { PROGRESS_STAGES, type ForgeKind, type ProgressStage } from '../../forge/types.js';
 import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
+import { codingAgentRecordProblem, type CodingAgentRunRecord } from './coding-agent-lane.js';
 
 export const FACTORY_PHASES = [
   'intake', 'plan', 'implement', 'publish', 'review', 'fix', 'prepare', 'conflict-fix', 'gates', 'ci-fix', 'merge', 'merged', 'cancelled', 'failed',
@@ -230,6 +231,8 @@ export interface FactoryRunState {
   checkoutHead?: string;
   /** The last human feedback round consumed (sealed with the rest of the state). */
   humanReview?: { seenAt: string; head: string; digest: string };
+  /** The Copilot coding agent session of an issue run whose implementer is the agent (coding-agent-lane.ts); sealed, shape-checked on load. */
+  codingAgent?: CodingAgentRunRecord;
   /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */
   gateComments?: string[];
   /**
@@ -438,6 +441,7 @@ function shapeProblem(s: Record<string, unknown>): string | null {
   if (gateDef !== undefined && (s.forgeKind !== 'local' || !isStr(gateDef) || !HEX64.test(gateDef))) return 'gate.definition';
   if (s.prepareChecks !== undefined && s.prepareChecks !== 'auto' && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr)))) return 'prepareChecks';
   if (s.trackerStage !== undefined && !(PROGRESS_STAGES as readonly unknown[]).includes(s.trackerStage)) return 'trackerStage';
+  if (s.codingAgent !== undefined && (s.kind === 'ci-heal' || codingAgentRecordProblem(s.codingAgent) !== null)) return 'codingAgent';
   if (s.kind === 'ci-heal') {
     const h = s.heal as Record<string, unknown> | undefined;
     const d = h?.diagnosis as Record<string, unknown> | undefined;

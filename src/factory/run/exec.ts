@@ -27,6 +27,12 @@
  *   assign of exactly the context's issue on exactly its base, and
  *   `gh pr close` of exactly its `pr` (the agent's own PR; the tracker never
  *   closes). Without that context both writes are refused.
+ * - Adopting the coding agent's PR (src/factory/run/coding-agent-lane.ts):
+ *   `git fetch --no-tags --refmap= origin refs/pull/<n>/head` (only
+ *   FETCH_HEAD moves), `git rev-parse --verify FETCH_HEAD^{commit}`,
+ *   `git ls-tree -r -z --full-tree <sha40>`, and the link comment
+ *   `gh pr comment <pr> --repo <HOST/OWNER/NAME> --body-file <f>` only with a
+ *   CodingAgentContext naming that `pr`, run with the guard's own copy of the body.
  * - Azure DevOps: `az devops invoke` on the routes.ts allowlist only, as the
  *   resolved az entry, for the run's forge repo (src/forge/ado/guard.ts).
  *   The work item create and the PATCH's item fields and links pass only with
@@ -47,6 +53,7 @@ import { isAbsolute, join, resolve } from 'path';
 import { checkAdoCommand, isAdoCommand, runGuardedAdo, type AdoGuardContext } from '../../forge/ado/guard.js';
 import { isBodyFileIn, readTrackerBody } from '../../forge/body-file.js';
 import { isCodingAgentAssignArgs, isCodingAgentCloseArgs, isCodingAgentStatusArgs, type CodingAgentContext } from '../../forge/github/coding-agent.js';
+import { CODING_AGENT_LINK_BODY_ARG, isCodingAgentGitArgs, isCodingAgentLinkCommentArgs } from './coding-agent-lane.js';
 import { isReviewFeedbackArgs } from '../../forge/github/graphql.js';
 import { LOCAL_REMOTE, STATE_CHANGE_LOG_FLAGS } from '../../forge/local/mirror.js';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
@@ -291,6 +298,8 @@ export function mirrorNamedRemoteKeys(stdout: string, mirror: string): string[] 
 
 /** Factory-only git shapes; null = not a factory shape (ship's allowlist decides), false = refused outright. */
 function factoryGit(a: string[], protectedBranches: readonly string[], extraProtected: readonly string[] = [], local?: LocalGuardContext): boolean | null {
+  // The coding agent adopt (coding-agent-lane.ts): the fetch of one PR head, its FETCH_HEAD read and one commit's tree listing.
+  if (isCodingAgentGitArgs(a)) return true;
   const [sub, ...r] = a;
   const remote = r[0] === 'origin' || r[0] === LOCAL_REMOTE;
   switch (sub) {
@@ -383,6 +392,8 @@ function factoryGh(a: string[], writes?: TrackerWriteContext, github?: GithubRea
   if (isCodingAgentStatusArgs(a, github?.repo) || isCodingAgentStatusArgs(a, agent?.repo)) return true;
   // and, only with the step's CodingAgentContext, the assign of its issue on its base and the close of its PR.
   if (isCodingAgentAssignArgs(a, agent) || isCodingAgentCloseArgs(a, agent)) return true;
+  // and, with the same context, the D5 link comment on exactly its `pr` (coding-agent-lane.ts; run with the guard's copy of the body).
+  if (isCodingAgentLinkCommentArgs(a, agent)) return true;
 
   const [group, sub, ...r] = a;
   // The other `gh api` shape (besides the coding agent's status read and assign above): the human review read of the
@@ -467,8 +478,10 @@ export function factoryGuardExec(exec: Exec, extraProtected: () => readonly stri
   return (cmd, args, opts) => {
     if (isAdoCommand(cmd)) return runGuardedAdo(exec, cmd, args, opts, ado(), 'factory', adoRefusal(cmd, args), writes());
     const ctx = writes();
-    assertFactoryCommand(cmd, args, extraProtected(), opts?.env, undefined, ctx, local(), github(), agent());
-    const at = ctx && cmd.replace(/\\/g, '/').split('/').pop()!.toLowerCase().replace(/\.exe$/, '') === 'gh' ? trackerBodyFileArg(args) : undefined;
+    const step = agent();
+    assertFactoryCommand(cmd, args, extraProtected(), opts?.env, undefined, ctx, local(), github(), step);
+    const isGh = cmd.replace(/\\/g, '/').split('/').pop()!.toLowerCase().replace(/\.exe$/, '') === 'gh';
+    const at = ctx && isGh ? trackerBodyFileArg(args) : isGh && isCodingAgentLinkCommentArgs(args, step) ? CODING_AGENT_LINK_BODY_ARG : undefined;
     if (at === undefined) return exec(cmd, args, opts);
     // A tracker write runs with the guard's own copy of the checked body, like an az --in-file.
     const body = readTrackerBody(args[at], (reason) => new FactorySafetyError(`omg factory run refuses \`gh ${args.join(' ')}\`: ${reason}`));
