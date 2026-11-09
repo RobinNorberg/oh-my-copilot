@@ -9,7 +9,7 @@
 import { copyFileSync, existsSync, readFileSync } from 'fs';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
 import { toCopilotModelId } from '../team/model-contract.js';
-import { parseModelProfile, profileAgentModels } from '../features/model-routing/profiles.js';
+import { AGENT_TIERS, parseModelProfile, profileAgentModels } from '../features/model-routing/profiles.js';
 import copilotModels from '../config/copilot-models.json' with { type: 'json' };
 /**
  * Settings key prefix for plugin agents. UNVERIFIED on a live Copilot: the other
@@ -101,7 +101,7 @@ function readProfileRecord(recordFile) {
     try {
         const parsed = JSON.parse(readFileSync(recordFile, 'utf-8'));
         const entries = isRecord(parsed) && isRecord(parsed.entries) ? parsed.entries : {};
-        return Object.fromEntries(Object.entries(entries).filter(([, v]) => typeof v === 'string' && v !== ''));
+        return Object.fromEntries(Object.entries(entries).filter(([k, v]) => Object.hasOwn(AGENT_TIERS, k) && typeof v === 'string' && v !== ''));
     }
     catch {
         return {};
@@ -165,14 +165,17 @@ export function syncCopilotAgentModels(settingsFile, overrides, profileEntries =
         if (current !== value || recorded[name] === value)
             nextRecord[name] = value;
     }
+    // Settings first: if that write throws, the old record still names what settings holds.
+    if (changed || removed.length > 0) {
+        if (existsSync(settingsFile))
+            copyFileSync(settingsFile, `${settingsFile}.bak`);
+        atomicWriteJsonSync(settingsFile, settings);
+    }
     if (recordFile && JSON.stringify(nextRecord) !== JSON.stringify(recorded)) {
         atomicWriteJsonSync(recordFile, { entries: nextRecord });
     }
     if (!changed && removed.length === 0)
         return { written: [], removed };
-    if (existsSync(settingsFile))
-        copyFileSync(settingsFile, `${settingsFile}.bak`);
-    atomicWriteJsonSync(settingsFile, settings);
     return { written: changed ? Object.keys(overrides) : [], removed };
 }
 //# sourceMappingURL=copilot-agent-models.js.map

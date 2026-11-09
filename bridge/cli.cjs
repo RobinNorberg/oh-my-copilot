@@ -59612,7 +59612,7 @@ function readProfileRecord(recordFile) {
   try {
     const parsed2 = JSON.parse((0, import_fs56.readFileSync)(recordFile, "utf-8"));
     const entries = isRecord3(parsed2) && isRecord3(parsed2.entries) ? parsed2.entries : {};
-    return Object.fromEntries(Object.entries(entries).filter(([, v]) => typeof v === "string" && v !== ""));
+    return Object.fromEntries(Object.entries(entries).filter(([k, v]) => Object.hasOwn(AGENT_TIERS, k) && typeof v === "string" && v !== ""));
   } catch {
     return {};
   }
@@ -59654,12 +59654,14 @@ function syncCopilotAgentModels(settingsFile, overrides, profileEntries = {}, re
     const current2 = modelOf(base, name);
     if (current2 !== value || recorded[name] === value) nextRecord[name] = value;
   }
+  if (changed || removed.length > 0) {
+    if ((0, import_fs56.existsSync)(settingsFile)) (0, import_fs56.copyFileSync)(settingsFile, `${settingsFile}.bak`);
+    atomicWriteJsonSync(settingsFile, settings);
+  }
   if (recordFile && JSON.stringify(nextRecord) !== JSON.stringify(recorded)) {
     atomicWriteJsonSync(recordFile, { entries: nextRecord });
   }
   if (!changed && removed.length === 0) return { written: [], removed };
-  if ((0, import_fs56.existsSync)(settingsFile)) (0, import_fs56.copyFileSync)(settingsFile, `${settingsFile}.bak`);
-  atomicWriteJsonSync(settingsFile, settings);
   return { written: changed ? Object.keys(overrides) : [], removed };
 }
 var import_fs56, COPILOT_PLUGIN_AGENT_PREFIX, KNOWN_MODELS, toAgentName;
