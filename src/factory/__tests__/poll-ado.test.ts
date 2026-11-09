@@ -72,6 +72,7 @@ function world(fixtures: readonly AdoFixture[] = withPeek42(loadAdoFixtures()), 
       // The heal scan's commits of builds 204 and 205 are not fetched.
       if (args[0] === 'cat-file') return { status: 1, stdout: '', stderr: 'not fetched' };
       if (args[0] === 'ls-remote') return ok('');
+      if (args[0] === 'ls-tree') return { status: 0, stdout: '', stderr: '' }; // readBaseFile's "absent" probe: no entry
       if (args[0] === 'show') return { status: 128, stdout: '', stderr: `fatal: path does not exist in '${SHA}'` };
       throw new Error(`unscripted git ${a}`);
     }

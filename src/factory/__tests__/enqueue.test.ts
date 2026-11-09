@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -34,6 +35,7 @@ function github(root: string, issues: Record<number, Issue>, o: { prs?: Record<n
       if (a === 'rev-parse --verify refs/remotes/origin/dev') return ok(`${SHA}\n`);
       if (a === `cat-file -e ${SHA}^{commit}`) return ok();
       if (args[0] === 'ls-remote') return ok(o.branches?.includes(Number(/issue-(\d+)$/.exec(args[2])![1])) ? `${SHA}\t${args[2]}\n` : '');
+      if (args[0] === 'ls-tree') return { status: 0, stdout: '', stderr: '' }; // readBaseFile's "absent" probe: no entry
       if (args[0] === 'show') return { status: 128, stdout: '', stderr: `fatal: path '${args[1].slice(41)}' does not exist in '${SHA}'` };
     }
     if (cmd === 'gh') {
@@ -96,6 +98,8 @@ function setTmp(dir: string): void {
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'omg-enqueue-repo-'));
+  // A git repository: its factory state (the engine lock read commands take) lives in it, never in a home .omg.
+  execFileSync('git', ['init', '-q', root]);
   scratch = mkdtempSync(join(tmpdir(), 'omg-enqueue-tmp-'));
   setTmp(scratch);
   out = [];

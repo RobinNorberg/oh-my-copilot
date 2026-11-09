@@ -203,6 +203,10 @@ function gitAllowed(a: string[], protectedBranches: readonly string[]): boolean 
     }
     case 'cat-file':
       return r.length === 2 && r[0] === '-e' && /^[0-9a-f]{40}\^\{commit\}$/.test(r[1]);
+    case 'ls-tree':
+      // readBaseFile: one entry of a base commit's tree (exit status and empty output tell "absent", whatever the locale); paths as `show`.
+      return r.length === 4 && r[0] === '-z' && HEX40.test(r[1]) && r[2] === '--'
+        && /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/.test(r[3]) && !r[3].split('/').includes('..');
     case 'rev-list': {
       // The commits after the reviewed sha on the head's first-parent chain, each with its parents.
       return r.length === 3 && r[0] === '--first-parent' && r[1] === '--parents' && /^[0-9a-f]{40}\.\.[0-9a-f]{40}$/.test(r[2]);

@@ -83,7 +83,7 @@ import { visibleLine } from '../forge/review-feedback.js';
 import { resolveTeamConfig, TeamConfigError } from './team/context.js';
 import { staleGateReminders, type Reminder } from './team/reminders.js';
 import {
-  acquireFactoryRepoOwner, defaultOwnerDeps, EXIT_BUSY, factoryRepoOwnerPath, ownerHolding, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, type FactoryRunKey, type HeldOwner, type OwnerDeps,
+  acquireFactoryRepoOwner, defaultOwnerDeps, EXIT_BUSY, FactoryBusyError, factoryRepoOwnerPath, ownerHolding, runLabel, TERMINAL_FACTORY_PHASES, tryScanLock, verifyFactoryIntegrity, type FactoryRunKey, type HeldOwner, type OwnerDeps,
 } from './run/state.js';
 
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
@@ -224,15 +224,19 @@ function engineBusy(root: string, me: OwnerDeps): boolean {
  * The checkout's engine lock for a tick step that fetches or moves refs (the
  * heal tick, the local base sync): a git fetch under a live engine would
  * read as lane tampering to it. A string: the step is skipped this tick (an
- * engine runs). Released before the auto-start, whose child takes the lock
- * itself, so the two never wait on each other.
+ * engine runs; or the lock could not be taken at all, which also goes to the
+ * tick's `errors` as `<step>: ...`). Released before the auto-start, whose
+ * child takes the lock itself, so the two never wait on each other.
  */
-function holdForRefs(root: string, at: string, me: OwnerDeps): HeldOwner | string {
+export function holdForRefs(root: string, at: string, me: OwnerDeps, label: 'heal' | 'base sync', errors: string[]): HeldOwner | string {
+  let held: HeldOwner | FactoryBusyError;
   try {
-    return acquireFactoryRepoOwner(root, 'scan', at, me);
+    held = tryScanLock(root, at, me);
   } catch (error) {
-    return `skipped: engine busy (${message(error)})`;
+    errors.push(`${label}: ${message(error)}`);
+    return `skipped: the engine lock could not be taken (${message(error)})`;
   }
+  return held instanceof FactoryBusyError ? `skipped: engine busy (${message(held)})` : held;
 }
 
 /** The heal tick's scan; a HealRunRefused skips the heal tick with its message. `forge`: the tick's forge config (Azure DevOps reads it; GitHub never does). */
@@ -554,7 +558,7 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
   if (!ctx.heal) heal = { ran: false, reason: '--no-heal' };
   else if (!forge.capabilities.heal) heal = { ran: false, reason: forge.kind === 'azure-devops' ? HEAL_PIPELINE_MISSING : 'the forge has no heal capability' };
   else {
-    const held = holdForRefs(root, at, ctx.owner);
+    const held = holdForRefs(root, at, ctx.owner, 'heal', errors);
     if (typeof held === 'string') heal = { ran: false, reason: held };
     else {
       try {
@@ -604,7 +608,7 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
   if (forge.kind === 'local') {
     if (!ctx.localBaseSync) baseSync = { ran: false, reason: 'no base sync wired; omg factory run syncs the mirror base' };
     else {
-      const held = holdForRefs(root, at, ctx.owner);
+      const held = holdForRefs(root, at, ctx.owner, 'base sync', errors);
       if (typeof held === 'string') baseSync = { ran: false, reason: held };
       else {
         let synced: string | undefined;
