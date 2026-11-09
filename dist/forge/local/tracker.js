@@ -71,7 +71,7 @@ export function localTracker(ctx) {
     const scanWorking = () => {
         const dir = dirOnDisk();
         const out = [];
-        const skipped = new Set();
+        const skipped = new Map();
         if (!noLinkPath(ctx.root, dir, false, true) || !existsSync(dir) || !lstatSync(dir).isDirectory())
             return { out, skipped };
         for (const name of readdirSync(dir).sort()) {
@@ -89,7 +89,7 @@ export function localTracker(ctx) {
                 if (!(err instanceof BacklogParseError))
                     throw err;
                 // The id of a skipped file stays taken: the file is never rewritten and its id never handed out again.
-                skipped.add(backlogFileId(name));
+                skipped.set(backlogFileId(name), name);
                 const warning = `local backlog: skipped ${err.message}`;
                 if (!warnings.includes(warning))
                     warnings.push(warning);
@@ -146,9 +146,9 @@ export function localTracker(ctx) {
         const known = changedAfter.get(key);
         if (known !== undefined)
             return known;
-        const [last = '', ...parents] = git(lastStateChangeArgs(sha, path)).trim().split(/\s+/);
         // The pickaxe also matches a body line starting with `state:` and (defensively) a merge: only a single-parent
-        // commit whose own parsed `state` differs from its parent's is a reopen.
+        // commit whose own parsed `state` differs from its parent's is a reopen. A body-line hit says nothing about
+        // earlier commits, so the search resumes from its parent (the same log shape) until the merged head is reached.
         const stateAt = (commit) => {
             const r = ctx.exec('git', backlogShowArgs(commit, path), { cwd: ctx.root, env: TRUSTED_READ_ENV });
             if (r.status !== 0)
@@ -160,9 +160,19 @@ export function localTracker(ctx) {
                 return undefined;
             }
         };
-        const after = HEX40.test(last) && last !== mergedHead && parents.length === 1 && HEX40.test(parents[0])
-            && ctx.exec('git', mergedArgs(mergedHead, last), { cwd: ctx.root, env: TRUSTED_READ_ENV }).status === 0
-            && stateAt(last) !== stateAt(parents[0]);
+        let after = false;
+        let from = sha;
+        for (let i = 0; i < 50 && !after; i++) {
+            const [last = '', ...parents] = git(lastStateChangeArgs(from, path)).trim().split(/\s+/);
+            if (!HEX40.test(last) || last === mergedHead || ctx.exec('git', mergedArgs(mergedHead, last), { cwd: ctx.root, env: TRUSTED_READ_ENV }).status !== 0)
+                break;
+            if (parents.length !== 1 || !HEX40.test(parents[0]))
+                break;
+            if (stateAt(last) !== stateAt(parents[0]))
+                after = true;
+            else
+                from = parents[0];
+        }
         changedAfter.set(key, after);
         return after;
     };
@@ -223,7 +233,7 @@ export function localTracker(ctx) {
         if (!e)
             throw new Error(`local backlog item #${id} is not in ${ctx.backlogDir}`);
         if (e.file === undefined && scanWorking().skipped.has(id)) {
-            throw new Error(`local backlog: the working-tree file for #${id} is malformed and was skipped; fix or remove it by hand (it is not overwritten)`);
+            throw new Error(`local backlog: the working-tree file for #${id} (${scanWorking().skipped.get(id)}) is malformed and was skipped; fix or remove it by hand (it is not overwritten)`);
         }
         const file = e.file ?? join(ctx.root, ...e.item.path.split('/'));
         if (existsSync(file) && !lstatSync(file).isFile())
@@ -300,7 +310,7 @@ export function localTracker(ctx) {
             const body = withAcceptance(readBody(draft.bodyFile), draft.acceptance);
             const all = entries();
             const scan = scanWorking();
-            const id = Math.max(0, ...all.keys(), ...scan.out.map((d) => d.item.id), ...scan.skipped) + 1;
+            const id = Math.max(0, ...all.keys(), ...scan.out.map((d) => d.item.id), ...scan.skipped.keys()) + 1;
             const name = `${id}-${backlogSlug(draft.title)}.md`;
             const file = join(dirOnDisk(), name);
             noLinkPath(ctx.root, file, true, true);

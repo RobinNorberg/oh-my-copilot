@@ -1,7 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { defaultLedgerDir } from '../../factory/run/ledger.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { DEFAULT_SANDBOX_SETTINGS, buildSandboxConfig } from '../sandbox.js';
 let root;
@@ -53,7 +54,6 @@ describe('the OMC global state root is denied to the lane', () => {
     });
     it('with OMC_STATE_DIR set, the real factory ledger and budget ledger are denied and the granted job dir stays granted', () => {
         const stateDir = join(root, 'central');
-        mkdirSync(join(stateDir, 'factory-ledger'), { recursive: true });
         vi.stubEnv('OMC_STATE_DIR', stateDir);
         try {
             const budget = join(getOmcRoot(join(root, 'repo')), 'state', 'budget-ledger.json');
@@ -62,7 +62,7 @@ describe('the OMC global state root is denied to the lane', () => {
             const jobDir = join(stateDir, 'team-jobs', 'j1');
             const config = buildSandboxConfig('write', { ...ctx, omcStateRoot: join(root, 'omc-home', 'state'), jobDir, jobHome: join(jobDir, 'home') }, host);
             const list = config.userPolicy.filesystem.deniedPaths ?? [];
-            expect(list).toContain(join(stateDir, 'factory-ledger'));
+            expect(list).toContain(defaultLedgerDir(process.env));
             expect(list).toContain(budget);
             expect(list).not.toContain(stateDir);
             expect(list).not.toContain(join(stateDir, 'team-jobs'));
@@ -71,6 +71,25 @@ describe('the OMC global state root is denied to the lane', () => {
         finally {
             vi.unstubAllEnvs();
         }
+    });
+    it('denies the forge dir and the factory ledger dir although the engine has not created them yet', () => {
+        const stateDir = join(root, 'central-fresh');
+        const stateRoot = join(stateDir, 'state');
+        vi.stubEnv('OMC_STATE_DIR', stateDir);
+        try {
+            expect(existsSync(defaultLedgerDir(process.env))).toBe(false);
+            const jobDir = join(stateRoot, 'team-jobs', 'j2');
+            const list = denied({ ...ctx, omcStateRoot: stateRoot, jobDir, jobHome: join(jobDir, 'home') });
+            expect(list).toContain(join(stateRoot, 'forge'));
+            expect(list).toContain(defaultLedgerDir(process.env));
+        }
+        finally {
+            vi.unstubAllEnvs();
+        }
+    });
+    it('a bare repo or separate git dir (no main checkout) still builds, with no budget ledger deny', () => {
+        const list = denied({ ...ctx, commonGitDir: join(root, 'bare.git'), omcStateRoot: join(root, 'omc-home', 'state') });
+        expect(list.some((p) => p.endsWith('budget-ledger.json'))).toBe(false);
     });
 });
 //# sourceMappingURL=sandbox.state-deny.test.js.map

@@ -59512,15 +59512,74 @@ var init_model_contract = __esm({
   }
 });
 
+// src/features/model-routing/profiles.ts
+function parseModelProfile(value) {
+  return typeof value === "string" && MODEL_PROFILES.includes(value) ? value : void 0;
+}
+function profileAgentModels(profile) {
+  const tiers = PROFILE_TIERS[profile];
+  const out = {};
+  for (const [agent, tier] of Object.entries(AGENT_TIERS)) {
+    const model = tiers[tier];
+    if (model) out[agent] = model;
+  }
+  return out;
+}
+var MODEL_PROFILES, AGENT_TIERS, PROFILE_TIERS;
+var init_profiles = __esm({
+  "src/features/model-routing/profiles.ts"() {
+    "use strict";
+    MODEL_PROFILES = ["quality-first", "balanced", "economy"];
+    AGENT_TIERS = {
+      analyst: "high",
+      planner: "high",
+      architect: "high",
+      critic: "high",
+      "code-reviewer": "high",
+      "code-simplifier": "high",
+      "devils-advocate": "high",
+      debugger: "medium",
+      executor: "medium",
+      verifier: "medium",
+      "security-reviewer": "high",
+      "test-engineer": "medium",
+      designer: "medium",
+      "qa-tester": "medium",
+      scientist: "medium",
+      tracer: "medium",
+      "git-master": "medium",
+      "document-specialist": "medium",
+      explore: "low",
+      writer: "low"
+    };
+    PROFILE_TIERS = {
+      "quality-first": { high: "opus", medium: "opus", low: "sonnet" },
+      balanced: {},
+      economy: { high: "sonnet", medium: "haiku", low: "haiku" }
+    };
+  }
+});
+
 // src/installer/copilot-agent-models.ts
 function isRecord3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-function resolveAgentModelOverrides(agents) {
+function resolveAgentModelPlan(agents, modelProfile) {
   const overrides = {};
+  const profileEntries = {};
   const skipped = [];
+  const profile = parseModelProfile(modelProfile);
+  const profileProblem = modelProfile !== void 0 && !profile ? `modelProfile ${JSON.stringify(modelProfile)} is not quality-first, balanced or economy; no profile applied` : void 0;
+  if (profile) {
+    for (const [name, tier] of Object.entries(profileAgentModels(profile))) {
+      overrides[name] = toCopilotModelId(tier);
+      profileEntries[name] = overrides[name];
+    }
+  }
   for (const [key, value] of Object.entries(agents ?? {})) {
     if (key === "omc" || value?.model === void 0) continue;
+    delete overrides[toAgentName(key)];
+    delete profileEntries[toAgentName(key)];
     if (typeof value.model !== "string") {
       skipped.push(`${key}: ${JSON.stringify(value.model)}`);
       continue;
@@ -59531,7 +59590,7 @@ function resolveAgentModelOverrides(agents) {
     if (KNOWN_MODELS.has(resolved)) overrides[toAgentName(key)] = resolved;
     else skipped.push(`${key}: "${model}"`);
   }
-  return { overrides, skipped };
+  return { overrides, skipped, profileEntries, profileProblem };
 }
 function mergeSubagentModels(settings, overrides) {
   const names = Object.keys(overrides);
@@ -59549,22 +59608,61 @@ function mergeSubagentModels(settings, overrides) {
   if (!changed) return { settings, changed };
   return { settings: { ...settings, subagents: { ...subagents, agents } }, changed };
 }
-function syncCopilotAgentModels(settingsFile, overrides) {
-  if (Object.keys(overrides).length === 0) return { written: [] };
+function readProfileRecord(recordFile) {
+  try {
+    const parsed2 = JSON.parse((0, import_fs56.readFileSync)(recordFile, "utf-8"));
+    const entries = isRecord3(parsed2) && isRecord3(parsed2.entries) ? parsed2.entries : {};
+    return Object.fromEntries(Object.entries(entries).filter(([k, v]) => Object.hasOwn(AGENT_TIERS, k) && typeof v === "string" && v !== ""));
+  } catch {
+    return {};
+  }
+}
+function modelOf(settings, name) {
+  const agents = isRecord3(settings.subagents) && isRecord3(settings.subagents.agents) ? settings.subagents.agents : void 0;
+  const entry2 = agents?.[`${COPILOT_PLUGIN_AGENT_PREFIX}${name}`];
+  return isRecord3(entry2) ? entry2.model : void 0;
+}
+function syncCopilotAgentModels(settingsFile, overrides, profileEntries = {}, recordFile) {
+  const recorded = recordFile ? readProfileRecord(recordFile) : {};
+  if (Object.keys(overrides).length === 0 && Object.keys(recorded).length === 0) return { written: [], removed: [] };
   let current = {};
   if ((0, import_fs56.existsSync)(settingsFile)) {
     try {
       current = JSON.parse((0, import_fs56.readFileSync)(settingsFile, "utf-8"));
     } catch {
-      return { written: [], error: `${settingsFile} is not valid JSON; left untouched` };
+      return { written: [], removed: [], error: `${settingsFile} is not valid JSON; left untouched` };
     }
-    if (!isRecord3(current)) return { written: [], error: `${settingsFile} is not a JSON object; left untouched` };
+    if (!isRecord3(current)) return { written: [], removed: [], error: `${settingsFile} is not a JSON object; left untouched` };
   }
-  const { settings, changed } = mergeSubagentModels(current, overrides);
-  if (!changed) return { written: [] };
-  if ((0, import_fs56.existsSync)(settingsFile)) (0, import_fs56.copyFileSync)(settingsFile, `${settingsFile}.bak`);
-  atomicWriteJsonSync(settingsFile, settings);
-  return { written: Object.keys(overrides) };
+  const base = current;
+  const removed = Object.keys(recorded).filter((name) => !(name in overrides) && modelOf(base, name) === recorded[name]);
+  let afterRemoval = base;
+  if (removed.length > 0) {
+    const subagents = { ...base.subagents };
+    const agents = { ...subagents.agents };
+    for (const name of removed) {
+      const id = `${COPILOT_PLUGIN_AGENT_PREFIX}${name}`;
+      const { model: _model, ...rest } = agents[id];
+      if (Object.keys(rest).length > 0) agents[id] = rest;
+      else delete agents[id];
+    }
+    afterRemoval = { ...base, subagents: { ...subagents, agents } };
+  }
+  const { settings, changed } = mergeSubagentModels(afterRemoval, overrides);
+  const nextRecord = {};
+  for (const [name, value] of Object.entries(profileEntries)) {
+    const current2 = modelOf(base, name);
+    if (current2 !== value || recorded[name] === value) nextRecord[name] = value;
+  }
+  if (changed || removed.length > 0) {
+    if ((0, import_fs56.existsSync)(settingsFile)) (0, import_fs56.copyFileSync)(settingsFile, `${settingsFile}.bak`);
+    atomicWriteJsonSync(settingsFile, settings);
+  }
+  if (recordFile && JSON.stringify(nextRecord) !== JSON.stringify(recorded)) {
+    atomicWriteJsonSync(recordFile, { entries: nextRecord });
+  }
+  if (!changed && removed.length === 0) return { written: [], removed };
+  return { written: changed ? Object.keys(overrides) : [], removed };
 }
 var import_fs56, COPILOT_PLUGIN_AGENT_PREFIX, KNOWN_MODELS, toAgentName;
 var init_copilot_agent_models = __esm({
@@ -59573,6 +59671,7 @@ var init_copilot_agent_models = __esm({
     import_fs56 = require("fs");
     init_atomic_write();
     init_model_contract();
+    init_profiles();
     init_copilot_models();
     COPILOT_PLUGIN_AGENT_PREFIX = "oh-my-copilot:";
     KNOWN_MODELS = new Set(copilot_models_default.knownModels);
@@ -61511,10 +61610,13 @@ function install(options = {}) {
     }
     if (!projectScoped) {
       try {
-        const { overrides, skipped } = resolveAgentModelOverrides(loadJsoncFile(getConfigPaths().user)?.agents);
+        const userConfig = loadJsoncFile(getConfigPaths().user);
+        const { overrides, skipped, profileEntries, profileProblem } = resolveAgentModelPlan(userConfig?.agents, userConfig?.modelProfile);
+        if (profileProblem) log3(`  Warning: ${profileProblem}`);
         for (const entry2 of skipped) log3(`  Warning: agents.${entry2} is not a known Copilot model or tier alias; not synced`);
-        const { written, error: error2 } = syncCopilotAgentModels(SETTINGS_FILE, overrides);
+        const { written, removed, error: error2 } = syncCopilotAgentModels(SETTINGS_FILE, overrides, profileEntries, (0, import_path72.join)(COPILOT_HOME, ".omg-profile-models.json"));
         if (error2) log3(`  Warning: per-agent model overrides not synced: ${error2}`);
+        if (removed.length > 0) log3(`  Removed ${removed.length} per-agent model override(s) the model profile wrote earlier`);
         if (written.length > 0) log3(`  Synced ${written.length} per-agent model override(s) to settings.json subagents.agents`);
       } catch {
         log3("  Warning: Could not sync per-agent model overrides (non-fatal)");
@@ -72053,6 +72155,11 @@ function updateLedger(path30, fn, opts = {}) {
   }, { timeoutMs: opts.timeoutMs ?? 1e3 });
 }
 function mergeRecord(existing, next) {
+  const merged = mergeUsage(existing, next);
+  const kept = sanitizeTag(existing?.tag);
+  return kept && !merged.tag ? { ...merged, tag: kept } : merged;
+}
+function mergeUsage(existing, next) {
   if (!existing) return next;
   if (existing.source === "measured" && next.source === "estimated") {
     return next.scan ? { ...existing, scan: next.scan } : existing;
@@ -72086,7 +72193,9 @@ function applyBaseline(usage, baseline) {
 function putRecord(ledger, key, usage, team) {
   if (!SAFE_KEY.test(key) || team !== void 0 && !SAFE_KEY.test(team)) return false;
   if (usage.scan && usage.scan.since !== scanSince(ledger)) return false;
-  const net2 = applyBaseline(usage, ledger.baselines?.[baselineKey(key, team)]);
+  const { tag: rawTag, ...untagged } = usage;
+  const tag = sanitizeTag(rawTag);
+  const net2 = applyBaseline(tag ? { ...untagged, tag } : untagged, ledger.baselines?.[baselineKey(key, team)]);
   if (team) {
     const bucket = ledger.teams[team] ??= {};
     bucket[key] = mergeRecord(bucket[key], net2);
@@ -72119,6 +72228,30 @@ function resetLedger(ledger, now2 = /* @__PURE__ */ new Date()) {
   delete ledger.baselines;
   Object.assign(ledger, emptyLedger(now2), { resetAt: now2.toISOString() }, Object.keys(baselines).length ? { baselines } : {});
   return before;
+}
+function sanitizeTag(raw) {
+  if (!isObject3(raw) || !TAG_KINDS.includes(raw.kind)) return void 0;
+  const tag = { kind: raw.kind };
+  if (typeof raw.role === "string" && TAG_TEXT.test(raw.role)) tag.role = raw.role;
+  if (typeof raw.run === "string" && TAG_TEXT.test(raw.run)) tag.run = raw.run;
+  return tag;
+}
+function ledgerByTag(ledger, by) {
+  const groups = /* @__PURE__ */ new Map();
+  const add = (r) => {
+    if (!isObject3(r)) return;
+    const tag = sanitizeTag(r.tag);
+    const key = (by === "kind" ? tag?.kind : by === "run" ? tag?.run : tag?.role ?? tag?.kind) ?? UNTAGGED;
+    const g = groups.get(key) ?? { key, credits: 0, premiumRequests: 0, records: 0, estimatedRecords: 0 };
+    g.credits += num(r.credits);
+    g.premiumRequests += num(r.premiumRequests);
+    g.records += 1;
+    if (r.source !== "measured") g.estimatedRecords += 1;
+    groups.set(key, g);
+  };
+  for (const r of Object.values(ledger.sessions)) add(r);
+  for (const bucket of Object.values(ledger.teams)) if (isObject3(bucket)) for (const r of Object.values(bucket)) add(r);
+  return [...groups.values()].sort((a, b) => b.credits - a.credits || a.key.localeCompare(b.key));
 }
 function ledgerTotals(ledger) {
   const totals = { premiumRequests: 0, credits: 0, sessions: 0, estimatedRecords: 0, teams: {} };
@@ -72153,7 +72286,7 @@ function copilotEventsPath(sessionId) {
 function num(v) {
   return typeof v === "number" && Number.isFinite(v) ? v : 0;
 }
-var import_node_fs10, import_node_os2, import_node_path14, NANO_AIU_PER_CREDIT, ESTIMATED_CREDITS_PER_PROMPT, MAX_SCAN_BYTES, TAIL_BYTES, SAFE_KEY, isObject3, EPOCH, baselineKey;
+var import_node_fs10, import_node_os2, import_node_path14, NANO_AIU_PER_CREDIT, ESTIMATED_CREDITS_PER_PROMPT, MAX_SCAN_BYTES, TAIL_BYTES, SAFE_KEY, isObject3, EPOCH, baselineKey, TAG_KINDS, TAG_TEXT, USAGE_GROUP_BYS, UNTAGGED;
 var init_ledger = __esm({
   "src/budget/ledger.ts"() {
     "use strict";
@@ -72172,6 +72305,10 @@ var init_ledger = __esm({
     isObject3 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
     EPOCH = (/* @__PURE__ */ new Date(0)).toISOString();
     baselineKey = (key, team) => team ? `t:${team}/${key}` : `s:${key}`;
+    TAG_KINDS = ["factory-lane", "team-worker", "session"];
+    TAG_TEXT = /^[A-Za-z0-9._:-]{1,64}$/;
+    USAGE_GROUP_BYS = ["role", "kind", "run"];
+    UNTAGGED = "untagged";
   }
 });
 
@@ -94999,16 +95136,16 @@ function trackerTagEditProblem(body, labels) {
   const current = body[tests[0]].value === "" ? [] : split(body[tests[0]].value).filter(Boolean);
   const next = split(body[adds[0]].value);
   const fold7 = (t) => t.replace(/[A-Z]/g, (c) => c.toLowerCase());
-  const has2 = (list2, tag) => list2.some((t) => fold7(t) === fold7(tag));
+  const has3 = (list2, tag) => list2.some((t) => fold7(t) === fold7(tag));
   for (const tag of next) {
-    if (has2(current, tag)) continue;
+    if (has3(current, tag)) continue;
     if (!isTrackerTag(tag)) return `${at} has a refused tag ${JSON.stringify(tag)}`;
     if (!labels.includes(tag)) return `${at} tag ${JSON.stringify(tag)} is not on the tracker write allowlist`;
   }
   for (const tag of current) {
-    if (has2(next, tag)) continue;
+    if (has3(next, tag)) continue;
     if (isFactoryTag(tag)) return `${at} removes the factory tag ${JSON.stringify(tag)}`;
-    if (!isTrackerTag(tag) || !has2(labels, tag)) return `${at} removes tag ${JSON.stringify(tag)}, which is not on the tracker write allowlist`;
+    if (!isTrackerTag(tag) || !has3(labels, tag)) return `${at} removes tag ${JSON.stringify(tag)}, which is not on the tracker write allowlist`;
   }
   return void 0;
 }
@@ -95053,6 +95190,7 @@ function validateAdoBody(route2, body, context = {}) {
     if (typeof op.op !== "string" || !shape.ops.includes(op.op)) return `${at}.op must be one of ${shape.ops.join(", ")}`;
     const target = typeof op.path === "string" ? shape.paths.find((p) => p.path.test(op.path)) : void 0;
     if (!target || target.tracker && !writes) return `${at}.path is not allowed`;
+    if (writes?.purpose === "triage" && !TRIAGE_PATHS.test(op.path)) return `${at}.path is not a triage write`;
     if (target.tracker && !(isPlainObject4(body[0]) && body[0].op === "test" && body[0].path === "/rev")) return `${at}: a tracker write starts with test /rev`;
     if (writes && (target.configured === "states" || target.configured === "columns")) return `${at}.path is not a tracker write`;
     const untaggedTest = writes && op.op === "test" && target.configured === "tags" && op.value === "";
@@ -95069,7 +95207,7 @@ function validateAdoBody(route2, body, context = {}) {
   }
   return writes && route2.method === "PATCH" ? trackerTagEditProblem(body, writes.labels) : void 0;
 }
-var STABLE, TEXT_CHARS, TEXT, text, BRANCH_REF, TITLE, ADAPTER_HTML, AREA_PATH, ADO_TRACKER_RELATIONS, RELATION, PRIORITY, route, ADO_ROUTES, ADO_WRITE_ALLOWLIST, isPlainObject4, isFactoryTag, isTrackerTag, TAGS_PATH;
+var STABLE, TEXT_CHARS, TEXT, text, BRANCH_REF, TITLE, ADAPTER_HTML, AREA_PATH, ADO_TRACKER_RELATIONS, RELATION, PRIORITY, route, ADO_ROUTES, ADO_WRITE_ALLOWLIST, isPlainObject4, isFactoryTag, isTrackerTag, TAGS_PATH, TRIAGE_PATHS;
 var init_routes = __esm({
   "src/forge/ado/routes.ts"() {
     "use strict";
@@ -95315,6 +95453,7 @@ var init_routes = __esm({
     isFactoryTag = (tag) => /^(?:factory|harbor)\s*:/i.test(tag.normalize("NFKC").trim());
     isTrackerTag = (tag) => /^(?!-)[^;,\p{Cc}\p{Cf}]{1,100}$/u.test(tag) && !isFactoryTag(tag);
     TAGS_PATH = "/fields/System.Tags";
+    TRIAGE_PATHS = /^\/(?:rev|fields\/System\.Tags|fields\/Microsoft\.VSTS\.Common\.Priority)$/;
   }
 });
 
@@ -96527,7 +96666,18 @@ function buildSandboxConfig(profile, ctx, host) {
     });
     const mainRoot = (0, import_node_path27.basename)(ctx.commonGitDir) === ".git" ? (0, import_node_path27.dirname)(ctx.commonGitDir) : void 0;
     const ledgers = [...process.env.OMC_STATE_DIR?.trim() ? [(0, import_node_path27.join)((0, import_node_path27.resolve)(process.env.OMC_STATE_DIR), "factory-ledger")] : [], ...mainRoot ? [(0, import_node_path27.join)(getOmcRoot(mainRoot), "state", "budget-ledger.json")] : []];
-    const stateDeny = [...holdsGrant(stateRoot2) ? [(0, import_node_path27.join)(stateRoot2, "forge")].filter(import_node_fs23.existsSync) : [stateRoot2], ...ledgers.filter(import_node_fs23.existsSync)];
+    const ensureDir = (d) => {
+      try {
+        (0, import_node_fs23.mkdirSync)(d, { recursive: true });
+      } catch {
+      }
+      return d;
+    };
+    const forgeDir = (0, import_node_path27.join)(stateRoot2, "forge");
+    const stateDeny = [
+      ...holdsGrant(stateRoot2) ? [ensureDir(forgeDir)].filter(import_node_fs23.existsSync) : [stateRoot2],
+      ...ledgers.map((l) => l.endsWith("factory-ledger") ? ensureDir(l) : l).filter(import_node_fs23.existsSync)
+    ];
     filesystem.deniedPaths.push(...[...new Set(stateDeny)].filter((p) => !holdsGrant(p) && !covered(p)));
     if (ctx.platform !== "win32") {
       const sockDir = ctx.sshAuthSock && import_node_path27.posix.isAbsolute(ctx.sshAuthSock) ? import_node_path27.posix.dirname(ctx.sshAuthSock) : null;
@@ -117545,8 +117695,8 @@ function loadBudgetSettings(cwd2, env2 = process.env) {
   } catch {
     issues.push("budget: project config unreadable");
   }
-  const isObject6 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
-  const merged = isObject6(user) && isObject6(project) ? { ...user, ...project } : project ?? user;
+  const isObject7 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+  const merged = isObject7(user) && isObject7(project) ? { ...user, ...project } : project ?? user;
   const resolved = resolveBudgetSettings(merged, env2);
   return { settings: resolved.settings, issues: [...issues, ...resolved.issues] };
 }
@@ -118947,9 +119097,41 @@ var init_mirror = __esm({
   }
 });
 
+// src/factory/triage/guard.ts
+function triageWriteGh(a, ctx) {
+  if (a[0] !== "issue" || a[1] !== "edit" || a[3] !== "--repo" || a[5] !== "--add-label" && a[5] !== "--remove-label") return null;
+  if (!NUMBER2.test(a[2] ?? "") || a[4] !== ctx.repo) return false;
+  const flags = a.slice(5);
+  if (flags.length % 2 !== 0 || flags.length / 2 > MAX_TRIAGE_FLAGS) return false;
+  const seen = [];
+  let removing = false;
+  for (let i = 0; i < flags.length; i += 2) {
+    if (flags[i] === "--remove-label") removing = true;
+    else if (flags[i] !== "--add-label" || removing) return false;
+    const label2 = flags[i + 1];
+    if (!isTriageLabelName(label2) || !ctx.labels.includes(label2) || seen.includes(label2.toLowerCase())) return false;
+    seen.push(label2.toLowerCase());
+  }
+  return true;
+}
+function triageLabelListGh(a, repo) {
+  return a.length === 10 && a[0] === "label" && a[1] === "list" && a[2] === "--repo" && a[3] === repo && a[4] === "--search" && isTriageLabelName(a[5]) && a[6] === "--json" && a[7] === "name" && a[8] === "--limit" && NUMBER2.test(a[9]);
+}
+var TRIAGE_LABEL, RESERVED, NUMBER2, MAX_TRIAGE_FLAGS, isTriageLabelName;
+var init_guard2 = __esm({
+  "src/factory/triage/guard.ts"() {
+    "use strict";
+    TRIAGE_LABEL = /^[A-Za-z0-9][A-Za-z0-9:_.-]{0,48}$/;
+    RESERVED = /^(?:factory|harbor):/i;
+    NUMBER2 = /^[1-9]\d{0,9}$/;
+    MAX_TRIAGE_FLAGS = 6;
+    isTriageLabelName = (s) => typeof s === "string" && TRIAGE_LABEL.test(s) && !RESERVED.test(s);
+  }
+});
+
 // src/factory/run/exec.ts
 function isProgressLabelEdit(r) {
-  if (r.length < 3 || r.length % 2 === 0 || !NUMBER2.test(r[0])) return false;
+  if (r.length < 3 || r.length % 2 === 0 || !NUMBER3.test(r[0])) return false;
   const labels = [];
   let adds = 0;
   for (let i = 1; i < r.length; i += 2) {
@@ -118989,10 +119171,10 @@ function trackerWriteGh(a, ctx) {
     return r.length >= 6 && same2(r.slice(0, 6), ["--repo", ctx.repo, "--title", r[3], "--body-file", r[5]]) && isTitle(r[3]) && isBodyFile(r[5], ctx) && isLabelPairs(r.slice(6), ["--label"], ctx);
   }
   if (sub === "edit" && r[1] === "--repo") {
-    return r.length >= 7 && NUMBER2.test(r[0]) && same2(r.slice(1, 7), ["--repo", ctx.repo, "--title", r[4], "--body-file", r[6]]) && isTitle(r[4]) && isBodyFile(r[6], ctx) && isLabelPairs(r.slice(7), ["--add-label", "--remove-label"], ctx);
+    return r.length >= 7 && NUMBER3.test(r[0]) && same2(r.slice(1, 7), ["--repo", ctx.repo, "--title", r[4], "--body-file", r[6]]) && isTitle(r[4]) && isBodyFile(r[6], ctx) && isLabelPairs(r.slice(7), ["--add-label", "--remove-label"], ctx);
   }
   if (sub === "list" && r[0] === "--repo") {
-    return same2(r, ["--repo", ctx.repo, "--search", r[3], "--state", "all", "--json", "number,body", "--limit", r[9]]) && KEY_SEARCH.test(r[3]) && NUMBER2.test(r[9]) && Number(r[9]) >= 1 && Number(r[9]) <= 1e3;
+    return same2(r, ["--repo", ctx.repo, "--search", r[3], "--state", "all", "--json", "number,body", "--limit", r[9]]) && KEY_SEARCH.test(r[3]) && NUMBER3.test(r[9]) && Number(r[9]) >= 1 && Number(r[9]) <= 1e3;
   }
   return null;
 }
@@ -119096,12 +119278,14 @@ function factoryGit(a, protectedBranches, extraProtected = [], local) {
   }
 }
 function factoryGh(a, writes) {
-  const write = writes ? trackerWriteGh(a, writes) : null;
+  const triage = writes?.purpose === "triage" ? triageWriteGh(a, writes) ?? (a[0] === "issue" && a[1] === "edit" ? false : null) : null;
+  if (triage !== null) return triage;
+  const write = writes && writes.purpose !== "triage" ? trackerWriteGh(a, writes) : null;
   if (write !== null) return write;
   const [group, sub, ...r] = a;
   if (group === "issue") {
-    if (sub === "view") return r.length === 3 && NUMBER2.test(r[0]) && r[1] === "--json" && JSON_FIELDS2.test(r[2]);
-    if (sub === "comment") return r.length === 3 && NUMBER2.test(r[0]) && r[1] === "--body-file" && isFile2(r[2]);
+    if (sub === "view") return r.length === 3 && NUMBER3.test(r[0]) && r[1] === "--json" && JSON_FIELDS2.test(r[2]);
+    if (sub === "comment") return r.length === 3 && NUMBER3.test(r[0]) && r[1] === "--body-file" && isFile2(r[2]);
     if (sub === "edit") return isProgressLabelEdit(r);
     return false;
   }
@@ -119109,12 +119293,12 @@ function factoryGh(a, writes) {
     if (sub === "create") {
       return r.length === 9 && r[0] === "--draft" && r[1] === "--base" && isBranch2(r[2]) && r[3] === "--head" && isFactoryBranch(r[4], []) && r[5] === "--title" && isTitle(r[6]) && r[7] === "--body-file" && isFile2(r[8]);
     }
-    if (sub === "comment") return r.length === 3 && NUMBER2.test(r[0]) && r[1] === "--body-file" && isFile2(r[2]);
+    if (sub === "comment") return r.length === 3 && NUMBER3.test(r[0]) && r[1] === "--body-file" && isFile2(r[2]);
     if (sub === "list") {
       if (r.length === 4) return r[0] === "--head" && isFactoryBranch(r[1], []) && r[2] === "--json" && JSON_FIELDS2.test(r[3]);
       return r.length === 8 && r[0] === "--head" && /^factory\/issue-\d+$/.test(r[1]) && r[2] === "--base" && isBranch2(r[3]) && same2(r.slice(4), ["--state", "merged", "--json", "number"]);
     }
-    if (sub === "ready") return r.length === 1 && NUMBER2.test(r[0]);
+    if (sub === "ready") return r.length === 1 && NUMBER3.test(r[0]);
     if (sub === "merge") return false;
     return null;
   }
@@ -119207,7 +119391,7 @@ function hardenedGitExec(exec3, hooksDir, localMirror = () => void 0) {
     return exec3(cmd, [...hardening, ...LOCAL_REMOTE_PACK_ARGS, ...localTransportArgs(args, mirror)], opts);
   };
 }
-var import_fs144, import_os31, import_path171, FACTORY_BRANCH_PREFIX, FactorySafetyError, NUMBER2, JSON_FIELDS2, BRANCH3, REPO_PATH, isPlainRepoPath, FOR_EACH_REF_FORMAT, CHECKOUT_BRANCH, isBranch2, isFile2, isTitle, same2, FACTORY_LABEL, KEY_SEARCH, MAX_WRITE_LABELS, isWriteLabel, isBodyFile, LOCAL_REMOTE_DEFAULT_FETCH, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, URL_REWRITE_CONFIG_ARGS, REMOTE_CONFIG_ARGS, adoRefusal, LOCAL_REMOTE_PACK_ARGS, onLocalRemote;
+var import_fs144, import_os31, import_path171, FACTORY_BRANCH_PREFIX, FactorySafetyError, NUMBER3, JSON_FIELDS2, BRANCH3, REPO_PATH, isPlainRepoPath, FOR_EACH_REF_FORMAT, CHECKOUT_BRANCH, isBranch2, isFile2, isTitle, same2, FACTORY_LABEL, KEY_SEARCH, MAX_WRITE_LABELS, isWriteLabel, isBodyFile, LOCAL_REMOTE_DEFAULT_FETCH, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, URL_REWRITE_CONFIG_ARGS, REMOTE_CONFIG_ARGS, adoRefusal, LOCAL_REMOTE_PACK_ARGS, onLocalRemote;
 var init_exec2 = __esm({
   "src/factory/run/exec.ts"() {
     "use strict";
@@ -119218,6 +119402,7 @@ var init_exec2 = __esm({
     init_body_file();
     init_mirror();
     init_exec();
+    init_guard2();
     init_body_file();
     FACTORY_BRANCH_PREFIX = "factory/";
     FactorySafetyError = class extends ShipSafetyError {
@@ -119226,7 +119411,7 @@ var init_exec2 = __esm({
         this.name = "FactorySafetyError";
       }
     };
-    NUMBER2 = /^\d+$/;
+    NUMBER3 = /^\d+$/;
     JSON_FIELDS2 = /^[A-Za-z]+(?:,[A-Za-z]+)*$/;
     BRANCH3 = /^[\w.][\w./-]*$/;
     REPO_PATH = /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/;
@@ -120604,6 +120789,7 @@ var init_job = __esm({
           scrubCredentials: options.scrubCredentials === true,
           hostCommits: options.hostCommits === true,
           ledgerKey: options.ledgerKey ?? `copilot-run:${id}`,
+          ledgerTag: options.ledgerTag ?? null,
           model: input.model ?? null,
           timeoutMs,
           maxCredits,
@@ -120818,6 +121004,7 @@ var init_job = __esm({
           source: job.usage.measured ? "measured" : "estimated",
           detail: job.usage.measured ? "session.shutdown" : "copilot_run sdk assistant.usage: AI credits as billed, user-initiated calls x1 each (multiplier unknown)",
           ...job.model ? { model: job.model } : {},
+          ...job.ledgerTag ? { tag: job.ledgerTag } : {},
           updatedAt: (/* @__PURE__ */ new Date()).toISOString()
         };
         try {
@@ -121897,7 +122084,7 @@ function localTracker(ctx) {
   const scanWorking = () => {
     const dir = dirOnDisk();
     const out = [];
-    const skipped = /* @__PURE__ */ new Set();
+    const skipped = /* @__PURE__ */ new Map();
     if (!noLinkPath(ctx.root, dir, false, true) || !(0, import_fs149.existsSync)(dir) || !(0, import_fs149.lstatSync)(dir).isDirectory()) return { out, skipped };
     for (const name of (0, import_fs149.readdirSync)(dir).sort()) {
       if (backlogFileId(name) === void 0) continue;
@@ -121908,7 +122095,7 @@ function localTracker(ctx) {
         out.push({ item: parseBacklogFile(`${ctx.backlogDir}/${name}`, text4), text: lf(text4), file });
       } catch (err) {
         if (!(err instanceof BacklogParseError)) throw err;
-        skipped.add(backlogFileId(name));
+        skipped.set(backlogFileId(name), name);
         const warning = `local backlog: skipped ${err.message}`;
         if (!warnings.includes(warning)) warnings.push(warning);
       }
@@ -121949,7 +122136,6 @@ function localTracker(ctx) {
     const key = `${sha3}:${mergedHead}:${path30}`;
     const known = changedAfter.get(key);
     if (known !== void 0) return known;
-    const [last = "", ...parents] = git7(lastStateChangeArgs(sha3, path30)).trim().split(/\s+/);
     const stateAt = (commit) => {
       const r = ctx.exec("git", backlogShowArgs(commit, path30), { cwd: ctx.root, env: TRUSTED_READ_ENV3 });
       if (r.status !== 0) return void 0;
@@ -121959,7 +122145,15 @@ function localTracker(ctx) {
         return void 0;
       }
     };
-    const after = HEX404.test(last) && last !== mergedHead && parents.length === 1 && HEX404.test(parents[0]) && ctx.exec("git", mergedArgs(mergedHead, last), { cwd: ctx.root, env: TRUSTED_READ_ENV3 }).status === 0 && stateAt(last) !== stateAt(parents[0]);
+    let after = false;
+    let from = sha3;
+    for (let i = 0; i < 50 && !after; i++) {
+      const [last = "", ...parents] = git7(lastStateChangeArgs(from, path30)).trim().split(/\s+/);
+      if (!HEX404.test(last) || last === mergedHead || ctx.exec("git", mergedArgs(mergedHead, last), { cwd: ctx.root, env: TRUSTED_READ_ENV3 }).status !== 0) break;
+      if (parents.length !== 1 || !HEX404.test(parents[0])) break;
+      if (stateAt(last) !== stateAt(parents[0])) after = true;
+      else from = parents[0];
+    }
     changedAfter.set(key, after);
     return after;
   };
@@ -122015,7 +122209,7 @@ ${acceptance.map((a) => `- [ ] ${a}`).join("\n")}
     const e = entries().get(id);
     if (!e) throw new Error(`local backlog item #${id} is not in ${ctx.backlogDir}`);
     if (e.file === void 0 && scanWorking().skipped.has(id)) {
-      throw new Error(`local backlog: the working-tree file for #${id} is malformed and was skipped; fix or remove it by hand (it is not overwritten)`);
+      throw new Error(`local backlog: the working-tree file for #${id} (${scanWorking().skipped.get(id)}) is malformed and was skipped; fix or remove it by hand (it is not overwritten)`);
     }
     const file = e.file ?? (0, import_path176.join)(ctx.root, ...e.item.path.split("/"));
     if ((0, import_fs149.existsSync)(file) && !(0, import_fs149.lstatSync)(file).isFile()) throw new Error(`local backlog: ${file} is not a regular file`);
@@ -122058,6 +122252,22 @@ ${(0, import_fs149.readFileSync)(bodyFile, "utf8").replace(/\n*$/, "\n")}`);
         return { ok: false, stderr: err.message };
       }
     },
+    setTriage(id, change) {
+      if (change.assignee !== void 0) return { ok: false, detail: "assignee is not a triage write yet" };
+      try {
+        const { entry: entry2, file } = fileFor(id);
+        const fields = entry2.item.fields;
+        const drop = new Set(change.remove.map((l) => l.toLowerCase()));
+        const kept = fields.labels.filter((l) => !drop.has(l.toLowerCase()));
+        const labels = [...kept, ...change.add.filter((a) => !kept.some((l) => l.toLowerCase() === a.toLowerCase()))];
+        const priority = change.priority ?? fields.priority;
+        if (labels.length === fields.labels.length && labels.every((l, i) => l === fields.labels[i]) && priority === fields.priority) return { ok: true, detail: "nothing to change" };
+        writeAtomic4(file, renderBacklogFile({ ...fields, labels, ...priority === void 0 ? {} : { priority } }, entry2.item.body), ctx.root);
+        return { ok: true, detail: `${file} edited in the working tree; commit it on the base branch` };
+      } catch (err) {
+        return { ok: false, detail: err.message };
+      }
+    },
     findByKey(spec) {
       const all = entries();
       return [...all.values()].flatMap((e) => shipyardKeys(e.item.body).filter(([s]) => s === spec).map(([, key]) => ({ key, item: toForgeItem(e, all) })));
@@ -122066,7 +122276,7 @@ ${(0, import_fs149.readFileSync)(bodyFile, "utf8").replace(/\n*$/, "\n")}`);
       const body = withAcceptance(readBody(draft.bodyFile), draft.acceptance);
       const all = entries();
       const scan = scanWorking();
-      const id = Math.max(0, ...all.keys(), ...scan.out.map((d) => d.item.id), ...scan.skipped) + 1;
+      const id = Math.max(0, ...all.keys(), ...scan.out.map((d) => d.item.id), ...scan.skipped.keys()) + 1;
       const name = `${id}-${backlogSlug(draft.title)}.md`;
       const file = (0, import_path176.join)(dirOnDisk(), name);
       noLinkPath(ctx.root, file, true, true);
@@ -125742,6 +125952,22 @@ function adoTracker(ctx, intakeSource2, bodyDir) {
         return { ok: false, stderr: failure3(error2) };
       }
     },
+    setTriage(id, change) {
+      if (change.assignee !== void 0) return { ok: false, detail: "assignee is not a triage write yet" };
+      try {
+        return patchItem(ctx, id, (item) => {
+          const ops = [];
+          const current = str3(item.fields["System.Tags"]) ?? "";
+          const tags = editedTags(splitTags(current), change.add, change.remove);
+          if (tags && tags.length === 0) throw new Error(`work item ${id}: removing its last tag is not a tracker write`);
+          if (tags) ops.push({ op: "test", path: "/fields/System.Tags", value: current }, { op: "add", path: "/fields/System.Tags", value: tags.join("; ") });
+          if (change.priority !== void 0 && num3(item.fields["Microsoft.VSTS.Common.Priority"]) !== change.priority) ops.push({ op: "add", path: "/fields/Microsoft.VSTS.Common.Priority", value: change.priority });
+          return ops.length ? ops : null;
+        });
+      } catch (error2) {
+        return { ok: false, detail: failure3(error2) };
+      }
+    },
     findByKey(spec) {
       const json = adoJson(adoCall(ctx, "wit.wiql.POST", projectParams(ctx), { $top: KEY_QUERY_TOP }, { query: shipyardKeyWiql(spec) }), "shipyard-key query");
       const ids2 = (isObject4(json) && Array.isArray(json.workItems) ? json.workItems : []).map((w) => isObject4(w) ? w.id : void 0).filter((n) => Number.isSafeInteger(n) && n > 0);
@@ -125906,7 +126132,7 @@ function parseRunList(stdout) {
   return parsed2.flatMap((e) => {
     const id = typeof e?.databaseId === "number" ? String(e.databaseId) : str4(e?.databaseId);
     const headSha = str4(e?.headSha);
-    if (!NUMBER3.test(id) || !HEX4010.test(headSha)) return [];
+    if (!NUMBER4.test(id) || !HEX4010.test(headSha)) return [];
     return [{ id, headSha, conclusion: str4(e.conclusion), status: str4(e.status), headBranch: str4(e.headBranch), event: str4(e.event), createdAt: str4(e.createdAt) }];
   });
 }
@@ -125919,7 +126145,7 @@ function parseRunJobs(stdout) {
   if (!Array.isArray(jobs)) throw new Error("gh run view --json jobs: expected { jobs: [...] }");
   return jobs.flatMap((j) => {
     const jobId = typeof j?.databaseId === "number" ? String(j.databaseId) : str4(j?.databaseId);
-    if (!NUMBER3.test(jobId)) return [];
+    if (!NUMBER4.test(jobId)) return [];
     const steps = Array.isArray(j.steps) ? j.steps : [];
     return [{
       jobId,
@@ -125943,13 +126169,13 @@ function githubCi(exec3, cwd2) {
     rerunIntent: githubRerunIntent
   };
 }
-var RUN_LIST_FIELDS, NUMBER3, HEX4010, str4, githubRerunIntent;
+var RUN_LIST_FIELDS, NUMBER4, HEX4010, str4, githubRerunIntent;
 var init_ci2 = __esm({
   "src/forge/github/ci.ts"() {
     "use strict";
     init_logs();
     RUN_LIST_FIELDS = "databaseId,conclusion,status,headSha,headBranch,event,createdAt";
-    NUMBER3 = /^\d{1,20}$/;
+    NUMBER4 = /^\d{1,20}$/;
     HEX4010 = /^[0-9a-f]{40}$/;
     str4 = (v) => typeof v === "string" ? v : "";
     githubRerunIntent = (runId) => `gh run rerun ${runId} --failed`;
@@ -126099,12 +126325,19 @@ function ghUpdateItem(exec3, repo, id, update, cwd2) {
     ...update.removeLabels.flatMap((l) => ["--remove-label", l])
   ], cwd2);
 }
+function ghSetTriage(exec3, repo, issue2, change, cwd2) {
+  if (change.assignee !== void 0) return { ok: false, detail: "assignee is not a triage write yet" };
+  if (change.add.length === 0 && change.remove.length === 0) return { ok: true, detail: "nothing to change" };
+  const res = editLabels(exec3, issue2, ["--repo", ghRepoArg(repo), ...change.add.flatMap((l) => ["--add-label", l]), ...change.remove.flatMap((l) => ["--remove-label", l])], cwd2);
+  return { ok: res.ok, detail: res.ok ? "labels updated" : res.stderr.trim() };
+}
 function githubTracker(exec3, cwd2, config2) {
   return {
     viewItem: (id) => ghViewItem(exec3, id, cwd2),
     queryItems: (source, limit) => ghQueryItems(exec3, source, limit, cwd2),
     comment: (id, bodyFile) => ghIssueComment(exec3, id, bodyFile, cwd2),
     setProgress: (id, stage, mapping) => ghSetProgress(exec3, id, stage, mapping, config2.progress.stages, cwd2),
+    setTriage: (id, change) => ghSetTriage(exec3, config2.repo, id, change, cwd2),
     addMarker: (id, marker) => editLabels(exec3, id, ["--add-label", marker], cwd2),
     findByKey: (spec) => ghFindByKey(exec3, config2.repo, spec, cwd2),
     createItem: (draft) => ghCreateItem(exec3, config2.repo, draft, cwd2),
@@ -127000,12 +127233,14 @@ function gateDefinitionSources(gate) {
   if (name === "npx") return { sources: [], unresolved: npxUnresolved(shown) };
   if (name === "node") {
     const at = args.findIndex((a) => !a.startsWith("-"));
+    if (args[0] === "--run" && args[1] !== void 0 && !args[1].startsWith("-")) return scriptSource("npm", ["run", args[1]], shown);
+    if (at !== 0 && args.length > 0) return { sources: [], unresolved: `${shown} passes node the option ${JSON.stringify(args[0])} before its script, so what it runs is not known` };
     if (at < 0) return { sources: [] };
     const target = args[at];
     const base = (target.split(/[\\/]/).pop() ?? "").toLowerCase();
     if (base === "npm-cli.js") return scriptSource("npm", args.slice(at + 1), shown);
     if (base === "npx-cli.js") return { sources: [], unresolved: npxUnresolved(shown) };
-    const pm = /^(pnpm|yarn)\.c?js$/.exec(base);
+    const pm = /^(pnpm|yarn)([-.][\w.]+)?\.c?js$/.exec(base);
     if (pm) return scriptSource(pm[1], args.slice(at + 1), shown);
     const p = repoPath(target);
     return { sources: p ? [{ path: p }] : [] };
@@ -127013,7 +127248,7 @@ function gateDefinitionSources(gate) {
   if (/[\\/]/.test(cmd)) {
     const own2 = repoPath(cmd);
     if (own2) return { sources: [{ path: own2 }] };
-    return args.length === 0 ? { sources: [] } : { sources: [], unresolved: `${shown} runs ${JSON.stringify(cmd)}, a program outside the repository whose arguments the repository cannot pin` };
+    return { sources: [], unresolved: `${shown} runs ${JSON.stringify(cmd)}, a program outside the repository that may read repository files the gate does not name (a Makefile, pytest.ini, its arguments)` };
   }
   return { sources: [], unresolved: `${shown} runs ${JSON.stringify(cmd)} from PATH, and the repository holds no file that defines it` };
 }
@@ -127137,7 +127372,7 @@ var init_lane = __esm({
             maxCredits: input.maxCredits,
             ...input.model ? { model: input.model } : {}
           },
-          { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, sandboxScope: "factory", ...input.scrubCredentials ? { scrubCredentials: true } : {}, ...input.engineCommits ? { hostCommits: true } : {} }
+          { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, ...input.ledgerTag ? { ledgerTag: { kind: "factory-lane", ...input.ledgerTag } } : {}, sandboxScope: "factory", ...input.scrubCredentials ? { scrubCredentials: true } : {}, ...input.engineCommits ? { hostCommits: true } : {} }
         );
         return { remoteId: snap.jobId };
       }
@@ -129626,6 +129861,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
             profile,
             timeoutMs: this.o.limits.laneTimeoutMs,
             maxCredits: cap.cap,
+            ledgerTag: { role: kind, run: runSlug(this.key) },
             ...profile === "write" ? { engineCommits: true } : {}
           }));
         } catch (error2) {
@@ -129703,17 +129939,17 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
 // src/factory/check/cli.ts
 function checkGh(a, marker) {
   const [group, sub, ...r] = a;
-  if (group === "issue" && sub === "view") return r.length === 3 && NUMBER4.test(r[0]) && r[1] === "--json" && JSON_FIELDS3.test(r[2]);
+  if (group === "issue" && sub === "view") return r.length === 3 && NUMBER5.test(r[0]) && r[1] === "--json" && JSON_FIELDS3.test(r[2]);
   if (group === "issue" && sub === "list") {
-    return r.length === 8 && (r[0] === "--label" || r[0] === "--milestone") && VALUE2(r[1]) && r[2] === "--state" && r[3] === "open" && r[4] === "--json" && r[5] === "number" && r[6] === "--limit" && NUMBER4.test(r[7]);
+    return r.length === 8 && (r[0] === "--label" || r[0] === "--milestone") && VALUE2(r[1]) && r[2] === "--state" && r[3] === "open" && r[4] === "--json" && r[5] === "number" && r[6] === "--limit" && NUMBER5.test(r[7]);
   }
-  if (group === "issue" && sub === "edit") return marker !== void 0 && same4(r.slice(1), ["--add-label", marker]) && NUMBER4.test(r[0] ?? "");
+  if (group === "issue" && sub === "edit") return marker !== void 0 && same4(r.slice(1), ["--add-label", marker]) && NUMBER5.test(r[0] ?? "");
   if (group === "pr" && sub === "list") {
     if (r.length === 4) return r[0] === "--head" && FACTORY_ISSUE_BRANCH.test(r[1]) && r[2] === "--json" && JSON_FIELDS3.test(r[3]);
     return r.length === 8 && r[0] === "--head" && FACTORY_ISSUE_BRANCH.test(r[1]) && r[2] === "--base" && VALUE2(r[3]) && same4(r.slice(4), ["--state", "merged", "--json", "number"]);
   }
-  if (group === "pr" && sub === "view") return r.length === 3 && NUMBER4.test(r[0]) && r[1] === "--json" && JSON_FIELDS3.test(r[2]);
-  if (group === "label" && sub === "list") return r.length === 6 && r[0] === "--search" && VALUE2(r[1]) && r[2] === "--json" && r[3] === "name" && r[4] === "--limit" && NUMBER4.test(r[5]);
+  if (group === "pr" && sub === "view") return r.length === 3 && NUMBER5.test(r[0]) && r[1] === "--json" && JSON_FIELDS3.test(r[2]);
+  if (group === "label" && sub === "list") return r.length === 6 && r[0] === "--search" && VALUE2(r[1]) && r[2] === "--json" && r[3] === "name" && r[4] === "--limit" && NUMBER5.test(r[5]);
   return false;
 }
 function isLocalReadShape(args) {
@@ -130021,7 +130257,7 @@ async function runFactoryCheck(o, deps) {
   }
   return ok2 ? 0 : EXIT_CHECK_FAILED;
 }
-var import_fs169, import_path196, EXIT_CHECK_FAILED, EXIT_CHECK_USAGE, EXIT_CHECK_INCOMPATIBLE, CHECK_JSON_SCHEMA_VERSION, CheckUsageError, CheckIncompatibleError, NUMBER4, JSON_FIELDS3, FACTORY_ISSUE_BRANCH, VALUE2, same4, CHECK_GIT, defaultResolveAz;
+var import_fs169, import_path196, EXIT_CHECK_FAILED, EXIT_CHECK_USAGE, EXIT_CHECK_INCOMPATIBLE, CHECK_JSON_SCHEMA_VERSION, CheckUsageError, CheckIncompatibleError, NUMBER5, JSON_FIELDS3, FACTORY_ISSUE_BRANCH, VALUE2, same4, CHECK_GIT, defaultResolveAz;
 var init_cli = __esm({
   "src/factory/check/cli.ts"() {
     "use strict";
@@ -130052,7 +130288,7 @@ var init_cli = __esm({
     };
     CheckIncompatibleError = class extends Error {
     };
-    NUMBER4 = /^\d+$/;
+    NUMBER5 = /^\d+$/;
     JSON_FIELDS3 = /^[A-Za-z]+(?:,[A-Za-z]+)*$/;
     FACTORY_ISSUE_BRANCH = /^factory\/issue-\d+$/;
     VALUE2 = (s) => typeof s === "string" && s.length > 0 && !s.startsWith("-") && !/[\r\n\0]/.test(s);
@@ -130230,10 +130466,10 @@ function ghAllowed2(a) {
   if (group !== "run") return false;
   if (sub === "list") {
     const rest = r[0] === "--branch" && isBranch3(r[1]) ? r.slice(2) : r;
-    return rest.length === 8 && rest[0] === "--workflow" && WORKFLOW.test(rest[1]) && rest[2] === "--event" && (rest[3] === "push" || rest[3] === "pull_request") && rest[4] === "--json" && rest[5] === RUN_LIST_FIELDS && rest[6] === "--limit" && NUMBER5.test(rest[7]);
+    return rest.length === 8 && rest[0] === "--workflow" && WORKFLOW.test(rest[1]) && rest[2] === "--event" && (rest[3] === "push" || rest[3] === "pull_request") && rest[4] === "--json" && rest[5] === RUN_LIST_FIELDS && rest[6] === "--limit" && NUMBER6.test(rest[7]);
   }
   if (sub === "view") {
-    return r.length === 3 && NUMBER5.test(r[0]) && r[1] === "--json" && r[2] === "jobs" || r.length === 3 && r[0] === "--job" && NUMBER5.test(r[1]) && r[2] === "--log";
+    return r.length === 3 && NUMBER6.test(r[0]) && r[1] === "--json" && r[2] === "jobs" || r.length === 3 && r[0] === "--job" && NUMBER6.test(r[1]) && r[2] === "--log";
   }
   return false;
 }
@@ -130288,7 +130524,7 @@ function shaRange(exec3, root2, green2, red2) {
   const files = diff.stdout.split(/\r?\n/).map((f) => f.trim()).filter(Boolean);
   return { commits: Number(count3.stdout.trim()) || 0, codeFiles: files.filter((f) => CODE_PATH.test(f)).length, files: files.slice(0, MAX_RANGE_FILES) };
 }
-var HealSafetyError, NUMBER5, HEX4013, BRANCH4, WORKFLOW, REPO_PATH3, same5, isBranch3, gitBase, MAX_RANGE_FILES, CODE_PATH;
+var HealSafetyError, NUMBER6, HEX4013, BRANCH4, WORKFLOW, REPO_PATH3, same5, isBranch3, gitBase, MAX_RANGE_FILES, CODE_PATH;
 var init_history = __esm({
   "src/factory/heal/history.ts"() {
     "use strict";
@@ -130302,7 +130538,7 @@ var init_history = __esm({
         this.name = "HealSafetyError";
       }
     };
-    NUMBER5 = /^\d{1,20}$/;
+    NUMBER6 = /^\d{1,20}$/;
     HEX4013 = /^[0-9a-f]{40}$/;
     BRANCH4 = /^[\w.][\w./-]*$/;
     WORKFLOW = /^[\w.-]+\.ya?ml$/;
@@ -132075,8 +132311,8 @@ async function runFactoryEnqueue(o, deps) {
     }
     const labels = [...intakeLabel ? [intakeLabel] : [], ...t.priority ? [PRIORITY_LABELS[t.priority - 1]] : []];
     if (!item) return { ticket: t, action: "created", reasons: [], title, labels, addLabels: labels, removeLabels: [] };
-    const has2 = (l) => item.labels.some((x) => x.toLowerCase() === l.toLowerCase());
-    const addLabels = labels.filter((l) => !has2(l));
+    const has3 = (l) => item.labels.some((x) => x.toLowerCase() === l.toLowerCase());
+    const addLabels = labels.filter((l) => !has3(l));
     const removeLabels = PRIORITY_LABELS.filter((l) => !labels.includes(l) && item.labels.includes(l)).slice(0, Math.max(0, 4 - addLabels.length));
     const claim = claimOf(forge, root2, base, item, remoteBranch);
     if (claim) return { ticket: t, item, action: "kept-claimed", reasons: [claim], title, labels, addLabels: [], removeLabels: [] };
@@ -132314,6 +132550,317 @@ var init_enqueue = __esm({
   }
 });
 
+// src/factory/triage/rules.ts
+function resolveTriageConfig(layers) {
+  const cfg = { ...DEFAULT_TRIAGE_CONFIG };
+  for (const layer of layers) {
+    const block = layer?.factory?.triage;
+    if (block === void 0 || block === null) continue;
+    if (!isObject5(block)) throw new TriageConfigError("factory.triage must be an object");
+    for (const key of Object.keys(block)) {
+      if (!["labels", "sizeSplitAt", "defaultPriority"].includes(key)) throw new TriageConfigError(`factory.triage.${key} is not a triage key (labels, sizeSplitAt, defaultPriority)`);
+    }
+    if (block.labels !== void 0) {
+      if (!isObject5(block.labels)) throw new TriageConfigError("factory.triage.labels must be an object");
+      for (const [key, value] of Object.entries(block.labels)) {
+        if (key !== "needsSplit" && key !== "needsPlan") throw new TriageConfigError(`factory.triage.labels.${key} is not renamable (needsSplit, needsPlan)`);
+        if (!isTriageLabelName(value) || PRIORITY_RE.test(value)) throw new TriageConfigError(`factory.triage.labels.${key} must be a plain label name`);
+        cfg[key] = value;
+      }
+    }
+    if (block.sizeSplitAt !== void 0) {
+      if (!Number.isInteger(block.sizeSplitAt) || block.sizeSplitAt < 1 || block.sizeSplitAt > 100) throw new TriageConfigError("factory.triage.sizeSplitAt must be an integer from 1 to 100");
+      cfg.sizeSplitAt = block.sizeSplitAt;
+    }
+    if (block.defaultPriority !== void 0) {
+      if (block.defaultPriority === false) cfg.defaultPriority = null;
+      else if (Number.isInteger(block.defaultPriority) && block.defaultPriority >= 0 && block.defaultPriority <= 3) cfg.defaultPriority = block.defaultPriority;
+      else throw new TriageConfigError("factory.triage.defaultPriority must be 0..3 or false");
+    }
+  }
+  if (cfg.needsSplit.toLowerCase() === cfg.needsPlan.toLowerCase()) throw new TriageConfigError("factory.triage.labels: needsSplit and needsPlan must differ");
+  return cfg;
+}
+function planItem(item, result, kind, cfg) {
+  const taxonomy = [...PRIORITY_LABELS2, cfg.needsSplit, cfg.needsPlan];
+  const currentLabels = item.labels.filter((l) => taxonomy.some((t) => t.toLowerCase() === l.toLowerCase()));
+  const base = {
+    id: item.id,
+    title: result.title,
+    url: result.url,
+    action: "unchanged",
+    skipReason: null,
+    bucket: result.bucket,
+    reasons: result.reasons,
+    current: { labels: currentLabels, priority: result.priority },
+    add: [],
+    remove: [],
+    priority: null,
+    why: []
+  };
+  const reason = result.reasons[0] ?? "";
+  if (SKIP_REASON.test(reason)) return { ...base, action: "skip", skipReason: reason };
+  const { add, remove, why } = base;
+  const want = (name, why1) => {
+    if (!has(item.labels, name)) {
+      add.push(name);
+      why.push(why1);
+    }
+  };
+  const held = item.labels.filter((l) => PRIORITY_RE.test(l));
+  const effective = itemPriority(item);
+  let numeric = null;
+  if (effective !== null) {
+    if (effective <= PRIORITY_LABELS2.length) {
+      const name = PRIORITY_LABELS2[effective - 1];
+      for (const l of held) if (l.toLowerCase() !== name) {
+        remove.push(l);
+        why.push(`priority: the item ranks as ${name}, drop ${l}`);
+      }
+      want(name, `priority: the item ranks as ${name}`);
+    }
+  } else if (cfg.defaultPriority !== null) {
+    const name = PRIORITY_LABELS2[cfg.defaultPriority];
+    want(name, `no priority: default ${name}`);
+    if (kind !== "github") numeric = cfg.defaultPriority + 1;
+  }
+  const wantSplit = item.children.length === 0 && (reason === "needs-split" || reason === "too-big" || item.size !== void 0 && item.size > cfg.sizeSplitAt);
+  if (wantSplit) want(cfg.needsSplit, reason === "needs-split" || reason === "too-big" ? `check: ${reason}` : `size ${item.size} is above ${cfg.sizeSplitAt} and the item has no children`);
+  if (result.bucket === "needs-plan") want(cfg.needsPlan, `check: ${reason}`);
+  const action = add.length > 0 || remove.length > 0 || numeric !== null ? "change" : "unchanged";
+  return { ...base, priority: numeric, action, skipReason: null };
+}
+var PRIORITY_LABELS2, PRIORITY_RE, DEFAULT_TRIAGE_CONFIG, TriageConfigError, isObject5, SKIP_REASON, has;
+var init_rules2 = __esm({
+  "src/factory/triage/rules.ts"() {
+    "use strict";
+    init_score();
+    init_guard2();
+    PRIORITY_LABELS2 = ["priority:p0", "priority:p1", "priority:p2", "priority:p3"];
+    PRIORITY_RE = /^priority:p([0-3])$/i;
+    DEFAULT_TRIAGE_CONFIG = { needsSplit: "needs-split", needsPlan: "needs-plan", sizeSplitAt: 5, defaultPriority: null };
+    TriageConfigError = class extends Error {
+    };
+    isObject5 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+    SKIP_REASON = /^(?:closed|run-active|run-finished|pr-exists|branch-exists|merged|read-failed|wrong-type)/;
+    has = (labels, name) => labels.find((l) => l.toLowerCase() === name.toLowerCase());
+  }
+});
+
+// src/factory/triage/cli.ts
+function triageGuardExec(exec3, writes, writing, ado = () => void 0) {
+  const reads = checkGuardExec(exec3, void 0, ado, "omg factory triage");
+  const tracker = factoryGuardExec(exec3, () => [], ado, writes);
+  return (cmd, args, opts) => {
+    if (!writing()) return reads(cmd, args, opts);
+    if (isAdoCommand(cmd)) {
+      const flag = (f) => {
+        const at = args.indexOf(f);
+        return at >= 0 ? args[at + 1]?.toLowerCase() : void 0;
+      };
+      const patch = flag("--area") === "wit" && flag("--resource") === "workitems" && flag("--http-method") === "patch";
+      return patch ? tracker(cmd, args, opts) : reads(cmd, args, opts);
+    }
+    const file = cmd.replace(/\\/g, "/").split("/").pop().toLowerCase().replace(/\.exe$/, "");
+    if (file === "gh" && args[0] === "issue" && args[1] === "edit") return tracker(cmd, args, opts);
+    return reads(cmd, args, opts);
+  };
+}
+function missingGithubLabels(exec3, raw, root2, repo, names) {
+  const missing = [];
+  for (const name of names) {
+    const args = ["label", "list", "--repo", repo, "--search", name, "--json", "name", "--limit", "100"];
+    const res = triageLabelListGh(args, repo) ? raw("gh", args, { cwd: root2 }) : exec3("gh", args, { cwd: root2 });
+    if (res.status !== 0) throw new Error(`gh label list failed (exit ${res.status}): ${res.stderr.trim().split("\n")[0]}`);
+    let list2;
+    try {
+      list2 = JSON.parse(res.stdout);
+    } catch {
+      throw new Error("gh label list returned no JSON");
+    }
+    const found = Array.isArray(list2) && list2.some((l) => typeof l?.name === "string" && l.name.toLowerCase() === name.toLowerCase());
+    if (!found) missing.push(name);
+  }
+  return missing;
+}
+function renderTriageTable(items) {
+  if (items.length === 0) return "no items to triage";
+  const cell = (r) => [
+    `#${r.id}`,
+    r.action,
+    r.current.labels.join(",") || "-",
+    r.add.map((l) => `+${l}`).concat(r.remove.map((l) => `-${l}`), r.priority === null ? [] : [`priority=${r.priority}`]).join(" ") || (r.skipReason ?? "-")
+  ];
+  const rows = items.map(cell);
+  const head = ["ID", "ACTION", "CURRENT", "PROPOSED"];
+  const widths = head.map((h, i) => Math.max(h.length, ...rows.map((row) => row[i].length)));
+  const pad = (row) => row.map((c, i) => c.padEnd(widths[i])).join("  ");
+  const lines4 = [source_default.bold(`${pad(head)}  TITLE`)];
+  items.forEach((r, i) => {
+    const color = r.action === "change" ? source_default.green : r.action === "skip" ? source_default.gray : (s) => s;
+    lines4.push(`${color(pad(rows[i]))}  ${r.title.slice(0, 60)}`);
+    for (const why of r.why) lines4.push(source_default.gray(`${" ".repeat(widths[0] + 2)}${plainText(why)}`));
+    if (r.result) lines4.push((r.result.ok ? source_default.green : source_default.red)(`${" ".repeat(widths[0] + 2)}${r.result.ok ? "done" : "FAILED"}: ${plainText(r.result.detail)}`));
+  });
+  const n = (a) => items.filter((r) => r.action === a).length;
+  lines4.push(`${n("change")} to change, ${n("unchanged")} unchanged, ${n("skip")} skipped`);
+  return lines4.join("\n");
+}
+async function runFactoryTriage(o, deps) {
+  const ids2 = o.ids.map(parseItemId);
+  const parent = o.parent === void 0 ? void 0 : parseItemId(o.parent);
+  if (parent !== void 0 && ids2.length > 0) throw new CheckUsageError("--parent takes no item ids: it triages the spec's children");
+  if (parent !== void 0 && o.source !== void 0) throw new CheckUsageError("--parent and --source are exclusive");
+  if (parent !== void 0 && o.limit !== void 0) throw new CheckUsageError("--limit applies to an intake source; --parent triages every child of the spec");
+  const warnings = [];
+  const command = "omg factory triage";
+  const { root: root2, base, baseSha, config: config2, baseConfig, forge, exec: exec3 } = openReadForge(o, deps, warnings, command);
+  let cfg;
+  try {
+    cfg = resolveTriageConfig([deps.trustedUser(), baseConfig]);
+  } catch (error2) {
+    if (error2 instanceof TriageConfigError) throw new CheckUsageError(error2.message);
+    throw error2;
+  }
+  const source = config2.intake.source;
+  if (ids2.length === 0 && parent === void 0 && !source) throw new CheckUsageError("no item ids and no intake source: pass ids, --parent <spec>, --source <spec>, or set factory.intake.source");
+  if (!forge.tracker.setTriage) throw new CheckIncompatibleError(`the ${config2.kind} tracker cannot apply triage`);
+  const wanted = ids2.length > 0 ? ids2 : parent !== void 0 ? forge.tracker.viewItem(parent).children : forge.tracker.queryItems(source, config2.intake.limit);
+  const results = checkItems(forge, wanted, checkEnvFor(exec3, root2, config2, base, baseSha)).sort((a, b) => a.id - b.id);
+  let rows = results.map((r) => {
+    try {
+      return planItem(forge.tracker.viewItem(r.id), r, forge.kind, cfg);
+    } catch (error2) {
+      if (error2 instanceof FactorySafetyError) throw error2;
+      return { id: r.id, title: r.title, url: r.url, action: "skip", skipReason: r.reasons[0] ?? "read-failed", bucket: r.bucket, reasons: r.reasons, current: { labels: [], priority: r.priority }, add: [], remove: [], priority: null, why: [plainText(error2 instanceof Error ? error2.message : String(error2))] };
+    }
+  });
+  let missingLabels = [];
+  if (forge.kind === "github") {
+    const adds = [...new Set(rows.flatMap((r) => r.action === "change" ? r.add : []))];
+    try {
+      missingLabels = missingGithubLabels(exec3, deps.exec, root2, ghRepoArg(config2.repo), adds);
+      for (const name of missingLabels) warnings.push(`label ${name} does not exist in ${config2.repo.url}; rows needing it are skipped (omg factory triage never creates labels)`);
+    } catch (error2) {
+      throw new CheckIncompatibleError(error2 instanceof Error ? error2.message : String(error2));
+    }
+    rows = rows.map((r) => {
+      const lacks = r.add.find((l) => missingLabels.includes(l));
+      return lacks === void 0 ? r : { ...r, action: "skip", skipReason: `label-missing:${lacks}`, add: [], remove: [], priority: null, why: [`label ${lacks} does not exist in ${config2.repo.url}; create it (omg factory triage never creates labels)`] };
+    });
+  }
+  const items = rows.map((r) => ({ ...r }));
+  const apply = Boolean(o.apply);
+  const notes = [];
+  if (apply) {
+    const changing = items.filter((r) => r.action === "change");
+    const names = [...new Set(changing.flatMap((r) => [...r.add, ...r.remove]))];
+    const ctx = { repo: config2.kind === "github" ? ghRepoArg(config2.repo) : config2.repo.url, bodyDir: "", labels: names, purpose: "triage" };
+    let writing = false;
+    const entry2 = config2.kind === "azure-devops" ? (deps.resolveAz ?? defaultResolveAz)(root2) : void 0;
+    const adoGuard = entry2 ? adoGuardContext(config2, entry2) : void 0;
+    const wexec = triageGuardExec(deps.exec, () => ctx, () => writing, () => adoGuard);
+    let writer;
+    try {
+      writer = deps.createForge(wexec, root2, config2, readForgeOptions(config2, root2, { ...factoryForgeOptions(root2), ...entry2 ? { entry: entry2 } : {} }, base, baseSha)).tracker;
+    } catch (error2) {
+      throw new CheckIncompatibleError(error2 instanceof Error ? error2.message : String(error2));
+    }
+    if (!writer.setTriage) throw new CheckIncompatibleError(`the ${config2.kind} tracker cannot apply triage`);
+    writing = true;
+    try {
+      for (const r of changing) {
+        const change = { add: r.add, remove: r.remove, ...r.priority === null ? {} : { priority: r.priority } };
+        try {
+          r.result = writer.setTriage(r.id, change);
+        } catch (error2) {
+          r.result = { ok: false, detail: error2 instanceof Error ? error2.message : String(error2) };
+        }
+      }
+    } finally {
+      writing = false;
+    }
+    if (config2.kind === "local" && changing.some((r) => r.result?.ok)) notes.push(`the local backlog files were edited in the working tree: commit them on ${base} (items are read from the base commit)`);
+  }
+  warnings.push(...forge.tracker.warnings?.() ?? []);
+  const applied = items.filter((r) => r.result?.ok).length;
+  const failed3 = items.filter((r) => r.result && !r.result.ok).length;
+  const ok2 = failed3 === 0 && !items.some((r) => r.skipReason === "read-failed");
+  const limitations = forgeLimitations(forge, base);
+  if (o.json) {
+    const json = {
+      schemaVersion: TRIAGE_JSON_SCHEMA_VERSION,
+      ok: ok2,
+      mode: apply ? "apply" : "dry-run",
+      forge: config2.kind,
+      repo: config2.repo.url,
+      source: ids2.length > 0 || parent !== void 0 || !source ? null : { ...source },
+      config: cfg,
+      counts: { change: items.filter((r) => r.action === "change").length, unchanged: items.filter((r) => r.action === "unchanged").length, skip: items.filter((r) => r.action === "skip").length, applied, failed: failed3 },
+      items: items.map((r) => ({ ...r, title: plainText(r.title), why: r.why.map(plainText) })),
+      missingLabels,
+      notes,
+      warnings: warnings.map(plainText)
+    };
+    deps.out(JSON.stringify(json, null, 2));
+  } else {
+    for (const w of warnings) deps.err(source_default.yellow(plainText(w)));
+    for (const l of limitations) deps.out(source_default.gray(l));
+    deps.out(source_default.gray(apply ? "apply: the plan below is written" : "dry run: nothing is written; --apply recomputes the plan from fresh reads and writes the plan it prints"));
+    deps.out(renderTriageTable(items));
+    for (const n of notes) deps.out(source_default.yellow(n));
+  }
+  return ok2 ? 0 : EXIT_CHECK_FAILED;
+}
+var TRIAGE_JSON_SCHEMA_VERSION;
+var init_cli3 = __esm({
+  "src/factory/triage/cli.ts"() {
+    "use strict";
+    init_source();
+    init_forge_roots();
+    init_ado();
+    init_guard();
+    init_gh();
+    init_guard2();
+    init_cli();
+    init_score();
+    init_exec2();
+    init_rules2();
+    TRIAGE_JSON_SCHEMA_VERSION = 1;
+  }
+});
+
+// src/cli/commands/factory-triage.ts
+function factoryTriageCommand(deps) {
+  return new Command("triage").description("Propose priority and needs-split / needs-plan labels for intake items (dry run; --apply writes the printed plan)").argument("[ids...]", "item ids; default: the intake source").option("--parent <spec>", "triage the children of this spec item").option("--source <spec>", "intake source (as omg factory check --source)").option("--limit <n>", "items read from the source (1..200)", integerOption(1, 200)).option("--apply", "write the plan (labels, and the priority field on Azure DevOps and the local backlog); without it nothing is written").option("--json", "JSON output (schemaVersion 1)").addHelpText("after", [
+    "",
+    "Taxonomy: priority:p0..p3 (one per item), needs-split, needs-plan (names: factory.triage.labels).",
+    "Items with a live run or an open factory PR are skipped. On GitHub a label the repository lacks is",
+    "never created: its items are skipped. On the local forge --apply edits the backlog files in the",
+    "working tree; commit them on the base branch."
+  ].join("\n")).action(async (ids2, o) => {
+    try {
+      process.exitCode = await runFactoryTriage({ ids: ids2, ...o }, deps);
+    } catch (error2) {
+      const message4 = plainText(error2 instanceof Error ? error2.message : String(error2));
+      if (o.json) deps.out(JSON.stringify({ ok: false, error: message4 }, null, 2));
+      else deps.err(source_default.red(factoryErrorLine(message4)));
+      process.exitCode = error2 instanceof CheckUsageError ? EXIT_CHECK_USAGE : error2 instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
+    }
+  });
+}
+var init_factory_triage = __esm({
+  "src/cli/commands/factory-triage.ts"() {
+    "use strict";
+    init_esm();
+    init_source();
+    init_cli();
+    init_score();
+    init_cli3();
+    init_integer_option();
+  }
+});
+
 // src/config/ado-config.ts
 function readOmpConfig(dir) {
   try {
@@ -132443,7 +132990,7 @@ function adoList(body) {
   return Array.isArray(value) ? value.filter((v) => v !== null && typeof v === "object") : [];
 }
 var SetupError, SetupSafetyError, LABEL_COLOR, LABEL_NAME, PARAM_VALUE, INVOKE_SINGLE, INVOKE_PAIRS, same6, fold5, adoOrgUrl2, milestonesPath, baseName2;
-var init_guard2 = __esm({
+var init_guard3 = __esm({
   "src/factory/setup/guard.ts"() {
     "use strict";
     init_exec();
@@ -132557,7 +133104,7 @@ var init_detect = __esm({
     init_config5();
     init_local();
     init_cli();
-    init_guard2();
+    init_guard3();
     fold6 = (s) => {
       try {
         return decodeURIComponent(s).toLowerCase();
@@ -132616,7 +133163,7 @@ function checkAdoAuth(io, env2) {
 var init_auth = __esm({
   "src/factory/setup/auth.ts"() {
     "use strict";
-    init_guard2();
+    init_guard3();
   }
 });
 
@@ -132975,7 +133522,7 @@ function adoWorkItemTypes(io) {
 function validateIntake(io, source, labels) {
   switch (source.type) {
     case "label":
-      return { missingLabels: has(labels ?? githubLabels(io), source.label) ? [] : [source.label] };
+      return { missingLabels: has2(labels ?? githubLabels(io), source.label) ? [] : [source.label] };
     case "milestone":
       if (!githubMilestones(io).includes(source.milestone)) throw new SetupError(5, `unknown milestone ${JSON.stringify(source.milestone)}: not an open milestone of ${io.repo.owner}/${io.repo.name}`);
       return { missingLabels: [] };
@@ -132983,11 +133530,11 @@ function validateIntake(io, source, labels) {
       if (!adoSavedQueries(io).some((q) => q.id === source.queryId)) throw new SetupError(5, `unknown query ${source.queryId}: not a flat saved query in project ${io.repo.project}`);
       return { missingLabels: [] };
     case "board-column":
-      if (!has(adoBoards(io, source.team), source.board)) throw new SetupError(5, `unknown board ${JSON.stringify(source.board)} for team ${JSON.stringify(source.team)}`);
-      if (!has(adoBoardColumns(io, source.team, source.board), source.column)) throw new SetupError(5, `unknown column ${JSON.stringify(source.column)} on board ${JSON.stringify(source.board)}`);
+      if (!has2(adoBoards(io, source.team), source.board)) throw new SetupError(5, `unknown board ${JSON.stringify(source.board)} for team ${JSON.stringify(source.team)}`);
+      if (!has2(adoBoardColumns(io, source.team, source.board), source.column)) throw new SetupError(5, `unknown column ${JSON.stringify(source.column)} on board ${JSON.stringify(source.board)}`);
       return { missingLabels: [] };
     case "area-tag":
-      if (!has(adoAreaPaths(io), source.areaPath)) throw new SetupError(5, `unknown area path ${JSON.stringify(source.areaPath)} in project ${io.repo.project}`);
+      if (!has2(adoAreaPaths(io), source.areaPath)) throw new SetupError(5, `unknown area path ${JSON.stringify(source.areaPath)} in project ${io.repo.project}`);
       return { missingLabels: [] };
     case "local-backlog":
       return { missingLabels: [] };
@@ -133017,29 +133564,29 @@ async function pickIntake(io, prompter, prefill = {}) {
   }
   if (type === "board-column") {
     const teams = adoTeams(io);
-    const team = prefill.team && has(teams, prefill.team) ? prefill.team : await prompter.select("Team", teams);
+    const team = prefill.team && has2(teams, prefill.team) ? prefill.team : await prompter.select("Team", teams);
     const board = await prompter.select("Board", adoBoards(io, team));
     const column = await prompter.select("Column", adoBoardColumns(io, team, board));
     return { type: "board-column", team, board, column };
   }
   const areas = adoAreaPaths(io);
-  const areaPath = prefill.areaPath && has(areas, prefill.areaPath) ? prefill.areaPath : await prompter.select("Area path", areas);
+  const areaPath = prefill.areaPath && has2(areas, prefill.areaPath) ? prefill.areaPath : await prompter.select("Area path", areas);
   const tag = await prompter.input("Tag", "factory");
   return { type: "area-tag", areaPath, tag };
 }
 function previewIntake(forge, source, check2 = listOnlyPreview) {
   return check2(forge, forge.tracker.queryItems(source, PREVIEW_LIMIT).slice(0, PREVIEW_LIMIT));
 }
-var GUID3, GITHUB_INTAKE_TYPES, ADO_INTAKE_TYPES, has, READINESS_PLACEHOLDER, listOnlyPreview, PREVIEW_LIMIT;
+var GUID3, GITHUB_INTAKE_TYPES, ADO_INTAKE_TYPES, has2, READINESS_PLACEHOLDER, listOnlyPreview, PREVIEW_LIMIT;
 var init_intake_pick = __esm({
   "src/factory/setup/intake-pick.ts"() {
     "use strict";
     init_intake();
-    init_guard2();
+    init_guard3();
     GUID3 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     GITHUB_INTAKE_TYPES = ["label", "milestone"];
     ADO_INTAKE_TYPES = ["wiql-query", "board-column", "area-tag"];
-    has = (list2, value) => list2.some((v) => v.toLowerCase() === value.toLowerCase());
+    has2 = (list2, value) => list2.some((v) => v.toLowerCase() === value.toLowerCase());
     READINESS_PLACEHOLDER = "readiness: run `omg factory check`";
     listOnlyPreview = (forge, ids2) => ids2.map((id) => {
       const item = forge.tracker.viewItem(id);
@@ -133087,7 +133634,7 @@ var init_pipeline_pick = __esm({
   "src/factory/setup/pipeline-pick.ts"() {
     "use strict";
     init_score();
-    init_guard2();
+    init_guard3();
     GUID4 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     NONE = "none (no heal on Azure DevOps)";
   }
@@ -133191,7 +133738,7 @@ var init_progress_pick = __esm({
     init_config5();
     init_types11();
     init_jsonc();
-    init_guard2();
+    init_guard3();
     init_intake_pick();
     CLOSED_CATEGORIES2 = /* @__PURE__ */ new Set(["completed", "removed"]);
   }
@@ -133366,7 +133913,7 @@ var init_write = __esm({
     import_jsonc_parser = require("jsonc-parser");
     init_config5();
     init_local();
-    init_guard2();
+    init_guard3();
     TRUSTED_AUTHORS = ["factory", "forge", "azureDevOps", "trustedAuthors"];
     SHIP_BASE = ["ship", "base"];
     isShipBase = (p) => p.length === 2 && p[0] === "ship" && p[1] === "base";
@@ -133649,7 +134196,7 @@ var init_factory_setup = __esm({
     init_forge_roots();
     init_auth();
     init_detect();
-    init_guard2();
+    init_guard3();
     init_intake_pick();
     init_pipeline_pick();
     init_progress_pick();
@@ -134859,6 +135406,7 @@ function factoryCommand() {
   cmd.addCommand(factoryRunCommand());
   cmd.addCommand(factoryCheckCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(factoryEnqueueCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
+  cmd.addCommand(factoryTriageCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(factoryBoardCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(factoryPollCommand({
     ...defaultFactoryCheckDeps(defaultFactoryRunDeps.base),
@@ -135125,6 +135673,7 @@ var init_factory = __esm({
     init_factory_check();
     init_cli();
     init_enqueue();
+    init_factory_triage();
     init_config6();
     init_ledger2();
     init_detect();
@@ -137922,6 +138471,7 @@ async function runSdkHost(spec, deps) {
         source: measured ? "measured" : "estimated",
         detail: measured ? "session.shutdown" : "sdk assistant.usage: AI credits as billed (legacy premium requests: user-initiated calls x1 each)",
         ...session.model ? { model: session.model } : {},
+        tag: { kind: "team-worker" },
         updatedAt: (/* @__PURE__ */ new Date()).toISOString()
       }, spec.team_name, { timeoutMs: 0 });
       recordedUsage = stamp;
@@ -146611,14 +147161,14 @@ var init_render2 = __esm({
 });
 
 // src/hud/host.ts
-function isObject5(value) {
+function isObject6(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function detectHudHost(stdin, env2 = process.env) {
-  const payload = isObject5(stdin) ? stdin : {};
-  const cost = isObject5(payload.cost) ? payload.cost : {};
-  const contextWindow = isObject5(payload.context_window) ? payload.context_window : {};
-  const remote = isObject5(payload.remote) ? payload.remote : {};
+  const payload = isObject6(stdin) ? stdin : {};
+  const cost = isObject6(payload.cost) ? payload.cost : {};
+  const contextWindow = isObject6(payload.context_window) ? payload.context_window : {};
+  const remote = isObject6(payload.remote) ? payload.remote : {};
   if ("ai_used" in payload || "allow_all_enabled" in payload || "connected" in remote || "total_premium_requests" in cost || "current_context_used_percentage" in contextWindow) {
     return "copilot";
   }
@@ -160385,6 +160935,10 @@ async function budgetCommand(action, options, cwd2 = process.cwd()) {
   const path30 = ledgerPath2(cwd2);
   const { settings, issues } = loadBudgetSettings(cwd2);
   if (action === "reset") {
+    if (options.by !== void 0) {
+      console.error('omg budget reset takes no --by; use it with "omg budget status --by role|kind|run".');
+      return 2;
+    }
     let previous;
     try {
       previous = updateLedger(path30, (ledger2) => resetLedger(ledger2));
@@ -160401,18 +160955,28 @@ async function budgetCommand(action, options, cwd2 = process.cwd()) {
     return 0;
   }
   if (action !== "status") {
-    console.error(`Unknown budget action "${action}". Usage: omg budget [status|reset] [--json]`);
+    console.error(`Unknown budget action "${action}". Usage: omg budget [status|reset] [--json] [--by role|kind|run]`);
+    return 2;
+  }
+  const by = options.by;
+  if (by !== void 0 && !USAGE_GROUP_BYS.includes(by)) {
+    console.error(`Unknown --by "${options.by}". Use one of: ${USAGE_GROUP_BYS.join(", ")}.`);
     return 2;
   }
   const ledger = readLedger(path30);
+  const groups = by ? ledgerByTag(ledger, by) : void 0;
   const totals = ledgerTotals(ledger);
   if (options.json) {
-    console.log(JSON.stringify({ ledgerPath: path30, since: ledger.since, settings, issues, used: totals.credits, totals, notified: ledger.notified, sessions: ledger.sessions, teams: ledger.teams }, null, 2));
+    console.log(JSON.stringify({ ledgerPath: path30, since: ledger.since, settings, issues, used: totals.credits, totals, notified: ledger.notified, sessions: ledger.sessions, teams: ledger.teams, ...by && groups ? { by: { field: by, groups } } : {} }, null, 2));
     return 0;
   }
   console.log(summaryLine(ledger, settings).replace(/ Details: omg budget status\.$/, ""));
   for (const [team, t] of Object.entries(totals.teams)) {
     console.log(`  team ${team}: ${formatAmount(Number(t.credits.toFixed(3)), "credits")} over ${t.records} session(s)`);
+  }
+  if (by && groups) {
+    console.log(`  by ${by}:`);
+    for (const g of groups) console.log(`    ${g.key}: ${formatAmount(Number(g.credits.toFixed(3)), "credits")} over ${g.records} record(s)`);
   }
   if (totals.estimatedRecords > 0) {
     console.log(`  ${totals.estimatedRecords} record(s) are estimates (about ${ESTIMATED_CREDITS_PER_PROMPT} AI credit per prompt; the real cost varies by model); they become measured once the session's totals are written.`);
@@ -171593,10 +172157,11 @@ Examples:
   const exitCode = await doctorConflictsCommand({ json: opts.json ?? false });
   process.exit(exitCode);
 });
-program2.command("budget [action]").description("Show (status, the default) or reset the AI Credits budget ledger").option("--json", "Output as JSON").addHelpText("after", `
+program2.command("budget [action]").description("Show (status, the default) or reset the AI Credits budget ledger").option("--json", "Output as JSON").option("--by <field>", "Group usage by role, kind or run (status)").addHelpText("after", `
 Examples:
   $ omg budget                                  Usage since the last reset against budget.* limits
   $ omg budget status --json                    Full ledger: sessions, teams, measured vs estimated
+  $ omg budget status --by role                 Usage grouped by who spent it (untagged = records without a tag)
   $ omg budget reset                            Start a new accounting period
 
 Reporting only: always exits 0, so compare "used" from --json against your own limit. Configure the warn threshold in .copilot/omg.jsonc ("budget").`).action(async (action, options) => {

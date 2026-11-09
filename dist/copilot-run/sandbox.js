@@ -15,7 +15,7 @@
  * reports as not sandboxed stops the session with `sandbox-escaped`.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, posix, resolve, win32 } from 'node:path';
 import { userConfigLayers } from '../ship/config.js';
 import { resolveProjectConfigPath } from '../config/project-config-path.js';
@@ -307,7 +307,19 @@ export function buildSandboxConfig(profile, ctx, host) {
         // paths, and only those that exist (the host may refuse a deny of a missing path). A granted job dir stays granted.
         const mainRoot = basename(ctx.commonGitDir) === '.git' ? dirname(ctx.commonGitDir) : undefined;
         const ledgers = [...(process.env.OMC_STATE_DIR?.trim() ? [join(resolve(process.env.OMC_STATE_DIR), 'factory-ledger')] : []), ...(mainRoot ? [join(getOmcRoot(mainRoot), 'state', 'budget-ledger.json')] : [])];
-        const stateDeny = [...(holdsGrant(stateRoot) ? [join(stateRoot, 'forge')].filter(existsSync) : [stateRoot]), ...ledgers.filter(existsSync)];
+        // The engine creates the forge dir and the factory ledger dir later, and the lane could read them once they exist: make them now so the
+        // deny names them (the host may refuse a deny of a missing path). The budget ledger is a file the engine writes on first use, so only an existing one is named.
+        // A bare repo or separate git dir has no main checkout (mainRoot undefined): the budget ledger is then not denied, as the worktree's own
+        // .omg would lie inside the lane's grant anyway.
+        const ensureDir = (d) => { try {
+            mkdirSync(d, { recursive: true });
+        }
+        catch { /* an uncreatable dir stays denied only if it exists */ } return d; };
+        const forgeDir = join(stateRoot, 'forge');
+        const stateDeny = [
+            ...(holdsGrant(stateRoot) ? [ensureDir(forgeDir)].filter(existsSync) : [stateRoot]),
+            ...ledgers.map((l) => (l.endsWith('factory-ledger') ? ensureDir(l) : l)).filter(existsSync),
+        ];
         filesystem.deniedPaths.push(...[...new Set(stateDeny)].filter((p) => !holdsGrant(p) && !covered(p)));
         if (ctx.platform !== 'win32') {
             // Sockets that run commands for the caller outside the sandbox: the user's runtime dir (D-Bus, systemd, agents),

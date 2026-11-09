@@ -411,6 +411,11 @@ export function gateDefinitionSources(gate) {
         return { sources: [], unresolved: npxUnresolved(shown) };
     if (name === 'node') {
         const at = args.findIndex((a) => !a.startsWith('-'));
+        // An option before the script can change what node runs (-e, -r, --import, --loader, --env-file): only `--run <script>` has a known definition.
+        if (args[0] === '--run' && args[1] !== undefined && !args[1].startsWith('-'))
+            return scriptSource('npm', ['run', args[1]], shown);
+        if (at !== 0 && args.length > 0)
+            return { sources: [], unresolved: `${shown} passes node the option ${JSON.stringify(args[0])} before its script, so what it runs is not known` };
         if (at < 0)
             return { sources: [] };
         const target = args[at];
@@ -419,7 +424,7 @@ export function gateDefinitionSources(gate) {
             return scriptSource('npm', args.slice(at + 1), shown);
         if (base === 'npx-cli.js')
             return { sources: [], unresolved: npxUnresolved(shown) };
-        const pm = /^(pnpm|yarn)\.c?js$/.exec(base);
+        const pm = /^(pnpm|yarn)([-.][\w.]+)?\.c?js$/.exec(base);
         if (pm)
             return scriptSource(pm[1], args.slice(at + 1), shown);
         const p = repoPath(target);
@@ -431,7 +436,7 @@ export function gateDefinitionSources(gate) {
         if (own)
             return { sources: [{ path: own }] };
         // The program itself is not the PR's to change, but its arguments may name repository files (/bin/sh scripts/ci.sh, /usr/bin/env npx x), and the bare name of the same tool parks.
-        return args.length === 0 ? { sources: [] } : { sources: [], unresolved: `${shown} runs ${JSON.stringify(cmd)}, a program outside the repository whose arguments the repository cannot pin` };
+        return { sources: [], unresolved: `${shown} runs ${JSON.stringify(cmd)}, a program outside the repository that may read repository files the gate does not name (a Makefile, pytest.ini, its arguments)` };
     }
     // A bare name is looked up on PATH, never in the checkout (resolveLocalGateArgv): the repository holds no file that defines it.
     return { sources: [], unresolved: `${shown} runs ${JSON.stringify(cmd)} from PATH, and the repository holds no file that defines it` };

@@ -33050,7 +33050,18 @@ function buildSandboxConfig(profile, ctx, host) {
     });
     const mainRoot = (0, import_node_path8.basename)(ctx.commonGitDir) === ".git" ? (0, import_node_path8.dirname)(ctx.commonGitDir) : void 0;
     const ledgers = [...process.env.OMC_STATE_DIR?.trim() ? [(0, import_node_path8.join)((0, import_node_path8.resolve)(process.env.OMC_STATE_DIR), "factory-ledger")] : [], ...mainRoot ? [(0, import_node_path8.join)(getOmcRoot(mainRoot), "state", "budget-ledger.json")] : []];
-    const stateDeny = [...holdsGrant(stateRoot) ? [(0, import_node_path8.join)(stateRoot, "forge")].filter(import_node_fs7.existsSync) : [stateRoot], ...ledgers.filter(import_node_fs7.existsSync)];
+    const ensureDir = (d) => {
+      try {
+        (0, import_node_fs7.mkdirSync)(d, { recursive: true });
+      } catch {
+      }
+      return d;
+    };
+    const forgeDir = (0, import_node_path8.join)(stateRoot, "forge");
+    const stateDeny = [
+      ...holdsGrant(stateRoot) ? [ensureDir(forgeDir)].filter(import_node_fs7.existsSync) : [stateRoot],
+      ...ledgers.map((l) => l.endsWith("factory-ledger") ? ensureDir(l) : l).filter(import_node_fs7.existsSync)
+    ];
     filesystem.deniedPaths.push(...[...new Set(stateDeny)].filter((p) => !holdsGrant(p) && !covered(p)));
     if (ctx.platform !== "win32") {
       const sockDir = ctx.sshAuthSock && import_node_path8.posix.isAbsolute(ctx.sshAuthSock) ? import_node_path8.posix.dirname(ctx.sshAuthSock) : null;
@@ -44732,7 +44743,7 @@ function localTracker(ctx) {
   const scanWorking = () => {
     const dir = dirOnDisk();
     const out = [];
-    const skipped = /* @__PURE__ */ new Set();
+    const skipped = /* @__PURE__ */ new Map();
     if (!noLinkPath(ctx.root, dir, false, true) || !(0, import_fs73.existsSync)(dir) || !(0, import_fs73.lstatSync)(dir).isDirectory()) return { out, skipped };
     for (const name of (0, import_fs73.readdirSync)(dir).sort()) {
       if (backlogFileId(name) === void 0) continue;
@@ -44743,7 +44754,7 @@ function localTracker(ctx) {
         out.push({ item: parseBacklogFile(`${ctx.backlogDir}/${name}`, text3), text: lf(text3), file });
       } catch (err) {
         if (!(err instanceof BacklogParseError)) throw err;
-        skipped.add(backlogFileId(name));
+        skipped.set(backlogFileId(name), name);
         const warning = `local backlog: skipped ${err.message}`;
         if (!warnings.includes(warning)) warnings.push(warning);
       }
@@ -44784,7 +44795,6 @@ function localTracker(ctx) {
     const key = `${sha3}:${mergedHead}:${path15}`;
     const known = changedAfter.get(key);
     if (known !== void 0) return known;
-    const [last = "", ...parents] = git3(lastStateChangeArgs(sha3, path15)).trim().split(/\s+/);
     const stateAt = (commit) => {
       const r = ctx.exec("git", backlogShowArgs(commit, path15), { cwd: ctx.root, env: TRUSTED_READ_ENV3 });
       if (r.status !== 0) return void 0;
@@ -44794,7 +44804,15 @@ function localTracker(ctx) {
         return void 0;
       }
     };
-    const after = HEX404.test(last) && last !== mergedHead && parents.length === 1 && HEX404.test(parents[0]) && ctx.exec("git", mergedArgs(mergedHead, last), { cwd: ctx.root, env: TRUSTED_READ_ENV3 }).status === 0 && stateAt(last) !== stateAt(parents[0]);
+    let after = false;
+    let from = sha3;
+    for (let i = 0; i < 50 && !after; i++) {
+      const [last = "", ...parents] = git3(lastStateChangeArgs(from, path15)).trim().split(/\s+/);
+      if (!HEX404.test(last) || last === mergedHead || ctx.exec("git", mergedArgs(mergedHead, last), { cwd: ctx.root, env: TRUSTED_READ_ENV3 }).status !== 0) break;
+      if (parents.length !== 1 || !HEX404.test(parents[0])) break;
+      if (stateAt(last) !== stateAt(parents[0])) after = true;
+      else from = parents[0];
+    }
     changedAfter.set(key, after);
     return after;
   };
@@ -44850,7 +44868,7 @@ ${acceptance.map((a) => `- [ ] ${a}`).join("\n")}
     const e = entries().get(id);
     if (!e) throw new Error(`local backlog item #${id} is not in ${ctx.backlogDir}`);
     if (e.file === void 0 && scanWorking().skipped.has(id)) {
-      throw new Error(`local backlog: the working-tree file for #${id} is malformed and was skipped; fix or remove it by hand (it is not overwritten)`);
+      throw new Error(`local backlog: the working-tree file for #${id} (${scanWorking().skipped.get(id)}) is malformed and was skipped; fix or remove it by hand (it is not overwritten)`);
     }
     const file = e.file ?? (0, import_path90.join)(ctx.root, ...e.item.path.split("/"));
     if ((0, import_fs73.existsSync)(file) && !(0, import_fs73.lstatSync)(file).isFile()) throw new Error(`local backlog: ${file} is not a regular file`);
@@ -44917,7 +44935,7 @@ ${(0, import_fs73.readFileSync)(bodyFile, "utf8").replace(/\n*$/, "\n")}`);
       const body = withAcceptance(readBody(draft.bodyFile), draft.acceptance);
       const all = entries();
       const scan = scanWorking();
-      const id = Math.max(0, ...all.keys(), ...scan.out.map((d) => d.item.id), ...scan.skipped) + 1;
+      const id = Math.max(0, ...all.keys(), ...scan.out.map((d) => d.item.id), ...scan.skipped.keys()) + 1;
       const name = `${id}-${backlogSlug(draft.title)}.md`;
       const file = (0, import_path90.join)(dirOnDisk(), name);
       noLinkPath(ctx.root, file, true, true);
@@ -49032,12 +49050,14 @@ function gateDefinitionSources(gate) {
   if (name === "npx") return { sources: [], unresolved: npxUnresolved(shown) };
   if (name === "node") {
     const at = args.findIndex((a) => !a.startsWith("-"));
+    if (args[0] === "--run" && args[1] !== void 0 && !args[1].startsWith("-")) return scriptSource("npm", ["run", args[1]], shown);
+    if (at !== 0 && args.length > 0) return { sources: [], unresolved: `${shown} passes node the option ${JSON.stringify(args[0])} before its script, so what it runs is not known` };
     if (at < 0) return { sources: [] };
     const target = args[at];
     const base = (target.split(/[\\/]/).pop() ?? "").toLowerCase();
     if (base === "npm-cli.js") return scriptSource("npm", args.slice(at + 1), shown);
     if (base === "npx-cli.js") return { sources: [], unresolved: npxUnresolved(shown) };
-    const pm = /^(pnpm|yarn)\.c?js$/.exec(base);
+    const pm = /^(pnpm|yarn)([-.][\w.]+)?\.c?js$/.exec(base);
     if (pm) return scriptSource(pm[1], args.slice(at + 1), shown);
     const p = repoPath(target);
     return { sources: p ? [{ path: p }] : [] };
@@ -49045,7 +49065,7 @@ function gateDefinitionSources(gate) {
   if (/[\\/]/.test(cmd)) {
     const own = repoPath(cmd);
     if (own) return { sources: [{ path: own }] };
-    return args.length === 0 ? { sources: [] } : { sources: [], unresolved: `${shown} runs ${JSON.stringify(cmd)}, a program outside the repository whose arguments the repository cannot pin` };
+    return { sources: [], unresolved: `${shown} runs ${JSON.stringify(cmd)}, a program outside the repository that may read repository files the gate does not name (a Makefile, pytest.ini, its arguments)` };
   }
   return { sources: [], unresolved: `${shown} runs ${JSON.stringify(cmd)} from PATH, and the repository holds no file that defines it` };
 }
