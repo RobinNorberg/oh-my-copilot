@@ -454,6 +454,25 @@ function shapeProblem(s: Record<string, unknown>): string | null {
   if (typeof s.elapsedMs !== 'number' || !isCount(s.ciFixRounds)) return 'elapsedMs/ciFixRounds';
   if (!Array.isArray(s.history)) return 'history';
   if (!isStr(s.createdAt) || !isStr(s.updatedAt)) return 'createdAt/updatedAt';
+  return humanReviewShapeProblem(s);
+}
+
+// --- Human review fields (night 3 L2b): checked here, before the engine reads them -------------
+
+const HEX40 = /^[0-9a-f]{40}$/;
+const FEEDBACK_FORGES: readonly unknown[] = ['github', 'azure-devops', 'local'];
+
+/** `humanReview` and every lane's `feedback`: absent, or exactly their shape. */
+function humanReviewShapeProblem(s: Record<string, unknown>): string | null {
+  const h = s.humanReview as Record<string, unknown> | undefined;
+  if (h !== undefined && (typeof h !== 'object' || h === null || Array.isArray(h) || !isStr(h.seenAt) || !isStr(h.head) || !HEX40.test(h.head)
+    || !isStr(h.digest) || !HEX64.test(h.digest) || Object.keys(h).some((k) => k !== 'seenAt' && k !== 'head' && k !== 'digest'))) return 'humanReview';
+  const lanes = s.lanes as Array<Record<string, unknown>>;
+  if (!lanes.every((l) => {
+    const f = l.feedback as Record<string, unknown> | undefined;
+    return f === undefined || (typeof f === 'object' && f !== null && !Array.isArray(f) && f.source === 'human' && FEEDBACK_FORGES.includes(f.forge)
+      && isCount(f.items) && Object.keys(f).every((k) => k === 'source' || k === 'forge' || k === 'items') && l.kind === 'fix');
+  })) return 'lanes.feedback';
   return null;
 }
 

@@ -223,6 +223,12 @@ export interface Harness {
     gates: GatesRead[];
     /** `gh run view --job <id> --log` output by job id. */
     logs: Record<string, string>;
+    /**
+     * The human review GraphQL read (`gh api graphql`): the pullRequest part
+     * at the PR's current head (default: no reviews, requests or threads), or
+     * a whole ExecResult.
+     */
+    reviews?: (head: string) => Record<string, unknown> | ExecResult;
   };
   /** `node <script> ...` (prepare's tsc / eslint / vitest / inventory): exit 0 unless scripted. */
   node: (args: string[]) => ExecResult;
@@ -330,6 +336,14 @@ export function harness(prefix = 'omg-factory-run-'): Harness {
       return ok(`${REPO_URL}/pull/${PR}\n`);
     }
     if (key.startsWith('gh pr comment ') || key.startsWith('gh issue comment ')) return ok('');
+    if (cmd === 'gh' && args[0] === 'api' && args[1] === 'graphql') {
+      const head = h.gh.headOverride ?? bareRef(bare, `refs/heads/${h.gh.branch}`);
+      const answer = h.gh.reviews?.(head) ?? {};
+      if ('status' in answer && typeof answer.status === 'number') return answer as ExecResult;
+      const done = { hasNextPage: false };
+      const pull = { headRefOid: head, latestReviews: { pageInfo: done, nodes: [] }, reviewRequests: { pageInfo: done, nodes: [] }, reviewThreads: { pageInfo: done, nodes: [] }, ...answer };
+      return ok(JSON.stringify({ data: { viewer: { login: 'o' }, repository: { viewerPermission: 'ADMIN', collaborators: { pageInfo: done, edges: [{ permission: 'ADMIN', node: { login: 'o' } }, { permission: 'WRITE', node: { login: 'dana' } }] }, pullRequest: pull } } }));
+    }
     return { status: 1, stdout: '', stderr: `unscripted: ${key}` };
   };
   return h;

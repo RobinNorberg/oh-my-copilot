@@ -89,6 +89,11 @@ import {
   type ShipState,
   type ShipVerdict,
 } from '../../ship/state.js';
+import { ghRepoArg } from '../../forge/github/gh.js';
+import { ghReviewFeedback } from '../../forge/github/reviews.js';
+import { ReviewHeadMovedError, visibleLine } from '../../forge/review-feedback.js';
+import type { ForgeReviewFeedback } from '../../forge/types.js';
+import { humanFixPrompt } from './prompts.js';
 import { lockPathFor } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { checkDiagnosis } from '../heal/diagnosis-output.js';
@@ -286,7 +291,7 @@ function engineExec(o: FactoryEngineOptions, inner: Exec, baseSha: () => string 
     const exec = factoryGuardExec(inner, () => [o.base], undefined, undefined, () => ({ mirror: f.config.repo.url, baseSha: basePush() }));
     return { exec, forge: createForge(exec, o.root, f.config, { ...f.options, local: { omgRoot: getOmcRoot(o.root), base: o.base, baseSha } }) };
   }
-  if (!f || f.config.kind !== 'azure-devops') return { exec: factoryGuardExec(inner, () => [o.base]) };
+  if (!f || f.config.kind !== 'azure-devops') return { exec: factoryGuardExec(inner, () => [o.base], undefined, undefined, undefined, f ? () => ({ repo: ghRepoArg(f.config.repo) }) : undefined) };
   const entry = f.entry ?? resolveAzEntry(defaultAzBinaryDeps([o.root, ...f.options.untrustedRoots]));
   const guard = adoGuardContext(f.config, entry);
   const exec = factoryGuardExec(inner, () => [o.base], () => guard);
@@ -1337,6 +1342,7 @@ class FactoryEngine {
     const head = this.state.head;
     if (!head || !this.state.pr) throw new FactoryStepError('fix needs a published head and PR');
     const ship = this.readShip(this.state.pr);
+    if (this.isHumanRound(head, ship)) return this.humanFix(this.state.pr, head, ship);
     const round = ship?.fixRounds ?? 0;
     const out = await this.runLane('fix', head, 'write', fixPrompt(this.state, round), `fix@${round}`);
     if (out.kind === 'done') this.acceptWriteLane(out, `fix@${round}`, head);
@@ -2156,6 +2162,7 @@ class FactoryEngine {
     const ship = this.readShip(pr);
     if (!ship) throw new FactoryStepError(`no ship state for PR #${pr}`);
     if (ship.phase !== 'ready') throw new FactoryStepError(`ship state for PR #${pr} is ${ship.phase}, not ready`);
+    if (this.humanReviewParked(pr, head, ship)) return;
     const { config, known } = this.gateConfig(view);
     const decision = mergeDecision(this.exec, this.o.root, ship, view, config, known, this.forge);
     if (!decision.ok && decision.reasons.some((r) => r.startsWith('gates are '))) {
@@ -2173,7 +2180,7 @@ class FactoryEngine {
     const cmd = decision.command.join(' ');
     this.mergeCmd = decision.ok ? cmd : undefined;
     this.commentOnce('pr', `merge@${head.slice(0, 12)}`, 'merge', mergeComment(this.key, decision, this.resume));
-    if (decision.ok) this.gate('merge', `merge is a human step; review approved and gates green at ${head.slice(0, 12)}: run ${cmd}, then ${this.resume}`);
+    if (decision.ok) this.gate('merge', `merge is a human step; review approved and gates green at ${head.slice(0, 12)}${this.humanNote ?? ''}: run ${cmd}, then ${this.resume}`);
     else this.gate('merge-refused', `ship's merge rule refuses ${head.slice(0, 12)}: ${decision.reasons.join('; ')}`);
   }
 
@@ -2546,6 +2553,183 @@ class FactoryEngine {
   private updateLane(id: string, patch: Partial<FactoryLaneRecord>): void {
     this.save((s) => ({ ...s, lanes: s.lanes.map((l) => (l.id === id ? { ...l, ...patch } : l)) }));
   }
+
+  // --- Human review feedback (night 3 goal 2, L2b) ---------------------------------------------
+
+  /** The clean human review read of this merge step, for the merge park's reason. */
+  private humanNote?: string;
+
+  /** factory.review.human from the trusted layers; absent = "fix". */
+  private humanMode(): 'off' | 'gate-only' | 'fix' {
+    return this.o.forge?.config.review?.human ?? 'fix';
+  }
+
+  /** The forge's human review read; undefined when the forge has none. GitHub runs without a forge object read through gh. */
+  private humanReader(): ((pr: number, head: string) => ForgeReviewFeedback) | undefined {
+    if (this.forge) {
+      const reviews = this.forge.reviews;
+      return reviews.reviewFeedback ? (pr, head) => reviews.reviewFeedback!(pr, head) : undefined;
+    }
+    const cfg = this.o.forge?.config;
+    if (cfg?.kind !== 'github') return undefined;
+    return (pr, head) => ghReviewFeedback(this.exec, cfg.repo, pr, head, { trustedReviewers: cfg.review?.trustedReviewers ?? [] }, this.o.root);
+  }
+
+  /** Untrusted names for a gate reason: one line each, format characters visible, at most `max` listed. */
+  private names(list: readonly string[], max = 10): string {
+    const shown = list.slice(0, max).map((n) => oneLine(visibleLine(n), 100));
+    return `${shown.join(', ')}${list.length > max ? ` and ${list.length - max} more` : ''}`;
+  }
+
+  /**
+   * The human review read at `head`, or null after parking. Any throw parks
+   * awaiting a human, never "no feedback": typed ReviewFeedbackErrors (the
+   * truncation message says how to unblock), GhCommandError (RATE_LIMITED
+   * included) or any other Error. A moved head is checked against the PR:
+   * moved is head-moved-externally; not moved (the review read lags) parks too.
+   */
+  private readHuman(pr: number, head: string): ForgeReviewFeedback | null {
+    const read = this.humanReader();
+    if (!read) {
+      this.gate(HUMAN_REVIEW_GATE, `the ${this.forgeName} forge cannot read human review feedback, and factory.review.human is "${this.humanMode()}"; set it to "off" to merge without the human review gate`);
+      return null;
+    }
+    try {
+      return read(pr, head);
+    } catch (error) {
+      if (error instanceof ReviewHeadMovedError) {
+        let now: string | undefined;
+        try { now = String(this.prHeadState(pr).headRefOid); } catch { now = undefined; }
+        if (now !== undefined && now !== head) {
+          this.gate('head-moved-externally', `PR #${pr} head is ${oneLine(visibleLine(now), 12)} at the human review read, the engine pushed ${head.slice(0, 12)}`);
+          return null;
+        }
+      }
+      this.gate(HUMAN_REVIEW_GATE, `the human review feedback on PR #${pr} at ${head.slice(0, 12)} could not be read whole, so nothing merges until it can: ${oneLine(visibleLine(errText(error)), 600)}`);
+      return null;
+    }
+  }
+
+  /**
+   * The merge step's human review gate: true when the run parked or moved to
+   * a human fix round. In order: the read (any failure parks); trust (an
+   * incomplete collaborator list without factory.review.trustedReviewers
+   * parks); open trusted threads (a new digest starts a fix round on ship's
+   * shared fix-round counter; "gate-only", a digest already consumed, or
+   * spent rounds park); a changes-requested on any head (blocks until the
+   * same reviewer supersedes it; ADO votes carry no head); requested
+   * reviewers who have not reviewed (factory.review.waitForRequested).
+   * Clean: the merge note lists approvals on this head only.
+   */
+  private humanReviewParked(pr: number, head: string, ship: ShipState): boolean {
+    this.humanNote = undefined;
+    const mode = this.humanMode();
+    // Without a forge config (the pre-forge GitHub path) there is no repository to read; the CLI always passes one.
+    if (mode === 'off' || !this.o.forge) return false;
+    const fb = this.readHuman(pr, head);
+    if (!fb) return true;
+    const review = this.o.forge.config.review;
+    const ignored = fb.ignored.length > 0 ? `; ignored (not trusted): ${this.names(fb.ignored)}` : '';
+    if (fb.trustIncomplete && (review?.trustedReviewers.length ?? 0) === 0) {
+      this.gate(HUMAN_REVIEW_GATE, `the ${this.forgeName} collaborator list could not be read whole for PR #${pr}, so a reviewer with write access may be among the ignored authors${ignored}; list your reviewers in factory.review.trustedReviewers (user config or the base branch)`);
+      return true;
+    }
+    const by = fb.decisions.filter((d) => d.state === 'changes-requested').map((d) => d.author);
+    if (fb.threads.length > 0) {
+      const what = `${fb.threads.length} open human review thread(s)${by.length > 0 ? ` and changes requested by ${this.names(by)}` : ''} on PR #${pr} at ${head.slice(0, 12)}${ignored}`;
+      if (mode === 'gate-only') {
+        this.gate(HUMAN_REVIEW_GATE, `${what}; factory.review.human is "gate-only", so no fix lane starts: address or resolve them on the ${this.forgeName} PR`);
+        return true;
+      }
+      const digest = humanFeedbackDigest(fb);
+      if (this.state.humanReview?.digest === digest) {
+        this.gate(HUMAN_REVIEW_GATE, `${what}; this same feedback already went to a fix round at ${this.state.humanReview.head.slice(0, 12)}: resolve the threads, or reply in them for another round`);
+        return true;
+      }
+      if (ship.fixRounds + 1 > ship.maxFixRounds) {
+        this.gate('fix-rounds-spent', `${what}; the fix rounds are spent (${ship.fixRounds} of ${ship.maxFixRounds}, shared with the factory's own review): address the feedback by hand`);
+        return true;
+      }
+      this.save((x) => moveTo({ ...x, humanReview: { seenAt: this.iso(), head, digest } }, 'fix', `human review feedback on ${this.forgeName}: ${fb.threads.length} open thread(s) (fix round ${ship.fixRounds + 1}/${ship.maxFixRounds})`, this.iso()));
+      return true;
+    }
+    if (by.length > 0) {
+      this.gate(HUMAN_REVIEW_GATE, `changes requested on PR #${pr} by ${this.names(by)} with no open thread on ${head.slice(0, 12)}; a request blocks until the same reviewer approves, dismisses or changes it${ignored}`);
+      return true;
+    }
+    if ((review?.waitForRequested ?? true) && fb.pendingReviewers.length > 0) {
+      this.gate(REVIEW_REQUESTED_GATE, `review requested on PR #${pr} from ${this.names(fb.pendingReviewers)}, who have not reviewed yet${ignored}; rerun after they review, or remove the request (factory.review.waitForRequested false skips this gate)`);
+      return true;
+    }
+    // An approval counts only on this head; ADO votes carry no head, so they are never listed.
+    const approved = fb.decisions.filter((d) => d.state === 'approved' && d.head === head).map((d) => d.author);
+    // Lanes keep the operator's forge login (no credential scrub on factory lanes), so a lane could have resolved a thread.
+    const creds = this.forge?.kind === 'local' ? '' : `; lanes run with your ${this.forgeName} login, so check the PR's resolved threads too`;
+    this.humanNote = `; human review: no open trusted threads or change requests${approved.length > 0 ? `, approved at this head by ${this.names(approved)}` : ''}${ignored}${creds}`;
+    return false;
+  }
+
+  /** A fix step at the head a human round recorded, unless the factory's own review requested changes on it. */
+  private isHumanRound(head: string, ship: ShipState | null): boolean {
+    if (this.state.humanReview?.head !== head) return false;
+    const last = ship ? latestVerdict(ship) : undefined;
+    return !(last && last.sha === head && last.verdict === 'changes-requested');
+  }
+
+  /**
+   * The fix lane of a human round. The feedback is read again at the same
+   * head (the lane gets the current words; the recorded digest follows), and
+   * ship's shared counter moves once per round (a retry finds ship at fix).
+   * Feedback resolved meanwhile starts no lane.
+   */
+  private async humanFix(pr: number, head: string, ship: ShipState | null): Promise<void> {
+    if (!ship) throw new FactoryStepError(`no ship state for PR #${pr}`);
+    const fb = this.readHuman(pr, head);
+    if (!fb) return;
+    if (fb.threads.length === 0) {
+      if (ship.phase === 'fix') {
+        this.writeShip(pr, (cur) => transition(cur!, 'prepare', 'the human review feedback was resolved before its fix lane started', this.iso()));
+        this.save((x) => moveTo(x, 'prepare', 'the human review feedback was resolved before its fix lane started', this.iso()));
+      } else {
+        this.save((x) => moveTo(x, 'merge', 'the human review feedback was resolved before its fix lane started', this.iso()));
+      }
+      return;
+    }
+    let current = ship;
+    if (ship.phase !== 'fix') {
+      if (ship.fixRounds + 1 > ship.maxFixRounds) {
+        this.gate('fix-rounds-spent', `${fb.threads.length} open human review thread(s) on PR #${pr}; the fix rounds are spent (${ship.fixRounds} of ${ship.maxFixRounds}, shared with the factory's own review): address the feedback by hand`);
+        return;
+      }
+      const note = `human review feedback on ${this.forgeName} (round ${ship.fixRounds + 1}/${ship.maxFixRounds})`;
+      current = this.writeShip(pr, (cur) => transition({ ...cur!, fixRounds: cur!.fixRounds + 1 }, 'fix', note, this.iso()));
+    }
+    const digest = humanFeedbackDigest(fb);
+    if (this.state.humanReview?.digest !== digest) this.save((x) => ({ ...x, humanReview: { seenAt: this.iso(), head, digest } }));
+    const round = current.fixRounds;
+    const by = fb.decisions.filter((d) => d.state === 'changes-requested').map((d) => d.author);
+    const before = this.state.lanes.length;
+    const out = await this.runLane('fix', head, 'write', humanFixPrompt(this.state, round, fb.threads, by), `fix@${round}`);
+    const lane = this.state.lanes[before];
+    if (lane?.kind === 'fix') this.updateLane(lane.id, { feedback: { source: 'human', forge: this.forge?.kind ?? 'github', items: fb.threads.length } });
+    if (out.kind === 'done') this.acceptWriteLane(out, `fix@${round}`, head);
+  }
+}
+
+/** The merge step's park while trusted human review feedback stands, or the read cannot vouch for it. */
+export const HUMAN_REVIEW_GATE = 'human-review';
+/** The merge step's park while requested reviewers have not reviewed (factory.review.waitForRequested). */
+export const REVIEW_REQUESTED_GATE = 'review-requested';
+
+/**
+ * sha256 of one human feedback round: the open threads (id, author, time,
+ * text) and the change requests (author, time, head), each sorted. A new
+ * comment or reply changes it; the same open feedback on a new head does not.
+ */
+export function humanFeedbackDigest(fb: ForgeReviewFeedback): string {
+  const threads = fb.threads.map((t) => JSON.stringify([t.id, t.author, t.at, t.body])).sort();
+  const requests = fb.decisions.filter((d) => d.state === 'changes-requested').map((d) => JSON.stringify([d.author, d.at, d.head ?? ''])).sort();
+  return createHash('sha256').update(JSON.stringify({ threads, requests })).digest('hex');
 }
 
 /**
