@@ -16,6 +16,7 @@ import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-
 import { defaultExec, type Exec, type ExecResult } from '../../../ship/exec.js';
 import type { LaneProcessOps } from '../engine.js';
 import type { GateConfigLoader } from '../prepare.js';
+import { REVIEW_FEEDBACK_QUERY } from '../../../forge/github/graphql.js';
 import { LaneLostError, type LaneBackend, type LaneProcess, type LaneResult, type LaneStartInput, type LaneState } from '../lane.js';
 
 export { gitIn };
@@ -336,7 +337,7 @@ export function harness(prefix = 'omg-factory-run-'): Harness {
       return ok(`${REPO_URL}/pull/${PR}\n`);
     }
     if (key.startsWith('gh pr comment ') || key.startsWith('gh issue comment ')) return ok('');
-    if (cmd === 'gh' && args[0] === 'api' && args[1] === 'graphql') {
+    if (cmd === 'gh' && args[0] === 'api' && args[1] === 'graphql' && args.includes(`query=${REVIEW_FEEDBACK_QUERY}`)) {
       const head = h.gh.headOverride ?? bareRef(bare, `refs/heads/${h.gh.branch}`);
       const answer = h.gh.reviews?.(head) ?? {};
       if ('status' in answer && typeof answer.status === 'number') return answer as ExecResult;
