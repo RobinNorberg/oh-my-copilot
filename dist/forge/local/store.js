@@ -50,12 +50,15 @@ export function engineOwnedDir(dir, untrustedRoots) {
  * it one at a time, each checked again; without it, false when a parent is
  * missing. The leaf may be absent.
  */
-export function noLinkPath(anchor, path, create = true) {
+export function noLinkPath(anchor, path, create = true, allowLinkedAnchor = false) {
     const top = resolve(anchor);
     const rel = relative(top, resolve(path));
     if (rel === '' || rel.startsWith('..') || isAbsolute(rel))
         throw new Error(`local forge: ${path} is not under ${anchor}`);
     const parts = rel.split(sep);
+    // The anchor must not be a link to somewhere else either, unless the caller says it may be (a checkout root can legitimately be one; the runtime root `.omg`, in the untrusted tree, cannot).
+    if (!allowLinkedAnchor && lstatSync(top, { throwIfNoEntry: false })?.isSymbolicLink())
+        throw new Error(`local forge: refusing to go through the symbolic link ${top}`);
     if (create)
         mkdirSync(top, { recursive: true, mode: 0o700 });
     let cur = top;
@@ -86,16 +89,16 @@ export function noLinkPath(anchor, path, create = true) {
  * Write a file atomically; the parent is created. With `anchor`, no
  * component below it may be a symbolic link (noLinkPath).
  */
-export function writeAtomic(path, content, anchor) {
+export function writeAtomic(path, content, anchor, allowLinkedAnchor = false) {
     if (anchor === undefined)
         mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     else
-        noLinkPath(anchor, path);
+        noLinkPath(anchor, path, true, allowLinkedAnchor);
     atomicWriteFileSync(path, content);
 }
 /** Append to a file under `anchor` without following a link below it (O_NOFOLLOW on the leaf where the platform has it). */
-export function appendNoFollow(anchor, path, text) {
-    noLinkPath(anchor, path);
+export function appendNoFollow(anchor, path, text, allowLinkedAnchor = false) {
+    noLinkPath(anchor, path, true, allowLinkedAnchor);
     const fd = openSync(path, constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0), 0o600);
     try {
         writeFileSync(fd, text);
@@ -110,6 +113,8 @@ const sleep = (ms) => {
 export const LOCK_TIMEOUT_MS = 15_000;
 /** A lock directory older than this is left over from a crashed writer. */
 export const LOCK_STALE_MS = 60_000;
+/** How long a Windows EPERM/EACCES on the lock directory is waited out as a pending delete. */
+export const PENDING_DELETE_MS = 5_000;
 const OWNER = 'owner';
 const ownerOf = (lock) => {
     try {
@@ -125,7 +130,10 @@ const ownerOf = (lock) => {
  * the renamed lock is still stale (a fresh lock taken in between goes back)
  * and remove it.
  */
-function breakStaleLock(lock, staleMs, token) {
+export function breakStaleLock(lock, staleMs, token, seenOwner) {
+    // The lock must still be the one judged stale: a release and a fresh acquire in between changes its owner token.
+    if (ownerOf(lock) !== seenOwner)
+        return;
     const aside = `${lock}.stale-${token}`;
     try {
         renameSync(lock, aside);
@@ -133,7 +141,8 @@ function breakStaleLock(lock, staleMs, token) {
     catch {
         return; // another waiter broke it first, or it was released
     }
-    if (Date.now() - statSync(aside).mtimeMs > staleMs) {
+    // Checked again on the renamed lock: a fresh lock taken between the check above and the rename goes back.
+    if (ownerOf(aside) === seenOwner && Date.now() - statSync(aside).mtimeMs > staleMs) {
         rmSync(aside, { recursive: true, force: true });
         return;
     }
@@ -155,6 +164,7 @@ export function withFileLock(path, fn, o = {}) {
     const staleMs = o.staleMs ?? LOCK_STALE_MS;
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     const deadline = Date.now() + (o.timeoutMs ?? LOCK_TIMEOUT_MS);
+    let deniedSince;
     for (let wait = 5;; wait = Math.min(wait * 2, 100)) {
         try {
             mkdirSync(lock);
@@ -167,8 +177,18 @@ export function withFileLock(path, fn, o = {}) {
             const pending = process.platform === 'win32' && (code === 'EPERM' || code === 'EACCES');
             if (code !== 'EEXIST' && !pending)
                 throw err;
-            if (!pending) {
+            if (pending) {
+                // A pending delete clears within moments; a lasting EPERM is a real permission error, not a wait.
+                deniedSince ??= Date.now();
+                // Capped by the caller's deadline; a lasting denial names the lock instead of surfacing a bare EPERM.
+                if (Date.now() - deniedSince > Math.min(PENDING_DELETE_MS, deadline - deniedSince))
+                    throw new Error(`local forge: the lock ${lock} could not be created (${code}): its previous directory is still pending deletion or access is denied`, { cause: err });
+            }
+            else {
+                deniedSince = undefined;
                 let age;
+                // The owner is read before the stat that judges staleness, so a release and re-acquire in between changes the token the breaker compares.
+                const seenOwner = ownerOf(lock);
                 try {
                     age = Date.now() - statSync(lock).mtimeMs;
                 }
@@ -176,7 +196,7 @@ export function withFileLock(path, fn, o = {}) {
                     continue; // released between the mkdir and the stat
                 }
                 if (age > staleMs) {
-                    breakStaleLock(lock, staleMs, token);
+                    breakStaleLock(lock, staleMs, token, seenOwner);
                     continue;
                 }
             }

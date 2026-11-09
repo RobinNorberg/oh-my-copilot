@@ -68,11 +68,12 @@ export function localTracker(ctx) {
     };
     const dirOnDisk = () => join(ctx.root, ...ctx.backlogDir.split('/'));
     /** The working-tree items (regular files only; a symlink is never followed, at any level below the root). */
-    const working = () => {
+    const scanWorking = () => {
         const dir = dirOnDisk();
-        if (!noLinkPath(ctx.root, dir, false) || !existsSync(dir) || !lstatSync(dir).isDirectory())
-            return [];
         const out = [];
+        const skipped = new Map();
+        if (!noLinkPath(ctx.root, dir, false, true) || !existsSync(dir) || !lstatSync(dir).isDirectory())
+            return { out, skipped };
         for (const name of readdirSync(dir).sort()) {
             if (backlogFileId(name) === undefined)
                 continue;
@@ -80,10 +81,23 @@ export function localTracker(ctx) {
             if (!lstatSync(file).isFile())
                 continue;
             const text = readFileSync(file, 'utf8');
-            out.push({ item: parseBacklogFile(`${ctx.backlogDir}/${name}`, text), text: lf(text), file });
+            try {
+                out.push({ item: parseBacklogFile(`${ctx.backlogDir}/${name}`, text), text: lf(text), file });
+            }
+            catch (err) {
+                // As for a committed file: one malformed file does not block the rest of the backlog.
+                if (!(err instanceof BacklogParseError))
+                    throw err;
+                // The id of a skipped file stays taken: the file is never rewritten and its id never handed out again.
+                skipped.set(backlogFileId(name), name);
+                const warning = `local backlog: skipped ${err.message}`;
+                if (!warnings.includes(warning))
+                    warnings.push(warning);
+            }
         }
-        return out;
+        return { out, skipped };
     };
+    const working = () => scanWorking().out;
     const baseSha = () => {
         const sha = ctx.options.baseSha?.();
         if (sha !== undefined && !HEX40.test(sha))
@@ -132,9 +146,33 @@ export function localTracker(ctx) {
         const known = changedAfter.get(key);
         if (known !== undefined)
             return known;
-        const last = git(lastStateChangeArgs(sha, path)).trim();
-        const after = HEX40.test(last) && last !== mergedHead
-            && ctx.exec('git', mergedArgs(mergedHead, last), { cwd: ctx.root, env: TRUSTED_READ_ENV }).status === 0;
+        // The pickaxe also matches a body line starting with `state:` and (defensively) a merge: only a single-parent
+        // commit whose own parsed `state` differs from its parent's is a reopen. A body-line hit says nothing about
+        // earlier commits, so the search resumes from its parent (the same log shape) until the merged head is reached.
+        const stateAt = (commit) => {
+            const r = ctx.exec('git', backlogShowArgs(commit, path), { cwd: ctx.root, env: TRUSTED_READ_ENV });
+            if (r.status !== 0)
+                return undefined;
+            try {
+                return parseBacklogFile(path, r.stdout).state;
+            }
+            catch {
+                return undefined;
+            }
+        };
+        let after = false;
+        let from = sha;
+        for (let i = 0; i < 50 && !after; i++) {
+            const [last = '', ...parents] = git(lastStateChangeArgs(from, path)).trim().split(/\s+/);
+            if (!HEX40.test(last) || last === mergedHead || ctx.exec('git', mergedArgs(mergedHead, last), { cwd: ctx.root, env: TRUSTED_READ_ENV }).status !== 0)
+                break;
+            if (parents.length !== 1 || !HEX40.test(parents[0]))
+                break;
+            if (stateAt(last) !== stateAt(parents[0]))
+                after = true;
+            else
+                from = parents[0];
+        }
         changedAfter.set(key, after);
         return after;
     };
@@ -194,6 +232,9 @@ export function localTracker(ctx) {
         const e = entries().get(id);
         if (!e)
             throw new Error(`local backlog item #${id} is not in ${ctx.backlogDir}`);
+        if (e.file === undefined && scanWorking().skipped.has(id)) {
+            throw new Error(`local backlog: the working-tree file for #${id} (${scanWorking().skipped.get(id)}) is malformed and was skipped; fix or remove it by hand (it is not overwritten)`);
+        }
         const file = e.file ?? join(ctx.root, ...e.item.path.split('/'));
         if (existsSync(file) && !lstatSync(file).isFile())
             throw new Error(`local backlog: ${file} is not a regular file`);
@@ -235,7 +276,7 @@ export function localTracker(ctx) {
                 const fields = entry.item.fields;
                 if (fields.labels.includes(marker))
                     return { ok: true, stderr: '' };
-                writeAtomic(file, renderBacklogFile({ ...fields, labels: [...fields.labels, marker] }, entry.item.body), ctx.root);
+                writeAtomic(file, renderBacklogFile({ ...fields, labels: [...fields.labels, marker] }, entry.item.body), ctx.root, true);
                 return { ok: true, stderr: '' };
             }
             catch (err) {
@@ -268,11 +309,11 @@ export function localTracker(ctx) {
         createItem(draft) {
             const body = withAcceptance(readBody(draft.bodyFile), draft.acceptance);
             const all = entries();
-            const onDisk = working().map((d) => d.item.id);
-            const id = Math.max(0, ...all.keys(), ...onDisk) + 1;
+            const scan = scanWorking();
+            const id = Math.max(0, ...all.keys(), ...scan.out.map((d) => d.item.id), ...scan.skipped.keys()) + 1;
             const name = `${id}-${backlogSlug(draft.title)}.md`;
             const file = join(dirOnDisk(), name);
-            noLinkPath(ctx.root, file);
+            noLinkPath(ctx.root, file, true, true);
             const text = renderBacklogFile({ title: draft.title, state: 'open', labels: [...new Set(draft.labels)], dependsOn: [], ...(draft.priority === undefined ? {} : { priority: draft.priority }) }, body);
             writeFileSync(file, text, { flag: 'wx' });
             return id;
@@ -283,7 +324,7 @@ export function localTracker(ctx) {
             const remove = new Set(update.removeLabels);
             const labels = [...new Set([...fields.labels.filter((l) => !remove.has(l)), ...update.addLabels])];
             const body = withAcceptance(readBody(update.bodyFile), update.acceptance);
-            writeAtomic(file, renderBacklogFile({ ...fields, title: update.title, labels, ...(update.priority === undefined ? {} : { priority: update.priority }) }, body), ctx.root);
+            writeAtomic(file, renderBacklogFile({ ...fields, title: update.title, labels, ...(update.priority === undefined ? {} : { priority: update.priority }) }, body), ctx.root, true);
         },
         warnings() {
             return [...warnings];

@@ -25,6 +25,7 @@
  * FAILURE: the run parks at awaiting-human with the reason.
  */
 import { type LocalCheckRecord } from '../../forge/local/index.js';
+import { type GateProcTracker } from './gate-procs.js';
 /** The record keeps this many characters of the gate's output (jobLog, the ci-fix prompt). */
 export declare const LOCAL_GATE_TAIL_CHARS = 8000;
 /** How long after the gate's timeout a PENDING record is taken as left by a crashed engine (localGateDue). */
@@ -38,7 +39,7 @@ export interface LocalGateRunResult {
     startError?: string;
 }
 /** How the gate's process runs (tests substitute it; the default spawns without a shell and kills the whole tree at the timeout). */
-export type LocalGateRunner = (argv: readonly string[], cwd: string, timeoutMs: number) => Promise<LocalGateRunResult>;
+export type LocalGateRunner = (argv: readonly string[], cwd: string, timeoutMs: number, track?: GateProcTracker) => Promise<LocalGateRunResult>;
 export interface ResolveGateOptions {
     cwd: string;
     platform?: NodeJS.Platform;

@@ -29,6 +29,8 @@ export interface LocalTrackerContext {
      * commits the change; a warning names the file. `mergedHead` is the PR
      * head the merge was detected at: a later commit on the base that changes
      * the file's `state:` line (a reopen) wins over the merge; other edits do not.
+     * The pickaxe (`-G^state:`) also matches a body line that starts with `state:`, so a hit counts only when the parsed
+     * `state` differs between the hit and its parent.
      */
     mergedPr?: (id: number) => {
         number: number;
