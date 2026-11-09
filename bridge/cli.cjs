@@ -119937,6 +119937,7 @@ function factoryGit(a, protectedBranches, extraProtected = [], local) {
       if (r.length === 5 && same2(r.slice(0, 2), ["-z", "--name-only"]) && /^[0-9a-f]{40}$/.test(r[2]) && r[3] === "--" && r[4].endsWith("/")) {
         return isPlainRepoPath(r[4].slice(0, -1));
       }
+      if (r.length === 4 && r[0] === "-z" && /^[0-9a-f]{40}$/.test(r[1]) && r[2] === "--") return isPlainRepoPath(r[3]);
       return null;
     case "rev-list":
       return r.length === 3 && /^[0-9a-f]{40}$/.test(r[0]) && /^\^[0-9a-f]{40}$/.test(r[1]) && /^\^[0-9a-f]{40}$/.test(r[2]) ? true : null;
@@ -125898,6 +125899,7 @@ function parseRouting(text4) {
     if (!GLOB_RE.test(glob) || glob.startsWith("/") || glob.split("/").includes("..")) return warn(`${at}: path glob ${JSON.stringify(glob)} is not allowed`);
     const limit = globLimitProblem(glob);
     if (limit) return warn(`${at}: path glob ${JSON.stringify(glob)} has ${limit}; the row is dropped`);
+    if (glob.split("/").some((seg) => seg.includes("**") && seg !== "**")) warn(`${at}: path glob ${JSON.stringify(glob)} has ** inside a segment; ** matches whole path segments only (as in .gitignore and CODEOWNERS), so write **/*.ts or docs/** instead of src/**.ts or docs**`);
     if (role !== void 0 && !ROLE_RE.test(role)) return warn(`${at}: role ${JSON.stringify(role)} is not allowed`);
     if (!isOwnerName(owner)) return warn(`${at}: owner ${JSON.stringify(owner)} must match ${OWNER_RE}`);
     if (handle !== void 0 && !HANDLE_RE.test(handle)) return warn(`${at}: handle ${JSON.stringify(handle)} must be @login or @org/team`);
@@ -125949,30 +125951,52 @@ function pathsInText(text4) {
   return [...out];
 }
 function unquoteC(body) {
-  const bytes = [];
+  const parts = [];
   const escapes = { n: 10, t: 9, '"': 34, "\\": 92, a: 7, b: 8, f: 12, r: 13, v: 11 };
-  for (let i = 0; i < body.length; i++) {
-    if (body[i] !== "\\") {
-      bytes.push(...Buffer.from(body[i], "utf8"));
-      continue;
-    }
-    const oct = /^[0-7]{3}/.exec(body.slice(i + 1));
+  let i = 0;
+  while (i < body.length) {
+    const at = body.indexOf("\\", i);
+    const end = at < 0 ? body.length : at;
+    if (end > i) parts.push(Buffer.from(body.slice(i, end), "utf8"));
+    if (at < 0) break;
+    const oct = /^[0-7]{3}/.exec(body.slice(at + 1, at + 4));
     if (oct) {
-      bytes.push(parseInt(oct[0], 8) & 255);
-      i += 3;
+      parts.push(Buffer.from([parseInt(oct[0], 8) & 255]));
+      i = at + 4;
       continue;
     }
-    const esc2 = escapes[body[i + 1]];
+    const esc2 = escapes[body[at + 1]];
     if (esc2 !== void 0) {
-      bytes.push(esc2);
-      i++;
-    } else bytes.push(92);
+      parts.push(Buffer.from([esc2]));
+      i = at + 2;
+    } else {
+      parts.push(Buffer.from([92]));
+      i = at + 1;
+    }
   }
-  return Buffer.from(bytes).toString("utf8");
+  return Buffer.concat(parts).toString("utf8");
+}
+function quotedBodies(text4) {
+  const out = [];
+  let start = -1;
+  for (let i = 0; i < text4.length; i++) {
+    const c = text4[i];
+    if (start >= 0 && c === "\\") i++;
+    else if (c === '"') {
+      if (start < 0) start = i + 1;
+      else {
+        out.push(text4.slice(start, i));
+        start = -1;
+      }
+    }
+  }
+  return out;
 }
 function headerPath(rest) {
-  const quotedNew = /"b\/((?:[^"\\]|\\.)*)"$/.exec(rest);
-  if (quotedNew) return unquoteC(quotedNew[1]);
+  if (rest.endsWith('"')) {
+    const last = quotedBodies(rest).pop();
+    if (last?.startsWith("b/")) return unquoteC(last.slice(2));
+  }
   const quotedOld = /^"a\/(?:[^"\\]|\\.)*" b\/(.+)$/.exec(rest);
   if (quotedOld) return quotedOld[1];
   const size = (rest.length - 5) / 2;
@@ -125980,10 +126004,27 @@ function headerPath(rest) {
   const at = rest.lastIndexOf(" b/");
   return rest.startsWith("a/") && at > 0 ? rest.slice(at + 3) : void 0;
 }
+function blockPath(lines4) {
+  let plus;
+  for (const line2 of lines4) {
+    if (line2.startsWith("@@")) break;
+    if (line2.startsWith("rename to ")) {
+      const v = line2.slice("rename to ".length);
+      return v.length > 1 && v.startsWith('"') && v.endsWith('"') ? unquoteC(v.slice(1, -1)) : v;
+    }
+    if (line2.startsWith("+++ ") && plus === void 0) {
+      const v = line2.slice(4).replace(/\t$/, "");
+      if (v.length > 3 && v.startsWith('"b/') && v.endsWith('"')) plus = unquoteC(v.slice(3, -1));
+      else if (v.startsWith("b/")) plus = v.slice(2);
+    }
+  }
+  return plus;
+}
 function pathsInDiff(diff) {
   const out = /* @__PURE__ */ new Set();
-  for (const m of diff.matchAll(/^diff --git (.+)$/gm)) {
-    const path30 = headerPath(m[1]);
+  for (const block of diff.split(/^diff --git /m).slice(1)) {
+    const lines4 = block.split("\n");
+    const path30 = blockPath(lines4.slice(1)) ?? headerPath(lines4[0].replace(/\r$/, ""));
     if (!path30 || path30.split("/").includes("..")) continue;
     out.add(path30);
     if (out.size >= MAX_PATHS) break;
@@ -128945,7 +128986,7 @@ async function runFactoryEngine(o) {
     for (const path30 of ownerPaths) ledger.record(path30, null);
   }
 }
-var import_crypto53, import_fs169, import_path196, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, HEX4013, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine;
+var import_crypto53, import_fs169, import_path196, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, HEX4013, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine;
 var init_engine = __esm({
   "src/factory/run/engine.ts"() {
     "use strict";
@@ -129047,6 +129088,7 @@ var init_engine = __esm({
       }
     };
     HEX4013 = /^[0-9a-f]{40}$/;
+    cancelCommand = (key) => typeof key === "number" ? `omg factory run cancel ${key}` : `omg factory heal cancel ${key.slice("heal-".length)}`;
     resumeCommand = (key) => typeof key === "number" ? `omg factory run ${key}` : `omg factory heal approve ${key.slice("heal-".length)}`;
     HEAL_ACCEPTANCE = "the failing test(s) listed in classification.json pass, and `npm test` passes";
     usageOf = (r) => ({ credits: r.usage.credits, premiumRequests: r.usage.premiumRequests, source: r.usage.source });
@@ -129854,17 +129896,28 @@ ${item.acceptance}
         }
         this.gate("needs-plan", 'the issue has no "Acceptance criteria" heading and no omg-plan: link by an owner, member or collaborator');
       }
+      readTeamFile(sha3, path30) {
+        const cwd2 = this.o.root;
+        if (this.exec("git", ["cat-file", "-e", `${sha3}^{commit}`], { cwd: cwd2, env: TRUSTED_READ_ENV }).status !== 0) throw new Error(`commit ${sha3.slice(0, 12)} is not in the local object store (fetch it first)`);
+        const entry2 = this.exec("git", ["ls-tree", "-z", sha3, "--", path30], { cwd: cwd2, env: TRUSTED_READ_ENV });
+        if (entry2.status !== 0) throw new Error(`git ls-tree ${sha3.slice(0, 12)} ${path30} failed (exit ${entry2.status}): ${entry2.stderr.trim()}`);
+        if (entry2.stdout === "") return void 0;
+        const mode = entry2.stdout.slice(0, entry2.stdout.indexOf(" "));
+        if (mode !== "100644" && mode !== "100755") throw new Error(`${path30} at ${sha3.slice(0, 12)} is not a regular file (mode ${mode})`);
+        const shown = this.exec("git", ["show", `${sha3}:${path30}`], { cwd: cwd2, env: TRUSTED_READ_ENV });
+        if (shown.status !== 0) throw new Error(`git show ${sha3.slice(0, 12)}:${path30} failed (exit ${shown.status}): ${shown.stderr.trim()}`);
+        return shown.stdout;
+      }
       /**
        * A file at one commit for the team context, read like every base file
-       * (readBaseFile: replace refs off, commit checked): undefined when the path
+       * (replace refs off, commit checked, a regular file only): undefined when the path
        * is absent there, a throw for any other failure. Reads are cached per call.
        */
       readAt(sha3) {
         const seen = /* @__PURE__ */ new Map();
         return (path30) => {
           if (!seen.has(path30)) {
-            const text4 = readBaseFile(this.exec, this.o.root, sha3, path30);
-            seen.set(path30, text4 === null ? void 0 : text4);
+            seen.set(path30, this.readTeamFile(sha3, path30));
           }
           return seen.get(path30);
         };
@@ -130097,7 +130150,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         const readBase = this.readAt(s.baseSha);
         const decisions = decisionsViolation(readBase, this.readAt(head));
         if (decisions) {
-          this.gate("decisions-rewritten", `${decisions}: .copilot/team/decisions.md on the PR branch no longer starts with the base version (it is append-only). Cancel this run (omg factory run cancel ${this.key}), then fix the branch or the base and start again.`);
+          this.gate("decisions-rewritten", `${decisions}: .copilot/team/decisions.md on the PR branch no longer starts with the base version (it is append-only). Cancel this run (${cancelCommand(this.key)}), then fix the branch or the base and start again.`);
           return;
         }
         const out = await this.runLane("review", head, "review", reviewPrompt(s, head, diff, standards, this.teamContext(readBase, pathsInDiff(diff))), key);
@@ -136606,7 +136659,7 @@ function renderTick(t) {
       lines4.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)}: ${p.threads ?? 0} human thread(s)${p.ignored ? ` (${p.ignored} ignored)` : ""}${trust}`);
     }
   }
-  for (const r of t.reminders ?? []) lines4.push(`  reminder: ${runLabel(r.run)} has waited ${r.hours} h at ${visibleLine(r.gate)}${r.handles.length ? ` ${r.handles.join(" ")}` : ""}: ${r.reason} (${resumeHint(r.run)})`);
+  for (const r of t.reminders ?? []) lines4.push(`  reminder: ${runLabel(r.run)} has waited ${r.hours} h at ${visibleLine(r.gate)}${r.handles.length ? ` ${r.handles.join(" ")}` : ""}: ${r.reason} (${reminderHint(r.run, r.gate)})`);
   const done = new Map(t.prs.filter((p) => p.hint).map((p) => [runLabel(p.id), p]));
   for (const b of t.board) {
     const p = done.get(runLabel(b.row.id));
@@ -136707,7 +136760,7 @@ async function runFactoryPoll(o, deps) {
     release();
   }
 }
-var import_child_process49, import_fs183, import_path210, POLL_JSON_SCHEMA_VERSION, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS, PollBusyError, pollStatePath, pollAuditPath, writePollFile, ownerless, stale, heldBy, AUTO_START_MAX_STDOUT, AUTO_START_CLAIM, AUTO_START_SLACK_MS, AUTO_START_GRACE_MS, message3, resumeHint, defaultSleep, defaultOnStop;
+var import_child_process49, import_fs183, import_path210, POLL_JSON_SCHEMA_VERSION, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS, PollBusyError, pollStatePath, pollAuditPath, writePollFile, ownerless, stale, heldBy, AUTO_START_MAX_STDOUT, AUTO_START_CLAIM, AUTO_START_SLACK_MS, AUTO_START_GRACE_MS, message3, resumeHint, cancelHint, reminderHint, defaultSleep, defaultOnStop;
 var init_poll = __esm({
   "src/factory/poll.ts"() {
     "use strict";
@@ -136757,6 +136810,8 @@ var init_poll = __esm({
     AUTO_START_GRACE_MS = 2 * 6e4;
     message3 = (error2) => plainText(error2 instanceof Error ? error2.message : String(error2));
     resumeHint = (key) => typeof key === "number" ? `omg factory run ${key}` : `omg factory heal approve ${key.slice("heal-".length)}`;
+    cancelHint = (key) => typeof key === "number" ? `omg factory run cancel ${key}` : `omg factory heal cancel ${key.slice("heal-".length)}`;
+    reminderHint = (key, gate) => gate === "decisions-rewritten" ? cancelHint(key) : resumeHint(key);
     defaultSleep = (ms, wake) => new Promise((resolve82) => {
       if (wake.aborted) {
         resolve82();

@@ -208,6 +208,8 @@ export function engineRunKey(o) {
         throw new FactoryStepError('omg factory run needs a positive issue number or a ci-heal signature');
     return o.issue;
 }
+/** The command that cancels a parked run. */
+export const cancelCommand = (key) => (typeof key === 'number' ? `omg factory run cancel ${key}` : `omg factory heal cancel ${key.slice('heal-'.length)}`);
 /** The command that resumes a parked run (for a ci-heal run, approve also resumes after any later gate). */
 export const resumeCommand = (key) => (typeof key === 'number' ? `omg factory run ${key}` : `omg factory heal approve ${key.slice('heal-'.length)}`);
 /** The fixed acceptance line of every ci-heal plan (design §5). */
@@ -1227,17 +1229,34 @@ class FactoryEngine {
         }
         this.gate('needs-plan', 'the issue has no "Acceptance criteria" heading and no omg-plan: link by an owner, member or collaborator');
     }
+    readTeamFile(sha, path) {
+        // Absent is decided by ls-tree's exit status and output, never by git's (localized) stderr text.
+        const cwd = this.o.root;
+        if (this.exec('git', ['cat-file', '-e', `${sha}^{commit}`], { cwd, env: TRUSTED_READ_ENV }).status !== 0)
+            throw new Error(`commit ${sha.slice(0, 12)} is not in the local object store (fetch it first)`);
+        const entry = this.exec('git', ['ls-tree', '-z', sha, '--', path], { cwd, env: TRUSTED_READ_ENV });
+        if (entry.status !== 0)
+            throw new Error(`git ls-tree ${sha.slice(0, 12)} ${path} failed (exit ${entry.status}): ${entry.stderr.trim()}`);
+        if (entry.stdout === '')
+            return undefined;
+        const mode = entry.stdout.slice(0, entry.stdout.indexOf(' '));
+        if (mode !== '100644' && mode !== '100755')
+            throw new Error(`${path} at ${sha.slice(0, 12)} is not a regular file (mode ${mode})`);
+        const shown = this.exec('git', ['show', `${sha}:${path}`], { cwd, env: TRUSTED_READ_ENV });
+        if (shown.status !== 0)
+            throw new Error(`git show ${sha.slice(0, 12)}:${path} failed (exit ${shown.status}): ${shown.stderr.trim()}`);
+        return shown.stdout;
+    }
     /**
      * A file at one commit for the team context, read like every base file
-     * (readBaseFile: replace refs off, commit checked): undefined when the path
+     * (replace refs off, commit checked, a regular file only): undefined when the path
      * is absent there, a throw for any other failure. Reads are cached per call.
      */
     readAt(sha) {
         const seen = new Map();
         return (path) => {
             if (!seen.has(path)) {
-                const text = readBaseFile(this.exec, this.o.root, sha, path);
-                seen.set(path, text === null ? undefined : text);
+                seen.set(path, this.readTeamFile(sha, path));
             }
             return seen.get(path);
         };
@@ -1498,7 +1517,7 @@ class FactoryEngine {
         const readBase = this.readAt(s.baseSha);
         const decisions = decisionsViolation(readBase, this.readAt(head));
         if (decisions) {
-            this.gate('decisions-rewritten', `${decisions}: .copilot/team/decisions.md on the PR branch no longer starts with the base version (it is append-only). Cancel this run (omg factory run cancel ${this.key}), then fix the branch or the base and start again.`);
+            this.gate('decisions-rewritten', `${decisions}: .copilot/team/decisions.md on the PR branch no longer starts with the base version (it is append-only). Cancel this run (${cancelCommand(this.key)}), then fix the branch or the base and start again.`);
             return;
         }
         const out = await this.runLane('review', head, 'review', reviewPrompt(s, head, diff, standards, this.teamContext(readBase, pathsInDiff(diff))), key);

@@ -146,6 +146,14 @@ describe('poll stale-gate reminders', () => {
         await runFactoryPoll(flags, deps(scripted()));
         expect(tick().reminders).toHaveLength(1);
     });
+    it('offers the cancel, not a resume that re-parks, for a decisions-rewritten gate', async () => {
+        save({ ...setGate(moveTo({ ...createFactoryState({ issue: 4, repoUrl: REPO, base: 'dev' }, T0), forgeKind: 'github', issueTitle: 'issue 4', plan: { source: 'issue-body', text: 'x' } }, 'gates', 'gates', T0), 'decisions-rewritten', 'r', T0) });
+        expect(await runFactoryPoll({ ...flags, json: false }, deps(scripted()))).toBe(0);
+        const text = out.join('\n');
+        expect(text).toContain('at decisions-rewritten');
+        expect(text).toContain('(omg factory run cancel 4)');
+        expect(text).not.toContain('(omg factory run 4)');
+    });
     it('factory.poll.remindAfterHours 0 turns it off; a bad value is a usage error', async () => {
         seedParked();
         await runFactoryPoll(flags, deps(scripted(), { trustedUser: () => ({ factory: { poll: { remindAfterHours: 0 } } }) }));

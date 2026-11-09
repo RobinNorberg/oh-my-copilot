@@ -52,6 +52,8 @@ export function parseRouting(text) {
         const limit = globLimitProblem(glob);
         if (limit)
             return warn(`${at}: path glob ${JSON.stringify(glob)} has ${limit}; the row is dropped`);
+        if (glob.split('/').some((seg) => seg.includes('**') && seg !== '**'))
+            warn(`${at}: path glob ${JSON.stringify(glob)} has ** inside a segment; ** matches whole path segments only (as in .gitignore and CODEOWNERS), so write **/*.ts or docs/** instead of src/**.ts or docs**`);
         if (role !== undefined && !ROLE_RE.test(role))
             return warn(`${at}: role ${JSON.stringify(role)} is not allowed`);
         if (!isOwnerName(owner))
