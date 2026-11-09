@@ -245,6 +245,24 @@ function shapeProblem(s) {
         return 'history';
     if (!isStr(s.createdAt) || !isStr(s.updatedAt))
         return 'createdAt/updatedAt';
+    return humanReviewShapeProblem(s);
+}
+// --- Human review fields (night 3 L2b): checked here, before the engine reads them -------------
+const HEX40 = /^[0-9a-f]{40}$/;
+const FEEDBACK_FORGES = ['github', 'azure-devops', 'local'];
+/** `humanReview` and every lane's `feedback`: absent, or exactly their shape. */
+function humanReviewShapeProblem(s) {
+    const h = s.humanReview;
+    if (h !== undefined && (typeof h !== 'object' || h === null || Array.isArray(h) || !isStr(h.seenAt) || !isStr(h.head) || !HEX40.test(h.head)
+        || !isStr(h.digest) || !HEX64.test(h.digest) || Object.keys(h).some((k) => k !== 'seenAt' && k !== 'head' && k !== 'digest')))
+        return 'humanReview';
+    const lanes = s.lanes;
+    if (!lanes.every((l) => {
+        const f = l.feedback;
+        return f === undefined || (typeof f === 'object' && f !== null && !Array.isArray(f) && f.source === 'human' && FEEDBACK_FORGES.includes(f.forge)
+            && isCount(f.items) && Object.keys(f).every((k) => k === 'source' || k === 'forge' || k === 'items') && l.kind === 'fix');
+    }))
+        return 'lanes.feedback';
     return null;
 }
 /** Read and shape-check the state file; throws FactoryStateError on malformed content. */

@@ -12,6 +12,7 @@ import { gitIn } from '../../../copilot-run/__tests__/fake-sdk.js';
 import { resolveShipConfig } from '../../../ship/config.js';
 import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-worktree.js';
 import { defaultExec } from '../../../ship/exec.js';
+import { REVIEW_FEEDBACK_QUERY } from '../../../forge/github/graphql.js';
 import { LaneLostError } from '../lane.js';
 export { gitIn };
 const generations = new Map();
@@ -254,6 +255,15 @@ export function harness(prefix = 'omg-factory-run-') {
         }
         if (key.startsWith('gh pr comment ') || key.startsWith('gh issue comment '))
             return ok('');
+        if (cmd === 'gh' && args[0] === 'api' && args[1] === 'graphql' && args.includes(`query=${REVIEW_FEEDBACK_QUERY}`)) {
+            const head = h.gh.headOverride ?? bareRef(bare, `refs/heads/${h.gh.branch}`);
+            const answer = h.gh.reviews?.(head) ?? {};
+            if ('status' in answer && typeof answer.status === 'number')
+                return answer;
+            const done = { hasNextPage: false };
+            const pull = { headRefOid: head, latestReviews: { pageInfo: done, nodes: [] }, reviewRequests: { pageInfo: done, nodes: [] }, reviewThreads: { pageInfo: done, nodes: [] }, ...answer };
+            return ok(JSON.stringify({ data: { viewer: { login: 'o' }, repository: { viewerPermission: 'ADMIN', collaborators: { pageInfo: done, edges: [{ permission: 'ADMIN', node: { login: 'o' } }, { permission: 'WRITE', node: { login: 'dana' } }] }, pullRequest: pull } } }));
+        }
         return { status: 1, stdout: '', stderr: `unscripted: ${key}` };
     };
     return h;

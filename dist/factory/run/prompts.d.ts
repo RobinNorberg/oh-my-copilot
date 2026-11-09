@@ -20,6 +20,24 @@ export declare function fenced(lines: string[]): string[];
 export declare function implementPrompt(s: FactoryRunState): string;
 export declare function fixPrompt(s: FactoryRunState, round: number): string;
 export declare const planSection: (s: FactoryRunState) => string[];
+/** The human review comments in one fix prompt are cut at this many characters in total. */
+export declare const MAX_HUMAN_FEEDBACK_CHARS = 40000;
+/** One open human review thread (ForgeReviewFeedback threads): every field is untrusted text. */
+export interface HumanFeedbackThread {
+    id: string;
+    author: string;
+    body: string;
+    file?: string;
+    line?: number;
+    at: string;
+}
+/**
+ * The fix lane prompt for a human review round (night 3 goal 2). The
+ * reviewers' words are untrusted data: format characters are shown as
+ * `<U+XXXX>`, control characters dropped, the whole block fenced, its total
+ * capped. `file` is display text only; the engine never opens it.
+ */
+export declare function humanFixPrompt(s: FactoryRunState, round: number, threads: readonly HumanFeedbackThread[], changesRequestedBy?: readonly string[]): string;
 /** `conflicted`: the files the engine's merge left conflict markers in (conflictFixStart), else the ones prepare reported. */
 export declare function conflictFixPrompt(s: FactoryRunState, conflicted?: readonly string[]): string;
 export declare function ciFixPrompt(s: FactoryRunState): string;

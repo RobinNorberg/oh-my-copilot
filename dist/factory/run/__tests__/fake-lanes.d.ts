@@ -127,6 +127,12 @@ export interface Harness {
         gates: GatesRead[];
         /** `gh run view --job <id> --log` output by job id. */
         logs: Record<string, string>;
+        /**
+         * The human review GraphQL read (`gh api graphql`): the pullRequest part
+         * at the PR's current head (default: no reviews, requests or threads), or
+         * a whole ExecResult.
+         */
+        reviews?: (head: string) => Record<string, unknown> | ExecResult;
     };
     /** `node <script> ...` (prepare's tsc / eslint / vitest / inventory): exit 0 unless scripted. */
     node: (args: string[]) => ExecResult;

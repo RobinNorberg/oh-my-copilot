@@ -56,6 +56,7 @@ import { type Exec } from '../../ship/exec.js';
 import { type AzEntry } from '../../forge/ado/az-binary.js';
 import type { ForgeOptions, ResolvedForgeConfig } from '../../forge/types.js';
 import { type GateConfigLoader } from './prepare.js';
+import type { ForgeReviewFeedback } from '../../forge/types.js';
 import { type FactoryRunLimits } from './budget.js';
 import { type LocalGateRunner } from './local-gate.js';
 import { type LaneBackend, type LaneProcess } from './lane.js';
@@ -225,6 +226,16 @@ export declare function healPlanText(h: FactoryHealRecord, base: string): string
  * `runUrl`: a CI run's page (default GitHub Actions under the repository url; Azure DevOps passes the build results page).
  */
 export declare function healPrBody(s: FactoryRunState, runUrl?: (runId: string) => string): string;
+/** The merge step's park while trusted human review feedback stands, or the read cannot vouch for it. */
+export declare const HUMAN_REVIEW_GATE = "human-review";
+/** The merge step's park while requested reviewers have not reviewed (factory.review.waitForRequested). */
+export declare const REVIEW_REQUESTED_GATE = "review-requested";
+/**
+ * sha256 of one human feedback round: the open threads (id, author, time,
+ * text) and the change requests (author, time, head), each sorted. A new
+ * comment or reply changes it; the same open feedback on a new head does not.
+ */
+export declare function humanFeedbackDigest(fb: ForgeReviewFeedback): string;
 /**
  * Run (or resume) the factory run for one issue. Refuses without a resolved
  * per-lane credit cap, and while another live engine owns the checkout, the
