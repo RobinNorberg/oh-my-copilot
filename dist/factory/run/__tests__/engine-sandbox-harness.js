@@ -29,7 +29,7 @@ export function run(scripts, over = {}) {
 }
 export const sandboxOf = (mode) => ({
     mode, host: { supported: mode === 'enforced', capabilities: { shell: mode === 'enforced' } }, applied: mode === 'enforced' ? 'options.update' : 'none',
-    canary: 'skipped', unsandboxedCalls: 0, cliVersion: '1.0.104', sdkVersion: '1.0.16', ...(mode === 'enforced' ? {} : { reason: 'MXC is not available' }),
+    canary: 'skipped', unsandboxedCalls: 0, cliVersion: '1.0.104', sdkVersion: '1.0.16', ...(mode === 'read-only-no-shell' ? {} : { writeNetwork: 'none' }), ...(mode === 'enforced' ? {} : { reason: 'MXC is not available' }),
 });
 /** A write lane that leaves `path` changed in its worktree, uncommitted. */
 export const edit = (path, content, sandbox) => ({ worktree }) => {

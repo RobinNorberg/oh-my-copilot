@@ -29,7 +29,7 @@ export const REVIEW_FEEDBACK_QUERY = 'query($owner:String!,$name:String!,$number
     + ' latestReviews(first:50){pageInfo{hasNextPage} nodes{id state submittedAt body author{__typename login} commit{oid}}}'
     + ' latestOpinionatedReviews(first:50){pageInfo{hasNextPage} nodes{state submittedAt body author{__typename login} commit{oid}}}'
     + ' reviewRequests(first:20){pageInfo{hasNextPage} nodes{requestedReviewer{__typename ... on User{login} ... on Bot{login} ... on Mannequin{login} ... on Team{slug}}}}'
-    + ' reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated'
+    + ' reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated resolvedBy{login}'
     + ' comments(first:20){pageInfo{hasNextPage} nodes{body path line originalLine createdAt author{__typename login}}}}}}}}';
 /** A GitHub login or repository name (conservative: no option shape, no `@`, no `/`). */
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
@@ -173,6 +173,7 @@ export function parseReviewFeedback(stdout, pr, head, trust, exitStatus = 0) {
     if (viewer && WRITE_PERMISSIONS.has(str(repo.viewerPermission) ?? ''))
         trusted.add(viewer.toLowerCase());
     const ignored = new Set();
+    const resolvedByViewer = [];
     /**
      * The trusted name of an author, else undefined (an untrusted one is listed
      * in `ignored`; a null or malformed author is dropped). A User is trusted by
@@ -230,8 +231,12 @@ export function parseReviewFeedback(stdout, pr, head, trust, exitStatus = 0) {
             throw new ReviewFeedbackError(`review feedback of PR ${pr}: a review thread without its id or state`);
         }
         // Resolved threads are done; an outdated one (a later push changed its lines) stays, flagged, until someone resolves it.
-        if (t.isResolved)
+        if (t.isResolved) {
+            // The run's own login resolving a thread could be a lane with the operator's credentials: the engine checks these ids.
+            if (viewer && login(t.resolvedBy)?.toLowerCase() === viewer.toLowerCase())
+                resolvedByViewer.push(id);
             continue;
+        }
         const kept = connection(t.comments, `comments of thread ${id.slice(0, 40)}`).flatMap((cm) => {
             const body = str(cm.body) ?? '';
             if (!body.trim() || isFactoryComment(body))
@@ -253,7 +258,7 @@ export function parseReviewFeedback(stdout, pr, head, trust, exitStatus = 0) {
         const who = isObj(q.requestedReviewer) ? q.requestedReviewer : {};
         const slug = str(who.slug);
         const l = login(who);
-        const name = l ? (who.__typename === 'Bot' ? `${l}[bot]` : l) : slug && NAME.test(slug) ? `team:${slug}` : undefined;
+        const name = l ? (who.__typename === 'Bot' ? `${l}[bot]` : who.__typename === 'Mannequin' ? `mannequin:${l}` : l) : slug && NAME.test(slug) ? `team:${slug}` : undefined;
         if (name)
             pending.add(name);
     }
@@ -261,6 +266,7 @@ export function parseReviewFeedback(stdout, pr, head, trust, exitStatus = 0) {
         decisions,
         threads,
         pendingReviewers: [...pending],
+        ...(resolvedByViewer.length > 0 ? { resolvedByViewer } : {}),
         ignored: [...ignored].filter((l) => !trusted.has(l.toLowerCase())).sort(),
         ...(trustIncomplete ? { trustIncomplete: true } : {}),
     };

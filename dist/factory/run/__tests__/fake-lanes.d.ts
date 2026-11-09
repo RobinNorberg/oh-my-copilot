@@ -1,4 +1,6 @@
 import type { CopilotRunSandboxState } from '../../../copilot-run/sandbox.js';
+/** A write lane's record on a host that confirmed the sandbox, with the default writeNetwork. */
+export declare const ENFORCED_SANDBOX: CopilotRunSandboxState;
 import { gitIn } from '../../../copilot-run/__tests__/fake-sdk.js';
 import { type Exec, type ExecResult } from '../../../ship/exec.js';
 import type { LaneProcessOps } from '../engine.js';
@@ -20,7 +22,8 @@ export interface LaneOutcome {
     error?: string;
     /** wait() throws LaneLostError (the job vanished with its process). */
     lost?: boolean;
-    sandbox?: CopilotRunSandboxState;
+    /** The lane's sandbox record; a write lane's default is enforced without network (a confirmed host); null = no record. */
+    sandbox?: CopilotRunSandboxState | null;
     /** The result carries no change summary (git could not tell). */
     noChanges?: boolean;
 }

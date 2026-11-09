@@ -11,11 +11,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { scaleTiming } from '../../../__tests__/helpers/platform.js';
 import { defaultProgressStages } from '../../../forge/config.js';
 import { readShipState } from '../../../ship/state.js';
-import { DEFAULT_SANDBOX_SETTINGS } from '../../../copilot-run/sandbox.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { humanFeedbackDigest, runFactoryEngine } from '../engine.js';
 import { factoryForgeOptions } from '../forge-roots.js';
 import { createFactoryState, parseFactoryState, readFactoryState } from '../state.js';
+import { renderFactoryRunState } from '../../../cli/commands/factory.js';
 import { commitFile, FakeLanes, FakeProcesses, harness, ISSUE, PR, REPO_URL, review, testGateConfig } from './fake-lanes.js';
 // Each run drives a few hundred real git processes; the timeout only bounds a hang.
 vi.setConfig({ testTimeout: scaleTiming(240_000) });
@@ -30,10 +30,10 @@ afterEach(() => {
 });
 const OLD = 'e'.repeat(40);
 const done = { hasNextPage: false };
-function config(review) {
+function config(review, name = 'r') {
     return {
         kind: 'github',
-        repo: { kind: 'github', host: 'github.com', owner: 'o', name: 'r', url: REPO_URL },
+        repo: { kind: 'github', host: 'github.com', owner: 'o', name, url: `https://github.com/o/${name}` },
         intake: { itemTypes: [], limit: 50, marker: 'factory-ready' },
         check: { maxAcceptanceItems: 12, maxSize: 8, maxBodyChars: 20_000 },
         progress: { enabled: false, stages: defaultProgressStages('github') },
@@ -46,9 +46,8 @@ function run(scripts, o = {}) {
         root: h.root, issue: ISSUE, exec: h.exec, lanes, limits: { ...DEFAULT_FACTORY_RUN_LIMITS, ...o.limits }, base: 'dev', pollMs: 5,
         owner: { pid: 4242, hostname: 'test-host', isAlive: () => false }, ledgerDir: h.ledgerDir, processes: new FakeProcesses(),
         gateConfig: testGateConfig, now: () => t, sleep: async (ms) => { t += ms; },
-        laneSandboxSettings: () => ({ ...DEFAULT_SANDBOX_SETTINGS, writeNetwork: o.network ?? 'none' }),
         ...(o.allowUnsandboxedLanes ? { allowUnsandboxedLanes: true } : {}),
-        ...(o.noForge ? {} : { forge: { config: config(o.review), options: factoryForgeOptions(h.root) } }),
+        ...(o.noForge ? {} : { forge: { config: config(o.review, o.repoName), options: factoryForgeOptions(h.root) } }),
     };
     return { lanes, done: runFactoryEngine(opts) };
 }
@@ -286,10 +285,22 @@ describe('the merge step reads human review feedback for the head the engine pus
         expect(read[0].args.slice(0, 4)).toEqual(['api', 'graphql', '--hostname', 'github.com']);
         expect(read[0].args.slice(6)).toEqual(['-f', 'owner=o', '-f', 'name=r', '-F', `number=${PR}`]);
     });
-    const sandboxed = (mode) => (ctx) => ({
+    const sandboxed = (mode, writeNetwork) => (ctx) => ({
         ...(commitFile('src/greet.ts', 'export const greet = () => "hi";\n')(ctx) ?? {}),
-        sandbox: { mode, host: {}, applied: 'create', canary: 'skipped', unsandboxedCalls: 0, cliVersion: 'x', sdkVersion: 'x' },
+        sandbox: mode === null ? null : { mode, host: {}, applied: 'create', canary: 'skipped', unsandboxedCalls: 0, cliVersion: 'x', sdkVersion: 'x', ...(writeNetwork === null ? {} : { writeNetwork: writeNetwork ?? 'none' }) },
     });
+    const fixPush = (mode = 'enforced') => (ctx) => ({
+        ...(commitFile('src/greet.ts', 'export const greet = () => "hello";\n')(ctx) ?? {}),
+        sandbox: { mode, host: {}, applied: 'create', canary: 'skipped', unsandboxedCalls: 0, cliVersion: 'x', sdkVersion: 'x', writeNetwork: 'none' },
+    });
+    /** T1 open at the first head the engine pushed; at any later head `after` decides what the read shows. */
+    const handedThen = (after) => {
+        let first;
+        h.gh.reviews = (head) => {
+            first ??= head;
+            return { reviewThreads: page(head === first ? [thread('T1', 'dana', 'rename it')] : after(first)) };
+        };
+    };
     it('M-1: a write lane without the enforced sandbox parks once per head; --allow-unsandboxed-lanes records the human check', async () => {
         const out = await run([sandboxed('detect-only'), review('approve')]).done;
         expect(out.gate?.name, out.message).toBe('human-review');
@@ -304,12 +315,70 @@ describe('the merge step reads human review feedback for the head the engine pus
         // Recorded for this head: a plain rerun keeps the merge park.
         expect((await run([]).done).gate?.name).toBe('merge');
     });
-    it('M-1: an enforced lane with network beyond "none" parks too; enforced without network is clean', async () => {
-        const loose = await run([sandboxed('enforced'), review('approve')], { network: 'registry' }).done;
+    it('M-B: the assertion uses the network each lane recorded: "registry" parks, a record without it (older state) parks, "none" is clean', async () => {
+        const loose = await run([sandboxed('enforced', 'registry'), review('approve')]).done;
         expect(loose.gate?.name, loose.message).toBe('human-review');
-        expect(loose.gate?.reason).toContain('network registry');
-        const tight = await run([], { network: 'none' }).done;
+        expect(loose.gate?.reason).toContain(`issue-${ISSUE}-implement-1 (sandbox enforced, network registry)`);
+        rmSync(h.dir, { recursive: true, force: true });
+        h = harness('omg-factory-human-');
+        const old = await run([sandboxed('enforced', null), review('approve')]).done;
+        expect(old.gate?.name, old.message).toBe('human-review');
+        expect(old.gate?.reason).toContain('(sandbox enforced, network not recorded)');
+        rmSync(h.dir, { recursive: true, force: true });
+        h = harness('omg-factory-human-');
+        const tight = await run([sandboxed('enforced', 'none'), review('approve')]).done;
         expect(tight.gate?.name, tight.message).toBe('merge');
+    });
+    it('M-C: a local write lane with no sandbox record counts as loose and parks', async () => {
+        const out = await run([sandboxed(null), review('approve')]).done;
+        expect(out.gate?.name, out.message).toBe('human-review');
+        expect(out.gate?.reason).toContain(`issue-${ISSUE}-implement-1 (sandbox not recorded, network not recorded)`);
+    });
+    it('M-A + HIGH-1 residual: a round-1 detect-only lane still counts after a human fix round; a handed thread gone from the read is listed and needs a fresh acknowledgement', async () => {
+        handedThen(() => []);
+        const { lanes, done: running } = run([sandboxed('detect-only'), review('approve'), fixPush(), review('approve')]);
+        const out = await running;
+        expect(lanes.started.map((l) => l.laneId)).toContain(`issue-${ISSUE}-fix-1`);
+        expect(out.gate?.name, out.message).toBe('human-review');
+        expect(out.gate?.reason).toContain(`lanes: issue-${ISSUE}-implement-1 (sandbox detect-only, network none)`);
+        expect(out.gate?.reason).toContain(': T1: check them on the PR');
+        const ok = await run([], { allowUnsandboxedLanes: true }).done;
+        expect(ok.gate?.name, ok.message).toBe('merge');
+        expect(ok.gate?.reason).toContain('resolved or removed since the fix round at');
+        // The recorded acknowledgement alone does not answer missing handed threads: a plain rerun parks again.
+        expect((await run([]).done).gate?.name).toBe('human-review');
+    });
+    it('resolvedBy: a handed thread the run\'s own login resolved is listed; under enforced lanes without network the merge park follows', async () => {
+        handedThen(() => [{ ...thread('T1', 'dana', 'rename it'), isResolved: true, resolvedBy: { login: 'o' } }]);
+        const out = await run([...approveAll(), fixPush(), review('approve')]).done;
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(out.gate?.reason).toContain('resolved by your own login during the run: T1');
+        expect(out.gate?.reason).not.toContain('resolved or removed');
+    });
+    it('L-F: one of two handed threads resolved, the other unchanged: park as the same feedback, no new round', async () => {
+        let first;
+        h.gh.reviews = (head) => {
+            first ??= head;
+            return { reviewThreads: page(head === first ? [thread('T1', 'dana', 'a'), thread('T2', 'dana', 'b')] : [thread('T2', 'dana', 'b')]) };
+        };
+        const { lanes, done: running } = run([...approveAll(), fixPush(), review('approve')]);
+        const out = await running;
+        expect(out.gate?.name, out.message).toBe('human-review');
+        expect(out.gate?.reason).toContain('this same feedback already went to a fix round');
+        expect(out.gate?.reason).toContain(': T1: check them on the PR');
+        expect(lanes.started.filter((l) => l.laneId.includes('-fix-'))).toHaveLength(1);
+    });
+    it('L-D: a requested Mannequin is listed under "also requested" and does not hold the merge', async () => {
+        h.gh.reviews = () => ({ reviewRequests: page([{ requestedReviewer: { __typename: 'Mannequin', login: 'ghost' } }]) });
+        const out = await run(approveAll()).done;
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(out.gate?.reason).toContain('also requested: mannequin:ghost');
+    });
+    it('L-B: a forge config naming another repository than the run\'s parks instead of reading it', async () => {
+        expect((await run(approveAll()).done).gate?.name).toBe('merge');
+        const out = await run([], { repoName: 'other' }).done;
+        expect(out.gate?.name, out.message).not.toBe('merge');
+        expect(h.raw.filter((r) => r.cmd === 'gh' && r.args[0] === 'api' && r.args.includes('name=other'))).toHaveLength(0);
     });
 });
 describe('humanFeedbackDigest', () => {
@@ -337,7 +406,6 @@ describe('the run state shape check covers humanReview and lane feedback', () =>
         ['a short head', { ...good, head: 'abc' }],
         ['an uppercase digest', { ...good, digest: 'B'.repeat(64) }],
         ['an extra key', { ...good, text: 'x' }],
-        ['no threadIds', { seenAt: 'x', head: 'a'.repeat(40), digest: 'b'.repeat(64) }],
         ['a non-string thread id', { ...good, threadIds: [7] }],
         ['an empty thread id', { ...good, threadIds: [''] }],
         ['an overlong thread id', { ...good, threadIds: ['x'.repeat(201)] }],
@@ -354,6 +422,22 @@ describe('the run state shape check covers humanReview and lane feedback', () =>
         ['an extra key', { source: 'human', forge: 'github', items: 1, body: 'x' }],
     ])('refuses lane feedback with %s', (_n, feedback) => {
         expect(() => parse({ ...base(), lanes: [{ ...lane, feedback }] })).toThrow(/field lanes\.feedback/);
+    });
+    it('L-A: a humanReview sealed before threadIds existed loads with none handed', () => {
+        const { threadIds: _ids, ...older } = good;
+        expect(parse({ ...base(), humanReview: older }).humanReview).toEqual({ ...older, threadIds: [] });
+    });
+    it('M-B: a lane sandbox record carries writeNetwork "none" or "registry", or none at all', () => {
+        const sbx = (writeNetwork) => ({ ...base(), lanes: [{ ...lane, sandbox: { mode: 'enforced', unsandboxedCalls: 0, ...(writeNetwork === undefined ? {} : { writeNetwork }) } }] });
+        for (const ok of [undefined, 'none', 'registry'])
+            expect(parse(sbx(ok)).lanes[0].sandbox.mode).toBe('enforced');
+        for (const bad of ['all', 7, null])
+            expect(() => parse(sbx(bad))).toThrow(/field lanes\b/);
+    });
+    it('L-C: run status shows the unsandboxed acknowledgement and its head', () => {
+        const text = renderFactoryRunState({ ...base(), unsandboxedAck: 'c'.repeat(40) });
+        expect(text).toContain(`lanes without the enforced sandbox accepted for ${'c'.repeat(12)} (--allow-unsandboxed-lanes)`);
+        expect(renderFactoryRunState(base())).not.toContain('accepted for');
     });
     it('unsandboxedAck: a full head only', () => {
         expect(parse({ ...base(), unsandboxedAck: 'c'.repeat(40) }).unsandboxedAck).toBe('c'.repeat(40));

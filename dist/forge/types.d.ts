@@ -244,8 +244,10 @@ export interface ForgeReviewFeedback {
         at: string;
         outdated?: true;
     }>;
-    /** Reviewers requested but not yet submitted (GitHub: a login, `<slug>[bot]` for a bot, `team:<slug>` for a team). */
+    /** Reviewers requested but not yet submitted (GitHub: a login, `<slug>[bot]` for a bot, `mannequin:<login>` for a mannequin, `team:<slug>` for a team). */
     pendingReviewers: string[];
+    /** GitHub: ids of resolved threads whose resolver is the reading login (the operator, or a lane with its credentials). */
+    resolvedByViewer?: string[];
     /** Authors whose input was dropped (not trusted), for poll and status output. */
     ignored: string[];
     /**

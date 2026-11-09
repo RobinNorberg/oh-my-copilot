@@ -159,6 +159,8 @@ export function renderFactoryRunState(state, o = {}) {
         lines.push(chalk.yellow('cancel requested'));
     if (state.head)
         lines.push(`head ${state.head.slice(0, 12)}`);
+    if (state.unsandboxedAck)
+        lines.push(chalk.yellow(`lanes without the enforced sandbox accepted for ${state.unsandboxedAck.slice(0, 12)} (--allow-unsandboxed-lanes)`));
     lines.push(`lanes ${state.lanes.length}  run AI credits ${runCredits(state).toFixed(2)}  elapsed ${Math.round(state.elapsedMs / 60_000)} min`);
     for (const lane of state.lanes) {
         const credits = lane.usage ? `${lane.usage.credits.toFixed(2)}/${lane.maxCredits}` : `-/${lane.maxCredits}`;

@@ -58,7 +58,6 @@ import type { ForgeOptions, ResolvedForgeConfig } from '../../forge/types.js';
 import { type GateConfigLoader } from './prepare.js';
 import type { ForgeReviewFeedback } from '../../forge/types.js';
 import { type FactoryRunLimits } from './budget.js';
-import { type SandboxSettings } from '../../copilot-run/sandbox.js';
 import { type LocalGateRunner } from './local-gate.js';
 import { type LaneBackend, type LaneProcess } from './lane.js';
 import { EXIT_BUSY, type FactoryGate, type FactoryHealRecord, type FactoryPhase, type FactoryRunKey, type FactoryRunState, type OwnerDeps, type HeldOwner } from './state.js';
@@ -124,8 +123,6 @@ export interface FactoryEngineOptions {
      * head parks again; without such a park the flag is ignored with a warning.
      */
     allowUnsandboxedLanes?: boolean;
-    /** The factory lanes' sandbox settings (default loadSandboxSettings(root, 'factory'), the copilot_run job's own loader). */
-    laneSandboxSettings?: () => SandboxSettings;
     now?: () => number;
     pollMs?: number;
     progressFile?: string;

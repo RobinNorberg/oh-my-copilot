@@ -8,6 +8,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { summarizeChanges } from '../../../copilot-run/job.js';
+/** A write lane's record on a host that confirmed the sandbox, with the default writeNetwork. */
+export const ENFORCED_SANDBOX = { mode: 'enforced', host: {}, applied: 'create', canary: 'skipped', unsandboxedCalls: 0, cliVersion: 'x', sdkVersion: 'x', writeNetwork: 'none' };
 import { gitIn } from '../../../copilot-run/__tests__/fake-sdk.js';
 import { resolveShipConfig } from '../../../ship/config.js';
 import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-worktree.js';
@@ -73,7 +75,7 @@ export class FakeLanes {
             error: o.error ?? null,
             notes: [],
             process: fakeProcess(remoteId),
-            ...(o.sandbox ? { sandbox: o.sandbox } : {}),
+            ...(o.sandbox ? { sandbox: o.sandbox } : o.sandbox === undefined && job.ctx.input.profile !== 'review' ? { sandbox: ENFORCED_SANDBOX } : {}),
         };
     }
     async poll(remoteId) {
