@@ -26,7 +26,7 @@ import { type FactoryRunOutcome } from '../../factory/run/engine.js';
 import type { LoadedForgeConfig } from '../../forge/config.js';
 import { type LaneBackend } from '../../factory/run/lane.js';
 import type { GateConfigLoader } from '../../factory/run/prepare.js';
-import { type FactoryOwner, type FactoryRunKey, type FactoryRunState } from '../../factory/run/state.js';
+import { type FactoryRunKey, type FactoryRunState } from '../../factory/run/state.js';
 import { type Exec } from '../../ship/exec.js';
 import { type FactoryCheckDeps } from '../../factory/check/cli.js';
 import type { FactoryPollDeps } from '../../factory/poll.js';
@@ -66,12 +66,43 @@ export declare const factoryRunJson: {
 export declare function renderFactoryRunState(state: FactoryRunState, o?: {
     gate?: boolean;
 }): string;
-/** The live engines of this checkout: its engine lock and every run owner file a live process holds. Read-only. */
-export declare function liveFactoryRuns(root: string): {
-    engine: FactoryOwner | null;
-    runs: Array<FactoryOwner & {
+/**
+ * The live engines of this checkout (its engine lock and every run owner
+ * file a live process holds), the owner files nobody can read (held, listed
+ * apart), and the cross-clone claims that hold an item of this repository.
+ * Read-only.
+ */
+export declare function liveFactoryRuns(root: string, ledgerDir: string, claimRepo: string | null): {
+    engine: {
+        parkedAt?: string | undefined;
+        root?: string | undefined;
+        startedAt?: string | undefined;
+        hostname?: string | undefined;
+        pid?: number | undefined;
+        run?: string | undefined;
+    } | null;
+    runs: ({
+        parkedAt?: string | undefined;
+        root?: string | undefined;
+        startedAt?: string | undefined;
+        hostname?: string | undefined;
+        pid?: number | undefined;
+        run?: string | undefined;
+    } & {
         key: FactoryRunKey;
-    }>;
+    })[];
+    unreadable: string[];
+    claims: {
+        parkedAt?: string | undefined;
+        root?: string | undefined;
+        startedAt?: string | undefined;
+        hostname?: string | undefined;
+        pid?: number | undefined;
+        run?: string | undefined;
+        key: FactoryRunKey;
+        state: "live" | "unreadable" | "parked" | "here";
+        path: string;
+    }[];
 };
 /** `omg factory run <issue>`, `run cancel|clean|status <issue>` (experimental; manual trigger only; merge is always human). */
 export declare function factoryRunCommand(deps?: FactoryRunDeps): Command;
