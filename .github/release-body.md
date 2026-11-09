@@ -93,6 +93,7 @@ marketplace: `copilot plugin update oh-my-copilot@omc`.
 ## Caveats
 
 - This release was published without the live Copilot smoke.
+- The maintainer's local full test suite was not used as a release gate: it could not complete on the release machine under load. The CI test suite on the release commit is the test evidence.
 - `reflect` and `personal-mode` read Claude Code transcripts.
 - `statechart` installs TLC and Java with mise on its first run and needs the
   network.
