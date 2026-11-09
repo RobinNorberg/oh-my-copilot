@@ -1,54 +1,101 @@
-# oh-my-copilot v5.19.7
+# oh-my-copilot v5.21.0
 
-A fix release for Copilot CLI users: `/omc-setup` and `/team` no longer give
-Claude Code instructions on Copilot CLI, setup works in PowerShell, and on
-Windows hooks no longer overrun their time budget on a busy machine.
+The software factory now runs offline: the `local` forge works from a
+committed backlog in your repository, with no GitHub or Azure DevOps. This
+release also fixes the findings of two factory and team dogfood rounds, and
+ports two upstream ranges (oh-my-claudecode 27e7f235e..4d5d22187 and
+4d5d22187..c5b71636e). Version 5.19.8 was never published; its changes ship
+here.
 
-Install with `npm install -g oh-my-copilot@5.19.7`, or from the plugin
+Install with `npm install -g oh-my-copilot@5.21.0`, or from the plugin
 marketplace: `copilot plugin update oh-my-copilot@omc`.
 
-## Fixed
+## Offline mode: the local forge
 
-- `/omc-setup` no longer asks Claude Code questions on Copilot CLI
-  (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`, `teammateMode`, a teammate provider
-  list without Copilot). It explains the `omg team` defaults and the
-  `team.transport` and `team.ops.defaultAgentType` keys in
-  `.copilot/omg.jsonc`, and points MCP setup at `copilot mcp add` (#425).
-- `/omc-setup` finds its own scripts. It takes the plugin root from the
-  skill's base directory and writes it literally into each command, so the
-  commands run in PowerShell, bash and zsh. If the scripts are missing, it
-  stops with install instructions. Expect one permission prompt to run
-  scripts from the plugin folder (#426, #427).
-- `/team` on Copilot CLI drives `omg team` (start, `status`, `shutdown`,
-  the `sdk`/`pane` transport, `--transport sdk` in Warp). The Claude Code
-  steps are marked as Claude Code only (#429).
-- Skills no longer show the bash-only `${COPILOT_HOME:-~/.copilot}` form that
-  PowerShell cannot parse (#428, #431).
-- On Windows, the hook state lock no longer spawns PowerShell to learn its own
-  start time. That probe took 0.4-3 s per hook and, on a busy machine, made
-  the lock fail closed, so state writes were skipped. A lock acquire now takes
-  about 20 ms (#434).
-- The hook state lock handles slow owner probes: it retries an inconclusive
-  probe within its budget and never acquires after its deadline (upstream
-  #4727 tests, #424, #430).
-- Hook stdin waits now fit inside the time `run.cjs` gives each hook, so on a
-  loaded Windows machine hooks fail open on their own instead of being killed
-  past the host's budget. With `OMC_HOOK_FAIL_CLOSED=1`, `git-guardrails`
-  exits 124 when its input never arrived complete (#433).
-- Timing tests measure the runner's own lifetime and wait on readiness
-  signals, so they no longer fail on a busy Windows machine (#435, #436).
+- `omg factory setup --forge local` writes the config, a closed sample item
+  and `ship.base` (`dev` if it exists, else the current branch).
+- Backlog items are committed files, `.copilot/backlog/<id>-<slug>.md` with
+  frontmatter. The engine pushes run branches to a bare mirror it owns, the
+  git remote `omg-local`, and runs your gate command
+  (`factory.forge.local.gate`) as the check `local-gate`. You merge with the
+  `git merge --no-ff --no-edit` command the run prints.
+- `check`, `board`, `enqueue`, `poll` and `run --next` work with no origin.
+  `check`, `board` and `setup` print what offline mode does not do.
+- A head that changes the gate's definition parks at
+  `gate-definition-changed` before any push.
+- See `docs/FACTORY-OFFLINE.md`.
 
-## Known issue: mixed plugin versions
+## Dogfood fixes
 
-Lock records written by 5.19.7 on Windows are version 2. An older plugin
-version reads them as malformed and gives up on that lock instead of waiting.
-After a downgrade below 5.19.7, a lock left by a crashed 5.19.7 hook stays
-held until it is cleaned up by hand. See the CHANGELOG entry for the cleanup
-steps.
+- Prepare runs only the checks the target repository has, so a factory run in
+  another repository no longer fails on this repository's tsc and inventory
+  scripts. `ship.prepare.checks` replaces the detected checks.
+- SDK workers start with launch progress instead of 1-3 silent minutes, get a
+  branch worktree by default, and get a 50 AI credit cap (was 10, which one
+  small task already exceeded).
+- A capped worker's task becomes `capped` instead of staying `in_progress`.
+  A worker blocker reaches the leader: `omg team status` lists it under
+  `leader_inbox`, and guidance says how to answer it.
+- `omg team shutdown` needs no `--force` when every task is terminal, and
+  names each dirty worktree it keeps.
+- A spec whose children are all closed, or a local spec without tickets, is
+  no longer runnable, so `run --next` does not implement the whole spec.
+- A WinGet-installed `copilot` no longer triggers the non-standard path
+  warning.
+
+## Upstream ports
+
+- About 30 new skills (98 bundled now), including the PR-care suite
+  (`babysit`, `fix-ci`, `fix-merge-conflicts`, `get-pr-comments`), the
+  review-and-climb skills, `statechart` (TLA+ model check drawn as a Mermaid
+  statechart) and `ketchup-video`. `arena`, `reflect`, `sharpen` and
+  `interrogate` follow pstack v0.9.125.
+- The verification ledger, watch-pr policy, playbook checker and credits
+  registry.
+- `omg team resume` resumes runtime v2 teams. An SDK team counts as resumed
+  only while a worker host is alive.
+- On Claude Code, the SessionEnd foreground budget is now max(1 s, half the
+  hook timeout). Copilot CLI keeps 1.5 s.
+- Fixes for team worktrees, ralph, jev, config rewrites and Windows.
+- `tsx` is now a runtime dependency, for the `statechart` launcher on Node 20.
+
+## Upgrade notes
+
+- New config keys:
+  - `ship.prepare.checks`: argv commands prepare runs instead of the detected
+    checks; `[]` runs none. Read only from the user config or the base's
+    committed `.copilot/omg.jsonc`.
+  - `factory.forge.kind: "local"` with `factory.forge.local.gate`: offline
+    mode. Over a GitHub or Azure DevOps origin it counts only from the user
+    config or the base-committed `.copilot/omg.jsonc`.
+  - `team.sdk.compactProtocol`: a shorter worker protocol for SDK workers.
+    Off by default.
+  - `team.sdk.blockerTimeoutMinutes`: fails a task whose blocker stays
+    unanswered. Off by default.
+- Changed defaults: `team.sdk.maxCreditsPerWorker` is 50. SDK teams use
+  branch worktrees when `team.ops.worktreeMode` is unset; set it to keep the
+  shared checkout. `factory.run.maxRunCredits` must be at least
+  `laneMaxCredits` + 30.
+- Exit codes:
+  - 2: the local forge's base branch is missing, or `ship.base` is not a
+    plain branch name.
+  - 3: `omg team shutdown` kept a worker worktree with uncommitted changes.
+  - 5: no usable forge, for every factory command (`omg factory run` exited
+    1 before; `omg factory setup` with no origin and no flags exited 2).
+- `omg factory run reset <n>`: starts a cancelled local run over, after
+  `omg factory run clean <n>`. Before, a cancelled offline item could never
+  run again.
+- `omg factory run <n> --allow-gate-change`: accepts a parked gate
+  definition change once.
+- A factory run parks at `prepare-checks` when `ship.prepare.checks` changes
+  during the run.
 
 ## Caveats
 
-- On Node 20, libuv ignores `NoDefaultCurrentDirectoryInExePath`, so full
-  protection against a planted executable on Windows needs Node 22+. The Node
-  22 minimum is planned for a later release.
 - This release was published without the live Copilot smoke.
+- The maintainer's local full test suite was not used as a release gate: it could not complete on the release machine under load. The CI test suite on the release commit is the test evidence.
+- `reflect` and `personal-mode` read Claude Code transcripts.
+- `statechart` installs TLC and Java with mise on its first run and needs the
+  network.
+- On Node 20, full protection against a planted executable on Windows needs
+  Node 22+. The Node 22 minimum is planned for a later release.
