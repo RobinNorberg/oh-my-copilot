@@ -414,8 +414,13 @@ export interface ResolvedForgeConfig {
   progress: ForgeProgressConfig;
   /** `factory.heal.pipeline` from the trusted layers (user config, base branch); absent unless configured. */
   heal?: { pipeline?: { definitionId: number } };
-  /** `factory.review.trustedReviewers` from the trusted layers (user config, base branch), lowercased; absent unless configured. */
-  review?: { trustedReviewers: readonly string[] };
+  /**
+   * `factory.review.*` from the trusted layers (user config, base branch); absent unless configured.
+   * trustedReviewers: lowercased. human: what the engine does with trusted human feedback at the
+   * merge step (absent = "fix"). waitForRequested: park while requested reviewers have not
+   * reviewed (absent = true).
+   */
+  review?: { trustedReviewers: readonly string[]; human?: 'off' | 'gate-only' | 'fix'; waitForRequested?: boolean };
 }
 
 /** What an adapter needs from its caller besides the Exec (src/factory/run/forge-roots.ts builds it for the factory). */
