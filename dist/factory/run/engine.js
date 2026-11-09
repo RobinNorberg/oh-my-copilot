@@ -1442,7 +1442,7 @@ class FactoryEngine {
         const unresolved = gate && gate.length > 0 ? gateDefinitionSources(gate).unresolved : undefined;
         if (!unresolved)
             return false;
-        this.gate('gate-definition-unknown', `${unresolved}; offline the gate is the only check and its definition cannot be compared with ${this.state.base}, so ${outcome}. Wrap the command in a script committed in the repo (for example node scripts/gate.mjs) and set factory.forge.local.gate to that, or to an npm script (npm test, npm run <script>); then rerun ${this.resume}, or omg factory run cancel ${this.key}`);
+        this.gate('gate-definition-unknown', `${unresolved}; offline the gate is the only check and its definition cannot be compared with ${this.state.base}, so ${outcome}. Wrap the command in a script committed in the repo (for example node scripts/gate.mjs) and set factory.forge.local.gate to that, or to an npm script (npm test, npm run <script>); then rerun ${this.resume}, or ${cancelCommand(this.key)}`);
         return true;
     }
     /**
@@ -1488,7 +1488,7 @@ class FactoryEngine {
             return false;
         }
         const stale = allowed !== undefined ? ' (--allow-gate-change accepted only the definition the run parked on, and this one differs)' : '';
-        this.save((x) => setGate(x, 'gate-definition-changed', `the change redefines the local gate "${gate.join(' ')}" (${describeGateSources(sources)} differ from ${s.base})${stale}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha.slice(0, 12)} ${cand.slice(0, 12)} -- ${[...new Set(sources.map((x) => x.path))].join(' ')}, then rerun ${this.resume} --allow-gate-change to accept it, or omg factory run cancel ${this.key}`, this.iso(), { definition: head }));
+        this.save((x) => setGate(x, 'gate-definition-changed', `the change redefines the local gate "${gate.join(' ')}" (${describeGateSources(sources)} differ from ${s.base})${stale}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha.slice(0, 12)} ${cand.slice(0, 12)} -- ${[...new Set(sources.map((x) => x.path))].join(' ')}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}`, this.iso(), { definition: head }));
         return true;
     }
     async review() {
@@ -2772,7 +2772,7 @@ export async function runFactoryEngine(o) {
         // A run that stopped before a terminal phase keeps its claim, parked (claims.ts); a terminal or never-started run frees it.
         // A state that cannot be read may hide a run in flight: the claim is parked, never released (L-b).
         if (claim)
-            settleFactoryClaim(claim, () => readFactoryState(o.root, key)?.phase ?? null, new Date((o.now ?? Date.now)()).toISOString());
+            settleFactoryClaim(claim, o.root, key, dir, new Date((o.now ?? Date.now)()).toISOString());
         releaseRepoOwner();
         for (const path of ownerPaths)
             ledger.record(path, null);

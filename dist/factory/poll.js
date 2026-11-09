@@ -77,7 +77,7 @@ import { FactoryForgeUnavailableError } from './run/forge-roots.js';
 import { visibleLine } from '../forge/review-feedback.js';
 import { resolveTeamConfig, TeamConfigError } from './team/context.js';
 import { staleGateReminders } from './team/reminders.js';
-import { acquireFactoryRepoOwner, defaultOwnerDeps, EXIT_BUSY, factoryRepoOwnerPath, ownerHolding, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, } from './run/state.js';
+import { acquireFactoryRepoOwner, defaultOwnerDeps, EXIT_BUSY, FactoryBusyError, factoryRepoOwnerPath, ownerHolding, runLabel, TERMINAL_FACTORY_PHASES, tryScanLock, verifyFactoryIntegrity, } from './run/state.js';
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
 export const POLL_JSON_SCHEMA_VERSION = 1;
 export const POLL_DEFAULT_INTERVAL_MS = 5 * 60_000;
@@ -200,16 +200,20 @@ function engineBusy(root, me) {
  * The checkout's engine lock for a tick step that fetches or moves refs (the
  * heal tick, the local base sync): a git fetch under a live engine would
  * read as lane tampering to it. A string: the step is skipped this tick (an
- * engine runs). Released before the auto-start, whose child takes the lock
- * itself, so the two never wait on each other.
+ * engine runs; or the lock could not be taken at all, which also goes to the
+ * tick's `errors` as `<step>: ...`). Released before the auto-start, whose
+ * child takes the lock itself, so the two never wait on each other.
  */
-function holdForRefs(root, at, me) {
+export function holdForRefs(root, at, me, label, errors) {
+    let held;
     try {
-        return acquireFactoryRepoOwner(root, 'scan', at, me);
+        held = tryScanLock(root, at, me);
     }
     catch (error) {
-        return `skipped: engine busy (${message(error)})`;
+        errors.push(`${label}: ${message(error)}`);
+        return `skipped: the engine lock could not be taken (${message(error)})`;
     }
+    return held instanceof FactoryBusyError ? `skipped: engine busy (${message(held)})` : held;
 }
 /**
  * The production heal tick: `omg factory heal scan` (writing heal state, never
@@ -441,7 +445,7 @@ export async function pollTick(ctx) {
     else if (!forge.capabilities.heal)
         heal = { ran: false, reason: forge.kind === 'azure-devops' ? HEAL_PIPELINE_MISSING : 'the forge has no heal capability' };
     else {
-        const held = holdForRefs(root, at, ctx.owner);
+        const held = holdForRefs(root, at, ctx.owner, 'heal', errors);
         if (typeof held === 'string')
             heal = { ran: false, reason: held };
         else {
@@ -500,7 +504,7 @@ export async function pollTick(ctx) {
         if (!ctx.localBaseSync)
             baseSync = { ran: false, reason: 'no base sync wired; omg factory run syncs the mirror base' };
         else {
-            const held = holdForRefs(root, at, ctx.owner);
+            const held = holdForRefs(root, at, ctx.owner, 'base sync', errors);
             if (typeof held === 'string')
                 baseSync = { ran: false, reason: held };
             else {

@@ -10,7 +10,7 @@ import { readMirrorRef } from '../../../forge/local/index.js';
 import { createForge } from '../../../forge/index.js';
 import { getOmcRoot } from '../../../lib/worktree-paths.js';
 import { cleanFactoryRun } from '../clean.js';
-import { runFactoryEngine, EXIT_AWAITING_HUMAN } from '../engine.js';
+import { cancelCommand, runFactoryEngine, EXIT_AWAITING_HUMAN } from '../engine.js';
 import { factoryForgeOptions } from '../forge-roots.js';
 import { ledgerFilePath } from '../ledger.js';
 import { resetFactoryRun } from '../reset.js';
@@ -143,6 +143,9 @@ describe('F41: a lane may not redefine the local gate', () => {
         expect(out.gate?.name).toBe('gate-definition-changed');
         expect(out.gate?.reason).toMatch(/redefines the local gate "npm run lint" \(package\.json scripts prelint\/lint\/postlint, \.npmrc, \.yarnrc, \.yarnrc\.yml, \.pnpmfile\.cjs differ from main\).*--allow-gate-change/);
         expect(out.state?.gate?.definition).toMatch(/^[0-9a-f]{64}$/);
+        // The cancel hint is the run kind's own command (a ci-heal run: omg factory heal cancel <sig8>).
+        expect(out.gate?.reason?.endsWith(`or ${cancelCommand(LOCAL_ISSUE)}`)).toBe(true);
+        expect(cancelCommand('heal-0123abcd')).toBe('omg factory heal cancel 0123abcd');
         expect(readMirrorRef(w.config.repo.url, BRANCH)).toBeUndefined();
         // A plain rerun parks again; the explicit flag accepts this definition.
         const plain = await runFactoryEngine(localOpts(w, lanesFor(w, [])));
@@ -196,6 +199,7 @@ describe('F41: a lane may not redefine the local gate', () => {
         expect(out.exitCode, out.message).toBe(EXIT_AWAITING_HUMAN);
         expect(out.gate?.name).toBe('gate-definition-unknown');
         expect(out.gate?.reason).toMatch(/selects workspace packages \(--workspace\).*no further lane was started/);
+        expect(out.gate?.reason?.endsWith(`or ${cancelCommand(LOCAL_ISSUE)}`)).toBe(true);
         expect(lanes.started).toEqual([]);
         expect(readFactoryState(w.root, LOCAL_ISSUE).lanes).toEqual([]);
         expect(readMirrorRef(w.config.repo.url, BRANCH)).toBeUndefined();

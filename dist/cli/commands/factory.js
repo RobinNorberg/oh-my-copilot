@@ -38,7 +38,7 @@ import { EXIT_AWAITING_HUMAN, EXIT_BUSY, runFactoryEngine } from '../../factory/
 import { factoryGuardExec, hardenedGitExec } from '../../factory/run/exec.js';
 import { EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, factoryForgeOptions, loadFactoryForgeConfig, originForgeKind, syncLocalMirror } from '../../factory/run/forge-roots.js';
 import { CopilotLaneBackend } from '../../factory/run/lane.js';
-import { acquireFactoryRepoOwner, defaultOwnerDeps, describeOwner, FactoryBusyError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState, refuseWhileEngineRuns, runLabel, unreadableOwnerMessage, withOwnerFileLock, requestFactoryCancel, verifyFactoryIntegrity, } from '../../factory/run/state.js';
+import { acquireFactoryRepoOwner, acquireFactoryRepoOwnerForRun, defaultOwnerDeps, describeOwner, FactoryBusyError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState, refuseWhileEngineRuns, runLabel, unreadableOwnerMessage, withOwnerFileLock, requestFactoryCancel, verifyFactoryIntegrity, } from '../../factory/run/state.js';
 import { resolveShipConfig, userConfigLayers } from '../../ship/config.js';
 import { defaultExec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
@@ -341,7 +341,8 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         // origin/<base>): busy (exit 6) means nothing was fetched or written. The engine uses the held lock as its own.
         let held;
         if (!o.dryRun) {
-            held = acquireFactoryRepoOwner(root, issue ?? 'next', new Date().toISOString());
+            // A `scan` holder (poll's heal scan or base sync, a read command's fetch) is waited out once (L6).
+            held = acquireFactoryRepoOwnerForRun(root, issue ?? 'next', () => new Date().toISOString());
             // The claim key before the fetch: the forge kind from the config as it is (no fetch); none on the local forge.
             try {
                 claimRepo = cliClaimRepo(deps, root, readOnlyForgeKind(deps, root, base));
@@ -618,7 +619,7 @@ export function factoryEnqueueCommand(deps) {
                 deps.out(JSON.stringify({ ok: false, error: message }, null, 2));
             else
                 deps.err(chalk.red(factoryErrorLine(message)));
-            process.exitCode = error instanceof CheckUsageError ? EXIT_CHECK_USAGE : error instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
+            process.exitCode = error instanceof FactoryBusyError ? EXIT_BUSY : error instanceof CheckUsageError ? EXIT_CHECK_USAGE : error instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
         }
     });
 }

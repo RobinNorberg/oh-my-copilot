@@ -22,7 +22,7 @@ import { DEFAULT_HEAL_CONFIG } from '../heal/config.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../run/budget.js';
 import { healStateDir } from '../heal/state.js';
 import { computeFactoryIntegrity, createFactoryState, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, moveTo, runKeyOf, setGate } from '../run/state.js';
-import { acquirePoller, defaultPollHealScan, nextInterval, parseInterval, PollBusyError, pollAuditPath, pollStatePath, POLL_JSON_SCHEMA_VERSION, POLL_MAX_INTERVAL_MS, autoStartTimeoutMs, defaultPollAutoStart, defaultPollBudget, parseRunNextOutcome, runFactoryPoll, } from '../poll.js';
+import { acquirePoller, defaultPollHealScan, holdForRefs, nextInterval, parseInterval, PollBusyError, pollAuditPath, pollStatePath, POLL_JSON_SCHEMA_VERSION, POLL_MAX_INTERVAL_MS, autoStartTimeoutMs, defaultPollAutoStart, defaultPollBudget, parseRunNextOutcome, runFactoryPoll, } from '../poll.js';
 const SHA = 'a'.repeat(40);
 const HEAD = 'b'.repeat(40);
 const T0 = '2026-10-31T10:00:00.000Z';
@@ -85,6 +85,8 @@ function scripted(o = {}) {
                 return ok();
             if (args[0] === 'ls-remote')
                 return ok('');
+            if (args[0] === 'ls-tree')
+                return { status: 0, stdout: '', stderr: '' }; // readBaseFile's "absent" probe: no entry
             if (args[0] === 'show')
                 return { status: 128, stdout: '', stderr: `fatal: path does not exist in '${SHA}'` };
         }
@@ -232,7 +234,7 @@ describe('omg factory poll on GitHub', () => {
         const w = scripted({ prState: 'MERGED' });
         expect(await poll(w.exec, { once: true, json: true }, { projectConfig: () => LABEL, createForge: spy })).toBe(0);
         for (const c of w.calls)
-            expect(c, c).toMatch(/^(?:git (?:rev-parse|remote get-url|fetch origin dev|cat-file -e|ls-remote|show)|gh (?:issue (?:list|view)|pr (?:list|view)))\b/);
+            expect(c, c).toMatch(/^(?:git (?:rev-parse|remote get-url|fetch origin dev|cat-file -e|ls-remote|ls-tree -z|show)|gh (?:issue (?:list|view)|pr (?:list|view)))\b/);
         const before = w.calls.length;
         const writes = [
             ['issue', 'edit', '1', '--add-label', 'factory:building'],
@@ -405,6 +407,21 @@ describe('omg factory poll on GitHub', () => {
         expect(fetches).toEqual(['fetch origin dev']);
         expect(lockedDuringScan).toMatchObject({ pid: 2, run: 'scan' });
         expect(existsSync(factoryRepoOwnerPath(root))).toBe(false);
+    });
+    it('L5: a tick step is skipped as "engine busy" only for a busy lock; any other lock error is skipped and goes to the tick\'s errors', () => {
+        const me = { pid: 2, hostname: hostname(), isAlive: () => true };
+        mkdirSync(factoryStateDir(root), { recursive: true });
+        writeFileSync(factoryRepoOwnerPath(root), JSON.stringify({ pid: 99, hostname: hostname(), startedAt: T0, run: '4' }));
+        const errors = [];
+        expect(holdForRefs(root, T0, me, 'heal', errors)).toMatch(/^skipped: engine busy \(another omg factory engine runs/);
+        expect(errors).toEqual([]);
+        // A file where the factory state directory goes: the lock cannot be taken at all (not busy, an error).
+        rmSync(factoryStateDir(root), { recursive: true });
+        writeFileSync(factoryStateDir(root), '');
+        const held = holdForRefs(root, T0, me, 'base sync', errors);
+        expect(held).toMatch(/^skipped: the engine lock could not be taken \(/);
+        expect(errors).toHaveLength(1);
+        expect(errors[0]).toMatch(/^base sync: /);
     });
     it('no intake source: the intake tick is skipped and the board shows runs only', async () => {
         seedParked();

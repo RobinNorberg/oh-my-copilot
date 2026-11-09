@@ -275,7 +275,9 @@ export declare const EXIT_BUSY = 6;
  * `omg factory run` exits EXIT_BUSY for it; nothing was touched.
  */
 export declare class FactoryBusyError extends FactoryStateError {
-    constructor(message: string);
+    /** The holder's run key when a live owner file refused (`scan`: the poller's heal scan or base sync, or a read command's fetch). */
+    readonly holderRun?: string;
+    constructor(message: string, holderRun?: string);
 }
 /** The run's key: its issue number, or `heal-<sig8>` for a ci-heal run. */
 export declare function runKeyOf(s: Pick<FactoryRunState, 'kind' | 'issue' | 'heal'>): FactoryRunKey;
@@ -402,6 +404,22 @@ export declare function acquireFactoryOwner(root: string, key: FactoryRunKey, no
  * poller's heal tick and local base sync, `omg factory heal scan`).
  */
 export declare function acquireFactoryRepoOwner(root: string, key: FactoryRunKey | 'next' | 'scan', now: string, deps?: OwnerDeps): HeldOwner;
+/** How long `omg factory run` waits once for a `scan` holder (a fetch or a heal scan: seconds) before it is busy. */
+export declare const SCAN_RETRY_MS = 3000;
+/**
+ * acquireFactoryRepoOwner for `omg factory run`: when the holder is only a
+ * `scan` step (the poller's heal scan or base sync, or a read command's
+ * fetch), wait SCAN_RETRY_MS once and try again before the busy error.
+ */
+export declare function acquireFactoryRepoOwnerForRun(root: string, key: FactoryRunKey | 'next', now: () => string, deps?: OwnerDeps, wait?: (ms: number) => void): HeldOwner;
+/**
+ * The checkout's engine lock under key `scan`, for a step that fetches or
+ * moves refs without starting a run (the poller's heal tick and base sync,
+ * the read commands' base fetch, heal dry runs): the held lock, or the
+ * FactoryBusyError when an engine holds the checkout. Any other error
+ * (EACCES on the state dir, ...) throws: it is not "busy".
+ */
+export declare function tryScanLock(root: string, now: string, deps?: OwnerDeps): HeldOwner | FactoryBusyError;
 /**
  * True when the engine lock of `root` was taken from another folder (its
  * recorded `root`): that folder resolves to this checkout's state root (a
@@ -440,6 +458,14 @@ export declare function ownerHolding(path: string, deps?: OwnerDeps): FactoryOwn
  * reads a start identity) is busy (FactoryBusyError, exit 6), not an error.
  */
 export declare function withOwnerFileLock<T>(path: string, fn: () => T): T;
+/**
+ * Why an owner or claim file's lock could not be taken. An omg factory
+ * process holds it for milliseconds, so a directory at the lock path, or a
+ * lock file older than file-lock's stale age (its pid alive: maybe reused by
+ * an unrelated program), is stuck: it never goes stale, and the message
+ * names the path to remove. A younger one is transient.
+ */
+export declare function lockBusyMessage(lock: string, nowMs?: number): string;
 /**
  * Claim an owner file: a live owner (or one on another host, whose pid
  * cannot be checked) refuses with a FactoryBusyError, and so does a file

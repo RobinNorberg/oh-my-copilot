@@ -37,7 +37,7 @@ import { isAdoCommand, runGuardedAdo } from '../../forge/ado/guard.js';
 import { assertFactoryCommand, FactorySafetyError, isPlainRepoPath } from '../run/exec.js';
 import { ghRepoArg } from '../../forge/github/gh.js';
 import { isReviewFeedbackArgs } from '../../forge/github/graphql.js';
-import { readFactoryState } from '../run/state.js';
+import { FactoryBusyError, readFactoryState, tryScanLock } from '../run/state.js';
 import { gateDefinitionSources } from '../run/local-gate.js';
 import { BUCKET_ORDER, checkItems, plainText } from './score.js';
 export const EXIT_CHECK_FAILED = 1;
@@ -126,7 +126,9 @@ export function checkGuardExec(exec, marker, ado = () => undefined, command = 'o
                 refuse('git takes only the trusted-read environment');
         }
         else if (file === 'git') {
-            const read = CHECK_GIT.has(args[0]) && (args[0] !== 'show' || (args.length === 2 && /^[0-9a-f]{40}:/.test(args[1])));
+            // ls-tree: readBaseFile's "absent" probe only (`ls-tree -z <sha> -- <path>`; the factory guard checks the path).
+            const read = (CHECK_GIT.has(args[0]) && (args[0] !== 'show' || (args.length === 2 && /^[0-9a-f]{40}:/.test(args[1]))))
+                || (args[0] === 'ls-tree' && args.length === 5 && args[1] === '-z' && /^[0-9a-f]{40}$/.test(args[2]) && args[3] === '--');
             if (!read)
                 refuse(`not one of the read-only git shapes ${command} runs`);
             // The factory guard: ship's read shapes plus `ls-remote origin refs/heads/factory/<name>`.
@@ -247,6 +249,30 @@ export function fetchBase(exec, root, base, warnings) {
     warnings.push(`omg factory check: origin/${base} is not available; its committed config is not read and omg-plan links cannot be checked`);
     return null;
 }
+/**
+ * fetchBase for a read command (check, board, poll's start-up, enqueue, pr,
+ * triage): a fetch under a live engine reads as lane tampering to it, so it
+ * runs under this checkout's engine lock (key `scan`, released in finally).
+ * A read command never fails because an engine runs: while one holds the
+ * checkout nothing is fetched and the last fetched origin/<base> is read
+ * (one warning); FactoryBusyError (exit 6) only when there is none.
+ */
+export function fetchBaseUnlessBusy(exec, root, base, warnings, owner) {
+    const held = tryScanLock(root, new Date().toISOString(), owner);
+    if (held instanceof FactoryBusyError) {
+        const sha = git(exec, root, ['rev-parse', '--verify', `refs/remotes/origin/${base}`]);
+        if (!sha.ok || !/^[0-9a-f]{40}$/.test(sha.out))
+            throw new FactoryBusyError(`${held.message}; origin/${base} was never fetched in this checkout, so there is nothing to read until it ends`);
+        warnings.push(`engine busy: using the last fetched origin/${base} (${sha.out.slice(0, 12)})`);
+        return sha.out;
+    }
+    try {
+        return fetchBase(exec, root, base, warnings);
+    }
+    finally {
+        held.release();
+    }
+}
 /** The base branch's committed `.copilot/omg.jsonc`, when the base is in ship.trustedBases (as loadTrustedShipConfig). */
 export function baseLayer(exec, root, base, baseSha, trustedUser, warnings) {
     const trustedBases = resolveShipConfig({ trustedBases: trustedUser?.ship?.trustedBases }).trustedBases;
@@ -324,7 +350,7 @@ export function openReadForge(o, deps, warnings, command, marker) {
     const base = deps.base(root);
     if (!isPlainBranchName(base))
         throw new CheckUsageError(`base ${JSON.stringify(base)} is not a branch name`);
-    let baseSha = originUrl ? fetchBase(pre, root, base, warnings) : localBase(pre, root, base, warnings);
+    let baseSha = originUrl ? fetchBaseUnlessBusy(pre, root, base, warnings, deps.owner) : localBase(pre, root, base, warnings);
     const trustedUser = deps.trustedUser();
     let config;
     const baseConfig = baseLayer(pre, root, base, baseSha, trustedUser, warnings);

@@ -79,7 +79,9 @@ export declare const SHIP_USER_ONLY_KEYS: readonly ["trustedBases"];
 export declare const BASE_CONFIG_PATH = ".copilot/omg.jsonc";
 /**
  * `git show <commit>:<path>` with replace refs off; null when the file does
- * not exist at that commit. Any other failure throws (fail closed).
+ * not exist at that commit. Any other failure throws (fail closed). "Absent"
+ * is `git ls-tree -z <commit> -- <path>` exiting 0 with no entry, never an
+ * English stderr message (a localized git would fail every read).
  */
 export declare function readBaseFile(exec: Exec, cwd: string, commit: string, path: string): string | null;
 /**

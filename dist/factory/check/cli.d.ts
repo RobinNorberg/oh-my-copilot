@@ -25,6 +25,7 @@ import { type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
 import { unsupportedForge } from '../run/forge-roots.js';
 import { type Exec } from '../../ship/exec.js';
 import { type AdoGuardContext } from '../../forge/ado/guard.js';
+import { type OwnerDeps } from '../run/state.js';
 import { type CheckEnv, type CheckResult } from './score.js';
 export declare const EXIT_CHECK_FAILED = 1;
 export declare const EXIT_CHECK_USAGE = 2;
@@ -69,6 +70,8 @@ export interface FactoryCheckDeps {
     confirm: (question: string) => Promise<boolean>;
     out: (line: string) => void;
     err: (line: string) => void;
+    /** This process as an engine-lock contender (default defaultOwnerDeps; tests inject one). */
+    owner?: OwnerDeps;
 }
 export interface FactoryCheckOptions {
     ids: string[];
@@ -120,6 +123,15 @@ export declare function checkEnvFor(exec: Exec, root: string, config: CheckEnv['
 }, base: string, baseSha: string | null): CheckEnv;
 /** Fetch `origin/<base>` (read-only) and resolve it; null with a warning when it cannot be read. */
 export declare function fetchBase(exec: Exec, root: string, base: string, warnings: string[]): string | null;
+/**
+ * fetchBase for a read command (check, board, poll's start-up, enqueue, pr,
+ * triage): a fetch under a live engine reads as lane tampering to it, so it
+ * runs under this checkout's engine lock (key `scan`, released in finally).
+ * A read command never fails because an engine runs: while one holds the
+ * checkout nothing is fetched and the last fetched origin/<base> is read
+ * (one warning); FactoryBusyError (exit 6) only when there is none.
+ */
+export declare function fetchBaseUnlessBusy(exec: Exec, root: string, base: string, warnings: string[], owner?: OwnerDeps): string | null;
 /** The base branch's committed `.copilot/omg.jsonc`, when the base is in ship.trustedBases (as loadTrustedShipConfig). */
 export declare function baseLayer(exec: Exec, root: string, base: string, baseSha: string | null, trustedUser: unknown, warnings: string[]): unknown;
 export declare function renderCheckTable(items: readonly CheckResult[]): string;

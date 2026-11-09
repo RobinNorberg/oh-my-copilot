@@ -273,6 +273,62 @@ describe('omg factory heal CLI', () => {
         expect(factoryCancelRequested(root, 'heal-0123abcd')).toBe(true);
         expect(loads).toBe(0);
     });
+    it('heal run/approve --dry-run never fail on a busy engine: on Azure DevOps the loader does not fetch while one runs and the dry run says a real run would be busy; free, it fetches under the scan lock, released after (also when it throws)', async () => {
+        const lock = factoryRepoOwnerPath(root);
+        mkdirSync(dirname(lock), { recursive: true });
+        writeFileSync(lock, JSON.stringify({ pid: process.ppid, hostname: hostname(), startedAt: NOW.toISOString(), run: '12' }));
+        const loads = [];
+        const d = {
+            ...deps(fakeExec([], [])),
+            forgeKind: () => 'azure-devops',
+            forge: (_root, _base, opts) => {
+                loads.push({ dryRun: Boolean(opts?.dryRun), ...(existsSync(lock) ? { lockRun: JSON.parse(readFileSync(lock, 'utf8')).run } : {}) });
+                throw new Error('stop after the load');
+            },
+        };
+        for (const argv of [['run', '0123abcd', '--dry-run'], ['approve', '0123abcd', '--dry-run']]) {
+            out = [];
+            await cli(d, ...argv);
+            expect(out.join('\n'), argv.join(' ')).toMatch(/engine busy: a real run now would exit busy \(6\) without touching anything \(another omg factory engine runs in this repository \(12, pid/);
+        }
+        // While busy: the no-fetch read only, and the engine's lock untouched.
+        expect(loads).toEqual([{ dryRun: true, lockRun: '12' }, { dryRun: true, lockRun: '12' }]);
+        expect(JSON.parse(readFileSync(lock, 'utf8'))).toMatchObject({ run: '12' });
+        // Free: the fetching load runs under the scan lock, which is released though the loader threw.
+        rmSync(lock);
+        loads.length = 0;
+        await cli(d, 'run', '0123abcd', '--dry-run');
+        expect(loads).toEqual([{ dryRun: false, lockRun: 'scan' }]);
+        expect(existsSync(lock)).toBe(false);
+        // GitHub: no loader; the dry run still says a real run would be busy.
+        writeFileSync(lock, JSON.stringify({ pid: process.ppid, hostname: hostname(), startedAt: NOW.toISOString(), run: '12' }));
+        out = [];
+        await cli({ ...d, forgeKind: () => 'github' }, 'approve', '0123abcd', '--dry-run');
+        expect(out.join('\n')).toMatch(/engine busy: a real run now would exit busy \(6\)/);
+    });
+    it('heal cancel takes the engine lock before the forge load (L1) and hands it to the engine; free, the lock is released after', async () => {
+        const lock = factoryRepoOwnerPath(root);
+        const T = NOW.toISOString();
+        const heal = {
+            sig8: '0123abcd', class: 'test-failure', firstRed: { runId: '77', sha: RED_SHA }, failingTests: ['src/a.test.ts > b'], env: [],
+            diagnosis: { class: 'test-failure', rootCause: 'a flaky clock', evidence: [], reproduced: false, fix: null },
+        };
+        overwriteFactoryState(root, 'heal-0123abcd', moveTo({ ...createFactoryState({ issue: 0, repoUrl: 'https://github.com/o/r', base: 'dev', heal }, T), forgeKind: 'github' }, 'implement', 'approved', T));
+        let lockRun;
+        const d = {
+            ...deps(fakeExec([], [])),
+            forgeKind: () => 'azure-devops',
+            forge: () => {
+                lockRun = JSON.parse(readFileSync(lock, 'utf8')).run;
+                throw new Error('az is broken');
+            },
+        };
+        out = [];
+        expect(await cli(d, 'cancel', '0123abcd', '--json')).toBe(0);
+        expect(lockRun).toBe('heal-0123abcd');
+        expect(JSON.parse(out.join('\n'))).toMatchObject({ ok: true, sig8: '0123abcd', cancelRequested: true, note: expect.stringMatching(/az is broken/) });
+        expect(existsSync(lock)).toBe(false);
+    });
     it('heal scan, run and approve take the engine lock before any fetch or worktree on GitHub too: busy is exit 6 with nothing run but the root read; the lock is released after', async () => {
         const lock = factoryRepoOwnerPath(root);
         mkdirSync(dirname(lock), { recursive: true });
