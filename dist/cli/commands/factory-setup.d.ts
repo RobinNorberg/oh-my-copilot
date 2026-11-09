@@ -52,6 +52,18 @@ export interface FactorySetupOptions {
     /** Azure DevOps: the build definition id heal reads as CI, or none. */
     healPipeline?: string;
     scope?: string;
+    /** Write the cloud heartbeat (GitHub workflow or ADO pipeline) instead of running the wizard. */
+    workflows?: boolean;
+    /** --workflows: read-only (default) | triage (the opt-in write scope). */
+    mode?: string;
+    /** --workflows: schedule cron (default every 2 hours). */
+    cron?: string;
+    /** --workflows: pin this exact published omg version instead of the running build's. */
+    omgVersion?: string;
+    /** --workflows, Azure DevOps: the branch the schedule runs (default: the repository's default branch from origin/HEAD). */
+    branch?: string;
+    /** --workflows: replace a file this command did not write. */
+    force?: boolean;
     dryRun?: boolean;
     yes?: boolean;
     json?: boolean;
