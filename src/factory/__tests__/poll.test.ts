@@ -609,6 +609,11 @@ describe('omg factory poll: factory.intake.autoStart', () => {
     expect(ticks()[1].autoStart).toEqual({ started: false, reason: 'a run is in flight' });
   });
 
+  it('a busy outcome (exit 6: another engine holds the checkout or the item) renders as busy, not as a failure', async () => {
+    expect(await poll(scripted().exec, { once: true }, on(engine({ parsed: true, next: null, exitCode: 6 })))).toBe(0);
+    expect(out.join('\n')).toContain('auto-start: omg factory run --next was busy (another engine holds this checkout or the item; retried next tick), exit 6');
+  });
+
   it('an unreadable outcome renders "outcome unreadable", never "found nothing runnable", and the audit logs no next', async () => {
     expect(await poll(scripted().exec, { once: true, json: true }, on(engine({ parsed: false, next: null, exitCode: 1 })))).toBe(0);
     expect(ticks()[0].autoStart).toMatchObject({ started: true, parsed: false, next: null, exitCode: 1 });

@@ -104,6 +104,7 @@ import { jobRefProblem } from '../../copilot-run/job.js';
 import { commitLaneWork, conflictFixStart, laneCommitMessage } from './lane-commit.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir } from './ledger.js';
 import { createFactoryProgress, type FactoryProgress } from './progress.js';
+import { acquireFactoryClaim, factoryClaimHolder } from './claims.js';
 import { compareSnapshots, snapshotRepo, verifyReviewWorktree, type RepoSnapshot } from './review-guard.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted, type IssueComment } from './plan-rules.js';
@@ -111,6 +112,8 @@ import {
   acquireFactoryOwner,
   acquireFactoryRepoOwner,
   createFactoryState,
+  defaultOwnerDeps,
+  EXIT_BUSY,
   factoryCancelRequested,
   forgeResumeProblem,
   factoryOwnerPath,
@@ -122,6 +125,7 @@ import {
   healRunKey,
   moveTo,
   overwriteFactoryState,
+  ownerHolding,
   parseFactoryState,
   readFactoryState,
   reviewerName,
@@ -148,6 +152,7 @@ import {
 
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export const EXIT_AWAITING_HUMAN = 4;
+export { EXIT_BUSY };
 /** The prepare steps that are checks (a failure there starts a ci-fix lane); the rest are engine steps. */
 const PREPARE_ENGINE_STEPS = new Set(['preflight', 'remote', 'fetch', 'merge-base', 'push', PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP]);
 /** Conflict-fix lanes (distinct start heads) before base conflicts park at awaiting-human: merge-conflicts. */
@@ -2527,8 +2532,25 @@ class FactoryEngine {
   }
 }
 
+/**
+ * What a real run now would be refused by (the checkout's engine, the item's
+ * run, its claim), or null. Read-only; an unreadable owner file is not busy,
+ * since the real claim takes it over.
+ */
+function busyHolder(o: FactoryEngineOptions, key: FactoryRunKey): string | null {
+  const deps = o.owner ?? defaultOwnerDeps();
+  const what = (h: ReturnType<typeof ownerHolding>, name: string): string | null =>
+    h === null || h === 'unreadable' ? null : `${name} is held (${h.run ?? 'run unknown'}, pid ${h.pid} on ${h.hostname} since ${h.startedAt}${h.root ? ` in ${h.root}` : ''})`;
+  const repo = o.forge?.config.repo.url;
+  return what(ownerHolding(factoryRepoOwnerPath(o.root), deps), 'the engine lock of this checkout')
+    ?? what(ownerHolding(factoryOwnerPath(o.root, key), deps), `the run of ${runLabel(key)}`)
+    ?? (repo !== undefined ? what(factoryClaimHolder(o.ledgerDir ?? defaultLedgerDir(), repo, o.root, key, deps), `the cross-clone claim on ${runLabel(key)}`) : null);
+}
+
 /** Read-only preview: issue and plan resolution, the resolved caps; no state, lanes or pushes. */
 function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
+  const holder = busyHolder(o, engineRunKey(o));
+  if (holder) return { exitCode: EXIT_BUSY, phase: null, state: null, message: `dry run: ${holder}; a real run now would exit busy (${EXIT_BUSY}) without touching anything` };
   // The local forge reads the backlog at the local base branch: a dry run neither creates nor syncs the mirror (F8).
   let localBase: string | undefined;
   const { exec, forge } = engineExec(o, o.exec, () => localBase);
@@ -2628,10 +2650,14 @@ export async function runFactoryEngine(o: FactoryEngineOptions): Promise<Factory
   const now = new Date((o.now ?? Date.now)()).toISOString();
   // The repository lock first: a second engine refuses before it touches this run's files or git state.
   const repoOwner = acquireFactoryRepoOwner(o.root, key, now, o.owner);
+  // Then the item's claim across clones of the same forge repository (claims.ts), then the item's own owner file.
+  let claim: ReturnType<typeof acquireFactoryClaim> | undefined;
   let owner: ReturnType<typeof acquireFactoryOwner>;
   try {
+    if (o.forge) claim = acquireFactoryClaim(dir, o.forge.config.repo.url, o.root, key, now, o.owner);
     owner = acquireFactoryOwner(o.root, key, now, o.owner);
   } catch (error) {
+    claim?.release();
     repoOwner.release();
     throw error;
   }
@@ -2641,6 +2667,7 @@ export async function runFactoryEngine(o: FactoryEngineOptions): Promise<Factory
     return await new FactoryEngine(o, ledger, hooksDir).start(owner.tookOver);
   } finally {
     owner.release();
+    claim?.release();
     repoOwner.release();
     for (const path of ownerPaths) ledger.record(path, null);
   }

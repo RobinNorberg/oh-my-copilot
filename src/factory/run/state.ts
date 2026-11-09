@@ -259,6 +259,21 @@ export class FactoryStateError extends Error {
   }
 }
 
+/** Exit code of a run that did not start: another engine holds this checkout, the item's run or its claim (FactoryBusyError). */
+export const EXIT_BUSY = 6;
+
+/**
+ * A live owner holds what the caller tried to claim: another engine in this
+ * checkout, the item's own run, or the item's claim from another clone.
+ * `omg factory run` exits EXIT_BUSY for it; nothing was touched.
+ */
+export class FactoryBusyError extends FactoryStateError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FactoryBusyError';
+  }
+}
+
 /** The run's key: its issue number, or `heal-<sig8>` for a ci-heal run. */
 export function runKeyOf(s: Pick<FactoryRunState, 'kind' | 'issue' | 'heal'>): FactoryRunKey {
   return s.kind === 'ci-heal' ? `heal-${s.heal?.sig8 ?? ''}` : s.issue;
@@ -533,8 +548,10 @@ export interface FactoryOwner {
   pid: number;
   hostname: string;
   startedAt: string;
-  /** The run key (the repository owner file only). */
+  /** The run key (the repository owner file and a claim). */
   run?: string;
+  /** The checkout the engine runs in (a claim only: it may be another clone). */
+  root?: string;
 }
 
 export interface OwnerDeps {
@@ -561,10 +578,42 @@ export function acquireFactoryOwner(root: string, key: FactoryRunKey, now: strin
  */
 export function acquireFactoryRepoOwner(root: string, key: FactoryRunKey, now: string, deps: OwnerDeps = defaultOwnerDeps()): { release: () => void; tookOver?: FactoryOwner } {
   return claimOwner(factoryRepoOwnerPath(root), now, deps, (prior) =>
-    `another omg factory engine runs in this repository (${prior.run ?? 'run unknown'}, pid ${prior.pid} on ${prior.hostname} since ${prior.startedAt}); one engine runs per repository at a time, so start ${key} after it ends`, String(key));
+    `another omg factory engine runs in this repository (${prior.run ?? 'run unknown'}, pid ${prior.pid} on ${prior.hostname} since ${prior.startedAt}); one engine runs per checkout at a time, so start ${key} after it ends (parallel runs need separate clones)`, { run: String(key) });
 }
 
-function claimOwner(path: string, now: string, deps: OwnerDeps, busy: (prior: FactoryOwner) => string, run?: string): { release: () => void; tookOver?: FactoryOwner } {
+/** Whether `owner` holds its file against `deps`, as claimOwner decides: another host, or another live pid here. */
+export function ownerHolds(owner: Pick<FactoryOwner, 'pid' | 'hostname'>, deps: OwnerDeps): boolean {
+  return owner.hostname !== deps.hostname || (owner.pid !== deps.pid && deps.isAlive(owner.pid));
+}
+
+/**
+ * The owner holding the file at `path` (read-only; claimOwner stays the
+ * binding check): null when there is none or it is taken over by the next
+ * claim, `unreadable` when the file cannot be parsed (never taken for free
+ * by a reader).
+ */
+export function ownerHolding(path: string, deps: OwnerDeps = defaultOwnerDeps()): FactoryOwner | 'unreadable' | null {
+  let raw: string;
+  try {
+    raw = readFileSync(path, 'utf8');
+  } catch {
+    return null;
+  }
+  try {
+    const owner = JSON.parse(raw) as FactoryOwner;
+    if (typeof owner !== 'object' || owner === null || !Number.isInteger(owner.pid) || typeof owner.hostname !== 'string') return 'unreadable';
+    return ownerHolds(owner, deps) ? owner : null;
+  } catch {
+    return 'unreadable';
+  }
+}
+
+/**
+ * Claim an owner file: a live owner (or one on another host, whose pid
+ * cannot be checked) refuses with a FactoryBusyError; a dead pid on this
+ * host is taken over, and `tookOver` names it.
+ */
+export function claimOwner(path: string, now: string, deps: OwnerDeps, busy: (prior: FactoryOwner) => string, fields: Pick<FactoryOwner, 'run' | 'root'> = {}): { release: () => void; tookOver?: FactoryOwner } {
   ensureDirSync(dirname(path));
   const tookOver = withFileLockSync(lockPathFor(path), () => {
     let prior: FactoryOwner | undefined;
@@ -574,11 +623,11 @@ function claimOwner(path: string, now: string, deps: OwnerDeps, busy: (prior: Fa
       } catch {
         prior = undefined;
       }
-      if (prior && (prior.hostname !== deps.hostname || (prior.pid !== deps.pid && deps.isAlive(prior.pid)))) {
-        throw new FactoryStateError(busy(prior));
+      if (prior && ownerHolds(prior, deps)) {
+        throw new FactoryBusyError(busy(prior));
       }
     }
-    writeFileSync(path, `${JSON.stringify({ pid: deps.pid, hostname: deps.hostname, startedAt: now, ...(run ? { run } : {}) } satisfies FactoryOwner)}
+    writeFileSync(path, `${JSON.stringify({ pid: deps.pid, hostname: deps.hostname, startedAt: now, ...(fields.run ? { run: fields.run } : {}), ...(fields.root ? { root: fields.root } : {}) } satisfies FactoryOwner)}
 `, 'utf8');
     return prior;
   }, { timeoutMs: 5_000 });
