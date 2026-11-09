@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "1eff8aa7516c6606d522b0d939b076f27e9de94a",
-    "sourceSha256": "caf7792d222f581f96969a0a069febeb79f590299455bdf142360be24c465bad",
+    "head": "b88fc244e1b6aa0538e63ebbe7478e2601ad572e",
+    "sourceSha256": "359a5ca8808a79f05276e0a0c147962111b2dbfdd973dd7bd7ba1da36f667eb5",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "1eff8aa7516c6606d522b0d939b076f27e9de94a",
-  "sourceSha256": "caf7792d222f581f96969a0a069febeb79f590299455bdf142360be24c465bad",
+  "head": "b88fc244e1b6aa0538e63ebbe7478e2601ad572e",
+  "sourceSha256": "359a5ca8808a79f05276e0a0c147962111b2dbfdd973dd7bd7ba1da36f667eb5",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 1983,
-      "total": 2008
+      "srcFiles": 1984,
+      "total": 2009
     },
     "generated": {
-      "distFiles": 7300,
+      "distFiles": 7304,
       "bridgeFiles": 8,
-      "total": 7308
+      "total": 7312
     },
     "prompt": {
       "promptLikeFiles": 71
@@ -4253,6 +4253,10 @@
       "dist/forge/local/__tests__/store.test.d.ts.map",
       "dist/forge/local/__tests__/store.test.js",
       "dist/forge/local/__tests__/store.test.js.map",
+      "dist/forge/local/__tests__/tracker.reopen.test.d.ts",
+      "dist/forge/local/__tests__/tracker.reopen.test.d.ts.map",
+      "dist/forge/local/__tests__/tracker.reopen.test.js",
+      "dist/forge/local/__tests__/tracker.reopen.test.js.map",
       "dist/forge/local/__tests__/tracker.test.d.ts",
       "dist/forge/local/__tests__/tracker.test.d.ts.map",
       "dist/forge/local/__tests__/tracker.test.js",
@@ -26108,6 +26112,26 @@
         "id": "dist/forge/local/__tests__/store.test.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/local/__tests__/store.test.js.map"
+      },
+      {
+        "id": "dist/forge/local/__tests__/tracker.reopen.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/local/__tests__/tracker.reopen.test.d.ts"
+      },
+      {
+        "id": "dist/forge/local/__tests__/tracker.reopen.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/local/__tests__/tracker.reopen.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/local/__tests__/tracker.reopen.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/local/__tests__/tracker.reopen.test.js"
+      },
+      {
+        "id": "dist/forge/local/__tests__/tracker.reopen.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/local/__tests__/tracker.reopen.test.js.map"
       },
       {
         "id": "dist/forge/local/__tests__/tracker.test.d.ts",
@@ -55660,6 +55684,11 @@
         "path": "src/forge/local/__tests__/store.test.ts"
       },
       {
+        "id": "src/forge/local/__tests__/tracker.reopen.test.ts",
+        "kind": "src",
+        "path": "src/forge/local/__tests__/tracker.reopen.test.ts"
+      },
+      {
         "id": "src/forge/local/__tests__/tracker.test.ts",
         "kind": "src",
         "path": "src/forge/local/__tests__/tracker.test.ts"
@@ -81347,6 +81376,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/copilot-run/__tests__/sandbox.state-deny.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/copilot-run/__tests__/sandbox.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -81604,6 +81638,16 @@
       {
         "from": "src/copilot-run/sandbox.ts",
         "to": "src/config/project-config-path.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/sandbox.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/sandbox.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -92542,6 +92586,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/forge/local/__tests__/tracker.reopen.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/local/__tests__/tracker.reopen.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/local/__tests__/tracker.reopen.test.ts",
+        "to": "src/forge/local/__tests__/git-fixture.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/local/__tests__/tracker.reopen.test.ts",
+        "to": "src/forge/local/__tests__/git-fixture.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/local/__tests__/tracker.reopen.test.ts",
+        "to": "src/forge/local/tracker.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/forge/local/__tests__/tracker.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -92575,6 +92644,16 @@
         "from": "src/forge/local/__tests__/tracker.test.ts",
         "to": "src/forge/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/local/__tests__/tracker.working.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/local/__tests__/tracker.working.test.ts",
+        "to": "external:path",
+        "kind": "imports"
       },
       {
         "from": "src/forge/local/__tests__/tracker.working.test.ts",
@@ -124723,12 +124802,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10530,
-      "edgeCount": 12623,
-      "importEdgeCount": 10399,
+      "nodeCount": 10535,
+      "edgeCount": 12633,
+      "importEdgeCount": 10408,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "b289e4faafee75f3b6f790ff87f3dc2cbd342669e03eace1f60fb613e199378d",
-  "manifestSha256": "1e90824a28f89914fe009008ff49950050570315b1332481cb2f05a45df70233"
+  "inventorySha256": "f160203630e41804b792af3cc7e0d5413fa07261724f82f53e56a6b81397284f",
+  "manifestSha256": "f285a7616c70a460180a8000b48b88dc1fdf665d121a42cc5af6df9dcdd175c7"
 }
