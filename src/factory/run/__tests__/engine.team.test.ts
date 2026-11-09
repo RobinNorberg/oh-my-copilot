@@ -104,6 +104,21 @@ describe('the append-only decisions gate (end to end)', () => {
   }, 300_000);
 });
 
+describe('a non-missing read error on decisions.md fails closed (end to end)', () => {
+  it(`a gitlink at decisions.md on the PR head never reaches the review lane as clean`, async () => {
+    commitTeam({ 'decisions.md': '# Decisions\n- one\n' });
+    await run([commitFile('src/greet.ts', 'x\n')], { limits: limits({ maxRunCredits: 34 }) }).done;
+    const before = readFactoryState(h.root, ISSUE)!;
+    const bad = plumbCommit(before.head!, [{ path: '.copilot/team/decisions.md', mode: '160000', id: 'c'.repeat(40) }], 'bad decisions entry');
+    gitIn(h.root, 'push', '-q', 'origin', `${bad}:refs/heads/factory/issue-${ISSUE}`);
+    asEngine((s) => ({ ...s, head: bad, phase: 'review', gate: undefined }));
+    const second = run([review('approve')]);
+    const settled = await second.done.then((o) => ({ gate: o.gate?.name, exitCode: o.exitCode }), (e: unknown) => ({ error: String(e) }));
+    expect(second.lanes.started).toHaveLength(0);
+    expect(settled).toEqual({ exitCode: 1 }); // a failed run, not a gate and not a clean review
+  }, 300_000);
+});
+
 describe('unreadable team files', () => {
   it('a gitlink at a team path drops the context with a warning instead of parking the run', async () => {
     const base = gitIn(h.root, 'rev-parse', 'HEAD');

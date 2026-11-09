@@ -516,6 +516,9 @@ export interface PollContext {
 const message = (error: unknown): string => plainText(error instanceof Error ? error.message : String(error));
 
 const resumeHint = (key: FactoryRunKey): string => (typeof key === 'number' ? `omg factory run ${key}` : `omg factory heal approve ${key.slice('heal-'.length)}`);
+const cancelHint = (key: FactoryRunKey): string => (typeof key === 'number' ? `omg factory run cancel ${key}` : `omg factory heal cancel ${key.slice('heal-'.length)}`);
+/** A resume re-parks a run whose branch rewrote decisions.md, so its reminder offers the cancel instead. */
+const reminderHint = (key: FactoryRunKey, gate: string): string => (gate === 'decisions-rewritten' ? cancelHint(key) : resumeHint(key));
 
 /**
  * One tick. Steps 1-4 never spawn and never write to the tracker or forge; a
@@ -725,7 +728,7 @@ export function renderTick(t: PollTick): string {
       lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)}: ${p.threads ?? 0} human thread(s)${p.ignored ? ` (${p.ignored} ignored)` : ''}${trust}`);
     }
   }
-  for (const r of t.reminders ?? []) lines.push(`  reminder: ${runLabel(r.run)} has waited ${r.hours} h at ${visibleLine(r.gate)}${r.handles.length ? ` ${r.handles.join(' ')}` : ''}: ${r.reason} (${resumeHint(r.run)})`);
+  for (const r of t.reminders ?? []) lines.push(`  reminder: ${runLabel(r.run)} has waited ${r.hours} h at ${visibleLine(r.gate)}${r.handles.length ? ` ${r.handles.join(' ')}` : ''}: ${r.reason} (${reminderHint(r.run, r.gate)})`);
   // F33: a run whose PR a human already merged or closed shows the record step, not its stale gate reason (a merge command).
   const done = new Map(t.prs.filter((p) => p.hint).map((p) => [runLabel(p.id), p]));
   for (const b of t.board) {

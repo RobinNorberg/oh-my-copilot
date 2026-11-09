@@ -24,6 +24,15 @@ describe('parseRouting', () => {
     ]);
   });
 
+  it('warns, and keeps the row, for ** inside a segment', () => {
+    const { routes, warnings } = parseRouting(['| src/**.ts | - | a | - |', '| docs** | - | b | - |', '| **.md | - | c | - |', '| src/**/*.ts | - | d | - |', '| docs/** | - | e | - |'].join('\n'));
+    expect(routes.map((r) => r.owner)).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect(warnings).toHaveLength(3);
+    expect(warnings[0]).toContain('line 1');
+    expect(warnings[0]).toContain('whole path segments only');
+    expect(warnings[0]).toContain('**/*.ts');
+  });
+
   it('drops bad rows with a warning each', () => {
     const { routes, warnings } = parseRouting([
       '| a/b | x | Bad Owner | - |',

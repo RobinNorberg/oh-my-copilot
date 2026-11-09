@@ -46,6 +46,30 @@ describe('path extraction', () => {
     ].join('\n');
     expect(pathsInDiff(diff)).toEqual(['src/café.ts', 'src/tab\there.ts', 'docs/x b/y.md', 'docs/new"q.md', 'src/renamed.ts', 'docs/moved.md']);
   });
+  it('stays linear on long headers made of repeated quote-b-slash', () => {
+    const header = (n: number): string => `diff --git a/${'\\"b/'.repeat(4000)}${n}.ts b/${'\\"b/'.repeat(4000)}${n}.ts"`;
+    const diff = Array.from({ length: 200 }, (_, i) => header(i)).join('\n');
+    const started = Date.now();
+    pathsInDiff(diff);
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+  it('resolves quoted, renamed, escaped and space-b-slash names', () => {
+    const diff = [
+      'diff --git "a/src/q\\"b/x.ts" "b/src/q\\"b/x.ts"',
+      'diff --git a/old.ts b/new b/name.ts',
+      'similarity index 90%',
+      'rename from old.ts',
+      'rename to new b/name.ts',
+      'diff --git "a/caf\\303\\251.ts" "b/caf\\303\\251.ts"',
+      'diff --git a/a b/a b/a b/a',
+      '--- a/a b/a',
+      '+++ b/a b/a',
+      '@@ -1 +1 @@',
+      '++ b/not-a-header.ts',
+      'diff --git "a/\\360\\237\\230\\200.ts" "b/\\360\\237\\230\\200.ts"',
+    ].join('\n');
+    expect(pathsInDiff(diff)).toEqual(['src/q"b/x.ts', 'new b/name.ts', 'café.ts', 'a b/a', '\u{1F600}.ts']);
+  });
   it('finds changed paths in a diff', () => {
     expect(pathsInDiff('diff --git a/src/a.ts b/src/a.ts\n+x\ndiff --git a/old b/docs/n.md\n')).toEqual(['src/a.ts', 'docs/n.md']);
   });

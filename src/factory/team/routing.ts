@@ -57,6 +57,7 @@ export function parseRouting(text: string): { routes: TeamRoute[]; warnings: str
     if (!GLOB_RE.test(glob) || glob.startsWith('/') || glob.split('/').includes('..')) return warn(`${at}: path glob ${JSON.stringify(glob)} is not allowed`);
     const limit = globLimitProblem(glob);
     if (limit) return warn(`${at}: path glob ${JSON.stringify(glob)} has ${limit}; the row is dropped`);
+    if (glob.split('/').some((seg) => seg.includes('**') && seg !== '**')) warn(`${at}: path glob ${JSON.stringify(glob)} has ** inside a segment; ** matches whole path segments only (as in .gitignore and CODEOWNERS), so write **/*.ts or docs/** instead of src/**.ts or docs**`);
     if (role !== undefined && !ROLE_RE.test(role)) return warn(`${at}: role ${JSON.stringify(role)} is not allowed`);
     if (!isOwnerName(owner)) return warn(`${at}: owner ${JSON.stringify(owner)} must match ${OWNER_RE}`);
     if (handle !== undefined && !HANDLE_RE.test(handle)) return warn(`${at}: handle ${JSON.stringify(handle)} must be @login or @org/team`);
