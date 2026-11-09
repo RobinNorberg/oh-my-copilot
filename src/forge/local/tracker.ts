@@ -114,10 +114,10 @@ export function localTracker(ctx: LocalTrackerContext): ForgeTracker {
   const dirOnDisk = (): string => join(ctx.root, ...ctx.backlogDir.split('/'));
 
   /** The working-tree items (regular files only; a symlink is never followed, at any level below the root). */
-  const scanWorking = (): { out: Array<{ item: BacklogItem; text: string; file: string }>; skipped: Set<number> } => {
+  const scanWorking = (): { out: Array<{ item: BacklogItem; text: string; file: string }>; skipped: Map<number, string> } => {
     const dir = dirOnDisk();
     const out: Array<{ item: BacklogItem; text: string; file: string }> = [];
-    const skipped = new Set<number>();
+    const skipped = new Map<number, string>();
     if (!noLinkPath(ctx.root, dir, false, true) || !existsSync(dir) || !lstatSync(dir).isDirectory()) return { out, skipped };
     for (const name of readdirSync(dir).sort()) {
       if (backlogFileId(name) === undefined) continue;
@@ -130,7 +130,7 @@ export function localTracker(ctx: LocalTrackerContext): ForgeTracker {
         // As for a committed file: one malformed file does not block the rest of the backlog.
         if (!(err instanceof BacklogParseError)) throw err;
         // The id of a skipped file stays taken: the file is never rewritten and its id never handed out again.
-        skipped.add(backlogFileId(name) as number);
+        skipped.set(backlogFileId(name) as number, name);
         const warning = `local backlog: skipped ${err.message}`;
         if (!warnings.includes(warning)) warnings.push(warning);
       }
@@ -183,9 +183,9 @@ export function localTracker(ctx: LocalTrackerContext): ForgeTracker {
     const key = `${sha}:${mergedHead}:${path}`;
     const known = changedAfter.get(key);
     if (known !== undefined) return known;
-    const [last = '', ...parents] = git(lastStateChangeArgs(sha, path)).trim().split(/\s+/);
     // The pickaxe also matches a body line starting with `state:` and (defensively) a merge: only a single-parent
-    // commit whose own parsed `state` differs from its parent's is a reopen.
+    // commit whose own parsed `state` differs from its parent's is a reopen. A body-line hit says nothing about
+    // earlier commits, so the search resumes from its parent (the same log shape) until the merged head is reached.
     const stateAt = (commit: string): string | undefined => {
       const r = ctx.exec('git', backlogShowArgs(commit, path), { cwd: ctx.root, env: TRUSTED_READ_ENV });
       if (r.status !== 0) return undefined;
@@ -195,9 +195,15 @@ export function localTracker(ctx: LocalTrackerContext): ForgeTracker {
         return undefined;
       }
     };
-    const after = HEX40.test(last) && last !== mergedHead && parents.length === 1 && HEX40.test(parents[0])
-      && ctx.exec('git', mergedArgs(mergedHead, last), { cwd: ctx.root, env: TRUSTED_READ_ENV }).status === 0
-      && stateAt(last) !== stateAt(parents[0]);
+    let after = false;
+    let from = sha;
+    for (let i = 0; i < 50 && !after; i++) {
+      const [last = '', ...parents] = git(lastStateChangeArgs(from, path)).trim().split(/\s+/);
+      if (!HEX40.test(last) || last === mergedHead || ctx.exec('git', mergedArgs(mergedHead, last), { cwd: ctx.root, env: TRUSTED_READ_ENV }).status !== 0) break;
+      if (parents.length !== 1 || !HEX40.test(parents[0])) break;
+      if (stateAt(last) !== stateAt(parents[0])) after = true;
+      else from = parents[0];
+    }
     changedAfter.set(key, after);
     return after;
   };
@@ -262,7 +268,7 @@ export function localTracker(ctx: LocalTrackerContext): ForgeTracker {
     const e = entries().get(id);
     if (!e) throw new Error(`local backlog item #${id} is not in ${ctx.backlogDir}`);
     if (e.file === undefined && scanWorking().skipped.has(id)) {
-      throw new Error(`local backlog: the working-tree file for #${id} is malformed and was skipped; fix or remove it by hand (it is not overwritten)`);
+      throw new Error(`local backlog: the working-tree file for #${id} (${scanWorking().skipped.get(id)}) is malformed and was skipped; fix or remove it by hand (it is not overwritten)`);
     }
     const file = e.file ?? join(ctx.root, ...e.item.path.split('/'));
     if (existsSync(file) && !lstatSync(file).isFile()) throw new Error(`local backlog: ${file} is not a regular file`);
@@ -315,7 +321,7 @@ export function localTracker(ctx: LocalTrackerContext): ForgeTracker {
       const body = withAcceptance(readBody(draft.bodyFile), draft.acceptance);
       const all = entries();
       const scan = scanWorking();
-      const id = Math.max(0, ...all.keys(), ...scan.out.map((d) => d.item.id), ...scan.skipped) + 1;
+      const id = Math.max(0, ...all.keys(), ...scan.out.map((d) => d.item.id), ...scan.skipped.keys()) + 1;
       const name = `${id}-${backlogSlug(draft.title)}.md`;
       const file = join(dirOnDisk(), name);
       noLinkPath(ctx.root, file, true, true);

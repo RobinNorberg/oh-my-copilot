@@ -22,9 +22,30 @@ describe('gate definitions that the repository cannot pin park as unknown', () =
     expect(gateDefinitionSources(['./ci/gate.sh'])).toEqual({ sources: [{ path: 'ci/gate.sh' }] });
     expect(gateDefinitionSources(['node_modules/.bin/vitest', 'run'])).toEqual({ sources: [{ path: 'node_modules/.bin/vitest' }] });
     expect(gateDefinitionSources(['node', 'scripts/gate.mjs'])).toEqual({ sources: [{ path: 'scripts/gate.mjs' }] });
-    // Outside the repository a pull request cannot change it.
-    expect(gateDefinitionSources(['/usr/local/bin/gate'])).toEqual({ sources: [] });
-    expect(gateDefinitionSources(['node', '--test'])).toEqual({ sources: [] });
+  });
+
+  it('a program outside the repository is unresolved with or without arguments (make and pytest read repository files implicitly)', () => {
+    for (const gate of [['/usr/bin/make'], ['/usr/local/bin/pytest'], ['C:/Python312/Scripts/pytest.exe'], ['/usr/local/bin/gate']]) {
+      const out = gateDefinitionSources(gate);
+      expect(out.sources, gate[0]).toEqual([]);
+      expect(out.unresolved, gate[0]).toMatch(/a program outside the repository/);
+    }
+  });
+
+  it('node options before the script park, except --run, which is npm run', () => {
+    expect(gateDefinitionSources(['node', '--run', 'test'])).toEqual(gateDefinitionSources(['npm', 'run', 'test']));
+    for (const gate of [
+      ['node', '-e', "require('./scripts/gate.js')"],
+      ['node', '-r', './hook.js', 'scripts/gate.mjs'],
+      ['node', '--import', './x.mjs', 'scripts/gate.mjs'],
+      ['node', '--test'],
+    ]) {
+      const out = gateDefinitionSources(gate);
+      expect(out.sources, gate.join(' ')).toEqual([]);
+      expect(out.unresolved, gate.join(' ')).toMatch(/option/);
+    }
+    expect(gateDefinitionSources(['node', '.yarn/releases/yarn-4.1.0.cjs', 'test'])).toEqual(gateDefinitionSources(['yarn', 'test']));
+    expect(gateDefinitionSources(['node', 'scripts/gate.mjs'])).toEqual({ sources: [{ path: 'scripts/gate.mjs' }] });
   });
 
   it('npm-style gates are unchanged', () => {

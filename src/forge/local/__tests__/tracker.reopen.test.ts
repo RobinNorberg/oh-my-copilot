@@ -38,6 +38,17 @@ describe('the reopen edge of a merged local PR', () => {
     expect(open(edited)).toMatchObject({ open: false, rawState: 'merged (local PR #5)' });
   });
 
+  it('a real reopen followed by a commit with a body line starting with "state:" is still a reopen', () => {
+    const withState = (state: string) => ITEM.replace('title: Add remove()', `title: Add remove()\nstate: ${state}`);
+    fx.write(FILE, withState('closed'));
+    fx.commit('close');
+    fx.write(FILE, withState('open'));
+    fx.commit('reopen');
+    fx.write(FILE, `${withState('open')}\nstate: reviewed by the team\n`);
+    const edited = fx.commit('body line');
+    expect(open(edited)).toMatchObject({ open: true, rawState: 'open' });
+  });
+
   it('an edit that does not touch state keeps the merge', () => {
     fx.write(FILE, `${ITEM}\nMore words.\n`);
     expect(open(fx.commit('body'))).toMatchObject({ open: false });
