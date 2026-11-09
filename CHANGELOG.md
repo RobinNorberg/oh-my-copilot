@@ -4,6 +4,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+# oh-my-copilot v5.22.0
+
+## [5.22.0] - 2026-11-09
+
 ### Added
 
 - **`omg factory triage`** (#461). Proposes the priority (`priority:p0`..`p3`) and the `needs-split` / `needs-plan` labels each intake item should carry, from the same reads as `check`. A dry run by default; `--apply` writes the plan it prints, on GitHub (labels, which must already exist), Azure DevOps (tags and the priority field) and the local forge (backlog files). It only adds `needs-split` and `needs-plan`, derives the priority tag from the item's priority field or first label, and skips items with a run or a factory PR. `factory.triage.labels`, `sizeSplitAt` and `defaultPriority` are read from the user config and the base branch only. It writes no assignee and proposes no `owner:` label. `--json` has schemaVersion 1.
@@ -38,7 +42,6 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **Review feedback reads are exact** (#460). Human review input comes through one pinned `gh api graphql` shape for the configured repository, no `@file` or other repository is accepted, bodies are shown with control and bidi characters visible, and a partial answer parks instead of reading as "no feedback".
 - **The cloud heartbeat is token-light** (#463). The install step has no token, the token reaches only the omg steps, `npm install` runs with `--ignore-scripts`, and on Azure DevOps omg's output cannot inject a pipeline logging command.
 - **Cross-clone claims are sealed** (#459). Another clone's run state counts only as its own engine sealed it, and an unreadable claim file or claim root is held, never taken over. A claim root must be a local absolute path, so a claim cannot make the engine stat a network share.
-
 
 # oh-my-copilot v5.21.0
 
