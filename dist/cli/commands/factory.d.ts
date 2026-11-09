@@ -74,6 +74,7 @@ export declare function renderFactoryRunState(state: FactoryRunState, o?: {
  */
 export declare function liveFactoryRuns(root: string, ledgerDir: string, claimRepo: string | null): {
     engine: {
+        sharedState?: boolean | undefined;
         parkedAt?: string | undefined;
         root?: string | undefined;
         startedAt?: string | undefined;
@@ -93,6 +94,7 @@ export declare function liveFactoryRuns(root: string, ledgerDir: string, claimRe
     })[];
     unreadable: string[];
     claims: {
+        sharedState?: boolean | undefined;
         parkedAt?: string | undefined;
         root?: string | undefined;
         startedAt?: string | undefined;

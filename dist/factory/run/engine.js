@@ -90,7 +90,7 @@ import { jobRefProblem } from '../../copilot-run/job.js';
 import { commitLaneWork, conflictFixStart, laneCommitMessage } from './lane-commit.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir } from './ledger.js';
 import { createFactoryProgress } from './progress.js';
-import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaimRepo } from './claims.js';
+import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaimRepo, settleFactoryClaim, trustedFactoryClaimRepo } from './claims.js';
 import { compareSnapshots, snapshotRepo, verifyReviewWorktree } from './review-guard.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted } from './plan-rules.js';
@@ -2548,10 +2548,10 @@ class FactoryEngine {
  * else the caller's (the CLI read it before its loader), else the origin URL
  * read through `exec`.
  */
-function engineClaimRepo(o, exec) {
+function engineClaimRepo(o, read) {
     if (o.forge?.config.kind === 'local')
         return null;
-    return o.claimRepo !== undefined ? o.claimRepo : factoryClaimRepo(exec, o.root);
+    return o.claimRepo !== undefined ? o.claimRepo : read();
 }
 function busyHolder(o, key) {
     const deps = o.owner ?? defaultOwnerDeps();
@@ -2560,7 +2560,7 @@ function busyHolder(o, key) {
         return h === null ? null : h === 'unreadable' ? unreadableOwnerMessage(path) : `${name} is held (${describeOwner(h)})`;
     };
     // A dry run reads git through the plain guard, as the rest of dryRun does.
-    const repo = engineClaimRepo(o, factoryGuardExec(o.exec, () => [o.base]));
+    const repo = engineClaimRepo(o, () => factoryClaimRepo(factoryGuardExec(o.exec, () => [o.base]), o.root));
     const claim = repo ? factoryClaimHolder(o.ledgerDir ?? defaultLedgerDir(), repo, o.root, key, deps) : null;
     return what(factoryRepoOwnerPath(o.root), 'the engine lock of this checkout')
         ?? what(factoryOwnerPath(o.root, key), `the run of ${runLabel(key)}`)
@@ -2688,8 +2688,8 @@ export async function runFactoryEngine(o) {
     let ledger;
     let hooksDir;
     try {
-        // Like every engine git command, the origin read is hardened; its empty hooks dir is made only when the read runs.
-        const repo = engineClaimRepo(o, (cmd, args, opts) => hardenedGitExec(o.exec, emptyHooksDir(dir))(cmd, args, opts));
+        // Like every engine git command, the origin read is hardened (the CLI's read is the same helper); its empty hooks dir is made only when the read runs.
+        const repo = engineClaimRepo(o, () => trustedFactoryClaimRepo(o.exec, o.root, dir));
         if (repo)
             claim = acquireFactoryClaim(dir, repo, o.root, key, now, o.owner);
         owner = acquireFactoryOwner(o.root, key, now, o.owner);
@@ -2716,17 +2716,9 @@ export async function runFactoryEngine(o) {
     finally {
         owner.release();
         // A run that stopped before a terminal phase keeps its claim, parked (claims.ts); a terminal or never-started run frees it.
-        let phase = null;
-        try {
-            phase = readFactoryState(o.root, key)?.phase ?? null;
-        }
-        catch {
-            phase = null;
-        }
-        if (phase === null || TERMINAL_FACTORY_PHASES.includes(phase))
-            claim?.release();
-        else
-            claim?.park(new Date((o.now ?? Date.now)()).toISOString());
+        // A state that cannot be read may hide a run in flight: the claim is parked, never released (L-b).
+        if (claim)
+            settleFactoryClaim(claim, () => readFactoryState(o.root, key)?.phase ?? null, new Date((o.now ?? Date.now)()).toISOString());
         releaseRepoOwner();
         for (const path of ownerPaths)
             ledger.record(path, null);

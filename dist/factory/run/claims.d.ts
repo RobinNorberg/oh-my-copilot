@@ -10,15 +10,20 @@
  * A claim is `<ledgerDir>/claims/<repo>/run-<key>.owner`, outside every
  * checkout (the engine ledger's directory, which the lane sandbox denies).
  * `<repo>` hashes the repository's identity (claimRepoKey over the trusted
- * origin remote, factoryClaimRepo), so every clone of one repository shares
- * the directory. The claim lives as long as the run is not terminal:
+ * origin remote, trustedFactoryClaimRepo), so every clone of one repository
+ * shares the directory. The local forge makes no claim (its mirror is per
+ * checkout). The claim lives as long as the run is not terminal:
  * - a live engine holds it (pid, host and start identity, as state.ts's
  *   owner files);
  * - when the engine stops before a terminal phase (a park, an error) it
  *   rewrites the claim without a pid ("parked"); a crash leaves its dead pid.
  *   Either way the claim stays held while the run state of its checkout
- *   (`<root>`'s run-<key>.json) exists and is not terminal; a missing or
- *   unreadable root or state keeps it held too, and is reported;
+ *   (`<root>`'s run-<key>.json) exists and is not terminal. That state is
+ *   read only as its engine sealed it (its integrity and its engine ledger
+ *   entry in the shared ledger dir), so a lane of that checkout cannot free
+ *   the claim by writing a terminal phase; a missing or unreadable root, a
+ *   state that fails those checks or is gone though its engine wrote it,
+ *   keeps the claim held too, and is reported;
  * - it is deleted at a terminal phase, by `omg factory run clean` / `reset`
  *   of the same checkout, and by `omg factory run release` (a human).
  * The claiming checkout itself always takes its own parked claim back (a
@@ -27,15 +32,23 @@
  * forge's pr-exists gate once the first clone pushed.
  */
 import { type Exec } from '../../ship/exec.js';
-import { type FactoryOwner, type FactoryRunKey, type OwnerDeps } from './state.js';
+import { type FactoryOwner, type FactoryPhase, type FactoryRunKey, type OwnerDeps } from './state.js';
 /**
  * The repository a claim is keyed on: the origin remote's URL (`git remote
  * get-url origin`, read-only, the same trusted origin the forge config is
- * derived from), or null without an origin (no cross-clone claim: the local
- * forge's mirror is per checkout). Needs no forge config, so heal runs and
- * `run clean` / `reset` / `release` key their claims the same way.
+ * derived from), or null without an origin. Needs no forge config, so heal
+ * runs and `run clean` / `reset` / `release` key their claims the same way.
+ * A FactorySafetyError of a hardened exec (trustedFactoryClaimRepo) is
+ * thrown, never read as "no origin".
  */
 export declare function factoryClaimRepo(exec: Exec, root: string): string | null;
+/**
+ * factoryClaimRepo through the engine's hardened git (no hooks, no
+ * fsmonitor: hardenedGitExec over the ledger dir's empty hooks dir). The
+ * one origin read for a claim key: the engine and the omg factory run CLI
+ * both use it, over the raw exec.
+ */
+export declare function trustedFactoryClaimRepo(exec: Exec, root: string, ledgerDir: string): string | null;
 /**
  * The claim directory's key: the repoIdentity of the repository, with
  * github.com aliases folded; a local path (an origin that is another
@@ -55,7 +68,19 @@ export interface ClaimHold {
     path: string;
     claim: ClaimRecord | null;
     why: string;
+    /** The claim's checkout is another folder that resolves to this checkout's state root (claimSharesState). */
+    sharedState?: true;
 }
+/**
+ * A claim's `root`, only when it is a plain local absolute, normalized path
+ * (it is data from a file, never a path to trust as given): no UNC or device
+ * path (`\\server`, `//server`, `\\?\`, `\\.\`), which a stat would reach
+ * over the network, no relative path, no control character. Checked before
+ * anything stats it.
+ */
+export declare function claimRoot(root: unknown): string | null;
+/** The warning a busy message carries when the holder's checkout shares this checkout's state root. */
+export declare const SHARED_STATE_WARNING = "WARNING: that checkout shares this checkout's state root (with OMC_STATE_DIR set, parallel clones need distinct folder names)";
 /** The claim holding `key` against the engine of `root`, or null (read-only; acquireFactoryClaim stays the binding check). */
 export declare function factoryClaimHolder(ledgerDir: string, repoUrl: string, root: string, key: FactoryRunKey, deps?: OwnerDeps, platform?: NodeJS.Platform): ClaimHold | null;
 /** The busy message of a held claim; it names the claim file and how a human clears a claim nobody holds. */
@@ -68,6 +93,12 @@ export interface HeldClaim {
 }
 /** Claim `key` of the repository for the engine in `root`; a held claim (factoryClaimHolder) refuses with a FactoryBusyError. */
 export declare function acquireFactoryClaim(ledgerDir: string, repoUrl: string, root: string, key: FactoryRunKey, now: string, deps?: OwnerDeps, platform?: NodeJS.Platform): HeldClaim;
+/**
+ * The engine's end of a run: a terminal phase or a run that never started
+ * (no state) releases the claim; any other phase parks it, and so does a
+ * state that cannot be read (`phase` throws), which may hide a run in flight.
+ */
+export declare function settleFactoryClaim(claim: HeldClaim, phase: () => FactoryPhase | null, at: string): 'released' | 'parked';
 /**
  * Delete the claim on `key` unless a live engine holds it (FactoryBusyError).
  * `onlyRoot`: only a claim of that checkout (run clean / reset); without it,
@@ -85,6 +116,7 @@ export type ListedClaim = {
     state: ClaimHold['state'] | 'here';
     path: string;
     claim: ClaimRecord | null;
+    sharedState?: true;
 };
 /** Every claim of the repository that holds against the engine of `root`, and `root`'s own; a free one is left out (read-only). */
 export declare function listFactoryClaims(ledgerDir: string, repoUrl: string, root: string, deps?: OwnerDeps, platform?: NodeJS.Platform): ListedClaim[];

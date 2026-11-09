@@ -13,7 +13,8 @@
  *    `seen`; each new id is checked (check's rules) and audited
  *    (`intake-new` in `.omg/state/factory-poll-audit.jsonl`).
  * 3. PRs: every run in flight with a PR. A PR a human completed or abandoned
- *    prints the resume hint; open human review threads are counted (ADO).
+ *    prints the resume hint; open human review threads are counted
+ *    (ForgeReviews.reviewFeedback on every forge; ADO's listThreads where a forge has no feedback read).
  * 4. board: the board rows that changed since the previous tick
  *    (src/factory/board), or with `--json` one JSON object per tick.
  *
@@ -62,6 +63,7 @@ import { atomicWriteFileSync, ensureDirSync } from '../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../lib/file-lock.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { ADO_RATE_LIMITED } from '../forge/ado/checks.js';
+import { GITHUB_RATE_LIMITED } from '../forge/github/graphql.js';
 import { ShipSafetyError } from '../ship/exec.js';
 import { collectBoard, readRuns } from './board/collect.js';
 import { backlogLine, runLine } from './board/render.js';
@@ -71,7 +73,8 @@ import { adoHealFor, ciDeps, HEAL_PIPELINE_MISSING, runHealScan } from './heal/c
 import { HealRunRefused } from './heal/run.js';
 import { DEFAULT_FACTORY_RUN_LIMITS, resolveFactoryRunLimits } from './run/budget.js';
 import { FactoryForgeUnavailableError } from './run/forge-roots.js';
-import { acquireFactoryRepoOwner, defaultOwnerDeps, EXIT_BUSY, factoryRepoOwnerPath, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, } from './run/state.js';
+import { visibleLine } from '../forge/review-feedback.js';
+import { acquireFactoryRepoOwner, defaultOwnerDeps, EXIT_BUSY, factoryRepoOwnerPath, ownerHolding, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, } from './run/state.js';
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
 export const POLL_JSON_SCHEMA_VERSION = 1;
 export const POLL_DEFAULT_INTERVAL_MS = 5 * 60_000;
@@ -186,17 +189,23 @@ function audit(root, record, at) {
         // best-effort audit trail (as the listener's)
     }
 }
-/** Whether an engine holds the repository (factoryRepoOwnerPath), as acquireFactoryRepoOwner would see it. */
+/** Whether an engine holds the repository (factoryRepoOwnerPath), as acquireFactoryRepoOwner would see it (start identity included; an unreadable file is held). */
 function engineBusy(root, me) {
-    const path = factoryRepoOwnerPath(root);
-    if (!existsSync(path))
-        return false;
+    return ownerHolding(factoryRepoOwnerPath(root), me) !== null;
+}
+/**
+ * The checkout's engine lock for a tick step that fetches or moves refs (the
+ * heal tick, the local base sync): a git fetch under a live engine would
+ * read as lane tampering to it. A string: the step is skipped this tick (an
+ * engine runs). Released before the auto-start, whose child takes the lock
+ * itself, so the two never wait on each other.
+ */
+function holdForRefs(root, at, me) {
     try {
-        return heldBy(JSON.parse(readFileSync(path, 'utf8')), me);
+        return acquireFactoryRepoOwner(root, 'scan', at, me);
     }
-    catch {
-        // An unreadable owner file is never taken for a free repository.
-        return true;
+    catch (error) {
+        return `skipped: engine busy (${message(error)})`;
     }
 }
 /**
@@ -426,16 +435,24 @@ export async function pollTick(ctx) {
     else if (!forge.capabilities.heal)
         heal = { ran: false, reason: forge.kind === 'azure-devops' ? HEAL_PIPELINE_MISSING : 'the forge has no heal capability' };
     else {
-        try {
-            const r = ctx.healScan({ root, base: ctx.base, kind: forge.kind, forge: config, now: new Date(ctx.now()), warn: (m) => warnings.push(plainText(m)) });
-            heal = { ran: true, entries: r.entries.length, recorded: r.entries.filter((e) => e.recorded).length, queued: r.queued };
-        }
-        catch (error) {
-            if (error instanceof ShipSafetyError)
-                throw error;
-            heal = { ran: false, reason: message(error) };
-            if (!(error instanceof HealRunRefused))
-                errors.push(`heal: ${message(error)}`);
+        const held = holdForRefs(root, at, ctx.owner);
+        if (typeof held === 'string')
+            heal = { ran: false, reason: held };
+        else {
+            try {
+                const r = ctx.healScan({ root, base: ctx.base, kind: forge.kind, forge: config, now: new Date(ctx.now()), warn: (m) => warnings.push(plainText(m)) });
+                heal = { ran: true, entries: r.entries.length, recorded: r.entries.filter((e) => e.recorded).length, queued: r.queued };
+            }
+            catch (error) {
+                if (error instanceof ShipSafetyError)
+                    throw error;
+                heal = { ran: false, reason: message(error) };
+                if (!(error instanceof HealRunRefused))
+                    errors.push(`heal: ${message(error)}`);
+            }
+            finally {
+                held.release();
+            }
         }
     }
     // 2. intake
@@ -477,8 +494,19 @@ export async function pollTick(ctx) {
         if (!ctx.localBaseSync)
             baseSync = { ran: false, reason: 'no base sync wired; omg factory run syncs the mirror base' };
         else {
-            const synced = step('base sync', ctx.localBaseSync);
-            baseSync = synced === undefined ? { ran: false, reason: 'the base sync failed' } : { ran: true, message: plainText(synced) };
+            const held = holdForRefs(root, at, ctx.owner);
+            if (typeof held === 'string')
+                baseSync = { ran: false, reason: held };
+            else {
+                let synced;
+                try {
+                    synced = step('base sync', ctx.localBaseSync);
+                }
+                finally {
+                    held.release();
+                }
+                baseSync = synced === undefined ? { ran: false, reason: 'the base sync failed' } : { ran: true, message: plainText(synced) };
+            }
         }
     }
     // 3. PRs (and the idle seam): the runs in flight.
@@ -498,6 +526,17 @@ export async function pollTick(ctx) {
                 row.state = view.state;
                 if (view.state !== 'OPEN')
                     row.hint = resumeHint(key);
+                else if (forge.reviews.reviewFeedback) {
+                    const feedback = step(`PR ${pr} review feedback`, () => forge.reviews.reviewFeedback(pr, view.headRefOid));
+                    if (feedback) {
+                        row.threads = feedback.threads.length;
+                        row.ignored = feedback.ignored.length;
+                        if (feedback.trustIncomplete === true)
+                            row.trustIncomplete = true;
+                    }
+                    else
+                        row.error = errors[errors.length - 1];
+                }
                 else if (forge.reviews.listThreads) {
                     const threads = step(`PR ${pr} threads`, () => forge.reviews.listThreads(pr));
                     if (threads)
@@ -506,12 +545,12 @@ export async function pollTick(ctx) {
                         row.error = errors[errors.length - 1];
                 }
             }
-            const facts = JSON.stringify([row.state, row.threads]);
+            const facts = JSON.stringify([row.state, row.threads, row.ignored, row.trustIncomplete]);
             if (row.state !== undefined && ctx.previous.prs.get(runLabel(key)) !== facts) {
                 if (row.state !== 'OPEN')
                     audit(root, { kind: 'pr-done', id: key, pr, state: row.state, hint: row.hint }, at);
                 else if (row.threads !== undefined)
-                    audit(root, { kind: 'pr-threads', id: key, pr, active: row.threads }, at);
+                    audit(root, { kind: 'pr-threads', id: key, pr, active: row.threads, ...(row.ignored !== undefined ? { ignored: row.ignored } : {}), ...(row.trustIncomplete ? { trustIncomplete: true } : {}) }, at);
                 ctx.previous.prs.set(runLabel(key), facts);
             }
             prs.push(row);
@@ -535,7 +574,7 @@ export async function pollTick(ctx) {
         }
         ctx.previous.board = next;
     }
-    const rateLimited = [...errors, ...warnings].some((m) => ADO_RATE_LIMITED.test(m));
+    const rateLimited = [...errors, ...warnings].some((m) => ADO_RATE_LIMITED.test(m) || GITHUB_RATE_LIMITED.test(m));
     // 5. auto-start: at most one run, on an idle tick only.
     let autoStart;
     const blocked = !config.intake.autoStart ? 'factory.intake.autoStart is off'
@@ -587,8 +626,10 @@ export function renderTick(t) {
     for (const p of t.prs) {
         if (p.hint)
             lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)} is ${p.state === 'MERGED' ? 'merged' : 'closed'} by a human: run \`${p.hint}\` to record it`);
-        else if (p.threads)
-            lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)}: ${p.threads} open human thread(s)`);
+        else if (p.threads || p.ignored || p.trustIncomplete) {
+            const trust = p.trustIncomplete ? '; trust incomplete: the collaborator list was not read whole, so list reviewers in factory.review.trustedReviewers' : '';
+            lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)}: ${p.threads ?? 0} human thread(s)${p.ignored ? ` (${p.ignored} ignored)` : ''}${trust}`);
+        }
     }
     // F33: a run whose PR a human already merged or closed shows the record step, not its stale gate reason (a merge command).
     const done = new Map(t.prs.filter((p) => p.hint).map((p) => [runLabel(p.id), p]));
@@ -677,9 +718,9 @@ export async function runFactoryPoll(o, deps) {
                 deps.out(JSON.stringify(t));
             else {
                 for (const w of t.warnings)
-                    deps.err(w);
+                    deps.err(visibleLine(w));
                 for (const e of t.errors)
-                    deps.err(`omg factory poll: ${e}`);
+                    deps.err(`omg factory poll: ${visibleLine(e)}`);
                 deps.out(renderTick(t));
             }
             if (o.once)

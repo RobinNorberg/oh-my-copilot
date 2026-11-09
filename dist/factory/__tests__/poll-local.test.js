@@ -1,9 +1,12 @@
-import { resolve } from 'path';
+import { mkdirSync, writeFileSync } from 'fs';
+import { hostname } from 'os';
+import { dirname, resolve } from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { backlogItem, checkDeps, commitAll, localRepo, programs, writeFile } from '../check/__tests__/local-repo.js';
 import { factoryPollCommand } from '../../cli/commands/factory-poll.js';
 import { runFactoryPoll } from '../poll.js';
 import { FactoryForgeUnavailableError } from '../run/forge-roots.js';
+import { factoryRepoOwnerPath } from '../run/state.js';
 afterEach(() => {
     vi.unstubAllEnvs();
 });
@@ -37,6 +40,19 @@ describe('omg factory poll on the local (offline) forge', () => {
         expect(resolve(sync.mock.calls[0][0].root)).toBe(resolve(repo.root));
         expect(sync.mock.calls[0][0].base).toBe('main');
         expect(programs(repo)).toEqual(['git']);
+    });
+    it('skips the base sync (no fetch, no ref move) while a live engine holds the checkout', async () => {
+        const repo = localRepo();
+        writeFile(repo, '.copilot/backlog/1-add-remove.md', backlogItem('Add remove'));
+        commitAll(repo);
+        const lock = factoryRepoOwnerPath(repo.root);
+        mkdirSync(dirname(lock), { recursive: true });
+        writeFileSync(lock, JSON.stringify({ pid: process.ppid, hostname: hostname(), startedAt: '2026-11-09T00:00:00.000Z', run: '1' }));
+        const sync = vi.fn(() => 'synced');
+        const { code, t } = await tick(repo, deps(repo, sync));
+        expect(code).toBe(0);
+        expect(t.baseSync).toEqual({ ran: false, reason: expect.stringMatching(/^skipped: engine busy \(another omg factory engine runs in this repository \(1, pid/) });
+        expect(sync).not.toHaveBeenCalled();
     });
     it('reports the sync as not run when nothing is wired, and a refused sync as an error', async () => {
         const repo = localRepo();

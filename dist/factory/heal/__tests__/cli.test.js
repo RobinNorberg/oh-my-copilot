@@ -273,6 +273,26 @@ describe('omg factory heal CLI', () => {
         expect(factoryCancelRequested(root, 'heal-0123abcd')).toBe(true);
         expect(loads).toBe(0);
     });
+    it('heal scan, run and approve take the engine lock before any fetch or worktree on GitHub too: busy is exit 6 with nothing run but the root read; the lock is released after', async () => {
+        const lock = factoryRepoOwnerPath(root);
+        mkdirSync(dirname(lock), { recursive: true });
+        writeFileSync(lock, JSON.stringify({ pid: process.ppid, hostname: hostname(), startedAt: NOW.toISOString(), run: '12' }));
+        const d = { ...deps(fakeExec([run(40584638028)], [])), forgeKind: () => 'github' };
+        for (const argv of [['scan'], ['scan', '--dry-run'], ['run', '0123abcd'], ['approve', '0123abcd']]) {
+            calls = [];
+            out = [];
+            expect(await cli(d, ...argv, '--json'), argv.join(' ')).toBe(EXIT_BUSY);
+            expect(JSON.parse(out.join('\n')), argv.join(' ')).toMatchObject({ ok: false, busy: true, error: expect.stringMatching(/another omg factory engine runs in this repository \(12, pid/) });
+            expect(calls, argv.join(' ')).toEqual([['git', 'rev-parse', '--show-toplevel']]);
+        }
+        expect(calls.some((c) => c.includes('fetch') || c.includes('worktree'))).toBe(false);
+        expect(JSON.parse(readFileSync(lock, 'utf8'))).toMatchObject({ run: '12' });
+        // Free: the scan runs under the lock and releases it.
+        rmSync(lock);
+        out = [];
+        expect(await cli(d, 'scan', '--json')).toBe(0);
+        expect(existsSync(lock)).toBe(false);
+    });
     it('scan then status [sig8] [--json] reads the classification back', async () => {
         const d = deps(fakeExec([run(40584638028)], [run(40542274776), SECOND_PR]));
         expect(await cli(d, 'scan')).toBe(0);

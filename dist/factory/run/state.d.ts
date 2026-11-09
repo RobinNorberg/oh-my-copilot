@@ -398,8 +398,17 @@ export declare function acquireFactoryOwner(root: string, key: FactoryRunKey, no
  * like acquireFactoryOwner: a second engine on the same repository refuses
  * instead of tripping the first one's shared git state checks. `next`:
  * `omg factory run --next` before it picked an item (then relabel()).
+ * `scan`: a step that fetches or moves refs without starting a run (the
+ * poller's heal tick and local base sync, `omg factory heal scan`).
  */
-export declare function acquireFactoryRepoOwner(root: string, key: FactoryRunKey | 'next', now: string, deps?: OwnerDeps): HeldOwner;
+export declare function acquireFactoryRepoOwner(root: string, key: FactoryRunKey | 'next' | 'scan', now: string, deps?: OwnerDeps): HeldOwner;
+/**
+ * True when the engine lock of `root` was taken from another folder (its
+ * recorded `root`): that folder resolves to this checkout's state root (a
+ * linked worktree, or with OMC_STATE_DIR set a clone with the same folder
+ * name and origin), so the two cannot run in parallel.
+ */
+export declare function ownerFromOtherCheckout(prior: Pick<FactoryOwner, 'root'>, root: string, platform?: NodeJS.Platform): boolean;
 /** The one rule for an owner or claim file that does not parse: it is held (never taken over, never "not busy") until a human removes it. */
 export declare const unreadableOwnerMessage: (path: string) => string;
 /**
@@ -425,6 +434,12 @@ export declare function ownerRecord(now: string, deps: OwnerDeps, fields?: Pick<
  * treats as held (unreadableOwnerMessage).
  */
 export declare function ownerHolding(path: string, deps?: OwnerDeps): FactoryOwner | 'unreadable' | null;
+/**
+ * Run `fn` under the file lock of an owner or claim file. A contender that
+ * cannot take that lock in time (another engine holds it, maybe while it
+ * reads a start identity) is busy (FactoryBusyError, exit 6), not an error.
+ */
+export declare function withOwnerFileLock<T>(path: string, fn: () => T): T;
 /**
  * Claim an owner file: a live owner (or one on another host, whose pid
  * cannot be checked) refuses with a FactoryBusyError, and so does a file
