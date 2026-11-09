@@ -12,6 +12,10 @@ export async function budgetCommand(action: string, options: { json?: boolean; b
   const { settings, issues } = loadBudgetSettings(cwd);
 
   if (action === 'reset') {
+    if (options.by !== undefined) {
+      console.error('omg budget reset takes no --by; use it with "omg budget status --by role|kind|run".');
+      return 2;
+    }
     let previous: ReturnType<typeof resetLedger>;
     try {
       previous = updateLedger(path, (ledger) => resetLedger(ledger));

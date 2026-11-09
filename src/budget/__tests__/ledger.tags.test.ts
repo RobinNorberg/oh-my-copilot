@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ledgerByTag, ledgerPath, ledgerTotals, mergeRecord, readLedger, recordUsage, resetLedger, sanitizeTag, type UsageRecord } from '../ledger.js';
+import { ledgerByTag, ledgerPath, ledgerTotals, mergeRecord, putRecord, readLedger, recordUsage, resetLedger, sanitizeTag, type UsageRecord } from '../ledger.js';
 
 let root: string;
 const rec = (credits: number, over: Partial<UsageRecord> = {}): UsageRecord =>
@@ -76,5 +76,9 @@ describe('usage tags', () => {
     const ledger = readLedger(path);
     resetLedger(ledger);
     expect(ledgerByTag(ledger, 'role')).toEqual([]);
+    // The same cumulative record reported again: only the spend since the reset counts, still tagged.
+    putRecord(ledger, 'k1', rec(5, { tag }));
+    expect(ledgerByTag(ledger, 'role').map((g) => [g.key, g.credits])).toEqual([['implement', 2]]);
+    expect(ledger.sessions.k1.tag).toEqual(tag);
   });
 });

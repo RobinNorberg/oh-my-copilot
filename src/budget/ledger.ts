@@ -242,7 +242,8 @@ export function updateLedger<T>(path: string, fn: (ledger: BudgetLedger) => T, o
 export function mergeRecord(existing: UsageRecord | undefined, next: UsageRecord): UsageRecord {
   const merged = mergeUsage(existing, next);
   // A refresh that carries no tag (the session scan) keeps the tag the owner recorded.
-  return existing?.tag && !merged.tag ? { ...merged, tag: existing.tag } : merged;
+  const kept = sanitizeTag(existing?.tag);
+  return kept && !merged.tag ? { ...merged, tag: kept } : merged;
 }
 
 function mergeUsage(existing: UsageRecord | undefined, next: UsageRecord): UsageRecord {
