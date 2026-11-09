@@ -179,7 +179,8 @@ function runPhase(root: string, key: FactoryRunKey, ledgerDir: string): { phase:
     if (typeof ledger.recorded(path!) === 'string') return unreadable('it is gone, though its engine wrote it');
     // L2: the engine recorded this run's state under another path (its state root moved, e.g. a changed origin with OMC_STATE_DIR).
     const name = basename(path!);
-    if (!ledger.tracks(path!) && ledger.trackedPaths().some((p) => basename(p) === name)) return unreadable('its state path moved: its engine wrote it elsewhere');
+    // L3: only a LIVE record counts (a deleted state, recorded null, is a cleaned run, not a moved one).
+    if (!ledger.tracks(path!) && ledger.trackedPaths().some((p) => basename(p) === name && typeof ledger.recorded(p) === 'string')) return unreadable('its state path moved: its engine wrote it elsewhere');
     return { phase: null };
   }
   if (!ledger.matches(path!, bytes)) return unreadable('it is not the one its engine wrote');

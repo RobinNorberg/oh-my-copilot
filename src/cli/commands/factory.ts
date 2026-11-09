@@ -480,7 +480,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         const issue = parseIssue(issueRaw);
         const root = factoryRoot(exec);
         // The engine lock before the forge-config loader (it may fetch): busy touches nothing.
-        const held = acquireFactoryRepoOwner(root, issue, new Date().toISOString());
+        const held = acquireFactoryRepoOwnerForRun(root, issue, () => new Date().toISOString());
         try {
           const loaded = deps.forge?.(root, deps.base(root), { dryRun: false });
           if (!loaded || loaded.config.kind !== 'local') throw new FactoryUsageError('omg factory run reset is for the local forge only (factory.forge.kind "local")');

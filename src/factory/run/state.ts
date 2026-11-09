@@ -591,9 +591,14 @@ export function describeOwner(o: Partial<FactoryOwner>): string {
   return `${o.run === undefined ? 'run unknown' : ownerText(o.run)}, ${pid} on ${ownerText(o.hostname ?? 'unknown host')} since ${ownerText(o.startedAt ?? 'unknown')}${o.root ? ` in ${ownerText(o.root)}` : ''}`;
 }
 
-/** A held owner file: release() removes it while it is still this process's; relabel() rewrites its run field (`run --next` once it picked an item). */
+/**
+ * A held owner file: release() removes it while it is still this process's
+ * (false: the release failed, a warning naming the lock was printed, and the
+ * file stays until a retry or until this process exits); relabel() rewrites
+ * its run field (`run --next` once it picked an item).
+ */
 export interface HeldOwner {
-  release: () => void;
+  release: () => boolean;
   relabel: (run: string) => void;
   tookOver?: FactoryOwner;
 }
@@ -619,23 +624,36 @@ export function acquireFactoryRepoOwner(root: string, key: FactoryRunKey | 'next
   return claimOwner(factoryRepoOwnerPath(root), now, deps, (prior) => engineBusyMessage(prior, root, String(key)), { run: String(key), root: resolve(root) });
 }
 
-/** How long `omg factory run` waits once for a `scan` holder (a fetch or a heal scan: seconds) before it is busy. */
-export const SCAN_RETRY_MS = 3_000;
+/** How long an engine-side start (run, heal run/approve/cancel, run reset, run clean, the poller's auto-start) waits for a `scan` holder before it is busy. */
+export const SCAN_WAIT_MS = 60_000;
+/** How long a read command waits for another `scan` holder before it reads without fetching. */
+export const READ_SCAN_WAIT_MS = 10_000;
+/** The holder is re-read this often while it is `scan`. */
+export const SCAN_POLL_MS = 500;
 
-const sleepSync = (ms: number): void => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); };
+/** The scan wait's sleep and clock; tests replace them (vi.spyOn). */
+export const scanWait = {
+  sleep: (ms: number): void => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); },
+  clock: (): number => Date.now(),
+};
 
 /**
- * acquireFactoryRepoOwner for `omg factory run`: when the holder is only a
- * `scan` step (the poller's heal scan or base sync, or a read command's
- * fetch), wait SCAN_RETRY_MS once and try again before the busy error.
+ * acquireFactoryRepoOwner that waits out a `scan` holder (the poller's heal
+ * scan or base sync, or a read command's fetch): the holder is re-read every
+ * SCAN_POLL_MS for at most `boundMs`, then the scan busy error (exit 6). Any
+ * other holder is busy at once.
  */
-export function acquireFactoryRepoOwnerForRun(root: string, key: FactoryRunKey | 'next', now: () => string, deps: OwnerDeps = defaultOwnerDeps(), wait: (ms: number) => void = sleepSync): HeldOwner {
-  try {
-    return acquireFactoryRepoOwner(root, key, now(), deps);
-  } catch (error) {
-    if (!(error instanceof FactoryBusyError) || error.holderRun !== 'scan') throw error;
-    wait(SCAN_RETRY_MS);
-    return acquireFactoryRepoOwner(root, key, now(), deps);
+export function acquireFactoryRepoOwnerForRun(root: string, key: FactoryRunKey | 'next' | 'scan', now: () => string, deps: OwnerDeps = defaultOwnerDeps(), boundMs: number = SCAN_WAIT_MS): HeldOwner {
+  const start = scanWait.clock();
+  for (;;) {
+    try {
+      return acquireFactoryRepoOwner(root, key, now(), deps);
+    } catch (error) {
+      if (!(error instanceof FactoryBusyError) || error.holderRun !== 'scan') throw error;
+      const waited = scanWait.clock() - start;
+      if (waited >= boundMs) throw new FactoryBusyError(`${error.message} (waited ${Math.round(waited / 1000)} s)`, 'scan');
+      scanWait.sleep(Math.min(SCAN_POLL_MS, boundMs - waited));
+    }
   }
 }
 
@@ -643,12 +661,13 @@ export function acquireFactoryRepoOwnerForRun(root: string, key: FactoryRunKey |
  * The checkout's engine lock under key `scan`, for a step that fetches or
  * moves refs without starting a run (the poller's heal tick and base sync,
  * the read commands' base fetch, heal dry runs): the held lock, or the
- * FactoryBusyError when an engine holds the checkout. Any other error
- * (EACCES on the state dir, ...) throws: it is not "busy".
+ * FactoryBusyError when an engine holds the checkout (`waitMs`: a `scan`
+ * holder is waited out that long first). Any other error (EACCES on the
+ * state dir, ...) throws: it is not "busy".
  */
-export function tryScanLock(root: string, now: string, deps: OwnerDeps = defaultOwnerDeps()): HeldOwner | FactoryBusyError {
+export function tryScanLock(root: string, now: string, deps: OwnerDeps = defaultOwnerDeps(), waitMs = 0): HeldOwner | FactoryBusyError {
   try {
-    return acquireFactoryRepoOwner(root, 'scan', now, deps);
+    return waitMs > 0 ? acquireFactoryRepoOwnerForRun(root, 'scan', () => now, deps, waitMs) : acquireFactoryRepoOwner(root, 'scan', now, deps);
   } catch (error) {
     if (error instanceof FactoryBusyError) return error;
     throw error;
@@ -802,15 +821,20 @@ export function claimOwner(path: string, now: string, deps: OwnerDeps, busy: (pr
     atomicWriteFileSync(path, record);
     return prior;
   });
-  const whileMine = (fn: (owner: FactoryOwner) => void) => {
+  const whileMine = (fn: (owner: FactoryOwner) => void): boolean => {
     try {
       withOwnerFileLock(path, () => {
         const owner: unknown = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null;
         if (isOwnerRecord(owner) && owner.pid === deps.pid && owner.hostname === deps.hostname) fn(owner);
       });
-    } catch { /* a stale owner file is taken over by the next run */ }
+      return true;
+    } catch (error) {
+      // L7: the file stays this process's until a retry, or until it exits (then the next taker finds the pid gone).
+      console.error(`omg factory: could not update the lock ${path} (${error instanceof Error ? error.message : String(error)}); it stays held by this process`);
+      return false;
+    }
   };
   const release = () => whileMine(() => unlinkSync(path));
-  const relabel = (run: string) => whileMine((owner) => atomicWriteFileSync(path, `${JSON.stringify({ ...owner, run })}\n`));
+  const relabel = (run: string): void => { whileMine((owner) => atomicWriteFileSync(path, `${JSON.stringify({ ...owner, run })}\n`)); };
   return { release, relabel, ...(tookOver ? { tookOver } : {}) };
 }

@@ -23,7 +23,7 @@ import { factoryGuardExec, hardenedGitExec } from './exec.js';
 import { localRemoteMismatch } from './forge-roots.js';
 import { defaultLedgerDir, emptyHooksDir } from './ledger.js';
 import { checkoutWorker, FACTORY_CHECKOUT_TEAM, unlinkNodeModules } from './prepare.js';
-import { acquireFactoryOwner, acquireFactoryRepoOwner, FactoryStateError, readFactoryState, runRemote, verifyFactoryIntegrity, type OwnerDeps } from './state.js';
+import { acquireFactoryOwner, acquireFactoryRepoOwnerForRun, FactoryStateError, readFactoryState, runRemote, verifyFactoryIntegrity, type OwnerDeps } from './state.js';
 import { removeFactoryClaim } from './claims.js';
 
 const HEX40 = /^[0-9a-f]{40}$/;
@@ -60,7 +60,7 @@ export function cleanFactoryRun(o: FactoryCleanOptions): FactoryCleanResult {
   // A live engine in this checkout refuses (busy, exit 6) before any git operation: clean removes worktrees and
   // branches in the shared git dir, which that engine's tamper check would see. Then the issue's own owner file.
   const now = o.now ?? new Date().toISOString();
-  const repoOwner = acquireFactoryRepoOwner(o.root, o.issue, now, o.owner);
+  const repoOwner = acquireFactoryRepoOwnerForRun(o.root, o.issue, () => now, o.owner);
   let owner: ReturnType<typeof acquireFactoryOwner>;
   try {
     owner = acquireFactoryOwner(o.root, o.issue, now, o.owner);

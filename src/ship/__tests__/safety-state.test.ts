@@ -340,7 +340,7 @@ describe('ship config', () => {
       if (args[0] === 'cat-file') return { status: 0, stdout: '', stderr: '' };
       if (args[1] === `${SHA_A}:broken.json`) return { status: 128, stdout: '', stderr: 'fatal: bad object' };
       // readBaseFile's "absent" probe: an entry for every committed file (broken.json too), none for the others.
-      if (args[0] === 'ls-tree') return { status: 0, stdout: files[`${SHA_A}:${args[4]}`] !== undefined || args[4] === 'broken.json' ? `100644 blob ${SHA_A}\t${args[4]}\0` : '', stderr: '' };
+      if (args[0] === 'ls-tree') return { status: 0, stdout: files[`${SHA_A}:${args[5]}`] !== undefined || args[5] === 'broken.json' ? `100644 blob ${SHA_A}\t${args[5]}\0` : '', stderr: '' };
       const text = args[0] === 'show' ? files[args[1]] : undefined;
       return text === undefined ? { status: 128, stdout: '', stderr: `fatal: path '${args[1]}' does not exist in '${SHA_A}'` } : { status: 0, stdout: text, stderr: '' };
     };
@@ -403,7 +403,7 @@ describe('trusted ship config (safety keys never from the working tree or the PR
     expect(evaluateChecks(233, failedTest, config).verdict).toBe('failed');
     expect(warnings.join('\n')).toMatch(/ignoring ship\.allowAdminMerge/);
     expect(warnings.join('\n')).toMatch(/ignoring ship\.advisoryChecks/);
-    expect(calls).toEqual(['fetch origin dev', 'rev-parse --verify refs/remotes/origin/dev', `cat-file -e ${BASE_SHA}^{commit}`, `show ${BASE_SHA}:.copilot/omg.jsonc`, `ls-tree -z ${BASE_SHA} -- .copilot/omg.jsonc`]);
+    expect(calls).toEqual(['fetch origin dev', 'rev-parse --verify refs/remotes/origin/dev', `cat-file -e ${BASE_SHA}^{commit}`, `show ${BASE_SHA}:.copilot/omg.jsonc`, `ls-tree --full-tree -z ${BASE_SHA} -- .copilot/omg.jsonc`]);
     expect(config.trustedBaseCommit).toBe(BASE_SHA);
   });
 

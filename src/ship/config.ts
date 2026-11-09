@@ -209,8 +209,9 @@ function shipBlock(config: unknown, source: string): Record<string, unknown> {
 const FULL_SHA = /^[0-9a-f]{40}$/;
 /**
  * `git show <commit>:<path>` with replace refs off; null when the file does
- * not exist at that commit. Any other failure throws (fail closed). "Absent"
- * is `git ls-tree -z <commit> -- <path>` exiting 0 with no entry, never an
+ * not exist at that commit. Any
+ * other failure throws (fail closed). "Absent"
+ * is `git ls-tree --full-tree -z <commit> -- <path>` exiting 0 with no entry, never an
  * English stderr message (a localized git would fail every read).
  */
 export function readBaseFile(exec: Exec, cwd: string, commit: string, path: string): string | null {
@@ -220,7 +221,8 @@ export function readBaseFile(exec: Exec, cwd: string, commit: string, path: stri
   }
   const shown = exec('git', ['show', `${commit}:${path}`], { cwd, env: TRUSTED_READ_ENV });
   if (shown.status === 0) return shown.stdout;
-  const entry = exec('git', ['ls-tree', '-z', commit, '--', path], { cwd, env: TRUSTED_READ_ENV });
+  // --full-tree: the path is from the repository root like `show <commit>:<path>`, whatever subdirectory cwd is (L4).
+  const entry = exec('git', ['ls-tree', '--full-tree', '-z', commit, '--', path], { cwd, env: TRUSTED_READ_ENV });
   if (entry.status === 0 && entry.stdout === '') return null;
   throw new Error(`git show ${commit.slice(0, 12)}:${path} failed (exit ${shown.status}): ${shown.stderr.trim()}`);
 }

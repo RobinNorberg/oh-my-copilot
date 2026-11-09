@@ -83,7 +83,7 @@ import { visibleLine } from '../forge/review-feedback.js';
 import { resolveTeamConfig, TeamConfigError } from './team/context.js';
 import { staleGateReminders, type Reminder } from './team/reminders.js';
 import {
-  acquireFactoryRepoOwner, defaultOwnerDeps, EXIT_BUSY, FactoryBusyError, factoryRepoOwnerPath, ownerHolding, runLabel, TERMINAL_FACTORY_PHASES, tryScanLock, verifyFactoryIntegrity, type FactoryRunKey, type HeldOwner, type OwnerDeps,
+  acquireFactoryRepoOwnerForRun, defaultOwnerDeps, EXIT_BUSY, FactoryBusyError, factoryRepoOwnerPath, ownerHolding, runLabel, TERMINAL_FACTORY_PHASES, tryScanLock, verifyFactoryIntegrity, type FactoryRunKey, type HeldOwner, type OwnerDeps,
 } from './run/state.js';
 
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
@@ -511,6 +511,8 @@ export interface PollContext {
   /** factory.poll.remindAfterHours; absent or 0 = no stale-gate reminders. */
   remindAfterHours?: number;
   owner: OwnerDeps;
+  /** A `scan` lock whose release failed (it warned): retried at the next tick (L7). */
+  unreleasedScan?: HeldOwner;
   now: () => number;
   /** Row signatures of the previous tick (board diff), and PR facts (audit on change); updated by pollTick. */
   previous: { board: Map<string, string>; prs: Map<string, string>; ledger?: boolean };
@@ -534,6 +536,7 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
   const at = new Date(ctx.now()).toISOString();
   const errors: string[] = [];
   const warnings: string[] = [];
+  if (ctx.unreleasedScan?.release()) delete ctx.unreleasedScan;
   const step = <T>(name: string, fn: () => T): T | undefined => {
     try {
       return fn();
@@ -569,7 +572,7 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
         heal = { ran: false, reason: message(error) };
         if (!(error instanceof HealRunRefused)) errors.push(`heal: ${message(error)}`);
       } finally {
-        held.release();
+        if (!held.release()) ctx.unreleasedScan = held;
       }
     }
   }
@@ -615,7 +618,7 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
         try {
           synced = step('base sync', ctx.localBaseSync);
         } finally {
-          held.release();
+          if (!held.release()) ctx.unreleasedScan = held;
         }
         baseSync = synced === undefined ? { ran: false, reason: 'the base sync failed' } : { ran: true, message: plainText(synced) };
       }
@@ -699,7 +702,7 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
       // tick. It is released for the child, whose own claim at start is the binding one: an engine that slips in
       // between makes that claim refuse, so two engines never run.
       try {
-        acquireFactoryRepoOwner(root, AUTO_START_CLAIM, at, ctx.owner).release();
+        acquireFactoryRepoOwnerForRun(root, AUTO_START_CLAIM, () => at, ctx.owner).release();
       } catch (error) {
         reason = `the run lock is held: ${message(error)}`;
       }
