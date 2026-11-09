@@ -73,6 +73,7 @@ import { adoHealFor, ciDeps, HEAL_PIPELINE_MISSING, runHealScan } from './heal/c
 import { HealRunRefused } from './heal/run.js';
 import { DEFAULT_FACTORY_RUN_LIMITS, resolveFactoryRunLimits } from './run/budget.js';
 import { FactoryForgeUnavailableError } from './run/forge-roots.js';
+import { visibleLine } from '../forge/review-feedback.js';
 import { acquireFactoryRepoOwner, defaultOwnerDeps, factoryRepoOwnerPath, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, } from './run/state.js';
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
 export const POLL_JSON_SCHEMA_VERSION = 1;
@@ -691,9 +692,9 @@ export async function runFactoryPoll(o, deps) {
                 deps.out(JSON.stringify(t));
             else {
                 for (const w of t.warnings)
-                    deps.err(w);
+                    deps.err(visibleLine(w));
                 for (const e of t.errors)
-                    deps.err(`omg factory poll: ${e}`);
+                    deps.err(`omg factory poll: ${visibleLine(e)}`);
                 deps.out(renderTick(t));
             }
             if (o.once)

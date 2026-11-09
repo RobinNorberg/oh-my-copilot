@@ -9,12 +9,15 @@
  */
 /** The review read could not be trusted as complete or current (base class: park, never "no feedback"). */
 export declare class ReviewFeedbackError extends Error {
+    /** Stable machine-readable kind (subclasses narrow it). */
+    readonly code: string;
     constructor(message: string);
 }
 /** A list in the answer had more entries than one read returns (threads, comments, reviews or requests): input may be hidden. */
 export declare class ReviewFeedbackTruncatedError extends ReviewFeedbackError {
     readonly pr: number;
     readonly what: string;
+    readonly code: string;
     constructor(pr: number, what: string);
 }
 /** The PR's head is not the head the caller asked about: the feedback would describe another commit. */
@@ -22,6 +25,7 @@ export declare class ReviewHeadMovedError extends ReviewFeedbackError {
     readonly pr: number;
     readonly expected: string;
     readonly actual: string;
+    readonly code: string;
     constructor(pr: number, expected: string, actual: string);
 }
 /** A full lowercase commit sha. */
@@ -36,4 +40,6 @@ export declare function assertReviewHead(pr: number, head: string, actual: unkno
  * dropped (an ANSI escape loses its ESC).
  */
 export declare const visibleText: (text: string) => string;
+/** visibleText for a single-line sink: newline, carriage return and tab are shown as `<U+000A>` etc. too. */
+export declare const visibleLine: (text: string) => string;
 //# sourceMappingURL=review-feedback.d.ts.map

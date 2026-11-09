@@ -9,17 +9,33 @@
  */
 /** The review read could not be trusted as complete or current (base class: park, never "no feedback"). */
 export class ReviewFeedbackError extends Error {
+    /** Stable machine-readable kind (subclasses narrow it). */
+    code = 'review-feedback';
     constructor(message) {
         super(message);
         this.name = 'ReviewFeedbackError';
     }
 }
+/** What was cut and how to unblock it, per kind of list (`what` is the connection name). */
+function truncationMessage(pr, what) {
+    const tail = 'so human feedback cannot be read completely.';
+    if (what === 'reviewThreads')
+        return `PR #${pr}: more than 100 review threads (resolved and outdated ones count), ${tail} Delete the spam threads or lock the conversation on the forge, then rerun.`;
+    if (what === 'latestReviews')
+        return `PR #${pr}: more than 50 latest reviews, ${tail} Dismiss or delete the surplus reviews on the forge, then rerun.`;
+    if (what === 'reviewRequests')
+        return `PR #${pr}: more than 20 pending review requests, ${tail} Remove the surplus review requests on the forge, then rerun.`;
+    if (what.startsWith('comments of thread'))
+        return `PR #${pr}: ${visibleLine(what)} has more than 20 comments, ${tail} Resolve the thread or trim its comments on the forge, then rerun.`;
+    return `PR #${pr}: ${visibleLine(what)} has more entries than one read returns, ${tail} Reduce it on the forge, then rerun.`;
+}
 /** A list in the answer had more entries than one read returns (threads, comments, reviews or requests): input may be hidden. */
 export class ReviewFeedbackTruncatedError extends ReviewFeedbackError {
     pr;
     what;
+    code = 'review-feedback-truncated';
     constructor(pr, what) {
-        super(`review feedback of PR ${pr} is truncated (${what} has more entries than one read returns); review it on the forge`);
+        super(truncationMessage(pr, what));
         this.pr = pr;
         this.what = what;
         this.name = 'ReviewFeedbackTruncatedError';
@@ -30,8 +46,9 @@ export class ReviewHeadMovedError extends ReviewFeedbackError {
     pr;
     expected;
     actual;
+    code = 'review-head-moved';
     constructor(pr, expected, actual) {
-        super(`PR ${pr} head moved: asked about ${expected.slice(0, 40)}, the forge reports ${actual.slice(0, 40) || 'no head'}`);
+        super(`PR ${pr} head moved: asked about ${visibleLine(expected.slice(0, 40))}, the forge reports ${visibleLine(actual.slice(0, 40)) || 'no head'}`);
         this.pr = pr;
         this.expected = expected;
         this.actual = actual;
@@ -57,4 +74,6 @@ export function assertReviewHead(pr, head, actual) {
 export const visibleText = (text) => text
     .replace(/[\p{Cf}\p{Zl}\p{Zp}]/gu, (c) => `<U+${c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}>`)
     .replace(/(?![\t\n])\p{Cc}/gu, '');
+/** visibleText for a single-line sink: newline, carriage return and tab are shown as `<U+000A>` etc. too. */
+export const visibleLine = (text) => visibleText(text.replace(/[\n\r\t]/g, (c) => `<U+${c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}>`));
 //# sourceMappingURL=review-feedback.js.map
