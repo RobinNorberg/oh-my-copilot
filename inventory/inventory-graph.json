@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "eb1a4c7b79031939739a471c60ffc2f16082c132",
-    "sourceSha256": "ebc7ea9d11e9aecc91374fde465ccea564e3d724099f043137137a69c0946aa7",
+    "head": "21264c7589af1a201b576c17852ea8122c9072eb",
+    "sourceSha256": "984b804168568d8507aa11cc1e02d50d5052d33780ef827ecfd0a60708bf8208",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "eb1a4c7b79031939739a471c60ffc2f16082c132",
-  "sourceSha256": "ebc7ea9d11e9aecc91374fde465ccea564e3d724099f043137137a69c0946aa7",
+  "head": "21264c7589af1a201b576c17852ea8122c9072eb",
+  "sourceSha256": "984b804168568d8507aa11cc1e02d50d5052d33780ef827ecfd0a60708bf8208",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2010,
-      "total": 2035
+      "srcFiles": 2014,
+      "total": 2039
     },
     "generated": {
-      "distFiles": 7408,
+      "distFiles": 7424,
       "bridgeFiles": 8,
-      "total": 7416
+      "total": 7432
     },
     "prompt": {
       "promptLikeFiles": 71
@@ -3355,6 +3355,10 @@
       "dist/factory/run/__tests__/claims.test.d.ts.map",
       "dist/factory/run/__tests__/claims.test.js",
       "dist/factory/run/__tests__/claims.test.js.map",
+      "dist/factory/run/__tests__/coding-agent-lane.test.d.ts",
+      "dist/factory/run/__tests__/coding-agent-lane.test.d.ts.map",
+      "dist/factory/run/__tests__/coding-agent-lane.test.js",
+      "dist/factory/run/__tests__/coding-agent-lane.test.js.map",
       "dist/factory/run/__tests__/engine-ado-harness.d.ts",
       "dist/factory/run/__tests__/engine-ado-harness.d.ts.map",
       "dist/factory/run/__tests__/engine-ado-harness.js",
@@ -3391,6 +3395,10 @@
       "dist/factory/run/__tests__/engine.ado.test.d.ts.map",
       "dist/factory/run/__tests__/engine.ado.test.js",
       "dist/factory/run/__tests__/engine.ado.test.js.map",
+      "dist/factory/run/__tests__/engine.coding-agent.test.d.ts",
+      "dist/factory/run/__tests__/engine.coding-agent.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.coding-agent.test.js",
+      "dist/factory/run/__tests__/engine.coding-agent.test.js.map",
       "dist/factory/run/__tests__/engine.intake.test.d.ts",
       "dist/factory/run/__tests__/engine.intake.test.d.ts.map",
       "dist/factory/run/__tests__/engine.intake.test.js",
@@ -3447,6 +3455,10 @@
       "dist/factory/run/__tests__/engine.test.d.ts.map",
       "dist/factory/run/__tests__/engine.test.js",
       "dist/factory/run/__tests__/engine.test.js.map",
+      "dist/factory/run/__tests__/fake-coding-agent.d.ts",
+      "dist/factory/run/__tests__/fake-coding-agent.d.ts.map",
+      "dist/factory/run/__tests__/fake-coding-agent.js",
+      "dist/factory/run/__tests__/fake-coding-agent.js.map",
       "dist/factory/run/__tests__/fake-lanes.d.ts",
       "dist/factory/run/__tests__/fake-lanes.d.ts.map",
       "dist/factory/run/__tests__/fake-lanes.js",
@@ -3531,6 +3543,10 @@
       "dist/factory/run/clean.d.ts.map",
       "dist/factory/run/clean.js",
       "dist/factory/run/clean.js.map",
+      "dist/factory/run/coding-agent-lane.d.ts",
+      "dist/factory/run/coding-agent-lane.d.ts.map",
+      "dist/factory/run/coding-agent-lane.js",
+      "dist/factory/run/coding-agent-lane.js.map",
       "dist/factory/run/engine.d.ts",
       "dist/factory/run/engine.d.ts.map",
       "dist/factory/run/engine.js",
@@ -21722,6 +21738,26 @@
         "path": "dist/factory/run/__tests__/claims.test.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/coding-agent-lane.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/coding-agent-lane.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/coding-agent-lane.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/coding-agent-lane.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/coding-agent-lane.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/coding-agent-lane.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/coding-agent-lane.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/coding-agent-lane.test.js.map"
+      },
+      {
         "id": "dist/factory/run/__tests__/engine-ado-harness.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine-ado-harness.d.ts"
@@ -21900,6 +21936,26 @@
         "id": "dist/factory/run/__tests__/engine.ado.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.ado.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.coding-agent.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.coding-agent.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.coding-agent.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.coding-agent.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.coding-agent.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.coding-agent.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.coding-agent.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.coding-agent.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/engine.intake.test.d.ts",
@@ -22180,6 +22236,26 @@
         "id": "dist/factory/run/__tests__/engine.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/fake-coding-agent.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/fake-coding-agent.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/fake-coding-agent.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/fake-coding-agent.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/fake-coding-agent.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/fake-coding-agent.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/fake-coding-agent.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/fake-coding-agent.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/fake-lanes.d.ts",
@@ -22600,6 +22676,26 @@
         "id": "dist/factory/run/clean.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/clean.js.map"
+      },
+      {
+        "id": "dist/factory/run/coding-agent-lane.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/coding-agent-lane.d.ts"
+      },
+      {
+        "id": "dist/factory/run/coding-agent-lane.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/coding-agent-lane.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/coding-agent-lane.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/coding-agent-lane.js"
+      },
+      {
+        "id": "dist/factory/run/coding-agent-lane.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/coding-agent-lane.js.map"
       },
       {
         "id": "dist/factory/run/engine.d.ts",
@@ -54952,6 +55048,11 @@
         "path": "src/factory/run/__tests__/claims.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/coding-agent-lane.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/coding-agent-lane.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/engine-ado-harness.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine-ado-harness.ts"
@@ -54995,6 +55096,11 @@
         "id": "src/factory/run/__tests__/engine.ado.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.ado.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/engine.coding-agent.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.coding-agent.test.ts"
       },
       {
         "id": "src/factory/run/__tests__/engine.intake.test.ts",
@@ -55065,6 +55171,11 @@
         "id": "src/factory/run/__tests__/engine.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/fake-coding-agent.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/fake-coding-agent.ts"
       },
       {
         "id": "src/factory/run/__tests__/fake-lanes.ts",
@@ -55175,6 +55286,11 @@
         "id": "src/factory/run/clean.ts",
         "kind": "src",
         "path": "src/factory/run/clean.ts"
+      },
+      {
+        "id": "src/factory/run/coding-agent-lane.ts",
+        "kind": "src",
+        "path": "src/factory/run/coding-agent-lane.ts"
       },
       {
         "id": "src/factory/run/engine.ts",
@@ -86444,6 +86560,66 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
+        "to": "src/factory/run/__tests__/fake-coding-agent.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
+        "to": "src/factory/run/coding-agent-lane.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
+        "to": "src/forge/github/coding-agent.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
+        "to": "src/forge/github/coding-agent.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/factory/run/__tests__/engine-ado-harness.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -86996,6 +87172,71 @@
       {
         "from": "src/factory/run/__tests__/engine.ado.test.ts",
         "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
+        "to": "src/factory/run/__tests__/engine-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
+        "to": "src/factory/run/__tests__/fake-coding-agent.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
+        "to": "src/factory/run/coding-agent-lane.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
+        "to": "src/factory/run/coding-agent-lane.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
+        "to": "src/factory/run/state.ts",
         "kind": "imports"
       },
       {
@@ -87687,6 +87928,36 @@
         "from": "src/factory/run/__tests__/engine.test.ts",
         "to": "src/ship/state.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/fake-coding-agent.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/fake-coding-agent.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/fake-coding-agent.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/fake-coding-agent.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/fake-coding-agent.ts",
+        "to": "src/forge/github/coding-agent.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/fake-coding-agent.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/fake-lanes.ts",
@@ -88669,6 +88940,56 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/coding-agent-lane.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/coding-agent-lane.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/coding-agent-lane.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/coding-agent-lane.ts",
+        "to": "src/config/project-config-path.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/coding-agent-lane.ts",
+        "to": "src/forge/github/coding-agent.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/coding-agent-lane.ts",
+        "to": "src/forge/github/coding-agent.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/coding-agent-lane.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/coding-agent-lane.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/coding-agent-lane.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/coding-agent-lane.ts",
+        "to": "src/utils/jsonc.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/engine.ts",
         "to": "external:crypto",
         "kind": "imports"
@@ -88725,8 +89046,23 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/coding-agent-lane.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/coding-agent-lane.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/exec.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/engine.ts",
@@ -88890,6 +89226,16 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/forge/github/coding-agent.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/forge/github/coding-agent.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/forge/github/gh.ts",
         "kind": "imports"
       },
@@ -88996,6 +89342,11 @@
       {
         "from": "src/factory/run/exec.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/exec.ts",
+        "to": "src/factory/run/coding-agent-lane.ts",
         "kind": "imports"
       },
       {
@@ -89641,6 +89992,16 @@
       {
         "from": "src/factory/run/state.ts",
         "to": "src/copilot-run/sandbox.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/state.ts",
+        "to": "src/factory/run/coding-agent-lane.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/state.ts",
+        "to": "src/factory/run/coding-agent-lane.ts",
         "kind": "type-imports"
       },
       {
@@ -92430,6 +92791,11 @@
       },
       {
         "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
+        "to": "src/factory/run/__tests__/fake-coding-agent.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
         "to": "src/factory/run/__tests__/fake-lanes.ts",
         "kind": "imports"
       },
@@ -92471,6 +92837,11 @@
       {
         "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
         "to": "src/forge/__tests__/recording-exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
+        "to": "src/forge/github/coding-agent.ts",
         "kind": "imports"
       },
       {
@@ -126730,12 +127101,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10669,
-      "edgeCount": 12863,
-      "importEdgeCount": 10587,
+      "nodeCount": 10689,
+      "edgeCount": 12914,
+      "importEdgeCount": 10626,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "ff0008b69909166e082487e85077f74430570de35bd7adf27c5d76246ed2598c",
-  "manifestSha256": "6b5f0679f6b6ff3e3bdc6329ef6ea0e6f262d1705e21013acbf21aea88cd7539"
+  "inventorySha256": "7e6d67eecc27d81a0dacbe5959785bda916694b9e254f1ba64746e2c9a67a12b",
+  "manifestSha256": "6c08a6fe38e2eb9bc52e46e680c118f982f7667932dff8432452f9ef9591a926"
 }
