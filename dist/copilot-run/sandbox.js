@@ -22,7 +22,6 @@ import { resolveProjectConfigPath } from '../config/project-config-path.js';
 import { SMOKE_SET_ENV } from '../smoke/copilot-session-env.js';
 import { isUnderRoot } from '../team/sdk-policy.js';
 import { parseJsonc } from '../utils/jsonc.js';
-import { defaultLedgerDir } from '../factory/run/ledger.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { getGlobalOmcStateRoot } from '../utils/paths.js';
 import { findOnPath } from '../utils/windows-search.js';
@@ -303,11 +302,11 @@ export function buildSandboxConfig(profile, ctx, host) {
         catch {
             return false;
         } });
-        // The factory ledger (OMC_STATE_DIR/factory-ledger; ~/.omg/factory-ledger is under the home deny) and the budget ledger
+        // The factory ledger (OMC_STATE_DIR/factory-ledger, as defaultLedgerDir in factory/run/ledger.ts; the team bundle may not import src/factory; ~/.omg/factory-ledger is under the home deny) and the budget ledger
         // (<omc root of the main checkout>/state/budget-ledger.json) live elsewhere when OMC_STATE_DIR is set: name the real
         // paths, and only those that exist (the host may refuse a deny of a missing path). A granted job dir stays granted.
         const mainRoot = basename(ctx.commonGitDir) === '.git' ? dirname(ctx.commonGitDir) : undefined;
-        const ledgers = [...(process.env.OMC_STATE_DIR?.trim() ? [defaultLedgerDir(process.env)] : []), ...(mainRoot ? [join(getOmcRoot(mainRoot), 'state', 'budget-ledger.json')] : [])];
+        const ledgers = [...(process.env.OMC_STATE_DIR?.trim() ? [join(resolve(process.env.OMC_STATE_DIR), 'factory-ledger')] : []), ...(mainRoot ? [join(getOmcRoot(mainRoot), 'state', 'budget-ledger.json')] : [])];
         const stateDeny = [...(holdsGrant(stateRoot) ? [join(stateRoot, 'forge')].filter(existsSync) : [stateRoot]), ...ledgers.filter(existsSync)];
         filesystem.deniedPaths.push(...[...new Set(stateDeny)].filter((p) => !holdsGrant(p) && !covered(p)));
         if (ctx.platform !== 'win32') {
