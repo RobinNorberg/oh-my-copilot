@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "21264c7589af1a201b576c17852ea8122c9072eb",
-    "sourceSha256": "984b804168568d8507aa11cc1e02d50d5052d33780ef827ecfd0a60708bf8208",
+    "head": "82de2f6ce4e63f4d578ea2d2fe60031e44538320",
+    "sourceSha256": "daf0babe695c05fb46e19c28e6b0193a97c0f35206b555bafbea813c356c9289",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "21264c7589af1a201b576c17852ea8122c9072eb",
-  "sourceSha256": "984b804168568d8507aa11cc1e02d50d5052d33780ef827ecfd0a60708bf8208",
+  "head": "82de2f6ce4e63f4d578ea2d2fe60031e44538320",
+  "sourceSha256": "daf0babe695c05fb46e19c28e6b0193a97c0f35206b555bafbea813c356c9289",
   "counts": {
     "public": {
       "skills": 98,
@@ -86616,6 +86616,11 @@
       },
       {
         "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
       },
@@ -87181,6 +87186,11 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
@@ -87218,11 +87228,6 @@
         "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
         "to": "src/factory/run/coding-agent-lane.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
-        "to": "src/factory/run/coding-agent-lane.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
@@ -89348,6 +89353,11 @@
         "from": "src/factory/run/exec.ts",
         "to": "src/factory/run/coding-agent-lane.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/exec.ts",
+        "to": "src/factory/run/coding-agent-lane.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/exec.ts",
@@ -127102,11 +127112,11 @@
     ],
     "stats": {
       "nodeCount": 10689,
-      "edgeCount": 12914,
-      "importEdgeCount": 10626,
+      "edgeCount": 12916,
+      "importEdgeCount": 10628,
       "registerEdgeCount": 119
     }
   },
   "inventorySha256": "7e6d67eecc27d81a0dacbe5959785bda916694b9e254f1ba64746e2c9a67a12b",
-  "manifestSha256": "6c08a6fe38e2eb9bc52e46e680c118f982f7667932dff8432452f9ef9591a926"
+  "manifestSha256": "88efd8ead72eed1ed2f952db3ff7dca7f1b3e46ed305c9650e99522dbccd99c9"
 }
