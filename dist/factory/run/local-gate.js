@@ -26,13 +26,13 @@
  */
 import { spawn } from 'child_process';
 import { existsSync, lstatSync, realpathSync, rmSync } from 'fs';
-import { posix, resolve, win32 } from 'path';
+import { dirname, posix, resolve, win32 } from 'path';
 import { LOCAL_GATE_CHECK, localCheckRecordPath, readLocalCheckRecord, writeLocalCheckRecord } from '../../forge/local/index.js';
 import { getProcessStartIdentity, terminateOwnedProcessTree } from '../../platform/process-utils.js';
 import { scrubShipEnv } from '../../ship/exec.js';
 import { childEnv, findOnPath, hardenWindowsExeSearch, resolveBareExe } from '../../utils/windows-search.js';
 import { FactorySafetyError, sameFsPath } from './exec.js';
-import { createGateProcTracker, gateProcsPath, reapGateProcs } from './gate-procs.js';
+import { createGateProcTracker, gateProcsPath, reapGateProcs, sweepGateProcs } from './gate-procs.js';
 /** The record keeps this many characters of the gate's output (jobLog, the ci-fix prompt). */
 export const LOCAL_GATE_TAIL_CHARS = 8_000;
 /** How long after the gate's timeout a PENDING record is taken as left by a crashed engine (localGateDue). */
@@ -288,10 +288,11 @@ export async function runLocalGate(i) {
     writeLocalCheckRecord(i.stateDir, i.root, base);
     // What an earlier run of this gate left behind (an engine that died mid-gate): killed only on a matching start identity.
     const procs = gateProcsPath(i.stateDir, i.root, i.head);
+    await sweepGateProcs(dirname(procs)).catch(() => undefined);
     await reapGateProcs(procs).catch(() => undefined);
     let r;
     try {
-        r = await (i.runner ?? defaultLocalGateRunner)(i.gate, i.checkout, i.timeoutMinutes * 60_000, createGateProcTracker(procs, started.getTime()));
+        r = await (i.runner ?? defaultLocalGateRunner)(i.gate, i.checkout, i.timeoutMinutes * 60_000, createGateProcTracker(procs, Date.now(), undefined, (m) => process.stderr.write(`omg factory run: ${m}\n`)));
     }
     catch (error) {
         rmSync(localCheckRecordPath(i.stateDir, i.root, i.head), { force: true });
@@ -396,6 +397,7 @@ function scriptSource(manager, args, shown) {
     const files = [...new Set([...PM_CONFIG_FILES, ...PM_CONFIG_FILES.map(at), ...configs])];
     return { sources: [{ path: at('package.json'), scripts: [`pre${script}`, script, `post${script}`] }, ...files.map((path) => ({ path }))] };
 }
+const npxUnresolved = (shown) => `${shown} runs npx, which fetches and runs registry code that the repository cannot pin`;
 export function gateDefinitionSources(gate) {
     const [cmd, ...args] = gate;
     if (!cmd)
@@ -406,7 +408,7 @@ export function gateDefinitionSources(gate) {
         return scriptSource(name, args, shown);
     // npx runs code the registry serves at that moment: nothing in the repository, at any commit, pins it.
     if (name === 'npx')
-        return { sources: [], unresolved: `${shown} runs npx, which fetches and runs registry code that the repository cannot pin` };
+        return { sources: [], unresolved: npxUnresolved(shown) };
     if (name === 'node') {
         const at = args.findIndex((a) => !a.startsWith('-'));
         if (at < 0)
@@ -415,13 +417,21 @@ export function gateDefinitionSources(gate) {
         const base = (target.split(/[\\/]/).pop() ?? '').toLowerCase();
         if (base === 'npm-cli.js')
             return scriptSource('npm', args.slice(at + 1), shown);
+        if (base === 'npx-cli.js')
+            return { sources: [], unresolved: npxUnresolved(shown) };
+        const pm = /^(pnpm|yarn)\.c?js$/.exec(base);
+        if (pm)
+            return scriptSource(pm[1], args.slice(at + 1), shown);
         const p = repoPath(target);
         return { sources: p ? [{ path: p }] : [] };
     }
     // A path names the file the gate runs: a repository file is its own definition; one outside the repository is not the PR's to change.
     if (/[\\/]/.test(cmd)) {
         const own = repoPath(cmd);
-        return { sources: own ? [{ path: own }] : [] };
+        if (own)
+            return { sources: [{ path: own }] };
+        // The program itself is not the PR's to change, but its arguments may name repository files (/bin/sh scripts/ci.sh, /usr/bin/env npx x), and the bare name of the same tool parks.
+        return args.length === 0 ? { sources: [] } : { sources: [], unresolved: `${shown} runs ${JSON.stringify(cmd)}, a program outside the repository whose arguments the repository cannot pin` };
     }
     // A bare name is looked up on PATH, never in the checkout (resolveLocalGateArgv): the repository holds no file that defines it.
     return { sources: [], unresolved: `${shown} runs ${JSON.stringify(cmd)} from PATH, and the repository holds no file that defines it` };

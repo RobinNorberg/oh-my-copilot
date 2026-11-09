@@ -57,7 +57,7 @@ export interface GateProcDeps {
 }
 export declare const defaultGateProcDeps: () => GateProcDeps;
 /** Record what the gate at `path` starts. A write failure is swallowed: bookkeeping must never decide a verdict. */
-export declare function createGateProcTracker(path: string, startedAtMs: number, deps?: GateProcDeps): GateProcTracker;
+export declare function createGateProcTracker(path: string, startedAtMs: number, deps?: GateProcDeps, warn?: (message: string) => void): GateProcTracker;
 /**
  * Kill what an earlier gate run for this head left behind, then forget it.
  * Only a process whose start identity still equals the recorded one is
@@ -65,4 +65,10 @@ export declare function createGateProcTracker(path: string, startedAtMs: number,
  * (a group whose leader is gone cannot be told from a reused id).
  */
 export declare function reapGateProcs(path: string, deps?: GateProcDeps): Promise<void>;
+/**
+ * Once per process and record directory: reap every record there, not only the
+ * one of the head about to be gated (a head that is never gated again would
+ * otherwise keep its leftovers alive).
+ */
+export declare function sweepGateProcs(dir: string, deps?: GateProcDeps): Promise<void>;
 //# sourceMappingURL=gate-procs.d.ts.map

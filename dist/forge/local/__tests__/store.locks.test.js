@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, wr
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { appendNoFollow, noLinkPath, withFileLock, writeAtomic } from '../store.js';
+import { appendNoFollow, breakStaleLock, noLinkPath, withFileLock, writeAtomic } from '../store.js';
 let tmp;
 beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), 'omg-store-locks-'));
@@ -28,32 +28,51 @@ describe('withFileLock: stale-lock breaking', () => {
         expect(() => withFileLock(path, () => 'ran', { staleMs: 60_000, timeoutMs: 150 })).toThrow(/timed out waiting for the lock/);
         expect(existsSync(join(lock, 'owner'))).toBe(true);
     });
+    it('does not break a lock whose owner changed after it was judged stale', () => {
+        const path = join(tmp, 'prs.json');
+        const lock = `${path}.lock`;
+        mkdirSync(lock);
+        writeFileSync(join(lock, 'owner'), 'new-owner');
+        const old = new Date(Date.now() - 10 * 60_000);
+        utimesSync(lock, old, old);
+        // The breaker judged the lock of 'old-owner' stale; the lock now belongs to 'new-owner'.
+        breakStaleLock(lock, 1000, 'tok', 'old-owner');
+        expect(existsSync(join(lock, 'owner'))).toBe(true);
+        // The same owner it judged is broken.
+        breakStaleLock(lock, 1000, 'tok', 'new-owner');
+        expect(existsSync(lock)).toBe(false);
+    });
 });
+const probeDir = mkdtempSync(join(tmpdir(), 'omg-link-probe-'));
+const canLink = (() => {
+    try {
+        mkdirSync(join(probeDir, 'real'));
+        symlinkSync(join(probeDir, 'real'), join(probeDir, 'link'), 'junction');
+        return true;
+    }
+    catch {
+        return false;
+    }
+    finally {
+        rmSync(probeDir, { recursive: true, force: true });
+    }
+})();
 describe('noLinkPath: the anchor itself', () => {
-    const linkTo = (target, at) => {
-        try {
-            symlinkSync(target, at, 'junction');
-            return true;
-        }
-        catch {
-            return false;
-        }
-    };
-    it('refuses a runtime root that is a link when asked to, writes through a real one', () => {
+    it.skipIf(!canLink)('refuses an anchor that is a link by default, and writes through it only when allowed', () => {
         const real = join(tmp, 'elsewhere');
         mkdirSync(real);
         const omg = join(tmp, '.omg');
-        if (!linkTo(real, omg))
-            return; // no link privilege on this host
-        expect(() => writeAtomic(join(omg, 'a', 'b.json'), '{}', omg, true)).toThrow(/symbolic link/);
-        expect(() => appendNoFollow(omg, join(omg, 'c.md'), 'x', true)).toThrow(/symbolic link/);
+        symlinkSync(real, omg, 'junction');
+        expect(() => writeAtomic(join(omg, 'a', 'b.json'), '{}', omg)).toThrow(/symbolic link/);
+        expect(() => appendNoFollow(omg, join(omg, 'c.md'), 'x')).toThrow(/symbolic link/);
+        expect(() => noLinkPath(omg, join(omg, 'd', 'e.txt'))).toThrow(/symbolic link/);
         expect(existsSync(join(real, 'a'))).toBe(false);
-        // A checkout root may be a link (the default does not look at the anchor).
-        expect(noLinkPath(omg, join(omg, 'd', 'e.txt'))).toBe(true);
+        // A checkout root may be a link: the caller says so.
+        expect(noLinkPath(omg, join(omg, 'd', 'e.txt'), true, true)).toBe(true);
     });
     it('accepts a plain runtime root', () => {
         const omg = join(tmp, '.omg');
-        writeAtomic(join(omg, 'a', 'b.json'), '{}', omg, true);
+        writeAtomic(join(omg, 'a', 'b.json'), '{}', omg);
         expect(existsSync(join(omg, 'a', 'b.json'))).toBe(true);
     });
 });

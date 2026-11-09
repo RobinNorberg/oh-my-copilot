@@ -50,14 +50,14 @@ export function engineOwnedDir(dir, untrustedRoots) {
  * it one at a time, each checked again; without it, false when a parent is
  * missing. The leaf may be absent.
  */
-export function noLinkPath(anchor, path, create = true, refuseLinkedAnchor = false) {
+export function noLinkPath(anchor, path, create = true, allowLinkedAnchor = false) {
     const top = resolve(anchor);
     const rel = relative(top, resolve(path));
     if (rel === '' || rel.startsWith('..') || isAbsolute(rel))
         throw new Error(`local forge: ${path} is not under ${anchor}`);
     const parts = rel.split(sep);
-    // The runtime root (`.omg`) sits in the untrusted tree: it too must not be a link to somewhere else. A checkout root may be one.
-    if (refuseLinkedAnchor && lstatSync(top, { throwIfNoEntry: false })?.isSymbolicLink())
+    // The anchor must not be a link to somewhere else either, unless the caller says it may be (a checkout root can legitimately be one; the runtime root `.omg`, in the untrusted tree, cannot).
+    if (!allowLinkedAnchor && lstatSync(top, { throwIfNoEntry: false })?.isSymbolicLink())
         throw new Error(`local forge: refusing to go through the symbolic link ${top}`);
     if (create)
         mkdirSync(top, { recursive: true, mode: 0o700 });
@@ -89,16 +89,16 @@ export function noLinkPath(anchor, path, create = true, refuseLinkedAnchor = fal
  * Write a file atomically; the parent is created. With `anchor`, no
  * component below it may be a symbolic link (noLinkPath).
  */
-export function writeAtomic(path, content, anchor, refuseLinkedAnchor = false) {
+export function writeAtomic(path, content, anchor, allowLinkedAnchor = false) {
     if (anchor === undefined)
         mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     else
-        noLinkPath(anchor, path, true, refuseLinkedAnchor);
+        noLinkPath(anchor, path, true, allowLinkedAnchor);
     atomicWriteFileSync(path, content);
 }
 /** Append to a file under `anchor` without following a link below it (O_NOFOLLOW on the leaf where the platform has it). */
-export function appendNoFollow(anchor, path, text, refuseLinkedAnchor = false) {
-    noLinkPath(anchor, path, true, refuseLinkedAnchor);
+export function appendNoFollow(anchor, path, text, allowLinkedAnchor = false) {
+    noLinkPath(anchor, path, true, allowLinkedAnchor);
     const fd = openSync(path, constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0), 0o600);
     try {
         writeFileSync(fd, text);
@@ -114,7 +114,7 @@ export const LOCK_TIMEOUT_MS = 15_000;
 /** A lock directory older than this is left over from a crashed writer. */
 export const LOCK_STALE_MS = 60_000;
 /** How long a Windows EPERM/EACCES on the lock directory is waited out as a pending delete. */
-export const PENDING_DELETE_MS = 2_000;
+export const PENDING_DELETE_MS = 5_000;
 const OWNER = 'owner';
 const ownerOf = (lock) => {
     try {
@@ -130,7 +130,7 @@ const ownerOf = (lock) => {
  * the renamed lock is still stale (a fresh lock taken in between goes back)
  * and remove it.
  */
-function breakStaleLock(lock, staleMs, token, seenOwner) {
+export function breakStaleLock(lock, staleMs, token, seenOwner) {
     // The lock must still be the one judged stale: a release and a fresh acquire in between changes its owner token.
     if (ownerOf(lock) !== seenOwner)
         return;
@@ -180,12 +180,15 @@ export function withFileLock(path, fn, o = {}) {
             if (pending) {
                 // A pending delete clears within moments; a lasting EPERM is a real permission error, not a wait.
                 deniedSince ??= Date.now();
-                if (Date.now() - deniedSince > PENDING_DELETE_MS)
-                    throw err;
+                // Capped by the caller's deadline; a lasting denial names the lock instead of surfacing a bare EPERM.
+                if (Date.now() - deniedSince > Math.min(PENDING_DELETE_MS, deadline - deniedSince))
+                    throw new Error(`local forge: the lock ${lock} could not be created (${code}): its previous directory is still pending deletion or access is denied`, { cause: err });
             }
             else {
                 deniedSince = undefined;
                 let age;
+                // The owner is read before the stat that judges staleness, so a release and re-acquire in between changes the token the breaker compares.
+                const seenOwner = ownerOf(lock);
                 try {
                     age = Date.now() - statSync(lock).mtimeMs;
                 }
@@ -193,7 +196,7 @@ export function withFileLock(path, fn, o = {}) {
                     continue; // released between the mkdir and the stat
                 }
                 if (age > staleMs) {
-                    breakStaleLock(lock, staleMs, token, ownerOf(lock));
+                    breakStaleLock(lock, staleMs, token, seenOwner);
                     continue;
                 }
             }

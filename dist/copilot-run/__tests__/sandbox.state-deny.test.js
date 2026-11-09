@@ -1,7 +1,8 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { DEFAULT_SANDBOX_SETTINGS, buildSandboxConfig } from '../sandbox.js';
 let root;
 let ctx;
@@ -35,10 +36,11 @@ describe('the OMC global state root is denied to the lane', () => {
     it('denies only the sensitive children when a grant lives inside the root (the job dir under it)', () => {
         const stateRoot = join(root, 'omc-home', 'state');
         const inside = { ...ctx, omcStateRoot: stateRoot, jobHome: join(stateRoot, 'team-jobs', 'j1', 'home'), jobDir: join(stateRoot, 'team-jobs', 'j1') };
+        mkdirSync(join(stateRoot, 'forge'), { recursive: true });
         const list = denied(inside);
         expect(list).not.toContain(stateRoot);
-        for (const child of ['forge', 'factory-ledger', 'budget-ledger.json', 'budget'])
-            expect(list).toContain(join(stateRoot, child));
+        expect(list).toContain(join(stateRoot, 'forge'));
+        expect(list).not.toContain(join(stateRoot, 'factory-ledger'));
         expect(list).not.toContain(join(stateRoot, 'team-jobs'));
     });
     it('a home that holds the state root keeps it denied only when no grant is inside it', () => {
@@ -48,6 +50,27 @@ describe('the OMC global state root is denied to the lane', () => {
     });
     it('the review profile is unaffected (it has no deny list)', () => {
         expect(buildSandboxConfig('review', { ...ctx, omcStateRoot: join(root, 'x') }, host).userPolicy.filesystem).not.toHaveProperty('deniedPaths');
+    });
+    it('with OMC_STATE_DIR set, the real factory ledger and budget ledger are denied and the granted job dir stays granted', () => {
+        const stateDir = join(root, 'central');
+        mkdirSync(join(stateDir, 'factory-ledger'), { recursive: true });
+        vi.stubEnv('OMC_STATE_DIR', stateDir);
+        try {
+            const budget = join(getOmcRoot(join(root, 'repo')), 'state', 'budget-ledger.json');
+            mkdirSync(join(budget, '..'), { recursive: true });
+            writeFileSync(budget, '{}');
+            const jobDir = join(stateDir, 'team-jobs', 'j1');
+            const config = buildSandboxConfig('write', { ...ctx, omcStateRoot: join(root, 'omc-home', 'state'), jobDir, jobHome: join(jobDir, 'home') }, host);
+            const list = config.userPolicy.filesystem.deniedPaths ?? [];
+            expect(list).toContain(join(stateDir, 'factory-ledger'));
+            expect(list).toContain(budget);
+            expect(list).not.toContain(stateDir);
+            expect(list).not.toContain(join(stateDir, 'team-jobs'));
+            expect(config.userPolicy.filesystem.readwritePaths.some((p) => p.startsWith(join(jobDir)))).toBe(true);
+        }
+        finally {
+            vi.unstubAllEnvs();
+        }
     });
 });
 //# sourceMappingURL=sandbox.state-deny.test.js.map

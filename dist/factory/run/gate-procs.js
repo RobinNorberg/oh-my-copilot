@@ -19,7 +19,8 @@
  *   recorded ones that still match.
  */
 import { execFile } from 'child_process';
-import { readFileSync, rmSync } from 'fs';
+import { spawnSync } from 'child_process';
+import { readdirSync, readFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { promisify } from 'util';
 import { localStoreDir } from '../../forge/local/mirror.js';
@@ -28,7 +29,12 @@ import { getProcessStartIdentity, getProcessStartIdentitySync, terminateOwnedPro
 const execFileAsync = promisify(execFile);
 /** How long one cleanup step (listing, identity, kill) may take. */
 const STEP_DEADLINE_MS = 15_000;
-export const gateProcsPath = (stateDir, root, head) => join(localStoreDir(stateDir, root), 'gate-procs', `${head}.json`);
+const HEX40 = /^[0-9a-f]{40}$/;
+export const gateProcsPath = (stateDir, root, head) => {
+    if (!HEX40.test(head))
+        throw new Error(`gate-procs: ${JSON.stringify(head)} is not a 40-hex commit`);
+    return join(localStoreDir(stateDir, root), 'gate-procs', `${head}.json`);
+};
 const isProc = (p) => {
     const r = p;
     return !!r && Number.isInteger(r.pid) && r.pid > 0 && typeof r.identity === 'string' && r.identity.length > 0 && r.identity.length < 64;
@@ -46,7 +52,8 @@ export function readGateProcs(path) {
         return undefined;
     if (parsed.root !== undefined && !isProc(parsed.root))
         return undefined;
-    if (parsed.pgid !== undefined && !(Number.isInteger(parsed.pgid) && parsed.pgid > 0))
+    // The gate is detached, so its group id is its own pid: a record naming any other group is forged.
+    if (parsed.pgid !== undefined && !(Number.isInteger(parsed.pgid) && parsed.root !== undefined && parsed.pgid === parsed.root.pid))
         return undefined;
     return parsed;
 }
@@ -69,16 +76,29 @@ async function listWindowsChildren(rootPid) {
     }
     return out;
 }
+/** The start identity of `pid` through the absolute powershell (a bare name could resolve to a planted binary, and the engine's search-path hardening runs after the pre-run reap). */
+function windowsIdentitySync(pid) {
+    const exe = join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    const script = `$p = Get-Process -Id ${pid} -ErrorAction Stop; if ($p -and $p.StartTime) { $p.StartTime.ToUniversalTime().Ticks }`;
+    try {
+        const r = spawnSync(exe, ['-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8', timeout: 8000, windowsHide: true });
+        const ticks = r.status === 0 ? r.stdout.trim().match(/^\d+$/)?.[0] : undefined;
+        return ticks ? `ticks:${ticks}` : null;
+    }
+    catch {
+        return null;
+    }
+}
 export const defaultGateProcDeps = () => ({
     platform: process.platform,
-    identitySync: getProcessStartIdentitySync,
+    identitySync: process.platform === 'win32' ? windowsIdentitySync : getProcessStartIdentitySync,
     identity: (pid, deadlineAt) => getProcessStartIdentity(pid, deadlineAt),
     terminateTree: (p) => terminateOwnedProcessTree({ pid: p.pid, expectedStartIdentity: p.identity, deadlineAt: new Date(Date.now() + STEP_DEADLINE_MS).toISOString(), force: true }),
     terminateGroup: (p, pgid) => terminateOwnedProcessGroup({ pid: p.pid, expectedStartIdentity: p.identity, processGroupId: pgid, deadlineAt: new Date(Date.now() + STEP_DEADLINE_MS).toISOString(), force: true }),
     listChildren: listWindowsChildren,
 });
 /** Record what the gate at `path` starts. A write failure is swallowed: bookkeeping must never decide a verdict. */
-export function createGateProcTracker(path, startedAtMs, deps = defaultGateProcDeps()) {
+export function createGateProcTracker(path, startedAtMs, deps = defaultGateProcDeps(), warn) {
     const record = { version: 1, startedAt: new Date(startedAtMs).toISOString(), orphans: [] };
     let rootPid = 0;
     const save = () => {
@@ -96,6 +116,9 @@ export function createGateProcTracker(path, startedAtMs, deps = defaultGateProcD
                 if (deps.platform !== 'win32')
                     record.pgid = pid;
                 save();
+            }
+            else {
+                warn?.(`the gate process ${pid} could not be identified, so it is not recorded and an engine crash would leave it unreaped`);
             }
         },
         async rootGone(exitedAtMs) {
@@ -145,13 +168,37 @@ export async function reapGateProcs(path, deps = defaultGateProcDeps()) {
         rmSync(path, { force: true });
         return;
     }
+    // Never the engine itself or its parent, whatever a record says.
+    const foreign = (p) => p.pid !== process.pid && p.pid !== process.ppid;
     if (deps.platform === 'win32') {
-        for (const p of [...record.orphans, ...(record.root ? [record.root] : [])])
+        for (const p of [...record.orphans, ...(record.root ? [record.root] : [])].filter(foreign))
             await deps.terminateTree(p).catch(() => undefined);
     }
-    else if (record.root && record.pgid) {
+    else if (record.root && record.pgid && foreign(record.root)) {
         await deps.terminateGroup(record.root, record.pgid).catch(() => undefined);
     }
     rmSync(path, { force: true });
+}
+const swept = new Set();
+/**
+ * Once per process and record directory: reap every record there, not only the
+ * one of the head about to be gated (a head that is never gated again would
+ * otherwise keep its leftovers alive).
+ */
+export async function sweepGateProcs(dir, deps = defaultGateProcDeps()) {
+    if (swept.has(dir))
+        return;
+    swept.add(dir);
+    let names;
+    try {
+        names = readdirSync(dir);
+    }
+    catch {
+        return;
+    }
+    for (const name of names) {
+        if (/^[0-9a-f]{40}\.json$/.test(name))
+            await reapGateProcs(join(dir, name), deps).catch(() => undefined);
+    }
 }
 //# sourceMappingURL=gate-procs.js.map

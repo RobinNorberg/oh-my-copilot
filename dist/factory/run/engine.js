@@ -1392,7 +1392,7 @@ class FactoryEngine {
         const unresolved = gate && gate.length > 0 ? gateDefinitionSources(gate).unresolved : undefined;
         if (!unresolved)
             return false;
-        this.gate('gate-definition-unknown', `${unresolved}; offline the gate is the only check and its definition cannot be compared with ${this.state.base}, so ${outcome}. Set factory.forge.local.gate to name its script (npm test, npm run <script>, npm --prefix <dir> run <script>) or a node script file, then rerun ${this.resume}, or omg factory run cancel ${this.key}`);
+        this.gate('gate-definition-unknown', `${unresolved}; offline the gate is the only check and its definition cannot be compared with ${this.state.base}, so ${outcome}. Wrap the command in a script committed in the repo (for example node scripts/gate.mjs) and set factory.forge.local.gate to that, or to an npm script (npm test, npm run <script>); then rerun ${this.resume}, or omg factory run cancel ${this.key}`);
         return true;
     }
     /**
@@ -2565,7 +2565,7 @@ function dryRun(o) {
     if (gateUnknown) {
         return {
             exitCode: 0, phase: existing?.phase ?? null, state: existing ?? null,
-            message: `dry run: ${gateUnknown}; the run would stop at awaiting-human: gate-definition-unknown before any lane`,
+            message: `dry run: ${gateUnknown}; the run would stop at awaiting-human: gate-definition-unknown before any lane; wrap the command in a script committed in the repo (for example node scripts/gate.mjs) and use that as the gate`,
             plan: { next: 'awaiting-human', reason: 'gate-definition-unknown', ...caps },
         };
     }

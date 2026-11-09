@@ -16,12 +16,14 @@
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { dirname, isAbsolute, join, posix, resolve, win32 } from 'node:path';
+import { basename, dirname, isAbsolute, join, posix, resolve, win32 } from 'node:path';
 import { userConfigLayers } from '../ship/config.js';
 import { resolveProjectConfigPath } from '../config/project-config-path.js';
 import { SMOKE_SET_ENV } from '../smoke/copilot-session-env.js';
 import { isUnderRoot } from '../team/sdk-policy.js';
 import { parseJsonc } from '../utils/jsonc.js';
+import { defaultLedgerDir } from '../factory/run/ledger.js';
+import { getOmcRoot } from '../lib/worktree-paths.js';
 import { getGlobalOmcStateRoot } from '../utils/paths.js';
 import { findOnPath } from '../utils/windows-search.js';
 /** Shell tools whose `tool.execution_complete` must carry `sandboxed: true` in an enforced session. */
@@ -301,8 +303,13 @@ export function buildSandboxConfig(profile, ctx, host) {
         catch {
             return false;
         } });
-        const stateDeny = holdsGrant(stateRoot) ? ['forge', 'factory-ledger', 'budget-ledger.json', 'budget'].map((c) => join(stateRoot, c)).filter((c) => !holdsGrant(c)) : [stateRoot];
-        filesystem.deniedPaths.push(...stateDeny.filter((p) => !covered(p)));
+        // The factory ledger (OMC_STATE_DIR/factory-ledger; ~/.omg/factory-ledger is under the home deny) and the budget ledger
+        // (<omc root of the main checkout>/state/budget-ledger.json) live elsewhere when OMC_STATE_DIR is set: name the real
+        // paths, and only those that exist (the host may refuse a deny of a missing path). A granted job dir stays granted.
+        const mainRoot = basename(ctx.commonGitDir) === '.git' ? dirname(ctx.commonGitDir) : undefined;
+        const ledgers = [...(process.env.OMC_STATE_DIR?.trim() ? [defaultLedgerDir(process.env)] : []), ...(mainRoot ? [join(getOmcRoot(mainRoot), 'state', 'budget-ledger.json')] : [])];
+        const stateDeny = [...(holdsGrant(stateRoot) ? [join(stateRoot, 'forge')].filter(existsSync) : [stateRoot]), ...ledgers.filter(existsSync)];
+        filesystem.deniedPaths.push(...[...new Set(stateDeny)].filter((p) => !holdsGrant(p) && !covered(p)));
         if (ctx.platform !== 'win32') {
             // Sockets that run commands for the caller outside the sandbox: the user's runtime dir (D-Bus, systemd, agents),
             // the container daemons and the SSH agent. Never a dir that holds a grant (the root, the home, a parent of either,

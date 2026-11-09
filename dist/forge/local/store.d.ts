@@ -24,19 +24,26 @@ export declare function engineOwnedDir(dir: string, untrustedRoots: readonly str
  * it one at a time, each checked again; without it, false when a parent is
  * missing. The leaf may be absent.
  */
-export declare function noLinkPath(anchor: string, path: string, create?: boolean, refuseLinkedAnchor?: boolean): boolean;
+export declare function noLinkPath(anchor: string, path: string, create?: boolean, allowLinkedAnchor?: boolean): boolean;
 /**
  * Write a file atomically; the parent is created. With `anchor`, no
  * component below it may be a symbolic link (noLinkPath).
  */
-export declare function writeAtomic(path: string, content: string, anchor?: string, refuseLinkedAnchor?: boolean): void;
+export declare function writeAtomic(path: string, content: string, anchor?: string, allowLinkedAnchor?: boolean): void;
 /** Append to a file under `anchor` without following a link below it (O_NOFOLLOW on the leaf where the platform has it). */
-export declare function appendNoFollow(anchor: string, path: string, text: string, refuseLinkedAnchor?: boolean): void;
+export declare function appendNoFollow(anchor: string, path: string, text: string, allowLinkedAnchor?: boolean): void;
 export declare const LOCK_TIMEOUT_MS = 15000;
 /** A lock directory older than this is left over from a crashed writer. */
 export declare const LOCK_STALE_MS = 60000;
 /** How long a Windows EPERM/EACCES on the lock directory is waited out as a pending delete. */
-export declare const PENDING_DELETE_MS = 2000;
+export declare const PENDING_DELETE_MS = 5000;
+/**
+ * Remove a stale lock: rename it to a name only this waiter uses, so two
+ * waiters never both break one lock (the second rename fails), then check
+ * the renamed lock is still stale (a fresh lock taken in between goes back)
+ * and remove it.
+ */
+export declare function breakStaleLock(lock: string, staleMs: number, token: string, seenOwner: string | undefined): void;
 /**
  * Run `fn` while holding `<path>.lock` (an exclusive mkdir holding an owner
  * token). Only the owner releases the lock; a lock older than `staleMs` is
