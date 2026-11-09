@@ -59,9 +59,10 @@ import { type GateConfigLoader } from './prepare.js';
 import { type FactoryRunLimits } from './budget.js';
 import { type LocalGateRunner } from './local-gate.js';
 import { type LaneBackend, type LaneProcess } from './lane.js';
-import { type FactoryGate, type FactoryHealRecord, type FactoryPhase, type FactoryRunKey, type FactoryRunState, type OwnerDeps } from './state.js';
+import { EXIT_BUSY, type FactoryGate, type FactoryHealRecord, type FactoryPhase, type FactoryRunKey, type FactoryRunState, type OwnerDeps } from './state.js';
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export declare const EXIT_AWAITING_HUMAN = 4;
+export { EXIT_BUSY };
 /** Conflict-fix lanes (distinct start heads) before base conflicts park at awaiting-human: merge-conflicts. */
 export declare const MAX_CONFLICT_FIX_ROUNDS = 2;
 /** merge's gate read may send the run back to gates this often per invocation before awaiting-human: gates-disagree. */

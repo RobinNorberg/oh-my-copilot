@@ -21,7 +21,7 @@
 import { Command } from 'commander';
 import { integerOption } from '../utils/integer-option.js';
 import chalk from 'chalk';
-import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { INTAKE_ROUTE_TABLE, startListener, stopListener } from '../../factory/listener.js';
 import { readChainStatus } from '../../factory/status.js';
@@ -33,11 +33,12 @@ import { CopilotRunManager, defaultCopilotRunDeps } from '../../copilot-run/job.
 import { resolveFactoryRunLimits, runCredits } from '../../factory/run/budget.js';
 import { cleanFactoryRun } from '../../factory/run/clean.js';
 import { resetFactoryRun } from '../../factory/run/reset.js';
-import { EXIT_AWAITING_HUMAN, runFactoryEngine } from '../../factory/run/engine.js';
+import { factoryClaimHolder } from '../../factory/run/claims.js';
+import { EXIT_AWAITING_HUMAN, EXIT_BUSY, runFactoryEngine } from '../../factory/run/engine.js';
 import { factoryGuardExec, hardenedGitExec } from '../../factory/run/exec.js';
 import { EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, factoryForgeOptions, loadFactoryForgeConfig, originForgeKind, syncLocalMirror } from '../../factory/run/forge-roots.js';
 import { CopilotLaneBackend } from '../../factory/run/lane.js';
-import { factoryCancelRequested, factoryStatePath, readFactoryState, requestFactoryCancel, verifyFactoryIntegrity } from '../../factory/run/state.js';
+import { defaultOwnerDeps, FactoryBusyError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerHolding, readFactoryState, requestFactoryCancel, verifyFactoryIntegrity, } from '../../factory/run/state.js';
 import { resolveShipConfig, userConfigLayers } from '../../ship/config.js';
 import { defaultExec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
@@ -125,9 +126,9 @@ function factoryRoot(exec) {
  * fixtures from these writers).
  */
 export const factoryRunJson = {
-    nothingRunnable: (counts) => JSON.stringify({ ok: true, next: null, message: 'nothing runnable', counts }, null, 2),
+    nothingRunnable: (counts, claimed = []) => JSON.stringify({ ok: true, next: null, message: 'nothing runnable', counts, ...(claimed.length ? { claimed } : {}) }, null, 2),
     outcome: (outcome, next) => JSON.stringify({ ok: outcome.exitCode === 0, ...(next !== undefined ? { next } : {}), ...outcome }, null, 2),
-    error: (message) => JSON.stringify({ ok: false, error: message }, null, 2),
+    error: (message, busy = false) => JSON.stringify({ ok: false, error: message, ...(busy ? { busy: true } : {}) }, null, 2),
 };
 async function factoryGuarded(json, fn) {
     try {
@@ -136,13 +137,16 @@ async function factoryGuarded(json, fn) {
     catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const unavailable = error instanceof FactoryForgeUnavailableError;
+        const busy = error instanceof FactoryBusyError;
         // F9: no usable forge exits 5 with the prefix check, board and setup print.
         const text = unavailable && !message.startsWith('unsupported forge') ? `unsupported forge: ${message}` : message;
         if (json)
-            console.log(factoryRunJson.error(text));
+            console.log(factoryRunJson.error(text, busy));
+        else if (busy)
+            console.error(chalk.yellow(`busy: ${message}`));
         else
             console.error(chalk.red(unavailable ? text : `Error: ${message}`));
-        process.exitCode = error instanceof FactoryUsageError ? 2 : unavailable ? EXIT_FORGE_UNAVAILABLE : 1;
+        process.exitCode = error instanceof FactoryUsageError ? 2 : unavailable ? EXIT_FORGE_UNAVAILABLE : busy ? EXIT_BUSY : 1;
     }
 }
 export function renderFactoryRunState(state, o = {}) {
@@ -168,7 +172,9 @@ export function renderFactoryRunState(state, o = {}) {
  * source, read through check's read-only guard. A merged, cancelled, failed
  * or active run, an own factory PR open or merged, or an unsatisfied
  * dependency is never runnable (check/rules.ts), so --next never re-runs a
- * finished item. Null with the checked rows when nothing is runnable.
+ * finished item. A runnable item another engine holds (its run here, or its
+ * claim from another clone: claims.ts) is skipped, never waited on, and
+ * listed in `claimed`. Null with the checked rows when nothing is runnable.
  */
 function pickNext(deps, root, base, loaded, parent) {
     const { config } = loaded;
@@ -185,7 +191,46 @@ function pickNext(deps, root, base, loaded, parent) {
     const forge = createForge(read.exec, root, config, readForgeOptions(config, root, read.options, base, baseSha, false));
     const ids = parent !== undefined ? forge.tracker.viewItem(parent).children : forge.tracker.queryItems(source, config.intake.limit);
     const items = checkItems(forge, ids, checkEnvFor(read.exec, root, config, base, baseSha));
-    return { next: items.find((r) => r.bucket === 'runnable') ?? null, items, warnings };
+    const me = defaultOwnerDeps();
+    const ledgerDir = deps.ledgerDir ?? defaultLedgerDir();
+    const claimed = [];
+    for (const r of items) {
+        if (r.bucket !== 'runnable')
+            continue;
+        if (ownerHolding(factoryOwnerPath(root, r.id), me) === null && factoryClaimHolder(ledgerDir, config.repo.url, root, r.id, me) === null)
+            return { next: r, items, claimed, warnings };
+        claimed.push(r.id);
+    }
+    return { next: null, items, claimed, warnings };
+}
+/** Throws FactoryBusyError while a live engine holds this checkout (the engine's own claim at start stays the binding check). */
+function refuseWhileEngineRuns(root) {
+    const h = ownerHolding(factoryRepoOwnerPath(root));
+    if (h === null || h === 'unreadable')
+        return;
+    throw new FactoryBusyError(`another omg factory engine runs in this repository (${h.run ?? 'run unknown'}, pid ${h.pid} on ${h.hostname} since ${h.startedAt}); one engine runs per checkout at a time (parallel runs need separate clones)`);
+}
+const OWNER_FILE = /^run-(\d+|heal-[0-9a-f]{8})\.owner$/;
+/** The live engines of this checkout: its engine lock and every run owner file a live process holds. Read-only. */
+export function liveFactoryRuns(root) {
+    const me = defaultOwnerDeps();
+    const held = (h) => (h === null || h === 'unreadable' ? null : h);
+    let names = [];
+    try {
+        names = readdirSync(factoryStateDir(root)).sort();
+    }
+    catch { /* no runs yet */ }
+    const runs = [];
+    for (const name of names) {
+        const m = OWNER_FILE.exec(name);
+        if (!m)
+            continue;
+        const key = /^\d+$/.test(m[1]) ? Number(m[1]) : m[1];
+        const h = held(ownerHolding(factoryOwnerPath(root, key), me));
+        if (h)
+            runs.push({ ...h, key });
+    }
+    return { engine: held(ownerHolding(factoryRepoOwnerPath(root), me)), runs };
 }
 const bucketCounts = (items) => Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length]));
 function printOutcome(json, outcome, next) {
@@ -237,15 +282,17 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         if (o.next) {
             if (!loaded)
                 throw new FactoryUsageError('--next needs the forge config (omg factory setup)');
-            const { next, items, warnings: pickWarnings } = pickNext(deps, root, base, loaded, parent);
+            if (!o.dryRun)
+                refuseWhileEngineRuns(root);
+            const { next, items, claimed, warnings: pickWarnings } = pickNext(deps, root, base, loaded, parent);
             for (const w of pickWarnings)
                 console.error(chalk.yellow(plainText(w)));
             const counts = bucketCounts(items);
             if (!next) {
                 if (o.json)
-                    console.log(factoryRunJson.nothingRunnable(counts));
+                    console.log(factoryRunJson.nothingRunnable(counts, claimed));
                 else
-                    console.log(`nothing runnable (${BUCKET_ORDER.map((b) => `${counts[b]} ${b}`).join(', ')})`);
+                    console.log(`nothing runnable (${BUCKET_ORDER.map((b) => `${counts[b]} ${b}`).join(', ')})${claimed.length ? `; held by another engine: ${claimed.map((id) => `#${id}`).join(', ')}` : ''}`);
                 return 0;
             }
             issue = picked = next.id;
@@ -344,12 +391,26 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         return 0;
     }));
     run
-        .command('status <issue>')
-        .description('Print the persisted factory run state (read-only)')
+        .command('status [issue]')
+        .description('Print the persisted factory run state (read-only); without an issue, list the engines running in this checkout')
         .option('--json', 'JSON output')
         .action((issueRaw, _o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
-        const issue = parseIssue(issueRaw);
         const root = factoryRoot(exec);
+        if (issueRaw === undefined) {
+            const live = liveFactoryRuns(root);
+            if (c.optsWithGlobals().json)
+                console.log(JSON.stringify({ ok: true, ...live }, null, 2));
+            else if (!live.engine && live.runs.length === 0)
+                console.log('no factory engine runs in this checkout');
+            else {
+                if (live.engine)
+                    console.log(`engine lock: ${live.engine.run ?? 'run unknown'}, pid ${live.engine.pid} on ${live.engine.hostname} since ${live.engine.startedAt}`);
+                for (const r of live.runs)
+                    console.log(`live ${typeof r.key === 'number' ? `#${r.key}` : r.key}: pid ${r.pid} on ${r.hostname} since ${r.startedAt}`);
+            }
+            return 0;
+        }
+        const issue = parseIssue(issueRaw);
         const stored = readFactoryState(root, issue);
         if (!stored)
             throw new FactoryUsageError(`no factory run for issue #${issue} (${factoryStatePath(root, issue)})`);

@@ -26,7 +26,7 @@ import { type FactoryRunOutcome } from '../../factory/run/engine.js';
 import type { LoadedForgeConfig } from '../../forge/config.js';
 import { type LaneBackend } from '../../factory/run/lane.js';
 import type { GateConfigLoader } from '../../factory/run/prepare.js';
-import { type FactoryRunState } from '../../factory/run/state.js';
+import { type FactoryOwner, type FactoryRunKey, type FactoryRunState } from '../../factory/run/state.js';
 import { type Exec } from '../../ship/exec.js';
 import { type FactoryCheckDeps } from '../../factory/check/cli.js';
 import type { FactoryPollDeps } from '../../factory/poll.js';
@@ -59,13 +59,20 @@ export declare const defaultFactoryRunDeps: FactoryRunDeps;
  * fixtures from these writers).
  */
 export declare const factoryRunJson: {
-    nothingRunnable: (counts: Record<string, number>) => string;
+    nothingRunnable: (counts: Record<string, number>, claimed?: readonly number[]) => string;
     outcome: (outcome: FactoryRunOutcome, next?: number) => string;
-    error: (message: string) => string;
+    error: (message: string, busy?: boolean) => string;
 };
 export declare function renderFactoryRunState(state: FactoryRunState, o?: {
     gate?: boolean;
 }): string;
+/** The live engines of this checkout: its engine lock and every run owner file a live process holds. Read-only. */
+export declare function liveFactoryRuns(root: string): {
+    engine: FactoryOwner | null;
+    runs: Array<FactoryOwner & {
+        key: FactoryRunKey;
+    }>;
+};
 /** `omg factory run <issue>`, `run cancel|clean|status <issue>` (experimental; manual trigger only; merge is always human). */
 export declare function factoryRunCommand(deps?: FactoryRunDeps): Command;
 /** `omg factory enqueue` (shipyard ↔ factory design §3.2-§3.4); the command lives in src/factory/enqueue.ts. */

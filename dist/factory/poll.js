@@ -71,7 +71,7 @@ import { adoHealFor, ciDeps, HEAL_PIPELINE_MISSING, runHealScan } from './heal/c
 import { HealRunRefused } from './heal/run.js';
 import { DEFAULT_FACTORY_RUN_LIMITS, resolveFactoryRunLimits } from './run/budget.js';
 import { FactoryForgeUnavailableError } from './run/forge-roots.js';
-import { acquireFactoryRepoOwner, defaultOwnerDeps, factoryRepoOwnerPath, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, } from './run/state.js';
+import { acquireFactoryRepoOwner, defaultOwnerDeps, EXIT_BUSY, factoryRepoOwnerPath, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, } from './run/state.js';
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
 export const POLL_JSON_SCHEMA_VERSION = 1;
 export const POLL_DEFAULT_INTERVAL_MS = 5 * 60_000;
@@ -600,7 +600,8 @@ export function renderTick(t) {
     }
     if (t.autoStart.started) {
         const a = t.autoStart;
-        const took = !a.parsed ? 'outcome unreadable' : a.next !== null ? `took #${a.next}` : a.exitCode === 0 ? 'found nothing runnable' : 'took no item';
+        const took = a.exitCode === EXIT_BUSY ? 'was busy (another engine holds this checkout or the item; retried next tick)'
+            : !a.parsed ? 'outcome unreadable' : a.next !== null ? `took #${a.next}` : a.exitCode === 0 ? 'found nothing runnable' : 'took no item';
         lines.push(`  auto-start: omg factory run --next ${took}, exit ${a.exitCode}: ${a.message}`);
     }
     return lines.join('\n');

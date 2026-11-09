@@ -267,6 +267,16 @@ export interface FactoryRunState {
 export declare class FactoryStateError extends Error {
     constructor(message: string);
 }
+/** Exit code of a run that did not start: another engine holds this checkout, the item's run or its claim (FactoryBusyError). */
+export declare const EXIT_BUSY = 6;
+/**
+ * A live owner holds what the caller tried to claim: another engine in this
+ * checkout, the item's own run, or the item's claim from another clone.
+ * `omg factory run` exits EXIT_BUSY for it; nothing was touched.
+ */
+export declare class FactoryBusyError extends FactoryStateError {
+    constructor(message: string);
+}
 /** The run's key: its issue number, or `heal-<sig8>` for a ci-heal run. */
 export declare function runKeyOf(s: Pick<FactoryRunState, 'kind' | 'issue' | 'heal'>): FactoryRunKey;
 /** `issue-7` or `heal-0123abcd`: the prefix of lane ids and the prepare checkout's worker name. */
@@ -352,8 +362,10 @@ export interface FactoryOwner {
     pid: number;
     hostname: string;
     startedAt: string;
-    /** The run key (the repository owner file only). */
+    /** The run key (the repository owner file and a claim). */
     run?: string;
+    /** The checkout the engine runs in (a claim only: it may be another clone). */
+    root?: string;
 }
 export interface OwnerDeps {
     pid: number;
@@ -376,6 +388,24 @@ export declare function acquireFactoryOwner(root: string, key: FactoryRunKey, no
  * instead of tripping the first one's shared git state checks.
  */
 export declare function acquireFactoryRepoOwner(root: string, key: FactoryRunKey, now: string, deps?: OwnerDeps): {
+    release: () => void;
+    tookOver?: FactoryOwner;
+};
+/** Whether `owner` holds its file against `deps`, as claimOwner decides: another host, or another live pid here. */
+export declare function ownerHolds(owner: Pick<FactoryOwner, 'pid' | 'hostname'>, deps: OwnerDeps): boolean;
+/**
+ * The owner holding the file at `path` (read-only; claimOwner stays the
+ * binding check): null when there is none or it is taken over by the next
+ * claim, `unreadable` when the file cannot be parsed (never taken for free
+ * by a reader).
+ */
+export declare function ownerHolding(path: string, deps?: OwnerDeps): FactoryOwner | 'unreadable' | null;
+/**
+ * Claim an owner file: a live owner (or one on another host, whose pid
+ * cannot be checked) refuses with a FactoryBusyError; a dead pid on this
+ * host is taken over, and `tookOver` names it.
+ */
+export declare function claimOwner(path: string, now: string, deps: OwnerDeps, busy: (prior: FactoryOwner) => string, fields?: Pick<FactoryOwner, 'run' | 'root'>): {
     release: () => void;
     tookOver?: FactoryOwner;
 };

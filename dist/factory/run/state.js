@@ -48,6 +48,19 @@ export class FactoryStateError extends Error {
         this.name = 'FactoryStateError';
     }
 }
+/** Exit code of a run that did not start: another engine holds this checkout, the item's run or its claim (FactoryBusyError). */
+export const EXIT_BUSY = 6;
+/**
+ * A live owner holds what the caller tried to claim: another engine in this
+ * checkout, the item's own run, or the item's claim from another clone.
+ * `omg factory run` exits EXIT_BUSY for it; nothing was touched.
+ */
+export class FactoryBusyError extends FactoryStateError {
+    constructor(message) {
+        super(message);
+        this.name = 'FactoryBusyError';
+    }
+}
 /** The run's key: its issue number, or `heal-<sig8>` for a ci-heal run. */
 export function runKeyOf(s) {
     return s.kind === 'ci-heal' ? `heal-${s.heal?.sig8 ?? ''}` : s.issue;
@@ -324,9 +337,42 @@ export function acquireFactoryOwner(root, key, now, deps = defaultOwnerDeps()) {
  * instead of tripping the first one's shared git state checks.
  */
 export function acquireFactoryRepoOwner(root, key, now, deps = defaultOwnerDeps()) {
-    return claimOwner(factoryRepoOwnerPath(root), now, deps, (prior) => `another omg factory engine runs in this repository (${prior.run ?? 'run unknown'}, pid ${prior.pid} on ${prior.hostname} since ${prior.startedAt}); one engine runs per repository at a time, so start ${key} after it ends`, String(key));
+    return claimOwner(factoryRepoOwnerPath(root), now, deps, (prior) => `another omg factory engine runs in this repository (${prior.run ?? 'run unknown'}, pid ${prior.pid} on ${prior.hostname} since ${prior.startedAt}); one engine runs per checkout at a time, so start ${key} after it ends (parallel runs need separate clones)`, { run: String(key) });
 }
-function claimOwner(path, now, deps, busy, run) {
+/** Whether `owner` holds its file against `deps`, as claimOwner decides: another host, or another live pid here. */
+export function ownerHolds(owner, deps) {
+    return owner.hostname !== deps.hostname || (owner.pid !== deps.pid && deps.isAlive(owner.pid));
+}
+/**
+ * The owner holding the file at `path` (read-only; claimOwner stays the
+ * binding check): null when there is none or it is taken over by the next
+ * claim, `unreadable` when the file cannot be parsed (never taken for free
+ * by a reader).
+ */
+export function ownerHolding(path, deps = defaultOwnerDeps()) {
+    let raw;
+    try {
+        raw = readFileSync(path, 'utf8');
+    }
+    catch {
+        return null;
+    }
+    try {
+        const owner = JSON.parse(raw);
+        if (typeof owner !== 'object' || owner === null || !Number.isInteger(owner.pid) || typeof owner.hostname !== 'string')
+            return 'unreadable';
+        return ownerHolds(owner, deps) ? owner : null;
+    }
+    catch {
+        return 'unreadable';
+    }
+}
+/**
+ * Claim an owner file: a live owner (or one on another host, whose pid
+ * cannot be checked) refuses with a FactoryBusyError; a dead pid on this
+ * host is taken over, and `tookOver` names it.
+ */
+export function claimOwner(path, now, deps, busy, fields = {}) {
     ensureDirSync(dirname(path));
     const tookOver = withFileLockSync(lockPathFor(path), () => {
         let prior;
@@ -337,11 +383,11 @@ function claimOwner(path, now, deps, busy, run) {
             catch {
                 prior = undefined;
             }
-            if (prior && (prior.hostname !== deps.hostname || (prior.pid !== deps.pid && deps.isAlive(prior.pid)))) {
-                throw new FactoryStateError(busy(prior));
+            if (prior && ownerHolds(prior, deps)) {
+                throw new FactoryBusyError(busy(prior));
             }
         }
-        writeFileSync(path, `${JSON.stringify({ pid: deps.pid, hostname: deps.hostname, startedAt: now, ...(run ? { run } : {}) })}
+        writeFileSync(path, `${JSON.stringify({ pid: deps.pid, hostname: deps.hostname, startedAt: now, ...(fields.run ? { run: fields.run } : {}), ...(fields.root ? { root: fields.root } : {}) })}
 `, 'utf8');
         return prior;
     }, { timeoutMs: 5_000 });
