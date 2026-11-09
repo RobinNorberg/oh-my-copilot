@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "09f971b77e18e9fec406569ab95238d5b86c486c",
-    "sourceSha256": "182ccfa6bd047285e5ea3515fbc19d2465ef74bd76e1d5e4a5363e2e7248e648",
+    "head": "72c3a0d265f7889a49857984d3f14ef6050e2426",
+    "sourceSha256": "c8539af6dae03844039f75538599a5a707579292e4f36441aa1684a205e80ce1",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "09f971b77e18e9fec406569ab95238d5b86c486c",
-  "sourceSha256": "182ccfa6bd047285e5ea3515fbc19d2465ef74bd76e1d5e4a5363e2e7248e648",
+  "head": "72c3a0d265f7889a49857984d3f14ef6050e2426",
+  "sourceSha256": "c8539af6dae03844039f75538599a5a707579292e4f36441aa1684a205e80ce1",
   "counts": {
     "public": {
       "skills": 98,
@@ -77763,6 +77763,11 @@
       },
       {
         "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
       },
@@ -83483,6 +83488,16 @@
       },
       {
         "from": "src/factory/heal/__tests__/cli.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/cli.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/cli.test.ts",
         "to": "src/lib/file-lock.ts",
         "kind": "imports"
       },
@@ -84883,6 +84898,11 @@
       },
       {
         "from": "src/factory/run/__tests__/claims.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/claims.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
       },
@@ -84919,6 +84939,11 @@
       {
         "from": "src/factory/run/__tests__/claims.test.ts",
         "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/claims.test.ts",
+        "to": "src/ship/exec.ts",
         "kind": "type-imports"
       },
       {
@@ -85594,6 +85619,11 @@
       {
         "from": "src/factory/run/__tests__/engine.local.dogfood.test.ts",
         "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.dogfood.test.ts",
+        "to": "src/factory/run/claims.ts",
         "kind": "imports"
       },
       {
@@ -86963,6 +86993,11 @@
       },
       {
         "from": "src/factory/run/claims.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/claims.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -86978,8 +87013,28 @@
       },
       {
         "from": "src/factory/run/claims.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/claims.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/claims.ts",
         "to": "src/ship/config.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/claims.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/claims.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/clean.ts",
@@ -86989,6 +87044,11 @@
       {
         "from": "src/factory/run/clean.ts",
         "to": "src/copilot-run/job.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/clean.ts",
+        "to": "src/factory/run/claims.ts",
         "kind": "imports"
       },
       {
@@ -87095,6 +87155,11 @@
         "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/claims.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/claims.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/engine.ts",
@@ -87818,6 +87883,11 @@
       },
       {
         "from": "src/factory/run/reset.ts",
+        "to": "src/factory/run/claims.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/reset.ts",
         "to": "src/factory/run/exec.ts",
         "kind": "imports"
       },
@@ -87990,6 +88060,11 @@
         "from": "src/factory/run/state.ts",
         "to": "src/ship/state.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/state.ts",
+        "to": "src/utils/string-width.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/setup/__tests__/e2e.test.ts",
@@ -124439,11 +124514,11 @@
     ],
     "stats": {
       "nodeCount": 10505,
-      "edgeCount": 12595,
-      "importEdgeCount": 10375,
+      "edgeCount": 12610,
+      "importEdgeCount": 10386,
       "registerEdgeCount": 119
     }
   },
   "inventorySha256": "68355ca48e17bd5a179328f017b58247aa2a339a6df5a39cde5922eff61e52c7",
-  "manifestSha256": "48330d7ad98d8546ae3c8ee62dd88837b03a67ef9e2f7e20963c839a027802d7"
+  "manifestSha256": "1fbe8cba0b1a12c895ba789fe363c05bc2a51caf4a135de9427619007e957f5b"
 }
