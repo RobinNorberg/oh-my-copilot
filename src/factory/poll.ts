@@ -77,7 +77,7 @@ import { HealRunRefused } from './heal/run.js';
 import { DEFAULT_FACTORY_RUN_LIMITS, resolveFactoryRunLimits, type FactoryRunLimits } from './run/budget.js';
 import { FactoryForgeUnavailableError } from './run/forge-roots.js';
 import {
-  acquireFactoryRepoOwner, defaultOwnerDeps, EXIT_BUSY, factoryRepoOwnerPath, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, type FactoryOwner, type FactoryRunKey, type OwnerDeps,
+  acquireFactoryRepoOwner, defaultOwnerDeps, EXIT_BUSY, factoryRepoOwnerPath, ownerHolding, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, type FactoryRunKey, type HeldOwner, type OwnerDeps,
 } from './run/state.js';
 
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
@@ -209,15 +209,23 @@ function audit(root: string, record: Record<string, unknown>, at: string): void 
   }
 }
 
-/** Whether an engine holds the repository (factoryRepoOwnerPath), as acquireFactoryRepoOwner would see it. */
+/** Whether an engine holds the repository (factoryRepoOwnerPath), as acquireFactoryRepoOwner would see it (start identity included; an unreadable file is held). */
 function engineBusy(root: string, me: OwnerDeps): boolean {
-  const path = factoryRepoOwnerPath(root);
-  if (!existsSync(path)) return false;
+  return ownerHolding(factoryRepoOwnerPath(root), me) !== null;
+}
+
+/**
+ * The checkout's engine lock for a tick step that fetches or moves refs (the
+ * heal tick, the local base sync): a git fetch under a live engine would
+ * read as lane tampering to it. A string: the step is skipped this tick (an
+ * engine runs). Released before the auto-start, whose child takes the lock
+ * itself, so the two never wait on each other.
+ */
+function holdForRefs(root: string, at: string, me: OwnerDeps): HeldOwner | string {
   try {
-    return heldBy(JSON.parse(readFileSync(path, 'utf8')) as FactoryOwner, me);
-  } catch {
-    // An unreadable owner file is never taken for a free repository.
-    return true;
+    return acquireFactoryRepoOwner(root, 'scan', at, me);
+  } catch (error) {
+    return `skipped: engine busy (${message(error)})`;
   }
 }
 
@@ -529,13 +537,19 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
   if (!ctx.heal) heal = { ran: false, reason: '--no-heal' };
   else if (!forge.capabilities.heal) heal = { ran: false, reason: forge.kind === 'azure-devops' ? HEAL_PIPELINE_MISSING : 'the forge has no heal capability' };
   else {
-    try {
-      const r = ctx.healScan({ root, base: ctx.base, kind: forge.kind, forge: config, now: new Date(ctx.now()), warn: (m) => warnings.push(plainText(m)) });
-      heal = { ran: true, entries: r.entries.length, recorded: r.entries.filter((e) => e.recorded).length, queued: r.queued };
-    } catch (error) {
-      if (error instanceof ShipSafetyError) throw error;
-      heal = { ran: false, reason: message(error) };
-      if (!(error instanceof HealRunRefused)) errors.push(`heal: ${message(error)}`);
+    const held = holdForRefs(root, at, ctx.owner);
+    if (typeof held === 'string') heal = { ran: false, reason: held };
+    else {
+      try {
+        const r = ctx.healScan({ root, base: ctx.base, kind: forge.kind, forge: config, now: new Date(ctx.now()), warn: (m) => warnings.push(plainText(m)) });
+        heal = { ran: true, entries: r.entries.length, recorded: r.entries.filter((e) => e.recorded).length, queued: r.queued };
+      } catch (error) {
+        if (error instanceof ShipSafetyError) throw error;
+        heal = { ran: false, reason: message(error) };
+        if (!(error instanceof HealRunRefused)) errors.push(`heal: ${message(error)}`);
+      } finally {
+        held.release();
+      }
     }
   }
 
@@ -573,8 +587,17 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
   if (forge.kind === 'local') {
     if (!ctx.localBaseSync) baseSync = { ran: false, reason: 'no base sync wired; omg factory run syncs the mirror base' };
     else {
-      const synced = step('base sync', ctx.localBaseSync);
-      baseSync = synced === undefined ? { ran: false, reason: 'the base sync failed' } : { ran: true, message: plainText(synced) };
+      const held = holdForRefs(root, at, ctx.owner);
+      if (typeof held === 'string') baseSync = { ran: false, reason: held };
+      else {
+        let synced: string | undefined;
+        try {
+          synced = step('base sync', ctx.localBaseSync);
+        } finally {
+          held.release();
+        }
+        baseSync = synced === undefined ? { ran: false, reason: 'the base sync failed' } : { ran: true, message: plainText(synced) };
+      }
     }
   }
 

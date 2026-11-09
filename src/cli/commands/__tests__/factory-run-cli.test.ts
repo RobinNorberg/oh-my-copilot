@@ -11,7 +11,7 @@ import { EXIT_AWAITING_HUMAN, EXIT_BUSY } from '../../../factory/run/engine.js';
 import {
   createFactoryState, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStatePath, moveTo, overwriteFactoryState, readFactoryState,
 } from '../../../factory/run/state.js';
-import { resolveForgeConfig } from '../../../forge/config.js';
+import { resolveForgeConfig, type LoadedForgeConfig } from '../../../forge/config.js';
 import { scaleTiming } from '../../../__tests__/helpers/platform.js';
 import type { Exec } from '../../../ship/exec.js';
 import { commitFile, FakeLanes, harness, ISSUE, REPO_URL, review, testGateConfig, type Harness } from '../../../factory/run/__tests__/fake-lanes.js';
@@ -265,12 +265,15 @@ describe('omg factory run CLI', () => {
         }
         return base.exec(cmd, args, o);
       };
-      // The loader fetches origin/<base> on a real run, as loadFactoryForgeConfig does.
+      // The loader fetches origin/<base> on a real run, as loadFactoryForgeConfig does. Its no-fetch mode (dryRun,
+      // which reads the forge kind for the claim key) is not counted: it touches nothing.
       const d: FactoryRunDeps = {
         ...base, exec,
         forge: (root, b, opts) => {
-          loads += 1;
-          if (!opts?.dryRun) exec('git', ['fetch', 'origin', b], { cwd: root });
+          if (!opts?.dryRun) {
+            loads += 1;
+            exec('git', ['fetch', 'origin', b], { cwd: root });
+          }
           return base.forge!(root, b, opts);
         },
       };
@@ -404,6 +407,37 @@ describe('omg factory run CLI', () => {
       expect(text).toContain(`unreadable owner file (held until removed: omg factory run release): ${factoryOwnerPath(h.root, 14)}`);
       expect(text).not.toContain('\u001b[2J');
     });
+    it('on the local forge the CLI keys no claim, as the engine: an origin-keyed claim on #7 makes nothing busy, is not listed and is not released', async () => {
+      lanes = new FakeLanes(h.root, []);
+      const { claim } = otherClone(7);
+      const forgeKinds: Array<boolean | undefined> = [];
+      const local: FactoryRunDeps = {
+        ...deps(),
+        forge: (root, _b, opts): LoadedForgeConfig => {
+          forgeKinds.push(opts?.dryRun);
+          return resolveForgeConfig({ factory: { forge: { kind: 'local' } } }, undefined, undefined, undefined, { root, stateDir: join(h.dir, 'forge') });
+        },
+      };
+      out = [];
+      expect(await cli(local, 'status', '--json')).toBe(0);
+      expect(JSON.parse(out.join('\n'))).toMatchObject({ ok: true, claims: [] });
+      out = [];
+      expect(await cli(local, 'release', '7', '--json')).toBe(0);
+      expect(JSON.parse(out.join('\n'))).toEqual({ ok: true, removed: [] });
+      expect(existsSync(claim)).toBe(true);
+      // A real run gets past the busy check (it may stop later on this bare local setup, never as busy).
+      out = [];
+      expect(await cli(local, '7', '--json')).not.toBe(EXIT_BUSY);
+      expect(out.join('\n')).not.toMatch(/claimed by a live engine/);
+      expect(existsSync(claim)).toBe(true);
+      expect(JSON.parse(readFileSync(claim, 'utf8'))).toMatchObject({ pid: process.ppid });
+      // The kind came from the no-fetch load first.
+      expect(forgeKinds[0]).toBe(true);
+      // The same claim on a GitHub forge is busy.
+      out = [];
+      expect(await cli(deps(), 'release', '7')).toBe(EXIT_BUSY);
+    });
+
     it('usage: --next takes no issue, --parent needs --next and an id, --next needs a forge config', async () => {
       lanes = new FakeLanes(h.root, []);
       expect(await cli(nextDeps(), '--next', '7')).toBe(2);

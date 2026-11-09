@@ -10,15 +10,20 @@
  * A claim is `<ledgerDir>/claims/<repo>/run-<key>.owner`, outside every
  * checkout (the engine ledger's directory, which the lane sandbox denies).
  * `<repo>` hashes the repository's identity (claimRepoKey over the trusted
- * origin remote, factoryClaimRepo), so every clone of one repository shares
- * the directory. The claim lives as long as the run is not terminal:
+ * origin remote, trustedFactoryClaimRepo), so every clone of one repository
+ * shares the directory. The local forge makes no claim (its mirror is per
+ * checkout). The claim lives as long as the run is not terminal:
  * - a live engine holds it (pid, host and start identity, as state.ts's
  *   owner files);
  * - when the engine stops before a terminal phase (a park, an error) it
  *   rewrites the claim without a pid ("parked"); a crash leaves its dead pid.
  *   Either way the claim stays held while the run state of its checkout
- *   (`<root>`'s run-<key>.json) exists and is not terminal; a missing or
- *   unreadable root or state keeps it held too, and is reported;
+ *   (`<root>`'s run-<key>.json) exists and is not terminal. That state is
+ *   read only as its engine sealed it (its integrity and its engine ledger
+ *   entry in the shared ledger dir), so a lane of that checkout cannot free
+ *   the claim by writing a terminal phase; a missing or unreadable root, a
+ *   state that fails those checks or is gone though its engine wrote it,
+ *   keeps the claim held too, and is reported;
  * - it is deleted at a terminal phase, by `omg factory run clean` / `reset`
  *   of the same checkout, and by `omg factory run release` (a human).
  * The claiming checkout itself always takes its own parked claim back (a
@@ -28,32 +33,45 @@
  */
 
 import { createHash } from 'crypto';
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync, unlinkSync, writeFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync, unlinkSync } from 'fs';
 import { isAbsolute, join, normalize, resolve } from 'path';
-import { ensureDirSync } from '../../lib/atomic-write.js';
-import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
+import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { repoIdentity } from '../../ship/config.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
+import { FactorySafetyError, hardenedGitExec } from './exec.js';
+import { emptyHooksDir, EngineLedger } from './ledger.js';
 import {
-  defaultOwnerDeps, describeOwner, FactoryBusyError, factoryStatePath, isOwnerRecord, ownerHolds, ownerRecord, runLabel, TERMINAL_FACTORY_PHASES,
-  type FactoryOwner, type FactoryPhase, type FactoryRunKey, type OwnerDeps,
+  defaultOwnerDeps, describeOwner, FactoryBusyError, factoryStateDir, factoryStatePath, isOwnerRecord, ownerHolds, ownerRecord, ownerText, parseFactoryState, runLabel,
+  TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, withOwnerFileLock, type FactoryOwner, type FactoryPhase, type FactoryRunKey, type OwnerDeps,
 } from './state.js';
 
 /**
  * The repository a claim is keyed on: the origin remote's URL (`git remote
  * get-url origin`, read-only, the same trusted origin the forge config is
- * derived from), or null without an origin (no cross-clone claim: the local
- * forge's mirror is per checkout). Needs no forge config, so heal runs and
- * `run clean` / `reset` / `release` key their claims the same way.
+ * derived from), or null without an origin. Needs no forge config, so heal
+ * runs and `run clean` / `reset` / `release` key their claims the same way.
+ * A FactorySafetyError of a hardened exec (trustedFactoryClaimRepo) is
+ * thrown, never read as "no origin".
  */
 export function factoryClaimRepo(exec: Exec, root: string): string | null {
   try {
     const got = exec('git', ['remote', 'get-url', 'origin'], { cwd: root, env: TRUSTED_READ_ENV });
     const url = got.status === 0 ? got.stdout.trim() : '';
     return url && !url.includes('\0') ? url : null;
-  } catch {
+  } catch (error) {
+    if (error instanceof FactorySafetyError) throw error;
     return null;
   }
+}
+
+/**
+ * factoryClaimRepo through the engine's hardened git (no hooks, no
+ * fsmonitor: hardenedGitExec over the ledger dir's empty hooks dir). The
+ * one origin read for a claim key: the engine and the omg factory run CLI
+ * both use it, over the raw exec.
+ */
+export function trustedFactoryClaimRepo(exec: Exec, root: string, ledgerDir: string): string | null {
+  return factoryClaimRepo(hardenedGitExec(exec, emptyHooksDir(ledgerDir)), root);
 }
 
 /** A path as one spelling: realpath when it exists (junctions, symlinks, 8.3 names), normalized, case-folded only where the filesystem folds case. */
@@ -105,49 +123,94 @@ export interface ClaimHold {
   path: string;
   claim: ClaimRecord | null;
   why: string;
+  /** The claim's checkout is another folder that resolves to this checkout's state root (claimSharesState). */
+  sharedState?: true;
 }
 
 const isClaimRecord = (v: unknown): v is ClaimRecord =>
   typeof v === 'object' && v !== null && typeof (v as ClaimRecord).hostname === 'string' && typeof (v as ClaimRecord).run === 'string' && typeof (v as ClaimRecord).root === 'string'
   && ((v as ClaimRecord).pid === undefined ? typeof (v as ClaimRecord).parkedAt === 'string' : isOwnerRecord(v));
 
-/** A claim's `root`, only when it is a plain absolute, normalized path (it is data from a file, never a path to trust as given). */
-function claimRoot(root: unknown): string | null {
-  if (typeof root !== 'string' || root.length === 0 || root.length > 4096 || /[\0\r\n]/.test(root) || !isAbsolute(root) || resolve(root) !== root) return null;
+/**
+ * A claim's `root`, only when it is a plain local absolute, normalized path
+ * (it is data from a file, never a path to trust as given): no UNC or device
+ * path (`\\server`, `//server`, `\\?\`, `\\.\`), which a stat would reach
+ * over the network, no relative path, no control character. Checked before
+ * anything stats it.
+ */
+export function claimRoot(root: unknown): string | null {
+  if (typeof root !== 'string' || root.length === 0 || root.length > 4096) return null;
+  if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(root) || /^[\\/]{2}/.test(root)) return null;
+  if (!isAbsolute(root) || resolve(root) !== root) return null;
   return root;
 }
 
 /**
- * The phase of the run `key` of the checkout `root` (read-only: the state
- * file's `phase`), null when that checkout has no run state for it, or the
- * reason it cannot be told.
+ * The phase of the run `key` of the checkout `root` as its engine sealed it,
+ * null when that checkout never ran it, or the reason it cannot be told. The
+ * state counts only when its bytes are the engine's last write (its ledger
+ * entry under `ledgerDir`) and its integrity seal holds; a bare `phase` is
+ * never trusted (a lane there could write "merged"). Read-only.
  */
-function runPhase(root: string, key: FactoryRunKey): { phase: FactoryPhase | null } | { unreadable: string } {
+function runPhase(root: string, key: FactoryRunKey, ledgerDir: string): { phase: FactoryPhase | null } | { unreadable: string } {
+  const shown = ownerText(root);
   try {
-    if (!statSync(root).isDirectory()) return { unreadable: `its checkout ${root} is not a directory` };
+    if (!statSync(root).isDirectory()) return { unreadable: `its checkout ${shown} is not a directory` };
   } catch {
-    return { unreadable: `its checkout ${root} is missing` };
+    return { unreadable: `its checkout ${shown} is missing` };
   }
-  let raw: string;
+  const unreadable = (why: string) => ({ unreadable: `the run state in ${shown} is unreadable (${why})` });
+  let path: string;
+  let bytes: Buffer | null;
   try {
-    raw = readFileSync(factoryStatePath(root, key), 'utf8');
+    path = factoryStatePath(root, key);
+    bytes = readFileSync(path);
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'ENOENT' ? { phase: null } : { unreadable: `the run state in ${root} cannot be read` };
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return unreadable('it cannot be read');
+    bytes = null;
   }
+  let ledger: EngineLedger;
   try {
-    const phase = (JSON.parse(raw) as { phase?: unknown }).phase;
-    if (typeof phase === 'string') return { phase: phase as FactoryPhase };
-  } catch { /* below */ }
-  return { unreadable: `the run state in ${root} is unreadable` };
+    ledger = EngineLedger.open(ledgerDir, root, key);
+  } catch {
+    return unreadable('its engine ledger is unreadable');
+  }
+  if (bytes === null) return typeof ledger.recorded(path!) === 'string' ? unreadable('it is gone, though its engine wrote it') : { phase: null };
+  if (!ledger.matches(path!, bytes)) return unreadable('it is not the one its engine wrote');
+  try {
+    const state = parseFactoryState(path!, key, bytes.toString('utf8'));
+    return verifyFactoryIntegrity(state) ? { phase: state.phase } : unreadable('it fails its integrity check');
+  } catch {
+    return unreadable('it does not parse');
+  }
 }
+
+/**
+ * Whether the checkout `other` (a claim's, another folder than `root`)
+ * resolves to the state root of `root`: with OMC_STATE_DIR set, the state
+ * root is keyed by folder name and origin, so two clones with the same
+ * folder name share one state root, lock and run state, and cannot run in
+ * parallel (MEDIUM-C: no behaviour change, a warning).
+ */
+function claimSharesState(other: string, root: string, platform: NodeJS.Platform): boolean {
+  try {
+    return statSync(other).isDirectory() && canonicalPath(factoryStateDir(other), platform) === canonicalPath(factoryStateDir(root), platform);
+  } catch {
+    return false;
+  }
+}
+
+/** The warning a busy message carries when the holder's checkout shares this checkout's state root. */
+export const SHARED_STATE_WARNING = 'WARNING: that checkout shares this checkout\'s state root (with OMC_STATE_DIR set, parallel clones need distinct folder names)';
 
 /**
  * Whether the claim text `raw` holds `key` against the engine of `root`
  * (`deps`): a live owner holds; a parked or dead one holds while its
- * checkout's run is non-terminal, unless that checkout is `root` itself; a
- * file that does not parse holds. Null: free (taken over by the next claim).
+ * checkout's run is non-terminal (runPhase), unless that checkout is `root`
+ * itself; a file that does not parse holds. Null: free (taken over by the
+ * next claim).
  */
-function claimHold(path: string, raw: string, root: string, key: FactoryRunKey, deps: OwnerDeps, platform: NodeJS.Platform): ClaimHold | null {
+function claimHold(path: string, raw: string, root: string, key: FactoryRunKey, ledgerDir: string, deps: OwnerDeps, platform: NodeJS.Platform): ClaimHold | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -156,14 +219,18 @@ function claimHold(path: string, raw: string, root: string, key: FactoryRunKey, 
   }
   if (!isClaimRecord(parsed)) return { state: 'unreadable', path, claim: null, why: `the claim file ${path} is unreadable` };
   const claim = parsed;
-  if (claim.pid !== undefined && ownerHolds(claim as FactoryOwner, deps)) return { state: 'live', path, claim, why: `claimed by a live engine (${describeOwner(claim)})` };
   const other = claimRoot(claim.root);
+  const here = other !== null && canonicalPath(other, platform) === canonicalPath(root, platform);
+  const shared = other !== null && !here && claimSharesState(other, root, platform);
+  const held = (state: ClaimHold['state'], why: string): ClaimHold =>
+    ({ state, path, claim, why: shared ? `${why}; ${SHARED_STATE_WARNING}` : why, ...(shared ? { sharedState: true as const } : {}) });
+  if (claim.pid !== undefined && ownerHolds(claim as FactoryOwner, deps)) return held('live', `claimed by a live engine (${describeOwner(claim)})`);
   if (other === null) return { state: 'unreadable', path, claim, why: `the claim file ${path} names no usable checkout` };
-  if (canonicalPath(other, platform) === canonicalPath(root, platform)) return null;
-  const phase = runPhase(other, key);
-  if ('unreadable' in phase) return { state: 'unreadable', path, claim, why: `claimed (${describeOwner(claim)}), and ${phase.unreadable}` };
+  if (here) return null;
+  const phase = runPhase(other, key, ledgerDir);
+  if ('unreadable' in phase) return held('unreadable', `claimed (${describeOwner(claim)}), and ${phase.unreadable}`);
   if (phase.phase === null || TERMINAL_FACTORY_PHASES.includes(phase.phase)) return null;
-  return { state: 'parked', path, claim, why: `claimed by a run parked at ${phase.phase} (${describeOwner(claim)})` };
+  return held('parked', `claimed by a run parked at ${phase.phase} (${describeOwner(claim)})`);
 }
 
 /** The claim holding `key` against the engine of `root`, or null (read-only; acquireFactoryClaim stays the binding check). */
@@ -175,7 +242,7 @@ export function factoryClaimHolder(ledgerDir: string, repoUrl: string, root: str
   } catch {
     return null;
   }
-  return claimHold(path, raw, resolve(root), key, deps, platform);
+  return claimHold(path, raw, resolve(root), key, ledgerDir, deps, platform);
 }
 
 /** The busy message of a held claim; it names the claim file and how a human clears a claim nobody holds. */
@@ -196,33 +263,51 @@ export function acquireFactoryClaim(ledgerDir: string, repoUrl: string, root: st
   const path = factoryClaimPath(ledgerDir, repoUrl, root, key);
   const me = resolve(root);
   ensureDirSync(join(path, '..'));
-  const tookOver = withFileLockSync(lockPathFor(path), () => {
+  // This process's own start identity is read (once, cached) before the file lock: no spawn of ours while holding it.
+  const record = `${JSON.stringify(ownerRecord(now, deps, { run: String(key), root: me }))}\n`;
+  const tookOver = withOwnerFileLock(path, () => {
     let prior: ClaimRecord | undefined;
     if (existsSync(path)) {
       const raw = readFileSync(path, 'utf8');
-      const hold = claimHold(path, raw, me, key, deps, platform);
+      const hold = claimHold(path, raw, me, key, ledgerDir, deps, platform);
       if (hold) throw new FactoryBusyError(claimBusyMessage(key, hold));
       try { prior = JSON.parse(raw) as ClaimRecord; } catch { /* claimHold read it */ }
     }
-    writeFileSync(path, `${JSON.stringify(ownerRecord(now, deps, { run: String(key), root: me }))}\n`, 'utf8');
+    atomicWriteFileSync(path, record);
     return prior;
-  }, { timeoutMs: 5_000 });
+  });
   const whileMine = (fn: (claim: FactoryOwner) => void) => {
     try {
-      withFileLockSync(lockPathFor(path), () => {
+      withOwnerFileLock(path, () => {
         const claim: unknown = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null;
         if (isOwnerRecord(claim) && claim.pid === deps.pid && claim.hostname === deps.hostname) fn(claim);
-      }, { timeoutMs: 5_000 });
+      });
     } catch { /* a claim left behind is judged by its checkout's run state */ }
   };
   return {
     release: () => whileMine(() => unlinkSync(path)),
     park: (at) => whileMine((claim) => {
       const parked: ClaimRecord = { hostname: claim.hostname, startedAt: claim.startedAt, ...(claim.run ? { run: claim.run } : {}), ...(claim.root ? { root: claim.root } : {}), parkedAt: at };
-      writeFileSync(path, `${JSON.stringify(parked)}\n`, 'utf8');
+      atomicWriteFileSync(path, `${JSON.stringify(parked)}\n`);
     }),
     ...(tookOver ? { tookOver } : {}),
   };
+}
+
+/**
+ * The engine's end of a run: a terminal phase or a run that never started
+ * (no state) releases the claim; any other phase parks it, and so does a
+ * state that cannot be read (`phase` throws), which may hide a run in flight.
+ */
+export function settleFactoryClaim(claim: HeldClaim, phase: () => FactoryPhase | null, at: string): 'released' | 'parked' {
+  let terminal = false;
+  try {
+    const p = phase();
+    terminal = p === null || TERMINAL_FACTORY_PHASES.includes(p);
+  } catch { /* unreadable: parked, never released */ }
+  if (terminal) claim.release();
+  else claim.park(at);
+  return terminal ? 'released' : 'parked';
 }
 
 /**
@@ -236,7 +321,7 @@ export function removeFactoryClaim(ledgerDir: string, repoUrl: string, root: str
   if (!existsSync(path)) return null;
   const deps = o.deps ?? defaultOwnerDeps();
   const platform = o.platform ?? process.platform;
-  return withFileLockSync(lockPathFor(path), () => {
+  return withOwnerFileLock(path, () => {
     if (!existsSync(path)) return null;
     let claim: unknown;
     try { claim = JSON.parse(readFileSync(path, 'utf8')); } catch { claim = undefined; }
@@ -249,13 +334,13 @@ export function removeFactoryClaim(ledgerDir: string, repoUrl: string, root: str
     }
     unlinkSync(path);
     return path;
-  }, { timeoutMs: 5_000 });
+  });
 }
 
 const CLAIM_FILE = /^run-(\d+|heal-[0-9a-f]{8})\.owner$/;
 
 /** A claim `run status` lists: one that holds against this checkout, or this checkout's own (`here`: its run resumes it). */
-export type ListedClaim = { key: FactoryRunKey; state: ClaimHold['state'] | 'here'; path: string; claim: ClaimRecord | null };
+export type ListedClaim = { key: FactoryRunKey; state: ClaimHold['state'] | 'here'; path: string; claim: ClaimRecord | null; sharedState?: true };
 
 /** Every claim of the repository that holds against the engine of `root`, and `root`'s own; a free one is left out (read-only). */
 export function listFactoryClaims(ledgerDir: string, repoUrl: string, root: string, deps: OwnerDeps = defaultOwnerDeps(), platform: NodeJS.Platform = process.platform): ListedClaim[] {
@@ -270,9 +355,9 @@ export function listFactoryClaims(ledgerDir: string, repoUrl: string, root: stri
     const path = join(dir, name);
     let raw: string;
     try { raw = readFileSync(path, 'utf8'); } catch { continue; }
-    const hold = claimHold(path, raw, resolve(root), key, deps, platform);
+    const hold = claimHold(path, raw, resolve(root), key, ledgerDir, deps, platform);
     if (hold) {
-      listed.push({ key, state: hold.state, path, claim: hold.claim });
+      listed.push({ key, state: hold.state, path, claim: hold.claim, ...(hold.sharedState ? { sharedState: true as const } : {}) });
       continue;
     }
     let claim: unknown;

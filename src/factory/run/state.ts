@@ -21,9 +21,9 @@
 import { createHash } from 'crypto';
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { hostname } from 'os';
-import { dirname, join } from 'path';
+import { dirname, join, resolve } from 'path';
 import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
-import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
+import { acquireFileLockSync, lockPathFor, releaseFileLockSync, withFileLockSync } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { getProcessStartIdentitySync, isProcessAlive } from '../../platform/process-utils.js';
 import { stripAnsi } from '../../utils/string-width.js';
@@ -605,13 +605,32 @@ export function acquireFactoryOwner(root: string, key: FactoryRunKey, now: strin
  * like acquireFactoryOwner: a second engine on the same repository refuses
  * instead of tripping the first one's shared git state checks. `next`:
  * `omg factory run --next` before it picked an item (then relabel()).
+ * `scan`: a step that fetches or moves refs without starting a run (the
+ * poller's heal tick and local base sync, `omg factory heal scan`).
  */
-export function acquireFactoryRepoOwner(root: string, key: FactoryRunKey | 'next', now: string, deps: OwnerDeps = defaultOwnerDeps()): HeldOwner {
-  return claimOwner(factoryRepoOwnerPath(root), now, deps, (prior) => engineBusyMessage(prior, String(key)), { run: String(key) });
+export function acquireFactoryRepoOwner(root: string, key: FactoryRunKey | 'next' | 'scan', now: string, deps: OwnerDeps = defaultOwnerDeps()): HeldOwner {
+  return claimOwner(factoryRepoOwnerPath(root), now, deps, (prior) => engineBusyMessage(prior, root, String(key)), { run: String(key), root: resolve(root) });
 }
 
-const engineBusyMessage = (prior: Partial<FactoryOwner>, key?: string): string =>
-  `another omg factory engine runs in this repository (${describeOwner(prior)}); one engine runs per checkout at a time${key === 'next' ? ', so run --next after it ends' : key ? `, so start ${ownerText(key)} after it ends` : ''} (parallel runs need separate clones)`;
+/**
+ * True when the engine lock of `root` was taken from another folder (its
+ * recorded `root`): that folder resolves to this checkout's state root (a
+ * linked worktree, or with OMC_STATE_DIR set a clone with the same folder
+ * name and origin), so the two cannot run in parallel.
+ */
+export function ownerFromOtherCheckout(prior: Pick<FactoryOwner, 'root'>, root: string, platform: NodeJS.Platform = process.platform): boolean {
+  if (typeof prior.root !== 'string') return false;
+  const fold = (p: string) => (platform === 'win32' || platform === 'darwin' ? resolve(p).toLowerCase() : resolve(p));
+  return fold(prior.root) !== fold(root);
+}
+
+const engineBusyMessage = (prior: Partial<FactoryOwner>, root: string, key?: string): string =>
+  engineBusyText(prior, key) + (ownerFromOtherCheckout(prior, root)
+    ? '; WARNING: that engine runs in another folder that shares this checkout\'s state root (a linked worktree, or with OMC_STATE_DIR set a clone with the same folder name: parallel clones need distinct folder names)'
+    : '');
+
+const engineBusyText = (prior: Partial<FactoryOwner>, key?: string): string =>
+  `another omg factory engine runs in this repository (${describeOwner(prior)}); one engine runs per checkout at a time${key === 'next' ? ', so run --next after it ends' : key === 'scan' ? ', so retry after it ends' : key ? `, so start ${ownerText(key)} after it ends` : ''} (parallel runs need separate clones)`;
 
 /** The one rule for an owner or claim file that does not parse: it is held (never taken over, never "not busy") until a human removes it. */
 export const unreadableOwnerMessage = (path: string): string =>
@@ -626,7 +645,7 @@ export function refuseWhileEngineRuns(root: string, deps: OwnerDeps = defaultOwn
   const path = factoryRepoOwnerPath(root);
   const h = ownerHolding(path, deps);
   if (h === 'unreadable') throw new FactoryBusyError(unreadableOwnerMessage(path));
-  if (h) throw new FactoryBusyError(engineBusyMessage(h));
+  if (h) throw new FactoryBusyError(engineBusyMessage(h, root));
 }
 
 /**
@@ -675,6 +694,22 @@ export function ownerHolding(path: string, deps: OwnerDeps = defaultOwnerDeps())
 }
 
 /**
+ * Run `fn` under the file lock of an owner or claim file. A contender that
+ * cannot take that lock in time (another engine holds it, maybe while it
+ * reads a start identity) is busy (FactoryBusyError, exit 6), not an error.
+ */
+export function withOwnerFileLock<T>(path: string, fn: () => T): T {
+  const lock = lockPathFor(path);
+  const handle = acquireFileLockSync(lock, { timeoutMs: 5_000 });
+  if (!handle) throw new FactoryBusyError(`another omg factory process holds the lock file ${lock}; retry in a moment`);
+  try {
+    return fn();
+  } finally {
+    releaseFileLockSync(handle);
+  }
+}
+
+/**
  * Claim an owner file: a live owner (or one on another host, whose pid
  * cannot be checked) refuses with a FactoryBusyError, and so does a file
  * that does not parse (unreadableOwnerMessage); a dead pid on this host is
@@ -682,7 +717,9 @@ export function ownerHolding(path: string, deps: OwnerDeps = defaultOwnerDeps())
  */
 export function claimOwner(path: string, now: string, deps: OwnerDeps, busy: (prior: FactoryOwner) => string, fields: Pick<FactoryOwner, 'run' | 'root'> = {}): HeldOwner {
   ensureDirSync(dirname(path));
-  const tookOver = withFileLockSync(lockPathFor(path), () => {
+  // This process's own start identity is read (once, cached) before the file lock: no spawn of ours while holding it.
+  const record = `${JSON.stringify(ownerRecord(now, deps, fields))}\n`;
+  const tookOver = withOwnerFileLock(path, () => {
     let prior: FactoryOwner | undefined;
     if (existsSync(path)) {
       let parsed: unknown;
@@ -695,18 +732,18 @@ export function claimOwner(path: string, now: string, deps: OwnerDeps, busy: (pr
       prior = parsed;
       if (ownerHolds(prior, deps)) throw new FactoryBusyError(busy(prior));
     }
-    writeFileSync(path, `${JSON.stringify(ownerRecord(now, deps, fields))}\n`, 'utf8');
+    atomicWriteFileSync(path, record);
     return prior;
-  }, { timeoutMs: 5_000 });
+  });
   const whileMine = (fn: (owner: FactoryOwner) => void) => {
     try {
-      withFileLockSync(lockPathFor(path), () => {
+      withOwnerFileLock(path, () => {
         const owner: unknown = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null;
         if (isOwnerRecord(owner) && owner.pid === deps.pid && owner.hostname === deps.hostname) fn(owner);
-      }, { timeoutMs: 5_000 });
+      });
     } catch { /* a stale owner file is taken over by the next run */ }
   };
   const release = () => whileMine(() => unlinkSync(path));
-  const relabel = (run: string) => whileMine((owner) => writeFileSync(path, `${JSON.stringify({ ...owner, run })}\n`, 'utf8'));
+  const relabel = (run: string) => whileMine((owner) => atomicWriteFileSync(path, `${JSON.stringify({ ...owner, run })}\n`));
   return { release, relabel, ...(tookOver ? { tookOver } : {}) };
 }
