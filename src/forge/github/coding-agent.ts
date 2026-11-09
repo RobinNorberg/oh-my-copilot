@@ -13,7 +13,8 @@
  * - status (READ): `gh api graphql` with CODING_AGENT_STATUS_QUERY: whether the
  *   agent is assignable, its assignment on the issue, the pull requests it
  *   linked to the issue, its review requests (its finish signal) and each
- *   PR's head commit. Passes with the repository-only GithubReadContext.
+ *   PR's commits (oid, date, author account). Passes with the
+ *   repository-only GithubReadContext.
  * - close (WRITE): `gh pr close <n> --repo <HOST/OWNER/NAME>`, for the agent's
  *   PR once the engine rebranched it (decision D5). Passes only with a
  *   CodingAgentContext whose `pr` is that number.
@@ -23,6 +24,12 @@
  * Who acted comes from GitHub's event actors and the PR author (`__typename`
  * Bot and the agent login), never from text. GitHub documents no stable bot
  * id, so the identity is not pinned by databaseId or node id.
+ *
+ * Commit authorship is advisory only: GitHub maps a commit to an account by
+ * its author email, which whoever pushes sets freely (the agent's noreply
+ * address can be spoofed). A commit list that is not all the agent's refuses
+ * adoption; an all-agent list proves nothing more, and the engine (L6b) still
+ * treats the adopted diff as untrusted lane output.
  */
 
 import type { Exec } from '../../ship/exec.js';
@@ -33,14 +40,22 @@ export const CODING_AGENT_LOGIN = 'copilot-swe-agent';
 /** The agent's login in the REST assignees body. */
 export const CODING_AGENT_REST_ASSIGNEE = 'copilot-swe-agent[bot]';
 /**
- * How far before `since` the status window starts: GitHub times are whole
- * seconds and its clock is not ours, so an assignment a little "before" the
- * caller's local `since` still counts.
+ * The account GitHub maps the agent's commits to (`Commit.author.user`; the
+ * issue `assignees` list shows the same account as `User "Copilot"`).
+ * Advisory: see the module comment.
+ */
+export const CODING_AGENT_COMMIT_LOGIN = 'Copilot';
+/**
+ * How far before a LOCAL `since` the status window starts: GitHub times are
+ * whole seconds and its clock is not ours, so an assignment a little "before"
+ * the caller's local `since` still counts. A GitHub `since` gets no margin.
  */
 export const CODING_AGENT_SINCE_SKEW_SECONDS = 120;
+/** The most PR commits one read sees; more make the read `truncated`. */
+const PR_COMMITS = 100;
 
 const PR_FIELDS = 'number state isDraft isCrossRepository baseRefName headRefName headRefOid author{__typename login}'
-  + ' baseRepository{nameWithOwner} headRepository{nameWithOwner} commits(last:1){nodes{commit{oid committedDate}}}'
+  + ` baseRepository{nameWithOwner} headRepository{nameWithOwner} commits(last:${PR_COMMITS}){pageInfo{hasPreviousPage} nodes{commit{oid committedDate author{user{login}}}}}`
   + ' timelineItems(last:50,since:$since,itemTypes:[REVIEW_REQUESTED_EVENT]){pageInfo{hasPreviousPage} nodes{__typename ... on ReviewRequestedEvent{createdAt actor{__typename login}}}}';
 
 /**
@@ -51,7 +66,7 @@ const PR_FIELDS = 'number state isDraft isCrossRepository baseRefName headRefNam
  */
 export const CODING_AGENT_STATUS_QUERY = 'query($owner:String!,$name:String!,$number:Int!,$since:DateTime!){repository(owner:$owner,name:$name){nameWithOwner'
   + ' suggestedActors(capabilities:[CAN_BE_ASSIGNED],first:100){pageInfo{hasNextPage} nodes{__typename login}}'
-  + ' issue(number:$number){state timelineItems(last:100,since:$since,itemTypes:[ASSIGNED_EVENT,UNASSIGNED_EVENT,CONNECTED_EVENT,CROSS_REFERENCED_EVENT]){pageInfo{hasPreviousPage} nodes{__typename'
+  + ' issue(number:$number){number state timelineItems(last:100,since:$since,itemTypes:[ASSIGNED_EVENT,UNASSIGNED_EVENT,CONNECTED_EVENT,CROSS_REFERENCED_EVENT]){pageInfo{hasPreviousPage} nodes{__typename'
   + ' ... on AssignedEvent{createdAt assignee{__typename ... on Bot{login}}}'
   + ' ... on UnassignedEvent{createdAt assignee{__typename ... on Bot{login}}}'
   + ' ... on ConnectedEvent{createdAt actor{__typename login} subject{__typename ...P}}'
@@ -104,17 +119,42 @@ function checkNumber(n: number, what: string): void {
   if (!Number.isSafeInteger(n) || !NUMBER.test(String(n))) throw new Error(`coding agent ${what}: #${n} is not an issue or PR number`);
 }
 
-const isTime = (s: string): boolean => ISO.test(s) && !Number.isNaN(Date.parse(s));
+/** An ISO UTC time that names a real calendar instant (2026-02-30 is refused: it must survive a toISOString round trip). */
+const isTime = (s: string): boolean => {
+  if (!ISO.test(s)) return false;
+  const ms = Date.parse(s);
+  return !Number.isNaN(ms) && new Date(ms).toISOString().slice(0, 19) === s.slice(0, 19);
+};
 
 /**
- * The start of the status window for `since`: floored to the whole second,
- * minus CODING_AGENT_SINCE_SKEW_SECONDS. The query's `since` and the parser
- * use the same value.
+ * Where the status window starts, and whose clock said so:
+ * - `local`: the engine's own clock just before the assign. The read keeps
+ *   events from CODING_AGENT_SINCE_SKEW_SECONDS before it (codingAgentWindowStart).
+ * - `github`: a GitHub time, the `assignedAt` of a previous read of this
+ *   session. Used exactly: nothing before it counts, so the window never steps back.
+ */
+export interface CodingAgentSince {
+  at: string;
+  source: 'local' | 'github';
+}
+
+/**
+ * The query's window start for a `since` time: floored to the whole second,
+ * minus CODING_AGENT_SINCE_SKEW_SECONDS, whatever its source (the parser cuts a
+ * `github` since exactly; the query may return more).
  */
 export function codingAgentWindowStart(since: string): string {
   if (!isTime(since)) throw new Error(`coding agent status: since ${JSON.stringify(since)} is not an ISO time`);
   const ms = Math.floor(Date.parse(since) / 1000) * 1000 - CODING_AGENT_SINCE_SKEW_SECONDS * 1000;
   return new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
+/** The earliest GitHub time the parser counts for `since`. */
+function sinceCutoff(since: CodingAgentSince): string {
+  if (since.source === 'local') return codingAgentWindowStart(since.at);
+  if (since.source !== 'github') throw new Error(`coding agent status: since source ${JSON.stringify(since.source)} is neither local nor github`);
+  if (!isTime(since.at)) throw new Error(`coding agent status: since ${JSON.stringify(since.at)} is not an ISO time`);
+  return since.at;
 }
 
 /** `gh` argv that assigns `issue` to the agent, branching from `base`. Throws on values the guard would refuse. */
@@ -126,12 +166,13 @@ export function codingAgentAssignArgs(repo: CodingAgentRepo, issue: number, base
     '-f', `assignees[]=${CODING_AGENT_REST_ASSIGNEE}`, '-f', `agent_assignment[base_branch]=${base}`];
 }
 
-/** `gh` argv of the status read for `issue`, from the window start of `since`. */
-export function codingAgentStatusArgs(repo: CodingAgentRepo, issue: number, since: string): string[] {
+/** `gh` argv of the status read for `issue`, from the window start of `since` (always widened by the skew margin). */
+export function codingAgentStatusArgs(repo: CodingAgentRepo, issue: number, since: CodingAgentSince): string[] {
   checkRepo(repo, 'status');
   checkNumber(issue, 'status');
+  sinceCutoff(since);
   return ['api', 'graphql', '--hostname', repo.host, '-f', `query=${CODING_AGENT_STATUS_QUERY}`, '-f', `owner=${repo.owner}`, '-f', `name=${repo.name}`,
-    '-F', `number=${issue}`, '-f', `since=${codingAgentWindowStart(since)}`];
+    '-F', `number=${issue}`, '-f', `since=${codingAgentWindowStart(since.at)}`];
 }
 
 /** `gh` argv that closes the agent's PR `pr` (after the engine rebranched it). */
@@ -183,7 +224,7 @@ export function isCodingAgentStatusArgs(args: readonly string[], repoArg: string
     && args[6] === '-f' && NAME.test(o) && lower(o) === lower(repo.owner)
     && args[8] === '-f' && NAME.test(n) && lower(n) === lower(repo.name)
     && args[10] === '-F' && NUMBER.test(value(args[11], 'number'))
-    && args[12] === '-f' && ISO_SECONDS.test(since) && !Number.isNaN(Date.parse(since));
+    && args[12] === '-f' && ISO_SECONDS.test(since) && isTime(since);
 }
 
 /** The guard clause for the close: exactly codingAgentCloseArgs(ctx.repo, ctx.pr). Without a context naming the PR it is refused. */
@@ -205,50 +246,72 @@ export interface CodingAgentPr {
   sameRepo: boolean;
   baseRef?: string;
   headRef?: string;
-  /** The head commit, when GitHub reported a 40-hex sha. */
+  /** The head commit (headRefOid), when GitHub reported a 40-hex sha. */
   head?: string;
-  /** The head commit's committedDate, when the read's last commit is that head. */
+  /**
+   * The newest commit in the PR's commit list, when a 40-hex sha. When it is
+   * not `head`, the read does not show the head commit: `finished` is never
+   * reported and adoptPreconditions refuses.
+   */
+  commitsHead?: string;
+  /** The head commit's committedDate, when the newest listed commit is that head. */
   headCommittedAt?: string;
-  /** When the agent linked it to the issue (the newest linking event). */
+  /**
+   * Every commit on the PR (all of them, not only those dated after session
+   * start: committedDate is set by whoever commits) is mapped to the agent's
+   * account (CODING_AGENT_COMMIT_LOGIN). Undefined when the list was cut, is
+   * empty, or a commit is unreadable. Advisory: see the module comment.
+   */
+  allCommitsByAgent?: boolean;
+  /** When the agent linked it to the issue (the newest linking event in the session). */
   linkedAt: string;
-  /** The agent's newest review request on the PR in the window (its "work finished" signal). */
+  /** The agent's newest review request on the PR at or after session start (its "work finished" signal). */
   finishedAt?: string;
-  /** The PR's review-request list in the window was cut. */
-  truncated: boolean;
+  /** Which of the PR's lists GitHub cut, or false. */
+  truncated: false | 'review-requests' | 'commits';
 }
 
 /**
- * The agent's state on one issue:
+ * The agent's state on one issue, for its CURRENT assignment (the session):
  * - `unavailable`: the agent is not assignable in the repository (not enabled, or no Copilot plan);
- * - `not-assigned`: assignable, but not assigned in the window;
- * - `waiting-pr`: assigned, no pull request of its own linked yet;
+ * - `not-assigned`: assignable, but not assigned in the window, or unassigned after its newest assignment;
+ * - `waiting-pr`: assigned, no pull request of its own linked in this session yet;
  * - `working`: its PR is open and it has not requested a review since its newest commit;
  * - `finished`: its PR is open and its newest review request is at or after the head commit (adoptPreconditions decides what follows);
  * - `closed`: its PR was closed or merged before the engine adopted it;
- * - `ambiguous`: it linked more than one open PR of its own in the window (no `pr` is set);
+ * - `ambiguous`: it linked more than one open PR of its own in this session (no `pr` is set);
  * - `truncated`: a list GitHub returned was cut, so the read proves nothing (fail closed: no `pr`;
- *   do not re-assign, do not adopt; count the session if the assign POST returned 2xx).
+ *   do not re-assign, do not adopt; count the session if the assign POST returned 2xx). `truncation` names the list.
  */
 export type CodingAgentPhase = 'unavailable' | 'not-assigned' | 'waiting-pr' | 'working' | 'finished' | 'closed' | 'ambiguous' | 'truncated';
+
+/** Why an agent-linked PR is not a candidate. */
+export type CodingAgentIgnoreReason = 'not-agent-author' | 'cross-repository' | 'outside-session';
 
 export interface CodingAgentStatus {
   phase: CodingAgentPhase;
   /** `OWNER/NAME` of the repository GitHub answered for (its nameWithOwner). */
   repo: string;
+  /** The issue number GitHub answered for. */
+  issue: number;
   /** The agent is in the repository's assignable actors. */
   available: boolean;
   /**
-   * GitHub's own time of the agent's FIRST assignment in the window, while it
-   * is not unassigned after its newest one. L6b stores this value as `since`
-   * for every later status read of the session (GitHub's clock, not ours).
+   * GitHub's own time of the session start: the first agent assignment after
+   * the newest agent unassignment that precedes its newest assignment (the
+   * start of the current assignment streak). Absent when the agent is not
+   * assigned. L6b stores the first confirmed value as `since` with source
+   * `github` for every later read of the session, never refreshing it.
    */
   assignedAt?: string;
-  /** The PR the phase is about (the newest the agent linked); absent for unavailable, not-assigned, waiting-pr, ambiguous and truncated. */
+  /** The PR the phase is about (the newest the agent linked in this session); absent for unavailable, not-assigned, waiting-pr, ambiguous and truncated. */
   pr?: CodingAgentPr;
-  /** Distinct PRs the agent linked in the window that it authored in this repository. */
+  /** Distinct PRs the agent linked in this session that it authored in this repository. */
   candidates: number[];
-  /** PRs an agent event linked that the agent did not author, or that are cross-repository: never adopted or closed. */
-  ignored: number[];
+  /** PRs an agent event linked that are never adopted or closed, with the first reason seen. */
+  ignored: Array<{ number: number; reason: CodingAgentIgnoreReason }>;
+  /** For `truncated`: which list GitHub cut, on which issue (and PR), so a park message can name it. */
+  truncation?: { list: 'issue-timeline' | 'assignable-actors' | 'review-requests' | 'commits'; issue: number; pr?: number };
 }
 
 type Obj = Record<string, unknown>;
@@ -263,10 +326,12 @@ const time = (v: unknown): string | undefined => {
 };
 /** The value is the agent itself: a Bot with the agent login (a User of that name never counts). */
 const isAgent = (v: unknown): boolean => isObj(v) && v.__typename === 'Bot' && v.login === CODING_AGENT_LOGIN;
+/** A commit GitHub maps to the agent's account (advisory). */
+const isAgentCommit = (c: Obj): boolean => isObj(c.author) && isObj(c.author.user) && c.author.user.login === CODING_AGENT_COMMIT_LOGIN;
 const atOrAfter = (at: string, from: string | undefined): boolean => from === undefined || Date.parse(at) >= Date.parse(from);
 const STATES: ReadonlySet<string> = new Set(['OPEN', 'CLOSED', 'MERGED']);
 
-function readPr(v: unknown, repoName: string, linkedAt: string, from: string | undefined): CodingAgentPr | undefined {
+function readPr(v: unknown, repoName: string, linkedAt: string, sessionStart: string | undefined): CodingAgentPr | undefined {
   if (!isObj(v) || v.__typename !== 'PullRequest') return undefined;
   const number = typeof v.number === 'number' && Number.isSafeInteger(v.number) && v.number > 0 ? v.number : undefined;
   const state = str(v.state);
@@ -280,13 +345,18 @@ function readPr(v: unknown, repoName: string, linkedAt: string, from: string | u
   const headRef = str(v.headRefName);
   const headOid = str(v.headRefOid);
   const head = headOid && HEX40.test(headOid) ? headOid : undefined;
-  const last = nodes(v.commits)[0];
-  const commit = last && isObj(last.commit) ? last.commit : undefined;
-  const headCommittedAt = head && commit && commit.oid === head ? time(commit.committedDate) : undefined;
+  const commitsCut = cut(v.commits, 'hasPreviousPage');
+  const commits = nodes(v.commits).map((n) => (isObj(n.commit) ? n.commit : undefined));
+  const readable = commits.length > 0 && commits.every((c) => c !== undefined && typeof c.oid === 'string' && HEX40.test(c.oid));
+  const newest = commits[commits.length - 1];
+  const newestOid = newest ? str(newest.oid) : undefined;
+  const commitsHead = newestOid && HEX40.test(newestOid) ? newestOid : undefined;
+  const headCommittedAt = head && commitsHead === head && newest ? time(newest.committedDate) : undefined;
+  const allCommitsByAgent = commitsCut || !readable ? undefined : commits.every((c) => c !== undefined && isAgentCommit(c));
   let finishedAt: string | undefined;
   for (const e of nodes(v.timelineItems)) {
     const at = time(e.createdAt);
-    if (e.__typename !== 'ReviewRequestedEvent' || !at || !isAgent(e.actor) || !atOrAfter(at, from)) continue;
+    if (e.__typename !== 'ReviewRequestedEvent' || !at || !isAgent(e.actor) || !atOrAfter(at, sessionStart)) continue;
     if (!finishedAt || Date.parse(at) > Date.parse(finishedAt)) finishedAt = at;
   }
   return {
@@ -294,9 +364,11 @@ function readPr(v: unknown, repoName: string, linkedAt: string, from: string | u
     ...(baseRef && isBranch(baseRef) ? { baseRef } : {}),
     ...(headRef && isBranch(headRef) ? { headRef } : {}),
     ...(head ? { head } : {}),
+    ...(commitsHead ? { commitsHead } : {}),
     ...(headCommittedAt ? { headCommittedAt } : {}),
+    ...(allCommitsByAgent !== undefined ? { allCommitsByAgent } : {}),
     linkedAt, ...(finishedAt ? { finishedAt } : {}),
-    truncated: cut(v.timelineItems, 'hasPreviousPage'),
+    truncated: cut(v.timelineItems, 'hasPreviousPage') ? 'review-requests' : commitsCut ? 'commits' : false,
   };
 }
 
@@ -322,15 +394,17 @@ function plainMessage(s: string): string {
 
 /**
  * The agent's state in one status response (stdout of codingAgentStatusArgs).
- * `since` (ISO time: the engine's local time just before the assign, or
- * better a previous read's `assignedAt`) sets the window
- * (codingAgentWindowStart): older sessions, their linked PRs and review
- * requests drop out. Only events whose actor is the agent link a PR, and only
- * PRs the agent authored in this repository become candidates. Throws when
- * the response has no repository or issue.
+ * `since` cuts the window (CodingAgentSince): a `local` time keeps events from
+ * the skew margin before it, a `github` time (a previous read's `assignedAt`)
+ * keeps nothing before it. Within the window the session is the current
+ * assignment streak (`assignedAt`); only agent links and agent review requests
+ * at or after its start count, earlier links go to `ignored`. Only events
+ * whose actor is the agent link a PR, and only PRs the agent authored in this
+ * repository become candidates. Throws when the response has no repository
+ * or issue.
  */
-export function parseCodingAgentStatus(stdout: string, since?: string): CodingAgentStatus {
-  const from = since === undefined ? undefined : codingAgentWindowStart(since);
+export function parseCodingAgentStatus(stdout: string, since?: CodingAgentSince): CodingAgentStatus {
+  const from = since === undefined ? undefined : sinceCutoff(since);
   let json: unknown;
   try {
     json = JSON.parse(stdout);
@@ -341,51 +415,57 @@ export function parseCodingAgentStatus(stdout: string, since?: string): CodingAg
   const repo = isObj(data.repository) ? data.repository : undefined;
   const issue = repo && isObj(repo.issue) ? repo.issue : undefined;
   const repoName = repo ? str(repo.nameWithOwner) : undefined;
-  if (!repo || !issue || !repoName) {
+  const issueNumber = issue && typeof issue.number === 'number' && Number.isSafeInteger(issue.number) && issue.number > 0 ? issue.number : undefined;
+  if (!repo || !issue || !repoName || issueNumber === undefined) {
     const first = isObj(json) && Array.isArray(json.errors) && isObj(json.errors[0]) ? str(json.errors[0].message) : undefined;
     throw new Error(`coding agent status: no issue in the response${first ? ` (${plainMessage(first)})` : ''}`);
   }
 
   const available = nodes(repo.suggestedActors).some(isAgent);
-  let firstAssignedAt: string | undefined;
-  let lastAssignedAt: string | undefined;
-  let unassignedAt: string | undefined;
-  const linked = new Map<number, CodingAgentPr>();
-  const ignored = new Set<number>();
-  for (const e of nodes(issue.timelineItems)) {
-    const at = time(e.createdAt);
-    if (!at || !atOrAfter(at, from)) continue;
-    if (e.__typename === 'AssignedEvent' && isAgent(e.assignee)) {
-      if (!firstAssignedAt || Date.parse(at) < Date.parse(firstAssignedAt)) firstAssignedAt = at;
-      if (!lastAssignedAt || Date.parse(at) >= Date.parse(lastAssignedAt)) lastAssignedAt = at;
-    } else if (e.__typename === 'UnassignedEvent' && isAgent(e.assignee)) {
-      if (!unassignedAt || Date.parse(at) >= Date.parse(unassignedAt)) unassignedAt = at;
-    } else if ((e.__typename === 'ConnectedEvent' || e.__typename === 'CrossReferencedEvent') && isAgent(e.actor)) {
-      const pr = readPr(e.__typename === 'ConnectedEvent' ? e.subject : e.source, repoName, at, from);
-      if (!pr) continue;
-      if (!pr.byAgent || !pr.sameRepo) {
-        ignored.add(pr.number);
-        continue;
-      }
-      const seen = linked.get(pr.number);
-      if (!seen || Date.parse(at) > Date.parse(seen.linkedAt)) linked.set(pr.number, pr);
-    }
+  // Chronological, ties in GitHub's timeline order.
+  const events = nodes(issue.timelineItems)
+    .map((e, i) => ({ e, i, at: time(e.createdAt) }))
+    .filter((x): x is { e: Obj; i: number; at: string } => x.at !== undefined && atOrAfter(x.at, from))
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.i - b.i);
+  // The session: the start of the current agent assignment streak; an unassignment ends a streak.
+  let sessionStart: string | undefined;
+  for (const { e, at } of events) {
+    if (e.__typename === 'AssignedEvent' && isAgent(e.assignee)) sessionStart ??= at;
+    else if (e.__typename === 'UnassignedEvent' && isAgent(e.assignee)) sessionStart = undefined;
   }
-  const assigned = lastAssignedAt !== undefined && !(unassignedAt && Date.parse(unassignedAt) > Date.parse(lastAssignedAt));
+  const assigned = sessionStart !== undefined;
+
+  const linked = new Map<number, CodingAgentPr>();
+  const ignored = new Map<number, CodingAgentIgnoreReason>();
+  for (const { e, at } of events) {
+    if ((e.__typename !== 'ConnectedEvent' && e.__typename !== 'CrossReferencedEvent') || !isAgent(e.actor)) continue;
+    const pr = readPr(e.__typename === 'ConnectedEvent' ? e.subject : e.source, repoName, at, sessionStart);
+    if (!pr) continue;
+    const reason: CodingAgentIgnoreReason | undefined = !pr.byAgent ? 'not-agent-author' : !pr.sameRepo ? 'cross-repository'
+      : !assigned || !atOrAfter(at, sessionStart) ? 'outside-session' : undefined;
+    if (reason) {
+      if (!ignored.has(pr.number)) ignored.set(pr.number, reason);
+      continue;
+    }
+    const seen = linked.get(pr.number);
+    if (!seen || Date.parse(at) >= Date.parse(seen.linkedAt)) linked.set(pr.number, pr);
+  }
 
   const prs = [...linked.values()].sort((a, b) => Date.parse(b.linkedAt) - Date.parse(a.linkedAt) || b.number - a.number);
-  const candidates = prs.map((p) => p.number);
   const base = {
-    repo: repoName, available, ...(assigned && firstAssignedAt ? { assignedAt: firstAssignedAt } : {}),
-    candidates, ignored: [...ignored].filter((n) => !linked.has(n)).sort((a, b) => a - b),
+    repo: repoName, issue: issueNumber, available, ...(sessionStart ? { assignedAt: sessionStart } : {}),
+    candidates: prs.map((p) => p.number),
+    ignored: [...ignored].filter(([n]) => !linked.has(n)).sort(([a], [b]) => a - b).map(([number, reason]) => ({ number, reason })),
   };
-  if (cut(issue.timelineItems, 'hasPreviousPage') || (!available && cut(repo.suggestedActors, 'hasNextPage'))) return { phase: 'truncated', ...base };
+  if (cut(issue.timelineItems, 'hasPreviousPage')) return { phase: 'truncated', ...base, truncation: { list: 'issue-timeline', issue: issueNumber } };
+  if (!available && cut(repo.suggestedActors, 'hasNextPage')) return { phase: 'truncated', ...base, truncation: { list: 'assignable-actors', issue: issueNumber } };
+  if (!assigned) return { phase: available ? 'not-assigned' : 'unavailable', ...base };
   const open = prs.filter((p) => p.state === 'OPEN');
   if (open.length > 1) return { phase: 'ambiguous', ...base };
   const pr = open[0] ?? prs[0];
-  if (!pr) return { phase: !available && !assigned ? 'unavailable' : assigned ? 'waiting-pr' : 'not-assigned', ...base };
+  if (!pr) return { phase: 'waiting-pr', ...base };
   if (pr.state !== 'OPEN') return { phase: 'closed', ...base, pr };
-  if (pr.truncated) return { phase: 'truncated', ...base };
+  if (pr.truncated) return { phase: 'truncated', ...base, truncation: { list: pr.truncated, issue: issueNumber, pr: pr.number } };
   // Whole-second times: a review request in the same second as its head commit still counts as after it.
   const finished = pr.finishedAt !== undefined && pr.headCommittedAt !== undefined && Date.parse(pr.finishedAt) >= Date.parse(pr.headCommittedAt);
   return { phase: finished ? 'finished' : 'working', ...base, pr };
@@ -397,21 +477,23 @@ export interface CodingAgentAssignResult {
   posted: true;
   /** The follow-up status read shows the agent assigned. False: not yet visible, not assigned, or the read failed or was cut. */
   confirmed: boolean;
-  /** The follow-up read; its `assignedAt` (GitHub's time) is the `since` for later reads. Absent when the read failed. */
+  /** The follow-up read; its `assignedAt` (GitHub's time) is the `since` (source `github`) for later reads. Absent when the read failed. */
   status?: CodingAgentStatus;
   /** Why the follow-up read failed, when it did. */
   readError?: string;
 }
 
 /**
- * Assigns `issue` to the agent on `base` and reads the status once. `since`
- * is the caller's time just before this call. Throws (GhCommandError) only
- * when the POST itself fails; once the POST returned 2xx the result says
- * `posted: true` whatever the read shows, so "posted but not yet visible"
- * (`confirmed: false`) never reads as "not assigned". One read proves
- * nothing negative: re-read later, never re-assign automatically.
+ * Assigns `issue` to the agent on `base` and reads the status once.
+ * `localSince` is the caller's LOCAL clock just before this call (read with
+ * the skew margin). Throws (GhCommandError) only when the POST itself fails;
+ * once the POST returned 2xx the result says `posted: true` whatever the read
+ * shows, so "posted but not yet visible" (`confirmed: false`) never reads as
+ * "not assigned". One read proves nothing negative: re-read later, never
+ * re-assign automatically.
  */
-export function assignCodingAgent(exec: Exec, repo: CodingAgentRepo, issue: number, base: string, since: string, cwd: string): CodingAgentAssignResult {
+export function assignCodingAgent(exec: Exec, repo: CodingAgentRepo, issue: number, base: string, localSince: string, cwd: string): CodingAgentAssignResult {
+  const since: CodingAgentSince = { at: localSince, source: 'local' };
   const statusArgs = codingAgentStatusArgs(repo, issue, since);
   ghRun(exec, codingAgentAssignArgs(repo, issue, base), cwd);
   try {
@@ -438,9 +520,12 @@ export type AdoptCheck =
 /**
  * The adopt preconditions (night-3 review checklist point 7) for the PR in
  * `status`: the agent finished; the PR is open, authored by the agent bot,
- * not cross-repository, in the run's repository, on the run's base branch,
- * and its head is a 40-hex sha. The caller fetches exactly that sha (and
- * re-checks it after the fetch) under its tamper snapshot.
+ * not cross-repository, in the run's repository, on the run's base branch;
+ * its head is a 40-hex sha that is the newest commit read; and every commit
+ * on it is mapped to the agent's account (a cut or unreadable list refuses
+ * too). Authorship is advisory: passing does not make the diff trusted. The
+ * caller fetches exactly that sha (and re-checks it after the fetch) under
+ * its tamper snapshot.
  */
 export function adoptPreconditions(status: CodingAgentStatus, want: AdoptExpectation): AdoptCheck {
   const reasons: string[] = [];
@@ -454,5 +539,8 @@ export function adoptPreconditions(status: CodingAgentStatus, want: AdoptExpecta
   if (!pr.sameRepo || lower(status.repo) !== lower(want.repo)) reasons.push(`PR #${pr.number} is cross-repository or not in ${want.repo}`);
   if (pr.baseRef !== want.base) reasons.push(`PR #${pr.number} targets ${pr.baseRef ?? 'an unreadable base'}, not ${want.base}`);
   if (!pr.head) reasons.push(`PR #${pr.number} has no 40-hex head sha`);
+  else if (pr.commitsHead !== pr.head) reasons.push(`PR #${pr.number} head ${pr.head} is not the newest commit read (${pr.commitsHead ?? 'none'})`);
+  if (pr.allCommitsByAgent === false) reasons.push(`PR #${pr.number} has commits not mapped to the ${CODING_AGENT_COMMIT_LOGIN} account`);
+  if (pr.allCommitsByAgent === undefined) reasons.push(`PR #${pr.number} commit authorship is unknown (commit list cut or unreadable)`);
   return reasons.length > 0 || !pr.head ? { ok: false, reasons } : { ok: true, pr: pr.number, head: pr.head };
 }
