@@ -228,7 +228,7 @@ describe('omg factory poll on GitHub', () => {
     out.length = 0;
     const truncated = feedbackJson([['T1', 'me']]).replace('"reviewThreads":{"pageInfo":{"hasNextPage":false}', '"reviewThreads":{"pageInfo":{"hasNextPage":true}');
     expect(await poll(scripted({ feedback: truncated }).exec, { once: true, json: true })).toBe(1);
-    expect(ticks()[0]).toMatchObject({ rateLimited: false, prs: [{ pr: 9, error: expect.stringMatching(/truncated \(reviewThreads/) }] });
+    expect(ticks()[0]).toMatchObject({ rateLimited: false, prs: [{ pr: 9, error: expect.stringMatching(/more than 100 review threads .*Delete the spam threads/) }] });
   });
 
   it('never spawns and never writes: every command is a read, and the guard refuses writes before gh', async () => {
