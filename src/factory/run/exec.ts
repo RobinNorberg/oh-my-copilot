@@ -356,7 +356,7 @@ function factoryGit(a: string[], protectedBranches: readonly string[], extraProt
 
 function factoryGh(a: string[], writes?: TrackerWriteContext): boolean | null {
   // `omg factory triage --apply` (purpose 'triage') may write only the label-only issue edit (src/factory/triage/guard.ts); enqueue keeps its own shapes.
-  const triage = writes?.purpose === 'triage' ? triageWriteGh(a, writes) : null;
+  const triage = writes?.purpose === 'triage' ? (triageWriteGh(a, writes) ?? (a[0] === 'issue' && a[1] === 'edit' ? false : null)) : null;
   if (triage !== null) return triage;
   const write = writes && writes.purpose !== 'triage' ? trackerWriteGh(a, writes) : null;
   if (write !== null) return write;
