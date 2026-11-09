@@ -36,6 +36,7 @@ import { checkAdoCommand, isAdoCommand, runGuardedAdo } from '../../forge/ado/gu
 import { isBodyFileIn, readTrackerBody } from '../../forge/body-file.js';
 import { LOCAL_REMOTE, STATE_CHANGE_LOG_FLAGS } from '../../forge/local/mirror.js';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV } from '../../ship/exec.js';
+import { triageWriteGh } from '../triage/guard.js';
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
 export const FACTORY_BRANCH_PREFIX = 'factory/';
 export { MAX_TRACKER_BODY_CHARS } from '../../forge/body-file.js';
@@ -319,7 +320,11 @@ function factoryGit(a, protectedBranches, extraProtected = [], local) {
     }
 }
 function factoryGh(a, writes) {
-    const write = writes ? trackerWriteGh(a, writes) : null;
+    // `omg factory triage --apply` (purpose 'triage') may write only the label-only issue edit (src/factory/triage/guard.ts); enqueue keeps its own shapes.
+    const triage = writes?.purpose === 'triage' ? (triageWriteGh(a, writes) ?? (a[0] === 'issue' && a[1] === 'edit' ? false : null)) : null;
+    if (triage !== null)
+        return triage;
+    const write = writes && writes.purpose !== 'triage' ? trackerWriteGh(a, writes) : null;
     if (write !== null)
         return write;
     const [group, sub, ...r] = a;

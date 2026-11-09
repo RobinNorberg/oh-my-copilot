@@ -31,7 +31,7 @@ import { analyzeLegacyClaudeMd, OMC_END_MARKER, OMC_START_MARKER, parseClaudeMdM
 import { executeClaudeMdTransaction, isClaudeMdEnabledInConfig } from './claude-md-transaction.js';
 import { HISTORICAL_AGENT_OWNERSHIP } from './historical-agent-ownership.js';
 import { getConfigPaths, loadJsoncFile } from '../config/loader.js';
-import { resolveAgentModelOverrides, syncCopilotAgentModels } from './copilot-agent-models.js';
+import { resolveAgentModelPlan, syncCopilotAgentModels } from './copilot-agent-models.js';
 import entitlementManifest from '../config/builtin-skill-entitlements.json' with { type: 'json' };
 /** Claude Code configuration directory */
 export const COPILOT_HOME = getCopilotConfigDir();
@@ -2512,12 +2512,17 @@ export function install(options = {}) {
         // agents.<name>.model overrides into its native subagents.agents setting.
         if (!projectScoped) {
             try {
-                const { overrides, skipped } = resolveAgentModelOverrides(loadJsoncFile(getConfigPaths().user)?.agents);
+                const userConfig = loadJsoncFile(getConfigPaths().user);
+                const { overrides, skipped, profileEntries, profileProblem } = resolveAgentModelPlan(userConfig?.agents, userConfig?.modelProfile);
+                if (profileProblem)
+                    log(`  Warning: ${profileProblem}`);
                 for (const entry of skipped)
                     log(`  Warning: agents.${entry} is not a known Copilot model or tier alias; not synced`);
-                const { written, error } = syncCopilotAgentModels(SETTINGS_FILE, overrides);
+                const { written, removed, error } = syncCopilotAgentModels(SETTINGS_FILE, overrides, profileEntries, join(COPILOT_HOME, '.omg-profile-models.json'));
                 if (error)
                     log(`  Warning: per-agent model overrides not synced: ${error}`);
+                if (removed.length > 0)
+                    log(`  Removed ${removed.length} per-agent model override(s) the model profile wrote earlier`);
                 if (written.length > 0)
                     log(`  Synced ${written.length} per-agent model override(s) to settings.json subagents.agents`);
             }

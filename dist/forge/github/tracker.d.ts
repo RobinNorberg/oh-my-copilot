@@ -7,7 +7,7 @@
  */
 import type { Exec, ExecResult } from '../../ship/exec.js';
 import { type IssueComment } from '../../factory/run/plan-rules.js';
-import { type ForgeItem, type ForgeItemDraft, type ForgeItemUpdate, type ForgeRepo, type ForgeTracker, type IntakeSource, type ProgressMapping, type ProgressStage, type ResolvedForgeConfig } from '../types.js';
+import { type ForgeItem, type ForgeItemDraft, type ForgeItemUpdate, type ForgeRepo, type ForgeTracker, type ForgeTriageChange, type IntakeSource, type ProgressMapping, type ProgressStage, type ResolvedForgeConfig } from '../types.js';
 /** `gh issue view --json` fields the engine reads (author: whose body `omg-plan:` line counts). */
 export declare const ISSUE_FIELDS = "title,body,labels,state,url,author,comments";
 export interface GhIssue {
@@ -57,5 +57,10 @@ export declare function ghFindByKey(exec: Exec, repo: ForgeRepo, spec: number, c
 export declare function ghCreateItem(exec: Exec, repo: ForgeRepo, draft: ForgeItemDraft, cwd: string): number;
 /** `gh issue edit`: title and body from a body file, then label adds and removes. */
 export declare function ghUpdateItem(exec: Exec, repo: ForgeRepo, id: number, update: ForgeItemUpdate, cwd: string): void;
+/** `gh issue edit <n> --repo <repo>` with the triage label flags (adds, then removes). Priority is a label on GitHub, so the number is ignored. Never throws. */
+export declare function ghSetTriage(exec: Exec, repo: ForgeRepo, issue: number, change: ForgeTriageChange, cwd: string): {
+    ok: boolean;
+    detail: string;
+};
 export declare function githubTracker(exec: Exec, cwd: string, config: ResolvedForgeConfig): ForgeTracker;
 //# sourceMappingURL=tracker.d.ts.map

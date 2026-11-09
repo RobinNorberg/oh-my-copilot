@@ -109,6 +109,21 @@ describe('CopilotLaneBackend', () => {
     expect(result.changes?.changedFiles).toEqual([]);
   });
 
+  it('passes the ledger tag through to the job as a factory-lane tag', async () => {
+    const started: Array<Parameters<LaneJobManager['start']>> = [];
+    const real = managerFor('idle');
+    const spy: LaneJobManager = {
+      start: (...args) => { started.push(args); return real.start(...args); },
+      status: (id) => real.status(id),
+      wait: (id, ms) => real.wait(id, ms),
+      cancel: (id) => real.cancel(id),
+    };
+    const lanes = new CopilotLaneBackend(spy, { allowLive: true });
+    const { remoteId } = await lanes.start(input({ ledgerTag: { role: 'review', run: 'issue-7' } }));
+    await lanes.wait(remoteId, 10_000);
+    expect(started[0][1]).toMatchObject({ ledgerKey: 'factory-lane:implement-1', ledgerTag: { kind: 'factory-lane', role: 'review', run: 'issue-7' } });
+  });
+
   it('passes engineCommits through as the job\'s hostCommits', async () => {
     const started: Array<Parameters<LaneJobManager['start']>> = [];
     const real = managerFor('idle');
