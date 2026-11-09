@@ -41931,7 +41931,7 @@ function factoryGit(a, protectedBranches, extraProtected = [], local) {
   }
 }
 function factoryGh(a, writes) {
-  const triage = writes?.purpose === "triage" ? triageWriteGh(a, writes) : null;
+  const triage = writes?.purpose === "triage" ? triageWriteGh(a, writes) ?? (a[0] === "issue" && a[1] === "edit" ? false : null) : null;
   if (triage !== null) return triage;
   const write = writes && writes.purpose !== "triage" ? trackerWriteGh(a, writes) : null;
   if (write !== null) return write;

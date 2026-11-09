@@ -131,6 +131,8 @@ export async function runFactoryTriage(o, deps) {
             return planItem(forge.tracker.viewItem(r.id), r, forge.kind, cfg);
         }
         catch (error) {
+            if (error instanceof FactorySafetyError)
+                throw error;
             return { id: r.id, title: r.title, url: r.url, action: 'skip', skipReason: r.reasons[0] ?? 'read-failed', bucket: r.bucket, reasons: r.reasons, current: { labels: [], priority: r.priority }, add: [], remove: [], priority: null, why: [plainText(error instanceof Error ? error.message : String(error))] };
         }
     });
@@ -179,8 +181,6 @@ export async function runFactoryTriage(o, deps) {
                     r.result = writer.setTriage(r.id, change);
                 }
                 catch (error) {
-                    if (error instanceof FactorySafetyError)
-                        throw error;
                     r.result = { ok: false, detail: error instanceof Error ? error.message : String(error) };
                 }
             }

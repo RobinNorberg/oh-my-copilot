@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { factoryCommand } from '../../cli/commands/factory.js';
 import { createForge } from '../../forge/index.js';
 import { assertFactoryCommand, FactorySafetyError } from '../run/exec.js';
+import { factoryTriageCommand } from '../../cli/commands/factory-triage.js';
 import { runFactoryTriage, triageGuardExec, TRIAGE_JSON_SCHEMA_VERSION } from '../triage/cli.js';
 const SHA = 'a'.repeat(40);
 const ok = (stdout = '') => ({ status: 0, stdout, stderr: '' });
@@ -139,6 +140,22 @@ describe('omg factory triage (GitHub)', () => {
         expect(json().counts).toMatchObject({ change: 0, applied: 0, failed: 0 });
         expect(edits).toEqual([]);
     });
+    it('a guard refusal while planning aborts with a non-zero exit instead of becoming a skip row', async () => {
+        const inner = scripted(root, ISSUES, { writesForbidden: true });
+        let views = 0;
+        const exec = (cmd, args) => {
+            if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'view' && ++views === 2)
+                throw new FactorySafetyError('refused: gh issue view');
+            return inner(cmd, args);
+        };
+        await expect(run(exec, { ids: ['1'] })).rejects.toThrow(FactorySafetyError);
+        views = 0;
+        process.exitCode = 0;
+        await factoryTriageCommand(deps(exec)).parseAsync(['1', '--json'], { from: 'user' });
+        expect(process.exitCode).not.toBe(0);
+        process.exitCode = 0;
+        expect(JSON.parse(out.join('\n'))).toMatchObject({ ok: false });
+    });
     it('reports a failed write per item and exits 1', async () => {
         const edits = [];
         expect(await run(scripted(root, ISSUES, { edits, failEdit: [2] }), { ids: ['5', '2'], apply: true })).toBe(1);
@@ -187,6 +204,14 @@ describe('the triage write guard', () => {
         expect(guard(edit('--add-label', 'priority:p1'), enqueue)).toThrow(FactorySafetyError);
         expect(guard(edit('--add-label', 'priority:p1'), { ...enqueue, purpose: 'enqueue' })).toThrow(FactorySafetyError);
         expect(guard(edit('--title', 't', '--body-file', 'x', '--add-label', 'priority:p1'))).toThrow(FactorySafetyError);
+    });
+    it('the triage context refuses a factory progress-label edit that the enqueue and no-purpose contexts keep allowing', () => {
+        const { purpose: _p, ...none } = ctx;
+        const progress = ['issue', 'edit', '7', '--add-label', 'factory:running'];
+        expect(guard(progress)).toThrow(FactorySafetyError);
+        expect(guard(['issue', 'edit', '7', '--remove-label', 'factory:running'])).toThrow(FactorySafetyError);
+        expect(guard(progress, none)).not.toThrow();
+        expect(guard(progress, { ...none, purpose: 'enqueue' })).not.toThrow();
     });
     it('refuses everything else: no context, other repo, order, duplicates, off-list, reserved, flag-like and extra flags', () => {
         expect(guard(edit('--add-label', 'priority:p1'), null)).toThrow(FactorySafetyError);

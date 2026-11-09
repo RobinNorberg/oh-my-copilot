@@ -21,6 +21,10 @@ describe('triage rules', () => {
     it('ADO: a field set by a human wins over a stale tag; the field is never written from a tag', () => {
         // A human raised Priority to 1 in the ADO UI; the tag still says p3.
         expect(plan({ priority: 1, labels: ['priority:p3'] }, res('runnable', '', 1), 'azure-devops')).toMatchObject({ add: ['priority:p0'], remove: ['priority:p3'], priority: null });
+        // The only tag is stale: the plan swaps it, so the tags are never left empty.
+        const swap = plan({ priority: 1, labels: ['priority:p3'] }, res('runnable', '', 1), 'azure-devops');
+        expect(swap.remove).toEqual(['priority:p3']);
+        expect(swap.add).toEqual(['priority:p0']);
         // A p0 tag on a field-4 item does not raise the field.
         expect(plan({ priority: 4, labels: ['priority:p0'] }, res('runnable', '', 4), 'azure-devops')).toMatchObject({ add: ['priority:p3'], remove: ['priority:p0'], priority: null });
         expect(plan({ priority: 2, labels: ['priority:p1'] }, res('runnable', '', 2), 'azure-devops').action).toBe('unchanged');

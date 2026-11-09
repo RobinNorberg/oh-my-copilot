@@ -119253,7 +119253,7 @@ function factoryGit(a, protectedBranches, extraProtected = [], local) {
   }
 }
 function factoryGh(a, writes) {
-  const triage = writes?.purpose === "triage" ? triageWriteGh(a, writes) : null;
+  const triage = writes?.purpose === "triage" ? triageWriteGh(a, writes) ?? (a[0] === "issue" && a[1] === "edit" ? false : null) : null;
   if (triage !== null) return triage;
   const write = writes && writes.purpose !== "triage" ? trackerWriteGh(a, writes) : null;
   if (write !== null) return write;
@@ -132494,6 +132494,7 @@ async function runFactoryTriage(o, deps) {
     try {
       return planItem(forge.tracker.viewItem(r.id), r, forge.kind, cfg);
     } catch (error2) {
+      if (error2 instanceof FactorySafetyError) throw error2;
       return { id: r.id, title: r.title, url: r.url, action: "skip", skipReason: r.reasons[0] ?? "read-failed", bucket: r.bucket, reasons: r.reasons, current: { labels: [], priority: r.priority }, add: [], remove: [], priority: null, why: [plainText(error2 instanceof Error ? error2.message : String(error2))] };
     }
   });
@@ -132536,7 +132537,6 @@ async function runFactoryTriage(o, deps) {
         try {
           r.result = writer.setTriage(r.id, change);
         } catch (error2) {
-          if (error2 instanceof FactorySafetyError) throw error2;
           r.result = { ok: false, detail: error2 instanceof Error ? error2.message : String(error2) };
         }
       }
