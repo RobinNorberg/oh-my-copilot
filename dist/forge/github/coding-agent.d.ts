@@ -29,7 +29,12 @@
  * its author email, which whoever pushes sets freely (the agent's noreply
  * address can be spoofed). A commit list that is not all the agent's refuses
  * adoption; an all-agent list proves nothing more, and the engine (L6b) still
- * treats the adopted diff as untrusted lane output.
+ * treats the adopted diff as untrusted lane output. Adoption also requires
+ * every commit to carry a valid signature made by GitHub itself (web-flow):
+ * every agent commit seen live is, a locally pushed commit with a spoofed
+ * author email is not. That narrows the spoof to commits created through
+ * GitHub's own web or API by someone with write access; it is no proof of
+ * authorship either.
  */
 import type { Exec } from '../../ship/exec.js';
 /** The agent's login as GraphQL reports actors and PR authors (`__typename: Bot`). */
@@ -92,7 +97,15 @@ export interface CodingAgentSince {
 export declare function codingAgentWindowStart(since: string): string;
 /** `gh` argv that assigns `issue` to the agent, branching from `base`. Throws on values the guard would refuse. */
 export declare function codingAgentAssignArgs(repo: CodingAgentRepo, issue: number, base: string): string[];
-/** `gh` argv of the status read for `issue`, from the window start of `since` (always widened by the skew margin). */
+/**
+ * `gh` argv of the status read for `issue`, from the window start of `since`.
+ * The query-level since is ALWAYS widened by CODING_AGENT_SINCE_SKEW_SECONDS,
+ * for a `github` since too: GitHub's `since` filter excludes an event in the
+ * same second (checked live: since=19:18:45Z dropped an event at 19:18:45Z),
+ * so querying from the session's own `assignedAt` would drop its Assigned
+ * event and read `not-assigned`. The parser then cuts a `github` since exactly.
+ * Never remove this margin.
+ */
 export declare function codingAgentStatusArgs(repo: CodingAgentRepo, issue: number, since: CodingAgentSince): string[];
 /** `gh` argv that closes the agent's PR `pr` (after the engine rebranched it). */
 export declare function codingAgentCloseArgs(repo: CodingAgentRepo, pr: number): string[];
@@ -134,6 +147,13 @@ export interface CodingAgentPr {
      * empty, or a commit is unreadable. Advisory: see the module comment.
      */
     allCommitsByAgent?: boolean;
+    /**
+     * Every commit on the PR has a valid signature made by GitHub
+     * (`signature { isValid wasSignedByGitHub }`, the web-flow key). Undefined
+     * when the list was cut, is empty, or a commit is unreadable. Advisory: see
+     * the module comment.
+     */
+    allCommitsSignedByGitHub?: boolean;
     /** When the agent linked it to the issue (the newest linking event in the session). */
     linkedAt: string;
     /** The agent's newest review request on the PR at or after session start (its "work finished" signal). */
@@ -193,8 +213,9 @@ export interface CodingAgentStatus {
  * `since` cuts the window (CodingAgentSince): a `local` time keeps events from
  * the skew margin before it, a `github` time (a previous read's `assignedAt`)
  * keeps nothing before it. Within the window the session is the current
- * assignment streak (`assignedAt`); only agent links and agent review requests
- * at or after its start count, earlier links go to `ignored`. Only events
+ * assignment streak (`assignedAt`); only agent links AFTER its start event in
+ * timeline order (by time, ties in GitHub's order) count, earlier links go to
+ * `ignored`; agent review requests count at or after its start time. Only events
  * whose actor is the agent link a PR, and only PRs the agent authored in this
  * repository become candidates. Throws when the response has no repository
  * or issue.
@@ -221,10 +242,12 @@ export interface CodingAgentAssignResult {
  * re-assign automatically.
  */
 export declare function assignCodingAgent(exec: Exec, repo: CodingAgentRepo, issue: number, base: string, localSince: string, cwd: string): CodingAgentAssignResult;
-/** What adopting the agent's PR must match: the run's repository and base branch. */
+/** What adopting the agent's PR must match: the run's repository, issue and base branch. */
 export interface AdoptExpectation {
     /** `OWNER/NAME` of the run's repository. */
     repo: string;
+    /** The issue the run assigned to the agent. */
+    issue: number;
     /** The run's base branch (FactoryRunState.base). */
     base: string;
 }
@@ -238,11 +261,12 @@ export type AdoptCheck = {
 };
 /**
  * The adopt preconditions (night-3 review checklist point 7) for the PR in
- * `status`: the agent finished; the PR is open, authored by the agent bot,
- * not cross-repository, in the run's repository, on the run's base branch;
- * its head is a 40-hex sha that is the newest commit read; and every commit
- * on it is mapped to the agent's account (a cut or unreadable list refuses
- * too). Authorship is advisory: passing does not make the diff trusted. The
+ * `status`: it is for the run's issue; the agent finished; the PR is open,
+ * authored by the agent bot, not cross-repository, in the run's repository,
+ * on the run's base branch; its head is a 40-hex sha that is the newest
+ * commit read; and every commit on it is mapped to the agent's account and
+ * signed by GitHub (a cut or unreadable list refuses too). Authorship and
+ * signatures are advisory: passing does not make the diff trusted. The
  * caller fetches exactly that sha (and re-checks it after the fetch) under
  * its tamper snapshot.
  */

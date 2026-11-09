@@ -4887,12 +4887,12 @@ function getDefaultTierModels() {
   };
 }
 function resolveClaudeFamily(modelId) {
-  const lower = modelId.toLowerCase();
-  if (!lower.includes("claude")) return null;
-  if (lower.includes("sonnet")) return "SONNET";
-  if (lower.includes("opus")) return "OPUS";
-  if (lower.includes("haiku")) return "HAIKU";
-  if (lower.includes("fable")) return "FABLE";
+  const lower2 = modelId.toLowerCase();
+  if (!lower2.includes("claude")) return null;
+  if (lower2.includes("sonnet")) return "SONNET";
+  if (lower2.includes("opus")) return "OPUS";
+  if (lower2.includes("haiku")) return "HAIKU";
+  if (lower2.includes("fable")) return "FABLE";
   return null;
 }
 function hasBedrockModelId(modelIds) {
@@ -4935,8 +4935,8 @@ function hasVertexModelId(modelIds) {
 }
 function hasNonClaudeModelId(modelIds) {
   for (const modelId of modelIds) {
-    const lower = modelId.toLowerCase();
-    if (!lower.includes("claude") && !CLAUDE_TIER_ALIASES.has(lower)) {
+    const lower2 = modelId.toLowerCase();
+    if (!lower2.includes("claude") && !CLAUDE_TIER_ALIASES.has(lower2)) {
       return true;
     }
   }
@@ -5334,8 +5334,8 @@ function loadEnvConfig() {
   for (const key of aliasKeys) {
     const envVal = process.env[`OMC_MODEL_ALIAS_${key}`];
     if (envVal) {
-      const lower = key.toLowerCase();
-      modelAliases[lower] = envVal.toLowerCase();
+      const lower2 = key.toLowerCase();
+      modelAliases[lower2] = envVal.toLowerCase();
     }
   }
   if (Object.keys(modelAliases).length > 0) {
@@ -53847,12 +53847,12 @@ var init_ingest = __esm({
 
 // src/hooks/wiki/query.ts
 function tokenize(text4) {
-  const lower = text4.toLowerCase();
+  const lower2 = text4.toLowerCase();
   const tokens = [];
-  const latinMatches = lower.match(/[a-z0-9\u00C0-\u024F]+/g);
+  const latinMatches = lower2.match(/[a-z0-9\u00C0-\u024F]+/g);
   if (latinMatches) tokens.push(...latinMatches);
   const cjkPattern = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\uAC00-\uD7AF]+/g;
-  const cjkMatches = lower.match(cjkPattern);
+  const cjkMatches = lower2.match(cjkPattern);
   if (cjkMatches) {
     for (const segment of cjkMatches) {
       for (let i = 0; i < segment.length; i++) {
@@ -53863,7 +53863,7 @@ function tokenize(text4) {
       }
     }
   }
-  const remaining = lower.replace(/[a-z0-9\u00C0-\u024F]+/g, " ").replace(cjkPattern, " ").split(/\s+/).filter((t) => t.length > 0 && new RegExp("\\p{L}", "u").test(t));
+  const remaining = lower2.replace(/[a-z0-9\u00C0-\u024F]+/g, " ").replace(cjkPattern, " ").split(/\s+/).filter((t) => t.length > 0 && new RegExp("\\p{L}", "u").test(t));
   if (remaining.length > 0) tokens.push(...remaining);
   return tokens;
 }
@@ -70271,9 +70271,9 @@ var init_gitlab = __esm({
       prTerminology = "MR";
       prRefspec = "merge-requests/{number}/head:{branch}";
       detectFromRemote(url) {
-        const lower = url.toLowerCase();
-        if (lower.includes("gitlab.com")) return true;
-        const hostMatch = lower.match(/^(?:https?:\/\/|ssh:\/\/[^@]*@|[^@]+@)([^/:]+)/);
+        const lower2 = url.toLowerCase();
+        if (lower2.includes("gitlab.com")) return true;
+        const hostMatch = lower2.match(/^(?:https?:\/\/|ssh:\/\/[^@]*@|[^@]+@)([^/:]+)/);
         const host = hostMatch ? hostMatch[1] : "";
         return /(^|[.-])gitlab([.-]|$)/.test(host);
       }
@@ -87402,13 +87402,13 @@ async function cmuxSendSurface(surfaceId, text4) {
 }
 function normalizeCmuxKey(key) {
   const normalized2 = key.trim();
-  const lower = normalized2.toLowerCase();
+  const lower2 = normalized2.toLowerCase();
   const controlKey = normalized2.match(/^[Cc]-([A-Za-z])$/);
   if (controlKey?.[1]) {
     const character = controlKey[1].toLowerCase();
     return character === "m" ? "enter" : `ctrl+${character}`;
   }
-  switch (lower) {
+  switch (lower2) {
     case "enter":
     case "return":
     case "tab":
@@ -87420,7 +87420,7 @@ function normalizeCmuxKey(key) {
     case "down":
     case "left":
     case "right":
-      return lower === "return" ? "enter" : lower === "esc" ? "escape" : lower;
+      return lower2 === "return" ? "enter" : lower2 === "esc" ? "escape" : lower2;
     default:
       return normalized2;
   }
@@ -96332,7 +96332,7 @@ function shellDenyPrefixes(denyTools = []) {
   return out;
 }
 function matchesDenyUrl(url, patterns) {
-  const lower = url.toLowerCase();
+  const lower2 = url.toLowerCase();
   let host = "";
   try {
     host = new URL(url).hostname.toLowerCase();
@@ -96342,7 +96342,7 @@ function matchesDenyUrl(url, patterns) {
     const pattern = p.trim().toLowerCase();
     if (!pattern) return false;
     if (host && (host === pattern || host.endsWith(`.${pattern}`))) return true;
-    return lower.includes(pattern);
+    return lower2.includes(pattern);
   });
 }
 function decideSdkPermission(req, ctx) {
@@ -112361,11 +112361,11 @@ var require_char_case_insensitive_lowercase_transform = __commonJS({
           }
           this._AZClassRanges.add(parent);
         }
-        var lower = node.symbol.toLowerCase();
-        if (lower !== node.symbol) {
-          node.value = displaySymbolAsValue(lower, node);
-          node.symbol = lower;
-          node.codePoint = lower.codePointAt(0);
+        var lower2 = node.symbol.toLowerCase();
+        if (lower2 !== node.symbol) {
+          node.value = displaySymbolAsValue(lower2, node);
+          node.symbol = lower2;
+          node.codePoint = lower2.codePointAt(0);
         }
       }
     };
@@ -116596,15 +116596,15 @@ function resolveScopedWeeklyLimits(limits, parseDate) {
   for (const bucket of byKey.values()) {
     const percent = clamp(bucket.percent);
     const resetsAt = parseDate(bucket.resetsAt);
-    const lower = bucket.displayName.toLowerCase();
-    const isSonnetFamily = lower.includes("sonnet");
-    const isOpusFamily = lower.includes("opus");
+    const lower2 = bucket.displayName.toLowerCase();
+    const isSonnetFamily = lower2.includes("sonnet");
+    const isOpusFamily = lower2.includes("opus");
     if (isSonnetFamily) {
       if (result.sonnet == null) result.sonnet = { percent, resetsAt };
     } else if (isOpusFamily) {
       if (result.opus == null) result.opus = { percent, resetsAt };
     } else {
-      const id = typeof bucket.modelId === "string" && bucket.modelId.trim() !== "" ? bucket.modelId : lower;
+      const id = typeof bucket.modelId === "string" && bucket.modelId.trim() !== "" ? bucket.modelId : lower2;
       result.generic.push({ id, label: bucket.displayName, percent, resetsAt, isActive: bucket.isActive });
     }
   }
@@ -119011,6 +119011,87 @@ var init_body_file = __esm({
   }
 });
 
+// src/forge/github/gh.ts
+function ghRun(exec3, args, cwd2) {
+  const res = exec3("gh", args, { cwd: cwd2 });
+  if (res.status !== 0) throw new GhCommandError(`gh ${args.join(" ")} failed (exit ${res.status}): ${res.stderr.trim().split("\n")[0]}`);
+  return res.stdout;
+}
+function ghJson(exec3, args, cwd2) {
+  const out = ghRun(exec3, args, cwd2);
+  try {
+    return JSON.parse(out);
+  } catch {
+    throw new GhCommandError(`gh ${args.join(" ")} returned no JSON`);
+  }
+}
+var GhCommandError, ghRepoArg;
+var init_gh = __esm({
+  "src/forge/github/gh.ts"() {
+    "use strict";
+    GhCommandError = class extends Error {
+      constructor(message4) {
+        super(message4);
+        this.name = "GhCommandError";
+      }
+    };
+    ghRepoArg = (repo) => `${repo.host}/${repo.owner}/${repo.name}`;
+  }
+});
+
+// src/forge/github/coding-agent.ts
+function repoOf(repoArg) {
+  const parts = repoArg?.split("/");
+  if (!parts || parts.length !== 3) return void 0;
+  const [host, owner, name] = parts;
+  return HOST.test(host) && NAME2.test(owner) && NAME2.test(name) ? { host, owner, name } : void 0;
+}
+function isCodingAgentAssignArgs(args, ctx) {
+  const repo = repoOf(ctx?.repo);
+  if (!ctx || !repo || args.length !== 10 || !Number.isSafeInteger(ctx.issue) || !NUMBER2.test(String(ctx.issue)) || !isBranch2(ctx.base)) return false;
+  const path30 = /^repos\/([^/]+)\/([^/]+)\/issues\/(\d+)\/assignees$/.exec(args[5]);
+  return args[0] === "api" && args[1] === "--hostname" && lower(args[2]) === lower(repo.host) && args[3] === "--method" && args[4] === "POST" && path30 !== null && NAME2.test(path30[1]) && lower(path30[1]) === lower(repo.owner) && NAME2.test(path30[2]) && lower(path30[2]) === lower(repo.name) && path30[3] === String(ctx.issue) && args[6] === "-f" && args[7] === `assignees[]=${CODING_AGENT_REST_ASSIGNEE}` && args[8] === "-f" && args[9] === `agent_assignment[base_branch]=${ctx.base}`;
+}
+function isCodingAgentStatusArgs(args, repoArg) {
+  const repo = repoOf(repoArg);
+  if (!repo || args.length !== 14) return false;
+  const value = (arg, key) => arg.startsWith(`${key}=`) ? arg.slice(key.length + 1) : "";
+  const o = value(args[7], "owner");
+  const n = value(args[9], "name");
+  const since = value(args[13], "since");
+  return args[0] === "api" && args[1] === "graphql" && args[2] === "--hostname" && lower(args[3]) === lower(repo.host) && args[4] === "-f" && args[5] === `query=${CODING_AGENT_STATUS_QUERY}` && args[6] === "-f" && NAME2.test(o) && lower(o) === lower(repo.owner) && args[8] === "-f" && NAME2.test(n) && lower(n) === lower(repo.name) && args[10] === "-F" && NUMBER2.test(value(args[11], "number")) && args[12] === "-f" && ISO_SECONDS.test(since) && isTime(since);
+}
+function isCodingAgentCloseArgs(args, ctx) {
+  const repo = repoOf(ctx?.repo);
+  const named = args.length === 5 ? repoOf(args[4]) : void 0;
+  return repo !== void 0 && named !== void 0 && ctx?.pr !== void 0 && Number.isSafeInteger(ctx.pr) && NUMBER2.test(String(ctx.pr)) && args[0] === "pr" && args[1] === "close" && args[2] === String(ctx.pr) && args[3] === "--repo" && sameRepoArg(named, repo);
+}
+var CODING_AGENT_REST_ASSIGNEE, PR_COMMITS, PR_FIELDS, CODING_AGENT_STATUS_QUERY, NAME2, HOST, NUMBER2, BRANCH2, isBranch2, ISO, ISO_SECONDS, isTime, lower, sameRepoArg;
+var init_coding_agent = __esm({
+  "src/forge/github/coding-agent.ts"() {
+    "use strict";
+    init_gh();
+    CODING_AGENT_REST_ASSIGNEE = "copilot-swe-agent[bot]";
+    PR_COMMITS = 100;
+    PR_FIELDS = `number state isDraft isCrossRepository baseRefName headRefName headRefOid author{__typename login} baseRepository{nameWithOwner} headRepository{nameWithOwner} commits(last:${PR_COMMITS}){pageInfo{hasPreviousPage} nodes{commit{oid committedDate author{user{login}} signature{isValid wasSignedByGitHub}}}} timelineItems(last:50,since:$since,itemTypes:[REVIEW_REQUESTED_EVENT]){pageInfo{hasPreviousPage} nodes{__typename ... on ReviewRequestedEvent{createdAt actor{__typename login}}}}`;
+    CODING_AGENT_STATUS_QUERY = `query($owner:String!,$name:String!,$number:Int!,$since:DateTime!){repository(owner:$owner,name:$name){nameWithOwner suggestedActors(capabilities:[CAN_BE_ASSIGNED],first:100){pageInfo{hasNextPage} nodes{__typename login}} issue(number:$number){number state timelineItems(last:100,since:$since,itemTypes:[ASSIGNED_EVENT,UNASSIGNED_EVENT,CONNECTED_EVENT,CROSS_REFERENCED_EVENT]){pageInfo{hasPreviousPage} nodes{__typename ... on AssignedEvent{createdAt assignee{__typename ... on Bot{login}}} ... on UnassignedEvent{createdAt assignee{__typename ... on Bot{login}}} ... on ConnectedEvent{createdAt actor{__typename login} subject{__typename ...P}} ... on CrossReferencedEvent{createdAt actor{__typename login} source{__typename ...P}}}}}}} fragment P on PullRequest{${PR_FIELDS}}`;
+    NAME2 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+    HOST = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
+    NUMBER2 = /^[1-9]\d{0,9}$/;
+    BRANCH2 = /^\w[\w./-]{0,199}$/;
+    isBranch2 = (s) => BRANCH2.test(s) && !s.includes("..") && !s.includes("@{") && !s.endsWith(".") && s.split("/").every((c) => c !== "" && !c.startsWith(".") && !c.endsWith(".lock"));
+    ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
+    ISO_SECONDS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+    isTime = (s) => {
+      if (!ISO.test(s)) return false;
+      const ms = Date.parse(s);
+      return !Number.isNaN(ms) && new Date(ms).toISOString().slice(0, 19) === s.slice(0, 19);
+    };
+    lower = (s) => s.toLowerCase();
+    sameRepoArg = (a, b) => lower(a.host) === lower(b.host) && lower(a.owner) === lower(b.owner) && lower(a.name) === lower(b.name);
+  }
+});
+
 // src/forge/review-feedback.ts
 function truncationMessage(pr, what) {
   const tail4 = "so human feedback cannot be read completely.";
@@ -119361,7 +119442,7 @@ var init_reviews = __esm({
 
 // src/forge/github/graphql.ts
 function reviewFeedbackArgs(repo, pr) {
-  if (!HOST.test(repo.host) || !NAME2.test(repo.owner) || !NAME2.test(repo.name) || !Number.isSafeInteger(pr) || !NUMBER2.test(String(pr))) {
+  if (!HOST2.test(repo.host) || !NAME3.test(repo.owner) || !NAME3.test(repo.name) || !Number.isSafeInteger(pr) || !NUMBER3.test(String(pr))) {
     throw new Error(`review feedback: ${repo.host}/${repo.owner}/${repo.name} #${pr} is not a plain GitHub repository and PR number`);
   }
   return ["api", "graphql", "--hostname", repo.host, "-f", `query=${REVIEW_FEEDBACK_QUERY}`, "-f", `owner=${repo.owner}`, "-f", `name=${repo.name}`, "-F", `number=${pr}`];
@@ -119371,12 +119452,12 @@ function isReviewFeedbackArgs(args, repoArg) {
   const parts = repoArg.split("/");
   if (parts.length !== 3) return false;
   const [host, owner, name] = parts;
-  if (!HOST.test(host) || !NAME2.test(owner) || !NAME2.test(name)) return false;
+  if (!HOST2.test(host) || !NAME3.test(owner) || !NAME3.test(name)) return false;
   const value = (arg, key) => arg.startsWith(`${key}=`) ? arg.slice(key.length + 1) : "";
   const o = value(args[7], "owner");
   const n = value(args[9], "name");
   const pr = value(args[11], "number");
-  return args[0] === "api" && args[1] === "graphql" && args[2] === "--hostname" && args[3].toLowerCase() === host.toLowerCase() && args[4] === "-f" && args[5] === `query=${REVIEW_FEEDBACK_QUERY}` && args[6] === "-f" && NAME2.test(o) && o.toLowerCase() === owner.toLowerCase() && args[8] === "-f" && NAME2.test(n) && n.toLowerCase() === name.toLowerCase() && args[10] === "-F" && NUMBER2.test(pr);
+  return args[0] === "api" && args[1] === "graphql" && args[2] === "--hostname" && args[3].toLowerCase() === host.toLowerCase() && args[4] === "-f" && args[5] === `query=${REVIEW_FEEDBACK_QUERY}` && args[6] === "-f" && NAME3.test(o) && o.toLowerCase() === owner.toLowerCase() && args[8] === "-f" && NAME3.test(n) && n.toLowerCase() === name.toLowerCase() && args[10] === "-F" && NUMBER3.test(pr);
 }
 function isFactoryComment(body) {
   return body.trimEnd().split("\n").pop()?.trim() === ADO_FACTORY_COMMENT_MARKER;
@@ -119487,7 +119568,7 @@ ${k.body}`).join("\n\n");
   for (const q of requests) {
     const who = isObj(q.requestedReviewer) ? q.requestedReviewer : {};
     const slug = str4(who.slug);
-    const name = login(who) ?? (slug && NAME2.test(slug) ? `team:${slug}` : void 0);
+    const name = login(who) ?? (slug && NAME3.test(slug) ? `team:${slug}` : void 0);
     if (name) pending.add(name);
   }
   return {
@@ -119498,16 +119579,16 @@ ${k.body}`).join("\n\n");
     ...trustIncomplete ? { trustIncomplete: true } : {}
   };
 }
-var REVIEW_FEEDBACK_QUERY, NAME2, HOST, NUMBER2, HEX402, MAX_FEEDBACK_BODY_CHARS2, TRUNCATED2, WRITE_PERMISSIONS, GITHUB_RATE_LIMITED, isObj, str4, login, capped2, DECISION, errorText, isRateLimited;
+var REVIEW_FEEDBACK_QUERY, NAME3, HOST2, NUMBER3, HEX402, MAX_FEEDBACK_BODY_CHARS2, TRUNCATED2, WRITE_PERMISSIONS, GITHUB_RATE_LIMITED, isObj, str4, login, capped2, DECISION, errorText, isRateLimited;
 var init_graphql = __esm({
   "src/forge/github/graphql.ts"() {
     "use strict";
     init_reviews();
     init_review_feedback();
     REVIEW_FEEDBACK_QUERY = "query($owner:String!,$name:String!,$number:Int!){viewer{login} repository(owner:$owner,name:$name){viewerPermission collaborators(first:100){pageInfo{hasNextPage} edges{permission node{login}}} pullRequest(number:$number){headRefOid latestReviews(first:50){pageInfo{hasNextPage} nodes{id state submittedAt body author{__typename login} commit{oid}}} reviewRequests(first:20){pageInfo{hasNextPage} nodes{requestedReviewer{__typename ... on User{login} ... on Bot{login} ... on Mannequin{login} ... on Team{slug}}}} reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated comments(first:20){pageInfo{hasNextPage} nodes{body path line originalLine createdAt author{__typename login}}}}}}}}";
-    NAME2 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
-    HOST = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
-    NUMBER2 = /^[1-9]\d{0,9}$/;
+    NAME3 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+    HOST2 = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
+    NUMBER3 = /^[1-9]\d{0,9}$/;
     HEX402 = /^[0-9a-f]{40}$/;
     MAX_FEEDBACK_BODY_CHARS2 = 8e3;
     TRUNCATED2 = "\n(truncated)";
@@ -119517,7 +119598,7 @@ var init_graphql = __esm({
     str4 = (v) => typeof v === "string" ? v : void 0;
     login = (v) => {
       const l = isObj(v) ? str4(v.login) : void 0;
-      return l && NAME2.test(l) ? l : void 0;
+      return l && NAME3.test(l) ? l : void 0;
     };
     capped2 = (body) => body.length <= MAX_FEEDBACK_BODY_CHARS2 ? body : `${body.slice(0, MAX_FEEDBACK_BODY_CHARS2 - TRUNCATED2.length)}${TRUNCATED2}`;
     DECISION = {
@@ -119534,7 +119615,7 @@ var init_graphql = __esm({
 
 // src/forge/local/mirror.ts
 function isLocalBranchName(name) {
-  return BRANCH2.test(name) && !name.endsWith(".lock") && !name.split("/").some((s) => s.startsWith(".") || s === "");
+  return BRANCH3.test(name) && !name.endsWith(".lock") && !name.split("/").some((s) => s.startsWith(".") || s === "");
 }
 function branch(name) {
   if (!isLocalBranchName(name)) throw new Error(`local forge: ${JSON.stringify(name)} is not a plain branch name`);
@@ -119566,7 +119647,7 @@ function readMirrorRef(mirror, name) {
   }
   return void 0;
 }
-var import_crypto45, import_fs145, import_path171, LOCAL_REMOTE, HEX403, BRANCH2, localForgeDir, localMirrorPath, localStoreDir, localCheckRecordPath, mirrorInitArgs, mirrorRemoteAddArgs, mirrorRemoteGetUrlArgs, mirrorPushArgs, mirrorFetchArgs, backlogListArgs, backlogShowArgs, mergedArgs, STATE_CHANGE_LOG_FLAGS, lastStateChangeArgs;
+var import_crypto45, import_fs145, import_path171, LOCAL_REMOTE, HEX403, BRANCH3, localForgeDir, localMirrorPath, localStoreDir, localCheckRecordPath, mirrorInitArgs, mirrorRemoteAddArgs, mirrorRemoteGetUrlArgs, mirrorPushArgs, mirrorFetchArgs, backlogListArgs, backlogShowArgs, mergedArgs, STATE_CHANGE_LOG_FLAGS, lastStateChangeArgs;
 var init_mirror = __esm({
   "src/forge/local/mirror.ts"() {
     "use strict";
@@ -119575,7 +119656,7 @@ var init_mirror = __esm({
     import_path171 = require("path");
     LOCAL_REMOTE = "omg-local";
     HEX403 = /^[0-9a-f]{40}$/;
-    BRANCH2 = /^(?!-)(?!.*\.\.)(?!.*\/\/)(?!.*@\{)[A-Za-z0-9._/-]{1,200}(?<![./])$/;
+    BRANCH3 = /^(?!-)(?!.*\.\.)(?!.*\/\/)(?!.*@\{)[A-Za-z0-9._/-]{1,200}(?<![./])$/;
     localForgeDir = (stateDir) => (0, import_path171.join)(stateDir, "local");
     localMirrorPath = (stateDir, root2) => (0, import_path171.join)(localForgeDir(stateDir), `${localRepoId(root2)}.git`);
     localStoreDir = (stateDir, root2) => (0, import_path171.join)(localForgeDir(stateDir), localRepoId(root2));
@@ -119596,7 +119677,7 @@ var init_mirror = __esm({
 // src/factory/triage/guard.ts
 function triageWriteGh(a, ctx) {
   if (a[0] !== "issue" || a[1] !== "edit" || a[3] !== "--repo" || a[5] !== "--add-label" && a[5] !== "--remove-label") return null;
-  if (!NUMBER3.test(a[2] ?? "") || a[4] !== ctx.repo) return false;
+  if (!NUMBER4.test(a[2] ?? "") || a[4] !== ctx.repo) return false;
   const flags = a.slice(5);
   if (flags.length % 2 !== 0 || flags.length / 2 > MAX_TRIAGE_FLAGS) return false;
   const seen = [];
@@ -119611,15 +119692,15 @@ function triageWriteGh(a, ctx) {
   return true;
 }
 function triageLabelListGh(a, repo) {
-  return a.length === 10 && a[0] === "label" && a[1] === "list" && a[2] === "--repo" && a[3] === repo && a[4] === "--search" && isTriageLabelName(a[5]) && a[6] === "--json" && a[7] === "name" && a[8] === "--limit" && NUMBER3.test(a[9]);
+  return a.length === 10 && a[0] === "label" && a[1] === "list" && a[2] === "--repo" && a[3] === repo && a[4] === "--search" && isTriageLabelName(a[5]) && a[6] === "--json" && a[7] === "name" && a[8] === "--limit" && NUMBER4.test(a[9]);
 }
-var TRIAGE_LABEL, RESERVED, NUMBER3, MAX_TRIAGE_FLAGS, isTriageLabelName;
+var TRIAGE_LABEL, RESERVED, NUMBER4, MAX_TRIAGE_FLAGS, isTriageLabelName;
 var init_guard2 = __esm({
   "src/factory/triage/guard.ts"() {
     "use strict";
     TRIAGE_LABEL = /^[A-Za-z0-9][A-Za-z0-9:_.-]{0,48}$/;
     RESERVED = /^(?:factory|harbor):/i;
-    NUMBER3 = /^[1-9]\d{0,9}$/;
+    NUMBER4 = /^[1-9]\d{0,9}$/;
     MAX_TRIAGE_FLAGS = 6;
     isTriageLabelName = (s) => typeof s === "string" && TRIAGE_LABEL.test(s) && !RESERVED.test(s);
   }
@@ -119627,7 +119708,7 @@ var init_guard2 = __esm({
 
 // src/factory/run/exec.ts
 function isProgressLabelEdit(r) {
-  if (r.length < 3 || r.length % 2 === 0 || !NUMBER4.test(r[0])) return false;
+  if (r.length < 3 || r.length % 2 === 0 || !NUMBER5.test(r[0])) return false;
   const labels = [];
   let adds = 0;
   for (let i = 1; i < r.length; i += 2) {
@@ -119667,15 +119748,15 @@ function trackerWriteGh(a, ctx) {
     return r.length >= 6 && same2(r.slice(0, 6), ["--repo", ctx.repo, "--title", r[3], "--body-file", r[5]]) && isTitle(r[3]) && isBodyFile(r[5], ctx) && isLabelPairs(r.slice(6), ["--label"], ctx);
   }
   if (sub === "edit" && r[1] === "--repo") {
-    return r.length >= 7 && NUMBER4.test(r[0]) && same2(r.slice(1, 7), ["--repo", ctx.repo, "--title", r[4], "--body-file", r[6]]) && isTitle(r[4]) && isBodyFile(r[6], ctx) && isLabelPairs(r.slice(7), ["--add-label", "--remove-label"], ctx);
+    return r.length >= 7 && NUMBER5.test(r[0]) && same2(r.slice(1, 7), ["--repo", ctx.repo, "--title", r[4], "--body-file", r[6]]) && isTitle(r[4]) && isBodyFile(r[6], ctx) && isLabelPairs(r.slice(7), ["--add-label", "--remove-label"], ctx);
   }
   if (sub === "list" && r[0] === "--repo") {
-    return same2(r, ["--repo", ctx.repo, "--search", r[3], "--state", "all", "--json", "number,body", "--limit", r[9]]) && KEY_SEARCH.test(r[3]) && NUMBER4.test(r[9]) && Number(r[9]) >= 1 && Number(r[9]) <= 1e3;
+    return same2(r, ["--repo", ctx.repo, "--search", r[3], "--state", "all", "--json", "number,body", "--limit", r[9]]) && KEY_SEARCH.test(r[3]) && NUMBER5.test(r[9]) && Number(r[9]) >= 1 && Number(r[9]) <= 1e3;
   }
   return null;
 }
 function isFactoryBranch(name, protectedBranches) {
-  return isBranch2(name) && name.startsWith(FACTORY_BRANCH_PREFIX) && name.length > FACTORY_BRANCH_PREFIX.length && !protectedBranches.some((b) => b.toLowerCase() === name.toLowerCase());
+  return isBranch3(name) && name.startsWith(FACTORY_BRANCH_PREFIX) && name.length > FACTORY_BRANCH_PREFIX.length && !protectedBranches.some((b) => b.toLowerCase() === name.toLowerCase());
 }
 function sameFsPath(a, b) {
   const x = (0, import_path172.resolve)(a);
@@ -119725,7 +119806,7 @@ function factoryGit(a, protectedBranches, extraProtected = [], local) {
       }
       const m = r.length === 2 && remote ? /^([0-9a-f]{40}):refs\/heads\/(.+)$/.exec(r[1]) : null;
       if (!m) return false;
-      if (r[0] === LOCAL_REMOTE && isBranch2(m[2]) && extraProtected.includes(m[2])) return local?.baseSha !== void 0 && m[1] === local.baseSha;
+      if (r[0] === LOCAL_REMOTE && isBranch3(m[2]) && extraProtected.includes(m[2])) return local?.baseSha !== void 0 && m[1] === local.baseSha;
       return isFactoryBranch(m[2], protectedBranches);
     }
     case "ls-remote": {
@@ -119743,7 +119824,7 @@ function factoryGit(a, protectedBranches, extraProtected = [], local) {
         const m = /^([0-9a-f]{40}):(.+)$/.exec(r[1]);
         if (m) return REPO_PATH.test(m[2]) && !m[2].split("/").includes("..");
         const h = /^refs\/heads\/(.+)$/.exec(r[1]);
-        if (h) return isBranch2(h[1]);
+        if (h) return isBranch3(h[1]);
       }
       return null;
     case "config":
@@ -119773,36 +119854,38 @@ function factoryGit(a, protectedBranches, extraProtected = [], local) {
       return null;
   }
 }
-function factoryGh(a, writes, github) {
+function factoryGh(a, writes, github, agent) {
   const triage = writes?.purpose === "triage" ? triageWriteGh(a, writes) ?? (a[0] === "issue" && a[1] === "edit" ? false : null) : null;
   if (triage !== null) return triage;
   const write = writes && writes.purpose !== "triage" ? trackerWriteGh(a, writes) : null;
   if (write !== null) return write;
+  if (isCodingAgentStatusArgs(a, github?.repo) || isCodingAgentStatusArgs(a, agent?.repo)) return true;
+  if (isCodingAgentAssignArgs(a, agent) || isCodingAgentCloseArgs(a, agent)) return true;
   const [group, sub, ...r] = a;
   if (group === "api") return isReviewFeedbackArgs(a, github?.repo) ? true : null;
   if (group === "issue") {
-    if (sub === "view") return r.length === 3 && NUMBER4.test(r[0]) && r[1] === "--json" && JSON_FIELDS2.test(r[2]);
-    if (sub === "comment") return r.length === 3 && NUMBER4.test(r[0]) && r[1] === "--body-file" && isFile2(r[2]);
+    if (sub === "view") return r.length === 3 && NUMBER5.test(r[0]) && r[1] === "--json" && JSON_FIELDS2.test(r[2]);
+    if (sub === "comment") return r.length === 3 && NUMBER5.test(r[0]) && r[1] === "--body-file" && isFile2(r[2]);
     if (sub === "edit") return isProgressLabelEdit(r);
     return false;
   }
   if (group === "pr") {
     if (sub === "create") {
-      return r.length === 9 && r[0] === "--draft" && r[1] === "--base" && isBranch2(r[2]) && r[3] === "--head" && isFactoryBranch(r[4], []) && r[5] === "--title" && isTitle(r[6]) && r[7] === "--body-file" && isFile2(r[8]);
+      return r.length === 9 && r[0] === "--draft" && r[1] === "--base" && isBranch3(r[2]) && r[3] === "--head" && isFactoryBranch(r[4], []) && r[5] === "--title" && isTitle(r[6]) && r[7] === "--body-file" && isFile2(r[8]);
     }
-    if (sub === "comment") return r.length === 3 && NUMBER4.test(r[0]) && r[1] === "--body-file" && isFile2(r[2]);
+    if (sub === "comment") return r.length === 3 && NUMBER5.test(r[0]) && r[1] === "--body-file" && isFile2(r[2]);
     if (sub === "list") {
       if (r.length === 4) return r[0] === "--head" && isFactoryBranch(r[1], []) && r[2] === "--json" && JSON_FIELDS2.test(r[3]);
-      return r.length === 8 && r[0] === "--head" && /^factory\/issue-\d+$/.test(r[1]) && r[2] === "--base" && isBranch2(r[3]) && same2(r.slice(4), ["--state", "merged", "--json", "number"]);
+      return r.length === 8 && r[0] === "--head" && /^factory\/issue-\d+$/.test(r[1]) && r[2] === "--base" && isBranch3(r[3]) && same2(r.slice(4), ["--state", "merged", "--json", "number"]);
     }
-    if (sub === "ready") return r.length === 1 && NUMBER4.test(r[0]);
+    if (sub === "ready") return r.length === 1 && NUMBER5.test(r[0]);
     if (sub === "merge") return false;
     return null;
   }
   if (group === "repo") return sub === "view" && same2(r, ["--json", "url"]);
   return null;
 }
-function assertFactoryCommand(cmd, args, extraProtected = [], env2, ado, writes, local, github) {
+function assertFactoryCommand(cmd, args, extraProtected = [], env2, ado, writes, local, github, agent) {
   if (isAdoCommand(cmd)) {
     checkAdoCommand(cmd, args, env2, ado, "factory", adoRefusal(cmd, args), writes);
     return;
@@ -119811,7 +119894,7 @@ function assertFactoryCommand(cmd, args, extraProtected = [], env2, ado, writes,
   const base = file.replace(/\.exe$/, "");
   const protectedBranches = [...PROTECTED_BRANCHES, ...extraProtected];
   const strings = args.every((x) => typeof x === "string");
-  const verdict = !strings ? false : base === "git" ? factoryGit(args, protectedBranches, extraProtected, local) : base === "gh" ? factoryGh(args, writes, github) : null;
+  const verdict = !strings ? false : base === "git" ? factoryGit(args, protectedBranches, extraProtected, local) : base === "gh" ? factoryGh(args, writes, github, agent) : null;
   if (verdict === false) throw new FactorySafetyError(`omg factory run refuses \`${file} ${args.join(" ")}\`: not one of the command shapes the factory engine runs`);
   if (verdict === true) {
     const trusted = JSON.stringify(Object.entries(TRUSTED_READ_ENV));
@@ -119826,11 +119909,11 @@ function assertFactoryCommand(cmd, args, extraProtected = [], env2, ado, writes,
     throw new FactorySafetyError(error2 instanceof Error ? error2.message.replace(/^omg ship refuses/, "omg factory run refuses") : String(error2));
   }
 }
-function factoryGuardExec(exec3, extraProtected = () => [], ado = () => void 0, writes = () => void 0, local = () => void 0, github = () => void 0) {
+function factoryGuardExec(exec3, extraProtected = () => [], ado = () => void 0, writes = () => void 0, local = () => void 0, github = () => void 0, agent = () => void 0) {
   return (cmd, args, opts) => {
     if (isAdoCommand(cmd)) return runGuardedAdo(exec3, cmd, args, opts, ado(), "factory", adoRefusal(cmd, args), writes());
     const ctx = writes();
-    assertFactoryCommand(cmd, args, extraProtected(), opts?.env, void 0, ctx, local(), github());
+    assertFactoryCommand(cmd, args, extraProtected(), opts?.env, void 0, ctx, local(), github(), agent());
     const at = ctx && cmd.replace(/\\/g, "/").split("/").pop().toLowerCase().replace(/\.exe$/, "") === "gh" ? trackerBodyFileArg(args) : void 0;
     if (at === void 0) return exec3(cmd, args, opts);
     const body = readTrackerBody(args[at], (reason) => new FactorySafetyError(`omg factory run refuses \`gh ${args.join(" ")}\`: ${reason}`));
@@ -119855,7 +119938,7 @@ function localTransportArgs(args, mirror) {
     return ["push", mirror, ...args.slice(2)];
   }
   if (args[0] !== "fetch" || args[1] !== LOCAL_REMOTE) return [...args];
-  const refspecs = args.slice(2).map((a) => isBranch2(a) && !a.startsWith("refs/") ? `+refs/heads/${a}:refs/remotes/${LOCAL_REMOTE}/${a}` : a);
+  const refspecs = args.slice(2).map((a) => isBranch3(a) && !a.startsWith("refs/") ? `+refs/heads/${a}:refs/remotes/${LOCAL_REMOTE}/${a}` : a);
   return ["fetch", "--no-tags", "--refmap=", LOCAL_REMOTE, ...refspecs];
 }
 function hardenedGitExec(exec3, hooksDir, localMirror = () => void 0) {
@@ -119888,7 +119971,7 @@ function hardenedGitExec(exec3, hooksDir, localMirror = () => void 0) {
     return exec3(cmd, [...hardening, ...LOCAL_REMOTE_PACK_ARGS, ...localTransportArgs(args, mirror)], opts);
   };
 }
-var import_fs146, import_os32, import_path172, FACTORY_BRANCH_PREFIX, FactorySafetyError, NUMBER4, JSON_FIELDS2, BRANCH3, REPO_PATH, isPlainRepoPath, FOR_EACH_REF_FORMAT, CHECKOUT_BRANCH, isBranch2, isFile2, isTitle, same2, FACTORY_LABEL, KEY_SEARCH, MAX_WRITE_LABELS, isWriteLabel, isBodyFile, LOCAL_REMOTE_DEFAULT_FETCH, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, URL_REWRITE_CONFIG_ARGS, REMOTE_CONFIG_ARGS, adoRefusal, LOCAL_REMOTE_PACK_ARGS, onLocalRemote;
+var import_fs146, import_os32, import_path172, FACTORY_BRANCH_PREFIX, FactorySafetyError, NUMBER5, JSON_FIELDS2, BRANCH4, REPO_PATH, isPlainRepoPath, FOR_EACH_REF_FORMAT, CHECKOUT_BRANCH, isBranch3, isFile2, isTitle, same2, FACTORY_LABEL, KEY_SEARCH, MAX_WRITE_LABELS, isWriteLabel, isBodyFile, LOCAL_REMOTE_DEFAULT_FETCH, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, URL_REWRITE_CONFIG_ARGS, REMOTE_CONFIG_ARGS, adoRefusal, LOCAL_REMOTE_PACK_ARGS, onLocalRemote;
 var init_exec2 = __esm({
   "src/factory/run/exec.ts"() {
     "use strict";
@@ -119897,6 +119980,7 @@ var init_exec2 = __esm({
     import_path172 = require("path");
     init_guard();
     init_body_file();
+    init_coding_agent();
     init_graphql();
     init_mirror();
     init_exec();
@@ -119909,14 +119993,14 @@ var init_exec2 = __esm({
         this.name = "FactorySafetyError";
       }
     };
-    NUMBER4 = /^\d+$/;
+    NUMBER5 = /^\d+$/;
     JSON_FIELDS2 = /^[A-Za-z]+(?:,[A-Za-z]+)*$/;
-    BRANCH3 = /^[\w.][\w./-]*$/;
+    BRANCH4 = /^[\w.][\w./-]*$/;
     REPO_PATH = /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/;
     isPlainRepoPath = (p) => REPO_PATH.test(p) && !p.split("/").some((seg) => seg === "." || seg === "..");
     FOR_EACH_REF_FORMAT = "--format=%(refname) %(objectname)";
     CHECKOUT_BRANCH = /^omc-team\/factory-run\/(?:issue-\d+|heal-[0-9a-f]{8})$/;
-    isBranch2 = (s) => typeof s === "string" && BRANCH3.test(s) && !s.includes("..") && !s.endsWith("/") && !s.endsWith(".lock");
+    isBranch3 = (s) => typeof s === "string" && BRANCH4.test(s) && !s.includes("..") && !s.endsWith("/") && !s.endsWith(".lock");
     isFile2 = (s) => typeof s === "string" && s.length > 0 && !s.startsWith("-") && !/[\r\n\0]/.test(s);
     isTitle = (s) => typeof s === "string" && s.length > 0 && s.length <= 256 && !s.startsWith("-") && !/[\p{Cc}\p{Cf}]/u.test(s);
     same2 = (args, shape) => args.length === shape.length && shape.every((v, i) => args[i] === v);
@@ -120384,8 +120468,8 @@ function checkOption(cmd, sub, token, ctx) {
       if (long && prefixOf(name, SORT_DENIED_LONG) || shortHas(token, "o")) return `sort option ${name}`;
       break;
     case "find": {
-      const lower = token.toLowerCase();
-      if (FIND_DENIED.has(lower) || lower.startsWith("-fprint")) return `find action ${token}`;
+      const lower2 = token.toLowerCase();
+      if (FIND_DENIED.has(lower2) || lower2.startsWith("-fprint")) return `find action ${token}`;
       break;
     }
     default:
@@ -124871,34 +124955,6 @@ var init_gates = __esm({
   }
 });
 
-// src/forge/github/gh.ts
-function ghRun(exec3, args, cwd2) {
-  const res = exec3("gh", args, { cwd: cwd2 });
-  if (res.status !== 0) throw new GhCommandError(`gh ${args.join(" ")} failed (exit ${res.status}): ${res.stderr.trim().split("\n")[0]}`);
-  return res.stdout;
-}
-function ghJson(exec3, args, cwd2) {
-  const out = ghRun(exec3, args, cwd2);
-  try {
-    return JSON.parse(out);
-  } catch {
-    throw new GhCommandError(`gh ${args.join(" ")} returned no JSON`);
-  }
-}
-var GhCommandError, ghRepoArg;
-var init_gh = __esm({
-  "src/forge/github/gh.ts"() {
-    "use strict";
-    GhCommandError = class extends Error {
-      constructor(message4) {
-        super(message4);
-        this.name = "GhCommandError";
-      }
-    };
-    ghRepoArg = (repo) => `${repo.host}/${repo.owner}/${repo.name}`;
-  }
-});
-
 // src/forge/github/reviews.ts
 function parseMergeView(stdout) {
   let v;
@@ -126137,9 +126193,9 @@ function itemFieldOps(item, bodyDir) {
   return ops;
 }
 function editedTags(current, add, remove) {
-  const lower = (t) => t.toLowerCase();
-  const kept = current.filter((t) => !remove.some((r) => lower(r) === lower(t)));
-  const next = [...kept, ...add.filter((a, i) => !kept.some((t) => lower(t) === lower(a)) && add.findIndex((b) => lower(b) === lower(a)) === i)];
+  const lower2 = (t) => t.toLowerCase();
+  const kept = current.filter((t) => !remove.some((r) => lower2(r) === lower2(t)));
+  const next = [...kept, ...add.filter((a, i) => !kept.some((t) => lower2(t) === lower2(a)) && add.findIndex((b) => lower2(b) === lower2(a)) === i)];
   return next.length === current.length && next.every((t, i) => t === current[i]) ? null : next;
 }
 function adoTracker(ctx, intakeSource2, bodyDir) {
@@ -126435,7 +126491,7 @@ function parseRunList(stdout) {
   return parsed2.flatMap((e) => {
     const id = typeof e?.databaseId === "number" ? String(e.databaseId) : str5(e?.databaseId);
     const headSha = str5(e?.headSha);
-    if (!NUMBER5.test(id) || !HEX4011.test(headSha)) return [];
+    if (!NUMBER6.test(id) || !HEX4011.test(headSha)) return [];
     return [{ id, headSha, conclusion: str5(e.conclusion), status: str5(e.status), headBranch: str5(e.headBranch), event: str5(e.event), createdAt: str5(e.createdAt) }];
   });
 }
@@ -126448,7 +126504,7 @@ function parseRunJobs(stdout) {
   if (!Array.isArray(jobs)) throw new Error("gh run view --json jobs: expected { jobs: [...] }");
   return jobs.flatMap((j) => {
     const jobId = typeof j?.databaseId === "number" ? String(j.databaseId) : str5(j?.databaseId);
-    if (!NUMBER5.test(jobId)) return [];
+    if (!NUMBER6.test(jobId)) return [];
     const steps = Array.isArray(j.steps) ? j.steps : [];
     return [{
       jobId,
@@ -126472,13 +126528,13 @@ function githubCi(exec3, cwd2) {
     rerunIntent: githubRerunIntent
   };
 }
-var RUN_LIST_FIELDS, NUMBER5, HEX4011, str5, githubRerunIntent;
+var RUN_LIST_FIELDS, NUMBER6, HEX4011, str5, githubRerunIntent;
 var init_ci2 = __esm({
   "src/forge/github/ci.ts"() {
     "use strict";
     init_logs();
     RUN_LIST_FIELDS = "databaseId,conclusion,status,headSha,headBranch,event,createdAt";
-    NUMBER5 = /^\d{1,20}$/;
+    NUMBER6 = /^\d{1,20}$/;
     HEX4011 = /^[0-9a-f]{40}$/;
     str5 = (v) => typeof v === "string" ? v : "";
     githubRerunIntent = (runId) => `gh run rerun ${runId} --failed`;
@@ -130068,17 +130124,17 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
 function checkGh(a, marker, githubRepo) {
   const [group, sub, ...r] = a;
   if (group === "api") return isReviewFeedbackArgs(a, githubRepo);
-  if (group === "issue" && sub === "view") return r.length === 3 && NUMBER6.test(r[0]) && r[1] === "--json" && JSON_FIELDS3.test(r[2]);
+  if (group === "issue" && sub === "view") return r.length === 3 && NUMBER7.test(r[0]) && r[1] === "--json" && JSON_FIELDS3.test(r[2]);
   if (group === "issue" && sub === "list") {
-    return r.length === 8 && (r[0] === "--label" || r[0] === "--milestone") && VALUE2(r[1]) && r[2] === "--state" && r[3] === "open" && r[4] === "--json" && r[5] === "number" && r[6] === "--limit" && NUMBER6.test(r[7]);
+    return r.length === 8 && (r[0] === "--label" || r[0] === "--milestone") && VALUE2(r[1]) && r[2] === "--state" && r[3] === "open" && r[4] === "--json" && r[5] === "number" && r[6] === "--limit" && NUMBER7.test(r[7]);
   }
-  if (group === "issue" && sub === "edit") return marker !== void 0 && same4(r.slice(1), ["--add-label", marker]) && NUMBER6.test(r[0] ?? "");
+  if (group === "issue" && sub === "edit") return marker !== void 0 && same4(r.slice(1), ["--add-label", marker]) && NUMBER7.test(r[0] ?? "");
   if (group === "pr" && sub === "list") {
     if (r.length === 4) return r[0] === "--head" && FACTORY_ISSUE_BRANCH.test(r[1]) && r[2] === "--json" && JSON_FIELDS3.test(r[3]);
     return r.length === 8 && r[0] === "--head" && FACTORY_ISSUE_BRANCH.test(r[1]) && r[2] === "--base" && VALUE2(r[3]) && same4(r.slice(4), ["--state", "merged", "--json", "number"]);
   }
-  if (group === "pr" && sub === "view") return r.length === 3 && NUMBER6.test(r[0]) && r[1] === "--json" && JSON_FIELDS3.test(r[2]);
-  if (group === "label" && sub === "list") return r.length === 6 && r[0] === "--search" && VALUE2(r[1]) && r[2] === "--json" && r[3] === "name" && r[4] === "--limit" && NUMBER6.test(r[5]);
+  if (group === "pr" && sub === "view") return r.length === 3 && NUMBER7.test(r[0]) && r[1] === "--json" && JSON_FIELDS3.test(r[2]);
+  if (group === "label" && sub === "list") return r.length === 6 && r[0] === "--search" && VALUE2(r[1]) && r[2] === "--json" && r[3] === "name" && r[4] === "--limit" && NUMBER7.test(r[5]);
   return false;
 }
 function isLocalReadShape(args) {
@@ -130387,7 +130443,7 @@ async function runFactoryCheck(o, deps) {
   }
   return ok2 ? 0 : EXIT_CHECK_FAILED;
 }
-var import_fs168, import_path195, EXIT_CHECK_FAILED, EXIT_CHECK_USAGE, EXIT_CHECK_INCOMPATIBLE, CHECK_JSON_SCHEMA_VERSION, CheckUsageError, CheckIncompatibleError, NUMBER6, JSON_FIELDS3, FACTORY_ISSUE_BRANCH, VALUE2, same4, CHECK_GIT, defaultResolveAz;
+var import_fs168, import_path195, EXIT_CHECK_FAILED, EXIT_CHECK_USAGE, EXIT_CHECK_INCOMPATIBLE, CHECK_JSON_SCHEMA_VERSION, CheckUsageError, CheckIncompatibleError, NUMBER7, JSON_FIELDS3, FACTORY_ISSUE_BRANCH, VALUE2, same4, CHECK_GIT, defaultResolveAz;
 var init_cli = __esm({
   "src/factory/check/cli.ts"() {
     "use strict";
@@ -130420,7 +130476,7 @@ var init_cli = __esm({
     };
     CheckIncompatibleError = class extends Error {
     };
-    NUMBER6 = /^\d+$/;
+    NUMBER7 = /^\d+$/;
     JSON_FIELDS3 = /^[A-Za-z]+(?:,[A-Za-z]+)*$/;
     FACTORY_ISSUE_BRANCH = /^factory\/issue-\d+$/;
     VALUE2 = (s) => typeof s === "string" && s.length > 0 && !s.startsWith("-") && !/[\r\n\0]/.test(s);
@@ -130597,11 +130653,11 @@ function ghAllowed2(a) {
   const [group, sub, ...r] = a;
   if (group !== "run") return false;
   if (sub === "list") {
-    const rest = r[0] === "--branch" && isBranch3(r[1]) ? r.slice(2) : r;
-    return rest.length === 8 && rest[0] === "--workflow" && WORKFLOW.test(rest[1]) && rest[2] === "--event" && (rest[3] === "push" || rest[3] === "pull_request") && rest[4] === "--json" && rest[5] === RUN_LIST_FIELDS && rest[6] === "--limit" && NUMBER7.test(rest[7]);
+    const rest = r[0] === "--branch" && isBranch4(r[1]) ? r.slice(2) : r;
+    return rest.length === 8 && rest[0] === "--workflow" && WORKFLOW.test(rest[1]) && rest[2] === "--event" && (rest[3] === "push" || rest[3] === "pull_request") && rest[4] === "--json" && rest[5] === RUN_LIST_FIELDS && rest[6] === "--limit" && NUMBER8.test(rest[7]);
   }
   if (sub === "view") {
-    return r.length === 3 && NUMBER7.test(r[0]) && r[1] === "--json" && r[2] === "jobs" || r.length === 3 && r[0] === "--job" && NUMBER7.test(r[1]) && r[2] === "--log";
+    return r.length === 3 && NUMBER8.test(r[0]) && r[1] === "--json" && r[2] === "jobs" || r.length === 3 && r[0] === "--job" && NUMBER8.test(r[1]) && r[2] === "--log";
   }
   return false;
 }
@@ -130614,7 +130670,7 @@ function gitAllowed2(a) {
       return r.length === 2 && r[0] === "-e" && /^[0-9a-f]{40}\^\{commit\}$/.test(r[1]);
     case "merge-base": {
       const m = r.length === 3 && r[0] === "--is-ancestor" && /^[0-9a-f]{40}$/.test(r[1]) ? /^refs\/remotes\/origin\/(.+)$/.exec(r[2]) : null;
-      return Boolean(m) && isBranch3(m[1]);
+      return Boolean(m) && isBranch4(m[1]);
     }
     case "rev-list":
       return r.length === 2 && r[0] === "--count" && /^[0-9a-f]{40}\.\.[0-9a-f]{40}$/.test(r[1]);
@@ -130624,7 +130680,7 @@ function gitAllowed2(a) {
       return r.length === 3 && r[0] === "--name-only" && r[1] === "--no-renames" && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[2]);
     case "show": {
       const m = r.length === 1 ? /^refs\/remotes\/origin\/([\w.][\w./-]*):(.+)$/.exec(r[0]) : null;
-      return Boolean(m) && isBranch3(m[1]) && REPO_PATH3.test(m[2]) && !m[2].split("/").includes("..");
+      return Boolean(m) && isBranch4(m[1]) && REPO_PATH3.test(m[2]) && !m[2].split("/").includes("..");
     }
     default:
       return false;
@@ -130656,7 +130712,7 @@ function shaRange(exec3, root2, green2, red2) {
   const files = diff.stdout.split(/\r?\n/).map((f) => f.trim()).filter(Boolean);
   return { commits: Number(count3.stdout.trim()) || 0, codeFiles: files.filter((f) => CODE_PATH.test(f)).length, files: files.slice(0, MAX_RANGE_FILES) };
 }
-var HealSafetyError, NUMBER7, HEX4013, BRANCH4, WORKFLOW, REPO_PATH3, same5, isBranch3, gitBase, MAX_RANGE_FILES, CODE_PATH;
+var HealSafetyError, NUMBER8, HEX4013, BRANCH5, WORKFLOW, REPO_PATH3, same5, isBranch4, gitBase, MAX_RANGE_FILES, CODE_PATH;
 var init_history = __esm({
   "src/factory/heal/history.ts"() {
     "use strict";
@@ -130670,13 +130726,13 @@ var init_history = __esm({
         this.name = "HealSafetyError";
       }
     };
-    NUMBER7 = /^\d{1,20}$/;
+    NUMBER8 = /^\d{1,20}$/;
     HEX4013 = /^[0-9a-f]{40}$/;
-    BRANCH4 = /^[\w.][\w./-]*$/;
+    BRANCH5 = /^[\w.][\w./-]*$/;
     WORKFLOW = /^[\w.-]+\.ya?ml$/;
     REPO_PATH3 = /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/;
     same5 = (args, shape) => args.length === shape.length && shape.every((v, i) => args[i] === v);
-    isBranch3 = (s) => typeof s === "string" && BRANCH4.test(s) && !s.includes("..");
+    isBranch4 = (s) => typeof s === "string" && BRANCH5.test(s) && !s.includes("..");
     gitBase = (cmd) => cmd.replace(/\\/g, "/").split("/").pop().toLowerCase().replace(/\.exe$/, "");
     MAX_RANGE_FILES = 50;
     CODE_PATH = /^(?:src\/|tests\/|scripts\/|package(?:-lock)?\.json$)/;
@@ -133985,7 +134041,7 @@ function renderHeartbeat(forge, o) {
     throw new SetupError(2, `--mode triage needs omg >= ${HEARTBEAT_TRIAGE_MIN_VERSION} (the first release with omg factory triage), but the pinned version is ${o.version}: pass --omg-version <x.y.z> once a release that has it is published`);
   }
   const branch2 = o.branch ?? "";
-  if (forge === "azure-devops" && (!BRANCH5.test(branch2) || branch2.includes(".."))) {
+  if (forge === "azure-devops" && (!BRANCH6.test(branch2) || branch2.includes(".."))) {
     throw new SetupError(2, `cannot schedule the pipeline on branch ${JSON.stringify(branch2)}: expected letters, digits, ., _, / and - only, without ..`);
   }
   const target = TARGETS[forge];
@@ -134023,7 +134079,7 @@ function planHeartbeat(root2, forge, o) {
   if (!ours && !o.force) throw new SetupError(5, `${relPath} exists and was not written by omg factory setup --workflows; nothing written (pass --force to replace it)`);
   return { relPath, action: ours ? "update" : "overwrite", warnings, write: { path: path30, scope: "project", before: raw, after, diff: lineDiff(before, after) } };
 }
-var import_fs175, import_path205, import_url23, DEFAULT_HEARTBEAT_CRON, HEARTBEAT_TRIAGE_MIN_VERSION, HEARTBEAT_MARKER, TARGETS, CRON, VERSION3, STRICT_SEMVER, BRANCH5, CRON_RANGES, MIN_COMFORTABLE_GAP_MINUTES;
+var import_fs175, import_path205, import_url23, DEFAULT_HEARTBEAT_CRON, HEARTBEAT_TRIAGE_MIN_VERSION, HEARTBEAT_MARKER, TARGETS, CRON, VERSION3, STRICT_SEMVER, BRANCH6, CRON_RANGES, MIN_COMFORTABLE_GAP_MINUTES;
 var init_workflows = __esm({
   "src/factory/setup/workflows.ts"() {
     "use strict";
@@ -134042,7 +134098,7 @@ var init_workflows = __esm({
     CRON = /^(?:[0-9*/,-]+ ){4}[0-9*/,-]+$/;
     VERSION3 = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
     STRICT_SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-    BRANCH5 = /^[A-Za-z0-9._/-]+$/;
+    BRANCH6 = /^[A-Za-z0-9._/-]+$/;
     CRON_RANGES = [["minute", 0, 59], ["hour", 0, 23], ["day of month", 1, 31], ["month", 1, 12], ["day of week", 0, 7]];
     MIN_COMFORTABLE_GAP_MINUTES = 15;
   }
@@ -134306,16 +134362,16 @@ async function setup(o, deps, cwd2, out) {
   let itemTypes = [];
   if (ado) {
     const known = adoWorkItemTypes(io);
-    const lower = new Map(known.map((t) => [t.toLowerCase(), t]));
+    const lower2 = new Map(known.map((t) => [t.toLowerCase(), t]));
     if (o.itemTypes) {
       itemTypes = list(o.itemTypes);
-      const unknown2 = itemTypes.filter((t) => !lower.has(t.toLowerCase()));
+      const unknown2 = itemTypes.filter((t) => !lower2.has(t.toLowerCase()));
       if (unknown2.length > 0) throw new SetupError(5, `unknown work item type ${unknown2.map((t) => JSON.stringify(t)).join(", ")} in project ${repo.project} (known: ${known.join(", ")})`);
-      itemTypes = itemTypes.map((t) => lower.get(t.toLowerCase()));
+      itemTypes = itemTypes.map((t) => lower2.get(t.toLowerCase()));
     } else {
-      itemTypes = DEFAULT_ADO_ITEM_TYPES.filter((t) => lower.has(t.toLowerCase())).map((t) => lower.get(t.toLowerCase()));
-      if (detected.prefill.workItemType && lower.has(detected.prefill.workItemType.toLowerCase()) && !itemTypes.some((t) => t.toLowerCase() === detected.prefill.workItemType.toLowerCase())) {
-        itemTypes.push(lower.get(detected.prefill.workItemType.toLowerCase()));
+      itemTypes = DEFAULT_ADO_ITEM_TYPES.filter((t) => lower2.has(t.toLowerCase())).map((t) => lower2.get(t.toLowerCase()));
+      if (detected.prefill.workItemType && lower2.has(detected.prefill.workItemType.toLowerCase()) && !itemTypes.some((t) => t.toLowerCase() === detected.prefill.workItemType.toLowerCase())) {
+        itemTypes.push(lower2.get(detected.prefill.workItemType.toLowerCase()));
       }
       if (itemTypes.length === 0) throw new SetupError(5, `project ${repo.project} has none of the default work item types (${DEFAULT_ADO_ITEM_TYPES.join(", ")}); pass --item-types`);
     }
@@ -153761,8 +153817,8 @@ function isFamilyCutoverEnabled(event) {
   if (!isDispatcherEnabled()) return false;
   const rb = rollbackSet();
   if (rb.has("*")) return false;
-  const lower = event.toLowerCase();
-  if (rb.has(lower)) return false;
+  const lower2 = event.toLowerCase();
+  if (rb.has(lower2)) return false;
   return true;
 }
 function shouldLoosenOrdinaryEnforcement(event) {

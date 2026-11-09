@@ -26,7 +26,7 @@ describe('coding agent argv', () => {
         expect(CODING_AGENT_STATUS_QUERY).toContain('timelineItems(last:50,since:$since,');
         expect(CODING_AGENT_STATUS_QUERY).toContain('suggestedActors(capabilities:[CAN_BE_ASSIGNED],first:100){pageInfo{hasNextPage}');
         expect(CODING_AGENT_STATUS_QUERY.match(/pageInfo\{hasPreviousPage\}/g)).toHaveLength(3);
-        expect(CODING_AGENT_STATUS_QUERY).toContain('commits(last:100){pageInfo{hasPreviousPage} nodes{commit{oid committedDate author{user{login}}}}}');
+        expect(CODING_AGENT_STATUS_QUERY).toContain('commits(last:100){pageInfo{hasPreviousPage} nodes{commit{oid committedDate author{user{login}} signature{isValid wasSignedByGitHub}}}}');
         expect(CODING_AGENT_STATUS_QUERY).toContain('issue(number:$number){number state ');
     });
     it('floors since to the second and subtracts the skew margin', () => {
@@ -162,7 +162,8 @@ describe('coding agent guard shapes', () => {
 const agent = { __typename: 'Bot', login: 'copilot-swe-agent' };
 const human = { __typename: 'User', login: 'robin' };
 const page = (more = false) => ({ hasPreviousPage: more });
-const commit = (oid, committedDate, user) => ({ commit: { oid, committedDate, author: { user: user === null ? null : { login: user } } } });
+const WEB_FLOW = { isValid: true, wasSignedByGitHub: true };
+const commit = (oid, committedDate, user, signature = WEB_FLOW) => ({ commit: { oid, committedDate, author: { user: user === null ? null : { login: user } }, signature } });
 const pr = (o = {}) => ({
     __typename: 'PullRequest', number: o.number ?? 12, state: o.state ?? 'OPEN', isDraft: true, isCrossRepository: o.isCrossRepository ?? false,
     baseRefName: o.baseRefName ?? 'dev', headRefName: 'copilot/fix-thing', headRefOid: o.headRefOid ?? HEAD, author: o.author ?? agent,
@@ -170,8 +171,8 @@ const pr = (o = {}) => ({
     commits: {
         pageInfo: page(o.commitsCut),
         nodes: [
-            ...(o.earlier ?? []).map((c) => commit(c.oid, '2026-11-09T06:06:00Z', c.user)),
-            ...(o.committedAt === null ? [] : [commit(o.commitOid ?? o.headRefOid ?? HEAD, o.committedAt ?? '2026-11-09T06:07:00Z', o.headUser === undefined ? 'Copilot' : o.headUser)]),
+            ...(o.earlier ?? []).map((c) => commit(c.oid, '2026-11-09T06:06:00Z', c.user, c.signature === undefined ? WEB_FLOW : c.signature)),
+            ...(o.committedAt === null ? [] : [commit(o.commitOid ?? o.headRefOid ?? HEAD, o.committedAt ?? '2026-11-09T06:07:00Z', o.headUser === undefined ? 'Copilot' : o.headUser, o.headSignature === undefined ? WEB_FLOW : o.headSignature)]),
         ],
     },
     timelineItems: {
@@ -201,7 +202,7 @@ describe('parseCodingAgentStatus', () => {
             phase: 'finished', repo: 'o/r', issue: 7, available: true, assignedAt: '2026-11-09T06:05:22Z', candidates: [12], ignored: [],
             pr: {
                 number: 12, state: 'OPEN', isDraft: true, byAgent: true, sameRepo: true, baseRef: 'dev', headRef: 'copilot/fix-thing', head: HEAD, commitsHead: HEAD,
-                headCommittedAt: '2026-11-09T06:07:00Z', allCommitsByAgent: true, linkedAt: '2026-11-09T06:05:40Z', finishedAt: '2026-11-09T06:07:34Z', truncated: false,
+                headCommittedAt: '2026-11-09T06:07:00Z', allCommitsByAgent: true, allCommitsSignedByGitHub: true, linkedAt: '2026-11-09T06:05:40Z', finishedAt: '2026-11-09T06:07:34Z', truncated: false,
             },
         });
     });
@@ -370,14 +371,14 @@ describe('assignCodingAgent', () => {
 });
 describe('adoptPreconditions', () => {
     const finished = (o = {}) => parseCodingAgentStatus(response([assigned('2026-11-09T06:00:00Z'), connected('2026-11-09T06:01:00Z', pr({ reviews: FINISHED, ...o }))]));
-    const want = { repo: 'o/r', base: 'dev' };
+    const want = { repo: 'o/r', issue: 7, base: 'dev' };
     const withPr = (over) => {
         const s = finished();
         return { ...s, pr: { ...s.pr, ...over } };
     };
     it('accepts the agent PR on the run base in the same repository', () => {
         expect(adoptPreconditions(finished(), want)).toEqual({ ok: true, pr: 12, head: HEAD });
-        expect(adoptPreconditions(finished(), { repo: 'O/R', base: 'dev' }).ok).toBe(true);
+        expect(adoptPreconditions(finished(), { repo: 'O/R', issue: 7, base: 'dev' }).ok).toBe(true);
     });
     it.each([
         ['a human author', withPr({ byAgent: false }), /not authored by the copilot-swe-agent bot/],
@@ -396,7 +397,7 @@ describe('adoptPreconditions', () => {
     it('refuses a session that has not finished, or another repository', () => {
         const working = parseCodingAgentStatus(response([assigned('2026-11-09T06:00:00Z'), connected('2026-11-09T06:01:00Z', pr())]));
         expect(adoptPreconditions(working, want)).toEqual({ ok: false, reasons: ['the coding agent has not finished (working)'] });
-        expect(adoptPreconditions(finished(), { repo: 'o/other', base: 'dev' }).ok).toBe(false);
+        expect(adoptPreconditions(finished(), { repo: 'o/other', issue: 7, base: 'dev' }).ok).toBe(false);
     });
 });
 describe('the session window (re-review HIGH-A)', () => {
@@ -412,7 +413,7 @@ describe('the session window (re-review HIGH-A)', () => {
         expect(s).toEqual({
             phase: 'waiting-pr', repo: 'o/r', issue: 7, available: true, assignedAt: t('01:00'), candidates: [], ignored: [{ number: 5, reason: 'outside-session' }],
         });
-        expect(adoptPreconditions(s, { repo: 'o/r', base: 'dev' })).toEqual({ ok: false, reasons: ['the coding agent has not finished (waiting-pr)'] });
+        expect(adoptPreconditions(s, { repo: 'o/r', issue: 7, base: 'dev' })).toEqual({ ok: false, reasons: ['the coding agent has not finished (waiting-pr)'] });
     });
     it('counts a PR re-linked in this session, but not its review requests from the previous one', () => {
         const s = parseCodingAgentStatus(reassigned('OPEN', [connected(t('01:20'), oldPr('OPEN'))]), local);
@@ -468,7 +469,7 @@ describe('the session window (re-review HIGH-A)', () => {
 });
 describe('PR commits (MEDIUM-3 residual)', () => {
     const read = (o) => parseCodingAgentStatus(response([assigned('2026-11-09T06:05:22Z'), connected('2026-11-09T06:05:40Z', pr({ reviews: FINISHED, ...o }))]));
-    const want = { repo: 'o/r', base: 'dev' };
+    const want = { repo: 'o/r', issue: 7, base: 'dev' };
     const B = 'b'.repeat(40);
     it('says all commits are the agent account when every one maps to it', () => {
         const s = read({ earlier: [{ oid: B, user: 'Copilot' }] });
@@ -524,6 +525,99 @@ describe('truncation names the list and the issue', () => {
         const noNumber = JSON.parse(response([]));
         delete noNumber.data.repository.issue.number;
         expect(() => parseCodingAgentStatus(JSON.stringify(noNumber))).toThrow(/no issue in the response/);
+    });
+});
+describe('final-round review LOWs (PR #462)', () => {
+    const t = (s) => `2026-11-09T10:${s}Z`;
+    const local = { at: '2026-11-09T10:01:00.500Z', source: 'local' };
+    const done = (at) => pr({ reviews: [{ at, actor: agent }], committedAt: at });
+    const want = { repo: 'o/r', issue: 7, base: 'dev' };
+    describe('LOW-1: a link counts only after the streak-start event in timeline order', () => {
+        it('ignores a link in the same second as unassign and re-assign that precedes the re-assign', () => {
+            const s = parseCodingAgentStatus(response([
+                assigned(t('00:00')), unassigned(t('01:00')), connected(t('01:00'), done(t('01:00'))), assigned(t('01:00')),
+            ]), local);
+            expect(s).toEqual({
+                phase: 'waiting-pr', repo: 'o/r', issue: 7, available: true, assignedAt: t('01:00'), candidates: [], ignored: [{ number: 12, reason: 'outside-session' }],
+            });
+        });
+        it('counts a link in the same second that follows the streak start', () => {
+            const s = parseCodingAgentStatus(response([unassigned(t('01:00')), assigned(t('01:00')), connected(t('01:00'), done(t('01:30')))]), local);
+            expect(s.phase).toBe('finished');
+            expect(s.candidates).toEqual([12]);
+            expect(s.ignored).toEqual([]);
+        });
+        it('orders by time first: a later link listed before the assignment still follows it', () => {
+            const s = parseCodingAgentStatus(response([connected(t('01:05'), done(t('01:30'))), assigned(t('01:00'))]), local);
+            expect(s.candidates).toEqual([12]);
+        });
+        it('compares review requests by time (no shared timeline): one in the session start second counts', () => {
+            const s = parseCodingAgentStatus(response([assigned(t('01:00')), connected(t('01:00'), done(t('01:00')))]), local);
+            expect(s.phase).toBe('finished');
+            expect(s.pr?.finishedAt).toBe(t('01:00'));
+        });
+    });
+    describe('LOW-2: a github since is whole seconds', () => {
+        it('throws on a github since with milliseconds, in the parser and the argv', () => {
+            const ms = github('2026-11-09T10:01:00.500Z');
+            expect(() => parseCodingAgentStatus(response([]), ms)).toThrow(/github since must be a whole-second GitHub time/);
+            expect(() => codingAgentStatusArgs(REPO, 7, ms)).toThrow(/github since must be a whole-second GitHub time/);
+            expect(() => assignCodingAgent(() => ({ status: 0, stdout: '{}', stderr: '' }), REPO, 7, 'dev', '2026-11-09T10:01:00.500Z', '/w')).not.toThrow();
+            expect(parseCodingAgentStatus(response([assigned(t('01:00'))]), github(t('01:00'))).assignedAt).toBe(t('01:00'));
+        });
+    });
+    describe('LOW-3: adoption is bound to the run issue', () => {
+        it('refuses a status for another issue', () => {
+            const s = parseCodingAgentStatus(response([assigned(t('01:00')), connected(t('01:01'), done(t('01:30')))]), local);
+            expect(adoptPreconditions(s, want)).toEqual({ ok: true, pr: 12, head: HEAD });
+            expect(adoptPreconditions(s, { ...want, issue: 8 })).toEqual({ ok: false, reasons: ['the status is for issue #7, not #8'] });
+            expect(adoptPreconditions({ ...s, phase: 'working' }, { ...want, issue: 8 })).toEqual({
+                ok: false, reasons: ['the status is for issue #7, not #8', 'the coding agent has not finished (working)'],
+            });
+        });
+    });
+    describe('LOW-4: every commit must be signed by GitHub', () => {
+        const B = 'b'.repeat(40);
+        const read = (o) => parseCodingAgentStatus(response([assigned(t('01:00')), connected(t('01:01'), pr({ reviews: [{ at: t('01:30'), actor: agent }], committedAt: t('01:10'), ...o }))]), local);
+        it('reports allCommitsSignedByGitHub true for web-flow signed agent commits and adopts', () => {
+            const s = read({ earlier: [{ oid: B, user: 'Copilot' }] });
+            expect(s.pr?.allCommitsSignedByGitHub).toBe(true);
+            expect(adoptPreconditions(s, want).ok).toBe(true);
+        });
+        it.each([
+            ['an unsigned commit with the agent email (a local push)', { earlier: [{ oid: B, user: 'Copilot', signature: null }] }],
+            ['an invalid signature', { headSignature: { isValid: false, wasSignedByGitHub: true } }],
+            ['a valid signature not made by GitHub', { headSignature: { isValid: true, wasSignedByGitHub: false } }],
+        ])('refuses %s even though authorship maps to the agent', (_name, over) => {
+            const s = read(over);
+            expect(s.phase).toBe('finished');
+            expect(s.pr).toMatchObject({ allCommitsByAgent: true, allCommitsSignedByGitHub: false });
+            expect(adoptPreconditions(s, want)).toEqual({ ok: false, reasons: ['PR #12 has commits without a valid GitHub (web-flow) signature'] });
+        });
+        it('leaves signatures unknown for an empty list, and adopt refuses that', () => {
+            expect(read({ committedAt: null }).pr?.allCommitsSignedByGitHub).toBeUndefined();
+            const s = read({});
+            const unknown = { ...s, pr: { ...s.pr, allCommitsSignedByGitHub: undefined } };
+            expect(adoptPreconditions(unknown, want)).toEqual({ ok: false, reasons: ['PR #12 commit signatures are unknown (commit list cut or unreadable)'] });
+        });
+        it('reads signatures in the one pinned status query', () => {
+            const args = codingAgentStatusArgs(REPO, 7, local);
+            expect(args).toHaveLength(14);
+            expect(args[5]).toBe(`query=${CODING_AGENT_STATUS_QUERY}`);
+            expect(CODING_AGENT_STATUS_QUERY.match(/signature\{isValid wasSignedByGitHub\}/g)).toHaveLength(1);
+            expect(isCodingAgentStatusArgs(args, REPO_ARG)).toBe(true);
+        });
+    });
+    describe('the query-level since keeps the 120 s margin for both sources', () => {
+        // GitHub's since excludes an event in the same second (live check), so a github since
+        // queried without the margin would drop the session's own Assigned event.
+        it.each(['local', 'github'])('%s', (source) => {
+            const at = t('01:00');
+            const queried = codingAgentStatusArgs(REPO, 7, { at, source })[13].slice('since='.length);
+            expect(queried).toBe('2026-11-09T09:59:00Z');
+            expect(Date.parse(at) - Date.parse(queried)).toBe(CODING_AGENT_SINCE_SKEW_SECONDS * 1000);
+            expect(CODING_AGENT_SINCE_SKEW_SECONDS).toBe(120);
+        });
     });
 });
 //# sourceMappingURL=coding-agent.test.js.map
