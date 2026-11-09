@@ -362,14 +362,16 @@ export interface GithubReadContext {
 }
 
 function factoryGh(a: string[], writes?: TrackerWriteContext, github?: GithubReadContext): boolean | null {
+  const write = writes ? trackerWriteGh(a, writes) : null;
+  if (write !== null) return write;
+
   // The Copilot coding agent (src/forge/github/coding-agent.ts), pinned to the run's repository: assign one issue (REST),
   if (isCodingAgentAssignArgs(a, github?.repo)) return true;
   // its status read (fixed GraphQL query),
   if (isCodingAgentStatusArgs(a, github?.repo)) return true;
   // and closing its PR once the engine rebranched it.
   if (isCodingAgentCloseArgs(a, github?.repo)) return true;
-  const write = writes ? trackerWriteGh(a, writes) : null;
-  if (write !== null) return write;
+
   const [group, sub, ...r] = a;
   if (group === 'issue') {
     if (sub === 'view') return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--json' && JSON_FIELDS.test(r[2]);
