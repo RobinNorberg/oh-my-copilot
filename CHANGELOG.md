@@ -4,11 +4,59 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
-**Default changes.** `team.sdk.maxCreditsPerWorker` now defaults to 50 (was 10). SDK-transport teams now use branch worktrees when `team.ops.worktreeMode` is unset. `omg factory run` exits 5 (was 1) when there is no usable forge. `omg team shutdown` exits 3 (was 1) when it keeps a dirty worker worktree. `omg factory setup` with no origin and no flags exits 5 (was 2).
+### Added
+
+- **`omg factory triage`** (#461). Proposes the priority (`priority:p0`..`p3`) and the `needs-split` / `needs-plan` labels each intake item should carry, from the same reads as `check`. A dry run by default; `--apply` writes the plan it prints, on GitHub (labels, which must already exist), Azure DevOps (tags and the priority field) and the local forge (backlog files). It only adds `needs-split` and `needs-plan`, derives the priority tag from the item's priority field or first label, and skips items with a run or a factory PR. `factory.triage.labels`, `sizeSplitAt` and `defaultPriority` are read from the user config and the base branch only. It writes no assignee and proposes no `owner:` label. `--json` has schemaVersion 1.
+- **`omg factory setup --workflows`** (#463). Writes a scheduled heartbeat, `.github/workflows/omg-factory-heartbeat.yml` or an Azure Pipelines file, that installs the omg version that wrote it and runs `omg factory check --json` every two hours (`--cron` changes it), publishing a job summary and an artifact. Read-only permissions by default; `--mode triage` adds `issues: write` and runs `omg factory triage --apply` (needs omg 5.22.0 or later). Actions are pinned to commit shas, the install step has no token, and an existing file omg did not write is never replaced without `--force`. It starts no lane. Azure DevOps paths are tested against rendered output only.
+- **Human review feedback is read on every forge** (#460). `omg factory poll` counts open review input on a factory PR's current head as `k human thread(s) (m ignored)`. A reviewer counts when listed in the new `factory.review.trustedReviewers` (user config or base branch), when they have write access on GitHub, or when listed in `factory.forge.azureDevOps.trustedAuthors` on Azure DevOps. A read that is cut short or inconsistent is an error for that PR, never "no feedback", and poll prints `trust incomplete` when the GitHub collaborator list was not read whole. The engine does not yet act on this feedback.
+- **`omg factory pr list|view|diff|review`** (#460). Inspects local-forge PRs without running a hook, external diff or textconv, and records your review (`--approve`, `--request-changes`, `--comment`) on the PR's head. `review` needs the full head sha as `--head` and is refused when the PR moved. The next `omg factory poll` counts it; the engine does not yet read it.
+- **`omg budget status --by role|kind|run`** (#458). Groups the period's usage by who spent it. Factory lanes are tagged with the lane kind and run, SDK team workers as `team-worker`; older records and plain sessions are `untagged`.
+- **`modelProfile`** (#458). `quality-first`, `balanced` (default, no change) or `economy` maps the agent tiers to Copilot models when `omg setup` runs. An explicit `agents.<name>.model` wins, and switching profiles removes the entries the previous profile wrote.
+- **Copilot coding agent forge adapter** (#462). The GitHub forge can read the coding agent's status on an issue and assign it, through three exact, repository- and issue-bound `gh` shapes in the engine guard. No command, config key or lane uses it yet.
+- **Busy exit code and cross-clone claims** (#459). One factory engine still runs per checkout; a second `omg factory run`, or a run of an item another engine or clone holds, exits 6 (busy) and touches nothing. Separate clones on one host coordinate through claim files in the factory ledger directory: `run --next` skips an item another clone holds and lists it under `claimed`, and a claim lasts until the run is merged, cancelled or failed. New `omg factory run release [issue]` clears a claim or a crashed engine lock, and `omg factory run status` without an issue lists the engines, unreadable owner files and claims. `omg factory board` marks live runs. There is no credit cap across clones. `omg factory poll`'s heal tick and base sync wait while an engine runs.
+
+### Changed
+
+- **More local gates park at `gate-definition-unknown`** (#457). A gate that runs `npx`, a program looked up on PATH (`cargo test`, `go test`, `pytest`, `make check`), a program given by a path outside the repository, or `node` with an option before its script (other than `--run <script>`, `--test` with `--test-*` flags, or inline `-e`/`-p` code) has no file in the repository that pins it, so `omg factory check` prints `gate: unresolved (...)` and the run parks before any lane. Wrap the command in a committed script such as `node scripts/gate.mjs`. A pnpm or yarn release script run through node maps to pnpm or yarn.
+- **The `gate-definition-unknown` park at a step boundary says "no further lane was started"** (#456).
+- **Azure DevOps review threads are filtered per comment** (#460). The factory's own comments are dropped one by one, so a trusted reply in a thread the factory started now counts as human input.
+- **Local reopen detection reads the whole history** (#457). A body line that starts with `state:` never counts as a reopen, and an item closed and reopened again later does.
+
+### Fixed
+
+- **Leftover gate processes are killed** (#457). On Windows, processes a local gate leaves behind after its root exits are found by start time and killed before the verdict. The engine records the gate's processes, so the next gate run for the same head cleans up after a crashed engine, on POSIX by process group and on Windows by process. Before, Windows leftovers survived and a crash left them running.
+- **A malformed working-tree backlog file no longer stops the local forge** (#457). It is skipped with one warning, and `enqueue` and `triage` refuse to edit it, naming the file.
+- **Local store locks** (#457). A stale lock is broken only if its owner is unchanged, a locked file retries on `EPERM` for up to 2 s, and a linked `.omg` anchor is refused outside the checkout root.
+- **`omg factory run --dry-run`** (#456) answers a finished or cancelled run before it reports an unknown gate.
+- **`omg factory run` messages name the way out of `gate-definition-unknown`** (#457): wrap the command in a script committed in the repository and set that as the gate.
+- **Concurrent commands in one checkout** (#459). `omg factory run` (with or without an issue), `run clean`, `run reset`, `omg factory heal` commands and `omg factory poll`'s heal and base-sync steps take the checkout's engine lock before any fetch or ref move, so a second command no longer moves refs under a running engine and parks it with a false tamper finding.
+
+### Security
+
+- **The sandbox denies lanes the OMC global state root** (#457). Lanes cannot read `OMC_HOME/state` (or the XDG state dir), and with `OMC_STATE_DIR` set, the factory ledger and the budget ledger, where the sandbox supports denied paths. Review records of the local forge live there.
+- **Triage writes are limited to the triage shape** (#461). The GitHub guard allows only `gh issue edit` with the plan's priority, `needs-split` and `needs-plan` labels, never a `factory:*` or `harbor:*` label, and only for the triage command. On Azure DevOps only `System.Tags` and `Microsoft.VSTS.Common.Priority` can be patched. The dry run runs on the read guard.
+- **Review feedback reads are exact** (#460). Human review input comes through one pinned `gh api graphql` shape for the configured repository, no `@file` or other repository is accepted, bodies are shown with control and bidi characters visible, and a partial answer parks instead of reading as "no feedback".
+- **The cloud heartbeat is token-light** (#463). The install step has no token, the token reaches only the omg steps, `npm install` runs with `--ignore-scripts`, and on Azure DevOps omg's output cannot inject a pipeline logging command.
+- **Cross-clone claims are sealed** (#459). Another clone's run state counts only as its own engine sealed it, and an unreadable claim file or claim root is held, never taken over. A claim root must be a local absolute path, so a claim cannot make the engine stat a network share.
+
+
+# oh-my-copilot v5.21.0
+
+## [5.21.0] - 2026-11-08
+
+Fork **v5.21.0** (from v5.19.7) adds offline mode for the software factory (the `local` forge), fixes the findings of two factory and team dogfood rounds, and ports oh-my-claudecode `27e7f235e..c5b71636e` in two steps (#440, #453). Version 5.19.8 was never published; its changes ship here.
+
+**Default changes.**
+- `team.sdk.maxCreditsPerWorker` now defaults to 50 (was 10).
+- When an SDK worker hits its credit cap, its in-progress task gets the new terminal status `capped` instead of staying `in_progress`.
+- SDK-transport teams use branch worktrees when neither `team.ops.worktreeMode` nor `OMC_TEAM_WORKTREE_MODE` is set.
+- Ship's prepare, in `omg ship prepare` and the factory engine, runs only the checks the target repository has, or the commands in `ship.prepare.checks`.
+- `factory.forge.kind: "local"` runs the factory offline, with no GitHub or Azure DevOps.
+- Exit codes: `omg factory run` exits 5 (was 1) when there is no usable forge. `omg team shutdown` exits 3 (was 1) when it keeps a dirty worker worktree. `omg factory setup` with no origin and no flags exits 5 (was 2). The local forge exits 2 on a missing base branch (check exited 0 before).
 
 ### Added
 
-- **Offline factory: the `local` forge** (#442, #444, #446). `omg factory` runs without GitHub or Azure DevOps, using a committed backlog directory (`.copilot/backlog/<id>-<slug>.md` with frontmatter), a bare mirror the engine owns as the git remote `omg-local`, a local gate command (`factory.forge.local.gate`, recorded as the check `local-gate`) and a `git merge --no-ff` you run yourself. `omg factory setup --forge local` writes the config and a closed sample item. `check`, `board`, `enqueue` and `poll` work with no origin; `poll` syncs the mirror base fast-forward only each tick. Over a GitHub or Azure DevOps origin, `kind: "local"` counts only from the user config or the base-committed `.copilot/omg.jsonc`. `check`, `board` and `setup` print what offline mode does not do, and their JSON gains a top-level `limitations` array (empty on GitHub and Azure DevOps; schemaVersion stays 1). See [docs/FACTORY-OFFLINE.md](docs/FACTORY-OFFLINE.md).
+- **Offline factory: the `local` forge** (#442, #444, #446, #447, #448). `omg factory` runs without GitHub or Azure DevOps, using a committed backlog directory (`.copilot/backlog/<id>-<slug>.md` with frontmatter), a bare mirror the engine owns as the git remote `omg-local`, a local gate command (`factory.forge.local.gate`, recorded as the check `local-gate`) and a `git merge --no-ff` you run yourself. `omg factory setup --forge local` writes the config and a closed sample item. `check`, `board`, `enqueue` and `poll` work with no origin; `poll` syncs the mirror base fast-forward only each tick. Over a GitHub or Azure DevOps origin, `kind: "local"` counts only from the user config or the base-committed `.copilot/omg.jsonc`. `check`, `board` and `setup` print what offline mode does not do, and their JSON gains a top-level `limitations` array (empty on GitHub and Azure DevOps; schemaVersion stays 1). See [docs/FACTORY-OFFLINE.md](docs/FACTORY-OFFLINE.md).
 - **`capped` task status** (#445). When an SDK worker hits its credit cap, the leader's monitor marks its in-progress task `capped`, a terminal status, with the salvage path and branch of any uncommitted work in the task error. Status shows `capped=N` and `capped_task=` lines, and the new guidance `reassign-capped` says to reassign the work or raise the cap. Workers cannot set `capped`.
 - **Leader inbox** (#445). A worker that cannot proceed sends `BLOCKER: <what you need>` to `leader-fixed`. `omg team status` lists unanswered blockers as `leader_inbox:` lines (JSON `leader_inbox[]`), and the new guidance `answer-blocker` prints the reply command and outranks every other action. `team.sdk.blockerTimeoutMinutes` (teams with at least one SDK worker, default off) fails a task whose blocker stays unanswered.
 - **SDK launch progress** (#443, #445). While an SDK worker starts, stderr shows one line per launch phase, a heartbeat every 15 s and a final `ready in Ns (...)` breakdown.
@@ -20,27 +68,30 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **`omg factory run reset <n>`** (#451). On the local forge, starts a cancelled run over after `omg factory run clean <n>`. It closes the local PR if it is still open, keeps the run's mirror branch as `factory/cancelled/issue-<n>-<time>`, and moves the run state aside, so the next `omg factory run <n>` opens a new local PR. Before, a cancelled offline item could never run again.
 - **Gate-definition protection on the local forge** (#451). A head that changes the local gate's definition (its `package.json` script with `pre`/`post`, `.npmrc`, `.yarnrc`, `.yarnrc.yml`, `.pnpmfile.cjs`, the node script file, or an argv `--script-shell`, `--userconfig` or `--globalconfig` file inside the repository) parks at the new gate `gate-definition-changed` before any push. `omg factory run <n> --allow-gate-change` accepts exactly the parked definition, once. A gate whose definition cannot be read (no script, a workspace selector, a package-manager `exec`, `dlx`, `node` or `create` subcommand, a package directory outside the repository) parks at the new gate `gate-definition-unknown` before any lane starts.
 - **`gate:` line in `omg factory check`** (#451). On the local forge check prints `gate: ok`, `gate: unresolved (<why>)` or `gate: not set`, and its JSON gains `gate` (absent on GitHub and Azure DevOps; schemaVersion stays 1).
+- **New skills (port; 98 bundled now)** (#440, #453):
+  - PR care: `babysit`, `fix-ci`, `fix-merge-conflicts`, `get-pr-comments`.
+  - The pstack series, the panel, generator and utility suite, and the review-and-climb suite (`hillclimb`, `reflect`, `personal-mode`, `stacked-delivery`, …). See `docs/REFERENCE.md` "Skills (98 Total)".
+  - `statechart` (#453): checks a TLA+ model with TLC and draws it as a Mermaid statechart, with the shortest path to each state that breaks a rule. The first run installs TLC and Java with mise and needs the network.
+  - `ketchup-video` (#453): a `/ketchup` catch-up as a short subtitled slide video.
+  - Adapted for Copilot CLI:
+    - `arena` and `interrogate` start with a `copilot` seat, and `models` uses `omg config`.
+    - The verification skills write project skills to `.github/skills/`, which Copilot CLI loads; `reflect` writes to `.copilot/skills/<name>/`.
+    - `personal-mode` and `reflect` note that they read Claude Code transcripts.
+- **Verification ledger, watch-pr policy, playbook checker and credits registry** (#440, port of upstream #4578).
+- **HUD account element** (#440, port of upstream #4833). It shows the signed-in Claude Code account. It is opt-in, and hidden under Copilot CLI, which has no such account file.
+- **`omg team resume`** now resumes runtime v2 teams (#440, port of upstream #4821). An SDK-transport team counts as resumed only when a worker host is still alive; otherwise the command reports why.
+- **CI: Statechart suite (Node 24)** (#453). A dedicated job runs the whole statechart suite on Node 24, because Node 20 has no compile cache for the CLI test's per-case spawns. `omg ship` lists the check as advisory.
 - **Docs: `team.sdk.model` / `OMC_TEAM_SDK_MODEL`** (F17) is now documented in REFERENCE.md as the main cost lever for SDK workers.
-- **`omg factory triage`** (#461). Proposes the priority (`priority:p0`..`p3`) and the `needs-split` / `needs-plan` labels each intake item should carry, from the same reads as `check`. A dry run by default; `--apply` writes the plan it prints, on GitHub (labels, which must already exist), Azure DevOps (tags and the priority field) and the local forge (backlog files). It only adds `needs-split` and `needs-plan`, derives the priority tag from the item's priority field or first label, and skips items with a run or a factory PR. `factory.triage.labels`, `sizeSplitAt` and `defaultPriority` are read from the user config and the base branch only. It writes no assignee and proposes no `owner:` label. `--json` has schemaVersion 1.
-- **`omg factory setup --workflows`** (#463). Writes a scheduled heartbeat, `.github/workflows/omg-factory-heartbeat.yml` or an Azure Pipelines file, that installs the omg version that wrote it and runs `omg factory check --json` every two hours (`--cron` changes it), publishing a job summary and an artifact. Read-only permissions by default; `--mode triage` adds `issues: write` and runs `omg factory triage --apply` (needs omg 5.22.0 or later). Actions are pinned to commit shas, the install step has no token, and an existing file omg did not write is never replaced without `--force`. It starts no lane. Azure DevOps paths are tested against rendered output only.
-- **Human review feedback is read on every forge** (#460). `omg factory poll` counts open review input on a factory PR's current head as `k human thread(s) (m ignored)`. A reviewer counts when listed in the new `factory.review.trustedReviewers` (user config or base branch), when they have write access on GitHub, or when listed in `factory.forge.azureDevOps.trustedAuthors` on Azure DevOps. A read that is cut short or inconsistent is an error for that PR, never "no feedback", and poll prints `trust incomplete` when the GitHub collaborator list was not read whole. The engine does not yet act on this feedback.
-- **`omg factory pr list|view|diff|review`** (#460). Inspects local-forge PRs without running a hook, external diff or textconv, and records your review (`--approve`, `--request-changes`, `--comment`) on the PR's head. `review` needs the full head sha as `--head` and is refused when the PR moved. The next `omg factory poll` counts it; the engine does not yet read it.
-- **`omg budget status --by role|kind|run`** (#458). Groups the period's usage by who spent it. Factory lanes are tagged with the lane kind and run, SDK team workers as `team-worker`; older records and plain sessions are `untagged`.
-- **`modelProfile`** (#458). `quality-first`, `balanced` (default, no change) or `economy` maps the agent tiers to Copilot models when `omg setup` runs. An explicit `agents.<name>.model` wins, and switching profiles removes the entries the previous profile wrote.
-- **Copilot coding agent forge adapter** (#462). The GitHub forge can read the coding agent's status on an issue and assign it, through three exact, repository- and issue-bound `gh` shapes in the engine guard. No command, config key or lane uses it yet.
-<!-- L1-BEGIN -->
-- **Busy exit code and cross-clone claims** (#459). One factory engine still runs per checkout; a second `omg factory run`, or a run of an item another engine or clone holds, exits 6 (busy) and touches nothing. Separate clones on one host coordinate through claim files in the factory ledger directory: `run --next` skips an item another clone holds and lists it under `claimed`, and a claim lasts until the run is merged, cancelled or failed. New `omg factory run release [issue]` clears a claim or a crashed engine lock, and `omg factory run status` without an issue lists the engines, unreadable owner files and claims. `omg factory board` marks live runs. There is no credit cap across clones. `omg factory poll`'s heal tick and base sync wait while an engine runs.
-<!-- L1-END -->
 
 ### Changed
 
 - **`team.sdk.maxCreditsPerWorker` defaults to 50** (#445), up from 10. One small measured task cost 9 to 13 AI credits, so 10 capped workers before they could commit. The runtime still gets `--max-ai-credits` of at least 30.
 - **SDK teams default to branch worktrees** (#445). With neither `OMC_TEAM_WORKTREE_MODE` nor `team.ops.worktreeMode` set, SDK workers get `omc-team/<team>/<worker>` worktrees instead of committing on the leader's branch. A dirty leader checkout keeps the shared checkout and says why. Pane teams and explicit settings are unchanged.
-- **`omg factory run` exits 5 with `unsupported forge:`** (#446) when there is no usable forge, like `setup`, `check`, `board`, `enqueue` and `poll` (#444). Before, a missing origin exited 1.
-- **`omg team shutdown` exits 3** (#445) when it keeps a worker worktree with uncommitted changes, and names each kept path. Other preserved outcomes still exit 1.
-- **`omg factory chain status` labels are English** (#446).
 - **Prepare runs only the checks the target repository has** (#449). With `ship.prepare.checks` unset, `tsc --noEmit` runs only when the base branch has `tsconfig.json` and `node_modules` has typescript, eslint only with an eslint config on the base and eslint in `node_modules`, the targeted vitest run only with vitest in `node_modules`, and each generator `--verify` script only when it exists. The inventory step runs only when the base has `scripts/generate-inventory-graph.mjs`. The markers are read at the base commit, never the PR: a check the base has whose file the PR deleted fails prepare, and a base that cannot be read fails the step `detect`. Before, prepare ran this repository's tsc and inventory scripts in any repository, so a factory run in another repository failed prepare.
 - **`omg ship prepare` honours `ship.prepare.checks`** (#449) and loads the trusted ship config first, so an invalid base `.copilot/omg.jsonc` stops it with the parse error.
+- **`omg factory run` exits 5 with `unsupported forge:`** (#446) when there is no usable forge, like `setup`, `check`, `board`, `enqueue` and `poll` (#444). Before, a missing origin exited 1.
+- **Every factory command's no-forge line starts with `unsupported forge:`** (#452), with the `omg factory setup --forge local` hint where it applies.
+- **`omg team shutdown` exits 3** (#445) when it keeps a worker worktree with uncommitted changes, and names each kept path. Other preserved outcomes still exit 1.
 - **`omg factory setup --forge local` writes `ship.base`** (#450) when no config names one: `dev` if that branch exists, else the current branch. It keeps a `ship.base` that is set and exits 2 when that value is not a plain branch name. Its notes now name the real base instead of `<base>`.
 - **The local forge exits 2 on a missing base branch** (#450). `omg factory check`, `board`, `poll` and `run --next` name `ship.base` in the message. Before, check exited 0 with `no items to check`.
 - **`factory.run.maxRunCredits` must be at least `laneMaxCredits` + 30** (#451). A run needs an implement and a review lane, so a run cap equal to the lane cap could never finish. The refusal shows the arithmetic, and the `budget` park names the config file to raise.
@@ -50,12 +101,11 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **A local backlog item labelled `spec` is `needs-split`** (#452) until its tickets exist, like the GitHub label `epic`. A spec without the label stays runnable until it has children.
 - **Forge-neutral wording on the local forge** (#452). Lane prompts, the PR body, the run history and the dry run say backlog item, not issue or work item. `omg factory check --json` gives a local item's Acceptance section the `planSource` `backlog-acceptance`, and `omg factory enqueue --json` reports `spec.taskList` as `not-used`.
 - **The review prompt says the lane cannot run tests** (#452). The review lane's shell runs read-only commands only, and the gate runs the tests after review.
-- **Every factory command's no-forge line starts with `unsupported forge:`** (#452), with the `omg factory setup --forge local` hint where it applies.
+- **`omg factory chain status` labels are English** (#446).
 - **The budget summary says when usage is past the soft limit** (#452).
-- **More local gates park at `gate-definition-unknown`** (#457). A gate that runs `npx`, a program looked up on PATH (`cargo test`, `go test`, `pytest`, `make check`), a program given by a path outside the repository, or `node` with an option before its script (other than `--run <script>`, `--test` with `--test-*` flags, or inline `-e`/`-p` code) has no file in the repository that pins it, so `omg factory check` prints `gate: unresolved (...)` and the run parks before any lane. Wrap the command in a committed script such as `node scripts/gate.mjs`. A pnpm or yarn release script run through node maps to pnpm or yarn.
-- **The `gate-definition-unknown` park at a step boundary says "no further lane was started"** (#456).
-- **Azure DevOps review threads are filtered per comment** (#460). The factory's own comments are dropped one by one, so a trusted reply in a thread the factory started now counts as human input.
-- **Local reopen detection reads the whole history** (#457). A body line that starts with `state:` never counts as a reopen, and an item closed and reopened again later does.
+- **SessionEnd foreground budget on Claude Code** (#440, port of upstream #4845). It is now max(1000 ms, half the hook's manifest timeout), up from a fixed 300 ms, and orphaned session-end claims are recovered. Copilot CLI keeps its flat 1500 ms because it runs SessionEnd after every turn; `OMC_SESSION_END_BUDGET_MS` still overrides both. See `docs/HOOKS.md`.
+- **`arena`, `reflect`, `sharpen` and `interrogate` follow pstack v0.9.125** (#453). The fork keeps its own `personal-mode`, because the upstream sync moved its profile path to one the `skill` command does not scan.
+- **`tsx` is a runtime dependency** (#453), moved from devDependencies. The `statechart` launcher resolves it at run time on Node 20, which cannot strip types. `fast-check` is a new devDependency for the statechart tests.
 
 ### Fixed
 
@@ -82,24 +132,13 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **An idle local `omg factory poll` tick skips the mirror fetch** (#452) when the mirror and the `omg-local` tracking ref already hold the local base.
 - **ci-fix on the local forge gets the gate's output** (#452). Before, a failed local gate reached the ci-fix lane with only the check name, under a prompt that said the failure came from CI on GitHub.
 - **The `omg-local` remote refusal names the planted value** (#450): a push url that is neither the mirror nor the remote url is reported as `pushes to <value>`, and the refusal lists one fix per cause (`git remote set-url`, `git config --unset-all remote.omg-local.pushurl`, or the `pushInsteadOf` key).
-- **Leftover gate processes are killed** (#457). On Windows, processes a local gate leaves behind after its root exits are found by start time and killed before the verdict. The engine records the gate's processes, so the next gate run for the same head cleans up after a crashed engine, on POSIX by process group and on Windows by process. Before, Windows leftovers survived and a crash left them running.
-- **A malformed working-tree backlog file no longer stops the local forge** (#457). It is skipped with one warning, and `enqueue` and `triage` refuse to edit it, naming the file.
-- **Local store locks** (#457). A stale lock is broken only if its owner is unchanged, a locked file retries on `EPERM` for up to 2 s, and a linked `.omg` anchor is refused outside the checkout root.
-- **`omg factory run --dry-run`** (#456) answers a finished or cancelled run before it reports an unknown gate.
-- **`omg factory run` messages name the way out of `gate-definition-unknown`** (#457): wrap the command in a script committed in the repository and set that as the gate.
-<!-- L1-BEGIN -->
-- **Concurrent commands in one checkout** (#459). `omg factory run` (with or without an issue), `run clean`, `run reset`, `omg factory heal` commands and `omg factory poll`'s heal and base-sync steps take the checkout's engine lock before any fetch or ref move, so a second command no longer moves refs under a running engine and parks it with a false tamper finding.
-<!-- L1-END -->
-
-### Security
-
-- **The sandbox denies lanes the OMC global state root** (#457). Lanes cannot read `OMC_HOME/state` (or the XDG state dir), and with `OMC_STATE_DIR` set, the factory ledger and the budget ledger, where the sandbox supports denied paths. Review records of the local forge live there.
-- **Triage writes are limited to the triage shape** (#461). The GitHub guard allows only `gh issue edit` with the plan's priority, `needs-split` and `needs-plan` labels, never a `factory:*` or `harbor:*` label, and only for the triage command. On Azure DevOps only `System.Tags` and `Microsoft.VSTS.Common.Priority` can be patched. The dry run runs on the read guard.
-- **Review feedback reads are exact** (#460). Human review input comes through one pinned `gh api graphql` shape for the configured repository, no `@file` or other repository is accepted, bodies are shown with control and bidi characters visible, and a partial answer parks instead of reading as "no feedback".
-- **The cloud heartbeat is token-light** (#463). The install step has no token, the token reaches only the omg steps, `npm install` runs with `--ignore-scripts`, and on Azure DevOps omg's output cannot inject a pipeline logging command.
-<!-- L1-BEGIN -->
-- **Cross-clone claims are sealed** (#459). Another clone's run state counts only as its own engine sealed it, and an unreadable claim file or claim root is held, never taken over. A claim root must be a local absolute path, so a claim cannot make the engine stat a network share.
-<!-- L1-END -->
+- **Ported from upstream** (#440):
+  - Team: worktrees and branches that hold unmerged worker commits are kept. The fork reports them under `retained` with reason `worktree_unmerged_commits` (#4842).
+  - Ralph failure signatures ignore vitest's start clock and the Node warning process id (#4819, #4834).
+  - Jev uses the full effort range in model routing, consumes active-mode answers in plugin hooks, and maps the context-pruning staleness score (#4808, #4810, #4818, #4820).
+  - `.omc-config.json` rewrites keep unmanaged keys (#4843). A run awaiting confirmation is no longer flagged as crashed (#4799). cmux surface targets are no longer misclassified (#4817).
+  - Windows: the HUD npm-root fallback hides its console window, and the epic closure verifier runs (#4846, #4848). The task-size opt-out is read from `.copilot/omg.jsonc`.
+- **Statechart suite on Node 20** (#453, port): the suite's CLI spawns are loader-safe, and the CLI test budget scales for Node 20's uncached type stripping.
 
 # oh-my-copilot v5.19.7
 

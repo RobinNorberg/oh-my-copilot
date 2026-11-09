@@ -33,7 +33,7 @@ export declare const HEAL_RUN_KEY: RegExp;
 export declare const HEAL_APPROVE_GATE = "heal-approve";
 export declare const HEAL_DIAGNOSIS_GATE = "heal-diagnosis";
 export declare function healRunKey(sig8: string): FactoryRunKey;
-/** Every lane kind except review is a write lane, and each is also the phase that runs it. */
+/** Every lane kind except review is a write lane. Each but coding-agent is also the phase that runs it; a coding-agent lane runs in the implement phase. */
 export type FactoryLaneKind = 'implement' | 'review' | 'fix' | 'conflict-fix' | 'ci-fix' | 'coding-agent';
 export type FactoryLaneStatus = 'running' | 'completed' | 'failed' | 'lost' | 'cancelled';
 export type FactoryLaneVerdict = 'approve' | 'changes-requested' | 'invalid';
@@ -267,6 +267,16 @@ export interface FactoryRunState {
 export declare class FactoryStateError extends Error {
     constructor(message: string);
 }
+/** Exit code of a run that did not start: another engine holds this checkout, the item's run or its claim (FactoryBusyError). */
+export declare const EXIT_BUSY = 6;
+/**
+ * A live owner holds what the caller tried to claim: another engine in this
+ * checkout, the item's own run, or the item's claim from another clone.
+ * `omg factory run` exits EXIT_BUSY for it; nothing was touched.
+ */
+export declare class FactoryBusyError extends FactoryStateError {
+    constructor(message: string);
+}
 /** The run's key: its issue number, or `heal-<sig8>` for a ci-heal run. */
 export declare function runKeyOf(s: Pick<FactoryRunState, 'kind' | 'issue' | 'heal'>): FactoryRunKey;
 /** `issue-7` or `heal-0123abcd`: the prefix of lane ids and the prepare checkout's worker name. */
@@ -352,31 +362,89 @@ export interface FactoryOwner {
     pid: number;
     hostname: string;
     startedAt: string;
-    /** The run key (the repository owner file only). */
+    /** The run key (the repository owner file and a claim). */
     run?: string;
+    /** The checkout the engine runs in (a claim only: it may be another clone). */
+    root?: string;
+    /** The owner process's start identity (getProcessStartIdentitySync) when it could be read: a reused pid does not hold the file. */
+    identity?: string;
 }
 export interface OwnerDeps {
     pid: number;
     hostname: string;
     isAlive: (pid: number) => boolean;
+    /** The start identity of a pid on this host (null: unknown). Absent: identities are neither written nor compared. */
+    identityOf?: (pid: number) => string | null;
 }
 export declare const defaultOwnerDeps: () => OwnerDeps;
+/** Owner and claim file text is data: no terminal escape or control character reaches the terminal. */
+export declare const ownerText: (v: unknown) => string;
+/** `<run>, pid <pid> on <host> since <time>[ in <root>]`, every field through ownerText. */
+export declare function describeOwner(o: Partial<FactoryOwner>): string;
+/** A held owner file: release() removes it while it is still this process's; relabel() rewrites its run field (`run --next` once it picked an item). */
+export interface HeldOwner {
+    release: () => void;
+    relabel: (run: string) => void;
+    tookOver?: FactoryOwner;
+}
 /**
  * Claim the single-runner owner file. A live owner (or one on another host,
  * whose pid cannot be checked) refuses; a dead pid on this host is taken
  * over, and `tookOver` names it for the history.
  */
-export declare function acquireFactoryOwner(root: string, key: FactoryRunKey, now: string, deps?: OwnerDeps): {
-    release: () => void;
-    tookOver?: FactoryOwner;
-};
+export declare function acquireFactoryOwner(root: string, key: FactoryRunKey, now: string, deps?: OwnerDeps): HeldOwner;
 /**
  * Claim the repository's engine owner file (factoryRepoOwnerPath) for `key`
  * like acquireFactoryOwner: a second engine on the same repository refuses
- * instead of tripping the first one's shared git state checks.
+ * instead of tripping the first one's shared git state checks. `next`:
+ * `omg factory run --next` before it picked an item (then relabel()).
+ * `scan`: a step that fetches or moves refs without starting a run (the
+ * poller's heal tick and local base sync, `omg factory heal scan`).
  */
-export declare function acquireFactoryRepoOwner(root: string, key: FactoryRunKey, now: string, deps?: OwnerDeps): {
-    release: () => void;
-    tookOver?: FactoryOwner;
-};
+export declare function acquireFactoryRepoOwner(root: string, key: FactoryRunKey | 'next' | 'scan', now: string, deps?: OwnerDeps): HeldOwner;
+/**
+ * True when the engine lock of `root` was taken from another folder (its
+ * recorded `root`): that folder resolves to this checkout's state root (a
+ * linked worktree, or with OMC_STATE_DIR set a clone with the same folder
+ * name and origin), so the two cannot run in parallel.
+ */
+export declare function ownerFromOtherCheckout(prior: Pick<FactoryOwner, 'root'>, root: string, platform?: NodeJS.Platform): boolean;
+/** The one rule for an owner or claim file that does not parse: it is held (never taken over, never "not busy") until a human removes it. */
+export declare const unreadableOwnerMessage: (path: string) => string;
+/**
+ * Throws FactoryBusyError while the checkout's engine lock is held: a live
+ * engine, or an unreadable lock file. Read-only; acquireFactoryRepoOwner
+ * stays the binding check.
+ */
+export declare function refuseWhileEngineRuns(root: string, deps?: OwnerDeps): void;
+/**
+ * Whether `owner` holds its file against `deps`, as claimOwner decides:
+ * another host, or another live pid here whose start identity (when both
+ * sides know it) is still the recorded one, so a reused pid does not hold it.
+ */
+export declare function ownerHolds(owner: Pick<FactoryOwner, 'pid' | 'hostname' | 'identity'>, deps: OwnerDeps): boolean;
+/** A parsed owner file with the fields every holder check reads. */
+export declare const isOwnerRecord: (v: unknown) => v is FactoryOwner;
+/** This process's owner record, with its start identity when deps can read it. */
+export declare function ownerRecord(now: string, deps: OwnerDeps, fields?: Pick<FactoryOwner, 'run' | 'root'>): FactoryOwner;
+/**
+ * The owner holding the file at `path` (read-only; claimOwner stays the
+ * binding check): null when there is none or it is taken over by the next
+ * claim, `unreadable` when the file cannot be parsed, which every caller
+ * treats as held (unreadableOwnerMessage).
+ */
+export declare function ownerHolding(path: string, deps?: OwnerDeps): FactoryOwner | 'unreadable' | null;
+/**
+ * Run `fn` under the file lock of an owner or claim file. A contender that
+ * cannot take that lock in time (another engine holds it, maybe while it
+ * reads a start identity) is busy (FactoryBusyError, exit 6), not an error.
+ */
+export declare function withOwnerFileLock<T>(path: string, fn: () => T): T;
+/**
+ * Claim an owner file: a live owner (or one on another host, whose pid
+ * cannot be checked) refuses with a FactoryBusyError, and so does a file
+ * that does not parse (unreadableOwnerMessage); a dead pid on this host is
+ * taken over, and `tookOver` names it.
+ */
+export declare function claimOwner(path: string, now: string, deps: OwnerDeps, busy: (prior: FactoryOwner) => string, fields?: Pick<FactoryOwner, 'run' | 'root'>): HeldOwner;
 //# sourceMappingURL=state.d.ts.map

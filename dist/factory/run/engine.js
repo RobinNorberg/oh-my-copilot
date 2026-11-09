@@ -90,12 +90,14 @@ import { jobRefProblem } from '../../copilot-run/job.js';
 import { commitLaneWork, conflictFixStart, laneCommitMessage } from './lane-commit.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir } from './ledger.js';
 import { createFactoryProgress } from './progress.js';
+import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaimRepo, settleFactoryClaim, trustedFactoryClaimRepo } from './claims.js';
 import { compareSnapshots, snapshotRepo, verifyReviewWorktree } from './review-guard.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted } from './plan-rules.js';
-import { acquireFactoryOwner, acquireFactoryRepoOwner, createFactoryState, factoryCancelRequested, forgeResumeProblem, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, healRunKey, moveTo, overwriteFactoryState, parseFactoryState, readFactoryState, reviewerName, runLabel, runSlug, setGate, shipVerdictHash, TERMINAL_FACTORY_PHASES, factoryBranch, trackerStageOf, updateFactoryState, runRemote, verifyFactoryIntegrity, } from './state.js';
+import { acquireFactoryOwner, acquireFactoryRepoOwner, createFactoryState, defaultOwnerDeps, EXIT_BUSY, factoryCancelRequested, forgeResumeProblem, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, healRunKey, moveTo, overwriteFactoryState, ownerHolding, parseFactoryState, readFactoryState, reviewerName, runLabel, runSlug, setGate, shipVerdictHash, TERMINAL_FACTORY_PHASES, factoryBranch, trackerStageOf, updateFactoryState, runRemote, verifyFactoryIntegrity, unreadableOwnerMessage, describeOwner, } from './state.js';
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export const EXIT_AWAITING_HUMAN = 4;
+export { EXIT_BUSY };
 /** The prepare steps that are checks (a failure there starts a ci-fix lane); the rest are engine steps. */
 const PREPARE_ENGINE_STEPS = new Set(['preflight', 'remote', 'fetch', 'merge-base', 'push', PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP]);
 /** Conflict-fix lanes (distinct start heads) before base conflicts park at awaiting-human: merge-conflicts. */
@@ -2535,8 +2537,40 @@ class FactoryEngine {
         this.save((s) => ({ ...s, lanes: s.lanes.map((l) => (l.id === id ? { ...l, ...patch } : l)) }));
     }
 }
+/**
+ * What a real run now would be refused by (the checkout's engine, the item's
+ * run, its claim), or null. Read-only; an unreadable owner or claim file is
+ * held, as the real claim decides (unreadableOwnerMessage).
+ */
+/**
+ * The repository the run's cross-clone claim is keyed on: none on the local
+ * forge (its mirror is per checkout, and an offline run never reads origin),
+ * else the caller's (the CLI read it before its loader), else the origin URL
+ * read through `exec`.
+ */
+function engineClaimRepo(o, read) {
+    if (o.forge?.config.kind === 'local')
+        return null;
+    return o.claimRepo !== undefined ? o.claimRepo : read();
+}
+function busyHolder(o, key) {
+    const deps = o.owner ?? defaultOwnerDeps();
+    const what = (path, name) => {
+        const h = ownerHolding(path, deps);
+        return h === null ? null : h === 'unreadable' ? unreadableOwnerMessage(path) : `${name} is held (${describeOwner(h)})`;
+    };
+    // A dry run reads git through the plain guard, as the rest of dryRun does.
+    const repo = engineClaimRepo(o, () => factoryClaimRepo(factoryGuardExec(o.exec, () => [o.base]), o.root));
+    const claim = repo ? factoryClaimHolder(o.ledgerDir ?? defaultLedgerDir(), repo, o.root, key, deps) : null;
+    return what(factoryRepoOwnerPath(o.root), 'the engine lock of this checkout')
+        ?? what(factoryOwnerPath(o.root, key), `the run of ${runLabel(key)}`)
+        ?? (claim ? `the cross-clone claim: ${claimBusyMessage(key, claim)}` : null);
+}
 /** Read-only preview: issue and plan resolution, the resolved caps; no state, lanes or pushes. */
 function dryRun(o) {
+    const holder = busyHolder(o, engineRunKey(o));
+    if (holder)
+        return { exitCode: EXIT_BUSY, phase: null, state: null, busy: true, message: `dry run: ${holder}; a real run now would exit busy (${EXIT_BUSY}) without touching anything` };
     // The local forge reads the backlog at the local base branch: a dry run neither creates nor syncs the mirror (F8).
     let localBase;
     const { exec, forge } = engineExec(o, o.exec, () => localBase);
@@ -2549,13 +2583,13 @@ function dryRun(o) {
     const key = engineRunKey(o);
     const existing = readFactoryState(o.root, key);
     const caps = { laneMaxCredits: o.limits.laneMaxCredits, ...(o.limits.maxRunCredits !== undefined ? { maxRunCredits: o.limits.maxRunCredits } : {}) };
+    // The real run's order (FactoryEngine.start): a finished run first (exit 1 for a failed one), then a forge swap, then the cancel flag.
+    if (existing && TERMINAL_FACTORY_PHASES.includes(existing.phase)) {
+        return { exitCode: existing.phase === 'failed' ? 1 : 0, phase: existing.phase, state: existing, message: `dry run: the run is ${existing.phase}; nothing would run`, plan: { next: existing.phase, ...caps } };
+    }
     const swapped = existing ? forgeResumeProblem(existing, o.forge?.config.kind ?? 'github', o.forge?.config.repo.url) : null;
     if (existing && swapped)
         return { exitCode: 1, phase: existing.phase, state: existing, message: `dry run: ${swapped}` };
-    // A finished or cancelled run never reaches the gate check below: the real loop looks at the terminal phase and the cancel flag first.
-    if (existing && TERMINAL_FACTORY_PHASES.includes(existing.phase)) {
-        return { exitCode: 0, phase: existing.phase, state: existing, message: `dry run: the run is ${existing.phase}; nothing would run`, plan: { next: existing.phase, ...caps } };
-    }
     if (existing && (existing.cancelRequested || factoryCancelRequested(o.root, key))) {
         return { exitCode: 0, phase: existing.phase, state: existing, message: 'dry run: a cancel is requested; the run would be cancelled', plan: { next: 'cancelled', ...caps } };
     }
@@ -2633,7 +2667,9 @@ function dryRun(o) {
 }
 /**
  * Run (or resume) the factory run for one issue. Refuses without a resolved
- * per-lane credit cap, and while another live engine owns the issue.
+ * per-lane credit cap, and while another live engine owns the checkout, the
+ * issue or its cross-clone claim: then FactoryBusyError, before any ledger,
+ * state or git write.
  */
 export async function runFactoryEngine(o) {
     assertLaneCreditCap(o.limits);
@@ -2641,17 +2677,34 @@ export async function runFactoryEngine(o) {
         return dryRun(o);
     const key = engineRunKey(o);
     const dir = o.ledgerDir ?? defaultLedgerDir();
-    const ledger = EngineLedger.open(dir, o.root, key);
-    const hooksDir = emptyHooksDir(dir);
     const now = new Date((o.now ?? Date.now)()).toISOString();
-    // The repository lock first: a second engine refuses before it touches this run's files or git state.
-    const repoOwner = acquireFactoryRepoOwner(o.root, key, now, o.owner);
+    // The repository lock first (unless the caller already holds it): a second engine refuses before it touches anything.
+    const repoOwner = o.repoOwner ?? acquireFactoryRepoOwner(o.root, key, now, o.owner);
+    const releaseRepoOwner = () => { if (!o.repoOwner)
+        repoOwner.release(); };
+    // Then the item's claim across clones of the repository (claims.ts), then the item's own owner file.
+    let claim;
     let owner;
+    let ledger;
+    let hooksDir;
     try {
+        // Like every engine git command, the origin read is hardened (the CLI's read is the same helper); its empty hooks dir is made only when the read runs.
+        const repo = engineClaimRepo(o, () => trustedFactoryClaimRepo(o.exec, o.root, dir));
+        if (repo)
+            claim = acquireFactoryClaim(dir, repo, o.root, key, now, o.owner);
         owner = acquireFactoryOwner(o.root, key, now, o.owner);
+        try {
+            ledger = EngineLedger.open(dir, o.root, key);
+            hooksDir = emptyHooksDir(dir);
+        }
+        catch (error) {
+            owner.release();
+            throw error;
+        }
     }
     catch (error) {
-        repoOwner.release();
+        claim?.release();
+        releaseRepoOwner();
         throw error;
     }
     const ownerPaths = [factoryRepoOwnerPath(o.root), factoryOwnerPath(o.root, key)];
@@ -2662,7 +2715,11 @@ export async function runFactoryEngine(o) {
     }
     finally {
         owner.release();
-        repoOwner.release();
+        // A run that stopped before a terminal phase keeps its claim, parked (claims.ts); a terminal or never-started run frees it.
+        // A state that cannot be read may hide a run in flight: the claim is parked, never released (L-b).
+        if (claim)
+            settleFactoryClaim(claim, () => readFactoryState(o.root, key)?.phase ?? null, new Date((o.now ?? Date.now)()).toISOString());
+        releaseRepoOwner();
         for (const path of ownerPaths)
             ledger.record(path, null);
     }

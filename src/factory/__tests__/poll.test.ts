@@ -391,6 +391,33 @@ describe('omg factory poll on GitHub', () => {
     expect(existsSync(factoryRepoOwnerPath(root))).toBe(true);
   });
 
+  it('the heal tick runs under the engine lock: skipped (no fetch) while a live engine holds the checkout; a reused pid holds nothing', async () => {
+    const fetches: string[] = [];
+    let lockedDuringScan: unknown = 'unread';
+    // The production heal scan fetches through git; this one records each fetch it would make.
+    const fetching: PollHealScan = (o) => {
+      fetches.push(`fetch origin ${o.base}`);
+      lockedDuringScan = JSON.parse(readFileSync(factoryRepoOwnerPath(root), 'utf8'));
+      return scan()(o);
+    };
+    mkdirSync(factoryStateDir(root), { recursive: true });
+    writeFileSync(factoryRepoOwnerPath(root), JSON.stringify({ pid: 99, hostname: hostname(), startedAt: T0, run: '4', identity: 'ticks:1' }));
+    const live = { pid: 2, hostname: hostname(), isAlive: (pid: number) => pid === 99, identityOf: (pid: number) => (pid === 99 ? 'ticks:1' : 'ticks:2') };
+    expect(await poll(scripted().exec, { once: true, json: true, prs: false }, { healScan: fetching, owner: live })).toBe(0);
+    expect(ticks().at(-1)!.heal).toEqual({ ran: false, reason: expect.stringMatching(/^skipped: engine busy \(another omg factory engine runs in this repository \(4, pid 99/) });
+    expect(ticks().at(-1)!.idle).toBe(false);
+    expect(fetches).toEqual([]);
+    expect(JSON.parse(readFileSync(factoryRepoOwnerPath(root), 'utf8'))).toMatchObject({ pid: 99, run: '4' });
+    // Pid 99 now runs another program (its start identity changed): not an engine; the tick takes the lock, scans, releases.
+    const reused = { ...live, identityOf: (pid: number) => (pid === 99 ? 'ticks:999' : 'ticks:2') };
+    expect(await poll(scripted().exec, { once: true, json: true, prs: false }, { healScan: fetching, owner: reused })).toBe(0);
+    expect(ticks().at(-1)!.heal).toMatchObject({ ran: true });
+    expect(ticks().at(-1)!.idle).toBe(true);
+    expect(fetches).toEqual(['fetch origin dev']);
+    expect(lockedDuringScan).toMatchObject({ pid: 2, run: 'scan' });
+    expect(existsSync(factoryRepoOwnerPath(root))).toBe(false);
+  });
+
   it('no intake source: the intake tick is skipped and the board shows runs only', async () => {
     seedParked();
     const w = scripted();
@@ -665,6 +692,11 @@ describe('omg factory poll: factory.intake.autoStart', () => {
     expect(e.starts).toHaveLength(1);
     expect(ticks().map((t) => t.autoStart.started)).toEqual([true, false]);
     expect(ticks()[1].autoStart).toEqual({ started: false, reason: 'a run is in flight' });
+  });
+
+  it('a busy outcome (exit 6: another engine holds the checkout or the item) renders as busy, not as a failure', async () => {
+    expect(await poll(scripted().exec, { once: true }, on(engine({ parsed: true, next: null, exitCode: 6 })))).toBe(0);
+    expect(out.join('\n')).toContain('auto-start: omg factory run --next was busy (another engine holds this checkout or the item; retried next tick), exit 6');
   });
 
   it('an unreadable outcome renders "outcome unreadable", never "found nothing runnable", and the audit logs no next', async () => {

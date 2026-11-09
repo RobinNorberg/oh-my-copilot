@@ -220,13 +220,11 @@ The local forge trusts every recorded review. Keep the state directory at its de
 | `omg factory setup --workflows` | Not applicable: the cloud heartbeat needs a GitHub or Azure DevOps repository. Setup says so and writes nothing |
 | `omg factory listen` | Refused when your user config sets `factory.forge.kind: "local"`: there are no webhooks. Use `omg factory poll` |
 
-<!-- L1-BEGIN -->
 ## Busy runs and parallel runs
 
 One engine runs per checkout. A second `omg factory run` in the same checkout, or a `run clean`, `reset` or `release` while an engine owns the run, exits 6 (busy) and touches nothing. `--dry-run` names the holder and exits 6. `omg factory run status` without an item lists the engines running in this checkout, and `omg factory run release` removes a lock a crash left behind (see [Parallel runs and exit 6](REFERENCE.md#parallel-runs-and-exit-6-busy)).
 
 Parallel runs need separate clones, each with its own mirror and PR store. On the local forge the clones do not coordinate with each other: a local run makes no cross-clone claim, because its mirror belongs to one checkout. Give each clone its own backlog items, or pick the items yourself. `omg factory poll` in a checkout whose engine is running skips its base sync for that tick (`skipped: engine busy`).
-<!-- L1-END -->
 
 ## What offline mode does not do
 
