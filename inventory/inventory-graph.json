@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "b819b486ce23623405f64f801445dea7fc8a9db6",
-    "sourceSha256": "7acb5ccc34f3c15f9053ef065098c4c637038dc34698101af9aa70d6b18d26ae",
+    "head": "6ae0fb69147cea49ba325a0f4e544a6e64d3ae17",
+    "sourceSha256": "8e4e6f92745e4c269eba0a20ebcb08e07ef3abee0ebae11499a7ad857fd42931",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "b819b486ce23623405f64f801445dea7fc8a9db6",
-  "sourceSha256": "7acb5ccc34f3c15f9053ef065098c4c637038dc34698101af9aa70d6b18d26ae",
+  "head": "6ae0fb69147cea49ba325a0f4e544a6e64d3ae17",
+  "sourceSha256": "8e4e6f92745e4c269eba0a20ebcb08e07ef3abee0ebae11499a7ad857fd42931",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 1982,
-      "total": 2007
+      "srcFiles": 1983,
+      "total": 2008
     },
     "generated": {
-      "distFiles": 7296,
+      "distFiles": 7300,
       "bridgeFiles": 8,
-      "total": 7304
+      "total": 7308
     },
     "prompt": {
       "promptLikeFiles": 71
@@ -4289,6 +4289,10 @@
       "dist/forge/local/tracker.d.ts.map",
       "dist/forge/local/tracker.js",
       "dist/forge/local/tracker.js.map",
+      "dist/forge/review-feedback.d.ts",
+      "dist/forge/review-feedback.d.ts.map",
+      "dist/forge/review-feedback.js",
+      "dist/forge/review-feedback.js.map",
       "dist/forge/terms.d.ts",
       "dist/forge/terms.d.ts.map",
       "dist/forge/terms.js",
@@ -26284,6 +26288,26 @@
         "id": "dist/forge/local/tracker.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/local/tracker.js.map"
+      },
+      {
+        "id": "dist/forge/review-feedback.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/review-feedback.d.ts"
+      },
+      {
+        "id": "dist/forge/review-feedback.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/review-feedback.d.ts.map"
+      },
+      {
+        "id": "dist/forge/review-feedback.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/review-feedback.js"
+      },
+      {
+        "id": "dist/forge/review-feedback.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/review-feedback.js.map"
       },
       {
         "id": "dist/forge/terms.d.ts",
@@ -55681,6 +55705,11 @@
         "path": "src/forge/local/tracker.ts"
       },
       {
+        "id": "src/forge/review-feedback.ts",
+        "kind": "src",
+        "path": "src/forge/review-feedback.ts"
+      },
+      {
         "id": "src/forge/terms.ts",
         "kind": "src",
         "path": "src/forge/terms.ts"
@@ -77929,7 +77958,17 @@
       },
       {
         "from": "src/cli/commands/__tests__/factory-pr.test.ts",
+        "to": "src/forge/local/reviews.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-pr.test.ts",
         "to": "src/forge/local/store.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-pr.test.ts",
+        "to": "src/forge/review-feedback.ts",
         "kind": "imports"
       },
       {
@@ -79031,6 +79070,11 @@
         "from": "src/cli/commands/factory-pr.ts",
         "to": "src/forge/local/store.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory-pr.ts",
+        "to": "src/forge/review-feedback.ts",
+        "kind": "imports"
       },
       {
         "from": "src/cli/commands/factory-pr.ts",
@@ -84994,6 +85038,11 @@
       },
       {
         "from": "src/factory/poll.ts",
+        "to": "src/forge/github/graphql.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
         "to": "src/forge/types.ts",
         "kind": "type-imports"
       },
@@ -90719,6 +90768,11 @@
       },
       {
         "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
         "to": "src/factory/run/state.ts",
         "kind": "imports"
       },
@@ -90731,6 +90785,26 @@
         "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
         "to": "src/forge/__tests__/recording-exec.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
+        "to": "src/forge/github/gh.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
+        "to": "src/forge/github/graphql.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
+        "to": "src/forge/github/reviews.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
@@ -91489,6 +91563,11 @@
       },
       {
         "from": "src/forge/ado/__tests__/reviews-feedback.test.ts",
+        "to": "src/forge/review-feedback.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/reviews-feedback.test.ts",
         "to": "src/forge/types.ts",
         "kind": "type-imports"
       },
@@ -91969,6 +92048,11 @@
       },
       {
         "from": "src/forge/ado/reviews.ts",
+        "to": "src/forge/review-feedback.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/reviews.ts",
         "to": "src/forge/types.ts",
         "kind": "type-imports"
       },
@@ -92149,7 +92233,17 @@
       },
       {
         "from": "src/forge/github/__tests__/reviews-feedback.test.ts",
+        "to": "src/forge/github/graphql.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/reviews-feedback.test.ts",
         "to": "src/forge/github/reviews.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/reviews-feedback.test.ts",
+        "to": "src/forge/review-feedback.ts",
         "kind": "imports"
       },
       {
@@ -92214,6 +92308,11 @@
       },
       {
         "from": "src/forge/github/graphql.ts",
+        "to": "src/forge/review-feedback.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/graphql.ts",
         "to": "src/forge/types.ts",
         "kind": "type-imports"
       },
@@ -92271,6 +92370,11 @@
         "from": "src/forge/github/reviews.ts",
         "to": "src/forge/github/graphql.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/reviews.ts",
+        "to": "src/forge/review-feedback.ts",
+        "kind": "imports"
       },
       {
         "from": "src/forge/github/reviews.ts",
@@ -92801,6 +92905,11 @@
         "from": "src/forge/local/reviews.ts",
         "to": "src/forge/local/store.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/local/reviews.ts",
+        "to": "src/forge/review-feedback.ts",
+        "kind": "imports"
       },
       {
         "from": "src/forge/local/reviews.ts",
@@ -124774,12 +124883,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10525,
-      "edgeCount": 12639,
-      "importEdgeCount": 10409,
+      "nodeCount": 10530,
+      "edgeCount": 12655,
+      "importEdgeCount": 10423,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "9678034cb840b9035b7624c11b2cea5e7a5596490bb520f83967cd856e7fb07e",
-  "manifestSha256": "65825e701c1e07a2533b470d7dc8bce1249f2ee879262bc48e1a6740e66e369d"
+  "inventorySha256": "71d7df256767869817b98a22bba10ae41d99e49a46f86539b6504bde59c76c65",
+  "manifestSha256": "029bc54ef1002c5ed723c88004c27d58c14d210145075b0f8c40974d8719858e"
 }
