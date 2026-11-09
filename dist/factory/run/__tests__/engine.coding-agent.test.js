@@ -4,14 +4,15 @@
  * and a fixture GitHub for the agent (fake-coding-agent.ts). No live
  * assignment, no network, no credits.
  */
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { ledgerPath, readLedger } from '../../../budget/ledger.js';
 import { scaleTiming } from '../../../__tests__/helpers/platform.js';
-import { recordCodingAgentSession } from '../coding-agent-lane.js';
+import { codingAgentSessionsOn, recordCodingAgentSession } from '../coding-agent-lane.js';
 import { EXIT_AWAITING_HUMAN } from '../engine.js';
-import { readFactoryState } from '../state.js';
-import { agentCommit, FakeAgentGithub, ghTime, installFakeAgent } from './fake-coding-agent.js';
+import { readFactoryState, requestFactoryCancel } from '../state.js';
+import { agentCommit, FakeAgentGithub, ghTime, humanBaseCommit, installFakeAgent } from './fake-coding-agent.js';
 import { gitIn, ISSUE, PR, remoteHead, review } from './fake-lanes.js';
 import { h, run, useEngineHarness } from './engine-harness.js';
 // Every run drives many real git processes (tamper snapshots, prepare); no assertion measures time.
@@ -19,7 +20,9 @@ vi.setConfig({ testTimeout: scaleTiming(180_000) });
 useEngineHarness();
 const AGENT_PR = 77;
 const T0 = Date.parse('2026-11-09T10:00:00.000Z');
-const ON = { implementer: 'coding-agent', maxWaitMinutes: 90, maxSessionsPerDay: 5 };
+/** The trusted user config: opted in, for o/r (the harness repository). */
+const userConfig = (agent = {}, implementer = 'coding-agent') => ({ factory: { run: { implementer }, codingAgent: { repos: ['o/r'], ...agent } } });
+const ON = userConfig();
 let t = T0;
 let fake;
 /** A fresh fixture GitHub at T0 for this test (useEngineHarness made a fresh harness). */
@@ -29,7 +32,7 @@ function setup() {
     installFakeAgent(h, fake);
     return fake;
 }
-const go = (scripts = [], over = {}) => run(scripts, { codingAgent: ON, now: () => t, sleep: async (ms) => { t += ms; }, ...over }).done;
+const go = (scripts = [], over = {}) => run(scripts, { codingAgentUserConfig: ON, now: () => t, sleep: async (ms) => { t += ms; }, ...over }).done;
 const state = () => readFactoryState(h.root, ISSUE);
 /** The agent opened PR #77 with one commit and requested a review: finished. */
 function finishedPr(files = { 'src/greet.ts': 'export const greet = () => "hi";\n' }) {
@@ -55,7 +58,7 @@ describe('omg factory run with the Copilot coding agent as implementer', () => {
         expect(h.calls.some((c) => c.startsWith('gh issue comment'))).toBe(false);
         t += 20 * 60_000;
         const head = finishedPr();
-        const second = await run([review('approve')], { codingAgent: ON, now: () => t, sleep: async (ms) => { t += ms; } });
+        const second = await run([review('approve')], { codingAgentUserConfig: ON, now: () => t, sleep: async (ms) => { t += ms; } });
         const out = await second.done;
         expect(out.exitCode, out.message).toBe(0);
         expect(out.gate?.name).toBe('merge');
@@ -104,7 +107,7 @@ describe('omg factory run with the Copilot coding agent as implementer', () => {
     it('the daily session cap parks before any assign', async () => {
         setup();
         recordCodingAgentSession({ root: h.root, ledgerDir: h.ledgerDir, laneId: 'issue-3-coding-agent-1', run: 'issue-3', repo: 'github.com/o/r', at: new Date(T0 - 3_600_000).toISOString() });
-        const out = await go([], { codingAgent: { ...ON, maxSessionsPerDay: 1 } });
+        const out = await go([], { codingAgentUserConfig: userConfig({ maxSessionsPerDay: 1 }) });
         expect(out.gate?.name, out.message).toBe('coding-agent-sessions');
         expect(out.gate?.reason).toContain('factory.codingAgent.maxSessionsPerDay is 1');
         expect(fake.assigns).toHaveLength(0);
@@ -204,7 +207,7 @@ describe('omg factory run with the Copilot coding agent as implementer', () => {
     it('without the opt-in the Copilot implement lane runs as before and nothing reads the agent', async () => {
         setup();
         // No lane script: the Copilot implement lane cannot start (its retry, then implement-failed), which shows that lane was chosen.
-        const out = await go([], { codingAgent: { ...ON, implementer: 'copilot' } });
+        const out = await go([], { codingAgentUserConfig: userConfig({}, 'copilot') });
         expect(out.gate?.name, out.message).toBe('implement-failed');
         expect(fake.reads).toBe(0);
         expect(fake.assigns).toHaveLength(0);
@@ -217,6 +220,123 @@ describe('omg factory run with the Copilot coding agent as implementer', () => {
         expect(fake.reads).toBe(2);
         expect(state().baseSha).toBe(gitIn(h.root, 'rev-parse', 'origin/dev'));
         expect(state().lanes[0].startSha).toBe(state().baseSha);
+    });
+    it('a repository not in factory.codingAgent.repos takes the Copilot implement lane with one warning; nothing reads the agent', async () => {
+        setup();
+        const warns = [];
+        const out = await go([], { codingAgentUserConfig: { factory: { run: { implementer: 'coding-agent' }, codingAgent: { repos: ['o/other'] } } }, warn: (m) => warns.push(m) });
+        expect(out.gate?.name, out.message).toBe('implement-failed');
+        expect(warns.filter((w) => /coding agent/i.test(w))).toEqual(['omg factory run: coding agent not enabled for o/r: add it to factory.codingAgent.repos; using a Copilot lane']);
+        expect(fake.reads).toBe(0);
+        expect(fake.assigns).toHaveLength(0);
+        expect(state().codingAgent).toBeUndefined();
+        expect(state().lanes.map((l) => l.kind)).toEqual(['implement', 'implement']);
+    });
+    it('without the user opt-in an ill-typed project config is never parsed: the run behaves as before', async () => {
+        setup();
+        mkdirSync(join(h.root, '.copilot'), { recursive: true });
+        writeFileSync(join(h.root, '.copilot', 'omg.jsonc'), '{ "factory": { "codingAgent": { "maxSessionsPerDay": "lots", "repos": 7 } } }\n');
+        const warns = [];
+        const out = await go([], { codingAgentUserConfig: {}, warn: (m) => warns.push(m) });
+        expect(out.gate?.name, out.message).toBe('implement-failed');
+        expect(warns.filter((w) => /coding ?agent/i.test(w))).toEqual([]);
+        expect(fake.reads).toBe(0);
+        expect(state().codingAgent).toBeUndefined();
+    });
+    it('after the user opt-in an ill-typed project config parks before anything is read or assigned', async () => {
+        setup();
+        mkdirSync(join(h.root, '.copilot'), { recursive: true });
+        writeFileSync(join(h.root, '.copilot', 'omg.jsonc'), '{ "factory": { "codingAgent": { "maxSessionsPerDay": "lots" } } }\n');
+        const out = await go();
+        expect(out.gate?.name, out.message).toBe('coding-agent');
+        expect(out.gate?.reason).toContain('the coding agent config could not be read: project config: factory.codingAgent.maxSessionsPerDay must be a non-negative integer');
+        expect(fake.reads).toBe(0);
+        expect(fake.assigns).toHaveLength(0);
+    });
+    it('dry run names the assign, the billing and the sessions used today; the plan\'s next step is coding-agent', async () => {
+        setup();
+        recordCodingAgentSession({ root: h.root, ledgerDir: h.ledgerDir, laneId: 'issue-3-coding-agent-1', run: 'issue-3', repo: 'github.com/o/r', at: new Date(T0 - 3_600_000).toISOString() });
+        const out = await go([], { dryRun: true });
+        expect(out.plan?.next, out.message).toBe('coding-agent');
+        expect(out.message).toContain(`the run would assign issue #${ISSUE} to the Copilot coding agent, a billed GitHub session (1 of factory.codingAgent.maxSessionsPerDay 5 used today, UTC)`);
+        expect(fake.reads).toBe(0);
+        expect(fake.assigns).toHaveLength(0);
+        expect(readFactoryState(h.root, ISSUE)).toBeNull();
+    });
+    it('an HTTP 4xx refusal of the assign counts nothing; a 5xx may have started a session: counted and never assigned again', async () => {
+        setup();
+        const day = ghTime(T0).slice(0, 10);
+        fake.onAssign = 'fail';
+        fake.assignFailure = { status: 1, stdout: '', stderr: 'gh: Resource not accessible by integration (HTTP 403)' };
+        const refused = await go();
+        expect(refused.gate?.name, refused.message).toBe('coding-agent');
+        expect(refused.gate?.reason).toContain('was refused');
+        expect(refused.gate?.reason).toContain('no session was counted');
+        expect(state().codingAgent).toMatchObject({ laneId: `issue-${ISSUE}-coding-agent-1`, assign: 'failed' });
+        expect(readLedger(ledgerPath(h.root)).sessions[`factory-lane:issue-${ISSUE}-coding-agent-1`]).toBeUndefined();
+        expect(codingAgentSessionsOn(h.root, h.ledgerDir, day)).toBe(0);
+        fake.assignFailure = { status: 1, stdout: '', stderr: 'gh: Bad Gateway (HTTP 502)' };
+        const unknown = await go();
+        expect(unknown.gate?.name, unknown.message).toBe('coding-agent-unconfirmed');
+        expect(unknown.gate?.reason).toContain('the assign may have started a session; it was counted');
+        expect(state().codingAgent).toMatchObject({ laneId: `issue-${ISSUE}-coding-agent-2`, assign: 'posted' });
+        expect(readLedger(ledgerPath(h.root)).sessions[`factory-lane:issue-${ISSUE}-coding-agent-2`]).toBeDefined();
+        expect(codingAgentSessionsOn(h.root, h.ledgerDir, day)).toBe(1);
+        expect(fake.assigns).toHaveLength(2);
+        fake.onAssign = 'assign';
+        const again = await go();
+        expect(again.gate?.name, again.message).toBe('coding-agent-unconfirmed');
+        expect(fake.assigns).toHaveLength(2);
+    });
+    it('cancel during the wait keeps the session usage and says the agent may still work on GitHub; nothing is unassigned or closed', async () => {
+        setup();
+        expect((await go()).gate?.name).toBe('coding-agent-wait');
+        requestFactoryCancel(h.root, ISSUE, new Date(t).toISOString());
+        const warns = [];
+        await go([], { warn: (m) => warns.push(m) });
+        expect(state().phase).toBe('cancelled');
+        expect(state().lanes[0]).toMatchObject({ kind: 'coding-agent', status: 'cancelled', usage: { credits: 0, premiumRequests: 1, source: 'estimated' } });
+        expect(warns.join('\n')).toContain(`may still be working on issue #${ISSUE} on GitHub`);
+        expect(warns.join('\n')).toContain('unassign Copilot on the issue and close its pull request');
+        expect(fake.assigns).toHaveLength(1);
+        expect(fake.closes).toHaveLength(0);
+    });
+    it('the base moved before the agent branched: the human commits on dev are not the agent\'s, so the head is adopted', async () => {
+        setup();
+        expect((await go()).gate?.name).toBe('coding-agent-wait');
+        humanBaseCommit(h, { '.github/workflows/ci.yml': 'name: ci\n' });
+        t += 20 * 60_000;
+        const head = finishedPr();
+        const out = await go([review('approve')]);
+        expect(out.gate?.name, out.message).not.toBe('protected-paths');
+        expect(state().codingAgent?.adopted).toEqual({ pr: AGENT_PR, head });
+        expect(h.calls.some((c) => c.startsWith('git merge-base ') && c.includes(head))).toBe(true);
+    });
+    it('an agent change to a protected path is still refused when the base moved', async () => {
+        setup();
+        expect((await go()).gate?.name).toBe('coding-agent-wait');
+        humanBaseCommit(h, { 'docs/note.md': 'note\n' });
+        t += 20 * 60_000;
+        finishedPr({ '.github/workflows/evil.yml': 'on: push\n' });
+        const out = await go();
+        expect(out.gate?.name, out.message).toBe('protected-paths');
+        expect(out.gate?.reason).toContain('.github/workflows/evil.yml');
+        expect(out.gate?.reason).not.toContain('docs/note.md');
+        expect(state().codingAgent?.adopted).toBeUndefined();
+    });
+    it('a failed close of the agent PR at publish is retried at the merge step, once', async () => {
+        setup();
+        expect((await go()).gate?.name).toBe('coding-agent-wait');
+        t += 20 * 60_000;
+        finishedPr();
+        fake.closeFailures = 1;
+        const warns = [];
+        const out = await go([review('approve')], { warn: (m) => warns.push(m) });
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(warns.some((w) => w.includes(`could not close the coding agent's pull request #${AGENT_PR}`))).toBe(true);
+        expect(fake.comments).toHaveLength(1);
+        expect(fake.closes).toHaveLength(2);
+        expect(state().codingAgent).toMatchObject({ linked: true, closed: true });
     });
 });
 //# sourceMappingURL=engine.coding-agent.test.js.map

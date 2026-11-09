@@ -29,10 +29,12 @@
  *   closes). Without that context both writes are refused.
  * - Adopting the coding agent's PR (src/factory/run/coding-agent-lane.ts):
  *   `git fetch --no-tags --refmap= origin refs/pull/<n>/head` (only
- *   FETCH_HEAD moves), `git rev-parse --verify FETCH_HEAD^{commit}`,
+ *   FETCH_HEAD moves; only with a step context whose `adopt` is `<n>`),
+ *   `git rev-parse --verify FETCH_HEAD^{commit}`, `git merge-base <sha40> <sha40>`,
  *   `git ls-tree -r -z --full-tree <sha40>`, and the link comment
  *   `gh pr comment <pr> --repo <HOST/OWNER/NAME> --body-file <f>` only with a
- *   CodingAgentContext naming that `pr`, run with the guard's own copy of the body.
+ *   step context naming that `pr` and the link's numbers, run with the guard's
+ *   own copy of the body, which must be exactly the factory's link text.
  * - Azure DevOps: `az devops invoke` on the routes.ts allowlist only, as the
  *   resolved az entry, for the run's forge repo (src/forge/ado/guard.ts).
  *   The work item create and the PATCH's item fields and links pass only with
@@ -52,7 +54,7 @@ import { isAbsolute, join, resolve } from 'path';
 import { checkAdoCommand, isAdoCommand, runGuardedAdo } from '../../forge/ado/guard.js';
 import { isBodyFileIn, readTrackerBody } from '../../forge/body-file.js';
 import { isCodingAgentAssignArgs, isCodingAgentCloseArgs, isCodingAgentStatusArgs } from '../../forge/github/coding-agent.js';
-import { CODING_AGENT_LINK_BODY_ARG, isCodingAgentGitArgs, isCodingAgentLinkCommentArgs } from './coding-agent-lane.js';
+import { CODING_AGENT_LINK_BODY_ARG, codingAgentLinkBodyProblem, isCodingAgentGitArgs, isCodingAgentLinkCommentArgs } from './coding-agent-lane.js';
 import { isReviewFeedbackArgs } from '../../forge/github/graphql.js';
 import { LOCAL_REMOTE, STATE_CHANGE_LOG_FLAGS } from '../../forge/local/mirror.js';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV } from '../../ship/exec.js';
@@ -255,9 +257,9 @@ export function mirrorNamedRemoteKeys(stdout, mirror) {
     return [...new Set(refused)];
 }
 /** Factory-only git shapes; null = not a factory shape (ship's allowlist decides), false = refused outright. */
-function factoryGit(a, protectedBranches, extraProtected = [], local) {
+function factoryGit(a, protectedBranches, extraProtected = [], local, agent) {
     // The coding agent adopt (coding-agent-lane.ts): the fetch of one PR head, its FETCH_HEAD read and one commit's tree listing.
-    if (isCodingAgentGitArgs(a))
+    if (isCodingAgentGitArgs(a, agent))
         return true;
     const [sub, ...r] = a;
     const remote = r[0] === 'origin' || r[0] === LOCAL_REMOTE;
@@ -416,7 +418,7 @@ export function assertFactoryCommand(cmd, args, extraProtected = [], env, ado, w
     const base = file.replace(/\.exe$/, '');
     const protectedBranches = [...PROTECTED_BRANCHES, ...extraProtected];
     const strings = args.every((x) => typeof x === 'string');
-    const verdict = !strings ? false : base === 'git' ? factoryGit(args, protectedBranches, extraProtected, local) : base === 'gh' ? factoryGh(args, writes, github, agent) : null;
+    const verdict = !strings ? false : base === 'git' ? factoryGit(args, protectedBranches, extraProtected, local, agent) : base === 'gh' ? factoryGh(args, writes, github, agent) : null;
     if (verdict === false)
         throw new FactorySafetyError(`omg factory run refuses \`${file} ${args.join(' ')}\`: not one of the command shapes the factory engine runs`);
     if (verdict === true) {
@@ -458,6 +460,10 @@ export function factoryGuardExec(exec, extraProtected = () => [], ado = () => un
             return exec(cmd, args, opts);
         // A tracker write runs with the guard's own copy of the checked body, like an az --in-file.
         const body = readTrackerBody(args[at], (reason) => new FactorySafetyError(`omg factory run refuses \`gh ${args.join(' ')}\`: ${reason}`));
+        // The link comment's body must be exactly the factory's own text for the step context (numbers, branch, sha).
+        const linkProblem = !(ctx && isGh) ? codingAgentLinkBodyProblem(body.toString('utf8'), step) : null;
+        if (linkProblem)
+            throw new FactorySafetyError(`omg factory run refuses \`gh ${args.join(' ')}\`: ${linkProblem}`);
         const dir = mkdtempSync(join(tmpdir(), 'omg-gh-body-'));
         try {
             const owned = join(dir, 'body.md');

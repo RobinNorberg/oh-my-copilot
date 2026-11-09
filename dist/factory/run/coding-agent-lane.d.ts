@@ -7,20 +7,26 @@
  *
  * - config: `factory.run.implementer` (`copilot` | `coding-agent`, default
  *   `copilot`), `factory.codingAgent.maxWaitMinutes` (90) and
- *   `factory.codingAgent.maxSessionsPerDay` (5), from the trusted user config;
- *   the working-tree project config may only opt out or lower a number (a
- *   lane can drop a file into the checkout, and a session is billed);
+ *   `factory.codingAgent.maxSessionsPerDay` (5) and `factory.codingAgent.repos`
+ *   (the per-repository opt-in), from the trusted user config; the
+ *   working-tree project config may only opt out or lower a number (a lane
+ *   can drop a file into the checkout, and a session is billed);
+ *   chooseCodingAgent reads the user layer first and nothing else without
+ *   its opt-in;
  * - the sealed run-state record of the session (CodingAgentRunRecord) and its
  *   shape check, called by state.ts on every load;
  * - session metering: one premium request per session as an estimate
  *   (decision D6), recorded in the budget ledger tagged role `coding-agent`
  *   and mirrored in the engine ledger directory (outside every lane-writable
- *   root), and the per-day count the cap reads (the larger of the two);
+ *   root), the per-day count the cap reads (the larger of the two), and the
+ *   cap check made atomic across engines by a provisional mirror entry
+ *   written under the mirror's file lock;
  * - the exact git and gh shapes of the adopt and the hand-off, which the
- *   factory guard (exec.ts) admits: the fetch of one PR head, the read of
- *   FETCH_HEAD, the tree listing of one commit, and the link comment on the
- *   agent's PR (only with the step's CodingAgentContext naming that PR; the
- *   guard runs it with its own copy of the body file).
+ *   factory guard (exec.ts) admits: the fetch of one PR head (only with the
+ *   step context naming it), the read of FETCH_HEAD, the merge-base of two
+ *   commits, the tree listing of one commit, and the link comment on the
+ *   agent's PR (only with the step context naming that PR; the guard runs it
+ *   with its own copy of the body file, which must be the exact link text).
  *
  * Everything the agent wrote is untrusted lane output. Nothing here reads a
  * title, body, comment or commit message of the agent's PR.
@@ -61,6 +67,8 @@ export interface CodingAgentConfig {
     maxWaitMinutes: number;
     /** `factory.codingAgent.maxSessionsPerDay`: sessions the factory starts per UTC day (all runs, all repositories of this user). */
     maxSessionsPerDay: number;
+    /** `factory.codingAgent.repos`: the `OWNER/NAME` repositories a billed session may start in (user config only; compared case-insensitively). */
+    repos: string[];
 }
 export declare const DEFAULT_CODING_AGENT_CONFIG: Readonly<CodingAgentConfig>;
 /**
@@ -73,11 +81,34 @@ export declare function resolveCodingAgentConfig(trustedUser: unknown, project: 
     config: CodingAgentConfig;
     warnings: string[];
 };
-/** resolveCodingAgentConfig on the trusted user config and the checkout's project config (.copilot/omg.jsonc). */
-export declare function loadCodingAgentConfig(root: string): {
+export type CodingAgentChoice = {
+    use: true;
     config: CodingAgentConfig;
     warnings: string[];
+} | {
+    use: false;
+    warning?: string;
 };
+/**
+ * Whether this run uses the coding agent: only when the trusted user config
+ * says `factory.run.implementer: "coding-agent"`, the forge is GitHub, the
+ * run's repository is in the user's `factory.codingAgent.repos` and the
+ * project config does not opt out. The user layer is looked at first:
+ * without its opt-in nothing else is parsed (an ill-typed project value
+ * cannot fail a run that never opted in) and `use: false` comes back
+ * silently. A forge or repository miss is `use: false` with one warning (the
+ * run takes the Copilot implement lane). Throws only on a config error
+ * after the user opted in (the engine then parks).
+ */
+export declare function chooseCodingAgent(trustedUser: unknown, readProject: () => unknown, run: {
+    forgeKind: string;
+    repoUrl: string;
+}): CodingAgentChoice;
+/** chooseCodingAgent on `trustedUser` (default: the user's own trusted config) and the checkout's project config (.copilot/omg.jsonc). */
+export declare function loadCodingAgentChoice(root: string, run: {
+    forgeKind: string;
+    repoUrl: string;
+}, trustedUser?: unknown): CodingAgentChoice;
 /**
  * Why a run may not use the coding agent although the config asks for it,
  * or null: GitHub only (the agent is a GitHub feature), issue runs only (a
@@ -132,11 +163,27 @@ export declare function codingAgentFetchArgs(pr: number): string[];
 export declare const CODING_AGENT_FETCH_HEAD_ARGS: readonly string[];
 /** Every tree entry of one commit (modes included): the adopt's gitlink and symlink check. */
 export declare function codingAgentTreeArgs(sha: string): string[];
+/** `git merge-base <sha40> <sha40>`: where the adopted head left the configured base (read-only). */
+export declare function codingAgentMergeBaseArgs(base: string, head: string): string[];
+/**
+ * The engine's coding agent step context: CodingAgentContext plus, for the
+ * adopt's fetch, the one PR number it may fetch (`adopt`), and, for the link
+ * comment, the numbers, branch and sha its exact body is built from (`link`).
+ */
+export interface CodingAgentStepContext extends CodingAgentContext {
+    adopt?: number;
+    link?: {
+        ownPr: number;
+        branch: string;
+        head: string;
+    };
+}
 /**
  * The git shapes the adopt adds to the factory guard (exec.ts), exact argv:
- * codingAgentFetchArgs, CODING_AGENT_FETCH_HEAD_ARGS and codingAgentTreeArgs.
+ * codingAgentFetchArgs (only with a step context whose `adopt` is that PR),
+ * CODING_AGENT_FETCH_HEAD_ARGS, codingAgentTreeArgs and codingAgentMergeBaseArgs.
  */
-export declare function isCodingAgentGitArgs(a: readonly string[]): boolean;
+export declare function isCodingAgentGitArgs(a: readonly string[], ctx?: CodingAgentStepContext): boolean;
 /** `gh pr comment <pr> --repo <HOST/OWNER/NAME> --body-file <file>`: the D5 link comment on the agent's PR. */
 export declare function codingAgentLinkCommentArgs(repo: CodingAgentRepo, pr: number, bodyFile: string): string[];
 /** argv index of the link comment's body file (the guard runs the comment with its own copy of it). */
@@ -146,7 +193,7 @@ export declare const CODING_AGENT_LINK_BODY_ARG = 6;
  * for the context's repository and `pr`. Without a CodingAgentContext naming
  * the PR it is refused.
  */
-export declare function isCodingAgentLinkCommentArgs(a: readonly string[], ctx: CodingAgentContext | undefined): boolean;
+export declare function isCodingAgentLinkCommentArgs(a: readonly string[], ctx: CodingAgentStepContext | undefined): boolean;
 /** The link comment (engine text only: numbers, the branch and a sha; nothing the agent wrote). */
 export declare function codingAgentLinkBody(o: {
     issue: number;
@@ -154,6 +201,8 @@ export declare function codingAgentLinkBody(o: {
     branch: string;
     head: string;
 }): string;
+/** The guard's body check of the link comment: exactly codingAgentLinkBody of the step context's numbers, branch and sha, or why not. */
+export declare function codingAgentLinkBodyProblem(body: string, ctx: CodingAgentStepContext | undefined): string | null;
 /**
  * New or changed gitlinks (160000) and symlinks (120000) of `head`'s tree
  * against `base`'s (both `ls-tree -r -z --full-tree` output): host git does
@@ -197,4 +246,31 @@ export declare function recordCodingAgentSession(s: CodingAgentSession): string[
  * budget reset` clears the budget ledger, not the mirror).
  */
 export declare function codingAgentSessionsOn(root: string, ledgerDir: string, day: string): number;
+/** The engine ledger mirror's lock could not be taken in time: another engine is reserving a session (the caller reports busy). */
+export declare class CodingAgentSessionsBusyError extends Error {
+    constructor(path: string);
+}
+/**
+ * The cap check, atomic across engines: under the mirror's file lock, count
+ * the day's sessions and, below `max`, write a provisional mirror entry for
+ * this lane before the lock is released, so a second engine counts it before
+ * its own POST. `by` (the caller's process identity) is read by the caller
+ * BEFORE the lock. A lock timeout throws CodingAgentSessionsBusyError.
+ */
+export declare function reserveCodingAgentSession(s: CodingAgentSession & {
+    by: string;
+}, max: number, timeoutMs?: number): {
+    ok: boolean;
+    used: number;
+};
+/** Drop the provisional entry after a definite refusal of the assign (no session started), under the same lock. */
+export declare function releaseCodingAgentSession(s: Pick<CodingAgentSession, 'ledgerDir' | 'repo' | 'laneId'>, timeoutMs?: number): void;
+/**
+ * Whether a failed assign POST was refused for certain, so no session
+ * started: gh exited with a status and reported an HTTP 4xx for the request.
+ * A timeout or signal (no exit status), a network error or a 5xx leaves the
+ * outcome unknown. (A guard refusal before the spawn is the caller's other
+ * definite case.)
+ */
+export declare function isDefiniteAssignRefusal(message: string): boolean;
 //# sourceMappingURL=coding-agent-lane.d.ts.map

@@ -47,6 +47,10 @@ export declare class FakeAgentGithub {
     truncate: boolean;
     /** The assign POST: adds an Assigned event at `now()` (`assign`), returns 2xx without one (`silent`), or fails (`fail`). */
     onAssign: 'assign' | 'silent' | 'fail';
+    /** What a failing assign POST answers (default: gh's HTTP 422). */
+    assignFailure: ExecResult;
+    /** The next `gh pr close` calls that fail (a network error), before closes succeed. */
+    closeFailures: number;
     readonly assigns: string[][];
     readonly closes: string[][];
     readonly comments: Array<{
@@ -69,4 +73,6 @@ export declare function installFakeAgent(h: Harness, fake: FakeAgentGithub): voi
  * until the engine fetches. Returns its sha.
  */
 export declare function agentCommit(h: Harness, pr: number, files: Record<string, string>, parent?: string): string;
+/** A human commit on the remote's dev (the configured base moves); returns its sha. */
+export declare function humanBaseCommit(h: Harness, files: Record<string, string>): string;
 //# sourceMappingURL=fake-coding-agent.d.ts.map

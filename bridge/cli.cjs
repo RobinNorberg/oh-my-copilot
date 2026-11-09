@@ -119359,6 +119359,13 @@ var init_coding_agent = __esm({
 });
 
 // src/factory/run/coding-agent-lane.ts
+function reposOf(value, source) {
+  if (value === void 0) return void 0;
+  if (!Array.isArray(value) || !value.every((r) => typeof r === "string" && REPO_NAME2.test(r))) {
+    throw new Error(`${source}: factory.codingAgent.repos must be an array of "owner/name" repository names`);
+  }
+  return [...value];
+}
 function block(config2, path30, source) {
   let at = config2;
   for (const key of path30) {
@@ -119383,12 +119390,13 @@ function countOf(value, key, source) {
 }
 function resolveCodingAgentConfig(trustedUser, project) {
   const warnings = [];
-  const config2 = { ...DEFAULT_CODING_AGENT_CONFIG };
+  const config2 = { ...DEFAULT_CODING_AGENT_CONFIG, repos: [] };
   const userRun = block(trustedUser, ["factory", "run"], "user config");
   const userAgent = block(trustedUser, ["factory", "codingAgent"], "user config");
   config2.implementer = implementerOf(userRun.implementer, "user config") ?? config2.implementer;
   config2.maxWaitMinutes = countOf(userAgent.maxWaitMinutes, "maxWaitMinutes", "user config") ?? config2.maxWaitMinutes;
   config2.maxSessionsPerDay = countOf(userAgent.maxSessionsPerDay, "maxSessionsPerDay", "user config") ?? config2.maxSessionsPerDay;
+  config2.repos = reposOf(userAgent.repos, "user config") ?? config2.repos;
   const projRun = block(project, ["factory", "run"], "project config");
   const projAgent = block(project, ["factory", "codingAgent"], "project config");
   const implementer = implementerOf(projRun.implementer, "project config");
@@ -119396,6 +119404,7 @@ function resolveCodingAgentConfig(trustedUser, project) {
   else if (implementer === "coding-agent" && config2.implementer !== "coding-agent") {
     warnings.push('omg factory run: ignoring factory.run.implementer "coding-agent" from the working-tree project config; it starts billed agent sessions, so only the user config can opt in');
   }
+  if (projAgent.repos !== void 0) warnings.push("omg factory run: ignoring factory.codingAgent.repos from the working-tree project config; only the user config lists the repositories a billed session may start in");
   for (const key of ["maxWaitMinutes", "maxSessionsPerDay"]) {
     const value = countOf(projAgent[key], key, "project config");
     if (value === void 0) continue;
@@ -119404,10 +119413,32 @@ function resolveCodingAgentConfig(trustedUser, project) {
   }
   return { config: config2, warnings };
 }
-function loadCodingAgentConfig(root2) {
-  const path30 = resolveProjectConfigPath(root2);
-  const project = (0, import_fs143.existsSync)(path30) ? parseJsonc((0, import_fs143.readFileSync)(path30, "utf8")) : void 0;
-  return resolveCodingAgentConfig(userConfigLayers().trustedUser, project);
+function chooseCodingAgent(trustedUser, readProject, run2) {
+  const runBlock2 = isObj2(trustedUser) && isObj2(trustedUser.factory) && isObj2(trustedUser.factory.run) ? trustedUser.factory.run : void 0;
+  if (runBlock2?.implementer !== "coding-agent") return { use: false };
+  if (run2.forgeKind !== "github") return { use: false, warning: `omg factory run: the coding agent is GitHub-only; using a Copilot lane (this run's forge is ${run2.forgeKind})` };
+  const user = resolveCodingAgentConfig(trustedUser, void 0).config;
+  const repo = codingAgentRepoOf(run2.repoUrl);
+  const name = repo ? `${repo.owner}/${repo.name}` : run2.repoUrl;
+  if (!repo || !user.repos.some((r) => r.toLowerCase() === name.toLowerCase())) {
+    return { use: false, warning: `omg factory run: coding agent not enabled for ${name}: add it to factory.codingAgent.repos; using a Copilot lane` };
+  }
+  const { config: config2, warnings } = resolveCodingAgentConfig(trustedUser, readProject());
+  return config2.implementer === "coding-agent" ? { use: true, config: config2, warnings } : { use: false };
+}
+function loadCodingAgentChoice(root2, run2, trustedUser) {
+  let user = trustedUser;
+  if (user === void 0) {
+    try {
+      user = userConfigLayers().trustedUser;
+    } catch (error2) {
+      return { use: false, warning: `omg factory run: the user config could not be read (${error2 instanceof Error ? error2.message : String(error2)}); the coding agent stays off` };
+    }
+  }
+  return chooseCodingAgent(user, () => {
+    const path30 = resolveProjectConfigPath(root2);
+    return (0, import_fs143.existsSync)(path30) ? parseJsonc((0, import_fs143.readFileSync)(path30, "utf8")) : void 0;
+  }, run2);
 }
 function codingAgentRefusal(forgeKind, runKind) {
   if (runKind !== "issue") return null;
@@ -119464,12 +119495,17 @@ function codingAgentTreeArgs(sha3) {
   if (!HEX403.test(sha3)) throw new Error(`coding agent tree: ${sha3} is not a 40-hex commit`);
   return ["ls-tree", "-r", "-z", "--full-tree", sha3];
 }
-function isCodingAgentGitArgs(a) {
+function codingAgentMergeBaseArgs(base, head) {
+  if (!HEX403.test(base) || !HEX403.test(head)) throw new Error("coding agent merge-base: both operands must be 40-hex commits");
+  return ["merge-base", base, head];
+}
+function isCodingAgentGitArgs(a, ctx) {
   if (a.length === 5 && a[0] === "fetch") {
     const m = /^refs\/pull\/([1-9]\d{0,9})\/head$/.exec(a[4]);
-    return a[1] === "--no-tags" && a[2] === "--refmap=" && a[3] === "origin" && m !== null;
+    return a[1] === "--no-tags" && a[2] === "--refmap=" && a[3] === "origin" && m !== null && ctx?.adopt !== void 0 && Number.isSafeInteger(ctx.adopt) && String(ctx.adopt) === m[1];
   }
   if (a.length === CODING_AGENT_FETCH_HEAD_ARGS.length && CODING_AGENT_FETCH_HEAD_ARGS.every((v, i) => a[i] === v)) return true;
+  if (a.length === 3 && a[0] === "merge-base" && HEX403.test(a[1]) && HEX403.test(a[2])) return true;
   return a.length === 5 && a[0] === "ls-tree" && a[1] === "-r" && a[2] === "-z" && a[3] === "--full-tree" && HEX403.test(a[4]);
 }
 function codingAgentLinkCommentArgs(repo, pr, bodyFile) {
@@ -119477,7 +119513,7 @@ function codingAgentLinkCommentArgs(repo, pr, bodyFile) {
   return ["pr", "comment", String(pr), "--repo", `${repo.host}/${repo.owner}/${repo.name}`, "--body-file", bodyFile];
 }
 function isCodingAgentLinkCommentArgs(a, ctx) {
-  if (!ctx || ctx.pr === void 0 || !Number.isSafeInteger(ctx.pr) || !PR_NUMBER.test(String(ctx.pr)) || a.length !== 7) return false;
+  if (!ctx || ctx.pr === void 0 || ctx.link === void 0 || !Number.isSafeInteger(ctx.pr) || !PR_NUMBER.test(String(ctx.pr)) || a.length !== 7) return false;
   const file = a[CODING_AGENT_LINK_BODY_ARG];
   return a[0] === "pr" && a[1] === "comment" && a[2] === String(ctx.pr) && a[3] === "--repo" && a[4].toLowerCase() === ctx.repo.toLowerCase() && a[5] === "--body-file" && typeof file === "string" && file.length > 0 && !file.startsWith("-") && !/[\r\n\0]/.test(file);
 }
@@ -119488,6 +119524,11 @@ function codingAgentLinkBody(o) {
     `Review, fix rounds, gates and the human merge continue on #${o.ownPr}; this pull request is closed (\`omg factory run ${o.issue}\`). Please do not push here or click "Update branch".`,
     ""
   ].join("\n");
+}
+function codingAgentLinkBodyProblem(body, ctx) {
+  if (!ctx?.link) return "no link comment context";
+  const { ownPr, branch: branch2, head } = ctx.link;
+  return body === codingAgentLinkBody({ issue: ctx.issue, ownPr, branch: branch2, head }) ? null : "the body is not the factory's link comment for this context";
 }
 function linkEntries(baseTree, headTree) {
   const of = (out, mode) => new Set(out.split("\0").filter((e) => e.startsWith(`${mode} `)).map((e) => {
@@ -119505,7 +119546,9 @@ function readMirror(path30) {
     const raw = JSON.parse((0, import_fs143.readFileSync)(path30, "utf8"));
     const sessions = {};
     if (isObj2(raw) && isObj2(raw.sessions)) {
-      for (const [k, v] of Object.entries(raw.sessions)) if (isObj2(v) && isIso(v.at) && typeof v.run === "string") sessions[k] = { at: v.at, run: v.run };
+      for (const [k, v] of Object.entries(raw.sessions)) {
+        if (isObj2(v) && isIso(v.at) && typeof v.run === "string") sessions[k] = { at: v.at, run: v.run, ...typeof v.by === "string" ? { by: v.by } : {} };
+      }
     }
     return { version: 1, sessions };
   } catch {
@@ -119549,7 +119592,40 @@ function codingAgentSessionsOn(root2, ledgerDir, day) {
   const mirror = Object.values(readMirror((0, import_path170.join)(ledgerDir, MIRROR_FILE)).sessions).filter((v) => v.at.slice(0, 10) === day).length;
   return Math.max(budget, mirror);
 }
-var import_fs143, import_path170, CODING_AGENT_WAIT_GATE, CODING_AGENT_GATE, CODING_AGENT_UNCONFIRMED_GATE, CODING_AGENT_SESSIONS_GATE, CODING_AGENT_REASSIGNED_GATE, CODING_AGENT_TIMEOUT_GATE, CODING_AGENT_ADOPT_GATE, CODING_AGENT_HEAD_MOVED_GATE, PRE_ASSIGN_SINCE, CODING_AGENT_CONFIRM_READS, DEFAULT_CODING_AGENT_CONFIG, IMPLEMENTERS, LANE_ID, ISO2, ISO_SECONDS2, HEX403, isIso, KEYS, isObj2, isAgent2, PR_NUMBER, CODING_AGENT_FETCH_HEAD_ARGS, CODING_AGENT_LINK_BODY_ARG, CODING_AGENT_SESSION_USAGE, MIRROR_FILE, MIRROR_KEEP_MS;
+function underMirrorLock(ledgerDir, timeoutMs, fn) {
+  ensureDirSync(ledgerDir);
+  const path30 = (0, import_path170.join)(ledgerDir, MIRROR_FILE);
+  const handle = acquireFileLockSync(lockPathFor(path30), { timeoutMs });
+  if (!handle) throw new CodingAgentSessionsBusyError(path30);
+  try {
+    return fn(path30);
+  } finally {
+    releaseFileLockSync(handle);
+  }
+}
+function reserveCodingAgentSession(s, max, timeoutMs = 5e3) {
+  const day = s.at.slice(0, 10);
+  return underMirrorLock(s.ledgerDir, timeoutMs, (path30) => {
+    const used = codingAgentSessionsOn(s.root, s.ledgerDir, day);
+    if (used >= max) return { ok: false, used };
+    const m = readMirror(path30);
+    m.sessions[`${s.repo}#${s.laneId}`] = { at: s.at, run: s.run, by: s.by };
+    atomicWriteFileSync(path30, JSON.stringify(m, null, 2));
+    return { ok: true, used };
+  });
+}
+function releaseCodingAgentSession(s, timeoutMs = 5e3) {
+  underMirrorLock(s.ledgerDir, timeoutMs, (path30) => {
+    const m = readMirror(path30);
+    if (!(`${s.repo}#${s.laneId}` in m.sessions)) return;
+    delete m.sessions[`${s.repo}#${s.laneId}`];
+    atomicWriteFileSync(path30, JSON.stringify(m, null, 2));
+  });
+}
+function isDefiniteAssignRefusal(message4) {
+  return /failed \(exit [1-9]\d*\): .*\bHTTP 4\d\d\b/.test(message4);
+}
+var import_fs143, import_path170, CODING_AGENT_WAIT_GATE, CODING_AGENT_GATE, CODING_AGENT_UNCONFIRMED_GATE, CODING_AGENT_SESSIONS_GATE, CODING_AGENT_REASSIGNED_GATE, CODING_AGENT_TIMEOUT_GATE, CODING_AGENT_ADOPT_GATE, CODING_AGENT_HEAD_MOVED_GATE, PRE_ASSIGN_SINCE, CODING_AGENT_CONFIRM_READS, DEFAULT_CODING_AGENT_CONFIG, IMPLEMENTERS, REPO_NAME2, LANE_ID, ISO2, ISO_SECONDS2, HEX403, isIso, KEYS, isObj2, isAgent2, PR_NUMBER, CODING_AGENT_FETCH_HEAD_ARGS, CODING_AGENT_LINK_BODY_ARG, CODING_AGENT_SESSION_USAGE, MIRROR_FILE, MIRROR_KEEP_MS, CodingAgentSessionsBusyError;
 var init_coding_agent_lane = __esm({
   "src/factory/run/coding-agent-lane.ts"() {
     "use strict";
@@ -119572,8 +119648,9 @@ var init_coding_agent_lane = __esm({
     CODING_AGENT_HEAD_MOVED_GATE = "coding-agent-head-moved";
     PRE_ASSIGN_SINCE = Object.freeze({ at: "2008-01-01T00:02:00Z", source: "local" });
     CODING_AGENT_CONFIRM_READS = 3;
-    DEFAULT_CODING_AGENT_CONFIG = Object.freeze({ implementer: "copilot", maxWaitMinutes: 90, maxSessionsPerDay: 5 });
+    DEFAULT_CODING_AGENT_CONFIG = Object.freeze({ implementer: "copilot", maxWaitMinutes: 90, maxSessionsPerDay: 5, repos: [] });
     IMPLEMENTERS = ["copilot", "coding-agent"];
+    REPO_NAME2 = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
     LANE_ID = /^issue-[1-9]\d{0,9}-coding-agent-[1-9]\d{0,5}$/;
     ISO2 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
     ISO_SECONDS2 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
@@ -119588,6 +119665,12 @@ var init_coding_agent_lane = __esm({
     CODING_AGENT_SESSION_USAGE = Object.freeze({ credits: 0, premiumRequests: 1, source: "estimated" });
     MIRROR_FILE = "coding-agent-sessions.json";
     MIRROR_KEEP_MS = 7 * 24 * 60 * 6e4;
+    CodingAgentSessionsBusyError = class extends Error {
+      constructor(path30) {
+        super(`the coding agent session count (${path30}) is locked by another engine`);
+        this.name = "CodingAgentSessionsBusyError";
+      }
+    };
   }
 });
 
@@ -120293,8 +120376,8 @@ function mirrorNamedRemoteKeys(stdout, mirror) {
   }).map(({ key, value }) => `${key}=${value}`);
   return [...new Set(refused)];
 }
-function factoryGit(a, protectedBranches, extraProtected = [], local) {
-  if (isCodingAgentGitArgs(a)) return true;
+function factoryGit(a, protectedBranches, extraProtected = [], local, agent) {
+  if (isCodingAgentGitArgs(a, agent)) return true;
   const [sub, ...r] = a;
   const remote = r[0] === "origin" || r[0] === LOCAL_REMOTE;
   switch (sub) {
@@ -120395,7 +120478,7 @@ function assertFactoryCommand(cmd, args, extraProtected = [], env2, ado, writes,
   const base = file.replace(/\.exe$/, "");
   const protectedBranches = [...PROTECTED_BRANCHES, ...extraProtected];
   const strings = args.every((x) => typeof x === "string");
-  const verdict = !strings ? false : base === "git" ? factoryGit(args, protectedBranches, extraProtected, local) : base === "gh" ? factoryGh(args, writes, github, agent) : null;
+  const verdict = !strings ? false : base === "git" ? factoryGit(args, protectedBranches, extraProtected, local, agent) : base === "gh" ? factoryGh(args, writes, github, agent) : null;
   if (verdict === false) throw new FactorySafetyError(`omg factory run refuses \`${file} ${args.join(" ")}\`: not one of the command shapes the factory engine runs`);
   if (verdict === true) {
     const trusted = JSON.stringify(Object.entries(TRUSTED_READ_ENV));
@@ -120420,6 +120503,8 @@ function factoryGuardExec(exec3, extraProtected = () => [], ado = () => void 0, 
     const at = ctx && isGh ? trackerBodyFileArg(args) : isGh && isCodingAgentLinkCommentArgs(args, step) ? CODING_AGENT_LINK_BODY_ARG : void 0;
     if (at === void 0) return exec3(cmd, args, opts);
     const body = readTrackerBody(args[at], (reason) => new FactorySafetyError(`omg factory run refuses \`gh ${args.join(" ")}\`: ${reason}`));
+    const linkProblem = !(ctx && isGh) ? codingAgentLinkBodyProblem(body.toString("utf8"), step) : null;
+    if (linkProblem) throw new FactorySafetyError(`omg factory run refuses \`gh ${args.join(" ")}\`: ${linkProblem}`);
     const dir = (0, import_fs147.mkdtempSync)((0, import_path173.join)((0, import_os32.tmpdir)(), "omg-gh-body-"));
     try {
       const owned = (0, import_path173.join)(dir, "body.md");
@@ -129025,6 +129110,29 @@ function busyHolder(o, key) {
   const claim = repo ? factoryClaimHolder(o.ledgerDir ?? defaultLedgerDir(), repo, o.root, key, deps) : null;
   return what(factoryRepoOwnerPath(o.root), "the engine lock of this checkout") ?? what(factoryOwnerPath(o.root, key), `the run of ${runLabel(key)}`) ?? (claim ? `the cross-clone claim: ${claimBusyMessage(key, claim)}` : null);
 }
+function codingAgentDryRun(o, forgeKind, repoUrl, source, caps) {
+  let choice;
+  try {
+    choice = loadCodingAgentChoice(o.root, { forgeKind, repoUrl }, o.codingAgentUserConfig);
+  } catch (error2) {
+    const reason = `the coding agent config could not be read: ${oneLine(errText5(error2), 300)}`;
+    return { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; ${reason}, so the run would stop at awaiting-human: ${CODING_AGENT_GATE}`, plan: { next: "awaiting-human", reason: CODING_AGENT_GATE, planSource: source, ...caps } };
+  }
+  if (!choice.use) {
+    if (choice.warning) o.warn?.(choice.warning);
+    return void 0;
+  }
+  for (const w of choice.warnings) o.warn?.(w);
+  const day = new Date(o.now?.() ?? Date.now()).toISOString().slice(0, 10);
+  const used = codingAgentSessionsOn(o.root, o.ledgerDir ?? defaultLedgerDir(), day);
+  return {
+    exitCode: 0,
+    phase: null,
+    state: null,
+    message: `dry run: plan from ${source}; the run would assign issue #${o.issue} to the Copilot coding agent, a billed GitHub session (${used} of factory.codingAgent.maxSessionsPerDay ${choice.config.maxSessionsPerDay} used today, UTC)`,
+    plan: { next: "coding-agent", planSource: source, ...caps }
+  };
+}
 function dryRun(o) {
   const holder = busyHolder(o, engineRunKey(o));
   if (holder) return { exitCode: EXIT_BUSY, phase: null, state: null, busy: true, message: `dry run: ${holder}; a real run now would exit busy (${EXIT_BUSY}) without touching anything` };
@@ -129089,6 +129197,8 @@ function dryRun(o) {
       if ("missing" in probe) gateProblem = probe.missing;
     }
     const gateNote = gateProblem ? `; but the local gate cannot start (${gateProblem}), so after review the run would park at awaiting-human: gates` : "";
+    const agent2 = source2 ? codingAgentDryRun(o, forge.kind, o.forge.config.repo.url, source2, caps) : void 0;
+    if (agent2) return agent2;
     return source2 ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source2}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${gateNote}`, plan: { next: "implement", planSource: source2, ...caps, ...gateProblem ? { gateProblem } : {} } } : { exitCode: 0, phase: null, state: null, message: 'dry run: no plan (no Acceptance Criteria, "Acceptance criteria" heading or trusted omg-plan: link); the run would stop at awaiting-human: needs-plan', plan: { next: "awaiting-human", reason: "needs-plan", ...caps } };
   }
   const res = ghIssueView(exec3, o.issue, o.root);
@@ -129104,6 +129214,9 @@ function dryRun(o) {
   if (v.state !== "OPEN") return { exitCode: 0, phase: null, state: null, message: "dry run: the issue is closed; the run would be cancelled", plan: { next: "cancelled", ...caps } };
   const link6 = findPlanLink(body, Array.isArray(v.comments) ? v.comments : [], issueAuthorTrusted(v));
   const source = link6 ? `omg-plan ${link6}` : hasAcceptanceCriteria(body) ? "issue body (Acceptance criteria)" : void 0;
+  const repoUrl = typeof v.url === "string" ? v.url.replace(/\/issues\/\d+$/, "") : "";
+  const agent = source ? codingAgentDryRun(o, "github", repoUrl, source, caps) : void 0;
+  if (agent) return agent;
   return source ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits`, plan: { next: "implement", planSource: source, ...caps } } : { exitCode: 0, phase: null, state: null, message: 'dry run: no plan (no "Acceptance criteria" heading or omg-plan: link); the run would stop at awaiting-human: needs-plan', plan: { next: "awaiting-human", reason: "needs-plan", ...caps } };
 }
 async function runFactoryEngine(o) {
@@ -129830,6 +129943,10 @@ var init_engine = __esm({
       async cancel() {
         const usage = /* @__PURE__ */ new Map();
         for (const lane of this.state.lanes.filter((l) => l.status === "running")) {
+          if (lane.kind === "coding-agent") {
+            usage.set(lane.id, this.codingAgentCancelled(lane));
+            continue;
+          }
           let u = capUsage(lane.maxCredits);
           if (lane.jobId) {
             try {
@@ -130840,6 +130957,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
       async merge() {
         const { pr, head } = this.state;
         if (!pr || !head) throw new FactoryStepError("merge needs a published head and PR");
+        this.codingAgentHandOff();
         const view2 = await this.settledPr(pr, head, () => this.prView(pr));
         if (this.prGone(view2)) return;
         if (view2.headRefOid !== head) {
@@ -131232,8 +131350,8 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
       // merge then treat like any lane's. The agent's PR gets a link comment and is closed after publish (D5).
       /** The coding agent write context, set ONLY around the assign and around the agent PR's link comment and close; cleared in finally. */
       agentStep;
-      /** The coding agent keys of this invocation (resolved once). */
-      agentConfig;
+      /** Whether this invocation's run uses the coding agent, and its keys (resolved once; its warning printed once). */
+      agentChoice;
       /** The repository-only GitHub read context (the coding agent's status read): the run's repository as intake recorded it. */
       githubReadContext() {
         const repo = this.state?.repoUrl ? codingAgentRepoOf(this.state.repoUrl) : void 0;
@@ -131247,16 +131365,26 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           this.agentStep = void 0;
         }
       }
+      /**
+       * chooseCodingAgent for this run (the user layer first; see
+       * coding-agent-lane.ts). Throws only on a config error after the user
+       * opted in; the dispatch parks on it.
+       */
+      codingAgentChoice() {
+        if (this.agentChoice) return this.agentChoice;
+        const choice = loadCodingAgentChoice(this.o.root, { forgeKind: this.o.forge?.config.kind ?? "github", repoUrl: this.state.repoUrl ?? "" }, this.o.codingAgentUserConfig);
+        if (choice.use) for (const w of choice.warnings) this.o.warn?.(w);
+        else if (choice.warning) this.o.warn?.(choice.warning);
+        return this.agentChoice = choice;
+      }
+      /** The keys of a run that already has a session: the chosen config, or the defaults when the config no longer opts in. */
       codingAgentSettings() {
-        if (this.agentConfig) return this.agentConfig;
-        if (this.o.codingAgent) return this.agentConfig = this.o.codingAgent;
+        let choice;
         try {
-          const { config: config2, warnings } = loadCodingAgentConfig(this.o.root);
-          for (const w of warnings) this.o.warn?.(w);
-          return this.agentConfig = config2;
-        } catch (error2) {
-          throw new FactoryStepError(`the coding agent config could not be read: ${errText5(error2)}`);
+          choice = this.codingAgentChoice();
+        } catch {
         }
+        return choice?.use ? choice.config : { ...DEFAULT_CODING_AGENT_CONFIG, repos: [] };
       }
       codingAgentRepo() {
         const repo = codingAgentRepoOf(this.state.repoUrl);
@@ -131296,7 +131424,14 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         const record3 = s.codingAgent;
         if (!record3) {
           if (s.kind === "ci-heal" || !this.o.issue || s.lanes.some((l) => l.kind === "implement")) return false;
-          if (this.codingAgentSettings().implementer !== "coding-agent") return false;
+          let choice;
+          try {
+            choice = this.codingAgentChoice();
+          } catch (error2) {
+            this.gate(CODING_AGENT_GATE, `the coding agent config could not be read: ${oneLine(errText5(error2), 300)}; nothing was assigned. Fix factory.codingAgent / factory.run in the user config or the working-tree .copilot/omg.jsonc, then rerun ${this.resume}`);
+            return true;
+          }
+          if (!choice.use) return false;
         }
         const refusal = codingAgentRefusal(this.o.forge?.config.kind ?? "github", s.kind ?? "issue");
         if (refusal) {
@@ -131334,23 +131469,42 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           ].join(" and ");
           return this.gate(CODING_AGENT_GATE, `${what}; a new assignment could pick up that earlier session, so nothing was assigned. Unassign the agent and close its pull requests on GitHub, then rerun ${this.resume}`);
         }
-        const day = this.iso().slice(0, 10);
-        const used = codingAgentSessionsOn(this.o.root, this.o.ledgerDir ?? defaultLedgerDir(), day);
-        if (used >= cfg.maxSessionsPerDay) {
-          return this.gate(CODING_AGENT_SESSIONS_GATE, `the factory started ${used} coding agent session(s) on ${day} (UTC), factory.codingAgent.maxSessionsPerDay is ${cfg.maxSessionsPerDay}; nothing was assigned. Rerun ${this.resume} tomorrow, or raise the cap in the user config`);
-        }
         const seq = this.state.lanes.filter((l) => l.kind === "coding-agent").length + 1;
         const laneId = `${runSlug(this.key)}-coding-agent-${seq}`;
         const assignAt = this.iso();
+        const day = assignAt.slice(0, 10);
+        const session = { root: this.o.root, ledgerDir: this.o.ledgerDir ?? defaultLedgerDir(), laneId, run: runSlug(this.key), repo: ghRepoArg(repo), at: assignAt };
+        const by = describeOwner(ownerRecord(assignAt, this.o.owner ?? defaultOwnerDeps(), { run: runSlug(this.key), root: this.o.root }));
+        let reserved;
+        try {
+          reserved = reserveCodingAgentSession({ ...session, by }, cfg.maxSessionsPerDay);
+        } catch (error2) {
+          if (error2 instanceof CodingAgentSessionsBusyError) throw new FactoryBusyError(`${errText5(error2)}; nothing was assigned, rerun ${this.resume}`);
+          throw new FactoryStepError(`the coding agent session count could not be reserved: ${errText5(error2)}; nothing was assigned`);
+        }
+        if (!reserved.ok) {
+          return this.gate(CODING_AGENT_SESSIONS_GATE, `the factory started ${reserved.used} coding agent session(s) on ${day} (UTC), factory.codingAgent.maxSessionsPerDay is ${cfg.maxSessionsPerDay}; nothing was assigned. Rerun ${this.resume} tomorrow, or raise the cap in the user config`);
+        }
         const lane = { id: laneId, kind: "coding-agent", role: "coding-agent", startSha: baseSha, status: "running", maxCredits: 0, startedAt: assignAt };
         this.save((x) => ({ ...x, lanes: [...x.lanes, lane], codingAgent: { laneId, assignAt, assign: "pending" } }));
         let r;
         try {
           r = this.withAgentStep({ repo: ghRepoArg(repo), issue: issue2, base: this.state.base }, () => assignCodingAgent(this.exec, repo, issue2, this.state.base, assignAt, this.o.root));
         } catch (error2) {
-          this.updateLane(laneId, { status: "failed", endedAt: this.iso(), note: `assign failed: ${oneLine(errText5(error2), 300)}` });
-          this.save((x) => ({ ...x, codingAgent: { ...x.codingAgent, assign: "failed" } }));
-          return this.gate(CODING_AGENT_GATE, `assigning issue #${issue2} to the Copilot coding agent failed (${oneLine(errText5(error2), 300)}); no session was counted. Check that the agent is enabled and the gh login may write issues, then rerun ${this.resume}`);
+          if (error2 instanceof StateTamperedError) throw error2;
+          const why = oneLine(errText5(error2), 300);
+          if (error2 instanceof FactorySafetyError || isDefiniteAssignRefusal(errText5(error2))) {
+            try {
+              releaseCodingAgentSession(session);
+            } catch (releaseError) {
+              this.o.warn?.(`omg factory run: the provisional coding agent session ${laneId} stays counted: ${errText5(releaseError)}`);
+            }
+            this.updateLane(laneId, { status: "failed", endedAt: this.iso(), note: `assign refused: ${why}` });
+            this.save((x) => ({ ...x, codingAgent: { ...x.codingAgent, assign: "failed" } }));
+            return this.gate(CODING_AGENT_GATE, `assigning issue #${issue2} to the Copilot coding agent was refused (${why}); no session was counted. Check that the agent is enabled and the gh login may write issues, then rerun ${this.resume}`);
+          }
+          this.codingAgentPosted(laneId);
+          return this.gate(CODING_AGENT_UNCONFIRMED_GATE, `assigning issue #${issue2} to the Copilot coding agent did not complete (${why}): the assign may have started a session; it was counted. The factory never assigns again on its own; rerun ${this.resume} to read whether the agent is on the issue, or omg factory run cancel ${this.key}`);
         }
         this.codingAgentPosted(laneId);
         let status = r.confirmed ? r.status : void 0;
@@ -131475,6 +131629,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         if (!check2.ok) return this.gate(CODING_AGENT_ADOPT_GATE, this.codingAgentAdoptRefusal(status, check2.reasons));
         if (!s.baseSha) throw new FactoryStepError("adopting the coding agent pull request needs the base sha the run assigned at");
         if (this.recheckFailed("before the coding agent fetch")) return;
+        const baseTip = this.fetchBase();
         const mismatch2 = remoteRepoMismatch(this.exec, this.o.root, runRemote(s), s.repoUrl);
         if (mismatch2) throw new FactoryStepError(`refusing to fetch: ${mismatch2}`);
         let before;
@@ -131483,7 +131638,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         } catch (error2) {
           throw new FactoryStepError(`the pre-fetch snapshot failed: ${errText5(error2)}`);
         }
-        this.run(codingAgentFetchArgs(check2.pr), "git", TRUSTED_READ_ENV);
+        this.withAgentStep({ repo: ghRepoArg(repo), issue: issue2, base: s.base, adopt: check2.pr }, () => this.run(codingAgentFetchArgs(check2.pr), "git", TRUSTED_READ_ENV));
         let after;
         let problems;
         try {
@@ -131504,8 +131659,10 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         if (!recheck.ok || recheck.pr !== check2.pr || recheck.head !== check2.head || again.assignedAt !== record3.since.at || again.pr?.finishedAt !== status.pr?.finishedAt) {
           return this.gate(CODING_AGENT_HEAD_MOVED_GATE, `the coding agent's pull request #${check2.pr} changed while the factory fetched ${check2.head.slice(0, 12)} (a new read shows ${again.phase}${again.pr?.head ? ` at ${again.pr.head.slice(0, 12)}` : ""}); nothing was adopted. Rerun ${this.resume} to read it again`);
         }
-        const files = listChangedFiles(this.exec, this.o.root, s.baseSha, check2.head);
-        if (files === null) throw new FactoryStepError(`git diff ${s.baseSha.slice(0, 12)}...${check2.head.slice(0, 12)} failed`);
+        const from = this.run(codingAgentMergeBaseArgs(baseTip, check2.head), "git", TRUSTED_READ_ENV).trim();
+        if (!HEX4015.test(from)) throw new FactoryStepError(`git merge-base ${baseTip.slice(0, 12)} ${check2.head.slice(0, 12)} found no common commit`);
+        const files = listChangedFiles(this.exec, this.o.root, from, check2.head);
+        if (files === null) throw new FactoryStepError(`git diff ${from.slice(0, 12)}...${check2.head.slice(0, 12)} failed`);
         if (files.length === 0) return this.gate(CODING_AGENT_ADOPT_GATE, `the coding agent's pull request #${check2.pr} changes nothing against ${s.base}; nothing was adopted; ${this.codingAgentRestart()}`);
         let extraProtected = [];
         try {
@@ -131514,7 +131671,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         }
         const hit2 = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...extraProtected]);
         if (hit2.length > 0) return this.gate("protected-paths", `the coding agent's pull request #${check2.pr} changes merge-rule or lane-protected paths: ${hit2.join(", ")}; nothing was adopted or pushed`);
-        const links = linkEntries(this.run(codingAgentTreeArgs(s.baseSha), "git", TRUSTED_READ_ENV), this.run(codingAgentTreeArgs(check2.head), "git", TRUSTED_READ_ENV));
+        const links = linkEntries(this.run(codingAgentTreeArgs(from), "git", TRUSTED_READ_ENV), this.run(codingAgentTreeArgs(check2.head), "git", TRUSTED_READ_ENV));
         if (links.gitlinks.length > 0 || links.symlinks.length > 0) {
           const what = [...links.gitlinks.map((p) => `gitlink ${p}`), ...links.symlinks.map((p) => `symlink ${p}`)].slice(0, 5).join(", ");
           return this.gate(CODING_AGENT_ADOPT_GATE, `the coding agent's pull request #${check2.pr} adds nested repositories or symlinks (${what}), which the factory does not review; nothing was adopted; ${this.codingAgentRestart()}`);
@@ -131532,7 +131689,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
        * After publish opened the factory's own PR: the link comment on the
        * adopted agent PR, then its close (decision D5), each once, each with the
        * step context naming exactly that PR. A failure is a warning; the next
-       * publish tries again.
+       * publish and the merge step try again.
        */
       codingAgentHandOff() {
         const s = this.state;
@@ -131542,23 +131699,34 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         if (!record3 || !adopted || record3.closed || !ownPr || !this.o.issue) return;
         const repo = codingAgentRepoOf(s.repoUrl);
         if (!repo) return;
-        const ctx = { repo: ghRepoArg(repo), issue: this.o.issue, base: s.base, pr: adopted.pr };
+        const link6 = { ownPr, branch: s.branch, head: adopted.head };
+        const ctx = { repo: ghRepoArg(repo), issue: this.o.issue, base: s.base, pr: adopted.pr, link: link6 };
         try {
           if (!record3.linked) {
-            const body = this.writeBody("coding-agent-link", codingAgentLinkBody({ issue: this.o.issue, ownPr, branch: s.branch, head: adopted.head }));
-            const res = this.withAgentStep(ctx, () => this.exec("gh", codingAgentLinkCommentArgs(repo, adopted.pr, body), { cwd: this.o.root }));
-            if (res.status !== 0) {
-              this.o.warn?.(`omg factory run: could not comment on the coding agent's pull request #${adopted.pr}: ${res.stderr.trim().split("\n")[0]}`);
+            const body = this.writeBody("coding-agent-link", codingAgentLinkBody({ issue: this.o.issue, ...link6 }));
+            const res2 = this.withAgentStep(ctx, () => this.exec("gh", codingAgentLinkCommentArgs(repo, adopted.pr, body), { cwd: this.o.root }));
+            if (res2.status !== 0) {
+              this.o.warn?.(`omg factory run: could not comment on the coding agent's pull request #${adopted.pr}: ${res2.stderr.trim().split("\n")[0]}`);
               return;
             }
             this.save((x) => ({ ...x, codingAgent: { ...x.codingAgent, linked: true } }));
           }
-          this.withAgentStep(ctx, () => ghRun(this.exec, codingAgentCloseArgs(repo, adopted.pr), this.o.root));
+          const res = this.withAgentStep({ ...ctx, link: void 0 }, () => this.exec("gh", codingAgentCloseArgs(repo, adopted.pr), { cwd: this.o.root }));
+          if (res.status !== 0 && !/already closed/i.test(res.stderr)) throw new FactoryStepError(`gh pr close ${adopted.pr} failed (exit ${res.status}): ${res.stderr.trim().split("\n")[0]}`);
           this.save((x) => ({ ...x, codingAgent: { ...x.codingAgent, closed: true }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `closed the coding agent's pull request #${adopted.pr}; the work continues on #${ownPr}` }] }));
         } catch (error2) {
           if (error2 instanceof StateTamperedError) throw error2;
           this.o.warn?.(`omg factory run: could not close the coding agent's pull request #${adopted.pr}: ${errText5(error2)}`);
         }
+      }
+      /**
+       * Cancel while the agent works: the lane keeps its recorded usage (the
+       * session is billed whatever happens next), and the operator learns that
+       * the factory stops nothing on GitHub.
+       */
+      codingAgentCancelled(lane) {
+        this.o.warn?.(`omg factory run: the Copilot coding agent may still be working on issue #${this.o.issue} on GitHub; the factory does not stop it. To stop it, unassign Copilot on the issue and close its pull request`);
+        return lane.usage ?? { ...CODING_AGENT_SESSION_USAGE };
       }
     };
   }

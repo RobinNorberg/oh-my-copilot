@@ -187,7 +187,7 @@ describe('gh argv baseline: the Copilot coding agent as implementer (night 3 goa
     it('first run: intake, the pre-assign status read, the assign POST, the confirming read; the wait park posts no comment', async () => {
         const fake = new FakeAgentGithub(() => ghTime(t));
         installFakeAgent(h, fake);
-        const { out, calls } = await engine([], { codingAgent: { implementer: 'coding-agent', maxWaitMinutes: 90, maxSessionsPerDay: 5 } });
+        const { out, calls } = await engine([], { codingAgentUserConfig: { factory: { run: { implementer: 'coding-agent' }, codingAgent: { repos: ['o/r'] } } } });
         expect(out.gate?.name, out.message).toBe('coding-agent-wait');
         const status = (since) => `gh ${JSON.stringify(['api', 'graphql', '--hostname', 'github.com', '-f', `query=${CODING_AGENT_STATUS_QUERY}`, '-f', 'owner=o', '-f', 'name=r', '-F', `number=${ISSUE}`, '-f', `since=${since}`])} cwd=<root>`;
         expect(calls).toEqual([
