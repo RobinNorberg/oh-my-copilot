@@ -41735,9 +41735,38 @@ var init_mirror = __esm({
   }
 });
 
+// src/factory/triage/guard.ts
+function triageWriteGh(a, ctx) {
+  if (a[0] !== "issue" || a[1] !== "edit" || a[3] !== "--repo" || a[5] !== "--add-label" && a[5] !== "--remove-label") return null;
+  if (!NUMBER2.test(a[2] ?? "") || a[4] !== ctx.repo) return false;
+  const flags = a.slice(5);
+  if (flags.length % 2 !== 0 || flags.length / 2 > MAX_TRIAGE_FLAGS) return false;
+  const seen = [];
+  let removing = false;
+  for (let i = 0; i < flags.length; i += 2) {
+    if (flags[i] === "--remove-label") removing = true;
+    else if (flags[i] !== "--add-label" || removing) return false;
+    const label = flags[i + 1];
+    if (!isTriageLabelName(label) || !ctx.labels.includes(label) || seen.includes(label.toLowerCase())) return false;
+    seen.push(label.toLowerCase());
+  }
+  return true;
+}
+var TRIAGE_LABEL, RESERVED, NUMBER2, MAX_TRIAGE_FLAGS, isTriageLabelName;
+var init_guard2 = __esm({
+  "src/factory/triage/guard.ts"() {
+    "use strict";
+    TRIAGE_LABEL = /^[A-Za-z0-9][A-Za-z0-9:_.-]{0,48}$/;
+    RESERVED = /^(?:factory|harbor):/i;
+    NUMBER2 = /^[1-9]\d{0,9}$/;
+    MAX_TRIAGE_FLAGS = 6;
+    isTriageLabelName = (s) => typeof s === "string" && TRIAGE_LABEL.test(s) && !RESERVED.test(s);
+  }
+});
+
 // src/factory/run/exec.ts
 function isProgressLabelEdit(r) {
-  if (r.length < 3 || r.length % 2 === 0 || !NUMBER2.test(r[0])) return false;
+  if (r.length < 3 || r.length % 2 === 0 || !NUMBER3.test(r[0])) return false;
   const labels = [];
   let adds = 0;
   for (let i = 1; i < r.length; i += 2) {
@@ -41777,10 +41806,10 @@ function trackerWriteGh(a, ctx) {
     return r.length >= 6 && same2(r.slice(0, 6), ["--repo", ctx.repo, "--title", r[3], "--body-file", r[5]]) && isTitle(r[3]) && isBodyFile(r[5], ctx) && isLabelPairs(r.slice(6), ["--label"], ctx);
   }
   if (sub === "edit" && r[1] === "--repo") {
-    return r.length >= 7 && NUMBER2.test(r[0]) && same2(r.slice(1, 7), ["--repo", ctx.repo, "--title", r[4], "--body-file", r[6]]) && isTitle(r[4]) && isBodyFile(r[6], ctx) && isLabelPairs(r.slice(7), ["--add-label", "--remove-label"], ctx);
+    return r.length >= 7 && NUMBER3.test(r[0]) && same2(r.slice(1, 7), ["--repo", ctx.repo, "--title", r[4], "--body-file", r[6]]) && isTitle(r[4]) && isBodyFile(r[6], ctx) && isLabelPairs(r.slice(7), ["--add-label", "--remove-label"], ctx);
   }
   if (sub === "list" && r[0] === "--repo") {
-    return same2(r, ["--repo", ctx.repo, "--search", r[3], "--state", "all", "--json", "number,body", "--limit", r[9]]) && KEY_SEARCH.test(r[3]) && NUMBER2.test(r[9]) && Number(r[9]) >= 1 && Number(r[9]) <= 1e3;
+    return same2(r, ["--repo", ctx.repo, "--search", r[3], "--state", "all", "--json", "number,body", "--limit", r[9]]) && KEY_SEARCH.test(r[3]) && NUMBER3.test(r[9]) && Number(r[9]) >= 1 && Number(r[9]) <= 1e3;
   }
   return null;
 }
@@ -41884,12 +41913,14 @@ function factoryGit(a, protectedBranches, extraProtected = [], local) {
   }
 }
 function factoryGh(a, writes) {
+  const triage = writes ? triageWriteGh(a, writes) : null;
+  if (triage !== null) return triage;
   const write = writes ? trackerWriteGh(a, writes) : null;
   if (write !== null) return write;
   const [group, sub, ...r] = a;
   if (group === "issue") {
-    if (sub === "view") return r.length === 3 && NUMBER2.test(r[0]) && r[1] === "--json" && JSON_FIELDS2.test(r[2]);
-    if (sub === "comment") return r.length === 3 && NUMBER2.test(r[0]) && r[1] === "--body-file" && isFile2(r[2]);
+    if (sub === "view") return r.length === 3 && NUMBER3.test(r[0]) && r[1] === "--json" && JSON_FIELDS2.test(r[2]);
+    if (sub === "comment") return r.length === 3 && NUMBER3.test(r[0]) && r[1] === "--body-file" && isFile2(r[2]);
     if (sub === "edit") return isProgressLabelEdit(r);
     return false;
   }
@@ -41897,12 +41928,12 @@ function factoryGh(a, writes) {
     if (sub === "create") {
       return r.length === 9 && r[0] === "--draft" && r[1] === "--base" && isBranch2(r[2]) && r[3] === "--head" && isFactoryBranch(r[4], []) && r[5] === "--title" && isTitle(r[6]) && r[7] === "--body-file" && isFile2(r[8]);
     }
-    if (sub === "comment") return r.length === 3 && NUMBER2.test(r[0]) && r[1] === "--body-file" && isFile2(r[2]);
+    if (sub === "comment") return r.length === 3 && NUMBER3.test(r[0]) && r[1] === "--body-file" && isFile2(r[2]);
     if (sub === "list") {
       if (r.length === 4) return r[0] === "--head" && isFactoryBranch(r[1], []) && r[2] === "--json" && JSON_FIELDS2.test(r[3]);
       return r.length === 8 && r[0] === "--head" && /^factory\/issue-\d+$/.test(r[1]) && r[2] === "--base" && isBranch2(r[3]) && same2(r.slice(4), ["--state", "merged", "--json", "number"]);
     }
-    if (sub === "ready") return r.length === 1 && NUMBER2.test(r[0]);
+    if (sub === "ready") return r.length === 1 && NUMBER3.test(r[0]);
     if (sub === "merge") return false;
     return null;
   }
@@ -41995,7 +42026,7 @@ function hardenedGitExec(exec, hooksDir, localMirror = () => void 0) {
     return exec(cmd, [...hardening, ...LOCAL_REMOTE_PACK_ARGS, ...localTransportArgs(args, mirror)], opts);
   };
 }
-var import_fs68, import_os14, import_path85, FACTORY_BRANCH_PREFIX, FactorySafetyError, NUMBER2, JSON_FIELDS2, BRANCH3, REPO_PATH, isPlainRepoPath, FOR_EACH_REF_FORMAT, CHECKOUT_BRANCH, isBranch2, isFile2, isTitle, same2, FACTORY_LABEL, KEY_SEARCH, MAX_WRITE_LABELS, isWriteLabel, isBodyFile, LOCAL_REMOTE_DEFAULT_FETCH, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, URL_REWRITE_CONFIG_ARGS, REMOTE_CONFIG_ARGS, adoRefusal, LOCAL_REMOTE_PACK_ARGS, onLocalRemote;
+var import_fs68, import_os14, import_path85, FACTORY_BRANCH_PREFIX, FactorySafetyError, NUMBER3, JSON_FIELDS2, BRANCH3, REPO_PATH, isPlainRepoPath, FOR_EACH_REF_FORMAT, CHECKOUT_BRANCH, isBranch2, isFile2, isTitle, same2, FACTORY_LABEL, KEY_SEARCH, MAX_WRITE_LABELS, isWriteLabel, isBodyFile, LOCAL_REMOTE_DEFAULT_FETCH, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, URL_REWRITE_CONFIG_ARGS, REMOTE_CONFIG_ARGS, adoRefusal, LOCAL_REMOTE_PACK_ARGS, onLocalRemote;
 var init_exec2 = __esm({
   "src/factory/run/exec.ts"() {
     "use strict";
@@ -42006,6 +42037,7 @@ var init_exec2 = __esm({
     init_body_file();
     init_mirror();
     init_exec();
+    init_guard2();
     init_body_file();
     FACTORY_BRANCH_PREFIX = "factory/";
     FactorySafetyError = class extends ShipSafetyError {
@@ -42014,7 +42046,7 @@ var init_exec2 = __esm({
         this.name = "FactorySafetyError";
       }
     };
-    NUMBER2 = /^\d+$/;
+    NUMBER3 = /^\d+$/;
     JSON_FIELDS2 = /^[A-Za-z]+(?:,[A-Za-z]+)*$/;
     BRANCH3 = /^[\w.][\w./-]*$/;
     REPO_PATH = /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/;
@@ -44746,6 +44778,22 @@ ${(0, import_fs73.readFileSync)(bodyFile, "utf8").replace(/\n*$/, "\n")}`);
         return { ok: true, stderr: "" };
       } catch (err) {
         return { ok: false, stderr: err.message };
+      }
+    },
+    setTriage(id, change) {
+      if (change.assignee !== void 0) return { ok: false, detail: "assignee is not a triage write yet" };
+      try {
+        const { entry, file } = fileFor(id);
+        const fields = entry.item.fields;
+        const drop = new Set(change.remove.map((l) => l.toLowerCase()));
+        const kept = fields.labels.filter((l) => !drop.has(l.toLowerCase()));
+        const labels = [...kept, ...change.add.filter((a) => !kept.some((l) => l.toLowerCase() === a.toLowerCase()))];
+        const priority = change.priority ?? fields.priority;
+        if (labels.length === fields.labels.length && labels.every((l, i) => l === fields.labels[i]) && priority === fields.priority) return { ok: true, detail: "nothing to change" };
+        writeAtomic(file, renderBacklogFile({ ...fields, labels, ...priority === void 0 ? {} : { priority } }, entry.item.body), ctx.root);
+        return { ok: true, detail: `${file} edited in the working tree; commit it on the base branch` };
+      } catch (err) {
+        return { ok: false, detail: err.message };
       }
     },
     findByKey(spec) {
@@ -47752,6 +47800,22 @@ function adoTracker(ctx, intakeSource, bodyDir) {
         return { ok: false, stderr: failure(error2) };
       }
     },
+    setTriage(id, change) {
+      if (change.assignee !== void 0) return { ok: false, detail: "assignee is not a triage write yet" };
+      try {
+        return patchItem(ctx, id, (item) => {
+          const ops = [];
+          const current = str3(item.fields["System.Tags"]) ?? "";
+          const tags = editedTags(splitTags(current), change.add, change.remove);
+          if (tags && tags.length === 0) throw new Error(`work item ${id}: removing its last tag is not a tracker write`);
+          if (tags) ops.push({ op: "test", path: "/fields/System.Tags", value: current }, { op: "add", path: "/fields/System.Tags", value: tags.join("; ") });
+          if (change.priority !== void 0 && num3(item.fields["Microsoft.VSTS.Common.Priority"]) !== change.priority) ops.push({ op: "add", path: "/fields/Microsoft.VSTS.Common.Priority", value: change.priority });
+          return ops.length ? ops : null;
+        });
+      } catch (error2) {
+        return { ok: false, detail: failure(error2) };
+      }
+    },
     findByKey(spec) {
       const json = adoJson(adoCall(ctx, "wit.wiql.POST", projectParams(ctx), { $top: KEY_QUERY_TOP }, { query: shipyardKeyWiql(spec) }), "shipyard-key query");
       const ids = (isObject3(json) && Array.isArray(json.workItems) ? json.workItems : []).map((w) => isObject3(w) ? w.id : void 0).filter((n) => Number.isSafeInteger(n) && n > 0);
@@ -47912,7 +47976,7 @@ function parseRunList(stdout) {
   return parsed.flatMap((e) => {
     const id = typeof e?.databaseId === "number" ? String(e.databaseId) : str4(e?.databaseId);
     const headSha = str4(e?.headSha);
-    if (!NUMBER3.test(id) || !HEX408.test(headSha)) return [];
+    if (!NUMBER4.test(id) || !HEX408.test(headSha)) return [];
     return [{ id, headSha, conclusion: str4(e.conclusion), status: str4(e.status), headBranch: str4(e.headBranch), event: str4(e.event), createdAt: str4(e.createdAt) }];
   });
 }
@@ -47925,7 +47989,7 @@ function parseRunJobs(stdout) {
   if (!Array.isArray(jobs)) throw new Error("gh run view --json jobs: expected { jobs: [...] }");
   return jobs.flatMap((j) => {
     const jobId = typeof j?.databaseId === "number" ? String(j.databaseId) : str4(j?.databaseId);
-    if (!NUMBER3.test(jobId)) return [];
+    if (!NUMBER4.test(jobId)) return [];
     const steps = Array.isArray(j.steps) ? j.steps : [];
     return [{
       jobId,
@@ -47949,13 +48013,13 @@ function githubCi(exec, cwd) {
     rerunIntent: githubRerunIntent
   };
 }
-var RUN_LIST_FIELDS, NUMBER3, HEX408, str4, githubRerunIntent;
+var RUN_LIST_FIELDS, NUMBER4, HEX408, str4, githubRerunIntent;
 var init_ci2 = __esm({
   "src/forge/github/ci.ts"() {
     "use strict";
     init_logs();
     RUN_LIST_FIELDS = "databaseId,conclusion,status,headSha,headBranch,event,createdAt";
-    NUMBER3 = /^\d{1,20}$/;
+    NUMBER4 = /^\d{1,20}$/;
     HEX408 = /^[0-9a-f]{40}$/;
     str4 = (v) => typeof v === "string" ? v : "";
     githubRerunIntent = (runId) => `gh run rerun ${runId} --failed`;
@@ -48105,12 +48169,19 @@ function ghUpdateItem(exec, repo, id, update, cwd) {
     ...update.removeLabels.flatMap((l) => ["--remove-label", l])
   ], cwd);
 }
+function ghSetTriage(exec, repo, issue2, change, cwd) {
+  if (change.assignee !== void 0) return { ok: false, detail: "assignee is not a triage write yet" };
+  if (change.add.length === 0 && change.remove.length === 0) return { ok: true, detail: "nothing to change" };
+  const res = editLabels(exec, issue2, ["--repo", ghRepoArg(repo), ...change.add.flatMap((l) => ["--add-label", l]), ...change.remove.flatMap((l) => ["--remove-label", l])], cwd);
+  return { ok: res.ok, detail: res.ok ? "labels updated" : res.stderr.trim() };
+}
 function githubTracker(exec, cwd, config2) {
   return {
     viewItem: (id) => ghViewItem(exec, id, cwd),
     queryItems: (source, limit) => ghQueryItems(exec, source, limit, cwd),
     comment: (id, bodyFile) => ghIssueComment(exec, id, bodyFile, cwd),
     setProgress: (id, stage, mapping) => ghSetProgress(exec, id, stage, mapping, config2.progress.stages, cwd),
+    setTriage: (id, change) => ghSetTriage(exec, config2.repo, id, change, cwd),
     addMarker: (id, marker) => editLabels(exec, id, ["--add-label", marker], cwd),
     findByKey: (spec) => ghFindByKey(exec, config2.repo, spec, cwd),
     createItem: (draft) => ghCreateItem(exec, config2.repo, draft, cwd),
@@ -51546,6 +51617,41 @@ var init_enqueue = __esm({
   }
 });
 
+// src/factory/triage/rules.ts
+var init_rules2 = __esm({
+  "src/factory/triage/rules.ts"() {
+    "use strict";
+    init_guard2();
+  }
+});
+
+// src/factory/triage/cli.ts
+var init_cli3 = __esm({
+  "src/factory/triage/cli.ts"() {
+    "use strict";
+    init_forge_roots();
+    init_ado();
+    init_guard();
+    init_gh();
+    init_cli();
+    init_score();
+    init_exec2();
+    init_rules2();
+  }
+});
+
+// src/cli/commands/factory-triage.ts
+var init_factory_triage = __esm({
+  "src/cli/commands/factory-triage.ts"() {
+    "use strict";
+    init_esm();
+    init_cli();
+    init_score();
+    init_cli3();
+    init_integer_option();
+  }
+});
+
 // src/config/ado-config.ts
 var init_ado_config = __esm({
   "src/config/ado-config.ts"() {
@@ -51555,7 +51661,7 @@ var init_ado_config = __esm({
 });
 
 // src/factory/setup/guard.ts
-var init_guard2 = __esm({
+var init_guard3 = __esm({
   "src/factory/setup/guard.ts"() {
     "use strict";
     init_exec();
@@ -51574,7 +51680,7 @@ var init_detect = __esm({
     init_config3();
     init_local();
     init_cli();
-    init_guard2();
+    init_guard3();
   }
 });
 
@@ -51582,7 +51688,7 @@ var init_detect = __esm({
 var init_auth = __esm({
   "src/factory/setup/auth.ts"() {
     "use strict";
-    init_guard2();
+    init_guard3();
   }
 });
 
@@ -51608,7 +51714,7 @@ var init_intake_pick = __esm({
   "src/factory/setup/intake-pick.ts"() {
     "use strict";
     init_intake();
-    init_guard2();
+    init_guard3();
   }
 });
 
@@ -51617,7 +51723,7 @@ var init_pipeline_pick = __esm({
   "src/factory/setup/pipeline-pick.ts"() {
     "use strict";
     init_score();
-    init_guard2();
+    init_guard3();
   }
 });
 
@@ -51630,7 +51736,7 @@ var init_progress_pick = __esm({
     init_config3();
     init_types10();
     init_jsonc();
-    init_guard2();
+    init_guard3();
     init_intake_pick();
   }
 });
@@ -51861,7 +51967,7 @@ var init_write = __esm({
     init_main();
     init_config3();
     init_local();
-    init_guard2();
+    init_guard3();
     BOM = String.fromCharCode(65279);
     SAMPLE_BACKLOG_TEXT = renderBacklogFile(
       { title: "Example: one change the factory can make", state: "closed", labels: [], dependsOn: [] },
@@ -51907,7 +52013,7 @@ var init_factory_setup = __esm({
     init_forge_roots();
     init_auth();
     init_detect();
-    init_guard2();
+    init_guard3();
     init_intake_pick();
     init_pipeline_pick();
     init_progress_pick();
@@ -52095,6 +52201,7 @@ var init_factory = __esm({
     init_factory_check();
     init_cli();
     init_enqueue();
+    init_factory_triage();
     init_config4();
     init_ledger2();
     init_detect();
