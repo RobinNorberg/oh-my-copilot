@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "eb1a4c7b79031939739a471c60ffc2f16082c132",
-    "sourceSha256": "ebc7ea9d11e9aecc91374fde465ccea564e3d724099f043137137a69c0946aa7",
+    "head": "abdf875fb4f77454a432b31e980d5f4adb9a8d54",
+    "sourceSha256": "ca19896650b7e4c5b86c7367a14daf3a21247e4b777fd915591709c7299d3b6a",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "eb1a4c7b79031939739a471c60ffc2f16082c132",
-  "sourceSha256": "ebc7ea9d11e9aecc91374fde465ccea564e3d724099f043137137a69c0946aa7",
+  "head": "abdf875fb4f77454a432b31e980d5f4adb9a8d54",
+  "sourceSha256": "ca19896650b7e4c5b86c7367a14daf3a21247e4b777fd915591709c7299d3b6a",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2010,
-      "total": 2035
+      "srcFiles": 2012,
+      "total": 2037
     },
     "generated": {
-      "distFiles": 7408,
+      "distFiles": 7416,
       "bridgeFiles": 8,
-      "total": 7416
+      "total": 7424
     },
     "prompt": {
       "promptLikeFiles": 71
@@ -3391,6 +3391,14 @@
       "dist/factory/run/__tests__/engine.ado.test.d.ts.map",
       "dist/factory/run/__tests__/engine.ado.test.js",
       "dist/factory/run/__tests__/engine.ado.test.js.map",
+      "dist/factory/run/__tests__/engine.human-review.local.test.d.ts",
+      "dist/factory/run/__tests__/engine.human-review.local.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.human-review.local.test.js",
+      "dist/factory/run/__tests__/engine.human-review.local.test.js.map",
+      "dist/factory/run/__tests__/engine.human-review.test.d.ts",
+      "dist/factory/run/__tests__/engine.human-review.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.human-review.test.js",
+      "dist/factory/run/__tests__/engine.human-review.test.js.map",
       "dist/factory/run/__tests__/engine.intake.test.d.ts",
       "dist/factory/run/__tests__/engine.intake.test.d.ts.map",
       "dist/factory/run/__tests__/engine.intake.test.js",
@@ -21900,6 +21908,46 @@
         "id": "dist/factory/run/__tests__/engine.ado.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.ado.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.human-review.local.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.human-review.local.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.human-review.local.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.human-review.local.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.human-review.local.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.human-review.local.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.human-review.local.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.human-review.local.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.human-review.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.human-review.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.human-review.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.human-review.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.human-review.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.human-review.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.human-review.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.human-review.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/engine.intake.test.d.ts",
@@ -54997,6 +55045,16 @@
         "path": "src/factory/run/__tests__/engine.ado.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.human-review.local.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.human-review.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/engine.intake.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.intake.test.ts"
@@ -86999,6 +87057,131 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "to": "src/factory/run/__tests__/engine-local-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "to": "src/factory/run/__tests__/engine-local-harness.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "to": "src/forge/local/store.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/__tests__/engine.intake.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -87737,6 +87920,11 @@
         "from": "src/factory/run/__tests__/fake-lanes.ts",
         "to": "src/factory/run/prepare.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/fake-lanes.ts",
+        "to": "src/forge/github/graphql.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/fake-lanes.ts",
@@ -88915,6 +89103,11 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/forge/review-feedback.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/forge/terms.ts",
         "kind": "imports"
       },
@@ -89487,6 +89680,11 @@
         "from": "src/factory/run/prompts.ts",
         "to": "src/factory/run/state.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/prompts.ts",
+        "to": "src/forge/review-feedback.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/prompts.ts",
@@ -126730,12 +126928,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10669,
-      "edgeCount": 12863,
-      "importEdgeCount": 10587,
+      "nodeCount": 10679,
+      "edgeCount": 12891,
+      "importEdgeCount": 10609,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "ff0008b69909166e082487e85077f74430570de35bd7adf27c5d76246ed2598c",
-  "manifestSha256": "6b5f0679f6b6ff3e3bdc6329ef6ea0e6f262d1705e21013acbf21aea88cd7539"
+  "inventorySha256": "4d5aada78c6f5a074c42288bacdc90b9cfe72efdb8a8afe652794b7e82043280",
+  "manifestSha256": "94870dfc8511d0fe9c0e77b235a2a9f8badc4c85f14b018f1f47183470d865d7"
 }
