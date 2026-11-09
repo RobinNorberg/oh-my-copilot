@@ -13,7 +13,7 @@ import { TRUSTED_READ_ENV } from '../../../ship/exec.js';
 import { assertHealCommand, healGuardExec, HealSafetyError } from '../history.js';
 import { readHealScanRecord } from '../run.js';
 import { enqueueWebhookRun, healStateDir, listHealStates, readWebhookQueue, writeHealState } from '../state.js';
-import { createFactoryState, EXIT_BUSY, factoryCancelRequested, factoryRepoOwnerPath, moveTo, overwriteFactoryState } from '../../run/state.js';
+import { createFactoryState, EXIT_BUSY, scanWait, factoryCancelRequested, factoryRepoOwnerPath, moveTo, overwriteFactoryState } from '../../run/state.js';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const fixture = (name) => readFileSync(join(HERE, 'fixtures', name), 'utf8');
 const KNOWN_FILE = readFileSync(join(HERE, '../../../../.github/known-flaky-tests.json'), 'utf8');
@@ -291,8 +291,14 @@ describe('omg factory heal CLI', () => {
             await cli(d, ...argv);
             expect(out.join('\n'), argv.join(' ')).toMatch(/engine busy: a real run now would exit busy \(6\) without touching anything \(another omg factory engine runs in this repository \(12, pid/);
         }
+        // L6 (review-472): never fetched here, the note names that cause (not only the pipeline refusal that follows).
+        const base = fakeExec([], []);
+        const unfetched = (cmd, args, opts) => (args[0] === 'rev-parse' && args[1] === '--verify' ? { status: 128, stdout: '', stderr: 'fatal: Needed a single revision' } : base(cmd, args, opts));
+        out = [];
+        await cli({ ...d, exec: unfetched }, 'run', '0123abcd', '--dry-run');
+        expect(out.join('\n')).toMatch(/origin\/dev not fetched in this checkout, so its committed forge config cannot be read until the engine ends/);
         // While busy: the no-fetch read only, and the engine's lock untouched.
-        expect(loads).toEqual([{ dryRun: true, lockRun: '12' }, { dryRun: true, lockRun: '12' }]);
+        expect(loads).toEqual([{ dryRun: true, lockRun: '12' }, { dryRun: true, lockRun: '12' }, { dryRun: true, lockRun: '12' }]);
         expect(JSON.parse(readFileSync(lock, 'utf8'))).toMatchObject({ run: '12' });
         // Free: the fetching load runs under the scan lock, which is released though the loader threw.
         rmSync(lock);
@@ -348,6 +354,40 @@ describe('omg factory heal CLI', () => {
         out = [];
         expect(await cli(d, 'scan', '--json')).toBe(0);
         expect(existsSync(lock)).toBe(false);
+    });
+    it('M1 (review-472): heal takes the engine lock waiting out a `scan` holder (a read command\'s fetch): one that releases after 2 s is waited for; one that never does is busy (6) after the bound; an engine holder is busy at once', async () => {
+        const lock = factoryRepoOwnerPath(root);
+        mkdirSync(dirname(lock), { recursive: true });
+        const hold = (run) => writeFileSync(lock, JSON.stringify({ pid: process.ppid, hostname: hostname(), startedAt: NOW.toISOString(), run }));
+        let t = 0;
+        let releaseAt = Infinity;
+        const sleeps = [];
+        vi.spyOn(scanWait, 'clock').mockImplementation(() => t);
+        vi.spyOn(scanWait, 'sleep').mockImplementation((ms) => { sleeps.push(ms); t += ms; if (t >= releaseAt)
+            rmSync(lock, { force: true }); });
+        try {
+            const d = { ...deps(fakeExec([run(40584638028)], [])), forgeKind: () => 'github' };
+            hold('scan');
+            releaseAt = 2_000;
+            expect(await cli(d, 'scan', '--json'), out.join('\n')).toBe(0);
+            expect(t).toBe(2_000);
+            expect(existsSync(lock)).toBe(false);
+            hold('scan');
+            releaseAt = Infinity;
+            t = 0;
+            out = [];
+            expect(await cli(d, 'approve', '0123abcd', '--json')).toBe(EXIT_BUSY);
+            expect(JSON.parse(out.join('\n'))).toMatchObject({ ok: false, busy: true, error: expect.stringMatching(/a factory read command's fetch, holds this checkout .*\(waited 60 s\)/) });
+            expect(t).toBe(60_000);
+            hold('12');
+            sleeps.length = 0;
+            out = [];
+            expect(await cli(d, 'run', '0123abcd', '--json')).toBe(EXIT_BUSY);
+            expect(sleeps).toEqual([]);
+        }
+        finally {
+            vi.restoreAllMocks();
+        }
     });
     it('scan then status [sig8] [--json] reads the classification back', async () => {
         const d = deps(fakeExec([run(40584638028)], [run(40542274776), SECOND_PR]));

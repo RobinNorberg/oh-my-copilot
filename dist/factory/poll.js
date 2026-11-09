@@ -77,7 +77,7 @@ import { FactoryForgeUnavailableError } from './run/forge-roots.js';
 import { visibleLine } from '../forge/review-feedback.js';
 import { resolveTeamConfig, TeamConfigError } from './team/context.js';
 import { staleGateReminders } from './team/reminders.js';
-import { acquireFactoryRepoOwner, defaultOwnerDeps, EXIT_BUSY, FactoryBusyError, factoryRepoOwnerPath, ownerHolding, runLabel, TERMINAL_FACTORY_PHASES, tryScanLock, verifyFactoryIntegrity, } from './run/state.js';
+import { acquireFactoryRepoOwnerForRun, defaultOwnerDeps, EXIT_BUSY, FactoryBusyError, factoryRepoOwnerPath, ownerHolding, runLabel, TERMINAL_FACTORY_PHASES, tryScanLock, verifyFactoryIntegrity, } from './run/state.js';
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
 export const POLL_JSON_SCHEMA_VERSION = 1;
 export const POLL_DEFAULT_INTERVAL_MS = 5 * 60_000;
@@ -417,6 +417,8 @@ export async function pollTick(ctx) {
     const at = new Date(ctx.now()).toISOString();
     const errors = [];
     const warnings = [];
+    if (ctx.unreleasedScan?.release())
+        delete ctx.unreleasedScan;
     const step = (name, fn) => {
         try {
             return fn();
@@ -461,7 +463,8 @@ export async function pollTick(ctx) {
                     errors.push(`heal: ${message(error)}`);
             }
             finally {
-                held.release();
+                if (!held.release())
+                    ctx.unreleasedScan = held;
             }
         }
     }
@@ -513,7 +516,8 @@ export async function pollTick(ctx) {
                     synced = step('base sync', ctx.localBaseSync);
                 }
                 finally {
-                    held.release();
+                    if (!held.release())
+                        ctx.unreleasedScan = held;
                 }
                 baseSync = synced === undefined ? { ran: false, reason: 'the base sync failed' } : { ran: true, message: plainText(synced) };
             }
@@ -605,7 +609,7 @@ export async function pollTick(ctx) {
             // tick. It is released for the child, whose own claim at start is the binding one: an engine that slips in
             // between makes that claim refuse, so two engines never run.
             try {
-                acquireFactoryRepoOwner(root, AUTO_START_CLAIM, at, ctx.owner).release();
+                acquireFactoryRepoOwnerForRun(root, AUTO_START_CLAIM, () => at, ctx.owner).release();
             }
             catch (error) {
                 reason = `the run lock is held: ${message(error)}`;

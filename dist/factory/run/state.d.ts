@@ -386,9 +386,14 @@ export declare const defaultOwnerDeps: () => OwnerDeps;
 export declare const ownerText: (v: unknown) => string;
 /** `<run>, pid <pid> on <host> since <time>[ in <root>]`, every field through ownerText. */
 export declare function describeOwner(o: Partial<FactoryOwner>): string;
-/** A held owner file: release() removes it while it is still this process's; relabel() rewrites its run field (`run --next` once it picked an item). */
+/**
+ * A held owner file: release() removes it while it is still this process's
+ * (false: the release failed, a warning naming the lock was printed, and the
+ * file stays until a retry or until this process exits); relabel() rewrites
+ * its run field (`run --next` once it picked an item).
+ */
 export interface HeldOwner {
-    release: () => void;
+    release: () => boolean;
     relabel: (run: string) => void;
     tookOver?: FactoryOwner;
 }
@@ -407,22 +412,33 @@ export declare function acquireFactoryOwner(root: string, key: FactoryRunKey, no
  * poller's heal tick and local base sync, `omg factory heal scan`).
  */
 export declare function acquireFactoryRepoOwner(root: string, key: FactoryRunKey | 'next' | 'scan', now: string, deps?: OwnerDeps): HeldOwner;
-/** How long `omg factory run` waits once for a `scan` holder (a fetch or a heal scan: seconds) before it is busy. */
-export declare const SCAN_RETRY_MS = 3000;
+/** How long an engine-side start (run, heal run/approve/cancel, run reset, run clean, the poller's auto-start) waits for a `scan` holder before it is busy. */
+export declare const SCAN_WAIT_MS = 60000;
+/** How long a read command waits for another `scan` holder before it reads without fetching. */
+export declare const READ_SCAN_WAIT_MS = 10000;
+/** The holder is re-read this often while it is `scan`. */
+export declare const SCAN_POLL_MS = 500;
+/** The scan wait's sleep and clock; tests replace them (vi.spyOn). */
+export declare const scanWait: {
+    sleep: (ms: number) => void;
+    clock: () => number;
+};
 /**
- * acquireFactoryRepoOwner for `omg factory run`: when the holder is only a
- * `scan` step (the poller's heal scan or base sync, or a read command's
- * fetch), wait SCAN_RETRY_MS once and try again before the busy error.
+ * acquireFactoryRepoOwner that waits out a `scan` holder (the poller's heal
+ * scan or base sync, or a read command's fetch): the holder is re-read every
+ * SCAN_POLL_MS for at most `boundMs`, then the scan busy error (exit 6). Any
+ * other holder is busy at once.
  */
-export declare function acquireFactoryRepoOwnerForRun(root: string, key: FactoryRunKey | 'next', now: () => string, deps?: OwnerDeps, wait?: (ms: number) => void): HeldOwner;
+export declare function acquireFactoryRepoOwnerForRun(root: string, key: FactoryRunKey | 'next' | 'scan', now: () => string, deps?: OwnerDeps, boundMs?: number): HeldOwner;
 /**
  * The checkout's engine lock under key `scan`, for a step that fetches or
  * moves refs without starting a run (the poller's heal tick and base sync,
  * the read commands' base fetch, heal dry runs): the held lock, or the
- * FactoryBusyError when an engine holds the checkout. Any other error
- * (EACCES on the state dir, ...) throws: it is not "busy".
+ * FactoryBusyError when an engine holds the checkout (`waitMs`: a `scan`
+ * holder is waited out that long first). Any other error (EACCES on the
+ * state dir, ...) throws: it is not "busy".
  */
-export declare function tryScanLock(root: string, now: string, deps?: OwnerDeps): HeldOwner | FactoryBusyError;
+export declare function tryScanLock(root: string, now: string, deps?: OwnerDeps, waitMs?: number): HeldOwner | FactoryBusyError;
 /**
  * True when the engine lock of `root` was taken from another folder (its
  * recorded `root`): that folder resolves to this checkout's state root (a

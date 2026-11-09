@@ -30551,6 +30551,9 @@ var init_guard = __esm({
 });
 
 // src/ship/exec.ts
+function isTrustedFetch(base, args, env2) {
+  return base === "git" && args.length === 3 && args[0] === "fetch" && args[1] === "origin" && isBranch(args[2]) && JSON.stringify(Object.entries(env2)) === JSON.stringify(Object.entries(TRUSTED_FETCH_ENV));
+}
 function scrubShipEnv(env2) {
   const out = {};
   for (const [key, value] of Object.entries(env2)) {
@@ -30597,7 +30600,7 @@ function gitAllowed(a, protectedBranches) {
     case "cat-file":
       return r.length === 2 && r[0] === "-e" && /^[0-9a-f]{40}\^\{commit\}$/.test(r[1]);
     case "ls-tree":
-      return r.length === 4 && r[0] === "-z" && HEX40.test(r[1]) && r[2] === "--" && /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/.test(r[3]) && !r[3].split("/").includes("..");
+      return r.length === 5 && r[0] === "--full-tree" && r[1] === "-z" && HEX40.test(r[2]) && r[3] === "--" && /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/.test(r[4]) && !r[4].split("/").includes("..");
     case "rev-list": {
       return r.length === 3 && r[0] === "--first-parent" && r[1] === "--parents" && /^[0-9a-f]{40}\.\.[0-9a-f]{40}$/.test(r[2]);
     }
@@ -30641,11 +30644,11 @@ function assertSafeCommand(cmd, args, extraProtected = [], env2) {
   if (!allowed || !args.every((x) => typeof x === "string") || !allowed(args, [...PROTECTED_BRANCHES, ...extraProtected])) {
     throw new ShipSafetyError(`omg ship refuses \`${file} ${args.join(" ")}\`: not one of the command shapes the ship engine runs`);
   }
-  if (env2 !== void 0 && !(base === "git" && same(Object.entries(env2).flat(), Object.entries(TRUSTED_READ_ENV).flat()))) {
+  if (env2 !== void 0 && !(base === "git" && same(Object.entries(env2).flat(), Object.entries(TRUSTED_READ_ENV).flat())) && !isTrustedFetch(base, args, env2)) {
     throw new ShipSafetyError(`omg ship refuses \`${file} ${args.join(" ")}\` with environment ${JSON.stringify(env2)}: only ${JSON.stringify(TRUSTED_READ_ENV)} on git is allowed`);
   }
 }
-var import_child_process16, ShipSafetyError, TRUSTED_READ_ENV, KEPT_GIT_VARS, DROPPED_GH_VARS, isDroppedAdoVar, defaultExec, OPERAND, REMOTE, BRANCH, HEX40, ABBREV_SHA, NUMBER, JSON_FIELDS, isOperand, isBranch, isPath, isRemoteRef, same, MERGE_STATE_REFS, GIT_PATH_MARKERS, LOG_SAFE_FLAG, PROTECTED_BRANCHES, NODE_SCRIPTS, ALLOWED;
+var import_child_process16, ShipSafetyError, TRUSTED_READ_ENV, TRUSTED_FETCH_ENV, KEPT_GIT_VARS, DROPPED_GH_VARS, isDroppedAdoVar, defaultExec, OPERAND, REMOTE, BRANCH, HEX40, ABBREV_SHA, NUMBER, JSON_FIELDS, isOperand, isBranch, isPath, isRemoteRef, same, MERGE_STATE_REFS, GIT_PATH_MARKERS, LOG_SAFE_FLAG, PROTECTED_BRANCHES, NODE_SCRIPTS, ALLOWED;
 var init_exec = __esm({
   "src/ship/exec.ts"() {
     "use strict";
@@ -30659,6 +30662,7 @@ var init_exec = __esm({
       }
     };
     TRUSTED_READ_ENV = Object.freeze({ GIT_NO_REPLACE_OBJECTS: "1" });
+    TRUSTED_FETCH_ENV = Object.freeze({ ...TRUSTED_READ_ENV, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never" });
     KEPT_GIT_VARS = /* @__PURE__ */ new Set([
       "GIT_AUTHOR_NAME",
       "GIT_AUTHOR_EMAIL",
@@ -30680,7 +30684,8 @@ var init_exec = __esm({
         env: childEnv({ ...scrubShipEnv(process.env), ...opts?.env }),
         encoding: "utf8",
         windowsHide: true,
-        maxBuffer: 256 * 1024 * 1024
+        maxBuffer: 256 * 1024 * 1024,
+        ...opts?.timeoutMs ? { timeout: opts.timeoutMs } : {}
       });
       return {
         status: result.status ?? 1,
@@ -30795,7 +30800,7 @@ function readBaseFile(exec, cwd, commit, path15) {
   }
   const shown = exec("git", ["show", `${commit}:${path15}`], { cwd, env: TRUSTED_READ_ENV });
   if (shown.status === 0) return shown.stdout;
-  const entry = exec("git", ["ls-tree", "-z", commit, "--", path15], { cwd, env: TRUSTED_READ_ENV });
+  const entry = exec("git", ["ls-tree", "--full-tree", "-z", commit, "--", path15], { cwd, env: TRUSTED_READ_ENV });
   if (entry.status === 0 && entry.stdout === "") return null;
   throw new Error(`git show ${commit.slice(0, 12)}:${path15} failed (exit ${shown.status}): ${shown.stderr.trim()}`);
 }
@@ -43235,7 +43240,7 @@ function assertFactoryCommand(cmd, args, extraProtected = [], env2, ado, writes,
   if (verdict === false) throw new FactorySafetyError(`omg factory run refuses \`${file} ${args.join(" ")}\`: not one of the command shapes the factory engine runs`);
   if (verdict === true) {
     const trusted = JSON.stringify(Object.entries(TRUSTED_READ_ENV));
-    if (env2 !== void 0 && !(base === "git" && JSON.stringify(Object.entries(env2)) === trusted)) {
+    if (env2 !== void 0 && !(base === "git" && JSON.stringify(Object.entries(env2)) === trusted) && !isTrustedFetch(base, args, env2)) {
       throw new FactorySafetyError(`omg factory run refuses \`${file} ${args.join(" ")}\` with environment ${JSON.stringify(env2)}: only ${JSON.stringify(TRUSTED_READ_ENV)} on git is allowed`);
     }
     return;
@@ -46892,12 +46897,17 @@ function claimOwner(path15, now, deps, busy, fields = {}) {
         const owner = (0, import_fs80.existsSync)(path15) ? JSON.parse((0, import_fs80.readFileSync)(path15, "utf8")) : null;
         if (isOwnerRecord(owner) && owner.pid === deps.pid && owner.hostname === deps.hostname) fn(owner);
       });
-    } catch {
+      return true;
+    } catch (error2) {
+      console.error(`omg factory: could not update the lock ${path15} (${error2 instanceof Error ? error2.message : String(error2)}); it stays held by this process`);
+      return false;
     }
   };
   const release = () => whileMine(() => (0, import_fs80.unlinkSync)(path15));
-  const relabel = (run2) => whileMine((owner) => atomicWriteFileSync(path15, `${JSON.stringify({ ...owner, run: run2 })}
+  const relabel = (run2) => {
+    whileMine((owner) => atomicWriteFileSync(path15, `${JSON.stringify({ ...owner, run: run2 })}
 `));
+  };
   return { release, relabel, ...tookOver ? { tookOver } : {} };
 }
 var import_crypto23, import_fs80, import_os18, import_path97, FACTORY_PHASES, TERMINAL_FACTORY_PHASES, HEAL_RUN_KEY, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, FactoryStateError, EXIT_BUSY, FactoryBusyError, runSlug, runLabel, isStr2, HEX64, isCount3, ownIdentity, startIdentity, defaultOwnerDeps, ownerText, engineBusyMessage, engineBusyText, unreadableOwnerMessage, isOwnerRecord, LOCK_STALE_MS2;
@@ -47103,7 +47113,7 @@ function runPhase(root, key, ledgerDir) {
   if (bytes === null) {
     if (typeof ledger.recorded(path15) === "string") return unreadable("it is gone, though its engine wrote it");
     const name = (0, import_path99.basename)(path15);
-    if (!ledger.tracks(path15) && ledger.trackedPaths().some((p) => (0, import_path99.basename)(p) === name)) return unreadable("its state path moved: its engine wrote it elsewhere");
+    if (!ledger.tracks(path15) && ledger.trackedPaths().some((p) => (0, import_path99.basename)(p) === name && typeof ledger.recorded(p) === "string")) return unreadable("its state path moved: its engine wrote it elsewhere");
     return { phase: null };
   }
   if (!ledger.matches(path15, bytes)) return unreadable("it is not the one its engine wrote");

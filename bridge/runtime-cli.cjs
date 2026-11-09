@@ -20229,7 +20229,7 @@ var init_guard = __esm({
 });
 
 // src/ship/exec.ts
-var import_child_process9, TRUSTED_READ_ENV;
+var import_child_process9, TRUSTED_READ_ENV, TRUSTED_FETCH_ENV;
 var init_exec = __esm({
   "src/ship/exec.ts"() {
     "use strict";
@@ -20237,6 +20237,7 @@ var init_exec = __esm({
     init_guard();
     init_windows_search();
     TRUSTED_READ_ENV = Object.freeze({ GIT_NO_REPLACE_OBJECTS: "1" });
+    TRUSTED_FETCH_ENV = Object.freeze({ ...TRUSTED_READ_ENV, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never" });
   }
 });
 

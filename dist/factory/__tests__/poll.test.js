@@ -234,7 +234,7 @@ describe('omg factory poll on GitHub', () => {
         const w = scripted({ prState: 'MERGED' });
         expect(await poll(w.exec, { once: true, json: true }, { projectConfig: () => LABEL, createForge: spy })).toBe(0);
         for (const c of w.calls)
-            expect(c, c).toMatch(/^(?:git (?:rev-parse|remote get-url|fetch origin dev|cat-file -e|ls-remote|ls-tree -z|show)|gh (?:issue (?:list|view)|pr (?:list|view)))\b/);
+            expect(c, c).toMatch(/^(?:git (?:rev-parse|remote get-url|fetch origin dev|cat-file -e|ls-remote|ls-tree --full-tree -z|show)|gh (?:issue (?:list|view)|pr (?:list|view)))\b/);
         const before = w.calls.length;
         const writes = [
             ['issue', 'edit', '1', '--add-label', 'factory:building'],

@@ -27,7 +27,7 @@ import { parseJob } from './logs.js';
 import { runSignature } from './signature.js';
 import { foldSignature, healStateDir, listHealStates, pruneWebhookQueue, readDailyCounters, readHealState, readWebhookQueue, SIG8, writeHealState } from './state.js';
 import { factoryForgeOptions } from '../run/forge-roots.js';
-import { acquireFactoryRepoOwner, EXIT_BUSY, FactoryBusyError, factoryCancelRequested, healRunKey, readFactoryState, refuseWhileEngineRuns, requestFactoryCancel, tryScanLock, } from '../run/state.js';
+import { acquireFactoryRepoOwnerForRun, EXIT_BUSY, FactoryBusyError, factoryCancelRequested, healRunKey, readFactoryState, refuseWhileEngineRuns, requestFactoryCancel, tryScanLock, } from '../run/state.js';
 import { knownFlakyProposal, renderKnownFlakyProposal, runHealEngine } from './implement.js';
 import { closeHeal, HealRunRefused, EXIT_HEAL_REFUSED, readHealScanRecord, runHeal, verifyHealSeal, writeHealScanRecord } from './run.js';
 /** Bounds on one scan's GitHub reads (CI logs run to megabytes each). */
@@ -416,7 +416,7 @@ export function adoHealFor(config, resolveAz, root) {
  */
 function healRoot(deps, lock) {
     const root = checkoutRoot(deps);
-    const held = lock === undefined ? undefined : acquireFactoryRepoOwner(root, lock, deps.now().toISOString());
+    const held = lock === undefined ? undefined : acquireFactoryRepoOwnerForRun(root, lock, () => deps.now().toISOString());
     try {
         const ado = healForge(deps, root);
         return { root, ...(ado ? { ado } : {}), ...(held ? { held } : {}) };
@@ -451,7 +451,9 @@ function healDryRoot(deps, note) {
     }
     const held = tryScanLock(root, deps.now().toISOString());
     if (held instanceof FactoryBusyError) {
-        const busy = `${held.message}; the forge config is read as last fetched`;
+        const base = deps.base(root);
+        const fetched = healGuardExec(deps.exec)('git', ['rev-parse', '--verify', `refs/remotes/origin/${base}`]).status === 0;
+        const busy = `${held.message}; ${fetched ? 'the forge config is read as last fetched' : `origin/${base} not fetched in this checkout, so its committed forge config cannot be read until the engine ends`}`;
         note(busy);
         const ado = healForge(deps, root, { dryRun: true });
         return { root, ...(ado ? { ado } : {}), busy };

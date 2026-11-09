@@ -295,6 +295,8 @@ export interface PollContext {
     /** factory.poll.remindAfterHours; absent or 0 = no stale-gate reminders. */
     remindAfterHours?: number;
     owner: OwnerDeps;
+    /** A `scan` lock whose release failed (it warned): retried at the next tick (L7). */
+    unreleasedScan?: HeldOwner;
     now: () => number;
     /** Row signatures of the previous tick (board diff), and PR facts (audit on change); updated by pollTick. */
     previous: {

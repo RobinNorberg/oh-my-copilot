@@ -121,7 +121,9 @@ export declare function checkEnvFor(exec: Exec, root: string, config: CheckEnv['
         url: string;
     };
 }, base: string, baseSha: string | null): CheckEnv;
-/** Fetch `origin/<base>` (read-only) and resolve it; null with a warning when it cannot be read. */
+/** A read command's fetch never waits longer than this (it may hold the engine lock); then the last fetched base is read. */
+export declare const FETCH_TIMEOUT_MS = 120000;
+/** Fetch `origin/<base>` (read-only, no credential prompt, bounded) and resolve it; null with a warning when it cannot be read. */
 export declare function fetchBase(exec: Exec, root: string, base: string, warnings: string[]): string | null;
 /**
  * fetchBase for a read command (check, board, poll's start-up, enqueue, pr,
@@ -129,7 +131,11 @@ export declare function fetchBase(exec: Exec, root: string, base: string, warnin
  * runs under this checkout's engine lock (key `scan`, released in finally).
  * A read command never fails because an engine runs: while one holds the
  * checkout nothing is fetched and the last fetched origin/<base> is read
- * (one warning); FactoryBusyError (exit 6) only when there is none.
+ * (one warning); FactoryBusyError (exit 6) only when there is none. Another
+ * read's fetch (`scan`) is waited out READ_SCAN_WAIT_MS, then this read goes
+ * on without fetching (never exit 6 for a read). A checkout without factory
+ * state has no engine to disturb: it fetches without the lock and leaves no
+ * `.omg/` behind.
  */
 export declare function fetchBaseUnlessBusy(exec: Exec, root: string, base: string, warnings: string[], owner?: OwnerDeps): string | null;
 /** The base branch's committed `.copilot/omg.jsonc`, when the base is in ship.trustedBases (as loadTrustedShipConfig). */
