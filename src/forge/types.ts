@@ -221,6 +221,12 @@ export interface ForgeReviewFeedback {
   pendingReviewers: string[];
   /** Authors whose input was dropped (not trusted), for poll and status output. */
   ignored: string[];
+  /**
+   * The forge's own trust list could not be read whole (GitHub: the
+   * collaborator list is truncated or needs push access), so a write-access
+   * reviewer may sit in `ignored`; `factory.review.trustedReviewers` still counts.
+   */
+  trustIncomplete?: boolean;
 }
 
 /** A triage write to one tracker item. */

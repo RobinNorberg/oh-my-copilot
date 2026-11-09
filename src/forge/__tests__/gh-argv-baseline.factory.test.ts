@@ -17,6 +17,11 @@ import {
   commitFile, failedGates, FakeLanes, FakeProcesses, gitIn, greenGates, harness, ISSUE, PR, pendingGates, review, testGateConfig,
   type Harness, type LaneScript,
 } from '../../factory/run/__tests__/fake-lanes.js';
+import { factoryGuardExec } from '../../factory/run/exec.js';
+import { ghRepoArg } from '../github/gh.js';
+import { REVIEW_FEEDBACK_QUERY } from '../github/graphql.js';
+import { githubReviews } from '../github/reviews.js';
+import type { ForgeRepo } from '../types.js';
 import { recordingExec } from './recording-exec.js';
 import { scaleTiming } from '../../__tests__/helpers/platform.js';
 
@@ -196,6 +201,29 @@ describe('gh argv baseline: factory engine (ci-heal run)', () => {
       MERGE_VIEW, READY, MERGE_VIEW,
       ...GATES_GREEN,
       ...MERGE_PARK(HEAL_KEY),
+    ]);
+  });
+});
+
+describe('gh argv baseline: the human review read (night 3 goal 2; the engine call lands with L2b)', () => {
+  it('reviewFeedback issues one exact gh api graphql argv through the run guard with the GitHub read context', () => {
+    const repo: ForgeRepo = { kind: 'github', host: 'github.com', owner: 'acme', name: 'widgets', url: 'https://github.com/acme/widgets' };
+    const head = 'c'.repeat(40);
+    const done = { hasNextPage: false };
+    const answer = JSON.stringify({
+      data: {
+        viewer: { login: 't' },
+        repository: {
+          viewerPermission: 'ADMIN', collaborators: { pageInfo: done, edges: [] },
+          pullRequest: { headRefOid: head, latestReviews: { pageInfo: done, nodes: [] }, reviewRequests: { pageInfo: done, nodes: [] }, reviewThreads: { pageInfo: done, nodes: [] } },
+        },
+      },
+    });
+    const r = recordingExec(() => ({ status: 0, stdout: answer, stderr: '' }), { '<root>': h.root }, ['gh']);
+    const guarded = factoryGuardExec(r.exec, () => ['dev'], undefined, undefined, undefined, () => ({ repo: ghRepoArg(repo) }));
+    githubReviews(guarded, h.root, { repo }).reviewFeedback!(PR, head);
+    expect(r.calls).toEqual([
+      `gh ${JSON.stringify(['api', 'graphql', '--hostname', 'github.com', '-f', `query=${REVIEW_FEEDBACK_QUERY}`, '-f', 'owner=acme', '-f', 'name=widgets', '-F', `number=${PR}`])} cwd=<root>`,
     ]);
   });
 });
