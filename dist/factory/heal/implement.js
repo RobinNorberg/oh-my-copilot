@@ -142,6 +142,7 @@ export async function runHealEngine(o, deps) {
         heal: { sig8: o.sig8, ...(record ? { record } : {}), autoImplement: o.config.autoImplement, approved: o.approved, laneCap: healLaneCap(o.root, deps.ledgerDir, o.config, deps.now) },
         ledgerDir: deps.ledgerDir,
         ...(o.dryRun ? { dryRun: true } : {}),
+        ...(o.repoOwner ? { repoOwner: o.repoOwner } : {}),
         ...(deps.gateConfig ? { gateConfig: deps.gateConfig } : {}),
         ...(deps.warn ? { warn: deps.warn } : {}),
         ...(deps.forge ? { forge: deps.forge } : {}),

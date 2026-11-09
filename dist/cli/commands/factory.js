@@ -21,7 +21,7 @@
 import { Command } from 'commander';
 import { integerOption } from '../utils/integer-option.js';
 import chalk from 'chalk';
-import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { INTAKE_ROUTE_TABLE, startListener, stopListener } from '../../factory/listener.js';
 import { readChainStatus } from '../../factory/status.js';
@@ -33,11 +33,12 @@ import { CopilotRunManager, defaultCopilotRunDeps } from '../../copilot-run/job.
 import { resolveFactoryRunLimits, runCredits } from '../../factory/run/budget.js';
 import { cleanFactoryRun } from '../../factory/run/clean.js';
 import { resetFactoryRun } from '../../factory/run/reset.js';
-import { EXIT_AWAITING_HUMAN, runFactoryEngine } from '../../factory/run/engine.js';
+import { claimBusyMessage, factoryClaimHolder, factoryClaimRepo, listFactoryClaims, removeFactoryClaim, SHARED_STATE_WARNING, trustedFactoryClaimRepo } from '../../factory/run/claims.js';
+import { EXIT_AWAITING_HUMAN, EXIT_BUSY, runFactoryEngine } from '../../factory/run/engine.js';
 import { factoryGuardExec, hardenedGitExec } from '../../factory/run/exec.js';
 import { EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, factoryForgeOptions, loadFactoryForgeConfig, originForgeKind, syncLocalMirror } from '../../factory/run/forge-roots.js';
 import { CopilotLaneBackend } from '../../factory/run/lane.js';
-import { factoryCancelRequested, factoryStatePath, readFactoryState, requestFactoryCancel, verifyFactoryIntegrity } from '../../factory/run/state.js';
+import { acquireFactoryRepoOwner, defaultOwnerDeps, describeOwner, FactoryBusyError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState, refuseWhileEngineRuns, runLabel, unreadableOwnerMessage, withOwnerFileLock, requestFactoryCancel, verifyFactoryIntegrity, } from '../../factory/run/state.js';
 import { resolveShipConfig, userConfigLayers } from '../../ship/config.js';
 import { defaultExec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
@@ -45,11 +46,13 @@ import { healCommand } from '../../factory/heal/cli.js';
 import { defaultFactoryCheckDeps, factoryCheckCommand, ttyConfirm } from './factory-check.js';
 import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_INCOMPATIBLE, EXIT_CHECK_USAGE, factoryErrorLine } from '../../factory/check/cli.js';
 import { runFactoryEnqueue } from '../../factory/enqueue.js';
+import { factoryTriageCommand } from './factory-triage.js';
 import { resolveHealConfig } from '../../factory/heal/config.js';
 import { defaultLedgerDir, emptyHooksDir } from '../../factory/run/ledger.js';
 import { listenForgeRefusal } from '../../factory/setup/detect.js';
 import { factorySetupCommand } from './factory-setup.js';
 import { factoryBoardCommand } from './factory-board.js';
+import { factoryPrCommand } from './factory-pr.js';
 import { factoryPollCommand } from './factory-poll.js';
 import { defaultPollHealScan } from '../../factory/poll.js';
 import { checkEnvFor, fetchBase, forgeReadExec, localBase, missingLocalBase, parseItemId, readForgeOptions } from '../../factory/check/cli.js';
@@ -125,9 +128,9 @@ function factoryRoot(exec) {
  * fixtures from these writers).
  */
 export const factoryRunJson = {
-    nothingRunnable: (counts) => JSON.stringify({ ok: true, next: null, message: 'nothing runnable', counts }, null, 2),
+    nothingRunnable: (counts, claimed = []) => JSON.stringify({ ok: true, next: null, message: 'nothing runnable', counts, ...(claimed.length ? { claimed } : {}) }, null, 2),
     outcome: (outcome, next) => JSON.stringify({ ok: outcome.exitCode === 0, ...(next !== undefined ? { next } : {}), ...outcome }, null, 2),
-    error: (message) => JSON.stringify({ ok: false, error: message }, null, 2),
+    error: (message, busy = false) => JSON.stringify({ ok: false, error: message, ...(busy ? { busy: true } : {}) }, null, 2),
 };
 async function factoryGuarded(json, fn) {
     try {
@@ -136,13 +139,16 @@ async function factoryGuarded(json, fn) {
     catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const unavailable = error instanceof FactoryForgeUnavailableError;
+        const busy = error instanceof FactoryBusyError;
         // F9: no usable forge exits 5 with the prefix check, board and setup print.
         const text = unavailable && !message.startsWith('unsupported forge') ? `unsupported forge: ${message}` : message;
         if (json)
-            console.log(factoryRunJson.error(text));
+            console.log(factoryRunJson.error(text, busy));
+        else if (busy)
+            console.error(chalk.yellow(`busy: ${plainText(message)}`));
         else
             console.error(chalk.red(unavailable ? text : `Error: ${message}`));
-        process.exitCode = error instanceof FactoryUsageError ? 2 : unavailable ? EXIT_FORGE_UNAVAILABLE : 1;
+        process.exitCode = error instanceof FactoryUsageError ? 2 : unavailable ? EXIT_FORGE_UNAVAILABLE : busy ? EXIT_BUSY : 1;
     }
 }
 export function renderFactoryRunState(state, o = {}) {
@@ -168,9 +174,11 @@ export function renderFactoryRunState(state, o = {}) {
  * source, read through check's read-only guard. A merged, cancelled, failed
  * or active run, an own factory PR open or merged, or an unsatisfied
  * dependency is never runnable (check/rules.ts), so --next never re-runs a
- * finished item. Null with the checked rows when nothing is runnable.
+ * finished item. A runnable item another engine holds (its run here, or its
+ * claim from another clone: claims.ts) is skipped, never waited on, and
+ * listed in `claimed`. Null with the checked rows when nothing is runnable.
  */
-function pickNext(deps, root, base, loaded, parent) {
+function pickNext(deps, root, base, loaded, parent, claimRepo, skip = []) {
     const { config } = loaded;
     const source = config.intake.source;
     if (parent === undefined && !source)
@@ -185,7 +193,105 @@ function pickNext(deps, root, base, loaded, parent) {
     const forge = createForge(read.exec, root, config, readForgeOptions(config, root, read.options, base, baseSha, false));
     const ids = parent !== undefined ? forge.tracker.viewItem(parent).children : forge.tracker.queryItems(source, config.intake.limit);
     const items = checkItems(forge, ids, checkEnvFor(read.exec, root, config, base, baseSha));
-    return { next: items.find((r) => r.bucket === 'runnable') ?? null, items, warnings };
+    const claimed = [];
+    for (const r of items) {
+        if (r.bucket !== 'runnable')
+            continue;
+        if (!skip.includes(r.id) && itemBusy(deps, root, r.id, claimRepo) === null)
+            return { next: r, items, claimed, warnings };
+        claimed.push(r.id);
+    }
+    return { next: null, items, claimed, warnings };
+}
+/**
+ * Why a run of `key` here would be busy now: its owner file in this
+ * checkout is held (or unreadable), or its cross-clone claim is held
+ * (claims.ts); null when neither. Read-only: the engine's claims at start
+ * stay the binding check.
+ */
+function itemBusy(deps, root, key, claimRepo) {
+    const me = defaultOwnerDeps();
+    const path = factoryOwnerPath(root, key);
+    const h = ownerHolding(path, me);
+    if (h === 'unreadable')
+        return unreadableOwnerMessage(path);
+    if (h)
+        return `omg factory run ${runLabel(key)} is already running (${describeOwner(h)})`;
+    const claim = claimRepo ? factoryClaimHolder(deps.ledgerDir ?? defaultLedgerDir(), claimRepo, root, key, me) : null;
+    return claim ? claimBusyMessage(key, claim) : null;
+}
+/**
+ * The forge kind of this checkout read without a fetch (the forge-config
+ * loader's dry-run mode: the committed config at the tracking ref as it
+ * is), undefined when no loader is wired or it fails.
+ */
+function readOnlyForgeKind(deps, root, base) {
+    try {
+        return deps.forge?.(root, base, { dryRun: true }).config.kind;
+    }
+    catch {
+        return undefined;
+    }
+}
+/**
+ * The repository the claims of this checkout are keyed on, exactly as the
+ * engine keys them: none on the local forge (it makes no claim; L-f), else
+ * the origin through the engine's hardened read (trustedFactoryClaimRepo;
+ * L-g). A dry run reads it through the plain guard, as the engine's dry run
+ * does, and writes nothing.
+ */
+function cliClaimRepo(deps, root, kind, dryRun = false) {
+    if (kind === 'local')
+        return null;
+    return dryRun ? factoryClaimRepo(factoryGuardExec(deps.exec), root) : trustedFactoryClaimRepo(deps.exec, root, deps.ledgerDir ?? defaultLedgerDir());
+}
+const OWNER_FILE = /^run-(\d+|heal-[0-9a-f]{8})\.owner$/;
+/** One owner or claim record for `run status`: whitelisted fields, every string through plainText. */
+const ownerView = (o) => ({
+    ...(o.run !== undefined ? { run: plainText(String(o.run)) } : {}),
+    ...(Number.isInteger(o.pid) ? { pid: o.pid } : {}),
+    ...(typeof o.hostname === 'string' ? { hostname: plainText(o.hostname) } : {}),
+    ...(typeof o.startedAt === 'string' ? { startedAt: plainText(o.startedAt) } : {}),
+    ...(typeof o.root === 'string' ? { root: plainText(o.root) } : {}),
+    ...(typeof o.parkedAt === 'string' ? { parkedAt: plainText(o.parkedAt) } : {}),
+});
+/**
+ * The live engines of this checkout (its engine lock and every run owner
+ * file a live process holds), the owner files nobody can read (held, listed
+ * apart), and the cross-clone claims that hold an item of this repository.
+ * Read-only.
+ */
+export function liveFactoryRuns(root, ledgerDir, claimRepo) {
+    const me = defaultOwnerDeps();
+    const unreadable = [];
+    const held = (path) => {
+        const h = ownerHolding(path, me);
+        if (h === 'unreadable')
+            unreadable.push(plainText(path));
+        return h === null || h === 'unreadable' ? null : h;
+    };
+    const engine = held(factoryRepoOwnerPath(root));
+    // The engine lock was taken from another folder: it shares this checkout's state root (MEDIUM-C).
+    const engineShared = engine !== null && ownerFromOtherCheckout(engine, root);
+    let names = [];
+    try {
+        names = readdirSync(factoryStateDir(root)).sort();
+    }
+    catch { /* no runs yet */ }
+    const runs = [];
+    for (const name of names) {
+        const m = OWNER_FILE.exec(name);
+        if (!m)
+            continue;
+        const key = /^\d+$/.test(m[1]) ? Number(m[1]) : m[1];
+        const h = held(factoryOwnerPath(root, key));
+        if (h)
+            runs.push({ key, ...ownerView(h) });
+    }
+    const claims = claimRepo
+        ? listFactoryClaims(ledgerDir, claimRepo, root, me).map((c) => ({ key: c.key, state: c.state, path: plainText(c.path), ...(c.claim ? ownerView(c.claim) : {}), ...(c.sharedState ? { sharedState: true } : {}) }))
+        : [];
+    return { engine: engine ? { ...ownerView(engine), ...(engineShared ? { sharedState: true } : {}) } : null, runs, unreadable, claims };
 }
 const bucketCounts = (items) => Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length]));
 function printOutcome(json, outcome, next) {
@@ -224,39 +330,32 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         catch (error) {
             throw new FactoryUsageError(error instanceof Error ? error.message : String(error));
         }
+        let issue = o.next ? undefined : parseIssue(issueRaw);
         const root = factoryRoot(exec);
         const { limits, warnings } = deps.limits(root);
         for (const w of warnings)
             console.error(chalk.yellow(w));
         const base = deps.base(root);
-        const loaded = deps.forge?.(root, base, { dryRun: Boolean(o.dryRun) });
-        for (const w of loaded?.warnings ?? [])
-            console.error(chalk.yellow(w));
-        let issue;
-        let picked;
-        if (o.next) {
-            if (!loaded)
-                throw new FactoryUsageError('--next needs the forge config (omg factory setup)');
-            const { next, items, warnings: pickWarnings } = pickNext(deps, root, base, loaded, parent);
-            for (const w of pickWarnings)
-                console.error(chalk.yellow(plainText(w)));
-            const counts = bucketCounts(items);
-            if (!next) {
-                if (o.json)
-                    console.log(factoryRunJson.nothingRunnable(counts));
-                else
-                    console.log(`nothing runnable (${BUCKET_ORDER.map((b) => `${counts[b]} ${b}`).join(', ')})`);
-                return 0;
+        let claimRepo = null;
+        // A real run takes this checkout's engine lock before anything touches git (the forge-config loader fetches
+        // origin/<base>): busy (exit 6) means nothing was fetched or written. The engine uses the held lock as its own.
+        let held;
+        if (!o.dryRun) {
+            held = acquireFactoryRepoOwner(root, issue ?? 'next', new Date().toISOString());
+            // The claim key before the fetch: the forge kind from the config as it is (no fetch); none on the local forge.
+            try {
+                claimRepo = cliClaimRepo(deps, root, readOnlyForgeKind(deps, root, base));
             }
-            issue = picked = next.id;
-            if (!o.json)
-                console.log(chalk.cyan(`next runnable: #${next.id} ${next.title}`));
+            catch (error) {
+                held.release();
+                throw error;
+            }
+            const busy = issue !== undefined ? itemBusy(deps, root, issue, claimRepo) : null;
+            if (busy) {
+                held.release();
+                throw new FactoryBusyError(busy);
+            }
         }
-        else {
-            issue = parseIssue(issueRaw);
-        }
-        // The full untrusted roots, never a partial list (critic amendments §A.14; the engine re-checks).
-        const forge = loaded ? { config: loaded.config, options: factoryForgeOptions(root) } : undefined;
         let signals = 0;
         const onSignal = () => {
             signals += 1;
@@ -264,27 +363,69 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
                 process.exit(130);
             console.error(chalk.yellow('omg factory run: stopping after the current poll (cancelling the lane); press again to exit at once'));
         };
-        if (!o.dryRun) {
-            process.on('SIGINT', onSignal);
-            process.on('SIGTERM', onSignal);
-        }
         try {
-            const outcome = await runFactoryEngine({
-                root, issue, exec: deps.exec, limits, base, dryRun: Boolean(o.dryRun),
-                ...(o.allowGateChange ? { allowGateChange: true } : {}),
-                lanes: o.dryRun ? NO_LANES : deps.lanes(root),
-                ...(forge ? { forge } : {}),
-                ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}),
-                ...(deps.gateConfig ? { gateConfig: deps.gateConfig } : {}),
-                interrupted: () => signals > 0,
-                warn: (m) => console.error(chalk.yellow(m)),
-            });
-            printOutcome(Boolean(o.json), outcome, picked);
-            return outcome.exitCode;
+            const loaded = deps.forge?.(root, base, { dryRun: Boolean(o.dryRun) });
+            for (const w of loaded?.warnings ?? [])
+                console.error(chalk.yellow(w));
+            // The loaded forge is the run's: the claim key the engine and the pick use follows it.
+            claimRepo = cliClaimRepo(deps, root, loaded?.config.kind, Boolean(o.dryRun));
+            // The full untrusted roots, never a partial list (critic amendments §A.14; the engine re-checks).
+            const forge = loaded ? { config: loaded.config, options: factoryForgeOptions(root) } : undefined;
+            const skipped = [];
+            let picked;
+            if (!o.dryRun) {
+                process.on('SIGINT', onSignal);
+                process.on('SIGTERM', onSignal);
+            }
+            for (;;) {
+                if (o.next) {
+                    if (!loaded)
+                        throw new FactoryUsageError('--next needs the forge config (omg factory setup)');
+                    const { next, items, claimed, warnings: pickWarnings } = pickNext(deps, root, base, loaded, parent, claimRepo, skipped);
+                    for (const w of pickWarnings)
+                        console.error(chalk.yellow(plainText(w)));
+                    const counts = bucketCounts(items);
+                    if (!next) {
+                        if (o.json)
+                            console.log(factoryRunJson.nothingRunnable(counts, claimed));
+                        else
+                            console.log(`nothing runnable (${BUCKET_ORDER.map((b) => `${counts[b]} ${b}`).join(', ')})${claimed.length ? `; held by another engine: ${claimed.map((id) => `#${id}`).join(', ')}` : ''}`);
+                        return 0;
+                    }
+                    issue = picked = next.id;
+                    held?.relabel(String(issue));
+                    if (!o.json)
+                        console.log(chalk.cyan(`next runnable: #${next.id} ${plainText(next.title)}`));
+                }
+                try {
+                    const outcome = await runFactoryEngine({
+                        root, issue: issue, exec: deps.exec, limits, base, dryRun: Boolean(o.dryRun), claimRepo,
+                        ...(held ? { repoOwner: held } : {}),
+                        ...(o.allowGateChange ? { allowGateChange: true } : {}),
+                        lanes: o.dryRun ? NO_LANES : deps.lanes(root),
+                        ...(forge ? { forge } : {}),
+                        ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}),
+                        ...(deps.gateConfig ? { gateConfig: deps.gateConfig } : {}),
+                        interrupted: () => signals > 0,
+                        warn: (m) => console.error(chalk.yellow(m)),
+                    });
+                    printOutcome(Boolean(o.json), outcome, picked);
+                    return outcome.exitCode;
+                }
+                catch (error) {
+                    // L9: another clone claimed the picked item after the pick: pick once more, skipping it.
+                    if (!(error instanceof FactoryBusyError) || !o.next || picked === undefined || skipped.length > 0)
+                        throw error;
+                    skipped.push(picked);
+                    if (!o.json)
+                        console.error(chalk.yellow(`busy: ${plainText(error.message)}; picking again`));
+                }
+            }
         }
         finally {
             process.off('SIGINT', onSignal);
             process.off('SIGTERM', onSignal);
+            held?.release();
         }
     }));
     run
@@ -302,11 +443,21 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
     }));
     run
         .command('clean <issue>')
-        .description('Remove the worktrees and local branches of a merged or cancelled run, only when nothing would be lost (the PR branch on GitHub is kept)')
+        .description('Remove the worktrees and local branches of a merged or cancelled run, only when nothing would be lost (the PR branch on GitHub is kept); busy (exit 6) while an engine runs in this checkout')
         .option('--json', 'JSON output')
         .action((issueRaw, _o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
         const issue = parseIssue(issueRaw);
-        const result = cleanFactoryRun({ root: factoryRoot(exec), issue, exec: deps.exec, ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
+        const root = factoryRoot(exec);
+        // The run's own forge (its sealed state) when it has one, else the config as it is (no fetch).
+        let kind;
+        try {
+            kind = readFactoryState(root, issue)?.forgeKind;
+        }
+        catch {
+            kind = undefined;
+        }
+        const claimRepo = cliClaimRepo(deps, root, kind ?? readOnlyForgeKind(deps, root, deps.base(root)));
+        const result = cleanFactoryRun({ root, issue, exec: deps.exec, claimRepo, ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
         if (c.optsWithGlobals().json)
             console.log(JSON.stringify({ ok: result.kept.length === 0, ...result }, null, 2));
         else {
@@ -321,35 +472,107 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
     }));
     run
         .command('reset <issue>')
-        .description('Local forge only: start a cancelled run over (after run clean): close its local PR, keep its mirror branch as factory/cancelled/..., move the run state aside')
+        .description('Local forge only: start a cancelled run over (after run clean): close its local PR, keep its mirror branch as factory/cancelled/..., move the run state aside; busy (exit 6) while an engine runs in this checkout or another clone claims the item')
         .option('--json', 'JSON output')
         .action((issueRaw, _o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
         const issue = parseIssue(issueRaw);
         const root = factoryRoot(exec);
-        const loaded = deps.forge?.(root, deps.base(root), { dryRun: false });
-        if (!loaded || loaded.config.kind !== 'local')
-            throw new FactoryUsageError('omg factory run reset is for the local forge only (factory.forge.kind "local")');
-        const read = forgeReadExec(deps.exec, loaded.config, root);
-        const forge = createForge(read.exec, root, loaded.config, { ...read.options, local: { omgRoot: getOmcRoot(root) } });
-        const result = resetFactoryRun({ root, issue, exec: deps.exec, forge, mirror: loaded.config.repo.url, ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
-        if (c.optsWithGlobals().json)
-            console.log(JSON.stringify({ ok: true, ...result }, null, 2));
-        else {
-            if (result.closedPr !== undefined)
-                console.log(chalk.green(`closed local PR #${result.closedPr} (cancelled)`));
-            if (result.keptBranch)
-                console.log(chalk.green(`kept the run's branch as ${result.keptBranch} in the mirror`));
-            console.log(chalk.green(`moved the run state to ${result.stateMovedTo}; omg factory run ${issue} starts a new run`));
+        // The engine lock before the forge-config loader (it may fetch): busy touches nothing.
+        const held = acquireFactoryRepoOwner(root, issue, new Date().toISOString());
+        try {
+            const loaded = deps.forge?.(root, deps.base(root), { dryRun: false });
+            if (!loaded || loaded.config.kind !== 'local')
+                throw new FactoryUsageError('omg factory run reset is for the local forge only (factory.forge.kind "local")');
+            // The local forge makes no claim (L-f): reset has none to check or delete.
+            const claimRepo = cliClaimRepo(deps, root, loaded.config.kind);
+            const read = forgeReadExec(deps.exec, loaded.config, root);
+            const forge = createForge(read.exec, root, loaded.config, { ...read.options, local: { omgRoot: getOmcRoot(root) } });
+            const result = resetFactoryRun({ root, issue, exec: deps.exec, forge, mirror: loaded.config.repo.url, repoOwner: held, claimRepo, ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
+            if (c.optsWithGlobals().json)
+                console.log(JSON.stringify({ ok: true, ...result }, null, 2));
+            else {
+                if (result.closedPr !== undefined)
+                    console.log(chalk.green(`closed local PR #${result.closedPr} (cancelled)`));
+                if (result.keptBranch)
+                    console.log(chalk.green(`kept the run's branch as ${result.keptBranch} in the mirror`));
+                console.log(chalk.green(`moved the run state to ${result.stateMovedTo}; omg factory run ${issue} starts a new run`));
+            }
+            return 0;
         }
+        finally {
+            held.release();
+        }
+    }));
+    run
+        .command('release [issue]')
+        .description('A human clears a claim nobody runs: the item\'s cross-clone claim (parked, crashed or unreadable) and its owner file here; without an issue, this checkout\'s engine lock. A live holder is busy (exit 6)')
+        .option('--json', 'JSON output')
+        .action((issueRaw, _o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
+        const root = factoryRoot(exec);
+        const me = defaultOwnerDeps();
+        const removed = [];
+        // The check and the unlink under the owner file's lock (L-c): a live holder never loses its file.
+        const removeOwnerFile = (path) => withOwnerFileLock(path, () => {
+            const h = ownerHolding(path, me);
+            if (h && h !== 'unreadable')
+                throw new FactoryBusyError(`${path} is held by a live engine (${describeOwner(h)}); omg factory run cancel stops it`);
+            if (existsSync(path)) {
+                unlinkSync(path);
+                removed.push(path);
+            }
+        });
+        if (issueRaw === undefined)
+            removeOwnerFile(factoryRepoOwnerPath(root));
+        else {
+            const issue = parseIssue(issueRaw);
+            refuseWhileEngineRuns(root, me);
+            const claimRepo = cliClaimRepo(deps, root, readOnlyForgeKind(deps, root, deps.base(root)));
+            const claim = claimRepo ? removeFactoryClaim(deps.ledgerDir ?? defaultLedgerDir(), claimRepo, root, issue, { deps: me }) : null;
+            if (claim)
+                removed.push(claim);
+            removeOwnerFile(factoryOwnerPath(root, issue));
+        }
+        if (c.optsWithGlobals().json)
+            console.log(JSON.stringify({ ok: true, removed: removed.map(plainText) }, null, 2));
+        else if (removed.length === 0)
+            console.log('nothing to release');
+        else
+            for (const path of removed)
+                console.log(chalk.green(`released ${plainText(path)}`));
         return 0;
     }));
     run
-        .command('status <issue>')
-        .description('Print the persisted factory run state (read-only)')
+        .command('status [issue]')
+        .description('Print the persisted factory run state (read-only); without an issue, list the engines running in this checkout and the cross-clone claims on this repository')
         .option('--json', 'JSON output')
         .action((issueRaw, _o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
-        const issue = parseIssue(issueRaw);
         const root = factoryRoot(exec);
+        if (issueRaw === undefined) {
+            const live = liveFactoryRuns(root, deps.ledgerDir ?? defaultLedgerDir(), cliClaimRepo(deps, root, readOnlyForgeKind(deps, root, deps.base(root))));
+            const label = (key) => (typeof key === 'number' ? `#${key}` : key);
+            const line = (o) => `${o.pid !== undefined ? `pid ${o.pid}` : 'no live process'} on ${o.hostname ?? 'unknown host'} since ${o.startedAt ?? 'unknown'}${o.parkedAt ? `, parked ${o.parkedAt}` : ''}${o.root ? ` in ${o.root}` : ''}`;
+            if (c.optsWithGlobals().json)
+                console.log(JSON.stringify({ ok: true, ...live }, null, 2));
+            else {
+                if (!live.engine && live.runs.length === 0)
+                    console.log('no factory engine runs in this checkout');
+                if (live.engine)
+                    console.log(`engine lock: ${live.engine.run ?? 'run unknown'}, ${line(live.engine)}`);
+                if (live.engine?.sharedState)
+                    console.log(chalk.yellow(`engine lock taken in another folder: ${SHARED_STATE_WARNING}`));
+                for (const r of live.runs)
+                    console.log(`live ${label(r.key)}: ${line(r)}`);
+                for (const path of live.unreadable)
+                    console.log(chalk.yellow(`unreadable owner file (held until removed: omg factory run release): ${path}`));
+                for (const cl of live.claims) {
+                    console.log(`claim ${label(cl.key)} (${cl.state}): ${line(cl)}; ${cl.path}`);
+                    if (cl.sharedState)
+                        console.log(chalk.yellow(`  ${SHARED_STATE_WARNING}`));
+                }
+            }
+            return 0;
+        }
+        const issue = parseIssue(issueRaw);
         const stored = readFactoryState(root, issue);
         if (!stored)
             throw new FactoryUsageError(`no factory run for issue #${issue} (${factoryStatePath(root, issue)})`);
@@ -420,7 +643,9 @@ export function factoryCommand() {
     cmd.addCommand(factoryRunCommand());
     cmd.addCommand(factoryCheckCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
     cmd.addCommand(factoryEnqueueCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
+    cmd.addCommand(factoryTriageCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
     cmd.addCommand(factoryBoardCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
+    cmd.addCommand(factoryPrCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
     cmd.addCommand(factoryPollCommand({
         ...defaultFactoryCheckDeps(defaultFactoryRunDeps.base),
         healScan: defaultPollHealScan(defaultExec, (root) => resolveHealConfig(userConfigLayers().trustedUser, projectConfig(root)), defaultLedgerDir()),

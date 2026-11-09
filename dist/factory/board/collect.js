@@ -28,7 +28,7 @@ import { PROGRESS_STAGES } from '../../forge/types.js';
 import { latestVerdict, readShipState } from '../../ship/state.js';
 import { runCredits } from '../run/budget.js';
 import { FactorySafetyError } from '../run/exec.js';
-import { factoryStateDir, readFactoryState, runLabel, TERMINAL_FACTORY_PHASES, trackerStageOf, verifyFactoryIntegrity, } from '../run/state.js';
+import { factoryOwnerPath, factoryStateDir, ownerHolding, readFactoryState, runKeyOf, runLabel, TERMINAL_FACTORY_PHASES, trackerStageOf, verifyFactoryIntegrity, } from '../run/state.js';
 import { renderBoard } from './render.js';
 /** Bumped on any change to the `--json` shape (src/factory/board/__tests__ pins it). */
 export const BOARD_JSON_SCHEMA_VERSION = 1;
@@ -104,6 +104,11 @@ function columnTitle(config, stage) {
     const m = config.progress.stages[stage];
     return plainText(m?.label ?? m?.column ?? m?.state ?? stage);
 }
+/** The live engine of a run, read-only (an unreadable owner file shows nothing: the engine's own claim decides). */
+function liveOf(root, s) {
+    const h = ownerHolding(factoryOwnerPath(root, runKeyOf(s)));
+    return h === null || h === 'unreadable' ? {} : { live: { pid: h.pid, host: plainText(h.hostname), since: plainText(String(h.startedAt)) } };
+}
 function runPart(root, s, warnings) {
     const integrity = verifyFactoryIntegrity(s) ? 'ok' : s.integrity === undefined ? 'none' : 'bad';
     const running = s.lanes.find((l) => l.status === 'running');
@@ -114,6 +119,7 @@ function runPart(root, s, warnings) {
         ...(s.head ? { head: plainText(s.head) } : {}),
         lanes: s.lanes.length,
         ...(running ? { runningLane: plainText(running.id) } : {}),
+        ...liveOf(root, s),
         credits: Number(runCredits(s).toFixed(2)),
         integrity,
         updatedAt: plainText(s.updatedAt),

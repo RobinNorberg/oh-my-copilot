@@ -313,7 +313,8 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
         expect(out.plan).toMatchObject({ next: 'implement', laneMaxCredits: 30 });
         expect(existsSync(factoryStatePath(h.root, ISSUE))).toBe(false);
         expect(lanes.started).toHaveLength(0);
-        expect(h.calls.every((c) => c.startsWith('gh issue view'))).toBe(true);
+        // Besides the issue read, only the origin URL the cross-clone claim check is keyed on (claims.ts factoryClaimRepo).
+        expect(h.calls.filter((c) => !c.startsWith('gh issue view'))).toEqual(['git remote get-url origin']);
     });
 });
 //# sourceMappingURL=engine.resume.test.js.map

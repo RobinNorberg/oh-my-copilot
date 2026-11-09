@@ -62,6 +62,8 @@ export interface LaneStartInput {
    */
   engineCommits?: boolean;
   model?: string;
+  /** Cost attribution for the budget ledger (`omg budget status --by role`); the local backend tags the lane's record. */
+  ledgerTag?: { role: string; run: string };
   /** Cloud backends only. */
   customAgent?: string;
   timeoutMs: number;
@@ -173,7 +175,7 @@ export class CopilotLaneBackend implements LaneBackend {
         maxCredits: input.maxCredits,
         ...(input.model ? { model: input.model } : {}),
       },
-      { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, sandboxScope: 'factory', ...(input.scrubCredentials ? { scrubCredentials: true } : {}), ...(input.engineCommits ? { hostCommits: true } : {}) },
+      { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, ...(input.ledgerTag ? { ledgerTag: { kind: 'factory-lane' as const, ...input.ledgerTag } } : {}), sandboxScope: 'factory', ...(input.scrubCredentials ? { scrubCredentials: true } : {}), ...(input.engineCommits ? { hostCommits: true } : {}) },
     );
     return { remoteId: snap.jobId };
   }

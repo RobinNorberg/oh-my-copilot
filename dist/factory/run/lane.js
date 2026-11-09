@@ -52,7 +52,7 @@ export class CopilotLaneBackend {
             timeoutMs: input.timeoutMs,
             maxCredits: input.maxCredits,
             ...(input.model ? { model: input.model } : {}),
-        }, { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, sandboxScope: 'factory', ...(input.scrubCredentials ? { scrubCredentials: true } : {}), ...(input.engineCommits ? { hostCommits: true } : {}) });
+        }, { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, ...(input.ledgerTag ? { ledgerTag: { kind: 'factory-lane', ...input.ledgerTag } } : {}), sandboxScope: 'factory', ...(input.scrubCredentials ? { scrubCredentials: true } : {}), ...(input.engineCommits ? { hostCommits: true } : {}) });
         return { remoteId: snap.jobId };
     }
     async poll(remoteId) {

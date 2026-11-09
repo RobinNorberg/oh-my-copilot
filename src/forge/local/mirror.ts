@@ -71,10 +71,11 @@ export const backlogShowArgs = (commit: string, path: string): string[] => ['sho
 export const mergedArgs = (head: string, base: string): string[] => ['merge-base', '--is-ancestor', sha(head), sha(base)];
 /**
  * The flags of lastStateChangeArgs, which both guards match exactly: `-G^state:` keeps only commits whose own
- * diff adds or removes a `state:` line (a merge commit has no diff here, so it never counts); no external diff
+ * diff adds or removes a `state:` line (a merge commit has no diff here, so it never counts); `%H %P` also names the
+ * commit's parents, so a caller can read the file at both and tell a real state change from a body line starting with `state:`; no external diff
  * or textconv driver and no signature check run.
  */
-export const STATE_CHANGE_LOG_FLAGS: readonly string[] = ['-1', '--no-show-signature', '--no-ext-diff', '--no-textconv', '-G^state:', '--format=%H'];
+export const STATE_CHANGE_LOG_FLAGS: readonly string[] = ['-1', '--no-show-signature', '--no-ext-diff', '--no-textconv', '-G^state:', '--format=%H %P'];
 /** The last commit at or before `commit` that changed the `state:` line of `path` (empty when none). */
 export const lastStateChangeArgs = (commit: string, path: string): string[] => ['log', ...STATE_CHANGE_LOG_FLAGS, sha(commit), '--', path];
 

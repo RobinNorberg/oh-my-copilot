@@ -34,6 +34,8 @@ export interface FactoryCleanOptions {
     ledgerDir?: string;
     now?: string;
     owner?: OwnerDeps;
+    /** The repository the cross-clone claim is keyed on (factoryClaimRepo); clean deletes this checkout's claim on the run. */
+    claimRepo?: string | null;
 }
 export declare function cleanFactoryRun(o: FactoryCleanOptions): FactoryCleanResult;
 //# sourceMappingURL=clean.d.ts.map

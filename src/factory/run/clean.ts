@@ -23,7 +23,8 @@ import { factoryGuardExec, hardenedGitExec } from './exec.js';
 import { localRemoteMismatch } from './forge-roots.js';
 import { defaultLedgerDir, emptyHooksDir } from './ledger.js';
 import { checkoutWorker, FACTORY_CHECKOUT_TEAM, unlinkNodeModules } from './prepare.js';
-import { acquireFactoryOwner, FactoryStateError, readFactoryState, runRemote, verifyFactoryIntegrity, type OwnerDeps } from './state.js';
+import { acquireFactoryOwner, acquireFactoryRepoOwner, FactoryStateError, readFactoryState, runRemote, verifyFactoryIntegrity, type OwnerDeps } from './state.js';
+import { removeFactoryClaim } from './claims.js';
 
 const HEX40 = /^[0-9a-f]{40}$/;
 
@@ -45,6 +46,8 @@ export interface FactoryCleanOptions {
   ledgerDir?: string;
   now?: string;
   owner?: OwnerDeps;
+  /** The repository the cross-clone claim is keyed on (factoryClaimRepo); clean deletes this checkout's claim on the run. */
+  claimRepo?: string | null;
 }
 
 export function cleanFactoryRun(o: FactoryCleanOptions): FactoryCleanResult {
@@ -54,9 +57,20 @@ export function cleanFactoryRun(o: FactoryCleanOptions): FactoryCleanResult {
   if (state.phase !== 'merged' && state.phase !== 'cancelled') {
     throw new FactoryStateError(`the factory run for issue #${o.issue} is ${state.phase}${state.gate ? ` (awaiting-human: ${state.gate.name})` : ''}; clean removes the worktrees of a merged or cancelled run only (omg factory run cancel ${o.issue} first)`);
   }
-  // A live engine on this issue refuses here; the owner file is gone again afterwards.
-  const owner = acquireFactoryOwner(o.root, o.issue, o.now ?? new Date().toISOString(), o.owner);
+  // A live engine in this checkout refuses (busy, exit 6) before any git operation: clean removes worktrees and
+  // branches in the shared git dir, which that engine's tamper check would see. Then the issue's own owner file.
+  const now = o.now ?? new Date().toISOString();
+  const repoOwner = acquireFactoryRepoOwner(o.root, o.issue, now, o.owner);
+  let owner: ReturnType<typeof acquireFactoryOwner>;
   try {
+    owner = acquireFactoryOwner(o.root, o.issue, now, o.owner);
+  } catch (error) {
+    repoOwner.release();
+    throw error;
+  }
+  try {
+    // A merged or cancelled run frees its claim; one this checkout left behind (a crash) goes now.
+    if (o.claimRepo) removeFactoryClaim(o.ledgerDir ?? defaultLedgerDir(), o.claimRepo, o.root, o.issue, { onlyRoot: true, ...(o.owner ? { deps: o.owner } : {}) });
     // No hook or fsmonitor a lane planted runs in clean's fetch and ls-remote.
     const exec = factoryGuardExec(hardenedGitExec(o.exec, emptyHooksDir(o.ledgerDir ?? defaultLedgerDir())), () => [state.base]);
     const git = (args: string[]) => exec('git', args, { cwd: o.root, env: TRUSTED_READ_ENV });
@@ -92,5 +106,6 @@ export function cleanFactoryRun(o: FactoryCleanOptions): FactoryCleanResult {
     return result;
   } finally {
     owner.release();
+    repoOwner.release();
   }
 }

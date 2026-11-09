@@ -16,14 +16,16 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { dirname, isAbsolute, join, posix, resolve, win32 } from 'node:path';
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, posix, resolve, win32 } from 'node:path';
 
 import { userConfigLayers } from '../ship/config.js';
 import { resolveProjectConfigPath } from '../config/project-config-path.js';
 import { SMOKE_SET_ENV } from '../smoke/copilot-session-env.js';
 import { isUnderRoot } from '../team/sdk-policy.js';
 import { parseJsonc } from '../utils/jsonc.js';
+import { getOmcRoot } from '../lib/worktree-paths.js';
+import { getGlobalOmcStateRoot } from '../utils/paths.js';
 import { findOnPath } from '../utils/windows-search.js';
 
 export type SandboxMode = 'enforced' | 'read-only-no-shell' | 'detect-only' | 'refused';
@@ -208,6 +210,8 @@ export interface SandboxPolicyContext {
   sshAuthSock?: string;
   /** The CA bundle files and cert dirs the caller's env names (proxyCaEnv), granted read-only like the tool dirs. */
   extraReadonly?: string[];
+  /** The OMC global state root to deny (default getGlobalOmcStateRoot()); a test seam. */
+  omcStateRoot?: string;
 }
 
 export const REGISTRY_HOSTS: readonly string[] = ['registry.npmjs.org', '*.npmjs.org'];
@@ -350,19 +354,40 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
       join('.config', 'gh'), '.aws', '.npmrc', '.docker', '.kube', '.netrc', join('.cargo', 'credentials'), join('.cargo', 'credentials.toml'),
       '.gnupg', '.pypirc', join('.config', 'gcloud'),
     ].map((p) => join(ctx.realHome, p));
+    // A grant canon cannot resolve (a dangling link) holds nothing: the deny stays.
+    const grants = [...filesystem.readwritePaths, ...filesystem.readonlyPaths, ctx.realHome];
+    const holdsGrant = (s: string) => grants.some((g) => { try { return isUnderRoot(g, s, ctx.platform); } catch { return false; } });
+    // The OMC global state root (OMC_HOME/state, XDG state omc, or ~/.omg/state) holds the forge mirrors and PR store, the
+    // factory ledger and the budget ledger: the engine's trust anchors. Denied whole, unless a grant lives inside it (the
+    // job dir under team-jobs): then only its sensitive children are.
+    const stateRoot = ctx.omcStateRoot ?? getGlobalOmcStateRoot();
+    const covered = (p: string) => filesystem.deniedPaths!.some((d) => { try { return isUnderRoot(p, d, ctx.platform); } catch { return false; } });
+    // The factory ledger (OMC_STATE_DIR/factory-ledger, as defaultLedgerDir in factory/run/ledger.ts; the team bundle may not import src/factory; ~/.omg/factory-ledger is under the home deny) and the budget ledger
+    // (<omc root of the main checkout>/state/budget-ledger.json) live elsewhere when OMC_STATE_DIR is set: name the real
+    // paths, and only those that exist (the host may refuse a deny of a missing path). A granted job dir stays granted.
+    const mainRoot = basename(ctx.commonGitDir) === '.git' ? dirname(ctx.commonGitDir) : undefined;
+    const ledgers = [...(process.env.OMC_STATE_DIR?.trim() ? [join(resolve(process.env.OMC_STATE_DIR), 'factory-ledger')] : []), ...(mainRoot ? [join(getOmcRoot(mainRoot), 'state', 'budget-ledger.json')] : [])];
+    // The engine creates the forge dir and the factory ledger dir later, and the lane could read them once they exist: make them now so the
+    // deny names them (the host may refuse a deny of a missing path). The budget ledger is a file the engine writes on first use, so only an existing one is named.
+    // A bare repo or separate git dir has no main checkout (mainRoot undefined): the budget ledger is then not denied, as the worktree's own
+    // .omg would lie inside the lane's grant anyway.
+    const ensureDir = (d: string): string => { try { mkdirSync(d, { recursive: true }); } catch { /* an uncreatable dir stays denied only if it exists */ } return d; };
+    const forgeDir = join(stateRoot, 'forge');
+    const stateDeny = [
+      ...(holdsGrant(stateRoot) ? [ensureDir(forgeDir)].filter(existsSync) : [stateRoot]),
+      ...ledgers.map((l) => (l.endsWith('factory-ledger') ? ensureDir(l) : l)).filter(existsSync),
+    ];
+    filesystem.deniedPaths.push(...[...new Set(stateDeny)].filter((p) => !holdsGrant(p) && !covered(p)));
     if (ctx.platform !== 'win32') {
       // Sockets that run commands for the caller outside the sandbox: the user's runtime dir (D-Bus, systemd, agents),
       // the container daemons and the SSH agent. Never a dir that holds a grant (the root, the home, a parent of either,
       // a tool dir), and of an agent socket directly in a shared sticky dir (/tmp) only the socket.
-      const grants = [...filesystem.readwritePaths, ...filesystem.readonlyPaths, ctx.realHome];
       const sockDir = ctx.sshAuthSock && posix.isAbsolute(ctx.sshAuthSock) ? posix.dirname(ctx.sshAuthSock) : null;
       const sockets = [
         ...(ctx.uid !== undefined ? [`/run/user/${ctx.uid}`] : []),
         '/var/run/docker.sock', '/run/docker.sock', '/run/podman',
         ...(sockDir ? [stickyShared(sockDir) ? ctx.sshAuthSock! : sockDir] : []),
       ];
-      // A grant canon cannot resolve (a dangling link) holds nothing: the deny stays.
-      const holdsGrant = (s: string) => grants.some((g) => { try { return isUnderRoot(g, s, ctx.platform); } catch { return false; } });
       filesystem.deniedPaths.push(...sockets.filter((s) => s !== '/' && !holdsGrant(s)));
     }
   }

@@ -119,6 +119,8 @@ export interface ProgressMapping {
 }
 
 export interface ForgeTracker {
+  /** Apply a triage change (labels, priority, assignee) to one item (optional: not every tracker supports it). */
+  setTriage?(id: number, change: ForgeTriageChange): { ok: boolean; detail: string };
   /** Throws FactoryStepError-compatible messages. */
   viewItem(id: number): ForgeItem;
   /** Ids only; viewItem per id. */
@@ -209,7 +211,30 @@ export function shipyardKeys(body: string): Array<[number, string]> {
   return [...body.matchAll(/^shipyard-key: (\d+)\/([a-z0-9-]{3,60})\r?$/gm)].map((m) => [Number(m[1]), m[2]]);
 }
 
+/** Human review input on a pull request, read by `ForgeReviews.reviewFeedback`. */
+export interface ForgeReviewFeedback {
+  /** Latest review per human reviewer (GitHub latestReviews; ADO reviewer votes; local playback). */
+  decisions: Array<{ author: string; state: 'approved' | 'changes-requested' | 'commented' | 'dismissed' | 'pending'; at: string; head?: string }>;
+  /** Open human threads only: GitHub unresolved and not outdated; ADO active/pending text threads not byFactory; local playback notes. */
+  threads: Array<{ id: string; author: string; body: string; file?: string; line?: number; at: string }>;
+  /** Reviewers requested but not yet submitted. */
+  pendingReviewers: string[];
+  /** Authors whose input was dropped (not trusted), for poll and status output. */
+  ignored: string[];
+  /**
+   * The forge's own trust list could not be read whole (GitHub: the
+   * collaborator list is truncated or needs push access), so a write-access
+   * reviewer may sit in `ignored`; `factory.review.trustedReviewers` still counts.
+   */
+  trustIncomplete?: boolean;
+}
+
+/** A triage write to one tracker item. */
+export interface ForgeTriageChange { add: string[]; remove: string[]; priority?: number; assignee?: string }
+
 export interface ForgeReviews {
+  /** Human review feedback on `pr` at `head` (optional: a forge without it never starts a human fix round). */
+  reviewFeedback?(pr: number, head: string): ForgeReviewFeedback;
   findOpenPrForBranch(branch: string): number | undefined;
   /** A merged PR from `branch` into `base`, if any (a satisfied dependency: base may not be the default branch, so `Closes #n` never fired). */
   findMergedPrForBranch(branch: string, base: string): number | undefined;
@@ -389,6 +414,8 @@ export interface ResolvedForgeConfig {
   progress: ForgeProgressConfig;
   /** `factory.heal.pipeline` from the trusted layers (user config, base branch); absent unless configured. */
   heal?: { pipeline?: { definitionId: number } };
+  /** `factory.review.trustedReviewers` from the trusted layers (user config, base branch), lowercased; absent unless configured. */
+  review?: { trustedReviewers: readonly string[] };
 }
 
 /** What an adapter needs from its caller besides the Exec (src/factory/run/forge-roots.ts builds it for the factory). */

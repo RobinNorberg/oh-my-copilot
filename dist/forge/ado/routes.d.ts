@@ -76,6 +76,8 @@ export interface AdoTrackerWrites {
     labels: readonly string[];
     /** Work item types the create route may name (factory.intake.itemTypes); none = no create. */
     itemTypes?: readonly string[];
+    /** `triage`: a PATCH may carry only test /rev, System.Tags and Common.Priority. */
+    purpose?: 'triage' | 'enqueue';
 }
 /** Values only the run's config knows, for validateAdoBody. */
 export interface AdoBodyContext {

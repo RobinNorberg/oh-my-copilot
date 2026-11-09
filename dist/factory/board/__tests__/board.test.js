@@ -6,7 +6,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { factoryCommand } from '../../../cli/commands/factory.js';
@@ -15,7 +15,7 @@ import { createForge } from '../../../forge/index.js';
 import { createShipState, recordVerdict, shipStatePath } from '../../../ship/state.js';
 import { CheckIncompatibleError } from '../../check/cli.js';
 import { FactorySafetyError } from '../../run/exec.js';
-import { computeFactoryIntegrity, createFactoryState, factoryStateDir, factoryStatePath, moveTo, runKeyOf, setGate, } from '../../run/state.js';
+import { computeFactoryIntegrity, createFactoryState, factoryOwnerPath, factoryStateDir, factoryStatePath, moveTo, runKeyOf, setGate, } from '../../run/state.js';
 import { BOARD_JSON_SCHEMA_VERSION, liveStage, runFactoryBoard } from '../collect.js';
 const SHA = 'a'.repeat(40);
 const HEAD = 'b'.repeat(40);
@@ -191,6 +191,18 @@ describe('omg factory board on GitHub', () => {
         expect(b.outside[1]).toMatchObject({ id: 'heal-0123abcd', title: 'ci-heal', stage: { expected: 'verifying' }, run: { phase: 'gates' } });
         // Only reads reached gh.
         expect(w.calls.filter((c) => c.startsWith('gh ')).every((c) => /^gh (?:issue (?:list|view)|pr list) /.test(c))).toBe(true);
+    });
+    it('a run whose owner file a live engine holds is marked live; a dead owner is not', async () => {
+        seedRuns();
+        writeFileSync(factoryOwnerPath(root, 3), JSON.stringify({ pid: process.ppid, hostname: hostname(), startedAt: T1 }));
+        writeFileSync(factoryOwnerPath(root, 4), JSON.stringify({ pid: 4_999_999, hostname: hostname(), startedAt: T1 }));
+        expect(await board(scripted(ISSUES).exec, { source: 'label:factory', json: true })).toBe(0);
+        const b = json();
+        expect(column(b, 'building').items[0].run).toEqual({ phase: 'implement', lanes: 1, runningLane: 'impl-3', live: { pid: process.ppid, host: hostname(), since: T1 }, credits: 3.14, integrity: 'ok', updatedAt: T0 });
+        expect(column(b, 'ready-to-merge').items[0].run).not.toHaveProperty('live');
+        out = [];
+        expect(await board(scripted(ISSUES).exec, { source: 'label:factory' })).toBe(0);
+        expect(out.join('\n')).toMatch(/#3 +implement {2}live pid \d+ on \S+ {2}lane impl-3 running/);
     });
     it('prints sections with titles, gates, verdicts and flags', async () => {
         seedRuns();

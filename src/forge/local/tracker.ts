@@ -19,6 +19,7 @@ import {
   type ForgeItemUpdate,
   type ForgePeek,
   type ForgeTracker,
+  type ForgeTriageChange,
   type IntakeSource,
   type LocalTrackerOptions,
   type ProgressMapping,
@@ -51,6 +52,8 @@ export interface LocalTrackerContext {
    * commits the change; a warning names the file. `mergedHead` is the PR
    * head the merge was detected at: a later commit on the base that changes
    * the file's `state:` line (a reopen) wins over the merge; other edits do not.
+   * The pickaxe (`-G^state:`) also matches a body line that starts with `state:`, so a hit counts only when the parsed
+   * `state` differs between the hit and its parent.
    */
   mergedPr?: (id: number) => { number: number; mergedHead?: string } | undefined;
 }
@@ -112,19 +115,30 @@ export function localTracker(ctx: LocalTrackerContext): ForgeTracker {
   const dirOnDisk = (): string => join(ctx.root, ...ctx.backlogDir.split('/'));
 
   /** The working-tree items (regular files only; a symlink is never followed, at any level below the root). */
-  const working = (): Array<{ item: BacklogItem; text: string; file: string }> => {
+  const scanWorking = (): { out: Array<{ item: BacklogItem; text: string; file: string }>; skipped: Map<number, string> } => {
     const dir = dirOnDisk();
-    if (!noLinkPath(ctx.root, dir, false) || !existsSync(dir) || !lstatSync(dir).isDirectory()) return [];
     const out: Array<{ item: BacklogItem; text: string; file: string }> = [];
+    const skipped = new Map<number, string>();
+    if (!noLinkPath(ctx.root, dir, false, true) || !existsSync(dir) || !lstatSync(dir).isDirectory()) return { out, skipped };
     for (const name of readdirSync(dir).sort()) {
       if (backlogFileId(name) === undefined) continue;
       const file = join(dir, name);
       if (!lstatSync(file).isFile()) continue;
       const text = readFileSync(file, 'utf8');
-      out.push({ item: parseBacklogFile(`${ctx.backlogDir}/${name}`, text), text: lf(text), file });
+      try {
+        out.push({ item: parseBacklogFile(`${ctx.backlogDir}/${name}`, text), text: lf(text), file });
+      } catch (err) {
+        // As for a committed file: one malformed file does not block the rest of the backlog.
+        if (!(err instanceof BacklogParseError)) throw err;
+        // The id of a skipped file stays taken: the file is never rewritten and its id never handed out again.
+        skipped.set(backlogFileId(name) as number, name);
+        const warning = `local backlog: skipped ${err.message}`;
+        if (!warnings.includes(warning)) warnings.push(warning);
+      }
     }
-    return out;
+    return { out, skipped };
   };
+  const working = (): Array<{ item: BacklogItem; text: string; file: string }> => scanWorking().out;
 
   const baseSha = (): string | undefined => {
     const sha = ctx.options.baseSha?.();
@@ -170,9 +184,27 @@ export function localTracker(ctx: LocalTrackerContext): ForgeTracker {
     const key = `${sha}:${mergedHead}:${path}`;
     const known = changedAfter.get(key);
     if (known !== undefined) return known;
-    const last = git(lastStateChangeArgs(sha, path)).trim();
-    const after = HEX40.test(last) && last !== mergedHead
-      && ctx.exec('git', mergedArgs(mergedHead, last), { cwd: ctx.root, env: TRUSTED_READ_ENV }).status === 0;
+    // The pickaxe also matches a body line starting with `state:` and (defensively) a merge: only a single-parent
+    // commit whose own parsed `state` differs from its parent's is a reopen. A body-line hit says nothing about
+    // earlier commits, so the search resumes from its parent (the same log shape) until the merged head is reached.
+    const stateAt = (commit: string): string | undefined => {
+      const r = ctx.exec('git', backlogShowArgs(commit, path), { cwd: ctx.root, env: TRUSTED_READ_ENV });
+      if (r.status !== 0) return undefined;
+      try {
+        return parseBacklogFile(path, r.stdout).state;
+      } catch {
+        return undefined;
+      }
+    };
+    let after = false;
+    let from = sha;
+    for (let i = 0; i < 50 && !after; i++) {
+      const [last = '', ...parents] = git(lastStateChangeArgs(from, path)).trim().split(/\s+/);
+      if (!HEX40.test(last) || last === mergedHead || ctx.exec('git', mergedArgs(mergedHead, last), { cwd: ctx.root, env: TRUSTED_READ_ENV }).status !== 0) break;
+      if (parents.length !== 1 || !HEX40.test(parents[0])) break;
+      if (stateAt(last) !== stateAt(parents[0])) after = true;
+      else from = parents[0];
+    }
     changedAfter.set(key, after);
     return after;
   };
@@ -236,6 +268,9 @@ export function localTracker(ctx: LocalTrackerContext): ForgeTracker {
   const fileFor = (id: number): { entry: Entry; file: string } => {
     const e = entries().get(id);
     if (!e) throw new Error(`local backlog item #${id} is not in ${ctx.backlogDir}`);
+    if (e.file === undefined && scanWorking().skipped.has(id)) {
+      throw new Error(`local backlog: the working-tree file for #${id} (${scanWorking().skipped.get(id)}) is malformed and was skipped; fix or remove it by hand (it is not overwritten)`);
+    }
     const file = e.file ?? join(ctx.root, ...e.item.path.split('/'));
     if (existsSync(file) && !lstatSync(file).isFile()) throw new Error(`local backlog: ${file} is not a regular file`);
     return { entry: e, file };
@@ -273,10 +308,26 @@ export function localTracker(ctx: LocalTrackerContext): ForgeTracker {
         const { entry, file } = fileFor(id);
         const fields = entry.item.fields;
         if (fields.labels.includes(marker)) return { ok: true, stderr: '' };
-        writeAtomic(file, renderBacklogFile({ ...fields, labels: [...fields.labels, marker] }, entry.item.body), ctx.root);
+        writeAtomic(file, renderBacklogFile({ ...fields, labels: [...fields.labels, marker] }, entry.item.body), ctx.root, true);
         return { ok: true, stderr: '' };
       } catch (err) {
         return { ok: false, stderr: (err as Error).message };
+      }
+    },
+    setTriage(id: number, change: ForgeTriageChange): { ok: boolean; detail: string } {
+      if (change.assignee !== undefined) return { ok: false, detail: 'assignee is not a triage write yet' };
+      try {
+        const { entry, file } = fileFor(id);
+        const fields = entry.item.fields;
+        const drop = new Set(change.remove.map((l) => l.toLowerCase()));
+        const kept = fields.labels.filter((l) => !drop.has(l.toLowerCase()));
+        const labels = [...kept, ...change.add.filter((a) => !kept.some((l) => l.toLowerCase() === a.toLowerCase()))];
+        const priority = change.priority ?? fields.priority;
+        if (labels.length === fields.labels.length && labels.every((l, i) => l === fields.labels[i]) && priority === fields.priority) return { ok: true, detail: 'nothing to change' };
+        writeAtomic(file, renderBacklogFile({ ...fields, labels, ...(priority === undefined ? {} : { priority }) }, entry.item.body), ctx.root);
+        return { ok: true, detail: `${file} edited in the working tree; commit it on the base branch` };
+      } catch (err) {
+        return { ok: false, detail: (err as Error).message };
       }
     },
     findByKey(spec: number): Array<{ key: string; item: ForgeItem }> {
@@ -286,11 +337,11 @@ export function localTracker(ctx: LocalTrackerContext): ForgeTracker {
     createItem(draft: ForgeItemDraft): number {
       const body = withAcceptance(readBody(draft.bodyFile), draft.acceptance);
       const all = entries();
-      const onDisk = working().map((d) => d.item.id);
-      const id = Math.max(0, ...all.keys(), ...onDisk) + 1;
+      const scan = scanWorking();
+      const id = Math.max(0, ...all.keys(), ...scan.out.map((d) => d.item.id), ...scan.skipped.keys()) + 1;
       const name = `${id}-${backlogSlug(draft.title)}.md`;
       const file = join(dirOnDisk(), name);
-      noLinkPath(ctx.root, file);
+      noLinkPath(ctx.root, file, true, true);
       const text = renderBacklogFile({ title: draft.title, state: 'open', labels: [...new Set(draft.labels)], dependsOn: [], ...(draft.priority === undefined ? {} : { priority: draft.priority }) }, body);
       writeFileSync(file, text, { flag: 'wx' });
       return id;
@@ -301,7 +352,7 @@ export function localTracker(ctx: LocalTrackerContext): ForgeTracker {
       const remove = new Set(update.removeLabels);
       const labels = [...new Set([...fields.labels.filter((l) => !remove.has(l)), ...update.addLabels])];
       const body = withAcceptance(readBody(update.bodyFile), update.acceptance);
-      writeAtomic(file, renderBacklogFile({ ...fields, title: update.title, labels, ...(update.priority === undefined ? {} : { priority: update.priority }) }, body), ctx.root);
+      writeAtomic(file, renderBacklogFile({ ...fields, title: update.title, labels, ...(update.priority === undefined ? {} : { priority: update.priority }) }, body), ctx.root, true);
     },
     warnings(): string[] {
       return [...warnings];
