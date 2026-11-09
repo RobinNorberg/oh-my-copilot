@@ -13,7 +13,8 @@
  *    `seen`; each new id is checked (check's rules) and audited
  *    (`intake-new` in `.omg/state/factory-poll-audit.jsonl`).
  * 3. PRs: every run in flight with a PR. A PR a human completed or abandoned
- *    prints the resume hint; open human review threads are counted (ADO).
+ *    prints the resume hint; open human review threads are counted
+ *    (ForgeReviews.reviewFeedback on every forge; ADO's listThreads where a forge has no feedback read).
  * 4. board: the board rows that changed since the previous tick
  *    (src/factory/board), or with `--json` one JSON object per tick.
  *
@@ -62,6 +63,7 @@ import { atomicWriteFileSync, ensureDirSync } from '../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../lib/file-lock.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { ADO_RATE_LIMITED } from '../forge/ado/checks.js';
+import { GITHUB_RATE_LIMITED } from '../forge/github/graphql.js';
 import { ShipSafetyError } from '../ship/exec.js';
 import { collectBoard, readRuns } from './board/collect.js';
 import { backlogLine, runLine } from './board/render.js';
@@ -71,6 +73,7 @@ import { adoHealFor, ciDeps, HEAL_PIPELINE_MISSING, runHealScan } from './heal/c
 import { HealRunRefused } from './heal/run.js';
 import { DEFAULT_FACTORY_RUN_LIMITS, resolveFactoryRunLimits } from './run/budget.js';
 import { FactoryForgeUnavailableError } from './run/forge-roots.js';
+import { visibleLine } from '../forge/review-feedback.js';
 import { acquireFactoryRepoOwner, defaultOwnerDeps, factoryRepoOwnerPath, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, } from './run/state.js';
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
 export const POLL_JSON_SCHEMA_VERSION = 1;
@@ -498,6 +501,17 @@ export async function pollTick(ctx) {
                 row.state = view.state;
                 if (view.state !== 'OPEN')
                     row.hint = resumeHint(key);
+                else if (forge.reviews.reviewFeedback) {
+                    const feedback = step(`PR ${pr} review feedback`, () => forge.reviews.reviewFeedback(pr, view.headRefOid));
+                    if (feedback) {
+                        row.threads = feedback.threads.length;
+                        row.ignored = feedback.ignored.length;
+                        if (feedback.trustIncomplete === true)
+                            row.trustIncomplete = true;
+                    }
+                    else
+                        row.error = errors[errors.length - 1];
+                }
                 else if (forge.reviews.listThreads) {
                     const threads = step(`PR ${pr} threads`, () => forge.reviews.listThreads(pr));
                     if (threads)
@@ -506,12 +520,12 @@ export async function pollTick(ctx) {
                         row.error = errors[errors.length - 1];
                 }
             }
-            const facts = JSON.stringify([row.state, row.threads]);
+            const facts = JSON.stringify([row.state, row.threads, row.ignored, row.trustIncomplete]);
             if (row.state !== undefined && ctx.previous.prs.get(runLabel(key)) !== facts) {
                 if (row.state !== 'OPEN')
                     audit(root, { kind: 'pr-done', id: key, pr, state: row.state, hint: row.hint }, at);
                 else if (row.threads !== undefined)
-                    audit(root, { kind: 'pr-threads', id: key, pr, active: row.threads }, at);
+                    audit(root, { kind: 'pr-threads', id: key, pr, active: row.threads, ...(row.ignored !== undefined ? { ignored: row.ignored } : {}), ...(row.trustIncomplete ? { trustIncomplete: true } : {}) }, at);
                 ctx.previous.prs.set(runLabel(key), facts);
             }
             prs.push(row);
@@ -535,7 +549,7 @@ export async function pollTick(ctx) {
         }
         ctx.previous.board = next;
     }
-    const rateLimited = [...errors, ...warnings].some((m) => ADO_RATE_LIMITED.test(m));
+    const rateLimited = [...errors, ...warnings].some((m) => ADO_RATE_LIMITED.test(m) || GITHUB_RATE_LIMITED.test(m));
     // 5. auto-start: at most one run, on an idle tick only.
     let autoStart;
     const blocked = !config.intake.autoStart ? 'factory.intake.autoStart is off'
@@ -587,8 +601,10 @@ export function renderTick(t) {
     for (const p of t.prs) {
         if (p.hint)
             lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)} is ${p.state === 'MERGED' ? 'merged' : 'closed'} by a human: run \`${p.hint}\` to record it`);
-        else if (p.threads)
-            lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)}: ${p.threads} open human thread(s)`);
+        else if (p.threads || p.ignored || p.trustIncomplete) {
+            const trust = p.trustIncomplete ? '; trust incomplete: the collaborator list was not read whole, so list reviewers in factory.review.trustedReviewers' : '';
+            lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)}: ${p.threads ?? 0} human thread(s)${p.ignored ? ` (${p.ignored} ignored)` : ''}${trust}`);
+        }
     }
     // F33: a run whose PR a human already merged or closed shows the record step, not its stale gate reason (a merge command).
     const done = new Map(t.prs.filter((p) => p.hint).map((p) => [runLabel(p.id), p]));
@@ -676,9 +692,9 @@ export async function runFactoryPoll(o, deps) {
                 deps.out(JSON.stringify(t));
             else {
                 for (const w of t.warnings)
-                    deps.err(w);
+                    deps.err(visibleLine(w));
                 for (const e of t.errors)
-                    deps.err(`omg factory poll: ${e}`);
+                    deps.err(`omg factory poll: ${visibleLine(e)}`);
                 deps.out(renderTick(t));
             }
             if (o.once)

@@ -1,8 +1,9 @@
 /**
  * `omg factory poll` on Azure DevOps: runFactoryPoll with the real
  * createForge over the adapter's fixture world, so the CLI builds the az
- * read guard itself. The PR tick counts active and pending human threads
- * (system threads and the factory's own, by its hidden marker, are left out), a completed PR prints the resume hint
+ * read guard itself. The PR tick counts active and pending human threads by
+ * trusted reviewers through reviewFeedback (system threads and the factory's own, by its hidden marker, are left out;
+ * an untrusted author is counted as ignored), a completed PR prints the resume hint
  * and reads no threads, the heal tick is gated on capabilities.heal and
  * classifies factory.heal.pipeline's red builds through heal scan's wiring,
  * TF400733 marks the tick rate-limited, and every az call is a GET or the
@@ -80,7 +81,7 @@ function world(fixtures: readonly AdoFixture[] = withPeek42(loadAdoFixtures()), 
   return { exec, az };
 }
 
-const USER = { factory: { intake: { source: SOURCE }, progress: { enabled: true, stages: { reviewing: { column: 'Code Review' } } } } };
+const USER = { factory: { intake: { source: SOURCE }, progress: { enabled: true, stages: { reviewing: { column: 'Code Review' } } }, review: { trustedReviewers: ['Reviewer@Example.com'] } } };
 
 function deps(exec: Exec, over: Partial<FactoryPollDeps> = {}): FactoryPollDeps {
   return {
@@ -141,8 +142,9 @@ describe('omg factory poll on Azure DevOps (runFactoryPoll + the real adapter)',
       forge: 'azure-devops', repo: REPO.url,
       heal: { ran: false, reason: expect.stringContaining('factory.heal.pipeline') },
       intake: { ran: true, items: 1, new: [{ id: 42 }] },
-      // Threads 3 (active) and 6 (pending, by the PR creator the factory runs as): 1 is ADO's own (system), 2 carries the factory marker, 4 is fixed, 5 deleted.
-      prs: [{ id: 42, pr: 17, state: 'OPEN', threads: 2 }],
+      // Thread 3 (active, by the trusted reviewer); 6 (pending, by the PR creator, not a trusted reviewer here) is ignored;
+      // 1 is ADO's own (system), 2 carries the factory marker, 4 is fixed, 5 deleted.
+      prs: [{ id: 42, pr: 17, state: 'OPEN', threads: 1, ignored: 1 }],
       // The run in review holds no gate: it is in flight, so the tick is not idle.
       idle: false, rateLimited: false, errors: [],
     });
@@ -150,14 +152,14 @@ describe('omg factory poll on Azure DevOps (runFactoryPoll + the real adapter)',
     const routes = w.az.map(routeOf);
     expect(routes).toEqual(expect.arrayContaining(['wit.wiql.POST', 'git.pullRequests.GET', 'git.pullRequestThreads.GET', 'wit.workItems.GET']));
     for (const r of routes) expect(r, r).toMatch(/\.GET$|^wit\.wiql\.POST$/);
-    // One PR read and one thread list per open run.
-    expect(routes.filter((r) => r.startsWith('git.'))).toEqual(['git.pullRequests.GET', 'git.pullRequestThreads.GET']);
+    // Per open run: the PR view, then reviewFeedback's PR read (reviewer votes) and thread list.
+    expect(routes.filter((r) => r.startsWith('git.'))).toEqual(['git.pullRequests.GET', 'git.pullRequests.GET', 'git.pullRequestThreads.GET']);
   });
 
   it('text output: the open human threads line', async () => {
     seedReview();
     expect(await poll(world().exec, { once: true })).toBe(0);
-    expect(out.join('\n')).toContain('PR !17 of #42: 2 open human thread(s)');
+    expect(out.join('\n')).toContain('PR !17 of #42: 1 human thread(s) (1 ignored)');
   });
 
   it('a PR a human completed prints the resume hint, reads no threads and writes nothing', async () => {

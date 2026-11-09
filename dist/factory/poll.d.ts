@@ -13,7 +13,8 @@
  *    `seen`; each new id is checked (check's rules) and audited
  *    (`intake-new` in `.omg/state/factory-poll-audit.jsonl`).
  * 3. PRs: every run in flight with a PR. A PR a human completed or abandoned
- *    prints the resume hint; open human review threads are counted (ADO).
+ *    prints the resume hint; open human review threads are counted
+ *    (ForgeReviews.reviewFeedback on every forge; ADO's listThreads where a forge has no feedback read).
  * 4. board: the board rows that changed since the previous tick
  *    (src/factory/board), or with `--json` one JSON object per tick.
  *
@@ -188,8 +189,12 @@ export interface PollPr {
     id: FactoryRunKey;
     pr: number;
     state?: ForgePr['state'];
-    /** Active or pending text threads the factory did not post (ADO; absent where the forge has no listThreads). */
+    /** Open human threads on the PR head (reviewFeedback; ADO listThreads as the fallback); absent when the forge reads none. */
     threads?: number;
+    /** Authors whose review input was dropped as untrusted (reviewFeedback only). */
+    ignored?: number;
+    /** The forge's trust list was not read whole (ForgeReviewFeedback.trustIncomplete): a write-access reviewer may be among the ignored. */
+    trustIncomplete?: true;
     /** For a PR a human completed or abandoned: the command that records it. */
     hint?: string;
     error?: string;

@@ -9,7 +9,9 @@
  *   (one `pr list` is the blocked-by gate's merged lookup on `factory/issue-<n>`)
  *   and `gh repo view --json url` (ci-heal runs) in fixed shapes, plus ship's
  *   `gh pr view|checks` and `gh run list|view|rerun`.
- *   Never `gh api`, `gh -R`, or a merge (merge is always human).
+ *   Never `gh api`, `gh -R`, or a merge (merge is always human), except the
+ *   one human review read (src/forge/github/graphql.ts isReviewFeedbackArgs):
+ *   `gh api graphql` with its constant query, pinned to the GithubReadContext repo.
  * - Tracker writes (`omg factory enqueue` only, when its TrackerWriteContext is
  *   set): `gh issue create`, `gh issue edit` (title, body, labels) and the
  *   `shipyard-key:` search `gh issue list --search`, each in one exact shape,
@@ -35,6 +37,7 @@ import { tmpdir } from 'os';
 import { isAbsolute, join, resolve } from 'path';
 import { checkAdoCommand, isAdoCommand, runGuardedAdo, type AdoGuardContext } from '../../forge/ado/guard.js';
 import { isBodyFileIn, readTrackerBody } from '../../forge/body-file.js';
+import { isReviewFeedbackArgs } from '../../forge/github/graphql.js';
 import { LOCAL_REMOTE, STATE_CHANGE_LOG_FLAGS } from '../../forge/local/mirror.js';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { triageWriteGh } from '../triage/guard.js';
@@ -354,13 +357,20 @@ function factoryGit(a: string[], protectedBranches: readonly string[], extraProt
   }
 }
 
-function factoryGh(a: string[], writes?: TrackerWriteContext): boolean | null {
+/** The GitHub repository a run reads review feedback from: gh's `HOST/OWNER/NAME` (ghRepoArg). */
+export interface GithubReadContext {
+  repo: string;
+}
+
+function factoryGh(a: string[], writes?: TrackerWriteContext, github?: GithubReadContext): boolean | null {
   // `omg factory triage --apply` (purpose 'triage') may write only the label-only issue edit (src/factory/triage/guard.ts); enqueue keeps its own shapes.
   const triage = writes?.purpose === 'triage' ? (triageWriteGh(a, writes) ?? (a[0] === 'issue' && a[1] === 'edit' ? false : null)) : null;
   if (triage !== null) return triage;
   const write = writes && writes.purpose !== 'triage' ? trackerWriteGh(a, writes) : null;
   if (write !== null) return write;
   const [group, sub, ...r] = a;
+  // The one `gh api` shape: the human review read of the run's own repository (fixed query); ship refuses every other.
+  if (group === 'api') return isReviewFeedbackArgs(a, github?.repo) ? true : null;
   if (group === 'issue') {
     if (sub === 'view') return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--json' && JSON_FIELDS.test(r[2]);
     if (sub === 'comment') return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--body-file' && isFile(r[2]);
@@ -399,7 +409,7 @@ const adoRefusal = (cmd: string, args: string[]) => (reason: string) =>
  * which refuses them unless `ado` names the run's forge and az entry.
  * `writes` (enqueue only) adds the tracker write shapes.
  */
-export function assertFactoryCommand(cmd: string, args: string[], extraProtected: readonly string[] = [], env?: Readonly<Record<string, string>>, ado?: AdoGuardContext, writes?: TrackerWriteContext, local?: LocalGuardContext): void {
+export function assertFactoryCommand(cmd: string, args: string[], extraProtected: readonly string[] = [], env?: Readonly<Record<string, string>>, ado?: AdoGuardContext, writes?: TrackerWriteContext, local?: LocalGuardContext, github?: GithubReadContext): void {
   if (isAdoCommand(cmd)) {
     checkAdoCommand(cmd, args, env, ado, 'factory', adoRefusal(cmd, args), writes);
     return;
@@ -408,7 +418,7 @@ export function assertFactoryCommand(cmd: string, args: string[], extraProtected
   const base = file.replace(/\.exe$/, '');
   const protectedBranches = [...PROTECTED_BRANCHES, ...extraProtected];
   const strings = args.every((x) => typeof x === 'string');
-  const verdict = !strings ? false : base === 'git' ? factoryGit(args, protectedBranches, extraProtected, local) : base === 'gh' ? factoryGh(args, writes) : null;
+  const verdict = !strings ? false : base === 'git' ? factoryGit(args, protectedBranches, extraProtected, local) : base === 'gh' ? factoryGh(args, writes, github) : null;
   if (verdict === false) throw new FactorySafetyError(`omg factory run refuses \`${file} ${args.join(' ')}\`: not one of the command shapes the factory engine runs`);
   if (verdict === true) {
     // Factory shapes take no environment except ship's trusted-read env on git.
@@ -431,12 +441,13 @@ export function assertFactoryCommand(cmd: string, args: string[], extraProtected
  * and a tracker write (gh issue create/edit) with the guard's own copy of its checked --body-file.
  * `writes` is set only by `omg factory enqueue`: the tracker write shapes pass while it returns a context.
  * `local` (the local forge only) binds the mirror init, the remote add and the base push to this run's mirror and synced base.
+ * `github` (GitHub only) names the repository the human review read may query; without it that read is refused.
  */
-export function factoryGuardExec(exec: Exec, extraProtected: () => readonly string[] = () => [], ado: () => AdoGuardContext | undefined = () => undefined, writes: () => TrackerWriteContext | undefined = () => undefined, local: () => LocalGuardContext | undefined = () => undefined): Exec {
+export function factoryGuardExec(exec: Exec, extraProtected: () => readonly string[] = () => [], ado: () => AdoGuardContext | undefined = () => undefined, writes: () => TrackerWriteContext | undefined = () => undefined, local: () => LocalGuardContext | undefined = () => undefined, github: () => GithubReadContext | undefined = () => undefined): Exec {
   return (cmd, args, opts) => {
     if (isAdoCommand(cmd)) return runGuardedAdo(exec, cmd, args, opts, ado(), 'factory', adoRefusal(cmd, args), writes());
     const ctx = writes();
-    assertFactoryCommand(cmd, args, extraProtected(), opts?.env, undefined, ctx, local());
+    assertFactoryCommand(cmd, args, extraProtected(), opts?.env, undefined, ctx, local(), github());
     const at = ctx && cmd.replace(/\\/g, '/').split('/').pop()!.toLowerCase().replace(/\.exe$/, '') === 'gh' ? trackerBodyFileArg(args) : undefined;
     if (at === undefined) return exec(cmd, args, opts);
     // A tracker write runs with the guard's own copy of the checked body, like an az --in-file.

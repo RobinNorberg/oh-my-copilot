@@ -14,7 +14,7 @@ export const createGitHubForge = (exec, cwd, config) => ({
     provider: 'github',
     repo: config.repo,
     tracker: githubTracker(exec, cwd, config),
-    reviews: githubReviews(exec, cwd),
+    reviews: githubReviews(exec, cwd, { repo: config.repo, review: { trustedReviewers: config.review?.trustedReviewers ?? [] } }),
     checks: githubChecks(exec, cwd),
     merge: githubMerge(),
     ci: githubCi(exec, cwd),
