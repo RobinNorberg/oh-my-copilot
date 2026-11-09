@@ -37,6 +37,7 @@ describe('the working-tree backlog read', () => {
     const file1 = join(fx.root, '.copilot', 'backlog', '1-good.md');
     expect(() => forge.tracker.updateItem!(1, { title: 'X', bodyFile, addLabels: [], removeLabels: [] })).toThrow(/1-good.md.*malformed/);
     expect(forge.tracker.addMarker(1, 'factory-ready')).toMatchObject({ ok: false, stderr: expect.stringMatching(/malformed/) });
+    expect(forge.tracker.setTriage!(1, { add: ['bug'], remove: [] })).toMatchObject({ ok: false, detail: expect.stringMatching(/1-good.md.*malformed/) });
     expect(readFileSync(file1, 'utf8')).toBe(broken);
     expect(forge.tracker.createItem!({ title: 'Fresh', bodyFile, labels: [] })).toBe(8);
   });
