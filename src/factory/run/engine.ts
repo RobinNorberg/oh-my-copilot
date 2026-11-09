@@ -2553,13 +2553,25 @@ class FactoryEngine {
  * run, its claim), or null. Read-only; an unreadable owner or claim file is
  * held, as the real claim decides (unreadableOwnerMessage).
  */
+/**
+ * The repository the run's cross-clone claim is keyed on: none on the local
+ * forge (its mirror is per checkout, and an offline run never reads origin),
+ * else the caller's (the CLI read it before its loader), else the origin URL
+ * read through `exec`.
+ */
+function engineClaimRepo(o: FactoryEngineOptions, exec: Exec): string | null {
+  if (o.forge?.config.kind === 'local') return null;
+  return o.claimRepo !== undefined ? o.claimRepo : factoryClaimRepo(exec, o.root);
+}
+
 function busyHolder(o: FactoryEngineOptions, key: FactoryRunKey): string | null {
   const deps = o.owner ?? defaultOwnerDeps();
   const what = (path: string, name: string): string | null => {
     const h = ownerHolding(path, deps);
     return h === null ? null : h === 'unreadable' ? unreadableOwnerMessage(path) : `${name} is held (${describeOwner(h)})`;
   };
-  const repo = o.claimRepo !== undefined ? o.claimRepo : factoryClaimRepo(o.exec, o.root);
+  // A dry run reads git through the plain guard, as the rest of dryRun does.
+  const repo = engineClaimRepo(o, factoryGuardExec(o.exec, () => [o.base]));
   const claim = repo ? factoryClaimHolder(o.ledgerDir ?? defaultLedgerDir(), repo, o.root, key, deps) : null;
   return what(factoryRepoOwnerPath(o.root), 'the engine lock of this checkout')
     ?? what(factoryOwnerPath(o.root, key), `the run of ${runLabel(key)}`)
@@ -2676,7 +2688,8 @@ export async function runFactoryEngine(o: FactoryEngineOptions): Promise<Factory
   let ledger: EngineLedger;
   let hooksDir: string;
   try {
-    const repo = o.claimRepo !== undefined ? o.claimRepo : factoryClaimRepo(o.exec, o.root);
+    // Like every engine git command, the origin read is hardened; its empty hooks dir is made only when the read runs.
+    const repo = engineClaimRepo(o, (cmd, args, opts) => hardenedGitExec(o.exec, emptyHooksDir(dir))(cmd, args, opts));
     if (repo) claim = acquireFactoryClaim(dir, repo, o.root, key, now, o.owner);
     owner = acquireFactoryOwner(o.root, key, now, o.owner);
     try {
