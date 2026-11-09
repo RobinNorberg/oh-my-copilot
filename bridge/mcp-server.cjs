@@ -41735,6 +41735,34 @@ var init_mirror = __esm({
   }
 });
 
+// src/forge/github/gh.ts
+function ghRun(exec, args, cwd) {
+  const res = exec("gh", args, { cwd });
+  if (res.status !== 0) throw new GhCommandError(`gh ${args.join(" ")} failed (exit ${res.status}): ${res.stderr.trim().split("\n")[0]}`);
+  return res.stdout;
+}
+function ghJson(exec, args, cwd) {
+  const out = ghRun(exec, args, cwd);
+  try {
+    return JSON.parse(out);
+  } catch {
+    throw new GhCommandError(`gh ${args.join(" ")} returned no JSON`);
+  }
+}
+var GhCommandError, ghRepoArg;
+var init_gh = __esm({
+  "src/forge/github/gh.ts"() {
+    "use strict";
+    GhCommandError = class extends Error {
+      constructor(message) {
+        super(message);
+        this.name = "GhCommandError";
+      }
+    };
+    ghRepoArg = (repo) => `${repo.host}/${repo.owner}/${repo.name}`;
+  }
+});
+
 // src/forge/github/coding-agent.ts
 function repoOf(repoArg) {
   const parts = repoArg?.split("/");
@@ -41742,39 +41770,42 @@ function repoOf(repoArg) {
   const [host, owner, name] = parts;
   return HOST.test(host) && NAME2.test(owner) && NAME2.test(name) ? { host, owner, name } : void 0;
 }
-function isCodingAgentAssignArgs(args, repoArg) {
-  const repo = repoOf(repoArg);
-  if (!repo || args.length !== 10) return false;
+function isCodingAgentAssignArgs(args, ctx) {
+  const repo = repoOf(ctx?.repo);
+  if (!ctx || !repo || args.length !== 10 || !Number.isSafeInteger(ctx.issue) || !NUMBER2.test(String(ctx.issue)) || !isBranch2(ctx.base)) return false;
   const path15 = /^repos\/([^/]+)\/([^/]+)\/issues\/(\d+)\/assignees$/.exec(args[5]);
-  const base = args[9].startsWith("agent_assignment[base_branch]=") ? args[9].slice("agent_assignment[base_branch]=".length) : "";
-  return args[0] === "api" && args[1] === "--hostname" && lower(args[2]) === lower(repo.host) && args[3] === "--method" && args[4] === "POST" && path15 !== null && NAME2.test(path15[1]) && lower(path15[1]) === lower(repo.owner) && NAME2.test(path15[2]) && lower(path15[2]) === lower(repo.name) && NUMBER2.test(path15[3]) && args[6] === "-f" && args[7] === `assignees[]=${CODING_AGENT_REST_ASSIGNEE}` && args[8] === "-f" && isBranch2(base);
+  return args[0] === "api" && args[1] === "--hostname" && lower(args[2]) === lower(repo.host) && args[3] === "--method" && args[4] === "POST" && path15 !== null && NAME2.test(path15[1]) && lower(path15[1]) === lower(repo.owner) && NAME2.test(path15[2]) && lower(path15[2]) === lower(repo.name) && path15[3] === String(ctx.issue) && args[6] === "-f" && args[7] === `assignees[]=${CODING_AGENT_REST_ASSIGNEE}` && args[8] === "-f" && args[9] === `agent_assignment[base_branch]=${ctx.base}`;
 }
 function isCodingAgentStatusArgs(args, repoArg) {
   const repo = repoOf(repoArg);
-  if (!repo || args.length !== 12) return false;
+  if (!repo || args.length !== 14) return false;
   const value = (arg, key) => arg.startsWith(`${key}=`) ? arg.slice(key.length + 1) : "";
   const o = value(args[7], "owner");
   const n = value(args[9], "name");
-  return args[0] === "api" && args[1] === "graphql" && args[2] === "--hostname" && lower(args[3]) === lower(repo.host) && args[4] === "-f" && args[5] === `query=${CODING_AGENT_STATUS_QUERY}` && args[6] === "-f" && NAME2.test(o) && lower(o) === lower(repo.owner) && args[8] === "-f" && NAME2.test(n) && lower(n) === lower(repo.name) && args[10] === "-F" && NUMBER2.test(value(args[11], "number"));
+  const since = value(args[13], "since");
+  return args[0] === "api" && args[1] === "graphql" && args[2] === "--hostname" && lower(args[3]) === lower(repo.host) && args[4] === "-f" && args[5] === `query=${CODING_AGENT_STATUS_QUERY}` && args[6] === "-f" && NAME2.test(o) && lower(o) === lower(repo.owner) && args[8] === "-f" && NAME2.test(n) && lower(n) === lower(repo.name) && args[10] === "-F" && NUMBER2.test(value(args[11], "number")) && args[12] === "-f" && ISO_SECONDS.test(since) && !Number.isNaN(Date.parse(since));
 }
-function isCodingAgentCloseArgs(args, repoArg) {
-  const repo = repoOf(repoArg);
+function isCodingAgentCloseArgs(args, ctx) {
+  const repo = repoOf(ctx?.repo);
   const named = args.length === 5 ? repoOf(args[4]) : void 0;
-  return repo !== void 0 && named !== void 0 && args[0] === "pr" && args[1] === "close" && NUMBER2.test(args[2]) && args[3] === "--repo" && lower(named.host) === lower(repo.host) && lower(named.owner) === lower(repo.owner) && lower(named.name) === lower(repo.name);
+  return repo !== void 0 && named !== void 0 && ctx?.pr !== void 0 && Number.isSafeInteger(ctx.pr) && NUMBER2.test(String(ctx.pr)) && args[0] === "pr" && args[1] === "close" && args[2] === String(ctx.pr) && args[3] === "--repo" && sameRepoArg(named, repo);
 }
-var CODING_AGENT_REST_ASSIGNEE, PR_FIELDS, CODING_AGENT_STATUS_QUERY, NAME2, HOST, NUMBER2, BRANCH3, isBranch2, lower;
+var CODING_AGENT_REST_ASSIGNEE, PR_FIELDS, CODING_AGENT_STATUS_QUERY, NAME2, HOST, NUMBER2, BRANCH3, isBranch2, ISO_SECONDS, lower, sameRepoArg;
 var init_coding_agent = __esm({
   "src/forge/github/coding-agent.ts"() {
     "use strict";
+    init_gh();
     CODING_AGENT_REST_ASSIGNEE = "copilot-swe-agent[bot]";
-    PR_FIELDS = "number state isDraft isCrossRepository baseRefName headRefName headRefOid author{__typename login} baseRepository{nameWithOwner} headRepository{nameWithOwner} timelineItems(last:50,itemTypes:[REVIEW_REQUESTED_EVENT]){nodes{__typename ... on ReviewRequestedEvent{createdAt actor{__typename login}}}}";
-    CODING_AGENT_STATUS_QUERY = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){nameWithOwner suggestedActors(capabilities:[CAN_BE_ASSIGNED],first:20){nodes{__typename login}} issue(number:$number){state timelineItems(last:100,itemTypes:[ASSIGNED_EVENT,UNASSIGNED_EVENT,CONNECTED_EVENT,CROSS_REFERENCED_EVENT]){nodes{__typename ... on AssignedEvent{createdAt assignee{__typename ... on Bot{login}}} ... on UnassignedEvent{createdAt assignee{__typename ... on Bot{login}}} ... on ConnectedEvent{createdAt actor{__typename login} subject{__typename ...P}} ... on CrossReferencedEvent{createdAt actor{__typename login} source{__typename ...P}}}}}}} fragment P on PullRequest{${PR_FIELDS}}`;
+    PR_FIELDS = "number state isDraft isCrossRepository baseRefName headRefName headRefOid author{__typename login} baseRepository{nameWithOwner} headRepository{nameWithOwner} commits(last:1){nodes{commit{oid committedDate}}} timelineItems(last:50,since:$since,itemTypes:[REVIEW_REQUESTED_EVENT]){pageInfo{hasPreviousPage} nodes{__typename ... on ReviewRequestedEvent{createdAt actor{__typename login}}}}";
+    CODING_AGENT_STATUS_QUERY = `query($owner:String!,$name:String!,$number:Int!,$since:DateTime!){repository(owner:$owner,name:$name){nameWithOwner suggestedActors(capabilities:[CAN_BE_ASSIGNED],first:100){pageInfo{hasNextPage} nodes{__typename login}} issue(number:$number){state timelineItems(last:100,since:$since,itemTypes:[ASSIGNED_EVENT,UNASSIGNED_EVENT,CONNECTED_EVENT,CROSS_REFERENCED_EVENT]){pageInfo{hasPreviousPage} nodes{__typename ... on AssignedEvent{createdAt assignee{__typename ... on Bot{login}}} ... on UnassignedEvent{createdAt assignee{__typename ... on Bot{login}}} ... on ConnectedEvent{createdAt actor{__typename login} subject{__typename ...P}} ... on CrossReferencedEvent{createdAt actor{__typename login} source{__typename ...P}}}}}}} fragment P on PullRequest{${PR_FIELDS}}`;
     NAME2 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
     HOST = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
     NUMBER2 = /^[1-9]\d{0,9}$/;
-    BRANCH3 = /^[\w.][\w./-]{0,199}$/;
-    isBranch2 = (s) => BRANCH3.test(s) && !s.includes("..") && !s.endsWith("/") && !s.endsWith(".lock");
+    BRANCH3 = /^\w[\w./-]{0,199}$/;
+    isBranch2 = (s) => BRANCH3.test(s) && !s.includes("..") && !s.includes("@{") && !s.endsWith(".") && s.split("/").every((c) => c !== "" && !c.startsWith(".") && !c.endsWith(".lock"));
+    ISO_SECONDS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
     lower = (s) => s.toLowerCase();
+    sameRepoArg = (a, b) => lower(a.host) === lower(b.host) && lower(a.owner) === lower(b.owner) && lower(a.name) === lower(b.name);
   }
 });
 
@@ -41926,12 +41957,11 @@ function factoryGit(a, protectedBranches, extraProtected = [], local) {
       return null;
   }
 }
-function factoryGh(a, writes, github) {
+function factoryGh(a, writes, github, agent) {
   const write = writes ? trackerWriteGh(a, writes) : null;
   if (write !== null) return write;
-  if (isCodingAgentAssignArgs(a, github?.repo)) return true;
-  if (isCodingAgentStatusArgs(a, github?.repo)) return true;
-  if (isCodingAgentCloseArgs(a, github?.repo)) return true;
+  if (isCodingAgentStatusArgs(a, github?.repo) || isCodingAgentStatusArgs(a, agent?.repo)) return true;
+  if (isCodingAgentAssignArgs(a, agent) || isCodingAgentCloseArgs(a, agent)) return true;
   const [group, sub, ...r] = a;
   if (group === "issue") {
     if (sub === "view") return r.length === 3 && NUMBER3.test(r[0]) && r[1] === "--json" && JSON_FIELDS2.test(r[2]);
@@ -41955,7 +41985,7 @@ function factoryGh(a, writes, github) {
   if (group === "repo") return sub === "view" && same2(r, ["--json", "url"]);
   return null;
 }
-function assertFactoryCommand(cmd, args, extraProtected = [], env2, ado, writes, local, github) {
+function assertFactoryCommand(cmd, args, extraProtected = [], env2, ado, writes, local, github, agent) {
   if (isAdoCommand(cmd)) {
     checkAdoCommand(cmd, args, env2, ado, "factory", adoRefusal(cmd, args), writes);
     return;
@@ -41964,7 +41994,7 @@ function assertFactoryCommand(cmd, args, extraProtected = [], env2, ado, writes,
   const base = file.replace(/\.exe$/, "");
   const protectedBranches = [...PROTECTED_BRANCHES, ...extraProtected];
   const strings = args.every((x) => typeof x === "string");
-  const verdict = !strings ? false : base === "git" ? factoryGit(args, protectedBranches, extraProtected, local) : base === "gh" ? factoryGh(args, writes, github) : null;
+  const verdict = !strings ? false : base === "git" ? factoryGit(args, protectedBranches, extraProtected, local) : base === "gh" ? factoryGh(args, writes, github, agent) : null;
   if (verdict === false) throw new FactorySafetyError(`omg factory run refuses \`${file} ${args.join(" ")}\`: not one of the command shapes the factory engine runs`);
   if (verdict === true) {
     const trusted = JSON.stringify(Object.entries(TRUSTED_READ_ENV));
@@ -41979,11 +42009,11 @@ function assertFactoryCommand(cmd, args, extraProtected = [], env2, ado, writes,
     throw new FactorySafetyError(error2 instanceof Error ? error2.message.replace(/^omg ship refuses/, "omg factory run refuses") : String(error2));
   }
 }
-function factoryGuardExec(exec, extraProtected = () => [], ado = () => void 0, writes = () => void 0, local = () => void 0, github = () => void 0) {
+function factoryGuardExec(exec, extraProtected = () => [], ado = () => void 0, writes = () => void 0, local = () => void 0, github = () => void 0, agent = () => void 0) {
   return (cmd, args, opts) => {
     if (isAdoCommand(cmd)) return runGuardedAdo(exec, cmd, args, opts, ado(), "factory", adoRefusal(cmd, args), writes());
     const ctx = writes();
-    assertFactoryCommand(cmd, args, extraProtected(), opts?.env, void 0, ctx, local(), github());
+    assertFactoryCommand(cmd, args, extraProtected(), opts?.env, void 0, ctx, local(), github(), agent());
     const at = ctx && cmd.replace(/\\/g, "/").split("/").pop().toLowerCase().replace(/\.exe$/, "") === "gh" ? trackerBodyFileArg(args) : void 0;
     if (at === void 0) return exec(cmd, args, opts);
     const body = readTrackerBody(args[at], (reason) => new FactorySafetyError(`omg factory run refuses \`gh ${args.join(" ")}\`: ${reason}`));
@@ -46271,34 +46301,6 @@ var init_gates = __esm({
     AGGREGATE_ERROR = /^##\[error\](?:not success or skipped: (.+?)|test shards: \w+)\s*$/;
     EXIT_ERROR = /^##\[error\]Process completed with exit code \d+\.?\s*$/;
     analysisKey = (jobId, name) => jobId ? `job:${jobId}` : `name:${name}`;
-  }
-});
-
-// src/forge/github/gh.ts
-function ghRun(exec, args, cwd) {
-  const res = exec("gh", args, { cwd });
-  if (res.status !== 0) throw new GhCommandError(`gh ${args.join(" ")} failed (exit ${res.status}): ${res.stderr.trim().split("\n")[0]}`);
-  return res.stdout;
-}
-function ghJson(exec, args, cwd) {
-  const out = ghRun(exec, args, cwd);
-  try {
-    return JSON.parse(out);
-  } catch {
-    throw new GhCommandError(`gh ${args.join(" ")} returned no JSON`);
-  }
-}
-var GhCommandError, ghRepoArg;
-var init_gh = __esm({
-  "src/forge/github/gh.ts"() {
-    "use strict";
-    GhCommandError = class extends Error {
-      constructor(message) {
-        super(message);
-        this.name = "GhCommandError";
-      }
-    };
-    ghRepoArg = (repo) => `${repo.host}/${repo.owner}/${repo.name}`;
   }
 });
 

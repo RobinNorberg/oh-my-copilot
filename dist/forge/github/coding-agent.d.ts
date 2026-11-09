@@ -1,33 +1,45 @@
 /**
  * The GitHub Copilot coding agent ("Copilot cloud agent") as a factory
  * implementer, forge side (factory night 3, goal 6, lane L6a). Three exact
- * gh shapes, each pinned by the factory guard to the run's repository
- * (GithubReadContext, src/factory/run/exec.ts):
+ * gh shapes, each pinned by the factory guard (src/factory/run/exec.ts):
  *
  * - assign (WRITE, starts one agent session, billed by GitHub):
  *   `gh api --hostname <host> --method POST repos/<owner>/<name>/issues/<n>/assignees
  *    -f assignees[]=copilot-swe-agent[bot] -f agent_assignment[base_branch]=<base>`
  *   (REST "Add assignees to an issue" with the documented agent_assignment
- *   object). REST ignores an assignee it cannot assign, so the caller confirms
- *   the assignment with the status read before it counts a session.
+ *   object). Passes only with a CodingAgentContext naming this repository,
+ *   issue and base. REST ignores an assignee it cannot assign, so
+ *   assignCodingAgent confirms the assignment with the status read.
  * - status (READ): `gh api graphql` with CODING_AGENT_STATUS_QUERY: whether the
  *   agent is assignable, its assignment on the issue, the pull requests it
- *   linked to the issue, and whether it requested a review (its finish signal).
+ *   linked to the issue, its review requests (its finish signal) and each
+ *   PR's head commit. Passes with the repository-only GithubReadContext.
  * - close (WRITE): `gh pr close <n> --repo <HOST/OWNER/NAME>`, for the agent's
- *   PR once the engine rebranched it (decision D5).
+ *   PR once the engine rebranched it (decision D5). Passes only with a
+ *   CodingAgentContext whose `pr` is that number.
  *
  * Everything the agent wrote is untrusted: this module reads no title, body,
  * comment or commit message, and validates every name and sha it hands on.
  * Who acted comes from GitHub's event actors and the PR author (`__typename`
- * Bot and the agent login), never from text.
+ * Bot and the agent login), never from text. GitHub documents no stable bot
+ * id, so the identity is not pinned by databaseId or node id.
  */
+import type { Exec } from '../../ship/exec.js';
 /** The agent's login as GraphQL reports actors and PR authors (`__typename: Bot`). */
 export declare const CODING_AGENT_LOGIN = "copilot-swe-agent";
 /** The agent's login in the REST assignees body. */
 export declare const CODING_AGENT_REST_ASSIGNEE = "copilot-swe-agent[bot]";
 /**
- * The status read, one line (no argv newline on any platform). `owner` and
- * `name` go in as raw strings (`-f`), `number` as an integer (`-F`).
+ * How far before `since` the status window starts: GitHub times are whole
+ * seconds and its clock is not ours, so an assignment a little "before" the
+ * caller's local `since` still counts.
+ */
+export declare const CODING_AGENT_SINCE_SKEW_SECONDS = 120;
+/**
+ * The status read, one line (no argv newline on any platform). `owner`,
+ * `name` and `since` go in as raw strings (`-f`), `number` as an integer
+ * (`-F`). Every list reports whether it was cut (pageInfo): a cut list makes
+ * the phase `truncated`, never a guess.
  */
 export declare const CODING_AGENT_STATUS_QUERY: string;
 /** The parts of a forge repository the shapes name. */
@@ -36,22 +48,40 @@ export interface CodingAgentRepo {
     owner: string;
     name: string;
 }
+/**
+ * The write context of ONE coding agent step, set by the engine only around
+ * the assign or the close (never for a whole run). `repo` is gh's
+ * `HOST/OWNER/NAME` (ghRepoArg). The assign passes only for `issue` on
+ * exactly `base`; the close only for `pr`.
+ */
+export interface CodingAgentContext {
+    repo: string;
+    issue: number;
+    base: string;
+    pr?: number;
+}
+/**
+ * The start of the status window for `since`: floored to the whole second,
+ * minus CODING_AGENT_SINCE_SKEW_SECONDS. The query's `since` and the parser
+ * use the same value.
+ */
+export declare function codingAgentWindowStart(since: string): string;
 /** `gh` argv that assigns `issue` to the agent, branching from `base`. Throws on values the guard would refuse. */
 export declare function codingAgentAssignArgs(repo: CodingAgentRepo, issue: number, base: string): string[];
-/** `gh` argv of the status read for `issue`. */
-export declare function codingAgentStatusArgs(repo: CodingAgentRepo, issue: number): string[];
+/** `gh` argv of the status read for `issue`, from the window start of `since`. */
+export declare function codingAgentStatusArgs(repo: CodingAgentRepo, issue: number, since: string): string[];
 /** `gh` argv that closes the agent's PR `pr` (after the engine rebranched it). */
 export declare function codingAgentCloseArgs(repo: CodingAgentRepo, pr: number): string[];
 /**
  * The guard clause for the assign shape: `args` is exactly
- * codingAgentAssignArgs for the repository `repoArg` (ghRepoArg), some issue
- * number and a plain base branch. Without a repository context it is refused.
+ * codingAgentAssignArgs(ctx.repo, ctx.issue, ctx.base). Without a
+ * CodingAgentContext it is refused.
  */
-export declare function isCodingAgentAssignArgs(args: readonly string[], repoArg: string | undefined): boolean;
-/** The guard clause for the status read: exactly codingAgentStatusArgs for `repoArg` and some issue number. */
+export declare function isCodingAgentAssignArgs(args: readonly string[], ctx: CodingAgentContext | undefined): boolean;
+/** The guard clause for the status read: exactly codingAgentStatusArgs for `repoArg`, some issue number and a whole-second window start. */
 export declare function isCodingAgentStatusArgs(args: readonly string[], repoArg: string | undefined): boolean;
-/** The guard clause for the close: exactly codingAgentCloseArgs for `repoArg` and some PR number. */
-export declare function isCodingAgentCloseArgs(args: readonly string[], repoArg: string | undefined): boolean;
+/** The guard clause for the close: exactly codingAgentCloseArgs(ctx.repo, ctx.pr). Without a context naming the PR it is refused. */
+export declare function isCodingAgentCloseArgs(args: readonly string[], ctx: CodingAgentContext | undefined): boolean;
 /** One pull request the agent linked to the issue, as read (validated fields only). */
 export interface CodingAgentPr {
     number: number;
@@ -65,42 +95,77 @@ export interface CodingAgentPr {
     headRef?: string;
     /** The head commit, when GitHub reported a 40-hex sha. */
     head?: string;
+    /** The head commit's committedDate, when the read's last commit is that head. */
+    headCommittedAt?: string;
     /** When the agent linked it to the issue (the newest linking event). */
     linkedAt: string;
-    /** The agent's newest review request on the PR (its "work finished" signal), at or after `since`. */
+    /** The agent's newest review request on the PR in the window (its "work finished" signal). */
     finishedAt?: string;
+    /** The PR's review-request list in the window was cut. */
+    truncated: boolean;
 }
 /**
  * The agent's state on one issue:
  * - `unavailable`: the agent is not assignable in the repository (not enabled, or no Copilot plan);
- * - `not-assigned`: assignable, but not assigned since `since`;
- * - `waiting-pr`: assigned, no pull request linked yet;
- * - `working`: its PR is open and it has not requested a review;
- * - `finished`: its PR is open and it requested a review (adoptPreconditions decides what follows);
+ * - `not-assigned`: assignable, but not assigned in the window;
+ * - `waiting-pr`: assigned, no pull request of its own linked yet;
+ * - `working`: its PR is open and it has not requested a review since its newest commit;
+ * - `finished`: its PR is open and its newest review request is at or after the head commit (adoptPreconditions decides what follows);
  * - `closed`: its PR was closed or merged before the engine adopted it;
- * - `ambiguous`: it linked more than one open PR since `since`.
+ * - `ambiguous`: it linked more than one open PR of its own in the window (no `pr` is set);
+ * - `truncated`: a list GitHub returned was cut, so the read proves nothing (fail closed: no `pr`;
+ *   do not re-assign, do not adopt; count the session if the assign POST returned 2xx).
  */
-export type CodingAgentPhase = 'unavailable' | 'not-assigned' | 'waiting-pr' | 'working' | 'finished' | 'closed' | 'ambiguous';
+export type CodingAgentPhase = 'unavailable' | 'not-assigned' | 'waiting-pr' | 'working' | 'finished' | 'closed' | 'ambiguous' | 'truncated';
 export interface CodingAgentStatus {
     phase: CodingAgentPhase;
     /** `OWNER/NAME` of the repository GitHub answered for (its nameWithOwner). */
     repo: string;
     /** The agent is in the repository's assignable actors. */
     available: boolean;
-    /** The newest assignment of the agent at or after `since`, while not unassigned after it. */
+    /**
+     * GitHub's own time of the agent's FIRST assignment in the window, while it
+     * is not unassigned after its newest one. L6b stores this value as `since`
+     * for every later status read of the session (GitHub's clock, not ours).
+     */
     assignedAt?: string;
-    /** The PR the phase is about (the newest the agent linked); absent for unavailable, not-assigned and waiting-pr. */
+    /** The PR the phase is about (the newest the agent linked); absent for unavailable, not-assigned, waiting-pr, ambiguous and truncated. */
     pr?: CodingAgentPr;
-    /** Distinct PRs the agent linked to the issue at or after `since`. */
+    /** Distinct PRs the agent linked in the window that it authored in this repository. */
     candidates: number[];
+    /** PRs an agent event linked that the agent did not author, or that are cross-repository: never adopted or closed. */
+    ignored: number[];
 }
 /**
  * The agent's state in one status response (stdout of codingAgentStatusArgs).
- * `since` (ISO time, the engine's assign time) drops older sessions: their
- * assignment, linked PRs and review requests. Only events whose actor is the
- * agent link a PR. Throws when the response has no repository or issue.
+ * `since` (ISO time: the engine's local time just before the assign, or
+ * better a previous read's `assignedAt`) sets the window
+ * (codingAgentWindowStart): older sessions, their linked PRs and review
+ * requests drop out. Only events whose actor is the agent link a PR, and only
+ * PRs the agent authored in this repository become candidates. Throws when
+ * the response has no repository or issue.
  */
 export declare function parseCodingAgentStatus(stdout: string, since?: string): CodingAgentStatus;
+/** What assignCodingAgent observed. */
+export interface CodingAgentAssignResult {
+    /** The assign POST returned 2xx (gh exited 0): GitHub may have started a billed session; count it. */
+    posted: true;
+    /** The follow-up status read shows the agent assigned. False: not yet visible, not assigned, or the read failed or was cut. */
+    confirmed: boolean;
+    /** The follow-up read; its `assignedAt` (GitHub's time) is the `since` for later reads. Absent when the read failed. */
+    status?: CodingAgentStatus;
+    /** Why the follow-up read failed, when it did. */
+    readError?: string;
+}
+/**
+ * Assigns `issue` to the agent on `base` and reads the status once. `since`
+ * is the caller's time just before this call. Throws (GhCommandError) only
+ * when the POST itself fails; once the POST returned 2xx the result says
+ * `posted: true` whatever the read shows, so "posted but not yet visible"
+ * (`confirmed: false`) never reads as "not assigned". One read proves
+ * nothing negative: re-read later, never re-assign automatically.
+ */
+export declare function assignCodingAgent(exec: Exec, repo: CodingAgentRepo, issue: number, base: string, since: string, cwd: string): CodingAgentAssignResult;
 /** What adopting the agent's PR must match: the run's repository and base branch. */
 export interface AdoptExpectation {
     /** `OWNER/NAME` of the run's repository. */

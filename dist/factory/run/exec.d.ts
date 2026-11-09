@@ -16,10 +16,13 @@
  *   pinned to the configured repository, with a body file from the caller's
  *   own directory (gh reads the guard's checked copy) and labels from its allowlist. Never close, delete,
  *   transfer or lock; without the context all three shapes are refused.
- * - The Copilot coding agent (src/forge/github/coding-agent.ts), only with a
- *   GithubReadContext and pinned to its repository: the REST assign of one
- *   issue, the fixed-query `gh api graphql` status read, and `gh pr close`
- *   of the agent's PR. No other `gh api` endpoint or query passes.
+ * - The Copilot coding agent (src/forge/github/coding-agent.ts), beside the
+ *   review read: its fixed-query `gh api graphql` status read with the
+ *   repository-only GithubReadContext; its two writes only with a
+ *   CodingAgentContext, which the engine sets around that one step: the REST
+ *   assign of exactly the context's issue on exactly its base, and
+ *   `gh pr close` of exactly its `pr` (the agent's own PR; the tracker never
+ *   closes). Without that context both writes are refused.
  * - Azure DevOps: `az devops invoke` on the routes.ts allowlist only, as the
  *   resolved az entry, for the run's forge repo (src/forge/ado/guard.ts).
  *   The work item create and the PATCH's item fields and links pass only with
@@ -34,6 +37,7 @@
  *   even if the tamper check missed it.
  */
 import { type AdoGuardContext } from '../../forge/ado/guard.js';
+import { type CodingAgentContext } from '../../forge/github/coding-agent.js';
 import { ShipSafetyError, type Exec } from '../../ship/exec.js';
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
 export declare const FACTORY_BRANCH_PREFIX = "factory/";
@@ -126,7 +130,7 @@ export interface GithubReadContext {
  * which refuses them unless `ado` names the run's forge and az entry.
  * `writes` (enqueue only) adds the tracker write shapes.
  */
-export declare function assertFactoryCommand(cmd: string, args: string[], extraProtected?: readonly string[], env?: Readonly<Record<string, string>>, ado?: AdoGuardContext, writes?: TrackerWriteContext, local?: LocalGuardContext, github?: GithubReadContext): void;
+export declare function assertFactoryCommand(cmd: string, args: string[], extraProtected?: readonly string[], env?: Readonly<Record<string, string>>, ado?: AdoGuardContext, writes?: TrackerWriteContext, local?: LocalGuardContext, github?: GithubReadContext, agent?: CodingAgentContext): void;
 /**
  * Wrap an Exec so every call passes assertFactoryCommand first; `extraProtected` is read per call.
  * An `az devops invoke` write runs with the guard's own copy of its validated --in-file body,
@@ -134,8 +138,11 @@ export declare function assertFactoryCommand(cmd: string, args: string[], extraP
  * `writes` is set only by `omg factory enqueue`: the tracker write shapes pass while it returns a context.
  * `local` (the local forge only) binds the mirror init, the remote add and the base push to this run's mirror and synced base.
  * `github` (GitHub only) names the repository the human review read may query; without it that read is refused.
+ * It is read-only: besides the review read it admits only the coding agent's status read.
+ * `agent` (GitHub only, set by the engine around one coding agent step, never for a whole run) admits the assign of its
+ * issue on its base and the close of its `pr`; without it both writes are refused.
  */
-export declare function factoryGuardExec(exec: Exec, extraProtected?: () => readonly string[], ado?: () => AdoGuardContext | undefined, writes?: () => TrackerWriteContext | undefined, local?: () => LocalGuardContext | undefined, github?: () => GithubReadContext | undefined): Exec;
+export declare function factoryGuardExec(exec: Exec, extraProtected?: () => readonly string[], ado?: () => AdoGuardContext | undefined, writes?: () => TrackerWriteContext | undefined, local?: () => LocalGuardContext | undefined, github?: () => GithubReadContext | undefined, agent?: () => CodingAgentContext | undefined): Exec;
 /** Prepended to every hardened git command, after the guard checked the plain shape. */
 export declare function gitHardeningArgs(hooksDir: string): string[];
 /**

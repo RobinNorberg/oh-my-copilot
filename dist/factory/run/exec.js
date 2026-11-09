@@ -16,10 +16,13 @@
  *   pinned to the configured repository, with a body file from the caller's
  *   own directory (gh reads the guard's checked copy) and labels from its allowlist. Never close, delete,
  *   transfer or lock; without the context all three shapes are refused.
- * - The Copilot coding agent (src/forge/github/coding-agent.ts), only with a
- *   GithubReadContext and pinned to its repository: the REST assign of one
- *   issue, the fixed-query `gh api graphql` status read, and `gh pr close`
- *   of the agent's PR. No other `gh api` endpoint or query passes.
+ * - The Copilot coding agent (src/forge/github/coding-agent.ts), beside the
+ *   review read: its fixed-query `gh api graphql` status read with the
+ *   repository-only GithubReadContext; its two writes only with a
+ *   CodingAgentContext, which the engine sets around that one step: the REST
+ *   assign of exactly the context's issue on exactly its base, and
+ *   `gh pr close` of exactly its `pr` (the agent's own PR; the tracker never
+ *   closes). Without that context both writes are refused.
  * - Azure DevOps: `az devops invoke` on the routes.ts allowlist only, as the
  *   resolved az entry, for the run's forge repo (src/forge/ado/guard.ts).
  *   The work item create and the PATCH's item fields and links pass only with
@@ -323,18 +326,15 @@ function factoryGit(a, protectedBranches, extraProtected = [], local) {
             return null;
     }
 }
-function factoryGh(a, writes, github) {
+function factoryGh(a, writes, github, agent) {
     const write = writes ? trackerWriteGh(a, writes) : null;
     if (write !== null)
         return write;
-    // The Copilot coding agent (src/forge/github/coding-agent.ts), pinned to the run's repository: assign one issue (REST),
-    if (isCodingAgentAssignArgs(a, github?.repo))
+    // The Copilot coding agent (src/forge/github/coding-agent.ts): its status read (fixed GraphQL query) for the context's repository,
+    if (isCodingAgentStatusArgs(a, github?.repo) || isCodingAgentStatusArgs(a, agent?.repo))
         return true;
-    // its status read (fixed GraphQL query),
-    if (isCodingAgentStatusArgs(a, github?.repo))
-        return true;
-    // and closing its PR once the engine rebranched it.
-    if (isCodingAgentCloseArgs(a, github?.repo))
+    // and, only with the step's CodingAgentContext, the assign of its issue on its base and the close of its PR.
+    if (isCodingAgentAssignArgs(a, agent) || isCodingAgentCloseArgs(a, agent))
         return true;
     const [group, sub, ...r] = a;
     if (group === 'issue') {
@@ -380,7 +380,7 @@ const adoRefusal = (cmd, args) => (reason) => new FactorySafetyError(`omg factor
  * which refuses them unless `ado` names the run's forge and az entry.
  * `writes` (enqueue only) adds the tracker write shapes.
  */
-export function assertFactoryCommand(cmd, args, extraProtected = [], env, ado, writes, local, github) {
+export function assertFactoryCommand(cmd, args, extraProtected = [], env, ado, writes, local, github, agent) {
     if (isAdoCommand(cmd)) {
         checkAdoCommand(cmd, args, env, ado, 'factory', adoRefusal(cmd, args), writes);
         return;
@@ -389,7 +389,7 @@ export function assertFactoryCommand(cmd, args, extraProtected = [], env, ado, w
     const base = file.replace(/\.exe$/, '');
     const protectedBranches = [...PROTECTED_BRANCHES, ...extraProtected];
     const strings = args.every((x) => typeof x === 'string');
-    const verdict = !strings ? false : base === 'git' ? factoryGit(args, protectedBranches, extraProtected, local) : base === 'gh' ? factoryGh(args, writes, github) : null;
+    const verdict = !strings ? false : base === 'git' ? factoryGit(args, protectedBranches, extraProtected, local) : base === 'gh' ? factoryGh(args, writes, github, agent) : null;
     if (verdict === false)
         throw new FactorySafetyError(`omg factory run refuses \`${file} ${args.join(' ')}\`: not one of the command shapes the factory engine runs`);
     if (verdict === true) {
@@ -414,13 +414,16 @@ export function assertFactoryCommand(cmd, args, extraProtected = [], env, ado, w
  * `writes` is set only by `omg factory enqueue`: the tracker write shapes pass while it returns a context.
  * `local` (the local forge only) binds the mirror init, the remote add and the base push to this run's mirror and synced base.
  * `github` (GitHub only) names the repository the human review read may query; without it that read is refused.
+ * It is read-only: besides the review read it admits only the coding agent's status read.
+ * `agent` (GitHub only, set by the engine around one coding agent step, never for a whole run) admits the assign of its
+ * issue on its base and the close of its `pr`; without it both writes are refused.
  */
-export function factoryGuardExec(exec, extraProtected = () => [], ado = () => undefined, writes = () => undefined, local = () => undefined, github = () => undefined) {
+export function factoryGuardExec(exec, extraProtected = () => [], ado = () => undefined, writes = () => undefined, local = () => undefined, github = () => undefined, agent = () => undefined) {
     return (cmd, args, opts) => {
         if (isAdoCommand(cmd))
             return runGuardedAdo(exec, cmd, args, opts, ado(), 'factory', adoRefusal(cmd, args), writes());
         const ctx = writes();
-        assertFactoryCommand(cmd, args, extraProtected(), opts?.env, undefined, ctx, local(), github());
+        assertFactoryCommand(cmd, args, extraProtected(), opts?.env, undefined, ctx, local(), github(), agent());
         const at = ctx && cmd.replace(/\\/g, '/').split('/').pop().toLowerCase().replace(/\.exe$/, '') === 'gh' ? trackerBodyFileArg(args) : undefined;
         if (at === undefined)
             return exec(cmd, args, opts);
