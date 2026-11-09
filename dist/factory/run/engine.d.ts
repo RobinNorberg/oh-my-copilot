@@ -206,6 +206,8 @@ export { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted, TRUSTED_PLAN_A
 export { ciFixPrompt, conflictFixPrompt, fenceFor, fixPrompt, implementPrompt, MAX_REVIEW_DIFF_CHARS, oneLine, reviewPrompt } from './prompts.js';
 /** The run's key: `heal-<sig8>` for a ci-heal run, else the issue number. */
 export declare function engineRunKey(o: Pick<FactoryEngineOptions, 'issue' | 'heal'>): FactoryRunKey;
+/** The command that cancels a parked run. */
+export declare const cancelCommand: (key: FactoryRunKey) => string;
 /** The command that resumes a parked run (for a ci-heal run, approve also resumes after any later gate). */
 export declare const resumeCommand: (key: FactoryRunKey) => string;
 /** The fixed acceptance line of every ci-heal plan (design §5). */

@@ -250,6 +250,39 @@ export function planBacklogSample(root, backlogDir) {
     const path = join(dir, SAMPLE_BACKLOG_FILE);
     return { path, scope: 'project', before: '', after: SAMPLE_BACKLOG_TEXT, diff: lineDiff('', SAMPLE_BACKLOG_TEXT) };
 }
+/** Seeds for `omg factory setup --team`: the committed team files (read from the base commit only). */
+export const TEAM_ROUTING_SEED = [
+    '# Team routing',
+    '',
+    'Who owns which paths. Read by the factory from the base branch only; commit changes there.',
+    'Columns: path glob, role (or -), owner (lowercase name), handle (@login or @org/team, or -). The first matching row wins per path.',
+    '',
+    '| path glob | role | owner | handle |',
+    '|---|---|---|---|',
+    '',
+].join('\n');
+export const TEAM_DECISIONS_SEED = [
+    '# Team decisions',
+    '',
+    'Append-only: add one line per decision at the end; never edit or remove an existing line (the factory review parks a PR that does).',
+    '',
+].join('\n');
+/** The two team files, for each one that does not exist yet; undefined entries are left out. Written by applyWrites. */
+export function planTeamSeeds(root) {
+    const out = [];
+    let p = root;
+    for (const seg of ['.copilot', 'team']) {
+        p = join(p, seg);
+        if (existsSync(p) && lstatSync(p).isSymbolicLink())
+            throw new SetupError(5, `refusing to write the team files: ${p} is a symlink or junction`);
+    }
+    for (const [name, text] of [['routing.md', TEAM_ROUTING_SEED], ['decisions.md', TEAM_DECISIONS_SEED]]) {
+        const path = join(p, name);
+        if (!existsSync(path))
+            out.push({ path, scope: 'project', before: '', after: text, diff: lineDiff('', text) });
+    }
+    return out;
+}
 export function applyWrites(planned) {
     for (const w of planned) {
         // Re-check right before the write: the file must still be what the diff was made from.

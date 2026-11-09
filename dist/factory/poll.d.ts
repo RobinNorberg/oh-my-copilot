@@ -63,6 +63,7 @@ import type { CheckBucket } from './check/rules.js';
 import type { HealConfig } from './heal/config.js';
 import { type ScanResult } from './heal/cli.js';
 import { type FactoryRunLimits } from './run/budget.js';
+import { type Reminder } from './team/reminders.js';
 import { type FactoryRunKey, type OwnerDeps } from './run/state.js';
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
 export declare const POLL_JSON_SCHEMA_VERSION = 1;
@@ -235,6 +236,8 @@ export interface PollTick {
         reason: string;
     };
     prs: PollPr[];
+    /** Runs parked at a human gate past factory.poll.remindAfterHours (printed, never posted); absent when none is due. */
+    reminders?: Reminder[];
     /** Board rows that changed since the previous tick (every row on the first). */
     board: Array<{
         stage: BoardStage | 'outside';
@@ -280,6 +283,8 @@ export interface PollContext {
     /** The local forge's base sync (FactoryPollDeps.localBaseSync), bound to the root and base. */
     localBaseSync?: () => string;
     budget: PollBudget;
+    /** factory.poll.remindAfterHours; absent or 0 = no stale-gate reminders. */
+    remindAfterHours?: number;
     owner: OwnerDeps;
     now: () => number;
     /** Row signatures of the previous tick (board diff), and PR facts (audit on change); updated by pollTick. */

@@ -64,6 +64,7 @@ import { lockPathFor, withFileLockSync } from '../lib/file-lock.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { ADO_RATE_LIMITED } from '../forge/ado/checks.js';
 import { GITHUB_RATE_LIMITED } from '../forge/github/graphql.js';
+import { readBaseFile } from '../ship/config.js';
 import { ShipSafetyError } from '../ship/exec.js';
 import { collectBoard, readRuns } from './board/collect.js';
 import { backlogLine, runLine } from './board/render.js';
@@ -74,6 +75,8 @@ import { HealRunRefused } from './heal/run.js';
 import { DEFAULT_FACTORY_RUN_LIMITS, resolveFactoryRunLimits } from './run/budget.js';
 import { FactoryForgeUnavailableError } from './run/forge-roots.js';
 import { visibleLine } from '../forge/review-feedback.js';
+import { resolveTeamConfig, TeamConfigError } from './team/context.js';
+import { staleGateReminders } from './team/reminders.js';
 import { acquireFactoryRepoOwner, defaultOwnerDeps, EXIT_BUSY, factoryRepoOwnerPath, ownerHolding, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, } from './run/state.js';
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
 export const POLL_JSON_SCHEMA_VERSION = 1;
@@ -397,6 +400,9 @@ export function defaultPollBudget(layers, env = process.env) {
 }
 const message = (error) => plainText(error instanceof Error ? error.message : String(error));
 const resumeHint = (key) => (typeof key === 'number' ? `omg factory run ${key}` : `omg factory heal approve ${key.slice('heal-'.length)}`);
+const cancelHint = (key) => (typeof key === 'number' ? `omg factory run cancel ${key}` : `omg factory heal cancel ${key.slice('heal-'.length)}`);
+/** A resume re-parks a run whose branch rewrote decisions.md, so its reminder offers the cancel instead. */
+const reminderHint = (key, gate) => (gate === 'decisions-rewritten' ? cancelHint(key) : resumeHint(key));
 /**
  * One tick. Steps 1-4 never spawn and never write to the tracker or forge; a
  * guard refusal propagates (a bug, not an unreadable item). Step 5 is the
@@ -560,6 +566,8 @@ export async function pollTick(ctx) {
     // A run state that is unreadable or fails its integrity seal may hide a run in flight: never idle.
     const unsound = broken.size > 0 || [...runs.values()].some((s) => !verifyFactoryIntegrity(s));
     const idle = !locked && !unsound && !live.some(([, s]) => !s.gate);
+    // 3b. stale-gate reminders: read-only on git (the base commit's routing file), printed only.
+    const reminders = step('reminders', () => staleGateReminders({ root, runs, nowMs: ctx.now(), afterHours: ctx.remindAfterHours, ...(ctx.baseSha ? { readBase: (path) => readBaseFile(ctx.exec, root, ctx.baseSha, path) ?? undefined } : {}), warn: (m) => warnings.push(plainText(m)) }));
     // 4. board: the rows that changed.
     const board = [];
     const shown = step('board', () => collectBoard({ forge, config, root, ids, check: null, now: ctx.now(), warnings }));
@@ -610,7 +618,7 @@ export async function pollTick(ctx) {
     }
     return {
         schemaVersion: POLL_JSON_SCHEMA_VERSION, tick: ctx.tick, at, forge: config.kind, repo: config.repo.url,
-        heal, intake, ...(baseSync ? { baseSync } : {}), prs, board, idle, autoStart, rateLimited, errors: errors.map(plainText), warnings: warnings.map(plainText),
+        heal, intake, ...(baseSync ? { baseSync } : {}), prs, ...(reminders && reminders.length > 0 ? { reminders } : {}), board, idle, autoStart, rateLimited, errors: errors.map(plainText), warnings: warnings.map(plainText),
     };
 }
 export function renderTick(t) {
@@ -631,6 +639,8 @@ export function renderTick(t) {
             lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)}: ${p.threads ?? 0} human thread(s)${p.ignored ? ` (${p.ignored} ignored)` : ''}${trust}`);
         }
     }
+    for (const r of t.reminders ?? [])
+        lines.push(`  reminder: ${runLabel(r.run)} has waited ${r.hours} h at ${visibleLine(r.gate)}${r.handles.length ? ` ${r.handles.join(' ')}` : ''}: ${r.reason} (${reminderHint(r.run, r.gate)})`);
     // F33: a run whose PR a human already merged or closed shows the record step, not its stale gate reason (a merge command).
     const done = new Map(t.prs.filter((p) => p.hint).map((p) => [runLabel(p.id), p]));
     for (const b of t.board) {
@@ -680,6 +690,15 @@ export async function runFactoryPoll(o, deps) {
             return DEFAULT_FACTORY_RUN_LIMITS; // the budget gate refuses the start first
         }
     };
+    let teamConfig;
+    try {
+        teamConfig = resolveTeamConfig([layers.trustedUser, layers.base]);
+    }
+    catch (error) {
+        if (error instanceof TeamConfigError)
+            throw new CheckUsageError(error.message);
+        throw error;
+    }
     const { release } = acquirePoller(read.root, new Date(now()).toISOString(), owner);
     let stopping = 0;
     const wake = new AbortController();
@@ -704,6 +723,7 @@ export async function runFactoryPoll(o, deps) {
             signals: (forward) => { forwards.add(forward); return () => { forwards.delete(forward); }; },
         }),
         budget: deps.budget ?? defaultPollBudget(() => layers),
+        remindAfterHours: teamConfig.remindAfterHours,
         owner, now, previous: { board: new Map(), prs: new Map() }, tick: 0,
     };
     let interval = base;
