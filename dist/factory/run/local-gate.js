@@ -414,6 +414,13 @@ export function gateDefinitionSources(gate) {
         // An option before the script can change what node runs (-e, -r, --import, --loader, --env-file): only `--run <script>` has a known definition.
         if (args[0] === '--run' && args[1] !== undefined && !args[1].startsWith('-'))
             return scriptSource('npm', ['run', args[1]], shown);
+        // `node --test [--test-* flags] [paths]` and inline code (-e/--eval/-p/--print) are the command itself, held in trusted config: nothing in the repository defines them.
+        if (args[0] === '--test' && args.slice(1).every((a) => !a.startsWith('-') || a.startsWith('--test-') || a === '--experimental-test-coverage'))
+            return { sources: [] };
+        if (['-e', '--eval', '-p', '--print'].includes(args[0]) && args[1] !== undefined)
+            return { sources: [] };
+        if (/^--(eval|print)=/.test(args[0] ?? ''))
+            return { sources: [] };
         if (at !== 0 && args.length > 0)
             return { sources: [], unresolved: `${shown} passes node the option ${JSON.stringify(args[0])} before its script, so what it runs is not known` };
         if (at < 0)

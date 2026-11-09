@@ -127234,6 +127234,9 @@ function gateDefinitionSources(gate) {
   if (name === "node") {
     const at = args.findIndex((a) => !a.startsWith("-"));
     if (args[0] === "--run" && args[1] !== void 0 && !args[1].startsWith("-")) return scriptSource("npm", ["run", args[1]], shown);
+    if (args[0] === "--test" && args.slice(1).every((a) => !a.startsWith("-") || a.startsWith("--test-") || a === "--experimental-test-coverage")) return { sources: [] };
+    if (["-e", "--eval", "-p", "--print"].includes(args[0]) && args[1] !== void 0) return { sources: [] };
+    if (/^--(eval|print)=/.test(args[0] ?? "")) return { sources: [] };
     if (at !== 0 && args.length > 0) return { sources: [], unresolved: `${shown} passes node the option ${JSON.stringify(args[0])} before its script, so what it runs is not known` };
     if (at < 0) return { sources: [] };
     const target = args[at];
