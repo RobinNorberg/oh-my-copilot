@@ -71,7 +71,7 @@ import { createForge } from '../../forge/index.js';
 import { forgeTerms } from '../../forge/terms.js';
 import { GhCommandError, ghRepoArg, ghRun } from '../../forge/github/gh.js';
 import { adoptPreconditions, assignCodingAgent, codingAgentCloseArgs, codingAgentStatusArgs, parseCodingAgentStatus, } from '../../forge/github/coding-agent.js';
-import { CODING_AGENT_ADOPT_GATE, CODING_AGENT_CONFIRM_READS, CODING_AGENT_FETCH_HEAD_ARGS, CODING_AGENT_GATE, CODING_AGENT_HEAD_MOVED_GATE, CODING_AGENT_REASSIGNED_GATE, CODING_AGENT_SESSION_USAGE, CODING_AGENT_SESSIONS_GATE, CODING_AGENT_TIMEOUT_GATE, CODING_AGENT_UNCONFIRMED_GATE, CODING_AGENT_WAIT_GATE, codingAgentFetchArgs, codingAgentLinkBody, codingAgentLinkCommentArgs, codingAgentRefusal, codingAgentRepoOf, codingAgentSessionsOn, codingAgentTreeArgs, linkEntries, loadCodingAgentChoice, openAgentPrs, PRE_ASSIGN_SINCE, recordCodingAgentSession, CodingAgentSessionsBusyError, codingAgentMergeBaseArgs, isDefiniteAssignRefusal, releaseCodingAgentSession, reserveCodingAgentSession, DEFAULT_CODING_AGENT_CONFIG, } from './coding-agent-lane.js';
+import { CODING_AGENT_ADOPT_GATE, CODING_AGENT_CONFIRM_READS, CODING_AGENT_FETCH_HEAD_ARGS, CODING_AGENT_GATE, CODING_AGENT_HEAD_MOVED_GATE, CODING_AGENT_REASSIGNED_GATE, CODING_AGENT_SESSION_USAGE, CODING_AGENT_SESSIONS_GATE, CODING_AGENT_TIMEOUT_GATE, CODING_AGENT_UNCONFIRMED_GATE, CODING_AGENT_WAIT_GATE, codingAgentFetchArgs, codingAgentLinkBody, codingAgentLinkCommentArgs, codingAgentRefusal, codingAgentRepoOf, codingAgentSessionsOn, codingAgentTreeArgs, linkEntries, loadCodingAgentChoice, openAgentPrs, PRE_ASSIGN_SINCE, recordCodingAgentSession, CodingAgentMirrorUnreadableError, CodingAgentSessionsBusyError, codingAgentMergeBaseArgs, isDefiniteAssignRefusal, releaseCodingAgentSession, reserveCodingAgentSession, DEFAULT_CODING_AGENT_CONFIG, } from './coding-agent-lane.js';
 import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, ghOpenPrs, ghPrHeadState, ghRepoView, githubReviews } from '../../forge/github/reviews.js';
 import { ghDependsOn, ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, githubTracker } from '../../forge/github/tracker.js';
 import { isSatisfied } from '../check/score.js';
@@ -868,6 +868,8 @@ class FactoryEngine {
             catch (error) {
                 if (error instanceof StateTamperedError)
                     return this.onTampered(error);
+                if (error instanceof FactoryBusyError)
+                    throw error;
                 this.progress.emit(phase, 'fail', errText(error), this.fields());
                 if (error instanceof FactoryForgeUnavailableError)
                     return { exitCode: EXIT_FORGE_UNAVAILABLE, phase, state: this.state, message: `unsupported forge: ${errText(error)} (rerun ${this.resume} once fixed)` };
@@ -2759,6 +2761,8 @@ class FactoryEngine {
         catch (error) {
             if (error instanceof CodingAgentSessionsBusyError)
                 throw new FactoryBusyError(`${errText(error)}; nothing was assigned, rerun ${this.resume}`);
+            if (error instanceof CodingAgentMirrorUnreadableError)
+                return this.gate(CODING_AGENT_SESSIONS_GATE, `${oneLine(errText(error), 400)}; nothing was assigned`);
             throw new FactoryStepError(`the coding agent session count could not be reserved: ${errText(error)}; nothing was assigned`);
         }
         if (!reserved.ok) {
@@ -3031,9 +3035,10 @@ class FactoryEngine {
             }
             // Idempotent: a PR someone (or an earlier attempt) already closed counts as closed.
             const res = this.withAgentStep({ ...ctx, link: undefined }, () => this.exec('gh', codingAgentCloseArgs(repo, adopted.pr), { cwd: this.o.root }));
-            if (res.status !== 0 && !/already closed/i.test(res.stderr))
+            const merged = res.status !== 0 && /already merged/i.test(res.stderr);
+            if (res.status !== 0 && !merged && !/already closed/i.test(res.stderr))
                 throw new FactoryStepError(`gh pr close ${adopted.pr} failed (exit ${res.status}): ${res.stderr.trim().split('\n')[0]}`);
-            this.save((x) => ({ ...x, codingAgent: { ...x.codingAgent, closed: true }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `closed the coding agent's pull request #${adopted.pr}; the work continues on #${ownPr}` }] }));
+            this.save((x) => ({ ...x, codingAgent: { ...x.codingAgent, closed: true }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `${merged ? `the coding agent's pull request #${adopted.pr} was already merged by a human, nothing to close` : `closed the coding agent's pull request #${adopted.pr}`}; the work continues on #${ownPr}` }] }));
         }
         catch (error) {
             if (error instanceof StateTamperedError)

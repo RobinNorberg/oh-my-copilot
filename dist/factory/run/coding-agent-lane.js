@@ -68,13 +68,21 @@ export const CODING_AGENT_CONFIRM_READS = 3;
 export const DEFAULT_CODING_AGENT_CONFIG = Object.freeze({ implementer: 'copilot', maxWaitMinutes: 90, maxSessionsPerDay: 5, repos: [] });
 const IMPLEMENTERS = ['copilot', 'coding-agent'];
 const REPO_NAME = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
-function reposOf(value, source) {
+const GITHUB_HOSTS = new Set(['github.com', 'ssh.github.com', 'www.github.com']);
+/** The valid `owner/name` entries; a bad entry (a host or URL, `.git`, `..`) is dropped with a warning naming it. */
+function reposOf(value, source, warnings) {
     if (value === undefined)
         return undefined;
-    if (!Array.isArray(value) || !value.every((r) => typeof r === 'string' && REPO_NAME.test(r))) {
+    if (!Array.isArray(value))
         throw new Error(`${source}: factory.codingAgent.repos must be an array of "owner/name" repository names`);
+    const repos = [];
+    for (const r of value) {
+        if (typeof r === 'string' && REPO_NAME.test(r) && !/\.git$/i.test(r) && !/\/\.+$/.test(r))
+            repos.push(r);
+        else
+            warnings.push(`omg factory run: ignoring factory.codingAgent.repos entry ${JSON.stringify(typeof r === 'string' ? r.slice(0, 120) : r)} in the ${source}; use "owner/name" for a github.com repository (no host, URL or .git)`);
     }
-    return [...value];
+    return repos;
 }
 function block(config, path, source) {
     let at = config;
@@ -120,7 +128,7 @@ export function resolveCodingAgentConfig(trustedUser, project) {
     config.implementer = implementerOf(userRun.implementer, 'user config') ?? config.implementer;
     config.maxWaitMinutes = countOf(userAgent.maxWaitMinutes, 'maxWaitMinutes', 'user config') ?? config.maxWaitMinutes;
     config.maxSessionsPerDay = countOf(userAgent.maxSessionsPerDay, 'maxSessionsPerDay', 'user config') ?? config.maxSessionsPerDay;
-    config.repos = reposOf(userAgent.repos, 'user config') ?? config.repos;
+    config.repos = reposOf(userAgent.repos, 'user config', warnings) ?? config.repos;
     const projRun = block(project, ['factory', 'run'], 'project config');
     const projAgent = block(project, ['factory', 'codingAgent'], 'project config');
     const implementer = implementerOf(projRun.implementer, 'project config');
@@ -162,7 +170,7 @@ export function chooseCodingAgent(trustedUser, readProject, run) {
     const user = resolveCodingAgentConfig(trustedUser, undefined).config;
     const repo = codingAgentRepoOf(run.repoUrl);
     const name = repo ? `${repo.owner}/${repo.name}` : run.repoUrl;
-    if (!repo || !user.repos.some((r) => r.toLowerCase() === name.toLowerCase())) {
+    if (!repo || !GITHUB_HOSTS.has(repo.host.toLowerCase()) || !user.repos.some((r) => r.toLowerCase() === name.toLowerCase())) {
         return { use: false, warning: `omg factory run: coding agent not enabled for ${name}: add it to factory.codingAgent.repos; using a Copilot lane` };
     }
     const { config, warnings } = resolveCodingAgentConfig(trustedUser, readProject());
@@ -365,7 +373,28 @@ export const CODING_AGENT_SESSION_USAGE = Object.freeze({ credits: 0, premiumReq
 const MIRROR_FILE = 'coding-agent-sessions.json';
 /** Mirror entries older than this are dropped on write. */
 const MIRROR_KEEP_MS = 7 * 24 * 60 * 60_000;
-function readMirror(path) {
+/** The session record exists but cannot be parsed: a writer must not treat it as empty or overwrite it. */
+export class CodingAgentMirrorUnreadableError extends Error {
+    path;
+    constructor(path) {
+        super(`the coding-agent session record ${path} is unreadable; fix or remove it, then rerun`);
+        this.path = path;
+        this.name = 'CodingAgentMirrorUnreadableError';
+    }
+}
+/** `strict` (every writer): an existing file that does not parse as a record throws instead of reading as empty. */
+function readMirror(path, strict = false) {
+    if (strict && existsSync(path)) {
+        let parsed;
+        try {
+            parsed = JSON.parse(readFileSync(path, 'utf8'));
+        }
+        catch {
+            throw new CodingAgentMirrorUnreadableError(path);
+        }
+        if (!isObj(parsed))
+            throw new CodingAgentMirrorUnreadableError(path);
+    }
     try {
         const raw = JSON.parse(readFileSync(path, 'utf8'));
         const sessions = {};
@@ -403,7 +432,7 @@ export function recordCodingAgentSession(s) {
         ensureDirSync(s.ledgerDir);
         const path = join(s.ledgerDir, MIRROR_FILE);
         withFileLockSync(lockPathFor(path), () => {
-            const m = readMirror(path);
+            const m = readMirror(path, true);
             const now = Date.parse(s.at);
             for (const [k, v] of Object.entries(m.sessions))
                 if (now - Date.parse(v.at) > MIRROR_KEEP_MS)
@@ -465,10 +494,10 @@ function underMirrorLock(ledgerDir, timeoutMs, fn) {
 export function reserveCodingAgentSession(s, max, timeoutMs = 5_000) {
     const day = s.at.slice(0, 10);
     return underMirrorLock(s.ledgerDir, timeoutMs, (path) => {
+        const m = readMirror(path, true);
         const used = codingAgentSessionsOn(s.root, s.ledgerDir, day);
         if (used >= max)
             return { ok: false, used };
-        const m = readMirror(path);
         m.sessions[`${s.repo}#${s.laneId}`] = { at: s.at, run: s.run, by: s.by };
         atomicWriteFileSync(path, JSON.stringify(m, null, 2));
         return { ok: true, used };
@@ -477,7 +506,7 @@ export function reserveCodingAgentSession(s, max, timeoutMs = 5_000) {
 /** Drop the provisional entry after a definite refusal of the assign (no session started), under the same lock. */
 export function releaseCodingAgentSession(s, timeoutMs = 5_000) {
     underMirrorLock(s.ledgerDir, timeoutMs, (path) => {
-        const m = readMirror(path);
+        const m = readMirror(path, true);
         if (!(`${s.repo}#${s.laneId}` in m.sessions))
             return;
         delete m.sessions[`${s.repo}#${s.laneId}`];

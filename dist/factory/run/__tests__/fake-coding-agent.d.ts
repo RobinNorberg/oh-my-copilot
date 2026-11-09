@@ -51,6 +51,8 @@ export declare class FakeAgentGithub {
     assignFailure: ExecResult;
     /** The next `gh pr close` calls that fail (a network error), before closes succeed. */
     closeFailures: number;
+    /** gh's answer when the PR is no longer open (a human merged or closed it): the close fails with this stderr. */
+    closeRefusal: string | undefined;
     readonly assigns: string[][];
     readonly closes: string[][];
     readonly comments: Array<{

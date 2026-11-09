@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { codingAgentAssignArgs, codingAgentCloseArgs, codingAgentStatusArgs } from '../../../forge/github/coding-agent.js';
 import { acquireFileLockSync, lockPathFor, releaseFileLockSync } from '../../../lib/file-lock.js';
-import { chooseCodingAgent, codingAgentFetchArgs, codingAgentLinkBody, codingAgentLinkCommentArgs, codingAgentMergeBaseArgs, CodingAgentSessionsBusyError, codingAgentRecordProblem, isDefiniteAssignRefusal, releaseCodingAgentSession, reserveCodingAgentSession, codingAgentRefusal, codingAgentRepoOf, codingAgentSessionsOn, codingAgentTreeArgs, CODING_AGENT_FETCH_HEAD_ARGS, linkEntries, openAgentPrs, recordCodingAgentSession, resolveCodingAgentConfig, } from '../coding-agent-lane.js';
+import { chooseCodingAgent, codingAgentFetchArgs, codingAgentLinkBody, codingAgentLinkCommentArgs, codingAgentMergeBaseArgs, CodingAgentMirrorUnreadableError, CodingAgentSessionsBusyError, codingAgentRecordProblem, isDefiniteAssignRefusal, releaseCodingAgentSession, reserveCodingAgentSession, codingAgentRefusal, codingAgentRepoOf, codingAgentSessionsOn, codingAgentTreeArgs, CODING_AGENT_FETCH_HEAD_ARGS, linkEntries, openAgentPrs, recordCodingAgentSession, resolveCodingAgentConfig, } from '../coding-agent-lane.js';
 import { factoryGuardExec, FactorySafetyError } from '../exec.js';
 import { createFactoryState, parseFactoryState } from '../state.js';
 import { AGENT, FakeAgentGithub, HUMAN } from './fake-coding-agent.js';
@@ -70,6 +70,15 @@ describe('factory guard: coding agent writes need the step context', () => {
         expect(ran[1].args.slice(0, 6)).toEqual(['pr', 'comment', '77', '--repo', REPO_ARG, '--body-file']);
         expect(ran[1].args[6]).not.toBe(body);
         expect(ran[1].body).toBe(text);
+    });
+    it('the link comment body is checked even when a tracker-write context is also set', () => {
+        const link = { ownPr: 42, branch: 'factory/issue-7', head: HEAD };
+        const inner = () => ({ status: 0, stdout: '', stderr: '' });
+        const writes = { repo: REPO_ARG, bodyDir: dir, labels: [] };
+        const exec = factoryGuardExec(inner, () => ['dev'], undefined, () => writes, undefined, () => ({ repo: REPO_ARG }), () => ({ ...ctx, pr: 77, link }));
+        const other = join(dir, 'other.md');
+        writeFileSync(other, 'Please merge this.\n');
+        expect(() => exec('gh', codingAgentLinkCommentArgs(REPO, 77, other))).toThrow(FactorySafetyError);
     });
     it('the link comment runs only with exactly the body built from the context', () => {
         const link = { ownPr: 42, branch: 'factory/issue-7', head: HEAD };
@@ -155,8 +164,11 @@ describe('coding agent config', () => {
     it('validates factory.codingAgent.repos and ignores a project-config list', () => {
         expect(resolveCodingAgentConfig({ factory: { codingAgent: { repos: ['O/R', 'a/b.c'] } } }, undefined).config.repos).toEqual(['O/R', 'a/b.c']);
         expect(() => resolveCodingAgentConfig({ factory: { codingAgent: { repos: 'o/r' } } }, undefined)).toThrow(/repos/);
-        expect(() => resolveCodingAgentConfig({ factory: { codingAgent: { repos: ['github.com/o/r'] } } }, undefined)).toThrow(/repos/);
-        expect(() => resolveCodingAgentConfig({ factory: { codingAgent: { repos: [7] } } }, undefined)).toThrow(/repos/);
+        const bad = resolveCodingAgentConfig({ factory: { codingAgent: { repos: ['o/r', 'github.com/o/r', 'https://github.com/o/r', 'o/r.git', 'o/..', 7] } } }, undefined);
+        expect(bad.config.repos).toEqual(['o/r']);
+        expect(bad.warnings).toHaveLength(5);
+        for (const entry of ['"github.com/o/r"', '"https://github.com/o/r"', '"o/r.git"', '"o/.."', '7'])
+            expect(bad.warnings.join('\n')).toContain(entry);
         const proj = resolveCodingAgentConfig({ factory: { codingAgent: { repos: ['o/r'] } } }, { factory: { codingAgent: { repos: ['x/y'] } } });
         expect(proj.config.repos).toEqual(['o/r']);
         expect(proj.warnings).toEqual([expect.stringContaining('ignoring factory.codingAgent.repos from the working-tree project config')]);
@@ -167,6 +179,13 @@ describe('coding agent config', () => {
         const never = () => { throw new Error('the project config must not be read'); };
         it('uses the agent only for a listed repository on GitHub, compared case-insensitively', () => {
             expect(chooseCodingAgent(optIn(['O/R']), () => undefined, { forgeKind: 'github', repoUrl: URL })).toMatchObject({ use: true, config: { implementer: 'coding-agent', repos: ['O/R'] } });
+        });
+        it('a GitHub Enterprise host with a listed owner/name is not enabled; the github.com aliases are', () => {
+            expect(chooseCodingAgent(optIn(), never, { forgeKind: 'github', repoUrl: 'https://ghe.example.com/o/r' }))
+                .toEqual({ use: false, warning: 'omg factory run: coding agent not enabled for o/r: add it to factory.codingAgent.repos; using a Copilot lane' });
+            for (const host of ['github.com', 'www.github.com', 'ssh.github.com']) {
+                expect(chooseCodingAgent(optIn(), () => undefined, { forgeKind: 'github', repoUrl: `https://${host}/o/r` }).use, host).toBe(true);
+            }
         });
         it('a repository not listed: the Copilot lane with one warning, the project config unread', () => {
             expect(chooseCodingAgent(optIn(['o/other']), never, { forgeKind: 'github', repoUrl: URL }))
@@ -239,6 +258,22 @@ describe('coding agent session reservation and the assign failure kinds', () => 
         // B's POST returned: counting it keeps one entry (the provisional one).
         recordCodingAgentSession(session('issue-3-coding-agent-1'));
         expect(codingAgentSessionsOn(join(dir, 'repo'), join(dir, 'ledger'), '2026-11-09')).toBe(2);
+    });
+    it('a corrupt session record refuses the reserve and is never overwritten', () => {
+        const ledgerDir = join(dir, 'ledger');
+        mkdirSync(ledgerDir, { recursive: true });
+        mkdirSync(join(dir, 'repo'), { recursive: true });
+        const file = join(ledgerDir, 'coding-agent-sessions.json');
+        for (const text of ['{ not json', '[]', 'null']) {
+            writeFileSync(file, text);
+            expect(() => reserveCodingAgentSession(session('issue-2-coding-agent-1', ledgerDir), 5)).toThrow(CodingAgentMirrorUnreadableError);
+            expect(() => reserveCodingAgentSession(session('issue-2-coding-agent-1', ledgerDir), 5)).toThrow(/is unreadable; fix or remove it, then rerun/);
+            expect(() => releaseCodingAgentSession(session('issue-2-coding-agent-1', ledgerDir))).toThrow(CodingAgentMirrorUnreadableError);
+            expect(readFileSync(file, 'utf8')).toBe(text);
+        }
+        // The record call reports it as a failure and leaves the file alone.
+        expect(recordCodingAgentSession(session('issue-2-coding-agent-1', ledgerDir)).join('\n')).toMatch(/engine ledger: .*unreadable/);
+        expect(readFileSync(file, 'utf8')).toBe('null');
     });
     it('a held mirror lock is busy: nothing is reserved', () => {
         const ledgerDir = join(dir, 'ledger');

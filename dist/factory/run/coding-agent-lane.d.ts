@@ -218,6 +218,11 @@ export declare const CODING_AGENT_SESSION_USAGE: Readonly<{
     premiumRequests: 1;
     source: "estimated";
 }>;
+/** The session record exists but cannot be parsed: a writer must not treat it as empty or overwrite it. */
+export declare class CodingAgentMirrorUnreadableError extends Error {
+    readonly path: string;
+    constructor(path: string);
+}
 export interface CodingAgentSession {
     /** The repository root (the budget ledger lives under its state root). */
     root: string;

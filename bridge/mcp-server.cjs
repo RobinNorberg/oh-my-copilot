@@ -42093,12 +42093,15 @@ var init_coding_agent = __esm({
 });
 
 // src/factory/run/coding-agent-lane.ts
-function reposOf(value, source) {
+function reposOf(value, source, warnings) {
   if (value === void 0) return void 0;
-  if (!Array.isArray(value) || !value.every((r) => typeof r === "string" && REPO_NAME.test(r))) {
-    throw new Error(`${source}: factory.codingAgent.repos must be an array of "owner/name" repository names`);
+  if (!Array.isArray(value)) throw new Error(`${source}: factory.codingAgent.repos must be an array of "owner/name" repository names`);
+  const repos = [];
+  for (const r of value) {
+    if (typeof r === "string" && REPO_NAME.test(r) && !/\.git$/i.test(r) && !/\/\.+$/.test(r)) repos.push(r);
+    else warnings.push(`omg factory run: ignoring factory.codingAgent.repos entry ${JSON.stringify(typeof r === "string" ? r.slice(0, 120) : r)} in the ${source}; use "owner/name" for a github.com repository (no host, URL or .git)`);
   }
-  return [...value];
+  return repos;
 }
 function block(config2, path15, source) {
   let at = config2;
@@ -42130,7 +42133,7 @@ function resolveCodingAgentConfig(trustedUser, project) {
   config2.implementer = implementerOf(userRun.implementer, "user config") ?? config2.implementer;
   config2.maxWaitMinutes = countOf(userAgent.maxWaitMinutes, "maxWaitMinutes", "user config") ?? config2.maxWaitMinutes;
   config2.maxSessionsPerDay = countOf(userAgent.maxSessionsPerDay, "maxSessionsPerDay", "user config") ?? config2.maxSessionsPerDay;
-  config2.repos = reposOf(userAgent.repos, "user config") ?? config2.repos;
+  config2.repos = reposOf(userAgent.repos, "user config", warnings) ?? config2.repos;
   const projRun = block(project, ["factory", "run"], "project config");
   const projAgent = block(project, ["factory", "codingAgent"], "project config");
   const implementer = implementerOf(projRun.implementer, "project config");
@@ -42154,7 +42157,7 @@ function chooseCodingAgent(trustedUser, readProject, run2) {
   const user = resolveCodingAgentConfig(trustedUser, void 0).config;
   const repo = codingAgentRepoOf(run2.repoUrl);
   const name = repo ? `${repo.owner}/${repo.name}` : run2.repoUrl;
-  if (!repo || !user.repos.some((r) => r.toLowerCase() === name.toLowerCase())) {
+  if (!repo || !GITHUB_HOSTS.has(repo.host.toLowerCase()) || !user.repos.some((r) => r.toLowerCase() === name.toLowerCase())) {
     return { use: false, warning: `omg factory run: coding agent not enabled for ${name}: add it to factory.codingAgent.repos; using a Copilot lane` };
   }
   const { config: config2, warnings } = resolveCodingAgentConfig(trustedUser, readProject());
@@ -42275,7 +42278,16 @@ function linkEntries(baseTree, headTree) {
   };
   return { gitlinks: added("160000"), symlinks: added("120000") };
 }
-function readMirror(path15) {
+function readMirror(path15, strict = false) {
+  if (strict && (0, import_fs67.existsSync)(path15)) {
+    let parsed;
+    try {
+      parsed = JSON.parse((0, import_fs67.readFileSync)(path15, "utf8"));
+    } catch {
+      throw new CodingAgentMirrorUnreadableError(path15);
+    }
+    if (!isObj2(parsed)) throw new CodingAgentMirrorUnreadableError(path15);
+  }
   try {
     const raw = JSON.parse((0, import_fs67.readFileSync)(path15, "utf8"));
     const sessions = {};
@@ -42305,7 +42317,7 @@ function recordCodingAgentSession(s) {
     ensureDirSync(s.ledgerDir);
     const path15 = (0, import_path84.join)(s.ledgerDir, MIRROR_FILE);
     withFileLockSync(lockPathFor(path15), () => {
-      const m = readMirror(path15);
+      const m = readMirror(path15, true);
       const now = Date.parse(s.at);
       for (const [k, v] of Object.entries(m.sessions)) if (now - Date.parse(v.at) > MIRROR_KEEP_MS) delete m.sessions[k];
       m.sessions[`${s.repo}#${s.laneId}`] ??= { at: s.at, run: s.run };
@@ -42340,9 +42352,9 @@ function underMirrorLock(ledgerDir, timeoutMs, fn) {
 function reserveCodingAgentSession(s, max, timeoutMs = 5e3) {
   const day = s.at.slice(0, 10);
   return underMirrorLock(s.ledgerDir, timeoutMs, (path15) => {
+    const m = readMirror(path15, true);
     const used = codingAgentSessionsOn(s.root, s.ledgerDir, day);
     if (used >= max) return { ok: false, used };
-    const m = readMirror(path15);
     m.sessions[`${s.repo}#${s.laneId}`] = { at: s.at, run: s.run, by: s.by };
     atomicWriteFileSync(path15, JSON.stringify(m, null, 2));
     return { ok: true, used };
@@ -42350,7 +42362,7 @@ function reserveCodingAgentSession(s, max, timeoutMs = 5e3) {
 }
 function releaseCodingAgentSession(s, timeoutMs = 5e3) {
   underMirrorLock(s.ledgerDir, timeoutMs, (path15) => {
-    const m = readMirror(path15);
+    const m = readMirror(path15, true);
     if (!(`${s.repo}#${s.laneId}` in m.sessions)) return;
     delete m.sessions[`${s.repo}#${s.laneId}`];
     atomicWriteFileSync(path15, JSON.stringify(m, null, 2));
@@ -42359,7 +42371,7 @@ function releaseCodingAgentSession(s, timeoutMs = 5e3) {
 function isDefiniteAssignRefusal(message) {
   return /failed \(exit [1-9]\d*\): .*\bHTTP 4\d\d\b/.test(message);
 }
-var import_fs67, import_path84, CODING_AGENT_WAIT_GATE, CODING_AGENT_GATE, CODING_AGENT_UNCONFIRMED_GATE, CODING_AGENT_SESSIONS_GATE, CODING_AGENT_REASSIGNED_GATE, CODING_AGENT_TIMEOUT_GATE, CODING_AGENT_ADOPT_GATE, CODING_AGENT_HEAD_MOVED_GATE, PRE_ASSIGN_SINCE, CODING_AGENT_CONFIRM_READS, DEFAULT_CODING_AGENT_CONFIG, IMPLEMENTERS, REPO_NAME, LANE_ID, ISO2, ISO_SECONDS2, HEX403, isIso, KEYS, isObj2, isAgent2, PR_NUMBER, CODING_AGENT_FETCH_HEAD_ARGS, CODING_AGENT_LINK_BODY_ARG, CODING_AGENT_SESSION_USAGE, MIRROR_FILE, MIRROR_KEEP_MS, CodingAgentSessionsBusyError;
+var import_fs67, import_path84, CODING_AGENT_WAIT_GATE, CODING_AGENT_GATE, CODING_AGENT_UNCONFIRMED_GATE, CODING_AGENT_SESSIONS_GATE, CODING_AGENT_REASSIGNED_GATE, CODING_AGENT_TIMEOUT_GATE, CODING_AGENT_ADOPT_GATE, CODING_AGENT_HEAD_MOVED_GATE, PRE_ASSIGN_SINCE, CODING_AGENT_CONFIRM_READS, DEFAULT_CODING_AGENT_CONFIG, IMPLEMENTERS, REPO_NAME, GITHUB_HOSTS, LANE_ID, ISO2, ISO_SECONDS2, HEX403, isIso, KEYS, isObj2, isAgent2, PR_NUMBER, CODING_AGENT_FETCH_HEAD_ARGS, CODING_AGENT_LINK_BODY_ARG, CODING_AGENT_SESSION_USAGE, MIRROR_FILE, MIRROR_KEEP_MS, CodingAgentMirrorUnreadableError, CodingAgentSessionsBusyError;
 var init_coding_agent_lane = __esm({
   "src/factory/run/coding-agent-lane.ts"() {
     "use strict";
@@ -42385,6 +42397,7 @@ var init_coding_agent_lane = __esm({
     DEFAULT_CODING_AGENT_CONFIG = Object.freeze({ implementer: "copilot", maxWaitMinutes: 90, maxSessionsPerDay: 5, repos: [] });
     IMPLEMENTERS = ["copilot", "coding-agent"];
     REPO_NAME = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
+    GITHUB_HOSTS = /* @__PURE__ */ new Set(["github.com", "ssh.github.com", "www.github.com"]);
     LANE_ID = /^issue-[1-9]\d{0,9}-coding-agent-[1-9]\d{0,5}$/;
     ISO2 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
     ISO_SECONDS2 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
@@ -42399,6 +42412,13 @@ var init_coding_agent_lane = __esm({
     CODING_AGENT_SESSION_USAGE = Object.freeze({ credits: 0, premiumRequests: 1, source: "estimated" });
     MIRROR_FILE = "coding-agent-sessions.json";
     MIRROR_KEEP_MS = 7 * 24 * 60 * 6e4;
+    CodingAgentMirrorUnreadableError = class extends Error {
+      constructor(path15) {
+        super(`the coding-agent session record ${path15} is unreadable; fix or remove it, then rerun`);
+        this.path = path15;
+        this.name = "CodingAgentMirrorUnreadableError";
+      }
+    };
     CodingAgentSessionsBusyError = class extends Error {
       constructor(path15) {
         super(`the coding agent session count (${path15}) is locked by another engine`);
@@ -43231,10 +43251,11 @@ function factoryGuardExec(exec, extraProtected = () => [], ado = () => void 0, w
     const step = agent();
     assertFactoryCommand(cmd, args, extraProtected(), opts?.env, void 0, ctx, local(), github(), step);
     const isGh = cmd.replace(/\\/g, "/").split("/").pop().toLowerCase().replace(/\.exe$/, "") === "gh";
-    const at = ctx && isGh ? trackerBodyFileArg(args) : isGh && isCodingAgentLinkCommentArgs(args, step) ? CODING_AGENT_LINK_BODY_ARG : void 0;
+    const linkShape = isGh && isCodingAgentLinkCommentArgs(args, step);
+    const at = linkShape ? CODING_AGENT_LINK_BODY_ARG : ctx && isGh ? trackerBodyFileArg(args) : void 0;
     if (at === void 0) return exec(cmd, args, opts);
     const body = readTrackerBody(args[at], (reason) => new FactorySafetyError(`omg factory run refuses \`gh ${args.join(" ")}\`: ${reason}`));
-    const linkProblem = !(ctx && isGh) ? codingAgentLinkBodyProblem(body.toString("utf8"), step) : null;
+    const linkProblem = linkShape ? codingAgentLinkBodyProblem(body.toString("utf8"), step) : null;
     if (linkProblem) throw new FactorySafetyError(`omg factory run refuses \`gh ${args.join(" ")}\`: ${linkProblem}`);
     const dir = (0, import_fs71.mkdtempSync)((0, import_path87.join)((0, import_os15.tmpdir)(), "omg-gh-body-"));
     try {
@@ -51767,6 +51788,7 @@ var init_engine = __esm({
             if (!after.gate && after.phase !== phase && !TERMINAL_FACTORY_PHASES.includes(after.phase)) this.progress.emit(phase, "ok", `-> ${after.phase}`, this.fields());
           } catch (error2) {
             if (error2 instanceof StateTamperedError) return this.onTampered(error2);
+            if (error2 instanceof FactoryBusyError) throw error2;
             this.progress.emit(phase, "fail", errText5(error2), this.fields());
             if (error2 instanceof FactoryForgeUnavailableError) return { exitCode: EXIT_FORGE_UNAVAILABLE, phase, state: this.state, message: `unsupported forge: ${errText5(error2)} (rerun ${this.resume} once fixed)` };
             return { exitCode: 1, phase, state: this.state, message: `factory run step ${phase} failed: ${errText5(error2)} (rerun ${this.resume} to resume)` };
@@ -53454,6 +53476,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           reserved = reserveCodingAgentSession({ ...session, by }, cfg.maxSessionsPerDay);
         } catch (error2) {
           if (error2 instanceof CodingAgentSessionsBusyError) throw new FactoryBusyError(`${errText5(error2)}; nothing was assigned, rerun ${this.resume}`);
+          if (error2 instanceof CodingAgentMirrorUnreadableError) return this.gate(CODING_AGENT_SESSIONS_GATE, `${oneLine(errText5(error2), 400)}; nothing was assigned`);
           throw new FactoryStepError(`the coding agent session count could not be reserved: ${errText5(error2)}; nothing was assigned`);
         }
         if (!reserved.ok) {
@@ -53688,8 +53711,9 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
             this.save((x) => ({ ...x, codingAgent: { ...x.codingAgent, linked: true } }));
           }
           const res = this.withAgentStep({ ...ctx, link: void 0 }, () => this.exec("gh", codingAgentCloseArgs(repo, adopted.pr), { cwd: this.o.root }));
-          if (res.status !== 0 && !/already closed/i.test(res.stderr)) throw new FactoryStepError(`gh pr close ${adopted.pr} failed (exit ${res.status}): ${res.stderr.trim().split("\n")[0]}`);
-          this.save((x) => ({ ...x, codingAgent: { ...x.codingAgent, closed: true }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `closed the coding agent's pull request #${adopted.pr}; the work continues on #${ownPr}` }] }));
+          const merged = res.status !== 0 && /already merged/i.test(res.stderr);
+          if (res.status !== 0 && !merged && !/already closed/i.test(res.stderr)) throw new FactoryStepError(`gh pr close ${adopted.pr} failed (exit ${res.status}): ${res.stderr.trim().split("\n")[0]}`);
+          this.save((x) => ({ ...x, codingAgent: { ...x.codingAgent, closed: true }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `${merged ? `the coding agent's pull request #${adopted.pr} was already merged by a human, nothing to close` : `closed the coding agent's pull request #${adopted.pr}`}; the work continues on #${ownPr}` }] }));
         } catch (error2) {
           if (error2 instanceof StateTamperedError) throw error2;
           this.o.warn?.(`omg factory run: could not close the coding agent's pull request #${adopted.pr}: ${errText5(error2)}`);
