@@ -64,6 +64,7 @@ import { lockPathFor, withFileLockSync } from '../lib/file-lock.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { ADO_RATE_LIMITED } from '../forge/ado/checks.js';
 import { GITHUB_RATE_LIMITED } from '../forge/github/graphql.js';
+import { readBaseFile } from '../ship/config.js';
 import { ShipSafetyError } from '../ship/exec.js';
 import { collectBoard, readRuns } from './board/collect.js';
 import { backlogLine, runLine } from './board/render.js';
@@ -76,7 +77,7 @@ import { FactoryForgeUnavailableError } from './run/forge-roots.js';
 import { visibleLine } from '../forge/review-feedback.js';
 import { resolveTeamConfig, TeamConfigError } from './team/context.js';
 import { staleGateReminders } from './team/reminders.js';
-import { acquireFactoryRepoOwner, defaultOwnerDeps, factoryRepoOwnerPath, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, } from './run/state.js';
+import { acquireFactoryRepoOwner, defaultOwnerDeps, EXIT_BUSY, factoryRepoOwnerPath, ownerHolding, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, } from './run/state.js';
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
 export const POLL_JSON_SCHEMA_VERSION = 1;
 export const POLL_DEFAULT_INTERVAL_MS = 5 * 60_000;
@@ -191,17 +192,23 @@ function audit(root, record, at) {
         // best-effort audit trail (as the listener's)
     }
 }
-/** Whether an engine holds the repository (factoryRepoOwnerPath), as acquireFactoryRepoOwner would see it. */
+/** Whether an engine holds the repository (factoryRepoOwnerPath), as acquireFactoryRepoOwner would see it (start identity included; an unreadable file is held). */
 function engineBusy(root, me) {
-    const path = factoryRepoOwnerPath(root);
-    if (!existsSync(path))
-        return false;
+    return ownerHolding(factoryRepoOwnerPath(root), me) !== null;
+}
+/**
+ * The checkout's engine lock for a tick step that fetches or moves refs (the
+ * heal tick, the local base sync): a git fetch under a live engine would
+ * read as lane tampering to it. A string: the step is skipped this tick (an
+ * engine runs). Released before the auto-start, whose child takes the lock
+ * itself, so the two never wait on each other.
+ */
+function holdForRefs(root, at, me) {
     try {
-        return heldBy(JSON.parse(readFileSync(path, 'utf8')), me);
+        return acquireFactoryRepoOwner(root, 'scan', at, me);
     }
-    catch {
-        // An unreadable owner file is never taken for a free repository.
-        return true;
+    catch (error) {
+        return `skipped: engine busy (${message(error)})`;
     }
 }
 /**
@@ -431,16 +438,24 @@ export async function pollTick(ctx) {
     else if (!forge.capabilities.heal)
         heal = { ran: false, reason: forge.kind === 'azure-devops' ? HEAL_PIPELINE_MISSING : 'the forge has no heal capability' };
     else {
-        try {
-            const r = ctx.healScan({ root, base: ctx.base, kind: forge.kind, forge: config, now: new Date(ctx.now()), warn: (m) => warnings.push(plainText(m)) });
-            heal = { ran: true, entries: r.entries.length, recorded: r.entries.filter((e) => e.recorded).length, queued: r.queued };
-        }
-        catch (error) {
-            if (error instanceof ShipSafetyError)
-                throw error;
-            heal = { ran: false, reason: message(error) };
-            if (!(error instanceof HealRunRefused))
-                errors.push(`heal: ${message(error)}`);
+        const held = holdForRefs(root, at, ctx.owner);
+        if (typeof held === 'string')
+            heal = { ran: false, reason: held };
+        else {
+            try {
+                const r = ctx.healScan({ root, base: ctx.base, kind: forge.kind, forge: config, now: new Date(ctx.now()), warn: (m) => warnings.push(plainText(m)) });
+                heal = { ran: true, entries: r.entries.length, recorded: r.entries.filter((e) => e.recorded).length, queued: r.queued };
+            }
+            catch (error) {
+                if (error instanceof ShipSafetyError)
+                    throw error;
+                heal = { ran: false, reason: message(error) };
+                if (!(error instanceof HealRunRefused))
+                    errors.push(`heal: ${message(error)}`);
+            }
+            finally {
+                held.release();
+            }
         }
     }
     // 2. intake
@@ -482,8 +497,19 @@ export async function pollTick(ctx) {
         if (!ctx.localBaseSync)
             baseSync = { ran: false, reason: 'no base sync wired; omg factory run syncs the mirror base' };
         else {
-            const synced = step('base sync', ctx.localBaseSync);
-            baseSync = synced === undefined ? { ran: false, reason: 'the base sync failed' } : { ran: true, message: plainText(synced) };
+            const held = holdForRefs(root, at, ctx.owner);
+            if (typeof held === 'string')
+                baseSync = { ran: false, reason: held };
+            else {
+                let synced;
+                try {
+                    synced = step('base sync', ctx.localBaseSync);
+                }
+                finally {
+                    held.release();
+                }
+                baseSync = synced === undefined ? { ran: false, reason: 'the base sync failed' } : { ran: true, message: plainText(synced) };
+            }
         }
     }
     // 3. PRs (and the idle seam): the runs in flight.
@@ -538,7 +564,7 @@ export async function pollTick(ctx) {
     const unsound = broken.size > 0 || [...runs.values()].some((s) => !verifyFactoryIntegrity(s));
     const idle = !locked && !unsound && !live.some(([, s]) => !s.gate);
     // 3b. stale-gate reminders: read-only on git (the base commit's routing file), printed only.
-    const reminders = step('reminders', () => staleGateReminders({ root, runs, nowMs: ctx.now(), afterHours: ctx.remindAfterHours, ...(ctx.baseSha ? { readBase: (path) => { const r = ctx.exec('git', ['show', `${ctx.baseSha}:${path}`], { cwd: root }); return r.status === 0 ? r.stdout : undefined; } } : {}), warn: (m) => warnings.push(plainText(m)) }));
+    const reminders = step('reminders', () => staleGateReminders({ root, runs, nowMs: ctx.now(), afterHours: ctx.remindAfterHours, ...(ctx.baseSha ? { readBase: (path) => readBaseFile(ctx.exec, root, ctx.baseSha, path) ?? undefined } : {}), warn: (m) => warnings.push(plainText(m)) }));
     // 4. board: the rows that changed.
     const board = [];
     const shown = step('board', () => collectBoard({ forge, config, root, ids, check: null, now: ctx.now(), warnings }));
@@ -611,7 +637,7 @@ export function renderTick(t) {
         }
     }
     for (const r of t.reminders ?? [])
-        lines.push(`  reminder: ${runLabel(r.run)} has waited ${r.hours} h at ${r.gate}${r.handles.length ? ` ${r.handles.join(' ')}` : ''}: ${r.reason} (${resumeHint(r.run)})`);
+        lines.push(`  reminder: ${runLabel(r.run)} has waited ${r.hours} h at ${visibleLine(r.gate)}${r.handles.length ? ` ${r.handles.join(' ')}` : ''}: ${r.reason} (${resumeHint(r.run)})`);
     // F33: a run whose PR a human already merged or closed shows the record step, not its stale gate reason (a merge command).
     const done = new Map(t.prs.filter((p) => p.hint).map((p) => [runLabel(p.id), p]));
     for (const b of t.board) {
@@ -622,7 +648,8 @@ export function renderTick(t) {
     }
     if (t.autoStart.started) {
         const a = t.autoStart;
-        const took = !a.parsed ? 'outcome unreadable' : a.next !== null ? `took #${a.next}` : a.exitCode === 0 ? 'found nothing runnable' : 'took no item';
+        const took = a.exitCode === EXIT_BUSY ? 'was busy (another engine holds this checkout or the item; retried next tick)'
+            : !a.parsed ? 'outcome unreadable' : a.next !== null ? `took #${a.next}` : a.exitCode === 0 ? 'found nothing runnable' : 'took no item';
         lines.push(`  auto-start: omg factory run --next ${took}, exit ${a.exitCode}: ${a.message}`);
     }
     return lines.join('\n');

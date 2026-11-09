@@ -37,7 +37,9 @@ import type { LoadedFactoryRunLimits } from '../run/budget.js';
 import type { FactoryForgeInput, FactoryRunOutcome } from '../run/engine.js';
 import { factoryForgeOptions } from '../run/forge-roots.js';
 import type { GateConfigLoader } from '../run/prepare.js';
-import { factoryCancelRequested, healRunKey, readFactoryState, requestFactoryCancel } from '../run/state.js';
+import {
+  acquireFactoryRepoOwner, EXIT_BUSY, FactoryBusyError, factoryCancelRequested, healRunKey, readFactoryState, refuseWhileEngineRuns, requestFactoryCancel, type FactoryRunKey, type HeldOwner,
+} from '../run/state.js';
 import { knownFlakyProposal, renderKnownFlakyProposal, runHealEngine, type HealEngineDeps } from './implement.js';
 import { closeHeal, HealRunRefused, EXIT_HEAL_REFUSED, readHealScanRecord, runHeal, verifyHealSeal, writeHealScanRecord, type HealRunDeps } from './run.js';
 
@@ -422,9 +424,12 @@ async function guarded(json: boolean, fn: () => number | Promise<number>): Promi
     process.exitCode = await fn();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (json) console.log(JSON.stringify({ ok: false, error: message }, null, 2));
+    // Another engine holds this checkout or the heal run (or its claim): busy, exit 6, as omg factory run.
+    const busy = error instanceof FactoryBusyError;
+    if (json) console.log(JSON.stringify({ ok: false, error: message, ...(busy ? { busy: true } : {}) }, null, 2));
+    else if (busy) console.error(chalk.yellow(`busy: ${termSafe(message)}`));
     else console.error(chalk.red(`Error: ${message}`));
-    process.exitCode = error instanceof HealUsageError ? 2 : error instanceof HealRunRefused ? EXIT_HEAL_REFUSED : 1;
+    process.exitCode = error instanceof HealUsageError ? 2 : error instanceof HealRunRefused ? EXIT_HEAL_REFUSED : busy ? EXIT_BUSY : 1;
   }
 }
 
@@ -469,10 +474,23 @@ export function adoHealFor(config: ResolvedForgeConfig, resolveAz: () => AzEntry
   return adoHeal(config, resolveAz, root);
 }
 
-function healRoot(deps: HealDeps): { root: string; ado?: AdoHeal } {
+/**
+ * The checkout and its heal wiring. `lock`: a step that fetches, adds a lane
+ * worktree or starts the engine takes this checkout's engine lock first,
+ * before the Azure DevOps config loader (it fetches origin/<base>): busy
+ * (FactoryBusyError, exit 6) touches nothing. The caller releases `held` in
+ * finally and hands it to the engine (repoOwner); `scan` for heal scan.
+ */
+function healRoot(deps: HealDeps, lock?: FactoryRunKey | 'scan'): { root: string; ado?: AdoHeal; held?: HeldOwner } {
   const root = checkoutRoot(deps);
-  const ado = healForge(deps, root);
-  return ado ? { root, ado } : { root };
+  const held = lock === undefined ? undefined : acquireFactoryRepoOwner(root, lock, deps.now().toISOString());
+  try {
+    const ado = healForge(deps, root);
+    return { root, ...(ado ? { ado } : {}), ...(held ? { held } : {}) };
+  } catch (error) {
+    held?.release();
+    throw error;
+  }
 }
 
 /** `omg factory heal scan|status|run` (experimental; no GitHub writes). */
@@ -487,10 +505,16 @@ export function healCommand(deps: HealDeps): Command {
     .option('--json', 'JSON output')
     .action((o: { dryRun?: boolean; json?: boolean }) =>
       guarded(Boolean(o.json), () => {
-        const { root, ado } = healRoot(deps);
-        const { config, warnings } = deps.config(root);
-        for (const w of warnings) console.error(chalk.yellow(w));
-        const result = runHealScan({ exec: deps.exec, root, base: deps.base(root), config, now: deps.now(), dryRun: Boolean(o.dryRun), warn: (m) => console.error(chalk.yellow(m)), ledgerDir: deps.ledgerDir, ...ciDeps(deps, ado) });
+        // The engine lock before any fetch, dry run too (the Azure DevOps loader fetches either way).
+        const { root, ado, held } = healRoot(deps, 'scan');
+        let result: ScanResult;
+        try {
+          const { config, warnings } = deps.config(root);
+          for (const w of warnings) console.error(chalk.yellow(w));
+          result = runHealScan({ exec: deps.exec, root, base: deps.base(root), config, now: deps.now(), dryRun: Boolean(o.dryRun), warn: (m) => console.error(chalk.yellow(m)), ledgerDir: deps.ledgerDir, ...ciDeps(deps, ado) });
+        } finally {
+          held?.release();
+        }
         if (o.json) console.log(JSON.stringify({ ok: true, ...result }, null, 2));
         else {
           console.log(`${chalk.bold('factory heal scan')}  base=${result.base}${result.dryRun ? '  (dry run: no state written)' : ''}`);
@@ -537,18 +561,27 @@ export function healCommand(deps: HealDeps): Command {
     .action((sig8: string, o: { dryRun?: boolean; json?: boolean }) =>
       guarded(Boolean(o.json), async () => {
         if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
-        const { root, ado } = healRoot(deps);
-        const { config, warnings } = deps.config(root);
-        for (const w of warnings) console.error(chalk.yellow(w));
-        const outcome = await runHeal(
-          { root, base: deps.base(root), sig8, config, dryRun: Boolean(o.dryRun) },
-          { exec: deps.exec, lanes: deps.lanes, ledgerDir: deps.ledgerDir, now: deps.now, ...ciDeps(deps, ado), ...deps.run },
-        );
+        // A real run holds the engine lock across the debugger lane (its worktree) and the ci-heal run it may start.
+        const { root, ado, held } = healRoot(deps, o.dryRun ? undefined : healRunKey(sig8));
+        let outcome: Awaited<ReturnType<typeof runHeal>>;
+        let config: HealConfig;
+        let ciHeal: FactoryRunOutcome | undefined;
+        try {
+          const loaded = deps.config(root);
+          config = loaded.config;
+          for (const w of loaded.warnings) console.error(chalk.yellow(w));
+          outcome = await runHeal(
+            { root, base: deps.base(root), sig8, config, dryRun: Boolean(o.dryRun) },
+            { exec: deps.exec, lanes: deps.lanes, ledgerDir: deps.ledgerDir, now: deps.now, ...ciDeps(deps, ado), ...deps.run },
+          );
+          // factory.heal.autoImplement (user config only): a valid diagnosis goes on into the ci-heal run (billed write lanes).
+          ciHeal = !o.dryRun && outcome.next === 'heal-approve' && config.autoImplement
+            ? await runHealEngine({ root, base: deps.base(root), sig8, config, approved: false, ...(held ? { repoOwner: held } : {}) }, engineDeps(deps, ado))
+            : undefined;
+        } finally {
+          held?.release();
+        }
         const proposal = outcome.diagnosis ? knownFlakyProposal(readHealState(root, sig8)!) : null;
-        // factory.heal.autoImplement (user config only): a valid diagnosis goes on into the ci-heal run (billed write lanes).
-        const ciHeal = !o.dryRun && outcome.next === 'heal-approve' && config.autoImplement
-          ? await runHealEngine({ root, base: deps.base(root), sig8, config, approved: false }, engineDeps(deps, ado))
-          : undefined;
         if (o.json) console.log(JSON.stringify({ ok: true, ...outcome, ...(proposal ? { knownFlakyProposal: proposal } : {}), ...(ciHeal ? { ciHeal } : {}) }, null, 2));
         else {
           if (outcome.prompt) console.log(outcome.prompt);
@@ -569,10 +602,15 @@ export function healCommand(deps: HealDeps): Command {
     .action((sig8: string, o: { dryRun?: boolean; json?: boolean }) =>
       guarded(Boolean(o.json), async () => {
         if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
-        const { root, ado } = healRoot(deps);
-        const { config, warnings } = deps.config(root);
-        for (const w of warnings) console.error(chalk.yellow(w));
-        const outcome = await runHealEngine({ root, base: deps.base(root), sig8, config, approved: true, dryRun: Boolean(o.dryRun) }, engineDeps(deps, ado));
+        const { root, ado, held } = healRoot(deps, o.dryRun ? undefined : healRunKey(sig8));
+        let outcome: FactoryRunOutcome;
+        try {
+          const { config, warnings } = deps.config(root);
+          for (const w of warnings) console.error(chalk.yellow(w));
+          outcome = await runHealEngine({ root, base: deps.base(root), sig8, config, approved: true, dryRun: Boolean(o.dryRun), ...(held ? { repoOwner: held } : {}) }, engineDeps(deps, ado));
+        } finally {
+          held?.release();
+        }
         printEngineOutcome(Boolean(o.json), sig8, outcome);
         return outcome.exitCode;
       }));
@@ -588,6 +626,18 @@ export function healCommand(deps: HealDeps): Command {
         const key = healRunKey(sig8);
         if (!readFactoryState(root, key)) throw new HealRunRefused(`heal ${sig8} has no ci-heal run (omg factory heal close ${sig8} closes a parked heal run)`);
         requestFactoryCancel(root, key, deps.now().toISOString());
+        const running = () => {
+          if (o.json) console.log(JSON.stringify({ ok: true, sig8, cancelRequested: true }, null, 2));
+          else console.log(chalk.green(`cancel requested for ci-heal heal-${sig8}; the running engine stops within seconds`));
+          return 0;
+        };
+        // An engine runs in this checkout (this run or another): the request is all; no forge load (it may fetch) or engine start.
+        try {
+          refuseWhileEngineRuns(root);
+        } catch (error) {
+          if (error instanceof FactoryBusyError) return running();
+          throw error;
+        }
         // The request file stands even when the forge wiring cannot be built (pipeline key removed, az broken).
         let engine: HealEngineDeps;
         try {
@@ -605,10 +655,8 @@ export function healCommand(deps: HealDeps): Command {
           // The engine sees the cancel request file first and only cancels.
           outcome = await runHealEngine({ root, base: deps.base(root), sig8, config, approved: false }, engine);
         } catch (error) {
-          if (!/already running/.test(error instanceof Error ? error.message : '') || !factoryCancelRequested(root, key)) throw error;
-          if (o.json) console.log(JSON.stringify({ ok: true, sig8, cancelRequested: true }, null, 2));
-          else console.log(chalk.green(`cancel requested for ci-heal heal-${sig8}; the running engine stops within seconds`));
-          return 0;
+          if (!(error instanceof FactoryBusyError) || !factoryCancelRequested(root, key)) throw error;
+          return running();
         }
         printEngineOutcome(Boolean(o.json), sig8, outcome);
         return outcome.phase === 'cancelled' ? 0 : outcome.exitCode;

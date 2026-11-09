@@ -48,6 +48,8 @@ export function runLine(r, prefix) {
         parts.push(chalk.red(`read-failed: ${r.error}`));
     if (run) {
         parts.push(run.gate ? chalk.yellow(`awaiting-human: ${run.gate.name}`) : run.phase);
+        if (run.live)
+            parts.push(chalk.cyan(`live pid ${run.live.pid} on ${run.live.host}`));
         if (run.runningLane)
             parts.push(`lane ${run.runningLane} running`);
         parts.push(`${run.credits.toFixed(2)} cr`);

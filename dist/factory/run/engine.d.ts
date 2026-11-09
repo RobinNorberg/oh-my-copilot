@@ -59,9 +59,10 @@ import { type GateConfigLoader } from './prepare.js';
 import { type FactoryRunLimits } from './budget.js';
 import { type LocalGateRunner } from './local-gate.js';
 import { type LaneBackend, type LaneProcess } from './lane.js';
-import { type FactoryGate, type FactoryHealRecord, type FactoryPhase, type FactoryRunKey, type FactoryRunState, type OwnerDeps } from './state.js';
+import { EXIT_BUSY, type FactoryGate, type FactoryHealRecord, type FactoryPhase, type FactoryRunKey, type FactoryRunState, type OwnerDeps, type HeldOwner } from './state.js';
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export declare const EXIT_AWAITING_HUMAN = 4;
+export { EXIT_BUSY };
 /** Conflict-fix lanes (distinct start heads) before base conflicts park at awaiting-human: merge-conflicts. */
 export declare const MAX_CONFLICT_FIX_ROUNDS = 2;
 /** merge's gate read may send the run back to gates this often per invocation before awaiting-human: gates-disagree. */
@@ -117,6 +118,17 @@ export interface FactoryEngineOptions {
     pollMs?: number;
     progressFile?: string;
     owner?: OwnerDeps;
+    /**
+     * The checkout's engine lock, already held by the caller (the CLI takes it
+     * before the forge-config loader fetches): the engine uses it as its own
+     * and neither acquires nor releases it; the caller releases it.
+     */
+    repoOwner?: HeldOwner;
+    /**
+     * The repository the cross-clone claim is keyed on (factoryClaimRepo: the
+     * trusted origin URL), null for none; omitted = factoryClaimRepo here.
+     */
+    claimRepo?: string | null;
     /** Directory of the engine ledger and its empty hooks dir, outside the repo (default: defaultLedgerDir()). */
     ledgerDir?: string;
     /** True once SIGINT / SIGTERM arrived. */
@@ -177,6 +189,8 @@ export interface FactoryRunOutcome {
         reason?: string;
         gateProblem?: string;
     };
+    /** --dry-run: a real run now would exit EXIT_BUSY (as the busy error's JSON says). */
+    busy?: true;
 }
 /** A gh / git failure in an engine step: phase `fail`, state unchanged, exit 1; a rerun resumes at the phase. */
 export declare class FactoryStepError extends Error {
@@ -213,7 +227,9 @@ export declare function healPlanText(h: FactoryHealRecord, base: string): string
 export declare function healPrBody(s: FactoryRunState, runUrl?: (runId: string) => string): string;
 /**
  * Run (or resume) the factory run for one issue. Refuses without a resolved
- * per-lane credit cap, and while another live engine owns the issue.
+ * per-lane credit cap, and while another live engine owns the checkout, the
+ * issue or its cross-clone claim: then FactoryBusyError, before any ledger,
+ * state or git write.
  */
 export declare function runFactoryEngine(o: FactoryEngineOptions): Promise<FactoryRunOutcome>;
 //# sourceMappingURL=engine.d.ts.map
