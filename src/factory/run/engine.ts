@@ -111,7 +111,6 @@ import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { checkDiagnosis } from '../heal/diagnosis-output.js';
 import { assertLaneCreditCap, nextLaneCap, runCredits, runCreditsExceeded, type FactoryRunLimits } from './budget.js';
 import { FactorySafetyError, factoryGuardExec, hardenedGitExec, type GithubReadContext } from './exec.js';
-import { loadSandboxSettings, type SandboxSettings } from '../../copilot-run/sandbox.js';
 import { assertFactoryForgeOptions, EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, localRemoteMismatch, syncLocalMirror } from './forge-roots.js';
 import { assertLocalGateCommand, describeGateSources, gateDefinition, gateDefinitionSources, localGateDue, localGateRecord, resolveLocalGateArgv, runLocalGate, type LocalGateRunner } from './local-gate.js';
 import { isLocalBranchName, LOCAL_GATE_CHECK, LOCAL_REMOTE, readMirrorRef } from '../../forge/local/index.js';
@@ -235,8 +234,6 @@ export interface FactoryEngineOptions {
    * head parks again; without such a park the flag is ignored with a warning.
    */
   allowUnsandboxedLanes?: boolean;
-  /** The factory lanes' sandbox settings (default loadSandboxSettings(root, 'factory'), the copilot_run job's own loader). */
-  laneSandboxSettings?: () => SandboxSettings;
   now?: () => number;
   pollMs?: number;
   progressFile?: string;
@@ -3084,18 +3081,23 @@ class FactoryEngine {
 
   /**
    * The forge's human review read; undefined when the forge has none. GitHub
-   * runs without a forge object read through gh: the configured repository,
-   * else (a ci-heal run, no forge config) the one intake sealed in the run state.
+   * runs without a forge object read through gh the repository intake sealed
+   * in the run state (the same one the guard's read context allows); a forge
+   * config naming another repository is a string (the park's reason).
    */
-  private humanReader(): ((pr: number, head: string) => ForgeReviewFeedback) | undefined {
+  private humanReader(): ((pr: number, head: string) => ForgeReviewFeedback) | string | undefined {
     if (this.forge) {
       const reviews = this.forge.reviews;
       return reviews.reviewFeedback ? (pr, head) => reviews.reviewFeedback!(pr, head) : undefined;
     }
     const cfg = this.o.forge?.config;
     if (cfg && cfg.kind !== 'github') return undefined;
-    const repo = cfg?.repo ?? (this.state.repoUrl ? githubRepoOf(this.state.repoUrl) : undefined);
-    if (!repo) return undefined;
+    const parts = this.state.repoUrl ? codingAgentRepoOf(this.state.repoUrl) : undefined;
+    if (!parts) return undefined;
+    const repo: ForgeRepo = { kind: 'github', ...parts, url: this.state.repoUrl };
+    if (cfg && `${cfg.repo.host}/${cfg.repo.owner}/${cfg.repo.name}`.toLowerCase() !== `${repo.host}/${repo.owner}/${repo.name}`.toLowerCase()) {
+      return `the forge config names ${oneLine(visibleLine(`${cfg.repo.owner}/${cfg.repo.name}`), 200)} but this run was started for ${oneLine(visibleLine(`${repo.owner}/${repo.name}`), 200)}, so the human review feedback is not read; restore the run's repository in the forge config`;
+    }
     return (pr, head) => ghReviewFeedback(this.exec, repo, pr, head, { trustedReviewers: cfg?.review?.trustedReviewers ?? [] }, this.o.root);
   }
 
@@ -3119,6 +3121,10 @@ class FactoryEngine {
    */
   private readHuman(pr: number, head: string): ForgeReviewFeedback | null {
     const read = this.humanReader();
+    if (typeof read === 'string') {
+      this.gate(HUMAN_REVIEW_GATE, read);
+      return null;
+    }
     if (!read) {
       this.gate(HUMAN_REVIEW_GATE, `the ${this.forgeName} forge cannot read human review feedback for this run, and factory.review.human is "${this.humanMode()}"; set it to "off" to merge without the human review gate`);
       return null;
@@ -3182,6 +3188,14 @@ class FactoryEngine {
     }
     const { open, commentOnly, by } = this.humanOpen(fb);
     const commented = commentOnly.length > 0 ? `; comment-only review by ${this.names([...new Set(commentOnly.map((t) => t.author))])} at this head: reply or push to clear` : '';
+    // Threads handed to the last fix round that this read no longer shows: resolved (by whom, when the forge says) or removed.
+    const last = this.state.humanReview;
+    const present = new Set(fb.threads.map((t) => t.id));
+    const byViewer = new Set(fb.resolvedByViewer ?? []);
+    const missing = (last?.threadIds ?? []).filter((id) => !present.has(id));
+    const mine = missing.filter((id) => byViewer.has(id));
+    const unseen = missing.filter((id) => !byViewer.has(id));
+    const gone = `${unseen.length > 0 ? `; resolved or removed since the fix round at ${last!.head.slice(0, 12)}: ${this.names(unseen.map((id) => id.slice(0, 60)))}: check them on the PR` : ''}${mine.length > 0 ? `; resolved by your own login during the run: ${this.names(mine.map((id) => id.slice(0, 60)))}` : ''}`;
     if (open.length > 0) {
       const outdated = open.filter((t) => t.outdated);
       const what = `${open.length} open human review thread(s)${outdated.length > 0 ? ` (${outdated.length} outdated by a later push, not resolved)` : ''}${by.length > 0 ? ` and changes requested by ${this.names(by)}` : ''} on PR #${pr} at ${head.slice(0, 12)}${commented}${ignored}`;
@@ -3189,10 +3203,12 @@ class FactoryEngine {
         this.gate(HUMAN_REVIEW_GATE, `${what}; factory.review.human is "gate-only", so no fix lane starts: address or resolve them on the ${this.forgeName} PR`);
         return true;
       }
-      const last = this.state.humanReview;
       const handed = new Set(last?.threadIds ?? []);
       const digest = humanFeedbackDigest({ ...fb, threads: open });
-      if (open.some((t) => !handed.has(t.id)) || digest !== last?.digest) {
+      // Some handed threads went, the rest are all handed and have no comment since that read: the same feedback (no new round).
+      const fresh = open.some((t) => !handed.has(t.id));
+      const same = !fresh && missing.length > 0 && open.every((t) => Date.parse(t.at) <= Date.parse(last!.seenAt));
+      if (fresh || (!same && digest !== last?.digest)) {
         if (ship.fixRounds + 1 > ship.maxFixRounds) {
           this.gate('fix-rounds-spent', `${what}; the fix rounds are spent (${ship.fixRounds} of ${ship.maxFixRounds}, shared with the factory's own review): address the feedback by hand`);
           return true;
@@ -3206,7 +3222,7 @@ class FactoryEngine {
         this.gate(HUMAN_REVIEW_GATE, `${outdated.length} review thread(s) were outdated by the fix but not resolved: ${this.threadNames(outdated)}. Resolve them or reply on the PR, then rerun ${this.resume}${standing}${commented}${ignored}`);
         return true;
       }
-      this.gate(HUMAN_REVIEW_GATE, `${what}; this same feedback already went to a fix round at ${last!.head.slice(0, 12)}: resolve the threads, or reply in them for another round`);
+      this.gate(HUMAN_REVIEW_GATE, `${what}; this same feedback already went to a fix round at ${last!.head.slice(0, 12)}: resolve the threads, or reply in them for another round${gone}`);
       return true;
     }
     if (by.length > 0) {
@@ -3214,57 +3230,53 @@ class FactoryEngine {
       return true;
     }
     // Only individual users hold the merge by default: CODEOWNERS teams and review bots are auto-requested on many repositories.
-    const users = fb.pendingReviewers.filter((n) => !n.startsWith('team:') && !n.endsWith('[bot]'));
+    const users = fb.pendingReviewers.filter((n) => !n.startsWith('team:') && !n.startsWith('mannequin:') && !n.endsWith('[bot]'));
     const others = fb.pendingReviewers.filter((n) => !users.includes(n));
     const also = others.length > 0 ? `; also requested: ${this.names(others)}` : '';
     if ((review?.waitForRequested ?? true) && users.length > 0) {
       this.gate(REVIEW_REQUESTED_GATE, `review requested on PR #${pr} from ${this.names(users)}, who have not reviewed yet${also}${commented}${ignored}; rerun after they review, or remove the request (factory.review.waitForRequested false skips this gate)`);
       return true;
     }
-    const sandbox = this.unsandboxedLanes(head);
+    const sandbox = this.unsandboxedLanes(head, gone);
     if (sandbox === null) return true;
     // An approval counts only on this head; ADO votes carry no head, so they are never listed.
     const approved = fb.decisions.filter((d) => d.state === 'approved' && d.head === head).map((d) => d.author);
     const none = fb.threads.length === 0 ? 'no open trusted threads or change requests' : 'no trusted threads or change requests to act on';
     const rerun = `if the PR gets new review comments before you merge, rerun ${this.resume} first`;
-    const read = `${none}${approved.length > 0 ? `, approved at this head by ${this.names(approved)}` : ''}${commented}${also}${ignored}${sandbox}`;
+    const read = `${none}${approved.length > 0 ? `, approved at this head by ${this.names(approved)}` : ''}${commented}${also}${ignored}${gone}${sandbox}`;
     this.humanNote = `; human review: ${read}; ${rerun}`;
     this.humanComment = `\nHuman review at this head: ${read}.\n\nIf the PR gets new review comments before you merge, rerun \`${this.resume}\` first.\n`;
     return false;
   }
 
   /**
-   * 460-7: the factory lanes' credentials. A write lane started since the
-   * last human read (humanReview.seenAt, else the run's start) whose OS
-   * sandbox was not "enforced", or that ran with writeNetwork other than
-   * "none" (or unreadable settings), could have used the operator's forge
-   * login (resolved a thread, posted a "trusted" comment): parks once per
-   * head until `--allow-unsandboxed-lanes` records that the human checked
-   * it. Remote lanes (no local sandbox record) and the local forge do not
+   * 460-7: the factory lanes' credentials. Any write lane of the run whose
+   * recorded OS sandbox was not "enforced", or whose recorded writeNetwork
+   * was not "none" (no record of either counts as loose), could have used
+   * the operator's forge login (resolved a thread, posted a "trusted"
+   * comment): parks once per head until `--allow-unsandboxed-lanes` records
+   * that the human checked it; with handed threads missing from the read
+   * (`gone`, listed) only a fresh flag at this park counts. The coding-agent
+   * lane (no local session), review lanes (no network: read tools, or an
+   * enforced sandbox without outbound access) and the local forge do not
    * count. '' = nothing to say; null = parked; else the merge note's clause.
    */
-  private unsandboxedLanes(head: string): string | null {
+  private unsandboxedLanes(head: string, gone: string): string | null {
     if (this.forge?.kind === 'local') return '';
-    const since = this.state.humanReview?.seenAt ?? this.state.createdAt;
-    const lanes = this.state.lanes.filter((l) => l.kind !== 'review' && l.sandbox && l.startedAt >= since);
-    if (lanes.length === 0) return '';
-    let network: string;
-    try {
-      network = (this.o.laneSandboxSettings ?? (() => loadSandboxSettings(this.o.root, 'factory').settings))().writeNetwork;
-    } catch {
-      network = 'unreadable';
-    }
-    const loose = lanes.filter((l) => l.sandbox!.mode !== 'enforced' || network !== 'none');
+    // Every write lane of the run, as recorded when it ran; only the coding-agent lane runs no local Copilot session.
+    const loose = this.state.lanes.filter((l) => l.kind !== 'review' && l.kind !== 'coding-agent'
+      && (l.sandbox?.mode !== 'enforced' || l.sandbox.writeNetwork !== 'none'));
     if (loose.length === 0) return '';
     const accepted = `; lanes ran without the enforced sandbox (accepted for this head with --allow-unsandboxed-lanes): check the PR's resolved and outdated threads and its reviews yourself`;
-    if (this.state.unsandboxedAck === head) return accepted;
+    // Handed threads missing from the read could be a lane's doing: the acknowledgement must answer a park that listed them.
+    if (this.state.unsandboxedAck === head && !gone) return accepted;
     if (this.unsandboxedAllowed === head) {
       this.unsandboxedAllowed = undefined;
       this.save((x) => ({ ...x, unsandboxedAck: head, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `lanes without the enforced sandbox accepted for ${head.slice(0, 12)} (--allow-unsandboxed-lanes)` }] }));
       return accepted;
     }
-    const which = loose.map((l) => `${l.id} (sandbox ${oneLine(visibleLine(l.sandbox!.mode), 40)}, network ${network})`);
-    this.gate(HUMAN_REVIEW_GATE, `${UNSANDBOXED_LANES_REASON} (it could reach ${this.forgeName} with your login): check the PR's threads and reviews yourself, then merge; lanes: ${this.names(which)}. To record that you checked ${head.slice(0, 12)}, rerun ${this.resume} --allow-unsandboxed-lanes`);
+    const which = loose.map((l) => `${l.id} (sandbox ${l.sandbox ? oneLine(visibleLine(l.sandbox.mode), 40) : 'not recorded'}, network ${l.sandbox?.writeNetwork ?? 'not recorded'})`);
+    this.gate(HUMAN_REVIEW_GATE, `${UNSANDBOXED_LANES_REASON} (it could reach ${this.forgeName} with your login): check the PR's threads and reviews yourself, then merge; lanes: ${this.names(which)}${gone}. To record that you checked ${head.slice(0, 12)}, rerun ${this.resume} --allow-unsandboxed-lanes`);
     return null;
   }
 
@@ -3329,12 +3341,6 @@ export const HUMAN_REVIEW_GATE = 'human-review';
 export const REVIEW_REQUESTED_GATE = 'review-requested';
 /** How the human-review park for lanes without the enforced sandbox starts (`--allow-unsandboxed-lanes` answers only it). */
 export const UNSANDBOXED_LANES_REASON = 'a lane ran without the enforced sandbox';
-
-/** The run's GitHub repository (`https://<host>/<owner>/<name>`, as intake recorded it) as forge repo parts, or undefined. */
-function githubRepoOf(repoUrl: string): ForgeRepo | undefined {
-  const m = /^https:\/\/([^/\s]+)\/([^/\s]+)\/([^/\s]+?)(?:\.git)?$/.exec(repoUrl);
-  return m ? { kind: 'github', host: m[1], owner: m[2], name: m[3], url: repoUrl } : undefined;
-}
 
 /**
  * sha256 of one human feedback round: the threads a fix lane acts on (id,

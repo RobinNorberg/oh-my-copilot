@@ -10,6 +10,9 @@ import { join } from 'node:path';
 
 import { summarizeChanges } from '../../../copilot-run/job.js';
 import type { CopilotRunSandboxState } from '../../../copilot-run/sandbox.js';
+
+/** A write lane's record on a host that confirmed the sandbox, with the default writeNetwork. */
+export const ENFORCED_SANDBOX = { mode: 'enforced', host: {}, applied: 'create', canary: 'skipped', unsandboxedCalls: 0, cliVersion: 'x', sdkVersion: 'x', writeNetwork: 'none' } as unknown as CopilotRunSandboxState;
 import { gitIn } from '../../../copilot-run/__tests__/fake-sdk.js';
 import { resolveShipConfig } from '../../../ship/config.js';
 import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-worktree.js';
@@ -37,7 +40,8 @@ export interface LaneOutcome {
   error?: string;
   /** wait() throws LaneLostError (the job vanished with its process). */
   lost?: boolean;
-  sandbox?: CopilotRunSandboxState;
+  /** The lane's sandbox record; default enforced without network (a confirmed host), null = no record. */
+  sandbox?: CopilotRunSandboxState | null;
   /** The result carries no change summary (git could not tell). */
   noChanges?: boolean;
 }
@@ -107,7 +111,7 @@ export class FakeLanes implements LaneBackend {
       error: o.error ?? null,
       notes: [],
       process: fakeProcess(remoteId),
-      ...(o.sandbox ? { sandbox: o.sandbox } : {}),
+      ...(o.sandbox === null ? {} : { sandbox: o.sandbox ?? ENFORCED_SANDBOX }),
     };
   }
 

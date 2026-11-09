@@ -137,6 +137,18 @@ describe('SessionSandboxController.decide/confirm', () => {
     expect(t.ctl.state).toMatchObject({ mode: 'refused', reason: 'the SDK has no options.update RPC' });
   });
 
+  it('M-B: a write session records the writeNetwork it ran with; a review session records none', async () => {
+    const w = setup('supported', { settings: { writeNetwork: 'registry' } });
+    await w.ctl.decide(client('supported'), loadedSdk());
+    expect(w.ctl.state!.writeNetwork).toBe('registry');
+    const off = setup('supported', { settings: { enabled: false } });
+    await off.ctl.decide(client('supported'), loadedSdk());
+    expect(off.ctl.state!.writeNetwork).toBe('none');
+    const r = setup('supported', { profile: 'review' });
+    await r.ctl.decide(client('supported'), loadedSdk());
+    expect(r.ctl.state).not.toHaveProperty('writeNetwork');
+  });
+
   it('switched off by settings or the kill switch: detect-only (write) or read-only-no-shell (review), no policy built', async () => {
     const w = setup('supported', { settings: { enabled: false } });
     expect(await w.ctl.decide(client('supported'), loadedSdk())).toBeNull();

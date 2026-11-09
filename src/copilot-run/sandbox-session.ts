@@ -87,8 +87,8 @@ export class SessionSandboxController {
       if (typeof status.version === 'string') cliVersion = status.version;
     } catch { /* recorded as unknown */ }
     const host = await probeHostSupport(client, opts.rpcTimeoutMs, { platform: opts.platform, ...(opts.trialLaunch ? { trialLaunch: opts.trialLaunch } : {}) });
-    const base = { host, applied: 'none' as const, canary: 'skipped' as const, unsandboxedCalls: 0, cliVersion, sdkVersion: loaded.version ?? 'unknown' };
     const { settings, profile } = opts;
+    const base = { host, applied: 'none' as const, canary: 'skipped' as const, unsandboxedCalls: 0, cliVersion, sdkVersion: loaded.version ?? 'unknown', ...(profile === 'review' ? {} : { writeNetwork: settings.writeNetwork }) };
     const off = !settings.enabled ? 'sandbox.enabled is false' : opts.env[SANDBOX_KILL_ENV] === 'off' ? `${SANDBOX_KILL_ENV}=off` : null;
     if (off) {
       // detect-only applies to write sessions only: a review without an enforced sandbox has no shell.

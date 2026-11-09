@@ -250,6 +250,28 @@ describe('parseReviewFeedback: trust and open threads', () => {
     expect(f.pendingReviewers).toEqual(['dana', 'team:core', 'copilot-pull-request-reviewer[bot]']);
   });
 
+  it('L-D: a requested Mannequin is named mannequin:<login>, never as a user', () => {
+    const f = parse(response({ pull: { reviewRequests: { nodes: [{ requestedReviewer: { __typename: 'Mannequin', login: 'ghost' } }] } } }), HEAD, trust);
+    expect(f.pendingReviewers).toEqual(['mannequin:ghost']);
+  });
+
+  it('resolvedBy: resolved threads are dropped; those the viewer resolved are listed by id', () => {
+    const f = parse(response({
+      pull: {
+        reviewThreads: {
+          nodes: [
+            { ...thread('T1', [['dana', 'a']], { resolved: true }), resolvedBy: { login: 'Robin' } },
+            { ...thread('T2', [['dana', 'b']], { resolved: true }), resolvedBy: { login: 'dana' } },
+            { ...thread('T3', [['dana', 'c']], { resolved: true }), resolvedBy: null },
+          ],
+        },
+      },
+    }), HEAD, trust);
+    expect(f.threads).toEqual([]);
+    expect(f.resolvedByViewer).toEqual(['T1']);
+    expect(parse(response(), HEAD, trust).resolvedByViewer).toBeUndefined();
+  });
+
   it('L-5: a later COMMENTED review does not clear the same author\'s CHANGES_REQUESTED; an approval or dismissal does', () => {
     const opinionated = { nodes: [review('O1', 'dana', 'CHANGES_REQUESTED', 'Please split this.', OLD), review('O2', 'robin', 'CHANGES_REQUESTED', 'no', OLD), review('O3', 'eve-listed', 'CHANGES_REQUESTED', 'no', OLD)] };
     const f = parse(response({
