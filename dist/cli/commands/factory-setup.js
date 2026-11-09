@@ -35,6 +35,8 @@ import { checkAdoAuth, checkGitHubAuth } from '../../factory/setup/auth.js';
 import { detectSetupForge } from '../../factory/setup/detect.js';
 import { SetupError, setupGuardExec } from '../../factory/setup/guard.js';
 import { adoWorkItemTypes, formatIntakeSpec, githubLabels, parseIntakeSpec, pickIntake, previewIntake, validateIntake, } from '../../factory/setup/intake-pick.js';
+import { DEFAULT_HEARTBEAT_CRON, parseHeartbeatMode, planHeartbeat } from '../../factory/setup/workflows.js';
+import { getRuntimePackageVersion } from '../../lib/version.js';
 import { pickHealPipeline } from '../../factory/setup/pipeline-pick.js';
 import { missingGitHubLabels, pickProgress, progressFromFlag, validateAdoProgress } from '../../factory/setup/progress-pick.js';
 import { applyWrites, buildSection, parsedAfter, planBacklogSample, planWrites } from '../../factory/setup/write.js';
@@ -169,6 +171,12 @@ async function setup(o, deps, cwd, out) {
     out.forge = { kind: repo.kind, host: repo.host, owner: repo.owner, ...(repo.project ? { project: repo.project } : {}), name: repo.name, url: repo.url };
     const ado = repo.kind === 'azure-devops';
     const local = repo.kind === 'local';
+    if (o.workflows) {
+        await setupWorkflows(o, deps, root, repo.kind, interactive, out);
+        return;
+    }
+    if (o.mode !== undefined || o.cron !== undefined || o.force)
+        throw new SetupError(2, '--mode, --cron and --force belong to --workflows');
     if (!interactive) {
         // The local forge's source defaults to its backlog directory.
         const missing = [...(o.intake || local ? [] : ['--intake']), ...(o.yes || o.dryRun ? [] : ['--yes (or --dry-run)'])];
@@ -342,6 +350,44 @@ async function setup(o, deps, cwd, out) {
     }
     out.notes.push(`intake ${formatIntakeSpec(source)}`);
 }
+/**
+ * --workflows: plans and writes the one heartbeat file. No auth, no forge reads and no config edit: the
+ * generated file only runs `omg factory check` (and `triage --apply` in triage mode) in CI.
+ */
+async function setupWorkflows(o, deps, root, kind, interactive, out) {
+    const mode = parseHeartbeatMode(o.mode);
+    if (kind === 'local') {
+        out.notes.push('--workflows is not applicable to the local (offline) forge: there is no CI to schedule. Run omg factory check and omg factory poll from your own scheduler if you want a heartbeat.');
+        return;
+    }
+    const plan = planHeartbeat(root, kind, { mode, cron: o.cron ?? DEFAULT_HEARTBEAT_CRON, version: getRuntimePackageVersion(), force: Boolean(o.force) });
+    const planned = plan.write ? [plan.write] : [];
+    out.diffs = planned.map((w) => ({ path: w.path, scope: w.scope, diff: w.diff }));
+    if (plan.action === 'unchanged')
+        out.notes.push(`${plan.relPath} is already up to date`);
+    if (!o.json) {
+        for (const w of planned) {
+            console.log(chalk.bold(`--- ${w.path} (${plan.action})`));
+            for (const line of w.diff.split('\n'))
+                console.log(line.startsWith('+') ? chalk.green(line) : line.startsWith('-') ? chalk.red(line) : chalk.gray(line));
+        }
+    }
+    if (o.dryRun) {
+        if (planned.length > 0)
+            out.notes.push(`would write ${plan.relPath}`);
+        return;
+    }
+    if (planned.length > 0) {
+        if (!o.yes) {
+            if (!interactive)
+                throw new SetupError(2, 'non-interactive omg factory setup --workflows needs --yes (or --dry-run)');
+            if (!(await (deps.prompter ?? ttyPrompter()).confirm(`Write ${plan.relPath}?`, false)))
+                throw new SetupError(2, 'cancelled: nothing written');
+        }
+        out.written = applyWrites(planned);
+    }
+    out.notes.push(`heartbeat mode ${mode}: ${mode === 'triage' ? 'issues: write (opt-in)' : 'read-only permissions'}; commit ${plan.relPath} on the default branch, scheduled workflows run only there. Remove it by deleting the file.`);
+}
 function printOutcome(o, r) {
     if (o.json) {
         console.log(JSON.stringify(r, null, 2));
@@ -392,6 +438,10 @@ export function factorySetupCommand(deps = defaultFactorySetupDeps) {
         .option('--trusted-author <list>', 'Azure DevOps uniqueNames whose omg-plan: comments count (user config only), comma-separated')
         .option('--heal-pipeline <id>', 'Azure DevOps build definition omg factory heal reads as CI (a pipeline of this repository), or none')
         .option('--scope <scope>', 'project | user; forge identity, intake and progress always go to .copilot/omg.jsonc, the user config gets only trustedAuthors', 'project')
+        .option('--workflows', 'Write the cloud heartbeat (.github/workflows/omg-factory-heartbeat.yml, or an Azure Pipelines file on ADO) instead of running the wizard')
+        .option('--mode <mode>', 'with --workflows: read-only (default) | triage (adds issues: write for omg factory triage --apply)')
+        .option('--cron <expr>', 'with --workflows: schedule cron expression (default every 2 hours)')
+        .option('--force', 'with --workflows: replace a heartbeat file this command did not write')
         .option('--dry-run', 'Show the diff and the preview; write nothing')
         .option('--yes', 'Non-interactive: take every answer from flags and confirm the write')
         .option('--json', 'JSON output (non-interactive)')
