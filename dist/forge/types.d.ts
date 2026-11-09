@@ -229,7 +229,12 @@ export interface ForgeReviewFeedback {
         at: string;
         head?: string;
     }>;
-    /** Open human threads only: GitHub unresolved and not outdated; ADO active/pending text threads not byFactory; local playback notes. */
+    /**
+     * Open human threads: GitHub unresolved (an outdated one, whose lines a
+     * later push changed, carries `outdated: true`; resolved ones are dropped)
+     * plus a review body submitted on the head (id `review:<id>`); ADO
+     * active/pending text threads not byFactory; local playback notes.
+     */
     threads: Array<{
         id: string;
         author: string;
@@ -237,8 +242,9 @@ export interface ForgeReviewFeedback {
         file?: string;
         line?: number;
         at: string;
+        outdated?: true;
     }>;
-    /** Reviewers requested but not yet submitted. */
+    /** Reviewers requested but not yet submitted (GitHub: a login, `<slug>[bot]` for a bot, `team:<slug>` for a team). */
     pendingReviewers: string[];
     /** Authors whose input was dropped (not trusted), for poll and status output. */
     ignored: string[];

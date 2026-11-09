@@ -249,13 +249,19 @@ function shapeProblem(s) {
 }
 // --- Human review fields (night 3 L2b): checked here, before the engine reads them -------------
 const HEX40 = /^[0-9a-f]{40}$/;
+/** Thread ids one human round may record: 100 review threads and 50 review bodies fit. */
+export const MAX_HUMAN_THREAD_IDS = 200;
+const THREAD_ID = (v) => typeof v === 'string' && v.length > 0 && v.length <= 200;
 const FEEDBACK_FORGES = ['github', 'azure-devops', 'local'];
-/** `humanReview` and every lane's `feedback`: absent, or exactly their shape. */
+/** `humanReview`, `unsandboxedAck` and every lane's `feedback`: absent, or exactly their shape. */
 function humanReviewShapeProblem(s) {
     const h = s.humanReview;
     if (h !== undefined && (typeof h !== 'object' || h === null || Array.isArray(h) || !isStr(h.seenAt) || !isStr(h.head) || !HEX40.test(h.head)
-        || !isStr(h.digest) || !HEX64.test(h.digest) || Object.keys(h).some((k) => k !== 'seenAt' && k !== 'head' && k !== 'digest')))
+        || !isStr(h.digest) || !HEX64.test(h.digest) || !Array.isArray(h.threadIds) || h.threadIds.length > MAX_HUMAN_THREAD_IDS || !h.threadIds.every(THREAD_ID)
+        || Object.keys(h).some((k) => k !== 'seenAt' && k !== 'head' && k !== 'digest' && k !== 'threadIds')))
         return 'humanReview';
+    if (s.unsandboxedAck !== undefined && (!isStr(s.unsandboxedAck) || !HEX40.test(s.unsandboxedAck)))
+        return 'unsandboxedAck';
     const lanes = s.lanes;
     if (!lanes.every((l) => {
         const f = l.feedback;

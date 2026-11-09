@@ -27,6 +27,7 @@ export const REVIEW_FEEDBACK_QUERY = 'query($owner:String!,$name:String!,$number
     + ' repository(owner:$owner,name:$name){viewerPermission collaborators(first:100){pageInfo{hasNextPage} edges{permission node{login}}}'
     + ' pullRequest(number:$number){headRefOid'
     + ' latestReviews(first:50){pageInfo{hasNextPage} nodes{id state submittedAt body author{__typename login} commit{oid}}}'
+    + ' latestOpinionatedReviews(first:50){pageInfo{hasNextPage} nodes{state submittedAt body author{__typename login} commit{oid}}}'
     + ' reviewRequests(first:20){pageInfo{hasNextPage} nodes{requestedReviewer{__typename ... on User{login} ... on Bot{login} ... on Mannequin{login} ... on Team{slug}}}}'
     + ' reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated'
     + ' comments(first:20){pageInfo{hasNextPage} nodes{body path line originalLine createdAt author{__typename login}}}}}}}}';
@@ -120,7 +121,9 @@ function collaboratorErrorsOnly(json, pr, exitStatus) {
  * truncated, an error is not about the collaborator list, or `head` is not the
  * PR's head. A review body counts as a thread only when the review was
  * submitted on `head` (an older head's summary was answered by a later push);
- * inline threads count while unresolved and not outdated.
+ * inline threads count while unresolved (an outdated one flagged `outdated`).
+ * A CHANGES_REQUESTED stands until the same author approves or it is
+ * dismissed: a later COMMENTED review does not clear it.
  */
 export function parseReviewFeedback(stdout, pr, head, trust, exitStatus = 0) {
     let json;
@@ -152,6 +155,8 @@ export function parseReviewFeedback(stdout, pr, head, trust, exitStatus = 0) {
         return v.nodes;
     };
     const reviews = connection(pull.latestReviews, 'latestReviews');
+    // Same 50-review cap and remedy as latestReviews.
+    const opinionated = connection(pull.latestOpinionatedReviews, 'latestReviews');
     const requests = connection(pull.reviewRequests, 'reviewRequests');
     const threadNodes = connection(pull.reviewThreads, 'reviewThreads');
     const configured = new Set(trust.trustedReviewers.map((l) => l.toLowerCase()));
@@ -205,12 +210,27 @@ export function parseReviewFeedback(stdout, pr, head, trust, exitStatus = 0) {
             threads.push({ id: `review:${id}`, author: who, body: capped(body), at });
         }
     }
+    // A later COMMENTED review by the same author does not clear their CHANGES_REQUESTED (GitHub's reviewDecision keeps it),
+    // but latestReviews reports the comment as their latest: the latest opinionated review restores the request.
+    for (const r of opinionated) {
+        if (r.state !== 'CHANGES_REQUESTED' || isFactoryComment(str(r.body) ?? ''))
+            continue;
+        const who = author(r.author);
+        if (!who)
+            continue;
+        const latest = decisions.find((d) => d.author === who);
+        if (latest && latest.state !== 'commented' && latest.state !== 'pending')
+            continue;
+        const oid = isObj(r.commit) ? str(r.commit.oid) : undefined;
+        decisions.push({ author: who, state: 'changes-requested', at: str(r.submittedAt) ?? '', ...(oid && HEX40.test(oid) ? { head: oid } : {}) });
+    }
     for (const t of threadNodes) {
         const id = str(t.id);
         if (!id || typeof t.isResolved !== 'boolean' || typeof t.isOutdated !== 'boolean') {
             throw new ReviewFeedbackError(`review feedback of PR ${pr}: a review thread without its id or state`);
         }
-        if (t.isResolved || t.isOutdated)
+        // Resolved threads are done; an outdated one (a later push changed its lines) stays, flagged, until someone resolves it.
+        if (t.isResolved)
             continue;
         const kept = connection(t.comments, `comments of thread ${id.slice(0, 40)}`).flatMap((cm) => {
             const body = str(cm.body) ?? '';
@@ -226,13 +246,14 @@ export function parseReviewFeedback(stdout, pr, head, trust, exitStatus = 0) {
         const line = [first.c.line, first.c.originalLine].find((v) => Number.isSafeInteger(v) && v > 0);
         const body = kept.length === 1 ? first.body : kept.map((k) => `@${k.author}:\n${k.body}`).join('\n\n');
         const at = kept.map((k) => str(k.c.createdAt) ?? '').sort().pop() ?? '';
-        threads.push({ id, author: first.author, body: capped(body), ...(path ? { file: path } : {}), ...(line ? { line } : {}), at });
+        threads.push({ id, author: first.author, body: capped(body), ...(path ? { file: path } : {}), ...(line ? { line } : {}), at, ...(t.isOutdated ? { outdated: true } : {}) });
     }
     const pending = new Set();
     for (const q of requests) {
         const who = isObj(q.requestedReviewer) ? q.requestedReviewer : {};
         const slug = str(who.slug);
-        const name = login(who) ?? (slug && NAME.test(slug) ? `team:${slug}` : undefined);
+        const l = login(who);
+        const name = l ? (who.__typename === 'Bot' ? `${l}[bot]` : l) : slug && NAME.test(slug) ? `team:${slug}` : undefined;
         if (name)
             pending.add(name);
     }

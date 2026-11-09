@@ -58,6 +58,7 @@ import type { ForgeOptions, ResolvedForgeConfig } from '../../forge/types.js';
 import { type GateConfigLoader } from './prepare.js';
 import type { ForgeReviewFeedback } from '../../forge/types.js';
 import { type FactoryRunLimits } from './budget.js';
+import { type SandboxSettings } from '../../copilot-run/sandbox.js';
 import { type LocalGateRunner } from './local-gate.js';
 import { type LaneBackend, type LaneProcess } from './lane.js';
 import { EXIT_BUSY, type FactoryGate, type FactoryHealRecord, type FactoryPhase, type FactoryRunKey, type FactoryRunState, type OwnerDeps, type HeldOwner } from './state.js';
@@ -115,6 +116,16 @@ export interface FactoryEngineOptions {
      * ignored with a warning.
      */
     allowGateChange?: boolean;
+    /**
+     * The human accepts, for the parked head only, that write lanes ran
+     * without the enforced sandbox or with network access
+     * (`--allow-unsandboxed-lanes` on a rerun of a run parked at human-review
+     * for that reason); recorded as `unsandboxedAck` in the sealed state. A new
+     * head parks again; without such a park the flag is ignored with a warning.
+     */
+    allowUnsandboxedLanes?: boolean;
+    /** The factory lanes' sandbox settings (default loadSandboxSettings(root, 'factory'), the copilot_run job's own loader). */
+    laneSandboxSettings?: () => SandboxSettings;
     now?: () => number;
     pollMs?: number;
     progressFile?: string;
@@ -230,12 +241,16 @@ export declare function healPlanText(h: FactoryHealRecord, base: string): string
 export declare function healPrBody(s: FactoryRunState, runUrl?: (runId: string) => string): string;
 /** The merge step's park while trusted human review feedback stands, or the read cannot vouch for it. */
 export declare const HUMAN_REVIEW_GATE = "human-review";
-/** The merge step's park while requested reviewers have not reviewed (factory.review.waitForRequested). */
+/** The merge step's park while requested users have not reviewed (factory.review.waitForRequested). */
 export declare const REVIEW_REQUESTED_GATE = "review-requested";
+/** How the human-review park for lanes without the enforced sandbox starts (`--allow-unsandboxed-lanes` answers only it). */
+export declare const UNSANDBOXED_LANES_REASON = "a lane ran without the enforced sandbox";
 /**
- * sha256 of one human feedback round: the open threads (id, author, time,
- * text) and the change requests (author, time, head), each sorted. A new
- * comment or reply changes it; the same open feedback on a new head does not.
+ * sha256 of one human feedback round: the threads a fix lane acts on (id,
+ * author, time, text; the outdated flag left out, so a push that only moves
+ * a thread's lines does not make it new) and the change requests (author,
+ * time, head), each sorted. A new comment or reply changes it; the same open
+ * feedback on a new head does not.
  */
 export declare function humanFeedbackDigest(fb: ForgeReviewFeedback): string;
 /**
