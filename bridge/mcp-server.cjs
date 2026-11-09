@@ -55516,6 +55516,12 @@ function scriptedFactoryGh(bare) {
     }
     if (key.startsWith("gh run list --commit ")) return ok(JSON.stringify([{ databaseId: 100, status: "completed", conclusion: "success", workflowName: "CI" }]));
     if (key.startsWith("gh pr comment ") || key.startsWith("gh issue comment ")) return ok("");
+    if (args[0] === "api" && args[1] === "graphql" && args.includes(`query=${REVIEW_FEEDBACK_QUERY}`)) {
+      const done = { hasNextPage: false };
+      const none = { pageInfo: done, nodes: [] };
+      const pullRequest = { headRefOid: bareRef(bare, `refs/heads/factory/issue-${FACTORY_RUN_ISSUE}`), latestReviews: none, latestOpinionatedReviews: none, reviewRequests: none, reviewThreads: none };
+      return ok(JSON.stringify({ data: { viewer: { login: "omg-smoke" }, repository: { viewerPermission: "ADMIN", collaborators: { pageInfo: done, edges: [] }, pullRequest } } }));
+    }
     return { status: 1, stdout: "", stderr: `scripted gh: ${key} is not scripted` };
   };
   return { exec, record: record3 };
@@ -55657,6 +55663,7 @@ var init_copilot_factory_run_scenario = __esm({
     init_engine();
     init_lane();
     init_state5();
+    init_graphql();
     init_config2();
     init_exec();
     init_state4();
