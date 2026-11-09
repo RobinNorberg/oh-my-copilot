@@ -14,7 +14,7 @@ import { readFileSync } from 'fs';
 import { isBodyFileIn, readTrackerBody } from '../body-file.js';
 import { isTrustedAdoAuthor } from '../config.js';
 import {
-  shipyardKeys, type ForgeComment, type ForgeItem, type ForgePeek, type ForgeItemDraft, type ForgeItemUpdate, type ForgeRelationKind, type ForgeTracker, type IntakeSource,
+  shipyardKeys, type ForgeComment, type ForgeItem, type ForgePeek, type ForgeItemDraft, type ForgeItemUpdate, type ForgeRelationKind, type ForgeTracker, type ForgeTriageChange, type IntakeSource,
   type ProgressMapping, type ProgressStage,
 } from '../types.js';
 import { adoOrgUrl } from './guard.js';
@@ -260,6 +260,24 @@ export function adoTracker(ctx: AdoContext, intakeSource?: IntakeSource, bodyDir
         return { ok: res.ok, stderr: res.ok ? '' : res.detail };
       } catch (error) {
         return { ok: false, stderr: failure(error) };
+      }
+    },
+
+    setTriage(id: number, change: ForgeTriageChange) {
+      if (change.assignee !== undefined) return { ok: false, detail: 'assignee is not a triage write yet' };
+      try {
+        return patchItem(ctx, id, (item) => {
+          const ops: PatchOp[] = [];
+          const current = str(item.fields['System.Tags']) ?? '';
+          const tags = editedTags(splitTags(current), change.add, change.remove);
+          if (tags && tags.length === 0) throw new Error(`work item ${id}: removing its last tag is not a tracker write`);
+          // The add replaces the whole list: the guard checks the edit against the tested current tags.
+          if (tags) ops.push({ op: 'test', path: '/fields/System.Tags', value: current }, { op: 'add', path: '/fields/System.Tags', value: tags.join('; ') });
+          if (change.priority !== undefined && num(item.fields['Microsoft.VSTS.Common.Priority']) !== change.priority) ops.push({ op: 'add', path: '/fields/Microsoft.VSTS.Common.Priority', value: change.priority });
+          return ops.length ? ops : null;
+        });
+      } catch (error) {
+        return { ok: false, detail: failure(error) };
       }
     },
 

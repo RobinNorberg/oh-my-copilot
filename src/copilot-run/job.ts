@@ -173,6 +173,8 @@ export interface CopilotRunStartOptions {
   disableStopContinuations?: boolean;
   /** The job's budget ledger record key (default `copilot-run:<jobId>`). */
   ledgerKey?: string;
+  /** Who spent the job's credits (cost attribution in the budget ledger). */
+  ledgerTag?: UsageRecord['tag'];
   /** Which sandbox config block applies: `factory` lanes read `factory.run.sandbox` over `copilotRun.sandbox` (default `copilot-run`). */
   sandboxScope?: SandboxScope;
   /** Start the session with a credential-free env ({@link scrubLaneCredentials}). */
@@ -372,6 +374,7 @@ interface Job {
   hostCommits: boolean;
   /** Budget ledger record key. */
   ledgerKey: string;
+  ledgerTag: UsageRecord['tag'] | null;
   model: string | null;
   timeoutMs: number;
   maxCredits: number;
@@ -994,6 +997,7 @@ export class CopilotRunManager {
       scrubCredentials: options.scrubCredentials === true,
       hostCommits: options.hostCommits === true,
       ledgerKey: options.ledgerKey ?? `copilot-run:${id}`,
+      ledgerTag: options.ledgerTag ?? null,
       model: input.model ?? null,
       timeoutMs,
       maxCredits,
@@ -1222,6 +1226,7 @@ export class CopilotRunManager {
         ? 'session.shutdown'
         : 'copilot_run sdk assistant.usage: AI credits as billed, user-initiated calls x1 each (multiplier unknown)',
       ...(job.model ? { model: job.model } : {}),
+      ...(job.ledgerTag ? { tag: job.ledgerTag } : {}),
       updatedAt: new Date().toISOString(),
     };
     try {

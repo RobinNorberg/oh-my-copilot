@@ -273,6 +273,25 @@ export function localTracker(ctx) {
                 return { ok: false, stderr: err.message };
             }
         },
+        setTriage(id, change) {
+            if (change.assignee !== undefined)
+                return { ok: false, detail: 'assignee is not a triage write yet' };
+            try {
+                const { entry, file } = fileFor(id);
+                const fields = entry.item.fields;
+                const drop = new Set(change.remove.map((l) => l.toLowerCase()));
+                const kept = fields.labels.filter((l) => !drop.has(l.toLowerCase()));
+                const labels = [...kept, ...change.add.filter((a) => !kept.some((l) => l.toLowerCase() === a.toLowerCase()))];
+                const priority = change.priority ?? fields.priority;
+                if (labels.length === fields.labels.length && labels.every((l, i) => l === fields.labels[i]) && priority === fields.priority)
+                    return { ok: true, detail: 'nothing to change' };
+                writeAtomic(file, renderBacklogFile({ ...fields, labels, ...(priority === undefined ? {} : { priority }) }, entry.item.body), ctx.root);
+                return { ok: true, detail: `${file} edited in the working tree; commit it on the base branch` };
+            }
+            catch (err) {
+                return { ok: false, detail: err.message };
+            }
+        },
         findByKey(spec) {
             const all = entries();
             return [...all.values()].flatMap((e) => shipyardKeys(e.item.body).filter(([s]) => s === spec).map(([, key]) => ({ key, item: toForgeItem(e, all) })));

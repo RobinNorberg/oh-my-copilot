@@ -53,6 +53,8 @@ export interface TrackerWriteContext {
     labels: readonly string[];
     /** Azure DevOps: the work item types a create may name (factory.intake.itemTypes); none = no create. */
     itemTypes?: readonly string[];
+    /** Who writes: `triage` allows only its label edit (GitHub) and tag/priority PATCH (Azure DevOps); unset or `enqueue` = enqueue's shapes. */
+    purpose?: 'triage' | 'enqueue';
 }
 /**
  * What the guard knows about the local forge: the exact mirror path the

@@ -358,6 +358,8 @@ function trackerProblem(route, target, value, context, at) {
             return undefined;
     }
 }
+/** What `omg factory triage` may PATCH: the revision test, the tags and the priority. */
+const TRIAGE_PATHS = /^\/(?:rev|fields\/System\.Tags|fields\/Microsoft\.VSTS\.Common\.Priority)$/;
 /**
  * The typed validator hook for the invoke guard (PR 5): the first reason the
  * parsed `--in-file` JSON is refused for `route`, or undefined when every key
@@ -391,6 +393,8 @@ export function validateAdoBody(route, body, context = {}) {
         const target = typeof op.path === 'string' ? shape.paths.find((p) => p.path.test(op.path)) : undefined;
         if (!target || (target.tracker && !writes))
             return `${at}.path is not allowed`;
+        if (writes?.purpose === 'triage' && !TRIAGE_PATHS.test(op.path))
+            return `${at}.path is not a triage write`;
         if (target.tracker && !(isPlainObject(body[0]) && body[0].op === 'test' && body[0].path === '/rev'))
             return `${at}: a tracker write starts with test /rev`;
         // Enqueue never moves an item: its state and board column are the engine's progress writes.

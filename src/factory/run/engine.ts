@@ -2450,7 +2450,7 @@ class FactoryEngine {
     let remoteId: string;
     try {
       ({ remoteId } = await this.o.lanes.start({
-        laneId: id, cwd: this.o.root, baseRef: startRef, prompt, profile, timeoutMs: this.o.limits.laneTimeoutMs, maxCredits: cap.cap,
+        laneId: id, cwd: this.o.root, baseRef: startRef, prompt, profile, timeoutMs: this.o.limits.laneTimeoutMs, maxCredits: cap.cap, ledgerTag: { role: kind, run: runSlug(this.key) },
         ...(profile === 'write' ? { engineCommits: true } : {}),
       }));
     } catch (error) {
