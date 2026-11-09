@@ -716,9 +716,32 @@ export declare const graphDescriptorSchema: z.ZodObject<{
     descriptor_hash: z.ZodOptional<z.ZodString>;
 }, "strict", z.ZodTypeAny, {
     goal: string;
-    descriptor_version: 1;
-    run_id: string;
-    revision_id: string;
+    edges: ({
+        id: string;
+        kind: "fixed";
+        to: string;
+        from: string;
+    } | {
+        id: string;
+        kind: "conditional";
+        route: string;
+        to: string;
+        from: string;
+    } | {
+        id: string;
+        kind: "fan_out";
+        to: string;
+        from: string;
+        branch_id: string;
+        owner_join_id: string;
+    } | {
+        id: string;
+        kind: "back_edge";
+        route: string;
+        to: string;
+        from: string;
+        max_traversals: number;
+    })[];
     nodes: ({
         title: string;
         id: string;
@@ -761,41 +784,41 @@ export declare const graphDescriptorSchema: z.ZodObject<{
         fan_out_node_id: string;
         input_branch_ids: string[];
     })[];
-    edges: ({
-        id: string;
-        kind: "fixed";
-        to: string;
-        from: string;
-    } | {
-        id: string;
-        kind: "conditional";
-        route: string;
-        to: string;
-        from: string;
-    } | {
-        id: string;
-        kind: "fan_out";
-        to: string;
-        from: string;
-        branch_id: string;
-        owner_join_id: string;
-    } | {
-        id: string;
-        kind: "back_edge";
-        route: string;
-        to: string;
-        from: string;
-        max_traversals: number;
-    })[];
+    descriptor_version: 1;
+    run_id: string;
+    revision_id: string;
     entry_node_ids: string[];
     concurrency_limit: number;
     terminal_verification_node_id: string;
     descriptor_hash?: string | undefined;
 }, {
     goal: string;
-    descriptor_version: 1;
-    run_id: string;
-    revision_id: string;
+    edges: ({
+        id: string;
+        kind: "fixed";
+        to: string;
+        from: string;
+    } | {
+        id: string;
+        kind: "conditional";
+        route: string;
+        to: string;
+        from: string;
+    } | {
+        id: string;
+        kind: "fan_out";
+        to: string;
+        from: string;
+        branch_id: string;
+        owner_join_id: string;
+    } | {
+        id: string;
+        kind: "back_edge";
+        route: string;
+        to: string;
+        from: string;
+        max_traversals: number;
+    })[];
     nodes: ({
         title: string;
         id: string;
@@ -838,32 +861,9 @@ export declare const graphDescriptorSchema: z.ZodObject<{
         fan_out_node_id: string;
         input_branch_ids: string[];
     })[];
-    edges: ({
-        id: string;
-        kind: "fixed";
-        to: string;
-        from: string;
-    } | {
-        id: string;
-        kind: "conditional";
-        route: string;
-        to: string;
-        from: string;
-    } | {
-        id: string;
-        kind: "fan_out";
-        to: string;
-        from: string;
-        branch_id: string;
-        owner_join_id: string;
-    } | {
-        id: string;
-        kind: "back_edge";
-        route: string;
-        to: string;
-        from: string;
-        max_traversals: number;
-    })[];
+    descriptor_version: 1;
+    run_id: string;
+    revision_id: string;
     entry_node_ids: string[];
     concurrency_limit: number;
     terminal_verification_node_id: string;

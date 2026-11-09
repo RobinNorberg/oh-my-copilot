@@ -451,6 +451,10 @@ export interface ResolvedForgeConfig {
             definitionId: number;
         };
     };
+    /** `factory.review.trustedReviewers` from the trusted layers (user config, base branch), lowercased; absent unless configured. */
+    review?: {
+        trustedReviewers: readonly string[];
+    };
 }
 /** What an adapter needs from its caller besides the Exec (src/factory/run/forge-roots.ts builds it for the factory). */
 export interface ForgeOptions {

@@ -6,6 +6,7 @@
  * handling.
  */
 import { GhCommandError, ghJson, ghRun } from './gh.js';
+import { parseReviewFeedback, reviewFeedbackArgs } from './graphql.js';
 /** `gh pr view --json` fields the merge step reads. */
 export const MERGE_VIEW_FIELDS = 'number,state,isDraft,baseRefName,baseRefOid,headRefOid';
 const HEX40 = /^[0-9a-f]{40}$/;
@@ -100,8 +101,30 @@ export function ghViewPr(exec, pr, cwd) {
         throw new GhCommandError(`gh pr view ${pr} did not return the PR's state, base and head`);
     return v;
 }
-export function githubReviews(exec, cwd) {
+/**
+ * The human review input on `pr` at `head` (graphql.ts): one fixed GraphQL
+ * read. A non-zero gh exit still counts when the response carries the pull
+ * request (a partial answer: e.g. the collaborator list needs push access, so
+ * only the viewer and trustedReviewers are known); otherwise it throws.
+ */
+export function ghReviewFeedback(exec, repo, pr, head, trust, cwd) {
+    const args = reviewFeedbackArgs(repo, pr);
+    const res = exec('gh', args, { cwd });
+    try {
+        return parseReviewFeedback(res.stdout, head, trust);
+    }
+    catch (error) {
+        if (res.status === 0)
+            throw new GhCommandError(error instanceof Error ? error.message : String(error));
+        throw new GhCommandError(`gh api graphql (review feedback of PR ${pr}) failed (exit ${res.status}): ${res.stderr.trim().split('\n')[0]}`);
+    }
+}
+/** `o.repo` (the configured repository) turns on reviewFeedback; trust comes from `o.review` (trusted config layers). */
+export function githubReviews(exec, cwd, o = {}) {
+    const { repo } = o;
+    const trust = { trustedReviewers: o.review?.trustedReviewers ?? [] };
     return {
+        ...(repo ? { reviewFeedback: (pr, head) => ghReviewFeedback(exec, repo, pr, head, trust, cwd) } : {}),
         findOpenPrForBranch: (branch) => ghFindOpenPr(exec, branch, cwd),
         findMergedPrForBranch: (branch, base) => ghFindMergedPr(exec, branch, base, cwd),
         createDraftPr: (o) => ghCreateDraftPr(exec, o, cwd),

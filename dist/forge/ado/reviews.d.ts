@@ -4,7 +4,7 @@
  * opens drafts and only flips isDraft to false; the guard refuses any other
  * PR body (a merge in particular).
  */
-import type { ForgeReviews, ForgeThread } from '../types.js';
+import type { ForgeReviewFeedback, ForgeReviews, ForgeThread } from '../types.js';
 import { type AdoContext } from './invoke.js';
 /** REST `description` limit on a pull request. */
 export declare const ADO_PR_DESCRIPTION_MAX = 4000;
@@ -33,5 +33,22 @@ export declare const ADO_FACTORY_COMMENT_MARKER = "<!-- omg-factory: comment -->
 export declare function readAdoPr(ctx: AdoContext, pr: number): AdoPrView;
 /** The PR's threads (Pull Request Threads - List), deleted ones left out; a thread without a numeric id fails the read. */
 export declare function parseAdoThreads(json: unknown, pr: number): ForgeThread[];
-export declare function adoReviews(ctx: AdoContext): ForgeReviews;
+/**
+ * The human review input on one PR (ForgeReviews.reviewFeedback) from its
+ * reviewers (Pull Requests - Get By Id) and threads (Pull Request Threads -
+ * List). Trust is the given list (the caller passes `factory.review.trustedReviewers`
+ * and the user-config trustedAuthors; uniqueNames, any case): Azure DevOps has no permission read the guard allows.
+ * - decisions: each trusted reviewer's non-zero vote (10/5 approved, -5
+ *   waiting for author and -10 rejected are changes-requested). A vote carries
+ *   no time or commit; whether it survives a push is the branch policy's
+ *   "reset votes" setting, so `at` is '' and `head` absent.
+ * - threads: active or pending text threads, not the factory's own (marker),
+ *   with the trusted authors' text comments; deleted comments are dropped.
+ * - pendingReviewers: required reviewers who have not voted or declined.
+ */
+export declare function parseAdoReviewFeedback(prJson: unknown, threadsJson: unknown, pr: number, trustedReviewers: readonly string[]): ForgeReviewFeedback;
+/** `review.trustedReviewers`: whose votes and comments reviewFeedback hands on (src/forge/config.ts, trusted layers only). */
+export declare function adoReviews(ctx: AdoContext, review?: {
+    trustedReviewers: readonly string[];
+}): ForgeReviews;
 //# sourceMappingURL=reviews.d.ts.map

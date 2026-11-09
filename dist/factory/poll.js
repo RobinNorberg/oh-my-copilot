@@ -13,7 +13,8 @@
  *    `seen`; each new id is checked (check's rules) and audited
  *    (`intake-new` in `.omg/state/factory-poll-audit.jsonl`).
  * 3. PRs: every run in flight with a PR. A PR a human completed or abandoned
- *    prints the resume hint; open human review threads are counted (ADO).
+ *    prints the resume hint; open human review threads are counted
+ *    (ForgeReviews.reviewFeedback on every forge; ADO's listThreads where a forge has no feedback read).
  * 4. board: the board rows that changed since the previous tick
  *    (src/factory/board), or with `--json` one JSON object per tick.
  *
@@ -498,6 +499,15 @@ export async function pollTick(ctx) {
                 row.state = view.state;
                 if (view.state !== 'OPEN')
                     row.hint = resumeHint(key);
+                else if (forge.reviews.reviewFeedback) {
+                    const feedback = step(`PR ${pr} review feedback`, () => forge.reviews.reviewFeedback(pr, view.headRefOid));
+                    if (feedback) {
+                        row.threads = feedback.threads.length;
+                        row.ignored = feedback.ignored.length;
+                    }
+                    else
+                        row.error = errors[errors.length - 1];
+                }
                 else if (forge.reviews.listThreads) {
                     const threads = step(`PR ${pr} threads`, () => forge.reviews.listThreads(pr));
                     if (threads)
@@ -506,12 +516,12 @@ export async function pollTick(ctx) {
                         row.error = errors[errors.length - 1];
                 }
             }
-            const facts = JSON.stringify([row.state, row.threads]);
+            const facts = JSON.stringify([row.state, row.threads, row.ignored]);
             if (row.state !== undefined && ctx.previous.prs.get(runLabel(key)) !== facts) {
                 if (row.state !== 'OPEN')
                     audit(root, { kind: 'pr-done', id: key, pr, state: row.state, hint: row.hint }, at);
                 else if (row.threads !== undefined)
-                    audit(root, { kind: 'pr-threads', id: key, pr, active: row.threads }, at);
+                    audit(root, { kind: 'pr-threads', id: key, pr, active: row.threads, ...(row.ignored !== undefined ? { ignored: row.ignored } : {}) }, at);
                 ctx.previous.prs.set(runLabel(key), facts);
             }
             prs.push(row);
@@ -587,8 +597,8 @@ export function renderTick(t) {
     for (const p of t.prs) {
         if (p.hint)
             lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)} is ${p.state === 'MERGED' ? 'merged' : 'closed'} by a human: run \`${p.hint}\` to record it`);
-        else if (p.threads)
-            lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)}: ${p.threads} open human thread(s)`);
+        else if (p.threads || p.ignored)
+            lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)}: ${p.threads ?? 0} human thread(s)${p.ignored ? ` (${p.ignored} ignored)` : ''}`);
     }
     // F33: a run whose PR a human already merged or closed shows the record step, not its stale gate reason (a merge command).
     const done = new Map(t.prs.filter((p) => p.hint).map((p) => [runLabel(p.id), p]));

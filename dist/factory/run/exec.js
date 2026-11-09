@@ -9,7 +9,9 @@
  *   (one `pr list` is the blocked-by gate's merged lookup on `factory/issue-<n>`)
  *   and `gh repo view --json url` (ci-heal runs) in fixed shapes, plus ship's
  *   `gh pr view|checks` and `gh run list|view|rerun`.
- *   Never `gh api`, `gh -R`, or a merge (merge is always human).
+ *   Never `gh api`, `gh -R`, or a merge (merge is always human), except the
+ *   one human review read (src/forge/github/graphql.ts isReviewFeedbackArgs):
+ *   `gh api graphql` with its constant query, pinned to the GithubReadContext repo.
  * - Tracker writes (`omg factory enqueue` only, when its TrackerWriteContext is
  *   set): `gh issue create`, `gh issue edit` (title, body, labels) and the
  *   `shipyard-key:` search `gh issue list --search`, each in one exact shape,
@@ -34,6 +36,7 @@ import { tmpdir } from 'os';
 import { isAbsolute, join, resolve } from 'path';
 import { checkAdoCommand, isAdoCommand, runGuardedAdo } from '../../forge/ado/guard.js';
 import { isBodyFileIn, readTrackerBody } from '../../forge/body-file.js';
+import { isReviewFeedbackArgs } from '../../forge/github/graphql.js';
 import { LOCAL_REMOTE, STATE_CHANGE_LOG_FLAGS } from '../../forge/local/mirror.js';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV } from '../../ship/exec.js';
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
@@ -318,11 +321,14 @@ function factoryGit(a, protectedBranches, extraProtected = [], local) {
             return null;
     }
 }
-function factoryGh(a, writes) {
+function factoryGh(a, writes, github) {
     const write = writes ? trackerWriteGh(a, writes) : null;
     if (write !== null)
         return write;
     const [group, sub, ...r] = a;
+    // The one `gh api` shape: the human review read of the run's own repository (fixed query); ship refuses every other.
+    if (group === 'api')
+        return isReviewFeedbackArgs(a, github?.repo) ? true : null;
     if (group === 'issue') {
         if (sub === 'view')
             return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--json' && JSON_FIELDS.test(r[2]);
@@ -366,7 +372,7 @@ const adoRefusal = (cmd, args) => (reason) => new FactorySafetyError(`omg factor
  * which refuses them unless `ado` names the run's forge and az entry.
  * `writes` (enqueue only) adds the tracker write shapes.
  */
-export function assertFactoryCommand(cmd, args, extraProtected = [], env, ado, writes, local) {
+export function assertFactoryCommand(cmd, args, extraProtected = [], env, ado, writes, local, github) {
     if (isAdoCommand(cmd)) {
         checkAdoCommand(cmd, args, env, ado, 'factory', adoRefusal(cmd, args), writes);
         return;
@@ -375,7 +381,7 @@ export function assertFactoryCommand(cmd, args, extraProtected = [], env, ado, w
     const base = file.replace(/\.exe$/, '');
     const protectedBranches = [...PROTECTED_BRANCHES, ...extraProtected];
     const strings = args.every((x) => typeof x === 'string');
-    const verdict = !strings ? false : base === 'git' ? factoryGit(args, protectedBranches, extraProtected, local) : base === 'gh' ? factoryGh(args, writes) : null;
+    const verdict = !strings ? false : base === 'git' ? factoryGit(args, protectedBranches, extraProtected, local) : base === 'gh' ? factoryGh(args, writes, github) : null;
     if (verdict === false)
         throw new FactorySafetyError(`omg factory run refuses \`${file} ${args.join(' ')}\`: not one of the command shapes the factory engine runs`);
     if (verdict === true) {
@@ -399,13 +405,14 @@ export function assertFactoryCommand(cmd, args, extraProtected = [], env, ado, w
  * and a tracker write (gh issue create/edit) with the guard's own copy of its checked --body-file.
  * `writes` is set only by `omg factory enqueue`: the tracker write shapes pass while it returns a context.
  * `local` (the local forge only) binds the mirror init, the remote add and the base push to this run's mirror and synced base.
+ * `github` (GitHub only) names the repository the human review read may query; without it that read is refused.
  */
-export function factoryGuardExec(exec, extraProtected = () => [], ado = () => undefined, writes = () => undefined, local = () => undefined) {
+export function factoryGuardExec(exec, extraProtected = () => [], ado = () => undefined, writes = () => undefined, local = () => undefined, github = () => undefined) {
     return (cmd, args, opts) => {
         if (isAdoCommand(cmd))
             return runGuardedAdo(exec, cmd, args, opts, ado(), 'factory', adoRefusal(cmd, args), writes());
         const ctx = writes();
-        assertFactoryCommand(cmd, args, extraProtected(), opts?.env, undefined, ctx, local());
+        assertFactoryCommand(cmd, args, extraProtected(), opts?.env, undefined, ctx, local(), github());
         const at = ctx && cmd.replace(/\\/g, '/').split('/').pop().toLowerCase().replace(/\.exe$/, '') === 'gh' ? trackerBodyFileArg(args) : undefined;
         if (at === undefined)
             return exec(cmd, args, opts);

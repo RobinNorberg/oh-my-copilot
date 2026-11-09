@@ -225,4 +225,42 @@ export function updatePrStore(path, fn) {
         return result;
     });
 }
+/** At most this many characters of review text in one record. */
+export const MAX_LOCAL_REVIEW_CHARS = 20_000;
+/** `<storeDir>/prs/<n>/reviews.jsonl`: engine-owned (outside every lane-writable root), beside prs.json. */
+export const localReviewsPath = (storeDir, pr) => join(storeDir, 'prs', String(pr), 'reviews.jsonl');
+function validReview(r, pr) {
+    const v = r;
+    return !!v && v.version === 1 && typeof v.id === 'string' && v.pr === pr && typeof v.author === 'string' && v.author !== ''
+        && (v.state === 'approved' || v.state === 'changes-requested' || v.state === 'commented') && typeof v.body === 'string'
+        && typeof v.head === 'string' && /^[0-9a-f]{40}$/.test(v.head) && typeof v.at === 'string';
+}
+/** The PR's played-back reviews in order; none when the file is absent. A malformed line throws (the file is engine-owned). */
+export function readLocalReviews(storeDir, pr) {
+    const path = localReviewsPath(storeDir, pr);
+    if (!noLinkPath(storeDir, path, false) || !existsSync(path))
+        return [];
+    return readFileSync(path, 'utf8').split('\n').filter((l) => l.trim() !== '').map((line, i) => {
+        let r;
+        try {
+            r = JSON.parse(line);
+        }
+        catch {
+            throw new Error(`local forge: review record ${i + 1} of ${path} is not valid JSON`);
+        }
+        if (!validReview(r, pr))
+            throw new Error(`local forge: review record ${i + 1} of ${path} is malformed`);
+        return r;
+    });
+}
+/** Append one review record under the file's lock, without following a link below `storeDir`. */
+export function appendLocalReview(storeDir, record) {
+    if (!validReview(record, record.pr))
+        throw new Error('local forge: refusing a malformed review record');
+    if (record.body.length > MAX_LOCAL_REVIEW_CHARS)
+        throw new Error(`local forge: the review text is over ${MAX_LOCAL_REVIEW_CHARS} characters`);
+    const path = localReviewsPath(storeDir, record.pr);
+    noLinkPath(storeDir, path);
+    withFileLock(path, () => appendNoFollow(storeDir, path, `${JSON.stringify(record)}\n`));
+}
 //# sourceMappingURL=store.js.map
