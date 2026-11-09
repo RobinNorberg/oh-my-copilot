@@ -35,8 +35,8 @@ import { checkAdoAuth, checkGitHubAuth } from '../../factory/setup/auth.js';
 import { detectSetupForge } from '../../factory/setup/detect.js';
 import { SetupError, setupGuardExec } from '../../factory/setup/guard.js';
 import { adoWorkItemTypes, formatIntakeSpec, githubLabels, parseIntakeSpec, pickIntake, previewIntake, validateIntake, } from '../../factory/setup/intake-pick.js';
-import { DEFAULT_HEARTBEAT_CRON, parseHeartbeatMode, planHeartbeat } from '../../factory/setup/workflows.js';
-import { getRuntimePackageVersion } from '../../lib/version.js';
+import { DEFAULT_HEARTBEAT_CRON, parseHeartbeatMode, planHeartbeat, validateOmgVersionOverride } from '../../factory/setup/workflows.js';
+import { getRuntimePackageVersion, isRuntimePackageLocal } from '../../lib/version.js';
 import { pickHealPipeline } from '../../factory/setup/pipeline-pick.js';
 import { missingGitHubLabels, pickProgress, progressFromFlag, validateAdoProgress } from '../../factory/setup/progress-pick.js';
 import { applyWrites, buildSection, parsedAfter, planBacklogSample, planWrites } from '../../factory/setup/write.js';
@@ -175,8 +175,8 @@ async function setup(o, deps, cwd, out) {
         await setupWorkflows(o, deps, root, repo.kind, interactive, out);
         return;
     }
-    if (o.mode !== undefined || o.cron !== undefined || o.force)
-        throw new SetupError(2, '--mode, --cron and --force belong to --workflows');
+    if (o.mode !== undefined || o.cron !== undefined || o.force || o.omgVersion !== undefined)
+        throw new SetupError(2, '--mode, --cron, --omg-version and --force belong to --workflows');
     if (!interactive) {
         // The local forge's source defaults to its backlog directory.
         const missing = [...(o.intake || local ? [] : ['--intake']), ...(o.yes || o.dryRun ? [] : ['--yes (or --dry-run)'])];
@@ -360,7 +360,14 @@ async function setupWorkflows(o, deps, root, kind, interactive, out) {
         out.notes.push('--workflows is not applicable to the local (offline) forge: there is no CI to schedule. Run omg factory check and omg factory poll from your own scheduler if you want a heartbeat.');
         return;
     }
-    const plan = planHeartbeat(root, kind, { mode, cron: o.cron ?? DEFAULT_HEARTBEAT_CRON, version: getRuntimePackageVersion(), force: Boolean(o.force) });
+    const version = o.omgVersion === undefined ? getRuntimePackageVersion() : validateOmgVersionOverride(o.omgVersion);
+    // Azure DevOps schedules only the default branch (the one omg ships to).
+    const plan = planHeartbeat(root, kind, { mode, cron: o.cron ?? DEFAULT_HEARTBEAT_CRON, version, branch: kind === 'azure-devops' ? defaultFactoryRunDeps.base(root) : undefined, force: Boolean(o.force) });
+    for (const w of plan.warnings)
+        out.notes.push(`warning: ${w}`);
+    if (o.omgVersion === undefined && isRuntimePackageLocal()) {
+        out.notes.push(`warning: this omg runs from a git checkout or an unreleased build; the file installs oh-my-copilot@${version} from npm, so that version must be published or the install step fails (pass --omg-version <x.y.z> to pin a published one)`);
+    }
     const planned = plan.write ? [plan.write] : [];
     out.diffs = planned.map((w) => ({ path: w.path, scope: w.scope, diff: w.diff }));
     if (plan.action === 'unchanged')
@@ -441,6 +448,7 @@ export function factorySetupCommand(deps = defaultFactorySetupDeps) {
         .option('--workflows', 'Write the cloud heartbeat (.github/workflows/omg-factory-heartbeat.yml, or an Azure Pipelines file on ADO) instead of running the wizard')
         .option('--mode <mode>', 'with --workflows: read-only (default) | triage (adds issues: write for omg factory triage --apply)')
         .option('--cron <expr>', 'with --workflows: schedule cron expression (default every 2 hours)')
+        .option('--omg-version <x.y.z>', 'with --workflows: the published omg version the file installs (default: the version of this build)')
         .option('--force', 'with --workflows: replace a heartbeat file this command did not write')
         .option('--dry-run', 'Show the diff and the preview; write nothing')
         .option('--yes', 'Non-interactive: take every answer from flags and confirm the write')

@@ -133031,6 +133031,43 @@ var init_write = __esm({
 });
 
 // src/factory/setup/workflows.ts
+function validateOmgVersionOverride(raw) {
+  if (!STRICT_SEMVER.test(raw)) throw new SetupError(2, `--omg-version must be an exact x.y.z version, got ${JSON.stringify(raw)}`);
+  return raw;
+}
+function compareVersions3(a, b) {
+  const parse13 = (v) => [v.split("-")[0].split(".").map(Number), v.includes("-")];
+  const [na, pa] = parse13(a);
+  const [nb, pb] = parse13(b);
+  for (let i = 0; i < 3; i++) if (na[i] !== nb[i]) return na[i] < nb[i] ? -1 : 1;
+  return pa === pb ? 0 : pa ? -1 : 1;
+}
+function expandCronField(text4, name, lo, hi) {
+  const bad = (why) => {
+    throw new SetupError(2, `--cron ${name} field ${JSON.stringify(text4)}: ${why} (allowed ${lo}-${hi})`);
+  };
+  const out = /* @__PURE__ */ new Set();
+  for (const item of text4.split(",")) {
+    const m = /^(\*|(\d+)(?:-(\d+))?)(?:\/(\d+))?$/.exec(item);
+    if (!m) return bad("not a number, range, list or step");
+    const step = m[4] === void 0 ? 1 : Number(m[4]);
+    if (step < 1) return bad("a step must be at least 1");
+    const from = m[1] === "*" ? lo : Number(m[2]);
+    const to = m[1] === "*" ? hi : m[3] === void 0 ? m[4] === void 0 ? from : hi : Number(m[3]);
+    if (from < lo || from > hi || to < lo || to > hi) return bad("out of range");
+    if (from > to) return bad("a range must not run backwards");
+    for (let v = from; v <= to; v += step) out.add(v);
+  }
+  return out;
+}
+function checkCron(cron) {
+  if (!CRON.test(cron)) throw new SetupError(2, `--cron must be five cron fields (digits, *, /, comma, dash), got ${JSON.stringify(cron)}`);
+  const sets = cron.split(" ").map((field, i) => expandCronField(field, CRON_RANGES[i][0], CRON_RANGES[i][1], CRON_RANGES[i][2]));
+  const times = [...sets[1]].flatMap((h) => [...sets[0]].map((m) => h * 60 + m)).sort((a, b) => a - b);
+  let gap = times.length > 1 ? times[0] + 1440 - times[times.length - 1] : Infinity;
+  for (let i = 1; i < times.length; i++) gap = Math.min(gap, times[i] - times[i - 1]);
+  return gap < MIN_COMFORTABLE_GAP_MINUTES ? [`--cron ${JSON.stringify(cron)} can run every ${gap} minute${gap === 1 ? "" : "s"}: a heartbeat that often burns CI minutes and API quota; every ${MIN_COMFORTABLE_GAP_MINUTES} minutes or less often is advised`] : [];
+}
 function parseHeartbeatMode(raw) {
   if (raw === void 0 || raw === "read-only") return "read-only";
   if (raw === "triage") return "triage";
@@ -133046,36 +133083,51 @@ function templateDir(dir) {
   throw new SetupError(1, `cannot find the packaged templates/${dir} directory`);
 }
 function renderHeartbeat(forge, o) {
-  if (!CRON.test(o.cron)) throw new SetupError(2, `--cron must be five cron fields (digits, *, /, comma, dash), got ${JSON.stringify(o.cron)}`);
+  checkCron(o.cron);
   if (!VERSION3.test(o.version)) throw new SetupError(1, `cannot pin the omg version ${JSON.stringify(o.version)}: not an exact semver`);
+  if (o.mode === "triage" && compareVersions3(o.version, HEARTBEAT_TRIAGE_MIN_VERSION) < 0) {
+    throw new SetupError(2, `--mode triage needs omg >= ${HEARTBEAT_TRIAGE_MIN_VERSION} (the first release with omg factory triage), but the pinned version is ${o.version}: pass --omg-version <x.y.z> once a release that has it is published`);
+  }
+  const branch2 = o.branch ?? "";
+  if (forge === "azure-devops" && (!BRANCH5.test(branch2) || branch2.includes(".."))) {
+    throw new SetupError(2, `cannot schedule the pipeline on branch ${JSON.stringify(branch2)}: expected letters, digits, ., _, / and - only, without ..`);
+  }
   const target = TARGETS[forge];
   const dir = templateDir(target.dir);
   const template = (0, import_fs175.readFileSync)((0, import_path205.join)(dir, target.template), "utf8").replace(/\r\n/g, "\n");
   const triage = o.mode === "triage";
   const note = triage ? forge === "github" ? "#   Triage mode is the opt-in write scope: issues: write lets `omg factory triage --apply` set labels.\n" : "# Triage mode is the opt-in write scope: `omg factory triage --apply` sets tags, so the build identity needs work item write access.\n" : "";
   const stepText = triage ? (0, import_fs175.readFileSync)((0, import_path205.join)(dir, target.step), "utf8").replace(/\r\n/g, "\n") : "";
-  const out = template.split("@@TRIAGE_STEP@@\n").join(stepText).split("@@TRIAGE_ENV@@").join(triage ? "          TRIAGE_CODE: ${{ steps.triage.outputs.code }}\n" : "").split("@@MODE_NOTE@@").join(note).split("@@ISSUES@@").join(triage ? "write" : "read").split("@@MODE@@").join(o.mode).split("@@CRON@@").join(o.cron).split("@@VERSION@@").join(o.version);
+  const out = template.split("@@TRIAGE_STEP@@\n").join(stepText).split("@@TRIAGE_ENV@@").join(triage ? "          TRIAGE_CODE: ${{ steps.triage.outputs.code }}\n" : "").split("@@MODE_NOTE@@").join(note).split("@@ISSUES@@").join(triage ? "write" : "read").split("@@MODE@@").join(o.mode).split("@@BRANCH@@").join(branch2).split("@@CRON@@").join(o.cron).split("@@VERSION@@").join(o.version);
   if (out.includes("@@")) throw new SetupError(1, "heartbeat template has an unfilled placeholder");
   return out;
 }
 function planHeartbeat(root2, forge, o) {
   const relPath = TARGETS[forge].path;
   const after = renderHeartbeat(forge, o);
+  const warnings = checkCron(o.cron);
   const path30 = (0, import_path205.join)(root2, ...relPath.split("/"));
   let p = root2;
   for (const seg of relPath.split("/")) {
     p = (0, import_path205.join)(p, seg);
-    if ((0, import_fs175.existsSync)(p) && (0, import_fs175.lstatSync)(p).isSymbolicLink()) throw new SetupError(5, `refusing to write ${relPath}: ${p} is a symlink or junction`);
+    let linked;
+    try {
+      linked = (0, import_fs175.lstatSync)(p).isSymbolicLink();
+    } catch (err) {
+      if (err.code === "ENOENT") break;
+      throw new SetupError(5, `refusing to write ${relPath}: cannot inspect ${p} (${err.code ?? "error"})`);
+    }
+    if (linked) throw new SetupError(5, `refusing to write ${relPath}: ${p} is a symlink or junction`);
   }
-  if (!(0, import_fs175.existsSync)(path30)) return { relPath, action: "create", write: { path: path30, scope: "project", before: "", after, diff: lineDiff("", after) } };
+  if (!(0, import_fs175.existsSync)(path30)) return { relPath, action: "create", warnings, write: { path: path30, scope: "project", before: "", after, diff: lineDiff("", after) } };
   const raw = (0, import_fs175.readFileSync)(path30, "utf8");
   const before = raw.replace(/\r\n/g, "\n");
-  if (before === after) return { relPath, action: "unchanged" };
+  if (before === after) return { relPath, action: "unchanged", warnings };
   const ours = before.split("\n").some((line2) => line2.startsWith(HEARTBEAT_MARKER));
   if (!ours && !o.force) throw new SetupError(5, `${relPath} exists and was not written by omg factory setup --workflows; nothing written (pass --force to replace it)`);
-  return { relPath, action: ours ? "update" : "overwrite", write: { path: path30, scope: "project", before: raw, after, diff: lineDiff(before, after) } };
+  return { relPath, action: ours ? "update" : "overwrite", warnings, write: { path: path30, scope: "project", before: raw, after, diff: lineDiff(before, after) } };
 }
-var import_fs175, import_path205, import_url23, DEFAULT_HEARTBEAT_CRON, HEARTBEAT_MARKER, TARGETS, CRON, VERSION3;
+var import_fs175, import_path205, import_url23, DEFAULT_HEARTBEAT_CRON, HEARTBEAT_TRIAGE_MIN_VERSION, HEARTBEAT_MARKER, TARGETS, CRON, VERSION3, STRICT_SEMVER, BRANCH5, CRON_RANGES, MIN_COMFORTABLE_GAP_MINUTES;
 var init_workflows = __esm({
   "src/factory/setup/workflows.ts"() {
     "use strict";
@@ -133085,6 +133137,7 @@ var init_workflows = __esm({
     init_guard2();
     init_write();
     DEFAULT_HEARTBEAT_CRON = "17 */2 * * *";
+    HEARTBEAT_TRIAGE_MIN_VERSION = "5.22.0";
     HEARTBEAT_MARKER = "# omg-factory-heartbeat: generated by `omg factory setup --workflows`";
     TARGETS = {
       github: { path: ".github/workflows/omg-factory-heartbeat.yml", template: "omg-factory-heartbeat.yml", step: "omg-factory-heartbeat.triage-step.yml", dir: "workflows" },
@@ -133092,6 +133145,10 @@ var init_workflows = __esm({
     };
     CRON = /^(?:[0-9*/,-]+ ){4}[0-9*/,-]+$/;
     VERSION3 = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+    STRICT_SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+    BRANCH5 = /^[A-Za-z0-9._/-]+$/;
+    CRON_RANGES = [["minute", 0, 59], ["hour", 0, 23], ["day of month", 1, 31], ["month", 1, 12], ["day of week", 0, 7]];
+    MIN_COMFORTABLE_GAP_MINUTES = 15;
   }
 });
 
@@ -133327,7 +133384,7 @@ async function setup(o, deps, cwd2, out) {
     await setupWorkflows(o, deps, root2, repo.kind, interactive, out);
     return;
   }
-  if (o.mode !== void 0 || o.cron !== void 0 || o.force) throw new SetupError(2, "--mode, --cron and --force belong to --workflows");
+  if (o.mode !== void 0 || o.cron !== void 0 || o.force || o.omgVersion !== void 0) throw new SetupError(2, "--mode, --cron, --omg-version and --force belong to --workflows");
   if (!interactive) {
     const missing = [...o.intake || local ? [] : ["--intake"], ...o.yes || o.dryRun ? [] : ["--yes (or --dry-run)"]];
     if (missing.length > 0) throw new SetupError(2, `non-interactive omg factory setup needs ${missing.join(", ")}`);
@@ -133456,7 +133513,12 @@ async function setupWorkflows(o, deps, root2, kind, interactive, out) {
     out.notes.push("--workflows is not applicable to the local (offline) forge: there is no CI to schedule. Run omg factory check and omg factory poll from your own scheduler if you want a heartbeat.");
     return;
   }
-  const plan = planHeartbeat(root2, kind, { mode, cron: o.cron ?? DEFAULT_HEARTBEAT_CRON, version: getRuntimePackageVersion(), force: Boolean(o.force) });
+  const version3 = o.omgVersion === void 0 ? getRuntimePackageVersion() : validateOmgVersionOverride(o.omgVersion);
+  const plan = planHeartbeat(root2, kind, { mode, cron: o.cron ?? DEFAULT_HEARTBEAT_CRON, version: version3, branch: kind === "azure-devops" ? defaultFactoryRunDeps.base(root2) : void 0, force: Boolean(o.force) });
+  for (const w of plan.warnings) out.notes.push(`warning: ${w}`);
+  if (o.omgVersion === void 0 && isRuntimePackageLocal()) {
+    out.notes.push(`warning: this omg runs from a git checkout or an unreleased build; the file installs oh-my-copilot@${version3} from npm, so that version must be published or the install step fails (pass --omg-version <x.y.z> to pin a published one)`);
+  }
   const planned = plan.write ? [plan.write] : [];
   out.diffs = planned.map((w) => ({ path: w.path, scope: w.scope, diff: w.diff }));
   if (plan.action === "unchanged") out.notes.push(`${plan.relPath} is already up to date`);
@@ -133505,7 +133567,7 @@ function printOutcome(o, r) {
   }
 }
 function factorySetupCommand(deps = defaultFactorySetupDeps) {
-  return new Command("setup").description("Configure the factory for this repository: forge, auth, intake source, progress mapping (writes only factory.* after a diff)").option("--forge <kind>", "github | azure-devops | local (default: detected from origin; github and azure-devops can only pin it; local is the offline forge and needs no origin)").option("--org <org>", "Azure DevOps organization (pin)").option("--project <project>", "Azure DevOps project (pin)").option("--repo <repo>", "GitHub owner/name or Azure DevOps repository (pin)").option("--intake <spec>", "label:<name> | milestone:<title> | wiql-query:<guid> | board-column:<team>/<board>/<column> | area-tag:<area>#<tag> | local-backlog[:<label>] (default with --forge local)").option("--item-types <list>", "Azure DevOps work item types, comma-separated").option("--progress <mode>", "default | none | <file.json>").option("--board <team/board>", "Azure DevOps board the progress columns live on (default: the board-column intake board)").option("--trusted-author <list>", "Azure DevOps uniqueNames whose omg-plan: comments count (user config only), comma-separated").option("--heal-pipeline <id>", "Azure DevOps build definition omg factory heal reads as CI (a pipeline of this repository), or none").option("--scope <scope>", "project | user; forge identity, intake and progress always go to .copilot/omg.jsonc, the user config gets only trustedAuthors", "project").option("--workflows", "Write the cloud heartbeat (.github/workflows/omg-factory-heartbeat.yml, or an Azure Pipelines file on ADO) instead of running the wizard").option("--mode <mode>", "with --workflows: read-only (default) | triage (adds issues: write for omg factory triage --apply)").option("--cron <expr>", "with --workflows: schedule cron expression (default every 2 hours)").option("--force", "with --workflows: replace a heartbeat file this command did not write").option("--dry-run", "Show the diff and the preview; write nothing").option("--yes", "Non-interactive: take every answer from flags and confirm the write").option("--json", "JSON output (non-interactive)").action(async (o) => {
+  return new Command("setup").description("Configure the factory for this repository: forge, auth, intake source, progress mapping (writes only factory.* after a diff)").option("--forge <kind>", "github | azure-devops | local (default: detected from origin; github and azure-devops can only pin it; local is the offline forge and needs no origin)").option("--org <org>", "Azure DevOps organization (pin)").option("--project <project>", "Azure DevOps project (pin)").option("--repo <repo>", "GitHub owner/name or Azure DevOps repository (pin)").option("--intake <spec>", "label:<name> | milestone:<title> | wiql-query:<guid> | board-column:<team>/<board>/<column> | area-tag:<area>#<tag> | local-backlog[:<label>] (default with --forge local)").option("--item-types <list>", "Azure DevOps work item types, comma-separated").option("--progress <mode>", "default | none | <file.json>").option("--board <team/board>", "Azure DevOps board the progress columns live on (default: the board-column intake board)").option("--trusted-author <list>", "Azure DevOps uniqueNames whose omg-plan: comments count (user config only), comma-separated").option("--heal-pipeline <id>", "Azure DevOps build definition omg factory heal reads as CI (a pipeline of this repository), or none").option("--scope <scope>", "project | user; forge identity, intake and progress always go to .copilot/omg.jsonc, the user config gets only trustedAuthors", "project").option("--workflows", "Write the cloud heartbeat (.github/workflows/omg-factory-heartbeat.yml, or an Azure Pipelines file on ADO) instead of running the wizard").option("--mode <mode>", "with --workflows: read-only (default) | triage (adds issues: write for omg factory triage --apply)").option("--cron <expr>", "with --workflows: schedule cron expression (default every 2 hours)").option("--omg-version <x.y.z>", "with --workflows: the published omg version the file installs (default: the version of this build)").option("--force", "with --workflows: replace a heartbeat file this command did not write").option("--dry-run", "Show the diff and the preview; write nothing").option("--yes", "Non-interactive: take every answer from flags and confirm the write").option("--json", "JSON output (non-interactive)").action(async (o) => {
     const result = await runFactorySetup(o, deps);
     printOutcome(o, result);
     process.exitCode = result.exitCode;
@@ -145864,11 +145926,11 @@ function renderUpdateHints(input) {
   }
   return lines4;
 }
-function resolveCachedOmcUpdate(cached2, installedVersion, channel, compareVersions4) {
+function resolveCachedOmcUpdate(cached2, installedVersion, channel, compareVersions5) {
   if (!cached2?.latestVersion || !installedVersion) return null;
   const sameChannel = cached2.source === channel || !cached2.source && channel === "npm";
   if (!sameChannel || cached2.currentVersion !== installedVersion) return null;
-  if (compareVersions4(installedVersion, cached2.latestVersion) >= 0) return null;
+  if (compareVersions5(installedVersion, cached2.latestVersion) >= 0) return null;
   return { latestVersion: cached2.latestVersion, source: channel };
 }
 var YELLOW13, BOLD3, COPILOT_PLUGIN_UPDATE, NPM_UPDATE;
@@ -166890,7 +166952,7 @@ function parseReleaseVersion(raw) {
   if (!VERSION_RE.test(v)) throw new Error(`version must be X.Y.Z, got ${JSON.stringify(raw)}`);
   return v;
 }
-function compareVersions3(a, b) {
+function compareVersions4(a, b) {
   const pa = parseReleaseVersion(a).split(".").map(Number);
   const pb = parseReleaseVersion(b).split(".").map(Number);
   for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
@@ -167448,11 +167510,11 @@ ${r.stderr}`)) throw new PendingError(outcome);
     const devPkg = this.run("git", ["show", "refs/remotes/origin/dev:package.json"]);
     const devVersion = devPkg.status === 0 ? JSON.parse(devPkg.stdout).version : void 0;
     if (!devVersion) problems.push("could not read package.json on origin/dev");
-    else if (compareVersions3(v, devVersion) <= 0) problems.push(`${v} is not above origin/dev's version ${devVersion}`);
+    else if (compareVersions4(v, devVersion) <= 0) problems.push(`${v} is not above origin/dev's version ${devVersion}`);
     const latest2 = this.run("npm", ["view", this.pkgName, "dist-tags.latest"]);
     if (latest2.status === 0) {
       const published = latest2.stdout.trim();
-      if (published && compareVersions3(v, published) <= 0) problems.push(`${v} is not above npm latest ${published}`);
+      if (published && compareVersions4(v, published) <= 0) problems.push(`${v} is not above npm latest ${published}`);
     } else if (!/E404/.test(latest2.stderr)) problems.push(`npm view ${this.pkgName} failed: ${tail2(latest2.stderr, 1).join("")}`);
     if (this.run("gh", ["auth", "status"]).status !== 0) problems.push("gh is not authenticated (gh auth login)");
     const lockRel = this.git("rev-parse", "--git-path", "index.lock");

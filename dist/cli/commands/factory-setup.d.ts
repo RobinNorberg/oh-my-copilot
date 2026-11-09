@@ -58,6 +58,8 @@ export interface FactorySetupOptions {
     mode?: string;
     /** --workflows: schedule cron (default every 2 hours). */
     cron?: string;
+    /** --workflows: pin this exact published omg version instead of the running build's. */
+    omgVersion?: string;
     /** --workflows: replace a file this command did not write. */
     force?: boolean;
     dryRun?: boolean;
