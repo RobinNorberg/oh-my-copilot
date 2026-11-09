@@ -242,3 +242,56 @@ export function updatePrStore<T>(path: string, fn: (store: LocalPrStore) => T): 
     return result;
   });
 }
+
+/** A human review played back into the local forge (`omg factory pr review`): the local stand-in for a forge review. */
+export interface LocalReviewRecord {
+  version: 1;
+  id: string;
+  pr: number;
+  /** The OS user who ran the command, lowercased. */
+  author: string;
+  state: 'approved' | 'changes-requested' | 'commented';
+  /** The review text (untrusted data for the fix lane; may be empty on approve). */
+  body: string;
+  /** The PR head the review was given on (the mirror's branch tip then). */
+  head: string;
+  at: string;
+}
+
+/** At most this many characters of review text in one record. */
+export const MAX_LOCAL_REVIEW_CHARS = 20_000;
+
+/** `<storeDir>/prs/<n>/reviews.jsonl`: engine-owned (outside every lane-writable root), beside prs.json. */
+export const localReviewsPath = (storeDir: string, pr: number): string => join(storeDir, 'prs', String(pr), 'reviews.jsonl');
+
+function validReview(r: unknown, pr: number): r is LocalReviewRecord {
+  const v = r as Partial<LocalReviewRecord> | null;
+  return !!v && v.version === 1 && typeof v.id === 'string' && v.pr === pr && typeof v.author === 'string' && v.author !== ''
+    && (v.state === 'approved' || v.state === 'changes-requested' || v.state === 'commented') && typeof v.body === 'string'
+    && typeof v.head === 'string' && /^[0-9a-f]{40}$/.test(v.head) && typeof v.at === 'string';
+}
+
+/** The PR's played-back reviews in order; none when the file is absent. A malformed line throws (the file is engine-owned). */
+export function readLocalReviews(storeDir: string, pr: number): LocalReviewRecord[] {
+  const path = localReviewsPath(storeDir, pr);
+  if (!noLinkPath(storeDir, path, false) || !existsSync(path)) return [];
+  return readFileSync(path, 'utf8').split('\n').filter((l) => l.trim() !== '').map((line, i) => {
+    let r: unknown;
+    try {
+      r = JSON.parse(line);
+    } catch {
+      throw new Error(`local forge: review record ${i + 1} of ${path} is not valid JSON`);
+    }
+    if (!validReview(r, pr)) throw new Error(`local forge: review record ${i + 1} of ${path} is malformed`);
+    return r;
+  });
+}
+
+/** Append one review record under the file's lock, without following a link below `storeDir`. */
+export function appendLocalReview(storeDir: string, record: LocalReviewRecord): void {
+  if (!validReview(record, record.pr)) throw new Error('local forge: refusing a malformed review record');
+  if (record.body.length > MAX_LOCAL_REVIEW_CHARS) throw new Error(`local forge: the review text is over ${MAX_LOCAL_REVIEW_CHARS} characters`);
+  const path = localReviewsPath(storeDir, record.pr);
+  noLinkPath(storeDir, path);
+  withFileLock(path, () => appendNoFollow(storeDir, path, `${JSON.stringify(record)}\n`));
+}

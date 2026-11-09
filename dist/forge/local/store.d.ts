@@ -72,4 +72,26 @@ export interface LocalPrStore {
 export declare function readPrStore(path: string): LocalPrStore;
 /** Locked read-modify-write of the store; `fn` mutates the store and returns a result. */
 export declare function updatePrStore<T>(path: string, fn: (store: LocalPrStore) => T): T;
+/** A human review played back into the local forge (`omg factory pr review`): the local stand-in for a forge review. */
+export interface LocalReviewRecord {
+    version: 1;
+    id: string;
+    pr: number;
+    /** The OS user who ran the command, lowercased. */
+    author: string;
+    state: 'approved' | 'changes-requested' | 'commented';
+    /** The review text (untrusted data for the fix lane; may be empty on approve). */
+    body: string;
+    /** The PR head the review was given on (the mirror's branch tip then). */
+    head: string;
+    at: string;
+}
+/** At most this many characters of review text in one record. */
+export declare const MAX_LOCAL_REVIEW_CHARS = 20000;
+/** `<storeDir>/prs/<n>/reviews.jsonl`: engine-owned (outside every lane-writable root), beside prs.json. */
+export declare const localReviewsPath: (storeDir: string, pr: number) => string;
+/** The PR's played-back reviews in order; none when the file is absent. A malformed line throws (the file is engine-owned). */
+export declare function readLocalReviews(storeDir: string, pr: number): LocalReviewRecord[];
+/** Append one review record under the file's lock, without following a link below `storeDir`. */
+export declare function appendLocalReview(storeDir: string, record: LocalReviewRecord): void;
 //# sourceMappingURL=store.d.ts.map

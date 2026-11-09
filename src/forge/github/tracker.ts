@@ -9,7 +9,7 @@
 import type { Exec, ExecResult } from '../../ship/exec.js';
 import { commentTrusted, issueAuthorTrusted, type IssueComment } from '../../factory/run/plan-rules.js';
 import {
-  shipyardKeys, shipyardKeySearch, type ForgeItem, type ForgeItemDraft, type ForgeItemUpdate, type ForgeRepo, type ForgeTracker, type IntakeSource,
+  shipyardKeys, shipyardKeySearch, type ForgeItem, type ForgeItemDraft, type ForgeItemUpdate, type ForgeRepo, type ForgeTracker, type ForgeTriageChange, type IntakeSource,
   type ProgressMapping, type ProgressStage, type ResolvedForgeConfig,
 } from '../types.js';
 import { GhCommandError, ghJson, ghRepoArg, ghRun } from './gh.js';
@@ -161,12 +161,21 @@ export function ghUpdateItem(exec: Exec, repo: ForgeRepo, id: number, update: Fo
   ], cwd);
 }
 
+/** `gh issue edit <n> --repo <repo>` with the triage label flags (adds, then removes). Priority is a label on GitHub, so the number is ignored. Never throws. */
+export function ghSetTriage(exec: Exec, repo: ForgeRepo, issue: number, change: ForgeTriageChange, cwd: string): { ok: boolean; detail: string } {
+  if (change.assignee !== undefined) return { ok: false, detail: 'assignee is not a triage write yet' };
+  if (change.add.length === 0 && change.remove.length === 0) return { ok: true, detail: 'nothing to change' };
+  const res = editLabels(exec, issue, ['--repo', ghRepoArg(repo), ...change.add.flatMap((l) => ['--add-label', l]), ...change.remove.flatMap((l) => ['--remove-label', l])], cwd);
+  return { ok: res.ok, detail: res.ok ? 'labels updated' : res.stderr.trim() };
+}
+
 export function githubTracker(exec: Exec, cwd: string, config: ResolvedForgeConfig): ForgeTracker {
   return {
     viewItem: (id) => ghViewItem(exec, id, cwd),
     queryItems: (source, limit) => ghQueryItems(exec, source, limit, cwd),
     comment: (id, bodyFile) => ghIssueComment(exec, id, bodyFile, cwd),
     setProgress: (id, stage, mapping) => ghSetProgress(exec, id, stage, mapping, config.progress.stages, cwd),
+    setTriage: (id, change) => ghSetTriage(exec, config.repo, id, change, cwd),
     addMarker: (id, marker) => editLabels(exec, id, ['--add-label', marker], cwd),
     findByKey: (spec) => ghFindByKey(exec, config.repo, spec, cwd),
     createItem: (draft) => ghCreateItem(exec, config.repo, draft, cwd),

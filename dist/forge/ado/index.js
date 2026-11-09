@@ -75,7 +75,7 @@ export function createAzureDevOpsForge(exec, cwd, config, options) {
         provider: 'azure-devops',
         repo: config.repo,
         tracker: adoTracker(ctx, config.intake.source, options.trackerBodyDir),
-        reviews: adoReviews(ctx),
+        reviews: adoReviews(ctx, { trustedReviewers: config.review?.trustedReviewers ?? [] }),
         checks: adoChecks(ctx),
         merge: adoMerge(ctx, { stateDir: options.stateDir ?? join(homedir(), '.omg', 'forge'), untrustedRoots }),
         ...(pipeline ? { ci: adoCi(ctx, pipeline) } : {}),

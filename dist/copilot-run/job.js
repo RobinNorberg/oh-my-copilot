@@ -869,6 +869,7 @@ export class CopilotRunManager {
             scrubCredentials: options.scrubCredentials === true,
             hostCommits: options.hostCommits === true,
             ledgerKey: options.ledgerKey ?? `copilot-run:${id}`,
+            ledgerTag: options.ledgerTag ?? null,
             model: input.model ?? null,
             timeoutMs,
             maxCredits,
@@ -1112,6 +1113,7 @@ export class CopilotRunManager {
                 ? 'session.shutdown'
                 : 'copilot_run sdk assistant.usage: AI credits as billed, user-initiated calls x1 each (multiplier unknown)',
             ...(job.model ? { model: job.model } : {}),
+            ...(job.ledgerTag ? { tag: job.ledgerTag } : {}),
             updatedAt: new Date().toISOString(),
         };
         try {

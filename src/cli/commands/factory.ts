@@ -48,12 +48,14 @@ import { healCommand } from '../../factory/heal/cli.js';
 import { defaultFactoryCheckDeps, factoryCheckCommand, ttyConfirm } from './factory-check.js';
 import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_INCOMPATIBLE, EXIT_CHECK_USAGE, factoryErrorLine, type FactoryCheckDeps } from '../../factory/check/cli.js';
 import { runFactoryEnqueue } from '../../factory/enqueue.js';
+import { factoryTriageCommand } from './factory-triage.js';
 import { resolveHealConfig } from '../../factory/heal/config.js';
 import { defaultLedgerDir, emptyHooksDir } from '../../factory/run/ledger.js';
 import type { FactoryPollDeps } from '../../factory/poll.js';
 import { listenForgeRefusal } from '../../factory/setup/detect.js';
 import { factorySetupCommand } from './factory-setup.js';
 import { factoryBoardCommand } from './factory-board.js';
+import { factoryPrCommand } from './factory-pr.js';
 import { factoryPollCommand } from './factory-poll.js';
 import { defaultPollHealScan } from '../../factory/poll.js';
 import { checkEnvFor, fetchBase, forgeReadExec, localBase, missingLocalBase, parseItemId, readForgeOptions } from '../../factory/check/cli.js';
@@ -425,7 +427,9 @@ export function factoryCommand(): Command {
   cmd.addCommand(factoryRunCommand());
   cmd.addCommand(factoryCheckCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(factoryEnqueueCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
+  cmd.addCommand(factoryTriageCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(factoryBoardCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
+  cmd.addCommand(factoryPrCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(factoryPollCommand({
     ...defaultFactoryCheckDeps(defaultFactoryRunDeps.base),
     healScan: defaultPollHealScan(defaultExec, (root) => resolveHealConfig(userConfigLayers().trustedUser, projectConfig(root)), defaultLedgerDir()),

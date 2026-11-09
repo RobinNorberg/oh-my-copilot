@@ -35,6 +35,8 @@ import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { isAdoCommand, runGuardedAdo } from '../../forge/ado/guard.js';
 import { assertFactoryCommand, FactorySafetyError, isPlainRepoPath } from '../run/exec.js';
+import { ghRepoArg } from '../../forge/github/gh.js';
+import { isReviewFeedbackArgs } from '../../forge/github/graphql.js';
 import { readFactoryState } from '../run/state.js';
 import { gateDefinitionSources } from '../run/local-gate.js';
 import { BUCKET_ORDER, checkItems, plainText } from './score.js';
@@ -52,8 +54,11 @@ const JSON_FIELDS = /^[A-Za-z]+(?:,[A-Za-z]+)*$/;
 const FACTORY_ISSUE_BRANCH = /^factory\/issue-\d+$/;
 const VALUE = (s) => typeof s === 'string' && s.length > 0 && !s.startsWith('-') && !/[\r\n\0]/.test(s);
 const same = (args, shape) => args.length === shape.length && shape.every((v, i) => args[i] === v);
-function checkGh(a, marker) {
+function checkGh(a, marker, githubRepo) {
     const [group, sub, ...r] = a;
+    // The human review read (poll's thread count): the fixed GraphQL query on the configured repository only.
+    if (group === 'api')
+        return isReviewFeedbackArgs(a, githubRepo);
     if (group === 'issue' && sub === 'view')
         return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--json' && JSON_FIELDS.test(r[2]);
     if (group === 'issue' && sub === 'list') {
@@ -101,8 +106,9 @@ export function isLocalReadShape(args) {
  * The `omg factory check` guard. `marker` is set only after `--mark` was
  * confirmed: then, and only then, `gh issue edit <n> --add-label <marker>`
  * and az writes pass (the wit.wiql.POST query is a read and passes without it).
+ * `githubRepo` (ghRepoArg of a GitHub forge) allows the review feedback GraphQL read of that repository.
  */
-export function checkGuardExec(exec, marker, ado = () => undefined, command = 'omg factory check') {
+export function checkGuardExec(exec, marker, ado = () => undefined, command = 'omg factory check', githubRepo = () => undefined) {
     return (cmd, args, opts) => {
         const file = cmd.replace(/\\/g, '/').split('/').pop().toLowerCase().replace(/\.exe$/, '');
         const refuse = (why) => { throw new FactorySafetyError(`${command} refuses \`${file} ${args.join(' ')}\`: ${why}`); };
@@ -112,7 +118,7 @@ export function checkGuardExec(exec, marker, ado = () => undefined, command = 'o
         if (file === 'gh') {
             if (opts?.env !== undefined)
                 refuse('gh takes no environment');
-            if (!checkGh(args, mark))
+            if (!checkGh(args, mark, githubRepo()))
                 refuse(`not one of the command shapes ${command} runs`);
         }
         else if (file === 'git' && isLocalReadShape(args)) {
@@ -296,7 +302,8 @@ export const defaultResolveAz = (root) => resolveAzEntry(defaultAzBinaryDeps([ro
 export function forgeReadExec(exec, config, root, resolveAz = defaultResolveAz, marker, command) {
     const entry = config.kind === 'azure-devops' ? resolveAz(root) : undefined;
     const guard = entry ? adoGuardContext(config, entry) : undefined;
-    return { exec: checkGuardExec(exec, marker, () => guard, command), options: { ...factoryForgeOptions(root), ...(entry ? { entry } : {}) } };
+    const githubRepo = config.kind === 'github' ? ghRepoArg(config.repo) : undefined;
+    return { exec: checkGuardExec(exec, marker, () => guard, command, () => githubRepo), options: { ...factoryForgeOptions(root), ...(entry ? { entry } : {}) } };
 }
 /**
  * Resolve the checkout, base and forge config (`--source` / `--limit` as

@@ -17,6 +17,10 @@ import {
   commitFile, failedGates, FakeLanes, FakeProcesses, gitIn, greenGates, harness, ISSUE, PR, pendingGates, review, testGateConfig,
   type Harness, type LaneScript,
 } from '../../factory/run/__tests__/fake-lanes.js';
+import { factoryGuardExec } from '../../factory/run/exec.js';
+import { ghRepoArg } from '../github/gh.js';
+import { githubReviews } from '../github/reviews.js';
+import type { ForgeRepo } from '../types.js';
 import { recordingExec } from './recording-exec.js';
 import { scaleTiming } from '../../__tests__/helpers/platform.js';
 
@@ -77,6 +81,10 @@ const REVIEW = (key: string) => [HEAD_STATE, HEAD_STATE, comment('pr', PR, key, 
 const GATES_GREEN = [HEAD_STATE, CHECKS, runList('<head>'), VIEW_HEAD, HEAD_STATE, runList('<head>')];
 /** The merge park: the PR view, the merge-rule gate read on that head, the PR comment with the command (the item's gate comment and its read for a parent rollup follow). */
 const MERGE_PARK = (key: string) => [MERGE_VIEW, CHECKS, runList('<head>'), VIEW_HEAD, comment('pr', PR, key, 'merge')];
+
+/** The review-feedback query as literal text: any change to REVIEW_FEEDBACK_QUERY must break this test (the query is part of the pinned gh argv). */
+const PINNED_REVIEW_FEEDBACK_QUERY =
+  'query($owner:String!,$name:String!,$number:Int!){viewer{login} repository(owner:$owner,name:$name){viewerPermission collaborators(first:100){pageInfo{hasNextPage} edges{permission node{login}}} pullRequest(number:$number){headRefOid latestReviews(first:50){pageInfo{hasNextPage} nodes{id state submittedAt body author{__typename login} commit{oid}}} reviewRequests(first:20){pageInfo{hasNextPage} nodes{requestedReviewer{__typename ... on User{login} ... on Bot{login} ... on Mannequin{login} ... on Team{slug}}}} reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated comments(first:20){pageInfo{hasNextPage} nodes{body path line originalLine createdAt author{__typename login}}}}}}}}';
 
 describe('gh argv baseline: factory engine (issue run)', () => {
   it('happy path to the merge park: intake, publish, review, prepare, gates, merge gate', async () => {
@@ -196,6 +204,29 @@ describe('gh argv baseline: factory engine (ci-heal run)', () => {
       MERGE_VIEW, READY, MERGE_VIEW,
       ...GATES_GREEN,
       ...MERGE_PARK(HEAL_KEY),
+    ]);
+  });
+});
+
+describe('gh argv baseline: the human review read (night 3 goal 2; the engine call lands with L2b)', () => {
+  it('reviewFeedback issues one exact gh api graphql argv through the run guard with the GitHub read context', () => {
+    const repo: ForgeRepo = { kind: 'github', host: 'github.com', owner: 'acme', name: 'widgets', url: 'https://github.com/acme/widgets' };
+    const head = 'c'.repeat(40);
+    const done = { hasNextPage: false };
+    const answer = JSON.stringify({
+      data: {
+        viewer: { login: 't' },
+        repository: {
+          viewerPermission: 'ADMIN', collaborators: { pageInfo: done, edges: [] },
+          pullRequest: { headRefOid: head, latestReviews: { pageInfo: done, nodes: [] }, reviewRequests: { pageInfo: done, nodes: [] }, reviewThreads: { pageInfo: done, nodes: [] } },
+        },
+      },
+    });
+    const r = recordingExec(() => ({ status: 0, stdout: answer, stderr: '' }), { '<root>': h.root }, ['gh']);
+    const guarded = factoryGuardExec(r.exec, () => ['dev'], undefined, undefined, undefined, () => ({ repo: ghRepoArg(repo) }));
+    githubReviews(guarded, h.root, { repo }).reviewFeedback!(PR, head);
+    expect(r.calls).toEqual([
+      `gh ${JSON.stringify(['api', 'graphql', '--hostname', 'github.com', '-f', `query=${PINNED_REVIEW_FEEDBACK_QUERY}`, '-f', 'owner=acme', '-f', 'name=widgets', '-F', `number=${PR}`])} cwd=<root>`,
     ]);
   });
 });

@@ -37,6 +37,8 @@ import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { isAdoCommand, runGuardedAdo, type AdoGuardContext } from '../../forge/ado/guard.js';
 import { assertFactoryCommand, FactorySafetyError, isPlainRepoPath } from '../run/exec.js';
+import { ghRepoArg } from '../../forge/github/gh.js';
+import { isReviewFeedbackArgs } from '../../forge/github/graphql.js';
 import { readFactoryState } from '../run/state.js';
 import { gateDefinitionSources } from '../run/local-gate.js';
 import { BUCKET_ORDER, checkItems, plainText, type CheckEnv, type CheckResult } from './score.js';
@@ -56,8 +58,10 @@ const FACTORY_ISSUE_BRANCH = /^factory\/issue-\d+$/;
 const VALUE = (s: string | undefined): s is string => typeof s === 'string' && s.length > 0 && !s.startsWith('-') && !/[\r\n\0]/.test(s);
 const same = (args: string[], shape: string[]) => args.length === shape.length && shape.every((v, i) => args[i] === v);
 
-function checkGh(a: string[], marker: string | undefined): boolean {
+function checkGh(a: string[], marker: string | undefined, githubRepo: string | undefined): boolean {
   const [group, sub, ...r] = a;
+  // The human review read (poll's thread count): the fixed GraphQL query on the configured repository only.
+  if (group === 'api') return isReviewFeedbackArgs(a, githubRepo);
   if (group === 'issue' && sub === 'view') return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--json' && JSON_FIELDS.test(r[2]);
   if (group === 'issue' && sub === 'list') {
     return r.length === 8 && (r[0] === '--label' || r[0] === '--milestone') && VALUE(r[1]) && r[2] === '--state' && r[3] === 'open'
@@ -102,8 +106,9 @@ export function isLocalReadShape(args: readonly string[]): boolean {
  * The `omg factory check` guard. `marker` is set only after `--mark` was
  * confirmed: then, and only then, `gh issue edit <n> --add-label <marker>`
  * and az writes pass (the wit.wiql.POST query is a read and passes without it).
+ * `githubRepo` (ghRepoArg of a GitHub forge) allows the review feedback GraphQL read of that repository.
  */
-export function checkGuardExec(exec: Exec, marker?: () => string | undefined, ado: () => AdoGuardContext | undefined = () => undefined, command = 'omg factory check'): Exec {
+export function checkGuardExec(exec: Exec, marker?: () => string | undefined, ado: () => AdoGuardContext | undefined = () => undefined, command = 'omg factory check', githubRepo: () => string | undefined = () => undefined): Exec {
   return (cmd, args, opts) => {
     const file = cmd.replace(/\\/g, '/').split('/').pop()!.toLowerCase().replace(/\.exe$/, '');
     const refuse = (why: string): never => { throw new FactorySafetyError(`${command} refuses \`${file} ${args.join(' ')}\`: ${why}`); };
@@ -111,7 +116,7 @@ export function checkGuardExec(exec: Exec, marker?: () => string | undefined, ad
     if (!args.every((x) => typeof x === 'string')) refuse('non-string argument');
     if (file === 'gh') {
       if (opts?.env !== undefined) refuse('gh takes no environment');
-      if (!checkGh(args, mark)) refuse(`not one of the command shapes ${command} runs`);
+      if (!checkGh(args, mark, githubRepo())) refuse(`not one of the command shapes ${command} runs`);
     } else if (file === 'git' && isLocalReadShape(args)) {
       if (opts?.env !== undefined && JSON.stringify(Object.entries(opts.env)) !== JSON.stringify(Object.entries(TRUSTED_READ_ENV))) refuse('git takes only the trusted-read environment');
     } else if (file === 'git') {
@@ -328,7 +333,8 @@ export const defaultResolveAz = (root: string): AzEntry => resolveAzEntry(defaul
 export function forgeReadExec(exec: Exec, config: ResolvedForgeConfig, root: string, resolveAz: (root: string) => AzEntry = defaultResolveAz, marker?: () => string | undefined, command?: string): { exec: Exec; options: AzureDevOpsForgeOptions } {
   const entry = config.kind === 'azure-devops' ? resolveAz(root) : undefined;
   const guard = entry ? adoGuardContext(config, entry) : undefined;
-  return { exec: checkGuardExec(exec, marker, () => guard, command), options: { ...factoryForgeOptions(root), ...(entry ? { entry } : {}) } };
+  const githubRepo = config.kind === 'github' ? ghRepoArg(config.repo) : undefined;
+  return { exec: checkGuardExec(exec, marker, () => guard, command, () => githubRepo), options: { ...factoryForgeOptions(root), ...(entry ? { entry } : {}) } };
 }
 
 /** What a read-only factory command (check, board) works on: the checkout, its base, the resolved forge config and the forge on the read guard. */

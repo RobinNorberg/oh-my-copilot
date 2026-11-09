@@ -46,8 +46,9 @@ export declare function isLocalReadShape(args: readonly string[]): boolean;
  * The `omg factory check` guard. `marker` is set only after `--mark` was
  * confirmed: then, and only then, `gh issue edit <n> --add-label <marker>`
  * and az writes pass (the wit.wiql.POST query is a read and passes without it).
+ * `githubRepo` (ghRepoArg of a GitHub forge) allows the review feedback GraphQL read of that repository.
  */
-export declare function checkGuardExec(exec: Exec, marker?: () => string | undefined, ado?: () => AdoGuardContext | undefined, command?: string): Exec;
+export declare function checkGuardExec(exec: Exec, marker?: () => string | undefined, ado?: () => AdoGuardContext | undefined, command?: string, githubRepo?: () => string | undefined): Exec;
 /** `--source` as a config value (resolveForgeConfig validates it): label:x, milestone:x, wiql-query:<guid>, board-column:team/board/column, area-tag:<area path>#<tag>. */
 export declare function parseSourceSpec(spec: string): Record<string, string>;
 export declare function parseItemId(raw: string): number;

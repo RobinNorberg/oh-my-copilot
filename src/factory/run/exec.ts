@@ -9,12 +9,16 @@
  *   (one `pr list` is the blocked-by gate's merged lookup on `factory/issue-<n>`)
  *   and `gh repo view --json url` (ci-heal runs) in fixed shapes, plus ship's
  *   `gh pr view|checks` and `gh run list|view|rerun`.
- *   Never `gh api`, `gh -R`, or a merge (merge is always human).
+ *   Never `gh api`, `gh -R`, or a merge (merge is always human), except the
+ *   human review read (src/forge/github/graphql.ts isReviewFeedbackArgs:
+ *   `gh api graphql` with its constant query, pinned to the GithubReadContext
+ *   repo) and the three coding-agent shapes below.
  * - Tracker writes (`omg factory enqueue` only, when its TrackerWriteContext is
  *   set): `gh issue create`, `gh issue edit` (title, body, labels) and the
  *   `shipyard-key:` search `gh issue list --search`, each in one exact shape,
  *   pinned to the configured repository, with a body file from the caller's
- *   own directory (gh reads the guard's checked copy) and labels from its allowlist. Never close, delete,
+ *   own directory (gh reads the guard's checked copy) and labels from its allowlist. Never close
+ *   (the factory's only close is the coding-agent PR close, bound to CodingAgentContext.pr), delete,
  *   transfer or lock; without the context all three shapes are refused.
  * - The Copilot coding agent (src/forge/github/coding-agent.ts), beside the
  *   review read: its fixed-query `gh api graphql` status read with the
@@ -42,9 +46,11 @@ import { tmpdir } from 'os';
 import { isAbsolute, join, resolve } from 'path';
 import { checkAdoCommand, isAdoCommand, runGuardedAdo, type AdoGuardContext } from '../../forge/ado/guard.js';
 import { isBodyFileIn, readTrackerBody } from '../../forge/body-file.js';
-import { LOCAL_REMOTE, STATE_CHANGE_LOG_FLAGS } from '../../forge/local/mirror.js';
 import { isCodingAgentAssignArgs, isCodingAgentCloseArgs, isCodingAgentStatusArgs, type CodingAgentContext } from '../../forge/github/coding-agent.js';
+import { isReviewFeedbackArgs } from '../../forge/github/graphql.js';
+import { LOCAL_REMOTE, STATE_CHANGE_LOG_FLAGS } from '../../forge/local/mirror.js';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
+import { triageWriteGh } from '../triage/guard.js';
 
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
 export const FACTORY_BRANCH_PREFIX = 'factory/';
@@ -109,6 +115,8 @@ export interface TrackerWriteContext {
   labels: readonly string[];
   /** Azure DevOps: the work item types a create may name (factory.intake.itemTypes); none = no create. */
   itemTypes?: readonly string[];
+  /** Who writes: `triage` allows only its label edit (GitHub) and tag/priority PATCH (Azure DevOps); unset or `enqueue` = enqueue's shapes. */
+  purpose?: 'triage' | 'enqueue';
 }
 
 /** shipyardKeySearch (src/forge/types.ts) for any spec. */
@@ -365,7 +373,10 @@ export interface GithubReadContext {
 }
 
 function factoryGh(a: string[], writes?: TrackerWriteContext, github?: GithubReadContext, agent?: CodingAgentContext): boolean | null {
-  const write = writes ? trackerWriteGh(a, writes) : null;
+  // `omg factory triage --apply` (purpose 'triage') may write only the label-only issue edit (src/factory/triage/guard.ts); enqueue keeps its own shapes.
+  const triage = writes?.purpose === 'triage' ? (triageWriteGh(a, writes) ?? (a[0] === 'issue' && a[1] === 'edit' ? false : null)) : null;
+  if (triage !== null) return triage;
+  const write = writes && writes.purpose !== 'triage' ? trackerWriteGh(a, writes) : null;
   if (write !== null) return write;
 
   // The Copilot coding agent (src/forge/github/coding-agent.ts): its status read (fixed GraphQL query) for the context's repository,
@@ -374,6 +385,9 @@ function factoryGh(a: string[], writes?: TrackerWriteContext, github?: GithubRea
   if (isCodingAgentAssignArgs(a, agent) || isCodingAgentCloseArgs(a, agent)) return true;
 
   const [group, sub, ...r] = a;
+  // The other `gh api` shape (besides the coding agent's status read and assign above): the human review read of the
+  // run's own repository (fixed query); ship refuses every other.
+  if (group === 'api') return isReviewFeedbackArgs(a, github?.repo) ? true : null;
   if (group === 'issue') {
     if (sub === 'view') return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--json' && JSON_FIELDS.test(r[2]);
     if (sub === 'comment') return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--body-file' && isFile(r[2]);

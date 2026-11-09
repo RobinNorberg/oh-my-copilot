@@ -18,7 +18,7 @@ export const createGitHubForge: ForgeFactory = (exec: Exec, cwd: string, config:
   provider: 'github',
   repo: config.repo,
   tracker: githubTracker(exec, cwd, config),
-  reviews: githubReviews(exec, cwd),
+  reviews: githubReviews(exec, cwd, { repo: config.repo, review: { trustedReviewers: config.review?.trustedReviewers ?? [] } }),
   checks: githubChecks(exec, cwd),
   merge: githubMerge(),
   ci: githubCi(exec, cwd),

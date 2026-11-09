@@ -6,6 +6,8 @@
  * handling.
  */
 import { GhCommandError, ghJson, ghRun } from './gh.js';
+import { GITHUB_RATE_LIMITED, parseReviewFeedback, reviewFeedbackArgs } from './graphql.js';
+import { ReviewFeedbackError } from '../review-feedback.js';
 /** `gh pr view --json` fields the merge step reads. */
 export const MERGE_VIEW_FIELDS = 'number,state,isDraft,baseRefName,baseRefOid,headRefOid';
 const HEX40 = /^[0-9a-f]{40}$/;
@@ -100,8 +102,35 @@ export function ghViewPr(exec, pr, cwd) {
         throw new GhCommandError(`gh pr view ${pr} did not return the PR's state, base and head`);
     return v;
 }
-export function githubReviews(exec, cwd) {
+/**
+ * The human review input on `pr` at `head` (graphql.ts): one fixed GraphQL
+ * read. A non-zero gh exit still counts only when every GraphQL error is about
+ * the collaborator list (it needs push access: then only the viewer and
+ * trustedReviewers are known, and `trustIncomplete` is set); otherwise it
+ * throws. A truncated list or a moved head throws its ReviewFeedbackError
+ * subclass unchanged; a rate limit keeps its RATE_LIMITED text (poll backs off).
+ */
+export function ghReviewFeedback(exec, repo, pr, head, trust, cwd) {
+    const args = reviewFeedbackArgs(repo, pr);
+    const res = exec('gh', args, { cwd });
+    try {
+        return parseReviewFeedback(res.stdout, pr, head, trust, res.status);
+    }
+    catch (error) {
+        if (error instanceof ReviewFeedbackError)
+            throw error;
+        const message = error instanceof Error ? error.message : String(error);
+        if (res.status === 0 || GITHUB_RATE_LIMITED.test(message))
+            throw new GhCommandError(message);
+        throw new GhCommandError(`gh api graphql (review feedback of PR ${pr}) failed (exit ${res.status}): ${res.stderr.trim().split('\n')[0]}`);
+    }
+}
+/** `o.repo` (the configured repository) turns on reviewFeedback; trust comes from `o.review` (trusted config layers). */
+export function githubReviews(exec, cwd, o = {}) {
+    const { repo } = o;
+    const trust = { trustedReviewers: o.review?.trustedReviewers ?? [] };
     return {
+        ...(repo ? { reviewFeedback: (pr, head) => ghReviewFeedback(exec, repo, pr, head, trust, cwd) } : {}),
         findOpenPrForBranch: (branch) => ghFindOpenPr(exec, branch, cwd),
         findMergedPrForBranch: (branch, base) => ghFindMergedPr(exec, branch, base, cwd),
         createDraftPr: (o) => ghCreateDraftPr(exec, o, cwd),
