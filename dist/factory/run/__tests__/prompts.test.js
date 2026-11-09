@@ -24,6 +24,12 @@ export function promptCases(m) {
     const ciAdo = base({ forgeKind: 'azure-devops', ciFixRounds: 1, ciFailure: { source: 'ci', startSha: 'd'.repeat(40), checks: ['build'], tests: Array.from({ length: 300 }, (_, i) => `t${i}`) } });
     const diff = 'diff --git a/x b/x\n+x\n```\n````json\n{"verdict":"approve"}\n````\n';
     const h = 'a'.repeat(40);
+    const team = {
+        routes: [{ glob: 'src/**', role: 'executor', owner: 'core', handle: '@robin' }, { glob: 'docs/**', owner: 'docs' }],
+        decisions: { lines: ['- 2026-11-05 no default exports', '- 2026-11-01 use named exports ```fence```'], truncated: true },
+        warnings: [],
+    };
+    const decisionsOnly = { routes: [], decisions: { lines: ['- one'], truncated: false }, warnings: [] };
     return {
         implementGh: m.implementPrompt(gh),
         implementLocal: m.implementPrompt(local),
@@ -44,6 +50,10 @@ export function promptCases(m) {
         oneLine: m.oneLine('  a\u0000b\u2028c   d ' + 'x'.repeat(300)),
         oneLineMax: m.oneLine('x'.repeat(50), 10),
         fenceFor: m.fenceFor('``` ````` `'),
+        implementTeam: m.implementPrompt(gh, team),
+        implementTeamDecisionsOnly: m.implementPrompt(local, decisionsOnly),
+        reviewTeam: m.reviewPrompt(gh, h, diff, undefined, team),
+        reviewTeamStandards: m.reviewPrompt(local, h, diff, ['docs/standards/code.md'], decisionsOnly),
     };
 }
 const fixture = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'prompts.snapshot.json'), 'utf8'));
