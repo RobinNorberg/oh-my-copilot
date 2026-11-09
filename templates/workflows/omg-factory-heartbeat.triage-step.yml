@@ -2,16 +2,19 @@
       - name: Factory triage
         id: triage
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set +e
-          npx --yes --package "oh-my-copilot@${OMG_VERSION}" omg factory triage --apply --json > heartbeat-triage.json
+          omg factory triage --apply --json > heartbeat-triage.json
           code=$?
           echo "code=${code}" >> "$GITHUB_OUTPUT"
           {
             echo '### omg factory triage --apply'
             echo "exit code: ${code}"
             echo '```json'
-            head -c 20000 heartbeat-triage.json
+            # Backticks are rewritten as a unicode escape so an issue title cannot close the fence.
+            head -c 20000 heartbeat-triage.json | sed 's/`/\\u0060/g'
             echo
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

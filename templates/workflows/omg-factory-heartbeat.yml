@@ -6,6 +6,7 @@
 @@MODE_NOTE@@#
 # What it does: reads the backlog with `omg factory check --json` and publishes the result as a job summary and an artifact.
 # What it never does: start factory lanes, call Copilot, or use a secret other than the job's GITHUB_TOKEN.
+# The token is handed only to the steps that run omg. The install step has no token and skips install scripts.
 # Triggers: schedule and workflow_dispatch only. No pull-request triggers, no fork code, no event text in scripts.
 # Remove it: delete this file.
 name: omg factory heartbeat
@@ -29,49 +30,58 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      GH_TOKEN: ${{ github.token }}
       OMG_VERSION: '@@VERSION@@'
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
+
+      - name: Install omg (no token, no install scripts)
+        shell: bash
+        run: npm install -g --ignore-scripts "oh-my-copilot@${OMG_VERSION}"
 
       - name: Factory check
         id: check
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set +e
-          npx --yes --package "oh-my-copilot@${OMG_VERSION}" omg factory check --json > heartbeat-check.json
+          omg factory check --json > heartbeat-check.json
           code=$?
           echo "code=${code}" >> "$GITHUB_OUTPUT"
           {
             echo '### omg factory check'
             echo "exit code: ${code}"
             echo '```json'
-            head -c 20000 heartbeat-check.json
+            # Backticks are rewritten as a unicode escape so an issue title cannot close the fence.
+            head -c 20000 heartbeat-check.json | sed 's/`/\\u0060/g'
             echo
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 @@TRIAGE_STEP@@
       - name: Upload results
-        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: omg-factory-heartbeat
           path: heartbeat-*.json
           if-no-files-found: ignore
+          retention-days: 7
 
       - name: Fail on a real error
         shell: bash
         env:
           CHECK_CODE: ${{ steps.check.outputs.code }}
 @@TRIAGE_ENV@@        run: |
-          # 0 is fine; 6 means the engine is busy, which is fine too; empty means the step did not run.
+          # 0 is fine; empty means the step did not run. `factory check` returns 0, 1, 2 or 5 and every
+          # non-zero code is a real error; if a step here ever runs a command that can return 6 (engine
+          # busy), name it in this comment and accept 6 for that step only.
           for c in "${CHECK_CODE}" "${TRIAGE_CODE}"; do
-            case "${c}" in ''|0|6) ;; *) exit "${c}" ;; esac
+            case "${c}" in ''|0) ;; *) exit "${c}" ;; esac
           done
