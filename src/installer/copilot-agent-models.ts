@@ -10,7 +10,7 @@ import { copyFileSync, existsSync, readFileSync } from 'fs';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
 import type { PluginConfig } from '../shared/types.js';
 import { toCopilotModelId } from '../team/model-contract.js';
-import { parseModelProfile, profileAgentModels } from '../features/model-routing/profiles.js';
+import { AGENT_TIERS, parseModelProfile, profileAgentModels } from '../features/model-routing/profiles.js';
 import copilotModels from '../config/copilot-models.json' with { type: 'json' };
 
 /**
@@ -113,7 +113,7 @@ function readProfileRecord(recordFile: string): Record<string, string> {
   try {
     const parsed: unknown = JSON.parse(readFileSync(recordFile, 'utf-8'));
     const entries = isRecord(parsed) && isRecord(parsed.entries) ? parsed.entries : {};
-    return Object.fromEntries(Object.entries(entries).filter(([, v]) => typeof v === 'string' && v !== '')) as Record<string, string>;
+    return Object.fromEntries(Object.entries(entries).filter(([k, v]) => Object.hasOwn(AGENT_TIERS, k) && typeof v === 'string' && v !== '')) as Record<string, string>;
   } catch {
     return {};
   }
@@ -179,12 +179,14 @@ export function syncCopilotAgentModels(
     const current = modelOf(base, name);
     if (current !== value || recorded[name] === value) nextRecord[name] = value;
   }
+  // Settings first: if that write throws, the old record still names what settings holds.
+  if (changed || removed.length > 0) {
+    if (existsSync(settingsFile)) copyFileSync(settingsFile, `${settingsFile}.bak`);
+    atomicWriteJsonSync(settingsFile, settings);
+  }
   if (recordFile && JSON.stringify(nextRecord) !== JSON.stringify(recorded)) {
     atomicWriteJsonSync(recordFile, { entries: nextRecord });
   }
-
   if (!changed && removed.length === 0) return { written: [], removed };
-  if (existsSync(settingsFile)) copyFileSync(settingsFile, `${settingsFile}.bak`);
-  atomicWriteJsonSync(settingsFile, settings);
   return { written: changed ? Object.keys(overrides) : [], removed };
 }

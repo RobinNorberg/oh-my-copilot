@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -201,6 +201,32 @@ describe('model profile entries are reversible', () => {
     rmSync(join(dir, 'record.json'));
     expect(sync(dir, undefined, 'balanced').removed).toEqual([]);
     expect(modelOf(dir, 'executor')).toBe('claude-haiku-5.5');
+  }));
+
+  it('a failing settings write leaves the record listing every entry still in settings', () => withDir((dir) => {
+    sync(dir, undefined, 'economy');
+    const recordBefore = readFileSync(join(dir, 'record.json'), 'utf8');
+    const settingsBefore = readFileSync(join(dir, 'settings.json'), 'utf8');
+    mkdirSync(join(dir, 'settings.json.bak')); // the backup copy now throws
+    expect(() => sync(dir, undefined, 'balanced')).toThrow();
+    expect(readFileSync(join(dir, 'record.json'), 'utf8')).toBe(recordBefore);
+    expect(readFileSync(join(dir, 'settings.json'), 'utf8')).toBe(settingsBefore);
+    expect(Object.keys(JSON.parse(recordBefore).entries)).toContain('executor');
+    rmSync(join(dir, 'settings.json.bak'), { recursive: true });
+    sync(dir, undefined, 'balanced'); // a later setup still cleans up
+    expect(modelOf(dir, 'executor')).toBeUndefined();
+  }));
+
+  it('ignores record keys that are not known agents or not strings', () => withDir((dir) => {
+    writeFileSync(join(dir, 'settings.json'), JSON.stringify({ subagents: { agents: {
+      'oh-my-copilot:stranger': { model: 'x' },
+      'oh-my-copilot:__proto__': { model: 'x' },
+      'oh-my-copilot:executor': { model: 7 },
+    } } }));
+    writeFileSync(join(dir, 'record.json'), '{"entries":{"stranger":"x","__proto__":"x","executor":7}}');
+    expect(sync(dir, undefined, undefined).removed).toEqual([]);
+    const agents = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8')).subagents.agents;
+    expect(Object.keys(agents)).toEqual(['oh-my-copilot:stranger', 'oh-my-copilot:__proto__', 'oh-my-copilot:executor']);
   }));
 
   it('an explicit inherit, empty or invalid value drops the profile entry for that agent', () => {
