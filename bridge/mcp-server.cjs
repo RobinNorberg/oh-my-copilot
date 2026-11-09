@@ -30000,6 +30000,7 @@ function validateAdoBody(route2, body, context = {}) {
     if (typeof op.op !== "string" || !shape.ops.includes(op.op)) return `${at}.op must be one of ${shape.ops.join(", ")}`;
     const target = typeof op.path === "string" ? shape.paths.find((p) => p.path.test(op.path)) : void 0;
     if (!target || target.tracker && !writes) return `${at}.path is not allowed`;
+    if (writes?.purpose === "triage" && !TRIAGE_PATHS.test(op.path)) return `${at}.path is not a triage write`;
     if (target.tracker && !(isPlainObject4(body[0]) && body[0].op === "test" && body[0].path === "/rev")) return `${at}: a tracker write starts with test /rev`;
     if (writes && (target.configured === "states" || target.configured === "columns")) return `${at}.path is not a tracker write`;
     const untaggedTest = writes && op.op === "test" && target.configured === "tags" && op.value === "";
@@ -30016,7 +30017,7 @@ function validateAdoBody(route2, body, context = {}) {
   }
   return writes && route2.method === "PATCH" ? trackerTagEditProblem(body, writes.labels) : void 0;
 }
-var STABLE, TEXT_CHARS, TEXT, text, BRANCH_REF, TITLE, ADAPTER_HTML, AREA_PATH, ADO_TRACKER_RELATIONS, RELATION, PRIORITY, route, ADO_ROUTES, ADO_WRITE_ALLOWLIST, isPlainObject4, isFactoryTag, isTrackerTag, TAGS_PATH;
+var STABLE, TEXT_CHARS, TEXT, text, BRANCH_REF, TITLE, ADAPTER_HTML, AREA_PATH, ADO_TRACKER_RELATIONS, RELATION, PRIORITY, route, ADO_ROUTES, ADO_WRITE_ALLOWLIST, isPlainObject4, isFactoryTag, isTrackerTag, TAGS_PATH, TRIAGE_PATHS;
 var init_routes = __esm({
   "src/forge/ado/routes.ts"() {
     "use strict";
@@ -30262,6 +30263,7 @@ var init_routes = __esm({
     isFactoryTag = (tag) => /^(?:factory|harbor)\s*:/i.test(tag.normalize("NFKC").trim());
     isTrackerTag = (tag) => /^(?!-)[^;,\p{Cc}\p{Cf}]{1,100}$/u.test(tag) && !isFactoryTag(tag);
     TAGS_PATH = "/fields/System.Tags";
+    TRIAGE_PATHS = /^\/(?:rev|fields\/System\.Tags|fields\/Microsoft\.VSTS\.Common\.Priority)$/;
   }
 });
 
@@ -41913,9 +41915,9 @@ function factoryGit(a, protectedBranches, extraProtected = [], local) {
   }
 }
 function factoryGh(a, writes) {
-  const triage = writes ? triageWriteGh(a, writes) : null;
+  const triage = writes?.purpose === "triage" ? triageWriteGh(a, writes) : null;
   if (triage !== null) return triage;
-  const write = writes ? trackerWriteGh(a, writes) : null;
+  const write = writes && writes.purpose !== "triage" ? trackerWriteGh(a, writes) : null;
   if (write !== null) return write;
   const [group, sub, ...r] = a;
   if (group === "issue") {
@@ -51621,6 +51623,7 @@ var init_enqueue = __esm({
 var init_rules2 = __esm({
   "src/factory/triage/rules.ts"() {
     "use strict";
+    init_score();
     init_guard2();
   }
 });
@@ -51633,6 +51636,7 @@ var init_cli3 = __esm({
     init_ado();
     init_guard();
     init_gh();
+    init_guard2();
     init_cli();
     init_score();
     init_exec2();

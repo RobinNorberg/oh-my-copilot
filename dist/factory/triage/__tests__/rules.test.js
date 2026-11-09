@@ -6,21 +6,37 @@ const item = (o = {}) => ({
 const res = (bucket, reason = '', priority = null) => ({ id: 1, title: 't', url: 'u', bucket, reasons: reason ? [reason] : [], detail: '', priority, planSource: null });
 const plan = (i, r, kind = 'github') => planItem(item(i), r, kind, DEFAULT_TRIAGE_CONFIG);
 describe('triage rules', () => {
-    it('gives an item with no priority the default, and none when defaultPriority is false', () => {
-        expect(plan({}, res('runnable'))).toMatchObject({ action: 'change', add: ['priority:p2'], priority: null });
-        expect(planItem(item(), res('runnable'), 'github', { ...DEFAULT_TRIAGE_CONFIG, defaultPriority: null }).action).toBe('unchanged');
+    it('invents no priority by default; defaultPriority is opt-in, and sets the number only off GitHub', () => {
+        expect(plan({}, res('runnable')).action).toBe('unchanged');
+        expect(plan({}, res('runnable'), 'azure-devops').action).toBe('unchanged');
+        const opt = { ...DEFAULT_TRIAGE_CONFIG, defaultPriority: 2 };
+        expect(planItem(item(), res('runnable'), 'github', opt)).toMatchObject({ action: 'change', add: ['priority:p2'], priority: null });
+        expect(planItem(item(), res('runnable'), 'azure-devops', opt)).toMatchObject({ add: ['priority:p2'], priority: 3 });
     });
-    it('leaves an ADO or local item with a numeric priority alone, and sets the number with the default label otherwise', () => {
-        expect(plan({ priority: 2 }, res('runnable', '', 2), 'azure-devops').action).toBe('unchanged');
-        expect(plan({}, res('runnable'), 'azure-devops')).toMatchObject({ add: ['priority:p2'], priority: 3 });
+    it('GitHub: keeps the label check/score.ts ranks by (the first) and never resolves a conflict upward', () => {
+        expect(plan({ labels: ['priority:p3', 'priority:p0'] }, res('runnable', '', 4))).toMatchObject({ remove: ['priority:p0'], add: [], priority: null });
+        expect(plan({ labels: ['priority:p0', 'Priority:P3'] }, res('runnable', '', 1))).toMatchObject({ remove: ['Priority:P3'], add: [] });
+        expect(plan({ labels: ['priority:p1'] }, res('runnable', '', 2)).action).toBe('unchanged');
     });
-    it('keeps the highest of several priority labels and aligns the number', () => {
-        const row = plan({ labels: ['priority:p3', 'priority:P1'], priority: 3 }, res('runnable', '', 3), 'azure-devops');
-        expect(row).toMatchObject({ remove: ['priority:p3'], priority: 2, add: [] });
+    it('ADO: a field set by a human wins over a stale tag; the field is never written from a tag', () => {
+        // A human raised Priority to 1 in the ADO UI; the tag still says p3.
+        expect(plan({ priority: 1, labels: ['priority:p3'] }, res('runnable', '', 1), 'azure-devops')).toMatchObject({ add: ['priority:p0'], remove: ['priority:p3'], priority: null });
+        // A p0 tag on a field-4 item does not raise the field.
+        expect(plan({ priority: 4, labels: ['priority:p0'] }, res('runnable', '', 4), 'azure-devops')).toMatchObject({ add: ['priority:p3'], remove: ['priority:p0'], priority: null });
+        expect(plan({ priority: 2, labels: ['priority:p1'] }, res('runnable', '', 2), 'azure-devops').action).toBe('unchanged');
+        // The field is unset: the tag is used and nothing is written to the field.
+        expect(plan({ labels: ['priority:p1'] }, res('runnable', '', 2), 'azure-devops').action).toBe('unchanged');
+    });
+    it('local: the priority frontmatter is authoritative like the ADO field', () => {
+        expect(plan({ priority: 3, labels: ['priority:p0'] }, res('runnable', '', 3), 'local')).toMatchObject({ add: ['priority:p2'], remove: ['priority:p0'], priority: null });
+    });
+    it('a field above 4 has no tag to match: the labels are left alone', () => {
+        expect(plan({ priority: 7, labels: ['priority:p1'] }, res('runnable', '', 7), 'azure-devops').action).toBe('unchanged');
     });
     it('needs-plan follows the check bucket; a blocked item keeps its labels', () => {
         expect(plan({ labels: ['priority:p1'] }, res('needs-plan', 'no-plan'))).toMatchObject({ add: ['needs-plan'] });
-        expect(plan({ labels: ['priority:p1', 'needs-plan'] }, res('runnable'))).toMatchObject({ remove: ['needs-plan'] });
+        // Triage only adds needs-plan / needs-split; a human clears them.
+        expect(plan({ labels: ['priority:p1', 'needs-plan'] }, res('runnable')).action).toBe('unchanged');
         expect(plan({ labels: ['priority:p1', 'needs-plan'] }, res('blocked', 'depends-on:#9')).action).toBe('unchanged');
     });
     it('needs-split: epics, too-big and size above the threshold, only without children', () => {
@@ -29,7 +45,7 @@ describe('triage rules', () => {
         expect(plan({ ...p1, size: 6 }, res('runnable'))).toMatchObject({ add: ['needs-split'] });
         expect(plan({ ...p1, size: 5 }, res('runnable')).action).toBe('unchanged');
         expect(plan({ ...p1, size: 8, children: [2] }, res('blocked', 'needs-split')).add).toEqual([]);
-        expect(plan({ labels: ['priority:p1', 'needs-split'], children: [2] }, res('blocked', 'needs-split'))).toMatchObject({ remove: ['needs-split'] });
+        expect(plan({ labels: ['priority:p1', 'needs-split'], children: [2] }, res('blocked', 'needs-split')).action).toBe('unchanged');
     });
     it('skips closed items, live runs, open PRs and read failures, with the check reason', () => {
         for (const reason of ['closed', 'run-active:implement', 'pr-exists', 'branch-exists', 'run-finished:merged', 'read-failed', 'merged']) {

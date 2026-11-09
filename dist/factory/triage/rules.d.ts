@@ -4,7 +4,7 @@
  * of the check rules). Taxonomy: priority:p0..p3 (mutually exclusive),
  * needs-split, needs-plan. owner:<x> comes with routing and is not proposed yet.
  */
-import type { CheckResult } from '../check/score.js';
+import { type CheckResult } from '../check/score.js';
 import type { ForgeItem, ForgeKind } from '../../forge/types.js';
 export declare const PRIORITY_LABELS: readonly ["priority:p0", "priority:p1", "priority:p2", "priority:p3"];
 export interface TriageConfig {
@@ -12,7 +12,7 @@ export interface TriageConfig {
     needsPlan: string;
     /** An item with a size above this and no children gets needs-split. */
     sizeSplitAt: number;
-    /** p0..p3 for an item with no priority at all; null = leave it unprioritised. */
+    /** Opt-in: p0..p3 for an item with no priority at all. null (the default) invents no priority. */
     defaultPriority: number | null;
 }
 export declare const DEFAULT_TRIAGE_CONFIG: TriageConfig;

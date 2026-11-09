@@ -44,4 +44,9 @@ export function triageWriteGh(a, ctx) {
     }
     return true;
 }
+/** `label list --repo <repo> --search <name> --json name --limit <n>`: triage's own GitHub label lookup (a read). */
+export function triageLabelListGh(a, repo) {
+    return a.length === 10 && a[0] === 'label' && a[1] === 'list' && a[2] === '--repo' && a[3] === repo && a[4] === '--search' && isTriageLabelName(a[5])
+        && a[6] === '--json' && a[7] === 'name' && a[8] === '--limit' && NUMBER.test(a[9]);
+}
 //# sourceMappingURL=guard.js.map

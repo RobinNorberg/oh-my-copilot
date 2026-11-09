@@ -37,14 +37,15 @@ describe('local setTriage', () => {
         expect(t.setTriage(77, { add: ['x'], remove: [] }).ok).toBe(false);
         expect(t.setTriage(1, { add: [], remove: [], assignee: 'a' }).ok).toBe(false);
     });
-    it('plans the numeric priority to match the label (kind local)', () => {
+    it('derives the tag from the priority frontmatter and never writes the number (kind local)', () => {
         const item = tracker().viewItem(1);
         const result = { id: 1, title: item.title, url: item.url, bucket: 'needs-plan', reasons: ['no-plan'], detail: '', priority: 4, planSource: null };
         const row = planItem(item, result, 'local', resolveTriageConfig([]));
         // priority:p3 is number 4, which the field already says; needs-plan is already present.
         expect(row).toMatchObject({ action: 'unchanged', add: [], remove: [], priority: null });
         const drift = planItem({ ...item, priority: 1 }, result, 'local', resolveTriageConfig([]));
-        expect(drift).toMatchObject({ action: 'change', priority: 4 });
+        // The frontmatter (1 = p0) is authoritative: the stale tag changes, the number does not.
+        expect(drift).toMatchObject({ action: 'change', add: ['priority:p0'], remove: ['priority:p3'], priority: null });
     });
 });
 //# sourceMappingURL=triage-local.test.js.map

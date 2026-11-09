@@ -320,11 +320,11 @@ function factoryGit(a, protectedBranches, extraProtected = [], local) {
     }
 }
 function factoryGh(a, writes) {
-    // `omg factory triage --apply`: label-only issue edits (src/factory/triage/guard.ts), decided before the enqueue shapes.
-    const triage = writes ? triageWriteGh(a, writes) : null;
+    // `omg factory triage --apply` (purpose 'triage') may write only the label-only issue edit (src/factory/triage/guard.ts); enqueue keeps its own shapes.
+    const triage = writes?.purpose === 'triage' ? triageWriteGh(a, writes) : null;
     if (triage !== null)
         return triage;
-    const write = writes ? trackerWriteGh(a, writes) : null;
+    const write = writes && writes.purpose !== 'triage' ? trackerWriteGh(a, writes) : null;
     if (write !== null)
         return write;
     const [group, sub, ...r] = a;

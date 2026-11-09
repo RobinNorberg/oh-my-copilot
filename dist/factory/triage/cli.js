@@ -21,11 +21,12 @@ import { factoryForgeOptions } from '../run/forge-roots.js';
 import { adoGuardContext } from '../../forge/ado/index.js';
 import { isAdoCommand } from '../../forge/ado/guard.js';
 import { ghRepoArg } from '../../forge/github/gh.js';
+import { triageLabelListGh } from './guard.js';
 import { checkEnvFor, checkGuardExec, CheckIncompatibleError, CheckUsageError, defaultResolveAz, EXIT_CHECK_FAILED, forgeLimitations, openReadForge, parseItemId, readForgeOptions, } from '../check/cli.js';
 import { checkItems, plainText } from '../check/score.js';
 import { factoryGuardExec, FactorySafetyError } from '../run/exec.js';
 import { planItem, resolveTriageConfig, TriageConfigError } from './rules.js';
-/** Bumped on any change to the `--json` shape (src/factory/triage/__tests__/cli.test.ts pins it). */
+/** Bumped on any change to the `--json` shape (src/factory/__tests__/triage-github.test.ts pins it). */
 export const TRIAGE_JSON_SCHEMA_VERSION = 1;
 /**
  * triage's Exec: every call is check's read guard; while `writing()` the
@@ -51,10 +52,12 @@ export function triageGuardExec(exec, writes, writing, ado = () => undefined) {
     };
 }
 /** The labels of the repository (GitHub), by `gh label list --search` (a read; triage never creates a label). */
-function missingGithubLabels(exec, root, names) {
+function missingGithubLabels(exec, raw, root, repo, names) {
     const missing = [];
     for (const name of names) {
-        const res = exec('gh', ['label', 'list', '--search', name, '--json', 'name', '--limit', '100'], { cwd: root });
+        const args = ['label', 'list', '--repo', repo, '--search', name, '--json', 'name', '--limit', '100'];
+        // Triage's own exact shape (names the configured repository); anything else goes through check's read guard.
+        const res = triageLabelListGh(args, repo) ? raw('gh', args, { cwd: root }) : exec('gh', args, { cwd: root });
         if (res.status !== 0)
             throw new Error(`gh label list failed (exit ${res.status}): ${res.stderr.trim().split('\n')[0]}`);
         let list;
@@ -128,8 +131,6 @@ export async function runFactoryTriage(o, deps) {
             return planItem(forge.tracker.viewItem(r.id), r, forge.kind, cfg);
         }
         catch (error) {
-            if (error instanceof FactorySafetyError)
-                throw error;
             return { id: r.id, title: r.title, url: r.url, action: 'skip', skipReason: r.reasons[0] ?? 'read-failed', bucket: r.bucket, reasons: r.reasons, current: { labels: [], priority: r.priority }, add: [], remove: [], priority: null, why: [plainText(error instanceof Error ? error.message : String(error))] };
         }
     });
@@ -138,7 +139,9 @@ export async function runFactoryTriage(o, deps) {
     if (forge.kind === 'github') {
         const adds = [...new Set(rows.flatMap((r) => (r.action === 'change' ? r.add : [])))];
         try {
-            missingLabels = missingGithubLabels(exec, root, adds);
+            missingLabels = missingGithubLabels(exec, deps.exec, root, ghRepoArg(config.repo), adds);
+            for (const name of missingLabels)
+                warnings.push(`label ${name} does not exist in ${config.repo.url}; rows needing it are skipped (omg factory triage never creates labels)`);
         }
         catch (error) {
             throw new CheckIncompatibleError(error instanceof Error ? error.message : String(error));
@@ -154,7 +157,7 @@ export async function runFactoryTriage(o, deps) {
     if (apply) {
         const changing = items.filter((r) => r.action === 'change');
         const names = [...new Set(changing.flatMap((r) => [...r.add, ...r.remove]))];
-        const ctx = { repo: config.kind === 'github' ? ghRepoArg(config.repo) : config.repo.url, bodyDir: '', labels: names };
+        const ctx = { repo: config.kind === 'github' ? ghRepoArg(config.repo) : config.repo.url, bodyDir: '', labels: names, purpose: 'triage' };
         let writing = false;
         const entry = config.kind === 'azure-devops' ? (deps.resolveAz ?? defaultResolveAz)(root) : undefined;
         const adoGuard = entry ? adoGuardContext(config, entry) : undefined;
@@ -215,7 +218,7 @@ export async function runFactoryTriage(o, deps) {
             deps.err(chalk.yellow(plainText(w)));
         for (const l of limitations)
             deps.out(chalk.gray(l));
-        deps.out(chalk.gray(apply ? 'apply: the plan below is written' : 'dry run: nothing is written; --apply writes exactly this plan'));
+        deps.out(chalk.gray(apply ? 'apply: the plan below is written' : 'dry run: nothing is written; --apply recomputes the plan from fresh reads and writes the plan it prints'));
         deps.out(renderTriageTable(items));
         for (const n of notes)
             deps.out(chalk.yellow(n));

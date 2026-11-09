@@ -21,7 +21,7 @@ import type { Exec } from '../../ship/exec.js';
 import { type FactoryCheckDeps, type FactoryCheckOptions } from '../check/cli.js';
 import { type TrackerWriteContext } from '../run/exec.js';
 import { type TriageConfig, type TriagePlanRow } from './rules.js';
-/** Bumped on any change to the `--json` shape (src/factory/triage/__tests__/cli.test.ts pins it). */
+/** Bumped on any change to the `--json` shape (src/factory/__tests__/triage-github.test.ts pins it). */
 export declare const TRIAGE_JSON_SCHEMA_VERSION = 1;
 export interface FactoryTriageOptions extends Pick<FactoryCheckOptions, 'ids' | 'parent' | 'source' | 'limit' | 'json'> {
     apply?: boolean;

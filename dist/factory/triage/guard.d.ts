@@ -24,4 +24,6 @@ export declare function triageWriteGh(a: string[], ctx: {
     repo: string;
     labels: readonly string[];
 }): boolean | null;
+/** `label list --repo <repo> --search <name> --json name --limit <n>`: triage's own GitHub label lookup (a read). */
+export declare function triageLabelListGh(a: readonly string[], repo: string): boolean;
 //# sourceMappingURL=guard.d.ts.map

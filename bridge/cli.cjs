@@ -95053,6 +95053,7 @@ function validateAdoBody(route2, body, context = {}) {
     if (typeof op.op !== "string" || !shape.ops.includes(op.op)) return `${at}.op must be one of ${shape.ops.join(", ")}`;
     const target = typeof op.path === "string" ? shape.paths.find((p) => p.path.test(op.path)) : void 0;
     if (!target || target.tracker && !writes) return `${at}.path is not allowed`;
+    if (writes?.purpose === "triage" && !TRIAGE_PATHS.test(op.path)) return `${at}.path is not a triage write`;
     if (target.tracker && !(isPlainObject4(body[0]) && body[0].op === "test" && body[0].path === "/rev")) return `${at}: a tracker write starts with test /rev`;
     if (writes && (target.configured === "states" || target.configured === "columns")) return `${at}.path is not a tracker write`;
     const untaggedTest = writes && op.op === "test" && target.configured === "tags" && op.value === "";
@@ -95069,7 +95070,7 @@ function validateAdoBody(route2, body, context = {}) {
   }
   return writes && route2.method === "PATCH" ? trackerTagEditProblem(body, writes.labels) : void 0;
 }
-var STABLE, TEXT_CHARS, TEXT, text, BRANCH_REF, TITLE, ADAPTER_HTML, AREA_PATH, ADO_TRACKER_RELATIONS, RELATION, PRIORITY, route, ADO_ROUTES, ADO_WRITE_ALLOWLIST, isPlainObject4, isFactoryTag, isTrackerTag, TAGS_PATH;
+var STABLE, TEXT_CHARS, TEXT, text, BRANCH_REF, TITLE, ADAPTER_HTML, AREA_PATH, ADO_TRACKER_RELATIONS, RELATION, PRIORITY, route, ADO_ROUTES, ADO_WRITE_ALLOWLIST, isPlainObject4, isFactoryTag, isTrackerTag, TAGS_PATH, TRIAGE_PATHS;
 var init_routes = __esm({
   "src/forge/ado/routes.ts"() {
     "use strict";
@@ -95315,6 +95316,7 @@ var init_routes = __esm({
     isFactoryTag = (tag) => /^(?:factory|harbor)\s*:/i.test(tag.normalize("NFKC").trim());
     isTrackerTag = (tag) => /^(?!-)[^;,\p{Cc}\p{Cf}]{1,100}$/u.test(tag) && !isFactoryTag(tag);
     TAGS_PATH = "/fields/System.Tags";
+    TRIAGE_PATHS = /^\/(?:rev|fields\/System\.Tags|fields\/Microsoft\.VSTS\.Common\.Priority)$/;
   }
 });
 
@@ -118950,6 +118952,9 @@ function triageWriteGh(a, ctx) {
   }
   return true;
 }
+function triageLabelListGh(a, repo) {
+  return a.length === 10 && a[0] === "label" && a[1] === "list" && a[2] === "--repo" && a[3] === repo && a[4] === "--search" && isTriageLabelName(a[5]) && a[6] === "--json" && a[7] === "name" && a[8] === "--limit" && NUMBER2.test(a[9]);
+}
 var TRIAGE_LABEL, RESERVED, NUMBER2, MAX_TRIAGE_FLAGS, isTriageLabelName;
 var init_guard2 = __esm({
   "src/factory/triage/guard.ts"() {
@@ -119111,9 +119116,9 @@ function factoryGit(a, protectedBranches, extraProtected = [], local) {
   }
 }
 function factoryGh(a, writes) {
-  const triage = writes ? triageWriteGh(a, writes) : null;
+  const triage = writes?.purpose === "triage" ? triageWriteGh(a, writes) : null;
   if (triage !== null) return triage;
-  const write = writes ? trackerWriteGh(a, writes) : null;
+  const write = writes && writes.purpose !== "triage" ? trackerWriteGh(a, writes) : null;
   if (write !== null) return write;
   const [group, sub, ...r] = a;
   if (group === "issue") {
@@ -132225,38 +132230,26 @@ function planItem(item, result, kind, cfg) {
       why.push(why1);
     }
   };
-  const drop = (name, why1) => {
-    const own2 = has(item.labels, name);
-    if (own2) {
-      remove.push(own2);
-      why.push(why1);
-    }
-  };
-  const held = item.labels.map((l) => ({ l, m: PRIORITY_RE.exec(l) })).filter((x) => x.m !== null);
+  const held = item.labels.filter((l) => PRIORITY_RE.test(l));
+  const effective = itemPriority(item);
   let numeric = null;
-  if (held.length > 0) {
-    const target = Math.min(...held.map((x) => Number(x.m[1])));
-    const keep = held.find((x) => Number(x.m[1]) === target).l;
-    for (const x of held) if (x.l !== keep) {
-      remove.push(x.l);
-      why.push(`priority: keep ${keep}, drop ${x.l}`);
+  if (effective !== null) {
+    if (effective <= PRIORITY_LABELS2.length) {
+      const name = PRIORITY_LABELS2[effective - 1];
+      for (const l of held) if (l.toLowerCase() !== name) {
+        remove.push(l);
+        why.push(`priority: the item ranks as ${name}, drop ${l}`);
+      }
+      want(name, `priority: the item ranks as ${name}`);
     }
-    if (kind !== "github" && item.priority !== target + 1) {
-      numeric = target + 1;
-      why.push(`priority field set to ${target + 1} to match ${keep}`);
-    }
-  } else if (item.priority === void 0 && cfg.defaultPriority !== null) {
+  } else if (cfg.defaultPriority !== null) {
     const name = PRIORITY_LABELS2[cfg.defaultPriority];
     want(name, `no priority: default ${name}`);
     if (kind !== "github") numeric = cfg.defaultPriority + 1;
   }
-  const children = item.children.length;
-  const wantSplit = children === 0 && (reason === "needs-split" || reason === "too-big" || item.size !== void 0 && item.size > cfg.sizeSplitAt);
+  const wantSplit = item.children.length === 0 && (reason === "needs-split" || reason === "too-big" || item.size !== void 0 && item.size > cfg.sizeSplitAt);
   if (wantSplit) want(cfg.needsSplit, reason === "needs-split" || reason === "too-big" ? `check: ${reason}` : `size ${item.size} is above ${cfg.sizeSplitAt} and the item has no children`);
-  else if (children > 0) drop(cfg.needsSplit, "the item has children");
-  else if (result.bucket === "runnable") drop(cfg.needsSplit, "check: runnable");
   if (result.bucket === "needs-plan") want(cfg.needsPlan, `check: ${reason}`);
-  else if (result.bucket === "runnable") drop(cfg.needsPlan, "check: runnable");
   const action = add.length > 0 || remove.length > 0 || numeric !== null ? "change" : "unchanged";
   return { ...base, priority: numeric, action, skipReason: null };
 }
@@ -132264,10 +132257,11 @@ var PRIORITY_LABELS2, PRIORITY_RE, DEFAULT_TRIAGE_CONFIG, TriageConfigError, isO
 var init_rules2 = __esm({
   "src/factory/triage/rules.ts"() {
     "use strict";
+    init_score();
     init_guard2();
     PRIORITY_LABELS2 = ["priority:p0", "priority:p1", "priority:p2", "priority:p3"];
     PRIORITY_RE = /^priority:p([0-3])$/i;
-    DEFAULT_TRIAGE_CONFIG = { needsSplit: "needs-split", needsPlan: "needs-plan", sizeSplitAt: 5, defaultPriority: 2 };
+    DEFAULT_TRIAGE_CONFIG = { needsSplit: "needs-split", needsPlan: "needs-plan", sizeSplitAt: 5, defaultPriority: null };
     TriageConfigError = class extends Error {
     };
     isObject5 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -132295,10 +132289,11 @@ function triageGuardExec(exec3, writes, writing, ado = () => void 0) {
     return reads(cmd, args, opts);
   };
 }
-function missingGithubLabels(exec3, root2, names) {
+function missingGithubLabels(exec3, raw, root2, repo, names) {
   const missing = [];
   for (const name of names) {
-    const res = exec3("gh", ["label", "list", "--search", name, "--json", "name", "--limit", "100"], { cwd: root2 });
+    const args = ["label", "list", "--repo", repo, "--search", name, "--json", "name", "--limit", "100"];
+    const res = triageLabelListGh(args, repo) ? raw("gh", args, { cwd: root2 }) : exec3("gh", args, { cwd: root2 });
     if (res.status !== 0) throw new Error(`gh label list failed (exit ${res.status}): ${res.stderr.trim().split("\n")[0]}`);
     let list2;
     try {
@@ -132359,7 +132354,6 @@ async function runFactoryTriage(o, deps) {
     try {
       return planItem(forge.tracker.viewItem(r.id), r, forge.kind, cfg);
     } catch (error2) {
-      if (error2 instanceof FactorySafetyError) throw error2;
       return { id: r.id, title: r.title, url: r.url, action: "skip", skipReason: r.reasons[0] ?? "read-failed", bucket: r.bucket, reasons: r.reasons, current: { labels: [], priority: r.priority }, add: [], remove: [], priority: null, why: [plainText(error2 instanceof Error ? error2.message : String(error2))] };
     }
   });
@@ -132367,7 +132361,8 @@ async function runFactoryTriage(o, deps) {
   if (forge.kind === "github") {
     const adds = [...new Set(rows.flatMap((r) => r.action === "change" ? r.add : []))];
     try {
-      missingLabels = missingGithubLabels(exec3, root2, adds);
+      missingLabels = missingGithubLabels(exec3, deps.exec, root2, ghRepoArg(config2.repo), adds);
+      for (const name of missingLabels) warnings.push(`label ${name} does not exist in ${config2.repo.url}; rows needing it are skipped (omg factory triage never creates labels)`);
     } catch (error2) {
       throw new CheckIncompatibleError(error2 instanceof Error ? error2.message : String(error2));
     }
@@ -132382,7 +132377,7 @@ async function runFactoryTriage(o, deps) {
   if (apply) {
     const changing = items.filter((r) => r.action === "change");
     const names = [...new Set(changing.flatMap((r) => [...r.add, ...r.remove]))];
-    const ctx = { repo: config2.kind === "github" ? ghRepoArg(config2.repo) : config2.repo.url, bodyDir: "", labels: names };
+    const ctx = { repo: config2.kind === "github" ? ghRepoArg(config2.repo) : config2.repo.url, bodyDir: "", labels: names, purpose: "triage" };
     let writing = false;
     const entry2 = config2.kind === "azure-devops" ? (deps.resolveAz ?? defaultResolveAz)(root2) : void 0;
     const adoGuard = entry2 ? adoGuardContext(config2, entry2) : void 0;
@@ -132434,7 +132429,7 @@ async function runFactoryTriage(o, deps) {
   } else {
     for (const w of warnings) deps.err(source_default.yellow(plainText(w)));
     for (const l of limitations) deps.out(source_default.gray(l));
-    deps.out(source_default.gray(apply ? "apply: the plan below is written" : "dry run: nothing is written; --apply writes exactly this plan"));
+    deps.out(source_default.gray(apply ? "apply: the plan below is written" : "dry run: nothing is written; --apply recomputes the plan from fresh reads and writes the plan it prints"));
     deps.out(renderTriageTable(items));
     for (const n of notes) deps.out(source_default.yellow(n));
   }
@@ -132449,6 +132444,7 @@ var init_cli3 = __esm({
     init_ado();
     init_guard();
     init_gh();
+    init_guard2();
     init_cli();
     init_score();
     init_exec2();
