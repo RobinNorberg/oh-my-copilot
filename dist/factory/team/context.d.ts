@@ -21,7 +21,7 @@ export interface TeamContext {
 }
 /** Repo-relative file paths mentioned in free text (a plan): a conservative `dir/file.ext` scan, capped. */
 export declare function pathsInText(text: string): string[];
-/** The changed paths of a unified diff (`diff --git a/x b/x` headers), capped. */
+/** The changed paths of a unified diff (`diff --git` headers), capped. */
 export declare function pathsInDiff(diff: string): string[];
 /**
  * Routes for `paths` and the newest decisions, from the base commit. Returns

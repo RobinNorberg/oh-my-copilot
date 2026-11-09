@@ -19179,28 +19179,6 @@ var init_stage_router = __esm({
 });
 
 // src/team/role-router.ts
-function matchPathGlob(glob, path5) {
-  if (!glob || glob.startsWith("/") || glob.split("/").includes("..")) return false;
-  if ((glob.match(/\*+|\?/g) ?? []).length > MAX_GLOB_WILDCARDS) return false;
-  let source = "";
-  for (let i = 0; i < glob.length; i++) {
-    const c = glob[i];
-    if (c === "*" && glob[i + 1] === "*") {
-      while (glob[i + 1] === "*") i++;
-      if (glob[i + 1] === "/") {
-        source += "(?:.*/)?";
-        i++;
-      } else source += ".*";
-    } else if (c === "*") source += "[^/]*";
-    else if (c === "?") source += "[^/]";
-    else source += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  }
-  return new RegExp(`^${source}$`).test(path5.replace(/\\/g, "/").replace(/^\.\//, ""));
-}
-function routePathsToRole(paths, rules) {
-  for (const rule of rules) if (paths.some((p) => matchPathGlob(rule.glob, p))) return rule.role;
-  return void 0;
-}
 function inferLaneIntent(text2) {
   if (!text2 || text2.trim().length === 0) return "unknown";
   for (const { intent, patterns } of INTENT_PATTERNS) {
@@ -19212,9 +19190,7 @@ function inferLaneIntent(text2) {
   }
   return "unknown";
 }
-function routeTaskToRole(taskSubject, taskDescription, fallbackRole, pathRoutes) {
-  const byPath = pathRoutes ? routePathsToRole(pathRoutes.paths, pathRoutes.rules) : void 0;
-  if (byPath) return { role: byPath, confidence: "high", reason: "path rule matched (.copilot/team/routing.md)" };
+function routeTaskToRole(taskSubject, taskDescription, fallbackRole) {
   const combined = `${taskSubject} ${taskDescription}`.trim();
   const intent = inferLaneIntent(combined);
   const isSecurityDomain = SECURITY_DOMAIN_RE.test(combined);
@@ -19272,11 +19248,10 @@ function scoreByKeywords(text2) {
   }
   return bestRole && bestCount > 0 ? { role: bestRole, count: bestCount } : null;
 }
-var MAX_GLOB_WILDCARDS, INTENT_PATTERNS, SECURITY_DOMAIN_RE, ROLE_KEYWORDS;
+var INTENT_PATTERNS, SECURITY_DOMAIN_RE, ROLE_KEYWORDS;
 var init_role_router = __esm({
   "src/team/role-router.ts"() {
     "use strict";
-    MAX_GLOB_WILDCARDS = 8;
     INTENT_PATTERNS = [
       {
         intent: "build-fix",

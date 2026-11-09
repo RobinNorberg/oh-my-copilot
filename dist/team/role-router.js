@@ -1,38 +1,92 @@
 // src/team/role-router.ts
-/** At most this many wildcards in one glob: the regex stays linear-ish and a hostile glob cannot blow up matching. */
+/** Limits of one routing glob: a hostile glob or path cannot make matching expensive. */
 const MAX_GLOB_WILDCARDS = 8;
+const MAX_GLOBSTARS = 2;
+const MAX_MATCH_PATH_CHARS = 1024;
+/** Why `glob` is over the routing limits (more than 8 wildcards or 2 `**` segments), or undefined. */
+export function globLimitProblem(glob) {
+    if ((glob.match(/\*+|\?/g) ?? []).length > MAX_GLOB_WILDCARDS)
+        return `more than ${MAX_GLOB_WILDCARDS} wildcards`;
+    if (glob.split('/').filter((seg) => seg === '**').length > MAX_GLOBSTARS)
+        return `more than ${MAX_GLOBSTARS} ** segments`;
+    return undefined;
+}
+/** One path segment against one glob segment: `*` any run, `?` one character; a linear two-pointer match. */
+function matchSegment(pattern, text) {
+    let p = 0;
+    let t = 0;
+    let starP = -1;
+    let starT = 0;
+    while (t < text.length) {
+        if (p < pattern.length && pattern[p] === '*') {
+            starP = p++;
+            starT = t;
+            continue;
+        }
+        if (p < pattern.length && (pattern[p] === '?' || pattern[p] === text[t])) {
+            p++;
+            t++;
+            continue;
+        }
+        if (starP >= 0) {
+            p = starP + 1;
+            t = ++starT;
+            continue;
+        }
+        return false;
+    }
+    while (pattern[p] === '*')
+        p++;
+    return p === pattern.length;
+}
+/** Glob segments against path segments; a `**` segment spans zero or more whole segments. */
+function matchSegments(glob, path) {
+    let g = 0;
+    let p = 0;
+    let starG = -1;
+    let starP = 0;
+    while (p < path.length) {
+        if (g < glob.length && glob[g] === '**') {
+            starG = g++;
+            starP = p;
+            continue;
+        }
+        if (g < glob.length && matchSegment(glob[g], path[p])) {
+            g++;
+            p++;
+            continue;
+        }
+        if (starG >= 0) {
+            g = starG + 1;
+            p = ++starP;
+            continue;
+        }
+        return false;
+    }
+    while (glob[g] === '**')
+        g++;
+    return g === glob.length;
+}
 /**
  * Whether `path` (repo-relative, `/` or `\` separated) matches `glob`:
- * `**` spans any number of segments (also none), `*` and `?` stay inside one
- * segment, everything else is literal. Case-sensitive. A glob that is empty,
- * absolute, has a `..` segment, or has more than 8 wildcards matches nothing.
+ * a `**` segment spans any number of whole segments (a trailing one at least
+ * one, so `src/**` is the contents of src, not `src`), `*` and `?` stay inside
+ * one segment (a `**` inside a longer segment counts as `*`), everything else
+ * is literal. Case-sensitive, matched segment by segment without building a
+ * RegExp. A glob that is empty, absolute, has a `..` segment or is over the
+ * limits (globLimitProblem), or a path over 1024 characters, matches nothing.
  */
 export function matchPathGlob(glob, path) {
-    if (!glob || glob.startsWith('/') || glob.split('/').includes('..'))
+    if (!glob || glob.startsWith('/'))
         return false;
-    if ((glob.match(/\*+|\?/g) ?? []).length > MAX_GLOB_WILDCARDS)
+    const globSegments = glob.split('/');
+    if (globSegments.includes('..') || globLimitProblem(glob))
         return false;
-    let source = '';
-    for (let i = 0; i < glob.length; i++) {
-        const c = glob[i];
-        if (c === '*' && glob[i + 1] === '*') {
-            while (glob[i + 1] === '*')
-                i++;
-            if (glob[i + 1] === '/') {
-                source += '(?:.*/)?';
-                i++;
-            }
-            else
-                source += '.*';
-        }
-        else if (c === '*')
-            source += '[^/]*';
-        else if (c === '?')
-            source += '[^/]';
-        else
-            source += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-    }
-    return new RegExp(`^${source}$`).test(path.replace(/\\/g, '/').replace(/^\.\//, ''));
+    const normalized = path.replace(/\\/g, '/').replace(/^\.\//, '');
+    if (normalized.length > MAX_MATCH_PATH_CHARS)
+        return false;
+    const segments = globSegments.length > 1 && globSegments[globSegments.length - 1] === '**' ? [...globSegments.slice(0, -1), '*', '**'] : globSegments;
+    return matchSegments(segments, normalized.split('/'));
 }
 /** The role of the first rule matching any of `paths` (rule order, then path order), or undefined. */
 export function routePathsToRole(paths, rules) {
@@ -189,12 +243,7 @@ export function inferLaneIntent(text) {
  * 9. Keyword-count scoring for ambiguous intents
  * 10. Unknown → fallbackRole (low)
  */
-export function routeTaskToRole(taskSubject, taskDescription, fallbackRole, 
-/** Committed path rules (.copilot/team/routing.md): a rule matching one of `paths` wins before any keyword. */
-pathRoutes) {
-    const byPath = pathRoutes ? routePathsToRole(pathRoutes.paths, pathRoutes.rules) : undefined;
-    if (byPath)
-        return { role: byPath, confidence: 'high', reason: 'path rule matched (.copilot/team/routing.md)' };
+export function routeTaskToRole(taskSubject, taskDescription, fallbackRole) {
     const combined = `${taskSubject} ${taskDescription}`.trim();
     const intent = inferLaneIntent(combined);
     const isSecurityDomain = SECURITY_DOMAIN_RE.test(combined);

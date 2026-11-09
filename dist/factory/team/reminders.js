@@ -13,7 +13,7 @@ import { join } from 'path';
 import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
 import { visibleLine } from '../../forge/review-feedback.js';
-import { factoryStateDir, runLabel, TERMINAL_FACTORY_PHASES } from '../run/state.js';
+import { factoryStateDir, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity } from '../run/state.js';
 import { pathsInText, TEAM_ROUTING_PATH } from './context.js';
 import { parseRouting, routeFor } from './routing.js';
 export const remindersPath = (root) => join(factoryStateDir(root), 'reminders.json');
@@ -52,6 +52,10 @@ export function staleGateReminders(o) {
             if (!s.gate || TERMINAL_FACTORY_PHASES.includes(s.phase))
                 continue;
             const label = runLabel(key);
+            if (!verifyFactoryIntegrity(s)) {
+                o.warn?.(`reminder: ${label} is unsound (its state fails the integrity seal), skipped`);
+                continue;
+            }
             const parkedAt = Date.parse(s.gate.at);
             if (!Number.isFinite(parkedAt))
                 continue;
@@ -78,7 +82,7 @@ export function staleGateReminders(o) {
                 }
             }
             const handles = [...new Set(routeFor(routes, pathsInText(s.plan?.text ?? '')).flatMap((r) => (r.handle ? [r.handle] : [])))];
-            due.push({ run: key, gate: s.gate.name, hours: Math.floor((o.nowMs - parkedAt) / 3_600_000), handles, reason: visibleLine(s.gate.reason).slice(0, 300) });
+            due.push({ run: key, gate: visibleLine(s.gate.name), hours: Math.floor((o.nowMs - parkedAt) / 3_600_000), handles, reason: visibleLine(s.gate.reason).slice(0, 300) });
             next[label] = { gateAt: s.gate.at, remindedAt: new Date(o.nowMs).toISOString() };
         }
         if (JSON.stringify(next) !== JSON.stringify(before))

@@ -4,6 +4,7 @@
  * content). The base commit's text must stay a byte prefix of any PR head's
  * text: a PR may only append.
  */
+import { visibleLine } from '../../forge/review-feedback.js';
 export const DEFAULT_DECISIONS_MAX_BYTES = 8192;
 const MAX_LINE_CHARS = 500;
 const lf = (text) => (text.charCodeAt(0) === 0xfeff ? text.slice(1) : text).replace(/\r\n/g, '\n');
@@ -23,7 +24,8 @@ export function decisionsAppendOnly(base, head) {
         return { ok: true };
     if (!h.startsWith(b))
         return { ok: false, reason: 'existing decisions.md lines are changed or removed' };
-    if (!b.endsWith('\n'))
+    // A base without a trailing newline: the only legitimate append starts a new line after it.
+    if (!b.endsWith('\n') && !h.startsWith(`${b}\n`))
         return { ok: false, reason: 'the last existing decisions.md line is extended' };
     return { ok: true };
 }
@@ -33,7 +35,10 @@ export function recentDecisions(text, maxBytes = DEFAULT_DECISIONS_MAX_BYTES) {
     const lines = [];
     let bytes = 0;
     for (let i = all.length - 1; i >= 0; i--) {
-        const line = all[i].length > MAX_LINE_CHARS ? `${all[i].slice(0, MAX_LINE_CHARS)}...` : all[i];
+        // Control and format characters become <U+XXXX> first, so the caps count what the lane sees; cut by code points, never inside a surrogate pair.
+        const shown = visibleLine(all[i]);
+        const points = Array.from(shown);
+        const line = points.length > MAX_LINE_CHARS ? `${points.slice(0, MAX_LINE_CHARS).join('')}...` : shown;
         bytes += Buffer.byteLength(line, 'utf8') + 1;
         if (bytes > maxBytes)
             return { lines, truncated: true };

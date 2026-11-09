@@ -35,6 +35,17 @@ describe('parseRouting', () => {
         expect(warnings).toHaveLength(6);
         expect(warnings[0]).toContain('line 1');
     });
+    it('drops a row with more than 2 ** segments or 8 wildcards, with a warning', () => {
+        const { routes, warnings } = parseRouting([
+            '| **/a/**/b/** | - | too-many-stars | - |',
+            '| **a**a**a**a**a**a**a**a**b | - | too-many-wildcards | - |',
+            '| **/a/** | - | fine | - |',
+        ].join('\n'));
+        expect(routes.map((r) => r.owner)).toEqual(['fine']);
+        expect(warnings).toHaveLength(2);
+        expect(warnings[0]).toContain('2 ** segments');
+        expect(warnings[1]).toContain('wildcards');
+    });
     it('shows control and bidi characters in warnings instead of passing them through', () => {
         const { warnings } = parseRouting('| a | - | ow‮ner\u001b[31m | - |');
         expect(warnings[0]).toContain('<U+202E>');

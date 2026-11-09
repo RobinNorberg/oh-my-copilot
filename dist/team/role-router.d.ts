@@ -15,11 +15,16 @@ export interface PathRoleRule {
     glob: string;
     role: string;
 }
+/** Why `glob` is over the routing limits (more than 8 wildcards or 2 `**` segments), or undefined. */
+export declare function globLimitProblem(glob: string): string | undefined;
 /**
  * Whether `path` (repo-relative, `/` or `\` separated) matches `glob`:
- * `**` spans any number of segments (also none), `*` and `?` stay inside one
- * segment, everything else is literal. Case-sensitive. A glob that is empty,
- * absolute, has a `..` segment, or has more than 8 wildcards matches nothing.
+ * a `**` segment spans any number of whole segments (a trailing one at least
+ * one, so `src/**` is the contents of src, not `src`), `*` and `?` stay inside
+ * one segment (a `**` inside a longer segment counts as `*`), everything else
+ * is literal. Case-sensitive, matched segment by segment without building a
+ * RegExp. A glob that is empty, absolute, has a `..` segment or is over the
+ * limits (globLimitProblem), or a path over 1024 characters, matches nothing.
  */
 export declare function matchPathGlob(glob: string, path: string): boolean;
 /** The role of the first rule matching any of `paths` (rule order, then path order), or undefined. */
@@ -46,10 +51,5 @@ export declare function inferLaneIntent(text: string): LaneIntent;
  * 9. Keyword-count scoring for ambiguous intents
  * 10. Unknown → fallbackRole (low)
  */
-export declare function routeTaskToRole(taskSubject: string, taskDescription: string, fallbackRole: string, 
-/** Committed path rules (.copilot/team/routing.md): a rule matching one of `paths` wins before any keyword. */
-pathRoutes?: {
-    paths: readonly string[];
-    rules: readonly PathRoleRule[];
-}): RoleRouterResult;
+export declare function routeTaskToRole(taskSubject: string, taskDescription: string, fallbackRole: string): RoleRouterResult;
 //# sourceMappingURL=role-router.d.ts.map
