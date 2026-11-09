@@ -127594,13 +127594,17 @@ function shipFollower(phase) {
   if (phase === "ready" || phase === "merged") return "merge";
   return "prepare";
 }
+function engineClaimRepo(o, exec3) {
+  if (o.forge?.config.kind === "local") return null;
+  return o.claimRepo !== void 0 ? o.claimRepo : factoryClaimRepo(exec3, o.root);
+}
 function busyHolder(o, key) {
   const deps = o.owner ?? defaultOwnerDeps();
   const what = (path30, name) => {
     const h = ownerHolding(path30, deps);
     return h === null ? null : h === "unreadable" ? unreadableOwnerMessage(path30) : `${name} is held (${describeOwner(h)})`;
   };
-  const repo = o.claimRepo !== void 0 ? o.claimRepo : factoryClaimRepo(o.exec, o.root);
+  const repo = engineClaimRepo(o, factoryGuardExec(o.exec, () => [o.base]));
   const claim = repo ? factoryClaimHolder(o.ledgerDir ?? defaultLedgerDir(), repo, o.root, key, deps) : null;
   return what(factoryRepoOwnerPath(o.root), "the engine lock of this checkout") ?? what(factoryOwnerPath(o.root, key), `the run of ${runLabel(key)}`) ?? (claim ? `the cross-clone claim: ${claimBusyMessage(key, claim)}` : null);
 }
@@ -127700,7 +127704,7 @@ async function runFactoryEngine(o) {
   let ledger;
   let hooksDir;
   try {
-    const repo = o.claimRepo !== void 0 ? o.claimRepo : factoryClaimRepo(o.exec, o.root);
+    const repo = engineClaimRepo(o, (cmd, args, opts) => hardenedGitExec(o.exec, emptyHooksDir2(dir))(cmd, args, opts));
     if (repo) claim = acquireFactoryClaim(dir, repo, o.root, key, now2, o.owner);
     owner = acquireFactoryOwner(o.root, key, now2, o.owner);
     try {
