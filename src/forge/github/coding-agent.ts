@@ -29,7 +29,12 @@
  * its author email, which whoever pushes sets freely (the agent's noreply
  * address can be spoofed). A commit list that is not all the agent's refuses
  * adoption; an all-agent list proves nothing more, and the engine (L6b) still
- * treats the adopted diff as untrusted lane output.
+ * treats the adopted diff as untrusted lane output. Adoption also requires
+ * every commit to carry a valid signature made by GitHub itself (web-flow):
+ * every agent commit seen live is, a locally pushed commit with a spoofed
+ * author email is not. That narrows the spoof to commits created through
+ * GitHub's own web or API by someone with write access; it is no proof of
+ * authorship either.
  */
 
 import type { Exec } from '../../ship/exec.js';
@@ -55,7 +60,7 @@ export const CODING_AGENT_SINCE_SKEW_SECONDS = 120;
 const PR_COMMITS = 100;
 
 const PR_FIELDS = 'number state isDraft isCrossRepository baseRefName headRefName headRefOid author{__typename login}'
-  + ` baseRepository{nameWithOwner} headRepository{nameWithOwner} commits(last:${PR_COMMITS}){pageInfo{hasPreviousPage} nodes{commit{oid committedDate author{user{login}}}}}`
+  + ` baseRepository{nameWithOwner} headRepository{nameWithOwner} commits(last:${PR_COMMITS}){pageInfo{hasPreviousPage} nodes{commit{oid committedDate author{user{login}} signature{isValid wasSignedByGitHub}}}}`
   + ' timelineItems(last:50,since:$since,itemTypes:[REVIEW_REQUESTED_EVENT]){pageInfo{hasPreviousPage} nodes{__typename ... on ReviewRequestedEvent{createdAt actor{__typename login}}}}';
 
 /**
@@ -154,6 +159,10 @@ function sinceCutoff(since: CodingAgentSince): string {
   if (since.source === 'local') return codingAgentWindowStart(since.at);
   if (since.source !== 'github') throw new Error(`coding agent status: since source ${JSON.stringify(since.source)} is neither local nor github`);
   if (!isTime(since.at)) throw new Error(`coding agent status: since ${JSON.stringify(since.at)} is not an ISO time`);
+  // GitHub times are whole seconds; a sub-second value is a local clock passed off as GitHub's.
+  if (!ISO_SECONDS.test(since.at)) {
+    throw new Error(`coding agent status: a github since must be a whole-second GitHub time (an assignedAt), got ${JSON.stringify(since.at)}`);
+  }
   return since.at;
 }
 
@@ -166,7 +175,15 @@ export function codingAgentAssignArgs(repo: CodingAgentRepo, issue: number, base
     '-f', `assignees[]=${CODING_AGENT_REST_ASSIGNEE}`, '-f', `agent_assignment[base_branch]=${base}`];
 }
 
-/** `gh` argv of the status read for `issue`, from the window start of `since` (always widened by the skew margin). */
+/**
+ * `gh` argv of the status read for `issue`, from the window start of `since`.
+ * The query-level since is ALWAYS widened by CODING_AGENT_SINCE_SKEW_SECONDS,
+ * for a `github` since too: GitHub's `since` filter excludes an event in the
+ * same second (checked live: since=19:18:45Z dropped an event at 19:18:45Z),
+ * so querying from the session's own `assignedAt` would drop its Assigned
+ * event and read `not-assigned`. The parser then cuts a `github` since exactly.
+ * Never remove this margin.
+ */
 export function codingAgentStatusArgs(repo: CodingAgentRepo, issue: number, since: CodingAgentSince): string[] {
   checkRepo(repo, 'status');
   checkNumber(issue, 'status');
@@ -263,6 +280,13 @@ export interface CodingAgentPr {
    * empty, or a commit is unreadable. Advisory: see the module comment.
    */
   allCommitsByAgent?: boolean;
+  /**
+   * Every commit on the PR has a valid signature made by GitHub
+   * (`signature { isValid wasSignedByGitHub }`, the web-flow key). Undefined
+   * when the list was cut, is empty, or a commit is unreadable. Advisory: see
+   * the module comment.
+   */
+  allCommitsSignedByGitHub?: boolean;
   /** When the agent linked it to the issue (the newest linking event in the session). */
   linkedAt: string;
   /** The agent's newest review request on the PR at or after session start (its "work finished" signal). */
@@ -328,6 +352,8 @@ const time = (v: unknown): string | undefined => {
 const isAgent = (v: unknown): boolean => isObj(v) && v.__typename === 'Bot' && v.login === CODING_AGENT_LOGIN;
 /** A commit GitHub maps to the agent's account (advisory). */
 const isAgentCommit = (c: Obj): boolean => isObj(c.author) && isObj(c.author.user) && c.author.user.login === CODING_AGENT_COMMIT_LOGIN;
+/** A commit with a valid signature GitHub made itself (web-flow; advisory). */
+const isGithubSigned = (c: Obj): boolean => isObj(c.signature) && c.signature.isValid === true && c.signature.wasSignedByGitHub === true;
 const atOrAfter = (at: string, from: string | undefined): boolean => from === undefined || Date.parse(at) >= Date.parse(from);
 const STATES: ReadonlySet<string> = new Set(['OPEN', 'CLOSED', 'MERGED']);
 
@@ -353,7 +379,11 @@ function readPr(v: unknown, repoName: string, linkedAt: string, sessionStart: st
   const commitsHead = newestOid && HEX40.test(newestOid) ? newestOid : undefined;
   const headCommittedAt = head && commitsHead === head && newest ? time(newest.committedDate) : undefined;
   const allCommitsByAgent = commitsCut || !readable ? undefined : commits.every((c) => c !== undefined && isAgentCommit(c));
+  const allCommitsSignedByGitHub = commitsCut || !readable ? undefined : commits.every((c) => c !== undefined && isGithubSigned(c));
   let finishedAt: string | undefined;
+  // The PR timeline shares no positions with the issue timeline, so a review
+  // request is compared with the session start by time (whole seconds): one in
+  // the same second as the session start counts.
   for (const e of nodes(v.timelineItems)) {
     const at = time(e.createdAt);
     if (e.__typename !== 'ReviewRequestedEvent' || !at || !isAgent(e.actor) || !atOrAfter(at, sessionStart)) continue;
@@ -367,6 +397,7 @@ function readPr(v: unknown, repoName: string, linkedAt: string, sessionStart: st
     ...(commitsHead ? { commitsHead } : {}),
     ...(headCommittedAt ? { headCommittedAt } : {}),
     ...(allCommitsByAgent !== undefined ? { allCommitsByAgent } : {}),
+    ...(allCommitsSignedByGitHub !== undefined ? { allCommitsSignedByGitHub } : {}),
     linkedAt, ...(finishedAt ? { finishedAt } : {}),
     truncated: cut(v.timelineItems, 'hasPreviousPage') ? 'review-requests' : commitsCut ? 'commits' : false,
   };
@@ -397,8 +428,9 @@ function plainMessage(s: string): string {
  * `since` cuts the window (CodingAgentSince): a `local` time keeps events from
  * the skew margin before it, a `github` time (a previous read's `assignedAt`)
  * keeps nothing before it. Within the window the session is the current
- * assignment streak (`assignedAt`); only agent links and agent review requests
- * at or after its start count, earlier links go to `ignored`. Only events
+ * assignment streak (`assignedAt`); only agent links AFTER its start event in
+ * timeline order (by time, ties in GitHub's order) count, earlier links go to
+ * `ignored`; agent review requests count at or after its start time. Only events
  * whose actor is the agent link a PR, and only PRs the agent authored in this
  * repository become candidates. Throws when the response has no repository
  * or issue.
@@ -428,21 +460,28 @@ export function parseCodingAgentStatus(stdout: string, since?: CodingAgentSince)
     .filter((x): x is { e: Obj; i: number; at: string } => x.at !== undefined && atOrAfter(x.at, from))
     .sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.i - b.i);
   // The session: the start of the current agent assignment streak; an unassignment ends a streak.
+  // `startIndex` is the streak-start event's position in `events`.
   let sessionStart: string | undefined;
-  for (const { e, at } of events) {
-    if (e.__typename === 'AssignedEvent' && isAgent(e.assignee)) sessionStart ??= at;
-    else if (e.__typename === 'UnassignedEvent' && isAgent(e.assignee)) sessionStart = undefined;
+  let startIndex = -1;
+  for (const [index, { e, at }] of events.entries()) {
+    if (e.__typename === 'AssignedEvent' && isAgent(e.assignee) && sessionStart === undefined) {
+      sessionStart = at;
+      startIndex = index;
+    } else if (e.__typename === 'UnassignedEvent' && isAgent(e.assignee)) {
+      sessionStart = undefined;
+      startIndex = -1;
+    }
   }
   const assigned = sessionStart !== undefined;
 
   const linked = new Map<number, CodingAgentPr>();
   const ignored = new Map<number, CodingAgentIgnoreReason>();
-  for (const { e, at } of events) {
+  for (const [index, { e, at }] of events.entries()) {
     if ((e.__typename !== 'ConnectedEvent' && e.__typename !== 'CrossReferencedEvent') || !isAgent(e.actor)) continue;
     const pr = readPr(e.__typename === 'ConnectedEvent' ? e.subject : e.source, repoName, at, sessionStart);
     if (!pr) continue;
     const reason: CodingAgentIgnoreReason | undefined = !pr.byAgent ? 'not-agent-author' : !pr.sameRepo ? 'cross-repository'
-      : !assigned || !atOrAfter(at, sessionStart) ? 'outside-session' : undefined;
+      : !assigned || index <= startIndex ? 'outside-session' : undefined;
     if (reason) {
       if (!ignored.has(pr.number)) ignored.set(pr.number, reason);
       continue;
@@ -505,10 +544,12 @@ export function assignCodingAgent(exec: Exec, repo: CodingAgentRepo, issue: numb
   }
 }
 
-/** What adopting the agent's PR must match: the run's repository and base branch. */
+/** What adopting the agent's PR must match: the run's repository, issue and base branch. */
 export interface AdoptExpectation {
   /** `OWNER/NAME` of the run's repository. */
   repo: string;
+  /** The issue the run assigned to the agent. */
+  issue: number;
   /** The run's base branch (FactoryRunState.base). */
   base: string;
 }
@@ -519,17 +560,19 @@ export type AdoptCheck =
 
 /**
  * The adopt preconditions (night-3 review checklist point 7) for the PR in
- * `status`: the agent finished; the PR is open, authored by the agent bot,
- * not cross-repository, in the run's repository, on the run's base branch;
- * its head is a 40-hex sha that is the newest commit read; and every commit
- * on it is mapped to the agent's account (a cut or unreadable list refuses
- * too). Authorship is advisory: passing does not make the diff trusted. The
+ * `status`: it is for the run's issue; the agent finished; the PR is open,
+ * authored by the agent bot, not cross-repository, in the run's repository,
+ * on the run's base branch; its head is a 40-hex sha that is the newest
+ * commit read; and every commit on it is mapped to the agent's account and
+ * signed by GitHub (a cut or unreadable list refuses too). Authorship and
+ * signatures are advisory: passing does not make the diff trusted. The
  * caller fetches exactly that sha (and re-checks it after the fetch) under
  * its tamper snapshot.
  */
 export function adoptPreconditions(status: CodingAgentStatus, want: AdoptExpectation): AdoptCheck {
   const reasons: string[] = [];
   const pr = status.pr;
+  if (status.issue !== want.issue) reasons.push(`the status is for issue #${status.issue}, not #${want.issue}`);
   if (status.phase !== 'finished' || !pr) {
     reasons.push(`the coding agent has not finished (${status.phase})`);
     return { ok: false, reasons };
@@ -542,5 +585,7 @@ export function adoptPreconditions(status: CodingAgentStatus, want: AdoptExpecta
   else if (pr.commitsHead !== pr.head) reasons.push(`PR #${pr.number} head ${pr.head} is not the newest commit read (${pr.commitsHead ?? 'none'})`);
   if (pr.allCommitsByAgent === false) reasons.push(`PR #${pr.number} has commits not mapped to the ${CODING_AGENT_COMMIT_LOGIN} account`);
   if (pr.allCommitsByAgent === undefined) reasons.push(`PR #${pr.number} commit authorship is unknown (commit list cut or unreadable)`);
+  if (pr.allCommitsSignedByGitHub === false) reasons.push(`PR #${pr.number} has commits without a valid GitHub (web-flow) signature`);
+  if (pr.allCommitsSignedByGitHub === undefined) reasons.push(`PR #${pr.number} commit signatures are unknown (commit list cut or unreadable)`);
   return reasons.length > 0 || !pr.head ? { ok: false, reasons } : { ok: true, pr: pr.number, head: pr.head };
 }
