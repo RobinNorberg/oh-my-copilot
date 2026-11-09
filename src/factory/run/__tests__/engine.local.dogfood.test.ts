@@ -202,7 +202,7 @@ describe('F41: a lane may not redefine the local gate', () => {
     const out = await runFactoryEngine(localOpts(w, lanes));
     expect(out.exitCode, out.message).toBe(EXIT_AWAITING_HUMAN);
     expect(out.gate?.name).toBe('gate-definition-unknown');
-    expect(out.gate?.reason).toMatch(/selects workspace packages \(--workspace\).*no lane was started/);
+    expect(out.gate?.reason).toMatch(/selects workspace packages \(--workspace\).*no further lane was started/);
     expect(lanes.started).toEqual([]);
     expect(readFactoryState(w.root, LOCAL_ISSUE)!.lanes).toEqual([]);
     expect(readMirrorRef(w.config.repo.url, BRANCH)).toBeUndefined();
@@ -210,6 +210,25 @@ describe('F41: a lane may not redefine the local gate', () => {
     // A rerun with the gate still unresolved parks again, still before any lane.
     const again = await runFactoryEngine(localOpts(w, lanes));
     expect(again.gate?.name).toBe('gate-definition-unknown');
+    expect(lanes.started).toEqual([]);
+  });
+
+  it('--dry-run reports a requested cancel and a cancelled run before the unknown gate', async () => {
+    w = localWorld(['npm', '--workspace', 'app', 'test']);
+    const lanes = lanesFor(w, []);
+    const parked = await runFactoryEngine(localOpts(w, lanes));
+    expect(parked.gate?.name).toBe('gate-definition-unknown');
+
+    requestFactoryCancel(w.root, LOCAL_ISSUE, new Date().toISOString());
+    const asked = await runFactoryEngine(localOpts(w, lanes, { dryRun: true }));
+    expect(asked.message).toMatch(/a cancel is requested/);
+    expect(asked.plan).toMatchObject({ next: 'cancelled' });
+
+    const done = await runFactoryEngine(localOpts(w, lanes));
+    expect(done.phase).toBe('cancelled');
+    const after = await runFactoryEngine(localOpts(w, lanes, { dryRun: true }));
+    expect(after.message).toBe('dry run: the run is cancelled; nothing would run');
+    expect(after.plan).toMatchObject({ next: 'cancelled' });
     expect(lanes.started).toEqual([]);
   });
 

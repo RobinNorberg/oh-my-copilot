@@ -963,7 +963,7 @@ class FactoryEngine {
         }
         // A detached lane child may edit shared git state after its lane's check: re-compare at every step boundary.
         if (this.recheckFailed('at the next step boundary')) continue;
-        if (this.gateDefinitionUnknownParked('no lane was started')) continue;
+        if (this.gateDefinitionUnknownParked('no further lane was started')) continue;
         this.progress.emit(phase, 'start', undefined, this.fields());
         await this.step(phase);
         const after = this.state;
@@ -1033,12 +1033,6 @@ class FactoryEngine {
   }
 
   /**
-   * Outcome write-back (outcome.ts): the item's outcome comment and the
-   * parent spec's rollup line, each once per (child, event, head). The item is
-   * read for its parent and comments; any failure is a warning and never
-   * blocks or changes a transition.
-   */
-  /**
    * F31: a merged local-forge run whose backlog file still says `state: open`
    * (the tracker reads it as closed from the PR store): the file change the
    * human commits. Empty otherwise, or when the item cannot be read.
@@ -1053,6 +1047,12 @@ class FactoryEngine {
     }
   }
 
+  /**
+   * Outcome write-back (outcome.ts): the item's outcome comment and the
+   * parent spec's rollup line, each once per (child, event, head). The item is
+   * read for its parent and comments; any failure is a warning and never
+   * blocks or changes a transition.
+   */
   private postOutcome(event: OutcomeEvent): void {
     const s = this.state;
     if (s.kind === 'ci-heal' || !this.o.issue || !s.repoUrl) return;
@@ -1447,18 +1447,6 @@ class FactoryEngine {
   }
 
   /**
-   * Offline the local gate is the only check, so a lane may not redefine it
-   * (dogfood F41): the files that define factory.forge.local.gate
-   * (gateDefinitionSources: package.json's script entry for an npm-style
-   * gate, the script file for a node gate) must define it at `cand` as at
-   * the run's base or the mirror's current base. A change parks at
-   * gate-definition-changed with the head definition's hash; a rerun with
-   * `--allow-gate-change` accepts exactly that parked definition once
-   * (gateChangeAllowed, captured at resume), records its hash and lets it
-   * through. An npm-style gate whose definition cannot be pinned parks at
-   * gate-definition-unknown. True when it parked.
-   */
-  /**
    * An offline gate whose definition cannot be pinned (gateDefinitionSources'
    * `unresolved`) parks at gate-definition-unknown. The verdict depends only
    * on the config, so the loop asks before every step: no lane spends
@@ -1472,6 +1460,18 @@ class FactoryEngine {
     return true;
   }
 
+  /**
+   * Offline the local gate is the only check, so a lane may not redefine it
+   * (dogfood F41): the files that define factory.forge.local.gate
+   * (gateDefinitionSources: package.json's script entry for an npm-style
+   * gate, the script file for a node gate) must define it at `cand` as at
+   * the run's base or the mirror's current base. A change parks at
+   * gate-definition-changed with the head definition's hash; a rerun with
+   * `--allow-gate-change` accepts exactly that parked definition once
+   * (gateChangeAllowed, captured at resume), records its hash and lets it
+   * through. An npm-style gate whose definition cannot be pinned parks at
+   * gate-definition-unknown. True when it parked.
+   */
   private gateDefinitionParked(s: FactoryRunState, cand: string): boolean {
     // One acceptance per park: whatever this check decides, the flag is spent.
     const allowed = this.gateChangeAllowed;
@@ -2542,6 +2542,13 @@ function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
   const caps = { laneMaxCredits: o.limits.laneMaxCredits, ...(o.limits.maxRunCredits !== undefined ? { maxRunCredits: o.limits.maxRunCredits } : {}) };
   const swapped = existing ? forgeResumeProblem(existing, o.forge?.config.kind ?? 'github', o.forge?.config.repo.url) : null;
   if (existing && swapped) return { exitCode: 1, phase: existing.phase, state: existing, message: `dry run: ${swapped}` };
+  // A finished or cancelled run never reaches the gate check below: the real loop looks at the terminal phase and the cancel flag first.
+  if (existing && TERMINAL_FACTORY_PHASES.includes(existing.phase)) {
+    return { exitCode: 0, phase: existing.phase, state: existing, message: `dry run: the run is ${existing.phase}; nothing would run`, plan: { next: existing.phase, ...caps } };
+  }
+  if (existing && (existing.cancelRequested || factoryCancelRequested(o.root, key))) {
+    return { exitCode: 0, phase: existing.phase, state: existing, message: 'dry run: a cancel is requested; the run would be cancelled', plan: { next: 'cancelled', ...caps } };
+  }
   // The real run parks before its first step, so before any lane (dogfood F41).
   const localGate = forge?.kind === 'local' ? o.forge!.config.local?.gate : undefined;
   const gateUnknown = localGate && localGate.length > 0 ? gateDefinitionSources(localGate).unresolved : undefined;
