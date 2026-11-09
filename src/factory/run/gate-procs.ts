@@ -20,7 +20,8 @@
  */
 
 import { execFile } from 'child_process';
-import { readFileSync, rmSync } from 'fs';
+import { spawnSync } from 'child_process';
+import { readdirSync, readFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { promisify } from 'util';
 import { localStoreDir } from '../../forge/local/mirror.js';
@@ -49,9 +50,12 @@ export interface GateProcRecord {
   orphans: GateProc[];
 }
 
-export const gateProcsPath = (stateDir: string, root: string, head: string): string =>
-  join(localStoreDir(stateDir, root), 'gate-procs', `${head}.json`);
+const HEX40 = /^[0-9a-f]{40}$/;
 
+export const gateProcsPath = (stateDir: string, root: string, head: string): string => {
+  if (!HEX40.test(head)) throw new Error(`gate-procs: ${JSON.stringify(head)} is not a 40-hex commit`);
+  return join(localStoreDir(stateDir, root), 'gate-procs', `${head}.json`);
+};
 const isProc = (p: unknown): p is GateProc => {
   const r = p as Partial<GateProc> | null;
   return !!r && Number.isInteger(r.pid) && (r.pid as number) > 0 && typeof r.identity === 'string' && r.identity.length > 0 && r.identity.length < 64;
@@ -67,7 +71,8 @@ export function readGateProcs(path: string): GateProcRecord | undefined {
   }
   if (!parsed || parsed.version !== 1 || typeof parsed.startedAt !== 'string' || !Array.isArray(parsed.orphans) || !parsed.orphans.every(isProc)) return undefined;
   if (parsed.root !== undefined && !isProc(parsed.root)) return undefined;
-  if (parsed.pgid !== undefined && !(Number.isInteger(parsed.pgid) && (parsed.pgid as number) > 0)) return undefined;
+  // The gate is detached, so its group id is its own pid: a record naming any other group is forged.
+  if (parsed.pgid !== undefined && !(Number.isInteger(parsed.pgid) && parsed.root !== undefined && parsed.pgid === parsed.root.pid)) return undefined;
   return parsed as GateProcRecord;
 }
 
@@ -110,9 +115,22 @@ async function listWindowsChildren(rootPid: number): Promise<Array<{ pid: number
   return out;
 }
 
+/** The start identity of `pid` through the absolute powershell (a bare name could resolve to a planted binary, and the engine's search-path hardening runs after the pre-run reap). */
+function windowsIdentitySync(pid: number): string | null {
+  const exe = join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const script = `$p = Get-Process -Id ${pid} -ErrorAction Stop; if ($p -and $p.StartTime) { $p.StartTime.ToUniversalTime().Ticks }`;
+  try {
+    const r = spawnSync(exe, ['-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8', timeout: 8000, windowsHide: true });
+    const ticks = r.status === 0 ? r.stdout.trim().match(/^\d+$/)?.[0] : undefined;
+    return ticks ? `ticks:${ticks}` : null;
+  } catch {
+    return null;
+  }
+}
+
 export const defaultGateProcDeps = (): GateProcDeps => ({
   platform: process.platform,
-  identitySync: getProcessStartIdentitySync,
+  identitySync: process.platform === 'win32' ? windowsIdentitySync : getProcessStartIdentitySync,
   identity: (pid, deadlineAt) => getProcessStartIdentity(pid, deadlineAt),
   terminateTree: (p) => terminateOwnedProcessTree({ pid: p.pid, expectedStartIdentity: p.identity, deadlineAt: new Date(Date.now() + STEP_DEADLINE_MS).toISOString(), force: true }),
   terminateGroup: (p, pgid) => terminateOwnedProcessGroup({ pid: p.pid, expectedStartIdentity: p.identity, processGroupId: pgid, deadlineAt: new Date(Date.now() + STEP_DEADLINE_MS).toISOString(), force: true }),
@@ -120,7 +138,7 @@ export const defaultGateProcDeps = (): GateProcDeps => ({
 });
 
 /** Record what the gate at `path` starts. A write failure is swallowed: bookkeeping must never decide a verdict. */
-export function createGateProcTracker(path: string, startedAtMs: number, deps: GateProcDeps = defaultGateProcDeps()): GateProcTracker {
+export function createGateProcTracker(path: string, startedAtMs: number, deps: GateProcDeps = defaultGateProcDeps(), warn?: (message: string) => void): GateProcTracker {
   const record: GateProcRecord = { version: 1, startedAt: new Date(startedAtMs).toISOString(), orphans: [] };
   let rootPid = 0;
   const save = (): void => {
@@ -134,6 +152,8 @@ export function createGateProcTracker(path: string, startedAtMs: number, deps: G
         record.root = { pid, identity };
         if (deps.platform !== 'win32') record.pgid = pid;
         save();
+      } else {
+        warn?.(`the gate process ${pid} could not be identified, so it is not recorded and an engine crash would leave it unreaped`);
       }
     },
     async rootGone(exitedAtMs) {
@@ -178,10 +198,33 @@ export async function reapGateProcs(path: string, deps: GateProcDeps = defaultGa
     rmSync(path, { force: true });
     return;
   }
+  // Never the engine itself or its parent, whatever a record says.
+  const foreign = (p: GateProc): boolean => p.pid !== process.pid && p.pid !== process.ppid;
   if (deps.platform === 'win32') {
-    for (const p of [...record.orphans, ...(record.root ? [record.root] : [])]) await deps.terminateTree(p).catch(() => undefined);
-  } else if (record.root && record.pgid) {
+    for (const p of [...record.orphans, ...(record.root ? [record.root] : [])].filter(foreign)) await deps.terminateTree(p).catch(() => undefined);
+  } else if (record.root && record.pgid && foreign(record.root)) {
     await deps.terminateGroup(record.root, record.pgid).catch(() => undefined);
   }
   rmSync(path, { force: true });
+}
+
+const swept = new Set<string>();
+
+/**
+ * Once per process and record directory: reap every record there, not only the
+ * one of the head about to be gated (a head that is never gated again would
+ * otherwise keep its leftovers alive).
+ */
+export async function sweepGateProcs(dir: string, deps: GateProcDeps = defaultGateProcDeps()): Promise<void> {
+  if (swept.has(dir)) return;
+  swept.add(dir);
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (/^[0-9a-f]{40}\.json$/.test(name)) await reapGateProcs(join(dir, name), deps).catch(() => undefined);
+  }
 }

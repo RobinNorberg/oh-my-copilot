@@ -1,9 +1,9 @@
 import { spawn, type ChildProcess } from 'child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createGateProcTracker, gateProcsPath, readGateProcs, reapGateProcs, type GateProcDeps } from '../gate-procs.js';
+import { createGateProcTracker, gateProcsPath, readGateProcs, reapGateProcs, sweepGateProcs, type GateProcDeps } from '../gate-procs.js';
 import { runLocalGate } from '../local-gate.js';
 import { isProcessAlive } from '../../../platform/process-utils.js';
 
@@ -165,4 +165,74 @@ describe('gate process cleanup against real processes', () => {
     expect(await waitDead(pid, 30_000)).toBe(true);
     expect(out.started && out.record.state).toBe('SUCCESS');
   }, 120_000);
+});
+
+describe('gate process bookkeeping hardening', () => {
+  const write = (path: string, rec: object): void => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, JSON.stringify(rec)); };
+  const rec = (over: object = {}) => ({ version: 1, startedAt: new Date().toISOString(), orphans: [], ...over });
+
+  it('rejects a head that is not 40-hex lowercase', () => {
+    for (const head of ['abc', '../x', 'A'.repeat(40), `${'a'.repeat(39)}/`]) expect(() => gateProcsPath(tmp, tmp, head), head).toThrow(/not a 40-hex commit/);
+  });
+
+  it('ignores a record whose pgid is not its root pid (forged)', () => {
+    const path = join(tmp, 'p.json');
+    write(path, rec({ root: { pid: 4242, identity: '1' }, pgid: 1 }));
+    expect(readGateProcs(path)).toBeUndefined();
+    write(path, rec({ pgid: 4242 }));
+    expect(readGateProcs(path)).toBeUndefined();
+    write(path, rec({ root: { pid: 4242, identity: '1' }, pgid: 4242 }));
+    expect(readGateProcs(path)?.pgid).toBe(4242);
+  });
+
+  it('never signals the engine itself or its parent, whatever a record says', async () => {
+    for (const platform of ['win32', 'linux'] as const) {
+      for (const pid of [process.pid, process.ppid]) {
+        const path = join(tmp, `${platform}-${pid}.json`);
+        write(path, rec({ root: { pid, identity: '1' }, pgid: pid, orphans: [{ pid, identity: '1' }] }));
+        const deps = fakeDeps({ platform });
+        await reapGateProcs(path, deps);
+        expect(deps.killed, `${platform} ${pid}`).toEqual([]);
+        expect(existsSync(path)).toBe(false);
+      }
+    }
+  });
+
+  it('sweeps the records of other heads once per process', async () => {
+    const dir = join(tmp, 'sweep');
+    const other = join(dir, `${'b'.repeat(40)}.json`);
+    write(other, rec({ root: { pid: 4242, identity: '7' }, pgid: 4242 }));
+    write(join(dir, 'not-a-record.txt'), {});
+    const deps = fakeDeps({ platform: 'linux' });
+    await sweepGateProcs(dir, deps);
+    expect(deps.killed).toEqual([{ pid: 4242, identity: '7' }]);
+    expect(existsSync(other)).toBe(false);
+    expect(existsSync(join(dir, 'not-a-record.txt'))).toBe(true);
+    write(other, rec({ root: { pid: 4242, identity: '7' }, pgid: 4242 }));
+    await sweepGateProcs(dir, deps);
+    expect(deps.killed).toHaveLength(1);
+  });
+
+  it('says so when the root cannot be identified, instead of silently recording nothing', () => {
+    const messages: string[] = [];
+    createGateProcTracker(join(tmp, 'p.json'), Date.now(), fakeDeps({ identitySync: () => null }), (m) => messages.push(m)).spawned(4242);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatch(/4242/);
+    expect(existsSync(join(tmp, 'p.json'))).toBe(false);
+  });
+
+  it('takes the orphan window start from the wall clock even when the engine clock is injected', async () => {
+    const sleeper = spawnSleeper();
+    let startedAt = '';
+    const path = gateProcsPath(join(tmp, 'state'), tmp, HEAD);
+    await runLocalGate({
+      stateDir: join(tmp, 'state'), root: tmp, head: HEAD, gate: ['node', 'x.js'], timeoutMinutes: 1, checkout: tmp, now: () => new Date(Date.UTC(2000, 0, 1)),
+      runner: async (_argv, _cwd, _t, track) => {
+        track?.spawned(sleeper.pid!);
+        startedAt = readGateProcs(path)?.startedAt ?? '';
+        return { status: 0, stdout: '', stderr: '', timedOut: false };
+      },
+    });
+    expect(Date.now() - new Date(startedAt).getTime()).toBeLessThan(60_000);
+  }, 60_000);
 });
