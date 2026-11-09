@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "da1c0d9872c881468cb22a83a2ee69d1b8dd07d6",
-    "sourceSha256": "744fc254be573c1621eaca8c74239619b1afdc6eafc3b243c41a7dcc885ea211",
+    "head": "13e80712b8fad9775db7bd12ca391481b29f974d",
+    "sourceSha256": "9023a83db4614979d8ca66241d48d45ccd11f8ed7cb83dfe3465153d2a9df7ef",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "da1c0d9872c881468cb22a83a2ee69d1b8dd07d6",
-  "sourceSha256": "744fc254be573c1621eaca8c74239619b1afdc6eafc3b243c41a7dcc885ea211",
+  "head": "13e80712b8fad9775db7bd12ca391481b29f974d",
+  "sourceSha256": "9023a83db4614979d8ca66241d48d45ccd11f8ed7cb83dfe3465153d2a9df7ef",
   "counts": {
     "public": {
       "skills": 98,
@@ -24,17 +24,17 @@
     },
     "internal": {
       "hookFiles": 346,
-      "featureFiles": 96,
+      "featureFiles": 98,
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 1976,
-      "total": 2001
+      "srcFiles": 1980,
+      "total": 2005
     },
     "generated": {
-      "distFiles": 7272,
+      "distFiles": 7288,
       "bridgeFiles": 8,
-      "total": 7280
+      "total": 7296
     },
     "prompt": {
       "promptLikeFiles": 71
@@ -607,7 +607,9 @@
       "src/features/lookout/wrapper-parser.ts",
       "src/features/magic-keywords.ts",
       "src/features/model-routing/__tests__/index.test.ts",
+      "src/features/model-routing/__tests__/profiles.test.ts",
       "src/features/model-routing/index.ts",
+      "src/features/model-routing/profiles.ts",
       "src/features/model-routing/prompts/haiku.ts",
       "src/features/model-routing/prompts/index.ts",
       "src/features/model-routing/prompts/opus.ts",
@@ -2555,6 +2557,10 @@
       "dist/budget/__tests__/budget.test.d.ts.map",
       "dist/budget/__tests__/budget.test.js",
       "dist/budget/__tests__/budget.test.js.map",
+      "dist/budget/__tests__/ledger.tags.test.d.ts",
+      "dist/budget/__tests__/ledger.tags.test.d.ts.map",
+      "dist/budget/__tests__/ledger.tags.test.js",
+      "dist/budget/__tests__/ledger.tags.test.js.map",
       "dist/budget/governor.d.ts",
       "dist/budget/governor.d.ts.map",
       "dist/budget/governor.js",
@@ -2727,6 +2733,10 @@
       "dist/cli/claude-md-coordinator.d.ts.map",
       "dist/cli/claude-md-coordinator.js",
       "dist/cli/claude-md-coordinator.js.map",
+      "dist/cli/commands/__tests__/budget-by-role.test.d.ts",
+      "dist/cli/commands/__tests__/budget-by-role.test.d.ts.map",
+      "dist/cli/commands/__tests__/budget-by-role.test.js",
+      "dist/cli/commands/__tests__/budget-by-role.test.js.map",
       "dist/cli/commands/__tests__/capabilities.test.d.ts",
       "dist/cli/commands/__tests__/capabilities.test.d.ts.map",
       "dist/cli/commands/__tests__/capabilities.test.js",
@@ -3825,10 +3835,18 @@
       "dist/features/model-routing/__tests__/index.test.d.ts.map",
       "dist/features/model-routing/__tests__/index.test.js",
       "dist/features/model-routing/__tests__/index.test.js.map",
+      "dist/features/model-routing/__tests__/profiles.test.d.ts",
+      "dist/features/model-routing/__tests__/profiles.test.d.ts.map",
+      "dist/features/model-routing/__tests__/profiles.test.js",
+      "dist/features/model-routing/__tests__/profiles.test.js.map",
       "dist/features/model-routing/index.d.ts",
       "dist/features/model-routing/index.d.ts.map",
       "dist/features/model-routing/index.js",
       "dist/features/model-routing/index.js.map",
+      "dist/features/model-routing/profiles.d.ts",
+      "dist/features/model-routing/profiles.d.ts.map",
+      "dist/features/model-routing/profiles.js",
+      "dist/features/model-routing/profiles.js.map",
       "dist/features/model-routing/prompts/haiku.d.ts",
       "dist/features/model-routing/prompts/haiku.d.ts.map",
       "dist/features/model-routing/prompts/haiku.js",
@@ -8810,7 +8828,9 @@
       "src/features/lookout/wrapper-parser.ts",
       "src/features/magic-keywords.ts",
       "src/features/model-routing/__tests__/index.test.ts",
+      "src/features/model-routing/__tests__/profiles.test.ts",
       "src/features/model-routing/index.ts",
+      "src/features/model-routing/profiles.ts",
       "src/features/model-routing/prompts/haiku.ts",
       "src/features/model-routing/prompts/index.ts",
       "src/features/model-routing/prompts/opus.ts",
@@ -17592,6 +17612,26 @@
         "path": "dist/budget/__tests__/budget.test.js.map"
       },
       {
+        "id": "dist/budget/__tests__/ledger.tags.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/budget/__tests__/ledger.tags.test.d.ts"
+      },
+      {
+        "id": "dist/budget/__tests__/ledger.tags.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/__tests__/ledger.tags.test.d.ts.map"
+      },
+      {
+        "id": "dist/budget/__tests__/ledger.tags.test.js",
+        "kind": "generated-dist",
+        "path": "dist/budget/__tests__/ledger.tags.test.js"
+      },
+      {
+        "id": "dist/budget/__tests__/ledger.tags.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/__tests__/ledger.tags.test.js.map"
+      },
+      {
         "id": "dist/budget/governor.d.ts",
         "kind": "generated-dist",
         "path": "dist/budget/governor.d.ts"
@@ -18450,6 +18490,26 @@
         "id": "dist/cli/claude-md-coordinator.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/claude-md-coordinator.js.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/budget-by-role.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/budget-by-role.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/budget-by-role.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/budget-by-role.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/budget-by-role.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/budget-by-role.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/budget-by-role.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/budget-by-role.test.js.map"
       },
       {
         "id": "dist/cli/commands/__tests__/capabilities.test.d.ts",
@@ -23942,6 +24002,26 @@
         "path": "dist/features/model-routing/__tests__/index.test.js.map"
       },
       {
+        "id": "dist/features/model-routing/__tests__/profiles.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/model-routing/__tests__/profiles.test.d.ts"
+      },
+      {
+        "id": "dist/features/model-routing/__tests__/profiles.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/model-routing/__tests__/profiles.test.d.ts.map"
+      },
+      {
+        "id": "dist/features/model-routing/__tests__/profiles.test.js",
+        "kind": "generated-dist",
+        "path": "dist/features/model-routing/__tests__/profiles.test.js"
+      },
+      {
+        "id": "dist/features/model-routing/__tests__/profiles.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/model-routing/__tests__/profiles.test.js.map"
+      },
+      {
         "id": "dist/features/model-routing/index.d.ts",
         "kind": "generated-dist",
         "path": "dist/features/model-routing/index.d.ts"
@@ -23960,6 +24040,26 @@
         "id": "dist/features/model-routing/index.js.map",
         "kind": "generated-dist",
         "path": "dist/features/model-routing/index.js.map"
+      },
+      {
+        "id": "dist/features/model-routing/profiles.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/model-routing/profiles.d.ts"
+      },
+      {
+        "id": "dist/features/model-routing/profiles.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/model-routing/profiles.d.ts.map"
+      },
+      {
+        "id": "dist/features/model-routing/profiles.js",
+        "kind": "generated-dist",
+        "path": "dist/features/model-routing/profiles.js"
+      },
+      {
+        "id": "dist/features/model-routing/profiles.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/model-routing/profiles.js.map"
       },
       {
         "id": "dist/features/model-routing/prompts/haiku.d.ts",
@@ -53017,6 +53117,11 @@
         "path": "src/budget/__tests__/budget.test.ts"
       },
       {
+        "id": "src/budget/__tests__/ledger.tags.test.ts",
+        "kind": "src",
+        "path": "src/budget/__tests__/ledger.tags.test.ts"
+      },
+      {
         "id": "src/budget/governor.ts",
         "kind": "src",
         "path": "src/budget/governor.ts"
@@ -53230,6 +53335,11 @@
         "id": "src/cli/claude-md-coordinator.ts",
         "kind": "src",
         "path": "src/cli/claude-md-coordinator.ts"
+      },
+      {
+        "id": "src/cli/commands/__tests__/budget-by-role.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/budget-by-role.test.ts"
       },
       {
         "id": "src/cli/commands/__tests__/capabilities.test.ts",
@@ -54797,9 +54907,19 @@
         "path": "src/features/model-routing/__tests__/index.test.ts"
       },
       {
+        "id": "src/features/model-routing/__tests__/profiles.test.ts",
+        "kind": "feature",
+        "path": "src/features/model-routing/__tests__/profiles.test.ts"
+      },
+      {
         "id": "src/features/model-routing/index.ts",
         "kind": "feature",
         "path": "src/features/model-routing/index.ts"
+      },
+      {
+        "id": "src/features/model-routing/profiles.ts",
+        "kind": "feature",
+        "path": "src/features/model-routing/profiles.ts"
       },
       {
         "id": "src/features/model-routing/prompts/haiku.ts",
@@ -76254,6 +76374,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/budget/__tests__/ledger.tags.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/ledger.tags.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/ledger.tags.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/ledger.tags.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/ledger.tags.test.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/ledger.tags.test.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/budget/governor.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -77454,6 +77604,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/__tests__/budget-by-role.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/budget-by-role.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/budget-by-role.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/budget-by-role.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/budget-by-role.test.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/budget-by-role.test.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/budget-by-role.test.ts",
+        "to": "src/cli/commands/budget.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/capabilities.test.ts",
         "to": "external:fs/promises",
         "kind": "imports"
@@ -78462,6 +78647,11 @@
         "from": "src/cli/commands/budget.ts",
         "to": "src/budget/ledger.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/budget.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/cli/commands/capabilities.ts",
@@ -89551,6 +89741,21 @@
       {
         "from": "src/features/model-routing/__tests__/index.test.ts",
         "to": "src/features/model-routing/router.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/model-routing/__tests__/profiles.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/model-routing/__tests__/profiles.test.ts",
+        "to": "src/agents/definitions.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/model-routing/__tests__/profiles.test.ts",
+        "to": "src/features/model-routing/profiles.ts",
         "kind": "imports"
       },
       {
@@ -105246,6 +105451,11 @@
       {
         "from": "src/installer/copilot-agent-models.ts",
         "to": "src/config/copilot-models.json",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/copilot-agent-models.ts",
+        "to": "src/features/model-routing/profiles.ts",
         "kind": "imports"
       },
       {
@@ -124300,12 +124510,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10495,
-      "edgeCount": 12579,
-      "importEdgeCount": 10361,
+      "nodeCount": 10515,
+      "edgeCount": 12597,
+      "importEdgeCount": 10376,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "5fcf69445547b0e08817f3e6ccb07e79ef7fe9f18f0f8ded3a2b0d462e7db2d4",
-  "manifestSha256": "d77a70bc807193bd0a907974599b01d526b3360fd596cc9bb022717545cf6d68"
+  "inventorySha256": "ddfe00914b1acbe57ba55c5dcc442abbb50405cf2b0bc507348a01fbf2d25ca5",
+  "manifestSha256": "2aad4f03ee3c0e53c045b611fcecf1ee75700edaa410ca36f52b0034bad7f5e8"
 }
