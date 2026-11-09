@@ -1,4 +1,46 @@
 // src/team/role-router.ts
+/** At most this many wildcards in one glob: the regex stays linear-ish and a hostile glob cannot blow up matching. */
+const MAX_GLOB_WILDCARDS = 8;
+/**
+ * Whether `path` (repo-relative, `/` or `\` separated) matches `glob`:
+ * `**` spans any number of segments (also none), `*` and `?` stay inside one
+ * segment, everything else is literal. Case-sensitive. A glob that is empty,
+ * absolute, has a `..` segment, or has more than 8 wildcards matches nothing.
+ */
+export function matchPathGlob(glob, path) {
+    if (!glob || glob.startsWith('/') || glob.split('/').includes('..'))
+        return false;
+    if ((glob.match(/\*+|\?/g) ?? []).length > MAX_GLOB_WILDCARDS)
+        return false;
+    let source = '';
+    for (let i = 0; i < glob.length; i++) {
+        const c = glob[i];
+        if (c === '*' && glob[i + 1] === '*') {
+            while (glob[i + 1] === '*')
+                i++;
+            if (glob[i + 1] === '/') {
+                source += '(?:.*/)?';
+                i++;
+            }
+            else
+                source += '.*';
+        }
+        else if (c === '*')
+            source += '[^/]*';
+        else if (c === '?')
+            source += '[^/]';
+        else
+            source += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    }
+    return new RegExp(`^${source}$`).test(path.replace(/\\/g, '/').replace(/^\.\//, ''));
+}
+/** The role of the first rule matching any of `paths` (rule order, then path order), or undefined. */
+export function routePathsToRole(paths, rules) {
+    for (const rule of rules)
+        if (paths.some((p) => matchPathGlob(rule.glob, p)))
+            return rule.role;
+    return undefined;
+}
 // ---------------------------------------------------------------------------
 // Keyword tables
 // ---------------------------------------------------------------------------
@@ -147,7 +189,12 @@ export function inferLaneIntent(text) {
  * 9. Keyword-count scoring for ambiguous intents
  * 10. Unknown → fallbackRole (low)
  */
-export function routeTaskToRole(taskSubject, taskDescription, fallbackRole) {
+export function routeTaskToRole(taskSubject, taskDescription, fallbackRole, 
+/** Committed path rules (.copilot/team/routing.md): a rule matching one of `paths` wins before any keyword. */
+pathRoutes) {
+    const byPath = pathRoutes ? routePathsToRole(pathRoutes.paths, pathRoutes.rules) : undefined;
+    if (byPath)
+        return { role: byPath, confidence: 'high', reason: 'path rule matched (.copilot/team/routing.md)' };
     const combined = `${taskSubject} ${taskDescription}`.trim();
     const intent = inferLaneIntent(combined);
     const isSecurityDomain = SECURITY_DOMAIN_RE.test(combined);

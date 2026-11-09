@@ -1,0 +1,127 @@
+/**
+ * Stale-gate reminders inside `omg factory poll` (night-3 goal 5): the step is
+ * read-only on git (the routing file arrives as one `git show <base sha>:<path>`),
+ * prints the reminder, honours factory.poll.remindAfterHours from the trusted
+ * layers, and reminds once per window.
+ */
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { hostname, tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createForge } from '../../forge/index.js';
+import { computeFactoryIntegrity, createFactoryState, factoryStateDir, factoryStatePath, moveTo, runKeyOf, setGate } from '../run/state.js';
+import { runFactoryPoll } from '../poll.js';
+import { remindersPath } from '../team/reminders.js';
+const SHA = 'a'.repeat(40);
+const T0 = '2026-10-31T10:00:00.000Z';
+const REPO = 'https://github.com/o/r';
+const ok = (stdout = '') => ({ status: 0, stdout, stderr: '' });
+const ROUTING = '| src/** | - | core | @robin |\n| ** | - | all | @lead |';
+let root;
+let out;
+let err;
+let now;
+beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'omg-poll-remind-'));
+    execFileSync('git', ['init', '-q', root]);
+    if (!factoryStateDir(root).startsWith(root))
+        throw new Error('state dir is outside the test root');
+    out = [];
+    err = [];
+    now = Date.parse(T0) + 30 * 3_600_000;
+});
+afterEach(() => rmSync(root, { recursive: true, force: true }));
+function scripted(calls = []) {
+    return (cmd, args) => {
+        const a = args.join(' ');
+        calls.push(`${cmd} ${a}`);
+        if (cmd === 'git') {
+            if (a === 'rev-parse --show-toplevel')
+                return ok(`${root}\n`);
+            if (a === 'remote get-url origin')
+                return ok('https://github.com/o/r.git\n');
+            if (a === 'fetch origin dev')
+                return ok();
+            if (a === 'rev-parse --verify refs/remotes/origin/dev')
+                return ok(`${SHA}\n`);
+            if (a === `cat-file -e ${SHA}^{commit}`)
+                return ok();
+            if (args[0] === 'ls-remote')
+                return ok('');
+            if (a === `show ${SHA}:.copilot/team/routing.md`)
+                return ok(ROUTING);
+            if (args[0] === 'show')
+                return { status: 128, stdout: '', stderr: `fatal: path does not exist in '${SHA}'` };
+        }
+        if (cmd === 'gh' && args[0] === 'pr' && args[1] === 'list')
+            return ok('[]');
+        throw new Error(`unscripted ${cmd} ${a}`);
+    };
+}
+function deps(exec, over = {}) {
+    return {
+        exec, base: () => 'dev', trustedUser: () => undefined, projectConfig: () => undefined, createForge,
+        now: () => now,
+        healScan: () => { throw new Error('no heal'); },
+        owner: { pid: 4242, hostname: hostname(), isAlive: () => false },
+        onStop: () => () => { },
+        sleep: async () => { throw new Error('a --once poll never sleeps'); },
+        out: (l) => out.push(l), err: (l) => err.push(l),
+        ...over,
+    };
+}
+function save(s) {
+    const path = factoryStatePath(root, runKeyOf(s));
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify({ ...s, integrity: computeFactoryIntegrity(s) }));
+}
+const seedParked = (plan = 'edit src/a.ts') => save({
+    ...setGate(moveTo({ ...createFactoryState({ issue: 4, repoUrl: REPO, base: 'dev' }, T0), forgeKind: 'github', issueTitle: 'issue 4', plan: { source: 'issue-body', text: plan } }, 'gates', 'gates', T0), 'merge', 'gates green; a human merges', T0),
+});
+const flags = { once: true, json: true, heal: false, intake: false, prs: false };
+const tick = () => JSON.parse(out[out.length - 1]);
+describe('poll stale-gate reminders', () => {
+    it('reminds a gate parked past the default 24 h with the routed handle, and never writes git or the forge', async () => {
+        seedParked();
+        const calls = [];
+        expect(await runFactoryPoll(flags, deps(scripted(calls)))).toBe(0);
+        expect(tick().reminders).toEqual([{ run: 4, gate: 'merge', hours: 30, handles: ['@robin'], reason: 'gates green; a human merges' }]);
+        expect(calls.filter((c) => /^git (fetch|push|branch|update-ref|worktree)/.test(c) && c !== 'git fetch origin dev')).toEqual([]);
+        expect(calls.filter((c) => c.startsWith('gh ') && !c.startsWith('gh pr list'))).toEqual([]);
+        expect(existsSync(remindersPath(root))).toBe(true);
+    });
+    it('reads the routing file only as git show of the base sha', async () => {
+        seedParked();
+        const calls = [];
+        await runFactoryPoll(flags, deps(scripted(calls)));
+        expect(calls.filter((c) => c.includes('routing.md'))).toEqual([`git show ${SHA}:.copilot/team/routing.md`]);
+    });
+    it('prints the reminder line in text mode and reminds once per window', async () => {
+        seedParked();
+        expect(await runFactoryPoll({ ...flags, json: false }, deps(scripted()))).toBe(0);
+        expect(out.join('\n')).toContain('reminder: #4 has waited 30 h at merge @robin: gates green; a human merges (omg factory run 4)');
+        out.length = 0;
+        now += 3_600_000;
+        await runFactoryPoll(flags, deps(scripted()));
+        expect(tick().reminders).toBeUndefined();
+        out.length = 0;
+        now += 24 * 3_600_000;
+        await runFactoryPoll(flags, deps(scripted()));
+        expect(tick().reminders).toHaveLength(1);
+    });
+    it('factory.poll.remindAfterHours 0 turns it off; a bad value is a usage error', async () => {
+        seedParked();
+        await runFactoryPoll(flags, deps(scripted(), { trustedUser: () => ({ factory: { poll: { remindAfterHours: 0 } } }) }));
+        expect(tick().reminders).toBeUndefined();
+        expect(existsSync(remindersPath(root))).toBe(false);
+        await expect(runFactoryPoll(flags, deps(scripted(), { trustedUser: () => ({ factory: { poll: { remindAfterHours: 'x' } } }) }))).rejects.toThrow(/remindAfterHours/);
+    });
+    it('ignores the working-tree project config for the window (trusted layers only)', async () => {
+        seedParked();
+        await runFactoryPoll(flags, deps(scripted(), { projectConfig: () => ({ factory: { poll: { remindAfterHours: 1000 } } }) }));
+        expect(tick().reminders).toHaveLength(1);
+        expect(readFileSync(remindersPath(root), 'utf8')).toContain('"gateAt"');
+    });
+});
+//# sourceMappingURL=poll.reminders.test.js.map
