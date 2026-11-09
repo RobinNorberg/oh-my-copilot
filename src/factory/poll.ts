@@ -78,6 +78,7 @@ import { adoHealFor, ciDeps, HEAL_PIPELINE_MISSING, runHealScan, type AdoHeal, t
 import { HealRunRefused } from './heal/run.js';
 import { DEFAULT_FACTORY_RUN_LIMITS, resolveFactoryRunLimits, type FactoryRunLimits } from './run/budget.js';
 import { FactoryForgeUnavailableError } from './run/forge-roots.js';
+import { visibleLine } from '../forge/review-feedback.js';
 import {
   acquireFactoryRepoOwner, defaultOwnerDeps, factoryRepoOwnerPath, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, type FactoryOwner, type FactoryRunKey, type OwnerDeps,
 } from './run/state.js';
@@ -801,8 +802,8 @@ export async function runFactoryPoll(o: FactoryPollOptions, deps: FactoryPollDep
       }
       if (o.json) deps.out(JSON.stringify(t));
       else {
-        for (const w of t.warnings) deps.err(w);
-        for (const e of t.errors) deps.err(`omg factory poll: ${e}`);
+        for (const w of t.warnings) deps.err(visibleLine(w));
+        for (const e of t.errors) deps.err(`omg factory poll: ${visibleLine(e)}`);
         deps.out(renderTick(t));
       }
       if (o.once) return t.errors.length ? 1 : 0;

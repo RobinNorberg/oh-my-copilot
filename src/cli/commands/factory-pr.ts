@@ -29,7 +29,7 @@ import { factoryGuardExec, hardenedGitExec } from '../../factory/run/exec.js';
 import { factoryForgeOptions } from '../../factory/run/forge-roots.js';
 import { defaultLedgerDir, emptyHooksDir } from '../../factory/run/ledger.js';
 import { appendLocalReview, engineOwnedDir, MAX_LOCAL_REVIEW_CHARS, readLocalReviews, readPrStore, type LocalReviewRecord } from '../../forge/local/store.js';
-import { REVIEW_HEAD, visibleText } from '../../forge/review-feedback.js';
+import { REVIEW_HEAD, visibleLine, visibleText } from '../../forge/review-feedback.js';
 import type { Forge, ForgePr } from '../../forge/types.js';
 import type { Exec } from '../../ship/exec.js';
 
@@ -105,13 +105,13 @@ export async function runFactoryPr(
     review = { state, body };
   }
   const ctx = openLocal(deps, warnings);
-  for (const w of warnings) deps.err(chalk.yellow(visibleText(w)));
+  for (const w of warnings) deps.err(chalk.yellow(visibleLine(w)));
 
   if (action === 'list') {
     const prs = readPrStore(join(ctx.storeDir, 'prs.json')).prs.map((p) => ({ number: p.number, state: p.state, isDraft: p.isDraft, head: p.head, base: p.base, title: visibleText(p.title), itemId: p.itemId }));
     if (o.json) say(JSON.stringify({ schemaVersion: FACTORY_PR_JSON_SCHEMA_VERSION, ok: true, prs }, null, 2));
     else if (prs.length === 0) say('no local PRs');
-    else for (const p of prs) say(`#${p.number}  ${p.state}${p.isDraft ? ' (draft)' : ''}  ${visibleText(p.head)} -> ${visibleText(p.base)}  ${p.title}`);
+    else for (const p of prs) say(`#${p.number}  ${p.state}${p.isDraft ? ' (draft)' : ''}  ${visibleLine(p.head)} -> ${visibleLine(p.base)}  ${visibleLine(p.title)}`);
     return 0;
   }
 
@@ -125,9 +125,9 @@ export async function runFactoryPr(
       say(JSON.stringify({ schemaVersion: FACTORY_PR_JSON_SCHEMA_VERSION, ok: true, pr: { ...v, title: visibleText(record.title) }, reviews, openThreads: feedback?.threads.length ?? 0 }, null, 2));
       return 0;
     }
-    say(`#${v.number}  ${v.state}${v.isDraft ? ' (draft)' : ''}  ${visibleText(record.title)}`);
-    say(`  head ${v.headRefOid} (${visibleText(v.headRefName)}) -> base ${v.baseRefOid} (${visibleText(v.baseRefName)})`);
-    for (const r of reviews) say(`  review ${r.state} by ${visibleText(r.author)} at ${r.head.slice(0, 8)} (${r.at})${r.body ? `\n${r.body.replace(/^/gm, '    ')}` : ''}`);
+    say(`#${v.number}  ${v.state}${v.isDraft ? ' (draft)' : ''}  ${visibleLine(record.title)}`);
+    say(`  head ${v.headRefOid} (${visibleLine(v.headRefName)}) -> base ${v.baseRefOid} (${visibleLine(v.baseRefName)})`);
+    for (const r of reviews) say(`  review ${r.state} by ${visibleLine(r.author)} at ${r.head.slice(0, 8)} (${r.at})${r.body ? `\n${r.body.replace(/^/gm, '    ')}` : ''}`);
     say(`  ${feedback?.threads.length ?? 0} open review note(s) on the current head; diff: omg factory pr diff ${n}; review: omg factory pr review ${n} --head ${v.headRefOid} ...`);
     return 0;
   }
@@ -137,7 +137,7 @@ export async function runFactoryPr(
     const git: Exec = factoryGuardExec(hardenedGitExec(deps.exec, emptyHooksDir(ledgerDir)), () => [ctx.base]);
     const r = git('git', ['diff', '--no-ext-diff', '--no-textconv', `${v.baseRefOid}...${v.headRefOid}`], { cwd: ctx.root });
     if (r.status !== 0) {
-      deps.err(chalk.red(`git diff of local PR #${n} failed (exit ${r.status}): ${visibleText(r.stderr.trim().split('\n')[0] ?? '')}`));
+      deps.err(chalk.red(`git diff of local PR #${n} failed (exit ${r.status}): ${visibleLine(r.stderr.trim().split('\n')[0] ?? '')}`));
       return EXIT_CHECK_FAILED;
     }
     say(`local PR #${n} head ${v.headRefOid} base ${v.baseRefOid} (review it with --head ${v.headRefOid})`);
@@ -154,7 +154,7 @@ export async function runFactoryPr(
   const record: LocalReviewRecord = { version: 1, id: randomUUID(), pr: n, author, state: review!.state, body: review!.body, head: v.headRefOid, at: new Date().toISOString() };
   appendLocalReview(ctx.storeDir, record);
   if (o.json) say(JSON.stringify({ schemaVersion: FACTORY_PR_JSON_SCHEMA_VERSION, ok: true, review: { id: record.id, pr: n, state: record.state, author, head: record.head } }, null, 2));
-  else say(`recorded ${record.state} by ${visibleText(author)} on local PR #${n} at ${record.head.slice(0, 8)}; the next omg factory run of its item reads it`);
+  else say(`recorded ${record.state} by ${visibleLine(author)} on local PR #${n} at ${record.head.slice(0, 8)}; the next omg factory run of its item reads it`);
   return 0;
 }
 
@@ -174,7 +174,7 @@ function action(name: 'list' | 'view' | 'diff' | 'review', deps: FactoryPrDeps) 
     try {
       process.exitCode = await runFactoryPr(name, { ...(o as object), ...(pr === undefined ? {} : { pr }) }, deps);
     } catch (error) {
-      const message = visibleText(error instanceof Error ? error.message : String(error));
+      const message = visibleLine(error instanceof Error ? error.message : String(error));
       if (json) deps.out(JSON.stringify({ schemaVersion: FACTORY_PR_JSON_SCHEMA_VERSION, ok: false, error: message }, null, 2));
       else deps.err(chalk.red(factoryErrorLine(message)));
       process.exitCode = error instanceof CheckUsageError ? EXIT_CHECK_USAGE : error instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
