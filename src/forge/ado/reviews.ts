@@ -6,7 +6,7 @@
  */
 
 import { readFileSync } from 'fs';
-import type { ForgePr, ForgeReviews, ForgeThread } from '../types.js';
+import type { ForgePr, ForgeReviewFeedback, ForgeReviews, ForgeThread } from '../types.js';
 import { adoCall, adoJson, isObject, listValue, repoParams, str, type AdoContext } from './invoke.js';
 
 const SHA = /^[0-9a-f]{40}$/;
@@ -90,6 +90,70 @@ export function parseAdoThreads(json: unknown, pr: number): ForgeThread[] {
   });
 }
 
+/** One thread or comment body handed on, at most (the same cap as GitHub's, src/forge/github/graphql.ts). */
+const MAX_FEEDBACK_BODY_CHARS = 8_000;
+const capped = (body: string): string => (body.length <= MAX_FEEDBACK_BODY_CHARS ? body : `${body.slice(0, MAX_FEEDBACK_BODY_CHARS - 12)}\n(truncated)`);
+
+/**
+ * The human review input on one PR (ForgeReviews.reviewFeedback) from its
+ * reviewers (Pull Requests - Get By Id) and threads (Pull Request Threads -
+ * List). Trust is the given list (the caller passes `factory.review.trustedReviewers`
+ * and the user-config trustedAuthors; uniqueNames, any case): Azure DevOps has no permission read the guard allows.
+ * - decisions: each trusted reviewer's non-zero vote (10/5 approved, -5
+ *   waiting for author and -10 rejected are changes-requested). A vote carries
+ *   no time or commit; whether it survives a push is the branch policy's
+ *   "reset votes" setting, so `at` is '' and `head` absent.
+ * - threads: active or pending text threads, not the factory's own (marker),
+ *   with the trusted authors' text comments; deleted comments are dropped.
+ * - pendingReviewers: required reviewers who have not voted or declined.
+ */
+export function parseAdoReviewFeedback(prJson: unknown, threadsJson: unknown, pr: number, trustedReviewers: readonly string[]): ForgeReviewFeedback {
+  if (!isObject(prJson) || prJson.pullRequestId !== pr) throw new Error(`pull request ${pr}: malformed response`);
+  const trusted = new Set(trustedReviewers.map((r) => r.toLowerCase()));
+  const ignored = new Set<string>();
+  const counts = (who: string): boolean => {
+    if (!who) return false;
+    if (trusted.has(who)) return true;
+    ignored.add(who);
+    return false;
+  };
+  const decisions: ForgeReviewFeedback['decisions'] = [];
+  const pendingReviewers: string[] = [];
+  for (const r of Array.isArray(prJson.reviewers) ? prJson.reviewers.filter(isObject) : []) {
+    const who = (str(r.uniqueName) ?? '').toLowerCase();
+    const vote = typeof r.vote === 'number' ? r.vote : 0;
+    if (vote === 0) {
+      if (r.isRequired === true && r.hasDeclined !== true && who) pendingReviewers.push(who);
+      continue;
+    }
+    if (r.isContainer === true || !counts(who)) continue;
+    decisions.push({ author: who, state: vote > 0 ? 'approved' : 'changes-requested', at: '' });
+  }
+  const threads: ForgeReviewFeedback['threads'] = [];
+  for (const t of listValue(threadsJson)) {
+    if (!isObject(t) || t.isDeleted === true || !Number.isSafeInteger(t.id)) continue;
+    if (t.status !== 'active' && t.status !== 'pending') continue;
+    const comments = Array.isArray(t.comments) ? t.comments.filter(isObject) : [];
+    const first = comments[0] ?? {};
+    if (str(first.commentType) !== 'text' || endsWithMarker(first.content)) continue;
+    const kept = comments.flatMap((c) => {
+      const who = (isObject(c.author) ? str(c.author.uniqueName) : undefined)?.toLowerCase() ?? '';
+      const body = str(c.content) ?? '';
+      if (c.isDeleted === true || str(c.commentType) !== 'text' || !body.trim() || endsWithMarker(body) || !counts(who)) return [];
+      return [{ who, body, at: str(c.lastUpdatedDate) ?? str(c.publishedDate) ?? '' }];
+    });
+    if (kept.length === 0) continue;
+    const ctxt = isObject(t.threadContext) ? t.threadContext : {};
+    const file = str(ctxt.filePath);
+    const start = isObject(ctxt.rightFileStart) ? ctxt.rightFileStart.line : undefined;
+    const line = Number.isSafeInteger(start) && (start as number) > 0 ? (start as number) : undefined;
+    const body = kept.length === 1 ? kept[0].body : kept.map((k) => `@${k.who}:\n${k.body}`).join('\n\n');
+    const at = [str(t.lastUpdatedDate) ?? '', ...kept.map((k) => k.at)].sort().pop() ?? '';
+    threads.push({ id: String(t.id), author: kept[0].who, body: capped(body), ...(file ? { file } : {}), ...(line ? { line } : {}), at });
+  }
+  return { decisions, threads, pendingReviewers, ignored: [...ignored].sort() };
+}
+
 const STATE: Readonly<Record<string, ForgePr['state']>> = { active: 'OPEN', completed: 'MERGED', abandoned: 'CLOSED' };
 const branchOf = (ref: string) => ref.replace(/^refs\/heads\//, '');
 
@@ -99,9 +163,18 @@ function description(bodyFile: string): string {
   return text.length <= ADO_PR_DESCRIPTION_MAX ? text : `${text.slice(0, ADO_PR_DESCRIPTION_MAX - TRUNCATED.length)}${TRUNCATED}`;
 }
 
-export function adoReviews(ctx: AdoContext): ForgeReviews {
+/** `review.trustedReviewers`: whose votes and comments reviewFeedback hands on (src/forge/config.ts, trusted layers only). */
+export function adoReviews(ctx: AdoContext, review: { trustedReviewers: readonly string[] } = { trustedReviewers: [] }): ForgeReviews {
   const prUrl = (pr: number) => `${ctx.repo.url}/pullrequest/${pr}`;
   return {
+    reviewFeedback(pr: number): ForgeReviewFeedback {
+      const params = { ...repoParams(ctx), pullRequestId: String(pr) };
+      const prJson = adoJson(adoCall(ctx, 'git.pullRequests.GET', params), `pull request ${pr}`);
+      const threads = adoJson(adoCall(ctx, 'git.pullRequestThreads.GET', params), `threads of pull request ${pr}`);
+      // No permission read on Azure DevOps: the user-config trustedAuthors (whose items the factory runs) count too.
+      return parseAdoReviewFeedback(prJson, threads, pr, [...review.trustedReviewers, ...ctx.config.trustedAuthors]);
+    },
+
     findOpenPrForBranch(branch: string): number | undefined {
       const json = adoJson(
         adoCall(ctx, 'git.pullRequests.GET', repoParams(ctx), { 'searchCriteria.sourceRefName': `refs/heads/${branch}`, 'searchCriteria.status': 'active' }),

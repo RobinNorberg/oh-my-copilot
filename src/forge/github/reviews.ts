@@ -8,8 +8,9 @@
 
 import type { Exec, ExecResult } from '../../ship/exec.js';
 import type { PrView } from '../../ship/merge.js';
-import type { ForgePr, ForgeReviews } from '../types.js';
+import type { ForgePr, ForgeRepo, ForgeReviewFeedback, ForgeReviews } from '../types.js';
 import { GhCommandError, ghJson, ghRun } from './gh.js';
+import { parseReviewFeedback, reviewFeedbackArgs, type ReviewTrust } from './graphql.js';
 
 /** `gh pr view --json` fields the merge step reads. */
 export const MERGE_VIEW_FIELDS = 'number,state,isDraft,baseRefName,baseRefOid,headRefOid';
@@ -114,8 +115,29 @@ export function ghViewPr(exec: Exec, pr: number, cwd: string): ForgePr {
   return v as unknown as ForgePr;
 }
 
-export function githubReviews(exec: Exec, cwd: string): ForgeReviews {
+/**
+ * The human review input on `pr` at `head` (graphql.ts): one fixed GraphQL
+ * read. A non-zero gh exit still counts when the response carries the pull
+ * request (a partial answer: e.g. the collaborator list needs push access, so
+ * only the viewer and trustedReviewers are known); otherwise it throws.
+ */
+export function ghReviewFeedback(exec: Exec, repo: ForgeRepo, pr: number, head: string, trust: ReviewTrust, cwd: string): ForgeReviewFeedback {
+  const args = reviewFeedbackArgs(repo, pr);
+  const res = exec('gh', args, { cwd });
+  try {
+    return parseReviewFeedback(res.stdout, head, trust);
+  } catch (error) {
+    if (res.status === 0) throw new GhCommandError(error instanceof Error ? error.message : String(error));
+    throw new GhCommandError(`gh api graphql (review feedback of PR ${pr}) failed (exit ${res.status}): ${res.stderr.trim().split('\n')[0]}`);
+  }
+}
+
+/** `o.repo` (the configured repository) turns on reviewFeedback; trust comes from `o.review` (trusted config layers). */
+export function githubReviews(exec: Exec, cwd: string, o: { repo?: ForgeRepo; review?: ReviewTrust } = {}): ForgeReviews {
+  const { repo } = o;
+  const trust: ReviewTrust = { trustedReviewers: o.review?.trustedReviewers ?? [] };
   return {
+    ...(repo ? { reviewFeedback: (pr: number, head: string) => ghReviewFeedback(exec, repo, pr, head, trust, cwd) } : {}),
     findOpenPrForBranch: (branch) => ghFindOpenPr(exec, branch, cwd),
     findMergedPrForBranch: (branch, base) => ghFindMergedPr(exec, branch, base, cwd),
     createDraftPr: (o) => ghCreateDraftPr(exec, o, cwd),

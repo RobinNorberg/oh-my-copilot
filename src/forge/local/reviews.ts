@@ -4,15 +4,17 @@
  * A PR turns MERGED when its head is an ancestor of the mirror's base (the
  * human merged it and the next run/poll synced the base). Bodies and
  * comments are written for the human under `.omg/factory/local/prs/<n>/`.
- * There are no review threads (listThreads is omitted).
+ * There are no review threads (listThreads is omitted). Human review is
+ * played back: `omg factory pr review` appends a record to the engine-owned
+ * `<store>/prs/<n>/reviews.jsonl` (store.ts), which reviewFeedback reads.
  */
 
 import { readFileSync } from 'fs';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import type { Exec } from '../../ship/exec.js';
-import type { ForgePr, ForgeReviews } from '../types.js';
+import type { ForgePr, ForgeReviewFeedback, ForgeReviews } from '../types.js';
 import { isLocalBranchName, mergedArgs, readMirrorRef } from './mirror.js';
-import { appendNoFollow, readPrStore, updatePrStore, writeAtomic, type LocalPr } from './store.js';
+import { appendNoFollow, readLocalReviews, readPrStore, updatePrStore, writeAtomic, type LocalPr, type LocalReviewRecord } from './store.js';
 
 /** ship's TRUSTED_READ_ENV, by value (importing ship/exec.ts would load child_process into src/forge). */
 const TRUSTED_READ_ENV: Readonly<Record<string, string>> = Object.freeze({ GIT_NO_REPLACE_OBJECTS: '1' });
@@ -35,6 +37,25 @@ export const localPrUrl = (pr: number): string => `omg-local://pr/${pr}`;
 function isAncestor(ctx: LocalReviewsContext, head: string, base: string): boolean | undefined {
   const r = ctx.exec('git', mergedArgs(head, base), { cwd: ctx.root, env: TRUSTED_READ_ENV });
   return r.status === 0 ? true : r.status === 1 ? false : undefined;
+}
+
+/**
+ * Played-back reviews as forge feedback at `head`: each author's latest
+ * record is their decision; a record with text, given on `head`, that does
+ * not approve is an open thread (one given on an older head was answered by
+ * the push since). The author is whoever ran the command: the records live
+ * outside every lane-writable root, so nobody is ignored and nobody is pending.
+ */
+export function localReviewFeedback(records: readonly LocalReviewRecord[], head: string): ForgeReviewFeedback {
+  const latest = new Map<string, LocalReviewRecord>();
+  for (const r of records) latest.set(r.author, r);
+  return {
+    decisions: [...latest.values()].map((r) => ({ author: r.author, state: r.state, at: r.at, head: r.head })),
+    threads: records.filter((r) => r.head === head && r.state !== 'approved' && r.body.trim() !== '')
+      .map((r) => ({ id: r.id, author: r.author, body: r.body, at: r.at })),
+    pendingReviewers: [],
+    ignored: [],
+  };
 }
 
 export function localReviews(ctx: LocalReviewsContext): ForgeReviews & { refreshPr(pr: LocalPr): LocalPr } {
@@ -71,6 +92,10 @@ export function localReviews(ctx: LocalReviewsContext): ForgeReviews & { refresh
 
   return {
     refreshPr: refresh,
+    reviewFeedback(pr: number, head: string): ForgeReviewFeedback {
+      find(pr);
+      return localReviewFeedback(readLocalReviews(dirname(ctx.storePath), pr), head);
+    },
     findOpenPrForBranch(branch: string): number | undefined {
       return readPrStore(ctx.storePath).prs.filter((p) => p.head === branch && p.state === 'OPEN').map(refresh).find((p) => p.state === 'OPEN')?.number;
     },
