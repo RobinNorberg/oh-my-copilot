@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "01bf19e511d89346b728faa3147622476d117357",
-    "sourceSha256": "c53fe2b565f5294b457feff64d93adfdd61b8489ca8d66c418ab3d264167ded1",
+    "head": "b74d9ca983700b08e74a6035245e3c2f09b41fa5",
+    "sourceSha256": "6847e8b408a7a61447bba9d21a0b79892afa486ead450e3f5c06e96547a4d197",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "01bf19e511d89346b728faa3147622476d117357",
-  "sourceSha256": "c53fe2b565f5294b457feff64d93adfdd61b8489ca8d66c418ab3d264167ded1",
+  "head": "b74d9ca983700b08e74a6035245e3c2f09b41fa5",
+  "sourceSha256": "6847e8b408a7a61447bba9d21a0b79892afa486ead450e3f5c06e96547a4d197",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2027,
-      "total": 2052
+      "srcFiles": 2029,
+      "total": 2054
     },
     "generated": {
-      "distFiles": 7476,
+      "distFiles": 7484,
       "bridgeFiles": 8,
-      "total": 7484
+      "total": 7492
     },
     "prompt": {
       "promptLikeFiles": 72
@@ -3404,6 +3404,14 @@
       "dist/factory/run/__tests__/engine.coding-agent.test.d.ts.map",
       "dist/factory/run/__tests__/engine.coding-agent.test.js",
       "dist/factory/run/__tests__/engine.coding-agent.test.js.map",
+      "dist/factory/run/__tests__/engine.human-review.local.test.d.ts",
+      "dist/factory/run/__tests__/engine.human-review.local.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.human-review.local.test.js",
+      "dist/factory/run/__tests__/engine.human-review.local.test.js.map",
+      "dist/factory/run/__tests__/engine.human-review.test.d.ts",
+      "dist/factory/run/__tests__/engine.human-review.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.human-review.test.js",
+      "dist/factory/run/__tests__/engine.human-review.test.js.map",
       "dist/factory/run/__tests__/engine.intake.test.d.ts",
       "dist/factory/run/__tests__/engine.intake.test.d.ts.map",
       "dist/factory/run/__tests__/engine.intake.test.js",
@@ -22030,6 +22038,46 @@
         "id": "dist/factory/run/__tests__/engine.coding-agent.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.coding-agent.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.human-review.local.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.human-review.local.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.human-review.local.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.human-review.local.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.human-review.local.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.human-review.local.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.human-review.local.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.human-review.local.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.human-review.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.human-review.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.human-review.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.human-review.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.human-review.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.human-review.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.human-review.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.human-review.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/engine.intake.test.d.ts",
@@ -55422,6 +55470,16 @@
         "path": "src/factory/run/__tests__/engine.coding-agent.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.human-review.local.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.human-review.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/engine.intake.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.intake.test.ts"
@@ -87709,6 +87767,141 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "to": "src/factory/run/__tests__/engine-local-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "to": "src/factory/run/__tests__/engine-local-harness.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "to": "src/forge/local/store.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.human-review.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/__tests__/engine.intake.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -88517,6 +88710,11 @@
         "from": "src/factory/run/__tests__/fake-lanes.ts",
         "to": "src/factory/run/prepare.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/fake-lanes.ts",
+        "to": "src/forge/github/graphql.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/fake-lanes.ts",
@@ -89520,6 +89718,16 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/factory/check/score.ts",
         "kind": "imports"
       },
@@ -89776,6 +89984,11 @@
       {
         "from": "src/factory/run/engine.ts",
         "to": "src/forge/local/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/forge/review-feedback.ts",
         "kind": "imports"
       },
       {
@@ -127865,12 +128078,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10754,
-      "edgeCount": 12991,
-      "importEdgeCount": 10690,
+      "nodeCount": 10764,
+      "edgeCount": 13022,
+      "importEdgeCount": 10713,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "203d85040f0ff33c05019df149223129c07b81d357225e00bc575f1b140036cb",
-  "manifestSha256": "4de948b89c9b6bec3754953a8a03b30805941ad6949cd7ad1ad288346aaa041a"
+  "inventorySha256": "df5801e8ad173b5728192d4992a131abc63d3d925d39f2f2cdae9aa190d0a7de",
+  "manifestSha256": "6799168f82727a6da10750f68680c7fe63a1aad910295b55d9f17c45fae0bc1f"
 }
