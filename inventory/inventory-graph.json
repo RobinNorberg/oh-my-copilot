@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "affa2b3471933cc7218b6e523f86d7d228020fa7",
-    "sourceSha256": "cd70e8a76726d777790c7496907bc62eb583819aaf1fb7bcb4af5530b4f2095a",
+    "head": "d7ffe48630dc8a4423b1fef56c2c3662b4bde79c",
+    "sourceSha256": "275ef54928ed29073a496e5fbac65f09322c32cb44b42c16b23f8a70046dbc4e",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "affa2b3471933cc7218b6e523f86d7d228020fa7",
-  "sourceSha256": "cd70e8a76726d777790c7496907bc62eb583819aaf1fb7bcb4af5530b4f2095a",
+  "head": "d7ffe48630dc8a4423b1fef56c2c3662b4bde79c",
+  "sourceSha256": "275ef54928ed29073a496e5fbac65f09322c32cb44b42c16b23f8a70046dbc4e",
   "counts": {
     "public": {
       "skills": 98,
@@ -24,17 +24,17 @@
     },
     "internal": {
       "hookFiles": 346,
-      "featureFiles": 96,
+      "featureFiles": 98,
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 1984,
-      "total": 2009
+      "srcFiles": 1996,
+      "total": 2021
     },
     "generated": {
-      "distFiles": 7304,
+      "distFiles": 7352,
       "bridgeFiles": 8,
-      "total": 7312
+      "total": 7360
     },
     "prompt": {
       "promptLikeFiles": 71
@@ -607,7 +607,9 @@
       "src/features/lookout/wrapper-parser.ts",
       "src/features/magic-keywords.ts",
       "src/features/model-routing/__tests__/index.test.ts",
+      "src/features/model-routing/__tests__/profiles.test.ts",
       "src/features/model-routing/index.ts",
+      "src/features/model-routing/profiles.ts",
       "src/features/model-routing/prompts/haiku.ts",
       "src/features/model-routing/prompts/index.ts",
       "src/features/model-routing/prompts/opus.ts",
@@ -2555,6 +2557,10 @@
       "dist/budget/__tests__/budget.test.d.ts.map",
       "dist/budget/__tests__/budget.test.js",
       "dist/budget/__tests__/budget.test.js.map",
+      "dist/budget/__tests__/ledger.tags.test.d.ts",
+      "dist/budget/__tests__/ledger.tags.test.d.ts.map",
+      "dist/budget/__tests__/ledger.tags.test.js",
+      "dist/budget/__tests__/ledger.tags.test.js.map",
       "dist/budget/governor.d.ts",
       "dist/budget/governor.d.ts.map",
       "dist/budget/governor.js",
@@ -2727,6 +2733,10 @@
       "dist/cli/claude-md-coordinator.d.ts.map",
       "dist/cli/claude-md-coordinator.js",
       "dist/cli/claude-md-coordinator.js.map",
+      "dist/cli/commands/__tests__/budget-by-role.test.d.ts",
+      "dist/cli/commands/__tests__/budget-by-role.test.d.ts.map",
+      "dist/cli/commands/__tests__/budget-by-role.test.js",
+      "dist/cli/commands/__tests__/budget-by-role.test.js.map",
       "dist/cli/commands/__tests__/capabilities.test.d.ts",
       "dist/cli/commands/__tests__/capabilities.test.d.ts.map",
       "dist/cli/commands/__tests__/capabilities.test.js",
@@ -2867,6 +2877,10 @@
       "dist/cli/commands/factory-setup.d.ts.map",
       "dist/cli/commands/factory-setup.js",
       "dist/cli/commands/factory-setup.js.map",
+      "dist/cli/commands/factory-triage.d.ts",
+      "dist/cli/commands/factory-triage.d.ts.map",
+      "dist/cli/commands/factory-triage.js",
+      "dist/cli/commands/factory-triage.js.map",
       "dist/cli/commands/factory.d.ts",
       "dist/cli/commands/factory.d.ts.map",
       "dist/cli/commands/factory.js",
@@ -3153,6 +3167,18 @@
       "dist/factory/__tests__/status.test.d.ts.map",
       "dist/factory/__tests__/status.test.js",
       "dist/factory/__tests__/status.test.js.map",
+      "dist/factory/__tests__/triage-ado.test.d.ts",
+      "dist/factory/__tests__/triage-ado.test.d.ts.map",
+      "dist/factory/__tests__/triage-ado.test.js",
+      "dist/factory/__tests__/triage-ado.test.js.map",
+      "dist/factory/__tests__/triage-github.test.d.ts",
+      "dist/factory/__tests__/triage-github.test.d.ts.map",
+      "dist/factory/__tests__/triage-github.test.js",
+      "dist/factory/__tests__/triage-github.test.js.map",
+      "dist/factory/__tests__/triage-local.test.d.ts",
+      "dist/factory/__tests__/triage-local.test.d.ts.map",
+      "dist/factory/__tests__/triage-local.test.js",
+      "dist/factory/__tests__/triage-local.test.js.map",
       "dist/factory/__tests__/workflow-run.test.d.ts",
       "dist/factory/__tests__/workflow-run.test.d.ts.map",
       "dist/factory/__tests__/workflow-run.test.js",
@@ -3629,6 +3655,22 @@
       "dist/factory/status.d.ts.map",
       "dist/factory/status.js",
       "dist/factory/status.js.map",
+      "dist/factory/triage/__tests__/rules.test.d.ts",
+      "dist/factory/triage/__tests__/rules.test.d.ts.map",
+      "dist/factory/triage/__tests__/rules.test.js",
+      "dist/factory/triage/__tests__/rules.test.js.map",
+      "dist/factory/triage/cli.d.ts",
+      "dist/factory/triage/cli.d.ts.map",
+      "dist/factory/triage/cli.js",
+      "dist/factory/triage/cli.js.map",
+      "dist/factory/triage/guard.d.ts",
+      "dist/factory/triage/guard.d.ts.map",
+      "dist/factory/triage/guard.js",
+      "dist/factory/triage/guard.js.map",
+      "dist/factory/triage/rules.d.ts",
+      "dist/factory/triage/rules.d.ts.map",
+      "dist/factory/triage/rules.js",
+      "dist/factory/triage/rules.js.map",
       "dist/factory/watchdog.d.ts",
       "dist/factory/watchdog.d.ts.map",
       "dist/factory/watchdog.js",
@@ -3841,10 +3883,18 @@
       "dist/features/model-routing/__tests__/index.test.d.ts.map",
       "dist/features/model-routing/__tests__/index.test.js",
       "dist/features/model-routing/__tests__/index.test.js.map",
+      "dist/features/model-routing/__tests__/profiles.test.d.ts",
+      "dist/features/model-routing/__tests__/profiles.test.d.ts.map",
+      "dist/features/model-routing/__tests__/profiles.test.js",
+      "dist/features/model-routing/__tests__/profiles.test.js.map",
       "dist/features/model-routing/index.d.ts",
       "dist/features/model-routing/index.d.ts.map",
       "dist/features/model-routing/index.js",
       "dist/features/model-routing/index.js.map",
+      "dist/features/model-routing/profiles.d.ts",
+      "dist/features/model-routing/profiles.d.ts.map",
+      "dist/features/model-routing/profiles.js",
+      "dist/features/model-routing/profiles.js.map",
       "dist/features/model-routing/prompts/haiku.d.ts",
       "dist/features/model-routing/prompts/haiku.d.ts.map",
       "dist/features/model-routing/prompts/haiku.js",
@@ -8842,7 +8892,9 @@
       "src/features/lookout/wrapper-parser.ts",
       "src/features/magic-keywords.ts",
       "src/features/model-routing/__tests__/index.test.ts",
+      "src/features/model-routing/__tests__/profiles.test.ts",
       "src/features/model-routing/index.ts",
+      "src/features/model-routing/profiles.ts",
       "src/features/model-routing/prompts/haiku.ts",
       "src/features/model-routing/prompts/index.ts",
       "src/features/model-routing/prompts/opus.ts",
@@ -17624,6 +17676,26 @@
         "path": "dist/budget/__tests__/budget.test.js.map"
       },
       {
+        "id": "dist/budget/__tests__/ledger.tags.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/budget/__tests__/ledger.tags.test.d.ts"
+      },
+      {
+        "id": "dist/budget/__tests__/ledger.tags.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/__tests__/ledger.tags.test.d.ts.map"
+      },
+      {
+        "id": "dist/budget/__tests__/ledger.tags.test.js",
+        "kind": "generated-dist",
+        "path": "dist/budget/__tests__/ledger.tags.test.js"
+      },
+      {
+        "id": "dist/budget/__tests__/ledger.tags.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/__tests__/ledger.tags.test.js.map"
+      },
+      {
         "id": "dist/budget/governor.d.ts",
         "kind": "generated-dist",
         "path": "dist/budget/governor.d.ts"
@@ -18484,6 +18556,26 @@
         "path": "dist/cli/claude-md-coordinator.js.map"
       },
       {
+        "id": "dist/cli/commands/__tests__/budget-by-role.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/budget-by-role.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/budget-by-role.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/budget-by-role.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/budget-by-role.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/budget-by-role.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/budget-by-role.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/budget-by-role.test.js.map"
+      },
+      {
         "id": "dist/cli/commands/__tests__/capabilities.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/capabilities.test.d.ts"
@@ -19182,6 +19274,26 @@
         "id": "dist/cli/commands/factory-setup.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/commands/factory-setup.js.map"
+      },
+      {
+        "id": "dist/cli/commands/factory-triage.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-triage.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/factory-triage.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-triage.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/factory-triage.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-triage.js"
+      },
+      {
+        "id": "dist/cli/commands/factory-triage.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-triage.js.map"
       },
       {
         "id": "dist/cli/commands/factory.d.ts",
@@ -20612,6 +20724,66 @@
         "id": "dist/factory/__tests__/status.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/__tests__/status.test.js.map"
+      },
+      {
+        "id": "dist/factory/__tests__/triage-ado.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/triage-ado.test.d.ts"
+      },
+      {
+        "id": "dist/factory/__tests__/triage-ado.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/triage-ado.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/__tests__/triage-ado.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/triage-ado.test.js"
+      },
+      {
+        "id": "dist/factory/__tests__/triage-ado.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/triage-ado.test.js.map"
+      },
+      {
+        "id": "dist/factory/__tests__/triage-github.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/triage-github.test.d.ts"
+      },
+      {
+        "id": "dist/factory/__tests__/triage-github.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/triage-github.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/__tests__/triage-github.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/triage-github.test.js"
+      },
+      {
+        "id": "dist/factory/__tests__/triage-github.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/triage-github.test.js.map"
+      },
+      {
+        "id": "dist/factory/__tests__/triage-local.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/triage-local.test.d.ts"
+      },
+      {
+        "id": "dist/factory/__tests__/triage-local.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/triage-local.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/__tests__/triage-local.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/triage-local.test.js"
+      },
+      {
+        "id": "dist/factory/__tests__/triage-local.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/triage-local.test.js.map"
       },
       {
         "id": "dist/factory/__tests__/workflow-run.test.d.ts",
@@ -22994,6 +23166,86 @@
         "path": "dist/factory/status.js.map"
       },
       {
+        "id": "dist/factory/triage/__tests__/rules.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/triage/__tests__/rules.test.d.ts"
+      },
+      {
+        "id": "dist/factory/triage/__tests__/rules.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/triage/__tests__/rules.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/triage/__tests__/rules.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/triage/__tests__/rules.test.js"
+      },
+      {
+        "id": "dist/factory/triage/__tests__/rules.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/triage/__tests__/rules.test.js.map"
+      },
+      {
+        "id": "dist/factory/triage/cli.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/triage/cli.d.ts"
+      },
+      {
+        "id": "dist/factory/triage/cli.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/triage/cli.d.ts.map"
+      },
+      {
+        "id": "dist/factory/triage/cli.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/triage/cli.js"
+      },
+      {
+        "id": "dist/factory/triage/cli.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/triage/cli.js.map"
+      },
+      {
+        "id": "dist/factory/triage/guard.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/triage/guard.d.ts"
+      },
+      {
+        "id": "dist/factory/triage/guard.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/triage/guard.d.ts.map"
+      },
+      {
+        "id": "dist/factory/triage/guard.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/triage/guard.js"
+      },
+      {
+        "id": "dist/factory/triage/guard.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/triage/guard.js.map"
+      },
+      {
+        "id": "dist/factory/triage/rules.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/triage/rules.d.ts"
+      },
+      {
+        "id": "dist/factory/triage/rules.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/triage/rules.d.ts.map"
+      },
+      {
+        "id": "dist/factory/triage/rules.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/triage/rules.js"
+      },
+      {
+        "id": "dist/factory/triage/rules.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/triage/rules.js.map"
+      },
+      {
         "id": "dist/factory/watchdog.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/watchdog.d.ts"
@@ -24054,6 +24306,26 @@
         "path": "dist/features/model-routing/__tests__/index.test.js.map"
       },
       {
+        "id": "dist/features/model-routing/__tests__/profiles.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/model-routing/__tests__/profiles.test.d.ts"
+      },
+      {
+        "id": "dist/features/model-routing/__tests__/profiles.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/model-routing/__tests__/profiles.test.d.ts.map"
+      },
+      {
+        "id": "dist/features/model-routing/__tests__/profiles.test.js",
+        "kind": "generated-dist",
+        "path": "dist/features/model-routing/__tests__/profiles.test.js"
+      },
+      {
+        "id": "dist/features/model-routing/__tests__/profiles.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/model-routing/__tests__/profiles.test.js.map"
+      },
+      {
         "id": "dist/features/model-routing/index.d.ts",
         "kind": "generated-dist",
         "path": "dist/features/model-routing/index.d.ts"
@@ -24072,6 +24344,26 @@
         "id": "dist/features/model-routing/index.js.map",
         "kind": "generated-dist",
         "path": "dist/features/model-routing/index.js.map"
+      },
+      {
+        "id": "dist/features/model-routing/profiles.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/model-routing/profiles.d.ts"
+      },
+      {
+        "id": "dist/features/model-routing/profiles.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/model-routing/profiles.d.ts.map"
+      },
+      {
+        "id": "dist/features/model-routing/profiles.js",
+        "kind": "generated-dist",
+        "path": "dist/features/model-routing/profiles.js"
+      },
+      {
+        "id": "dist/features/model-routing/profiles.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/model-routing/profiles.js.map"
       },
       {
         "id": "dist/features/model-routing/prompts/haiku.d.ts",
@@ -53209,6 +53501,11 @@
         "path": "src/budget/__tests__/budget.test.ts"
       },
       {
+        "id": "src/budget/__tests__/ledger.tags.test.ts",
+        "kind": "src",
+        "path": "src/budget/__tests__/ledger.tags.test.ts"
+      },
+      {
         "id": "src/budget/governor.ts",
         "kind": "src",
         "path": "src/budget/governor.ts"
@@ -53424,6 +53721,11 @@
         "path": "src/cli/claude-md-coordinator.ts"
       },
       {
+        "id": "src/cli/commands/__tests__/budget-by-role.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/budget-by-role.test.ts"
+      },
+      {
         "id": "src/cli/commands/__tests__/capabilities.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/capabilities.test.ts"
@@ -53597,6 +53899,11 @@
         "id": "src/cli/commands/factory-setup.ts",
         "kind": "src",
         "path": "src/cli/commands/factory-setup.ts"
+      },
+      {
+        "id": "src/cli/commands/factory-triage.ts",
+        "kind": "src",
+        "path": "src/cli/commands/factory-triage.ts"
       },
       {
         "id": "src/cli/commands/factory.ts",
@@ -53962,6 +54269,21 @@
         "id": "src/factory/__tests__/status.test.ts",
         "kind": "src",
         "path": "src/factory/__tests__/status.test.ts"
+      },
+      {
+        "id": "src/factory/__tests__/triage-ado.test.ts",
+        "kind": "src",
+        "path": "src/factory/__tests__/triage-ado.test.ts"
+      },
+      {
+        "id": "src/factory/__tests__/triage-github.test.ts",
+        "kind": "src",
+        "path": "src/factory/__tests__/triage-github.test.ts"
+      },
+      {
+        "id": "src/factory/__tests__/triage-local.test.ts",
+        "kind": "src",
+        "path": "src/factory/__tests__/triage-local.test.ts"
       },
       {
         "id": "src/factory/__tests__/workflow-run.test.ts",
@@ -54729,6 +55051,26 @@
         "path": "src/factory/status.ts"
       },
       {
+        "id": "src/factory/triage/__tests__/rules.test.ts",
+        "kind": "src",
+        "path": "src/factory/triage/__tests__/rules.test.ts"
+      },
+      {
+        "id": "src/factory/triage/cli.ts",
+        "kind": "src",
+        "path": "src/factory/triage/cli.ts"
+      },
+      {
+        "id": "src/factory/triage/guard.ts",
+        "kind": "src",
+        "path": "src/factory/triage/guard.ts"
+      },
+      {
+        "id": "src/factory/triage/rules.ts",
+        "kind": "src",
+        "path": "src/factory/triage/rules.ts"
+      },
+      {
         "id": "src/factory/watchdog.test.ts",
         "kind": "src",
         "path": "src/factory/watchdog.test.ts"
@@ -55009,9 +55351,19 @@
         "path": "src/features/model-routing/__tests__/index.test.ts"
       },
       {
+        "id": "src/features/model-routing/__tests__/profiles.test.ts",
+        "kind": "feature",
+        "path": "src/features/model-routing/__tests__/profiles.test.ts"
+      },
+      {
         "id": "src/features/model-routing/index.ts",
         "kind": "feature",
         "path": "src/features/model-routing/index.ts"
+      },
+      {
+        "id": "src/features/model-routing/profiles.ts",
+        "kind": "feature",
+        "path": "src/features/model-routing/profiles.ts"
       },
       {
         "id": "src/features/model-routing/prompts/haiku.ts",
@@ -76486,6 +76838,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/budget/__tests__/ledger.tags.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/ledger.tags.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/ledger.tags.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/ledger.tags.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/ledger.tags.test.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/ledger.tags.test.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/budget/governor.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -77686,6 +78068,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/__tests__/budget-by-role.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/budget-by-role.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/budget-by-role.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/budget-by-role.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/budget-by-role.test.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/budget-by-role.test.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/budget-by-role.test.ts",
+        "to": "src/cli/commands/budget.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/capabilities.test.ts",
         "to": "external:fs/promises",
         "kind": "imports"
@@ -78696,6 +79113,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/budget.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/cli/commands/capabilities.ts",
         "to": "external:crypto",
         "kind": "imports"
@@ -79151,6 +79573,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/factory-triage.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-triage.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-triage.ts",
+        "to": "src/cli/utils/integer-option.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-triage.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-triage.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory-triage.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-triage.ts",
+        "to": "src/factory/triage/cli.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/factory.ts",
         "to": "external:chalk",
         "kind": "imports"
@@ -79188,6 +79645,11 @@
       {
         "from": "src/cli/commands/factory.ts",
         "to": "src/cli/commands/factory-setup.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/cli/commands/factory-triage.ts",
         "kind": "imports"
       },
       {
@@ -81377,6 +81839,11 @@
       },
       {
         "from": "src/copilot-run/__tests__/sandbox.state-deny.test.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/sandbox.state-deny.test.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
@@ -82578,6 +83045,146 @@
       {
         "from": "src/factory/__tests__/status.test.ts",
         "to": "src/hooks/session-end/chain-enqueuer.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-ado.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-ado.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-ado.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-ado.test.ts",
+        "to": "src/factory/triage/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-ado.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-ado.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-ado.test.ts",
+        "to": "src/forge/ado/routes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-github.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-github.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-github.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-github.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-github.test.ts",
+        "to": "src/cli/commands/factory-triage.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-github.test.ts",
+        "to": "src/cli/commands/factory.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-github.test.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-github.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-github.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-github.test.ts",
+        "to": "src/factory/triage/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-github.test.ts",
+        "to": "src/factory/triage/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-github.test.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-github.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-local.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-local.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-local.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-local.test.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-local.test.ts",
+        "to": "src/factory/triage/rules.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-local.test.ts",
+        "to": "src/forge/local/__tests__/git-fixture.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-local.test.ts",
+        "to": "src/forge/local/__tests__/git-fixture.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-local.test.ts",
+        "to": "src/forge/local/tracker.ts",
         "kind": "imports"
       },
       {
@@ -87572,6 +88179,11 @@
       },
       {
         "from": "src/factory/run/exec.ts",
+        "to": "src/factory/triage/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/exec.ts",
         "to": "src/forge/ado/guard.ts",
         "kind": "imports"
       },
@@ -88806,6 +89418,126 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/triage/__tests__/rules.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/triage/__tests__/rules.test.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/triage/__tests__/rules.test.ts",
+        "to": "src/factory/triage/rules.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/triage/__tests__/rules.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/triage/cli.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/triage/cli.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/triage/cli.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/triage/cli.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/triage/cli.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/triage/cli.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/triage/cli.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/triage/cli.ts",
+        "to": "src/factory/triage/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/triage/cli.ts",
+        "to": "src/factory/triage/rules.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/triage/cli.ts",
+        "to": "src/factory/triage/rules.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/triage/cli.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/triage/cli.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/triage/cli.ts",
+        "to": "src/forge/ado/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/triage/cli.ts",
+        "to": "src/forge/github/gh.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/triage/cli.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/triage/cli.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/triage/rules.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/triage/rules.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/triage/rules.ts",
+        "to": "src/factory/triage/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/triage/rules.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/factory/watchdog.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -89933,6 +90665,31 @@
       {
         "from": "src/features/model-routing/__tests__/index.test.ts",
         "to": "src/features/model-routing/router.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/model-routing/__tests__/profiles.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/model-routing/__tests__/profiles.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/model-routing/__tests__/profiles.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/model-routing/__tests__/profiles.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/model-routing/__tests__/profiles.test.ts",
+        "to": "src/features/model-routing/profiles.ts",
         "kind": "imports"
       },
       {
@@ -105743,6 +106500,11 @@
       {
         "from": "src/installer/copilot-agent-models.ts",
         "to": "src/config/copilot-models.json",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/copilot-agent-models.ts",
+        "to": "src/features/model-routing/profiles.ts",
         "kind": "imports"
       },
       {
@@ -124797,12 +125559,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10535,
-      "edgeCount": 12632,
-      "importEdgeCount": 10407,
+      "nodeCount": 10595,
+      "edgeCount": 12714,
+      "importEdgeCount": 10468,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "f160203630e41804b792af3cc7e0d5413fa07261724f82f53e56a6b81397284f",
-  "manifestSha256": "8e1260adb27d2dc504c25d8422699486110a043ece49df100d75e29fc2fce27d"
+  "inventorySha256": "9eb7bb95425d6368cfaab61ba664957b8e1f14781ecb43fcafb5dc35f601f29e",
+  "manifestSha256": "d18d45b68343c54de07a9bc43081be2e98782aae87410d765969d0925f9f56e2"
 }
