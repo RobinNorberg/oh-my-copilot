@@ -61,6 +61,12 @@ export interface UsageRecord {
     updatedAt: string;
     /** Present on records read from a Copilot CLI events file. */
     scan?: EventsScan;
+    /** Who spent it (cost attribution); absent on older records and plain sessions. */
+    tag?: {
+        kind: 'factory-lane' | 'team-worker' | 'session';
+        role?: string;
+        run?: string;
+    };
 }
 /** Usage a record had accumulated before `omg budget reset` (cumulative sources subtract it). */
 export interface UsageBaseline {

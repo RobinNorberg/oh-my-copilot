@@ -34,12 +34,20 @@ export declare const HEAL_APPROVE_GATE = "heal-approve";
 export declare const HEAL_DIAGNOSIS_GATE = "heal-diagnosis";
 export declare function healRunKey(sig8: string): FactoryRunKey;
 /** Every lane kind except review is a write lane, and each is also the phase that runs it. */
-export type FactoryLaneKind = 'implement' | 'review' | 'fix' | 'conflict-fix' | 'ci-fix';
+export type FactoryLaneKind = 'implement' | 'review' | 'fix' | 'conflict-fix' | 'ci-fix' | 'coding-agent';
 export type FactoryLaneStatus = 'running' | 'completed' | 'failed' | 'lost' | 'cancelled';
 export type FactoryLaneVerdict = 'approve' | 'changes-requested' | 'invalid';
 export interface FactoryLaneRecord {
     id: string;
     kind: FactoryLaneKind;
+    /** The ledger tag source (budget records); absent = `kind`. */
+    role?: FactoryLaneKind;
+    /** A fix lane started from human review feedback: the forge it came from and how many items it carried. */
+    feedback?: {
+        source: 'human';
+        forge: ForgeKind;
+        items: number;
+    };
     jobId?: string;
     /** The job's local Copilot child (pid and start identity), recorded at the first poll that reports it. */
     process?: {
@@ -228,6 +236,12 @@ export interface FactoryRunState {
     mergeBounces?: number;
     /** The engine-owned prepare checkout's HEAD when the engine last left it. */
     checkoutHead?: string;
+    /** The last human feedback round consumed (sealed with the rest of the state). */
+    humanReview?: {
+        seenAt: string;
+        head: string;
+        digest: string;
+    };
     /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */
     gateComments?: string[];
     /**

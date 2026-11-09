@@ -67,8 +67,6 @@ export declare const MAX_CONFLICT_FIX_ROUNDS = 2;
 /** merge's gate read may send the run back to gates this often per invocation before awaiting-human: gates-disagree. */
 export declare const MAX_MERGE_BOUNCES = 2; /** Lane waits are sliced so the cancel flag is seen within this long. */
 export declare const DEFAULT_POLL_MS = 5000;
-/** The review prompt's diff is cut at this many characters (copilot_run prompts are capped at 100k). */
-export declare const MAX_REVIEW_DIFF_CHARS = 60000;
 /** A ci-heal run's inputs (src/factory/heal/implement.ts builds them from a sealed heal signature state). */
 export interface FactoryHealStart {
     sig8: string;
@@ -190,10 +188,7 @@ export declare class StateTamperedError extends Error {
     constructor(paths: string[]);
 }
 export { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted, TRUSTED_PLAN_AUTHORS, type IssueComment } from './plan-rules.js';
-/** Untrusted text on one line: control and line-separator characters become spaces, then it is cut. */
-export declare function oneLine(text: string | undefined, max?: number): string;
-/** A backtick fence longer than any backtick run in `content`, so the content cannot close it. */
-export declare function fenceFor(content: string): string;
+export { ciFixPrompt, conflictFixPrompt, fenceFor, fixPrompt, implementPrompt, MAX_REVIEW_DIFF_CHARS, oneLine, reviewPrompt } from './prompts.js';
 /** The run's key: `heal-<sig8>` for a ci-heal run, else the issue number. */
 export declare function engineRunKey(o: Pick<FactoryEngineOptions, 'issue' | 'heal'>): FactoryRunKey;
 /** The command that resumes a parked run (for a ci-heal run, approve also resumes after any later gate). */
@@ -216,17 +211,6 @@ export declare function healPlanText(h: FactoryHealRecord, base: string): string
  * `runUrl`: a CI run's page (default GitHub Actions under the repository url; Azure DevOps passes the build results page).
  */
 export declare function healPrBody(s: FactoryRunState, runUrl?: (runId: string) => string): string;
-export declare function implementPrompt(s: FactoryRunState): string;
-export declare function fixPrompt(s: FactoryRunState, round: number): string;
-/** `conflicted`: the files the engine's merge left conflict markers in (conflictFixStart), else the ones prepare reported. */
-export declare function conflictFixPrompt(s: FactoryRunState, conflicted?: readonly string[]): string;
-export declare function ciFixPrompt(s: FactoryRunState): string;
-/**
- * The review lane's prompt. `standards` (the files under docs/standards/ on
- * the base commit) switches on the two-axis review: spec and standards, each
- * finding naming its axis. Without them the prompt is the single-axis one.
- */
-export declare function reviewPrompt(s: FactoryRunState, head: string, diff: string, standards?: readonly string[]): string;
 /**
  * Run (or resume) the factory run for one issue. Refuses without a resolved
  * per-lane credit cap, and while another live engine owns the issue.
