@@ -485,12 +485,13 @@ export function factoryGuardExec(exec: Exec, extraProtected: () => readonly stri
     const step = agent();
     assertFactoryCommand(cmd, args, extraProtected(), opts?.env, undefined, ctx, local(), github(), step);
     const isGh = cmd.replace(/\\/g, '/').split('/').pop()!.toLowerCase().replace(/\.exe$/, '') === 'gh';
-    const at = ctx && isGh ? trackerBodyFileArg(args) : isGh && isCodingAgentLinkCommentArgs(args, step) ? CODING_AGENT_LINK_BODY_ARG : undefined;
+    const linkShape = isGh && isCodingAgentLinkCommentArgs(args, step);
+    const at = linkShape ? CODING_AGENT_LINK_BODY_ARG : ctx && isGh ? trackerBodyFileArg(args) : undefined;
     if (at === undefined) return exec(cmd, args, opts);
     // A tracker write runs with the guard's own copy of the checked body, like an az --in-file.
     const body = readTrackerBody(args[at], (reason) => new FactorySafetyError(`omg factory run refuses \`gh ${args.join(' ')}\`: ${reason}`));
     // The link comment's body must be exactly the factory's own text for the step context (numbers, branch, sha).
-    const linkProblem = !(ctx && isGh) ? codingAgentLinkBodyProblem(body.toString('utf8'), step) : null;
+    const linkProblem = linkShape ? codingAgentLinkBodyProblem(body.toString('utf8'), step) : null;
     if (linkProblem) throw new FactorySafetyError(`omg factory run refuses \`gh ${args.join(' ')}\`: ${linkProblem}`);
     const dir = mkdtempSync(join(tmpdir(), 'omg-gh-body-'));
     try {

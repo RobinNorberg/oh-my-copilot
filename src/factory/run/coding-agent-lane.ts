@@ -91,12 +91,18 @@ export const DEFAULT_CODING_AGENT_CONFIG: Readonly<CodingAgentConfig> = Object.f
 const IMPLEMENTERS: readonly FactoryImplementer[] = ['copilot', 'coding-agent'];
 const REPO_NAME = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
 
-function reposOf(value: unknown, source: string): string[] | undefined {
+const GITHUB_HOSTS = new Set(['github.com', 'ssh.github.com', 'www.github.com']);
+
+/** The valid `owner/name` entries; a bad entry (a host or URL, `.git`, `..`) is dropped with a warning naming it. */
+function reposOf(value: unknown, source: string, warnings: string[]): string[] | undefined {
   if (value === undefined) return undefined;
-  if (!Array.isArray(value) || !value.every((r) => typeof r === 'string' && REPO_NAME.test(r))) {
-    throw new Error(`${source}: factory.codingAgent.repos must be an array of "owner/name" repository names`);
+  if (!Array.isArray(value)) throw new Error(`${source}: factory.codingAgent.repos must be an array of "owner/name" repository names`);
+  const repos: string[] = [];
+  for (const r of value) {
+    if (typeof r === 'string' && REPO_NAME.test(r) && !/\.git$/i.test(r) && !/\/\.+$/.test(r)) repos.push(r);
+    else warnings.push(`omg factory run: ignoring factory.codingAgent.repos entry ${JSON.stringify(typeof r === 'string' ? r.slice(0, 120) : r)} in the ${source}; use "owner/name" for a github.com repository (no host, URL or .git)`);
   }
-  return [...value] as string[];
+  return repos;
 }
 
 function block(config: unknown, path: readonly string[], source: string): Record<string, unknown> {
@@ -138,7 +144,7 @@ export function resolveCodingAgentConfig(trustedUser: unknown, project: unknown)
   config.implementer = implementerOf(userRun.implementer, 'user config') ?? config.implementer;
   config.maxWaitMinutes = countOf(userAgent.maxWaitMinutes, 'maxWaitMinutes', 'user config') ?? config.maxWaitMinutes;
   config.maxSessionsPerDay = countOf(userAgent.maxSessionsPerDay, 'maxSessionsPerDay', 'user config') ?? config.maxSessionsPerDay;
-  config.repos = reposOf(userAgent.repos, 'user config') ?? config.repos;
+  config.repos = reposOf(userAgent.repos, 'user config', warnings) ?? config.repos;
   const projRun = block(project, ['factory', 'run'], 'project config');
   const projAgent = block(project, ['factory', 'codingAgent'], 'project config');
   const implementer = implementerOf(projRun.implementer, 'project config');
@@ -176,7 +182,7 @@ export function chooseCodingAgent(trustedUser: unknown, readProject: () => unkno
   const user = resolveCodingAgentConfig(trustedUser, undefined).config;
   const repo = codingAgentRepoOf(run.repoUrl);
   const name = repo ? `${repo.owner}/${repo.name}` : run.repoUrl;
-  if (!repo || !user.repos.some((r) => r.toLowerCase() === name.toLowerCase())) {
+  if (!repo || !GITHUB_HOSTS.has(repo.host.toLowerCase()) || !user.repos.some((r) => r.toLowerCase() === name.toLowerCase())) {
     return { use: false, warning: `omg factory run: coding agent not enabled for ${name}: add it to factory.codingAgent.repos; using a Copilot lane` };
   }
   const { config, warnings } = resolveCodingAgentConfig(trustedUser, readProject());
@@ -426,7 +432,25 @@ interface SessionMirror {
   sessions: Record<string, { at: string; run: string; by?: string }>;
 }
 
-function readMirror(path: string): SessionMirror {
+/** The session record exists but cannot be parsed: a writer must not treat it as empty or overwrite it. */
+export class CodingAgentMirrorUnreadableError extends Error {
+  constructor(readonly path: string) {
+    super(`the coding-agent session record ${path} is unreadable; fix or remove it, then rerun`);
+    this.name = 'CodingAgentMirrorUnreadableError';
+  }
+}
+
+/** `strict` (every writer): an existing file that does not parse as a record throws instead of reading as empty. */
+function readMirror(path: string, strict = false): SessionMirror {
+  if (strict && existsSync(path)) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(readFileSync(path, 'utf8'));
+    } catch {
+      throw new CodingAgentMirrorUnreadableError(path);
+    }
+    if (!isObj(parsed)) throw new CodingAgentMirrorUnreadableError(path);
+  }
   try {
     const raw = JSON.parse(readFileSync(path, 'utf8')) as Partial<SessionMirror>;
     const sessions: SessionMirror['sessions'] = {};
@@ -476,7 +500,7 @@ export function recordCodingAgentSession(s: CodingAgentSession): string[] {
     ensureDirSync(s.ledgerDir);
     const path = join(s.ledgerDir, MIRROR_FILE);
     withFileLockSync(lockPathFor(path), () => {
-      const m = readMirror(path);
+      const m = readMirror(path, true);
       const now = Date.parse(s.at);
       for (const [k, v] of Object.entries(m.sessions)) if (now - Date.parse(v.at) > MIRROR_KEEP_MS) delete m.sessions[k];
       // A provisional entry of reserveCodingAgentSession keeps its time (the day it was counted on).
@@ -536,9 +560,9 @@ function underMirrorLock<T>(ledgerDir: string, timeoutMs: number, fn: (path: str
 export function reserveCodingAgentSession(s: CodingAgentSession & { by: string }, max: number, timeoutMs = 5_000): { ok: boolean; used: number } {
   const day = s.at.slice(0, 10);
   return underMirrorLock(s.ledgerDir, timeoutMs, (path) => {
+    const m = readMirror(path, true);
     const used = codingAgentSessionsOn(s.root, s.ledgerDir, day);
     if (used >= max) return { ok: false, used };
-    const m = readMirror(path);
     m.sessions[`${s.repo}#${s.laneId}`] = { at: s.at, run: s.run, by: s.by };
     atomicWriteFileSync(path, JSON.stringify(m, null, 2));
     return { ok: true, used };
@@ -548,7 +572,7 @@ export function reserveCodingAgentSession(s: CodingAgentSession & { by: string }
 /** Drop the provisional entry after a definite refusal of the assign (no session started), under the same lock. */
 export function releaseCodingAgentSession(s: Pick<CodingAgentSession, 'ledgerDir' | 'repo' | 'laneId'>, timeoutMs = 5_000): void {
   underMirrorLock(s.ledgerDir, timeoutMs, (path) => {
-    const m = readMirror(path);
+    const m = readMirror(path, true);
     if (!(`${s.repo}#${s.laneId}` in m.sessions)) return;
     delete m.sessions[`${s.repo}#${s.laneId}`];
     atomicWriteFileSync(path, JSON.stringify(m, null, 2));

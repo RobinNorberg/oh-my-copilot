@@ -54,6 +54,8 @@ export class FakeAgentGithub {
   assignFailure: ExecResult = { status: 1, stdout: '', stderr: 'gh: Validation Failed (HTTP 422)' };
   /** The next `gh pr close` calls that fail (a network error), before closes succeed. */
   closeFailures = 0;
+  /** gh's answer when the PR is no longer open (a human merged or closed it): the close fails with this stderr. */
+  closeRefusal: string | undefined;
   readonly assigns: string[][] = [];
   readonly closes: string[][] = [];
   readonly comments: Array<{ args: string[]; body: string }> = [];
@@ -76,6 +78,7 @@ export class FakeAgentGithub {
     }
     if (args[0] === 'pr' && args[1] === 'close') {
       this.closes.push([...args]);
+      if (this.closeRefusal) return { status: 1, stdout: '', stderr: this.closeRefusal };
       if (this.closeFailures > 0) {
         this.closeFailures -= 1;
         return { status: 1, stdout: '', stderr: 'error connecting to api.github.com' };

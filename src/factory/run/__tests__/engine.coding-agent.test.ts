@@ -11,8 +11,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { ledgerPath, readLedger } from '../../../budget/ledger.js';
 import { scaleTiming } from '../../../__tests__/helpers/platform.js';
 import { codingAgentSessionsOn, recordCodingAgentSession } from '../coding-agent-lane.js';
+import { acquireFileLockSync, lockPathFor, releaseFileLockSync } from '../../../lib/file-lock.js';
 import { EXIT_AWAITING_HUMAN, type FactoryEngineOptions } from '../engine.js';
-import { readFactoryState, requestFactoryCancel } from '../state.js';
+import { FactoryBusyError, readFactoryState, requestFactoryCancel } from '../state.js';
 import { agentCommit, FakeAgentGithub, ghTime, humanBaseCommit, installFakeAgent } from './fake-coding-agent.js';
 import { gitIn, ISSUE, PR, remoteHead, review, type LaneScript } from './fake-lanes.js';
 import { h, run, useEngineHarness } from './engine-harness.js';
@@ -377,5 +378,51 @@ describe('omg factory run with the Copilot coding agent as implementer', () => {
     expect(fake.comments).toHaveLength(1);
     expect(fake.closes).toHaveLength(2);
     expect(state().codingAgent).toMatchObject({ linked: true, closed: true });
+  });
+
+  it.each([
+    ['merged', "Pull request o/r#77 can't be closed because it was already merged", /already merged by a human/],
+    ['closed', 'Pull request o/r#77 is already closed', /closed the coding agent's pull request #77/],
+  ])('an agent PR a human already %s counts as done: no warning, no retry', async (_what, refusal, note) => {
+    setup();
+    expect((await go()).gate?.name).toBe('coding-agent-wait');
+    t += 20 * 60_000;
+    finishedPr();
+    fake.closeRefusal = refusal;
+    const warns: string[] = [];
+    const out = await go([review('approve')], { warn: (m) => warns.push(m) });
+    expect(out.gate?.name, out.message).toBe('merge');
+    expect(warns.filter((w) => w.includes('could not close'))).toEqual([]);
+    expect(fake.closes).toHaveLength(1);
+    expect(state().codingAgent).toMatchObject({ linked: true, closed: true });
+    expect(state().history.map((x) => x.note).join('\n')).toMatch(note);
+  });
+
+  it('a corrupt session record parks before any assign and is left untouched', async () => {
+    setup();
+    mkdirSync(h.ledgerDir, { recursive: true });
+    const file = join(h.ledgerDir, 'coding-agent-sessions.json');
+    writeFileSync(file, '{ truncated');
+    const out = await go();
+    expect(out.gate?.name, out.message).toBe('coding-agent-sessions');
+    expect(out.gate?.reason).toContain('is unreadable; fix or remove it, then rerun');
+    expect(fake.assigns).toHaveLength(0);
+    expect(readFileSync(file, 'utf8')).toBe('{ truncated');
+    expect(state().codingAgent).toBeUndefined();
+  });
+
+  it('a held session-record lock leaves the run as busy with nothing assigned and the state untouched', async () => {
+    setup();
+    mkdirSync(h.ledgerDir, { recursive: true });
+    const handle = acquireFileLockSync(lockPathFor(join(h.ledgerDir, 'coding-agent-sessions.json')));
+    expect(handle).not.toBeNull();
+    try {
+      // The loop rethrows the busy error (the CLI exits EXIT_BUSY on it); the run's owner and claim are released by the engine's finally.
+      await expect(go()).rejects.toBeInstanceOf(FactoryBusyError);
+    } finally {
+      releaseFileLockSync(handle!);
+    }
+    expect(fake.assigns).toHaveLength(0);
+    expect(state().codingAgent).toBeUndefined();
   });
 });
