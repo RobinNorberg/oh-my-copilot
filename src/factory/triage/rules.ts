@@ -5,7 +5,7 @@
  * needs-split, needs-plan. owner:<x> comes with routing and is not proposed yet.
  */
 
-import type { CheckResult } from '../check/score.js';
+import { itemPriority, type CheckResult } from '../check/score.js';
 import type { ForgeItem, ForgeKind } from '../../forge/types.js';
 import { isTriageLabelName } from './guard.js';
 
@@ -17,11 +17,11 @@ export interface TriageConfig {
   needsPlan: string;
   /** An item with a size above this and no children gets needs-split. */
   sizeSplitAt: number;
-  /** p0..p3 for an item with no priority at all; null = leave it unprioritised. */
+  /** Opt-in: p0..p3 for an item with no priority at all. null (the default) invents no priority. */
   defaultPriority: number | null;
 }
 
-export const DEFAULT_TRIAGE_CONFIG: TriageConfig = { needsSplit: 'needs-split', needsPlan: 'needs-plan', sizeSplitAt: 5, defaultPriority: 2 };
+export const DEFAULT_TRIAGE_CONFIG: TriageConfig = { needsSplit: 'needs-split', needsPlan: 'needs-plan', sizeSplitAt: 5, defaultPriority: null };
 
 export class TriageConfigError extends Error {}
 
@@ -100,30 +100,29 @@ export function planItem(item: ForgeItem, result: CheckResult, kind: ForgeKind, 
 
   const { add, remove, why } = base;
   const want = (name: string, why1: string) => { if (!has(item.labels, name)) { add.push(name); why.push(why1); } };
-  const drop = (name: string, why1: string) => { const own = has(item.labels, name); if (own) { remove.push(own); why.push(why1); } };
 
-  // Priority: one label. The lowest p on the item wins; else the numeric field (ADO, local); else the default.
-  const held = item.labels.map((l) => ({ l, m: PRIORITY_RE.exec(l) })).filter((x): x is { l: string; m: RegExpExecArray } => x.m !== null);
+  // Priority: one tag, derived from what the factory ranks by (itemPriority, as check/score.ts: the ADO or local
+  // field when set, else the first priority label on GitHub). The field is never written from a tag, and a
+  // conflict is never resolved upward.
+  const held = item.labels.filter((l) => PRIORITY_RE.test(l));
+  const effective = itemPriority(item);
   let numeric: number | null = null;
-  if (held.length > 0) {
-    const target = Math.min(...held.map((x) => Number(x.m[1])));
-    const keep = held.find((x) => Number(x.m[1]) === target)!.l;
-    for (const x of held) if (x.l !== keep) { remove.push(x.l); why.push(`priority: keep ${keep}, drop ${x.l}`); }
-    if (kind !== 'github' && item.priority !== target + 1) { numeric = target + 1; why.push(`priority field set to ${target + 1} to match ${keep}`); }
-  } else if (item.priority === undefined && cfg.defaultPriority !== null) {
+  if (effective !== null) {
+    if (effective <= PRIORITY_LABELS.length) {
+      const name = PRIORITY_LABELS[effective - 1];
+      for (const l of held) if (l.toLowerCase() !== name) { remove.push(l); why.push(`priority: the item ranks as ${name}, drop ${l}`); }
+      want(name, `priority: the item ranks as ${name}`);
+    }
+  } else if (cfg.defaultPriority !== null) {
     const name = PRIORITY_LABELS[cfg.defaultPriority];
     want(name, `no priority: default ${name}`);
     if (kind !== 'github') numeric = cfg.defaultPriority + 1;
   }
 
-  // Plan and split come from the check rules; a blocked item's plan is not evaluated, so it keeps its labels.
-  const children = item.children.length;
-  const wantSplit = children === 0 && (reason === 'needs-split' || reason === 'too-big' || (item.size !== undefined && item.size > cfg.sizeSplitAt));
+  // Plan and split come from the check rules. Triage only adds these two labels; a human clears them.
+  const wantSplit = item.children.length === 0 && (reason === 'needs-split' || reason === 'too-big' || (item.size !== undefined && item.size > cfg.sizeSplitAt));
   if (wantSplit) want(cfg.needsSplit, reason === 'needs-split' || reason === 'too-big' ? `check: ${reason}` : `size ${item.size} is above ${cfg.sizeSplitAt} and the item has no children`);
-  else if (children > 0) drop(cfg.needsSplit, 'the item has children');
-  else if (result.bucket === 'runnable') drop(cfg.needsSplit, 'check: runnable');
   if (result.bucket === 'needs-plan') want(cfg.needsPlan, `check: ${reason}`);
-  else if (result.bucket === 'runnable') drop(cfg.needsPlan, 'check: runnable');
 
   const action: TriageAction = add.length > 0 || remove.length > 0 || numeric !== null ? 'change' : 'unchanged';
   return { ...base, priority: numeric, action, skipReason: null };

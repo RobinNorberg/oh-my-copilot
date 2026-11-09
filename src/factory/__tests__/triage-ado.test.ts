@@ -7,12 +7,13 @@
 import { describe, expect, it } from 'vitest';
 import { FactorySafetyError, type TrackerWriteContext } from '../run/exec.js';
 import { triageGuardExec } from '../triage/cli.js';
+import { adoRouteById, validateAdoBody } from '../../forge/ado/routes.js';
 import { loadAdoFixtures } from '../../forge/ado/__tests__/fixtures.js';
 import { adoWorld, variant } from '../../forge/ado/__tests__/world.js';
 
 const tagged = (tags: string | undefined, priority?: number) =>
   variant(loadAdoFixtures(), 'wit.workItems.GET.42.json', (s) => ({ ...s, fields: { ...s.fields, 'System.Tags': tags, ...(priority === undefined ? {} : { 'Microsoft.VSTS.Common.Priority': priority }) } }));
-const writes = (labels: string[]): TrackerWriteContext => ({ repo: 'unused-on-ado', bodyDir: '', labels });
+const writes = (labels: string[]): TrackerWriteContext => ({ repo: 'unused-on-ado', bodyDir: '', labels, purpose: 'triage' });
 
 describe('ADO setTriage', () => {
   it('edits the tags and the priority field in one PATCH', () => {
@@ -49,6 +50,21 @@ describe('ADO setTriage', () => {
     expect(() => exec('az', patch)).toThrow(FactorySafetyError);
     expect(seen).toEqual([]);
     expect(calls).toEqual([]);
+  });
+
+  it('the triage context refuses every PATCH path but /rev, the tags and the priority', () => {
+    const route = adoRouteById('wit.workItems.PATCH');
+    const rev = { op: 'test', path: '/rev', value: 7 };
+    const triage = { trackerWrites: { labels: ['priority:p1'], purpose: 'triage' as const } };
+    const enqueue = { trackerWrites: { labels: ['priority:p1'] } };
+    for (const [path, value] of [['/fields/System.Title', 'renamed'], ['/fields/System.Description', '<p>x</p>'], ['/fields/Microsoft.VSTS.Common.AcceptanceCriteria', '<p>x</p>']] as const) {
+      const body = [rev, { op: 'add', path, value }];
+      expect(validateAdoBody(route, body, triage)).toMatch(/not a triage write/);
+    }
+    const relation = [rev, { op: 'add', path: '/relations/-', value: { rel: 'System.LinkTypes.Hierarchy-Reverse', url: 'https://dev.azure.com/contoso/_apis/wit/workItems/9' } }];
+    expect(validateAdoBody(route, relation, { ...triage, org: 'contoso' })).toMatch(/not a triage write/);
+    expect(validateAdoBody(route, [rev, { op: 'add', path: '/fields/Microsoft.VSTS.Common.Priority', value: 2 }], triage)).toBeUndefined();
+    expect(validateAdoBody(route, [rev, { op: 'add', path: '/fields/Microsoft.VSTS.Common.Priority', value: 2 }], enqueue)).toBeUndefined();
   });
 
   it('refuses an assignee: it is not a triage write yet', () => {

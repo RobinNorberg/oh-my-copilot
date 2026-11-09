@@ -102,6 +102,8 @@ export interface TrackerWriteContext {
   labels: readonly string[];
   /** Azure DevOps: the work item types a create may name (factory.intake.itemTypes); none = no create. */
   itemTypes?: readonly string[];
+  /** Who writes: `triage` allows only its label edit (GitHub) and tag/priority PATCH (Azure DevOps); unset or `enqueue` = enqueue's shapes. */
+  purpose?: 'triage' | 'enqueue';
 }
 
 /** shipyardKeySearch (src/forge/types.ts) for any spec. */
@@ -353,10 +355,10 @@ function factoryGit(a: string[], protectedBranches: readonly string[], extraProt
 }
 
 function factoryGh(a: string[], writes?: TrackerWriteContext): boolean | null {
-  // `omg factory triage --apply`: label-only issue edits (src/factory/triage/guard.ts), decided before the enqueue shapes.
-  const triage = writes ? triageWriteGh(a, writes) : null;
+  // `omg factory triage --apply` (purpose 'triage') may write only the label-only issue edit (src/factory/triage/guard.ts); enqueue keeps its own shapes.
+  const triage = writes?.purpose === 'triage' ? triageWriteGh(a, writes) : null;
   if (triage !== null) return triage;
-  const write = writes ? trackerWriteGh(a, writes) : null;
+  const write = writes && writes.purpose !== 'triage' ? trackerWriteGh(a, writes) : null;
   if (write !== null) return write;
   const [group, sub, ...r] = a;
   if (group === 'issue') {

@@ -65,6 +65,8 @@ export interface AdoTrackerWrites {
   labels: readonly string[];
   /** Work item types the create route may name (factory.intake.itemTypes); none = no create. */
   itemTypes?: readonly string[];
+  /** `triage`: a PATCH may carry only test /rev, System.Tags and Common.Priority. */
+  purpose?: 'triage' | 'enqueue';
 }
 
 /** Values only the run's config knows, for validateAdoBody. */
@@ -430,6 +432,9 @@ function trackerProblem(route: AdoRoute, target: AdoPatchPath, value: unknown, c
   }
 }
 
+/** What `omg factory triage` may PATCH: the revision test, the tags and the priority. */
+const TRIAGE_PATHS = /^\/(?:rev|fields\/System\.Tags|fields\/Microsoft\.VSTS\.Common\.Priority)$/;
+
 /**
  * The typed validator hook for the invoke guard (PR 5): the first reason the
  * parsed `--in-file` JSON is refused for `route`, or undefined when every key
@@ -454,6 +459,7 @@ export function validateAdoBody(route: AdoRoute, body: unknown, context: AdoBody
     if (typeof op.op !== 'string' || !shape.ops.includes(op.op)) return `${at}.op must be one of ${shape.ops.join(', ')}`;
     const target = typeof op.path === 'string' ? shape.paths.find((p) => p.path.test(op.path as string)) : undefined;
     if (!target || (target.tracker && !writes)) return `${at}.path is not allowed`;
+    if (writes?.purpose === 'triage' && !TRIAGE_PATHS.test(op.path as string)) return `${at}.path is not a triage write`;
     if (target.tracker && !(isPlainObject(body[0]) && body[0].op === 'test' && body[0].path === '/rev')) return `${at}: a tracker write starts with test /rev`;
     // Enqueue never moves an item: its state and board column are the engine's progress writes.
     if (writes && (target.configured === 'states' || target.configured === 'columns')) return `${at}.path is not a tracker write`;

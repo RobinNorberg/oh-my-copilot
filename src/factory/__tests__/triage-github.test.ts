@@ -69,11 +69,12 @@ function deps(exec: Exec, over: Partial<FactoryCheckDeps> = {}): FactoryCheckDep
 const run = (exec: Exec, o: Partial<FactoryTriageOptions>, over: Partial<FactoryCheckDeps> = {}) => runFactoryTriage({ ids: [], json: true, ...o }, deps(exec, over));
 const json = (): TriageJson => JSON.parse(out.join('\n')) as TriageJson;
 
+const DEFAULT_P2 = { factory: { triage: { defaultPriority: 2 } } };
 const ISSUES: Record<number, Issue> = {
   1: { title: 'ready, no priority', body: AC },
   2: { title: 'no plan', body: 'just do it', labels: ['priority:p1'] },
   3: { title: 'has a PR', body: AC },
-  4: { title: 'two priorities, stale plan label', body: AC, labels: ['priority:p3', 'Priority:P1', 'needs-plan'] },
+  4: { title: 'two priorities, plan label a human set', body: AC, labels: ['priority:p3', 'Priority:P1', 'needs-plan'] },
   5: { title: 'an epic', body: 'big', epic: true, labels: ['priority:p2'] },
   6: { title: 'already triaged', body: AC, labels: ['priority:p2'] },
 };
@@ -89,13 +90,14 @@ describe('omg factory triage (GitHub)', () => {
     const j = json();
     expect(Object.keys(j)).toEqual(['schemaVersion', 'ok', 'mode', 'forge', 'repo', 'source', 'config', 'counts', 'items', 'missingLabels', 'notes', 'warnings']);
     expect(j.schemaVersion).toBe(TRIAGE_JSON_SCHEMA_VERSION);
-    expect(j).toMatchObject({ ok: true, mode: 'dry-run', forge: 'github', counts: { change: 4, unchanged: 1, skip: 1, applied: 0, failed: 0 } });
+    expect(j).toMatchObject({ ok: true, mode: 'dry-run', forge: 'github', counts: { change: 3, unchanged: 2, skip: 1, applied: 0, failed: 0 } });
     expect(Object.keys(j.items[0])).toEqual(['id', 'title', 'url', 'action', 'skipReason', 'bucket', 'reasons', 'current', 'add', 'remove', 'priority', 'why']);
     const row = (id: number) => j.items.find((r) => r.id === id)!;
-    expect(row(1)).toMatchObject({ action: 'change', add: ['priority:p2'], remove: [], priority: null });
+    expect(row(1)).toMatchObject({ action: 'unchanged', add: [], remove: [], priority: null });
     expect(row(2)).toMatchObject({ action: 'change', add: ['needs-plan'], remove: [] });
     expect(row(3)).toMatchObject({ action: 'skip', skipReason: 'pr-exists', add: [] });
-    expect(row(4)).toMatchObject({ action: 'change', add: [], remove: ['priority:p3', 'needs-plan'] });
+    // check/score.ts ranks by the FIRST priority label (p3 here): keep it, never resolve the conflict upward; needs-plan is a human's to clear.
+    expect(row(4)).toMatchObject({ action: 'change', add: [], remove: ['Priority:P1'] });
     expect(row(5)).toMatchObject({ action: 'change', add: ['needs-split'] });
     expect(row(6).action).toBe('unchanged');
   });
@@ -109,20 +111,39 @@ describe('omg factory triage (GitHub)', () => {
     expect(await run(scripted(root, ISSUES, { prs: { 3: 9 }, edits }), { source: 'label:factory', apply: true })).toBe(0);
     const applied = json();
     expect(applied.mode).toBe('apply');
-    expect(applied.counts).toMatchObject({ change: 4, applied: 4, failed: 0 });
+    expect(applied.counts).toMatchObject({ change: 3, applied: 3, failed: 0 });
     // The apply output's rows are the dry run's rows plus the result.
     expect(applied.items.map(({ result: _r, ...rest }) => rest)).toEqual(plan);
     expect(edits).toEqual([
-      ['issue', 'edit', '1', '--repo', 'github.com/o/r', '--add-label', 'priority:p2'],
       ['issue', 'edit', '2', '--repo', 'github.com/o/r', '--add-label', 'needs-plan'],
-      ['issue', 'edit', '4', '--repo', 'github.com/o/r', '--remove-label', 'priority:p3', '--remove-label', 'needs-plan'],
+      ['issue', 'edit', '4', '--repo', 'github.com/o/r', '--remove-label', 'Priority:P1'],
       ['issue', 'edit', '5', '--repo', 'github.com/o/r', '--add-label', 'needs-split'],
     ]);
   });
 
+  it('is idempotent: applying, feeding the result back and applying again plans no change and runs no gh edit', async () => {
+    const issues: Record<number, Issue> = JSON.parse(JSON.stringify(ISSUES));
+    const edits: string[][] = [];
+    await run(scripted(root, issues, { prs: { 3: 9 }, edits }), { source: 'label:factory', apply: true });
+    expect(json().counts.applied).toBe(3);
+    // Feed the applied labels back into the tracker.
+    for (const e of edits) {
+      const i = issues[Number(e[2])];
+      for (let k = 5; k < e.length; k += 2) {
+        const l = e[k + 1];
+        i.labels = e[k] === '--add-label' ? [...(i.labels ?? []), l] : (i.labels ?? []).filter((x) => x !== l);
+      }
+    }
+    out.length = 0;
+    edits.length = 0;
+    expect(await run(scripted(root, issues, { prs: { 3: 9 }, edits }), { source: 'label:factory', apply: true })).toBe(0);
+    expect(json().counts).toMatchObject({ change: 0, applied: 0, failed: 0 });
+    expect(edits).toEqual([]);
+  });
+
   it('reports a failed write per item and exits 1', async () => {
     const edits: string[][] = [];
-    expect(await run(scripted(root, ISSUES, { edits, failEdit: [2] }), { ids: ['1', '2'], apply: true })).toBe(1);
+    expect(await run(scripted(root, ISSUES, { edits, failEdit: [2] }), { ids: ['5', '2'], apply: true })).toBe(1);
     const j = json();
     expect(j.ok).toBe(false);
     expect(j.counts).toMatchObject({ applied: 1, failed: 1 });
@@ -131,8 +152,9 @@ describe('omg factory triage (GitHub)', () => {
 
   it('skips (in both modes) the rows that would add a label the repository lacks', async () => {
     const repoLabels = ['priority:p0', 'priority:p1', 'priority:p3', 'needs-plan', 'needs-split'];
-    expect(await run(scripted(root, ISSUES, { repoLabels, writesForbidden: true }), { ids: ['1', '2'] })).toBe(0);
+    expect(await run(scripted(root, ISSUES, { repoLabels, writesForbidden: true }), { ids: ['1', '2'] }, { trustedUser: () => DEFAULT_P2 })).toBe(0);
     const j = json();
+    expect(j.warnings).toEqual(['label priority:p2 does not exist in https://github.com/o/r; rows needing it are skipped (omg factory triage never creates labels)']);
     expect(j.missingLabels).toEqual(['priority:p2']);
     expect(j.items.find((r) => r.id === 1)).toMatchObject({ action: 'skip', skipReason: 'label-missing:priority:p2', add: [] });
     expect(j.items.find((r) => r.id === 2)!.action).toBe('change');
@@ -141,7 +163,7 @@ describe('omg factory triage (GitHub)', () => {
   it('a title or body never reaches a label name or an argv', async () => {
     const hostile: Record<number, Issue> = { 1: { title: '--add-label evil', body: `${AC}\n--remove-label x; rm -rf /` } };
     const edits: string[][] = [];
-    await run(scripted(root, hostile, { edits }), { ids: ['1'], apply: true });
+    await run(scripted(root, hostile, { edits }), { ids: ['1'], apply: true }, { trustedUser: () => DEFAULT_P2 });
     expect(edits).toEqual([['issue', 'edit', '1', '--repo', 'github.com/o/r', '--add-label', 'priority:p2']]);
   });
 
@@ -159,13 +181,20 @@ describe('omg factory triage (GitHub)', () => {
 });
 
 describe('the triage write guard', () => {
-  const ctx: TrackerWriteContext = { repo: 'o/r', bodyDir: '', labels: ['priority:p1', 'priority:p2', 'needs-plan'] };
+  const ctx: TrackerWriteContext = { repo: 'o/r', bodyDir: '', labels: ['priority:p1', 'priority:p2', 'needs-plan'], purpose: 'triage' };
   const guard = (args: string[], writes: TrackerWriteContext | null = ctx) => () => assertFactoryCommand('gh', args, [], undefined, undefined, writes ?? undefined);
   const edit = (...rest: string[]) => ['issue', 'edit', '7', '--repo', 'o/r', ...rest];
 
   it('passes label-only edits whose labels are on the allowlist', () => {
     expect(guard(edit('--add-label', 'priority:p1'))).not.toThrow();
     expect(guard(edit('--add-label', 'priority:p1', '--remove-label', 'priority:p2', '--remove-label', 'needs-plan'))).not.toThrow();
+  });
+
+  it('the enqueue context (no purpose) refuses the label-only edit, and the triage context refuses the enqueue title/body edit', () => {
+    const { purpose: _p, ...enqueue } = ctx;
+    expect(guard(edit('--add-label', 'priority:p1'), enqueue)).toThrow(FactorySafetyError);
+    expect(guard(edit('--add-label', 'priority:p1'), { ...enqueue, purpose: 'enqueue' })).toThrow(FactorySafetyError);
+    expect(guard(edit('--title', 't', '--body-file', 'x', '--add-label', 'priority:p1'))).toThrow(FactorySafetyError);
   });
 
   it('refuses everything else: no context, other repo, order, duplicates, off-list, reserved, flag-like and extra flags', () => {
