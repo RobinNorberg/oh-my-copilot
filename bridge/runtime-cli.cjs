@@ -20359,6 +20359,7 @@ var init_sandbox = __esm({
     init_copilot_session_env();
     init_sdk_policy();
     init_jsonc();
+    init_paths();
     init_windows_search();
     DEFAULT_SANDBOX_SETTINGS = Object.freeze({
       enabled: true,

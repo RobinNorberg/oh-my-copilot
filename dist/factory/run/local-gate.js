@@ -32,6 +32,7 @@ import { getProcessStartIdentity, terminateOwnedProcessTree } from '../../platfo
 import { scrubShipEnv } from '../../ship/exec.js';
 import { childEnv, findOnPath, hardenWindowsExeSearch, resolveBareExe } from '../../utils/windows-search.js';
 import { FactorySafetyError, sameFsPath } from './exec.js';
+import { createGateProcTracker, gateProcsPath, reapGateProcs } from './gate-procs.js';
 /** The record keeps this many characters of the gate's output (jobLog, the ci-fix prompt). */
 export const LOCAL_GATE_TAIL_CHARS = 8_000;
 /** How long after the gate's timeout a PENDING record is taken as left by a crashed engine (localGateDue). */
@@ -128,7 +129,7 @@ async function killGateTree(child, rootExited) {
     }
 }
 /** Spawn without a shell; at `timeoutMs` kill the whole tree (test workers too) and stop waiting for its output. */
-function runOwned(exe, args, cwd, env, timeoutMs) {
+function runOwned(exe, args, cwd, env, timeoutMs, track) {
     return new Promise((done) => {
         let child;
         try {
@@ -139,6 +140,8 @@ function runOwned(exe, args, cwd, env, timeoutMs) {
             done({ status: 127, stdout: '', stderr: '', timedOut: false, startError: `${exe}: ${error.message}` });
             return;
         }
+        if (child.pid)
+            track?.spawned(child.pid);
         let stdout = '';
         let stderr = '';
         let exitStatus = null;
@@ -164,13 +167,17 @@ function runOwned(exe, args, cwd, env, timeoutMs) {
             exitStatus = code ?? (signal ? 128 : 1);
             // The root's exit status is the verdict: a descendant still holding the pipes gets a short drain, then is
             // killed best-effort (its process group, POSIX only; a Windows orphan survives) and no longer delays the verdict or turns it into a timeout.
+            const exitedAt = Date.now();
             drain = setTimeout(() => {
                 if (settled || timedOut)
                     return;
                 void killGateTree(child, true);
                 child.stdout?.destroy();
                 child.stderr?.destroy();
-                finish({ status: exitStatus, stdout, stderr, timedOut: false });
+                // Windows has no group to signal: the root's identity-checked leftovers are killed before the verdict settles.
+                void (track ? track.rootGone(exitedAt) : Promise.resolve()).catch(() => undefined).then(() => {
+                    finish({ status: exitStatus, stdout, stderr, timedOut: false });
+                });
             }, EXIT_DRAIN_MS);
         });
         child.on('close', (code, signal) => {
@@ -181,7 +188,7 @@ function runOwned(exe, args, cwd, env, timeoutMs) {
             const exited = exitStatus !== null;
             if (!exited)
                 timedOut = true;
-            void killGateTree(child, exited).finally(() => {
+            void killGateTree(child, exited).then(() => (exited ? track?.rootGone(Date.now()) : undefined)).catch(() => undefined).finally(() => {
                 // Whatever still holds the pipes (an orphan on Windows) no longer delays the verdict.
                 child.stdout?.destroy();
                 child.stderr?.destroy();
@@ -190,7 +197,7 @@ function runOwned(exe, args, cwd, env, timeoutMs) {
         }, timeoutMs);
     });
 }
-export const defaultLocalGateRunner = async (argv, cwd, timeoutMs) => {
+export const defaultLocalGateRunner = async (argv, cwd, timeoutMs, track) => {
     // A bare name is never resolved from the checkout (a planted npm.cmd / node.exe there).
     hardenWindowsExeSearch();
     const target = resolveLocalGateArgv(argv, { cwd });
@@ -198,7 +205,7 @@ export const defaultLocalGateRunner = async (argv, cwd, timeoutMs) => {
         return { status: 127, stdout: '', stderr: '', timedOut: false, startError: target.missing };
     // resolveLocalGateArgv already gave an absolute path on Windows; resolveBareExe keeps a path unchanged.
     const exe = resolveBareExe(target.exe) ?? target.exe;
-    return runOwned(exe, target.args, cwd, childEnv(scrubShipEnv(process.env)), timeoutMs);
+    return runOwned(exe, target.args, cwd, childEnv(scrubShipEnv(process.env)), timeoutMs, track);
 };
 const realOrResolved = (p) => {
     try {
@@ -279,13 +286,19 @@ export async function runLocalGate(i) {
     const started = now();
     const base = { name: LOCAL_GATE_CHECK, head: i.head, state: 'PENDING', argv: [...i.gate], runId: runIdAt(started), startedAt: started.toISOString() };
     writeLocalCheckRecord(i.stateDir, i.root, base);
+    // What an earlier run of this gate left behind (an engine that died mid-gate): killed only on a matching start identity.
+    const procs = gateProcsPath(i.stateDir, i.root, i.head);
+    await reapGateProcs(procs).catch(() => undefined);
     let r;
     try {
-        r = await (i.runner ?? defaultLocalGateRunner)(i.gate, i.checkout, i.timeoutMinutes * 60_000);
+        r = await (i.runner ?? defaultLocalGateRunner)(i.gate, i.checkout, i.timeoutMinutes * 60_000, createGateProcTracker(procs, started.getTime()));
     }
     catch (error) {
         rmSync(localCheckRecordPath(i.stateDir, i.root, i.head), { force: true });
         throw error;
+    }
+    finally {
+        await reapGateProcs(procs).catch(() => undefined);
     }
     if (r.startError !== undefined) {
         rmSync(localCheckRecordPath(i.stateDir, i.root, i.head), { force: true });
@@ -391,6 +404,9 @@ export function gateDefinitionSources(gate) {
     const name = (cmd.split(/[\\/]/).pop() ?? cmd).toLowerCase().replace(/\.(cmd|bat|exe)$/, '');
     if (name === 'npm' || name === 'pnpm' || name === 'yarn')
         return scriptSource(name, args, shown);
+    // npx runs code the registry serves at that moment: nothing in the repository, at any commit, pins it.
+    if (name === 'npx')
+        return { sources: [], unresolved: `${shown} runs npx, which fetches and runs registry code that the repository cannot pin` };
     if (name === 'node') {
         const at = args.findIndex((a) => !a.startsWith('-'));
         if (at < 0)
@@ -402,8 +418,13 @@ export function gateDefinitionSources(gate) {
         const p = repoPath(target);
         return { sources: p ? [{ path: p }] : [] };
     }
-    const own = /[\\/]/.test(cmd) ? repoPath(cmd) : undefined;
-    return { sources: own ? [{ path: own }] : [] };
+    // A path names the file the gate runs: a repository file is its own definition; one outside the repository is not the PR's to change.
+    if (/[\\/]/.test(cmd)) {
+        const own = repoPath(cmd);
+        return { sources: own ? [{ path: own }] : [] };
+    }
+    // A bare name is looked up on PATH, never in the checkout (resolveLocalGateArgv): the repository holds no file that defines it.
+    return { sources: [], unresolved: `${shown} runs ${JSON.stringify(cmd)} from PATH, and the repository holds no file that defines it` };
 }
 /**
  * The gate's definition at one commit, comparable across commits: per source

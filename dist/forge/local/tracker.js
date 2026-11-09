@@ -80,7 +80,17 @@ export function localTracker(ctx) {
             if (!lstatSync(file).isFile())
                 continue;
             const text = readFileSync(file, 'utf8');
-            out.push({ item: parseBacklogFile(`${ctx.backlogDir}/${name}`, text), text: lf(text), file });
+            try {
+                out.push({ item: parseBacklogFile(`${ctx.backlogDir}/${name}`, text), text: lf(text), file });
+            }
+            catch (err) {
+                // As for a committed file: one malformed file does not block the rest of the backlog.
+                if (!(err instanceof BacklogParseError))
+                    throw err;
+                const warning = `local backlog: skipped ${err.message}`;
+                if (!warnings.includes(warning))
+                    warnings.push(warning);
+            }
         }
         return out;
     };
@@ -213,7 +223,7 @@ export function localTracker(ctx) {
         },
         comment(id, bodyFile) {
             try {
-                appendNoFollow(omgRoot, join(itemDir(id), 'comments.md'), `\n<!-- ${new Date().toISOString()} -->\n${readFileSync(bodyFile, 'utf8').replace(/\n*$/, '\n')}`);
+                appendNoFollow(omgRoot, join(itemDir(id), 'comments.md'), `\n<!-- ${new Date().toISOString()} -->\n${readFileSync(bodyFile, 'utf8').replace(/\n*$/, '\n')}`, true);
                 return { ok: true, stderr: '' };
             }
             catch (err) {
@@ -222,7 +232,7 @@ export function localTracker(ctx) {
         },
         setProgress(id, stage, _mapping) {
             try {
-                writeAtomic(join(itemDir(id), 'progress.json'), `${JSON.stringify({ id, stage, updatedAt: new Date().toISOString() }, null, 2)}\n`, omgRoot);
+                writeAtomic(join(itemDir(id), 'progress.json'), `${JSON.stringify({ id, stage, updatedAt: new Date().toISOString() }, null, 2)}\n`, omgRoot, true);
                 return { ok: true, detail: `local item #${id}: ${stage}` };
             }
             catch (err) {
