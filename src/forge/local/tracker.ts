@@ -51,6 +51,9 @@ export interface LocalTrackerContext {
    * commits the change; a warning names the file. `mergedHead` is the PR
    * head the merge was detected at: a later commit on the base that changes
    * the file's `state:` line (a reopen) wins over the merge; other edits do not.
+   * Known limit: the pickaxe (`-G^state:`) also matches a body line that starts
+   * with `state:`, which then reads as a reopen; telling the two apart needs the
+   * hit's parent version, a git read neither exec guard allows yet.
    */
   mergedPr?: (id: number) => { number: number; mergedHead?: string } | undefined;
 }
@@ -121,7 +124,14 @@ export function localTracker(ctx: LocalTrackerContext): ForgeTracker {
       const file = join(dir, name);
       if (!lstatSync(file).isFile()) continue;
       const text = readFileSync(file, 'utf8');
-      out.push({ item: parseBacklogFile(`${ctx.backlogDir}/${name}`, text), text: lf(text), file });
+      try {
+        out.push({ item: parseBacklogFile(`${ctx.backlogDir}/${name}`, text), text: lf(text), file });
+      } catch (err) {
+        // As for a committed file: one malformed file does not block the rest of the backlog.
+        if (!(err instanceof BacklogParseError)) throw err;
+        const warning = `local backlog: skipped ${err.message}`;
+        if (!warnings.includes(warning)) warnings.push(warning);
+      }
     }
     return out;
   };
@@ -254,7 +264,7 @@ export function localTracker(ctx: LocalTrackerContext): ForgeTracker {
     },
     comment(id: number, bodyFile: string): { ok: boolean; stderr: string } {
       try {
-        appendNoFollow(omgRoot, join(itemDir(id), 'comments.md'), `\n<!-- ${new Date().toISOString()} -->\n${readFileSync(bodyFile, 'utf8').replace(/\n*$/, '\n')}`);
+        appendNoFollow(omgRoot, join(itemDir(id), 'comments.md'), `\n<!-- ${new Date().toISOString()} -->\n${readFileSync(bodyFile, 'utf8').replace(/\n*$/, '\n')}`, true);
         return { ok: true, stderr: '' };
       } catch (err) {
         return { ok: false, stderr: (err as Error).message };
@@ -262,7 +272,7 @@ export function localTracker(ctx: LocalTrackerContext): ForgeTracker {
     },
     setProgress(id: number, stage: ProgressStage, _mapping: ProgressMapping): { ok: boolean; detail: string } {
       try {
-        writeAtomic(join(itemDir(id), 'progress.json'), `${JSON.stringify({ id, stage, updatedAt: new Date().toISOString() }, null, 2)}\n`, omgRoot);
+        writeAtomic(join(itemDir(id), 'progress.json'), `${JSON.stringify({ id, stage, updatedAt: new Date().toISOString() }, null, 2)}\n`, omgRoot, true);
         return { ok: true, detail: `local item #${id}: ${stage}` };
       } catch (err) {
         return { ok: false, detail: (err as Error).message };
