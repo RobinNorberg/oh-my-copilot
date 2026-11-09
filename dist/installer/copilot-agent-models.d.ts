@@ -19,6 +19,18 @@ export declare function resolveAgentModelOverrides(agents: PluginConfig['agents'
     overrides: Record<string, string>;
     skipped: string[];
 };
+/**
+ * Same as resolveAgentModelOverrides plus `profileEntries`: the subset of
+ * `overrides` that only the profile set. An explicit per-agent value of any kind
+ * (valid, `inherit`, empty, invalid) removes the profile's entry for that agent
+ * before the value is validated.
+ */
+export declare function resolveAgentModelPlan(agents: PluginConfig['agents'] | undefined, modelProfile?: unknown): {
+    overrides: Record<string, string>;
+    skipped: string[];
+    profileEntries: Record<string, string>;
+    profileProblem?: string;
+};
 /** Pure merge: sets `subagents.agents[prefix+name].model`, keeps every other key. */
 export declare function mergeSubagentModels(settings: Record<string, unknown>, overrides: Record<string, string>): {
     settings: Record<string, unknown>;
@@ -28,10 +40,18 @@ export declare function mergeSubagentModels(settings: Record<string, unknown>, o
  * Merge overrides into settings.json. No write when nothing changes; otherwise a
  * `.bak` copy of the previous file, then an atomic replace. Settings that are not
  * a JSON object are left untouched and reported in `error`. Returns the agent
- * names written.
+ * names written and removed.
+ *
+ * `profileEntries` (the overrides only a modelProfile set) are recorded in
+ * `recordFile` (omg-owned, not settings.json). On a later sync an entry that is
+ * recorded, still holds exactly the recorded model and is no longer in
+ * `overrides` is removed again, so going back to `balanced` restores the agent
+ * defaults. Without a record nothing is removed, and a value the user changed
+ * is left alone.
  */
-export declare function syncCopilotAgentModels(settingsFile: string, overrides: Record<string, string>): {
+export declare function syncCopilotAgentModels(settingsFile: string, overrides: Record<string, string>, profileEntries?: Record<string, string>, recordFile?: string): {
     written: string[];
+    removed: string[];
     error?: string;
 };
 //# sourceMappingURL=copilot-agent-models.d.ts.map

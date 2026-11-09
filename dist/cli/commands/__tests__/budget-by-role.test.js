@@ -60,4 +60,17 @@ describe('omg budget status --by', () => {
         expect(err[0]).toMatch(/role, kind, run/);
     });
 });
+describe('omg budget reset --by', () => {
+    it('is rejected with exit 2 and leaves the ledger alone', async () => {
+        recordUsage(ledgerPath(project), 'k1', rec(3));
+        const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        try {
+            expect(await budgetCommand('reset', { by: 'role' }, project)).toBe(2);
+            expect(String(error.mock.calls[0]?.[0])).toMatch(/takes no --by/);
+        }
+        finally {
+            error.mockRestore();
+        }
+    });
+});
 //# sourceMappingURL=budget-by-role.test.js.map

@@ -18,7 +18,7 @@ export const AGENT_TIERS = {
     debugger: 'medium',
     executor: 'medium',
     verifier: 'medium',
-    'security-reviewer': 'medium',
+    'security-reviewer': 'high',
     'test-engineer': 'medium',
     designer: 'medium',
     'qa-tester': 'medium',

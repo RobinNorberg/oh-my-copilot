@@ -59541,7 +59541,7 @@ var init_profiles = __esm({
       debugger: "medium",
       executor: "medium",
       verifier: "medium",
-      "security-reviewer": "medium",
+      "security-reviewer": "high",
       "test-engineer": "medium",
       designer: "medium",
       "qa-tester": "medium",
@@ -59564,16 +59564,22 @@ var init_profiles = __esm({
 function isRecord3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-function resolveAgentModelOverrides(agents, modelProfile) {
+function resolveAgentModelPlan(agents, modelProfile) {
   const overrides = {};
+  const profileEntries = {};
   const skipped = [];
   const profile = parseModelProfile(modelProfile);
-  if (modelProfile !== void 0 && !profile) skipped.push(`modelProfile: ${JSON.stringify(modelProfile)}`);
+  const profileProblem = modelProfile !== void 0 && !profile ? `modelProfile ${JSON.stringify(modelProfile)} is not quality-first, balanced or economy; no profile applied` : void 0;
   if (profile) {
-    for (const [name, tier] of Object.entries(profileAgentModels(profile))) overrides[name] = toCopilotModelId(tier);
+    for (const [name, tier] of Object.entries(profileAgentModels(profile))) {
+      overrides[name] = toCopilotModelId(tier);
+      profileEntries[name] = overrides[name];
+    }
   }
   for (const [key, value] of Object.entries(agents ?? {})) {
     if (key === "omc" || value?.model === void 0) continue;
+    delete overrides[toAgentName(key)];
+    delete profileEntries[toAgentName(key)];
     if (typeof value.model !== "string") {
       skipped.push(`${key}: ${JSON.stringify(value.model)}`);
       continue;
@@ -59584,7 +59590,7 @@ function resolveAgentModelOverrides(agents, modelProfile) {
     if (KNOWN_MODELS.has(resolved)) overrides[toAgentName(key)] = resolved;
     else skipped.push(`${key}: "${model}"`);
   }
-  return { overrides, skipped };
+  return { overrides, skipped, profileEntries, profileProblem };
 }
 function mergeSubagentModels(settings, overrides) {
   const names = Object.keys(overrides);
@@ -59602,22 +59608,59 @@ function mergeSubagentModels(settings, overrides) {
   if (!changed) return { settings, changed };
   return { settings: { ...settings, subagents: { ...subagents, agents } }, changed };
 }
-function syncCopilotAgentModels(settingsFile, overrides) {
-  if (Object.keys(overrides).length === 0) return { written: [] };
+function readProfileRecord(recordFile) {
+  try {
+    const parsed2 = JSON.parse((0, import_fs56.readFileSync)(recordFile, "utf-8"));
+    const entries = isRecord3(parsed2) && isRecord3(parsed2.entries) ? parsed2.entries : {};
+    return Object.fromEntries(Object.entries(entries).filter(([, v]) => typeof v === "string" && v !== ""));
+  } catch {
+    return {};
+  }
+}
+function modelOf(settings, name) {
+  const agents = isRecord3(settings.subagents) && isRecord3(settings.subagents.agents) ? settings.subagents.agents : void 0;
+  const entry2 = agents?.[`${COPILOT_PLUGIN_AGENT_PREFIX}${name}`];
+  return isRecord3(entry2) ? entry2.model : void 0;
+}
+function syncCopilotAgentModels(settingsFile, overrides, profileEntries = {}, recordFile) {
+  const recorded = recordFile ? readProfileRecord(recordFile) : {};
+  if (Object.keys(overrides).length === 0 && Object.keys(recorded).length === 0) return { written: [], removed: [] };
   let current = {};
   if ((0, import_fs56.existsSync)(settingsFile)) {
     try {
       current = JSON.parse((0, import_fs56.readFileSync)(settingsFile, "utf-8"));
     } catch {
-      return { written: [], error: `${settingsFile} is not valid JSON; left untouched` };
+      return { written: [], removed: [], error: `${settingsFile} is not valid JSON; left untouched` };
     }
-    if (!isRecord3(current)) return { written: [], error: `${settingsFile} is not a JSON object; left untouched` };
+    if (!isRecord3(current)) return { written: [], removed: [], error: `${settingsFile} is not a JSON object; left untouched` };
   }
-  const { settings, changed } = mergeSubagentModels(current, overrides);
-  if (!changed) return { written: [] };
+  const base = current;
+  const removed = Object.keys(recorded).filter((name) => !(name in overrides) && modelOf(base, name) === recorded[name]);
+  let afterRemoval = base;
+  if (removed.length > 0) {
+    const subagents = { ...base.subagents };
+    const agents = { ...subagents.agents };
+    for (const name of removed) {
+      const id = `${COPILOT_PLUGIN_AGENT_PREFIX}${name}`;
+      const { model: _model, ...rest } = agents[id];
+      if (Object.keys(rest).length > 0) agents[id] = rest;
+      else delete agents[id];
+    }
+    afterRemoval = { ...base, subagents: { ...subagents, agents } };
+  }
+  const { settings, changed } = mergeSubagentModels(afterRemoval, overrides);
+  const nextRecord = {};
+  for (const [name, value] of Object.entries(profileEntries)) {
+    const current2 = modelOf(base, name);
+    if (current2 !== value || recorded[name] === value) nextRecord[name] = value;
+  }
+  if (recordFile && JSON.stringify(nextRecord) !== JSON.stringify(recorded)) {
+    atomicWriteJsonSync(recordFile, { entries: nextRecord });
+  }
+  if (!changed && removed.length === 0) return { written: [], removed };
   if ((0, import_fs56.existsSync)(settingsFile)) (0, import_fs56.copyFileSync)(settingsFile, `${settingsFile}.bak`);
   atomicWriteJsonSync(settingsFile, settings);
-  return { written: Object.keys(overrides) };
+  return { written: changed ? Object.keys(overrides) : [], removed };
 }
 var import_fs56, COPILOT_PLUGIN_AGENT_PREFIX, KNOWN_MODELS, toAgentName;
 var init_copilot_agent_models = __esm({
@@ -61566,10 +61609,12 @@ function install(options = {}) {
     if (!projectScoped) {
       try {
         const userConfig = loadJsoncFile(getConfigPaths().user);
-        const { overrides, skipped } = resolveAgentModelOverrides(userConfig?.agents, userConfig?.modelProfile);
-        for (const entry2 of skipped) log3(`  Warning: ${entry2.startsWith("modelProfile") ? "" : "agents."}${entry2} is not a known Copilot model or tier alias${entry2.startsWith("modelProfile") ? " (use quality-first, balanced or economy)" : ""}; not synced`);
-        const { written, error: error2 } = syncCopilotAgentModels(SETTINGS_FILE, overrides);
+        const { overrides, skipped, profileEntries, profileProblem } = resolveAgentModelPlan(userConfig?.agents, userConfig?.modelProfile);
+        if (profileProblem) log3(`  Warning: ${profileProblem}`);
+        for (const entry2 of skipped) log3(`  Warning: agents.${entry2} is not a known Copilot model or tier alias; not synced`);
+        const { written, removed, error: error2 } = syncCopilotAgentModels(SETTINGS_FILE, overrides, profileEntries, (0, import_path72.join)(COPILOT_HOME, ".omg-profile-models.json"));
         if (error2) log3(`  Warning: per-agent model overrides not synced: ${error2}`);
+        if (removed.length > 0) log3(`  Removed ${removed.length} per-agent model override(s) the model profile wrote earlier`);
         if (written.length > 0) log3(`  Synced ${written.length} per-agent model override(s) to settings.json subagents.agents`);
       } catch {
         log3("  Warning: Could not sync per-agent model overrides (non-fatal)");
@@ -72109,7 +72154,8 @@ function updateLedger(path30, fn, opts = {}) {
 }
 function mergeRecord(existing, next) {
   const merged = mergeUsage(existing, next);
-  return existing?.tag && !merged.tag ? { ...merged, tag: existing.tag } : merged;
+  const kept = sanitizeTag(existing?.tag);
+  return kept && !merged.tag ? { ...merged, tag: kept } : merged;
 }
 function mergeUsage(existing, next) {
   if (!existing) return next;
@@ -160261,6 +160307,10 @@ async function budgetCommand(action, options, cwd2 = process.cwd()) {
   const path30 = ledgerPath2(cwd2);
   const { settings, issues } = loadBudgetSettings(cwd2);
   if (action === "reset") {
+    if (options.by !== void 0) {
+      console.error('omg budget reset takes no --by; use it with "omg budget status --by role|kind|run".');
+      return 2;
+    }
     let previous;
     try {
       previous = updateLedger(path30, (ledger2) => resetLedger(ledger2));

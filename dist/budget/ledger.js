@@ -170,7 +170,8 @@ export function updateLedger(path, fn, opts = {}) {
 export function mergeRecord(existing, next) {
     const merged = mergeUsage(existing, next);
     // A refresh that carries no tag (the session scan) keeps the tag the owner recorded.
-    return existing?.tag && !merged.tag ? { ...merged, tag: existing.tag } : merged;
+    const kept = sanitizeTag(existing?.tag);
+    return kept && !merged.tag ? { ...merged, tag: kept } : merged;
 }
 function mergeUsage(existing, next) {
     if (!existing)

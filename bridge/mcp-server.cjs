@@ -31088,7 +31088,8 @@ function updateLedger(path15, fn, opts = {}) {
 }
 function mergeRecord(existing, next) {
   const merged = mergeUsage(existing, next);
-  return existing?.tag && !merged.tag ? { ...merged, tag: existing.tag } : merged;
+  const kept = sanitizeTag(existing?.tag);
+  return kept && !merged.tag ? { ...merged, tag: kept } : merged;
 }
 function mergeUsage(existing, next) {
   if (!existing) return next;
