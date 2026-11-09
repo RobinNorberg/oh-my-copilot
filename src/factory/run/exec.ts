@@ -40,6 +40,7 @@ import { isBodyFileIn, readTrackerBody } from '../../forge/body-file.js';
 import { isReviewFeedbackArgs } from '../../forge/github/graphql.js';
 import { LOCAL_REMOTE, STATE_CHANGE_LOG_FLAGS } from '../../forge/local/mirror.js';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
+import { triageWriteGh } from '../triage/guard.js';
 
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
 export const FACTORY_BRANCH_PREFIX = 'factory/';
@@ -104,6 +105,8 @@ export interface TrackerWriteContext {
   labels: readonly string[];
   /** Azure DevOps: the work item types a create may name (factory.intake.itemTypes); none = no create. */
   itemTypes?: readonly string[];
+  /** Who writes: `triage` allows only its label edit (GitHub) and tag/priority PATCH (Azure DevOps); unset or `enqueue` = enqueue's shapes. */
+  purpose?: 'triage' | 'enqueue';
 }
 
 /** shipyardKeySearch (src/forge/types.ts) for any spec. */
@@ -360,7 +363,10 @@ export interface GithubReadContext {
 }
 
 function factoryGh(a: string[], writes?: TrackerWriteContext, github?: GithubReadContext): boolean | null {
-  const write = writes ? trackerWriteGh(a, writes) : null;
+  // `omg factory triage --apply` (purpose 'triage') may write only the label-only issue edit (src/factory/triage/guard.ts); enqueue keeps its own shapes.
+  const triage = writes?.purpose === 'triage' ? (triageWriteGh(a, writes) ?? (a[0] === 'issue' && a[1] === 'edit' ? false : null)) : null;
+  if (triage !== null) return triage;
+  const write = writes && writes.purpose !== 'triage' ? trackerWriteGh(a, writes) : null;
   if (write !== null) return write;
   const [group, sub, ...r] = a;
   // The one `gh api` shape: the human review read of the run's own repository (fixed query); ship refuses every other.

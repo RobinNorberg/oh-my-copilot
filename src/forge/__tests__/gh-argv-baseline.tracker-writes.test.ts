@@ -33,10 +33,10 @@ const issue = (n: number, body: string, repo = 'o/r') =>
   JSON.stringify({ title: `t${n}`, body, labels: [], state: 'OPEN', url: `https://github.com/${repo}/issues/${n}`, author: { login: 'o' }, comments: [] });
 
 /** A scripted gh behind the guarded, recorded exec. */
-function tracker(answer: (args: string[]) => string) {
+function tracker(answer: (args: string[]) => string, writes: TrackerWriteContext = ctx) {
   const inner: Exec = (_cmd, args) => ({ status: 0, stdout: answer(args), stderr: '' });
   const r = recordingExec(inner, { '<cwd>': CWD, '<bodies>': BODIES }, ['gh']);
-  return { t: githubTracker(factoryGuardExec(r.exec, () => [], () => undefined, () => ctx), CWD, config), calls: r.calls };
+  return { t: githubTracker(factoryGuardExec(r.exec, () => [], () => undefined, () => writes), CWD, config), calls: r.calls };
 }
 
 describe('gh argv baseline: tracker writes', () => {
@@ -52,6 +52,25 @@ describe('gh argv baseline: tracker writes', () => {
     expect(guardCopy(calls)).toEqual([
       'gh ["issue","create","--repo","github.com/o/r","--title","Refresh tokens","--body-file","<guard-copy>","--label","factory","--label","priority:p1"] cwd=<cwd>',
     ]);
+  });
+
+  it('setTriage (omg factory triage): the label-only issue edit, adds then removes, under the triage context only', () => {
+    const triage: TrackerWriteContext = { repo: ctx.repo, bodyDir: '', labels: ['priority:p0', 'priority:p1', 'needs-plan'], purpose: 'triage' };
+    const { t, calls } = tracker(() => '', triage);
+    expect(t.setTriage!(77, { add: ['priority:p0', 'needs-plan'], remove: ['priority:p1'] })).toMatchObject({ ok: true });
+    expect(calls).toEqual([
+      'gh ["issue","edit","77","--repo","github.com/o/r","--add-label","priority:p0","--add-label","needs-plan","--remove-label","priority:p1"] cwd=<cwd>',
+    ]);
+  });
+
+  it('the enqueue context still refuses the label-only issue edit', () => {
+    const enqueue: TrackerWriteContext = { ...ctx, purpose: 'enqueue' };
+    for (const writes of [ctx, enqueue]) {
+      const { t, calls } = tracker(() => '', writes);
+      const res = t.setTriage!(77, { add: ['priority:p0'], remove: [] });
+      expect(res.ok).toBe(false);
+      expect(calls).toEqual([]);
+    }
   });
 
   it('createItem refuses a printed url of another repository', () => {

@@ -477,6 +477,7 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
         source: measured ? 'measured' : 'estimated',
         detail: measured ? 'session.shutdown' : 'sdk assistant.usage: AI credits as billed (legacy premium requests: user-initiated calls x1 each)',
         ...(session.model ? { model: session.model } : {}),
+        tag: { kind: 'team-worker' },
         updatedAt: new Date().toISOString(),
       }, spec.team_name, { timeoutMs: 0 });
       recordedUsage = stamp;

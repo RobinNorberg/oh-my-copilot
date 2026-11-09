@@ -5,5 +5,6 @@
  */
 export declare function budgetCommand(action: string, options: {
     json?: boolean;
+    by?: string;
 }, cwd?: string): Promise<number>;
 //# sourceMappingURL=budget.d.ts.map
