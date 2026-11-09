@@ -882,6 +882,10 @@ export async function executeTeamApiOperation(operation, args, fallbackCwd) {
                 if (!allowed.has(from) || !allowed.has(to)) {
                     return { ok: false, operation, error: { code: 'invalid_input', message: 'from and to must be valid task statuses' } };
                 }
+                if (to === 'capped') {
+                    // Only the leader's monitor caps a task (sdk credit cap); a worker cannot.
+                    return { ok: false, operation, error: { code: 'invalid_input', message: 'to=capped is set by the team monitor only; workers complete or fail their task' } };
+                }
                 if (transitionResult !== undefined && typeof transitionResult !== 'string') {
                     return { ok: false, operation, error: { code: 'invalid_input', message: 'result must be a string when provided' } };
                 }

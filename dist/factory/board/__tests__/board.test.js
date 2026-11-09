@@ -152,7 +152,7 @@ describe('omg factory board on GitHub', () => {
         const w = scripted(ISSUES);
         expect(await board(w.exec, { source: 'label:factory', json: true })).toBe(0);
         const b = json();
-        expect(Object.keys(b)).toEqual(['schemaVersion', 'ok', 'forge', 'repo', 'source', 'parent', 'columns', 'outside', 'warnings']);
+        expect(Object.keys(b)).toEqual(['schemaVersion', 'ok', 'forge', 'limitations', 'repo', 'source', 'parent', 'columns', 'outside', 'warnings']);
         expect(b.schemaVersion).toBe(BOARD_JSON_SCHEMA_VERSION);
         expect(BOARD_JSON_SCHEMA_VERSION).toBe(1);
         expect(b).toMatchObject({ ok: true, forge: 'github', repo: REPO, source: { type: 'label', label: 'factory' }, parent: null, warnings: [] });

@@ -96,6 +96,9 @@ describe('omg factory run CLI', () => {
     lanes = new FakeLanes(h.root, []);
     expect(await cli(deps(), String(ISSUE))).toBe(4);
     expect(out.join('\n')).toMatch(/awaiting-human: needs-plan/);
+    // F35: the parked run prints the gate line once (the final message), not again in the state block.
+    // (The history block below the state keeps its own dated entry.)
+    expect(out.join('\n').split('\n').filter((l) => l.startsWith('awaiting-human: needs-plan')), out.join('\n')).toHaveLength(1);
   });
 
   it('--dry-run never constructs the live lane backend and writes no state', async () => {

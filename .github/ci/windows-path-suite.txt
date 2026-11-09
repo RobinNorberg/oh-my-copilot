@@ -18,3 +18,5 @@ src/__tests__/run-cjs-windows-stdio-contract.test.ts
 src/installer/__tests__/claude-md-transaction.test.ts
 src/team/__tests__/cli-detection.windows.integration.test.ts
 src/utils/__tests__/windows-search.test.ts
+tests/statechart/native-suite.test.ts
+tests/statechart/windows-smoke.test.ts

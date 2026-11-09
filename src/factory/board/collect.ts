@@ -21,8 +21,9 @@
  * (forge mismatch, unsupported remote, no intake source and no runs).
  */
 
+import chalk from 'chalk';
 import { readdirSync } from 'fs';
-import { CheckIncompatibleError, CheckUsageError, checkEnvFor, openReadForge, parseItemId, type FactoryCheckDeps } from '../check/cli.js';
+import { CheckIncompatibleError, CheckUsageError, checkEnvFor, forgeLimitations, openReadForge, parseItemId, type FactoryCheckDeps } from '../check/cli.js';
 import { checkItems, plainText, type CheckResult } from '../check/score.js';
 import type { CheckBucket } from '../check/rules.js';
 import { PROGRESS_STAGES, type Forge, type ForgeItem, type ForgeKind, type ForgePeek, type ProgressStage, type ResolvedForgeConfig } from '../../forge/types.js';
@@ -75,6 +76,8 @@ export interface BoardJson {
   schemaVersion: number;
   ok: boolean;
   forge: ForgeKind;
+  /** What the forge cannot do (the local forge's offline lines); empty on GitHub and Azure DevOps. */
+  limitations: string[];
   repo: string;
   source: Record<string, unknown> | null;
   /** With --parent: the spec whose children are shown. */
@@ -352,10 +355,24 @@ export async function runFactoryBoard(o: FactoryBoardOptions, deps: FactoryBoard
 
   const env = o.check === false ? null : checkEnvFor(exec, root, config, base, baseSha);
   const board = collectBoard({ forge, config, root, ids, check: env, now: (deps.now ?? Date.now)(), warnings });
+  if (forge.kind === 'local') {
+    // The local backlog's working tree: an item not committed on the base is untrusted, and omg factory run cannot start it yet.
+    for (const id of ids) {
+      try {
+        const item = forge.tracker.viewItem(id);
+        if (item.uncommitted) warnings.push(`omg factory board: #${id} (${item.url}) is uncommitted: untrusted until it is committed on ${base}`);
+      } catch (error) {
+        if (error instanceof FactorySafetyError) throw error;
+      }
+    }
+  }
+  warnings.push(...(forge.tracker.warnings?.() ?? []));
+  const limitations = forgeLimitations(forge, base);
   const json: BoardJson = {
     schemaVersion: BOARD_JSON_SCHEMA_VERSION,
     ok: !board.readFailed,
     forge: config.kind,
+    limitations,
     repo: config.repo.url,
     source: parent !== undefined || !source ? null : Object.fromEntries(Object.entries(source).map(([k, v]) => [k, typeof v === 'string' ? plainText(v) : v])),
     parent: spec,
@@ -367,6 +384,7 @@ export async function runFactoryBoard(o: FactoryBoardOptions, deps: FactoryBoard
     deps.out(JSON.stringify(json, null, 2));
   } else {
     for (const w of json.warnings) deps.err(w);
+    for (const l of limitations) deps.out(chalk.gray(l));
     deps.out(renderBoard(json));
   }
   return json.ok ? 0 : 1;

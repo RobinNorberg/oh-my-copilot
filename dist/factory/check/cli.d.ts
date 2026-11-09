@@ -22,6 +22,7 @@
 import type { Forge, ForgeFactory, ResolvedForgeConfig } from '../../forge/types.js';
 import { type AzEntry } from '../../forge/ado/az-binary.js';
 import { type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
+import { unsupportedForge } from '../run/forge-roots.js';
 import { type Exec } from '../../ship/exec.js';
 import { type AdoGuardContext } from '../../forge/ado/guard.js';
 import { type CheckEnv, type CheckResult } from './score.js';
@@ -34,6 +35,13 @@ export declare class CheckUsageError extends Error {
 }
 export declare class CheckIncompatibleError extends Error {
 }
+/**
+ * The local forge's read shapes (src/forge/local): the backlog listing at a
+ * commit, and the local base branch (an offline repository has no origin to
+ * fetch). The check guard allows them itself, with ship's trusted-read env only.
+ * Paths use the engine guard's isPlainRepoPath, so both guards agree.
+ */
+export declare function isLocalReadShape(args: readonly string[]): boolean;
 /**
  * The `omg factory check` guard. `marker` is set only after `--mark` was
  * confirmed: then, and only then, `gh issue edit <n> --add-label <marker>`
@@ -75,6 +83,12 @@ export interface CheckJson {
     schemaVersion: number;
     ok: boolean;
     forge: string;
+    /** What the forge cannot do (the local forge's offline lines); empty on GitHub and Azure DevOps. */
+    limitations: string[];
+    /** What a run's prepare step will run in this repository (ship.prepare.checks, else the detected built-ins); [] = none. */
+    prepareChecks: string[];
+    /** The local forge's gate definition status (`ok`, `unresolved (<why>)` or `not set`); absent on GitHub and Azure DevOps. */
+    gate?: string;
     repo: string;
     source: Record<string, unknown> | null;
     counts: Record<string, number>;
@@ -97,7 +111,12 @@ export interface CheckJson {
  * files at `origin/<base>` (null = no base: every omg-plan is plan-missing).
  * The setup wizard builds its preview env with this too.
  */
-export declare function checkEnvFor(exec: Exec, root: string, config: CheckEnv['config'], base: string, baseSha: string | null): CheckEnv;
+export declare function checkEnvFor(exec: Exec, root: string, config: CheckEnv['config'] & {
+    kind?: string;
+    repo?: {
+        url: string;
+    };
+}, base: string, baseSha: string | null): CheckEnv;
 /** Fetch `origin/<base>` (read-only) and resolve it; null with a warning when it cannot be read. */
 export declare function fetchBase(exec: Exec, root: string, base: string, warnings: string[]): string | null;
 /** The base branch's committed `.copilot/omg.jsonc`, when the base is in ship.trustedBases (as loadTrustedShipConfig). */
@@ -135,6 +154,27 @@ export interface ReadForge {
  * (the board passes none). Throws CheckUsageError / CheckIncompatibleError.
  */
 export declare function openReadForge(o: Pick<FactoryCheckOptions, 'source' | 'limit'>, deps: FactoryCheckDeps, warnings: string[], command: string, marker?: () => string | undefined): ReadForge;
+/**
+ * The options a read-only command (check, board, poll, `run --next`) builds
+ * its forge with: the local forge also needs the runtime root, reads the
+ * working tree (an uncommitted item is listed, never runnable) and reads
+ * committed items at `baseSha`, the local base branch `base` (only a local
+ * PR into `base` closes an item). `run --next` passes workingTree: false: a
+ * working-tree item is never runnable, nor does it satisfy a dependency.
+ */
+export declare function readForgeOptions(config: ResolvedForgeConfig, root: string, options: AzureDevOpsForgeOptions, base: string, baseSha: string | null, workingTree?: boolean): AzureDevOpsForgeOptions;
+/** F20: the local forge's base branch is missing (exit 2 in check, board, poll and `run --next`). */
+export declare function missingLocalBase(base: string): string;
+/**
+ * The stderr line of a factory command's error: `Error: <message>`, except that "no usable forge" starts with
+ * `unsupported forge:` in every command, as `omg factory run` prints it (F28).
+ */
+export declare function factoryErrorLine(message: string): string;
+export { unsupportedForge };
+/** The local branch `<base>` (the local forge's base; no fetch); null with a warning when it does not exist. */
+export declare function localBase(exec: Exec, root: string, base: string, warnings: string[]): string | null;
+/** The forge's limitations (the local forge's offline lines), or none. */
+export declare function forgeLimitations(forge: Forge, base: string): string[];
 /** Run one check; returns the exit code. Errors other than usage / incompatible propagate (exit 1 at the CLI). */
 export declare function runFactoryCheck(o: FactoryCheckOptions, deps: FactoryCheckDeps): Promise<number>;
 //# sourceMappingURL=cli.d.ts.map

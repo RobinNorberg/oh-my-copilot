@@ -66,8 +66,8 @@ function fakeGh(checkSeq, logs = {}, runSeq = [COMPLETED_RUNS], headSeq = [HEAD_
 }
 describe('merge rule on recorded gh pr checks JSON', () => {
     it('parses the recorded fixture', () => {
-        expect(PR233.length).toBe(23);
-        expect(parseChecksJson(JSON.stringify(PR233))).toHaveLength(23);
+        expect(PR233.length).toBe(24);
+        expect(parseChecksJson(JSON.stringify(PR233))).toHaveLength(24);
     });
     it('is green when only advisory checks fail (PR #233 as merged)', () => {
         const report = evaluateChecks(233, PR233, CONFIG);
@@ -208,7 +208,7 @@ describe('merge rule on recorded gh pr checks JSON', () => {
 describe('fetchChecks', () => {
     it('parses stdout even when gh exits non-zero', () => {
         const exec = () => ({ status: 8, stdout: JSON.stringify(PR233), stderr: '' });
-        expect(fetchChecks(exec, 233)).toHaveLength(23);
+        expect(fetchChecks(exec, 233)).toHaveLength(24);
     });
     it('maps "no checks reported" to an empty list', () => {
         const exec = () => ({ status: 1, stdout: '', stderr: "no checks reported on the 'feat/x' branch" });

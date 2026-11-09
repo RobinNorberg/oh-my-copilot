@@ -18,7 +18,9 @@
  * | a dependsOn item is unsatisfied (open, no merged factory PR  | blocked    | depends-on:#n,...          |
  * | into the base, no merged run state; score.ts isSatisfied)    |            |                            |
  * | the item depends on itself                                   | blocked    | blocked-by:self            |
- * | open children, ADO type Epic/Feature, or GitHub label epic   | blocked    | needs-split                |
+ * | open children, ADO type Epic/Feature, GitHub label epic, or  | blocked    | needs-split                |
+ * | a local backlog label spec (F24)                             |            |                            |
+ * | children, all closed (the spec is done; a human closes it)   | blocked    | children-done              |
  * | no trusted omg-plan: line, no AC heading, empty ADO AC field | needs-plan | no-plan                    |
  * | omg-plan: path not repo-relative, or missing/empty on base   | needs-plan | plan-missing               |
  * | the AC section has no list or checkbox items                 | needs-plan | ac-not-testable            |
@@ -34,7 +36,7 @@
 import type { ForgeCheckConfig, ForgeIntakeConfig, ForgeItem, ForgeKind } from '../../forge/types.js';
 import { type FactoryPhase } from '../run/state.js';
 export type CheckBucket = 'runnable' | 'needs-plan' | 'blocked';
-export type PlanSource = 'omg-plan' | 'issue-body' | 'ado-acceptance';
+export type PlanSource = 'omg-plan' | 'issue-body' | 'ado-acceptance' | 'backlog-acceptance';
 export interface RuleVerdict {
     bucket: CheckBucket;
     /** The first rule hit as its exact reason code; empty when runnable. */

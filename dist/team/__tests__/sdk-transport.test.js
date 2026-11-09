@@ -537,6 +537,11 @@ describe('sdk host', () => {
             ['write', false], ['shell', true], ['write', false], ['shell', true],
         ]);
         expect(session.timeline.first_send_at).toBeDefined();
+        // Launch marks for the progress poller, and each doorbell turn's billed calls.
+        const hostSession = session;
+        expect(hostSession.timeline.first_event_at).toBeDefined();
+        expect(hostSession.turn_usage.map((t) => [t.turn, t.calls])).toEqual([[1, 1], [2, 1]]);
+        expect(hostSession.turn_usage[0].credits).toBeCloseTo(0.5);
         const events = readFileSync(sdkWorkerFiles(stateRoot, WORKER).events, 'utf8').trim().split('\n');
         expect(events.length).toBeGreaterThanOrEqual(7);
         // Provider records: the host's identity, then a reaped terminal the shared observers read as dead.

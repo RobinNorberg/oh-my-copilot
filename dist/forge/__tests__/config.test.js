@@ -1,3 +1,4 @@
+import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 import { detectForgeRepo, ForgeConfigError, isTrustedAdoAuthor, resolveForgeConfig } from '../config.js';
 const GH = 'https://github.com/acme/widgets.git';
@@ -261,6 +262,109 @@ describe('resolveForgeConfig: factory.heal.pipeline (ADO parity design §3.2)', 
         const { config, warnings } = resolveForgeConfig(pipeline(9), undefined, undefined, GH);
         expect(config).not.toHaveProperty('heal');
         expect(warnings).toEqual([expect.stringContaining('used on azure-devops only')]);
+    });
+});
+describe('resolveForgeConfig: the local (offline) forge (decision D1)', () => {
+    const ctx = { root: '/work/widgets', stateDir: '/home/u/.omg/forge' };
+    const local = (extra = {}) => f({ forge: { kind: 'local', ...extra } });
+    it('accepts kind local from any layer when there is no origin, and names the mirror under stateDir', () => {
+        for (const [user, base, project] of [[local(), undefined, undefined], [undefined, local(), undefined], [undefined, undefined, local()]]) {
+            const { config, warnings } = resolveForgeConfig(user, base, project, undefined, ctx);
+            expect(config.kind).toBe('local');
+            expect(config.repo).toMatchObject({ kind: 'local', host: 'local', owner: 'local', name: 'widgets' });
+            expect(config.repo.url).toMatch(/[\\/]local[\\/]widgets-[0-9a-f]{12}\.git$/);
+            expect(config.repo.url.startsWith(join(ctx.stateDir, 'local'))).toBe(true);
+            expect(config.local).toEqual({ backlogDir: '.copilot/backlog', gateTimeoutMinutes: 20 });
+            expect(config.progress.stages).toEqual({});
+            expect(warnings).toEqual([]);
+        }
+    });
+    it('treats an unparseable origin (a local path, GitLab) as no origin to downgrade from', () => {
+        expect(resolveForgeConfig(undefined, undefined, local(), 'C:/repos/widgets.git', ctx).config.kind).toBe('local');
+        expect(resolveForgeConfig(undefined, undefined, local(), 'https://gitlab.com/acme/widgets.git', ctx).config.kind).toBe('local');
+    });
+    it('refuses a working-tree kind local over a GitHub or ADO origin (forge-mismatch)', () => {
+        expect(code(() => resolveForgeConfig(undefined, undefined, local(), GH, ctx))).toBe('forge-mismatch');
+        expect(code(() => resolveForgeConfig(undefined, undefined, local(), ADO, ctx))).toBe('forge-mismatch');
+    });
+    it('lets the user config or the base-committed file switch a GitHub/ADO repo to local, with a warning', () => {
+        for (const [user, base, origin] of [[local(), undefined, GH], [undefined, local(), GH], [local(), undefined, ADO]]) {
+            const { config, warnings } = resolveForgeConfig(user, base, undefined, origin, ctx);
+            expect(config.kind).toBe('local');
+            expect(config).not.toHaveProperty('azureDevOps');
+            expect(warnings).toEqual([expect.stringContaining('overrides the')]);
+        }
+    });
+    it('a trusted github kind still wins over a working-tree local (ignored with the usual warning)', () => {
+        const { config, warnings } = resolveForgeConfig(f({ forge: { kind: 'github' } }), undefined, local(), GH, ctx);
+        expect(config.kind).toBe('github');
+        expect(warnings).toEqual([expect.stringContaining('ignoring factory.forge from the working-tree')]);
+    });
+    it('without an origin and without kind local, says how to get the offline forge', () => {
+        for (const origin of [undefined, '']) {
+            let error;
+            try {
+                resolveForgeConfig(undefined, undefined, undefined, origin, ctx);
+            }
+            catch (err) {
+                error = err;
+            }
+            expect(error).toBeInstanceOf(ForgeConfigError);
+            expect(error.code).toBe('forge-unsupported');
+            expect(error.message).toContain('factory.forge.kind "local"');
+        }
+    });
+    it('needs the root and stateDir context for local', () => {
+        expect(code(() => resolveForgeConfig(local(), undefined, undefined, undefined))).toBe('invalid');
+    });
+    it('reads local.gate from the trusted layers only; a working-tree gate is ignored with a warning', () => {
+        const gate = ['npm', 'test'];
+        expect(resolveForgeConfig(local({ local: { gate } }), undefined, undefined, undefined, ctx).config.local?.gate).toEqual(gate);
+        expect(resolveForgeConfig(undefined, local({ local: { gate } }), undefined, undefined, ctx).config.local?.gate).toEqual(gate);
+        const wt = resolveForgeConfig(undefined, undefined, local({ local: { gate: ['node', 'evil.js'] } }), undefined, ctx);
+        expect(wt.config.local).not.toHaveProperty('gate');
+        expect(wt.warnings).toEqual([expect.stringContaining('ignoring factory.forge.local.gate')]);
+        // The same gate as the base-committed file is not a diff.
+        const same = resolveForgeConfig(undefined, local({ local: { gate } }), local({ local: { gate } }), undefined, ctx);
+        expect(same.config.local?.gate).toEqual(gate);
+        expect(same.warnings).toEqual([]);
+        // The user gate wins over the base gate.
+        expect(resolveForgeConfig(local({ local: { gate: ['make', 'check'] } }), local({ local: { gate } }), undefined, undefined, ctx).config.local?.gate).toEqual(['make', 'check']);
+    });
+    it('lets the working tree pick backlogDir and gateTimeoutMinutes (project -> user -> base)', () => {
+        const { config, warnings } = resolveForgeConfig(local({ local: { backlogDir: 'user/dir' } }), local({ local: { gateTimeoutMinutes: 5 } }), local({ local: { backlogDir: 'docs\\backlog\\' } }), undefined, ctx);
+        expect(config.local).toEqual({ backlogDir: 'docs/backlog', gateTimeoutMinutes: 5 });
+        expect(warnings).toEqual([]);
+    });
+    it.each([
+        ['an absolute backlogDir', { backlogDir: '/etc' }],
+        ['a drive backlogDir', { backlogDir: 'C:/x' }],
+        ['a .. backlogDir', { backlogDir: 'a/../b' }],
+        ['a .git backlogDir', { backlogDir: '.git/x' }],
+        ['a non-string backlogDir', { backlogDir: 3 }],
+        ['an empty gate', { gate: [] }],
+        ['a string gate', { gate: 'npm test' }],
+        ['a gate with a control character', { gate: ['npm', 'te\nst'] }],
+        ['gateTimeoutMinutes 0', { gateTimeoutMinutes: 0 }],
+        ['gateTimeoutMinutes 121', { gateTimeoutMinutes: 121 }],
+    ])('refuses %s', (_name, value) => {
+        expect(code(() => resolveForgeConfig(local({ local: value }), undefined, undefined, undefined, ctx))).toBe('invalid');
+    });
+    it('takes the local-backlog intake source and refuses it on GitHub', () => {
+        const intake = (source) => ({ factory: { forge: { kind: 'local' }, intake: { source } } });
+        expect(resolveForgeConfig(intake({ type: 'local-backlog' }), undefined, undefined, undefined, ctx).config.intake.source).toEqual({ type: 'local-backlog' });
+        expect(resolveForgeConfig(intake({ type: 'local-backlog', label: 'factory' }), undefined, undefined, undefined, ctx).config.intake.source).toEqual({ type: 'local-backlog', label: 'factory' });
+        expect(code(() => resolveForgeConfig(intake({ type: 'label', label: 'x' }), undefined, undefined, undefined, ctx))).toBe('invalid');
+        expect(code(() => resolveForgeConfig(f({ intake: { source: { type: 'local-backlog' } } }), undefined, undefined, GH))).toBe('invalid');
+    });
+    it('refuses progress stage mappings on local (the stage is recorded locally)', () => {
+        expect(code(() => resolveForgeConfig(f({ forge: { kind: 'local' }, progress: { stages: { done: { label: 'x' } } } }), undefined, undefined, undefined, ctx))).toBe('invalid');
+        expect(resolveForgeConfig(f({ forge: { kind: 'local' }, progress: { enabled: true } }), undefined, undefined, undefined, ctx).config.progress).toEqual({ enabled: true, stages: {} });
+    });
+    it('leaves the GitHub result unchanged when a local block is present but kind is not local', () => {
+        const plain = resolveForgeConfig(undefined, undefined, undefined, GH);
+        const withBlock = resolveForgeConfig(f({ forge: { local: { gate: ['npm', 'test'] } } }), undefined, undefined, GH);
+        expect(withBlock.config).toEqual(plain.config);
     });
 });
 //# sourceMappingURL=config.test.js.map

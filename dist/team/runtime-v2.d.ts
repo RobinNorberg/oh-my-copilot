@@ -19,7 +19,8 @@ import type { TeamConfig, TeamManifestV2, TeamInstanceId, TeamTask, TeamTaskDele
 import type { TeamPhase } from './phase-controller.js';
 import type { CliAgentType } from './model-contract.js';
 import { type StartupPaneActivity, type StartupInboxResubmitOutcome, type WorkerPaneLiveness } from './tmux-session.js';
-import { type PreservedWorktree } from './git-worktree.js';
+import { type LeaderInboxMessage } from './mailbox-outstanding.js';
+import { type PreservedWorktree, type TeamWorktreeMode } from './git-worktree.js';
 import type { CanonicalTeamRole, PluginConfig, RoleAssignment, TeamRoleAssignmentSpec } from '../shared/types.js';
 import { type CliWorkerOutputPayload } from './cli-worker-contract.js';
 import { type RecoveryDurableOutcome } from './recovery-request-store.js';
@@ -112,8 +113,12 @@ export interface TeamSnapshotV2 {
         in_progress: number;
         completed: number;
         failed: number;
+        /** Terminal: the owning SDK worker hit its credit cap. */
+        capped: number;
         items: TeamTask[];
     };
+    /** Worker messages to `leader-fixed` that nobody answered yet (oldest first). */
+    leaderInbox: LeaderInboxMessage[];
     allTasksTerminal: boolean;
     deadWorkers: string[];
     nonReportingWorkers: string[];
@@ -141,10 +146,20 @@ export type ShutdownTeamV2Result =
 {
     outcome: 'cleaned';
     preservedWorktrees?: PreservedWorktree[];
-} | {
+}
+/**
+ * `worktrees`: only for `worktrees_preserved`, the dirty or unsafe worker
+ * worktrees kept with the team state (commit or discard, then shut down again).
+ */
+ | {
     outcome: 'preserved';
     reason: 'config_missing_cleanup_evidence' | 'provider_cleanup_unverified' | 'worker_panes_alive' | 'worker_pane_liveness_unknown' | 'worker_process_reaped_pane_unconfirmed' | 'worktrees_preserved';
     workers: string[];
+    worktrees?: Array<{
+        workerName: string;
+        path: string;
+        reason: string;
+    }>;
 } | {
     outcome: 'failed';
     reason: 'tmux_cleanup_failed' | 'worktree_cleanup_failed' | 'state_cleanup_failed';
@@ -279,6 +294,8 @@ export interface SdkTeamSettings {
     launchConcurrency: number;
     /** `team.sdk.inProcessTools` / `OMC_TEAM_SDK_INPROCESS_TOOLS` (`1`/`true`, `0`/`false`). */
     inProcessTools: boolean;
+    /** `team.sdk.compactProtocol`: the compact worker protocol overlay for sdk workers. Default false. */
+    compactProtocol: boolean;
     denyTools: string[];
     denyUrls: string[];
 }
@@ -323,6 +340,28 @@ export declare function resolveTeamTransport(input: {
 export declare function runBoundedLaunches<J, R>(jobs: readonly J[], concurrency: number, launch: (job: J) => Promise<R>, record: (outcome: R) => void): Promise<{
     errors: unknown[];
 }>;
+/**
+ * SDK workers default to branch worktrees (`named`) when neither
+ * `OMC_TEAM_WORKTREE_MODE` nor `team.ops.worktreeMode` is set, so a headless
+ * worker never commits on the leader's branch. Pane teams and explicit
+ * settings are unchanged. A leader checkout that cannot host worktrees (no
+ * git repo or commit, or uncommitted changes) keeps the shared checkout and
+ * says why instead of failing the start.
+ */
+export declare function resolveSdkDefaultWorktreeMode(input: {
+    sdk: boolean;
+    explicit: unknown;
+    current: TeamWorktreeMode;
+    leader: () => 'ready' | 'not_git' | 'dirty';
+}): {
+    mode: TeamWorktreeMode;
+    notice?: string;
+};
+/**
+ * Default `team.sdk.maxCreditsPerWorker`: one measured small task costs 9-13
+ * AI credits, and the Copilot runtime floors `--max-ai-credits` at 30.
+ */
+export declare const DEFAULT_SDK_MAX_CREDITS_PER_WORKER = 50;
 export declare function resolveSdkTeamSettings(pluginCfg: PluginConfig): SdkTeamSettings;
 interface RecoveryOwnerFinalizationDeps {
     readRevisionedConfig: (teamName: string, cwd: string) => Promise<{
@@ -429,6 +468,13 @@ export interface CliWorkerVerdictResult {
  */
 export declare function processCliWorkerVerdicts(teamName: string, cwd: string, expectedInstanceId?: TeamInstanceId): Promise<CliWorkerVerdictResult[]>;
 /**
+ * `team.sdk.blockerTimeoutMinutes`: minutes a worker's `BLOCKER:` message to
+ * the leader may stay unanswered before the monitor fails the sender's
+ * in-progress task. Applies to sdk-transport teams only. Unset (the default)
+ * disables the timeout.
+ */
+export declare function resolveBlockerTimeoutMs(pluginCfg: PluginConfig): number | null;
+/**
  * Take a single monitor snapshot of team state.
  * Caller drives the loop (e.g., runtime-cli poll interval or event trigger).
  */
@@ -454,6 +500,10 @@ export declare function cleanupAbandonedTeamState(teamName: string, cwd: string)
  * 5. Clean up state
  */
 export declare function shutdownTeamV2(teamName: string, cwd: string, options?: ShutdownOptionsV2): Promise<ShutdownTeamV2Result>;
-export declare function resumeTeamV2(teamName: string, cwd: string): Promise<TeamRuntimeV2 | null>;
+export declare function resumeTeamV2(teamName: string, cwd: string, 
+/** Filled with why the team is not resumable, when the caller wants to say so. */
+diagnostics?: {
+    reason?: string;
+}): Promise<TeamRuntimeV2 | null>;
 export declare function findActiveTeamsV2(cwd: string): Promise<string[]>;
 //# sourceMappingURL=runtime-v2.d.ts.map

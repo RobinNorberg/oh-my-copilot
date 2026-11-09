@@ -4,6 +4,107 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+
+# oh-my-copilot v5.21.0
+
+## [5.21.0] - 2026-11-08
+
+Fork **v5.21.0** (from v5.19.7) adds offline mode for the software factory (the `local` forge), fixes the findings of two factory and team dogfood rounds, and ports oh-my-claudecode `27e7f235e..c5b71636e` in two steps (#440, #453). Version 5.19.8 was never published; its changes ship here.
+
+**Default changes.**
+- `team.sdk.maxCreditsPerWorker` now defaults to 50 (was 10).
+- When an SDK worker hits its credit cap, its in-progress task gets the new terminal status `capped` instead of staying `in_progress`.
+- SDK-transport teams use branch worktrees when neither `team.ops.worktreeMode` nor `OMC_TEAM_WORKTREE_MODE` is set.
+- Ship's prepare, in `omg ship prepare` and the factory engine, runs only the checks the target repository has, or the commands in `ship.prepare.checks`.
+- `factory.forge.kind: "local"` runs the factory offline, with no GitHub or Azure DevOps.
+- Exit codes: `omg factory run` exits 5 (was 1) when there is no usable forge. `omg team shutdown` exits 3 (was 1) when it keeps a dirty worker worktree. `omg factory setup` with no origin and no flags exits 5 (was 2). The local forge exits 2 on a missing base branch (check exited 0 before).
+
+### Added
+
+- **Offline factory: the `local` forge** (#442, #444, #446, #447, #448). `omg factory` runs without GitHub or Azure DevOps, using a committed backlog directory (`.copilot/backlog/<id>-<slug>.md` with frontmatter), a bare mirror the engine owns as the git remote `omg-local`, a local gate command (`factory.forge.local.gate`, recorded as the check `local-gate`) and a `git merge --no-ff` you run yourself. `omg factory setup --forge local` writes the config and a closed sample item. `check`, `board`, `enqueue` and `poll` work with no origin; `poll` syncs the mirror base fast-forward only each tick. Over a GitHub or Azure DevOps origin, `kind: "local"` counts only from the user config or the base-committed `.copilot/omg.jsonc`. `check`, `board` and `setup` print what offline mode does not do, and their JSON gains a top-level `limitations` array (empty on GitHub and Azure DevOps; schemaVersion stays 1). See [docs/FACTORY-OFFLINE.md](docs/FACTORY-OFFLINE.md).
+- **`capped` task status** (#445). When an SDK worker hits its credit cap, the leader's monitor marks its in-progress task `capped`, a terminal status, with the salvage path and branch of any uncommitted work in the task error. Status shows `capped=N` and `capped_task=` lines, and the new guidance `reassign-capped` says to reassign the work or raise the cap. Workers cannot set `capped`.
+- **Leader inbox** (#445). A worker that cannot proceed sends `BLOCKER: <what you need>` to `leader-fixed`. `omg team status` lists unanswered blockers as `leader_inbox:` lines (JSON `leader_inbox[]`), and the new guidance `answer-blocker` prints the reply command and outranks every other action. `team.sdk.blockerTimeoutMinutes` (teams with at least one SDK worker, default off) fails a task whose blocker stays unanswered.
+- **SDK launch progress** (#443, #445). While an SDK worker starts, stderr shows one line per launch phase, a heartbeat every 15 s and a final `ready in Ns (...)` breakdown.
+- **`team.sdk.compactProtocol`** (#443, #445). Opt-in (default off) compact worker protocol for SDK workers, about 40 lines instead of about 110. Measured saving: about 0.7 AI credits per worker session, about 10% of the first call only.
+- **Per-turn SDK usage** (#443). `sdk-session.json` records `turn_usage[]` per turn: calls, AI credits, tokens, cache reads and writes, and model.
+- **WinGet trust** (#443). The Copilot CLI installed by WinGet (`%LOCALAPPDATA%\Microsoft\WinGet\{Packages,Links}`, `%ProgramFiles%\WinGet\{Packages,Links}`) counts as a standard install location.
+- **`ship.prepare.checks`** (#449). An array of argv commands that ship's prepare runs instead of its built-in checks, for `omg ship prepare` and the factory engine (`[]` runs none). It is a safety key: read only from the user config or the base's committed `.copilot/omg.jsonc`. Commands run without a shell, and on Windows never as `.cmd` or `.bat`. `omg factory check` prints `prepare checks: ...` and its JSON gains `prepareChecks` (schemaVersion stays 1). A factory run records the checks at its first prepare and parks at the new gate `prepare-checks` when they change.
+- **`children-done`** (#450). `omg factory check` gives a spec whose children are all closed the reason `children-done` (blocked), on every forge. Before, such a spec became `runnable` again, so `run --next` could implement the whole spec.
+- **`omg factory run reset <n>`** (#451). On the local forge, starts a cancelled run over after `omg factory run clean <n>`. It closes the local PR if it is still open, keeps the run's mirror branch as `factory/cancelled/issue-<n>-<time>`, and moves the run state aside, so the next `omg factory run <n>` opens a new local PR. Before, a cancelled offline item could never run again.
+- **Gate-definition protection on the local forge** (#451). A head that changes the local gate's definition (its `package.json` script with `pre`/`post`, `.npmrc`, `.yarnrc`, `.yarnrc.yml`, `.pnpmfile.cjs`, the node script file, or an argv `--script-shell`, `--userconfig` or `--globalconfig` file inside the repository) parks at the new gate `gate-definition-changed` before any push. `omg factory run <n> --allow-gate-change` accepts exactly the parked definition, once. A gate whose definition cannot be read (no script, a workspace selector, a package-manager `exec`, `dlx`, `node` or `create` subcommand, a package directory outside the repository) parks at the new gate `gate-definition-unknown` before any lane starts.
+- **`gate:` line in `omg factory check`** (#451). On the local forge check prints `gate: ok`, `gate: unresolved (<why>)` or `gate: not set`, and its JSON gains `gate` (absent on GitHub and Azure DevOps; schemaVersion stays 1).
+- **New skills (port; 98 bundled now)** (#440, #453):
+  - PR care: `babysit`, `fix-ci`, `fix-merge-conflicts`, `get-pr-comments`.
+  - The pstack series, the panel, generator and utility suite, and the review-and-climb suite (`hillclimb`, `reflect`, `personal-mode`, `stacked-delivery`, …). See `docs/REFERENCE.md` "Skills (98 Total)".
+  - `statechart` (#453): checks a TLA+ model with TLC and draws it as a Mermaid statechart, with the shortest path to each state that breaks a rule. The first run installs TLC and Java with mise and needs the network.
+  - `ketchup-video` (#453): a `/ketchup` catch-up as a short subtitled slide video.
+  - Adapted for Copilot CLI:
+    - `arena` and `interrogate` start with a `copilot` seat, and `models` uses `omg config`.
+    - The verification skills write project skills to `.github/skills/`, which Copilot CLI loads; `reflect` writes to `.copilot/skills/<name>/`.
+    - `personal-mode` and `reflect` note that they read Claude Code transcripts.
+- **Verification ledger, watch-pr policy, playbook checker and credits registry** (#440, port of upstream #4578).
+- **HUD account element** (#440, port of upstream #4833). It shows the signed-in Claude Code account. It is opt-in, and hidden under Copilot CLI, which has no such account file.
+- **`omg team resume`** now resumes runtime v2 teams (#440, port of upstream #4821). An SDK-transport team counts as resumed only when a worker host is still alive; otherwise the command reports why.
+- **CI: Statechart suite (Node 24)** (#453). A dedicated job runs the whole statechart suite on Node 24, because Node 20 has no compile cache for the CLI test's per-case spawns. `omg ship` lists the check as advisory.
+- **Docs: `team.sdk.model` / `OMC_TEAM_SDK_MODEL`** (F17) is now documented in REFERENCE.md as the main cost lever for SDK workers.
+
+### Changed
+
+- **`team.sdk.maxCreditsPerWorker` defaults to 50** (#445), up from 10. One small measured task cost 9 to 13 AI credits, so 10 capped workers before they could commit. The runtime still gets `--max-ai-credits` of at least 30.
+- **SDK teams default to branch worktrees** (#445). With neither `OMC_TEAM_WORKTREE_MODE` nor `team.ops.worktreeMode` set, SDK workers get `omc-team/<team>/<worker>` worktrees instead of committing on the leader's branch. A dirty leader checkout keeps the shared checkout and says why. Pane teams and explicit settings are unchanged.
+- **Prepare runs only the checks the target repository has** (#449). With `ship.prepare.checks` unset, `tsc --noEmit` runs only when the base branch has `tsconfig.json` and `node_modules` has typescript, eslint only with an eslint config on the base and eslint in `node_modules`, the targeted vitest run only with vitest in `node_modules`, and each generator `--verify` script only when it exists. The inventory step runs only when the base has `scripts/generate-inventory-graph.mjs`. The markers are read at the base commit, never the PR: a check the base has whose file the PR deleted fails prepare, and a base that cannot be read fails the step `detect`. Before, prepare ran this repository's tsc and inventory scripts in any repository, so a factory run in another repository failed prepare.
+- **`omg ship prepare` honours `ship.prepare.checks`** (#449) and loads the trusted ship config first, so an invalid base `.copilot/omg.jsonc` stops it with the parse error.
+- **`omg factory run` exits 5 with `unsupported forge:`** (#446) when there is no usable forge, like `setup`, `check`, `board`, `enqueue` and `poll` (#444). Before, a missing origin exited 1.
+- **Every factory command's no-forge line starts with `unsupported forge:`** (#452), with the `omg factory setup --forge local` hint where it applies.
+- **`omg team shutdown` exits 3** (#445) when it keeps a worker worktree with uncommitted changes, and names each kept path. Other preserved outcomes still exit 1.
+- **`omg factory setup --forge local` writes `ship.base`** (#450) when no config names one: `dev` if that branch exists, else the current branch. It keeps a `ship.base` that is set and exits 2 when that value is not a plain branch name. Its notes now name the real base instead of `<base>`.
+- **The local forge exits 2 on a missing base branch** (#450). `omg factory check`, `board`, `poll` and `run --next` name `ship.base` in the message. Before, check exited 0 with `no items to check`.
+- **`factory.run.maxRunCredits` must be at least `laneMaxCredits` + 30** (#451). A run needs an implement and a review lane, so a run cap equal to the lane cap could never finish. The refusal shows the arithmetic, and the `budget` park names the config file to raise.
+- **Cancel closes the local PR** (#451). On the local forge a finished `omg factory run cancel` closes the local PR with reason `cancelled`. GitHub and Azure DevOps PRs are kept as before.
+- **`omg factory run --dry-run` reports `pr-exists` and probes the local gate** (#451). The dry run applies the `pr-exists` gate on every forge. On the local forge it reports a gate that cannot start (`plan.gateProblem`) or whose definition cannot be read, without running the gate.
+- **A local reopen needs a change of the `state:` line** (#452). A merged local item reopens only when a commit on the base after the merge changes its `state:` line. Other edits of the file, a merge commit, or a change before the merge keep it closed. Before, any later edit of the file reopened it.
+- **A local backlog item labelled `spec` is `needs-split`** (#452) until its tickets exist, like the GitHub label `epic`. A spec without the label stays runnable until it has children.
+- **Forge-neutral wording on the local forge** (#452). Lane prompts, the PR body, the run history and the dry run say backlog item, not issue or work item. `omg factory check --json` gives a local item's Acceptance section the `planSource` `backlog-acceptance`, and `omg factory enqueue --json` reports `spec.taskList` as `not-used`.
+- **The review prompt says the lane cannot run tests** (#452). The review lane's shell runs read-only commands only, and the gate runs the tests after review.
+- **`omg factory chain status` labels are English** (#446).
+- **The budget summary says when usage is past the soft limit** (#452).
+- **SessionEnd foreground budget on Claude Code** (#440, port of upstream #4845). It is now max(1000 ms, half the hook's manifest timeout), up from a fixed 300 ms, and orphaned session-end claims are recovered. Copilot CLI keeps its flat 1500 ms because it runs SessionEnd after every turn; `OMC_SESSION_END_BUDGET_MS` still overrides both. See `docs/HOOKS.md`.
+- **`arena`, `reflect`, `sharpen` and `interrogate` follow pstack v0.9.125** (#453). The fork keeps its own `personal-mode`, because the upstream sync moved its profile path to one the `skill` command does not scan.
+- **`tsx` is a runtime dependency** (#453), moved from devDependencies. The `statechart` launcher resolves it at run time on Node 20, which cannot strip types. `fast-check` is a new devDependency for the statechart tests.
+
+### Fixed
+
+- **F2:** a worker's blocker message to the leader is now visible in `omg team status` and guidance, instead of advice to launch a replacement team (#445).
+- **F3:** an SDK worker with `state=idle` counts as idle, not non-reporting, and a capped worker as neither, so guidance says `reuse-current-team` when it should (#445).
+- **F4:** the per-turn cost floor is measured per turn (`turn_usage`), and the compact protocol is available; the floor is the cold-cache first call of each new session (#443, #445).
+- **F5:** a capped task no longer stays `in_progress` forever; it becomes `capped` with a reassign recommendation (#445).
+- **F6:** `omg team shutdown` no longer needs `--force` when every task is terminal but some failed or were capped (#445).
+- **F7:** a shutdown that keeps a dirty worktree now names the workers and paths, exits 3 and reports the phase as completed or failed instead of `executing` (#445).
+- **F8:** `omg factory run --dry-run` no longer fetches, and a missing base branch says `base branch '<base>' not found; set ship.base in .copilot/omg.jsonc (branches here: ...)` (#446).
+- **F9:** the same exit code (5) for a missing forge across the factory commands (#444, #446).
+- **F10:** `omg factory setup` reports a missing or unsupported forge before it asks for `--intake` (#444).
+- **F11:** SDK workers no longer commit directly on the leader's branch by default (#445).
+- **F12:** SDK team starts show launch progress instead of 1-3 silent minutes (#443, #445).
+- **F13:** `omg factory status` no longer prints Chinese labels (#446).
+- **F14:** an SDK team start prints `transport: sdk (headless)` instead of `tmux session: sdk:<team>` (#445).
+- **F15:** a WinGet-installed `copilot` no longer triggers the non-standard path warning (#443).
+- **Factory prepare on Linux and macOS** (#449): the engine removes its `node_modules` symlink from the prepare checkout before it discards or cleans the checkout. Before, a repository whose `.gitignore` says `node_modules/` saw the link as untracked, so the second prepare failed with "could not discard the engine's prepare checkout" and `omg factory run clean` kept the checkout. Windows junctions were not affected.
+- **`omg factory run --next` on the local forge** (#450) no longer fails with `options.local.omgRoot is required`. It reads the local base like `check`, with no fetch, and committed backlog items only. `poll`'s `factory.intake.autoStart` works offline again.
+- **A merged local PR closes its backlog item** (#450) for `check`, dependencies and its spec, while the file still says `state: open`. Only the item's own PR merged into the current base counts, and a later commit on the base that changes the file's `state:` line reopens it (#452). `check`, `board`, `enqueue`, the run intake and the merged run name the file to set `state: closed` in.
+- **A local gate that never started can be fixed** (#451). The run records the gate argv when the gate first starts, so after an `awaiting-human: gates` park with "the local gate could not start", a corrected `factory.forge.local.gate` is adopted on the rerun.
+- **A user `git fetch` is no longer blamed on the review lane** (#451). A fetch that moves the run branch's tracking ref to the pushed head, or an `omg-local` tracking ref to the mirror's own sha, no longer parks the run at `review-tampered`, and the message no longer names the lane as the only suspect.
+- **The local merge command has `--no-edit`** (#452), so git opens no editor.
+- **An idle local `omg factory poll` tick skips the mirror fetch** (#452) when the mirror and the `omg-local` tracking ref already hold the local base.
+- **ci-fix on the local forge gets the gate's output** (#452). Before, a failed local gate reached the ci-fix lane with only the check name, under a prompt that said the failure came from CI on GitHub.
+- **The `omg-local` remote refusal names the planted value** (#450): a push url that is neither the mirror nor the remote url is reported as `pushes to <value>`, and the refusal lists one fix per cause (`git remote set-url`, `git config --unset-all remote.omg-local.pushurl`, or the `pushInsteadOf` key).
+- **Ported from upstream** (#440):
+  - Team: worktrees and branches that hold unmerged worker commits are kept. The fork reports them under `retained` with reason `worktree_unmerged_commits` (#4842).
+  - Ralph failure signatures ignore vitest's start clock and the Node warning process id (#4819, #4834).
+  - Jev uses the full effort range in model routing, consumes active-mode answers in plugin hooks, and maps the context-pruning staleness score (#4808, #4810, #4818, #4820).
+  - `.omc-config.json` rewrites keep unmanaged keys (#4843). A run awaiting confirmation is no longer flagged as crashed (#4799). cmux surface targets are no longer misclassified (#4817).
+  - Windows: the HUD npm-root fallback hides its console window, and the epic closure verifier runs (#4846, #4848). The task-size opt-out is read from `.copilot/omg.jsonc`.
+- **Statechart suite on Node 20** (#453, port): the suite's CLI spawns are loader-safe, and the CLI test budget scales for Node 20's uncached type stripping.
+
 # oh-my-copilot v5.19.7
 
 ## [5.19.7] - 2026-11-07

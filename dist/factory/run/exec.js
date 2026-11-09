@@ -31,9 +31,10 @@
  */
 import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { isAbsolute, join } from 'path';
+import { isAbsolute, join, resolve } from 'path';
 import { checkAdoCommand, isAdoCommand, runGuardedAdo } from '../../forge/ado/guard.js';
 import { isBodyFileIn, readTrackerBody } from '../../forge/body-file.js';
+import { LOCAL_REMOTE, STATE_CHANGE_LOG_FLAGS } from '../../forge/local/mirror.js';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV } from '../../ship/exec.js';
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
 export const FACTORY_BRANCH_PREFIX = 'factory/';
@@ -48,6 +49,8 @@ const NUMBER = /^\d+$/;
 const JSON_FIELDS = /^[A-Za-z]+(?:,[A-Za-z]+)*$/;
 const BRANCH = /^[\w.][\w./-]*$/;
 const REPO_PATH = /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/;
+/** A plain repo-relative path for the local backlog shapes, shared with the check guard: no `.` or `..` segment. */
+export const isPlainRepoPath = (p) => REPO_PATH.test(p) && !p.split('/').some((seg) => seg === '.' || seg === '..');
 export const FOR_EACH_REF_FORMAT = '--format=%(refname) %(objectname)';
 /** The local branch of the engine-owned prepare checkout (getBranchName(FACTORY_CHECKOUT_TEAM, `issue-<n>` or `heal-<sig8>`)). */
 const CHECKOUT_BRANCH = /^omc-team\/factory-run\/(?:issue-\d+|heal-[0-9a-f]{8})$/;
@@ -146,18 +149,124 @@ function isFactoryBranch(name, protectedBranches) {
     return isBranch(name) && name.startsWith(FACTORY_BRANCH_PREFIX) && name.length > FACTORY_BRANCH_PREFIX.length
         && !protectedBranches.some((b) => b.toLowerCase() === name.toLowerCase());
 }
+/** Same path, case-insensitively only where the file system usually is (Windows, macOS); both sides resolved. */
+export function sameFsPath(a, b) {
+    const x = resolve(a);
+    const y = resolve(b);
+    return process.platform === 'win32' || process.platform === 'darwin' ? x.toLowerCase() === y.toLowerCase() : x === y;
+}
+/** Exactly the engine-owned bare mirror of this run (`<stateDir>/local/<repo-id>.git`, localMirrorPath), as an absolute path. */
+function isMirrorPath(p, local) {
+    return isFile(p) && isAbsolute(p) && /[\\/]local[\\/][A-Za-z0-9_][A-Za-z0-9._-]*-[0-9a-f]{12}\.git$/.test(p)
+        && local !== undefined && sameFsPath(p, local.mirror);
+}
+/** The fetch refspec `git remote add omg-local` writes: the only one the engine accepts. */
+export const LOCAL_REMOTE_DEFAULT_FETCH = `+refs/heads/*:refs/remotes/${LOCAL_REMOTE}/*`;
+/**
+ * `git config --get-regexp` of the `omg-local` keys the engine checks:
+ * `vcs` hands the transport to a `git remote-<vcs>` helper (remote-ext runs
+ * a command), `mirror` turns a push into a mirror push, and a `fetch`
+ * refspec other than LOCAL_REMOTE_DEFAULT_FETCH could map a branch onto
+ * local refs: git moves the refs it maps to after a push to the remote or to
+ * its url (git 2.56 does that for a push to the mirror path too), and
+ * `--refmap=` covers fetches only.
+ */
+export const LOCAL_REMOTE_REFUSED_CONFIG_ARGS = ['config', '--get-regexp', `^remote\\.${LOCAL_REMOTE}\\.(vcs|mirror|fetch)$`];
+/** The refused `key=value`s in the output of LOCAL_REMOTE_REFUSED_CONFIG_ARGS: every vcs or mirror, and any fetch refspec but the default. */
+export function localRemoteRefusedKeys(stdout) {
+    const refused = stdout.split(/\r?\n/).map((l) => l.trim().split(/\s+/)).filter(([key]) => Boolean(key))
+        .filter(([key, ...value]) => !(key === `remote.${LOCAL_REMOTE}.fetch` && value.join(' ') === LOCAL_REMOTE_DEFAULT_FETCH))
+        .map(([key, ...value]) => `${key}=${value.join(' ')}`);
+    return [...new Set(refused)];
+}
+/**
+ * `git config -z --get-regexp` of every url rewrite (`url.<base>.insteadOf`
+ * / `pushInsteadOf`, any scope or include). A push names the mirror path
+ * itself (localTransportArgs), and git rewrites that literal string too: a
+ * rewrite whose value is a prefix of it sends the push elsewhere, and an
+ * identity `-c url.<mirror>.insteadOf=<mirror>` does not override a longer
+ * planted one. `-z`: a url subsection may contain spaces.
+ */
+export const URL_REWRITE_CONFIG_ARGS = ['config', '-z', '--get-regexp', '^url\\..*\\.(insteadof|pushinsteadof)$'];
+/**
+ * The `key=value`s in the output of URL_REWRITE_CONFIG_ARGS that would
+ * rewrite `mirror`: the value is a prefix of the mirror path in either slash
+ * form, case-insensitively on Windows and macOS. A key without a value counts
+ * (an empty prefix matches everything).
+ */
+export function mirrorRewriteKeys(stdout, mirror) {
+    const fold = (s) => (process.platform === 'win32' || process.platform === 'darwin' ? s.toLowerCase() : s);
+    const forms = [mirror, mirror.replace(/\\/g, '/'), mirror.replace(/\//g, '\\')].map(fold);
+    const refused = stdout.split('\0').filter(Boolean).map((rec) => {
+        const nl = rec.indexOf('\n');
+        return nl < 0 ? { key: rec, value: '' } : { key: rec.slice(0, nl), value: rec.slice(nl + 1) };
+    }).filter(({ value }) => forms.some((f) => f.startsWith(fold(value)))).map(({ key, value }) => `${key}=${value}`);
+    return [...new Set(refused)];
+}
+/**
+ * `git config -z --get-regexp` of every `remote.*` key, any scope or include.
+ * A push names the mirror path (localTransportArgs), and git first looks up a
+ * configured remote of exactly that name: POSIX git skips names that start
+ * with `/`, but a Windows path (`C:\...`) is found, so its `url` / `pushurl`
+ * redirect the push and its `receivepack` runs a command. Pinning
+ * `-c remote.<mirror>.receivepack` cannot cover every spelling of the name,
+ * so such a remote is refused instead (mirrorNamedRemoteKeys).
+ */
+export const REMOTE_CONFIG_ARGS = ['config', '-z', '--get-regexp', '^remote\\..*'];
+/**
+ * The `key=value`s in the output of REMOTE_CONFIG_ARGS whose remote NAME is
+ * a spelling of `mirror`: either slash form, a trailing or doubled slash, the
+ * `file://` form, case-insensitively on Windows and macOS.
+ */
+export function mirrorNamedRemoteKeys(stdout, mirror) {
+    const spelling = (s) => {
+        const p = s.replace(/\\/g, '/').replace(/^file:\/\//i, '').replace(/^\/(?=[A-Za-z]:)/, '').replace(/\/{2,}/g, '/').replace(/\/+$/, '');
+        return process.platform === 'win32' || process.platform === 'darwin' ? p.toLowerCase() : p;
+    };
+    const target = spelling(mirror);
+    const refused = stdout.split('\0').filter(Boolean).map((rec) => {
+        const nl = rec.indexOf('\n');
+        return nl < 0 ? { key: rec, value: '' } : { key: rec.slice(0, nl), value: rec.slice(nl + 1) };
+    }).filter(({ key }) => {
+        const dot = key.lastIndexOf('.');
+        return dot > 'remote.'.length && spelling(key.slice('remote.'.length, dot)) === target;
+    }).map(({ key, value }) => `${key}=${value}`);
+    return [...new Set(refused)];
+}
 /** Factory-only git shapes; null = not a factory shape (ship's allowlist decides), false = refused outright. */
-function factoryGit(a, protectedBranches) {
+function factoryGit(a, protectedBranches, extraProtected = [], local) {
     const [sub, ...r] = a;
+    const remote = r[0] === 'origin' || r[0] === LOCAL_REMOTE;
     switch (sub) {
         case 'push': {
-            const m = r.length === 2 && r[0] === 'origin' ? /^([0-9a-f]{40}):refs\/heads\/(.+)$/.exec(r[1]) : null;
-            return Boolean(m) && isFactoryBranch(m[2], protectedBranches);
+            // `omg factory run reset` on the local forge only: delete a factory branch of the engine-owned mirror,
+            // and only while it is still at the sha the reset read (a lease, never a plain force).
+            if (r.length === 3 && r[0] === LOCAL_REMOTE) {
+                const lease = /^--force-with-lease=refs\/heads\/(.+):([0-9a-f]{40})$/.exec(r[1]);
+                const del = /^:refs\/heads\/(.+)$/.exec(r[2]);
+                return Boolean(lease && del) && lease[1] === del[1] && isFactoryBranch(del[1], protectedBranches) && !extraProtected.includes(del[1]);
+            }
+            const m = r.length === 2 && remote ? /^([0-9a-f]{40}):refs\/heads\/(.+)$/.exec(r[1]) : null;
+            if (!m)
+                return false;
+            // The local forge's base sync: exactly the run's base (extraProtected) into the engine-owned mirror,
+            // fast-forward only (no `+`), and only the base commit the sync read (LocalGuardContext.baseSha).
+            if (r[0] === LOCAL_REMOTE && isBranch(m[2]) && extraProtected.includes(m[2]))
+                return local?.baseSha !== undefined && m[1] === local.baseSha;
+            return isFactoryBranch(m[2], protectedBranches);
         }
         case 'ls-remote': {
-            const m = r.length === 2 && r[0] === 'origin' ? /^refs\/heads\/(.+)$/.exec(r[1]) : null;
+            const m = r.length === 2 && remote ? /^refs\/heads\/(.+)$/.exec(r[1]) : null;
             return Boolean(m) && isFactoryBranch(m[1], protectedBranches);
         }
+        case 'init':
+            // The local forge's bare mirror, created once under the engine-owned forge state dir.
+            return r.length === 3 && same(r.slice(0, 2), ['--bare', '--quiet']) && isMirrorPath(r[2], local);
+        case 'remote':
+            // Registering that mirror as `omg-local` in the checkout; ship decides get-url, every other shape is refused there.
+            if (r[0] === 'add')
+                return r.length === 3 && r[1] === LOCAL_REMOTE && isMirrorPath(r[2], local);
+            return null;
         case 'rev-parse':
             if (same(r, ['--git-common-dir']) || same(r, ['--symbolic-full-name', 'HEAD']))
                 return true;
@@ -165,20 +274,37 @@ function factoryGit(a, protectedBranches) {
                 const m = /^([0-9a-f]{40}):(.+)$/.exec(r[1]);
                 if (m)
                     return REPO_PATH.test(m[2]) && !m[2].split('/').includes('..');
+                // The local forge's base: the local branch, fully qualified (a tag cannot shadow it).
+                const h = /^refs\/heads\/(.+)$/.exec(r[1]);
+                if (h)
+                    return isBranch(h[1]);
             }
             return null;
         case 'config':
             // The tamper check hashes the file core.excludesFile names; ship decides the rest.
+            if (same(a, [...LOCAL_REMOTE_REFUSED_CONFIG_ARGS]) || same(a, [...URL_REWRITE_CONFIG_ARGS]) || same(a, [...REMOTE_CONFIG_ARGS]))
+                return true;
             return same(r, ['--get', 'core.excludesFile']) ? true : null;
         case 'for-each-ref':
             return same(r, [FOR_EACH_REF_FORMAT]);
         case 'status':
             return same(r, ['--porcelain=v1', '-z', '--untracked-files=all']) ? true : null;
+        case 'log':
+            // The local forge: the last commit that changed one backlog file's state: line on the base (lastStateChangeArgs, F31 reopen).
+            return r.length === STATE_CHANGE_LOG_FLAGS.length + 3 && same(r.slice(0, STATE_CHANGE_LOG_FLAGS.length), [...STATE_CHANGE_LOG_FLAGS])
+                && /^[0-9a-f]{40}$/.test(r[STATE_CHANGE_LOG_FLAGS.length]) && r[STATE_CHANGE_LOG_FLAGS.length + 1] === '--'
+                && isPlainRepoPath(r[STATE_CHANGE_LOG_FLAGS.length + 2]) ? true : null;
         case 'diff':
             return r.length === 3 && r[0] === '--no-ext-diff' && r[1] === '--no-textconv' && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[2]) ? true : null;
         case 'ls-tree':
             // Two-axis review: the standards files on the base commit.
-            return r.length === 6 && same(r.slice(0, 3), ['-r', '-z', '--name-only']) && /^[0-9a-f]{40}$/.test(r[3]) && same(r.slice(4), ['--', 'docs/standards/']) ? true : null;
+            if (r.length === 6 && same(r.slice(0, 3), ['-r', '-z', '--name-only']) && /^[0-9a-f]{40}$/.test(r[3]) && same(r.slice(4), ['--', 'docs/standards/']))
+                return true;
+            // The local forge's backlog at the base commit (backlogListArgs): one plain repo directory, never `..`.
+            if (r.length === 5 && same(r.slice(0, 2), ['-z', '--name-only']) && /^[0-9a-f]{40}$/.test(r[2]) && r[3] === '--' && r[4].endsWith('/')) {
+                return isPlainRepoPath(r[4].slice(0, -1));
+            }
+            return null;
         case 'rev-list':
             // Publish check: the commits of the prepared head beyond the reviewed head and GitHub's base.
             return r.length === 3 && /^[0-9a-f]{40}$/.test(r[0]) && /^\^[0-9a-f]{40}$/.test(r[1]) && /^\^[0-9a-f]{40}$/.test(r[2]) ? true : null;
@@ -240,7 +366,7 @@ const adoRefusal = (cmd, args) => (reason) => new FactorySafetyError(`omg factor
  * which refuses them unless `ado` names the run's forge and az entry.
  * `writes` (enqueue only) adds the tracker write shapes.
  */
-export function assertFactoryCommand(cmd, args, extraProtected = [], env, ado, writes) {
+export function assertFactoryCommand(cmd, args, extraProtected = [], env, ado, writes, local) {
     if (isAdoCommand(cmd)) {
         checkAdoCommand(cmd, args, env, ado, 'factory', adoRefusal(cmd, args), writes);
         return;
@@ -249,7 +375,7 @@ export function assertFactoryCommand(cmd, args, extraProtected = [], env, ado, w
     const base = file.replace(/\.exe$/, '');
     const protectedBranches = [...PROTECTED_BRANCHES, ...extraProtected];
     const strings = args.every((x) => typeof x === 'string');
-    const verdict = !strings ? false : base === 'git' ? factoryGit(args, protectedBranches) : base === 'gh' ? factoryGh(args, writes) : null;
+    const verdict = !strings ? false : base === 'git' ? factoryGit(args, protectedBranches, extraProtected, local) : base === 'gh' ? factoryGh(args, writes) : null;
     if (verdict === false)
         throw new FactorySafetyError(`omg factory run refuses \`${file} ${args.join(' ')}\`: not one of the command shapes the factory engine runs`);
     if (verdict === true) {
@@ -272,13 +398,14 @@ export function assertFactoryCommand(cmd, args, extraProtected = [], env, ado, w
  * An `az devops invoke` write runs with the guard's own copy of its validated --in-file body,
  * and a tracker write (gh issue create/edit) with the guard's own copy of its checked --body-file.
  * `writes` is set only by `omg factory enqueue`: the tracker write shapes pass while it returns a context.
+ * `local` (the local forge only) binds the mirror init, the remote add and the base push to this run's mirror and synced base.
  */
-export function factoryGuardExec(exec, extraProtected = () => [], ado = () => undefined, writes = () => undefined) {
+export function factoryGuardExec(exec, extraProtected = () => [], ado = () => undefined, writes = () => undefined, local = () => undefined) {
     return (cmd, args, opts) => {
         if (isAdoCommand(cmd))
             return runGuardedAdo(exec, cmd, args, opts, ado(), 'factory', adoRefusal(cmd, args), writes());
         const ctx = writes();
-        assertFactoryCommand(cmd, args, extraProtected(), opts?.env, undefined, ctx);
+        assertFactoryCommand(cmd, args, extraProtected(), opts?.env, undefined, ctx, local());
         const at = ctx && cmd.replace(/\\/g, '/').split('/').pop().toLowerCase().replace(/\.exe$/, '') === 'gh' ? trackerBodyFileArg(args) : undefined;
         if (at === undefined)
             return exec(cmd, args, opts);
@@ -302,6 +429,39 @@ export function gitHardeningArgs(hooksDir) {
     return ['-c', `core.hooksPath=${hooksDir}`, '-c', 'core.fsmonitor=false', '-c', 'core.pager=cat', '-c', 'diff.external='];
 }
 /**
+ * Prepended to a transport command on the local forge's `omg-local` remote:
+ * the stock pack programs, so a `remote.omg-local.receivepack` or
+ * `uploadpack` planted in the checkout's .git/config never runs. Its url and
+ * every push url are compared with the exact mirror path before each fetch
+ * and push (localRemoteMismatch), so a planted pushurl or insteadOf refuses.
+ */
+export const LOCAL_REMOTE_PACK_ARGS = ['-c', `remote.${LOCAL_REMOTE}.receivepack=git-receive-pack`, '-c', `remote.${LOCAL_REMOTE}.uploadpack=git-upload-pack`];
+const onLocalRemote = (args) => (args[0] === 'push' || args[0] === 'fetch' || args[0] === 'ls-remote') && args[1] === LOCAL_REMOTE;
+/**
+ * The transport git really runs for an `omg-local` command. A fetch never
+ * uses the checkout's `remote.omg-local.fetch` refspec (`--refmap=`) or
+ * follows tags: a bare branch becomes the explicit
+ * `+refs/heads/<b>:refs/remotes/omg-local/<b>`, so only that tracking ref
+ * moves, never a planted destination such as `refs/heads/x/*`. A push names
+ * the mirror path itself (`mirror`), because a push through the named remote
+ * also moves the local refs that remote's fetch refspec maps the pushed
+ * branch to (an empty `-c remote.omg-local.fetch=` does not reset it).
+ * The remote's url and push urls, with insteadOf / pushInsteadOf applied,
+ * are checked to be that path before every push (localRemoteMismatch), so
+ * a rewrite that would apply to the path refuses first.
+ */
+export function localTransportArgs(args, mirror) {
+    if (args[0] === 'push' && args[1] === LOCAL_REMOTE) {
+        if (!mirror || !isAbsolute(mirror))
+            throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(' ')}\`: the local forge mirror path is unknown here`);
+        return ['push', mirror, ...args.slice(2)];
+    }
+    if (args[0] !== 'fetch' || args[1] !== LOCAL_REMOTE)
+        return [...args];
+    const refspecs = args.slice(2).map((a) => (isBranch(a) && !a.startsWith('refs/') ? `+refs/heads/${a}:refs/remotes/${LOCAL_REMOTE}/${a}` : a));
+    return ['fetch', '--no-tags', '--refmap=', LOCAL_REMOTE, ...refspecs];
+}
+/**
  * Run git with `core.hooksPath` set to an engine-owned empty directory and
  * `core.fsmonitor=false`, so no hook (pre-push, post-checkout,
  * reference-transaction) and no fsmonitor command runs in the engine.
@@ -317,8 +477,11 @@ export function gitHardeningArgs(hooksDir) {
  * the global one and every file a config includes are hashed into the lane
  * snapshot instead (review-guard.ts), so a lane that plants a helper,
  * sshCommand, pushInsteadOf or clean filter there parks the run.
+ *
+ * `localMirror` (the local forge) is the engine-owned mirror path a push on
+ * `omg-local` goes to (localTransportArgs).
  */
-export function hardenedGitExec(exec, hooksDir) {
+export function hardenedGitExec(exec, hooksDir, localMirror = () => undefined) {
     return (cmd, args, opts) => {
         const base = cmd.replace(/\\/g, '/').split('/').pop().toLowerCase().replace(/\.exe$/, '');
         if (base !== 'git')
@@ -326,7 +489,31 @@ export function hardenedGitExec(exec, hooksDir) {
         if (!existsSync(hooksDir) || readdirSync(hooksDir).length > 0) {
             throw new FactorySafetyError(`omg factory run refuses git: the engine's empty hooks directory ${hooksDir} is missing or not empty`);
         }
-        return exec(cmd, [...gitHardeningArgs(hooksDir), ...args], opts);
+        const hardening = gitHardeningArgs(hooksDir);
+        if (!onLocalRemote(args))
+            return exec(cmd, [...hardening, ...args], opts);
+        // vcs / mirror / a foreign fetch refspec change what the transport does: syncLocalMirror refuses them first (exit 5), this is the backstop.
+        const checked = exec(cmd, [...hardening, ...LOCAL_REMOTE_REFUSED_CONFIG_ARGS], { ...(opts?.cwd ? { cwd: opts.cwd } : {}), env: TRUSTED_READ_ENV });
+        const refused = checked.status > 1 ? ['a config git could not read'] : localRemoteRefusedKeys(checked.stdout);
+        if (refused.length > 0) {
+            throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(' ')}\`: the ${LOCAL_REMOTE} remote sets ${refused.join(', ')}; remove it (git config --unset)`);
+        }
+        // A url rewrite of the mirror path would send the transport elsewhere: syncLocalMirror refuses it first (exit 5).
+        const mirror = localMirror();
+        if (mirror) {
+            const rewrites = exec(cmd, [...hardening, ...URL_REWRITE_CONFIG_ARGS], { ...(opts?.cwd ? { cwd: opts.cwd } : {}), env: TRUSTED_READ_ENV });
+            const rewritten = rewrites.status > 1 ? ['a config git could not read'] : mirrorRewriteKeys(rewrites.stdout, mirror);
+            if (rewritten.length > 0) {
+                throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(' ')}\`: the git config rewrites the local forge mirror ${mirror} (${rewritten.join(', ')}); remove it (git config --unset)`);
+            }
+            // A remote named after the mirror path would take over the push to it (Windows git): syncLocalMirror refuses it first (exit 5).
+            const remotes = exec(cmd, [...hardening, ...REMOTE_CONFIG_ARGS], { ...(opts?.cwd ? { cwd: opts.cwd } : {}), env: TRUSTED_READ_ENV });
+            const named = remotes.status > 1 ? ['a config git could not read'] : mirrorNamedRemoteKeys(remotes.stdout, mirror);
+            if (named.length > 0) {
+                throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(' ')}\`: the git config has a remote named after the local forge mirror ${mirror} (${named.join(', ')}); remove it (git config --remove-section)`);
+            }
+        }
+        return exec(cmd, [...hardening, ...LOCAL_REMOTE_PACK_ARGS, ...localTransportArgs(args, mirror)], opts);
     };
 }
 //# sourceMappingURL=exec.js.map

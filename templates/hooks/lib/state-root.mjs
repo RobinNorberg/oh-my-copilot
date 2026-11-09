@@ -140,7 +140,18 @@ export async function resolveOmcStateRoot(directory) {
   const workspaceRoot = findWorkspaceRoot(directory);
   if (workspaceRoot && isSafeWorkspaceRoot(workspaceRoot)) return join(workspaceRoot, '.omg');
   const gitRoot = probeGitRoot(directory);
-  if (gitRoot) return join(gitRoot, '.omg');
+  if (gitRoot) {
+    // Mirror the canonical resolver: a Git submodule's state lives in the
+    // superproject's .omg, not the submodule checkout. The inline fallback
+    // otherwise returns <superproject>/sub/.omg where getOmcRoot returns
+    // <superproject>/.omg, splitting the state tree.
+    let top = gitRoot;
+    try {
+      const superproject = execFileSync('git', ['rev-parse', '--show-superproject-working-tree'], { cwd: gitRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000, env: gitEnv() }).trim();
+      if (superproject) top = superproject;
+    } catch {}
+    return join(top, '.omg');
+  }
   const home = resolve(homedir());
   return join(home, '.omg');
 }

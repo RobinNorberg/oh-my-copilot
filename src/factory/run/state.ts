@@ -30,6 +30,7 @@ import type { CopilotRunSandboxState } from '../../copilot-run/sandbox.js';
 import { sameRepo } from '../../ship/config.js';
 import type { ShipVerdict } from '../../ship/state.js';
 import { PROGRESS_STAGES, type ForgeKind, type ProgressStage } from '../../forge/types.js';
+import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 
 export const FACTORY_PHASES = [
   'intake', 'plan', 'implement', 'publish', 'review', 'fix', 'prepare', 'conflict-fix', 'gates', 'ci-fix', 'merge', 'merged', 'cancelled', 'failed',
@@ -89,6 +90,11 @@ export interface FactoryGate {
   name: string;
   reason: string;
   at: string;
+  /**
+   * gate-definition-changed only: the sha256 of the parked head's gate
+   * definition, the one definition `--allow-gate-change` may accept.
+   */
+  definition?: string;
 }
 
 export interface FactoryFinding {
@@ -108,7 +114,7 @@ export interface FactoryCiFailure {
   checks: string[];
   /** Failing test titles (`file > title`) read from the failed jobs' logs. */
   tests: string[];
-  /** The failed prepare step's output tail. */
+  /** The output tail: the failed prepare step's, or the local gate's (F43). */
   detail?: string;
 }
 
@@ -159,6 +165,33 @@ export interface FactoryRunState {
    * integrity seal still verifies.
    */
   forgeKind?: ForgeKind;
+  /**
+   * The git remote the run fetches from and pushes to. Absent = `origin`
+   * (every GitHub and Azure DevOps run, and states written before the local
+   * forge, whose seal still verifies); `omg-local` = the local forge's
+   * engine-owned bare mirror. Sealed at creation, never changed.
+   */
+  remote?: typeof LOCAL_REMOTE;
+  /**
+   * The local forge only: the factory.forge.local.gate argv this run first
+   * ran its gate with. Every later gate run must find the same argv in the
+   * trusted config (local-gate.ts assertLocalGateCommand); absent until then.
+   */
+  localGate?: string[];
+  /**
+   * The local forge only: the sha256 of the gate definition (local-gate.ts
+   * gateDefinition) a human accepted with `omg factory run
+   * --allow-gate-change` after the run parked at gate-definition-changed on
+   * it. A head whose definition hashes to it is not parked again; any other
+   * change is.
+   */
+  gateChangeApproved?: string;
+  /**
+   * The trusted ship.prepare.checks this run first prepared with (`auto` =
+   * unset, the built-ins the base has). Every later prepare must resolve the
+   * same value; a change mid-run parks at prepare-checks. Absent until then.
+   */
+  prepareChecks?: string[][] | 'auto';
   repoUrl: string;
   base: string;
   branch: string;
@@ -274,13 +307,14 @@ export function shipVerdictHash(v: Pick<ShipVerdict, 'reviewer' | 'verdict' | 's
   return createHash('sha256').update(JSON.stringify([v.reviewer, v.verdict, v.sha, v.at, v.notes ?? null])).digest('hex');
 }
 
-export function createFactoryState(input: { issue: number; repoUrl: string; base: string; heal?: FactoryHealRecord }, now: string): FactoryRunState {
+export function createFactoryState(input: { issue: number; repoUrl: string; base: string; heal?: FactoryHealRecord; remote?: typeof LOCAL_REMOTE; itemNoun?: string }, now: string): FactoryRunState {
   const key = input.heal ? healRunKey(input.heal.sig8) : input.issue;
   return {
     version: 1,
     kind: input.heal ? 'ci-heal' : 'issue',
     issue: input.heal ? 0 : input.issue,
     ...(input.heal ? { heal: input.heal } : {}),
+    ...(input.remote ? { remote: input.remote } : {}),
     repoUrl: input.repoUrl,
     base: input.base,
     branch: factoryBranch(key),
@@ -291,7 +325,7 @@ export function createFactoryState(input: { issue: number; repoUrl: string; base
     lostStreak: {},
     elapsedMs: 0,
     ciFixRounds: 0,
-    history: [{ at: now, from: null, to: 'intake', note: input.heal ? `ci-heal for CI signature ${input.heal.sig8}` : `issue #${input.issue}` }],
+    history: [{ at: now, from: null, to: 'intake', note: input.heal ? `ci-heal for CI signature ${input.heal.sig8}` : `${input.itemNoun ?? 'issue'} #${input.issue}` }],
     createdAt: now,
     updatedAt: now,
   };
@@ -307,10 +341,10 @@ export function moveTo(state: FactoryRunState, to: FactoryPhase, note: string, n
 }
 
 /** Park at a named human gate; the phase stays so a rerun re-evaluates it. */
-export function setGate(state: FactoryRunState, name: string, reason: string, now: string): FactoryRunState {
+export function setGate(state: FactoryRunState, name: string, reason: string, now: string, extra: Pick<FactoryGate, 'definition'> = {}): FactoryRunState {
   return {
     ...state,
-    gate: { name, reason, at: now },
+    gate: { name, reason, at: now, ...extra },
     updatedAt: now,
     history: [...state.history, { at: now, from: state.phase, to: state.phase, note: `awaiting-human: ${name}: ${reason}` }],
   };
@@ -359,7 +393,13 @@ export function forgeResumeProblem(state: Pick<FactoryRunState, 'forgeKind' | 'i
   return null;
 }
 
+/** The git remote of a run: `origin` unless the state seals the local forge's `omg-local`. */
+export function runRemote(state: Pick<FactoryRunState, 'remote'>): string {
+  return state.remote ?? 'origin';
+}
+
 const isStr = (v: unknown): v is string => typeof v === 'string';
+const HEX64 = /^[0-9a-f]{64}$/;
 const isCount = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
 
 function shapeProblem(s: Record<string, unknown>): string | null {
@@ -367,7 +407,14 @@ function shapeProblem(s: Record<string, unknown>): string | null {
   if (!FACTORY_PHASES.includes(s.phase as FactoryPhase)) return 'phase';
   if (!isStr(s.implementer) || !s.implementer) return 'implementer';
   if (s.kind !== undefined && s.kind !== 'issue' && s.kind !== 'ci-heal') return 'kind';
-  if (s.forgeKind !== undefined && s.forgeKind !== 'github' && s.forgeKind !== 'azure-devops') return 'forgeKind';
+  if (s.forgeKind !== undefined && s.forgeKind !== 'github' && s.forgeKind !== 'azure-devops' && s.forgeKind !== 'local') return 'forgeKind';
+  // The remote follows the forge: omg-local exactly on a local run, absent (origin) on every other.
+  if (s.remote !== undefined ? s.remote !== LOCAL_REMOTE || s.forgeKind !== 'local' : s.forgeKind === 'local') return 'remote';
+  if (s.localGate !== undefined && (s.forgeKind !== 'local' || !Array.isArray(s.localGate) || s.localGate.length === 0 || !s.localGate.every(isStr))) return 'localGate';
+  if (s.gateChangeApproved !== undefined && (s.forgeKind !== 'local' || !isStr(s.gateChangeApproved) || !HEX64.test(s.gateChangeApproved))) return 'gateChangeApproved';
+  const gateDef = (s.gate as { definition?: unknown } | undefined)?.definition;
+  if (gateDef !== undefined && (s.forgeKind !== 'local' || !isStr(gateDef) || !HEX64.test(gateDef))) return 'gate.definition';
+  if (s.prepareChecks !== undefined && s.prepareChecks !== 'auto' && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr)))) return 'prepareChecks';
   if (s.trackerStage !== undefined && !(PROGRESS_STAGES as readonly unknown[]).includes(s.trackerStage)) return 'trackerStage';
   if (s.kind === 'ci-heal') {
     const h = s.heal as Record<string, unknown> | undefined;

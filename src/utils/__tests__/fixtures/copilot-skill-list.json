@@ -216,6 +216,10 @@
     "source": "plugin"
   },
   {
+    "name": "statechart",
+    "source": "plugin"
+  },
+  {
     "name": "skill",
     "source": "plugin"
   },
@@ -257,6 +261,142 @@
   },
   {
     "name": "psm",
+    "source": "plugin"
+  },
+  {
+    "name": "architect",
+    "source": "plugin"
+  },
+  {
+    "name": "arena",
+    "source": "plugin"
+  },
+  {
+    "name": "babysit",
+    "source": "plugin"
+  },
+  {
+    "name": "benchmark-checklist",
+    "source": "plugin"
+  },
+  {
+    "name": "blast-radius",
+    "source": "plugin"
+  },
+  {
+    "name": "bro",
+    "source": "plugin"
+  },
+  {
+    "name": "correct",
+    "source": "plugin"
+  },
+  {
+    "name": "create-formal-verification-skill",
+    "source": "plugin"
+  },
+  {
+    "name": "create-verification-skill",
+    "source": "plugin"
+  },
+  {
+    "name": "figure-it-out",
+    "source": "plugin"
+  },
+  {
+    "name": "fix-ci",
+    "source": "plugin"
+  },
+  {
+    "name": "fix-merge-conflicts",
+    "source": "plugin"
+  },
+  {
+    "name": "get-pr-comments",
+    "source": "plugin"
+  },
+  {
+    "name": "hillclimb",
+    "source": "plugin"
+  },
+  {
+    "name": "how",
+    "source": "plugin"
+  },
+  {
+    "name": "in-your-own-words",
+    "source": "plugin"
+  },
+  {
+    "name": "interrogate",
+    "source": "plugin"
+  },
+  {
+    "name": "ketchup",
+    "source": "plugin"
+  },
+  {
+    "name": "ketchup-video",
+    "source": "plugin"
+  },
+  {
+    "name": "maintain-formal-verification-skill",
+    "source": "plugin"
+  },
+  {
+    "name": "maintain-verification-skill",
+    "source": "plugin"
+  },
+  {
+    "name": "models",
+    "source": "plugin"
+  },
+  {
+    "name": "personal-mode",
+    "source": "plugin"
+  },
+  {
+    "name": "principles",
+    "source": "plugin"
+  },
+  {
+    "name": "recall",
+    "source": "plugin"
+  },
+  {
+    "name": "reflect",
+    "source": "plugin"
+  },
+  {
+    "name": "sharpen",
+    "source": "plugin"
+  },
+  {
+    "name": "show-me-your-work",
+    "source": "plugin"
+  },
+  {
+    "name": "stacked-delivery",
+    "source": "plugin"
+  },
+  {
+    "name": "teach",
+    "source": "plugin"
+  },
+  {
+    "name": "technical-writing",
+    "source": "plugin"
+  },
+  {
+    "name": "typescript-best-practices",
+    "source": "plugin"
+  },
+  {
+    "name": "what-did-i-get-done",
+    "source": "plugin"
+  },
+  {
+    "name": "why",
     "source": "plugin"
   }
 ]

@@ -113,8 +113,8 @@ describe('readChainStatus', () => {
       expect.objectContaining({ chainLink: link2, stage: 'link-2', parentLink: link1, hostSessionId: 'host-2', decision: 'chain-loop-capped' }),
     ]);
     const text = renderChainStatus(status);
-    expect(text).toContain(`环 1 link-1 [copilot] link=${link1} 已结束 success→enqueued session=host-1`);
-    expect(text).toContain(`环 2 link-2 [copilot] link=${link2} 已结束 success→chain-loop-capped session=host-2`);
+    expect(text).toContain(`link 1 link-1 [copilot] link=${link1} ended success→enqueued session=host-1`);
+    expect(text).toContain(`link 2 link-2 [copilot] link=${link2} ended success→chain-loop-capped session=host-2`);
   });
 
   it('counts only open ledgers as active and shows them running', () => {
@@ -125,7 +125,14 @@ describe('readChainStatus', () => {
     writeFileSync(join(factoryDir, `chain-${open}.json`), JSON.stringify({ intentId: 'intent-d', stage: 'spec', host: 'copilot' }), 'utf8');
     const status = readChainStatus(dir);
     expect(status.activeLedgers).toBe(1);
-    expect(renderChainStatus(status)).toContain(`环 1 spec [copilot] link=${open} 运行中`);
+    expect(renderChainStatus(status)).toContain(`link 1 spec [copilot] link=${open} running`);
+    // F13: the labels are English (they came in Chinese with upstream port v5.6.0).
+    const text = renderChainStatus(status);
+    expect(text).not.toMatch(/[\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]/);
+    expect(text).toContain(`chain status ${dir}`);
+    expect(text).toContain('route table (.omg/factory-routes.json, single authority): ');
+    expect(text).toContain('active ledgers: 1');
+    expect(text).toContain('stalled links (no progress for 30 min): ');
   });
 
   it('lists the project route table keys as the single authority', () => {

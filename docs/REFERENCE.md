@@ -2,7 +2,7 @@
 
 Complete reference for oh-my-copilot. For quick start, see the main [README.md](../README.md).
 
-For v5.12.1, the plugin ships 20 agents, 63 skills, 21 command files, and one configured MCP server exposing exactly 56 tools.
+For v5.12.1, the plugin ships 20 agents, 98 skills, 21 command files, and one configured MCP server exposing exactly 56 tools.
 
 ---
 
@@ -16,7 +16,7 @@ For v5.12.1, the plugin ships 20 agents, 63 skills, 21 command files, and one co
 - [Legacy MCP Team Runtime Tools (Deprecated)](#legacy-mcp-team-runtime-tools-deprecated-opt-in-only)
 - [Agents (20 Total)](#agents-20-total)
 - [Goal Workflow UX: `/goal`, Ralph, Team, Ultragoal](#goal-workflow-ux-goal-ralph-team-ultragoal)
-- [Skills (63 Total)](#skills-63-total)
+- [Skills (98 Total)](#skills-98-total)
 - [Slash Commands](#slash-commands)
 - [Shipyard Methodology](./shipyard.md) — governed delivery & shared harness map
 - [Claude Code `/goal` Adapter Design](#claude-code-goal-adapter-design)
@@ -652,6 +652,40 @@ text, with `ok: false` when no team state is found. `--json` can appear before o
 after the team name and is never mistaken for one; when the team name is omitted
 and exactly one team is active, it is resolved automatically.
 
+**Worker blockers and the leader inbox.** A worker that cannot proceed sends
+`BLOCKER: <what you need>` to `leader-fixed` and waits for the reply. Only a
+message whose body starts with `BLOCKER:` (case-insensitive) counts; ACKs and
+progress reports do not. `omg team status` prints each undelivered blocker that
+has no later leader reply to its sender as
+`leader_inbox: <from> <at> "<first 200 chars>"`, oldest first, and `--json` lists
+them in `leader_inbox: [{ message_id, from, at, body }]`. Reply with
+`omg team api send-message --input '{"team_name":"<team>","from_worker":"leader-fixed","to_worker":"<worker>","body":"<answer>"}' --json`.
+
+**Capped tasks.** `capped` is a terminal task status: the leader's monitor sets
+it when an SDK worker hits its credit cap. Workers cannot set it
+(`transition-task-status` refuses `to=capped`), and it is never retried. The task
+error reads `sdk_credit_cap (<reason>); salvage: uncommitted work, if any, is in
+<path> (branch <branch>)`. Status prints `capped=N` on the tasks line and one
+`capped_task=task-<id> owner=<worker> error="..."` line per capped task; `--json`
+adds `tasks.capped` and `workers_capped`. A capped SDK worker counts as neither
+idle nor non-reporting, and an SDK worker with `state=idle` and nothing queued
+counts as idle. To continue the work, create a new task or team, or raise
+`team.sdk.maxCreditsPerWorker` and relaunch.
+
+**Leader guidance.** `leader_next_action` is the first that applies:
+
+| Action | When |
+|---|---|
+| `answer-blocker` | A worker's `BLOCKER:` message is unanswered while tasks are active. Read `leader_inbox` and reply with the `send-message` command above |
+| `reassign-capped` | A task is `capped`. Reassign the work, or raise `team.sdk.maxCreditsPerWorker` |
+| `shutdown` | No task is active |
+| `launch-new-team` | No worker is alive |
+| `reuse-current-team` | Every alive worker is idle |
+| `launch-new-team` | Every alive worker is non-reporting |
+| `keep-checking-status` | Workers are still active |
+
+The leader nudge hook also flags an unread inbox (`leader_inbox_unread`).
+
 Startup reserves the team name for an immutable instance. Shutdown and job cleanup
 require matching instance and worker-launch evidence; `--force` skips graceful
 waits but does not bypass ownership checks. Missing or corrupt evidence preserves
@@ -664,7 +698,7 @@ delegating instance-bound shutdown.
 Tmux effects require the original socket and precise server process identity;
 reused pane IDs after a server restart do not grant ownership.
 
-Native team worker worktrees are an opt-in/config-gated runtime-v2 rollout. See [Native Team Worktree Mode](TEAM-WORKTREE-MODE.md) for the worktree path contract, canonical `OMC_TEAM_STATE_ROOT` behavior, status fields, and dirty-worktree cleanup policy.
+Native team worker worktrees are opt-in for pane teams. SDK-transport teams use branch worktrees by default when neither `OMC_TEAM_WORKTREE_MODE` nor `team.ops.worktreeMode` is set. See [Native Team Worktree Mode](TEAM-WORKTREE-MODE.md) for the worktree path contract, canonical `OMC_TEAM_STATE_ROOT` behavior, status fields, and dirty-worktree cleanup policy.
 
 Topology behavior:
 
@@ -737,7 +771,9 @@ Pane workers are not sandboxed; their env is hygiene, not a boundary.
 
 `auto` never fails a start the sdk transport would reject. It falls back to `pane` and prints the reason on stderr (`[omg team] transport auto: using pane workers, not sdk (<reason>)`) for `--auto-merge`, a non-copilot worker, an explicitly assigned reviewer-contract role, or `@github/copilot-sdk` not installed. An explicit `--transport sdk` still rejects those. Programmatic `startTeamV2` callers and the `omc team` job runner keep the `pane` default.
 
-**Launch.** SDK hosts start concurrently, up to `team.sdk.launchConcurrency` at once (default 4, a positive integer; env `OMC_TEAM_SDK_LAUNCH_CONCURRENCY`; 1 restores serial launch). Each launch still waits for its own worker's task claim. A worker whose launch fails is a startup failure of that worker only. A launch whose cleanup cannot be verified stops further launches, lets the running ones finish, and rolls the team back. The start prints `[omg team] sdk workers launched: N in X ms` on stderr.
+**Launch.** SDK hosts start concurrently, up to `team.sdk.launchConcurrency` at once (default 4, a positive integer; env `OMC_TEAM_SDK_LAUNCH_CONCURRENCY`; 1 restores serial launch). Each launch still waits for its own worker's task claim. A worker whose launch fails is a startup failure of that worker only. A launch whose cleanup cannot be verified stops further launches, lets the running ones finish, and rolls the team back. The start prints `[omg team] sdk workers launched: N in X ms` on stderr, and the start summary says `transport: sdk (headless)` instead of a tmux session. While a worker starts, stderr gets one line per launch phase (`[omg team] worker-1: 18s, session created`; the phases are host started, runtime started, session created, bootstrap sent, first turn started), a heartbeat every 15 s, and then `ready in Ns (runtime ..., session ..., bootstrap ..., first turn ..., first reply ...)` or `host failed after Ns: <error>`.
+
+**Worktrees.** With neither `OMC_TEAM_WORKTREE_MODE` nor `team.ops.worktreeMode` set, sdk workers get branch worktrees (`omc-team/<team>/<worker>`) and stderr says `[omg team] sdk workers use branch worktrees (set team.ops.worktreeMode to change)`. If the leader checkout has uncommitted changes, the team keeps the shared checkout and says why; outside a git repository or before the first commit it keeps the shared checkout silently. See [Native Team Worktree Mode](TEAM-WORKTREE-MODE.md).
 
 **In-process tools.** `team.sdk.inProcessTools: true` (env `OMC_TEAM_SDK_INPROCESS_TOOLS=1`/`true` or `0`/`false`; default `false`) runs the plugin MCP tools inside each sdk host instead of a `t` MCP server per worker. Tool names, schemas and results are unchanged. It saves one node process per worker, not start time; see [DEVELOPERS.md](./DEVELOPERS.md#sdk-in-process-tools).
 
@@ -746,6 +782,8 @@ Pane workers are not sandboxed; their env is hygiene, not a boundary.
 **One team per leader session.** The `one_team_per_leader_session` guard counts an sdk team as live while any of its hosts is: its session file belongs to the worker's current launch attempt and is not `closed`/`failed`, and the host pid still has the process start identity recorded in the attempt's `provider-started.json`. A crashed host whose pid was reused does not block a new team.
 
 **Worker commits at shutdown.** Workers often commit in their worktrees, and the sdk transport has no `--auto-merge`. `omg team shutdown` keeps a clean worker worktree whose HEAD has commits the leader HEAD does not contain, along with its `omc-team/<team>/<worker>` branch in named mode. The shutdown still succeeds and disposes the team state. stderr names each kept path, branch and commit count, and `omg team status <team> --json` then answers `ok: false` with a `preserved_worktrees` list. Merge or cherry-pick the commits, then `git worktree remove` the path. Untracked files under the worktree's `.omg/state/` are runtime state and never keep a worktree; anything else untracked, including `.omg/skills/`, `.omg/plans/` or `.omg/notepad.md`, does.
+
+**Shutdown outcomes.** A team whose tasks are all terminal shuts down without `--force`, also when some are `failed` or `capped`; it prints `shutdown with N failed or capped task(s): task-2 (failed) task-3 (capped)` and exits 0. A worker worktree with uncommitted changes is kept: shutdown prints one `preserved_worktree=<path> worker=<worker> reason=<reason>` line per worktree to stderr, then `Team shutdown preserved: <team> kept N worker worktree(s) with uncommitted changes (workers: ...). Commit or discard the changes, then run omg team shutdown <team>.`, keeps the team state and exits **3**. Other preserved outcomes exit 1, as before.
 
 - **No allow-all.** The host answers every permission request. Writes are allowed only inside the worker's worktree and the team state root. Reads also allow the plugin root. MCP calls are allowed only to the plugin server.
 - **The shell policy is a denylist, not a sandbox.** It rejects team control other than `team api`, `omg smoke`, `tmux`/`psmux` and `git push`, git aliases and includes (`git -c alias.*`, `--config-env`, `git config alias.*`) and `GIT_CONFIG_*` env overrides, plus `shell(<prefix>)` entries of `workerDenyTools`, including quoted spellings such as `"omg" team shutdown`. A command built indirectly (a script file, `Invoke-Expression`, an encoded command, a shell escape) is not caught. Treat the write-path check, the credit cap and the per-worker `COPILOT_HOME` as the boundaries. This holds for team workers, which are not OS-sandboxed. `copilot_run` jobs and `omg factory run` lanes add the OS sandbox: see [Sandboxed lanes](#sandboxed-lanes).
@@ -769,7 +807,11 @@ Pane workers are not sandboxed; their env is hygiene, not a boundary.
   - **The leader's settings.** The leader's `COPILOT_HOME` and `COPILOT_MODEL` never replace the worker's own home or its `--model`.
   - **Denied commands.** The shell denylist also refuses `git credential fill`/`approve`/`reject`, `git config … extraheader`, `gh auth token`, `gh auth git-credential`, `gh auth status -t`/`--show-token` and `az account get-access-token`. A helper such as `-c credential.helper=!gh auth git-credential` is already refused by the `-c credential.*` rule.
 - **Sub-agent tools are removed**: `task`, `run_dynamic_workflow`, `dynamic_workflows_manage`, `write_agent`, `read_agent`, `list_agents`, `search_code_subagent` and the plugin's `host_smoke` and `copilot_run_*` tools.
-- **Credit cap.** `team.sdk.maxCreditsPerWorker` (default 10, must be a positive number; env `OMC_TEAM_SDK_MAX_CREDITS`) is enforced by the host: at the cap it aborts the turn and takes no more prompts, and `omg team status` shows the worker as `capped` with a reassign recommendation.
+- **Credit cap.** `team.sdk.maxCreditsPerWorker` (default **50**, must be a positive number; env `OMC_TEAM_SDK_MAX_CREDITS`) is enforced by the host: at the cap it aborts the turn and takes no more prompts. The runtime itself gets `--max-ai-credits` of at least 30, the Copilot CLI minimum. The monitor marks the worker's in-progress task `capped` with the salvage path, and `omg team status` recommends `reassign-capped`. One small measured task cost 9 to 13 credits, which is why the default moved from 10 to 50.
+- **Model.** `team.sdk.model` (env `OMC_TEAM_SDK_MODEL`, which wins) is the model every sdk worker session uses, for example `"gpt-5-mini"`. Unset, a worker uses its role's resolved model, else the runtime's `auto`. This is the main cost lever: each new worker session pays a cold-cache first call of about 25k prompt tokens (about 6-7 AI credits on claude-sonnet-5.5), and later calls in the same session cost far less (about 0.5-2 credits each), so a cheaper model lowers that floor directly. `omg team status` shows `model=auto` when unset; `--json` shows `"model": null`.
+- **Cost per turn.** Each sdk worker's `sdk-session.json` has `turn_usage[]` (the last 50 turns): per turn the calls, AI credits, input and output tokens, cache read and write tokens, and model. The first turn of a new session is the expensive one, so prefer messaging an idle worker over launching a new team.
+- **Compact protocol.** `team.sdk.compactProtocol: true` (default `false`) gives sdk workers a compact worker protocol, about 40 lines instead of about 110, without the pane, tmux, sentinel and heartbeat sections. It keeps the claim, ACK, mailbox, commit-before-complete, completion-evidence and failure-report rules. Measured saving: about 0.7 AI credits per worker session (about 10% of the first call only).
+- **Blocker timeout.** `team.sdk.blockerTimeoutMinutes` (a positive number; default off) fails the sender's in-progress task with `blocker_unanswered: no leader reply within N min to <worker>: <body>` when a `BLOCKER:` message to the leader stays unanswered that long. It applies to teams with at least one sdk-transport worker, and then every worker's blockers count, pane workers included. All-pane teams ignore it.
 - **Unsupported under sdk:** `--auto-merge`, non-copilot workers, scaling, dead-worker recovery, and an **explicitly** assigned reviewer role with a verdict contract (`critic`, `code-reviewer`, `security-reviewer`, `test-engineer` — set directly via a task's `role` or via `team.roleRouting`); startup rejects them. A contract role merely *inferred* from task text (with no explicit assignment) is not rejected: the role is dropped and the worker runs as a plain executor instead, since an SDK host never exits between turns and so could never have its verdict file read anyway.
 
 ### `omg session search`
@@ -843,18 +885,19 @@ omg ship status 241 --json
 ```
 
 - **Phases:** `review` → `fix` (changes requested; up to `ship.maxFixRounds`, default 2, then `blocked`) → `prepare` (approved) → `gates` → `ready` → `merged`. A later changes-requested verdict reopens any non-terminal phase.
-- **Merge rule (`gates`):** green only when every check outside `ship.advisoryChecks` (default `No Committed Build Artifacts`, `Authorize generated artifacts from base trust root`, and the Socket Security GitHub App checks `Socket Security: Pull Request Alerts` / `Socket Security: Project Report`) is `SUCCESS` or `SKIPPED`, every name in `ship.requiredChecks` has been reported (default: the 18 checks this repo's CI reports on a PR, including the late `needs:` jobs `Build`, `npm pack + install test` and `Copilot smoke (tier 2)`; a missing one is pending), and every Actions workflow run for the head sha (`gh run list --commit <head>`) has status `completed`. Pending: `PENDING`, `QUEUED`, `IN_PROGRESS`, `WAITING`, `REQUESTED`, `EXPECTED`. Any other state is failed. No required checks yet is pending, never green. The latest run of a workflow that completed with a conclusion other than `success` / `skipped` / `neutral` and reported no check (a startup failure) is failed. `gates` resolves the head (`headRefOid`) first, reads the checks and runs for it, and re-reads the head; a head that moved is pending. No checks and no workflow runs at all is pending with the reason `no-workflows-triggered` (a PR opened or pushed with the Actions `GITHUB_TOKEN` triggers no workflows: push from a PAT, or close and reopen the PR). A test (`src/ship/__tests__/workflow-checks.test.ts`) parses `.github/workflows/*.yml` and fails when the PR jobs (matrix names expanded like GitHub) differ from the default required + advisory lists; the tag-only `Create GitHub Release` and the external Socket checks are the documented exclusions.
+- **Merge rule (`gates`):** green only when every check outside `ship.advisoryChecks` (default `No Committed Build Artifacts`, `Authorize generated artifacts from base trust root`, and the Socket Security GitHub App checks `Socket Security: Pull Request Alerts` / `Socket Security: Project Report`) is `SUCCESS` or `SKIPPED`, every name in `ship.requiredChecks` has been reported (default: the 19 checks this repo's CI reports on a PR, including the late `needs:` jobs `Build`, `npm pack + install test` and `Copilot smoke (tier 2)` and the blocking `Statechart suite (Node 24)` job; a missing one is pending), and every Actions workflow run for the head sha (`gh run list --commit <head>`) has status `completed`. Pending: `PENDING`, `QUEUED`, `IN_PROGRESS`, `WAITING`, `REQUESTED`, `EXPECTED`. Any other state is failed. No required checks yet is pending, never green. The latest run of a workflow that completed with a conclusion other than `success` / `skipped` / `neutral` and reported no check (a startup failure) is failed. `gates` resolves the head (`headRefOid`) first, reads the checks and runs for it, and re-reads the head; a head that moved is pending. No checks and no workflow runs at all is pending with the reason `no-workflows-triggered` (a PR opened or pushed with the Actions `GITHUB_TOKEN` triggers no workflows: push from a PAT, or close and reopen the PR). A test (`src/ship/__tests__/workflow-checks.test.ts`) parses `.github/workflows/*.yml` and fails when the PR jobs (matrix names expanded like GitHub) differ from the default required + advisory lists; the tag-only `Create GitHub Release` and the external Socket checks are the documented exclusions.
 - **Known-flaky failures:** for a failed Actions job, `gates` reads `gh run view --job <id> --log` and parses the vitest `FAIL` lines. When every failing test of every failed required check matches `.github/known-flaky-tests.json` as committed on the base branch (`git show origin/<base>:<file>`, never the PR head; `file` plus a required `title` substring, so a file-level collection error never matches) and the log shows no `Unhandled Errors`, no `Failed Suites` and no `##[error]` in a step without a failing test, the verdict is `flaky` and the output suggests `gh run rerun <id> --failed`. Analyses are matched to checks by job id. `--watch` reruns each such run once (the budget is recorded in the run state before the rerun is issued, and holds across invocations) once the run has no pending jobs; the same test failing again is a real failure. `--no-rerun` or `ship.autoRerunFlaky: false` turns the rerun off.
 - **Watch window:** one `--watch` lasts `ship.watchTimeoutMinutes` (default 9, below the 10-minute cap of background watchers), polling every `ship.pollIntervalSeconds` (30). Exit 8 = still pending (also when the window ends while a flaky run's rerun or sibling jobs are still going): run the same command again.
 - **Drive (`gates --drive`):** `--watch` without the watch window: it polls until green (exit 0) or a real failure (exit 1), never exit 8, with the same rerun budget, and stops as blocked (exit 1) after `--drive-max <hours>` (default 6). A transient GitHub error while reading the gates (5xx, GraphQL "Something went wrong") is retried at the next poll instead of stopping. Progress events go to `.omg/progress/ship-<pr>.log` (or `$OMG_PROGRESS_FILE`) under `agent=ship-<pr>`: `start`, a `heartbeat` at most every 5 minutes, and a terminal `done` / `fail` / `blocked` whose note names the next command. A single-driver lock `.omg/state/ship/<pr>.drive.json` refuses a second driver while the first lives. `--detach` runs the drive as a detached process (log `.omg/state/ship/<pr>.drive.log`) and prints the `omg progress watch --file <log> --until settled` command to arm; `--status` prints the lock and the last events, `--stop` ends the driver.
-- **`prepare`:** refuses unless HEAD is the run's PR branch and contains the latest verdict's sha (`git merge-base --is-ancestor`); refuses a detached HEAD, the base/main branch, a dirty tree, staged changes in the index (`git diff --cached --quiet`), a merge/rebase/cherry-pick/revert in progress, and a base, branch or remote that is option-shaped or fails `git check-ref-format --branch`. Then `git remote get-url origin` (`insteadOf` applied) must name the PR's repository (`gh pr view --json url`) → `git fetch origin <base>` → `refs/remotes/origin/<base>` must equal GitHub's `baseRefOid` (all fail closed) → `git merge --no-ff --no-edit --no-verify <baseRefOid>`, by sha, so a local tag or branch named `origin/<base>` cannot shadow the base (a conflict only under `inventory/` is resolved with `git checkout --theirs -- inventory`; any other conflict stops for a fix lane) → `tsc --noEmit`, eslint on changed `src` files, the tests mapped from the diff (`X.test.ts` beside or in `__tests__/` next to each changed `src/**/X.ts`, changed tests, the skills suite for `skills/`), the generator `--verify` scripts for `skills/`, `agents/`, `hooks/` → `scripts/generate-inventory-graph.mjs --write` + `--verify` as the last commit (`git commit --no-verify -m <msg> -- inventory`, so a file another lane stages during the checks stays out; a failing `git add -- inventory` stops it) → `--push` (plain, to `refs/heads/<run's branch>`). Every engine merge and commit runs with `--no-verify`, so `pre-commit`, `pre-merge-commit` and `commit-msg` hooks never shape it. The commits it makes are recorded as housekeeping.
+- **`prepare`:** refuses unless HEAD is the run's PR branch and contains the latest verdict's sha (`git merge-base --is-ancestor`); refuses a detached HEAD, the base/main branch, a dirty tree, staged changes in the index (`git diff --cached --quiet`), a merge/rebase/cherry-pick/revert in progress, and a base, branch or remote that is option-shaped or fails `git check-ref-format --branch`. Then `git remote get-url origin` (`insteadOf` applied) must name the PR's repository (`gh pr view --json url`) → `git fetch origin <base>` → `refs/remotes/origin/<base>` must equal GitHub's `baseRefOid` (all fail closed) → `git merge --no-ff --no-edit --no-verify <baseRefOid>`, by sha, so a local tag or branch named `origin/<base>` cannot shadow the base (a conflict only under `inventory/` is resolved with `git checkout --theirs -- inventory`; any other conflict stops for a fix lane) → the checks: the argv commands in `ship.prepare.checks` when it is set (`[]` runs none), otherwise the built-in checks the base branch has: `tsc --noEmit` when the base has `tsconfig.json` and `node_modules` has the typescript package, eslint on changed `src` files when the base has an eslint config and `node_modules` has eslint, the tests mapped from the diff (`X.test.ts` beside or in `__tests__/` next to each changed `src/**/X.ts`, changed tests, the skills suite for `skills/`) when `node_modules` has vitest, and the generator `--verify` scripts for `skills/`, `agents/`, `hooks/` when they exist. The markers `tsconfig.json`, the eslint config and `scripts/generate-inventory-graph.mjs` are read at GitHub's base sha, never from the PR; a check the base has whose file the PR deleted fails prepare instead of being skipped, and a base that cannot be read fails the step `detect` → when the base has `scripts/generate-inventory-graph.mjs`, its `--write` + `--verify` as the last commit (`git commit --no-verify -m <msg> -- inventory`, so a file another lane stages during the checks stays out; a failing `git add -- inventory` stops it) → `--push` (plain, to `refs/heads/<run's branch>`). Every engine merge and commit runs with `--no-verify`, so `pre-commit`, `pre-merge-commit` and `commit-msg` hooks never shape it. The commits it makes are recorded as housekeeping.
+- **`ship.prepare.checks`:** an array of argv arrays, for example `"ship": { "prepare": { "checks": [["cargo", "check"], ["npm", "run", "lint"]] } }`. It replaces the built-in tsc, eslint, test and generator checks; the inventory step still runs when the base has the generator. It is a safety key like `requiredChecks`: read from the user config at its default location or the base branch's committed `.copilot/omg.jsonc`, never from the working tree or the PR. Each command runs in the checkout without a shell. On Windows a `.cmd` or `.bat` file never runs: `npm` and `npx` run as node with npm's own script, `pnpm` and `yarn` as an `.exe` or corepack's script, as for `factory.forge.local.gate`. A failing command fails prepare like a failing tsc. A command that cannot start stops prepare with the step `checks-config` before any check runs. Leave it unset to auto-detect. `omg ship prepare` loads the trusted ship config before it runs (unless `--no-checks`); a base `.copilot/omg.jsonc` that is not valid JSONC stops prepare with that parse error.
 - **`merge`:** refuses unless the PR is open, not a draft, on the run's base, the gates are green, the state passes its integrity check, and the latest verdict is an approval from someone other than the implementer whose reviewed sha is the head or is followed only by housekeeping commits (`git rev-list --first-parent --parents <reviewed>..<head>`: the chain leads from the head back to the reviewed sha, every commit on it is one `prepare` recorded, every recorded merge has two parents, the second the current `baseRefOid` or its ancestor, and every recorded commit is inventory-only by content: a one-parent commit changes nothing outside `inventory/` against its parent (`git diff --name-only --no-renames -z <parent> <commit>`), a merge differs from the tree `git merge-tree --write-tree <parent1> <parent2>` rebuilds (the first stdout line, a tree even on a conflict) only under `inventory/`, and a merge is refused outright while any `merge.<name>.driver` is configured (`git config --get-regexp '^merge\..*\.driver$'`); anything else, including a git read that fails, needs a new verdict), and the PR's changed files touch none of `.copilot/omg.jsonc`, `.copilot/omc.jsonc`, `.github/known-flaky-tests.json` (or the configured `knownFlakyFile`) and `.github/workflows/` unless `OMG_SHIP_HUMAN=1`. The changed files are computed locally between GitHub's base and head shas (`git diff --name-only --no-renames -z <baseRefOid>...<headRefOid>`, replace refs off; unreadable = refused): a rename lists its old path too, non-ASCII paths are not quoted, and `gh pr diff`'s 300-file cap no longer applies. It also refuses when `git fetch origin <base>` fails or `refs/remotes/origin/<base>` differs from GitHub's `baseRefOid`. Then it prints `gh pr merge <pr> --admin --merge --match-head-commit <head>`, or runs it only when the owner set `ship.allowAdminMerge: true` and the base is in `ship.trustedBases` (there is no CLI flag for it).
 - **Base from GitHub:** `init`, `prepare`, `gates` and `merge` take the base, `baseRefOid`, `headRefOid` and the PR's repository `url` from `gh pr view`; before any fetch of the base, `git remote get-url origin` must name that repository (`gates` warns and uses the defaults on a mismatch, `prepare` and `merge` refuse). `prepare` also refuses a PR whose base on GitHub differs from the run's. `init --base` must equal the PR's base on GitHub when `gh` answers (retarget the PR instead); `gates` warns when the run's recorded base differs.
 - **Known limits:** a lane with write access to `.git/objects` can forge loose objects (git trusts its object store, so content behind a correct sha is not re-verified); environment and `PATH` overrides are advisory (see the trust model); `gh` resolves the repository from the checkout's remotes, so the remote check catches `origin` pointing away from the repository `gh` reports, not a checkout whose every remote and `gh` default were repointed; engine commits are checked by content, not trusted by provenance: `--no-verify` skips the commit hooks, but `post-commit` / `post-merge` hooks and custom merge drivers still run in the engine's git, so `merge` rejects any recorded commit whose content goes beyond `inventory/` (see above) rather than trusting that `prepare` made it.
 - **`init --force`:** replaces a non-terminal run and keeps the old one in `previousRuns`. A run with verdicts (now or in a replaced run) keeps its implementer, `fixRounds` and `maxFixRounds`; a different `--implementer` is refused. Replacing a `blocked` or `merged` run, a state that fails its integrity check, or resetting a reviewed run needs `OMG_SHIP_HUMAN=1` (owner-only; lane briefs forbid it). `history` and `previousRuns` entries are shape-checked on read.
 - **Trust model:** implementer/reviewer names, `OMG_SHIP_HUMAN` and every other environment input are advisory against a hostile lane (a process that controls the environment can set them or put another `git` first on `PATH`). Engine children run with a scrubbed environment: every `GIT_*` variable except commit identity, `GIT_ASKPASS`, `GIT_TERMINAL_PROMPT` and `GIT_SSL_CAINFO` / `GIT_SSL_CAPATH` is dropped (`GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_*` / `GIT_CONFIG_PARAMETERS`, `GIT_DIR`, `GIT_WORK_TREE`, `GIT_EXEC_PATH`, `GIT_SSH_COMMAND`, ...), `GH_REPO` / `GH_HOST` are dropped, `GH_TOKEN` / `GITHUB_TOKEN` pass through for authentication, and `GIT_NO_REPLACE_OBJECTS=1` is set. The state file is not tamper-proof: every engine write stores a sha256 over the state in `integrity`, and later updates and `merge` refuse a mismatch, which catches hand edits but not someone who recomputes the hash. `verdict --sha` must be hex.
-- **Safety guard (allowlist):** every command the engine spawns must match one of the exact shapes the engine builds: `git rev-parse|check-ref-format|status|remote get-url <remote>|fetch|merge-base|merge --no-ff --no-edit <sha40>|diff|checkout --theirs -- inventory|add -- inventory|commit|push <remote> HEAD:refs/heads/<branch>|cat-file|rev-list|log|show`, `git show <base sha>:<repo path>`, `git rev-parse --verify refs/remotes/<remote>/<branch>`, `git diff --name-only --no-renames -z <sha>...<sha>`, `gh pr view|checks|merge <pr> --admin --merge --match-head-commit <sha>`, `gh run view|list|rerun <id> --failed`, and the node repo scripts (`tsc`, `eslint`, `vitest run`, the generators). Everything else is refused before it spawns, including global options before the subcommand (`-c`, `--config-env`, `--namespace`, `gh -R`), option-shaped operands (`--upload-pack=…`), reads by ref name (a tag `origin/dev` would shadow the remote-tracking ref), any extra environment except `GIT_NO_REPLACE_OBJECTS=1` on git, forced or deleting refspecs, a push to `main` / `master` / `dev` or the run's base (case-insensitive), `--auto`, `--delete-branch`, `gh api`, `.cmd` shims and every npm command.
-- **Config** (key `ship`, owner-edited): `base`, `advisoryChecks`, `requiredChecks`, `knownFlakyFile`, `maxFixRounds`, `allowAdminMerge`, `autoRerunFlaky`, `pollIntervalSeconds`, `watchTimeoutMinutes`, `trustedBases`. Ill-typed values are an error, not ignored. The safety keys `allowAdminMerge`, `advisoryChecks`, `requiredChecks` and `knownFlakyFile` come only from the user config at its default location, then `.copilot/omg.jsonc` as committed on the PR's base branch, then the defaults; the same keys in the working-tree project file (which a lane can drop in untracked) or the PR head are ignored with a warning. The default user-config location is derived from the account's home as the OS reports it (`os.userInfo()`): `<home>/.config/claude-omc/config.jsonc`, on Windows `<home>/AppData/Roaming/claude-omc/config.jsonc`; when `XDG_CONFIG_HOME` / `APPDATA` select another file, its safety keys are ignored with a warning. The base layer is read only for a base in `ship.trustedBases` (user config only; default `dev`, `main`, `master`), after `git fetch origin <base>` and a check that `refs/remotes/origin/<base>` equals GitHub's `baseRefOid`, as `git show <baseRefOid>:.copilot/omg.jsonc` with `GIT_NO_REPLACE_OBJECTS=1`; when the check fails `gates` warns and uses the defaults, `merge` refuses. A base-branch file that is not valid JSONC, or whose `ship` is not an object, is an error. The legacy `.copilot/omc.jsonc` name is never read from the base; a working-tree file under that name gets a single warning. The other keys use defaults < base-branch file < user config < working-tree file. `knownFlakyFile` must be a repo-relative path. The default `requiredChecks` are what a PR to `dev` reports: `ci.yml` filters on `pull_request.branches: [main, dev]`, so on a PR to another base those checks stay pending until the user config lists that base's checks.
+- **Safety guard (allowlist):** every command the engine spawns must match one of the exact shapes the engine builds: `git rev-parse|check-ref-format|status|remote get-url <remote>|fetch|merge-base|merge --no-ff --no-edit <sha40>|diff|checkout --theirs -- inventory|add -- inventory|commit|push <remote> HEAD:refs/heads/<branch>|cat-file|rev-list|log|show`, `git show <base sha>:<repo path>`, `git rev-parse --verify refs/remotes/<remote>/<branch>`, `git diff --name-only --no-renames -z <sha>...<sha>`, `gh pr view|checks|merge <pr> --admin --merge --match-head-commit <sha>`, `gh run view|list|rerun <id> --failed`, and the node repo scripts (`tsc`, `eslint`, `vitest run`, the generators). Everything else is refused before it spawns, including global options before the subcommand (`-c`, `--config-env`, `--namespace`, `gh -R`), option-shaped operands (`--upload-pack=…`), reads by ref name (a tag `origin/dev` would shadow the remote-tracking ref), any extra environment except `GIT_NO_REPLACE_OBJECTS=1` on git, forced or deleting refspecs, a push to `main` / `master` / `dev` or the run's base (case-insensitive), `--auto`, `--delete-branch`, `gh api`, `.cmd` shims and every npm command. Commands from `ship.prepare.checks` are the exception: they come only from the trusted config layers and run outside the allowlist, like the local gate.
+- **Config** (key `ship`, owner-edited): `base`, `advisoryChecks`, `requiredChecks`, `knownFlakyFile`, `maxFixRounds`, `allowAdminMerge`, `autoRerunFlaky`, `pollIntervalSeconds`, `watchTimeoutMinutes`, `trustedBases`, `prepare`. Ill-typed values are an error, not ignored. The safety keys `allowAdminMerge`, `advisoryChecks`, `requiredChecks`, `knownFlakyFile` and `prepare` come only from the user config at its default location, then `.copilot/omg.jsonc` as committed on the PR's base branch, then the defaults; the same keys in the working-tree project file (which a lane can drop in untracked) or the PR head are ignored with a warning. The default user-config location is derived from the account's home as the OS reports it (`os.userInfo()`): `<home>/.config/claude-omc/config.jsonc`, on Windows `<home>/AppData/Roaming/claude-omc/config.jsonc`; when `XDG_CONFIG_HOME` / `APPDATA` select another file, its safety keys are ignored with a warning. The base layer is read only for a base in `ship.trustedBases` (user config only; default `dev`, `main`, `master`), after `git fetch origin <base>` and a check that `refs/remotes/origin/<base>` equals GitHub's `baseRefOid`, as `git show <baseRefOid>:.copilot/omg.jsonc` with `GIT_NO_REPLACE_OBJECTS=1`; when the check fails `gates` warns and uses the defaults, `merge` refuses. A base-branch file that is not valid JSONC, or whose `ship` is not an object, is an error. The legacy `.copilot/omc.jsonc` name is never read from the base; a working-tree file under that name gets a single warning. The other keys use defaults < base-branch file < user config < working-tree file. `knownFlakyFile` must be a repo-relative path. The default `requiredChecks` are what a PR to `dev` reports: `ci.yml` filters on `pull_request.branches: [main, dev]`, so on a PR to another base those checks stay pending until the user config lists that base's checks.
 
 ### `omg release`
 
@@ -959,7 +1002,7 @@ Copilot's SessionEnd reason for a finished `-p` link is `complete` (CLI 1.0.91),
 
 #### `omg factory run` (experimental)
 
-`omg factory run <issue>` drives one GitHub issue to a PR that is ready to merge. An implement lane commits in its own worktree. The engine pushes `factory/issue-<n>` and opens a draft PR. A fresh review lane checks the exact head, and fix rounds run on fresh lanes. The engine then runs ship's prepare step, watches the CI gates, and parks at `awaiting-human: merge`. Merge is always a human step. The run starts only when you start it by hand; the listener never starts it.
+`omg factory run <issue>` drives one GitHub issue to a PR that is ready to merge. An implement lane commits in its own worktree. The engine pushes `factory/issue-<n>` and opens a draft PR. A fresh review lane checks the exact head, and fix rounds run on fresh lanes. The engine then runs ship's prepare step, watches the CI gates, and parks at `awaiting-human: merge`. Merge is always a human step. The run starts only when you start it by hand; the listener never starts it. With no GitHub or Azure DevOps forge, the same engine runs offline on the `local` forge: backlog files as items, a local bare mirror as the remote `omg-local`, a configured gate command as the only check, and a `git merge` you run yourself. See [Offline factory](FACTORY-OFFLINE.md).
 
 The engine is deterministic code that owns every transition. LLM work happens only inside lanes, and the engine treats a lane's output as untrusted data that it validates. Lanes are `copilot_run` jobs used in-process, behind a host-neutral lane interface.
 
@@ -970,16 +1013,21 @@ omg factory run --next [--parent <spec>] [--json]  # run the first runnable item
 omg factory run status <issue> [--json]   # the persisted state, read-only; --json adds integrityOk and runCredits
 omg factory run cancel <issue> [--json]   # ask the running engine to cancel its lane and stop; keeps the PR, branch and worktrees
 omg factory run clean <issue> [--json]    # remove the worktrees and local branches of a merged or cancelled run
+omg factory run reset <issue> [--json]    # local forge: start a cancelled run over, after clean
+omg factory run <issue> --allow-gate-change  # local forge: accept the gate-definition change the run parked on
 ```
 
 | Exit code | Meaning |
 |---|---|
-| `0` | Parked at `awaiting-human: merge`, merged, cancelled, a dry run, or a successful `status`, `cancel` or `clean` |
+| `0` | Parked at `awaiting-human: merge`, merged, cancelled, a dry run, or a successful `status`, `cancel`, `clean` or `reset` |
 | `4` | Any other `awaiting-human` stop, or `clean` kept a worktree |
 | `1` | A failure: an engine step failed, or the state is `failed` |
-| `2` | A usage error, such as a missing issue number, or `status` for an issue with no run |
+| `2` | A usage error, such as a missing issue number, `status` for an issue with no run, or `reset` when the configured forge (`factory.forge.kind`) is not local. On the local forge, also `--next` when the base branch does not exist (the message names `ship.base`) |
+| `5` | No usable forge: no origin, an origin that is neither GitHub nor Azure DevOps, or a forge config that does not match it. On the local forge, also a refused git config or a mirror remote mismatch (see [Offline factory](FACTORY-OFFLINE.md)). stderr starts with `unsupported forge:`. Also for `--dry-run` and `--next`. (Before, a missing origin exited 1.) |
 
-`omg factory run --next` picks the first `runnable` item in `omg factory check` order (priority, then id) among the children of `--parent <spec>`, or else the `factory.intake.source` items, and runs it. A run parked at `blocked-by` is picked again, and resumed, once its dependencies are satisfied; a finished or otherwise active run, or an item whose factory PR is open or merged, is never picked. With nothing runnable it prints the bucket counts and exits 0.
+`--dry-run` never fetches and writes nothing. It reads the committed `.copilot/omg.jsonc` from an existing `origin/<base>` tracking ref, with a warning that it may be stale, or from the local `<base>` branch when there is no parseable origin. A base branch that does not exist stops with `base branch '<base>' not found; set ship.base in .copilot/omg.jsonc (branches here: ...)`. An open PR on the factory branch is reported as `pr-exists` (`plan.reason` in `--json`) on every forge. On the local forge the dry run also checks the gate without running it: a gate whose definition cannot be read reports `gate-definition-unknown` before anything else, also for an existing run, and a gate whose executable cannot start is reported as `plan.gateProblem`.
+
+`omg factory run --next` picks the first `runnable` item in `omg factory check` order (priority, then id) among the children of `--parent <spec>`, or else the `factory.intake.source` items, and runs it. A run parked at `blocked-by` is picked again, and resumed, once its dependencies are satisfied; a finished or otherwise active run, or an item whose factory PR is open or merged, is never picked. With nothing runnable it prints the bucket counts and exits 0. On the local forge `--next` reads the local `<base>` branch like `omg factory check` (no fetch) and reads committed backlog items only, so an uncommitted item is never picked and a dependency closed only in the working tree is not met.
 
 `omg factory run` without `--dry-run` is itself the opt-in to live, billed lanes; no `OMG_COPILOT_RUN_ALLOW` is needed. The first Ctrl+C or SIGTERM cancels the lane after the current poll. A second one exits at once, and the next run treats the lane as lost.
 
@@ -1002,10 +1050,10 @@ any phase ─cancel─→ cancelled          any phase ─gate─→ awaiting-hu
 | `publish` | The engine pushes the lane head to `refs/heads/factory/issue-<n>` with a plain refspec. The first publish opens a draft PR with `Closes #<n>` and starts ship state with implementer `factory-impl-<n>`. Before pushing, the engine re-reads the remote branch and the PR, so a crash between push and record repeats nothing. |
 | `review` | One review lane at the exact head. Its prompt has the issue, the plan and the diff against the base, never the implementer's summary. See [Review lanes and verdicts](#review-lanes-and-verdicts). |
 | `fix` | A fresh write lane at the PR head with the review's findings. It never resumes the implementer session. |
-| `prepare` | Marks the PR ready, then runs ship's `runPrepare` with push off in an engine-owned checkout: `.omg/team/factory-run/worktrees/issue-<n>` on the local branch `omc-team/factory-run/issue-<n>`. The engine pushes prepare's housekeeping commits itself and records them in ship state, so they need no new review. |
+| `prepare` | Marks the PR ready, then runs ship's `runPrepare` with push off in an engine-owned checkout: `.omg/team/factory-run/worktrees/issue-<n>` on the local branch `omc-team/factory-run/issue-<n>`. The engine pushes prepare's housekeeping commits itself and records them in ship state, so they need no new review. The checks are ship's: `ship.prepare.checks`, or the built-in checks the base branch has, so a repository without TypeScript or this repository's scripts runs none of them. `omg factory check` prints them. The run records the checks at its first prepare; a later prepare whose `ship.prepare.checks` resolves differently parks at `prepare-checks`. A configured check that cannot start (step `checks-config`) or a base that cannot be read (step `detect`) stops the run without starting a ci-fix lane. |
 | `conflict-fix` | Prepare's base merge conflicted outside `inventory/`. A fresh write lane merges the base and resolves. A merge by a lane is not housekeeping, so it goes back through publish and review. At most 2 rounds. |
 | `gates` | Loops ship's `watchGates` in-process, one ship watch window per call. A window that times out is a heartbeat, not a stop. A read counts only when the PR head is still the pushed head and every check belongs to a workflow run for that head. |
-| `ci-fix` | A real check failure, from prepare or CI. A fresh write lane gets the failing check names and up to 50 failing test titles from the job logs. At most 1 round. |
+| `ci-fix` | A real check failure, from prepare or CI. A fresh write lane gets the failing check names and up to 50 failing test titles from the job logs; on the local forge it gets the tail of the gate's output. At most 1 round. |
 | `merge` | Asks ship's merge rule (`decideMerge`) about the current head, comments the decision and the exact merge command on the PR, and parks at `awaiting-human: merge`. |
 
 `merged`, `cancelled` and `failed` are terminal. `awaiting-human` is not a phase: the phase stays, and the gate is recorded next to it.
@@ -1014,14 +1062,15 @@ any phase ─cancel─→ cancelled          any phase ─gate─→ awaiting-hu
 
 - **State file.** `.omg/state/factory/run-<issue>.json`. The engine writes it under a file lock with an atomic write and seals it with a sha256 `integrity` field. It holds the phase, the gate, the issue and plan snapshot, the PR, the pushed head, every lane with its cap, usage and verdict, retries, history and elapsed time. Next to it are `run-<issue>.owner`, the single-runner owner file, and `run-<issue>.cancel`, the cancel request.
 - **Single runner.** A live owner refuses a second run. A dead pid on the same host is taken over and noted in the history. An owner on another host always refuses.
-- **Resume.** Rerun `omg factory run <issue>`. The engine clears the gate and re-evaluates the recorded phase. There is no `--from` and no `--reset`.
+- **Resume.** Rerun `omg factory run <issue>`. The engine clears the gate and re-evaluates the recorded phase. There is no `--from` and no `--reset` flag. On the local forge, `omg factory run reset` starts a cancelled run over (see Reset below).
 - **Re-read before acting.** `publish` checks the remote branch and an existing PR before pushing or creating. `review` and `gates` read the PR's `headRefOid`. A head the engine did not push stops at `head-moved-externally`.
 - **Ship state.** The engine follows the PR's ship state when it is further along. It adopts a ship verdict only when a review lane it ran carries that verdict's hash.
 - **Lost lanes.** A lane recorded `running` at resume is lost. The engine checks its recorded Copilot child by pid and start time and kills it if it still runs. It keeps the worktree for inspection and respawns one fresh lane. A second loss of the same kind in a row stops at `lane-lost`. A lost lane's unknown usage counts as its whole credit cap.
 - **Failed state.** A state that fails its seal, or that the engine's record does not hold, is `failed` and is not resumed. Move the file aside to start over.
-- **Cancel.** `omg factory run cancel` writes the request file and never touches the state. A running engine sees it between steps and during lane waits, cancels the lane, and moves to `cancelled`. Without a running engine, the next run finishes the cancel. Cancel never closes the PR, deletes branches or removes worktrees.
+- **Cancel.** `omg factory run cancel` writes the request file and never touches the state. A running engine sees it between steps and during lane waits, cancels the lane, and moves to `cancelled`. Without a running engine, the next run finishes the cancel. Cancel never deletes branches or removes worktrees. It keeps the PR on GitHub and Azure DevOps. On the local forge the finished cancel closes the local PR (reason `cancelled`), and its comment names the next commands.
 - **Clean.** `omg factory run clean <issue>` works only on a merged or cancelled run and refuses while an engine runs. It removes each lane's `copilot_run` worktree and the prepare checkout through the team worktree remover, which unlinks junctions such as `node_modules` first. It keeps a dirty worktree. It also keeps a worktree or branch with a commit that is not in the main checkout's HEAD, the fetched base or the PR branch on `origin`. It never deletes the PR branch on GitHub.
-- **Progress.** The engine writes progress events to `<state root>/progress/factory-<issue>.log`. Lane waits and gate polls emit a heartbeat, so `omg progress watch` sees no false stall.
+- **Reset.** `omg factory run reset <issue>` is for the local forge only (exit 2 with another configured forge). It refuses, with exit 1, a run whose recorded forge is not local, a run whose mirror differs from the configured one, and no run at all. It needs a cancelled run whose state passes its seal and is the engine's last write, no live engine, and no worktrees left (`run clean` first). It closes the local PR if it is still open, keeps the mirror branch as `factory/cancelled/issue-<n>-<time>`, deletes `factory/issue-<n>` from the mirror, and moves the state file and its ledger aside as `.reset-<time>`. The next `omg factory run <issue>` starts a new run with a new local PR. A reset stopped part way is finished by running it again. See [Cancelling and retrying an item](FACTORY-OFFLINE.md#cancelling-and-retrying-an-item).
+- **Progress.** The engine writes progress events to `.omg/progress/factory-<issue>.log` (`.omg/` is the state root, as for the state file). Lane waits and gate polls emit a heartbeat, so `omg progress watch` sees no false stall.
 
 ##### Human gates
 
@@ -1038,7 +1087,7 @@ Every gate posts one issue comment that names the gate, the reason and the comma
 | `review-identity` | A review job id is also a write lane's job | Inspect the state file; this is an engine invariant |
 | `fix-rounds-spent` | Ship blocked the PR after `maxFixRounds` changes-requested rounds | Raise `factory.run.maxFixRounds` or `ship.maxFixRounds` in the user config, or fix the PR by hand |
 | `protected-paths` | A lane, or the prepared head, changed paths that ship's merge rule protects | Nothing was pushed; review the change by hand |
-| `lane-tampered`, `review-tampered` | A lane, or prepare's checks, changed shared git state outside its own branch and worktree | Nothing was pushed and the verdict is dropped; inspect the repository by hand (see [Security model](#security-model)) |
+| `lane-tampered`, `review-tampered` | Shared git state outside the lane's own branch and worktree changed while a lane, or prepare's checks, ran, by the lane or anyone else in the repository. A fetch that moves `refs/remotes/<remote>/<run branch>` to the pushed head does not count, nor, on the local forge, an `omg-local` tracking ref at the mirror's own sha | Nothing was pushed and the verdict is dropped; inspect the repository by hand (see [Security model](#security-model)) |
 | `sandbox-unavailable` | A lane refused to run because its OS sandbox was not confirmed (see [Sandboxed lanes](#sandboxed-lanes)) | Install the sandbox backend, or set `factory.run.sandbox.writeUnsandboxed: "detect-only"` in the user config to run write lanes unsandboxed |
 | `sandbox-escaped` | A lane's shell call ran without the runtime's `sandboxed: true`, its worktree's git links changed, or it added a nested repository, a directory link or a path that resolves outside its worktree | Nothing was committed or pushed; inspect the lane worktree by hand |
 | `lane-unconfirmed` | The engine cannot confirm that a lane's Copilot process stopped | Stop the process yourself; your rerun counts as your word that it stopped |
@@ -1051,7 +1100,10 @@ Every gate posts one issue comment that names the gate, the reason and the comma
 | `no-workflows` | No checks and no workflow runs for the head after 5 minutes | Check that workflows trigger for the branch |
 | `gates-timeout` | Gates did not settle within `factory.run.gatesTimeoutMinutes` | Rerun to continue the loop |
 | `gates-disagree` | The merge rule's one-shot read kept disagreeing with the gates loop | Check the PR's checks by hand |
-| `budget` | The run reached `factory.run.maxRunCredits`, or less than the 30-credit lane minimum is left | Raise the limit in the user config |
+| `prepare-checks` | `ship.prepare.checks` changed after the run first prepared | Restore it, or cancel the run (`omg factory run cancel`) and start a new one |
+| `gate-definition-changed` | Local forge: the head changes the local gate's definition (the `package.json` script with its `pre`/`post` scripts, `.npmrc`, `.yarnrc`, `.yarnrc.yml`, `.pnpmfile.cjs`, the node script file, or an argv `--script-shell`, `--userconfig` or `--globalconfig` file inside the repository), checked before any push. What the script runs is left to review | Inspect the `git diff` the message names, then rerun with `--allow-gate-change` to accept exactly that definition once, or cancel the run |
+| `gate-definition-unknown` | Local forge: the gate's definition cannot be read from its argv (no script, a workspace selector, a package-manager `exec`, `dlx`, `node` or `create` subcommand, or a package directory outside the repository). Checked at every step boundary, so the run parks before its first lane and spends no AI credits | Set `factory.forge.local.gate` to name a script (`npm test`, `npm run <script>`, `npm --prefix <dir> run <script>`) or a node script file, then rerun |
+| `budget` | The run reached `factory.run.maxRunCredits`, or less than the 30-credit lane minimum is left | Raise the limit in the user config, or in `.copilot/omg.jsonc` when the user config sets none |
 | `wall-time` | The run passed `factory.run.maxRunWallTimeMinutes` | Raise the limit in the user config |
 | `merge-refused` | Ship's merge rule refuses the head | Read the reasons in the PR comment and resolve them |
 | `merge` | Review approved and gates are green on the head | See [The merge gate](#the-merge-gate) |
@@ -1063,7 +1115,7 @@ Merge is always human. There is no `factory.merge` key and no auto mode, and the
 ##### Review lanes and verdicts
 
 - **Identity.** Every write lane runs as `factory-impl-<n>`. Each review lane is `factory-review-<n>-<jobId>`, and ship refuses a verdict from the implementer.
-- **Fresh context.** Each review is a new session in its own worktree at the head, on `copilot_run`'s `review` profile, which cannot write files or commit.
+- **Fresh context.** Each review is a new session in its own worktree at the head, on `copilot_run`'s `review` profile, which cannot write files or commit. Its shell runs read-only commands only (git, rg, cat and the like; no npm or node), so it never runs the tests: the prompt says so, and the gates run them after review.
 - **Contract.** The lane's final message must end with exactly one fenced `json` block: `verdict` (`approve` or `request-changes`), `sha` (the 40-hex head), `findings` (each with `severity` `blocker`, `major`, `minor` or `nit`, a `summary`, and optional `file` and `line`) and optional `notes` of at most 500 characters.
 - **Fail closed.** No block, two blocks, text after the block, a wrong sha, bad fields, an edited worktree or a moved PR head make the review `invalid`, and no verdict is recorded. An `approve` with a `blocker` or `major` finding counts as `request-changes`.
 - **Posting.** The engine posts the findings as one PR comment, so the merge gate sees filtered findings next to the diff. A two-axis review adds an `Axis` column.
@@ -1076,7 +1128,7 @@ Keys live under `factory.run`. The engine reads them from the user config at its
 | Key | Default | Meaning |
 |---|---|---|
 | `laneMaxCredits` | `30` | AI-credit cap passed to every lane. Mandatory, and at least 30, the Copilot CLI minimum. |
-| `maxRunCredits` | unset | Cap on the run's measured AI credits, checked at step boundaries. Each lane's cap is lowered to what is left. Must be at least `laneMaxCredits`. |
+| `maxRunCredits` | unset | Cap on the run's measured AI credits, checked at step boundaries. Each lane's cap is lowered to what is left. Must be at least `laneMaxCredits` + 30: a run needs an implement and a review lane, and the second needs the Copilot CLI minimum of 30 left. |
 | `laneTimeoutMinutes` | `30` | Wall time of one lane, at most `copilot_run`'s maximum timeout |
 | `maxRunWallTimeMinutes` | `240` | Engine wall time across all invocations of one run |
 | `maxRetries` | `1` | Fresh retries of a failed lane per phase |
@@ -1261,7 +1313,8 @@ omg smoke copilot --tier 2 --scenario sandbox-lane      # review, write and cana
 omg factory check [<id>...] [--json]           # the given ids, or the items of factory.intake.source
 omg factory check --parent <spec> [--json]     # the spec's children (GitHub `- [ ] #n` task list | ADO child links)
 omg factory check --source label:factory       # label:<name> | milestone:<name> | wiql-query:<guid> |
-                                               # board-column:<team>/<board>/<column> | area-tag:<area path>#<tag>
+                                               # board-column:<team>/<board>/<column> | area-tag:<area path>#<tag> |
+                                               # local-backlog[:<label>]
 omg factory check --limit 20                   # read at most 20 items from the source (1..200; default factory.intake.limit)
 omg factory check --mark [--yes]               # add factory.intake.marker to the runnable items, after confirming
 ```
@@ -1271,6 +1324,7 @@ The rules are evaluated in order, and the first one that matches sets the bucket
 | Reason | Bucket | When |
 |---|---|---|
 | `closed` | blocked | The item is closed (GitHub `CLOSED`, or an ADO Completed/Removed state). |
+| `uncommitted` | blocked | Local forge only: the backlog file is new or edited in the working tree and not committed on `<base>`. `omg factory run` reads items at the base commit, so it is untrusted until it is committed. |
 | `wrong-type` | blocked | The ADO type is not in `factory.intake.itemTypes`, or the GitHub id is a pull request. |
 | `run-finished:<phase>` | blocked | A factory run for the item is merged, cancelled or failed. The engine never restarts one. |
 | `run-active:<phase>[/<gate>]` | blocked | Any other factory run for the item exists. A run parked at `intake` / `blocked-by` is not counted: the rules below re-read its dependencies, so it becomes `runnable` once they are satisfied. |
@@ -1279,7 +1333,8 @@ The rules are evaluated in order, and the first one that matches sets the bucket
 | `branch-exists` | blocked | `origin/factory/issue-<n>` exists without an open PR (`git ls-remote`). The engine would stop at `head-moved-externally`. |
 | `blocked-by:self` | blocked | The item depends on itself (a `Depends on` / `Blocked by` line naming its own number). |
 | `depends-on:#n,…` | blocked | An item it depends on is unfinished. A dependency is satisfied when it is closed, when a PR from its `factory/issue-<n>` branch was merged into the base (`ship.base`), or when its factory run is `merged`. The merged PR counts because `Closes #n` does not close the issue when the base is not the default branch. A dependency that is a GitHub PR counts as resolved once it is merged; a PR closed without merging does not. On Azure DevOps a work item that cannot be read is never looked up as a PR, because work items and PRs number separately there. A dependency that cannot be read stays unsatisfied. |
-| `needs-split` | blocked | It has open children, is an ADO Epic or Feature, or has the GitHub label `epic`. |
+| `needs-split` | blocked | It has open children, is an ADO Epic or Feature, has the GitHub label `epic`, or is a local backlog item labelled `spec` (enqueue its tickets first). |
+| `children-done` | blocked | It has children and every one is closed: the spec was split and its work is done, so the spec itself is never run. Close the spec. Applies on every forge. |
 | `no-plan` | needs-plan | There is no trusted `omg-plan:` line, no `Acceptance criteria` heading, and no ADO Acceptance Criteria. |
 | `plan-missing` | needs-plan | The `omg-plan:` path is not repo-relative, or is missing or empty on `origin/<base>`. |
 | `ac-not-testable` | needs-plan | The Acceptance criteria contain no list or checkbox items. |
@@ -1340,8 +1395,9 @@ omg factory board --no-check                # no check rules: one batched tracke
 - **Flags.** `drift`: the live stage is not the one the run recorded (a human moved the card). `unsynced`: the recorded stage is not the expected one (a progress write failed or is pending). `seal!`: the run state fails its integrity check, is unreadable, or has no seal at all (`integrity: 'none'`, a legacy state), so do not act on it. `stale`: a run that is not finished and not at a gate has not changed for 24 hours.
 - **Runs not in the intake source.** Runs in flight whose key is not in the source (a run started with an explicit id, a ci-heal `heal-<sig8>` run) get their own section. Finished runs outside the source are not shown.
 - **`--no-check`** skips the check rules (no comment, plan or PR reads). On Azure DevOps the items are read with one `GET wit/workitems?ids=…&fields=…&errorPolicy=omit` per 200 ids; on GitHub with one `gh issue view` per item.
-- **`--json`** (schemaVersion 1): `{ schemaVersion, ok, forge, repo, source, parent, columns: [{ stage, title, items }], outside, warnings }`. Each row has `id`, `title`, `url`, optional `error`, `check` (`{ bucket, priority, reasons, detail }`; absent with `--no-check`), `run` (including `gate: { name, reason }` when the run is parked at a gate), `stage` (`expected`, `recorded`, `live`), `liveText`, `flags` and `gates`. Tracker and state text is plain (ANSI and control characters removed).
-- **Exit codes:** `0` shown; `1` an item could not be read (`read-failed`); `2` usage; `5` incompatible (an unsupported remote or forge, or no intake source and no runs).
+- **Local forge.** The board works with no origin and reads the local `<base>` branch. An uncommitted backlog file gets the warning `#n (path) is uncommitted: untrusted until it is committed on <base>`, and the [offline limitations](FACTORY-OFFLINE.md#what-offline-mode-does-not-do) print above the board.
+- **`--json`** (schemaVersion 1): `{ schemaVersion, ok, forge, repo, source, parent, columns: [{ stage, title, items }], outside, warnings, limitations }`. `limitations` is a string array, empty on GitHub and Azure DevOps. Each row has `id`, `title`, `url`, optional `error`, `check` (`{ bucket, priority, reasons, detail }`; absent with `--no-check`), `run` (including `gate: { name, reason }` when the run is parked at a gate), `stage` (`expected`, `recorded`, `live`), `liveText`, `flags` and `gates`. Tracker and state text is plain (ANSI and control characters removed).
+- **Exit codes:** `0` shown; `1` an item could not be read (`read-failed`); `2` usage, or on the local forge a base branch that does not exist; `5` incompatible (an unsupported remote or forge, or no intake source and no runs).
 
 #### `omg factory poll` (experimental)
 
@@ -1386,7 +1442,8 @@ One tick, in this order:
 - **One poller per repository.** The poll file records the owner's pid and host, and the owner writes a `beatAt` heartbeat each tick. A second poller, including `--once`, is refused while the first runs; the refusal names the poll file to delete if no poller runs. An owner whose process has died on this host, or whose heartbeat is older than 2 h (twice the 60 min ceiling), is taken over.
 - **Config.** The poller resolves the forge and intake config once, at start, including `factory.intake.autoStart` and the budget gate's `budget.softLimit` and `factory.run` layers. Only the heal config and the budget ledger are read again each tick. Restart the poller after config changes.
 - **Stopping.** SIGINT or SIGTERM ends the loop after the current tick. A second signal exits at once.
-- **Exit codes:** `0` stopped by a signal, or a clean `--once` tick; `1` a read failed in the `--once` tick, or another poller runs; `2` usage (a bad `--interval`); `5` incompatible.
+- **Local forge.** Each tick first syncs the engine's mirror from your local `<base>` (fast-forward only), so a PR you merged reads as merged. A tick with nothing new on the base reads the mirror without fetching. The tick's JSON gets `baseSync` (ran, with a message, or not ran, with a reason), shown as `base sync: ...`. A plain sync error, such as a non-fast-forward base, counts as a tick error. A refused local git config or a mirror remote mismatch exits 5 and stops `--loop`; fix the config, then restart the poller. Heal and review threads are skipped. See [Offline factory](FACTORY-OFFLINE.md).
+- **Exit codes:** `0` stopped by a signal, or a clean `--once` tick; `1` a read failed in the `--once` tick, or another poller runs; `2` usage (a bad `--interval`), or on the local forge a base branch that does not exist; `5` incompatible, or a refused local forge config (see [Offline factory](FACTORY-OFFLINE.md)), and a loop stops. With `--json` an error that stops poll is the `error` field of a `{"ok":false,"error":"..."}` line on stdout instead of an `Error:` line on stderr.
 
 #### `omg factory enqueue`
 
@@ -1423,8 +1480,9 @@ Pushes launch's C3-approved tickets to the tracker as children of the spec issue
 - Body files are written to a fresh temporary directory outside the worktree (enqueue refuses if the temporary directory is inside it), then removed. gh reads the guard's own copy of each file.
 - **The mark step.** After the writes, enqueue runs `omg factory check <ids> --mark --yes` over this file's created, updated and unchanged issues only, which adds `factory.intake.marker` to the runnable ones. Orphans and any other task-list line of the spec are never marked. The dry run lists these mark candidates. The launch C3 signature is the confirmation for the issues, the intake label and the marker, so harbor's accept step doesn't apply these labels. The marker label must already exist (`omg factory setup`).
 - `--dry-run` prints every planned write (title, labels and the exact body; new issues show as `#<key>` in edges; on Azure DevOps also the criteria, the priority and the links to add) and writes nothing. The guard refuses any create or edit during a dry run.
-- `--json` prints `{ schemaVersion: 1, ok, dryRun, spec: { id, taskList, planned? }, items, ignored, mark, warnings }`. Each item is `{ key, id, action, bucket, reasons, markCandidate }`, plus `planned` on a dry run. `bucket` and `reasons` come from the mark step's check.
+- `--json` prints `{ schemaVersion: 1, ok, dryRun, spec: { id, taskList, planned? }, items, ignored, mark, warnings }`. Each item is `{ key, id, action, bucket, reasons, markCandidate }`, plus `planned` on a dry run. `bucket` and `reasons` come from the mark step's check. `spec.taskList` is `updated`, `unchanged`, or `not-used` on the local forge (a backlog spec has no task list; each ticket's `Part of #n` line links it).
 - Calls: every gh and git read is one of `omg factory check`'s shapes. Writes are the three tracker write shapes above, plus check's marker edit in the mark step. Nothing closes, deletes or merges anything.
+- **On the local forge** enqueue works with no origin and writes each ticket as a backlog file `<id>-<slug>.md` in the working tree, with `Part of #<spec>` and `Blocked by #n` lines that give its `parent` and `dependsOn`. The spec must be committed on `<base>` (an uncommitted spec is refused with "not committed on `<base>`") and is never rewritten, so it gets no task list: its children are the files whose `parent` names it. A file enqueue wrote but you have not committed yet still holds its key, so a rerun before the commit creates nothing twice. Commit the new files on `<base>` before `omg factory run` can take them. See [Offline factory](FACTORY-OFFLINE.md).
 
 | Exit code | Meaning |
 |---|---|
@@ -1433,14 +1491,14 @@ Pushes launch's C3-approved tickets to the tracker as children of the spec issue
 | 2 | usage, or a refused ticket file (nothing written) |
 | 5 | incompatible: no forge, or an unsupported one |
 
-`--json` prints `{ schemaVersion: 1, ok, forge, repo, source, counts, items, mark, warnings }` (`source` is `null` for ids and `--parent`). Each item is `{ id, title, url, bucket, reasons, detail, priority, planSource }`. `reasons` holds the exact reason code (empty when the item is runnable), and `planSource` is `omg-plan`, `issue-body` or `ado-acceptance`. `mark` is `{ marker, requested, confirmed, marked, alreadyMarked, failed }`.
+`--json` prints `{ schemaVersion: 1, ok, forge, repo, source, counts, items, mark, warnings, limitations }` (`source` is `null` for ids and `--parent`). `limitations` is a string array: on the local forge the [offline limitations](FACTORY-OFFLINE.md#what-offline-mode-does-not-do), which the text output also prints; empty on GitHub and Azure DevOps. On the local forge, check works with no origin, reads the local `<base>` branch without fetching, and adds the tracker's warnings about skipped malformed backlog files to `warnings`. An item whose own local PR merged into the current base (`ship.base`) reads as closed while its backlog file still says `state: open`, and a warning names the file to set `state: closed` in and commit; a commit on the base after the merge that changes the file's `state:` line makes the item read from its file again; other edits keep it closed (see [Merged items](FACTORY-OFFLINE.md#merged-items)). Check also prints `prepare checks: ...` (or `prepare checks: none`): the base-level checks a run's prepare step will run, described from the base commit as the run detects them (the generator `--verify` scripts depend on the diff and are not listed). `--json` has them as `prepareChecks`. On the local forge check prints `gate: ok`, `gate: unresolved (<why>)` or `gate: not set` for `factory.forge.local.gate`, and `--json` has it as `gate` (absent on GitHub and Azure DevOps). Each item is `{ id, title, url, bucket, reasons, detail, priority, planSource }`. `reasons` holds the exact reason code (empty when the item is runnable), and `planSource` is `omg-plan`, `issue-body`, `ado-acceptance` or `backlog-acceptance` (a local backlog item's Acceptance section). `mark` is `{ marker, requested, confirmed, marked, alreadyMarked, failed }`.
 
 | Exit code | Meaning |
 |---|---|
 | `0` | The check ran (whatever the buckets), including a `--mark` you declined |
 | `1` | An item is `read-failed`, a marker write failed, or the setup itself failed (for example the label list) |
-| `2` | A usage error: a bad id, `--parent`, `--source` or limit; `--parent` with ids, `--source` or `--limit`; no ids and no intake source; or `--mark` without `--yes` when there is no terminal or with `--json` |
-| `5` | Incompatible: the forge config does not match the origin remote, the remote is neither GitHub nor Azure DevOps, this build has no adapter for the forge, or the `--mark` label does not exist |
+| `2` | A usage error: a bad id, `--parent`, `--source` or limit; `--parent` with ids, `--source` or `--limit`; no ids and no intake source; or `--mark` without `--yes` when there is no terminal or with `--json`; on the local forge, a base branch that does not exist (the message names `ship.base`) |
+| `5` | Incompatible: no origin and no local forge, the forge config does not match the origin remote, the remote is neither GitHub nor Azure DevOps, this build has no adapter for the forge, or the `--mark` label does not exist. A missing forge prints `unsupported forge: ...; for the offline (local) forge run omg factory setup --forge local` |
 
 #### `omg factory heal` (experimental)
 
@@ -1476,7 +1534,7 @@ omg factory heal close <sig8> [--json]           # close a heal run parked at he
 
 #### `omg factory setup`
 
-`omg factory setup` configures the factory for one repository on GitHub or Azure DevOps. It writes only the `factory` keys of the config and runs no lane.
+`omg factory setup` configures the factory for one repository on GitHub, Azure DevOps or the offline `local` forge. It writes only the `factory` keys of the config and runs no lane.
 
 ```bash
 omg factory setup                                     # interactive on a TTY
@@ -1486,9 +1544,10 @@ omg factory setup --forge azure-devops --org contoso --project Web --repo web-ap
   [--item-types "User Story,Bug"] [--progress default|none|<file.json>] [--board "Web Team/Stories"] \
   [--trusted-author owner@example.com] [--heal-pipeline <definitionId>|none] [--scope project|user] [--dry-run] [--yes] [--json]
 omg factory setup --intake label:factory | milestone:v5.18 ...   # GitHub
+omg factory setup --forge local [--intake local-backlog[:<label>]] [--dry-run] [--yes]   # offline, no origin needed
 ```
 
-1. **Detect.** The forge comes from `git remote get-url origin`. `--forge`, `--org`, `--project` and `--repo` can only pin it: a value that disagrees with the remote exits 5. Any other remote also exits 5 (`unsupported forge`). On Azure DevOps, `.omg/config.json` `ado` and an existing `factory.forge.azureDevOps.team` prefill the answers.
+1. **Detect.** The forge comes from `git remote get-url origin`. `--forge`, `--org`, `--project` and `--repo` can only pin it: a value that disagrees with the remote exits 5. Any other remote, or no origin, also exits 5 (`unsupported forge: ...; for the offline (local) forge run omg factory setup --forge local`). Setup reports this before it asks for `--intake` or other missing flags. `--forge local` needs no origin and refuses `--org`, `--project` and `--repo`; see [Offline factory](FACTORY-OFFLINE.md). On Azure DevOps, `.omg/config.json` `ado` and an existing `factory.forge.azureDevOps.team` prefill the answers.
 2. **Auth.** On GitHub this runs `gh auth status --hostname <host>`. On Azure DevOps it checks `az extension show --name azure-devops`, then `az account show` or a set `AZURE_DEVOPS_EXT_PAT`, then reads the project and the repository. A failure exits 3 and prints the command that fixes it. Nothing an auth command prints is shown, so no token reaches the output.
 3. **Intake.** On GitHub the source is a label or an open milestone. GitHub Projects v2 is not supported yet. On Azure DevOps it is a flat saved query (its GUID), a board column (`<team>/<board>/<column>`), or an area path plus a tag (`<area>#<tag>`). Each value is checked against the forge, and an unknown query, milestone, board, column or area exits 5. On Azure DevOps, `--item-types` must name existing types. Without it, the defaults that exist in the project are used.
 4. **Progress.** `default` on GitHub is the `factory:<stage>` label family. On Azure DevOps it maps nothing, so you map columns and states yourself. `none` turns progress off. A file holds `{ "enabled"?: boolean, "stages": { "<stage>": { "label" | "column" | "state": "…" } } }`. On Azure DevOps a column must be on the board: either the intake board, or the board given with `--board <team>/<board>`. A state must exist for every item type. A Completed or Removed state is allowed only for `done`, and `blocked` and `cancelled` never change the state. A validation failure exits 5. On GitHub, missing intake and progress labels are created with `gh label create <name> --color 7c7c7c` only after confirmation or `--yes`. This reuses the harbor label helper of `omg intake`.
@@ -1496,12 +1555,14 @@ omg factory setup --intake label:factory | milestone:v5.18 ...   # GitHub
 5. **Write.** The wizard edits with `jsonc-parser`, so comments and every other key stay as they were. It prints the diff and asks before writing; `--yes` confirms without asking. An edit that would change anything but `factory.forge`, `factory.intake`, `factory.progress` and `factory.heal.pipeline` (or `trustedAuthors` in the user config) is refused, so the `ship.*` safety keys never move. A config with duplicate keys, a `factory` that is not an object, or a symlinked `.copilot/omg.jsonc` (or `.copilot` directory) is refused with exit 5; a leading UTF-8 BOM is kept. The forge identity, intake and progress always go to `.copilot/omg.jsonc`, whatever `--scope` says. That file is protected, so the engine reads its `forge.*` and `progress.*` only from `<base>` once the file is committed there. The user config at its default location is shared by every repository, so it gets only `factory.forge.azureDevOps.trustedAuthors` (`--trusted-author`); `--scope user` is accepted and only notes this. The config is written before any missing label is created. The result must pass the same resolver the engine uses.
 6. **Preview.** The wizard lists the source's first 10 items through the forge adapter and the engine's guard. For now each row says `readiness: run omg factory check`. A forge without an adapter in this build loses only the preview. The wizard also reports any `omg factory init` prerequisites that are missing. Those are needed only for the chain route table.
 
-- **Non-interactive:** `--yes`, `--json` or no TTY takes every answer from flags. A missing `--intake`, or a missing `--yes` without `--dry-run`, exits 2 and names the missing flags.
+**Local forge.** `--forge local` skips auth and labels. It writes `factory.forge.kind: "local"`, `factory.forge.local.backlogDir: ".copilot/backlog"` and the intake `local-backlog` (the default without `--intake`), and adds a closed sample item `.copilot/backlog/1-example.md` when the backlog has no item yet (a symlinked or junctioned path is refused). When neither the project config nor the user config names `ship.base`, it writes `ship.base` to the project file: `dev` if that branch exists, else the current branch (`init.defaultBranch` on an unborn branch). It never changes a `ship.base` that is set, and stops with exit 2 when that value is not a plain branch name. With a detached HEAD and no `dev` it writes none and prints a note; it also notes a base that is not in `ship.trustedBases`. It never writes `factory.forge.local.gate`: set the gate (an argv such as `["node","--test"]`) in the user config or in `.copilot/omg.jsonc` committed on `<base>`; until then gates park at `awaiting-human: gates`. Over a GitHub or Azure DevOps origin, `kind: "local"` counts only from the user config or the committed base file. The output prints the [offline limitations](FACTORY-OFFLINE.md#what-offline-mode-does-not-do) and the JSON has them in `limitations`.
+
+- **Non-interactive:** `--yes`, `--json` or no TTY takes every answer from flags. A missing `--intake` (except with `--forge local`), or a missing `--yes` without `--dry-run`, exits 2 and names the missing flags. A repository with no usable forge exits 5 first.
 - **Dry run:** `--dry-run` shows the diff and the preview, writes no file and creates no label.
 - **Guard:** every forge call goes through a setup allowlist. On GitHub it allows `gh auth status`, `gh label list`, `gh label create` with the fixed color, and one GET of this repository's open milestones. On Azure DevOps it allows `az devops invoke` GETs of routes in `src/forge/ado/routes.ts`. Each GET is pinned to the detected org and project, uses the route's API version and `--detect false`, and has no `--in-file`, `--debug` or `--verbose`.
-- **JSON:** `{ exitCode, forge, auth, config, written: <paths>|null, diffs, labels: { missing, created }, prerequisites, preview, previewError?, notes, error? }`.
+- **JSON:** `{ exitCode, forge, auth, config, written: <paths>|null, diffs, labels: { missing, created }, prerequisites, preview, previewError?, notes, limitations, error? }`. `limitations` is empty except on the local forge.
 - **Exit codes:** `0` written or dry run, `2` usage error, `3` auth or Azure DevOps extension missing, `5` incompatible (unsupported forge, mismatch, unknown query, state validation failed), `1` other failures.
-- **Listener:** `omg factory listen` receives GitHub webhooks only. It refuses when the origin remote or the user config's `factory.forge.kind` is `azure-devops`, and points at `omg factory poll`.
+- **Listener:** `omg factory listen` receives GitHub webhooks only. It refuses when the origin remote or the user config's `factory.forge.kind` is `azure-devops`, or when the user config's kind is `local`, and points at `omg factory poll`.
 
 #### Live acceptance on Azure DevOps (maintainers)
 
@@ -1971,7 +2032,7 @@ Autopilot continues to own cancel, resume, cleanup, state inspection, HUD, and S
 
 V1 deliberately defers `stageModels` and all model/provider/role routing, inline/no-spawn execution, dynamic commands/modes/state files, arbitrary stages/prompts/plugins and control-flow extensions, and the separate custom-skill inline-array frontmatter parser mismatch. See [ADR 03487](./adr/03487-named-autopilot-stage-profiles.md) for the decision record.
 
-## Skills (63 Total)
+## Skills (98 Total)
 
 Includes bundled workflow, utility, domain, and compatibility skills. Runtime truth comes from the builtin skill loader scanning `skills/*/SKILL.md` and expanding aliases declared in frontmatter.
 
@@ -1983,14 +2044,23 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | ------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------- |
 | `ai-slop-cleaner`         | Anti-slop cleanup workflow with optional reviewer-only `--review` pass        | `/ai-slop-cleaner`         |
 | `agent-doc-discipline`    | Writing-time discipline for agent-facing documents: checkable rules with a why, steps first, one meaning one home | `/agent-doc-discipline` |
+| `architect`               | Parallel design exploration before cross-boundary code; decision with rejected alternatives | `/architect`             |
 | `architecture-survey`     | Shipyard survey: report ranked architecture-deepening candidates with evidence, never edit code | `/architecture-survey`     |
+| `arena`                   | N-candidate bakeoff: parallel attempts, cross-judge, pick by rubric, graft the best parts      | `/arena`                   |
 | `ask`                     | Ask Claude, Codex, Gemini, Antigravity, Grok, or Cursor via local CLI          | `/ask`                     |
 | `ask-navigator`           | Shipyard navigator: chart foggy efforts into decision-ticket maps, hand off to launch | `/ask-navigator`    |
 | `autopilot`               | Full autonomous execution from idea to working code                            | `/autopilot`               |
 | `autoresearch`            | Stateful evaluator-driven improvement loop                                     | `/autoresearch`            |
+| `babysit`                 | Drive an open PR to merge-ready: watch-pr verdicts, fix CI, address comments; never merges | `/babysit`       |
+| `benchmark-checklist`     | Vet a measured speedup or regression before reporting or acting on it          | `/benchmark-checklist`     |
+| `blast-radius`            | Map what a change could break beyond the diff; prove safety by running code     | `/blast-radius`            |
+| `bro`                     | Restate the last message in plain language, keeping every fact                  | `/bro`                     |
 | `cancel`                  | Unified cancellation for active modes                                          | `/cancel`                  |
 | `cancel-ralph`            | Deprecated compatibility alias for `cancel`                                   | `/cancel-ralph`            |
 | `configure-notifications` | Configure Telegram, Discord, and Slack notification integrations               | `/configure-notifications` |
+| `correct`                 | Make repeated agent mistakes impossible at the highest enforcing level         | `/correct`                 |
+| `create-formal-verification-skill` | Generate a project-local skill that formally verifies one high-risk property (TLA+/Lean/Kani) | `/create-formal-verification-skill` |
+| `create-verification-skill` | Generate the project's own verify skill: commands discovered by execution, with a feature map | `/create-verification-skill` |
 | `critique`                | Critique all unpushed commits before pushing to remote                          | `/critique`                |
 | `debug`                   | Diagnose the current OMC session or repository state                           | `/debug`                   |
 | `deep-interview`          | Socratic deep interview with ambiguity gating                                  | `/deep-interview`                |
@@ -2001,15 +2071,28 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | `drydock`                 | Shipyard harness scaffold: 4-pillar shared environment, --check drift audit    | `/drydock`                 |
 | `execute`                 | Carry an approved task through to working, verified code                       | `/execute`                |
 | `external-context`        | Parallel document-specialist research                                          | `/external-context`       |
+| `figure-it-out`           | Design a bespoke playbook for tasks no bundled skill fits                      | `/figure-it-out`           |
+| `fix-ci`                  | Classify CI failures (real/flaky/environmental) and fix the real ones          | `/fix-ci`                  |
+| `fix-merge-conflicts`     | Resolve conflicts preserving both sides' intent, non-interactively             | `/fix-merge-conflicts`     |
+| `get-pr-comments`         | Fetch and triage review threads: fix / dismiss / ask                           | `/get-pr-comments`         |
 | `graph`                   | Deterministic orchestration graph runtime: declarative DAG pipelines with journal-based crash recovery | `/graph` |
 | `harbor`                  | Shipyard intake gate: verify external issues and PRs, hand a signature docket  | `/harbor`                  |
+| `hillclimb`                 | Sustained single-metric climbing loop: hypothesis, measurement, one commit per verified win | `/hillclimb`               |
+| `how`                     | Two-pass subsystem walkthrough: explore, then explain with file:line citations | `/how`                     |
 | `hud`                     | Configure HUD/statusline                                                        | `/hud`                     |
+| `in-your-own-words`       | Play back the goal, problem, and success check before work starts              | `/in-your-own-words`       |
 | `intent`                  | Internal requirements intake for non-engineer contributors                      | `/intent`                  |
+| `interrogate`             | Adversarial three-reviewer panel over a diff or design; run-proven findings, severity-merged verdict | `/interrogate`             |
+| `ketchup`                 | Catch up on everything since your last message, with status lines              | `/ketchup`                 |
+| `ketchup-video`           | Catch up like `ketchup`, as a short subtitled video of slides                  | `/ketchup-video`           |
 | `launch`                  | Shipyard governed delivery pipeline: spec, tickets, frontier execution          | `/launch`                  |
 | `loft`                    | Shipyard shape-before-steel discipline: throwaway artifacts answer design questions | `/loft`              |
+| `maintain-formal-verification-skill` | Re-sync an existing formal verification skill after the covered code changed | `/maintain-formal-verification-skill` |
+| `maintain-verification-skill` | Re-sync the project verify skill when its commands drift | `/maintain-verification-skill` |
 | `map`                     | The yard's skill map: which skill owns which job, in delivery-loop order; routes, never executes | `/map`                  |
 | `minimal-code-discipline` | YAGNI-ladder writing-time discipline: reuse first, shortest correct diff        | `/minimal-code-discipline` |
 | `minimal-prose-discipline` | Writing-time discipline for the agent's own prose: protected core, no filler, close on the action | `/minimal-prose-discipline` |
+| `models`                  | Setup wizard for role-based model routing (`team.roleRouting`) and panel diversity | `/models`              |
 | `omc-ado-auto-review`     | Auto-review Azure DevOps PRs where you are an assigned reviewer                 | `/omc-ado-auto-review`     |
 | `omc-ado-review`          | Review Azure DevOps pull requests: diffs, reviewers, comments, votes, threads   | `/omc-ado-review`          |
 | `omc-ado-setup`           | Set up or troubleshoot the Azure DevOps integration (`.omg/config.json`)        | `/omc-ado-setup`           |
@@ -2024,27 +2107,40 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | `omc-plan`                | Strategic planning with optional interview and consensus modes                 | `/omc-plan`               |
 | `omc-review`              | Evaluate finished work for defects, risk, and simplification                   | `/omc-review`             |
 | `omc-setup`               | Install or refresh OMC for plugin, npm, and local-development setups           | `/omc-setup`              |
+| `personal-mode`            | Draft a cross-project user behavior profile from recent transcripts            | `/personal-mode`           |
 | `pr`                      | PR body assembly from OMC's paper trail: smallest visual, verify evidence, ADR-test reversibility | `/pr` |
+| `principles`              | Ten cross-cutting engineering principles for lane delegation and judgment      | `/principles`              |
 | `project-session-manager` | Manage isolated development environments (git worktrees + tmux)                | `/project-session-manager` |
 | `psm`                     | Deprecated compatibility alias for `project-session-manager`                    | `/psm`                     |
 | `ralph`                   | Persistence loop until verified completion                                     | `/ralph`                   |
 | `ralph-experiment`        | Hypothesis-driven experiment loop with notebook, git checkpoint/revert, and agent delegation | `/ralph-experiment` |
 | `ralplan`                 | Consensus planning entrypoint                                                   | `/ralplan`                 |
+| `recall`                  | Reconstruct working context from artifacts in trust order                      | `/recall`                  |
+| `reflect`                  | Three-reviewer transcript audit proposing concrete skill edits                 | `/reflect`                 |
 | `release`                 | Automated release workflow                                                      | `/release`                 |
 | `refit`                   | Cross-session retrospective; instrument evidence to user-approved environment fixes | `/refit` |
 | `remember`                | Save and retrieve durable session memory                                        | `/remember`                |
 | `research`                | Investigate an open question and return grounded findings                       | `/research`               |
 | `self-improve`            | Autonomous evolutionary code improvement engine                                | `/self-improve`           |
+| `sharpen`                 | Aim a task at its real objective: consumer, expert lens, done-check, non-goals | `/sharpen`                 |
 | `ship`                    | Task or PR to merge-ready: executor lane, independent verifier lane, bounded fix rounds, `omg ship` gates | `/ship` |
 | `session-flow`            | Reorient in the current session with an evidence-backed map of its flow        | `/session-flow`           |
+| `show-me-your-work`       | Append-only TSV decision trail for auditable autonomous work                   | `/show-me-your-work`       |
 | `skill`                   | Manage local skills (list/add/remove/search/edit)                              | `/skill`                   |
 | `skillify`                | Extract a reusable skill from the current session                              | `/skillify`                |
+| `statechart`              | Check a TLA+ model as a Mermaid statechart; shortest path to each broken rule  | `/statechart`              |
+| `stacked-delivery`         | Deliver a queue as one linear stacked PR chain, bottom-up landing              | `/stacked-delivery`        |
+| `teach`                   | Explain a subsystem by composing how and why, with a landing check             | `/teach`                   |
 | `team`                    | Coordinated multi-agent workflow                                               | `/team`                    |
 | `tdd`                     | Test-first discipline at pre-agreed seams                                     | `/tdd`                     |
+| `technical-writing`       | Layered prose standard for docs, RFCs, PR descriptions, commit messages        | `/technical-writing`       |
 | `trace`                   | Evidence-driven tracing lane with parallel tracer hypotheses                   | `/trace`                  |
+| `typescript-best-practices` | TS syntax grounding for type-system discipline                               | `/typescript-best-practices` |
 | `ultragoal`               | Durable multi-goal workflow with checkpointed artifacts                        | `/ultragoal`              |
 | `verify`                  | Verify that a change really works before claiming completion                    | `/verify`                 |
 | `visual-verdict`          | Structured visual QA verdict for screenshot/reference comparisons              | `/visual-verdict`        |
+| `what-did-i-get-done`     | Summarize authored commits over a period, grouped by theme                     | `/what-did-i-get-done`    |
+| `why`                     | Evidence-first investigation of why code is the way it is                      | `/why`                     |
 | `wiki`                    | Persistent markdown knowledge base that compounds across sessions              | `/wiki`                   |
 
 
@@ -2052,57 +2148,92 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 
 ## Slash Commands
 
-Most installed skills are exposed as `/<registered-name>` (on Claude Code: `/oh-my-copilot:<registered-name>`). The plugin ships 21 command files alongside the 63 skill entrypoints listed above; the commands below list both surfaces. Compatibility keyword modes like `deep-analyze` and `tdd` are prompt-triggered behaviors, not standalone slash commands. OMC's manual compaction helper is plugin-scoped as `/oh-my-copilot:compact`; bare `/compact` remains Claude Code's native command and is not shadowed by OMC. The helper preserves the user's note and instructs them to run bare `/compact`; OMC does not invoke native compaction itself because Claude Code's built-in `/compact` is not a prompt skill.
+Most installed skills are exposed as `/<registered-name>` (on Claude Code: `/oh-my-copilot:<registered-name>`). The plugin ships 21 command files alongside the 96 skill entrypoints listed above; the commands below list both surfaces. Compatibility keyword modes like `deep-analyze` and `tdd` are prompt-triggered behaviors, not standalone slash commands. OMC's manual compaction helper is plugin-scoped as `/oh-my-copilot:compact`; bare `/compact` remains Claude Code's native command and is not shadowed by OMC. The helper preserves the user's note and instructs them to run bare `/compact`; OMC does not invoke native compaction itself because Claude Code's built-in `/compact` is not a prompt skill.
 
 | Command                                                  | Description                                                                                   |
 | -------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `/ai-slop-cleaner <target>`             | Run the anti-slop cleanup workflow (`--review` for reviewer-only pass)                        |
 | `/agent-doc-discipline`                 | Apply the writing-time discipline for agent-facing documents                                   |
+| `/architect`                            | Parallel design exploration before cross-boundary code                                        |
+| `/arena <brief>`                        | N-candidate bakeoff: fan out, cross-judge, pick by rubric, graft                               |
 | `/ask <claude\|codex\|gemini\|antigravity\|grok\|cursor\|muse> <prompt>` | Route a prompt through the selected advisor CLI and capture an ask artifact                   |
 | `/architecture-survey [area]`           | Survey the repo for architecture-deepening candidates with evidence; reports only, never edits  |
 | `/ask-navigator <idea\|map>`            | Chart a foggy effort into a map of decision tickets (or work the open map), then hand off to launch |
 | `/autopilot <task>`                     | Full autonomous execution                                                                     |
 | `/autoresearch <task>`                  | Run a bounded evaluator-driven improvement mission                                             |
+| `/babysit <PR>`                         | Drive an open PR to merge-ready; watch verdicts, fix CI, never merges                          |
+| `/benchmark-checklist`                  | Vet a measured number before reporting or acting on it                                        |
+| `/blast-radius [path]`                  | Map what a change could break and prove safety by running code                                |
+| `/bro`                                  | Restate the last message in plain language                                                    |
 | `/cancel [--force] [--all]`            | Cancel current-session modes; `--force` skips graceful waits, `--all` explicitly selects all sessions |
 | `/cancel-ralph [--force] [--all]`      | Deprecated alias with the same force/scope distinction                                         |
 | `/configure-notifications`              | Configure notification integrations                                                           |
 | `/oh-my-copilot:compact [note]`                       | Prepare an OMC-safe manual handoff telling the user to run bare `/compact [note]`              |
+| `/correct`                              | Make repeated agent mistakes impossible at the highest enforcing level                        |
+| `/create-formal-verification-skill`     | Generate a project skill that formally verifies one high-risk property                        |
+| `/create-verification-skill`            | Generate the project's own verify skill, commands proven by running them                      |
 | `/debug`                                | Diagnose the current OMC session or repository state                                          |
 | `/deep-interview <idea>`                                 | Socratic interview with ambiguity scoring before execution                                    |
 | `/deepinit [path]`                      | Index codebase with hierarchical AGENTS.md files                                              |
 | `/diagram`                              | Explain the current topic with the smallest visual that carries it                            |
 | `/execute <task>`                      | Carry an approved task through to working, verified code                                      |
 | `/external-context <topic>`             | Run parallel document-specialist research                                                     |
+| `/figure-it-out <task-shape>`           | Design a bespoke playbook, validated against its anchors                                      |
+| `/fix-ci`                               | Classify CI failures and fix the real ones                                                    |
+| `/fix-merge-conflicts`                  | Resolve conflicts preserving both sides' intent                                               |
+| `/get-pr-comments`                       | Fetch and triage review threads                                                               |
 | `/harbor [sweep\|look at #N\|what's ready?]` | Sweep external issues and PRs, verify claims, hand a signature docket                    |
+| `/hillclimb <target>`                   | Sustained single-metric climbing loop                                                          |
+| `/how <subsystem>`                       | Two-pass subsystem walkthrough with file:line citations                                       |
 | `/hud [setup\|minimal\|focused\|full\|status]` | Configure HUD/statusline                                                               |
 | `/drydock [--check]`                   | Lay the shipyard harness keel in a repo (two faces seeded day one; every other surface appears on first use); --check audits drift |
+| `/in-your-own-words`                     | Play back the goal, problem, and success check before starting                                |
+| `/interrogate [path]`                   | Adversarial three-reviewer panel over a diff or design                                        |
+| `/ketchup`                               | Catch up on everything since your last message                                                |
+| `/ketchup-video`                         | Catch up as a short subtitled video of slides                                                 |
+| `/statechart <spec.tla>`                 | Check a TLA+ model and draw the statechart with bug paths                                     |
 | `/launch <brief\|spec-path> [--serial]` | Run the shipyard governed delivery pipeline (spec -> tickets -> frontier)                      |
 | `/loft <design-question>`               | Loft the shape before cutting steel: a throwaway artifact answers a design question prose cannot settle |
+| `/maintain-formal-verification-skill`   | Re-sync a formal verification skill after the covered code changed                            |
+| `/maintain-verification-skill`          | Re-sync the project verify skill when its commands drift                                      |
 | `/minimal-code-discipline`              | Apply the YAGNI-ladder writing-time discipline while implementing                              |
 | `/minimal-prose-discipline`             | Apply the writing-time discipline for the agent's own prose                                    |
+| `/models`                               | Configure role-based model routing and check panel diversity                                  |
 | `/omc-doctor`                           | Diagnose and fix installation issues                                                          |
 | `/omc-plan <description>`               | Start planning session (supports consensus structured deliberation)                           |
 | `/omc-review [path]`                    | Review finished work for defects and risk                                                       |
 | `/omc-setup`                            | Install or refresh OMC                                                                        |
+| `/personal-mode`                       | Draft a cross-project personal behavior profile                                                |
 | `/pr`                                   | Assemble a PR body from existing paper-trail evidence                                           |
+| `/principles`                           | Load the ten cross-cutting engineering principles                                              |
 | `/project-session-manager <arguments>`  | Manage isolated dev environments with git worktrees + tmux                                    |
 | `/psm <arguments>`                      | Deprecated alias for project session manager                                                  |
 | `/ralph <task>`                         | Persistence loop until task completion (`--critic=architect \| critic \| codex`)             |
 | `/ralplan <description>`                | Iterative planning with consensus structured deliberation                                     |
+| `/recall`                               | Reconstruct working context from artifacts in trust order                                     |
+| `/reflect`                              | Three-reviewer transcript audit proposing skill edits                                         |
 | `/release`                              | Automated release workflow                                                                    |
 | `/refit [--scope <area>] [--last <N sessions>]` | Retrospect on OMC instrumentation and propose user-approved environment fixes            |
 | `/remember <note>`                      | Save durable session memory                                                                   |
 | `/research <question>`                  | Investigate an open question and return grounded findings                                      |
 | `/self-improve <topic>`                 | Run the autonomous code-improvement workflow                                                   |
+| `/sharpen <brief>`                      | Aim a task at its real objective: consumer, expert lens, done-check, non-goals                |
 | `/ship <task> \| --pr <n>`              | Take a task or PR to merge-ready through independent review and the `omg ship` gate engine     |
+| `/show-me-your-work`                    | Start (or read) the append-only decision trail                                                |
 | `/skill <action>`                       | Manage local skills                                                                           |
 | `/skillify`                             | Extract a reusable skill from the current session                                             |
+| `/stacked-delivery <queue>`             | Deliver a queue as one stacked PR chain, bottom-up                                             |
+| `/teach <subsystem>`                    | Explain a subsystem by composing how and why                                                 |
 | `/team <N>:<agent> <task>`               | Coordinated native team workflow                                                              |
 | `/tdd`                                  | Test-first discipline at pre-agreed seams                                                     |
+| `/technical-writing`                    | Write shipping prose to the layered standard                                                  |
 | `/trace`                                | Evidence-driven tracing lane                                                                  |
+| `/typescript-best-practices`            | Ground type-system discipline in TypeScript syntax                                            |
 | `/ultragoal <condition>`                | Track a durable multi-goal workflow                                                           |
 | `/verify <target>`                      | Verify that a change really works before claiming completion                                  |
 | `/visual-verdict <task>`                | Structured visual QA verdict for screenshot/reference comparisons                             |
+| `/what-did-i-get-done [period]`         | Summarize authored commits, grouped by theme                                                  |
+| `/why <question>`                       | Investigate why code is the way it is, from evidence                                          |
 | `/wiki <action>`                        | Query or update the persistent markdown knowledge base                                         |
 
 
@@ -2442,6 +2573,8 @@ Configure HUD elements in `~/.claude/settings.json`:
     "preset": "focused",
     "elements": {
       "cwd": true,
+      "agents": true,
+      "todos": true,
       "gitRepo": true,
       "gitBranch": true,
       "showTokens": true

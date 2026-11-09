@@ -15,12 +15,12 @@
  * Architecture mirrors runtime.ts: startTeam, monitorTeam, shutdownTeam,
  * assignTask, resumeTeam as discrete operations driven by the caller.
  */
-import { join, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
 import { existsSync } from 'fs';
 import { link, lstat, mkdir, open, readdir, readFile, rm, unlink, writeFile } from 'fs/promises';
 import { performance } from 'perf_hooks';
 import { TeamPaths, absPath, canonicalTeamStatePath, teamStateRoot, teamWorkspaceHash } from './state-paths.js';
-import { getOmcRoot, validateSessionId } from '../lib/worktree-paths.js';
+import { getOmcRoot, OmcPaths, validateSessionId } from '../lib/worktree-paths.js';
 import { allocateTasksToWorkers } from './allocation-policy.js';
 import { readTeamConfig, readWorkerStatus, readWorkerHeartbeat, writeShutdownRequest, readShutdownAck, writeWorkerInbox, saveTeamConfig, commitInitialTeamConfigUnderLock, readRevisionedTeamConfig, saveTeamConfigAtRevision, migrateTeamConfigRevision, withTeamConfigMutationLock, readTeamManifest, } from './monitor.js';
 import { appendTeamEvent, emitMonitorDerivedEvents } from './events.js';
@@ -33,6 +33,8 @@ import { buildValidatedWorkerLaunchDescriptor, clearResolvedPathCache, validateW
 import { createTeamSession, spawnOwnedWorkerInPane, deliverStartupInbox, probeStartupPaneActivity, retryStartupInboxSubmit, proveWorkerPaneOwnership, adoptWorkerPaneOwnership, getOwnedWorkerLiveness, captureOwnedTeamPane, workerPaneBelongsToOwnedProviderTarget, observeTmuxServerIdentity, killOwnedWorkerPane, verifyTeamTargetOwnership, observeTeamSessionTargetPresence, redactBoundedDiagnostic, killTeamSession, paneHasActiveTask, paneLooksReady, applyMainVerticalLayout, splitTeamWorkerPaneWithEvidence, TMUX_MAILBOX_PANE_ID, TeamSessionCreationError, } from './tmux-session.js';
 import { composeInitialInbox, ensureWorkerStateDir, writeWorkerOverlay, generateTriggerMessage, generatePromptModeStartupPrompt, renderRecoveryContinuationInstruction, renderCursorWorkerGuidance, renderWorkerExitContract, } from './worker-bootstrap.js';
 import { queueInboxInstruction } from './mcp-comm.js';
+import { startSdkLaunchProgress } from './sdk-launch-progress.js';
+import { readLeaderInbox } from './mailbox-outstanding.js';
 import { cleanupTeamWorktrees, inspectTeamWorktreeCleanupSafety, ensureWorkerWorktree, installWorktreeRootAgents, normalizeTeamWorktreeMode, writePreservedWorktreesRecord, } from './git-worktree.js';
 import { formatOmcCliInvocation } from '../utils/omc-cli-rendering.js';
 import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
@@ -1115,6 +1117,55 @@ export async function runBoundedLaunches(jobs, concurrency, launch, record) {
             record(outcome.value);
     return { errors };
 }
+/**
+ * The leader checkout as branch worktrees need it: a git repo with a commit
+ * and no uncommitted changes outside the OMC state directory.
+ */
+function inspectLeaderCheckoutForWorktrees(cwd) {
+    const run = (args) => execFileSync('git', args, {
+        cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true,
+    });
+    try {
+        run(['rev-parse', '--verify', 'HEAD']);
+    }
+    catch {
+        return 'not_git';
+    }
+    try {
+        const dirty = run(['status', '--porcelain']).split('\n')
+            .filter((line) => line.trim() !== '' && !line.startsWith(`?? ${OmcPaths.ROOT}/`) && line !== `?? ${OmcPaths.ROOT}`);
+        return dirty.length > 0 ? 'dirty' : 'ready';
+    }
+    catch {
+        return 'not_git';
+    }
+}
+/**
+ * SDK workers default to branch worktrees (`named`) when neither
+ * `OMC_TEAM_WORKTREE_MODE` nor `team.ops.worktreeMode` is set, so a headless
+ * worker never commits on the leader's branch. Pane teams and explicit
+ * settings are unchanged. A leader checkout that cannot host worktrees (no
+ * git repo or commit, or uncommitted changes) keeps the shared checkout and
+ * says why instead of failing the start.
+ */
+export function resolveSdkDefaultWorktreeMode(input) {
+    const explicitlySet = typeof input.explicit === 'string' && input.explicit.trim() !== '';
+    if (!input.sdk || explicitlySet || input.current !== 'disabled')
+        return { mode: input.current };
+    const leader = input.leader();
+    if (leader === 'ready') {
+        return { mode: 'named', notice: 'sdk workers use branch worktrees (set team.ops.worktreeMode to change)' };
+    }
+    if (leader === 'dirty') {
+        return { mode: 'disabled', notice: 'sdk workers share the leader checkout and commit on its branch: it has uncommitted changes (commit them for branch worktrees, or set team.ops.worktreeMode)' };
+    }
+    return { mode: 'disabled' };
+}
+/**
+ * Default `team.sdk.maxCreditsPerWorker`: one measured small task costs 9-13
+ * AI credits, and the Copilot runtime floors `--max-ai-credits` at 30.
+ */
+export const DEFAULT_SDK_MAX_CREDITS_PER_WORKER = 50;
 export function resolveSdkTeamSettings(pluginCfg) {
     const sdk = pluginCfg.team?.sdk ?? {};
     const envNumber = (key) => {
@@ -1135,6 +1186,10 @@ export function resolveSdkTeamSettings(pluginCfg) {
     if (configInProcess !== undefined && typeof configInProcess !== 'boolean') {
         throw new Error(`invalid_team_sdk_config:inProcessTools must be a boolean (got ${JSON.stringify(configInProcess)})`);
     }
+    const configCompact = sdk.compactProtocol;
+    if (configCompact !== undefined && typeof configCompact !== 'boolean') {
+        throw new Error(`invalid_team_sdk_config:compactProtocol must be a boolean (got ${JSON.stringify(configCompact)})`);
+    }
     const rawEnvInProcess = process.env.OMC_TEAM_SDK_INPROCESS_TOOLS?.trim().toLowerCase();
     const envInProcess = rawEnvInProcess === '1' || rawEnvInProcess === 'true' ? '1'
         : rawEnvInProcess === '0' || rawEnvInProcess === 'false' ? '0'
@@ -1146,9 +1201,10 @@ export function resolveSdkTeamSettings(pluginCfg) {
     const model = process.env.OMC_TEAM_SDK_MODEL?.trim() || sdk.model?.trim();
     return {
         inProcessTools: envInProcess === '1' ? true : envInProcess === '0' ? false : configInProcess ?? false,
+        compactProtocol: configCompact ?? false,
         launchConcurrency: (envConcurrency !== undefined ? Math.max(1, Math.floor(envConcurrency)) : undefined)
             ?? configConcurrency ?? DEFAULT_SDK_LAUNCH_CONCURRENCY,
-        maxCreditsPerWorker: envNumber('OMC_TEAM_SDK_MAX_CREDITS') ?? configCap ?? 10,
+        maxCreditsPerWorker: envNumber('OMC_TEAM_SDK_MAX_CREDITS') ?? configCap ?? DEFAULT_SDK_MAX_CREDITS_PER_WORKER,
         ...(model ? { model } : {}),
         startupEvidenceMs: envNumber('OMC_TEAM_SDK_STARTUP_EVIDENCE_MS') ?? sdk.startupEvidenceMs ?? 180_000,
         denyTools: pluginCfg.permissions?.workerDenyTools ?? [],
@@ -1216,6 +1272,9 @@ async function spawnSdkV2Worker(opts, sdk) {
         };
     }
     const attempt = launch.attempt;
+    // Launch phases (session created, first reply, claim) on stderr while the
+    // leader waits for startup evidence; stopped whatever the outcome.
+    const stopLaunchProgress = startSdkLaunchProgress(stateRoot, opts.workerName, (line) => process.stderr.write(`${line}\n`));
     const triggerMessage = `${generateTriggerMessage(opts.teamName, opts.workerName, workerInstructionStateRoot(opts.cwd, opts.teamName))} ` +
         `[launch:${attempt.attempt_id.slice(0, 12)}]`;
     const fenced = await withWorkerLaunchAttemptFence(attempt, () => queueInboxInstruction({
@@ -1245,7 +1304,7 @@ async function spawnSdkV2Worker(opts, sdk) {
                 : { ok: false, transport: 'prompt_stdin', reason: 'copilot_sdk_startup_evidence_missing' };
         },
         deps: { writeWorkerInbox },
-    }));
+    })).finally(stopLaunchProgress);
     const outcome = fenced.ok ? fenced.value : { ok: false, reason: 'worker_launch_attempt_superseded' };
     if (!outcome.ok) {
         const session = readSdkSession(stateRoot, opts.workerName);
@@ -3608,7 +3667,6 @@ export async function startTeamV2(config) {
             worktreeMode = 'named';
         }
     }
-    const workspaceMode = worktreeMode === 'disabled' ? 'single' : 'worktree';
     const agentTypes = config.agentTypes;
     const externalModelsDefaults = resolveExternalModelsDefaults(pluginCfg.externalModels?.defaults, process.env);
     const resolveDefaultModel = (agentType) => {
@@ -3702,6 +3760,16 @@ export async function startTeamV2(config) {
     }
     const sdkMode = transportDecision.transport === 'sdk';
     const sdkSettings = sdkMode ? resolveSdkTeamSettings(pluginCfg) : null;
+    const sdkWorktreeDefault = resolveSdkDefaultWorktreeMode({
+        sdk: sdkMode,
+        explicit: process.env.OMC_TEAM_WORKTREE_MODE ?? pluginCfg.team?.ops?.worktreeMode,
+        current: worktreeMode,
+        leader: () => inspectLeaderCheckoutForWorktrees(leaderCwd),
+    });
+    if (sdkWorktreeDefault.notice)
+        process.stderr.write(`[omg team] ${sdkWorktreeDefault.notice}\n`);
+    worktreeMode = sdkWorktreeDefault.mode;
+    const workspaceMode = worktreeMode === 'disabled' ? 'single' : 'worktree';
     if (sdkMode) {
         // Under the sdk transport, a contract role (critic/code-reviewer/
         // security-reviewer/test-engineer) that was only INFERRED from task text
@@ -3901,6 +3969,7 @@ export async function startTeamV2(config) {
                     instructionStateRoot: workerInstructionStateRoot(leaderCwd, sanitized),
                     ...(prepared.role && shouldInjectContract(prepared.role, prepared.agentType)
                         ? { reviewerRole: true } : {}),
+                    ...(sdkMode && sdkSettings?.compactProtocol ? { compactProtocol: true } : {}),
                 });
                 const worktree = workerWorktrees.get(wName);
                 if (worktree) {
@@ -5208,6 +5277,55 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
 // monitorTeam — snapshot-based, event-driven (no watchdog)
 // ---------------------------------------------------------------------------
 /**
+ * Leader-side terminal transition for an in-progress task the worker can no
+ * longer finish (sdk credit cap, unanswered blocker). Takes the task claim
+ * lock and checks the observed version, owner and status, the same guards as
+ * the CLI verdict transition, so it never races the worker's own transition.
+ * Returns the written task, or null when the task moved on meanwhile.
+ */
+async function terminalizeTaskForLeader(teamName, cwd, observed, status, error, metadata) {
+    const lock = await withTaskClaimLock(teamName, observed.id, cwd, async () => {
+        let current;
+        try {
+            current = await teamReadTask(teamName, observed.id, cwd);
+        }
+        catch {
+            return null;
+        }
+        if (!current || (current.version ?? 1) !== (observed.version ?? 1))
+            return null;
+        if (current.status !== 'in_progress' || current.owner !== observed.owner)
+            return null;
+        const updated = normalizeTaskRecord({
+            ...current,
+            status,
+            completed_at: new Date().toISOString(),
+            claim: undefined,
+            version: (current.version ?? 1) + 1,
+            error,
+            metadata: { ...(current.metadata ?? {}), ...metadata },
+        });
+        await writeAtomic(absPath(cwd, TeamPaths.taskFile(teamName, observed.id)), JSON.stringify(updated, null, 2));
+        return updated;
+    });
+    return lock.ok ? lock.value : null;
+}
+/**
+ * `team.sdk.blockerTimeoutMinutes`: minutes a worker's `BLOCKER:` message to
+ * the leader may stay unanswered before the monitor fails the sender's
+ * in-progress task. Applies to sdk-transport teams only. Unset (the default)
+ * disables the timeout.
+ */
+export function resolveBlockerTimeoutMs(pluginCfg) {
+    const value = pluginCfg.team?.sdk?.blockerTimeoutMinutes;
+    if (value === undefined)
+        return null;
+    if (!(typeof value === 'number' && Number.isFinite(value) && value > 0)) {
+        throw new Error(`invalid_team_sdk_config:blockerTimeoutMinutes must be a positive number (got ${JSON.stringify(value)})`);
+    }
+    return value * 60_000;
+}
+/**
  * Take a single monitor snapshot of team state.
  * Caller drives the loop (e.g., runtime-cli poll interval or event trigger).
  */
@@ -5375,8 +5493,27 @@ export async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
             nonReportingWorkers.push(w.name);
             if (stallReason === 'sdk_credit_cap') {
                 const cappedTasks = inProgressByOwner.get(w.name) ?? [];
+                const salvageDir = w.worktree_path ?? w.working_dir ?? cwd;
+                const salvage = `salvage: uncommitted work, if any, is in ${salvageDir}${w.worktree_branch ? ` (branch ${w.worktree_branch})` : ''}`;
                 for (const t of cappedTasks) {
-                    recommendations.push(`Reassign task-${t.id} from ${w.name}: sdk credit cap reached (${sdkSession?.last_error ?? 'capped'}); the worker takes no more prompts`);
+                    // The task can no longer finish on this worker: give it the terminal
+                    // `capped` status so status, shutdown and the board stop waiting on it.
+                    let written = null;
+                    try {
+                        written = await terminalizeTaskForLeader(sanitized, cwd, t, 'capped', `sdk_credit_cap (${sdkSession?.last_error ?? 'capped'}); ${salvage}`, { capped_by: 'monitor', capped_worker: w.name, salvage_path: salvageDir, ...(w.worktree_branch ? { salvage_branch: w.worktree_branch } : {}) });
+                    }
+                    catch (err) {
+                        if (isTeamInstanceBoundaryError(err))
+                            throw err;
+                        process.stderr.write(`[team/runtime-v2] capped transition for task-${t.id} failed: ${err instanceof Error ? err.message : String(err)}\n`);
+                    }
+                    if (written) {
+                        const index = allTasks.findIndex((task) => task.id === t.id);
+                        if (index >= 0)
+                            allTasks[index] = written;
+                        taskById.set(t.id, written);
+                    }
+                    recommendations.push(`Reassign task-${t.id} from ${w.name} or raise team.sdk.maxCreditsPerWorker: sdk credit cap reached (${sdkSession?.last_error ?? 'capped'}); ${salvage}`);
                 }
                 if (cappedTasks.length === 0) {
                     recommendations.push(`${w.name} reached its sdk credit cap and takes no more prompts; do not assign it new work`);
@@ -5396,6 +5533,44 @@ export async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
             }
         }
     }
+    // Worker `BLOCKER:` messages to the leader. On an sdk-transport team with
+    // `team.sdk.blockerTimeoutMinutes` set, a blocker left unanswered past the
+    // timeout fails its sender's in-progress task, so a headless leader never
+    // waits forever. Pane teams only list them.
+    const leaderInbox = await readLeaderInbox(dirname(absPath(cwd, TeamPaths.mailbox(sanitized, 'leader-fixed'))));
+    if (leaderInbox.length > 0) {
+        const sdkTeam = config.workers.some((worker) => worker.transport === 'sdk' || isSdkTarget(worker.pane_id));
+        let blockerTimeoutMs = null;
+        try {
+            if (sdkTeam)
+                blockerTimeoutMs = resolveBlockerTimeoutMs(loadConfig());
+        }
+        catch (err) {
+            process.stderr.write(`[team/runtime-v2] ${err instanceof Error ? err.message : String(err)}\n`);
+        }
+        const nowMs = Date.now();
+        const timeoutMs = blockerTimeoutMs ?? Number.POSITIVE_INFINITY;
+        for (const message of leaderInbox) {
+            const ageMs = nowMs - Date.parse(message.created_at);
+            if (!(ageMs > timeoutMs))
+                continue;
+            for (const task of allTasks.filter((t) => t.status === 'in_progress' && t.owner === message.from)) {
+                let written = null;
+                try {
+                    written = await terminalizeTaskForLeader(sanitized, cwd, task, 'failed', `blocker_unanswered: no leader reply within ${Math.round(timeoutMs / 60_000)} min to ${message.from}: ${message.body.slice(0, 200)}`, { blocker_message_id: message.message_id, blocker_message_at: message.created_at, blocker_message: message.body });
+                }
+                catch (err) {
+                    if (isTeamInstanceBoundaryError(err))
+                        throw err;
+                    process.stderr.write(`[team/runtime-v2] blocker timeout for task-${task.id} failed: ${err instanceof Error ? err.message : String(err)}\n`);
+                }
+                if (written) {
+                    allTasks[allTasks.indexOf(task)] = written;
+                    recommendations.push(`task-${task.id} failed: ${message.from}'s message to the leader went unanswered past team.sdk.blockerTimeoutMinutes`);
+                }
+            }
+        }
+    }
     // Count tasks
     const taskCounts = {
         total: allTasks.length,
@@ -5404,6 +5579,7 @@ export async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
         in_progress: allTasks.filter((t) => t.status === 'in_progress').length,
         completed: allTasks.filter((t) => t.status === 'completed').length,
         failed: allTasks.filter((t) => t.status === 'failed').length,
+        capped: allTasks.filter((t) => t.status === 'capped').length,
     };
     const allTasksTerminal = taskCounts.pending === 0 && taskCounts.blocked === 0 && taskCounts.in_progress === 0;
     for (const task of allTasks) {
@@ -5413,11 +5589,15 @@ export async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
         }
         recommendations.push(`Investigate task-${task.id}: depends on missing task ids [${missingDependencyIds.join(', ')}]`);
     }
-    // Infer phase from task distribution
-    const phase = inferPhase(allTasks.map((t) => ({
+    // Infer phase from task distribution. The phase controller predates the
+    // `capped` status, so an all-terminal team never falls back to `executing`.
+    const inferredPhase = inferPhase(allTasks.map((t) => ({
         status: t.status,
         metadata: undefined,
     })));
+    const phase = allTasksTerminal && allTasks.length > 0 && inferredPhase === 'executing'
+        ? (taskCounts.failed + taskCounts.capped > 0 ? 'failed' : 'completed')
+        : inferredPhase;
     const updatedAt = new Date().toISOString();
     const totalMs = performance.now() - monitorStartMs;
     await withTeamInstanceLifecycleLock(monitorInstance.cwd, monitorInstance.team_name, async () => {
@@ -5452,6 +5632,7 @@ export async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
             ...taskCounts,
             items: allTasks,
         },
+        leaderInbox,
         allTasksTerminal,
         deadWorkers,
         nonReportingWorkers,
@@ -5610,13 +5791,17 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
             in_progress: allTasks.filter((t) => t.status === 'in_progress').length,
             completed: allTasks.filter((t) => t.status === 'completed').length,
             failed: allTasks.filter((t) => t.status === 'failed').length,
+            capped: allTasks.filter((t) => t.status === 'capped').length,
             allowed: false,
         };
-        gate.allowed = gate.pending === 0 && gate.blocked === 0 && gate.in_progress === 0 && gate.failed === 0;
+        // Every terminal status (completed, failed, capped) allows a graceful
+        // shutdown, matching status's `leader_next_action=shutdown`; the failed
+        // and capped tasks are named in the gate event and by the CLI.
+        gate.allowed = gate.pending === 0 && gate.blocked === 0 && gate.in_progress === 0;
         await appendTeamEvent(sanitized, {
             type: 'shutdown_gate',
             worker: 'leader-fixed',
-            reason: `allowed=${gate.allowed} total=${gate.total} pending=${gate.pending} blocked=${gate.blocked} in_progress=${gate.in_progress} completed=${gate.completed} failed=${gate.failed}${ralph ? ' policy=ralph' : ''}`,
+            reason: `allowed=${gate.allowed} total=${gate.total} pending=${gate.pending} blocked=${gate.blocked} in_progress=${gate.in_progress} completed=${gate.completed} failed=${gate.failed} capped=${gate.capped}${ralph ? ' policy=ralph' : ''}${gate.failed + gate.capped > 0 ? ` unfinished=${allTasks.filter((t) => t.status === 'failed' || t.status === 'capped').map((t) => `task-${t.id}:${t.status}`).join(',')}` : ''}`,
         }, cwd).catch(logEventFailure);
         if (gate.allowed)
             return;
@@ -6173,10 +6358,12 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
         await commitStoppedFenceUnderLock();
         let worktreeCleanupFailure = null;
         let preservedWorktrees = 0;
+        let keptWorktrees = [];
         let retainedWorktrees = [];
         try {
             const worktreeCleanup = cleanupTeamWorktrees(sanitized, cwd);
             preservedWorktrees = worktreeCleanup.preserved.length;
+            keptWorktrees = worktreeCleanup.preserved;
             retainedWorktrees = worktreeCleanup.retained;
         }
         catch (err) {
@@ -6189,7 +6376,12 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
         }
         if (preservedWorktrees > 0) {
             process.stderr.write(`[team/runtime-v2] preserved ${preservedWorktrees} worktree(s); keeping team state for follow-up cleanup\n`);
-            return { outcome: 'preserved', reason: 'worktrees_preserved', workers: [] };
+            return {
+                outcome: 'preserved',
+                reason: 'worktrees_preserved',
+                workers: [...new Set(keptWorktrees.map((wt) => wt.workerName))],
+                worktrees: keptWorktrees,
+            };
         }
         try {
             await disposeTeamInstanceUnderLock(shutdownInstance, TEAM_INSTANCE_FINAL_DISPOSAL_AUTHORIZATION);
@@ -6215,14 +6407,35 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
 // ---------------------------------------------------------------------------
 // resumeTeam — reconstruct runtime from persisted state
 // ---------------------------------------------------------------------------
-export async function resumeTeamV2(teamName, cwd) {
+export async function resumeTeamV2(teamName, cwd, 
+/** Filled with why the team is not resumable, when the caller wants to say so. */
+diagnostics) {
     const sanitized = sanitizeTeamName(teamName);
     const config = await readTeamConfig(sanitized, cwd);
-    if (!config?.instance_id)
+    if (!config?.instance_id || (config.lifecycle_state ?? 'active') !== 'active')
         return null;
-    // Verify tmux session is alive
     const sessionName = config.tmux_session || `omc-team-${sanitized}`;
-    if (sessionName.startsWith('cmux:') || isSdkTarget(sessionName)) {
+    // Fork (SDK teams): an SDK host has no leader pane to verify; the team is
+    // resumable while at least one worker's SDK host is alive by its provider
+    // record and its session file has not failed or closed.
+    if (isSdkTarget(sessionName)) {
+        const stateRoot = teamStateRoot(cwd, sanitized);
+        const sdkWorkers = config.workers.filter((worker) => isSdkTarget(worker.pane_id));
+        const liveness = await Promise.all(sdkWorkers.map(async (worker) => {
+            if (await getWorkerProviderLiveness(sanitized, cwd, config.instance_id, worker) !== 'alive')
+                return false;
+            const session = readSdkSession(stateRoot, worker.name);
+            const current = session && (!worker.launch_attempt_id || session.attempt_id === worker.launch_attempt_id) ? session : null;
+            return current?.state !== 'failed' && current?.state !== 'closed';
+        }));
+        if (!liveness.some(Boolean)) {
+            if (diagnostics) {
+                diagnostics.reason = sdkWorkers.length === 0
+                    ? 'sdk_team_has_no_worker_hosts'
+                    : 'sdk_worker_hosts_not_alive';
+            }
+            return null;
+        }
         return {
             teamName: sanitized,
             sanitizedName: sanitized,
@@ -6233,19 +6446,16 @@ export async function resumeTeamV2(teamName, cwd) {
             cwd,
         };
     }
-    if (!isValidTmuxServerIdentity(config.tmux_server_identity)
-        || await observeTmuxServerIdentity(config.tmux_server_identity) !== 'matching') {
-        return null;
-    }
     if (!config.leader_pane_id)
         return null;
+    const provider = config.leader_pane_id.startsWith('%') ? 'tmux' : 'cmux';
     const targetOwnership = await verifyTeamTargetOwnership({
-        provider: 'tmux',
+        provider,
         providerTarget: sessionName,
         recipient: 'leader-fixed',
         recipientRole: 'leader',
         paneId: config.leader_pane_id,
-        tmuxServerIdentity: config.tmux_server_identity,
+        ...(provider === 'tmux' ? { tmuxServerIdentity: config.tmux_server_identity } : {}),
     });
     if (targetOwnership.kind !== 'owned')
         return null;

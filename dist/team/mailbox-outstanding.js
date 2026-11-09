@@ -152,4 +152,67 @@ export async function countOutstandingForWorker(mailboxDir, workerName) {
     const scanned = await scanMailboxOutstanding(mailboxDir);
     return scanned[workerName] ?? ZERO_OUTSTANDING;
 }
+function messageField(message, key) {
+    if (!message || typeof message !== 'object')
+        return '';
+    return safeString(message[key]).trim();
+}
+/**
+ * Worker blocker convention: a message to the leader whose body starts with
+ * `BLOCKER:` (case-insensitive). Startup ACKs, progress acks and milestone
+ * reports also go to the leader and are not blockers.
+ */
+export function isBlockerMessageBody(body) {
+    return /^\s*blocker\s*:/i.test(body);
+}
+/**
+ * Unanswered worker blockers addressed to the leader (`leader-fixed` by
+ * default), oldest first. Only `BLOCKER:` messages count (see
+ * {@link isBlockerMessageBody}). A blocker counts as answered once it is
+ * marked delivered or the leader sent its sender a message at or after its
+ * `created_at`; it then stops showing in `omg team status`.
+ */
+export async function readLeaderInbox(mailboxDir, leaderName = 'leader-fixed') {
+    const inbox = [
+        ...await readMailboxFileMessages(join(mailboxDir, `${leaderName}.json`)),
+        ...await readMailboxFileMessagesJsonl(join(mailboxDir, `${leaderName}.jsonl`)),
+    ];
+    const latestReplyBySender = new Map();
+    const unread = [];
+    for (const message of inbox) {
+        if (!isUndelivered(message) || messageToWorker(message) !== leaderName)
+            continue;
+        if (!isBlockerMessageBody(safeString(message.body)))
+            continue;
+        const from = messageFromWorker(message);
+        if (!from || from === leaderName)
+            continue;
+        if (!latestReplyBySender.has(from)) {
+            const replies = [
+                ...await readMailboxFileMessages(join(mailboxDir, `${from}.json`)),
+                ...await readMailboxFileMessagesJsonl(join(mailboxDir, `${from}.jsonl`)),
+            ];
+            let latest = Number.NEGATIVE_INFINITY;
+            for (const reply of replies) {
+                if (messageFromWorker(reply) !== leaderName || messageToWorker(reply) !== from)
+                    continue;
+                const at = Date.parse(messageField(reply, 'created_at'));
+                if (Number.isFinite(at) && at > latest)
+                    latest = at;
+            }
+            latestReplyBySender.set(from, latest);
+        }
+        const createdAt = messageField(message, 'created_at');
+        const createdMs = Date.parse(createdAt);
+        if (Number.isFinite(createdMs) && createdMs <= latestReplyBySender.get(from))
+            continue;
+        unread.push({
+            message_id: messageField(message, 'message_id'),
+            from,
+            created_at: createdAt,
+            body: safeString(message.body),
+        });
+    }
+    return unread.sort((a, b) => (Date.parse(a.created_at) || 0) - (Date.parse(b.created_at) || 0));
+}
 //# sourceMappingURL=mailbox-outstanding.js.map

@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { factoryCommand, factoryRunCommand, type FactoryRunDeps } from '../factory.js';
 import { resolveFactoryRunLimits } from '../../../factory/run/budget.js';
-import { loadFactoryForgeConfig, originForgeKind } from '../../../factory/run/forge-roots.js';
+import { FactoryForgeUnavailableError, loadFactoryForgeConfig, originForgeKind } from '../../../factory/run/forge-roots.js';
 import { readFactoryState } from '../../../factory/run/state.js';
 import { healCommand } from '../../../factory/heal/cli.js';
 import { resolveHealConfig } from '../../../factory/heal/config.js';
@@ -41,7 +41,7 @@ describe('omg factory run forge wiring', () => {
   afterEach(() => { rmSync(h.dir, { recursive: true, force: true }); });
 
   it('passes the resolved forge with the full untrusted roots; a GitHub run is recorded as forgeKind github and parks at the same merge', async () => {
-    const forge = vi.fn((_root: string, _base: string) => ({ ...resolveForgeConfig(undefined, undefined, undefined, `${REPO_URL}.git`), warnings: ['omg factory: a forge warning'] }));
+    const forge = vi.fn((_root: string, _base: string, _opts?: { dryRun?: boolean }) => ({ ...resolveForgeConfig(undefined, undefined, undefined, `${REPO_URL}.git`), warnings: ['omg factory: a forge warning'] }));
     const exec: Exec = (cmd, args, opts) => (cmd === 'git' && args.join(' ') === 'rev-parse --show-toplevel' ? ok(`${h.root}\n`) : h.exec(cmd, args, opts));
     const lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')]);
     const deps: FactoryRunDeps = {
@@ -51,13 +51,45 @@ describe('omg factory run forge wiring', () => {
     await factoryRunCommand(deps).parseAsync([String(ISSUE), '--json'], { from: 'user' });
 
     expect(process.exitCode ?? 0).toBe(0);
-    expect(forge).toHaveBeenCalledWith(h.root, 'dev');
+    expect(forge).toHaveBeenCalledWith(h.root, 'dev', { dryRun: false });
     expect(out.join('\n')).toContain('omg factory: a forge warning');
     const state = readFactoryState(h.root, ISSUE)!;
     expect(state.forgeKind).toBe('github');
     expect(state.phase).toBe('merge');
     const result = JSON.parse(out.filter((l) => l.startsWith('{')).join('\n')) as { mergeCommand: string };
     expect(result.mergeCommand).toBe(`gh pr merge 42 --admin --merge --match-head-commit ${state.head}`);
+  });
+});
+
+describe('omg factory run without a usable forge (F9)', () => {
+  let h: Harness;
+  beforeEach(() => { h = harness('omg-factory-forge-exit-'); });
+  afterEach(() => { rmSync(h.dir, { recursive: true, force: true }); });
+
+  const depsWith = (forge: FactoryRunDeps['forge']): FactoryRunDeps => ({
+    exec: (cmd, args, opts) => (cmd === 'git' && args.join(' ') === 'rev-parse --show-toplevel' ? ok(`${h.root}
+`) : h.exec(cmd, args, opts)),
+    lanes: () => new FakeLanes(h.root, []), limits: () => resolveFactoryRunLimits(undefined, undefined), base: () => 'dev',
+    ledgerDir: h.ledgerDir, gateConfig: testGateConfig, forge,
+  });
+  const unavailable = () => { throw new FactoryForgeUnavailableError('no origin remote: omg factory needs a GitHub or Azure DevOps origin'); };
+
+  it.each([
+    ['run <issue>', [String(ISSUE)]],
+    ['run --dry-run', [String(ISSUE), '--dry-run']],
+    ['run --next', ['--next']],
+  ])('%s exits 5 with the unsupported forge: prefix', async (_what, argv) => {
+    await factoryRunCommand(depsWith(unavailable)).parseAsync(argv, { from: 'user' });
+    expect(process.exitCode).toBe(5);
+    expect(out.join('\n')).toMatch(/^unsupported forge: no origin remote/m);
+  });
+
+  it('--json carries the same message; --dry-run asks the loader not to fetch', async () => {
+    const seen: Array<{ dryRun?: boolean } | undefined> = [];
+    await factoryRunCommand(depsWith((_r, _b, o) => { seen.push(o); return unavailable(); })).parseAsync([String(ISSUE), '--dry-run', '--json'], { from: 'user' });
+    expect(process.exitCode).toBe(5);
+    expect(seen).toEqual([{ dryRun: true }]);
+    expect(JSON.parse(out.filter((l) => l.startsWith('{')).join('\n'))).toEqual({ ok: false, error: 'unsupported forge: no origin remote: omg factory needs a GitHub or Azure DevOps origin' });
   });
 });
 
@@ -91,7 +123,7 @@ describe('loadFactoryForgeConfig', () => {
   });
 
   it('refuses without an origin, or when config would redirect the forge', () => {
-    expect(() => loadFactoryForgeConfig(() => ({ status: 2, stdout: '', stderr: 'no such remote' }), '/repo', 'dev', undefined, undefined)).toThrow(/needs an origin remote/);
+    expect(() => loadFactoryForgeConfig(() => ({ status: 2, stdout: '', stderr: 'no such remote' }), '/repo', 'dev', undefined, undefined)).toThrow(FactoryForgeUnavailableError);
     const exec: Exec = (_cmd, args) => (args[0] === 'remote' ? ok(`${ADO_URL}\n`) : args[0] === 'rev-parse' ? ok(`${'c'.repeat(40)}\n`) : args[0] === 'show' ? { status: 128, stdout: '', stderr: `fatal: path '${BASE_CONFIG_PATH}' does not exist in 'c'` } : ok());
     const user = { factory: { forge: { azureDevOps: { org: 'fabrikam' } } } };
     expect(() => loadFactoryForgeConfig(exec, '/repo', 'dev', user, undefined)).toThrow(/config can pin the forge, never redirect it/);

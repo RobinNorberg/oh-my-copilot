@@ -55,6 +55,7 @@ export const DEFAULT_SHIP_CONFIG = Object.freeze({
         'Size Check',
         'Draft PR Check',
         'omg update + session-start hook',
+        'Statechart suite (Node 24)',
     ],
     knownFlakyFile: '.github/known-flaky-tests.json',
     maxFixRounds: 2,
@@ -120,6 +121,15 @@ export function resolveShipConfig(input) {
     if (raw.trustedBases !== undefined) {
         config.trustedBases = Array.isArray(raw.trustedBases) && raw.trustedBases.every(isPlainBranchName) ? raw.trustedBases : bad('trustedBases', 'an array of branch names');
     }
+    if (raw.prepare !== undefined) {
+        if (!raw.prepare || typeof raw.prepare !== 'object' || Array.isArray(raw.prepare))
+            bad('prepare', 'an object such as { "checks": [["cargo", "check"]] }');
+        const checks = raw.prepare.checks;
+        const argv = (a) => Array.isArray(a) && a.length > 0 && a.every((x) => typeof x === 'string' && x.length > 0);
+        if (checks !== undefined) {
+            config.prepareChecks = Array.isArray(checks) && checks.every(argv) ? checks.map((a) => [...a]) : bad('prepare.checks', 'an array of argv arrays of non-empty strings, for example [["cargo", "check"]]');
+        }
+    }
     return config;
 }
 /** Parse a known-flaky list (`{ "tests": [...] }`); malformed content throws. */
@@ -138,7 +148,7 @@ export function parseKnownFlaky(content, file) {
     });
 }
 /** Ship keys a lane or PR could use to merge a red PR; never read from the working tree or the PR head. */
-export const SHIP_SAFETY_KEYS = ['allowAdminMerge', 'advisoryChecks', 'requiredChecks', 'knownFlakyFile'];
+export const SHIP_SAFETY_KEYS = ['allowAdminMerge', 'advisoryChecks', 'requiredChecks', 'knownFlakyFile', 'prepare'];
 /** Keys only the user config (default location) sets: ignored in the base-branch and working-tree files. */
 export const SHIP_USER_ONLY_KEYS = ['trustedBases'];
 /** Project config path inside the repo, read from the base branch for the safety keys. */
@@ -284,6 +294,15 @@ export function userConfigLayers(envPath = getConfigPaths().user, trustedPath) {
  */
 export function resolveTrustedBases(trustedUser) {
     return resolveShipConfig({ trustedBases: shipBlock(trustedUser, 'user config (default location)').trustedBases }).trustedBases;
+}
+/**
+ * ship.prepare.checks as loadTrustedShipConfig resolves it (a safety key):
+ * the user config at its default location, else the base's committed
+ * `.copilot/omg.jsonc`; undefined = prepare auto-detects. For `omg factory check`.
+ */
+export function trustedPrepareChecks(trustedUser, base) {
+    const prepare = shipBlock(trustedUser, 'user config (default location)').prepare ?? shipBlock(base, BASE_CONFIG_PATH).prepare;
+    return resolveShipConfig({ prepare }).prepareChecks;
 }
 /**
  * Resolve the ship config for a run. Precedence:

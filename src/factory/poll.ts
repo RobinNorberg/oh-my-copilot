@@ -75,6 +75,7 @@ import type { HealConfig } from './heal/config.js';
 import { adoHealFor, ciDeps, HEAL_PIPELINE_MISSING, runHealScan, type AdoHeal, type ScanResult } from './heal/cli.js';
 import { HealRunRefused } from './heal/run.js';
 import { DEFAULT_FACTORY_RUN_LIMITS, resolveFactoryRunLimits, type FactoryRunLimits } from './run/budget.js';
+import { FactoryForgeUnavailableError } from './run/forge-roots.js';
 import {
   acquireFactoryRepoOwner, defaultOwnerDeps, factoryRepoOwnerPath, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, type FactoryOwner, type FactoryRunKey, type OwnerDeps,
 } from './run/state.js';
@@ -446,6 +447,8 @@ export interface PollTick {
   repo: string;
   heal: { ran: true; entries: number; recorded: number; queued: number } | { ran: false; reason: string };
   intake: { ran: true; items: number; new: Array<{ id: number; bucket: CheckBucket; reasons: string[] }> } | { ran: false; reason: string };
+  /** The local forge: the base sync of the engine's mirror (ff-only) before the PR reads; absent on GitHub and Azure DevOps. */
+  baseSync?: { ran: true; message: string } | { ran: false; reason: string };
   prs: PollPr[];
   /** Board rows that changed since the previous tick (every row on the first). */
   board: Array<{ stage: BoardStage | 'outside'; row: BoardRow }>;
@@ -478,6 +481,8 @@ export interface PollContext {
   prs: boolean;
   healScan: PollHealScan;
   autoStart: PollAutoStart;
+  /** The local forge's base sync (FactoryPollDeps.localBaseSync), bound to the root and base. */
+  localBaseSync?: () => string;
   budget: PollBudget;
   owner: OwnerDeps;
   now: () => number;
@@ -504,7 +509,8 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
     try {
       return fn();
     } catch (error) {
-      if (error instanceof ShipSafetyError) throw error;
+      // A guard refusal is a bug; an unusable forge (a refused local forge config) exits 5, like omg factory run.
+      if (error instanceof ShipSafetyError || error instanceof FactoryForgeUnavailableError) throw error;
       errors.push(`${name}: ${message(error)}`);
       return undefined;
     }
@@ -559,6 +565,16 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
         step('intake seen', () => updateSeen(root, ids.filter((id) => !failed.has(id)), at));
         intake = { ran: true, items: ids.length, new: results.map((r) => ({ id: r.id, bucket: r.bucket, reasons: r.reasons })) };
       }
+    }
+  }
+
+  // 2b. the local forge: sync the mirror base first, so a PR the human merged on <base> reads as MERGED below.
+  let baseSync: PollTick['baseSync'];
+  if (forge.kind === 'local') {
+    if (!ctx.localBaseSync) baseSync = { ran: false, reason: 'no base sync wired; omg factory run syncs the mirror base' };
+    else {
+      const synced = step('base sync', ctx.localBaseSync);
+      baseSync = synced === undefined ? { ran: false, reason: 'the base sync failed' } : { ran: true, message: plainText(synced) };
     }
   }
 
@@ -645,7 +661,7 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
 
   return {
     schemaVersion: POLL_JSON_SCHEMA_VERSION, tick: ctx.tick, at, forge: config.kind, repo: config.repo.url,
-    heal, intake, prs, board, idle, autoStart, rateLimited, errors: errors.map(plainText), warnings: warnings.map(plainText),
+    heal, intake, ...(baseSync ? { baseSync } : {}), prs, board, idle, autoStart, rateLimited, errors: errors.map(plainText), warnings: warnings.map(plainText),
   };
 }
 
@@ -654,11 +670,19 @@ export function renderTick(t: PollTick): string {
   const lines = [`factory poll  tick ${t.tick}  ${t.at}  ${t.forge} ${t.repo}${t.idle ? '  idle' : ''}${t.nextIntervalMs ? `  next in ${Math.round(t.nextIntervalMs / 60_000)} min` : ''}${t.rateLimited ? '  rate-limited: backing off' : ''}`];
   if (t.heal.ran && t.heal.entries > 0) lines.push(`  heal: ${t.heal.entries} run(s) scanned, ${t.heal.recorded} recorded${t.heal.queued ? `, ${t.heal.queued} queued` : ''} (omg factory heal status)`);
   if (t.intake.ran) for (const n of t.intake.new) lines.push(`  intake: new #${n.id} ${n.bucket}${n.reasons[0] ? ` ${n.reasons[0]}` : ''}`);
+  if (t.baseSync) lines.push(`  base sync: ${t.baseSync.ran ? t.baseSync.message : `not run (${t.baseSync.reason})`}`);
   for (const p of t.prs) {
     if (p.hint) lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)} is ${p.state === 'MERGED' ? 'merged' : 'closed'} by a human: run \`${p.hint}\` to record it`);
     else if (p.threads) lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)}: ${p.threads} open human thread(s)`);
   }
-  for (const b of t.board) lines.push(`  ${b.stage.toUpperCase()}${b.stage === 'backlog' ? backlogLine(b.row) : runLine(b.row, prefix)}`);
+  // F33: a run whose PR a human already merged or closed shows the record step, not its stale gate reason (a merge command).
+  const done = new Map(t.prs.filter((p) => p.hint).map((p) => [runLabel(p.id), p]));
+  for (const b of t.board) {
+    const p = done.get(runLabel(b.row.id));
+    const gate = b.row.run?.gate;
+    const row = p && gate ? { ...b.row, run: { ...b.row.run!, gate: { name: gate.name, reason: `the PR is ${p.state === 'MERGED' ? 'merged' : 'closed'}: run \`${p.hint}\` to record it` } } } : b.row;
+    lines.push(`  ${b.stage.toUpperCase()}${b.stage === 'backlog' ? backlogLine(row) : runLine(row, prefix)}`);
+  }
   if (t.autoStart.started) {
     const a = t.autoStart;
     const took = !a.parsed ? 'outcome unreadable' : a.next !== null ? `took #${a.next}` : a.exitCode === 0 ? 'found nothing runnable' : 'took no item';
@@ -680,6 +704,12 @@ export interface FactoryPollOptions {
 /** board's deps plus the heal tick, the owner identity, the wait and the stop signals. */
 export type FactoryPollDeps = FactoryBoardDeps & {
   healScan: PollHealScan;
+  /**
+   * The local forge: sync the engine's mirror base from the local `<base>` (fast-forward only) once per tick, so a PR the
+   * human merged reads as MERGED. Returns what it did; throws when it refuses (a divergence). The engine owns the mirror,
+   * so the CLI wires the engine's helper here; without it the tick reports the sync as not run.
+   */
+  localBaseSync?: (o: { root: string; base: string; config: ResolvedForgeConfig }) => string;
   /** factory.intake.autoStart's start (default defaultPollAutoStart) and budget gate (default defaultPollBudget over trustedUser, the base layer and projectConfig, read at start). */
   autoStart?: PollAutoStart;
   budget?: PollBudget;
@@ -737,6 +767,7 @@ export async function runFactoryPoll(o: FactoryPollOptions, deps: FactoryPollDep
     forge: read.forge, config: read.config, root: read.root, base: read.base, exec: read.exec, baseSha: read.baseSha,
     heal: o.heal !== false, intake: o.intake !== false, prs: o.prs !== false,
     healScan: deps.healScan,
+    ...(deps.localBaseSync && read.config.kind === 'local' ? { localBaseSync: () => deps.localBaseSync!({ root: read.root, base: read.base, config: read.config }) } : {}),
     autoStart: deps.autoStart ?? defaultPollAutoStart(process.argv[1], {
       timeoutMs: () => autoStartTimeoutMs(runLimits()),
       signals: (forward) => { forwards.add(forward); return () => { forwards.delete(forward); }; },

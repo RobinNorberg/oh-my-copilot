@@ -518,8 +518,15 @@ export interface TeamConfigBlock {
     transport?: 'pane' | 'sdk' | 'auto';
     /** `transport: "sdk"` tuning. */
     sdk?: {
-        /** Per-worker credit cap; the runtime gets `--max-ai-credits max(30, cap)`. Default 10. */
+        /** Per-worker credit cap; the runtime gets `--max-ai-credits max(30, cap)`. Default 50. */
         maxCreditsPerWorker?: number;
+        /**
+         * Minutes a worker's `BLOCKER:` message to the leader may stay unanswered
+         * before the monitor fails the sender's in-progress task
+         * (`blocker_unanswered`). SDK-transport teams only; pane teams ignore it.
+         * Default off.
+         */
+        blockerTimeoutMinutes?: number;
         /** Explicit model for every sdk worker (default: the worker's resolved model, else runtime auto). */
         model?: string;
         /** Startup evidence (task claim) budget per worker in ms. Default 180000. */
@@ -531,6 +538,12 @@ export interface TeamConfigBlock {
          * of starting the `t` stdio MCP server per worker. Default false.
          */
         inProcessTools?: boolean;
+        /**
+         * Give sdk workers the compact worker protocol (no pane, tmux, sentinel or
+         * heartbeat sections; the claim, ACK, mailbox, commit and failure-report
+         * rules stay). Default false.
+         */
+        compactProtocol?: boolean;
     };
     roleRouting?: Partial<Record<CanonicalTeamRole, TeamRoleAssignmentSpec>> & {
         orchestrator?: OrchestratorSpec;

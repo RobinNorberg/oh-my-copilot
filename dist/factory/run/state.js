@@ -27,6 +27,7 @@ import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { isProcessAlive } from '../../platform/process-utils.js';
 import { sameRepo } from '../../ship/config.js';
 import { PROGRESS_STAGES } from '../../forge/types.js';
+import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 export const FACTORY_PHASES = [
     'intake', 'plan', 'implement', 'publish', 'review', 'fix', 'prepare', 'conflict-fix', 'gates', 'ci-fix', 'merge', 'merged', 'cancelled', 'failed',
 ];
@@ -95,6 +96,7 @@ export function createFactoryState(input, now) {
         kind: input.heal ? 'ci-heal' : 'issue',
         issue: input.heal ? 0 : input.issue,
         ...(input.heal ? { heal: input.heal } : {}),
+        ...(input.remote ? { remote: input.remote } : {}),
         repoUrl: input.repoUrl,
         base: input.base,
         branch: factoryBranch(key),
@@ -105,7 +107,7 @@ export function createFactoryState(input, now) {
         lostStreak: {},
         elapsedMs: 0,
         ciFixRounds: 0,
-        history: [{ at: now, from: null, to: 'intake', note: input.heal ? `ci-heal for CI signature ${input.heal.sig8}` : `issue #${input.issue}` }],
+        history: [{ at: now, from: null, to: 'intake', note: input.heal ? `ci-heal for CI signature ${input.heal.sig8}` : `${input.itemNoun ?? 'issue'} #${input.issue}` }],
         createdAt: now,
         updatedAt: now,
     };
@@ -119,10 +121,10 @@ export function moveTo(state, to, note, now) {
     return { ...rest, phase: to, updatedAt: now, history: [...state.history, { at: now, from: state.phase, to, note }] };
 }
 /** Park at a named human gate; the phase stays so a rerun re-evaluates it. */
-export function setGate(state, name, reason, now) {
+export function setGate(state, name, reason, now, extra = {}) {
     return {
         ...state,
-        gate: { name, reason, at: now },
+        gate: { name, reason, at: now, ...extra },
         updatedAt: now,
         history: [...state.history, { at: now, from: state.phase, to: state.phase, note: `awaiting-human: ${name}: ${reason}` }],
     };
@@ -174,7 +176,12 @@ export function forgeResumeProblem(state, resolved, resolvedRepoUrl) {
     }
     return null;
 }
+/** The git remote of a run: `origin` unless the state seals the local forge's `omg-local`. */
+export function runRemote(state) {
+    return state.remote ?? 'origin';
+}
 const isStr = (v) => typeof v === 'string';
+const HEX64 = /^[0-9a-f]{64}$/;
 const isCount = (v) => Number.isInteger(v) && v >= 0;
 function shapeProblem(s) {
     if (!isStr(s.repoUrl) || !isStr(s.base) || !s.base || !isStr(s.branch) || !s.branch)
@@ -185,8 +192,20 @@ function shapeProblem(s) {
         return 'implementer';
     if (s.kind !== undefined && s.kind !== 'issue' && s.kind !== 'ci-heal')
         return 'kind';
-    if (s.forgeKind !== undefined && s.forgeKind !== 'github' && s.forgeKind !== 'azure-devops')
+    if (s.forgeKind !== undefined && s.forgeKind !== 'github' && s.forgeKind !== 'azure-devops' && s.forgeKind !== 'local')
         return 'forgeKind';
+    // The remote follows the forge: omg-local exactly on a local run, absent (origin) on every other.
+    if (s.remote !== undefined ? s.remote !== LOCAL_REMOTE || s.forgeKind !== 'local' : s.forgeKind === 'local')
+        return 'remote';
+    if (s.localGate !== undefined && (s.forgeKind !== 'local' || !Array.isArray(s.localGate) || s.localGate.length === 0 || !s.localGate.every(isStr)))
+        return 'localGate';
+    if (s.gateChangeApproved !== undefined && (s.forgeKind !== 'local' || !isStr(s.gateChangeApproved) || !HEX64.test(s.gateChangeApproved)))
+        return 'gateChangeApproved';
+    const gateDef = s.gate?.definition;
+    if (gateDef !== undefined && (s.forgeKind !== 'local' || !isStr(gateDef) || !HEX64.test(gateDef)))
+        return 'gate.definition';
+    if (s.prepareChecks !== undefined && s.prepareChecks !== 'auto' && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr))))
+        return 'prepareChecks';
     if (s.trackerStage !== undefined && !PROGRESS_STAGES.includes(s.trackerStage))
         return 'trackerStage';
     if (s.kind === 'ci-heal') {

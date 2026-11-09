@@ -34,6 +34,9 @@ const VOLATILE_PATTERNS: RegExp[] = [
   /\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?/g,
   /[A-Za-z]:\\[^\s:]*\\[^\s]*(?:omc|omc-)[^\s\\\/]+/g,
   /\/tmp\/[\w.-]+/g,
+  // The process id in Node's warning prefix, "(node:12345) [DEP0040] DeprecationWarning: ...", differs on every run.
+  // Only an id followed by an optional [code] and a "Name:" is replaced, so "(node:42) ready" in an assertion keeps its signal.
+  /(?<=\(node:)\d+(?=\) (?:\[[^\]]+\] )?\w+:)/g,
   /\b[0-9a-f]{8,}\b/gi,
 ];
 
@@ -64,6 +67,9 @@ export function signatureLines(output: string): string[] {
     // and a trailing duration already normalized to one or more "<v>" tokens); a summary that
     // reports failures/errors does not match and is kept below.
     if (/^\d+ passed(?:, \d+ (?:warnings?|skipped|xfailed|xpassed|deselected))* in <v>(?: <v>)*(?: \([^)]*\))?$/.test(line)) continue;
+    // Drop vitest's summary clock ("Start at  00:09:56"): the wall-clock start time differs on every run and
+    // carries no failure signal. Whole-line match, so a clock inside an assertion message is kept.
+    if (/^Start at \d{2}:\d{2}:\d{2}$/.test(line)) continue;
     // Exclude pass/test/fail/skipped/cancelled/todo summary counters when 0 or for non-failure types.
     // These vary as tests are added; only keep failure counter when fail > 0.
     if (/^#\s*(?:pass|tests?|skipped|cancelled|todo)\s+\d+\s*$/.test(line)) continue;

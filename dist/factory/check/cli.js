@@ -21,15 +21,22 @@
  */
 import chalk from 'chalk';
 import { ForgeConfigError, resolveForgeConfig } from '../../forge/config.js';
+import { localForgeLimitations, readMirrorRef } from '../../forge/local/index.js';
+import { STATE_CHANGE_LOG_FLAGS } from '../../forge/local/mirror.js';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { resolveAzEntry } from '../../forge/ado/az-binary.js';
 import { adoGuardContext, defaultAzBinaryDeps } from '../../forge/ado/index.js';
-import { factoryForgeOptions } from '../run/forge-roots.js';
-import { BASE_CONFIG_PATH, isPlainBranchName, readBaseFile, resolveShipConfig } from '../../ship/config.js';
+import { factoryForgeOptions, unsupportedForge } from '../run/forge-roots.js';
+import { existsSync } from 'fs';
+import { join } from 'path';
+import { BASE_CONFIG_PATH, isPlainBranchName, readBaseFile, resolveShipConfig, trustedPrepareChecks } from '../../ship/config.js';
+import { baseFileExists, describePrepareChecks } from '../../ship/prepare.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { isAdoCommand, runGuardedAdo } from '../../forge/ado/guard.js';
-import { assertFactoryCommand, FactorySafetyError } from '../run/exec.js';
+import { assertFactoryCommand, FactorySafetyError, isPlainRepoPath } from '../run/exec.js';
 import { readFactoryState } from '../run/state.js';
+import { gateDefinitionSources } from '../run/local-gate.js';
 import { BUCKET_ORDER, checkItems, plainText } from './score.js';
 export const EXIT_CHECK_FAILED = 1;
 export const EXIT_CHECK_USAGE = 2;
@@ -69,7 +76,27 @@ function checkGh(a, marker) {
         return r.length === 6 && r[0] === '--search' && VALUE(r[1]) && r[2] === '--json' && r[3] === 'name' && r[4] === '--limit' && NUMBER.test(r[5]);
     return false;
 }
-const CHECK_GIT = new Set(['rev-parse', 'remote', 'fetch', 'cat-file', 'show', 'ls-remote']);
+const CHECK_GIT = new Set(['rev-parse', 'remote', 'fetch', 'cat-file', 'show', 'ls-remote', 'merge-base']);
+/**
+ * The local forge's read shapes (src/forge/local): the backlog listing at a
+ * commit, and the local base branch (an offline repository has no origin to
+ * fetch). The check guard allows them itself, with ship's trusted-read env only.
+ * Paths use the engine guard's isPlainRepoPath, so both guards agree.
+ */
+export function isLocalReadShape(args) {
+    if (args[0] === 'ls-tree') {
+        const dir = args[5] ?? '';
+        return args.length === 6 && same(args.slice(1, 3), ['-z', '--name-only']) && /^[0-9a-f]{40}$/.test(args[3]) && args[4] === '--'
+            && dir.endsWith('/') && isPlainRepoPath(dir.slice(0, -1));
+    }
+    // F31: the last commit that changed one backlog file's state: line on the base (lastStateChangeArgs: a reopen after a merge).
+    if (args[0] === 'log') {
+        const n = STATE_CHANGE_LOG_FLAGS.length;
+        return args.length === n + 4 && same(args.slice(1, n + 1), [...STATE_CHANGE_LOG_FLAGS]) && /^[0-9a-f]{40}$/.test(args[n + 1]) && args[n + 2] === '--'
+            && isPlainRepoPath(args[n + 3]);
+    }
+    return args.length === 3 && args[0] === 'rev-parse' && args[1] === '--verify' && args[2].startsWith('refs/heads/') && isPlainBranchName(args[2].slice('refs/heads/'.length));
+}
 /**
  * The `omg factory check` guard. `marker` is set only after `--mark` was
  * confirmed: then, and only then, `gh issue edit <n> --add-label <marker>`
@@ -87,6 +114,10 @@ export function checkGuardExec(exec, marker, ado = () => undefined, command = 'o
                 refuse('gh takes no environment');
             if (!checkGh(args, mark))
                 refuse(`not one of the command shapes ${command} runs`);
+        }
+        else if (file === 'git' && isLocalReadShape(args)) {
+            if (opts?.env !== undefined && JSON.stringify(Object.entries(opts.env)) !== JSON.stringify(Object.entries(TRUSTED_READ_ENV)))
+                refuse('git takes only the trusted-read environment');
         }
         else if (file === 'git') {
             const read = CHECK_GIT.has(args[0]) && (args[0] !== 'show' || (args.length === 2 && /^[0-9a-f]{40}:/.test(args[1])));
@@ -113,6 +144,11 @@ export function checkGuardExec(exec, marker, ado = () => undefined, command = 'o
 }
 /** `--source` as a config value (resolveForgeConfig validates it): label:x, milestone:x, wiql-query:<guid>, board-column:team/board/column, area-tag:<area path>#<tag>. */
 export function parseSourceSpec(spec) {
+    // The local forge's backlog directory, optionally only the items with a label.
+    if (spec === 'local-backlog')
+        return { type: spec };
+    if (spec.startsWith('local-backlog:') && spec.length > 'local-backlog:'.length)
+        return { type: 'local-backlog', label: spec.slice('local-backlog:'.length) };
     const at = spec.indexOf(':');
     const type = at > 0 ? spec.slice(0, at) : '';
     const value = spec.slice(at + 1);
@@ -134,7 +170,7 @@ export function parseSourceSpec(spec) {
         }
         default: break;
     }
-    throw new CheckUsageError(`--source ${JSON.stringify(spec)} is not label:<name>, milestone:<name>, wiql-query:<guid>, board-column:<team>/<board>/<column> or area-tag:<area path>#<tag>`);
+    throw new CheckUsageError(`--source ${JSON.stringify(spec)} is not label:<name>, milestone:<name>, wiql-query:<guid>, board-column:<team>/<board>/<column>, area-tag:<area path>#<tag> or local-backlog[:<label>]`);
 }
 export function parseItemId(raw) {
     const n = Number(raw.replace(/^#/, ''));
@@ -152,6 +188,18 @@ function git(exec, root, args) {
  * The setup wizard builds its preview env with this too.
  */
 export function checkEnvFor(exec, root, config, base, baseSha) {
+    if (config.kind === 'local' && config.repo) {
+        // The local forge: the base is the local branch, and the factory branches live in the engine's mirror (read as files, no spawn).
+        const mirror = config.repo.url;
+        return {
+            config,
+            runState: (id) => readFactoryState(root, id),
+            remoteBranch: (branch) => readMirrorRef(mirror, branch) !== undefined,
+            readPlan: (path) => (baseSha ? readBaseFile(exec, root, baseSha, path) : null),
+            planBase: baseSha ? `${base} at ${baseSha.slice(0, 12)}` : `${base} (not available)`,
+            base,
+        };
+    }
     return {
         config,
         runState: (id) => readFactoryState(root, id),
@@ -264,32 +312,80 @@ export function openReadForge(o, deps, warnings, command, marker) {
         throw new CheckUsageError(`${command} must run inside a git repository`);
     const root = top.out;
     const origin = git(pre, root, ['remote', 'get-url', 'origin']);
-    if (!origin.ok)
-        throw new CheckIncompatibleError(`git remote get-url origin failed: ${origin.err}`);
+    // No origin: only the local (offline) forge can work; resolveForgeConfig decides once the layers are read.
+    const originUrl = origin.ok && origin.out ? origin.out : undefined;
     const base = deps.base(root);
     if (!isPlainBranchName(base))
         throw new CheckUsageError(`base ${JSON.stringify(base)} is not a branch name`);
-    const baseSha = fetchBase(pre, root, base, warnings);
+    let baseSha = originUrl ? fetchBase(pre, root, base, warnings) : localBase(pre, root, base, warnings);
     const trustedUser = deps.trustedUser();
     let config;
     const baseConfig = baseLayer(pre, root, base, baseSha, trustedUser, warnings);
+    const stateDir = factoryForgeOptions(root).stateDir;
     try {
-        const loaded = resolveForgeConfig(trustedUser, baseConfig, withFlags(deps.projectConfig(root), o), origin.out);
+        const loaded = resolveForgeConfig(trustedUser, baseConfig, withFlags(deps.projectConfig(root), o), originUrl, { root, stateDir });
         config = loaded.config;
         warnings.push(...loaded.warnings);
     }
     catch (error) {
         if (!(error instanceof ForgeConfigError))
             throw error;
-        throw error.code === 'invalid' ? new CheckUsageError(error.message) : new CheckIncompatibleError(`${error.code}: ${error.message}`);
+        if (error.code === 'invalid')
+            throw new CheckUsageError(error.message);
+        throw new CheckIncompatibleError(error.code === 'forge-unsupported' ? unsupportedForge(error.message) : `${error.code}: ${error.message}`);
     }
+    // The local forge's base is the local branch (the human merges there; the engine syncs its mirror from it).
+    if (config.kind === 'local' && originUrl)
+        baseSha = localBase(pre, root, base, warnings);
+    // F20: without its base the local forge reads no committed item or config, so nothing could ever be checked.
+    if (config.kind === 'local' && !baseSha)
+        throw new CheckUsageError(missingLocalBase(base));
     try {
         const read = forgeReadExec(deps.exec, config, root, deps.resolveAz, marker, command);
-        return { root, base, baseSha, config, baseConfig, forge: deps.createForge(read.exec, root, config, read.options), exec: read.exec };
+        return { root, base, baseSha, config, baseConfig, forge: deps.createForge(read.exec, root, config, readForgeOptions(config, root, read.options, base, baseSha)), exec: read.exec };
     }
     catch (error) {
         throw new CheckIncompatibleError(error instanceof Error ? error.message : String(error));
     }
+}
+/**
+ * The options a read-only command (check, board, poll, `run --next`) builds
+ * its forge with: the local forge also needs the runtime root, reads the
+ * working tree (an uncommitted item is listed, never runnable) and reads
+ * committed items at `baseSha`, the local base branch `base` (only a local
+ * PR into `base` closes an item). `run --next` passes workingTree: false: a
+ * working-tree item is never runnable, nor does it satisfy a dependency.
+ */
+export function readForgeOptions(config, root, options, base, baseSha, workingTree = true) {
+    if (config.kind !== 'local')
+        return options;
+    return { ...options, local: { omgRoot: getOmcRoot(root), workingTree, base, baseSha: () => baseSha ?? undefined } };
+}
+/** F20: the local forge's base branch is missing (exit 2 in check, board, poll and `run --next`). */
+export function missingLocalBase(base) {
+    return `the base branch ${base} does not exist in this repository, so no committed backlog item or config can be read; set ship.base in .copilot/omg.jsonc to the branch you merge into (omg factory setup --forge local writes it)`;
+}
+/**
+ * The stderr line of a factory command's error: `Error: <message>`, except that "no usable forge" starts with
+ * `unsupported forge:` in every command, as `omg factory run` prints it (F28).
+ */
+export function factoryErrorLine(message) {
+    return message.startsWith('unsupported forge:') ? message : `Error: ${message}`;
+}
+export { unsupportedForge };
+/** The local branch `<base>` (the local forge's base; no fetch); null with a warning when it does not exist. */
+export function localBase(exec, root, base, warnings) {
+    const sha = git(exec, root, ['rev-parse', '--verify', `refs/heads/${base}`]);
+    if (sha.ok && /^[0-9a-f]{40}$/.test(sha.out))
+        return sha.out;
+    warnings.push(`omg factory: the base branch ${base} does not exist in this repository; committed backlog items and the committed config cannot be read`);
+    return null;
+}
+/** The forge's limitations (the local forge's offline lines), or none. */
+export function forgeLimitations(forge, base) {
+    if (forge.kind === 'local')
+        return localForgeLimitations(base);
+    return forge.limitations?.() ?? [];
 }
 /** Run one check; returns the exit code. Errors other than usage / incompatible propagate (exit 1 at the CLI). */
 export async function runFactoryCheck(o, deps) {
@@ -303,7 +399,16 @@ export async function runFactoryCheck(o, deps) {
         throw new CheckUsageError('--limit applies to an intake source; --parent checks every child of the spec');
     const warnings = [];
     let marker;
-    const { root, base, baseSha, config, forge, exec } = openReadForge(o, deps, warnings, 'omg factory check', () => marker);
+    const { root, base, baseSha, config, baseConfig, forge, exec } = openReadForge(o, deps, warnings, 'omg factory check', () => marker);
+    let prepareChecks;
+    try {
+        // The same detection prepare runs: repository markers from the base commit, the tool packages from the root's node_modules.
+        const baseHas = baseSha ? baseFileExists(exec, root, baseSha) : () => false;
+        prepareChecks = describePrepareChecks(trustedPrepareChecks(deps.trustedUser(), baseConfig), baseHas, (p) => existsSync(join(root, p)));
+    }
+    catch (error) {
+        throw new CheckUsageError(error instanceof Error ? error.message : String(error));
+    }
     const source = config.intake.source;
     if (ids.length === 0 && parent === undefined && !source)
         throw new CheckUsageError('no item ids and no intake source: pass ids, --parent <spec>, --source <spec>, or set factory.intake.source');
@@ -342,11 +447,24 @@ export async function runFactoryCheck(o, deps) {
         }
     }
     const ok = m.failed.length === 0 && !items.some((r) => r.reasons[0] === 'read-failed');
+    // Skipped backlog files (the local tracker), after every read.
+    warnings.push(...(forge.tracker.warnings?.() ?? []));
+    const limitations = forgeLimitations(forge, base);
+    // The verdict a run parks on before its first lane (gate-definition-unknown).
+    let gate;
+    if (config.kind === 'local') {
+        const argv = config.local?.gate;
+        const unresolved = argv && argv.length > 0 ? gateDefinitionSources(argv).unresolved : undefined;
+        gate = !argv || argv.length === 0 ? 'not set' : unresolved ? `unresolved (${unresolved})` : 'ok';
+    }
     if (o.json) {
         const json = {
             schemaVersion: CHECK_JSON_SCHEMA_VERSION,
             ok,
             forge: config.kind,
+            limitations,
+            prepareChecks,
+            ...(gate ? { gate } : {}),
             repo: config.repo.url,
             source: ids.length > 0 || parent !== undefined || !source ? null : { ...source },
             counts: Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length])),
@@ -359,6 +477,11 @@ export async function runFactoryCheck(o, deps) {
     else {
         for (const w of warnings)
             deps.err(chalk.yellow(plainText(w)));
+        for (const l of limitations)
+            deps.out(chalk.gray(l));
+        deps.out(chalk.gray(`prepare checks: ${prepareChecks.length > 0 ? prepareChecks.join('; ') : 'none'}`));
+        if (gate)
+            deps.out((gate.startsWith('unresolved') ? chalk.yellow : chalk.gray)(`gate: ${plainText(gate)}`));
         deps.out(renderCheckTable(items));
         if (o.mark) {
             if (m.marked.length > 0)

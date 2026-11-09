@@ -1,0 +1,44 @@
+/**
+ * `omg factory run reset <issue>` (local forge only, dogfood F38): make the
+ * item of a cancelled run runnable again. Offline nothing else ever closes
+ * the run's local PR or moves its branch, so without this a cancelled item
+ * stays blocked for good (check: run-finished:cancelled, then pr-exists).
+ *
+ * Only a cancelled run whose state is still the engine's own (its integrity
+ * seal and the engine ledger agree), with no live engine, and after
+ * `omg factory run clean` removed its worktrees. Then:
+ * - the run's local PR is closed in the store (reason `cancelled`) if the
+ *   cancel did not already close it;
+ * - the run's mirror branch is kept as `factory/cancelled/<slug>-<stamp>`
+ *   and removed from `factory/<slug>` with a lease on the sha read here, so
+ *   the next run publishes a fresh branch (nothing the run made is lost);
+ * - the run state and its engine ledger are moved aside (`.reset-<stamp>`)
+ *   and the cancel request is removed, so the next `omg factory run <issue>`
+ *   starts a new run.
+ * Every git command runs guarded and hardened like the engine's.
+ */
+import type { Forge } from '../../forge/types.js';
+import { type Exec } from '../../ship/exec.js';
+import { type OwnerDeps } from './state.js';
+export interface FactoryResetResult {
+    /** The local PR this reset closed (absent: none, or the cancel already closed it). */
+    closedPr?: number;
+    /** Where the run's mirror branch is kept (absent: the mirror had no such branch). */
+    keptBranch?: string;
+    /** Where the old run state was moved. */
+    stateMovedTo: string;
+}
+export interface FactoryResetOptions {
+    root: string;
+    issue: number;
+    /** The plain command runner; reset wraps it like the engine does. */
+    exec: Exec;
+    /** The local forge (its PR store) and its configured mirror path (config.repo.url), which must be the run's. */
+    forge: Forge;
+    mirror: string;
+    ledgerDir?: string;
+    now?: string;
+    owner?: OwnerDeps;
+}
+export declare function resetFactoryRun(o: FactoryResetOptions): FactoryResetResult;
+//# sourceMappingURL=reset.d.ts.map

@@ -76,11 +76,13 @@ import { adoGuardContext, type AzureDevOpsForgeOptions } from '../forge/ado/inde
 import { adoListHtml, adoTextHtml } from '../forge/ado/tracker.js';
 import { ForgeConfigError, resolveForgeConfig } from '../forge/config.js';
 import { ghRepoArg } from '../forge/github/gh.js';
+import { readMirrorRef } from '../forge/local/index.js';
+import { getOmcRoot } from '../lib/worktree-paths.js';
 import { shipyardKeyLine, shipyardKeys, type Forge, type ForgeItem, type ForgeRelationKind, type ResolvedForgeConfig } from '../forge/types.js';
 import { isPlainBranchName } from '../ship/config.js';
 import { TRUSTED_READ_ENV, type Exec } from '../ship/exec.js';
 import {
-  baseLayer, CheckIncompatibleError, CheckUsageError, checkGuardExec, defaultResolveAz, EXIT_CHECK_FAILED, fetchBase, parseItemId, runFactoryCheck,
+  baseLayer, CheckIncompatibleError, CheckUsageError, checkGuardExec, defaultResolveAz, EXIT_CHECK_FAILED, fetchBase, localBase, parseItemId, runFactoryCheck, unsupportedForge,
   type CheckJson, type FactoryCheckDeps,
 } from './check/cli.js';
 import { isVague, type CheckBucket } from './check/rules.js';
@@ -139,7 +141,8 @@ export interface EnqueueJson {
   schemaVersion: number;
   ok: boolean;
   dryRun: boolean;
-  spec: { id: number; taskList: 'unchanged' | 'updated'; planned?: string };
+  /** `not-used` on the local forge: a backlog spec has no task list; each ticket's `Part of #n` line links it (F25). */
+  spec: { id: number; taskList: 'unchanged' | 'updated' | 'not-used'; planned?: string };
   items: EnqueueRow[];
   /** Key holders that do not count: untrusted author, or not a child of the spec. */
   ignored: Array<{ id: number; key: string; reason: string }>;
@@ -454,28 +457,32 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
   if (!top.ok) throw new CheckUsageError('omg factory enqueue must run inside a git repository');
   const root = top.out;
   const origin = git(exec, root, ['remote', 'get-url', 'origin']);
-  if (!origin.ok) throw new CheckIncompatibleError(`git remote get-url origin failed: ${origin.err}`);
+  // No origin: only the local (offline) forge can work; resolveForgeConfig decides.
+  const originUrl = origin.ok && origin.out ? origin.out : undefined;
   const base = deps.base(root);
   if (!isPlainBranchName(base)) throw new CheckUsageError(`base ${JSON.stringify(base)} is not a branch name`);
-  const baseSha = fetchBase(exec, root, base, warnings);
+  let baseSha = originUrl ? fetchBase(exec, root, base, warnings) : localBase(exec, root, base, warnings);
   const trustedUser = deps.trustedUser();
   let config: ResolvedForgeConfig;
   try {
-    const loaded = resolveForgeConfig(trustedUser, baseLayer(exec, root, base, baseSha, trustedUser, warnings), deps.projectConfig(root), origin.out);
+    const loaded = resolveForgeConfig(trustedUser, baseLayer(exec, root, base, baseSha, trustedUser, warnings), deps.projectConfig(root), originUrl, { root, stateDir: factoryForgeOptions(root).stateDir! });
     config = loaded.config;
     warnings.push(...loaded.warnings);
   } catch (error) {
     if (!(error instanceof ForgeConfigError)) throw error;
-    throw error.code === 'invalid' ? new CheckUsageError(error.message) : new CheckIncompatibleError(`${error.code}: ${error.message}`);
+    if (error.code === 'invalid') throw new CheckUsageError(error.message);
+    throw new CheckIncompatibleError(error.code === 'forge-unsupported' ? unsupportedForge(error.message) : `${error.code}: ${error.message}`);
   }
-  if (config.kind !== 'github' && config.kind !== 'azure-devops') throw new CheckIncompatibleError(`omg factory enqueue does not support the ${String(config.kind)} forge`);
   const ado = config.kind === 'azure-devops';
+  const local = config.kind === 'local';
+  // The local forge's base is the local branch.
+  if (local && originUrl) baseSha = localBase(exec, root, base, warnings);
 
   const file = readTicketFile(o.file, config.check.maxAcceptanceItems);
   if (file.spec !== specId) throw new CheckUsageError(`--spec ${specId} does not match the ticket file's spec ${file.spec}`);
 
   const source = config.intake.source;
-  const intakeLabel = source?.type === 'label' ? source.label : undefined;
+  const intakeLabel = source?.type === 'label' || source?.type === 'local-backlog' ? source.label : undefined;
   // Azure DevOps membership: an area-tag source's tag and area path (the adapter sets the path on create).
   const intakeTag = source?.type === 'area-tag' ? source.tag : undefined;
   if (ado) {
@@ -486,6 +493,10 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
     else if (source?.type === 'wiql-query') warnings.push('factory.intake.source is a saved query: membership is the query\'s job, enqueue does not make the work items match it (omg factory check --parent still lists them)');
     else if (!intakeTag) warnings.push('factory.intake.source is not an area-tag source: the work items are not added to the intake source (omg factory check --parent still lists them)');
     ctx = { repo: config.repo.url, bodyDir: '', labels: intakeTag ? [intakeTag] : [], itemTypes: [itemType] };
+  } else if (local) {
+    // The local backlog: enqueue writes files in the working tree (no gh), and the human commits them.
+    if (source?.type !== 'local-backlog') warnings.push('factory.intake.source is not local-backlog: the items are not added to the intake source (omg factory check --parent still lists them)');
+    ctx = { repo: config.repo.url, bodyDir: '', labels: [] };
   } else {
     if (!intakeLabel) warnings.push('factory.intake.source is not a label: the items are not added to the intake source (omg factory check --parent still lists them)');
     ctx = { repo: ghRepoArg(config.repo), bodyDir: '', labels: [...(intakeLabel ? [intakeLabel] : []), ...PRIORITY_LABELS] };
@@ -497,7 +508,8 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
     // Azure DevOps: the az entry is resolved once; the guard and the adapter use the same one.
     const entry = ado ? (deps.resolveAz ?? defaultResolveAz)(root) : undefined;
     if (entry) adoGuard = adoGuardContext(config, entry);
-    forgeOptions = { ...factoryForgeOptions(root), ...(entry ? { entry } : {}) };
+    const localOptions = local ? { local: { omgRoot: getOmcRoot(root), workingTree: true, base, baseSha: () => baseSha ?? undefined } } : {};
+    forgeOptions = { ...factoryForgeOptions(root), ...localOptions, ...(entry ? { entry } : {}) };
     forge = deps.createForge(exec, root, config, forgeOptions);
   } catch (error) {
     throw new CheckIncompatibleError(error instanceof Error ? error.message : String(error));
@@ -510,6 +522,8 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
     : item.repoUrl.toLowerCase() === config.repo.url.toLowerCase());
   const itemOf = ado ? `a work item of project ${config.repo.project}` : `an issue of ${config.repo.url}`;
   const remoteBranch = (branch: string): boolean => {
+    // The local forge's factory branches live in the engine's mirror (read as files).
+    if (local) return readMirrorRef(config.repo.url, branch) !== undefined;
     const res = git(exec, root, ['ls-remote', 'origin', `refs/heads/${branch}`]);
     if (!res.ok) throw new Error(`git ls-remote origin refs/heads/${branch} failed: ${res.err}`);
     return res.out.length > 0;
@@ -527,7 +541,9 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
   if (!spec.authorTrusted) {
     // Azure DevOps has no author association: trust is the creator's uniqueName in the user config's trustedAuthors; none listed trusts nobody.
     const trusted = config.azureDevOps?.trustedAuthors ?? [];
-    throw new CheckUsageError(!ado
+    throw new CheckUsageError(local
+      ? `spec #${specId} (${spec.url}) is not committed on ${base}: commit it there first`
+      : !ado
       ? `spec #${specId}'s author is not an OWNER, MEMBER or COLLABORATOR of ${config.repo.url}`
       : trusted.length === 0
         ? `factory.forge.azureDevOps.trustedAuthors is empty in the user config, so no Azure DevOps author is trusted: add the uniqueName that created spec #${specId} there`
@@ -553,7 +569,8 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
   }
   for (const { key, item } of found) {
     if (!inForge(item)) ignored.push({ id: item.id, key, reason: 'not in the forge project' });
-    else if (!item.authorTrusted) ignored.push({ id: item.id, key, reason: 'author is not trusted' });
+    // A local backlog file enqueue wrote and the human has not committed yet is untrusted for a run, but it is this checkout's own file: it holds its key.
+    else if (!item.authorTrusted && !(local && item.uncommitted)) ignored.push({ id: item.id, key, reason: 'author is not trusted' });
     // Azure DevOps links the parent right after the create: a trusted holder with no parent is one whose link failed, and enqueue links it.
     else if (item.parent !== specId && !(ado && item.parent === undefined)) ignored.push({ id: item.id, key, reason: `not a child of #${specId}` });
     else if (holders.has(key)) throw new CheckUsageError(`key ${key} is held by #${holders.get(key)!.id} and #${item.id}; close one by hand`);
@@ -628,11 +645,18 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
 
   const newKeys = planned.filter((p) => p.action === 'created').map((p) => p.ticket.key);
   // Each new child adds one `- [ ] #<id>` line; refuse now rather than after the creates. (Azure DevOps: the spec is never edited.)
-  if (!ado && specBody(ids).length + newKeys.length * 20 > MAX_TRACKER_BODY_CHARS) throw new CheckUsageError(`spec #${specId}'s body would exceed ${MAX_TRACKER_BODY_CHARS} characters with the task list`);
+  if (!ado && !local && specBody(ids).length + newKeys.length * 20 > MAX_TRACKER_BODY_CHARS) throw new CheckUsageError(`spec #${specId}'s body would exceed ${MAX_TRACKER_BODY_CHARS} characters with the task list`);
 
+  // Skipped backlog files (the local tracker).
+  const trackerWarnings = (): string[] => tracker.warnings?.() ?? [];
+  if (local && planned.some((p) => p.action === 'created' || p.action === 'updated')) {
+    // F25: a dry run has written nothing yet.
+    warnings.push(o.dryRun ? `after enqueue writes them, commit the new and changed backlog files on ${base}, where omg factory run reads them` : `the new and changed backlog files are uncommitted: commit them on ${base}, where omg factory run reads them`);
+  }
   if (o.dryRun) {
+    warnings.push(...trackerWarnings());
     // Ids a create would assign are unknown: the planned spec body lists the known ones and names the new keys.
-    const taskList = !ado && (newKeys.length > 0 || normalized(specBody(ids)) !== normalized(spec.body)) ? 'updated' : 'unchanged';
+    const taskList = local ? 'not-used' : !ado && (newKeys.length > 0 || normalized(specBody(ids)) !== normalized(spec.body)) ? 'updated' : 'unchanged';
     const specPlanned = () => `${specBody(ids)}${newKeys.length > 0 ? `\n(plus the new ${newKeys.join(', ')} once created)` : ''}`;
     const rows: EnqueueRow[] = [
       ...planned.map((p): EnqueueRow => ({
@@ -663,7 +687,7 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
   const bodyDir = mkdtempSync(join(tmpdir(), 'omg-enqueue-'));
   const rel = relative(root, bodyDir);
   const rows: EnqueueRow[] = [];
-  let taskList: 'unchanged' | 'updated' = 'unchanged';
+  let taskList: EnqueueJson['spec']['taskList'] = local ? 'not-used' : 'unchanged';
   let failed = false;
   try {
     if (!rel.startsWith('..') && !isAbsolute(rel)) throw new CheckIncompatibleError(`the temporary directory ${bodyDir} is inside the worktree ${root}; set TMPDIR elsewhere`);
@@ -677,11 +701,15 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
     };
     const written = new Map<string, string>();
     let specNow = spec.body;
-    // GitHub only: on Azure DevOps the spec's children are its Hierarchy-Forward links and its description is never edited.
+    // GitHub only: on Azure DevOps the spec's children are its Hierarchy-Forward links and its description is never edited; on the
+    // local forge they are the items whose `Part of #<spec>` line names it, and the committed spec file stays untouched (trusted).
+    // The local tracker reads a body file only from enqueue's body directory, so it gets a forge built with it.
+    const itemWriter = local ? deps.createForge(exec, root, config, { ...forgeOptions, trackerBodyDir: bodyDir }).tracker : tracker;
     const writeSpec = (): void => {
+      if (local) return;
       const next = specBody(ids);
       if (normalized(next) === normalized(specNow)) return;
-      tracker.updateItem!(specId, { title: spec.title, bodyFile: bodyFile(`spec-${specId}`, next), addLabels: [], removeLabels: [] });
+      itemWriter.updateItem!(specId, { title: spec.title, bodyFile: bodyFile(`spec-${specId}`, next), addLabels: [], removeLabels: [] });
       specNow = next;
       taskList = 'updated';
     };
@@ -710,7 +738,7 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
         // Pass 1: create the missing items with the edges already known; list each on the spec at once, so a re-run finds it without search.
         for (const p of planned.filter((x) => x.action === 'created')) {
           const body = renderTicketBody(specId, p.ticket, p.ticket.blockedBy.map((b) => ref(b, ids)).filter((r): r is string => r !== undefined));
-          ids.set(p.ticket.key, tracker.createItem({ title: p.title, bodyFile: bodyFile(p.ticket.key, body), labels: p.labels }));
+          ids.set(p.ticket.key, itemWriter.createItem!({ title: p.title, bodyFile: bodyFile(p.ticket.key, body), labels: p.labels }));
           written.set(p.ticket.key, body);
           writeSpec();
         }
@@ -719,7 +747,7 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
           if (p.action !== 'created' && p.action !== 'updated') continue;
           const body = renderTicketBody(specId, p.ticket, edgesOf(p.ticket, ids));
           if (p.action === 'created' && written.get(p.ticket.key) === body) continue;
-          tracker.updateItem(ids.get(p.ticket.key)!, {
+          itemWriter.updateItem!(ids.get(p.ticket.key)!, {
             title: p.title,
             bodyFile: bodyFile(p.ticket.key, body),
             // A created item got its labels at create.
@@ -767,6 +795,7 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
     }
   }
 
+  warnings.push(...trackerWarnings());
   report(o, deps, { schemaVersion: ENQUEUE_SCHEMA_VERSION, ok: !failed, dryRun: false, spec: { id: specId, taskList }, items: rows, ignored, mark, warnings });
   return failed ? EXIT_CHECK_FAILED : 0;
 }
@@ -783,7 +812,7 @@ function report(o: FactoryEnqueueOptions, deps: FactoryCheckDeps, json: EnqueueJ
   deps.out(chalk.bold(`${pad(['KEY', 'ID', 'ACTION', 'BUCKET'])}  REASON`));
   for (const row of rows) deps.out(`${pad(row)}  ${plainText(row[4])}`);
   for (const i of json.ignored) deps.err(chalk.yellow(`ignored #${i.id} (key ${i.key}): ${i.reason}`));
-  deps.out(`spec #${json.spec.id} task list: ${json.spec.taskList}`);
+  deps.out(`spec #${json.spec.id} task list: ${json.spec.taskList === 'not-used' ? `not used (each ticket's "Part of #${json.spec.id}" line links it to the spec)` : json.spec.taskList}`);
   if (json.dryRun) {
     deps.out(chalk.bold('dry run: nothing was written. The writes:'));
     for (const r of json.items.filter((x) => x.planned)) {

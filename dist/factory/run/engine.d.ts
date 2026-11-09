@@ -57,6 +57,7 @@ import { type AzEntry } from '../../forge/ado/az-binary.js';
 import type { ForgeOptions, ResolvedForgeConfig } from '../../forge/types.js';
 import { type GateConfigLoader } from './prepare.js';
 import { type FactoryRunLimits } from './budget.js';
+import { type LocalGateRunner } from './local-gate.js';
 import { type LaneBackend, type LaneProcess } from './lane.js';
 import { type FactoryGate, type FactoryHealRecord, type FactoryPhase, type FactoryRunKey, type FactoryRunState, type OwnerDeps } from './state.js';
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
@@ -106,6 +107,14 @@ export interface FactoryEngineOptions {
     /** Integration branch (ship.base). */
     base: string;
     dryRun?: boolean;
+    /**
+     * The human accepts a lane's change to the local gate's own definition
+     * (`--allow-gate-change`) on a rerun of a run parked at
+     * gate-definition-changed: exactly the parked definition is accepted once
+     * (its hash recorded in the state); without such a park the flag is
+     * ignored with a warning.
+     */
+    allowGateChange?: boolean;
     now?: () => number;
     pollMs?: number;
     progressFile?: string;
@@ -129,6 +138,8 @@ export interface FactoryEngineOptions {
      * resolveAzEntry outside those roots).
      */
     forge?: FactoryForgeInput;
+    /** The local forge's gate process (default: defaultLocalGateRunner, no shell); tests substitute it. */
+    localGate?: LocalGateRunner;
 }
 export interface FactoryForgeInput {
     config: ResolvedForgeConfig;
@@ -166,6 +177,7 @@ export interface FactoryRunOutcome {
         maxRunCredits?: number;
         planSource?: string;
         reason?: string;
+        gateProblem?: string;
     };
 }
 /** A gh / git failure in an engine step: phase `fail`, state unchanged, exit 1; a rerun resumes at the phase. */

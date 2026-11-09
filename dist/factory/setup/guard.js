@@ -13,6 +13,7 @@
  */
 import { ShipSafetyError } from '../../ship/exec.js';
 import { adoRouteById, findAdoRoute } from '../../forge/ado/routes.js';
+import { isPlainBranchName } from '../../ship/config.js';
 export class SetupError extends Error {
     exitCode;
     constructor(exitCode, message) {
@@ -118,8 +119,12 @@ export function assertSetupCommand(cmd, args, repo, az, env) {
     const base = file.replace(/\.exe$/, '');
     const ok = isAz
         ? azAllowed(args.slice(az.prefix.length), repo)
-        : base === 'gh' ? ghAllowed(args, repo)
+        // The local forge has no server: the wizard runs neither gh nor az for it.
+        : base === 'gh' ? repo.kind === 'github' && ghAllowed(args, repo)
             : base === 'git' ? same(args, ['remote', 'get-url', 'origin']) || same(args, ['rev-parse', '--show-toplevel'])
+                // F20: the local forge's base detection (does dev exist, else the current branch).
+                || (repo.kind === 'local' && (same(args, ['symbolic-ref', '--quiet', '--short', 'HEAD'])
+                    || (args.length === 4 && same(args.slice(0, 3), ['rev-parse', '--verify', '--quiet']) && args[3].startsWith('refs/heads/') && isPlainBranchName(args[3].slice('refs/heads/'.length)))))
                 : false;
     if (!ok)
         refuse('not one of the command shapes the setup wizard runs');

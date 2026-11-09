@@ -24,6 +24,8 @@ export declare function factoryForgeOptions(repoRoot: string, env?: NodeJS.Proce
  * merge body under, a root a lane writes.
  */
 export declare function assertFactoryForgeOptions(repoRoot: string, options: ForgeOptions, env?: NodeJS.ProcessEnv): void;
+/** The F9/F10 text of "no usable forge" (exit 5 in run, check, board, poll and setup), with the offline hint. */
+export declare function unsupportedForge(why: string): string;
 /**
  * The forge config of a factory run: the user config at its default
  * location, `.copilot/omg.jsonc` committed on `origin/<base>` after a fetch
@@ -36,7 +38,67 @@ export declare function assertFactoryForgeOptions(repoRoot: string, options: For
  * (resolveTrustedBases, as ship reads it) is neither fetched nor read: that
  * layer is empty, with a warning.
  */
-export declare function loadFactoryForgeConfig(exec: Exec, root: string, base: string, trustedUser: unknown, project: unknown): LoadedForgeConfig;
+export declare function loadFactoryForgeConfig(exec: Exec, root: string, base: string, trustedUser: unknown, project: unknown, opts?: {
+    dryRun?: boolean;
+}): LoadedForgeConfig;
+/**
+ * The run has no usable forge: no origin, an origin that is neither GitHub
+ * nor Azure DevOps, or a configured forge the origin contradicts. Every
+ * `omg factory` command exits 5 for it (F9), like check / board / setup.
+ */
+export declare class FactoryForgeUnavailableError extends Error {
+    constructor(message: string);
+}
+/** Exit code of FactoryForgeUnavailableError (EXIT_CHECK_INCOMPATIBLE, setup's 5). */
+export declare const EXIT_FORGE_UNAVAILABLE = 5;
+/**
+ * Null when the checkout's `omg-local` remote fetches from and pushes to
+ * exactly `mirror`; otherwise why not. Unlike remoteRepoMismatch (ship's
+ * sameRepo drops `.git` and case for forge URLs), the url and every push url
+ * (insteadOf / pushInsteadOf applied by git) must be exactly the mirror
+ * string the engine registers: not another spelling of the same directory
+ * (forward slashes, a trailing slash, a case variant, a junction), which a
+ * `url.<x>.insteadOf` of the literal mirror path would not rewrite.
+ */
+export declare function localRemoteMismatch(exec: Exec, root: string, mirror: string): string | null;
+/**
+ * The commands that point the checkout's `omg-local` remote back at
+ * `mirror`, per cause (read from the config, any scope): set the url, unset
+ * a planted pushurl, unset a pushInsteadOf that rewrites the url.
+ */
+export declare function localRemoteFixes(exec: Exec, root: string, mirror: string): string[];
+/**
+ * The refused `remote.omg-local.*` settings of the checkout (any include
+ * counts), or null: `vcs` hands the transport to `git remote-<vcs>`
+ * (remote-ext runs a command), `mirror` turns a push into a mirror push, and
+ * a `fetch` refspec other than the default could map a pushed branch onto
+ * local refs (localRemoteRefusedKeys). Also any `url.<x>.insteadOf` /
+ * `pushInsteadOf` whose value is a prefix of `mirror` (mirrorRewriteKeys):
+ * git would rewrite the push to the mirror path into another repository.
+ * And any `remote.<name>.*` whose name is a spelling of `mirror`
+ * (mirrorNamedRemoteKeys): Windows git would push through that remote.
+ */
+export declare function localRemoteRefusedConfig(exec: Exec, root: string, mirror: string): string | null;
+/**
+ * Create (once) and sync the local forge's bare mirror (offline forge plan
+ * §1.1), through the engine's guarded, hardened Exec:
+ * - `git init --bare` at `mirror` when it does not exist;
+ * - `remote.omg-local.vcs` / `.mirror`, or a `remote.omg-local.fetch` other
+ *   than the default, in the checkout refuse with
+ *   FactoryForgeUnavailableError (exit 5);
+ * - the checkout's `omg-local` remote is added when missing; an existing one
+ *   must point at exactly `mirror` for fetch and for every push url
+ *   (localRemoteMismatch: a planted pushurl, an insteadOf or a remote added
+ *   under another spelling of the mirror path refuses, exit 5);
+ * - the local `<base>` is pushed to the mirror without `+`, so the sync is
+ *   fast-forward only: a diverged mirror base refuses with a message. Before
+ *   the push, `onBase` gets the sha read from the local base: the guard lets
+ *   only that sha be pushed there (LocalGuardContext.baseSha);
+ * - `git fetch omg-local <base>` updates `refs/remotes/omg-local/<base>`
+ *   (hardenedGitExec makes it an explicit refspec with `--refmap=`).
+ * Returns the base sha. Throws (a plain Error) on any other refusal.
+ */
+export declare function syncLocalMirror(exec: Exec, root: string, mirror: string, base: string, onBase?: (sha: string) => void): string;
 /**
  * The forge kind the origin remote names; github when there is no origin or
  * it cannot be parsed (today's behaviour). For the GitHub-only commands

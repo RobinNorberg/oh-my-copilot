@@ -229,6 +229,29 @@ jobs:
           test "${#files[@]}" -gt 0
           npx vitest run --fileParallelism=false "${files[@]}"
 
+  # The statechart native suite spawns the CLI once per corpus case; each
+  # process pays its type transform. On the 20.x line there is no compile
+  # cache, which puts the 126-case cli.test far past any sane budget, so the
+  # Node 20 test job runs the suite's in-process files and this job runs the
+  # whole suite, cli.test included, on a stripping-native node.
+  test-statechart-node24:
+    name: Statechart suite (Node 24)
+    needs: [evidence]
+    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref_type != 'tag') && needs.evidence.outputs.reused != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        uses: ./.github/actions/deps
+        with:
+          node-version: '24'
+
+      - name: Run the statechart native suite
+        run: npx vitest run tests/statechart/
+
   # Unrolled matrix: each job's literal `name:` is the check name `omg ship`
   # requires, so a job skipped by a job-level `if:` still reports under it.
   better-sqlite3-node26-ubuntu:
@@ -1339,6 +1362,7 @@ jobs:
       - test-shards
       - test
       - test-windows
+      - test-statechart-node24
       - better-sqlite3-node26-ubuntu
       - better-sqlite3-node26-windows
       - test-precompact-restore-ubuntu

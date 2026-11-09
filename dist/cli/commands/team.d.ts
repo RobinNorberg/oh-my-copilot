@@ -7,6 +7,7 @@
  *   omg team shutdown <team-name> [--force] Shutdown team
  *   omg team api <operation> --input '...'  Worker CLI API
  */
+import type { TeamSnapshotV2 } from '../../team/runtime-v2.js';
 import { type TeamTaskDelegationPlan } from '../../team/types.js';
 export type DecompositionStrategy = 'numbered' | 'bulleted' | 'conjunction' | 'atomic';
 export interface DecompositionPlan {
@@ -75,6 +76,18 @@ export interface TeamLaunchTask {
     delegation?: TeamTaskDelegationPlan;
 }
 export declare function buildTeamLaunchTasks(parsed: ParsedTeamArgs, decomposition: DecompositionPlan, effectiveWorkerCount: number): TeamLaunchTask[];
+/**
+ * Worker counts for the leader guidance. An SDK worker reports idleness
+ * through its host session (`sdk.state`), not its status file, so an idle
+ * session with nothing queued counts as idle; a capped session is counted
+ * on its own and never as non-reporting (its task is `capped`).
+ */
+export declare function classifyStatusWorkers(snapshot: Pick<TeamSnapshotV2, 'workers' | 'nonReportingWorkers'>): {
+    alive: number;
+    idle: number;
+    nonReporting: number;
+    capped: number;
+};
 /**
  * Main team subcommand handler.
  * Routes:

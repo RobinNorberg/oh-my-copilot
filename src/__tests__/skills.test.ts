@@ -69,13 +69,13 @@ describe('Builtin Skills', () => {
   });
 
   describe('createBuiltinSkills()', () => {
-    it('should return correct number of skills (63 canonical + 2 aliases)', () => {
+    it('should return correct number of skills (98 canonical + 2 aliases)', () => {
       const skills = createBuiltinSkills();
-      // 65 entries: 63 canonical skills (incl. upstream v5.4.0's harbor and
-      // agent-doc-discipline, upstream v5.5.0's architecture-survey,
-      // diagram, intent, and minimal-prose-discipline, upstream dev's
-      // map, pr, refit, and tdd, the fork's ship, and upstream's session-flow) + 2 aliases (cancel-ralph, psm)
-      expect(skills).toHaveLength(65);
+      // 100 entries: 98 canonical skills (upstream's 83, incl. the pstack-derived
+      // series through c5b71636e, plus the fork's 15 exclusive skills: critique,
+      // deep-review, discover, ralph-experiment, ship, omc-ado-*, omc-gh-*)
+      // + 2 aliases (cancel-ralph, psm)
+      expect(skills).toHaveLength(100);
     });
 
     it('should return an array of BuiltinSkill objects', () => {
@@ -127,16 +127,25 @@ describe('Builtin Skills', () => {
       // Surface after the 5.0.0 retirement, including debug/remember/verify
       // which were ungated in 5.0.0.
       const expectedSkills = [
-        'ai-slop-cleaner',
         'agent-doc-discipline',
+        'ai-slop-cleaner',
+        'architect',
         'architecture-survey',
+        'arena',
         'ask',
         'ask-navigator',
         'autopilot',
         'autoresearch',
+        'babysit',
+        'benchmark-checklist',
+        'blast-radius',
+        'bro',
         'cancel',
         'cancel-ralph',
         'configure-notifications',
+        'correct',
+        'create-formal-verification-skill',
+        'create-verification-skill',
         'critique',
         'debug',
         'deep-interview',
@@ -147,15 +156,28 @@ describe('Builtin Skills', () => {
         'drydock',
         'execute',
         'external-context',
+        'figure-it-out',
+        'fix-ci',
+        'fix-merge-conflicts',
+        'get-pr-comments',
         'graph',
         'harbor',
+        'hillclimb',
+        'how',
         'hud',
+        'in-your-own-words',
         'intent',
+        'interrogate',
+        'ketchup',
+        'ketchup-video',
         'launch',
         'loft',
+        'maintain-formal-verification-skill',
+        'maintain-verification-skill',
         'map',
         'minimal-code-discipline',
         'minimal-prose-discipline',
+        'models',
         'omc-ado-auto-review',
         'omc-ado-review',
         'omc-ado-setup',
@@ -171,26 +193,39 @@ describe('Builtin Skills', () => {
         'omc-review',
         'omc-setup',
         'pr',
+        'personal-mode',
+        'principles',
         'project-session-manager',
         'psm',
         'ralph',
         'ralph-experiment',
         'ralplan',
-        'release',
+        'recall',
+        'reflect',
         'refit',
+        'release',
         'remember',
         'research',
         'self-improve',
         'session-flow',
+        'sharpen',
         'ship',
+        'statechart',
+        'show-me-your-work',
+        'stacked-delivery',
         'skill',
         'skillify',
-        'team',
         'tdd',
+        'teach',
+        'team',
+        'technical-writing',
         'trace',
+        'typescript-best-practices',
         'ultragoal',
         'verify',
         'visual-verdict',
+        'what-did-i-get-done',
+        'why',
         'wiki',
       ];
 
@@ -872,10 +907,10 @@ describe('Builtin Skills', () => {
     it('should return canonical skill names by default', () => {
       const names = listBuiltinSkillNames();
 
-      // 63 canonical skills, incl. upstream v5.4.0's harbor and agent-doc-discipline,
-      // upstream v5.5.0's architecture-survey, diagram, intent, and
-      // minimal-prose-discipline, upstream dev's map, pr, refit, and tdd, the fork's ship, and upstream's session-flow
-      expect(names).toHaveLength(63);
+      // 98 canonical skills: upstream's 83 (incl. the pstack-derived series
+      // through c5b71636e) plus the fork's 15 exclusive skills (critique,
+      // deep-review, discover, ralph-experiment, ship, omc-ado-*, omc-gh-*)
+      expect(names).toHaveLength(98);
       expect(names).toContain('ship');
       expect(names).toContain('ai-slop-cleaner');
       expect(names).toContain('minimal-code-discipline');
@@ -918,7 +953,7 @@ describe('Builtin Skills', () => {
       const names = listBuiltinSkillNames({ includeAliases: true });
 
       // swarm alias removed in #1131; learner retired in 5.0.0; cancel-ralph and psm remain
-      expect(names).toHaveLength(65);
+      expect(names).toHaveLength(100);
       expect(names).toContain('ai-slop-cleaner');
       expect(names).toContain('autoresearch');
       expect(names).toContain('self-improve');

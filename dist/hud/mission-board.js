@@ -300,7 +300,7 @@ function deriveTeamStatus(taskCounts, agents) {
     return 'waiting';
 }
 function deriveWorkerStatus(workerStatus, task) {
-    if (workerStatus?.state === 'blocked' || workerStatus?.state === 'failed' || task?.status === 'blocked' || task?.status === 'failed')
+    if (workerStatus?.state === 'blocked' || workerStatus?.state === 'failed' || task?.status === 'blocked' || task?.status === 'failed' || task?.status === 'capped')
         return 'blocked';
     if (workerStatus?.state === 'working' || task?.status === 'in_progress')
         return 'running';
@@ -332,7 +332,8 @@ function collectTeamMission(teamRoot, teamName, config) {
     const taskCounts = {
         total: tasks.length,
         pending: tasks.filter((task) => task.status === 'pending').length,
-        blocked: tasks.filter((task) => task.status === 'blocked').length,
+        // A capped task (sdk credit cap) waits on a leader decision: blocked.
+        blocked: tasks.filter((task) => task.status === 'blocked' || task.status === 'capped').length,
         inProgress: tasks.filter((task) => task.status === 'in_progress').length,
         completed: tasks.filter((task) => task.status === 'completed').length,
         failed: tasks.filter((task) => task.status === 'failed').length,

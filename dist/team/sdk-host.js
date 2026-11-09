@@ -41,6 +41,29 @@ const TOOL_CLEANUP_TIMEOUT_MS = 5_000;
 const PERMISSION_LOG_MAX = 200;
 const CREDENTIAL_READ_TIMEOUT_MS = 5_000;
 const STOP_SIGNALS = ['SIGTERM', 'SIGINT', 'SIGHUP'];
+const TURN_USAGE_MAX = 50;
+const tokenCount = (value) => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0);
+/** Add one `assistant.usage` event to `turn`'s entry (the last {@link TURN_USAGE_MAX} turns are kept). */
+export function addTurnUsage(list, turn, event) {
+    if (event.type !== 'assistant.usage')
+        return;
+    const data = (event.data ?? {});
+    let entry = list[list.length - 1];
+    if (!entry || entry.turn !== turn) {
+        entry = { turn, calls: 0, credits: 0, input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, model: null };
+        list.push(entry);
+        if (list.length > TURN_USAGE_MAX)
+            list.splice(0, list.length - TURN_USAGE_MAX);
+    }
+    entry.calls += 1;
+    entry.credits += usageCredits(event);
+    entry.input_tokens += tokenCount(data.inputTokens);
+    entry.output_tokens += tokenCount(data.outputTokens);
+    entry.cache_read_tokens += tokenCount(data.cacheReadTokens);
+    entry.cache_write_tokens += tokenCount(data.cacheWriteTokens);
+    if (typeof data.model === 'string' && data.model)
+        entry.model = data.model;
+}
 class TimeoutError extends Error {
 }
 function withTimeout(promise, ms, label) {
@@ -375,6 +398,7 @@ export async function runSdkHost(spec, deps) {
         permissions: [],
         last_error: null,
         timeline: { host_started_at: new Date().toISOString() },
+        turn_usage: [],
     };
     let dirty = true;
     const writeSessionJson = deps.writeSessionJson ?? atomicWriteJson;
@@ -579,8 +603,12 @@ export async function runSdkHost(spec, deps) {
         catch { /* evidence only */ }
         session.last_event_type = event.type ?? null;
         session.last_event_at = at;
+        mark('first_event_at');
         const data = (event.data ?? {});
         switch (event.type) {
+            case 'assistant.turn_start':
+                mark('turn_started_at');
+                break;
             case 'session.idle':
                 busy = false;
                 session.state = capped ? 'capped' : 'idle';
@@ -593,6 +621,7 @@ export async function runSdkHost(spec, deps) {
                 session.usage.credits += usageCredits(event);
                 if (data.initiator === 'user')
                     session.usage.premium_requests += 1;
+                addTurnUsage(session.turn_usage, session.turns, event);
                 if (!capped && session.usage.credits >= spec.max_credits) {
                     capped = true;
                     session.last_error = `credit cap ${spec.max_credits} reached (${session.usage.credits.toFixed(2)})`;
