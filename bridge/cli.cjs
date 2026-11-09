@@ -118981,27 +118981,34 @@ function isCodingAgentStatusArgs(args, repoArg) {
   const o = value(args[7], "owner");
   const n = value(args[9], "name");
   const since = value(args[13], "since");
-  return args[0] === "api" && args[1] === "graphql" && args[2] === "--hostname" && lower(args[3]) === lower(repo.host) && args[4] === "-f" && args[5] === `query=${CODING_AGENT_STATUS_QUERY}` && args[6] === "-f" && NAME2.test(o) && lower(o) === lower(repo.owner) && args[8] === "-f" && NAME2.test(n) && lower(n) === lower(repo.name) && args[10] === "-F" && NUMBER2.test(value(args[11], "number")) && args[12] === "-f" && ISO_SECONDS.test(since) && !Number.isNaN(Date.parse(since));
+  return args[0] === "api" && args[1] === "graphql" && args[2] === "--hostname" && lower(args[3]) === lower(repo.host) && args[4] === "-f" && args[5] === `query=${CODING_AGENT_STATUS_QUERY}` && args[6] === "-f" && NAME2.test(o) && lower(o) === lower(repo.owner) && args[8] === "-f" && NAME2.test(n) && lower(n) === lower(repo.name) && args[10] === "-F" && NUMBER2.test(value(args[11], "number")) && args[12] === "-f" && ISO_SECONDS.test(since) && isTime(since);
 }
 function isCodingAgentCloseArgs(args, ctx) {
   const repo = repoOf(ctx?.repo);
   const named = args.length === 5 ? repoOf(args[4]) : void 0;
   return repo !== void 0 && named !== void 0 && ctx?.pr !== void 0 && Number.isSafeInteger(ctx.pr) && NUMBER2.test(String(ctx.pr)) && args[0] === "pr" && args[1] === "close" && args[2] === String(ctx.pr) && args[3] === "--repo" && sameRepoArg(named, repo);
 }
-var CODING_AGENT_REST_ASSIGNEE, PR_FIELDS, CODING_AGENT_STATUS_QUERY, NAME2, HOST, NUMBER2, BRANCH3, isBranch2, ISO_SECONDS, lower, sameRepoArg;
+var CODING_AGENT_REST_ASSIGNEE, PR_COMMITS, PR_FIELDS, CODING_AGENT_STATUS_QUERY, NAME2, HOST, NUMBER2, BRANCH3, isBranch2, ISO, ISO_SECONDS, isTime, lower, sameRepoArg;
 var init_coding_agent = __esm({
   "src/forge/github/coding-agent.ts"() {
     "use strict";
     init_gh();
     CODING_AGENT_REST_ASSIGNEE = "copilot-swe-agent[bot]";
-    PR_FIELDS = "number state isDraft isCrossRepository baseRefName headRefName headRefOid author{__typename login} baseRepository{nameWithOwner} headRepository{nameWithOwner} commits(last:1){nodes{commit{oid committedDate}}} timelineItems(last:50,since:$since,itemTypes:[REVIEW_REQUESTED_EVENT]){pageInfo{hasPreviousPage} nodes{__typename ... on ReviewRequestedEvent{createdAt actor{__typename login}}}}";
-    CODING_AGENT_STATUS_QUERY = `query($owner:String!,$name:String!,$number:Int!,$since:DateTime!){repository(owner:$owner,name:$name){nameWithOwner suggestedActors(capabilities:[CAN_BE_ASSIGNED],first:100){pageInfo{hasNextPage} nodes{__typename login}} issue(number:$number){state timelineItems(last:100,since:$since,itemTypes:[ASSIGNED_EVENT,UNASSIGNED_EVENT,CONNECTED_EVENT,CROSS_REFERENCED_EVENT]){pageInfo{hasPreviousPage} nodes{__typename ... on AssignedEvent{createdAt assignee{__typename ... on Bot{login}}} ... on UnassignedEvent{createdAt assignee{__typename ... on Bot{login}}} ... on ConnectedEvent{createdAt actor{__typename login} subject{__typename ...P}} ... on CrossReferencedEvent{createdAt actor{__typename login} source{__typename ...P}}}}}}} fragment P on PullRequest{${PR_FIELDS}}`;
+    PR_COMMITS = 100;
+    PR_FIELDS = `number state isDraft isCrossRepository baseRefName headRefName headRefOid author{__typename login} baseRepository{nameWithOwner} headRepository{nameWithOwner} commits(last:${PR_COMMITS}){pageInfo{hasPreviousPage} nodes{commit{oid committedDate author{user{login}}}}} timelineItems(last:50,since:$since,itemTypes:[REVIEW_REQUESTED_EVENT]){pageInfo{hasPreviousPage} nodes{__typename ... on ReviewRequestedEvent{createdAt actor{__typename login}}}}`;
+    CODING_AGENT_STATUS_QUERY = `query($owner:String!,$name:String!,$number:Int!,$since:DateTime!){repository(owner:$owner,name:$name){nameWithOwner suggestedActors(capabilities:[CAN_BE_ASSIGNED],first:100){pageInfo{hasNextPage} nodes{__typename login}} issue(number:$number){number state timelineItems(last:100,since:$since,itemTypes:[ASSIGNED_EVENT,UNASSIGNED_EVENT,CONNECTED_EVENT,CROSS_REFERENCED_EVENT]){pageInfo{hasPreviousPage} nodes{__typename ... on AssignedEvent{createdAt assignee{__typename ... on Bot{login}}} ... on UnassignedEvent{createdAt assignee{__typename ... on Bot{login}}} ... on ConnectedEvent{createdAt actor{__typename login} subject{__typename ...P}} ... on CrossReferencedEvent{createdAt actor{__typename login} source{__typename ...P}}}}}}} fragment P on PullRequest{${PR_FIELDS}}`;
     NAME2 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
     HOST = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
     NUMBER2 = /^[1-9]\d{0,9}$/;
     BRANCH3 = /^\w[\w./-]{0,199}$/;
     isBranch2 = (s) => BRANCH3.test(s) && !s.includes("..") && !s.includes("@{") && !s.endsWith(".") && s.split("/").every((c) => c !== "" && !c.startsWith(".") && !c.endsWith(".lock"));
+    ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
     ISO_SECONDS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+    isTime = (s) => {
+      if (!ISO.test(s)) return false;
+      const ms = Date.parse(s);
+      return !Number.isNaN(ms) && new Date(ms).toISOString().slice(0, 19) === s.slice(0, 19);
+    };
     lower = (s) => s.toLowerCase();
     sameRepoArg = (a, b) => lower(a.host) === lower(b.host) && lower(a.owner) === lower(b.owner) && lower(a.name) === lower(b.name);
   }
