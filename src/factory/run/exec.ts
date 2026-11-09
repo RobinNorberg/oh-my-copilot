@@ -37,6 +37,7 @@ import { checkAdoCommand, isAdoCommand, runGuardedAdo, type AdoGuardContext } fr
 import { isBodyFileIn, readTrackerBody } from '../../forge/body-file.js';
 import { LOCAL_REMOTE, STATE_CHANGE_LOG_FLAGS } from '../../forge/local/mirror.js';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
+import { triageWriteGh } from '../triage/guard.js';
 
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
 export const FACTORY_BRANCH_PREFIX = 'factory/';
@@ -352,6 +353,9 @@ function factoryGit(a: string[], protectedBranches: readonly string[], extraProt
 }
 
 function factoryGh(a: string[], writes?: TrackerWriteContext): boolean | null {
+  // `omg factory triage --apply`: label-only issue edits (src/factory/triage/guard.ts), decided before the enqueue shapes.
+  const triage = writes ? triageWriteGh(a, writes) : null;
+  if (triage !== null) return triage;
   const write = writes ? trackerWriteGh(a, writes) : null;
   if (write !== null) return write;
   const [group, sub, ...r] = a;
