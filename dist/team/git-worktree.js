@@ -85,14 +85,14 @@ export function hostGitHardeningArgs() {
  * - commit.gpgSign=false: no signing program runs (commit-tree also passes
  *   --no-gpg-sign).
  * - protocol.ext.allow=never: the ext:: transport runs a command.
- * core.alternateRefsCommand stays: only a receive-pack or upload-pack runs
- * it, and host git never serves a transport.
+ * - core.alternateRefsCommand=true: a fetch lists the alternates' refs with
+ *   it; `true` lists none and runs nothing planted.
  */
 const EXEC_KEY_OVERRIDES = [
     'core.fsmonitor=false', 'core.pager=cat', 'diff.external=', 'core.sshCommand=ssh', 'credential.helper=',
     'gpg.program=gpg', 'gpg.ssh.program=ssh-keygen', 'gpg.x509.program=gpgsm', 'core.editor=:', 'sequence.editor=:',
     'core.commitGraph=false', 'core.multiPackIndex=false', 'gc.auto=0', 'maintenance.auto=false', 'fetch.writeCommitGraph=false',
-    'commit.gpgSign=false', 'protocol.ext.allow=never',
+    'commit.gpgSign=false', 'protocol.ext.allow=never', 'core.alternateRefsCommand=true',
 ];
 let emptyAttributesFile = null;
 /** A host-owned empty file for core.attributesFile; a fresh one whenever the last is gone or not empty. */

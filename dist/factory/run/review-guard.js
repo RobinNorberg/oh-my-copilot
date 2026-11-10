@@ -86,13 +86,15 @@ function fileHash(path) {
 function fileText(path) {
     return existsSync(path) ? readFileSync(path, 'utf8').trim() : '';
 }
-/** Hash of every entry under `dir` (relative name, kind and content); `absent` when there is none. */
-export function treeHash(dir) {
+/** Hash of every entry under `dir` (relative name, kind and content), minus the top-level names in `omit`; `absent` when there is none. */
+export function treeHash(dir, omit = []) {
     if (!existsSync(dir))
         return 'absent';
     const entries = [];
     const walk = (abs, rel) => {
         for (const name of readdirSync(abs).sort()) {
+            if (!rel && omit.includes(name))
+                continue;
             const p = join(abs, name);
             const r = rel ? `${rel}/${name}` : name;
             const st = lstatSync(p);
@@ -117,9 +119,7 @@ function pathHash(path) {
 function alternatesHash(gitDir) {
     return `${fileHash(join(gitDir, 'objects', 'info', 'alternates'))} ${fileHash(join(gitDir, 'objects', 'info', 'http-alternates'))}`;
 }
-/** Files up to this size are hashed by content; a larger one (a big commit-graph) by size and mtime. */
-export const OBJECT_META_CONTENT_LIMIT = 1024 * 1024;
-/** One file of the object store's metadata: content hash when small, else size and mtime; a link or directory by kind. */
+/** One file of the object store's metadata: content hash, or a link or directory by kind. */
 function metaEntry(path) {
     let st;
     try {
@@ -132,49 +132,25 @@ function metaEntry(path) {
         return `l ${readlinkSync(path)}`;
     if (st.isDirectory())
         return 'd';
-    return st.size <= OBJECT_META_CONTENT_LIMIT ? `f ${fileHash(path)}` : `f ${st.size} ${st.mtimeMs}`;
+    return `f ${fileHash(path)}`;
 }
+/** The object store files the snapshot hashes (objectStoreMetaHash), relative to the common git dir. */
+const OBJECT_META_FILES = ['shallow', 'objects/info/alternates', 'objects/info/http-alternates'];
 /**
  * The object store state a forged file could use to change merge-base,
- * rev-list or a three-dot diff without a ref moving (RepoSnapshot.objectMeta).
- * Pack data itself is not hashed (a fetch adds packs): only the
- * multi-pack-index and the names of bitmap and promisor packs.
+ * rev-list or a three-dot diff without a ref moving (RepoSnapshot.objectMeta):
+ * `shallow` and the alternates. Not the commit-graph, commit-graphs/,
+ * multi-pack-index or bitmaps: the engine and host git read none of them
+ * (core.commitGraph / core.multiPackIndex=false), while the user's own
+ * `git gc --auto` and `git maintenance` rewrite them, so hashing them only
+ * parked runs. Not the `*.promisor` packs either: they take effect only
+ * under the partial clone config, which the config hash covers.
  */
 export function objectStoreMetaHash(commonDir) {
-    const entries = [`shallow ${metaEntry(join(commonDir, 'shallow'))}`];
+    const entries = OBJECT_META_FILES.map((rel) => `${rel} ${metaEntry(join(commonDir, ...rel.split('/')))}`);
     const info = join(commonDir, 'objects', 'info');
-    const walk = (abs, rel, depth) => {
-        let names;
-        try {
-            names = readdirSync(abs).sort();
-        }
-        catch {
-            return;
-        }
-        for (const name of names) {
-            const p = join(abs, name);
-            const r = `${rel}/${name}`;
-            const entry = metaEntry(p);
-            entries.push(`${r} ${entry}`);
-            if (entry === 'd' && depth < 4)
-                walk(p, r, depth + 1);
-        }
-    };
     if (notADirectory(info))
         entries.push(`objects/info ${NOT_A_DIR}${notADirectory(info)}`);
-    else
-        walk(info, 'objects/info', 0);
-    const pack = join(commonDir, 'objects', 'pack');
-    entries.push(`objects/pack/multi-pack-index ${metaEntry(join(pack, 'multi-pack-index'))}`);
-    let packNames = [];
-    try {
-        packNames = readdirSync(pack).sort();
-    }
-    catch { /* no pack dir */ }
-    for (const name of packNames) {
-        if (name.endsWith('.bitmap') || name.endsWith('.promisor'))
-            entries.push(`objects/pack/${name}`);
-    }
     return sha(entries.join('\n'));
 }
 /** What a path is when it is not a real directory (lstat, so a symlink or junction is never followed); null for a directory. */
@@ -401,7 +377,8 @@ export function snapshotRepo(exec, root, stateRootRel = '.omg', against) {
     const files = {
         config: fileHash(join(commonDir, 'config')),
         configWorktree: fileHash(join(commonDir, 'config.worktree')),
-        info: treeHash(join(commonDir, 'info')),
+        // Not info/refs: only a dumb-HTTP server reads it, and the user's own gc or repack rewrites it (update-server-info).
+        info: treeHash(join(commonDir, 'info'), ['refs']),
         modules: moduleEntries(commonDir),
         globalConfig: globalConfigHash([
             join(commonDir, 'config'), join(commonDir, 'config.worktree'),
@@ -551,7 +528,7 @@ export function compareSnapshots(before, after, allowedNewRefs = {}, allow = {})
     if (before.alternates !== after.alternates)
         problems.push('objects/info/alternates changed');
     if (before.objectMeta !== undefined && before.objectMeta !== after.objectMeta)
-        problems.push('the object store metadata changed (shallow, objects/info/: commit-graph, commit-graphs/, alternates; objects/pack/multi-pack-index, *.bitmap, *.promisor)');
+        problems.push('the object store metadata changed (shallow, objects/info/alternates, objects/info/http-alternates)');
     if (before.globalConfig !== after.globalConfig)
         problems.push('the global git config or a file a git config includes changed (~/.gitconfig, $XDG_CONFIG_HOME/git/config, include.path / includeIf targets)');
     if (before.ignored !== after.ignored)

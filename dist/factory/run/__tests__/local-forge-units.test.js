@@ -106,7 +106,7 @@ describe('hardenedGitExec on omg-local', () => {
         expect(first.slice(at - LOCAL_REMOTE_PACK_ARGS.length, at)).toEqual(LOCAL_REMOTE_PACK_ARGS);
         // The push names the mirror path, so no fetch refspec of the named remote moves a local ref after it.
         // Its receive-pack runs in the mirror with the engine's empty hooks dir (a push to a path drops this process's -c).
-        expect(first.slice(at)).toEqual(['push', MIRROR, `${SHA}:refs/heads/factory/issue-7`, `--receive-pack=git -c core.hooksPath='${dir}' -c core.fsmonitor=false receive-pack`]);
+        expect(first.slice(at)).toEqual(['push', MIRROR, `${SHA}:refs/heads/factory/issue-7`, `--receive-pack=git -c core.hooksPath='${dir}' -c core.fsmonitor=false -c core.alternateRefsCommand=true -c core.alternateRefsPrefixes= -c receive.autogc=false receive-pack`]);
         // The mirror's own config was read (with --file, no include followed) before the push and the fetch.
         expect(seen.filter((a) => a.includes('--list')).map((a) => a.slice(a.indexOf('config')))).toEqual([
             ['config', '--file', join(MIRROR, 'config'), '-z', '--list'], ['config', '--file', join(MIRROR, 'config'), '-z', '--list'], ['config', '--file', join(MIRROR, 'config'), '-z', '--list'],

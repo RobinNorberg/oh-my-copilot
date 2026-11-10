@@ -89,6 +89,19 @@ describe('omg factory pr on the local forge', () => {
         expect(diff.args.slice(-4)).toEqual(['diff', '--no-ext-diff', '--no-textconv', expect.stringMatching(/^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/)]);
         expect(diff.args).toEqual(expect.arrayContaining([expect.stringMatching(/^core\.hooksPath=/), 'core.fsmonitor=false', 'diff.external=']));
     });
+    it('M-D: diff and view refuse when the mirror base is not your local base (the merge base would hide commits)', async () => {
+        // The mirror's main moves to the PR head itself: base...head would be empty and the lane's change hidden.
+        git(repo.root, 'push', '-q', mirror, `${head}:refs/heads/main`);
+        const local = git(repo.root, 'rev-parse', 'main');
+        expect(await cli('diff', '1')).toBe(1);
+        expect(repo.err.join('\n')).toContain(`the local forge mirror's main is at ${head}, but your main is at ${local}`);
+        expect(repo.calls.some((c) => c.args.includes('diff'))).toBe(false);
+        expect(await cli('view', '1', '--json')).toBe(1);
+        expect(JSON.parse(out())).toMatchObject({ ok: false, error: expect.stringMatching(/the view would use a base you do not have/) });
+        // Synced back: both read again.
+        git(repo.root, 'push', '-q', '-f', mirror, `${local}:refs/heads/main`);
+        expect(await cli('diff', '1'), repo.err.join('\n')).toBe(0);
+    });
     it('review --request-changes records the head; view and the forge read it as an open thread', async () => {
         expect(await cli('review', '1', '--request-changes', '--head', head, '--body-file', body('Please add a --version test.\r\n')), repo.err.join('\n')).toBe(0);
         expect(out()).toBe(`recorded changes-requested by robin on local PR #1 at ${head.slice(0, 8)}; the next omg factory run of its item reads it`);

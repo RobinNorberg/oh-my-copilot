@@ -19020,7 +19020,8 @@ var init_git_worktree = __esm({
       "maintenance.auto=false",
       "fetch.writeCommitGraph=false",
       "commit.gpgSign=false",
-      "protocol.ext.allow=never"
+      "protocol.ext.allow=never",
+      "core.alternateRefsCommand=true"
     ];
     emptyAttributesFile = null;
     WORK_TREE_SUBCOMMANDS = /* @__PURE__ */ new Set([

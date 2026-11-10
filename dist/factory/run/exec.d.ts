@@ -164,8 +164,12 @@ export declare function gitHardeningArgs(hooksDir: string, subcommand?: string):
  * spawns receive-pack in the mirror, and git drops this process's `-c` for a
  * local transport, so the mirror's own hooks (pre-receive, update,
  * post-receive, reference-transaction) and core.hooksPath would run; this
- * command passes the empty hooks dir to that receive-pack itself. Git runs
- * it through `sh`, so the path is single-quoted (a path with a quote is refused).
+ * command passes the empty hooks dir to that receive-pack itself, and pins
+ * the other config it would run or act on (core.alternateRefsCommand lists
+ * alternates' refs, receive.autogc repacks). Command-line config beats every
+ * file the mirror reads, so a config written after mirrorConfigProblem
+ * checked it changes none of these. Git runs it through `sh`, so the path is
+ * single-quoted (a path with a quote is refused).
  */
 export declare function mirrorReceivePackArg(hooksDir: string): string;
 /**

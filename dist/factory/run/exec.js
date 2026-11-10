@@ -48,7 +48,7 @@
  *   fsmonitor, so a hook or fsmonitor a lane planted cannot run in the engine
  *   even if the tamper check missed it.
  */
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, lstatSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { isAbsolute, join, resolve } from 'path';
 import { checkAdoCommand, isAdoCommand, runGuardedAdo } from '../../forge/ado/guard.js';
@@ -489,6 +489,7 @@ export function factoryGuardExec(exec, extraProtected = () => [], ado = () => un
  * | core.commitGraph=false, core.multiPackIndex=false | ancestry and diff answers come from the commits, never a planted commit-graph or MIDX |
  * | gc.auto=0, maintenance.auto=false, fetch.writeCommitGraph=false | the engine never repacks or writes a commit-graph between two snapshots |
  * | protocol.ext.allow=never | ext:: runs a command; no factory remote uses it |
+ * | core.alternateRefsCommand=true | a fetch lists the refs of the repository's alternates with this command; `true` lists none and runs nothing planted |
  * | remote.origin.uploadpack / receivepack = the stock programs | no factory origin needs another (GitHub and Azure DevOps ignore them; ssh runs the stock ones) |
  * Left as the user configured them, because origin fetch and push need the
  * user's own setup (a planted value is a config write the snapshot catches):
@@ -499,7 +500,7 @@ export function factoryGuardExec(exec, extraProtected = () => [], ado = () => un
 const ENGINE_GIT_PINS = [
     'core.fsmonitor=false', 'core.pager=cat', 'diff.external=',
     'core.commitGraph=false', 'core.multiPackIndex=false', 'gc.auto=0', 'maintenance.auto=false', 'fetch.writeCommitGraph=false',
-    'protocol.ext.allow=never', 'remote.origin.uploadpack=git-upload-pack', 'remote.origin.receivepack=git-receive-pack',
+    'protocol.ext.allow=never', 'core.alternateRefsCommand=true', 'remote.origin.uploadpack=git-upload-pack', 'remote.origin.receivepack=git-receive-pack',
 ];
 /**
  * Pinned on top for a command that only works on the local repository (not
@@ -531,13 +532,29 @@ function hardenedGitEnv(hooksDir, subcommand, env) {
  * spawns receive-pack in the mirror, and git drops this process's `-c` for a
  * local transport, so the mirror's own hooks (pre-receive, update,
  * post-receive, reference-transaction) and core.hooksPath would run; this
- * command passes the empty hooks dir to that receive-pack itself. Git runs
- * it through `sh`, so the path is single-quoted (a path with a quote is refused).
+ * command passes the empty hooks dir to that receive-pack itself, and pins
+ * the other config it would run or act on (core.alternateRefsCommand lists
+ * alternates' refs, receive.autogc repacks). Command-line config beats every
+ * file the mirror reads, so a config written after mirrorConfigProblem
+ * checked it changes none of these. Git runs it through `sh`, so the path is
+ * single-quoted (a path with a quote is refused).
  */
 export function mirrorReceivePackArg(hooksDir) {
     if (hooksDir.includes("'"))
         throw new FactorySafetyError(`omg factory run refuses to push to the local forge mirror: the engine's hooks directory ${hooksDir} contains a quote`);
-    return `--receive-pack=git -c core.hooksPath='${hooksDir}' -c core.fsmonitor=false receive-pack`;
+    return `--receive-pack=git -c core.hooksPath='${hooksDir}' -c core.fsmonitor=false -c core.alternateRefsCommand=true -c core.alternateRefsPrefixes= -c receive.autogc=false receive-pack`;
+}
+/** Files that point git at another repository than the mirror path itself (`.git` is tried first for a path; commondir, gitdir and config.worktree redirect or extend a git dir). */
+const MIRROR_REDIRECT_NAMES = ['.git', 'commondir', 'gitdir', 'config.worktree'];
+/** True when `path` exists as anything, a dangling link included. */
+function lexists(path) {
+    try {
+        lstatSync(path);
+        return true;
+    }
+    catch {
+        return false;
+    }
 }
 /**
  * The only keys the local forge mirror's own config may hold (what
@@ -546,9 +563,21 @@ export function mirrorReceivePackArg(hooksDir) {
  * upload-pack that runs in the mirror, which reads that config itself.
  */
 const MIRROR_CONFIG_KEYS = new Set(['core.repositoryformatversion', 'core.filemode', 'core.bare', 'core.symlinks', 'core.ignorecase', 'core.precomposeunicode', 'extensions.objectformat']);
-/** Why the mirror must not take part in a transport (its config, alternates), or null. */
+/**
+ * Why the mirror must not take part in a transport (a link, a redirect to
+ * another repository, its config, alternates), or null. The redirect checks
+ * come first: receive-pack and upload-pack would read the config, refs and
+ * objects of the repository a `.git` or `commondir` names, so the checks of
+ * the mirror's own config below would look at files git never uses.
+ */
 function mirrorConfigProblem(exec, hardening, mirror) {
-    if (existsSync(join(mirror, 'objects', 'info', 'alternates')))
+    // A missing mirror is no link; its config read below fails and refuses.
+    if (lexists(mirror) && lstatSync(mirror).isSymbolicLink())
+        return `the local forge mirror ${mirror} is a link or junction`;
+    const redirect = MIRROR_REDIRECT_NAMES.filter((name) => lexists(join(mirror, name)));
+    if (redirect.length > 0)
+        return `the local forge mirror ${mirror} has ${redirect.join(', ')}, which would point git at another repository; remove it`;
+    if (lexists(join(mirror, 'objects', 'info', 'alternates')))
         return `the local forge mirror ${mirror} has objects/info/alternates`;
     const listed = exec('git', [...hardening, 'config', '--file', join(mirror, 'config'), '-z', '--list'], { env: TRUSTED_READ_ENV });
     if (listed.status !== 0)

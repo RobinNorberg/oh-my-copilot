@@ -66998,8 +66998,8 @@ function isSensitiveRepoRelativePath(repoRelativePath) {
   if (!normalized2 || normalized2 === ".") {
     return false;
   }
-  const basename61 = normalized2.slice(normalized2.lastIndexOf("/") + 1);
-  if (SENSITIVE_REPO_BASENAMES.has(basename61) || SENSITIVE_REPO_EXTENSIONS.some((extension) => basename61.endsWith(extension))) {
+  const basename62 = normalized2.slice(normalized2.lastIndexOf("/") + 1);
+  if (SENSITIVE_REPO_BASENAMES.has(basename62) || SENSITIVE_REPO_EXTENSIONS.some((extension) => basename62.endsWith(extension))) {
     return true;
   }
   return normalized2 === ".git" || normalized2.startsWith(".git/") || normalized2.includes("/.git/") || normalized2 === ".ssh" || normalized2.startsWith(".ssh/") || normalized2.includes("/.ssh/") || normalized2 === "secrets" || normalized2.startsWith("secrets/") || normalized2.includes("/secrets/") || normalized2 === ".env" || normalized2.startsWith(".env.") || normalized2.includes("/.env") || normalized2.includes("/.env.") || normalized2 === "node_modules/.cache" || normalized2.startsWith("node_modules/.cache/") || normalized2.includes("/node_modules/.cache/");
@@ -93320,7 +93320,8 @@ var init_git_worktree = __esm({
       "maintenance.auto=false",
       "fetch.writeCommitGraph=false",
       "commit.gpgSign=false",
-      "protocol.ext.allow=never"
+      "protocol.ext.allow=never",
+      "core.alternateRefsCommand=true"
     ];
     emptyAttributesFile = null;
     WORK_TREE_SUBCOMMANDS = /* @__PURE__ */ new Set([
@@ -120652,10 +120653,21 @@ function hardenedGitEnv(hooksDir, subcommand, env2) {
 }
 function mirrorReceivePackArg(hooksDir) {
   if (hooksDir.includes("'")) throw new FactorySafetyError(`omg factory run refuses to push to the local forge mirror: the engine's hooks directory ${hooksDir} contains a quote`);
-  return `--receive-pack=git -c core.hooksPath='${hooksDir}' -c core.fsmonitor=false receive-pack`;
+  return `--receive-pack=git -c core.hooksPath='${hooksDir}' -c core.fsmonitor=false -c core.alternateRefsCommand=true -c core.alternateRefsPrefixes= -c receive.autogc=false receive-pack`;
+}
+function lexists(path30) {
+  try {
+    (0, import_fs147.lstatSync)(path30);
+    return true;
+  } catch {
+    return false;
+  }
 }
 function mirrorConfigProblem(exec3, hardening, mirror) {
-  if ((0, import_fs147.existsSync)((0, import_path173.join)(mirror, "objects", "info", "alternates"))) return `the local forge mirror ${mirror} has objects/info/alternates`;
+  if (lexists(mirror) && (0, import_fs147.lstatSync)(mirror).isSymbolicLink()) return `the local forge mirror ${mirror} is a link or junction`;
+  const redirect = MIRROR_REDIRECT_NAMES.filter((name) => lexists((0, import_path173.join)(mirror, name)));
+  if (redirect.length > 0) return `the local forge mirror ${mirror} has ${redirect.join(", ")}, which would point git at another repository; remove it`;
+  if (lexists((0, import_path173.join)(mirror, "objects", "info", "alternates"))) return `the local forge mirror ${mirror} has objects/info/alternates`;
   const listed2 = exec3("git", [...hardening, "config", "--file", (0, import_path173.join)(mirror, "config"), "-z", "--list"], { env: TRUSTED_READ_ENV });
   if (listed2.status !== 0) return `the local forge mirror's config ${(0, import_path173.join)(mirror, "config")} cannot be read`;
   const keys = listed2.stdout.split("\0").filter(Boolean).map((rec) => rec.split("\n")[0].toLowerCase());
@@ -120706,7 +120718,7 @@ function hardenedGitExec(exec3, hooksDir, localMirror = () => void 0) {
     return exec3(cmd, [...hardening, ...LOCAL_REMOTE_PACK_ARGS, ...final], withEnv);
   };
 }
-var import_fs147, import_os32, import_path173, FACTORY_BRANCH_PREFIX, FactorySafetyError, NUMBER5, JSON_FIELDS2, BRANCH4, REPO_PATH, isPlainRepoPath, FOR_EACH_REF_FORMAT, CHECKOUT_BRANCH, isBranch3, isFile2, isTitle, same2, FACTORY_LABEL, KEY_SEARCH, MAX_WRITE_LABELS, isWriteLabel, isBodyFile, LOCAL_REMOTE_DEFAULT_FETCH, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, URL_REWRITE_CONFIG_ARGS, REMOTE_CONFIG_ARGS, adoRefusal, ENGINE_GIT_PINS, LOCAL_ONLY_GIT_PINS, TRANSPORT_SUBCOMMANDS, MIRROR_CONFIG_KEYS, LOCAL_REMOTE_PACK_ARGS, onLocalRemote;
+var import_fs147, import_os32, import_path173, FACTORY_BRANCH_PREFIX, FactorySafetyError, NUMBER5, JSON_FIELDS2, BRANCH4, REPO_PATH, isPlainRepoPath, FOR_EACH_REF_FORMAT, CHECKOUT_BRANCH, isBranch3, isFile2, isTitle, same2, FACTORY_LABEL, KEY_SEARCH, MAX_WRITE_LABELS, isWriteLabel, isBodyFile, LOCAL_REMOTE_DEFAULT_FETCH, LOCAL_REMOTE_REFUSED_CONFIG_ARGS, URL_REWRITE_CONFIG_ARGS, REMOTE_CONFIG_ARGS, adoRefusal, ENGINE_GIT_PINS, LOCAL_ONLY_GIT_PINS, TRANSPORT_SUBCOMMANDS, MIRROR_REDIRECT_NAMES, MIRROR_CONFIG_KEYS, LOCAL_REMOTE_PACK_ARGS, onLocalRemote;
 var init_exec2 = __esm({
   "src/factory/run/exec.ts"() {
     "use strict";
@@ -120760,11 +120772,13 @@ var init_exec2 = __esm({
       "maintenance.auto=false",
       "fetch.writeCommitGraph=false",
       "protocol.ext.allow=never",
+      "core.alternateRefsCommand=true",
       "remote.origin.uploadpack=git-upload-pack",
       "remote.origin.receivepack=git-receive-pack"
     ];
     LOCAL_ONLY_GIT_PINS = ["commit.gpgSign=false", "tag.gpgSign=false", "filter.lfs.smudge=", "filter.lfs.process=", "filter.lfs.required=false"];
     TRANSPORT_SUBCOMMANDS = /* @__PURE__ */ new Set(["push", "fetch", "ls-remote", "pull", "clone"]);
+    MIRROR_REDIRECT_NAMES = [".git", "commondir", "gitdir", "config.worktree"];
     MIRROR_CONFIG_KEYS = /* @__PURE__ */ new Set(["core.repositoryformatversion", "core.filemode", "core.bare", "core.symlinks", "core.ignorecase", "core.precomposeunicode", "extensions.objectformat"]);
     LOCAL_REMOTE_PACK_ARGS = ["-c", `remote.${LOCAL_REMOTE}.receivepack=git-receive-pack`, "-c", `remote.${LOCAL_REMOTE}.uploadpack=git-upload-pack`];
     onLocalRemote = (args) => (args[0] === "push" || args[0] === "fetch" || args[0] === "ls-remote") && args[1] === LOCAL_REMOTE;
@@ -120788,11 +120802,12 @@ function fileHash(path30) {
 function fileText(path30) {
   return (0, import_fs148.existsSync)(path30) ? (0, import_fs148.readFileSync)(path30, "utf8").trim() : "";
 }
-function treeHash(dir) {
+function treeHash(dir, omit2 = []) {
   if (!(0, import_fs148.existsSync)(dir)) return "absent";
   const entries = [];
   const walk = (abs, rel) => {
     for (const name of (0, import_fs148.readdirSync)(abs).sort()) {
+      if (!rel && omit2.includes(name)) continue;
       const p = (0, import_path174.join)(abs, name);
       const r = rel ? `${rel}/${name}` : name;
       const st = (0, import_fs148.lstatSync)(p);
@@ -120822,38 +120837,12 @@ function metaEntry(path30) {
   }
   if (st.isSymbolicLink()) return `l ${(0, import_fs148.readlinkSync)(path30)}`;
   if (st.isDirectory()) return "d";
-  return st.size <= OBJECT_META_CONTENT_LIMIT ? `f ${fileHash(path30)}` : `f ${st.size} ${st.mtimeMs}`;
+  return `f ${fileHash(path30)}`;
 }
 function objectStoreMetaHash(commonDir) {
-  const entries = [`shallow ${metaEntry((0, import_path174.join)(commonDir, "shallow"))}`];
+  const entries = OBJECT_META_FILES.map((rel) => `${rel} ${metaEntry((0, import_path174.join)(commonDir, ...rel.split("/")))}`);
   const info = (0, import_path174.join)(commonDir, "objects", "info");
-  const walk = (abs, rel, depth) => {
-    let names;
-    try {
-      names = (0, import_fs148.readdirSync)(abs).sort();
-    } catch {
-      return;
-    }
-    for (const name of names) {
-      const p = (0, import_path174.join)(abs, name);
-      const r = `${rel}/${name}`;
-      const entry2 = metaEntry(p);
-      entries.push(`${r} ${entry2}`);
-      if (entry2 === "d" && depth < 4) walk(p, r, depth + 1);
-    }
-  };
   if (notADirectory(info)) entries.push(`objects/info ${NOT_A_DIR}${notADirectory(info)}`);
-  else walk(info, "objects/info", 0);
-  const pack = (0, import_path174.join)(commonDir, "objects", "pack");
-  entries.push(`objects/pack/multi-pack-index ${metaEntry((0, import_path174.join)(pack, "multi-pack-index"))}`);
-  let packNames = [];
-  try {
-    packNames = (0, import_fs148.readdirSync)(pack).sort();
-  } catch {
-  }
-  for (const name of packNames) {
-    if (name.endsWith(".bitmap") || name.endsWith(".promisor")) entries.push(`objects/pack/${name}`);
-  }
   return sha2(entries.join("\n"));
 }
 function notADirectory(path30) {
@@ -121025,7 +121014,8 @@ function snapshotRepo(exec3, root2, stateRootRel2 = ".omg", against) {
   const files = {
     config: fileHash((0, import_path174.join)(commonDir, "config")),
     configWorktree: fileHash((0, import_path174.join)(commonDir, "config.worktree")),
-    info: treeHash((0, import_path174.join)(commonDir, "info")),
+    // Not info/refs: only a dumb-HTTP server reads it, and the user's own gc or repack rewrites it (update-server-info).
+    info: treeHash((0, import_path174.join)(commonDir, "info"), ["refs"]),
     modules: moduleEntries(commonDir),
     globalConfig: globalConfigHash([
       (0, import_path174.join)(commonDir, "config"),
@@ -121134,7 +121124,7 @@ function compareSnapshots(before, after, allowedNewRefs = {}, allow = {}) {
     problems.push(was === void 0 ? `submodule git dir modules/${m} was added` : now2 === void 0 ? `submodule git dir modules/${m} was removed` : `modules/${m} changed (config, hooks, info or alternates)`);
   }
   if (before.alternates !== after.alternates) problems.push("objects/info/alternates changed");
-  if (before.objectMeta !== void 0 && before.objectMeta !== after.objectMeta) problems.push("the object store metadata changed (shallow, objects/info/: commit-graph, commit-graphs/, alternates; objects/pack/multi-pack-index, *.bitmap, *.promisor)");
+  if (before.objectMeta !== void 0 && before.objectMeta !== after.objectMeta) problems.push("the object store metadata changed (shallow, objects/info/alternates, objects/info/http-alternates)");
   if (before.globalConfig !== after.globalConfig) problems.push("the global git config or a file a git config includes changed (~/.gitconfig, $XDG_CONFIG_HOME/git/config, include.path / includeIf targets)");
   if (before.ignored !== after.ignored) problems.push(`an ignored file in the main checkout changed (.env*, ${SENSITIVE_IGNORED.join(", ")})`);
   if (before.mainHead !== after.mainHead) problems.push(`the main checkout's HEAD moved ${before.mainHead.slice(0, 12)} -> ${after.mainHead.slice(0, 12)}`);
@@ -121173,7 +121163,7 @@ function verifyReviewWorktree(result, head, commonDir) {
   if (status) problems.push("the lane worktree is not clean (modified, deleted or untracked files)");
   return problems;
 }
-var import_crypto46, import_fs148, import_os33, import_path174, SnapshotError, SENSITIVE_IGNORED, STATUS_SKIPPED, sha2, OBJECT_META_CONTENT_LIMIT, NOT_A_DIR, MAX_INCLUDE_DEPTH;
+var import_crypto46, import_fs148, import_os33, import_path174, SnapshotError, SENSITIVE_IGNORED, STATUS_SKIPPED, sha2, OBJECT_META_FILES, NOT_A_DIR, MAX_INCLUDE_DEPTH;
 var init_review_guard = __esm({
   "src/factory/run/review-guard.ts"() {
     "use strict";
@@ -121189,7 +121179,7 @@ var init_review_guard = __esm({
     SENSITIVE_IGNORED = [".npmrc", ".yarnrc", ".yarnrc.yml", "node_modules/.bin"];
     STATUS_SKIPPED = "skipped: the config, info/ or a submodule changed";
     sha2 = (text4) => (0, import_crypto46.createHash)("sha256").update(text4).digest("hex");
-    OBJECT_META_CONTENT_LIMIT = 1024 * 1024;
+    OBJECT_META_FILES = ["shallow", "objects/info/alternates", "objects/info/http-alternates"];
     NOT_A_DIR = "not a directory: ";
     MAX_INCLUDE_DEPTH = 10;
   }
@@ -129627,7 +129617,16 @@ function checkoutChanges(checkout, raw) {
     ownLink = (0, import_fs170.lstatSync)((0, import_path197.join)(checkout, "node_modules")).isSymbolicLink();
   } catch {
   }
-  return raw.split("\0").filter(Boolean).map((e) => e.slice(3)).filter((p) => !(ownLink && (p === "node_modules" || p === "node_modules/")));
+  const records2 = raw.split("\0");
+  const paths = [];
+  for (let i = 0; i < records2.length; i++) {
+    const rec = records2[i];
+    if (!rec) continue;
+    const xy = rec.slice(0, 2);
+    paths.push(rec.slice(3));
+    if ((xy.includes("R") || xy.includes("C")) && i + 1 < records2.length) paths.push(records2[++i]);
+  }
+  return paths.filter((p) => p && !(ownLink && (p === "node_modules" || p === "node_modules/")));
 }
 function errText5(error2) {
   return error2 instanceof Error ? error2.message : String(error2);
@@ -129886,12 +129885,13 @@ async function runFactoryEngine(o) {
     for (const path30 of ownerPaths) ledger.record(path30, null);
   }
 }
-var import_crypto53, import_fs170, import_path197, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4016, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON;
+var import_crypto53, import_fs170, import_os37, import_path197, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4016, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON;
 var init_engine = __esm({
   "src/factory/run/engine.ts"() {
     "use strict";
     import_crypto53 = require("crypto");
     import_fs170 = require("fs");
+    import_os37 = require("os");
     import_path197 = require("path");
     init_config4();
     init_exec();
@@ -131295,7 +131295,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           throw new FactoryStepError(`could not discard the engine's prepare checkout ${path30}: ${errText5(error2)}`);
         }
         this.save((x) => {
-          const { checkoutHead: _c, ...rest } = x;
+          const { checkoutHead: _c, checkoutAdmin: _a, ...rest } = x;
           return rest;
         });
         this.rebaseRecheck();
@@ -131305,14 +131305,18 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
        * (worktreeGitDirArgs), never discovered from its `.git` file, which the
        * PR's code in prepare can rewrite; or why not. The links are recorded
        * right after `worktree add` (prepare); a later invocation records them
-       * once, only when they have the shape `worktree add` writes: an admin dir
-       * that is a direct child of the repository's `worktrees/`, whose `gitdir`
-       * names this checkout's `.git` and whose `commondir` is `../..`.
+       * once, only when they have the shape `worktree add` writes: the admin dir
+       * the run state recorded at `worktree add` (checkoutAdmin), a direct child
+       * of the repository's `worktrees/`, whose `gitdir` names this checkout's
+       * `.git` and whose `commondir` is `../..`.
        */
       checkoutGitArgs(path30) {
         if (!recordedWorktreeGitLinks(path30)) {
           const links = readWorktreeGitLinks(path30);
           if (!links) return "its .git file or admin dir is missing, a link or malformed";
+          const admin = this.state.checkoutAdmin;
+          if (!admin) return `the run state records no admin dir for it (a checkout made before this release, or by something else)`;
+          if ((0, import_path197.basename)(links.adminDir) !== admin) return `its .git file names the admin dir ${links.adminDir}, but the engine's \`worktree add\` made ${admin}`;
           let common;
           try {
             common = (0, import_path197.resolve)(this.o.root, this.run(["rev-parse", "--git-common-dir"]).trim());
@@ -131405,7 +131409,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         } catch (error2) {
           throw new FactoryStepError(`the prepare checkout's git links cannot be recorded: ${errText5(error2)}`);
         }
-        this.save((x) => ({ ...x, checkoutHead: head }));
+        this.save((x) => ({ ...x, checkoutHead: head, checkoutAdmin: (0, import_path197.basename)(recorded.adminDir) }));
         linkNodeModules(this.o.root, path30);
         const commands = configured?.map((argv) => ({ argv, ...resolveLocalGateArgv(argv, { cwd: path30, subject: "the prepare check", configKey: "ship.prepare.checks" }) }));
         const result = runPrepare({ exec: this.exec, cwd: path30, base: s.base, branch: branch2, reviewedSha: head, baseSha: view2.baseRefOid, repoUrl: s.repoUrl, remote: runRemote(s), push: false, commands, commandExec: this.o.exec });
@@ -131592,11 +131596,16 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           let dirty = [];
           let problem = typeof gitArgs2 === "string" ? gitArgs2 : null;
           if (typeof gitArgs2 !== "string") {
+            const indexDir = (0, import_fs170.mkdtempSync)((0, import_path197.join)((0, import_os37.tmpdir)(), "omg-gate-index-"));
             try {
               at = runHostGit(checkout, [...gitArgs2, "rev-parse", "HEAD"]).trim();
-              dirty = checkoutChanges(checkout, runHostGit(checkout, [...gitArgs2, "status", "--porcelain=v1", "-z", "--untracked-files=all"]));
+              const fresh = { ...process.env, GIT_INDEX_FILE: (0, import_path197.join)(indexDir, "index") };
+              runHostGit(checkout, [...gitArgs2, "read-tree", at], void 0, fresh);
+              dirty = checkoutChanges(checkout, runHostGit(checkout, [...gitArgs2, "-c", "core.untrackedCache=false", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignored=matching"], void 0, fresh));
             } catch (error2) {
               problem = errText5(error2);
+            } finally {
+              (0, import_fs170.rmSync)(indexDir, { recursive: true, force: true });
             }
           }
           if (problem) {
@@ -131604,7 +131613,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
             return false;
           }
           if (at === head && dirty.length > 0) {
-            this.gate("lane-tampered", `the engine's prepare checkout ${checkout} is at ${head.slice(0, 12)} but its working tree differs from it (${dirty.slice(0, 5).join(", ")}), so the local gate did not run; inspect and remove it by hand, then rerun ${this.resume}`);
+            this.gate("lane-tampered", `the engine's prepare checkout ${checkout} is at ${head.slice(0, 12)} but its working tree differs from it, ignored files included (${dirty.slice(0, 5).join(", ")}), so the local gate did not run; inspect and remove it by hand, then rerun ${this.resume}`);
             return false;
           }
         }
@@ -131795,6 +131804,14 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
       }
       /** The human merged the PR: ship and factory record it; the run is done. */
       finishMerged(pr) {
+        if (this.forge?.kind === "local") {
+          const head = this.state.head ?? "";
+          const base = this.basePushSha ?? this.exec("git", ["rev-parse", "--verify", `refs/heads/${this.state.base}`], { cwd: this.o.root, env: TRUSTED_READ_ENV }).stdout.trim();
+          if (!HEX4016.test(base) || !this.isAncestor(head, base)) {
+            this.gate("lane-tampered", `the local forge reports PR #${pr} merged, but your ${this.state.base} ${base.slice(0, 12) || "(unreadable)"} does not contain the head the engine pushed ${head.slice(0, 12) || "(none)"}; something else wrote the PR store. Check what did (a prepare check or gate is the PR's own code), then rerun ${this.resume}`);
+            return;
+          }
+        }
         this.writeShip(pr, (cur) => {
           if (!cur) throw new FactoryStepError(`no ship state for PR #${pr}`);
           return canTransition(cur.phase, "merged") ? transition(cur, "merged", `merged on ${this.forgeName} by a human`, this.iso()) : cur;
@@ -135339,7 +135356,7 @@ async function runFactoryEnqueue(o, deps) {
     report(o, deps, { schemaVersion: ENQUEUE_SCHEMA_VERSION, ok: true, dryRun: true, spec: { id: specId, taskList: taskList2, ...taskList2 === "updated" ? { planned: specPlanned() } : {} }, items: rows2, ignored, mark: null, warnings });
     return 0;
   }
-  const bodyDir = (0, import_fs175.mkdtempSync)((0, import_path204.join)((0, import_os37.tmpdir)(), "omg-enqueue-"));
+  const bodyDir = (0, import_fs175.mkdtempSync)((0, import_path204.join)((0, import_os38.tmpdir)(), "omg-enqueue-"));
   const rel = (0, import_path204.relative)(root2, bodyDir);
   const rows = [];
   let taskList = local ? "not-used" : "unchanged";
@@ -135477,13 +135494,13 @@ ${json.spec.planned}`);
     if (json.mark.marked.length > 0) deps.out(source_default.green(`marked ${json.mark.marker}: ${json.mark.marked.map((id) => `#${id}`).join(", ")}`));
   }
 }
-var import_fs175, import_os37, import_path204, ENQUEUE_SCHEMA_VERSION, MAX_TICKETS, MAX_FILE_BYTES, KEY, TICKET_FIELDS, PRIORITY_LABELS, EDGES_OPEN, EDGES_CLOSE, TICKETS_OPEN, TICKETS_CLOSE, BODY_CONTROL, LINE_CONTROL, NOTIFYING, modelText, ADO_NOTIFYING, FULLWIDTH, neutralizeAdoNotifying, adoModelText, renderTitle, normalized;
+var import_fs175, import_os38, import_path204, ENQUEUE_SCHEMA_VERSION, MAX_TICKETS, MAX_FILE_BYTES, KEY, TICKET_FIELDS, PRIORITY_LABELS, EDGES_OPEN, EDGES_CLOSE, TICKETS_OPEN, TICKETS_CLOSE, BODY_CONTROL, LINE_CONTROL, NOTIFYING, modelText, ADO_NOTIFYING, FULLWIDTH, neutralizeAdoNotifying, adoModelText, renderTitle, normalized;
 var init_enqueue = __esm({
   "src/factory/enqueue.ts"() {
     "use strict";
     init_source();
     import_fs175 = require("fs");
-    import_os37 = require("os");
+    import_os38 = require("os");
     import_path204 = require("path");
     init_guard();
     init_html();
@@ -137860,6 +137877,15 @@ async function runFactoryPr(action2, o, deps) {
   }
   const n = pr;
   const v = view(ctx, n);
+  const ledgerDir = deps.ledgerDir ?? defaultLedgerDir();
+  const git7 = factoryGuardExec(hardenedGitExec(deps.exec, emptyHooksDir2(ledgerDir)), () => [ctx.base]);
+  if (action2 === "view" || action2 === "diff") {
+    const local = git7("git", ["rev-parse", "--verify", `refs/heads/${v.baseRefName}`], { cwd: ctx.root, env: TRUSTED_READ_ENV });
+    const localBase2 = local.status === 0 ? local.stdout.trim() : "";
+    if (localBase2 !== v.baseRefOid) {
+      throw new Error(`local PR #${n}: the local forge mirror's ${v.baseRefName} is at ${v.baseRefOid}, but your ${v.baseRefName} is at ${localBase2 || "(unreadable)"}; the ${action2} would use a base you do not have. Check what wrote the mirror, or let omg factory run sync it, then read the PR again`);
+    }
+  }
   if (action2 === "view") {
     const record4 = readPrStore((0, import_path209.join)(ctx.storeDir, "prs.json")).prs.find((p) => p.number === n);
     const feedback = ctx.forge.reviews.reviewFeedback?.(n, v.headRefOid);
@@ -137876,8 +137902,6 @@ ${r.body.replace(/^/gm, "    ")}` : ""}`);
     return 0;
   }
   if (action2 === "diff") {
-    const ledgerDir = deps.ledgerDir ?? defaultLedgerDir();
-    const git7 = factoryGuardExec(hardenedGitExec(deps.exec, emptyHooksDir2(ledgerDir)), () => [ctx.base]);
     const r = git7("git", ["diff", "--no-ext-diff", "--no-textconv", `${v.baseRefOid}...${v.headRefOid}`], { cwd: ctx.root });
     if (r.status !== 0) {
       deps.err(source_default.red(`git diff of local PR #${n} failed (exit ${r.status}): ${visibleLine(r.stderr.trim().split("\n")[0] ?? "")}`));
@@ -137921,14 +137945,14 @@ function factoryPrCommand(deps) {
   cmd.addCommand(new Command("review").description("Record a human review on the PR's current head; the next omg factory run reads it").argument("<n>", "local PR number").option("--approve", "approve").option("--request-changes", "request changes (needs --body-file)").option("--comment", "comment without a decision (needs --body-file)").option("--body-file <file>", "the review text").option("--head <sha>", "the full head sha you reviewed (pr diff / pr view print it); refused when the PR moved since").option("--json", "JSON output (schemaVersion 1)").action(action("review", deps)));
   return cmd;
 }
-var import_fs182, import_os38, import_path209, import_crypto58, FACTORY_PR_JSON_SCHEMA_VERSION, view, defaultUser;
+var import_fs182, import_os39, import_path209, import_crypto58, FACTORY_PR_JSON_SCHEMA_VERSION, view, defaultUser;
 var init_factory_pr = __esm({
   "src/cli/commands/factory-pr.ts"() {
     "use strict";
     init_esm();
     init_source();
     import_fs182 = require("fs");
-    import_os38 = require("os");
+    import_os39 = require("os");
     import_path209 = require("path");
     import_crypto58 = require("crypto");
     init_cli();
@@ -137938,6 +137962,7 @@ var init_factory_pr = __esm({
     init_ledger2();
     init_store();
     init_review_feedback();
+    init_exec();
     FACTORY_PR_JSON_SCHEMA_VERSION = 1;
     view = (ctx, n) => {
       try {
@@ -137948,7 +137973,7 @@ var init_factory_pr = __esm({
     };
     defaultUser = () => {
       try {
-        return (0, import_os38.userInfo)().username;
+        return (0, import_os39.userInfo)().username;
       } catch {
         return "local";
       }
@@ -140282,7 +140307,7 @@ async function runSandboxLaneScenario(input) {
   const probe = commitProbe(repo);
   if ("error" in probe) return { ...base, events: [], idle: false, timedOut: false, error: `sandbox repository setup: ${probe.error}` };
   const nonce = (0, import_crypto61.randomBytes)(6).toString("hex");
-  const tempDir = input.tempDir ?? (0, import_os39.tmpdir)();
+  const tempDir = input.tempDir ?? (0, import_os40.tmpdir)();
   const hostRecord = await (input.probeHost ?? (() => probeSandboxHost(input, repo)))();
   if (!hostRecord.supported) {
     const evidence2 = {
@@ -140301,7 +140326,7 @@ async function runSandboxLaneScenario(input) {
     };
     return { ...base, events: [], idle: false, timedOut: false, error: `host unsupported: ${excerpt(hostRecord.reason ?? "no reason", 200)}`, sandbox: evidence2 };
   }
-  const realHome = input.realHome ?? (0, import_os39.userInfo)().homedir;
+  const realHome = input.realHome ?? (0, import_os40.userInfo)().homedir;
   const shared = input.sharedDir ?? defaultSharedDir(input.env);
   const canaryName = `omg-canary-${nonce}`;
   const outside = {
@@ -140439,14 +140464,14 @@ async function runSandboxLaneScenario(input) {
   const error2 = errors.length ? errors.join("; ") : void 0;
   return { ...base, model: laneModelLabel(input.model, evidence.lanes.map((l) => l.model)), events: all, idle: !error2, timedOut: false, ...error2 ? { error: error2 } : {}, sandbox: evidence };
 }
-var import_crypto61, import_fs190, import_http2, import_os39, import_path217, SANDBOX_LANE_TIMEOUT_MS, CANARY_RPC_TIMEOUT_MS, SANDBOX_PROBE_SOURCE, errText6, quote3;
+var import_crypto61, import_fs190, import_http2, import_os40, import_path217, SANDBOX_LANE_TIMEOUT_MS, CANARY_RPC_TIMEOUT_MS, SANDBOX_PROBE_SOURCE, errText6, quote3;
 var init_copilot_sandbox_lane_scenario = __esm({
   "src/smoke/copilot-sandbox-lane-scenario.ts"() {
     "use strict";
     import_crypto61 = require("crypto");
     import_fs190 = require("fs");
     import_http2 = require("http");
-    import_os39 = require("os");
+    import_os40 = require("os");
     import_path217 = require("path");
     init_job();
     init_sandbox2();
@@ -141198,7 +141223,7 @@ function extractJsonArray(text4) {
   }
 }
 function makeTempDir(prefix) {
-  return (0, import_fs193.mkdtempSync)((0, import_path220.join)((0, import_os40.tmpdir)(), prefix));
+  return (0, import_fs193.mkdtempSync)((0, import_path220.join)((0, import_os41.tmpdir)(), prefix));
 }
 function removeDir(path30) {
   if (!path30) return;
@@ -141572,7 +141597,7 @@ function prepareCassetteRun(opts, env2) {
     strict: !!opts.replayStrict,
     overwrite: !!opts.recordOverwrite
   };
-  readCassetteConfig(cassetteEnv(env2, { ...run2, stateRoot: (0, import_os40.tmpdir)() }, {}));
+  readCassetteConfig(cassetteEnv(env2, { ...run2, stateRoot: (0, import_os41.tmpdir)() }, {}));
   const scenarios = opts.scenarios ?? DEFAULT_SCENARIOS;
   if (run2.mode === "record") {
     const taken = scenarios.map((s) => recordTargetRefusal(run2, s)).filter((r) => r !== null);
@@ -141645,7 +141670,7 @@ async function runChecks(ctx, opts, started, checks, artifacts, cleanup) {
     for (const id of TIER0_COPILOT_IDS.slice(1)) checks.push({ id, ok: false, detail: "skipped" });
   } else {
     const bin = resolution.bin;
-    const res = runCopilotSync(ctx, bin, ["--version"], ctx.env, (0, import_os40.tmpdir)());
+    const res = runCopilotSync(ctx, bin, ["--version"], ctx.env, (0, import_os41.tmpdir)());
     version3 = parseCopilotVersion(String(res.stdout ?? ""));
     const binaryOk = res.status === 0 && version3 !== null;
     checks.push({
@@ -141748,14 +141773,14 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
   if (logs.path) artifacts.debugLog = logs.path;
   return result;
 }
-var import_child_process53, import_crypto62, import_fs193, import_os40, import_path220, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
+var import_child_process53, import_crypto62, import_fs193, import_os41, import_path220, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
 var init_copilot_smoke = __esm({
   "src/smoke/copilot-smoke.ts"() {
     "use strict";
     import_child_process53 = require("child_process");
     import_crypto62 = require("crypto");
     import_fs193 = require("fs");
-    import_os40 = require("os");
+    import_os41 = require("os");
     import_path220 = require("path");
     init_tmux_utils();
     init_config_dir();
@@ -144222,7 +144247,7 @@ function createCheckpoint(cwd2, label2) {
     throw new CheckpointError("checkpoint label must not be empty");
   }
   const toplevel = repoToplevel(cwd2);
-  const tmpIndexDir = (0, import_fs201.mkdtempSync)((0, import_path229.join)((0, import_os46.tmpdir)(), "omc-checkpoint-"));
+  const tmpIndexDir = (0, import_fs201.mkdtempSync)((0, import_path229.join)((0, import_os47.tmpdir)(), "omc-checkpoint-"));
   try {
     const tmpIndexPath = (0, import_path229.join)(tmpIndexDir, "index");
     git5([...CONTENT_FIDELITY, "add", "-A", "--"], {
@@ -144302,13 +144327,13 @@ function rollbackToCheckpoint(cwd2, checkpointId, force = false) {
   git5([...CONTENT_FIDELITY, "restore", "--source", full, "--staged", "--worktree", ":/"], { cwd: toplevel });
   git5(["clean", "-fd"], { cwd: toplevel });
 }
-var import_child_process59, import_fs201, import_os46, import_path229, GIT_TIMEOUT_MS5, REF_PREFIX, SHADOW_IDENTITY, CONTENT_FIDELITY, CheckpointError;
+var import_child_process59, import_fs201, import_os47, import_path229, GIT_TIMEOUT_MS5, REF_PREFIX, SHADOW_IDENTITY, CONTENT_FIDELITY, CheckpointError;
 var init_checkpoint = __esm({
   "src/features/checkpoint/index.ts"() {
     "use strict";
     import_child_process59 = require("child_process");
     import_fs201 = require("fs");
-    import_os46 = require("os");
+    import_os47 = require("os");
     import_path229 = require("path");
     GIT_TIMEOUT_MS5 = 6e4;
     REF_PREFIX = "refs/omc/checkpoints/";
@@ -149614,7 +149639,7 @@ function getCachedAccountEmail() {
   const cacheDir = getOmcConfigDir();
   const cacheFile = (0, import_path247.join)(cacheDir, "hud-account-cache.json");
   const configJsonPath = (0, import_path247.join)(getCopilotConfigDir(), ".claude.json");
-  const fallbackPath = (0, import_path247.join)((0, import_os48.homedir)(), ".claude.json");
+  const fallbackPath = (0, import_path247.join)((0, import_os49.homedir)(), ".claude.json");
   const candidatePaths = fallbackPath === configJsonPath ? [configJsonPath] : [configJsonPath, fallbackPath];
   let cacheable = true;
   const sources = candidatePaths.map((path30) => {
@@ -149662,13 +149687,13 @@ function renderAccount() {
   const truncated = truncateEmailMiddle(email2, 64);
   return cyan(`acct:${truncated}`);
 }
-var import_fs215, import_path247, import_os48;
+var import_fs215, import_path247, import_os49;
 var init_account = __esm({
   "src/hud/elements/account.ts"() {
     "use strict";
     import_fs215 = require("fs");
     import_path247 = require("path");
-    import_os48 = require("os");
+    import_os49 = require("os");
     init_colors();
     init_config_dir();
     init_config_dir();
@@ -164109,14 +164134,14 @@ ${missing.length} provider${missing.length === 1 ? "" : "s"} missing (warn only 
 }
 
 // src/cli/commands/smoke.ts
-var import_os41 = require("os");
+var import_os42 = require("os");
 var import_path221 = require("path");
 init_formatting();
 init_copilot_smoke();
 init_copilot_sdk_scenarios();
 init_run();
 function expandHome(dir) {
-  return dir === "~" || /^~[\\/]/.test(dir) ? (0, import_path221.join)((0, import_os41.homedir)(), dir.slice(2)) : dir;
+  return dir === "~" || /^~[\\/]/.test(dir) ? (0, import_path221.join)((0, import_os42.homedir)(), dir.slice(2)) : dir;
 }
 function parsePositiveInt2(value, flag) {
   if (value === void 0) return void 0;
@@ -164324,7 +164349,7 @@ function smokeCassetteImportCommand(dir, cli) {
 var import_child_process54 = require("child_process");
 var import_crypto63 = require("crypto");
 var import_fs194 = require("fs");
-var import_os42 = require("os");
+var import_os43 = require("os");
 var import_path222 = require("path");
 var import_url24 = require("url");
 init_tmux_utils();
@@ -164457,7 +164482,7 @@ function dispatchCheck(event, entry2, result) {
 function dispatchChecks(manifest, root2, env2, spawnSync21, deps, only) {
   const events = Object.keys(manifest.hooks).filter((e) => !only || e === only);
   if (only && events.length === 0) return [{ id: `dispatch.${only}`, status: "fail", detail: `${COPILOT_HOOKS_PATH} registers no ${only} (events: ${Object.keys(manifest.hooks).join(", ")})` }];
-  const parent = (0, import_fs194.mkdtempSync)((0, import_path222.join)((0, import_os42.tmpdir)(), "omg-hooks-doctor-"));
+  const parent = (0, import_fs194.mkdtempSync)((0, import_path222.join)((0, import_os43.tmpdir)(), "omg-hooks-doctor-"));
   const checks = [];
   try {
     const home = (0, import_path222.join)(parent, "home");
@@ -164488,7 +164513,7 @@ function dispatchChecks(manifest, root2, env2, spawnSync21, deps, only) {
         const script = `const fs=require('fs');const d=process.argv[1];let n=0;(function t(){try{fs.rmSync(d,{recursive:true,force:true});}catch{if(++n<60)return setTimeout(t,2000);}})();`;
         const minimalEnv = {};
         for (const key of ["PATH", "Path", "SystemRoot", "TEMP", "TMP"]) if (env2[key] !== void 0) minimalEnv[key] = env2[key];
-        (deps.spawn ?? import_child_process54.spawn)(process.execPath, ["-e", script, parent], { detached: true, stdio: "ignore", windowsHide: true, cwd: (0, import_os42.tmpdir)(), env: minimalEnv }).on("error", () => {
+        (deps.spawn ?? import_child_process54.spawn)(process.execPath, ["-e", script, parent], { detached: true, stdio: "ignore", windowsHide: true, cwd: (0, import_os43.tmpdir)(), env: minimalEnv }).on("error", () => {
         }).unref();
         checks.push({ id: "dispatch.cleanup", status: "ok", detail: `hook workers still hold the sandbox (${err.message}); a background process is scheduled to remove ${parent} once they exit` });
       } catch {
@@ -168212,12 +168237,12 @@ async function aliasRetirementCommand(args) {
 init_source();
 var import_child_process55 = require("child_process");
 var import_fs198 = require("fs");
-var import_os43 = require("os");
+var import_os44 = require("os");
 var import_path225 = require("path");
 init_loader();
 init_providers();
 init_worktree_cleanup_safety();
-var DEFAULT_WORKTREE_ROOT = (0, import_path225.join)((0, import_os43.homedir)(), "Workspace", "omc-worktrees");
+var DEFAULT_WORKTREE_ROOT = (0, import_path225.join)((0, import_os44.homedir)(), "Workspace", "omc-worktrees");
 var PACKAGE_JSON_NAME = "package.json";
 var PACKAGE_MANAGER_LOCKFILES = {
   pnpm: "pnpm-lock.yaml",
@@ -168806,7 +168831,7 @@ function resolvePluginDirArg(rawPath) {
 // src/cli/launch.ts
 var import_child_process56 = require("child_process");
 var import_fs199 = require("fs");
-var import_os44 = require("os");
+var import_os45 = require("os");
 var import_path227 = require("path");
 init_atomic_write();
 init_file_lock();
@@ -169278,7 +169303,7 @@ function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir()) {
   }, { timeoutMs: 5e3, retryDelayMs: 50 });
 }
 function isDefaultClaudeConfigDirPath2(configDir) {
-  return configDir === (0, import_path227.join)((0, import_os44.homedir)(), ".copilot");
+  return configDir === (0, import_path227.join)((0, import_os45.homedir)(), ".copilot");
 }
 function extractNotifyFlag(args) {
   let notifyEnabled = true;
@@ -169650,7 +169675,7 @@ function buildSensitiveEnvFilePrefix(vars) {
       value: getProcessEnvironmentValue(name),
       encoded: nativeWindows ? escapeForCmdSet(getProcessEnvironmentValue(name)) : null
     }));
-    dir = (0, import_fs199.mkdtempSync)((0, import_path227.join)((0, import_os44.tmpdir)(), "omc-launch-env-"));
+    dir = (0, import_fs199.mkdtempSync)((0, import_path227.join)((0, import_os45.tmpdir)(), "omc-launch-env-"));
     file = (0, import_path227.join)(dir, nativeWindows ? "env.cmd" : "env.sh");
     const body = nativeWindows ? `@echo off\r
 ${values.map(({ name, encoded }) => `set "${name}=${encoded}"`).join("\r\n")}\r
@@ -170026,7 +170051,7 @@ function interopCommand(options = {}) {
 var import_child_process58 = require("child_process");
 var import_fs200 = require("fs");
 var import_promises36 = require("fs/promises");
-var import_os45 = require("os");
+var import_os46 = require("os");
 var import_path228 = require("path");
 var import_url25 = require("url");
 init_security_config();
@@ -170175,7 +170200,7 @@ function resolveAskAdvisorScriptPath(packageRoot2 = getPackageRoot(), env2 = pro
 }
 function resolveSignalExitCode(signal) {
   if (!signal) return 1;
-  const signalNumber = import_os45.constants.signals[signal];
+  const signalNumber = import_os46.constants.signals[signal];
   if (typeof signalNumber === "number" && Number.isFinite(signalNumber)) {
     return 128 + signalNumber;
   }
@@ -171177,7 +171202,7 @@ init_agent_progress();
 // src/release/drive.ts
 var import_child_process61 = require("child_process");
 var import_fs205 = require("fs");
-var import_os47 = require("os");
+var import_os48 = require("os");
 var import_path235 = require("path");
 init_process_utils();
 
@@ -172884,7 +172909,7 @@ var DRIVE_HEARTBEAT_MS = 5 * 6e4;
 var defaultDriveProcess = {
   identity: (pid) => getProcessStartIdentity(pid, Date.now() + 5e3),
   liveness: async (lock) => {
-    if (lock.host !== (0, import_os47.hostname)()) return "unknown";
+    if (lock.host !== (0, import_os48.hostname)()) return "unknown";
     if (!lock.identity) return isProcessAlive(lock.pid) ? "live" : "dead";
     return isProcessIdentityLive(lock.pid, lock.identity, Date.now() + 5e3);
   },
@@ -172908,7 +172933,7 @@ function readDriveLock(path30) {
 async function acquireDriveLock(path30, argv, proc, log3, now2 = Date.now, fsx = { rename: import_fs205.renameSync }) {
   const identity = await proc.identity(process.pid) ?? await proc.identity(process.pid);
   if (!identity) throw new Error(`cannot read the start identity of pid ${process.pid}; refusing to drive (${path30} could not be told apart from a reused pid by --stop)`);
-  const lock = { pid: process.pid, startedAt: new Date(now2()).toISOString(), argv, host: (0, import_os47.hostname)(), identity };
+  const lock = { pid: process.pid, startedAt: new Date(now2()).toISOString(), argv, host: (0, import_os48.hostname)(), identity };
   (0, import_fs205.mkdirSync)((0, import_path235.dirname)(path30), { recursive: true });
   for (let attempt = 0; attempt < 2; attempt++) {
     try {

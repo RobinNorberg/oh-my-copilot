@@ -86,9 +86,7 @@ export interface RepoSnapshot {
     alternates: string;
     /**
      * Hash of what steers ancestry answers besides the commits: `shallow`,
-     * everything under `objects/info/` (commit-graph, commit-graphs/,
-     * alternates), `objects/pack/multi-pack-index`, and the names of the
-     * `*.bitmap` / `*.promisor` packs (objectStoreMetaHash). Absent in a
+     * `objects/info/alternates` and `http-alternates` (objectStoreMetaHash). Absent in a
      * baseline recorded by an older release (the compare then skips it).
      */
     objectMeta?: string;
@@ -105,15 +103,17 @@ export declare class SnapshotError extends Error {
 }
 /** Top-level ignored files and directories the snapshot hashes by content. */
 export declare const SENSITIVE_IGNORED: readonly [".npmrc", ".yarnrc", ".yarnrc.yml", "node_modules/.bin"];
-/** Hash of every entry under `dir` (relative name, kind and content); `absent` when there is none. */
-export declare function treeHash(dir: string): string;
-/** Files up to this size are hashed by content; a larger one (a big commit-graph) by size and mtime. */
-export declare const OBJECT_META_CONTENT_LIMIT: number;
+/** Hash of every entry under `dir` (relative name, kind and content), minus the top-level names in `omit`; `absent` when there is none. */
+export declare function treeHash(dir: string, omit?: readonly string[]): string;
 /**
  * The object store state a forged file could use to change merge-base,
- * rev-list or a three-dot diff without a ref moving (RepoSnapshot.objectMeta).
- * Pack data itself is not hashed (a fetch adds packs): only the
- * multi-pack-index and the names of bitmap and promisor packs.
+ * rev-list or a three-dot diff without a ref moving (RepoSnapshot.objectMeta):
+ * `shallow` and the alternates. Not the commit-graph, commit-graphs/,
+ * multi-pack-index or bitmaps: the engine and host git read none of them
+ * (core.commitGraph / core.multiPackIndex=false), while the user's own
+ * `git gc --auto` and `git maintenance` rewrite them, so hashing them only
+ * parked runs. Not the `*.promisor` packs either: they take effect only
+ * under the partial clone config, which the config hash covers.
  */
 export declare function objectStoreMetaHash(commonDir: string): string;
 /** Every submodule git dir under `modules/` (module names may hold slashes; submodules nest); a non-directory entry is kept as such. */

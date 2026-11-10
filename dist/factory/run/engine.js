@@ -53,8 +53,9 @@
  * GitHub runs keep the gh calls unchanged.
  */
 import { createHash } from 'crypto';
-import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { dirname, isAbsolute, join, relative, resolve } from 'path';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'path';
 import { configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, readBaseFile, remoteRepoMismatch, userConfigLayers } from '../../ship/config.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
@@ -220,7 +221,9 @@ function hostGitStatus(cwd, args) {
 /**
  * The paths of `git status --porcelain=v1 -z` output in the prepare
  * checkout, minus the engine's own node_modules link (linkNodeModules: on
- * POSIX a `node_modules/` ignore line does not match a symlink).
+ * POSIX a `node_modules/` ignore line does not match a symlink). A rename or
+ * copy record is followed by its original path as a record of its own,
+ * without the two status letters.
  */
 function checkoutChanges(checkout, raw) {
     let ownLink = false;
@@ -228,8 +231,18 @@ function checkoutChanges(checkout, raw) {
         ownLink = lstatSync(join(checkout, 'node_modules')).isSymbolicLink();
     }
     catch { /* no link */ }
-    return raw.split('\0').filter(Boolean).map((e) => e.slice(3))
-        .filter((p) => !(ownLink && (p === 'node_modules' || p === 'node_modules/')));
+    const records = raw.split('\0');
+    const paths = [];
+    for (let i = 0; i < records.length; i++) {
+        const rec = records[i];
+        if (!rec)
+            continue;
+        const xy = rec.slice(0, 2);
+        paths.push(rec.slice(3));
+        if ((xy.includes('R') || xy.includes('C')) && i + 1 < records.length)
+            paths.push(records[++i]);
+    }
+    return paths.filter((p) => p && !(ownLink && (p === 'node_modules' || p === 'node_modules/')));
 }
 const HEX40 = /^[0-9a-f]{40}$/;
 function errText(error) {
@@ -1831,7 +1844,7 @@ class FactoryEngine {
             throw new FactoryStepError(`could not discard the engine's prepare checkout ${path}: ${errText(error)}`);
         }
         this.save((x) => {
-            const { checkoutHead: _c, ...rest } = x;
+            const { checkoutHead: _c, checkoutAdmin: _a, ...rest } = x;
             return rest;
         });
         this.rebaseRecheck();
@@ -1841,15 +1854,21 @@ class FactoryEngine {
      * (worktreeGitDirArgs), never discovered from its `.git` file, which the
      * PR's code in prepare can rewrite; or why not. The links are recorded
      * right after `worktree add` (prepare); a later invocation records them
-     * once, only when they have the shape `worktree add` writes: an admin dir
-     * that is a direct child of the repository's `worktrees/`, whose `gitdir`
-     * names this checkout's `.git` and whose `commondir` is `../..`.
+     * once, only when they have the shape `worktree add` writes: the admin dir
+     * the run state recorded at `worktree add` (checkoutAdmin), a direct child
+     * of the repository's `worktrees/`, whose `gitdir` names this checkout's
+     * `.git` and whose `commondir` is `../..`.
      */
     checkoutGitArgs(path) {
         if (!recordedWorktreeGitLinks(path)) {
             const links = readWorktreeGitLinks(path);
             if (!links)
                 return 'its .git file or admin dir is missing, a link or malformed';
+            const admin = this.state.checkoutAdmin;
+            if (!admin)
+                return `the run state records no admin dir for it (a checkout made before this release, or by something else)`;
+            if (basename(links.adminDir) !== admin)
+                return `its .git file names the admin dir ${links.adminDir}, but the engine's \`worktree add\` made ${admin}`;
             let common;
             try {
                 common = resolve(this.o.root, this.run(['rev-parse', '--git-common-dir']).trim());
@@ -1964,7 +1983,7 @@ class FactoryEngine {
         catch (error) {
             throw new FactoryStepError(`the prepare checkout's git links cannot be recorded: ${errText(error)}`);
         }
-        this.save((x) => ({ ...x, checkoutHead: head }));
+        this.save((x) => ({ ...x, checkoutHead: head, checkoutAdmin: basename(recorded.adminDir) }));
         linkNodeModules(this.o.root, path);
         // Configured checks run through the raw exec (the factory guard allows only the built-in shapes), without a shell.
         const commands = configured?.map((argv) => ({ argv, ...resolveLocalGateArgv(argv, { cwd: path, subject: 'the prepare check', configKey: 'ship.prepare.checks' }) }));
@@ -2177,12 +2196,21 @@ class FactoryEngine {
             let dirty = [];
             let problem = typeof gitArgs === 'string' ? gitArgs : null;
             if (typeof gitArgs !== 'string') {
+                // The status compares with a fresh index read from HEAD, never the checkout's own (the PR's code could set
+                // skip-worktree or assume-unchanged bits, plant an untracked cache, or keep a stale stat match there), and lists
+                // ignored files too.
+                const indexDir = mkdtempSync(join(tmpdir(), 'omg-gate-index-'));
                 try {
                     at = runHostGit(checkout, [...gitArgs, 'rev-parse', 'HEAD']).trim();
-                    dirty = checkoutChanges(checkout, runHostGit(checkout, [...gitArgs, 'status', '--porcelain=v1', '-z', '--untracked-files=all']));
+                    const fresh = { ...process.env, GIT_INDEX_FILE: join(indexDir, 'index') };
+                    runHostGit(checkout, [...gitArgs, 'read-tree', at], undefined, fresh);
+                    dirty = checkoutChanges(checkout, runHostGit(checkout, [...gitArgs, '-c', 'core.untrackedCache=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignored=matching'], undefined, fresh));
                 }
                 catch (error) {
                     problem = errText(error);
+                }
+                finally {
+                    rmSync(indexDir, { recursive: true, force: true });
                 }
             }
             if (problem) {
@@ -2190,7 +2218,7 @@ class FactoryEngine {
                 return false;
             }
             if (at === head && dirty.length > 0) {
-                this.gate('lane-tampered', `the engine's prepare checkout ${checkout} is at ${head.slice(0, 12)} but its working tree differs from it (${dirty.slice(0, 5).join(', ')}), so the local gate did not run; inspect and remove it by hand, then rerun ${this.resume}`);
+                this.gate('lane-tampered', `the engine's prepare checkout ${checkout} is at ${head.slice(0, 12)} but its working tree differs from it, ignored files included (${dirty.slice(0, 5).join(', ')}), so the local gate did not run; inspect and remove it by hand, then rerun ${this.resume}`);
                 return false;
             }
         }
@@ -2395,6 +2423,16 @@ class FactoryEngine {
     }
     /** The human merged the PR: ship and factory record it; the run is done. */
     finishMerged(pr) {
+        // The local forge's MERGED is a PR store file the PR's code could write (its mergedHead too): it counts only when
+        // your base (as the engine synced it in this invocation, else refs/heads/<base>) contains the head the engine pushed.
+        if (this.forge?.kind === 'local') {
+            const head = this.state.head ?? '';
+            const base = this.basePushSha ?? this.exec('git', ['rev-parse', '--verify', `refs/heads/${this.state.base}`], { cwd: this.o.root, env: TRUSTED_READ_ENV }).stdout.trim();
+            if (!HEX40.test(base) || !this.isAncestor(head, base)) {
+                this.gate('lane-tampered', `the local forge reports PR #${pr} merged, but your ${this.state.base} ${base.slice(0, 12) || '(unreadable)'} does not contain the head the engine pushed ${head.slice(0, 12) || '(none)'}; something else wrote the PR store. Check what did (a prepare check or gate is the PR's own code), then rerun ${this.resume}`);
+                return;
+            }
+        }
         this.writeShip(pr, (cur) => {
             if (!cur)
                 throw new FactoryStepError(`no ship state for PR #${pr}`);

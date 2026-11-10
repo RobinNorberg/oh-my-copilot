@@ -5,10 +5,12 @@
  * read through the git links recorded at its creation (M5). Real git, fake
  * lanes and gate, no gh / az / copilot.
  */
-import { closeSync, existsSync, ftruncateSync, mkdirSync, openSync, rmSync, writeFileSync, writeSync } from 'node:fs';
+import { closeSync, cpSync, existsSync, ftruncateSync, mkdirSync, openSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync, writeSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { resolveForgeConfig } from '../../../forge/config.js';
 import { readMirrorRef } from '../../../forge/local/index.js';
+import { forgetWorktreeGitLinks } from '../../../team/git-worktree.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { runFactoryEngine } from '../engine.js';
 import { checkoutPath } from '../prepare.js';
@@ -101,7 +103,113 @@ describe('factory run on the local forge: git hardening', () => {
         };
         const out = await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')]), withCheck));
         expect(out.gate?.name, out.message).toBe('lane-tampered');
-        expect(out.gate?.reason).toMatch(/working tree differs from it \(planted\.test\.js\)/);
+        expect(out.gate?.reason).toMatch(/working tree differs from it, ignored files included \(planted\.test\.js\)/);
+        expect(w.gateRuns).toEqual([]);
+    }, 300_000);
+    it.each([
+        ['a skip-worktree edit', (checkout) => {
+                writeFileSync(join(checkout, 'src', 'greet.js'), 'export const greet = () => "pwned";\n');
+                gitIn(checkout, 'update-index', '--skip-worktree', 'src/greet.js');
+                expect(gitIn(checkout, 'status', '--porcelain')).toBe('');
+            }, /src\/greet\.js/],
+        ['an edit that keeps the size and the mtime', (checkout) => {
+                const file = join(checkout, 'src', 'greet.js');
+                const { atime, mtime } = statSync(file);
+                writeFileSync(file, 'export const greet = () => "HI";\n');
+                utimesSync(file, atime, mtime);
+            }, /src\/greet\.js/],
+        ['an ignored file', (checkout) => {
+                mkdirSync(join(checkout, '.omg'), { recursive: true });
+                writeFileSync(join(checkout, '.omg', 'setup.js'), 'process.exit(0)\n');
+            }, /\.omg\//],
+    ])('M-A: %s a prepare check leaves in the checkout parks before the gate runs', async (_what, plant, listed) => {
+        w = localWorld();
+        const inner = w.exec;
+        const checkout = checkoutPath(w.root, LOCAL_ISSUE);
+        let planted = false;
+        w.exec = (cmd, args, opts) => {
+            const res = inner(cmd, args, opts);
+            if (!planted && isNode(cmd) && opts?.cwd === checkout) {
+                planted = true;
+                plant(checkout);
+            }
+            return res;
+        };
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')]), withCheck));
+        expect(planted).toBe(true);
+        expect(out.gate?.name, out.message).toBe('lane-tampered');
+        expect(out.gate?.reason).toMatch(/working tree differs from it, ignored files included/);
+        expect(out.gate?.reason).toMatch(listed);
+        expect(w.gateRuns).toEqual([]);
+    }, 300_000);
+    it("M-E: the user's own git gc, commit-graph and multi-pack-index writes during prepare do not park; the run reaches the merge gate", async () => {
+        w = localWorld();
+        const inner = w.exec;
+        const checkout = checkoutPath(w.root, LOCAL_ISSUE);
+        let wrote = false;
+        w.exec = (cmd, args, opts) => {
+            if (!wrote && isNode(cmd) && opts?.cwd === checkout) {
+                wrote = true;
+                // What a user's `git gc` (pack-refs, repack with update-server-info, commit-graph) and maintenance write.
+                gitIn(w.root, 'gc', '--quiet');
+                gitIn(w.root, 'commit-graph', 'write', '--reachable');
+                gitIn(w.root, 'multi-pack-index', 'write', '--bitmap');
+            }
+            return inner(cmd, args, opts);
+        };
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')]), withCheck));
+        expect(wrote).toBe(true);
+        expect(existsSync(join(w.root, '.git', 'objects', 'pack', 'multi-pack-index'))).toBe(true);
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(w.gateRuns).toHaveLength(1);
+    }, 300_000);
+    it('M-B: a sibling admin dir the checkout `.git` names in a later invocation parks; the gate never runs', async () => {
+        w = localWorld(null);
+        const first = await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')])));
+        expect(first.gate?.reason, first.message).toMatch(/no local gate/);
+        const checkout = checkoutPath(w.root, LOCAL_ISSUE);
+        const state = readFactoryState(w.root, LOCAL_ISSUE);
+        const admin = join(w.root, '.git', 'worktrees', state.checkoutAdmin);
+        expect(existsSync(admin)).toBe(true);
+        // Between invocations: a copy of the admin dir (its own HEAD and index) that the checkout's `.git` now names.
+        const sibling = `${admin}-x`;
+        cpSync(admin, sibling, { recursive: true });
+        const fd = openSync(join(checkout, '.git'), 'r+');
+        try {
+            ftruncateSync(fd);
+            writeSync(fd, `gitdir: ${sibling}\n`);
+        }
+        finally {
+            closeSync(fd);
+        }
+        // A new process: nothing recorded in memory.
+        forgetWorktreeGitLinks(checkout);
+        w.config = resolveForgeConfig({ factory: { forge: { kind: 'local', local: { gate: ['node', '--test'] } } } }, undefined, undefined, undefined, { root: w.root, stateDir: w.stateDir }).config;
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [])));
+        expect(out.gate?.name, out.message).toBe('lane-tampered');
+        expect(out.gate?.reason).toMatch(new RegExp(`names the admin dir .*-x, but the engine's \`worktree add\` made ${state.checkoutAdmin}`));
+        expect(w.gateRuns).toEqual([]);
+    }, 300_000);
+    it('M-C: a PR store set to MERGED while your base does not contain the head parks; the run is not merged', async () => {
+        w = localWorld();
+        const prs = join(w.config.repo.url.replace(/\.git$/, ''), 'prs.json');
+        const inner = w.exec;
+        let planted = false;
+        w.exec = (cmd, args, opts) => {
+            if (!planted && cmd === 'git' && existsSync(prs) && readFactoryState(w.root, LOCAL_ISSUE)?.phase === 'prepare') {
+                planted = true;
+                const store = JSON.parse(readFileSync(prs, 'utf8'));
+                for (const p of store.prs)
+                    Object.assign(p, { state: 'MERGED', mergedHead: readFactoryState(w.root, LOCAL_ISSUE).head, mergedAt: new Date().toISOString() });
+                writeFileSync(prs, JSON.stringify(store));
+            }
+            return inner(cmd, args, opts);
+        };
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')])));
+        expect(planted).toBe(true);
+        expect(out.gate?.name, out.message).toBe('lane-tampered');
+        expect(out.gate?.reason).toMatch(new RegExp(`reports PR #\\d+ merged, but your ${BASE} [0-9a-f]{12} does not contain the head the engine pushed`));
+        expect(readFactoryState(w.root, LOCAL_ISSUE).phase).not.toBe('merged');
         expect(w.gateRuns).toEqual([]);
     }, 300_000);
 });
