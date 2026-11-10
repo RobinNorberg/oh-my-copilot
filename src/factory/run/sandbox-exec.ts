@@ -185,7 +185,6 @@ export function readMarker(output: string, marker: string): { code: number | nul
 /** Token-shaped text (GitHub, npm, AWS keys, PEM private keys, Bearer values) replaced before an output tail is kept anywhere. */
 export function redactGateOutput(text: string): string {
   return redactSecrets(text)
-    .replace(/\bnpm_[A-Za-z0-9]{36}\b/g, '[redacted]')
     // A key block whose BEGIN line the output bound cut off: its base64 body lines up to the END line.
     .replace(/(?:[A-Za-z0-9+/=]{40,}\r?\n)+-----END [A-Z0-9 ]*KEY-----/g, '[redacted]');
 }

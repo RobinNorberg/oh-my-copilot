@@ -194,6 +194,8 @@ function hostAttributesFile(): string {
 const WORK_TREE_SUBCOMMANDS = new Set([
   'status', 'diff', 'diff-files', 'diff-index', 'ls-files', 'worktree', 'checkout', 'checkout-index', 'restore',
   'switch', 'reset', 'add', 'stash', 'merge', 'commit', 'update-index', 'read-tree', 'apply', 'rm', 'mv', 'clean',
+  // `hash-object --stdin --path`: the path selects attributes, so a filter could run on the bytes.
+  'hash-object',
 ]);
 
 /** Global options before a subcommand that take the next argument as their value. */
@@ -319,7 +321,18 @@ function hostGitExe(): string {
  * process.env) is the environment the pins are set over (the factory
  * engine's commit identity).
  */
-export function runHostGit(cwd: string, args: readonly string[], timeout?: number, baseEnv: NodeJS.ProcessEnv = process.env): string {
+export function runHostGit(cwd: string, args: readonly string[], timeout?: number, baseEnv: NodeJS.ProcessEnv = process.env, input?: string | Buffer): string {
+  const { argv, env } = hostGitCommand(cwd, args, timeout, baseEnv);
+  return execFileSync(hostGitExe(), argv, { cwd, env, encoding: 'utf-8', stdio: 'pipe', windowsHide: true, timeout, ...(input !== undefined ? { input, maxBuffer: 64 * 1024 * 1024 } : {}) });
+}
+
+/** runHostGit with raw stdout bytes (`cat-file --batch` of binary blobs). */
+export function runHostGitBuffer(cwd: string, args: readonly string[], timeout?: number, baseEnv: NodeJS.ProcessEnv = process.env, input?: string | Buffer): Buffer {
+  const { argv, env } = hostGitCommand(cwd, args, timeout, baseEnv);
+  return execFileSync(hostGitExe(), argv, { cwd, env, stdio: 'pipe', windowsHide: true, timeout, maxBuffer: 512 * 1024 * 1024, ...(input !== undefined ? { input } : {}) });
+}
+
+function hostGitCommand(cwd: string, args: readonly string[], timeout: number | undefined, baseEnv: NodeJS.ProcessEnv): { argv: string[]; env: NodeJS.ProcessEnv } {
   const env = hostGitEnv(args, baseEnv);
   const recorded = env.GIT_DIR ? recordedGitDirs.get(env.GIT_DIR) : undefined;
   if (recorded && !sameGitLinks(readWorktreeGitLinks(recorded.wtPath), recorded.links)) {
@@ -341,7 +354,7 @@ export function runHostGit(cwd: string, args: readonly string[], timeout?: numbe
     tree = [...tree, ...LANE_SUBMODULE_OVERRIDES.flatMap((kv) => ['-c', kv])];
     if (IGNORE_SUBMODULES_SUBCOMMANDS.has(subcommand)) finalArgs = [...args.slice(0, at + 1), '--ignore-submodules=all', ...args.slice(at + 1)];
   }
-  return execFileSync(hostGitExe(), [...hostGitHardeningArgs(), ...tree, ...finalArgs], { cwd, env, encoding: 'utf-8', stdio: 'pipe', windowsHide: true, timeout });
+  return { argv: [...hostGitHardeningArgs(), ...tree, ...finalArgs], env };
 }
 
 /** `-c` pairs on every host command in a lane worktree: no submodule recursion, status or summary. */
