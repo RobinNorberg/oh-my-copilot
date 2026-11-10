@@ -491,11 +491,13 @@ function parseStatusPaths(raw: string): string[] {
 const HEX40 = /^[0-9a-f]{40}$/;
 
 /**
- * Engine git in the prepare checkout once the PR's code ran there: the git
- * dir read from `<checkout>/.git` before any of it ran, and the work tree,
- * named on the command line (`--git-dir`, `--work-tree`, after the guard
- * checked the plain shape), so a rewritten `.git` file cannot point that git
- * at a config of the PR's (a filter driver on `git add`).
+ * Engine git in the prepare checkout once the PR's code ran there: the admin
+ * dir recorded at `worktree add` (recordWorktreeGitLinks, before any of it
+ * ran) and the work tree, named on the command line (`--git-dir`,
+ * `--work-tree`), so a rewritten `.git` file cannot point that git at a
+ * config of the PR's (a filter driver on `git add`). It wraps the plain exec
+ * INSIDE hardenedGitExec, which (and the guard around it) sees the plain
+ * shape.
  */
 function pinCheckoutGit(exec: Exec, pin: () => { workTree: string; gitDir: string } | undefined): Exec {
   return (cmd, args, opts) => {
@@ -722,7 +724,8 @@ class FactoryEngine {
   private checkoutGitPin?: { workTree: string; gitDir: string };
 
   constructor(private readonly o: FactoryEngineOptions, private readonly ledger: EngineLedger, hooksDir: string) {
-    const built = engineExec(o, pinCheckoutGit(hardenedGitExec(o.exec, hooksDir, () => (o.forge?.config.kind === 'local' ? o.forge.config.repo.url : undefined)), () => this.checkoutGitPin), () => this.localBase ?? this.state?.baseSha, () => this.basePushSha, () => this.githubReadContext(), () => this.agentStep);
+    // The pin sits inside hardenedGitExec, so its transport checks (onLocalRemote) see the plain shape, never a leading --git-dir.
+    const built = engineExec(o, hardenedGitExec(pinCheckoutGit(o.exec, () => this.checkoutGitPin), hooksDir, () => (o.forge?.config.kind === 'local' ? o.forge.config.repo.url : undefined)), () => this.localBase ?? this.state?.baseSha, () => this.basePushSha, () => this.githubReadContext(), () => this.agentStep);
     this.exec = built.exec;
     this.forge = built.forge;
     this.forgeName = forgeTerms(this.forge ? this.forge.kind : 'github').name;
@@ -2202,6 +2205,7 @@ class FactoryEngine {
     // The checkout's gitfile before any PR code ran: compared after each check, and its git dir named to engine git from then on.
     const gitLink = checkoutGitLink(path);
     if (!gitLink.gitDir) throw new FactoryStepError(`the new prepare checkout ${path} has no gitfile naming its git dir (${gitLink.hash})`);
+    if (!samePath(gitLink.gitDir, recorded.adminDir)) throw new FactoryStepError(`the new prepare checkout ${path} names the git dir ${gitLink.gitDir}, not the admin dir ${recorded.adminDir} its git links were recorded with`);
     // Configured checks are resolved without a shell (never a .cmd/.bat); every check runs per factory.run.sandbox.gates (prepareCheck).
     const commands = configured?.map((argv) => ({ argv, ...resolveLocalGateArgv(argv, { cwd: path, subject: 'the prepare check', configKey: 'ship.prepare.checks' }) }));
     const gates = this.gatesSandbox(this.gateConfig(view));
@@ -2350,7 +2354,8 @@ class FactoryEngine {
       name: 'lane-tampered',
       reason: `${label} on ${head.slice(0, 12)} changed the prepare checkout's .git file (its link to the git dir), so nothing of this prepare is trusted and nothing is pushed; inspect and remove ${path} by hand`,
     }));
-    this.checkoutGitPin = { workTree: path, gitDir: at.gitLink.gitDir };
+    // One mechanism: the admin dir recorded at `worktree add` (recordWorktreeGitLinks), the same one host git reads through.
+    this.checkoutGitPin = { workTree: path, gitDir: worktreeGitDirArgs(path)[1] };
     const plain = async (how: 'ack' | 'unsandboxed'): Promise<PrepareCheckResult> => {
       if (how === 'unsandboxed') this.noteUnsandboxedGates(head, label);
       else ran.acked = true;
@@ -2718,7 +2723,14 @@ class FactoryEngine {
     const common = resolve(this.o.root, this.run(['rev-parse', '--git-common-dir']).trim());
     this.progress.heartbeat('gates', `local gate ${gate.join(' ')} on ${head.slice(0, 12)}`, this.fields());
     const input = { stateDir, root: this.o.root, head, gate, timeoutMinutes, checkout, ...(this.o.localGate ? { runner: this.o.localGate } : {}), now: () => new Date(this.clock()) };
-    // The checkout's gitfile around the gate (the PR's code): a change parks at lane-tampered.
+    // The checkout's gitfile around the gate (the PR's code): a change parks at lane-tampered. Before it, the gitfile must
+    // still be the one recorded at creation (or, in a later invocation, the one checkoutGitArgs accepted for checkoutAdmin).
+    const recordedLinks = recordedWorktreeGitLinks(checkout);
+    const linksNow = readWorktreeGitLinks(checkout);
+    if (!recordedLinks || !linksNow || linksNow.dotGit !== recordedLinks.dotGit || linksNow.adminDir !== recordedLinks.adminDir) {
+      this.gate('lane-tampered', `the engine's prepare checkout ${checkout} has a .git file that is not the one recorded when the engine made it, so the local gate did not run; inspect and remove it by hand, then rerun ${this.resume}`);
+      return false;
+    }
     const linkBefore = checkoutGitLink(checkout).hash;
     let out: Awaited<ReturnType<typeof runLocalGate>>;
     if (gates.mode === 'unsandboxed') {
