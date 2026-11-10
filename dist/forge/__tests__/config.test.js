@@ -163,6 +163,21 @@ describe('resolveForgeConfig: trust layering (design §3)', () => {
         expect([same.config.intake.autoStart, same.warnings]).toEqual([true, []]);
         expect(code(() => auto(f({ intake: { autoStart: 'yes' } }), undefined))).toBe('invalid');
     });
+    it('review.human and review.waitForRequested: user over base; the working tree is ignored with a warning', () => {
+        const r = (u, b, p) => resolveForgeConfig(u, b, p, GH);
+        expect(r(undefined, undefined).config.review).toBeUndefined();
+        expect(r(f({ review: { human: 'gate-only' } }), f({ review: { human: 'off', waitForRequested: false } })).config.review)
+            .toEqual({ trustedReviewers: [], human: 'gate-only', waitForRequested: false });
+        expect(r(undefined, f({ review: { trustedReviewers: ['Dana'], human: 'fix' } })).config.review).toEqual({ trustedReviewers: ['dana'], human: 'fix' });
+        const wt = r(undefined, undefined, f({ review: { human: 'off', waitForRequested: false } }));
+        expect(wt.config.review).toBeUndefined();
+        expect(wt.warnings).toEqual([
+            expect.stringContaining('ignoring factory.review.human from the working-tree project config'),
+            expect.stringContaining('ignoring factory.review.waitForRequested from the working-tree project config'),
+        ]);
+        expect(code(() => r(f({ review: { human: 'merge' } }), undefined))).toBe('invalid');
+        expect(code(() => r(undefined, f({ review: { waitForRequested: 'yes' } })))).toBe('invalid');
+    });
 });
 describe('resolveForgeConfig: config can pin, never redirect', () => {
     it.each([

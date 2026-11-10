@@ -10,12 +10,16 @@ import { join } from 'node:path';
 
 import { summarizeChanges } from '../../../copilot-run/job.js';
 import type { CopilotRunSandboxState } from '../../../copilot-run/sandbox.js';
+
+/** A write lane's record on a host that confirmed the sandbox, with the default writeNetwork. */
+export const ENFORCED_SANDBOX = { mode: 'enforced', host: {}, applied: 'create', canary: 'skipped', unsandboxedCalls: 0, cliVersion: 'x', sdkVersion: 'x', writeNetwork: 'none' } as unknown as CopilotRunSandboxState;
 import { gitIn } from '../../../copilot-run/__tests__/fake-sdk.js';
 import { resolveShipConfig } from '../../../ship/config.js';
 import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-worktree.js';
 import { defaultExec, type Exec, type ExecResult } from '../../../ship/exec.js';
 import type { LaneProcessOps } from '../engine.js';
 import type { GateConfigLoader } from '../prepare.js';
+import { REVIEW_FEEDBACK_QUERY } from '../../../forge/github/graphql.js';
 import { LaneLostError, type LaneBackend, type LaneProcess, type LaneResult, type LaneStartInput, type LaneState } from '../lane.js';
 
 export { gitIn };
@@ -36,7 +40,8 @@ export interface LaneOutcome {
   error?: string;
   /** wait() throws LaneLostError (the job vanished with its process). */
   lost?: boolean;
-  sandbox?: CopilotRunSandboxState;
+  /** The lane's sandbox record; a write lane's default is enforced without network (a confirmed host); null = no record. */
+  sandbox?: CopilotRunSandboxState | null;
   /** The result carries no change summary (git could not tell). */
   noChanges?: boolean;
 }
@@ -106,7 +111,7 @@ export class FakeLanes implements LaneBackend {
       error: o.error ?? null,
       notes: [],
       process: fakeProcess(remoteId),
-      ...(o.sandbox ? { sandbox: o.sandbox } : {}),
+      ...(o.sandbox ? { sandbox: o.sandbox } : o.sandbox === undefined && job.ctx.input.profile !== 'review' ? { sandbox: ENFORCED_SANDBOX } : {}),
     };
   }
 
@@ -223,6 +228,12 @@ export interface Harness {
     gates: GatesRead[];
     /** `gh run view --job <id> --log` output by job id. */
     logs: Record<string, string>;
+    /**
+     * The human review GraphQL read (`gh api graphql`): the pullRequest part
+     * at the PR's current head (default: no reviews, requests or threads), or
+     * a whole ExecResult.
+     */
+    reviews?: (head: string) => Record<string, unknown> | ExecResult;
   };
   /** `node <script> ...` (prepare's tsc / eslint / vitest / inventory): exit 0 unless scripted. */
   node: (args: string[]) => ExecResult;
@@ -330,6 +341,14 @@ export function harness(prefix = 'omg-factory-run-'): Harness {
       return ok(`${REPO_URL}/pull/${PR}\n`);
     }
     if (key.startsWith('gh pr comment ') || key.startsWith('gh issue comment ')) return ok('');
+    if (cmd === 'gh' && args[0] === 'api' && args[1] === 'graphql' && args.includes(`query=${REVIEW_FEEDBACK_QUERY}`)) {
+      const head = h.gh.headOverride ?? bareRef(bare, `refs/heads/${h.gh.branch}`);
+      const answer = h.gh.reviews?.(head) ?? {};
+      if ('status' in answer && typeof answer.status === 'number') return answer as ExecResult;
+      const done = { hasNextPage: false };
+      const pull = { headRefOid: head, latestReviews: { pageInfo: done, nodes: [] }, latestOpinionatedReviews: { pageInfo: done, nodes: [] }, reviewRequests: { pageInfo: done, nodes: [] }, reviewThreads: { pageInfo: done, nodes: [] }, ...answer };
+      return ok(JSON.stringify({ data: { viewer: { login: 'o' }, repository: { viewerPermission: 'ADMIN', collaborators: { pageInfo: done, edges: [{ permission: 'ADMIN', node: { login: 'o' } }, { permission: 'WRITE', node: { login: 'dana' } }] }, pullRequest: pull } } }));
+    }
     return { status: 1, stdout: '', stderr: `unscripted: ${key}` };
   };
   return h;

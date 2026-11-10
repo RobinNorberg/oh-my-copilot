@@ -51,6 +51,8 @@ export interface CopilotRunSandboxState {
   unsandboxedCalls: number;
   cliVersion: string;
   sdkVersion: string;
+  /** The write session's writeNetwork setting as it ran (absent for a review session and in older records). */
+  writeNetwork?: SandboxSettings['writeNetwork'];
   /** Why the mode is not `enforced`. */
   reason?: string;
 }

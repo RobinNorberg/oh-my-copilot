@@ -14,6 +14,7 @@
  * | heal.pipeline (ADO: which is CI)   | user -> base                         | ignored, warned on a diff  |
  * | intake.autoStart (poll starts runs)| user -> base                         | ignored, warned on a diff  |
  * | review.trustedReviewers            | user -> base                         | ignored, warned on a diff  |
+ * | review.human, .waitForRequested    | user -> base                         | ignored, warned on a diff  |
  * | intake.* (the rest), check.*       | project -> user -> base -> defaults  | allowed                    |
  *
  * Config can pin the forge, never redirect it: a kind, org, project or repo
@@ -479,6 +480,31 @@ export function resolveForgeConfig(trustedUser, base, project, originUrl, contex
         }
         review = { trustedReviewers: [...new Set(trustedRaw.map((r) => text(r, REVIEWER, 'review.trustedReviewers', from).toLowerCase()))] };
     }
+    // review.human and review.waitForRequested decide whether human feedback stops a merge: user -> base only (night 3 D4).
+    const reviewModes = {};
+    for (const key of ['human', 'waitForRequested']) {
+        const b = factoryBlock(base, 'review', baseSource)[key];
+        const u = factoryBlock(trustedUser, 'review', 'user config')[key];
+        const p = factoryBlock(project, 'review', 'project config')[key];
+        if (p !== undefined && !same(p, b))
+            warnings.push(`omg factory: ignoring factory.review.${key} from the working-tree project config; it is read only from the user config or ${baseSource}`);
+        const v = u ?? b;
+        if (v === undefined || v === null)
+            continue;
+        const from = u !== undefined ? 'user config' : baseSource;
+        if (key === 'human') {
+            if (v !== 'off' && v !== 'gate-only' && v !== 'fix')
+                throw new ForgeConfigError('invalid', `${from}: factory.review.human must be "off", "gate-only" or "fix"`);
+            reviewModes.human = v;
+        }
+        else {
+            if (typeof v !== 'boolean')
+                throw new ForgeConfigError('invalid', `${from}: factory.review.waitForRequested must be true or false`);
+            reviewModes.waitForRequested = v;
+        }
+    }
+    if (reviewModes.human !== undefined || reviewModes.waitForRequested !== undefined)
+        review = { trustedReviewers: review?.trustedReviewers ?? [], ...reviewModes };
     const pipelineRaw = uPipeline ?? bPipeline;
     let heal;
     if (pipelineRaw !== undefined && pipelineRaw !== null) {

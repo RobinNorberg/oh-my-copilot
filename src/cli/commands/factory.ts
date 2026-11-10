@@ -188,6 +188,7 @@ export function renderFactoryRunState(state: FactoryRunState, o: { gate?: boolea
   if (state.gate && o.gate !== false) lines.push(chalk.yellow(`awaiting-human: ${state.gate.name}: ${state.gate.reason}`));
   if (state.cancelRequested && state.phase !== 'cancelled') lines.push(chalk.yellow('cancel requested'));
   if (state.head) lines.push(`head ${state.head.slice(0, 12)}`);
+  if (state.unsandboxedAck) lines.push(chalk.yellow(`lanes without the enforced sandbox accepted for ${state.unsandboxedAck.slice(0, 12)} (--allow-unsandboxed-lanes)`));
   lines.push(`lanes ${state.lanes.length}  run AI credits ${runCredits(state).toFixed(2)}  elapsed ${Math.round(state.elapsedMs / 60_000)} min`);
   for (const lane of state.lanes) {
     const credits = lane.usage ? `${lane.usage.credits.toFixed(2)}/${lane.maxCredits}` : `-/${lane.maxCredits}`;
@@ -341,8 +342,9 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
     .option('--parent <spec>', 'With --next: pick among the children of this spec item instead of factory.intake.source')
     .option('--dry-run', 'Resolve the issue and plan and print the next step; no state, lanes or pushes')
     .option('--allow-gate-change', 'Local forge: accept the one change to the local gate\'s definition (package.json script, package-manager config or gate file) that parked the run at gate-definition-changed; a later change parks again')
+    .option('--allow-unsandboxed-lanes', 'Accept, for the parked head only, that write lanes ran without the enforced sandbox (the run parked at human-review for it): you checked the threads and reviews of the PR yourself; a new head parks again')
     .option('--json', 'JSON output')
-    .action((issueRaw: string | undefined, o: { next?: boolean; parent?: string; dryRun?: boolean; allowGateChange?: boolean; json?: boolean }) =>
+    .action((issueRaw: string | undefined, o: { next?: boolean; parent?: string; dryRun?: boolean; allowGateChange?: boolean; allowUnsandboxedLanes?: boolean; json?: boolean }) =>
       factoryGuarded(Boolean(o.json), async () => {
         if (o.next && issueRaw !== undefined) throw new FactoryUsageError('--next takes no issue: it picks the next runnable item');
         if (o.parent !== undefined && !o.next) throw new FactoryUsageError('--parent applies to --next');
@@ -413,6 +415,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
                 root, issue: issue!, exec: deps.exec, limits, base, dryRun: Boolean(o.dryRun), claimRepo,
                 ...(held ? { repoOwner: held } : {}),
                 ...(o.allowGateChange ? { allowGateChange: true } : {}),
+                ...(o.allowUnsandboxedLanes ? { allowUnsandboxedLanes: true } : {}),
                 lanes: o.dryRun ? NO_LANES : deps.lanes(root),
                 ...(forge ? { forge } : {}),
                 ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}),

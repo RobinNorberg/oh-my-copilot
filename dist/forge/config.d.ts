@@ -14,6 +14,7 @@
  * | heal.pipeline (ADO: which is CI)   | user -> base                         | ignored, warned on a diff  |
  * | intake.autoStart (poll starts runs)| user -> base                         | ignored, warned on a diff  |
  * | review.trustedReviewers            | user -> base                         | ignored, warned on a diff  |
+ * | review.human, .waitForRequested    | user -> base                         | ignored, warned on a diff  |
  * | intake.* (the rest), check.*       | project -> user -> base -> defaults  | allowed                    |
  *
  * Config can pin the forge, never redirect it: a kind, org, project or repo

@@ -48,10 +48,18 @@ describe('path extraction', () => {
   });
   it('stays linear on long headers made of repeated quote-b-slash', () => {
     const header = (n: number): string => `diff --git a/${'\\"b/'.repeat(4000)}${n}.ts b/${'\\"b/'.repeat(4000)}${n}.ts"`;
-    const diff = Array.from({ length: 200 }, (_, i) => header(i)).join('\n');
-    const started = Date.now();
-    pathsInDiff(diff);
-    expect(Date.now() - started).toBeLessThan(1000);
+    const timeParse = (count: number): number => {
+      const diff = Array.from({ length: count }, (_, i) => header(i)).join('\n');
+      const started = performance.now();
+      pathsInDiff(diff);
+      return performance.now() - started;
+    };
+    timeParse(50); // warm up
+    const small = timeParse(100);
+    const large = timeParse(400);
+    // Linear parsing grows ~4x for 4x input; a quadratic parser would grow ~16x.
+    expect(large).toBeLessThan(Math.max(small, 1) * 10);
+    expect(large).toBeLessThan(20000);
   });
   it('resolves quoted, renamed, escaped and space-b-slash names', () => {
     const diff = [

@@ -30,8 +30,9 @@ export const REVIEW_FEEDBACK_QUERY = 'query($owner:String!,$name:String!,$number
   + ' repository(owner:$owner,name:$name){viewerPermission collaborators(first:100){pageInfo{hasNextPage} edges{permission node{login}}}'
   + ' pullRequest(number:$number){headRefOid'
   + ' latestReviews(first:50){pageInfo{hasNextPage} nodes{id state submittedAt body author{__typename login} commit{oid}}}'
+  + ' latestOpinionatedReviews(first:50){pageInfo{hasNextPage} nodes{state submittedAt body author{__typename login} commit{oid}}}'
   + ' reviewRequests(first:20){pageInfo{hasNextPage} nodes{requestedReviewer{__typename ... on User{login} ... on Bot{login} ... on Mannequin{login} ... on Team{slug}}}}'
-  + ' reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated'
+  + ' reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated resolvedBy{login}'
   + ' comments(first:20){pageInfo{hasNextPage} nodes{body path line originalLine createdAt author{__typename login}}}}}}}}';
 
 /** A GitHub login or repository name (conservative: no option shape, no `@`, no `/`). */
@@ -134,7 +135,9 @@ function collaboratorErrorsOnly(json: Obj, pr: number, exitStatus: number): bool
  * truncated, an error is not about the collaborator list, or `head` is not the
  * PR's head. A review body counts as a thread only when the review was
  * submitted on `head` (an older head's summary was answered by a later push);
- * inline threads count while unresolved and not outdated.
+ * inline threads count while unresolved (an outdated one flagged `outdated`).
+ * A CHANGES_REQUESTED stands until the same author approves or it is
+ * dismissed: a later COMMENTED review does not clear it.
  */
 export function parseReviewFeedback(stdout: string, pr: number, head: string, trust: ReviewTrust, exitStatus = 0): ForgeReviewFeedback {
   let json: unknown;
@@ -165,6 +168,8 @@ export function parseReviewFeedback(stdout: string, pr: number, head: string, tr
     return v.nodes as Obj[];
   };
   const reviews = connection(pull.latestReviews, 'latestReviews');
+  // Same 50-review cap and remedy as latestReviews.
+  const opinionated = connection(pull.latestOpinionatedReviews, 'latestReviews');
   const requests = connection(pull.reviewRequests, 'reviewRequests');
   const threadNodes = connection(pull.reviewThreads, 'reviewThreads');
 
@@ -181,6 +186,7 @@ export function parseReviewFeedback(stdout: string, pr: number, head: string, tr
   if (viewer && WRITE_PERMISSIONS.has(str(repo.viewerPermission) ?? '')) trusted.add(viewer.toLowerCase());
 
   const ignored = new Set<string>();
+  const resolvedByViewer: string[] = [];
   /**
    * The trusted name of an author, else undefined (an untrusted one is listed
    * in `ignored`; a null or malformed author is dropped). A User is trusted by
@@ -215,13 +221,29 @@ export function parseReviewFeedback(stdout: string, pr: number, head: string, tr
       threads.push({ id: `review:${id}`, author: who, body: capped(body), at });
     }
   }
+  // A later COMMENTED review by the same author does not clear their CHANGES_REQUESTED (GitHub's reviewDecision keeps it),
+  // but latestReviews reports the comment as their latest: the latest opinionated review restores the request.
+  for (const r of opinionated) {
+    if (r.state !== 'CHANGES_REQUESTED' || isFactoryComment(str(r.body) ?? '')) continue;
+    const who = author(r.author);
+    if (!who) continue;
+    const latest = decisions.find((d) => d.author === who);
+    if (latest && latest.state !== 'commented' && latest.state !== 'pending') continue;
+    const oid = isObj(r.commit) ? str(r.commit.oid) : undefined;
+    decisions.push({ author: who, state: 'changes-requested', at: str(r.submittedAt) ?? '', ...(oid && HEX40.test(oid) ? { head: oid } : {}) });
+  }
 
   for (const t of threadNodes) {
     const id = str(t.id);
     if (!id || typeof t.isResolved !== 'boolean' || typeof t.isOutdated !== 'boolean') {
       throw new ReviewFeedbackError(`review feedback of PR ${pr}: a review thread without its id or state`);
     }
-    if (t.isResolved || t.isOutdated) continue;
+    // Resolved threads are done; an outdated one (a later push changed its lines) stays, flagged, until someone resolves it.
+    if (t.isResolved) {
+      // The run's own login resolving a thread could be a lane with the operator's credentials: the engine checks these ids.
+      if (viewer && login(t.resolvedBy)?.toLowerCase() === viewer.toLowerCase()) resolvedByViewer.push(id);
+      continue;
+    }
     const kept = connection(t.comments, `comments of thread ${id.slice(0, 40)}`).flatMap((cm) => {
       const body = str(cm.body) ?? '';
       if (!body.trim() || isFactoryComment(body)) return [];
@@ -234,14 +256,15 @@ export function parseReviewFeedback(stdout: string, pr: number, head: string, tr
     const line = [first.c.line, first.c.originalLine].find((v): v is number => Number.isSafeInteger(v) && (v as number) > 0);
     const body = kept.length === 1 ? first.body : kept.map((k) => `@${k.author}:\n${k.body}`).join('\n\n');
     const at = kept.map((k) => str(k.c.createdAt) ?? '').sort().pop() ?? '';
-    threads.push({ id, author: first.author, body: capped(body), ...(path ? { file: path } : {}), ...(line ? { line } : {}), at });
+    threads.push({ id, author: first.author, body: capped(body), ...(path ? { file: path } : {}), ...(line ? { line } : {}), at, ...(t.isOutdated ? { outdated: true as const } : {}) });
   }
 
   const pending = new Set<string>();
   for (const q of requests) {
     const who = isObj(q.requestedReviewer) ? q.requestedReviewer : {};
     const slug = str(who.slug);
-    const name = login(who) ?? (slug && NAME.test(slug) ? `team:${slug}` : undefined);
+    const l = login(who);
+    const name = l ? (who.__typename === 'Bot' ? `${l}[bot]` : who.__typename === 'Mannequin' ? `mannequin:${l}` : l) : slug && NAME.test(slug) ? `team:${slug}` : undefined;
     if (name) pending.add(name);
   }
 
@@ -249,6 +272,7 @@ export function parseReviewFeedback(stdout: string, pr: number, head: string, tr
     decisions,
     threads,
     pendingReviewers: [...pending],
+    ...(resolvedByViewer.length > 0 ? { resolvedByViewer } : {}),
     ignored: [...ignored].filter((l) => !trusted.has(l.toLowerCase())).sort(),
     ...(trustIncomplete ? { trustIncomplete: true } : {}),
   };

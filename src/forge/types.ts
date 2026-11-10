@@ -215,10 +215,17 @@ export function shipyardKeys(body: string): Array<[number, string]> {
 export interface ForgeReviewFeedback {
   /** Latest review per human reviewer (GitHub latestReviews; ADO reviewer votes; local playback). */
   decisions: Array<{ author: string; state: 'approved' | 'changes-requested' | 'commented' | 'dismissed' | 'pending'; at: string; head?: string }>;
-  /** Open human threads only: GitHub unresolved and not outdated; ADO active/pending text threads not byFactory; local playback notes. */
-  threads: Array<{ id: string; author: string; body: string; file?: string; line?: number; at: string }>;
-  /** Reviewers requested but not yet submitted. */
+  /**
+   * Open human threads: GitHub unresolved (an outdated one, whose lines a
+   * later push changed, carries `outdated: true`; resolved ones are dropped)
+   * plus a review body submitted on the head (id `review:<id>`); ADO
+   * active/pending text threads not byFactory; local playback notes.
+   */
+  threads: Array<{ id: string; author: string; body: string; file?: string; line?: number; at: string; outdated?: true }>;
+  /** Reviewers requested but not yet submitted (GitHub: a login, `<slug>[bot]` for a bot, `mannequin:<login>` for a mannequin, `team:<slug>` for a team). */
   pendingReviewers: string[];
+  /** GitHub: ids of resolved threads whose resolver is the reading login (the operator, or a lane with its credentials). */
+  resolvedByViewer?: string[];
   /** Authors whose input was dropped (not trusted), for poll and status output. */
   ignored: string[];
   /**
@@ -414,8 +421,13 @@ export interface ResolvedForgeConfig {
   progress: ForgeProgressConfig;
   /** `factory.heal.pipeline` from the trusted layers (user config, base branch); absent unless configured. */
   heal?: { pipeline?: { definitionId: number } };
-  /** `factory.review.trustedReviewers` from the trusted layers (user config, base branch), lowercased; absent unless configured. */
-  review?: { trustedReviewers: readonly string[] };
+  /**
+   * `factory.review.*` from the trusted layers (user config, base branch); absent unless configured.
+   * trustedReviewers: lowercased. human: what the engine does with trusted human feedback at the
+   * merge step (absent = "fix"). waitForRequested: park while requested reviewers have not
+   * reviewed (absent = true).
+   */
+  review?: { trustedReviewers: readonly string[]; human?: 'off' | 'gate-only' | 'fix'; waitForRequested?: boolean };
 }
 
 /** What an adapter needs from its caller besides the Exec (src/factory/run/forge-roots.ts builds it for the factory). */

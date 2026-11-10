@@ -7,7 +7,7 @@ import { EXIT_AWAITING_HUMAN, runFactoryEngine } from '../engine.js';
 import { EngineLedger } from '../ledger.js';
 import { factoryProgressFile } from '../progress.js';
 import { factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, readFactoryState, requestFactoryCancel } from '../state.js';
-import { commitFile, FakeLanes, gitIn, ISSUE, PR, remoteHead, review } from './fake-lanes.js';
+import { commitFile, ENFORCED_SANDBOX, FakeLanes, gitIn, ISSUE, PR, remoteHead, review } from './fake-lanes.js';
 import { h, procs, useEngineHarness, limits, opts, DEAD_CHILD, crashDuringLane, asEngine, run } from './engine-harness.js';
 useEngineHarness();
 describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
@@ -42,7 +42,9 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
         crashDuringLane();
         const { lanes, done } = run([commitFile('a.ts'), review('approve')]);
         const out = await done;
-        expect(out.gate?.name).toBe('merge');
+        // The lost lane never reported its sandbox, so the merge read cannot vouch for it (PR #471 M-C).
+        expect(out.gate?.reason, out.message).toContain(`implement-1 (lost; sandbox not recorded, network not recorded)`);
+        expect(out.gate?.name).toBe('human-review');
         const state = readFactoryState(h.root, ISSUE);
         expect(state.lanes[0].status).toBe('lost');
         expect(state.history.some((e) => /lost at resume/.test(e.note))).toBe(true);
@@ -50,6 +52,20 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
         // The old job is cancelled (best effort); its unknown usage counts as its whole cap.
         expect(lanes.cancelled).toContain('cr-dead');
         expect(state.lanes[0].usage).toEqual({ credits: 30, premiumRequests: 0, source: 'estimated' });
+    });
+    it('resume: a cancel that confirms the job under the enforced sandbox keeps that record, so the merge read is not parked as unsandboxed', async () => {
+        h.gh.issue.body = 'nothing yet';
+        await run([]).done;
+        crashDuringLane();
+        const lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')]);
+        lanes.cancel = async (remoteId) => {
+            lanes.cancelled.push(remoteId);
+            return { supported: true, result: { state: 'completed', usage: { premiumRequests: 1, credits: 2, source: 'measured', detail: '' }, sandbox: ENFORCED_SANDBOX } };
+        };
+        const out = await runFactoryEngine(opts(lanes));
+        expect(out.gate?.name, out.message).toBe('merge');
+        const state = readFactoryState(h.root, ISSUE);
+        expect(state.lanes[0]).toMatchObject({ status: 'lost', sandbox: { mode: 'enforced', writeNetwork: 'none' } });
     });
     it('resume: shared git state changed while the lost lane ran parks at lane-tampered, without a fresh lane', async () => {
         h.gh.issue.body = 'nothing yet';
@@ -93,7 +109,7 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
             procs.live.add(DEAD_CHILD.pid);
             const { lanes, done } = run([commitFile('a.ts'), review('approve')]);
             const out = await done;
-            expect(out.gate?.name).toBe('merge');
+            expect(out.gate?.reason, out.message).toContain('implement-1 (lost; sandbox not recorded');
             expect(procs.killed).toEqual([DEAD_CHILD.pid]);
             const lane = readFactoryState(h.root, ISSUE).lanes[0];
             expect(lane.status).toBe('lost');
@@ -125,7 +141,7 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
             expect(procs.killed).toEqual([]);
             const { lanes, done } = run([commitFile('a.ts'), review('approve')]);
             const out = await done;
-            expect(out.gate?.name).toBe('merge');
+            expect(out.gate?.reason, out.message).toContain('implement-1 (lost; sandbox not recorded');
             const lane = readFactoryState(h.root, ISSUE).lanes[0];
             expect(lane.status).toBe('lost');
             expect(lane.note).toMatch(/taken as the human's word that it stopped/);
