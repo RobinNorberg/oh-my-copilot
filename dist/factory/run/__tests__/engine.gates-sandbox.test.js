@@ -279,6 +279,40 @@ describe('a sandbox that withholds or forges a verdict (review 474 item 10)', ()
         expect(readFactoryState(w.root, LOCAL_ISSUE).unsandboxedGatesAck).toBeUndefined();
     }, MULTI_RUN_MS);
 });
+describe('a host whose sandbox cannot deny paths (Windows today)', () => {
+    const READABLE = { ran: true, status: 0, output: 'ok', timedOut: false, credentialFilesReadable: true };
+    it('runs and counts by default: the record and the PR note say credential files are readable, one warning per run', async () => {
+        w = localWorld();
+        const warnings = [];
+        const s = sandbox(() => READABLE);
+        const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run, warn: (m) => warnings.push(m) }));
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(s.reqs.map((r) => r.purpose)).toEqual(['prepare', 'gate']);
+        expect(s.reqs.every((r) => r.requireDeniedPaths === undefined)).toBe(true);
+        const state = readFactoryState(w.root, LOCAL_ISSUE);
+        expect(readLocalCheckRecord(w.stateDir, w.root, state.head)).toMatchObject({ state: 'SUCCESS', sandbox: 'enforced', sandboxNote: 'sandboxed; credential files readable on this host' });
+        expect(state.gateComments).toContain(`pr:credential-files-readable@${state.head.slice(0, 12)}`);
+        expect(state.history.some((h) => h.note.includes('ran in the OS sandbox (sandboxed; credential files readable on this host)'))).toBe(true);
+        expect(warnings.filter((m) => m.includes('cannot deny paths'))).toHaveLength(1);
+        expect(w.gateRuns).toEqual([]);
+    }, MULTI_RUN_MS);
+    it('requireDeniedPaths true in the base-committed omg.jsonc parks gates-unsandboxed naming the key; a user false cannot turn it off', async () => {
+        w = localWorld();
+        mkdirSync(join(w.root, '.copilot'), { recursive: true });
+        writeFileSync(join(w.root, '.copilot', 'omg.jsonc'), `${JSON.stringify({ factory: { run: { sandbox: { requireDeniedPaths: true } } } })}\n`);
+        gitIn(w.root, 'add', '.copilot/omg.jsonc');
+        gitIn(w.root, 'commit', '-q', '-m', 'require denied paths');
+        // The sandbox as runSandboxed answers on a host without denied_paths.
+        const s = sandbox((req) => (req.requireDeniedPaths ? { ran: false, reason: 'the sandbox host does not report denied_paths, so it cannot hide your credential files from the PR\'s code, and factory.run.sandbox.requireDeniedPaths is true' } : READABLE));
+        const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), {
+            gateSandbox: s.run, gateConfig: gateConfig(true), gateSandboxUserConfig: { factory: { run: { sandbox: { requireDeniedPaths: false } } } },
+        }));
+        expect(out.gate?.name, out.message).toBe(GATES_UNSANDBOXED_GATE);
+        expect(out.gate?.reason).toContain('factory.run.sandbox.requireDeniedPaths is true');
+        expect(s.reqs.map((r) => r.requireDeniedPaths)).toEqual([true]);
+        expect(w.gateRuns).toEqual([]);
+    }, MULTI_RUN_MS);
+});
 describe('the ack carry (review 474 item 10)', () => {
     it('an acked prepare check that commits in the checkout parks lane-tampered, and the ack is not carried to that commit', async () => {
         w = localWorld();

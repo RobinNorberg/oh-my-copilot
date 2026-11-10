@@ -113,6 +113,18 @@ export declare function resolveGatesSandboxMode(layers: GatesSandboxLayers): {
     mode: GatesSandboxMode;
     source: string;
 };
+/**
+ * `factory.run.sandbox.requireDeniedPaths`: a sandboxed gate on a host that
+ * does not report `denied_paths` (Windows today) runs and counts by default,
+ * with the credential files under the user profile readable; `true` makes
+ * such a host give no verdict (the gates-unsandboxed park). Read from the
+ * user config and the base-committed `.copilot/omg.jsonc` only; either layer
+ * can turn it on and no layer can turn it off over the other's `true`.
+ */
+export declare function resolveRequireDeniedPaths(layers: Pick<GatesSandboxLayers, 'user' | 'base'>): {
+    require: boolean;
+    source: string;
+};
 /** The SDK's SandboxConfig (rpc.d.ts), the fields this module sets. */
 export interface SandboxConfig {
     enabled: boolean;

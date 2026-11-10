@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fakeClientRpc, fakeSessionRpc } from '../../../copilot-run/__tests__/fake-sdk.js';
-import { buildSandboxConfig, DEFAULT_SANDBOX_SETTINGS, resolveGatesSandboxMode } from '../../../copilot-run/sandbox.js';
+import { buildSandboxConfig, DEFAULT_SANDBOX_SETTINGS, resolveGatesSandboxMode, resolveRequireDeniedPaths } from '../../../copilot-run/sandbox.js';
 import { findOnPath } from '../../../utils/windows-search.js';
 import { defaultLocalGateRunner } from '../local-gate.js';
 import { createSandboxRunner, gateEnv, readMarker, redactGateOutput, runSandboxed, sandboxShellCommand, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, } from '../sandbox-exec.js';
@@ -191,11 +191,26 @@ describe('runSandboxed', () => {
         const config = rec.optionsUpdates[0]?.sandboxConfig;
         expect(config.userPolicy.network).toMatchObject({ allowOutbound: true, allowedHosts: ['registry.npmjs.org', '*.npmjs.org'] });
     });
-    it('M3: a host without denied_paths runs nothing (not started: the gates-unsandboxed park), and says why', async () => {
-        const r = await runSandboxed(['/bin/true'], opts(), deps(ok, 'supported', {}, false));
-        expect(r).toEqual({ ran: false, reason: expect.stringContaining('does not report denied_paths, so it cannot hide your credential files') });
+    it('a host without denied_paths runs the command and its verdict counts, marked credential files readable', async () => {
+        const r = await runSandboxed(['/bin/false'], opts(), deps(said('not ok\nMARKER 1\n'), 'supported', {}, false));
+        expect(r).toEqual({ ran: true, status: 1, output: 'not ok', timedOut: false, credentialFilesReadable: true });
+        const config = rec.optionsUpdates[0]?.sandboxConfig;
+        expect(config.userPolicy.filesystem.deniedPaths).toBeUndefined();
+        // With denied_paths the verdict carries no mark.
+        expect(await runSandboxed(['/bin/true'], opts(), deps(ok))).toEqual({ ran: true, status: 0, output: 'tests passed', timedOut: false });
+    });
+    it('requireDeniedPaths: a host without denied_paths runs nothing (not started: the gates-unsandboxed park), naming the key', async () => {
+        const r = await runSandboxed(['/bin/true'], opts({ requireDeniedPaths: true }), deps(ok, 'supported', {}, false));
+        expect(r).toEqual({ ran: false, reason: expect.stringContaining('factory.run.sandbox.requireDeniedPaths is true') });
         expect(rec.commands).toEqual([]);
         expect(rec.sessions).toEqual([]);
+        // A host that reports denied_paths runs as before.
+        expect(await runSandboxed(['/bin/true'], opts({ requireDeniedPaths: true }), deps(ok))).toMatchObject({ ran: true, status: 0 });
+    });
+    it('redaction applies on a host without denied_paths too', async () => {
+        const r = await runSandboxed(['/bin/false'], opts(), deps(said('token ghp_abcdefghijklmnopqrstuvwxyz0123456789\nMARKER 1\n'), 'supported', {}, false));
+        expect(r).toMatchObject({ ran: true, credentialFilesReadable: true });
+        expect(r.output).not.toContain('ghp_abcdefghijklmnopqrstuvwxyz0123456789');
     });
     it('a call attested sandboxed: false, or not attested at all, gives no verdict after the command started', async () => {
         const no = await runSandboxed(['/bin/true'], opts(), deps({ ...ok, sandboxed: false }));
@@ -310,6 +325,15 @@ describe('runSandboxed', () => {
         expect(r.ran).toBe(true);
         const config = rec.optionsUpdates[0]?.sandboxConfig;
         expect(config.userPolicy.network).toEqual({ allowOutbound: false, allowLocalNetwork: false });
+    });
+});
+describe('createSandboxRunner and requireDeniedPaths', () => {
+    it('passes the request\'s requireDeniedPaths to the sandbox: a host without denied_paths then runs nothing', async () => {
+        const run = createSandboxRunner(join(dir, 'checkout'), deps(ok, 'supported', {}, false), { user: null, project: undefined });
+        const req = { purpose: 'gate', argv: ['node', 'x'], exe: '/usr/bin/node', args: ['x'], cwd: join(dir, 'checkout'), commonGitDir: join(dir, 'repo', '.git'), timeoutMs: 60_000 };
+        expect(await run({ ...req, requireDeniedPaths: true })).toMatchObject({ ran: false, reason: expect.stringContaining('requireDeniedPaths') });
+        expect(rec.commands).toEqual([]);
+        expect(await run(req)).toMatchObject({ ran: true, credentialFilesReadable: true });
     });
 });
 describe('buildSandboxConfig deny list (Windows)', () => {
@@ -444,6 +468,17 @@ describe('sandboxShellCommand', () => {
         expect(readMarker(`${MARKER} x\n`, MARKER).code).toBeNull();
         expect(readMarker(`omg-gate-exit-ffff\n${MARKER} 0\n`, MARKER).code).toBeNull();
         expect(readMarker(`${MARKER} -1073741502`, MARKER).code).toBe(-1073741502);
+    });
+});
+describe('resolveRequireDeniedPaths', () => {
+    const at = (requireDeniedPaths) => ({ factory: { run: { sandbox: { requireDeniedPaths } } } });
+    it('default false; the user config or the base can turn it on, and neither can turn it off over the other\'s true', () => {
+        expect(resolveRequireDeniedPaths({ user: null, base: undefined })).toEqual({ require: false, source: 'default' });
+        expect(resolveRequireDeniedPaths({ user: at(true), base: undefined })).toEqual({ require: true, source: 'user config' });
+        expect(resolveRequireDeniedPaths({ user: null, base: at(true) })).toEqual({ require: true, source: 'the base .copilot/omg.jsonc' });
+        expect(resolveRequireDeniedPaths({ user: at(false), base: at(true) }).require).toBe(true);
+        expect(resolveRequireDeniedPaths({ user: at(true), base: at(false) }).require).toBe(true);
+        expect(() => resolveRequireDeniedPaths({ user: at('yes'), base: undefined })).toThrow(/requireDeniedPaths must be a boolean/);
     });
 });
 describe('resolveGatesSandboxMode', () => {

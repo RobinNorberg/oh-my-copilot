@@ -22,7 +22,8 @@ function validRecord(r) {
         && (x.completedAt === undefined || typeof x.completedAt === 'string')
         && (x.exitCode === undefined || Number.isInteger(x.exitCode))
         && (x.tail === undefined || typeof x.tail === 'string')
-        && (x.sandbox === undefined || x.sandbox === 'enforced' || x.sandbox === 'ack' || x.sandbox === 'unsandboxed');
+        && (x.sandbox === undefined || x.sandbox === 'enforced' || x.sandbox === 'ack' || x.sandbox === 'unsandboxed')
+        && (x.sandboxNote === undefined || typeof x.sandboxNote === 'string');
 }
 function readRecordFile(path) {
     if (!existsSync(path))

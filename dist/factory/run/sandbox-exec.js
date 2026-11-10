@@ -18,7 +18,8 @@
  * Anything else is `ran: false`: the engine parks, it never counts as a
  * pass and never as a failure that would start a ci-fix lane. `started`
  * tells the two apart: before the command was handed to a confirmed policy
- * (host unsupported, policy not applied, no denied_paths, no SDK) it is
+ * (host unsupported, policy not applied, no SDK, or no denied_paths with
+ * factory.run.sandbox.requireDeniedPaths) it is
  * unset; after that (no single marker, a contradiction, no attestation, a
  * timeout with no answer) it is true, and the reason is fixed text, never
  * the command's. The argv reaches the shell only as base64 that the shell
@@ -59,6 +60,8 @@ const STOP_TIMEOUT_MS = 15_000;
 const CANCEL_GRACE_MS = 5_000;
 /** How long the completion event (the attestation) may trail the call's answer. */
 const ATTEST_WAIT_MS = 2_000;
+/** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
+export const CREDENTIAL_FILES_READABLE_NOTE = 'sandboxed; credential files readable on this host';
 export const MARKER_PREFIX = 'omg-gate-exit-';
 /** The command's output the POSIX form keeps (`tail -c`) before the marker line. */
 export const SHELL_OUTPUT_BYTES = 64 * 1024;
@@ -212,9 +215,11 @@ export async function runSandboxed(argv, o, deps) {
         const config = await sandbox.decide(c, loaded);
         if (!config)
             return notStarted(`the sandbox is not available: ${sandbox.state?.reason ?? 'unknown reason'}`);
-        // Without a deny list the sandboxed command reads ~/.ssh, ~/.npmrc and the gh and git credential files, and can print them.
-        if (!config.userPolicy.filesystem.deniedPaths?.length) {
-            return notStarted('the sandbox host does not report denied_paths, so it cannot hide your credential files (~/.ssh, ~/.npmrc, gh and git credentials) from the PR\'s code');
+        // Without a deny list (the Copilot sandbox on Windows) the command can read files under the user profile, credential
+        // stores included: it runs and counts, marked, unless factory.run.sandbox.requireDeniedPaths asks for no verdict.
+        const readable = !config.userPolicy.filesystem.deniedPaths?.length;
+        if (readable && o.requireDeniedPaths) {
+            return notStarted('the sandbox host does not report denied_paths, so it cannot hide your credential files from the PR\'s code, and factory.run.sandbox.requireDeniedPaths is true');
         }
         const attested = new Map();
         const onPermissionRequest = () => ({ kind: 'reject', feedback: 'omg factory run: a gate session grants nothing' });
@@ -276,8 +281,9 @@ export async function runSandboxed(argv, o, deps) {
         }
         const raw = typeof r?.output === 'string' ? r.output : '';
         const read = readMarker(raw, marker);
+        const marked = readable ? { credentialFilesReadable: true } : {};
         if (timeout)
-            return { ran: true, status: 124, output: tail(`${read.output.trim()}\ntimed out after ${o.timeoutMs} ms`), timedOut: true };
+            return { ran: true, status: 124, output: tail(`${read.output.trim()}\ntimed out after ${o.timeoutMs} ms`), timedOut: true, ...marked };
         if (typeof r?.success !== 'boolean')
             return noVerdict('the sandbox shell call reported no success field');
         if (read.code === null)
@@ -288,7 +294,7 @@ export async function runSandboxed(argv, o, deps) {
         const successOk = r.success === true || read.code !== 0;
         if (!exitOk || !successOk)
             return noVerdict('the sandbox shell\'s own result contradicts the exit code the command printed');
-        return { ran: true, status: read.code, output: tail(read.output.trim()), timedOut: false };
+        return { ran: true, status: read.code, output: tail(read.output.trim()), timedOut: false, ...marked };
     }
     catch (err) {
         if (started)
@@ -370,6 +376,7 @@ export function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers
             network: settings.writeNetwork,
             settings,
             jobRoot: sandboxJobRoot(root),
+            ...(req.requireDeniedPaths ? { requireDeniedPaths: true } : {}),
         }, deps);
     };
 }

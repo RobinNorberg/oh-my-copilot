@@ -32950,6 +32950,19 @@ function resolveGatesSandboxMode(layers) {
   if (base) return { mode: base, source: "the base .copilot/omg.jsonc" };
   return { mode: "enforced", source: "default" };
 }
+function resolveRequireDeniedPaths(layers) {
+  const read = (config2, source) => {
+    const value = sandboxBlock({ factory: config2?.factory }, "factory", source).requireDeniedPaths;
+    if (value === void 0) return void 0;
+    if (typeof value !== "boolean") throw new Error(`${source}: factory.run.sandbox.requireDeniedPaths must be a boolean`);
+    return value;
+  };
+  const user = read(layers.user, "user config");
+  const base = read(layers.base, "the base .copilot/omg.jsonc");
+  if (user) return { require: true, source: "user config" };
+  if (base) return { require: true, source: "the base .copilot/omg.jsonc" };
+  return { require: false, source: user === false || base === false ? "config" : "default" };
+}
 function nodeModulesLinkTarget(worktree) {
   const nm = (0, import_node_path8.join)(worktree, "node_modules");
   try {
@@ -45574,7 +45587,7 @@ var init_store = __esm({
 // src/forge/local/checks.ts
 function validRecord(r) {
   const x = r;
-  return !!x && x.name === LOCAL_GATE_CHECK && typeof x.head === "string" && HEX406.test(x.head) && (x.state === "PENDING" || x.state === "SUCCESS" || x.state === "FAILURE") && Array.isArray(x.argv) && x.argv.every((a) => typeof a === "string") && Number.isSafeInteger(x.runId) && x.runId > 0 && typeof x.startedAt === "string" && (x.completedAt === void 0 || typeof x.completedAt === "string") && (x.exitCode === void 0 || Number.isInteger(x.exitCode)) && (x.tail === void 0 || typeof x.tail === "string") && (x.sandbox === void 0 || x.sandbox === "enforced" || x.sandbox === "ack" || x.sandbox === "unsandboxed");
+  return !!x && x.name === LOCAL_GATE_CHECK && typeof x.head === "string" && HEX406.test(x.head) && (x.state === "PENDING" || x.state === "SUCCESS" || x.state === "FAILURE") && Array.isArray(x.argv) && x.argv.every((a) => typeof a === "string") && Number.isSafeInteger(x.runId) && x.runId > 0 && typeof x.startedAt === "string" && (x.completedAt === void 0 || typeof x.completedAt === "string") && (x.exitCode === void 0 || Number.isInteger(x.exitCode)) && (x.tail === void 0 || typeof x.tail === "string") && (x.sandbox === void 0 || x.sandbox === "enforced" || x.sandbox === "ack" || x.sandbox === "unsandboxed") && (x.sandboxNote === void 0 || typeof x.sandboxNote === "string");
 }
 function readRecordFile(path15) {
   if (!(0, import_fs74.existsSync)(path15)) return void 0;
@@ -48169,8 +48182,9 @@ async function runSandboxed(argv, o, deps) {
     });
     const config2 = await sandbox.decide(c, loaded2);
     if (!config2) return notStarted(`the sandbox is not available: ${sandbox.state?.reason ?? "unknown reason"}`);
-    if (!config2.userPolicy.filesystem.deniedPaths?.length) {
-      return notStarted("the sandbox host does not report denied_paths, so it cannot hide your credential files (~/.ssh, ~/.npmrc, gh and git credentials) from the PR's code");
+    const readable = !config2.userPolicy.filesystem.deniedPaths?.length;
+    if (readable && o.requireDeniedPaths) {
+      return notStarted("the sandbox host does not report denied_paths, so it cannot hide your credential files from the PR's code, and factory.run.sandbox.requireDeniedPaths is true");
     }
     const attested = /* @__PURE__ */ new Map();
     const onPermissionRequest = () => ({ kind: "reject", feedback: "omg factory run: a gate session grants nothing" });
@@ -48230,14 +48244,15 @@ async function runSandboxed(argv, o, deps) {
     }
     const raw = typeof r?.output === "string" ? r.output : "";
     const read = readMarker(raw, marker);
+    const marked = readable ? { credentialFilesReadable: true } : {};
     if (timeout) return { ran: true, status: 124, output: tail2(`${read.output.trim()}
-timed out after ${o.timeoutMs} ms`), timedOut: true };
+timed out after ${o.timeoutMs} ms`), timedOut: true, ...marked };
     if (typeof r?.success !== "boolean") return noVerdict("the sandbox shell call reported no success field");
     if (read.code === null) return noVerdict("the output did not end with the one exit-code marker line the sandbox shell prints after the command");
     const exitOk = r.exitCode === void 0 || r.exitCode === null || r.exitCode === 0 || r.exitCode === read.code;
     const successOk = r.success === true || read.code !== 0;
     if (!exitOk || !successOk) return noVerdict("the sandbox shell's own result contradicts the exit code the command printed");
-    return { ran: true, status: read.code, output: tail2(read.output.trim()), timedOut: false };
+    return { ran: true, status: read.code, output: tail2(read.output.trim()), timedOut: false, ...marked };
   } catch (err) {
     if (started) return noVerdict("the sandbox runtime failed while the command ran");
     return notStarted(`the sandbox runtime failed: ${errText4(err).slice(0, 300)}`);
@@ -48305,7 +48320,8 @@ function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers) {
       timeoutMs: req.timeoutMs,
       network: settings.writeNetwork,
       settings,
-      jobRoot: sandboxJobRoot(root)
+      jobRoot: sandboxJobRoot(root),
+      ...req.requireDeniedPaths ? { requireDeniedPaths: true } : {}
     }, deps);
   };
 }
@@ -48338,7 +48354,7 @@ function gateEnv(env2, home) {
     GCM_INTERACTIVE: "never"
   };
 }
-var import_node_crypto4, import_node_fs13, import_node_os6, import_node_path14, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS3, CANCEL_GRACE_MS, ATTEST_WAIT_MS, MARKER_PREFIX, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, SHELL_LINE_CHARS, tail2, sandboxJobRoot, GATE_ENV_KEPT;
+var import_node_crypto4, import_node_fs13, import_node_os6, import_node_path14, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS3, CANCEL_GRACE_MS, ATTEST_WAIT_MS, CREDENTIAL_FILES_READABLE_NOTE, MARKER_PREFIX, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, SHELL_LINE_CHARS, tail2, sandboxJobRoot, GATE_ENV_KEPT;
 var init_sandbox_exec = __esm({
   "src/factory/run/sandbox-exec.ts"() {
     "use strict";
@@ -48363,6 +48379,7 @@ var init_sandbox_exec = __esm({
     STOP_TIMEOUT_MS3 = 15e3;
     CANCEL_GRACE_MS = 5e3;
     ATTEST_WAIT_MS = 2e3;
+    CREDENTIAL_FILES_READABLE_NOTE = "sandboxed; credential files readable on this host";
     MARKER_PREFIX = "omg-gate-exit-";
     SHELL_OUTPUT_BYTES = 64 * 1024;
     SHELL_OUTPUT_LINES = 400;
@@ -51061,7 +51078,7 @@ async function runSandboxedGate(i, base, now) {
   }
   let r;
   try {
-    r = await i.sandbox.run({ purpose: "gate", argv: i.gate, exe: target.exe, args: target.args, cwd: i.checkout, commonGitDir: i.sandbox.commonGitDir, timeoutMs: i.timeoutMinutes * 6e4 });
+    r = await i.sandbox.run({ purpose: "gate", argv: i.gate, exe: target.exe, args: target.args, cwd: i.checkout, commonGitDir: i.sandbox.commonGitDir, timeoutMs: i.timeoutMinutes * 6e4, ...i.sandbox.requireDeniedPaths ? { requireDeniedPaths: true } : {} });
   } catch (error2) {
     drop();
     throw error2;
@@ -51077,7 +51094,8 @@ local gate timed out after ${i.timeoutMinutes} min` : ""}`;
     state: r.status === 0 && !r.timedOut ? "SUCCESS" : "FAILURE",
     completedAt: now().toISOString(),
     exitCode: r.timedOut ? 124 : r.status,
-    tail: tailOf(output.trim())
+    tail: tailOf(output.trim()),
+    ...r.credentialFilesReadable ? { sandboxNote: CREDENTIAL_FILES_READABLE_NOTE } : {}
   };
   writeLocalCheckRecord(i.stateDir, i.root, done);
   return { started: true, record: done };
@@ -51962,6 +51980,8 @@ var init_engine = __esm({
       gatesAllowed;
       /** factory.run.sandbox.gates, resolved once per trusted base commit. */
       gatesModeCache;
+      /** The one-per-run warning that the sandbox on this host cannot deny paths was given. */
+      warnedCredentialFilesReadable = false;
       /** Calibrations re-run in this invocation (a failing one is retried once per invocation). */
       recalibrated = /* @__PURE__ */ new Set();
       /** The prepare checkout's git dir, named explicitly to engine git there once the PR's code ran in it (pinCheckoutGit). */
@@ -53242,7 +53262,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           this.checkoutGitPin = void 0;
         }
         const fetched = result.steps.some((st) => st.name === "fetch" && st.status === "ok");
-        const sandboxNote = ran.modes.size > 0 ? [{ at: this.iso(), from: s.phase, to: s.phase, note: `prepare checks on ${head.slice(0, 12)} ran ${[...ran.modes].map((m) => m === "enforced" ? "in the OS sandbox" : `unsandboxed (${m})`).join(" and ")}` }] : [];
+        const sandboxNote = ran.modes.size > 0 ? [{ at: this.iso(), from: s.phase, to: s.phase, note: `prepare checks on ${head.slice(0, 12)} ran ${[...ran.modes].map((m) => m === "enforced" ? "in the OS sandbox" : m === "enforced-readable" ? `in the OS sandbox (${CREDENTIAL_FILES_READABLE_NOTE})` : `unsandboxed (${m})`).join(" and ")}` }] : [];
         this.save((x) => ({ ...x, checkoutHead, ...fetched ? { baseSha: view.baseRefOid } : {}, history: [...x.history, ...sandboxNote] }));
         if (result.ok) return this.publishPrepared(pr, head, checkoutHead, result.housekeepingCommits, view.baseRefOid, ran.acked && this.state.unsandboxedGatesAck === head);
         const failed = result.steps.at(-1);
@@ -53273,6 +53293,8 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
        * default location, then `.copilot/omg.jsonc` committed at the trusted base
        * commit the gate config was read at, never the working tree or the PR
        * head. Resolved once per base commit; a rejected value fails the step.
+       * factory.run.sandbox.requireDeniedPaths comes from the same two layers
+       * (resolveRequireDeniedPaths: either may turn it on).
        */
       gatesSandbox(loaded2) {
         const commit = loaded2.config.trustedBaseCommit;
@@ -53288,12 +53310,25 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         let resolved;
         try {
           const text3 = commit ? readBaseFile(this.exec, this.o.root, commit, BASE_CONFIG_PATH) : null;
-          resolved = resolveGatesSandboxMode({ user, base: text3 && text3.trim() ? parseJsonc(text3) : void 0, env: process.env });
+          const base = text3 && text3.trim() ? parseJsonc(text3) : void 0;
+          resolved = { ...resolveGatesSandboxMode({ user, base, env: process.env }), requireDeniedPaths: resolveRequireDeniedPaths({ user, base }).require };
         } catch (error2) {
-          throw new FactoryStepError(`factory.run.sandbox.gates: ${errText5(error2)}`);
+          throw new FactoryStepError(`factory.run.sandbox: ${errText5(error2)}`);
         }
         this.gatesModeCache = { commit, ...resolved };
         return this.gatesModeCache;
+      }
+      /**
+       * A sandboxed command ran on a host without denied_paths (the Copilot
+       * sandbox on Windows): one warning per run and one PR note per head.
+       */
+      noteCredentialFilesReadable(head) {
+        if (!this.warnedCredentialFilesReadable) {
+          this.warnedCredentialFilesReadable = true;
+          this.o.warn?.(`omg factory run: the OS sandbox on this host cannot deny paths: prepare checks and the local gate run sandboxed (no network by default, no tokens in the env, git dir and node_modules read-only), but their code can read files under your user profile, credential stores included; set factory.run.sandbox.requireDeniedPaths true to park instead`);
+        }
+        this.commentOnce("pr", `credential-files-readable@${head.slice(0, 12)}`, "sandbox", `**Sandbox: ${CREDENTIAL_FILES_READABLE_NOTE}.** Prepare checks and the local gate on ${head.slice(0, 12)} ran in the OS sandbox, which on this host cannot deny paths: the PR's code could read files under the user profile, credential stores included.
+`);
       }
       /** True when the human accepted unsandboxed gates for `head` (recorded now if this invocation's flag names it). */
       gatesAccepted(head) {
@@ -53371,11 +53406,12 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         if (at.gates.mode === "unsandboxed") return plain("unsandboxed");
         let why = `factory.run.sandbox.gates is "ack" (${at.gates.source})`;
         if (at.gates.mode === "enforced") {
-          const r = this.o.gateSandbox ? await this.o.gateSandbox({ purpose: "prepare", argv: c.argv, exe: c.exe, args: c.args, cwd: path15, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS }) : { ran: false, reason: "no OS sandbox runner was given to the engine" };
+          const r = this.o.gateSandbox ? await this.o.gateSandbox({ purpose: "prepare", argv: c.argv, exe: c.exe, args: c.args, cwd: path15, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {} }) : { ran: false, reason: "no OS sandbox runner was given to the engine" };
           const t = tampered();
           if (t) return t;
           if (r.ran) {
-            ran.modes.add("enforced");
+            ran.modes.add(r.credentialFilesReadable ? "enforced-readable" : "enforced");
+            if (r.credentialFilesReadable) this.noteCredentialFilesReadable(head);
             if (r.status === 0 && !r.timedOut) return { status: 0, stdout: redactGateOutput(r.output), stderr: "" };
             const park = await this.calibrateGate(c, at.baseSha, at.commonGitDir, PREPARE_CHECK_TIMEOUT_MS, label, head);
             if (park) return stop(park);
@@ -53432,7 +53468,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           runHostGit(this.o.root, ["read-tree", baseSha], void 0, env2);
           runHostGit(this.o.root, ["checkout-index", "-a", "-f", `--prefix=${dir.replace(/\\/g, "/")}/`], void 0, env2);
           linkNodeModules(this.o.root, dir);
-          const r = await this.o.gateSandbox({ purpose: "calibrate", argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs });
+          const r = await this.o.gateSandbox({ purpose: "calibrate", argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {} });
           if (!r.ran) return { notStarted: r.reason };
           const tail3 = r.output.trim().slice(-2e3);
           return { ok: r.status === 0 && !r.timedOut, ...tail3 ? { tail: tail3 } : {} };
@@ -53651,7 +53687,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           let unavailable = gates.mode === "ack";
           out = { started: false, reason: why, sandbox: true };
           if (gates.mode === "enforced") {
-            out = this.o.gateSandbox ? await runLocalGate({ ...input, mode: "enforced", sandbox: { run: this.o.gateSandbox, commonGitDir: common } }) : { started: false, reason: "no OS sandbox runner was given to the engine", sandbox: true };
+            out = this.o.gateSandbox ? await runLocalGate({ ...input, mode: "enforced", sandbox: { run: this.o.gateSandbox, commonGitDir: common, requireDeniedPaths: gates.requireDeniedPaths } }) : { started: false, reason: "no OS sandbox runner was given to the engine", sandbox: true };
             if (!out.started && out.noVerdict) {
               if (checkoutGitLink(checkout).hash !== linkBefore) return this.gateTamperedByGate(head, checkout, stateDir);
               this.gate(GATE_NO_VERDICT_GATE, this.gateNoVerdictReason(head, `the local gate \`${gate.join(" ")}\``, out.reason));
@@ -53674,8 +53710,9 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           return false;
         }
         const record3 = out.record;
-        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `local gate ${record3.state} on ${head.slice(0, 12)} (exit ${record3.exitCode}, ${record3.sandbox === "enforced" ? "in the OS sandbox" : `unsandboxed: ${record3.sandbox}`})` }] }));
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `local gate ${record3.state} on ${head.slice(0, 12)} (exit ${record3.exitCode}, ${record3.sandbox === "enforced" ? `in the OS sandbox${record3.sandboxNote ? ` (${record3.sandboxNote})` : ""}` : `unsandboxed: ${record3.sandbox}`})` }] }));
         if (this.recheckFailed("after the local gate")) return false;
+        if (record3.sandboxNote) this.noteCredentialFilesReadable(head);
         if (record3.sandbox !== "enforced" || record3.state !== "FAILURE") return true;
         const base = this.state.baseSha;
         const target = resolveLocalGateArgv(gate, { cwd: checkout });

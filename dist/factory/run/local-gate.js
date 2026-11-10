@@ -37,7 +37,7 @@ import { getProcessStartIdentity, terminateOwnedProcessTree } from '../../platfo
 import { childEnv, findOnPath, hardenWindowsExeSearch, resolveBareExe } from '../../utils/windows-search.js';
 import { FactorySafetyError, sameFsPath } from './exec.js';
 import { createGateProcTracker, gateProcsPath, reapGateProcs, sweepGateProcs } from './gate-procs.js';
-import { gateEnv, redactGateOutput } from './sandbox-exec.js';
+import { CREDENTIAL_FILES_READABLE_NOTE, gateEnv, redactGateOutput } from './sandbox-exec.js';
 /** The record keeps this many characters of the gate's output (jobLog, the ci-fix prompt). */
 export const LOCAL_GATE_TAIL_CHARS = 8_000;
 /** How long after the gate's timeout a PENDING record is taken as left by a crashed engine (localGateDue). */
@@ -357,7 +357,7 @@ async function runSandboxedGate(i, base, now) {
     }
     let r;
     try {
-        r = await i.sandbox.run({ purpose: 'gate', argv: i.gate, exe: target.exe, args: target.args, cwd: i.checkout, commonGitDir: i.sandbox.commonGitDir, timeoutMs: i.timeoutMinutes * 60_000 });
+        r = await i.sandbox.run({ purpose: 'gate', argv: i.gate, exe: target.exe, args: target.args, cwd: i.checkout, commonGitDir: i.sandbox.commonGitDir, timeoutMs: i.timeoutMinutes * 60_000, ...(i.sandbox.requireDeniedPaths ? { requireDeniedPaths: true } : {}) });
     }
     catch (error) {
         drop();
@@ -375,6 +375,7 @@ async function runSandboxedGate(i, base, now) {
         completedAt: now().toISOString(),
         exitCode: r.timedOut ? 124 : r.status,
         tail: tailOf(output.trim()),
+        ...(r.credentialFilesReadable ? { sandboxNote: CREDENTIAL_FILES_READABLE_NOTE } : {}),
     };
     writeLocalCheckRecord(i.stateDir, i.root, done);
     return { started: true, record: done };

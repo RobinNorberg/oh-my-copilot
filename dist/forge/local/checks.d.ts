@@ -30,6 +30,11 @@ export interface LocalCheckRecord {
      * by the user's config (`unsandboxed`). Absent in records written before.
      */
     sandbox?: 'enforced' | 'ack' | 'unsandboxed';
+    /**
+     * Set when the gate ran in the sandbox on a host that does not report
+     * denied_paths: `sandboxed; credential files readable on this host`.
+     */
+    sandboxNote?: string;
 }
 /** Write `record` atomically to localCheckRecordPath(stateDir, root, record.head); returns the path. */
 export declare function writeLocalCheckRecord(stateDir: string, root: string, record: LocalCheckRecord): string;

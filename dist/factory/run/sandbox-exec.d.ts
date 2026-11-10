@@ -18,7 +18,8 @@
  * Anything else is `ran: false`: the engine parks, it never counts as a
  * pass and never as a failure that would start a ci-fix lane. `started`
  * tells the two apart: before the command was handed to a confirmed policy
- * (host unsupported, policy not applied, no denied_paths, no SDK) it is
+ * (host unsupported, policy not applied, no SDK, or no denied_paths with
+ * factory.run.sandbox.requireDeniedPaths) it is
  * unset; after that (no single marker, a contradiction, no attestation, a
  * timeout with no answer) it is true, and the reason is fixed text, never
  * the command's. The argv reaches the shell only as base64 that the shell
@@ -53,7 +54,11 @@ export interface SandboxRunRequest {
     /** The repository's common git dir (read-only in the sandbox). */
     commonGitDir: string;
     timeoutMs: number;
+    /** factory.run.sandbox.requireDeniedPaths: a host without denied_paths gives no verdict instead of running. */
+    requireDeniedPaths?: boolean;
 }
+/** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
+export declare const CREDENTIAL_FILES_READABLE_NOTE = "sandboxed; credential files readable on this host";
 /**
  * A verdict (the command ran in the attested sandbox), or why there is none.
  * `started`: the command was handed to the shell under the confirmed policy
@@ -65,6 +70,7 @@ export type SandboxRunResult = {
     status: number;
     output: string;
     timedOut: boolean;
+    credentialFilesReadable?: true;
 } | {
     ran: false;
     reason: string;
@@ -85,6 +91,8 @@ export interface SandboxExecOptions {
     settings: SandboxSettings;
     /** The dir the per-command job homes go under (never inside `cwd`). */
     jobRoot: string;
+    /** factory.run.sandbox.requireDeniedPaths (default false: a host without denied_paths runs, its verdict marked). */
+    requireDeniedPaths?: boolean;
 }
 export declare const MARKER_PREFIX = "omg-gate-exit-";
 /** The command's output the POSIX form keeps (`tail -c`) before the marker line. */

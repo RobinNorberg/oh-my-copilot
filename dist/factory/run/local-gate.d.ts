@@ -108,6 +108,7 @@ export interface LocalGateInput {
     sandbox?: {
         run: SandboxRunner;
         commonGitDir: string;
+        requireDeniedPaths?: boolean;
     };
     now?: () => Date;
 }
