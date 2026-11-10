@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "b5630a5ee2931073b839fffe62d1474c278b9600",
-    "sourceSha256": "fd21a9d6e658ebab218744659102f16684baf0bac783182d2f31a7dfe838afe2",
+    "head": "196f8634d85580896e3546bf072a389a4f65a30a",
+    "sourceSha256": "496e486fc20c8f0e42a92c987bf73197275a1be4e6642f89269ab06e3621d7db",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "b5630a5ee2931073b839fffe62d1474c278b9600",
-  "sourceSha256": "fd21a9d6e658ebab218744659102f16684baf0bac783182d2f31a7dfe838afe2",
+  "head": "196f8634d85580896e3546bf072a389a4f65a30a",
+  "sourceSha256": "496e486fc20c8f0e42a92c987bf73197275a1be4e6642f89269ab06e3621d7db",
   "counts": {
     "public": {
       "skills": 98,
@@ -80665,6 +80665,11 @@
       {
         "from": "src/cli/commands/factory-pr.ts",
         "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-pr.ts",
+        "to": "src/ship/exec.ts",
         "kind": "type-imports"
       },
       {
@@ -88414,7 +88419,17 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.local.hardening.test.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.hardening.test.ts",
         "to": "src/forge/local/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.hardening.test.ts",
+        "to": "src/team/git-worktree.ts",
         "kind": "imports"
       },
       {
@@ -90105,6 +90120,11 @@
       {
         "from": "src/factory/run/engine.ts",
         "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "external:os",
         "kind": "imports"
       },
       {
@@ -128475,11 +128495,11 @@
     ],
     "stats": {
       "nodeCount": 10784,
-      "edgeCount": 13078,
-      "importEdgeCount": 10762,
+      "edgeCount": 13082,
+      "importEdgeCount": 10766,
       "registerEdgeCount": 119
     }
   },
   "inventorySha256": "4d15826a0015d52e6130c3cef699c54cd24a10efa1a38778e37455af72c3a0b0",
-  "manifestSha256": "ac14edd2bc72f2376ab8c0e9555d9ecd5d248a388ff67ab4d592c390f1bf0164"
+  "manifestSha256": "0ea4970dda5365d6e24f280ad6919e4af7960fe5869d9f9a0ba7441cba5aef24"
 }
