@@ -3,6 +3,7 @@ import * as path from 'path';
 import { createHash, randomUUID } from 'crypto';
 import { atomicWriteJsonSync } from '../../lib/atomic-write.js';
 import { getOmcRoot, validateSessionId } from '../../lib/worktree-paths.js';
+import { isOpenClawEnabled } from '../../openclaw/config.js';
 function openClawRoutingSnapshot() {
     const values = [
         ['openClawConfig', 'OMC_OPENCLAW_CONFIG'],
@@ -21,6 +22,15 @@ const ACTIONS = [
     ['foreground-cleanup', 'required'], ['wiki-capture', 'required'], ['team-cleanup', 'required'], ['python-cleanup', 'required'], ['reply-cleanup', 'required'],
     ['callback', 'best-effort'], ['notification', 'best-effort'], ['openclaw', 'best-effort'], ['spawn-next', 'best-effort'],
 ];
+/**
+ * The actions a manifest created now is seeded with. `openclaw` is only seeded
+ * when OpenClaw is enabled (#479): otherwise its runner would spawn and create a
+ * run folder for an action that does nothing. A manifest from an older build may
+ * still carry it; the worker settles that one without a runner (settleDisabledOpenClawAction).
+ */
+function seededActions() {
+    return ACTIONS.filter(([name]) => name !== 'openclaw' || isOpenClawEnabled());
+}
 const TEST_PRODUCER_GRACE_ENV = 'OMC_SESSION_END_TEST_PRODUCER_GRACE_MS';
 const PRODUCER_GRACE_MS = process.env.NODE_ENV === 'test' && /^\d+$/.test(process.env[TEST_PRODUCER_GRACE_ENV] ?? '')
     ? Math.max(1, Number(process.env[TEST_PRODUCER_GRACE_ENV]))
@@ -218,7 +228,8 @@ export function updateSessionEndActionPayload(directory, sessionId, authority, a
         if (claimed.status !== 'claimed' || claimed.attempts !== authority.attempt || claimed.claimantNonce !== authority.ownerNonce || claimed.runner?.runnerNonce !== authority.runnerNonce || claimed.runner.phase !== 'armed')
             throw new Error('runner-conflict');
         for (const name of actionNames)
-            job.actions[name].payload = { ...job.actions[name].payload, ...payload };
+            if (job.actions[name])
+                job.actions[name].payload = { ...job.actions[name].payload, ...payload };
     });
 }
 /** `mismatch` retries only a stale revision: owner-fenced heartbeat paths must not spin on a rejection or a lock timeout. */
@@ -250,7 +261,7 @@ export function prepareCoreManifest(directory, sessionId, payload) {
                 // actions this build knows that the manifest lacks — otherwise new
                 // deferred actions (spawn-next chain enqueue) are silently dropped and
                 // the chain halts despite a recorded 'enqueued' decision.
-                const missing = ACTIONS.filter(([name]) => !(name in existing.actions));
+                const missing = seededActions().filter(([name]) => !(name in existing.actions));
                 if (existing.producers.core.state !== 'absent') {
                     if (missing.length === 0)
                         return existing;
@@ -276,7 +287,7 @@ export function prepareCoreManifest(directory, sessionId, payload) {
                 return reread;
             }
             const now = nowIso();
-            const actions = Object.fromEntries(ACTIONS.map(([name, klass]) => [name, newAction(name, klass, durablePayload)]));
+            const actions = Object.fromEntries(seededActions().map(([name, klass]) => [name, newAction(name, klass, durablePayload)]));
             const job = { version: 1, jobId: randomUUID(), sessionId, scopeKey: digest(directory), revision: 0, createdAt: now, updatedAt: now, ...initialDeadlines(), producers: { core: { state: 'prepared', intentKey: digest(durablePayload), payloadDigest: digest(durablePayload) }, wiki: { state: 'absent' } }, actions, owner: null, phase: 'collecting' };
             atomicWriteJsonSync(jobPath, job);
             return readPath(jobPath);
@@ -339,7 +350,7 @@ export function sealWikiManifest(directory, sessionId, payload) {
             const existing = readPath(jobPath);
             if (!existing) {
                 const now = nowIso();
-                const actions = Object.fromEntries(ACTIONS.map(([name, klass]) => [name, newAction(name, klass, {})]));
+                const actions = Object.fromEntries(seededActions().map(([name, klass]) => [name, newAction(name, klass, {})]));
                 const wiki = payload ? { state: 'sealed', intentKey: digest(payload), payloadDigest: digest(payload), sealedAt: now, sealedBy: 'wiki-producer' } : { state: 'no-op', sealedAt: now, sealedBy: 'wiki-producer' };
                 if (payload)
                     actions['wiki-capture'].payload = payload;
@@ -435,6 +446,20 @@ export function claimSessionEndAction(directory, sessionId, ownerNonce, name, de
     action.lastOutcomeCode = action.class === 'required' ? action.attempts >= REQUIRED_ACTION_MAX_ATTEMPTS ? 'required-attempt-limit' : 'required-deadline-expired' : 'deadline-expired';
     return;
 } action.status = 'claimed'; action.attempts++; action.claimantNonce = ownerNonce; action.claimedAt = nowIso(); action.runner = { attempt: action.attempts, runnerNonce: randomUUID(), phase: 'reserved', deadlineAt: new Date(deadlineAt).toISOString() }; }); }
+/**
+ * Settle a legacy `openclaw` action whose durable snapshot says OpenClaw was not
+ * enabled, without a runner process or run folder (#479). Owner-fenced like a claim.
+ */
+export function settleDisabledOpenClawAction(directory, sessionId, ownerNonce) {
+    return updateSessionEndJob(directory, sessionId, ownerNonce, (job) => {
+        const action = job.actions.openclaw;
+        if (!action || !['pending', 'retryable'].includes(action.status) || action.claimantNonce || action.payload.openClawEnabled === true)
+            throw new Error('action-skip-conflict');
+        action.status = 'completed';
+        action.lastOutcomeCode = 'skipped-openclaw-disabled';
+        action.completedAt = nowIso();
+    });
+}
 export function markSessionEndActionRunner(directory, sessionId, ownerNonce, name, runnerNonce, phase) { return updateSessionEndJob(directory, sessionId, ownerNonce, (job) => { const action = job.actions[name]; if (action.status !== 'claimed' || action.runner?.runnerNonce !== runnerNonce)
     throw new Error('runner-phase-conflict'); action.runner.phase = phase; }); }
 export function finishSessionEndAction(directory, sessionId, ownerNonce, name, runnerNonce, completed, code) { return updateSessionEndJob(directory, sessionId, ownerNonce, (job) => { const action = job.actions[name]; if (action.status !== 'claimed' || action.claimantNonce !== ownerNonce || action.runner?.runnerNonce !== runnerNonce)
