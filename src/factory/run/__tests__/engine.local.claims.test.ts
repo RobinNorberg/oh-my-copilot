@@ -3,19 +3,21 @@
  * share a claim keyed on the repository's root commit, so a clone does not
  * start an item another clone's run holds (parked included).
  */
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { scaleTiming } from '../../../__tests__/helpers/platform.js';
-import { resolveForgeConfig } from '../../../forge/config.js';
+import { factoryRunCommand, type FactoryRunDeps } from '../../../cli/commands/factory.js';
+import { resolveForgeConfig, type LoadedForgeConfig } from '../../../forge/config.js';
 import { defaultExec } from '../../../ship/exec.js';
-import { claimRepoKey, factoryClaimPath, LOCAL_CLAIM_PREFIX, localFactoryClaimRepo } from '../claims.js';
+import { resolveFactoryRunLimits } from '../budget.js';
+import { claimRepoKey, factoryClaimPath, isShallowClaimRepo, LOCAL_CLAIM_PREFIX, LOCAL_SHALLOW_CLAIM_PREFIX, localFactoryClaimRepo, removeFactoryClaim } from '../claims.js';
 import { EXIT_BUSY, runFactoryEngine } from '../engine.js';
 import { factoryForgeOptions } from '../forge-roots.js';
-import { FactoryBusyError } from '../state.js';
-import { commitFile, gitIn, review } from './fake-lanes.js';
-import { lanesFor, LOCAL_ISSUE, localOpts, localWorld, type LocalWorld } from './engine-local-harness.js';
+import { FactoryBusyError, readFactoryState, requestFactoryCancel } from '../state.js';
+import { commitFile, FakeLanes, gitIn, review } from './fake-lanes.js';
+import { lanesFor, LOCAL_ISSUE, localOpts, localTestGateConfig, localWorld, type LocalWorld } from './engine-local-harness.js';
 
 vi.setConfig({ testTimeout: scaleTiming(300_000) });
 
@@ -56,12 +58,108 @@ describe('F60: local-forge claims across clones', () => {
     expect(localFactoryClaimRepo(defaultExec, empty)).toBeNull();
   });
 
-  it('a shallow clone gets no key: its boundary commits would count as roots', () => {
+  it('a shallow clone gets a key of its own (local-shallow:<boundary root>), never the full clones\' key', () => {
     w = localWorld();
     gitIn(w.root, 'commit', '-q', '--allow-empty', '-m', 'second');
     const shallow = join(w.dir, 'shallow');
     gitIn(w.dir, 'clone', '-q', '--depth', '1', `file://${w.root.replace(/\\/g, '/')}`, shallow);
-    expect(() => localFactoryClaimRepo(defaultExec, shallow)).toThrow(/is a shallow clone: .*git fetch --unshallow/);
+    const key = localFactoryClaimRepo(defaultExec, shallow);
+    expect(key).toBe(`${LOCAL_SHALLOW_CLAIM_PREFIX}${gitIn(shallow, 'rev-parse', 'HEAD')}`);
+    expect(isShallowClaimRepo(key!)).toBe(true);
+    expect(claimRepoKey(key!, shallow)).not.toBe(claimRepoKey(localFactoryClaimRepo(defaultExec, w.root)!, w.root));
+  });
+
+  it('N4: in a depth-1 clone run (dry and real), status, release, clean and reset all work, each warning once that the clone shares no claims', async () => {
+    w = localWorld();
+    gitIn(w.root, 'commit', '-q', '--allow-empty', '-m', 'second');
+    const origin = `file://${w.root.replace(/\\/g, '/')}`;
+    let root = '';
+    let lanes = new FakeLanes(w.root, []);
+    const deps: FactoryRunDeps = {
+      exec: (cmd, args, opts) => (cmd === 'git' && args.join(' ') === 'rev-parse --show-toplevel' ? { status: 0, stdout: `${root}\n`, stderr: '' } : defaultExec(cmd, args, opts)),
+      lanes: () => lanes,
+      limits: () => resolveFactoryRunLimits(undefined, undefined),
+      base: () => 'main',
+      ledgerDir: w.ledgerDir,
+      gateConfig: localTestGateConfig,
+      forge: (r): LoadedForgeConfig => resolveForgeConfig({ factory: { forge: { kind: 'local', local: { gate: ['node', '--test'] } } } }, undefined, undefined, undefined, { root: r, stateDir: join(w!.dir, `forge-state-${basename(r)}`) }),
+    };
+    let out: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => { out.push(a.join(' ')); });
+    vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => { out.push(a.join(' ')); });
+    const WARNING = /is a shallow clone, so its claims are keyed local-shallow:[0-9a-f]{40} and shared with no other clone/;
+    const cli = async (warnings: number, ...argv: string[]): Promise<{ code: number; text: string }> => {
+      out = [];
+      process.exitCode = undefined;
+      await factoryRunCommand(deps).parseAsync(argv, { from: 'user' });
+      const code = Number(process.exitCode ?? 0);
+      process.exitCode = undefined;
+      const text = out.join('\n');
+      // One warning line per command that reads the claim key, and never the old refusal.
+      expect(text.split('\n').filter((l) => WARNING.test(l)), `${argv.join(' ')}: ${text}`).toHaveLength(warnings);
+      expect(text).not.toMatch(/keys its cross-clone claims on the root commit, which a shallow history does not have/);
+      return { code, text };
+    };
+    try {
+      // A clone made shallow: status, dry run and run get past the claim.
+      root = join(w.dir, 'shallow');
+      gitIn(w.dir, 'clone', '-q', '--depth', '1', origin, root);
+      gitIn(root, 'remote', 'remove', 'origin');
+      expect((await cli(1, 'status')).code).toBe(0);
+      const dry = await cli(1, String(LOCAL_ISSUE), '--dry-run', '--json');
+      expect(dry.code, dry.text).toBe(0);
+      // The real run is never busy and never refused for its claim; the mirror then takes no shallow history,
+      // which the run says with the way out.
+      const real = await cli(1, String(LOCAL_ISSUE));
+      expect(real.code, real.text).not.toBe(EXIT_BUSY);
+      expect(real.text).toMatch(/shallow clone and the local forge mirror takes no shallow history, so main cannot be synced to it; git fetch --unshallow/);
+      expect((await cli(1, 'release', String(LOCAL_ISSUE))).code).toBe(0);
+
+      // A run cancelled mid-lane in a full clone that is made shallow afterwards: clean, reset, release, run work.
+      root = join(w.dir, 'later');
+      gitIn(w.dir, 'clone', '-q', origin, root);
+      lanes = new FakeLanes(root, [() => ({ finalText: 'never read' })], [2]);
+      lanes.onRunningPoll = () => requestFactoryCancel(root, LOCAL_ISSUE, new Date().toISOString());
+      const full = await cli(0, String(LOCAL_ISSUE));
+      expect(readFactoryState(root, LOCAL_ISSUE)?.phase, full.text).toBe('cancelled');
+      gitIn(root, 'fetch', '-q', '--depth', '1', 'origin', 'main');
+      gitIn(root, 'remote', 'remove', 'origin');
+      expect(gitIn(root, 'rev-parse', '--is-shallow-repository')).toBe('true');
+      expect((await cli(1, 'status', '--json')).code).toBe(0);
+      expect((await cli(1, String(LOCAL_ISSUE), '--dry-run')).code).toBe(0);
+      const again = await cli(1, String(LOCAL_ISSUE));
+      expect(again.code, again.text).toBe(0);
+      expect(again.text).toMatch(/is cancelled/);
+      const cleaned = await cli(1, 'clean', String(LOCAL_ISSUE));
+      expect(cleaned.code, cleaned.text).toBe(0);
+      const reset = await cli(1, 'reset', String(LOCAL_ISSUE));
+      expect(reset.code, reset.text).toBe(0);
+      expect(reset.text).toMatch(/starts a new run/);
+      const released = await cli(1, 'release', String(LOCAL_ISSUE));
+      expect(released.code, released.text).toBe(0);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('N4: a shallow clone\'s clean / reset / release also remove this checkout\'s claim recorded under another key', () => {
+    w = localWorld();
+    const other = `${LOCAL_CLAIM_PREFIX}${'a'.repeat(40)}`;
+    const recorded = factoryClaimPath(w.ledgerDir, other, w.root, 7);
+    const foreign = factoryClaimPath(w.ledgerDir, other, w.root, 8);
+    mkdirSync(join(recorded, '..'), { recursive: true });
+    writeFileSync(recorded, JSON.stringify({ hostname: 'h', startedAt: '2026-11-10T00:00:00.000Z', run: '7', root: w.root, parkedAt: '2026-11-10T01:00:00.000Z' }));
+    writeFileSync(foreign, JSON.stringify({ hostname: 'h', startedAt: '2026-11-10T00:00:00.000Z', run: '8', root: join(w.dir, 'elsewhere'), parkedAt: '2026-11-10T01:00:00.000Z' }));
+    const shallowKey = `${LOCAL_SHALLOW_CLAIM_PREFIX}${'b'.repeat(40)}`;
+    expect(removeFactoryClaim(w.ledgerDir, shallowKey, w.root, 7, { onlyRoot: true })).toBe(recorded);
+    expect(existsSync(recorded)).toBe(false);
+    // Another checkout's claim under that key is never removed.
+    expect(removeFactoryClaim(w.ledgerDir, shallowKey, w.root, 8)).toBeNull();
+    expect(existsSync(foreign)).toBe(true);
+    // A full clone's key never scans other keys.
+    writeFileSync(recorded, JSON.stringify({ hostname: 'h', startedAt: '2026-11-10T00:00:00.000Z', run: '7', root: w.root, parkedAt: '2026-11-10T01:00:00.000Z' }));
+    expect(removeFactoryClaim(w.ledgerDir, `${LOCAL_CLAIM_PREFIX}${'c'.repeat(40)}`, w.root, 7, { onlyRoot: true })).toBeNull();
+    expect(existsSync(recorded)).toBe(true);
   });
 
   it('a run parked in clone A makes the same item busy (exit 6) in clone B, dry run included', async () => {

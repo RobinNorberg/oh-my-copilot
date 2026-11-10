@@ -34,7 +34,7 @@ import { CopilotRunManager, defaultCopilotRunDeps } from '../../copilot-run/job.
 import { resolveFactoryRunLimits, runCredits, type LoadedFactoryRunLimits } from '../../factory/run/budget.js';
 import { cleanFactoryRun } from '../../factory/run/clean.js';
 import { resetFactoryRun } from '../../factory/run/reset.js';
-import { claimBusyMessage, factoryClaimHolder, factoryClaimRepo, listFactoryClaims, localFactoryClaimRepo, removeFactoryClaim, SHARED_STATE_WARNING, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo } from '../../factory/run/claims.js';
+import { claimBusyMessage, factoryClaimHolder, factoryClaimRepo, isShallowClaimRepo, listFactoryClaims, localFactoryClaimRepo, removeFactoryClaim, SHARED_STATE_WARNING, shallowClaimWarning, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo } from '../../factory/run/claims.js';
 import { EXIT_AWAITING_HUMAN, EXIT_BUSY, runFactoryEngine, type FactoryRunOutcome } from '../../factory/run/engine.js';
 import { factoryGuardExec, hardenedGitExec } from '../../factory/run/exec.js';
 import { EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, factoryForgeOptions, loadFactoryForgeConfig, originForgeKind, syncLocalMirror } from '../../factory/run/forge-roots.js';
@@ -264,12 +264,28 @@ function readOnlyForgeKind(deps: FactoryRunDeps, root: string, base: string): Fo
  * engine keys them: the origin through the engine's hardened read
  * (trustedFactoryClaimRepo; L-g), on the local forge the repository's root
  * commit instead (never origin; dogfood F60). A dry run reads it through the
- * plain guard, as the engine's dry run does, and writes nothing.
+ * plain guard, as the engine's dry run does, and writes nothing. A shallow
+ * clone's own key is warned about through `warn` (one per command:
+ * shallowWarnOnce).
  */
-function cliClaimRepo(deps: FactoryRunDeps, root: string, kind: ForgeKind | undefined, dryRun = false): string | null {
+function cliClaimRepo(deps: FactoryRunDeps, root: string, kind: ForgeKind | undefined, dryRun = false, warn: (m: string) => void = shallowWarnOnce()): string | null {
   const ledgerDir = deps.ledgerDir ?? defaultLedgerDir();
-  if (kind === 'local') return dryRun ? localFactoryClaimRepo(factoryGuardExec(deps.exec), root) : trustedLocalFactoryClaimRepo(deps.exec, root, ledgerDir);
+  if (kind === 'local') {
+    const repo = dryRun ? localFactoryClaimRepo(factoryGuardExec(deps.exec), root) : trustedLocalFactoryClaimRepo(deps.exec, root, ledgerDir);
+    if (repo && isShallowClaimRepo(repo)) warn(shallowClaimWarning(root, repo));
+    return repo;
+  }
   return dryRun ? factoryClaimRepo(factoryGuardExec(deps.exec), root) : trustedFactoryClaimRepo(deps.exec, root, ledgerDir);
+}
+
+/** A warner that prints its first line only (stderr): a command reads the claim key more than once. */
+function shallowWarnOnce(): (m: string) => void {
+  let done = false;
+  return (m) => {
+    if (done) return;
+    done = true;
+    console.error(chalk.yellow(m));
+  };
 }
 
 const OWNER_FILE = /^run-(\d+|heal-[0-9a-f]{8})\.owner$/;
@@ -361,6 +377,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         for (const w of warnings) console.error(chalk.yellow(w));
         const base = deps.base(root);
         let claimRepo: string | null = null;
+        const warnShallow = shallowWarnOnce();
         // A real run takes this checkout's engine lock before anything touches git (the forge-config loader fetches
         // origin/<base>): busy (exit 6) means nothing was fetched or written. The engine uses the held lock as its own.
         let held: HeldOwner | undefined;
@@ -369,7 +386,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
           held = acquireFactoryRepoOwnerForRun(root, issue ?? 'next', () => new Date().toISOString());
           // The claim key before the fetch: the forge kind from the config as it is (no fetch); none on the local forge.
           try {
-            claimRepo = cliClaimRepo(deps, root, readOnlyForgeKind(deps, root, base));
+            claimRepo = cliClaimRepo(deps, root, readOnlyForgeKind(deps, root, base), false, warnShallow);
           } catch (error) {
             held.release();
             throw error;
@@ -390,7 +407,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
           const loaded = deps.forge?.(root, base, { dryRun: Boolean(o.dryRun) });
           for (const w of loaded?.warnings ?? []) console.error(chalk.yellow(w));
           // The loaded forge is the run's: the claim key the engine and the pick use follows it.
-          claimRepo = cliClaimRepo(deps, root, loaded?.config.kind, Boolean(o.dryRun));
+          claimRepo = cliClaimRepo(deps, root, loaded?.config.kind, Boolean(o.dryRun), warnShallow);
           // The full untrusted roots, never a partial list (critic amendments §A.14; the engine re-checks).
           const forge = loaded ? { config: loaded.config, options: factoryForgeOptions(root) } : undefined;
           const skipped: number[] = [];
@@ -457,8 +474,9 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
     .command('clean <issue>')
     .description('Remove the worktrees and local branches of a merged or cancelled run, only when nothing would be lost (the PR branch on GitHub is kept); busy (exit 6) while an engine runs in this checkout')
     .option('--discard', 'A cancelled run only: give up uncommitted lane changes (a cancel mid-lane leaves them), so those worktrees go too; commits are still kept')
+    .option('--lane-stopped', 'With a lane whose stop was not confirmed (busy, exit 6): your word that its Copilot child has stopped; recorded in the run history. A child seen alive with its recorded start identity still refuses')
     .option('--json', 'JSON output')
-    .action((issueRaw: string, o: { discard?: boolean }, c: Command) =>
+    .action((issueRaw: string, o: { discard?: boolean; laneStopped?: boolean }, c: Command) =>
       factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
         const issue = parseIssue(issueRaw);
         const root = factoryRoot(exec);
@@ -466,9 +484,11 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         let kind: ForgeKind | undefined;
         try { kind = readFactoryState(root, issue)?.forgeKind; } catch { kind = undefined; }
         const claimRepo = cliClaimRepo(deps, root, kind ?? readOnlyForgeKind(deps, root, deps.base(root)));
-        const result = cleanFactoryRun({ root, issue, exec: deps.exec, claimRepo, ...(o.discard ? { discard: true } : {}), ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
+        if (o.laneStopped && !o.discard) throw new FactoryUsageError('--lane-stopped applies to --discard');
+        const result = cleanFactoryRun({ root, issue, exec: deps.exec, claimRepo, ...(o.discard ? { discard: true } : {}), ...(o.laneStopped ? { laneStopped: true } : {}), ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
         if (c.optsWithGlobals().json) console.log(JSON.stringify({ ok: result.kept.length === 0, ...result }, null, 2));
         else {
+          for (const id of result.acknowledged ?? []) console.log(chalk.yellow(`lane ${id}: its stop is taken on your word (--lane-stopped), recorded in the run history`));
           for (const path of result.removed) console.log(chalk.green(`removed ${path}`));
           for (const k of result.kept) console.log(chalk.yellow(`kept ${k.worktree}: ${k.reason}`));
           // F59: a cancel mid-lane leaves partial edits; name the command that gives them up.
@@ -484,7 +504,8 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
     .command('reset <issue>')
     .description('Local forge only: start a cancelled run over: remove its worktrees (uncommitted lane changes are given up, commits kept), close its local PR, keep its mirror branch as factory/cancelled/..., move the run state aside; busy (exit 6) while an engine runs in this checkout or another clone claims the item')
     .option('--json', 'JSON output')
-    .action((issueRaw: string, _o: unknown, c: Command) =>
+    .option('--lane-stopped', 'With a lane whose stop was not confirmed (busy, exit 6): your word that its Copilot child has stopped; recorded in the run history. A child seen alive with its recorded start identity still refuses')
+    .action((issueRaw: string, o: { laneStopped?: boolean }, c: Command) =>
       factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
         const issue = parseIssue(issueRaw);
         const root = factoryRoot(exec);
@@ -497,9 +518,10 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
           const claimRepo = cliClaimRepo(deps, root, loaded.config.kind);
           const read = forgeReadExec(deps.exec, loaded.config, root);
           const forge = createForge(read.exec, root, loaded.config, { ...read.options, local: { omgRoot: getOmcRoot(root) } });
-          const result = resetFactoryRun({ root, issue, exec: deps.exec, forge, mirror: loaded.config.repo.url, repoOwner: held, claimRepo, ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
+          const result = resetFactoryRun({ root, issue, exec: deps.exec, forge, mirror: loaded.config.repo.url, repoOwner: held, claimRepo, ...(o.laneStopped ? { laneStopped: true } : {}), ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
           if (c.optsWithGlobals().json) console.log(JSON.stringify({ ok: true, ...result }, null, 2));
           else {
+            for (const id of result.acknowledgedLanes ?? []) console.log(chalk.yellow(`lane ${id}: its stop is taken on your word (--lane-stopped), recorded in the run history`));
             for (const path of result.removedWorktrees ?? []) console.log(chalk.green(`removed ${path} (uncommitted lane changes given up)`));
             if (result.closedPr !== undefined) console.log(chalk.green(`closed local PR #${result.closedPr} (cancelled)`));
             if (result.keptBranch) console.log(chalk.green(`kept the run's branch as ${result.keptBranch} in the mirror`));

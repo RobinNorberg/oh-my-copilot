@@ -49,6 +49,14 @@ describe('triage rules', () => {
     expect(p.why.join('\n')).toMatch(/frontmatter priority 7 is above 4; the priority labels are left alone/);
   });
 
+  it('local: an invalid frontmatter priority (0, negative, fraction, non-number) changes nothing and says why', () => {
+    for (const priority of [0, -1, 1.5, Number.NaN, '2' as unknown as number]) {
+      const p = plan({ priority, labels: ['priority:p2'] }, res('runnable', '', null), 'local');
+      expect(p, String(priority)).toMatchObject({ add: [], remove: [], priority: null });
+      expect(p.why.join('\n')).toMatch(/is not a positive integer; the priority labels are left alone/);
+    }
+  });
+
   it('a field above 4 has no tag to match: the labels are left alone', () => {
     expect(plan({ priority: 7, labels: ['priority:p1'] }, res('runnable', '', 7), 'azure-devops').action).toBe('unchanged');
   });
