@@ -14,6 +14,7 @@ import { gitIn } from '../../../copilot-run/__tests__/fake-sdk.js';
 import { resolveShipConfig } from '../../../ship/config.js';
 import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-worktree.js';
 import { defaultExec } from '../../../ship/exec.js';
+import { defaultLocalGateRunner } from '../local-gate.js';
 import { REVIEW_FEEDBACK_QUERY } from '../../../forge/github/graphql.js';
 import { LaneLostError } from '../lane.js';
 export { gitIn };
@@ -175,7 +176,8 @@ export const testGateConfig = () => ({
  * The engine tests' OS sandbox: every command counts as run in the attested
  * sandbox. A prepare check runs through the test's exec seam (as the
  * unsandboxed engine ran it), the local gate through the test's gate runner
- * (a runner whose executable cannot start gives no verdict), and a base
+ * or else the engine's plain one (a runner whose executable cannot start
+ * gives no verdict), and a base
  * calibration passes without running anything. Tests of the sandbox
  * decisions themselves pass their own runner.
  */
@@ -183,8 +185,9 @@ export function attestedSandbox(exec, gate = () => undefined) {
     return async (req) => {
         if (req.purpose === 'calibrate')
             return { ran: true, status: 0, output: '', timedOut: false };
-        const runner = gate();
-        if (req.purpose === 'gate' && runner) {
+        // No test runner: the engine's own plain runner, as the engine ran the gate before the sandbox.
+        const runner = gate() ?? defaultLocalGateRunner;
+        if (req.purpose === 'gate') {
             const r = await runner(req.argv, req.cwd, req.timeoutMs);
             if (r.startError !== undefined)
                 return { ran: false, reason: r.startError };

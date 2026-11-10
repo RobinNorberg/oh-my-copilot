@@ -4,7 +4,7 @@ export declare const ENFORCED_SANDBOX: CopilotRunSandboxState;
 import { gitIn } from '../../../copilot-run/__tests__/fake-sdk.js';
 import { type Exec, type ExecResult } from '../../../ship/exec.js';
 import type { FactoryEngineOptions, LaneProcessOps } from '../engine.js';
-import type { LocalGateRunner } from '../local-gate.js';
+import { type LocalGateRunner } from '../local-gate.js';
 import type { GateConfigLoader } from '../prepare.js';
 import type { SandboxRunner } from '../sandbox-exec.js';
 import { type LaneBackend, type LaneProcess, type LaneResult, type LaneStartInput, type LaneState } from '../lane.js';
@@ -165,7 +165,8 @@ export declare const testGateConfig: GateConfigLoader;
  * The engine tests' OS sandbox: every command counts as run in the attested
  * sandbox. A prepare check runs through the test's exec seam (as the
  * unsandboxed engine ran it), the local gate through the test's gate runner
- * (a runner whose executable cannot start gives no verdict), and a base
+ * or else the engine's plain one (a runner whose executable cannot start
+ * gives no verdict), and a base
  * calibration passes without running anything. Tests of the sandbox
  * decisions themselves pass their own runner.
  */
