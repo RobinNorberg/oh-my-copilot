@@ -126,6 +126,63 @@ export function loadSandboxSettings(root, scope, layers = defaultLayers(root)) {
         warnings.push(`sandbox: ignoring ${loosening.join(', ')} from the project config; it may only tighten the sandbox`);
     return { settings, warnings };
 }
+export const GATES_SANDBOX_MODES = ['enforced', 'ack', 'unsandboxed'];
+/**
+ * The gates mode and where it came from. The kill switch wins, then the user
+ * config, then the base's committed config, then `enforced`. The base may set
+ * `enforced` or `ack` but never `unsandboxed` (the PR's repository must not
+ * switch the sandbox off for its own code): that throws, as does any other
+ * value.
+ */
+export function resolveGatesSandboxMode(layers) {
+    // The kill switch never runs the PR's code unsandboxed by itself: it parks per head for the human's ack.
+    if (layers.env[SANDBOX_KILL_ENV] === 'off')
+        return { mode: 'ack', source: `${SANDBOX_KILL_ENV}=off` };
+    const read = (config, source) => {
+        // factory.run.sandbox only: copilotRun.sandbox (copilot_run jobs) has no gates.
+        const value = sandboxBlock({ factory: config?.factory }, 'factory', source).gates;
+        if (value === undefined)
+            return undefined;
+        if (!GATES_SANDBOX_MODES.includes(value))
+            throw new Error(`${source}: factory.run.sandbox.gates must be ${GATES_SANDBOX_MODES.map((m) => JSON.stringify(m)).join(' or ')}`);
+        return value;
+    };
+    const user = read(layers.user, 'user config');
+    const base = read(layers.base, 'the base .copilot/omg.jsonc');
+    if (base === 'unsandboxed') {
+        throw new Error('factory.run.sandbox.gates "unsandboxed" is accepted from the user config only, never from the repository\'s .copilot/omg.jsonc; set it in your user config, or use "ack" there');
+    }
+    if (user)
+        return { mode: user, source: 'user config' };
+    if (base)
+        return { mode: base, source: 'the base .copilot/omg.jsonc' };
+    return { mode: 'enforced', source: 'default' };
+}
+/**
+ * `factory.run.sandbox.requireDeniedPaths`: a sandboxed gate on a host that
+ * does not report `denied_paths` (Windows today) runs and counts by default,
+ * with the credential files under the user profile readable; `true` makes
+ * such a host give no verdict (the gates-unsandboxed park). Read from the
+ * user config and the base-committed `.copilot/omg.jsonc` only; either layer
+ * can turn it on and no layer can turn it off over the other's `true`.
+ */
+export function resolveRequireDeniedPaths(layers) {
+    const read = (config, source) => {
+        const value = sandboxBlock({ factory: config?.factory }, 'factory', source).requireDeniedPaths;
+        if (value === undefined)
+            return undefined;
+        if (typeof value !== 'boolean')
+            throw new Error(`${source}: factory.run.sandbox.requireDeniedPaths must be a boolean`);
+        return value;
+    };
+    const user = read(layers.user, 'user config');
+    const base = read(layers.base, 'the base .copilot/omg.jsonc');
+    if (user)
+        return { require: true, source: 'user config' };
+    if (base)
+        return { require: true, source: 'the base .copilot/omg.jsonc' };
+    return { require: false, source: user === false || base === false ? 'config' : 'default' };
+}
 export const REGISTRY_HOSTS = ['registry.npmjs.org', '*.npmjs.org'];
 /** The target of `<worktree>/node_modules` when it is a junction or symlink (read-only for a write session). */
 function nodeModulesLinkTarget(worktree) {
@@ -283,6 +340,8 @@ export function buildSandboxConfig(profile, ctx, host) {
             '.ssh', '.gitconfig', '.omg', '.copilot', '.azure', '.git-credentials', join('.config', 'git', 'credentials'), join('.cache', 'git', 'credential'),
             join('.config', 'gh'), '.aws', '.npmrc', '.docker', '.kube', '.netrc', join('.cargo', 'credentials'), join('.cargo', 'credentials.toml'),
             '.gnupg', '.pypirc', join('.config', 'gcloud'),
+            // Windows: gh's hosts.yml (%APPDATA%\GitHub CLI) and the GCM/MSAL token cache (%LOCALAPPDATA%\.IdentityService).
+            ...(ctx.platform === 'win32' ? [join('AppData', 'Roaming', 'GitHub CLI'), join('AppData', 'Local', '.IdentityService')] : []),
         ].map((p) => join(ctx.realHome, p));
         // A grant canon cannot resolve (a dangling link) holds nothing: the deny stays.
         const grants = [...filesystem.readwritePaths, ...filesystem.readonlyPaths, ctx.realHome];

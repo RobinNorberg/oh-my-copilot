@@ -14,7 +14,7 @@ import { defaultExec, type Exec, type ExecResult } from '../../../ship/exec.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { runFactoryEngine, type FactoryEngineOptions, type FactoryForgeInput } from '../engine.js';
 import { factoryForgeOptions } from '../forge-roots.js';
-import { commitFile, FakeLanes, FakeProcesses, harness, ISSUE, remoteHead, review, testGateConfig, type Harness, type LaneScript } from './fake-lanes.js';
+import { commitFile, FakeLanes, FakeProcesses, harness, ISSUE, remoteHead, review, testGateConfig, type Harness, type LaneScript, withTestSandbox } from './fake-lanes.js';
 
 export const ADO_URL = REPO.url;
 export const PR_ID = 17;
@@ -195,7 +195,7 @@ export const forgeInput = (over: Partial<FactoryForgeInput> = {}): FactoryForgeI
 });
 
 export function opts(lanes: FakeLanes, over: Partial<FactoryEngineOptions> = {}): FactoryEngineOptions {
-  return {
+  return withTestSandbox({
     root: h.root,
     issue: ISSUE,
     exec: adoExec(),
@@ -210,7 +210,7 @@ export function opts(lanes: FakeLanes, over: Partial<FactoryEngineOptions> = {})
     sleep: async (ms) => { sleeps.push(ms); },
     forge: forgeInput(),
     ...over,
-  };
+  }, over);
 }
 
 export const happy = (): LaneScript[] => [commitFile('src/greet.ts', 'export const greet = () => "hi";\n'), review('approve')];

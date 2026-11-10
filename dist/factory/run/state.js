@@ -270,6 +270,15 @@ function humanReviewShapeProblem(s) {
         return 'humanReview';
     if (s.unsandboxedAck !== undefined && (!isStr(s.unsandboxedAck) || !HEX40.test(s.unsandboxedAck)))
         return 'unsandboxedAck';
+    if (s.unsandboxedGatesAck !== undefined && (!isStr(s.unsandboxedGatesAck) || !HEX40.test(s.unsandboxedGatesAck)))
+        return 'unsandboxedGatesAck';
+    const cal = s.gateCalibration;
+    if (cal !== undefined && (typeof cal !== 'object' || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
+        const e = v;
+        return HEX64.test(k) && typeof e === 'object' && e !== null && typeof e.ok === 'boolean' && (e.tail === undefined || isStr(e.tail))
+            && Object.keys(e).every((x) => x === 'ok' || x === 'tail');
+    })))
+        return 'gateCalibration';
     const lanes = s.lanes;
     if (!lanes.every((l) => {
         const f = l.feedback;

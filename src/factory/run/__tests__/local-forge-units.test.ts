@@ -232,7 +232,7 @@ describe('the local gate', () => {
       expect(localGateRecord(w.stateDir, w.root, SHA)?.state).toBe('PENDING');
       return { status: 0, stdout: 'ok 1\n', stderr: '', timedOut: false };
     };
-    const out = await runLocalGate({ ...w, head: SHA, gate: ['npm', 'test'], timeoutMinutes: 3, runner });
+    const out = await runLocalGate({ mode: 'unsandboxed', ...w, head: SHA, gate: ['npm', 'test'], timeoutMinutes: 3, runner });
     expect(runs).toEqual([{ argv: ['npm', 'test'], cwd: w.checkout, timeoutMs: 180_000 }]);
     if (!out.started) throw new Error('the gate did not start');
     expect(out.record).toMatchObject({ name: 'local-gate', head: SHA, state: 'SUCCESS', exitCode: 0, argv: ['npm', 'test'] });
@@ -242,13 +242,13 @@ describe('the local gate', () => {
 
   it('a failing or timed-out gate records FAILURE with the output tail', async () => {
     const w = world();
-    const failed = await runLocalGate({ ...w, head: SHA, gate: ['node', '--test'], timeoutMinutes: 1, runner: async () => ({ status: 1, stdout: 'x'.repeat(LOCAL_GATE_TAIL_CHARS + 50), stderr: 'not ok 1', timedOut: false }) });
+    const failed = await runLocalGate({ mode: 'unsandboxed', ...w, head: SHA, gate: ['node', '--test'], timeoutMinutes: 1, runner: async () => ({ status: 1, stdout: 'x'.repeat(LOCAL_GATE_TAIL_CHARS + 50), stderr: 'not ok 1', timedOut: false }) });
     if (!failed.started) throw new Error('the gate did not start');
     expect(failed.record.state).toBe('FAILURE');
     expect(failed.record.exitCode).toBe(1);
     expect(failed.record.tail!.length).toBe(LOCAL_GATE_TAIL_CHARS);
     expect(failed.record.tail!.endsWith('not ok 1')).toBe(true);
-    const timedOut = await runLocalGate({ ...w, head: SHA2, gate: ['node', '--test'], timeoutMinutes: 1, runner: async () => ({ status: 1, stdout: '', stderr: '', timedOut: true }) });
+    const timedOut = await runLocalGate({ mode: 'unsandboxed', ...w, head: SHA2, gate: ['node', '--test'], timeoutMinutes: 1, runner: async () => ({ status: 1, stdout: '', stderr: '', timedOut: true }) });
     if (!timedOut.started) throw new Error('the gate did not start');
     expect(timedOut.record).toMatchObject({ state: 'FAILURE', exitCode: 124 });
     expect(timedOut.record.tail).toContain('timed out after 1 min');
@@ -256,7 +256,7 @@ describe('the local gate', () => {
 
   it('a gate that cannot start records nothing (no FAILURE) and names the executable', async () => {
     const w = world();
-    const out = await runLocalGate({ ...w, head: SHA, gate: ['npm', 'test'], timeoutMinutes: 1, runner: async () => ({ status: 127, stdout: '', stderr: '', timedOut: false, startError: 'the local gate executable npm is not on PATH' }) });
+    const out = await runLocalGate({ mode: 'unsandboxed', ...w, head: SHA, gate: ['npm', 'test'], timeoutMinutes: 1, runner: async () => ({ status: 127, stdout: '', stderr: '', timedOut: false, startError: 'the local gate executable npm is not on PATH' }) });
     expect(out).toEqual({ started: false, reason: 'the local gate executable npm is not on PATH' });
     expect(localGateRecord(w.stateDir, w.root, SHA)).toBeUndefined();
   });
@@ -266,7 +266,7 @@ describe('the local gate', () => {
     mkdirSync(w.checkout, { recursive: true });
     const r = await defaultLocalGateRunner(['omg-no-such-gate-exe-4711', 'test'], w.checkout, 10_000);
     expect(r.startError).toMatch(/omg-no-such-gate-exe-4711/);
-    const out = await runLocalGate({ ...w, head: SHA, gate: ['omg-no-such-gate-exe-4711'], timeoutMinutes: 1 });
+    const out = await runLocalGate({ mode: 'unsandboxed', ...w, head: SHA, gate: ['omg-no-such-gate-exe-4711'], timeoutMinutes: 1 });
     expect(out.started).toBe(false);
     expect(localGateRecord(w.stateDir, w.root, SHA)).toBeUndefined();
   });

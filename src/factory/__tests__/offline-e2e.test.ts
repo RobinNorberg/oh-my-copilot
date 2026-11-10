@@ -37,7 +37,7 @@ import { EXIT_AWAITING_HUMAN, runFactoryEngine, type FactoryEngineOptions, type 
 import { factoryGuardExec } from '../run/exec.js';
 import { factoryForgeOptions, loadFactoryForgeConfig } from '../run/forge-roots.js';
 import { readFactoryState } from '../run/state.js';
-import { commitFile, FakeLanes, FakeProcesses, review, type LaneScript } from '../run/__tests__/fake-lanes.js';
+import { commitFile, FakeLanes, FakeProcesses, review, withTestSandbox, type LaneScript } from '../run/__tests__/fake-lanes.js';
 
 /** Every child_process call made while this file runs: the program, its argv and whether a shell was asked for. */
 const { spawned, recordChildProcess } = vi.hoisted(() => {
@@ -187,7 +187,7 @@ async function factoryRun(w: World, issue: number, scripts: LaneScript[], over: 
   const loaded = loadFactoryForgeConfig(factoryGuardExec(w.exec), w.root, BASE, w.trustedUser, projectConfig(w.root));
   const lanes = new FakeLanes(w.root, scripts);
   const warnings = [...loaded.warnings];
-  const out = await runFactoryEngine({
+  const out = await runFactoryEngine(withTestSandbox({
     root: w.root,
     issue,
     exec: w.exec,
@@ -201,7 +201,7 @@ async function factoryRun(w: World, issue: number, scripts: LaneScript[], over: 
     forge: { config: loaded.config, options: factoryForgeOptions(w.root) },
     warn: (m) => warnings.push(m),
     ...over,
-  });
+  }, over));
   return { out, lanes, warnings };
 }
 

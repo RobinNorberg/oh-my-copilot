@@ -14,8 +14,12 @@
  * PR's package.json `test` script, so a lane that edits package.json scripts
  * (or the test files) changes what the gate does. It runs only in the
  * engine-owned checkout (assertLocalGateCommand), never in the user's
- * checkout or a lane worktree, with the scrubbed environment ship gives every
- * command, and without a shell.
+ * checkout or a lane worktree. With factory.run.sandbox.gates "enforced"
+ * (the default) it runs in the Copilot runtime's OS sandbox (sandbox-exec.ts
+ * runSandboxed: read-write on the checkout only, no network, no credential
+ * in the env, the home's credential files denied); with "ack" or
+ * "unsandboxed" it runs as the user, without a shell, with the allowlisted
+ * gateEnv.
  *
  * No shell on Windows means no `.cmd`/`.bat` (cmd.exe would parse the
  * arguments; the 5.12.1 cmd-injection fix). `npm`/`npx` run as
@@ -26,6 +30,7 @@
  */
 import { type LocalCheckRecord } from '../../forge/local/index.js';
 import { type GateProcTracker } from './gate-procs.js';
+import { type SandboxRunner } from './sandbox-exec.js';
 /** The record keeps this many characters of the gate's output (jobLog, the ci-fix prompt). */
 export declare const LOCAL_GATE_TAIL_CHARS = 8000;
 /** How long after the gate's timeout a PENDING record is taken as left by a crashed engine (localGateDue). */
@@ -62,6 +67,12 @@ export declare function resolveLocalGateArgv(argv: readonly string[], o: Resolve
 } | {
     missing: string;
 };
+/**
+ * The gate (or a prepare check) WITHOUT the OS sandbox (factory.run.sandbox.gates
+ * "ack" or "unsandboxed"): no shell, the whole tree killed at the timeout,
+ * and the credential-scrubbed gateEnv with an empty home made for this run
+ * and removed after it.
+ */
 export declare const defaultLocalGateRunner: LocalGateRunner;
 /**
  * The exec guard's allowance for the gate. `recorded` is the gate argv the
@@ -87,7 +98,18 @@ export interface LocalGateInput {
     timeoutMinutes: number;
     /** The engine's prepare checkout. */
     checkout: string;
+    /** The unsandboxed runner (gates "ack" / "unsandboxed"; default defaultLocalGateRunner, gateEnv). */
     runner?: LocalGateRunner;
+    /**
+     * How the gate runs (factory.run.sandbox.gates, resolved by the engine), recorded on the record.
+     * `enforced` needs `sandbox`: the gate then runs only through it, never through `runner`.
+     */
+    mode: 'enforced' | 'ack' | 'unsandboxed';
+    sandbox?: {
+        run: SandboxRunner;
+        commonGitDir: string;
+        requireDeniedPaths?: boolean;
+    };
     now?: () => Date;
 }
 /** The record of `head`, or undefined when the gate has not run for it (or a rerun removed it). */
@@ -101,19 +123,27 @@ export declare function localGateRecord(stateDir: string, root: string, head: st
  * shape carries no pid on purpose: a pid can be reused, the clock cannot.
  */
 export declare function localGateDue(stateDir: string, root: string, head: string, timeoutMinutes: number, now: Date): boolean;
-/** The gate ran and recorded a verdict, or its process never started (the PENDING record is removed again). */
+/**
+ * The gate ran and recorded a verdict, or it never started (the PENDING
+ * record is removed again): its executable cannot start, or (`sandbox`) the
+ * OS sandbox could not run it with an attested verdict.
+ */
 export type LocalGateOutcome = {
     started: true;
     record: LocalCheckRecord;
 } | {
     started: false;
     reason: string;
+    sandbox?: true;
+    noVerdict?: true;
 };
 /**
  * Run the gate for `head` and record SUCCESS or FAILURE (a PENDING record is
  * written first, so a crash mid-gate leaves the head visibly unfinished and
  * the next run sees a pending check, not a pass, until it goes stale). A
- * gate that cannot start records nothing.
+ * gate that cannot start records nothing. In mode `enforced` the gate runs
+ * only in the sandbox: a sandbox that gives no attested verdict records
+ * nothing either (`sandbox: true`), and the plain runner is never tried.
  */
 export declare function runLocalGate(i: LocalGateInput): Promise<LocalGateOutcome>;
 /**

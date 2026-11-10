@@ -22,8 +22,8 @@ export interface FakeCalls {
     globalGitConfigs: Array<string | null>;
 }
 export declare const newCalls: () => FakeCalls;
-/** The server `rpc` of a fake client with sandbox support `sandbox`. */
-export declare function fakeClientRpc(sandbox: FakeSandbox): unknown;
+/** The server `rpc` of a fake client with sandbox support `sandbox` (`deniedPaths`: the host reports denied_paths). */
+export declare function fakeClientRpc(sandbox: FakeSandbox, deniedPaths?: boolean): unknown;
 /** The session `rpc` of a fake session with sandbox support `sandbox`. */
 export declare function fakeSessionRpc(sandbox: FakeSandbox, calls: {
     optionsUpdates: Array<Record<string, unknown>>;
