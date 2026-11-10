@@ -13,7 +13,9 @@
  *   the next run publishes a fresh branch (nothing the run made is lost);
  * - the run's worktrees go first (cleanHeldFactoryRun with discard: a
  *   cancel mid-lane leaves partial edits, dogfood F59); one holding commits
- *   that no base or mirror branch holds refuses the reset;
+ *   that no base or mirror branch holds refuses the reset, and so does a lane
+ *   that may still run (busy) or whose note records tamper problems (kept
+ *   for inspection; `clean --discard` removes it);
  * - the run state and its engine ledger are moved aside (`.reset-<stamp>`)
  *   and the cancel request is removed, so the next `omg factory run <issue>`
  *   starts a new run.
@@ -47,6 +49,8 @@ export interface FactoryResetOptions {
     repoOwner?: HeldOwner;
     /** The repository the cross-clone claim is keyed on (factoryClaimRepo): a claim another clone holds refuses; this checkout's is deleted. */
     claimRepo?: string | null;
+    /** Whether a recorded lane child pid still runs (default: isProcessAlive; see cleanHeldFactoryRun). */
+    processAlive?: (pid: number) => boolean;
 }
 export declare function resetFactoryRun(o: FactoryResetOptions): FactoryResetResult;
 //# sourceMappingURL=reset.d.ts.map

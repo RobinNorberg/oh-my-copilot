@@ -12,7 +12,11 @@
  * (remote check, fetch, ls-remote) runs guarded and hardened like the
  * engine's: no hooks, no fsmonitor. `discard` (a cancelled run only, dogfood
  * F59): a lane worktree's or the prepare checkout's uncommitted changes are
- * given up so the tree goes too; committed work is still kept.
+ * given up so the tree goes too; committed work is still kept. It refuses
+ * (busy) while a lane's Copilot child may still run in its worktree (the
+ * cancel was not confirmed or failed and the recorded child is not known
+ * gone), and a reset (`keepTamperEvidence`) keeps a worktree whose lane note
+ * records tamper problems; an explicit `clean --discard` removes it.
  */
 import { type Exec } from '../../ship/exec.js';
 import { type FactoryRunState, type OwnerDeps } from './state.js';
@@ -40,6 +44,10 @@ export interface FactoryCleanOptions {
     claimRepo?: string | null;
     /** Give up uncommitted changes in the run's worktrees (a cancelled run only; F59). */
     discard?: boolean;
+    /** With discard (reset): keep a worktree whose lane note records tamper problems. */
+    keepTamperEvidence?: boolean;
+    /** Whether a recorded lane child pid still runs (default: isProcessAlive). */
+    processAlive?: (pid: number) => boolean;
 }
 export declare function cleanFactoryRun(o: FactoryCleanOptions): FactoryCleanResult;
 /**

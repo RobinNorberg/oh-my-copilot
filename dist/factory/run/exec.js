@@ -296,6 +296,9 @@ function factoryGit(a, protectedBranches, extraProtected = [], local, agent) {
         case 'rev-parse':
             if (same(r, ['--git-common-dir']) || same(r, ['--symbolic-full-name', 'HEAD']))
                 return true;
+            // The local forge's claim key refuses a shallow clone (localFactoryClaimRepo, F60).
+            if (same(r, ['--is-shallow-repository']))
+                return true;
             if (r.length === 2 && r[0] === '--verify') {
                 const m = /^([0-9a-f]{40}):(.+)$/.exec(r[1]);
                 if (m)

@@ -41014,6 +41014,30 @@ function unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs = [], keepTracked = tru
     }
   }
 }
+function firstLinkUnder(dir) {
+  const pending = [dir];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    let entries;
+    try {
+      entries = (0, import_node_fs9.readdirSync)(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const path15 = (0, import_node_path10.join)(current, entry.name);
+      let stat;
+      try {
+        stat = (0, import_node_fs9.lstatSync)(path15);
+      } catch {
+        continue;
+      }
+      if (stat.isSymbolicLink()) return path15;
+      if (stat.isDirectory()) pending.push(path15);
+    }
+  }
+  return null;
+}
 function gitOrNull(args, cwd) {
   try {
     return runHostGit(cwd, args).trim();
@@ -41374,7 +41398,17 @@ function removeWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
       error2.code = "worktree_remove_failed";
       throw error2;
     }
-    if ((0, import_node_fs9.existsSync)(wtPath)) unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs);
+    if ((0, import_node_fs9.existsSync)(wtPath)) {
+      unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs, !options.discardChanges);
+      if (options.discardChanges) {
+        const left = firstLinkUnder(wtPath);
+        if (left) {
+          const error2 = new Error(`worktree_link_unremovable: preserving worker worktree at ${wtPath}; a link is still there after unlinking: ${left}`);
+          error2.code = "worktree_link_unremovable";
+          throw error2;
+        }
+      }
+    }
     try {
       if (options.gitLinks && laneCommonDir) {
         if ((0, import_node_fs9.existsSync)(wtPath)) {
@@ -41415,6 +41449,12 @@ function removeWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
       });
       if (force) removeRuntimeLeftover(wtPath);
       else (0, import_node_fs9.rmSync)(wtPath, { recursive: true, force: true });
+    }
+    if (options.discardChanges && !(0, import_node_fs9.existsSync)(wtPath)) {
+      try {
+        restoreWorktreeRootAgents(teamName, workerName, repoRoot, wtPath);
+      } catch {
+      }
     }
     forgetMetadataUnlocked(repoRoot, teamName, workerName);
     forgetWorktreeGitLinks(wtPath);
@@ -43183,6 +43223,7 @@ function factoryGit(a, protectedBranches, extraProtected = [], local, agent) {
       return null;
     case "rev-parse":
       if (same2(r, ["--git-common-dir"]) || same2(r, ["--symbolic-full-name", "HEAD"])) return true;
+      if (same2(r, ["--is-shallow-repository"])) return true;
       if (r.length === 2 && r[0] === "--verify") {
         const m = /^([0-9a-f]{40}):(.+)$/.exec(r[1]);
         if (m) return REPO_PATH.test(m[2]) && !m[2].split("/").includes("..");
@@ -47107,6 +47148,15 @@ function factoryClaimRepo(exec, root) {
   }
 }
 function localFactoryClaimRepo(exec, root) {
+  let shallow = false;
+  try {
+    shallow = exec("git", ["rev-parse", "--is-shallow-repository"], { cwd: root, env: TRUSTED_READ_ENV }).stdout.trim() === "true";
+  } catch (error2) {
+    if (error2 instanceof FactorySafetyError) throw error2;
+  }
+  if (shallow) {
+    throw new FactoryStateError(`${root} is a shallow clone: the local forge keys its cross-clone claims on the root commit, which a shallow history does not have (git fetch --unshallow, then rerun)`);
+  }
   try {
     const got = exec("git", ["rev-list", "--max-parents=0", "HEAD"], { cwd: root, env: TRUSTED_READ_ENV });
     const roots = got.status === 0 ? got.stdout.split(/\s+/).filter((l) => HEX4010.test(l)).sort() : [];
@@ -47321,6 +47371,7 @@ var init_clean = __esm({
     init_forge_roots();
     init_ledger2();
     init_prepare();
+    init_process_utils();
     init_state5();
     init_claims();
   }
@@ -51848,7 +51899,7 @@ var init_engine = __esm({
         const f = parked.ciFailure;
         const { pr, head } = this.state;
         if (!parked.gate || f?.source !== "ci" || !pr || !head || f.startSha !== head || this.state.phase !== parked.phase) return;
-        const fromCiFix = parked.phase === "ci-fix";
+        const fromCiFix = parked.phase === "ci-fix" && parked.gate.name === "ci-fix-failed";
         if (!fromCiFix && !(parked.phase === "gates" && parked.gate.name === "ci-failed")) return;
         if (this.forge?.kind === "local") {
           for (const c of this.forge.checks.checks(pr, head)) {
@@ -52077,6 +52128,7 @@ var init_engine = __esm({
       }
       async cancel() {
         const usage = /* @__PURE__ */ new Map();
+        const unconfirmed = /* @__PURE__ */ new Set();
         for (const lane of this.state.lanes.filter((l) => l.status === "running")) {
           if (lane.kind === "coding-agent") {
             usage.set(lane.id, this.codingAgentCancelled(lane));
@@ -52087,8 +52139,9 @@ var init_engine = __esm({
             try {
               const c = await this.o.lanes.cancel(lane.jobId);
               if (isTerminalLaneState(c.result.state)) u = usageOf(c.result);
+              else unconfirmed.add(lane.id);
             } catch (e) {
-              if (e instanceof LaneLostError) await this.laneChildGone(lane);
+              if (!(e instanceof LaneLostError) || !(await this.laneChildGone(lane)).gone) unconfirmed.add(lane.id);
             }
           }
           usage.set(lane.id, u);
@@ -52099,11 +52152,11 @@ var init_engine = __esm({
         this.save((s) => moveTo({
           ...s,
           cancelRequested: true,
-          lanes: s.lanes.map((l) => l.status === "running" ? { ...l, status: "cancelled", endedAt: at, ...usage.has(l.id) ? { usage: usage.get(l.id) } : {} } : l)
+          lanes: s.lanes.map((l) => l.status === "running" ? { ...l, status: "cancelled", endedAt: at, ...usage.has(l.id) ? { usage: usage.get(l.id) } : {}, ...unconfirmed.has(l.id) ? { note: "cancelled; the cancel was not confirmed, so the lane may still run" } : {} } : l)
         }, "cancelled", why, at));
         if (this.state.pr) {
           const local = this.forge?.kind === "local" && this.forge.reviews.closePr !== void 0;
-          const kept = local ? `The local PR is closed (cancelled); its branch and the lane worktrees are kept. omg factory run clean ${this.key}, then omg factory run reset ${this.key}, makes the item runnable again.` : "The PR, its branch and the lane worktrees are kept.";
+          const kept = local ? `The local PR is closed (cancelled); its branch and the lane worktrees are kept. omg factory run reset ${this.key} makes the item runnable again (it removes the run's worktrees).` : "The PR, its branch and the lane worktrees are kept.";
           const body = this.writeBody("cancel", `Factory run for ${runLabel(this.key)} was cancelled. ${kept}
 `);
           const res = this.commentPr(this.state.pr, body);
@@ -52915,6 +52968,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
       /** A real check failure: one ci-fix lane while rounds are left, else awaiting-human: ci-failed. */
       ciFailed(failure2, note) {
         if (this.state.ciFixRounds >= this.o.limits.maxCiFixRounds) {
+          this.save((x) => ({ ...x, ciFailure: failure2 }));
           this.gate("ci-failed", `${note}: ${failure2.checks.join(", ")}; the CI-fix rounds are spent (${this.state.ciFixRounds}/${this.o.limits.maxCiFixRounds})`);
           return;
         }

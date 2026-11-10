@@ -41,7 +41,7 @@ import { repoIdentity } from '../../ship/config.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { FactorySafetyError, hardenedGitExec } from './exec.js';
 import { emptyHooksDir, EngineLedger } from './ledger.js';
-import { defaultOwnerDeps, describeOwner, FactoryBusyError, factoryStateDir, factoryStatePath, isOwnerRecord, ownerHolds, ownerRecord, ownerText, parseFactoryState, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, withOwnerFileLock, } from './state.js';
+import { defaultOwnerDeps, describeOwner, FactoryBusyError, factoryStateDir, FactoryStateError, factoryStatePath, isOwnerRecord, ownerHolds, ownerRecord, ownerText, parseFactoryState, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, withOwnerFileLock, } from './state.js';
 /**
  * The repository a claim is keyed on: the origin remote's URL (`git remote
  * get-url origin`, read-only, the same trusted origin the forge config is
@@ -69,9 +69,25 @@ const HEX40 = /^[0-9a-f]{40}$/;
  * The local forge's claim repository (dogfood F60): its mirror and project id
  * are per checkout and it reads no origin, so two clones are one repository
  * by their history: the first (sorted) root commit of HEAD, as
- * `local-root:<sha>`, or null when HEAD has none. Read-only.
+ * `local-root:<sha>`, or null when HEAD has none. Read-only. Clones whose
+ * HEADs have different root sets (one merged an unrelated history) get
+ * different keys and do not share claims; a fork or template clone that
+ * shares the root commit shares the key (a false busy, which `run release`
+ * clears). A shallow clone is refused (FactoryStateError): its boundary
+ * commits count as roots, so its key would differ from the full clones'.
  */
 export function localFactoryClaimRepo(exec, root) {
+    let shallow = false;
+    try {
+        shallow = exec('git', ['rev-parse', '--is-shallow-repository'], { cwd: root, env: TRUSTED_READ_ENV }).stdout.trim() === 'true';
+    }
+    catch (error) {
+        if (error instanceof FactorySafetyError)
+            throw error;
+    }
+    if (shallow) {
+        throw new FactoryStateError(`${root} is a shallow clone: the local forge keys its cross-clone claims on the root commit, which a shallow history does not have (git fetch --unshallow, then rerun)`);
+    }
     try {
         const got = exec('git', ['rev-list', '--max-parents=0', 'HEAD'], { cwd: root, env: TRUSTED_READ_ENV });
         const roots = got.status === 0 ? got.stdout.split(/\s+/).filter((l) => HEX40.test(l)).sort() : [];

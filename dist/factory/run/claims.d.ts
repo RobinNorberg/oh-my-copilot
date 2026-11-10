@@ -50,7 +50,12 @@ export declare const LOCAL_CLAIM_PREFIX = "local-root:";
  * The local forge's claim repository (dogfood F60): its mirror and project id
  * are per checkout and it reads no origin, so two clones are one repository
  * by their history: the first (sorted) root commit of HEAD, as
- * `local-root:<sha>`, or null when HEAD has none. Read-only.
+ * `local-root:<sha>`, or null when HEAD has none. Read-only. Clones whose
+ * HEADs have different root sets (one merged an unrelated history) get
+ * different keys and do not share claims; a fork or template clone that
+ * shares the root commit shares the key (a false busy, which `run release`
+ * clears). A shallow clone is refused (FactoryStateError): its boundary
+ * commits count as roots, so its key would differ from the full clones'.
  */
 export declare function localFactoryClaimRepo(exec: Exec, root: string): string | null;
 /** localFactoryClaimRepo through the engine's hardened git, as trustedFactoryClaimRepo. */

@@ -14,7 +14,7 @@ import { cleanFactoryRun } from '../clean.js';
 import { runFactoryEngine } from '../engine.js';
 import { factoryForgeOptions } from '../forge-roots.js';
 import { resetFactoryRun } from '../reset.js';
-import { readFactoryState, requestFactoryCancel } from '../state.js';
+import { FactoryBusyError, readFactoryState, requestFactoryCancel } from '../state.js';
 import { FakeLanes, gitIn } from './fake-lanes.js';
 import { LOCAL_ISSUE, localOpts, localWorld } from './engine-local-harness.js';
 vi.setConfig({ testTimeout: scaleTiming(300_000) });
@@ -52,6 +52,54 @@ describe('F59: reset after a cancel mid-lane', () => {
         // The junction went as a link: its target is untouched. The main checkout is untouched too.
         expect(existsSync(join(outside, 'keep.txt'))).toBe(true);
         expect(gitIn(w.root, 'status', '--porcelain')).toBe('');
+    });
+    it('a lane whose cancel failed refuses while its child may run (busy); a worktree holding a commit refuses the reset', async () => {
+        w = localWorld();
+        const lanes = new FakeLanes(w.root, [() => ({ finalText: 'never read' })], [2]);
+        lanes.cancelFails = true;
+        let worktree = '';
+        lanes.onRunningPoll = () => {
+            worktree = join(w.root, '.omg', 'team', 'copilot-run', 'worktrees', 'cr-fake1');
+            writeFileSync(join(worktree, 'README.md'), 'partial edit\n');
+            requestFactoryCancel(w.root, LOCAL_ISSUE, new Date().toISOString());
+        };
+        const out = await runFactoryEngine(localOpts(w, lanes));
+        expect(out.phase, out.message).toBe('cancelled');
+        expect(readFactoryState(w.root, LOCAL_ISSUE).lanes[0].note).toMatch(/the cancel failed/);
+        const forge = createForge(w.exec, w.root, w.config, { ...factoryForgeOptions(w.root), stateDir: w.stateDir, local: { omgRoot: getOmcRoot(w.root) } });
+        const reset = (processAlive) => resetFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, forge, mirror: w.config.repo.url, ledgerDir: w.ledgerDir, owner: OWNER, ...(processAlive ? { processAlive } : {}) });
+        // The child still runs: busy, before any removal; clean --discard says the same.
+        expect(() => reset(() => true)).toThrow(FactoryBusyError);
+        expect(() => cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, ledgerDir: w.ledgerDir, owner: OWNER, discard: true, processAlive: () => true })).toThrow(/may still run, so no worktree is discarded/);
+        expect(existsSync(join(worktree, 'README.md'))).toBe(true);
+        // The child is gone (the fake pid is no process), but the lane committed: the reset refuses and changes nothing.
+        gitIn(worktree, 'commit', '-qam', 'lane work');
+        expect(() => reset()).toThrow(/hold work: .*worktree_unmerged_commits/);
+        expect(existsSync(worktree)).toBe(true);
+        expect(readFactoryState(w.root, LOCAL_ISSUE)?.phase).toBe('cancelled');
+    });
+    it('reset keeps a worktree whose lane note records tamper problems; clean --discard removes it', async () => {
+        w = localWorld();
+        const lanes = new FakeLanes(w.root, [() => ({ finalText: 'never read' })], [2]);
+        let worktree = '';
+        lanes.onRunningPoll = () => {
+            worktree = join(w.root, '.omg', 'team', 'copilot-run', 'worktrees', 'cr-fake1');
+            writeFileSync(join(worktree, 'new.js'), 'export {};\n');
+            // Shared git state outside the lane's own branch: the cancel's tamper check records it.
+            if (!gitIn(w.root, 'branch', '--list', 'planted'))
+                gitIn(w.root, 'branch', 'planted');
+            requestFactoryCancel(w.root, LOCAL_ISSUE, new Date().toISOString());
+        };
+        const out = await runFactoryEngine(localOpts(w, lanes));
+        expect(out.phase, out.message).toBe('cancelled');
+        expect(readFactoryState(w.root, LOCAL_ISSUE).lanes[0].note).toMatch(/tamper check: /);
+        const forge = createForge(w.exec, w.root, w.config, { ...factoryForgeOptions(w.root), stateDir: w.stateDir, local: { omgRoot: getOmcRoot(w.root) } });
+        expect(() => resetFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, forge, mirror: w.config.repo.url, ledgerDir: w.ledgerDir, owner: OWNER })).toThrow(/tamper_evidence/);
+        expect(existsSync(join(worktree, 'new.js'))).toBe(true);
+        expect(readFactoryState(w.root, LOCAL_ISSUE)?.phase).toBe('cancelled');
+        const cleaned = cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, ledgerDir: w.ledgerDir, owner: OWNER, discard: true });
+        expect(cleaned.removed).toContain(worktree);
+        expect(existsSync(worktree)).toBe(false);
     });
 });
 //# sourceMappingURL=engine.local.reset-discard.test.js.map

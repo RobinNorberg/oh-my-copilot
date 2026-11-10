@@ -82,16 +82,22 @@ export function planItem(item, result, kind, cfg) {
     const held = item.labels.filter((l) => PRIORITY_RE.test(l));
     const effective = itemPriority(item);
     let numeric = null;
-    if (kind === 'local' && item.priority !== undefined) {
-        // F55: a local item's frontmatter priority is the one source; a label added next to it would read as a second
-        // priority (priority 1 is priority:p0). A held label that disagrees with it goes; none is added.
-        const same = item.priority <= PRIORITY_LABELS.length ? PRIORITY_LABELS[item.priority - 1] : undefined;
-        for (const l of held)
-            if (l.toLowerCase() !== same) {
-                remove.push(l);
-                why.push(`priority: the frontmatter priority ${item.priority} wins, drop ${l}`);
-            }
-        why.push(`priority: the frontmatter priority ${item.priority} wins; triage adds no priority label on the local forge`);
+    if (kind === 'local' && item.priority !== undefined && effective === item.priority) {
+        // F55: a local item's (valid) frontmatter priority is the one source; a label added next to it would read as a
+        // second priority (priority 1 is priority:p0). A held label that disagrees with it goes; none is added. A field
+        // above 4 has no label, so the labels are left alone.
+        if (item.priority <= PRIORITY_LABELS.length) {
+            const same = PRIORITY_LABELS[item.priority - 1];
+            for (const l of held)
+                if (l.toLowerCase() !== same) {
+                    remove.push(l);
+                    why.push(`priority: the frontmatter priority ${item.priority} wins, drop ${l}`);
+                }
+            why.push(`priority: the frontmatter priority ${item.priority} wins; triage adds no priority label on the local forge`);
+        }
+        else {
+            why.push(`priority: the frontmatter priority ${item.priority} is above ${PRIORITY_LABELS.length}; the priority labels are left alone`);
+        }
     }
     else if (effective !== null) {
         if (effective <= PRIORITY_LABELS.length) {

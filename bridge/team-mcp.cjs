@@ -18938,6 +18938,30 @@ function unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs = [], keepTracked = tru
     }
   }
 }
+function firstLinkUnder(dir) {
+  const pending = [dir];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    let entries;
+    try {
+      entries = (0, import_node_fs8.readdirSync)(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const path5 = (0, import_node_path9.join)(current, entry.name);
+      let stat2;
+      try {
+        stat2 = (0, import_node_fs8.lstatSync)(path5);
+      } catch {
+        continue;
+      }
+      if (stat2.isSymbolicLink()) return path5;
+      if (stat2.isDirectory()) pending.push(path5);
+    }
+  }
+  return null;
+}
 function gitOrNull(args, cwd) {
   try {
     return runHostGit(cwd, args).trim();
@@ -19248,7 +19272,17 @@ function removeWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
       error2.code = "worktree_remove_failed";
       throw error2;
     }
-    if ((0, import_node_fs8.existsSync)(wtPath)) unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs);
+    if ((0, import_node_fs8.existsSync)(wtPath)) {
+      unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs, !options.discardChanges);
+      if (options.discardChanges) {
+        const left = firstLinkUnder(wtPath);
+        if (left) {
+          const error2 = new Error(`worktree_link_unremovable: preserving worker worktree at ${wtPath}; a link is still there after unlinking: ${left}`);
+          error2.code = "worktree_link_unremovable";
+          throw error2;
+        }
+      }
+    }
     try {
       if (options.gitLinks && laneCommonDir) {
         if ((0, import_node_fs8.existsSync)(wtPath)) {
@@ -19289,6 +19323,12 @@ function removeWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
       });
       if (force) removeRuntimeLeftover(wtPath);
       else (0, import_node_fs8.rmSync)(wtPath, { recursive: true, force: true });
+    }
+    if (options.discardChanges && !(0, import_node_fs8.existsSync)(wtPath)) {
+      try {
+        restoreWorktreeRootAgents(teamName, workerName, repoRoot, wtPath);
+      } catch {
+      }
     }
     forgetMetadataUnlocked(repoRoot, teamName, workerName);
     forgetWorktreeGitLinks(wtPath);

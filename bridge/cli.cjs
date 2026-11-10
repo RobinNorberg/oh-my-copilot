@@ -92706,6 +92706,30 @@ function unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs = [], keepTracked = tru
     }
   }
 }
+function firstLinkUnder(dir) {
+  const pending = [dir];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    let entries;
+    try {
+      entries = (0, import_node_fs19.readdirSync)(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry2 of entries) {
+      const path30 = (0, import_node_path23.join)(current, entry2.name);
+      let stat2;
+      try {
+        stat2 = (0, import_node_fs19.lstatSync)(path30);
+      } catch {
+        continue;
+      }
+      if (stat2.isSymbolicLink()) return path30;
+      if (stat2.isDirectory()) pending.push(path30);
+    }
+  }
+  return null;
+}
 function gitOrNull(args, cwd2) {
   try {
     return runHostGit(cwd2, args).trim();
@@ -93159,7 +93183,17 @@ function removeWorkerWorktree(teamName, workerName, repoRoot3, options = {}) {
       error2.code = "worktree_remove_failed";
       throw error2;
     }
-    if ((0, import_node_fs19.existsSync)(wtPath)) unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs);
+    if ((0, import_node_fs19.existsSync)(wtPath)) {
+      unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs, !options.discardChanges);
+      if (options.discardChanges) {
+        const left = firstLinkUnder(wtPath);
+        if (left) {
+          const error2 = new Error(`worktree_link_unremovable: preserving worker worktree at ${wtPath}; a link is still there after unlinking: ${left}`);
+          error2.code = "worktree_link_unremovable";
+          throw error2;
+        }
+      }
+    }
     try {
       if (options.gitLinks && laneCommonDir) {
         if ((0, import_node_fs19.existsSync)(wtPath)) {
@@ -93200,6 +93234,12 @@ function removeWorkerWorktree(teamName, workerName, repoRoot3, options = {}) {
       });
       if (force) removeRuntimeLeftover(wtPath);
       else (0, import_node_fs19.rmSync)(wtPath, { recursive: true, force: true });
+    }
+    if (options.discardChanges && !(0, import_node_fs19.existsSync)(wtPath)) {
+      try {
+        restoreWorktreeRootAgents(teamName, workerName, repoRoot3, wtPath);
+      } catch {
+      }
     }
     forgetMetadataUnlocked(repoRoot3, teamName, workerName);
     forgetWorktreeGitLinks(wtPath);
@@ -120522,6 +120562,7 @@ function factoryGit(a, protectedBranches, extraProtected = [], local, agent) {
       return null;
     case "rev-parse":
       if (same2(r, ["--git-common-dir"]) || same2(r, ["--symbolic-full-name", "HEAD"])) return true;
+      if (same2(r, ["--is-shallow-repository"])) return true;
       if (r.length === 2 && r[0] === "--verify") {
         const m = /^([0-9a-f]{40}):(.+)$/.exec(r[1]);
         if (m) return REPO_PATH.test(m[2]) && !m[2].split("/").includes("..");
@@ -125029,6 +125070,15 @@ function factoryClaimRepo(exec3, root2) {
   }
 }
 function localFactoryClaimRepo(exec3, root2) {
+  let shallow = false;
+  try {
+    shallow = exec3("git", ["rev-parse", "--is-shallow-repository"], { cwd: root2, env: TRUSTED_READ_ENV }).stdout.trim() === "true";
+  } catch (error2) {
+    if (error2 instanceof FactorySafetyError) throw error2;
+  }
+  if (shallow) {
+    throw new FactoryStateError(`${root2} is a shallow clone: the local forge keys its cross-clone claims on the root commit, which a shallow history does not have (git fetch --unshallow, then rerun)`);
+  }
   try {
     const got = exec3("git", ["rev-list", "--max-parents=0", "HEAD"], { cwd: root2, env: TRUSTED_READ_ENV });
     const roots = got.status === 0 ? got.stdout.split(/\s+/).filter((l) => HEX4010.test(l)).sort() : [];
@@ -125289,6 +125339,12 @@ var init_claims = __esm({
 });
 
 // src/factory/run/clean.ts
+function laneMayRun(lane, alive) {
+  if (lane.status === "running") return "it is still recorded as running";
+  if (!UNCONFIRMED_NOTE.test(lane.note ?? "")) return null;
+  if (!lane.process) return `its stop was not confirmed (${lane.note}) and no pid of its Copilot child was recorded`;
+  return alive(lane.process.pid) ? `its stop was not confirmed (${lane.note}) and its Copilot child pid ${lane.process.pid} still runs` : null;
+}
 function cleanFactoryRun(o) {
   const state = readFactoryState(o.root, o.issue);
   if (!state) throw new FactoryStateError(`no factory run for issue #${o.issue}`);
@@ -125314,6 +125370,17 @@ function cleanFactoryRun(o) {
   }
 }
 function cleanHeldFactoryRun(o, state) {
+  if (o.discard) {
+    const alive = o.processAlive ?? isProcessAlive;
+    const busy = state.lanes.flatMap((l) => {
+      if (!l.jobId || !(0, import_fs159.existsSync)(getWorktreePath(o.root, WORKTREE_TEAM, l.jobId))) return [];
+      const why = laneMayRun(l, alive);
+      return why ? [`lane ${l.id} (${l.jobId}): ${why}`] : [];
+    });
+    if (busy.length > 0) {
+      throw new FactoryBusyError(`the cancelled run for issue #${o.issue} has a lane that may still run, so no worktree is discarded: ${busy.join("; ")}; stop that Copilot process, then rerun`);
+    }
+  }
   if (o.claimRepo) removeFactoryClaim(o.ledgerDir ?? defaultLedgerDir(), o.claimRepo, o.root, o.issue, { onlyRoot: true, ...o.owner ? { deps: o.owner } : {} });
   const exec3 = factoryGuardExec(hardenedGitExec(o.exec, emptyHooksDir2(o.ledgerDir ?? defaultLedgerDir())), () => [state.base]);
   const git7 = (args) => exec3("git", args, { cwd: o.root, env: TRUSTED_READ_ENV });
@@ -125333,9 +125400,14 @@ function cleanHeldFactoryRun(o, state) {
     [FACTORY_CHECKOUT_TEAM, checkoutWorker(o.issue)]
   ];
   const result = { removed: [], kept: [], contained };
+  const tamperedJobs = new Set(o.keepTamperEvidence ? state.lanes.filter((l) => l.jobId && TAMPER_NOTE.test(l.note ?? "")).map((l) => l.jobId) : []);
   for (const [team, worker] of targets) {
     const path30 = getWorktreePath(o.root, team, worker);
     const existed = (0, import_fs159.existsSync)(path30);
+    if (existed && team === WORKTREE_TEAM && tamperedJobs.has(worker)) {
+      result.kept.push({ worktree: path30, reason: `tamper_evidence: its lane note records tamper problems; inspect it, then omg factory run clean ${o.issue} --discard removes it` });
+      continue;
+    }
     if (team === FACTORY_CHECKOUT_TEAM) unlinkNodeModules(o.root, path30);
     try {
       removeWorkerWorktree(team, worker, o.root, { contained, ...o.discard ? { discardChanges: true } : {} });
@@ -125346,7 +125418,7 @@ function cleanHeldFactoryRun(o, state) {
   }
   return result;
 }
-var import_fs159, HEX4011;
+var import_fs159, HEX4011, UNCONFIRMED_NOTE, TAMPER_NOTE;
 var init_clean = __esm({
   "src/factory/run/clean.ts"() {
     "use strict";
@@ -125360,9 +125432,12 @@ var init_clean = __esm({
     init_forge_roots();
     init_ledger2();
     init_prepare();
+    init_process_utils();
     init_state6();
     init_claims();
     HEX4011 = /^[0-9a-f]{40}$/;
+    UNCONFIRMED_NOTE = /not confirmed|cancel failed|may still run/;
+    TAMPER_NOTE = /\btampered: |tamper check: /;
   }
 });
 
@@ -125443,7 +125518,7 @@ function resetFactoryRun(o) {
     ].filter((p) => (0, import_fs160.existsSync)(p));
     const result = {};
     if (worktrees().length > 0) {
-      const cleaned = cleanHeldFactoryRun({ root: o.root, issue: o.issue, exec: o.exec, ledgerDir, discard: true, ...o.owner ? { owner: o.owner } : {} }, state);
+      const cleaned = cleanHeldFactoryRun({ root: o.root, issue: o.issue, exec: o.exec, ledgerDir, discard: true, keepTamperEvidence: true, ...o.owner ? { owner: o.owner } : {}, ...o.processAlive ? { processAlive: o.processAlive } : {} }, state);
       if (cleaned.removed.length > 0) result.removedWorktrees = cleaned.removed;
       if (cleaned.kept.length > 0) {
         throw new FactoryStateError(`the cancelled run for issue #${o.issue} still has worktrees that hold work: ${cleaned.kept.map((k) => `${k.worktree} (${k.reason})`).join("; ")}; nothing was reset (reset gives up uncommitted lane changes, never commits that no base or mirror branch holds)`);
@@ -128317,7 +128392,7 @@ function evaluateItem(item, kind, config2, look) {
   const run2 = look.runState(item.id);
   if (run2 && TERMINAL_FACTORY_PHASES.includes(run2.phase)) {
     if (kind === "local" && run2.phase === "cancelled") {
-      return hit("blocked", "run-finished:cancelled", `the factory run was cancelled; omg factory run clean ${item.id}, then omg factory run reset ${item.id}, makes the item runnable again`);
+      return hit("blocked", "run-finished:cancelled", `the factory run was cancelled; omg factory run reset ${item.id} makes the item runnable again (it removes the run's worktrees)`);
     }
     return hit("blocked", `run-finished:${run2.phase}`, `the factory run is ${run2.phase} and is not restarted; see omg factory run status ${item.id}`);
   }
@@ -130300,7 +130375,7 @@ var init_engine = __esm({
         const f = parked.ciFailure;
         const { pr, head } = this.state;
         if (!parked.gate || f?.source !== "ci" || !pr || !head || f.startSha !== head || this.state.phase !== parked.phase) return;
-        const fromCiFix = parked.phase === "ci-fix";
+        const fromCiFix = parked.phase === "ci-fix" && parked.gate.name === "ci-fix-failed";
         if (!fromCiFix && !(parked.phase === "gates" && parked.gate.name === "ci-failed")) return;
         if (this.forge?.kind === "local") {
           for (const c of this.forge.checks.checks(pr, head)) {
@@ -130529,6 +130604,7 @@ var init_engine = __esm({
       }
       async cancel() {
         const usage = /* @__PURE__ */ new Map();
+        const unconfirmed = /* @__PURE__ */ new Set();
         for (const lane of this.state.lanes.filter((l) => l.status === "running")) {
           if (lane.kind === "coding-agent") {
             usage.set(lane.id, this.codingAgentCancelled(lane));
@@ -130539,8 +130615,9 @@ var init_engine = __esm({
             try {
               const c = await this.o.lanes.cancel(lane.jobId);
               if (isTerminalLaneState(c.result.state)) u = usageOf(c.result);
+              else unconfirmed.add(lane.id);
             } catch (e) {
-              if (e instanceof LaneLostError) await this.laneChildGone(lane);
+              if (!(e instanceof LaneLostError) || !(await this.laneChildGone(lane)).gone) unconfirmed.add(lane.id);
             }
           }
           usage.set(lane.id, u);
@@ -130551,11 +130628,11 @@ var init_engine = __esm({
         this.save((s) => moveTo({
           ...s,
           cancelRequested: true,
-          lanes: s.lanes.map((l) => l.status === "running" ? { ...l, status: "cancelled", endedAt: at, ...usage.has(l.id) ? { usage: usage.get(l.id) } : {} } : l)
+          lanes: s.lanes.map((l) => l.status === "running" ? { ...l, status: "cancelled", endedAt: at, ...usage.has(l.id) ? { usage: usage.get(l.id) } : {}, ...unconfirmed.has(l.id) ? { note: "cancelled; the cancel was not confirmed, so the lane may still run" } : {} } : l)
         }, "cancelled", why, at));
         if (this.state.pr) {
           const local = this.forge?.kind === "local" && this.forge.reviews.closePr !== void 0;
-          const kept = local ? `The local PR is closed (cancelled); its branch and the lane worktrees are kept. omg factory run clean ${this.key}, then omg factory run reset ${this.key}, makes the item runnable again.` : "The PR, its branch and the lane worktrees are kept.";
+          const kept = local ? `The local PR is closed (cancelled); its branch and the lane worktrees are kept. omg factory run reset ${this.key} makes the item runnable again (it removes the run's worktrees).` : "The PR, its branch and the lane worktrees are kept.";
           const body = this.writeBody("cancel", `Factory run for ${runLabel(this.key)} was cancelled. ${kept}
 `);
           const res = this.commentPr(this.state.pr, body);
@@ -131367,6 +131444,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
       /** A real check failure: one ci-fix lane while rounds are left, else awaiting-human: ci-failed. */
       ciFailed(failure4, note) {
         if (this.state.ciFixRounds >= this.o.limits.maxCiFixRounds) {
+          this.save((x) => ({ ...x, ciFailure: failure4 }));
           this.gate("ci-failed", `${note}: ${failure4.checks.join(", ")}; the CI-fix rounds are spent (${this.state.ciFixRounds}/${this.o.limits.maxCiFixRounds})`);
           return;
         }
@@ -135406,13 +135484,17 @@ function planItem(item, result, kind, cfg) {
   const held = item.labels.filter((l) => PRIORITY_RE.test(l));
   const effective = itemPriority(item);
   let numeric = null;
-  if (kind === "local" && item.priority !== void 0) {
-    const same8 = item.priority <= PRIORITY_LABELS2.length ? PRIORITY_LABELS2[item.priority - 1] : void 0;
-    for (const l of held) if (l.toLowerCase() !== same8) {
-      remove.push(l);
-      why.push(`priority: the frontmatter priority ${item.priority} wins, drop ${l}`);
+  if (kind === "local" && item.priority !== void 0 && effective === item.priority) {
+    if (item.priority <= PRIORITY_LABELS2.length) {
+      const same8 = PRIORITY_LABELS2[item.priority - 1];
+      for (const l of held) if (l.toLowerCase() !== same8) {
+        remove.push(l);
+        why.push(`priority: the frontmatter priority ${item.priority} wins, drop ${l}`);
+      }
+      why.push(`priority: the frontmatter priority ${item.priority} wins; triage adds no priority label on the local forge`);
+    } else {
+      why.push(`priority: the frontmatter priority ${item.priority} is above ${PRIORITY_LABELS2.length}; the priority labels are left alone`);
     }
-    why.push(`priority: the frontmatter priority ${item.priority} wins; triage adds no priority label on the local forge`);
   } else if (effective !== null) {
     if (effective <= PRIORITY_LABELS2.length) {
       const name = PRIORITY_LABELS2[effective - 1];
@@ -137435,7 +137517,7 @@ function reviewNow(forge, s, row, warnings) {
   const by = [...new Set(fb.decisions.filter((d) => d.state === "changes-requested").map((d) => d.author))];
   if (by.length === 0 && fb.threads.length === 0) return;
   const what = [fb.threads.length > 0 ? `${fb.threads.length} open review note(s)` : "", by.length > 0 ? `changes requested by ${by.join(", ")}` : ""].filter(Boolean).join(" and ");
-  gate.reason = plainText(`${gate.reason.replace(PARKED_REVIEW, "")}; human review now: ${what} on local PR #${s.pr}: do not merge${typeof s.issue === "number" && s.kind !== "ci-heal" ? `; omg factory run ${s.issue} reads it` : ""}`);
+  gate.reason = plainText(`${gate.reason.replace(PARKED_REVIEW, "").replace(PARKED_MERGE_STEP, "")}; human review now: ${what} on local PR #${s.pr}: do not merge${typeof s.issue === "number" && s.kind !== "ci-heal" ? `; omg factory run ${s.issue} reads it` : ""}`);
 }
 function memoTracker(forge) {
   const seen = /* @__PURE__ */ new Map();
@@ -137610,7 +137692,7 @@ function hasRuns(root2) {
     return false;
   }
 }
-var import_fs181, BOARD_JSON_SCHEMA_VERSION, BOARD_STALE_MS, RUN_FILE, message2, same7, PARKED_REVIEW;
+var import_fs181, BOARD_JSON_SCHEMA_VERSION, BOARD_STALE_MS, RUN_FILE, message2, same7, PARKED_REVIEW, PARKED_MERGE_STEP;
 var init_collect = __esm({
   "src/factory/board/collect.ts"() {
     "use strict";
@@ -137630,6 +137712,7 @@ var init_collect = __esm({
     message2 = (error2) => plainText(error2 instanceof Error ? error2.message : String(error2));
     same7 = (a, b) => a !== void 0 && b !== void 0 && a.toLowerCase() === b.toLowerCase();
     PARKED_REVIEW = /; human review: [\s\S]*?; if the PR gets new review comments before you merge, rerun [^;]*? first/;
+    PARKED_MERGE_STEP = /: run [^;]*, then [^;]*$/;
   }
 });
 
@@ -138152,8 +138235,9 @@ async function pollTick(ctx) {
           if (r.reasons[0] === "read-failed") errors.push(`intake: ${r.detail}`);
         }
         const failed3 = new Set(results.filter((r) => r.reasons[0] === "read-failed").map((r) => r.id));
-        step("intake seen", () => updateSeen(root2, ids2.filter((id) => !failed3.has(id)), at));
-        const work = results.filter((r) => !(r.reasons[0] ?? "").startsWith("run-active"));
+        const active = new Set(results.filter((r) => (r.reasons[0] ?? "").startsWith("run-active")).map((r) => r.id));
+        step("intake seen", () => updateSeen(root2, ids2.filter((id) => !failed3.has(id) && !active.has(id)), at));
+        const work = results.filter((r) => !active.has(r.id));
         intake = { ran: true, items: ids2.length, new: work.map((r) => ({ id: r.id, bucket: r.bucket, reasons: r.reasons })) };
       }
     }

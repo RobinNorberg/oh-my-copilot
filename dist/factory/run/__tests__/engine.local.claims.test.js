@@ -52,6 +52,13 @@ describe('F60: local-forge claims across clones', () => {
         gitIn(extra, 'init', '-q', empty);
         expect(localFactoryClaimRepo(defaultExec, empty)).toBeNull();
     });
+    it('a shallow clone gets no key: its boundary commits would count as roots', () => {
+        w = localWorld();
+        gitIn(w.root, 'commit', '-q', '--allow-empty', '-m', 'second');
+        const shallow = join(w.dir, 'shallow');
+        gitIn(w.dir, 'clone', '-q', '--depth', '1', `file://${w.root.replace(/\\/g, '/')}`, shallow);
+        expect(() => localFactoryClaimRepo(defaultExec, shallow)).toThrow(/is a shallow clone: .*git fetch --unshallow/);
+    });
     it('a run parked in clone A makes the same item busy (exit 6) in clone B, dry run included', async () => {
         w = localWorld();
         const first = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/greet.js', 'export const greet = () => "hi";\n'), review('approve')])));

@@ -54,5 +54,21 @@ describe('factory run: rerun after a ci-fix park on the same head (F58)', () => 
         expect(ciFixLanes(lanes.started.map((s) => s.laneId))).toHaveLength(2);
         expect(readFactoryState(w.root, LOCAL_ISSUE).ciFixRounds).toBe(1);
     });
+    it('a ci-failed park (rounds spent) records the failure, so a rerun on the same head re-runs the gate', async () => {
+        w = localWorld();
+        w.gateStatus = [1, 0];
+        const noRounds = { limits: { ...localOpts(w, lanesFor(w, [])).limits, maxCiFixRounds: 0 } };
+        const first = await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')]), noRounds));
+        expect(first.exitCode, first.message).toBe(EXIT_AWAITING_HUMAN);
+        expect(first.gate?.name).toBe('ci-failed');
+        const parked = readFactoryState(w.root, LOCAL_ISSUE);
+        expect(parked.ciFailure?.startSha).toBe(parked.head);
+        const lanes = lanesFor(w, []);
+        const out = await runFactoryEngine(localOpts(w, lanes, noRounds));
+        expect(out.exitCode, out.message).toBe(0);
+        expect(out.gate?.name).toBe('merge');
+        expect(lanes.started).toEqual([]);
+        expect(w.gateRuns.map((r) => r.head)).toEqual([parked.head, parked.head]);
+    });
 });
 //# sourceMappingURL=engine.local.ci-recheck.test.js.map
