@@ -51767,7 +51767,9 @@ function pinCheckoutGit(exec, pin) {
     const p = pin();
     const git3 = cmd.replace(/\\/g, "/").split("/").pop().toLowerCase().replace(/\.exe$/, "") === "git";
     if (!p || !git3 || !opts?.cwd || !sameFsPath(opts.cwd, p.workTree)) return exec(cmd, args, opts);
-    return exec(cmd, [`--git-dir=${p.gitDir}`, `--work-tree=${p.workTree}`, ...args], opts);
+    let at = 0;
+    while (args[at] === "-c" && at + 1 < args.length) at += 2;
+    return exec(cmd, [...args.slice(0, at), `--git-dir=${p.gitDir}`, `--work-tree=${p.workTree}`, ...args.slice(at)], opts);
   };
 }
 function checkoutGitLink(checkout) {
