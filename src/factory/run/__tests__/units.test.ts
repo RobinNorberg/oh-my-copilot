@@ -708,15 +708,17 @@ describe('hardened engine git', () => {
   beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'omg-factory-harden-')); });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-  it('prepends an empty core.hooksPath and core.fsmonitor=false to git, and leaves gh alone', () => {
+  it('prepends an empty core.hooksPath, core.fsmonitor=false and the ancestry/transport pins to git, and leaves gh alone', () => {
     const hooks = join(dir, 'hooks');
     mkdirSync(hooks);
     const seen: string[][] = [];
     const exec = hardenedGitExec((cmd, args) => { seen.push([cmd, ...args]); return { status: 0, stdout: '', stderr: '' }; }, hooks);
     exec('git', ['push', 'origin', `${SHA}:refs/heads/factory/issue-7`]);
     exec('gh', ['pr', 'view', '42']);
+    const pins = ['core.fsmonitor=false', 'core.pager=cat', 'diff.external=', 'core.commitGraph=false', 'core.multiPackIndex=false', 'gc.auto=0', 'maintenance.auto=false',
+      'fetch.writeCommitGraph=false', 'protocol.ext.allow=never', 'remote.origin.uploadpack=git-upload-pack', 'remote.origin.receivepack=git-receive-pack'];
     expect(seen).toEqual([
-      ['git', '-c', `core.hooksPath=${hooks}`, '-c', 'core.fsmonitor=false', '-c', 'core.pager=cat', '-c', 'diff.external=', 'push', 'origin', `${SHA}:refs/heads/factory/issue-7`],
+      ['git', '-c', `core.hooksPath=${hooks}`, ...pins.flatMap((kv) => ['-c', kv]), 'push', 'origin', `${SHA}:refs/heads/factory/issue-7`],
       ['gh', 'pr', 'view', '42'],
     ]);
   });

@@ -93,6 +93,14 @@ export interface RepoSnapshot {
   /** Submodule git dir (relative to `modules/`) -> hash of its config, hooks, info and alternates. */
   modules: Record<string, string>;
   alternates: string;
+  /**
+   * Hash of what steers ancestry answers besides the commits: `shallow`,
+   * everything under `objects/info/` (commit-graph, commit-graphs/,
+   * alternates), `objects/pack/multi-pack-index`, and the names of the
+   * `*.bitmap` / `*.promisor` packs (objectStoreMetaHash). Absent in a
+   * baseline recorded by an older release (the compare then skips it).
+   */
+  objectMeta?: string;
   /** Hash of the global git config files and every include target (see the module comment). */
   globalConfig: string;
   /** Hash of the bounded list of ignored main-checkout paths (see the module comment). */
@@ -157,6 +165,50 @@ function pathHash(path: string): string {
 
 function alternatesHash(gitDir: string): string {
   return `${fileHash(join(gitDir, 'objects', 'info', 'alternates'))} ${fileHash(join(gitDir, 'objects', 'info', 'http-alternates'))}`;
+}
+
+/** Files up to this size are hashed by content; a larger one (a big commit-graph) by size and mtime. */
+export const OBJECT_META_CONTENT_LIMIT = 1024 * 1024;
+
+/** One file of the object store's metadata: content hash when small, else size and mtime; a link or directory by kind. */
+function metaEntry(path: string): string {
+  let st;
+  try { st = lstatSync(path); } catch { return 'absent'; }
+  if (st.isSymbolicLink()) return `l ${readlinkSync(path)}`;
+  if (st.isDirectory()) return 'd';
+  return st.size <= OBJECT_META_CONTENT_LIMIT ? `f ${fileHash(path)}` : `f ${st.size} ${st.mtimeMs}`;
+}
+
+/**
+ * The object store state a forged file could use to change merge-base,
+ * rev-list or a three-dot diff without a ref moving (RepoSnapshot.objectMeta).
+ * Pack data itself is not hashed (a fetch adds packs): only the
+ * multi-pack-index and the names of bitmap and promisor packs.
+ */
+export function objectStoreMetaHash(commonDir: string): string {
+  const entries: string[] = [`shallow ${metaEntry(join(commonDir, 'shallow'))}`];
+  const info = join(commonDir, 'objects', 'info');
+  const walk = (abs: string, rel: string, depth: number) => {
+    let names: string[];
+    try { names = readdirSync(abs).sort(); } catch { return; }
+    for (const name of names) {
+      const p = join(abs, name);
+      const r = `${rel}/${name}`;
+      const entry = metaEntry(p);
+      entries.push(`${r} ${entry}`);
+      if (entry === 'd' && depth < 4) walk(p, r, depth + 1);
+    }
+  };
+  if (notADirectory(info)) entries.push(`objects/info ${NOT_A_DIR}${notADirectory(info)}`);
+  else walk(info, 'objects/info', 0);
+  const pack = join(commonDir, 'objects', 'pack');
+  entries.push(`objects/pack/multi-pack-index ${metaEntry(join(pack, 'multi-pack-index'))}`);
+  let packNames: string[] = [];
+  try { packNames = readdirSync(pack).sort(); } catch { /* no pack dir */ }
+  for (const name of packNames) {
+    if (name.endsWith('.bitmap') || name.endsWith('.promisor')) entries.push(`objects/pack/${name}`);
+  }
+  return sha(entries.join('\n'));
 }
 
 /** What a path is when it is not a real directory (lstat, so a symlink or junction is never followed); null for a directory. */
@@ -366,11 +418,34 @@ export function snapshotRepo(exec: Exec, root: string, stateRootRel: string | nu
     worktrees: worktreeEntries(commonDir, worktreeIds),
     hooks: treeHash(join(commonDir, 'hooks')),
     alternates: alternatesHash(commonDir),
+    objectMeta: objectStoreMetaHash(commonDir),
     ignored: ignoredHash(root),
     mainHead: run(exec, root, ['rev-parse', 'HEAD']).trim(),
     mainSymbolic: run(exec, root, ['rev-parse', '--symbolic-full-name', 'HEAD']).trim(),
     mainStatus: statusUnsafe ? STATUS_SKIPPED : stableStatus(run(exec, root, ['status', '--porcelain=v1', '-z', '--untracked-files=all']), stateRootRel),
   };
+}
+
+/**
+ * Why the shared git dir may not carry a factory run, or null: replace refs
+ * (`refs/replace/*`, loose or packed) or an `info/grafts` file. The engine's
+ * own git ignores both (GIT_NO_REPLACE_OBJECTS, an empty GIT_GRAFT_FILE), but
+ * a replace ref planted before the run would sit in every baseline snapshot,
+ * so the compare would never flag it; the repository's other git users still
+ * honour them. Refused at the start and at every resume.
+ */
+export function replaceObjectsProblem(exec: Exec, root: string): string | null {
+  try {
+    const rawCommon = run(exec, root, ['rev-parse', '--git-common-dir']).trim();
+    const commonDir = isAbsolute(rawCommon) ? rawCommon : resolve(root, rawCommon);
+    const replaced = run(exec, root, ['for-each-ref', FOR_EACH_REF_FORMAT]).split(/\r?\n/)
+      .map((l) => l.trim().split(' ')[0]).filter((name) => name.startsWith('refs/replace/'));
+    const found = [...replaced.slice(0, 5), ...(existsSync(join(commonDir, 'info', 'grafts')) ? [join(commonDir, 'info', 'grafts')] : [])];
+    if (found.length === 0) return null;
+    return `the repository has git replace refs or grafts (${found.join(', ')}${replaced.length > 5 ? ', ...' : ''}), which make git read other commits or trees than the ones named; the factory does not run on it. Inspect them (git replace -l; git for-each-ref refs/replace/), delete what you did not create (git replace -d <sha>; remove info/grafts), then rerun`;
+  } catch (error) {
+    return `the replace refs and grafts of the repository cannot be read: ${error instanceof Error ? error.message : String(error)}`;
+  }
 }
 
 /** Same file system path (realpath when both exist; case-insensitive on Windows). */
@@ -462,6 +537,7 @@ export function compareSnapshots(before: RepoSnapshot, after: RepoSnapshot, allo
     problems.push(was === undefined ? `submodule git dir modules/${m} was added` : now === undefined ? `submodule git dir modules/${m} was removed` : `modules/${m} changed (config, hooks, info or alternates)`);
   }
   if (before.alternates !== after.alternates) problems.push('objects/info/alternates changed');
+  if (before.objectMeta !== undefined && before.objectMeta !== after.objectMeta) problems.push('the object store metadata changed (shallow, objects/info/: commit-graph, commit-graphs/, alternates; objects/pack/multi-pack-index, *.bitmap, *.promisor)');
   if (before.globalConfig !== after.globalConfig) problems.push('the global git config or a file a git config includes changed (~/.gitconfig, $XDG_CONFIG_HOME/git/config, include.path / includeIf targets)');
   if (before.ignored !== after.ignored) problems.push(`an ignored file in the main checkout changed (.env*, ${SENSITIVE_IGNORED.join(', ')})`);
   if (before.mainHead !== after.mainHead) problems.push(`the main checkout's HEAD moved ${before.mainHead.slice(0, 12)} -> ${after.mainHead.slice(0, 12)}`);

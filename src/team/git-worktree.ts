@@ -158,9 +158,24 @@ export function hostGitHardeningArgs(): string[] {
   ];
 }
 
+/**
+ * Host git is local only (no fetch or push runs here), so every key below is
+ * pinned on every command:
+ * - core.commitGraph / core.multiPackIndex=false: ancestry and diff reads use
+ *   the commits themselves, never a commit-graph or MIDX someone wrote.
+ * - gc.auto=0, maintenance.auto=false, fetch.writeCommitGraph=false: host git
+ *   never repacks or writes a commit-graph (the snapshot hashes objects/info).
+ * - commit.gpgSign=false: no signing program runs (commit-tree also passes
+ *   --no-gpg-sign).
+ * - protocol.ext.allow=never: the ext:: transport runs a command.
+ * core.alternateRefsCommand stays: only a receive-pack or upload-pack runs
+ * it, and host git never serves a transport.
+ */
 const EXEC_KEY_OVERRIDES = [
   'core.fsmonitor=false', 'core.pager=cat', 'diff.external=', 'core.sshCommand=ssh', 'credential.helper=',
   'gpg.program=gpg', 'gpg.ssh.program=ssh-keygen', 'gpg.x509.program=gpgsm', 'core.editor=:', 'sequence.editor=:',
+  'core.commitGraph=false', 'core.multiPackIndex=false', 'gc.auto=0', 'maintenance.auto=false', 'fetch.writeCommitGraph=false',
+  'commit.gpgSign=false', 'protocol.ext.allow=never',
 ];
 
 let emptyAttributesFile: string | null = null;
@@ -203,15 +218,26 @@ function gitSubcommandIndex(args: readonly string[]): number {
  * also gets GIT_LFS_SKIP_SMUDGE=1: host git only inspects and never checks
  * files out (`worktree add` does not come here), so a git-lfs that still runs
  * (hostGitDriverOverrides blanks filter.lfs) downloads and writes nothing.
+ * And GIT_NO_REPLACE_OBJECTS=1 (GIT_REPLACE_REF_BASE dropped): a
+ * `refs/replace/<base>` planted in the shared git dir would make the
+ * protected-path diff, ls-tree and merge-tree read another tree than the
+ * commit the engine names. Git still honours `info/grafts` under
+ * GIT_NO_REPLACE_OBJECTS, so GIT_GRAFT_FILE names a file that never exists
+ * (inside the empty hooks dir).
  */
 export function hostGitEnv(args: readonly string[], base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const valueOf = (flag: string) => {
     const i = args.indexOf(flag);
     return i >= 0 && i + 1 < args.length ? args[i + 1] : undefined;
   };
+  const kept: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(base)) {
+    if (!/^GIT_(?:REPLACE_REF_BASE|GRAFT_FILE|NO_REPLACE_OBJECTS)$/i.test(key)) kept[key] = value;
+  }
+  const pins = { GIT_LFS_SKIP_SMUDGE: '1', GIT_NO_REPLACE_OBJECTS: '1', GIT_GRAFT_FILE: join(hostHooksDir(), 'grafts') };
   const gitDir = valueOf('--git-dir');
-  if (!gitDir) return { ...base, GIT_LFS_SKIP_SMUDGE: '1' };
-  const env: NodeJS.ProcessEnv = { ...base, GIT_DIR: resolve(gitDir), GIT_LFS_SKIP_SMUDGE: '1' };
+  if (!gitDir) return { ...kept, ...pins };
+  const env: NodeJS.ProcessEnv = { ...kept, GIT_DIR: resolve(gitDir), ...pins };
   const workTree = valueOf('--work-tree');
   if (workTree) env.GIT_WORK_TREE = resolve(workTree);
   // worktreeGitLinksIntact proved the admin dir is a direct child of <common>/worktrees.
