@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { defaultExec } from '../../../ship/exec.js';
 import { protectedChanges } from '../../../ship/merge.js';
 import { LANE_PROTECTED_PATHS } from '../lane-commit.js';
-import { checkUserRepoGuard, createPrivateRepo, dropImportRef, ensureSeed, fetchIntoPrivate, importFromPrivate, lockfileUnchanged, longPathProblem, privateGitEnv, privateGitPins, privateGitTools, privateRepoConfigHash, privateRepoProblem, privateRunLayout, privateWorkRoot, removeRunDir, resolveUserGitDir, userRepoGuardSnapshot, userRepoProblem, } from '../private-store.js';
+import { checkUserRepoGuard, compareUserRepoGuard, createPrivateRepo, dropImportRef, ensureSeed, fetchIntoPrivate, importFromPrivate, lockfileUnchanged, longPathProblem, privateGitEnv, privateGitPins, privateGitTools, privateRepoConfigHash, privateRepoProblem, privateRunLayout, privateWorkRoot, removeRunDir, resolveUserGitDir, userRepoGuardChanges, userRepoGuardSnapshot, userRepoProblem, } from '../private-store.js';
 const T = 180_000;
 const win = process.platform === 'win32';
 let dir;
@@ -147,6 +147,22 @@ describe('seed and private clone', () => {
         p = createPrivateRepo(layout, base, ctx);
         expect(g(dir, [`--git-dir=${p.gitDir}`, 'for-each-ref', 'refs/replace/'])).toBe('');
         expect(g(dir, [`--git-dir=${p.gitDir}`, 'rev-parse', 'HEAD^{tree}'])).toBe(realTree);
+    }, T);
+    it('review-481b: refuses a partial-clone user repository up front with a fixed message (promisor remote, extensions.partialClone, a promisor pack)', () => {
+        const msg = `the repository ${userGit} is a partial clone (extensions.partialClone, a promisor remote or a promisor pack); partial clones are not supported by the factory's private store: use a full clone`;
+        g(user, ['config', 'remote.origin.promisor', 'true']);
+        expect(() => ensureSeed(layout, userGit, base, ctx)).toThrow(msg);
+        g(user, ['config', '--unset', 'remote.origin.promisor']);
+        g(user, ['config', 'extensions.partialClone', 'origin']);
+        expect(() => ensureSeed(layout, userGit, base, ctx)).toThrow(msg);
+        g(user, ['config', '--unset', 'extensions.partialClone']);
+        const promisor = join(userGit, 'objects', 'pack', 'pack-0000000000000000000000000000000000000000.promisor');
+        mkdirSync(dirname(promisor), { recursive: true });
+        writeFileSync(promisor, '');
+        expect(() => ensureSeed(layout, userGit, base, ctx)).toThrow(msg);
+        expect(existsSync(layout.seed)).toBe(false);
+        rmSync(promisor);
+        ensureSeed(layout, userGit, base, ctx);
     }, T);
     it('refuses a seed with a commondir redirect or a planted config key', () => {
         ensureSeed(layout, userGit, base, ctx);
@@ -441,10 +457,14 @@ describe('import hardening (review-481)', () => {
         expect(protectedChanges(['.huſky/pre-commit', 'CLAUDE‌.md', '.ｇithub/x', '.copilot/omg.jſonc'], [...LANE_PROTECTED_PATHS])).toHaveLength(4);
         expect(protectedChanges(['.github/workflowſ/ci.yml', '.copilot/omg.jſonc'])).toHaveLength(2);
         expect(protectedChanges(['src/huſky.ts', 'docs/claude.md'])).toEqual([]);
+        // review-481b: the `:`/`~`/`..` test runs on the raw segments, so fullwidth `：`/`～` and `‥` (U+2025) in ordinary names are not protected.
+        expect(protectedChanges(['docs/第1章：概要.md', 'a～b.md', 'docs/a‥b.md', 'notes/‥x.md'], [...LANE_PROTECTED_PATHS])).toEqual([]);
+        const hits = ['.GITHUB/x', '.github‌/x', '.github/workflowſ/ci.yml', '.huſky/pre-push', 'CLAUDE.MD', 'GITHUB~1/x', '.github:stream', 'a/../.github/x'];
+        expect(protectedChanges(hits, [...LANE_PROTECTED_PATHS])).toEqual(hits);
     });
 });
 describe('seed integrity (review-481 M1)', () => {
-    it('a seed blob replaced by another object\'s bytes: a shared clone shows the evil content (control); createPrivateRepo refuses before its clone, and a --no-local clone never carries it', () => {
+    it('a seed blob replaced by another object\'s bytes: a shared clone shows the evil content (control); the --no-local private clone refuses it, and a plain --no-local clone never carries it', () => {
         ensureSeed(layout, userGit, base, ctx);
         // The fetch kept a pack: explode it into loose objects, so one object's bytes can be swapped.
         const packDir = join(layout.seed, 'objects', 'pack');
@@ -466,7 +486,19 @@ describe('seed integrity (review-481 M1)', () => {
         const shared = join(dir, 'shared');
         g(dir, ['clone', '-q', '--shared', '--no-checkout', layout.seed, shared]);
         expect(g(shared, ['cat-file', '-p', blob])).toContain('lockfileVersion');
-        expect(() => createPrivateRepo(layout, base, ctx)).toThrow(/fails git fsck/);
+        // No seed fsck (review-481b 1): index-pack re-hashes the swapped object during the clone, so the clone itself refuses it.
+        const clones = [];
+        const spy = (cmd, args, opts) => {
+            if (args.includes('clone'))
+                clones.push(args);
+            if (args.includes('fsck'))
+                throw new Error('no seed fsck expected');
+            return defaultExec(cmd, args, opts);
+        };
+        expect(() => createPrivateRepo(layout, base, { ...ctx, exec: spy })).toThrow(`the private clone of ${base} failed (git exit 128); the seed may be damaged: delete the seed dir ${layout.seed} and start the run again`);
+        expect(clones).toHaveLength(1);
+        expect(clones[0]).toContain('--no-local');
+        expect(clones[0].some((a) => a.startsWith('--reference') || a === '--shared')).toBe(false);
         expect(existsSync(layout.repo)).toBe(false);
         const full = join(dir, 'full');
         const r = spawnSync('git', ['-c', 'transfer.fsckObjects=true', 'clone', '-q', '--no-local', '--no-checkout', layout.seed, full], { encoding: 'utf8', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: emptyGlobal } });
@@ -532,6 +564,79 @@ describe('user repository guard', () => {
         const [id] = readdirSync(join(userGit, 'worktrees'));
         writeFileSync(join(userGit, 'worktrees', id, 'commondir'), `${fwd(join(dir, 'evil.git'))}\n`);
         expect(checkUserRepoGuard(before, ctx)).toEqual(['worktrees']);
+    }, T);
+    it('review-481b: each change carries a kind and the path (no config value; URL userinfo in a key masked); hook.* keys count', () => {
+        let before = snap();
+        writeHook(join(userGit, 'hooks'), 'pre-commit', join(dir, 'm'));
+        expect(userRepoGuardChanges(before, snap())).toEqual([{ item: 'hooks', kind: 'hooks-dir', path: join(userGit, 'hooks') }]);
+        rmSync(join(userGit, 'hooks', 'pre-commit'));
+        before = snap();
+        g(user, ['config', 'filter.x.smudge', 'secret-smudge-value']);
+        g(user, ['config', 'url.https://bob:tok3n@example.invalid/.insteadOf', 'https://other.invalid/']);
+        g(user, ['config', 'hook.lint.command', 'secret-hook-value']);
+        const changes = userRepoGuardChanges(before, snap());
+        expect(changes).toEqual([
+            { item: 'config', kind: 'config-key', path: join(userGit, 'config'), key: 'filter.x.smudge' },
+            { item: 'config', kind: 'config-key', path: join(userGit, 'config'), key: 'url.https://***@example.invalid/.insteadof' },
+            { item: 'config', kind: 'config-key', path: join(userGit, 'config'), key: 'hook.lint.command' },
+        ]);
+        expect(JSON.stringify(changes)).not.toMatch(/secret|tok3n/);
+        expect(checkUserRepoGuard(before, ctx)).toEqual(['config']);
+    }, T);
+    it('review-481b: a conditional include of a dir is recorded, not unreadable; an unconditional one is unreadable and skips the merged config read; a snapshot that times out is unreadable, not thrown', () => {
+        const target = join(dir, 'inc-dir');
+        mkdirSync(target);
+        g(user, ['config', 'includeIf.gitdir:/no/such/place/.path', fwd(target)]);
+        const a = snap();
+        expect(a.items.config).not.toBe('unreadable');
+        expect(a.entries).toContainEqual({ item: 'config', kind: 'include-not-followed', path: target, fingerprint: 'dir' });
+        expect(compareUserRepoGuard(a, snap())).toEqual([]);
+        expect(userRepoProblem(userGit, ctx)).toBeNull();
+        g(user, ['config', '--unset-all', 'includeIf.gitdir:/no/such/place/.path']);
+        g(user, ['config', 'include.path', fwd(target)]);
+        const merged = [];
+        const spy = (cmd, args, opts) => {
+            if (args.includes('--show-scope') || args.includes('--get-regexp') || args.includes('for-each-ref'))
+                merged.push(args);
+            return defaultExec(cmd, args, opts);
+        };
+        const b = userRepoGuardSnapshot(userGit, { ...ctx, exec: spy });
+        expect(b.items.config).toBe('unreadable');
+        expect(b.items.hooksPath).toBe('unreadable');
+        expect(b.items.replace).toBe('unreadable');
+        expect(b.entries).toContainEqual({ item: 'config', kind: 'unreadable', path: target, fingerprint: 'dir' });
+        expect(userRepoProblem(userGit, { ...ctx, exec: spy })).toMatch(/^the repository config or a file it includes cannot be read/);
+        expect(merged).toEqual([]);
+        expect(compareUserRepoGuard(b, b)).toContain('config');
+        // The engine's tools inside the checkout (a ledger under .omg/): the per-file reads discover no repository, so only the include is unreadable.
+        const inRepo = { tools: privateGitTools(join(user, '.omg', 'ledger')) };
+        const c = userRepoGuardSnapshot(userGit, inRepo);
+        expect(c.entries.filter((e) => e.item === 'config' && e.kind === 'unreadable')).toEqual([{ item: 'config', kind: 'unreadable', path: target, fingerprint: 'dir' }]);
+        expect(() => ensureSeed(layout, userGit, base, inRepo)).toThrow(/the repository config or a file it includes cannot be read/);
+        g(dir, ['config', '--file', join(userGit, 'config'), '--unset-all', 'include.path']); // cwd outside: git in the checkout fails while the include is a dir
+        const t = userRepoGuardSnapshot(userGit, { ...ctx, timeoutMs: 1 });
+        expect(Object.values(t.items).every((v) => v === 'unreadable')).toBe(true);
+        expect(t.entries.every((e) => e.kind === 'unreadable' && e.path === userGit)).toBe(true);
+    }, T);
+    it('review-481b: a hooksPath at the work tree root, a hooks dir over 3 levels deep or over 2 000 entries is a fixed guard entry that always counts as changed', () => {
+        g(user, ['config', 'core.hooksPath', '.']);
+        const root = snap();
+        expect(root.items.hooksPath).toBe('too-large');
+        expect(root.entries).toContainEqual({ item: 'hooksPath', kind: 'hooks-path-root', path: dirname(userGit), key: 'core.hookspath', fingerprint: 'root' });
+        expect(compareUserRepoGuard(root, snap())).toEqual(['hooksPath']);
+        const wide = join(dir, 'wide-hooks');
+        mkdirSync(wide);
+        for (let i = 0; i < 2001; i++)
+            writeFileSync(join(wide, `h${i}`), '');
+        g(user, ['config', 'core.hooksPath', fwd(wide)]);
+        expect(userRepoGuardChanges(root, snap())).toContainEqual({ item: 'hooksPath', kind: 'hooks-too-large', path: wide, key: 'core.hookspath' });
+        g(user, ['config', '--unset', 'core.hooksPath']);
+        mkdirSync(join(userGit, 'hooks', 'a', 'b', 'c', 'd'), { recursive: true });
+        const deep = snap();
+        expect(deep.items.hooks).toBe('too-large');
+        expect(deep.entries).toContainEqual({ item: 'hooks', kind: 'hooks-too-large', path: join(userGit, 'hooks'), fingerprint: 'too-large' });
+        rmSync(join(userGit, 'hooks', 'a', 'b', 'c', 'd'), { recursive: true });
+        expect(snap().items.hooks).not.toBe('too-large');
     }, T);
 });
 describe('removeRunDir', () => {

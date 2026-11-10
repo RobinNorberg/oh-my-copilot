@@ -109,7 +109,7 @@ export interface PrivateStoreContext {
     /** Kill any git command here after this many milliseconds (default PRIVATE_GIT_TIMEOUT_MS); a timeout is a refusal (PrivateGitTimeout). */
     timeoutMs?: number;
 }
-/** Ten minutes: a first seed fetch or clone of a large repository, or the seed fsck, fits; a hung pack or a FIFO include does not hang the engine (review-481 L7). */
+/** Ten minutes: a first seed fetch or clone of a large repository fits; a hung pack or a FIFO include does not hang the engine (review-481 L7). */
 export declare const PRIVATE_GIT_TIMEOUT_MS = 600000;
 /** A git command here ran out of time and was killed; fixed text. */
 export declare class PrivateGitTimeout extends PrivateStoreError {
@@ -160,9 +160,41 @@ export declare function resolveUserGitDir(root: string, ctx: PrivateStoreContext
  */
 export declare function userRepoProblem(gitDir: string, ctx: PrivateStoreContext, paths?: readonly string[]): string | null;
 export type UserGuardItem = 'gitdir' | 'redirect' | 'config' | 'hooks' | 'hooksPath' | 'modules' | 'worktrees' | 'grafts' | 'shallow' | 'alternates' | 'http-alternates' | 'replace';
+/**
+ * What one guard entry is (machine-readable, for the engine's park message):
+ * - `config-key`: a dangerous key in a config file (`path` the file, `key` its name);
+ * - `config-link`: a config or included file that is a link (`path` the link);
+ * - `include-not-followed`: a conditional include (includeIf) whose target is
+ *   a directory or cannot be read; git skips it while the condition is false
+ *   and fails while it is true, so it is recorded, not counted as unreadable;
+ * - `unreadable`: what could not be read (`path`), or the snapshot failed;
+ * - `hooks-dir`: a hooks dir listing (`path` the dir); `hooks-path`: a
+ *   core.hooksPath value's dir (`path` the resolved dir, `key` core.hookspath);
+ * - `hooks-too-large`: a hooks dir deeper than 3 levels or over 2 000
+ *   entries; `hooks-path-root`: a hooksPath that resolves to the work tree
+ *   root or the git dir;
+ * - `module`: a submodule git dir (`path` modules/<name>); `worktree`: a
+ *   worktrees/<id> entry that is not stock;
+ * - `redirect-entry`, `grafts`, `shallow`, `alternates`, `http-alternates`:
+ *   that file (`path`); `replace-ref`: a refs/replace/* ref (`path` its name);
+ *   `gitdir`: the git dir itself.
+ */
+export type UserGuardKind = 'gitdir' | 'redirect-entry' | 'config-key' | 'config-link' | 'include-not-followed' | 'unreadable' | 'hooks-dir' | 'hooks-path' | 'hooks-too-large' | 'hooks-path-root' | 'module' | 'worktree' | 'grafts' | 'shallow' | 'alternates' | 'http-alternates' | 'replace-ref';
+/** One guard entry as the engine may print it: never a config value (values may hold secrets); URL userinfo in a key name is masked. */
+export interface UserGuardDetail {
+    item: UserGuardItem;
+    kind: UserGuardKind;
+    path: string;
+    key?: string;
+}
+/** A guard entry with its fingerprint (a sha256 over what it covers, values included: compare only, never print). */
+export interface UserGuardEntry extends UserGuardDetail {
+    fingerprint: string;
+}
 export interface UserRepoGuard {
     gitDir: string;
     items: Record<UserGuardItem, string>;
+    entries: UserGuardEntry[];
 }
 /**
  * The narrow user-repository guard the engine takes under the import lock
@@ -174,7 +206,8 @@ export interface UserRepoGuard {
  *   include (depth-bounded);
  * - `hooks`: hooks/; `hooksPath`: the effective core.hooksPath (merged
  *   config: local, worktree, includes) and every value met in the files
- *   above, each with its dir's listing;
+ *   above, each with its dir's listing (capped: HOOKS_CAP; a hooksPath at
+ *   the work tree root or the git dir is its own `hooks-path-root` entry);
  * - `modules`: each submodule git dir's hooks/ and dangerous config;
  * - `worktrees`: entries whose commondir is not the stock `../..` or whose
  *   commondir/gitdir is not a regular file (a redirect); a plain
@@ -185,10 +218,24 @@ export interface UserRepoGuard {
  * commit-graph, multi-pack-index, packs or info/refs: the user's own
  * `push -u`, `remote add`, `sparse-checkout`, gc and maintenance write those,
  * and every command here pins the graph files off (review-476 M-E).
+ * The git commands in the repository (the effective hooksPath read and the
+ * refs/replace listing, which read the merged config) are skipped when a
+ * config file or an include cannot be read (a FIFO include would block
+ * them); those items are then `unreadable`. It never
+ * throws: a timeout or any other error makes every item `unreadable`, with
+ * one `unreadable` entry for the git dir. `entries` carry each entry's kind
+ * and path for the park message (userRepoGuardChanges).
  */
 export declare function userRepoGuardSnapshot(gitDir: string, ctx: PrivateStoreContext): UserRepoGuard;
-/** The items that differ (fixed names); empty = unchanged. An `unreadable` item always counts as changed. */
+/** The items that differ (fixed names); empty = unchanged. An `unreadable` or `too-large` item always counts as changed. */
 export declare function compareUserRepoGuard(before: UserRepoGuard, after: UserRepoGuard): UserGuardItem[];
+/**
+ * The entries behind compareUserRepoGuard, for an actionable park message
+ * (kind, path, key name; no values, no fingerprints): those added or changed
+ * in `after`, those gone from it, and every `unreadable`, `include-not-followed`,
+ * `hooks-too-large` or `hooks-path-root` entry of a changed item.
+ */
+export declare function userRepoGuardChanges(before: UserRepoGuard, after: UserRepoGuard): UserGuardDetail[];
 /**
  * A fresh snapshot of `before.gitDir` compared with `before` (review-481
  * M3). The publish order under the import lock is:
@@ -198,6 +245,7 @@ export declare function compareUserRepoGuard(before: UserRepoGuard, after: UserR
  *      during the import window parks the run instead of becoming the
  *      baseline;
  *   4. only then baseline = userRepoGuardSnapshot(userGitDir) for the next import.
+ * For the park message, take a snapshot and userRepoGuardChanges(baseline, it).
  */
 export declare function checkUserRepoGuard(before: UserRepoGuard, ctx: PrivateStoreContext): UserGuardItem[];
 /** Fixed-text reason to refuse the seed: a redirect, a config the engine did not write, alternates, grafts, shallow, replace refs. */
@@ -240,10 +288,10 @@ export declare function privateRepoConfigHash(gitDir: string): string;
  */
 export declare function privateRepoProblem(p: PrivateRepo, ctx: PrivateStoreContext): string | null;
 /**
- * Clone the run's private repository from the seed: the seed passes a full
- * fsck first (seedObjectProblem), then a `--no-local` clone (every object
- * sent as a pack and re-hashed by index-pack with fsck on, so a replaced
- * seed object can never land here; only reachable objects, no
+ * Clone the run's private repository from the seed: a `--no-local` clone
+ * (every object sent as a pack and re-hashed by index-pack with fsck on, so
+ * a replaced seed object arrives under another id and the clone fails: no
+ * separate seed fsck is needed; review-481b 1); only reachable objects, no
  * refs/replace, no copied info/), `--no-checkout --no-tags --single-branch
  * --template=`, and NO `--reference`: no alternates at all, so nothing in
  * the seed is read unverified later (review-481 M1). Then HEAD == baseSha
@@ -323,8 +371,9 @@ export interface RemoveSeam {
  * (refuse otherwise), then delete files and directories bottom up, refusing
  * at any link that appeared meanwhile. Every directory is re-lstat-ed (same
  * node, still a plain directory) right before it is read. B1b calls it only
- * after every lane process tree is gone. PR #478's helper is not on dev;
- * switch to it when it lands if it covers the same walk.
+ * after every lane process tree is gone. The module keeps this walk rather
+ * than PR #478's removal helper, which does not re-lstat before each read
+ * and ends in a recursive rm (review-481b nit).
  */
 export declare function removeRunDir(dir: string, work: string, platform?: NodeJS.Platform, seam?: RemoveSeam): void;
 /** The lockfiles whose bytes decide the node_modules policy, at the repository root. */
