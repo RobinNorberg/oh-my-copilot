@@ -67308,6 +67308,68 @@ var init_prompt_helpers = __esm({
   }
 });
 
+// src/openclaw/config.ts
+function isOpenClawEnabled(env2 = process.env) {
+  return env2.OMC_OPENCLAW === "1";
+}
+function getOpenClawConfig() {
+  if (!isOpenClawEnabled()) {
+    return null;
+  }
+  if (_cachedConfig !== null) {
+    return _cachedConfig ?? null;
+  }
+  if (!(0, import_fs71.existsSync)(CONFIG_FILE2)) {
+    _cachedConfig = void 0;
+    return null;
+  }
+  try {
+    const raw = JSON.parse(
+      stripLeadingUtf8Bom((0, import_fs71.readFileSync)(CONFIG_FILE2, "utf-8"))
+    );
+    if (!raw.enabled || !raw.gateways || !raw.hooks) {
+      _cachedConfig = void 0;
+      return null;
+    }
+    _cachedConfig = raw;
+    return raw;
+  } catch {
+    _cachedConfig = void 0;
+    return null;
+  }
+}
+function resolveGateway(config2, event) {
+  const mapping = config2.hooks[event];
+  if (!mapping || !mapping.enabled) {
+    return null;
+  }
+  const gateway = config2.gateways[mapping.gateway];
+  if (!gateway) {
+    return null;
+  }
+  if (gateway.type === "command") {
+    if (!gateway.command) return null;
+  } else {
+    if (!("url" in gateway) || !gateway.url) return null;
+  }
+  return { gatewayName: mapping.gateway, gateway, instruction: mapping.instruction };
+}
+function resetOpenClawConfigCache() {
+  _cachedConfig = null;
+}
+var import_fs71, import_path83, CONFIG_FILE2, _cachedConfig;
+var init_config2 = __esm({
+  "src/openclaw/config.ts"() {
+    "use strict";
+    import_fs71 = require("fs");
+    init_utf8_bom();
+    import_path83 = require("path");
+    init_config_dir();
+    CONFIG_FILE2 = process.env.OMC_OPENCLAW_CONFIG || (0, import_path83.join)(getCopilotConfigDir(), "omc_config.openclaw.json");
+    _cachedConfig = null;
+  }
+});
+
 // src/hooks/autopilot/validation.ts
 function recordValidationVerdict(directory, type, verdict, issues, sessionId) {
   const state = readAutopilotState(directory, sessionId);
@@ -67965,7 +68027,7 @@ function forceTerminalCleanupReplacementForTest() {
   }
 }
 function resolveVerificationStatePath(workingDir, sessionId) {
-  return sessionId ? resolveSessionStatePath("ralph-verification", sessionId, workingDir) : (0, import_path83.join)(getOmcRoot(workingDir), "ralph-verification.json");
+  return sessionId ? resolveSessionStatePath("ralph-verification", sessionId, workingDir) : (0, import_path84.join)(getOmcRoot(workingDir), "ralph-verification.json");
 }
 function hasNamedWorkflowMarkers4(state) {
   return Boolean(
@@ -67985,7 +68047,7 @@ function isEnforceableNamedAutopilotState(state, directory, sessionId) {
   }
 }
 function shouldWriteStateBack(statePath) {
-  return Boolean(statePath && (0, import_fs71.existsSync)(statePath));
+  return Boolean(statePath && (0, import_fs72.existsSync)(statePath));
 }
 function resolveAutopilotTargetPath(directory, sessionId) {
   return sessionId ? resolveSessionStatePath("autopilot", sessionId, directory) : resolveStatePath("autopilot", directory);
@@ -68035,7 +68097,7 @@ function isSessionCancelInProgress(directory, sessionId) {
     }
   }
   if (!cancelSignalPath) {
-    cancelSignalPath = (0, import_path83.join)(getOmcRoot(directory), "state", "cancel-signal-state.json");
+    cancelSignalPath = (0, import_path84.join)(getOmcRoot(directory), "state", "cancel-signal-state.json");
   }
   const validateSignal = (target) => {
     const locked2 = withStateFileMutationLock(cancelSignalPath, () => {
@@ -68050,7 +68112,7 @@ function isSessionCancelInProgress(directory, sessionId) {
       const requestedAt = typeof raw.requested_at === "string" ? new Date(raw.requested_at).getTime() : NaN;
       const expiresAt = typeof raw.expires_at === "string" ? new Date(raw.expires_at).getTime() : NaN;
       if (target) {
-        if (Number.isFinite(expiresAt) && expiresAt <= now2 && (0, import_fs71.existsSync)(cancelSignalPath)) (0, import_fs71.unlinkSync)(cancelSignalPath);
+        if (Number.isFinite(expiresAt) && expiresAt <= now2 && (0, import_fs72.existsSync)(cancelSignalPath)) (0, import_fs72.unlinkSync)(cancelSignalPath);
         return isAuthenticatedAutopilotCancelSignal(raw, target);
       }
       if (raw.mode === "autopilot" || raw.target_state_sha256 !== void 0 || raw.target_workflow_run_id !== void 0) {
@@ -68058,7 +68120,7 @@ function isSessionCancelInProgress(directory, sessionId) {
       }
       const effectiveExpiry = Number.isFinite(expiresAt) ? expiresAt : Number.isFinite(requestedAt) ? requestedAt + CANCEL_SIGNAL_TTL_MS2 : NaN;
       if (!Number.isFinite(requestedAt) || requestedAt > now2 + CANCEL_SIGNAL_CLOCK_SKEW_MS || now2 - requestedAt > CANCEL_SIGNAL_TTL_MS2 || !Number.isFinite(effectiveExpiry) || effectiveExpiry <= requestedAt || effectiveExpiry - requestedAt > CANCEL_SIGNAL_TTL_MS2 || effectiveExpiry <= now2) {
-        if (Number.isFinite(effectiveExpiry) && effectiveExpiry <= now2 && (0, import_fs71.existsSync)(cancelSignalPath)) (0, import_fs71.unlinkSync)(cancelSignalPath);
+        if (Number.isFinite(effectiveExpiry) && effectiveExpiry <= now2 && (0, import_fs72.existsSync)(cancelSignalPath)) (0, import_fs72.unlinkSync)(cancelSignalPath);
         return false;
       }
       return true;
@@ -68208,13 +68270,13 @@ function hasPendingOwnedAsyncWork(directory, sessionId) {
   return hasPendingBackgroundTask(directory, sessionId) || hasPendingScheduledWakeup(directory, sessionId);
 }
 function readLastToolError(directory) {
-  const stateDir = (0, import_path83.join)(getOmcRoot(directory), "state");
-  const errorPath = (0, import_path83.join)(stateDir, "last-tool-error.json");
+  const stateDir = (0, import_path84.join)(getOmcRoot(directory), "state");
+  const errorPath = (0, import_path84.join)(stateDir, "last-tool-error.json");
   try {
-    if (!(0, import_fs71.existsSync)(errorPath)) {
+    if (!(0, import_fs72.existsSync)(errorPath)) {
       return null;
     }
-    const content2 = (0, import_fs71.readFileSync)(errorPath, "utf-8");
+    const content2 = (0, import_fs72.readFileSync)(errorPath, "utf-8");
     const toolError = JSON.parse(content2);
     if (!toolError || !toolError.timestamp) {
       return null;
@@ -68233,11 +68295,11 @@ function readLastToolError(directory) {
   }
 }
 function clearToolErrorState(directory) {
-  const stateDir = (0, import_path83.join)(getOmcRoot(directory), "state");
-  const errorPath = (0, import_path83.join)(stateDir, "last-tool-error.json");
+  const stateDir = (0, import_path84.join)(getOmcRoot(directory), "state");
+  const errorPath = (0, import_path84.join)(stateDir, "last-tool-error.json");
   try {
-    if ((0, import_fs71.existsSync)(errorPath)) {
-      (0, import_fs71.unlinkSync)(errorPath);
+    if ((0, import_fs72.existsSync)(errorPath)) {
+      (0, import_fs72.unlinkSync)(errorPath);
     }
   } catch {
   }
@@ -68282,8 +68344,8 @@ function resetTodoContinuationAttempts(sessionId) {
 function getIdleNotificationCooldownSeconds() {
   for (const configPath of getGlobalOmcConfigCandidates("config.json")) {
     try {
-      if (!(0, import_fs71.existsSync)(configPath)) continue;
-      const config2 = JSON.parse((0, import_fs71.readFileSync)(configPath, "utf-8"));
+      if (!(0, import_fs72.existsSync)(configPath)) continue;
+      const config2 = JSON.parse((0, import_fs72.readFileSync)(configPath, "utf-8"));
       const cooldown = config2?.notificationCooldown;
       const val = cooldown?.sessionIdleSeconds;
       if (typeof val === "number" && Number.isFinite(val)) return Math.max(0, val);
@@ -68295,18 +68357,18 @@ function getIdleNotificationCooldownSeconds() {
   return 60;
 }
 function getGlobalIdleNotificationCooldownPath(stateDir) {
-  return (0, import_path83.join)(stateDir, "idle-notif-cooldown.json");
+  return (0, import_path84.join)(stateDir, "idle-notif-cooldown.json");
 }
 function getIdleNotificationCooldownPath(stateDir, sessionId) {
   if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
-    return (0, import_path83.join)(stateDir, "sessions", sessionId, "idle-notif-cooldown.json");
+    return (0, import_path84.join)(stateDir, "sessions", sessionId, "idle-notif-cooldown.json");
   }
   return getGlobalIdleNotificationCooldownPath(stateDir);
 }
 function readIdleNotificationCooldownRecord(cooldownPath) {
   try {
-    if (!(0, import_fs71.existsSync)(cooldownPath)) return null;
-    return JSON.parse((0, import_fs71.readFileSync)(cooldownPath, "utf-8"));
+    if (!(0, import_fs72.existsSync)(cooldownPath)) return null;
+    return JSON.parse((0, import_fs72.readFileSync)(cooldownPath, "utf-8"));
   } catch {
     return null;
   }
@@ -68370,25 +68432,25 @@ function recordIdleNotificationSent(stateDir, sessionId, repoState) {
   }
 }
 function readTranscriptTail(transcriptPath) {
-  const size = (0, import_fs71.statSync)(transcriptPath).size;
+  const size = (0, import_fs72.statSync)(transcriptPath).size;
   if (size <= TRANSCRIPT_TAIL_BYTES) {
-    return (0, import_fs71.readFileSync)(transcriptPath, "utf-8");
+    return (0, import_fs72.readFileSync)(transcriptPath, "utf-8");
   }
-  const fd = (0, import_fs71.openSync)(transcriptPath, "r");
+  const fd = (0, import_fs72.openSync)(transcriptPath, "r");
   try {
     const offset = size - TRANSCRIPT_TAIL_BYTES;
     const buf = Buffer.allocUnsafe(TRANSCRIPT_TAIL_BYTES);
-    const bytesRead = (0, import_fs71.readSync)(fd, buf, 0, TRANSCRIPT_TAIL_BYTES, offset);
+    const bytesRead = (0, import_fs72.readSync)(fd, buf, 0, TRANSCRIPT_TAIL_BYTES, offset);
     return buf.subarray(0, bytesRead).toString("utf-8");
   } finally {
-    (0, import_fs71.closeSync)(fd);
+    (0, import_fs72.closeSync)(fd);
   }
 }
 function readTranscriptTailLines(transcriptPath) {
   const content2 = readTranscriptTail(transcriptPath);
   const lines4 = content2.split("\n");
   try {
-    if ((0, import_fs71.statSync)(transcriptPath).size > TRANSCRIPT_TAIL_BYTES && lines4.length > 0) {
+    if ((0, import_fs72.statSync)(transcriptPath).size > TRANSCRIPT_TAIL_BYTES && lines4.length > 0) {
       lines4.shift();
     }
   } catch {
@@ -68483,7 +68545,7 @@ function checkReviewerAuthoredApprovalInMessages(transcriptPath, verificationSta
   return false;
 }
 function estimateTranscriptContextPercent(transcriptPath) {
-  if (!transcriptPath || !(0, import_fs71.existsSync)(transcriptPath)) {
+  if (!transcriptPath || !(0, import_fs72.existsSync)(transcriptPath)) {
     return 0;
   }
   try {
@@ -68532,9 +68594,9 @@ function isAwaitingConfirmation(state) {
 }
 function checkArchitectApprovalInTranscript(sessionId, verificationState) {
   const claudeDir = getCopilotConfigDir();
-  const possiblePaths = [(0, import_path83.join)(claudeDir, "sessions", sessionId, "messages.json")];
+  const possiblePaths = [(0, import_path84.join)(claudeDir, "sessions", sessionId, "messages.json")];
   for (const transcriptPath of possiblePaths) {
-    if (!(0, import_fs71.existsSync)(transcriptPath)) {
+    if (!(0, import_fs72.existsSync)(transcriptPath)) {
       continue;
     }
     try {
@@ -68550,12 +68612,12 @@ function checkArchitectApprovalInTranscript(sessionId, verificationState) {
 function checkArchitectRejectionInTranscript(sessionId) {
   const claudeDir = getCopilotConfigDir();
   const possiblePaths = [
-    (0, import_path83.join)(claudeDir, "sessions", sessionId, "transcript.md"),
-    (0, import_path83.join)(claudeDir, "sessions", sessionId, "messages.json"),
-    (0, import_path83.join)(claudeDir, "transcripts", `${sessionId}.md`)
+    (0, import_path84.join)(claudeDir, "sessions", sessionId, "transcript.md"),
+    (0, import_path84.join)(claudeDir, "sessions", sessionId, "messages.json"),
+    (0, import_path84.join)(claudeDir, "transcripts", `${sessionId}.md`)
   ];
   for (const transcriptPath of possiblePaths) {
-    if ((0, import_fs71.existsSync)(transcriptPath)) {
+    if ((0, import_fs72.existsSync)(transcriptPath)) {
       try {
         const content2 = readTranscriptTail(transcriptPath);
         const result = detectArchitectRejection(content2);
@@ -68699,7 +68761,7 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
             };
             const cleanup = () => {
               const locked = withStateFileMutationLock(verificationPath, () => {
-                if ((0, import_fs71.existsSync)(verificationPath)) return false;
+                if ((0, import_fs72.existsSync)(verificationPath)) return false;
                 const ralphCleared = !ralphSnapshot || !ralphCleanupSnapshot ? !ralphSnapshot : clearModeStateFile(
                   "ralph",
                   workingDir,
@@ -68899,15 +68961,15 @@ ${newState.prompt ? `Original task: ${truncatePromptForEcho(newState.prompt)}` :
   };
 }
 function readStopBreaker(directory, name, sessionId, ttlMs) {
-  const stateDir = sessionId ? (0, import_path83.join)(getOmcRoot(directory), "state", "sessions", sessionId) : (0, import_path83.join)(getOmcRoot(directory), "state");
-  const breakerPath = (0, import_path83.join)(stateDir, `${name}-stop-breaker.json`);
+  const stateDir = sessionId ? (0, import_path84.join)(getOmcRoot(directory), "state", "sessions", sessionId) : (0, import_path84.join)(getOmcRoot(directory), "state");
+  const breakerPath = (0, import_path84.join)(stateDir, `${name}-stop-breaker.json`);
   try {
-    if (!(0, import_fs71.existsSync)(breakerPath)) return 0;
-    const raw = JSON.parse((0, import_fs71.readFileSync)(breakerPath, "utf-8"));
+    if (!(0, import_fs72.existsSync)(breakerPath)) return 0;
+    const raw = JSON.parse((0, import_fs72.readFileSync)(breakerPath, "utf-8"));
     if (ttlMs && raw.updated_at) {
       const updatedAt = new Date(raw.updated_at).getTime();
       if (Number.isFinite(updatedAt) && Date.now() - updatedAt > ttlMs) {
-        (0, import_fs71.unlinkSync)(breakerPath);
+        (0, import_fs72.unlinkSync)(breakerPath);
         return 0;
       }
     }
@@ -68917,10 +68979,10 @@ function readStopBreaker(directory, name, sessionId, ttlMs) {
   }
 }
 function writeStopBreaker(directory, name, count3, sessionId) {
-  const stateDir = sessionId ? (0, import_path83.join)(getOmcRoot(directory), "state", "sessions", sessionId) : (0, import_path83.join)(getOmcRoot(directory), "state");
+  const stateDir = sessionId ? (0, import_path84.join)(getOmcRoot(directory), "state", "sessions", sessionId) : (0, import_path84.join)(getOmcRoot(directory), "state");
   try {
-    (0, import_fs71.mkdirSync)(stateDir, { recursive: true });
-    const breakerPath = (0, import_path83.join)(stateDir, `${name}-stop-breaker.json`);
+    (0, import_fs72.mkdirSync)(stateDir, { recursive: true });
+    const breakerPath = (0, import_path84.join)(stateDir, `${name}-stop-breaker.json`);
     const data = { count: count3, updated_at: (/* @__PURE__ */ new Date()).toISOString() };
     atomicWriteJsonSync(breakerPath, data);
   } catch {
@@ -68982,7 +69044,7 @@ function classifyLastAssistantTurn(transcriptPath) {
 function applyThinkingOnlyStreakGuard(result, workingDir, sessionId, stopContext) {
   if (!result.shouldBlock) return result;
   const transcriptPath = stopContext?.transcript_path ?? stopContext?.transcriptPath;
-  if (!transcriptPath || !(0, import_fs71.existsSync)(transcriptPath)) {
+  if (!transcriptPath || !(0, import_fs72.existsSync)(transcriptPath)) {
     return result;
   }
   let classification;
@@ -69492,14 +69554,14 @@ function createHookOutput(result) {
     message: result.message || void 0
   };
 }
-var import_crypto20, import_fs71, import_path83, CANCEL_SIGNAL_TTL_MS2, CANCEL_SIGNAL_CLOCK_SKEW_MS, STALE_STATE_THRESHOLD_MS, PENDING_ASYNC_STATE_STALE_MS, OVERSIZE_TOOL_RESULT_REDIRECT_STOP_MAX, OVERSIZE_TOOL_RESULT_REDIRECT_STOP_TTL_MS, TERMINAL_WORKFLOW_SLOT_MODES, TERMINAL_WORKFLOW_PHASES, todoContinuationAttempts, TRANSCRIPT_TAIL_BYTES, CRITICAL_CONTEXT_STOP_PERCENT, RALPLAN_TERMINAL_PHASES, REVIEWER_TASK_TOOL_NAMES, REVIEWER_COMMAND_TOOL_NAMES, AWAITING_CONFIRMATION_TTL_MS, THINKING_ONLY_STREAK_BREAKER, THINKING_ONLY_STREAK_MAX, THINKING_ONLY_STREAK_TTL_MS, THINKING_ONLY_STREAK_BAILOUT_MESSAGE, TEAM_PIPELINE_STOP_BLOCKER_MAX, TEAM_PIPELINE_STOP_BLOCKER_TTL_MS, RALPLAN_STOP_BLOCKER_MAX, RALPLAN_STOP_BLOCKER_TTL_MS, RALPLAN_ACTIVE_AGENT_RECENCY_WINDOW_MS;
+var import_crypto20, import_fs72, import_path84, CANCEL_SIGNAL_TTL_MS2, CANCEL_SIGNAL_CLOCK_SKEW_MS, STALE_STATE_THRESHOLD_MS, PENDING_ASYNC_STATE_STALE_MS, OVERSIZE_TOOL_RESULT_REDIRECT_STOP_MAX, OVERSIZE_TOOL_RESULT_REDIRECT_STOP_TTL_MS, TERMINAL_WORKFLOW_SLOT_MODES, TERMINAL_WORKFLOW_PHASES, todoContinuationAttempts, TRANSCRIPT_TAIL_BYTES, CRITICAL_CONTEXT_STOP_PERCENT, RALPLAN_TERMINAL_PHASES, REVIEWER_TASK_TOOL_NAMES, REVIEWER_COMMAND_TOOL_NAMES, AWAITING_CONFIRMATION_TTL_MS, THINKING_ONLY_STREAK_BREAKER, THINKING_ONLY_STREAK_MAX, THINKING_ONLY_STREAK_TTL_MS, THINKING_ONLY_STREAK_BAILOUT_MESSAGE, TEAM_PIPELINE_STOP_BLOCKER_MAX, TEAM_PIPELINE_STOP_BLOCKER_TTL_MS, RALPLAN_STOP_BLOCKER_MAX, RALPLAN_STOP_BLOCKER_TTL_MS, RALPLAN_ACTIVE_AGENT_RECENCY_WINDOW_MS;
 var init_persistent_mode = __esm({
   "src/hooks/persistent-mode/index.ts"() {
     "use strict";
     import_crypto20 = require("crypto");
-    import_fs71 = require("fs");
+    import_fs72 = require("fs");
     init_atomic_write();
-    import_path83 = require("path");
+    import_path84 = require("path");
     init_security_config();
     init_config_dir();
     init_paths();
@@ -69576,16 +69638,16 @@ var init_persistent_mode = __esm({
 function detectSignal(sessionId, signal) {
   const claudeDir = getCopilotConfigDir();
   const possiblePaths = [
-    (0, import_path84.join)(claudeDir, "sessions", sessionId, "transcript.md"),
-    (0, import_path84.join)(claudeDir, "sessions", sessionId, "messages.json"),
-    (0, import_path84.join)(claudeDir, "transcripts", `${sessionId}.md`)
+    (0, import_path85.join)(claudeDir, "sessions", sessionId, "transcript.md"),
+    (0, import_path85.join)(claudeDir, "sessions", sessionId, "messages.json"),
+    (0, import_path85.join)(claudeDir, "transcripts", `${sessionId}.md`)
   ];
   const pattern = SIGNAL_PATTERNS[signal];
   if (!pattern) return false;
   for (const transcriptPath of possiblePaths) {
-    if ((0, import_fs72.existsSync)(transcriptPath)) {
+    if ((0, import_fs73.existsSync)(transcriptPath)) {
       try {
-        const content2 = (0, import_fs72.readFileSync)(transcriptPath, "utf-8");
+        const content2 = (0, import_fs73.readFileSync)(transcriptPath, "utf-8");
         if (pattern.test(content2)) {
           return true;
         }
@@ -70026,16 +70088,16 @@ IMPORTANT: When this stage is complete, output the signal: ${currentAdapter.comp
 function detectPipelineSignal(sessionId, signal) {
   const claudeDir = getCopilotConfigDir();
   const possiblePaths = [
-    (0, import_path84.join)(claudeDir, "sessions", sessionId, "transcript.md"),
-    (0, import_path84.join)(claudeDir, "sessions", sessionId, "messages.json"),
-    (0, import_path84.join)(claudeDir, "transcripts", `${sessionId}.md`)
+    (0, import_path85.join)(claudeDir, "sessions", sessionId, "transcript.md"),
+    (0, import_path85.join)(claudeDir, "sessions", sessionId, "messages.json"),
+    (0, import_path85.join)(claudeDir, "transcripts", `${sessionId}.md`)
   ];
   const escaped = signal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pattern = new RegExp(escaped, "i");
   for (const transcriptPath of possiblePaths) {
-    if ((0, import_fs72.existsSync)(transcriptPath)) {
+    if ((0, import_fs73.existsSync)(transcriptPath)) {
       try {
-        const content2 = (0, import_fs72.readFileSync)(transcriptPath, "utf-8");
+        const content2 = (0, import_fs73.readFileSync)(transcriptPath, "utf-8");
         if (pattern.test(content2)) {
           return true;
         }
@@ -70046,12 +70108,12 @@ function detectPipelineSignal(sessionId, signal) {
   }
   return false;
 }
-var import_fs72, import_path84, SIGNAL_PATTERNS, AWAITING_CONFIRMATION_TTL_MS2, PASTED_ECHO_PROMPT_SENTINEL;
+var import_fs73, import_path85, SIGNAL_PATTERNS, AWAITING_CONFIRMATION_TTL_MS2, PASTED_ECHO_PROMPT_SENTINEL;
 var init_enforcement = __esm({
   "src/hooks/autopilot/enforcement.ts"() {
     "use strict";
-    import_fs72 = require("fs");
-    import_path84 = require("path");
+    import_fs73 = require("fs");
+    import_path85 = require("path");
     init_config_dir();
     init_security_config();
     init_plan_output();
@@ -71259,68 +71321,6 @@ var init_idle_repo_state = __esm({
   }
 });
 
-// src/openclaw/config.ts
-function isOpenClawEnabled(env2 = process.env) {
-  return env2.OMC_OPENCLAW === "1";
-}
-function getOpenClawConfig() {
-  if (!isOpenClawEnabled()) {
-    return null;
-  }
-  if (_cachedConfig !== null) {
-    return _cachedConfig ?? null;
-  }
-  if (!(0, import_fs73.existsSync)(CONFIG_FILE2)) {
-    _cachedConfig = void 0;
-    return null;
-  }
-  try {
-    const raw = JSON.parse(
-      stripLeadingUtf8Bom((0, import_fs73.readFileSync)(CONFIG_FILE2, "utf-8"))
-    );
-    if (!raw.enabled || !raw.gateways || !raw.hooks) {
-      _cachedConfig = void 0;
-      return null;
-    }
-    _cachedConfig = raw;
-    return raw;
-  } catch {
-    _cachedConfig = void 0;
-    return null;
-  }
-}
-function resolveGateway(config2, event) {
-  const mapping = config2.hooks[event];
-  if (!mapping || !mapping.enabled) {
-    return null;
-  }
-  const gateway = config2.gateways[mapping.gateway];
-  if (!gateway) {
-    return null;
-  }
-  if (gateway.type === "command") {
-    if (!gateway.command) return null;
-  } else {
-    if (!("url" in gateway) || !gateway.url) return null;
-  }
-  return { gatewayName: mapping.gateway, gateway, instruction: mapping.instruction };
-}
-function resetOpenClawConfigCache() {
-  _cachedConfig = null;
-}
-var import_fs73, import_path85, CONFIG_FILE2, _cachedConfig;
-var init_config2 = __esm({
-  "src/openclaw/config.ts"() {
-    "use strict";
-    import_fs73 = require("fs");
-    init_utf8_bom();
-    import_path85 = require("path");
-    init_config_dir();
-    CONFIG_FILE2 = process.env.OMC_OPENCLAW_CONFIG || (0, import_path85.join)(getCopilotConfigDir(), "omc_config.openclaw.json");
-    _cachedConfig = null;
-  }
-});
-
 // src/hooks/session-end/cleanup-manifest.ts
 function openClawRoutingSnapshot() {
   const values = [
@@ -71518,7 +71518,11 @@ function updateSessionEndActionPayload(directory, sessionId, authority, actionNa
     if (job.jobId !== authority.jobId || !job.owner || job.owner.nonce !== authority.ownerNonce) throw new Error("owner-conflict");
     const claimed = job.actions[authority.actionName];
     if (claimed.status !== "claimed" || claimed.attempts !== authority.attempt || claimed.claimantNonce !== authority.ownerNonce || claimed.runner?.runnerNonce !== authority.runnerNonce || claimed.runner.phase !== "armed") throw new Error("runner-conflict");
-    for (const name of actionNames) if (job.actions[name]) job.actions[name].payload = { ...job.actions[name].payload, ...payload };
+    for (const name of actionNames) {
+      const target = job.actions[name];
+      if (!target && name === "openclaw") continue;
+      target.payload = { ...target.payload, ...payload };
+    }
   });
 }
 function mutateLatest(directory, sessionId, mutate, retryOn = "any-null") {
@@ -77912,7 +77916,7 @@ async function runSessionEndDeferredAction(action2, context) {
         // OpenClaw wake attempts are terminal in the manifest because remote
         // acceptance can precede an unavailable response.
         case "openclaw-wake": {
-          if (action2.payload.enabled !== true || process.env.OMC_OPENCLAW !== "1") return "skipped";
+          if (action2.payload.enabled !== true || !isOpenClawEnabled()) return "skipped";
           const { wakeOpenClaw: wakeOpenClaw2 } = await Promise.resolve().then(() => (init_openclaw(), openclaw_exports));
           const result2 = await wakeOpenClaw2("session-end", { sessionId: context.sessionId, projectPath: context.directory, reason: typeof action2.payload.reason === "string" ? action2.payload.reason : context.metrics.reason });
           if (!result2?.success) throw new Error("openclaw-wake-not-accepted");
@@ -77934,6 +77938,7 @@ var init_callbacks = __esm({
     import_fs80 = require("fs");
     import_path97 = require("path");
     import_os16 = require("os");
+    init_config2();
     init_auto_update();
   }
 });
@@ -107993,7 +107998,7 @@ async function runSessionEndNotifications(directory, sessionId, strict = false) 
 }
 async function runSessionEndOpenClaw(directory, sessionId, strict = false) {
   const { metrics, input } = deferredSessionEndSnapshot(directory, sessionId);
-  const outcome = await runSessionEndDeferredAction({ name: "openclaw-wake", class: "best-effort", payload: { enabled: process.env.OMC_OPENCLAW === "1", reason: metrics.reason, sessionId }, budgetMs: 2e3 }, { directory, sessionId, transcriptPath: input.transcript_path ?? "", metrics, input, deadlineAt: new Date(Date.now() + 2e3).toISOString(), action: { name: "openclaw-wake", class: "best-effort", payload: {}, budgetMs: 2e3 } });
+  const outcome = await runSessionEndDeferredAction({ name: "openclaw-wake", class: "best-effort", payload: { enabled: isOpenClawEnabled(), reason: metrics.reason, sessionId }, budgetMs: 2e3 }, { directory, sessionId, transcriptPath: input.transcript_path ?? "", metrics, input, deadlineAt: new Date(Date.now() + 2e3).toISOString(), action: { name: "openclaw-wake", class: "best-effort", payload: {}, budgetMs: 2e3 } });
   if (strict && outcome.status !== "completed" && outcome.status !== "skipped") throw new Error(`openclaw-wake-${outcome.status}`);
 }
 async function runForegroundSessionEndCleanup(directory, sessionId, persistResult = true) {
@@ -108024,7 +108029,7 @@ function buildDurableSessionEndPayload(directory, input, metrics) {
     metrics,
     initialTeamNames: teamName ? [teamName] : [],
     notificationProfile: typeof process.env.OMC_NOTIFY_PROFILE === "string" ? process.env.OMC_NOTIFY_PROFILE : void 0,
-    openClawEnabled: process.env.OMC_OPENCLAW === "1"
+    openClawEnabled: isOpenClawEnabled()
   };
 }
 async function processSessionEnd(input) {
@@ -108082,6 +108087,7 @@ var init_session_end = __esm({
     init_worker();
     init_stale_prd();
     init_types10();
+    init_config2();
     init_wiki_foreground_bootstrap();
     SESSION_STARTED_MARKER_FILE = "session-started.json";
     DEFAULT_SESSION_END_CLEANUP_BUDGET_MS = 2e3;
@@ -156729,6 +156735,7 @@ function recordDispatchTelemetry(record3, worktreeRoot) {
 }
 
 // src/hooks/bridge.ts
+init_config2();
 var PKILL_F_FLAG_PATTERN = /\bpkill\b.*\s-f\b/;
 var PKILL_FULL_FLAG_PATTERN = /\bpkill\b.*--full\b/;
 var WORKER_BLOCKED_TMUX_PATTERN = /\btmux\s+/i;
@@ -158189,7 +158196,7 @@ var _notify = {
 };
 var _openclaw = {
   wake: (event, context) => {
-    if (process.env.OMC_OPENCLAW !== "1") return;
+    if (!isOpenClawEnabled()) return;
     const logOpenClawWakeFailure = createSwallowedErrorLogger(
       `hooks.bridge openclaw wake failed for ${event}`
     );

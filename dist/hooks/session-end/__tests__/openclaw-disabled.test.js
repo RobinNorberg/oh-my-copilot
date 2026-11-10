@@ -27,7 +27,7 @@ const actionRunner = vi.hoisted(() => ({
 vi.mock('../index.js', () => actions);
 vi.mock('../../../platform/process-utils.js', () => processIdentity);
 vi.mock('../action-runner.js', () => actionRunner);
-import { mutateSessionEndJob, prepareCoreManifest, readSessionEndJob, sealCoreManifest, sealWikiManifest, sessionEndJobsDirectory } from '../cleanup-manifest.js';
+import { markSessionEndActionRunner, mutateSessionEndJob, prepareCoreManifest, readSessionEndJob, sealCoreManifest, sealWikiManifest, sessionEndJobsDirectory } from '../cleanup-manifest.js';
 import { processSessionEndWorker } from '../worker.js';
 const directories = [];
 function project() {
@@ -98,6 +98,38 @@ describe('openclaw session-end action when OpenClaw is disabled (#479)', () => {
         expect(runnerActions()).toContain('openclaw');
         expect(actions.runSessionEndOpenClaw).toHaveBeenCalledTimes(1);
         expect(readSessionEndJob(directory, 's3').actions.openclaw).toMatchObject({ status: 'completed', attempts: 1 });
+    });
+    it('completes foreground cleanup for a payload carrying input when the openclaw action is absent', async () => {
+        vi.stubEnv('OMC_OPENCLAW', '');
+        const directory = project();
+        // The foreground payload update is runner-fenced: arm the runner like the real one does before executing.
+        actionRunner.runSessionEndAction.mockImplementation(async (context, execute) => {
+            const { directory: dir, sessionId, actionName, runnerNonce, ownerNonce } = context;
+            markSessionEndActionRunner(dir, sessionId, ownerNonce, actionName, runnerNonce, 'started');
+            markSessionEndActionRunner(dir, sessionId, ownerNonce, actionName, runnerNonce, 'armed');
+            await execute();
+            return { code: 'completed', completed: true };
+        });
+        expect(prepareCoreManifest(directory, 's4', { openClawEnabled: false, input: { session_id: 's4', cwd: directory, reason: 'other' } })).not.toBeNull();
+        seal(directory, 's4');
+        expect(readSessionEndJob(directory, 's4').actions).not.toHaveProperty('openclaw');
+        await processSessionEndWorker({ directory, sessionId: 's4' });
+        const job = readSessionEndJob(directory, 's4');
+        expect(actions.prepareSessionEndWorkerInput).toHaveBeenCalledTimes(1);
+        expect(actions.runForegroundSessionEndCleanup).toHaveBeenCalledTimes(1);
+        expect(job.actions['foreground-cleanup'].status).toBe('completed');
+        expect(job.phase).toBe('complete');
+    });
+    it('runs the action from the durable snapshot even when the worker env no longer has OMC_OPENCLAW', async () => {
+        vi.stubEnv('OMC_OPENCLAW', '1');
+        const directory = project();
+        expect(prepareCoreManifest(directory, 's5', { openClawEnabled: true })).not.toBeNull();
+        seal(directory, 's5');
+        vi.stubEnv('OMC_OPENCLAW', '');
+        await processSessionEndWorker({ directory, sessionId: 's5' });
+        expect(runnerActions()).toContain('openclaw');
+        expect(actions.runSessionEndOpenClaw).toHaveBeenCalledTimes(1);
+        expect(readSessionEndJob(directory, 's5').actions.openclaw).toMatchObject({ status: 'completed', attempts: 1 });
     });
 });
 //# sourceMappingURL=openclaw-disabled.test.js.map
