@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "ed979b81170b8a514b7a8207c6f61299c87ee4ab",
-    "sourceSha256": "982a6b1c38f62f35926d7956cd08fc69d84c3eacba4bfdd93272d2c4ae75547e",
+    "head": "fc5f607674f0b2a906d8a01fd434542e1e14d81d",
+    "sourceSha256": "50176de9050a4d02a3ab750bcfbcc12d61a4d8fe909f49cb98d6bc4114316aad",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "ed979b81170b8a514b7a8207c6f61299c87ee4ab",
-  "sourceSha256": "982a6b1c38f62f35926d7956cd08fc69d84c3eacba4bfdd93272d2c4ae75547e",
+  "head": "fc5f607674f0b2a906d8a01fd434542e1e14d81d",
+  "sourceSha256": "50176de9050a4d02a3ab750bcfbcc12d61a4d8fe909f49cb98d6bc4114316aad",
   "counts": {
     "public": {
       "skills": 98,
@@ -23,25 +23,25 @@
       "total": 147
     },
     "internal": {
-      "hookFiles": 346,
+      "hookFiles": 348,
       "featureFiles": 98,
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2033,
-      "total": 2058
+      "srcFiles": 2035,
+      "total": 2060
     },
     "generated": {
-      "distFiles": 7500,
+      "distFiles": 7508,
       "bridgeFiles": 8,
-      "total": 7508
+      "total": 7516
     },
     "prompt": {
       "promptLikeFiles": 72
     },
     "skills": 98,
     "commands": 21,
-    "hookFiles": 346,
+    "hookFiles": 348,
     "workflows": 8,
     "agentDefinitions": 18,
     "promptLikeFiles": 72
@@ -463,6 +463,8 @@
       "src/hooks/session-end/__tests__/guardrails.test.ts",
       "src/hooks/session-end/__tests__/lease-cas-drift.test.ts",
       "src/hooks/session-end/__tests__/mode-state-cleanup.test.ts",
+      "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+      "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
       "src/hooks/session-end/__tests__/openclaw-session-end.test.ts",
       "src/hooks/session-end/__tests__/orphaned-actions.test.ts",
       "src/hooks/session-end/__tests__/process-session-end-worker-spawn.test.ts",
@@ -5692,6 +5694,14 @@
       "dist/hooks/session-end/__tests__/mode-state-cleanup.test.d.ts.map",
       "dist/hooks/session-end/__tests__/mode-state-cleanup.test.js",
       "dist/hooks/session-end/__tests__/mode-state-cleanup.test.js.map",
+      "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.d.ts",
+      "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.d.ts.map",
+      "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.js",
+      "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.js.map",
+      "dist/hooks/session-end/__tests__/openclaw-disabled.test.d.ts",
+      "dist/hooks/session-end/__tests__/openclaw-disabled.test.d.ts.map",
+      "dist/hooks/session-end/__tests__/openclaw-disabled.test.js",
+      "dist/hooks/session-end/__tests__/openclaw-disabled.test.js.map",
       "dist/hooks/session-end/__tests__/openclaw-session-end.test.d.ts",
       "dist/hooks/session-end/__tests__/openclaw-session-end.test.d.ts.map",
       "dist/hooks/session-end/__tests__/openclaw-session-end.test.js",
@@ -8814,6 +8824,8 @@
       "src/hooks/session-end/__tests__/guardrails.test.ts",
       "src/hooks/session-end/__tests__/lease-cas-drift.test.ts",
       "src/hooks/session-end/__tests__/mode-state-cleanup.test.ts",
+      "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+      "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
       "src/hooks/session-end/__tests__/openclaw-session-end.test.ts",
       "src/hooks/session-end/__tests__/orphaned-actions.test.ts",
       "src/hooks/session-end/__tests__/process-session-end-worker-spawn.test.ts",
@@ -33494,6 +33506,46 @@
         "id": "dist/hooks/session-end/__tests__/mode-state-cleanup.test.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/session-end/__tests__/mode-state-cleanup.test.js.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.js"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.js.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/openclaw-disabled.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/openclaw-disabled.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/openclaw-disabled.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/openclaw-disabled.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/openclaw-disabled.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/openclaw-disabled.test.js"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/openclaw-disabled.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/openclaw-disabled.test.js.map"
       },
       {
         "id": "dist/hooks/session-end/__tests__/openclaw-session-end.test.d.ts",
@@ -58679,6 +58731,16 @@
         "id": "src/hooks/session-end/__tests__/mode-state-cleanup.test.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/__tests__/mode-state-cleanup.test.ts"
+      },
+      {
+        "id": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts"
+      },
+      {
+        "id": "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/__tests__/openclaw-disabled.test.ts"
       },
       {
         "id": "src/hooks/session-end/__tests__/openclaw-session-end.test.ts",
@@ -99909,6 +99971,11 @@
       },
       {
         "from": "src/hooks/bridge.ts",
+        "to": "src/openclaw/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/bridge.ts",
         "to": "src/openclaw/index.ts",
         "kind": "imports"
       },
@@ -104918,6 +104985,71 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "external:node:events",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "src/hooks/session-end/cleanup-manifest.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "src/hooks/session-end/worker.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
+        "to": "src/hooks/session-end/cleanup-manifest.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
+        "to": "src/hooks/session-end/worker.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/session-end/__tests__/openclaw-session-end.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -105454,6 +105586,11 @@
       },
       {
         "from": "src/hooks/session-end/callbacks.ts",
+        "to": "src/openclaw/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/callbacks.ts",
         "to": "src/openclaw/index.ts",
         "kind": "imports"
       },
@@ -105540,6 +105677,11 @@
       {
         "from": "src/hooks/session-end/cleanup-manifest.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/cleanup-manifest.ts",
+        "to": "src/openclaw/config.ts",
         "kind": "imports"
       },
       {
@@ -105701,6 +105843,11 @@
         "from": "src/hooks/session-end/index.ts",
         "to": "src/notifications/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/session-end/index.ts",
+        "to": "src/openclaw/config.ts",
+        "kind": "imports"
       },
       {
         "from": "src/hooks/session-end/index.ts",
@@ -128644,12 +128791,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10784,
-      "edgeCount": 13112,
-      "importEdgeCount": 10778,
+      "nodeCount": 10794,
+      "edgeCount": 13129,
+      "importEdgeCount": 10795,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "5e45e7dac3553b648bbe68d565f21f79c699656e4ca97de23bb91b8c45978520",
-  "manifestSha256": "3c08728e62cd38847ebdfaa5b81aab15289a59948dfdccbbf66178d8cfc2edfd"
+  "inventorySha256": "7f58dceaa25e7eba9902985f5bd9a04e656694cb13470e89788af3a9d51ac8f0",
+  "manifestSha256": "6c0a4e988ef517b7251c79c050decba334a5664814cd461d3eba80ec1a47914e"
 }
