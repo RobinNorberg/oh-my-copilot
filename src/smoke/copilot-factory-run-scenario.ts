@@ -30,6 +30,7 @@ import { DEFAULT_FACTORY_RUN_LIMITS, runCredits, type FactoryRunLimits } from '.
 import { runFactoryEngine, type FactoryEngineOptions } from '../factory/run/engine.js';
 import { CopilotLaneBackend, type LaneBackend, type LaneResult, type LaneStartInput } from '../factory/run/lane.js';
 import type { GateConfigLoader } from '../factory/run/prepare.js';
+import { createSandboxRunner } from '../factory/run/sandbox-exec.js';
 import { readFactoryState, verifyFactoryIntegrity } from '../factory/run/state.js';
 import { REVIEW_FEEDBACK_QUERY } from '../forge/github/graphql.js';
 import { resolveShipConfig } from '../ship/config.js';
@@ -317,6 +318,8 @@ export async function runFactoryRunScenario(input: FactoryRunScenarioInput): Pro
       base: FACTORY_RUN_BASE,
       ledgerDir: join(dir, 'ledger'),
       gateConfig: smokeGateConfig,
+      // Prepare's checks (none in this fixture) would run in the OS sandbox, as in omg factory run.
+      gateSandbox: createSandboxRunner(repo),
       now,
       warn: (m) => { warnings.push(m); },
       ...input.engine,

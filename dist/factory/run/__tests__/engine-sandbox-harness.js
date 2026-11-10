@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach } from 'vitest';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { runFactoryEngine } from '../engine.js';
-import { FakeLanes, FakeProcesses, harness, ISSUE, testGateConfig } from './fake-lanes.js';
+import { FakeLanes, FakeProcesses, harness, ISSUE, testGateConfig, withTestSandbox } from './fake-lanes.js';
 export let h;
 /** A fresh harness per test; call once at the top of each test file that uses it. */
 export function useSandboxHarness() {
@@ -20,11 +20,11 @@ export function useSandboxHarness() {
 }
 export function run(scripts, over = {}) {
     const lanes = new FakeLanes(h.root, scripts);
-    const done = runFactoryEngine({
+    const done = runFactoryEngine(withTestSandbox({
         root: h.root, issue: ISSUE, exec: h.exec, lanes, limits: { ...DEFAULT_FACTORY_RUN_LIMITS }, base: 'dev', pollMs: 5,
         owner: { pid: 4242, hostname: 'test-host', isAlive: () => false }, ledgerDir: h.ledgerDir, processes: new FakeProcesses(), gateConfig: testGateConfig,
         ...over,
-    });
+    }, over));
     return { lanes, done };
 }
 export const sandboxOf = (mode) => ({

@@ -36,6 +36,7 @@ import { healRunKey, readFactoryState, type FactoryHealRecord, type HeldOwner } 
 import type { HealConfig } from './config.js';
 import { closeHeal, HealRunRefused, healTestId, ledgerHealCredits, readHealCounters, healSealSubject, readHealSealSubject, verifyHealSeal, writeHealCounters, type HealSealSubject } from './run.js';
 import { healStateDir, readHealState, type HealSignatureState } from './state.js';
+import type { SandboxRunner } from '../run/sandbox-exec.js';
 
 export const KNOWN_FLAKY_FILE = '.github/known-flaky-tests.json';
 
@@ -48,6 +49,8 @@ export interface HealEngineDeps {
   ledgerDir: string;
   now: () => Date;
   gateConfig?: GateConfigLoader;
+  /** The OS sandbox prepare's checks run in (FactoryEngineOptions.gateSandbox); omitted = none, so gates "enforced" parks. */
+  gateSandbox?: (root: string) => SandboxRunner;
   warn?: (message: string) => void;
   /** Test seams of the engine. */
   engine?: Partial<Pick<FactoryEngineOptions, 'pollMs' | 'owner' | 'processes' | 'sleep' | 'interrupted' | 'progressFile'>>;
@@ -170,6 +173,7 @@ export async function runHealEngine(o: HealEngineOptions, deps: HealEngineDeps):
     ...(o.dryRun ? { dryRun: true } : {}),
     ...(o.repoOwner ? { repoOwner: o.repoOwner } : {}),
     ...(deps.gateConfig ? { gateConfig: deps.gateConfig } : {}),
+    ...(deps.gateSandbox && !o.dryRun ? { gateSandbox: deps.gateSandbox(o.root) } : {}),
     ...(deps.warn ? { warn: deps.warn } : {}),
     ...(deps.forge ? { forge: deps.forge } : {}),
     ...deps.engine,

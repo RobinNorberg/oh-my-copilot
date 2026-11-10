@@ -16,6 +16,7 @@ import { readFactoryState, requestFactoryCancel, type FactoryHealRecord } from '
 import {
   commitFile, failedGates, FakeLanes, FakeProcesses, gitIn, greenGates, harness, ISSUE, PR, pendingGates, review, testGateConfig,
   type Harness, type LaneScript,
+  withTestSandbox,
 } from '../../factory/run/__tests__/fake-lanes.js';
 import { factoryGuardExec } from '../../factory/run/exec.js';
 import { FakeAgentGithub, ghTime, installFakeAgent } from '../../factory/run/__tests__/fake-coding-agent.js';
@@ -49,12 +50,12 @@ afterEach(() => {
 /** One engine run with the gh calls it issued; `lanes` overrides the fake lane backend. */
 async function engine(scripts: LaneScript[], over: Partial<FactoryEngineOptions> = {}, lanes = new FakeLanes(h.root, scripts)) {
   const r = recordingExec(h.exec, { '<root>': h.root, '<dir>': h.dir }, ['gh']);
-  const out = await runFactoryEngine({
+  const out = await runFactoryEngine(withTestSandbox({
     root: h.root, issue: ISSUE, exec: r.exec, lanes, limits: DEFAULT_FACTORY_RUN_LIMITS, base: 'dev', pollMs: 5,
     owner: { pid: 4242, hostname: 'test-host', isAlive: () => false }, ledgerDir: h.ledgerDir, processes: new FakeProcesses(),
     gateConfig: testGateConfig, now: () => t, sleep: async (ms) => { t += ms; },
     ...over,
-  });
+  }, over));
   return { out, calls: r.calls };
 }
 

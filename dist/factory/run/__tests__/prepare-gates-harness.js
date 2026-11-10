@@ -12,7 +12,7 @@ import { parseProgressLog } from '../../../lib/agent-progress.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { runFactoryEngine } from '../engine.js';
 import { factoryProgressFile } from '../progress.js';
-import { FakeLanes, FakeProcesses, gitIn, harness, ISSUE, PR, testGateConfig } from './fake-lanes.js';
+import { FakeLanes, FakeProcesses, gitIn, harness, ISSUE, PR, testGateConfig, withTestSandbox } from './fake-lanes.js';
 export let h;
 export let t;
 /** A fresh harness per test; call once at the top of each test file that uses it. */
@@ -31,12 +31,12 @@ export function usePrepareGatesHarness() {
 export const limits = (over = {}) => ({ ...DEFAULT_FACTORY_RUN_LIMITS, ...over });
 export function run(scripts, over = {}) {
     const lanes = new FakeLanes(h.root, scripts);
-    const done = runFactoryEngine({
+    const done = runFactoryEngine(withTestSandbox({
         root: h.root, issue: ISSUE, exec: h.exec, lanes, limits: limits(), base: 'dev', pollMs: 5,
         owner: { pid: 4242, hostname: 'test-host', isAlive: () => false }, ledgerDir: h.ledgerDir, processes: new FakeProcesses(),
         gateConfig: testGateConfig, now: () => t, sleep: async (ms) => { t += ms; },
         ...over,
-    });
+    }, over));
     return { lanes, done };
 }
 /** Move dev on the remote from a separate clone (the engine's main checkout is never touched). */
