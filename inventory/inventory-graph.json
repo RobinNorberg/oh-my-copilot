@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "4a2cd3d16c45ef47fcfd7ac4cc61b1feb2ffcc67",
-    "sourceSha256": "98340fc4723a3816c6e9dfa3ad21d980258ad88e35449f55c8765f0c370c007c",
+    "head": "e378cfdaa176fcf5af26aa023bdd638dc688e664",
+    "sourceSha256": "698a3533911bf9e550fe16f49fe770622ef45a97ac174c6a7f3c142a3094e1ea",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "4a2cd3d16c45ef47fcfd7ac4cc61b1feb2ffcc67",
-  "sourceSha256": "98340fc4723a3816c6e9dfa3ad21d980258ad88e35449f55c8765f0c370c007c",
+  "head": "e378cfdaa176fcf5af26aa023bdd638dc688e664",
+  "sourceSha256": "698a3533911bf9e550fe16f49fe770622ef45a97ac174c6a7f3c142a3094e1ea",
   "counts": {
     "public": {
       "skills": 98,
@@ -23,25 +23,25 @@
       "total": 147
     },
     "internal": {
-      "hookFiles": 347,
+      "hookFiles": 348,
       "featureFiles": 98,
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2031,
-      "total": 2056
+      "srcFiles": 2032,
+      "total": 2057
     },
     "generated": {
-      "distFiles": 7492,
+      "distFiles": 7496,
       "bridgeFiles": 8,
-      "total": 7500
+      "total": 7504
     },
     "prompt": {
       "promptLikeFiles": 72
     },
     "skills": 98,
     "commands": 21,
-    "hookFiles": 347,
+    "hookFiles": 348,
     "workflows": 8,
     "agentDefinitions": 18,
     "promptLikeFiles": 72
@@ -463,6 +463,7 @@
       "src/hooks/session-end/__tests__/guardrails.test.ts",
       "src/hooks/session-end/__tests__/lease-cas-drift.test.ts",
       "src/hooks/session-end/__tests__/mode-state-cleanup.test.ts",
+      "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
       "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
       "src/hooks/session-end/__tests__/openclaw-session-end.test.ts",
       "src/hooks/session-end/__tests__/orphaned-actions.test.ts",
@@ -5681,6 +5682,10 @@
       "dist/hooks/session-end/__tests__/mode-state-cleanup.test.d.ts.map",
       "dist/hooks/session-end/__tests__/mode-state-cleanup.test.js",
       "dist/hooks/session-end/__tests__/mode-state-cleanup.test.js.map",
+      "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.d.ts",
+      "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.d.ts.map",
+      "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.js",
+      "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.js.map",
       "dist/hooks/session-end/__tests__/openclaw-disabled.test.d.ts",
       "dist/hooks/session-end/__tests__/openclaw-disabled.test.d.ts.map",
       "dist/hooks/session-end/__tests__/openclaw-disabled.test.js",
@@ -8807,6 +8812,7 @@
       "src/hooks/session-end/__tests__/guardrails.test.ts",
       "src/hooks/session-end/__tests__/lease-cas-drift.test.ts",
       "src/hooks/session-end/__tests__/mode-state-cleanup.test.ts",
+      "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
       "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
       "src/hooks/session-end/__tests__/openclaw-session-end.test.ts",
       "src/hooks/session-end/__tests__/orphaned-actions.test.ts",
@@ -33428,6 +33434,26 @@
         "id": "dist/hooks/session-end/__tests__/mode-state-cleanup.test.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/session-end/__tests__/mode-state-cleanup.test.js.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.js"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.js.map"
       },
       {
         "id": "dist/hooks/session-end/__tests__/openclaw-disabled.test.d.ts",
@@ -58618,6 +58644,11 @@
         "id": "src/hooks/session-end/__tests__/mode-state-cleanup.test.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/__tests__/mode-state-cleanup.test.ts"
+      },
+      {
+        "id": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts"
       },
       {
         "id": "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
@@ -99543,6 +99574,11 @@
       },
       {
         "from": "src/hooks/bridge.ts",
+        "to": "src/openclaw/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/bridge.ts",
         "to": "src/openclaw/index.ts",
         "kind": "imports"
       },
@@ -104552,6 +104588,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "external:node:events",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "src/hooks/session-end/cleanup-manifest.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "src/hooks/session-end/worker.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -105118,6 +105189,11 @@
       },
       {
         "from": "src/hooks/session-end/callbacks.ts",
+        "to": "src/openclaw/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/callbacks.ts",
         "to": "src/openclaw/index.ts",
         "kind": "imports"
       },
@@ -105370,6 +105446,11 @@
         "from": "src/hooks/session-end/index.ts",
         "to": "src/notifications/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/session-end/index.ts",
+        "to": "src/openclaw/config.ts",
+        "kind": "imports"
       },
       {
         "from": "src/hooks/session-end/index.ts",
@@ -128308,12 +128389,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10774,
-      "edgeCount": 13056,
-      "importEdgeCount": 10742,
+      "nodeCount": 10779,
+      "edgeCount": 13066,
+      "importEdgeCount": 10752,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "6b987d6bb8ebb999e5beb596d49d603736484a536f7c056b3d18eb8dfc3ff346",
-  "manifestSha256": "4ea3180f24b731197cc2dd91b10bd1be95307a09eebd9fb89833bc068839e07a"
+  "inventorySha256": "b5c4b7d37a50d067015c1d8330e9825a1951760c6a40c6dce7968d934d0ed541",
+  "manifestSha256": "6ff84d4cd07eca35386286d963762f211f89c00aff777b77d06996216b1c061d"
 }
