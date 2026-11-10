@@ -281,7 +281,9 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
     mkdirSync(env.TEMP!, { recursive: true });
     // No credential helper for a git the command starts (the system one is Git for Windows' manager).
     writeFileSync(env.GIT_CONFIG_GLOBAL!, '[credential]\n\thelper =\n');
-    Object.assign(env, { GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', COPILOT_ALLOW_ALL: 'false' });
+    // GIT_CEILING_DIRECTORIES: a git root search from the runtime's working dir stops at the job root, so it never reaches
+    // the root repository's work tree (the job root is under its .omg/) and its hooks or instructions.
+    Object.assign(env, { GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', COPILOT_ALLOW_ALL: 'false', GIT_CEILING_DIRECTORIES: resolve(o.jobRoot) });
     const gitHubToken = sessionGitHubToken(deps.env);
 
     const { CopilotClient, RuntimeConnection } = loaded.module;

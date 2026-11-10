@@ -7,7 +7,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { fakeClientRpc, fakeSessionRpc, type FakeSandbox } from '../../../copilot-run/__tests__/fake-sdk.js';
@@ -210,6 +210,8 @@ describe('runSandboxed', () => {
     expect(work).not.toBe(checkout);
     expect(rec.clients[0].config?.trustedFolders).toEqual([work]);
     expect(rec.sessions[0].workingDirectory).toBe(work);
+    // A git root search from the working dir stops at the job root (under the root repository's .omg/).
+    expect(rec.connections[0].env.GIT_CEILING_DIRECTORIES).toBe(resolve(join(dir, 'jobs')));
     // The checkout stays an explicit read-write path, and the command itself changes into it.
     const config = rec.optionsUpdates[0]?.sandboxConfig as { userPolicy: { filesystem: { readwritePaths: string[] } } };
     expect(config.userPolicy.filesystem.readwritePaths).toContain(checkout);
