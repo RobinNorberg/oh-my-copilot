@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "c3d398fd03b232b8bc84b6ff38360b9f46862775",
-    "sourceSha256": "0dadb8a7b5e6a0b470633926369dddc855bf0b505f401726f8d230aec3501b23",
+    "head": "221fea9e92ea422aebc919c9c02a50df003ea39b",
+    "sourceSha256": "a66877c63adbebeab62cfc9e62f4a5bf860419d96c496dcc236b63e5497e7988",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "c3d398fd03b232b8bc84b6ff38360b9f46862775",
-  "sourceSha256": "0dadb8a7b5e6a0b470633926369dddc855bf0b505f401726f8d230aec3501b23",
+  "head": "221fea9e92ea422aebc919c9c02a50df003ea39b",
+  "sourceSha256": "a66877c63adbebeab62cfc9e62f4a5bf860419d96c496dcc236b63e5497e7988",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2044,
-      "total": 2069
+      "srcFiles": 2049,
+      "total": 2074
     },
     "generated": {
-      "distFiles": 7544,
+      "distFiles": 7564,
       "bridgeFiles": 8,
-      "total": 7552
+      "total": 7572
     },
     "prompt": {
       "promptLikeFiles": 72
@@ -3414,6 +3414,10 @@
       "dist/factory/run/__tests__/engine.coding-agent.test.d.ts.map",
       "dist/factory/run/__tests__/engine.coding-agent.test.js",
       "dist/factory/run/__tests__/engine.coding-agent.test.js.map",
+      "dist/factory/run/__tests__/engine.commit-hardening.test.d.ts",
+      "dist/factory/run/__tests__/engine.commit-hardening.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.commit-hardening.test.js",
+      "dist/factory/run/__tests__/engine.commit-hardening.test.js.map",
       "dist/factory/run/__tests__/engine.gates-sandbox.test.d.ts",
       "dist/factory/run/__tests__/engine.gates-sandbox.test.d.ts.map",
       "dist/factory/run/__tests__/engine.gates-sandbox.test.js",
@@ -3522,6 +3526,14 @@
       "dist/factory/run/__tests__/git-hardening.test.d.ts.map",
       "dist/factory/run/__tests__/git-hardening.test.js",
       "dist/factory/run/__tests__/git-hardening.test.js.map",
+      "dist/factory/run/__tests__/lane-commit.staging.test.d.ts",
+      "dist/factory/run/__tests__/lane-commit.staging.test.d.ts.map",
+      "dist/factory/run/__tests__/lane-commit.staging.test.js",
+      "dist/factory/run/__tests__/lane-commit.staging.test.js.map",
+      "dist/factory/run/__tests__/lane-procs.test.d.ts",
+      "dist/factory/run/__tests__/lane-procs.test.d.ts.map",
+      "dist/factory/run/__tests__/lane-procs.test.js",
+      "dist/factory/run/__tests__/lane-procs.test.js.map",
       "dist/factory/run/__tests__/lane.test.d.ts",
       "dist/factory/run/__tests__/lane.test.d.ts.map",
       "dist/factory/run/__tests__/lane.test.js",
@@ -3634,6 +3646,10 @@
       "dist/factory/run/lane-commit.d.ts.map",
       "dist/factory/run/lane-commit.js",
       "dist/factory/run/lane-commit.js.map",
+      "dist/factory/run/lane-procs.d.ts",
+      "dist/factory/run/lane-procs.d.ts.map",
+      "dist/factory/run/lane-procs.js",
+      "dist/factory/run/lane-procs.js.map",
       "dist/factory/run/lane.d.ts",
       "dist/factory/run/lane.d.ts.map",
       "dist/factory/run/lane.js",
@@ -3694,6 +3710,10 @@
       "dist/factory/run/state.d.ts.map",
       "dist/factory/run/state.js",
       "dist/factory/run/state.js.map",
+      "dist/factory/run/tamper-quarantine.d.ts",
+      "dist/factory/run/tamper-quarantine.d.ts.map",
+      "dist/factory/run/tamper-quarantine.js",
+      "dist/factory/run/tamper-quarantine.js.map",
       "dist/factory/setup/__tests__/e2e.test.d.ts",
       "dist/factory/setup/__tests__/e2e.test.d.ts.map",
       "dist/factory/setup/__tests__/e2e.test.js",
@@ -22144,6 +22164,26 @@
         "path": "dist/factory/run/__tests__/engine.coding-agent.test.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/engine.commit-hardening.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.commit-hardening.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.commit-hardening.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.commit-hardening.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.commit-hardening.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.commit-hardening.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.commit-hardening.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.commit-hardening.test.js.map"
+      },
+      {
         "id": "dist/factory/run/__tests__/engine.gates-sandbox.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.gates-sandbox.test.d.ts"
@@ -22682,6 +22722,46 @@
         "id": "dist/factory/run/__tests__/git-hardening.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/git-hardening.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/lane-commit.staging.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/lane-commit.staging.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/lane-commit.staging.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/lane-commit.staging.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/lane-commit.staging.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/lane-commit.staging.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/lane-commit.staging.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/lane-commit.staging.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/lane-procs.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/lane-procs.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/lane-procs.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/lane-procs.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/lane-procs.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/lane-procs.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/lane-procs.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/lane-procs.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/lane.test.d.ts",
@@ -23244,6 +23324,26 @@
         "path": "dist/factory/run/lane-commit.js.map"
       },
       {
+        "id": "dist/factory/run/lane-procs.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/lane-procs.d.ts"
+      },
+      {
+        "id": "dist/factory/run/lane-procs.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/lane-procs.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/lane-procs.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/lane-procs.js"
+      },
+      {
+        "id": "dist/factory/run/lane-procs.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/lane-procs.js.map"
+      },
+      {
         "id": "dist/factory/run/lane.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/lane.d.ts"
@@ -23542,6 +23642,26 @@
         "id": "dist/factory/run/state.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/state.js.map"
+      },
+      {
+        "id": "dist/factory/run/tamper-quarantine.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/tamper-quarantine.d.ts"
+      },
+      {
+        "id": "dist/factory/run/tamper-quarantine.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/tamper-quarantine.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/tamper-quarantine.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/tamper-quarantine.js"
+      },
+      {
+        "id": "dist/factory/run/tamper-quarantine.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/tamper-quarantine.js.map"
       },
       {
         "id": "dist/factory/setup/__tests__/e2e.test.d.ts",
@@ -55844,6 +55964,11 @@
         "path": "src/factory/run/__tests__/engine.coding-agent.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/engine.commit-hardening.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.commit-hardening.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.gates-sandbox.test.ts"
@@ -55977,6 +56102,16 @@
         "id": "src/factory/run/__tests__/git-hardening.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/git-hardening.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/lane-commit.staging.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/lane-commit.staging.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/lane-procs.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/lane-procs.test.ts"
       },
       {
         "id": "src/factory/run/__tests__/lane.test.ts",
@@ -56124,6 +56259,11 @@
         "path": "src/factory/run/lane-commit.ts"
       },
       {
+        "id": "src/factory/run/lane-procs.ts",
+        "kind": "src",
+        "path": "src/factory/run/lane-procs.ts"
+      },
+      {
         "id": "src/factory/run/lane.ts",
         "kind": "src",
         "path": "src/factory/run/lane.ts"
@@ -56197,6 +56337,11 @@
         "id": "src/factory/run/state.ts",
         "kind": "src",
         "path": "src/factory/run/state.ts"
+      },
+      {
+        "id": "src/factory/run/tamper-quarantine.ts",
+        "kind": "src",
+        "path": "src/factory/run/tamper-quarantine.ts"
       },
       {
         "id": "src/factory/setup/__tests__/e2e.test.ts",
@@ -81437,6 +81582,11 @@
       },
       {
         "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/run/tamper-quarantine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
         "to": "src/factory/setup/detect.ts",
         "kind": "imports"
       },
@@ -84727,6 +84877,11 @@
       },
       {
         "from": "src/factory/__tests__/poll.test.ts",
+        "to": "src/factory/run/tamper-quarantine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/poll.test.ts",
         "to": "src/forge/ado/__tests__/world.ts",
         "kind": "imports"
       },
@@ -87452,6 +87607,11 @@
       },
       {
         "from": "src/factory/poll.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
         "to": "src/factory/run/state.ts",
         "kind": "imports"
       },
@@ -87459,6 +87619,11 @@
         "from": "src/factory/poll.ts",
         "to": "src/factory/run/state.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/poll.ts",
+        "to": "src/factory/run/tamper-quarantine.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/poll.ts",
@@ -88408,6 +88573,46 @@
       {
         "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
         "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.commit-hardening.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.commit-hardening.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.commit-hardening.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.commit-hardening.test.ts",
+        "to": "src/factory/run/__tests__/engine-sandbox-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.commit-hardening.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.commit-hardening.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.commit-hardening.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.commit-hardening.test.ts",
+        "to": "src/factory/run/tamper-quarantine.ts",
         "kind": "imports"
       },
       {
@@ -89787,6 +89992,11 @@
       },
       {
         "from": "src/factory/run/__tests__/fake-lanes.ts",
+        "to": "src/factory/run/lane-procs.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/fake-lanes.ts",
         "to": "src/factory/run/lane.ts",
         "kind": "imports"
       },
@@ -89954,6 +90164,56 @@
         "from": "src/factory/run/__tests__/git-hardening.test.ts",
         "to": "src/team/git-worktree.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/lane-commit.staging.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/lane-commit.staging.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/lane-commit.staging.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/lane-commit.staging.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/lane-commit.staging.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/lane-commit.staging.test.ts",
+        "to": "src/factory/run/lane-commit.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/lane-commit.staging.test.ts",
+        "to": "src/team/git-worktree.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/lane-procs.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/lane-procs.test.ts",
+        "to": "src/factory/run/lane-procs.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/lane-procs.test.ts",
+        "to": "src/factory/run/lane-procs.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/lane.test.ts",
@@ -91087,6 +91347,21 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/lane-commit.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/lane-procs.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/lane-procs.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/lane.ts",
         "kind": "imports"
       },
@@ -91214,6 +91489,11 @@
         "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/state.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/tamper-quarantine.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/engine.ts",
@@ -91592,6 +91872,11 @@
       },
       {
         "from": "src/factory/run/lane-commit.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/lane-commit.ts",
         "to": "external:node:path",
         "kind": "imports"
       },
@@ -91599,6 +91884,16 @@
         "from": "src/factory/run/lane-commit.ts",
         "to": "src/copilot-run/job.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/lane-commit.ts",
+        "to": "src/factory/heal/sanitize.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/lane-commit.ts",
+        "to": "src/factory/heal/sanitize.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/lane-commit.ts",
@@ -91613,6 +91908,36 @@
       {
         "from": "src/factory/run/lane-commit.ts",
         "to": "src/team/git-worktree.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/lane-procs.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/lane-procs.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/lane-procs.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/lane-procs.ts",
+        "to": "external:node:util",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/lane-procs.ts",
+        "to": "src/factory/run/lane.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/lane-procs.ts",
+        "to": "src/platform/process-utils.ts",
         "kind": "imports"
       },
       {
@@ -92278,6 +92603,41 @@
       {
         "from": "src/factory/run/state.ts",
         "to": "src/utils/string-width.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/tamper-quarantine.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/tamper-quarantine.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/tamper-quarantine.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/tamper-quarantine.ts",
+        "to": "src/factory/run/review-guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/tamper-quarantine.ts",
+        "to": "src/factory/run/review-guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/tamper-quarantine.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/tamper-quarantine.ts",
+        "to": "src/team/git-worktree.ts",
         "kind": "imports"
       },
       {
@@ -129652,12 +130012,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10839,
-      "edgeCount": 13249,
-      "importEdgeCount": 10900,
+      "nodeCount": 10864,
+      "edgeCount": 13292,
+      "importEdgeCount": 10935,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "af6e8245bd830e353d094e84c4f586db0d67ef9c0a2aa69d7a6421dfb12b8abf",
-  "manifestSha256": "7c6302957beed32284cf725ce05cdfb421c4300d9776db8a74ff78c37e11dc53"
+  "inventorySha256": "9a4728447691a06703f5965b7a6d8b820372606982b75de7120c3fc168fc6ff5",
+  "manifestSha256": "9cb12054b09468364178f28f3742c9e006eed060ada5c9ac9944357bcced35e3"
 }
