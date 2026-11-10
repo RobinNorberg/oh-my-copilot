@@ -42,6 +42,7 @@ import type { LoadedForgeConfig } from '../../forge/config.js';
 import type { ForgeKind } from '../../forge/types.js';
 import { CopilotLaneBackend, type LaneBackend } from '../../factory/run/lane.js';
 import type { GateConfigLoader } from '../../factory/run/prepare.js';
+import { createSandboxRunner, type SandboxRunner } from '../../factory/run/sandbox-exec.js';
 import {
   acquireFactoryRepoOwnerForRun, defaultOwnerDeps, describeOwner, FactoryBusyError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState,
   refuseWhileEngineRuns, runLabel, unreadableOwnerMessage, withOwnerFileLock, type HeldOwner,
@@ -113,6 +114,12 @@ export interface FactoryRunDeps {
    * calls with no forge config, as before forges (the default deps set it).
    */
   forge?: (root: string, base: string, opts?: { dryRun?: boolean }) => LoadedForgeConfig;
+  /**
+   * The OS sandbox prepare's checks and the local gate run in (sandbox-exec.ts
+   * createSandboxRunner; the default deps set it). Omitted = none: gates
+   * "enforced" then parks at gates-unsandboxed, never runs unsandboxed.
+   */
+  gateSandbox?: (root: string) => SandboxRunner;
 }
 
 function projectConfig(root: string): unknown {
@@ -130,6 +137,7 @@ export const defaultFactoryRunDeps: FactoryRunDeps = {
     return resolveShipConfig({ base: pick(projectConfig(root)) ?? pick(userConfigLayers().user) }).base;
   },
   forge: (root, base, opts) => loadFactoryForgeConfig(factoryGuardExec(defaultExec), root, base, userConfigLayers().trustedUser, projectConfig(root), opts),
+  gateSandbox: (root) => createSandboxRunner(root),
 };
 
 class FactoryUsageError extends Error {}
@@ -189,6 +197,7 @@ export function renderFactoryRunState(state: FactoryRunState, o: { gate?: boolea
   if (state.cancelRequested && state.phase !== 'cancelled') lines.push(chalk.yellow('cancel requested'));
   if (state.head) lines.push(`head ${state.head.slice(0, 12)}`);
   if (state.unsandboxedAck) lines.push(chalk.yellow(`lanes without the enforced sandbox accepted for ${state.unsandboxedAck.slice(0, 12)} (--allow-unsandboxed-lanes)`));
+  if (state.unsandboxedGatesAck) lines.push(chalk.yellow(`prepare checks and the local gate without the OS sandbox accepted for ${state.unsandboxedGatesAck.slice(0, 12)} (--allow-unsandboxed-gates)`));
   lines.push(`lanes ${state.lanes.length}  run AI credits ${runCredits(state).toFixed(2)}  elapsed ${Math.round(state.elapsedMs / 60_000)} min`);
   for (const lane of state.lanes) {
     const credits = lane.usage ? `${lane.usage.credits.toFixed(2)}/${lane.maxCredits}` : `-/${lane.maxCredits}`;
@@ -360,8 +369,9 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
     .option('--dry-run', 'Resolve the issue and plan and print the next step; no state, lanes or pushes')
     .option('--allow-gate-change', 'Local forge: accept the one change to the local gate\'s definition (package.json script, package-manager config or gate file) that parked the run at gate-definition-changed; a later change parks again')
     .option('--allow-unsandboxed-lanes', 'Accept, for the parked head only, that write lanes ran without the enforced sandbox (the run parked at human-review for it): you checked the threads and reviews of the PR yourself; a new head parks again')
+    .option('--allow-unsandboxed-gates', 'Accept, for the parked head only, that prepare\'s checks and the local gate run the PR\'s code WITHOUT the OS sandbox, as you (the run parked at gates-unsandboxed for it): you reviewed the diff yourself; a new head parks again')
     .option('--json', 'JSON output')
-    .action((issueRaw: string | undefined, o: { next?: boolean; parent?: string; dryRun?: boolean; allowGateChange?: boolean; allowUnsandboxedLanes?: boolean; json?: boolean }) =>
+    .action((issueRaw: string | undefined, o: { next?: boolean; parent?: string; dryRun?: boolean; allowGateChange?: boolean; allowUnsandboxedLanes?: boolean; allowUnsandboxedGates?: boolean; json?: boolean }) =>
       factoryGuarded(Boolean(o.json), async () => {
         if (o.next && issueRaw !== undefined) throw new FactoryUsageError('--next takes no issue: it picks the next runnable item');
         if (o.parent !== undefined && !o.next) throw new FactoryUsageError('--parent applies to --next');
@@ -434,6 +444,8 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
                 ...(held ? { repoOwner: held } : {}),
                 ...(o.allowGateChange ? { allowGateChange: true } : {}),
                 ...(o.allowUnsandboxedLanes ? { allowUnsandboxedLanes: true } : {}),
+                ...(o.allowUnsandboxedGates ? { allowUnsandboxedGates: true } : {}),
+                ...(deps.gateSandbox && !o.dryRun ? { gateSandbox: deps.gateSandbox(root) } : {}),
                 lanes: o.dryRun ? NO_LANES : deps.lanes(root),
                 ...(forge ? { forge } : {}),
                 ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}),
@@ -675,6 +687,7 @@ export function factoryCommand(): Command {
     lanes: defaultFactoryRunDeps.lanes,
     ledgerDir: defaultLedgerDir(),
     runLimits: defaultFactoryRunDeps.limits,
+    gateSandbox: defaultFactoryRunDeps.gateSandbox,
     forgeKind: (root) => originForgeKind(factoryGuardExec(defaultExec), root),
     // Azure DevOps only: the trusted forge config naming factory.heal.pipeline (GitHub never loads it).
     forge: defaultFactoryRunDeps.forge,

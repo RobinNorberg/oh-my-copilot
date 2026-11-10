@@ -26,6 +26,7 @@ import { type FactoryRunOutcome } from '../../factory/run/engine.js';
 import type { LoadedForgeConfig } from '../../forge/config.js';
 import { type LaneBackend } from '../../factory/run/lane.js';
 import type { GateConfigLoader } from '../../factory/run/prepare.js';
+import { type SandboxRunner } from '../../factory/run/sandbox-exec.js';
 import { type FactoryRunKey, type FactoryRunState } from '../../factory/run/state.js';
 import { type Exec } from '../../ship/exec.js';
 import { type FactoryCheckDeps } from '../../factory/check/cli.js';
@@ -51,6 +52,12 @@ export interface FactoryRunDeps {
     forge?: (root: string, base: string, opts?: {
         dryRun?: boolean;
     }) => LoadedForgeConfig;
+    /**
+     * The OS sandbox prepare's checks and the local gate run in (sandbox-exec.ts
+     * createSandboxRunner; the default deps set it). Omitted = none: gates
+     * "enforced" then parks at gates-unsandboxed, never runs unsandboxed.
+     */
+    gateSandbox?: (root: string) => SandboxRunner;
 }
 export declare const defaultFactoryRunDeps: FactoryRunDeps;
 /**

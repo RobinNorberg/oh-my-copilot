@@ -157,7 +157,7 @@ describe('gate process cleanup against real processes', () => {
       'console.log("GRANDCHILD=" + c.pid);',
       'setTimeout(() => process.exit(0), 300);',
     ].join('\n'));
-    const out = await runLocalGate({ stateDir: join(tmp, 'state'), root: tmp, head: HEAD, gate: ['node', script], timeoutMinutes: 2, checkout: tmp });
+    const out = await runLocalGate({ mode: 'unsandboxed', stateDir: join(tmp, 'state'), root: tmp, head: HEAD, gate: ['node', script], timeoutMinutes: 2, checkout: tmp });
     expect(out.started).toBe(true);
     const pid = Number(/GRANDCHILD=(\d+)/.exec(out.started ? (out.record.tail ?? '') : '')?.[1]);
     expect(pid).toBeGreaterThan(0);
@@ -225,7 +225,7 @@ describe('gate process bookkeeping hardening', () => {
     const sleeper = spawnSleeper();
     let startedAt = '';
     const path = gateProcsPath(join(tmp, 'state'), tmp, HEAD);
-    await runLocalGate({
+    await runLocalGate({ mode: 'unsandboxed',
       stateDir: join(tmp, 'state'), root: tmp, head: HEAD, gate: ['node', 'x.js'], timeoutMinutes: 1, checkout: tmp, now: () => new Date(Date.UTC(2000, 0, 1)),
       runner: async (_argv, _cwd, _t, track) => {
         track?.spawned(sleeper.pid!);

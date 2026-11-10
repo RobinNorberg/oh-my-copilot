@@ -9,7 +9,7 @@ import { afterEach, beforeEach } from 'vitest';
 import type { CopilotRunSandboxState } from '../../../copilot-run/sandbox.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { runFactoryEngine, type FactoryEngineOptions } from '../engine.js';
-import { FakeLanes, FakeProcesses, harness, ISSUE, testGateConfig, type Harness, type LaneScript } from './fake-lanes.js';
+import { FakeLanes, FakeProcesses, harness, ISSUE, testGateConfig, type Harness, type LaneScript, withTestSandbox } from './fake-lanes.js';
 
 export let h: Harness;
 
@@ -26,11 +26,11 @@ export function useSandboxHarness(): void {
 
 export function run(scripts: LaneScript[], over: Partial<FactoryEngineOptions> = {}) {
   const lanes = new FakeLanes(h.root, scripts);
-  const done = runFactoryEngine({
+  const done = runFactoryEngine(withTestSandbox({
     root: h.root, issue: ISSUE, exec: h.exec, lanes, limits: { ...DEFAULT_FACTORY_RUN_LIMITS }, base: 'dev', pollMs: 5,
     owner: { pid: 4242, hostname: 'test-host', isAlive: () => false }, ledgerDir: h.ledgerDir, processes: new FakeProcesses(), gateConfig: testGateConfig,
     ...over,
-  });
+  }, over));
   return { lanes, done };
 }
 

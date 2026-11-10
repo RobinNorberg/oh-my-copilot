@@ -14,7 +14,7 @@ import { DEFAULT_FACTORY_RUN_LIMITS, type FactoryRunLimits } from '../budget.js'
 import { runFactoryEngine, type FactoryEngineOptions } from '../engine.js';
 import { factoryProgressFile } from '../progress.js';
 import type { ExecResult } from '../../../ship/exec.js';
-import { FakeLanes, FakeProcesses, gitIn, harness, ISSUE, PR, testGateConfig, type Harness, type LaneScript } from './fake-lanes.js';
+import { FakeLanes, FakeProcesses, gitIn, harness, ISSUE, PR, testGateConfig, type Harness, type LaneScript, withTestSandbox } from './fake-lanes.js';
 
 export let h: Harness;
 export let t: number;
@@ -38,12 +38,12 @@ export const limits = (over: Partial<FactoryRunLimits> = {}): FactoryRunLimits =
 
 export function run(scripts: LaneScript[], over: Partial<FactoryEngineOptions> = {}) {
   const lanes = new FakeLanes(h.root, scripts);
-  const done = runFactoryEngine({
+  const done = runFactoryEngine(withTestSandbox({
     root: h.root, issue: ISSUE, exec: h.exec, lanes, limits: limits(), base: 'dev', pollMs: 5,
     owner: { pid: 4242, hostname: 'test-host', isAlive: () => false }, ledgerDir: h.ledgerDir, processes: new FakeProcesses(),
     gateConfig: testGateConfig, now: () => t, sleep: async (ms) => { t += ms; },
     ...over,
-  });
+  }, over));
   return { lanes, done };
 }
 

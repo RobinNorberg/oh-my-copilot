@@ -15,7 +15,7 @@ import { defaultExec } from '../../../ship/exec.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { ADO_HEAD_LAG_POLLS, runFactoryEngine } from '../engine.js';
 import { readFactoryState } from '../state.js';
-import { commitFile, FakeLanes, FakeProcesses, gitIn, ISSUE, remoteHead, review, testGateConfig } from './fake-lanes.js';
+import { commitFile, FakeLanes, FakeProcesses, gitIn, ISSUE, remoteHead, review, testGateConfig, attestedSandbox } from './fake-lanes.js';
 import { ADO_URL, PR_ID, h, ado, sleeps, useAdoHarness, adoExec, forgeInput, opts, happy, run, expectNoMerge } from './engine-ado-harness.js';
 
 useAdoHarness();
@@ -136,7 +136,7 @@ describe('ci-heal run on Azure DevOps (ADO parity design §3.6)', () => {
       lanes: () => lanes,
       ledgerDir: h.ledgerDir,
       runLimits: () => ({ limits: { ...DEFAULT_FACTORY_RUN_LIMITS }, warnings: [] }),
-      gateConfig: testGateConfig,
+      gateConfig: testGateConfig, gateSandbox: () => attestedSandbox(() => exec),
       engine: { pollMs: 5, owner: { pid: 4242, hostname: 'test-host', isAlive: () => false }, processes: new FakeProcesses(), sleep: async () => {} },
       forgeKind: () => 'azure-devops',
       forge,

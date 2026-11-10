@@ -16,7 +16,7 @@ import { humanFeedbackDigest, runFactoryEngine } from '../engine.js';
 import { factoryForgeOptions } from '../forge-roots.js';
 import { createFactoryState, parseFactoryState, readFactoryState } from '../state.js';
 import { renderFactoryRunState } from '../../../cli/commands/factory.js';
-import { commitFile, FakeLanes, FakeProcesses, harness, ISSUE, PR, REPO_URL, review, testGateConfig } from './fake-lanes.js';
+import { commitFile, FakeLanes, FakeProcesses, harness, ISSUE, PR, REPO_URL, review, testGateConfig, withTestSandbox } from './fake-lanes.js';
 // Each run drives a few hundred real git processes; the timeout only bounds a hang.
 vi.setConfig({ testTimeout: scaleTiming(240_000) });
 let h;
@@ -49,7 +49,7 @@ function run(scripts, o = {}) {
         ...(o.allowUnsandboxedLanes ? { allowUnsandboxedLanes: true } : {}),
         ...(o.noForge ? {} : { forge: { config: config(o.review, o.repoName), options: factoryForgeOptions(h.root) } }),
     };
-    return { lanes, done: runFactoryEngine(opts) };
+    return { lanes, done: runFactoryEngine(withTestSandbox(opts)) };
 }
 const user = (login) => ({ __typename: 'User', login });
 const thread = (id, login, body, o = {}) => ({

@@ -14,8 +14,12 @@
  * PR's package.json `test` script, so a lane that edits package.json scripts
  * (or the test files) changes what the gate does. It runs only in the
  * engine-owned checkout (assertLocalGateCommand), never in the user's
- * checkout or a lane worktree, with the scrubbed environment ship gives every
- * command, and without a shell.
+ * checkout or a lane worktree. With factory.run.sandbox.gates "enforced"
+ * (the default) it runs in the Copilot runtime's OS sandbox (sandbox-exec.ts
+ * runSandboxed: read-write on the checkout only, no network, no credential
+ * in the env, the home's credential files denied); with "ack" or
+ * "unsandboxed" it runs as the user, without a shell, with the allowlisted
+ * gateEnv.
  *
  * No shell on Windows means no `.cmd`/`.bat` (cmd.exe would parse the
  * arguments; the 5.12.1 cmd-injection fix). `npm`/`npx` run as
@@ -26,14 +30,15 @@
  */
 
 import { spawn, type ChildProcess } from 'child_process';
-import { existsSync, lstatSync, realpathSync, rmSync } from 'fs';
-import { dirname, posix, resolve, win32 } from 'path';
+import { existsSync, lstatSync, mkdtempSync, realpathSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { dirname, join, posix, resolve, win32 } from 'path';
 import { LOCAL_GATE_CHECK, localCheckRecordPath, readLocalCheckRecord, writeLocalCheckRecord, type LocalCheckRecord } from '../../forge/local/index.js';
 import { getProcessStartIdentity, terminateOwnedProcessTree } from '../../platform/process-utils.js';
-import { scrubShipEnv } from '../../ship/exec.js';
 import { childEnv, findOnPath, hardenWindowsExeSearch, resolveBareExe } from '../../utils/windows-search.js';
 import { FactorySafetyError, sameFsPath } from './exec.js';
 import { createGateProcTracker, gateProcsPath, reapGateProcs, sweepGateProcs, type GateProcTracker } from './gate-procs.js';
+import { CREDENTIAL_FILES_READABLE_NOTE, gateEnv, redactGateOutput, type SandboxRunner } from './sandbox-exec.js';
 
 /** The record keeps this many characters of the gate's output (jobLog, the ci-fix prompt). */
 export const LOCAL_GATE_TAIL_CHARS = 8_000;
@@ -218,6 +223,12 @@ function runOwned(exe: string, args: string[], cwd: string, env: NodeJS.ProcessE
   });
 }
 
+/**
+ * The gate (or a prepare check) WITHOUT the OS sandbox (factory.run.sandbox.gates
+ * "ack" or "unsandboxed"): no shell, the whole tree killed at the timeout,
+ * and the credential-scrubbed gateEnv with an empty home made for this run
+ * and removed after it.
+ */
 export const defaultLocalGateRunner: LocalGateRunner = async (argv, cwd, timeoutMs, track) => {
   // A bare name is never resolved from the checkout (a planted npm.cmd / node.exe there).
   hardenWindowsExeSearch();
@@ -225,7 +236,12 @@ export const defaultLocalGateRunner: LocalGateRunner = async (argv, cwd, timeout
   if ('missing' in target) return { status: 127, stdout: '', stderr: '', timedOut: false, startError: target.missing };
   // resolveLocalGateArgv already gave an absolute path on Windows; resolveBareExe keeps a path unchanged.
   const exe = resolveBareExe(target.exe) ?? target.exe;
-  return runOwned(exe, target.args, cwd, childEnv(scrubShipEnv(process.env)), timeoutMs, track);
+  const home = mkdtempSync(join(tmpdir(), 'omg-gate-home-'));
+  try {
+    return await runOwned(exe, target.args, cwd, childEnv(gateEnv(process.env, home)), timeoutMs, track);
+  } finally {
+    try { rmSync(home, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
 };
 
 const realOrResolved = (p: string): string => {
@@ -279,7 +295,14 @@ export interface LocalGateInput {
   timeoutMinutes: number;
   /** The engine's prepare checkout. */
   checkout: string;
+  /** The unsandboxed runner (gates "ack" / "unsandboxed"; default defaultLocalGateRunner, gateEnv). */
   runner?: LocalGateRunner;
+  /**
+   * How the gate runs (factory.run.sandbox.gates, resolved by the engine), recorded on the record.
+   * `enforced` needs `sandbox`: the gate then runs only through it, never through `runner`.
+   */
+  mode: 'enforced' | 'ack' | 'unsandboxed';
+  sandbox?: { run: SandboxRunner; commonGitDir: string; requireDeniedPaths?: boolean };
   now?: () => Date;
 }
 
@@ -307,23 +330,35 @@ export function localGateDue(stateDir: string, root: string, head: string, timeo
 /** A run id unique enough per head: positive, from the clock (ForgeRun.databaseId). */
 const runIdAt = (d: Date): number => Math.max(1, Math.floor(d.getTime() / 1000));
 
-const tailOf = (text: string): string => (text.length > LOCAL_GATE_TAIL_CHARS ? text.slice(-LOCAL_GATE_TAIL_CHARS) : text);
+/** The record's tail, token-shaped text redacted first (it reaches the ci-fix prompt and the PR notes). */
+const tailOf = (text: string): string => {
+  const clean = redactGateOutput(text);
+  return clean.length > LOCAL_GATE_TAIL_CHARS ? clean.slice(-LOCAL_GATE_TAIL_CHARS) : clean;
+};
 
-/** The gate ran and recorded a verdict, or its process never started (the PENDING record is removed again). */
-export type LocalGateOutcome = { started: true; record: LocalCheckRecord } | { started: false; reason: string };
+/**
+ * The gate ran and recorded a verdict, or it never started (the PENDING
+ * record is removed again): its executable cannot start, or (`sandbox`) the
+ * OS sandbox could not run it with an attested verdict.
+ */
+export type LocalGateOutcome = { started: true; record: LocalCheckRecord } | { started: false; reason: string; sandbox?: true; noVerdict?: true };
 
 /**
  * Run the gate for `head` and record SUCCESS or FAILURE (a PENDING record is
  * written first, so a crash mid-gate leaves the head visibly unfinished and
  * the next run sees a pending check, not a pass, until it goes stale). A
- * gate that cannot start records nothing.
+ * gate that cannot start records nothing. In mode `enforced` the gate runs
+ * only in the sandbox: a sandbox that gives no attested verdict records
+ * nothing either (`sandbox: true`), and the plain runner is never tried.
  */
 export async function runLocalGate(i: LocalGateInput): Promise<LocalGateOutcome> {
   if (i.gate.length === 0) throw new FactorySafetyError('omg factory run refuses an empty local gate');
+  if (i.mode === 'enforced' && !i.sandbox) throw new FactorySafetyError('omg factory run refuses an enforced local gate without a sandbox runner');
   const now = i.now ?? (() => new Date());
   const started = now();
-  const base: LocalCheckRecord = { name: LOCAL_GATE_CHECK, head: i.head, state: 'PENDING', argv: [...i.gate], runId: runIdAt(started), startedAt: started.toISOString() };
+  const base: LocalCheckRecord = { name: LOCAL_GATE_CHECK, head: i.head, state: 'PENDING', argv: [...i.gate], runId: runIdAt(started), startedAt: started.toISOString(), sandbox: i.mode };
   writeLocalCheckRecord(i.stateDir, i.root, base);
+  if (i.mode === 'enforced') return runSandboxedGate(i, base, now);
   // What an earlier run of this gate left behind (an engine that died mid-gate): killed only on a matching start identity.
   const procs = gateProcsPath(i.stateDir, i.root, i.head);
   await sweepGateProcs(dirname(procs)).catch(() => undefined);
@@ -348,6 +383,40 @@ export async function runLocalGate(i: LocalGateInput): Promise<LocalGateOutcome>
     completedAt: now().toISOString(),
     exitCode: r.timedOut ? 124 : r.status,
     tail: tailOf(output.trim()),
+  };
+  writeLocalCheckRecord(i.stateDir, i.root, done);
+  return { started: true, record: done };
+}
+
+/** runLocalGate in the OS sandbox: the argv resolved as for the plain runner, the verdict only when attested. */
+async function runSandboxedGate(i: LocalGateInput, base: LocalCheckRecord, now: () => Date): Promise<LocalGateOutcome> {
+  const drop = () => rmSync(localCheckRecordPath(i.stateDir, i.root, i.head), { force: true });
+  hardenWindowsExeSearch();
+  const target = resolveLocalGateArgv(i.gate, { cwd: i.checkout });
+  if ('missing' in target) {
+    drop();
+    return { started: false, reason: target.missing };
+  }
+  let r: Awaited<ReturnType<SandboxRunner>>;
+  try {
+    r = await i.sandbox!.run({ purpose: 'gate', argv: i.gate, exe: target.exe, args: target.args, cwd: i.checkout, commonGitDir: i.sandbox!.commonGitDir, timeoutMs: i.timeoutMinutes * 60_000, ...(i.sandbox!.requireDeniedPaths ? { requireDeniedPaths: true } : {}) });
+  } catch (error) {
+    drop();
+    throw error;
+  }
+  if (!r.ran) {
+    drop();
+    // `noVerdict`: the command was handed to the sandbox and gave no verdict (gate-no-verdict, never the ack park).
+    return { started: false, reason: r.reason, sandbox: true, ...(r.started ? { noVerdict: true as const } : {}) };
+  }
+  const output = `${r.output}${r.timedOut ? `\nlocal gate timed out after ${i.timeoutMinutes} min` : ''}`;
+  const done: LocalCheckRecord = {
+    ...base,
+    state: r.status === 0 && !r.timedOut ? 'SUCCESS' : 'FAILURE',
+    completedAt: now().toISOString(),
+    exitCode: r.timedOut ? 124 : r.status,
+    tail: tailOf(output.trim()),
+    ...(r.credentialFilesReadable ? { sandboxNote: CREDENTIAL_FILES_READABLE_NOTE } : {}),
   };
   writeLocalCheckRecord(i.stateDir, i.root, done);
   return { started: true, record: done };

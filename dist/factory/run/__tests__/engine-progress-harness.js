@@ -10,7 +10,7 @@ import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { factoryForgeOptions } from '../forge-roots.js';
 import { updateFactoryState } from '../state.js';
 import { EngineLedger } from '../ledger.js';
-import { commitFile, FakeLanes, FakeProcesses, harness, ISSUE, REPO_URL, review, testGateConfig } from './fake-lanes.js';
+import { commitFile, FakeLanes, FakeProcesses, harness, ISSUE, REPO_URL, review, testGateConfig, withTestSandbox } from './fake-lanes.js';
 export const FAMILY = PROGRESS_STAGES.filter((s) => s !== 'cancelled').map((s) => `factory:${s}`);
 export function githubConfig(progress = { enabled: true, stages: defaultProgressStages('github') }) {
     return {
@@ -53,7 +53,7 @@ export const exec = (cmd, args, opts) => {
     return h.exec(cmd, args, opts);
 };
 export function opts(scripts, over = {}) {
-    return {
+    return withTestSandbox({
         root: h.root,
         issue: ISSUE,
         exec,
@@ -67,7 +67,7 @@ export function opts(scripts, over = {}) {
         gateConfig: testGateConfig,
         forge: { config: githubConfig(), options: factoryForgeOptions(h.root) },
         ...over,
-    };
+    }, over);
 }
 export const happy = () => [commitFile('src/greet.ts', 'export const greet = () => "hi";\n'), review('approve')];
 /** The label each write adds (null: a removal only). */

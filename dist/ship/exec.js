@@ -168,7 +168,8 @@ function gitAllowed(a, protectedBranches) {
             return same(r, ['--name-only', '--diff-filter=U'])
                 || same(r, ['--cached', '--quiet'])
                 || same(r, ['--cached', '--quiet', '--', 'inventory'])
-                || (r.length === 2 && r[0] === '--name-only' && /^[0-9a-f]{40}\.\.\.HEAD$/.test(r[1]))
+                // prepare's changed files for the built-in checks, NUL-separated (names verbatim whatever core.quotePath says).
+                || (r.length === 3 && r[0] === '--name-only' && r[1] === '-z' && /^[0-9a-f]{40}\.\.\.HEAD$/.test(r[2]))
                 // The merge's changed-file list: GitHub's base and head commits, renames split into delete + add.
                 || (r.length === 4 && r[0] === '--name-only' && r[1] === '--no-renames' && r[2] === '-z' && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[3]))
                 // A housekeeping commit's content: its parent (or the expected merge tree) against the commit.
