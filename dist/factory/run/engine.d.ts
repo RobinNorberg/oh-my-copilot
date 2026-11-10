@@ -236,6 +236,19 @@ export declare class StateTamperedError extends Error {
     constructor(paths: string[]);
 }
 /**
+ * Engine git in the prepare checkout once the PR's code ran there: the admin
+ * dir recorded at `worktree add` (recordWorktreeGitLinks, before any of it
+ * ran) and the work tree, named on the command line (`--git-dir`,
+ * `--work-tree`), so a rewritten `.git` file cannot point that git at a
+ * config of the PR's (a filter driver on `git add`). It wraps the plain exec
+ * INSIDE hardenedGitExec, which (and the guard around it) sees the plain
+ * shape.
+ */
+export declare function pinCheckoutGit(exec: Exec, pin: () => {
+    workTree: string;
+    gitDir: string;
+} | undefined): Exec;
+/**
  * A built-in eslint or vitest check over the changed files, cut into calls
  * that each fit the sandbox shell (a large PR's file list can exceed the
  * Windows command line); one call for every other check.

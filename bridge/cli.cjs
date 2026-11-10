@@ -96274,7 +96274,7 @@ function trustedUserConfigPathOrDefault() {
     return "the default user config location";
   }
 }
-function configuredProtectedPaths(root2) {
+function configuredProtectedPaths(root2, onProblem) {
   const paths = /* @__PURE__ */ new Set();
   const layers = [
     [() => userConfigLayers().trustedUser, "user config (default location)"],
@@ -96287,7 +96287,8 @@ function configuredProtectedPaths(root2) {
     try {
       const file = shipBlock(read(), source).knownFlakyFile;
       if (isRepoPath(file) && file !== DEFAULT_SHIP_CONFIG.knownFlakyFile) paths.add(file);
-    } catch {
+    } catch (error2) {
+      onProblem?.(source, error2 instanceof Error ? error2.message : String(error2));
     }
   }
   return [...paths];
@@ -125680,7 +125681,8 @@ function cleanHeldFactoryRun(o, state) {
     }
     if (team === FACTORY_CHECKOUT_TEAM) unlinkNodeModules(o.root, path30);
     try {
-      removeWorkerWorktree(team, worker, o.root, { contained, ...o.discard ? { discardChanges: true } : {} });
+      const gitLinks = recordedWorktreeGitLinks(path30);
+      removeWorkerWorktree(team, worker, o.root, { contained, ...gitLinks ? { gitLinks } : {}, ...o.discard ? { discardChanges: true } : {} });
       if (existed) result.removed.push(path30);
     } catch (error2) {
       result.kept.push({ worktree: path30, reason: error2 instanceof Error ? error2.message : String(error2) });
@@ -130463,26 +130465,6 @@ function checkoutChanges(root2, checkout, raw) {
   }
   return parseStatusPaths(raw).filter((p) => p && !(ownLink && (p === "node_modules" || p === "node_modules/")));
 }
-function ignoredLink(checkout, ignored) {
-  const stack = ignored.map((p) => p.replace(/\/$/, ""));
-  while (stack.length > 0) {
-    const rel = stack.pop();
-    let st;
-    try {
-      st = (0, import_fs170.lstatSync)((0, import_path197.join)(checkout, rel));
-    } catch {
-      continue;
-    }
-    if (st.isSymbolicLink()) return rel;
-    if (!st.isDirectory()) continue;
-    for (const d of (0, import_fs170.readdirSync)((0, import_path197.join)(checkout, rel), { withFileTypes: true })) {
-      const child = `${rel}/${d.name}`;
-      if (d.isSymbolicLink()) return child;
-      if (d.isDirectory()) stack.push(child);
-    }
-  }
-  return null;
-}
 function parseStatusPaths(raw) {
   const records2 = raw.split("\0");
   const paths = [];
@@ -130978,6 +130960,8 @@ var init_engine = __esm({
       unsandboxedAllowed;
       /** The gate found the prepare checkout missing and sent the run back to prepare once in this invocation. */
       reprepared = false;
+      /** protectedExtras, once per invocation. */
+      protectedCache;
       /** The head `--allow-unsandboxed-gates` accepts (the gates-unsandboxed park's head, captured at resume). */
       gatesAllowed;
       /** factory.run.sandbox.gates, resolved once per trusted base commit. */
@@ -131872,11 +131856,7 @@ ${item.acceptance}
         }
         if (!result.worktree) return this.laneFailed(key, lane.kind, `lane ${lane.id} reports no local worktree, so the engine cannot commit its changes`);
         if (this.recheckFailed("before the engine commit")) return;
-        let extraProtected = [];
-        try {
-          extraProtected = configuredProtectedPaths(this.o.root);
-        } catch {
-        }
+        const extraProtected = this.protectedExtras().paths;
         const title = `${lane.kind}: ${oneLine(this.state.issueTitle ?? `issue ${this.o.issue}`)} (#${this.o.issue})`;
         const commit = commitLaneWork({
           worktree: result.worktree,
@@ -131908,12 +131888,31 @@ ${item.acceptance}
        * against a replaced start) is still caught before the push.
        */
       laneProtectedPaths() {
-        let extra = [];
+        const extra = this.protectedExtras();
+        return { paths: [...LANE_PROTECTED_PATHS, ...extra.paths], ...extra.problem ? { problem: extra.problem } : {} };
+      }
+      /**
+       * The configured protected paths (configuredProtectedPaths), read once per
+       * invocation; a layer that cannot be read is warned about once and named in
+       * `problem`, which parks every publish (protectedPathsUnread).
+       */
+      protectedExtras() {
+        if (this.protectedCache) return this.protectedCache;
+        const problems = [];
+        let paths = [];
         try {
-          extra = configuredProtectedPaths(this.o.root);
-        } catch {
+          paths = configuredProtectedPaths(this.o.root, (source, error2) => problems.push(`${source}: ${error2}`));
+        } catch (error2) {
+          problems.push(errText5(error2));
         }
-        return [...LANE_PROTECTED_PATHS, ...extra];
+        const problem = problems.length > 0 ? oneLine(problems.join("; "), 500) : void 0;
+        if (problem) this.o.warn?.(`omg factory run: the configured protected paths (a non-default ship.knownFlakyFile) cannot be read (${problem}); the engine will not push until they can`);
+        this.protectedCache = { paths, ...problem ? { problem } : {} };
+        return this.protectedCache;
+      }
+      /** The park when a publish cannot know the whole protected list: fail closed, never push with a protection dropped. */
+      protectedPathsUnread(what, problem) {
+        this.gate("protected-paths", `the configured protected paths cannot be read (${problem}), so ${what} cannot be checked against all of them; nothing was pushed. Fix that config (ship.knownFlakyFile in the user config or .copilot/omg.jsonc), then rerun ${this.resume}`);
       }
       /** One fresh retry per phase key, then the named `<kind>-failed` gate. */
       laneFailed(key, kind, reason, gateName = `${kind}-failed`) {
@@ -131937,7 +131936,9 @@ ${item.acceptance}
         if (!s.baseSha) throw new FactoryStepError("publish needs the base sha the run started at");
         const files = listChangedFiles(this.exec, this.o.root, s.baseSha, cand);
         if (files === null) throw new FactoryStepError(`git diff ${s.baseSha.slice(0, 12)}...${cand.slice(0, 12)} failed`);
-        const hit2 = protectedChanges(files, this.laneProtectedPaths());
+        const protectedList = this.laneProtectedPaths();
+        if (protectedList.problem) return this.protectedPathsUnread("the change", protectedList.problem);
+        const hit2 = protectedChanges(files, protectedList.paths);
         if (hit2.length > 0) {
           this.gate("protected-paths", `the change touches merge-rule paths: ${hit2.join(", ")}; nothing was pushed`);
           return;
@@ -132231,6 +132232,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
       discardCheckout() {
         const path30 = checkoutPath(this.o.root, this.key);
         if (!(0, import_fs170.existsSync)(path30)) return;
+        if (this.legacyCheckout(path30)) return this.discardLegacyCheckout(path30);
         const gitArgs2 = this.checkoutGitArgs(path30);
         if (typeof gitArgs2 === "string") throw new FactoryStepError(`the engine's prepare checkout ${path30} cannot be read safely: ${gitArgs2}${this.state.checkoutAdmin ? "; inspect it and remove it by hand" : `. ${this.freshCheckoutRecovery()}`}`);
         let head;
@@ -132245,7 +132247,8 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         }
         unlinkNodeModules(this.o.root, path30);
         try {
-          removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [head] });
+          const gitLinks = recordedWorktreeGitLinks(path30);
+          removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [head], ...gitLinks ? { gitLinks } : {} });
           forgetWorktreeGitLinks(path30);
         } catch (error2) {
           linkNodeModules(this.o.root, path30);
@@ -132254,6 +132257,45 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         this.save((x) => {
           const { checkoutHead: _c, checkoutAdmin: _a, ...rest } = x;
           return rest;
+        });
+        this.rebaseRecheck();
+      }
+      /**
+       * The prepare checkout's directory is gone (removed with rm -rf) while git
+       * still lists it: host git (hardened) prunes the entries whose directory is
+       * missing, so `worktree add` can use the path again. Nothing that exists is
+       * touched; a checkout that is there, or not listed, is left alone.
+       */
+      pruneMissingCheckout(path30) {
+        if ((0, import_fs170.existsSync)(path30)) return;
+        const listed2 = runHostGit(this.o.root, ["worktree", "list", "--porcelain"]);
+        if (!listed2.split(/\r?\n/).some((l) => l.startsWith("worktree ") && samePath2(l.slice("worktree ".length).trim(), path30))) return;
+        runHostGit(this.o.root, ["worktree", "prune"]);
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `the prepare checkout ${path30} was removed by hand; git worktree prune dropped its stale entry` }] }));
+        this.rebaseRecheck();
+      }
+      /** A prepare checkout an older release made: no admin dir in the run state and no git links recorded in this process. */
+      legacyCheckout(path30) {
+        return (0, import_fs170.existsSync)(path30) && !this.state.checkoutAdmin && !recordedWorktreeGitLinks(path30);
+      }
+      /**
+       * Discard a prepare checkout made before checkoutAdmin was recorded, as
+       * `omg factory run clean` does (the engine's node_modules link first, then
+       * the guarded removal, which refuses a tree with changes or commits the run
+       * did not make), so the run prepares a fresh one instead of parking.
+       */
+      discardLegacyCheckout(path30) {
+        unlinkNodeModules(this.o.root, path30);
+        const contained = [this.state.head, this.state.checkoutHead].filter((sha3) => typeof sha3 === "string" && HEX4017.test(sha3));
+        try {
+          removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [...new Set(contained)] });
+        } catch (error2) {
+          linkNodeModules(this.o.root, path30);
+          throw new FactoryStepError(`could not discard the engine's prepare checkout ${path30}, which an older release made: ${errText5(error2)}. ${this.freshCheckoutRecovery()}`);
+        }
+        this.save((x) => {
+          const { checkoutHead: _c, checkoutAdmin: _a, ...rest } = x;
+          return { ...rest, history: [...rest.history, { at: this.iso(), from: rest.phase, to: rest.phase, note: `discarded the prepare checkout an older release made (${path30}); it is prepared again` }] };
         });
         this.rebaseRecheck();
       }
@@ -132283,7 +132325,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           if (!links) return "its .git file or admin dir is missing, a link or malformed";
           const admin = this.state.checkoutAdmin;
           if (!admin) return `the run state records no admin dir for it (a checkout made before this release, or by something else)`;
-          if ((0, import_path197.basename)(links.adminDir) !== admin) return `its .git file names the admin dir ${links.adminDir}, but the engine's \`worktree add\` made ${admin}`;
+          if ((0, import_path197.basename)(links.adminDir) !== admin) return `its .git file names the admin dir ${visibleLine(links.adminDir)}, but the engine's \`worktree add\` made ${admin}`;
           let common;
           try {
             common = (0, import_path197.resolve)(this.o.root, this.run(["rev-parse", "--git-common-dir"]).trim());
@@ -132292,7 +132334,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           }
           const gitdir = links.gitdir.trim();
           if (!worktreeGitLinksIntact(path30, links, common) || !samePath2((0, import_path197.isAbsolute)(gitdir) ? gitdir : (0, import_path197.resolve)(links.adminDir, gitdir), (0, import_path197.join)(path30, ".git")) || links.commondir.trim() !== "../..") {
-            return `its .git file names ${links.adminDir}, which is not the admin dir git made for it under ${(0, import_path197.join)(common, "worktrees")}`;
+            return `its .git file names ${visibleLine(links.adminDir)}, which is not the admin dir git made for it under ${(0, import_path197.join)(common, "worktrees")}`;
           }
           try {
             recordWorktreeGitLinks(path30, links);
@@ -132354,6 +132396,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         if (this.recheckFailed("before prepare")) return;
         this.discardCheckout();
         const path30 = checkoutPath(this.o.root, this.key);
+        this.pruneMissingCheckout(path30);
         const branch2 = checkoutBranch(this.key);
         const common = (0, import_path197.resolve)(this.o.root, this.run(["rev-parse", "--git-common-dir"]).trim());
         const refProblem = jobRefProblem(common, this.o.root, `refs/heads/${branch2}`);
@@ -132704,7 +132747,9 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           }
           const files = listChangedFiles(this.exec, this.o.root, baseSha, next);
           if (files === null) throw new FactoryStepError(`git diff ${baseSha.slice(0, 12)}...${next.slice(0, 12)} failed`);
-          const hit2 = protectedChanges(files, this.laneProtectedPaths());
+          const protectedList = this.laneProtectedPaths();
+          if (protectedList.problem) return this.protectedPathsUnread("the prepared head", protectedList.problem);
+          const hit2 = protectedChanges(files, protectedList.paths);
           if (hit2.length > 0) {
             this.gate("protected-paths", `the prepared head touches merge-rule paths: ${hit2.join(", ")}; nothing was pushed`);
             return;
@@ -132819,11 +132864,11 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           return false;
         }
         const checkout = checkoutPath(this.o.root, this.key);
+        if (this.legacyCheckout(checkout)) this.discardLegacyCheckout(checkout);
         let at = "";
         if ((0, import_fs170.existsSync)(checkout)) {
           const gitArgs2 = this.checkoutGitArgs(checkout);
           let dirty = [];
-          let link6 = null;
           let problem = typeof gitArgs2 === "string" ? gitArgs2 : null;
           if (typeof gitArgs2 !== "string") {
             const indexDir = (0, import_fs170.mkdtempSync)((0, import_path197.join)((0, import_os38.tmpdir)(), "omg-gate-index-"));
@@ -132833,9 +132878,6 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
               runHostGit(checkout, [...gitArgs2, "read-tree", at], void 0, fresh);
               const status = [...gitArgs2, "-c", "core.untrackedCache=false", "status", "--porcelain=v1", "-z", "--untracked-files=all"];
               dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, void 0, fresh));
-              if (at === head && dirty.length === 0) {
-                link6 = ignoredLink(checkout, checkoutChanges(this.o.root, checkout, runHostGit(checkout, [...status, "--ignored=matching"], void 0, fresh)));
-              }
             } catch (error2) {
               problem = errText5(error2);
             } finally {
@@ -132848,10 +132890,6 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           }
           if (at === head && dirty.length > 0) {
             this.gate("lane-tampered", `the engine's prepare checkout ${checkout} is at ${head.slice(0, 12)} but its working tree differs from it (${dirty.slice(0, 5).join(", ")}): a changed tracked file or an untracked file that is not ignored, so the local gate did not run; inspect it and undo what the PR's code changed there, then rerun ${this.resume}`);
-            return false;
-          }
-          if (link6) {
-            this.gate("lane-tampered", `the engine's prepare checkout ${checkout} has an ignored symlink or junction ${link6} the engine did not make, which would pull content from outside the checkout into the gate, so the local gate did not run; inspect it and remove the link, then rerun ${this.resume}`);
             return false;
           }
         } else if (!this.reprepared && this.state.pr !== void 0) {
@@ -133796,11 +133834,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         const files = listChangedFiles(this.exec, this.o.root, from, check2.head);
         if (files === null) throw new FactoryStepError(`git diff ${from.slice(0, 12)}...${check2.head.slice(0, 12)} failed`);
         if (files.length === 0) return this.gate(CODING_AGENT_ADOPT_GATE, `the coding agent's pull request #${check2.pr} changes nothing against ${s.base}; nothing was adopted; ${this.codingAgentRestart()}`);
-        let extraProtected = [];
-        try {
-          extraProtected = configuredProtectedPaths(this.o.root);
-        } catch {
-        }
+        const extraProtected = this.protectedExtras().paths;
         const hit2 = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...extraProtected]);
         if (hit2.length > 0) return this.gate("protected-paths", `the coding agent's pull request #${check2.pr} changes merge-rule or lane-protected paths: ${hit2.join(", ")}; nothing was adopted or pushed`);
         const links = linkEntries(this.run(codingAgentTreeArgs(from), "git", TRUSTED_READ_ENV), this.run(codingAgentTreeArgs(check2.head), "git", TRUSTED_READ_ENV));
@@ -139137,7 +139171,8 @@ async function runFactoryPr(action2, o, deps) {
     const localBase2 = local.status === 0 ? local.stdout.trim() : "";
     const lagging = /^[0-9a-f]{40}$/.test(localBase2) && /^[0-9a-f]{40}$/.test(v.baseRefOid) && git7("git", ["merge-base", "--is-ancestor", v.baseRefOid, localBase2], { cwd: ctx.root, env: TRUSTED_READ_ENV }).status === 0;
     if (localBase2 !== v.baseRefOid && !lagging) {
-      throw new Error(`local PR #${n}: the local forge mirror's ${v.baseRefName} is at ${v.baseRefOid}, which is not your ${v.baseRefName} ${localBase2 || "(unreadable)"} or an ancestor of it; the ${action2} would use a base you do not have. Check what wrote the mirror, or let omg factory run sync it, then read the PR again`);
+      const baseName3 = visibleLine(v.baseRefName);
+      throw new Error(`local PR #${n}: the local forge mirror's ${baseName3} is at ${v.baseRefOid}, which is not your ${baseName3} ${localBase2 || "(unreadable)"} or an ancestor of it; the ${action2} would use a base you do not have. Check what wrote the mirror, or let omg factory run sync it, then read the PR again`);
     }
     base = localBase2;
   }
