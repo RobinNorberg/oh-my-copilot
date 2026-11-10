@@ -22,7 +22,7 @@ import type { Exec } from '../../../ship/exec.js';
 import { assertFactoryCommand, FactorySafetyError } from '../exec.js';
 import { ledgerFilePath } from '../ledger.js';
 import { factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, readFactoryState, type FactoryHealRecord } from '../state.js';
-import { commitFile, FakeLanes, FakeProcesses, gitIn, harness, PR, remoteHead, review, testGateConfig, type Harness, type LaneScript } from './fake-lanes.js';
+import { commitFile, FakeLanes, FakeProcesses, gitIn, harness, PR, remoteHead, review, testGateConfig, withTestSandbox, type Harness, type LaneScript } from './fake-lanes.js';
 
 const SIG8 = '0a1b2c3d';
 const KEY = `heal-${SIG8}` as const;
@@ -70,7 +70,7 @@ const limits = (over: Partial<FactoryRunLimits> = {}): FactoryRunLimits => ({ ..
 const freeCap = (cap: number): LaneCapDecision => ({ ok: true, cap });
 
 function opts(lanes: FakeLanes, heal: Partial<FactoryHealStart> = {}, over: Partial<FactoryEngineOptions> = {}): FactoryEngineOptions {
-  return {
+  return withTestSandbox({
     root: h.root,
     exec: h.exec,
     lanes,
@@ -83,7 +83,7 @@ function opts(lanes: FakeLanes, heal: Partial<FactoryHealStart> = {}, over: Part
     gateConfig: testGateConfig,
     heal: { sig8: SIG8, record: record(), autoImplement: false, laneCap: freeCap, ...heal },
     ...over,
-  };
+  }, over);
 }
 
 const run = (scripts: LaneScript[], heal: Partial<FactoryHealStart> = {}, over: Partial<FactoryEngineOptions> = {}) => {

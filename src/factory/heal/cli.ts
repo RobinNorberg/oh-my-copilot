@@ -68,6 +68,8 @@ export interface HealDeps {
   /** `factory.run` limits of the ci-heal run (`heal approve`, `heal cancel`). */
   runLimits: (root: string) => LoadedFactoryRunLimits;
   gateConfig?: GateConfigLoader;
+  /** The OS sandbox of the ci-heal run's prepare checks (HealEngineDeps.gateSandbox). */
+  gateSandbox?: HealEngineDeps['gateSandbox'];
   /** Test seams of the factory engine. */
   engine?: HealEngineDeps['engine'];
   /** The origin's forge kind (originForgeKind); Azure DevOps heals only with factory.heal.pipeline (capabilities.heal). Omitted = GitHub. */
@@ -438,6 +440,7 @@ function engineDeps(deps: HealDeps, ado: AdoHeal | undefined): HealEngineDeps {
     exec: deps.exec, lanes: deps.lanes, limits: deps.runLimits, ledgerDir: deps.ledgerDir, now: deps.now,
     warn: (m) => console.error(chalk.yellow(termSafe(m))),
     ...(deps.gateConfig ? { gateConfig: deps.gateConfig } : {}),
+    ...(deps.gateSandbox ? { gateSandbox: deps.gateSandbox } : {}),
     ...(deps.engine ? { engine: deps.engine } : {}),
     ...(ado ? { forge: ado.forge() } : {}),
   };

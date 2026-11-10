@@ -139,7 +139,9 @@ describe('factory run on the local forge', () => {
     w = localWorld();
     w.gate = async () => ({ status: 127, stdout: '', stderr: '', timedOut: false, startError: 'the local gate executable npm is not on PATH' });
     const lanes = lanesFor(w, [greet(), review('approve')]);
-    const out = await runFactoryEngine(localOpts(w, lanes));
+    // The plain runner's start errors (factory.run.sandbox.gates "unsandboxed"; a start failure inside the sandbox is no verdict, engine.gates-sandbox.test.ts).
+    const unsandboxed = { gateSandboxUserConfig: { factory: { run: { sandbox: { gates: 'unsandboxed' } } } } };
+    const out = await runFactoryEngine(localOpts(w, lanes, unsandboxed));
     expect(out.exitCode, out.message).toBe(EXIT_AWAITING_HUMAN);
     expect(out.gate?.name).toBe('gates');
     expect(out.gate?.reason).toMatch(/the local gate could not start: the local gate executable npm is not on PATH/);
@@ -155,6 +157,7 @@ describe('factory run on the local forge', () => {
     const changed = { ...w.config, local: { ...w.config.local!, gate: ['node', '--test', '--test-reporter=spec'] } };
     let ran = 0;
     const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), {
+      ...unsandboxed,
       forge: { config: changed, options: { ...factoryForgeOptions(w.root), stateDir: w.stateDir } },
       localGate: async () => { ran += 1; return { status: 0, stdout: '', stderr: '', timedOut: false }; },
     }));

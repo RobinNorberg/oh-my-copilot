@@ -14,7 +14,7 @@ import { factoryGuardExec } from '../exec.js';
 import { EngineLedger } from '../ledger.js';
 import { snapshotRepo } from '../review-guard.js';
 import { updateFactoryState, type FactoryRunState } from '../state.js';
-import { FakeLanes, FakeProcesses, harness, ISSUE, PR, testGateConfig, type Harness, type LaneScript } from './fake-lanes.js';
+import { FakeLanes, FakeProcesses, harness, ISSUE, PR, testGateConfig, type Harness, type LaneScript, withTestSandbox } from './fake-lanes.js';
 
 export let h: Harness;
 export let procs: FakeProcesses;
@@ -34,7 +34,7 @@ export function useEngineHarness(): void {
 export const limits = (over: Partial<FactoryRunLimits> = {}): FactoryRunLimits => ({ ...DEFAULT_FACTORY_RUN_LIMITS, ...over });
 
 export function opts(lanes: FakeLanes, over: Partial<FactoryEngineOptions> = {}): FactoryEngineOptions {
-  return {
+  return withTestSandbox({
     root: h.root,
     issue: ISSUE,
     exec: h.exec,
@@ -47,7 +47,7 @@ export function opts(lanes: FakeLanes, over: Partial<FactoryEngineOptions> = {})
     processes: procs,
     gateConfig: testGateConfig,
     ...over,
-  };
+  }, over);
 }
 
 export const ledger = () => EngineLedger.open(h.ledgerDir, h.root, ISSUE);

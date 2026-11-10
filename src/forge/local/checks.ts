@@ -31,6 +31,12 @@ export interface LocalCheckRecord {
   exitCode?: number;
   /** The captured output tail (jobLog). */
   tail?: string;
+  /**
+   * How the gate ran (factory.run.sandbox.gates): in the attested OS sandbox
+   * (`enforced`), or unsandboxed after `--allow-unsandboxed-gates` (`ack`) or
+   * by the user's config (`unsandboxed`). Absent in records written before.
+   */
+  sandbox?: 'enforced' | 'ack' | 'unsandboxed';
 }
 
 const HEX40 = /^[0-9a-f]{40}$/;
@@ -43,7 +49,8 @@ function validRecord(r: unknown): r is LocalCheckRecord {
     && Number.isSafeInteger(x.runId) && (x.runId as number) > 0 && typeof x.startedAt === 'string'
     && (x.completedAt === undefined || typeof x.completedAt === 'string')
     && (x.exitCode === undefined || Number.isInteger(x.exitCode))
-    && (x.tail === undefined || typeof x.tail === 'string');
+    && (x.tail === undefined || typeof x.tail === 'string')
+    && (x.sandbox === undefined || x.sandbox === 'enforced' || x.sandbox === 'ack' || x.sandbox === 'unsandboxed');
 }
 
 function readRecordFile(path: string): LocalCheckRecord | undefined {
