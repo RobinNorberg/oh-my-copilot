@@ -2122,14 +2122,8 @@ class FactoryEngine {
             }
             if (this.prepareTampered(before, path, branch, view.baseRefOid))
                 return;
-            // Read through the links recorded at `worktree add`: the checks (the PR's code) could have rewritten the checkout's `.git`.
-            try {
-                checkoutHead = runHostGit(path, [...worktreeGitDirArgs(path), 'rev-parse', 'HEAD']).trim();
-            }
-            catch (error) {
-                this.gate('lane-tampered', `prepare's checks (the PR's own code) left the engine's prepare checkout ${path} unreadable through the git links recorded at its creation (${errText(error)}), so nothing is pushed; inspect and remove it by hand`);
-                return;
-            }
+            // Still inside the pin: engine git names the checkout's git dir as it was before any PR code ran (checkoutGitPin).
+            checkoutHead = this.run(['rev-parse', 'HEAD'], 'git', undefined, path).trim();
         }
         finally {
             this.checkoutGitPin = undefined;

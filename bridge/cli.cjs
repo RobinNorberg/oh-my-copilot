@@ -132068,12 +132068,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
             return;
           }
           if (this.prepareTampered(before, path30, branch2, view2.baseRefOid)) return;
-          try {
-            checkoutHead = runHostGit(path30, [...worktreeGitDirArgs(path30), "rev-parse", "HEAD"]).trim();
-          } catch (error2) {
-            this.gate("lane-tampered", `prepare's checks (the PR's own code) left the engine's prepare checkout ${path30} unreadable through the git links recorded at its creation (${errText5(error2)}), so nothing is pushed; inspect and remove it by hand`);
-            return;
-          }
+          checkoutHead = this.run(["rev-parse", "HEAD"], "git", void 0, path30).trim();
         } finally {
           this.checkoutGitPin = void 0;
         }
