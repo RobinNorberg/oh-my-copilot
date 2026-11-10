@@ -284,6 +284,12 @@ export interface SandboxPolicyContext {
   extraReadonly?: string[];
   /** The OMC global state root to deny (default getGlobalOmcStateRoot()); a test seam. */
   omcStateRoot?: string;
+  /**
+   * More paths a write session is denied where the host can deny paths (the
+   * factory private layout: the store's seed and the other runs' and lanes'
+   * dirs); a path that holds a grant is left out, like the state root.
+   */
+  extraDenied?: string[];
 }
 
 export const REGISTRY_HOSTS: readonly string[] = ['registry.npmjs.org', '*.npmjs.org'];
@@ -452,6 +458,7 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
       ...ledgers.map((l) => (l.endsWith('factory-ledger') ? ensureDir(l) : l)).filter(existsSync),
     ];
     filesystem.deniedPaths.push(...[...new Set(stateDeny)].filter((p) => !holdsGrant(p) && !covered(p)));
+    filesystem.deniedPaths.push(...[...new Set(ctx.extraDenied ?? [])].filter((p) => existsSync(p) && !holdsGrant(p) && !covered(p)));
     if (ctx.platform !== 'win32') {
       // Sockets that run commands for the caller outside the sandbox: the user's runtime dir (D-Bus, systemd, agents),
       // the container daemons and the SSH agent. Never a dir that holds a grant (the root, the home, a parent of either,

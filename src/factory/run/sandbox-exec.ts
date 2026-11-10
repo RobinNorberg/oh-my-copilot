@@ -76,7 +76,7 @@ const ATTEST_WAIT_MS = 2_000;
 /** One command for the sandbox: the configured argv (for records and messages) and what it resolved to. */
 export interface SandboxRunRequest {
   /** What runs it: a prepare check, the local gate, or a base calibration of either. */
-  purpose: 'prepare' | 'gate' | 'calibrate';
+  purpose: 'prepare' | 'gate' | 'calibrate' | 'install';
   /** The configured argv (ship.prepare.checks, factory.forge.local.gate) or the built-in check's. */
   argv: readonly string[];
   /** The executable and arguments it resolved to (resolveLocalGateArgv: never a .cmd/.bat). */
@@ -89,6 +89,8 @@ export interface SandboxRunRequest {
   timeoutMs: number;
   /** factory.run.sandbox.requireDeniedPaths: a host without denied_paths gives no verdict instead of running. */
   requireDeniedPaths?: boolean;
+  /** The network this command needs over factory.run.sandbox.writeNetwork (the private layout's `npm ci --ignore-scripts`: the registry). */
+  network?: 'registry';
 }
 
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
@@ -393,7 +395,7 @@ export function createSandboxRunner(root: string, deps: SandboxExecDeps = defaul
       cwd: req.cwd,
       commonGitDir: req.commonGitDir,
       timeoutMs: req.timeoutMs,
-      network: settings.writeNetwork,
+      network: req.network ?? settings.writeNetwork,
       settings,
       jobRoot: sandboxJobRoot(root),
       ...(req.requireDeniedPaths ? { requireDeniedPaths: true } : {}),

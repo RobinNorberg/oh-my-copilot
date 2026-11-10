@@ -64,6 +64,19 @@ export interface LaneStartInput {
   model?: string;
   /** Cost attribution for the budget ledger (`omg budget status --by role`); the local backend tags the lane's record. */
   ledgerTag?: { role: string; run: string };
+  /**
+   * The private layout (private-run.ts): the engine-made lane worktree
+   * `<run>/w/<n>` (detached at `baseRef`, links recorded) in the run's private
+   * repository, and where the job dir goes (`<run>/jobs`). Omitted = the
+   * shared layout: the backend makes the worktree in `cwd`'s repository and
+   * the job dir under its OMC root, as before.
+   */
+  worktree?: { path: string; commonGitDir: string };
+  jobRoot?: string;
+  /** Private layout: paths the lane's sandbox denies where the host can (the seed, the other runs' and lanes' dirs). */
+  deniedPaths?: string[];
+  /** Private layout: privateRepoProblem, run right before the backend's host git reads the worktree after the session. */
+  beforeHostGit?: () => string | null;
   /** Cloud backends only. */
   customAgent?: string;
   timeoutMs: number;
@@ -175,7 +188,9 @@ export class CopilotLaneBackend implements LaneBackend {
         maxCredits: input.maxCredits,
         ...(input.model ? { model: input.model } : {}),
       },
-      { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, ...(input.ledgerTag ? { ledgerTag: { kind: 'factory-lane' as const, ...input.ledgerTag } } : {}), sandboxScope: 'factory', ...(input.scrubCredentials ? { scrubCredentials: true } : {}), ...(input.engineCommits ? { hostCommits: true } : {}) },
+      { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, ...(input.ledgerTag ? { ledgerTag: { kind: 'factory-lane' as const, ...input.ledgerTag } } : {}), sandboxScope: 'factory', ...(input.scrubCredentials ? { scrubCredentials: true } : {}), ...(input.engineCommits ? { hostCommits: true } : {}),
+        ...(input.worktree ? { worktree: input.worktree } : {}), ...(input.jobRoot ? { jobRoot: input.jobRoot } : {}),
+        ...(input.deniedPaths ? { deniedPaths: input.deniedPaths } : {}), ...(input.beforeHostGit ? { beforeHostGit: input.beforeHostGit } : {}) },
     );
     return { remoteId: snap.jobId };
   }
@@ -217,7 +232,8 @@ export class CopilotLaneBackend implements LaneBackend {
     const worktree = snap.worktree?.path ?? null;
     return {
       state,
-      branch: snap.worktree?.branch ?? null,
+      // A caller-made worktree (private layout) has no job branch.
+      branch: snap.worktree?.branch || null,
       pr: null,
       // Read by the job when it ended, through the recorded git dir, hardened: never via the lane-writable `.git` file.
       headSha: worktree && isTerminalLaneState(state) ? snap.worktree?.headCommit ?? null : null,

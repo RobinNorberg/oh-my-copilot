@@ -31,6 +31,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync
 import { homedir } from 'os';
 import { dirname, join, resolve } from 'path';
 import { atomicWriteFileSync } from '../../lib/atomic-write.js';
+import type { UserRepoGuard } from './private-store.js';
 import type { RepoSnapshot } from './review-guard.js';
 import type { FactoryLaneKind, FactoryRunKey } from './state.js';
 
@@ -63,6 +64,8 @@ interface LedgerData {
   /** Shared git state before each running lane started (lane id -> snapshot). */
   baselines: Record<string, RepoSnapshot>;
   recheck?: LedgerRecheck;
+  /** Private layout: the user repository guard baseline (private-store.ts userRepoGuardSnapshot) the next import is compared with. */
+  userGuard?: UserRepoGuard;
 }
 
 export const sha256 = (data: string | Buffer): string => createHash('sha256').update(data).digest('hex');
@@ -198,6 +201,17 @@ export class EngineLedger {
   setRecheck(recheck: LedgerRecheck | undefined): void {
     if (recheck) this.data.recheck = recheck;
     else delete this.data.recheck;
+    this.persist();
+  }
+
+  /** The private layout's user repository guard baseline (taken at run start, re-taken after each clean import and push). */
+  get userGuard(): UserRepoGuard | undefined {
+    return this.data.userGuard;
+  }
+
+  setUserGuard(guard: UserRepoGuard | undefined): void {
+    if (guard) this.data.userGuard = guard;
+    else delete this.data.userGuard;
     this.persist();
   }
 
