@@ -3157,7 +3157,8 @@ class FactoryEngine {
         hold.refs.length ? `refs: ${hold.refs.slice(0, 3).join('; ')}` : '',
         hold.failed ?? '',
       ].filter(Boolean).join('; ');
-      return `. Tamper quarantine${hold.quarantine ? ` (${hold.quarantine})` : ''}: ${did}. New factory runs in this checkout are held until ${RELEASE_TAMPER_COMMAND}; your own change to .git during the run (git config, a hook husky or an editor installed, a commit) triggers this too: put it back from the quarantine folder if it was yours`;
+      if (!hold.held) return `. Tamper quarantine${hold.quarantine ? ` (${hold.quarantine})` : ''}: ${did}. Nothing that runs code changed in .git, so no hold was set; if a listed change was not yours, undo it with the command shown (refs.txt in that folder)`;
+      return `. Tamper quarantine${hold.quarantine ? ` (${hold.quarantine})` : ''}: ${did}. New factory runs in this checkout are held until ${RELEASE_TAMPER_COMMAND}; your own change to .git during the run (git config, a hook husky or an editor installed) triggers this too: put it back from the quarantine folder if it was yours`;
     } catch (error) {
       return `. The tamper quarantine failed (${errText(error)}); .git was left as it is`;
     }

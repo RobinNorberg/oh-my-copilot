@@ -154,19 +154,24 @@ describe('tamper quarantine and hold (M3)', () => {
     await expect(run([]).done).resolves.toBeDefined();
   });
 
-  it('the user\'s own `git config` change during the run parks, is kept in place (copied, not reverted), and the message says so', async () => {
+  it('the user\'s own `git config` change and branch during the run park this run only: kept in place, copied, listed, no hold', async () => {
     const userEdit: LaneScript = (ctx) => {
       gitIn(h.root, 'config', 'user.email', 'me@example.invalid');
+      gitIn(h.root, 'branch', 'mine', 'HEAD');
       return edit('a.ts', 'a\n')(ctx);
     };
     const out = await run([userEdit]).done;
     expect(out.gate?.name, out.message).toBe('lane-tampered');
     expect(out.gate?.reason).toMatch(/not restored: config \(no program-running key changed; left as it is/);
-    expect(out.gate?.reason).toMatch(/your own change to \.git during the run \(git config/);
+    expect(out.gate?.reason).toMatch(/refs\/heads\/mine was created .*git update-ref -d refs\/heads\/mine/);
+    expect(out.gate?.reason).toMatch(/no hold was set/);
     // gitIn passes its own -c user.email: read the file itself.
     expect(readFileSync(join(commonDir(), 'config'), 'utf8')).toContain('me@example.invalid');
-    const hold = readTamperHold(h.ledgerDir, h.root) as { quarantine: string };
-    expect(readFileSync(join(hold.quarantine, 'config'), 'utf8')).toContain('me@example.invalid');
+    expect(gitIn(h.root, 'rev-parse', '--verify', 'refs/heads/mine')).toMatch(/^[0-9a-f]{40}$/);
+    expect(readTamperHold(h.ledgerDir, h.root)).toBeNull();
+    const q = /Tamper quarantine \(([^)]+)\)/.exec(out.gate!.reason)![1];
+    expect(readFileSync(join(q, 'config'), 'utf8')).toContain('me@example.invalid');
+    expect(readFileSync(join(q, 'refs.txt'), 'utf8')).toContain('refs/heads/mine');
   });
 
   it('a change outside .git (a file in the main checkout) parks without a quarantine or a hold', async () => {

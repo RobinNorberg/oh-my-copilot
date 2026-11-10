@@ -28,6 +28,11 @@
  * in the quarantine. A file the snapshot holds only as a hash (over 1 MiB)
  * is quarantined but cannot be restored; the result names it.
  *
+ * The hold is set only when something that runs code or rewrites what git
+ * reads changed (a hook, an info/ file, a program-running config key, a
+ * replace ref) or the quarantine failed; ref moves and other config keys
+ * alone are what a user's own git does during a run, so they are copied and
+ * listed and only the run that saw them parks.
  * The hold (`<ledgerDir>/holds/<repo>.json`) makes `omg factory run`, the
  * poller's auto-start and the engine refuse (exit 6) with the quarantine
  * path, until `omg factory run release --tamper` (a human) prints what was
@@ -61,6 +66,8 @@ export interface TamperHold {
   notRestored: string[];
   refs: string[];
   failed?: string;
+  /** True when the hold was set (something that runs code changed, or the quarantine failed); false: only listed and copied. */
+  held?: boolean;
 }
 
 /** Keys whose value runs a program or redirects git: a change to one is put back from the snapshot. */
@@ -93,6 +100,9 @@ function programKeyChanged(before: Buffer | null, after: Buffer | null, tmp: str
   }
   return false;
 }
+
+/** The notRestored note of a config change that touched no program-running key (the only change that sets no hold). */
+const BENIGN_CONFIG = 'no program-running key changed';
 
 const decode = (v: string | undefined): Buffer | null => (v?.startsWith('b64:') ? Buffer.from(v.slice(4), 'base64') : v?.startsWith('b64x:') ? Buffer.from(v.slice(5), 'base64') : null);
 
@@ -146,7 +156,7 @@ export function quarantineTamper(i: QuarantineInput): TamperHold {
         if (isConfig) {
           const current = existsSync(abs) ? readFileSync(abs) : null;
           if (kept[rel] !== undefined && old === null) { hold.notRestored.push(rel); continue; }
-          if (!programKeyChanged(old, current, tmp)) { hold.notRestored.push(`${rel} (no program-running key changed; left as it is, a copy is in the quarantine)`); continue; }
+          if (!programKeyChanged(old, current, tmp)) { hold.notRestored.push(`${rel} (${BENIGN_CONFIG}; left as it is, a copy is in the quarantine)`); continue; }
         }
         if (kept[rel] === undefined) {
           // Added since the snapshot: it is in the quarantine; remove it here.
@@ -180,6 +190,14 @@ export function quarantineTamper(i: QuarantineInput): TamperHold {
     delete hold.quarantine;
     return hold;
   }
+  // The hold is for what can run code or rewrite what git reads (a hook, an info/ file, a program-running config key,
+  // a replace ref) or a quarantine that could not finish. Ref moves and other config keys are what the user's own git
+  // does during a run (a branch, a commit, `push -u`): they are listed and copied, the park stops this run, no hold.
+  // A hook, info/ file or config that could not be put back (over 1 MiB, a link) holds too.
+  const replaced = hold.refs.some((r) => r.startsWith('refs/replace/'));
+  const unrestored = hold.notRestored.some((r) => !r.includes(BENIGN_CONFIG));
+  if (!hold.failed && hold.moved.length + hold.restored.length === 0 && !replaced && !unrestored) return hold;
+  hold.held = true;
   try {
     writeTamperHold(i.ledgerDir, i.root, hold);
   } catch (error) {
@@ -232,7 +250,7 @@ export function tamperHoldMessage(ledgerDir: string, root: string): string | nul
   if (hold === null) return null;
   const path = tamperHoldPath(ledgerDir, root);
   if (hold === 'unreadable') return `a tamper hold is set on this checkout (${path}, unreadable), so no factory run starts here; check the repository's .git (hooks, config, info, refs), then run ${RELEASE_TAMPER_COMMAND}`;
-  return `a tamper hold is set on this checkout since ${hold.at} (run ${hold.run} parked at ${hold.gate}), so no factory run starts here${hold.quarantine ? `; what changed in .git is in ${hold.quarantine}` : ''}. Your own change to .git during that run (git config, a hook husky or an editor installed, a commit) triggers this too: put it back from that folder if it was yours. Then run ${RELEASE_TAMPER_COMMAND}`;
+  return `a tamper hold is set on this checkout since ${hold.at} (run ${hold.run} parked at ${hold.gate}), so no factory run starts here${hold.quarantine ? `; what changed in .git is in ${hold.quarantine}` : ''}. Your own change to .git during that run (a program-running git config key, a hook husky or an editor installed) triggers this too: put it back from that folder if it was yours. Then run ${RELEASE_TAMPER_COMMAND}`;
 }
 
 /** `release --tamper`: the hold's report lines, after the hold file is removed; null when there was none. */
