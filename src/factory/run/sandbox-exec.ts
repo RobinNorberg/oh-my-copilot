@@ -18,7 +18,8 @@
  * Anything else is `ran: false`: the engine parks, it never counts as a
  * pass and never as a failure that would start a ci-fix lane. `started`
  * tells the two apart: before the command was handed to a confirmed policy
- * (host unsupported, policy not applied, no denied_paths, no SDK) it is
+ * (host unsupported, policy not applied, no SDK, or no denied_paths with
+ * factory.run.sandbox.requireDeniedPaths) it is
  * unset; after that (no single marker, a contradiction, no attestation, a
  * timeout with no answer) it is true, and the reason is fixed text, never
  * the command's. The argv reaches the shell only as base64 that the shell
@@ -86,7 +87,12 @@ export interface SandboxRunRequest {
   /** The repository's common git dir (read-only in the sandbox). */
   commonGitDir: string;
   timeoutMs: number;
+  /** factory.run.sandbox.requireDeniedPaths: a host without denied_paths gives no verdict instead of running. */
+  requireDeniedPaths?: boolean;
 }
+
+/** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
+export const CREDENTIAL_FILES_READABLE_NOTE = 'sandboxed; credential files readable on this host';
 
 /**
  * A verdict (the command ran in the attested sandbox), or why there is none.
@@ -95,7 +101,7 @@ export interface SandboxRunRequest {
  * --allow-unsandboxed-gates one); unset: nothing of the PR's ran.
  */
 export type SandboxRunResult =
-  | { ran: true; status: number; output: string; timedOut: boolean }
+  | { ran: true; status: number; output: string; timedOut: boolean; credentialFilesReadable?: true }
   | { ran: false; reason: string; started?: true };
 
 export type SandboxRunner = (req: SandboxRunRequest) => Promise<SandboxRunResult>;
@@ -115,6 +121,8 @@ export interface SandboxExecOptions {
   settings: SandboxSettings;
   /** The dir the per-command job homes go under (never inside `cwd`). */
   jobRoot: string;
+  /** factory.run.sandbox.requireDeniedPaths (default false: a host without denied_paths runs, its verdict marked). */
+  requireDeniedPaths?: boolean;
 }
 
 export const MARKER_PREFIX = 'omg-gate-exit-';
@@ -271,9 +279,11 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
     });
     const config = await sandbox.decide(c, loaded);
     if (!config) return notStarted(`the sandbox is not available: ${sandbox.state?.reason ?? 'unknown reason'}`);
-    // Without a deny list the sandboxed command reads ~/.ssh, ~/.npmrc and the gh and git credential files, and can print them.
-    if (!config.userPolicy.filesystem.deniedPaths?.length) {
-      return notStarted('the sandbox host does not report denied_paths, so it cannot hide your credential files (~/.ssh, ~/.npmrc, gh and git credentials) from the PR\'s code');
+    // Without a deny list (the Copilot sandbox on Windows) the command can read files under the user profile, credential
+    // stores included: it runs and counts, marked, unless factory.run.sandbox.requireDeniedPaths asks for no verdict.
+    const readable = !config.userPolicy.filesystem.deniedPaths?.length;
+    if (readable && o.requireDeniedPaths) {
+      return notStarted('the sandbox host does not report denied_paths, so it cannot hide your credential files from the PR\'s code, and factory.run.sandbox.requireDeniedPaths is true');
     }
     const attested = new Map<string, unknown>();
     const onPermissionRequest = (): PermissionResult => ({ kind: 'reject', feedback: 'omg factory run: a gate session grants nothing' });
@@ -328,7 +338,8 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
     }
     const raw = typeof r?.output === 'string' ? r.output : '';
     const read = readMarker(raw, marker);
-    if (timeout) return { ran: true, status: 124, output: tail(`${read.output.trim()}\ntimed out after ${o.timeoutMs} ms`), timedOut: true };
+    const marked = readable ? { credentialFilesReadable: true as const } : {};
+    if (timeout) return { ran: true, status: 124, output: tail(`${read.output.trim()}\ntimed out after ${o.timeoutMs} ms`), timedOut: true, ...marked };
     if (typeof r?.success !== 'boolean') return noVerdict('the sandbox shell call reported no success field');
     if (read.code === null) return noVerdict('the output did not end with the one exit-code marker line the sandbox shell prints after the command');
     // The marker is the shell's last statement: the shell's own exit is 0, or (if the runtime reports the last native
@@ -336,7 +347,7 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
     const exitOk = r.exitCode === undefined || r.exitCode === null || r.exitCode === 0 || r.exitCode === read.code;
     const successOk = r.success === true || read.code !== 0;
     if (!exitOk || !successOk) return noVerdict('the sandbox shell\'s own result contradicts the exit code the command printed');
-    return { ran: true, status: read.code, output: tail(read.output.trim()), timedOut: false };
+    return { ran: true, status: read.code, output: tail(read.output.trim()), timedOut: false, ...marked };
   } catch (err) {
     if (started) return noVerdict('the sandbox runtime failed while the command ran');
     return notStarted(`the sandbox runtime failed: ${errText(err).slice(0, 300)}`);
@@ -385,6 +396,7 @@ export function createSandboxRunner(root: string, deps: SandboxExecDeps = defaul
       network: settings.writeNetwork,
       settings,
       jobRoot: sandboxJobRoot(root),
+      ...(req.requireDeniedPaths ? { requireDeniedPaths: true } : {}),
     }, deps);
   };
 }

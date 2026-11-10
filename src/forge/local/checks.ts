@@ -37,6 +37,11 @@ export interface LocalCheckRecord {
    * by the user's config (`unsandboxed`). Absent in records written before.
    */
   sandbox?: 'enforced' | 'ack' | 'unsandboxed';
+  /**
+   * Set when the gate ran in the sandbox on a host that does not report
+   * denied_paths: `sandboxed; credential files readable on this host`.
+   */
+  sandboxNote?: string;
 }
 
 const HEX40 = /^[0-9a-f]{40}$/;
@@ -50,7 +55,8 @@ function validRecord(r: unknown): r is LocalCheckRecord {
     && (x.completedAt === undefined || typeof x.completedAt === 'string')
     && (x.exitCode === undefined || Number.isInteger(x.exitCode))
     && (x.tail === undefined || typeof x.tail === 'string')
-    && (x.sandbox === undefined || x.sandbox === 'enforced' || x.sandbox === 'ack' || x.sandbox === 'unsandboxed');
+    && (x.sandbox === undefined || x.sandbox === 'enforced' || x.sandbox === 'ack' || x.sandbox === 'unsandboxed')
+    && (x.sandboxNote === undefined || typeof x.sandboxNote === 'string');
 }
 
 function readRecordFile(path: string): LocalCheckRecord | undefined {

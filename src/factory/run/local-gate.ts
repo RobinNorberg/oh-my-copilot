@@ -38,7 +38,7 @@ import { getProcessStartIdentity, terminateOwnedProcessTree } from '../../platfo
 import { childEnv, findOnPath, hardenWindowsExeSearch, resolveBareExe } from '../../utils/windows-search.js';
 import { FactorySafetyError, sameFsPath } from './exec.js';
 import { createGateProcTracker, gateProcsPath, reapGateProcs, sweepGateProcs, type GateProcTracker } from './gate-procs.js';
-import { gateEnv, redactGateOutput, type SandboxRunner } from './sandbox-exec.js';
+import { CREDENTIAL_FILES_READABLE_NOTE, gateEnv, redactGateOutput, type SandboxRunner } from './sandbox-exec.js';
 
 /** The record keeps this many characters of the gate's output (jobLog, the ci-fix prompt). */
 export const LOCAL_GATE_TAIL_CHARS = 8_000;
@@ -302,7 +302,7 @@ export interface LocalGateInput {
    * `enforced` needs `sandbox`: the gate then runs only through it, never through `runner`.
    */
   mode: 'enforced' | 'ack' | 'unsandboxed';
-  sandbox?: { run: SandboxRunner; commonGitDir: string };
+  sandbox?: { run: SandboxRunner; commonGitDir: string; requireDeniedPaths?: boolean };
   now?: () => Date;
 }
 
@@ -399,7 +399,7 @@ async function runSandboxedGate(i: LocalGateInput, base: LocalCheckRecord, now: 
   }
   let r: Awaited<ReturnType<SandboxRunner>>;
   try {
-    r = await i.sandbox!.run({ purpose: 'gate', argv: i.gate, exe: target.exe, args: target.args, cwd: i.checkout, commonGitDir: i.sandbox!.commonGitDir, timeoutMs: i.timeoutMinutes * 60_000 });
+    r = await i.sandbox!.run({ purpose: 'gate', argv: i.gate, exe: target.exe, args: target.args, cwd: i.checkout, commonGitDir: i.sandbox!.commonGitDir, timeoutMs: i.timeoutMinutes * 60_000, ...(i.sandbox!.requireDeniedPaths ? { requireDeniedPaths: true } : {}) });
   } catch (error) {
     drop();
     throw error;
@@ -416,6 +416,7 @@ async function runSandboxedGate(i: LocalGateInput, base: LocalCheckRecord, now: 
     completedAt: now().toISOString(),
     exitCode: r.timedOut ? 124 : r.status,
     tail: tailOf(output.trim()),
+    ...(r.credentialFilesReadable ? { sandboxNote: CREDENTIAL_FILES_READABLE_NOTE } : {}),
   };
   writeLocalCheckRecord(i.stateDir, i.root, done);
   return { started: true, record: done };

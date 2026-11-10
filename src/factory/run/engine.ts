@@ -61,8 +61,8 @@ import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT, type PrepareCheckResult, type PrepareCheckRun } from '../../ship/prepare.js';
 import { parseJsonc } from '../../utils/jsonc.js';
-import { resolveGatesSandboxMode, type GatesSandboxMode } from '../../copilot-run/sandbox.js';
-import { redactGateOutput, sandboxJobRoot, type SandboxRunner } from './sandbox-exec.js';
+import { resolveGatesSandboxMode, resolveRequireDeniedPaths, type GatesSandboxMode } from '../../copilot-run/sandbox.js';
+import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxJobRoot, type SandboxRunner } from './sandbox-exec.js';
 import { removeWorkerWorktree, runHostGit } from '../../team/git-worktree.js';
 import { driveGates } from './gates-driver.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
@@ -634,7 +634,9 @@ class FactoryEngine {
   /** The head `--allow-unsandboxed-gates` accepts (the gates-unsandboxed park's head, captured at resume). */
   private gatesAllowed?: string;
   /** factory.run.sandbox.gates, resolved once per trusted base commit. */
-  private gatesModeCache?: { commit: string | undefined; mode: GatesSandboxMode; source: string };
+  private gatesModeCache?: { commit: string | undefined; mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean };
+  /** The one-per-run warning that the sandbox on this host cannot deny paths was given. */
+  private warnedCredentialFilesReadable = false;
   /** Calibrations re-run in this invocation (a failing one is retried once per invocation). */
   private readonly recalibrated = new Set<string>();
   /** The prepare checkout's git dir, named explicitly to engine git there once the PR's code ran in it (pinCheckoutGit). */
@@ -2006,7 +2008,7 @@ class FactoryEngine {
     }
     const fetched = result.steps.some((st) => st.name === 'fetch' && st.status === 'ok');
     // From here the PR's diff (review, protected paths) is against the base GitHub reports.
-    const sandboxNote = ran.modes.size > 0 ? [{ at: this.iso(), from: s.phase, to: s.phase, note: `prepare checks on ${head.slice(0, 12)} ran ${[...ran.modes].map((m) => (m === 'enforced' ? 'in the OS sandbox' : `unsandboxed (${m})`)).join(' and ')}` }] : [];
+    const sandboxNote = ran.modes.size > 0 ? [{ at: this.iso(), from: s.phase, to: s.phase, note: `prepare checks on ${head.slice(0, 12)} ran ${[...ran.modes].map((m) => (m === 'enforced' ? 'in the OS sandbox' : m === 'enforced-readable' ? `in the OS sandbox (${CREDENTIAL_FILES_READABLE_NOTE})` : `unsandboxed (${m})`)).join(' and ')}` }] : [];
     this.save((x) => ({ ...x, checkoutHead, ...(fetched ? { baseSha: view.baseRefOid } : {}), history: [...x.history, ...sandboxNote] }));
     // The accepted head's code ran unsandboxed: publishPrepared carries the ack to the prepared head once it holds only the engine's own commits.
     if (result.ok) return this.publishPrepared(pr, head, checkoutHead, result.housekeepingCommits, view.baseRefOid, ran.acked && this.state.unsandboxedGatesAck === head);
@@ -2040,23 +2042,38 @@ class FactoryEngine {
    * default location, then `.copilot/omg.jsonc` committed at the trusted base
    * commit the gate config was read at, never the working tree or the PR
    * head. Resolved once per base commit; a rejected value fails the step.
+   * factory.run.sandbox.requireDeniedPaths comes from the same two layers
+   * (resolveRequireDeniedPaths: either may turn it on).
    */
-  private gatesSandbox(loaded: GateConfig): { mode: GatesSandboxMode; source: string } {
+  private gatesSandbox(loaded: GateConfig): { mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean } {
     const commit = (loaded.config as { trustedBaseCommit?: string }).trustedBaseCommit;
     if (this.gatesModeCache && this.gatesModeCache.commit === commit) return this.gatesModeCache;
     let user = this.o.gateSandboxUserConfig;
     if (user === undefined) {
       try { user = userConfigLayers().trustedUser; } catch { user = null; }
     }
-    let resolved: { mode: GatesSandboxMode; source: string };
+    let resolved: { mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean };
     try {
       const text = commit ? readBaseFile(this.exec, this.o.root, commit, BASE_CONFIG_PATH) : null;
-      resolved = resolveGatesSandboxMode({ user, base: text && text.trim() ? parseJsonc(text) : undefined, env: process.env });
+      const base = text && text.trim() ? parseJsonc(text) : undefined;
+      resolved = { ...resolveGatesSandboxMode({ user, base, env: process.env }), requireDeniedPaths: resolveRequireDeniedPaths({ user, base }).require };
     } catch (error) {
-      throw new FactoryStepError(`factory.run.sandbox.gates: ${errText(error)}`);
+      throw new FactoryStepError(`factory.run.sandbox: ${errText(error)}`);
     }
     this.gatesModeCache = { commit, ...resolved };
     return this.gatesModeCache;
+  }
+
+  /**
+   * A sandboxed command ran on a host without denied_paths (the Copilot
+   * sandbox on Windows): one warning per run and one PR note per head.
+   */
+  private noteCredentialFilesReadable(head: string): void {
+    if (!this.warnedCredentialFilesReadable) {
+      this.warnedCredentialFilesReadable = true;
+      this.o.warn?.(`omg factory run: the OS sandbox on this host cannot deny paths: prepare checks and the local gate run sandboxed (no network by default, no tokens in the env, git dir and node_modules read-only), but their code can read files under your user profile, credential stores included; set factory.run.sandbox.requireDeniedPaths true to park instead`);
+    }
+    this.commentOnce('pr', `credential-files-readable@${head.slice(0, 12)}`, 'sandbox', `**Sandbox: ${CREDENTIAL_FILES_READABLE_NOTE}.** Prepare checks and the local gate on ${head.slice(0, 12)} ran in the OS sandbox, which on this host cannot deny paths: the PR's code could read files under the user profile, credential stores included.\n`);
   }
 
   /** True when the human accepted unsandboxed gates for `head` (recorded now if this invocation's flag names it). */
@@ -2104,7 +2121,7 @@ class FactoryEngine {
    * on, engine git in the checkout names its git dir (checkoutGitPin), and a
    * gitfile that changed around a check stops at lane-tampered.
    */
-  private async prepareCheck(c: PrepareCheckRun, at: { head: string; path: string; commonGitDir: string; baseSha: string; gates: { mode: GatesSandboxMode; source: string }; ran: { modes: Set<string>; acked: boolean; park?: { name: string; reason: string } }; gitLink: { hash: string; gitDir: string } }): Promise<PrepareCheckResult> {
+  private async prepareCheck(c: PrepareCheckRun, at: { head: string; path: string; commonGitDir: string; baseSha: string; gates: { mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean }; ran: { modes: Set<string>; acked: boolean; park?: { name: string; reason: string } }; gitLink: { hash: string; gitDir: string } }): Promise<PrepareCheckResult> {
     const { head, path, ran } = at;
     const label = this.prepareCheckLabel(c);
     const stop = (park: { name: string; reason: string }): PrepareCheckResult => {
@@ -2140,12 +2157,13 @@ class FactoryEngine {
     let why = `factory.run.sandbox.gates is "ack" (${at.gates.source})`;
     if (at.gates.mode === 'enforced') {
       const r = this.o.gateSandbox
-        ? await this.o.gateSandbox({ purpose: 'prepare', argv: c.argv, exe: c.exe, args: c.args, cwd: path, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS })
+        ? await this.o.gateSandbox({ purpose: 'prepare', argv: c.argv, exe: c.exe, args: c.args, cwd: path, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...(at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}) })
         : { ran: false as const, reason: 'no OS sandbox runner was given to the engine' };
       const t = tampered();
       if (t) return t;
       if (r.ran) {
-        ran.modes.add('enforced');
+        ran.modes.add(r.credentialFilesReadable ? 'enforced-readable' : 'enforced');
+        if (r.credentialFilesReadable) this.noteCredentialFilesReadable(head);
         if (r.status === 0 && !r.timedOut) return { status: 0, stdout: redactGateOutput(r.output), stderr: '' };
         const park = await this.calibrateGate(c, at.baseSha, at.commonGitDir, PREPARE_CHECK_TIMEOUT_MS, label, head);
         if (park) return stop(park);
@@ -2204,7 +2222,7 @@ class FactoryEngine {
       runHostGit(this.o.root, ['read-tree', baseSha], undefined, env);
       runHostGit(this.o.root, ['checkout-index', '-a', '-f', `--prefix=${dir.replace(/\\/g, '/')}/`], undefined, env);
       linkNodeModules(this.o.root, dir);
-      const r = await this.o.gateSandbox({ purpose: 'calibrate', argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs });
+      const r = await this.o.gateSandbox({ purpose: 'calibrate', argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...(this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {}) });
       if (!r.ran) return { notStarted: r.reason };
       const tail = r.output.trim().slice(-2_000);
       return { ok: r.status === 0 && !r.timedOut, ...(tail ? { tail } : {}) };
@@ -2435,7 +2453,7 @@ class FactoryEngine {
       out = { started: false, reason: why, sandbox: true };
       if (gates.mode === 'enforced') {
         out = this.o.gateSandbox
-          ? await runLocalGate({ ...input, mode: 'enforced', sandbox: { run: this.o.gateSandbox, commonGitDir: common } })
+          ? await runLocalGate({ ...input, mode: 'enforced', sandbox: { run: this.o.gateSandbox, commonGitDir: common, requireDeniedPaths: gates.requireDeniedPaths } })
           : { started: false, reason: 'no OS sandbox runner was given to the engine', sandbox: true };
         if (!out.started && out.noVerdict) {
           // It ran in the sandbox and said nothing a verdict can rest on: never the ack park, never a FAILURE.
@@ -2461,9 +2479,10 @@ class FactoryEngine {
       return false;
     }
     const record = out.record;
-    this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `local gate ${record.state} on ${head.slice(0, 12)} (exit ${record.exitCode}, ${record.sandbox === 'enforced' ? 'in the OS sandbox' : `unsandboxed: ${record.sandbox}`})` }] }));
+    this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `local gate ${record.state} on ${head.slice(0, 12)} (exit ${record.exitCode}, ${record.sandbox === 'enforced' ? `in the OS sandbox${record.sandboxNote ? ` (${record.sandboxNote})` : ''}` : `unsandboxed: ${record.sandbox}`})` }] }));
     // The gate ran the PR's own code: the shared git state must be what the engine left.
     if (this.recheckFailed('after the local gate')) return false;
+    if (record.sandboxNote) this.noteCredentialFilesReadable(head);
     if (record.sandbox !== 'enforced' || record.state !== 'FAILURE') return true;
     // A failure in the sandbox counts only when the gate passes in the sandbox on the trusted base itself.
     const base = this.state.baseSha;

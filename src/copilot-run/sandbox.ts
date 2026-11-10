@@ -217,6 +217,28 @@ export function resolveGatesSandboxMode(layers: GatesSandboxLayers): { mode: Gat
   return { mode: 'enforced', source: 'default' };
 }
 
+/**
+ * `factory.run.sandbox.requireDeniedPaths`: a sandboxed gate on a host that
+ * does not report `denied_paths` (Windows today) runs and counts by default,
+ * with the credential files under the user profile readable; `true` makes
+ * such a host give no verdict (the gates-unsandboxed park). Read from the
+ * user config and the base-committed `.copilot/omg.jsonc` only; either layer
+ * can turn it on and no layer can turn it off over the other's `true`.
+ */
+export function resolveRequireDeniedPaths(layers: Pick<GatesSandboxLayers, 'user' | 'base'>): { require: boolean; source: string } {
+  const read = (config: unknown, source: string): boolean | undefined => {
+    const value = sandboxBlock({ factory: (config as { factory?: unknown } | null | undefined)?.factory }, 'factory', source).requireDeniedPaths;
+    if (value === undefined) return undefined;
+    if (typeof value !== 'boolean') throw new Error(`${source}: factory.run.sandbox.requireDeniedPaths must be a boolean`);
+    return value;
+  };
+  const user = read(layers.user, 'user config');
+  const base = read(layers.base, 'the base .copilot/omg.jsonc');
+  if (user) return { require: true, source: 'user config' };
+  if (base) return { require: true, source: 'the base .copilot/omg.jsonc' };
+  return { require: false, source: user === false || base === false ? 'config' : 'default' };
+}
+
 // ---------------------------------------------------------------------------
 // Policy (§4.2 review, §4.3 write)
 // ---------------------------------------------------------------------------
