@@ -18,7 +18,7 @@ import { EXIT_AWAITING_HUMAN, runFactoryEngine, type FactoryEngineOptions } from
 import { GATE_INSTALL_GATE, REPO_GUARD_GATE } from '../private-run.js';
 import type { SandboxRunRequest } from '../sandbox-exec.js';
 import { readFactoryState, requestFactoryCancel } from '../state.js';
-import { commitFile, gitIn, review, type LaneScript } from './fake-lanes.js';
+import { commitFile, FakeLanes, gitIn, review, type LaneScript } from './fake-lanes.js';
 import { BASE, foreignCommands, lanesFor, LOCAL_ISSUE, localOpts, localWorld, type LocalWorld } from './engine-local-harness.js';
 
 const T = 600_000;
@@ -192,14 +192,15 @@ describe('factory run with factory.run.layout "private"', () => {
     expect(gitIn(w.root, 'for-each-ref', '--format=%(refname)', 'refs/omg-import/')).toBe('');
   }, T);
 
-  it('resumes after an engine crash at the publish push, the prepare and the gate', async () => {
+  it('settles a lost lane against the private snapshot, and resumes after an engine crash at the publish push and in the local gate', async () => {
     const env = privateWorld();
     w = env.w;
     const crashes = ['push', 'gate'];
     let pushes = 0;
     const exec: Exec = (cmd, args, o) => {
       const plain = args.filter((_, i) => !(args[i] === '-c' || args[i - 1] === '-c'));
-      if (crashes[0] === 'push' && plain[0] === 'push' && pushes++ === 0) { crashes.shift(); throw new Error('engine crash at the push'); }
+      // The publish push of the run's branch (not the mirror's base sync), inside the import section.
+      if (crashes[0] === 'push' && plain[0] === 'push' && plain.some((a) => a.includes(':refs/heads/factory/')) && pushes++ === 0) { crashes.shift(); throw new Error('engine crash at the push'); }
       return w.exec(cmd, args, o);
     };
     let gateCalls = 0;
@@ -208,9 +209,12 @@ describe('factory run with factory.run.layout "private"', () => {
       return w.gate(argv, cwd, ms);
     };
     const base = { runUserConfig: env.user, exec, localGate: gate };
-    const one = await runFactoryEngine(localOpts(w, lanesFor(w, [greet()]), base));
+    // The first implement lane is lost (its job vanished); its child is gone, so it settles and a fresh lane runs.
+    // One `running` poll first records its child's pid (dead in FakeProcesses), so the loss can be settled.
+    const one = await runFactoryEngine(localOpts(w, new FakeLanes(w.root, [() => ({ lost: true }), greet()], [1]), base));
     expect(one.exitCode, one.message).toBe(1);
     expect(one.message).toMatch(/engine crash at the push/);
+    expect(readFactoryState(w.root, LOCAL_ISSUE)!.lanes.map((l) => l.status)).toEqual(['lost', 'completed']);
     expect(gitIn(w.root, 'for-each-ref', '--format=%(refname)', 'refs/omg-import/')).toBe('');
     const two = await runFactoryEngine(localOpts(w, lanesFor(w, [review('approve')]), base));
     expect(two.exitCode, two.message).toBe(1);
@@ -218,6 +222,15 @@ describe('factory run with factory.run.layout "private"', () => {
     const three = await runFactoryEngine(localOpts(w, lanesFor(w, []), base));
     expect(three.gate?.name, three.message).toBe('merge');
     expect(readFactoryState(w.root, LOCAL_ISSUE)!.layout).toBe(2);
+  }, T);
+
+  it('a dry run says the private layout would be used; the shared layout\'s dry run is unchanged', async () => {
+    const env = privateWorld();
+    w = env.w;
+    const dry = await runFactoryEngine(opts(env, [], { dryRun: true }));
+    expect(dry.message).toMatch(/would start an implement lane capped at \d+ AI credits, in the private layout \(factory\.run\.layout "private" from the user config/);
+    const shared = await runFactoryEngine(opts({ w, user: null }, [], { dryRun: true }));
+    expect(shared.message).not.toMatch(/layout/);
   }, T);
 
   it('clean after cancel removes the run dir and never empties your node_modules (the junction target)', async () => {

@@ -65,6 +65,8 @@ export interface BoardRow {
     credits: number;
     integrity: 'ok' | 'bad' | 'none';
     updatedAt: string;
+    /** factory.run.layout "private": the run dir under the work root (absent = the shared layout). */
+    privateDir?: string;
   };
   stage: { expected?: ProgressStage; recorded?: ProgressStage; live?: ProgressStage | 'unmapped' };
   /** The tracker's live value the stage was read from (ADO column or state, or the progress label). */
@@ -189,6 +191,7 @@ function runPart(root: string, s: FactoryRunState, warnings: string[]): Pick<Boa
     credits: Number(runCredits(s).toFixed(2)),
     integrity,
     updatedAt: plainText(s.updatedAt),
+    ...(s.layout === 2 && s.privateDir ? { privateDir: plainText(s.privateDir) } : {}),
   };
   if (s.pr === undefined) return { run };
   try {

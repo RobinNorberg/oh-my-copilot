@@ -4413,6 +4413,25 @@ function codingAgentDryRun(o: FactoryEngineOptions, forgeKind: string, repoUrl: 
 }
 
 /** Read-only preview: issue and plan resolution, the resolved caps; no state, lanes or pushes. */
+/**
+ * The dry run's word on the layout (B1b scope 7): the private layout when the
+ * user config asks for it (the base-committed .copilot/omg.jsonc, the other
+ * trusted layer, is read at the sealed base by the real run); nothing for the
+ * shared layout, so that output is unchanged.
+ */
+function dryLayoutNote(o: FactoryEngineOptions): string {
+  let user = o.runUserConfig;
+  if (user === undefined) {
+    try { user = userConfigLayers().trustedUser; } catch { user = null; }
+  }
+  try {
+    const { layout, source } = resolveRunLayout(user, undefined);
+    return layout === 'private' ? `, in the private layout (factory.run.layout "private" from the ${source}: its own git repository under the work root)` : '';
+  } catch (error) {
+    return `; but ${errText(error)}, so the run would park at awaiting-human: ${PRIVATE_STORE_GATE}`;
+  }
+}
+
 function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
   const holder = busyHolder(o, engineRunKey(o));
   if (holder) return { exitCode: EXIT_BUSY, phase: null, state: null, busy: true, message: `dry run: ${holder}; a real run now would exit busy (${EXIT_BUSY}) without touching anything` };
@@ -4458,7 +4477,7 @@ function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
     if (problem) return { exitCode: 0, phase: null, state: null, message: `dry run: ${problem}; the run would stop at awaiting-human: ${HEAL_DIAGNOSIS_GATE}`, plan: { next: 'awaiting-human', reason: HEAL_DIAGNOSIS_GATE, ...caps } };
     const go = o.heal.approved || (o.heal.autoImplement && o.heal.record!.class !== 'regression-or-env');
     return go
-      ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from the heal diagnosis; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits`, plan: { next: 'implement', planSource: 'heal diagnosis', ...caps } }
+      ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from the heal diagnosis; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o)}`, plan: { next: 'implement', planSource: 'heal diagnosis', ...caps } }
       : { exitCode: 0, phase: null, state: null, message: `dry run: the run would stop at awaiting-human: ${HEAL_APPROVE_GATE}`, plan: { next: 'awaiting-human', reason: HEAL_APPROVE_GATE, ...caps } };
   }
   if (forge) {
@@ -4482,7 +4501,7 @@ function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
     const agent = source ? codingAgentDryRun(o, forge.kind, o.forge!.config.repo.url, source, caps) : undefined;
     if (agent) return agent;
     return source
-      ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${gateNote}`, plan: { next: 'implement', planSource: source, ...caps, ...(gateProblem ? { gateProblem } : {}) } }
+      ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o)}${gateNote}`, plan: { next: 'implement', planSource: source, ...caps, ...(gateProblem ? { gateProblem } : {}) } }
       : { exitCode: 0, phase: null, state: null, message: 'dry run: no plan (no Acceptance Criteria, "Acceptance criteria" heading or trusted omg-plan: link); the run would stop at awaiting-human: needs-plan', plan: { next: 'awaiting-human', reason: 'needs-plan', ...caps } };
   }
   const res = ghIssueView(exec, o.issue!, o.root);
@@ -4502,7 +4521,7 @@ function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
   const agent = source ? codingAgentDryRun(o, 'github', repoUrl, source, caps) : undefined;
   if (agent) return agent;
   return source
-    ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits`, plan: { next: 'implement', planSource: source, ...caps } }
+    ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o)}`, plan: { next: 'implement', planSource: source, ...caps } }
     : { exitCode: 0, phase: null, state: null, message: 'dry run: no plan (no "Acceptance criteria" heading or omg-plan: link); the run would stop at awaiting-human: needs-plan', plan: { next: 'awaiting-human', reason: 'needs-plan', ...caps } };
 }
 

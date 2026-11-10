@@ -8,7 +8,7 @@ import { defaultExec, type Exec } from '../../../ship/exec.js';
 import { protectedChanges } from '../../../ship/merge.js';
 import { LANE_PROTECTED_PATHS } from '../lane-commit.js';
 import {
-  checkUserRepoGuard, compareUserRepoGuard, createPrivateRepo, dropImportRef, ensureSeed, fetchIntoPrivate, importFromPrivate, lockfileUnchanged, longPathProblem,
+  checkUserRepoGuard, compareUserRepoGuard, createPrivateRepo, HOOK_FILE_MAX_BYTES, RESOLVE_TIMEOUT_MS, dropImportRef, ensureSeed, fetchIntoPrivate, importFromPrivate, lockfileUnchanged, longPathProblem,
   privateGitEnv, privateGitPins, privateGitTools, privateRepoConfigHash, privateRepoProblem, privateRunLayout, privateWorkRoot, removeRunDir, resolveUserGitDir,
   userRepoGuardChanges, userRepoGuardSnapshot, userRepoProblem,
   type PrivateRepo, type PrivateRunLayout, type PrivateStoreContext,
@@ -682,6 +682,20 @@ describe('user repository guard', () => {
     expect(deep.entries).toContainEqual({ item: 'hooks', kind: 'hooks-too-large', path: join(userGit, 'hooks'), fingerprint: 'too-large' });
     rmSync(join(userGit, 'hooks', 'a', 'b', 'c', 'd'), { recursive: true });
     expect(snap().items.hooks).not.toBe('too-large');
+  }, T);
+
+  it('review-481c N1: a hooks file over 1 MiB is not read (hooks-too-large, always changed); N5: resolveUserGitDir runs with a short budget', () => {
+    mkdirSync(join(userGit, 'hooks'), { recursive: true });
+    writeFileSync(join(userGit, 'hooks', 'big'), Buffer.alloc(HOOK_FILE_MAX_BYTES + 1));
+    const big = snap();
+    expect(big.items.hooks).toBe('too-large');
+    expect(big.entries).toContainEqual({ item: 'hooks', kind: 'hooks-too-large', path: join(userGit, 'hooks'), fingerprint: 'too-large' });
+    rmSync(join(userGit, 'hooks', 'big'));
+    expect(snap().items.hooks).not.toBe('too-large');
+    const budgets: Array<number | undefined> = [];
+    const spy: Exec = (cmd, args, o) => { budgets.push(o?.timeoutMs); return defaultExec(cmd, args, o); };
+    expect(resolveUserGitDir(user, { ...ctx, exec: spy })).toBe(userGit);
+    expect(budgets).toEqual([RESOLVE_TIMEOUT_MS]);
   }, T);
 });
 
