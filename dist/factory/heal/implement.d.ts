@@ -33,6 +33,7 @@ import { type FactoryHealRecord, type HeldOwner } from '../run/state.js';
 import type { HealConfig } from './config.js';
 import { type HealSealSubject } from './run.js';
 import { type HealSignatureState } from './state.js';
+import type { SandboxRunner } from '../run/sandbox-exec.js';
 export declare const KNOWN_FLAKY_FILE = ".github/known-flaky-tests.json";
 export interface HealEngineDeps {
     exec: Exec;
@@ -43,6 +44,8 @@ export interface HealEngineDeps {
     ledgerDir: string;
     now: () => Date;
     gateConfig?: GateConfigLoader;
+    /** The OS sandbox prepare's checks run in (FactoryEngineOptions.gateSandbox); omitted = none, so gates "enforced" parks. */
+    gateSandbox?: (root: string) => SandboxRunner;
     warn?: (message: string) => void;
     /** Test seams of the engine. */
     engine?: Partial<Pick<FactoryEngineOptions, 'pollMs' | 'owner' | 'processes' | 'sleep' | 'interrupted' | 'progressFile'>>;

@@ -5,7 +5,7 @@
 import { readFileSync, rmSync } from 'node:fs';
 import { afterEach, beforeEach } from 'vitest';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
-import { commitFile, FakeLanes, FakeProcesses, harness, ISSUE, REPO_URL, review, testGateConfig } from './fake-lanes.js';
+import { commitFile, FakeLanes, FakeProcesses, harness, ISSUE, REPO_URL, review, testGateConfig, withTestSandbox } from './fake-lanes.js';
 export const SPEC = 12;
 export let h;
 /** Every issue comment the engine posted: target and body. */
@@ -56,7 +56,7 @@ export const exec = (cmd, args, o) => {
     return h.exec(cmd, args, o);
 };
 export function opts(scripts, over = {}) {
-    return {
+    return withTestSandbox({
         root: h.root,
         issue: ISSUE,
         exec,
@@ -70,7 +70,7 @@ export function opts(scripts, over = {}) {
         gateConfig: testGateConfig,
         warn: (m) => warnings.push(m),
         ...over,
-    };
+    }, over);
 }
 export const happy = () => [commitFile('src/greet.ts', 'export const greet = () => "hi";\n'), review('approve')];
 export const on = (n) => posted.filter((p) => p.n === n);

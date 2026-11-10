@@ -15,7 +15,7 @@ import { resolveShipConfig } from '../../../ship/config.js';
 import { defaultExec } from '../../../ship/exec.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { factoryForgeOptions } from '../forge-roots.js';
-import { FakeLanes, FakeProcesses, gitIn } from './fake-lanes.js';
+import { FakeLanes, FakeProcesses, gitIn, withTestSandbox } from './fake-lanes.js';
 export const LOCAL_ISSUE = 7;
 export const BASE = 'main';
 export const BACKLOG_ITEM = '---\ntitle: Add greet()\nlabels: [factory]\n---\nAdd a greet function.\n\n## Acceptance\n- [ ] greet() returns hi\n';
@@ -65,7 +65,7 @@ export const localTestGateConfig = () => ({
     known: [],
 });
 export function localOpts(w, lanes, over = {}) {
-    return {
+    return withTestSandbox({
         root: w.root,
         issue: LOCAL_ISSUE,
         exec: w.exec,
@@ -80,7 +80,7 @@ export function localOpts(w, lanes, over = {}) {
         forge: { config: w.config, options: { ...factoryForgeOptions(w.root), stateDir: w.stateDir } },
         localGate: w.gate,
         ...over,
-    };
+    }, over);
 }
 export const lanesFor = (w, scripts) => new FakeLanes(w.root, scripts);
 /** No gh, az or copilot process reached the exec seam. */

@@ -24,6 +24,12 @@ export interface LocalCheckRecord {
     exitCode?: number;
     /** The captured output tail (jobLog). */
     tail?: string;
+    /**
+     * How the gate ran (factory.run.sandbox.gates): in the attested OS sandbox
+     * (`enforced`), or unsandboxed after `--allow-unsandboxed-gates` (`ack`) or
+     * by the user's config (`unsandboxed`). Absent in records written before.
+     */
+    sandbox?: 'enforced' | 'ack' | 'unsandboxed';
 }
 /** Write `record` atomically to localCheckRecordPath(stateDir, root, record.head); returns the path. */
 export declare function writeLocalCheckRecord(stateDir: string, root: string, record: LocalCheckRecord): string;

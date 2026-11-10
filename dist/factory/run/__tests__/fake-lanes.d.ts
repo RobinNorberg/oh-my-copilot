@@ -3,8 +3,10 @@ import type { CopilotRunSandboxState } from '../../../copilot-run/sandbox.js';
 export declare const ENFORCED_SANDBOX: CopilotRunSandboxState;
 import { gitIn } from '../../../copilot-run/__tests__/fake-sdk.js';
 import { type Exec, type ExecResult } from '../../../ship/exec.js';
-import type { LaneProcessOps } from '../engine.js';
+import type { FactoryEngineOptions, LaneProcessOps } from '../engine.js';
+import type { LocalGateRunner } from '../local-gate.js';
 import type { GateConfigLoader } from '../prepare.js';
+import type { SandboxRunner } from '../sandbox-exec.js';
 import { type LaneBackend, type LaneProcess, type LaneResult, type LaneStartInput, type LaneState } from '../lane.js';
 export { gitIn };
 export interface LaneCtx {
@@ -159,6 +161,21 @@ export declare const pendingGates: (runId?: number) => GatesRead;
 export declare const failedGates: (runId?: number) => GatesRead;
 /** Ship's gate config without a fetch: the one required check `Test`, no advisory checks, no known-flaky tests. */
 export declare const testGateConfig: GateConfigLoader;
+/**
+ * The engine tests' OS sandbox: every command counts as run in the attested
+ * sandbox. A prepare check runs through the test's exec seam (as the
+ * unsandboxed engine ran it), the local gate through the test's gate runner
+ * (a runner whose executable cannot start gives no verdict), and a base
+ * calibration passes without running anything. Tests of the sandbox
+ * decisions themselves pass their own runner.
+ */
+export declare function attestedSandbox(exec: () => Exec, gate?: () => LocalGateRunner | undefined): SandboxRunner;
+/**
+ * Engine options with the test sandbox (attestedSandbox over the options'
+ * own exec and gate runner) and no user config for factory.run.sandbox.gates,
+ * unless `over` sets either (a `gateSandbox: undefined` there means none).
+ */
+export declare function withTestSandbox(o: FactoryEngineOptions, over?: Partial<FactoryEngineOptions>): FactoryEngineOptions;
 /** `<dir>/remote.git` (bare) and `<dir>/repo` on `dev` tracking it; `.omg/` ignored. */
 export declare function harness(prefix?: string): Harness;
 export declare function remoteHead(h: Harness): string | null;

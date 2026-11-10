@@ -126,6 +126,37 @@ export function loadSandboxSettings(root, scope, layers = defaultLayers(root)) {
         warnings.push(`sandbox: ignoring ${loosening.join(', ')} from the project config; it may only tighten the sandbox`);
     return { settings, warnings };
 }
+export const GATES_SANDBOX_MODES = ['enforced', 'ack', 'unsandboxed'];
+/**
+ * The gates mode and where it came from. The kill switch wins, then the user
+ * config, then the base's committed config, then `enforced`. The base may set
+ * `enforced` or `ack` but never `unsandboxed` (the PR's repository must not
+ * switch the sandbox off for its own code): that throws, as does any other
+ * value.
+ */
+export function resolveGatesSandboxMode(layers) {
+    if (layers.env[SANDBOX_KILL_ENV] === 'off')
+        return { mode: 'unsandboxed', source: `${SANDBOX_KILL_ENV}=off` };
+    const read = (config, source) => {
+        // factory.run.sandbox only: copilotRun.sandbox (copilot_run jobs) has no gates.
+        const value = sandboxBlock({ factory: config?.factory }, 'factory', source).gates;
+        if (value === undefined)
+            return undefined;
+        if (!GATES_SANDBOX_MODES.includes(value))
+            throw new Error(`${source}: factory.run.sandbox.gates must be ${GATES_SANDBOX_MODES.map((m) => JSON.stringify(m)).join(' or ')}`);
+        return value;
+    };
+    const user = read(layers.user, 'user config');
+    const base = read(layers.base, 'the base .copilot/omg.jsonc');
+    if (base === 'unsandboxed') {
+        throw new Error('factory.run.sandbox.gates "unsandboxed" is accepted from the user config only, never from the repository\'s .copilot/omg.jsonc; set it in your user config, or use "ack" there');
+    }
+    if (user)
+        return { mode: user, source: 'user config' };
+    if (base)
+        return { mode: base, source: 'the base .copilot/omg.jsonc' };
+    return { mode: 'enforced', source: 'default' };
+}
 export const REGISTRY_HOSTS = ['registry.npmjs.org', '*.npmjs.org'];
 /** The target of `<worktree>/node_modules` when it is a junction or symlink (read-only for a write session). */
 function nodeModulesLinkTarget(worktree) {

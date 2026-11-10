@@ -21,7 +21,8 @@ function validRecord(r) {
         && Number.isSafeInteger(x.runId) && x.runId > 0 && typeof x.startedAt === 'string'
         && (x.completedAt === undefined || typeof x.completedAt === 'string')
         && (x.exitCode === undefined || Number.isInteger(x.exitCode))
-        && (x.tail === undefined || typeof x.tail === 'string');
+        && (x.tail === undefined || typeof x.tail === 'string')
+        && (x.sandbox === undefined || x.sandbox === 'enforced' || x.sandbox === 'ack' || x.sandbox === 'unsandboxed');
 }
 function readRecordFile(path) {
     if (!existsSync(path))

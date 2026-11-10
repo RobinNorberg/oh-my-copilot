@@ -53,13 +53,16 @@
  * GitHub runs keep the gh calls unchanged.
  */
 import { createHash } from 'crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
-import { configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, readBaseFile, remoteRepoMismatch, userConfigLayers } from '../../ship/config.js';
+import { BASE_CONFIG_PATH, configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, readBaseFile, remoteRepoMismatch, userConfigLayers } from '../../ship/config.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
-import { PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, runPrepare } from '../../ship/prepare.js';
-import { removeWorkerWorktree } from '../../team/git-worktree.js';
+import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT } from '../../ship/prepare.js';
+import { parseJsonc } from '../../utils/jsonc.js';
+import { resolveGatesSandboxMode } from '../../copilot-run/sandbox.js';
+import { sandboxJobRoot } from './sandbox-exec.js';
+import { removeWorkerWorktree, runHostGit } from '../../team/git-worktree.js';
 import { driveGates } from './gates-driver.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
 import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText } from '../team/context.js';
@@ -87,8 +90,8 @@ import { checkDiagnosis } from '../heal/diagnosis-output.js';
 import { assertLaneCreditCap, nextLaneCap, runCredits, runCreditsExceeded } from './budget.js';
 import { FactorySafetyError, factoryGuardExec, hardenedGitExec } from './exec.js';
 import { assertFactoryForgeOptions, EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, localRemoteMismatch, syncLocalMirror } from './forge-roots.js';
-import { assertLocalGateCommand, describeGateSources, gateDefinition, gateDefinitionSources, localGateDue, localGateRecord, resolveLocalGateArgv, runLocalGate } from './local-gate.js';
-import { isLocalBranchName, LOCAL_GATE_CHECK, LOCAL_REMOTE, readMirrorRef } from '../../forge/local/index.js';
+import { assertLocalGateCommand, defaultLocalGateRunner, describeGateSources, gateDefinition, gateDefinitionSources, localGateDue, localGateRecord, resolveLocalGateArgv, runLocalGate } from './local-gate.js';
+import { isLocalBranchName, localCheckRecordPath, LOCAL_GATE_CHECK, LOCAL_REMOTE, readMirrorRef } from '../../forge/local/index.js';
 import { getGlobalOmcStatePath } from '../../utils/paths.js';
 import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
 import { isTerminalLaneState, LaneLostError } from './lane.js';
@@ -198,6 +201,22 @@ class LocalGateDue extends Error {
     }
 }
 const HEX40 = /^[0-9a-f]{40}$/;
+/**
+ * The calibration args of a check on the base copy `dir`: a built-in vitest
+ * or eslint run keeps only the files the base has (the PR may add test
+ * files), and with none left just starts the tool (`--version`); every other
+ * command runs unchanged.
+ */
+function calibrationArgs(c, dir) {
+    const [script, ...rest] = c.args;
+    if (c.kind !== 'built-in' || (script !== VITEST_SCRIPT && script !== ESLINT_SCRIPT))
+        return [...c.args];
+    const vitest = script === VITEST_SCRIPT;
+    const files = (vitest ? rest.slice(1) : rest).filter((f) => existsSync(join(dir, f)));
+    if (files.length === 0)
+        return [script, '--version'];
+    return vitest ? [script, 'run', ...files] : [script, ...files];
+}
 function errText(error) {
     return error instanceof Error ? error.message : String(error);
 }
@@ -366,6 +385,12 @@ class FactoryEngine {
     gateChangeAllowed;
     /** The head `--allow-unsandboxed-lanes` accepts (the parked run's head, captured at resume). */
     unsandboxedAllowed;
+    /** The head `--allow-unsandboxed-gates` accepts (the gates-unsandboxed park's head, captured at resume). */
+    gatesAllowed;
+    /** factory.run.sandbox.gates, resolved once per trusted base commit. */
+    gatesModeCache;
+    /** Calibrations re-run in this invocation (a failing one is retried once per invocation). */
+    recalibrated = new Set();
     constructor(o, ledger, hooksDir) {
         this.o = o;
         this.ledger = ledger;
@@ -701,6 +726,14 @@ class FactoryEngine {
                 this.unsandboxedAllowed = parked;
             else
                 this.o.warn?.(`omg factory run: --allow-unsandboxed-lanes is ignored: the run for ${this.what} is not parked at awaiting-human: human-review because a lane ran without the enforced sandbox`);
+        }
+        // --allow-unsandboxed-gates answers one gates-unsandboxed park at its head, never in advance.
+        if (this.o.allowUnsandboxedGates) {
+            const parked = existing?.gate?.name === GATES_UNSANDBOXED_GATE && existing.head && HEX40.test(existing.head) ? existing.head : undefined;
+            if (parked)
+                this.gatesAllowed = parked;
+            else
+                this.o.warn?.(`omg factory run: --allow-unsandboxed-gates is ignored: the run for ${this.what} is not parked at awaiting-human: ${GATES_UNSANDBOXED_GATE}`);
         }
         try {
             if (!existing) {
@@ -1827,18 +1860,32 @@ class FactoryEngine {
         this.run(['worktree', 'add', '-B', branch, path, head]);
         this.save((x) => ({ ...x, checkoutHead: head }));
         linkNodeModules(this.o.root, path);
-        // Configured checks run through the raw exec (the factory guard allows only the built-in shapes), without a shell.
+        // Configured checks are resolved without a shell (never a .cmd/.bat); every check runs per factory.run.sandbox.gates (prepareCheck).
         const commands = configured?.map((argv) => ({ argv, ...resolveLocalGateArgv(argv, { cwd: path, subject: 'the prepare check', configKey: 'ship.prepare.checks' }) }));
-        const result = runPrepare({ exec: this.exec, cwd: path, base: s.base, branch, reviewedSha: head, baseSha: view.baseRefOid, repoUrl: s.repoUrl, remote: runRemote(s), push: false, commands, commandExec: this.o.exec });
+        const gates = this.gatesSandbox(this.gateConfig(view));
+        const ran = { modes: new Set(), acked: false, park: undefined };
+        const result = await runPrepareAsync({ exec: this.exec, cwd: path, base: s.base, branch, reviewedSha: head, baseSha: view.baseRefOid, repoUrl: s.repoUrl, remote: runRemote(s), push: false, commands }, (c) => this.prepareCheck(c, { head, path, commonGitDir: common, baseSha: view.baseRefOid, gates, ran }));
         if (this.prepareTampered(before, path, branch, view.baseRefOid))
             return;
         const checkoutHead = this.run(['rev-parse', 'HEAD'], 'git', undefined, path).trim();
         const fetched = result.steps.some((st) => st.name === 'fetch' && st.status === 'ok');
         // From here the PR's diff (review, protected paths) is against the base GitHub reports.
-        this.save((x) => ({ ...x, checkoutHead, ...(fetched ? { baseSha: view.baseRefOid } : {}) }));
-        if (result.ok)
+        const sandboxNote = ran.modes.size > 0 ? [{ at: this.iso(), from: s.phase, to: s.phase, note: `prepare checks on ${head.slice(0, 12)} ran ${[...ran.modes].map((m) => (m === 'enforced' ? 'in the OS sandbox' : `unsandboxed (${m})`)).join(' and ')}` }] : [];
+        this.save((x) => ({ ...x, checkoutHead, ...(fetched ? { baseSha: view.baseRefOid } : {}), history: [...x.history, ...sandboxNote] }));
+        if (result.ok) {
+            // The accepted head's code ran unsandboxed; the prepared head adds only the engine's base merge and inventory commit to it.
+            if (ran.acked && checkoutHead !== head && this.state.unsandboxedGatesAck === head) {
+                this.save((x) => ({ ...x, unsandboxedGatesAck: checkoutHead, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `--allow-unsandboxed-gates for ${head.slice(0, 12)} carried to the prepared head ${checkoutHead.slice(0, 12)}` }] }));
+            }
             return this.publishPrepared(pr, head, checkoutHead, result.housekeepingCommits, view.baseRefOid);
+        }
         const failed = result.steps.at(-1);
+        if (failed?.name === PREPARE_SANDBOX_STEP) {
+            if (!ran.park)
+                throw new FactoryStepError(`prepare stopped without a verdict: ${failed.detail ?? 'unknown check'}`);
+            this.gate(ran.park.name, ran.park.reason);
+            return;
+        }
         if (failed?.name === 'merge-base' && (result.conflicts ?? []).length > 0) {
             this.discardCheckout();
             const rounds = new Set(this.state.lanes.filter((l) => l.kind === 'conflict-fix').map((l) => l.startSha)).size;
@@ -1854,6 +1901,184 @@ class FactoryEngine {
             return;
         }
         throw new FactoryStepError(`prepare failed: ${result.blockedReason ?? 'unknown step'}`);
+    }
+    /**
+     * factory.run.sandbox.gates for this run (copilot-run/sandbox.ts
+     * resolveGatesSandboxMode): the kill switch, the user config at its
+     * default location, then `.copilot/omg.jsonc` committed at the trusted base
+     * commit the gate config was read at, never the working tree or the PR
+     * head. Resolved once per base commit; a rejected value fails the step.
+     */
+    gatesSandbox(loaded) {
+        const commit = loaded.config.trustedBaseCommit;
+        if (this.gatesModeCache && this.gatesModeCache.commit === commit)
+            return this.gatesModeCache;
+        let user = this.o.gateSandboxUserConfig;
+        if (user === undefined) {
+            try {
+                user = userConfigLayers().trustedUser;
+            }
+            catch {
+                user = null;
+            }
+        }
+        let resolved;
+        try {
+            const text = commit ? readBaseFile(this.exec, this.o.root, commit, BASE_CONFIG_PATH) : null;
+            resolved = resolveGatesSandboxMode({ user, base: text && text.trim() ? parseJsonc(text) : undefined, env: process.env });
+        }
+        catch (error) {
+            throw new FactoryStepError(`factory.run.sandbox.gates: ${errText(error)}`);
+        }
+        this.gatesModeCache = { commit, ...resolved };
+        return this.gatesModeCache;
+    }
+    /** True when the human accepted unsandboxed gates for `head` (recorded now if this invocation's flag names it). */
+    gatesAccepted(head) {
+        if (this.state.unsandboxedGatesAck === head)
+            return true;
+        if (this.gatesAllowed !== head)
+            return false;
+        this.gatesAllowed = undefined;
+        this.save((x) => ({ ...x, unsandboxedGatesAck: head, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `prepare checks and the local gate without the OS sandbox accepted for ${head.slice(0, 12)} (--allow-unsandboxed-gates)` }] }));
+        return true;
+    }
+    gatesUnsandboxedReason(head, what, why) {
+        const at = head.slice(0, 12);
+        return `${what} on ${at} would run the PR's own code WITHOUT the OS sandbox (${why}): as you, with your files, git config and credentials in reach. Review the PR's diff (tests, configs, scripts) yourself, then rerun ${this.resume} --allow-unsandboxed-gates to run it unsandboxed for ${at} only`;
+    }
+    /** gates "unsandboxed": a warning every time and one PR note per head. */
+    noteUnsandboxedGates(head, what) {
+        const source = this.gatesModeCache?.source ?? 'config';
+        this.o.warn?.(`omg factory run: ${what} on ${head.slice(0, 12)} runs WITHOUT the OS sandbox (factory.run.sandbox.gates "unsandboxed", ${source})`);
+        this.commentOnce('pr', `gates-unsandboxed@${head.slice(0, 12)}`, 'sandbox', `**Sandbox: gates unsandboxed.** ${what} on ${head.slice(0, 12)} ran the PR's own code without the OS sandbox (\`factory.run.sandbox.gates: "unsandboxed"\`, ${source}).\n`);
+    }
+    /**
+     * One prepare check (the PR's own code) per factory.run.sandbox.gates:
+     * `unsandboxed` runs it plainly (gateEnv); `enforced` runs it in the
+     * sandbox, and a sandbox failure is counted only when the same check
+     * passes in the sandbox on the trusted base (calibrateGate); a sandbox that
+     * gives no verdict, and `ack`, run it plainly only for an accepted head,
+     * else stop prepare (`ran.park`) before anything runs unsandboxed.
+     */
+    async prepareCheck(c, at) {
+        const { head, path, ran } = at;
+        const stop = (park) => {
+            ran.park = park;
+            return { status: 1, stdout: '', stderr: '', notStarted: park.reason };
+        };
+        const plain = async (how) => {
+            if (how === 'unsandboxed')
+                this.noteUnsandboxedGates(head, `prepare check \`${c.argv.join(' ')}\``);
+            else
+                ran.acked = true;
+            ran.modes.add(how);
+            const r = await (this.o.localGate ?? defaultLocalGateRunner)([c.exe, ...c.args], path, PREPARE_CHECK_TIMEOUT_MS);
+            if (r.startError !== undefined)
+                return { status: 127, stdout: '', stderr: r.startError };
+            return { status: r.timedOut ? 124 : r.status, stdout: r.stdout, stderr: `${r.stderr}${r.timedOut ? `\ntimed out after ${PREPARE_CHECK_TIMEOUT_MS / 60_000} min` : ''}` };
+        };
+        if (at.gates.mode === 'unsandboxed')
+            return plain('unsandboxed');
+        let why = `factory.run.sandbox.gates is "ack" (${at.gates.source})`;
+        if (at.gates.mode === 'enforced') {
+            const r = this.o.gateSandbox
+                ? await this.o.gateSandbox({ purpose: 'prepare', argv: c.argv, exe: c.exe, args: c.args, cwd: path, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS })
+                : { ran: false, reason: 'no OS sandbox runner was given to the engine' };
+            if (r.ran) {
+                ran.modes.add('enforced');
+                if (r.status === 0 && !r.timedOut)
+                    return { status: 0, stdout: r.output, stderr: '' };
+                const park = await this.calibrateGate(c, at.baseSha, at.commonGitDir, PREPARE_CHECK_TIMEOUT_MS, `the prepare check \`${c.argv.join(' ')}\``, head);
+                if (park)
+                    return stop(park);
+                return { status: r.timedOut ? 124 : r.status, stdout: r.output, stderr: '' };
+            }
+            why = `the OS sandbox gave no verdict: ${r.reason}`;
+        }
+        if (this.gatesAccepted(head))
+            return plain('ack');
+        return stop({ name: GATES_UNSANDBOXED_GATE, reason: this.gatesUnsandboxedReason(head, `the prepare check \`${c.argv.join(' ')}\``, why) });
+    }
+    /**
+     * After `what` failed in the sandbox on `head`: run the same command in the
+     * sandbox on a plain copy of the trusted base tree (once per base sha and
+     * argv; a passing calibration is kept in the sealed state, a failing one is
+     * retried once per invocation, after the human changed the config). Null
+     * when the base passes (the failure is the PR's: a ci-fix lane may start),
+     * else the gate-sandbox-incompatible park: the command fails in the sandbox
+     * on the base itself, or its calibration could not run.
+     */
+    async calibrateGate(c, baseSha, commonGitDir, timeoutMs, what, head) {
+        const key = createHash('sha256').update(`${baseSha}\0${JSON.stringify(c.argv)}`).digest('hex');
+        let cal = this.state.gateCalibration?.[key];
+        if (!cal || (!cal.ok && !this.recalibrated.has(key))) {
+            this.recalibrated.add(key);
+            const out = await this.runOnBase(c, baseSha, commonGitDir, timeoutMs);
+            if ('notStarted' in out) {
+                return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${what} failed in the OS sandbox on ${head.slice(0, 12)}, and its calibration on the base ${baseSha.slice(0, 12)} could not run (${out.notStarted}); the failure is not counted (no ci-fix lane). Fix the cause, or set factory.run.sandbox.gates "ack" to run it unsandboxed after your review, then rerun ${this.resume}` };
+            }
+            cal = out;
+            this.save((x) => ({ ...x, gateCalibration: { ...(x.gateCalibration ?? {}), [key]: out }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `calibrated ${c.argv.join(' ').slice(0, 80)} in the OS sandbox on the base ${baseSha.slice(0, 12)}: ${out.ok ? 'passes' : 'fails'}` }] }));
+        }
+        if (cal.ok)
+            return null;
+        return {
+            name: GATE_SANDBOX_INCOMPATIBLE_GATE,
+            reason: `${what} fails in the OS sandbox on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). Your gate fails in the sandbox on the base: set factory.run.sandbox.writeNetwork "registry" if it needs the npm registry, or factory.run.sandbox.gates "ack" to run it unsandboxed after your review, then rerun ${this.resume}${cal.tail ? `; base output tail: ${cal.tail.slice(-1_500)}` : ''}`,
+        };
+    }
+    /**
+     * The command in the sandbox on a plain copy of the base tree: `git
+     * read-tree` into a private index and `checkout-index --prefix` into a
+     * fresh dir under the gate job root (no worktree, branch or ref is made),
+     * the root's node_modules linked in, removed after (the link first).
+     */
+    async runOnBase(c, baseSha, commonGitDir, timeoutMs) {
+        if (!this.o.gateSandbox)
+            return { notStarted: 'no OS sandbox runner was given to the engine' };
+        if (!HEX40.test(baseSha))
+            return { notStarted: `the base ${JSON.stringify(baseSha)} is not a full commit id` };
+        const jobRoot = sandboxJobRoot(this.o.root);
+        mkdirSync(jobRoot, { recursive: true });
+        const dir = mkdtempSync(join(jobRoot, 'base-'));
+        const index = `${dir}.index`;
+        try {
+            const env = { ...process.env, GIT_INDEX_FILE: index, GIT_NO_REPLACE_OBJECTS: '1' };
+            runHostGit(this.o.root, ['read-tree', baseSha], undefined, env);
+            runHostGit(this.o.root, ['checkout-index', '-a', '-f', `--prefix=${dir.replace(/\\/g, '/')}/`], undefined, env);
+            linkNodeModules(this.o.root, dir);
+            const r = await this.o.gateSandbox({ purpose: 'calibrate', argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs });
+            if (!r.ran)
+                return { notStarted: r.reason };
+            const tail = r.output.trim().slice(-2_000);
+            return { ok: r.status === 0 && !r.timedOut, ...(tail ? { tail } : {}) };
+        }
+        catch (error) {
+            return { notStarted: errText(error).slice(0, 300) };
+        }
+        finally {
+            unlinkNodeModules(this.o.root, dir);
+            let linked = true;
+            try {
+                linked = lstatSync(join(dir, 'node_modules')).isSymbolicLink();
+            }
+            catch {
+                linked = false;
+            }
+            // A link that is still there is left with its dir: removing through it would empty the root's node_modules.
+            if (linked)
+                this.o.warn?.(`omg factory run: the base calibration dir ${dir} still links node_modules; remove the link by hand, then the dir`);
+            else
+                try {
+                    rmSync(dir, { recursive: true, force: true });
+                }
+                catch { /* best effort */ }
+            try {
+                rmSync(index, { force: true });
+            }
+            catch { /* best effort */ }
+        }
     }
     /**
      * The shared git state after prepare against the snapshot from before its
@@ -2048,17 +2273,60 @@ class FactoryEngine {
             }));
         }
         const timeoutMinutes = this.localGateTimeout();
+        // factory.run.sandbox.gates: the gate config of this base was loaded by gates() before the gate runs.
+        const gates = this.gatesSandbox(this.gateCfg.loaded);
+        const common = resolve(this.o.root, this.run(['rev-parse', '--git-common-dir']).trim());
         this.progress.heartbeat('gates', `local gate ${gate.join(' ')} on ${head.slice(0, 12)}`, this.fields());
-        const out = await runLocalGate({ stateDir, root: this.o.root, head, gate, timeoutMinutes, checkout, ...(this.o.localGate ? { runner: this.o.localGate } : {}), now: () => new Date(this.clock()) });
+        const input = { stateDir, root: this.o.root, head, gate, timeoutMinutes, checkout, ...(this.o.localGate ? { runner: this.o.localGate } : {}), now: () => new Date(this.clock()) };
+        let out;
+        if (gates.mode === 'unsandboxed') {
+            this.noteUnsandboxedGates(head, 'the local gate');
+            out = await runLocalGate({ ...input, mode: 'unsandboxed' });
+        }
+        else {
+            let why = `factory.run.sandbox.gates is "ack" (${gates.source})`;
+            let unavailable = gates.mode === 'ack';
+            out = { started: false, reason: why, sandbox: true };
+            if (gates.mode === 'enforced') {
+                out = this.o.gateSandbox
+                    ? await runLocalGate({ ...input, mode: 'enforced', sandbox: { run: this.o.gateSandbox, commonGitDir: common } })
+                    : { started: false, reason: 'no OS sandbox runner was given to the engine', sandbox: true };
+                unavailable = !out.started && out.sandbox === true;
+                if (unavailable && !out.started)
+                    why = `the OS sandbox gave no verdict: ${out.reason}`;
+            }
+            if (unavailable) {
+                if (!this.gatesAccepted(head)) {
+                    this.gate(GATES_UNSANDBOXED_GATE, this.gatesUnsandboxedReason(head, `the local gate \`${gate.join(' ')}\``, why));
+                    return false;
+                }
+                out = await runLocalGate({ ...input, mode: 'ack' });
+            }
+        }
         if (!out.started) {
             // A config problem, not a verdict on the head: no FAILURE, no ci-fix lane.
             this.gate('gates', `the local gate could not start: ${out.reason}; fix factory.forge.local.gate, then rerun ${this.resume}`);
             return false;
         }
         const record = out.record;
-        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `local gate ${record.state} on ${head.slice(0, 12)} (exit ${record.exitCode})` }] }));
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `local gate ${record.state} on ${head.slice(0, 12)} (exit ${record.exitCode}, ${record.sandbox === 'enforced' ? 'in the OS sandbox' : `unsandboxed: ${record.sandbox}`})` }] }));
         // The gate ran the PR's own code: the shared git state must be what the engine left.
-        return !this.recheckFailed('after the local gate');
+        if (this.recheckFailed('after the local gate'))
+            return false;
+        if (record.sandbox !== 'enforced' || record.state !== 'FAILURE')
+            return true;
+        // A failure in the sandbox counts only when the gate passes in the sandbox on the trusted base itself.
+        const base = this.state.baseSha;
+        const target = resolveLocalGateArgv(gate, { cwd: checkout });
+        const park = !base || 'missing' in target
+            ? { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `the local gate failed in the OS sandbox on ${head.slice(0, 12)}, and the run has no base to calibrate it on; the failure is not counted (no ci-fix lane); rerun ${this.resume}` }
+            : await this.calibrateGate({ argv: gate, exe: target.exe, args: target.args }, base, common, timeoutMinutes * 60_000, `the local gate \`${gate.join(' ')}\``, head);
+        if (!park)
+            return true;
+        // The FAILURE record would start a ci-fix lane on the next read: the head is judged again after the human's fix.
+        rmSync(localCheckRecordPath(stateDir, this.o.root, head), { force: true });
+        this.gate(park.name, park.reason);
+        return false;
     }
     /**
      * The local forge with checks that stop the gates driver when the gate is
@@ -3361,6 +3629,12 @@ export const HUMAN_REVIEW_GATE = 'human-review';
 export const REVIEW_REQUESTED_GATE = 'review-requested';
 /** How the human-review park for lanes without the enforced sandbox starts (`--allow-unsandboxed-lanes` answers only it). */
 export const UNSANDBOXED_LANES_REASON = 'a lane ran without the enforced sandbox';
+/** The park before the PR's own code (prepare checks, the local gate) would run without the OS sandbox; `--allow-unsandboxed-gates` answers it. */
+export const GATES_UNSANDBOXED_GATE = 'gates-unsandboxed';
+/** The park when a check fails in the sandbox on the trusted base itself: a sandbox problem, never a ci-fix lane. */
+export const GATE_SANDBOX_INCOMPATIBLE_GATE = 'gate-sandbox-incompatible';
+/** How long one prepare check may run (the sandbox needs a bound; ship's own prepare has none). */
+export const PREPARE_CHECK_TIMEOUT_MS = 30 * 60_000;
 /**
  * sha256 of one human feedback round: the threads a fix lane acts on (id,
  * author, time, text; the outdated flag left out, so a push that only moves

@@ -134,7 +134,32 @@ function lines(text) {
 function tail(text, n = 20) {
     return lines(text).slice(-n).join('\n');
 }
+/** The step prepare fails when a check gave no verdict (the OS sandbox could not run it): an engine problem, never a fix lane. */
+export const PREPARE_SANDBOX_STEP = 'checks-sandbox';
+/** ship's prepare: every check through `exec` / `commandExec`, synchronously. */
 export function runPrepare(opts) {
+    const steps = prepareSteps(opts);
+    const commandExec = opts.commandExec ?? opts.exec;
+    let next = steps.next();
+    while (!next.done) {
+        const c = next.value;
+        next = steps.next((c.kind === 'configured' ? commandExec : opts.exec)(c.exe, c.args, { cwd: opts.cwd }));
+    }
+    return next.value;
+}
+/**
+ * prepare with every check through `runCheck` (omg factory run: the OS
+ * sandbox), awaited; git still runs through `exec`. A check whose result
+ * carries `notStarted` stops prepare at PREPARE_SANDBOX_STEP.
+ */
+export async function runPrepareAsync(opts, runCheck) {
+    const steps = prepareSteps(opts);
+    let next = steps.next();
+    while (!next.done)
+        next = steps.next(await runCheck(next.value));
+    return next.value;
+}
+function* prepareSteps(opts) {
     const { exec, cwd, base } = opts;
     const remote = opts.remote ?? 'origin';
     const node = opts.node ?? process.execPath;
@@ -242,12 +267,13 @@ export function runPrepare(opts) {
             return fail(PREPARE_CONFIG_STEP, `ship.prepare.checks ${JSON.stringify(missing.argv)}: ${missing.missing}`);
         if (opts.commands.length === 0)
             steps.push({ name: 'checks', status: 'skipped', detail: 'ship.prepare.checks is empty' });
-        const run = opts.commandExec ?? exec;
         for (const c of opts.commands) {
             if ('missing' in c)
                 continue;
             const name = c.argv.join(' ').slice(0, 80);
-            const r = run(c.exe, c.args, { cwd });
+            const r = yield { step: name, kind: 'configured', argv: c.argv, exe: c.exe, args: c.args };
+            if (r.notStarted !== undefined)
+                return fail(PREPARE_SANDBOX_STEP, `${name}: ${r.notStarted}`);
             if (r.status !== 0)
                 return fail(name, tail(`${r.stdout}\n${r.stderr}`));
             steps.push({ name, status: 'ok' });
@@ -271,7 +297,9 @@ export function runPrepare(opts) {
                 steps.push({ name, status: 'skipped', detail: skipReason });
                 continue;
             }
-            const r = exec(node, args, { cwd });
+            const r = yield { step: name, kind: 'built-in', argv: [node, ...args], exe: node, args };
+            if (r.notStarted !== undefined)
+                return fail(PREPARE_SANDBOX_STEP, `${name}: ${r.notStarted}`);
             if (r.status !== 0)
                 return fail(name, tail(`${r.stdout}\n${r.stderr}`));
             steps.push({ name, status: 'ok', detail: args.slice(1).join(' ').slice(0, 300) });
@@ -280,14 +308,20 @@ export function runPrepare(opts) {
     // 5. inventory regeneration, always the last commit (only in a repository that has the generator)
     if (found.lost.inventory)
         return fail('inventory', found.lost.inventory);
+    const inventory = (mode) => ({ step: 'inventory', kind: 'inventory', argv: [node, INVENTORY_SCRIPT, mode], exe: node, args: [INVENTORY_SCRIPT, mode] });
+    const current = found.inventory ? yield inventory('--verify') : undefined;
+    if (current?.notStarted !== undefined)
+        return fail(PREPARE_SANDBOX_STEP, `inventory: ${current.notStarted}`);
     if (!found.inventory) {
         steps.push({ name: 'inventory', status: 'skipped', detail: `no ${INVENTORY_SCRIPT} on the base` });
     }
-    else if (exec(node, [INVENTORY_SCRIPT, '--verify'], { cwd }).status === 0) {
+    else if (current.status === 0) {
         steps.push({ name: 'inventory', status: 'skipped', detail: 'baseline is current' });
     }
     else {
-        const written = exec(node, [INVENTORY_SCRIPT, '--write'], { cwd });
+        const written = yield inventory('--write');
+        if (written.notStarted !== undefined)
+            return fail(PREPARE_SANDBOX_STEP, `inventory: ${written.notStarted}`);
         if (written.status !== 0)
             return fail('inventory', tail(written.stderr || written.stdout));
         const added = git('add', '--', INVENTORY_DIR);
@@ -300,7 +334,9 @@ export function runPrepare(opts) {
                 return fail('inventory', tail(committed.stderr || committed.stdout));
             housekeepingCommits.push(head());
         }
-        const verified = exec(node, [INVENTORY_SCRIPT, '--verify'], { cwd });
+        const verified = yield inventory('--verify');
+        if (verified.notStarted !== undefined)
+            return fail(PREPARE_SANDBOX_STEP, `inventory: ${verified.notStarted}`);
         if (verified.status !== 0)
             return fail('inventory', `regenerated baseline still fails --verify:\n${tail(verified.stderr || verified.stdout)}`);
         steps.push({ name: 'inventory', status: 'ok', detail: 'regenerated as the last commit' });

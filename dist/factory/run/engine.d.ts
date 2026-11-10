@@ -53,6 +53,7 @@
  * GitHub runs keep the gh calls unchanged.
  */
 import { type Exec } from '../../ship/exec.js';
+import { type SandboxRunner } from './sandbox-exec.js';
 import { type AzEntry } from '../../forge/ado/az-binary.js';
 import type { ForgeOptions, ResolvedForgeConfig } from '../../forge/types.js';
 import { type GateConfigLoader } from './prepare.js';
@@ -123,6 +124,23 @@ export interface FactoryEngineOptions {
      * head parks again; without such a park the flag is ignored with a warning.
      */
     allowUnsandboxedLanes?: boolean;
+    /**
+     * The human accepts, for the parked head only, that prepare's checks and
+     * the local gate run WITHOUT the OS sandbox (`--allow-unsandboxed-gates` on
+     * a rerun of a run parked at awaiting-human: gates-unsandboxed); recorded as
+     * `unsandboxedGatesAck`. A new head parks again; without such a park the
+     * flag is ignored with a warning.
+     */
+    allowUnsandboxedGates?: boolean;
+    /**
+     * The OS sandbox prepare's checks and the local gate run in
+     * (factory.run.sandbox.gates "enforced"; sandbox-exec.ts createSandboxRunner,
+     * which the CLI passes). Omitted = no sandbox: an enforced run then parks
+     * at gates-unsandboxed as "ack" does, it never runs the code unsandboxed.
+     */
+    gateSandbox?: SandboxRunner;
+    /** The trusted user config factory.run.sandbox.gates is read from (default: userConfigLayers().trustedUser); tests pass one. */
+    gateSandboxUserConfig?: unknown;
     now?: () => number;
     pollMs?: number;
     progressFile?: string;
@@ -247,6 +265,12 @@ export declare const HUMAN_REVIEW_GATE = "human-review";
 export declare const REVIEW_REQUESTED_GATE = "review-requested";
 /** How the human-review park for lanes without the enforced sandbox starts (`--allow-unsandboxed-lanes` answers only it). */
 export declare const UNSANDBOXED_LANES_REASON = "a lane ran without the enforced sandbox";
+/** The park before the PR's own code (prepare checks, the local gate) would run without the OS sandbox; `--allow-unsandboxed-gates` answers it. */
+export declare const GATES_UNSANDBOXED_GATE = "gates-unsandboxed";
+/** The park when a check fails in the sandbox on the trusted base itself: a sandbox problem, never a ci-fix lane. */
+export declare const GATE_SANDBOX_INCOMPATIBLE_GATE = "gate-sandbox-incompatible";
+/** How long one prepare check may run (the sandbox needs a bound; ship's own prepare has none). */
+export declare const PREPARE_CHECK_TIMEOUT_MS: number;
 /**
  * sha256 of one human feedback round: the threads a fix lane acts on (id,
  * author, time, text; the outdated flag left out, so a push that only moves

@@ -144,6 +144,7 @@ export async function runHealEngine(o, deps) {
         ...(o.dryRun ? { dryRun: true } : {}),
         ...(o.repoOwner ? { repoOwner: o.repoOwner } : {}),
         ...(deps.gateConfig ? { gateConfig: deps.gateConfig } : {}),
+        ...(deps.gateSandbox && !o.dryRun ? { gateSandbox: deps.gateSandbox(o.root) } : {}),
         ...(deps.warn ? { warn: deps.warn } : {}),
         ...(deps.forge ? { forge: deps.forge } : {}),
         ...deps.engine,

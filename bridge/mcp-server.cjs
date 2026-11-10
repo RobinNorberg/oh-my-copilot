@@ -7154,7 +7154,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve54.call(this, root, ref);
+      let _sch = resolve55.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -7181,7 +7181,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve54(root, ref) {
+    function resolve55(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -7812,7 +7812,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve54(baseURI, relativeURI, options) {
+    function resolve55(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse13(baseURI, schemelessOptions), parse13(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -8070,7 +8070,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize: normalize10,
-      resolve: resolve54,
+      resolve: resolve55,
       resolveComponent,
       equal,
       serialize,
@@ -12827,7 +12827,7 @@ async function removeFileIfExists(filePath) {
   }
 }
 function sleep(ms) {
-  return new Promise((resolve54) => setTimeout(resolve54, ms));
+  return new Promise((resolve55) => setTimeout(resolve55, ms));
 }
 var import_child_process3, fs3, fsPromises2, path5, import_url, import_child_process4, import_util6, execFileAsync2, BRIDGE_SPAWN_TIMEOUT_MS, DEFAULT_GRACE_PERIOD_MS, SIGTERM_GRACE_MS, ownedBridgeSessionIds, runPythonProbe, systemPythonCache, USE_TCP_FALLBACK;
 var init_bridge_manager = __esm({
@@ -13526,7 +13526,7 @@ var init_client = __esm({
 Install with: ${this.serverConfig.installHint}`
           );
         }
-        return new Promise((resolve54, reject2) => {
+        return new Promise((resolve55, reject2) => {
           const command = this.devContainerContext ? "docker" : this.serverConfig.command;
           const args = this.devContainerContext ? ["exec", "-i", "-w", this.devContainerContext.containerWorkspaceRoot, this.devContainerContext.containerId, this.serverConfig.command, ...this.serverConfig.args] : this.serverConfig.args;
           this.process = (0, import_child_process6.spawn)(command, args, {
@@ -13574,7 +13574,7 @@ Install with: ${this.serverConfig.installHint}`
               return;
             }
             this.initialized = true;
-            resolve54();
+            resolve55();
           }).catch((error2) => {
             if (this.process === child && this.connectionGeneration === connectionGeneration) {
               this.forceKill();
@@ -13833,13 +13833,13 @@ ${content}`;
         const message = `Content-Length: ${Buffer.byteLength(content)}\r
 \r
 ${content}`;
-        return new Promise((resolve54, reject2) => {
+        return new Promise((resolve55, reject2) => {
           const timeoutHandle = setTimeout(() => {
             this.pendingRequests.delete(id);
             reject2(new Error(`LSP request '${method}' timed out after ${effectiveTimeout}ms`));
           }, effectiveTimeout);
           this.pendingRequests.set(id, {
-            resolve: resolve54,
+            resolve: resolve55,
             reject: reject2,
             timeout: timeoutHandle
           });
@@ -14019,7 +14019,7 @@ ${content}`;
         });
         this.assertCurrentConnection(child, connectionGeneration);
         this.openDocuments.add(hostUri);
-        await new Promise((resolve54) => setTimeout(resolve54, 100));
+        await new Promise((resolve55) => setTimeout(resolve55, 100));
         this.assertCurrentConnection(child, connectionGeneration);
         this.throwIfTerminal();
       }
@@ -14076,8 +14076,8 @@ ${content}`;
         const current = new Promise((resolveCurrent) => {
           release = resolveCurrent;
         });
-        const tail2 = previous.catch(() => void 0).then(() => current);
-        this.documentOperationTails.set(hostUri, tail2);
+        const tail3 = previous.catch(() => void 0).then(() => current);
+        this.documentOperationTails.set(hostUri, tail3);
         const predecessorCompleted = await Promise.race([
           previous.then(() => true, () => true),
           cancellation.then(() => false)
@@ -14090,7 +14090,7 @@ ${content}`;
           return await operation();
         } finally {
           release();
-          if (this.documentOperationTails.get(hostUri) === tail2) {
+          if (this.documentOperationTails.get(hostUri) === tail3) {
             this.documentOperationTails.delete(hostUri);
           }
         }
@@ -14251,7 +14251,7 @@ ${content}`;
         if (this.diagnostics.has(key)) {
           return Promise.resolve();
         }
-        return new Promise((resolve54, reject2) => {
+        return new Promise((resolve55, reject2) => {
           let resolved = false;
           const removeWaiter = (waiter2) => {
             const waiters = this.diagnosticWaiters.get(key);
@@ -14270,7 +14270,7 @@ ${content}`;
               if (error2) {
                 reject2(error2);
               } else {
-                resolve54();
+                resolve55();
               }
             }
           };
@@ -14278,7 +14278,7 @@ ${content}`;
             if (!resolved) {
               resolved = true;
               removeWaiter(waiter);
-              resolve54();
+              resolve55();
             }
           }, timeoutMs);
           const existing = this.diagnosticWaiters.get(key) || [];
@@ -17654,7 +17654,7 @@ async function canBreakLock(lockInfo) {
   return !alive;
 }
 function sleep2(ms) {
-  return new Promise((resolve54) => setTimeout(resolve54, ms));
+  return new Promise((resolve55) => setTimeout(resolve55, ms));
 }
 var fs4, fsSync2, path6, os2, crypto3, import_child_process9, import_util7, execFileAsync3, STALE_LOCK_AGE_MS, DEFAULT_ACQUIRE_TIMEOUT_MS, LOCK_RETRY_INTERVAL_MS, REMOTE_LOCK_STALE_AGE_MS, LockTimeoutError, LockError, SessionLock;
 var init_session_lock = __esm({
@@ -17846,7 +17846,7 @@ var init_session_lock = __esm({
 
 // src/tools/python-repl/socket-client.ts
 async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
-  return new Promise((resolve54, reject2) => {
+  return new Promise((resolve55, reject2) => {
     const id = (0, import_crypto3.randomUUID)();
     const request = {
       jsonrpc: "2.0",
@@ -17936,7 +17936,7 @@ async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
           }
           if (!settled) {
             settled = true;
-            resolve54(response.result);
+            resolve55(response.result);
           }
         } catch (e) {
           if (!settled) {
@@ -21612,7 +21612,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           continue;
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve54) => setTimeout(resolve54, 25));
+        await new Promise((resolve55) => setTimeout(resolve55, 25));
         continue;
       }
       try {
@@ -21633,7 +21633,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           }
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve54) => setTimeout(resolve54, 25));
+        await new Promise((resolve55) => setTimeout(resolve55, 25));
       }
     }
     return await fn();
@@ -23822,7 +23822,7 @@ function withFileLockSync(lockPath, fn, opts) {
   }
 }
 function sleep3(ms) {
-  return new Promise((resolve54) => setTimeout(resolve54, ms));
+  return new Promise((resolve55) => setTimeout(resolve55, ms));
 }
 async function acquireFileLock(lockPath, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -24712,13 +24712,13 @@ var init_directive_detector = __esm({
 function withMutex(projectRoot, fn) {
   const prev = writeMutexes.get(projectRoot) ?? Promise.resolve();
   const next = prev.then(() => fn()).catch(() => fn());
-  const tail2 = next.then(
+  const tail3 = next.then(
     () => {
     },
     () => {
     }
   );
-  writeMutexes.set(projectRoot, tail2);
+  writeMutexes.set(projectRoot, tail3);
   return next;
 }
 async function addCustomNote(projectRoot, category, content) {
@@ -24864,7 +24864,7 @@ function mergeArrays(fieldName, base, incoming) {
       return mergeScalarArray(base, incoming);
   }
 }
-function mergeByKey(base, incoming, keyFn, resolve54) {
+function mergeByKey(base, incoming, keyFn, resolve55) {
   const seen = /* @__PURE__ */ new Map();
   for (const item of base) {
     seen.set(keyFn(item), item);
@@ -24873,7 +24873,7 @@ function mergeByKey(base, incoming, keyFn, resolve54) {
     const key = keyFn(item);
     const existing = seen.get(key);
     if (existing) {
-      seen.set(key, resolve54(existing, item));
+      seen.set(key, resolve55(existing, item));
     } else {
       seen.set(key, item);
     }
@@ -29500,15 +29500,15 @@ var init_tmux_utils = __esm({
 // src/smoke/copilot-binary.ts
 function resolveCopilotBinary(override, env2, deps = {}) {
   const exists = deps.existsSync ?? import_fs44.existsSync;
-  const resolve54 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
+  const resolve55 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
   const list = deps.readdirSync ?? ((p) => (0, import_fs44.readdirSync)(p));
   const platform = deps.platform ?? process.platform;
   if (override) {
     if (exists(override)) return { bin: override, source: "override" };
-    const found = resolve54(override);
+    const found = resolve55(override);
     return found ? { bin: found, source: "override" } : { bin: null, source: null };
   }
-  const onPath = resolve54("copilot");
+  const onPath = resolve55("copilot");
   if (onPath) return { bin: onPath, source: "path" };
   const envPath = env2.COPILOT_CLI_PATH?.trim();
   if (envPath && exists(envPath)) return { bin: envPath, source: "COPILOT_CLI_PATH" };
@@ -29831,7 +29831,7 @@ function hasExited(child) {
 function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
   const started = Date.now();
   const maxOutput = opts.maxOutput ?? DEFAULT_MAX_OUTPUT;
-  return new Promise((resolve54) => {
+  return new Promise((resolve55) => {
     let stdout = "";
     let stderr = "";
     let timedOut = false;
@@ -29840,7 +29840,7 @@ function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve54({ ...result, stdout, stderr, timedOut, durationMs: Date.now() - started });
+      resolve55({ ...result, stdout, stderr, timedOut, durationMs: Date.now() - started });
     };
     let child;
     try {
@@ -29853,7 +29853,7 @@ function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
         detached: useProcessGroup()
       });
     } catch (err) {
-      resolve54({ code: null, signal: null, stdout, stderr, timedOut, error: err.message, durationMs: Date.now() - started });
+      resolve55({ code: null, signal: null, stdout, stderr, timedOut, error: err.message, durationMs: Date.now() - started });
       return;
     }
     const timer = setTimeout(() => {
@@ -32588,10 +32588,10 @@ var init_copilot_session_env = __esm({
 });
 
 // src/team/sdk-policy.ts
-function gitSubcommandDeny(tail2, reason) {
+function gitSubcommandDeny(tail3, reason) {
   return [
-    { re: new RegExp(String.raw`(?:^|[\s;&|("'/\\])git(?:\.exe)?["']?${GIT_GLOBAL_OPTIONS}\s+${tail2}`, "i"), reason },
-    { re: new RegExp(String.raw`\bgit\b[\s\S]*\$\{?\w+\}?${GIT_GLOBAL_OPTIONS}\s+${tail2}`, "i"), reason }
+    { re: new RegExp(String.raw`(?:^|[\s;&|("'/\\])git(?:\.exe)?["']?${GIT_GLOBAL_OPTIONS}\s+${tail3}`, "i"), reason },
+    { re: new RegExp(String.raw`\bgit\b[\s\S]*\$\{?\w+\}?${GIT_GLOBAL_OPTIONS}\s+${tail3}`, "i"), reason }
   ];
 }
 function normalizeShellCommand(command) {
@@ -32932,6 +32932,23 @@ function loadSandboxSettings(root, scope, layers = defaultLayers(root)) {
   for (const key of ["allowedHosts", "extraReadonlyPaths", "extraReadwritePaths"]) if (projectRaw[key] !== void 0) loosening.push(key);
   if (loosening.length > 0) warnings.push(`sandbox: ignoring ${loosening.join(", ")} from the project config; it may only tighten the sandbox`);
   return { settings, warnings };
+}
+function resolveGatesSandboxMode(layers) {
+  if (layers.env[SANDBOX_KILL_ENV] === "off") return { mode: "unsandboxed", source: `${SANDBOX_KILL_ENV}=off` };
+  const read = (config2, source) => {
+    const value = sandboxBlock({ factory: config2?.factory }, "factory", source).gates;
+    if (value === void 0) return void 0;
+    if (!GATES_SANDBOX_MODES.includes(value)) throw new Error(`${source}: factory.run.sandbox.gates must be ${GATES_SANDBOX_MODES.map((m) => JSON.stringify(m)).join(" or ")}`);
+    return value;
+  };
+  const user = read(layers.user, "user config");
+  const base = read(layers.base, "the base .copilot/omg.jsonc");
+  if (base === "unsandboxed") {
+    throw new Error(`factory.run.sandbox.gates "unsandboxed" is accepted from the user config only, never from the repository's .copilot/omg.jsonc; set it in your user config, or use "ack" there`);
+  }
+  if (user) return { mode: user, source: "user config" };
+  if (base) return { mode: base, source: "the base .copilot/omg.jsonc" };
+  return { mode: "enforced", source: "default" };
 }
 function nodeModulesLinkTarget(worktree) {
   const nm = (0, import_node_path8.join)(worktree, "node_modules");
@@ -33317,7 +33334,7 @@ function allowlistSessionEnv(env2, jobHome) {
   }
   return { ...out, ...relocatedProfileEnv(jobHome) };
 }
-var import_node_child_process2, import_node_fs7, import_node_path8, SANDBOX_SHELL_TOOLS, REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, DEFAULT_SANDBOX_SETTINGS, SANDBOX_KILL_ENV, isStringArray2, REGISTRY_HOSTS, errText, BWRAP_TRIAL_ARGS, defaultTrialSpawner, cachedBwrapTrial, SESSION_ENV_ALLOWLIST, MXC_REQUIRED_ENV, TOKEN_PATTERN;
+var import_node_child_process2, import_node_fs7, import_node_path8, SANDBOX_SHELL_TOOLS, REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, DEFAULT_SANDBOX_SETTINGS, SANDBOX_KILL_ENV, isStringArray2, GATES_SANDBOX_MODES, REGISTRY_HOSTS, errText, BWRAP_TRIAL_ARGS, defaultTrialSpawner, cachedBwrapTrial, SESSION_ENV_ALLOWLIST, MXC_REQUIRED_ENV, TOKEN_PATTERN;
 var init_sandbox2 = __esm({
   "src/copilot-run/sandbox.ts"() {
     "use strict";
@@ -33346,6 +33363,7 @@ var init_sandbox2 = __esm({
     });
     SANDBOX_KILL_ENV = "OMG_SANDBOX";
     isStringArray2 = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");
+    GATES_SANDBOX_MODES = ["enforced", "ack", "unsandboxed"];
     REGISTRY_HOSTS = ["registry.npmjs.org", "*.npmjs.org"];
     errText = (err) => err instanceof Error ? err.message : String(err);
     BWRAP_TRIAL_ARGS = ["--ro-bind", "/", "/", "--dev", "/dev", "--unshare-all", "--die-with-parent", "--", "true"];
@@ -33617,11 +33635,11 @@ function substitutePaths(text3, dirs, onHit) {
 }
 function restorePlaceholders(text3, dirs, options = {}) {
   const depth = options.jsonDepth ?? 0;
-  return text3.replace(/\$\{(PROJECT|HOME|ROOT|REMOTE|TMP|USERHOME)\}((?:\/[^\\/\s"'<>|:*?]+)*)/g, (match, name, tail2) => {
+  return text3.replace(/\$\{(PROJECT|HOME|ROOT|REMOTE|TMP|USERHOME)\}((?:\/[^\\/\s"'<>|:*?]+)*)/g, (match, name, tail3) => {
     const dir = dirs[name]?.replace(/[\\/]+$/, "");
     if (!dir) return match;
     const nativeBack = options.separator === "native" && isWindowsPath(dir);
-    let path15 = nativeBack ? `${dir.replace(/\//g, "\\")}${tail2.replace(/\//g, "\\")}` : `${dir.replace(/\\/g, "/")}${tail2}`;
+    let path15 = nativeBack ? `${dir.replace(/\//g, "\\")}${tail3.replace(/\//g, "\\")}` : `${dir.replace(/\\/g, "/")}${tail3}`;
     for (let i = 0; i < depth; i++) path15 = jsonEscape(path15);
     return path15;
   });
@@ -34324,11 +34342,11 @@ function readJsonl(file) {
     throw err;
   }
   const lines3 = text3.split("\n");
-  const tail2 = lines3.pop() ?? "";
+  const tail3 = lines3.pop() ?? "";
   const out = lines3.filter((line) => line.trim() !== "").map((line) => JSON.parse(line));
-  if (tail2.trim() !== "") {
+  if (tail3.trim() !== "") {
     try {
-      out.push(JSON.parse(tail2));
+      out.push(JSON.parse(tail3));
     } catch {
     }
   }
@@ -34793,11 +34811,11 @@ function replayResponse(res, dirs) {
   return new Response([204, 205, 304].includes(res.status) ? null : body, { status: res.status, headers });
 }
 function deferred() {
-  let resolve54;
+  let resolve55;
   const promise = new Promise((r) => {
-    resolve54 = r;
+    resolve55 = r;
   });
-  return { promise, resolve: resolve54 };
+  return { promise, resolve: resolve55 };
 }
 function createRecordingHandler(Base, recorderOf) {
   class RecordingHandler extends Base {
@@ -35701,7 +35719,7 @@ async function runSdkTier(input) {
       }
       const path15 = (0, import_path68.join)(input.home, `events-${name}.jsonl`);
       events[name] = path15;
-      if (entries.length > 0) await new Promise((resolve54) => setTimeout(resolve54, 2));
+      if (entries.length > 0) await new Promise((resolve55) => setTimeout(resolve55, 2));
       const start = Date.now();
       const { wedged: stuck, ...run2 } = name === "chain" ? await input.runChain({
         bin,
@@ -42437,12 +42455,12 @@ var init_coding_agent_lane = __esm({
 
 // src/forge/review-feedback.ts
 function truncationMessage(pr, what) {
-  const tail2 = "so human feedback cannot be read completely.";
-  if (what === "reviewThreads") return `PR #${pr}: more than 100 review threads (resolved and outdated ones count), ${tail2} Delete the spam threads or lock the conversation on the forge, then rerun.`;
-  if (what === "latestReviews") return `PR #${pr}: more than 50 latest reviews, ${tail2} Dismiss or delete the surplus reviews on the forge, then rerun.`;
-  if (what === "reviewRequests") return `PR #${pr}: more than 20 pending review requests, ${tail2} Remove the surplus review requests on the forge, then rerun.`;
-  if (what.startsWith("comments of thread")) return `PR #${pr}: ${visibleLine(what)} has more than 20 comments, ${tail2} Resolve the thread or trim its comments on the forge, then rerun.`;
-  return `PR #${pr}: ${visibleLine(what)} has more entries than one read returns, ${tail2} Reduce it on the forge, then rerun.`;
+  const tail3 = "so human feedback cannot be read completely.";
+  if (what === "reviewThreads") return `PR #${pr}: more than 100 review threads (resolved and outdated ones count), ${tail3} Delete the spam threads or lock the conversation on the forge, then rerun.`;
+  if (what === "latestReviews") return `PR #${pr}: more than 50 latest reviews, ${tail3} Dismiss or delete the surplus reviews on the forge, then rerun.`;
+  if (what === "reviewRequests") return `PR #${pr}: more than 20 pending review requests, ${tail3} Remove the surplus review requests on the forge, then rerun.`;
+  if (what.startsWith("comments of thread")) return `PR #${pr}: ${visibleLine(what)} has more than 20 comments, ${tail3} Resolve the thread or trim its comments on the forge, then rerun.`;
+  return `PR #${pr}: ${visibleLine(what)} has more entries than one read returns, ${tail3} Reduce it on the forge, then rerun.`;
 }
 function assertReviewHead(pr, head, actual) {
   if (!REVIEW_HEAD.test(head)) throw new ReviewFeedbackError(`review feedback of PR ${pr}: ${JSON.stringify(head.slice(0, 60))} is not a full commit sha`);
@@ -43778,15 +43796,15 @@ function tokenize2(segment) {
   return tokens;
 }
 function realExistingPrefix(p) {
-  const tail2 = [];
+  const tail3 = [];
   let cur = (0, import_node_path12.resolve)(p);
   for (; ; ) {
     try {
-      return (0, import_node_path12.join)(import_node_fs11.realpathSync.native(cur), ...tail2.reverse());
+      return (0, import_node_path12.join)(import_node_fs11.realpathSync.native(cur), ...tail3.reverse());
     } catch {
       const parent = (0, import_node_path12.dirname)(cur);
       if (parent === cur) return (0, import_node_path12.resolve)(p);
-      tail2.push((0, import_node_path12.basename)(cur));
+      tail3.push((0, import_node_path12.basename)(cur));
       cur = parent;
     }
   }
@@ -45554,7 +45572,7 @@ var init_store = __esm({
 // src/forge/local/checks.ts
 function validRecord(r) {
   const x = r;
-  return !!x && x.name === LOCAL_GATE_CHECK && typeof x.head === "string" && HEX406.test(x.head) && (x.state === "PENDING" || x.state === "SUCCESS" || x.state === "FAILURE") && Array.isArray(x.argv) && x.argv.every((a) => typeof a === "string") && Number.isSafeInteger(x.runId) && x.runId > 0 && typeof x.startedAt === "string" && (x.completedAt === void 0 || typeof x.completedAt === "string") && (x.exitCode === void 0 || Number.isInteger(x.exitCode)) && (x.tail === void 0 || typeof x.tail === "string");
+  return !!x && x.name === LOCAL_GATE_CHECK && typeof x.head === "string" && HEX406.test(x.head) && (x.state === "PENDING" || x.state === "SUCCESS" || x.state === "FAILURE") && Array.isArray(x.argv) && x.argv.every((a) => typeof a === "string") && Number.isSafeInteger(x.runId) && x.runId > 0 && typeof x.startedAt === "string" && (x.completedAt === void 0 || typeof x.completedAt === "string") && (x.exitCode === void 0 || Number.isInteger(x.exitCode)) && (x.tail === void 0 || typeof x.tail === "string") && (x.sandbox === void 0 || x.sandbox === "enforced" || x.sandbox === "ack" || x.sandbox === "unsandboxed");
 }
 function readRecordFile(path15) {
   if (!(0, import_fs74.existsSync)(path15)) return void 0;
@@ -46783,6 +46801,12 @@ function humanReviewShapeProblem(s) {
   const h = s.humanReview;
   if (h !== void 0 && (typeof h !== "object" || h === null || Array.isArray(h) || !isStr2(h.seenAt) || !isStr2(h.head) || !HEX409.test(h.head) || !isStr2(h.digest) || !HEX64.test(h.digest) || h.threadIds !== void 0 && (!Array.isArray(h.threadIds) || h.threadIds.length > MAX_HUMAN_THREAD_IDS || !h.threadIds.every(THREAD_ID)) || Object.keys(h).some((k) => k !== "seenAt" && k !== "head" && k !== "digest" && k !== "threadIds"))) return "humanReview";
   if (s.unsandboxedAck !== void 0 && (!isStr2(s.unsandboxedAck) || !HEX409.test(s.unsandboxedAck))) return "unsandboxedAck";
+  if (s.unsandboxedGatesAck !== void 0 && (!isStr2(s.unsandboxedGatesAck) || !HEX409.test(s.unsandboxedGatesAck))) return "unsandboxedGatesAck";
+  const cal = s.gateCalibration;
+  if (cal !== void 0 && (typeof cal !== "object" || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
+    const e = v;
+    return HEX64.test(k) && typeof e === "object" && e !== null && typeof e.ok === "boolean" && (e.tail === void 0 || isStr2(e.tail)) && Object.keys(e).every((x) => x === "ok" || x === "tail");
+  }))) return "gateCalibration";
   const lanes = s.lanes;
   if (!lanes.every((l) => {
     const f = l.feedback;
@@ -47368,7 +47392,13 @@ function lines2(text3) {
 function tail(text3, n = 20) {
   return lines2(text3).slice(-n).join("\n");
 }
-function runPrepare(opts) {
+async function runPrepareAsync(opts, runCheck) {
+  const steps = prepareSteps(opts);
+  let next = steps.next();
+  while (!next.done) next = steps.next(await runCheck(next.value));
+  return next.value;
+}
+function* prepareSteps(opts) {
   const { exec, cwd, base } = opts;
   const remote = opts.remote ?? "origin";
   const node = opts.node ?? process.execPath;
@@ -47451,11 +47481,11 @@ ${dirty}`);
     const missing = opts.commands.find((c) => "missing" in c);
     if (missing && "missing" in missing) return fail2(PREPARE_CONFIG_STEP, `ship.prepare.checks ${JSON.stringify(missing.argv)}: ${missing.missing}`);
     if (opts.commands.length === 0) steps.push({ name: "checks", status: "skipped", detail: "ship.prepare.checks is empty" });
-    const run2 = opts.commandExec ?? exec;
     for (const c of opts.commands) {
       if ("missing" in c) continue;
       const name = c.argv.join(" ").slice(0, 80);
-      const r = run2(c.exe, c.args, { cwd });
+      const r = yield { step: name, kind: "configured", argv: c.argv, exe: c.exe, args: c.args };
+      if (r.notStarted !== void 0) return fail2(PREPARE_SANDBOX_STEP, `${name}: ${r.notStarted}`);
       if (r.status !== 0) return fail2(name, tail(`${r.stdout}
 ${r.stderr}`));
       steps.push({ name, status: "ok" });
@@ -47477,19 +47507,24 @@ ${r.stderr}`));
         steps.push({ name, status: "skipped", detail: skipReason });
         continue;
       }
-      const r = exec(node, args, { cwd });
+      const r = yield { step: name, kind: "built-in", argv: [node, ...args], exe: node, args };
+      if (r.notStarted !== void 0) return fail2(PREPARE_SANDBOX_STEP, `${name}: ${r.notStarted}`);
       if (r.status !== 0) return fail2(name, tail(`${r.stdout}
 ${r.stderr}`));
       steps.push({ name, status: "ok", detail: args.slice(1).join(" ").slice(0, 300) });
     }
   }
   if (found.lost.inventory) return fail2("inventory", found.lost.inventory);
+  const inventory = (mode) => ({ step: "inventory", kind: "inventory", argv: [node, INVENTORY_SCRIPT, mode], exe: node, args: [INVENTORY_SCRIPT, mode] });
+  const current = found.inventory ? yield inventory("--verify") : void 0;
+  if (current?.notStarted !== void 0) return fail2(PREPARE_SANDBOX_STEP, `inventory: ${current.notStarted}`);
   if (!found.inventory) {
     steps.push({ name: "inventory", status: "skipped", detail: `no ${INVENTORY_SCRIPT} on the base` });
-  } else if (exec(node, [INVENTORY_SCRIPT, "--verify"], { cwd }).status === 0) {
+  } else if (current.status === 0) {
     steps.push({ name: "inventory", status: "skipped", detail: "baseline is current" });
   } else {
-    const written = exec(node, [INVENTORY_SCRIPT, "--write"], { cwd });
+    const written = yield inventory("--write");
+    if (written.notStarted !== void 0) return fail2(PREPARE_SANDBOX_STEP, `inventory: ${written.notStarted}`);
     if (written.status !== 0) return fail2("inventory", tail(written.stderr || written.stdout));
     const added = git3("add", "--", INVENTORY_DIR);
     if (added.status !== 0) return fail2("inventory", `git add -- ${INVENTORY_DIR}: ${tail(added.stderr || added.stdout)}`);
@@ -47498,7 +47533,8 @@ ${r.stderr}`));
       if (committed.status !== 0) return fail2("inventory", tail(committed.stderr || committed.stdout));
       housekeepingCommits.push(head());
     }
-    const verified = exec(node, [INVENTORY_SCRIPT, "--verify"], { cwd });
+    const verified = yield inventory("--verify");
+    if (verified.notStarted !== void 0) return fail2(PREPARE_SANDBOX_STEP, `inventory: ${verified.notStarted}`);
     if (verified.status !== 0) return fail2("inventory", `regenerated baseline still fails --verify:
 ${tail(verified.stderr || verified.stdout)}`);
     steps.push({ name: "inventory", status: "ok", detail: "regenerated as the last commit" });
@@ -47510,7 +47546,7 @@ ${tail(verified.stderr || verified.stdout)}`);
   }
   return { ok: true, steps, housekeepingCommits };
 }
-var import_fs85, import_path101, INVENTORY_DIR, INVENTORY_SCRIPT, INVENTORY_COMMIT_MESSAGE, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, TSC_SCRIPT, ESLINT_SCRIPT, VITEST_SCRIPT, ESLINT_CONFIGS, TEST_FILE;
+var import_fs85, import_path101, INVENTORY_DIR, INVENTORY_SCRIPT, INVENTORY_COMMIT_MESSAGE, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, TSC_SCRIPT, ESLINT_SCRIPT, VITEST_SCRIPT, ESLINT_CONFIGS, TEST_FILE, PREPARE_SANDBOX_STEP;
 var init_prepare2 = __esm({
   "src/ship/prepare.ts"() {
     "use strict";
@@ -47540,6 +47576,300 @@ var init_prepare2 = __esm({
       ".eslintrc.yaml"
     ];
     TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
+    PREPARE_SANDBOX_STEP = "checks-sandbox";
+  }
+});
+
+// src/factory/run/sandbox-exec.ts
+function sandboxShellCommand(platform, argv, cwd, marker) {
+  if (argv.length === 0) return null;
+  if (platform === "win32") {
+    if (argv.some((a) => a === "" || a.includes('"'))) return null;
+    const [exe, ...args] = argv;
+    return `Set-Location -LiteralPath ${psQuote(cwd)} -ErrorAction Stop; $global:LASTEXITCODE = $null; & ${[psQuote(exe), ...args.map(psQuote)].join(" ")}; "${marker} $LASTEXITCODE"`;
+  }
+  return `if cd -- ${shQuote(cwd)}; then ${argv.map(shQuote).join(" ")}; printf '%s %s\\n' ${shQuote(marker)} "$?"; fi`;
+}
+function readMarker(output, marker) {
+  const lines3 = output.split("\n");
+  for (let i = lines3.length - 1; i >= 0; i--) {
+    const m = new RegExp(`^${marker} (-?\\d+)\\r?$`).exec(lines3[i]);
+    if (m) return { code: Number(m[1]), output: [...lines3.slice(0, i), ...lines3.slice(i + 1)].join("\n") };
+  }
+  return { code: null, output };
+}
+async function runSandboxed(argv, o, deps) {
+  const notStarted = (reason) => ({ ran: false, reason });
+  const sleep9 = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const marker = `${MARKER_PREFIX}${(0, import_node_crypto4.randomBytes)(8).toString("hex")}`;
+  const command = sandboxShellCommand(deps.platform, argv, o.cwd, marker);
+  if (command === null) return notStarted(`the command ${JSON.stringify(argv)} cannot be passed to the sandbox shell unchanged (an empty argument or a double quote on Windows)`);
+  const jobHome = (0, import_node_path14.join)(o.jobRoot, `gate-${Date.now().toString(36)}-${(0, import_node_crypto4.randomBytes)(4).toString("hex")}`);
+  let client = null;
+  let session = null;
+  let pid;
+  try {
+    (0, import_node_fs13.mkdirSync)(jobHome, { recursive: true });
+    const loaded2 = await deps.loadSdk().catch(() => null);
+    if (!loaded2) return notStarted("@github/copilot-sdk is not installed or could not be loaded, so the sandbox cannot start");
+    const found = deps.resolveBin();
+    const bin = found && deps.platform === "win32" && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
+    if (!bin) return notStarted(found ? `copilot shim ${found} names no .js/.exe target` : "copilot CLI not found (PATH, COPILOT_CLI_PATH, WinGet), so the sandbox cannot start");
+    const ident = loginIdentity(deps.userConfigDir());
+    (0, import_node_fs13.writeFileSync)((0, import_node_path14.join)(jobHome, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [o.cwd] }, null, 2)}
+`);
+    const env2 = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, jobHome, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), jobHome));
+    const missing = missingSandboxEnv(env2, deps.platform);
+    if (missing.length) return notStarted(`the sandbox env lacks ${missing.join(", ")}, which the Windows sandbox needs to launch any process`);
+    (0, import_node_fs13.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
+    (0, import_node_fs13.mkdirSync)((0, import_node_path14.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
+    (0, import_node_fs13.mkdirSync)(env2.TEMP, { recursive: true });
+    (0, import_node_fs13.writeFileSync)(env2.GIT_CONFIG_GLOBAL, "[credential]\n	helper =\n");
+    Object.assign(env2, { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never", COPILOT_ALLOW_ALL: "false" });
+    const gitHubToken = sessionGitHubToken(deps.env);
+    const { CopilotClient, RuntimeConnection } = loaded2.module;
+    const c = new CopilotClient({
+      connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
+      baseDirectory: jobHome,
+      workingDirectory: o.cwd
+    });
+    client = c;
+    await withTimeout3(c.start(), START_TIMEOUT_MS3, "client.start()");
+    pid = runtimePid(c);
+    const pluginRoot = deps.pluginRoot();
+    const realHome = (deps.realHome ?? (() => (0, import_node_os6.userInfo)().homedir))();
+    const settings = { ...o.settings, enabled: true, writeUnsandboxed: "refuse", writeNetwork: o.network, extraReadwritePaths: [] };
+    const notes = [];
+    const sandbox = new SessionSandboxController({
+      profile: "write",
+      settings,
+      env: deps.env,
+      platform: deps.platform,
+      rpcTimeoutMs: RPC_TIMEOUT_MS3,
+      ...deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {},
+      policyContext: () => {
+        const proxy = proxyCaEnv(deps.env, deps.platform, realHome);
+        return {
+          worktree: (0, import_node_path14.resolve)(o.cwd),
+          commonGitDir: (0, import_node_path14.resolve)(o.commonGitDir),
+          pluginRoot,
+          jobHome,
+          jobDir: jobHome,
+          realHome,
+          platform: deps.platform,
+          settings,
+          hostCommits: true,
+          toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
+          extraReadonly: proxy.caPaths
+        };
+      },
+      note: (text3) => {
+        notes.push(text3);
+      }
+    });
+    const config2 = await sandbox.decide(c, loaded2);
+    if (!config2) return notStarted(`the sandbox is not available: ${sandbox.state?.reason ?? "unknown reason"}`);
+    const attested = /* @__PURE__ */ new Map();
+    const onPermissionRequest = () => ({ kind: "reject", feedback: "omg factory run: a gate session grants nothing" });
+    const atCreate = sandbox.atCreate(loaded2, config2);
+    session = await withTimeout3(c.createSession({
+      onPermissionRequest,
+      onEvent: (e) => {
+        const data = e.data ?? {};
+        if (e.type === "tool.execution_start") sandbox.toolStarted(data);
+        if (e.type === "tool.execution_complete") {
+          attested.set(String(data.toolCallId ?? ""), data.sandboxed);
+          sandbox.toolCompleted(data);
+        }
+      },
+      // No plugin: its hooks would run in the runtime, outside the sandbox.
+      pluginDirectories: [],
+      workingDirectory: o.cwd,
+      disabledMcpServers: ["github-mcp-server"],
+      excludedTools: [],
+      ...gitHubToken ? { gitHubToken } : {},
+      ...atCreate ? { sandboxConfig: config2 } : {}
+    }), RPC_TIMEOUT_MS3, "createSession()");
+    await sandbox.confirm(session, config2, atCreate);
+    if (sandbox.state?.mode !== "enforced") return notStarted(`the sandbox policy was not confirmed: ${sandbox.state?.reason ?? "unknown reason"}`);
+    const shell = session.rpc.shell;
+    if (typeof shell?.executeUserRequested !== "function") return notStarted("the SDK has no shell.executeUserRequested RPC, so the command cannot run in the sandbox");
+    const requestId = (0, import_node_crypto4.randomUUID)();
+    let timer;
+    const call = shell.executeUserRequested.call(shell, { requestId, command }).then((value) => ({ value }), (error2) => ({ error: error2 }));
+    const timedOut = new Promise((r2) => {
+      timer = setTimeout(() => r2("timeout"), o.timeoutMs);
+    });
+    let answer = await Promise.race([call, timedOut]);
+    clearTimeout(timer);
+    let timeout = false;
+    if (answer === "timeout") {
+      timeout = true;
+      try {
+        await withTimeout3(shell.cancelUserRequested?.call(shell, { requestId }) ?? Promise.resolve(), RPC_TIMEOUT_MS3, "cancelUserRequested()");
+      } catch {
+      }
+      let grace;
+      answer = await Promise.race([call, new Promise((r2) => {
+        grace = setTimeout(() => r2("timeout"), CANCEL_GRACE_MS);
+      })]);
+      clearTimeout(grace);
+    }
+    const r = answer !== "timeout" && "value" in answer ? answer.value : null;
+    const id = typeof r?.toolCallId === "string" ? r.toolCallId : "";
+    for (let waited = 0; id && !attested.has(id) && waited < ATTEST_WAIT_MS; waited += 100) await sleep9(100);
+    const escapes = sandbox.state?.unsandboxedCalls ?? 0;
+    if (escapes > 0) return notStarted(`${escapes} call(s) of the gate session were not attested sandboxed: true; nothing is counted`);
+    if (!id || attested.get(id) !== true) {
+      const why = !r ? answer !== "timeout" && "error" in answer ? `the call failed: ${errText4(answer.error)}` : "the call gave no answer" : `its completion was ${attested.get(id) === false ? "attested sandboxed: false" : "not attested sandboxed"}`;
+      return notStarted(`${timeout ? `timed out after ${o.timeoutMs} ms and ` : ""}${why}; the command is not counted as run in the sandbox`);
+    }
+    const raw = typeof r?.output === "string" ? r.output : "";
+    const read = readMarker(raw, marker);
+    if (timeout) return { ran: true, status: 124, output: tail2(`${read.output.trim()}
+timed out after ${o.timeoutMs} ms`), timedOut: true };
+    if (typeof r?.success !== "boolean") return notStarted("the sandbox shell call reported no success field");
+    if (read.code === null) {
+      const err = typeof r?.error === "string" && r.error ? `: ${r.error.slice(0, 300)}` : "";
+      return notStarted(`the command did not finish in the sandbox shell (no exit code came back; shell exit ${String(r?.exitCode)})${err}`);
+    }
+    if (r.success !== true || typeof r.exitCode === "number" && r.exitCode !== 0) {
+      return notStarted(`the sandbox shell reported failure (exit ${String(r.exitCode)}) after the command printed exit ${read.code}; not counted`);
+    }
+    return { ran: true, status: read.code, output: tail2(read.output.trim()), timedOut: false };
+  } catch (err) {
+    return notStarted(`the sandbox runtime failed: ${errText4(err).slice(0, 300)}`);
+  } finally {
+    if (session) {
+      try {
+        await withTimeout3(session.disconnect(), RPC_TIMEOUT_MS3, "disconnect()");
+      } catch {
+      }
+      try {
+        await withTimeout3(client.deleteSession(session.sessionId), RPC_TIMEOUT_MS3, "deleteSession()");
+      } catch {
+      }
+    }
+    if (client) {
+      pid ??= runtimePid(client);
+      if (session && pid && deps.isAlive(pid)) {
+        try {
+          deps.killTree(pid);
+        } catch {
+        }
+      }
+      let stopped = false;
+      try {
+        await withTimeout3(client.stop(), STOP_TIMEOUT_MS3, "client.stop()");
+        stopped = true;
+      } catch {
+      }
+      if (!stopped) {
+        if (pid && deps.isAlive(pid)) {
+          try {
+            deps.killTree(pid);
+          } catch {
+          }
+        }
+        try {
+          await withTimeout3(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS3, "client.forceStop()");
+        } catch {
+        }
+      }
+      if (pid && deps.isAlive(pid)) {
+        try {
+          deps.killTree(pid);
+        } catch {
+        }
+      }
+    }
+    try {
+      (0, import_node_fs13.rmSync)(jobHome, { recursive: true, force: true });
+    } catch {
+    }
+  }
+}
+function createSandboxRunner(root, deps = defaultCopilotRunDeps()) {
+  return async (req) => {
+    let settings;
+    try {
+      settings = loadSandboxSettings(root, "factory").settings;
+    } catch (err) {
+      return { ran: false, reason: `the sandbox settings could not be read: ${errText4(err)}` };
+    }
+    return runSandboxed([req.exe, ...req.args], {
+      cwd: req.cwd,
+      commonGitDir: req.commonGitDir,
+      timeoutMs: req.timeoutMs,
+      network: settings.writeNetwork,
+      settings,
+      jobRoot: sandboxJobRoot(root)
+    }, deps);
+  };
+}
+function gateEnv(env2, home) {
+  const drop = new Set([...GATE_ENV_DROPPED, ...GATE_HOME_VARS].map((k) => k.toUpperCase()));
+  const hadAppData = Object.keys(env2).some((k) => k.toUpperCase() === "APPDATA");
+  const out = {};
+  for (const [key, value] of Object.entries(scrubShipEnv(env2))) {
+    if (!drop.has(key.toUpperCase())) out[key] = value;
+  }
+  (0, import_node_fs13.mkdirSync)(home, { recursive: true });
+  const gitConfig = (0, import_node_path14.join)(home, ".gitconfig-empty");
+  (0, import_node_fs13.writeFileSync)(gitConfig, "");
+  return {
+    ...out,
+    HOME: home,
+    USERPROFILE: home,
+    XDG_CONFIG_HOME: (0, import_node_path14.join)(home, ".config"),
+    ...hadAppData ? { APPDATA: (0, import_node_path14.join)(home, "AppData", "Roaming") } : {},
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_GLOBAL: gitConfig,
+    GIT_TERMINAL_PROMPT: "0",
+    GCM_INTERACTIVE: "never"
+  };
+}
+var import_node_crypto4, import_node_fs13, import_node_os6, import_node_path14, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS3, CANCEL_GRACE_MS, ATTEST_WAIT_MS, MARKER_PREFIX, psQuote, shQuote, tail2, sandboxJobRoot, GATE_ENV_DROPPED, GATE_HOME_VARS;
+var init_sandbox_exec = __esm({
+  "src/factory/run/sandbox-exec.ts"() {
+    "use strict";
+    import_node_crypto4 = require("node:crypto");
+    import_node_fs13 = require("node:fs");
+    import_node_os6 = require("node:os");
+    import_node_path14 = require("node:path");
+    init_job();
+    init_sandbox2();
+    init_sandbox_session();
+    init_timeout();
+    init_worktree_paths();
+    init_exec();
+    init_copilot_sdk_driver();
+    init_copilot_sdk_scenarios();
+    init_copilot_session_env();
+    init_windows_search();
+    SANDBOX_OUTPUT_TAIL_CHARS = 8e3;
+    START_TIMEOUT_MS3 = 6e4;
+    RPC_TIMEOUT_MS3 = 3e4;
+    STOP_TIMEOUT_MS3 = 15e3;
+    CANCEL_GRACE_MS = 5e3;
+    ATTEST_WAIT_MS = 2e3;
+    MARKER_PREFIX = "omg-gate-exit-";
+    psQuote = (s) => `'${s.replace(/'/g, "''")}'`;
+    shQuote = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
+    tail2 = (text3) => text3.length > SANDBOX_OUTPUT_TAIL_CHARS ? text3.slice(-SANDBOX_OUTPUT_TAIL_CHARS) : text3;
+    sandboxJobRoot = (root) => (0, import_node_path14.join)(getOmcRoot(root), "state", "factory-gates");
+    GATE_ENV_DROPPED = [
+      "GH_TOKEN",
+      "GITHUB_TOKEN",
+      "GH_ENTERPRISE_TOKEN",
+      "GH_CONFIG_DIR",
+      "AZURE_DEVOPS_EXT_PAT",
+      "AZURE_CONFIG_DIR",
+      "COPILOT_GITHUB_TOKEN",
+      "SSH_AUTH_SOCK",
+      "GIT_ASKPASS"
+    ];
+    GATE_HOME_VARS = ["HOME", "USERPROFILE", "XDG_CONFIG_HOME", "APPDATA"];
   }
 });
 
@@ -50630,10 +50960,12 @@ function localGateDue(stateDir, root, head, timeoutMinutes, now) {
 }
 async function runLocalGate(i) {
   if (i.gate.length === 0) throw new FactorySafetyError("omg factory run refuses an empty local gate");
+  if (i.mode === "enforced" && !i.sandbox) throw new FactorySafetyError("omg factory run refuses an enforced local gate without a sandbox runner");
   const now = i.now ?? (() => /* @__PURE__ */ new Date());
   const started = now();
-  const base = { name: LOCAL_GATE_CHECK, head: i.head, state: "PENDING", argv: [...i.gate], runId: runIdAt(started), startedAt: started.toISOString() };
+  const base = { name: LOCAL_GATE_CHECK, head: i.head, state: "PENDING", argv: [...i.gate], runId: runIdAt(started), startedAt: started.toISOString(), sandbox: i.mode };
   writeLocalCheckRecord(i.stateDir, i.root, base);
+  if (i.mode === "enforced") return runSandboxedGate(i, base, now);
   const procs = gateProcsPath(i.stateDir, i.root, i.head);
   await sweepGateProcs((0, import_path108.dirname)(procs)).catch(() => void 0);
   await reapGateProcs(procs).catch(() => void 0);
@@ -50653,6 +50985,37 @@ async function runLocalGate(i) {
   }
   const output = `${r.stdout}${r.stderr ? `
 ${r.stderr}` : ""}${r.timedOut ? `
+local gate timed out after ${i.timeoutMinutes} min` : ""}`;
+  const done = {
+    ...base,
+    state: r.status === 0 && !r.timedOut ? "SUCCESS" : "FAILURE",
+    completedAt: now().toISOString(),
+    exitCode: r.timedOut ? 124 : r.status,
+    tail: tailOf(output.trim())
+  };
+  writeLocalCheckRecord(i.stateDir, i.root, done);
+  return { started: true, record: done };
+}
+async function runSandboxedGate(i, base, now) {
+  const drop = () => (0, import_fs92.rmSync)(localCheckRecordPath(i.stateDir, i.root, i.head), { force: true });
+  hardenWindowsExeSearch();
+  const target = resolveLocalGateArgv(i.gate, { cwd: i.checkout });
+  if ("missing" in target) {
+    drop();
+    return { started: false, reason: target.missing };
+  }
+  let r;
+  try {
+    r = await i.sandbox.run({ purpose: "gate", argv: i.gate, exe: target.exe, args: target.args, cwd: i.checkout, commonGitDir: i.sandbox.commonGitDir, timeoutMs: i.timeoutMinutes * 6e4 });
+  } catch (error2) {
+    drop();
+    throw error2;
+  }
+  if (!r.ran) {
+    drop();
+    return { started: false, reason: r.reason, sandbox: true };
+  }
+  const output = `${r.output}${r.timedOut ? `
 local gate timed out after ${i.timeoutMinutes} min` : ""}`;
   const done = {
     ...base,
@@ -50754,19 +51117,20 @@ function gateDefinition(sources, read) {
     return [s.path, s.scripts.map((k) => [k, Object.prototype.hasOwnProperty.call(scripts, k) ? scripts[k] : null])];
   }));
 }
-var import_child_process23, import_fs92, import_path108, LOCAL_GATE_TAIL_CHARS, LOCAL_GATE_STALE_GRACE_MS, STREAM_KEEP_CHARS, KILL_DEADLINE_MS, EXIT_DRAIN_MS, NODE_SCRIPTS2, npmCliHint, keepTail, defaultLocalGateRunner, realOrResolved, isLink, runIdAt, tailOf, NPM_TEST, NPM_RUN, PM_CONFIG_FILES, DIR_FLAGS, CONFIG_FLAGS, WORKSPACE_FLAGS, PM_NON_SCRIPT, VALUE_FLAGS, npxUnresolved, describeGateSources;
+var import_child_process23, import_fs92, import_os20, import_path108, LOCAL_GATE_TAIL_CHARS, LOCAL_GATE_STALE_GRACE_MS, STREAM_KEEP_CHARS, KILL_DEADLINE_MS, EXIT_DRAIN_MS, NODE_SCRIPTS2, npmCliHint, keepTail, defaultLocalGateRunner, realOrResolved, isLink, runIdAt, tailOf, NPM_TEST, NPM_RUN, PM_CONFIG_FILES, DIR_FLAGS, CONFIG_FLAGS, WORKSPACE_FLAGS, PM_NON_SCRIPT, VALUE_FLAGS, npxUnresolved, describeGateSources;
 var init_local_gate = __esm({
   "src/factory/run/local-gate.ts"() {
     "use strict";
     import_child_process23 = require("child_process");
     import_fs92 = require("fs");
+    import_os20 = require("os");
     import_path108 = require("path");
     init_local();
     init_process_utils();
-    init_exec();
     init_windows_search();
     init_exec2();
     init_gate_procs();
+    init_sandbox_exec();
     LOCAL_GATE_TAIL_CHARS = 8e3;
     LOCAL_GATE_STALE_GRACE_MS = 6e4;
     STREAM_KEEP_CHARS = 64 * 1024;
@@ -50788,7 +51152,15 @@ var init_local_gate = __esm({
       const target = resolveLocalGateArgv(argv, { cwd });
       if ("missing" in target) return { status: 127, stdout: "", stderr: "", timedOut: false, startError: target.missing };
       const exe = resolveBareExe(target.exe) ?? target.exe;
-      return runOwned(exe, target.args, cwd, childEnv(scrubShipEnv(process.env)), timeoutMs, track);
+      const home = (0, import_fs92.mkdtempSync)((0, import_path108.join)((0, import_os20.tmpdir)(), "omg-gate-home-"));
+      try {
+        return await runOwned(exe, target.args, cwd, childEnv(gateEnv(process.env, home)), timeoutMs, track);
+      } finally {
+        try {
+          (0, import_fs92.rmSync)(home, { recursive: true, force: true });
+        } catch {
+        }
+      }
     };
     realOrResolved = (p) => {
       try {
@@ -51064,6 +51436,14 @@ function engineExec(o, inner, baseSha, basePush = () => void 0, github = () => v
   const options = { ...f.options, entry };
   return { exec, forge: createForge(exec, o.root, f.config, options) };
 }
+function calibrationArgs(c, dir) {
+  const [script, ...rest] = c.args;
+  if (c.kind !== "built-in" || script !== VITEST_SCRIPT && script !== ESLINT_SCRIPT) return [...c.args];
+  const vitest = script === VITEST_SCRIPT;
+  const files = (vitest ? rest.slice(1) : rest).filter((f) => (0, import_fs94.existsSync)((0, import_path111.join)(dir, f)));
+  if (files.length === 0) return [script, "--version"];
+  return vitest ? [script, "run", ...files] : [script, ...files];
+}
 function errText5(error2) {
   return error2 instanceof Error ? error2.message : String(error2);
 }
@@ -51321,7 +51701,7 @@ async function runFactoryEngine(o) {
     for (const path15 of ownerPaths) ledger.record(path15, null);
   }
 }
-var import_crypto27, import_fs94, import_path111, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, HEX4014, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON;
+var import_crypto27, import_fs94, import_path111, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, HEX4014, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, PREPARE_CHECK_TIMEOUT_MS;
 var init_engine = __esm({
   "src/factory/run/engine.ts"() {
     "use strict";
@@ -51332,6 +51712,9 @@ var init_engine = __esm({
     init_exec();
     init_merge2();
     init_prepare2();
+    init_jsonc();
+    init_sandbox2();
+    init_sandbox_exec();
     init_git_worktree();
     init_gates_driver();
     init_prompts2();
@@ -51497,6 +51880,12 @@ var init_engine = __esm({
       gateChangeAllowed;
       /** The head `--allow-unsandboxed-lanes` accepts (the parked run's head, captured at resume). */
       unsandboxedAllowed;
+      /** The head `--allow-unsandboxed-gates` accepts (the gates-unsandboxed park's head, captured at resume). */
+      gatesAllowed;
+      /** factory.run.sandbox.gates, resolved once per trusted base commit. */
+      gatesModeCache;
+      /** Calibrations re-run in this invocation (a failing one is retried once per invocation). */
+      recalibrated = /* @__PURE__ */ new Set();
       iso() {
         return new Date(this.clock()).toISOString();
       }
@@ -51758,6 +52147,11 @@ var init_engine = __esm({
           const parked = existing?.gate?.name === HUMAN_REVIEW_GATE && existing.gate.reason.startsWith(UNSANDBOXED_LANES_REASON) ? existing.head : void 0;
           if (parked) this.unsandboxedAllowed = parked;
           else this.o.warn?.(`omg factory run: --allow-unsandboxed-lanes is ignored: the run for ${this.what} is not parked at awaiting-human: human-review because a lane ran without the enforced sandbox`);
+        }
+        if (this.o.allowUnsandboxedGates) {
+          const parked = existing?.gate?.name === GATES_UNSANDBOXED_GATE && existing.head && HEX4014.test(existing.head) ? existing.head : void 0;
+          if (parked) this.gatesAllowed = parked;
+          else this.o.warn?.(`omg factory run: --allow-unsandboxed-gates is ignored: the run for ${this.what} is not parked at awaiting-human: ${GATES_UNSANDBOXED_GATE}`);
         }
         try {
           if (!existing) {
@@ -52747,13 +53141,29 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         this.save((x) => ({ ...x, checkoutHead: head }));
         linkNodeModules(this.o.root, path15);
         const commands = configured?.map((argv) => ({ argv, ...resolveLocalGateArgv(argv, { cwd: path15, subject: "the prepare check", configKey: "ship.prepare.checks" }) }));
-        const result = runPrepare({ exec: this.exec, cwd: path15, base: s.base, branch: branch2, reviewedSha: head, baseSha: view.baseRefOid, repoUrl: s.repoUrl, remote: runRemote(s), push: false, commands, commandExec: this.o.exec });
+        const gates = this.gatesSandbox(this.gateConfig(view));
+        const ran = { modes: /* @__PURE__ */ new Set(), acked: false, park: void 0 };
+        const result = await runPrepareAsync(
+          { exec: this.exec, cwd: path15, base: s.base, branch: branch2, reviewedSha: head, baseSha: view.baseRefOid, repoUrl: s.repoUrl, remote: runRemote(s), push: false, commands },
+          (c) => this.prepareCheck(c, { head, path: path15, commonGitDir: common, baseSha: view.baseRefOid, gates, ran })
+        );
         if (this.prepareTampered(before, path15, branch2, view.baseRefOid)) return;
         const checkoutHead = this.run(["rev-parse", "HEAD"], "git", void 0, path15).trim();
         const fetched = result.steps.some((st) => st.name === "fetch" && st.status === "ok");
-        this.save((x) => ({ ...x, checkoutHead, ...fetched ? { baseSha: view.baseRefOid } : {} }));
-        if (result.ok) return this.publishPrepared(pr, head, checkoutHead, result.housekeepingCommits, view.baseRefOid);
+        const sandboxNote = ran.modes.size > 0 ? [{ at: this.iso(), from: s.phase, to: s.phase, note: `prepare checks on ${head.slice(0, 12)} ran ${[...ran.modes].map((m) => m === "enforced" ? "in the OS sandbox" : `unsandboxed (${m})`).join(" and ")}` }] : [];
+        this.save((x) => ({ ...x, checkoutHead, ...fetched ? { baseSha: view.baseRefOid } : {}, history: [...x.history, ...sandboxNote] }));
+        if (result.ok) {
+          if (ran.acked && checkoutHead !== head && this.state.unsandboxedGatesAck === head) {
+            this.save((x) => ({ ...x, unsandboxedGatesAck: checkoutHead, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `--allow-unsandboxed-gates for ${head.slice(0, 12)} carried to the prepared head ${checkoutHead.slice(0, 12)}` }] }));
+          }
+          return this.publishPrepared(pr, head, checkoutHead, result.housekeepingCommits, view.baseRefOid);
+        }
         const failed = result.steps.at(-1);
+        if (failed?.name === PREPARE_SANDBOX_STEP) {
+          if (!ran.park) throw new FactoryStepError(`prepare stopped without a verdict: ${failed.detail ?? "unknown check"}`);
+          this.gate(ran.park.name, ran.park.reason);
+          return;
+        }
         if (failed?.name === "merge-base" && (result.conflicts ?? []).length > 0) {
           this.discardCheckout();
           const rounds = new Set(this.state.lanes.filter((l) => l.kind === "conflict-fix").map((l) => l.startSha)).size;
@@ -52769,6 +53179,162 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           return;
         }
         throw new FactoryStepError(`prepare failed: ${result.blockedReason ?? "unknown step"}`);
+      }
+      /**
+       * factory.run.sandbox.gates for this run (copilot-run/sandbox.ts
+       * resolveGatesSandboxMode): the kill switch, the user config at its
+       * default location, then `.copilot/omg.jsonc` committed at the trusted base
+       * commit the gate config was read at, never the working tree or the PR
+       * head. Resolved once per base commit; a rejected value fails the step.
+       */
+      gatesSandbox(loaded2) {
+        const commit = loaded2.config.trustedBaseCommit;
+        if (this.gatesModeCache && this.gatesModeCache.commit === commit) return this.gatesModeCache;
+        let user = this.o.gateSandboxUserConfig;
+        if (user === void 0) {
+          try {
+            user = userConfigLayers().trustedUser;
+          } catch {
+            user = null;
+          }
+        }
+        let resolved;
+        try {
+          const text3 = commit ? readBaseFile(this.exec, this.o.root, commit, BASE_CONFIG_PATH) : null;
+          resolved = resolveGatesSandboxMode({ user, base: text3 && text3.trim() ? parseJsonc(text3) : void 0, env: process.env });
+        } catch (error2) {
+          throw new FactoryStepError(`factory.run.sandbox.gates: ${errText5(error2)}`);
+        }
+        this.gatesModeCache = { commit, ...resolved };
+        return this.gatesModeCache;
+      }
+      /** True when the human accepted unsandboxed gates for `head` (recorded now if this invocation's flag names it). */
+      gatesAccepted(head) {
+        if (this.state.unsandboxedGatesAck === head) return true;
+        if (this.gatesAllowed !== head) return false;
+        this.gatesAllowed = void 0;
+        this.save((x) => ({ ...x, unsandboxedGatesAck: head, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `prepare checks and the local gate without the OS sandbox accepted for ${head.slice(0, 12)} (--allow-unsandboxed-gates)` }] }));
+        return true;
+      }
+      gatesUnsandboxedReason(head, what, why) {
+        const at = head.slice(0, 12);
+        return `${what} on ${at} would run the PR's own code WITHOUT the OS sandbox (${why}): as you, with your files, git config and credentials in reach. Review the PR's diff (tests, configs, scripts) yourself, then rerun ${this.resume} --allow-unsandboxed-gates to run it unsandboxed for ${at} only`;
+      }
+      /** gates "unsandboxed": a warning every time and one PR note per head. */
+      noteUnsandboxedGates(head, what) {
+        const source = this.gatesModeCache?.source ?? "config";
+        this.o.warn?.(`omg factory run: ${what} on ${head.slice(0, 12)} runs WITHOUT the OS sandbox (factory.run.sandbox.gates "unsandboxed", ${source})`);
+        this.commentOnce("pr", `gates-unsandboxed@${head.slice(0, 12)}`, "sandbox", `**Sandbox: gates unsandboxed.** ${what} on ${head.slice(0, 12)} ran the PR's own code without the OS sandbox (\`factory.run.sandbox.gates: "unsandboxed"\`, ${source}).
+`);
+      }
+      /**
+       * One prepare check (the PR's own code) per factory.run.sandbox.gates:
+       * `unsandboxed` runs it plainly (gateEnv); `enforced` runs it in the
+       * sandbox, and a sandbox failure is counted only when the same check
+       * passes in the sandbox on the trusted base (calibrateGate); a sandbox that
+       * gives no verdict, and `ack`, run it plainly only for an accepted head,
+       * else stop prepare (`ran.park`) before anything runs unsandboxed.
+       */
+      async prepareCheck(c, at) {
+        const { head, path: path15, ran } = at;
+        const stop = (park) => {
+          ran.park = park;
+          return { status: 1, stdout: "", stderr: "", notStarted: park.reason };
+        };
+        const plain = async (how) => {
+          if (how === "unsandboxed") this.noteUnsandboxedGates(head, `prepare check \`${c.argv.join(" ")}\``);
+          else ran.acked = true;
+          ran.modes.add(how);
+          const r = await (this.o.localGate ?? defaultLocalGateRunner)([c.exe, ...c.args], path15, PREPARE_CHECK_TIMEOUT_MS);
+          if (r.startError !== void 0) return { status: 127, stdout: "", stderr: r.startError };
+          return { status: r.timedOut ? 124 : r.status, stdout: r.stdout, stderr: `${r.stderr}${r.timedOut ? `
+timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}` };
+        };
+        if (at.gates.mode === "unsandboxed") return plain("unsandboxed");
+        let why = `factory.run.sandbox.gates is "ack" (${at.gates.source})`;
+        if (at.gates.mode === "enforced") {
+          const r = this.o.gateSandbox ? await this.o.gateSandbox({ purpose: "prepare", argv: c.argv, exe: c.exe, args: c.args, cwd: path15, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS }) : { ran: false, reason: "no OS sandbox runner was given to the engine" };
+          if (r.ran) {
+            ran.modes.add("enforced");
+            if (r.status === 0 && !r.timedOut) return { status: 0, stdout: r.output, stderr: "" };
+            const park = await this.calibrateGate(c, at.baseSha, at.commonGitDir, PREPARE_CHECK_TIMEOUT_MS, `the prepare check \`${c.argv.join(" ")}\``, head);
+            if (park) return stop(park);
+            return { status: r.timedOut ? 124 : r.status, stdout: r.output, stderr: "" };
+          }
+          why = `the OS sandbox gave no verdict: ${r.reason}`;
+        }
+        if (this.gatesAccepted(head)) return plain("ack");
+        return stop({ name: GATES_UNSANDBOXED_GATE, reason: this.gatesUnsandboxedReason(head, `the prepare check \`${c.argv.join(" ")}\``, why) });
+      }
+      /**
+       * After `what` failed in the sandbox on `head`: run the same command in the
+       * sandbox on a plain copy of the trusted base tree (once per base sha and
+       * argv; a passing calibration is kept in the sealed state, a failing one is
+       * retried once per invocation, after the human changed the config). Null
+       * when the base passes (the failure is the PR's: a ci-fix lane may start),
+       * else the gate-sandbox-incompatible park: the command fails in the sandbox
+       * on the base itself, or its calibration could not run.
+       */
+      async calibrateGate(c, baseSha, commonGitDir, timeoutMs, what, head) {
+        const key = (0, import_crypto27.createHash)("sha256").update(`${baseSha}\0${JSON.stringify(c.argv)}`).digest("hex");
+        let cal = this.state.gateCalibration?.[key];
+        if (!cal || !cal.ok && !this.recalibrated.has(key)) {
+          this.recalibrated.add(key);
+          const out = await this.runOnBase(c, baseSha, commonGitDir, timeoutMs);
+          if ("notStarted" in out) {
+            return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${what} failed in the OS sandbox on ${head.slice(0, 12)}, and its calibration on the base ${baseSha.slice(0, 12)} could not run (${out.notStarted}); the failure is not counted (no ci-fix lane). Fix the cause, or set factory.run.sandbox.gates "ack" to run it unsandboxed after your review, then rerun ${this.resume}` };
+          }
+          cal = out;
+          this.save((x) => ({ ...x, gateCalibration: { ...x.gateCalibration ?? {}, [key]: out }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `calibrated ${c.argv.join(" ").slice(0, 80)} in the OS sandbox on the base ${baseSha.slice(0, 12)}: ${out.ok ? "passes" : "fails"}` }] }));
+        }
+        if (cal.ok) return null;
+        return {
+          name: GATE_SANDBOX_INCOMPATIBLE_GATE,
+          reason: `${what} fails in the OS sandbox on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). Your gate fails in the sandbox on the base: set factory.run.sandbox.writeNetwork "registry" if it needs the npm registry, or factory.run.sandbox.gates "ack" to run it unsandboxed after your review, then rerun ${this.resume}${cal.tail ? `; base output tail: ${cal.tail.slice(-1500)}` : ""}`
+        };
+      }
+      /**
+       * The command in the sandbox on a plain copy of the base tree: `git
+       * read-tree` into a private index and `checkout-index --prefix` into a
+       * fresh dir under the gate job root (no worktree, branch or ref is made),
+       * the root's node_modules linked in, removed after (the link first).
+       */
+      async runOnBase(c, baseSha, commonGitDir, timeoutMs) {
+        if (!this.o.gateSandbox) return { notStarted: "no OS sandbox runner was given to the engine" };
+        if (!HEX4014.test(baseSha)) return { notStarted: `the base ${JSON.stringify(baseSha)} is not a full commit id` };
+        const jobRoot = sandboxJobRoot(this.o.root);
+        (0, import_fs94.mkdirSync)(jobRoot, { recursive: true });
+        const dir = (0, import_fs94.mkdtempSync)((0, import_path111.join)(jobRoot, "base-"));
+        const index = `${dir}.index`;
+        try {
+          const env2 = { ...process.env, GIT_INDEX_FILE: index, GIT_NO_REPLACE_OBJECTS: "1" };
+          runHostGit(this.o.root, ["read-tree", baseSha], void 0, env2);
+          runHostGit(this.o.root, ["checkout-index", "-a", "-f", `--prefix=${dir.replace(/\\/g, "/")}/`], void 0, env2);
+          linkNodeModules(this.o.root, dir);
+          const r = await this.o.gateSandbox({ purpose: "calibrate", argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs });
+          if (!r.ran) return { notStarted: r.reason };
+          const tail3 = r.output.trim().slice(-2e3);
+          return { ok: r.status === 0 && !r.timedOut, ...tail3 ? { tail: tail3 } : {} };
+        } catch (error2) {
+          return { notStarted: errText5(error2).slice(0, 300) };
+        } finally {
+          unlinkNodeModules(this.o.root, dir);
+          let linked = true;
+          try {
+            linked = (0, import_fs94.lstatSync)((0, import_path111.join)(dir, "node_modules")).isSymbolicLink();
+          } catch {
+            linked = false;
+          }
+          if (linked) this.o.warn?.(`omg factory run: the base calibration dir ${dir} still links node_modules; remove the link by hand, then the dir`);
+          else try {
+            (0, import_fs94.rmSync)(dir, { recursive: true, force: true });
+          } catch {
+          }
+          try {
+            (0, import_fs94.rmSync)(index, { force: true });
+          } catch {
+          }
+        }
       }
       /**
        * The shared git state after prepare against the snapshot from before its
@@ -52941,15 +53507,46 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           }));
         }
         const timeoutMinutes = this.localGateTimeout();
+        const gates = this.gatesSandbox(this.gateCfg.loaded);
+        const common = (0, import_path111.resolve)(this.o.root, this.run(["rev-parse", "--git-common-dir"]).trim());
         this.progress.heartbeat("gates", `local gate ${gate.join(" ")} on ${head.slice(0, 12)}`, this.fields());
-        const out = await runLocalGate({ stateDir, root: this.o.root, head, gate, timeoutMinutes, checkout, ...this.o.localGate ? { runner: this.o.localGate } : {}, now: () => new Date(this.clock()) });
+        const input = { stateDir, root: this.o.root, head, gate, timeoutMinutes, checkout, ...this.o.localGate ? { runner: this.o.localGate } : {}, now: () => new Date(this.clock()) };
+        let out;
+        if (gates.mode === "unsandboxed") {
+          this.noteUnsandboxedGates(head, "the local gate");
+          out = await runLocalGate({ ...input, mode: "unsandboxed" });
+        } else {
+          let why = `factory.run.sandbox.gates is "ack" (${gates.source})`;
+          let unavailable = gates.mode === "ack";
+          out = { started: false, reason: why, sandbox: true };
+          if (gates.mode === "enforced") {
+            out = this.o.gateSandbox ? await runLocalGate({ ...input, mode: "enforced", sandbox: { run: this.o.gateSandbox, commonGitDir: common } }) : { started: false, reason: "no OS sandbox runner was given to the engine", sandbox: true };
+            unavailable = !out.started && out.sandbox === true;
+            if (unavailable && !out.started) why = `the OS sandbox gave no verdict: ${out.reason}`;
+          }
+          if (unavailable) {
+            if (!this.gatesAccepted(head)) {
+              this.gate(GATES_UNSANDBOXED_GATE, this.gatesUnsandboxedReason(head, `the local gate \`${gate.join(" ")}\``, why));
+              return false;
+            }
+            out = await runLocalGate({ ...input, mode: "ack" });
+          }
+        }
         if (!out.started) {
           this.gate("gates", `the local gate could not start: ${out.reason}; fix factory.forge.local.gate, then rerun ${this.resume}`);
           return false;
         }
         const record3 = out.record;
-        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `local gate ${record3.state} on ${head.slice(0, 12)} (exit ${record3.exitCode})` }] }));
-        return !this.recheckFailed("after the local gate");
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `local gate ${record3.state} on ${head.slice(0, 12)} (exit ${record3.exitCode}, ${record3.sandbox === "enforced" ? "in the OS sandbox" : `unsandboxed: ${record3.sandbox}`})` }] }));
+        if (this.recheckFailed("after the local gate")) return false;
+        if (record3.sandbox !== "enforced" || record3.state !== "FAILURE") return true;
+        const base = this.state.baseSha;
+        const target = resolveLocalGateArgv(gate, { cwd: checkout });
+        const park = !base || "missing" in target ? { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `the local gate failed in the OS sandbox on ${head.slice(0, 12)}, and the run has no base to calibrate it on; the failure is not counted (no ci-fix lane); rerun ${this.resume}` } : await this.calibrateGate({ argv: gate, exe: target.exe, args: target.args }, base, common, timeoutMinutes * 6e4, `the local gate \`${gate.join(" ")}\``, head);
+        if (!park) return true;
+        (0, import_fs94.rmSync)(localCheckRecordPath(stateDir, this.o.root, head), { force: true });
+        this.gate(park.name, park.reason);
+        return false;
       }
       /**
        * The local forge with checks that stop the gates driver when the gate is
@@ -54111,6 +54708,9 @@ If the PR gets new review comments before you merge, rerun \`${this.resume}\` fi
     HUMAN_REVIEW_GATE = "human-review";
     REVIEW_REQUESTED_GATE = "review-requested";
     UNSANDBOXED_LANES_REASON = "a lane ran without the enforced sandbox";
+    GATES_UNSANDBOXED_GATE = "gates-unsandboxed";
+    GATE_SANDBOX_INCOMPATIBLE_GATE = "gate-sandbox-incompatible";
+    PREPARE_CHECK_TIMEOUT_MS = 30 * 6e4;
   }
 });
 
@@ -54352,12 +54952,12 @@ var init_factory_check = __esm({
 });
 
 // src/factory/enqueue.ts
-var import_fs99, import_os20, import_path118, MAX_FILE_BYTES;
+var import_fs99, import_os21, import_path118, MAX_FILE_BYTES;
 var init_enqueue = __esm({
   "src/factory/enqueue.ts"() {
     "use strict";
     import_fs99 = require("fs");
-    import_os20 = require("os");
+    import_os21 = require("os");
     import_path118 = require("path");
     init_guard();
     init_html();
@@ -54877,13 +55477,13 @@ var init_factory_board = __esm({
 });
 
 // src/cli/commands/factory-pr.ts
-var import_fs106, import_os21, import_path123, import_crypto32;
+var import_fs106, import_os22, import_path123, import_crypto32;
 var init_factory_pr = __esm({
   "src/cli/commands/factory-pr.ts"() {
     "use strict";
     init_esm();
     import_fs106 = require("fs");
-    import_os21 = require("os");
+    import_os22 = require("os");
     import_path123 = require("path");
     import_crypto32 = require("crypto");
     init_cli();
@@ -55034,6 +55634,7 @@ var init_factory = __esm({
     init_exec2();
     init_forge_roots();
     init_lane();
+    init_sandbox_exec();
     init_state5();
     init_config2();
     init_exec();
@@ -55657,6 +56258,8 @@ async function runFactoryRunScenario(input) {
       base: FACTORY_RUN_BASE,
       ledgerDir: (0, import_path130.join)(dir, "ledger"),
       gateConfig: smokeGateConfig,
+      // Prepare's checks (none in this fixture) would run in the OS sandbox, as in omg factory run.
+      gateSandbox: createSandboxRunner(repo),
       now,
       warn: (m) => {
         warnings.push(m);
@@ -55718,6 +56321,7 @@ var init_copilot_factory_run_scenario = __esm({
     init_budget();
     init_engine();
     init_lane();
+    init_sandbox_exec();
     init_state5();
     init_graphql();
     init_config2();
@@ -56003,7 +56607,7 @@ async function runSandboxLaneScenario(input) {
   const probe = commitProbe(repo);
   if ("error" in probe) return { ...base, events: [], idle: false, timedOut: false, error: `sandbox repository setup: ${probe.error}` };
   const nonce = (0, import_crypto35.randomBytes)(6).toString("hex");
-  const tempDir = input.tempDir ?? (0, import_os22.tmpdir)();
+  const tempDir = input.tempDir ?? (0, import_os23.tmpdir)();
   const hostRecord = await (input.probeHost ?? (() => probeSandboxHost(input, repo)))();
   if (!hostRecord.supported) {
     const evidence2 = {
@@ -56022,7 +56626,7 @@ async function runSandboxLaneScenario(input) {
     };
     return { ...base, events: [], idle: false, timedOut: false, error: `host unsupported: ${excerpt(hostRecord.reason ?? "no reason", 200)}`, sandbox: evidence2 };
   }
-  const realHome = input.realHome ?? (0, import_os22.userInfo)().homedir;
+  const realHome = input.realHome ?? (0, import_os23.userInfo)().homedir;
   const shared = input.sharedDir ?? defaultSharedDir(input.env);
   const canaryName = `omg-canary-${nonce}`;
   const outside = {
@@ -56160,14 +56764,14 @@ async function runSandboxLaneScenario(input) {
   const error2 = errors.length ? errors.join("; ") : void 0;
   return { ...base, model: laneModelLabel(input.model, evidence.lanes.map((l) => l.model)), events: all, idle: !error2, timedOut: false, ...error2 ? { error: error2 } : {}, sandbox: evidence };
 }
-var import_crypto35, import_fs114, import_http2, import_os22, import_path131, SANDBOX_LANE_TIMEOUT_MS, CANARY_RPC_TIMEOUT_MS, SANDBOX_PROBE_SOURCE, errText6, quote2;
+var import_crypto35, import_fs114, import_http2, import_os23, import_path131, SANDBOX_LANE_TIMEOUT_MS, CANARY_RPC_TIMEOUT_MS, SANDBOX_PROBE_SOURCE, errText6, quote2;
 var init_copilot_sandbox_lane_scenario = __esm({
   "src/smoke/copilot-sandbox-lane-scenario.ts"() {
     "use strict";
     import_crypto35 = require("crypto");
     import_fs114 = require("fs");
     import_http2 = require("http");
-    import_os22 = require("os");
+    import_os23 = require("os");
     import_path131 = require("path");
     init_job();
     init_sandbox2();
@@ -56579,7 +57183,7 @@ function extractJsonArray(text3) {
   }
 }
 function makeTempDir(prefix) {
-  return (0, import_fs116.mkdtempSync)((0, import_path133.join)((0, import_os23.tmpdir)(), prefix));
+  return (0, import_fs116.mkdtempSync)((0, import_path133.join)((0, import_os24.tmpdir)(), prefix));
 }
 function removeDir(path15) {
   if (!path15) return;
@@ -56953,7 +57557,7 @@ function prepareCassetteRun(opts, env2) {
     strict: !!opts.replayStrict,
     overwrite: !!opts.recordOverwrite
   };
-  readCassetteConfig(cassetteEnv(env2, { ...run2, stateRoot: (0, import_os23.tmpdir)() }, {}));
+  readCassetteConfig(cassetteEnv(env2, { ...run2, stateRoot: (0, import_os24.tmpdir)() }, {}));
   const scenarios = opts.scenarios ?? DEFAULT_SCENARIOS;
   if (run2.mode === "record") {
     const taken = scenarios.map((s) => recordTargetRefusal(run2, s)).filter((r) => r !== null);
@@ -57026,7 +57630,7 @@ async function runChecks(ctx, opts, started, checks, artifacts, cleanup) {
     for (const id of TIER0_COPILOT_IDS.slice(1)) checks.push({ id, ok: false, detail: "skipped" });
   } else {
     const bin = resolution.bin;
-    const res = runCopilotSync(ctx, bin, ["--version"], ctx.env, (0, import_os23.tmpdir)());
+    const res = runCopilotSync(ctx, bin, ["--version"], ctx.env, (0, import_os24.tmpdir)());
     version2 = parseCopilotVersion(String(res.stdout ?? ""));
     const binaryOk = res.status === 0 && version2 !== null;
     checks.push({
@@ -57129,14 +57733,14 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
   if (logs.path) artifacts.debugLog = logs.path;
   return result;
 }
-var import_child_process29, import_crypto36, import_fs116, import_os23, import_path133, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
+var import_child_process29, import_crypto36, import_fs116, import_os24, import_path133, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
 var init_copilot_smoke = __esm({
   "src/smoke/copilot-smoke.ts"() {
     "use strict";
     import_child_process29 = require("child_process");
     import_crypto36 = require("crypto");
     import_fs116 = require("fs");
-    import_os23 = require("os");
+    import_os24 = require("os");
     import_path133 = require("path");
     init_tmux_utils();
     init_config_dir();
@@ -57376,17 +57980,17 @@ var init_copilot_run_tools = __esm({
 });
 
 // src/hooks/learner/constants.ts
-var import_path135, import_os24, USER_SKILLS_DIR, GLOBAL_SKILLS_DIR, PROJECT_SKILLS_SUBDIR, PROJECT_AGENT_SKILLS_SUBDIR, MAX_RECURSION_DEPTH, SKILL_EXTENSION, DEBUG_ENABLED;
+var import_path135, import_os25, USER_SKILLS_DIR, GLOBAL_SKILLS_DIR, PROJECT_SKILLS_SUBDIR, PROJECT_AGENT_SKILLS_SUBDIR, MAX_RECURSION_DEPTH, SKILL_EXTENSION, DEBUG_ENABLED;
 var init_constants3 = __esm({
   "src/hooks/learner/constants.ts"() {
     "use strict";
     import_path135 = require("path");
-    import_os24 = require("os");
+    import_os25 = require("os");
     init_config_dir();
     init_worktree_paths();
     init_debug_flag();
     USER_SKILLS_DIR = (0, import_path135.join)(getCopilotConfigDir(), "skills", "omc-learned");
-    GLOBAL_SKILLS_DIR = (0, import_path135.join)((0, import_os24.homedir)(), ".omg", "skills");
+    GLOBAL_SKILLS_DIR = (0, import_path135.join)((0, import_os25.homedir)(), ".omg", "skills");
     PROJECT_SKILLS_SUBDIR = OmcPaths.SKILLS;
     PROJECT_AGENT_SKILLS_SUBDIR = (0, import_path135.join)(".agents", "skills");
     MAX_RECURSION_DEPTH = 10;
@@ -57734,17 +58338,17 @@ function formatSkillOutput(skills) {
   }
   return lines3.join("\n");
 }
-var import_path138, import_os25, ALLOWED_BOUNDARIES, loadLocalSchema, loadGlobalSchema, listSkillsSchema, loadLocalTool, loadGlobalTool, listSkillsTool, skillsTools;
+var import_path138, import_os26, ALLOWED_BOUNDARIES, loadLocalSchema, loadGlobalSchema, listSkillsSchema, loadLocalTool, loadGlobalTool, listSkillsTool, skillsTools;
 var init_skills_tools = __esm({
   "src/tools/skills-tools.ts"() {
     "use strict";
     init_zod();
     import_path138 = require("path");
-    import_os25 = require("os");
+    import_os26 = require("os");
     init_config_dir();
     init_loader2();
     init_constants3();
-    ALLOWED_BOUNDARIES = [process.cwd(), (0, import_os25.homedir)()];
+    ALLOWED_BOUNDARIES = [process.cwd(), (0, import_os26.homedir)()];
     loadLocalSchema = {
       projectRoot: external_exports.string().max(500).optional().describe("Project root directory (defaults to cwd)")
     };
@@ -63857,7 +64461,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve54) => setTimeout(resolve54, pollInterval));
+        await new Promise((resolve55) => setTimeout(resolve55, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -63874,7 +64478,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve54, reject2) => {
+    return new Promise((resolve55, reject2) => {
       const earlyReject = (error2) => {
         reject2(error2);
       };
@@ -63952,7 +64556,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject2(parseResult.error);
           } else {
-            resolve54(parseResult.data);
+            resolve55(parseResult.data);
           }
         } catch (error2) {
           reject2(error2);
@@ -64213,12 +64817,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve54, reject2) => {
+    return new Promise((resolve55, reject2) => {
       if (signal.aborted) {
         reject2(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve54, interval);
+      const timeoutId = setTimeout(resolve55, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject2(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -64947,12 +65551,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve54) => {
+    return new Promise((resolve55) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve54();
+        resolve55();
       } else {
-        this._stdout.once("drain", resolve54);
+        this._stdout.once("drain", resolve55);
       }
     });
   }

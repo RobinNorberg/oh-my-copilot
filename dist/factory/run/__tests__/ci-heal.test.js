@@ -19,7 +19,7 @@ import { EXIT_AWAITING_HUMAN, healPlanText, runFactoryEngine } from '../engine.j
 import { assertFactoryCommand, FactorySafetyError } from '../exec.js';
 import { ledgerFilePath } from '../ledger.js';
 import { factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, readFactoryState } from '../state.js';
-import { commitFile, FakeLanes, FakeProcesses, gitIn, harness, PR, remoteHead, review, testGateConfig } from './fake-lanes.js';
+import { commitFile, FakeLanes, FakeProcesses, gitIn, harness, PR, remoteHead, review, testGateConfig, withTestSandbox } from './fake-lanes.js';
 const SIG8 = '0a1b2c3d';
 const KEY = `heal-${SIG8}`;
 const NOW = new Date('2026-10-28T09:00:00Z');
@@ -59,7 +59,7 @@ function record(over = {}, diagnosis = {}) {
 const limits = (over = {}) => ({ ...DEFAULT_FACTORY_RUN_LIMITS, ...over });
 const freeCap = (cap) => ({ ok: true, cap });
 function opts(lanes, heal = {}, over = {}) {
-    return {
+    return withTestSandbox({
         root: h.root,
         exec: h.exec,
         lanes,
@@ -72,7 +72,7 @@ function opts(lanes, heal = {}, over = {}) {
         gateConfig: testGateConfig,
         heal: { sig8: SIG8, record: record(), autoImplement: false, laneCap: freeCap, ...heal },
         ...over,
-    };
+    }, over);
 }
 const run = (scripts, heal = {}, over = {}) => {
     const lanes = new FakeLanes(h.root, scripts);

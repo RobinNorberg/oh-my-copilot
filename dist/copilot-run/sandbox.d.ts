@@ -84,6 +84,35 @@ export declare function loadSandboxSettings(root: string, scope: SandboxScope, l
     settings: SandboxSettings;
     warnings: string[];
 };
+/**
+ * `factory.run.sandbox.gates`: how `omg factory run` runs the PR's own code in
+ * prepare's checks and the local gate. `enforced` runs each command in the
+ * write-profile OS sandbox (and falls back to `ack` where it cannot);
+ * `ack` runs it unsandboxed only after `--allow-unsandboxed-gates` named the
+ * head; `unsandboxed` runs it unsandboxed with a warning.
+ */
+export type GatesSandboxMode = 'enforced' | 'ack' | 'unsandboxed';
+export declare const GATES_SANDBOX_MODES: readonly GatesSandboxMode[];
+/** The trusted layers `factory.run.sandbox.gates` is read from: never the working tree or the PR head. */
+export interface GatesSandboxLayers {
+    /** The user config at its default location (userConfigLayers().trustedUser). */
+    user: unknown;
+    /** The `.copilot/omg.jsonc` committed at the run's verified base sha (undefined when not read). */
+    base: unknown;
+    /** The engine's own environment: {@link SANDBOX_KILL_ENV}=off maps to `unsandboxed`. */
+    env: NodeJS.ProcessEnv;
+}
+/**
+ * The gates mode and where it came from. The kill switch wins, then the user
+ * config, then the base's committed config, then `enforced`. The base may set
+ * `enforced` or `ack` but never `unsandboxed` (the PR's repository must not
+ * switch the sandbox off for its own code): that throws, as does any other
+ * value.
+ */
+export declare function resolveGatesSandboxMode(layers: GatesSandboxLayers): {
+    mode: GatesSandboxMode;
+    source: string;
+};
 /** The SDK's SandboxConfig (rpc.d.ts), the fields this module sets. */
 export interface SandboxConfig {
     enabled: boolean;
