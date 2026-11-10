@@ -435,7 +435,7 @@ describe('a sandbox that does not start after the PR\'s code of the head already
 
   it('a later prepare check parks gate-no-verdict, not the --allow-unsandboxed-gates offer; nothing runs unsandboxed', async () => {
     w = localWorld();
-    const two: GateConfigLoader = () => ({ ...gateConfig()(), config: { ...gateConfig()().config, prepareChecks: [PREPARE_CHECK, ['node', 'check2.js']] } });
+    const two: GateConfigLoader = (input) => { const g = gateConfig()(input); return { ...g, config: { ...g.config, prepareChecks: [PREPARE_CHECK, ['node', 'check2.js']] } }; };
     const s = sandbox((req) => (req.args.includes('check2.js') ? NOT_STARTED : PASS));
     const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run, gateConfig: two }));
     expect(out.gate?.name, out.message).toBe(GATE_NO_VERDICT_GATE);
