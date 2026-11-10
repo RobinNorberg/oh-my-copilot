@@ -4,6 +4,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+# oh-my-copilot v5.23.0
+
+## [5.23.0] - 2026-11-10
+
 ### Added
 
 - **Committed team routing and decisions** (#465). `omg factory setup --team` creates `.copilot/team/routing.md` (a table `| path glob | role | owner | handle |`, first matching row per path wins) and `.copilot/team/decisions.md` (an append-only log) when missing. Both are read from the base commit only. The owners of the paths in the plan appear in the implement prompt, the owners of the changed paths in the review prompt, and the newest decisions are fenced as data in both.
