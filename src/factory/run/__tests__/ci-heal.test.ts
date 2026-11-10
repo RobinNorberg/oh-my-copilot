@@ -22,7 +22,7 @@ import type { Exec } from '../../../ship/exec.js';
 import { assertFactoryCommand, FactorySafetyError } from '../exec.js';
 import { ledgerFilePath } from '../ledger.js';
 import { factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, readFactoryState, type FactoryHealRecord } from '../state.js';
-import { commitFile, FakeLanes, FakeProcesses, gitIn, harness, PR, remoteHead, review, testGateConfig, withTestSandbox, type Harness, type LaneScript } from './fake-lanes.js';
+import { commitFile, FakeLanes, FakeProcesses, gitIn, harness, PR, remoteHead, review, testGateConfig, attestedSandbox, withTestSandbox, type Harness, type LaneScript } from './fake-lanes.js';
 
 const SIG8 = '0a1b2c3d';
 const KEY = `heal-${SIG8}` as const;
@@ -251,7 +251,7 @@ describe('omg factory heal approve|cancel|status', () => {
 
   const engineDeps = () => ({
     exec: h.exec, lanes: () => new FakeLanes(h.root, []), limits: () => ({ limits: limits(), warnings: [] }), ledgerDir: h.ledgerDir, now: () => NOW,
-    gateConfig: testGateConfig, engine: { pollMs: 5, owner: { pid: 4242, hostname: 'test-host', isAlive: () => false }, processes: procs },
+    gateConfig: testGateConfig, gateSandbox: () => attestedSandbox(() => h.exec), engine: { pollMs: 5, owner: { pid: 4242, hostname: 'test-host', isAlive: () => false }, processes: procs },
   });
 
   const out: string[] = [];
@@ -260,7 +260,7 @@ describe('omg factory heal approve|cancel|status', () => {
     const lanes = new FakeLanes(h.root, scripts);
     return {
       exec, base: () => 'dev', config: () => ({ config, warnings: [] }), now: () => NOW, lanes: () => lanes, ledgerDir: h.ledgerDir,
-      runLimits: () => ({ limits: limits(), warnings: [] }), gateConfig: testGateConfig,
+      runLimits: () => ({ limits: limits(), warnings: [] }), gateConfig: testGateConfig, gateSandbox: () => attestedSandbox(() => h.exec),
       engine: { pollMs: 5, owner: { pid: 4242, hostname: 'test-host', isAlive: () => false }, processes: procs },
     };
   }
