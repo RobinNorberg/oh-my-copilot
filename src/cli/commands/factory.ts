@@ -43,7 +43,7 @@ import type { ForgeKind } from '../../forge/types.js';
 import { CopilotLaneBackend, type LaneBackend } from '../../factory/run/lane.js';
 import type { GateConfigLoader } from '../../factory/run/prepare.js';
 import {
-  acquireFactoryRepoOwner, defaultOwnerDeps, describeOwner, FactoryBusyError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState,
+  acquireFactoryRepoOwnerForRun, defaultOwnerDeps, describeOwner, FactoryBusyError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState,
   refuseWhileEngineRuns, runLabel, unreadableOwnerMessage, withOwnerFileLock, type HeldOwner,
   requestFactoryCancel, verifyFactoryIntegrity, type FactoryOwner, type FactoryRunKey, type FactoryRunState,
 } from '../../factory/run/state.js';
@@ -362,7 +362,8 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         // origin/<base>): busy (exit 6) means nothing was fetched or written. The engine uses the held lock as its own.
         let held: HeldOwner | undefined;
         if (!o.dryRun) {
-          held = acquireFactoryRepoOwner(root, issue ?? 'next', new Date().toISOString());
+          // A `scan` holder (poll's heal scan or base sync, a read command's fetch) is waited out (SCAN_WAIT_MS, longer than a read fetch can run: FETCH_TIMEOUT_MS).
+          held = acquireFactoryRepoOwnerForRun(root, issue ?? 'next', () => new Date().toISOString());
           // The claim key before the fetch: the forge kind from the config as it is (no fetch); none on the local forge.
           try {
             claimRepo = cliClaimRepo(deps, root, readOnlyForgeKind(deps, root, base));
@@ -479,7 +480,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         const issue = parseIssue(issueRaw);
         const root = factoryRoot(exec);
         // The engine lock before the forge-config loader (it may fetch): busy touches nothing.
-        const held = acquireFactoryRepoOwner(root, issue, new Date().toISOString());
+        const held = acquireFactoryRepoOwnerForRun(root, issue, () => new Date().toISOString());
         try {
           const loaded = deps.forge?.(root, deps.base(root), { dryRun: false });
           if (!loaded || loaded.config.kind !== 'local') throw new FactoryUsageError('omg factory run reset is for the local forge only (factory.forge.kind "local")');
@@ -597,7 +598,7 @@ export function factoryEnqueueCommand(deps: FactoryCheckDeps): Command {
         const message = plainText(error instanceof Error ? error.message : String(error));
         if (o.json) deps.out(JSON.stringify({ ok: false, error: message }, null, 2));
         else deps.err(chalk.red(factoryErrorLine(message)));
-        process.exitCode = error instanceof CheckUsageError ? EXIT_CHECK_USAGE : error instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
+        process.exitCode = error instanceof FactoryBusyError ? EXIT_BUSY : error instanceof CheckUsageError ? EXIT_CHECK_USAGE : error instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
       }
     });
 }

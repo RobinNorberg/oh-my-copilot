@@ -51,6 +51,9 @@ function scripted(calls = []) {
                 return ok('');
             if (a === `show ${SHA}:.copilot/team/routing.md`)
                 return ok(ROUTING);
+            // readBaseFile's "absent" probe: routing.md is in the base tree, nothing else is.
+            if (args[0] === 'ls-tree')
+                return ok(args[5] === '.copilot/team/routing.md' ? `100644 blob ${SHA}\t${args[5]}\0` : '');
             if (args[0] === 'show')
                 return { status: 128, stdout: '', stderr: `fatal: path does not exist in '${SHA}'` };
         }

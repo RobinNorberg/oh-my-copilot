@@ -22,6 +22,8 @@ export interface ExecOptions {
    * guard permits only TRUSTED_READ_ENV, and only for git.
    */
   env?: Readonly<Record<string, string>>;
+  /** Kill the child after this many milliseconds (status 1, the error in stderr). */
+  timeoutMs?: number;
 }
 
 export type Exec = (cmd: string, args: string[], opts?: ExecOptions) => ExecResult;
@@ -39,6 +41,20 @@ export class ShipSafetyError extends Error {
  * `git replace <blob> <evil>` in the shared object store cannot swap content.
  */
 export const TRUSTED_READ_ENV: Readonly<Record<string, string>> = Object.freeze({ GIT_NO_REPLACE_OBJECTS: '1' });
+
+/**
+ * The factory read commands' `git fetch origin <base>` (fetchBase): the
+ * trusted-read environment plus no credential prompt, so a fetch that holds
+ * the checkout's engine lock never waits on a human. The guards allow it on
+ * that one shape only (isTrustedFetch).
+ */
+export const TRUSTED_FETCH_ENV: Readonly<Record<string, string>> = Object.freeze({ ...TRUSTED_READ_ENV, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' });
+
+/** `git fetch origin <branch>` with exactly TRUSTED_FETCH_ENV. */
+export function isTrustedFetch(base: string, args: string[], env: Readonly<Record<string, string>>): boolean {
+  return base === 'git' && args.length === 3 && args[0] === 'fetch' && args[1] === 'origin' && isBranch(args[2])
+    && JSON.stringify(Object.entries(env)) === JSON.stringify(Object.entries(TRUSTED_FETCH_ENV));
+}
 
 /**
  * `GIT_*` variables children keep: commit identity, credential prompting and
@@ -111,6 +127,7 @@ export const defaultExec: Exec = (cmd, args, opts) => {
     encoding: 'utf8',
     windowsHide: true,
     maxBuffer: 256 * 1024 * 1024,
+    ...(opts?.timeoutMs ? { timeout: opts.timeoutMs } : {}),
   });
   return {
     status: result.status ?? 1,
@@ -203,6 +220,10 @@ function gitAllowed(a: string[], protectedBranches: readonly string[]): boolean 
     }
     case 'cat-file':
       return r.length === 2 && r[0] === '-e' && /^[0-9a-f]{40}\^\{commit\}$/.test(r[1]);
+    case 'ls-tree':
+      // readBaseFile: one entry of a base commit's tree (exit status and empty output tell "absent", whatever the locale); paths as `show`.
+      return r.length === 5 && r[0] === '--full-tree' && r[1] === '-z' && HEX40.test(r[2]) && r[3] === '--'
+        && /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/.test(r[4]) && !r[4].split('/').includes('..');
     case 'rev-list': {
       // The commits after the reviewed sha on the head's first-parent chain, each with its parents.
       return r.length === 3 && r[0] === '--first-parent' && r[1] === '--parents' && /^[0-9a-f]{40}\.\.[0-9a-f]{40}$/.test(r[2]);
@@ -271,7 +292,7 @@ const ALLOWED: Record<string, (args: string[], protectedBranches: readonly strin
  * rebase, pull, forced or deleting pushes, pushes to PROTECTED_BRANCHES or
  * `extraProtected` (the run's base), worktree add/remove, reset, amend,
  * squash/rebase/auto merges, `gh api`, `gh -R` and any npm command never spawn.
- * `env` (ExecOptions.env) may only be TRUSTED_READ_ENV on a git command.
+ * `env` (ExecOptions.env) may only be TRUSTED_READ_ENV on a git command (TRUSTED_FETCH_ENV on `git fetch origin <branch>`).
  */
 export function assertSafeCommand(cmd: string, args: string[], extraProtected: readonly string[] = [], env?: Readonly<Record<string, string>>): void {
   const file = cmd.replace(/\\/g, '/').split('/').pop()!.toLowerCase();
@@ -280,7 +301,7 @@ export function assertSafeCommand(cmd: string, args: string[], extraProtected: r
   if (!allowed || !args.every((x) => typeof x === 'string') || !allowed(args, [...PROTECTED_BRANCHES, ...extraProtected])) {
     throw new ShipSafetyError(`omg ship refuses \`${file} ${args.join(' ')}\`: not one of the command shapes the ship engine runs`);
   }
-  if (env !== undefined && !(base === 'git' && same(Object.entries(env).flat(), Object.entries(TRUSTED_READ_ENV).flat()))) {
+  if (env !== undefined && !(base === 'git' && same(Object.entries(env).flat(), Object.entries(TRUSTED_READ_ENV).flat())) && !isTrustedFetch(base, args, env)) {
     throw new ShipSafetyError(`omg ship refuses \`${file} ${args.join(' ')}\` with environment ${JSON.stringify(env)}: only ${JSON.stringify(TRUSTED_READ_ENV)} on git is allowed`);
   }
 }

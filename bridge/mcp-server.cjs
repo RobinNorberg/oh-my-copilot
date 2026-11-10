@@ -30551,6 +30551,9 @@ var init_guard = __esm({
 });
 
 // src/ship/exec.ts
+function isTrustedFetch(base, args, env2) {
+  return base === "git" && args.length === 3 && args[0] === "fetch" && args[1] === "origin" && isBranch(args[2]) && JSON.stringify(Object.entries(env2)) === JSON.stringify(Object.entries(TRUSTED_FETCH_ENV));
+}
 function scrubShipEnv(env2) {
   const out = {};
   for (const [key, value] of Object.entries(env2)) {
@@ -30596,6 +30599,8 @@ function gitAllowed(a, protectedBranches) {
     }
     case "cat-file":
       return r.length === 2 && r[0] === "-e" && /^[0-9a-f]{40}\^\{commit\}$/.test(r[1]);
+    case "ls-tree":
+      return r.length === 5 && r[0] === "--full-tree" && r[1] === "-z" && HEX40.test(r[2]) && r[3] === "--" && /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/.test(r[4]) && !r[4].split("/").includes("..");
     case "rev-list": {
       return r.length === 3 && r[0] === "--first-parent" && r[1] === "--parents" && /^[0-9a-f]{40}\.\.[0-9a-f]{40}$/.test(r[2]);
     }
@@ -30639,11 +30644,11 @@ function assertSafeCommand(cmd, args, extraProtected = [], env2) {
   if (!allowed || !args.every((x) => typeof x === "string") || !allowed(args, [...PROTECTED_BRANCHES, ...extraProtected])) {
     throw new ShipSafetyError(`omg ship refuses \`${file} ${args.join(" ")}\`: not one of the command shapes the ship engine runs`);
   }
-  if (env2 !== void 0 && !(base === "git" && same(Object.entries(env2).flat(), Object.entries(TRUSTED_READ_ENV).flat()))) {
+  if (env2 !== void 0 && !(base === "git" && same(Object.entries(env2).flat(), Object.entries(TRUSTED_READ_ENV).flat())) && !isTrustedFetch(base, args, env2)) {
     throw new ShipSafetyError(`omg ship refuses \`${file} ${args.join(" ")}\` with environment ${JSON.stringify(env2)}: only ${JSON.stringify(TRUSTED_READ_ENV)} on git is allowed`);
   }
 }
-var import_child_process16, ShipSafetyError, TRUSTED_READ_ENV, KEPT_GIT_VARS, DROPPED_GH_VARS, isDroppedAdoVar, defaultExec, OPERAND, REMOTE, BRANCH, HEX40, ABBREV_SHA, NUMBER, JSON_FIELDS, isOperand, isBranch, isPath, isRemoteRef, same, MERGE_STATE_REFS, GIT_PATH_MARKERS, LOG_SAFE_FLAG, PROTECTED_BRANCHES, NODE_SCRIPTS, ALLOWED;
+var import_child_process16, ShipSafetyError, TRUSTED_READ_ENV, TRUSTED_FETCH_ENV, KEPT_GIT_VARS, DROPPED_GH_VARS, isDroppedAdoVar, defaultExec, OPERAND, REMOTE, BRANCH, HEX40, ABBREV_SHA, NUMBER, JSON_FIELDS, isOperand, isBranch, isPath, isRemoteRef, same, MERGE_STATE_REFS, GIT_PATH_MARKERS, LOG_SAFE_FLAG, PROTECTED_BRANCHES, NODE_SCRIPTS, ALLOWED;
 var init_exec = __esm({
   "src/ship/exec.ts"() {
     "use strict";
@@ -30657,6 +30662,7 @@ var init_exec = __esm({
       }
     };
     TRUSTED_READ_ENV = Object.freeze({ GIT_NO_REPLACE_OBJECTS: "1" });
+    TRUSTED_FETCH_ENV = Object.freeze({ ...TRUSTED_READ_ENV, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never" });
     KEPT_GIT_VARS = /* @__PURE__ */ new Set([
       "GIT_AUTHOR_NAME",
       "GIT_AUTHOR_EMAIL",
@@ -30678,7 +30684,8 @@ var init_exec = __esm({
         env: childEnv({ ...scrubShipEnv(process.env), ...opts?.env }),
         encoding: "utf8",
         windowsHide: true,
-        maxBuffer: 256 * 1024 * 1024
+        maxBuffer: 256 * 1024 * 1024,
+        ...opts?.timeoutMs ? { timeout: opts.timeoutMs } : {}
       });
       return {
         status: result.status ?? 1,
@@ -30793,7 +30800,8 @@ function readBaseFile(exec, cwd, commit, path15) {
   }
   const shown = exec("git", ["show", `${commit}:${path15}`], { cwd, env: TRUSTED_READ_ENV });
   if (shown.status === 0) return shown.stdout;
-  if (MISSING_PATH.test(shown.stderr)) return null;
+  const entry = exec("git", ["ls-tree", "--full-tree", "-z", commit, "--", path15], { cwd, env: TRUSTED_READ_ENV });
+  if (entry.status === 0 && entry.stdout === "") return null;
   throw new Error(`git show ${commit.slice(0, 12)}:${path15} failed (exit ${shown.status}): ${shown.stderr.trim()}`);
 }
 function repoIdentity(url) {
@@ -30965,7 +30973,7 @@ function loadBaseKnownFlaky(exec, root, commit, file) {
   const text3 = readBaseFile(exec, root, commit, file);
   return text3 && text3.trim() ? parseKnownFlaky(text3, `${commit.slice(0, 12)}:${file}`) : [];
 }
-var import_fs47, import_os9, import_path60, DEFAULT_SHIP_CONFIG, SHIP_SAFETY_KEYS, SHIP_USER_ONLY_KEYS, BASE_CONFIG_PATH, FULL_SHA, MISSING_PATH;
+var import_fs47, import_os9, import_path60, DEFAULT_SHIP_CONFIG, SHIP_SAFETY_KEYS, SHIP_USER_ONLY_KEYS, BASE_CONFIG_PATH, FULL_SHA;
 var init_config2 = __esm({
   "src/ship/config.ts"() {
     "use strict";
@@ -31028,7 +31036,6 @@ var init_config2 = __esm({
     SHIP_USER_ONLY_KEYS = ["trustedBases"];
     BASE_CONFIG_PATH = ".copilot/omg.jsonc";
     FULL_SHA = /^[0-9a-f]{40}$/;
-    MISSING_PATH = /does not exist in|exists on disk, but not in/;
   }
 });
 
@@ -43233,7 +43240,7 @@ function assertFactoryCommand(cmd, args, extraProtected = [], env2, ado, writes,
   if (verdict === false) throw new FactorySafetyError(`omg factory run refuses \`${file} ${args.join(" ")}\`: not one of the command shapes the factory engine runs`);
   if (verdict === true) {
     const trusted = JSON.stringify(Object.entries(TRUSTED_READ_ENV));
-    if (env2 !== void 0 && !(base === "git" && JSON.stringify(Object.entries(env2)) === trusted)) {
+    if (env2 !== void 0 && !(base === "git" && JSON.stringify(Object.entries(env2)) === trusted) && !isTrustedFetch(base, args, env2)) {
       throw new FactorySafetyError(`omg factory run refuses \`${file} ${args.join(" ")}\` with environment ${JSON.stringify(env2)}: only ${JSON.stringify(TRUSTED_READ_ENV)} on git is allowed`);
     }
     return;
@@ -46503,6 +46510,10 @@ var init_ledger2 = __esm({
       tracks(path15) {
         return Object.prototype.hasOwnProperty.call(this.data.files, (0, import_path96.resolve)(path15));
       }
+      /** Every path the engine recorded a write of (resolved). */
+      trackedPaths() {
+        return Object.keys(this.data.files);
+      }
       /** The content of the engine's last write of `path` (null: absent; undefined: not tracked). */
       recorded(path15) {
         return this.data.files[(0, import_path96.resolve)(path15)]?.content;
@@ -46841,12 +46852,24 @@ function ownerHolding(path15, deps = defaultOwnerDeps()) {
 function withOwnerFileLock(path15, fn) {
   const lock = lockPathFor(path15);
   const handle = acquireFileLockSync(lock, { timeoutMs: 5e3 });
-  if (!handle) throw new FactoryBusyError(`another omg factory process holds the lock file ${lock}; retry in a moment`);
+  if (!handle) throw new FactoryBusyError(lockBusyMessage(lock));
   try {
     return fn();
   } finally {
     releaseFileLockSync(handle);
   }
+}
+function lockBusyMessage(lock, nowMs = Date.now()) {
+  const remove = `if no omg factory process is running, remove ${lock}`;
+  let stat;
+  try {
+    stat = (0, import_fs80.lstatSync)(lock);
+  } catch {
+    return `another omg factory process held the lock file ${lock}; retry in a moment`;
+  }
+  if (stat.isDirectory()) return `the lock path ${lock} is a directory, so the lock can never be taken and never goes stale; ${remove}`;
+  if (nowMs - stat.mtimeMs >= LOCK_STALE_MS2) return `the lock file ${lock} has been held for more than ${LOCK_STALE_MS2 / 1e3} s by a live pid (maybe an unrelated program reusing it), so it does not go stale; ${remove}`;
+  return `another omg factory process holds the lock file ${lock}; retry in a moment (${remove})`;
 }
 function claimOwner(path15, now, deps, busy, fields = {}) {
   ensureDirSync((0, import_path97.dirname)(path15));
@@ -46863,7 +46886,7 @@ function claimOwner(path15, now, deps, busy, fields = {}) {
       }
       if (!isOwnerRecord(parsed)) throw new FactoryBusyError(unreadableOwnerMessage(path15));
       prior = parsed;
-      if (ownerHolds(prior, deps)) throw new FactoryBusyError(busy(prior));
+      if (ownerHolds(prior, deps)) throw new FactoryBusyError(busy(prior), typeof prior.run === "string" ? prior.run : void 0);
     }
     atomicWriteFileSync(path15, record3);
     return prior;
@@ -46874,15 +46897,20 @@ function claimOwner(path15, now, deps, busy, fields = {}) {
         const owner = (0, import_fs80.existsSync)(path15) ? JSON.parse((0, import_fs80.readFileSync)(path15, "utf8")) : null;
         if (isOwnerRecord(owner) && owner.pid === deps.pid && owner.hostname === deps.hostname) fn(owner);
       });
-    } catch {
+      return true;
+    } catch (error2) {
+      console.error(`omg factory: could not update the lock ${path15} (${error2 instanceof Error ? error2.message : String(error2)}); it stays held by this process`);
+      return false;
     }
   };
   const release = () => whileMine(() => (0, import_fs80.unlinkSync)(path15));
-  const relabel = (run2) => whileMine((owner) => atomicWriteFileSync(path15, `${JSON.stringify({ ...owner, run: run2 })}
+  const relabel = (run2) => {
+    whileMine((owner) => atomicWriteFileSync(path15, `${JSON.stringify({ ...owner, run: run2 })}
 `));
+  };
   return { release, relabel, ...tookOver ? { tookOver } : {} };
 }
-var import_crypto23, import_fs80, import_os18, import_path97, FACTORY_PHASES, TERMINAL_FACTORY_PHASES, HEAL_RUN_KEY, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, FactoryStateError, EXIT_BUSY, FactoryBusyError, runSlug, runLabel, isStr2, HEX64, isCount3, ownIdentity, startIdentity, defaultOwnerDeps, ownerText, engineBusyMessage, engineBusyText, unreadableOwnerMessage, isOwnerRecord;
+var import_crypto23, import_fs80, import_os18, import_path97, FACTORY_PHASES, TERMINAL_FACTORY_PHASES, HEAL_RUN_KEY, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, FactoryStateError, EXIT_BUSY, FactoryBusyError, runSlug, runLabel, isStr2, HEX64, isCount3, ownIdentity, startIdentity, defaultOwnerDeps, ownerText, engineBusyMessage, engineBusyText, unreadableOwnerMessage, isOwnerRecord, LOCK_STALE_MS2;
 var init_state5 = __esm({
   "src/factory/run/state.ts"() {
     "use strict";
@@ -46927,9 +46955,12 @@ var init_state5 = __esm({
     };
     EXIT_BUSY = 6;
     FactoryBusyError = class extends FactoryStateError {
-      constructor(message) {
+      /** The holder's run key when a live owner file refused (`scan`: the poller's heal scan or base sync, or a read command's fetch). */
+      holderRun;
+      constructor(message, holderRun) {
         super(message);
         this.name = "FactoryBusyError";
+        if (holderRun !== void 0) this.holderRun = holderRun;
       }
     };
     runSlug = (key) => typeof key === "number" ? `issue-${key}` : key;
@@ -46945,9 +46976,10 @@ var init_state5 = __esm({
     defaultOwnerDeps = () => ({ pid: process.pid, hostname: (0, import_os18.hostname)(), isAlive: isProcessAlive, identityOf: startIdentity });
     ownerText = (v) => stripAnsi(String(v)).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ");
     engineBusyMessage = (prior, root, key) => engineBusyText(prior, key) + (ownerFromOtherCheckout(prior, root) ? "; WARNING: that engine runs in another folder that shares this checkout's state root (a linked worktree, or with OMC_STATE_DIR set a clone with the same folder name: parallel clones need distinct folder names)" : "");
-    engineBusyText = (prior, key) => `another omg factory engine runs in this repository (${describeOwner(prior)}); one engine runs per checkout at a time${key === "next" ? ", so run --next after it ends" : key === "scan" ? ", so retry after it ends" : key ? `, so start ${ownerText(key)} after it ends` : ""} (parallel runs need separate clones)`;
+    engineBusyText = (prior, key) => prior.run === "scan" ? `the poller's heal scan or base sync, or a factory read command's fetch, holds this checkout for a moment (${describeOwner(prior)}); retry` : `another omg factory engine runs in this repository (${describeOwner(prior)}); one engine runs per checkout at a time${key === "next" ? ", so run --next after it ends" : key === "scan" ? ", so retry after it ends" : key ? `, so start ${ownerText(key)} after it ends` : ""} (parallel runs need separate clones)`;
     unreadableOwnerMessage = (path15) => `the owner file ${path15} is unreadable, so it counts as held; check that no engine uses it, then remove it (omg factory run release)`;
     isOwnerRecord = (v) => typeof v === "object" && v !== null && Number.isInteger(v.pid) && typeof v.hostname === "string";
+    LOCK_STALE_MS2 = 3e4;
   }
 });
 
@@ -47078,7 +47110,12 @@ function runPhase(root, key, ledgerDir) {
   } catch {
     return unreadable("its engine ledger is unreadable");
   }
-  if (bytes === null) return typeof ledger.recorded(path15) === "string" ? unreadable("it is gone, though its engine wrote it") : { phase: null };
+  if (bytes === null) {
+    if (typeof ledger.recorded(path15) === "string") return unreadable("it is gone, though its engine wrote it");
+    const name = (0, import_path99.basename)(path15);
+    if (!ledger.tracks(path15) && ledger.trackedPaths().some((p) => (0, import_path99.basename)(p) === name && typeof ledger.recorded(p) === "string")) return unreadable("its state path moved: its engine wrote it elsewhere");
+    return { phase: null };
+  }
   if (!ledger.matches(path15, bytes)) return unreadable("it is not the one its engine wrote");
   try {
     const state = parseFactoryState(path15, key, bytes.toString("utf8"));
@@ -47168,11 +47205,11 @@ function acquireFactoryClaim(ledgerDir, repoUrl, root, key, now, deps = defaultO
     ...tookOver ? { tookOver } : {}
   };
 }
-function settleFactoryClaim(claim, phase, at) {
+function settleFactoryClaim(claim, root, key, ledgerDir, at) {
   let terminal = false;
   try {
-    const p = phase();
-    terminal = p === null || TERMINAL_FACTORY_PHASES.includes(p);
+    const p = runPhase(root, key, ledgerDir);
+    terminal = !("unreadable" in p) && (p.phase === null || TERMINAL_FACTORY_PHASES.includes(p.phase));
   } catch {
   }
   if (terminal) claim.release();
@@ -51205,7 +51242,7 @@ async function runFactoryEngine(o) {
     return await new FactoryEngine(o, ledger, hooksDir).start(owner.tookOver);
   } finally {
     owner.release();
-    if (claim) settleFactoryClaim(claim, () => readFactoryState(o.root, key)?.phase ?? null, new Date((o.now ?? Date.now)()).toISOString());
+    if (claim) settleFactoryClaim(claim, o.root, key, dir, new Date((o.now ?? Date.now)()).toISOString());
     releaseRepoOwner();
     for (const path15 of ownerPaths) ledger.record(path15, null);
   }
@@ -52318,7 +52355,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         const gate = this.o.forge?.config.kind === "local" ? this.o.forge.config.local?.gate : void 0;
         const unresolved = gate && gate.length > 0 ? gateDefinitionSources(gate).unresolved : void 0;
         if (!unresolved) return false;
-        this.gate("gate-definition-unknown", `${unresolved}; offline the gate is the only check and its definition cannot be compared with ${this.state.base}, so ${outcome}. Wrap the command in a script committed in the repo (for example node scripts/gate.mjs) and set factory.forge.local.gate to that, or to an npm script (npm test, npm run <script>); then rerun ${this.resume}, or omg factory run cancel ${this.key}`);
+        this.gate("gate-definition-unknown", `${unresolved}; offline the gate is the only check and its definition cannot be compared with ${this.state.base}, so ${outcome}. Wrap the command in a script committed in the repo (for example node scripts/gate.mjs) and set factory.forge.local.gate to that, or to an npm script (npm test, npm run <script>); then rerun ${this.resume}, or ${cancelCommand(this.key)}`);
         return true;
       }
       /**
@@ -52358,7 +52395,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           return false;
         }
         const stale = allowed !== void 0 ? " (--allow-gate-change accepted only the definition the run parked on, and this one differs)" : "";
-        this.save((x) => setGate(x, "gate-definition-changed", `the change redefines the local gate "${gate.join(" ")}" (${describeGateSources(sources)} differ from ${s.base})${stale}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha.slice(0, 12)} ${cand.slice(0, 12)} -- ${[...new Set(sources.map((x2) => x2.path))].join(" ")}, then rerun ${this.resume} --allow-gate-change to accept it, or omg factory run cancel ${this.key}`, this.iso(), { definition: head }));
+        this.save((x) => setGate(x, "gate-definition-changed", `the change redefines the local gate "${gate.join(" ")}" (${describeGateSources(sources)} differ from ${s.base})${stale}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha.slice(0, 12)} ${cand.slice(0, 12)} -- ${[...new Set(sources.map((x2) => x2.path))].join(" ")}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}`, this.iso(), { definition: head }));
         return true;
       }
       async review() {
@@ -53959,6 +53996,7 @@ var init_factory_check = __esm({
     import_promises7 = require("readline/promises");
     init_project_config_path();
     init_cli();
+    init_state5();
     init_score();
     init_forge();
     init_config2();
@@ -54028,6 +54066,7 @@ var init_factory_triage = __esm({
     "use strict";
     init_esm();
     init_cli();
+    init_state5();
     init_score();
     init_cli3();
     init_integer_option();
@@ -54075,7 +54114,7 @@ var init_auth = __esm({
 });
 
 // src/cli/commands/intake.ts
-var import_child_process24, import_fs100, import_path120, LOCK_STALE_MS2;
+var import_child_process24, import_fs100, import_path120, LOCK_STALE_MS3;
 var init_intake = __esm({
   "src/cli/commands/intake.ts"() {
     "use strict";
@@ -54087,7 +54126,7 @@ var init_intake = __esm({
     init_tmux_utils();
     init_host_detection();
     init_skill_registry();
-    LOCK_STALE_MS2 = 2 * 36e5;
+    LOCK_STALE_MS3 = 2 * 36e5;
   }
 });
 
@@ -54486,6 +54525,7 @@ var init_factory_board = __esm({
     init_esm();
     init_collect();
     init_cli();
+    init_state5();
     init_score();
     init_integer_option();
   }
@@ -54502,6 +54542,7 @@ var init_factory_pr = __esm({
     import_path123 = require("path");
     import_crypto32 = require("crypto");
     init_cli();
+    init_state5();
     init_exec2();
     init_forge_roots();
     init_ledger2();
@@ -54570,6 +54611,7 @@ var init_factory_poll = __esm({
     "use strict";
     init_esm();
     init_cli();
+    init_state5();
     init_score();
     init_poll();
     init_forge_roots();

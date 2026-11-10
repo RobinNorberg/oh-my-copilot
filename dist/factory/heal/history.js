@@ -43,8 +43,13 @@ function ghAllowed(a) {
 function gitAllowed(a) {
     const [sub, ...r] = a;
     switch (sub) {
-        case 'rev-parse':
-            return same(r, ['--show-toplevel']);
+        case 'rev-parse': {
+            if (same(r, ['--show-toplevel']))
+                return true;
+            // A busy heal dry run: was origin/<base> ever fetched here (L6)? git rev-parse --verify refs/remotes/origin/<base>
+            const m = r.length === 2 && r[0] === '--verify' ? /^refs\/remotes\/origin\/(.+)$/.exec(r[1]) : null;
+            return Boolean(m) && isBranch(m[1]);
+        }
         case 'cat-file':
             return r.length === 2 && r[0] === '-e' && /^[0-9a-f]{40}\^\{commit\}$/.test(r[1]);
         case 'merge-base': {

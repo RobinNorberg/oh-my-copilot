@@ -66998,8 +66998,8 @@ function isSensitiveRepoRelativePath(repoRelativePath) {
   if (!normalized2 || normalized2 === ".") {
     return false;
   }
-  const basename60 = normalized2.slice(normalized2.lastIndexOf("/") + 1);
-  if (SENSITIVE_REPO_BASENAMES.has(basename60) || SENSITIVE_REPO_EXTENSIONS.some((extension) => basename60.endsWith(extension))) {
+  const basename61 = normalized2.slice(normalized2.lastIndexOf("/") + 1);
+  if (SENSITIVE_REPO_BASENAMES.has(basename61) || SENSITIVE_REPO_EXTENSIONS.some((extension) => basename61.endsWith(extension))) {
     return true;
   }
   return normalized2 === ".git" || normalized2.startsWith(".git/") || normalized2.includes("/.git/") || normalized2 === ".ssh" || normalized2.startsWith(".ssh/") || normalized2.includes("/.ssh/") || normalized2 === "secrets" || normalized2.startsWith("secrets/") || normalized2.includes("/secrets/") || normalized2 === ".env" || normalized2.startsWith(".env.") || normalized2.includes("/.env") || normalized2.includes("/.env.") || normalized2 === "node_modules/.cache" || normalized2.startsWith("node_modules/.cache/") || normalized2.includes("/node_modules/.cache/");
@@ -95761,6 +95761,9 @@ var init_guard = __esm({
 });
 
 // src/ship/exec.ts
+function isTrustedFetch(base, args, env2) {
+  return base === "git" && args.length === 3 && args[0] === "fetch" && args[1] === "origin" && isBranch(args[2]) && JSON.stringify(Object.entries(env2)) === JSON.stringify(Object.entries(TRUSTED_FETCH_ENV));
+}
 function scrubShipEnv(env2) {
   const out = {};
   for (const [key, value] of Object.entries(env2)) {
@@ -95806,6 +95809,8 @@ function gitAllowed(a, protectedBranches) {
     }
     case "cat-file":
       return r.length === 2 && r[0] === "-e" && /^[0-9a-f]{40}\^\{commit\}$/.test(r[1]);
+    case "ls-tree":
+      return r.length === 5 && r[0] === "--full-tree" && r[1] === "-z" && HEX40.test(r[2]) && r[3] === "--" && /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/.test(r[4]) && !r[4].split("/").includes("..");
     case "rev-list": {
       return r.length === 3 && r[0] === "--first-parent" && r[1] === "--parents" && /^[0-9a-f]{40}\.\.[0-9a-f]{40}$/.test(r[2]);
     }
@@ -95849,7 +95854,7 @@ function assertSafeCommand(cmd, args, extraProtected = [], env2) {
   if (!allowed || !args.every((x) => typeof x === "string") || !allowed(args, [...PROTECTED_BRANCHES, ...extraProtected])) {
     throw new ShipSafetyError(`omg ship refuses \`${file} ${args.join(" ")}\`: not one of the command shapes the ship engine runs`);
   }
-  if (env2 !== void 0 && !(base === "git" && same(Object.entries(env2).flat(), Object.entries(TRUSTED_READ_ENV).flat()))) {
+  if (env2 !== void 0 && !(base === "git" && same(Object.entries(env2).flat(), Object.entries(TRUSTED_READ_ENV).flat())) && !isTrustedFetch(base, args, env2)) {
     throw new ShipSafetyError(`omg ship refuses \`${file} ${args.join(" ")}\` with environment ${JSON.stringify(env2)}: only ${JSON.stringify(TRUSTED_READ_ENV)} on git is allowed`);
   }
 }
@@ -95863,7 +95868,7 @@ function guardExec(exec3, extraProtected = () => [], ado = () => void 0) {
     return exec3(cmd, args, opts);
   };
 }
-var import_child_process29, ShipSafetyError, TRUSTED_READ_ENV, KEPT_GIT_VARS, DROPPED_GH_VARS, isDroppedAdoVar, defaultExec, OPERAND, REMOTE, BRANCH, HEX40, ABBREV_SHA, NUMBER, JSON_FIELDS, isOperand, isBranch, isPath, isRemoteRef, same, MERGE_STATE_REFS, GIT_PATH_MARKERS, LOG_SAFE_FLAG, PROTECTED_BRANCHES, NODE_SCRIPTS, ALLOWED;
+var import_child_process29, ShipSafetyError, TRUSTED_READ_ENV, TRUSTED_FETCH_ENV, KEPT_GIT_VARS, DROPPED_GH_VARS, isDroppedAdoVar, defaultExec, OPERAND, REMOTE, BRANCH, HEX40, ABBREV_SHA, NUMBER, JSON_FIELDS, isOperand, isBranch, isPath, isRemoteRef, same, MERGE_STATE_REFS, GIT_PATH_MARKERS, LOG_SAFE_FLAG, PROTECTED_BRANCHES, NODE_SCRIPTS, ALLOWED;
 var init_exec = __esm({
   "src/ship/exec.ts"() {
     "use strict";
@@ -95877,6 +95882,7 @@ var init_exec = __esm({
       }
     };
     TRUSTED_READ_ENV = Object.freeze({ GIT_NO_REPLACE_OBJECTS: "1" });
+    TRUSTED_FETCH_ENV = Object.freeze({ ...TRUSTED_READ_ENV, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never" });
     KEPT_GIT_VARS = /* @__PURE__ */ new Set([
       "GIT_AUTHOR_NAME",
       "GIT_AUTHOR_EMAIL",
@@ -95898,7 +95904,8 @@ var init_exec = __esm({
         env: childEnv({ ...scrubShipEnv(process.env), ...opts?.env }),
         encoding: "utf8",
         windowsHide: true,
-        maxBuffer: 256 * 1024 * 1024
+        maxBuffer: 256 * 1024 * 1024,
+        ...opts?.timeoutMs ? { timeout: opts.timeoutMs } : {}
       });
       return {
         status: result.status ?? 1,
@@ -96013,7 +96020,8 @@ function readBaseFile(exec3, cwd2, commit, path30) {
   }
   const shown = exec3("git", ["show", `${commit}:${path30}`], { cwd: cwd2, env: TRUSTED_READ_ENV });
   if (shown.status === 0) return shown.stdout;
-  if (MISSING_PATH.test(shown.stderr)) return null;
+  const entry2 = exec3("git", ["ls-tree", "--full-tree", "-z", commit, "--", path30], { cwd: cwd2, env: TRUSTED_READ_ENV });
+  if (entry2.status === 0 && entry2.stdout === "") return null;
   throw new Error(`git show ${commit.slice(0, 12)}:${path30} failed (exit ${shown.status}): ${shown.stderr.trim()}`);
 }
 function repoIdentity(url) {
@@ -96195,7 +96203,7 @@ function loadBaseKnownFlaky(exec3, root2, commit, file) {
   const text4 = readBaseFile(exec3, root2, commit, file);
   return text4 && text4.trim() ? parseKnownFlaky(text4, `${commit.slice(0, 12)}:${file}`) : [];
 }
-var import_fs98, import_os20, import_path120, DEFAULT_SHIP_CONFIG, SHIP_SAFETY_KEYS, SHIP_USER_ONLY_KEYS, BASE_CONFIG_PATH, FULL_SHA, MISSING_PATH;
+var import_fs98, import_os20, import_path120, DEFAULT_SHIP_CONFIG, SHIP_SAFETY_KEYS, SHIP_USER_ONLY_KEYS, BASE_CONFIG_PATH, FULL_SHA;
 var init_config4 = __esm({
   "src/ship/config.ts"() {
     "use strict";
@@ -96258,7 +96266,6 @@ var init_config4 = __esm({
     SHIP_USER_ONLY_KEYS = ["trustedBases"];
     BASE_CONFIG_PATH = ".copilot/omg.jsonc";
     FULL_SHA = /^[0-9a-f]{40}$/;
-    MISSING_PATH = /does not exist in|exists on disk, but not in/;
   }
 });
 
@@ -120572,7 +120579,7 @@ function assertFactoryCommand(cmd, args, extraProtected = [], env2, ado, writes,
   if (verdict === false) throw new FactorySafetyError(`omg factory run refuses \`${file} ${args.join(" ")}\`: not one of the command shapes the factory engine runs`);
   if (verdict === true) {
     const trusted = JSON.stringify(Object.entries(TRUSTED_READ_ENV));
-    if (env2 !== void 0 && !(base === "git" && JSON.stringify(Object.entries(env2)) === trusted)) {
+    if (env2 !== void 0 && !(base === "git" && JSON.stringify(Object.entries(env2)) === trusted) && !isTrustedFetch(base, args, env2)) {
       throw new FactorySafetyError(`omg factory run refuses \`${file} ${args.join(" ")}\` with environment ${JSON.stringify(env2)}: only ${JSON.stringify(TRUSTED_READ_ENV)} on git is allowed`);
     }
     return;
@@ -124376,6 +124383,10 @@ var init_ledger2 = __esm({
       tracks(path30) {
         return Object.prototype.hasOwnProperty.call(this.data.files, (0, import_path182.resolve)(path30));
       }
+      /** Every path the engine recorded a write of (resolved). */
+      trackedPaths() {
+        return Object.keys(this.data.files);
+      }
       /** The content of the engine's last write of `path` (null: absent; undefined: not tracked). */
       recorded(path30) {
         return this.data.files[(0, import_path182.resolve)(path30)]?.content;
@@ -124674,6 +124685,27 @@ function acquireFactoryOwner(root2, key, now2, deps = defaultOwnerDeps()) {
 function acquireFactoryRepoOwner(root2, key, now2, deps = defaultOwnerDeps()) {
   return claimOwner(factoryRepoOwnerPath(root2), now2, deps, (prior) => engineBusyMessage(prior, root2, String(key)), { run: String(key), root: (0, import_path183.resolve)(root2) });
 }
+function acquireFactoryRepoOwnerForRun(root2, key, now2, deps = defaultOwnerDeps(), boundMs = SCAN_WAIT_MS) {
+  const start = scanWait.clock();
+  for (; ; ) {
+    try {
+      return acquireFactoryRepoOwner(root2, key, now2(), deps);
+    } catch (error2) {
+      if (!(error2 instanceof FactoryBusyError) || error2.holderRun !== "scan") throw error2;
+      const waited = scanWait.clock() - start;
+      if (waited >= boundMs) throw new FactoryBusyError(`${error2.message} (waited ${Math.round(waited / 1e3)} s)`, "scan");
+      scanWait.sleep(Math.min(SCAN_POLL_MS, boundMs - waited));
+    }
+  }
+}
+function tryScanLock(root2, now2, deps = defaultOwnerDeps(), waitMs = 0) {
+  try {
+    return waitMs > 0 ? acquireFactoryRepoOwnerForRun(root2, "scan", () => now2, deps, waitMs) : acquireFactoryRepoOwner(root2, "scan", now2, deps);
+  } catch (error2) {
+    if (error2 instanceof FactoryBusyError) return error2;
+    throw error2;
+  }
+}
 function ownerFromOtherCheckout(prior, root2, platform = process.platform) {
   if (typeof prior.root !== "string") return false;
   const fold7 = (p) => platform === "win32" || platform === "darwin" ? (0, import_path183.resolve)(p).toLowerCase() : (0, import_path183.resolve)(p);
@@ -124714,12 +124746,24 @@ function ownerHolding(path30, deps = defaultOwnerDeps()) {
 function withOwnerFileLock(path30, fn) {
   const lock = lockPathFor(path30);
   const handle = acquireFileLockSync(lock, { timeoutMs: 5e3 });
-  if (!handle) throw new FactoryBusyError(`another omg factory process holds the lock file ${lock}; retry in a moment`);
+  if (!handle) throw new FactoryBusyError(lockBusyMessage(lock));
   try {
     return fn();
   } finally {
     releaseFileLockSync(handle);
   }
+}
+function lockBusyMessage(lock, nowMs = Date.now()) {
+  const remove = `if no omg factory process is running, remove ${lock}`;
+  let stat2;
+  try {
+    stat2 = (0, import_fs156.lstatSync)(lock);
+  } catch {
+    return `another omg factory process held the lock file ${lock}; retry in a moment`;
+  }
+  if (stat2.isDirectory()) return `the lock path ${lock} is a directory, so the lock can never be taken and never goes stale; ${remove}`;
+  if (nowMs - stat2.mtimeMs >= LOCK_STALE_MS5) return `the lock file ${lock} has been held for more than ${LOCK_STALE_MS5 / 1e3} s by a live pid (maybe an unrelated program reusing it), so it does not go stale; ${remove}`;
+  return `another omg factory process holds the lock file ${lock}; retry in a moment (${remove})`;
 }
 function claimOwner(path30, now2, deps, busy, fields = {}) {
   ensureDirSync((0, import_path183.dirname)(path30));
@@ -124736,7 +124780,7 @@ function claimOwner(path30, now2, deps, busy, fields = {}) {
       }
       if (!isOwnerRecord(parsed2)) throw new FactoryBusyError(unreadableOwnerMessage(path30));
       prior = parsed2;
-      if (ownerHolds(prior, deps)) throw new FactoryBusyError(busy(prior));
+      if (ownerHolds(prior, deps)) throw new FactoryBusyError(busy(prior), typeof prior.run === "string" ? prior.run : void 0);
     }
     atomicWriteFileSync(path30, record3);
     return prior;
@@ -124747,15 +124791,20 @@ function claimOwner(path30, now2, deps, busy, fields = {}) {
         const owner = (0, import_fs156.existsSync)(path30) ? JSON.parse((0, import_fs156.readFileSync)(path30, "utf8")) : null;
         if (isOwnerRecord(owner) && owner.pid === deps.pid && owner.hostname === deps.hostname) fn(owner);
       });
-    } catch {
+      return true;
+    } catch (error2) {
+      console.error(`omg factory: could not update the lock ${path30} (${error2 instanceof Error ? error2.message : String(error2)}); it stays held by this process`);
+      return false;
     }
   };
   const release = () => whileMine(() => (0, import_fs156.unlinkSync)(path30));
-  const relabel = (run2) => whileMine((owner) => atomicWriteFileSync(path30, `${JSON.stringify({ ...owner, run: run2 })}
+  const relabel = (run2) => {
+    whileMine((owner) => atomicWriteFileSync(path30, `${JSON.stringify({ ...owner, run: run2 })}
 `));
+  };
   return { release, relabel, ...tookOver ? { tookOver } : {} };
 }
-var import_crypto49, import_fs156, import_os35, import_path183, FACTORY_PHASES, TERMINAL_FACTORY_PHASES, HEAL_RUN_KEY, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, FactoryStateError, EXIT_BUSY, FactoryBusyError, runSlug, runLabel, isStr2, HEX64, isCount3, ownIdentity, startIdentity, defaultOwnerDeps, ownerText, engineBusyMessage, engineBusyText, unreadableOwnerMessage, isOwnerRecord;
+var import_crypto49, import_fs156, import_os35, import_path183, FACTORY_PHASES, TERMINAL_FACTORY_PHASES, HEAL_RUN_KEY, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, FactoryStateError, EXIT_BUSY, FactoryBusyError, runSlug, runLabel, isStr2, HEX64, isCount3, ownIdentity, startIdentity, defaultOwnerDeps, ownerText, SCAN_WAIT_MS, AUTO_START_SCAN_WAIT_MS, READ_SCAN_WAIT_MS, SCAN_POLL_MS, scanWait, engineBusyMessage, engineBusyText, unreadableOwnerMessage, isOwnerRecord, LOCK_STALE_MS5;
 var init_state6 = __esm({
   "src/factory/run/state.ts"() {
     "use strict";
@@ -124800,9 +124849,12 @@ var init_state6 = __esm({
     };
     EXIT_BUSY = 6;
     FactoryBusyError = class extends FactoryStateError {
-      constructor(message4) {
+      /** The holder's run key when a live owner file refused (`scan`: the poller's heal scan or base sync, or a read command's fetch). */
+      holderRun;
+      constructor(message4, holderRun) {
         super(message4);
         this.name = "FactoryBusyError";
+        if (holderRun !== void 0) this.holderRun = holderRun;
       }
     };
     runSlug = (key) => typeof key === "number" ? `issue-${key}` : key;
@@ -124817,10 +124869,21 @@ var init_state6 = __esm({
     };
     defaultOwnerDeps = () => ({ pid: process.pid, hostname: (0, import_os35.hostname)(), isAlive: isProcessAlive, identityOf: startIdentity });
     ownerText = (v) => stripAnsi(String(v)).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ");
+    SCAN_WAIT_MS = 6e4;
+    AUTO_START_SCAN_WAIT_MS = 5e3;
+    READ_SCAN_WAIT_MS = 1e4;
+    SCAN_POLL_MS = 500;
+    scanWait = {
+      sleep: (ms) => {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+      },
+      clock: () => Date.now()
+    };
     engineBusyMessage = (prior, root2, key) => engineBusyText(prior, key) + (ownerFromOtherCheckout(prior, root2) ? "; WARNING: that engine runs in another folder that shares this checkout's state root (a linked worktree, or with OMC_STATE_DIR set a clone with the same folder name: parallel clones need distinct folder names)" : "");
-    engineBusyText = (prior, key) => `another omg factory engine runs in this repository (${describeOwner(prior)}); one engine runs per checkout at a time${key === "next" ? ", so run --next after it ends" : key === "scan" ? ", so retry after it ends" : key ? `, so start ${ownerText(key)} after it ends` : ""} (parallel runs need separate clones)`;
+    engineBusyText = (prior, key) => prior.run === "scan" ? `the poller's heal scan or base sync, or a factory read command's fetch, holds this checkout for a moment (${describeOwner(prior)}); retry` : `another omg factory engine runs in this repository (${describeOwner(prior)}); one engine runs per checkout at a time${key === "next" ? ", so run --next after it ends" : key === "scan" ? ", so retry after it ends" : key ? `, so start ${ownerText(key)} after it ends` : ""} (parallel runs need separate clones)`;
     unreadableOwnerMessage = (path30) => `the owner file ${path30} is unreadable, so it counts as held; check that no engine uses it, then remove it (omg factory run release)`;
     isOwnerRecord = (v) => typeof v === "object" && v !== null && Number.isInteger(v.pid) && typeof v.hostname === "string";
+    LOCK_STALE_MS5 = 3e4;
   }
 });
 
@@ -124951,7 +125014,12 @@ function runPhase(root2, key, ledgerDir) {
   } catch {
     return unreadable("its engine ledger is unreadable");
   }
-  if (bytes === null) return typeof ledger.recorded(path30) === "string" ? unreadable("it is gone, though its engine wrote it") : { phase: null };
+  if (bytes === null) {
+    if (typeof ledger.recorded(path30) === "string") return unreadable("it is gone, though its engine wrote it");
+    const name = (0, import_path185.basename)(path30);
+    if (!ledger.tracks(path30) && ledger.trackedPaths().some((p) => (0, import_path185.basename)(p) === name && typeof ledger.recorded(p) === "string")) return unreadable("its state path moved: its engine wrote it elsewhere");
+    return { phase: null };
+  }
   if (!ledger.matches(path30, bytes)) return unreadable("it is not the one its engine wrote");
   try {
     const state = parseFactoryState(path30, key, bytes.toString("utf8"));
@@ -125041,11 +125109,11 @@ function acquireFactoryClaim(ledgerDir, repoUrl, root2, key, now2, deps = defaul
     ...tookOver ? { tookOver } : {}
   };
 }
-function settleFactoryClaim(claim, phase, at) {
+function settleFactoryClaim(claim, root2, key, ledgerDir, at) {
   let terminal = false;
   try {
-    const p = phase();
-    terminal = p === null || TERMINAL_FACTORY_PHASES.includes(p);
+    const p = runPhase(root2, key, ledgerDir);
+    terminal = !("unreadable" in p) && (p.phase === null || TERMINAL_FACTORY_PHASES.includes(p.phase));
   } catch {
   }
   if (terminal) claim.release();
@@ -125140,7 +125208,7 @@ function cleanFactoryRun(o) {
     throw new FactoryStateError(`the factory run for issue #${o.issue} is ${state.phase}${state.gate ? ` (awaiting-human: ${state.gate.name})` : ""}; clean removes the worktrees of a merged or cancelled run only (omg factory run cancel ${o.issue} first)`);
   }
   const now2 = o.now ?? (/* @__PURE__ */ new Date()).toISOString();
-  const repoOwner = acquireFactoryRepoOwner(o.root, o.issue, now2, o.owner);
+  const repoOwner = acquireFactoryRepoOwnerForRun(o.root, o.issue, () => now2, o.owner);
   let owner;
   try {
     owner = acquireFactoryOwner(o.root, o.issue, now2, o.owner);
@@ -125262,7 +125330,7 @@ function resetFactoryRun(o) {
     throw new FactoryStateError(`the factory run state for issue #${o.issue} is not the engine's last write (${ledger.file}); nothing is reset`);
   }
   const now2 = o.now ?? (/* @__PURE__ */ new Date()).toISOString();
-  const repoOwner = o.repoOwner ?? acquireFactoryRepoOwner(o.root, o.issue, now2, o.owner);
+  const repoOwner = o.repoOwner ?? acquireFactoryRepoOwnerForRun(o.root, o.issue, () => now2, o.owner);
   const releaseRepoOwner = () => {
     if (!o.repoOwner) repoOwner.release();
   };
@@ -129596,7 +129664,7 @@ async function runFactoryEngine(o) {
     return await new FactoryEngine(o, ledger, hooksDir).start(owner.tookOver);
   } finally {
     owner.release();
-    if (claim) settleFactoryClaim(claim, () => readFactoryState(o.root, key)?.phase ?? null, new Date((o.now ?? Date.now)()).toISOString());
+    if (claim) settleFactoryClaim(claim, o.root, key, dir, new Date((o.now ?? Date.now)()).toISOString());
     releaseRepoOwner();
     for (const path30 of ownerPaths) ledger.record(path30, null);
   }
@@ -130709,7 +130777,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         const gate = this.o.forge?.config.kind === "local" ? this.o.forge.config.local?.gate : void 0;
         const unresolved = gate && gate.length > 0 ? gateDefinitionSources(gate).unresolved : void 0;
         if (!unresolved) return false;
-        this.gate("gate-definition-unknown", `${unresolved}; offline the gate is the only check and its definition cannot be compared with ${this.state.base}, so ${outcome}. Wrap the command in a script committed in the repo (for example node scripts/gate.mjs) and set factory.forge.local.gate to that, or to an npm script (npm test, npm run <script>); then rerun ${this.resume}, or omg factory run cancel ${this.key}`);
+        this.gate("gate-definition-unknown", `${unresolved}; offline the gate is the only check and its definition cannot be compared with ${this.state.base}, so ${outcome}. Wrap the command in a script committed in the repo (for example node scripts/gate.mjs) and set factory.forge.local.gate to that, or to an npm script (npm test, npm run <script>); then rerun ${this.resume}, or ${cancelCommand(this.key)}`);
         return true;
       }
       /**
@@ -130749,7 +130817,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           return false;
         }
         const stale2 = allowed !== void 0 ? " (--allow-gate-change accepted only the definition the run parked on, and this one differs)" : "";
-        this.save((x) => setGate(x, "gate-definition-changed", `the change redefines the local gate "${gate.join(" ")}" (${describeGateSources(sources)} differ from ${s.base})${stale2}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha.slice(0, 12)} ${cand.slice(0, 12)} -- ${[...new Set(sources.map((x2) => x2.path))].join(" ")}, then rerun ${this.resume} --allow-gate-change to accept it, or omg factory run cancel ${this.key}`, this.iso(), { definition: head }));
+        this.save((x) => setGate(x, "gate-definition-changed", `the change redefines the local gate "${gate.join(" ")}" (${describeGateSources(sources)} differ from ${s.base})${stale2}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha.slice(0, 12)} ${cand.slice(0, 12)} -- ${[...new Set(sources.map((x2) => x2.path))].join(" ")}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}`, this.iso(), { definition: head }));
         return true;
       }
       async review() {
@@ -132165,7 +132233,7 @@ function checkGuardExec(exec3, marker, ado = () => void 0, command = "omg factor
     } else if (file === "git" && isLocalReadShape(args)) {
       if (opts?.env !== void 0 && JSON.stringify(Object.entries(opts.env)) !== JSON.stringify(Object.entries(TRUSTED_READ_ENV))) refuse("git takes only the trusted-read environment");
     } else if (file === "git") {
-      const read = CHECK_GIT.has(args[0]) && (args[0] !== "show" || args.length === 2 && /^[0-9a-f]{40}:/.test(args[1]));
+      const read = CHECK_GIT.has(args[0]) && (args[0] !== "show" || args.length === 2 && /^[0-9a-f]{40}:/.test(args[1])) || args[0] === "ls-tree" && args.length === 6 && args[1] === "--full-tree" && args[2] === "-z" && /^[0-9a-f]{40}$/.test(args[3]) && args[4] === "--";
       if (!read) refuse(`not one of the read-only git shapes ${command} runs`);
       assertFactoryCommand(cmd, args, [], opts?.env);
     } else if (isAdoCommand(cmd)) {
@@ -132258,12 +132326,40 @@ function requireLabel(exec3, root2, marker, repo) {
   if (!found) throw new CheckIncompatibleError(`label ${marker} does not exist in ${repo}; run \`omg factory setup\` to create it (omg factory check never creates labels)`);
 }
 function fetchBase(exec3, root2, base, warnings) {
-  const fetched = git3(exec3, root2, ["fetch", "origin", base]);
-  if (!fetched.ok) warnings.push(`omg factory check: git fetch origin ${base} failed (${fetched.err}); using the local origin/${base}`);
+  const f = exec3("git", ["fetch", "origin", base], { cwd: root2, env: TRUSTED_FETCH_ENV, timeoutMs: FETCH_TIMEOUT_MS });
+  const fetched = { ok: f.status === 0, err: f.stderr.trim().split("\n")[0] ?? "" };
+  if (!fetched.ok) {
+    const timedOut = /ETIMEDOUT/.test(fetched.err);
+    warnings.push(`omg factory check: git fetch origin ${base} ${timedOut ? `timed out after ${FETCH_TIMEOUT_MS / 1e3} s` : "failed"} (${fetched.err}); using the local origin/${base}` + (timedOut ? `; if later fetches keep failing, a stale refs/remotes/origin/${base}.lock in .git may need removing` : ""));
+  }
   const sha3 = git3(exec3, root2, ["rev-parse", "--verify", `refs/remotes/origin/${base}`]);
   if (sha3.ok && /^[0-9a-f]{40}$/.test(sha3.out)) return sha3.out;
   warnings.push(`omg factory check: origin/${base} is not available; its committed config is not read and omg-plan links cannot be checked`);
   return null;
+}
+function fetchBaseUnlessBusy(exec3, root2, base, warnings, owner) {
+  if (!(0, import_fs171.existsSync)(factoryStateDir3(root2))) return fetchBase(exec3, root2, base, warnings);
+  const held = tryScanLock(root2, (/* @__PURE__ */ new Date()).toISOString(), owner, READ_SCAN_WAIT_MS);
+  if (held instanceof FactoryBusyError) {
+    const sha3 = git3(exec3, root2, ["rev-parse", "--verify", `refs/remotes/origin/${base}`]);
+    const fetched = sha3.ok && /^[0-9a-f]{40}$/.test(sha3.out);
+    if (held.holderRun === "scan") {
+      if (fetched) {
+        warnings.push(`another factory command is fetching: using the last fetched origin/${base} (${sha3.out.slice(0, 12)})`);
+        return sha3.out;
+      }
+      warnings.push(`omg factory check: another factory command is fetching and origin/${base} is not available yet; its committed config is not read and omg-plan links cannot be checked`);
+      return null;
+    }
+    if (!fetched) throw new FactoryBusyError(`${held.message}; origin/${base} was never fetched in this checkout, so there is nothing to read until it ends`);
+    warnings.push(`engine busy: using the last fetched origin/${base} (${sha3.out.slice(0, 12)})`);
+    return sha3.out;
+  }
+  try {
+    return fetchBase(exec3, root2, base, warnings);
+  } finally {
+    held.release();
+  }
 }
 function baseLayer(exec3, root2, base, baseSha, trustedUser, warnings) {
   const trustedBases = resolveShipConfig({ trustedBases: trustedUser?.ship?.trustedBases }).trustedBases;
@@ -132319,7 +132415,7 @@ function openReadForge(o, deps, warnings, command, marker) {
   const originUrl2 = origin.ok && origin.out ? origin.out : void 0;
   const base = deps.base(root2);
   if (!isPlainBranchName(base)) throw new CheckUsageError(`base ${JSON.stringify(base)} is not a branch name`);
-  let baseSha = originUrl2 ? fetchBase(pre, root2, base, warnings) : localBase(pre, root2, base, warnings);
+  let baseSha = originUrl2 ? fetchBaseUnlessBusy(pre, root2, base, warnings, deps.owner) : localBase(pre, root2, base, warnings);
   const trustedUser = deps.trustedUser();
   let config2;
   const baseConfig = baseLayer(pre, root2, base, baseSha, trustedUser, warnings);
@@ -132446,7 +132542,7 @@ async function runFactoryCheck(o, deps) {
   }
   return ok2 ? 0 : EXIT_CHECK_FAILED;
 }
-var import_fs171, import_path198, EXIT_CHECK_FAILED, EXIT_CHECK_USAGE, EXIT_CHECK_INCOMPATIBLE, CHECK_JSON_SCHEMA_VERSION, CheckUsageError, CheckIncompatibleError, NUMBER7, JSON_FIELDS3, FACTORY_ISSUE_BRANCH, VALUE2, same4, CHECK_GIT, defaultResolveAz;
+var import_fs171, import_path198, EXIT_CHECK_FAILED, EXIT_CHECK_USAGE, EXIT_CHECK_INCOMPATIBLE, CHECK_JSON_SCHEMA_VERSION, CheckUsageError, CheckIncompatibleError, NUMBER7, JSON_FIELDS3, FACTORY_ISSUE_BRANCH, VALUE2, same4, CHECK_GIT, FETCH_TIMEOUT_MS, defaultResolveAz;
 var init_cli = __esm({
   "src/factory/check/cli.ts"() {
     "use strict";
@@ -132485,6 +132581,7 @@ var init_cli = __esm({
     VALUE2 = (s) => typeof s === "string" && s.length > 0 && !s.startsWith("-") && !/[\r\n\0]/.test(s);
     same4 = (args, shape) => args.length === shape.length && shape.every((v, i) => args[i] === v);
     CHECK_GIT = /* @__PURE__ */ new Set(["rev-parse", "remote", "fetch", "cat-file", "show", "ls-remote", "merge-base"]);
+    FETCH_TIMEOUT_MS = 45e3;
     defaultResolveAz = (root2) => resolveAzEntry(defaultAzBinaryDeps([root2, ...factoryForgeOptions(root2).untrustedRoots]));
   }
 });
@@ -132667,8 +132764,11 @@ function ghAllowed2(a) {
 function gitAllowed2(a) {
   const [sub, ...r] = a;
   switch (sub) {
-    case "rev-parse":
-      return same5(r, ["--show-toplevel"]);
+    case "rev-parse": {
+      if (same5(r, ["--show-toplevel"])) return true;
+      const m = r.length === 2 && r[0] === "--verify" ? /^refs\/remotes\/origin\/(.+)$/.exec(r[1]) : null;
+      return Boolean(m) && isBranch4(m[1]);
+    }
     case "cat-file":
       return r.length === 2 && r[0] === "-e" && /^[0-9a-f]{40}\^\{commit\}$/.test(r[1]);
     case "merge-base": {
@@ -133961,10 +134061,10 @@ function checkoutRoot(deps) {
   if (r.status !== 0) throw new HealUsageError("omg factory heal must run inside a git repository");
   return r.stdout.trim();
 }
-function healForge(deps, root2) {
+function healForge(deps, root2, opts) {
   if (deps.forgeKind?.(root2) !== "azure-devops") return void 0;
   if (!deps.forge) throw new HealRunRefused(HEAL_PIPELINE_MISSING);
-  const { config: config2, warnings } = deps.forge(root2, deps.base(root2));
+  const { config: config2, warnings } = opts ? deps.forge(root2, deps.base(root2), opts) : deps.forge(root2, deps.base(root2));
   for (const w of warnings) console.error(source_default.yellow(termSafe(w)));
   return adoHealFor(config2, () => (deps.resolveAz ?? defaultResolveAz)(root2), root2);
 }
@@ -133975,13 +134075,41 @@ function adoHealFor(config2, resolveAz, root2) {
 }
 function healRoot(deps, lock) {
   const root2 = checkoutRoot(deps);
-  const held = lock === void 0 ? void 0 : acquireFactoryRepoOwner(root2, lock, deps.now().toISOString());
+  const held = lock === void 0 ? void 0 : acquireFactoryRepoOwnerForRun(root2, lock, () => deps.now().toISOString());
   try {
     const ado = healForge(deps, root2);
     return { root: root2, ...ado ? { ado } : {}, ...held ? { held } : {} };
   } catch (error2) {
     held?.release();
     throw error2;
+  }
+}
+function healDryRoot(deps, note) {
+  const root2 = checkoutRoot(deps);
+  if (deps.forgeKind?.(root2) !== "azure-devops") {
+    try {
+      refuseWhileEngineRuns(root2);
+      return { root: root2 };
+    } catch (error2) {
+      if (!(error2 instanceof FactoryBusyError)) throw error2;
+      note(error2.message);
+      return { root: root2, busy: error2.message };
+    }
+  }
+  const held = tryScanLock(root2, deps.now().toISOString());
+  if (held instanceof FactoryBusyError) {
+    const base = deps.base(root2);
+    const fetched = healGuardExec(deps.exec)("git", ["rev-parse", "--verify", `refs/remotes/origin/${base}`]).status === 0;
+    const busy = `${held.message}; ${fetched ? "the forge config is read as last fetched" : `origin/${base} not fetched in this checkout, so its committed forge config cannot be read until the engine ends`}`;
+    note(busy);
+    const ado = healForge(deps, root2, { dryRun: true });
+    return { root: root2, ...ado ? { ado } : {}, busy };
+  }
+  try {
+    const ado = healForge(deps, root2);
+    return { root: root2, ...ado ? { ado } : {} };
+  } finally {
+    held.release();
   }
 }
 function healCommand(deps) {
@@ -134030,7 +134158,9 @@ function healCommand(deps) {
   }));
   heal.command("run <sig8>").description("Run the read-only debugger lane for a queued signature (billed, capped), record its diagnosis and park at awaiting-human").option("--dry-run", "Write the evidence bundle and print the debugger prompt; start no lane").option("--json", "JSON output").action((sig8, o) => guarded(Boolean(o.json), async () => {
     if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
-    const { root: root2, ado, held } = healRoot(deps, o.dryRun ? void 0 : healRunKey(sig8));
+    const { root: root2, ado, held, busy } = o.dryRun ? healDryRoot(deps, (b) => {
+      if (!o.json) console.error(source_default.yellow(dryRunBusyNote(b)));
+    }) : healRoot(deps, healRunKey(sig8));
     let outcome;
     let config2;
     let ciHeal;
@@ -134047,7 +134177,7 @@ function healCommand(deps) {
       held?.release();
     }
     const proposal = outcome.diagnosis ? knownFlakyProposal(readHealState(root2, sig8)) : null;
-    if (o.json) console.log(JSON.stringify({ ok: true, ...outcome, ...proposal ? { knownFlakyProposal: proposal } : {}, ...ciHeal ? { ciHeal } : {} }, null, 2));
+    if (o.json) console.log(JSON.stringify({ ok: true, ...outcome, ...proposal ? { knownFlakyProposal: proposal } : {}, ...ciHeal ? { ciHeal } : {}, ...busy ? { engineBusy: termSafe(busy) } : {} }, null, 2));
     else {
       if (outcome.prompt) console.log(outcome.prompt);
       console.log(`${source_default.bold(`factory heal run ${sig8}`)}  ${termSafe(outcome.message)}`);
@@ -134060,7 +134190,7 @@ function healCommand(deps) {
   }));
   heal.command("approve <sig8>").description("A human approves a valid diagnosis: run the ci-heal run (implement, draft PR, review, prepare, CI gates) and park at the human merge; also resumes a parked ci-heal run").option("--dry-run", "Print what the ci-heal run would do next; no state, lanes or pushes").option("--json", "JSON output").action((sig8, o) => guarded(Boolean(o.json), async () => {
     if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
-    const { root: root2, ado, held } = healRoot(deps, o.dryRun ? void 0 : healRunKey(sig8));
+    const { root: root2, ado, held } = o.dryRun ? healDryRoot(deps, (b) => console.error(source_default.yellow(dryRunBusyNote(b)))) : healRoot(deps, healRunKey(sig8));
     let outcome;
     try {
       const { config: config2, warnings } = deps.config(root2);
@@ -134083,29 +134213,30 @@ function healCommand(deps) {
       else console.log(source_default.green(`cancel requested for ci-heal heal-${sig8}; the running engine stops within seconds`));
       return 0;
     };
-    try {
-      refuseWhileEngineRuns(root2);
-    } catch (error2) {
-      if (error2 instanceof FactoryBusyError) return running();
-      throw error2;
-    }
+    let held;
     let engine;
     try {
-      engine = engineDeps(deps, healForge(deps, root2));
+      const wired = healRoot(deps, key);
+      held = wired.held;
+      engine = engineDeps(deps, wired.ado);
     } catch (error2) {
+      held?.release();
+      if (error2 instanceof FactoryBusyError) return running();
       const why = termSafe(error2 instanceof Error ? error2.message : String(error2));
       const note = `a running engine stops within seconds; a parked run is cancelled by the next omg factory heal cancel ${sig8} or approve once the forge wiring works (${why})`;
       if (o.json) console.log(JSON.stringify({ ok: true, sig8, cancelRequested: true, note }, null, 2));
       else console.log(source_default.yellow(`cancel requested for ci-heal heal-${sig8}; ${note}`));
       return 0;
     }
-    const { config: config2 } = deps.config(root2);
     let outcome;
     try {
-      outcome = await runHealEngine({ root: root2, base: deps.base(root2), sig8, config: config2, approved: false }, engine);
+      const { config: config2 } = deps.config(root2);
+      outcome = await runHealEngine({ root: root2, base: deps.base(root2), sig8, config: config2, approved: false, ...held ? { repoOwner: held } : {} }, engine);
     } catch (error2) {
       if (!(error2 instanceof FactoryBusyError) || !factoryCancelRequested(root2, key)) throw error2;
       return running();
+    } finally {
+      held?.release();
     }
     printEngineOutcome(Boolean(o.json), sig8, outcome);
     return outcome.phase === "cancelled" ? 0 : outcome.exitCode;
@@ -134120,7 +134251,7 @@ function healCommand(deps) {
   }));
   return heal;
 }
-var import_path203, SCAN_LIMITS, HEAL_PIPELINE_MISSING, HealUsageError, NON_PASSING, termSafe, ciDeps;
+var import_path203, SCAN_LIMITS, HEAL_PIPELINE_MISSING, HealUsageError, NON_PASSING, termSafe, ciDeps, dryRunBusyNote;
 var init_cli2 = __esm({
   "src/factory/heal/cli.ts"() {
     "use strict";
@@ -134159,6 +134290,7 @@ var init_cli2 = __esm({
     NON_PASSING = /* @__PURE__ */ new Set(["failure", "cancelled", "timed_out"]);
     termSafe = (v) => String(v).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ");
     ciDeps = (deps, ado) => ado ? { ci: ado.ci, ado: ado.guard } : deps.ci ? { ci: deps.ci } : {};
+    dryRunBusyNote = (busy) => `engine busy: a real run now would exit busy (${EXIT_BUSY}) without touching anything (${termSafe(busy)})`;
   }
 });
 
@@ -134195,7 +134327,7 @@ function factoryCheckCommand(deps) {
       const message4 = plainText(error2 instanceof Error ? error2.message : String(error2));
       if (o.json) deps.out(JSON.stringify({ ok: false, error: message4 }, null, 2));
       else deps.err(source_default.red(factoryErrorLine(message4)));
-      process.exitCode = error2 instanceof CheckUsageError ? EXIT_CHECK_USAGE : error2 instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
+      process.exitCode = error2 instanceof FactoryBusyError ? EXIT_BUSY : error2 instanceof CheckUsageError ? EXIT_CHECK_USAGE : error2 instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
     }
   });
 }
@@ -134209,6 +134341,7 @@ var init_factory_check = __esm({
     import_promises29 = require("readline/promises");
     init_project_config_path();
     init_cli();
+    init_state6();
     init_score();
     init_forge();
     init_config4();
@@ -134409,7 +134542,7 @@ async function runFactoryEnqueue(o, deps) {
   const originUrl2 = origin.ok && origin.out ? origin.out : void 0;
   const base = deps.base(root2);
   if (!isPlainBranchName(base)) throw new CheckUsageError(`base ${JSON.stringify(base)} is not a branch name`);
-  let baseSha = originUrl2 ? fetchBase(exec3, root2, base, warnings) : localBase(exec3, root2, base, warnings);
+  let baseSha = originUrl2 ? fetchBaseUnlessBusy(exec3, root2, base, warnings, deps.owner) : localBase(exec3, root2, base, warnings);
   const trustedUser = deps.trustedUser();
   let config2;
   try {
@@ -135072,7 +135205,7 @@ function factoryTriageCommand(deps) {
       const message4 = plainText(error2 instanceof Error ? error2.message : String(error2));
       if (o.json) deps.out(JSON.stringify({ ok: false, error: message4 }, null, 2));
       else deps.err(source_default.red(factoryErrorLine(message4)));
-      process.exitCode = error2 instanceof CheckUsageError ? EXIT_CHECK_USAGE : error2 instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
+      process.exitCode = error2 instanceof FactoryBusyError ? EXIT_BUSY : error2 instanceof CheckUsageError ? EXIT_CHECK_USAGE : error2 instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
     }
   });
 }
@@ -135082,6 +135215,7 @@ var init_factory_triage = __esm({
     init_esm();
     init_source();
     init_cli();
+    init_state6();
     init_score();
     init_cli3();
     init_integer_option();
@@ -135446,7 +135580,7 @@ function acquireIntakeLock(cwd2, now2 = Date.now()) {
       } catch {
         started = 0;
       }
-      if (now2 - started < LOCK_STALE_MS5) {
+      if (now2 - started < LOCK_STALE_MS6) {
         return { ok: false, reason: `another intake run appears active (lock at ${lockPath2}, started ${new Date(started).toISOString()}). Remove the lock only if you are certain no sweep is running.` };
       }
     }
@@ -135594,7 +135728,7 @@ function intakeCommand() {
   });
   return cmd;
 }
-var import_child_process48, import_fs176, import_path206, HARBOR_LABELS, TASK_NAME, CRONTAB_MARKER, LOCK_STALE_MS5, defaultIntakeRunner, DANGEROUS_HOST_BIN_CHARS;
+var import_child_process48, import_fs176, import_path206, HARBOR_LABELS, TASK_NAME, CRONTAB_MARKER, LOCK_STALE_MS6, defaultIntakeRunner, DANGEROUS_HOST_BIN_CHARS;
 var init_intake = __esm({
   "src/cli/commands/intake.ts"() {
     "use strict";
@@ -135618,7 +135752,7 @@ var init_intake = __esm({
     ];
     TASK_NAME = "OMC Intake";
     CRONTAB_MARKER = "# omc-intake";
-    LOCK_STALE_MS5 = 2 * 36e5;
+    LOCK_STALE_MS6 = 2 * 36e5;
     defaultIntakeRunner = (cmd, args, options) => {
       let launch;
       try {
@@ -137045,7 +137179,7 @@ function factoryBoardCommand(deps) {
       const message4 = plainText(error2 instanceof Error ? error2.message : String(error2));
       if (o.json) deps.out(JSON.stringify({ ok: false, error: message4 }, null, 2));
       else deps.err(source_default.red(factoryErrorLine(message4)));
-      process.exitCode = error2 instanceof CheckUsageError ? EXIT_CHECK_USAGE : error2 instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
+      process.exitCode = error2 instanceof FactoryBusyError ? EXIT_BUSY : error2 instanceof CheckUsageError ? EXIT_CHECK_USAGE : error2 instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
     }
   });
 }
@@ -137056,6 +137190,7 @@ var init_factory_board = __esm({
     init_source();
     init_collect();
     init_cli();
+    init_state6();
     init_score();
     init_integer_option();
   }
@@ -137159,7 +137294,7 @@ function action(name, deps) {
       const message4 = visibleLine(error2 instanceof Error ? error2.message : String(error2));
       if (json) deps.out(JSON.stringify({ schemaVersion: FACTORY_PR_JSON_SCHEMA_VERSION, ok: false, error: message4 }, null, 2));
       else deps.err(source_default.red(factoryErrorLine(message4)));
-      process.exitCode = error2 instanceof CheckUsageError ? EXIT_CHECK_USAGE : error2 instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
+      process.exitCode = error2 instanceof FactoryBusyError ? EXIT_BUSY : error2 instanceof CheckUsageError ? EXIT_CHECK_USAGE : error2 instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
     }
   };
 }
@@ -137182,6 +137317,7 @@ var init_factory_pr = __esm({
     import_path209 = require("path");
     import_crypto58 = require("crypto");
     init_cli();
+    init_state6();
     init_exec2();
     init_forge_roots();
     init_ledger2();
@@ -137362,12 +137498,15 @@ function audit(root2, record3, at) {
 function engineBusy(root2, me) {
   return ownerHolding(factoryRepoOwnerPath(root2), me) !== null;
 }
-function holdForRefs(root2, at, me) {
+function holdForRefs(root2, at, me, label2, errors) {
+  let held;
   try {
-    return acquireFactoryRepoOwner(root2, "scan", at, me);
+    held = tryScanLock(root2, at, me);
   } catch (error2) {
-    return `skipped: engine busy (${message3(error2)})`;
+    errors.push(`${label2}: ${message3(error2)}`);
+    return `skipped: the engine lock could not be taken (${message3(error2)})`;
   }
+  return held instanceof FactoryBusyError ? `skipped: engine busy (${message3(held)})` : held;
 }
 function defaultPollHealScan(exec3, config2, ledgerDir, resolveAz = defaultResolveAz) {
   return (o) => {
@@ -137494,6 +137633,7 @@ async function pollTick(ctx) {
   const at = new Date(ctx.now()).toISOString();
   const errors = [];
   const warnings = [];
+  if (ctx.unreleasedScan?.release()) delete ctx.unreleasedScan;
   const step = (name, fn) => {
     try {
       return fn();
@@ -137514,7 +137654,7 @@ async function pollTick(ctx) {
   if (!ctx.heal) heal = { ran: false, reason: "--no-heal" };
   else if (!forge.capabilities.heal) heal = { ran: false, reason: forge.kind === "azure-devops" ? HEAL_PIPELINE_MISSING : "the forge has no heal capability" };
   else {
-    const held = holdForRefs(root2, at, ctx.owner);
+    const held = holdForRefs(root2, at, ctx.owner, "heal", errors);
     if (typeof held === "string") heal = { ran: false, reason: held };
     else {
       try {
@@ -137525,7 +137665,7 @@ async function pollTick(ctx) {
         heal = { ran: false, reason: message3(error2) };
         if (!(error2 instanceof HealRunRefused)) errors.push(`heal: ${message3(error2)}`);
       } finally {
-        held.release();
+        if (!held.release()) ctx.unreleasedScan = held;
       }
     }
   }
@@ -137558,14 +137698,14 @@ async function pollTick(ctx) {
   if (forge.kind === "local") {
     if (!ctx.localBaseSync) baseSync = { ran: false, reason: "no base sync wired; omg factory run syncs the mirror base" };
     else {
-      const held = holdForRefs(root2, at, ctx.owner);
+      const held = holdForRefs(root2, at, ctx.owner, "base sync", errors);
       if (typeof held === "string") baseSync = { ran: false, reason: held };
       else {
         let synced;
         try {
           synced = step("base sync", ctx.localBaseSync);
         } finally {
-          held.release();
+          if (!held.release()) ctx.unreleasedScan = held;
         }
         baseSync = synced === void 0 ? { ran: false, reason: "the base sync failed" } : { ran: true, message: plainText(synced) };
       }
@@ -137628,9 +137768,10 @@ async function pollTick(ctx) {
   if (blocked2) autoStart = { started: false, reason: blocked2 };
   else {
     let reason = ctx.budget(root2);
+    if (!reason && ctx.unreleasedScan) reason = "skipped: scan lock not released yet";
     if (!reason) {
       try {
-        acquireFactoryRepoOwner(root2, AUTO_START_CLAIM, at, ctx.owner).release();
+        acquireFactoryRepoOwnerForRun(root2, AUTO_START_CLAIM, () => at, ctx.owner, AUTO_START_SCAN_WAIT_MS).release();
       } catch (error2) {
         reason = `the run lock is held: ${message3(error2)}`;
       }
@@ -137859,7 +138000,7 @@ function factoryPollCommand(deps) {
       const message4 = plainText(error2 instanceof Error ? error2.message : String(error2));
       if (o.json) deps.out(JSON.stringify({ ok: false, error: message4 }));
       else deps.err(source_default.red(factoryErrorLine(message4)));
-      process.exitCode = error2 instanceof CheckUsageError ? EXIT_CHECK_USAGE : error2 instanceof CheckIncompatibleError || error2 instanceof FactoryForgeUnavailableError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
+      process.exitCode = error2 instanceof FactoryBusyError ? EXIT_BUSY : error2 instanceof CheckUsageError ? EXIT_CHECK_USAGE : error2 instanceof CheckIncompatibleError || error2 instanceof FactoryForgeUnavailableError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
     }
   });
 }
@@ -137869,6 +138010,7 @@ var init_factory_poll = __esm({
     init_esm();
     init_source();
     init_cli();
+    init_state6();
     init_score();
     init_poll();
     init_forge_roots();
@@ -138035,7 +138177,7 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
     let claimRepo = null;
     let held;
     if (!o.dryRun) {
-      held = acquireFactoryRepoOwner(root2, issue2 ?? "next", (/* @__PURE__ */ new Date()).toISOString());
+      held = acquireFactoryRepoOwnerForRun(root2, issue2 ?? "next", () => (/* @__PURE__ */ new Date()).toISOString());
       try {
         claimRepo = cliClaimRepo(deps, root2, readOnlyForgeKind(deps, root2, base));
       } catch (error2) {
@@ -138141,7 +138283,7 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
   run2.command("reset <issue>").description("Local forge only: start a cancelled run over (after run clean): close its local PR, keep its mirror branch as factory/cancelled/..., move the run state aside; busy (exit 6) while an engine runs in this checkout or another clone claims the item").option("--json", "JSON output").action((issueRaw, _o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
     const issue2 = parseIssue(issueRaw);
     const root2 = factoryRoot(exec3);
-    const held = acquireFactoryRepoOwner(root2, issue2, (/* @__PURE__ */ new Date()).toISOString());
+    const held = acquireFactoryRepoOwnerForRun(root2, issue2, () => (/* @__PURE__ */ new Date()).toISOString());
     try {
       const loaded2 = deps.forge?.(root2, deps.base(root2), { dryRun: false });
       if (!loaded2 || loaded2.config.kind !== "local") throw new FactoryUsageError('omg factory run reset is for the local forge only (factory.forge.kind "local")');
@@ -138238,7 +138380,7 @@ function factoryEnqueueCommand(deps) {
       const message4 = plainText(error2 instanceof Error ? error2.message : String(error2));
       if (o.json) deps.out(JSON.stringify({ ok: false, error: message4 }, null, 2));
       else deps.err(source_default.red(factoryErrorLine(message4)));
-      process.exitCode = error2 instanceof CheckUsageError ? EXIT_CHECK_USAGE : error2 instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
+      process.exitCode = error2 instanceof FactoryBusyError ? EXIT_BUSY : error2 instanceof CheckUsageError ? EXIT_CHECK_USAGE : error2 instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
     }
   });
 }

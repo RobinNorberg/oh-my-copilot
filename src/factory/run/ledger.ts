@@ -116,6 +116,11 @@ export class EngineLedger {
     return Object.prototype.hasOwnProperty.call(this.data.files, resolve(path));
   }
 
+  /** Every path the engine recorded a write of (resolved). */
+  trackedPaths(): string[] {
+    return Object.keys(this.data.files);
+  }
+
   /** The content of the engine's last write of `path` (null: absent; undefined: not tracked). */
   recorded(path: string): string | null | undefined {
     return this.data.files[resolve(path)]?.content;

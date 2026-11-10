@@ -33,7 +33,7 @@
  */
 import { createHash } from 'crypto';
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync, unlinkSync } from 'fs';
-import { isAbsolute, join, normalize, resolve } from 'path';
+import { basename, isAbsolute, join, normalize, resolve } from 'path';
 import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { repoIdentity } from '../../ship/config.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
@@ -159,8 +159,16 @@ function runPhase(root, key, ledgerDir) {
     catch {
         return unreadable('its engine ledger is unreadable');
     }
-    if (bytes === null)
-        return typeof ledger.recorded(path) === 'string' ? unreadable('it is gone, though its engine wrote it') : { phase: null };
+    if (bytes === null) {
+        if (typeof ledger.recorded(path) === 'string')
+            return unreadable('it is gone, though its engine wrote it');
+        // L2: the engine recorded this run's state under another path (its state root moved, e.g. a changed origin with OMC_STATE_DIR).
+        const name = basename(path);
+        // L3: only a LIVE record counts (a deleted state, recorded null, is a cleaned run, not a moved one).
+        if (!ledger.tracks(path) && ledger.trackedPaths().some((p) => basename(p) === name && typeof ledger.recorded(p) === 'string'))
+            return unreadable('its state path moved: its engine wrote it elsewhere');
+        return { phase: null };
+    }
     if (!ledger.matches(path, bytes))
         return unreadable('it is not the one its engine wrote');
     try {
@@ -282,15 +290,18 @@ export function acquireFactoryClaim(ledgerDir, repoUrl, root, key, now, deps = d
     };
 }
 /**
- * The engine's end of a run: a terminal phase or a run that never started
- * (no state) releases the claim; any other phase parks it, and so does a
- * state that cannot be read (`phase` throws), which may hide a run in flight.
+ * The engine's end of a run in `root`: a terminal phase or a run that never
+ * started (no state) releases the claim; any other phase parks it. The phase
+ * counts only as the engine sealed it (runPhase: its ledger entry under
+ * `ledgerDir` matches and the integrity seal holds), so a lane that wrote a
+ * terminal phase after the engine's last write never frees it (L3); a state
+ * that cannot be read or told parks it too: it may hide a run in flight.
  */
-export function settleFactoryClaim(claim, phase, at) {
+export function settleFactoryClaim(claim, root, key, ledgerDir, at) {
     let terminal = false;
     try {
-        const p = phase();
-        terminal = p === null || TERMINAL_FACTORY_PHASES.includes(p);
+        const p = runPhase(root, key, ledgerDir);
+        terminal = !('unreadable' in p) && (p.phase === null || TERMINAL_FACTORY_PHASES.includes(p.phase));
     }
     catch { /* unreadable: parked, never released */ }
     if (terminal)

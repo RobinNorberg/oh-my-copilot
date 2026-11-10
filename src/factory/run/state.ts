@@ -19,7 +19,7 @@
  */
 
 import { createHash } from 'crypto';
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
+import { existsSync, lstatSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { hostname } from 'os';
 import { dirname, join, resolve } from 'path';
 import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
@@ -272,9 +272,12 @@ export const EXIT_BUSY = 6;
  * `omg factory run` exits EXIT_BUSY for it; nothing was touched.
  */
 export class FactoryBusyError extends FactoryStateError {
-  constructor(message: string) {
+  /** The holder's run key when a live owner file refused (`scan`: the poller's heal scan or base sync, or a read command's fetch). */
+  readonly holderRun?: string;
+  constructor(message: string, holderRun?: string) {
     super(message);
     this.name = 'FactoryBusyError';
+    if (holderRun !== undefined) this.holderRun = holderRun;
   }
 }
 
@@ -588,9 +591,14 @@ export function describeOwner(o: Partial<FactoryOwner>): string {
   return `${o.run === undefined ? 'run unknown' : ownerText(o.run)}, ${pid} on ${ownerText(o.hostname ?? 'unknown host')} since ${ownerText(o.startedAt ?? 'unknown')}${o.root ? ` in ${ownerText(o.root)}` : ''}`;
 }
 
-/** A held owner file: release() removes it while it is still this process's; relabel() rewrites its run field (`run --next` once it picked an item). */
+/**
+ * A held owner file: release() removes it while it is still this process's
+ * (false: the release failed, a warning naming the lock was printed, and the
+ * file stays until a retry or until this process exits); relabel() rewrites
+ * its run field (`run --next` once it picked an item).
+ */
 export interface HeldOwner {
-  release: () => void;
+  release: () => boolean;
   relabel: (run: string) => void;
   tookOver?: FactoryOwner;
 }
@@ -616,6 +624,58 @@ export function acquireFactoryRepoOwner(root: string, key: FactoryRunKey | 'next
   return claimOwner(factoryRepoOwnerPath(root), now, deps, (prior) => engineBusyMessage(prior, root, String(key)), { run: String(key), root: resolve(root) });
 }
 
+/** How long an engine-side start (run, heal run/approve/cancel, run reset, run clean, the poller's auto-start) waits for a `scan` holder before it is busy. */
+export const SCAN_WAIT_MS = 60_000; // must exceed FETCH_TIMEOUT_MS (factory/check/cli.ts)
+/** The poller's auto-start blocks the event loop while it waits, so it waits only this long for a `scan` holder. */
+export const AUTO_START_SCAN_WAIT_MS = 5_000;
+/** How long a read command waits for another `scan` holder before it reads without fetching. */
+export const READ_SCAN_WAIT_MS = 10_000;
+/** The holder is re-read this often while it is `scan`. */
+export const SCAN_POLL_MS = 500;
+
+/** The scan wait's sleep and clock; tests replace them (vi.spyOn). */
+export const scanWait = {
+  sleep: (ms: number): void => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); },
+  clock: (): number => Date.now(),
+};
+
+/**
+ * acquireFactoryRepoOwner that waits out a `scan` holder (the poller's heal
+ * scan or base sync, or a read command's fetch): the holder is re-read every
+ * SCAN_POLL_MS for at most `boundMs`, then the scan busy error (exit 6). Any
+ * other holder is busy at once.
+ */
+export function acquireFactoryRepoOwnerForRun(root: string, key: FactoryRunKey | 'next' | 'scan', now: () => string, deps: OwnerDeps = defaultOwnerDeps(), boundMs: number = SCAN_WAIT_MS): HeldOwner {
+  const start = scanWait.clock();
+  for (;;) {
+    try {
+      return acquireFactoryRepoOwner(root, key, now(), deps);
+    } catch (error) {
+      if (!(error instanceof FactoryBusyError) || error.holderRun !== 'scan') throw error;
+      const waited = scanWait.clock() - start;
+      if (waited >= boundMs) throw new FactoryBusyError(`${error.message} (waited ${Math.round(waited / 1000)} s)`, 'scan');
+      scanWait.sleep(Math.min(SCAN_POLL_MS, boundMs - waited));
+    }
+  }
+}
+
+/**
+ * The checkout's engine lock under key `scan`, for a step that fetches or
+ * moves refs without starting a run (the poller's heal tick and base sync,
+ * the read commands' base fetch, heal dry runs): the held lock, or the
+ * FactoryBusyError when an engine holds the checkout (`waitMs`: a `scan`
+ * holder is waited out that long first). Any other error (EACCES on the
+ * state dir, ...) throws: it is not "busy".
+ */
+export function tryScanLock(root: string, now: string, deps: OwnerDeps = defaultOwnerDeps(), waitMs = 0): HeldOwner | FactoryBusyError {
+  try {
+    return waitMs > 0 ? acquireFactoryRepoOwnerForRun(root, 'scan', () => now, deps, waitMs) : acquireFactoryRepoOwner(root, 'scan', now, deps);
+  } catch (error) {
+    if (error instanceof FactoryBusyError) return error;
+    throw error;
+  }
+}
+
 /**
  * True when the engine lock of `root` was taken from another folder (its
  * recorded `root`): that folder resolves to this checkout's state root (a
@@ -633,8 +693,9 @@ const engineBusyMessage = (prior: Partial<FactoryOwner>, root: string, key?: str
     ? '; WARNING: that engine runs in another folder that shares this checkout\'s state root (a linked worktree, or with OMC_STATE_DIR set a clone with the same folder name: parallel clones need distinct folder names)'
     : '');
 
-const engineBusyText = (prior: Partial<FactoryOwner>, key?: string): string =>
-  `another omg factory engine runs in this repository (${describeOwner(prior)}); one engine runs per checkout at a time${key === 'next' ? ', so run --next after it ends' : key === 'scan' ? ', so retry after it ends' : key ? `, so start ${ownerText(key)} after it ends` : ''} (parallel runs need separate clones)`;
+const engineBusyText = (prior: Partial<FactoryOwner>, key?: string): string => prior.run === 'scan'
+  ? `the poller's heal scan or base sync, or a factory read command's fetch, holds this checkout for a moment (${describeOwner(prior)}); retry`
+  : `another omg factory engine runs in this repository (${describeOwner(prior)}); one engine runs per checkout at a time${key === 'next' ? ', so run --next after it ends' : key === 'scan' ? ', so retry after it ends' : key ? `, so start ${ownerText(key)} after it ends` : ''} (parallel runs need separate clones)`;
 
 /** The one rule for an owner or claim file that does not parse: it is held (never taken over, never "not busy") until a human removes it. */
 export const unreadableOwnerMessage = (path: string): string =>
@@ -705,12 +766,35 @@ export function ownerHolding(path: string, deps: OwnerDeps = defaultOwnerDeps())
 export function withOwnerFileLock<T>(path: string, fn: () => T): T {
   const lock = lockPathFor(path);
   const handle = acquireFileLockSync(lock, { timeoutMs: 5_000 });
-  if (!handle) throw new FactoryBusyError(`another omg factory process holds the lock file ${lock}; retry in a moment`);
+  if (!handle) throw new FactoryBusyError(lockBusyMessage(lock));
   try {
     return fn();
   } finally {
     releaseFileLockSync(handle);
   }
+}
+
+/** file-lock's stale age: a lock file older than this whose pid is alive never goes stale. */
+const LOCK_STALE_MS = 30_000;
+
+/**
+ * Why an owner or claim file's lock could not be taken. An omg factory
+ * process holds it for milliseconds, so a directory at the lock path, or a
+ * lock file older than file-lock's stale age (its pid alive: maybe reused by
+ * an unrelated program), is stuck: it never goes stale, and the message
+ * names the path to remove. A younger one is transient.
+ */
+export function lockBusyMessage(lock: string, nowMs: number = Date.now()): string {
+  const remove = `if no omg factory process is running, remove ${lock}`;
+  let stat;
+  try {
+    stat = lstatSync(lock);
+  } catch {
+    return `another omg factory process held the lock file ${lock}; retry in a moment`;
+  }
+  if (stat.isDirectory()) return `the lock path ${lock} is a directory, so the lock can never be taken and never goes stale; ${remove}`;
+  if (nowMs - stat.mtimeMs >= LOCK_STALE_MS) return `the lock file ${lock} has been held for more than ${LOCK_STALE_MS / 1000} s by a live pid (maybe an unrelated program reusing it), so it does not go stale; ${remove}`;
+  return `another omg factory process holds the lock file ${lock}; retry in a moment (${remove})`;
 }
 
 /**
@@ -734,20 +818,25 @@ export function claimOwner(path: string, now: string, deps: OwnerDeps, busy: (pr
       }
       if (!isOwnerRecord(parsed)) throw new FactoryBusyError(unreadableOwnerMessage(path));
       prior = parsed;
-      if (ownerHolds(prior, deps)) throw new FactoryBusyError(busy(prior));
+      if (ownerHolds(prior, deps)) throw new FactoryBusyError(busy(prior), typeof prior.run === 'string' ? prior.run : undefined);
     }
     atomicWriteFileSync(path, record);
     return prior;
   });
-  const whileMine = (fn: (owner: FactoryOwner) => void) => {
+  const whileMine = (fn: (owner: FactoryOwner) => void): boolean => {
     try {
       withOwnerFileLock(path, () => {
         const owner: unknown = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null;
         if (isOwnerRecord(owner) && owner.pid === deps.pid && owner.hostname === deps.hostname) fn(owner);
       });
-    } catch { /* a stale owner file is taken over by the next run */ }
+      return true;
+    } catch (error) {
+      // L7: the file stays this process's until a retry, or until it exits (then the next taker finds the pid gone).
+      console.error(`omg factory: could not update the lock ${path} (${error instanceof Error ? error.message : String(error)}); it stays held by this process`);
+      return false;
+    }
   };
   const release = () => whileMine(() => unlinkSync(path));
-  const relabel = (run: string) => whileMine((owner) => atomicWriteFileSync(path, `${JSON.stringify({ ...owner, run })}\n`));
+  const relabel = (run: string): void => { whileMine((owner) => atomicWriteFileSync(path, `${JSON.stringify({ ...owner, run })}\n`)); };
   return { release, relabel, ...(tookOver ? { tookOver } : {}) };
 }

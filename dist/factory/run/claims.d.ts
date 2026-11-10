@@ -32,7 +32,7 @@
  * forge's pr-exists gate once the first clone pushed.
  */
 import { type Exec } from '../../ship/exec.js';
-import { type FactoryOwner, type FactoryPhase, type FactoryRunKey, type OwnerDeps } from './state.js';
+import { type FactoryOwner, type FactoryRunKey, type OwnerDeps } from './state.js';
 /**
  * The repository a claim is keyed on: the origin remote's URL (`git remote
  * get-url origin`, read-only, the same trusted origin the forge config is
@@ -94,11 +94,14 @@ export interface HeldClaim {
 /** Claim `key` of the repository for the engine in `root`; a held claim (factoryClaimHolder) refuses with a FactoryBusyError. */
 export declare function acquireFactoryClaim(ledgerDir: string, repoUrl: string, root: string, key: FactoryRunKey, now: string, deps?: OwnerDeps, platform?: NodeJS.Platform): HeldClaim;
 /**
- * The engine's end of a run: a terminal phase or a run that never started
- * (no state) releases the claim; any other phase parks it, and so does a
- * state that cannot be read (`phase` throws), which may hide a run in flight.
+ * The engine's end of a run in `root`: a terminal phase or a run that never
+ * started (no state) releases the claim; any other phase parks it. The phase
+ * counts only as the engine sealed it (runPhase: its ledger entry under
+ * `ledgerDir` matches and the integrity seal holds), so a lane that wrote a
+ * terminal phase after the engine's last write never frees it (L3); a state
+ * that cannot be read or told parks it too: it may hide a run in flight.
  */
-export declare function settleFactoryClaim(claim: HeldClaim, phase: () => FactoryPhase | null, at: string): 'released' | 'parked';
+export declare function settleFactoryClaim(claim: HeldClaim, root: string, key: FactoryRunKey, ledgerDir: string, at: string): 'released' | 'parked';
 /**
  * Delete the claim on `key` unless a live engine holds it (FactoryBusyError).
  * `onlyRoot`: only a claim of that checkout (run clean / reset); without it,

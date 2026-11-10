@@ -17,6 +17,8 @@ export interface ExecOptions {
      * guard permits only TRUSTED_READ_ENV, and only for git.
      */
     env?: Readonly<Record<string, string>>;
+    /** Kill the child after this many milliseconds (status 1, the error in stderr). */
+    timeoutMs?: number;
 }
 export type Exec = (cmd: string, args: string[], opts?: ExecOptions) => ExecResult;
 export declare class ShipSafetyError extends Error {
@@ -28,6 +30,15 @@ export declare class ShipSafetyError extends Error {
  * `git replace <blob> <evil>` in the shared object store cannot swap content.
  */
 export declare const TRUSTED_READ_ENV: Readonly<Record<string, string>>;
+/**
+ * The factory read commands' `git fetch origin <base>` (fetchBase): the
+ * trusted-read environment plus no credential prompt, so a fetch that holds
+ * the checkout's engine lock never waits on a human. The guards allow it on
+ * that one shape only (isTrustedFetch).
+ */
+export declare const TRUSTED_FETCH_ENV: Readonly<Record<string, string>>;
+/** `git fetch origin <branch>` with exactly TRUSTED_FETCH_ENV. */
+export declare function isTrustedFetch(base: string, args: string[], env: Readonly<Record<string, string>>): boolean;
 /**
  * The environment every engine child runs with: the parent's, minus the
  * variables above, plus GIT_NO_REPLACE_OBJECTS=1 (no command the engine runs,
@@ -50,7 +61,7 @@ export declare const PROTECTED_BRANCHES: readonly string[];
  * rebase, pull, forced or deleting pushes, pushes to PROTECTED_BRANCHES or
  * `extraProtected` (the run's base), worktree add/remove, reset, amend,
  * squash/rebase/auto merges, `gh api`, `gh -R` and any npm command never spawn.
- * `env` (ExecOptions.env) may only be TRUSTED_READ_ENV on a git command.
+ * `env` (ExecOptions.env) may only be TRUSTED_READ_ENV on a git command (TRUSTED_FETCH_ENV on `git fetch origin <branch>`).
  */
 export declare function assertSafeCommand(cmd: string, args: string[], extraProtected?: readonly string[], env?: Readonly<Record<string, string>>): void;
 /**

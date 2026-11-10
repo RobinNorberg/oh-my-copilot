@@ -58,6 +58,8 @@ export declare class EngineLedger {
     /** Load the sidecar for (root, issue), or start an empty one; a malformed sidecar is refused. */
     static open(dir: string, root: string, issue: FactoryRunKey): EngineLedger;
     tracks(path: string): boolean;
+    /** Every path the engine recorded a write of (resolved). */
+    trackedPaths(): string[];
     /** The content of the engine's last write of `path` (null: absent; undefined: not tracked). */
     recorded(path: string): string | null | undefined;
     /** Record the engine's write of `path` (null: the file must not exist) and persist the sidecar. */
