@@ -16,6 +16,7 @@ import { factoryForgeOptions } from '../forge-roots.js';
 import { resetFactoryRun, type FactoryResetOptions } from '../reset.js';
 import { factoryStatePath, FactoryBusyError, readFactoryState, requestFactoryCancel, updateFactoryState } from '../state.js';
 import { EngineLedger } from '../ledger.js';
+import { factoryClaimPath, LOCAL_CLAIM_PREFIX, LOCAL_SHALLOW_CLAIM_PREFIX } from '../claims.js';
 import { FakeLanes, gitIn } from './fake-lanes.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { LOCAL_ISSUE, localOpts, localWorld, type LocalWorld } from './engine-local-harness.js';
@@ -180,5 +181,30 @@ describe('F59: reset after a cancel mid-lane', () => {
     const done = resetFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, forge, mirror: w.config.repo.url, ledgerDir: w.ledgerDir, owner: OWNER, processState: () => 'live' });
     expect(done.removedWorktrees).toContain(worktree);
     expect(done.acknowledgedLanes).toBeUndefined();
+  });
+});
+
+describe('review 478c F1: reset never throws after the state was moved aside', () => {
+  it('a live claim of this checkout under another key is reported as kept, not thrown; another checkout\'s live claim is skipped', async () => {
+    w = localWorld();
+    const lanes = new FakeLanes(w.root, [() => ({ finalText: 'never read' })], [2]);
+    lanes.onRunningPoll = () => requestFactoryCancel(w.root, LOCAL_ISSUE, new Date().toISOString());
+    const out = await runFactoryEngine(localOpts(w, lanes));
+    expect(out.phase, out.message).toBe('cancelled');
+    const liveFor = (root: string) => JSON.stringify({ pid: 1, hostname: 'another-host', startedAt: '2026-11-10T00:00:00.000Z', run: String(LOCAL_ISSUE), root });
+    const mine = factoryClaimPath(w.ledgerDir, `${LOCAL_CLAIM_PREFIX}${'a'.repeat(40)}`, w.root, LOCAL_ISSUE);
+    const theirs = factoryClaimPath(w.ledgerDir, 'https://github.com/someone/else', join(w.dir, 'else'), LOCAL_ISSUE);
+    for (const [path, root] of [[mine, w.root], [theirs, join(w.dir, 'else')]] as const) {
+      mkdirSync(join(path, '..'), { recursive: true });
+      writeFileSync(path, liveFor(root));
+    }
+    const forge = createForge(w.exec, w.root, w.config, { ...factoryForgeOptions(w.root), stateDir: w.stateDir, local: { omgRoot: getOmcRoot(w.root) } });
+    const reset = resetFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, forge, mirror: w.config.repo.url, ledgerDir: w.ledgerDir, owner: OWNER, claimRepo: `${LOCAL_SHALLOW_CLAIM_PREFIX}${'b'.repeat(40)}` });
+    expect(reset.stateMovedTo).toMatch(/\.reset-/);
+    expect(readFactoryState(w.root, LOCAL_ISSUE)).toBeNull();
+    expect(reset.claimKept).toMatch(/claimed by a live engine/);
+    expect(reset.claimKept).toContain(mine);
+    expect(existsSync(mine)).toBe(true);
+    expect(existsSync(theirs)).toBe(true);
   });
 });
