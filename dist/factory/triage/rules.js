@@ -99,6 +99,11 @@ export function planItem(item, result, kind, cfg) {
             why.push(`priority: the frontmatter priority ${item.priority} is above ${PRIORITY_LABELS.length}; the priority labels are left alone`);
         }
     }
+    else if (kind === 'local' && item.priority !== undefined) {
+        // A frontmatter priority that is no positive integer (the backlog parser refuses one; a hand-built item may not):
+        // it is no source to rank by, and a label next to it would read as a second priority, so nothing changes.
+        why.push(`priority: the frontmatter priority ${JSON.stringify(item.priority)} is not a positive integer; the priority labels are left alone`);
+    }
     else if (effective !== null) {
         if (effective <= PRIORITY_LABELS.length) {
             const name = PRIORITY_LABELS[effective - 1];

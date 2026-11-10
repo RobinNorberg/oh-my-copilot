@@ -15,8 +15,11 @@
  * given up so the tree goes too; committed work is still kept. It refuses
  * (busy) while a lane's Copilot child may still run in its worktree (the
  * cancel was not confirmed or failed and the recorded child is not known
- * gone), and a reset (`keepTamperEvidence`) keeps a worktree whose lane note
- * records tamper problems; an explicit `clean --discard` removes it.
+ * gone by pid and start identity) unless the human confirms the stop
+ * (`laneStopped`, recorded in the run history; a child seen alive with its
+ * identity still refuses), and a reset (`keepTamperEvidence`) keeps a
+ * worktree whose lane note records tamper problems; an explicit
+ * `clean --discard` removes it.
  */
 import { type Exec } from '../../ship/exec.js';
 import { type FactoryRunState, type OwnerDeps } from './state.js';
@@ -30,6 +33,8 @@ export interface FactoryCleanResult {
     }>;
     /** Commits whose history counted as kept: the fetched base and the PR branch on the run's remote. */
     contained: string[];
+    /** Lanes whose stop a human confirmed with --lane-stopped (recorded in the run history). */
+    acknowledged?: string[];
 }
 export interface FactoryCleanOptions {
     root: string;
@@ -46,9 +51,26 @@ export interface FactoryCleanOptions {
     discard?: boolean;
     /** With discard (reset): keep a worktree whose lane note records tamper problems. */
     keepTamperEvidence?: boolean;
-    /** Whether a recorded lane child pid still runs (default: isProcessAlive). */
-    processAlive?: (pid: number) => boolean;
+    /** Whether a recorded lane child still runs, by pid and start identity (default: laneProcessState). */
+    processState?: (p: LaneProcessRecord) => LaneProcessState;
+    /**
+     * With discard: the human's word that the Copilot child of every lane whose
+     * stop was not confirmed has stopped (`--lane-stopped`); recorded in the run
+     * history. A child seen alive with its recorded start identity still refuses.
+     */
+    laneStopped?: boolean;
+    /** The command a refusal tells the human to rerun (default: `omg factory run clean <issue> --discard`). */
+    rerun?: string;
 }
+export type LaneProcessRecord = NonNullable<FactoryRunState['lanes'][number]['process']>;
+export type LaneProcessState = 'live' | 'dead' | 'mismatch' | 'unknown';
+/**
+ * The recorded child's state, as the engine's (defaultLaneProcessOps) but
+ * synchronous: a dead pid is dead, a live pid whose start identity differs is
+ * another process (mismatch, so gone), and a live pid with no identity to
+ * compare is unknown.
+ */
+export declare function laneProcessState(p: LaneProcessRecord): LaneProcessState;
 export declare function cleanFactoryRun(o: FactoryCleanOptions): FactoryCleanResult;
 /**
  * The body of cleanFactoryRun for a caller that already holds this

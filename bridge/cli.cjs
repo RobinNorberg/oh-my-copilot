@@ -124377,6 +124377,9 @@ function syncLocalMirror(exec3, root2, mirror, base, onBase) {
     const pushed = git7(mirrorPushArgs(local, base));
     if (pushed.status !== 0) {
       const detail = (pushed.stderr || pushed.stdout).trim().split("\n")[0];
+      if (/shallow update not allowed/i.test(pushed.stderr)) {
+        throw new Error(`this checkout is a shallow clone and the local forge mirror takes no shallow history, so ${base} cannot be synced to it; git fetch --unshallow (or a full clone), then rerun (${detail})`);
+      }
       throw new Error(/non-fast-forward|fetch first|rejected/i.test(pushed.stderr) ? `the local forge mirror's ${base} is not an ancestor of your ${base} (it was rewritten or reset); the mirror syncs fast-forward only. Restore ${base}, or move the mirror ${mirror} aside to start a new one (${detail})` : `syncing ${base} to the local forge mirror failed: ${detail}`);
     }
   }
@@ -124711,7 +124714,7 @@ function shapeProblem2(s) {
   if (!Array.isArray(s.lanes) || !s.lanes.every((l) => {
     const x = l;
     const sbx = x?.sandbox;
-    return isStr2(x?.id) && isStr2(x.kind) && isStr2(x.status) && isStr2(x.startSha) && typeof x.maxCredits === "number" && (sbx === void 0 || typeof sbx === "object" && sbx !== null && isStr2(sbx.mode) && isCount3(sbx.unsandboxedCalls) && (sbx.writeNetwork === void 0 || sbx.writeNetwork === "none" || sbx.writeNetwork === "registry"));
+    return isStr2(x?.id) && isStr2(x.kind) && isStr2(x.status) && isStr2(x.startSha) && typeof x.maxCredits === "number" && (x.stopUnconfirmed === void 0 || typeof x.stopUnconfirmed === "boolean") && (sbx === void 0 || typeof sbx === "object" && sbx !== null && isStr2(sbx.mode) && isCount3(sbx.unsandboxedCalls) && (sbx.writeNetwork === void 0 || sbx.writeNetwork === "none" || sbx.writeNetwork === "registry"));
   })) return "lanes";
   if (typeof s.retries !== "object" || s.retries === null || !Object.values(s.retries).every(isCount3)) return "retries";
   if (typeof s.lostStreak !== "object" || s.lostStreak === null) return "lostStreak";
@@ -125069,6 +125072,9 @@ function factoryClaimRepo(exec3, root2) {
     return null;
   }
 }
+function shallowClaimWarning(root2, repo) {
+  return `omg factory: ${root2} is a shallow clone, so its claims are keyed ${repo} and shared with no other clone (another clone may run the same item); optional: git fetch --unshallow gives it the shared key`;
+}
 function localFactoryClaimRepo(exec3, root2) {
   let shallow = false;
   try {
@@ -125076,13 +125082,10 @@ function localFactoryClaimRepo(exec3, root2) {
   } catch (error2) {
     if (error2 instanceof FactorySafetyError) throw error2;
   }
-  if (shallow) {
-    throw new FactoryStateError(`${root2} is a shallow clone: the local forge keys its cross-clone claims on the root commit, which a shallow history does not have (git fetch --unshallow, then rerun)`);
-  }
   try {
     const got = exec3("git", ["rev-list", "--max-parents=0", "HEAD"], { cwd: root2, env: TRUSTED_READ_ENV });
     const roots = got.status === 0 ? got.stdout.split(/\s+/).filter((l) => HEX4010.test(l)).sort() : [];
-    return roots.length > 0 ? `${LOCAL_CLAIM_PREFIX}${roots[0]}` : null;
+    return roots.length > 0 ? `${shallow ? LOCAL_SHALLOW_CLAIM_PREFIX : LOCAL_CLAIM_PREFIX}${roots[0]}` : null;
   } catch (error2) {
     if (error2 instanceof FactorySafetyError) throw error2;
     return null;
@@ -125104,8 +125107,7 @@ function canonicalPath3(path30, platform) {
   return platform === "win32" || platform === "darwin" ? slashed.toLowerCase() : slashed;
 }
 function claimRepoKey(repoUrl, root2, platform = process.platform) {
-  const local = repoUrl.startsWith(LOCAL_CLAIM_PREFIX) && HEX4010.test(repoUrl.slice(LOCAL_CLAIM_PREFIX.length));
-  const id = local ? repoUrl : repoIdentity(repoUrl);
+  const id = isLocalClaimRepo(repoUrl) ? repoUrl : repoIdentity(repoUrl);
   let key = id;
   if (id.startsWith("gh:")) {
     const [host, ...rest] = id.slice(3).split("/");
@@ -125258,7 +125260,22 @@ function settleFactoryClaim(claim, root2, key, ledgerDir, at) {
   return terminal ? "released" : "parked";
 }
 function removeFactoryClaim(ledgerDir, repoUrl, root2, key, o = {}) {
-  const path30 = factoryClaimPath(ledgerDir, repoUrl, root2, key);
+  const own2 = removeClaimFile(factoryClaimPath(ledgerDir, repoUrl, root2, key), root2, key, o);
+  if (!isShallowClaimRepo(repoUrl)) return own2;
+  let dirs = [];
+  try {
+    dirs = (0, import_fs158.readdirSync)((0, import_path185.join)(ledgerDir, "claims")).sort();
+  } catch {
+  }
+  let found = own2;
+  for (const dir of dirs) {
+    const path30 = (0, import_path185.join)(ledgerDir, "claims", dir, `run-${key}.owner`);
+    if (path30 === factoryClaimPath(ledgerDir, repoUrl, root2, key)) continue;
+    found = removeClaimFile(path30, root2, key, { ...o, onlyRoot: true }) ?? found;
+  }
+  return found;
+}
+function removeClaimFile(path30, root2, key, o) {
   if (!(0, import_fs158.existsSync)(path30)) return null;
   const deps = o.deps ?? defaultOwnerDeps();
   const platform = o.platform ?? process.platform;
@@ -125316,7 +125333,7 @@ function listFactoryClaims(ledgerDir, repoUrl, root2, deps = defaultOwnerDeps(),
   }
   return listed2;
 }
-var import_crypto50, import_fs158, import_path185, LOCAL_CLAIM_PREFIX, HEX4010, GITHUB_ALIASES, isClaimRecord, SHARED_STATE_WARNING, CLAIM_FILE;
+var import_crypto50, import_fs158, import_path185, LOCAL_CLAIM_PREFIX, LOCAL_SHALLOW_CLAIM_PREFIX, HEX4010, isLocalClaimRepo, isShallowClaimRepo, GITHUB_ALIASES, isClaimRecord, SHARED_STATE_WARNING, CLAIM_FILE;
 var init_claims = __esm({
   "src/factory/run/claims.ts"() {
     "use strict";
@@ -125330,7 +125347,10 @@ var init_claims = __esm({
     init_ledger2();
     init_state6();
     LOCAL_CLAIM_PREFIX = "local-root:";
+    LOCAL_SHALLOW_CLAIM_PREFIX = "local-shallow:";
     HEX4010 = /^[0-9a-f]{40}$/;
+    isLocalClaimRepo = (repo) => [LOCAL_CLAIM_PREFIX, LOCAL_SHALLOW_CLAIM_PREFIX].some((p) => repo.startsWith(p) && HEX4010.test(repo.slice(p.length)));
+    isShallowClaimRepo = (repo) => isLocalClaimRepo(repo) && repo.startsWith(LOCAL_SHALLOW_CLAIM_PREFIX);
     GITHUB_ALIASES = /* @__PURE__ */ new Set(["ssh.github.com", "www.github.com"]);
     isClaimRecord = (v) => typeof v === "object" && v !== null && typeof v.hostname === "string" && typeof v.run === "string" && typeof v.root === "string" && (v.pid === void 0 ? typeof v.parkedAt === "string" : isOwnerRecord(v));
     SHARED_STATE_WARNING = "WARNING: that checkout shares this checkout's state root (with OMC_STATE_DIR set, parallel clones need distinct folder names)";
@@ -125339,11 +125359,27 @@ var init_claims = __esm({
 });
 
 // src/factory/run/clean.ts
-function laneMayRun(lane, alive) {
-  if (lane.status === "running") return "it is still recorded as running";
-  if (!UNCONFIRMED_NOTE.test(lane.note ?? "")) return null;
-  if (!lane.process) return `its stop was not confirmed (${lane.note}) and no pid of its Copilot child was recorded`;
-  return alive(lane.process.pid) ? `its stop was not confirmed (${lane.note}) and its Copilot child pid ${lane.process.pid} still runs` : null;
+function laneProcessState(p) {
+  if (!isProcessAlive(p.pid)) return "dead";
+  if (!p.identity) return "unknown";
+  const expected = p.identity.startsWith("dmtf:") ? dmtfCreationDateToTicks(p.identity.slice("dmtf:".length)) : p.identity;
+  if (!expected) return "unknown";
+  const current = getProcessStartIdentitySync(p.pid);
+  if (current === null) return isProcessAlive(p.pid) ? "unknown" : "dead";
+  return current === expected ? "live" : "mismatch";
+}
+function stopUnconfirmed(lane) {
+  if (lane.status === "running") return true;
+  return lane.stopUnconfirmed ?? UNCONFIRMED_NOTE.test(lane.note ?? "");
+}
+function laneMayRun(lane, state) {
+  if (!stopUnconfirmed(lane)) return null;
+  const what = lane.status === "running" ? "it is still recorded as running" : `its stop was not confirmed (${lane.note ?? "no note"})`;
+  if (!lane.process) return { why: `${what} and no pid of its Copilot child was recorded`, live: false };
+  const st = state(lane.process);
+  if (st === "dead" || st === "mismatch") return null;
+  if (st === "live") return { why: `${what} and its Copilot child pid ${lane.process.pid} still runs (its start identity matches)`, live: true };
+  return { why: `${what} and whether its Copilot child pid ${lane.process.pid} still runs cannot be told (no start identity to compare)`, live: false };
 }
 function cleanFactoryRun(o) {
   const state = readFactoryState(o.root, o.issue);
@@ -125370,15 +125406,46 @@ function cleanFactoryRun(o) {
   }
 }
 function cleanHeldFactoryRun(o, state) {
+  const acknowledged = [];
   if (o.discard) {
-    const alive = o.processAlive ?? isProcessAlive;
+    const processState = o.processState ?? laneProcessState;
+    const rerun = o.rerun ?? `omg factory run clean ${o.issue} --discard`;
     const busy = state.lanes.flatMap((l) => {
-      if (!l.jobId || !(0, import_fs159.existsSync)(getWorktreePath(o.root, WORKTREE_TEAM, l.jobId))) return [];
-      const why = laneMayRun(l, alive);
-      return why ? [`lane ${l.id} (${l.jobId}): ${why}`] : [];
+      const worktree = l.jobId ? getWorktreePath(o.root, WORKTREE_TEAM, l.jobId) : "";
+      if (!l.jobId || !(0, import_fs159.existsSync)(worktree)) return [];
+      const may = laneMayRun(l, processState);
+      return may ? [{ lane: l, worktree, ...may }] : [];
     });
+    const live = busy.filter((b) => b.live);
+    if (busy.length > 0 && (live.length > 0 || !o.laneStopped)) {
+      const lines4 = busy.map((b) => {
+        const look = b.lane.process ? `stop its Copilot process pid ${b.lane.process.pid}${b.live ? "" : " if it still runs"}` : `look for Copilot CLI processes whose command line names its worktree ${b.worktree} and stop them`;
+        return `lane ${b.lane.id} (${b.lane.jobId}): ${b.why}; ${look}`;
+      });
+      const next = live.length > 0 ? `once it is stopped, rerun ${rerun}${live.length < busy.length ? " --lane-stopped" : ""} (a child seen alive with its start identity always refuses)` : `once it is stopped, rerun ${rerun} --lane-stopped (your word that it stopped; recorded in the run history)`;
+      throw new FactoryBusyError(`the cancelled run for issue #${o.issue} has a lane whose stop was not confirmed, so no worktree is discarded: ${lines4.join("; ")}; ${next}`);
+    }
     if (busy.length > 0) {
-      throw new FactoryBusyError(`the cancelled run for issue #${o.issue} has a lane that may still run, so no worktree is discarded: ${busy.join("; ")}; stop that Copilot process, then rerun`);
+      const at = o.now ?? (/* @__PURE__ */ new Date()).toISOString();
+      const ledger = EngineLedger.open(o.ledgerDir ?? defaultLedgerDir(), o.root, o.issue);
+      const ids2 = new Map(busy.map((b) => [b.lane.id, b.why]));
+      updateFactoryState(o.root, o.issue, (cur) => {
+        const s = cur ?? state;
+        return {
+          ...s,
+          updatedAt: at,
+          lanes: s.lanes.map((l) => ids2.has(l.id) ? { ...l, stopUnconfirmed: false, note: `the stop was confirmed by a human (--lane-stopped, ${at})` } : l),
+          history: [...s.history, ...busy.map((b) => ({ at, from: s.phase, to: s.phase, note: `lane ${b.lane.id} (${b.lane.jobId}): --lane-stopped: a human confirmed that its Copilot child stopped (${ids2.get(b.lane.id)})` }))]
+        };
+      }, {
+        verify: (bytes) => {
+          if (!ledger.matches(factoryStatePath(o.root, o.issue), bytes)) {
+            throw new FactoryStateError(`the factory run state for issue #${o.issue} is not the engine's last write (${ledger.file}); --lane-stopped is not recorded and nothing is discarded`);
+          }
+        },
+        onWrite: (path30, content2) => ledger.record(path30, content2)
+      });
+      acknowledged.push(...busy.map((b) => b.lane.id));
     }
   }
   if (o.claimRepo) removeFactoryClaim(o.ledgerDir ?? defaultLedgerDir(), o.claimRepo, o.root, o.issue, { onlyRoot: true, ...o.owner ? { deps: o.owner } : {} });
@@ -125399,7 +125466,7 @@ function cleanHeldFactoryRun(o, state) {
     ...[...new Set(state.lanes.map((l) => l.jobId).filter((id) => Boolean(id)))].map((id) => [WORKTREE_TEAM, id]),
     [FACTORY_CHECKOUT_TEAM, checkoutWorker(o.issue)]
   ];
-  const result = { removed: [], kept: [], contained };
+  const result = { removed: [], kept: [], contained, ...acknowledged.length > 0 ? { acknowledged } : {} };
   const tamperedJobs = new Set(o.keepTamperEvidence ? state.lanes.filter((l) => l.jobId && TAMPER_NOTE.test(l.note ?? "")).map((l) => l.jobId) : []);
   for (const [team, worker] of targets) {
     const path30 = getWorktreePath(o.root, team, worker);
@@ -125518,10 +125585,29 @@ function resetFactoryRun(o) {
     ].filter((p) => (0, import_fs160.existsSync)(p));
     const result = {};
     if (worktrees().length > 0) {
-      const cleaned = cleanHeldFactoryRun({ root: o.root, issue: o.issue, exec: o.exec, ledgerDir, discard: true, keepTamperEvidence: true, ...o.owner ? { owner: o.owner } : {}, ...o.processAlive ? { processAlive: o.processAlive } : {} }, state);
+      const cleaned = cleanHeldFactoryRun({
+        root: o.root,
+        issue: o.issue,
+        exec: o.exec,
+        ledgerDir,
+        now: now2,
+        discard: true,
+        keepTamperEvidence: true,
+        rerun: `omg factory run reset ${o.issue}`,
+        ...o.owner ? { owner: o.owner } : {},
+        ...o.processState ? { processState: o.processState } : {},
+        ...o.laneStopped ? { laneStopped: true } : {}
+      }, state);
       if (cleaned.removed.length > 0) result.removedWorktrees = cleaned.removed;
+      if (cleaned.acknowledged) result.acknowledgedLanes = cleaned.acknowledged;
       if (cleaned.kept.length > 0) {
-        throw new FactoryStateError(`the cancelled run for issue #${o.issue} still has worktrees that hold work: ${cleaned.kept.map((k) => `${k.worktree} (${k.reason})`).join("; ")}; nothing was reset (reset gives up uncommitted lane changes, never commits that no base or mirror branch holds)`);
+        const tamper = cleaned.kept.filter((k) => k.reason.startsWith("tamper_evidence"));
+        const work = cleaned.kept.filter((k) => !k.reason.startsWith("tamper_evidence"));
+        const parts = [
+          ...work.length > 0 ? [`worktrees that hold unpushed commits or other work: ${work.map((k) => `${k.worktree} (${k.reason})`).join("; ")} (reset gives up uncommitted lane changes, never commits that no base or mirror branch holds)`] : [],
+          ...tamper.length > 0 ? [`worktrees kept as tamper evidence: ${tamper.map((k) => `${k.worktree} (${k.reason})`).join("; ")}`] : []
+        ];
+        throw new FactoryStateError(`the cancelled run for issue #${o.issue} still has ${parts.join("; and ")}; nothing was reset`);
       }
     }
     const left = worktrees();
@@ -129724,7 +129810,10 @@ function humanFeedbackDigest(fb) {
   return (0, import_crypto53.createHash)("sha256").update(JSON.stringify({ threads, requests })).digest("hex");
 }
 function engineClaimRepo(o, read) {
-  return o.claimRepo !== void 0 ? o.claimRepo : read(o.forge?.config.kind === "local");
+  if (o.claimRepo !== void 0) return o.claimRepo;
+  const repo = read(o.forge?.config.kind === "local");
+  if (repo && isShallowClaimRepo(repo)) o.warn?.(shallowClaimWarning(o.root, repo));
+  return repo;
 }
 function busyHolder(o, key) {
   const deps = o.owner ?? defaultOwnerDeps();
@@ -130628,7 +130717,14 @@ var init_engine = __esm({
         this.save((s) => moveTo({
           ...s,
           cancelRequested: true,
-          lanes: s.lanes.map((l) => l.status === "running" ? { ...l, status: "cancelled", endedAt: at, ...usage.has(l.id) ? { usage: usage.get(l.id) } : {}, ...unconfirmed.has(l.id) ? { note: "cancelled; the cancel was not confirmed, so the lane may still run" } : {} } : l)
+          // A confirmed stop replaces a stale "not confirmed" note (the wall-time path leaves one on a running lane).
+          lanes: s.lanes.map((l) => l.status === "running" ? {
+            ...l,
+            status: "cancelled",
+            endedAt: at,
+            ...usage.has(l.id) ? { usage: usage.get(l.id) } : {},
+            ...unconfirmed.has(l.id) ? { note: "cancelled; the cancel was not confirmed, so the lane may still run", stopUnconfirmed: true } : { stopUnconfirmed: false, ...l.note && /not confirmed|may still run/.test(l.note) ? { note: "cancelled; the stop was confirmed" } : {} }
+          } : l)
         }, "cancelled", why, at));
         if (this.state.pr) {
           const local = this.forge?.kind === "local" && this.forge.reviews.closePr !== void 0;
@@ -135495,6 +135591,8 @@ function planItem(item, result, kind, cfg) {
     } else {
       why.push(`priority: the frontmatter priority ${item.priority} is above ${PRIORITY_LABELS2.length}; the priority labels are left alone`);
     }
+  } else if (kind === "local" && item.priority !== void 0) {
+    why.push(`priority: the frontmatter priority ${JSON.stringify(item.priority)} is not a positive integer; the priority labels are left alone`);
   } else if (effective !== null) {
     if (effective <= PRIORITY_LABELS2.length) {
       const name = PRIORITY_LABELS2[effective - 1];
@@ -138666,10 +138764,22 @@ function readOnlyForgeKind(deps, root2, base) {
     return void 0;
   }
 }
-function cliClaimRepo(deps, root2, kind, dryRun2 = false) {
+function cliClaimRepo(deps, root2, kind, dryRun2 = false, warn = shallowWarnOnce()) {
   const ledgerDir = deps.ledgerDir ?? defaultLedgerDir();
-  if (kind === "local") return dryRun2 ? localFactoryClaimRepo(factoryGuardExec(deps.exec), root2) : trustedLocalFactoryClaimRepo(deps.exec, root2, ledgerDir);
+  if (kind === "local") {
+    const repo = dryRun2 ? localFactoryClaimRepo(factoryGuardExec(deps.exec), root2) : trustedLocalFactoryClaimRepo(deps.exec, root2, ledgerDir);
+    if (repo && isShallowClaimRepo(repo)) warn(shallowClaimWarning(root2, repo));
+    return repo;
+  }
   return dryRun2 ? factoryClaimRepo(factoryGuardExec(deps.exec), root2) : trustedFactoryClaimRepo(deps.exec, root2, ledgerDir);
+}
+function shallowWarnOnce() {
+  let done = false;
+  return (m) => {
+    if (done) return;
+    done = true;
+    console.error(source_default.yellow(m));
+  };
 }
 function liveFactoryRuns(root2, ledgerDir, claimRepo) {
   const me = defaultOwnerDeps();
@@ -138725,11 +138835,12 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
     for (const w of warnings) console.error(source_default.yellow(w));
     const base = deps.base(root2);
     let claimRepo = null;
+    const warnShallow = shallowWarnOnce();
     let held;
     if (!o.dryRun) {
       held = acquireFactoryRepoOwnerForRun(root2, issue2 ?? "next", () => (/* @__PURE__ */ new Date()).toISOString());
       try {
-        claimRepo = cliClaimRepo(deps, root2, readOnlyForgeKind(deps, root2, base));
+        claimRepo = cliClaimRepo(deps, root2, readOnlyForgeKind(deps, root2, base), false, warnShallow);
       } catch (error2) {
         held.release();
         throw error2;
@@ -138749,7 +138860,7 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
     try {
       const loaded2 = deps.forge?.(root2, base, { dryRun: Boolean(o.dryRun) });
       for (const w of loaded2?.warnings ?? []) console.error(source_default.yellow(w));
-      claimRepo = cliClaimRepo(deps, root2, loaded2?.config.kind, Boolean(o.dryRun));
+      claimRepo = cliClaimRepo(deps, root2, loaded2?.config.kind, Boolean(o.dryRun), warnShallow);
       const forge = loaded2 ? { config: loaded2.config, options: factoryForgeOptions(root2) } : void 0;
       const skipped = [];
       let picked;
@@ -138812,7 +138923,7 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
     else console.log(source_default.green(`cancel requested for factory run #${issue2} (phase ${state.phase}); a running engine stops within seconds, otherwise the next run finishes the cancel`));
     return 0;
   }));
-  run2.command("clean <issue>").description("Remove the worktrees and local branches of a merged or cancelled run, only when nothing would be lost (the PR branch on GitHub is kept); busy (exit 6) while an engine runs in this checkout").option("--discard", "A cancelled run only: give up uncommitted lane changes (a cancel mid-lane leaves them), so those worktrees go too; commits are still kept").option("--json", "JSON output").action((issueRaw, o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
+  run2.command("clean <issue>").description("Remove the worktrees and local branches of a merged or cancelled run, only when nothing would be lost (the PR branch on GitHub is kept); busy (exit 6) while an engine runs in this checkout").option("--discard", "A cancelled run only: give up uncommitted lane changes (a cancel mid-lane leaves them), so those worktrees go too; commits are still kept").option("--lane-stopped", "With a lane whose stop was not confirmed (busy, exit 6): your word that its Copilot child has stopped; recorded in the run history. A child seen alive with its recorded start identity still refuses").option("--json", "JSON output").action((issueRaw, o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
     const issue2 = parseIssue(issueRaw);
     const root2 = factoryRoot(exec3);
     let kind;
@@ -138822,9 +138933,11 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
       kind = void 0;
     }
     const claimRepo = cliClaimRepo(deps, root2, kind ?? readOnlyForgeKind(deps, root2, deps.base(root2)));
-    const result = cleanFactoryRun({ root: root2, issue: issue2, exec: deps.exec, claimRepo, ...o.discard ? { discard: true } : {}, ...deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {} });
+    if (o.laneStopped && !o.discard) throw new FactoryUsageError("--lane-stopped applies to --discard");
+    const result = cleanFactoryRun({ root: root2, issue: issue2, exec: deps.exec, claimRepo, ...o.discard ? { discard: true } : {}, ...o.laneStopped ? { laneStopped: true } : {}, ...deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {} });
     if (c.optsWithGlobals().json) console.log(JSON.stringify({ ok: result.kept.length === 0, ...result }, null, 2));
     else {
+      for (const id of result.acknowledged ?? []) console.log(source_default.yellow(`lane ${id}: its stop is taken on your word (--lane-stopped), recorded in the run history`));
       for (const path30 of result.removed) console.log(source_default.green(`removed ${path30}`));
       for (const k of result.kept) console.log(source_default.yellow(`kept ${k.worktree}: ${k.reason}`));
       if (!o.discard && result.kept.some((k) => k.reason.startsWith("worktree_dirty")) && readFactoryState(root2, issue2)?.phase === "cancelled") {
@@ -138834,7 +138947,7 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
     }
     return result.kept.length === 0 ? 0 : EXIT_AWAITING_HUMAN;
   }));
-  run2.command("reset <issue>").description("Local forge only: start a cancelled run over: remove its worktrees (uncommitted lane changes are given up, commits kept), close its local PR, keep its mirror branch as factory/cancelled/..., move the run state aside; busy (exit 6) while an engine runs in this checkout or another clone claims the item").option("--json", "JSON output").action((issueRaw, _o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
+  run2.command("reset <issue>").description("Local forge only: start a cancelled run over: remove its worktrees (uncommitted lane changes are given up, commits kept), close its local PR, keep its mirror branch as factory/cancelled/..., move the run state aside; busy (exit 6) while an engine runs in this checkout or another clone claims the item").option("--json", "JSON output").option("--lane-stopped", "With a lane whose stop was not confirmed (busy, exit 6): your word that its Copilot child has stopped; recorded in the run history. A child seen alive with its recorded start identity still refuses").action((issueRaw, o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
     const issue2 = parseIssue(issueRaw);
     const root2 = factoryRoot(exec3);
     const held = acquireFactoryRepoOwnerForRun(root2, issue2, () => (/* @__PURE__ */ new Date()).toISOString());
@@ -138844,9 +138957,10 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
       const claimRepo = cliClaimRepo(deps, root2, loaded2.config.kind);
       const read = forgeReadExec(deps.exec, loaded2.config, root2);
       const forge = createForge(read.exec, root2, loaded2.config, { ...read.options, local: { omgRoot: getOmcRoot(root2) } });
-      const result = resetFactoryRun({ root: root2, issue: issue2, exec: deps.exec, forge, mirror: loaded2.config.repo.url, repoOwner: held, claimRepo, ...deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {} });
+      const result = resetFactoryRun({ root: root2, issue: issue2, exec: deps.exec, forge, mirror: loaded2.config.repo.url, repoOwner: held, claimRepo, ...o.laneStopped ? { laneStopped: true } : {}, ...deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {} });
       if (c.optsWithGlobals().json) console.log(JSON.stringify({ ok: true, ...result }, null, 2));
       else {
+        for (const id of result.acknowledgedLanes ?? []) console.log(source_default.yellow(`lane ${id}: its stop is taken on your word (--lane-stopped), recorded in the run history`));
         for (const path30 of result.removedWorktrees ?? []) console.log(source_default.green(`removed ${path30} (uncommitted lane changes given up)`));
         if (result.closedPr !== void 0) console.log(source_default.green(`closed local PR #${result.closedPr} (cancelled)`));
         if (result.keptBranch) console.log(source_default.green(`kept the run's branch as ${result.keptBranch} in the mirror`));

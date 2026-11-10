@@ -96,7 +96,7 @@ import { jobRefProblem } from '../../copilot-run/job.js';
 import { commitLaneWork, conflictFixStart, LANE_PROTECTED_PATHS, laneCommitMessage } from './lane-commit.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir } from './ledger.js';
 import { createFactoryProgress } from './progress.js';
-import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaimRepo, localFactoryClaimRepo, settleFactoryClaim, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo } from './claims.js';
+import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaimRepo, isShallowClaimRepo, localFactoryClaimRepo, shallowClaimWarning, settleFactoryClaim, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo } from './claims.js';
 import { compareSnapshots, snapshotRepo, verifyReviewWorktree } from './review-guard.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted } from './plan-rules.js';
@@ -1062,7 +1062,13 @@ class FactoryEngine {
         this.save((s) => moveTo({
             ...s,
             cancelRequested: true,
-            lanes: s.lanes.map((l) => (l.status === 'running' ? { ...l, status: 'cancelled', endedAt: at, ...(usage.has(l.id) ? { usage: usage.get(l.id) } : {}), ...(unconfirmed.has(l.id) ? { note: 'cancelled; the cancel was not confirmed, so the lane may still run' } : {}) } : l)),
+            // A confirmed stop replaces a stale "not confirmed" note (the wall-time path leaves one on a running lane).
+            lanes: s.lanes.map((l) => (l.status === 'running' ? {
+                ...l, status: 'cancelled', endedAt: at, ...(usage.has(l.id) ? { usage: usage.get(l.id) } : {}),
+                ...(unconfirmed.has(l.id)
+                    ? { note: 'cancelled; the cancel was not confirmed, so the lane may still run', stopUnconfirmed: true }
+                    : { stopUnconfirmed: false, ...(l.note && /not confirmed|may still run/.test(l.note) ? { note: 'cancelled; the stop was confirmed' } : {}) }),
+            } : l)),
         }, 'cancelled', why, at));
         if (this.state.pr) {
             // Offline nothing else ever closes the local PR, and an open one blocks the item for good (pr-exists; dogfood F38).
@@ -3416,10 +3422,16 @@ export function humanFeedbackDigest(fb) {
  * The repository the run's cross-clone claim is keyed on: the caller's (the
  * CLI read it before its loader), else read through `exec`: the origin URL,
  * or on the local forge (a mirror per checkout, and an offline run never
- * reads origin) the repository's root commit (dogfood F60).
+ * reads origin) the repository's root commit (dogfood F60); a shallow
+ * clone's own key is warned about once (shallowClaimWarning).
  */
 function engineClaimRepo(o, read) {
-    return o.claimRepo !== undefined ? o.claimRepo : read(o.forge?.config.kind === 'local');
+    if (o.claimRepo !== undefined)
+        return o.claimRepo;
+    const repo = read(o.forge?.config.kind === 'local');
+    if (repo && isShallowClaimRepo(repo))
+        o.warn?.(shallowClaimWarning(o.root, repo));
+    return repo;
 }
 function busyHolder(o, key) {
     const deps = o.owner ?? defaultOwnerDeps();

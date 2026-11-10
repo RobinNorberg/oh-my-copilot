@@ -46495,6 +46495,9 @@ function syncLocalMirror(exec, root, mirror, base, onBase) {
     const pushed = git3(mirrorPushArgs(local, base));
     if (pushed.status !== 0) {
       const detail = (pushed.stderr || pushed.stdout).trim().split("\n")[0];
+      if (/shallow update not allowed/i.test(pushed.stderr)) {
+        throw new Error(`this checkout is a shallow clone and the local forge mirror takes no shallow history, so ${base} cannot be synced to it; git fetch --unshallow (or a full clone), then rerun (${detail})`);
+      }
       throw new Error(/non-fast-forward|fetch first|rejected/i.test(pushed.stderr) ? `the local forge mirror's ${base} is not an ancestor of your ${base} (it was rewritten or reset); the mirror syncs fast-forward only. Restore ${base}, or move the mirror ${mirror} aside to start a new one (${detail})` : `syncing ${base} to the local forge mirror failed: ${detail}`);
     }
   }
@@ -46833,7 +46836,7 @@ function shapeProblem2(s) {
   if (!Array.isArray(s.lanes) || !s.lanes.every((l) => {
     const x = l;
     const sbx = x?.sandbox;
-    return isStr2(x?.id) && isStr2(x.kind) && isStr2(x.status) && isStr2(x.startSha) && typeof x.maxCredits === "number" && (sbx === void 0 || typeof sbx === "object" && sbx !== null && isStr2(sbx.mode) && isCount3(sbx.unsandboxedCalls) && (sbx.writeNetwork === void 0 || sbx.writeNetwork === "none" || sbx.writeNetwork === "registry"));
+    return isStr2(x?.id) && isStr2(x.kind) && isStr2(x.status) && isStr2(x.startSha) && typeof x.maxCredits === "number" && (x.stopUnconfirmed === void 0 || typeof x.stopUnconfirmed === "boolean") && (sbx === void 0 || typeof sbx === "object" && sbx !== null && isStr2(sbx.mode) && isCount3(sbx.unsandboxedCalls) && (sbx.writeNetwork === void 0 || sbx.writeNetwork === "none" || sbx.writeNetwork === "registry"));
   })) return "lanes";
   if (typeof s.retries !== "object" || s.retries === null || !Object.values(s.retries).every(isCount3)) return "retries";
   if (typeof s.lostStreak !== "object" || s.lostStreak === null) return "lostStreak";
@@ -47147,6 +47150,9 @@ function factoryClaimRepo(exec, root) {
     return null;
   }
 }
+function shallowClaimWarning(root, repo) {
+  return `omg factory: ${root} is a shallow clone, so its claims are keyed ${repo} and shared with no other clone (another clone may run the same item); optional: git fetch --unshallow gives it the shared key`;
+}
 function localFactoryClaimRepo(exec, root) {
   let shallow = false;
   try {
@@ -47154,13 +47160,10 @@ function localFactoryClaimRepo(exec, root) {
   } catch (error2) {
     if (error2 instanceof FactorySafetyError) throw error2;
   }
-  if (shallow) {
-    throw new FactoryStateError(`${root} is a shallow clone: the local forge keys its cross-clone claims on the root commit, which a shallow history does not have (git fetch --unshallow, then rerun)`);
-  }
   try {
     const got = exec("git", ["rev-list", "--max-parents=0", "HEAD"], { cwd: root, env: TRUSTED_READ_ENV });
     const roots = got.status === 0 ? got.stdout.split(/\s+/).filter((l) => HEX4010.test(l)).sort() : [];
-    return roots.length > 0 ? `${LOCAL_CLAIM_PREFIX}${roots[0]}` : null;
+    return roots.length > 0 ? `${shallow ? LOCAL_SHALLOW_CLAIM_PREFIX : LOCAL_CLAIM_PREFIX}${roots[0]}` : null;
   } catch (error2) {
     if (error2 instanceof FactorySafetyError) throw error2;
     return null;
@@ -47182,8 +47185,7 @@ function canonicalPath(path15, platform) {
   return platform === "win32" || platform === "darwin" ? slashed.toLowerCase() : slashed;
 }
 function claimRepoKey(repoUrl, root, platform = process.platform) {
-  const local = repoUrl.startsWith(LOCAL_CLAIM_PREFIX) && HEX4010.test(repoUrl.slice(LOCAL_CLAIM_PREFIX.length));
-  const id = local ? repoUrl : repoIdentity(repoUrl);
+  const id = isLocalClaimRepo(repoUrl) ? repoUrl : repoIdentity(repoUrl);
   let key = id;
   if (id.startsWith("gh:")) {
     const [host, ...rest] = id.slice(3).split("/");
@@ -47335,7 +47337,7 @@ function settleFactoryClaim(claim, root, key, ledgerDir, at) {
   else claim.park(at);
   return terminal ? "released" : "parked";
 }
-var import_crypto24, import_fs82, import_path99, LOCAL_CLAIM_PREFIX, HEX4010, GITHUB_ALIASES, isClaimRecord, SHARED_STATE_WARNING;
+var import_crypto24, import_fs82, import_path99, LOCAL_CLAIM_PREFIX, LOCAL_SHALLOW_CLAIM_PREFIX, HEX4010, isLocalClaimRepo, isShallowClaimRepo, GITHUB_ALIASES, isClaimRecord, SHARED_STATE_WARNING;
 var init_claims = __esm({
   "src/factory/run/claims.ts"() {
     "use strict";
@@ -47349,7 +47351,10 @@ var init_claims = __esm({
     init_ledger2();
     init_state5();
     LOCAL_CLAIM_PREFIX = "local-root:";
+    LOCAL_SHALLOW_CLAIM_PREFIX = "local-shallow:";
     HEX4010 = /^[0-9a-f]{40}$/;
+    isLocalClaimRepo = (repo) => [LOCAL_CLAIM_PREFIX, LOCAL_SHALLOW_CLAIM_PREFIX].some((p) => repo.startsWith(p) && HEX4010.test(repo.slice(p.length)));
+    isShallowClaimRepo = (repo) => isLocalClaimRepo(repo) && repo.startsWith(LOCAL_SHALLOW_CLAIM_PREFIX);
     GITHUB_ALIASES = /* @__PURE__ */ new Set(["ssh.github.com", "www.github.com"]);
     isClaimRecord = (v) => typeof v === "object" && v !== null && typeof v.hostname === "string" && typeof v.run === "string" && typeof v.root === "string" && (v.pid === void 0 ? typeof v.parkedAt === "string" : isOwnerRecord(v));
     SHARED_STATE_WARNING = "WARNING: that checkout shares this checkout's state root (with OMC_STATE_DIR set, parallel clones need distinct folder names)";
@@ -51248,7 +51253,10 @@ function humanFeedbackDigest(fb) {
   return (0, import_crypto27.createHash)("sha256").update(JSON.stringify({ threads, requests })).digest("hex");
 }
 function engineClaimRepo(o, read) {
-  return o.claimRepo !== void 0 ? o.claimRepo : read(o.forge?.config.kind === "local");
+  if (o.claimRepo !== void 0) return o.claimRepo;
+  const repo = read(o.forge?.config.kind === "local");
+  if (repo && isShallowClaimRepo(repo)) o.warn?.(shallowClaimWarning(o.root, repo));
+  return repo;
 }
 function busyHolder(o, key) {
   const deps = o.owner ?? defaultOwnerDeps();
@@ -52152,7 +52160,14 @@ var init_engine = __esm({
         this.save((s) => moveTo({
           ...s,
           cancelRequested: true,
-          lanes: s.lanes.map((l) => l.status === "running" ? { ...l, status: "cancelled", endedAt: at, ...usage.has(l.id) ? { usage: usage.get(l.id) } : {}, ...unconfirmed.has(l.id) ? { note: "cancelled; the cancel was not confirmed, so the lane may still run" } : {} } : l)
+          // A confirmed stop replaces a stale "not confirmed" note (the wall-time path leaves one on a running lane).
+          lanes: s.lanes.map((l) => l.status === "running" ? {
+            ...l,
+            status: "cancelled",
+            endedAt: at,
+            ...usage.has(l.id) ? { usage: usage.get(l.id) } : {},
+            ...unconfirmed.has(l.id) ? { note: "cancelled; the cancel was not confirmed, so the lane may still run", stopUnconfirmed: true } : { stopUnconfirmed: false, ...l.note && /not confirmed|may still run/.test(l.note) ? { note: "cancelled; the stop was confirmed" } : {} }
+          } : l)
         }, "cancelled", why, at));
         if (this.state.pr) {
           const local = this.forge?.kind === "local" && this.forge.reviews.closePr !== void 0;

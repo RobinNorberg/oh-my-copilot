@@ -41,7 +41,7 @@ import { repoIdentity } from '../../ship/config.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { FactorySafetyError, hardenedGitExec } from './exec.js';
 import { emptyHooksDir, EngineLedger } from './ledger.js';
-import { defaultOwnerDeps, describeOwner, FactoryBusyError, factoryStateDir, FactoryStateError, factoryStatePath, isOwnerRecord, ownerHolds, ownerRecord, ownerText, parseFactoryState, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, withOwnerFileLock, } from './state.js';
+import { defaultOwnerDeps, describeOwner, FactoryBusyError, factoryStateDir, factoryStatePath, isOwnerRecord, ownerHolds, ownerRecord, ownerText, parseFactoryState, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, withOwnerFileLock, } from './state.js';
 /**
  * The repository a claim is keyed on: the origin remote's URL (`git remote
  * get-url origin`, read-only, the same trusted origin the forge config is
@@ -64,7 +64,16 @@ export function factoryClaimRepo(exec, root) {
 }
 /** The claim key prefix of the local forge: `local-root:<root commit sha>`. */
 export const LOCAL_CLAIM_PREFIX = 'local-root:';
+/** A shallow clone's own local-forge claim key: `local-shallow:<root of its HEAD>` (its boundary commit). */
+export const LOCAL_SHALLOW_CLAIM_PREFIX = 'local-shallow:';
 const HEX40 = /^[0-9a-f]{40}$/;
+/** A local-forge key: a prefix and a commit sha, never a path. */
+const isLocalClaimRepo = (repo) => [LOCAL_CLAIM_PREFIX, LOCAL_SHALLOW_CLAIM_PREFIX].some((p) => repo.startsWith(p) && HEX40.test(repo.slice(p.length)));
+export const isShallowClaimRepo = (repo) => isLocalClaimRepo(repo) && repo.startsWith(LOCAL_SHALLOW_CLAIM_PREFIX);
+/** The one line a command prints when this checkout is a shallow clone on the local forge. */
+export function shallowClaimWarning(root, repo) {
+    return `omg factory: ${root} is a shallow clone, so its claims are keyed ${repo} and shared with no other clone (another clone may run the same item); optional: git fetch --unshallow gives it the shared key`;
+}
 /**
  * The local forge's claim repository (dogfood F60): its mirror and project id
  * are per checkout and it reads no origin, so two clones are one repository
@@ -73,8 +82,9 @@ const HEX40 = /^[0-9a-f]{40}$/;
  * HEADs have different root sets (one merged an unrelated history) get
  * different keys and do not share claims; a fork or template clone that
  * shares the root commit shares the key (a false busy, which `run release`
- * clears). A shallow clone is refused (FactoryStateError): its boundary
- * commits count as roots, so its key would differ from the full clones'.
+ * clears). A shallow clone's boundary commits count as roots, so it gets a
+ * key of its own, `local-shallow:<sha>`: it shares no claim with the full
+ * clones (shallowClaimWarning says so), and every command keeps working.
  */
 export function localFactoryClaimRepo(exec, root) {
     let shallow = false;
@@ -85,13 +95,10 @@ export function localFactoryClaimRepo(exec, root) {
         if (error instanceof FactorySafetyError)
             throw error;
     }
-    if (shallow) {
-        throw new FactoryStateError(`${root} is a shallow clone: the local forge keys its cross-clone claims on the root commit, which a shallow history does not have (git fetch --unshallow, then rerun)`);
-    }
     try {
         const got = exec('git', ['rev-list', '--max-parents=0', 'HEAD'], { cwd: root, env: TRUSTED_READ_ENV });
         const roots = got.status === 0 ? got.stdout.split(/\s+/).filter((l) => HEX40.test(l)).sort() : [];
-        return roots.length > 0 ? `${LOCAL_CLAIM_PREFIX}${roots[0]}` : null;
+        return roots.length > 0 ? `${shallow ? LOCAL_SHALLOW_CLAIM_PREFIX : LOCAL_CLAIM_PREFIX}${roots[0]}` : null;
     }
     catch (error) {
         if (error instanceof FactorySafetyError)
@@ -132,8 +139,7 @@ const GITHUB_ALIASES = new Set(['ssh.github.com', 'www.github.com']);
  */
 export function claimRepoKey(repoUrl, root, platform = process.platform) {
     // A local-forge key names a commit, not a path: never resolved against the checkout.
-    const local = repoUrl.startsWith(LOCAL_CLAIM_PREFIX) && HEX40.test(repoUrl.slice(LOCAL_CLAIM_PREFIX.length));
-    const id = local ? repoUrl : repoIdentity(repoUrl);
+    const id = isLocalClaimRepo(repoUrl) ? repoUrl : repoIdentity(repoUrl);
     let key = id;
     if (id.startsWith('gh:')) {
         const [host, ...rest] = id.slice(3).split('/');
@@ -362,7 +368,26 @@ export function settleFactoryClaim(claim, root, key, ledgerDir, at) {
  * the deleted path, or null when there was nothing to delete.
  */
 export function removeFactoryClaim(ledgerDir, repoUrl, root, key, o = {}) {
-    const path = factoryClaimPath(ledgerDir, repoUrl, root, key);
+    const own = removeClaimFile(factoryClaimPath(ledgerDir, repoUrl, root, key), root, key, o);
+    if (!isShallowClaimRepo(repoUrl))
+        return own;
+    // A shallow clone cannot compute the key a claim of this checkout was recorded under before (a full history, or
+    // an earlier depth): that claim, found by its recorded root, goes too, never another checkout's.
+    let dirs = [];
+    try {
+        dirs = readdirSync(join(ledgerDir, 'claims')).sort();
+    }
+    catch { /* no claims yet */ }
+    let found = own;
+    for (const dir of dirs) {
+        const path = join(ledgerDir, 'claims', dir, `run-${key}.owner`);
+        if (path === factoryClaimPath(ledgerDir, repoUrl, root, key))
+            continue;
+        found = removeClaimFile(path, root, key, { ...o, onlyRoot: true }) ?? found;
+    }
+    return found;
+}
+function removeClaimFile(path, root, key, o) {
     if (!existsSync(path))
         return null;
     const deps = o.deps ?? defaultOwnerDeps();
