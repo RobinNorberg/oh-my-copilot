@@ -504,7 +504,10 @@ function pinCheckoutGit(exec: Exec, pin: () => { workTree: string; gitDir: strin
     const p = pin();
     const git = cmd.replace(/\\/g, '/').split('/').pop()!.toLowerCase().replace(/\.exe$/, '') === 'git';
     if (!p || !git || !opts?.cwd || !sameFsPath(opts.cwd, p.workTree)) return exec(cmd, args, opts);
-    return exec(cmd, [`--git-dir=${p.gitDir}`, `--work-tree=${p.workTree}`, ...args], opts);
+    // After hardenedGitExec's leading `-c` pairs, so every engine git command still starts with them.
+    let at = 0;
+    while (args[at] === '-c' && at + 1 < args.length) at += 2;
+    return exec(cmd, [...args.slice(0, at), `--git-dir=${p.gitDir}`, `--work-tree=${p.workTree}`, ...args.slice(at)], opts);
   };
 }
 
