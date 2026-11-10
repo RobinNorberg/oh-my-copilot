@@ -95796,7 +95796,7 @@ function gitAllowed(a, protectedBranches) {
     case "config":
       return same(r, ["--get-regexp", "^merge\\..*\\.driver$"]);
     case "diff":
-      return same(r, ["--name-only", "--diff-filter=U"]) || same(r, ["--cached", "--quiet"]) || same(r, ["--cached", "--quiet", "--", "inventory"]) || r.length === 2 && r[0] === "--name-only" && /^[0-9a-f]{40}\.\.\.HEAD$/.test(r[1]) || r.length === 4 && r[0] === "--name-only" && r[1] === "--no-renames" && r[2] === "-z" && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[3]) || r.length === 5 && r[0] === "--name-only" && r[1] === "--no-renames" && r[2] === "-z" && HEX40.test(r[3]) && HEX40.test(r[4]);
+      return same(r, ["--name-only", "--diff-filter=U"]) || same(r, ["--cached", "--quiet"]) || same(r, ["--cached", "--quiet", "--", "inventory"]) || r.length === 3 && r[0] === "--name-only" && r[1] === "-z" && /^[0-9a-f]{40}\.\.\.HEAD$/.test(r[2]) || r.length === 4 && r[0] === "--name-only" && r[1] === "--no-renames" && r[2] === "-z" && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[3]) || r.length === 5 && r[0] === "--name-only" && r[1] === "--no-renames" && r[2] === "-z" && HEX40.test(r[3]) && HEX40.test(r[4]);
     case "checkout":
       return same(r, ["--theirs", "--", "inventory"]);
     case "add":
@@ -96616,7 +96616,7 @@ function loadSandboxSettings(root2, scope, layers = defaultLayers(root2)) {
   return { settings, warnings };
 }
 function resolveGatesSandboxMode(layers) {
-  if (layers.env[SANDBOX_KILL_ENV] === "off") return { mode: "unsandboxed", source: `${SANDBOX_KILL_ENV}=off` };
+  if (layers.env[SANDBOX_KILL_ENV] === "off") return { mode: "ack", source: `${SANDBOX_KILL_ENV}=off` };
   const read = (config2, source) => {
     const value = sandboxBlock({ factory: config2?.factory }, "factory", source).gates;
     if (value === void 0) return void 0;
@@ -96739,7 +96739,9 @@ function buildSandboxConfig(profile, ctx, host) {
       (0, import_node_path27.join)(".cargo", "credentials.toml"),
       ".gnupg",
       ".pypirc",
-      (0, import_node_path27.join)(".config", "gcloud")
+      (0, import_node_path27.join)(".config", "gcloud"),
+      // Windows: gh's hosts.yml (%APPDATA%\GitHub CLI) and the GCM/MSAL token cache (%LOCALAPPDATA%\.IdentityService).
+      ...ctx.platform === "win32" ? [(0, import_node_path27.join)("AppData", "Roaming", "GitHub CLI"), (0, import_node_path27.join)("AppData", "Local", ".IdentityService")] : []
     ].map((p) => (0, import_node_path27.join)(ctx.realHome, p));
     const grants = [...filesystem.readwritePaths, ...filesystem.readonlyPaths, ctx.realHome];
     const holdsGrant = (s) => grants.some((g) => {
@@ -125659,7 +125661,7 @@ ${r.stderr}`));
       steps.push({ name, status: "ok" });
     }
   } else {
-    const changed = lines2(git7("diff", "--name-only", `${baseSha}...HEAD`).stdout);
+    const changed = git7("diff", "--name-only", "-z", `${baseSha}...HEAD`).stdout.split("\0").filter(Boolean);
     const lintable = changed.filter((f) => /^src\/.*\.(?:ts|tsx|mts)$/.test(f) && !f.endsWith(".d.ts") && exists(f));
     const tests = selectTargetedTests(changed, exists);
     const plan = [
@@ -125745,299 +125747,6 @@ var init_prepare2 = __esm({
     ];
     TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
     PREPARE_SANDBOX_STEP = "checks-sandbox";
-  }
-});
-
-// src/factory/run/sandbox-exec.ts
-function sandboxShellCommand(platform, argv, cwd2, marker) {
-  if (argv.length === 0) return null;
-  if (platform === "win32") {
-    if (argv.some((a) => a === "" || a.includes('"'))) return null;
-    const [exe, ...args] = argv;
-    return `Set-Location -LiteralPath ${psQuote(cwd2)} -ErrorAction Stop; $global:LASTEXITCODE = $null; & ${[psQuote(exe), ...args.map(psQuote)].join(" ")}; "${marker} $LASTEXITCODE"`;
-  }
-  return `if cd -- ${shQuote(cwd2)}; then ${argv.map(shQuote).join(" ")}; printf '%s %s\\n' ${shQuote(marker)} "$?"; fi`;
-}
-function readMarker(output, marker) {
-  const lines4 = output.split("\n");
-  for (let i = lines4.length - 1; i >= 0; i--) {
-    const m = new RegExp(`^${marker} (-?\\d+)\\r?$`).exec(lines4[i]);
-    if (m) return { code: Number(m[1]), output: [...lines4.slice(0, i), ...lines4.slice(i + 1)].join("\n") };
-  }
-  return { code: null, output };
-}
-async function runSandboxed(argv, o, deps) {
-  const notStarted = (reason) => ({ ran: false, reason });
-  const sleep13 = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
-  const marker = `${MARKER_PREFIX}${(0, import_node_crypto16.randomBytes)(8).toString("hex")}`;
-  const command = sandboxShellCommand(deps.platform, argv, o.cwd, marker);
-  if (command === null) return notStarted(`the command ${JSON.stringify(argv)} cannot be passed to the sandbox shell unchanged (an empty argument or a double quote on Windows)`);
-  const jobHome = (0, import_node_path36.join)(o.jobRoot, `gate-${Date.now().toString(36)}-${(0, import_node_crypto16.randomBytes)(4).toString("hex")}`);
-  let client = null;
-  let session = null;
-  let pid;
-  try {
-    (0, import_node_fs30.mkdirSync)(jobHome, { recursive: true });
-    const loaded2 = await deps.loadSdk().catch(() => null);
-    if (!loaded2) return notStarted("@github/copilot-sdk is not installed or could not be loaded, so the sandbox cannot start");
-    const found = deps.resolveBin();
-    const bin = found && deps.platform === "win32" && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
-    if (!bin) return notStarted(found ? `copilot shim ${found} names no .js/.exe target` : "copilot CLI not found (PATH, COPILOT_CLI_PATH, WinGet), so the sandbox cannot start");
-    const ident = loginIdentity(deps.userConfigDir());
-    (0, import_node_fs30.writeFileSync)((0, import_node_path36.join)(jobHome, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [o.cwd] }, null, 2)}
-`);
-    const env2 = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, jobHome, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), jobHome));
-    const missing = missingSandboxEnv(env2, deps.platform);
-    if (missing.length) return notStarted(`the sandbox env lacks ${missing.join(", ")}, which the Windows sandbox needs to launch any process`);
-    (0, import_node_fs30.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
-    (0, import_node_fs30.mkdirSync)((0, import_node_path36.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
-    (0, import_node_fs30.mkdirSync)(env2.TEMP, { recursive: true });
-    (0, import_node_fs30.writeFileSync)(env2.GIT_CONFIG_GLOBAL, "[credential]\n	helper =\n");
-    Object.assign(env2, { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never", COPILOT_ALLOW_ALL: "false" });
-    const gitHubToken = sessionGitHubToken(deps.env);
-    const { CopilotClient, RuntimeConnection } = loaded2.module;
-    const c = new CopilotClient({
-      connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
-      baseDirectory: jobHome,
-      workingDirectory: o.cwd
-    });
-    client = c;
-    await withTimeout3(c.start(), START_TIMEOUT_MS3, "client.start()");
-    pid = runtimePid(c);
-    const pluginRoot = deps.pluginRoot();
-    const realHome = (deps.realHome ?? (() => (0, import_node_os9.userInfo)().homedir))();
-    const settings = { ...o.settings, enabled: true, writeUnsandboxed: "refuse", writeNetwork: o.network, extraReadwritePaths: [] };
-    const notes = [];
-    const sandbox = new SessionSandboxController({
-      profile: "write",
-      settings,
-      env: deps.env,
-      platform: deps.platform,
-      rpcTimeoutMs: RPC_TIMEOUT_MS3,
-      ...deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {},
-      policyContext: () => {
-        const proxy = proxyCaEnv(deps.env, deps.platform, realHome);
-        return {
-          worktree: (0, import_node_path36.resolve)(o.cwd),
-          commonGitDir: (0, import_node_path36.resolve)(o.commonGitDir),
-          pluginRoot,
-          jobHome,
-          jobDir: jobHome,
-          realHome,
-          platform: deps.platform,
-          settings,
-          hostCommits: true,
-          toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
-          extraReadonly: proxy.caPaths
-        };
-      },
-      note: (text4) => {
-        notes.push(text4);
-      }
-    });
-    const config2 = await sandbox.decide(c, loaded2);
-    if (!config2) return notStarted(`the sandbox is not available: ${sandbox.state?.reason ?? "unknown reason"}`);
-    const attested = /* @__PURE__ */ new Map();
-    const onPermissionRequest = () => ({ kind: "reject", feedback: "omg factory run: a gate session grants nothing" });
-    const atCreate = sandbox.atCreate(loaded2, config2);
-    session = await withTimeout3(c.createSession({
-      onPermissionRequest,
-      onEvent: (e) => {
-        const data = e.data ?? {};
-        if (e.type === "tool.execution_start") sandbox.toolStarted(data);
-        if (e.type === "tool.execution_complete") {
-          attested.set(String(data.toolCallId ?? ""), data.sandboxed);
-          sandbox.toolCompleted(data);
-        }
-      },
-      // No plugin: its hooks would run in the runtime, outside the sandbox.
-      pluginDirectories: [],
-      workingDirectory: o.cwd,
-      disabledMcpServers: ["github-mcp-server"],
-      excludedTools: [],
-      ...gitHubToken ? { gitHubToken } : {},
-      ...atCreate ? { sandboxConfig: config2 } : {}
-    }), RPC_TIMEOUT_MS3, "createSession()");
-    await sandbox.confirm(session, config2, atCreate);
-    if (sandbox.state?.mode !== "enforced") return notStarted(`the sandbox policy was not confirmed: ${sandbox.state?.reason ?? "unknown reason"}`);
-    const shell = session.rpc.shell;
-    if (typeof shell?.executeUserRequested !== "function") return notStarted("the SDK has no shell.executeUserRequested RPC, so the command cannot run in the sandbox");
-    const requestId = (0, import_node_crypto16.randomUUID)();
-    let timer;
-    const call = shell.executeUserRequested.call(shell, { requestId, command }).then((value) => ({ value }), (error2) => ({ error: error2 }));
-    const timedOut = new Promise((r2) => {
-      timer = setTimeout(() => r2("timeout"), o.timeoutMs);
-    });
-    let answer = await Promise.race([call, timedOut]);
-    clearTimeout(timer);
-    let timeout = false;
-    if (answer === "timeout") {
-      timeout = true;
-      try {
-        await withTimeout3(shell.cancelUserRequested?.call(shell, { requestId }) ?? Promise.resolve(), RPC_TIMEOUT_MS3, "cancelUserRequested()");
-      } catch {
-      }
-      let grace;
-      answer = await Promise.race([call, new Promise((r2) => {
-        grace = setTimeout(() => r2("timeout"), CANCEL_GRACE_MS);
-      })]);
-      clearTimeout(grace);
-    }
-    const r = answer !== "timeout" && "value" in answer ? answer.value : null;
-    const id = typeof r?.toolCallId === "string" ? r.toolCallId : "";
-    for (let waited = 0; id && !attested.has(id) && waited < ATTEST_WAIT_MS; waited += 100) await sleep13(100);
-    const escapes = sandbox.state?.unsandboxedCalls ?? 0;
-    if (escapes > 0) return notStarted(`${escapes} call(s) of the gate session were not attested sandboxed: true; nothing is counted`);
-    if (!id || attested.get(id) !== true) {
-      const why = !r ? answer !== "timeout" && "error" in answer ? `the call failed: ${errText4(answer.error)}` : "the call gave no answer" : `its completion was ${attested.get(id) === false ? "attested sandboxed: false" : "not attested sandboxed"}`;
-      return notStarted(`${timeout ? `timed out after ${o.timeoutMs} ms and ` : ""}${why}; the command is not counted as run in the sandbox`);
-    }
-    const raw = typeof r?.output === "string" ? r.output : "";
-    const read = readMarker(raw, marker);
-    if (timeout) return { ran: true, status: 124, output: tail2(`${read.output.trim()}
-timed out after ${o.timeoutMs} ms`), timedOut: true };
-    if (typeof r?.success !== "boolean") return notStarted("the sandbox shell call reported no success field");
-    if (read.code === null) {
-      const err = typeof r?.error === "string" && r.error ? `: ${r.error.slice(0, 300)}` : "";
-      return notStarted(`the command did not finish in the sandbox shell (no exit code came back; shell exit ${String(r?.exitCode)})${err}`);
-    }
-    if (r.success !== true || typeof r.exitCode === "number" && r.exitCode !== 0) {
-      return notStarted(`the sandbox shell reported failure (exit ${String(r.exitCode)}) after the command printed exit ${read.code}; not counted`);
-    }
-    return { ran: true, status: read.code, output: tail2(read.output.trim()), timedOut: false };
-  } catch (err) {
-    return notStarted(`the sandbox runtime failed: ${errText4(err).slice(0, 300)}`);
-  } finally {
-    if (session) {
-      try {
-        await withTimeout3(session.disconnect(), RPC_TIMEOUT_MS3, "disconnect()");
-      } catch {
-      }
-      try {
-        await withTimeout3(client.deleteSession(session.sessionId), RPC_TIMEOUT_MS3, "deleteSession()");
-      } catch {
-      }
-    }
-    if (client) {
-      pid ??= runtimePid(client);
-      if (session && pid && deps.isAlive(pid)) {
-        try {
-          deps.killTree(pid);
-        } catch {
-        }
-      }
-      let stopped = false;
-      try {
-        await withTimeout3(client.stop(), STOP_TIMEOUT_MS3, "client.stop()");
-        stopped = true;
-      } catch {
-      }
-      if (!stopped) {
-        if (pid && deps.isAlive(pid)) {
-          try {
-            deps.killTree(pid);
-          } catch {
-          }
-        }
-        try {
-          await withTimeout3(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS3, "client.forceStop()");
-        } catch {
-        }
-      }
-      if (pid && deps.isAlive(pid)) {
-        try {
-          deps.killTree(pid);
-        } catch {
-        }
-      }
-    }
-    try {
-      (0, import_node_fs30.rmSync)(jobHome, { recursive: true, force: true });
-    } catch {
-    }
-  }
-}
-function createSandboxRunner(root2, deps = defaultCopilotRunDeps()) {
-  return async (req) => {
-    let settings;
-    try {
-      settings = loadSandboxSettings(root2, "factory").settings;
-    } catch (err) {
-      return { ran: false, reason: `the sandbox settings could not be read: ${errText4(err)}` };
-    }
-    return runSandboxed([req.exe, ...req.args], {
-      cwd: req.cwd,
-      commonGitDir: req.commonGitDir,
-      timeoutMs: req.timeoutMs,
-      network: settings.writeNetwork,
-      settings,
-      jobRoot: sandboxJobRoot(root2)
-    }, deps);
-  };
-}
-function gateEnv(env2, home) {
-  const drop = new Set([...GATE_ENV_DROPPED, ...GATE_HOME_VARS].map((k) => k.toUpperCase()));
-  const hadAppData = Object.keys(env2).some((k) => k.toUpperCase() === "APPDATA");
-  const out = {};
-  for (const [key, value] of Object.entries(scrubShipEnv(env2))) {
-    if (!drop.has(key.toUpperCase())) out[key] = value;
-  }
-  (0, import_node_fs30.mkdirSync)(home, { recursive: true });
-  const gitConfig = (0, import_node_path36.join)(home, ".gitconfig-empty");
-  (0, import_node_fs30.writeFileSync)(gitConfig, "");
-  return {
-    ...out,
-    HOME: home,
-    USERPROFILE: home,
-    XDG_CONFIG_HOME: (0, import_node_path36.join)(home, ".config"),
-    ...hadAppData ? { APPDATA: (0, import_node_path36.join)(home, "AppData", "Roaming") } : {},
-    GIT_CONFIG_NOSYSTEM: "1",
-    GIT_CONFIG_GLOBAL: gitConfig,
-    GIT_TERMINAL_PROMPT: "0",
-    GCM_INTERACTIVE: "never"
-  };
-}
-var import_node_crypto16, import_node_fs30, import_node_os9, import_node_path36, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS3, CANCEL_GRACE_MS, ATTEST_WAIT_MS, MARKER_PREFIX, psQuote, shQuote, tail2, sandboxJobRoot, GATE_ENV_DROPPED, GATE_HOME_VARS;
-var init_sandbox_exec = __esm({
-  "src/factory/run/sandbox-exec.ts"() {
-    "use strict";
-    import_node_crypto16 = require("node:crypto");
-    import_node_fs30 = require("node:fs");
-    import_node_os9 = require("node:os");
-    import_node_path36 = require("node:path");
-    init_job();
-    init_sandbox2();
-    init_sandbox_session();
-    init_timeout();
-    init_worktree_paths();
-    init_exec();
-    init_copilot_sdk_driver();
-    init_copilot_sdk_scenarios();
-    init_copilot_session_env();
-    init_windows_search();
-    SANDBOX_OUTPUT_TAIL_CHARS = 8e3;
-    START_TIMEOUT_MS3 = 6e4;
-    RPC_TIMEOUT_MS3 = 3e4;
-    STOP_TIMEOUT_MS3 = 15e3;
-    CANCEL_GRACE_MS = 5e3;
-    ATTEST_WAIT_MS = 2e3;
-    MARKER_PREFIX = "omg-gate-exit-";
-    psQuote = (s) => `'${s.replace(/'/g, "''")}'`;
-    shQuote = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
-    tail2 = (text4) => text4.length > SANDBOX_OUTPUT_TAIL_CHARS ? text4.slice(-SANDBOX_OUTPUT_TAIL_CHARS) : text4;
-    sandboxJobRoot = (root2) => (0, import_node_path36.join)(getOmcRoot(root2), "state", "factory-gates");
-    GATE_ENV_DROPPED = [
-      "GH_TOKEN",
-      "GITHUB_TOKEN",
-      "GH_ENTERPRISE_TOKEN",
-      "GH_CONFIG_DIR",
-      "AZURE_DEVOPS_EXT_PAT",
-      "AZURE_CONFIG_DIR",
-      "COPILOT_GITHUB_TOKEN",
-      "SSH_AUTH_SOCK",
-      "GIT_ASKPASS"
-    ];
-    GATE_HOME_VARS = ["HOME", "USERPROFILE", "XDG_CONFIG_HOME", "APPDATA"];
   }
 });
 
@@ -126480,6 +126189,514 @@ var init_gates = __esm({
     AGGREGATE_ERROR = /^##\[error\](?:not success or skipped: (.+?)|test shards: \w+)\s*$/;
     EXIT_ERROR = /^##\[error\]Process completed with exit code \d+\.?\s*$/;
     analysisKey = (jobId, name) => jobId ? `job:${jobId}` : `name:${name}`;
+  }
+});
+
+// src/factory/heal/logs.ts
+function capLog(log3) {
+  const sized = log3.length > MAX_LOG_CHARS ? `${log3.slice(0, HEAD_CHARS)}
+${log3.slice(log3.length - (MAX_LOG_CHARS - HEAD_CHARS))}` : log3;
+  return sized.split(/\r?\n/).map((l) => l.length > MAX_LINE_CHARS ? l.slice(0, MAX_LINE_CHARS) : l).join("\n");
+}
+function cleanLine(rawLine) {
+  const line2 = rawLine.replace(ANSI2, "");
+  return (GH_LOG_PREFIX2.test(line2) ? line2.replace(GH_LOG_PREFIX2, "") : line2.replace(ADO_LOG_PREFIX, "")).replace(new RegExp("^\\p{Cf}", "u"), "");
+}
+function parseJobEnv(log3) {
+  const env2 = {};
+  let group = "";
+  const set = (key, value) => {
+    const v = value?.trim();
+    if (env2[key] === void 0 && v && VERSION2.test(v)) env2[key] = v;
+  };
+  for (const raw of log3.split(/\r?\n/)) {
+    const line2 = cleanLine(raw).trim();
+    const g = /^##\[group\](.*)$/.exec(line2);
+    if (g) {
+      group = g[1].trim();
+      continue;
+    }
+    if (line2 === "##[endgroup]") {
+      group = "";
+      continue;
+    }
+    let m;
+    if (m = /^Image: (\S+)$/.exec(line2)) set("image", m[1]);
+    else if (m = /^Version: (\S+)$/.exec(line2)) {
+      if (group === "Runner Image") set("imageVersion", m[1]);
+      else if (group === "Runner Image Provisioner") set("runnerVersion", m[1]);
+    } else if (m = /^git version (\d+\.\d+\.\d+\S*)$/.exec(line2)) set("git", m[1]);
+    else if (m = /^node: v?(\d+\.\d+\.\d+)$/.exec(line2)) set("node", m[1]);
+    else if (m = /^npm: (\d+\.\d+\.\d+)$/.exec(line2)) set("npm", m[1]);
+  }
+  return env2;
+}
+function infraMatches(log3, failedSteps = []) {
+  const hits = /* @__PURE__ */ new Set();
+  for (const raw of log3.split(/\r?\n/)) {
+    const cols = raw.split("	");
+    if (failedSteps.length > 0 && cols.length >= 3 && !failedSteps.includes(cols[1])) continue;
+    const line2 = cleanLine(raw);
+    for (const p of INFRA_PATTERNS) if (p.re.test(line2)) hits.add(p.name);
+  }
+  return [...hits];
+}
+function firstErrorLine(log3) {
+  for (const raw of log3.split(/\r?\n/)) {
+    const line2 = cleanLine(raw);
+    const i = line2.indexOf("##[error]");
+    if (i >= 0) return line2.slice(i + "##[error]".length).trim();
+  }
+  return void 0;
+}
+function parseJob(job, rawLog, known) {
+  const log3 = capLog(rawLog);
+  const analysis = analyzeFailedLog(job.name, void 0, log3, known, job.jobId);
+  const firstError = firstErrorLine(log3);
+  return {
+    jobId: job.jobId,
+    name: job.name,
+    failedSteps: job.failedSteps,
+    failingTests: analysis.failingTests,
+    blockers: analysis.blockers,
+    knownFlaky: analysis.knownFlaky,
+    ...analysis.aggregate ? { aggregate: analysis.aggregate } : {},
+    infra: analysis.failingTests.length === 0 ? infraMatches(log3, job.failedSteps) : [],
+    ...firstError ? { firstError } : {},
+    env: parseJobEnv(log3)
+  };
+}
+var MAX_LOG_CHARS, HEAD_CHARS, MAX_LINE_CHARS, ANSI2, GH_LOG_PREFIX2, ENV_FIELDS, VERSION2, INFRA_PATTERNS;
+var init_logs = __esm({
+  "src/factory/heal/logs.ts"() {
+    "use strict";
+    init_gates();
+    MAX_LOG_CHARS = 8 * 1024 * 1024;
+    HEAD_CHARS = 512 * 1024;
+    MAX_LINE_CHARS = 4e3;
+    ANSI2 = /\x1b\[[0-9;]*[A-Za-z]/g;
+    GH_LOG_PREFIX2 = new RegExp("^[^\\t]*\\t[^\\t]*\\t\\p{Cf}?(?:\\d{4}-\\d\\d-\\d\\dT[\\d:.]+Z ?)?", "u");
+    ENV_FIELDS = ["image", "imageVersion", "runnerVersion", "git", "node", "npm"];
+    VERSION2 = /^[\w.+-]{1,64}$/;
+    INFRA_PATTERNS = [
+      { name: "runner-lost", re: /lost communication with the server|The runner has received a shutdown signal/i },
+      { name: "cancelled", re: /The operation was canceled\./ },
+      { name: "network", re: /\b(?:ETIMEDOUT|ECONNRESET|EAI_AGAIN)\b/ },
+      { name: "registry-5xx", re: /\b(?:npm (?:ERR!|error) code E5\d\d|5\d\d (?:Internal Server Error|Bad Gateway|Service Unavailable|Gateway Time-?out)\b.*(?:registry\.npmjs\.org|github\.com|githubusercontent\.com))/i },
+      { name: "disk-full", re: /\bENOSPC\b|No space left on device/ }
+    ];
+  }
+});
+
+// src/factory/heal/sanitize.ts
+function redactSecrets(s) {
+  return SECRET_PATTERNS.reduce((acc, [re, by]) => acc.replace(re, by), s);
+}
+function sanitizeLine(raw) {
+  return redactSecrets(cleanLine(raw).replace(CONTROL, " ")).replace(/\s+$/, "").slice(0, MAX_EVIDENCE_LINE_CHARS);
+}
+function carriesDelimiter(line2) {
+  return line2.toUpperCase().includes(DELIMITER_PREFIX);
+}
+function sanitizeLines(raw) {
+  const lines4 = [];
+  let dropped = 0;
+  let inKey = false;
+  for (const r of raw) {
+    const clean = cleanLine(r);
+    if (!inKey && KEY_BEGIN.test(clean) && !KEY_END.test(clean)) {
+      inKey = true;
+      lines4.push(REDACTED2);
+      continue;
+    }
+    if (inKey) {
+      if (KEY_END.test(clean)) inKey = false;
+      lines4.push(REDACTED2);
+      continue;
+    }
+    const line2 = sanitizeLine(r);
+    if (carriesDelimiter(line2)) dropped += 1;
+    else lines4.push(line2);
+  }
+  return { lines: lines4, dropped };
+}
+function capBytes(lines4, maxBytes) {
+  const out = [];
+  let size = 0;
+  for (const line2 of lines4) {
+    const n = Buffer.byteLength(line2, "utf8") + 1;
+    if (size + n > maxBytes) return { lines: out, cut: true };
+    size += n;
+    out.push(line2);
+  }
+  return { lines: out, cut: false };
+}
+function sanitizeJson(value, maxString = MAX_EVIDENCE_LINE_CHARS) {
+  const clean = (s) => redactSecrets(s).replace(CONTROL, " ").replace(/HEAL-UNTRUSTED-/gi, "HEAL_UNTRUSTED_").slice(0, maxString);
+  const walk = (v) => {
+    if (typeof v === "string") return clean(v);
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [clean(k), walk(x)]));
+    return v;
+  };
+  return walk(value);
+}
+function newDelimiter() {
+  return `${DELIMITER_PREFIX}${(0, import_crypto51.randomBytes)(8).toString("hex")}`;
+}
+function fenceUntrusted(delimiter3, name, lines4) {
+  const kept = lines4.map((line2, i) => ({ line: line2, n: i + 1 })).filter(({ line: line2 }) => !carriesDelimiter(line2) && !line2.includes(delimiter3));
+  const width = String(lines4.length).length;
+  return [
+    `<<<${delimiter3} BEGIN file=${name} lines=${lines4.length}`,
+    ...kept.map(({ line: line2, n }) => `${String(n).padStart(width)}| ${line2}`),
+    `${delimiter3} END file=${name}>>>`
+  ].join("\n");
+}
+var import_crypto51, DELIMITER_PREFIX, MAX_EVIDENCE_LINE_CHARS, CONTROL, REDACTED2, SECRET_PATTERNS, KEY_BEGIN, KEY_END;
+var init_sanitize = __esm({
+  "src/factory/heal/sanitize.ts"() {
+    "use strict";
+    import_crypto51 = require("crypto");
+    init_logs();
+    DELIMITER_PREFIX = "HEAL-UNTRUSTED-";
+    MAX_EVIDENCE_LINE_CHARS = 400;
+    CONTROL = /(?!\t)[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
+    REDACTED2 = "[redacted]";
+    SECRET_PATTERNS = [
+      // A whole PEM private key inside one string (JSON values); line by line, sanitizeLines tracks the block.
+      [/-----BEGIN [A-Z0-9 ]*KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*KEY-----|$)/g, REDACTED2],
+      [/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/g, REDACTED2],
+      [/\bgithub_pat_[A-Za-z0-9_]{20,}/g, REDACTED2],
+      [/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, REDACTED2],
+      [/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, `Bearer ${REDACTED2}`],
+      // URL userinfo: https://user:pass@host, https://token@host.
+      [/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, `$1${REDACTED2}@`]
+    ];
+    KEY_BEGIN = /-----BEGIN [A-Z0-9 ]*KEY-----/;
+    KEY_END = /-----END [A-Z0-9 ]*KEY-----/;
+  }
+});
+
+// src/factory/run/sandbox-exec.ts
+function sandboxShellCommand(platform, argv, cwd2, marker) {
+  if (argv.length === 0 || !/^[A-Za-z0-9-]+$/.test(marker) || [cwd2, ...argv].some((a) => a.includes("\0"))) return null;
+  if (platform === "win32") {
+    if (argv.some((a) => a === "" || a.includes('"'))) return null;
+    const payload2 = Buffer.from(JSON.stringify({ cwd: cwd2, argv }), "utf8").toString("base64");
+    return [
+      `$omgP = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload2}')) | ConvertFrom-Json`,
+      "$omgV = @($omgP.argv)",
+      `if ($omgV.Count -eq ${argv.length} -and $omgP.cwd -is [string]) { Set-Location -LiteralPath $omgP.cwd -ErrorAction Stop; $ErrorActionPreference = 'Continue'; $omgE = $omgV[0]; $omgR = @($omgV | Select-Object -Skip 1); $global:LASTEXITCODE = $null; & $omgE @omgR 2>&1 | ForEach-Object { $omgL = "$_"; if ($omgL.Length -gt ${SHELL_LINE_CHARS}) { $omgL.Substring(0, ${SHELL_LINE_CHARS}) } else { $omgL } } | Select-Object -Last ${SHELL_OUTPUT_LINES}; "${marker} $LASTEXITCODE" }`
+    ].join("; ");
+  }
+  const payload = Buffer.from([cwd2, ...argv].map((w) => `${w}\0`).join(""), "utf8").toString("base64");
+  return `omg_a=(); while IFS= read -r -d '' omg_w; do omg_a+=("$omg_w"); done < <(printf '%s' '${payload}' | base64 -d); if [ "\${#omg_a[@]}" -eq ${argv.length + 1} ] && cd -- "\${omg_a[0]}"; then "\${omg_a[@]:1}" 2>&1 | tail -c ${SHELL_OUTPUT_BYTES}; printf '\\n%s %s\\n' '${marker}' "\${PIPESTATUS[0]}"; fi`;
+}
+function readMarker(output, marker) {
+  const none = { code: null, output };
+  const count3 = (s) => output.split(s).length - 1;
+  if (count3(marker) !== 1 || count3(MARKER_PREFIX) !== (marker.includes(MARKER_PREFIX) ? 1 : 0)) return none;
+  const lines4 = output.split("\n");
+  let i = lines4.length - 1;
+  while (i >= 0 && lines4[i].trim() === "") i--;
+  const m = i >= 0 ? /^(\S+) (-?\d+)\r?$/.exec(lines4[i]) : null;
+  if (!m || m[1] !== marker) return none;
+  return { code: Number(m[2]), output: lines4.slice(0, i).join("\n") };
+}
+function redactGateOutput(text4) {
+  return redactSecrets(text4).replace(/\bnpm_[A-Za-z0-9]{36}\b/g, "[redacted]").replace(/(?:[A-Za-z0-9+/=]{40,}\r?\n)+-----END [A-Z0-9 ]*KEY-----/g, "[redacted]");
+}
+async function runSandboxed(argv, o, deps) {
+  const notStarted = (reason) => ({ ran: false, reason });
+  const noVerdict = (reason) => ({ ran: false, reason, started: true });
+  const sleep13 = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const marker = `${MARKER_PREFIX}${(0, import_node_crypto16.randomBytes)(8).toString("hex")}`;
+  const command = sandboxShellCommand(deps.platform, argv, o.cwd, marker);
+  if (command === null) return notStarted("the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)");
+  const jobHome = (0, import_node_path36.join)(o.jobRoot, `gate-${Date.now().toString(36)}-${(0, import_node_crypto16.randomBytes)(4).toString("hex")}`);
+  const workDir = (0, import_node_path36.join)(jobHome, "work");
+  let client = null;
+  let session = null;
+  let pid;
+  let started = false;
+  try {
+    (0, import_node_fs30.mkdirSync)(workDir, { recursive: true });
+    const loaded2 = await deps.loadSdk().catch(() => null);
+    if (!loaded2) return notStarted("@github/copilot-sdk is not installed or could not be loaded, so the sandbox cannot start");
+    const found = deps.resolveBin();
+    const bin = found && deps.platform === "win32" && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
+    if (!bin) return notStarted(found ? `copilot shim ${found} names no .js/.exe target` : "copilot CLI not found (PATH, COPILOT_CLI_PATH, WinGet), so the sandbox cannot start");
+    const ident = loginIdentity(deps.userConfigDir());
+    (0, import_node_fs30.writeFileSync)((0, import_node_path36.join)(jobHome, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [workDir] }, null, 2)}
+`);
+    const env2 = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, jobHome, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), jobHome));
+    const missing = missingSandboxEnv(env2, deps.platform);
+    if (missing.length) return notStarted(`the sandbox env lacks ${missing.join(", ")}, which the Windows sandbox needs to launch any process`);
+    (0, import_node_fs30.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
+    (0, import_node_fs30.mkdirSync)((0, import_node_path36.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
+    (0, import_node_fs30.mkdirSync)(env2.TEMP, { recursive: true });
+    (0, import_node_fs30.writeFileSync)(env2.GIT_CONFIG_GLOBAL, "[credential]\n	helper =\n");
+    Object.assign(env2, { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never", COPILOT_ALLOW_ALL: "false" });
+    const gitHubToken = sessionGitHubToken(deps.env);
+    const { CopilotClient, RuntimeConnection } = loaded2.module;
+    const c = new CopilotClient({
+      connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
+      baseDirectory: jobHome,
+      workingDirectory: workDir
+    });
+    client = c;
+    await withTimeout3(c.start(), START_TIMEOUT_MS3, "client.start()");
+    pid = runtimePid(c);
+    const pluginRoot = deps.pluginRoot();
+    const realHome = (deps.realHome ?? (() => (0, import_node_os9.userInfo)().homedir))();
+    const settings = { ...o.settings, enabled: true, writeUnsandboxed: "refuse", writeNetwork: o.network, extraReadwritePaths: [] };
+    const notes = [];
+    const sandbox = new SessionSandboxController({
+      profile: "write",
+      settings,
+      env: deps.env,
+      platform: deps.platform,
+      rpcTimeoutMs: RPC_TIMEOUT_MS3,
+      ...deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {},
+      policyContext: () => {
+        const proxy = proxyCaEnv(deps.env, deps.platform, realHome);
+        return {
+          worktree: (0, import_node_path36.resolve)(o.cwd),
+          commonGitDir: (0, import_node_path36.resolve)(o.commonGitDir),
+          pluginRoot,
+          jobHome,
+          jobDir: jobHome,
+          realHome,
+          platform: deps.platform,
+          settings,
+          hostCommits: true,
+          toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
+          extraReadonly: proxy.caPaths
+        };
+      },
+      note: (text4) => {
+        notes.push(text4);
+      }
+    });
+    const config2 = await sandbox.decide(c, loaded2);
+    if (!config2) return notStarted(`the sandbox is not available: ${sandbox.state?.reason ?? "unknown reason"}`);
+    if (!config2.userPolicy.filesystem.deniedPaths?.length) {
+      return notStarted("the sandbox host does not report denied_paths, so it cannot hide your credential files (~/.ssh, ~/.npmrc, gh and git credentials) from the PR's code");
+    }
+    const attested = /* @__PURE__ */ new Map();
+    const onPermissionRequest = () => ({ kind: "reject", feedback: "omg factory run: a gate session grants nothing" });
+    const atCreate = sandbox.atCreate(loaded2, config2);
+    session = await withTimeout3(c.createSession({
+      onPermissionRequest,
+      onEvent: (e) => {
+        const data = e.data ?? {};
+        if (e.type === "tool.execution_start") sandbox.toolStarted(data);
+        if (e.type === "tool.execution_complete") {
+          attested.set(String(data.toolCallId ?? ""), data.sandboxed);
+          sandbox.toolCompleted(data);
+        }
+      },
+      // No plugin: its hooks would run in the runtime, outside the sandbox.
+      pluginDirectories: [],
+      workingDirectory: workDir,
+      disabledMcpServers: ["github-mcp-server"],
+      excludedTools: [],
+      ...gitHubToken ? { gitHubToken } : {},
+      ...atCreate ? { sandboxConfig: config2 } : {}
+    }), RPC_TIMEOUT_MS3, "createSession()");
+    await sandbox.confirm(session, config2, atCreate);
+    if (sandbox.state?.mode !== "enforced") return notStarted(`the sandbox policy was not confirmed: ${sandbox.state?.reason ?? "unknown reason"}`);
+    const shell = session.rpc.shell;
+    if (typeof shell?.executeUserRequested !== "function") return notStarted("the SDK has no shell.executeUserRequested RPC, so the command cannot run in the sandbox");
+    const requestId = (0, import_node_crypto16.randomUUID)();
+    let timer;
+    started = true;
+    const call = shell.executeUserRequested.call(shell, { requestId, command }).then((value) => ({ value }), (error2) => ({ error: error2 }));
+    const timedOut = new Promise((r2) => {
+      timer = setTimeout(() => r2("timeout"), o.timeoutMs);
+    });
+    let answer = await Promise.race([call, timedOut]);
+    clearTimeout(timer);
+    let timeout = false;
+    if (answer === "timeout") {
+      timeout = true;
+      try {
+        await withTimeout3(shell.cancelUserRequested?.call(shell, { requestId }) ?? Promise.resolve(), RPC_TIMEOUT_MS3, "cancelUserRequested()");
+      } catch {
+      }
+      let grace;
+      answer = await Promise.race([call, new Promise((r2) => {
+        grace = setTimeout(() => r2("timeout"), CANCEL_GRACE_MS);
+      })]);
+      clearTimeout(grace);
+    }
+    const r = answer !== "timeout" && "value" in answer ? answer.value : null;
+    const id = typeof r?.toolCallId === "string" ? r.toolCallId : "";
+    for (let waited = 0; id && !attested.has(id) && waited < ATTEST_WAIT_MS; waited += 100) await sleep13(100);
+    const escapes = sandbox.state?.unsandboxedCalls ?? 0;
+    if (escapes > 0) return noVerdict(`${escapes} call(s) of the gate session were not attested sandboxed: true; nothing is counted`);
+    if (!id || attested.get(id) !== true) {
+      const why = !r ? answer !== "timeout" && "error" in answer ? "the shell call failed" : "the shell call gave no answer" : `its completion was ${attested.get(id) === false ? "attested sandboxed: false" : "not attested sandboxed"}`;
+      return noVerdict(`${timeout ? `timed out after ${o.timeoutMs} ms and ` : ""}${why}; the command is not counted as run in the sandbox`);
+    }
+    const raw = typeof r?.output === "string" ? r.output : "";
+    const read = readMarker(raw, marker);
+    if (timeout) return { ran: true, status: 124, output: tail2(`${read.output.trim()}
+timed out after ${o.timeoutMs} ms`), timedOut: true };
+    if (typeof r?.success !== "boolean") return noVerdict("the sandbox shell call reported no success field");
+    if (read.code === null) return noVerdict("the output did not end with the one exit-code marker line the sandbox shell prints after the command");
+    const exitOk = r.exitCode === void 0 || r.exitCode === null || r.exitCode === 0 || r.exitCode === read.code;
+    const successOk = r.success === true || read.code !== 0;
+    if (!exitOk || !successOk) return noVerdict("the sandbox shell's own result contradicts the exit code the command printed");
+    return { ran: true, status: read.code, output: tail2(read.output.trim()), timedOut: false };
+  } catch (err) {
+    if (started) return noVerdict("the sandbox runtime failed while the command ran");
+    return notStarted(`the sandbox runtime failed: ${errText4(err).slice(0, 300)}`);
+  } finally {
+    if (session) {
+      try {
+        await withTimeout3(session.disconnect(), RPC_TIMEOUT_MS3, "disconnect()");
+      } catch {
+      }
+      try {
+        await withTimeout3(client.deleteSession(session.sessionId), RPC_TIMEOUT_MS3, "deleteSession()");
+      } catch {
+      }
+    }
+    if (client) {
+      pid ??= runtimePid(client);
+      if (session && pid && deps.isAlive(pid)) {
+        try {
+          deps.killTree(pid);
+        } catch {
+        }
+      }
+      let stopped = false;
+      try {
+        await withTimeout3(client.stop(), STOP_TIMEOUT_MS3, "client.stop()");
+        stopped = true;
+      } catch {
+      }
+      if (!stopped) {
+        if (pid && deps.isAlive(pid)) {
+          try {
+            deps.killTree(pid);
+          } catch {
+          }
+        }
+        try {
+          await withTimeout3(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS3, "client.forceStop()");
+        } catch {
+        }
+      }
+      if (pid && deps.isAlive(pid)) {
+        try {
+          deps.killTree(pid);
+        } catch {
+        }
+      }
+    }
+    try {
+      (0, import_node_fs30.rmSync)(jobHome, { recursive: true, force: true });
+    } catch {
+    }
+  }
+}
+function createSandboxRunner(root2, deps = defaultCopilotRunDeps(), layers) {
+  return async (req) => {
+    let settings;
+    try {
+      settings = (layers ? loadSandboxSettings(root2, "factory", layers) : loadSandboxSettings(root2, "factory")).settings;
+    } catch (err) {
+      return { ran: false, reason: `the sandbox settings could not be read: ${errText4(err)}` };
+    }
+    return runSandboxed([req.exe, ...req.args], {
+      cwd: req.cwd,
+      commonGitDir: req.commonGitDir,
+      timeoutMs: req.timeoutMs,
+      network: settings.writeNetwork,
+      settings,
+      jobRoot: sandboxJobRoot(root2)
+    }, deps);
+  };
+}
+function gateEnv(env2, home) {
+  const kept = new Set(GATE_ENV_KEPT);
+  const has3 = (name) => Object.keys(env2).some((k) => k.toUpperCase() === name);
+  const out = {};
+  for (const [key, value] of Object.entries(env2)) {
+    const upper = key.toUpperCase();
+    if (value !== void 0 && (kept.has(upper) || upper.startsWith("LC_"))) out[key] = value;
+  }
+  const tmp = (0, import_node_path36.join)(home, "tmp");
+  (0, import_node_fs30.mkdirSync)(tmp, { recursive: true });
+  const gitConfig = (0, import_node_path36.join)(home, ".gitconfig-empty");
+  (0, import_node_fs30.writeFileSync)(gitConfig, "");
+  return {
+    ...out,
+    ...TRUSTED_READ_ENV,
+    HOME: home,
+    USERPROFILE: home,
+    XDG_CONFIG_HOME: (0, import_node_path36.join)(home, ".config"),
+    ...has3("APPDATA") ? { APPDATA: (0, import_node_path36.join)(home, "AppData", "Roaming") } : {},
+    ...has3("LOCALAPPDATA") ? { LOCALAPPDATA: (0, import_node_path36.join)(home, "AppData", "Local") } : {},
+    TEMP: tmp,
+    TMP: tmp,
+    TMPDIR: tmp,
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_GLOBAL: gitConfig,
+    GIT_TERMINAL_PROMPT: "0",
+    GCM_INTERACTIVE: "never"
+  };
+}
+var import_node_crypto16, import_node_fs30, import_node_os9, import_node_path36, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS3, CANCEL_GRACE_MS, ATTEST_WAIT_MS, MARKER_PREFIX, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, SHELL_LINE_CHARS, tail2, sandboxJobRoot, GATE_ENV_KEPT;
+var init_sandbox_exec = __esm({
+  "src/factory/run/sandbox-exec.ts"() {
+    "use strict";
+    import_node_crypto16 = require("node:crypto");
+    import_node_fs30 = require("node:fs");
+    import_node_os9 = require("node:os");
+    import_node_path36 = require("node:path");
+    init_job();
+    init_sandbox2();
+    init_sandbox_session();
+    init_timeout();
+    init_worktree_paths();
+    init_exec();
+    init_sanitize();
+    init_copilot_sdk_driver();
+    init_copilot_sdk_scenarios();
+    init_copilot_session_env();
+    init_windows_search();
+    SANDBOX_OUTPUT_TAIL_CHARS = 8e3;
+    START_TIMEOUT_MS3 = 6e4;
+    RPC_TIMEOUT_MS3 = 3e4;
+    STOP_TIMEOUT_MS3 = 15e3;
+    CANCEL_GRACE_MS = 5e3;
+    ATTEST_WAIT_MS = 2e3;
+    MARKER_PREFIX = "omg-gate-exit-";
+    SHELL_OUTPUT_BYTES = 64 * 1024;
+    SHELL_OUTPUT_LINES = 400;
+    SHELL_LINE_CHARS = 2e3;
+    tail2 = (text4) => {
+      const clean = redactGateOutput(text4);
+      return clean.length > SANDBOX_OUTPUT_TAIL_CHARS ? clean.slice(-SANDBOX_OUTPUT_TAIL_CHARS) : clean;
+    };
+    sandboxJobRoot = (root2) => (0, import_node_path36.join)(getOmcRoot(root2), "state", "factory-gates");
+    GATE_ENV_KEPT = [
+      "PATH",
+      "PATHEXT",
+      "SYSTEMROOT",
+      "SYSTEMDRIVE",
+      "WINDIR",
+      "COMSPEC",
+      "LANG",
+      "TZ",
+      "CI",
+      "NODE_ENV",
+      "NPM_CONFIG_CACHE"
+    ];
   }
 });
 
@@ -126939,20 +127156,20 @@ function recentDecisions(text4, maxBytes = DEFAULT_DECISIONS_MAX_BYTES) {
   for (let i = all.length - 1; i >= 0; i--) {
     const shown = visibleLine(all[i]);
     const points = Array.from(shown);
-    const line2 = points.length > MAX_LINE_CHARS ? `${points.slice(0, MAX_LINE_CHARS).join("")}...` : shown;
+    const line2 = points.length > MAX_LINE_CHARS2 ? `${points.slice(0, MAX_LINE_CHARS2).join("")}...` : shown;
     bytes += Buffer.byteLength(line2, "utf8") + 1;
     if (bytes > maxBytes) return { lines: lines4, truncated: true };
     lines4.push(line2);
   }
   return { lines: lines4, truncated: false };
 }
-var DEFAULT_DECISIONS_MAX_BYTES, MAX_LINE_CHARS, lf2;
+var DEFAULT_DECISIONS_MAX_BYTES, MAX_LINE_CHARS2, lf2;
 var init_decisions = __esm({
   "src/factory/team/decisions.ts"() {
     "use strict";
     init_review_feedback();
     DEFAULT_DECISIONS_MAX_BYTES = 8192;
-    MAX_LINE_CHARS = 500;
+    MAX_LINE_CHARS2 = 500;
     lf2 = (text4) => (text4.charCodeAt(0) === 65279 ? text4.slice(1) : text4).replace(/\r\n/g, "\n");
   }
 });
@@ -127506,102 +127723,6 @@ var init_checks3 = __esm({
   }
 });
 
-// src/factory/heal/logs.ts
-function capLog(log3) {
-  const sized = log3.length > MAX_LOG_CHARS ? `${log3.slice(0, HEAD_CHARS)}
-${log3.slice(log3.length - (MAX_LOG_CHARS - HEAD_CHARS))}` : log3;
-  return sized.split(/\r?\n/).map((l) => l.length > MAX_LINE_CHARS2 ? l.slice(0, MAX_LINE_CHARS2) : l).join("\n");
-}
-function cleanLine(rawLine) {
-  const line2 = rawLine.replace(ANSI2, "");
-  return (GH_LOG_PREFIX2.test(line2) ? line2.replace(GH_LOG_PREFIX2, "") : line2.replace(ADO_LOG_PREFIX, "")).replace(new RegExp("^\\p{Cf}", "u"), "");
-}
-function parseJobEnv(log3) {
-  const env2 = {};
-  let group = "";
-  const set = (key, value) => {
-    const v = value?.trim();
-    if (env2[key] === void 0 && v && VERSION2.test(v)) env2[key] = v;
-  };
-  for (const raw of log3.split(/\r?\n/)) {
-    const line2 = cleanLine(raw).trim();
-    const g = /^##\[group\](.*)$/.exec(line2);
-    if (g) {
-      group = g[1].trim();
-      continue;
-    }
-    if (line2 === "##[endgroup]") {
-      group = "";
-      continue;
-    }
-    let m;
-    if (m = /^Image: (\S+)$/.exec(line2)) set("image", m[1]);
-    else if (m = /^Version: (\S+)$/.exec(line2)) {
-      if (group === "Runner Image") set("imageVersion", m[1]);
-      else if (group === "Runner Image Provisioner") set("runnerVersion", m[1]);
-    } else if (m = /^git version (\d+\.\d+\.\d+\S*)$/.exec(line2)) set("git", m[1]);
-    else if (m = /^node: v?(\d+\.\d+\.\d+)$/.exec(line2)) set("node", m[1]);
-    else if (m = /^npm: (\d+\.\d+\.\d+)$/.exec(line2)) set("npm", m[1]);
-  }
-  return env2;
-}
-function infraMatches(log3, failedSteps = []) {
-  const hits = /* @__PURE__ */ new Set();
-  for (const raw of log3.split(/\r?\n/)) {
-    const cols = raw.split("	");
-    if (failedSteps.length > 0 && cols.length >= 3 && !failedSteps.includes(cols[1])) continue;
-    const line2 = cleanLine(raw);
-    for (const p of INFRA_PATTERNS) if (p.re.test(line2)) hits.add(p.name);
-  }
-  return [...hits];
-}
-function firstErrorLine(log3) {
-  for (const raw of log3.split(/\r?\n/)) {
-    const line2 = cleanLine(raw);
-    const i = line2.indexOf("##[error]");
-    if (i >= 0) return line2.slice(i + "##[error]".length).trim();
-  }
-  return void 0;
-}
-function parseJob(job, rawLog, known) {
-  const log3 = capLog(rawLog);
-  const analysis = analyzeFailedLog(job.name, void 0, log3, known, job.jobId);
-  const firstError = firstErrorLine(log3);
-  return {
-    jobId: job.jobId,
-    name: job.name,
-    failedSteps: job.failedSteps,
-    failingTests: analysis.failingTests,
-    blockers: analysis.blockers,
-    knownFlaky: analysis.knownFlaky,
-    ...analysis.aggregate ? { aggregate: analysis.aggregate } : {},
-    infra: analysis.failingTests.length === 0 ? infraMatches(log3, job.failedSteps) : [],
-    ...firstError ? { firstError } : {},
-    env: parseJobEnv(log3)
-  };
-}
-var MAX_LOG_CHARS, HEAD_CHARS, MAX_LINE_CHARS2, ANSI2, GH_LOG_PREFIX2, ENV_FIELDS, VERSION2, INFRA_PATTERNS;
-var init_logs = __esm({
-  "src/factory/heal/logs.ts"() {
-    "use strict";
-    init_gates();
-    MAX_LOG_CHARS = 8 * 1024 * 1024;
-    HEAD_CHARS = 512 * 1024;
-    MAX_LINE_CHARS2 = 4e3;
-    ANSI2 = /\x1b\[[0-9;]*[A-Za-z]/g;
-    GH_LOG_PREFIX2 = new RegExp("^[^\\t]*\\t[^\\t]*\\t\\p{Cf}?(?:\\d{4}-\\d\\d-\\d\\dT[\\d:.]+Z ?)?", "u");
-    ENV_FIELDS = ["image", "imageVersion", "runnerVersion", "git", "node", "npm"];
-    VERSION2 = /^[\w.+-]{1,64}$/;
-    INFRA_PATTERNS = [
-      { name: "runner-lost", re: /lost communication with the server|The runner has received a shutdown signal/i },
-      { name: "cancelled", re: /The operation was canceled\./ },
-      { name: "network", re: /\b(?:ETIMEDOUT|ECONNRESET|EAI_AGAIN)\b/ },
-      { name: "registry-5xx", re: /\b(?:npm (?:ERR!|error) code E5\d\d|5\d\d (?:Internal Server Error|Bad Gateway|Service Unavailable|Gateway Time-?out)\b.*(?:registry\.npmjs\.org|github\.com|githubusercontent\.com))/i },
-      { name: "disk-full", re: /\bENOSPC\b|No space left on device/ }
-    ];
-  }
-});
-
 // src/forge/ado/ci.ts
 function ofRepo(build, ctx) {
   const repository = isObject4(build.repository) ? build.repository : {};
@@ -127738,7 +127859,7 @@ function writeBody(ctx, o, pr, headSha) {
 `;
   (0, import_fs163.rmSync)(path30, { force: true });
   (0, import_fs163.writeFileSync)(path30, content2, { encoding: "utf8", mode: 384, flag: "wx" });
-  return { path: path30, sha256: (0, import_crypto51.createHash)("sha256").update(content2, "utf8").digest("hex") };
+  return { path: path30, sha256: (0, import_crypto52.createHash)("sha256").update(content2, "utf8").digest("hex") };
 }
 function adoMerge(ctx, o) {
   const humanMerge = (pr, headSha) => {
@@ -127766,11 +127887,11 @@ function adoMerge(ctx, o) {
     }
   };
 }
-var import_crypto51, import_fs163, import_path190, SATISFIED, realOr2, under, fileSafe;
+var import_crypto52, import_fs163, import_path190, SATISFIED, realOr2, under, fileSafe;
 var init_merge4 = __esm({
   "src/forge/ado/merge.ts"() {
     "use strict";
-    import_crypto51 = require("crypto");
+    import_crypto52 = require("crypto");
     import_fs163 = require("fs");
     import_path190 = require("path");
     init_checks3();
@@ -127822,16 +127943,16 @@ function recordingAdoExec(exec3, dir, now2 = () => /* @__PURE__ */ new Date()) {
       ...requestBody !== void 0 ? { requestBody } : {}
     };
     (0, import_fs164.mkdirSync)(dir, { recursive: true });
-    (0, import_fs164.writeFileSync)((0, import_path191.join)(dir, `${inv.route.id}.${(0, import_crypto52.createHash)("sha256").update(key).digest("hex").slice(0, 10)}.json`), `${JSON.stringify(fixture, null, 2)}
+    (0, import_fs164.writeFileSync)((0, import_path191.join)(dir, `${inv.route.id}.${(0, import_crypto53.createHash)("sha256").update(key).digest("hex").slice(0, 10)}.json`), `${JSON.stringify(fixture, null, 2)}
 `, "utf8");
     return res;
   };
 }
-var import_crypto52, import_fs164, import_path191, ADO_RECORD_ENV, parseMaybe;
+var import_crypto53, import_fs164, import_path191, ADO_RECORD_ENV, parseMaybe;
 var init_record = __esm({
   "src/forge/ado/record.ts"() {
     "use strict";
-    import_crypto52 = require("crypto");
+    import_crypto53 = require("crypto");
     import_fs164 = require("fs");
     import_path191 = require("path");
     init_az_binary();
@@ -129371,7 +129492,7 @@ async function runSandboxedGate(i, base, now2) {
   }
   if (!r.ran) {
     drop();
-    return { started: false, reason: r.reason, sandbox: true };
+    return { started: false, reason: r.reason, sandbox: true, ...r.started ? { noVerdict: true } : {} };
   }
   const output = `${r.output}${r.timedOut ? `
 local gate timed out after ${i.timeoutMinutes} min` : ""}`;
@@ -129535,7 +129656,10 @@ var init_local_gate = __esm({
       }
     };
     runIdAt = (d) => Math.max(1, Math.floor(d.getTime() / 1e3));
-    tailOf = (text4) => text4.length > LOCAL_GATE_TAIL_CHARS ? text4.slice(-LOCAL_GATE_TAIL_CHARS) : text4;
+    tailOf = (text4) => {
+      const clean = redactGateOutput(text4);
+      return clean.length > LOCAL_GATE_TAIL_CHARS ? clean.slice(-LOCAL_GATE_TAIL_CHARS) : clean;
+    };
     NPM_TEST = /* @__PURE__ */ new Set(["test", "t", "tst"]);
     NPM_RUN = /* @__PURE__ */ new Set(["run", "run-script", "rum", "urn"]);
     PM_CONFIG_FILES = [".npmrc", ".yarnrc", ".yarnrc.yml", ".pnpmfile.cjs"];
@@ -129886,6 +130010,25 @@ function engineExec(o, inner, baseSha, basePush = () => void 0, github = () => v
   const options = { ...f.options, entry: entry2 };
   return { exec: exec3, forge: createForge(exec3, o.root, f.config, options) };
 }
+function pinCheckoutGit(exec3, pin) {
+  return (cmd, args, opts) => {
+    const p = pin();
+    const git7 = cmd.replace(/\\/g, "/").split("/").pop().toLowerCase().replace(/\.exe$/, "") === "git";
+    if (!p || !git7 || !opts?.cwd || !sameFsPath(opts.cwd, p.workTree)) return exec3(cmd, args, opts);
+    return exec3(cmd, [`--git-dir=${p.gitDir}`, `--work-tree=${p.workTree}`, ...args], opts);
+  };
+}
+function checkoutGitLink(checkout) {
+  const file = (0, import_path197.join)(checkout, ".git");
+  try {
+    if (!(0, import_fs170.lstatSync)(file).isFile()) return { hash: "not a regular file" };
+    const bytes = (0, import_fs170.readFileSync)(file);
+    const m = /^gitdir: (.+?)\s*$/.exec(bytes.toString("utf8"));
+    return { hash: (0, import_crypto54.createHash)("sha256").update(bytes).digest("hex"), ...m ? { gitDir: (0, import_path197.resolve)(checkout, m[1]) } : {} };
+  } catch (error2) {
+    return { hash: `unreadable: ${errText5(error2)}` };
+  }
+}
 function calibrationArgs(c, dir) {
   const [script, ...rest] = c.args;
   if (c.kind !== "built-in" || script !== VITEST_SCRIPT && script !== ESLINT_SCRIPT) return [...c.args];
@@ -129985,7 +130128,7 @@ function shipFollower(phase) {
 function humanFeedbackDigest(fb) {
   const threads = fb.threads.map((t) => JSON.stringify([t.id, t.author, t.at, t.body])).sort();
   const requests = fb.decisions.filter((d) => d.state === "changes-requested").map((d) => JSON.stringify([d.author, d.at, d.head ?? ""])).sort();
-  return (0, import_crypto53.createHash)("sha256").update(JSON.stringify({ threads, requests })).digest("hex");
+  return (0, import_crypto54.createHash)("sha256").update(JSON.stringify({ threads, requests })).digest("hex");
 }
 function engineClaimRepo(o, read) {
   if (o.forge?.config.kind === "local") return null;
@@ -130151,11 +130294,11 @@ async function runFactoryEngine(o) {
     for (const path30 of ownerPaths) ledger.record(path30, null);
   }
 }
-var import_crypto53, import_fs170, import_path197, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, HEX4016, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, PREPARE_CHECK_TIMEOUT_MS;
+var import_crypto54, import_fs170, import_path197, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, HEX4016, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
 var init_engine = __esm({
   "src/factory/run/engine.ts"() {
     "use strict";
-    import_crypto53 = require("crypto");
+    import_crypto54 = require("crypto");
     import_fs170 = require("fs");
     import_path197 = require("path");
     init_config4();
@@ -130192,6 +130335,7 @@ var init_engine = __esm({
     init_diagnosis_output();
     init_budget();
     init_exec2();
+    init_gate_procs();
     init_forge_roots();
     init_local_gate();
     init_local();
@@ -130270,7 +130414,7 @@ var init_engine = __esm({
       constructor(o, ledger, hooksDir) {
         this.o = o;
         this.ledger = ledger;
-        const built = engineExec(o, hardenedGitExec(o.exec, hooksDir, () => o.forge?.config.kind === "local" ? o.forge.config.repo.url : void 0), () => this.localBase ?? this.state?.baseSha, () => this.basePushSha, () => this.githubReadContext(), () => this.agentStep);
+        const built = engineExec(o, pinCheckoutGit(hardenedGitExec(o.exec, hooksDir, () => o.forge?.config.kind === "local" ? o.forge.config.repo.url : void 0), () => this.checkoutGitPin), () => this.localBase ?? this.state?.baseSha, () => this.basePushSha, () => this.githubReadContext(), () => this.agentStep);
         this.exec = built.exec;
         this.forge = built.forge;
         this.forgeName = forgeTerms(this.forge ? this.forge.kind : "github").name;
@@ -130336,6 +130480,8 @@ var init_engine = __esm({
       gatesModeCache;
       /** Calibrations re-run in this invocation (a failing one is retried once per invocation). */
       recalibrated = /* @__PURE__ */ new Set();
+      /** The prepare checkout's git dir, named explicitly to engine git there once the PR's code ran in it (pinCheckoutGit). */
+      checkoutGitPin;
       iso() {
         return new Date(this.clock()).toISOString();
       }
@@ -131307,7 +131453,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         if (this.gateDefinitionUnknownParked("nothing was pushed")) return true;
         const { sources } = gateDefinitionSources(gate);
         if (sources.length === 0) return false;
-        const at = (sha3) => (0, import_crypto53.createHash)("sha256").update(gateDefinition(sources, (path30) => {
+        const at = (sha3) => (0, import_crypto54.createHash)("sha256").update(gateDefinition(sources, (path30) => {
           const r = this.exec("git", ["show", `${sha3}:${path30}`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
           return r.status === 0 ? r.stdout : void 0;
         }), "utf8").digest("hex");
@@ -131590,24 +131736,31 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         this.run(["worktree", "add", "-B", branch2, path30, head]);
         this.save((x) => ({ ...x, checkoutHead: head }));
         linkNodeModules(this.o.root, path30);
+        const gitLink = checkoutGitLink(path30);
+        if (!gitLink.gitDir) throw new FactoryStepError(`the new prepare checkout ${path30} has no gitfile naming its git dir (${gitLink.hash})`);
         const commands = configured?.map((argv) => ({ argv, ...resolveLocalGateArgv(argv, { cwd: path30, subject: "the prepare check", configKey: "ship.prepare.checks" }) }));
         const gates = this.gatesSandbox(this.gateConfig(view2));
         const ran = { modes: /* @__PURE__ */ new Set(), acked: false, park: void 0 };
-        const result = await runPrepareAsync(
-          { exec: this.exec, cwd: path30, base: s.base, branch: branch2, reviewedSha: head, baseSha: view2.baseRefOid, repoUrl: s.repoUrl, remote: runRemote(s), push: false, commands },
-          (c) => this.prepareCheck(c, { head, path: path30, commonGitDir: common, baseSha: view2.baseRefOid, gates, ran })
-        );
-        if (this.prepareTampered(before, path30, branch2, view2.baseRefOid)) return;
-        const checkoutHead = this.run(["rev-parse", "HEAD"], "git", void 0, path30).trim();
+        let result;
+        let checkoutHead;
+        try {
+          result = await runPrepareAsync(
+            { exec: this.exec, cwd: path30, base: s.base, branch: branch2, reviewedSha: head, baseSha: view2.baseRefOid, repoUrl: s.repoUrl, remote: runRemote(s), push: false, commands },
+            (c) => this.prepareCheck(c, { head, path: path30, commonGitDir: common, baseSha: view2.baseRefOid, gates, ran, gitLink: { hash: gitLink.hash, gitDir: gitLink.gitDir } })
+          );
+          if (ran.park?.name === "lane-tampered") {
+            this.gate(ran.park.name, ran.park.reason);
+            return;
+          }
+          if (this.prepareTampered(before, path30, branch2, view2.baseRefOid)) return;
+          checkoutHead = this.run(["rev-parse", "HEAD"], "git", void 0, path30).trim();
+        } finally {
+          this.checkoutGitPin = void 0;
+        }
         const fetched = result.steps.some((st) => st.name === "fetch" && st.status === "ok");
         const sandboxNote = ran.modes.size > 0 ? [{ at: this.iso(), from: s.phase, to: s.phase, note: `prepare checks on ${head.slice(0, 12)} ran ${[...ran.modes].map((m) => m === "enforced" ? "in the OS sandbox" : `unsandboxed (${m})`).join(" and ")}` }] : [];
         this.save((x) => ({ ...x, checkoutHead, ...fetched ? { baseSha: view2.baseRefOid } : {}, history: [...x.history, ...sandboxNote] }));
-        if (result.ok) {
-          if (ran.acked && checkoutHead !== head && this.state.unsandboxedGatesAck === head) {
-            this.save((x) => ({ ...x, unsandboxedGatesAck: checkoutHead, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `--allow-unsandboxed-gates for ${head.slice(0, 12)} carried to the prepared head ${checkoutHead.slice(0, 12)}` }] }));
-          }
-          return this.publishPrepared(pr, head, checkoutHead, result.housekeepingCommits, view2.baseRefOid);
-        }
+        if (result.ok) return this.publishPrepared(pr, head, checkoutHead, result.housekeepingCommits, view2.baseRefOid, ran.acked && this.state.unsandboxedGatesAck === head);
         const failed3 = result.steps.at(-1);
         if (failed3?.name === PREPARE_SANDBOX_STEP) {
           if (!ran.park) throw new FactoryStepError(`prepare stopped without a verdict: ${failed3.detail ?? "unknown check"}`);
@@ -131668,7 +131821,17 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
       }
       gatesUnsandboxedReason(head, what, why) {
         const at = head.slice(0, 12);
-        return `${what} on ${at} would run the PR's own code WITHOUT the OS sandbox (${why}): as you, with your files, git config and credentials in reach. Review the PR's diff (tests, configs, scripts) yourself, then rerun ${this.resume} --allow-unsandboxed-gates to run it unsandboxed for ${at} only`;
+        return `${what} on ${at} would run the PR's own code WITHOUT the OS sandbox (${why}). Acknowledging trusts ALL of ${at}'s code (every prepare check, the inventory generator, the local gate, and the head prepare makes from it) with your user account: your files, git config and credentials, and a process it leaves behind keeps running as you. Review the PR's whole diff (tests, configs, scripts) yourself, then rerun ${this.resume} --allow-unsandboxed-gates to run it unsandboxed for ${at} only`;
+      }
+      /** The park after the command ran in the sandbox without a verdict: no ack offer, no pass, no failure. `why` is fixed text (sandbox-exec.ts). */
+      gateNoVerdictReason(head, what, why) {
+        const at = head.slice(0, 12);
+        return `${what} on ${at} ran in the OS sandbox but gave no verdict (${why}). The head is not judged: no pass, no FAILURE, no ci-fix lane, and --allow-unsandboxed-gates does not apply here. Rerun ${this.resume} to try again; if it parks here again, review the PR's diff: the PR's code can hide its own exit code (a second or missing exit marker, a killed shell, a hang)`;
+      }
+      /** What a prepare check is called in parks, notes and warnings: a configured argv (trusted config), never a built-in's file list (the PR's file names). */
+      prepareCheckLabel(c) {
+        if (c.kind === "configured") return `the prepare check \`${c.argv.join(" ")}\``;
+        return c.kind === "inventory" ? "the inventory generator" : `the built-in prepare check ${c.step}`;
       }
       /** gates "unsandboxed": a warning every time and one PR note per head. */
       noteUnsandboxedGates(head, what) {
@@ -131682,39 +131845,63 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
        * `unsandboxed` runs it plainly (gateEnv); `enforced` runs it in the
        * sandbox, and a sandbox failure is counted only when the same check
        * passes in the sandbox on the trusted base (calibrateGate); a sandbox that
-       * gives no verdict, and `ack`, run it plainly only for an accepted head,
-       * else stop prepare (`ran.park`) before anything runs unsandboxed.
+       * gives no verdict before the command started, and `ack`, run it plainly
+       * only for an accepted head, else stop prepare (`ran.park`) before
+       * anything runs unsandboxed. A sandbox that started the command and gave
+       * no verdict stops at gate-no-verdict (no ack offer). From the first check
+       * on, engine git in the checkout names its git dir (checkoutGitPin), and a
+       * gitfile that changed around a check stops at lane-tampered.
        */
       async prepareCheck(c, at) {
         const { head, path: path30, ran } = at;
+        const label2 = this.prepareCheckLabel(c);
         const stop = (park) => {
           ran.park = park;
           return { status: 1, stdout: "", stderr: "", notStarted: park.reason };
         };
+        const tampered = () => checkoutGitLink(path30).hash === at.gitLink.hash ? null : stop({
+          name: "lane-tampered",
+          reason: `${label2} on ${head.slice(0, 12)} changed the prepare checkout's .git file (its link to the git dir), so nothing of this prepare is trusted and nothing is pushed; inspect and remove ${path30} by hand`
+        });
+        this.checkoutGitPin = { workTree: path30, gitDir: at.gitLink.gitDir };
         const plain = async (how) => {
-          if (how === "unsandboxed") this.noteUnsandboxedGates(head, `prepare check \`${c.argv.join(" ")}\``);
+          if (how === "unsandboxed") this.noteUnsandboxedGates(head, label2);
           else ran.acked = true;
           ran.modes.add(how);
-          const r = await (this.o.localGate ?? defaultLocalGateRunner)([c.exe, ...c.args], path30, PREPARE_CHECK_TIMEOUT_MS);
+          const procs = (0, import_path197.join)(sandboxJobRoot(this.o.root), "prepare-procs", `${head}.json`);
+          (0, import_fs170.mkdirSync)((0, import_path197.dirname)(procs), { recursive: true });
+          await sweepGateProcs((0, import_path197.dirname)(procs)).catch(() => void 0);
+          await reapGateProcs(procs).catch(() => void 0);
+          let r;
+          try {
+            r = await (this.o.localGate ?? defaultLocalGateRunner)([c.exe, ...c.args], path30, PREPARE_CHECK_TIMEOUT_MS, createGateProcTracker(procs, Date.now(), void 0, (m) => this.o.warn?.(`omg factory run: ${m}`)));
+          } finally {
+            await reapGateProcs(procs).catch(() => void 0);
+          }
+          const t = tampered();
+          if (t) return t;
           if (r.startError !== void 0) return { status: 127, stdout: "", stderr: r.startError };
-          return { status: r.timedOut ? 124 : r.status, stdout: r.stdout, stderr: `${r.stderr}${r.timedOut ? `
-timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}` };
+          return { status: r.timedOut ? 124 : r.status, stdout: redactGateOutput(r.stdout), stderr: redactGateOutput(`${r.stderr}${r.timedOut ? `
+timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         };
         if (at.gates.mode === "unsandboxed") return plain("unsandboxed");
         let why = `factory.run.sandbox.gates is "ack" (${at.gates.source})`;
         if (at.gates.mode === "enforced") {
           const r = this.o.gateSandbox ? await this.o.gateSandbox({ purpose: "prepare", argv: c.argv, exe: c.exe, args: c.args, cwd: path30, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS }) : { ran: false, reason: "no OS sandbox runner was given to the engine" };
+          const t = tampered();
+          if (t) return t;
           if (r.ran) {
             ran.modes.add("enforced");
-            if (r.status === 0 && !r.timedOut) return { status: 0, stdout: r.output, stderr: "" };
-            const park = await this.calibrateGate(c, at.baseSha, at.commonGitDir, PREPARE_CHECK_TIMEOUT_MS, `the prepare check \`${c.argv.join(" ")}\``, head);
+            if (r.status === 0 && !r.timedOut) return { status: 0, stdout: redactGateOutput(r.output), stderr: "" };
+            const park = await this.calibrateGate(c, at.baseSha, at.commonGitDir, PREPARE_CHECK_TIMEOUT_MS, label2, head);
             if (park) return stop(park);
-            return { status: r.timedOut ? 124 : r.status, stdout: r.output, stderr: "" };
+            return { status: r.timedOut ? 124 : r.status, stdout: redactGateOutput(r.output), stderr: "" };
           }
+          if (r.started) return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoVerdictReason(head, label2, r.reason) });
           why = `the OS sandbox gave no verdict: ${r.reason}`;
         }
         if (this.gatesAccepted(head)) return plain("ack");
-        return stop({ name: GATES_UNSANDBOXED_GATE, reason: this.gatesUnsandboxedReason(head, `the prepare check \`${c.argv.join(" ")}\``, why) });
+        return stop({ name: GATES_UNSANDBOXED_GATE, reason: this.gatesUnsandboxedReason(head, label2, why) });
       }
       /**
        * After `what` failed in the sandbox on `head`: run the same command in the
@@ -131726,21 +131913,21 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}` };
        * on the base itself, or its calibration could not run.
        */
       async calibrateGate(c, baseSha, commonGitDir, timeoutMs, what, head) {
-        const key = (0, import_crypto53.createHash)("sha256").update(`${baseSha}\0${JSON.stringify(c.argv)}`).digest("hex");
+        const key = (0, import_crypto54.createHash)("sha256").update(`${baseSha}\0${JSON.stringify(c.argv)}`).digest("hex");
         let cal = this.state.gateCalibration?.[key];
         if (!cal || !cal.ok && !this.recalibrated.has(key)) {
           this.recalibrated.add(key);
           const out = await this.runOnBase(c, baseSha, commonGitDir, timeoutMs);
           if ("notStarted" in out) {
-            return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${what} failed in the OS sandbox on ${head.slice(0, 12)}, and its calibration on the base ${baseSha.slice(0, 12)} could not run (${out.notStarted}); the failure is not counted (no ci-fix lane). Fix the cause, or set factory.run.sandbox.gates "ack" to run it unsandboxed after your review, then rerun ${this.resume}` };
+            return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${what} failed in the OS sandbox on ${head.slice(0, 12)}, and its calibration on the base ${baseSha.slice(0, 12)} could not run (${out.notStarted}); the failure is not counted (no ci-fix lane). Fix the cause, then rerun ${this.resume}. ${ACK_WARNING}` };
           }
           cal = out;
-          this.save((x) => ({ ...x, gateCalibration: { ...x.gateCalibration ?? {}, [key]: out }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `calibrated ${c.argv.join(" ").slice(0, 80)} in the OS sandbox on the base ${baseSha.slice(0, 12)}: ${out.ok ? "passes" : "fails"}` }] }));
+          this.save((x) => ({ ...x, gateCalibration: { ...x.gateCalibration ?? {}, [key]: out }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `calibrated ${what.slice(0, 120)} in the OS sandbox on the base ${baseSha.slice(0, 12)}: ${out.ok ? "passes" : "fails"}` }] }));
         }
         if (cal.ok) return null;
         return {
           name: GATE_SANDBOX_INCOMPATIBLE_GATE,
-          reason: `${what} fails in the OS sandbox on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). Your gate fails in the sandbox on the base: set factory.run.sandbox.writeNetwork "registry" if it needs the npm registry, or factory.run.sandbox.gates "ack" to run it unsandboxed after your review, then rerun ${this.resume}${cal.tail ? `; base output tail: ${cal.tail.slice(-1500)}` : ""}`
+          reason: `${what} fails in the OS sandbox on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). Your gate fails in the sandbox on the base: set factory.run.sandbox.writeNetwork "registry" if it needs the npm registry, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1500)}` : ""}`
         };
       }
       /**
@@ -131817,13 +132004,16 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}` };
         return false;
       }
       /** Push prepare's housekeeping commits (protected paths re-checked), then record them. */
-      publishPrepared(pr, reviewed, next, housekeeping, baseSha) {
+      publishPrepared(pr, reviewed, next, housekeeping, baseSha, carryGatesAck = false) {
         const s = this.state;
         if (next !== reviewed) {
           const extra = this.run(["rev-list", next, `^${reviewed}`, `^${baseSha}`]).split("\n").map((l) => l.trim()).filter((l) => l && !housekeeping.includes(l));
           if (extra.length > 0) {
             this.gate("lane-tampered", `prepare's checks (the PR's own code) added commit(s) the engine did not make: ${extra.slice(0, 5).map((c) => c.slice(0, 12)).join(", ")}; nothing was pushed`);
             return;
+          }
+          if (carryGatesAck && housekeeping.includes(next)) {
+            this.save((x) => ({ ...x, unsandboxedGatesAck: next, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `--allow-unsandboxed-gates for ${reviewed.slice(0, 12)} carried to the prepared head ${next.slice(0, 12)}` }] }));
           }
           const files = listChangedFiles(this.exec, this.o.root, baseSha, next);
           if (files === null) throw new FactoryStepError(`git diff ${baseSha.slice(0, 12)}...${next.slice(0, 12)} failed`);
@@ -131925,6 +132115,12 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}` };
        * changed since the run recorded it, the checkout is gone or elsewhere, the
        * gate's executable cannot start, or the gate changed shared git state).
        */
+      /** The local gate changed the checkout's gitfile: its record is dropped (it judged nothing) and the run parks at lane-tampered. */
+      gateTamperedByGate(head, checkout, stateDir) {
+        (0, import_fs170.rmSync)(localCheckRecordPath(stateDir, this.o.root, head), { force: true });
+        this.gate("lane-tampered", `the local gate on ${head.slice(0, 12)} (the PR's own code) changed the prepare checkout's .git file (its link to the git dir), so its result is not counted and nothing is pushed; inspect and remove ${checkout} by hand`);
+        return false;
+      }
       async ensureLocalGate(head) {
         const f = this.o.forge;
         const stateDir = this.localGateStateDir();
@@ -131961,6 +132157,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}` };
         const common = (0, import_path197.resolve)(this.o.root, this.run(["rev-parse", "--git-common-dir"]).trim());
         this.progress.heartbeat("gates", `local gate ${gate.join(" ")} on ${head.slice(0, 12)}`, this.fields());
         const input = { stateDir, root: this.o.root, head, gate, timeoutMinutes, checkout, ...this.o.localGate ? { runner: this.o.localGate } : {}, now: () => new Date(this.clock()) };
+        const linkBefore = checkoutGitLink(checkout).hash;
         let out;
         if (gates.mode === "unsandboxed") {
           this.noteUnsandboxedGates(head, "the local gate");
@@ -131971,6 +132168,11 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}` };
           out = { started: false, reason: why, sandbox: true };
           if (gates.mode === "enforced") {
             out = this.o.gateSandbox ? await runLocalGate({ ...input, mode: "enforced", sandbox: { run: this.o.gateSandbox, commonGitDir: common } }) : { started: false, reason: "no OS sandbox runner was given to the engine", sandbox: true };
+            if (!out.started && out.noVerdict) {
+              if (checkoutGitLink(checkout).hash !== linkBefore) return this.gateTamperedByGate(head, checkout, stateDir);
+              this.gate(GATE_NO_VERDICT_GATE, this.gateNoVerdictReason(head, `the local gate \`${gate.join(" ")}\``, out.reason));
+              return false;
+            }
             unavailable = !out.started && out.sandbox === true;
             if (unavailable && !out.started) why = `the OS sandbox gave no verdict: ${out.reason}`;
           }
@@ -131982,6 +132184,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}` };
             out = await runLocalGate({ ...input, mode: "ack" });
           }
         }
+        if (checkoutGitLink(checkout).hash !== linkBefore) return this.gateTamperedByGate(head, checkout, stateDir);
         if (!out.started) {
           this.gate("gates", `the local gate could not start: ${out.reason}; fix factory.forge.local.gate, then rerun ${this.resume}`);
           return false;
@@ -133160,6 +133363,8 @@ If the PR gets new review comments before you merge, rerun \`${this.resume}\` fi
     UNSANDBOXED_LANES_REASON = "a lane ran without the enforced sandbox";
     GATES_UNSANDBOXED_GATE = "gates-unsandboxed";
     GATE_SANDBOX_INCOMPATIBLE_GATE = "gate-sandbox-incompatible";
+    GATE_NO_VERDICT_GATE = "gate-no-verdict";
+    ACK_WARNING = 'Do not switch factory.run.sandbox.gates to "ack" for a PR whose whole diff you have not reviewed: "ack" runs its code as you, with your credentials';
     PREPARE_CHECK_TIMEOUT_MS = 30 * 6e4;
   }
 });
@@ -133829,105 +134034,15 @@ function jobSignature(job) {
 }
 function runSignature(jobs) {
   const sigs = jobs.map(jobSignature).sort();
-  const signature = (0, import_crypto54.createHash)("sha256").update(sigs.join("\0")).digest("hex");
+  const signature = (0, import_crypto55.createHash)("sha256").update(sigs.join("\0")).digest("hex");
   return { signature, sig8: signature.slice(0, 8), jobs: sigs };
 }
-var import_crypto54, MAX_ERROR_CHARS;
+var import_crypto55, MAX_ERROR_CHARS;
 var init_signature = __esm({
   "src/factory/heal/signature.ts"() {
     "use strict";
-    import_crypto54 = require("crypto");
-    MAX_ERROR_CHARS = 300;
-  }
-});
-
-// src/factory/heal/sanitize.ts
-function redactSecrets(s) {
-  return SECRET_PATTERNS.reduce((acc, [re, by]) => acc.replace(re, by), s);
-}
-function sanitizeLine(raw) {
-  return redactSecrets(cleanLine(raw).replace(CONTROL, " ")).replace(/\s+$/, "").slice(0, MAX_EVIDENCE_LINE_CHARS);
-}
-function carriesDelimiter(line2) {
-  return line2.toUpperCase().includes(DELIMITER_PREFIX);
-}
-function sanitizeLines(raw) {
-  const lines4 = [];
-  let dropped = 0;
-  let inKey = false;
-  for (const r of raw) {
-    const clean = cleanLine(r);
-    if (!inKey && KEY_BEGIN.test(clean) && !KEY_END.test(clean)) {
-      inKey = true;
-      lines4.push(REDACTED2);
-      continue;
-    }
-    if (inKey) {
-      if (KEY_END.test(clean)) inKey = false;
-      lines4.push(REDACTED2);
-      continue;
-    }
-    const line2 = sanitizeLine(r);
-    if (carriesDelimiter(line2)) dropped += 1;
-    else lines4.push(line2);
-  }
-  return { lines: lines4, dropped };
-}
-function capBytes(lines4, maxBytes) {
-  const out = [];
-  let size = 0;
-  for (const line2 of lines4) {
-    const n = Buffer.byteLength(line2, "utf8") + 1;
-    if (size + n > maxBytes) return { lines: out, cut: true };
-    size += n;
-    out.push(line2);
-  }
-  return { lines: out, cut: false };
-}
-function sanitizeJson(value, maxString = MAX_EVIDENCE_LINE_CHARS) {
-  const clean = (s) => redactSecrets(s).replace(CONTROL, " ").replace(/HEAL-UNTRUSTED-/gi, "HEAL_UNTRUSTED_").slice(0, maxString);
-  const walk = (v) => {
-    if (typeof v === "string") return clean(v);
-    if (Array.isArray(v)) return v.map(walk);
-    if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [clean(k), walk(x)]));
-    return v;
-  };
-  return walk(value);
-}
-function newDelimiter() {
-  return `${DELIMITER_PREFIX}${(0, import_crypto55.randomBytes)(8).toString("hex")}`;
-}
-function fenceUntrusted(delimiter3, name, lines4) {
-  const kept = lines4.map((line2, i) => ({ line: line2, n: i + 1 })).filter(({ line: line2 }) => !carriesDelimiter(line2) && !line2.includes(delimiter3));
-  const width = String(lines4.length).length;
-  return [
-    `<<<${delimiter3} BEGIN file=${name} lines=${lines4.length}`,
-    ...kept.map(({ line: line2, n }) => `${String(n).padStart(width)}| ${line2}`),
-    `${delimiter3} END file=${name}>>>`
-  ].join("\n");
-}
-var import_crypto55, DELIMITER_PREFIX, MAX_EVIDENCE_LINE_CHARS, CONTROL, REDACTED2, SECRET_PATTERNS, KEY_BEGIN, KEY_END;
-var init_sanitize = __esm({
-  "src/factory/heal/sanitize.ts"() {
-    "use strict";
     import_crypto55 = require("crypto");
-    init_logs();
-    DELIMITER_PREFIX = "HEAL-UNTRUSTED-";
-    MAX_EVIDENCE_LINE_CHARS = 400;
-    CONTROL = /(?!\t)[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
-    REDACTED2 = "[redacted]";
-    SECRET_PATTERNS = [
-      // A whole PEM private key inside one string (JSON values); line by line, sanitizeLines tracks the block.
-      [/-----BEGIN [A-Z0-9 ]*KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*KEY-----|$)/g, REDACTED2],
-      [/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/g, REDACTED2],
-      [/\bgithub_pat_[A-Za-z0-9_]{20,}/g, REDACTED2],
-      [/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, REDACTED2],
-      [/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, `Bearer ${REDACTED2}`],
-      // URL userinfo: https://user:pass@host, https://token@host.
-      [/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, `$1${REDACTED2}@`]
-    ];
-    KEY_BEGIN = /-----BEGIN [A-Z0-9 ]*KEY-----/;
-    KEY_END = /-----END [A-Z0-9 ]*KEY-----/;
+    MAX_ERROR_CHARS = 300;
   }
 });
 

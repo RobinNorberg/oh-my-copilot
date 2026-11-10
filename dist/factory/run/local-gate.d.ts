@@ -16,9 +16,10 @@
  * engine-owned checkout (assertLocalGateCommand), never in the user's
  * checkout or a lane worktree. With factory.run.sandbox.gates "enforced"
  * (the default) it runs in the Copilot runtime's OS sandbox (sandbox-exec.ts
- * runSandboxed: read-write on the checkout only, no network, no
- * credentials); with "ack" or "unsandboxed" it runs as the user, without a
- * shell, with the credential-scrubbed gateEnv.
+ * runSandboxed: read-write on the checkout only, no network, no credential
+ * in the env, the home's credential files denied); with "ack" or
+ * "unsandboxed" it runs as the user, without a shell, with the allowlisted
+ * gateEnv.
  *
  * No shell on Windows means no `.cmd`/`.bat` (cmd.exe would parse the
  * arguments; the 5.12.1 cmd-injection fix). `npm`/`npx` run as
@@ -133,6 +134,7 @@ export type LocalGateOutcome = {
     started: false;
     reason: string;
     sandbox?: true;
+    noVerdict?: true;
 };
 /**
  * Run the gate for `head` and record SUCCESS or FAILURE (a PENDING record is

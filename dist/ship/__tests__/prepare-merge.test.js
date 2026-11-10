@@ -57,8 +57,8 @@ function fakeRepo(overrides = {}) {
             headN += 1;
             return res(0);
         }
-        if (key.startsWith(`git diff --name-only ${BASE_SHA}...HEAD`))
-            return res(0, 'src/ship/gates.ts\nskills/ship/SKILL.md\n');
+        if (key.startsWith(`git diff --name-only -z ${BASE_SHA}...HEAD`))
+            return res(0, 'src/ship/gates.ts\0skills/ship/SKILL.md\0');
         if (key === 'git diff --cached --quiet -- inventory')
             return res(1);
         return res(0);

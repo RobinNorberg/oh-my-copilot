@@ -99,7 +99,7 @@ export interface GatesSandboxLayers {
     user: unknown;
     /** The `.copilot/omg.jsonc` committed at the run's verified base sha (undefined when not read). */
     base: unknown;
-    /** The engine's own environment: {@link SANDBOX_KILL_ENV}=off maps to `unsandboxed`. */
+    /** The engine's own environment: {@link SANDBOX_KILL_ENV}=off maps to `ack` (a park per head, never a plain run by itself). */
     env: NodeJS.ProcessEnv;
 }
 /**

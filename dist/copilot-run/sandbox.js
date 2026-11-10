@@ -135,8 +135,9 @@ export const GATES_SANDBOX_MODES = ['enforced', 'ack', 'unsandboxed'];
  * value.
  */
 export function resolveGatesSandboxMode(layers) {
+    // The kill switch never runs the PR's code unsandboxed by itself: it parks per head for the human's ack.
     if (layers.env[SANDBOX_KILL_ENV] === 'off')
-        return { mode: 'unsandboxed', source: `${SANDBOX_KILL_ENV}=off` };
+        return { mode: 'ack', source: `${SANDBOX_KILL_ENV}=off` };
     const read = (config, source) => {
         // factory.run.sandbox only: copilotRun.sandbox (copilot_run jobs) has no gates.
         const value = sandboxBlock({ factory: config?.factory }, 'factory', source).gates;
@@ -314,6 +315,8 @@ export function buildSandboxConfig(profile, ctx, host) {
             '.ssh', '.gitconfig', '.omg', '.copilot', '.azure', '.git-credentials', join('.config', 'git', 'credentials'), join('.cache', 'git', 'credential'),
             join('.config', 'gh'), '.aws', '.npmrc', '.docker', '.kube', '.netrc', join('.cargo', 'credentials'), join('.cargo', 'credentials.toml'),
             '.gnupg', '.pypirc', join('.config', 'gcloud'),
+            // Windows: gh's hosts.yml (%APPDATA%\GitHub CLI) and the GCM/MSAL token cache (%LOCALAPPDATA%\.IdentityService).
+            ...(ctx.platform === 'win32' ? [join('AppData', 'Roaming', 'GitHub CLI'), join('AppData', 'Local', '.IdentityService')] : []),
         ].map((p) => join(ctx.realHome, p));
         // A grant canon cannot resolve (a dangling link) holds nothing: the deny stays.
         const grants = [...filesystem.readwritePaths, ...filesystem.readonlyPaths, ctx.realHome];

@@ -269,6 +269,11 @@ export declare const UNSANDBOXED_LANES_REASON = "a lane ran without the enforced
 export declare const GATES_UNSANDBOXED_GATE = "gates-unsandboxed";
 /** The park when a check fails in the sandbox on the trusted base itself: a sandbox problem, never a ci-fix lane. */
 export declare const GATE_SANDBOX_INCOMPATIBLE_GATE = "gate-sandbox-incompatible";
+/**
+ * The park when a command ran in the sandbox under the confirmed policy and gave no verdict (no single exit marker, a
+ * contradiction, no attestation, a timeout with no answer): never a pass or a FAILURE, and no --allow-unsandboxed-gates.
+ */
+export declare const GATE_NO_VERDICT_GATE = "gate-no-verdict";
 /** How long one prepare check may run (the sandbox needs a bound; ship's own prepare has none). */
 export declare const PREPARE_CHECK_TIMEOUT_MS: number;
 /**
