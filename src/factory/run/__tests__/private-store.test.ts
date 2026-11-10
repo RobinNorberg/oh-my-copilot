@@ -1,13 +1,16 @@
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { defaultExec, type Exec } from '../../../ship/exec.js';
+import { protectedChanges } from '../../../ship/merge.js';
+import { LANE_PROTECTED_PATHS } from '../lane-commit.js';
 import {
-  compareUserRepoGuard, createPrivateRepo, dropImportRef, ensureSeed, fetchIntoPrivate, importFromPrivate, lockfileUnchanged, longPathProblem,
-  privateGitTools, privateRepoConfigHash, privateRunLayout, privateWorkRoot, removeRunDir, resolveUserGitDir, userRepoGuardSnapshot, userRepoProblem,
+  checkUserRepoGuard, createPrivateRepo, dropImportRef, ensureSeed, fetchIntoPrivate, importFromPrivate, lockfileUnchanged, longPathProblem,
+  privateGitEnv, privateGitPins, privateGitTools, privateRepoConfigHash, privateRepoProblem, privateRunLayout, privateWorkRoot, removeRunDir, resolveUserGitDir,
+  userRepoGuardSnapshot, userRepoProblem,
   type PrivateRepo, type PrivateRunLayout, type PrivateStoreContext,
 } from '../private-store.js';
 
@@ -124,12 +127,11 @@ describe('privateWorkRoot and layout', () => {
 });
 
 describe('seed and private clone', () => {
-  it('creates the seed and a private clone: HEAD == base, alternates only to the seed, no origin, no refs, longpaths', () => {
+  it('creates the seed and a private clone: HEAD == base, no alternates (a full copy), no origin, no refs, longpaths', () => {
     makePrivate();
     expect(g(dir, [`--git-dir=${p.gitDir}`, 'rev-parse', 'HEAD'])).toBe(base);
-    const alt = readFileSync(join(p.gitDir, 'objects', 'info', 'alternates'), 'utf8').split(/\r?\n/).filter(Boolean);
-    expect(alt).toHaveLength(1);
-    expect(fwd(alt[0]).toLowerCase()).toBe(fwd(join(layout.seed, 'objects')).toLowerCase());
+    expect(existsSync(join(p.gitDir, 'objects', 'info', 'alternates'))).toBe(false);
+    expect(g(dir, [`--git-dir=${p.gitDir}`, 'cat-file', '-p', `${base}:a.txt`])).toBe('a');
     expect(g(dir, [`--git-dir=${p.gitDir}`, 'remote'])).toBe('');
     expect(g(dir, [`--git-dir=${p.gitDir}`, 'for-each-ref'])).toBe('');
     expect(g(dir, [`--git-dir=${p.gitDir}`, 'config', '--get', 'core.longpaths'])).toBe('true');
@@ -185,10 +187,15 @@ describe('seed and private clone', () => {
     expect(g(dir, [`--git-dir=${p.gitDir}`, 'cat-file', '-t', moved])).toBe('commit');
   }, T);
 
-  it('a core.alternateRefsCommand planted in the private config: runs on a plain fetch (control), refused by fetchIntoPrivate, and not run when planted after the checks', () => {
+  it('alternates + a core.alternateRefsCommand planted in the private repository: runs on a plain fetch (control), refused by fetchIntoPrivate, and not run when planted after the checks', () => {
     makePrivate();
     const marker = join(dir, 'alt-marker');
-    const plant = () => g(dir, ['config', '--file', join(p.gitDir, 'config'), 'core.alternateRefsCommand', touchCmd(marker)]);
+    const alternates = join(p.gitDir, 'objects', 'info', 'alternates');
+    const plant = () => {
+      mkdirSync(dirname(alternates), { recursive: true });
+      writeFileSync(alternates, `${fwd(join(layout.seed, 'objects'))}\n`);
+      g(dir, ['config', '--file', join(p.gitDir, 'config'), 'core.alternateRefsCommand', touchCmd(marker)]);
+    };
     plant();
     g(dir, [`--git-dir=${p.gitDir}`, 'fetch', '--no-write-fetch-head', layout.seed, base]);
     expect(existsSync(marker)).toBe(true);
@@ -196,8 +203,9 @@ describe('seed and private clone', () => {
     expect(() => fetchIntoPrivate(layout, p, userGit, base, ctx)).toThrow(/changed since the engine wrote them/);
     expect(existsSync(marker)).toBe(false);
     g(dir, ['config', '--file', join(p.gitDir, 'config'), '--unset', 'core.alternateRefsCommand']);
-    // The race: planted after privateRepoProblem passed, right before the transport. The command-line pin wins.
-    fetchIntoPrivate(layout, p, userGit, base, { ...ctx, exec: racingExec((a) => isFetch(a) && a.some((x) => x === `--git-dir=${p.gitDir}`), plant) });
+    rmSync(alternates);
+    // The race: planted after privateRepoProblem passed, right before the transport. The command-line pin wins; the check after the transport refuses before any read.
+    expect(() => fetchIntoPrivate(layout, p, userGit, base, { ...ctx, exec: racingExec((a) => isFetch(a) && a.some((x) => x === `--git-dir=${p.gitDir}`), plant) })).toThrow(/changed since the engine wrote them/);
     expect(existsSync(marker)).toBe(false);
   }, T);
 
@@ -232,7 +240,8 @@ describe('importFromPrivate', () => {
     expect(r).toEqual({ ok: true, ref: 'refs/omg-import/issue-1/1', files: ['src/x.ts'] });
     expect(g(user, ['rev-parse', 'refs/omg-import/issue-1/1'])).toBe(sha);
     expect(g(user, ['for-each-ref', 'refs/heads/'])).toBe(`${base} commit\trefs/heads/main`);
-    dropImportRef(userGit, run, 1, ctx);
+    expect(() => dropImportRef(userGit, run, 1, base, ctx)).toThrow(/import ref left/);
+    dropImportRef(userGit, run, 1, sha, ctx);
     expect(userRef()).toBe('');
   }, T);
 
@@ -289,7 +298,7 @@ describe('importFromPrivate', () => {
     g(user, ['update-ref', '-d', 'refs/control']);
     rmSync(marker);
     expect(imp(sha, [base])).toMatchObject({ ok: true });
-    dropImportRef(userGit, run, 1, ctx);
+    dropImportRef(userGit, run, 1, sha, ctx);
     expect(existsSync(marker)).toBe(false);
   }, T);
 
@@ -302,20 +311,37 @@ describe('importFromPrivate', () => {
     expect(existsSync(marker)).toBe(false);
   }, T);
 
-  it('bare=false + updateInstead + a smudge filter: a plain push checks out and runs it (control); the import refuses', () => {
+  it('bare=false + updateInstead + a smudge filter: a push runs it (control, receive side), a plain fetch from it does not (control, the import direction); the import refuses it, and runs nothing when it is planted after the checks', () => {
     makePrivate();
     const marker = join(dir, 'smudge-marker');
     const cfg = join(p.gitDir, 'config');
-    g(dir, ['config', '--file', cfg, 'receive.denyCurrentBranch', 'updateInstead']);
-    g(dir, ['config', '--file', cfg, 'filter.x.smudge', `${touchCmd(marker)}; cat`]);
-    mkdirSync(join(p.gitDir, 'info'), { recursive: true });
-    writeFileSync(join(p.gitDir, 'info', 'attributes'), '* filter=x\n');
+    const pristine = readFileSync(cfg);
+    const plant = () => {
+      g(dir, ['config', '--file', cfg, 'receive.denyCurrentBranch', 'updateInstead']);
+      g(dir, ['config', '--file', cfg, 'filter.x.smudge', `${touchCmd(marker)}; cat`]);
+      mkdirSync(join(p.gitDir, 'info'), { recursive: true });
+      writeFileSync(join(p.gitDir, 'info', 'attributes'), '* filter=x\n');
+    };
+    plant();
     g(dir, [`--git-dir=${p.gitDir}`, 'symbolic-ref', 'HEAD', 'refs/heads/main']);
     g(user, ['push', p.gitDir, `${base}:refs/heads/main`]);
     expect(existsSync(marker)).toBe(true);
     rmSync(marker);
     const sha = mkCommit(p.gitDir, base, [{ path: 'x', content: 'x' }]);
+    // The import's direction: the user repository fetches, the private side only runs upload-pack. No filter runs there.
+    g(user, ['fetch', '--no-write-fetch-head', '--upload-pack=git -c uploadpack.allowAnySHA1InWant=true upload-pack', p.gitDir, `+${sha}:refs/control`]);
+    g(user, ['update-ref', '-d', 'refs/control']);
+    expect(existsSync(marker)).toBe(false);
     expect(imp(sha, [base])).toMatchObject({ ok: false, code: 'private-repo' });
+    expect(existsSync(marker)).toBe(false);
+    // Planted after the checks passed, right before the import fetch: the fetch still runs no filter and the import goes through.
+    writeFileSync(cfg, pristine);
+    rmSync(join(p.gitDir, 'info'), { recursive: true });
+    g(dir, [`--git-dir=${p.gitDir}`, 'update-ref', '--no-deref', 'HEAD', base]);
+    g(dir, [`--git-dir=${p.gitDir}`, 'update-ref', '-d', 'refs/heads/main']);
+    expect(privateRepoConfigHash(p.gitDir)).toBe(p.configHash);
+    ctx = { ...ctx, exec: racingExec((a) => isFetch(a) && a.includes(`--git-dir=${userGit}`), plant) };
+    expect(imp(sha, [base])).toMatchObject({ ok: true });
     expect(existsSync(marker)).toBe(false);
   }, T);
 
@@ -345,21 +371,212 @@ describe('importFromPrivate', () => {
   }, T);
 });
 
+describe('import hardening (review-481)', () => {
+  const run = 'issue-1';
+  const imp = (sha: string, parents: string[], extra?: Partial<Parameters<typeof importFromPrivate>[0]>, c: PrivateStoreContext = ctx) =>
+    importFromPrivate({ userGitDir: userGit, privateRepo: p, sha, expectedParents: parents, startSha: base, run, n: 1, ...extra }, c);
+  const userRef = () => g(user, ['for-each-ref', 'refs/omg-import/']);
+  const loose = (gitDir: string, oid: string) => join(gitDir, 'objects', oid.slice(0, 2), oid.slice(2));
+
+  it('HIGH-1: a planted promisor remote + a missing object runs its uploadpack on the module\'s ls-tree / cat-file -e shapes without GIT_NO_LAZY_FETCH (control); the module refuses it, and runs nothing when it is planted after the checks', () => {
+    makePrivate();
+    const marker = join(dir, 'lazy-marker');
+    const cfg = join(p.gitDir, 'config');
+    const pristine = readFileSync(cfg);
+    const plant = () => {
+      for (const [k, v] of [['core.repositoryformatversion', '1'], ['extensions.partialClone', 'evil'], ['remote.evil.promisor', 'true'], ['remote.evil.url', fwd(userGit)], ['remote.evil.uploadpack', `${touchCmd(marker)}; git upload-pack`]]) {
+        g(dir, ['config', '--file', cfg, k, v]);
+      }
+    };
+    const head = mkCommit(p.gitDir, base, [{ path: 'src/x.ts', content: 'x\n' }]);
+    const tree = g(dir, [`--git-dir=${p.gitDir}`, 'rev-parse', `${head}^{tree}`]);
+    expect(existsSync(loose(p.gitDir, tree))).toBe(true);
+    rmSync(loose(p.gitDir, tree), { force: true });
+    plant();
+    // Control: the module's exact pins and environment minus GIT_NO_LAZY_FETCH.
+    const env = { ...process.env, ...privateGitEnv(ctx.tools) } as Record<string, string | undefined>;
+    delete env.GIT_NO_LAZY_FETCH;
+    spawnSync('git', [...privateGitPins(ctx.tools), `--git-dir=${p.gitDir}`, 'ls-tree', '-z', '--full-tree', '--full-name', head, '--', 'package-lock.json'], { cwd: dir, env, encoding: 'utf8' });
+    expect(existsSync(marker)).toBe(true);
+    rmSync(marker);
+    spawnSync('git', [...privateGitPins(ctx.tools), `--git-dir=${p.gitDir}`, 'cat-file', '-e', `${tree}^{commit}`], { cwd: dir, env, encoding: 'utf8' });
+    expect(existsSync(marker)).toBe(true);
+    rmSync(marker);
+    // Planted before: refused by privateRepoProblem (now run by lockfileUnchanged too).
+    expect(() => lockfileUnchanged(p, base, head, ctx)).toThrow(/changed since the engine wrote them/);
+    expect(existsSync(marker)).toBe(false);
+    // Planted after the checks, right before the read: the read fails closed, nothing runs.
+    writeFileSync(cfg, pristine);
+    expect(privateRepoConfigHash(p.gitDir)).toBe(p.configHash);
+    expect(() => lockfileUnchanged(p, base, head, { ...ctx, exec: racingExec((a) => a.includes('ls-tree'), plant) })).toThrow(/lockfile listing/);
+    expect(existsSync(marker)).toBe(false);
+    // The hasCommit shape (cat-file -e <sha>^{commit}) after fetchIntoPrivate's transport.
+    writeFileSync(cfg, pristine);
+    writeFileSync(join(user, 'b.txt'), 'b\n');
+    g(user, ['add', 'b.txt']);
+    g(user, ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'moved']);
+    const moved = g(user, ['rev-parse', 'HEAD']);
+    const raceCatFile = racingExec((a) => a.includes('cat-file'), () => {
+      plant();
+      // `moved` arrived loose or in a pack: remove both forms (every pack; the read below only needs `moved` missing).
+      rmSync(loose(p.gitDir, moved), { force: true });
+      const packDir = join(p.gitDir, 'objects', 'pack');
+      for (const f of readdirSync(packDir)) {
+        chmodSync(join(packDir, f), 0o666);
+        rmSync(join(packDir, f));
+      }
+    });
+    expect(() => fetchIntoPrivate(layout, p, userGit, moved, { ...ctx, exec: raceCatFile })).toThrow(/does not have/);
+    expect(existsSync(marker)).toBe(false);
+  }, T);
+
+  it('HIGH-1: refuses a private config that makes a partial clone or a format version the engine did not write', () => {
+    makePrivate();
+    const cfg = join(p.gitDir, 'config');
+    g(dir, ['config', '--file', cfg, 'core.repositoryformatversion', '1']);
+    const s = { ...p, configHash: privateRepoConfigHash(p.gitDir) };
+    expect(privateRepoProblem(s, ctx)).toMatch(/format version/);
+    g(dir, ['config', '--file', cfg, 'remote.evil.promisor', 'true']);
+    expect(privateRepoProblem({ ...p, configHash: privateRepoConfigHash(p.gitDir) }, ctx)).toMatch(/partial clone/);
+  }, T);
+
+  it('M2: refuses a private-only parent or start before any transport; a second new commit is refused by default', () => {
+    makePrivate();
+    const c1 = mkCommit(p.gitDir, base, [{ path: 'src/a.ts', content: 'a' }]);
+    const c2 = mkCommit(p.gitDir, c1, [{ path: 'src/b.ts', content: 'b' }]);
+    const calls: string[][] = [];
+    const spy: Exec = (cmd, args, opts) => {
+      calls.push(args);
+      return defaultExec(cmd, args, opts);
+    };
+    expect(imp(c2, [c1], {}, { ...ctx, exec: spy })).toEqual({ ok: false, code: 'bad-input', reason: 'the start commit and every expected parent must already be commits in the repository' });
+    expect(imp(c2, [base], { startSha: c1 }, { ...ctx, exec: spy })).toMatchObject({ ok: false, code: 'bad-input' });
+    expect(calls.some((a) => a.includes('fetch') || a.some((x) => x.startsWith('--upload-pack')))).toBe(false);
+    expect(spawnSync('git', ['--git-dir', userGit, 'cat-file', '-e', c1]).status).not.toBe(0);
+    // Two new commits on the user's base: the tip's parent is private-only, so the default (exactly one new commit) refuses.
+    expect(imp(c2, [base])).toMatchObject({ ok: false, code: 'parents-mismatch' });
+    expect(userRef()).toBe('');
+  }, T);
+
+  it('L1: a refusal whose ref cannot be deleted says "import ref left"; dropImportRef checks the status and the old value', () => {
+    makePrivate();
+    const bad = mkCommit(p.gitDir, base, [{ path: 'CLAUDE.md', content: 'x' }]);
+    const lock = join(userGit, 'refs', 'omg-import', run, '1.lock');
+    const c = { ...ctx, exec: racingExec((a) => a.includes('update-ref'), () => writeFileSync(lock, '')) };
+    const r = imp(bad, [base], {}, c);
+    expect(r).toMatchObject({ ok: false, code: 'ref-left' });
+    expect(r.ok === false && r.reason.startsWith('import ref left')).toBe(true);
+    expect(() => dropImportRef(userGit, run, 1, bad, ctx)).toThrow(/import ref left/);
+    rmSync(lock);
+    dropImportRef(userGit, run, 1, bad, ctx);
+    expect(userRef()).toBe('');
+  }, T);
+
+  it('L7: a git command over its timeout is killed and refuses with a fixed reason', () => {
+    makePrivate();
+    const sha = mkCommit(p.gitDir, base, [{ path: 'src/x.ts', content: 'x' }]);
+    expect(imp(sha, [base], {}, { ...ctx, timeoutMs: 1 })).toEqual({ ok: false, code: 'timeout', reason: 'a git command of the import timed out and was killed' });
+    expect(() => ensureSeed(layout, userGit, sha, { ...ctx, timeoutMs: 1 })).toThrow(/timed out after 1 ms/);
+  }, T);
+
+  it('L3: protected-path matching folds Unicode look-alikes and default-ignorable code points', () => {
+    expect(protectedChanges(['.huſky/pre-commit', 'CLAUDE‌.md', '.ｇithub/x', '.copilot/omg.jſonc'], [...LANE_PROTECTED_PATHS])).toHaveLength(4);
+    expect(protectedChanges(['.github/workflowſ/ci.yml', '.copilot/omg.jſonc'])).toHaveLength(2);
+    expect(protectedChanges(['src/huſky.ts', 'docs/claude.md'])).toEqual([]);
+  });
+});
+
+describe('seed integrity (review-481 M1)', () => {
+  it('a seed blob replaced by another object\'s bytes: a shared clone shows the evil content (control); createPrivateRepo refuses before its clone, and a --no-local clone never carries it', () => {
+    ensureSeed(layout, userGit, base, ctx);
+    // The fetch kept a pack: explode it into loose objects, so one object's bytes can be swapped.
+    const packDir = join(layout.seed, 'objects', 'pack');
+    for (const name of readdirSync(packDir).filter((n) => n.endsWith('.pack'))) {
+      const bytes = readFileSync(join(packDir, name));
+      for (const f of readdirSync(packDir).filter((n) => n.startsWith(name.slice(0, -5)))) {
+        chmodSync(join(packDir, f), 0o666);
+        rmSync(join(packDir, f));
+      }
+      g(dir, [`--git-dir=${layout.seed}`, 'unpack-objects', '-q'], { input: bytes });
+    }
+    const blob = g(dir, [`--git-dir=${layout.seed}`, 'rev-parse', `${base}:a.txt`]);
+    const other = g(dir, [`--git-dir=${layout.seed}`, 'rev-parse', `${base}:package-lock.json`]);
+    const at = (oid: string) => join(layout.seed, 'objects', oid.slice(0, 2), oid.slice(2));
+    expect(existsSync(at(blob)) && existsSync(at(other))).toBe(true);
+    chmodSync(at(blob), 0o666);
+    writeFileSync(at(blob), readFileSync(at(other)));
+    // Control: alternates (what --reference made) read the bad bytes unverified.
+    const shared = join(dir, 'shared');
+    g(dir, ['clone', '-q', '--shared', '--no-checkout', layout.seed, shared]);
+    expect(g(shared, ['cat-file', '-p', blob])).toContain('lockfileVersion');
+    expect(() => createPrivateRepo(layout, base, ctx)).toThrow(/fails git fsck/);
+    expect(existsSync(layout.repo)).toBe(false);
+    const full = join(dir, 'full');
+    const r = spawnSync('git', ['-c', 'transfer.fsckObjects=true', 'clone', '-q', '--no-local', '--no-checkout', layout.seed, full], { encoding: 'utf8', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: emptyGlobal } });
+    const carried = r.status === 0 ? spawnSync('git', ['--git-dir', join(full, '.git'), 'cat-file', '-p', blob], { encoding: 'utf8' }).stdout : '';
+    expect(carried).not.toContain('lockfileVersion');
+  }, T);
+});
+
 describe('user repository guard', () => {
-  it('notices a planted hook, replace ref and alternates; not git commit-graph write or git gc', () => {
-    const before = userRepoGuardSnapshot(userGit, ctx);
+  const snap = () => userRepoGuardSnapshot(userGit, ctx);
+  it('does not change on the user\'s ordinary git activity: push -u, remote add / set-url, user.name, info/exclude, sparse-checkout, worktree add, gc, commit-graph write', () => {
+    const remote = join(dir, 'remote.git');
+    g(dir, ['init', '-q', '--bare', remote]);
+    const before = snap();
+    g(user, ['remote', 'add', 'origin', remote]);
+    g(user, ['remote', 'set-url', 'origin', fwd(remote)]);
+    g(user, ['push', '-q', '-u', 'origin', 'main']);
+    g(user, ['branch', '--set-upstream-to=origin/main', 'main']);
+    g(user, ['config', 'user.name', 'Someone']);
+    mkdirSync(join(userGit, 'info'), { recursive: true });
+    appendFileSync(join(userGit, 'info', 'exclude'), 'tmp/\n');
+    g(user, ['sparse-checkout', 'set', 'src']);
+    g(user, ['sparse-checkout', 'disable']);
+    g(user, ['worktree', 'add', '-q', '-b', 'side', join(dir, 'wt2')]);
     g(user, ['commit-graph', 'write', '--reachable']);
     g(user, ['gc', '-q']);
-    expect(compareUserRepoGuard(before, userRepoGuardSnapshot(userGit, ctx))).toEqual([]);
+    expect(checkUserRepoGuard(before, ctx)).toEqual([]);
+  }, T);
+
+  it('notices a planted hook, a hooksPath set through an included file (and a hook there), a filter, an alias, a url.insteadOf, alternates, a replace ref, a submodule hook and a worktree commondir redirect', () => {
+    let before = snap();
     writeHook(join(userGit, 'hooks'), 'pre-commit', join(dir, 'm'));
-    expect(compareUserRepoGuard(before, userRepoGuardSnapshot(userGit, ctx))).toEqual(['hooks']);
+    expect(checkUserRepoGuard(before, ctx)).toEqual(['hooks']);
     rmSync(join(userGit, 'hooks', 'pre-commit'));
+    writeFileSync(join(userGit, 'inc.cfg'), '');
+    g(user, ['config', 'include.path', 'inc.cfg']);
+    before = snap();
+    const hp = join(dir, 'evil-hooks');
+    mkdirSync(hp);
+    writeFileSync(join(userGit, 'inc.cfg'), `[core]\n\thooksPath = ${fwd(hp)}\n`);
+    expect(checkUserRepoGuard(before, ctx)).toEqual(['config', 'hooksPath']);
+    before = snap();
+    writeHook(hp, 'pre-commit', join(dir, 'm'));
+    expect(checkUserRepoGuard(before, ctx)).toEqual(['hooksPath']);
+    before = snap();
+    for (const [k, v] of [['filter.x.smudge', 'evil'], ['alias.st', '!evil'], [`url.${fwd(join(dir, 'evil'))}.insteadOf`, 'https://example.invalid/']]) {
+      g(user, ['config', k, v]);
+      expect(checkUserRepoGuard(before, ctx)).toEqual(['config']);
+      g(user, ['config', '--unset', k]);
+      expect(checkUserRepoGuard(before, ctx)).toEqual([]);
+    }
+    writeFileSync(join(userGit, 'objects', 'info', 'alternates'), 'x\n');
+    expect(checkUserRepoGuard(before, ctx)).toEqual(['alternates']);
+    rmSync(join(userGit, 'objects', 'info', 'alternates'));
     const other = mkCommit(userGit, base, [{ path: 'e', content: 'e' }]);
     g(user, ['replace', base, other]);
-    expect(compareUserRepoGuard(before, userRepoGuardSnapshot(userGit, ctx))).toEqual(['replace']);
+    expect(checkUserRepoGuard(before, ctx)).toEqual(['replace']);
     g(user, ['replace', '-d', base]);
-    writeFileSync(join(userGit, 'objects', 'info', 'alternates'), 'x\n');
-    expect(compareUserRepoGuard(before, userRepoGuardSnapshot(userGit, ctx))).toEqual(['alternates']);
+    g(dir, ['init', '-q', '--bare', join(userGit, 'modules', 'lib', 'sub')]);
+    before = snap();
+    writeHook(join(userGit, 'modules', 'lib', 'sub', 'hooks'), 'post-checkout', join(dir, 'm'));
+    expect(checkUserRepoGuard(before, ctx)).toEqual(['modules']);
+    g(user, ['worktree', 'add', '-q', '-b', 'side3', join(dir, 'wt3')]);
+    before = snap();
+    const [id] = readdirSync(join(userGit, 'worktrees'));
+    writeFileSync(join(userGit, 'worktrees', id, 'commondir'), `${fwd(join(dir, 'evil.git'))}\n`);
+    expect(checkUserRepoGuard(before, ctx)).toEqual(['worktrees']);
   }, T);
 });
 
@@ -387,20 +604,47 @@ describe('removeRunDir', () => {
     expect(() => removeRunDir(user, layout.work)).toThrow(/not under the private work root/);
     expect(() => removeRunDir(layout.work, layout.work)).toThrow(/not under the private work root/);
   }, T);
+  it('moves the dir to a .trash-<random> name first, and refuses a directory swapped for a junction between walk steps (the target marker survives)', () => {
+    const work = join(dir, 'fw');
+    const run = join(work, 'abcdef01', 'issue-1');
+    const target = join(dir, 'outside');
+    mkdirSync(target, { recursive: true });
+    writeFileSync(join(target, 'marker.txt'), 'keep me');
+    mkdirSync(join(run, 'w', 'prep', 'sub'), { recursive: true });
+    writeFileSync(join(run, 'w', 'prep', 'sub', 'f.txt'), 'f');
+    const seen: string[] = [];
+    let swapped = false;
+    const seam = {
+      beforeReaddir: (d: string) => {
+        seen.push(d);
+        if (!swapped && basename(d) === 'sub') {
+          swapped = true;
+          renameSync(d, `${d}-moved`);
+          symlinkSync(target, d, win ? 'junction' : 'dir');
+        }
+      },
+    };
+    expect(() => removeRunDir(run, work, process.platform, seam)).toThrow(/was replaced/);
+    expect(readFileSync(join(target, 'marker.txt'), 'utf8')).toBe('keep me');
+    expect(existsSync(run)).toBe(false);
+    expect(basename(dirname(seen[0]))).toBe('abcdef01');
+    expect(basename(seen[0])).toMatch(/^\.trash-[0-9a-f]{16}$/);
+  });
 });
 
 describe('lockfileUnchanged', () => {
   it('junction only when every base lockfile is byte-identical at the head and none was added', () => {
     makePrivate();
     const same = mkCommit(p.gitDir, base, [{ path: 'src/x.ts', content: 'x' }]);
-    expect(lockfileUnchanged(p.gitDir, base, same, ctx)).toEqual({ policy: 'junction', lockfiles: ['package-lock.json'], changed: [] });
+    expect(lockfileUnchanged(p, base, same, ctx)).toEqual({ policy: 'junction', lockfiles: ['package-lock.json'], changed: [] });
     const changed = mkCommit(p.gitDir, base, [{ path: 'package-lock.json', content: '{"lockfileVersion":3,"x":1}\n' }]);
-    expect(lockfileUnchanged(p.gitDir, base, changed, ctx)).toMatchObject({ policy: 'park', changed: ['package-lock.json'] });
+    expect(lockfileUnchanged(p, base, changed, ctx)).toMatchObject({ policy: 'park', changed: ['package-lock.json'] });
     const added = mkCommit(p.gitDir, base, [{ path: 'yarn.lock', content: 'y' }]);
-    expect(lockfileUnchanged(p.gitDir, base, added, ctx)).toMatchObject({ policy: 'park', changed: ['yarn.lock'] });
-    const noLock = mkCommit(userGit, base, [], []);
-    expect(lockfileUnchanged(userGit, noLock, noLock, ctx).policy).toBe('junction');
-    const empty = g(dir, [`--git-dir=${userGit}`, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit-tree', '4b825dc642cb6eb9a060e54bf8d69288fbee4904', '-m', 'empty']);
-    expect(lockfileUnchanged(userGit, empty, empty, ctx)).toEqual({ policy: 'park', lockfiles: [], changed: [] });
+    expect(lockfileUnchanged(p, base, added, ctx)).toMatchObject({ policy: 'park', changed: ['yarn.lock'] });
+    const noLock = mkCommit(p.gitDir, base, [], []);
+    expect(lockfileUnchanged(p, noLock, noLock, ctx).policy).toBe('junction');
+    const emptyTree = g(dir, [`--git-dir=${p.gitDir}`, 'hash-object', '-w', '-t', 'tree', '--stdin'], { input: '' });
+    const empty = g(dir, [`--git-dir=${p.gitDir}`, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit-tree', emptyTree, '-m', 'empty']);
+    expect(lockfileUnchanged(p, empty, empty, ctx)).toEqual({ policy: 'park', lockfiles: [], changed: [] });
   }, T);
 });
