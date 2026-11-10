@@ -144,6 +144,7 @@ import {
   recordDispatchTelemetry,
   shouldLoosenOrdinaryEnforcement,
 } from "./registry/cutover.js";
+import { isOpenClawEnabled } from "../openclaw/config.js";
 
 const PKILL_F_FLAG_PATTERN = /\bpkill\b.*\s-f\b/;
 const PKILL_FULL_FLAG_PATTERN = /\bpkill\b.*--full\b/;
@@ -2346,7 +2347,7 @@ export const _openclaw = {
     event: import("../openclaw/types.js").OpenClawHookEvent,
     context: import("../openclaw/types.js").OpenClawContext,
   ) => {
-    if (process.env.OMC_OPENCLAW !== "1") return;
+    if (!isOpenClawEnabled()) return;
     const logOpenClawWakeFailure = createSwallowedErrorLogger(
       `hooks.bridge openclaw wake failed for ${event}`,
     );

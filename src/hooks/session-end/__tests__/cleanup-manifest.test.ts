@@ -420,6 +420,7 @@ describe('durable SessionEnd cleanup manifest', () => {
   });
 
   it('bounds required failures and never retries a failed remote delivery attempt', () => {
+    vi.stubEnv('OMC_OPENCLAW', '1');
     const directory = project();
     const sessionId = preparedAndSealed(directory, 'bounded-failures');
     let owner = claimSessionEndJob(directory, sessionId, 'owner-1', 'identity', Date.now() + 5_000)!;

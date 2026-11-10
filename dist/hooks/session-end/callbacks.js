@@ -7,6 +7,7 @@
 import { writeFileSync, mkdirSync } from 'fs';
 import { dirname, normalize } from 'path';
 import { homedir } from 'os';
+import { isOpenClawEnabled } from '../../openclaw/config.js';
 import { getOMCConfig, } from '../../features/auto-update.js';
 /**
  * Format session summary for notifications
@@ -162,7 +163,7 @@ export async function runSessionEndDeferredAction(action, context) {
                 // OpenClaw wake attempts are terminal in the manifest because remote
                 // acceptance can precede an unavailable response.
                 case 'openclaw-wake': {
-                    if (action.payload.enabled !== true || process.env.OMC_OPENCLAW !== '1')
+                    if (action.payload.enabled !== true || !isOpenClawEnabled())
                         return 'skipped';
                     const { wakeOpenClaw } = await import('../../openclaw/index.js');
                     const result = await wakeOpenClaw('session-end', { sessionId: context.sessionId, projectPath: context.directory, reason: typeof action.payload.reason === 'string' ? action.payload.reason : context.metrics.reason });

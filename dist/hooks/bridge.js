@@ -46,6 +46,7 @@ import { getBackgroundBashPermissionFallback, getBackgroundTaskPermissionFallbac
 import { wrapUntrustedFileContent } from "../agents/prompt-helpers.js";
 import { isHookShadowEnabled, runShadowObservation, } from "./registry/index.js";
 import { isFamilyCutoverEnabled, hasHookProtocolDeny, recordDispatchTelemetry, shouldLoosenOrdinaryEnforcement, } from "./registry/cutover.js";
+import { isOpenClawEnabled } from "../openclaw/config.js";
 const PKILL_F_FLAG_PATTERN = /\bpkill\b.*\s-f\b/;
 const PKILL_FULL_FLAG_PATTERN = /\bpkill\b.*--full\b/;
 const WORKER_BLOCKED_TMUX_PATTERN = /\btmux\s+/i;
@@ -1739,7 +1740,7 @@ export const _notify = {
  */
 export const _openclaw = {
     wake: (event, context) => {
-        if (process.env.OMC_OPENCLAW !== "1")
+        if (!isOpenClawEnabled())
             return;
         const logOpenClawWakeFailure = createSwallowedErrorLogger(`hooks.bridge openclaw wake failed for ${event}`);
         import("../openclaw/index.js")
