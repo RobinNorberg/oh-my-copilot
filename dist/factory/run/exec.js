@@ -296,6 +296,9 @@ function factoryGit(a, protectedBranches, extraProtected = [], local, agent) {
         case 'rev-parse':
             if (same(r, ['--git-common-dir']) || same(r, ['--symbolic-full-name', 'HEAD']))
                 return true;
+            // Whether the local forge's claim key is a shallow clone's own (localFactoryClaimRepo, F60).
+            if (same(r, ['--is-shallow-repository']))
+                return true;
             if (r.length === 2 && r[0] === '--verify') {
                 const m = /^([0-9a-f]{40}):(.+)$/.exec(r[1]);
                 if (m)
@@ -335,6 +338,9 @@ function factoryGit(a, protectedBranches, extraProtected = [], local, agent) {
                 return isPlainRepoPath(r[3]);
             return null;
         case 'rev-list':
+            // The local forge's claim key (localFactoryClaimRepo, F60): the root commits of HEAD, read-only.
+            if (same(r, ['--max-parents=0', 'HEAD']))
+                return true;
             // Publish check: the commits of the prepared head beyond the reviewed head and GitHub's base.
             return r.length === 3 && /^[0-9a-f]{40}$/.test(r[0]) && /^\^[0-9a-f]{40}$/.test(r[1]) && /^\^[0-9a-f]{40}$/.test(r[2]) ? true : null;
         case 'worktree':
