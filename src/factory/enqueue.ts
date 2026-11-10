@@ -82,7 +82,7 @@ import { shipyardKeyLine, shipyardKeys, type Forge, type ForgeItem, type ForgeRe
 import { isPlainBranchName } from '../ship/config.js';
 import { TRUSTED_READ_ENV, type Exec } from '../ship/exec.js';
 import {
-  baseLayer, CheckIncompatibleError, CheckUsageError, checkGuardExec, defaultResolveAz, EXIT_CHECK_FAILED, fetchBase, localBase, parseItemId, runFactoryCheck, unsupportedForge,
+  baseLayer, CheckIncompatibleError, CheckUsageError, checkGuardExec, defaultResolveAz, EXIT_CHECK_FAILED, fetchBaseUnlessBusy, localBase, parseItemId, runFactoryCheck, unsupportedForge,
   type CheckJson, type FactoryCheckDeps,
 } from './check/cli.js';
 import { isVague, type CheckBucket } from './check/rules.js';
@@ -461,7 +461,8 @@ export async function runFactoryEnqueue(o: FactoryEnqueueOptions, deps: FactoryC
   const originUrl = origin.ok && origin.out ? origin.out : undefined;
   const base = deps.base(root);
   if (!isPlainBranchName(base)) throw new CheckUsageError(`base ${JSON.stringify(base)} is not a branch name`);
-  let baseSha = originUrl ? fetchBase(exec, root, base, warnings) : localBase(exec, root, base, warnings);
+  // The fetch under the engine lock (or the last fetched base while an engine runs); the forge writes below need no lock.
+  let baseSha = originUrl ? fetchBaseUnlessBusy(exec, root, base, warnings, deps.owner) : localBase(exec, root, base, warnings);
   const trustedUser = deps.trustedUser();
   let config: ResolvedForgeConfig;
   try {

@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   acquireFactoryClaim, claimRepoKey, claimRoot, factoryClaimHolder, factoryClaimPath, factoryClaimRepo, listFactoryClaims, removeFactoryClaim, settleFactoryClaim, SHARED_STATE_WARNING,
@@ -12,7 +12,7 @@ import { EXIT_BUSY as ENGINE_EXIT_BUSY } from '../engine.js';
 import { FactorySafetyError } from '../exec.js';
 import { EngineLedger, emptyHooksDir } from '../ledger.js';
 import {
-  acquireFactoryOwner, acquireFactoryRepoOwner, computeFactoryIntegrity, createFactoryState, describeOwner, EXIT_BUSY, FactoryBusyError, FactoryStateError, factoryOwnerPath, factoryRepoOwnerPath,
+  acquireFactoryOwner, acquireFactoryRepoOwner, acquireFactoryRepoOwnerForRun, computeFactoryIntegrity, lockBusyMessage, SCAN_POLL_MS, SCAN_WAIT_MS, scanWait, createFactoryState, describeOwner, EXIT_BUSY, FactoryBusyError, FactoryStateError, factoryOwnerPath, factoryRepoOwnerPath,
   factoryStateDir, factoryStatePath, overwriteFactoryState, ownerHolding, refuseWhileEngineRuns, type FactoryPhase, type FactoryRunKey, type OwnerDeps,
 } from '../state.js';
 import { lockPathFor } from '../../../lib/file-lock.js';
@@ -216,14 +216,116 @@ describe('cross-clone run claims', () => {
     expect(busyOf(() => acquireFactoryClaim(ledger, URL, cloneB, 7, NOW, live(2))).message).not.toMatch(/\u001b|\u0007|evil-host/);
   });
 
-  it('the engine\'s end: a terminal or never-started run releases its claim; any other phase, and a state read that throws, parks it', () => {
+  it('the engine\'s end: a terminal or never-started run releases its claim; any other phase, and a state that is not the engine\'s sealed last write, parks it', () => {
     const calls: string[] = [];
     const claim: HeldClaim = { release: () => calls.push('release'), park: (at) => calls.push(`park ${at}`) };
-    expect(settleFactoryClaim(claim, () => 'merged', NOW)).toBe('released');
-    expect(settleFactoryClaim(claim, () => null, NOW)).toBe('released');
-    expect(settleFactoryClaim(claim, () => 'review', NOW)).toBe('parked');
-    expect(settleFactoryClaim(claim, () => { throw new FactoryStateError('malformed'); }, NOW)).toBe('parked');
-    expect(calls).toEqual(['release', 'release', `park ${NOW}`, `park ${NOW}`]);
+    expect(settleFactoryClaim(claim, cloneA, 7, ledger, NOW)).toBe('released');
+    runState(cloneA, 7, 'merged');
+    expect(settleFactoryClaim(claim, cloneA, 7, ledger, NOW)).toBe('released');
+    runState(cloneA, 7, 'review');
+    expect(settleFactoryClaim(claim, cloneA, 7, ledger, NOW)).toBe('parked');
+    // L3: a lane in this clone writes a terminal phase (resealed) after the engine's last write: parked, never freed.
+    const path = factoryStatePath(cloneA, 7);
+    const sealed = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+    const forged = { ...sealed, phase: 'merged', integrity: undefined };
+    writeFileSync(path, JSON.stringify({ ...forged, integrity: computeFactoryIntegrity(forged as never) }));
+    expect(settleFactoryClaim(claim, cloneA, 7, ledger, NOW)).toBe('parked');
+    runState(cloneA, 8, { raw: '{oops' });
+    expect(settleFactoryClaim(claim, cloneA, 8, ledger, NOW)).toBe('parked');
+    expect(calls).toEqual(['release', 'release', `park ${NOW}`, `park ${NOW}`, `park ${NOW}`]);
+  });
+
+  it('L2: the shared ledger recorded the run\'s state under another path of that checkout (its state path moved): held and reported, never "never started"', () => {
+    acquireFactoryClaim(ledger, URL, cloneA, 7, NOW, live(1)).park(NOW);
+    // The engine wrote run-7.json where the state root was before (say an origin change with OMC_STATE_DIR); nothing is at today's path.
+    EngineLedger.open(ledger, cloneA, 7).record(join(dir, 'old-state-root', 'run-7.json'), '{}');
+    expect(factoryClaimHolder(ledger, URL, cloneB, 7, live(2))).toMatchObject({ state: 'unreadable', why: expect.stringMatching(/its state path moved/) });
+    // Records of other files only (the owner files every engine records) do not count as a moved state.
+    acquireFactoryClaim(ledger, URL, cloneA, 8, NOW, live(1)).park(NOW);
+    EngineLedger.open(ledger, cloneA, 8).record(factoryRepoOwnerPath(cloneA), null);
+    expect(factoryClaimHolder(ledger, URL, cloneB, 8, live(2))).toBeNull();
+  });
+
+  it('L7 (review-472): a failed lock release warns naming the lock and returns false; a retry releases it', () => {
+    const held = acquireFactoryRepoOwner(cloneA, 'scan', NOW, live(1));
+    const path = factoryRepoOwnerPath(cloneA);
+    mkdirSync(lockPathFor(path));
+    const errors: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation((m: string) => { errors.push(m); });
+    try {
+      expect(held.release()).toBe(false);
+      expect(errors.join('\n')).toContain(`could not update the lock ${path}`);
+      expect(existsSync(path)).toBe(true);
+      rmSync(lockPathFor(path), { recursive: true });
+      expect(held.release()).toBe(true);
+      expect(existsSync(path)).toBe(false);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('L3 (review): a same-named state the engine wrote and then deleted (a cleaned run) is not "moved": never started, the claim settles released', () => {
+    const old = join(dir, 'old-state-root', 'run-9.json');
+    EngineLedger.open(ledger, cloneA, 9).record(old, '{}');
+    EngineLedger.open(ledger, cloneA, 9).record(old, null);
+    const calls: string[] = [];
+    const claim = { release: () => { calls.push('release'); }, park: (at: string) => { calls.push(`park ${at}`); } };
+    expect(settleFactoryClaim(claim as never, cloneA, 9, ledger, NOW)).toBe('released');
+    // A live record at the old path still reads as moved: parked.
+    EngineLedger.open(ledger, cloneA, 9).record(old, '{}');
+    expect(settleFactoryClaim(claim as never, cloneA, 9, ledger, NOW)).toBe('parked');
+    expect(calls).toEqual(['release', `park ${NOW}`]);
+  });
+
+  it('L4: a lock that cannot go stale (a directory, or an old lock file of a live pid) is busy and names the path to remove; a fresh one is transient', () => {
+    const claim = factoryClaimPath(ledger, URL, cloneA, 7);
+    mkdirSync(dirname(claim), { recursive: true });
+    const lock = lockPathFor(claim);
+    const remove = `if no omg factory process is running, remove ${lock}`;
+    mkdirSync(lock);
+    expect(busyOf(() => acquireFactoryClaim(ledger, URL, cloneB, 7, NOW, live(2))).message).toBe(`the lock path ${lock} is a directory, so the lock can never be taken and never goes stale; ${remove}`);
+    rmSync(lock, { recursive: true });
+    writeFileSync(lock, JSON.stringify({ pid: process.pid, timestamp: Date.now() }));
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(lock, old, old);
+    const stuck = lockBusyMessage(lock);
+    expect(stuck).toContain('held for more than 30 s by a live pid');
+    expect(stuck.endsWith(remove)).toBe(true);
+    expect(lockBusyMessage(lock, old.getTime() + 1_000)).toBe(`another omg factory process holds the lock file ${lock}; retry in a moment (${remove})`);
+    rmSync(lock);
+  });
+
+  it('L6: a `scan` holder (poll\'s heal scan or base sync) says so, and `omg factory run` waits it out once before busy; any other holder is busy at once', () => {
+    acquireFactoryRepoOwner(cloneA, 'scan', NOW, live(1));
+    const busy = busyOf(() => acquireFactoryRepoOwner(cloneA, 7, NOW, live(2)));
+    expect(busy.message).toMatch(/^the poller's heal scan or base sync, or a factory read command's fetch, holds this checkout for a moment \(scan, pid 1 on h/);
+    expect(busy.holderRun).toBe('scan');
+    // A fake clock: each sleep advances it; the holder is re-read after every poll.
+    let t = 0;
+    const waits: number[] = [];
+    let onSleep = (): void => {};
+    vi.spyOn(scanWait, 'clock').mockImplementation(() => t);
+    vi.spyOn(scanWait, 'sleep').mockImplementation((ms) => { waits.push(ms); t += ms; onSleep(); });
+    try {
+      // Never released: busy (scan wording) once the bound is spent, polling every SCAN_POLL_MS.
+      const late = busyOf(() => acquireFactoryRepoOwnerForRun(cloneA, 7, () => NOW, live(2)));
+      expect(late.holderRun).toBe('scan');
+      expect(late.message).toMatch(/^the poller's heal scan .*\(waited 60 s\)$/);
+      expect(waits.length).toBe(SCAN_WAIT_MS / SCAN_POLL_MS);
+      expect(waits.every((ms) => ms === SCAN_POLL_MS)).toBe(true);
+      // Released after 2 s: the run takes the lock on the next poll.
+      t = 0; waits.length = 0;
+      onSleep = () => { if (t >= 2_000) rmSync(factoryRepoOwnerPath(cloneA), { force: true }); };
+      acquireFactoryRepoOwnerForRun(cloneA, 7, () => NOW, live(2)).release();
+      expect(waits.length).toBe(4);
+      // An engine holder: busy at once, no wait.
+      acquireFactoryRepoOwner(cloneA, 9, NOW, live(1));
+      waits.length = 0;
+      expect(() => acquireFactoryRepoOwnerForRun(cloneA, 7, () => NOW, live(2))).toThrow(/another omg factory engine runs/);
+      expect(waits).toEqual([]);
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
   it('a contender that cannot take an owner or claim file\'s lock in time is busy (exit 6), not an error; this process\'s identity is read before the lock', () => {
@@ -231,7 +333,7 @@ describe('cross-clone run claims', () => {
     mkdirSync(dirname(claim), { recursive: true });
     // Another process holds the file lock (a fresh lock file of a live pid is not stale).
     writeFileSync(lockPathFor(claim), JSON.stringify({ pid: process.pid, timestamp: Date.now() }));
-    expect(busyOf(() => acquireFactoryClaim(ledger, URL, cloneB, 7, NOW, live(2))).message).toBe(`another omg factory process holds the lock file ${lockPathFor(claim)}; retry in a moment`);
+    expect(busyOf(() => acquireFactoryClaim(ledger, URL, cloneB, 7, NOW, live(2))).message).toBe(`another omg factory process holds the lock file ${lockPathFor(claim)}; retry in a moment (if no omg factory process is running, remove ${lockPathFor(claim)})`);
     rmSync(lockPathFor(claim));
     const lock = factoryRepoOwnerPath(cloneA);
     mkdirSync(dirname(lock), { recursive: true });

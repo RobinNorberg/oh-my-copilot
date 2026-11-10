@@ -25,6 +25,7 @@ import { type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
 import { unsupportedForge } from '../run/forge-roots.js';
 import { type Exec } from '../../ship/exec.js';
 import { type AdoGuardContext } from '../../forge/ado/guard.js';
+import { type OwnerDeps } from '../run/state.js';
 import { type CheckEnv, type CheckResult } from './score.js';
 export declare const EXIT_CHECK_FAILED = 1;
 export declare const EXIT_CHECK_USAGE = 2;
@@ -69,6 +70,8 @@ export interface FactoryCheckDeps {
     confirm: (question: string) => Promise<boolean>;
     out: (line: string) => void;
     err: (line: string) => void;
+    /** This process as an engine-lock contender (default defaultOwnerDeps; tests inject one). */
+    owner?: OwnerDeps;
 }
 export interface FactoryCheckOptions {
     ids: string[];
@@ -118,8 +121,26 @@ export declare function checkEnvFor(exec: Exec, root: string, config: CheckEnv['
         url: string;
     };
 }, base: string, baseSha: string | null): CheckEnv;
-/** Fetch `origin/<base>` (read-only) and resolve it; null with a warning when it cannot be read. */
+/**
+ * A read command's fetch never waits longer than this (it may hold the engine lock); then the last fetched base is read.
+ * Kept below SCAN_WAIT_MS (run/state.ts): an engine start waiting on this fetch's `scan` lock always outlasts it.
+ */
+export declare const FETCH_TIMEOUT_MS = 45000;
+/** Fetch `origin/<base>` (read-only, no credential prompt, bounded) and resolve it; null with a warning when it cannot be read. */
 export declare function fetchBase(exec: Exec, root: string, base: string, warnings: string[]): string | null;
+/**
+ * fetchBase for a read command (check, board, poll's start-up, enqueue, pr,
+ * triage): a fetch under a live engine reads as lane tampering to it, so it
+ * runs under this checkout's engine lock (key `scan`, released in finally).
+ * A read command never fails because an engine runs: while one holds the
+ * checkout nothing is fetched and the last fetched origin/<base> is read
+ * (one warning); FactoryBusyError (exit 6) only when there is none. Another
+ * read's fetch (`scan`) is waited out READ_SCAN_WAIT_MS, then this read goes
+ * on without fetching (never exit 6 for a read). A checkout without factory
+ * state has no engine to disturb: it fetches without the lock and leaves no
+ * `.omg/` behind.
+ */
+export declare function fetchBaseUnlessBusy(exec: Exec, root: string, base: string, warnings: string[], owner?: OwnerDeps): string | null;
 /** The base branch's committed `.copilot/omg.jsonc`, when the base is in ship.trustedBases (as loadTrustedShipConfig). */
 export declare function baseLayer(exec: Exec, root: string, base: string, baseSha: string | null, trustedUser: unknown, warnings: string[]): unknown;
 export declare function renderCheckTable(items: readonly CheckResult[]): string;

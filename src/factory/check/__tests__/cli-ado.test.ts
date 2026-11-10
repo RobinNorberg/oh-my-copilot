@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 /**
  * `omg factory check` end to end on Azure DevOps: runFactoryCheck with the
  * real createForge (the ADO adapter) over the adapter's fixture world
@@ -23,6 +24,8 @@ let err: string[];
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'omg-check-ado-'));
+  // A git repository: its factory state (the engine lock read commands take) lives in it, never in a home .omg.
+  execFileSync('git', ['init', '-q', root]);
   out = [];
   err = [];
 });
@@ -41,6 +44,7 @@ function world() {
       if (a === 'rev-parse --verify refs/remotes/origin/dev') return ok(`${SHA}\n`);
       if (a === `cat-file -e ${SHA}^{commit}`) return ok();
       if (args[0] === 'ls-remote') return ok('');
+      if (args[0] === 'ls-tree') return { status: 0, stdout: '', stderr: '' }; // readBaseFile's "absent" probe: no entry
       if (args[0] === 'show') return { status: 128, stdout: '', stderr: `fatal: path does not exist in '${SHA}'` };
       throw new Error(`unscripted git ${a}`);
     }

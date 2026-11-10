@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 /**
  * `omg factory enqueue` on Azure DevOps (shipyard-factory design §3.3, PR 9):
  * runFactoryEnqueue with the real createForge (the ADO adapter) over a
@@ -88,6 +89,7 @@ function boards(root: string, items: Record<number, Item>, o: { openPr?: number[
       if (a === 'rev-parse --verify refs/remotes/origin/dev') return ok(`${SHA}\n`);
       if (a === `cat-file -e ${SHA}^{commit}`) return ok();
       if (args[0] === 'ls-remote') return ok('');
+      if (args[0] === 'ls-tree') return { status: 0, stdout: '', stderr: '' }; // readBaseFile's "absent" probe: no entry
       if (args[0] === 'show') return { status: 128, stdout: '', stderr: `fatal: path does not exist in '${SHA}'` };
       throw new Error(`unscripted git ${a}`);
     }
@@ -159,6 +161,8 @@ const savedTmp = { TMP: process.env.TMP, TEMP: process.env.TEMP, TMPDIR: process
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'omg-enqueue-ado-repo-'));
+  // A git repository: its factory state (the engine lock read commands take) lives in it, never in a home .omg.
+  execFileSync('git', ['init', '-q', root]);
   scratch = mkdtempSync(join(tmpdir(), 'omg-enqueue-ado-tmp-'));
   process.env.TMP = scratch;
   process.env.TEMP = scratch;

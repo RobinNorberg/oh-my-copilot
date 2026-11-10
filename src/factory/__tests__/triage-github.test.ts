@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -27,6 +28,7 @@ function scripted(root: string, issues: Record<number, Issue>, o: { prs?: Record
       if (a === 'rev-parse --verify refs/remotes/origin/dev') return ok(`${SHA}\n`);
       if (args[0] === 'cat-file') return ok();
       if (args[0] === 'ls-remote') return ok('');
+      if (args[0] === 'ls-tree') return { status: 0, stdout: '', stderr: '' }; // readBaseFile's "absent" probe: no entry
       if (args[0] === 'show') return { status: 128, stdout: '', stderr: `fatal: path '${args[1].slice(41)}' does not exist in '${SHA}'` };
     }
     if (cmd === 'gh') {
@@ -59,6 +61,8 @@ let out: string[];
 let err: string[];
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'omg-triage-'));
+  // A git repository: its factory state (the engine lock read commands take) lives in it, never in a home .omg.
+  execFileSync('git', ['init', '-q', root]);
   out = [];
   err = [];
 });

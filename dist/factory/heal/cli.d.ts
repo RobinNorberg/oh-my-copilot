@@ -58,7 +58,9 @@ export interface HealDeps {
     /** Builds the forge's CI reads over the heal-guarded exec (heal scan, heal run evidence). Omitted = GitHub Actions. */
     ci?: (exec: Exec, root: string) => ForgeCi;
     /** The forge config on Azure DevOps (loadFactoryForgeConfig: user, base-branch and project layers); GitHub never reads it. */
-    forge?: (root: string, base: string) => LoadedForgeConfig;
+    forge?: (root: string, base: string, opts?: {
+        dryRun?: boolean;
+    }) => LoadedForgeConfig;
     /** The az entry on Azure DevOps (default: resolved outside every root a lane writes). */
     resolveAz?: (root: string) => AzEntry;
 }

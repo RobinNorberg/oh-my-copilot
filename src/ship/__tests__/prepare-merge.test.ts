@@ -304,7 +304,7 @@ describe('prepare checks: auto-detected or ship.prepare.checks', () => {
     // The checkout's own generator is not the base's: no inventory step runs.
     expect(nodeCalls(calls)).toEqual([`node ${TSC_SCRIPT} --noEmit`]);
 
-    const broken = fakeRepo({ 'git show': res(128, '', 'fatal: bad object') });
+    const broken = fakeRepo({ 'git show': res(128, '', 'fatal: bad object'), 'git ls-tree': res(128, '', 'fatal: bad object') });
     const failed = runPrepare({ ...opts(dir), baseExists: undefined, exec: broken.exec });
     expect(failed.steps.at(-1)).toMatchObject({ name: PREPARE_DETECT_STEP, status: 'failed' });
     expect(nodeCalls(broken.calls)).toEqual([]);

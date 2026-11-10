@@ -57,7 +57,7 @@ import { isCodingAgentAssignArgs, isCodingAgentCloseArgs, isCodingAgentStatusArg
 import { CODING_AGENT_LINK_BODY_ARG, codingAgentLinkBodyProblem, isCodingAgentGitArgs, isCodingAgentLinkCommentArgs } from './coding-agent-lane.js';
 import { isReviewFeedbackArgs } from '../../forge/github/graphql.js';
 import { LOCAL_REMOTE, STATE_CHANGE_LOG_FLAGS } from '../../forge/local/mirror.js';
-import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV } from '../../ship/exec.js';
+import { assertSafeCommand, isTrustedFetch, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { triageWriteGh } from '../triage/guard.js';
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
 export const FACTORY_BRANCH_PREFIX = 'factory/';
@@ -427,7 +427,7 @@ export function assertFactoryCommand(cmd, args, extraProtected = [], env, ado, w
     if (verdict === true) {
         // Factory shapes take no environment except ship's trusted-read env on git.
         const trusted = JSON.stringify(Object.entries(TRUSTED_READ_ENV));
-        if (env !== undefined && !(base === 'git' && JSON.stringify(Object.entries(env)) === trusted)) {
+        if (env !== undefined && !(base === 'git' && JSON.stringify(Object.entries(env)) === trusted) && !isTrustedFetch(base, args, env)) {
             throw new FactorySafetyError(`omg factory run refuses \`${file} ${args.join(' ')}\` with environment ${JSON.stringify(env)}: only ${JSON.stringify(TRUSTED_READ_ENV)} on git is allowed`);
         }
         return;

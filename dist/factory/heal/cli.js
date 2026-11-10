@@ -27,7 +27,7 @@ import { parseJob } from './logs.js';
 import { runSignature } from './signature.js';
 import { foldSignature, healStateDir, listHealStates, pruneWebhookQueue, readDailyCounters, readHealState, readWebhookQueue, SIG8, writeHealState } from './state.js';
 import { factoryForgeOptions } from '../run/forge-roots.js';
-import { acquireFactoryRepoOwner, EXIT_BUSY, FactoryBusyError, factoryCancelRequested, healRunKey, readFactoryState, refuseWhileEngineRuns, requestFactoryCancel, } from '../run/state.js';
+import { acquireFactoryRepoOwnerForRun, EXIT_BUSY, FactoryBusyError, factoryCancelRequested, healRunKey, readFactoryState, refuseWhileEngineRuns, requestFactoryCancel, tryScanLock, } from '../run/state.js';
 import { knownFlakyProposal, renderKnownFlakyProposal, runHealEngine } from './implement.js';
 import { closeHeal, HealRunRefused, EXIT_HEAL_REFUSED, readHealScanRecord, runHeal, verifyHealSeal, writeHealScanRecord } from './run.js';
 /** Bounds on one scan's GitHub reads (CI logs run to megabytes each). */
@@ -389,12 +389,12 @@ function checkoutRoot(deps) {
  * unless the trusted layers name the CI pipeline (capabilities.heal);
  * GitHub reads no forge config.
  */
-function healForge(deps, root) {
+function healForge(deps, root, opts) {
     if (deps.forgeKind?.(root) !== 'azure-devops')
         return undefined;
     if (!deps.forge)
         throw new HealRunRefused(HEAL_PIPELINE_MISSING);
-    const { config, warnings } = deps.forge(root, deps.base(root));
+    const { config, warnings } = opts ? deps.forge(root, deps.base(root), opts) : deps.forge(root, deps.base(root));
     for (const w of warnings)
         console.error(chalk.yellow(termSafe(w)));
     return adoHealFor(config, () => (deps.resolveAz ?? defaultResolveAz)(root), root);
@@ -416,7 +416,7 @@ export function adoHealFor(config, resolveAz, root) {
  */
 function healRoot(deps, lock) {
     const root = checkoutRoot(deps);
-    const held = lock === undefined ? undefined : acquireFactoryRepoOwner(root, lock, deps.now().toISOString());
+    const held = lock === undefined ? undefined : acquireFactoryRepoOwnerForRun(root, lock, () => deps.now().toISOString());
     try {
         const ado = healForge(deps, root);
         return { root, ...(ado ? { ado } : {}), ...(held ? { held } : {}) };
@@ -426,6 +426,48 @@ function healRoot(deps, lock) {
         throw error;
     }
 }
+/**
+ * The checkout and its heal wiring for `heal run --dry-run` / `heal approve
+ * --dry-run`: read commands, so an engine in the checkout never fails them.
+ * On Azure DevOps the config loader's fetch runs under the engine lock (key
+ * `scan`, released once loaded); while an engine holds the checkout the
+ * loader does not fetch (its committed config as last fetched). `busy`: a
+ * real run now would exit busy (6); the dry run says so (`note`, at once,
+ * before the forge load).
+ */
+function healDryRoot(deps, note) {
+    const root = checkoutRoot(deps);
+    if (deps.forgeKind?.(root) !== 'azure-devops') {
+        try {
+            refuseWhileEngineRuns(root);
+            return { root };
+        }
+        catch (error) {
+            if (!(error instanceof FactoryBusyError))
+                throw error;
+            note(error.message);
+            return { root, busy: error.message };
+        }
+    }
+    const held = tryScanLock(root, deps.now().toISOString());
+    if (held instanceof FactoryBusyError) {
+        const base = deps.base(root);
+        const fetched = healGuardExec(deps.exec)('git', ['rev-parse', '--verify', `refs/remotes/origin/${base}`]).status === 0;
+        const busy = `${held.message}; ${fetched ? 'the forge config is read as last fetched' : `origin/${base} not fetched in this checkout, so its committed forge config cannot be read until the engine ends`}`;
+        note(busy);
+        const ado = healForge(deps, root, { dryRun: true });
+        return { root, ...(ado ? { ado } : {}), busy };
+    }
+    try {
+        const ado = healForge(deps, root);
+        return { root, ...(ado ? { ado } : {}) };
+    }
+    finally {
+        held.release();
+    }
+}
+/** A dry run's note when a real run would be busy now (exit 6). */
+const dryRunBusyNote = (busy) => `engine busy: a real run now would exit busy (${EXIT_BUSY}) without touching anything (${termSafe(busy)})`;
 /** `omg factory heal scan|status|run` (experimental; no GitHub writes). */
 export function healCommand(deps) {
     const heal = new Command('heal');
@@ -504,7 +546,8 @@ export function healCommand(deps) {
         if (!SIG8.test(sig8))
             throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
         // A real run holds the engine lock across the debugger lane (its worktree) and the ci-heal run it may start.
-        const { root, ado, held } = healRoot(deps, o.dryRun ? undefined : healRunKey(sig8));
+        const { root, ado, held, busy } = o.dryRun ? healDryRoot(deps, (b) => { if (!o.json)
+            console.error(chalk.yellow(dryRunBusyNote(b))); }) : healRoot(deps, healRunKey(sig8));
         let outcome;
         let config;
         let ciHeal;
@@ -524,7 +567,7 @@ export function healCommand(deps) {
         }
         const proposal = outcome.diagnosis ? knownFlakyProposal(readHealState(root, sig8)) : null;
         if (o.json)
-            console.log(JSON.stringify({ ok: true, ...outcome, ...(proposal ? { knownFlakyProposal: proposal } : {}), ...(ciHeal ? { ciHeal } : {}) }, null, 2));
+            console.log(JSON.stringify({ ok: true, ...outcome, ...(proposal ? { knownFlakyProposal: proposal } : {}), ...(ciHeal ? { ciHeal } : {}), ...(busy ? { engineBusy: termSafe(busy) } : {}) }, null, 2));
         else {
             if (outcome.prompt)
                 console.log(outcome.prompt);
@@ -547,7 +590,8 @@ export function healCommand(deps) {
         .action((sig8, o) => guarded(Boolean(o.json), async () => {
         if (!SIG8.test(sig8))
             throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
-        const { root, ado, held } = healRoot(deps, o.dryRun ? undefined : healRunKey(sig8));
+        // A dry run's busy note goes to stderr (the JSON on stdout is the engine outcome's).
+        const { root, ado, held } = o.dryRun ? healDryRoot(deps, (b) => console.error(chalk.yellow(dryRunBusyNote(b)))) : healRoot(deps, healRunKey(sig8));
         let outcome;
         try {
             const { config, warnings } = deps.config(root);
@@ -580,21 +624,20 @@ export function healCommand(deps) {
                 console.log(chalk.green(`cancel requested for ci-heal heal-${sig8}; the running engine stops within seconds`));
             return 0;
         };
-        // An engine runs in this checkout (this run or another): the request is all; no forge load (it may fetch) or engine start.
-        try {
-            refuseWhileEngineRuns(root);
-        }
-        catch (error) {
-            if (error instanceof FactoryBusyError)
-                return running();
-            throw error;
-        }
-        // The request file stands even when the forge wiring cannot be built (pipeline key removed, az broken).
+        // The engine lock before the forge load (it may fetch) and the engine start (L1): an engine runs in this
+        // checkout (this run or another), so the request is all.
+        let held;
         let engine;
         try {
-            engine = engineDeps(deps, healForge(deps, root));
+            const wired = healRoot(deps, key);
+            held = wired.held;
+            engine = engineDeps(deps, wired.ado);
         }
         catch (error) {
+            held?.release();
+            if (error instanceof FactoryBusyError)
+                return running();
+            // The request file stands even when the forge wiring cannot be built (pipeline key removed, az broken).
             const why = termSafe(error instanceof Error ? error.message : String(error));
             const note = `a running engine stops within seconds; a parked run is cancelled by the next omg factory heal cancel ${sig8} or approve once the forge wiring works (${why})`;
             if (o.json)
@@ -603,16 +646,19 @@ export function healCommand(deps) {
                 console.log(chalk.yellow(`cancel requested for ci-heal heal-${sig8}; ${note}`));
             return 0;
         }
-        const { config } = deps.config(root);
         let outcome;
         try {
+            const { config } = deps.config(root);
             // The engine sees the cancel request file first and only cancels.
-            outcome = await runHealEngine({ root, base: deps.base(root), sig8, config, approved: false }, engine);
+            outcome = await runHealEngine({ root, base: deps.base(root), sig8, config, approved: false, ...(held ? { repoOwner: held } : {}) }, engine);
         }
         catch (error) {
             if (!(error instanceof FactoryBusyError) || !factoryCancelRequested(root, key))
                 throw error;
             return running();
+        }
+        finally {
+            held?.release();
         }
         printEngineOutcome(Boolean(o.json), sig8, outcome);
         return outcome.phase === 'cancelled' ? 0 : outcome.exitCode;

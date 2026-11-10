@@ -27,7 +27,7 @@ import { factoryGuardExec, hardenedGitExec } from './exec.js';
 import { localRemoteMismatch } from './forge-roots.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir, ledgerFilePath, sha256 } from './ledger.js';
 import { checkoutWorker, FACTORY_CHECKOUT_TEAM } from './prepare.js';
-import { acquireFactoryOwner, acquireFactoryRepoOwner, factoryCancelPath, factoryStatePath, FactoryStateError, readFactoryState, runSlug, verifyFactoryIntegrity, FactoryBusyError } from './state.js';
+import { acquireFactoryOwner, acquireFactoryRepoOwnerForRun, factoryCancelPath, factoryStatePath, FactoryStateError, readFactoryState, runSlug, verifyFactoryIntegrity, FactoryBusyError } from './state.js';
 import { claimBusyMessage, factoryClaimHolder, removeFactoryClaim } from './claims.js';
 const HEX40 = /^[0-9a-f]{40}$/;
 /**
@@ -104,7 +104,7 @@ export function resetFactoryRun(o) {
     const now = o.now ?? new Date().toISOString();
     // Busy (exit 6) before any git or forge operation: a live engine in this checkout (reset closes the PR and renames
     // the mirror branch), a claim on the item that another clone holds, then a live engine on this issue.
-    const repoOwner = o.repoOwner ?? acquireFactoryRepoOwner(o.root, o.issue, now, o.owner);
+    const repoOwner = o.repoOwner ?? acquireFactoryRepoOwnerForRun(o.root, o.issue, () => now, o.owner);
     const releaseRepoOwner = () => { if (!o.repoOwner)
         repoOwner.release(); };
     let owner;

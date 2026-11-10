@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -27,6 +28,8 @@ function scripted(root, issues, o = {}) {
                 return ok();
             if (args[0] === 'ls-remote')
                 return ok(o.branches?.includes(Number(/issue-(\d+)$/.exec(args[2])[1])) ? `${SHA}\t${args[2]}\n` : '');
+            if (args[0] === 'ls-tree')
+                return { status: 0, stdout: '', stderr: '' }; // readBaseFile's "absent" probe: no entry
             if (args[0] === 'show') {
                 const path = args[1].slice(41);
                 const text = o.files?.[path];
@@ -63,6 +66,8 @@ let err;
 let prompts;
 beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'omg-check-'));
+    // A git repository: its factory state (the engine lock read commands take) lives in it, never in a home .omg.
+    execFileSync('git', ['init', '-q', root]);
     out = [];
     err = [];
     prompts = [];

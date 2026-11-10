@@ -53,6 +53,8 @@ function world(fixtures = loadAdoFixtures()) {
                 return ok();
             if (args[0] === 'ls-remote')
                 return ok('');
+            if (args[0] === 'ls-tree')
+                return { status: 0, stdout: '', stderr: '' }; // readBaseFile's "absent" probe: no entry
             if (args[0] === 'show')
                 return { status: 128, stdout: '', stderr: `fatal: path does not exist in '${SHA}'` };
             throw new Error(`unscripted git ${a}`);

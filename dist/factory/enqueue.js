@@ -80,7 +80,7 @@ import { getOmcRoot } from '../lib/worktree-paths.js';
 import { shipyardKeyLine, shipyardKeys } from '../forge/types.js';
 import { isPlainBranchName } from '../ship/config.js';
 import { TRUSTED_READ_ENV } from '../ship/exec.js';
-import { baseLayer, CheckIncompatibleError, CheckUsageError, checkGuardExec, defaultResolveAz, EXIT_CHECK_FAILED, fetchBase, localBase, parseItemId, runFactoryCheck, unsupportedForge, } from './check/cli.js';
+import { baseLayer, CheckIncompatibleError, CheckUsageError, checkGuardExec, defaultResolveAz, EXIT_CHECK_FAILED, fetchBaseUnlessBusy, localBase, parseItemId, runFactoryCheck, unsupportedForge, } from './check/cli.js';
 import { isVague } from './check/rules.js';
 import { plainText } from './check/score.js';
 import { factoryForgeOptions } from './run/forge-roots.js';
@@ -398,7 +398,8 @@ export async function runFactoryEnqueue(o, deps) {
     const base = deps.base(root);
     if (!isPlainBranchName(base))
         throw new CheckUsageError(`base ${JSON.stringify(base)} is not a branch name`);
-    let baseSha = originUrl ? fetchBase(exec, root, base, warnings) : localBase(exec, root, base, warnings);
+    // The fetch under the engine lock (or the last fetched base while an engine runs); the forge writes below need no lock.
+    let baseSha = originUrl ? fetchBaseUnlessBusy(exec, root, base, warnings, deps.owner) : localBase(exec, root, base, warnings);
     const trustedUser = deps.trustedUser();
     let config;
     try {
