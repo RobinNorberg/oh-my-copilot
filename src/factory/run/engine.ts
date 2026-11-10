@@ -727,6 +727,8 @@ class FactoryEngine {
   private unsandboxedAllowed?: string;
   /** The gate found the prepare checkout missing and sent the run back to prepare once in this invocation. */
   private reprepared = false;
+  /** protectedExtras, once per invocation. */
+  private protectedCache: { paths: string[]; problem?: string } | undefined;
   /** The head `--allow-unsandboxed-gates` accepts (the gates-unsandboxed park's head, captured at resume). */
   private gatesAllowed?: string;
   /** factory.run.sandbox.gates, resolved once per trusted base commit. */
@@ -1689,8 +1691,7 @@ class FactoryEngine {
     if (!result.worktree) return this.laneFailed(key, lane.kind, `lane ${lane.id} reports no local worktree, so the engine cannot commit its changes`);
     // A late change after the lane's tamper check (a child the engine missed) parks before engine git runs in the lane worktree.
     if (this.recheckFailed('before the engine commit')) return;
-    let extraProtected: string[] = [];
-    try { extraProtected = configuredProtectedPaths(this.o.root); } catch { /* the defaults still apply */ }
+    const extraProtected = this.protectedExtras().paths;
     const title = `${lane.kind}: ${oneLine(this.state.issueTitle ?? `issue ${this.o.issue}`)} (#${this.o.issue})`;
     const commit = commitLaneWork({
       worktree: result.worktree, start, parents, repoRoot: this.o.root, branch: result.branch,
@@ -1718,10 +1719,34 @@ class FactoryEngine {
    * use the same list, so a commit that slipped past the lane check (a diff
    * against a replaced start) is still caught before the push.
    */
-  private laneProtectedPaths(): string[] {
-    let extra: string[] = [];
-    try { extra = configuredProtectedPaths(this.o.root); } catch { /* the defaults still apply */ }
-    return [...LANE_PROTECTED_PATHS, ...extra];
+  private laneProtectedPaths(): { paths: string[]; problem?: string } {
+    const extra = this.protectedExtras();
+    return { paths: [...LANE_PROTECTED_PATHS, ...extra.paths], ...(extra.problem ? { problem: extra.problem } : {}) };
+  }
+
+  /**
+   * The configured protected paths (configuredProtectedPaths), read once per
+   * invocation; a layer that cannot be read is warned about once and named in
+   * `problem`, which parks every publish (protectedPathsUnread).
+   */
+  private protectedExtras(): { paths: string[]; problem?: string } {
+    if (this.protectedCache) return this.protectedCache;
+    const problems: string[] = [];
+    let paths: string[] = [];
+    try {
+      paths = configuredProtectedPaths(this.o.root, (source, error) => problems.push(`${source}: ${error}`));
+    } catch (error) {
+      problems.push(errText(error));
+    }
+    const problem = problems.length > 0 ? oneLine(problems.join('; '), 500) : undefined;
+    if (problem) this.o.warn?.(`omg factory run: the configured protected paths (a non-default ship.knownFlakyFile) cannot be read (${problem}); the engine will not push until they can`);
+    this.protectedCache = { paths, ...(problem ? { problem } : {}) };
+    return this.protectedCache;
+  }
+
+  /** The park when a publish cannot know the whole protected list: fail closed, never push with a protection dropped. */
+  private protectedPathsUnread(what: string, problem: string): void {
+    this.gate('protected-paths', `the configured protected paths cannot be read (${problem}), so ${what} cannot be checked against all of them; nothing was pushed. Fix that config (ship.knownFlakyFile in the user config or .copilot/omg.jsonc), then rerun ${this.resume}`);
   }
 
   /** One fresh retry per phase key, then the named `<kind>-failed` gate. */
@@ -1744,7 +1769,9 @@ class FactoryEngine {
     if (!s.baseSha) throw new FactoryStepError('publish needs the base sha the run started at');
     const files = listChangedFiles(this.exec, this.o.root, s.baseSha, cand);
     if (files === null) throw new FactoryStepError(`git diff ${s.baseSha.slice(0, 12)}...${cand.slice(0, 12)} failed`);
-    const hit = protectedChanges(files, this.laneProtectedPaths());
+    const protectedList = this.laneProtectedPaths();
+    if (protectedList.problem) return this.protectedPathsUnread('the change', protectedList.problem);
+    const hit = protectedChanges(files, protectedList.paths);
     if (hit.length > 0) {
       this.gate('protected-paths', `the change touches merge-rule paths: ${hit.join(', ')}; nothing was pushed`);
       return;
@@ -2556,7 +2583,9 @@ class FactoryEngine {
       }
       const files = listChangedFiles(this.exec, this.o.root, baseSha, next);
       if (files === null) throw new FactoryStepError(`git diff ${baseSha.slice(0, 12)}...${next.slice(0, 12)} failed`);
-      const hit = protectedChanges(files, this.laneProtectedPaths());
+      const protectedList = this.laneProtectedPaths();
+      if (protectedList.problem) return this.protectedPathsUnread('the prepared head', protectedList.problem);
+      const hit = protectedChanges(files, protectedList.paths);
       if (hit.length > 0) {
         this.gate('protected-paths', `the prepared head touches merge-rule paths: ${hit.join(', ')}; nothing was pushed`);
         return;
@@ -3727,8 +3756,7 @@ class FactoryEngine {
     const files = listChangedFiles(this.exec, this.o.root, from, check.head);
     if (files === null) throw new FactoryStepError(`git diff ${from.slice(0, 12)}...${check.head.slice(0, 12)} failed`);
     if (files.length === 0) return this.gate(CODING_AGENT_ADOPT_GATE, `the coding agent's pull request #${check.pr} changes nothing against ${s.base}; nothing was adopted; ${this.codingAgentRestart()}`);
-    let extraProtected: string[] = [];
-    try { extraProtected = configuredProtectedPaths(this.o.root); } catch { /* the defaults still apply */ }
+    const extraProtected = this.protectedExtras().paths;
     const hit = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...extraProtected]);
     if (hit.length > 0) return this.gate('protected-paths', `the coding agent's pull request #${check.pr} changes merge-rule or lane-protected paths: ${hit.join(', ')}; nothing was adopted or pushed`);
     const links = linkEntries(this.run(codingAgentTreeArgs(from), 'git', TRUSTED_READ_ENV), this.run(codingAgentTreeArgs(check.head), 'git', TRUSTED_READ_ENV));

@@ -327,6 +327,21 @@ describe('factory run on the local forge: git hardening', () => {
     expect(readFactoryState(w.root, LOCAL_ISSUE)!.checkoutAdmin).toBeTruthy();
   }, 600_000);
 
+  it('L-6: an unreadable protected-paths config warns once and parks the publish (fail closed); nothing is pushed', async () => {
+    w = localWorld();
+    // The working-tree project config the protected-path read uses, with a ship block it cannot read.
+    mkdirSync(join(w.root, '.copilot'), { recursive: true });
+    writeFileSync(join(w.root, '.copilot', 'omg.jsonc'), '{ "ship": "not an object" }\n');
+    const warnings: string[] = [];
+    const lanes = lanesFor(w, [greet(), review('approve')]);
+    const out = await runFactoryEngine(localOpts(w, lanes, { warn: (m) => warnings.push(m) }));
+    expect(out.gate?.name, out.message).toBe('protected-paths');
+    expect(out.gate?.reason).toMatch(/the configured protected paths cannot be read \(project config: .*ship config must be an object\), so the change cannot be checked against all of them; nothing was pushed/);
+    expect(warnings.filter((m) => m.includes('configured protected paths'))).toHaveLength(1);
+    expect(readFactoryState(w.root, LOCAL_ISSUE)!.pr).toBeUndefined();
+    expect(w.gateRuns).toEqual([]);
+  }, 300_000);
+
   it('M-C: a PR store set to MERGED while your base does not contain the head parks; the run is not merged', async () => {
     w = localWorld();
     const prs = join(w.config.repo.url.replace(/\.git$/, ''), 'prs.json');
