@@ -4,6 +4,18 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- **Replace refs and grafts** (#476). `omg factory run` refuses to start, and a resumed run parks at `lane-tampered`, while the repository has `refs/replace/*` or `info/grafts`. The engine's and the host's git never read them, nor commit-graphs or multi-pack-indexes, and never run auto gc or `core.alternateRefsCommand`.
+- **Local forge mirror** (#476). Pushes to the mirror run its receive-pack with the engine's empty hooks directory and with `core.alternateRefsCommand` and `receive.autogc` pinned off. Every mirror push, fetch and `ls-remote` refuses when the mirror is a link or junction, has a `.git`, `commondir`, `gitdir` or `config.worktree` entry, has `objects/info/alternates`, or has a config key `git init --bare` does not write.
+- **Local forge trust anchor** (#476). The trusted base is your local base as the engine synced it. A mirror base that differs parks the run at `lane-tampered`, a PR store that says `MERGED` while your base does not contain the pushed head parks too, and `omg factory pr diff` and `view` refuse (exit 1). A commit on your base by code that ran on your machine still looks like your own merge.
+- **Prepare checkout** (#476). The checkout is read only through the admin dir that `git worktree add` made, recorded in the run state. Before the local gate, the checkout is compared with a fresh index of the pushed head, ignored files included; any difference parks at `lane-tampered`. The publish re-checks use the configured protected paths too.
+
+### Changed
+
+- **LFS in the prepare checkout** (#476). Prepare's checks and the local gate see LFS pointer files, not LFS content: the engine's checkout never runs the LFS smudge filter.
+- **Git maintenance during a run** (#476). The tamper checks no longer hash commit-graphs, multi-pack-indexes, bitmaps or `info/refs`, so your own `git gc` or `git maintenance` no longer parks a run.
+
 # oh-my-copilot v5.23.0
 
 ## [5.23.0] - 2026-11-10
