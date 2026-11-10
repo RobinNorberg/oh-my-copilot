@@ -184,7 +184,8 @@ export function cleanHeldFactoryRun(o: FactoryCleanOptions, state: FactoryRunSta
         return {
           ...s,
           updatedAt: at,
-          lanes: s.lanes.map((l) => (ids.has(l.id) ? { ...l, stopUnconfirmed: false, note: `the stop was confirmed by a human (--lane-stopped, ${at})` } : l)),
+          // Appended, never replaced: tamper text in the note keeps the worktree as evidence for reset (keepTamperEvidence).
+          lanes: s.lanes.map((l) => (ids.has(l.id) ? { ...l, stopUnconfirmed: false, note: `${l.note ? `${l.note}; ` : ''}the stop was confirmed by a human (--lane-stopped, ${at})` } : l)),
           history: [...s.history, ...busy.map((b) => ({ at, from: s.phase, to: s.phase, note: `lane ${b.lane.id} (${b.lane.jobId}): --lane-stopped: a human confirmed that its Copilot child stopped (${ids.get(b.lane.id)})` }))],
         };
       }, {

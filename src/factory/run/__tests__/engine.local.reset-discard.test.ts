@@ -208,3 +208,52 @@ describe('review 478c F1: reset never throws after the state was moved aside', (
     expect(existsSync(theirs)).toBe(true);
   });
 });
+
+describe('review 478c F6: --lane-stopped appends to the lane note', () => {
+  it('tamper text in the note survives the acknowledgement, so a later reset still keeps that worktree as evidence', async () => {
+    w = localWorld();
+    const lanes = new FakeLanes(w.root, [() => ({ finalText: 'never read' })], [2]);
+    lanes.cancelFails = true;
+    lanes.onRunningPoll = () => requestFactoryCancel(w.root, LOCAL_ISSUE, new Date().toISOString());
+    const out = await runFactoryEngine(localOpts(w, lanes));
+    expect(out.phase, out.message).toBe('cancelled');
+    // The engine's own write (through its ledger): the lane's note records a tamper problem as well as the unconfirmed stop.
+    const ledger = EngineLedger.open(w.ledgerDir, w.root, LOCAL_ISSUE);
+    updateFactoryState(w.root, LOCAL_ISSUE, (cur) => ({ ...cur!, lanes: cur!.lanes.map((l, i) => (i === 0 ? { ...l, note: `tampered: .git/hooks/pre-commit; ${l.note ?? ''}` } : l)) }), {
+      onWrite: (path, content) => ledger.record(path, content),
+    });
+    const forge = createForge(w.exec, w.root, w.config, { ...factoryForgeOptions(w.root), stateDir: w.stateDir, local: { omgRoot: getOmcRoot(w.root) } });
+    const reset = (o: Partial<FactoryResetOptions> = {}) => resetFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, forge, mirror: w.config.repo.url, ledgerDir: w.ledgerDir, owner: OWNER, processState: () => 'unknown', ...o });
+    expect(() => reset({ laneStopped: true })).toThrow(/worktrees kept as tamper evidence/);
+    const note = readFactoryState(w.root, LOCAL_ISSUE)!.lanes[0].note!;
+    expect(note).toMatch(/^tampered: \.git\/hooks\/pre-commit; .*; the stop was confirmed by a human \(--lane-stopped, /);
+    expect(readFactoryState(w.root, LOCAL_ISSUE)!.lanes[0].stopUnconfirmed).toBe(false);
+    // A later reset (no flag needed now) still keeps the tree.
+    expect(() => reset()).toThrow(/worktrees kept as tamper evidence/);
+  });
+});
+
+describe('review 478c F5: cancel() confirms a running lane\'s stop', () => {
+  it('a running lane with a stale "not confirmed" note whose cancel now confirms gets stopUnconfirmed false and a confirmed note', async () => {
+    w = localWorld();
+    let t = 1_000_000;
+    const lanes = new FakeLanes(w.root, [() => ({ finalText: 'never read' })], [10_000]);
+    lanes.cancelFails = true;
+    const first = await runFactoryEngine(localOpts(w, lanes, { limits: { ...DEFAULT_FACTORY_RUN_LIMITS, laneTimeoutMs: 60_000 }, now: () => (t += 61_000) }));
+    expect(first.gate?.name, first.message).toBe('lane-unconfirmed');
+    // The resume's settle still cannot confirm the stop (the lane stays running, its note stale); cancel() then can.
+    const cancel = lanes.cancel.bind(lanes);
+    let calls = 0;
+    lanes.cancel = async (id: string) => {
+      calls += 1;
+      lanes.cancelFails = calls === 1;
+      return cancel(id);
+    };
+    requestFactoryCancel(w.root, LOCAL_ISSUE, new Date().toISOString());
+    const second = await runFactoryEngine(localOpts(w, lanes));
+    expect(second.phase, second.message).toBe('cancelled');
+    expect(calls).toBe(2);
+    const lane = readFactoryState(w.root, LOCAL_ISSUE)!.lanes[0];
+    expect(lane).toMatchObject({ status: 'cancelled', stopUnconfirmed: false, note: 'cancelled; the stop was confirmed' });
+  });
+});
