@@ -107,7 +107,13 @@ export function planItem(item: ForgeItem, result: CheckResult, kind: ForgeKind, 
   const held = item.labels.filter((l) => PRIORITY_RE.test(l));
   const effective = itemPriority(item);
   let numeric: number | null = null;
-  if (effective !== null) {
+  if (kind === 'local' && item.priority !== undefined) {
+    // F55: a local item's frontmatter priority is the one source; a label added next to it would read as a second
+    // priority (priority 1 is priority:p0). A held label that disagrees with it goes; none is added.
+    const same = item.priority <= PRIORITY_LABELS.length ? PRIORITY_LABELS[item.priority - 1] : undefined;
+    for (const l of held) if (l.toLowerCase() !== same) { remove.push(l); why.push(`priority: the frontmatter priority ${item.priority} wins, drop ${l}`); }
+    why.push(`priority: the frontmatter priority ${item.priority} wins; triage adds no priority label on the local forge`);
+  } else if (effective !== null) {
     if (effective <= PRIORITY_LABELS.length) {
       const name = PRIORITY_LABELS[effective - 1];
       for (const l of held) if (l.toLowerCase() !== name) { remove.push(l); why.push(`priority: the item ranks as ${name}, drop ${l}`); }

@@ -74,8 +74,6 @@ describe('F38: cancel closes the local PR; clean + reset make the item runnable 
 
     const forge = createForge(w.exec, w.root, w.config, { ...factoryForgeOptions(w.root), stateDir: w.stateDir, local: { omgRoot: getOmcRoot(w.root) } });
     const resetOpts = { root: w.root, issue: LOCAL_ISSUE, exec: w.exec, forge, mirror: w.config.repo.url, ledgerDir: w.ledgerDir, owner: OWNER };
-    // The worktrees go first.
-    expect(() => resetFactoryRun(resetOpts)).toThrow(/still has worktrees .*omg factory run clean 7 first/);
     // A live engine in this checkout makes clean and reset busy (exit 6) before any git, forge or ledger step.
     const busyOwner = { ...OWNER, isAlive: () => true };
     writeFileSync(factoryRepoOwnerPath(w.root), JSON.stringify({ pid: 99, hostname: OWNER.hostname, startedAt: 'x', run: '8' }));

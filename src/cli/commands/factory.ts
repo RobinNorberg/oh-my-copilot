@@ -34,7 +34,7 @@ import { CopilotRunManager, defaultCopilotRunDeps } from '../../copilot-run/job.
 import { resolveFactoryRunLimits, runCredits, type LoadedFactoryRunLimits } from '../../factory/run/budget.js';
 import { cleanFactoryRun } from '../../factory/run/clean.js';
 import { resetFactoryRun } from '../../factory/run/reset.js';
-import { claimBusyMessage, factoryClaimHolder, factoryClaimRepo, listFactoryClaims, removeFactoryClaim, SHARED_STATE_WARNING, trustedFactoryClaimRepo } from '../../factory/run/claims.js';
+import { claimBusyMessage, factoryClaimHolder, factoryClaimRepo, listFactoryClaims, localFactoryClaimRepo, removeFactoryClaim, SHARED_STATE_WARNING, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo } from '../../factory/run/claims.js';
 import { EXIT_AWAITING_HUMAN, EXIT_BUSY, runFactoryEngine, type FactoryRunOutcome } from '../../factory/run/engine.js';
 import { factoryGuardExec, hardenedGitExec } from '../../factory/run/exec.js';
 import { EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, factoryForgeOptions, loadFactoryForgeConfig, originForgeKind, syncLocalMirror } from '../../factory/run/forge-roots.js';
@@ -261,14 +261,15 @@ function readOnlyForgeKind(deps: FactoryRunDeps, root: string, base: string): Fo
 
 /**
  * The repository the claims of this checkout are keyed on, exactly as the
- * engine keys them: none on the local forge (it makes no claim; L-f), else
- * the origin through the engine's hardened read (trustedFactoryClaimRepo;
- * L-g). A dry run reads it through the plain guard, as the engine's dry run
- * does, and writes nothing.
+ * engine keys them: the origin through the engine's hardened read
+ * (trustedFactoryClaimRepo; L-g), on the local forge the repository's root
+ * commit instead (never origin; dogfood F60). A dry run reads it through the
+ * plain guard, as the engine's dry run does, and writes nothing.
  */
 function cliClaimRepo(deps: FactoryRunDeps, root: string, kind: ForgeKind | undefined, dryRun = false): string | null {
-  if (kind === 'local') return null;
-  return dryRun ? factoryClaimRepo(factoryGuardExec(deps.exec), root) : trustedFactoryClaimRepo(deps.exec, root, deps.ledgerDir ?? defaultLedgerDir());
+  const ledgerDir = deps.ledgerDir ?? defaultLedgerDir();
+  if (kind === 'local') return dryRun ? localFactoryClaimRepo(factoryGuardExec(deps.exec), root) : trustedLocalFactoryClaimRepo(deps.exec, root, ledgerDir);
+  return dryRun ? factoryClaimRepo(factoryGuardExec(deps.exec), root) : trustedFactoryClaimRepo(deps.exec, root, ledgerDir);
 }
 
 const OWNER_FILE = /^run-(\d+|heal-[0-9a-f]{8})\.owner$/;
@@ -455,8 +456,9 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
   run
     .command('clean <issue>')
     .description('Remove the worktrees and local branches of a merged or cancelled run, only when nothing would be lost (the PR branch on GitHub is kept); busy (exit 6) while an engine runs in this checkout')
+    .option('--discard', 'A cancelled run only: give up uncommitted lane changes (a cancel mid-lane leaves them), so those worktrees go too; commits are still kept')
     .option('--json', 'JSON output')
-    .action((issueRaw: string, _o: unknown, c: Command) =>
+    .action((issueRaw: string, o: { discard?: boolean }, c: Command) =>
       factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
         const issue = parseIssue(issueRaw);
         const root = factoryRoot(exec);
@@ -464,11 +466,15 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         let kind: ForgeKind | undefined;
         try { kind = readFactoryState(root, issue)?.forgeKind; } catch { kind = undefined; }
         const claimRepo = cliClaimRepo(deps, root, kind ?? readOnlyForgeKind(deps, root, deps.base(root)));
-        const result = cleanFactoryRun({ root, issue, exec: deps.exec, claimRepo, ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
+        const result = cleanFactoryRun({ root, issue, exec: deps.exec, claimRepo, ...(o.discard ? { discard: true } : {}), ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
         if (c.optsWithGlobals().json) console.log(JSON.stringify({ ok: result.kept.length === 0, ...result }, null, 2));
         else {
           for (const path of result.removed) console.log(chalk.green(`removed ${path}`));
           for (const k of result.kept) console.log(chalk.yellow(`kept ${k.worktree}: ${k.reason}`));
+          // F59: a cancel mid-lane leaves partial edits; name the command that gives them up.
+          if (!o.discard && result.kept.some((k) => k.reason.startsWith('worktree_dirty')) && readFactoryState(root, issue)?.phase === 'cancelled') {
+            console.log(chalk.yellow(`the run is cancelled: omg factory run clean ${issue} --discard gives up the uncommitted lane changes${kind === 'local' ? `, and omg factory run reset ${issue} does that itself before it starts the run over` : ''}`));
+          }
           if (result.removed.length === 0 && result.kept.length === 0) console.log(`nothing to clean for factory run #${issue}`);
         }
         return result.kept.length === 0 ? 0 : EXIT_AWAITING_HUMAN;
@@ -476,7 +482,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
 
   run
     .command('reset <issue>')
-    .description('Local forge only: start a cancelled run over (after run clean): close its local PR, keep its mirror branch as factory/cancelled/..., move the run state aside; busy (exit 6) while an engine runs in this checkout or another clone claims the item')
+    .description('Local forge only: start a cancelled run over: remove its worktrees (uncommitted lane changes are given up, commits kept), close its local PR, keep its mirror branch as factory/cancelled/..., move the run state aside; busy (exit 6) while an engine runs in this checkout or another clone claims the item')
     .option('--json', 'JSON output')
     .action((issueRaw: string, _o: unknown, c: Command) =>
       factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
@@ -487,13 +493,14 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         try {
           const loaded = deps.forge?.(root, deps.base(root), { dryRun: false });
           if (!loaded || loaded.config.kind !== 'local') throw new FactoryUsageError('omg factory run reset is for the local forge only (factory.forge.kind "local")');
-          // The local forge makes no claim (L-f): reset has none to check or delete.
+          // The local forge keys its claim on the root commit (F60): reset checks it and deletes this checkout's.
           const claimRepo = cliClaimRepo(deps, root, loaded.config.kind);
           const read = forgeReadExec(deps.exec, loaded.config, root);
           const forge = createForge(read.exec, root, loaded.config, { ...read.options, local: { omgRoot: getOmcRoot(root) } });
           const result = resetFactoryRun({ root, issue, exec: deps.exec, forge, mirror: loaded.config.repo.url, repoOwner: held, claimRepo, ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
           if (c.optsWithGlobals().json) console.log(JSON.stringify({ ok: true, ...result }, null, 2));
           else {
+            for (const path of result.removedWorktrees ?? []) console.log(chalk.green(`removed ${path} (uncommitted lane changes given up)`));
             if (result.closedPr !== undefined) console.log(chalk.green(`closed local PR #${result.closedPr} (cancelled)`));
             if (result.keptBranch) console.log(chalk.green(`kept the run's branch as ${result.keptBranch} in the mirror`));
             console.log(chalk.green(`moved the run state to ${result.stateMovedTo}; omg factory run ${issue} starts a new run`));

@@ -30,6 +30,12 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **Poll** (#472). A heal tick or base sync that cannot take the engine lock for a reason other than busy is reported as a tick error instead of a skip.
 - **Cancel hint** (#465, #472). The cancel hint on the gates `decisions-rewritten`, `gate-definition-unknown` and `gate-definition-changed` names `omg factory heal cancel <sig8>` for ci-heal runs.
 - **Localized git** (#472). Reads of files on the base commit (`.copilot/omg.jsonc`, the team files, the known-flaky list, prepare markers) tell "file absent" from `git ls-tree` and no longer from English git messages.
+- **ci-fix rerun** (dogfood F58). A rerun after a `ci-fix-failed` or `ci-failed` park on the same PR head checks that head again before it starts a lane: on the local forge the gate runs again. A pass goes on to merge; a failure takes the same ci-fix round again. Fixing a cause outside the repository no longer costs two more ci-fix lanes.
+- **Reset after a cancel during a lane** (dogfood F59). `omg factory run reset` removes the cancelled run's worktrees itself and gives up their uncommitted lane changes; a worktree that holds commits still refuses the reset. `omg factory run clean --discard` does the same on a cancelled run, and plain `clean` names it when it keeps a dirty worktree.
+- **Local-forge clones claim items** (dogfood F60). On the local forge, the cross-clone claim is keyed on the repository's root commit, so a second clone of one repository no longer starts an item another clone's run holds (parked included): it exits 6, and its dry run names the claim.
+- **Board and poll after a local review** (dogfood F50). A run parked at the merge gate on the local forge shows the change request or open notes recorded since the park (`omg factory pr review`) with a do-not-merge line, instead of "no open trusted threads or change requests".
+- **Local triage** (dogfood F55). `triage --apply` keeps the backlog file's own title line, and adds no priority label next to a frontmatter `priority` (the frontmatter wins, as the dry run says).
+- **Factory messages** (dogfood F51, F52, F53, F54, F57). Local human-review parks name `omg factory pr view` and the `omg factory pr review <n> --approve --head <sha>` that clears a request; no doubled "the" in the gate-only park; poll's first tick no longer lists an item a run is on as new; `setup --workflows --dry-run` on the local forge no longer prints "the source has no open items".
 
 ### Security
 

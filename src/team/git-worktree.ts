@@ -1337,13 +1337,15 @@ export function prepareWorkerWorktreeForRemoval(
  * With the worktree directory already gone, the named branch is checked the
  * same way and kept when it holds unmerged worker commits. `contained`: commits
  * (full shas the caller verified, e.g. a fetched remote branch) whose history
- * also counts as merged.
+ * also counts as merged. `discardChanges`: the caller gives up the
+ * worktree's uncommitted changes (a cancelled factory run's lane): a dirty
+ * tree is removed too; the path guard and the commit checks still apply.
  */
 export function removeWorkerWorktree(
   teamName: string,
   workerName: string,
   repoRoot: string,
-  options: { gitLinks?: WorktreeGitLinks; contained?: readonly string[] } = {},
+  options: { gitLinks?: WorktreeGitLinks; contained?: readonly string[]; discardChanges?: boolean } = {},
 ): { tampered: string | null } {
   const contained = options.contained ?? [];
   if (!contained.every((sha) => /^[0-9a-f]{40}$/.test(sha))) throw new Error('removeWorkerWorktree: contained must be full commit shas');
@@ -1368,7 +1370,14 @@ export function removeWorkerWorktree(
       gitDirArgs = worktreeGitDirArgs(wtPath);
       laneCommonDir = commonDir;
     }
-    prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, wtPath, gitDirArgs);
+    if (!options.discardChanges) prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, wtPath, gitDirArgs);
+    else if (existsSync(wtPath)) {
+      validateWorktreeRemovalTarget({
+        candidatePath: wtPath,
+        expectedRoots: [join(getOmcRoot(repoRoot), 'team', sanitizeName(teamName), 'worktrees')],
+        mainRepoRoots: [repoRoot],
+      });
+    }
 
     const baseCommit = readMetadata(repoRoot, teamName).find((entry) => entry.workerName === workerName)?.baseCommit;
     let registered: { head: string | null; branch: string | null } | null;
@@ -1439,7 +1448,7 @@ export function removeWorkerWorktree(
         }
         if (isAdminDirOf(laneCommonDir, options.gitLinks.adminDir)) removeTreeByPath(options.gitLinks.adminDir);
       } else {
-        runHostGit(repoRoot, ['worktree', 'remove', ...(force ? ['--force'] : []), wtPath]);
+        runHostGit(repoRoot, ['worktree', 'remove', ...(force || (options.discardChanges && !submodules) ? ['--force'] : []), wtPath]);
       }
     } catch (err) {
       // A forced removal can fail half way on win32 when a process (a worker's
