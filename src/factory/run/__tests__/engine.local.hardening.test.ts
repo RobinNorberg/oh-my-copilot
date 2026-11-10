@@ -95,8 +95,9 @@ describe('factory run on the local forge: git hardening', () => {
     };
     const out = await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')]), withCheck));
     expect(out.gate?.name, out.message).toBe('lane-tampered');
-    // Either the shared-state compare or the read through the recorded links stops it; never the checkout's `.git`.
-    expect(out.gate?.reason).toMatch(/^prepare's checks \(the PR's own code\)/);
+    // The gitfile compare around the check, the shared-state compare or the read through the recorded links stops it;
+    // never the checkout's `.git`.
+    expect(out.gate?.reason).toMatch(/^(prepare's checks \(the PR's own code\)|the prepare check `node check\.mjs` on [0-9a-f]{12} changed the prepare checkout's \.git file)/);
     expect(w.gateRuns).toEqual([]);
   }, 300_000);
 
@@ -181,17 +182,18 @@ describe('factory run on the local forge: git hardening', () => {
     w = localWorld();
     writeFileSync(join(w.root, '.gitignore'), '.omg/\ncoverage/\n');
     gitIn(w.root, 'commit', '-q', '-am', 'ignore coverage');
-    // The first gate writes its output, then the engine "dies" (a gate that never reports: no record, parked).
+    // The first gate writes its output; then the engine "died" mid-gate on a later run (a stale PENDING record replaces the pass).
     w.gate = async (_argv, cwd) => {
       mkdirSync(join(cwd, 'coverage'), { recursive: true });
       writeFileSync(join(cwd, 'coverage', 'lcov.info'), 'TN:\n');
-      return { status: 127, stdout: '', stderr: '', timedOut: false, startError: 'simulated crash' };
+      return { status: 0, stdout: 'ok\n', stderr: '', timedOut: false };
     };
     const first = await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')])));
-    expect(first.gate?.name, first.message).toBe('gates');
+    expect(first.gate?.name, first.message).toBe('merge');
     const state = readFactoryState(w.root, LOCAL_ISSUE)!;
     const checkout = checkoutPath(w.root, LOCAL_ISSUE);
     expect(existsSync(join(checkout, 'coverage', 'lcov.info'))).toBe(true);
+    rmSync(localCheckRecordPath(w.stateDir, w.root, state.head!));
     writeLocalCheckRecord(w.stateDir, w.root, { name: 'local-gate', head: state.head!, state: 'PENDING', argv: ['node', '--test'], runId: 1, startedAt: '2020-01-01T00:00:00.000Z' });
     const seen: boolean[] = [];
     w.gate = async (_argv, cwd) => {
