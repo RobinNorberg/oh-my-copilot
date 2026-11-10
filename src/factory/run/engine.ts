@@ -62,7 +62,7 @@ import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT, type PrepareCheckResult, type PrepareCheckRun } from '../../ship/prepare.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { resolveGatesSandboxMode, resolveRequireDeniedPaths, type GatesSandboxMode } from '../../copilot-run/sandbox.js';
-import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxJobRoot, type SandboxRunner } from './sandbox-exec.js';
+import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxJobRoot, splitFileListArgs, type SandboxRunner } from './sandbox-exec.js';
 import { removeWorkerWorktree, runHostGit } from '../../team/git-worktree.js';
 import { driveGates } from './gates-driver.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
@@ -456,6 +456,18 @@ function calibrationArgs(c: { args: readonly string[]; kind?: PrepareCheckRun['k
   const files = (vitest ? rest.slice(1) : rest).filter((f) => existsSync(join(dir, f)));
   if (files.length === 0) return [script, '--version'];
   return vitest ? [script, 'run', ...files] : [script, ...files];
+}
+
+/**
+ * A built-in eslint or vitest check over the changed files, cut into calls
+ * that each fit the sandbox shell (a large PR's file list can exceed the
+ * Windows command line); one call for every other check.
+ */
+export function fileListParts(c: PrepareCheckRun, cwd: string, platform: NodeJS.Platform = process.platform): PrepareCheckRun[] {
+  const script = c.args[0];
+  if (c.kind !== 'built-in' || (script !== VITEST_SCRIPT && script !== ESLINT_SCRIPT)) return [c];
+  const parts = splitFileListArgs(platform, c.exe, c.args, script === VITEST_SCRIPT ? 2 : 1, cwd);
+  return parts.length === 1 ? [c] : parts.map((args) => ({ ...c, argv: [c.exe, ...args], args }));
 }
 
 function errText(error: unknown): string {
@@ -2044,7 +2056,8 @@ class FactoryEngine {
     const fetched = result.steps.some((st) => st.name === 'fetch' && st.status === 'ok');
     // From here the PR's diff (review, protected paths) is against the base GitHub reports.
     const sandboxNote = ran.modes.size > 0 ? [{ at: this.iso(), from: s.phase, to: s.phase, note: `prepare checks on ${head.slice(0, 12)} ran ${[...ran.modes].map((m) => (m === 'enforced' ? 'in the OS sandbox' : m === 'enforced-readable' ? `in the OS sandbox (${CREDENTIAL_FILES_READABLE_NOTE})` : `unsandboxed (${m})`)).join(' and ')}` }] : [];
-    this.save((x) => ({ ...x, checkoutHead, ...(fetched ? { baseSha: view.baseRefOid } : {}), history: [...x.history, ...sandboxNote] }));
+    const sandboxed = ran.modes.has('enforced') || ran.modes.has('enforced-readable');
+    this.save((x) => ({ ...x, checkoutHead, ...(sandboxed ? { sandboxedPrepareHead: checkoutHead } : {}), ...(fetched ? { baseSha: view.baseRefOid } : {}), history: [...x.history, ...sandboxNote] }));
     // The accepted head's code ran unsandboxed: publishPrepared carries the ack to the prepared head once it holds only the engine's own commits.
     if (result.ok) return this.publishPrepared(pr, head, checkoutHead, result.housekeepingCommits, view.baseRefOid, ran.acked && this.state.unsandboxedGatesAck === head);
 
@@ -2125,6 +2138,17 @@ class FactoryEngine {
     return `${what} on ${at} would run the PR's own code WITHOUT the OS sandbox (${why}). Acknowledging trusts ALL of ${at}'s code (every prepare check, the inventory generator, the local gate, and the head prepare makes from it) with your user account: your files, git config and credentials, and a process it leaves behind keeps running as you. Review the PR's whole diff (tests, configs, scripts) yourself, then rerun ${this.resume} --allow-unsandboxed-gates to run it unsandboxed for ${at} only`;
   }
 
+  /**
+   * The park when the sandbox did not start for `what` after the PR's code of
+   * this head already ran in it (an earlier prepare check): the PR's code may
+   * be the cause (a full disk, a process it left), so the
+   * --allow-unsandboxed-gates offer is not made; no pass, no failure.
+   */
+  private gateNoStartAfterCodeReason(head: string, what: string, why: string): string {
+    const at = head.slice(0, 12);
+    return `${what} on ${at} could not start in the OS sandbox (${why}) after the PR's code of this head already ran in it (an earlier prepare check), so the PR's code may be the cause. The head is not judged: no pass, no FAILURE, no ci-fix lane, and --allow-unsandboxed-gates does not apply here. Rerun ${this.resume} to try again; if it parks here again, review the PR's diff and fix the cause`;
+  }
+
   /** The park after the command ran in the sandbox without a verdict: no ack offer, no pass, no failure. `why` is fixed text (sandbox-exec.ts). */
   private gateNoVerdictReason(head: string, what: string, why: string): string {
     const at = head.slice(0, 12);
@@ -2154,10 +2178,25 @@ class FactoryEngine {
    * anything runs unsandboxed. A sandbox that started the command and gave
    * no verdict stops at gate-no-verdict (no ack offer). From the first check
    * on, engine git in the checkout names its git dir (checkoutGitPin), and a
-   * gitfile that changed around a check stops at lane-tampered.
+   * gitfile that changed around a check stops at lane-tampered. A built-in
+   * file list too long for the sandbox shell runs as several calls that must
+   * all pass (fileListParts). A sandbox that does not start after an earlier
+   * check of the head ran in it stops at gate-no-verdict (no ack offer): the
+   * PR's code may have caused it.
    */
   private async prepareCheck(c: PrepareCheckRun, at: { head: string; path: string; commonGitDir: string; baseSha: string; gates: { mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean }; ran: { modes: Set<string>; acked: boolean; park?: { name: string; reason: string } }; gitLink: { hash: string; gitDir: string } }): Promise<PrepareCheckResult> {
     const { head, path, ran } = at;
+    const parts = fileListParts(c, path);
+    if (parts.length > 1) {
+      // Every part must pass; the first that does not is the check's result (its park, or its failure).
+      const outputs: string[] = [];
+      for (const part of parts) {
+        const r = await this.prepareCheck(part, at);
+        if (r.notStarted !== undefined || r.status !== 0) return r;
+        outputs.push(r.stdout);
+      }
+      return { status: 0, stdout: outputs.join('\n'), stderr: '' };
+    }
     const label = this.prepareCheckLabel(c);
     const stop = (park: { name: string; reason: string }): PrepareCheckResult => {
       ran.park = park;
@@ -2205,6 +2244,10 @@ class FactoryEngine {
         return { status: r.timedOut ? 124 : r.status, stdout: redactGateOutput(r.output), stderr: '' };
       }
       if (r.started) return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoVerdictReason(head, label, r.reason) });
+      // An earlier check of this head already ran the PR's code in the sandbox: a start failure now may be its doing.
+      if ((ran.modes.has('enforced') || ran.modes.has('enforced-readable')) && !this.gatesAccepted(head)) {
+        return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoStartAfterCodeReason(head, label, r.reason) });
+      }
       why = `the OS sandbox gave no verdict: ${r.reason}`;
     }
     if (this.gatesAccepted(head)) return plain('ack');
@@ -2499,6 +2542,12 @@ class FactoryEngine {
           return false;
         }
         unavailable = !out.started && out.sandbox === true;
+        // Prepare already ran the PR's code of this checkout in the sandbox: a start failure now may be its doing.
+        if (unavailable && !out.started && this.state.sandboxedPrepareHead === head && !this.gatesAccepted(head)) {
+          if (checkoutGitLink(checkout).hash !== linkBefore) return this.gateTamperedByGate(head, checkout, stateDir);
+          this.gate(GATE_NO_VERDICT_GATE, this.gateNoStartAfterCodeReason(head, `the local gate \`${gate.join(' ')}\``, out.reason));
+          return false;
+        }
         if (unavailable && !out.started) why = `the OS sandbox gave no verdict: ${out.reason}`;
       }
       if (unavailable) {

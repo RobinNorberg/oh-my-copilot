@@ -16,9 +16,11 @@ import { buildSandboxConfig, DEFAULT_SANDBOX_SETTINGS, resolveGatesSandboxMode, 
 import { findOnPath } from '../../../utils/windows-search.js';
 import { defaultLocalGateRunner } from '../local-gate.js';
 import {
-  createSandboxRunner, gateEnv, readMarker, redactGateOutput, runSandboxed, sandboxShellCommand, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES,
-  type SandboxExecDeps, type SandboxExecOptions,
+  createSandboxRunner, gateEnv, readMarker, redactGateOutput, runSandboxed, sandboxCommandMaxChars, sandboxCommandTooLong, sandboxShellCommand, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES,
+  splitFileListArgs, type SandboxExecDeps, type SandboxExecOptions,
 } from '../sandbox-exec.js';
+import { fileListParts } from '../engine.js';
+import { VITEST_SCRIPT } from '../../../ship/prepare.js';
 
 /** What the fake shell answers for one command (the marker in the command is substituted for MARKER). */
 interface ShellScript {
@@ -338,6 +340,17 @@ describe('runSandboxed', () => {
     expect(rec.connections).toEqual([]);
   });
 
+  it('L-b: a single command too long for the sandbox shell is not started, with a fixed reason that says so', async () => {
+    for (const platform of ['linux', 'win32'] as const) {
+      rec.connections = [];
+      const long = 'x'.repeat(sandboxCommandMaxChars(platform));
+      const r = await runSandboxed(['/usr/bin/node', long], opts(), deps(ok, 'supported', { platform }));
+      expect(r, platform).toEqual({ ran: false, reason: expect.stringContaining('the command is too long for the sandbox shell') });
+      expect((r as { reason: string }).reason, platform).not.toContain('xxxx');
+      expect(rec.connections, platform).toEqual([]);
+    }
+  });
+
   it('the kill switch OMG_SANDBOX=off never runs the command unsandboxed here', async () => {
     const r = await runSandboxed(['/bin/true'], opts(), deps(ok, 'supported', { env: { PATH: '', OMG_SANDBOX: 'off' } }));
     expect(r.ran).toBe(false);
@@ -518,6 +531,41 @@ describe('sandboxShellCommand', () => {
       expect(read.output).toContain('line 2999');
     }
   }, 150_000);
+
+  it('L-b: a built-in file list too long for the Windows command line is split into calls that each fit, in order, none lost', () => {
+    const exe = 'C:\\Program Files\\nodejs\\node.exe';
+    const cwd = 'C:\\Users\\me\\repo\\.omg\\state\\factory-checkouts\\issue-1';
+    const files = Array.from({ length: 900 }, (_, i) => `src/features/some-area/deeply/nested/module-${i}/index.test.ts`);
+    for (const [script, fixed] of [['node_modules/vitest/vitest.mjs', 2], ['node_modules/eslint/bin/eslint.js', 1]] as const) {
+      const args = fixed === 2 ? [script, 'run', ...files] : [script, ...files];
+      expect(sandboxCommandTooLong('win32', [exe, ...args], cwd)).toBe(true);
+      const parts = splitFileListArgs('win32', exe, args, fixed, cwd);
+      expect(parts.length, script).toBeGreaterThan(1);
+      for (const p of parts) {
+        expect(p.slice(0, fixed)).toEqual(args.slice(0, fixed));
+        expect(p.length).toBeGreaterThan(fixed);
+        expect(sandboxCommandTooLong('win32', [exe, ...p], cwd)).toBe(false);
+      }
+      expect(parts.flatMap((p) => p.slice(fixed))).toEqual(files);
+      // Off Windows the same list fits one shell argument: one call.
+      expect(splitFileListArgs('linux', '/usr/bin/node', args, fixed, '/w')).toEqual([args]);
+    }
+    // A list that fits stays one call; a single file that alone is too long stays a call of its own (refused at run time).
+    expect(splitFileListArgs('win32', exe, ['node_modules/eslint/bin/eslint.js', 'src/a.ts'], 1, cwd)).toEqual([['node_modules/eslint/bin/eslint.js', 'src/a.ts']]);
+    const huge = `src/${'y'.repeat(30_000)}.ts`;
+    expect(splitFileListArgs('win32', exe, ['eslint.js', 'src/a.ts', huge, 'src/b.ts'], 1, cwd)).toEqual([['eslint.js', 'src/a.ts'], ['eslint.js', huge], ['eslint.js', 'src/b.ts']]);
+  });
+
+  it('L-b: fileListParts splits only the built-in eslint and vitest checks', () => {
+    const files = Array.from({ length: 900 }, (_, i) => `src/features/some-area/deeply/nested/module-${i}/index.test.ts`);
+    const exe = 'C:\\node.exe';
+    const vitest = { step: 'tests', kind: 'built-in' as const, exe, args: [VITEST_SCRIPT, 'run', ...files], argv: [exe, VITEST_SCRIPT, 'run', ...files] };
+    const parts = fileListParts(vitest, 'C:\\w', 'win32');
+    expect(parts.length).toBeGreaterThan(1);
+    for (const p of parts) expect(p).toMatchObject({ step: 'tests', kind: 'built-in', exe, argv: [exe, ...p.args] });
+    const configured = { step: 'x', kind: 'configured' as const, exe, args: ['x.js', ...files], argv: ['node', 'x.js', ...files] };
+    expect(fileListParts(configured, 'C:\\w', 'win32')).toEqual([configured]);
+  });
 
   it('readMarker: exactly one marker, as the last non-empty line, no other omg-gate-exit- text', () => {
     expect(readMarker(`a\nb\n${MARKER} 2\r\n`, MARKER)).toEqual({ code: 2, output: 'a\nb' });

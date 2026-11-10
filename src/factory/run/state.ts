@@ -236,6 +236,8 @@ export interface FactoryRunState {
   mergeBounces?: number;
   /** The engine-owned prepare checkout's HEAD when the engine last left it. */
   checkoutHead?: string;
+  /** The checkout head a prepare left after the PR's code ran in the OS sandbox there (a local gate start failure on it parks at gate-no-verdict). */
+  sandboxedPrepareHead?: string;
   /**
    * The last human feedback round consumed (sealed with the rest of the
    * state): when, at which head, the digest of what the fix lane got, and
@@ -513,6 +515,7 @@ function humanReviewShapeProblem(s: Record<string, unknown>): string | null {
     || Object.keys(h).some((k) => k !== 'seenAt' && k !== 'head' && k !== 'digest' && k !== 'threadIds'))) return 'humanReview';
   if (s.unsandboxedAck !== undefined && (!isStr(s.unsandboxedAck) || !HEX40.test(s.unsandboxedAck))) return 'unsandboxedAck';
   if (s.unsandboxedGatesAck !== undefined && (!isStr(s.unsandboxedGatesAck) || !HEX40.test(s.unsandboxedGatesAck))) return 'unsandboxedGatesAck';
+  if (s.sandboxedPrepareHead !== undefined && (!isStr(s.sandboxedPrepareHead) || !HEX40.test(s.sandboxedPrepareHead))) return 'sandboxedPrepareHead';
   const cal = s.gateCalibration as Record<string, unknown> | undefined;
   if (cal !== undefined && (typeof cal !== 'object' || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
     const e = v as Record<string, unknown> | null;

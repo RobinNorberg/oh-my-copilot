@@ -164,6 +164,47 @@ export function sandboxShellCommand(platform: NodeJS.Platform, argv: readonly st
 }
 
 /**
+ * The longest shell command runSandboxed hands to the runtime. The SDK types
+ * do not say how the runtime passes it to its shell; assume one argument of
+ * a process command line: on Windows CreateProcess takes 32 767 characters
+ * in all, and the shell's path, its flags and quote escaping need the rest;
+ * elsewhere Linux caps one argv string at 131 072 bytes.
+ */
+export const sandboxCommandMaxChars = (platform: NodeJS.Platform): number => (platform === 'win32' ? 28_000 : 120_000);
+
+/** A marker of the real one's length, for sizing a command before the run. */
+const SIZING_MARKER = `${MARKER_PREFIX}${'0'.repeat(16)}`;
+
+/** Whether `argv` in `cwd` encodes to a shell command above sandboxCommandMaxChars (false for one the shell refuses anyway). */
+export function sandboxCommandTooLong(platform: NodeJS.Platform, argv: readonly string[], cwd: string): boolean {
+  const command = sandboxShellCommand(platform, argv, cwd, SIZING_MARKER);
+  return command !== null && command.length > sandboxCommandMaxChars(platform);
+}
+
+/**
+ * A built-in check's `<script> [run] <file...>` args (`fixed` = the words
+ * before the file list) cut into several argument lists, each with at least
+ * one file and, where one file allows it, short enough for the sandbox
+ * shell. One list when the whole command fits. The caller runs them all and
+ * counts a pass only when every one passes.
+ */
+export function splitFileListArgs(platform: NodeJS.Platform, exe: string, args: readonly string[], fixed: number, cwd: string): string[][] {
+  if (!sandboxCommandTooLong(platform, [exe, ...args], cwd) || args.length <= fixed + 1) return [[...args]];
+  const head = args.slice(0, fixed);
+  const parts: string[][] = [];
+  let chunk: string[] = [];
+  for (const file of args.slice(fixed)) {
+    if (chunk.length > 0 && sandboxCommandTooLong(platform, [exe, ...head, ...chunk, file], cwd)) {
+      parts.push([...head, ...chunk]);
+      chunk = [];
+    }
+    chunk.push(file);
+  }
+  parts.push([...head, ...chunk]);
+  return parts;
+}
+
+/**
  * The exit code the marker line reports, and the output without it. A
  * verdict needs `marker` exactly once, and no other MARKER_PREFIX anywhere,
  * as the last non-empty line `<marker> <n>`: a forged line before the real
@@ -212,6 +253,10 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
   const marker = `${MARKER_PREFIX}${randomBytes(8).toString('hex')}`;
   const command = sandboxShellCommand(deps.platform, argv, o.cwd, marker);
   if (command === null) return notStarted('the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)');
+  const max = sandboxCommandMaxChars(deps.platform);
+  if (command.length > max) {
+    return notStarted(`the command is too long for the sandbox shell: it encodes to ${command.length} characters, above the ${max} that ${deps.platform === 'win32' ? 'a Windows command line' : 'one shell argument'} can safely carry; shorten the configured command`);
+  }
   const jobHome = join(o.jobRoot, `gate-${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`);
   // The runtime's own working directory and its only trusted folder: empty, fresh per command, never the checkout.
   const workDir = join(jobHome, 'work');
