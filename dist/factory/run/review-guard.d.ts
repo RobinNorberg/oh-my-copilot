@@ -84,6 +84,14 @@ export interface RepoSnapshot {
     /** Submodule git dir (relative to `modules/`) -> hash of its config, hooks, info and alternates. */
     modules: Record<string, string>;
     alternates: string;
+    /**
+     * Hash of what steers ancestry answers besides the commits: `shallow`,
+     * everything under `objects/info/` (commit-graph, commit-graphs/,
+     * alternates), `objects/pack/multi-pack-index`, and the names of the
+     * `*.bitmap` / `*.promisor` packs (objectStoreMetaHash). Absent in a
+     * baseline recorded by an older release (the compare then skips it).
+     */
+    objectMeta?: string;
     /** Hash of the global git config files and every include target (see the module comment). */
     globalConfig: string;
     /** Hash of the bounded list of ignored main-checkout paths (see the module comment). */
@@ -99,6 +107,15 @@ export declare class SnapshotError extends Error {
 export declare const SENSITIVE_IGNORED: readonly [".npmrc", ".yarnrc", ".yarnrc.yml", "node_modules/.bin"];
 /** Hash of every entry under `dir` (relative name, kind and content); `absent` when there is none. */
 export declare function treeHash(dir: string): string;
+/** Files up to this size are hashed by content; a larger one (a big commit-graph) by size and mtime. */
+export declare const OBJECT_META_CONTENT_LIMIT: number;
+/**
+ * The object store state a forged file could use to change merge-base,
+ * rev-list or a three-dot diff without a ref moving (RepoSnapshot.objectMeta).
+ * Pack data itself is not hashed (a fetch adds packs): only the
+ * multi-pack-index and the names of bitmap and promisor packs.
+ */
+export declare function objectStoreMetaHash(commonDir: string): string;
 /** Every submodule git dir under `modules/` (module names may hold slashes; submodules nest); a non-directory entry is kept as such. */
 export declare function moduleEntries(commonDir: string): Record<string, string>;
 /** git's own include depth limit. */
@@ -133,6 +150,15 @@ export declare function stableStatus(raw: string, stateRootRel: string | null): 
  * differs from it; the comparison then reports that file.
  */
 export declare function snapshotRepo(exec: Exec, root: string, stateRootRel?: string | null, against?: RepoSnapshot): RepoSnapshot;
+/**
+ * Why the shared git dir may not carry a factory run, or null: replace refs
+ * (`refs/replace/*`, loose or packed) or an `info/grafts` file. The engine's
+ * own git ignores both (GIT_NO_REPLACE_OBJECTS, an empty GIT_GRAFT_FILE), but
+ * a replace ref planted before the run would sit in every baseline snapshot,
+ * so the compare would never flag it; the repository's other git users still
+ * honour them. Refused at the start and at every resume.
+ */
+export declare function replaceObjectsProblem(exec: Exec, root: string): string | null;
 /** Same file system path (realpath when both exist; case-insensitive on Windows). */
 export declare function samePath(a: string, b: string): boolean;
 export interface CompareAllowance {

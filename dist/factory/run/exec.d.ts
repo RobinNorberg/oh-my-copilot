@@ -158,7 +158,16 @@ export declare function assertFactoryCommand(cmd: string, args: string[], extraP
  */
 export declare function factoryGuardExec(exec: Exec, extraProtected?: () => readonly string[], ado?: () => AdoGuardContext | undefined, writes?: () => TrackerWriteContext | undefined, local?: () => LocalGuardContext | undefined, github?: () => GithubReadContext | undefined, agent?: () => CodingAgentStepContext | undefined): Exec;
 /** Prepended to every hardened git command, after the guard checked the plain shape. */
-export declare function gitHardeningArgs(hooksDir: string): string[];
+export declare function gitHardeningArgs(hooksDir: string, subcommand?: string): string[];
+/**
+ * The `--receive-pack` of a push to the local forge mirror. A push to a path
+ * spawns receive-pack in the mirror, and git drops this process's `-c` for a
+ * local transport, so the mirror's own hooks (pre-receive, update,
+ * post-receive, reference-transaction) and core.hooksPath would run; this
+ * command passes the empty hooks dir to that receive-pack itself. Git runs
+ * it through `sh`, so the path is single-quoted (a path with a quote is refused).
+ */
+export declare function mirrorReceivePackArg(hooksDir: string): string;
 /**
  * Prepended to a transport command on the local forge's `omg-local` remote:
  * the stock pack programs, so a `remote.omg-local.receivepack` or

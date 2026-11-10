@@ -481,9 +481,81 @@ export function factoryGuardExec(exec, extraProtected = () => [], ado = () => un
         }
     };
 }
+/**
+ * Config the engine's git pins on EVERY command, transports included:
+ * | key | why |
+ * | core.hooksPath=<empty>, core.fsmonitor=false | no hook and no fsmonitor program runs |
+ * | core.pager=cat, diff.external= | no pager or external diff program runs |
+ * | core.commitGraph=false, core.multiPackIndex=false | ancestry and diff answers come from the commits, never a planted commit-graph or MIDX |
+ * | gc.auto=0, maintenance.auto=false, fetch.writeCommitGraph=false | the engine never repacks or writes a commit-graph between two snapshots |
+ * | protocol.ext.allow=never | ext:: runs a command; no factory remote uses it |
+ * | remote.origin.uploadpack / receivepack = the stock programs | no factory origin needs another (GitHub and Azure DevOps ignore them; ssh runs the stock ones) |
+ * Left as the user configured them, because origin fetch and push need the
+ * user's own setup (a planted value is a config write the snapshot catches):
+ * credential.helper and core.askPass (the credential manager), core.sshCommand
+ * (ssh keys, agents, ProxyJump), http.proxy and core.gitProxy (corporate
+ * proxies), core.worktree (no value turns it off; repository config only).
+ */
+const ENGINE_GIT_PINS = [
+    'core.fsmonitor=false', 'core.pager=cat', 'diff.external=',
+    'core.commitGraph=false', 'core.multiPackIndex=false', 'gc.auto=0', 'maintenance.auto=false', 'fetch.writeCommitGraph=false',
+    'protocol.ext.allow=never', 'remote.origin.uploadpack=git-upload-pack', 'remote.origin.receivepack=git-receive-pack',
+];
+/**
+ * Pinned on top for a command that only works on the local repository (not
+ * TRANSPORT_SUBCOMMANDS): `worktree add` and prepare's merge in the engine's
+ * checkout check out the PR's tree, whose `.gitattributes` / `.lfsconfig`
+ * would pick git-lfs (from the system config) and its endpoints, and a merge
+ * commit would run gpg.program under commit.gpgSign. With these (and
+ * GIT_LFS_SKIP_SMUDGE=1) LFS files stay pointer files there.
+ */
+const LOCAL_ONLY_GIT_PINS = ['commit.gpgSign=false', 'tag.gpgSign=false', 'filter.lfs.smudge=', 'filter.lfs.process=', 'filter.lfs.required=false'];
+/** Subcommands that talk to a remote: they keep the user's transport setup (see ENGINE_GIT_PINS). */
+const TRANSPORT_SUBCOMMANDS = new Set(['push', 'fetch', 'ls-remote', 'pull', 'clone']);
 /** Prepended to every hardened git command, after the guard checked the plain shape. */
-export function gitHardeningArgs(hooksDir) {
-    return ['-c', `core.hooksPath=${hooksDir}`, '-c', 'core.fsmonitor=false', '-c', 'core.pager=cat', '-c', 'diff.external='];
+export function gitHardeningArgs(hooksDir, subcommand) {
+    const local = subcommand !== undefined && !TRANSPORT_SUBCOMMANDS.has(subcommand) ? LOCAL_ONLY_GIT_PINS : [];
+    return ['-c', `core.hooksPath=${hooksDir}`, ...[...ENGINE_GIT_PINS, ...local].flatMap((kv) => ['-c', kv])];
+}
+/**
+ * The environment the engine's git adds after the guard: git honours
+ * `info/grafts` even under GIT_NO_REPLACE_OBJECTS, so GIT_GRAFT_FILE names a
+ * file that never exists (inside the hooks dir, which must stay empty); a
+ * local-only command also skips LFS smudging.
+ */
+function hardenedGitEnv(hooksDir, subcommand, env) {
+    return { ...env, GIT_GRAFT_FILE: join(hooksDir, 'grafts'), ...(TRANSPORT_SUBCOMMANDS.has(subcommand) ? {} : { GIT_LFS_SKIP_SMUDGE: '1' }) };
+}
+/**
+ * The `--receive-pack` of a push to the local forge mirror. A push to a path
+ * spawns receive-pack in the mirror, and git drops this process's `-c` for a
+ * local transport, so the mirror's own hooks (pre-receive, update,
+ * post-receive, reference-transaction) and core.hooksPath would run; this
+ * command passes the empty hooks dir to that receive-pack itself. Git runs
+ * it through `sh`, so the path is single-quoted (a path with a quote is refused).
+ */
+export function mirrorReceivePackArg(hooksDir) {
+    if (hooksDir.includes("'"))
+        throw new FactorySafetyError(`omg factory run refuses to push to the local forge mirror: the engine's hooks directory ${hooksDir} contains a quote`);
+    return `--receive-pack=git -c core.hooksPath='${hooksDir}' -c core.fsmonitor=false receive-pack`;
+}
+/**
+ * The only keys the local forge mirror's own config may hold (what
+ * `git init --bare` writes): any other key (a hooksPath, an include, a
+ * receive.* or core.alternateRefsCommand) would steer the receive-pack or
+ * upload-pack that runs in the mirror, which reads that config itself.
+ */
+const MIRROR_CONFIG_KEYS = new Set(['core.repositoryformatversion', 'core.filemode', 'core.bare', 'core.symlinks', 'core.ignorecase', 'core.precomposeunicode', 'extensions.objectformat']);
+/** Why the mirror must not take part in a transport (its config, alternates), or null. */
+function mirrorConfigProblem(exec, hardening, mirror) {
+    if (existsSync(join(mirror, 'objects', 'info', 'alternates')))
+        return `the local forge mirror ${mirror} has objects/info/alternates`;
+    const listed = exec('git', [...hardening, 'config', '--file', join(mirror, 'config'), '-z', '--list'], { env: TRUSTED_READ_ENV });
+    if (listed.status !== 0)
+        return `the local forge mirror's config ${join(mirror, 'config')} cannot be read`;
+    const keys = listed.stdout.split('\0').filter(Boolean).map((rec) => rec.split('\n')[0].toLowerCase());
+    const bad = [...new Set(keys.filter((k) => !MIRROR_CONFIG_KEYS.has(k)))];
+    return bad.length > 0 ? `the local forge mirror's config ${join(mirror, 'config')} sets ${bad.join(', ')}, which the engine never writes there; remove it (git config --file <that file> --unset <key>)` : null;
 }
 /**
  * Prepended to a transport command on the local forge's `omg-local` remote:
@@ -546,9 +618,10 @@ export function hardenedGitExec(exec, hooksDir, localMirror = () => undefined) {
         if (!existsSync(hooksDir) || readdirSync(hooksDir).length > 0) {
             throw new FactorySafetyError(`omg factory run refuses git: the engine's empty hooks directory ${hooksDir} is missing or not empty`);
         }
-        const hardening = gitHardeningArgs(hooksDir);
+        const hardening = gitHardeningArgs(hooksDir, args[0]);
+        const withEnv = { ...opts, env: hardenedGitEnv(hooksDir, args[0], opts?.env) };
         if (!onLocalRemote(args))
-            return exec(cmd, [...hardening, ...args], opts);
+            return exec(cmd, [...hardening, ...args], withEnv);
         // vcs / mirror / a foreign fetch refspec change what the transport does: syncLocalMirror refuses them first (exit 5), this is the backstop.
         const checked = exec(cmd, [...hardening, ...LOCAL_REMOTE_REFUSED_CONFIG_ARGS], { ...(opts?.cwd ? { cwd: opts.cwd } : {}), env: TRUSTED_READ_ENV });
         const refused = checked.status > 1 ? ['a config git could not read'] : localRemoteRefusedKeys(checked.stdout);
@@ -569,8 +642,15 @@ export function hardenedGitExec(exec, hooksDir, localMirror = () => undefined) {
             if (named.length > 0) {
                 throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(' ')}\`: the git config has a remote named after the local forge mirror ${mirror} (${named.join(', ')}); remove it (git config --remove-section)`);
             }
+            // receive-pack / upload-pack run in the mirror and read its config there: only init's own keys may steer them.
+            const mirrorProblem = mirrorConfigProblem(exec, hardening, mirror);
+            if (mirrorProblem)
+                throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(' ')}\`: ${mirrorProblem}`);
         }
-        return exec(cmd, [...hardening, ...LOCAL_REMOTE_PACK_ARGS, ...localTransportArgs(args, mirror)], opts);
+        const transport = localTransportArgs(args, mirror);
+        // The mirror's receive-pack gets the empty hooks dir itself (a push to a path drops this process's -c).
+        const final = transport[0] === 'push' && mirror ? [...transport, mirrorReceivePackArg(hooksDir)] : transport;
+        return exec(cmd, [...hardening, ...LOCAL_REMOTE_PACK_ARGS, ...final], withEnv);
     };
 }
 //# sourceMappingURL=exec.js.map

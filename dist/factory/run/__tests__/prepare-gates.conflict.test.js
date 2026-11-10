@@ -45,7 +45,8 @@ describe('conflict-fix lane', () => {
         expect(gitIn(h.root, 'rev-parse', `${state.head}^1`, `${state.head}^2`).split(/\s+/)).toEqual([firstHead, baseSha]);
         expect(gitIn(h.root, 'show', `${state.head}:README.md`)).toBe('both sides');
         expect(gitIn(h.root, 'log', '-1', '--format=%an <%ae>', state.head)).toBe('omg factory <omg-factory@oh-my-copilot.invalid>');
-        expect(h.calls).toContain('git merge --abort');
+        // The conflicted merge is aborted by host git on the checkout's recorded git dir, never by discovery at the seam.
+        expect(h.calls).not.toContain('git merge --abort');
         expect(state.history.some((e) => e.to === 'conflict-fix' && /README\.md/.test(e.note))).toBe(true);
         // The lane's merge is not housekeeping: ship holds a second approve on the new head.
         const ship = readShipState(h.root, PR);

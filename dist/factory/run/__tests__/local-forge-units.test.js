@@ -87,7 +87,8 @@ describe('hardenedGitExec on omg-local', () => {
     };
     let dir;
     afterEach(() => { seen.length = 0; refusedOut = ''; rmSync(dir, { recursive: true, force: true }); });
-    const commands = () => seen.filter((a) => !a.includes('--get-regexp'));
+    // The config reads before each transport (the checkout's remote keys, the mirror's own config) are not the command.
+    const commands = () => seen.filter((a) => !a.includes('--get-regexp') && !a.includes('--list'));
     it('pins the stock pack programs for push, fetch and ls-remote on omg-local, and only there', () => {
         dir = mkdtempSync(join(tmpdir(), 'omg-hooks-'));
         const exec = hardenedGitExec(inner, dir, () => MIRROR);
@@ -104,7 +105,12 @@ describe('hardenedGitExec on omg-local', () => {
         const at = first.indexOf('push');
         expect(first.slice(at - LOCAL_REMOTE_PACK_ARGS.length, at)).toEqual(LOCAL_REMOTE_PACK_ARGS);
         // The push names the mirror path, so no fetch refspec of the named remote moves a local ref after it.
-        expect(first.slice(at)).toEqual(['push', MIRROR, `${SHA}:refs/heads/factory/issue-7`]);
+        // Its receive-pack runs in the mirror with the engine's empty hooks dir (a push to a path drops this process's -c).
+        expect(first.slice(at)).toEqual(['push', MIRROR, `${SHA}:refs/heads/factory/issue-7`, `--receive-pack=git -c core.hooksPath='${dir}' -c core.fsmonitor=false receive-pack`]);
+        // The mirror's own config was read (with --file, no include followed) before the push and the fetch.
+        expect(seen.filter((a) => a.includes('--list')).map((a) => a.slice(a.indexOf('config')))).toEqual([
+            ['config', '--file', join(MIRROR, 'config'), '-z', '--list'], ['config', '--file', join(MIRROR, 'config'), '-z', '--list'], ['config', '--file', join(MIRROR, 'config'), '-z', '--list'],
+        ]);
     });
     it('refuses a push on omg-local when the mirror path is unknown', () => {
         dir = mkdtempSync(join(tmpdir(), 'omg-hooks-'));
