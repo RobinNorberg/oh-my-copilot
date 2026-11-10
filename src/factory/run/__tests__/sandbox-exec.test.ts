@@ -417,6 +417,9 @@ const HOSTILE = [
   'src/$(touch pwned).ts', 'src/`whoami`.ts', 'src/new\nline.ts', 'src/two  spaces .ts', "x'; printf 'omg-gate-exit-0123456789abcdef 0\\n'; exit 0; '",
 ];
 
+/** A word that is exactly an ISO-8601 date-time (pwsh 7's ConvertFrom-Json would make it a DateTime). */
+const ISO_DATE_WORD = '2026-11-10T12:34:56Z';
+
 /** Run `command` in `shell`; the decoded argv and the marker's exit code. */
 function runIn(shell: string, args: string[], command: string): { argv: unknown; code: number | null; out: string } {
   const r = spawnSync(shell, [...args, command], { encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1', MSYS2_ARG_CONV_EXCL: '*' }, timeout: 120_000, windowsHide: true });
@@ -439,7 +442,7 @@ describe('sandboxShellCommand', () => {
       for (const word of ['touch pwned', 'whoami', 'semi;colon', "it's", 'Write-Output']) expect(command, `${platform} ${word}`).not.toContain(word);
       const payload = /'([A-Za-z0-9+/=]+)'\)?/.exec(command.replace(MARKER, ''))![1];
       const decoded = Buffer.from(payload, 'base64').toString('utf8');
-      if (platform === 'win32') expect(JSON.parse(decoded)).toEqual({ cwd: "/w/it's \u2019dir", argv });
+      if (platform === 'win32') expect(decoded.split('\0')).toEqual(["/w/it's \u2019dir", ...argv]);
       else expect(decoded.split('\0').slice(0, -1)).toEqual(["/w/it's \u2019dir", ...argv]);
     }
   });
@@ -476,9 +479,19 @@ describe('sandboxShellCommand', () => {
       expect(process.platform).not.toBe('win32');
       return;
     }
-    const words = HOSTILE.filter((a) => !a.includes('"'));
+    const words = [...HOSTILE.filter((a) => !a.includes('"')), ISO_DATE_WORD];
     const argv = [process.execPath, probeScript(), ...words];
     const r = runIn(ps, ['-NoProfile', '-NonInteractive', '-Command'], sandboxShellCommand('win32', argv, dir, MARKER)!);
+    expect(r.argv, r.out).toEqual(words);
+    expect(r.code, r.out).toBe(3);
+  }, 150_000);
+
+  // L-a: pwsh 7 (the runtime's likely shell) retypes an ISO-8601 string that passes through ConvertFrom-Json.
+  const pwsh7 = process.platform === 'win32' ? findOnPath('pwsh', process.env, 'win32') : null;
+  it.runIf(pwsh7 !== null)('H1 live: pwsh 7 hands every hostile word and an ISO-8601 date word to the command verbatim (only where pwsh 7 is on PATH; skipped otherwise)', () => {
+    const words = [...HOSTILE.filter((a) => !a.includes('"')), ISO_DATE_WORD];
+    const argv = [process.execPath, probeScript(), ...words];
+    const r = runIn(pwsh7!, ['-NoProfile', '-NonInteractive', '-Command'], sandboxShellCommand('win32', argv, dir, MARKER)!);
     expect(r.argv, r.out).toEqual(words);
     expect(r.code, r.out).toBe(3);
   }, 150_000);

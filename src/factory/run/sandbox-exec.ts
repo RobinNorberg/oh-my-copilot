@@ -136,9 +136,9 @@ export const SHELL_LINE_CHARS = 2_000;
  * The shell command executeUserRequested runs (the runtime's shell:
  * PowerShell on Windows, bash elsewhere). No word of `cwd` or `argv` is ever
  * spliced into shell source: they travel as one base64 literal (only
- * `[A-Za-z0-9+/=]`), which the shell decodes into an array (PowerShell: UTF-8
- * JSON `{cwd, argv}`; bash: NUL-terminated words, since bash has no JSON
- * parser and no argv word can hold a NUL), checks the word count of, changes
+ * `[A-Za-z0-9+/=]`), which the shell decodes into an array (UTF-8 words
+ * separated by NUL in PowerShell, terminated by NUL in bash: no argv word can
+ * hold a NUL, and no parser can retype a word), checks the word count of, changes
  * into the first (a failure runs nothing and prints no marker), runs the
  * rest as the command, keeps only the tail of its merged output, then prints
  * `<marker> <exit code>` as the last line. On Windows the argv may not hold
@@ -150,11 +150,11 @@ export function sandboxShellCommand(platform: NodeJS.Platform, argv: readonly st
   if (argv.length === 0 || !/^[A-Za-z0-9-]+$/.test(marker) || [cwd, ...argv].some((a) => a.includes('\0'))) return null;
   if (platform === 'win32') {
     if (argv.some((a) => a === '' || a.includes('"'))) return null;
-    const payload = Buffer.from(JSON.stringify({ cwd, argv }), 'utf8').toString('base64');
+    // NUL-separated words, as for bash: no JSON parser, so pwsh 7 cannot turn a date-shaped word into a DateTime.
+    const payload = Buffer.from([cwd, ...argv].join('\0'), 'utf8').toString('base64');
     return [
-      `$omgP = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')) | ConvertFrom-Json`,
-      '$omgV = @($omgP.argv)',
-      `if ($omgV.Count -eq ${argv.length} -and $omgP.cwd -is [string]) { Set-Location -LiteralPath $omgP.cwd -ErrorAction Stop; $ErrorActionPreference = 'Continue'; $omgE = $omgV[0]; $omgR = @($omgV | Select-Object -Skip 1); $global:LASTEXITCODE = $null; & $omgE @omgR 2>&1 | ForEach-Object { $omgL = "$_"; if ($omgL.Length -gt ${SHELL_LINE_CHARS}) { $omgL.Substring(0, ${SHELL_LINE_CHARS}) } else { $omgL } } | Select-Object -Last ${SHELL_OUTPUT_LINES}; "${marker} $LASTEXITCODE" }`,
+      `$omgV = @([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')).Split([char]0))`,
+      `if ($omgV.Count -eq ${argv.length + 1}) { Set-Location -LiteralPath $omgV[0] -ErrorAction Stop; $ErrorActionPreference = 'Continue'; $omgE = $omgV[1]; $omgR = @($omgV | Select-Object -Skip 2);$global:LASTEXITCODE = $null; & $omgE @omgR 2>&1 | ForEach-Object { $omgL = "$_"; if ($omgL.Length -gt ${SHELL_LINE_CHARS}) { $omgL.Substring(0, ${SHELL_LINE_CHARS}) } else { $omgL } } | Select-Object -Last ${SHELL_OUTPUT_LINES}; "${marker} $LASTEXITCODE" }`,
     ].join('; ');
   }
   const payload = Buffer.from([cwd, ...argv].map((w) => `${w}\0`).join(''), 'utf8').toString('base64');
