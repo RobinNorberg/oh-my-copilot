@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "23bf63bfc118aee80d3e6865964aa74c856d8e66",
-    "sourceSha256": "8aa0f87750ade33fc6ecc2992b8904d4408e7726eaee24ae31b4883b35263741",
+    "head": "a7bd690fa8c796f5884e7fce8edc0a171a81bb45",
+    "sourceSha256": "0973d7c5586fb36d9c4cc687be012b7b3e923b4ada5a62ad192822398b0eecd3",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "23bf63bfc118aee80d3e6865964aa74c856d8e66",
-  "sourceSha256": "8aa0f87750ade33fc6ecc2992b8904d4408e7726eaee24ae31b4883b35263741",
+  "head": "a7bd690fa8c796f5884e7fce8edc0a171a81bb45",
+  "sourceSha256": "0973d7c5586fb36d9c4cc687be012b7b3e923b4ada5a62ad192822398b0eecd3",
   "counts": {
     "public": {
       "skills": 98,
@@ -88069,6 +88069,11 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
+        "to": "src/factory/run/local-gate.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
         "to": "src/factory/run/prepare.ts",
         "kind": "type-imports"
       },
@@ -88091,6 +88096,11 @@
         "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
         "to": "src/ship/config.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
@@ -89754,6 +89764,11 @@
       },
       {
         "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
       },
@@ -89806,6 +89821,11 @@
         "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
         "to": "src/smoke/copilot-sdk-driver.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/state-forge.test.ts",
@@ -90190,6 +90210,11 @@
       {
         "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/gate-procs.ts",
         "kind": "imports"
       },
       {
@@ -91200,6 +91225,11 @@
       {
         "from": "src/factory/run/sandbox-exec.ts",
         "to": "src/copilot-run/timeout.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/sandbox-exec.ts",
+        "to": "src/factory/heal/sanitize.ts",
         "kind": "imports"
       },
       {
@@ -128610,11 +128640,11 @@
     ],
     "stats": {
       "nodeCount": 10784,
-      "edgeCount": 13105,
-      "importEdgeCount": 10773,
+      "edgeCount": 13111,
+      "importEdgeCount": 10777,
       "registerEdgeCount": 119
     }
   },
   "inventorySha256": "5e45e7dac3553b648bbe68d565f21f79c699656e4ca97de23bb91b8c45978520",
-  "manifestSha256": "99357ee2e063f9d0f87a0de68845b3a658d765547b8d6fd2f4cc10184c8caaf9"
+  "manifestSha256": "0f1574edb5e3810d889e70949f7d2ee64247e00fea8416fa0b18b21a8f8902cb"
 }
