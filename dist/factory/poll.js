@@ -77,7 +77,7 @@ import { FactoryForgeUnavailableError } from './run/forge-roots.js';
 import { visibleLine } from '../forge/review-feedback.js';
 import { resolveTeamConfig, TeamConfigError } from './team/context.js';
 import { staleGateReminders } from './team/reminders.js';
-import { acquireFactoryRepoOwnerForRun, defaultOwnerDeps, EXIT_BUSY, FactoryBusyError, factoryRepoOwnerPath, ownerHolding, runLabel, TERMINAL_FACTORY_PHASES, tryScanLock, verifyFactoryIntegrity, } from './run/state.js';
+import { AUTO_START_SCAN_WAIT_MS, acquireFactoryRepoOwnerForRun, defaultOwnerDeps, EXIT_BUSY, FactoryBusyError, factoryRepoOwnerPath, ownerHolding, runLabel, TERMINAL_FACTORY_PHASES, tryScanLock, verifyFactoryIntegrity, } from './run/state.js';
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
 export const POLL_JSON_SCHEMA_VERSION = 1;
 export const POLL_DEFAULT_INTERVAL_MS = 5 * 60_000;
@@ -604,12 +604,15 @@ export async function pollTick(ctx) {
         autoStart = { started: false, reason: blocked };
     else {
         let reason = ctx.budget(root);
+        // The poller's own unreleased `scan` hold would be waited on for nothing: skip this tick's auto-start.
+        if (!reason && ctx.unreleasedScan)
+            reason = 'skipped: scan lock not released yet';
         if (!reason) {
             // `idle` is advisory: claim the engine's repo owner lock atomically (as an engine would); a refusal skips this
             // tick. It is released for the child, whose own claim at start is the binding one: an engine that slips in
             // between makes that claim refuse, so two engines never run.
             try {
-                acquireFactoryRepoOwnerForRun(root, AUTO_START_CLAIM, () => at, ctx.owner).release();
+                acquireFactoryRepoOwnerForRun(root, AUTO_START_CLAIM, () => at, ctx.owner, AUTO_START_SCAN_WAIT_MS).release();
             }
             catch (error) {
                 reason = `the run lock is held: ${message(error)}`;

@@ -341,7 +341,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         // origin/<base>): busy (exit 6) means nothing was fetched or written. The engine uses the held lock as its own.
         let held;
         if (!o.dryRun) {
-            // A `scan` holder (poll's heal scan or base sync, a read command's fetch) is waited out once (L6).
+            // A `scan` holder (poll's heal scan or base sync, a read command's fetch) is waited out (SCAN_WAIT_MS, longer than a read fetch can run: FETCH_TIMEOUT_MS).
             held = acquireFactoryRepoOwnerForRun(root, issue ?? 'next', () => new Date().toISOString());
             // The claim key before the fetch: the forge kind from the config as it is (no fetch); none on the local forge.
             try {

@@ -367,7 +367,9 @@ export function acquireFactoryRepoOwner(root, key, now, deps = defaultOwnerDeps(
     return claimOwner(factoryRepoOwnerPath(root), now, deps, (prior) => engineBusyMessage(prior, root, String(key)), { run: String(key), root: resolve(root) });
 }
 /** How long an engine-side start (run, heal run/approve/cancel, run reset, run clean, the poller's auto-start) waits for a `scan` holder before it is busy. */
-export const SCAN_WAIT_MS = 60_000;
+export const SCAN_WAIT_MS = 60_000; // must exceed FETCH_TIMEOUT_MS (factory/check/cli.ts)
+/** The poller's auto-start blocks the event loop while it waits, so it waits only this long for a `scan` holder. */
+export const AUTO_START_SCAN_WAIT_MS = 5_000;
 /** How long a read command waits for another `scan` holder before it reads without fetching. */
 export const READ_SCAN_WAIT_MS = 10_000;
 /** The holder is re-read this often while it is `scan`. */

@@ -238,14 +238,20 @@ function requireLabel(exec, root, marker, repo) {
     if (!found)
         throw new CheckIncompatibleError(`label ${marker} does not exist in ${repo}; run \`omg factory setup\` to create it (omg factory check never creates labels)`);
 }
-/** A read command's fetch never waits longer than this (it may hold the engine lock); then the last fetched base is read. */
-export const FETCH_TIMEOUT_MS = 120_000;
+/**
+ * A read command's fetch never waits longer than this (it may hold the engine lock); then the last fetched base is read.
+ * Kept below SCAN_WAIT_MS (run/state.ts): an engine start waiting on this fetch's `scan` lock always outlasts it.
+ */
+export const FETCH_TIMEOUT_MS = 45_000;
 /** Fetch `origin/<base>` (read-only, no credential prompt, bounded) and resolve it; null with a warning when it cannot be read. */
 export function fetchBase(exec, root, base, warnings) {
     const f = exec('git', ['fetch', 'origin', base], { cwd: root, env: TRUSTED_FETCH_ENV, timeoutMs: FETCH_TIMEOUT_MS });
     const fetched = { ok: f.status === 0, err: f.stderr.trim().split('\n')[0] ?? '' };
-    if (!fetched.ok)
-        warnings.push(`omg factory check: git fetch origin ${base} failed (${fetched.err}); using the local origin/${base}`);
+    if (!fetched.ok) {
+        const timedOut = /ETIMEDOUT/.test(fetched.err);
+        warnings.push(`omg factory check: git fetch origin ${base} ${timedOut ? `timed out after ${FETCH_TIMEOUT_MS / 1000} s` : 'failed'} (${fetched.err}); using the local origin/${base}`
+            + (timedOut ? `; if later fetches keep failing, a stale refs/remotes/origin/${base}.lock in .git may need removing` : ''));
+    }
     const sha = git(exec, root, ['rev-parse', '--verify', `refs/remotes/origin/${base}`]);
     if (sha.ok && /^[0-9a-f]{40}$/.test(sha.out))
         return sha.out;

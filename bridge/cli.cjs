@@ -124804,7 +124804,7 @@ function claimOwner(path30, now2, deps, busy, fields = {}) {
   };
   return { release, relabel, ...tookOver ? { tookOver } : {} };
 }
-var import_crypto49, import_fs156, import_os35, import_path183, FACTORY_PHASES, TERMINAL_FACTORY_PHASES, HEAL_RUN_KEY, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, FactoryStateError, EXIT_BUSY, FactoryBusyError, runSlug, runLabel, isStr2, HEX64, isCount3, ownIdentity, startIdentity, defaultOwnerDeps, ownerText, SCAN_WAIT_MS, READ_SCAN_WAIT_MS, SCAN_POLL_MS, scanWait, engineBusyMessage, engineBusyText, unreadableOwnerMessage, isOwnerRecord, LOCK_STALE_MS5;
+var import_crypto49, import_fs156, import_os35, import_path183, FACTORY_PHASES, TERMINAL_FACTORY_PHASES, HEAL_RUN_KEY, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, FactoryStateError, EXIT_BUSY, FactoryBusyError, runSlug, runLabel, isStr2, HEX64, isCount3, ownIdentity, startIdentity, defaultOwnerDeps, ownerText, SCAN_WAIT_MS, AUTO_START_SCAN_WAIT_MS, READ_SCAN_WAIT_MS, SCAN_POLL_MS, scanWait, engineBusyMessage, engineBusyText, unreadableOwnerMessage, isOwnerRecord, LOCK_STALE_MS5;
 var init_state6 = __esm({
   "src/factory/run/state.ts"() {
     "use strict";
@@ -124870,6 +124870,7 @@ var init_state6 = __esm({
     defaultOwnerDeps = () => ({ pid: process.pid, hostname: (0, import_os35.hostname)(), isAlive: isProcessAlive, identityOf: startIdentity });
     ownerText = (v) => stripAnsi(String(v)).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ");
     SCAN_WAIT_MS = 6e4;
+    AUTO_START_SCAN_WAIT_MS = 5e3;
     READ_SCAN_WAIT_MS = 1e4;
     SCAN_POLL_MS = 500;
     scanWait = {
@@ -132327,7 +132328,10 @@ function requireLabel(exec3, root2, marker, repo) {
 function fetchBase(exec3, root2, base, warnings) {
   const f = exec3("git", ["fetch", "origin", base], { cwd: root2, env: TRUSTED_FETCH_ENV, timeoutMs: FETCH_TIMEOUT_MS });
   const fetched = { ok: f.status === 0, err: f.stderr.trim().split("\n")[0] ?? "" };
-  if (!fetched.ok) warnings.push(`omg factory check: git fetch origin ${base} failed (${fetched.err}); using the local origin/${base}`);
+  if (!fetched.ok) {
+    const timedOut = /ETIMEDOUT/.test(fetched.err);
+    warnings.push(`omg factory check: git fetch origin ${base} ${timedOut ? `timed out after ${FETCH_TIMEOUT_MS / 1e3} s` : "failed"} (${fetched.err}); using the local origin/${base}` + (timedOut ? `; if later fetches keep failing, a stale refs/remotes/origin/${base}.lock in .git may need removing` : ""));
+  }
   const sha3 = git3(exec3, root2, ["rev-parse", "--verify", `refs/remotes/origin/${base}`]);
   if (sha3.ok && /^[0-9a-f]{40}$/.test(sha3.out)) return sha3.out;
   warnings.push(`omg factory check: origin/${base} is not available; its committed config is not read and omg-plan links cannot be checked`);
@@ -132577,7 +132581,7 @@ var init_cli = __esm({
     VALUE2 = (s) => typeof s === "string" && s.length > 0 && !s.startsWith("-") && !/[\r\n\0]/.test(s);
     same4 = (args, shape) => args.length === shape.length && shape.every((v, i) => args[i] === v);
     CHECK_GIT = /* @__PURE__ */ new Set(["rev-parse", "remote", "fetch", "cat-file", "show", "ls-remote", "merge-base"]);
-    FETCH_TIMEOUT_MS = 12e4;
+    FETCH_TIMEOUT_MS = 45e3;
     defaultResolveAz = (root2) => resolveAzEntry(defaultAzBinaryDeps([root2, ...factoryForgeOptions(root2).untrustedRoots]));
   }
 });
@@ -137764,9 +137768,10 @@ async function pollTick(ctx) {
   if (blocked2) autoStart = { started: false, reason: blocked2 };
   else {
     let reason = ctx.budget(root2);
+    if (!reason && ctx.unreleasedScan) reason = "skipped: scan lock not released yet";
     if (!reason) {
       try {
-        acquireFactoryRepoOwnerForRun(root2, AUTO_START_CLAIM, () => at, ctx.owner).release();
+        acquireFactoryRepoOwnerForRun(root2, AUTO_START_CLAIM, () => at, ctx.owner, AUTO_START_SCAN_WAIT_MS).release();
       } catch (error2) {
         reason = `the run lock is held: ${message3(error2)}`;
       }

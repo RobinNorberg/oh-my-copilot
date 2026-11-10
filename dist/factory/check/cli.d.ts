@@ -121,8 +121,11 @@ export declare function checkEnvFor(exec: Exec, root: string, config: CheckEnv['
         url: string;
     };
 }, base: string, baseSha: string | null): CheckEnv;
-/** A read command's fetch never waits longer than this (it may hold the engine lock); then the last fetched base is read. */
-export declare const FETCH_TIMEOUT_MS = 120000;
+/**
+ * A read command's fetch never waits longer than this (it may hold the engine lock); then the last fetched base is read.
+ * Kept below SCAN_WAIT_MS (run/state.ts): an engine start waiting on this fetch's `scan` lock always outlasts it.
+ */
+export declare const FETCH_TIMEOUT_MS = 45000;
 /** Fetch `origin/<base>` (read-only, no credential prompt, bounded) and resolve it; null with a warning when it cannot be read. */
 export declare function fetchBase(exec: Exec, root: string, base: string, warnings: string[]): string | null;
 /**

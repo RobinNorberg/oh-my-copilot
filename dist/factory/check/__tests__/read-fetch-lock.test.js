@@ -6,8 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createForge } from '../../../forge/index.js';
 import { readBaseFile } from '../../../ship/config.js';
 import { runFactoryEnqueue } from '../../enqueue.js';
-import { acquireFactoryRepoOwner, FactoryBusyError, factoryRepoOwnerPath, factoryStateDir, READ_SCAN_WAIT_MS, scanWait } from '../../run/state.js';
-import { openReadForge, runFactoryCheck } from '../cli.js';
+import { acquireFactoryRepoOwner, AUTO_START_SCAN_WAIT_MS, FactoryBusyError, factoryRepoOwnerPath, factoryStateDir, READ_SCAN_WAIT_MS, SCAN_WAIT_MS, scanWait } from '../../run/state.js';
+import { FETCH_TIMEOUT_MS, openReadForge, runFactoryCheck } from '../cli.js';
 const SHA = 'a'.repeat(40);
 const NOW = '2026-11-09T12:00:00.000Z';
 const ok = (stdout = '') => ({ status: 0, stdout, stderr: '' });
@@ -102,9 +102,9 @@ describe('read commands fetch the base under the engine lock, and never fail bec
         acquireFactoryRepoOwner(root, 'scan', NOW, live(2));
         expect(() => acquireFactoryRepoOwner(root, 7, NOW, live(1))).toThrow(/heal scan or base sync, or a factory read command's fetch, holds this checkout for a moment/);
     });
-    it('M1 (review-472): the locked fetch never waits on a human (GIT_TERMINAL_PROMPT=0, GCM_INTERACTIVE=never) and is bounded (120 s); the check guard lets exactly that through', () => {
+    it('M1 (review-472): the locked fetch never waits on a human (GIT_TERMINAL_PROMPT=0, GCM_INTERACTIVE=never) and is bounded (45 s); the check guard lets exactly that through', () => {
         openReadForge({}, deps(scripted(), live(2)), [], 'omg factory check');
-        expect(fetchOpts).toEqual([{ cwd: root, env: { GIT_NO_REPLACE_OBJECTS: '1', GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' }, timeoutMs: 120_000 }]);
+        expect(fetchOpts).toEqual([{ cwd: root, env: { GIT_NO_REPLACE_OBJECTS: '1', GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' }, timeoutMs: FETCH_TIMEOUT_MS }]);
     });
     it('M1: the guards allow the fetch environment on exactly `git fetch origin <branch>`, nothing broader', async () => {
         const { assertSafeCommand, TRUSTED_FETCH_ENV } = await import('../../../ship/exec.js');
@@ -120,7 +120,11 @@ describe('read commands fetch the base under the engine lock, and never fail bec
         const timedOut = (cmd, args, opts) => (args[0] === 'fetch' ? { status: 1, stdout: '', stderr: 'spawnSync git ETIMEDOUT' } : scripted()(cmd, args, opts));
         const warnings = [];
         expect(openReadForge({}, deps(timedOut, live(2)), warnings, 'omg factory check').baseSha).toBe(SHA);
-        expect(warnings).toContain('omg factory check: git fetch origin dev failed (spawnSync git ETIMEDOUT); using the local origin/dev');
+        expect(warnings).toContain('omg factory check: git fetch origin dev timed out after 45 s (spawnSync git ETIMEDOUT); using the local origin/dev; if later fetches keep failing, a stale refs/remotes/origin/dev.lock in .git may need removing');
+    });
+    it('LOW-1/LOW-4: an engine start outwaits a read fetch, and the poller auto-start waits only briefly', () => {
+        expect(SCAN_WAIT_MS).toBeGreaterThan(FETCH_TIMEOUT_MS);
+        expect(AUTO_START_SCAN_WAIT_MS).toBeLessThanOrEqual(5_000);
     });
     it('L1 (review-472): another read\'s fetch (`scan`) is waited out briefly, then this read goes on WITHOUT fetching; it never exits 6 for a read', () => {
         acquireFactoryRepoOwner(root, 'scan', NOW, live(3));

@@ -414,6 +414,8 @@ export declare function acquireFactoryOwner(root: string, key: FactoryRunKey, no
 export declare function acquireFactoryRepoOwner(root: string, key: FactoryRunKey | 'next' | 'scan', now: string, deps?: OwnerDeps): HeldOwner;
 /** How long an engine-side start (run, heal run/approve/cancel, run reset, run clean, the poller's auto-start) waits for a `scan` holder before it is busy. */
 export declare const SCAN_WAIT_MS = 60000;
+/** The poller's auto-start blocks the event loop while it waits, so it waits only this long for a `scan` holder. */
+export declare const AUTO_START_SCAN_WAIT_MS = 5000;
 /** How long a read command waits for another `scan` holder before it reads without fetching. */
 export declare const READ_SCAN_WAIT_MS = 10000;
 /** The holder is re-read this often while it is `scan`. */
