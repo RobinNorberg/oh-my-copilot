@@ -99,10 +99,13 @@ export const CREDENTIAL_FILES_READABLE_NOTE = 'sandboxed; credential files reada
  * `started`: the command was handed to the shell under the confirmed policy
  * and gave no verdict (the engine's gate-no-verdict park, never the
  * --allow-unsandboxed-gates one); unset: nothing of the PR's ran.
+ * `refused`: the configured argv itself cannot be handed to the sandbox
+ * shell (its shape or length), before any runtime launched: a property of
+ * the command, which no code of the PR can cause.
  */
 export type SandboxRunResult =
   | { ran: true; status: number; output: string; timedOut: boolean; credentialFilesReadable?: true }
-  | { ran: false; reason: string; started?: true };
+  | { ran: false; reason: string; started?: true; refused?: true };
 
 export type SandboxRunner = (req: SandboxRunRequest) => Promise<SandboxRunResult>;
 
@@ -247,15 +250,17 @@ type ShellRpc = {
  */
 export async function runSandboxed(argv: readonly string[], o: SandboxExecOptions, deps: SandboxExecDeps): Promise<SandboxRunResult> {
   const notStarted = (reason: string): SandboxRunResult => ({ ran: false, reason });
+  // The argv itself cannot be handed over (its shape or length): nothing launched, and no PR code can cause it.
+  const refuse = (reason: string): SandboxRunResult => ({ ran: false, reason, refused: true });
   // After the command was handed over: fixed text only (the output and the runtime's error may be the command's).
   const noVerdict = (reason: string): SandboxRunResult => ({ ran: false, reason, started: true });
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const marker = `${MARKER_PREFIX}${randomBytes(8).toString('hex')}`;
   const command = sandboxShellCommand(deps.platform, argv, o.cwd, marker);
-  if (command === null) return notStarted('the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)');
+  if (command === null) return refuse('the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)');
   const max = sandboxCommandMaxChars(deps.platform);
   if (command.length > max) {
-    return notStarted(`the command is too long for the sandbox shell: it encodes to ${command.length} characters, above the ${max} that ${deps.platform === 'win32' ? 'a Windows command line' : 'one shell argument'} can safely carry; shorten the configured command`);
+    return refuse(`the command is too long for the sandbox shell: it encodes to ${command.length} characters, above the ${max} that ${deps.platform === 'win32' ? 'a Windows command line' : 'one shell argument'} can safely carry; shorten the configured command`);
   }
   const jobHome = join(o.jobRoot, `gate-${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`);
   // The runtime's own working directory and its only trusted folder: empty, fresh per command, never the checkout.
