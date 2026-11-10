@@ -16,9 +16,10 @@
  * engine-owned checkout (assertLocalGateCommand), never in the user's
  * checkout or a lane worktree. With factory.run.sandbox.gates "enforced"
  * (the default) it runs in the Copilot runtime's OS sandbox (sandbox-exec.ts
- * runSandboxed: read-write on the checkout only, no network, no
- * credentials); with "ack" or "unsandboxed" it runs as the user, without a
- * shell, with the credential-scrubbed gateEnv.
+ * runSandboxed: read-write on the checkout only, no network, no credential
+ * in the env, the home's credential files denied); with "ack" or
+ * "unsandboxed" it runs as the user, without a shell, with the allowlisted
+ * gateEnv.
  *
  * No shell on Windows means no `.cmd`/`.bat` (cmd.exe would parse the
  * arguments; the 5.12.1 cmd-injection fix). `npm`/`npx` run as
@@ -37,7 +38,7 @@ import { getProcessStartIdentity, terminateOwnedProcessTree } from '../../platfo
 import { childEnv, findOnPath, hardenWindowsExeSearch, resolveBareExe } from '../../utils/windows-search.js';
 import { FactorySafetyError, sameFsPath } from './exec.js';
 import { createGateProcTracker, gateProcsPath, reapGateProcs, sweepGateProcs, type GateProcTracker } from './gate-procs.js';
-import { gateEnv, type SandboxRunner } from './sandbox-exec.js';
+import { gateEnv, redactGateOutput, type SandboxRunner } from './sandbox-exec.js';
 
 /** The record keeps this many characters of the gate's output (jobLog, the ci-fix prompt). */
 export const LOCAL_GATE_TAIL_CHARS = 8_000;
@@ -329,14 +330,18 @@ export function localGateDue(stateDir: string, root: string, head: string, timeo
 /** A run id unique enough per head: positive, from the clock (ForgeRun.databaseId). */
 const runIdAt = (d: Date): number => Math.max(1, Math.floor(d.getTime() / 1000));
 
-const tailOf = (text: string): string => (text.length > LOCAL_GATE_TAIL_CHARS ? text.slice(-LOCAL_GATE_TAIL_CHARS) : text);
+/** The record's tail, token-shaped text redacted first (it reaches the ci-fix prompt and the PR notes). */
+const tailOf = (text: string): string => {
+  const clean = redactGateOutput(text);
+  return clean.length > LOCAL_GATE_TAIL_CHARS ? clean.slice(-LOCAL_GATE_TAIL_CHARS) : clean;
+};
 
 /**
  * The gate ran and recorded a verdict, or it never started (the PENDING
  * record is removed again): its executable cannot start, or (`sandbox`) the
  * OS sandbox could not run it with an attested verdict.
  */
-export type LocalGateOutcome = { started: true; record: LocalCheckRecord } | { started: false; reason: string; sandbox?: true };
+export type LocalGateOutcome = { started: true; record: LocalCheckRecord } | { started: false; reason: string; sandbox?: true; noVerdict?: true };
 
 /**
  * Run the gate for `head` and record SUCCESS or FAILURE (a PENDING record is
@@ -401,7 +406,8 @@ async function runSandboxedGate(i: LocalGateInput, base: LocalCheckRecord, now: 
   }
   if (!r.ran) {
     drop();
-    return { started: false, reason: r.reason, sandbox: true };
+    // `noVerdict`: the command was handed to the sandbox and gave no verdict (gate-no-verdict, never the ack park).
+    return { started: false, reason: r.reason, sandbox: true, ...(r.started ? { noVerdict: true as const } : {}) };
   }
   const output = `${r.output}${r.timedOut ? `\nlocal gate timed out after ${i.timeoutMinutes} min` : ''}`;
   const done: LocalCheckRecord = {

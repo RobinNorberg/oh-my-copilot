@@ -8,16 +8,18 @@
  * on the local forge with fake lanes, a recording fake sandbox and a
  * recording plain runner: no Copilot runtime, no network.
  */
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { readLocalCheckRecord } from '../../../forge/local/index.js';
 import { resolveShipConfig } from '../../../ship/config.js';
-import { EXIT_AWAITING_HUMAN, GATE_SANDBOX_INCOMPATIBLE_GATE, GATES_UNSANDBOXED_GATE, runFactoryEngine, type FactoryEngineOptions } from '../engine.js';
+import type { Exec } from '../../../ship/exec.js';
+import { EXIT_AWAITING_HUMAN, GATE_NO_VERDICT_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATES_UNSANDBOXED_GATE, runFactoryEngine, type FactoryEngineOptions } from '../engine.js';
+import type { LocalGateRunner } from '../local-gate.js';
 import type { GateConfigLoader } from '../prepare.js';
 import type { SandboxRunRequest, SandboxRunResult, SandboxRunner } from '../sandbox-exec.js';
-import { readFactoryState } from '../state.js';
+import { overwriteFactoryState, readFactoryState } from '../state.js';
 import { BASE, lanesFor, LOCAL_ISSUE, localOpts, localWorld, type LocalWorld } from './engine-local-harness.js';
 import { commitFile, gitIn, review } from './fake-lanes.js';
 
@@ -190,6 +192,153 @@ describe('gates "ack"', () => {
     expect(readLocalCheckRecord(w.stateDir, w.root, head1)).toMatchObject({ state: 'FAILURE', sandbox: 'ack' });
     expect(w.gateRuns.map((r) => r.head)).toEqual([head1, head1]);
     expect(s.reqs).toEqual([]);
+  }, MULTI_RUN_MS);
+});
+
+const PASS: SandboxRunResult = { ran: true, status: 0, output: 'ok', timedOut: false };
+/** What runSandboxed answers when the command ran under the confirmed policy and printed no single exit marker (or hung). */
+const WITHHELD: SandboxRunResult = { ran: false, started: true, reason: 'the output did not end with the one exit-code marker line the sandbox shell prints after the command' };
+const ciFixLanes = (lanes: ReturnType<typeof lanesFor>) => lanes.started.map((l) => l.laneId).filter((id) => id.includes('ci-fix'));
+
+describe('a sandbox that withholds or forges a verdict (review 474 item 10)', () => {
+  it('a prepare check that ran but gave no verdict parks gate-no-verdict: no ack offer, the flag does not apply, nothing runs unsandboxed', async () => {
+    w = localWorld();
+    const s = sandbox((req) => (req.purpose === 'prepare' ? WITHHELD : PASS));
+    const lanes = lanesFor(w, [greet(), review('approve')]);
+    const out = await runFactoryEngine(opts(lanes, { gateSandbox: s.run }));
+    expect(out.exitCode, out.message).toBe(EXIT_AWAITING_HUMAN);
+    expect(out.gate?.name).toBe(GATE_NO_VERDICT_GATE);
+    const head = readFactoryState(w.root, LOCAL_ISSUE)!.head!;
+    expect(out.gate?.reason).toContain(`the prepare check \`node check.js\` on ${head.slice(0, 12)} ran in the OS sandbox but gave no verdict`);
+    expect(out.gate?.reason).toContain('--allow-unsandboxed-gates does not apply here');
+    expect(out.gate?.reason).not.toMatch(/rerun .*--allow-unsandboxed-gates to run/);
+
+    const warnings: string[] = [];
+    const again = await runFactoryEngine(opts(lanesFor(w, []), { gateSandbox: s.run, allowUnsandboxedGates: true, warn: (m) => warnings.push(m) }));
+    expect(again.gate?.name, again.message).toBe(GATE_NO_VERDICT_GATE);
+    expect(warnings.join('\n')).toMatch(/--allow-unsandboxed-gates is ignored/);
+    expect(w.gateRuns).toEqual([]);
+    expect(readFactoryState(w.root, LOCAL_ISSUE)!.unsandboxedGatesAck).toBeUndefined();
+    expect(ciFixLanes(lanes)).toEqual([]);
+  }, MULTI_RUN_MS);
+
+  it('a local gate that ran but gave no verdict (a timeout with no answer) parks gate-no-verdict: no record, no FAILURE, no ci-fix lane', async () => {
+    w = localWorld();
+    const s = sandbox((req) => (req.purpose === 'gate' ? { ran: false, started: true, reason: 'timed out after 1200000 ms and the shell call gave no answer; the command is not counted as run in the sandbox' } : PASS));
+    const lanes = lanesFor(w, [greet(), review('approve')]);
+    const out = await runFactoryEngine(opts(lanes, { gateSandbox: s.run }));
+    expect(out.gate?.name, out.message).toBe(GATE_NO_VERDICT_GATE);
+    expect(out.gate?.reason).toContain('the local gate `node --test`');
+    const head = readFactoryState(w.root, LOCAL_ISSUE)!.head!;
+    expect(readLocalCheckRecord(w.stateDir, w.root, head)).toBeUndefined();
+    expect(w.gateRuns).toEqual([]);
+    expect(ciFixLanes(lanes)).toEqual([]);
+  }, MULTI_RUN_MS);
+
+  it('item 8: a prepare check that rewrites the checkout\'s .git file parks lane-tampered; nothing is published', async () => {
+    w = localWorld();
+    const s = sandbox((req) => {
+      if (req.purpose === 'prepare') appendFileSync(join(req.cwd, '.git'), '\n');
+      return PASS;
+    });
+    const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run }));
+    expect(out.gate?.name, out.message).toBe('lane-tampered');
+    expect(out.gate?.reason).toContain("changed the prepare checkout's .git file");
+    expect(s.reqs.map((r) => r.purpose)).toEqual(['prepare']);
+    expect(readFactoryState(w.root, LOCAL_ISSUE)!.prepared).toBeUndefined();
+  }, MULTI_RUN_MS);
+
+  it('item 8: a local gate that rewrites the checkout\'s .git file parks lane-tampered and its SUCCESS is dropped', async () => {
+    w = localWorld();
+    const s = sandbox((req) => {
+      if (req.purpose === 'gate') appendFileSync(join(req.cwd, '.git'), '\n');
+      return PASS;
+    });
+    const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run }));
+    expect(out.gate?.name, out.message).toBe('lane-tampered');
+    expect(out.gate?.reason).toContain('the local gate on');
+    expect(readLocalCheckRecord(w.stateDir, w.root, readFactoryState(w.root, LOCAL_ISSUE)!.head!)).toBeUndefined();
+  }, MULTI_RUN_MS);
+
+  it('item 8: after the first check, engine git in the checkout names its git dir and work tree; before it, it does not', async () => {
+    w = localWorld();
+    const inCheckout: string[][] = [];
+    let checkout = '';
+    const s = sandbox((req) => { checkout = req.cwd; return PASS; });
+    const exec: Exec = (cmd, args, o) => {
+      if (cmd === 'git' && o?.cwd) inCheckout.push([o.cwd, ...args]);
+      return w.exec(cmd, args, o);
+    };
+    const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run, exec }));
+    expect(out.gate?.name, out.message).toBe('merge');
+    const mine = inCheckout.filter((c) => c[0] === checkout).map((c) => c.slice(1));
+    const pinned = (a: string[]) => a.some((x) => x.startsWith('--git-dir=')) && a.some((x) => x === `--work-tree=${checkout}`);
+    expect(mine.some((a) => a.includes('merge-base') && !pinned(a)), JSON.stringify(mine)).toBe(true);
+    expect(mine.some((a) => a.includes('rev-parse') && a.includes('HEAD') && pinned(a)), JSON.stringify(mine)).toBe(true);
+  }, MULTI_RUN_MS);
+
+  it('a working-tree omg.jsonc in the repository cannot switch the gates off: the base-committed config and the user config decide', async () => {
+    w = localWorld();
+    mkdirSync(join(w.root, '.copilot'), { recursive: true });
+    writeFileSync(join(w.root, '.copilot', 'omg.jsonc'), `${JSON.stringify(userGates('unsandboxed'))}\n`);
+    const s = sandbox();
+    const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run, gateConfig: gateConfig(true) }));
+    expect(out.gate?.name, out.message).toBe('merge');
+    expect(s.reqs.map((r) => r.purpose)).toEqual(['prepare', 'gate']);
+    expect(w.gateRuns).toEqual([]);
+  }, MULTI_RUN_MS);
+
+  it('a state from before the sandboxed gates (no gate fields) resumes with the gate in the sandbox, never plain', async () => {
+    w = localWorld();
+    const parked = sandbox((req) => (req.purpose === 'gate' ? { ran: false, reason: 'the sandbox is not available: MXC is not available on this host' } : PASS));
+    const first = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: parked.run }));
+    expect(first.gate?.name, first.message).toBe(GATES_UNSANDBOXED_GATE);
+    // What the engine before this change left at the same point: the run in its phase, no park, no ack, no calibration.
+    const { gate: _g, unsandboxedGatesAck: _a, gateCalibration: _c, ...old } = readFactoryState(w.root, LOCAL_ISSUE)!;
+    overwriteFactoryState(w.root, LOCAL_ISSUE, old);
+    const s = sandbox();
+    const out = await runFactoryEngine(opts(lanesFor(w, []), { gateSandbox: s.run }));
+    expect(out.gate?.name, out.message).toBe('merge');
+    expect(s.reqs.map((r) => r.purpose)).toEqual(['gate']);
+    expect(w.gateRuns).toEqual([]);
+    expect(readFactoryState(w.root, LOCAL_ISSUE)!.unsandboxedGatesAck).toBeUndefined();
+  }, MULTI_RUN_MS);
+});
+
+describe('the ack carry (review 474 item 10)', () => {
+  it('an acked prepare check that commits in the checkout parks lane-tampered, and the ack is not carried to that commit', async () => {
+    w = localWorld();
+    const ack = { gateSandbox: sandbox().run, gateSandboxUserConfig: userGates('ack') };
+    const lanes = lanesFor(w, [greet(), review('approve')]);
+    expect((await runFactoryEngine(opts(lanes, ack))).gate?.name).toBe(GATES_UNSANDBOXED_GATE);
+    const head1 = readFactoryState(w.root, LOCAL_ISSUE)!.head!;
+    const committing: LocalGateRunner = async (argv, cwd) => {
+      if (argv.includes('check.js')) gitIn(cwd, 'commit', '-q', '--allow-empty', '-m', 'made by the PR code');
+      return w.gate(argv, cwd, 60_000);
+    };
+    const out = await runFactoryEngine(opts(lanes, { ...ack, allowUnsandboxedGates: true, localGate: committing }));
+    expect(out.gate?.name, out.message).toBe('lane-tampered');
+    expect(out.gate?.reason).toContain('added commit(s) the engine did not make');
+    expect(readFactoryState(w.root, LOCAL_ISSUE)!.unsandboxedGatesAck).toBe(head1);
+  }, MULTI_RUN_MS);
+
+  it('carries the ack to the head prepare made from the accepted head with its own base merge only', async () => {
+    w = localWorld();
+    const ack = { gateSandbox: sandbox().run, gateSandboxUserConfig: userGates('ack') };
+    const lanes = lanesFor(w, [greet(), review('approve')]);
+    expect((await runFactoryEngine(opts(lanes, ack))).gate?.name).toBe(GATES_UNSANDBOXED_GATE);
+    const head1 = readFactoryState(w.root, LOCAL_ISSUE)!.head!;
+    // The base moves: prepare merges it in (a housekeeping commit the engine makes and records).
+    writeFileSync(join(w.root, 'BASE-NOTE.md'), 'base moved\n');
+    gitIn(w.root, 'add', 'BASE-NOTE.md');
+    gitIn(w.root, 'commit', '-q', '-m', 'base moves');
+    const out = await runFactoryEngine(opts(lanes, { ...ack, allowUnsandboxedGates: true }));
+    expect(out.gate?.name, out.message).toBe('merge');
+    const state = readFactoryState(w.root, LOCAL_ISSUE)!;
+    expect(state.head).not.toBe(head1);
+    expect(state.unsandboxedGatesAck).toBe(state.head);
+    expect(state.history.some((h) => h.note === `--allow-unsandboxed-gates for ${head1.slice(0, 12)} carried to the prepared head ${state.head!.slice(0, 12)}`)).toBe(true);
+    expect(plainGate().map((r) => r.head)).toEqual([state.head]);
   }, MULTI_RUN_MS);
 });
 

@@ -186,7 +186,7 @@ export interface GatesSandboxLayers {
   user: unknown;
   /** The `.copilot/omg.jsonc` committed at the run's verified base sha (undefined when not read). */
   base: unknown;
-  /** The engine's own environment: {@link SANDBOX_KILL_ENV}=off maps to `unsandboxed`. */
+  /** The engine's own environment: {@link SANDBOX_KILL_ENV}=off maps to `ack` (a park per head, never a plain run by itself). */
   env: NodeJS.ProcessEnv;
 }
 
@@ -198,7 +198,8 @@ export interface GatesSandboxLayers {
  * value.
  */
 export function resolveGatesSandboxMode(layers: GatesSandboxLayers): { mode: GatesSandboxMode; source: string } {
-  if (layers.env[SANDBOX_KILL_ENV] === 'off') return { mode: 'unsandboxed', source: `${SANDBOX_KILL_ENV}=off` };
+  // The kill switch never runs the PR's code unsandboxed by itself: it parks per head for the human's ack.
+  if (layers.env[SANDBOX_KILL_ENV] === 'off') return { mode: 'ack', source: `${SANDBOX_KILL_ENV}=off` };
   const read = (config: unknown, source: string): GatesSandboxMode | undefined => {
     // factory.run.sandbox only: copilotRun.sandbox (copilot_run jobs) has no gates.
     const value = sandboxBlock({ factory: (config as { factory?: unknown } | null | undefined)?.factory }, 'factory', source).gates;
@@ -402,6 +403,8 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
       '.ssh', '.gitconfig', '.omg', '.copilot', '.azure', '.git-credentials', join('.config', 'git', 'credentials'), join('.cache', 'git', 'credential'),
       join('.config', 'gh'), '.aws', '.npmrc', '.docker', '.kube', '.netrc', join('.cargo', 'credentials'), join('.cargo', 'credentials.toml'),
       '.gnupg', '.pypirc', join('.config', 'gcloud'),
+      // Windows: gh's hosts.yml (%APPDATA%\GitHub CLI) and the GCM/MSAL token cache (%LOCALAPPDATA%\.IdentityService).
+      ...(ctx.platform === 'win32' ? [join('AppData', 'Roaming', 'GitHub CLI'), join('AppData', 'Local', '.IdentityService')] : []),
     ].map((p) => join(ctx.realHome, p));
     // A grant canon cannot resolve (a dangling link) holds nothing: the deny stays.
     const grants = [...filesystem.readwritePaths, ...filesystem.readonlyPaths, ctx.realHome];

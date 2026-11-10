@@ -347,7 +347,9 @@ function* prepareSteps(opts: PrepareOptions): Generator<PrepareCheckRun, Prepare
       steps.push({ name, status: 'ok' });
     }
   } else {
-    const changed = lines(git('diff', '--name-only', `${baseSha}...HEAD`).stdout);
+    // -z: every name verbatim (core.quotePath=false would otherwise print non-ASCII names, smart quotes included, raw and
+    // a name with a newline would split); the names reach the checks only as argv words, never as shell text.
+    const changed = git('diff', '--name-only', '-z', `${baseSha}...HEAD`).stdout.split('\0').filter(Boolean);
     const lintable = changed.filter((f) => /^src\/.*\.(?:ts|tsx|mts)$/.test(f) && !f.endsWith('.d.ts') && exists(f));
     const tests = selectTargetedTests(changed, exists);
     const plan: Array<[string, string[] | null, string]> = [

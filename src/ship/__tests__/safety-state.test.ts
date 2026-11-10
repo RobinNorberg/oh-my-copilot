@@ -78,6 +78,8 @@ describe('assertSafeCommand', () => {
     ['git', 'rev-parse', '--verify', 'refs/tags/origin/dev'],
     ['git', 'diff', '--name-only', '--no-renames', '-z', 'origin/dev...HEAD'],
     ['git', 'diff', '--name-only', '-z', `${SHA_A}...${SHA_A}`],
+    // Only the NUL-separated form of prepare's changed-file list.
+    ['git', 'diff', '--name-only', `${SHA_A}...HEAD`],
     // The changed-file list is computed locally now; gh pr diff is not an engine shape any more.
     ['gh', 'pr', 'diff', '12', '--name-only'],
     ['gh', 'pr', 'diff', '12'],
@@ -194,7 +196,7 @@ describe('assertSafeCommand', () => {
     ['git', 'diff', '--name-only', '--no-renames', '-z', SHA_A, 'b'.repeat(40)],
     ['git', 'diff', '--cached', '--quiet', '--', 'inventory'],
     ['git', 'diff', '--name-only', '--diff-filter=U'],
-    ['git', 'diff', '--name-only', `${SHA_A}...HEAD`],
+    ['git', 'diff', '--name-only', '-z', `${SHA_A}...HEAD`],
     ['git', 'remote', 'get-url', 'origin'],
     ['git', 'remote', 'get-url', '--push', '--all', 'origin'],
     ['git', 'diff', '--cached', '--quiet'],

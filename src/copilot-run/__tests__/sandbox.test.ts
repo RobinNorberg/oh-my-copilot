@@ -107,9 +107,9 @@ describe('buildSandboxConfig', () => {
       const cfg = buildSandboxConfig('write', { ...ctx, sshAuthSock }, host({ shell: true, denied_paths: true }));
       expect(cfg.userPolicy.filesystem.deniedPaths, sshAuthSock).toEqual([...homeDenied, '/var/run/docker.sock', '/run/docker.sock', '/run/podman']);
     }
-    // No socket entry on Windows.
+    // No socket entry on Windows; gh's hosts.yml dir and the GCM/MSAL token cache instead.
     const win = buildSandboxConfig('write', { ...ctx, platform: 'win32', uid: 1000, sshAuthSock: '/tmp/ssh-XYZ/agent.42' }, host({ shell: true, denied_paths: true }));
-    expect(win.userPolicy.filesystem.deniedPaths).toEqual(homeDenied);
+    expect(win.userPolicy.filesystem.deniedPaths).toEqual([...homeDenied, join(ctx.realHome, 'AppData', 'Roaming', 'GitHub CLI'), join(ctx.realHome, 'AppData', 'Local', '.IdentityService')]);
     // An agent socket directly in a shared sticky dir: only the socket, never all of /tmp.
     for (const sshAuthSock of ['/tmp/agent.42', '/var/tmp/agent.42']) {
       const cfg = buildSandboxConfig('write', { ...ctx, sshAuthSock }, host({ shell: true, denied_paths: true }));
