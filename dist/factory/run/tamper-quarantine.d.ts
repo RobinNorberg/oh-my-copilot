@@ -28,6 +28,11 @@
  * in the quarantine. A file the snapshot holds only as a hash (over 1 MiB)
  * is quarantined but cannot be restored; the result names it.
  *
+ * The hold is set only when something that runs code or rewrites what git
+ * reads changed (a hook, an info/ file, a program-running config key, a
+ * replace ref) or the quarantine failed; ref moves and other config keys
+ * alone are what a user's own git does during a run, so they are copied and
+ * listed and only the run that saw them parks.
  * The hold (`<ledgerDir>/holds/<repo>.json`) makes `omg factory run`, the
  * poller's auto-start and the engine refuse (exit 6) with the quarantine
  * path, until `omg factory run release --tamper` (a human) prints what was
@@ -50,6 +55,8 @@ export interface TamperHold {
     notRestored: string[];
     refs: string[];
     failed?: string;
+    /** True when the hold was set (something that runs code changed, or the quarantine failed); false: only listed and copied. */
+    held?: boolean;
 }
 export interface QuarantineInput {
     ledgerDir: string;

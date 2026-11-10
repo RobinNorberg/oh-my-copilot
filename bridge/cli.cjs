@@ -130655,7 +130655,7 @@ function quarantineTamper(i) {
             continue;
           }
           if (!programKeyChanged(old, current, tmp)) {
-            hold.notRestored.push(`${rel} (no program-running key changed; left as it is, a copy is in the quarantine)`);
+            hold.notRestored.push(`${rel} (${BENIGN_CONFIG}; left as it is, a copy is in the quarantine)`);
             continue;
           }
         }
@@ -130688,6 +130688,10 @@ function quarantineTamper(i) {
     delete hold.quarantine;
     return hold;
   }
+  const replaced = hold.refs.some((r) => r.startsWith("refs/replace/"));
+  const unrestored = hold.notRestored.some((r) => !r.includes(BENIGN_CONFIG));
+  if (!hold.failed && hold.moved.length + hold.restored.length === 0 && !replaced && !unrestored) return hold;
+  hold.held = true;
   try {
     writeTamperHold(i.ledgerDir, i.root, hold);
   } catch (error2) {
@@ -130735,7 +130739,7 @@ function tamperHoldMessage(ledgerDir, root2) {
   if (hold === null) return null;
   const path30 = tamperHoldPath(ledgerDir, root2);
   if (hold === "unreadable") return `a tamper hold is set on this checkout (${path30}, unreadable), so no factory run starts here; check the repository's .git (hooks, config, info, refs), then run ${RELEASE_TAMPER_COMMAND}`;
-  return `a tamper hold is set on this checkout since ${hold.at} (run ${hold.run} parked at ${hold.gate}), so no factory run starts here${hold.quarantine ? `; what changed in .git is in ${hold.quarantine}` : ""}. Your own change to .git during that run (git config, a hook husky or an editor installed, a commit) triggers this too: put it back from that folder if it was yours. Then run ${RELEASE_TAMPER_COMMAND}`;
+  return `a tamper hold is set on this checkout since ${hold.at} (run ${hold.run} parked at ${hold.gate}), so no factory run starts here${hold.quarantine ? `; what changed in .git is in ${hold.quarantine}` : ""}. Your own change to .git during that run (a program-running git config key, a hook husky or an editor installed) triggers this too: put it back from that folder if it was yours. Then run ${RELEASE_TAMPER_COMMAND}`;
 }
 function releaseTamperHold(ledgerDir, root2) {
   const hold = readTamperHold(ledgerDir, root2);
@@ -130760,7 +130764,7 @@ function releaseTamperHold(ledgerDir, root2) {
   lines4.push("hold cleared: factory runs start again in this checkout");
   return lines4;
 }
-var import_node_fs32, import_node_path38, repoKey, tamperHoldPath, RELEASE_TAMPER_COMMAND, PROGRAM_KEYS, decode2;
+var import_node_fs32, import_node_path38, repoKey, tamperHoldPath, RELEASE_TAMPER_COMMAND, PROGRAM_KEYS, BENIGN_CONFIG, decode2;
 var init_tamper_quarantine = __esm({
   "src/factory/run/tamper-quarantine.ts"() {
     "use strict";
@@ -130774,6 +130778,7 @@ var init_tamper_quarantine = __esm({
     tamperHoldPath = (ledgerDir, root2) => (0, import_node_path38.join)(ledgerDir, "holds", `${repoKey(root2)}.json`);
     RELEASE_TAMPER_COMMAND = "omg factory run release --tamper";
     PROGRAM_KEYS = /^(?:core\.(?:hookspath|fsmonitor|sshcommand|pager|editor|askpass|gitproxy|alternaterefscommand|worktree|attributesfile|excludesfile|bare)|alias\..*|filter\..*|diff\..*\.(?:textconv|command)|merge\..*\.driver|include\..*|includeif\..*|credential\..*|gpg\..*|commit\.gpgsign|tag\.gpgsign|sequence\.editor|pager\..*|uploadpack\..*|receive\..*|remote\..*\.(?:uploadpack|receivepack|proxy|vcs)|url\..*|http\..*|protocol\..*|hook\..*|sendemail\..*|(?:diff|merge)tool\..*|lfs\..*|submodule\..*|extensions\..*|safe\..*|transfer\..*|fetch\.fsck.*|fsck\..*|init\.templatedir)$/i;
+    BENIGN_CONFIG = "no program-running key changed";
     decode2 = (v) => v?.startsWith("b64:") ? Buffer.from(v.slice(4), "base64") : v?.startsWith("b64x:") ? Buffer.from(v.slice(5), "base64") : null;
   }
 });
@@ -133845,7 +133850,8 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             hold.refs.length ? `refs: ${hold.refs.slice(0, 3).join("; ")}` : "",
             hold.failed ?? ""
           ].filter(Boolean).join("; ");
-          return `. Tamper quarantine${hold.quarantine ? ` (${hold.quarantine})` : ""}: ${did}. New factory runs in this checkout are held until ${RELEASE_TAMPER_COMMAND}; your own change to .git during the run (git config, a hook husky or an editor installed, a commit) triggers this too: put it back from the quarantine folder if it was yours`;
+          if (!hold.held) return `. Tamper quarantine${hold.quarantine ? ` (${hold.quarantine})` : ""}: ${did}. Nothing that runs code changed in .git, so no hold was set; if a listed change was not yours, undo it with the command shown (refs.txt in that folder)`;
+          return `. Tamper quarantine${hold.quarantine ? ` (${hold.quarantine})` : ""}: ${did}. New factory runs in this checkout are held until ${RELEASE_TAMPER_COMMAND}; your own change to .git during the run (git config, a hook husky or an editor installed) triggers this too: put it back from the quarantine folder if it was yours`;
         } catch (error2) {
           return `. The tamper quarantine failed (${errText5(error2)}); .git was left as it is`;
         }
