@@ -53,7 +53,7 @@
  * GitHub runs keep the gh calls unchanged.
  */
 import { createHash } from 'crypto';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'path';
 import { configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, readBaseFile, remoteRepoMismatch, userConfigLayers } from '../../ship/config.js';
@@ -225,10 +225,13 @@ function hostGitStatus(cwd, args) {
  * copy record is followed by its original path as a record of its own,
  * without the two status letters.
  */
-function checkoutChanges(checkout, raw) {
+function checkoutChanges(root, checkout, raw) {
     let ownLink = false;
     try {
-        ownLink = lstatSync(join(checkout, 'node_modules')).isSymbolicLink();
+        // Only the link linkNodeModules made (to the main checkout's node_modules), never one the PR's code pointed elsewhere.
+        const link = join(checkout, 'node_modules');
+        const real = (p) => (process.platform === 'win32' ? realpathSync(p).toLowerCase() : realpathSync(p));
+        ownLink = lstatSync(link).isSymbolicLink() && real(link) === real(join(root, 'node_modules'));
     }
     catch { /* no link */ }
     const records = raw.split('\0');
@@ -1818,7 +1821,7 @@ class FactoryEngine {
             return;
         const gitArgs = this.checkoutGitArgs(path);
         if (typeof gitArgs === 'string')
-            throw new FactoryStepError(`the engine's prepare checkout ${path} cannot be read safely: ${gitArgs}; inspect it and remove it by hand`);
+            throw new FactoryStepError(`the engine's prepare checkout ${path} cannot be read safely: ${gitArgs}${this.state.checkoutAdmin ? '; inspect it and remove it by hand' : `. ${this.freshCheckoutRecovery()}`}`);
         let head;
         try {
             head = runHostGit(path, [...gitArgs, 'rev-parse', 'HEAD']).trim();
@@ -1848,6 +1851,16 @@ class FactoryEngine {
             return rest;
         });
         this.rebaseRecheck();
+    }
+    /**
+     * How to get past a prepare checkout the engine will not read (one made
+     * before checkoutAdmin was recorded): the existing commands, none of which
+     * follows its node_modules link. clean works on a cancelled run only.
+     */
+    freshCheckoutRecovery() {
+        const k = this.key;
+        const steps = typeof k === 'number' ? `${cancelCommand(k)}, omg factory run clean ${k}, omg factory run reset ${k}, then omg factory run ${k}` : `${cancelCommand(k)}, then start it again`;
+        return `To start the item again with a fresh checkout, run ${steps}: the new run prepares again (do not remove the checkout with git worktree remove: its node_modules is a link to yours)`;
     }
     /**
      * Host git arguments naming the prepare checkout's git dir and work tree
@@ -2194,17 +2207,31 @@ class FactoryEngine {
             // The recorded git dir, never the checkout's `.git` file (the PR's code ran there in prepare).
             const gitArgs = this.checkoutGitArgs(checkout);
             let dirty = [];
+            let leftover = [];
             let problem = typeof gitArgs === 'string' ? gitArgs : null;
             if (typeof gitArgs !== 'string') {
                 // The status compares with a fresh index read from HEAD, never the checkout's own (the PR's code could set
-                // skip-worktree or assume-unchanged bits, plant an untracked cache, or keep a stale stat match there), and lists
-                // ignored files too.
+                // skip-worktree or assume-unchanged bits, plant an untracked cache, or keep a stale stat match there).
                 const indexDir = mkdtempSync(join(tmpdir(), 'omg-gate-index-'));
                 try {
                     at = runHostGit(checkout, [...gitArgs, 'rev-parse', 'HEAD']).trim();
                     const fresh = { ...process.env, GIT_INDEX_FILE: join(indexDir, 'index') };
                     runHostGit(checkout, [...gitArgs, 'read-tree', at], undefined, fresh);
-                    dirty = checkoutChanges(checkout, runHostGit(checkout, [...gitArgs, '-c', 'core.untrackedCache=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignored=matching'], undefined, fresh));
+                    const status = [...gitArgs, '-c', 'core.untrackedCache=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all'];
+                    dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, undefined, fresh));
+                    if (at === head && dirty.length === 0) {
+                        // Ignored files (build output of a prepare check, a previous gate's output in a reused checkout) are deleted, not
+                        // parked on: the gate then sees exactly the head's tracked files. The node_modules link goes first, so the
+                        // clean never reaches the main checkout's node_modules through it, and comes back after.
+                        unlinkNodeModules(this.o.root, checkout);
+                        try {
+                            runHostGit(checkout, [...gitArgs, '-c', 'core.untrackedCache=false', 'clean', '-ffdX'], undefined, fresh);
+                            leftover = checkoutChanges(this.o.root, checkout, runHostGit(checkout, [...status, '--ignored=matching'], undefined, fresh));
+                        }
+                        finally {
+                            linkNodeModules(this.o.root, checkout);
+                        }
+                    }
                 }
                 catch (error) {
                     problem = errText(error);
@@ -2214,11 +2241,15 @@ class FactoryEngine {
                 }
             }
             if (problem) {
-                this.gate('lane-tampered', `the engine's prepare checkout ${checkout} cannot be read through the git links recorded at its creation (${problem}), so the local gate did not run; inspect and remove it by hand, then rerun ${this.resume}`);
+                this.gate('lane-tampered', `the engine's prepare checkout ${checkout} cannot be read through the git links recorded at its creation (${problem}), so the local gate did not run${this.state.checkoutAdmin ? `; inspect and remove it by hand, then rerun ${this.resume}` : `. ${this.freshCheckoutRecovery()}`}`);
                 return false;
             }
             if (at === head && dirty.length > 0) {
-                this.gate('lane-tampered', `the engine's prepare checkout ${checkout} is at ${head.slice(0, 12)} but its working tree differs from it, ignored files included (${dirty.slice(0, 5).join(', ')}), so the local gate did not run; inspect and remove it by hand, then rerun ${this.resume}`);
+                this.gate('lane-tampered', `the engine's prepare checkout ${checkout} is at ${head.slice(0, 12)} but its working tree differs from it (${dirty.slice(0, 5).join(', ')}): a changed tracked file or an untracked file that is not ignored, so the local gate did not run; inspect it and undo what the PR's code changed there, then rerun ${this.resume}`);
+                return false;
+            }
+            if (leftover.length > 0) {
+                this.gate('lane-tampered', `the engine's prepare checkout ${checkout} still has files after the engine deleted its ignored files (${leftover.slice(0, 5).join(', ')}), so the local gate did not run; inspect it, then rerun ${this.resume}`);
                 return false;
             }
         }

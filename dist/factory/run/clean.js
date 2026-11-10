@@ -51,7 +51,9 @@ export function cleanFactoryRun(o) {
         if (o.claimRepo)
             removeFactoryClaim(o.ledgerDir ?? defaultLedgerDir(), o.claimRepo, o.root, o.issue, { onlyRoot: true, ...(o.owner ? { deps: o.owner } : {}) });
         // No hook or fsmonitor a lane planted runs in clean's fetch and ls-remote.
-        const exec = factoryGuardExec(hardenedGitExec(o.exec, emptyHooksDir(o.ledgerDir ?? defaultLedgerDir())), () => [state.base]);
+        // The local forge's fetch and ls-remote check the mirror first (its redirects, config and alternates), as the engine's do.
+        const mirror = () => (state.remote === LOCAL_REMOTE ? state.repoUrl : undefined);
+        const exec = factoryGuardExec(hardenedGitExec(o.exec, emptyHooksDir(o.ledgerDir ?? defaultLedgerDir()), mirror), () => [state.base]);
         const git = (args) => exec('git', args, { cwd: o.root, env: TRUSTED_READ_ENV });
         const remote = runRemote(state);
         const mismatch = state.remote === LOCAL_REMOTE ? localRemoteMismatch(exec, o.root, state.repoUrl) : remoteRepoMismatch(exec, o.root, remote, state.repoUrl);
