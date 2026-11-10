@@ -5,7 +5,7 @@
  * read through the git links recorded at its creation (M5). Real git, fake
  * lanes and gate, no gh / az / copilot.
  */
-import { closeSync, cpSync, existsSync, ftruncateSync, mkdirSync, openSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync, writeSync } from 'node:fs';
+import { closeSync, cpSync, existsSync, ftruncateSync, mkdirSync, openSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync, writeSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { resolveForgeConfig } from '../../../forge/config.js';
@@ -144,7 +144,7 @@ describe('factory run on the local forge: git hardening', () => {
         expect(out.gate?.reason).toMatch(listed);
         expect(w.gateRuns).toEqual([]);
     }, 300_000);
-    it('B1: ignored output a prepare check writes (dist/, .omg/) is deleted before the gate; the node_modules link and its target survive', async () => {
+    it('B1: ignored output a prepare check writes (dist/, .omg/) stays for the gate, which can read it; the node_modules link and its target are untouched', async () => {
         w = localWorld();
         writeFileSync(join(w.root, '.gitignore'), '.omg/\ndist/\nnode_modules/\n');
         gitIn(w.root, 'commit', '-q', '-am', 'ignore build output');
@@ -165,15 +165,15 @@ describe('factory run on the local forge: git hardening', () => {
         const seen = [];
         const gate = w.gate;
         w.gate = async (argv, cwd, ...rest) => {
-            seen.push({ dist: existsSync(join(cwd, 'dist')), omg: existsSync(join(cwd, '.omg')), marker: existsSync(join(cwd, 'node_modules', 'marker.txt')) });
+            seen.push({ dist: existsSync(join(cwd, 'dist', 'sub', 'out.js')) ? readFileSync(join(cwd, 'dist', 'sub', 'out.js'), 'utf8') : null, omg: existsSync(join(cwd, '.omg')), marker: existsSync(join(cwd, 'node_modules', 'marker.txt')) });
             return gate(argv, cwd, ...rest);
         };
         const out = await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')]), withCheck));
         expect(out.gate?.name, out.message).toBe('merge');
-        expect(seen).toEqual([{ dist: false, omg: false, marker: true }]);
+        expect(seen).toEqual([{ dist: 'built\n', omg: true, marker: true }]);
         expect(readFileSync(join(w.root, 'node_modules', 'marker.txt'), 'utf8')).toBe('keep\n');
     }, 300_000);
-    it("B1: a previous gate's ignored output in the reused checkout (a resume after a PENDING gate) is deleted, not parked on", async () => {
+    it("B1: a previous gate's ignored output in the reused checkout (a resume after a PENDING gate) stays and is not parked on", async () => {
         w = localWorld();
         writeFileSync(join(w.root, '.gitignore'), '.omg/\ncoverage/\n');
         gitIn(w.root, 'commit', '-q', '-am', 'ignore coverage');
@@ -196,7 +196,44 @@ describe('factory run on the local forge: git hardening', () => {
         };
         const again = await runFactoryEngine(localOpts(w, lanesFor(w, [])));
         expect(again.gate?.name, again.message).toBe('merge');
-        expect(seen).toEqual([false]);
+        expect(seen).toEqual([true]);
+    }, 300_000);
+    it('B1: an ignored junction or symlink a prepare check leaves (pulling content from outside) parks before the gate', async () => {
+        w = localWorld();
+        writeFileSync(join(w.root, '.gitignore'), '.omg/\ndist/\n');
+        gitIn(w.root, 'commit', '-q', '-am', 'ignore build output');
+        const outside = join(w.dir, 'outside');
+        mkdirSync(outside);
+        writeFileSync(join(outside, 'planted.test.js'), 'process.exit(0)\n');
+        const inner = w.exec;
+        const checkout = checkoutPath(w.root, LOCAL_ISSUE);
+        w.exec = (cmd, args, opts) => {
+            if (isNode(cmd) && opts?.cwd === checkout && !existsSync(join(checkout, 'dist'))) {
+                mkdirSync(join(checkout, 'dist', 'sub'), { recursive: true });
+                symlinkSync(outside, join(checkout, 'dist', 'sub', 'ext'), process.platform === 'win32' ? 'junction' : 'dir');
+            }
+            return inner(cmd, args, opts);
+        };
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')]), withCheck));
+        expect(out.gate?.name, out.message).toBe('lane-tampered');
+        expect(out.gate?.reason).toMatch(/has an ignored symlink or junction dist\/sub\/ext the engine did not make/);
+        expect(w.gateRuns).toEqual([]);
+        expect(existsSync(join(outside, 'planted.test.js'))).toBe(true);
+    }, 300_000);
+    it('a prepare checkout removed by hand is prepared again on the next run; the gate then runs in the fresh checkout', async () => {
+        w = localWorld();
+        const first = await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')])));
+        expect(first.gate?.name, first.message).toBe('merge');
+        const head = readFactoryState(w.root, LOCAL_ISSUE).head;
+        const checkout = checkoutPath(w.root, LOCAL_ISSUE);
+        // This test repository has no node_modules, so no link is inside the checkout.
+        gitIn(w.root, 'worktree', 'remove', '--force', checkout);
+        rmSync(localCheckRecordPath(w.stateDir, w.root, head));
+        const again = await runFactoryEngine(localOpts(w, lanesFor(w, [])));
+        expect(again.gate?.name, again.message).toBe('merge');
+        expect(w.gateRuns).toHaveLength(2);
+        expect(w.gateRuns[1].cwd).toBe(checkout);
+        expect(existsSync(checkout)).toBe(true);
     }, 300_000);
     it("M-E: the user's own git gc, commit-graph and multi-pack-index writes during prepare do not park; the run reaches the merge gate", async () => {
         w = localWorld();

@@ -53,7 +53,7 @@
  * GitHub runs keep the gh calls unchanged.
  */
 import { createHash } from 'crypto';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'path';
 import { configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, readBaseFile, remoteRepoMismatch, userConfigLayers } from '../../ship/config.js';
@@ -234,6 +234,41 @@ function checkoutChanges(root, checkout, raw) {
         ownLink = lstatSync(link).isSymbolicLink() && real(link) === real(join(root, 'node_modules'));
     }
     catch { /* no link */ }
+    return parseStatusPaths(raw).filter((p) => p && !(ownLink && (p === 'node_modules' || p === 'node_modules/')));
+}
+/**
+ * The first ignored path (as `git status --ignored=matching` lists them, the
+ * engine's own node_modules link already left out) that is a symlink or
+ * junction or holds one below it, or null. Directories are walked without
+ * following any link.
+ */
+function ignoredLink(checkout, ignored) {
+    const stack = ignored.map((p) => p.replace(/\/$/, ''));
+    while (stack.length > 0) {
+        const rel = stack.pop();
+        let st;
+        try {
+            st = lstatSync(join(checkout, rel));
+        }
+        catch {
+            continue;
+        }
+        if (st.isSymbolicLink())
+            return rel;
+        if (!st.isDirectory())
+            continue;
+        for (const d of readdirSync(join(checkout, rel), { withFileTypes: true })) {
+            const child = `${rel}/${d.name}`;
+            if (d.isSymbolicLink())
+                return child;
+            if (d.isDirectory())
+                stack.push(child);
+        }
+    }
+    return null;
+}
+/** The paths of `git status --porcelain=v1 -z` records (an R/C record's original path included). */
+function parseStatusPaths(raw) {
     const records = raw.split('\0');
     const paths = [];
     for (let i = 0; i < records.length; i++) {
@@ -245,7 +280,7 @@ function checkoutChanges(root, checkout, raw) {
         if ((xy.includes('R') || xy.includes('C')) && i + 1 < records.length)
             paths.push(records[++i]);
     }
-    return paths.filter((p) => p && !(ownLink && (p === 'node_modules' || p === 'node_modules/')));
+    return paths;
 }
 const HEX40 = /^[0-9a-f]{40}$/;
 function errText(error) {
@@ -416,6 +451,8 @@ class FactoryEngine {
     gateChangeAllowed;
     /** The head `--allow-unsandboxed-lanes` accepts (the parked run's head, captured at resume). */
     unsandboxedAllowed;
+    /** The gate found the prepare checkout missing and sent the run back to prepare once in this invocation. */
+    reprepared = false;
     constructor(o, ledger, hooksDir) {
         this.o = o;
         this.ledger = ledger;
@@ -2207,11 +2244,16 @@ class FactoryEngine {
             // The recorded git dir, never the checkout's `.git` file (the PR's code ran there in prepare).
             const gitArgs = this.checkoutGitArgs(checkout);
             let dirty = [];
-            let leftover = [];
+            let link = null;
             let problem = typeof gitArgs === 'string' ? gitArgs : null;
             if (typeof gitArgs !== 'string') {
                 // The status compares with a fresh index read from HEAD, never the checkout's own (the PR's code could set
                 // skip-worktree or assume-unchanged bits, plant an untracked cache, or keep a stale stat match there).
+                // Ignored files are left alone: prepare's checks and the gate run the same head's code in the same trust domain,
+                // so a check's ignored output (dist/, target/, a previous gate's coverage/) gives the gate nothing the PR's own
+                // tests could not do. What this protects is that the tracked tree is the recorded head and nothing untracked
+                // that is not ignored was added. An ignored link (other than the engine's node_modules link) still parks: a
+                // link is how content from outside the checkout would be pulled in.
                 const indexDir = mkdtempSync(join(tmpdir(), 'omg-gate-index-'));
                 try {
                     at = runHostGit(checkout, [...gitArgs, 'rev-parse', 'HEAD']).trim();
@@ -2220,17 +2262,7 @@ class FactoryEngine {
                     const status = [...gitArgs, '-c', 'core.untrackedCache=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all'];
                     dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, undefined, fresh));
                     if (at === head && dirty.length === 0) {
-                        // Ignored files (build output of a prepare check, a previous gate's output in a reused checkout) are deleted, not
-                        // parked on: the gate then sees exactly the head's tracked files. The node_modules link goes first, so the
-                        // clean never reaches the main checkout's node_modules through it, and comes back after.
-                        unlinkNodeModules(this.o.root, checkout);
-                        try {
-                            runHostGit(checkout, [...gitArgs, '-c', 'core.untrackedCache=false', 'clean', '-ffdX'], undefined, fresh);
-                            leftover = checkoutChanges(this.o.root, checkout, runHostGit(checkout, [...status, '--ignored=matching'], undefined, fresh));
-                        }
-                        finally {
-                            linkNodeModules(this.o.root, checkout);
-                        }
+                        link = ignoredLink(checkout, checkoutChanges(this.o.root, checkout, runHostGit(checkout, [...status, '--ignored=matching'], undefined, fresh)));
                     }
                 }
                 catch (error) {
@@ -2248,8 +2280,24 @@ class FactoryEngine {
                 this.gate('lane-tampered', `the engine's prepare checkout ${checkout} is at ${head.slice(0, 12)} but its working tree differs from it (${dirty.slice(0, 5).join(', ')}): a changed tracked file or an untracked file that is not ignored, so the local gate did not run; inspect it and undo what the PR's code changed there, then rerun ${this.resume}`);
                 return false;
             }
-            if (leftover.length > 0) {
-                this.gate('lane-tampered', `the engine's prepare checkout ${checkout} still has files after the engine deleted its ignored files (${leftover.slice(0, 5).join(', ')}), so the local gate did not run; inspect it, then rerun ${this.resume}`);
+            if (link) {
+                this.gate('lane-tampered', `the engine's prepare checkout ${checkout} has an ignored symlink or junction ${link} the engine did not make, which would pull content from outside the checkout into the gate, so the local gate did not run; inspect it and remove the link, then rerun ${this.resume}`);
+                return false;
+            }
+        }
+        else if (!this.reprepared && this.state.pr !== undefined) {
+            // The checkout was removed by hand: prepare again (a fresh checkout at the head), then the gate runs there.
+            const pr = this.state.pr;
+            const ship = this.readShip(pr);
+            if (ship && (ship.phase === 'prepare' || canTransition(ship.phase, 'prepare'))) {
+                this.reprepared = true;
+                const note = `the engine's prepare checkout ${checkout} is missing; preparing again`;
+                if (ship.phase !== 'prepare')
+                    this.writeShip(pr, (cur) => (cur && canTransition(cur.phase, 'prepare') ? transition(cur, 'prepare', note, this.iso()) : cur));
+                this.save((x) => {
+                    const { prepared: _p, ...rest } = x;
+                    return moveTo(rest, 'prepare', note, this.iso());
+                });
                 return false;
             }
         }

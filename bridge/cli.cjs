@@ -129626,6 +129626,29 @@ function checkoutChanges(root2, checkout, raw) {
     ownLink = (0, import_fs170.lstatSync)(link6).isSymbolicLink() && real2(link6) === real2((0, import_path197.join)(root2, "node_modules"));
   } catch {
   }
+  return parseStatusPaths(raw).filter((p) => p && !(ownLink && (p === "node_modules" || p === "node_modules/")));
+}
+function ignoredLink(checkout, ignored) {
+  const stack = ignored.map((p) => p.replace(/\/$/, ""));
+  while (stack.length > 0) {
+    const rel = stack.pop();
+    let st;
+    try {
+      st = (0, import_fs170.lstatSync)((0, import_path197.join)(checkout, rel));
+    } catch {
+      continue;
+    }
+    if (st.isSymbolicLink()) return rel;
+    if (!st.isDirectory()) continue;
+    for (const d of (0, import_fs170.readdirSync)((0, import_path197.join)(checkout, rel), { withFileTypes: true })) {
+      const child = `${rel}/${d.name}`;
+      if (d.isSymbolicLink()) return child;
+      if (d.isDirectory()) stack.push(child);
+    }
+  }
+  return null;
+}
+function parseStatusPaths(raw) {
   const records2 = raw.split("\0");
   const paths = [];
   for (let i = 0; i < records2.length; i++) {
@@ -129635,7 +129658,7 @@ function checkoutChanges(root2, checkout, raw) {
     paths.push(rec.slice(3));
     if ((xy.includes("R") || xy.includes("C")) && i + 1 < records2.length) paths.push(records2[++i]);
   }
-  return paths.filter((p) => p && !(ownLink && (p === "node_modules" || p === "node_modules/")));
+  return paths;
 }
 function errText5(error2) {
   return error2 instanceof Error ? error2.message : String(error2);
@@ -130077,6 +130100,8 @@ var init_engine = __esm({
       gateChangeAllowed;
       /** The head `--allow-unsandboxed-lanes` accepts (the parked run's head, captured at resume). */
       unsandboxedAllowed;
+      /** The gate found the prepare checkout missing and sent the run back to prepare once in this invocation. */
+      reprepared = false;
       iso() {
         return new Date(this.clock()).toISOString();
       }
@@ -131613,7 +131638,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         if ((0, import_fs170.existsSync)(checkout)) {
           const gitArgs2 = this.checkoutGitArgs(checkout);
           let dirty = [];
-          let leftover = [];
+          let link6 = null;
           let problem = typeof gitArgs2 === "string" ? gitArgs2 : null;
           if (typeof gitArgs2 !== "string") {
             const indexDir = (0, import_fs170.mkdtempSync)((0, import_path197.join)((0, import_os37.tmpdir)(), "omg-gate-index-"));
@@ -131624,13 +131649,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
               const status = [...gitArgs2, "-c", "core.untrackedCache=false", "status", "--porcelain=v1", "-z", "--untracked-files=all"];
               dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, void 0, fresh));
               if (at === head && dirty.length === 0) {
-                unlinkNodeModules(this.o.root, checkout);
-                try {
-                  runHostGit(checkout, [...gitArgs2, "-c", "core.untrackedCache=false", "clean", "-ffdX"], void 0, fresh);
-                  leftover = checkoutChanges(this.o.root, checkout, runHostGit(checkout, [...status, "--ignored=matching"], void 0, fresh));
-                } finally {
-                  linkNodeModules(this.o.root, checkout);
-                }
+                link6 = ignoredLink(checkout, checkoutChanges(this.o.root, checkout, runHostGit(checkout, [...status, "--ignored=matching"], void 0, fresh)));
               }
             } catch (error2) {
               problem = errText5(error2);
@@ -131646,8 +131665,21 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
             this.gate("lane-tampered", `the engine's prepare checkout ${checkout} is at ${head.slice(0, 12)} but its working tree differs from it (${dirty.slice(0, 5).join(", ")}): a changed tracked file or an untracked file that is not ignored, so the local gate did not run; inspect it and undo what the PR's code changed there, then rerun ${this.resume}`);
             return false;
           }
-          if (leftover.length > 0) {
-            this.gate("lane-tampered", `the engine's prepare checkout ${checkout} still has files after the engine deleted its ignored files (${leftover.slice(0, 5).join(", ")}), so the local gate did not run; inspect it, then rerun ${this.resume}`);
+          if (link6) {
+            this.gate("lane-tampered", `the engine's prepare checkout ${checkout} has an ignored symlink or junction ${link6} the engine did not make, which would pull content from outside the checkout into the gate, so the local gate did not run; inspect it and remove the link, then rerun ${this.resume}`);
+            return false;
+          }
+        } else if (!this.reprepared && this.state.pr !== void 0) {
+          const pr = this.state.pr;
+          const ship = this.readShip(pr);
+          if (ship && (ship.phase === "prepare" || canTransition(ship.phase, "prepare"))) {
+            this.reprepared = true;
+            const note = `the engine's prepare checkout ${checkout} is missing; preparing again`;
+            if (ship.phase !== "prepare") this.writeShip(pr, (cur) => cur && canTransition(cur.phase, "prepare") ? transition(cur, "prepare", note, this.iso()) : cur);
+            this.save((x) => {
+              const { prepared: _p, ...rest } = x;
+              return moveTo(rest, "prepare", note, this.iso());
+            });
             return false;
           }
         }
