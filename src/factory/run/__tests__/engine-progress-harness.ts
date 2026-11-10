@@ -13,7 +13,7 @@ import type { FactoryEngineOptions } from '../engine.js';
 import { factoryForgeOptions } from '../forge-roots.js';
 import { updateFactoryState, type FactoryRunState } from '../state.js';
 import { EngineLedger } from '../ledger.js';
-import { commitFile, FakeLanes, FakeProcesses, harness, ISSUE, REPO_URL, review, testGateConfig, type Harness, type LaneScript } from './fake-lanes.js';
+import { commitFile, FakeLanes, FakeProcesses, harness, ISSUE, REPO_URL, review, testGateConfig, type Harness, type LaneScript, withTestSandbox } from './fake-lanes.js';
 
 export const FAMILY = PROGRESS_STAGES.filter((s) => s !== 'cancelled').map((s) => `factory:${s}`);
 
@@ -65,7 +65,7 @@ export const exec: Exec = (cmd, args, opts) => {
 };
 
 export function opts(scripts: LaneScript[], over: Partial<FactoryEngineOptions> = {}): FactoryEngineOptions {
-  return {
+  return withTestSandbox({
     root: h.root,
     issue: ISSUE,
     exec,
@@ -79,7 +79,7 @@ export function opts(scripts: LaneScript[], over: Partial<FactoryEngineOptions> 
     gateConfig: testGateConfig,
     forge: { config: githubConfig(), options: factoryForgeOptions(h.root) },
     ...over,
-  };
+  }, over);
 }
 
 export const happy = (): LaneScript[] => [commitFile('src/greet.ts', 'export const greet = () => "hi";\n'), review('approve')];

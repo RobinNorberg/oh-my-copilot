@@ -260,6 +260,23 @@ export interface FactoryRunState {
      * sandbox (460-7); a new head parks again.
      */
     unsandboxedAck?: string;
+    /**
+     * The head whose prepare checks and local gate the human accepted to run
+     * WITHOUT the OS sandbox (`omg factory run --allow-unsandboxed-gates` after
+     * an awaiting-human: gates-unsandboxed park; factory.run.sandbox.gates
+     * "ack", or "enforced" where the sandbox is unavailable). A prepare that
+     * ran under it carries it to the head it prepared; any other head parks again.
+     */
+    unsandboxedGatesAck?: string;
+    /**
+     * Base calibrations of a check in the sandbox (sandbox-exec.ts), keyed by
+     * the sha256 of the base sha and the check's argv: whether the command
+     * passes in the sandbox on the trusted base itself, and its output tail.
+     */
+    gateCalibration?: Record<string, {
+        ok: boolean;
+        tail?: string;
+    }>;
     /** The Copilot coding agent session of an issue run whose implementer is the agent (coding-agent-lane.ts); sealed, shape-checked on load. */
     codingAgent?: CodingAgentRunRecord;
     /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */

@@ -14,6 +14,7 @@ import { gitIn } from '../../../copilot-run/__tests__/fake-sdk.js';
 import { resolveShipConfig } from '../../../ship/config.js';
 import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-worktree.js';
 import { defaultExec } from '../../../ship/exec.js';
+import { defaultLocalGateRunner } from '../local-gate.js';
 import { REVIEW_FEEDBACK_QUERY } from '../../../forge/github/graphql.js';
 import { LaneLostError } from '../lane.js';
 export { gitIn };
@@ -171,6 +172,43 @@ export const testGateConfig = () => ({
     config: { ...resolveShipConfig(undefined), requiredChecks: ['Test'], advisoryChecks: [] },
     known: [],
 });
+/**
+ * The engine tests' OS sandbox: every command counts as run in the attested
+ * sandbox. A prepare check runs through the test's exec seam (as the
+ * unsandboxed engine ran it), the local gate through the test's gate runner
+ * or else the engine's plain one (a runner whose executable cannot start
+ * gives no verdict), and a base
+ * calibration passes without running anything. Tests of the sandbox
+ * decisions themselves pass their own runner.
+ */
+export function attestedSandbox(exec, gate = () => undefined) {
+    return async (req) => {
+        if (req.purpose === 'calibrate')
+            return { ran: true, status: 0, output: '', timedOut: false };
+        // No test runner: the engine's own plain runner, as the engine ran the gate before the sandbox.
+        const runner = gate() ?? defaultLocalGateRunner;
+        if (req.purpose === 'gate') {
+            const r = await runner(req.argv, req.cwd, req.timeoutMs);
+            if (r.startError !== undefined)
+                return { ran: false, reason: r.startError };
+            return { ran: true, status: r.timedOut ? 124 : r.status, output: `${r.stdout}${r.stderr ? `\n${r.stderr}` : ''}`, timedOut: r.timedOut };
+        }
+        const r = exec()(req.exe, [...req.args], { cwd: req.cwd });
+        return { ran: true, status: r.status, output: `${r.stdout}${r.stderr ? `\n${r.stderr}` : ''}`, timedOut: false };
+    };
+}
+/**
+ * Engine options with the test sandbox (attestedSandbox over the options'
+ * own exec and gate runner) and no user config for factory.run.sandbox.gates,
+ * unless `over` sets either (a `gateSandbox: undefined` there means none).
+ */
+export function withTestSandbox(o, over = {}) {
+    return {
+        ...o,
+        ...('gateSandboxUserConfig' in over ? {} : { gateSandboxUserConfig: null }),
+        ...('gateSandbox' in over ? {} : { gateSandbox: attestedSandbox(() => o.exec, () => o.localGate) }),
+    };
+}
 /** `<dir>/remote.git` (bare) and `<dir>/repo` on `dev` tracking it; `.omg/` ignored. */
 export function harness(prefix = 'omg-factory-run-') {
     const dir = mkdtempSync(join(tmpdir(), prefix));

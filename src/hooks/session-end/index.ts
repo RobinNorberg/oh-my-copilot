@@ -14,6 +14,7 @@ import { planChainEnqueue, recordChainHandoffFailure } from './chain-enqueuer.js
 import { spawnSessionEndWorker } from './worker.js';
 import { getSessionEndStalePrdWarning } from '../ralph/stale-prd.js';
 import { isValidTeamInstanceId, isValidLeaderSessionId } from '../../team/types.js';
+import { isOpenClawEnabled } from '../../openclaw/config.js';
 
 export interface SessionEndInput {
   session_id: string;
@@ -914,7 +915,7 @@ export async function runSessionEndNotifications(directory: string, sessionId: s
 
 export async function runSessionEndOpenClaw(directory: string, sessionId: string, strict = false): Promise<void> {
   const { metrics, input } = deferredSessionEndSnapshot(directory, sessionId);
-  const outcome = await runSessionEndDeferredAction({ name: 'openclaw-wake', class: 'best-effort', payload: { enabled: process.env.OMC_OPENCLAW === '1', reason: metrics.reason, sessionId }, budgetMs: 2_000 }, { directory, sessionId, transcriptPath: input.transcript_path ?? '', metrics, input, deadlineAt: new Date(Date.now() + 2_000).toISOString(), action: { name: 'openclaw-wake', class: 'best-effort', payload: {}, budgetMs: 2_000 } });
+  const outcome = await runSessionEndDeferredAction({ name: 'openclaw-wake', class: 'best-effort', payload: { enabled: isOpenClawEnabled(), reason: metrics.reason, sessionId }, budgetMs: 2_000 }, { directory, sessionId, transcriptPath: input.transcript_path ?? '', metrics, input, deadlineAt: new Date(Date.now() + 2_000).toISOString(), action: { name: 'openclaw-wake', class: 'best-effort', payload: {}, budgetMs: 2_000 } });
   if (strict && outcome.status !== 'completed' && outcome.status !== 'skipped') throw new Error(`openclaw-wake-${outcome.status}`);
 }
 
@@ -953,7 +954,7 @@ function buildDurableSessionEndPayload(directory: string, input: SessionEndInput
     metrics,
     initialTeamNames: teamName ? [teamName] : [],
     notificationProfile: typeof process.env.OMC_NOTIFY_PROFILE === 'string' ? process.env.OMC_NOTIFY_PROFILE : undefined,
-    openClawEnabled: process.env.OMC_OPENCLAW === '1',
+    openClawEnabled: isOpenClawEnabled(),
   };
 }
 

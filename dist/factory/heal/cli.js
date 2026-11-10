@@ -371,6 +371,7 @@ function engineDeps(deps, ado) {
         exec: deps.exec, lanes: deps.lanes, limits: deps.runLimits, ledgerDir: deps.ledgerDir, now: deps.now,
         warn: (m) => console.error(chalk.yellow(termSafe(m))),
         ...(deps.gateConfig ? { gateConfig: deps.gateConfig } : {}),
+        ...(deps.gateSandbox ? { gateSandbox: deps.gateSandbox } : {}),
         ...(deps.engine ? { engine: deps.engine } : {}),
         ...(ado ? { forge: ado.forge() } : {}),
     };

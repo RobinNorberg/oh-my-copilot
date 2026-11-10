@@ -247,6 +247,20 @@ export interface FactoryRunState {
    * sandbox (460-7); a new head parks again.
    */
   unsandboxedAck?: string;
+  /**
+   * The head whose prepare checks and local gate the human accepted to run
+   * WITHOUT the OS sandbox (`omg factory run --allow-unsandboxed-gates` after
+   * an awaiting-human: gates-unsandboxed park; factory.run.sandbox.gates
+   * "ack", or "enforced" where the sandbox is unavailable). A prepare that
+   * ran under it carries it to the head it prepared; any other head parks again.
+   */
+  unsandboxedGatesAck?: string;
+  /**
+   * Base calibrations of a check in the sandbox (sandbox-exec.ts), keyed by
+   * the sha256 of the base sha and the check's argv: whether the command
+   * passes in the sandbox on the trusted base itself, and its output tail.
+   */
+  gateCalibration?: Record<string, { ok: boolean; tail?: string }>;
   /** The Copilot coding agent session of an issue run whose implementer is the agent (coding-agent-lane.ts); sealed, shape-checked on load. */
   codingAgent?: CodingAgentRunRecord;
   /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */
@@ -496,6 +510,13 @@ function humanReviewShapeProblem(s: Record<string, unknown>): string | null {
     || !isStr(h.digest) || !HEX64.test(h.digest) || (h.threadIds !== undefined && (!Array.isArray(h.threadIds) || h.threadIds.length > MAX_HUMAN_THREAD_IDS || !h.threadIds.every(THREAD_ID)))
     || Object.keys(h).some((k) => k !== 'seenAt' && k !== 'head' && k !== 'digest' && k !== 'threadIds'))) return 'humanReview';
   if (s.unsandboxedAck !== undefined && (!isStr(s.unsandboxedAck) || !HEX40.test(s.unsandboxedAck))) return 'unsandboxedAck';
+  if (s.unsandboxedGatesAck !== undefined && (!isStr(s.unsandboxedGatesAck) || !HEX40.test(s.unsandboxedGatesAck))) return 'unsandboxedGatesAck';
+  const cal = s.gateCalibration as Record<string, unknown> | undefined;
+  if (cal !== undefined && (typeof cal !== 'object' || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
+    const e = v as Record<string, unknown> | null;
+    return HEX64.test(k) && typeof e === 'object' && e !== null && typeof e.ok === 'boolean' && (e.tail === undefined || isStr(e.tail))
+      && Object.keys(e).every((x) => x === 'ok' || x === 'tail');
+  }))) return 'gateCalibration';
   const lanes = s.lanes as Array<Record<string, unknown>>;
   if (!lanes.every((l) => {
     const f = l.feedback as Record<string, unknown> | undefined;
