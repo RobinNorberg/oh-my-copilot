@@ -11,8 +11,10 @@
  * checkout (the engine ledger's directory, which the lane sandbox denies).
  * `<repo>` hashes the repository's identity (claimRepoKey over the trusted
  * origin remote, trustedFactoryClaimRepo), so every clone of one repository
- * shares the directory. The local forge makes no claim (its mirror is per
- * checkout). The claim lives as long as the run is not terminal:
+ * shares the directory. The local forge has no origin and a mirror per
+ * checkout, so its claims are keyed on the repository's root commit
+ * (localFactoryClaimRepo, dogfood F60): clones of one history share them.
+ * The claim lives as long as the run is not terminal:
  * - a live engine holds it (pid, host and start identity, as state.ts's
  *   owner files);
  * - when the engine stops before a terminal phase (a park, an error) it
@@ -42,6 +44,17 @@ import { type FactoryOwner, type FactoryRunKey, type OwnerDeps } from './state.j
  * thrown, never read as "no origin".
  */
 export declare function factoryClaimRepo(exec: Exec, root: string): string | null;
+/** The claim key prefix of the local forge: `local-root:<root commit sha>`. */
+export declare const LOCAL_CLAIM_PREFIX = "local-root:";
+/**
+ * The local forge's claim repository (dogfood F60): its mirror and project id
+ * are per checkout and it reads no origin, so two clones are one repository
+ * by their history: the first (sorted) root commit of HEAD, as
+ * `local-root:<sha>`, or null when HEAD has none. Read-only.
+ */
+export declare function localFactoryClaimRepo(exec: Exec, root: string): string | null;
+/** localFactoryClaimRepo through the engine's hardened git, as trustedFactoryClaimRepo. */
+export declare function trustedLocalFactoryClaimRepo(exec: Exec, root: string, ledgerDir: string): string | null;
 /**
  * factoryClaimRepo through the engine's hardened git (no hooks, no
  * fsmonitor: hardenedGitExec over the ledger dir's empty hooks dir). The

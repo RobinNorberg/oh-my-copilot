@@ -5,13 +5,15 @@
  * stays blocked for good (check: run-finished:cancelled, then pr-exists).
  *
  * Only a cancelled run whose state is still the engine's own (its integrity
- * seal and the engine ledger agree), with no live engine, and after
- * `omg factory run clean` removed its worktrees. Then:
+ * seal and the engine ledger agree), with no live engine. Then:
  * - the run's local PR is closed in the store (reason `cancelled`) if the
  *   cancel did not already close it;
  * - the run's mirror branch is kept as `factory/cancelled/<slug>-<stamp>`
  *   and removed from `factory/<slug>` with a lease on the sha read here, so
  *   the next run publishes a fresh branch (nothing the run made is lost);
+ * - the run's worktrees go first (cleanHeldFactoryRun with discard: a
+ *   cancel mid-lane leaves partial edits, dogfood F59); one holding commits
+ *   that no base or mirror branch holds refuses the reset;
  * - the run state and its engine ledger are moved aside (`.reset-<stamp>`)
  *   and the cancel request is removed, so the next `omg factory run <issue>`
  *   starts a new run.
@@ -29,6 +31,7 @@ import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir, ledgerFile
 import { checkoutWorker, FACTORY_CHECKOUT_TEAM } from './prepare.js';
 import { acquireFactoryOwner, acquireFactoryRepoOwnerForRun, factoryCancelPath, factoryStatePath, FactoryStateError, readFactoryState, runSlug, verifyFactoryIntegrity, FactoryBusyError } from './state.js';
 import { claimBusyMessage, factoryClaimHolder, removeFactoryClaim } from './claims.js';
+import { cleanHeldFactoryRun } from './clean.js';
 const HEX40 = /^[0-9a-f]{40}$/;
 /**
  * True when a ledger an earlier reset moved aside (`<ledger>.reset-<stamp>`)
@@ -119,13 +122,24 @@ export function resetFactoryRun(o) {
         throw error;
     }
     try {
-        const left = [
+        const worktrees = () => [
             ...[...new Set(state.lanes.map((l) => l.jobId).filter((id) => Boolean(id)))].map((id) => getWorktreePath(o.root, WORKTREE_TEAM, id)),
             getWorktreePath(o.root, FACTORY_CHECKOUT_TEAM, checkoutWorker(o.issue)),
         ].filter((p) => existsSync(p));
-        if (left.length > 0)
-            throw new FactoryStateError(`the cancelled run for issue #${o.issue} still has worktrees (${left.join(', ')}); run omg factory run clean ${o.issue} first`);
+        // F59: a cancel mid-lane leaves the lane's partial edits. The run is cancelled and this reset holds it, so they
+        // go with the engine's own worktrees (never the main checkout); a worktree holding commits is still kept.
         const result = {};
+        if (worktrees().length > 0) {
+            const cleaned = cleanHeldFactoryRun({ root: o.root, issue: o.issue, exec: o.exec, ledgerDir, discard: true, ...(o.owner ? { owner: o.owner } : {}) }, state);
+            if (cleaned.removed.length > 0)
+                result.removedWorktrees = cleaned.removed;
+            if (cleaned.kept.length > 0) {
+                throw new FactoryStateError(`the cancelled run for issue #${o.issue} still has worktrees that hold work: ${cleaned.kept.map((k) => `${k.worktree} (${k.reason})`).join('; ')}; nothing was reset (reset gives up uncommitted lane changes, never commits that no base or mirror branch holds)`);
+            }
+        }
+        const left = worktrees();
+        if (left.length > 0)
+            throw new FactoryStateError(`the cancelled run for issue #${o.issue} still has worktrees (${left.join(', ')}); nothing was reset`);
         if (state.pr) {
             const pr = o.forge.reviews.viewPr(state.pr);
             if (pr.state === 'OPEN') {

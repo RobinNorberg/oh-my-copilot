@@ -17741,7 +17741,14 @@ function removeWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
       gitDirArgs = worktreeGitDirArgs(wtPath);
       laneCommonDir = commonDir;
     }
-    prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, wtPath, gitDirArgs);
+    if (!options.discardChanges) prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, wtPath, gitDirArgs);
+    else if ((0, import_node_fs11.existsSync)(wtPath)) {
+      validateWorktreeRemovalTarget({
+        candidatePath: wtPath,
+        expectedRoots: [(0, import_node_path11.join)(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees")],
+        mainRepoRoots: [repoRoot]
+      });
+    }
     const baseCommit = readMetadata(repoRoot, teamName).find((entry) => entry.workerName === workerName)?.baseCommit;
     let registered;
     try {
@@ -17795,7 +17802,7 @@ function removeWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
         }
         if (isAdminDirOf(laneCommonDir, options.gitLinks.adminDir)) removeTreeByPath(options.gitLinks.adminDir);
       } else {
-        runHostGit(repoRoot, ["worktree", "remove", ...force ? ["--force"] : [], wtPath]);
+        runHostGit(repoRoot, ["worktree", "remove", ...force || options.discardChanges && !submodules ? ["--force"] : [], wtPath]);
       }
     } catch (err) {
       if (wasRegisteredWorktree && (!force || isRegisteredWorktreePath(repoRoot, wtPath))) {

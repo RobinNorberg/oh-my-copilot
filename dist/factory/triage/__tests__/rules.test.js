@@ -31,8 +31,8 @@ describe('triage rules', () => {
         // The field is unset: the tag is used and nothing is written to the field.
         expect(plan({ labels: ['priority:p1'] }, res('runnable', '', 2), 'azure-devops').action).toBe('unchanged');
     });
-    it('local: the priority frontmatter is authoritative like the ADO field', () => {
-        expect(plan({ priority: 3, labels: ['priority:p0'] }, res('runnable', '', 3), 'local')).toMatchObject({ add: ['priority:p2'], remove: ['priority:p0'], priority: null });
+    it('local: the priority frontmatter is authoritative; F55: no priority label is added next to it', () => {
+        expect(plan({ priority: 3, labels: ['priority:p0'] }, res('runnable', '', 3), 'local')).toMatchObject({ add: [], remove: ['priority:p0'], priority: null });
     });
     it('a field above 4 has no tag to match: the labels are left alone', () => {
         expect(plan({ priority: 7, labels: ['priority:p1'] }, res('runnable', '', 7), 'azure-devops').action).toBe('unchanged');

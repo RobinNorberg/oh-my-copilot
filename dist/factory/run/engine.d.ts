@@ -135,7 +135,8 @@ export interface FactoryEngineOptions {
     repoOwner?: HeldOwner;
     /**
      * The repository the cross-clone claim is keyed on (factoryClaimRepo: the
-     * trusted origin URL), null for none; omitted = factoryClaimRepo here.
+     * trusted origin URL; localFactoryClaimRepo on the local forge), null for
+     * none; omitted = read here.
      */
     claimRepo?: string | null;
     /** Directory of the engine ledger and its empty hooks dir, outside the repo (default: defaultLedgerDir()). */

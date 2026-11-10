@@ -96,7 +96,7 @@ import { jobRefProblem } from '../../copilot-run/job.js';
 import { commitLaneWork, conflictFixStart, LANE_PROTECTED_PATHS, laneCommitMessage } from './lane-commit.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir } from './ledger.js';
 import { createFactoryProgress } from './progress.js';
-import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaimRepo, settleFactoryClaim, trustedFactoryClaimRepo } from './claims.js';
+import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaimRepo, localFactoryClaimRepo, settleFactoryClaim, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo } from './claims.js';
 import { compareSnapshots, snapshotRepo, verifyReviewWorktree } from './review-guard.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted } from './plan-rules.js';
@@ -730,6 +730,7 @@ class FactoryEngine {
                     if (!(await this.settleLost(lane, 'lost at resume; its worktree is kept for inspection', humanCleared)))
                         break;
                 }
+                this.recheckAfterCiPark(existing);
             }
         }
         catch (error) {
@@ -751,6 +752,32 @@ class FactoryEngine {
         const history = notes.map((note) => ({ at, from: s.phase, to: s.phase, note }));
         // A rerun after a gate gets its retries back for the phase it re-evaluates.
         return { ...rest, retries: s.gate ? {} : s.retries, updatedAt: at, history: [...s.history, ...history] };
+    }
+    /**
+     * F58: a rerun after a ci-fix park (a failed ci-fix lane, or ci-failed)
+     * whose PR head is still the failed one re-checks that head before another
+     * billed lane: the cause may have been outside the repo. The local gate's
+     * FAILURE record is removed (checks.rerun) so the gate runs again; other
+     * forges re-read their checks. The round the failure took is given back,
+     * so a second failure takes the same round again (no round is lost).
+     */
+    recheckAfterCiPark(parked) {
+        const f = parked.ciFailure;
+        const { pr, head } = this.state;
+        if (!parked.gate || f?.source !== 'ci' || !pr || !head || f.startSha !== head || this.state.phase !== parked.phase)
+            return;
+        const fromCiFix = parked.phase === 'ci-fix';
+        if (!fromCiFix && !(parked.phase === 'gates' && parked.gate.name === 'ci-failed'))
+            return;
+        if (this.forge?.kind === 'local') {
+            for (const c of this.forge.checks.checks(pr, head)) {
+                if (c.bucket === 'fail' && c.runId)
+                    this.forge.checks.rerun(pr, c.runId);
+            }
+        }
+        if (!fromCiFix)
+            return;
+        this.save((x) => moveTo({ ...x, ciFixRounds: Math.max(0, x.ciFixRounds - 1) }, 'gates', `re-checking ${head.slice(0, 12)} before another ci-fix lane: the head is unchanged since the failure`, this.iso()));
     }
     /** The engine's own state: its in-memory copy, else the bytes of its last write in the ledger. */
     ownState() {
@@ -3205,12 +3232,12 @@ class FactoryEngine {
         const missing = (last?.threadIds ?? []).filter((id) => !present.has(id));
         const mine = missing.filter((id) => byViewer.has(id));
         const unseen = missing.filter((id) => !byViewer.has(id));
-        const gone = `${unseen.length > 0 ? `; resolved or removed since the fix round at ${last.head.slice(0, 12)}: ${this.names(unseen.map((id) => id.slice(0, 60)))}: check them on the PR` : ''}${mine.length > 0 ? `; resolved by your own login during the run: ${this.names(mine.map((id) => id.slice(0, 60)))}` : ''}`;
+        const gone = `${unseen.length > 0 ? `; resolved or removed since the fix round at ${last.head.slice(0, 12)}: ${this.names(unseen.map((id) => id.slice(0, 60)))}: ${this.forge?.kind === 'local' ? `see omg factory pr view ${pr}` : 'check them on the PR'}` : ''}${mine.length > 0 ? `; resolved by your own login during the run: ${this.names(mine.map((id) => id.slice(0, 60)))}` : ''}`;
         if (open.length > 0) {
             const outdated = open.filter((t) => t.outdated);
             const what = `${open.length} open human review thread(s)${outdated.length > 0 ? ` (${outdated.length} outdated by a later push, not resolved)` : ''}${by.length > 0 ? ` and changes requested by ${this.names(by)}` : ''} on PR #${pr} at ${head.slice(0, 12)}${commented}${ignored}`;
             if (mode === 'gate-only') {
-                this.gate(HUMAN_REVIEW_GATE, `${what}; factory.review.human is "gate-only", so no fix lane starts: address or resolve them on the ${this.forgeName} PR`);
+                this.gate(HUMAN_REVIEW_GATE, `${what}; factory.review.human is "gate-only", so no fix lane starts: ${this.forge?.kind === 'local' ? `address them, then the same reviewer clears them with omg factory pr review ${pr} --approve --head ${head} (see omg factory pr view ${pr})` : `address or resolve them on the ${this.forgeName} PR`}`);
                 return true;
             }
             const handed = new Set(last?.threadIds ?? []);
@@ -3236,7 +3263,7 @@ class FactoryEngine {
             return true;
         }
         if (by.length > 0) {
-            this.gate(HUMAN_REVIEW_GATE, `changes requested on PR #${pr} by ${this.names(by)} with no open thread on ${head.slice(0, 12)}; a request blocks until the same reviewer approves, dismisses or changes it${commented}${ignored}`);
+            this.gate(HUMAN_REVIEW_GATE, `changes requested on PR #${pr} by ${this.names(by)} with no open thread on ${head.slice(0, 12)} (its notes were on an earlier head); a request blocks until the same reviewer approves, dismisses or changes it${this.forge?.kind === 'local' ? ` (omg factory pr review ${pr} --approve --head ${head} by that reviewer; omg factory pr view ${pr} shows the request)` : ''}${commented}${ignored}`);
             return true;
         }
         // Only individual users hold the merge by default: CODEOWNERS teams and review bots are auto-requested on many repositories.
@@ -3379,15 +3406,13 @@ export function humanFeedbackDigest(fb) {
  * held, as the real claim decides (unreadableOwnerMessage).
  */
 /**
- * The repository the run's cross-clone claim is keyed on: none on the local
- * forge (its mirror is per checkout, and an offline run never reads origin),
- * else the caller's (the CLI read it before its loader), else the origin URL
- * read through `exec`.
+ * The repository the run's cross-clone claim is keyed on: the caller's (the
+ * CLI read it before its loader), else read through `exec`: the origin URL,
+ * or on the local forge (a mirror per checkout, and an offline run never
+ * reads origin) the repository's root commit (dogfood F60).
  */
 function engineClaimRepo(o, read) {
-    if (o.forge?.config.kind === 'local')
-        return null;
-    return o.claimRepo !== undefined ? o.claimRepo : read();
+    return o.claimRepo !== undefined ? o.claimRepo : read(o.forge?.config.kind === 'local');
 }
 function busyHolder(o, key) {
     const deps = o.owner ?? defaultOwnerDeps();
@@ -3396,7 +3421,7 @@ function busyHolder(o, key) {
         return h === null ? null : h === 'unreadable' ? unreadableOwnerMessage(path) : `${name} is held (${describeOwner(h)})`;
     };
     // A dry run reads git through the plain guard, as the rest of dryRun does.
-    const repo = engineClaimRepo(o, () => factoryClaimRepo(factoryGuardExec(o.exec, () => [o.base]), o.root));
+    const repo = engineClaimRepo(o, (local) => (local ? localFactoryClaimRepo : factoryClaimRepo)(factoryGuardExec(o.exec, () => [o.base]), o.root));
     const claim = repo ? factoryClaimHolder(o.ledgerDir ?? defaultLedgerDir(), repo, o.root, key, deps) : null;
     return what(factoryRepoOwnerPath(o.root), 'the engine lock of this checkout')
         ?? what(factoryOwnerPath(o.root, key), `the run of ${runLabel(key)}`)
@@ -3561,7 +3586,7 @@ export async function runFactoryEngine(o) {
     let hooksDir;
     try {
         // Like every engine git command, the origin read is hardened (the CLI's read is the same helper); its empty hooks dir is made only when the read runs.
-        const repo = engineClaimRepo(o, () => trustedFactoryClaimRepo(o.exec, o.root, dir));
+        const repo = engineClaimRepo(o, (local) => (local ? trustedLocalFactoryClaimRepo : trustedFactoryClaimRepo)(o.exec, o.root, dir));
         if (repo)
             claim = acquireFactoryClaim(dir, repo, o.root, key, now, o.owner);
         owner = acquireFactoryOwner(o.root, key, now, o.owner);

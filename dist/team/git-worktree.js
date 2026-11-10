@@ -1167,7 +1167,9 @@ export function prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, 
  * With the worktree directory already gone, the named branch is checked the
  * same way and kept when it holds unmerged worker commits. `contained`: commits
  * (full shas the caller verified, e.g. a fetched remote branch) whose history
- * also counts as merged.
+ * also counts as merged. `discardChanges`: the caller gives up the
+ * worktree's uncommitted changes (a cancelled factory run's lane): a dirty
+ * tree is removed too; the path guard and the commit checks still apply.
  */
 export function removeWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
     const contained = options.contained ?? [];
@@ -1194,7 +1196,15 @@ export function removeWorkerWorktree(teamName, workerName, repoRoot, options = {
             gitDirArgs = worktreeGitDirArgs(wtPath);
             laneCommonDir = commonDir;
         }
-        prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, wtPath, gitDirArgs);
+        if (!options.discardChanges)
+            prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, wtPath, gitDirArgs);
+        else if (existsSync(wtPath)) {
+            validateWorktreeRemovalTarget({
+                candidatePath: wtPath,
+                expectedRoots: [join(getOmcRoot(repoRoot), 'team', sanitizeName(teamName), 'worktrees')],
+                mainRepoRoots: [repoRoot],
+            });
+        }
         const baseCommit = readMetadata(repoRoot, teamName).find((entry) => entry.workerName === workerName)?.baseCommit;
         let registered;
         try {
@@ -1277,7 +1287,7 @@ export function removeWorkerWorktree(teamName, workerName, repoRoot, options = {
                     removeTreeByPath(options.gitLinks.adminDir);
             }
             else {
-                runHostGit(repoRoot, ['worktree', 'remove', ...(force ? ['--force'] : []), wtPath]);
+                runHostGit(repoRoot, ['worktree', 'remove', ...(force || (options.discardChanges && !submodules) ? ['--force'] : []), wtPath]);
             }
         }
         catch (err) {

@@ -5,13 +5,15 @@
  * stays blocked for good (check: run-finished:cancelled, then pr-exists).
  *
  * Only a cancelled run whose state is still the engine's own (its integrity
- * seal and the engine ledger agree), with no live engine, and after
- * `omg factory run clean` removed its worktrees. Then:
+ * seal and the engine ledger agree), with no live engine. Then:
  * - the run's local PR is closed in the store (reason `cancelled`) if the
  *   cancel did not already close it;
  * - the run's mirror branch is kept as `factory/cancelled/<slug>-<stamp>`
  *   and removed from `factory/<slug>` with a lease on the sha read here, so
  *   the next run publishes a fresh branch (nothing the run made is lost);
+ * - the run's worktrees go first (cleanHeldFactoryRun with discard: a
+ *   cancel mid-lane leaves partial edits, dogfood F59); one holding commits
+ *   that no base or mirror branch holds refuses the reset;
  * - the run state and its engine ledger are moved aside (`.reset-<stamp>`)
  *   and the cancel request is removed, so the next `omg factory run <issue>`
  *   starts a new run.
@@ -25,6 +27,8 @@ export interface FactoryResetResult {
     closedPr?: number;
     /** Where the run's mirror branch is kept (absent: the mirror had no such branch). */
     keptBranch?: string;
+    /** The run's worktrees this reset removed (uncommitted lane changes given up). */
+    removedWorktrees?: string[];
     /** Where the old run state was moved. */
     stateMovedTo: string;
 }

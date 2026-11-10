@@ -11,8 +11,10 @@
  * checkout (the engine ledger's directory, which the lane sandbox denies).
  * `<repo>` hashes the repository's identity (claimRepoKey over the trusted
  * origin remote, trustedFactoryClaimRepo), so every clone of one repository
- * shares the directory. The local forge makes no claim (its mirror is per
- * checkout). The claim lives as long as the run is not terminal:
+ * shares the directory. The local forge has no origin and a mirror per
+ * checkout, so its claims are keyed on the repository's root commit
+ * (localFactoryClaimRepo, dogfood F60): clones of one history share them.
+ * The claim lives as long as the run is not terminal:
  * - a live engine holds it (pid, host and start identity, as state.ts's
  *   owner files);
  * - when the engine stops before a terminal phase (a park, an error) it
@@ -60,6 +62,31 @@ export function factoryClaimRepo(exec, root) {
         return null;
     }
 }
+/** The claim key prefix of the local forge: `local-root:<root commit sha>`. */
+export const LOCAL_CLAIM_PREFIX = 'local-root:';
+const HEX40 = /^[0-9a-f]{40}$/;
+/**
+ * The local forge's claim repository (dogfood F60): its mirror and project id
+ * are per checkout and it reads no origin, so two clones are one repository
+ * by their history: the first (sorted) root commit of HEAD, as
+ * `local-root:<sha>`, or null when HEAD has none. Read-only.
+ */
+export function localFactoryClaimRepo(exec, root) {
+    try {
+        const got = exec('git', ['rev-list', '--max-parents=0', 'HEAD'], { cwd: root, env: TRUSTED_READ_ENV });
+        const roots = got.status === 0 ? got.stdout.split(/\s+/).filter((l) => HEX40.test(l)).sort() : [];
+        return roots.length > 0 ? `${LOCAL_CLAIM_PREFIX}${roots[0]}` : null;
+    }
+    catch (error) {
+        if (error instanceof FactorySafetyError)
+            throw error;
+        return null;
+    }
+}
+/** localFactoryClaimRepo through the engine's hardened git, as trustedFactoryClaimRepo. */
+export function trustedLocalFactoryClaimRepo(exec, root, ledgerDir) {
+    return localFactoryClaimRepo(hardenedGitExec(exec, emptyHooksDir(ledgerDir)), root);
+}
 /**
  * factoryClaimRepo through the engine's hardened git (no hooks, no
  * fsmonitor: hardenedGitExec over the ledger dir's empty hooks dir). The
@@ -88,7 +115,9 @@ const GITHUB_ALIASES = new Set(['ssh.github.com', 'www.github.com']);
  * (canonicalPath), so one directory never gets two keys.
  */
 export function claimRepoKey(repoUrl, root, platform = process.platform) {
-    const id = repoIdentity(repoUrl);
+    // A local-forge key names a commit, not a path: never resolved against the checkout.
+    const local = repoUrl.startsWith(LOCAL_CLAIM_PREFIX) && HEX40.test(repoUrl.slice(LOCAL_CLAIM_PREFIX.length));
+    const id = local ? repoUrl : repoIdentity(repoUrl);
     let key = id;
     if (id.startsWith('gh:')) {
         const [host, ...rest] = id.slice(3).split('/');

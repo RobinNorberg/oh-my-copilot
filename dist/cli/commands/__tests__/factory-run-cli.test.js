@@ -367,7 +367,7 @@ describe('omg factory run CLI', () => {
             expect(text).toContain(`unreadable owner file (held until removed: omg factory run release): ${factoryOwnerPath(h.root, 14)}`);
             expect(text).not.toContain('\u001b[2J');
         });
-        it('on the local forge the CLI keys no claim, as the engine: an origin-keyed claim on #7 makes nothing busy, is not listed and is not released', async () => {
+        it('on the local forge the CLI keys claims on the root commit, as the engine (F60): an origin-keyed claim on #7 makes nothing busy, is not listed and is not released', async () => {
             lanes = new FakeLanes(h.root, []);
             const { claim } = otherClone(7);
             const forgeKinds = [];

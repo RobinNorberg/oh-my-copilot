@@ -10,7 +10,9 @@
  * remote ref (GitHub's base after a fetch, the PR branch on the run's remote, origin or the local forge's omg-local mirror) holds is
  * kept. The remote PR branch itself is never deleted. clean's own git
  * (remote check, fetch, ls-remote) runs guarded and hardened like the
- * engine's: no hooks, no fsmonitor.
+ * engine's: no hooks, no fsmonitor. `discard` (a cancelled run only, dogfood
+ * F59): a lane worktree's or the prepare checkout's uncommitted changes are
+ * given up so the tree goes too; committed work is still kept.
  */
 import { existsSync } from 'fs';
 import { WORKTREE_TEAM } from '../../copilot-run/job.js';
@@ -34,6 +36,8 @@ export function cleanFactoryRun(o) {
     if (state.phase !== 'merged' && state.phase !== 'cancelled') {
         throw new FactoryStateError(`the factory run for issue #${o.issue} is ${state.phase}${state.gate ? ` (awaiting-human: ${state.gate.name})` : ''}; clean removes the worktrees of a merged or cancelled run only (omg factory run cancel ${o.issue} first)`);
     }
+    if (o.discard && state.phase !== 'cancelled')
+        throw new FactoryStateError(`the factory run for issue #${o.issue} is ${state.phase}; --discard gives up uncommitted lane changes of a cancelled run only`);
     // A live engine in this checkout refuses (busy, exit 6) before any git operation: clean removes worktrees and
     // branches in the shared git dir, which that engine's tamper check would see. Then the issue's own owner file.
     const now = o.now ?? new Date().toISOString();
@@ -47,52 +51,60 @@ export function cleanFactoryRun(o) {
         throw error;
     }
     try {
-        // A merged or cancelled run frees its claim; one this checkout left behind (a crash) goes now.
-        if (o.claimRepo)
-            removeFactoryClaim(o.ledgerDir ?? defaultLedgerDir(), o.claimRepo, o.root, o.issue, { onlyRoot: true, ...(o.owner ? { deps: o.owner } : {}) });
-        // No hook or fsmonitor a lane planted runs in clean's fetch and ls-remote.
-        const exec = factoryGuardExec(hardenedGitExec(o.exec, emptyHooksDir(o.ledgerDir ?? defaultLedgerDir())), () => [state.base]);
-        const git = (args) => exec('git', args, { cwd: o.root, env: TRUSTED_READ_ENV });
-        const remote = runRemote(state);
-        const mismatch = state.remote === LOCAL_REMOTE ? localRemoteMismatch(exec, o.root, state.repoUrl) : remoteRepoMismatch(exec, o.root, remote, state.repoUrl);
-        if (mismatch)
-            throw new FactoryStateError(`refusing to fetch: ${mismatch}`);
-        const fetched = git(['fetch', remote, state.base]);
-        if (fetched.status !== 0)
-            throw new FactoryStateError(`git fetch ${remote} ${state.base} failed: ${fetched.stderr.trim().split('\n')[0]}`);
-        const contained = [];
-        const base = git(['rev-parse', '--verify', `refs/remotes/${remote}/${state.base}`]).stdout.trim();
-        if (HEX40.test(base))
-            contained.push(base);
-        const listed = exec('git', ['ls-remote', remote, `refs/heads/${state.branch}`], { cwd: o.root });
-        const pushed = listed.status === 0 ? listed.stdout.trim().split(/\s+/)[0] : '';
-        if (HEX40.test(pushed) && git(['cat-file', '-e', `${pushed}^{commit}`]).status === 0)
-            contained.push(pushed);
-        const targets = [
-            ...[...new Set(state.lanes.map((l) => l.jobId).filter((id) => Boolean(id)))].map((id) => [WORKTREE_TEAM, id]),
-            [FACTORY_CHECKOUT_TEAM, checkoutWorker(o.issue)],
-        ];
-        const result = { removed: [], kept: [], contained };
-        for (const [team, worker] of targets) {
-            const path = getWorktreePath(o.root, team, worker);
-            const existed = existsSync(path);
-            // The engine's node_modules link in its prepare checkout (untracked on POSIX for a `node_modules/` ignore line).
-            if (team === FACTORY_CHECKOUT_TEAM)
-                unlinkNodeModules(o.root, path);
-            try {
-                removeWorkerWorktree(team, worker, o.root, { contained });
-                if (existed)
-                    result.removed.push(path);
-            }
-            catch (error) {
-                result.kept.push({ worktree: path, reason: error instanceof Error ? error.message : String(error) });
-            }
-        }
-        return result;
+        return cleanHeldFactoryRun(o, state);
     }
     finally {
         owner.release();
         repoOwner.release();
     }
+}
+/**
+ * The body of cleanFactoryRun for a caller that already holds this
+ * checkout's engine lock and the run's owner file (reset), with the run
+ * state it checked.
+ */
+export function cleanHeldFactoryRun(o, state) {
+    // A merged or cancelled run frees its claim; one this checkout left behind (a crash) goes now.
+    if (o.claimRepo)
+        removeFactoryClaim(o.ledgerDir ?? defaultLedgerDir(), o.claimRepo, o.root, o.issue, { onlyRoot: true, ...(o.owner ? { deps: o.owner } : {}) });
+    // No hook or fsmonitor a lane planted runs in clean's fetch and ls-remote.
+    const exec = factoryGuardExec(hardenedGitExec(o.exec, emptyHooksDir(o.ledgerDir ?? defaultLedgerDir())), () => [state.base]);
+    const git = (args) => exec('git', args, { cwd: o.root, env: TRUSTED_READ_ENV });
+    const remote = runRemote(state);
+    const mismatch = state.remote === LOCAL_REMOTE ? localRemoteMismatch(exec, o.root, state.repoUrl) : remoteRepoMismatch(exec, o.root, remote, state.repoUrl);
+    if (mismatch)
+        throw new FactoryStateError(`refusing to fetch: ${mismatch}`);
+    const fetched = git(['fetch', remote, state.base]);
+    if (fetched.status !== 0)
+        throw new FactoryStateError(`git fetch ${remote} ${state.base} failed: ${fetched.stderr.trim().split('\n')[0]}`);
+    const contained = [];
+    const base = git(['rev-parse', '--verify', `refs/remotes/${remote}/${state.base}`]).stdout.trim();
+    if (HEX40.test(base))
+        contained.push(base);
+    const listed = exec('git', ['ls-remote', remote, `refs/heads/${state.branch}`], { cwd: o.root });
+    const pushed = listed.status === 0 ? listed.stdout.trim().split(/\s+/)[0] : '';
+    if (HEX40.test(pushed) && git(['cat-file', '-e', `${pushed}^{commit}`]).status === 0)
+        contained.push(pushed);
+    const targets = [
+        ...[...new Set(state.lanes.map((l) => l.jobId).filter((id) => Boolean(id)))].map((id) => [WORKTREE_TEAM, id]),
+        [FACTORY_CHECKOUT_TEAM, checkoutWorker(o.issue)],
+    ];
+    const result = { removed: [], kept: [], contained };
+    for (const [team, worker] of targets) {
+        const path = getWorktreePath(o.root, team, worker);
+        const existed = existsSync(path);
+        // The engine's node_modules link in its prepare checkout (untracked on POSIX for a `node_modules/` ignore line).
+        if (team === FACTORY_CHECKOUT_TEAM)
+            unlinkNodeModules(o.root, path);
+        try {
+            removeWorkerWorktree(team, worker, o.root, { contained, ...(o.discard ? { discardChanges: true } : {}) });
+            if (existed)
+                result.removed.push(path);
+        }
+        catch (error) {
+            result.kept.push({ worktree: path, reason: error instanceof Error ? error.message : String(error) });
+        }
+    }
+    return result;
 }
 //# sourceMappingURL=clean.js.map

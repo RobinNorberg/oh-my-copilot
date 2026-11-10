@@ -335,6 +335,9 @@ function factoryGit(a, protectedBranches, extraProtected = [], local, agent) {
                 return isPlainRepoPath(r[3]);
             return null;
         case 'rev-list':
+            // The local forge's claim key (localFactoryClaimRepo, F60): the root commits of HEAD, read-only.
+            if (same(r, ['--max-parents=0', 'HEAD']))
+                return true;
             // Publish check: the commits of the prepared head beyond the reviewed head and GitHub's base.
             return r.length === 3 && /^[0-9a-f]{40}$/.test(r[0]) && /^\^[0-9a-f]{40}$/.test(r[1]) && /^\^[0-9a-f]{40}$/.test(r[2]) ? true : null;
         case 'worktree':
