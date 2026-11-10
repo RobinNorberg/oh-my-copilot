@@ -124,12 +124,16 @@ export const PROTECTED_PATHS = [
  * segment dropped, `.` segments dropped), so `.github/workflows./ci.yml` and
  * `.copilot/omg.jsonc.` hit. A path Windows could resolve elsewhere (a segment
  * with `:` or `~`, an alternate stream or 8.3 short name, or a `..` segment)
- * always counts as protected.
+ * always counts as protected. Case folding is Unicode-wide (NFKC, default-
+ * ignorable code points such as U+200C stripped, upper then lower case), so
+ * a look-alike APFS or HFS+ would open as the protected file (`.huſky/`,
+ * `.github/workflowſ/`) hits too.
  */
 export function protectedChanges(changed, extra = []) {
-    const rules = [...PROTECTED_PATHS, ...extra].map((p) => p.toLowerCase());
+    const fold = (s) => s.normalize('NFKC').replace(/\p{Default_Ignorable_Code_Point}/gu, '').toUpperCase().toLowerCase().normalize('NFKC');
+    const rules = [...PROTECTED_PATHS, ...extra].map(fold);
     return changed.filter((raw) => {
-        const segments = raw.replace(/\\/g, '/').trim().toLowerCase().split('/');
+        const segments = fold(raw.replace(/\\/g, '/').trim()).split('/');
         if (segments.some((s) => /[:~]/.test(s) || s === '..'))
             return true;
         const f = segments.map((s) => s.replace(/[. ]+$/, '')).filter(Boolean).join('/');

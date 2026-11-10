@@ -13,6 +13,8 @@
  *   <work>/<repo8>/<slug>/jobs       copilot_run job dirs
  *   <work>/<repo8>/<slug>/run.lock
  *
+ * The private repository is a full copy of the seed (no alternates), and
+ * the seed, like `<work>/<repo8>` as a whole, must stay read-only to lanes.
  * Objects travel only by sealed sha: user repository -> seed -> private on
  * the way in (ensureSeed, fetchIntoPrivate), private -> user repository on
  * the way out (importFromPrivate, the audit 6/6 import minus the push).
@@ -33,8 +35,8 @@
  * the message). importFromPrivate returns a typed result whose reasons are
  * fixed text: nothing a lane wrote (paths, ref names, git output) is in them.
  */
-import { createHash } from 'crypto';
-import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmdirSync, unlinkSync, writeFileSync } from 'fs';
+import { createHash, randomBytes } from 'crypto';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, statSync, unlinkSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { basename, dirname, isAbsolute, join, resolve } from 'path';
 import { defaultExec } from '../../ship/exec.js';
@@ -56,7 +58,11 @@ const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const REPO_KEY = /^[0-9a-f]{8,64}$/;
 const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const RUN_LABEL = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
-/** The path with its deepest existing ancestor resolved through links (realpath), the rest appended. */
+/**
+ * The path with its deepest existing ancestor resolved through links
+ * (realpath), the rest appended. A dangling link or any error other than a
+ * missing path is a PrivateStoreError (review-481 L9).
+ */
 function canonicalExisting(p) {
     let head = resolve(p);
     const tail = [];
@@ -64,13 +70,31 @@ function canonicalExisting(p) {
         try {
             return join(realpathSync.native(head), ...tail);
         }
-        catch {
+        catch (err) {
+            if (err.code !== 'ENOENT')
+                throw new PrivateStoreError(`the path ${resolve(p)} cannot be resolved`, String(err.message));
+            if (lexists(head))
+                throw new PrivateStoreError(`the path ${resolve(p)} holds a dangling link at ${head}`);
             const up = dirname(head);
             if (up === head)
                 return resolve(p);
             tail.unshift(basename(head));
             head = up;
         }
+    }
+}
+/**
+ * isUnderRoot that folds case on darwin as on win32 (APFS and HFS+ are
+ * case-insensitive by default; review-481 L8; isUnderRoot folds on win32
+ * only, so darwin is passed as win32, which changes nothing but the fold),
+ * and whose errors (a dangling link) are PrivateStoreErrors (L9).
+ */
+function under(p, root, platform) {
+    try {
+        return isUnderRoot(p, root, platform === 'darwin' ? 'win32' : platform);
+    }
+    catch (err) {
+        throw new PrivateStoreError(`the path ${resolve(p)} or ${resolve(root)} cannot be resolved`, String(err.message));
     }
 }
 /**
@@ -107,7 +131,7 @@ export function privateWorkRoot(input) {
     const w = canonicalExisting(work);
     for (const [name, p] of [['the repository', input.root], ['the OMC state root', input.omcRoot]]) {
         const c = canonicalExisting(p);
-        if (isUnderRoot(w, c, platform) || isUnderRoot(c, w, platform))
+        if (under(w, c, platform) || under(c, w, platform))
             throw new PrivateStoreError(`the private work root ${work} and ${name} ${resolve(p)} must not contain one another; set factory.run.workDir elsewhere`);
     }
     return work;
@@ -169,6 +193,15 @@ function toolsProblem(t) {
     }
     return null;
 }
+/** Ten minutes: a first seed fetch or clone of a large repository, or the seed fsck, fits; a hung pack or a FIFO include does not hang the engine (review-481 L7). */
+export const PRIVATE_GIT_TIMEOUT_MS = 600_000;
+/** A git command here ran out of time and was killed; fixed text. */
+export class PrivateGitTimeout extends PrivateStoreError {
+    constructor(ms) {
+        super(`a private store git command timed out after ${ms} ms and was killed`);
+        this.name = 'PrivateGitTimeout';
+    }
+}
 /**
  * `-c` pairs on every command here (the git process itself). Hooks,
  * fsmonitor, pager, external diff, alternate-ref commands off; commit-graph
@@ -207,10 +240,18 @@ export function uploadPackCommand(tools) {
     ];
     return ['git', ...pins.flatMap((kv) => ['-c', sq(kv)]), 'upload-pack'].join(' ');
 }
-/** The environment on top of scrubShipEnv: no system config, the empty global config, no replace objects, no grafts, no prompts, no LFS download. */
+/**
+ * The environment on top of scrubShipEnv: no system config, the empty global
+ * config, no replace objects, no grafts, no prompts, no LFS download, and no
+ * lazy fetch: a promisor remote planted in a repository's config (its
+ * uploadpack a command) would otherwise run on any read of a missing object,
+ * a plain `ls-tree` or `cat-file -e` included (review-481 HIGH-1); with it a
+ * missing object is an error, and a partial-clone user repository fails
+ * closed.
+ */
 export function privateGitEnv(tools) {
     return {
-        GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: tools.globalConfig, GIT_NO_REPLACE_OBJECTS: '1',
+        GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: tools.globalConfig, GIT_NO_REPLACE_OBJECTS: '1', GIT_NO_LAZY_FETCH: '1',
         // Inside the hooks dir, which is checked empty before every command: no graft file can exist there.
         GIT_GRAFT_FILE: join(tools.hooksDir, 'grafts'),
         GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', GIT_LFS_SKIP_SMUDGE: '1', GIT_ATTR_NOSYSTEM: '1',
@@ -220,7 +261,13 @@ function git(ctx, cwd, args) {
     const problem = toolsProblem(ctx.tools);
     if (problem)
         throw new PrivateStoreError(problem);
-    return (ctx.exec ?? defaultExec)('git', [...privateGitPins(ctx.tools), ...args], { cwd, env: privateGitEnv(ctx.tools) });
+    const timeoutMs = ctx.timeoutMs ?? PRIVATE_GIT_TIMEOUT_MS;
+    const started = Date.now();
+    const r = (ctx.exec ?? defaultExec)('git', [...privateGitPins(ctx.tools), ...args], { cwd, env: privateGitEnv(ctx.tools), timeoutMs });
+    // spawnSync kills the child at the timeout and reports a failure; a failure that took the whole budget is that kill.
+    if (r.status !== 0 && Date.now() - started >= timeoutMs)
+        throw new PrivateGitTimeout(timeoutMs);
+    return r;
 }
 function gitOk(ctx, cwd, args, what) {
     const r = git(ctx, cwd, args);
@@ -284,9 +331,9 @@ function replaceProblem(ctx, gitDir, what) {
         return `${what} refs cannot be listed`;
     return r.stdout.trim() ? `${what} has replace refs (refs/replace/*)` : null;
 }
-/** `key -> value` of one config file, no includes followed; null when git cannot read it. */
-function configFile(ctx, gitDir) {
-    const r = git(ctx, gitDir, ['config', '--file', join(gitDir, 'config'), '--list', '-z']);
+/** `key -> value` of one config file (default `<gitDir>/config`), no includes followed; null when git cannot read it. */
+function configFile(ctx, gitDir, file = join(gitDir, 'config')) {
+    const r = git(ctx, gitDir, ['config', '--file', file, '--list', '-z']);
     if (r.status !== 0)
         return null;
     const out = new Map();
@@ -309,6 +356,12 @@ function engineConfigProblem(ctx, gitDir, what, bare) {
     const cfg = configFile(ctx, gitDir);
     if (!cfg)
         return `${what} config cannot be read`;
+    // A partial clone (extensions.partialClone, a promisor remote) lazy-fetches through a remote's uploadpack command: review-481 HIGH-1.
+    if ([...cfg.keys()].some((k) => k === 'extensions.partialclone' || /^remote\..*\.(?:promisor|partialclonefilter)$/.test(k)))
+        return `${what} config makes it a partial clone (promisor remote)`;
+    // Format version 1 exactly when the one extension the engine allows (the object format) is set, else 0; any other extension is refused below.
+    if (cfg.get('core.repositoryformatversion')?.[0] !== (cfg.has('extensions.objectformat') ? '1' : '0'))
+        return `${what} config has a repository format version the engine did not write`;
     for (const [key, values] of cfg) {
         const allowed = ENGINE_CONFIG[key];
         if (!allowed || values.length !== 1 || !allowed.includes(values[0].toLowerCase()))
@@ -424,35 +477,175 @@ export function userRepoProblem(gitDir, ctx, paths = []) {
     return null;
 }
 /**
+ * The config keys (lower case) the user guard hashes: those that make git
+ * run a program, load more config, or redirect a transport or the
+ * repository (the lead's rule on review-481 L5/M4), plus the other
+ * program-running keys git has (core.editor/pager/askpass, sequence.editor,
+ * pager.*, difftool/mergetool cmds, submodule.*.update, http proxies). Not
+ * branch.*, remote.*.url/fetch/pushurl, user.*, core.sparseCheckout or
+ * extensions.worktreeConfig (config.worktree files are hashed whether or not
+ * it is on): the user's own `push -u`, `remote add`, `sparse-checkout` write
+ * those, and the guard must not park on the user's ordinary git activity.
+ */
+const DANGEROUS_CONFIG = [
+    /^core\.(?:hookspath|fsmonitor|sshcommand|gitproxy|alternaterefscommand|worktree|bare|editor|pager|askpass)$/,
+    /^extensions\.(?!worktreeconfig$)/, /^filter\./, /^diff\..+\.(?:textconv|command)$/, /^diff\.external$/, /^merge\..+\.driver$/, /^gpg\./,
+    /^credential\.(?:.+\.)?helper$/, /^url\..+\.(?:insteadof|pushinsteadof)$/, /^uploadpack\./, /^receive\./,
+    /^remote\..+\.(?:uploadpack|receivepack|promisor|proxy)$/, /^include\./, /^includeif\./, /^protocol\./, /^alias\./,
+    /^sequence\.editor$/, /^pager\./, /^(?:diff|merge)tool\..+\.cmd$/, /^submodule\..+\.update$/, /^http\.(?:.+\.)?proxy$/,
+];
+/** git's own include depth limit: deeper is refused (the item reads `unreadable`, which always counts as changed). */
+const MAX_INCLUDE_DEPTH = 10;
+const expandHome = (p) => (p === '~' ? homedir() : p.startsWith('~/') ? join(homedir(), p.slice(2)) : p);
+/**
+ * Records of the dangerous keys in `file` and every file it includes
+ * (include.path and includeIf.*.path whatever the condition, relative to the
+ * including file's dir), depth-bounded; files with no dangerous key add
+ * nothing, so a new worktree or an empty config.worktree changes nothing.
+ * Returns false when a file is unreadable, not a regular file, or the depth
+ * is exceeded. Collects every core.hooksPath value it meets in `hooksPaths`.
+ */
+function dangerousConfig(ctx, file, out, hooksPaths, depth = 0) {
+    if (depth > MAX_INCLUDE_DEPTH)
+        return false;
+    let st;
+    try {
+        st = lstatSync(file);
+    }
+    catch {
+        return true; // absent: git ignores a missing include and a missing config.
+    }
+    if (st.isSymbolicLink()) {
+        out.push(`${file}\0link\0${safeReadlink(file)}`);
+        try {
+            st = statSync(file);
+        }
+        catch {
+            return true;
+        }
+    }
+    if (!st.isFile())
+        return false; // a FIFO or a dir: git would hang or fail on it.
+    // cwd: the engine's empty hooks dir, never a dir the include names (git would discover a repository there).
+    const cfg = configFile(ctx, ctx.tools.hooksDir, file);
+    if (!cfg)
+        return false;
+    let ok = true;
+    for (const [key, values] of cfg) {
+        if (!DANGEROUS_CONFIG.some((re) => re.test(key)))
+            continue;
+        out.push(`${file}\0${key}\0${values.join('\0')}`);
+        if (key === 'core.hookspath')
+            for (const v of values)
+                hooksPaths.add(v);
+        if (/^include(?:if\..*)?\.path$/.test(key)) {
+            for (const v of values)
+                ok = dangerousConfig(ctx, resolve(dirname(file), expandHome(v)), out, hooksPaths, depth + 1) && ok;
+        }
+    }
+    return ok;
+}
+const digest = (parts) => createHash('sha256').update(parts.join('\0\0')).digest('hex');
+/** Records for the submodule git dirs under `dir` (modules/<name>, names may hold `/`, nested modules/ too): each one's hooks/ listing and dangerous config. */
+function modulesRecords(ctx, dir, rel, out, hooksPaths, depth = 0) {
+    if (!lexists(dir))
+        return true;
+    if (!isPlainDir(dir) || depth > 32) {
+        out.push(`${rel}\0not-a-plain-dir\0${fileHash(dir)}`);
+        return true;
+    }
+    if (lexists(join(dir, 'HEAD')) || lexists(join(dir, 'config'))) {
+        out.push(`${rel}\0hooks\0${listingHash(join(dir, 'hooks'))}`);
+        const ok = dangerousConfig(ctx, join(dir, 'config'), out, hooksPaths) && dangerousConfig(ctx, join(dir, 'config.worktree'), out, hooksPaths);
+        return modulesRecords(ctx, join(dir, 'modules'), `${rel}/modules`, out, hooksPaths, depth + 1) && ok;
+    }
+    let ok = true;
+    for (const name of readdirSync(dir).sort())
+        ok = modulesRecords(ctx, join(dir, name), `${rel}/${name}`, out, hooksPaths, depth + 1) && ok;
+    return ok;
+}
+/**
  * The narrow user-repository guard the engine takes under the import lock
- * (design 6/8): hashes of what can make git (or the user's next git command)
- * run something or answer differently: hooks/, the core.hooksPath dir,
- * config, config.worktree, the files config includes (one level), info/
- * (minus info/refs), shallow, alternates, http-alternates, refs/replace/*,
- * and redirect entries. Not commit-graph, multi-pack-index, bitmaps,
- * objects/info/packs or info/refs: the user's own gc and maintenance rewrite
- * them, and every command here pins them off (review-476 M-E).
+ * (design 6/8; review-481 M4 with the lead's L5 rule): hashes of only what
+ * can make git (or the user's next git command) run something or go
+ * elsewhere:
+ * - `config`: the dangerous keys (DANGEROUS_CONFIG) of config,
+ *   config.worktree, worktrees/<id>/config.worktree and every file they
+ *   include (depth-bounded);
+ * - `hooks`: hooks/; `hooksPath`: the effective core.hooksPath (merged
+ *   config: local, worktree, includes) and every value met in the files
+ *   above, each with its dir's listing;
+ * - `modules`: each submodule git dir's hooks/ and dangerous config;
+ * - `worktrees`: entries whose commondir is not the stock `../..` or whose
+ *   commondir/gitdir is not a regular file (a redirect); a plain
+ *   `git worktree add` changes nothing;
+ * - `grafts`, `shallow`, alternates, http-alternates, refs/replace/*, and
+ *   redirect entries.
+ * Not branch.*, remote urls, user.*, info/exclude, info/sparse-checkout,
+ * commit-graph, multi-pack-index, packs or info/refs: the user's own
+ * `push -u`, `remote add`, `sparse-checkout`, gc and maintenance write those,
+ * and every command here pins the graph files off (review-476 M-E).
  */
 export function userRepoGuardSnapshot(gitDir, ctx) {
-    const configPath = join(gitDir, 'config');
-    const cfg = lexists(configPath) ? configFile(ctx, gitDir) : new Map();
     const base = dirname(gitDir);
-    const expand = (p) => (p.startsWith('~/') ? join(homedir(), p.slice(2)) : p);
-    const includes = cfg === null ? 'unreadable' : createHash('sha256').update([...cfg].filter(([k]) => /^include(?:if\..*)?\.path$/.test(k)).flatMap(([, vs]) => vs)
-        .map((v) => `${v}\0${fileHash(resolve(gitDir, expand(v)))}`).join('\0')).digest('hex');
-    const hooksPath = cfg?.get('core.hookspath')?.at(-1);
+    const hooksPaths = new Set();
+    const cfgOut = [];
+    let cfgOk = dangerousConfig(ctx, join(gitDir, 'config'), cfgOut, hooksPaths) && dangerousConfig(ctx, join(gitDir, 'config.worktree'), cfgOut, hooksPaths);
+    const wtOut = [];
+    const wtDir = join(gitDir, 'worktrees');
+    if (lexists(wtDir) && !isPlainDir(wtDir))
+        wtOut.push(`worktrees\0not-a-plain-dir\0${fileHash(wtDir)}`);
+    else if (lexists(wtDir)) {
+        for (const id of readdirSync(wtDir).sort()) {
+            const d = join(wtDir, id);
+            if (!isPlainDir(d)) {
+                wtOut.push(`${id}\0not-a-plain-dir\0${fileHash(d)}`);
+                continue;
+            }
+            cfgOk = dangerousConfig(ctx, join(d, 'config.worktree'), cfgOut, hooksPaths) && cfgOk;
+            const commondir = fileHash(join(d, 'commondir'));
+            let stock = false;
+            try {
+                stock = lstatSync(join(d, 'commondir')).isFile() && readFileSync(join(d, 'commondir'), 'utf8').trim() === '../..';
+            }
+            catch { /* absent: hashed below */ }
+            const gitdirKind = lexists(join(d, 'gitdir')) ? (lstatSync(join(d, 'gitdir')).isFile() ? 'file' : `not-a-file:${fileHash(join(d, 'gitdir'))}`) : 'absent';
+            if (!stock || gitdirKind.startsWith('not-a-file'))
+                wtOut.push(`${id}\0commondir\0${commondir}\0gitdir\0${gitdirKind}`);
+        }
+    }
+    const modOut = [];
+    const modOk = modulesRecords(ctx, join(gitDir, 'modules'), 'modules', modOut, new Set());
+    // The effective value, as the user's git reads it: merged config minus the engine's own command-line pin.
+    const eff = git(ctx, gitDir, [`--git-dir=${gitDir}`, 'config', '-z', '--show-scope', '--get-all', 'core.hookspath']);
+    let effective = 'unset';
+    if (eff.status > 1)
+        effective = 'unreadable';
+    else if (eff.status === 0) {
+        const parts = eff.stdout.split('\0');
+        const values = [];
+        for (let i = 0; i + 1 < parts.length; i += 2)
+            if (parts[i] !== 'command')
+                values.push(parts[i + 1]);
+        if (values.length > 0) {
+            effective = values[values.length - 1];
+            hooksPaths.add(effective);
+        }
+    }
+    const hooksPath = effective === 'unreadable' ? 'unreadable'
+        : digest([`effective\0${effective}`, ...[...hooksPaths].sort().map((v) => `${v}\0${listingHash(resolve(base, expandHome(v)))}`)]);
     const replace = git(ctx, gitDir, [`--git-dir=${gitDir}`, 'for-each-ref', '--format=%(refname) %(objectname)', 'refs/replace/']);
     return {
         gitDir,
         items: {
             gitdir: resolve(gitDir),
             redirect: ['.git', 'commondir', 'gitdir'].map((e) => `${e}:${fileHash(join(gitDir, e))}`).join(','),
-            config: fileHash(configPath),
-            'config.worktree': fileHash(join(gitDir, 'config.worktree')),
-            includes,
+            config: cfgOk ? digest(cfgOut) : 'unreadable',
             hooks: listingHash(join(gitDir, 'hooks')),
-            hooksPath: hooksPath ? `${hooksPath}\0${listingHash(resolve(base, expand(hooksPath)))}` : 'unset',
-            info: listingHash(join(gitDir, 'info'), (rel) => rel === 'refs'),
+            hooksPath,
+            modules: modOk ? digest(modOut) : 'unreadable',
+            worktrees: digest(wtOut),
+            grafts: fileHash(join(gitDir, 'info', 'grafts')),
             shallow: fileHash(join(gitDir, 'shallow')),
             alternates: fileHash(join(gitDir, 'objects', 'info', 'alternates')),
             'http-alternates': fileHash(join(gitDir, 'objects', 'info', 'http-alternates')),
@@ -460,9 +653,22 @@ export function userRepoGuardSnapshot(gitDir, ctx) {
         },
     };
 }
-/** The items that differ (fixed names); empty = unchanged. */
+/** The items that differ (fixed names); empty = unchanged. An `unreadable` item always counts as changed. */
 export function compareUserRepoGuard(before, after) {
     return Object.keys(before.items).filter((k) => before.items[k] !== after.items[k] || before.items[k] === 'unreadable');
+}
+/**
+ * A fresh snapshot of `before.gitDir` compared with `before` (review-481
+ * M3). The publish order under the import lock is:
+ *   1. checkUserRepoGuard(baseline) must be empty (else park, no push);
+ *   2. importFromPrivate, then the hardened push, then dropImportRef;
+ *   3. checkUserRepoGuard(baseline) must be empty again: anything planted
+ *      during the import window parks the run instead of becoming the
+ *      baseline;
+ *   4. only then baseline = userRepoGuardSnapshot(userGitDir) for the next import.
+ */
+export function checkUserRepoGuard(before, ctx) {
+    return compareUserRepoGuard(before, userRepoGuardSnapshot(before.gitDir, ctx));
 }
 // ---------------------------------------------------------------------------
 // Seed
@@ -475,6 +681,18 @@ export function seedProblem(seed, ctx) {
         ?? (lexists(join(seed, 'objects', 'info', 'alternates')) || lexists(join(seed, 'objects', 'info', 'http-alternates')) ? `${what} has alternates` : null)
         ?? graftProblem(seed, what)
         ?? replaceProblem(ctx, seed, what);
+}
+/**
+ * A full object check of the seed (review-481 M1): `fsck --strict` without
+ * --connectivity-only re-hashes every object, so a seed object whose bytes
+ * were replaced (git never re-hashes on a plain read) is caught. Costs about
+ * 27 s on this repository (96 MiB pack, Windows); createPrivateRepo runs it
+ * once per new run, before its clone. The seed must stay read-only to lanes:
+ * B1b grants no lane write access to `<work>/<repo8>`.
+ */
+function seedObjectProblem(seed, ctx) {
+    const r = git(ctx, seed, [`--git-dir=${seed}`, 'fsck', '--strict', '--no-dangling', '--no-progress', '--no-reflogs']);
+    return r.status === 0 ? null : 'the private store seed fails git fsck (an object does not match its id, or one is missing)';
 }
 function hasCommit(ctx, gitDir, sha) {
     return git(ctx, gitDir, [`--git-dir=${gitDir}`, 'cat-file', '-e', `${sha}^{commit}`]).status === 0;
@@ -522,45 +740,48 @@ export function privateRepoConfigHash(gitDir) {
         `info\0${listingHash(join(gitDir, 'info'))}`,
     ].join('\0')).digest('hex');
 }
-/** Null when `gitDir`'s alternates are exactly one line naming `<seed>/objects`. */
-function alternatesProblem(gitDir, seed, what) {
+/** Null when `gitDir` has no alternates of any kind (an empty alternates file counts as none). */
+function alternatesProblem(gitDir, what) {
     if (lexists(join(gitDir, 'objects', 'info', 'http-alternates')))
         return `${what} has http-alternates`;
-    let text;
+    const alt = join(gitDir, 'objects', 'info', 'alternates');
+    if (!lexists(alt))
+        return null;
     try {
-        if (!lstatSync(join(gitDir, 'objects', 'info', 'alternates')).isFile())
-            return `${what} alternates is not a regular file`;
-        text = readFileSync(join(gitDir, 'objects', 'info', 'alternates'), 'utf8');
+        if (lstatSync(alt).isFile() && readFileSync(alt, 'utf8').trim() === '')
+            return null;
     }
-    catch {
-        return `${what} has no alternates to the seed`;
-    }
-    const lines = text.split(/\r?\n/).filter((l) => l !== '');
-    return lines.length === 1 && isAbsolute(lines[0]) && sameFsPath(lines[0], join(seed, 'objects')) ? null : `${what} alternates do not name exactly the seed`;
+    catch { /* unreadable: refused */ }
+    return `${what} has alternates`;
 }
 /**
- * Fixed-text reason to refuse a transport with the private repository: a
- * redirect, a config/hooks/info hash other than the recorded one, a config
- * the engine did not write (core.bare must be false, no core.worktree),
- * alternates other than exactly the seed, grafts, shallow, replace refs.
+ * Fixed-text reason to refuse the private repository: a redirect, a
+ * config/hooks/info hash other than the recorded one, a config the engine
+ * did not write (core.bare must be false, no core.worktree, no partial clone
+ * or promisor remote, no extension beyond the object format), any
+ * alternates, grafts, shallow, replace refs. Run it before every engine
+ * command in the private repository, reads included (lockfileUnchanged).
  */
 export function privateRepoProblem(p, ctx) {
     const what = 'the private repository';
     return redirectProblem(p.gitDir, what, ['.git', 'commondir', 'gitdir', 'config.worktree'])
         ?? (privateRepoConfigHash(p.gitDir) !== p.configHash ? `${what} config, hooks or info changed since the engine wrote them` : null)
         ?? engineConfigProblem(ctx, p.gitDir, what, false)
-        ?? alternatesProblem(p.gitDir, p.seed, what)
+        ?? alternatesProblem(p.gitDir, what)
         ?? graftProblem(p.gitDir, what)
         ?? replaceProblem(ctx, p.gitDir, what);
 }
 /**
- * Clone the run's private repository from the seed: `--no-local` (only
- * reachable objects, no refs/replace, no copied info/), `--no-checkout
- * --no-tags --single-branch --template=`, `--reference <seed>` so its
- * alternates point only at the engine-owned seed (verified: exactly that one
- * line). Then HEAD == baseSha (detached; the clone's branch deleted), the
- * origin remote removed, core.longpaths=true written, the config checked
- * against what the engine wrote, and its hash recorded.
+ * Clone the run's private repository from the seed: the seed passes a full
+ * fsck first (seedObjectProblem), then a `--no-local` clone (every object
+ * sent as a pack and re-hashed by index-pack with fsck on, so a replaced
+ * seed object can never land here; only reachable objects, no
+ * refs/replace, no copied info/), `--no-checkout --no-tags --single-branch
+ * --template=`, and NO `--reference`: no alternates at all, so nothing in
+ * the seed is read unverified later (review-481 M1). Then HEAD == baseSha
+ * (detached; the clone's branch deleted), the origin remote removed,
+ * core.longpaths=true written, the config checked against what the engine
+ * wrote, and its hash recorded.
  */
 export function createPrivateRepo(layout, baseSha, ctx) {
     if (!SHA.test(baseSha))
@@ -570,6 +791,9 @@ export function createPrivateRepo(layout, baseSha, ctx) {
     const seedBad = seedProblem(layout.seed, ctx);
     if (seedBad)
         throw new PrivateStoreError(`${seedBad} (${layout.seed})`);
+    const seedObjects = seedObjectProblem(layout.seed, ctx);
+    if (seedObjects)
+        throw new PrivateStoreError(`${seedObjects} (${layout.seed}); remove it (omg factory run clean --seed)`);
     const ref = seedRef(baseSha);
     const at = git(ctx, layout.seed, [`--git-dir=${layout.seed}`, 'rev-parse', '--verify', '--end-of-options', `${ref}^{commit}`]);
     if (at.status !== 0 || at.stdout.trim() !== baseSha)
@@ -581,7 +805,7 @@ export function createPrivateRepo(layout, baseSha, ctx) {
         throw new PrivateStoreError(tooLong);
     mkdirSync(layout.runDir, { recursive: true });
     gitOk(ctx, layout.runDir, ['clone', '-q', '--no-local', '--no-checkout', '--no-tags', '--single-branch', '--branch', `omg-${baseSha}`, '--template=',
-        '--reference', layout.seed, `--upload-pack=${uploadPackCommand(ctx.tools)}`, layout.seed, layout.repo], `the private clone of ${baseSha}`);
+        `--upload-pack=${uploadPackCommand(ctx.tools)}`, layout.seed, layout.repo], `the private clone of ${baseSha}`);
     const g = layout.gitDir;
     gitOk(ctx, layout.repo, [`--git-dir=${g}`, 'remote', 'remove', 'origin'], 'removing the private clone\'s origin');
     gitOk(ctx, layout.repo, [`--git-dir=${g}`, 'update-ref', '--no-deref', '-m', 'omg private store', 'HEAD', baseSha], 'detaching the private HEAD');
@@ -614,6 +838,9 @@ export function fetchIntoPrivate(layout, p, userGitDir, sha, ctx) {
     if (bad)
         throw new PrivateStoreError(`${bad} (${p.gitDir})`);
     gitOk(ctx, p.repo, fetchArgs(p.gitDir, ctx.tools, p.seed, [sha]), `the private fetch of ${sha}`);
+    const after = privateRepoProblem(p, ctx);
+    if (after)
+        throw new PrivateStoreError(`${after} (${p.gitDir})`);
     if (!hasCommit(ctx, p.gitDir, sha))
         throw new PrivateStoreError(`the private repository does not have ${sha} after the fetch`);
 }
@@ -641,33 +868,68 @@ function parseRawDiff(out) {
 /**
  * Import `sha` from the private repository into the user repository (audit
  * 6/6 steps 1-4): both repositories checked (userRepoProblem with the url
- * rewrite check on the private path; privateRepoProblem), then a hardened
+ * rewrite check on the private path; privateRepoProblem), `startSha` and
+ * every expected parent already commits in the user repository (review-481
+ * M2: no private-only history rides in), then a hardened
  * `fetch +<sha>:refs/omg-import/<run>/<n>` in the user repository (fsck on
  * every object, no FETCH_HEAD, no tags, no submodules, pinned upload-pack),
  * then the ref must name `sha`, `rev-list --parents` must equal
- * `expectedParents` exactly, and the two-tree `diff-tree -r --no-renames
+ * `expectedParents` exactly, `rev-list --count <sha> --not <parents>` must be
+ * 1 (no allowance for more), and the two-tree `diff-tree -r --no-renames
  * <startSha> <sha>` may touch no protected path (ship + lane + configured)
  * and add or change no gitlink (160000) or symlink (120000). Any refusal
- * after the fetch deletes the import ref. The push and dropImportRef are the
- * caller's.
+ * after the fetch deletes the import ref against its value (`ref-left` when
+ * that fails); a git timeout is the `timeout` refusal. The push and
+ * dropImportRef are the caller's.
  */
 export function importFromPrivate(input, ctx) {
-    const { userGitDir: user, privateRepo: p, sha, startSha } = input;
+    const { userGitDir: user, sha, startSha } = input;
     if (!SHA.test(sha) || !SHA.test(startSha) || input.expectedParents.some((x) => !SHA.test(x)) || !RUN_LABEL.test(input.run) || !(Number.isSafeInteger(input.n) && input.n >= 0)) {
         return refuse('bad-input', 'the import needs full shas, a plain run label and a non-negative number');
     }
     const ref = importRef(input.run, input.n);
+    try {
+        return importChecked(input, ref, ctx);
+    }
+    catch (err) {
+        if (!(err instanceof PrivateGitTimeout))
+            throw err;
+        try {
+            deleteImportRef(ctx, user, ref);
+        }
+        catch { /* the ref may be left; the timeout is the reason given */ }
+        return refuse('timeout', 'a git command of the import timed out and was killed');
+    }
+}
+/** Delete `ref` in `user` against the value it holds now (none: nothing to do); false when it is still there. */
+function deleteImportRef(ctx, user, ref, expected) {
+    let old = expected;
+    if (old === undefined) {
+        const cur = git(ctx, user, [`--git-dir=${user}`, 'rev-parse', '--verify', '--quiet', '--end-of-options', ref]);
+        // Absent (a failed fetch never made it): fine, unless a loose ref file git cannot read is there.
+        if (cur.status !== 0)
+            return !lexists(join(user, ...ref.split('/')));
+        old = cur.stdout.trim();
+        if (!SHA.test(old))
+            return false;
+    }
+    return git(ctx, user, [`--git-dir=${user}`, 'update-ref', '--no-deref', '-d', ref, old]).status === 0;
+}
+function importChecked(input, ref, ctx) {
+    const { userGitDir: user, privateRepo: p, sha, startSha } = input;
     const userBad = userRepoProblem(user, ctx, [p.gitDir, p.repo]);
     if (userBad)
         return refuse('user-repo', userBad);
+    // review-481 M2: the start and every parent are already the user's, so the fetch brings exactly one new commit and no unchecked history.
+    for (const x of [startSha, ...input.expectedParents]) {
+        if (git(ctx, user, [`--git-dir=${user}`, 'cat-file', '-e', `${x}^{commit}`]).status !== 0)
+            return refuse('bad-input', 'the start commit and every expected parent must already be commits in the repository');
+    }
     const privateBad = privateRepoProblem(p, ctx);
     if (privateBad)
         return refuse('private-repo', privateBad);
     const fetched = git(ctx, user, fetchArgs(user, ctx.tools, p.gitDir, [`+${sha}:${ref}`]));
-    const drop = (r) => {
-        git(ctx, user, [`--git-dir=${user}`, 'update-ref', '--no-deref', '-d', ref]);
-        return r;
-    };
+    const drop = (r) => (deleteImportRef(ctx, user, ref) ? r : refuse('ref-left', `import ref left (refused: ${r.ok ? 'ok' : r.reason})`));
     if (fetched.status !== 0)
         return drop(refuse('fetch-failed', 'the import fetch failed (an object failed fsck, or the commit is missing from the private repository)'));
     const at = git(ctx, user, [`--git-dir=${user}`, 'rev-parse', '--verify', '--end-of-options', ref]);
@@ -680,6 +942,10 @@ export function importFromPrivate(input, ctx) {
     const got = parents.status === 0 ? parents.stdout.trim().split(/\s+/) : [];
     if (got[0] !== sha || JSON.stringify(got.slice(1)) !== JSON.stringify([...input.expectedParents]))
         return drop(refuse('parents-mismatch', 'the imported commit does not have exactly the expected parents'));
+    // Exactly one commit the parents do not reach: the sealed commit itself (no allowance for more; B1b imports one commit-tree output at a time).
+    const count = git(ctx, user, [`--git-dir=${user}`, 'rev-list', '--count', sha, ...(input.expectedParents.length > 0 ? ['--not', ...input.expectedParents] : [])]);
+    if (count.status !== 0 || count.stdout.trim() !== '1')
+        return drop(refuse('parents-mismatch', 'the import brings more than the one sealed commit'));
     const diff = git(ctx, user, [`--git-dir=${user}`, 'diff-tree', '-r', '-z', '--raw', '--no-renames', '--no-ext-diff', '--no-textconv', '--full-index', startSha, sha]);
     const changes = diff.status === 0 ? parseRawDiff(diff.stdout) : null;
     if (!changes)
@@ -693,10 +959,13 @@ export function importFromPrivate(input, ctx) {
         return drop(refuse('symlink', 'the imported commit adds or changes a symlink'));
     return { ok: true, ref, files };
 }
-/** Delete the import ref (after the push, or to clean up). */
-export function dropImportRef(userGitDir, run, n, ctx) {
+/** Delete the import ref (after the push, or to clean up) against its expected value `sha`; throws `import ref left` when it stays. */
+export function dropImportRef(userGitDir, run, n, sha, ctx) {
     const ref = importRef(run, n);
-    gitOk(ctx, userGitDir, [`--git-dir=${userGitDir}`, 'update-ref', '--no-deref', '-d', ref], `deleting ${ref}`);
+    if (!SHA.test(sha))
+        throw new PrivateStoreError('dropping the import ref needs its full sha');
+    if (!deleteImportRef(ctx, userGitDir, ref, sha))
+        throw new PrivateStoreError(`import ref left (${ref})`);
 }
 // ---------------------------------------------------------------------------
 // Removal
@@ -709,62 +978,52 @@ function unlinkLink(p) {
         rmdirSync(p);
     }
 }
-function findLink(dir) {
-    for (const name of readdirSync(dir)) {
-        const p = join(dir, name);
-        const st = lstatSync(p);
-        if (st.isSymbolicLink())
-            return p;
-        if (st.isDirectory()) {
-            const deeper = findLink(p);
-            if (deeper)
-                return deeper;
-        }
-    }
-    return null;
+const sameNode = (a, b) => (a.ino !== 0n || b.ino !== 0n ? a.ino === b.ino && a.dev === b.dev : true);
+/**
+ * readdir of `dir`, which the walk saw as the plain directory `seen`: it is
+ * lstat-ed again right before the read and must still be a plain directory
+ * and the same node (dev/ino where the platform gives them, else the kind
+ * alone), so a directory swapped for a junction or symlink between the walk's
+ * steps is never read through (review-481 M5).
+ */
+function readdirChecked(dir, seen, seam) {
+    seam.beforeReaddir?.(dir);
+    const now = lstatSync(dir, { bigint: true });
+    if (now.isSymbolicLink() || !now.isDirectory() || !sameNode(seen, now))
+        throw new PrivateStoreError(`a directory under removal was replaced (${dir}); nothing more removed`);
+    return readdirSync(dir);
 }
-function unlinkLinks(dir) {
-    for (const name of readdirSync(dir)) {
+/** One pass over the tree: `onLink` for each link (never followed), `onFile` for each other non-directory, `onDir` after a directory's entries. */
+function walkNoFollow(dir, seen, seam, visit) {
+    for (const name of readdirChecked(dir, seen, seam)) {
         const p = join(dir, name);
-        const st = lstatSync(p);
+        const st = lstatSync(p, { bigint: true });
         if (st.isSymbolicLink())
-            unlinkLink(p);
+            visit.onLink(p);
         else if (st.isDirectory())
-            unlinkLinks(p);
+            walkNoFollow(p, st, seam, visit);
+        else
+            visit.onFile?.(p);
     }
-}
-/** Remove a tree that holds no link: files (read-only ones too: git's objects), then directories; a link found refuses. */
-function removeTree(dir) {
-    for (const name of readdirSync(dir)) {
-        const p = join(dir, name);
-        const st = lstatSync(p);
-        if (st.isSymbolicLink())
-            throw new PrivateStoreError(`a link appeared under ${dir} during removal; nothing more removed`);
-        if (st.isDirectory())
-            removeTree(p);
-        else {
-            try {
-                unlinkSync(p);
-            }
-            catch {
-                chmodSync(p, 0o666);
-                unlinkSync(p);
-            }
-        }
-    }
-    rmdirSync(dir);
+    visit.onDir?.(dir);
 }
 /**
- * Remove a run dir under the work root without ever following a link (a
- * worktree removal once emptied the TARGET of a node_modules junction):
- * unlink every symlink and junction at any depth, prove by an lstat walk that
- * none remains (refuse otherwise), then delete files and directories bottom
- * up, refusing at any link that appeared meanwhile. PR #478's helper is not
- * on dev; switch to it when it lands if it covers the same walk.
+ * Remove a run dir (or the seed) under the work root without ever following
+ * a link (a worktree removal once emptied the TARGET of a node_modules
+ * junction). First the dir is renamed to an engine-only `.trash-<random>`
+ * next to it (under the repository dir), so a process still holding the old
+ * path cannot reach what is walked (and on Windows the rename fails while a
+ * process has a cwd or open file there: refused). Then: unlink every symlink
+ * and junction at any depth, prove by a second walk that none remains
+ * (refuse otherwise), then delete files and directories bottom up, refusing
+ * at any link that appeared meanwhile. Every directory is re-lstat-ed (same
+ * node, still a plain directory) right before it is read. B1b calls it only
+ * after every lane process tree is gone. PR #478's helper is not on dev;
+ * switch to it when it lands if it covers the same walk.
  */
-export function removeRunDir(dir, work, platform = process.platform) {
+export function removeRunDir(dir, work, platform = process.platform, seam = {}) {
     const d = resolve(dir);
-    if (!isUnderRoot(d, work, platform) || sameFsPath(d, work))
+    if (!under(d, work, platform) || sameFsPath(d, work))
         throw new PrivateStoreError(`${d} is not under the private work root ${resolve(work)}`);
     if (!lexists(d))
         return;
@@ -772,11 +1031,31 @@ export function removeRunDir(dir, work, platform = process.platform) {
         unlinkLink(d);
         return;
     }
-    unlinkLinks(d);
-    const left = findLink(d);
-    if (left)
-        throw new PrivateStoreError(`a link remains under ${d} after unlinking; nothing removed`);
-    removeTree(d);
+    const trash = join(dirname(d), `.trash-${randomBytes(8).toString('hex')}`);
+    try {
+        renameSync(d, trash);
+    }
+    catch (err) {
+        throw new PrivateStoreError(`${d} cannot be moved aside for removal (a process may still use it); nothing removed`, String(err.message));
+    }
+    const top = lstatSync(trash, { bigint: true });
+    if (top.isSymbolicLink() || !top.isDirectory())
+        throw new PrivateStoreError(`${trash} is not a plain directory; nothing removed`);
+    walkNoFollow(trash, top, seam, { onLink: unlinkLink });
+    walkNoFollow(trash, top, seam, { onLink: () => { throw new PrivateStoreError(`a link remains under ${trash} after unlinking; nothing removed`); } });
+    walkNoFollow(trash, top, seam, {
+        onLink: () => { throw new PrivateStoreError(`a link appeared under ${trash} during removal; nothing more removed`); },
+        onFile: (p) => {
+            try {
+                unlinkSync(p);
+            }
+            catch {
+                chmodSync(p, 0o666);
+                unlinkSync(p);
+            }
+        },
+        onDir: (p) => rmdirSync(p),
+    });
 }
 // ---------------------------------------------------------------------------
 // node_modules rule
@@ -798,14 +1077,18 @@ function lockEntries(ctx, gitDir, sha) {
  * least one lockfile and every lockfile entry at the head is identical to
  * the base's (mode and blob id: git's ids are content hashes, so equal ids
  * are equal bytes), no lockfile added, and each is a regular file; `park`
- * otherwise. Both shas are sealed and read from `gitDir` (the private
- * repository holds both).
+ * otherwise. Both shas are sealed and read from the private repository
+ * (it holds both), which must pass privateRepoProblem first: its config is
+ * what a read there obeys (review-481 HIGH-1).
  */
-export function lockfileUnchanged(gitDir, baseSha, headSha, ctx) {
+export function lockfileUnchanged(p, baseSha, headSha, ctx) {
     if (!SHA.test(baseSha) || !SHA.test(headSha))
         throw new PrivateStoreError('the lockfile rule needs full shas');
-    const base = lockEntries(ctx, gitDir, baseSha);
-    const head = lockEntries(ctx, gitDir, headSha);
+    const bad = privateRepoProblem(p, ctx);
+    if (bad)
+        throw new PrivateStoreError(`${bad} (${p.gitDir})`);
+    const base = lockEntries(ctx, p.gitDir, baseSha);
+    const head = lockEntries(ctx, p.gitDir, headSha);
     const lockfiles = LOCKFILES.filter((f) => base.has(f));
     const changed = LOCKFILES.filter((f) => base.get(f) !== head.get(f) || (base.has(f) && !/^100(?:644|755) blob /.test(base.get(f))));
     return { policy: lockfiles.length > 0 && changed.length === 0 ? 'junction' : 'park', lockfiles, changed };

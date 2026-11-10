@@ -82,7 +82,10 @@ export declare const PROTECTED_PATHS: readonly string[];
  * segment dropped, `.` segments dropped), so `.github/workflows./ci.yml` and
  * `.copilot/omg.jsonc.` hit. A path Windows could resolve elsewhere (a segment
  * with `:` or `~`, an alternate stream or 8.3 short name, or a `..` segment)
- * always counts as protected.
+ * always counts as protected. Case folding is Unicode-wide (NFKC, default-
+ * ignorable code points such as U+200C stripped, upper then lower case), so
+ * a look-alike APFS or HFS+ would open as the protected file (`.huſky/`,
+ * `.github/workflowſ/`) hits too.
  */
 export declare function protectedChanges(changed: readonly string[], extra?: readonly string[]): string[];
 export interface MergeDecision {

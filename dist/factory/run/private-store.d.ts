@@ -13,6 +13,8 @@
  *   <work>/<repo8>/<slug>/jobs       copilot_run job dirs
  *   <work>/<repo8>/<slug>/run.lock
  *
+ * The private repository is a full copy of the seed (no alternates), and
+ * the seed, like `<work>/<repo8>` as a whole, must stay read-only to lanes.
  * Objects travel only by sealed sha: user repository -> seed -> private on
  * the way in (ensureSeed, fetchIntoPrivate), private -> user repository on
  * the way out (importFromPrivate, the audit 6/6 import minus the push).
@@ -104,6 +106,14 @@ export interface PrivateStoreContext {
     /** Default defaultExec (scrubShipEnv environment). Not the engine's guarded exec: these shapes are not on its allowlist. */
     exec?: Exec;
     platform?: NodeJS.Platform;
+    /** Kill any git command here after this many milliseconds (default PRIVATE_GIT_TIMEOUT_MS); a timeout is a refusal (PrivateGitTimeout). */
+    timeoutMs?: number;
+}
+/** Ten minutes: a first seed fetch or clone of a large repository, or the seed fsck, fits; a hung pack or a FIFO include does not hang the engine (review-481 L7). */
+export declare const PRIVATE_GIT_TIMEOUT_MS = 600000;
+/** A git command here ran out of time and was killed; fixed text. */
+export declare class PrivateGitTimeout extends PrivateStoreError {
+    constructor(ms: number);
 }
 /**
  * `-c` pairs on every command here (the git process itself). Hooks,
@@ -125,7 +135,15 @@ export declare function privateGitPins(tools: PrivateGitTools): string[];
  * the global config is the engine's empty file.
  */
 export declare function uploadPackCommand(tools: PrivateGitTools): string;
-/** The environment on top of scrubShipEnv: no system config, the empty global config, no replace objects, no grafts, no prompts, no LFS download. */
+/**
+ * The environment on top of scrubShipEnv: no system config, the empty global
+ * config, no replace objects, no grafts, no prompts, no LFS download, and no
+ * lazy fetch: a promisor remote planted in a repository's config (its
+ * uploadpack a command) would otherwise run on any read of a missing object,
+ * a plain `ls-tree` or `cat-file -e` included (review-481 HIGH-1); with it a
+ * missing object is an error, and a partial-clone user repository fails
+ * closed.
+ */
 export declare function privateGitEnv(tools: PrivateGitTools): Record<string, string>;
 /**
  * The user repository's common git dir, resolved once (at run start) from
@@ -141,24 +159,47 @@ export declare function resolveUserGitDir(root: string, ctx: PrivateStoreContext
  * fetches from: a rewrite to another protocol or repository).
  */
 export declare function userRepoProblem(gitDir: string, ctx: PrivateStoreContext, paths?: readonly string[]): string | null;
-export type UserGuardItem = 'gitdir' | 'redirect' | 'config' | 'config.worktree' | 'includes' | 'hooks' | 'hooksPath' | 'info' | 'shallow' | 'alternates' | 'http-alternates' | 'replace';
+export type UserGuardItem = 'gitdir' | 'redirect' | 'config' | 'hooks' | 'hooksPath' | 'modules' | 'worktrees' | 'grafts' | 'shallow' | 'alternates' | 'http-alternates' | 'replace';
 export interface UserRepoGuard {
     gitDir: string;
     items: Record<UserGuardItem, string>;
 }
 /**
  * The narrow user-repository guard the engine takes under the import lock
- * (design 6/8): hashes of what can make git (or the user's next git command)
- * run something or answer differently: hooks/, the core.hooksPath dir,
- * config, config.worktree, the files config includes (one level), info/
- * (minus info/refs), shallow, alternates, http-alternates, refs/replace/*,
- * and redirect entries. Not commit-graph, multi-pack-index, bitmaps,
- * objects/info/packs or info/refs: the user's own gc and maintenance rewrite
- * them, and every command here pins them off (review-476 M-E).
+ * (design 6/8; review-481 M4 with the lead's L5 rule): hashes of only what
+ * can make git (or the user's next git command) run something or go
+ * elsewhere:
+ * - `config`: the dangerous keys (DANGEROUS_CONFIG) of config,
+ *   config.worktree, worktrees/<id>/config.worktree and every file they
+ *   include (depth-bounded);
+ * - `hooks`: hooks/; `hooksPath`: the effective core.hooksPath (merged
+ *   config: local, worktree, includes) and every value met in the files
+ *   above, each with its dir's listing;
+ * - `modules`: each submodule git dir's hooks/ and dangerous config;
+ * - `worktrees`: entries whose commondir is not the stock `../..` or whose
+ *   commondir/gitdir is not a regular file (a redirect); a plain
+ *   `git worktree add` changes nothing;
+ * - `grafts`, `shallow`, alternates, http-alternates, refs/replace/*, and
+ *   redirect entries.
+ * Not branch.*, remote urls, user.*, info/exclude, info/sparse-checkout,
+ * commit-graph, multi-pack-index, packs or info/refs: the user's own
+ * `push -u`, `remote add`, `sparse-checkout`, gc and maintenance write those,
+ * and every command here pins the graph files off (review-476 M-E).
  */
 export declare function userRepoGuardSnapshot(gitDir: string, ctx: PrivateStoreContext): UserRepoGuard;
-/** The items that differ (fixed names); empty = unchanged. */
+/** The items that differ (fixed names); empty = unchanged. An `unreadable` item always counts as changed. */
 export declare function compareUserRepoGuard(before: UserRepoGuard, after: UserRepoGuard): UserGuardItem[];
+/**
+ * A fresh snapshot of `before.gitDir` compared with `before` (review-481
+ * M3). The publish order under the import lock is:
+ *   1. checkUserRepoGuard(baseline) must be empty (else park, no push);
+ *   2. importFromPrivate, then the hardened push, then dropImportRef;
+ *   3. checkUserRepoGuard(baseline) must be empty again: anything planted
+ *      during the import window parks the run instead of becoming the
+ *      baseline;
+ *   4. only then baseline = userRepoGuardSnapshot(userGitDir) for the next import.
+ */
+export declare function checkUserRepoGuard(before: UserRepoGuard, ctx: PrivateStoreContext): UserGuardItem[];
 /** Fixed-text reason to refuse the seed: a redirect, a config the engine did not write, alternates, grafts, shallow, replace refs. */
 export declare function seedProblem(seed: string, ctx: PrivateStoreContext): string | null;
 /**
@@ -175,7 +216,7 @@ export interface PrivateRepo {
     repo: string;
     /** <slug>/repo/.git */
     gitDir: string;
-    /** The seed its alternates name. */
+    /** The seed it was cloned from and fetches from (no alternates: a full copy). */
     seed: string;
     baseSha: string;
     /** privateRepoConfigHash at creation (or the engine's last own config write). */
@@ -190,20 +231,25 @@ export interface PrivateRepo {
  */
 export declare function privateRepoConfigHash(gitDir: string): string;
 /**
- * Fixed-text reason to refuse a transport with the private repository: a
- * redirect, a config/hooks/info hash other than the recorded one, a config
- * the engine did not write (core.bare must be false, no core.worktree),
- * alternates other than exactly the seed, grafts, shallow, replace refs.
+ * Fixed-text reason to refuse the private repository: a redirect, a
+ * config/hooks/info hash other than the recorded one, a config the engine
+ * did not write (core.bare must be false, no core.worktree, no partial clone
+ * or promisor remote, no extension beyond the object format), any
+ * alternates, grafts, shallow, replace refs. Run it before every engine
+ * command in the private repository, reads included (lockfileUnchanged).
  */
 export declare function privateRepoProblem(p: PrivateRepo, ctx: PrivateStoreContext): string | null;
 /**
- * Clone the run's private repository from the seed: `--no-local` (only
- * reachable objects, no refs/replace, no copied info/), `--no-checkout
- * --no-tags --single-branch --template=`, `--reference <seed>` so its
- * alternates point only at the engine-owned seed (verified: exactly that one
- * line). Then HEAD == baseSha (detached; the clone's branch deleted), the
- * origin remote removed, core.longpaths=true written, the config checked
- * against what the engine wrote, and its hash recorded.
+ * Clone the run's private repository from the seed: the seed passes a full
+ * fsck first (seedObjectProblem), then a `--no-local` clone (every object
+ * sent as a pack and re-hashed by index-pack with fsck on, so a replaced
+ * seed object can never land here; only reachable objects, no
+ * refs/replace, no copied info/), `--no-checkout --no-tags --single-branch
+ * --template=`, and NO `--reference`: no alternates at all, so nothing in
+ * the seed is read unverified later (review-481 M1). Then HEAD == baseSha
+ * (detached; the clone's branch deleted), the origin remote removed,
+ * core.longpaths=true written, the config checked against what the engine
+ * wrote, and its hash recorded.
  */
 export declare function createPrivateRepo(layout: PrivateRunLayout, baseSha: string, ctx: PrivateStoreContext): PrivateRepo;
 /**
@@ -230,7 +276,7 @@ export interface ImportInput {
     /** Configured protected paths (factory/ship config), on top of ship PROTECTED_PATHS and LANE_PROTECTED_PATHS. */
     extraProtected?: readonly string[];
 }
-export type ImportRefusalCode = 'bad-input' | 'user-repo' | 'private-repo' | 'fetch-failed' | 'ref-mismatch' | 'parents-mismatch' | 'diff-failed' | 'protected-path' | 'gitlink' | 'symlink';
+export type ImportRefusalCode = 'bad-input' | 'user-repo' | 'private-repo' | 'fetch-failed' | 'ref-mismatch' | 'parents-mismatch' | 'diff-failed' | 'protected-path' | 'gitlink' | 'symlink' | 'ref-left' | 'timeout';
 export type ImportResult = {
     ok: true;
     ref: string;
@@ -245,28 +291,42 @@ export declare function importRef(run: string, n: number): string;
 /**
  * Import `sha` from the private repository into the user repository (audit
  * 6/6 steps 1-4): both repositories checked (userRepoProblem with the url
- * rewrite check on the private path; privateRepoProblem), then a hardened
+ * rewrite check on the private path; privateRepoProblem), `startSha` and
+ * every expected parent already commits in the user repository (review-481
+ * M2: no private-only history rides in), then a hardened
  * `fetch +<sha>:refs/omg-import/<run>/<n>` in the user repository (fsck on
  * every object, no FETCH_HEAD, no tags, no submodules, pinned upload-pack),
  * then the ref must name `sha`, `rev-list --parents` must equal
- * `expectedParents` exactly, and the two-tree `diff-tree -r --no-renames
+ * `expectedParents` exactly, `rev-list --count <sha> --not <parents>` must be
+ * 1 (no allowance for more), and the two-tree `diff-tree -r --no-renames
  * <startSha> <sha>` may touch no protected path (ship + lane + configured)
  * and add or change no gitlink (160000) or symlink (120000). Any refusal
- * after the fetch deletes the import ref. The push and dropImportRef are the
- * caller's.
+ * after the fetch deletes the import ref against its value (`ref-left` when
+ * that fails); a git timeout is the `timeout` refusal. The push and
+ * dropImportRef are the caller's.
  */
 export declare function importFromPrivate(input: ImportInput, ctx: PrivateStoreContext): ImportResult;
-/** Delete the import ref (after the push, or to clean up). */
-export declare function dropImportRef(userGitDir: string, run: string, n: number, ctx: PrivateStoreContext): void;
+/** Delete the import ref (after the push, or to clean up) against its expected value `sha`; throws `import ref left` when it stays. */
+export declare function dropImportRef(userGitDir: string, run: string, n: number, sha: string, ctx: PrivateStoreContext): void;
+/** Test seam for removeRunDir: called right before each directory's re-lstat and readdir (a swap there is the M5 race). */
+export interface RemoveSeam {
+    beforeReaddir?: (dir: string) => void;
+}
 /**
- * Remove a run dir under the work root without ever following a link (a
- * worktree removal once emptied the TARGET of a node_modules junction):
- * unlink every symlink and junction at any depth, prove by an lstat walk that
- * none remains (refuse otherwise), then delete files and directories bottom
- * up, refusing at any link that appeared meanwhile. PR #478's helper is not
- * on dev; switch to it when it lands if it covers the same walk.
+ * Remove a run dir (or the seed) under the work root without ever following
+ * a link (a worktree removal once emptied the TARGET of a node_modules
+ * junction). First the dir is renamed to an engine-only `.trash-<random>`
+ * next to it (under the repository dir), so a process still holding the old
+ * path cannot reach what is walked (and on Windows the rename fails while a
+ * process has a cwd or open file there: refused). Then: unlink every symlink
+ * and junction at any depth, prove by a second walk that none remains
+ * (refuse otherwise), then delete files and directories bottom up, refusing
+ * at any link that appeared meanwhile. Every directory is re-lstat-ed (same
+ * node, still a plain directory) right before it is read. B1b calls it only
+ * after every lane process tree is gone. PR #478's helper is not on dev;
+ * switch to it when it lands if it covers the same walk.
  */
-export declare function removeRunDir(dir: string, work: string, platform?: NodeJS.Platform): void;
+export declare function removeRunDir(dir: string, work: string, platform?: NodeJS.Platform, seam?: RemoveSeam): void;
 /** The lockfiles whose bytes decide the node_modules policy, at the repository root. */
 export declare const LOCKFILES: readonly string[];
 export interface LockfileRule {
@@ -282,8 +342,9 @@ export interface LockfileRule {
  * least one lockfile and every lockfile entry at the head is identical to
  * the base's (mode and blob id: git's ids are content hashes, so equal ids
  * are equal bytes), no lockfile added, and each is a regular file; `park`
- * otherwise. Both shas are sealed and read from `gitDir` (the private
- * repository holds both).
+ * otherwise. Both shas are sealed and read from the private repository
+ * (it holds both), which must pass privateRepoProblem first: its config is
+ * what a read there obeys (review-481 HIGH-1).
  */
-export declare function lockfileUnchanged(gitDir: string, baseSha: string, headSha: string, ctx: PrivateStoreContext): LockfileRule;
+export declare function lockfileUnchanged(p: PrivateRepo, baseSha: string, headSha: string, ctx: PrivateStoreContext): LockfileRule;
 //# sourceMappingURL=private-store.d.ts.map

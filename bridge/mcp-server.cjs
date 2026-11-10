@@ -40276,9 +40276,10 @@ function readCommitsSinceReview(exec, cwd, reviewed, head, baseSha, housekeeping
   return { commitsSinceReview, baseHistory, housekeepingContent };
 }
 function protectedChanges(changed, extra = []) {
-  const rules = [...PROTECTED_PATHS, ...extra].map((p) => p.toLowerCase());
+  const fold4 = (s) => s.normalize("NFKC").replace(new RegExp("\\p{Default_Ignorable_Code_Point}", "gu"), "").toUpperCase().toLowerCase().normalize("NFKC");
+  const rules = [...PROTECTED_PATHS, ...extra].map(fold4);
   return changed.filter((raw) => {
-    const segments = raw.replace(/\\/g, "/").trim().toLowerCase().split("/");
+    const segments = fold4(raw.replace(/\\/g, "/").trim()).split("/");
     if (segments.some((s) => /[:~]/.test(s) || s === "..")) return true;
     const f = segments.map((s) => s.replace(/[. ]+$/, "")).filter(Boolean).join("/");
     return rules.some((p) => p.endsWith("/") ? f === p.slice(0, -1) || f.startsWith(p) : f === p);
