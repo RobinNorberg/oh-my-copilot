@@ -93,7 +93,8 @@ export function laneProcessState(p: LaneProcessRecord): LaneProcessState {
   if (!p.identity) return 'unknown';
   const expected = p.identity.startsWith('dmtf:') ? dmtfCreationDateToTicks(p.identity.slice('dmtf:'.length)) : p.identity;
   if (!expected) return 'unknown';
-  const current = getProcessStartIdentitySync(p.pid);
+  // The engine's async reader falls back to CIM and wmic: a busy machine must not turn a live child into "unknown".
+  const current = getProcessStartIdentitySync(p.pid, { fallbacks: true });
   if (current === null) return isProcessAlive(p.pid) ? 'unknown' : 'dead';
   return current === expected ? 'live' : 'mismatch';
 }
