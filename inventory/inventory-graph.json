@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "196f8634d85580896e3546bf072a389a4f65a30a",
-    "sourceSha256": "496e486fc20c8f0e42a92c987bf73197275a1be4e6642f89269ab06e3621d7db",
+    "head": "27934f11869ba3f1de1d1e7aaa36c919ab27f84f",
+    "sourceSha256": "37e8d3d852d07c421d0f05a3a056bbd372b7a7b72dc33143f4c997566bd0c072",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "196f8634d85580896e3546bf072a389a4f65a30a",
-  "sourceSha256": "496e486fc20c8f0e42a92c987bf73197275a1be4e6642f89269ab06e3621d7db",
+  "head": "27934f11869ba3f1de1d1e7aaa36c919ab27f84f",
+  "sourceSha256": "37e8d3d852d07c421d0f05a3a056bbd372b7a7b72dc33143f4c997566bd0c072",
   "counts": {
     "public": {
       "skills": 98,
@@ -88404,12 +88404,32 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.local.hardening.test.ts",
+        "to": "src/factory/run/clean.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.hardening.test.ts",
         "to": "src/factory/run/engine.ts",
         "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.local.hardening.test.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.hardening.test.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.hardening.test.ts",
         "to": "src/factory/run/prepare.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.hardening.test.ts",
+        "to": "src/factory/run/reset.ts",
         "kind": "imports"
       },
       {
@@ -88424,7 +88444,17 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.local.hardening.test.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.hardening.test.ts",
         "to": "src/forge/local/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.hardening.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -128495,11 +128525,11 @@
     ],
     "stats": {
       "nodeCount": 10784,
-      "edgeCount": 13082,
-      "importEdgeCount": 10766,
+      "edgeCount": 13088,
+      "importEdgeCount": 10772,
       "registerEdgeCount": 119
     }
   },
   "inventorySha256": "4d15826a0015d52e6130c3cef699c54cd24a10efa1a38778e37455af72c3a0b0",
-  "manifestSha256": "0ea4970dda5365d6e24f280ad6919e4af7960fe5869d9f9a0ba7441cba5aef24"
+  "manifestSha256": "d4a5086d9464feb40f5200c426228dc3367fea465232d481c727ba9ec951462e"
 }
