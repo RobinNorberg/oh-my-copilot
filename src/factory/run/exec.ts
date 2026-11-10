@@ -49,7 +49,7 @@
  *   even if the tamper check missed it.
  */
 
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, lstatSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { isAbsolute, join, resolve } from 'path';
 import { checkAdoCommand, isAdoCommand, runGuardedAdo, type AdoGuardContext } from '../../forge/ado/guard.js';
@@ -510,9 +510,131 @@ export function factoryGuardExec(exec: Exec, extraProtected: () => readonly stri
   };
 }
 
+/**
+ * Config the engine's git pins on EVERY command, transports included:
+ * | key | why |
+ * | core.hooksPath=<empty>, core.fsmonitor=false | no hook and no fsmonitor program runs |
+ * | core.pager=cat, diff.external= | no pager or external diff program runs |
+ * | core.commitGraph=false, core.multiPackIndex=false | ancestry and diff answers come from the commits, never a planted commit-graph or MIDX |
+ * | gc.auto=0, maintenance.auto=false, fetch.writeCommitGraph=false | the engine never repacks or writes a commit-graph between two snapshots |
+ * | protocol.ext.allow=never | ext:: runs a command; no factory remote uses it |
+ * | core.alternateRefsCommand=true | a fetch lists the refs of the repository's alternates with this command; `true` lists none and runs nothing planted |
+ * | remote.origin.uploadpack / receivepack = the stock programs | no factory origin needs another (GitHub and Azure DevOps ignore them; ssh runs the stock ones) |
+ * Left as the user configured them, because origin fetch and push need the
+ * user's own setup (a planted value is a config write the snapshot catches):
+ * credential.helper and core.askPass (the credential manager), core.sshCommand
+ * (ssh keys, agents, ProxyJump), http.proxy and core.gitProxy (corporate
+ * proxies), core.worktree (no value turns it off; repository config only).
+ */
+const ENGINE_GIT_PINS = [
+  'core.fsmonitor=false', 'core.pager=cat', 'diff.external=',
+  'core.commitGraph=false', 'core.multiPackIndex=false', 'gc.auto=0', 'maintenance.auto=false', 'fetch.writeCommitGraph=false',
+  'protocol.ext.allow=never', 'core.alternateRefsCommand=true', 'remote.origin.uploadpack=git-upload-pack', 'remote.origin.receivepack=git-receive-pack',
+];
+
+/**
+ * Pinned on top for a command that only works on the local repository (not
+ * TRANSPORT_SUBCOMMANDS): `worktree add` and prepare's merge in the engine's
+ * checkout check out the PR's tree, whose `.gitattributes` / `.lfsconfig`
+ * would pick git-lfs (from the system config) and its endpoints, and a merge
+ * commit would run gpg.program under commit.gpgSign. With these (and
+ * GIT_LFS_SKIP_SMUDGE=1) LFS files stay pointer files there.
+ */
+const LOCAL_ONLY_GIT_PINS = ['commit.gpgSign=false', 'tag.gpgSign=false', 'filter.lfs.smudge=', 'filter.lfs.process=', 'filter.lfs.required=false'];
+
+/** Subcommands that talk to a remote: they keep the user's transport setup (see ENGINE_GIT_PINS). */
+const TRANSPORT_SUBCOMMANDS = new Set(['push', 'fetch', 'ls-remote', 'pull', 'clone']);
+
 /** Prepended to every hardened git command, after the guard checked the plain shape. */
-export function gitHardeningArgs(hooksDir: string): string[] {
-  return ['-c', `core.hooksPath=${hooksDir}`, '-c', 'core.fsmonitor=false', '-c', 'core.pager=cat', '-c', 'diff.external='];
+export function gitHardeningArgs(hooksDir: string, subcommand?: string): string[] {
+  const local = subcommand !== undefined && !TRANSPORT_SUBCOMMANDS.has(subcommand) ? LOCAL_ONLY_GIT_PINS : [];
+  return ['-c', `core.hooksPath=${hooksDir}`, ...[...ENGINE_GIT_PINS, ...local].flatMap((kv) => ['-c', kv])];
+}
+
+/**
+ * The environment the engine's git adds after the guard: git honours
+ * `info/grafts` even under GIT_NO_REPLACE_OBJECTS, so GIT_GRAFT_FILE names a
+ * file that never exists (inside the hooks dir, which must stay empty); a
+ * local-only command also skips LFS smudging.
+ */
+function hardenedGitEnv(hooksDir: string, subcommand: string, env?: Readonly<Record<string, string>>): Record<string, string> {
+  return { ...env, GIT_GRAFT_FILE: join(hooksDir, 'grafts'), ...(TRANSPORT_SUBCOMMANDS.has(subcommand) ? {} : { GIT_LFS_SKIP_SMUDGE: '1' }) };
+}
+
+/**
+ * The `--receive-pack` of a push to the local forge mirror. A push to a path
+ * spawns receive-pack in the mirror, and git drops this process's `-c` for a
+ * local transport, so the mirror's own hooks (pre-receive, update,
+ * post-receive, reference-transaction) and core.hooksPath would run; this
+ * command passes the empty hooks dir to that receive-pack itself, and pins
+ * the other config it would run or act on (core.alternateRefsCommand lists
+ * alternates' refs, receive.autogc repacks; core.bare=true and the deny
+ * settings keep a push to the mirror's HEAD branch from checking a tree out
+ * there, with its filters, under receive.denyCurrentBranch=updateInstead).
+ * Command-line config beats every
+ * file the mirror reads, so a config written after mirrorConfigProblem
+ * checked it changes none of these. Git runs it through `sh`, so the path is
+ * single-quoted (a path with a quote is refused).
+ */
+export function mirrorReceivePackArg(hooksDir: string): string {
+  if (hooksDir.includes("'")) throw new FactorySafetyError(`omg factory run refuses to push to the local forge mirror: the engine's hooks directory ${hooksDir} contains a quote`);
+  return `--receive-pack=git -c core.hooksPath='${hooksDir}' -c core.fsmonitor=false -c core.alternateRefsCommand=true -c core.alternateRefsPrefixes= -c receive.autogc=false -c core.bare=true -c receive.denyCurrentBranch=refuse -c receive.denyDeleteCurrent=refuse receive-pack`;
+}
+
+/**
+ * The `--upload-pack` of a fetch or ls-remote on the local forge mirror: the
+ * upload-pack that runs in the mirror never runs a core.alternateRefsCommand
+ * written there after mirrorConfigProblem checked its config.
+ */
+export const MIRROR_UPLOAD_PACK_ARG = '--upload-pack=git -c core.alternateRefsCommand=true upload-pack';
+
+/** Files that point git at another repository than the mirror path itself (`.git` is tried first for a path; commondir, gitdir and config.worktree redirect or extend a git dir). */
+const MIRROR_REDIRECT_NAMES = ['.git', 'commondir', 'gitdir', 'config.worktree'];
+
+/** True when `path` exists as anything, a dangling link included. */
+function lexists(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The only keys the local forge mirror's own config may hold (what
+ * `git init --bare` writes): any other key (a hooksPath, an include, a
+ * receive.* or core.alternateRefsCommand) would steer the receive-pack or
+ * upload-pack that runs in the mirror, which reads that config itself.
+ */
+const MIRROR_CONFIG_KEYS = new Set(['core.repositoryformatversion', 'core.filemode', 'core.bare', 'core.symlinks', 'core.ignorecase', 'core.precomposeunicode', 'extensions.objectformat']);
+
+/**
+ * Why the mirror must not take part in a transport (a link, a redirect to
+ * another repository, its config, alternates), or null. The redirect checks
+ * come first: receive-pack and upload-pack would read the config, refs and
+ * objects of the repository a `.git` or `commondir` names, so the checks of
+ * the mirror's own config below would look at files git never uses.
+ */
+function mirrorConfigProblem(exec: Exec, hardening: string[], mirror: string): string | null {
+  // A missing mirror is no link; its config read below fails and refuses.
+  if (lexists(mirror) && lstatSync(mirror).isSymbolicLink()) return `the local forge mirror ${mirror} is a link or junction`;
+  const redirect = MIRROR_REDIRECT_NAMES.filter((name) => lexists(join(mirror, name)));
+  if (redirect.length > 0) return `the local forge mirror ${mirror} has ${redirect.join(', ')}, which would point git at another repository; remove it`;
+  if (lexists(join(mirror, 'objects', 'info', 'alternates'))) return `the local forge mirror ${mirror} has objects/info/alternates`;
+  // info/attributes applies to every path (a filter or smudge command) when anything checks a tree out in the mirror.
+  if (lexists(join(mirror, 'info', 'attributes'))) return `the local forge mirror ${mirror} has info/attributes, which \`git init --bare\` never writes; remove it`;
+  const listed = exec('git', [...hardening, 'config', '--file', join(mirror, 'config'), '-z', '--list'], { env: TRUSTED_READ_ENV });
+  if (listed.status !== 0) return `the local forge mirror's config ${join(mirror, 'config')} cannot be read`;
+  const entries = listed.stdout.split('\0').filter(Boolean).map((rec) => {
+    const nl = rec.indexOf('\n');
+    return nl < 0 ? { key: rec.toLowerCase(), value: undefined } : { key: rec.slice(0, nl).toLowerCase(), value: rec.slice(nl + 1) };
+  });
+  const bad = [...new Set(entries.map((e) => e.key).filter((k) => !MIRROR_CONFIG_KEYS.has(k)))];
+  if (bad.length > 0) return `the local forge mirror's config ${join(mirror, 'config')} sets ${bad.join(', ')}, which the engine never writes there; remove it (git config --file <that file> --unset <key>)`;
+  // A non-bare mirror with receive.denyCurrentBranch=updateInstead would check the pushed tree out in it.
+  const bare = entries.filter((e) => e.key === 'core.bare');
+  return bare.length === 1 && bare[0].value === 'true' ? null : `the local forge mirror's config ${join(mirror, 'config')} must set core.bare = true exactly once (it has ${bare.map((e) => JSON.stringify(e.value ?? '(no value)')).join(', ') || 'none'})`;
 }
 
 /**
@@ -567,7 +689,8 @@ export function localTransportArgs(args: readonly string[], mirror?: string): st
  * sshCommand, pushInsteadOf or clean filter there parks the run.
  *
  * `localMirror` (the local forge) is the engine-owned mirror path a push on
- * `omg-local` goes to (localTransportArgs).
+ * `omg-local` goes to (localTransportArgs). Every push, fetch and ls-remote on
+ * `omg-local` checks it first (mirrorConfigProblem), so one without it throws.
  */
 export function hardenedGitExec(exec: Exec, hooksDir: string, localMirror: () => string | undefined = () => undefined): Exec {
   return (cmd, args, opts) => {
@@ -576,29 +699,37 @@ export function hardenedGitExec(exec: Exec, hooksDir: string, localMirror: () =>
     if (!existsSync(hooksDir) || readdirSync(hooksDir).length > 0) {
       throw new FactorySafetyError(`omg factory run refuses git: the engine's empty hooks directory ${hooksDir} is missing or not empty`);
     }
-    const hardening = gitHardeningArgs(hooksDir);
-    if (!onLocalRemote(args)) return exec(cmd, [...hardening, ...args], opts);
+    const hardening = gitHardeningArgs(hooksDir, args[0]);
+    const withEnv = { ...opts, env: hardenedGitEnv(hooksDir, args[0], opts?.env) };
+    if (!onLocalRemote(args)) return exec(cmd, [...hardening, ...args], withEnv);
     // vcs / mirror / a foreign fetch refspec change what the transport does: syncLocalMirror refuses them first (exit 5), this is the backstop.
     const checked = exec(cmd, [...hardening, ...LOCAL_REMOTE_REFUSED_CONFIG_ARGS], { ...(opts?.cwd ? { cwd: opts.cwd } : {}), env: TRUSTED_READ_ENV });
     const refused = checked.status > 1 ? ['a config git could not read'] : localRemoteRefusedKeys(checked.stdout);
     if (refused.length > 0) {
       throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(' ')}\`: the ${LOCAL_REMOTE} remote sets ${refused.join(', ')}; remove it (git config --unset)`);
     }
-    // A url rewrite of the mirror path would send the transport elsewhere: syncLocalMirror refuses it first (exit 5).
+    // Every omg-local transport checks the mirror below: a caller that cannot name it is refused, never let through unchecked.
     const mirror = localMirror();
-    if (mirror) {
-      const rewrites = exec(cmd, [...hardening, ...URL_REWRITE_CONFIG_ARGS], { ...(opts?.cwd ? { cwd: opts.cwd } : {}), env: TRUSTED_READ_ENV });
-      const rewritten = rewrites.status > 1 ? ['a config git could not read'] : mirrorRewriteKeys(rewrites.stdout, mirror);
-      if (rewritten.length > 0) {
-        throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(' ')}\`: the git config rewrites the local forge mirror ${mirror} (${rewritten.join(', ')}); remove it (git config --unset)`);
-      }
-      // A remote named after the mirror path would take over the push to it (Windows git): syncLocalMirror refuses it first (exit 5).
-      const remotes = exec(cmd, [...hardening, ...REMOTE_CONFIG_ARGS], { ...(opts?.cwd ? { cwd: opts.cwd } : {}), env: TRUSTED_READ_ENV });
-      const named = remotes.status > 1 ? ['a config git could not read'] : mirrorNamedRemoteKeys(remotes.stdout, mirror);
-      if (named.length > 0) {
-        throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(' ')}\`: the git config has a remote named after the local forge mirror ${mirror} (${named.join(', ')}); remove it (git config --remove-section)`);
-      }
+    if (!mirror) throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(' ')}\`: the local forge mirror path is unknown here, so it cannot be checked`);
+    // A url rewrite of the mirror path would send the transport elsewhere: syncLocalMirror refuses it first (exit 5).
+    const rewrites = exec(cmd, [...hardening, ...URL_REWRITE_CONFIG_ARGS], { ...(opts?.cwd ? { cwd: opts.cwd } : {}), env: TRUSTED_READ_ENV });
+    const rewritten = rewrites.status > 1 ? ['a config git could not read'] : mirrorRewriteKeys(rewrites.stdout, mirror);
+    if (rewritten.length > 0) {
+      throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(' ')}\`: the git config rewrites the local forge mirror ${mirror} (${rewritten.join(', ')}); remove it (git config --unset)`);
     }
-    return exec(cmd, [...hardening, ...LOCAL_REMOTE_PACK_ARGS, ...localTransportArgs(args, mirror)], opts);
+    // A remote named after the mirror path would take over the push to it (Windows git): syncLocalMirror refuses it first (exit 5).
+    const remotes = exec(cmd, [...hardening, ...REMOTE_CONFIG_ARGS], { ...(opts?.cwd ? { cwd: opts.cwd } : {}), env: TRUSTED_READ_ENV });
+    const named = remotes.status > 1 ? ['a config git could not read'] : mirrorNamedRemoteKeys(remotes.stdout, mirror);
+    if (named.length > 0) {
+      throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(' ')}\`: the git config has a remote named after the local forge mirror ${mirror} (${named.join(', ')}); remove it (git config --remove-section)`);
+    }
+    // receive-pack / upload-pack run in the mirror and read its config there: only init's own keys may steer them.
+    const mirrorProblem = mirrorConfigProblem(exec, hardening, mirror);
+    if (mirrorProblem) throw new FactorySafetyError(`omg factory run refuses \`git ${args.join(' ')}\`: ${mirrorProblem}`);
+    const transport = localTransportArgs(args, mirror);
+    // The mirror's receive-pack gets the empty hooks dir itself (a push to a path drops this process's -c).
+    // A fetch or ls-remote runs upload-pack there: it gets the same alternates pin (it reads the mirror's config itself).
+    const final = transport[0] === 'push' ? [...transport, mirrorReceivePackArg(hooksDir)] : [transport[0], MIRROR_UPLOAD_PACK_ARG, ...transport.slice(1)];
+    return exec(cmd, [...hardening, ...LOCAL_REMOTE_PACK_ARGS, ...final], withEnv);
   };
 }

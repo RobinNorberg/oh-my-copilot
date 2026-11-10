@@ -100,6 +100,12 @@ export declare function hostGitHardeningArgs(): string[];
  * also gets GIT_LFS_SKIP_SMUDGE=1: host git only inspects and never checks
  * files out (`worktree add` does not come here), so a git-lfs that still runs
  * (hostGitDriverOverrides blanks filter.lfs) downloads and writes nothing.
+ * And GIT_NO_REPLACE_OBJECTS=1 (GIT_REPLACE_REF_BASE dropped): a
+ * `refs/replace/<base>` planted in the shared git dir would make the
+ * protected-path diff, ls-tree and merge-tree read another tree than the
+ * commit the engine names. Git still honours `info/grafts` under
+ * GIT_NO_REPLACE_OBJECTS, so GIT_GRAFT_FILE names a file that never exists
+ * (inside the empty hooks dir).
  */
 export declare function hostGitEnv(args: readonly string[], base?: NodeJS.ProcessEnv): NodeJS.ProcessEnv;
 /**

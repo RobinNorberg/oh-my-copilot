@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readLocalCheckRecord, writeLocalCheckRecord } from '../../../forge/local/index.js';
 import { STATE_CHANGE_LOG_FLAGS } from '../../../forge/local/mirror.js';
 import { isProcessAlive } from '../../../platform/process-utils.js';
-import { assertFactoryCommand, FactorySafetyError, hardenedGitExec, LOCAL_REMOTE_PACK_ARGS, localRemoteRefusedKeys, localTransportArgs, mirrorNamedRemoteKeys, mirrorRewriteKeys } from '../exec.js';
+import { assertFactoryCommand, FactorySafetyError, hardenedGitExec, LOCAL_REMOTE_PACK_ARGS, localRemoteRefusedKeys, localTransportArgs, MIRROR_UPLOAD_PACK_ARG, mirrorNamedRemoteKeys, mirrorRewriteKeys } from '../exec.js';
 import { assertLocalGateCommand, defaultLocalGateRunner, LOCAL_GATE_STALE_GRACE_MS, LOCAL_GATE_TAIL_CHARS, localGateDue, localGateRecord, describeGateSources, gateDefinition, gateDefinitionSources, resolveLocalGateArgv, runLocalGate, } from '../local-gate.js';
 import { createFactoryState, parseFactoryState, runRemote } from '../state.js';
 const SHA = 'a'.repeat(40);
@@ -83,11 +83,15 @@ describe('hardenedGitExec on omg-local', () => {
         seen.push(args);
         if (args.includes('--get-regexp'))
             return refusedOut ? { status: 0, stdout: refusedOut, stderr: '' } : { status: 1, stdout: '', stderr: '' };
+        // The mirror's own config (git init --bare writes core.bare = true): the check requires exactly that.
+        if (args.includes('--list'))
+            return { status: 0, stdout: 'core.bare\ntrue\0', stderr: '' };
         return { status: 0, stdout: '', stderr: '' };
     };
     let dir;
     afterEach(() => { seen.length = 0; refusedOut = ''; rmSync(dir, { recursive: true, force: true }); });
-    const commands = () => seen.filter((a) => !a.includes('--get-regexp'));
+    // The config reads before each transport (the checkout's remote keys, the mirror's own config) are not the command.
+    const commands = () => seen.filter((a) => !a.includes('--get-regexp') && !a.includes('--list'));
     it('pins the stock pack programs for push, fetch and ls-remote on omg-local, and only there', () => {
         dir = mkdtempSync(join(tmpdir(), 'omg-hooks-'));
         const exec = hardenedGitExec(inner, dir, () => MIRROR);
@@ -104,7 +108,12 @@ describe('hardenedGitExec on omg-local', () => {
         const at = first.indexOf('push');
         expect(first.slice(at - LOCAL_REMOTE_PACK_ARGS.length, at)).toEqual(LOCAL_REMOTE_PACK_ARGS);
         // The push names the mirror path, so no fetch refspec of the named remote moves a local ref after it.
-        expect(first.slice(at)).toEqual(['push', MIRROR, `${SHA}:refs/heads/factory/issue-7`]);
+        // Its receive-pack runs in the mirror with the engine's empty hooks dir (a push to a path drops this process's -c).
+        expect(first.slice(at)).toEqual(['push', MIRROR, `${SHA}:refs/heads/factory/issue-7`, `--receive-pack=git -c core.hooksPath='${dir}' -c core.fsmonitor=false -c core.alternateRefsCommand=true -c core.alternateRefsPrefixes= -c receive.autogc=false -c core.bare=true -c receive.denyCurrentBranch=refuse -c receive.denyDeleteCurrent=refuse receive-pack`]);
+        // The mirror's own config was read (with --file, no include followed) before the push and the fetch.
+        expect(seen.filter((a) => a.includes('--list')).map((a) => a.slice(a.indexOf('config')))).toEqual([
+            ['config', '--file', join(MIRROR, 'config'), '-z', '--list'], ['config', '--file', join(MIRROR, 'config'), '-z', '--list'], ['config', '--file', join(MIRROR, 'config'), '-z', '--list'],
+        ]);
     });
     it('refuses a push on omg-local when the mirror path is unknown', () => {
         dir = mkdtempSync(join(tmpdir(), 'omg-hooks-'));
@@ -113,9 +122,9 @@ describe('hardenedGitExec on omg-local', () => {
     });
     it('fetches omg-local with an explicit tracking refspec and no configured refmap or tags', () => {
         dir = mkdtempSync(join(tmpdir(), 'omg-hooks-'));
-        hardenedGitExec(inner, dir)('git', ['fetch', 'omg-local', 'main']);
+        hardenedGitExec(inner, dir, () => MIRROR)('git', ['fetch', 'omg-local', 'main']);
         const fetch = commands()[0];
-        expect(fetch.slice(fetch.indexOf('fetch'))).toEqual(['fetch', '--no-tags', '--refmap=', 'omg-local', '+refs/heads/main:refs/remotes/omg-local/main']);
+        expect(fetch.slice(fetch.indexOf('fetch'))).toEqual(['fetch', MIRROR_UPLOAD_PACK_ARG, '--no-tags', '--refmap=', 'omg-local', '+refs/heads/main:refs/remotes/omg-local/main']);
         expect(localTransportArgs(['fetch', 'origin', 'main'])).toEqual(['fetch', 'origin', 'main']);
         expect(localTransportArgs(['push', 'omg-local', `${SHA}:refs/heads/main`], MIRROR)).toEqual(['push', MIRROR, `${SHA}:refs/heads/main`]);
     });

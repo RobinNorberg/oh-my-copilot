@@ -12,7 +12,7 @@ import { resolveForgeConfig } from '../../../forge/config.js';
 import { readMirrorRef } from '../../../forge/local/index.js';
 import { defaultExec, type Exec } from '../../../ship/exec.js';
 import { gitIn } from '../../../factory/run/__tests__/fake-lanes.js';
-import { FactorySafetyError, hardenedGitExec, sameFsPath } from '../../../factory/run/exec.js';
+import { FactorySafetyError, hardenedGitExec, MIRROR_UPLOAD_PACK_ARG, sameFsPath } from '../../../factory/run/exec.js';
 import { FactoryForgeUnavailableError, localRemoteMismatch } from '../../../factory/run/forge-roots.js';
 import { emptyHooksDir } from '../../../factory/run/ledger.js';
 import { pollLocalBaseSync } from '../factory.js';
@@ -93,7 +93,7 @@ describe('omg factory poll: local forge base sync', () => {
     w.sync({ root: w.root, base: 'main', config: w.config });
     expect(gitIn(w.root, 'rev-parse', 'refs/remotes/omg-local/main')).toBe(head);
     const fetch = w.raw.find((a) => a.includes('fetch'))!;
-    expect(fetch.slice(fetch.indexOf('fetch'))).toEqual(['fetch', '--no-tags', '--refmap=', 'omg-local', '+refs/heads/main:refs/remotes/omg-local/main']);
+    expect(fetch.slice(fetch.indexOf('fetch'))).toEqual(['fetch', MIRROR_UPLOAD_PACK_ARG, '--no-tags', '--refmap=', 'omg-local', '+refs/heads/main:refs/remotes/omg-local/main']);
   });
 
   it.each([
