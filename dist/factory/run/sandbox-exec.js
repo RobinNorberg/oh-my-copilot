@@ -176,16 +176,18 @@ const tail = (text) => {
  */
 export async function runSandboxed(argv, o, deps) {
     const notStarted = (reason) => ({ ran: false, reason });
+    // The argv itself cannot be handed over (its shape or length): nothing launched, and no PR code can cause it.
+    const refuse = (reason) => ({ ran: false, reason, refused: true });
     // After the command was handed over: fixed text only (the output and the runtime's error may be the command's).
     const noVerdict = (reason) => ({ ran: false, reason, started: true });
     const sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
     const marker = `${MARKER_PREFIX}${randomBytes(8).toString('hex')}`;
     const command = sandboxShellCommand(deps.platform, argv, o.cwd, marker);
     if (command === null)
-        return notStarted('the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)');
+        return refuse('the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)');
     const max = sandboxCommandMaxChars(deps.platform);
     if (command.length > max) {
-        return notStarted(`the command is too long for the sandbox shell: it encodes to ${command.length} characters, above the ${max} that ${deps.platform === 'win32' ? 'a Windows command line' : 'one shell argument'} can safely carry; shorten the configured command`);
+        return refuse(`the command is too long for the sandbox shell: it encodes to ${command.length} characters, above the ${max} that ${deps.platform === 'win32' ? 'a Windows command line' : 'one shell argument'} can safely carry; shorten the configured command`);
     }
     const jobHome = join(o.jobRoot, `gate-${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`);
     // The runtime's own working directory and its only trusted folder: empty, fresh per command, never the checkout.

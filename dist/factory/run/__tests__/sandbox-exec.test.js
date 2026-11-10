@@ -327,7 +327,7 @@ describe('runSandboxed', () => {
     });
     it('an argv the shell cannot carry is refused before anything starts, without its text in the reason', async () => {
         const r = await runSandboxed(['/usr/bin/node', 'a\0b'], opts(), deps(ok));
-        expect(r).toEqual({ ran: false, reason: expect.not.stringContaining('a\0b') });
+        expect(r).toEqual({ ran: false, refused: true, reason: expect.not.stringContaining('a\0b') });
         expect(rec.connections).toEqual([]);
     });
     it('L-b: a single command too long for the sandbox shell is not started, with a fixed reason that says so', async () => {
@@ -335,7 +335,7 @@ describe('runSandboxed', () => {
             rec.connections = [];
             const long = 'x'.repeat(sandboxCommandMaxChars(platform));
             const r = await runSandboxed(['/usr/bin/node', long], opts(), deps(ok, 'supported', { platform }));
-            expect(r, platform).toEqual({ ran: false, reason: expect.stringContaining('the command is too long for the sandbox shell') });
+            expect(r, platform).toEqual({ ran: false, refused: true, reason: expect.stringContaining('the command is too long for the sandbox shell') });
             expect(r.reason, platform).not.toContain('xxxx');
             expect(rec.connections, platform).toEqual([]);
         }

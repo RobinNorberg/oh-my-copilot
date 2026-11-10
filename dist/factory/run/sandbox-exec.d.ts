@@ -64,6 +64,9 @@ export declare const CREDENTIAL_FILES_READABLE_NOTE = "sandboxed; credential fil
  * `started`: the command was handed to the shell under the confirmed policy
  * and gave no verdict (the engine's gate-no-verdict park, never the
  * --allow-unsandboxed-gates one); unset: nothing of the PR's ran.
+ * `refused`: the configured argv itself cannot be handed to the sandbox
+ * shell (its shape or length), before any runtime launched: a property of
+ * the command, which no code of the PR can cause.
  */
 export type SandboxRunResult = {
     ran: true;
@@ -75,6 +78,7 @@ export type SandboxRunResult = {
     ran: false;
     reason: string;
     started?: true;
+    refused?: true;
 };
 export type SandboxRunner = (req: SandboxRunRequest) => Promise<SandboxRunResult>;
 /** The runtime operations runSandboxed needs (copilot_run's deps; tests pass a fake SDK). */

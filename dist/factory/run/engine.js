@@ -2174,8 +2174,9 @@ class FactoryEngine {
             }
             if (r.started)
                 return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoVerdictReason(head, label, r.reason) });
-            // An earlier check of this head already ran the PR's code in the sandbox: a start failure now may be its doing.
-            if ((ran.modes.has('enforced') || ran.modes.has('enforced-readable')) && !this.gatesAccepted(head)) {
+            // An earlier check of this head already ran the PR's code in the sandbox: a start failure now may be its doing
+            // (never one of the command's own shape or length, which the ack park still offers to run).
+            if (!r.refused && (ran.modes.has('enforced') || ran.modes.has('enforced-readable')) && !this.gatesAccepted(head)) {
                 return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoStartAfterCodeReason(head, label, r.reason) });
             }
             why = `the OS sandbox gave no verdict: ${r.reason}`;
@@ -2498,7 +2499,7 @@ class FactoryEngine {
                 }
                 unavailable = !out.started && out.sandbox === true;
                 // Prepare already ran the PR's code of this checkout in the sandbox: a start failure now may be its doing.
-                if (unavailable && !out.started && this.state.sandboxedPrepareHead === head && !this.gatesAccepted(head)) {
+                if (unavailable && !out.started && !out.refused && this.state.sandboxedPrepareHead === head && !this.gatesAccepted(head)) {
                     if (checkoutGitLink(checkout).hash !== linkBefore)
                         return this.gateTamperedByGate(head, checkout, stateDir);
                     this.gate(GATE_NO_VERDICT_GATE, this.gateNoStartAfterCodeReason(head, `the local gate \`${gate.join(' ')}\``, out.reason));

@@ -265,9 +265,10 @@ describe('a sandbox that withholds or forges a verdict (review 474 item 10)', ()
         w = localWorld();
         const parked = sandbox((req) => (req.purpose === 'gate' ? { ran: false, reason: 'the sandbox is not available: MXC is not available on this host' } : PASS));
         const first = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: parked.run }));
-        expect(first.gate?.name, first.message).toBe(GATES_UNSANDBOXED_GATE);
+        // Prepare ran the head's code in the sandbox, so a gate sandbox that does not start offers no ack (review 474b L-c).
+        expect(first.gate?.name, first.message).toBe(GATE_NO_VERDICT_GATE);
         // What the engine before this change left at the same point: the run in its phase, no park, no ack, no calibration.
-        const { gate: _g, unsandboxedGatesAck: _a, gateCalibration: _c, ...old } = readFactoryState(w.root, LOCAL_ISSUE);
+        const { gate: _g, unsandboxedGatesAck: _a, gateCalibration: _c, sandboxedPrepareHead: _p, ...old } = readFactoryState(w.root, LOCAL_ISSUE);
         // Written as the engine writes it: the ledger records the bytes, so the next run reads it as its own.
         const { content } = overwriteFactoryState(w.root, LOCAL_ISSUE, old);
         EngineLedger.open(w.ledgerDir, w.root, LOCAL_ISSUE).record(factoryStatePath(w.root, LOCAL_ISSUE), content);
@@ -419,6 +420,15 @@ describe('a sandbox that does not start after the PR\'s code of the head already
         const state = readFactoryState(w.root, LOCAL_ISSUE);
         expect(state.sandboxedPrepareHead).toBe(state.head);
         expect(readLocalCheckRecord(w.stateDir, w.root, state.head)).toBeUndefined();
+        expect(w.gateRuns).toEqual([]);
+    }, MULTI_RUN_MS);
+    it('a gate command the sandbox shell refuses by its own shape or length still gets the --allow-unsandboxed-gates offer', async () => {
+        w = localWorld();
+        const refused = { ran: false, refused: true, reason: 'the command is too long for the sandbox shell: it encodes to 30000 characters, above the 28000 that a Windows command line can safely carry; shorten the configured command' };
+        const s = sandbox((req) => (req.purpose === 'gate' ? refused : PASS));
+        const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run }));
+        expect(out.gate?.name, out.message).toBe(GATES_UNSANDBOXED_GATE);
+        expect(out.gate?.reason).toContain('too long for the sandbox shell');
         expect(w.gateRuns).toEqual([]);
     }, MULTI_RUN_MS);
 });

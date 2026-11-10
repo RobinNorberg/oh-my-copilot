@@ -136,6 +136,7 @@ export type LocalGateOutcome = {
     reason: string;
     sandbox?: true;
     noVerdict?: true;
+    refused?: true;
 };
 /**
  * Run the gate for `head` and record SUCCESS or FAILURE (a PENDING record is
