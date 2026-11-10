@@ -91,10 +91,15 @@ describe('factory run with factory.run.layout "private"', () => {
     // The prepare checkout links your node_modules (the lockfile is the base's).
     expect(lstatSync(join(s.privateDir!, 'w', 'prep', 'node_modules')).isSymbolicLink()).toBe(true);
 
-    // The user's .git: only the local forge's own remote, its tracking ref and fetch bookkeeping changed; no worktree, branch or import ref.
+    // The user's .git: only the local forge's own remote, its tracking refs and fetch bookkeeping changed; no worktree, branch or import ref.
+    // The engine's push names the mirror path, yet git on the Linux CI runner moved the omg-local tracking ref of the pushed
+    // branch (Windows git does not): it may exist, and then only at the pushed head.
+    const pushedTracking = `refs/remotes/omg-local/factory/issue-${LOCAL_ISSUE}`;
     const changed = changedPaths(before, gitListing(w.root));
-    expect(changed.filter((p) => !/^(config|FETCH_HEAD|refs\/remotes\/omg-local\/main|logs\/refs\/remotes\/omg-local\/main)$/.test(p))).toEqual([]);
-    expect(gitIn(w.root, 'for-each-ref', '--format=%(refname)')).toBe(`refs/heads/${BASE}\nrefs/remotes/omg-local/${BASE}`);
+    expect(changed.filter((p) => !/^(config|FETCH_HEAD|(logs\/)?refs\/remotes\/omg-local\/(main|factory\/issue-\d+))$/.test(p))).toEqual([]);
+    const refs = gitIn(w.root, 'for-each-ref', '--format=%(refname) %(objectname)').split('\n').filter((l) => l !== '');
+    for (const line of refs.filter((l) => l.startsWith(`${pushedTracking} `))) expect(line).toBe(`${pushedTracking} ${s.head}`);
+    expect(refs.map((l) => l.split(' ')[0]).filter((r) => r !== pushedTracking)).toEqual([`refs/heads/${BASE}`, `refs/remotes/omg-local/${BASE}`]);
     expect(gitIn(w.root, 'status', '--porcelain')).toBe('');
     expect(foreignCommands(w)).toEqual([]);
     expect(out.mergeCommand).toBe(`git -C ${w.root} merge --no-ff --no-edit ${s.head}`);
