@@ -54,7 +54,7 @@
  */
 
 import { createHash } from 'crypto';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'path';
 import { BASE_CONFIG_PATH, configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, readBaseFile, remoteRepoMismatch, userConfigLayers } from '../../ship/config.js';
@@ -451,29 +451,6 @@ function checkoutChanges(root: string, checkout: string, raw: string): string[] 
   return parseStatusPaths(raw).filter((p) => p && !(ownLink && (p === 'node_modules' || p === 'node_modules/')));
 }
 
-/**
- * The first ignored path (as `git status --ignored=matching` lists them, the
- * engine's own node_modules link already left out) that is a symlink or
- * junction or holds one below it, or null. Directories are walked without
- * following any link.
- */
-function ignoredLink(checkout: string, ignored: readonly string[]): string | null {
-  const stack = ignored.map((p) => p.replace(/\/$/, ''));
-  while (stack.length > 0) {
-    const rel = stack.pop()!;
-    let st;
-    try { st = lstatSync(join(checkout, rel)); } catch { continue; }
-    if (st.isSymbolicLink()) return rel;
-    if (!st.isDirectory()) continue;
-    for (const d of readdirSync(join(checkout, rel), { withFileTypes: true })) {
-      const child = `${rel}/${d.name}`;
-      if (d.isSymbolicLink()) return child;
-      if (d.isDirectory()) stack.push(child);
-    }
-  }
-  return null;
-}
-
 /** The paths of `git status --porcelain=v1 -z` records (an R/C record's original path included). */
 function parseStatusPaths(raw: string): string[] {
   const records = raw.split('\0');
@@ -499,7 +476,7 @@ const HEX40 = /^[0-9a-f]{40}$/;
  * INSIDE hardenedGitExec, which (and the guard around it) sees the plain
  * shape.
  */
-function pinCheckoutGit(exec: Exec, pin: () => { workTree: string; gitDir: string } | undefined): Exec {
+export function pinCheckoutGit(exec: Exec, pin: () => { workTree: string; gitDir: string } | undefined): Exec {
   return (cmd, args, opts) => {
     const p = pin();
     const git = cmd.replace(/\\/g, '/').split('/').pop()!.toLowerCase().replace(/\.exe$/, '') === 'git';
@@ -2084,6 +2061,7 @@ class FactoryEngine {
   private discardCheckout(): void {
     const path = checkoutPath(this.o.root, this.key);
     if (!existsSync(path)) return;
+    if (this.legacyCheckout(path)) return this.discardLegacyCheckout(path);
     const gitArgs = this.checkoutGitArgs(path);
     if (typeof gitArgs === 'string') throw new FactoryStepError(`the engine's prepare checkout ${path} cannot be read safely: ${gitArgs}${this.state.checkoutAdmin ? '; inspect it and remove it by hand' : `. ${this.freshCheckoutRecovery()}`}`);
     let head: string;
@@ -2099,8 +2077,10 @@ class FactoryEngine {
     // The engine's own node_modules link would count as untracked on POSIX (a `node_modules/` ignore line skips symlinks).
     unlinkNodeModules(this.o.root, path);
     try {
-      // Only engine-made commits are in it (checked above); nothing else holds them.
-      removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [head] });
+      // Only engine-made commits are in it (checked above); nothing else holds them. Through the recorded links: removal
+      // never discovers a `.git` file the PR's code rewrote.
+      const gitLinks = recordedWorktreeGitLinks(path);
+      removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [head], ...(gitLinks ? { gitLinks } : {}) });
       forgetWorktreeGitLinks(path);
     } catch (error) {
       // A kept checkout keeps its tooling (the local gate runs in it).
@@ -2110,6 +2090,48 @@ class FactoryEngine {
     this.save((x) => {
       const { checkoutHead: _c, checkoutAdmin: _a, ...rest } = x;
       return rest;
+    });
+    this.rebaseRecheck();
+  }
+
+  /**
+   * The prepare checkout's directory is gone (removed with rm -rf) while git
+   * still lists it: host git (hardened) prunes the entries whose directory is
+   * missing, so `worktree add` can use the path again. Nothing that exists is
+   * touched; a checkout that is there, or not listed, is left alone.
+   */
+  private pruneMissingCheckout(path: string): void {
+    if (existsSync(path)) return;
+    const listed = runHostGit(this.o.root, ['worktree', 'list', '--porcelain']);
+    if (!listed.split(/\r?\n/).some((l) => l.startsWith('worktree ') && samePath(l.slice('worktree '.length).trim(), path))) return;
+    runHostGit(this.o.root, ['worktree', 'prune']);
+    this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `the prepare checkout ${path} was removed by hand; git worktree prune dropped its stale entry` }] }));
+    this.rebaseRecheck();
+  }
+
+  /** A prepare checkout an older release made: no admin dir in the run state and no git links recorded in this process. */
+  private legacyCheckout(path: string): boolean {
+    return existsSync(path) && !this.state.checkoutAdmin && !recordedWorktreeGitLinks(path);
+  }
+
+  /**
+   * Discard a prepare checkout made before checkoutAdmin was recorded, as
+   * `omg factory run clean` does (the engine's node_modules link first, then
+   * the guarded removal, which refuses a tree with changes or commits the run
+   * did not make), so the run prepares a fresh one instead of parking.
+   */
+  private discardLegacyCheckout(path: string): void {
+    unlinkNodeModules(this.o.root, path);
+    const contained = [this.state.head, this.state.checkoutHead].filter((sha): sha is string => typeof sha === 'string' && HEX40.test(sha));
+    try {
+      removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [...new Set(contained)] });
+    } catch (error) {
+      linkNodeModules(this.o.root, path);
+      throw new FactoryStepError(`could not discard the engine's prepare checkout ${path}, which an older release made: ${errText(error)}. ${this.freshCheckoutRecovery()}`);
+    }
+    this.save((x) => {
+      const { checkoutHead: _c, checkoutAdmin: _a, ...rest } = x;
+      return { ...rest, history: [...rest.history, { at: this.iso(), from: rest.phase, to: rest.phase, note: `discarded the prepare checkout an older release made (${path}); it is prepared again` }] };
     });
     this.rebaseRecheck();
   }
@@ -2141,7 +2163,7 @@ class FactoryEngine {
       if (!links) return 'its .git file or admin dir is missing, a link or malformed';
       const admin = this.state.checkoutAdmin;
       if (!admin) return `the run state records no admin dir for it (a checkout made before this release, or by something else)`;
-      if (basename(links.adminDir) !== admin) return `its .git file names the admin dir ${links.adminDir}, but the engine's \`worktree add\` made ${admin}`;
+      if (basename(links.adminDir) !== admin) return `its .git file names the admin dir ${visibleLine(links.adminDir)}, but the engine's \`worktree add\` made ${admin}`;
       let common: string;
       try {
         common = resolve(this.o.root, this.run(['rev-parse', '--git-common-dir']).trim());
@@ -2150,7 +2172,7 @@ class FactoryEngine {
       }
       const gitdir = links.gitdir.trim();
       if (!worktreeGitLinksIntact(path, links, common) || !samePath(isAbsolute(gitdir) ? gitdir : resolve(links.adminDir, gitdir), join(path, '.git')) || links.commondir.trim() !== '../..') {
-        return `its .git file names ${links.adminDir}, which is not the admin dir git made for it under ${join(common, 'worktrees')}`;
+        return `its .git file names ${visibleLine(links.adminDir)}, which is not the admin dir git made for it under ${join(common, 'worktrees')}`;
       }
       try {
         recordWorktreeGitLinks(path, links);
@@ -2217,6 +2239,9 @@ class FactoryEngine {
     if (this.recheckFailed('before prepare')) return;
     this.discardCheckout();
     const path = checkoutPath(this.o.root, this.key);
+    // A checkout removed with rm -rf leaves its admin dir registered, and `worktree add` then refuses the path
+    // (before the pre-prepare snapshot: the prune changes the shared worktree entries).
+    this.pruneMissingCheckout(path);
     const branch = checkoutBranch(this.key);
     // `worktree add -B` writes through a symbolic ref: a checkout branch a lane rewrote as `ref: refs/heads/main` would move main.
     const common = resolve(this.o.root, this.run(['rev-parse', '--git-common-dir']).trim());
@@ -2714,21 +2739,21 @@ class FactoryEngine {
       return false;
     }
     const checkout = checkoutPath(this.o.root, this.key);
+    // A checkout an older release prepared (no admin dir recorded): discarded as run clean would, then prepared again.
+    if (this.legacyCheckout(checkout)) this.discardLegacyCheckout(checkout);
     let at = '';
     if (existsSync(checkout)) {
       // The recorded git dir, never the checkout's `.git` file (the PR's code ran there in prepare).
       const gitArgs = this.checkoutGitArgs(checkout);
       let dirty: string[] = [];
-      let link: string | null = null;
       let problem = typeof gitArgs === 'string' ? gitArgs : null;
       if (typeof gitArgs !== 'string') {
         // The status compares with a fresh index read from HEAD, never the checkout's own (the PR's code could set
         // skip-worktree or assume-unchanged bits, plant an untracked cache, or keep a stale stat match there).
-        // Ignored files are left alone: prepare's checks and the gate run the same head's code in the same trust domain,
-        // so a check's ignored output (dist/, target/, a previous gate's coverage/) gives the gate nothing the PR's own
-        // tests could not do. What this protects is that the tracked tree is the recorded head and nothing untracked
-        // that is not ignored was added. An ignored link (other than the engine's node_modules link) still parks: a
-        // link is how content from outside the checkout would be pulled in.
+        // Ignored entries of any kind are left alone, links included (a Python venv, bazel-* links, a check's npm ci):
+        // prepare's checks and the gate run the same head's code in the same sandbox, so ignored output gives the gate
+        // nothing the PR's own tests could not do, and removal unlinks links before it deletes anything. What this
+        // protects is that the tracked tree is the recorded head and nothing untracked that is not ignored was added.
         const indexDir = mkdtempSync(join(tmpdir(), 'omg-gate-index-'));
         try {
           at = runHostGit(checkout, [...gitArgs, 'rev-parse', 'HEAD']).trim();
@@ -2736,9 +2761,6 @@ class FactoryEngine {
           runHostGit(checkout, [...gitArgs, 'read-tree', at], undefined, fresh);
           const status = [...gitArgs, '-c', 'core.untrackedCache=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all'];
           dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, undefined, fresh));
-          if (at === head && dirty.length === 0) {
-            link = ignoredLink(checkout, checkoutChanges(this.o.root, checkout, runHostGit(checkout, [...status, '--ignored=matching'], undefined, fresh)));
-          }
         } catch (error) {
           problem = errText(error);
         } finally {
@@ -2751,10 +2773,6 @@ class FactoryEngine {
       }
       if (at === head && dirty.length > 0) {
         this.gate('lane-tampered', `the engine's prepare checkout ${checkout} is at ${head.slice(0, 12)} but its working tree differs from it (${dirty.slice(0, 5).join(', ')}): a changed tracked file or an untracked file that is not ignored, so the local gate did not run; inspect it and undo what the PR's code changed there, then rerun ${this.resume}`);
-        return false;
-      }
-      if (link) {
-        this.gate('lane-tampered', `the engine's prepare checkout ${checkout} has an ignored symlink or junction ${link} the engine did not make, which would pull content from outside the checkout into the gate, so the local gate did not run; inspect it and remove the link, then rerun ${this.resume}`);
         return false;
       }
     } else if (!this.reprepared && this.state.pr !== undefined) {

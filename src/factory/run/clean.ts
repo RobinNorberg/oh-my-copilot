@@ -27,7 +27,7 @@ import { WORKTREE_TEAM } from '../../copilot-run/job.js';
 import { LOCAL_REMOTE } from '../../forge/local/index.js';
 import { remoteRepoMismatch } from '../../ship/config.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
-import { getWorktreePath, removeWorkerWorktree } from '../../team/git-worktree.js';
+import { getWorktreePath, recordedWorktreeGitLinks, removeWorkerWorktree } from '../../team/git-worktree.js';
 import { factoryGuardExec, hardenedGitExec } from './exec.js';
 import { localRemoteMismatch } from './forge-roots.js';
 import { defaultLedgerDir, emptyHooksDir, EngineLedger } from './ledger.js';
@@ -234,7 +234,9 @@ export function cleanHeldFactoryRun(o: FactoryCleanOptions, state: FactoryRunSta
     // The engine's node_modules link in its prepare checkout (untracked on POSIX for a `node_modules/` ignore line).
     if (team === FACTORY_CHECKOUT_TEAM) unlinkNodeModules(o.root, path);
     try {
-      removeWorkerWorktree(team, worker, o.root, { contained, ...(o.discard ? { discardChanges: true } : {}) });
+      // Through the git links recorded at its creation when this process has them: removal never discovers a rewritten `.git`.
+      const gitLinks = recordedWorktreeGitLinks(path);
+      removeWorkerWorktree(team, worker, o.root, { contained, ...(gitLinks ? { gitLinks } : {}), ...(o.discard ? { discardChanges: true } : {}) });
       if (existed) result.removed.push(path);
     } catch (error) {
       result.kept.push({ worktree: path, reason: error instanceof Error ? error.message : String(error) });
