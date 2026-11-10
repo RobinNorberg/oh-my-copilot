@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "290bc198aa29454e60c69c392bc3d7ec9eccfdfa",
-    "sourceSha256": "40eb263f6feb59d6f0ca32d39062153fece488e3b847c81cbaa82d6caa2f833f",
+    "head": "514d16f392831b25c6908fadd4c952664c2e9364",
+    "sourceSha256": "dc77448c4e0d53956705a9d58ba129ceb80c2800aff2561e83b5e5b7b1f1d65a",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "290bc198aa29454e60c69c392bc3d7ec9eccfdfa",
-  "sourceSha256": "40eb263f6feb59d6f0ca32d39062153fece488e3b847c81cbaa82d6caa2f833f",
+  "head": "514d16f392831b25c6908fadd4c952664c2e9364",
+  "sourceSha256": "dc77448c4e0d53956705a9d58ba129ceb80c2800aff2561e83b5e5b7b1f1d65a",
   "counts": {
     "public": {
       "skills": 98,
@@ -88398,6 +88398,16 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.local.claims.test.ts",
+        "to": "src/cli/commands/factory.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.claims.test.ts",
+        "to": "src/cli/commands/factory.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.claims.test.ts",
         "to": "src/factory/run/__tests__/engine-local-harness.ts",
         "kind": "imports"
       },
@@ -88409,6 +88419,11 @@
       {
         "from": "src/factory/run/__tests__/engine.local.claims.test.ts",
         "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.claims.test.ts",
+        "to": "src/factory/run/budget.ts",
         "kind": "imports"
       },
       {
@@ -88435,6 +88450,11 @@
         "from": "src/factory/run/__tests__/engine.local.claims.test.ts",
         "to": "src/forge/config.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.claims.test.ts",
+        "to": "src/forge/config.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.local.claims.test.ts",
@@ -88558,6 +88578,11 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.local.reset-discard.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.reset-discard.test.ts",
         "to": "src/factory/run/clean.ts",
         "kind": "imports"
       },
@@ -88573,8 +88598,18 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.local.reset-discard.test.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.reset-discard.test.ts",
         "to": "src/factory/run/reset.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.reset-discard.test.ts",
+        "to": "src/factory/run/reset.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.local.reset-discard.test.ts",
@@ -91135,6 +91170,11 @@
         "from": "src/factory/run/reset.ts",
         "to": "src/factory/run/clean.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/reset.ts",
+        "to": "src/factory/run/clean.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/reset.ts",
@@ -128609,11 +128649,11 @@
     ],
     "stats": {
       "nodeCount": 10789,
-      "edgeCount": 13099,
-      "importEdgeCount": 10780,
+      "edgeCount": 13107,
+      "importEdgeCount": 10784,
       "registerEdgeCount": 119
     }
   },
   "inventorySha256": "311cba89e2b9d740ccaa80f5748bf347ab982efddeff479f059c0ed7e56243a4",
-  "manifestSha256": "7f895e1295a322c81827fd646c7d93ccf0c749a0c3d659778b25838ca631b2eb"
+  "manifestSha256": "ce36f317bc3a8a6838a7d548000ce1893c15dc108450df1726cc680c3b4e5f14"
 }
