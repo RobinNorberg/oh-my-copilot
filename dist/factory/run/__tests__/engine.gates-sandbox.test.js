@@ -14,7 +14,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { readLocalCheckRecord } from '../../../forge/local/index.js';
 import { resolveShipConfig } from '../../../ship/config.js';
 import { EXIT_AWAITING_HUMAN, GATE_NO_VERDICT_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATES_UNSANDBOXED_GATE, runFactoryEngine } from '../engine.js';
-import { overwriteFactoryState, readFactoryState } from '../state.js';
+import { EngineLedger } from '../ledger.js';
+import { factoryStatePath, overwriteFactoryState, readFactoryState } from '../state.js';
 import { BASE, lanesFor, LOCAL_ISSUE, localOpts, localWorld } from './engine-local-harness.js';
 import { commitFile, gitIn, review } from './fake-lanes.js';
 const MULTI_RUN_MS = 300_000;
@@ -267,7 +268,9 @@ describe('a sandbox that withholds or forges a verdict (review 474 item 10)', ()
         expect(first.gate?.name, first.message).toBe(GATES_UNSANDBOXED_GATE);
         // What the engine before this change left at the same point: the run in its phase, no park, no ack, no calibration.
         const { gate: _g, unsandboxedGatesAck: _a, gateCalibration: _c, ...old } = readFactoryState(w.root, LOCAL_ISSUE);
-        overwriteFactoryState(w.root, LOCAL_ISSUE, old);
+        // Written as the engine writes it: the ledger records the bytes, so the next run reads it as its own.
+        const { content } = overwriteFactoryState(w.root, LOCAL_ISSUE, old);
+        EngineLedger.open(w.ledgerDir, w.root, LOCAL_ISSUE).record(factoryStatePath(w.root, LOCAL_ISSUE), content);
         const s = sandbox();
         const out = await runFactoryEngine(opts(lanesFor(w, []), { gateSandbox: s.run }));
         expect(out.gate?.name, out.message).toBe('merge');
@@ -299,7 +302,9 @@ describe('the ack carry (review 474 item 10)', () => {
         const lanes = lanesFor(w, [greet(), review('approve')]);
         expect((await runFactoryEngine(opts(lanes, ack))).gate?.name).toBe(GATES_UNSANDBOXED_GATE);
         const head1 = readFactoryState(w.root, LOCAL_ISSUE).head;
-        // The base moves: prepare merges it in (a housekeeping commit the engine makes and records).
+        // The base moves: prepare merges it in (a housekeeping commit the engine makes and records; git needs an identity for it).
+        gitIn(w.root, 'config', 'user.name', 'factory test');
+        gitIn(w.root, 'config', 'user.email', 'factory@example.invalid');
         writeFileSync(join(w.root, 'BASE-NOTE.md'), 'base moved\n');
         gitIn(w.root, 'add', 'BASE-NOTE.md');
         gitIn(w.root, 'commit', '-q', '-m', 'base moves');

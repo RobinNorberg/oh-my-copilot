@@ -93,7 +93,9 @@ export function sandboxShellCommand(platform, argv, cwd, marker) {
         ].join('; ');
     }
     const payload = Buffer.from([cwd, ...argv].map((w) => `${w}\0`).join(''), 'utf8').toString('base64');
-    return `omg_a=(); while IFS= read -r -d '' omg_w; do omg_a+=("$omg_w"); done < <(printf '%s' '${payload}' | base64 -d); if [ "\${#omg_a[@]}" -eq ${argv.length + 1} ] && cd -- "\${omg_a[0]}"; then "\${omg_a[@]:1}" 2>&1 | tail -c ${SHELL_OUTPUT_BYTES}; printf '\\n%s %s\\n' '${marker}' "\${PIPESTATUS[0]}"; fi`;
+    // The output goes to a temp file (TMPDIR: the job's own temp dir) and only its tail is printed: `tail -c` on a file
+    // seeks, while on a pipe some coreutils releases print more than the bound (seen with 9.4 on Ubuntu 24.04).
+    return `omg_a=(); while IFS= read -r -d '' omg_w; do omg_a+=("$omg_w"); done < <(printf '%s' '${payload}' | base64 -d); if [ "\${#omg_a[@]}" -eq ${argv.length + 1} ] && omg_o=$(mktemp) && cd -- "\${omg_a[0]}"; then "\${omg_a[@]:1}" > "$omg_o" 2>&1; omg_s=$?; tail -c ${SHELL_OUTPUT_BYTES} -- "$omg_o"; rm -f -- "$omg_o"; printf '\\n%s %s\\n' '${marker}' "$omg_s"; fi`;
 }
 /**
  * The exit code the marker line reports, and the output without it. A

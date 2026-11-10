@@ -424,7 +424,8 @@ describe('sandboxShellCommand', () => {
             const r = spawnSync(bash, ['-c', sandboxShellCommand('linux', [process.execPath, big], dir, MARKER)], { encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' }, timeout: 120_000 });
             const read = readMarker(r.stdout, MARKER);
             expect(read.code, r.stderr).toBe(0);
-            expect(Buffer.byteLength(read.output)).toBeLessThanOrEqual(SHELL_OUTPUT_BYTES + 2);
+            const lines = read.output.split('\n');
+            expect(Buffer.byteLength(read.output), `${bash}: ${lines.length} lines, first ${JSON.stringify(lines.slice(0, 3))}, stderr ${r.stderr.slice(0, 500)}`).toBeLessThanOrEqual(SHELL_OUTPUT_BYTES + 2);
             expect(read.output).toContain('line 2999');
         }
         const ps = process.platform === 'win32' ? 'powershell.exe' : findOnPath('pwsh', process.env, process.platform);
