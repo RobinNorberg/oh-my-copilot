@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "fa40303b94a19145cbd7ce07cb5a15a8572848cf",
-    "sourceSha256": "46a7b66981d8e74b3fb670c5b54ba578550eaa1112b83843008b0019c52337ae",
+    "head": "fc5f607674f0b2a906d8a01fd434542e1e14d81d",
+    "sourceSha256": "50176de9050a4d02a3ab750bcfbcc12d61a4d8fe909f49cb98d6bc4114316aad",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "fa40303b94a19145cbd7ce07cb5a15a8572848cf",
-  "sourceSha256": "46a7b66981d8e74b3fb670c5b54ba578550eaa1112b83843008b0019c52337ae",
+  "head": "fc5f607674f0b2a906d8a01fd434542e1e14d81d",
+  "sourceSha256": "50176de9050a4d02a3ab750bcfbcc12d61a4d8fe909f49cb98d6bc4114316aad",
   "counts": {
     "public": {
       "skills": 98,
@@ -23,7 +23,7 @@
       "total": 147
     },
     "internal": {
-      "hookFiles": 346,
+      "hookFiles": 348,
       "featureFiles": 98,
       "toolFiles": 68,
       "libFiles": 55,
@@ -41,7 +41,7 @@
     },
     "skills": 98,
     "commands": 21,
-    "hookFiles": 346,
+    "hookFiles": 348,
     "workflows": 8,
     "agentDefinitions": 18,
     "promptLikeFiles": 72
@@ -463,6 +463,8 @@
       "src/hooks/session-end/__tests__/guardrails.test.ts",
       "src/hooks/session-end/__tests__/lease-cas-drift.test.ts",
       "src/hooks/session-end/__tests__/mode-state-cleanup.test.ts",
+      "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+      "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
       "src/hooks/session-end/__tests__/openclaw-session-end.test.ts",
       "src/hooks/session-end/__tests__/orphaned-actions.test.ts",
       "src/hooks/session-end/__tests__/process-session-end-worker-spawn.test.ts",
@@ -3540,10 +3542,6 @@
       "dist/factory/run/__tests__/prepare-gates.test.d.ts.map",
       "dist/factory/run/__tests__/prepare-gates.test.js",
       "dist/factory/run/__tests__/prepare-gates.test.js.map",
-      "dist/factory/run/__tests__/private-store.test.d.ts",
-      "dist/factory/run/__tests__/private-store.test.d.ts.map",
-      "dist/factory/run/__tests__/private-store.test.js",
-      "dist/factory/run/__tests__/private-store.test.js.map",
       "dist/factory/run/__tests__/prompts.test.d.ts",
       "dist/factory/run/__tests__/prompts.test.d.ts.map",
       "dist/factory/run/__tests__/prompts.test.js",
@@ -3632,10 +3630,6 @@
       "dist/factory/run/prepare.d.ts.map",
       "dist/factory/run/prepare.js",
       "dist/factory/run/prepare.js.map",
-      "dist/factory/run/private-store.d.ts",
-      "dist/factory/run/private-store.d.ts.map",
-      "dist/factory/run/private-store.js",
-      "dist/factory/run/private-store.js.map",
       "dist/factory/run/progress.d.ts",
       "dist/factory/run/progress.d.ts.map",
       "dist/factory/run/progress.js",
@@ -5700,6 +5694,14 @@
       "dist/hooks/session-end/__tests__/mode-state-cleanup.test.d.ts.map",
       "dist/hooks/session-end/__tests__/mode-state-cleanup.test.js",
       "dist/hooks/session-end/__tests__/mode-state-cleanup.test.js.map",
+      "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.d.ts",
+      "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.d.ts.map",
+      "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.js",
+      "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.js.map",
+      "dist/hooks/session-end/__tests__/openclaw-disabled.test.d.ts",
+      "dist/hooks/session-end/__tests__/openclaw-disabled.test.d.ts.map",
+      "dist/hooks/session-end/__tests__/openclaw-disabled.test.js",
+      "dist/hooks/session-end/__tests__/openclaw-disabled.test.js.map",
       "dist/hooks/session-end/__tests__/openclaw-session-end.test.d.ts",
       "dist/hooks/session-end/__tests__/openclaw-session-end.test.d.ts.map",
       "dist/hooks/session-end/__tests__/openclaw-session-end.test.js",
@@ -8822,6 +8824,8 @@
       "src/hooks/session-end/__tests__/guardrails.test.ts",
       "src/hooks/session-end/__tests__/lease-cas-drift.test.ts",
       "src/hooks/session-end/__tests__/mode-state-cleanup.test.ts",
+      "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+      "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
       "src/hooks/session-end/__tests__/openclaw-session-end.test.ts",
       "src/hooks/session-end/__tests__/orphaned-actions.test.ts",
       "src/hooks/session-end/__tests__/process-session-end-worker-spawn.test.ts",
@@ -22744,26 +22748,6 @@
         "path": "dist/factory/run/__tests__/prepare-gates.test.js.map"
       },
       {
-        "id": "dist/factory/run/__tests__/private-store.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/private-store.test.d.ts"
-      },
-      {
-        "id": "dist/factory/run/__tests__/private-store.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/private-store.test.d.ts.map"
-      },
-      {
-        "id": "dist/factory/run/__tests__/private-store.test.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/private-store.test.js"
-      },
-      {
-        "id": "dist/factory/run/__tests__/private-store.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/private-store.test.js.map"
-      },
-      {
         "id": "dist/factory/run/__tests__/prompts.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/prompts.test.d.ts"
@@ -23202,26 +23186,6 @@
         "id": "dist/factory/run/prepare.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/prepare.js.map"
-      },
-      {
-        "id": "dist/factory/run/private-store.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/private-store.d.ts"
-      },
-      {
-        "id": "dist/factory/run/private-store.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/private-store.d.ts.map"
-      },
-      {
-        "id": "dist/factory/run/private-store.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/private-store.js"
-      },
-      {
-        "id": "dist/factory/run/private-store.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/private-store.js.map"
       },
       {
         "id": "dist/factory/run/progress.d.ts",
@@ -33542,6 +33506,46 @@
         "id": "dist/hooks/session-end/__tests__/mode-state-cleanup.test.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/session-end/__tests__/mode-state-cleanup.test.js.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.js"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.js.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/openclaw-disabled.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/openclaw-disabled.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/openclaw-disabled.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/openclaw-disabled.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/openclaw-disabled.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/openclaw-disabled.test.js"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/openclaw-disabled.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/openclaw-disabled.test.js.map"
       },
       {
         "id": "dist/hooks/session-end/__tests__/openclaw-session-end.test.d.ts",
@@ -55784,11 +55788,6 @@
         "path": "src/factory/run/__tests__/prepare-gates.test.ts"
       },
       {
-        "id": "src/factory/run/__tests__/private-store.test.ts",
-        "kind": "src",
-        "path": "src/factory/run/__tests__/private-store.test.ts"
-      },
-      {
         "id": "src/factory/run/__tests__/prompts.snapshot.json",
         "kind": "src",
         "path": "src/factory/run/__tests__/prompts.snapshot.json"
@@ -55902,11 +55901,6 @@
         "id": "src/factory/run/prepare.ts",
         "kind": "src",
         "path": "src/factory/run/prepare.ts"
-      },
-      {
-        "id": "src/factory/run/private-store.ts",
-        "kind": "src",
-        "path": "src/factory/run/private-store.ts"
       },
       {
         "id": "src/factory/run/progress.ts",
@@ -58737,6 +58731,16 @@
         "id": "src/hooks/session-end/__tests__/mode-state-cleanup.test.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/__tests__/mode-state-cleanup.test.ts"
+      },
+      {
+        "id": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts"
+      },
+      {
+        "id": "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/__tests__/openclaw-disabled.test.ts"
       },
       {
         "id": "src/hooks/session-end/__tests__/openclaw-session-end.test.ts",
@@ -89731,51 +89735,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/factory/run/__tests__/private-store.test.ts",
-        "to": "external:node:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/private-store.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/private-store.test.ts",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/private-store.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/private-store.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/private-store.test.ts",
-        "to": "src/factory/run/private-store.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/private-store.test.ts",
-        "to": "src/factory/run/private-store.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/private-store.test.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/private-store.test.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
-      },
-      {
         "from": "src/factory/run/__tests__/prompts.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -91113,66 +91072,6 @@
       {
         "from": "src/factory/run/prepare.ts",
         "to": "src/team/git-worktree.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/private-store.ts",
-        "to": "external:crypto",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/private-store.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/private-store.ts",
-        "to": "external:fs",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/private-store.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/private-store.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/private-store.ts",
-        "to": "src/factory/run/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/private-store.ts",
-        "to": "src/factory/run/lane-commit.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/private-store.ts",
-        "to": "src/factory/run/ledger.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/private-store.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/private-store.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/private-store.ts",
-        "to": "src/ship/merge.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/private-store.ts",
-        "to": "src/team/sdk-policy.ts",
         "kind": "imports"
       },
       {
@@ -100072,6 +99971,11 @@
       },
       {
         "from": "src/hooks/bridge.ts",
+        "to": "src/openclaw/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/bridge.ts",
         "to": "src/openclaw/index.ts",
         "kind": "imports"
       },
@@ -105081,6 +104985,71 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "external:node:events",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "src/hooks/session-end/cleanup-manifest.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled-real-runner.test.ts",
+        "to": "src/hooks/session-end/worker.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
+        "to": "src/hooks/session-end/cleanup-manifest.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/openclaw-disabled.test.ts",
+        "to": "src/hooks/session-end/worker.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/session-end/__tests__/openclaw-session-end.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -105617,6 +105586,11 @@
       },
       {
         "from": "src/hooks/session-end/callbacks.ts",
+        "to": "src/openclaw/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/callbacks.ts",
         "to": "src/openclaw/index.ts",
         "kind": "imports"
       },
@@ -105703,6 +105677,11 @@
       {
         "from": "src/hooks/session-end/cleanup-manifest.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/cleanup-manifest.ts",
+        "to": "src/openclaw/config.ts",
         "kind": "imports"
       },
       {
@@ -105864,6 +105843,11 @@
         "from": "src/hooks/session-end/index.ts",
         "to": "src/notifications/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/session-end/index.ts",
+        "to": "src/openclaw/config.ts",
+        "kind": "imports"
       },
       {
         "from": "src/hooks/session-end/index.ts",
@@ -128808,11 +128792,11 @@
     ],
     "stats": {
       "nodeCount": 10794,
-      "edgeCount": 13133,
+      "edgeCount": 13129,
       "importEdgeCount": 10795,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "8f496a7ea8c9365f29feb0a790981a91b7c186a64404c92bec0c0f55223d6b7e",
-  "manifestSha256": "741b4b2574d5b6d483569b4448e21203746b75f09881b0729798c4589433b61c"
+  "inventorySha256": "7f58dceaa25e7eba9902985f5bd9a04e656694cb13470e89788af3a9d51ac8f0",
+  "manifestSha256": "6c0a4e988ef517b7251c79c050decba334a5664814cd461d3eba80ec1a47914e"
 }

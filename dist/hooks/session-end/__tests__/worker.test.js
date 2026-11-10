@@ -74,7 +74,8 @@ describe('SessionEnd durable worker', () => {
     it('concurrent workers execute each action at most once and leave a recoverable manifest', async () => {
         const directory = project();
         const sessionId = 'two-workers';
-        expect(prepareCoreManifest(directory, sessionId, { initialTeamNames: [] })).not.toBeNull();
+        vi.stubEnv('OMC_OPENCLAW', '1');
+        expect(prepareCoreManifest(directory, sessionId, { initialTeamNames: [], openClawEnabled: true })).not.toBeNull();
         expect(sealCoreManifest(directory, sessionId)).not.toBeNull();
         expect(sealWikiManifest(directory, sessionId)).not.toBeNull();
         await Promise.all([
@@ -312,6 +313,7 @@ describe('SessionEnd durable worker', () => {
         expect(takeSessionEndDiscoveryPage(directory, 1)).toEqual([]);
     });
     it('persists only bounded original OpenClaw routing and clears it from worker ambient environments', () => {
+        vi.stubEnv('OMC_OPENCLAW', '1');
         const directory = project();
         vi.stubEnv('OMC_OPENCLAW_CONFIG', '/tmp/original-session.json');
         vi.stubEnv('OPENCLAW_REPLY_CHANNEL', '#original-session');

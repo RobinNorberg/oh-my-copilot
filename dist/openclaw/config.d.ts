@@ -7,6 +7,12 @@
  */
 import type { OpenClawConfig, OpenClawHookEvent, OpenClawGatewayConfig } from "./types.js";
 /**
+ * The single "OpenClaw is enabled" switch: OMC_OPENCLAW=1 (set by `--openclaw`).
+ * Every gate that would otherwise create OpenClaw state or spawn OpenClaw work
+ * must use this, so a disabled install leaves no `openclaw` directories behind.
+ */
+export declare function isOpenClawEnabled(env?: NodeJS.ProcessEnv): boolean;
+/**
  * Read and cache the OpenClaw configuration.
  *
  * Returns null when:
