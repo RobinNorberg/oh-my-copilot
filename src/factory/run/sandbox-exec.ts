@@ -223,7 +223,7 @@ export function readMarker(output: string, marker: string): { code: number | nul
   return { code: Number(m[2]), output: lines.slice(0, i).join('\n') };
 }
 
-/** Token-shaped text (GitHub, npm, AWS keys, PEM private keys, Bearer values) replaced before an output tail is kept anywhere. */
+/** Token-shaped text (GitHub, npm, AWS, sk- / sk-ant- keys, JWTs, .npmrc credentials, PEM private keys, Bearer values) replaced before an output tail is kept anywhere; pattern-based: only text printed verbatim. */
 export function redactGateOutput(text: string): string {
   return redactSecrets(text)
     .replace(/\bnpm_[A-Za-z0-9]{36}\b/g, '[redacted]')

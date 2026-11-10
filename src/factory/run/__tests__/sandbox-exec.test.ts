@@ -319,6 +319,34 @@ describe('runSandboxed', () => {
     expect(redactGateOutput('b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtz\n-----END OPENSSH PRIVATE KEY-----')).toBe('[redacted]');
   });
 
+  it('L-d: JWTs, .npmrc credentials and sk- / sk-ant- keys are redacted; shas and base64 test output are not', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4ifQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+    // Built at run time: a literal token-shaped value in the source would trip secret scanners.
+    const uuid = ['0f1e2d3c', '4b5a', '6978', '8796', 'a5b4c3d2e1f0'].join('-');
+    const secrets: Array<[string, string]> = [
+      [`token ${jwt} end`, jwt],
+      [`//registry.npmjs.org/:_authToken=${uuid}`, uuid],
+      ['_auth = dXNlcjpwYXNzd29yZA==', 'dXNlcjpwYXNzd29yZA'],
+      ['//npm.pkg.example/:_password=c2VjcmV0LXBhc3N3b3Jk', 'c2VjcmV0LXBhc3N3b3Jk'],
+      [`key ${['sk', 'proj', 'AbCdEf0123456789GhIjKlMnOp'].join('-')}`, 'AbCdEf0123456789'],
+      [`ANTHROPIC_API_KEY=${['sk', 'ant', 'api03', 'AbCdEf0123456789_GhIjKlMnOpQrStUv', 'wxyz'].join('-')}`, 'api03-AbCdEf0123456789'],
+    ];
+    for (const [text, secret] of secrets) {
+      const out = redactGateOutput(text);
+      expect(out, text).not.toContain(secret);
+      expect(out, text).toContain('[redacted]');
+    }
+    expect(redactGateOutput('//registry.npmjs.org/:_authToken=abc')).toBe('//registry.npmjs.org/:_authToken=[redacted]');
+    const ordinary = [
+      'HEAD is 9fb7e347addff4cac28206858ca6f58aec2792cc',
+      'sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      'expected "dGhpcyBpcyBhIHRlc3Qgb3V0cHV0IHdpdGggbm8gc2VjcmV0cyBpbiBpdA==" to equal "SGVsbG8gd29ybGQ="',
+      'eyJhbGciOiJIUzI1NiJ9 is a header only', 'uses sk-learn-compatible-estimators', 'task-0123456789abcdefghij-done',
+      '✓ src/a.test.ts (12 tests) 340ms',
+    ];
+    for (const text of ordinary) expect(redactGateOutput(text), text).toBe(text);
+  });
+
   it('an unsupported host, a policy that is not applied or a blocked enforcement runs nothing (not started)', async () => {
     for (const sandbox of ['unsupported', 'update-fails', 'blocked', 'no-rpc'] as const) {
       rec.commands = [];
