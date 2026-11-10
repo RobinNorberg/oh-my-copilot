@@ -1137,6 +1137,11 @@ Every gate posts one issue comment that names the gate, the reason and the comma
 | `ci-failed` | A real check failure after the ci-fix round | Fix the PR by hand |
 | `ci-flaky` | Known-flaky failures are out of rerun budget | Rerun the job on GitHub |
 | `no-workflows` | No checks and no workflow runs for the head after 5 minutes | Check that workflows trigger for the branch |
+| `private-store` | Private layout: the run's private repository could not be set up (git older than 2.44, a partial clone, a work root inside the repository, a damaged seed), or `factory.run.layout` is invalid. No lane has started | Fix what the message names and rerun, or set `factory.run.layout: "shared"` |
+| `layout-unsupported` | Private layout with `factory.run.implementer: "coding-agent"` | Set `factory.run.layout: "shared"` or the implementer back to `"copilot"`, then rerun |
+| `repo-guard-changed` | Private layout: your repository's hooks, hooks path, a dangerous config key, a submodule, a worktree redirect, alternates, grafts, shallow or replace refs changed since the last import (the message names kind and path, never a value). Your own change does this too | Check the change, then rerun to continue (the repository as it is then is the new baseline), or cancel |
+| `import-refused` | Private layout: the engine refused to import its own commit (wrong parents, more than one new commit, an fsck failure, a gitlink or symlink, the private repository changed, a timeout) | The message names the command: rerun, delete a left import ref, or cancel and `run clean` |
+| `gate-install-needed` | Private layout: the PR changes a lockfile (or the base has none), so prepare cannot link your `node_modules`; or the sandboxed `npm ci --ignore-scripts` failed | Set `factory.run.gateInstall: "sandboxed"` and rerun, or cancel |
 | `gates-timeout` | Gates did not settle within `factory.run.gatesTimeoutMinutes` | Rerun to continue the loop |
 | `gates-disagree` | The merge rule's one-shot read kept disagreeing with the gates loop | Check the PR's checks by hand |
 | `prepare-checks` | `ship.prepare.checks` changed after the run first prepared | Restore it, or cancel the run (`omg factory run cancel`) and start a new one |
@@ -1211,8 +1216,39 @@ Keys live under `factory.run`. The engine reads them from the user config at its
 | `maxCiFixRounds` | `1` | CI-fix rounds; a value above 1 uses 1 |
 | `gatesTimeoutMinutes` | `90` | Overall bound of one gates phase across its watch windows |
 | `implementer` | `"copilot"` | `"coding-agent"` hands GitHub issue runs to the Copilot coding agent; user config only, see [Copilot coding agent as implementer](#copilot-coding-agent-as-implementer) |
+| `layout` | `"shared"` | `"private"` gives each run its own git repository outside your checkout; see [Private layout](#private-layout). Read from the user config, then `.copilot/omg.jsonc` as committed at the run's base, never the working tree or the PR head. Decided before the run's first lane and kept for the run's whole life |
+| `workDir` | `%LOCALAPPDATA%\omg\fw` (Windows), `$XDG_CACHE_HOME/omg/fw` (else `~/.cache/omg/fw`) | Private layout: where the private repositories live. User config only. Must be absolute, and must not contain or lie inside the repository or the OMC state root |
+| `gateInstall` | `"park"` | Private layout: what prepare does when the PR changes a lockfile (so your `node_modules` does not match): `"park"` stops at `gate-install-needed`; `"sandboxed"` runs `npm ci --ignore-scripts` in the OS sandbox, with the npm registry reachable, in the prepare checkout. Same two layers as `layout` |
 
 The base branch comes from `ship.base`. The gates and the merge rule use ship's config. `requiredChecks`, `advisoryChecks` and the known-flaky list load in strict mode: from the user config, or from `.copilot/omg.jsonc` as committed at GitHub's base sha, never from the working tree or the PR head. A base the engine cannot verify stops the step. See [`omg ship`](#omg-ship) for the ship keys.
+
+##### Private layout
+
+With `factory.run.layout: "private"` a run does all its git work in a repository of its own instead of your checkout's shared git dir. Opt-in: the default `"shared"` behaves as before.
+
+Layout under the work root (`factory.run.workDir`):
+
+```
+<work>/<repo8>/seed.git          one object seed per repository (engine-only)
+<work>/<repo8>/<run>/repo        the run's private clone (nothing checked out)
+<work>/<repo8>/<run>/w/<n>       one worktree per lane, and w/prep (prepare and the local gate)
+<work>/<repo8>/<run>/jobs        the lanes' job dirs
+```
+
+What it isolates:
+
+- **Lanes and prepare never touch your repository.** A lane's worktree, its job dir and the prepare checkout are under the run dir. Lanes, prepare's checks and the local gate get read-write on their own worktree only; the private git dir is read-only to them. Where the sandbox host can deny paths, a lane is also denied the seed, the other runs' dirs and the run's other worktrees. Your checkout and its `.git` are not granted at all, except your `node_modules`, linked read-only into `w/prep` when the PR does not change a lockfile.
+- **Hooks, config, replace refs and worktree metadata planted by a lane stay in the private repository**, and every engine git command there first checks it (its config, hooks and `info/` hashed at the engine's last own write, no redirect, alternates, grafts, shallow or replace refs). A change parks at `lane-tampered`. Engine git there names the git dir and work tree explicitly, runs no hooks, no fsmonitor and no filters, and reads no global or system config.
+- **Commits reach your repository one at a time, by sha.** The engine imports its own commit (`refs/omg-import/<run>/<n>`, fsck on every object), checks it has exactly the parents the engine recorded and brings exactly one new commit, refuses protected paths, gitlinks and symlinks, then pushes it with the usual hardened push and deletes the import ref. Prepare's base merge is imported before any lane commit built on it.
+- **Your repository's hook and config state is compared around every import** (hooks, `core.hooksPath`, dangerous config keys and their includes, submodule git dirs, worktree redirects, alternates, grafts, shallow, replace refs). A change parks at `repo-guard-changed`; your own change (`git submodule update --init`, `git lfs install --local`, a local alias, husky on a branch switch) parks too. Rerunning continues with your repository as it is then.
+
+Requirements: git 2.44 or later (`GIT_NO_LAZY_FETCH`), a full clone (a partial clone is refused), and a work root outside the repository.
+
+Disk and time, measured on this repository (10 773 tracked files, Windows, git 2.51): the first seed fetch took 36 s and 98 MiB; each run's private clone 11 s and 99 MiB; each lane worktree and the prepare checkout about 9 s and 106 MiB. A run with four lanes and a prepare checkout uses about 0.6 GiB until `omg factory run clean`.
+
+Commands: `run status` and `board` show `layout private: <run dir>`. `run clean <n>` removes the run dir of a merged or cancelled run (links unlinked first, never followed; refused while a lane may still run there); `--seed` also removes the seed once no other run dir is left. `run reset <n>` does the same and moves the state aside. The dry run says when the private layout would be used.
+
+Not done yet: one engine per checkout (parallel runs, slots and the cross-engine import lock are a later change); no migration of a run started in the shared layout (it stays shared); the Copilot coding agent implementer parks at `layout-unsupported`; the default stays `"shared"`; never run live with a Copilot session yet. The job's own host git after a lane (change summary, HEAD read) uses the shared layout's host hardening, after a fresh private-repository check, not the store's pins.
 
 ##### Security model
 

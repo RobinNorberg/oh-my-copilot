@@ -4,6 +4,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Private git repository per run (opt-in, item 2).** New key `factory.run.layout: "shared" | "private"` (default `"shared"`, unchanged; user config or the base-committed `.copilot/omg.jsonc`). A private-layout run does its lane, prepare and gate work in an engine-owned repository under `factory.run.workDir` (default `%LOCALAPPDATA%\omg\fw`, `$XDG_CACHE_HOME/omg/fw`): lanes and checks are granted their own worktree only, never your checkout or its `.git`; hooks, config, replace refs and worktree metadata a lane plants stay in the private repository, which the engine checks before each of its git commands there. Commits enter your repository one at a time through a checked import (exactly the parents the engine recorded, one new commit, no protected path, gitlink or symlink), then the usual hardened push; your repository's hooks and dangerous config are compared before and after. New parks `private-store`, `layout-unsupported` (the coding agent implementer), `repo-guard-changed`, `import-refused`, `gate-install-needed`; new key `factory.run.gateInstall: "park" | "sandboxed"`; `omg factory run clean --seed`. Needs git 2.44+. Disk: one seed per repository plus a clone and one checkout per lane per run (about 0.6 GiB for a four-lane run of this repository). Not yet: parallel runs, migration of shared-layout runs, a live run.
+
 ### Fixed
 
 - **ci-fix rerun** (dogfood F58). A rerun after a `ci-fix-failed` or `ci-failed` park on the same PR head checks that head again before it starts a lane: on the local forge the gate runs again. A pass goes on to merge; a failure takes the same ci-fix round again. Fixing a cause outside the repository no longer costs two more ci-fix lanes.
