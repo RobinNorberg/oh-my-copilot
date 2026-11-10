@@ -2393,14 +2393,16 @@ class FactoryEngine {
     let usage = capUsage(lane.maxCredits);
     let why = 'its cancel was not confirmed';
     let childNote = '';
+    let confirmedSandbox: LaneResult['sandbox'];
     if (lane.jobId) {
       let lostJob = false;
       try {
         const c = await this.o.lanes.cancel(lane.jobId);
         confirmed = isTerminalLaneState(c.result.state);
         if (confirmed && c.result.usage.source === 'measured') usage = usageOf(c.result);
+        if (confirmed) confirmedSandbox = c.result.sandbox;
       } catch (error) {
-        lostJob = error instanceof LaneLostError;
+        lostJob =error instanceof LaneLostError;
       }
       if (lostJob) {
         const child = await this.laneChildGone(lane);
@@ -2444,7 +2446,7 @@ class FactoryEngine {
     const note = `${reason}${childNote}`;
     this.save((x) => ({
       ...x,
-      lanes: x.lanes.map((l) => (l.id === lane.id ? { ...l, status: 'lost' as const, endedAt: at, usage, note } : l)),
+      lanes: x.lanes.map((l) => (l.id === lane.id ? { ...l, status: 'lost' as const, endedAt: at, usage, note, ...(confirmedSandbox ? { sandbox: confirmedSandbox } : {}) } : l)),
       lostStreak: { ...x.lostStreak, [lane.kind]: (x.lostStreak[lane.kind] ?? 0) + 1 },
       history: [...x.history, { at, from: x.phase, to: x.phase, note: `lane ${lane.id} (${lane.jobId ?? 'no job'}) ${note}; ${usage.source === 'estimated' ? `counted at its cap of ${usage.credits}` : `${usage.credits.toFixed(2)}`} AI credits` }],
     }));
@@ -3265,7 +3267,9 @@ class FactoryEngine {
     if (this.forge?.kind === 'local') return '';
     // Every write lane of the run, as recorded when it ran; only the coding-agent lane runs no local Copilot session.
     const loose = this.state.lanes.filter((l) => l.kind !== 'review' && l.kind !== 'coding-agent'
-      && (l.sandbox?.mode !== 'enforced' || l.sandbox.writeNetwork !== 'none'));
+      && (l.sandbox?.mode !== 'enforced' || l.sandbox.writeNetwork !== 'none')
+      // A lane refused before it ran any call never ran a session.
+      && !(l.sandbox?.mode === 'refused' && l.sandbox.unsandboxedCalls === 0));
     if (loose.length === 0) return '';
     const accepted = `; lanes ran without the enforced sandbox (accepted for this head with --allow-unsandboxed-lanes): check the PR's resolved and outdated threads and its reviews yourself`;
     // Handed threads missing from the read could be a lane's doing: the acknowledgement must answer a park that listed them.
@@ -3275,7 +3279,7 @@ class FactoryEngine {
       this.save((x) => ({ ...x, unsandboxedAck: head, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `lanes without the enforced sandbox accepted for ${head.slice(0, 12)} (--allow-unsandboxed-lanes)` }] }));
       return accepted;
     }
-    const which = loose.map((l) => `${l.id} (sandbox ${l.sandbox ? oneLine(visibleLine(l.sandbox.mode), 40) : 'not recorded'}, network ${l.sandbox?.writeNetwork ?? 'not recorded'})`);
+    const which = loose.map((l) => `${l.id} (${l.sandbox ? '' : `${l.status}; `}sandbox ${l.sandbox ? oneLine(visibleLine(l.sandbox.mode), 40) : 'not recorded'}, network ${l.sandbox?.writeNetwork ?? 'not recorded'})`);
     this.gate(HUMAN_REVIEW_GATE, `${UNSANDBOXED_LANES_REASON} (it could reach ${this.forgeName} with your login): check the PR's threads and reviews yourself, then merge; lanes: ${this.names(which)}${gone}. To record that you checked ${head.slice(0, 12)}, rerun ${this.resume} --allow-unsandboxed-lanes`);
     return null;
   }

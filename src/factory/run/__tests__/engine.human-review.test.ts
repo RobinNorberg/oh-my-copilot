@@ -376,10 +376,19 @@ describe('the merge step reads human review feedback for the head the engine pus
     expect(tight.gate?.name, tight.message).toBe('merge');
   });
 
+  it('LOW-1: a write lane refused before any call (sandbox refused, zero unsandboxed calls) never ran a session and does not count as loose', async () => {
+    const refused: LaneScript = (ctx) => ({
+      ...(commitFile('src/greet.ts', 'export const greet = () => "hi";\n')(ctx) ?? {}),
+      sandbox: { mode: 'refused', host: {}, applied: 'none', canary: 'skipped', unsandboxedCalls: 0, cliVersion: 'x', sdkVersion: 'x', writeNetwork: 'none' } as unknown as CopilotRunSandboxState,
+    });
+    const out = await run([refused, review('approve')]).done;
+    expect(out.gate?.reason ?? '').not.toContain('without the enforced sandbox');
+  });
+
   it('M-C: a local write lane with no sandbox record counts as loose and parks', async () => {
     const out = await run([sandboxed(null), review('approve')]).done;
     expect(out.gate?.name, out.message).toBe('human-review');
-    expect(out.gate?.reason).toContain(`issue-${ISSUE}-implement-1 (sandbox not recorded, network not recorded)`);
+    expect(out.gate?.reason).toContain(`issue-${ISSUE}-implement-1 (completed; sandbox not recorded, network not recorded)`);
   });
 
   it('M-A + HIGH-1 residual: a round-1 detect-only lane still counts after a human fix round; a handed thread gone from the read is listed and needs a fresh acknowledgement', async () => {
