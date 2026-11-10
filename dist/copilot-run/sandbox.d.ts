@@ -176,6 +176,12 @@ export interface SandboxPolicyContext {
     extraReadonly?: string[];
     /** The OMC global state root to deny (default getGlobalOmcStateRoot()); a test seam. */
     omcStateRoot?: string;
+    /**
+     * More paths a write session is denied where the host can deny paths (the
+     * factory private layout: the store's seed and the other runs' and lanes'
+     * dirs); a path that holds a grant is left out, like the state root.
+     */
+    extraDenied?: string[];
 }
 export declare const REGISTRY_HOSTS: readonly string[];
 /**

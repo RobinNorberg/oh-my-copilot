@@ -123,6 +123,7 @@ function runPart(root, s, warnings) {
         credits: Number(runCredits(s).toFixed(2)),
         integrity,
         updatedAt: plainText(s.updatedAt),
+        ...(s.layout === 2 && s.privateDir ? { privateDir: plainText(s.privateDir) } : {}),
     };
     if (s.pr === undefined)
         return { run };

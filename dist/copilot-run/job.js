@@ -59,7 +59,7 @@ import { loadCopilotSdk, resolveShimTarget, runtimePid, } from '../smoke/copilot
 import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, isCredentialEnvKey, loginIdentity, resolveDefaultPluginRoot } from '../smoke/copilot-session-env.js';
 import { killProcessTree } from '../smoke/process-utils.js';
-import { ensureWorkerWorktree, getBranchName, getWorktreePath, hostGitDriverOverrides, hostGitEnv, hostGitAttrSourceProblem, hostGitHardeningArgs, readWorktreeGitLinks, recordWorktreeGitLinks, removeWorkerWorktree, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact, } from '../team/git-worktree.js';
+import { ensureWorkerWorktree, getBranchName, getWorktreePath, hostGitDriverOverrides, hostGitEnv, hostGitAttrSourceProblem, hostGitHardeningArgs, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeWorkerWorktree, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact, } from '../team/git-worktree.js';
 import { buildSdkExcludedTools, decideSdkPermission, gitSubcommandDeny, isUnderRoot, normalizeShellCommand, } from '../team/sdk-policy.js';
 import { reviewShellAllowlist } from '../team/shell-allowlist.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
@@ -330,6 +330,11 @@ function syncJobBranch(job, gitDirArgs) {
         return { moved: null };
     }
     return { moved: head };
+}
+/** A caller-made worktree (no job branch): only its HEAD must still be detached; nothing is moved. */
+function externalHeadProblem(job, gitDirArgs) {
+    const attached = git(job.worktree.path, [...gitDirArgs, 'symbolic-ref', '-q', 'HEAD']);
+    return attached ? { problem: `the worktree's HEAD is attached to ${attached}, not detached` } : { moved: null };
 }
 /**
  * Why the job's branch `ref` is not a plain sha ref, or null. A loose ref
@@ -689,7 +694,10 @@ export class CopilotRunManager {
             throw new CopilotRunError(`copilot_run_start: cwd ${JSON.stringify(cwd)} is not inside a git repository; isolation "worktree" needs one (or pass isolation: "none").`);
         }
         // Validated before the budget check and the worktree, so a bad ref creates nothing.
-        const startSha = startRef !== null && repoRoot ? resolveStartRef(resolve(repoRoot), startRef) : null;
+        // A caller's own worktree (private layout) is at a commit the caller's repository may not have: its HEAD is checked below.
+        const startSha = startRef !== null && repoRoot && !options.worktree ? resolveStartRef(resolve(repoRoot), startRef) : null;
+        if (options.worktree && isolation !== 'worktree')
+            throw new CopilotRunError('copilot_run_start: a caller-made worktree needs isolation "worktree".');
         // A malformed sandbox block refuses too, before anything is created.
         let sandboxSettings;
         let sandboxWarnings;
@@ -740,7 +748,31 @@ export class CopilotRunManager {
         let baseCommit = repoRoot ? git(cwd, ['rev-parse', 'HEAD']) : null;
         // Unhardened git in the worktree (the runtime's, a plugin hook's) runs the hooks a relative core.hooksPath names there.
         let hooksRule = null;
-        if (isolation === 'worktree') {
+        const external = options.worktree !== undefined;
+        if (options.worktree) {
+            // The caller's worktree: its links as the caller recorded them at creation, never read from its `.git` file now.
+            const path = resolve(options.worktree.path);
+            commonGitDir = resolve(options.worktree.commonGitDir);
+            const links = recordedWorktreeGitLinks(path);
+            if (!links || !worktreeGitLinksIntact(path, links, commonGitDir))
+                throw new CopilotRunError(`copilot_run_start: the worktree ${path} has no intact git links recorded in ${commonGitDir}.`);
+            worktreeLinks = links;
+            const dirArgs = worktreeGitDirArgs(path);
+            const head = git(path, [...dirArgs, 'rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
+            if (!head || git(path, [...dirArgs, 'symbolic-ref', '-q', 'HEAD']) || (startRef !== null && /^[0-9a-f]{40,64}$/.test(startRef) && head !== startRef)) {
+                throw new CopilotRunError(`copilot_run_start: the worktree ${path} is not on a detached HEAD at ${startRef ?? 'its start commit'}.`);
+            }
+            try {
+                hooksRule = relativeHooksPathRule(path, dirArgs);
+            }
+            catch (err) {
+                throw new CopilotRunError(`copilot_run_start: ${errText(err)}.`);
+            }
+            workCwd = path;
+            worktree = { path, branch: '', repoRoot: path };
+            baseCommit = head;
+        }
+        else if (isolation === 'worktree') {
             let info;
             try {
                 info = ensureWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd, { mode: 'named', requireCleanLeader: false, ...(startSha ? { baseRef: startSha } : {}) });
@@ -848,11 +880,14 @@ export class CopilotRunManager {
         if (worktree && worktreeLinks) {
             const headKey = `worktrees/${basename(worktreeLinks.adminDir)}/HEAD`;
             liveWorktreeHeads.add(headKey);
-            this.owned.add(headKey).add(`refs/heads/${worktree.branch}`);
-            // git created the branch at the base commit; the live jobs' snapshots expect it from now on.
-            this.expectJobRef(worktree.branch, baseCommit);
+            this.owned.add(headKey);
+            if (!external) {
+                this.owned.add(`refs/heads/${worktree.branch}`);
+                // git created the branch at the base commit; the live jobs' snapshots expect it from now on.
+                this.expectJobRef(worktree.branch, baseCommit);
+            }
         }
-        const jobDir = join(getOmcRoot(ledgerCwd), 'state', 'copilot-run', id);
+        const jobDir = join(options.jobRoot ? resolve(options.jobRoot) : join(getOmcRoot(ledgerCwd), 'state', 'copilot-run'), id);
         let requestStop = () => { };
         const stopped = new Promise((r) => { requestStop = (reason) => { if (!job.stopReason)
             job.stopReason = reason; r(); }; });
@@ -886,6 +921,9 @@ export class CopilotRunManager {
             sharedGitState,
             liveWorktreeHeads,
             branchCommit: null,
+            external,
+            deniedPaths: [...(options.deniedPaths ?? [])],
+            beforeHostGit: options.beforeHostGit ?? null,
             pid: undefined,
             pidIdentity: null,
             startedAt: new Date().toISOString(),
@@ -916,7 +954,20 @@ export class CopilotRunManager {
             clearTimeout(timer);
             const gitDirArgs = jobGitDirArgs(job);
             const gitStateChanged = job.sharedGitState && job.commonGitDir ? sharedGitStateChanges(job.sharedGitState, sharedGitStateSnapshot(job.commonGitDir), job.liveWorktreeHeads, this.owned) : [];
-            if (gitDirArgs === null) {
+            let callerProblem = null;
+            try {
+                callerProblem = job.beforeHostGit?.() ?? null;
+            }
+            catch (err) {
+                callerProblem = errText(err);
+            }
+            if (callerProblem !== null) {
+                const why = `sandbox-escaped: ${callerProblem}; no host git ran in the worktree`;
+                job.error = job.error ? `${why}; ${job.error}` : why;
+                job.stopReason ??= 'sandbox-escaped';
+                outcome = 'failed';
+            }
+            else if (gitDirArgs === null) {
                 // A redirected .git, gitdir or commondir points host git at a git dir the session controls; a changed config.worktree plants config in it.
                 const why = 'sandbox-escaped: the job worktree\'s git links (.git, gitdir, commondir or config.worktree) changed during the session; no host git ran in it';
                 job.error = job.error ? `${why}; ${job.error}` : why;
@@ -931,7 +982,8 @@ export class CopilotRunManager {
                 outcome = 'failed';
             }
             else {
-                const sync = job.worktree ? syncJobBranch(job, gitDirArgs) : { moved: null };
+                // A caller-made worktree has no job branch: its detached HEAD is the result.
+                const sync = job.worktree && !job.external ? syncJobBranch(job, gitDirArgs) : job.external ? externalHeadProblem(job, gitDirArgs) : { moved: null };
                 if ('problem' in sync) {
                     // update-ref through a symref would move the branch it names (main) to the session's unreviewed commits.
                     const why = `sandbox-escaped: the job's branch ${job.worktree.branch} or its worktree's HEAD changed kind during the session (${sync.problem}); the branch was not moved and no host git ran in the worktree`;
@@ -943,7 +995,8 @@ export class CopilotRunManager {
                     if (job.worktree) {
                         if (sync.moved)
                             this.expectJobRef(job.worktree.branch, sync.moved);
-                        job.branchCommit = sync.moved ?? git(job.worktree.repoRoot, ['rev-parse', '--verify', '--quiet', `refs/heads/${job.worktree.branch}^{commit}`]);
+                        if (!job.external)
+                            job.branchCommit = sync.moved ?? git(job.worktree.repoRoot, ['rev-parse', '--verify', '--quiet', `refs/heads/${job.worktree.branch}^{commit}`]);
                         job.headCommit = git(job.worktree.path, [...gitDirArgs, 'rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
                     }
                     job.changes = summarizeChanges(job.workCwd, job.baseCommit, job.extraProtected, gitDirArgs, job.worktree !== null);
@@ -1010,6 +1063,8 @@ export class CopilotRunManager {
             throw new CopilotRunError(`copilot_run_cleanup: job ${jobId} is still ${job.status}; cancel it first.`);
         if (!job.worktree)
             throw new CopilotRunError(`copilot_run_cleanup: job ${jobId} ran with isolation "none"; there is no worktree to remove.`);
+        if (job.external)
+            throw new CopilotRunError(`copilot_run_cleanup: job ${jobId} ran in a worktree its caller made (${job.worktree.path}); the caller removes it.`);
         let tampered = null;
         if (!job.cleanedUp) {
             const moved = this.branchMismatch(job);
@@ -1051,7 +1106,7 @@ export class CopilotRunManager {
      * flag (sharedGitStateChanges), so the owner checks before anyone merges it.
      */
     branchMismatch(job) {
-        if (!job.worktree || job.cleanedUp || !job.branchCommit)
+        if (!job.worktree || job.external || job.cleanedUp || !job.branchCommit)
             return null;
         const ref = `refs/heads/${job.worktree.branch}`;
         const problem = jobRefProblem(job.commonGitDir, job.worktree.repoRoot, ref);
@@ -1217,6 +1272,7 @@ export class CopilotRunManager {
                     hostCommits: job.hostCommits,
                     toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
                     extraReadonly: proxy.caPaths,
+                    ...(job.deniedPaths.length > 0 ? { extraDenied: job.deniedPaths } : {}),
                 };
             },
             note: (text) => { job.notes.push(text); },

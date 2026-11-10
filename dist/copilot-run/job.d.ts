@@ -98,6 +98,28 @@ export interface CopilotRunStartOptions {
      * cannot stage or commit, and no git identity is seeded for it.
      */
     hostCommits?: boolean;
+    /**
+     * A worktree the caller made and owns (omg factory run's private layout,
+     * factory/run/private-run.ts): detached at the start commit, its git links
+     * recorded (recordWorktreeGitLinks) in the repository whose common git dir
+     * is `commonGitDir`. The job creates no worktree and no branch, moves no
+     * ref, and its cleanup leaves the worktree to the caller. The caller's
+     * `cwd` stays the ledger and settings location.
+     */
+    worktree?: {
+        path: string;
+        commonGitDir: string;
+    };
+    /** Where the job's state dir goes (default `<OMC root of the repository>/state/copilot-run`). */
+    jobRoot?: string;
+    /** Paths the write sandbox denies the session where the host can deny paths (another run's dirs, the private store seed). */
+    deniedPaths?: string[];
+    /**
+     * Called right before the job's host git reads the worktree after the
+     * session (the private layout's privateRepoProblem); a non-null problem
+     * fails the job as sandbox-escaped and no host git runs in it.
+     */
+    beforeHostGit?: () => string | null;
 }
 /**
  * A credential-free session env, in place. Removed: GitHub tokens

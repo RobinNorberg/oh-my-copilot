@@ -37,6 +37,13 @@ export interface PrepareOptions {
     /** The PR's repository URL on GitHub (prRepoUrl); the remote must point at it. */
     repoUrl: string | undefined;
     remote?: string;
+    /**
+     * The caller already fetched `baseSha` into this checkout's object store
+     * and checked it is GitHub's base (omg factory run's private layout: the
+     * checkout's repository has no remote): the remote check and the fetch are
+     * skipped, and `baseSha` must be a commit there.
+     */
+    prefetchedBase?: boolean;
     /** Run the checks (default true); false is `--no-checks`. */
     checks?: boolean;
     /**

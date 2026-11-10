@@ -48,13 +48,21 @@ export class FakeLanes {
             throw new Error(`fake lanes: no script for lane ${n + 1} (${input.laneId})`);
         // Unique across backends: a resumed run's lanes get new job ids (and lane branches), like copilot_run.
         const remoteId = `cr-fake${n + 1}${this.suffix}`;
-        const branch = `omc-team/copilot-run/${remoteId}`;
-        const worktree = join(this.root, '.omg', 'team', 'copilot-run', 'worktrees', remoteId);
-        mkdirSync(join(worktree, '..'), { recursive: true });
-        const baseSha = gitIn(this.root, 'rev-parse', '--verify', `${input.baseRef}^{commit}`);
-        gitIn(this.root, 'worktree', 'add', '-q', '-b', branch, worktree, baseSha);
-        // Like copilot_run: the git links are recorded at creation.
-        recordWorktreeGitLinks(worktree, readWorktreeGitLinks(worktree));
+        // The private layout: the engine made the worktree (detached, links recorded); like copilot_run, no branch then.
+        const own = input.worktree;
+        const branch = own ? '' : `omc-team/copilot-run/${remoteId}`;
+        const worktree = own ? own.path : join(this.root, '.omg', 'team', 'copilot-run', 'worktrees', remoteId);
+        let baseSha;
+        if (own) {
+            baseSha = gitIn(worktree, 'rev-parse', 'HEAD');
+        }
+        else {
+            mkdirSync(join(worktree, '..'), { recursive: true });
+            baseSha = gitIn(this.root, 'rev-parse', '--verify', `${input.baseRef}^{commit}`);
+            gitIn(this.root, 'worktree', 'add', '-q', '-b', branch, worktree, baseSha);
+            // Like copilot_run: the git links are recorded at creation.
+            recordWorktreeGitLinks(worktree, readWorktreeGitLinks(worktree));
+        }
         this.jobs.set(remoteId, { ctx: { input, worktree, branch, baseSha, root: this.root }, script, runningPolls: this.runningPolls[n] ?? 0 });
         return { remoteId };
     }
@@ -63,7 +71,7 @@ export class FakeLanes {
         const o = job.outcome ?? {};
         return {
             state,
-            branch: job.ctx.branch,
+            branch: job.ctx.branch || null,
             pr: null,
             headSha: terminal ? gitIn(job.ctx.worktree, 'rev-parse', 'HEAD') : null,
             baseSha: job.ctx.baseSha,
@@ -206,6 +214,8 @@ export function withTestSandbox(o, over = {}) {
     return {
         ...o,
         ...('gateSandboxUserConfig' in over ? {} : { gateSandboxUserConfig: null }),
+        // The developer's own factory.run.layout never reaches the tests.
+        ...('runUserConfig' in over || 'runUserConfig' in o ? {} : { runUserConfig: null }),
         ...('gateSandbox' in over ? {} : { gateSandbox: attestedSandbox(() => o.exec, () => o.localGate) }),
     };
 }

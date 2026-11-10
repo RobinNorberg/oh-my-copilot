@@ -212,17 +212,24 @@ function* prepareSteps(opts) {
         return fail('preflight', 'the index has staged changes; commit or unstage them first');
     steps.push({ name: 'preflight', status: 'ok', detail: branch });
     // 2. fetch from the PR's repository; the fetched base must be the commit GitHub reports
-    const mismatch = remoteRepoMismatch(exec, cwd, remote, opts.repoUrl);
-    if (mismatch)
-        return fail('remote', `${mismatch}; refusing to fetch (fail closed)`);
-    const fetched = git('fetch', remote, base);
-    if (fetched.status !== 0)
-        return fail('fetch', tail(fetched.stderr));
-    const local = git('rev-parse', '--verify', upstream);
-    if (local.status !== 0 || local.stdout.trim() !== baseSha) {
-        return fail('fetch', `${upstream} is ${local.stdout.trim() || 'missing'}, but GitHub reports ${base} at ${baseSha}; refusing (fail closed; re-run if ${base} just moved)`);
+    if (opts.prefetchedBase) {
+        if (git('cat-file', '-e', `${baseSha}^{commit}`).status !== 0)
+            return fail('fetch', `the base ${baseSha} the caller fetched is not a commit in the checkout's repository`);
+        steps.push({ name: 'fetch', status: 'ok', detail: `${base} = ${baseSha} (fetched by the caller)` });
     }
-    steps.push({ name: 'fetch', status: 'ok', detail: `${upstream} = ${baseSha}` });
+    else {
+        const mismatch = remoteRepoMismatch(exec, cwd, remote, opts.repoUrl);
+        if (mismatch)
+            return fail('remote', `${mismatch}; refusing to fetch (fail closed)`);
+        const fetched = git('fetch', remote, base);
+        if (fetched.status !== 0)
+            return fail('fetch', tail(fetched.stderr));
+        const local = git('rev-parse', '--verify', upstream);
+        if (local.status !== 0 || local.stdout.trim() !== baseSha) {
+            return fail('fetch', `${upstream} is ${local.stdout.trim() || 'missing'}, but GitHub reports ${base} at ${baseSha}; refusing (fail closed; re-run if ${base} just moved)`);
+        }
+        steps.push({ name: 'fetch', status: 'ok', detail: `${upstream} = ${baseSha}` });
+    }
     // 3. merge GitHub's base sha in (never rebase, never by ref name)
     if (git('merge-base', '--is-ancestor', baseSha, 'HEAD').status === 0) {
         steps.push({ name: 'merge-base', status: 'skipped', detail: `already contains ${base} ${baseSha.slice(0, 12)}` });

@@ -169,6 +169,17 @@ export class EngineLedger {
             delete this.data.recheck;
         this.persist();
     }
+    /** The private layout's user repository guard baseline (taken at run start, re-taken after each clean import and push). */
+    get userGuard() {
+        return this.data.userGuard;
+    }
+    setUserGuard(guard) {
+        if (guard)
+            this.data.userGuard = guard;
+        else
+            delete this.data.userGuard;
+        this.persist();
+    }
     persist() {
         const dir = dirname(this.file);
         mkdirSync(dir, { recursive: true, mode: 0o700 });

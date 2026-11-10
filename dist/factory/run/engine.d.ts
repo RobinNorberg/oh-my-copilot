@@ -183,6 +183,12 @@ export interface FactoryEngineOptions {
      * omitted = the user's own trusted config, read at the first implement step (tests pass one).
      */
     codingAgentUserConfig?: unknown;
+    /**
+     * The trusted user config factory.run.layout, factory.run.workDir and
+     * factory.run.gateInstall are read from (default: userConfigLayers().trustedUser);
+     * the base-committed .copilot/omg.jsonc is the other trusted layer. Tests pass one.
+     */
+    runUserConfig?: unknown;
 }
 export interface FactoryForgeInput {
     config: ResolvedForgeConfig;

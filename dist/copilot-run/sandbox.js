@@ -380,6 +380,7 @@ export function buildSandboxConfig(profile, ctx, host) {
             ...ledgers.map((l) => (l.endsWith('factory-ledger') ? ensureDir(l) : l)).filter(existsSync),
         ];
         filesystem.deniedPaths.push(...[...new Set(stateDeny)].filter((p) => !holdsGrant(p) && !covered(p)));
+        filesystem.deniedPaths.push(...[...new Set(ctx.extraDenied ?? [])].filter((p) => existsSync(p) && !holdsGrant(p) && !covered(p)));
         if (ctx.platform !== 'win32') {
             // Sockets that run commands for the caller outside the sandbox: the user's runtime dir (D-Bus, systemd, agents),
             // the container daemons and the SSH agent. Never a dir that holds a grant (the root, the home, a parent of either,

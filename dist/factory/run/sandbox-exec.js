@@ -373,7 +373,7 @@ export function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers
             cwd: req.cwd,
             commonGitDir: req.commonGitDir,
             timeoutMs: req.timeoutMs,
-            network: settings.writeNetwork,
+            network: req.network ?? settings.writeNetwork,
             settings,
             jobRoot: sandboxJobRoot(root),
             ...(req.requireDeniedPaths ? { requireDeniedPaths: true } : {}),

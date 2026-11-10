@@ -161,6 +161,8 @@ export function renderFactoryRunState(state, o = {}) {
         lines.push(chalk.yellow('cancel requested'));
     if (state.head)
         lines.push(`head ${state.head.slice(0, 12)}`);
+    if (state.layout === 2 && state.privateDir)
+        lines.push(`layout private: ${plainText(state.privateDir)}`);
     if (state.unsandboxedAck)
         lines.push(chalk.yellow(`lanes without the enforced sandbox accepted for ${state.unsandboxedAck.slice(0, 12)} (--allow-unsandboxed-lanes)`));
     if (state.unsandboxedGatesAck)
@@ -476,6 +478,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         .description('Remove the worktrees and local branches of a merged or cancelled run, only when nothing would be lost (the PR branch on GitHub is kept); busy (exit 6) while an engine runs in this checkout')
         .option('--discard', 'A cancelled run only: give up uncommitted lane changes (a cancel mid-lane leaves them), so those worktrees go too; commits are still kept')
         .option('--lane-stopped', 'With a lane whose stop was not confirmed (busy, exit 6): your word that its Copilot child has stopped; recorded in the run history. A child seen alive with its recorded start identity still refuses')
+        .option('--seed', 'A private-layout run (factory.run.layout "private"): also remove the repository\'s private store seed once no other run dir is left next to it')
         .option('--json', 'JSON output')
         .action((issueRaw, o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
         const issue = parseIssue(issueRaw);
@@ -491,7 +494,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         const claimRepo = cliClaimRepo(deps, root, kind ?? readOnlyForgeKind(deps, root, deps.base(root)));
         if (o.laneStopped && !o.discard)
             throw new FactoryUsageError('--lane-stopped applies to --discard');
-        const result = cleanFactoryRun({ root, issue, exec: deps.exec, claimRepo, ...(o.discard ? { discard: true } : {}), ...(o.laneStopped ? { laneStopped: true } : {}), ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
+        const result = cleanFactoryRun({ root, issue, exec: deps.exec, claimRepo, ...(o.discard ? { discard: true } : {}), ...(o.laneStopped ? { laneStopped: true } : {}), ...(o.seed ? { seed: true } : {}), ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
         if (c.optsWithGlobals().json)
             console.log(JSON.stringify({ ok: result.kept.length === 0, ...result }, null, 2));
         else {

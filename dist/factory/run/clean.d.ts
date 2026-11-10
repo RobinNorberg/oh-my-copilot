@@ -61,6 +61,8 @@ export interface FactoryCleanOptions {
     laneStopped?: boolean;
     /** The command a refusal tells the human to rerun (default: `omg factory run clean <issue> --discard`). */
     rerun?: string;
+    /** The private layout: also remove the repository's private store seed once no other run dir is left (`--seed`). */
+    seed?: boolean;
 }
 export type LaneProcessRecord = NonNullable<FactoryRunState['lanes'][number]['process']>;
 export type LaneProcessState = 'live' | 'dead' | 'mismatch' | 'unknown';

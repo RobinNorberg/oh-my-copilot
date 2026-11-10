@@ -25,6 +25,7 @@
  * lane is told to work in, and that the engine compares against its in-memory
  * copy while it runs.
  */
+import type { UserRepoGuard } from './private-store.js';
 import type { RepoSnapshot } from './review-guard.js';
 import type { FactoryLaneKind, FactoryRunKey } from './state.js';
 export declare class LedgerError extends Error {
@@ -82,6 +83,9 @@ export declare class EngineLedger {
     dropBaseline(laneId: string): void;
     get recheck(): LedgerRecheck | undefined;
     setRecheck(recheck: LedgerRecheck | undefined): void;
+    /** The private layout's user repository guard baseline (taken at run start, re-taken after each clean import and push). */
+    get userGuard(): UserRepoGuard | undefined;
+    setUserGuard(guard: UserRepoGuard | undefined): void;
     private persist;
 }
 /** True when the directory exists and holds no entry. */

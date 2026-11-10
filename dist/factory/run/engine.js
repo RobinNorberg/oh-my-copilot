@@ -103,6 +103,8 @@ import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir } from './l
 import { createFactoryProgress } from './progress.js';
 import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaimRepo, isShallowClaimRepo, localFactoryClaimRepo, shallowClaimWarning, settleFactoryClaim, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo } from './claims.js';
 import { compareSnapshots, replaceObjectsProblem, samePath, snapshotRepo, verifyReviewWorktree } from './review-guard.js';
+import { GATE_INSTALL_GATE, IMPORT_REFUSED_GATE, LAYOUT_UNSUPPORTED_GATE, PRIVATE_STORE_GATE, PrivateRun, REPO_GUARD_GATE, resolveGateInstall, resolveRunLayout } from './private-run.js';
+import { lockfileUnchanged, PrivateRepoTampered, PrivateStoreError, userRepoGuardSnapshot } from './private-store.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted } from './plan-rules.js';
 import { acquireFactoryOwner, acquireFactoryRepoOwner, createFactoryState, defaultOwnerDeps, EXIT_BUSY, factoryCancelRequested, forgeResumeProblem, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, healRunKey, moveTo, overwriteFactoryState, ownerHolding, parseFactoryState, readFactoryState, reviewerName, runLabel, runSlug, setGate, shipVerdictHash, TERMINAL_FACTORY_PHASES, factoryBranch, trackerStageOf, updateFactoryState, runRemote, verifyFactoryIntegrity, unreadableOwnerMessage, describeOwner, FactoryBusyError, ownerRecord, } from './state.js';
@@ -519,6 +521,10 @@ class FactoryEngine {
     recalibrated = new Set();
     /** The prepare checkout's git dir, named explicitly to engine git there once the PR's code ran in it (pinCheckoutGit). */
     checkoutGitPin;
+    /** The private layout's store (private-run.ts), built from the sealed state on first use; undefined in the shared layout. */
+    priv;
+    /** factory.run.layout as the implement step resolved it before the run sealed a layout (this invocation). */
+    layoutChoice;
     constructor(o, ledger, hooksDir) {
         this.o = o;
         this.ledger = ledger;
@@ -682,6 +688,181 @@ class FactoryEngine {
     }
     gate(name, reason) {
         this.save((s) => setGate(s, name, reason, this.iso()));
+    }
+    // --- The private layout (private-run.ts): thin switches; the layout-specific logic lives there --------------
+    /** The trusted user config of factory.run.layout / workDir / gateInstall. */
+    runUserConfig() {
+        if (this.o.runUserConfig !== undefined)
+            return this.o.runUserConfig;
+        try {
+            return userConfigLayers().trustedUser;
+        }
+        catch {
+            return null;
+        }
+    }
+    /** The private layout's store of this run (from the sealed state), or undefined in the shared layout. */
+    privateRun() {
+        if (this.state?.layout !== 2)
+            return undefined;
+        this.priv ??= PrivateRun.fromState(this.state, { root: this.o.root, ledgerDir: this.o.ledgerDir ?? defaultLedgerDir(), exec: this.o.exec, warn: (m) => this.o.warn?.(m) });
+        return this.priv;
+    }
+    /** Seal the private repository's config hash again after an engine-made config write (review-481 h). */
+    sealPrivate() {
+        const p = this.priv;
+        if (!p || !this.state.privateStore || this.state.privateStore.configHash === p.repo.configHash)
+            return;
+        this.save((x) => ({ ...x, privateStore: { ...x.privateStore, configHash: p.repo.configHash } }));
+    }
+    /**
+     * The git state every tamper check compares (review-guard.ts): the user's
+     * repository in the shared layout, the run's private repository (through
+     * the store's checked, pinned git) in the private one.
+     */
+    snap(against) {
+        const p = this.privateRun();
+        return p ? snapshotRepo(p.exec(), p.repo.repo, null, against) : snapshotRepo(this.exec, this.o.root, this.stateRootRel, against);
+    }
+    /** The engine's prepare and local-gate checkout: `<run>/w/prep` in the private layout. */
+    checkoutDir() {
+        const p = this.privateRun();
+        return p ? p.worktreePath('prep') : checkoutPath(this.o.root, this.key);
+    }
+    /** factory.run.layout from the trusted layers at `baseSha` (user config, then the base .copilot/omg.jsonc); false when it parked. */
+    resolveLayout(baseSha) {
+        try {
+            const user = this.runUserConfig();
+            const own = resolveRunLayout(user, undefined);
+            // The base layer is read only when the user config leaves the key unset.
+            const text = own.source === 'default' ? readBaseFile(this.exec, this.o.root, baseSha, BASE_CONFIG_PATH) : null;
+            this.layoutChoice = text && text.trim() ? resolveRunLayout(user, parseJsonc(text)).layout : own.layout;
+            return true;
+        }
+        catch (error) {
+            this.gate(PRIVATE_STORE_GATE, `factory.run.layout could not be read: ${errText(error)}; fix it in the user config or the .copilot/omg.jsonc committed on ${this.state.base}, then rerun ${this.resume}`);
+            return false;
+        }
+    }
+    /**
+     * Run start of the private layout (B1b scope 1): the store's checks, the
+     * seed and the private clone at the sealed base, the guard baseline; the
+     * layout, run dir and record sealed together. False when it parked: the
+     * run has not started a lane, so the shared layout is one config change away.
+     */
+    setupPrivate(baseSha) {
+        let made;
+        try {
+            made = PrivateRun.create({
+                root: this.o.root, omcRoot: getOmcRoot(this.o.root), slug: runSlug(this.key), repoUrl: this.state.repoUrl, userConfig: this.runUserConfig(),
+                ledgerDir: this.o.ledgerDir ?? defaultLedgerDir(), exec: this.o.exec, warn: (m) => this.o.warn?.(m),
+            }, baseSha);
+        }
+        catch (error) {
+            if (!(error instanceof PrivateStoreError))
+                throw error;
+            this.gate(PRIVATE_STORE_GATE, `factory.run.layout is "private", and the run's private repository could not be set up: ${error.message}. Fix that and rerun ${this.resume}, or set factory.run.layout "shared" in your user config and rerun (no lane has started)`);
+            return false;
+        }
+        this.priv = made.run;
+        this.ledger.setUserGuard(made.guard);
+        this.save((x) => ({
+            ...x, layout: 2, privateDir: made.run.layout.runDir, privateStore: made.record,
+            history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `private layout: the run's private repository is ${made.run.layout.repo} at ${baseSha.slice(0, 12)}` }],
+        }));
+        return true;
+    }
+    /**
+     * Import engine commits (the private layout) around `body`, the caller's
+     * checks and push (private-run.ts publishImports): false when it parked.
+     */
+    privateImports(p, steps, what, body) {
+        let extra = [];
+        try {
+            extra = configuredProtectedPaths(this.o.root);
+        }
+        catch { /* the defaults still apply */ }
+        const out = p.publishImports({
+            steps, slug: runSlug(this.key), what, resume: this.resume, cancel: cancelCommand(this.key), extraProtected: extra,
+            nextImport: () => {
+                const n = this.state.privateStore.nextImport;
+                this.save((x) => ({ ...x, privateStore: { ...x.privateStore, nextImport: n + 1 } }));
+                return n;
+            },
+            baseline: this.ledger.userGuard,
+            setBaseline: (g) => this.ledger.setUserGuard(g),
+            body,
+            pushed: (v) => v.pushed,
+        });
+        if (!out.ok) {
+            this.gate(out.park.name, out.park.reason);
+            return false;
+        }
+        return !out.value.parked;
+    }
+    /**
+     * Prepare's own commits on top of `reviewed` up to `next` as import steps,
+     * in order (B1b scope 4): read from the private repository, each must be a
+     * housekeeping commit prepare reported, the first on [reviewed, base] (the
+     * merge) or [reviewed], each later one on the one before, the last `next`.
+     * The merge's start is the base, so its base side is not diffed as the
+     * PR's change. A park otherwise.
+     */
+    housekeepingSteps(p, reviewed, next, housekeeping, baseSha) {
+        const lines = p.gitOk(['rev-list', '--reverse', '--parents', next, `^${reviewed}`, `^${baseSha}`], 'listing prepare\'s commits').split('\n').map((l) => l.trim().split(/\s+/)).filter((l) => l[0]);
+        const steps = [];
+        let prev = reviewed;
+        for (const [sha, ...parents] of lines) {
+            const expected = steps.length === 0 ? [[reviewed, baseSha], [reviewed]] : [[prev]];
+            if (!housekeeping.includes(sha) || !expected.some((e) => JSON.stringify(e) === JSON.stringify(parents))) {
+                return { name: 'lane-tampered', reason: `prepare's checks (the PR's own code) left commit ${sha.slice(0, 12)} the engine did not make on top of ${reviewed.slice(0, 12)}; nothing was imported or pushed` };
+            }
+            steps.push({ sha, parents, start: parents.length > 1 ? parents[1] : parents[0] });
+            prev = sha;
+        }
+        if (prev !== next)
+            return { name: 'lane-tampered', reason: `prepare's head ${next.slice(0, 12)} is not the last of the engine's own commits on ${reviewed.slice(0, 12)}; nothing was imported or pushed` };
+        return steps;
+    }
+    /**
+     * node_modules for the private prepare checkout (design 4/8): a read-only
+     * link to the user's main node_modules when every lockfile at the PR head
+     * is the base's; else factory.run.gateInstall: "park" (default) parks at
+     * gate-install-needed, "sandboxed" runs `npm ci --ignore-scripts` in the OS
+     * sandbox with the registry reachable. Null when the checkout is ready.
+     */
+    async privateNodeModules(p, path, baseSha, head, loaded) {
+        const rule = lockfileUnchanged(p.repo, baseSha, head, p.ctx);
+        if (rule.policy === 'junction') {
+            linkNodeModules(this.o.root, path);
+            return null;
+        }
+        const what = rule.lockfiles.length === 0 ? 'the base has no lockfile' : `the PR changes ${rule.changed.join(', ')}`;
+        let mode;
+        try {
+            const commit = loaded.config.trustedBaseCommit;
+            const text = commit ? readBaseFile(this.exec, this.o.root, commit, BASE_CONFIG_PATH) : null;
+            mode = resolveGateInstall(this.runUserConfig(), text && text.trim() ? parseJsonc(text) : undefined).mode;
+        }
+        catch (error) {
+            return { name: GATE_INSTALL_GATE, reason: `${what}, and factory.run.gateInstall could not be read: ${errText(error)}; fix it, then rerun ${this.resume}` };
+        }
+        if (mode === 'park') {
+            return { name: GATE_INSTALL_GATE, reason: `${what}, so the prepare checkout ${path} cannot use your node_modules (it would not match the PR's lockfile). Set factory.run.gateInstall "sandboxed" in your user config to run npm ci --ignore-scripts in the OS sandbox there, then rerun ${this.resume}; or ${cancelCommand(this.key)}` };
+        }
+        const argv = ['npm', 'ci', '--ignore-scripts'];
+        const target = resolveLocalGateArgv(argv, { cwd: path, subject: 'the sandboxed install', configKey: 'factory.run.gateInstall' });
+        if ('missing' in target)
+            return { name: GATE_INSTALL_GATE, reason: `${what}, and npm cannot be started for the sandboxed install (${target.missing}); install npm, then rerun ${this.resume}` };
+        const r = this.o.gateSandbox
+            ? await this.o.gateSandbox({ purpose: 'install', argv, exe: target.exe, args: target.args, cwd: path, commonGitDir: p.repo.gitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, network: 'registry' })
+            : { ran: false, reason: 'no OS sandbox runner was given to the engine' };
+        if (!r.ran)
+            return { name: GATE_INSTALL_GATE, reason: `${what}, and npm ci --ignore-scripts could not run in the OS sandbox (${r.reason}); fix that, or set factory.run.gateInstall "park", then rerun ${this.resume}` };
+        if (r.status !== 0 || r.timedOut)
+            return { name: GATE_INSTALL_GATE, reason: `${what}, and npm ci --ignore-scripts in the OS sandbox failed (exit ${r.status}${r.timedOut ? ', timed out' : ''}): ${redactGateOutput(r.output).trim().slice(-1_500)}; rerun ${this.resume} after fixing it` };
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `${what}: npm ci --ignore-scripts ran in the OS sandbox in the prepare checkout` }] }));
+        return null;
     }
     fields() {
         return { pr: this.state?.pr, sha: this.state?.head, credits: this.state ? runCredits(this.state) : 0 };
@@ -901,6 +1082,19 @@ class FactoryEngine {
                 this.recheckAfterCiPark(existing);
                 if (replaced && !this.state.gate)
                     this.gate('lane-tampered', `${replaced} ${this.resume}`);
+                const priv = this.privateRun();
+                if (priv) {
+                    // Run start of a private-layout run: leftover trash and this run's stale import refs (a crash after an import).
+                    try {
+                        priv.resumeSweep(runSlug(this.key));
+                    }
+                    catch (error) {
+                        this.o.warn?.(`omg factory run: the private store sweep failed: ${errText(error)}`);
+                    }
+                    // A human looked at the guard park: the repository as it is now is the next import's baseline (a rerun continues).
+                    if (existing.gate?.name === REPO_GUARD_GATE || !this.ledger.userGuard)
+                        this.ledger.setUserGuard(userRepoGuardSnapshot(priv.userGitDir, priv.ctx));
+                }
             }
         }
         catch (error) {
@@ -1081,9 +1275,11 @@ class FactoryEngine {
                     return this.onTampered(error);
                 if (error instanceof FactoryBusyError)
                     throw error;
-                if (error instanceof MirrorBaseMovedError) {
+                if (error instanceof MirrorBaseMovedError || error instanceof PrivateRepoTampered) {
                     try {
-                        this.gate('lane-tampered', error.message);
+                        this.gate('lane-tampered', error instanceof PrivateRepoTampered
+                            ? `the run's private repository changed outside the engine: ${error.message}; nothing more was committed, imported or pushed. Inspect ${this.state.privateDir ?? 'the run dir'}, then ${cancelCommand(this.key)} and omg factory run clean`
+                            : error.message);
                     }
                     catch (e) {
                         if (e instanceof StateTamperedError)
@@ -1516,10 +1712,33 @@ class FactoryEngine {
         }
     }
     async implement() {
+        // The layout is decided once, before the run's first lane, and sealed with its private store (never switched later).
+        const undecided = this.state.layout !== 2 && !this.state.codingAgent && this.state.lanes.length === 0;
+        // The coding agent pushes to the PR branch itself: refused when the user config asks for the private layout (no fetch needed to tell).
+        let userLayout = 'shared';
+        try {
+            userLayout = resolveRunLayout(this.runUserConfig(), undefined).layout;
+        }
+        catch { /* resolveLayout parks on it below */ }
+        if (undecided && userLayout === 'private' && this.state.kind !== 'ci-heal' && this.o.issue) {
+            let agent = false;
+            try {
+                agent = this.codingAgentChoice().use;
+            }
+            catch { /* codingAgentImplement parks on it */ }
+            if (agent) {
+                this.gate(LAYOUT_UNSUPPORTED_GATE, `factory.run.layout "private" does not support factory.run.implementer "coding-agent" yet (the agent pushes to the PR branch itself, outside the private repository); set factory.run.layout "shared" or the implementer back to the default, then rerun ${this.resume}`);
+                return;
+            }
+        }
         if (await this.codingAgentImplement())
             return;
         const baseSha = this.fetchBase();
         this.save((s) => ({ ...s, baseSha }));
+        if (undecided && !this.resolveLayout(baseSha))
+            return;
+        if (undecided && this.layoutChoice === 'private' && !this.setupPrivate(baseSha))
+            return;
         const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(this.readAt(baseSha), pathsInText(this.state.plan?.text ?? ''))), 'implement');
         if (out.kind === 'done')
             this.acceptWriteLane(out, 'implement', baseSha);
@@ -1575,8 +1794,11 @@ class FactoryEngine {
         }
         catch { /* the defaults still apply */ }
         const title = `${lane.kind}: ${oneLine(this.state.issueTitle ?? `issue ${this.o.issue}`)} (#${this.o.issue})`;
+        // The private layout: the commit is made in the run's private repository (checked first), on no branch; publish imports it.
+        const priv = this.privateRun();
+        priv?.assert();
         const commit = commitLaneWork({
-            worktree: result.worktree, start, parents, repoRoot: this.o.root, branch: result.branch,
+            worktree: result.worktree, start, parents, repoRoot: priv ? priv.repo.repo : this.o.root, branch: priv ? null : result.branch,
             message: laneCommitMessage(title, result.finalText), extraProtected,
         });
         if (!commit.ok) {
@@ -1594,7 +1816,8 @@ class FactoryEngine {
         if (result.sandbox?.mode === 'detect-only' && this.state.pr) {
             this.commentOnce('pr', `detect-only@${lane.id}`, 'sandbox', `**Sandbox: detect-only.** ${lane.kind} lane ${lane.id} ran without an OS sandbox (\`writeUnsandboxed: "detect-only"\`).\n`);
         }
-        this.save((s) => moveTo({ ...s, pendingHead: head }, 'publish', `the engine committed lane ${lane.id}'s changes as ${head.slice(0, 12)}`, this.iso()));
+        // The parents as the engine chose them: the private layout's import expects exactly these, never what the commit says.
+        this.save((s) => moveTo({ ...s, pendingHead: head, pendingParents: [...parents] }, 'publish', `the engine committed lane ${lane.id}'s changes as ${head.slice(0, 12)}`, this.iso()));
     }
     /**
      * The paths the lane commit refuses beyond ship's PROTECTED_PATHS
@@ -1631,32 +1854,50 @@ class FactoryEngine {
         }
         if (!s.baseSha)
             throw new FactoryStepError('publish needs the base sha the run started at');
-        const files = listChangedFiles(this.exec, this.o.root, s.baseSha, cand);
-        if (files === null)
-            throw new FactoryStepError(`git diff ${s.baseSha.slice(0, 12)}...${cand.slice(0, 12)} failed`);
-        const hit = protectedChanges(files, this.laneProtectedPaths());
-        if (hit.length > 0) {
-            this.gate('protected-paths', `the change touches merge-rule paths: ${hit.join(', ')}; nothing was pushed`);
-            return;
-        }
-        if (this.gateDefinitionParked(s, cand))
-            return;
-        const mismatch = this.pushRemoteMismatch(s);
-        if (mismatch)
-            throw new FactoryStepError(`refusing to push: ${mismatch}`);
-        // Re-read before acting: a crash between push and record repeats nothing.
-        const remote = this.run(['ls-remote', runRemote(s), `refs/heads/${s.branch}`]).trim().split(/\s+/)[0] || null;
-        if (remote && remote !== cand && remote !== s.head) {
-            this.gate('head-moved-externally', `${runRemote(s)}/${s.branch} is at ${remote.slice(0, 12)}, which the engine did not push`);
-            return;
-        }
-        if (remote !== cand) {
+        const baseSha = s.baseSha;
+        // The checks and the push; in the private layout they run on the imported commit, inside the import section.
+        const push = () => {
+            const files = listChangedFiles(this.exec, this.o.root, baseSha, cand);
+            if (files === null)
+                throw new FactoryStepError(`git diff ${baseSha.slice(0, 12)}...${cand.slice(0, 12)} failed`);
+            const hit = protectedChanges(files, this.laneProtectedPaths());
+            if (hit.length > 0) {
+                this.gate('protected-paths', `the change touches merge-rule paths: ${hit.join(', ')}; nothing was pushed`);
+                return { parked: true, pushed: false };
+            }
+            if (this.gateDefinitionParked(s, cand))
+                return { parked: true, pushed: false };
+            const mismatch = this.pushRemoteMismatch(s);
+            if (mismatch)
+                throw new FactoryStepError(`refusing to push: ${mismatch}`);
+            // Re-read before acting: a crash between push and record repeats nothing.
+            const remote = this.run(['ls-remote', runRemote(s), `refs/heads/${s.branch}`]).trim().split(/\s+/)[0] || null;
+            if (remote && remote !== cand && remote !== s.head) {
+                this.gate('head-moved-externally', `${runRemote(s)}/${s.branch} is at ${remote.slice(0, 12)}, which the engine did not push`);
+                return { parked: true, pushed: false };
+            }
+            if (remote === cand)
+                return { parked: false, pushed: false };
             // Last look at the shared git state right before the push (a late hook, config or ref edit).
             if (this.recheckFailed('right before the push'))
-                return;
+                return { parked: true, pushed: false };
             this.run(['push', runRemote(s), `${cand}:refs/heads/${s.branch}`]);
             this.rebaseRecheck();
+            return { parked: false, pushed: true };
+        };
+        const priv = this.privateRun();
+        if (priv) {
+            // The import's parents and start come from the engine's own record only (review-481b i): a merge's start is its base side.
+            const parents = s.pendingParents;
+            if (!parents || parents.length === 0) {
+                this.gate(IMPORT_REFUSED_GATE, `the engine has no record of the parents of ${cand.slice(0, 12)}, so it is not imported or pushed; ${cancelCommand(this.key)} and start the item again`);
+                return;
+            }
+            if (!this.privateImports(priv, [{ sha: cand, parents, start: parents.length > 1 ? parents[1] : parents[0] }], 'the lane commit', push))
+                return;
         }
+        else if (push().parked)
+            return;
         let pr = s.pr;
         if (!pr) {
             const forge = this.forge;
@@ -1686,7 +1927,7 @@ class FactoryEngine {
             return cur;
         });
         this.save((x) => {
-            const { pendingHead: _p, ...rest } = x;
+            const { pendingHead: _p, pendingParents: _pp, ...rest } = x;
             return moveTo({ ...rest, head: cand }, 'review', `pushed ${cand.slice(0, 12)} to ${s.branch} (PR #${prNumber})`, this.iso());
         });
         this.codingAgentHandOff();
@@ -1966,12 +2207,42 @@ class FactoryEngine {
      * unlinked first, a dirty tree is refused).
      */
     discardCheckout() {
-        const path = checkoutPath(this.o.root, this.key);
+        const path = this.checkoutDir();
         if (!existsSync(path))
             return;
         const gitArgs = this.checkoutGitArgs(path);
         if (typeof gitArgs === 'string')
             throw new FactoryStepError(`the engine's prepare checkout ${path} cannot be read safely: ${gitArgs}${this.state.checkoutAdmin ? '; inspect it and remove it by hand' : `. ${this.freshCheckoutRecovery()}`}`);
+        const priv = this.privateRun();
+        if (priv) {
+            // The private layout: engine git there through the store (checked, pinned), removal without `git worktree remove`.
+            let at;
+            try {
+                at = priv.gitOk(['rev-parse', 'HEAD'], 'reading the prepare checkout', path).trim();
+                if (priv.git(['rev-parse', '-q', '--verify', 'MERGE_HEAD'], path).status === 0)
+                    priv.gitOk(['merge', '--abort'], 'aborting the prepare merge', path);
+            }
+            catch (error) {
+                if (error instanceof PrivateRepoTampered)
+                    throw error;
+                throw new FactoryStepError(`the engine's prepare checkout ${path}: ${errText(error)}`);
+            }
+            if (at !== this.state.head && at !== this.state.checkoutHead)
+                throw new FactoryStepError(`the engine's prepare checkout ${path} is at ${at.slice(0, 12)}, which the engine did not leave there; inspect it and remove it by hand`);
+            try {
+                priv.removeWorktree(path);
+                forgetWorktreeGitLinks(path);
+            }
+            catch (error) {
+                throw new FactoryStepError(`could not discard the engine's prepare checkout ${path}: ${errText(error)}`);
+            }
+            this.save((x) => {
+                const { checkoutHead: _c, checkoutAdmin: _a, ...rest } = x;
+                return rest;
+            });
+            this.rebaseRecheck();
+            return;
+        }
         let head;
         try {
             head = runHostGit(path, [...gitArgs, 'rev-parse', 'HEAD']).trim();
@@ -2034,7 +2305,7 @@ class FactoryEngine {
                 return `its .git file names the admin dir ${links.adminDir}, but the engine's \`worktree add\` made ${admin}`;
             let common;
             try {
-                common = resolve(this.o.root, this.run(['rev-parse', '--git-common-dir']).trim());
+                common = this.privateRun()?.repo.gitDir ?? resolve(this.o.root, this.run(['rev-parse', '--git-common-dir']).trim());
             }
             catch (error) {
                 return errText(error);
@@ -2117,11 +2388,19 @@ class FactoryEngine {
         if (this.recheckFailed('before prepare'))
             return;
         this.discardCheckout();
-        const path = checkoutPath(this.o.root, this.key);
+        const path = this.checkoutDir();
         const branch = checkoutBranch(this.key);
+        const priv = this.privateRun();
+        if (priv) {
+            // The private checkout has no remote: the base is fetched in the user's repository, checked to be the forge's, then brought in by sha.
+            const fetchedBase = this.fetchBase();
+            if (fetchedBase !== view.baseRefOid)
+                throw new FactoryStepError(`${runRemote(s)}/${s.base} is ${fetchedBase.slice(0, 12)}, but the forge reports ${s.base} at ${view.baseRefOid.slice(0, 12)}; refusing (fail closed; rerun ${this.resume} if ${s.base} just moved)`);
+            priv.ensureCommit(view.baseRefOid);
+        }
         // `worktree add -B` writes through a symbolic ref: a checkout branch a lane rewrote as `ref: refs/heads/main` would move main.
-        const common = resolve(this.o.root, this.run(['rev-parse', '--git-common-dir']).trim());
-        const refProblem = jobRefProblem(common, this.o.root, `refs/heads/${branch}`);
+        const common = priv ? priv.repo.gitDir : resolve(this.o.root, this.run(['rev-parse', '--git-common-dir']).trim());
+        const refProblem = jobRefProblem(common, priv ? priv.repo.repo : this.o.root, `refs/heads/${branch}`);
         if (refProblem) {
             this.gate('lane-tampered', `the prepare checkout branch ${branch} is not a plain commit ref (${refProblem}); nothing was checked out, inspect and delete the branch by hand`);
             return;
@@ -2129,13 +2408,18 @@ class FactoryEngine {
         // prepare runs the PR's own code (tsc, eslint, vitest): the shared git state is compared around it like a lane's.
         let before;
         try {
-            before = snapshotRepo(this.exec, this.o.root, this.stateRootRel);
+            before = this.snap();
         }
         catch (error) {
             throw new FactoryStepError(`the pre-prepare snapshot failed: ${errText(error)}`);
         }
         mkdirSync(dirname(path), { recursive: true });
-        this.run(['worktree', 'add', '-B', branch, path, head]);
+        if (priv) {
+            priv.addWorktree(path, head, branch);
+            this.sealPrivate();
+        }
+        else
+            this.run(['worktree', 'add', '-B', branch, path, head]);
         // Recorded before the PR's code runs there: later reads of the checkout never follow a `.git` file prepare rewrote.
         const recorded = readWorktreeGitLinks(path);
         if (!recorded)
@@ -2147,7 +2431,16 @@ class FactoryEngine {
             throw new FactoryStepError(`the prepare checkout's git links cannot be recorded: ${errText(error)}`);
         }
         this.save((x) => ({ ...x, checkoutHead: head, checkoutAdmin: basename(recorded.adminDir) }));
-        linkNodeModules(this.o.root, path);
+        if (priv) {
+            // Your node_modules only for an unchanged lockfile; else factory.run.gateInstall (park, or a sandboxed npm ci).
+            const install = await this.privateNodeModules(priv, path, view.baseRefOid, head, this.gateConfig(view));
+            if (install) {
+                this.gate(install.name, install.reason);
+                return;
+            }
+        }
+        else
+            linkNodeModules(this.o.root, path);
         // The checkout's gitfile before any PR code ran: compared after each check, and its git dir named to engine git from then on.
         const gitLink = checkoutGitLink(path);
         if (!gitLink.gitDir)
@@ -2161,7 +2454,7 @@ class FactoryEngine {
         let result;
         let checkoutHead;
         try {
-            result = await runPrepareAsync({ exec: this.exec, cwd: path, base: s.base, branch, reviewedSha: head, baseSha: view.baseRefOid, repoUrl: s.repoUrl, remote: runRemote(s), push: false, commands }, (c) => this.prepareCheck(c, { head, path, commonGitDir: common, baseSha: view.baseRefOid, gates, ran, gitLink: { hash: gitLink.hash, gitDir: gitLink.gitDir } }));
+            result = await runPrepareAsync({ exec: priv ? priv.exec() : this.exec, cwd: path, base: s.base, branch, reviewedSha: head, baseSha: view.baseRefOid, repoUrl: s.repoUrl, remote: runRemote(s), push: false, commands, ...(priv ? { prefetchedBase: true } : {}) }, (c) => this.prepareCheck(c, { head, path, commonGitDir: common, baseSha: view.baseRefOid, gates, ran, gitLink: { hash: gitLink.hash, gitDir: gitLink.gitDir } }));
             // A changed gitfile parks before any further engine git reads the checkout.
             if (ran.park?.name === 'lane-tampered') {
                 this.gate(ran.park.name, ran.park.reason);
@@ -2170,7 +2463,7 @@ class FactoryEngine {
             if (this.prepareTampered(before, path, branch, view.baseRefOid))
                 return;
             // Still inside the pin: engine git names the checkout's git dir as it was before any PR code ran (checkoutGitPin).
-            checkoutHead = this.run(['rev-parse', 'HEAD'], 'git', undefined, path).trim();
+            checkoutHead = (priv ? priv.gitOk(['rev-parse', 'HEAD'], 'reading the prepare checkout', path) : this.run(['rev-parse', 'HEAD'], 'git', undefined, path)).trim();
         }
         finally {
             this.checkoutGitPin = undefined;
@@ -2200,6 +2493,14 @@ class FactoryEngine {
             return;
         }
         if (failed && !PREPARE_ENGINE_STEPS.has(failed.name)) {
+            // The private layout: the ci-fix lane commits on prepare's merge, so that merge is imported first (review-481b 2/3 item 2).
+            if (priv && checkoutHead !== head) {
+                const steps = this.housekeepingSteps(priv, head, checkoutHead, result.housekeepingCommits, view.baseRefOid);
+                if (!Array.isArray(steps))
+                    return this.gate(steps.name, steps.reason);
+                if (!this.privateImports(priv, steps, 'prepare\'s commit', () => ({ parked: false, pushed: false })))
+                    return;
+            }
             this.ciFailed({ source: 'prepare', startSha: checkoutHead, checks: [`prepare ${failed.name}`], tests: [], detail: failed.detail ?? '' }, `prepare ${failed.name} failed at ${checkoutHead.slice(0, 12)}`);
             return;
         }
@@ -2454,7 +2755,7 @@ class FactoryEngine {
         let problems;
         let after;
         try {
-            after = snapshotRepo(this.exec, this.o.root, this.stateRootRel, before);
+            after = this.snap(before);
             problems = compareSnapshots(strip(before), strip(after), {}, { newWorktree: { path } });
             const now = after.refs[tracking];
             if (now !== before.refs[tracking] && now !== baseSha)
@@ -2478,8 +2779,10 @@ class FactoryEngine {
     publishPrepared(pr, reviewed, next, housekeeping, baseSha, carryGatesAck = false) {
         const s = this.state;
         if (next !== reviewed) {
-            // PR code ran in the checkout: anything beyond the engine's own recorded commits is unreviewed.
-            const extra = this.run(['rev-list', next, `^${reviewed}`, `^${baseSha}`]).split('\n').map((l) => l.trim()).filter((l) => l && !housekeeping.includes(l));
+            const priv = this.privateRun();
+            // PR code ran in the checkout: anything beyond the engine's own recorded commits is unreviewed (read where the commits are).
+            const listed = priv ? priv.gitOk(['rev-list', next, `^${reviewed}`, `^${baseSha}`], 'listing prepare\'s commits') : this.run(['rev-list', next, `^${reviewed}`, `^${baseSha}`]);
+            const extra = listed.split('\n').map((l) => l.trim()).filter((l) => l && !housekeeping.includes(l));
             if (extra.length > 0) {
                 this.gate('lane-tampered', `prepare's checks (the PR's own code) added commit(s) the engine did not make: ${extra.slice(0, 5).map((c) => c.slice(0, 12)).join(', ')}; nothing was pushed`);
                 return;
@@ -2488,30 +2791,43 @@ class FactoryEngine {
             if (carryGatesAck && housekeeping.includes(next)) {
                 this.save((x) => ({ ...x, unsandboxedGatesAck: next, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `--allow-unsandboxed-gates for ${reviewed.slice(0, 12)} carried to the prepared head ${next.slice(0, 12)}` }] }));
             }
-            const files = listChangedFiles(this.exec, this.o.root, baseSha, next);
-            if (files === null)
-                throw new FactoryStepError(`git diff ${baseSha.slice(0, 12)}...${next.slice(0, 12)} failed`);
-            const hit = protectedChanges(files, this.laneProtectedPaths());
-            if (hit.length > 0) {
-                this.gate('protected-paths', `the prepared head touches merge-rule paths: ${hit.join(', ')}; nothing was pushed`);
-                return;
-            }
-            const mismatch = this.pushRemoteMismatch(s);
-            if (mismatch)
-                throw new FactoryStepError(`refusing to push: ${mismatch}`);
-            const remote = this.run(['ls-remote', runRemote(s), `refs/heads/${s.branch}`]).trim().split(/\s+/)[0] || null;
-            if (remote !== reviewed && remote !== next) {
-                this.gate('head-moved-externally', `${runRemote(s)}/${s.branch} is at ${remote?.slice(0, 12) ?? 'nothing'}, which the engine did not push`);
-                return;
-            }
-            if (remote !== next) {
+            const push = () => {
+                const files = listChangedFiles(this.exec, this.o.root, baseSha, next);
+                if (files === null)
+                    throw new FactoryStepError(`git diff ${baseSha.slice(0, 12)}...${next.slice(0, 12)} failed`);
+                const hit = protectedChanges(files, this.laneProtectedPaths());
+                if (hit.length > 0) {
+                    this.gate('protected-paths', `the prepared head touches merge-rule paths: ${hit.join(', ')}; nothing was pushed`);
+                    return { parked: true, pushed: false };
+                }
+                const mismatch = this.pushRemoteMismatch(s);
+                if (mismatch)
+                    throw new FactoryStepError(`refusing to push: ${mismatch}`);
+                const remote = this.run(['ls-remote', runRemote(s), `refs/heads/${s.branch}`]).trim().split(/\s+/)[0] || null;
+                if (remote !== reviewed && remote !== next) {
+                    this.gate('head-moved-externally', `${runRemote(s)}/${s.branch} is at ${remote?.slice(0, 12) ?? 'nothing'}, which the engine did not push`);
+                    return { parked: true, pushed: false };
+                }
+                if (remote === next)
+                    return { parked: false, pushed: false };
                 if (this.recheckFailed('right before the prepare push'))
-                    return;
+                    return { parked: true, pushed: false };
                 // Recorded before the push: a crash right after it resumes from this record, not at head-moved-externally.
                 this.save((x) => ({ ...x, prepared: { head: next, housekeeping } }));
                 this.run(['push', runRemote(s), `${next}:refs/heads/${s.branch}`]);
                 this.rebaseRecheck();
+                return { parked: false, pushed: true };
+            };
+            if (priv) {
+                // The merge is imported before anything built on it (review-481b 2/3 item 2): one commit per import, in order.
+                const steps = this.housekeepingSteps(priv, reviewed, next, housekeeping, baseSha);
+                if (!Array.isArray(steps))
+                    return this.gate(steps.name, steps.reason);
+                if (!this.privateImports(priv, steps, 'prepare\'s commit', push))
+                    return;
             }
+            else if (push().parked)
+                return;
         }
         const prepared = { head: next, housekeeping };
         this.save((x) => ({ ...x, head: next, prepared }));
@@ -2553,8 +2869,15 @@ class FactoryEngine {
         const key = `conflict-fix@${head.slice(0, 12)}`;
         // The lane cannot run git merge (its git dir is read-only): it starts at the engine's merge, conflict markers included.
         let merged;
+        // The private layout: the engine's merge is made in the private repository (checked first; both sides brought in by sha).
+        const priv = this.privateRun();
+        if (priv) {
+            priv.ensureCommit(head);
+            priv.ensureCommit(baseSha);
+            priv.assert();
+        }
         try {
-            merged = conflictFixStart(this.o.root, head, baseSha, `factory conflict-fix: merge ${baseSha.slice(0, 12)} into ${head.slice(0, 12)} (unresolved)`);
+            merged = conflictFixStart(priv ? priv.repo.repo : this.o.root, head, baseSha, `factory conflict-fix: merge ${baseSha.slice(0, 12)} into ${head.slice(0, 12)} (unresolved)`);
         }
         catch (error) {
             throw new FactoryStepError(`the engine merge for the conflict-fix lane failed: ${errText(error)}`);
@@ -2619,8 +2942,10 @@ class FactoryEngine {
             this.gate('gates', `no local gate: set factory.forge.local.gate (an argv such as ["npm","test"]) in the user config or .copilot/omg.jsonc committed on ${this.state.base}, then rerun ${this.resume}`);
             return false;
         }
-        const checkout = checkoutPath(this.o.root, this.key);
+        const checkout = this.checkoutDir();
         let at = '';
+        // The private layout: the host git reads below go to the private repository, which must still be the engine's.
+        this.privateRun()?.assert();
         if (existsSync(checkout)) {
             // The recorded git dir, never the checkout's `.git` file (the PR's code ran there in prepare).
             const gitArgs = this.checkoutGitArgs(checkout);
@@ -2689,7 +3014,7 @@ class FactoryEngine {
         // A sealed gate that never started judged nothing: the run adopts the current trusted gate.
         const sealed = this.state.localGate && this.localGateEverStarted(head) ? this.state.localGate : undefined;
         try {
-            assertLocalGateCommand(sealed ?? gate, gate, checkout, checkoutPath(this.o.root, this.key));
+            assertLocalGateCommand(sealed ?? gate, gate, checkout, this.checkoutDir());
         }
         catch (error) {
             if (!(error instanceof FactorySafetyError))
@@ -2708,7 +3033,7 @@ class FactoryEngine {
         const timeoutMinutes = this.localGateTimeout();
         // factory.run.sandbox.gates: the gate config of this base was loaded by gates() before the gate runs.
         const gates = this.gatesSandbox(this.gateCfg.loaded);
-        const common = resolve(this.o.root, this.run(['rev-parse', '--git-common-dir']).trim());
+        const common = this.privateRun()?.repo.gitDir ?? resolve(this.o.root, this.run(['rev-parse', '--git-common-dir']).trim());
         this.progress.heartbeat('gates', `local gate ${gate.join(' ')} on ${head.slice(0, 12)}`, this.fields());
         const input = { stateDir, root: this.o.root, head, gate, timeoutMinutes, checkout, ...(this.o.localGate ? { runner: this.o.localGate } : {}), now: () => new Date(this.clock()) };
         // The checkout's gitfile around the gate (the PR's code): a change parks at lane-tampered. Before it, the gitfile must
@@ -3000,7 +3325,7 @@ class FactoryEngine {
     laneProblems(kind, before, result, startRef) {
         const allowed = result.branch ? { [`refs/heads/${result.branch}`]: kind === 'review' ? startRef : (result.headSha ?? '*') } : {};
         try {
-            const after = snapshotRepo(this.exec, this.o.root, this.stateRootRel, before);
+            const after = this.snap(before);
             const newWorktree = result.worktree ? { path: result.worktree } : result.remoteId ? { id: result.remoteId } : undefined;
             return { after, problems: compareSnapshots(before, after, allowed, { fetchedRef: this.fetchedRef, ...(newWorktree ? { newWorktree } : {}) }) };
         }
@@ -3030,7 +3355,7 @@ class FactoryEngine {
             return false;
         let problems;
         try {
-            const now = snapshotRepo(this.exec, this.o.root, this.stateRootRel, r.snapshot);
+            const now = this.snap(r.snapshot);
             // The engine's own prepare push (recorded before it) moves the PR branch's tracking ref; a crash right after it skips the rebase.
             const tracking = `refs/remotes/${runRemote(this.state)}/${this.state.branch}`;
             const own = this.state.prepared !== undefined && now.refs[tracking] === this.state.prepared.head;
@@ -3053,7 +3378,7 @@ class FactoryEngine {
             const back = r.kind === 'coding-agent' ? 'implement' : r.kind;
             this.updateLane(r.laneId, { note: `late change: ${problems.join('; ')}` });
             this.save((x) => {
-                const { pendingHead: _p, ...rest } = x;
+                const { pendingHead: _p, pendingParents: _pp, ...rest } = x;
                 return setGate(x.phase === back ? rest : moveTo(rest, back, `lane ${r.laneId}'s head is dropped`, at), 'lane-tampered', `${what}; nothing it made is pushed`, at);
             });
         }
@@ -3063,7 +3388,7 @@ class FactoryEngine {
     rebaseRecheck() {
         const r = this.ledger.recheck;
         if (r)
-            this.ledger.setRecheck({ ...r, snapshot: snapshotRepo(this.exec, this.o.root, this.stateRootRel) });
+            this.ledger.setRecheck({ ...r, snapshot: this.snap() });
     }
     /**
      * A lane the backend lost, or a lane still `running` at resume: cancel its
@@ -3131,7 +3456,7 @@ class FactoryEngine {
             try {
                 const jobRef = (name, sha) => lane.jobId !== undefined && name.startsWith('refs/heads/') && name.endsWith(`/${lane.jobId}`)
                     && (lane.kind !== 'review' || sha === lane.startSha);
-                after = snapshotRepo(this.exec, this.o.root, this.stateRootRel, baseline);
+                after = this.snap(baseline);
                 problems = compareSnapshots(baseline, after, {}, {
                     refAllowed: jobRef,
                     fetchedRef: this.fetchedRef,
@@ -3232,9 +3557,27 @@ class FactoryEngine {
         }
         if (this.recheckFailed(`before the ${kind} lane`))
             return { kind: 'stopped' };
+        // The private layout: the engine makes the lane's worktree `<run>/w/<n>` itself, before the snapshot it is compared against.
+        const priv = this.privateRun();
+        let laneTree;
+        if (priv) {
+            laneTree = priv.worktreePath(this.state.lanes.length + 1);
+            try {
+                // A worktree with no lane record (a refusal after it was made, before the lane was recorded) holds nothing: made anew.
+                if (existsSync(laneTree))
+                    priv.removeWorktree(laneTree);
+                priv.addWorktree(laneTree, startRef);
+            }
+            catch (error) {
+                if (error instanceof PrivateRepoTampered)
+                    throw error;
+                throw new FactoryStepError(`the private lane worktree ${laneTree} could not be made: ${errText(error)}`);
+            }
+            this.sealPrivate();
+        }
         let before;
         try {
-            before = snapshotRepo(this.exec, this.o.root, this.stateRootRel);
+            before = this.snap();
         }
         catch (error) {
             throw new FactoryStepError(`the pre-lane snapshot failed: ${errText(error)}`);
@@ -3264,7 +3607,7 @@ class FactoryEngine {
         // A ci-heal lane id starts `heal-`: the budget ledger's `factory-lane:heal-*` records feed the daily heal cap.
         const id = `${runSlug(this.key)}-${kind}-${seq}`;
         const startedAt = this.iso();
-        const record = { id, kind, startSha: startRef, status: 'running', maxCredits: cap.cap, startedAt };
+        const record = { id, kind, startSha: startRef, status: 'running', maxCredits: cap.cap, startedAt, ...(laneTree ? { worktree: laneTree } : {}) };
         // The baseline is persisted before the lane exists, so a lost lane or a resume compares against it.
         try {
             this.ledger.setBaseline(id, before);
@@ -3280,6 +3623,7 @@ class FactoryEngine {
             ({ remoteId } = await this.o.lanes.start({
                 laneId: id, cwd: this.o.root, baseRef: startRef, prompt, profile, timeoutMs: this.o.limits.laneTimeoutMs, maxCredits: cap.cap, ledgerTag: { role: kind, run: runSlug(this.key) },
                 ...(profile === 'write' ? { engineCommits: true } : {}),
+                ...(priv && laneTree ? { worktree: { path: laneTree, commonGitDir: priv.repo.gitDir }, jobRoot: priv.layout.jobs, deniedPaths: priv.deniedFor(laneTree), beforeHostGit: () => priv.problem() } : {}),
             }));
         }
         catch (error) {
@@ -3700,7 +4044,7 @@ class FactoryEngine {
             throw new FactoryStepError(`refusing to fetch: ${mismatch}`);
         let before;
         try {
-            before = snapshotRepo(this.exec, this.o.root, this.stateRootRel);
+            before = this.snap();
         }
         catch (error) {
             throw new FactoryStepError(`the pre-fetch snapshot failed: ${errText(error)}`);
@@ -3710,7 +4054,7 @@ class FactoryEngine {
         let after;
         let problems;
         try {
-            after = snapshotRepo(this.exec, this.o.root, this.stateRootRel, before);
+            after = this.snap(before);
             problems = compareSnapshots(before, after, {}, { fetchedRef: this.fetchedRef });
         }
         catch (error) {
@@ -4186,6 +4530,30 @@ function codingAgentDryRun(o, forgeKind, repoUrl, source, caps) {
     };
 }
 /** Read-only preview: issue and plan resolution, the resolved caps; no state, lanes or pushes. */
+/**
+ * The dry run's word on the layout (B1b scope 7): the private layout when the
+ * user config asks for it (the base-committed .copilot/omg.jsonc, the other
+ * trusted layer, is read at the sealed base by the real run); nothing for the
+ * shared layout, so that output is unchanged.
+ */
+function dryLayoutNote(o) {
+    let user = o.runUserConfig;
+    if (user === undefined) {
+        try {
+            user = userConfigLayers().trustedUser;
+        }
+        catch {
+            user = null;
+        }
+    }
+    try {
+        const { layout, source } = resolveRunLayout(user, undefined);
+        return layout === 'private' ? `, in the private layout (factory.run.layout "private" from the ${source}: its own git repository under the work root)` : '';
+    }
+    catch (error) {
+        return `; but ${errText(error)}, so the run would park at awaiting-human: ${PRIVATE_STORE_GATE}`;
+    }
+}
 function dryRun(o) {
     const holder = busyHolder(o, engineRunKey(o));
     if (holder)
@@ -4235,7 +4603,7 @@ function dryRun(o) {
             return { exitCode: 0, phase: null, state: null, message: `dry run: ${problem}; the run would stop at awaiting-human: ${HEAL_DIAGNOSIS_GATE}`, plan: { next: 'awaiting-human', reason: HEAL_DIAGNOSIS_GATE, ...caps } };
         const go = o.heal.approved || (o.heal.autoImplement && o.heal.record.class !== 'regression-or-env');
         return go
-            ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from the heal diagnosis; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits`, plan: { next: 'implement', planSource: 'heal diagnosis', ...caps } }
+            ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from the heal diagnosis; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o)}`, plan: { next: 'implement', planSource: 'heal diagnosis', ...caps } }
             : { exitCode: 0, phase: null, state: null, message: `dry run: the run would stop at awaiting-human: ${HEAL_APPROVE_GATE}`, plan: { next: 'awaiting-human', reason: HEAL_APPROVE_GATE, ...caps } };
     }
     if (forge) {
@@ -4263,7 +4631,7 @@ function dryRun(o) {
         if (agent)
             return agent;
         return source
-            ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${gateNote}`, plan: { next: 'implement', planSource: source, ...caps, ...(gateProblem ? { gateProblem } : {}) } }
+            ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o)}${gateNote}`, plan: { next: 'implement', planSource: source, ...caps, ...(gateProblem ? { gateProblem } : {}) } }
             : { exitCode: 0, phase: null, state: null, message: 'dry run: no plan (no Acceptance Criteria, "Acceptance criteria" heading or trusted omg-plan: link); the run would stop at awaiting-human: needs-plan', plan: { next: 'awaiting-human', reason: 'needs-plan', ...caps } };
     }
     const res = ghIssueView(exec, o.issue, o.root);
@@ -4288,7 +4656,7 @@ function dryRun(o) {
     if (agent)
         return agent;
     return source
-        ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits`, plan: { next: 'implement', planSource: source, ...caps } }
+        ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o)}`, plan: { next: 'implement', planSource: source, ...caps } }
         : { exitCode: 0, phase: null, state: null, message: 'dry run: no plan (no "Acceptance criteria" heading or omg-plan: link); the run would stop at awaiting-human: needs-plan', plan: { next: 'awaiting-human', reason: 'needs-plan', ...caps } };
 }
 /**
