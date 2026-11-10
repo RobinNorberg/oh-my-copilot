@@ -102,13 +102,27 @@ describe('omg factory pr on the local forge', () => {
     git(repo.root, 'push', '-q', mirror, `${head}:refs/heads/main`);
     const local = git(repo.root, 'rev-parse', 'main');
     expect(await cli('diff', '1')).toBe(1);
-    expect(repo.err.join('\n')).toContain(`the local forge mirror's main is at ${head}, but your main is at ${local}`);
+    expect(repo.err.join('\n')).toContain(`the local forge mirror's main is at ${head}, which is not your main ${local} or an ancestor of it`);
     expect(repo.calls.some((c) => c.args.includes('diff'))).toBe(false);
     expect(await cli('view', '1', '--json')).toBe(1);
     expect(JSON.parse(out())).toMatchObject({ ok: false, error: expect.stringMatching(/the view would use a base you do not have/) });
     // Synced back: both read again.
     git(repo.root, 'push', '-q', '-f', mirror, `${local}:refs/heads/main`);
     expect(await cli('diff', '1'), repo.err.join('\n')).toBe(0);
+  });
+
+  it('M-D: a mirror base that lags behind your local base (you committed on it since the sync) reads against your base', async () => {
+    const mirrorBase = git(repo.root, 'rev-parse', 'main');
+    git(repo.root, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'human commit on main');
+    const local = git(repo.root, 'rev-parse', 'main');
+    expect(local).not.toBe(mirrorBase);
+    expect(git(repo.root, '--git-dir', mirror, 'rev-parse', 'refs/heads/main')).toBe(mirrorBase);
+    expect(await cli('diff', '1'), repo.err.join('\n')).toBe(0);
+    expect(out()).toContain(`local PR #1 head ${head} base ${local}`);
+    const diff = repo.calls.find((c) => c.args.includes('diff'))!;
+    expect(diff.args).toContain(`${local}...${head}`);
+    expect(await cli('view', '1', '--json'), repo.err.join('\n')).toBe(0);
+    expect(JSON.parse(out().slice(out().indexOf('{')))).toMatchObject({ ok: true, pr: { baseRefOid: local } });
   });
 
   it('review --request-changes records the head; view and the forge read it as an open thread', async () => {

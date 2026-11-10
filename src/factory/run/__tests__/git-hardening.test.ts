@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { defaultExec, type Exec } from '../../../ship/exec.js';
 import { hostGitEnv, hostGitHardeningArgs, runHostGit } from '../../../team/git-worktree.js';
-import { FactorySafetyError, gitHardeningArgs, hardenedGitExec, mirrorReceivePackArg } from '../exec.js';
+import { FactorySafetyError, gitHardeningArgs, hardenedGitExec, MIRROR_UPLOAD_PACK_ARG, mirrorReceivePackArg } from '../exec.js';
 import { compareSnapshots, objectStoreMetaHash, replaceObjectsProblem, snapshotRepo } from '../review-guard.js';
 import { gitIn } from './fake-lanes.js';
 
@@ -219,8 +219,84 @@ describe('the local forge mirror push (H1)', () => {
     });
   });
 
+  describe('a mirror turned non-bare with updateInstead and a smudge filter (B2)', () => {
+    let smudged: string;
+
+    /** What a foothold writes into a mirror between the engine's check and its push. */
+    const plant = (m: string) => {
+      const cfg = join(m, 'config');
+      gitIn(dir, 'config', '--file', cfg, 'core.bare', 'false');
+      gitIn(dir, 'config', '--file', cfg, 'receive.denyCurrentBranch', 'updateInstead');
+      gitIn(dir, 'config', '--file', cfg, 'filter.x.smudge', `echo x >> '${smudged.replace(/\\/g, '/')}'; cat`);
+      mkdirSync(join(m, 'info'), { recursive: true });
+      writeFileSync(join(m, 'info', 'attributes'), '* filter=x\n');
+    };
+
+    beforeEach(() => {
+      smudged = join(dir, 'smudge-ran');
+      // main is the mirror's HEAD branch, the one updateInstead checks out.
+      gitIn(dir, '--git-dir', mirror, 'symbolic-ref', 'HEAD', 'refs/heads/main');
+      plant(mirror);
+      writeFileSync(join(root, 'f.txt'), 'content\n');
+      git('add', 'f.txt');
+      commitEmpty('add f');
+    });
+
+    it('the pinned receive-pack checks nothing out and runs no filter; a plain push does both', () => {
+      const sha = git('rev-parse', 'HEAD');
+      // The engine's receive-pack arg alone (no check in front, as after a write between check and use), to the mirror's HEAD branch.
+      gitIn(root, 'push', '-q', mirror, `${sha}:refs/heads/main`, mirrorReceivePackArg(hooks));
+      expect(gitIn(dir, '--git-dir', mirror, 'rev-parse', 'refs/heads/main')).toBe(sha);
+      expect(existsSync(smudged)).toBe(false);
+      expect(existsSync(join(mirror, 'f.txt'))).toBe(false);
+      // Control: the same plant in a second mirror; a plain push checks f.txt out there and runs the smudge command.
+      const control = join(dir, 'control.git');
+      gitIn(dir, 'init', '-q', '--bare', '-b', 'main', control);
+      plant(control);
+      gitIn(root, 'push', '-q', control, `${sha}:refs/heads/main`);
+      expect(existsSync(join(control, 'f.txt'))).toBe(true);
+      expect(existsSync(smudged)).toBe(true);
+    });
+
+    it('the check refuses core.bare=false, a missing core.bare and info/attributes before any transport', () => {
+      const sha = git('rev-parse', 'HEAD');
+      const exec = hardenedGitExec(defaultExec, hooks, () => mirror);
+      const cfg = join(mirror, 'config');
+      gitIn(dir, 'config', '--file', cfg, '--unset', 'receive.denyCurrentBranch');
+      gitIn(dir, 'config', '--file', cfg, '--remove-section', 'filter.x');
+      expect(() => exec('git', ['push', 'omg-local', `${sha}:refs/heads/main`], { cwd: root })).toThrow(/has info\/attributes/);
+      rmSync(join(mirror, 'info', 'attributes'));
+      expect(() => exec('git', ['push', 'omg-local', `${sha}:refs/heads/main`], { cwd: root })).toThrow(/must set core\.bare = true exactly once \(it has "false"\)/);
+      expect(() => exec('git', ['fetch', 'omg-local', 'main'], { cwd: root })).toThrow(/must set core\.bare = true/);
+      gitIn(dir, 'config', '--file', cfg, '--unset', 'core.bare');
+      expect(() => exec('git', ['ls-remote', 'omg-local'], { cwd: root })).toThrow(/must set core\.bare = true exactly once \(it has none\)/);
+      gitIn(dir, 'config', '--file', cfg, 'core.bare', 'true');
+      expect(exec('git', ['push', 'omg-local', `${sha}:refs/heads/main`], { cwd: root }).status).toBe(0);
+      expect(existsSync(smudged)).toBe(false);
+    });
+  });
+
+  it('every omg-local transport refuses without the mirror path (B3); fetch and ls-remote pin the upload-pack', () => {
+    const sha = git('rev-parse', 'HEAD');
+    const noMirror = hardenedGitExec(defaultExec, hooks);
+    for (const args of [['fetch', 'omg-local', 'main'], ['ls-remote', 'omg-local'], ['push', 'omg-local', `${sha}:refs/heads/main`]]) {
+      expect(() => noMirror('git', args, { cwd: root })).toThrow(/the local forge mirror path is unknown here/);
+    }
+    expect(gitIn(dir, '--git-dir', mirror, 'for-each-ref', '--format=%(refname)')).toBe('');
+    // With the mirror: the upload-pack runs with core.alternateRefsCommand pinned, and the local transport takes it.
+    const seen: string[][] = [];
+    const exec = hardenedGitExec((cmd, args, opts) => { seen.push(args); return defaultExec(cmd, args, opts); }, hooks, () => mirror);
+    expect(exec('git', ['push', 'omg-local', `${sha}:refs/heads/main`], { cwd: root }).status).toBe(0);
+    expect(exec('git', ['fetch', 'omg-local', 'main'], { cwd: root }).status).toBe(0);
+    expect(git('rev-parse', 'refs/remotes/omg-local/main')).toBe(sha);
+    const listed = exec('git', ['ls-remote', 'omg-local', 'refs/heads/main'], { cwd: root });
+    expect(listed.stdout.split(/\s+/)[0]).toBe(sha);
+    expect(MIRROR_UPLOAD_PACK_ARG).toBe('--upload-pack=git -c core.alternateRefsCommand=true upload-pack');
+    expect(seen.filter((a) => a.includes('fetch') || a.includes('ls-remote')).every((a) => a.includes(MIRROR_UPLOAD_PACK_ARG))).toBe(true);
+  });
+
   it('the receive-pack command carries the empty hooks dir, quoted; a quote in the path is refused', () => {
-    expect(mirrorReceivePackArg(hooks)).toBe(`--receive-pack=git -c core.hooksPath='${hooks}' -c core.fsmonitor=false -c core.alternateRefsCommand=true -c core.alternateRefsPrefixes= -c receive.autogc=false receive-pack`);
+    expect(mirrorReceivePackArg(hooks)).toBe(`--receive-pack=git -c core.hooksPath='${hooks}' -c core.fsmonitor=false -c core.alternateRefsCommand=true -c core.alternateRefsPrefixes= -c receive.autogc=false -c core.bare=true -c receive.denyCurrentBranch=refuse -c receive.denyDeleteCurrent=refuse receive-pack`);
     expect(() => mirrorReceivePackArg(join(dir, "it's"))).toThrow(FactorySafetyError);
   });
 
