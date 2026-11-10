@@ -107,6 +107,50 @@ export interface RepoSnapshot {
   mainSymbolic: string;
   /** `git status --porcelain=v1 -z --untracked-files=all` of the main checkout (stableStatus). */
   mainStatus: string;
+  /**
+   * The bytes of what a tamper is quarantined and restored from
+   * (tamper-quarantine.ts): `config`, `config.worktree`, every file under
+   * `hooks/` and `info/` (not info/refs), by path relative to the common git
+   * dir, as `b64:<bytes>` (`b64x:` when executable), `big:<sha256>` (over RESTORE_FILE_MAX_BYTES, or
+   * past RESTORE_TOTAL_MAX_BYTES), or `link:<target>`. Absent in a snapshot
+   * recorded by an older release.
+   */
+  restore?: Record<string, string>;
+}
+
+/** A file the snapshot keeps the bytes of is at most this big; a bigger one is kept as its hash. */
+export const RESTORE_FILE_MAX_BYTES = 1024 * 1024;
+/** All the kept bytes of one snapshot together. */
+export const RESTORE_TOTAL_MAX_BYTES = 8 * 1024 * 1024;
+
+/** The paths (relative to the common git dir, `/`-separated) the snapshot keeps bytes of, as RepoSnapshot.restore encodes them. */
+export function restorableFiles(commonDir: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  let total = 0;
+  const keep = (rel: string, abs: string) => {
+    let st;
+    try { st = lstatSync(abs); } catch { return; }
+    if (st.isSymbolicLink()) {
+      let target = '?';
+      try { target = readlinkSync(abs); } catch { /* unreadable link */ }
+      out[rel] = `link:${target}`;
+    } else if (st.isDirectory()) {
+      for (const name of readdirSync(abs).sort()) {
+        if (rel === 'info' && name === 'refs') continue;
+        keep(`${rel}/${name}`, join(abs, name));
+      }
+    } else if (st.isFile()) {
+      const bytes = readFileSync(abs);
+      if (bytes.length <= RESTORE_FILE_MAX_BYTES && total + bytes.length <= RESTORE_TOTAL_MAX_BYTES) {
+        total += bytes.length;
+        out[rel] = `${st.mode & 0o111 ? 'b64x' : 'b64'}:${bytes.toString('base64')}`;
+      } else {
+        out[rel] = `big:${createHash('sha256').update(bytes).digest('hex')}`;
+      }
+    }
+  };
+  for (const name of ['config', 'config.worktree', 'hooks', 'info']) keep(name, join(commonDir, name));
+  return out;
 }
 
 export class SnapshotError extends Error {}
@@ -408,6 +452,7 @@ export function snapshotRepo(exec: Exec, root: string, stateRootRel: string | nu
     mainHead: run(exec, root, ['rev-parse', 'HEAD']).trim(),
     mainSymbolic: run(exec, root, ['rev-parse', '--symbolic-full-name', 'HEAD']).trim(),
     mainStatus: statusUnsafe ? STATUS_SKIPPED : stableStatus(run(exec, root, ['status', '--porcelain=v1', '-z', '--untracked-files=all']), stateRootRel),
+    restore: restorableFiles(commonDir),
   };
 }
 

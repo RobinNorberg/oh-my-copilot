@@ -123,7 +123,9 @@ import { getGlobalOmcStatePath } from '../../utils/paths.js';
 import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
 import { isTerminalLaneState, LaneLostError, type LaneBackend, type LaneProcess, type LaneProfile, type LaneResult } from './lane.js';
 import { jobRefProblem } from '../../copilot-run/job.js';
-import { commitLaneWork, conflictFixStart, LANE_PROTECTED_PATHS, laneCommitMessage } from './lane-commit.js';
+import { commitLaneWork, conflictFixStart, LANE_PROTECTED_PATHS, laneCommitMessage, pathGlobMatches, type SecretFinding } from './lane-commit.js';
+import { proveLaneTreeGone, type LaneTreeProof } from './lane-procs.js';
+import { quarantineTamper, RELEASE_TAMPER_COMMAND, tamperHoldMessage } from './tamper-quarantine.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir } from './ledger.js';
 import { createFactoryProgress, type FactoryProgress } from './progress.js';
 import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaimRepo, isShallowClaimRepo, localFactoryClaimRepo, shallowClaimWarning, settleFactoryClaim, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo, type HeldClaim } from './claims.js';
@@ -174,7 +176,9 @@ import {
   unreadableOwnerMessage,
   describeOwner,
   FactoryBusyError,
+  FactoryTamperHoldError,
   ownerRecord,
+  type FactoryPendingCommit,
 } from './state.js';
 
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
@@ -247,6 +251,16 @@ export interface FactoryEngineOptions {
    * flag is ignored with a warning.
    */
   allowUnsandboxedGates?: boolean;
+  /**
+   * The human accepts the secret-shaped content that parked a lane's commit
+   * (`--allow-secret-shapes` on a rerun of a run parked at awaiting-human:
+   * secret-shaped-content): exactly the parked (path, kind) pairs, for that
+   * lane commit only (recorded in the sealed state); a new pair parks again.
+   * Without such a park the flag is ignored with a warning.
+   */
+  allowSecretShapes?: boolean;
+  /** The trusted user config factory.run.secretScan.allowPaths is read from (default: userConfigLayers().trustedUser); tests pass one. */
+  secretScanUserConfig?: unknown;
   /**
    * The OS sandbox prepare's checks and the local gate run in
    * (factory.run.sandbox.gates "enforced"; sandbox-exec.ts createSandboxRunner,
@@ -355,6 +369,8 @@ export interface LaneProcessOps {
   state(p: LaneProcess): Promise<'live' | 'dead' | 'mismatch' | 'unknown'>;
   /** Kill the child's process tree, only while its start identity still matches. */
   terminate(p: LaneProcess): Promise<void>;
+  /** After a write lane ended, before its commit: the lane runtime's whole tree is gone (lane-procs.ts). */
+  treeGone(p: LaneProcess | null | undefined, worktree: string | null): Promise<LaneTreeProof>;
 }
 
 const PROCESS_DEADLINE_MS = 15_000;
@@ -373,6 +389,7 @@ export const defaultLaneProcessOps: LaneProcessOps = {
     if (!p.identity) return;
     await terminateOwnedProcessTree({ pid: p.pid, expectedStartIdentity: p.identity, deadlineAt: new Date(Date.now() + PROCESS_DEADLINE_MS).toISOString(), force: true });
   },
+  treeGone: (p, worktree) => proveLaneTreeGone({ process: p, worktree }),
 };
 
 export interface FactoryRunOutcome {
@@ -1052,6 +1069,11 @@ class FactoryEngine {
       if (parked) this.gatesAllowed = parked;
       else this.o.warn?.(`omg factory run: --allow-unsandboxed-gates is ignored: the run for ${this.what} is not parked at awaiting-human: ${GATES_UNSANDBOXED_GATE}`);
     }
+    // --allow-secret-shapes answers one secret-shaped-content park (its lane commit's findings), never in advance.
+    if (this.o.allowSecretShapes) {
+      if (existing?.gate?.name === SECRET_SHAPES_GATE && existing.pendingCommit?.secretFindings?.length) this.secretShapesAllowed = true;
+      else this.o.warn?.(`omg factory run: --allow-secret-shapes is ignored: the run for ${this.what} is not parked at awaiting-human: ${SECRET_SHAPES_GATE}`);
+    }
     // Replace refs or grafts in the shared git dir: refused before a run starts, parked on a resume.
     const replaced = replaceObjectsProblem(this.exec, this.o.root);
     if (replaced && !existing) {
@@ -1228,7 +1250,9 @@ class FactoryEngine {
         if (this.recheckFailed('at the next step boundary')) continue;
         if (this.gateDefinitionUnknownParked('no further lane was started')) continue;
         this.progress.emit(phase, 'start', undefined, this.fields());
-        await this.step(phase);
+        // A lane commit that parked (secret-shaped content, a surviving lane process) is retried on the same worktree, no new lane.
+        if (s.pendingCommit) await this.retryPendingCommit(s.pendingCommit);
+        else await this.step(phase);
         const after = this.state;
         if (!after.gate && after.phase !== phase && !TERMINAL_FACTORY_PHASES.includes(after.phase)) this.progress.emit(phase, 'ok', `-> ${after.phase}`, this.fields());
       } catch (error) {
@@ -1634,7 +1658,7 @@ class FactoryEngine {
     const baseSha = this.fetchBase();
     this.save((s) => ({ ...s, baseSha }));
     const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(this.readAt(baseSha), pathsInText(this.state.plan?.text ?? ''))), 'implement');
-    if (out.kind === 'done') this.acceptWriteLane(out, 'implement', baseSha);
+    if (out.kind === 'done') await this.acceptWriteLane(out, 'implement', baseSha);
   }
 
   private async fix(): Promise<void> {
@@ -1644,7 +1668,7 @@ class FactoryEngine {
     if (this.isHumanRound(head, ship)) return this.humanFix(this.state.pr, head, ship);
     const round = ship?.fixRounds ?? 0;
     const out = await this.runLane('fix', head, 'write', fixPrompt(this.state, round), `fix@${round}`);
-    if (out.kind === 'done') this.acceptWriteLane(out, `fix@${round}`, head);
+    if (out.kind === 'done') await this.acceptWriteLane(out, `fix@${round}`, head);
   }
 
   /**
@@ -1653,7 +1677,7 @@ class FactoryEngine {
    * no gitlink), then publish. Runs only after runLane confirmed the lane's
    * end and its tamper check, and after one more recheck of the shared state.
    */
-  private acceptWriteLane(out: Extract<LaneRun, { kind: 'done' }>, key: string, start: string, parents: readonly string[] = [start]): void {
+  private async acceptWriteLane(out: Extract<LaneRun, { kind: 'done' }>, key: string, start: string, parents: readonly string[] = [start]): Promise<void> {
     const { result, lane } = out;
     const sandbox = sandboxPark(result);
     if (sandbox) {
@@ -1675,29 +1699,130 @@ class FactoryEngine {
       return;
     }
     if (!result.worktree) return this.laneFailed(key, lane.kind, `lane ${lane.id} reports no local worktree, so the engine cannot commit its changes`);
+    const title = `${lane.kind}: ${oneLine(this.state.issueTitle ?? `issue ${this.o.issue}`)} (#${this.o.issue})`;
+    await this.commitWriteLane({
+      laneId: lane.id, key, start, parents: [...parents], worktree: result.worktree, branch: result.branch, message: laneCommitMessage(title, result.finalText),
+    });
+  }
+
+  /** --allow-secret-shapes answered this invocation's secret-shaped-content park (start()). */
+  private secretShapesAllowed = false;
+  private warnedTreeUnproven = false;
+
+  /**
+   * The engine commit of a write lane's worktree (lane-commit.ts), also the
+   * retry after a park that left `pendingCommit` (secret-shaped content, a
+   * lane process that survived its kill): first the lane runtime's whole
+   * process tree must be gone (lane-procs.ts; a listing that fails warns and
+   * goes on, a positively seen survivor parks lane-unconfirmed), then the
+   * shared state is re-compared, then the commit.
+   */
+  private async commitWriteLane(p: FactoryPendingCommit): Promise<void> {
+    const lane = this.state.lanes.find((l) => l.id === p.laneId);
+    if (!lane) throw new FactoryStepError(`the lane ${p.laneId} of the pending commit is not in the run state`);
+    const kind = lane.kind;
+    const ops = this.o.processes ?? defaultLaneProcessOps;
+    const proof = await ops.treeGone(lane.process, p.worktree);
+    if (proof.kind === 'survivors') {
+      this.save((s) => ({ ...s, pendingCommit: p }));
+      this.gate('lane-unconfirmed', `${kind} lane ${p.laneId} ended, but process(es) of its tree still run after the engine killed them (pid ${proof.pids.join(', ')}); they could still change the worktree, so nothing was committed. Stop them (Task Manager, or kill -9 ${proof.pids.join(' ')}), then rerun ${this.resume}: the engine commits the same worktree (no new lane); to give the lane's work up instead, omg factory run cancel ${this.key}`);
+      return;
+    }
+    if (proof.kind === 'unproven') {
+      if (!this.warnedTreeUnproven) {
+        this.warnedTreeUnproven = true;
+        this.o.warn?.(`omg factory run: the process tree of lane ${p.laneId} could not be proven gone (${proof.why}); the job's own tree kill ran, so the engine commits anyway`);
+      }
+      this.save((s) => ({ ...s, history: [...s.history, { at: this.iso(), from: s.phase, to: s.phase, note: `lane ${p.laneId}: process tree not proven (${proof.why})` }] }));
+    } else if (proof.killed.length > 0) {
+      this.save((s) => ({ ...s, history: [...s.history, { at: this.iso(), from: s.phase, to: s.phase, note: `lane ${p.laneId}: the engine killed process(es) left from its tree (pid ${proof.killed.join(', ')}) before the commit` }] }));
+    }
     // A late change after the lane's tamper check (a child the engine missed) parks before engine git runs in the lane worktree.
     if (this.recheckFailed('before the engine commit')) return;
     let extraProtected: string[] = [];
     try { extraProtected = configuredProtectedPaths(this.o.root); } catch { /* the defaults still apply */ }
-    const title = `${lane.kind}: ${oneLine(this.state.issueTitle ?? `issue ${this.o.issue}`)} (#${this.o.issue})`;
     const commit = commitLaneWork({
-      worktree: result.worktree, start, parents, repoRoot: this.o.root, branch: result.branch,
-      message: laneCommitMessage(title, result.finalText), extraProtected,
+      worktree: p.worktree, start: p.start, parents: p.parents, repoRoot: this.o.root, branch: p.branch, message: p.message, extraProtected,
+      secretAck: (p.secretAck ?? []) as SecretFinding[], secretAllowPaths: this.secretAllowPaths(),
     });
     if (!commit.ok) {
-      if (commit.refusal === 'protected') return this.gate('protected-paths', `lane ${lane.id}: ${commit.reason}; nothing was committed or pushed`);
-      if (commit.refusal === 'gitlink' || commit.refusal === 'escaped') return this.gate('sandbox-escaped', `${lane.kind} lane ${lane.id}: ${commit.reason}; nothing was committed or pushed`);
-      return this.laneFailed(key, lane.kind, `lane ${lane.id}: ${commit.reason}`);
+      if (commit.refusal === 'secret') {
+        const findings = commit.findings ?? [];
+        this.save((s) => ({ ...s, pendingCommit: { ...p, secretFindings: findings } }));
+        this.gate(SECRET_SHAPES_GATE, `${kind} lane ${p.laneId}: ${commit.reason}. A key or token in the change may have been copied in from outside the lane's sandbox, so nothing was committed or pushed. Look at those files in ${p.worktree}: remove the secret and rerun ${this.resume}, or, when they are test fixtures, rerun ${this.resume} --allow-secret-shapes (accepts exactly these paths and kinds for this lane commit; factory.run.secretScan.allowPaths in your user config or the base's omg.jsonc skips fixture paths for good). To give the lane's work up instead: omg factory run cancel ${this.key}`);
+        return;
+      }
+      this.save((s) => { const { pendingCommit: _p, ...rest } = s; return rest; });
+      if (commit.refusal === 'protected') return this.gate('protected-paths', `lane ${p.laneId}: ${commit.reason}; nothing was committed or pushed`);
+      if (commit.refusal === 'gitlink' || commit.refusal === 'escaped') return this.gate('sandbox-escaped', `${kind} lane ${p.laneId}: ${commit.reason}; nothing was committed or pushed`);
+      return this.laneFailed(p.key, kind, `lane ${p.laneId}: ${commit.reason}`);
     }
     // The engine's own commit moved the lane's branch and worktree HEAD: the new baseline of the recheck.
     this.rebaseRecheck();
     const head = commit.sha;
-    this.updateLane(lane.id, { endSha: head, ...(commit.notes.length > 0 ? { note: commit.notes.join('; ') } : {}) });
+    this.updateLane(p.laneId, { endSha: head, ...(commit.notes.length > 0 ? { note: commit.notes.join('; ') } : {}) });
     // A detect-only lane after the PR exists (fix, conflict-fix, ci-fix) is recorded in a PR comment; the first one is in the PR body.
-    if (result.sandbox?.mode === 'detect-only' && this.state.pr) {
-      this.commentOnce('pr', `detect-only@${lane.id}`, 'sandbox', `**Sandbox: detect-only.** ${lane.kind} lane ${lane.id} ran without an OS sandbox (\`writeUnsandboxed: "detect-only"\`).\n`);
+    if (lane.sandbox?.mode === 'detect-only' && this.state.pr) {
+      this.commentOnce('pr', `detect-only@${p.laneId}`, 'sandbox', `**Sandbox: detect-only.** ${kind} lane ${p.laneId} ran without an OS sandbox (\`writeUnsandboxed: "detect-only"\`).\n`);
     }
-    this.save((s) => moveTo({ ...s, pendingHead: head }, 'publish', `the engine committed lane ${lane.id}'s changes as ${head.slice(0, 12)}`, this.iso()));
+    const acked = p.secretAck?.length ? `; secret-shaped content accepted (--allow-secret-shapes): ${p.secretAck.map((f) => `${f.path} (${f.kind})`).join(', ')}` : '';
+    this.save((s) => {
+      const { pendingCommit: _p, ...rest } = s;
+      return moveTo({ ...rest, pendingHead: head }, 'publish', `the engine committed lane ${p.laneId}'s changes as ${head.slice(0, 12)}${acked}`, this.iso());
+    });
+  }
+
+  /** The rerun after a park that left `pendingCommit`: the same worktree is committed again (with the human's acknowledgement). */
+  private async retryPendingCommit(p: FactoryPendingCommit): Promise<void> {
+    let next = p;
+    if (this.secretShapesAllowed && p.secretFindings?.length) {
+      this.secretShapesAllowed = false;
+      const ack = [...(p.secretAck ?? []), ...p.secretFindings];
+      next = { ...p, secretAck: ack };
+      this.save((s) => ({ ...s, pendingCommit: next, history: [...s.history, { at: this.iso(), from: s.phase, to: s.phase, note: `secret-shaped content accepted for lane ${p.laneId} (--allow-secret-shapes): ${p.secretFindings!.map((f) => `${f.path} (${f.kind})`).join(', ')}` }] }));
+    }
+    const { secretFindings: _f, ...rest } = next;
+    await this.commitWriteLane(rest);
+  }
+
+  /**
+   * factory.run.secretScan.allowPaths: path globs the lane commit's secret
+   * scan skips (test fixtures), from the trusted layers only (the user
+   * config at its default location and `.copilot/omg.jsonc` committed at the
+   * run's sealed base sha; never the working tree or the PR head). A glob
+   * that would match every path is ignored with a warning (it would switch
+   * the scan off). An unreadable layer is skipped with a warning.
+   */
+  private secretAllowPaths(): string[] {
+    const globs: string[] = [];
+    const read = (cfg: unknown, source: string) => {
+      const v = (((cfg as Record<string, unknown> | undefined)?.factory as Record<string, unknown> | undefined)?.run as Record<string, unknown> | undefined)?.secretScan as Record<string, unknown> | undefined;
+      const list = v?.allowPaths;
+      if (list === undefined) return;
+      if (!Array.isArray(list) || !list.every((g) => typeof g === 'string' && g.trim() !== '' && !g.startsWith('/'))) {
+        this.o.warn?.(`omg factory run: factory.run.secretScan.allowPaths in ${source} must be a list of repo-relative path globs; ignored`);
+        return;
+      }
+      for (const g of list as string[]) {
+        if (pathGlobMatches(g, 'a') && pathGlobMatches(g, 'b/c/d.e')) this.o.warn?.(`omg factory run: factory.run.secretScan.allowPaths ${JSON.stringify(g)} in ${source} matches every path (it would switch the secret scan off); ignored`);
+        else globs.push(g);
+      }
+    };
+    let user = this.o.secretScanUserConfig;
+    if (user === undefined) {
+      try { user = userConfigLayers().trustedUser; } catch { user = undefined; }
+    }
+    read(user, 'your user config');
+    const base = this.state.baseSha;
+    if (base && HEX40.test(base)) {
+      try {
+        const text = readBaseFile(this.exec, this.o.root, base, BASE_CONFIG_PATH);
+        if (text && text.trim()) read(parseJsonc(text), `${BASE_CONFIG_PATH} at the base ${base.slice(0, 12)}`);
+      } catch (error) {
+        this.o.warn?.(`omg factory run: factory.run.secretScan.allowPaths at the base could not be read (${errText(error)}); only the user config's apply`);
+      }
+    }
+    return globs;
   }
 
   /**
@@ -2488,7 +2613,8 @@ class FactoryEngine {
       problems = [`the post-prepare snapshot failed: ${errText(error)}`];
     }
     if (problems.length > 0) {
-      this.gate('lane-tampered', `prepare's checks (the PR's own code) changed shared git state outside the checkout's worktree entry, its branch and ${runRemote(this.state)}/${this.state.base}, so nothing is pushed; inspect and remove ${path} by hand: ${problems.slice(0, 5).join('; ')}`);
+      const quarantined = this.quarantineTampered(strip(before), 'prepare-tampered', problems, after ? strip(after) : undefined);
+      this.gate('lane-tampered', `prepare's checks (the PR's own code) changed shared git state outside the checkout's worktree entry, its branch and ${runRemote(this.state)}/${this.state.base}, so nothing is pushed; inspect and remove ${path} by hand: ${problems.slice(0, 5).join('; ')}${quarantined}`);
       return true;
     }
     const r = this.ledger.recheck;
@@ -2579,7 +2705,7 @@ class FactoryEngine {
     }
     const conflicted = merged.conflicted.length > 0 ? merged.conflicted : this.state.conflicts ?? [];
     const out = await this.runLane('conflict-fix', merged.sha, 'write', conflictFixPrompt(this.state, conflicted), key);
-    if (out.kind === 'done') this.acceptWriteLane(out, key, merged.sha, [head, baseSha]);
+    if (out.kind === 'done') await this.acceptWriteLane(out, key, merged.sha, [head, baseSha]);
   }
 
   private async ciFix(): Promise<void> {
@@ -2587,7 +2713,7 @@ class FactoryEngine {
     if (!f || !HEX40.test(f.startSha)) throw new FactoryStepError('ci-fix needs the failure it fixes');
     const key = `ci-fix@${this.state.ciFixRounds}`;
     const out = await this.runLane('ci-fix', f.startSha, 'write', ciFixPrompt(this.state), key);
-    if (out.kind === 'done') this.acceptWriteLane(out, key, f.startSha);
+    if (out.kind === 'done') await this.acceptWriteLane(out, key, f.startSha);
   }
 
   /** The gate timeout of the local forge config (minutes). */
@@ -2998,14 +3124,43 @@ class FactoryEngine {
   }
 
   /** Park after a lane changed shared git state; a review lane's verdict is discarded. */
-  private laneTampered(laneId: string, kind: FactoryLaneKind, problems: string[]): void {
+  private laneTampered(laneId: string, kind: FactoryLaneKind, problems: string[], before?: RepoSnapshot, after?: RepoSnapshot): void {
+    const quarantined = before ? this.quarantineTampered(before, kind === 'review' ? 'review-tampered' : 'lane-tampered', problems, after) : '';
     if (kind === 'review') {
       this.markVerdict(laneId, 'invalid', `tampered: ${problems.join('; ')}`);
-      this.gate('review-tampered', `shared git state changed while review lane ${laneId} ran (by the lane or anyone else working in this repository), so its verdict is discarded: ${problems.slice(0, 5).join('; ')}`);
+      this.gate('review-tampered', `shared git state changed while review lane ${laneId} ran (by the lane or anyone else working in this repository), so its verdict is discarded: ${problems.slice(0, 5).join('; ')}${quarantined}`);
       return;
     }
     this.updateLane(laneId, { note: `tampered: ${problems.join('; ')}` });
-    this.gate('lane-tampered', `${kind} lane ${laneId} changed shared git state outside its own branch and worktree, so nothing it made is pushed: ${problems.slice(0, 5).join('; ')}`);
+    this.gate('lane-tampered', `${kind} lane ${laneId} changed shared git state outside its own branch and worktree, so nothing it made is pushed: ${problems.slice(0, 5).join('; ')}${quarantined}`);
+  }
+
+  /**
+   * After a tamper of the shared git dir: quarantine what changed since
+   * `before` (this run's snapshot), restore what is safe, hold new runs
+   * (tamper-quarantine.ts). The clause the park reason gets; never throws.
+   */
+  private quarantineTampered(before: RepoSnapshot, gate: string, problems: readonly string[], after?: RepoSnapshot): string {
+    let refsNow = after?.refs;
+    if (!refsNow) {
+      try { refsNow = snapshotRepo(this.exec, this.o.root, this.stateRootRel).refs; } catch { refsNow = undefined; }
+    }
+    // Only the refs the compare reported (compareSnapshots' `ref <name> ...`): the lane's own branch and the engine's fetches are allowed there.
+    const onlyRefs = problems.map((p) => /^ref (\S+) (?:was created|was deleted|moved|is at)/.exec(p)?.[1]).filter((n): n is string => Boolean(n));
+    try {
+      const hold = quarantineTamper({ ledgerDir: this.o.ledgerDir ?? defaultLedgerDir(), root: this.o.root, before, ...(refsNow ? { refsNow } : {}), onlyRefs, run: String(this.key), gate, at: this.iso() });
+      if (!hold.quarantine && !hold.failed && hold.refs.length === 0) return '';
+      const did = [
+        hold.moved.length ? `moved to the quarantine: ${hold.moved.slice(0, 5).join(', ')}` : '',
+        hold.restored.length ? `restored from the run's snapshot: ${hold.restored.slice(0, 5).join(', ')}` : '',
+        hold.notRestored.length ? `not restored: ${hold.notRestored.slice(0, 3).join('; ')}` : '',
+        hold.refs.length ? `refs: ${hold.refs.slice(0, 3).join('; ')}` : '',
+        hold.failed ?? '',
+      ].filter(Boolean).join('; ');
+      return `. Tamper quarantine${hold.quarantine ? ` (${hold.quarantine})` : ''}: ${did}. New factory runs in this checkout are held until ${RELEASE_TAMPER_COMMAND}; your own change to .git during the run (git config, a hook husky or an editor installed, a commit) triggers this too: put it back from the quarantine folder if it was yours`;
+    } catch (error) {
+      return `. The tamper quarantine failed (${errText(error)}); .git was left as it is`;
+    }
   }
 
   /**
@@ -3029,7 +3184,7 @@ class FactoryEngine {
     if (problems.length === 0) return false;
     this.ledger.setRecheck(undefined);
     const at = this.iso();
-    const what = `shared git state changed after lane ${r.laneId} passed its check (found ${where}): ${problems.slice(0, 5).join('; ')}`;
+    const what = `shared git state changed after lane ${r.laneId} passed its check (found ${where}): ${problems.slice(0, 5).join('; ')}${this.quarantineTampered(r.snapshot, r.kind === 'review' ? 'review-tampered' : 'lane-tampered', problems)}`;
     if (r.kind === 'review') {
       this.markVerdict(r.laneId, 'invalid', `late change: ${problems.join('; ')}`);
       this.save((x) => setGate(x.phase === 'review' ? x : moveTo(x, 'review', `review lane ${r.laneId}'s verdict is discarded`, at), 'review-tampered', `${what}; its verdict is discarded`, at));
@@ -3129,7 +3284,7 @@ class FactoryEngine {
     }));
     this.ledger.dropBaseline(lane.id);
     if (problems.length > 0 || !after) {
-      this.laneTampered(lane.id, lane.kind, problems);
+      this.laneTampered(lane.id, lane.kind, problems, baseline, after);
       return false;
     }
     // A late edit (a child the engine missed) is re-compared at the next step boundary and before the next push.
@@ -3313,7 +3468,7 @@ class FactoryEngine {
     const { problems, after } = this.laneProblems(kind, before, result, startRef);
     this.ledger.dropBaseline(id);
     if (problems.length > 0 || !after) {
-      this.laneTampered(id, kind, problems);
+      this.laneTampered(id, kind, problems, before, after);
       return { kind: 'stopped' };
     }
     this.ledger.setRecheck({ laneId: id, kind, snapshot: after });
@@ -4012,7 +4167,7 @@ class FactoryEngine {
     const out = await this.runLane('fix', head, 'write', humanFixPrompt(this.state, round, open, by), `fix@${round}`);
     const lane = this.state.lanes[before];
     if (lane?.kind === 'fix') this.updateLane(lane.id, { feedback: { source: 'human', forge: this.forge?.kind ?? 'github', items: open.length } });
-    if (out.kind === 'done') this.acceptWriteLane(out, `fix@${round}`, head);
+    if (out.kind === 'done') await this.acceptWriteLane(out, `fix@${round}`, head);
   }
 }
 
@@ -4024,6 +4179,8 @@ export const REVIEW_REQUESTED_GATE = 'review-requested';
 export const UNSANDBOXED_LANES_REASON = 'a lane ran without the enforced sandbox';
 /** The park before the PR's own code (prepare checks, the local gate) would run without the OS sandbox; `--allow-unsandboxed-gates` answers it. */
 export const GATES_UNSANDBOXED_GATE = 'gates-unsandboxed';
+/** The park when a lane's change holds a key or token shape (lane-commit.ts secret scan); `--allow-secret-shapes` answers it. */
+export const SECRET_SHAPES_GATE = 'secret-shaped-content';
 /** The park when a check fails in the sandbox on the trusted base itself: a sandbox problem, never a ci-fix lane. */
 export const GATE_SANDBOX_INCOMPATIBLE_GATE = 'gate-sandbox-incompatible';
 /**
@@ -4214,6 +4371,9 @@ export async function runFactoryEngine(o: FactoryEngineOptions): Promise<Factory
   if (o.dryRun) return dryRun(o);
   const key = engineRunKey(o);
   const dir = o.ledgerDir ?? defaultLedgerDir();
+  // A tamper hold (tamper-quarantine.ts) stops every run here until a human clears it; nothing is locked, read or written.
+  const held = tamperHoldMessage(dir, o.root);
+  if (held) throw new FactoryTamperHoldError(held);
   const now = new Date((o.now ?? Date.now)()).toISOString();
   // The repository lock first (unless the caller already holds it): a second engine refuses before it touches anything.
   const repoOwner = o.repoOwner ?? acquireFactoryRepoOwner(o.root, key, now, o.owner);
