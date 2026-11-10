@@ -168,16 +168,23 @@ export const PROTECTED_PATHS: readonly string[] = [
  * of a `/`-terminated prefix and anything under it. Compared case-insensitively
  * after Win32 path normalization (`\` as `/`, trailing dots and spaces of each
  * segment dropped, `.` segments dropped), so `.github/workflows./ci.yml` and
- * `.copilot/omg.jsonc.` hit. A path Windows could resolve elsewhere (a segment
- * with `:` or `~`, an alternate stream or 8.3 short name, or a `..` segment)
- * always counts as protected.
+ * `.copilot/omg.jsonc.` hit. A path Windows could resolve elsewhere (a raw
+ * segment with an ASCII `:` or `~`, an alternate stream or 8.3 short name,
+ * or a `..` segment) always counts as protected; that test runs on the raw
+ * path, before any folding, so a fullwidth `：`/`～` or a `‥` in an ordinary
+ * (CJK) file name is not protected. Case folding, for matching the rules
+ * only, is Unicode-wide (NFKC, default-ignorable code points such as U+200C
+ * stripped, upper then lower case), so a look-alike APFS or HFS+ would open
+ * as the protected file (`.huſky/`, `.github/workflowſ/`) hits too.
  */
 export function protectedChanges(changed: readonly string[], extra: readonly string[] = []): string[] {
-  const rules = [...PROTECTED_PATHS, ...extra].map((p) => p.toLowerCase());
+  const fold = (s: string): string => s.normalize('NFKC').replace(/\p{Default_Ignorable_Code_Point}/gu, '').toUpperCase().toLowerCase().normalize('NFKC');
+  const rules = [...PROTECTED_PATHS, ...extra].map(fold);
   return changed.filter((raw) => {
-    const segments = raw.replace(/\\/g, '/').trim().toLowerCase().split('/');
-    if (segments.some((s) => /[:~]/.test(s) || s === '..')) return true;
-    const f = segments.map((s) => s.replace(/[. ]+$/, '')).filter(Boolean).join('/');
+    const path = raw.replace(/\\/g, '/').trim();
+    // Windows ADS and 8.3 names, and parent segments, use ASCII `:`/`~`/`..` only: test the raw segments.
+    if (path.split('/').some((s) => /[:~]/.test(s) || s === '..')) return true;
+    const f = fold(path).split('/').map((s) => s.replace(/[. ]+$/, '')).filter(Boolean).join('/');
     return rules.some((p) => (p.endsWith('/') ? f === p.slice(0, -1) || f.startsWith(p) : f === p));
   });
 }

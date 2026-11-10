@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "839a19d80e60e4af0feb48888d20c6b6307b8c24",
-    "sourceSha256": "a5226b344047a671a564002b39908e51b584c712fdeaded3e403217ea848058f",
+    "head": "c3d398fd03b232b8bc84b6ff38360b9f46862775",
+    "sourceSha256": "0dadb8a7b5e6a0b470633926369dddc855bf0b505f401726f8d230aec3501b23",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "839a19d80e60e4af0feb48888d20c6b6307b8c24",
-  "sourceSha256": "a5226b344047a671a564002b39908e51b584c712fdeaded3e403217ea848058f",
+  "head": "c3d398fd03b232b8bc84b6ff38360b9f46862775",
+  "sourceSha256": "0dadb8a7b5e6a0b470633926369dddc855bf0b505f401726f8d230aec3501b23",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2042,
-      "total": 2067
+      "srcFiles": 2044,
+      "total": 2069
     },
     "generated": {
-      "distFiles": 7536,
+      "distFiles": 7544,
       "bridgeFiles": 8,
-      "total": 7544
+      "total": 7552
     },
     "prompt": {
       "promptLikeFiles": 72
@@ -3570,6 +3570,10 @@
       "dist/factory/run/__tests__/prepare-gates.test.d.ts.map",
       "dist/factory/run/__tests__/prepare-gates.test.js",
       "dist/factory/run/__tests__/prepare-gates.test.js.map",
+      "dist/factory/run/__tests__/private-store.test.d.ts",
+      "dist/factory/run/__tests__/private-store.test.d.ts.map",
+      "dist/factory/run/__tests__/private-store.test.js",
+      "dist/factory/run/__tests__/private-store.test.js.map",
       "dist/factory/run/__tests__/prompts.test.d.ts",
       "dist/factory/run/__tests__/prompts.test.d.ts.map",
       "dist/factory/run/__tests__/prompts.test.js",
@@ -3658,6 +3662,10 @@
       "dist/factory/run/prepare.d.ts.map",
       "dist/factory/run/prepare.js",
       "dist/factory/run/prepare.js.map",
+      "dist/factory/run/private-store.d.ts",
+      "dist/factory/run/private-store.d.ts.map",
+      "dist/factory/run/private-store.js",
+      "dist/factory/run/private-store.js.map",
       "dist/factory/run/progress.d.ts",
       "dist/factory/run/progress.d.ts.map",
       "dist/factory/run/progress.js",
@@ -22916,6 +22924,26 @@
         "path": "dist/factory/run/__tests__/prepare-gates.test.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/private-store.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/private-store.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/private-store.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/private-store.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/private-store.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/private-store.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/private-store.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/private-store.test.js.map"
+      },
+      {
         "id": "dist/factory/run/__tests__/prompts.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/prompts.test.d.ts"
@@ -23354,6 +23382,26 @@
         "id": "dist/factory/run/prepare.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/prepare.js.map"
+      },
+      {
+        "id": "dist/factory/run/private-store.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/private-store.d.ts"
+      },
+      {
+        "id": "dist/factory/run/private-store.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/private-store.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/private-store.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/private-store.js"
+      },
+      {
+        "id": "dist/factory/run/private-store.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/private-store.js.map"
       },
       {
         "id": "dist/factory/run/progress.d.ts",
@@ -55991,6 +56039,11 @@
         "path": "src/factory/run/__tests__/prepare-gates.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/private-store.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/private-store.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/prompts.snapshot.json",
         "kind": "src",
         "path": "src/factory/run/__tests__/prompts.snapshot.json"
@@ -56104,6 +56157,11 @@
         "id": "src/factory/run/prepare.ts",
         "kind": "src",
         "path": "src/factory/run/prepare.ts"
+      },
+      {
+        "id": "src/factory/run/private-store.ts",
+        "kind": "src",
+        "path": "src/factory/run/private-store.ts"
       },
       {
         "id": "src/factory/run/progress.ts",
@@ -88819,18 +88877,8 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.local.claims.test.ts",
-        "to": "src/factory/run/ledger.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.local.claims.test.ts",
         "to": "src/factory/run/state.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.local.claims.test.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.local.claims.test.ts",
@@ -89060,11 +89108,6 @@
       {
         "from": "src/factory/run/__tests__/engine.local.reset-discard.test.ts",
         "to": "src/factory/run/budget.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.local.reset-discard.test.ts",
-        "to": "src/factory/run/claims.ts",
         "kind": "imports"
       },
       {
@@ -90418,6 +90461,61 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/__tests__/private-store.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/private-store.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/private-store.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/private-store.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/private-store.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/private-store.test.ts",
+        "to": "src/factory/run/lane-commit.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/private-store.test.ts",
+        "to": "src/factory/run/private-store.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/private-store.test.ts",
+        "to": "src/factory/run/private-store.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/private-store.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/private-store.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/private-store.test.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/__tests__/prompts.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -90554,11 +90652,6 @@
       },
       {
         "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
         "to": "src/factory/run/local-gate.ts",
         "kind": "imports"
       },
@@ -90571,11 +90664,6 @@
         "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
         "to": "src/factory/run/sandbox-exec.ts",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
-        "to": "src/ship/prepare.ts",
-        "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
@@ -91775,6 +91863,66 @@
       {
         "from": "src/factory/run/prepare.ts",
         "to": "src/team/git-worktree.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/private-store.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/private-store.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/private-store.ts",
+        "to": "external:fs",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/private-store.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/private-store.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/private-store.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/private-store.ts",
+        "to": "src/factory/run/lane-commit.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/private-store.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/private-store.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/private-store.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/private-store.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/private-store.ts",
+        "to": "src/team/sdk-policy.ts",
         "kind": "imports"
       },
       {
@@ -115494,11 +115642,6 @@
       },
       {
         "from": "src/ship/prepare.ts",
-        "to": "src/forge/review-feedback.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/prepare.ts",
         "to": "src/ship/config.ts",
         "kind": "imports"
       },
@@ -129509,12 +129652,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10829,
-      "edgeCount": 13232,
-      "importEdgeCount": 10886,
+      "nodeCount": 10839,
+      "edgeCount": 13249,
+      "importEdgeCount": 10900,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "b98095579137c69acf0797e356ac0e0a643e355c83e4ef90f375c33f8a9d8281",
-  "manifestSha256": "989c316d57d9e97a4eb0e9e4eb51a9dafaab89f7a9f0a77392dfc2e563095a34"
+  "inventorySha256": "af6e8245bd830e353d094e84c4f586db0d67ef9c0a2aa69d7a6421dfb12b8abf",
+  "manifestSha256": "7c6302957beed32284cf725ce05cdfb421c4300d9776db8a74ff78c37e11dc53"
 }
