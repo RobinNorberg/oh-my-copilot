@@ -1085,6 +1085,11 @@ omg factory run release [<issue>] [--json] # with an issue: remove its claim and
 - **Exit 6 (busy).** A second `omg factory run` in the same checkout, or a run of an item whose run or claim another live engine holds, exits 6 and touches nothing: no fetch, no state, no worktree. `run clean`, `run reset`, `run release` and the `omg factory heal` commands exit 6 for the same reason. `--json` adds `busy: true`. `--dry-run` names the holder and exits 6.
 - **A lock timeout is busy too.** If an owner or claim file stays locked, the command exits 6 instead of failing with a plain error.
 - **Poll and heal.** While an engine holds the checkout, `omg factory poll` skips its heal tick and its local base sync (`skipped: engine busy`), and an auto-start that exits 6 prints `was busy (... retried next tick)`. `heal scan`, `heal run` and `heal approve` take the engine lock first and exit 6 when it is held.
+- **Read commands never fail because an engine runs.** `omg factory check`, `board`, `pr`, `triage`, `enqueue`, the start-up read of `poll` and the Azure DevOps heal dry runs fetch `origin/<base>` under the checkout's engine lock, held as `scan`, without a credential prompt and for at most 45 s. While an engine holds the checkout they do not fetch. They read the last fetched `origin/<base>` and warn `engine busy: using the last fetched origin/<base> (<sha12>)`. They exit 6 only when the base was never fetched in that checkout. A read that finds another read fetching waits up to 10 s, then reads the last fetched base without fetching, and never exits busy because of it. In a clone where the factory never ran, the fetch takes no lock and writes nothing under `.omg/`. A read command there can race the first engine start: if `origin/<base>` moves while that engine creates its state, the run can park as tampered (it fails closed).
+- **Engine starts wait for a read.** `omg factory run`, `run reset`, `run clean`, `heal scan|run|approve|cancel` and the poller's auto-start wait up to 60 s for a `scan` holder (the poller's heal scan or base sync, or a read command's fetch), 5 s for the auto-start, before exit 6. The busy message names the holder. An engine holder is busy at once. `heal cancel` takes the lock before it loads the forge config. `heal run --dry-run` and `heal approve --dry-run` print `engine busy: a real run now would exit busy (6) without touching anything (<holder>)` to stderr, and `heal run --dry-run --json` carries `engineBusy`.
+- **The engine's base fetch never prompts for credentials.** Sign in (for example through Git Credential Manager) before you run `omg factory run`. An expired login gives a stale-base warning, and a timed-out fetch also mentions a stale `refs/remotes/origin/<base>.lock`.
+- **Stuck lock files.** If the exit-6 message says the lock path is a directory, or a lock file has been held for over 30 s by a live pid, and no omg factory process is running, remove the `.lock` path the message names. A failed release of the engine lock prints a warning naming the file; `omg factory poll` retries it at its next tick.
+- **Claims that moved.** A claim is released at the end of a run only when the engine's own sealed state is terminal. A state the ledger recorded under another path (`its state path moved`, for example after `OMC_STATE_DIR` changed) keeps the claim held until `omg factory run release <issue>`.
 - **`--next`.** `omg factory run --next` skips a runnable item another clone holds and lists it under `claimed`. If the engine then finds the picked item busy, `--next` picks once more.
 - **How long a claim lasts.** A claim ends when the run is merged, cancelled or failed, or when `run clean` or `run reset` removes it in the claiming checkout. A run parked at a gate, or a crashed engine, keeps its item claimed so another clone does not start it twice. A claim counts as held while its owner process is alive (a reused pid is detected by start time), or while the claiming checkout's run state for the item exists and is not terminal. That state counts only as the claiming engine sealed it: a state that fails its seal or its ledger entry keeps the claim held. A missing or unreadable claim file, or one whose checkout cannot be read, is held and never taken over silently. `omg factory run release <issue>` removes a claim nobody will resume, such as one from a deleted clone. `omg factory run release` without an issue removes this checkout's engine lock after a crash left it unreadable. Both refuse a live holder (exit 6).
 - **Shared state root.** The busy message and `run status` warn when the holder's checkout is another folder that shares this checkout's state root.
@@ -1110,6 +1115,15 @@ Every gate posts one issue comment that names the gate, the reason and the comma
 | `fix-rounds-spent` | Ship blocked the PR after `maxFixRounds` changes-requested rounds | Raise `factory.run.maxFixRounds` or `ship.maxFixRounds` in the user config, or fix the PR by hand |
 | `protected-paths` | A lane, or the prepared head, changed paths that ship's merge rule protects | Nothing was pushed; review the change by hand |
 | `lane-tampered`, `review-tampered` | Shared git state outside the lane's own branch and worktree changed while a lane, or prepare's checks, ran, by the lane or anyone else in the repository. A fetch that moves `refs/remotes/<remote>/<run branch>` to the pushed head does not count, nor, on the local forge, an `omg-local` tracking ref at the mirror's own sha | Nothing was pushed and the verdict is dropped; inspect the repository by hand (see [Security model](#security-model)) |
+| `decisions-rewritten` | `.copilot/team/decisions.md` on the PR head no longer starts with the base version (the file is append-only). Checked before the review lane starts | Cancel the run (`omg factory run cancel <issue>`), fix the branch or the base, and start again. A rerun parks again |
+| `coding-agent-wait` | The Copilot coding agent is working on the issue or its pull request is not ready yet (exit 4). See [Copilot coding agent as implementer](#copilot-coding-agent-as-implementer) | Run `omg factory run <issue>` again later; `omg factory poll` does not rerun this park |
+| `coding-agent-timeout` | The agent did not finish within `factory.codingAgent.maxWaitMinutes` of GitHub's assignment time | Unassign the agent and close its pull request, cancel the run and start again, or wait and rerun |
+| `coding-agent-sessions` | `factory.codingAgent.maxSessionsPerDay` is reached, or the session record file is unreadable. Nothing was assigned | Wait for the next UTC day or raise the cap; fix or remove an unreadable record |
+| `coding-agent` | The agent is unavailable, already assigned, unassigned, has more than one open pull request for the issue, its pull request was closed, a GitHub read was cut short, the assign was refused (HTTP 4xx, nothing counted), or the coding agent config could not be read | Read the message; to start over unassign the agent, close its pull request, cancel the run and start again |
+| `coding-agent-unconfirmed` | The assign may have started a session (timeout, dropped connection or a 5xx answer); it was counted | Rerun to read the issue; the factory never assigns again on its own |
+| `coding-agent-reassigned` | A person re-assigned the agent after the factory did | Check the issue, then cancel and start again |
+| `coding-agent-head-moved` | The agent pushed while the factory fetched its head | Rerun after the agent has stopped |
+| `coding-agent-adopt` | The agent's pull request failed an adoption check (not the agent's, another repository or base, a commit not made and signed by the agent, a protected path, a symlink or gitlink, an empty diff) | Read the message. Do not click "Update branch" or push to the agent's pull request while the factory owns it |
 | `sandbox-unavailable` | A lane refused to run because its OS sandbox was not confirmed (see [Sandboxed lanes](#sandboxed-lanes)) | Install the sandbox backend, or set `factory.run.sandbox.writeUnsandboxed: "detect-only"` in the user config to run write lanes unsandboxed |
 | `sandbox-escaped` | A lane's shell call ran without the runtime's `sandboxed: true`, its worktree's git links changed, or it added a nested repository, a directory link or a path that resolves outside its worktree | Nothing was committed or pushed; inspect the lane worktree by hand |
 | `lane-unconfirmed` | The engine cannot confirm that a lane's Copilot process stopped | Stop the process yourself; your rerun counts as your word that it stopped |
@@ -1134,6 +1148,44 @@ Every gate posts one issue comment that names the gate, the reason and the comma
 
 Merge is always human. There is no `factory.merge` key and no auto mode, and the engine's command guard refuses `gh pr merge` outright. At the `merge` gate the PR carries the review findings as a comment, the diff, and a comment with the exact command that merges the head the gates checked. Read the diff and run that command yourself. Then run `omg factory run <issue>` once more: the engine reads the PR state and finishes as `merged`.
 
+<!-- L2B-BEGIN -->
+##### Human review at the merge step
+
+Before the factory parks a PR at `merge`, it reads the PR's human review for the exact head it pushed. This happens on every GitHub run, including ci-heal runs and runs without a forge config, which take the repository from the run's own state, and on the local forge (recorded reviews, see [`omg factory pr`](#omg-factory-pr-local-forge)). The review is read through the same trust rules as `omg factory poll`. This replaces the earlier behaviour where review feedback was read and counted but not acted on.
+
+Keys, read from the user config or the base branch only. The working-tree copy is ignored with a warning.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `factory.review.human` | `"fix"` | `"fix"` starts a fix lane for open feedback. `"gate-only"` parks and never starts a lane. `"off"` never reads human review. A change applies on the next run, also to a fix round that was already scheduled |
+| `factory.review.waitForRequested` | `true` | Park at `review-requested` while requested users have not reviewed |
+| `factory.review.trustedReviewers` | `[]` | See [`omg factory poll`](#omg-factory-poll-experimental) |
+
+In order:
+
+1. **Unreadable.** A read that fails, is cut short (for example too many threads) or is inconsistent parks at `awaiting-human: human-review` with the reason. It is never read as "no feedback". If the PR head moved during the read, the run parks at `head-moved-externally`. If the forge config names another repository than the run was started for, it parks too.
+2. **Open threads.** Unresolved threads from trusted reviewers start one fix round with `factory.review.human: "fix"`. The round counts against `ship.maxFixRounds` together with the factory's own review rounds, then the factory reviews, prepares and runs the gates again and reads the review again. When the rounds are spent the run parks at `fix-rounds-spent` with the feedback still open. Feedback already sent to a fix round parks at `human-review` instead of looping; resolve the threads or reply to start another round.
+3. **Outdated threads.** A thread that a later push outdated still counts until someone resolves it. If the fix lane's own push outdated a thread it was given, the run parks at `human-review` ("outdated by the fix but not resolved"). Check the change, resolve the thread or reply, then rerun.
+4. **Change requests.** A change request from a trusted reviewer parks at `human-review` on any head until the same reviewer approves or it is dismissed (Azure DevOps: the vote changes). A later comment by that reviewer does not clear it.
+5. **Comment-only reviews.** A review submitted as "Comment" never starts a fix lane. The merge message lists it; reply or push to clear it.
+6. **Requested reviewers.** With `waitForRequested` the run parks at `review-requested` while requested users have not reviewed. Requested teams (CODEOWNERS), bots and mannequin accounts are listed as "also requested" and do not hold the merge.
+7. **Collaborator list.** If GitHub's collaborator list was not read whole and `trustedReviewers` is empty, the run parks at `human-review` and lists the ignored authors.
+8. **Clean.** The merge message says `human review: no open trusted threads or change requests`, lists approvals given on the current head only (Azure DevOps votes carry no commit, so they are never listed as current) and the ignored authors. It also says that lanes run with your forge login and that you should check the PR's resolved threads, and to rerun `omg factory run <issue>` first if new comments arrive before you merge.
+
+| Park | Meaning | What to do |
+|---|---|---|
+| `human-review` | One of the cases above | Act on the message, then rerun `omg factory run <issue>`; the review is read again |
+| `review-requested` | Requested reviewers have not reviewed | Wait for them, or set `factory.review.waitForRequested: false` |
+
+**Sandbox acknowledgement.** Before a clean merge note, every write lane of the run must have run under the enforced OS sandbox with `writeNetwork: "none"`, as recorded in the lane's own sandbox record. A lane without that record counts as unsandboxed, including a lane lost in an engine crash and a lane on a cloud backend, so a run resumed after a crash parks at `human-review` at the merge step. A lane that could use your forge login could have resolved a review thread, so the factory cannot vouch for the PR's threads. Check the PR's threads and reviews yourself, then rerun with the flag:
+
+```bash
+omg factory run <issue> --allow-unsandboxed-lanes   # records, for the parked head only, that you checked; a new head parks again
+```
+
+`omg factory run status <issue>` shows the acknowledgement. Review threads handed to a fix round that the merge read no longer shows are listed in the park and the merge note, with those your own login resolved. While a lane was unsandboxed, only a fresh `--allow-unsandboxed-lanes` at that park clears them. The Copilot coding agent lane is exempt, since it runs remotely.
+<!-- L2B-END -->
+
 ##### Review lanes and verdicts
 
 - **Identity.** Every write lane runs as `factory-impl-<n>`. Each review lane is `factory-review-<n>-<jobId>`, and ship refuses a verdict from the implementer.
@@ -1157,6 +1209,7 @@ Keys live under `factory.run`. The engine reads them from the user config at its
 | `maxFixRounds` | `2` | Changes-requested rounds before ship blocks the run. Defaults to `ship.maxFixRounds`, which the user config may also set. |
 | `maxCiFixRounds` | `1` | CI-fix rounds; a value above 1 uses 1 |
 | `gatesTimeoutMinutes` | `90` | Overall bound of one gates phase across its watch windows |
+| `implementer` | `"copilot"` | `"coding-agent"` hands GitHub issue runs to the Copilot coding agent; user config only, see [Copilot coding agent as implementer](#copilot-coding-agent-as-implementer) |
 
 The base branch comes from `ship.base`. The gates and the merge rule use ship's config. `requiredChecks`, `advisoryChecks` and the known-flaky list load in strict mode: from the user config, or from `.copilot/omg.jsonc` as committed at GitHub's base sha, never from the working tree or the PR head. A base the engine cannot verify stops the step. See [`omg ship`](#omg-ship) for the ship keys.
 
@@ -1296,9 +1349,53 @@ AI Credits is the unit. Premium requests are legacy and limit nothing here, and 
 
 With the default limits the worst case is 12 lanes before retries, which is 360 AI credits of caps. Lanes usually spend far less than their cap: the `factory-run` smoke scenario's implement and review lanes are estimated at about 2 AI credits together on a small model. Set `maxRunCredits` to bound a run, and use Copilot admin budgets as the hard stop.
 
-##### Copilot coding agent (adapter only)
+##### Team routing and decisions
 
-The GitHub forge adapter can read the state of the Copilot coding agent on an issue (enabled, assigned, working, finished, closed or ambiguous) and can assign the agent to an issue on a given base branch. The engine's command guard allows exactly three `gh` shapes for it: the status read, the assignment and the close of the agent's own PR, each bound to the repository, issue, base branch and PR it is called for. The engine does not use the adapter yet. No command or config key starts the coding agent, every implement lane is still a `copilot_run` lane, and nothing is assigned or billed on your behalf.
+`omg factory setup --team` creates `.copilot/team/routing.md` and `.copilot/team/decisions.md` when missing. Commit them on the base branch. The factory reads them from the base commit only, never from a working tree or a PR head, so a lane cannot rewrite its own routing. Lanes cannot write `.copilot/` at all.
+
+`routing.md` is a markdown table with exactly four columns; prose, the header and the separator row are ignored, `-` means none, and the first matching row wins for each path:
+
+```
+| path glob | role | owner | handle |
+|---|---|---|---|
+| src/factory/** | executor | factory-team | @robin |
+| docs/** | writer | docs | - |
+| ** | - | everyone | @org/leads |
+```
+
+- **Rows.** The glob uses `A-Za-z0-9_.@+~/*?-`, at most 200 characters, no `..`, not absolute. A glob has at most 8 wildcards and 2 `**` segments. `role` is lowercase letters, digits and `-`. `handle` is `@login` or `@org/team`. A bad row is dropped with a warning. A file over 64 KB or 200 rows is ignored or cut.
+- **Glob semantics.** `**` matches whole path segments only, as in `.gitignore` and `CODEOWNERS`: write `**/*.ts` and `docs/**`, not `src/**.ts` or `docs**` (`routing.md` warns). `src/**` matches the contents of `src`, not `src` itself. A path longer than 1024 characters never matches.
+- **Where it is used.** The owners of paths named in the plan appear in the implement prompt, and the owners of changed paths in the review prompt. The newest non-blank lines of `decisions.md`, up to 8192 bytes, appear fenced as data.
+- **`decisions.md`.** Free markdown, one decision per line, appended at the end. A base file without a trailing newline may be appended to after a newline. A PR head that rewrites or deletes existing lines parks at `decisions-rewritten` before the review lane starts. A gitlink, symlink or directory at either file path ends the run with exit 1 and no lane (it fails closed).
+- **Stale-gate reminders.** `omg factory poll` prints `reminder: #4 has waited 30 h at merge @robin: ...` for a run parked at a human gate longer than `factory.poll.remindAfterHours` (integer 0..8760, default 24, 0 = off; user config and base branch only, a bad value is a usage error, exit 2). It names the handles routed for the paths in the run's plan, or the catch-all rows, once per window. The reminder is printed and carried in `--json` as `reminders: [{ run, gate, hours, handles, reason }]`; it never posts to the forge. Its record is `<state dir>/factory/reminders.json`.
+
+##### Copilot coding agent as implementer
+
+An implement step can hand the issue to the GitHub Copilot coding agent instead of starting a Copilot CLI lane. This is opt-in, GitHub only and billed by GitHub: each agent session counts against your Copilot plan, separately from factory lanes. It has not been exercised against the live service; the tests use fakes behind the exec seam. Watch the first live use.
+
+Keys, read from the user config only. The working-tree `.copilot/omg.jsonc` can switch `factory.run.implementer` back to `"copilot"` and lower the two numbers, and nothing else; its other coding agent values are ignored with a warning.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `factory.run.implementer` | `"copilot"` | `"coding-agent"` turns the agent on |
+| `factory.codingAgent.repos` | `[]` | Allowlist of `owner/name` entries on github.com (case does not matter). A session starts only in a listed repository. An entry with a host, a URL, `.git` or `..` is dropped with a warning |
+| `factory.codingAgent.maxWaitMinutes` | `90` | Wait for the agent, measured from GitHub's assignment time with this machine's clock |
+| `factory.codingAgent.maxSessionsPerDay` | `5` | Sessions per UTC day across all repositories of this user, checked under a file lock before the assign |
+
+```jsonc
+// ~/.copilot/omg.jsonc
+{ "factory": { "run": { "implementer": "coding-agent" },
+               "codingAgent": { "repos": ["owner/name"], "maxSessionsPerDay": 3, "maxWaitMinutes": 90 } } }
+```
+
+Any other repository, and the local and Azure DevOps forges, use the normal Copilot implement lane and print one line (`coding agent not enabled for <owner/name>: add it to factory.codingAgent.repos; using a Copilot lane`, or `the coding agent is GitHub-only; using a Copilot lane`). Without the user opt-in no coding agent key is read from the working tree. After the opt-in, an invalid key there parks the run at `coding-agent` before anything is assigned. `omg factory run <issue> --dry-run` says that the run would assign the agent, that it is a billed session and how many sessions were used today.
+
+- **Assign.** The first `omg factory run <issue>` fetches the base, reads the issue's agent status and refuses to assign when the agent is already on the issue, an open agent pull request exists, the read was cut short (more than 100 assignment and link events on the issue timeline) or the agent is not assignable. It reserves one session under the lock, writes the lane record, assigns the issue on the run's base branch and parks at `coding-agent-wait` (exit 4, no issue comment). Run `omg factory run <issue>` again to check; the factory never assigns a second time.
+- **Billing.** If GitHub refuses the assign with HTTP 4xx, nothing is counted and a rerun may try again. After a timeout, a dropped connection or a 5xx answer the session counts and the run parks at `coding-agent-unconfirmed`. The factory records one premium request per session as an estimate; `omg budget status --by role` shows it as `coding-agent`. A crash between the reservation and the record leaves a provisional entry that uses one session of that day.
+- **Adopt.** When the agent has finished, the factory checks that the pull request is the agent's own, in this repository, on the run's base, and that every commit was made and signed by the agent through GitHub, and that the change touches no protected path and adds no symlink or gitlink. It fetches exactly that head, pushes it to `factory/issue-<n>`, opens its own draft pull request (`Closes #n`), posts a link comment on the agent's pull request and closes it. If the close fails it is retried at the merge step; an agent pull request a person merged counts as closed. Review lane, fix rounds, prepare, gates and the human merge then apply as for any lane.
+- **Cancel.** `omg factory run cancel <issue>` during the wait keeps the session in the run's usage and does not stop the agent. Unassign Copilot on the issue and close its pull request on GitHub to stop it.
+- **Limits.** `omg factory poll` does not rerun runs parked at `coding-agent-wait`. If a person assigns the agent between the factory's read and its own assign, the factory adopts that session as its own. Comments left on the agent's pull request before adoption are not read by the human review step. The engine's command guard allows exactly the status read, the assignment, the agent pull request fetch, the link comment and the close, each bound to the repository, issue, base and pull request it is called for.
+
 ##### Progress sync
 
 Progress sync is opt-in. It runs only when the user config or the base-branch `.copilot/omg.jsonc` has a `factory.progress` section, which `omg factory setup` writes. Without that section nothing is written. A section without `enabled` turns it on, and `"enabled": false` turns it off. When it is on, the engine writes the run's stage to the issue or work item after each state save that changes the stage:
@@ -1454,7 +1551,7 @@ omg factory pr review <n> (--approve | --request-changes | --comment) --head <sh
 - **Review a head you read.** `pr diff` and `pr view` print the full head sha. `pr review` needs that full 40-character sha as `--head` and refuses with exit 2 when the PR moved since (`head moved`), so an approval never covers commits you did not read. The review is recorded on the PR's head in `<store>/prs/<n>/reviews.jsonl`.
 - **Decisions.** Exactly one of the three decision flags. `--request-changes` and `--comment` need `--body-file`. The PR must be open. Only an author's latest record on the head counts: an approval closes that author's earlier request, and a later `--comment` after an `--approve` on the same head replaces the approval.
 - **Trust.** The local forge trusts every recorded review. Keep the state directory at its default (`~/.omg`) and run lanes in a sandbox that denies it; if `OMC_STATE_DIR` points into a lane-writable place, or the sandbox cannot deny paths, a lane could record an approval.
-- **What reads it.** `omg factory poll` counts recorded reviews as human threads. The engine does not yet read them: a recorded review does not start a fix round.
+- **What reads it.** `omg factory poll` counts recorded reviews as human threads. The engine reads them at the merge step, for the head it pushed (see [Human review at the merge step](#human-review-at-the-merge-step)).
 
 #### `omg factory board` (experimental)
 
@@ -1629,6 +1726,7 @@ omg factory setup --forge azure-devops --org contoso --project Web --repo web-ap
   [--trusted-author owner@example.com] [--heal-pipeline <definitionId>|none] [--scope project|user] [--dry-run] [--yes] [--json]
 omg factory setup --intake label:factory | milestone:v5.18 ...   # GitHub
 omg factory setup --forge local [--intake local-backlog[:<label>]] [--dry-run] [--yes]   # offline, no origin needed
+omg factory setup --team [--yes]                        # also create .copilot/team/routing.md and decisions.md when missing, see Team routing and decisions
 omg factory setup --workflows [--mode read-only|triage] [--cron "<expr>"] [--dry-run] [--yes]   # cloud heartbeat file, see below
 ```
 

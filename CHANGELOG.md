@@ -4,6 +4,40 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Committed team routing and decisions** (#465). `omg factory setup --team` creates `.copilot/team/routing.md` (a table `| path glob | role | owner | handle |`, first matching row per path wins) and `.copilot/team/decisions.md` (an append-only log) when missing. Both are read from the base commit only. The owners of the paths in the plan appear in the implement prompt, the owners of the changed paths in the review prompt, and the newest decisions are fenced as data in both.
+- **Gate `decisions-rewritten`** (#465). A PR head whose `decisions.md` no longer starts with the base version parks before the review lane starts. Cancel the run (`omg factory run cancel <issue>`), fix the branch or the base, and start again.
+- **Stale-gate reminders** (#465). `omg factory poll` prints a reminder for a run parked at a human gate longer than `factory.poll.remindAfterHours` (default 24, `0` = off; user config and base branch only), naming the routed handles. It is also in the `--json` output as `reminders`. It never posts to the forge.
+- **The Copilot coding agent as an implementer** (#469). Opt-in and billed by GitHub. Set `factory.run.implementer: "coding-agent"` and list each repository in `factory.codingAgent.repos` in the user config. The first `omg factory run <issue>` assigns the issue to the agent and parks at `coding-agent-wait` (exit 4). A later run adopts the agent's finished pull request into the factory's own draft pull request, comments a link and closes the agent's pull request. Review, fix rounds, gates and the human merge are unchanged. Other repositories, and the local and Azure DevOps forges, keep the Copilot implement lane with one warning.
+- **Coding agent limits** (#469). `factory.codingAgent.maxSessionsPerDay` (default 5 per UTC day, checked under a file lock), `factory.codingAgent.maxWaitMinutes` (default 90, park `coding-agent-timeout`). New parks: `coding-agent-wait`, `coding-agent-sessions`, `coding-agent`, `coding-agent-unconfirmed`, `coding-agent-reassigned`, `coding-agent-head-moved`, `coding-agent-adopt`. `omg factory run <issue> --dry-run` says when the run would assign the agent and how many sessions were used today. Sessions show as `coding-agent` in `omg budget status --by role`.
+<!-- L2B-BEGIN -->
+- **Human review feedback starts a fix round and gates the merge** (#471). Before a PR parks at `merge`, the engine reads the human review for the head it pushed, on GitHub (ci-heal runs included) and the local forge. Open threads of trusted reviewers start a fix lane, counted against `ship.maxFixRounds`. `factory.review.human` is `fix` (default), `gate-only` or `off`. `factory.review.waitForRequested` (default `true`) parks at `review-requested` while requested users have not reviewed. A review that cannot be read whole, a change request, feedback already sent to a fix round, or a collaborator list that was not read whole parks at `human-review`.
+- **`omg factory run --allow-unsandboxed-lanes`** (#471). Records, for the parked head only, that you checked the PR's threads and reviews yourself after a write lane ran without the enforced OS sandbox or with lane network access. A lane without a sandbox record, including one lost in a crash, counts as unsandboxed, so a crash-resumed run parks at `human-review` at the merge step until you pass the flag. `omg factory run status` shows the acknowledgement.
+- **Human review reading** (#471). Outdated but unresolved threads still count. Comment-only reviews never start a fix round. A later comment no longer clears a reviewer's change request. Requested teams, bots and mannequin accounts are listed and no longer hold the merge. A change of `factory.review.human` applies to a fix round that was already scheduled.
+<!-- L2B-END -->
+
+### Changed
+
+- **Read commands no longer fetch under a running engine** (#472). `omg factory check`, `board`, `pr`, `triage`, `enqueue` and the start-up read of `poll` fetch `origin/<base>` under the checkout's engine lock (key `scan`). While an engine runs they read the last fetched base and warn `engine busy: using the last fetched origin/<base> (<sha>)`. They exit 6 only when no base was ever fetched. A read that meets another read's fetch waits up to 10 s, then reads the last fetched base. A clone that never ran the factory gets no `.omg/` from `omg factory check`.
+- **Engine starts wait for a read** (#472). `omg factory run`, `run reset`, `run clean`, `heal scan|run|approve|cancel` and the poller's auto-start wait up to 60 s (5 s for the auto-start) for a `scan` holder before exit 6. An engine holder is still busy at once. The busy message names the holder.
+- **The base fetch never prompts for credentials** (#472). Factory fetches of `origin/<base>` run with `GIT_TERMINAL_PROMPT=0` and `GCM_INTERACTIVE=never` and give up after 45 s, then read the last fetched base with a warning. Sign in before you run `omg factory run`; an expired login gives a stale-base warning.
+- **Heal commands** (#472). `omg factory heal run --dry-run` and `approve --dry-run` never fetch under a running engine on Azure DevOps and say when a real run would exit busy (6). `heal cancel` takes the engine lock before it loads the forge config.
+- **Cross-clone claims** (#472). A claim is released at the end of a run only when the engine's own sealed state is terminal. A run whose state path moved stays held until `omg factory run release <issue>`.
+- **Path globs** (#465). `**` matches whole path segments only, as in `.gitignore` and `CODEOWNERS`. Write `**/*.ts` and `docs/**`, not `src/**.ts` or `docs**` (`routing.md` warns about the latter).
+
+### Fixed
+
+- **Stuck lock files** (#472). An owner or claim lock that is a directory, or a lock file held for over 30 s by a live pid, is reported with the path to remove. A failed release of the engine lock prints a warning naming the file, and `omg factory poll` retries it at its next tick.
+- **Poll** (#472). A heal tick or base sync that cannot take the engine lock for a reason other than busy is reported as a tick error instead of a skip.
+- **Cancel hint** (#465, #472). The cancel hint on the gates `decisions-rewritten`, `gate-definition-unknown` and `gate-definition-changed` names `omg factory heal cancel <sig8>` for ci-heal runs.
+- **Localized git** (#472). Reads of files on the base commit (`.copilot/omg.jsonc`, the team files, the known-flaky list, prepare markers) tell "file absent" from `git ls-tree` and no longer from English git messages.
+
+### Security
+
+- **Coding agent opt-in** (#469). The agent starts only when the user config opts in and lists the repository. The working-tree config can only switch back to `copilot` or lower the two limits. The engine's command guard allows exactly the status read, the assignment, the pull request fetch, the link comment and the close, each bound to the repository, issue, base and pull request. The adopted head is checked for the agent's authorship and signatures, protected paths, symlinks and gitlinks before the factory pushes it.
+- **Team files** (#465). Routing and decisions are read from the base commit with a guarded `git ls-tree` and `git show`. A gitlink, symlink or directory at either path fails closed. Glob matching uses no regular expression and is bounded.
+
 # oh-my-copilot v5.22.0
 
 ## [5.22.0] - 2026-11-09

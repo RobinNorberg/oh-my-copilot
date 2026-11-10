@@ -201,7 +201,9 @@ omg factory pr review 1 --approve --head <full sha>
 
 `pr list`, `pr view` and `pr diff` read a local PR without running any hook, external diff or textconv of your checkout. `pr review` records your review (`--approve`, `--request-changes` or `--comment`, the last two with `--body-file`) on the PR's head. It needs the full 40-character head sha that `pr diff` printed as `--head`, and exits 2 with `head moved` when the PR moved since, so an approval never covers commits you did not read. A `--comment` after an `--approve` on the same head replaces the approval as your latest decision.
 
-`omg factory poll` counts a recorded review as a human thread. The engine does not yet read it: a recorded review does not start a fix round, and the next `omg factory run` does not change because of it.
+<!-- L2B-BEGIN -->
+`omg factory poll` counts a recorded review as a human thread. The engine reads it at the merge step, for the head it pushed. With `factory.review.human: "fix"` (the default) an open thread of a trusted reviewer starts a fix round, and a recorded `--request-changes` parks the run at `awaiting-human: human-review` until you record an approval. A recorded `--comment` never starts a fix round; the merge message lists it. See [Human review at the merge step](REFERENCE.md#human-review-at-the-merge-step).
+<!-- L2B-END -->
 
 The local forge trusts every recorded review. Keep the state directory at its default (`~/.omg`) and run lanes in a sandbox that denies it. If `OMC_STATE_DIR` points into a place a lane can write, or the sandbox cannot deny paths, a lane could record an approval.
 
@@ -222,7 +224,7 @@ The local forge trusts every recorded review. Keep the state directory at its de
 
 ## Busy runs and parallel runs
 
-One engine runs per checkout. A second `omg factory run` in the same checkout, or a `run clean`, `reset` or `release` while an engine owns the run, exits 6 (busy) and touches nothing. `--dry-run` names the holder and exits 6. `omg factory run status` without an item lists the engines running in this checkout, and `omg factory run release` removes a lock a crash left behind (see [Parallel runs and exit 6](REFERENCE.md#parallel-runs-and-exit-6-busy)).
+One engine runs per checkout. A second `omg factory run` in the same checkout, or a `run clean`, `reset` or `release` while an engine owns the run, exits 6 (busy) and touches nothing. `--dry-run` names the holder and exits 6. `omg factory run status` without an item lists the engines running in this checkout, and `omg factory run release` removes a lock a crash left behind (see [Parallel runs and exit 6](REFERENCE.md#parallel-runs-and-exit-6-busy)). Read commands (`check`, `board`, `pr`, `triage`, `enqueue`) never fail because an engine runs: while one does, a command that would fetch `origin/<base>` reads the last fetched base and warns instead, and exits 6 only when no base was ever fetched. An engine start waits up to 60 s for such a fetch before it exits 6 (see [Parallel runs and exit 6](REFERENCE.md#parallel-runs-and-exit-6-busy)).
 
 Parallel runs need separate clones, each with its own mirror and PR store. On the local forge the clones do not coordinate with each other: a local run makes no cross-clone claim, because its mirror belongs to one checkout. Give each clone its own backlog items, or pick the items yourself. `omg factory poll` in a checkout whose engine is running skips its base sync for that tick (`skipped: engine busy`).
 
@@ -241,6 +243,8 @@ not for sharing work between machines
 ```
 
 On GitHub and Azure DevOps, `limitations` is an empty array.
+
+The Copilot coding agent is GitHub only. With `factory.run.implementer: "coding-agent"` a local run uses the Copilot implement lane and prints `the coding agent is GitHub-only; using a Copilot lane`.
 
 ## Exit code 5
 
