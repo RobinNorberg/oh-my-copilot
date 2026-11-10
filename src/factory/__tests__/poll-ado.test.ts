@@ -142,7 +142,8 @@ describe('omg factory poll on Azure DevOps (runFactoryPoll + the real adapter)',
     expect(t).toMatchObject({
       forge: 'azure-devops', repo: REPO.url,
       heal: { ran: false, reason: expect.stringContaining('factory.heal.pipeline') },
-      intake: { ran: true, items: 1, new: [{ id: 42 }] },
+      // F53: the run in review is on 42, so it is not new work.
+      intake: { ran: true, items: 1, new: [] },
       // Thread 3 (active, by the trusted reviewer); 6 (pending, by the PR creator, not a trusted reviewer here) is ignored;
       // 1 is ADO's own (system), 2 carries the factory marker, 4 is fixed, 5 deleted.
       prs: [{ id: 42, pr: 17, state: 'OPEN', threads: 1, ignored: 1 }],
