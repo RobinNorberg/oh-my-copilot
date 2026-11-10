@@ -201,9 +201,7 @@ omg factory pr review 1 --approve --head <full sha>
 
 `pr list`, `pr view` and `pr diff` read a local PR without running any hook, external diff or textconv of your checkout. `pr review` records your review (`--approve`, `--request-changes` or `--comment`, the last two with `--body-file`) on the PR's head. It needs the full 40-character head sha that `pr diff` printed as `--head`, and exits 2 with `head moved` when the PR moved since, so an approval never covers commits you did not read. A `--comment` after an `--approve` on the same head replaces the approval as your latest decision.
 
-<!-- L2B-BEGIN -->
 `omg factory poll` counts a recorded review as a human thread. The engine reads it at the merge step, for the head it pushed. With `factory.review.human: "fix"` (the default) an open thread of a trusted reviewer starts a fix round, and a recorded `--request-changes` parks the run at `awaiting-human: human-review` until you record an approval. A recorded `--comment` never starts a fix round; the merge message lists it. See [Human review at the merge step](REFERENCE.md#human-review-at-the-merge-step).
-<!-- L2B-END -->
 
 The local forge trusts every recorded review. Keep the state directory at its default (`~/.omg`) and run lanes in a sandbox that denies it. If `OMC_STATE_DIR` points into a place a lane can write, or the sandbox cannot deny paths, a lane could record an approval.
 

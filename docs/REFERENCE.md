@@ -1148,7 +1148,6 @@ Every gate posts one issue comment that names the gate, the reason and the comma
 
 Merge is always human. There is no `factory.merge` key and no auto mode, and the engine's command guard refuses `gh pr merge` outright. At the `merge` gate the PR carries the review findings as a comment, the diff, and a comment with the exact command that merges the head the gates checked. Read the diff and run that command yourself. Then run `omg factory run <issue>` once more: the engine reads the PR state and finishes as `merged`.
 
-<!-- L2B-BEGIN -->
 ##### Human review at the merge step
 
 Before the factory parks a PR at `merge`, it reads the PR's human review for the exact head it pushed. This happens on every GitHub run, including ci-heal runs and runs without a forge config, which take the repository from the run's own state, and on the local forge (recorded reviews, see [`omg factory pr`](#omg-factory-pr-local-forge)). The review is read through the same trust rules as `omg factory poll`. This replaces the earlier behaviour where review feedback was read and counted but not acted on.
@@ -1184,7 +1183,6 @@ omg factory run <issue> --allow-unsandboxed-lanes   # records, for the parked he
 ```
 
 `omg factory run status <issue>` shows the acknowledgement. Review threads handed to a fix round that the merge read no longer shows are listed in the park and the merge note, with those your own login resolved. While a lane was unsandboxed, only a fresh `--allow-unsandboxed-lanes` at that park clears them. The Copilot coding agent lane is exempt, since it runs remotely.
-<!-- L2B-END -->
 
 ##### Review lanes and verdicts
 
