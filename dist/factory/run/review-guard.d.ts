@@ -98,7 +98,22 @@ export interface RepoSnapshot {
     mainSymbolic: string;
     /** `git status --porcelain=v1 -z --untracked-files=all` of the main checkout (stableStatus). */
     mainStatus: string;
+    /**
+     * The bytes of what a tamper is quarantined and restored from
+     * (tamper-quarantine.ts): `config`, `config.worktree`, every file under
+     * `hooks/` and `info/` (not info/refs), by path relative to the common git
+     * dir, as `b64:<bytes>` (`b64x:` when executable), `big:<sha256>` (over RESTORE_FILE_MAX_BYTES, or
+     * past RESTORE_TOTAL_MAX_BYTES), or `link:<target>`. Absent in a snapshot
+     * recorded by an older release.
+     */
+    restore?: Record<string, string>;
 }
+/** A file the snapshot keeps the bytes of is at most this big; a bigger one is kept as its hash. */
+export declare const RESTORE_FILE_MAX_BYTES: number;
+/** All the kept bytes of one snapshot together. */
+export declare const RESTORE_TOTAL_MAX_BYTES: number;
+/** The paths (relative to the common git dir, `/`-separated) the snapshot keeps bytes of, as RepoSnapshot.restore encodes them. */
+export declare function restorableFiles(commonDir: string): Record<string, string>;
 export declare class SnapshotError extends Error {
 }
 /** Top-level ignored files and directories the snapshot hashes by content. */

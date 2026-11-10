@@ -297,6 +297,8 @@ export interface PollContext {
     owner: OwnerDeps;
     /** A `scan` lock whose release failed (it warned): retried at the next tick (L7). */
     unreleasedScan?: HeldOwner;
+    /** The tamper hold on the checkout (tamper-quarantine.ts), null when none: no auto-start while it is set (default: the factory ledger's). */
+    tamperHold?: () => string | null;
     now: () => number;
     /** Row signatures of the previous tick (board diff), and PR facts (audit on change); updated by pollTick. */
     previous: {
@@ -339,6 +341,8 @@ export type FactoryPollDeps = FactoryBoardDeps & {
     autoStart?: PollAutoStart;
     budget?: PollBudget;
     owner?: OwnerDeps;
+    /** The factory ledger dir its tamper holds are read from (default defaultLedgerDir()). */
+    ledgerDir?: string;
     /** Waits `ms` or until `wake` aborts. */
     sleep?: (ms: number, wake: AbortSignal) => Promise<void>;
     /** Subscribe to the stop signals (default SIGINT and SIGTERM, passed to the handler); returns the unsubscribe. */

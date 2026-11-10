@@ -144,7 +144,9 @@ export declare function hostGitDriverOverrides(cwd: string, env?: NodeJS.Process
  * process.env) is the environment the pins are set over (the factory
  * engine's commit identity).
  */
-export declare function runHostGit(cwd: string, args: readonly string[], timeout?: number, baseEnv?: NodeJS.ProcessEnv): string;
+export declare function runHostGit(cwd: string, args: readonly string[], timeout?: number, baseEnv?: NodeJS.ProcessEnv, input?: string | Buffer): string;
+/** runHostGit with raw stdout bytes (`cat-file --batch` of binary blobs). */
+export declare function runHostGitBuffer(cwd: string, args: readonly string[], timeout?: number, baseEnv?: NodeJS.ProcessEnv, input?: string | Buffer): Buffer;
 /** The empty tree of each object format: GIT_ATTR_SOURCE names it, so host git reads no `.gitattributes`. */
 export declare const EMPTY_TREE: Readonly<Record<string, string>>;
 /** The first git that honours GIT_ATTR_SOURCE (git --attr-source, 2.41.0). */

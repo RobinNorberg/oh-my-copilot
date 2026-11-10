@@ -16,12 +16,41 @@ export const MAX_EVIDENCE_LINE_CHARS = 400;
 // Control characters (tab kept), line and paragraph separators, and bidi/format controls.
 const CONTROL = /(?!\t)[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
 export const REDACTED = '[redacted]';
+/**
+ * Token and key shapes: the one list behind both the log redaction below and
+ * the lane-commit content scan (lane-commit.ts). Each is specific enough that
+ * ordinary source text does not match: a PEM PRIVATE key header (RSA, EC,
+ * OPENSSH, ENCRYPTED...; public keys and certificates are not secrets),
+ * GitHub's prefixed tokens, AWS access key ids, npm tokens, `sk-` / `sk-ant-`
+ * API keys, a three-part JWT, an `.npmrc` `_authToken=` with a literal value
+ * (not `${NPM_TOKEN}`), and the Azure DevOps PAT format that carries the
+ * `AZDO` signature (the older 52-character PAT has no distinguishable shape).
+ */
+export const SECRET_SHAPES = [
+    { kind: 'private-key', re: /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----/g },
+    { kind: 'github-token', re: /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/g },
+    { kind: 'github-token', re: /\bgithub_pat_[A-Za-z0-9_]{20,}/g },
+    { kind: 'aws-access-key', re: /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g },
+    { kind: 'npm-token', re: /\bnpm_[A-Za-z0-9]{36}\b/g },
+    { kind: 'api-key', re: /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{32,}/g },
+    { kind: 'jwt', re: /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g },
+    { kind: 'npmrc-auth-token', re: /_authToken\s*=\s*(?!\$\{)[^\s'"]{8,}/g },
+    { kind: 'azure-devops-pat', re: /\b[A-Za-z0-9]{76}AZDO[A-Za-z0-9]{4}\b/g },
+];
+/** The kinds of secret shape in `text` (each once, in list order); never the matched values. */
+export function secretShapeKinds(text) {
+    const kinds = [];
+    for (const { kind, re } of SECRET_SHAPES) {
+        re.lastIndex = 0;
+        if (!kinds.includes(kind) && re.test(text))
+            kinds.push(kind);
+    }
+    return kinds;
+}
 const SECRET_PATTERNS = [
     // A whole PEM private key inside one string (JSON values); line by line, sanitizeLines tracks the block.
     [/-----BEGIN [A-Z0-9 ]*KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*KEY-----|$)/g, REDACTED],
-    [/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/g, REDACTED],
-    [/\bgithub_pat_[A-Za-z0-9_]{20,}/g, REDACTED],
-    [/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, REDACTED],
+    ...SECRET_SHAPES.filter((s) => s.kind !== 'private-key').map((s) => [s.re, REDACTED]),
     [/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, `Bearer ${REDACTED}`],
     // URL userinfo: https://user:pass@host, https://token@host.
     [/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, `$1${REDACTED}@`],

@@ -276,6 +276,15 @@ export interface FactoryRunState {
      */
     unsandboxedGatesAck?: string;
     /**
+     * A write lane's work the engine has not committed yet because its commit
+     * parked (audit H3/L3): secret-shaped content (`secretFindings`), or a lane
+     * process that survived the kill. The rerun after that park retries the
+     * commit of the same worktree (no new lane is billed). `secretAck`: the
+     * (path, kind) pairs the human accepted with `--allow-secret-shapes` for
+     * THIS lane commit only; a new pair parks again.
+     */
+    pendingCommit?: FactoryPendingCommit;
+    /**
      * Base calibrations of a check in the sandbox (sandbox-exec.ts), keyed by
      * the sha256 of the base sha and the check's argv: whether the command
      * passes in the sandbox on the trusted base itself, and its output tail.
@@ -318,10 +327,32 @@ export declare const EXIT_BUSY = 6;
  * checkout, the item's own run, or the item's claim from another clone.
  * `omg factory run` exits EXIT_BUSY for it; nothing was touched.
  */
+export interface FactoryPendingCommit {
+    laneId: string;
+    /** The phase retry key of the lane (implement, fix@<n>, ...). */
+    key: string;
+    start: string;
+    parents: string[];
+    worktree: string;
+    branch: string | null;
+    message: string;
+    secretFindings?: {
+        path: string;
+        kind: string;
+    }[];
+    secretAck?: {
+        path: string;
+        kind: string;
+    }[];
+}
 export declare class FactoryBusyError extends FactoryStateError {
     /** The holder's run key when a live owner file refused (`scan`: the poller's heal scan or base sync, or a read command's fetch). */
     readonly holderRun?: string;
     constructor(message: string, holderRun?: string);
+}
+/** A tamper hold is set on the checkout (tamper-quarantine.ts): busy (exit 6) until `omg factory run release --tamper`. */
+export declare class FactoryTamperHoldError extends FactoryBusyError {
+    constructor(message: string);
 }
 /** The run's key: its issue number, or `heal-<sig8>` for a ci-heal run. */
 export declare function runKeyOf(s: Pick<FactoryRunState, 'kind' | 'issue' | 'heal'>): FactoryRunKey;
