@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "cc58a2c7f97423d8fa80348ad73da3ab8bd40425",
-    "sourceSha256": "0038fdd1f2a0a2849c35868028a69aff884a88f390744c46f44862e69ef0834c",
+    "head": "e00da3d46d27f6ed4e97eb371963df9153841780",
+    "sourceSha256": "cbd20f744186a2d7c47cd105e990190b242f48025f1fce8b5eae663eb9128830",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "cc58a2c7f97423d8fa80348ad73da3ab8bd40425",
-  "sourceSha256": "0038fdd1f2a0a2849c35868028a69aff884a88f390744c46f44862e69ef0834c",
+  "head": "e00da3d46d27f6ed4e97eb371963df9153841780",
+  "sourceSha256": "cbd20f744186a2d7c47cd105e990190b242f48025f1fce8b5eae663eb9128830",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2029,
-      "total": 2054
+      "srcFiles": 2030,
+      "total": 2055
     },
     "generated": {
-      "distFiles": 7484,
+      "distFiles": 7488,
       "bridgeFiles": 8,
-      "total": 7492
+      "total": 7496
     },
     "prompt": {
       "promptLikeFiles": 72
@@ -3236,6 +3236,10 @@
       "dist/factory/check/__tests__/local-repo.d.ts.map",
       "dist/factory/check/__tests__/local-repo.js",
       "dist/factory/check/__tests__/local-repo.js.map",
+      "dist/factory/check/__tests__/read-fetch-lock.test.d.ts",
+      "dist/factory/check/__tests__/read-fetch-lock.test.d.ts.map",
+      "dist/factory/check/__tests__/read-fetch-lock.test.js",
+      "dist/factory/check/__tests__/read-fetch-lock.test.js.map",
       "dist/factory/check/__tests__/rules.test.d.ts",
       "dist/factory/check/__tests__/rules.test.d.ts.map",
       "dist/factory/check/__tests__/rules.test.js",
@@ -21198,6 +21202,26 @@
         "id": "dist/factory/check/__tests__/local-repo.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/check/__tests__/local-repo.js.map"
+      },
+      {
+        "id": "dist/factory/check/__tests__/read-fetch-lock.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/__tests__/read-fetch-lock.test.d.ts"
+      },
+      {
+        "id": "dist/factory/check/__tests__/read-fetch-lock.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/__tests__/read-fetch-lock.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/check/__tests__/read-fetch-lock.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/__tests__/read-fetch-lock.test.js"
+      },
+      {
+        "id": "dist/factory/check/__tests__/read-fetch-lock.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/__tests__/read-fetch-lock.test.js.map"
       },
       {
         "id": "dist/factory/check/__tests__/rules.test.d.ts",
@@ -55240,6 +55264,11 @@
         "path": "src/factory/check/__tests__/local-repo.ts"
       },
       {
+        "id": "src/factory/check/__tests__/read-fetch-lock.test.ts",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/read-fetch-lock.test.ts"
+      },
+      {
         "id": "src/factory/check/__tests__/rules.test.ts",
         "kind": "src",
         "path": "src/factory/check/__tests__/rules.test.ts"
@@ -80352,6 +80381,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/factory-board.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/factory-check.ts",
         "to": "external:chalk",
         "kind": "imports"
@@ -80394,6 +80428,11 @@
       {
         "from": "src/cli/commands/factory-check.ts",
         "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-check.ts",
+        "to": "src/factory/run/state.ts",
         "kind": "imports"
       },
       {
@@ -80452,6 +80491,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/factory-poll.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/factory-pr.ts",
         "to": "external:chalk",
         "kind": "imports"
@@ -80504,6 +80548,11 @@
       {
         "from": "src/cli/commands/factory-pr.ts",
         "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-pr.ts",
+        "to": "src/factory/run/state.ts",
         "kind": "imports"
       },
       {
@@ -80759,6 +80808,11 @@
       {
         "from": "src/cli/commands/factory-triage.ts",
         "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-triage.ts",
+        "to": "src/factory/run/state.ts",
         "kind": "imports"
       },
       {
@@ -83358,6 +83412,11 @@
       },
       {
         "from": "src/factory/__tests__/enqueue-ado.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue-ado.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
       },
@@ -83459,6 +83518,11 @@
       {
         "from": "src/factory/__tests__/enqueue-local.test.ts",
         "to": "src/forge/local/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue.test.ts",
+        "to": "external:node:child_process",
         "kind": "imports"
       },
       {
@@ -84338,6 +84402,11 @@
       },
       {
         "from": "src/factory/__tests__/triage-github.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/triage-github.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
       },
@@ -84858,6 +84927,11 @@
       },
       {
         "from": "src/factory/check/__tests__/cli-ado.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli-ado.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
       },
@@ -84968,6 +85042,11 @@
       },
       {
         "from": "src/factory/check/__tests__/cli.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
       },
@@ -85067,6 +85146,81 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/factory/check/__tests__/read-fetch-lock.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/read-fetch-lock.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/read-fetch-lock.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/read-fetch-lock.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/read-fetch-lock.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/read-fetch-lock.test.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/read-fetch-lock.test.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/read-fetch-lock.test.ts",
+        "to": "src/factory/enqueue.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/read-fetch-lock.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/read-fetch-lock.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/read-fetch-lock.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/read-fetch-lock.test.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/read-fetch-lock.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/read-fetch-lock.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/read-fetch-lock.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/factory/check/__tests__/rules.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -85150,6 +85304,11 @@
         "from": "src/factory/check/cli.ts",
         "to": "src/factory/run/state.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/check/cli.ts",
@@ -88375,6 +88534,11 @@
         "from": "src/factory/run/__tests__/engine.resume.test.ts",
         "to": "src/factory/run/engine.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.resume.test.ts",
+        "to": "src/factory/run/lane.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.resume.test.ts",
@@ -128078,12 +128242,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10764,
-      "edgeCount": 13022,
-      "importEdgeCount": 10713,
+      "nodeCount": 10769,
+      "edgeCount": 13049,
+      "importEdgeCount": 10735,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "df5801e8ad173b5728192d4992a131abc63d3d925d39f2f2cdae9aa190d0a7de",
-  "manifestSha256": "c92d782c36289973a37c4c97c8b96c0b5229e33eee41b3d306e864768e764111"
+  "inventorySha256": "59f6554a58f890dee8b70b39d461a248159ed68b2c2912373515efaf3b9986a5",
+  "manifestSha256": "8fceccaf33014a8da0073c3a1a45e65075f9491fefdb727967fa0f6726dcdc37"
 }
