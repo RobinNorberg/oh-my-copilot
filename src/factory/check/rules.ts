@@ -120,7 +120,7 @@ export function evaluateItem(item: ForgeItem, kind: ForgeKind, config: RuleConfi
     // The engine never restarts a merged, cancelled or failed run (engine.ts start()). Offline a cancelled
     // run is not terminal for the item: run reset moves it aside, then the item is checked as new.
     if (kind === 'local' && run.phase === 'cancelled') {
-      return hit('blocked', 'run-finished:cancelled', `the factory run was cancelled; omg factory run clean ${item.id}, then omg factory run reset ${item.id}, makes the item runnable again`);
+      return hit('blocked', 'run-finished:cancelled', `the factory run was cancelled; omg factory run reset ${item.id} makes the item runnable again (it removes the run's worktrees)`);
     }
     return hit('blocked', `run-finished:${run.phase}`, `the factory run is ${run.phase} and is not restarted; see omg factory run status ${item.id}`);
   }

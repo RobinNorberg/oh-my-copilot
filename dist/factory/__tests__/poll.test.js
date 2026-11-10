@@ -169,6 +169,14 @@ describe('omg factory poll on GitHub', () => {
         expect(audit.map((a) => [a.kind, a.id])).toEqual([['intake-new', 1], ['intake-new', 2], ['pr-done', 4]]);
         expect(audit[2]).toMatchObject({ pr: 9, state: 'MERGED', hint: 'omg factory run 4' });
     });
+    it('F53: the first tick does not list an item a run is already on as new', async () => {
+        save(moveTo(issueRun(1), 'implement', 'plan ok', T0));
+        const w = scripted({ listed: [1, 2] });
+        expect(await poll(w.exec, { once: true, json: true }, { projectConfig: () => LABEL })).toBe(0);
+        expect(ticks()[0].intake).toMatchObject({ ran: true, items: 2, new: [{ id: 2 }] });
+        // It is not marked seen, so it shows as new once its run is reset.
+        expect(JSON.parse(readFileSync(pollStatePath(root), 'utf8')).seen).toEqual([2]);
+    });
     it('a second tick reports only items new since the seen file', async () => {
         const w = scripted({ listed: [1, 2] });
         expect(await poll(w.exec, { once: true, json: true }, { projectConfig: () => LABEL })).toBe(0);

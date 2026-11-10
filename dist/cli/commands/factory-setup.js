@@ -448,6 +448,9 @@ function printOutcome(o, r) {
         console.log(chalk.gray(l));
     if (r.previewError)
         console.log(chalk.yellow(`preview unavailable: ${r.previewError}`));
+    // F57: --workflows reads no items, so it has no preview to report.
+    else if (o.workflows)
+        return;
     else if (r.preview.length === 0)
         console.log('preview: the source has no open items');
     else {

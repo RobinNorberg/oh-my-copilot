@@ -110,6 +110,26 @@ describe('git-worktree', () => {
         });
     });
     describe('removeWorkerWorktree', () => {
+        it('discardChanges unlinks a tracked symlink path replaced by a junction, never following it', () => {
+            // A tracked symlink (mode 120000) without needing symlink rights: on win32 git checks it out as a plain file.
+            const blob = execFileSync('git', ['hash-object', '-w', '--stdin'], { cwd: repoDir, input: 'README.md' }).toString().trim();
+            execFileSync('git', ['update-index', '--add', '--cacheinfo', `120000,${blob},linked`], { cwd: repoDir, stdio: 'pipe' });
+            execFileSync('git', ['commit', '-m', 'tracked symlink'], { cwd: repoDir, stdio: 'pipe' });
+            const target = mkdtempSync(join(tmpdir(), 'git-worktree-link-target-'));
+            try {
+                writeFileSync(join(target, 'sentinel.txt'), 'keep me');
+                const info = createWorkerWorktree(teamName, 'tracked-link-worker', repoDir);
+                rmSync(join(info.path, 'linked'), { force: true });
+                symlinkSync(target, join(info.path, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
+                writeFileSync(join(info.path, 'README.md'), 'partial edit\n');
+                removeWorkerWorktree(teamName, 'tracked-link-worker', repoDir, { discardChanges: true });
+                expect(existsSync(info.path)).toBe(false);
+                expect(readFileSync(join(target, 'sentinel.txt'), 'utf-8')).toBe('keep me');
+            }
+            finally {
+                rmSync(target, { recursive: true, force: true });
+            }
+        });
         it('unlinks ignored junctions/symlinks before removal and leaves their targets intact', () => {
             // No trailing slash: git sees a POSIX symlink as a file, which `node_modules/` does not match.
             writeFileSync(join(repoDir, '.gitignore'), 'node_modules\n');
