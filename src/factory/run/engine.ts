@@ -940,8 +940,11 @@ class FactoryEngine {
   /** factory.run.layout from the trusted layers at `baseSha` (user config, then the base .copilot/omg.jsonc); false when it parked. */
   private resolveLayout(baseSha: string): boolean {
     try {
-      const text = readBaseFile(this.exec, this.o.root, baseSha, BASE_CONFIG_PATH);
-      this.layoutChoice = resolveRunLayout(this.runUserConfig(), text && text.trim() ? parseJsonc(text) : undefined).layout;
+      const user = this.runUserConfig();
+      const own = resolveRunLayout(user, undefined);
+      // The base layer is read only when the user config leaves the key unset.
+      const text = own.source === 'default' ? readBaseFile(this.exec, this.o.root, baseSha, BASE_CONFIG_PATH) : null;
+      this.layoutChoice = text && text.trim() ? resolveRunLayout(user, parseJsonc(text)).layout : own.layout;
       return true;
     } catch (error) {
       this.gate(PRIVATE_STORE_GATE, `factory.run.layout could not be read: ${errText(error)}; fix it in the user config or the .copilot/omg.jsonc committed on ${this.state.base}, then rerun ${this.resume}`);
@@ -1817,12 +1820,10 @@ class FactoryEngine {
   private async implement(): Promise<void> {
     // The layout is decided once, before the run's first lane, and sealed with its private store (never switched later).
     const undecided = this.state.layout !== 2 && !this.state.codingAgent && this.state.lanes.length === 0;
-    let baseSha: string | undefined;
-    if (undecided && this.layoutChoice === undefined) {
-      baseSha = this.fetchBase();
-      if (!this.resolveLayout(baseSha)) return;
-    }
-    if (undecided && this.layoutChoice === 'private' && this.state.kind !== 'ci-heal' && this.o.issue) {
+    // The coding agent pushes to the PR branch itself: refused when the user config asks for the private layout (no fetch needed to tell).
+    let userLayout: RunLayoutChoice = 'shared';
+    try { userLayout = resolveRunLayout(this.runUserConfig(), undefined).layout; } catch { /* resolveLayout parks on it below */ }
+    if (undecided && userLayout === 'private' && this.state.kind !== 'ci-heal' && this.o.issue) {
       let agent = false;
       try { agent = this.codingAgentChoice().use; } catch { /* codingAgentImplement parks on it */ }
       if (agent) {
@@ -1831,10 +1832,10 @@ class FactoryEngine {
       }
     }
     if (await this.codingAgentImplement()) return;
-    baseSha ??= this.fetchBase();
-    const sealed = baseSha;
-    this.save((s) => ({ ...s, baseSha: sealed }));
-    if (undecided && this.layoutChoice === 'private' && !this.setupPrivate(sealed)) return;
+    const baseSha = this.fetchBase();
+    this.save((s) => ({ ...s, baseSha }));
+    if (undecided && !this.resolveLayout(baseSha)) return;
+    if (undecided && this.layoutChoice === 'private' && !this.setupPrivate(baseSha)) return;
     const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(this.readAt(baseSha), pathsInText(this.state.plan?.text ?? ''))), 'implement');
     if (out.kind === 'done') this.acceptWriteLane(out, 'implement', baseSha);
   }
