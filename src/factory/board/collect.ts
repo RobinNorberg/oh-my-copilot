@@ -226,6 +226,8 @@ export interface CollectBoardInput {
 
 /** The merge park's human-review clause, as the engine read the PR when it parked. */
 const PARKED_REVIEW = /; human review: [\s\S]*?; if the PR gets new review comments before you merge, rerun [^;]*? first/;
+/** The merge park's closing step (engine.ts merge gate): ": run <merge command>, then <rerun>". */
+const PARKED_MERGE_STEP = /: run [^;]*, then [^;]*$/;
 
 /**
  * F50: on the local forge, a run parked at the merge gate shows the PR's
@@ -248,7 +250,8 @@ function reviewNow(forge: Forge, s: FactoryRunState, row: BoardRow, warnings: st
   const by = [...new Set(fb.decisions.filter((d) => d.state === 'changes-requested').map((d) => d.author))];
   if (by.length === 0 && fb.threads.length === 0) return;
   const what = [fb.threads.length > 0 ? `${fb.threads.length} open review note(s)` : '', by.length > 0 ? `changes requested by ${by.join(', ')}` : ''].filter(Boolean).join(' and ');
-  gate.reason = plainText(`${gate.reason.replace(PARKED_REVIEW, '')}; human review now: ${what} on local PR #${s.pr}: do not merge${typeof s.issue === 'number' && s.kind !== 'ci-heal' ? `; omg factory run ${s.issue} reads it` : ''}`);
+  // The parked ": run <merge command>, then <rerun>" tail goes too: it would tell the human to merge.
+  gate.reason = plainText(`${gate.reason.replace(PARKED_REVIEW, '').replace(PARKED_MERGE_STEP, '')}; human review now: ${what} on local PR #${s.pr}: do not merge${typeof s.issue === 'number' && s.kind !== 'ci-heal' ? `; omg factory run ${s.issue} reads it` : ''}`);
 }
 
 /** Item reads go through a memo, so check's viewItem reads also give the board its live labels and column. */

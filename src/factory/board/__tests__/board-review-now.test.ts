@@ -16,7 +16,7 @@ import { runLine } from '../render.js';
 
 const HEAD = 'b'.repeat(40);
 const T0 = '2026-11-10T07:00:00.000Z';
-const PARKED = `gates green at ${HEAD.slice(0, 12)}; a human merges with git merge --no-ff --no-edit ${HEAD}; human review: no open trusted threads or change requests; if the PR gets new review comments before you merge, rerun omg factory run 3 first`;
+const PARKED = `merge is a human step; review approved and gates green at ${HEAD.slice(0, 12)}; human review: no open trusted threads or change requests; if the PR gets new review comments before you merge, rerun omg factory run 3 first: run git merge --no-ff --no-edit ${HEAD}, then omg factory run 3`;
 
 let root: string;
 beforeEach(() => {
@@ -58,7 +58,9 @@ describe('board/poll merge park on the local forge (F50)', () => {
     const reason = row.run!.gate!.reason;
     expect(reason).not.toContain('no open trusted threads or change requests');
     expect(reason).toContain('human review now: 1 open review note(s) and changes requested by norbe on local PR #2: do not merge; omg factory run 3 reads it');
-    expect(reason).toContain('a human merges with git merge');
+    expect(reason).toContain('review approved and gates green at');
+    // L5: the parked "run <merge command>" step is gone too.
+    expect(reason).not.toContain('run git merge');
     expect(runLine(row, '#')).toContain('do not merge');
   });
 

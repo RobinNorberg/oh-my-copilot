@@ -12,7 +12,11 @@
  * (remote check, fetch, ls-remote) runs guarded and hardened like the
  * engine's: no hooks, no fsmonitor. `discard` (a cancelled run only, dogfood
  * F59): a lane worktree's or the prepare checkout's uncommitted changes are
- * given up so the tree goes too; committed work is still kept.
+ * given up so the tree goes too; committed work is still kept. It refuses
+ * (busy) while a lane's Copilot child may still run in its worktree (the
+ * cancel was not confirmed or failed and the recorded child is not known
+ * gone), and a reset (`keepTamperEvidence`) keeps a worktree whose lane note
+ * records tamper problems; an explicit `clean --discard` removes it.
  */
 
 import { existsSync } from 'fs';
@@ -25,7 +29,8 @@ import { factoryGuardExec, hardenedGitExec } from './exec.js';
 import { localRemoteMismatch } from './forge-roots.js';
 import { defaultLedgerDir, emptyHooksDir } from './ledger.js';
 import { checkoutWorker, FACTORY_CHECKOUT_TEAM, unlinkNodeModules } from './prepare.js';
-import { acquireFactoryOwner, acquireFactoryRepoOwnerForRun, FactoryStateError, readFactoryState, runRemote, verifyFactoryIntegrity, type FactoryRunState, type OwnerDeps } from './state.js';
+import { isProcessAlive } from '../../platform/process-utils.js';
+import { acquireFactoryOwner, acquireFactoryRepoOwnerForRun, FactoryBusyError, FactoryStateError, readFactoryState, runRemote, verifyFactoryIntegrity, type FactoryRunState, type OwnerDeps } from './state.js';
 import { removeFactoryClaim } from './claims.js';
 
 const HEX40 = /^[0-9a-f]{40}$/;
@@ -52,6 +57,21 @@ export interface FactoryCleanOptions {
   claimRepo?: string | null;
   /** Give up uncommitted changes in the run's worktrees (a cancelled run only; F59). */
   discard?: boolean;
+  /** With discard (reset): keep a worktree whose lane note records tamper problems. */
+  keepTamperEvidence?: boolean;
+  /** Whether a recorded lane child pid still runs (default: isProcessAlive). */
+  processAlive?: (pid: number) => boolean;
+}
+
+const UNCONFIRMED_NOTE = /not confirmed|cancel failed|may still run/;
+const TAMPER_NOTE = /\btampered: |tamper check: /;
+
+/** Why a lane's Copilot child may still run in its worktree (its stop was never confirmed), or null. */
+function laneMayRun(lane: FactoryRunState['lanes'][number], alive: (pid: number) => boolean): string | null {
+  if (lane.status === 'running') return 'it is still recorded as running';
+  if (!UNCONFIRMED_NOTE.test(lane.note ?? '')) return null;
+  if (!lane.process) return `its stop was not confirmed (${lane.note}) and no pid of its Copilot child was recorded`;
+  return alive(lane.process.pid) ? `its stop was not confirmed (${lane.note}) and its Copilot child pid ${lane.process.pid} still runs` : null;
 }
 
 export function cleanFactoryRun(o: FactoryCleanOptions): FactoryCleanResult {
@@ -87,6 +107,19 @@ export function cleanFactoryRun(o: FactoryCleanOptions): FactoryCleanResult {
  * state it checked.
  */
 export function cleanHeldFactoryRun(o: FactoryCleanOptions, state: FactoryRunState): FactoryCleanResult {
+  if (o.discard) {
+    // A lane that may still run keeps writing into the tree being thrown away (it could plant a link after the
+    // links went): refuse before any git operation or removal, busy like a live engine.
+    const alive = o.processAlive ?? isProcessAlive;
+    const busy = state.lanes.flatMap((l) => {
+      if (!l.jobId || !existsSync(getWorktreePath(o.root, WORKTREE_TEAM, l.jobId))) return [];
+      const why = laneMayRun(l, alive);
+      return why ? [`lane ${l.id} (${l.jobId}): ${why}`] : [];
+    });
+    if (busy.length > 0) {
+      throw new FactoryBusyError(`the cancelled run for issue #${o.issue} has a lane that may still run, so no worktree is discarded: ${busy.join('; ')}; stop that Copilot process, then rerun`);
+    }
+  }
   // A merged or cancelled run frees its claim; one this checkout left behind (a crash) goes now.
   if (o.claimRepo) removeFactoryClaim(o.ledgerDir ?? defaultLedgerDir(), o.claimRepo, o.root, o.issue, { onlyRoot: true, ...(o.owner ? { deps: o.owner } : {}) });
   // No hook or fsmonitor a lane planted runs in clean's fetch and ls-remote.
@@ -109,9 +142,14 @@ export function cleanHeldFactoryRun(o: FactoryCleanOptions, state: FactoryRunSta
     [FACTORY_CHECKOUT_TEAM, checkoutWorker(o.issue)],
   ];
   const result: FactoryCleanResult = { removed: [], kept: [], contained };
+  const tamperedJobs = new Set(o.keepTamperEvidence ? state.lanes.filter((l) => l.jobId && TAMPER_NOTE.test(l.note ?? '')).map((l) => l.jobId!) : []);
   for (const [team, worker] of targets) {
     const path = getWorktreePath(o.root, team, worker);
     const existed = existsSync(path);
+    if (existed && team === WORKTREE_TEAM && tamperedJobs.has(worker)) {
+      result.kept.push({ worktree: path, reason: `tamper_evidence: its lane note records tamper problems; inspect it, then omg factory run clean ${o.issue} --discard removes it` });
+      continue;
+    }
     // The engine's node_modules link in its prepare checkout (untracked on POSIX for a `node_modules/` ignore line).
     if (team === FACTORY_CHECKOUT_TEAM) unlinkNodeModules(o.root, path);
     try {

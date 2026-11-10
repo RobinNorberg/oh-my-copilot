@@ -723,7 +723,8 @@ function removeRuntimeLeftover(wtPath: string, retryMs = RUNTIME_LEFTOVER_RETRY_
  * (`.git` skipped, links not followed) before `git worktree remove`: git
  * deletes ignored entries with the tree, and on win32 it recurses through a
  * junction (a linked node_modules) and empties its target. Only the link goes;
- * the target is untouched. Tracked symlinks are left to git. Throws
+ * the target is untouched. Tracked symlinks are left to git unless
+ * `keepTracked` is false (a tree being discarded: every link goes). Throws
  * `worktree_link_unremovable` when a link cannot be unlinked.
  */
 function unlinkUntrackedWorktreeLinks(wtPath: string, gitDirArgs: readonly string[] = [], keepTracked = true): void {
@@ -766,6 +767,28 @@ function unlinkUntrackedWorktreeLinks(wtPath: string, gitDirArgs: readonly strin
       }
     }
   }
+}
+
+/** The first symlink or junction under `dir` (lstat walk, links never followed), or null. */
+function firstLinkUnder(dir: string): string | null {
+  const pending = [dir];
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    let entries;
+    try {
+      entries = readdirSync(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const path = join(current, entry.name);
+      let stat;
+      try { stat = lstatSync(path); } catch { continue; }
+      if (stat.isSymbolicLink()) return path;
+      if (stat.isDirectory()) pending.push(path);
+    }
+  }
+  return null;
 }
 
 function gitOrNull(args: string[], cwd: string): string | null {
@@ -1426,7 +1449,19 @@ export function removeWorkerWorktree(
       (error as Error & { code?: string }).code = 'worktree_remove_failed';
       throw error;
     }
-    if (existsSync(wtPath)) unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs);
+    if (existsSync(wtPath)) {
+      // Discarding: the tree is thrown away, so tracked links go too. A lane can replace a tracked symlink with a
+      // junction to an outside directory, which `git worktree remove --force` would empty on win32.
+      unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs, !options.discardChanges);
+      if (options.discardChanges) {
+        const left = firstLinkUnder(wtPath);
+        if (left) {
+          const error = new Error(`worktree_link_unremovable: preserving worker worktree at ${wtPath}; a link is still there after unlinking: ${left}`);
+          (error as Error & { code?: string }).code = 'worktree_link_unremovable';
+          throw error;
+        }
+      }
+    }
     try {
       if (options.gitLinks && laneCommonDir) {
         // An agent's worktree goes by path, not `git worktree remove`: that
@@ -1483,6 +1518,10 @@ export function removeWorkerWorktree(
       else rmSync(wtPath, { recursive: true, force: true });
     }
 
+    // Discarding skipped the AGENTS.md restore: its managed backup goes now (the worktree is gone).
+    if (options.discardChanges && !existsSync(wtPath)) {
+      try { restoreWorktreeRootAgents(teamName, workerName, repoRoot, wtPath); } catch { /* best effort */ }
+    }
     forgetMetadataUnlocked(repoRoot, teamName, workerName);
     forgetWorktreeGitLinks(wtPath);
     return { tampered: null };

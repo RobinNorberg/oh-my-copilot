@@ -942,7 +942,8 @@ class FactoryEngine {
     const f = parked.ciFailure;
     const { pr, head } = this.state;
     if (!parked.gate || f?.source !== 'ci' || !pr || !head || f.startSha !== head || this.state.phase !== parked.phase) return;
-    const fromCiFix = parked.phase === 'ci-fix';
+    // Only the two CI parks: another park in ci-fix (protected-paths, sandbox-escaped, budget, ...) is re-evaluated as is.
+    const fromCiFix = parked.phase === 'ci-fix' && parked.gate.name === 'ci-fix-failed';
     if (!fromCiFix && !(parked.phase === 'gates' && parked.gate.name === 'ci-failed')) return;
     if (this.forge?.kind === 'local') {
       for (const c of this.forge.checks.checks(pr, head)) {
@@ -1174,6 +1175,8 @@ class FactoryEngine {
 
   private async cancel(): Promise<void> {
     const usage = new Map<string, NonNullable<FactoryLaneRecord['usage']>>();
+    // Lanes whose stop is not confirmed: reset and clean --discard refuse their worktrees while the child may run.
+    const unconfirmed = new Set<string>();
     for (const lane of this.state.lanes.filter((l) => l.status === 'running')) {
       if (lane.kind === 'coding-agent') { usage.set(lane.id, this.codingAgentCancelled(lane)); continue; }
       let u = capUsage(lane.maxCredits);
@@ -1181,9 +1184,10 @@ class FactoryEngine {
         try {
           const c = await this.o.lanes.cancel(lane.jobId);
           if (isTerminalLaneState(c.result.state)) u = usageOf(c.result);
+          else unconfirmed.add(lane.id);
         } catch (e) {
           // Lost already; counted at its cap. Its Copilot child may outlive the job's process.
-          if (e instanceof LaneLostError) await this.laneChildGone(lane);
+          if (!(e instanceof LaneLostError) || !(await this.laneChildGone(lane)).gone) unconfirmed.add(lane.id);
         }
       }
       usage.set(lane.id, u);
@@ -1194,13 +1198,13 @@ class FactoryEngine {
     this.save((s) => moveTo({
       ...s,
       cancelRequested: true,
-      lanes: s.lanes.map((l) => (l.status === 'running' ? { ...l, status: 'cancelled' as const, endedAt: at, ...(usage.has(l.id) ? { usage: usage.get(l.id)! } : {}) } : l)),
+      lanes: s.lanes.map((l) => (l.status === 'running' ? { ...l, status: 'cancelled' as const, endedAt: at, ...(usage.has(l.id) ? { usage: usage.get(l.id)! } : {}), ...(unconfirmed.has(l.id) ? { note: 'cancelled; the cancel was not confirmed, so the lane may still run' } : {}) } : l)),
     }, 'cancelled', why, at));
     if (this.state.pr) {
       // Offline nothing else ever closes the local PR, and an open one blocks the item for good (pr-exists; dogfood F38).
       const local = this.forge?.kind === 'local' && this.forge.reviews.closePr !== undefined;
       const kept = local
-        ? `The local PR is closed (cancelled); its branch and the lane worktrees are kept. omg factory run clean ${this.key}, then omg factory run reset ${this.key}, makes the item runnable again.`
+        ? `The local PR is closed (cancelled); its branch and the lane worktrees are kept. omg factory run reset ${this.key} makes the item runnable again (it removes the run's worktrees).`
         : 'The PR, its branch and the lane worktrees are kept.';
       const body = this.writeBody('cancel', `Factory run for ${runLabel(this.key)} was cancelled. ${kept}\n`);
       const res = this.commentPr(this.state.pr, body);
@@ -2043,6 +2047,8 @@ class FactoryEngine {
   /** A real check failure: one ci-fix lane while rounds are left, else awaiting-human: ci-failed. */
   private ciFailed(failure: FactoryCiFailure, note: string): void {
     if (this.state.ciFixRounds >= this.o.limits.maxCiFixRounds) {
+      // The failure of this head is recorded, so a rerun on the same head re-checks it (F58, recheckAfterCiPark).
+      this.save((x) => ({ ...x, ciFailure: failure }));
       this.gate('ci-failed', `${note}: ${failure.checks.join(', ')}; the CI-fix rounds are spent (${this.state.ciFixRounds}/${this.o.limits.maxCiFixRounds})`);
       return;
     }

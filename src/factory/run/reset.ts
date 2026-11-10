@@ -13,7 +13,9 @@
  *   the next run publishes a fresh branch (nothing the run made is lost);
  * - the run's worktrees go first (cleanHeldFactoryRun with discard: a
  *   cancel mid-lane leaves partial edits, dogfood F59); one holding commits
- *   that no base or mirror branch holds refuses the reset;
+ *   that no base or mirror branch holds refuses the reset, and so does a lane
+ *   that may still run (busy) or whose note records tamper problems (kept
+ *   for inspection; `clean --discard` removes it);
  * - the run state and its engine ledger are moved aside (`.reset-<stamp>`)
  *   and the cancel request is removed, so the next `omg factory run <issue>`
  *   starts a new run.
@@ -102,6 +104,8 @@ export interface FactoryResetOptions {
   repoOwner?: HeldOwner;
   /** The repository the cross-clone claim is keyed on (factoryClaimRepo): a claim another clone holds refuses; this checkout's is deleted. */
   claimRepo?: string | null;
+  /** Whether a recorded lane child pid still runs (default: isProcessAlive; see cleanHeldFactoryRun). */
+  processAlive?: (pid: number) => boolean;
 }
 
 export function resetFactoryRun(o: FactoryResetOptions): FactoryResetResult {
@@ -147,7 +151,8 @@ export function resetFactoryRun(o: FactoryResetOptions): FactoryResetResult {
     // go with the engine's own worktrees (never the main checkout); a worktree holding commits is still kept.
     const result: Partial<FactoryResetResult> = {};
     if (worktrees().length > 0) {
-      const cleaned = cleanHeldFactoryRun({ root: o.root, issue: o.issue, exec: o.exec, ledgerDir, discard: true, ...(o.owner ? { owner: o.owner } : {}) }, state);
+      // Busy while a lane may still run; a lane worktree with tamper evidence is kept (clean --discard removes it).
+      const cleaned = cleanHeldFactoryRun({ root: o.root, issue: o.issue, exec: o.exec, ledgerDir, discard: true, keepTamperEvidence: true, ...(o.owner ? { owner: o.owner } : {}), ...(o.processAlive ? { processAlive: o.processAlive } : {}) }, state);
       if (cleaned.removed.length > 0) result.removedWorktrees = cleaned.removed;
       if (cleaned.kept.length > 0) {
         throw new FactoryStateError(`the cancelled run for issue #${o.issue} still has worktrees that hold work: ${cleaned.kept.map((k) => `${k.worktree} (${k.reason})`).join('; ')}; nothing was reset (reset gives up uncommitted lane changes, never commits that no base or mirror branch holds)`);
