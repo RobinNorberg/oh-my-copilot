@@ -227,6 +227,24 @@ export function localTracker(ctx) {
     const withAcceptance = (body, acceptance) => acceptance && acceptance.length > 0 && acceptanceSectionOf(body) === undefined
         ? `${body.replace(/\n*$/, '')}\n\n## Acceptance\n${acceptance.map((a) => `- [ ] ${a}`).join('\n')}\n`
         : body;
+    /**
+     * F55: a triage write changes labels and priority only, so the file keeps
+     * its own title line (no re-quoting of every touched file), as long as
+     * that line still reads as the same title.
+     */
+    const keepTitleLine = (original, rendered, title) => {
+        const own = /^title:[^\r\n]*/m.exec(original.replace(/^\uFEFF/, '').split(/\r?\n---/)[0] ?? '')?.[0];
+        if (own === undefined)
+            return rendered;
+        try {
+            if (parseBacklogFile('1-x.md', `---\n${own}\n---\n`).title !== title)
+                return rendered;
+        }
+        catch {
+            return rendered;
+        }
+        return rendered.replace(/^title:[^\n]*/m, () => own);
+    };
     /** The working-tree file for `id` (a committed item without one is written at its committed path). */
     const fileFor = (id) => {
         const e = entries().get(id);
@@ -295,7 +313,8 @@ export function localTracker(ctx) {
                 const priority = change.priority ?? fields.priority;
                 if (labels.length === fields.labels.length && labels.every((l, i) => l === fields.labels[i]) && priority === fields.priority)
                     return { ok: true, detail: 'nothing to change' };
-                writeAtomic(file, renderBacklogFile({ ...fields, labels, ...(priority === undefined ? {} : { priority }) }, entry.item.body), ctx.root);
+                const rendered = renderBacklogFile({ ...fields, labels, ...(priority === undefined ? {} : { priority }) }, entry.item.body);
+                writeAtomic(file, entry.file === undefined ? rendered : keepTitleLine(readFileSync(file, 'utf8'), rendered, fields.title), ctx.root);
                 return { ok: true, detail: `${file} edited in the working tree; commit it on the base branch` };
             }
             catch (err) {

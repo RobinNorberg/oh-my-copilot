@@ -37,6 +37,8 @@ describe('human review on the local forge', () => {
     expect(readShipState(w.root, s1.pr!)!.fixRounds).toBe(1);
     expect(second.gate?.name, second.message).toBe('human-review');
     expect(second.gate?.reason).toContain('changes requested on PR #1 by robin');
+    // F52: the local way out is named, with the full head the command needs.
+    expect(second.gate?.reason).toContain(`(omg factory pr review 1 --approve --head ${s2.head} by that reviewer; omg factory pr view 1 shows the request)`);
 
     appendLocalReview(store, { version: 1, id: 'r2', pr: s1.pr!, author: 'robin', state: 'approved', body: '', head: s2.head!, at: '2026-11-09T12:00:00.000Z' });
     const third = await runFactoryEngine(localOpts(w, lanesFor(w, [])));

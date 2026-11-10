@@ -263,11 +263,14 @@ export declare function prepareWorkerWorktreeForRemoval(teamName: string, worker
  * With the worktree directory already gone, the named branch is checked the
  * same way and kept when it holds unmerged worker commits. `contained`: commits
  * (full shas the caller verified, e.g. a fetched remote branch) whose history
- * also counts as merged.
+ * also counts as merged. `discardChanges`: the caller gives up the
+ * worktree's uncommitted changes (a cancelled factory run's lane): a dirty
+ * tree is removed too; the path guard and the commit checks still apply.
  */
 export declare function removeWorkerWorktree(teamName: string, workerName: string, repoRoot: string, options?: {
     gitLinks?: WorktreeGitLinks;
     contained?: readonly string[];
+    discardChanges?: boolean;
 }): {
     tampered: string | null;
 };

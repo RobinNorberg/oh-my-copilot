@@ -73,6 +73,20 @@ describe('omg factory setup: the local (offline) forge', () => {
         expect(out.join('\n')).toContain('dry run: nothing written');
         expect(out.join('\n')).not.toMatch(/prerequisites|chain route table|CLAUDE\.md/);
     });
+    it('F57: --workflows --dry-run on the local forge prints the not-applicable note and no "no open items" preview line', async () => {
+        const repo = localRepo();
+        const out = [];
+        vi.spyOn(console, 'log').mockImplementation((...a) => { out.push(a.join(' ')); });
+        vi.spyOn(console, 'error').mockImplementation((...a) => { out.push(a.join(' ')); });
+        try {
+            await factorySetupCommand(deps(repo)).parseAsync(['--forge', 'local', '--workflows', '--dry-run'], { from: 'user' });
+        }
+        finally {
+            vi.restoreAllMocks();
+        }
+        expect(out.join('\n')).toMatch(/--workflows is not applicable to the local \(offline\) forge/);
+        expect(out.join('\n')).not.toMatch(/preview/);
+    });
     it('--forge local --yes writes factory.forge.kind local and a closed sample item; a second run changes nothing', async () => {
         const repo = localRepo();
         const r = await runFactorySetup({ forge: 'local', yes: true }, deps(repo), repo.root);

@@ -307,6 +307,10 @@ export function syncLocalMirror(exec, root, mirror, base, onBase) {
         const pushed = git(mirrorPushArgs(local, base));
         if (pushed.status !== 0) {
             const detail = (pushed.stderr || pushed.stdout).trim().split('\n')[0];
+            // A shallow clone's first push: the mirror takes no shallow history (git refuses it), whatever its ancestry.
+            if (/shallow update not allowed/i.test(pushed.stderr)) {
+                throw new Error(`this checkout is a shallow clone and the local forge mirror takes no shallow history, so ${base} cannot be synced to it; git fetch --unshallow (or a full clone), then rerun (${detail})`);
+            }
             throw new Error(/non-fast-forward|fetch first|rejected/i.test(pushed.stderr)
                 ? `the local forge mirror's ${base} is not an ancestor of your ${base} (it was rewritten or reset); the mirror syncs fast-forward only. Restore ${base}, or move the mirror ${mirror} aside to start a new one (${detail})`
                 : `syncing ${base} to the local forge mirror failed: ${detail}`);

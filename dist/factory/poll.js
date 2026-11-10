@@ -496,8 +496,12 @@ export async function pollTick(ctx) {
                 }
                 // A read-failed item stays new, so the next tick checks it again.
                 const failed = new Set(results.filter((r) => r.reasons[0] === 'read-failed').map((r) => r.id));
-                step('intake seen', () => updateSeen(root, ids.filter((id) => !failed.has(id)), at));
-                intake = { ran: true, items: ids.length, new: results.map((r) => ({ id: r.id, bucket: r.bucket, reasons: r.reasons })) };
+                // F53: an item a run is already on is not new work (a first tick, with an empty seen file, would list it).
+                // It is not marked seen either, so it shows as new once the run is reset or moved aside.
+                const active = new Set(results.filter((r) => (r.reasons[0] ?? '').startsWith('run-active')).map((r) => r.id));
+                step('intake seen', () => updateSeen(root, ids.filter((id) => !failed.has(id) && !active.has(id)), at));
+                const work = results.filter((r) => !active.has(r.id));
+                intake = { ran: true, items: ids.length, new: work.map((r) => ({ id: r.id, bucket: r.bucket, reasons: r.reasons })) };
             }
         }
     }

@@ -77,6 +77,13 @@ export interface FactoryLaneRecord {
     /** The local job's OS sandbox as it ended (mode, host support, attestation; design §5); absent for remote lanes. */
     sandbox?: CopilotRunSandboxState;
     note?: string;
+    /**
+     * Whether the lane's stop is unconfirmed (its Copilot child may still run in
+     * its worktree): true when the engine could not confirm it, false once the
+     * engine or a human (`--lane-stopped`) confirmed it. Absent (older states,
+     * other paths): run clean / reset read the note.
+     */
+    stopUnconfirmed?: boolean;
     startedAt: string;
     endedAt?: string;
 }

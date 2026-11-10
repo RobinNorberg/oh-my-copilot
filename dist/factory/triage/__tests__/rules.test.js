@@ -31,8 +31,20 @@ describe('triage rules', () => {
         // The field is unset: the tag is used and nothing is written to the field.
         expect(plan({ labels: ['priority:p1'] }, res('runnable', '', 2), 'azure-devops').action).toBe('unchanged');
     });
-    it('local: the priority frontmatter is authoritative like the ADO field', () => {
-        expect(plan({ priority: 3, labels: ['priority:p0'] }, res('runnable', '', 3), 'local')).toMatchObject({ add: ['priority:p2'], remove: ['priority:p0'], priority: null });
+    it('local: the priority frontmatter is authoritative; F55: no priority label is added next to it', () => {
+        expect(plan({ priority: 3, labels: ['priority:p0'] }, res('runnable', '', 3), 'local')).toMatchObject({ add: [], remove: ['priority:p0'], priority: null });
+    });
+    it('local: a frontmatter priority above 4 leaves a held priority label alone', () => {
+        const p = plan({ priority: 7, labels: ['priority:p2'] }, res('runnable', '', 7), 'local');
+        expect(p).toMatchObject({ add: [], remove: [], priority: null });
+        expect(p.why.join('\n')).toMatch(/frontmatter priority 7 is above 4; the priority labels are left alone/);
+    });
+    it('local: an invalid frontmatter priority (0, negative, fraction, non-number) changes nothing and says why', () => {
+        for (const priority of [0, -1, 1.5, Number.NaN, '2']) {
+            const p = plan({ priority, labels: ['priority:p2'] }, res('runnable', '', null), 'local');
+            expect(p, String(priority)).toMatchObject({ add: [], remove: [], priority: null });
+            expect(p.why.join('\n')).toMatch(/is not a positive integer; the priority labels are left alone/);
+        }
     });
     it('a field above 4 has no tag to match: the labels are left alone', () => {
         expect(plan({ priority: 7, labels: ['priority:p1'] }, res('runnable', '', 7), 'azure-devops').action).toBe('unchanged');
