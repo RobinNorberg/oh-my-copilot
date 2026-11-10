@@ -273,6 +273,8 @@ function humanReviewShapeProblem(s) {
         return 'unsandboxedAck';
     if (s.unsandboxedGatesAck !== undefined && (!isStr(s.unsandboxedGatesAck) || !HEX40.test(s.unsandboxedGatesAck)))
         return 'unsandboxedGatesAck';
+    if (s.sandboxedPrepareHead !== undefined && (!isStr(s.sandboxedPrepareHead) || !HEX40.test(s.sandboxedPrepareHead)))
+        return 'sandboxedPrepareHead';
     const cal = s.gateCalibration;
     if (cal !== undefined && (typeof cal !== 'object' || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
         const e = v;

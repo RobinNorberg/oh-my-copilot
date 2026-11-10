@@ -244,6 +244,8 @@ export interface FactoryRunState {
     mergeBounces?: number;
     /** The engine-owned prepare checkout's HEAD when the engine last left it. */
     checkoutHead?: string;
+    /** The checkout head a prepare left after the PR's code ran in the OS sandbox there (a local gate start failure on it parks at gate-no-verdict). */
+    sandboxedPrepareHead?: string;
     /**
      * The last human feedback round consumed (sealed with the rest of the
      * state): when, at which head, the digest of what the fix lane got, and

@@ -104,9 +104,9 @@ export declare const SHELL_LINE_CHARS = 2000;
  * The shell command executeUserRequested runs (the runtime's shell:
  * PowerShell on Windows, bash elsewhere). No word of `cwd` or `argv` is ever
  * spliced into shell source: they travel as one base64 literal (only
- * `[A-Za-z0-9+/=]`), which the shell decodes into an array (PowerShell: UTF-8
- * JSON `{cwd, argv}`; bash: NUL-terminated words, since bash has no JSON
- * parser and no argv word can hold a NUL), checks the word count of, changes
+ * `[A-Za-z0-9+/=]`), which the shell decodes into an array (UTF-8 words
+ * separated by NUL in PowerShell, terminated by NUL in bash: no argv word can
+ * hold a NUL, and no parser can retype a word), checks the word count of, changes
  * into the first (a failure runs nothing and prints no marker), runs the
  * rest as the command, keeps only the tail of its merged output, then prints
  * `<marker> <exit code>` as the last line. On Windows the argv may not hold
@@ -115,6 +115,24 @@ export declare const SHELL_LINE_CHARS = 2000;
  * for a NUL anywhere or a marker that is not `[A-Za-z0-9-]+`.
  */
 export declare function sandboxShellCommand(platform: NodeJS.Platform, argv: readonly string[], cwd: string, marker: string): string | null;
+/**
+ * The longest shell command runSandboxed hands to the runtime. The SDK types
+ * do not say how the runtime passes it to its shell; assume one argument of
+ * a process command line: on Windows CreateProcess takes 32 767 characters
+ * in all, and the shell's path, its flags and quote escaping need the rest;
+ * elsewhere Linux caps one argv string at 131 072 bytes.
+ */
+export declare const sandboxCommandMaxChars: (platform: NodeJS.Platform) => number;
+/** Whether `argv` in `cwd` encodes to a shell command above sandboxCommandMaxChars (false for one the shell refuses anyway). */
+export declare function sandboxCommandTooLong(platform: NodeJS.Platform, argv: readonly string[], cwd: string): boolean;
+/**
+ * A built-in check's `<script> [run] <file...>` args (`fixed` = the words
+ * before the file list) cut into several argument lists, each with at least
+ * one file and, where one file allows it, short enough for the sandbox
+ * shell. One list when the whole command fits. The caller runs them all and
+ * counts a pass only when every one passes.
+ */
+export declare function splitFileListArgs(platform: NodeJS.Platform, exe: string, args: readonly string[], fixed: number, cwd: string): string[][];
 /**
  * The exit code the marker line reports, and the output without it. A
  * verdict needs `marker` exactly once, and no other MARKER_PREFIX anywhere,
@@ -126,7 +144,7 @@ export declare function readMarker(output: string, marker: string): {
     code: number | null;
     output: string;
 };
-/** Token-shaped text (GitHub, npm, AWS keys, PEM private keys, Bearer values) replaced before an output tail is kept anywhere. */
+/** Token-shaped text (GitHub, npm, AWS, sk- / sk-ant- keys, JWTs, .npmrc credentials, PEM private keys, Bearer values) replaced before an output tail is kept anywhere; pattern-based: only text printed verbatim. */
 export declare function redactGateOutput(text: string): string;
 /**
  * Run `argv` (already resolved: argv[0] is the executable) in the sandbox.

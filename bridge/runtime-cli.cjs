@@ -7633,7 +7633,7 @@ async function getProcessStartTimeLinux(pid, deadlineAt) {
     return void 0;
   }
 }
-function getProcessStartIdentitySync(pid) {
+function getProcessStartIdentitySync(pid, o = {}) {
   if (!Number.isInteger(pid) || pid <= 0) return null;
   if (process.platform === "linux") {
     try {
@@ -7662,16 +7662,31 @@ function getProcessStartIdentitySync(pid) {
     }
   }
   if (process.platform === "win32") {
+    const commands = [
+      `$p = Get-Process -Id ${pid} -ErrorAction Stop; if ($p -and $p.StartTime) { $p.StartTime.ToUniversalTime().Ticks }`,
+      ...o.fallbacks ? [`$p = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" -ErrorAction Stop; if ($p -and $p.CreationDate) { ([DateTime]$p.CreationDate).ToUniversalTime().Ticks }`] : []
+    ];
+    for (const cmd of commands) {
+      try {
+        const result = (0, import_child_process6.spawnSync)(
+          "powershell",
+          ["-NoProfile", "-NonInteractive", "-Command", cmd],
+          { encoding: "utf8", timeout: o.fallbacks ? 5e3 : 3e3, windowsHide: true }
+        );
+        const ticks = result.status === 0 ? result.stdout?.trim().match(/^\d+$/)?.[0] : void 0;
+        if (ticks) return `ticks:${ticks}`;
+      } catch {
+      }
+    }
+    if (!o.fallbacks) return null;
     try {
-      const cmd = `$p = Get-Process -Id ${pid} -ErrorAction Stop; if ($p -and $p.StartTime) { $p.StartTime.ToUniversalTime().Ticks }`;
       const result = (0, import_child_process6.spawnSync)(
-        "powershell",
-        ["-NoProfile", "-NonInteractive", "-Command", cmd],
-        { encoding: "utf8", timeout: 3e3, windowsHide: true }
+        "wmic",
+        ["process", "where", `ProcessId=${pid}`, "get", "CreationDate", "/format:csv"],
+        { encoding: "utf8", timeout: 5e3, windowsHide: true }
       );
-      if (result.status !== 0 || !result.stdout) return null;
-      const ticks = result.stdout.trim().match(/^\d+$/)?.[0];
-      return ticks ? `ticks:${ticks}` : null;
+      const match = result.status === 0 ? result.stdout?.match(/(\d{14}\.\d{6}[+-]\d{3})/) : null;
+      return match ? dmtfCreationDateToTicks(match[1]) : null;
     } catch {
       return null;
     }

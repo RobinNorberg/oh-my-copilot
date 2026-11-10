@@ -394,4 +394,32 @@ describe('gates "unsandboxed"', () => {
         expect(s.reqs).toEqual([]);
     }, MULTI_RUN_MS);
 });
+describe('a sandbox that does not start after the PR\'s code of the head already ran in it (review 474b L-c)', () => {
+    const NOT_STARTED = { ran: false, reason: 'the sandbox runtime failed: ENOSPC: no space left on device' };
+    it('a later prepare check parks gate-no-verdict, not the --allow-unsandboxed-gates offer; nothing runs unsandboxed', async () => {
+        w = localWorld();
+        const two = (input) => { const g = gateConfig()(input); return { ...g, config: { ...g.config, prepareChecks: [PREPARE_CHECK, ['node', 'check2.js']] } }; };
+        const s = sandbox((req) => (req.args.includes('check2.js') ? NOT_STARTED : PASS));
+        const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run, gateConfig: two }));
+        expect(out.gate?.name, out.message).toBe(GATE_NO_VERDICT_GATE);
+        expect(out.gate?.reason).toContain('the prepare check `node check2.js`');
+        expect(out.gate?.reason).toContain('after the PR\'s code of this head already ran in it');
+        expect(out.gate?.reason).toContain('--allow-unsandboxed-gates does not apply here');
+        expect(out.gate?.reason).not.toContain('Acknowledging trusts');
+        expect(w.gateRuns).toEqual([]);
+    }, MULTI_RUN_MS);
+    it('the local gate after a sandboxed prepare parks gate-no-verdict, not the --allow-unsandboxed-gates offer', async () => {
+        w = localWorld();
+        const s = sandbox((req) => (req.purpose === 'gate' ? NOT_STARTED : PASS));
+        const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run }));
+        expect(out.gate?.name, out.message).toBe(GATE_NO_VERDICT_GATE);
+        expect(out.gate?.reason).toContain('the local gate `node --test`');
+        expect(out.gate?.reason).toContain('ENOSPC');
+        expect(out.gate?.reason).not.toContain('Acknowledging trusts');
+        const state = readFactoryState(w.root, LOCAL_ISSUE);
+        expect(state.sandboxedPrepareHead).toBe(state.head);
+        expect(readLocalCheckRecord(w.stateDir, w.root, state.head)).toBeUndefined();
+        expect(w.gateRuns).toEqual([]);
+    }, MULTI_RUN_MS);
+});
 //# sourceMappingURL=engine.gates-sandbox.test.js.map

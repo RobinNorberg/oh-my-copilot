@@ -51,7 +51,8 @@ export function laneProcessState(p) {
     const expected = p.identity.startsWith('dmtf:') ? dmtfCreationDateToTicks(p.identity.slice('dmtf:'.length)) : p.identity;
     if (!expected)
         return 'unknown';
-    const current = getProcessStartIdentitySync(p.pid);
+    // The engine's async reader falls back to CIM and wmic: a busy machine must not turn a live child into "unknown".
+    const current = getProcessStartIdentitySync(p.pid, { fallbacks: true });
     if (current === null)
         return isProcessAlive(p.pid) ? 'unknown' : 'dead';
     return current === expected ? 'live' : 'mismatch';
@@ -149,7 +150,8 @@ export function cleanHeldFactoryRun(o, state) {
                 return {
                     ...s,
                     updatedAt: at,
-                    lanes: s.lanes.map((l) => (ids.has(l.id) ? { ...l, stopUnconfirmed: false, note: `the stop was confirmed by a human (--lane-stopped, ${at})` } : l)),
+                    // Appended, never replaced: tamper text in the note keeps the worktree as evidence for reset (keepTamperEvidence).
+                    lanes: s.lanes.map((l) => (ids.has(l.id) ? { ...l, stopUnconfirmed: false, note: `${l.note ? `${l.note}; ` : ''}the stop was confirmed by a human (--lane-stopped, ${at})` } : l)),
                     history: [...s.history, ...busy.map((b) => ({ at, from: s.phase, to: s.phase, note: `lane ${b.lane.id} (${b.lane.jobId}): --lane-stopped: a human confirmed that its Copilot child stopped (${ids.get(b.lane.id)})` }))],
                 };
             }, {

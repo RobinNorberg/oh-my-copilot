@@ -191,8 +191,17 @@ export function resetFactoryRun(o) {
         rmSync(factoryCancelPath(o.root, o.issue), { force: true });
         const movedTo = `${statePath}.reset-${stamp}`;
         renameSync(statePath, movedTo);
-        if (o.claimRepo)
-            removeFactoryClaim(ledgerDir, o.claimRepo, o.root, o.issue, { onlyRoot: true, ...(o.owner ? { deps: o.owner } : {}) });
+        // The PR is closed and the state moved aside: the reset is done, so a claim that cannot go now is a warning, never a throw.
+        if (o.claimRepo) {
+            try {
+                removeFactoryClaim(ledgerDir, o.claimRepo, o.root, o.issue, { onlyRoot: true, ...(o.owner ? { deps: o.owner } : {}) });
+            }
+            catch (error) {
+                if (!(error instanceof FactoryBusyError))
+                    throw error;
+                result.claimKept = error.message;
+            }
+        }
         return { ...result, stateMovedTo: movedTo };
     }
     finally {
