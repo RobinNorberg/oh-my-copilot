@@ -4,6 +4,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Session end no longer queues or spawns the `openclaw` action when OpenClaw is disabled** (#479). The action is only seeded when `OMC_OPENCLAW=1` (one shared `isOpenClawEnabled()` predicate), so a disabled install creates no `runs/<job>/openclaw/` folders, no runner process and no `expired` entry. A manifest written by an older build that still carries the action is settled as completed (`skipped-openclaw-disabled`) by the worker without a runner or run folder.
+
 # oh-my-copilot v5.23.0
 
 ## [5.23.0] - 2026-11-10
