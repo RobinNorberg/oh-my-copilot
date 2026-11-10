@@ -4,6 +4,18 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- **Prepare checks and the local gate run in the OS sandbox.** `omg factory run` runs the PR's own code in prepare (`ship.prepare.checks`, the built-in tsc, eslint, vitest and generator checks, the inventory generator) and in the local forge's gate inside the Copilot runtime's sandbox: read-write on the engine's checkout only, the git dir read-only, no network by default, no `GH_TOKEN` or PAT in the env. Before, they ran as you with your tokens and write access to the shared git dir. A result counts only when the command's exit code came back and the call was attested `sandboxed: true`.
+- **New key `factory.run.sandbox.gates`**: `"enforced"` (default), `"ack"` or `"unsandboxed"`, read from the user config or the base-committed `.copilot/omg.jsonc` (never the working tree or the PR head). `"unsandboxed"` is accepted from the user config only. `OMG_SANDBOX=off` means `"unsandboxed"`.
+- **New parks `gates-unsandboxed` and `gate-sandbox-incompatible`, new flag `--allow-unsandboxed-gates`.** Where the sandbox gives no verdict, or with `"ack"`, the run parks before the head's code runs; the flag accepts that head only. A check that fails in the sandbox and on the trusted base in the sandbox parks instead of starting a ci-fix lane.
+- **Unsandboxed gate env.** A local gate or prepare check that runs without the sandbox (`"ack"`, `"unsandboxed"`) no longer gets `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GH_CONFIG_DIR`, `AZURE_DEVOPS_EXT_PAT`, `AZURE_CONFIG_DIR`, `COPILOT_GITHUB_TOKEN`, `SSH_AUTH_SOCK` or `GIT_ASKPASS`; `HOME`, `USERPROFILE`, `XDG_CONFIG_HOME` and `APPDATA` point at an empty per-run dir, and the system and global git config are off.
+- **Prepare checks have a 30-minute timeout** in `omg factory run` (`omg ship prepare` is unchanged). The local gate record gains `sandbox`.
+
+# oh-my-copilot v5.23.0
+
+## [5.23.0] - 2026-11-10
+
 ### Added
 
 - **Committed team routing and decisions** (#465). `omg factory setup --team` creates `.copilot/team/routing.md` (a table `| path glob | role | owner | handle |`, first matching row per path wins) and `.copilot/team/decisions.md` (an append-only log) when missing. Both are read from the base commit only. The owners of the paths in the plan appear in the implement prompt, the owners of the changed paths in the review prompt, and the newest decisions are fenced as data in both.
@@ -35,11 +47,6 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 - **Coding agent opt-in** (#469). The agent starts only when the user config opts in and lists the repository. The working-tree config can only switch back to `copilot` or lower the two limits. The engine's command guard allows exactly the status read, the assignment, the pull request fetch, the link comment and the close, each bound to the repository, issue, base and pull request. The adopted head is checked for the agent's authorship and signatures, protected paths, symlinks and gitlinks before the factory pushes it.
 - **Team files** (#465). Routing and decisions are read from the base commit with a guarded `git ls-tree` and `git show`. A gitlink, symlink or directory at either path fails closed. Glob matching uses no regular expression and is bounded.
-- **Prepare checks and the local gate run in the OS sandbox.** `omg factory run` runs the PR's own code in prepare (`ship.prepare.checks`, the built-in tsc, eslint, vitest and generator checks, the inventory generator) and in the local forge's gate inside the Copilot runtime's sandbox: read-write on the engine's checkout only, the git dir read-only, no network by default, no `GH_TOKEN` or PAT in the env. Before, they ran as you with your tokens and write access to the shared git dir. A result counts only when the command's exit code came back and the call was attested `sandboxed: true`.
-- **New key `factory.run.sandbox.gates`**: `"enforced"` (default), `"ack"` or `"unsandboxed"`, read from the user config or the base-committed `.copilot/omg.jsonc` (never the working tree or the PR head). `"unsandboxed"` is accepted from the user config only. `OMG_SANDBOX=off` means `"unsandboxed"`.
-- **New parks `gates-unsandboxed` and `gate-sandbox-incompatible`, new flag `--allow-unsandboxed-gates`.** Where the sandbox gives no verdict, or with `"ack"`, the run parks before the head's code runs; the flag accepts that head only. A check that fails in the sandbox and on the trusted base in the sandbox parks instead of starting a ci-fix lane.
-- **Unsandboxed gate env.** A local gate or prepare check that runs without the sandbox (`"ack"`, `"unsandboxed"`) no longer gets `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GH_CONFIG_DIR`, `AZURE_DEVOPS_EXT_PAT`, `AZURE_CONFIG_DIR`, `COPILOT_GITHUB_TOKEN`, `SSH_AUTH_SOCK` or `GIT_ASKPASS`; `HOME`, `USERPROFILE`, `XDG_CONFIG_HOME` and `APPDATA` point at an empty per-run dir, and the system and global git config are off.
-- **Prepare checks have a 30-minute timeout** in `omg factory run` (`omg ship prepare` is unchanged). The local gate record gains `sandbox`.
 
 # oh-my-copilot v5.22.0
 

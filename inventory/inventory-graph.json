@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "a0c413814e72cc8d3308ff301fdbf69ed17dc1f1",
-    "sourceSha256": "1c841b3eedd2070f1b7c4a3e6460f29a5ef2b3f176f778831e0167d6ada063f6",
+    "head": "37ea953457d3340fbbddb6746b91fe8b561a5faf",
+    "sourceSha256": "2b11e1fe08ab9451e43020fe6b56a9fa2d23e1d1346d4c16f30a6988f4f066b7",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "a0c413814e72cc8d3308ff301fdbf69ed17dc1f1",
-  "sourceSha256": "1c841b3eedd2070f1b7c4a3e6460f29a5ef2b3f176f778831e0167d6ada063f6",
+  "head": "37ea953457d3340fbbddb6746b91fe8b561a5faf",
+  "sourceSha256": "2b11e1fe08ab9451e43020fe6b56a9fa2d23e1d1346d4c16f30a6988f4f066b7",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2033,
-      "total": 2058
+      "srcFiles": 2030,
+      "total": 2055
     },
     "generated": {
-      "distFiles": 7500,
+      "distFiles": 7488,
       "bridgeFiles": 8,
-      "total": 7508
+      "total": 7496
     },
     "prompt": {
       "promptLikeFiles": 72
@@ -3408,10 +3408,6 @@
       "dist/factory/run/__tests__/engine.coding-agent.test.d.ts.map",
       "dist/factory/run/__tests__/engine.coding-agent.test.js",
       "dist/factory/run/__tests__/engine.coding-agent.test.js.map",
-      "dist/factory/run/__tests__/engine.gates-sandbox.test.d.ts",
-      "dist/factory/run/__tests__/engine.gates-sandbox.test.d.ts.map",
-      "dist/factory/run/__tests__/engine.gates-sandbox.test.js",
-      "dist/factory/run/__tests__/engine.gates-sandbox.test.js.map",
       "dist/factory/run/__tests__/engine.human-review.local.test.d.ts",
       "dist/factory/run/__tests__/engine.human-review.local.test.d.ts.map",
       "dist/factory/run/__tests__/engine.human-review.local.test.js",
@@ -3548,10 +3544,6 @@
       "dist/factory/run/__tests__/review-guard.test.d.ts.map",
       "dist/factory/run/__tests__/review-guard.test.js",
       "dist/factory/run/__tests__/review-guard.test.js.map",
-      "dist/factory/run/__tests__/sandbox-exec.test.d.ts",
-      "dist/factory/run/__tests__/sandbox-exec.test.d.ts.map",
-      "dist/factory/run/__tests__/sandbox-exec.test.js",
-      "dist/factory/run/__tests__/sandbox-exec.test.js.map",
       "dist/factory/run/__tests__/state-forge.test.d.ts",
       "dist/factory/run/__tests__/state-forge.test.d.ts.map",
       "dist/factory/run/__tests__/state-forge.test.js",
@@ -3648,10 +3640,6 @@
       "dist/factory/run/review-output.d.ts.map",
       "dist/factory/run/review-output.js",
       "dist/factory/run/review-output.js.map",
-      "dist/factory/run/sandbox-exec.d.ts",
-      "dist/factory/run/sandbox-exec.d.ts.map",
-      "dist/factory/run/sandbox-exec.js",
-      "dist/factory/run/sandbox-exec.js.map",
       "dist/factory/run/state.d.ts",
       "dist/factory/run/state.d.ts.map",
       "dist/factory/run/state.js",
@@ -22076,26 +22064,6 @@
         "path": "dist/factory/run/__tests__/engine.coding-agent.test.js.map"
       },
       {
-        "id": "dist/factory/run/__tests__/engine.gates-sandbox.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.gates-sandbox.test.d.ts"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.gates-sandbox.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.gates-sandbox.test.d.ts.map"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.gates-sandbox.test.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.gates-sandbox.test.js"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.gates-sandbox.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.gates-sandbox.test.js.map"
-      },
-      {
         "id": "dist/factory/run/__tests__/engine.human-review.local.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.human-review.local.test.d.ts"
@@ -22776,26 +22744,6 @@
         "path": "dist/factory/run/__tests__/review-guard.test.js.map"
       },
       {
-        "id": "dist/factory/run/__tests__/sandbox-exec.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/sandbox-exec.test.d.ts"
-      },
-      {
-        "id": "dist/factory/run/__tests__/sandbox-exec.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/sandbox-exec.test.d.ts.map"
-      },
-      {
-        "id": "dist/factory/run/__tests__/sandbox-exec.test.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/sandbox-exec.test.js"
-      },
-      {
-        "id": "dist/factory/run/__tests__/sandbox-exec.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/sandbox-exec.test.js.map"
-      },
-      {
         "id": "dist/factory/run/__tests__/state-forge.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/state-forge.test.d.ts"
@@ -23274,26 +23222,6 @@
         "id": "dist/factory/run/review-output.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/review-output.js.map"
-      },
-      {
-        "id": "dist/factory/run/sandbox-exec.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/sandbox-exec.d.ts"
-      },
-      {
-        "id": "dist/factory/run/sandbox-exec.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/sandbox-exec.d.ts.map"
-      },
-      {
-        "id": "dist/factory/run/sandbox-exec.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/sandbox-exec.js"
-      },
-      {
-        "id": "dist/factory/run/sandbox-exec.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/sandbox-exec.js.map"
       },
       {
         "id": "dist/factory/run/state.d.ts",
@@ -55571,11 +55499,6 @@
         "path": "src/factory/run/__tests__/engine.coding-agent.test.ts"
       },
       {
-        "id": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
-        "kind": "src",
-        "path": "src/factory/run/__tests__/engine.gates-sandbox.test.ts"
-      },
-      {
         "id": "src/factory/run/__tests__/engine.human-review.local.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.human-review.local.test.ts"
@@ -55751,11 +55674,6 @@
         "path": "src/factory/run/__tests__/review-guard.test.ts"
       },
       {
-        "id": "src/factory/run/__tests__/sandbox-exec.test.ts",
-        "kind": "src",
-        "path": "src/factory/run/__tests__/sandbox-exec.test.ts"
-      },
-      {
         "id": "src/factory/run/__tests__/state-forge.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/state-forge.test.ts"
@@ -55874,11 +55792,6 @@
         "id": "src/factory/run/review-output.ts",
         "kind": "src",
         "path": "src/factory/run/review-output.ts"
-      },
-      {
-        "id": "src/factory/run/sandbox-exec.ts",
-        "kind": "src",
-        "path": "src/factory/run/sandbox-exec.ts"
       },
       {
         "id": "src/factory/run/state.ts",
@@ -81089,16 +81002,6 @@
       },
       {
         "from": "src/cli/commands/factory.ts",
-        "to": "src/factory/run/sandbox-exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/factory.ts",
-        "to": "src/factory/run/sandbox-exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/cli/commands/factory.ts",
         "to": "src/factory/run/state.ts",
         "kind": "imports"
       },
@@ -86599,11 +86502,6 @@
       },
       {
         "from": "src/factory/heal/implement.ts",
-        "to": "src/factory/run/sandbox-exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/heal/implement.ts",
         "to": "src/factory/run/state.ts",
         "kind": "imports"
       },
@@ -88028,71 +87926,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
-        "to": "src/factory/run/__tests__/engine-local-harness.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
-        "to": "src/factory/run/__tests__/engine-local-harness.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
-        "to": "src/factory/run/prepare.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
-        "to": "src/factory/run/sandbox-exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
-        "to": "src/forge/local/index.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
-        "to": "src/ship/config.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/factory/run/__tests__/engine.human-review.local.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -89044,22 +88877,7 @@
       },
       {
         "from": "src/factory/run/__tests__/fake-lanes.ts",
-        "to": "src/factory/run/local-gate.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/fake-lanes.ts",
-        "to": "src/factory/run/local-gate.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/fake-lanes.ts",
         "to": "src/factory/run/prepare.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/fake-lanes.ts",
-        "to": "src/factory/run/sandbox-exec.ts",
         "kind": "type-imports"
       },
       {
@@ -89753,61 +89571,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
-        "to": "src/copilot-run/__tests__/fake-sdk.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
-        "to": "src/copilot-run/__tests__/fake-sdk.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
-        "to": "src/copilot-run/sandbox.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
-        "to": "src/factory/run/local-gate.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
-        "to": "src/factory/run/sandbox-exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
-        "to": "src/factory/run/sandbox-exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
-        "to": "src/smoke/copilot-sdk-driver.ts",
-        "kind": "type-imports"
-      },
-      {
         "from": "src/factory/run/__tests__/state-forge.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -90124,16 +89887,6 @@
       },
       {
         "from": "src/factory/run/engine.ts",
-        "to": "src/copilot-run/sandbox.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/copilot-run/sandbox.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
         "to": "src/factory/check/score.ts",
         "kind": "imports"
       },
@@ -90314,16 +90067,6 @@
       },
       {
         "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/sandbox-exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/sandbox-exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/state.ts",
         "kind": "imports"
       },
@@ -90459,11 +90202,6 @@
       },
       {
         "from": "src/factory/run/engine.ts",
-        "to": "src/ship/prepare.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
         "to": "src/ship/state.ts",
         "kind": "imports"
       },
@@ -90475,11 +90213,6 @@
       {
         "from": "src/factory/run/engine.ts",
         "to": "src/team/git-worktree.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/utils/jsonc.ts",
         "kind": "imports"
       },
       {
@@ -90799,11 +90532,6 @@
       },
       {
         "from": "src/factory/run/local-gate.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/local-gate.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -90824,16 +90552,6 @@
       },
       {
         "from": "src/factory/run/local-gate.ts",
-        "to": "src/factory/run/sandbox-exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/local-gate.ts",
-        "to": "src/factory/run/sandbox-exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/local-gate.ts",
         "to": "src/forge/local/index.ts",
         "kind": "imports"
       },
@@ -90845,6 +90563,11 @@
       {
         "from": "src/factory/run/local-gate.ts",
         "to": "src/platform/process-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/local-gate.ts",
+        "to": "src/ship/exec.ts",
         "kind": "imports"
       },
       {
@@ -91151,91 +90874,6 @@
         "from": "src/factory/run/review-output.ts",
         "to": "src/factory/run/state.ts",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/sandbox-exec.ts",
-        "to": "external:node:crypto",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/sandbox-exec.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/sandbox-exec.ts",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/sandbox-exec.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/sandbox-exec.ts",
-        "to": "src/copilot-run/job.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/sandbox-exec.ts",
-        "to": "src/copilot-run/job.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/sandbox-exec.ts",
-        "to": "src/copilot-run/sandbox-session.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/sandbox-exec.ts",
-        "to": "src/copilot-run/sandbox.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/sandbox-exec.ts",
-        "to": "src/copilot-run/sandbox.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/sandbox-exec.ts",
-        "to": "src/copilot-run/timeout.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/sandbox-exec.ts",
-        "to": "src/lib/worktree-paths.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/sandbox-exec.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/sandbox-exec.ts",
-        "to": "src/smoke/copilot-sdk-driver.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/sandbox-exec.ts",
-        "to": "src/smoke/copilot-sdk-driver.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/sandbox-exec.ts",
-        "to": "src/smoke/copilot-sdk-scenarios.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/sandbox-exec.ts",
-        "to": "src/smoke/copilot-session-env.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/sandbox-exec.ts",
-        "to": "src/utils/windows-search.ts",
-        "kind": "imports"
       },
       {
         "from": "src/factory/run/state.ts",
@@ -115479,11 +115117,6 @@
       },
       {
         "from": "src/smoke/copilot-factory-run-scenario.ts",
-        "to": "src/factory/run/sandbox-exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/copilot-factory-run-scenario.ts",
         "to": "src/factory/run/state.ts",
         "kind": "imports"
       },
@@ -128609,12 +128242,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10784,
-      "edgeCount": 13105,
-      "importEdgeCount": 10773,
+      "nodeCount": 10769,
+      "edgeCount": 13049,
+      "importEdgeCount": 10735,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "5e45e7dac3553b648bbe68d565f21f79c699656e4ca97de23bb91b8c45978520",
-  "manifestSha256": "c7d61a0cb01828678647ff590e435f1eb4839ba878b5fb1cdbcf9b19a131b94d"
+  "inventorySha256": "59f6554a58f890dee8b70b39d461a248159ed68b2c2912373515efaf3b9986a5",
+  "manifestSha256": "574b4c539e386d9deeea28180c396d3613cc694ea7a249d5dc952d4bbb3d6b97"
 }
