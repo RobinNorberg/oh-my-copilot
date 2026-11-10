@@ -247,6 +247,12 @@ export interface FactoryRunState {
     /** The checkout head a prepare left after the PR's code ran in the OS sandbox there (a local gate start failure on it parks at gate-no-verdict). */
     sandboxedPrepareHead?: string;
     /**
+     * The name of the prepare checkout's admin dir under `<common>/worktrees/`,
+     * as `worktree add` made it: a later invocation reads the checkout only
+     * through that admin dir, never another one its `.git` file names.
+     */
+    checkoutAdmin?: string;
+    /**
      * The last human feedback round consumed (sealed with the rest of the
      * state): when, at which head, the digest of what the fix lane got, and
      * the ids of the threads handed to it (at most MAX_HUMAN_THREAD_IDS).

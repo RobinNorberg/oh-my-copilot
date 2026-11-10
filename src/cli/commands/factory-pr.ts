@@ -32,7 +32,7 @@ import { defaultLedgerDir, emptyHooksDir } from '../../factory/run/ledger.js';
 import { appendLocalReview, engineOwnedDir, MAX_LOCAL_REVIEW_CHARS, readLocalReviews, readPrStore, type LocalReviewRecord } from '../../forge/local/store.js';
 import { REVIEW_HEAD, visibleLine, visibleText } from '../../forge/review-feedback.js';
 import type { Forge, ForgePr } from '../../forge/types.js';
-import type { Exec } from '../../ship/exec.js';
+import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 
 export const FACTORY_PR_JSON_SCHEMA_VERSION = 1;
 
@@ -118,30 +118,44 @@ export async function runFactoryPr(
 
   const n = pr!;
   const v = view(ctx, n);
+  const ledgerDir = deps.ledgerDir ?? defaultLedgerDir();
+  const git: Exec = factoryGuardExec(hardenedGitExec(deps.exec, emptyHooksDir(ledgerDir)), () => [ctx.base]);
+  // The trusted base is your local base, never the mirror's ref: a mirror base moved elsewhere would change the merge
+  // base of the diff (hiding or adding commits) without a change you can see. A mirror that only lags behind your base
+  // (you merged or committed there since the last sync) is fine: view and diff use your base.
+  let base = v.baseRefOid;
+  if (action === 'view' || action === 'diff') {
+    const local = git('git', ['rev-parse', '--verify', `refs/heads/${v.baseRefName}`], { cwd: ctx.root, env: TRUSTED_READ_ENV });
+    const localBase = local.status === 0 ? local.stdout.trim() : '';
+    const lagging = /^[0-9a-f]{40}$/.test(localBase) && /^[0-9a-f]{40}$/.test(v.baseRefOid)
+      && git('git', ['merge-base', '--is-ancestor', v.baseRefOid, localBase], { cwd: ctx.root, env: TRUSTED_READ_ENV }).status === 0;
+    if (localBase !== v.baseRefOid && !lagging) {
+      throw new Error(`local PR #${n}: the local forge mirror's ${v.baseRefName} is at ${v.baseRefOid}, which is not your ${v.baseRefName} ${localBase || '(unreadable)'} or an ancestor of it; the ${action} would use a base you do not have. Check what wrote the mirror, or let omg factory run sync it, then read the PR again`);
+    }
+    base = localBase;
+  }
   if (action === 'view') {
     const record = readPrStore(join(ctx.storeDir, 'prs.json')).prs.find((p) => p.number === n)!;
     const feedback = ctx.forge.reviews.reviewFeedback?.(n, v.headRefOid);
     const reviews = readLocalReviews(ctx.storeDir, n).map((r) => ({ ...r, body: visibleText(r.body) }));
     if (o.json) {
-      say(JSON.stringify({ schemaVersion: FACTORY_PR_JSON_SCHEMA_VERSION, ok: true, pr: { ...v, title: visibleText(record.title) }, reviews, openThreads: feedback?.threads.length ?? 0 }, null, 2));
+      say(JSON.stringify({ schemaVersion: FACTORY_PR_JSON_SCHEMA_VERSION, ok: true, pr: { ...v, baseRefOid: base, title: visibleText(record.title) }, reviews, openThreads: feedback?.threads.length ?? 0 }, null, 2));
       return 0;
     }
     say(`#${v.number}  ${v.state}${v.isDraft ? ' (draft)' : ''}  ${visibleLine(record.title)}`);
-    say(`  head ${v.headRefOid} (${visibleLine(v.headRefName)}) -> base ${v.baseRefOid} (${visibleLine(v.baseRefName)})`);
+    say(`  head ${v.headRefOid} (${visibleLine(v.headRefName)}) -> base ${base} (${visibleLine(v.baseRefName)})`);
     for (const r of reviews) say(`  review ${r.state} by ${visibleLine(r.author)} at ${r.head.slice(0, 8)} (${r.at})${r.body ? `\n${r.body.replace(/^/gm, '    ')}` : ''}`);
     say(`  ${feedback?.threads.length ?? 0} open review note(s) on the current head; diff: omg factory pr diff ${n}; review: omg factory pr review ${n} --head ${v.headRefOid} ...`);
     return 0;
   }
 
   if (action === 'diff') {
-    const ledgerDir = deps.ledgerDir ?? defaultLedgerDir();
-    const git: Exec = factoryGuardExec(hardenedGitExec(deps.exec, emptyHooksDir(ledgerDir)), () => [ctx.base]);
-    const r = git('git', ['diff', '--no-ext-diff', '--no-textconv', `${v.baseRefOid}...${v.headRefOid}`], { cwd: ctx.root });
+    const r = git('git', ['diff', '--no-ext-diff', '--no-textconv', `${base}...${v.headRefOid}`], { cwd: ctx.root });
     if (r.status !== 0) {
       deps.err(chalk.red(`git diff of local PR #${n} failed (exit ${r.status}): ${visibleLine(r.stderr.trim().split('\n')[0] ?? '')}`));
       return EXIT_CHECK_FAILED;
     }
-    say(`local PR #${n} head ${v.headRefOid} base ${v.baseRefOid} (review it with --head ${v.headRefOid})`);
+    say(`local PR #${n} head ${v.headRefOid} base ${base} (review it with --head ${v.headRefOid})`);
     say(visibleText(r.stdout).replace(/\n$/, ''));
     return 0;
   }

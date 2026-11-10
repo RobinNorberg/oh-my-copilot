@@ -18134,9 +18134,14 @@ function hostGitEnv(args, base = process.env) {
     const i = args.indexOf(flag);
     return i >= 0 && i + 1 < args.length ? args[i + 1] : void 0;
   };
+  const kept = {};
+  for (const [key, value] of Object.entries(base)) {
+    if (!/^GIT_(?:REPLACE_REF_BASE|GRAFT_FILE|NO_REPLACE_OBJECTS)$/i.test(key)) kept[key] = value;
+  }
+  const pins = { GIT_LFS_SKIP_SMUDGE: "1", GIT_NO_REPLACE_OBJECTS: "1", GIT_GRAFT_FILE: join37(hostHooksDir(), "grafts") };
   const gitDir = valueOf("--git-dir");
-  if (!gitDir) return { ...base, GIT_LFS_SKIP_SMUDGE: "1" };
-  const env = { ...base, GIT_DIR: resolve13(gitDir), GIT_LFS_SKIP_SMUDGE: "1" };
+  if (!gitDir) return { ...kept, ...pins };
+  const env = { ...kept, GIT_DIR: resolve13(gitDir), ...pins };
   const workTree = valueOf("--work-tree");
   if (workTree) env.GIT_WORK_TREE = resolve13(workTree);
   if (basename17(dirname30(resolve13(gitDir))) === "worktrees") env.GIT_COMMON_DIR = dirname30(dirname30(resolve13(gitDir)));
@@ -19070,7 +19075,15 @@ var init_git_worktree = __esm({
       "gpg.ssh.program=ssh-keygen",
       "gpg.x509.program=gpgsm",
       "core.editor=:",
-      "sequence.editor=:"
+      "sequence.editor=:",
+      "core.commitGraph=false",
+      "core.multiPackIndex=false",
+      "gc.auto=0",
+      "maintenance.auto=false",
+      "fetch.writeCommitGraph=false",
+      "commit.gpgSign=false",
+      "protocol.ext.allow=never",
+      "core.alternateRefsCommand=true"
     ];
     emptyAttributesFile = null;
     WORK_TREE_SUBCOMMANDS = /* @__PURE__ */ new Set([
