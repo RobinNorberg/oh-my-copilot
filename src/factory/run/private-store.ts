@@ -242,7 +242,7 @@ export interface PrivateStoreContext {
   timeoutMs?: number;
 }
 
-/** Ten minutes: a first seed fetch or clone of a large repository, or the seed fsck, fits; a hung pack or a FIFO include does not hang the engine (review-481 L7). */
+/** Ten minutes: a first seed fetch or clone of a large repository fits; a hung pack or a FIFO include does not hang the engine (review-481 L7). */
 export const PRIVATE_GIT_TIMEOUT_MS = 600_000;
 
 /** A git command here ran out of time and was killed; fixed text. */
@@ -382,9 +382,15 @@ function replaceProblem(ctx: PrivateStoreContext, gitDir: string, what: string):
   return r.stdout.trim() ? `${what} has replace refs (refs/replace/*)` : null;
 }
 
-/** `key -> value` of one config file (default `<gitDir>/config`), no includes followed; null when git cannot read it. */
+/**
+ * `key -> value` of one config file (default `<gitDir>/config`), no includes
+ * followed; null when git cannot read it. `--git-dir` is the engine's empty
+ * hooks dir (not a repository): without it git discovers a repository from
+ * its cwd and reads that one's merged config, includes and all, even for
+ * `--file` (probe, git 2.51; review-481b: a FIFO include would block it).
+ */
 function configFile(ctx: PrivateStoreContext, gitDir: string, file = join(gitDir, 'config')): Map<string, string[]> | null {
-  const r = git(ctx, gitDir, ['config', '--file', file, '--list', '-z']);
+  const r = git(ctx, ctx.tools.hooksDir, [`--git-dir=${ctx.tools.hooksDir}`, 'config', '--file', file, '--list', '-z']);
   if (r.status !== 0) return null;
   const out = new Map<string, string[]>();
   for (const rec of r.stdout.split('\0').filter(Boolean)) {
@@ -419,33 +425,44 @@ function engineConfigProblem(ctx: PrivateStoreContext, gitDir: string, what: str
   return null;
 }
 
-/** sha256 of a directory listing, recursive, links not followed: relative path, kind, and content (or link target) hash. */
-function listingHash(dir: string, skip: (rel: string) => boolean = () => false): string {
+/** What listingHash returns when a capped walk goes deeper or wider than its cap. */
+const TOO_LARGE = 'too-large';
+
+/**
+ * sha256 of a directory listing, recursive, links not followed: relative
+ * path, kind, and content (or link target) hash. With `cap`, a walk deeper
+ * than `cap.depth` directory levels or past `cap.entries` entries stops and
+ * returns TOO_LARGE (review-481b: a hooksPath such as `.` would hash the
+ * whole checkout at every snapshot).
+ */
+function listingHash(dir: string, cap?: { depth: number; entries: number }): string {
   const h = createHash('sha256');
-  const walk = (abs: string, rel: string) => {
+  let seen = 0;
+  const walk = (abs: string, rel: string, depth: number): boolean => {
     let names: string[];
     try {
       names = readdirSync(abs).sort();
     } catch {
       h.update(`${rel}\0unreadable\0`);
-      return;
+      return true;
     }
     for (const name of names) {
+      if (cap && ++seen > cap.entries) return false;
       const r = rel ? `${rel}/${name}` : name;
-      if (skip(r)) continue;
       const p = join(abs, name);
       const st = lstatSync(p);
       if (st.isSymbolicLink()) h.update(`${r}\0link\0${safeReadlink(p)}\0`);
       else if (st.isDirectory()) {
+        if (cap && depth + 1 > cap.depth) return false;
         h.update(`${r}\0dir\0`);
-        walk(p, r);
+        if (!walk(p, r, depth + 1)) return false;
       } else h.update(`${r}\0file\0${createHash('sha256').update(readFileSync(p)).digest('hex')}\0`);
     }
+    return true;
   };
   if (!lexists(dir)) return 'absent';
   if (lstatSync(dir).isSymbolicLink()) return `link:${safeReadlink(dir)}`;
-  walk(dir, '');
-  return h.digest('hex');
+  return walk(dir, '', 0) ? h.digest('hex') : TOO_LARGE;
 }
 
 function safeReadlink(p: string): string {
@@ -495,6 +512,8 @@ export function userRepoProblem(gitDir: string, ctx: PrivateStoreContext, paths:
   if (lexists(join(gitDir, 'objects', 'info', 'alternates')) || lexists(join(gitDir, 'objects', 'info', 'http-alternates'))) return `${what} has alternates`;
   const graft = graftProblem(gitDir, what);
   if (graft) return graft;
+  // review-481b: every git command in the repository (for-each-ref too) reads its merged config, following includes, where a FIFO include would block until the timeout.
+  if (!configFilesReadable(ctx, gitDir)) return `${what} config or a file it includes cannot be read (not a regular file, unreadable, or nested more than ${MAX_INCLUDE_DEPTH} deep)`;
   const replace = replaceProblem(ctx, gitDir, what);
   if (replace) return replace;
   // The merged repository config (local, worktree, includes; system off, global empty), like the transport reads it.
@@ -512,18 +531,61 @@ export function userRepoProblem(gitDir: string, ctx: PrivateStoreContext, paths:
 
 export type UserGuardItem = 'gitdir' | 'redirect' | 'config' | 'hooks' | 'hooksPath' | 'modules' | 'worktrees' | 'grafts' | 'shallow' | 'alternates' | 'http-alternates' | 'replace';
 
+/**
+ * What one guard entry is (machine-readable, for the engine's park message):
+ * - `config-key`: a dangerous key in a config file (`path` the file, `key` its name);
+ * - `config-link`: a config or included file that is a link (`path` the link);
+ * - `include-not-followed`: a conditional include (includeIf) whose target is
+ *   a directory or cannot be read; git skips it while the condition is false
+ *   and fails while it is true, so it is recorded, not counted as unreadable;
+ * - `unreadable`: what could not be read (`path`), or the snapshot failed;
+ * - `hooks-dir`: a hooks dir listing (`path` the dir); `hooks-path`: a
+ *   core.hooksPath value's dir (`path` the resolved dir, `key` core.hookspath);
+ * - `hooks-too-large`: a hooks dir deeper than 3 levels or over 2 000
+ *   entries; `hooks-path-root`: a hooksPath that resolves to the work tree
+ *   root or the git dir;
+ * - `module`: a submodule git dir (`path` modules/<name>); `worktree`: a
+ *   worktrees/<id> entry that is not stock;
+ * - `redirect-entry`, `grafts`, `shallow`, `alternates`, `http-alternates`:
+ *   that file (`path`); `replace-ref`: a refs/replace/* ref (`path` its name);
+ *   `gitdir`: the git dir itself.
+ */
+export type UserGuardKind =
+  | 'gitdir' | 'redirect-entry' | 'config-key' | 'config-link' | 'include-not-followed' | 'unreadable'
+  | 'hooks-dir' | 'hooks-path' | 'hooks-too-large' | 'hooks-path-root'
+  | 'module' | 'worktree' | 'grafts' | 'shallow' | 'alternates' | 'http-alternates' | 'replace-ref';
+
+/** One guard entry as the engine may print it: never a config value (values may hold secrets); URL userinfo in a key name is masked. */
+export interface UserGuardDetail {
+  item: UserGuardItem;
+  kind: UserGuardKind;
+  path: string;
+  key?: string;
+}
+
+/** A guard entry with its fingerprint (a sha256 over what it covers, values included: compare only, never print). */
+export interface UserGuardEntry extends UserGuardDetail {
+  fingerprint: string;
+}
+
 export interface UserRepoGuard {
   gitDir: string;
   items: Record<UserGuardItem, string>;
+  entries: UserGuardEntry[];
 }
+
+/** Item values that always count as changed: nothing could be compared. */
+const GUARD_UNREADABLE = 'unreadable';
+const GUARD_TOO_LARGE = 'too-large';
 
 /**
  * The config keys (lower case) the user guard hashes: those that make git
  * run a program, load more config, or redirect a transport or the
  * repository (the lead's rule on review-481 L5/M4), plus the other
  * program-running keys git has (core.editor/pager/askpass, sequence.editor,
- * pager.*, difftool/mergetool cmds, submodule.*.update, http proxies). Not
- * branch.*, remote.*.url/fetch/pushurl, user.*, core.sparseCheckout or
+ * pager.*, difftool/mergetool cmds, submodule.*.update, http proxies, and
+ * config-based hooks `hook.<name>.*` of newer git). Not branch.*,
+ * remote.*.url/fetch/pushurl, user.*, core.sparseCheckout or
  * extensions.worktreeConfig (config.worktree files are hashed whether or not
  * it is on): the user's own `push -u`, `remote add`, `sparse-checkout` write
  * those, and the guard must not park on the user's ordinary git activity.
@@ -533,24 +595,49 @@ const DANGEROUS_CONFIG: readonly RegExp[] = [
   /^extensions\.(?!worktreeconfig$)/, /^filter\./, /^diff\..+\.(?:textconv|command)$/, /^diff\.external$/, /^merge\..+\.driver$/, /^gpg\./,
   /^credential\.(?:.+\.)?helper$/, /^url\..+\.(?:insteadof|pushinsteadof)$/, /^uploadpack\./, /^receive\./,
   /^remote\..+\.(?:uploadpack|receivepack|promisor|proxy)$/, /^include\./, /^includeif\./, /^protocol\./, /^alias\./,
-  /^sequence\.editor$/, /^pager\./, /^(?:diff|merge)tool\..+\.cmd$/, /^submodule\..+\.update$/, /^http\.(?:.+\.)?proxy$/,
+  /^sequence\.editor$/, /^pager\./, /^(?:diff|merge)tool\..+\.cmd$/, /^submodule\..+\.update$/, /^http\.(?:.+\.)?proxy$/, /^hook\./,
 ];
 
 /** git's own include depth limit: deeper is refused (the item reads `unreadable`, which always counts as changed). */
 const MAX_INCLUDE_DEPTH = 10;
 
+/** The hooks dir walk cap (review-481b): deeper or wider is the fixed `hooks-too-large` entry. */
+const HOOKS_CAP = { depth: 3, entries: 2000 };
+
 const expandHome = (p: string): string => (p === '~' ? homedir() : p.startsWith('~/') ? join(homedir(), p.slice(2)) : p);
 
+const fingerprint = (...parts: readonly string[]): string => createHash('sha256').update(parts.join('\0')).digest('hex');
+
+/** A config key name fit to print: URL userinfo in a subsection (`url.https://user:token@host/.insteadof`) masked. */
+const printableKey = (key: string): string => key.replace(/\/\/[^/@\s]*@/g, '//***@');
+
+interface ConfigWalk {
+  item: UserGuardItem;
+  out: UserGuardEntry[];
+  hooksPaths: Set<string>;
+}
+
 /**
- * Records of the dangerous keys in `file` and every file it includes
+ * Entries for the dangerous keys in `file` and every file it includes
  * (include.path and includeIf.*.path whatever the condition, relative to the
  * including file's dir), depth-bounded; files with no dangerous key add
  * nothing, so a new worktree or an empty config.worktree changes nothing.
  * Returns false when a file is unreadable, not a regular file, or the depth
- * is exceeded. Collects every core.hooksPath value it meets in `hooksPaths`.
+ * is exceeded; a CONDITIONAL include (or anything it includes) whose target
+ * is a directory or cannot be read is recorded as `include-not-followed`
+ * instead (git skips it while its condition is false; review-481b). Its
+ * condition is not evaluated: onbranch:, gitdir: and hasconfig: can turn
+ * true without any config write (a checkout, another worktree, a
+ * `remote add`), so the content of every include is hashed. A FIFO or other
+ * special file stays unreadable either way: git would block on it if the
+ * condition held. Collects every core.hooksPath value it meets.
  */
-function dangerousConfig(ctx: PrivateStoreContext, file: string, out: string[], hooksPaths: Set<string>, depth = 0): boolean {
-  if (depth > MAX_INCLUDE_DEPTH) return false;
+function dangerousConfig(ctx: PrivateStoreContext, file: string, w: ConfigWalk, depth = 0, conditional = false): boolean {
+  const entry = (kind: UserGuardKind, fp: string, key?: string) => w.out.push({ item: w.item, kind, path: file, ...(key ? { key: printableKey(key) } : {}), fingerprint: fp });
+  if (depth > MAX_INCLUDE_DEPTH) {
+    entry('unreadable', 'depth');
+    return false;
+  }
   let st: Stats;
   try {
     st = lstatSync(file);
@@ -558,46 +645,82 @@ function dangerousConfig(ctx: PrivateStoreContext, file: string, out: string[], 
     return true; // absent: git ignores a missing include and a missing config.
   }
   if (st.isSymbolicLink()) {
-    out.push(`${file}\0link\0${safeReadlink(file)}`);
+    entry('config-link', fingerprint(safeReadlink(file)));
     try {
       st = statSync(file);
     } catch {
       return true;
     }
   }
-  if (!st.isFile()) return false; // a FIFO or a dir: git would hang or fail on it.
-  // cwd: the engine's empty hooks dir, never a dir the include names (git would discover a repository there).
+  if (!st.isFile()) {
+    if (conditional && st.isDirectory()) {
+      entry('include-not-followed', 'dir');
+      return true;
+    }
+    entry('unreadable', st.isDirectory() ? 'dir' : 'not-a-file'); // a FIFO or a dir: git would hang or fail on it.
+    return false;
+  }
+  // configFile pins --git-dir to the engine's empty hooks dir: no repository is discovered, from the include's dir or anywhere else.
   const cfg = configFile(ctx, ctx.tools.hooksDir, file);
-  if (!cfg) return false;
+  if (!cfg) {
+    entry(conditional ? 'include-not-followed' : 'unreadable', 'unreadable');
+    return conditional;
+  }
   let ok = true;
   for (const [key, values] of cfg) {
     if (!DANGEROUS_CONFIG.some((re) => re.test(key))) continue;
-    out.push(`${file}\0${key}\0${values.join('\0')}`);
-    if (key === 'core.hookspath') for (const v of values) hooksPaths.add(v);
+    entry('config-key', fingerprint(key, ...values), key);
+    if (key === 'core.hookspath') for (const v of values) w.hooksPaths.add(v);
     if (/^include(?:if\..*)?\.path$/.test(key)) {
-      for (const v of values) ok = dangerousConfig(ctx, resolve(dirname(file), expandHome(v)), out, hooksPaths, depth + 1) && ok;
+      const cond = conditional || key.startsWith('includeif.');
+      for (const v of values) ok = dangerousConfig(ctx, resolve(dirname(file), expandHome(v)), w, depth + 1, cond) && ok;
     }
   }
   return ok;
 }
 
-const digest = (parts: readonly string[]): string => createHash('sha256').update(parts.join('\0\0')).digest('hex');
+/** False when `gitDir`'s own config files, or a file they include, cannot be read (dangerousConfig): a merged `git config` there would follow it (a FIFO blocks git). */
+function configFilesReadable(ctx: PrivateStoreContext, gitDir: string): boolean {
+  const w: ConfigWalk = { item: 'config', out: [], hooksPaths: new Set() };
+  return dangerousConfig(ctx, join(gitDir, 'config'), w) && dangerousConfig(ctx, join(gitDir, 'config.worktree'), w);
+}
 
-/** Records for the submodule git dirs under `dir` (modules/<name>, names may hold `/`, nested modules/ too): each one's hooks/ listing and dangerous config. */
-function modulesRecords(ctx: PrivateStoreContext, dir: string, rel: string, out: string[], hooksPaths: Set<string>, depth = 0): boolean {
+/** An entry for a hooks dir listing: `hooks-too-large` past HOOKS_CAP. */
+function hooksEntry(item: UserGuardItem, dir: string, key?: string, value?: string): UserGuardEntry {
+  const h = listingHash(dir, HOOKS_CAP);
+  if (h === TOO_LARGE) return { item, kind: 'hooks-too-large', path: dir, ...(key ? { key } : {}), fingerprint: TOO_LARGE };
+  return { item, kind: key ? 'hooks-path' : 'hooks-dir', path: dir, ...(key ? { key } : {}), fingerprint: fingerprint(value ?? '', h) };
+}
+
+/** Entries for the submodule git dirs under `dir` (modules/<name>, names may hold `/`, nested modules/ too): each one's hooks/ listing and dangerous config. */
+function modulesRecords(ctx: PrivateStoreContext, dir: string, w: ConfigWalk, depth = 0): boolean {
   if (!lexists(dir)) return true;
   if (!isPlainDir(dir) || depth > 32) {
-    out.push(`${rel}\0not-a-plain-dir\0${fileHash(dir)}`);
+    w.out.push({ item: 'modules', kind: 'module', path: dir, fingerprint: fingerprint('not-a-plain-dir', fileHash(dir)) });
     return true;
   }
   if (lexists(join(dir, 'HEAD')) || lexists(join(dir, 'config'))) {
-    out.push(`${rel}\0hooks\0${listingHash(join(dir, 'hooks'))}`);
-    const ok = dangerousConfig(ctx, join(dir, 'config'), out, hooksPaths) && dangerousConfig(ctx, join(dir, 'config.worktree'), out, hooksPaths);
-    return modulesRecords(ctx, join(dir, 'modules'), `${rel}/modules`, out, hooksPaths, depth + 1) && ok;
+    w.out.push(hooksEntry('modules', join(dir, 'hooks')));
+    const ok = dangerousConfig(ctx, join(dir, 'config'), w) && dangerousConfig(ctx, join(dir, 'config.worktree'), w);
+    return modulesRecords(ctx, join(dir, 'modules'), w, depth + 1) && ok;
   }
   let ok = true;
-  for (const name of readdirSync(dir).sort()) ok = modulesRecords(ctx, join(dir, name), `${rel}/${name}`, out, hooksPaths, depth + 1) && ok;
+  for (const name of readdirSync(dir).sort()) ok = modulesRecords(ctx, join(dir, name), w, depth + 1) && ok;
   return ok;
+}
+
+const GUARD_ITEMS: readonly UserGuardItem[] = ['gitdir', 'redirect', 'config', 'hooks', 'hooksPath', 'modules', 'worktrees', 'grafts', 'shallow', 'alternates', 'http-alternates', 'replace'];
+
+/** Each item's value from its entries: `unreadable` / `too-large` when any entry says so (always counts as changed), else a digest. */
+function guardItems(entries: readonly UserGuardEntry[]): Record<UserGuardItem, string> {
+  const items = {} as Record<UserGuardItem, string>;
+  for (const item of GUARD_ITEMS) {
+    const mine = entries.filter((e) => e.item === item);
+    items[item] = mine.some((e) => e.kind === 'unreadable') ? GUARD_UNREADABLE
+      : mine.some((e) => e.kind === 'hooks-too-large' || e.kind === 'hooks-path-root') ? GUARD_TOO_LARGE
+        : fingerprint(...mine.map((e) => `${e.kind}\0${e.path}\0${e.key ?? ''}\0${e.fingerprint}`));
+  }
+  return items;
 }
 
 /**
@@ -610,7 +733,8 @@ function modulesRecords(ctx: PrivateStoreContext, dir: string, rel: string, out:
  *   include (depth-bounded);
  * - `hooks`: hooks/; `hooksPath`: the effective core.hooksPath (merged
  *   config: local, worktree, includes) and every value met in the files
- *   above, each with its dir's listing;
+ *   above, each with its dir's listing (capped: HOOKS_CAP; a hooksPath at
+ *   the work tree root or the git dir is its own `hooks-path-root` entry);
  * - `modules`: each submodule git dir's hooks/ and dangerous config;
  * - `worktrees`: entries whose commondir is not the stock `../..` or whose
  *   commondir/gitdir is not a regular file (a redirect); a plain
@@ -621,72 +745,121 @@ function modulesRecords(ctx: PrivateStoreContext, dir: string, rel: string, out:
  * commit-graph, multi-pack-index, packs or info/refs: the user's own
  * `push -u`, `remote add`, `sparse-checkout`, gc and maintenance write those,
  * and every command here pins the graph files off (review-476 M-E).
+ * The git commands in the repository (the effective hooksPath read and the
+ * refs/replace listing, which read the merged config) are skipped when a
+ * config file or an include cannot be read (a FIFO include would block
+ * them); those items are then `unreadable`. It never
+ * throws: a timeout or any other error makes every item `unreadable`, with
+ * one `unreadable` entry for the git dir. `entries` carry each entry's kind
+ * and path for the park message (userRepoGuardChanges).
  */
 export function userRepoGuardSnapshot(gitDir: string, ctx: PrivateStoreContext): UserRepoGuard {
+  try {
+    return guardSnapshot(gitDir, ctx);
+  } catch {
+    const entries: UserGuardEntry[] = GUARD_ITEMS.map((item) => ({ item, kind: 'unreadable', path: gitDir, fingerprint: 'snapshot-failed' }));
+    return { gitDir, items: guardItems(entries), entries };
+  }
+}
+
+function guardSnapshot(gitDir: string, ctx: PrivateStoreContext): UserRepoGuard {
   const base = dirname(gitDir);
-  const hooksPaths = new Set<string>();
-  const cfgOut: string[] = [];
-  let cfgOk = dangerousConfig(ctx, join(gitDir, 'config'), cfgOut, hooksPaths) && dangerousConfig(ctx, join(gitDir, 'config.worktree'), cfgOut, hooksPaths);
-  const wtOut: string[] = [];
+  const out: UserGuardEntry[] = [];
+  const cfg: ConfigWalk = { item: 'config', out, hooksPaths: new Set() };
+  let cfgOk = dangerousConfig(ctx, join(gitDir, 'config'), cfg) && dangerousConfig(ctx, join(gitDir, 'config.worktree'), cfg);
   const wtDir = join(gitDir, 'worktrees');
-  if (lexists(wtDir) && !isPlainDir(wtDir)) wtOut.push(`worktrees\0not-a-plain-dir\0${fileHash(wtDir)}`);
+  const wt = (path: string, fp: string) => out.push({ item: 'worktrees', kind: 'worktree', path, fingerprint: fp });
+  if (lexists(wtDir) && !isPlainDir(wtDir)) wt(wtDir, fingerprint('not-a-plain-dir', fileHash(wtDir)));
   else if (lexists(wtDir)) {
     for (const id of readdirSync(wtDir).sort()) {
       const d = join(wtDir, id);
       if (!isPlainDir(d)) {
-        wtOut.push(`${id}\0not-a-plain-dir\0${fileHash(d)}`);
+        wt(d, fingerprint('not-a-plain-dir', fileHash(d)));
         continue;
       }
-      cfgOk = dangerousConfig(ctx, join(d, 'config.worktree'), cfgOut, hooksPaths) && cfgOk;
+      cfgOk = dangerousConfig(ctx, join(d, 'config.worktree'), cfg) && cfgOk;
       const commondir = fileHash(join(d, 'commondir'));
       let stock = false;
       try {
         stock = lstatSync(join(d, 'commondir')).isFile() && readFileSync(join(d, 'commondir'), 'utf8').trim() === '../..';
       } catch { /* absent: hashed below */ }
       const gitdirKind = lexists(join(d, 'gitdir')) ? (lstatSync(join(d, 'gitdir')).isFile() ? 'file' : `not-a-file:${fileHash(join(d, 'gitdir'))}`) : 'absent';
-      if (!stock || gitdirKind.startsWith('not-a-file')) wtOut.push(`${id}\0commondir\0${commondir}\0gitdir\0${gitdirKind}`);
+      if (!stock || gitdirKind.startsWith('not-a-file')) wt(d, fingerprint('commondir', commondir, 'gitdir', gitdirKind));
     }
   }
-  const modOut: string[] = [];
-  const modOk = modulesRecords(ctx, join(gitDir, 'modules'), 'modules', modOut, new Set());
+  modulesRecords(ctx, join(gitDir, 'modules'), { item: 'modules', out, hooksPaths: new Set() });
   // The effective value, as the user's git reads it: merged config minus the engine's own command-line pin.
-  const eff = git(ctx, gitDir, [`--git-dir=${gitDir}`, 'config', '-z', '--show-scope', '--get-all', 'core.hookspath']);
-  let effective = 'unset';
-  if (eff.status > 1) effective = 'unreadable';
-  else if (eff.status === 0) {
-    const parts = eff.stdout.split('\0');
-    const values: string[] = [];
-    for (let i = 0; i + 1 < parts.length; i += 2) if (parts[i] !== 'command') values.push(parts[i + 1]);
-    if (values.length > 0) {
-      effective = values[values.length - 1];
-      hooksPaths.add(effective);
+  // Skipped when a file the merge would follow cannot be read: the config item already says unreadable (review-481b).
+  let effective: string | null = null;
+  if (cfgOk) {
+    const eff = git(ctx, gitDir, [`--git-dir=${gitDir}`, 'config', '-z', '--show-scope', '--get-all', 'core.hookspath']);
+    if (eff.status <= 1) {
+      effective = 'unset';
+      const parts = eff.stdout.split('\0');
+      const values: string[] = [];
+      for (let i = 0; i + 1 < parts.length; i += 2) if (parts[i] !== 'command') values.push(parts[i + 1]);
+      if (values.length > 0) {
+        effective = values[values.length - 1];
+        cfg.hooksPaths.add(effective);
+      }
     }
   }
-  const hooksPath = effective === 'unreadable' ? 'unreadable'
-    : digest([`effective\0${effective}`, ...[...hooksPaths].sort().map((v) => `${v}\0${listingHash(resolve(base, expandHome(v)))}`)]);
-  const replace = git(ctx, gitDir, [`--git-dir=${gitDir}`, 'for-each-ref', '--format=%(refname) %(objectname)', 'refs/replace/']);
-  return {
-    gitDir,
-    items: {
-      gitdir: resolve(gitDir),
-      redirect: ['.git', 'commondir', 'gitdir'].map((e) => `${e}:${fileHash(join(gitDir, e))}`).join(','),
-      config: cfgOk ? digest(cfgOut) : 'unreadable',
-      hooks: listingHash(join(gitDir, 'hooks')),
-      hooksPath,
-      modules: modOk ? digest(modOut) : 'unreadable',
-      worktrees: digest(wtOut),
-      grafts: fileHash(join(gitDir, 'info', 'grafts')),
-      shallow: fileHash(join(gitDir, 'shallow')),
-      alternates: fileHash(join(gitDir, 'objects', 'info', 'alternates')),
-      'http-alternates': fileHash(join(gitDir, 'objects', 'info', 'http-alternates')),
-      replace: replace.status === 0 ? createHash('sha256').update(replace.stdout).digest('hex') : 'unreadable',
-    },
-  };
+  const hooksPathDir = (v: string) => resolve(base, expandHome(v));
+  if (effective === null) out.push({ item: 'hooksPath', kind: 'unreadable', path: join(gitDir, 'config'), key: 'core.hookspath', fingerprint: 'merged-config' });
+  else out.push({ item: 'hooksPath', kind: 'hooks-path', path: effective === 'unset' ? join(gitDir, 'hooks') : hooksPathDir(effective), key: 'core.hookspath', fingerprint: fingerprint('effective', effective) });
+  for (const v of [...cfg.hooksPaths].sort()) {
+    const d = hooksPathDir(v);
+    if (sameFsPath(d, base) || sameFsPath(d, gitDir)) out.push({ item: 'hooksPath', kind: 'hooks-path-root', path: d, key: 'core.hookspath', fingerprint: 'root' });
+    else out.push(hooksEntry('hooksPath', d, 'core.hookspath', v));
+  }
+  out.push(hooksEntry('hooks', join(gitDir, 'hooks')));
+  out.push({ item: 'gitdir', kind: 'gitdir', path: resolve(gitDir), fingerprint: fingerprint(resolve(gitDir)) });
+  for (const e of ['.git', 'commondir', 'gitdir']) out.push({ item: 'redirect', kind: 'redirect-entry', path: join(gitDir, e), fingerprint: fileHash(join(gitDir, e)) });
+  for (const [item, file] of [['grafts', join(gitDir, 'info', 'grafts')], ['shallow', join(gitDir, 'shallow')], ['alternates', join(gitDir, 'objects', 'info', 'alternates')], ['http-alternates', join(gitDir, 'objects', 'info', 'http-alternates')]] as const) {
+    out.push({ item, kind: item, path: file, fingerprint: fileHash(file) });
+  }
+  // Any git command in the repository reads the merged config: skipped like the hooksPath read.
+  const replace = cfgOk ? git(ctx, gitDir, [`--git-dir=${gitDir}`, 'for-each-ref', '--format=%(refname) %(objectname)', 'refs/replace/']) : null;
+  if (!replace || replace.status !== 0) out.push({ item: 'replace', kind: 'unreadable', path: join(gitDir, 'refs', 'replace'), fingerprint: 'unreadable' });
+  else {
+    for (const line of replace.stdout.split('\n').filter(Boolean)) {
+      const sp = line.lastIndexOf(' ');
+      out.push({ item: 'replace', kind: 'replace-ref', path: line.slice(0, sp), fingerprint: line.slice(sp + 1) });
+    }
+  }
+  return { gitDir, items: guardItems(out), entries: out };
 }
 
-/** The items that differ (fixed names); empty = unchanged. An `unreadable` item always counts as changed. */
+/** The items that differ (fixed names); empty = unchanged. An `unreadable` or `too-large` item always counts as changed. */
 export function compareUserRepoGuard(before: UserRepoGuard, after: UserRepoGuard): UserGuardItem[] {
-  return (Object.keys(before.items) as UserGuardItem[]).filter((k) => before.items[k] !== after.items[k] || before.items[k] === 'unreadable');
+  const always = (v: string) => v === GUARD_UNREADABLE || v === GUARD_TOO_LARGE;
+  return (Object.keys(before.items) as UserGuardItem[]).filter((k) => before.items[k] !== after.items[k] || always(before.items[k]) || always(after.items[k]));
+}
+
+/**
+ * The entries behind compareUserRepoGuard, for an actionable park message
+ * (kind, path, key name; no values, no fingerprints): those added or changed
+ * in `after`, those gone from it, and every `unreadable`, `include-not-followed`,
+ * `hooks-too-large` or `hooks-path-root` entry of a changed item.
+ */
+export function userRepoGuardChanges(before: UserRepoGuard, after: UserRepoGuard): UserGuardDetail[] {
+  const changed = new Set(compareUserRepoGuard(before, after));
+  const id = (e: UserGuardEntry) => `${e.item}\0${e.kind}\0${e.path}\0${e.key ?? ''}\0${e.fingerprint}`;
+  const had = new Set(before.entries.map(id));
+  const has = new Set(after.entries.map(id));
+  const sticky = new Set<UserGuardKind>(['unreadable', 'include-not-followed', 'hooks-too-large', 'hooks-path-root']);
+  const seen = new Set<string>();
+  const result: UserGuardDetail[] = [];
+  for (const e of [...after.entries.filter((x) => !had.has(id(x)) || sticky.has(x.kind)), ...before.entries.filter((x) => !has.has(id(x)))]) {
+    if (!changed.has(e.item)) continue;
+    const d: UserGuardDetail = { item: e.item, kind: e.kind, path: e.path, ...(e.key ? { key: e.key } : {}) };
+    const k = JSON.stringify(d);
+    if (!seen.has(k)) {
+      seen.add(k);
+      result.push(d);
+    }
+  }
+  return result;
 }
 
 /**
@@ -698,6 +871,7 @@ export function compareUserRepoGuard(before: UserRepoGuard, after: UserRepoGuard
  *      during the import window parks the run instead of becoming the
  *      baseline;
  *   4. only then baseline = userRepoGuardSnapshot(userGitDir) for the next import.
+ * For the park message, take a snapshot and userRepoGuardChanges(baseline, it).
  */
 export function checkUserRepoGuard(before: UserRepoGuard, ctx: PrivateStoreContext): UserGuardItem[] {
   return compareUserRepoGuard(before, userRepoGuardSnapshot(before.gitDir, ctx));
@@ -719,16 +893,23 @@ export function seedProblem(seed: string, ctx: PrivateStoreContext): string | nu
 }
 
 /**
- * A full object check of the seed (review-481 M1): `fsck --strict` without
- * --connectivity-only re-hashes every object, so a seed object whose bytes
- * were replaced (git never re-hashes on a plain read) is caught. Costs about
- * 27 s on this repository (96 MiB pack, Windows); createPrivateRepo runs it
- * once per new run, before its clone. The seed must stay read-only to lanes:
- * B1b grants no lane write access to `<work>/<repo8>`.
+ * True when the user repository is a partial clone (review-481b m): its own
+ * config files (no includes; extensions are read from the repository config
+ * only) name extensions.partialClone or a promisor remote / filter, or a
+ * `.promisor` pack exists. Its missing objects can never be fetched here
+ * (GIT_NO_LAZY_FETCH), so the seed fetch would fail on them.
  */
-function seedObjectProblem(seed: string, ctx: PrivateStoreContext): string | null {
-  const r = git(ctx, seed, [`--git-dir=${seed}`, 'fsck', '--strict', '--no-dangling', '--no-progress', '--no-reflogs']);
-  return r.status === 0 ? null : 'the private store seed fails git fsck (an object does not match its id, or one is missing)';
+function partialClone(ctx: PrivateStoreContext, gitDir: string): boolean {
+  for (const file of [join(gitDir, 'config'), join(gitDir, 'config.worktree')]) {
+    if (!lexists(file)) continue;
+    const cfg = configFile(ctx, gitDir, file);
+    if (cfg && [...cfg.keys()].some((k) => k === 'extensions.partialclone' || /^remote\..*\.(?:promisor|partialclonefilter)$/.test(k))) return true;
+  }
+  try {
+    return readdirSync(join(gitDir, 'objects', 'pack')).some((n) => n.endsWith('.promisor'));
+  } catch {
+    return false;
+  }
 }
 
 function hasCommit(ctx: PrivateStoreContext, gitDir: string, sha: string): boolean {
@@ -745,12 +926,13 @@ function hasCommit(ctx: PrivateStoreContext, gitDir: string, sha: string): boole
  */
 export function ensureSeed(layout: PrivateRunLayout, userGitDir: string, sha: string, ctx: PrivateStoreContext): void {
   if (!SHA.test(sha)) throw new PrivateStoreError('the seed fetch needs a full commit sha');
+  if (partialClone(ctx, userGitDir)) throw new PrivateStoreError(`the repository ${userGitDir} is a partial clone (extensions.partialClone, a promisor remote or a promisor pack); partial clones are not supported by the factory's private store: use a full clone`);
   if (!lexists(layout.seed)) {
     mkdirSync(layout.repoDir, { recursive: true });
     gitOk(ctx, layout.repoDir, ['-c', 'init.defaultBranch=omg-seed', 'init', '-q', '--bare', '--template=', layout.seed], `git init of the seed ${layout.seed}`);
   }
   const seedBad = seedProblem(layout.seed, ctx);
-  if (seedBad) throw new PrivateStoreError(`${seedBad} (${layout.seed}); remove it (omg factory run clean --seed)`);
+  if (seedBad) throw new PrivateStoreError(`${seedBad} (${layout.seed}); delete the seed dir ${layout.seed} and start the run again`);
   const ref = seedRef(sha);
   const have = git(ctx, layout.seed, [`--git-dir=${layout.seed}`, 'rev-parse', '--verify', '--end-of-options', `${ref}^{commit}`]);
   if (have.status === 0 && have.stdout.trim() === sha) return;
@@ -822,10 +1004,10 @@ export function privateRepoProblem(p: PrivateRepo, ctx: PrivateStoreContext): st
 }
 
 /**
- * Clone the run's private repository from the seed: the seed passes a full
- * fsck first (seedObjectProblem), then a `--no-local` clone (every object
- * sent as a pack and re-hashed by index-pack with fsck on, so a replaced
- * seed object can never land here; only reachable objects, no
+ * Clone the run's private repository from the seed: a `--no-local` clone
+ * (every object sent as a pack and re-hashed by index-pack with fsck on, so
+ * a replaced seed object arrives under another id and the clone fails: no
+ * separate seed fsck is needed; review-481b 1); only reachable objects, no
  * refs/replace, no copied info/), `--no-checkout --no-tags --single-branch
  * --template=`, and NO `--reference`: no alternates at all, so nothing in
  * the seed is read unverified later (review-481 M1). Then HEAD == baseSha
@@ -838,8 +1020,6 @@ export function createPrivateRepo(layout: PrivateRunLayout, baseSha: string, ctx
   if (lexists(layout.repo)) throw new PrivateStoreError(`the private repository ${layout.repo} already exists; remove the run dir first`);
   const seedBad = seedProblem(layout.seed, ctx);
   if (seedBad) throw new PrivateStoreError(`${seedBad} (${layout.seed})`);
-  const seedObjects = seedObjectProblem(layout.seed, ctx);
-  if (seedObjects) throw new PrivateStoreError(`${seedObjects} (${layout.seed}); remove it (omg factory run clean --seed)`);
   const ref = seedRef(baseSha);
   const at = git(ctx, layout.seed, [`--git-dir=${layout.seed}`, 'rev-parse', '--verify', '--end-of-options', `${ref}^{commit}`]);
   if (at.status !== 0 || at.stdout.trim() !== baseSha) throw new PrivateStoreError(`the seed has no ${baseSha} (ensureSeed first)`);
@@ -848,8 +1028,10 @@ export function createPrivateRepo(layout: PrivateRunLayout, baseSha: string, ctx
   const tooLong = longPathProblem(join(layout.worktrees, 'prep'), longestPath, ctx.platform);
   if (tooLong) throw new PrivateStoreError(tooLong);
   mkdirSync(layout.runDir, { recursive: true });
-  gitOk(ctx, layout.runDir, ['clone', '-q', '--no-local', '--no-checkout', '--no-tags', '--single-branch', '--branch', `omg-${baseSha}`, '--template=',
-    `--upload-pack=${uploadPackCommand(ctx.tools)}`, layout.seed, layout.repo], `the private clone of ${baseSha}`);
+  const cloned = git(ctx, layout.runDir, ['clone', '-q', '--no-local', '--no-checkout', '--no-tags', '--single-branch', '--branch', `omg-${baseSha}`, '--template=',
+    `--upload-pack=${uploadPackCommand(ctx.tools)}`, layout.seed, layout.repo]);
+  // index-pack re-hashes every object it receives (fsck on): a seed object whose bytes were replaced arrives under another id and the clone fails.
+  if (cloned.status !== 0) throw new PrivateStoreError(`the private clone of ${baseSha} failed (git exit ${cloned.status}); the seed may be damaged: delete the seed dir ${layout.seed} and start the run again`, cloned.stderr.trim().slice(-2000));
   const g = layout.gitDir;
   gitOk(ctx, layout.repo, [`--git-dir=${g}`, 'remote', 'remove', 'origin'], 'removing the private clone\'s origin');
   gitOk(ctx, layout.repo, [`--git-dir=${g}`, 'update-ref', '--no-deref', '-m', 'omg private store', 'HEAD', baseSha], 'detaching the private HEAD');
@@ -1075,8 +1257,9 @@ function walkNoFollow(dir: string, seen: BigIntStats, seam: RemoveSeam, visit: {
  * (refuse otherwise), then delete files and directories bottom up, refusing
  * at any link that appeared meanwhile. Every directory is re-lstat-ed (same
  * node, still a plain directory) right before it is read. B1b calls it only
- * after every lane process tree is gone. PR #478's helper is not on dev;
- * switch to it when it lands if it covers the same walk.
+ * after every lane process tree is gone. The module keeps this walk rather
+ * than PR #478's removal helper, which does not re-lstat before each read
+ * and ends in a recursive rm (review-481b nit).
  */
 export function removeRunDir(dir: string, work: string, platform: NodeJS.Platform = process.platform, seam: RemoveSeam = {}): void {
   const d = resolve(dir);
