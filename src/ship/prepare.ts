@@ -20,6 +20,7 @@
 
 import { existsSync } from 'fs';
 import { isAbsolute, join, posix } from 'path';
+import { visibleLine } from '../forge/review-feedback.js';
 import { isPlainBranchName, readBaseFile, remoteRepoMismatch } from './config.js';
 import type { Exec, ExecResult } from './exec.js';
 
@@ -365,7 +366,8 @@ function* prepareSteps(opts: PrepareOptions): Generator<PrepareCheckRun, Prepare
       const r = yield { step: name, kind: 'built-in', argv: [node, ...args], exe: node, args };
       if (r.notStarted !== undefined) return fail(PREPARE_SANDBOX_STEP, `${name}: ${r.notStarted}`);
       if (r.status !== 0) return fail(name, tail(`${r.stdout}\n${r.stderr}`));
-      steps.push({ name, status: 'ok', detail: args.slice(1).join(' ').slice(0, 300) });
+      // The file names are the PR's (-z keeps control characters): shown, never raw, in the detail status output prints.
+      steps.push({ name, status: 'ok', detail: args.slice(1).map(visibleLine).join(' ').slice(0, 300) });
     }
   }
 
