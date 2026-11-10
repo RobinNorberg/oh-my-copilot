@@ -200,7 +200,12 @@ export function updateSessionEndActionPayload(directory: string, sessionId: stri
     if (job.jobId !== authority.jobId || !job.owner || job.owner.nonce !== authority.ownerNonce) throw new Error('owner-conflict');
     const claimed = job.actions[authority.actionName];
     if (claimed.status !== 'claimed' || claimed.attempts !== authority.attempt || claimed.claimantNonce !== authority.ownerNonce || claimed.runner?.runnerNonce !== authority.runnerNonce || claimed.runner.phase !== 'armed') throw new Error('runner-conflict');
-    for (const name of actionNames) if (job.actions[name]) job.actions[name].payload = { ...job.actions[name].payload, ...payload };
+    for (const name of actionNames) {
+      const target = job.actions[name];
+      // A manifest seeded while OpenClaw is disabled has no openclaw action (#479).
+      if (!target && name === 'openclaw') continue;
+      target.payload = { ...target.payload, ...payload };
+    }
   });
 }
 /** `mismatch` retries only a stale revision: owner-fenced heartbeat paths must not spin on a rejection or a lock timeout. */
