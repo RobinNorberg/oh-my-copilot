@@ -21,6 +21,7 @@ import type { CopilotRunSandboxState } from '../../copilot-run/sandbox.js';
 import type { ShipVerdict } from '../../ship/state.js';
 import { type ForgeKind, type ProgressStage } from '../../forge/types.js';
 import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
+import { type CodingAgentRunRecord } from './coding-agent-lane.js';
 export declare const FACTORY_PHASES: readonly ["intake", "plan", "implement", "publish", "review", "fix", "prepare", "conflict-fix", "gates", "ci-fix", "merge", "merged", "cancelled", "failed"];
 export type FactoryPhase = (typeof FACTORY_PHASES)[number];
 export declare const TERMINAL_FACTORY_PHASES: readonly FactoryPhase[];
@@ -236,12 +237,25 @@ export interface FactoryRunState {
     mergeBounces?: number;
     /** The engine-owned prepare checkout's HEAD when the engine last left it. */
     checkoutHead?: string;
-    /** The last human feedback round consumed (sealed with the rest of the state). */
+    /**
+     * The last human feedback round consumed (sealed with the rest of the
+     * state): when, at which head, the digest of what the fix lane got, and
+     * the ids of the threads handed to it (at most MAX_HUMAN_THREAD_IDS).
+     */
     humanReview?: {
         seenAt: string;
         head: string;
         digest: string;
+        threadIds: string[];
     };
+    /**
+     * The head at which the human accepted, with `omg factory run
+     * --allow-unsandboxed-lanes`, that write lanes ran without the enforced
+     * sandbox (460-7); a new head parks again.
+     */
+    unsandboxedAck?: string;
+    /** The Copilot coding agent session of an issue run whose implementer is the agent (coding-agent-lane.ts); sealed, shape-checked on load. */
+    codingAgent?: CodingAgentRunRecord;
     /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */
     gateComments?: string[];
     /**
@@ -275,7 +289,9 @@ export declare const EXIT_BUSY = 6;
  * `omg factory run` exits EXIT_BUSY for it; nothing was touched.
  */
 export declare class FactoryBusyError extends FactoryStateError {
-    constructor(message: string);
+    /** The holder's run key when a live owner file refused (`scan`: the poller's heal scan or base sync, or a read command's fetch). */
+    readonly holderRun?: string;
+    constructor(message: string, holderRun?: string);
 }
 /** The run's key: its issue number, or `heal-<sig8>` for a ci-heal run. */
 export declare function runKeyOf(s: Pick<FactoryRunState, 'kind' | 'issue' | 'heal'>): FactoryRunKey;
@@ -325,6 +341,8 @@ export declare function verifyFactoryIntegrity(state: FactoryRunState): boolean;
 export declare function forgeResumeProblem(state: Pick<FactoryRunState, 'forgeKind' | 'issue' | 'kind' | 'heal' | 'repoUrl'>, resolved: ForgeKind, resolvedRepoUrl?: string): string | null;
 /** The git remote of a run: `origin` unless the state seals the local forge's `omg-local`. */
 export declare function runRemote(state: Pick<FactoryRunState, 'remote'>): string;
+/** Thread ids one human round may record: 100 review threads and 50 review bodies fit. */
+export declare const MAX_HUMAN_THREAD_IDS = 200;
 /** Read and shape-check the state file; throws FactoryStateError on malformed content. */
 export declare function readFactoryState(root: string, key: FactoryRunKey): FactoryRunState | null;
 /** Parse and shape-check the bytes of a state file (read once by the caller). */
@@ -381,9 +399,14 @@ export declare const defaultOwnerDeps: () => OwnerDeps;
 export declare const ownerText: (v: unknown) => string;
 /** `<run>, pid <pid> on <host> since <time>[ in <root>]`, every field through ownerText. */
 export declare function describeOwner(o: Partial<FactoryOwner>): string;
-/** A held owner file: release() removes it while it is still this process's; relabel() rewrites its run field (`run --next` once it picked an item). */
+/**
+ * A held owner file: release() removes it while it is still this process's
+ * (false: the release failed, a warning naming the lock was printed, and the
+ * file stays until a retry or until this process exits); relabel() rewrites
+ * its run field (`run --next` once it picked an item).
+ */
 export interface HeldOwner {
-    release: () => void;
+    release: () => boolean;
     relabel: (run: string) => void;
     tookOver?: FactoryOwner;
 }
@@ -402,6 +425,35 @@ export declare function acquireFactoryOwner(root: string, key: FactoryRunKey, no
  * poller's heal tick and local base sync, `omg factory heal scan`).
  */
 export declare function acquireFactoryRepoOwner(root: string, key: FactoryRunKey | 'next' | 'scan', now: string, deps?: OwnerDeps): HeldOwner;
+/** How long an engine-side start (run, heal run/approve/cancel, run reset, run clean, the poller's auto-start) waits for a `scan` holder before it is busy. */
+export declare const SCAN_WAIT_MS = 60000;
+/** The poller's auto-start blocks the event loop while it waits, so it waits only this long for a `scan` holder. */
+export declare const AUTO_START_SCAN_WAIT_MS = 5000;
+/** How long a read command waits for another `scan` holder before it reads without fetching. */
+export declare const READ_SCAN_WAIT_MS = 10000;
+/** The holder is re-read this often while it is `scan`. */
+export declare const SCAN_POLL_MS = 500;
+/** The scan wait's sleep and clock; tests replace them (vi.spyOn). */
+export declare const scanWait: {
+    sleep: (ms: number) => void;
+    clock: () => number;
+};
+/**
+ * acquireFactoryRepoOwner that waits out a `scan` holder (the poller's heal
+ * scan or base sync, or a read command's fetch): the holder is re-read every
+ * SCAN_POLL_MS for at most `boundMs`, then the scan busy error (exit 6). Any
+ * other holder is busy at once.
+ */
+export declare function acquireFactoryRepoOwnerForRun(root: string, key: FactoryRunKey | 'next' | 'scan', now: () => string, deps?: OwnerDeps, boundMs?: number): HeldOwner;
+/**
+ * The checkout's engine lock under key `scan`, for a step that fetches or
+ * moves refs without starting a run (the poller's heal tick and base sync,
+ * the read commands' base fetch, heal dry runs): the held lock, or the
+ * FactoryBusyError when an engine holds the checkout (`waitMs`: a `scan`
+ * holder is waited out that long first). Any other error (EACCES on the
+ * state dir, ...) throws: it is not "busy".
+ */
+export declare function tryScanLock(root: string, now: string, deps?: OwnerDeps, waitMs?: number): HeldOwner | FactoryBusyError;
 /**
  * True when the engine lock of `root` was taken from another folder (its
  * recorded `root`): that folder resolves to this checkout's state root (a
@@ -440,6 +492,14 @@ export declare function ownerHolding(path: string, deps?: OwnerDeps): FactoryOwn
  * reads a start identity) is busy (FactoryBusyError, exit 6), not an error.
  */
 export declare function withOwnerFileLock<T>(path: string, fn: () => T): T;
+/**
+ * Why an owner or claim file's lock could not be taken. An omg factory
+ * process holds it for milliseconds, so a directory at the lock path, or a
+ * lock file older than file-lock's stale age (its pid alive: maybe reused by
+ * an unrelated program), is stuck: it never goes stale, and the message
+ * names the path to remove. A younger one is transient.
+ */
+export declare function lockBusyMessage(lock: string, nowMs?: number): string;
 /**
  * Claim an owner file: a live owner (or one on another host, whose pid
  * cannot be checked) refuses with a FactoryBusyError, and so does a file

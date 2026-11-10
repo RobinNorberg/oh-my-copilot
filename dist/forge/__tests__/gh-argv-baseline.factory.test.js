@@ -14,6 +14,8 @@ import { runFactoryEngine } from '../../factory/run/engine.js';
 import { readFactoryState, requestFactoryCancel } from '../../factory/run/state.js';
 import { commitFile, failedGates, FakeLanes, FakeProcesses, gitIn, greenGates, harness, ISSUE, PR, pendingGates, review, testGateConfig, } from '../../factory/run/__tests__/fake-lanes.js';
 import { factoryGuardExec } from '../../factory/run/exec.js';
+import { FakeAgentGithub, ghTime, installFakeAgent } from '../../factory/run/__tests__/fake-coding-agent.js';
+import { CODING_AGENT_STATUS_QUERY } from '../github/coding-agent.js';
 import { ghRepoArg } from '../github/gh.js';
 import { githubReviews } from '../github/reviews.js';
 import { recordingExec } from './recording-exec.js';
@@ -64,9 +66,11 @@ const REVIEW = (key) => [HEAD_STATE, HEAD_STATE, comment('pr', PR, key, 'review'
 /** One gates-loop read on a fixed head (checks, runs, the head re-read), then the driver's own head and runs read. */
 const GATES_GREEN = [HEAD_STATE, CHECKS, runList('<head>'), VIEW_HEAD, HEAD_STATE, runList('<head>')];
 /** The merge park: the PR view, the merge-rule gate read on that head, the PR comment with the command (the item's gate comment and its read for a parent rollup follow). */
-const MERGE_PARK = (key) => [MERGE_VIEW, CHECKS, runList('<head>'), VIEW_HEAD, comment('pr', PR, key, 'merge')];
+const MERGE_PARK = (key) => [MERGE_VIEW, REVIEW_READ, CHECKS, runList('<head>'), VIEW_HEAD, comment('pr', PR, key, 'merge')];
 /** The review-feedback query as literal text: any change to REVIEW_FEEDBACK_QUERY must break this test (the query is part of the pinned gh argv). */
-const PINNED_REVIEW_FEEDBACK_QUERY = 'query($owner:String!,$name:String!,$number:Int!){viewer{login} repository(owner:$owner,name:$name){viewerPermission collaborators(first:100){pageInfo{hasNextPage} edges{permission node{login}}} pullRequest(number:$number){headRefOid latestReviews(first:50){pageInfo{hasNextPage} nodes{id state submittedAt body author{__typename login} commit{oid}}} reviewRequests(first:20){pageInfo{hasNextPage} nodes{requestedReviewer{__typename ... on User{login} ... on Bot{login} ... on Mannequin{login} ... on Team{slug}}}} reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated comments(first:20){pageInfo{hasNextPage} nodes{body path line originalLine createdAt author{__typename login}}}}}}}}';
+const PINNED_REVIEW_FEEDBACK_QUERY = 'query($owner:String!,$name:String!,$number:Int!){viewer{login} repository(owner:$owner,name:$name){viewerPermission collaborators(first:100){pageInfo{hasNextPage} edges{permission node{login}}} pullRequest(number:$number){headRefOid latestReviews(first:50){pageInfo{hasNextPage} nodes{id state submittedAt body author{__typename login} commit{oid}}} latestOpinionatedReviews(first:50){pageInfo{hasNextPage} nodes{state submittedAt body author{__typename login} commit{oid}}} reviewRequests(first:20){pageInfo{hasNextPage} nodes{requestedReviewer{__typename ... on User{login} ... on Bot{login} ... on Mannequin{login} ... on Team{slug}}}} reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated resolvedBy{login} comments(first:20){pageInfo{hasNextPage} nodes{body path line originalLine createdAt author{__typename login}}}}}}}}';
+/** The merge step's human review read of the run's sealed repository: a GitHub run without a forge config (issue or ci-heal) reads it too (PR #471 HIGH-2). */
+const REVIEW_READ = `gh ${JSON.stringify(['api', 'graphql', '--hostname', 'github.com', '-f', `query=${PINNED_REVIEW_FEEDBACK_QUERY}`, '-f', 'owner=o', '-f', 'name=r', '-F', `number=${PR}`])} cwd=<root>`;
 describe('gh argv baseline: factory engine (issue run)', () => {
     it('happy path to the merge park: intake, publish, review, prepare, gates, merge gate', async () => {
         const { out, calls } = await engine([commitFile('src/greet.ts', 'export const greet = () => "hi";\n'), review('approve')]);
@@ -181,6 +185,22 @@ describe('gh argv baseline: factory engine (ci-heal run)', () => {
         ]);
     });
 });
+describe('gh argv baseline: the Copilot coding agent as implementer (night 3 goal 6, L6b)', () => {
+    it('first run: intake, the pre-assign status read, the assign POST, the confirming read; the wait park posts no comment', async () => {
+        const fake = new FakeAgentGithub(() => ghTime(t));
+        installFakeAgent(h, fake);
+        const { out, calls } = await engine([], { codingAgentUserConfig: { factory: { run: { implementer: 'coding-agent' }, codingAgent: { repos: ['o/r'] } } } });
+        expect(out.gate?.name, out.message).toBe('coding-agent-wait');
+        const status = (since) => `gh ${JSON.stringify(['api', 'graphql', '--hostname', 'github.com', '-f', `query=${CODING_AGENT_STATUS_QUERY}`, '-f', 'owner=o', '-f', 'name=r', '-F', `number=${ISSUE}`, '-f', `since=${since}`])} cwd=<root>`;
+        expect(calls).toEqual([
+            ISSUE_VIEW, prList(BRANCH),
+            // The pre-assign read from 2008 (PRE_ASSIGN_SINCE minus the skew margin), then the assign and its read from the local clock minus 120 s.
+            status('2008-01-01T00:00:00Z'),
+            `gh ${JSON.stringify(['api', '--hostname', 'github.com', '--method', 'POST', `repos/o/r/issues/${ISSUE}/assignees`, '-f', 'assignees[]=copilot-swe-agent[bot]', '-f', 'agent_assignment[base_branch]=dev'])} cwd=<root>`,
+            status('2026-10-27T09:58:00Z'),
+        ]);
+    });
+});
 describe('gh argv baseline: the human review read (night 3 goal 2; the engine call lands with L2b)', () => {
     it('reviewFeedback issues one exact gh api graphql argv through the run guard with the GitHub read context', () => {
         const repo = { kind: 'github', host: 'github.com', owner: 'acme', name: 'widgets', url: 'https://github.com/acme/widgets' };
@@ -191,7 +211,7 @@ describe('gh argv baseline: the human review read (night 3 goal 2; the engine ca
                 viewer: { login: 't' },
                 repository: {
                     viewerPermission: 'ADMIN', collaborators: { pageInfo: done, edges: [] },
-                    pullRequest: { headRefOid: head, latestReviews: { pageInfo: done, nodes: [] }, reviewRequests: { pageInfo: done, nodes: [] }, reviewThreads: { pageInfo: done, nodes: [] } },
+                    pullRequest: { headRefOid: head, latestReviews: { pageInfo: done, nodes: [] }, latestOpinionatedReviews: { pageInfo: done, nodes: [] }, reviewRequests: { pageInfo: done, nodes: [] }, reviewThreads: { pageInfo: done, nodes: [] } },
                 },
             },
         });

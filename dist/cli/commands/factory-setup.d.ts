@@ -64,6 +64,8 @@ export interface FactorySetupOptions {
     branch?: string;
     /** --workflows: replace a file this command did not write. */
     force?: boolean;
+    /** Also seed .copilot/team/routing.md and decisions.md when missing. */
+    team?: boolean;
     dryRun?: boolean;
     yes?: boolean;
     json?: boolean;

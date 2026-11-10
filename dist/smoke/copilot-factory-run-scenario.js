@@ -29,6 +29,7 @@ import { DEFAULT_FACTORY_RUN_LIMITS, runCredits } from '../factory/run/budget.js
 import { runFactoryEngine } from '../factory/run/engine.js';
 import { CopilotLaneBackend } from '../factory/run/lane.js';
 import { readFactoryState, verifyFactoryIntegrity } from '../factory/run/state.js';
+import { REVIEW_FEEDBACK_QUERY } from '../forge/github/graphql.js';
 import { resolveShipConfig } from '../ship/config.js';
 import { defaultExec } from '../ship/exec.js';
 import { latestVerdict, readShipState } from '../ship/state.js';
@@ -115,6 +116,13 @@ export function scriptedFactoryGh(bare) {
             return ok(JSON.stringify([{ databaseId: 100, status: 'completed', conclusion: 'success', workflowName: 'CI' }]));
         if (key.startsWith('gh pr comment ') || key.startsWith('gh issue comment '))
             return ok('');
+        // The merge step's human review read (the fixed query): no reviews, threads or requests at the PR head.
+        if (args[0] === 'api' && args[1] === 'graphql' && args.includes(`query=${REVIEW_FEEDBACK_QUERY}`)) {
+            const done = { hasNextPage: false };
+            const none = { pageInfo: done, nodes: [] };
+            const pullRequest = { headRefOid: bareRef(bare, `refs/heads/factory/issue-${FACTORY_RUN_ISSUE}`), latestReviews: none, latestOpinionatedReviews: none, reviewRequests: none, reviewThreads: none };
+            return ok(JSON.stringify({ data: { viewer: { login: 'omg-smoke' }, repository: { viewerPermission: 'ADMIN', collaborators: { pageInfo: done, edges: [] }, pullRequest } } }));
+        }
         return { status: 1, stdout: '', stderr: `scripted gh: ${key} is not scripted` };
     };
     return { exec, record };

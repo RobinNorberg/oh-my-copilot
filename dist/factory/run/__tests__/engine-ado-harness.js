@@ -117,6 +117,9 @@ export class AdoModel {
                 if (rp.pullRequestId === String(PR_ID) && this.prCreated)
                     return ok(this.pr());
                 break;
+            case 'git.pullRequestThreads.GET':
+                // The human review read: no comment threads.
+                return ok({ value: [], count: 0 });
             case 'git.pullRequests.POST':
                 this.prCreated = true;
                 return ok({ ...fixture('git.pullRequests.POST.create.json'), pullRequestId: PR_ID });

@@ -38,7 +38,7 @@ import { EXIT_AWAITING_HUMAN, EXIT_BUSY, runFactoryEngine } from '../../factory/
 import { factoryGuardExec, hardenedGitExec } from '../../factory/run/exec.js';
 import { EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, factoryForgeOptions, loadFactoryForgeConfig, originForgeKind, syncLocalMirror } from '../../factory/run/forge-roots.js';
 import { CopilotLaneBackend } from '../../factory/run/lane.js';
-import { acquireFactoryRepoOwner, defaultOwnerDeps, describeOwner, FactoryBusyError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState, refuseWhileEngineRuns, runLabel, unreadableOwnerMessage, withOwnerFileLock, requestFactoryCancel, verifyFactoryIntegrity, } from '../../factory/run/state.js';
+import { acquireFactoryRepoOwnerForRun, defaultOwnerDeps, describeOwner, FactoryBusyError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState, refuseWhileEngineRuns, runLabel, unreadableOwnerMessage, withOwnerFileLock, requestFactoryCancel, verifyFactoryIntegrity, } from '../../factory/run/state.js';
 import { resolveShipConfig, userConfigLayers } from '../../ship/config.js';
 import { defaultExec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
@@ -159,6 +159,8 @@ export function renderFactoryRunState(state, o = {}) {
         lines.push(chalk.yellow('cancel requested'));
     if (state.head)
         lines.push(`head ${state.head.slice(0, 12)}`);
+    if (state.unsandboxedAck)
+        lines.push(chalk.yellow(`lanes without the enforced sandbox accepted for ${state.unsandboxedAck.slice(0, 12)} (--allow-unsandboxed-lanes)`));
     lines.push(`lanes ${state.lanes.length}  run AI credits ${runCredits(state).toFixed(2)}  elapsed ${Math.round(state.elapsedMs / 60_000)} min`);
     for (const lane of state.lanes) {
         const credits = lane.usage ? `${lane.usage.credits.toFixed(2)}/${lane.maxCredits}` : `-/${lane.maxCredits}`;
@@ -317,6 +319,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         .option('--parent <spec>', 'With --next: pick among the children of this spec item instead of factory.intake.source')
         .option('--dry-run', 'Resolve the issue and plan and print the next step; no state, lanes or pushes')
         .option('--allow-gate-change', 'Local forge: accept the one change to the local gate\'s definition (package.json script, package-manager config or gate file) that parked the run at gate-definition-changed; a later change parks again')
+        .option('--allow-unsandboxed-lanes', 'Accept, for the parked head only, that write lanes ran without the enforced sandbox (the run parked at human-review for it): you checked the threads and reviews of the PR yourself; a new head parks again')
         .option('--json', 'JSON output')
         .action((issueRaw, o) => factoryGuarded(Boolean(o.json), async () => {
         if (o.next && issueRaw !== undefined)
@@ -341,7 +344,8 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         // origin/<base>): busy (exit 6) means nothing was fetched or written. The engine uses the held lock as its own.
         let held;
         if (!o.dryRun) {
-            held = acquireFactoryRepoOwner(root, issue ?? 'next', new Date().toISOString());
+            // A `scan` holder (poll's heal scan or base sync, a read command's fetch) is waited out (SCAN_WAIT_MS, longer than a read fetch can run: FETCH_TIMEOUT_MS).
+            held = acquireFactoryRepoOwnerForRun(root, issue ?? 'next', () => new Date().toISOString());
             // The claim key before the fetch: the forge kind from the config as it is (no fetch); none on the local forge.
             try {
                 claimRepo = cliClaimRepo(deps, root, readOnlyForgeKind(deps, root, base));
@@ -402,6 +406,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
                         root, issue: issue, exec: deps.exec, limits, base, dryRun: Boolean(o.dryRun), claimRepo,
                         ...(held ? { repoOwner: held } : {}),
                         ...(o.allowGateChange ? { allowGateChange: true } : {}),
+                        ...(o.allowUnsandboxedLanes ? { allowUnsandboxedLanes: true } : {}),
                         lanes: o.dryRun ? NO_LANES : deps.lanes(root),
                         ...(forge ? { forge } : {}),
                         ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}),
@@ -478,7 +483,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         const issue = parseIssue(issueRaw);
         const root = factoryRoot(exec);
         // The engine lock before the forge-config loader (it may fetch): busy touches nothing.
-        const held = acquireFactoryRepoOwner(root, issue, new Date().toISOString());
+        const held = acquireFactoryRepoOwnerForRun(root, issue, () => new Date().toISOString());
         try {
             const loaded = deps.forge?.(root, deps.base(root), { dryRun: false });
             if (!loaded || loaded.config.kind !== 'local')
@@ -618,7 +623,7 @@ export function factoryEnqueueCommand(deps) {
                 deps.out(JSON.stringify({ ok: false, error: message }, null, 2));
             else
                 deps.err(chalk.red(factoryErrorLine(message)));
-            process.exitCode = error instanceof CheckUsageError ? EXIT_CHECK_USAGE : error instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
+            process.exitCode = error instanceof FactoryBusyError ? EXIT_BUSY : error instanceof CheckUsageError ? EXIT_CHECK_USAGE : error instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
         }
     });
 }

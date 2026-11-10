@@ -53,7 +53,9 @@ describe('engine-side commit of a write lane', () => {
   it('a detect-only lane is warned about and recorded on the PR body', async () => {
     const warn = vi.fn();
     const out = await run([edit('a.ts', 'a\n', sandboxOf('detect-only')), review('approve')], { warn }).done;
-    expect(out.gate?.name, out.message).toBe('merge');
+    // The merge step does not report the human review clean after an unsandboxed lane (PR #471 M-1).
+    expect(out.gate?.name, out.message).toBe('human-review');
+    expect(out.gate?.reason).toContain(`a lane ran without the enforced sandbox`);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('ran without an OS sandbox'));
     const create = h.raw.find((c) => c.cmd === 'gh' && c.args.includes('create'))!;
     const body = readFileSync(create.args[create.args.indexOf('--body-file') + 1], 'utf8');

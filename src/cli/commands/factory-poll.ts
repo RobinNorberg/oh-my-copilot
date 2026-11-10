@@ -7,6 +7,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_INCOMPATIBLE, EXIT_CHECK_USAGE, factoryErrorLine } from '../../factory/check/cli.js';
+import { EXIT_BUSY, FactoryBusyError } from '../../factory/run/state.js';
 import { plainText } from '../../factory/check/score.js';
 import { runFactoryPoll, type FactoryPollDeps } from '../../factory/poll.js';
 import { FactoryForgeUnavailableError } from '../../factory/run/forge-roots.js';
@@ -27,7 +28,7 @@ export function factoryPollCommand(deps: FactoryPollDeps): Command {
         const message = plainText(error instanceof Error ? error.message : String(error));
         if (o.json) deps.out(JSON.stringify({ ok: false, error: message }));
         else deps.err(chalk.red(factoryErrorLine(message)));
-        process.exitCode = error instanceof CheckUsageError ? EXIT_CHECK_USAGE
+        process.exitCode = error instanceof FactoryBusyError ? EXIT_BUSY : error instanceof CheckUsageError ? EXIT_CHECK_USAGE
           : error instanceof CheckIncompatibleError || error instanceof FactoryForgeUnavailableError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
       }
     });

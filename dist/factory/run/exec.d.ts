@@ -27,6 +27,14 @@
  *   assign of exactly the context's issue on exactly its base, and
  *   `gh pr close` of exactly its `pr` (the agent's own PR; the tracker never
  *   closes). Without that context both writes are refused.
+ * - Adopting the coding agent's PR (src/factory/run/coding-agent-lane.ts):
+ *   `git fetch --no-tags --refmap= origin refs/pull/<n>/head` (only
+ *   FETCH_HEAD moves; only with a step context whose `adopt` is `<n>`),
+ *   `git rev-parse --verify FETCH_HEAD^{commit}`, `git merge-base <sha40> <sha40>`,
+ *   `git ls-tree -r -z --full-tree <sha40>`, and the link comment
+ *   `gh pr comment <pr> --repo <HOST/OWNER/NAME> --body-file <f>` only with a
+ *   step context naming that `pr` and the link's numbers, run with the guard's
+ *   own copy of the body, which must be exactly the factory's link text.
  * - Azure DevOps: `az devops invoke` on the routes.ts allowlist only, as the
  *   resolved az entry, for the run's forge repo (src/forge/ado/guard.ts).
  *   The work item create and the PATCH's item fields and links pass only with
@@ -41,7 +49,7 @@
  *   even if the tamper check missed it.
  */
 import { type AdoGuardContext } from '../../forge/ado/guard.js';
-import { type CodingAgentContext } from '../../forge/github/coding-agent.js';
+import { type CodingAgentStepContext } from './coding-agent-lane.js';
 import { ShipSafetyError, type Exec } from '../../ship/exec.js';
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
 export declare const FACTORY_BRANCH_PREFIX = "factory/";
@@ -136,7 +144,7 @@ export interface GithubReadContext {
  * which refuses them unless `ado` names the run's forge and az entry.
  * `writes` (enqueue only) adds the tracker write shapes.
  */
-export declare function assertFactoryCommand(cmd: string, args: string[], extraProtected?: readonly string[], env?: Readonly<Record<string, string>>, ado?: AdoGuardContext, writes?: TrackerWriteContext, local?: LocalGuardContext, github?: GithubReadContext, agent?: CodingAgentContext): void;
+export declare function assertFactoryCommand(cmd: string, args: string[], extraProtected?: readonly string[], env?: Readonly<Record<string, string>>, ado?: AdoGuardContext, writes?: TrackerWriteContext, local?: LocalGuardContext, github?: GithubReadContext, agent?: CodingAgentStepContext): void;
 /**
  * Wrap an Exec so every call passes assertFactoryCommand first; `extraProtected` is read per call.
  * An `az devops invoke` write runs with the guard's own copy of its validated --in-file body,
@@ -148,7 +156,7 @@ export declare function assertFactoryCommand(cmd: string, args: string[], extraP
  * `agent` (GitHub only, set by the engine around one coding agent step, never for a whole run) admits the assign of its
  * issue on its base and the close of its `pr`; without it both writes are refused.
  */
-export declare function factoryGuardExec(exec: Exec, extraProtected?: () => readonly string[], ado?: () => AdoGuardContext | undefined, writes?: () => TrackerWriteContext | undefined, local?: () => LocalGuardContext | undefined, github?: () => GithubReadContext | undefined, agent?: () => CodingAgentContext | undefined): Exec;
+export declare function factoryGuardExec(exec: Exec, extraProtected?: () => readonly string[], ado?: () => AdoGuardContext | undefined, writes?: () => TrackerWriteContext | undefined, local?: () => LocalGuardContext | undefined, github?: () => GithubReadContext | undefined, agent?: () => CodingAgentStepContext | undefined): Exec;
 /** Prepended to every hardened git command, after the guard checked the plain shape. */
 export declare function gitHardeningArgs(hooksDir: string): string[];
 /**

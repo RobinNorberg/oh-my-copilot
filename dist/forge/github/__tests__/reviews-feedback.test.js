@@ -23,8 +23,8 @@ const DONE = { hasNextPage: false };
 const page = (v) => (typeof v === 'object' && v !== null && !('pageInfo' in v) && 'nodes' in v ? { pageInfo: DONE, ...v } : v);
 /** A GraphQL response; `pull` overrides parts of the pull request (connections without pageInfo get a complete one). */
 function response(o = {}) {
-    const pull = { headRefOid: HEAD, latestReviews: { nodes: [] }, reviewRequests: { nodes: [] }, reviewThreads: { nodes: [] }, ...o.pull };
-    for (const k of ['latestReviews', 'reviewRequests', 'reviewThreads'])
+    const pull = { headRefOid: HEAD, latestReviews: { nodes: [] }, latestOpinionatedReviews: { nodes: [] }, reviewRequests: { nodes: [] }, reviewThreads: { nodes: [] }, ...o.pull };
+    for (const k of ['latestReviews', 'latestOpinionatedReviews', 'reviewRequests', 'reviewThreads'])
         pull[k] = page(pull[k]);
     return JSON.stringify({
         data: {
@@ -151,7 +151,7 @@ describe('parseReviewFeedback: trust and open threads', () => {
         expect(f.threads).toEqual([]);
         expect(f.decisions.map((d) => d.state)).toEqual(['commented', 'approved', 'changes-requested']);
     });
-    it('threads: unresolved and current only, trusted comments kept, untrusted replies dropped and listed', () => {
+    it('threads: unresolved only (outdated ones flagged), trusted comments kept, untrusted replies dropped and listed', () => {
         const f = parse(response({
             pull: {
                 reviewThreads: {
@@ -168,6 +168,8 @@ describe('parseReviewFeedback: trust and open threads', () => {
         }), HEAD, trust);
         expect(f.threads).toEqual([
             { id: 'T1', author: 'robin', body: '@robin:\nRename this.\n\n@dana:\nAgreed.', file: 'src/a.ts', line: 3, at: '2026-11-09T10:02:00Z' },
+            // A push changed its lines, but nobody resolved it: it stays, flagged.
+            expect.objectContaining({ id: 'T3', author: 'dana', body: 'old line', outdated: true }),
             // The first trusted comment names the thread; line falls back to originalLine.
             { id: 'T6', author: 'eve-listed', body: 'Listed reply.', file: 'b.md', line: 7, at: '2026-11-09T10:01:00Z' },
         ]);
@@ -226,7 +228,46 @@ describe('parseReviewFeedback: trust and open threads', () => {
                 },
             },
         }), HEAD, trust);
-        expect(f.pendingReviewers).toEqual(['dana', 'team:core', 'copilot-pull-request-reviewer']);
+        // A bot is named as its author would be (`<slug>[bot]`), so the engine can tell it from a user.
+        expect(f.pendingReviewers).toEqual(['dana', 'team:core', 'copilot-pull-request-reviewer[bot]']);
+    });
+    it('L-D: a requested Mannequin is named mannequin:<login>, never as a user', () => {
+        const f = parse(response({ pull: { reviewRequests: { nodes: [{ requestedReviewer: { __typename: 'Mannequin', login: 'ghost' } }] } } }), HEAD, trust);
+        expect(f.pendingReviewers).toEqual(['mannequin:ghost']);
+    });
+    it('resolvedBy: resolved threads are dropped; those the viewer resolved are listed by id', () => {
+        const f = parse(response({
+            pull: {
+                reviewThreads: {
+                    nodes: [
+                        { ...thread('T1', [['dana', 'a']], { resolved: true }), resolvedBy: { login: 'Robin' } },
+                        { ...thread('T2', [['dana', 'b']], { resolved: true }), resolvedBy: { login: 'dana' } },
+                        { ...thread('T3', [['dana', 'c']], { resolved: true }), resolvedBy: null },
+                    ],
+                },
+            },
+        }), HEAD, trust);
+        expect(f.threads).toEqual([]);
+        expect(f.resolvedByViewer).toEqual(['T1']);
+        expect(parse(response(), HEAD, trust).resolvedByViewer).toBeUndefined();
+    });
+    it('L-5: a later COMMENTED review does not clear the same author\'s CHANGES_REQUESTED; an approval or dismissal does', () => {
+        const opinionated = { nodes: [review('O1', 'dana', 'CHANGES_REQUESTED', 'Please split this.', OLD), review('O2', 'robin', 'CHANGES_REQUESTED', 'no', OLD), review('O3', 'eve-listed', 'CHANGES_REQUESTED', 'no', OLD)] };
+        const f = parse(response({
+            pull: {
+                latestReviews: { nodes: [review('R1', 'dana', 'COMMENTED', 'LGTM, nice'), review('R2', 'robin', 'APPROVED'), review('R3', 'eve-listed', 'DISMISSED')] },
+                latestOpinionatedReviews: opinionated,
+            },
+        }), HEAD, trust);
+        expect(f.decisions).toEqual([
+            { author: 'dana', state: 'commented', at: '2026-11-09T09:00:00Z', head: HEAD },
+            { author: 'robin', state: 'approved', at: '2026-11-09T09:00:00Z', head: HEAD },
+            { author: 'eve-listed', state: 'dismissed', at: '2026-11-09T09:00:00Z', head: HEAD },
+            { author: 'dana', state: 'changes-requested', at: '2026-11-09T09:00:00Z', head: OLD },
+        ]);
+        // Only the opinionated list: the request stands as well.
+        const only = parse(response({ pull: { latestOpinionatedReviews: { nodes: [review('O1', 'dana', 'CHANGES_REQUESTED', 'x', OLD)] } } }), HEAD, trust);
+        expect(only.decisions.map((d) => `${d.author}:${d.state}`)).toEqual(['dana:changes-requested']);
     });
     it('bodies are data: capped, control characters left for the prompt fence, nothing interpreted', () => {
         const long = 'x'.repeat(MAX_FEEDBACK_BODY_CHARS + 50);
@@ -264,8 +305,11 @@ describe('fail closed: truncation, partial answers, the head', () => {
             expect(error.what, what).toBe(what);
             expect(error, what).toBeInstanceOf(ReviewFeedbackError);
         }
-        // A resolved or outdated thread's long history hides nothing that counts.
+        // A resolved thread's long history hides nothing that counts.
         expect(parse(response({ pull: { reviewThreads: { nodes: [thread('T1', [['dana', 'x']], { resolved: true, more: true })] } } }), HEAD, trust).threads).toEqual([]);
+        // An outdated, unresolved one still counts, so its truncated comments throw, and so does a truncated opinionated list.
+        expect(() => parse(response({ pull: { reviewThreads: { nodes: [thread('T1', [['dana', 'x']], { outdated: true, more: true })] } } }), HEAD, trust)).toThrow(ReviewFeedbackTruncatedError);
+        expect(() => parse(response({ pull: { latestOpinionatedReviews: { ...more, nodes: [] } } }), HEAD, trust)).toThrow(ReviewFeedbackTruncatedError);
     });
     it('MEDIUM-1: a missing or malformed list is never read as empty', () => {
         for (const pull of [

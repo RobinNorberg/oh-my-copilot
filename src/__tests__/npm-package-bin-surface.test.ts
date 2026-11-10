@@ -208,9 +208,10 @@ function getPackedPackage(): PackedPackage {
 
 afterAll(() => {
   if (fixtureRootCache) {
-    rmSync(fixtureRootCache, { recursive: true, force: true });
+    // Removing the unpacked package tree can take over 10 s on a loaded Windows runner.
+    rmSync(fixtureRootCache, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
-});
+}, 120_000);
 
 // Build the single lifecycle tarball during file setup so individual assertions
 // retain the repository-wide 30-second test budget. Any setup failure still

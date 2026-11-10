@@ -63,7 +63,8 @@ import type { CheckBucket } from './check/rules.js';
 import type { HealConfig } from './heal/config.js';
 import { type ScanResult } from './heal/cli.js';
 import { type FactoryRunLimits } from './run/budget.js';
-import { type FactoryRunKey, type OwnerDeps } from './run/state.js';
+import { type Reminder } from './team/reminders.js';
+import { type FactoryRunKey, type HeldOwner, type OwnerDeps } from './run/state.js';
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
 export declare const POLL_JSON_SCHEMA_VERSION = 1;
 export declare const POLL_DEFAULT_INTERVAL_MS: number;
@@ -88,6 +89,15 @@ export declare function nextInterval(current: number, base: number, rateLimited:
 export declare function acquirePoller(root: string, now: string, me?: OwnerDeps): {
     release: () => void;
 };
+/**
+ * The checkout's engine lock for a tick step that fetches or moves refs (the
+ * heal tick, the local base sync): a git fetch under a live engine would
+ * read as lane tampering to it. A string: the step is skipped this tick (an
+ * engine runs; or the lock could not be taken at all, which also goes to the
+ * tick's `errors` as `<step>: ...`). Released before the auto-start, whose
+ * child takes the lock itself, so the two never wait on each other.
+ */
+export declare function holdForRefs(root: string, at: string, me: OwnerDeps, label: 'heal' | 'base sync', errors: string[]): HeldOwner | string;
 /** The heal tick's scan; a HealRunRefused skips the heal tick with its message. `forge`: the tick's forge config (Azure DevOps reads it; GitHub never does). */
 export type PollHealScan = (o: {
     root: string;
@@ -235,6 +245,8 @@ export interface PollTick {
         reason: string;
     };
     prs: PollPr[];
+    /** Runs parked at a human gate past factory.poll.remindAfterHours (printed, never posted); absent when none is due. */
+    reminders?: Reminder[];
     /** Board rows that changed since the previous tick (every row on the first). */
     board: Array<{
         stage: BoardStage | 'outside';
@@ -280,7 +292,11 @@ export interface PollContext {
     /** The local forge's base sync (FactoryPollDeps.localBaseSync), bound to the root and base. */
     localBaseSync?: () => string;
     budget: PollBudget;
+    /** factory.poll.remindAfterHours; absent or 0 = no stale-gate reminders. */
+    remindAfterHours?: number;
     owner: OwnerDeps;
+    /** A `scan` lock whose release failed (it warned): retried at the next tick (L7). */
+    unreleasedScan?: HeldOwner;
     now: () => number;
     /** Row signatures of the previous tick (board diff), and PR facts (audit on change); updated by pollTick. */
     previous: {

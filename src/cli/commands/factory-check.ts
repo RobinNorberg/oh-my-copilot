@@ -10,6 +10,7 @@ import { existsSync, readFileSync } from 'fs';
 import { createInterface } from 'readline/promises';
 import { resolveProjectConfigPath } from '../../config/project-config-path.js';
 import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_INCOMPATIBLE, EXIT_CHECK_USAGE, factoryErrorLine, runFactoryCheck, type FactoryCheckDeps } from '../../factory/check/cli.js';
+import { EXIT_BUSY, FactoryBusyError } from '../../factory/run/state.js';
 import { plainText } from '../../factory/check/score.js';
 import { createForge } from '../../forge/index.js';
 import { userConfigLayers } from '../../ship/config.js';
@@ -60,7 +61,7 @@ export function factoryCheckCommand(deps: FactoryCheckDeps): Command {
         const message = plainText(error instanceof Error ? error.message : String(error));
         if (o.json) deps.out(JSON.stringify({ ok: false, error: message }, null, 2));
         else deps.err(chalk.red(factoryErrorLine(message)));
-        process.exitCode = error instanceof CheckUsageError ? EXIT_CHECK_USAGE : error instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
+        process.exitCode = error instanceof FactoryBusyError ? EXIT_BUSY : error instanceof CheckUsageError ? EXIT_CHECK_USAGE : error instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
       }
     });
 }

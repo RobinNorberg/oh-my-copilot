@@ -50,7 +50,9 @@ export declare function isFactoryComment(body: string): boolean;
  * truncated, an error is not about the collaborator list, or `head` is not the
  * PR's head. A review body counts as a thread only when the review was
  * submitted on `head` (an older head's summary was answered by a later push);
- * inline threads count while unresolved and not outdated.
+ * inline threads count while unresolved (an outdated one flagged `outdated`).
+ * A CHANGES_REQUESTED stands until the same author approves or it is
+ * dismissed: a later COMMENTED review does not clear it.
  */
 export declare function parseReviewFeedback(stdout: string, pr: number, head: string, trust: ReviewTrust, exitStatus?: number): ForgeReviewFeedback;
 //# sourceMappingURL=graphql.d.ts.map

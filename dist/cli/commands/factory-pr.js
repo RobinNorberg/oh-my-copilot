@@ -22,6 +22,7 @@ import { userInfo } from 'os';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_INCOMPATIBLE, EXIT_CHECK_USAGE, factoryErrorLine, openReadForge, parseItemId, } from '../../factory/check/cli.js';
+import { EXIT_BUSY, FactoryBusyError } from '../../factory/run/state.js';
 import { factoryGuardExec, hardenedGitExec } from '../../factory/run/exec.js';
 import { factoryForgeOptions } from '../../factory/run/forge-roots.js';
 import { defaultLedgerDir, emptyHooksDir } from '../../factory/run/ledger.js';
@@ -161,7 +162,7 @@ function action(name, deps) {
                 deps.out(JSON.stringify({ schemaVersion: FACTORY_PR_JSON_SCHEMA_VERSION, ok: false, error: message }, null, 2));
             else
                 deps.err(chalk.red(factoryErrorLine(message)));
-            process.exitCode = error instanceof CheckUsageError ? EXIT_CHECK_USAGE : error instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
+            process.exitCode = error instanceof FactoryBusyError ? EXIT_BUSY : error instanceof CheckUsageError ? EXIT_CHECK_USAGE : error instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
         }
     };
 }
