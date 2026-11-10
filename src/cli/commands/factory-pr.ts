@@ -32,7 +32,7 @@ import { defaultLedgerDir, emptyHooksDir } from '../../factory/run/ledger.js';
 import { appendLocalReview, engineOwnedDir, MAX_LOCAL_REVIEW_CHARS, readLocalReviews, readPrStore, type LocalReviewRecord } from '../../forge/local/store.js';
 import { REVIEW_HEAD, visibleLine, visibleText } from '../../forge/review-feedback.js';
 import type { Forge, ForgePr } from '../../forge/types.js';
-import type { Exec } from '../../ship/exec.js';
+import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 
 export const FACTORY_PR_JSON_SCHEMA_VERSION = 1;
 
@@ -118,6 +118,17 @@ export async function runFactoryPr(
 
   const n = pr!;
   const v = view(ctx, n);
+  const ledgerDir = deps.ledgerDir ?? defaultLedgerDir();
+  const git: Exec = factoryGuardExec(hardenedGitExec(deps.exec, emptyHooksDir(ledgerDir)), () => [ctx.base]);
+  if (action === 'view' || action === 'diff') {
+    // The trusted base is your local base, never the mirror's ref: a mirror base moved elsewhere would change the merge
+    // base of the diff (hiding or adding commits) without a change you can see.
+    const local = git('git', ['rev-parse', '--verify', `refs/heads/${v.baseRefName}`], { cwd: ctx.root, env: TRUSTED_READ_ENV });
+    const localBase = local.status === 0 ? local.stdout.trim() : '';
+    if (localBase !== v.baseRefOid) {
+      throw new Error(`local PR #${n}: the local forge mirror's ${v.baseRefName} is at ${v.baseRefOid}, but your ${v.baseRefName} is at ${localBase || '(unreadable)'}; the ${action} would use a base you do not have. Check what wrote the mirror, or let omg factory run sync it, then read the PR again`);
+    }
+  }
   if (action === 'view') {
     const record = readPrStore(join(ctx.storeDir, 'prs.json')).prs.find((p) => p.number === n)!;
     const feedback = ctx.forge.reviews.reviewFeedback?.(n, v.headRefOid);
@@ -134,8 +145,6 @@ export async function runFactoryPr(
   }
 
   if (action === 'diff') {
-    const ledgerDir = deps.ledgerDir ?? defaultLedgerDir();
-    const git: Exec = factoryGuardExec(hardenedGitExec(deps.exec, emptyHooksDir(ledgerDir)), () => [ctx.base]);
     const r = git('git', ['diff', '--no-ext-diff', '--no-textconv', `${v.baseRefOid}...${v.headRefOid}`], { cwd: ctx.root });
     if (r.status !== 0) {
       deps.err(chalk.red(`git diff of local PR #${n} failed (exit ${r.status}): ${visibleLine(r.stderr.trim().split('\n')[0] ?? '')}`));

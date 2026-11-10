@@ -716,7 +716,7 @@ describe('hardened engine git', () => {
     exec('git', ['push', 'origin', `${SHA}:refs/heads/factory/issue-7`]);
     exec('gh', ['pr', 'view', '42']);
     const pins = ['core.fsmonitor=false', 'core.pager=cat', 'diff.external=', 'core.commitGraph=false', 'core.multiPackIndex=false', 'gc.auto=0', 'maintenance.auto=false',
-      'fetch.writeCommitGraph=false', 'protocol.ext.allow=never', 'remote.origin.uploadpack=git-upload-pack', 'remote.origin.receivepack=git-receive-pack'];
+      'fetch.writeCommitGraph=false', 'protocol.ext.allow=never', 'core.alternateRefsCommand=true', 'remote.origin.uploadpack=git-upload-pack', 'remote.origin.receivepack=git-receive-pack'];
     expect(seen).toEqual([
       ['git', '-c', `core.hooksPath=${hooks}`, ...pins.flatMap((kv) => ['-c', kv]), 'push', 'origin', `${SHA}:refs/heads/factory/issue-7`],
       ['gh', 'pr', 'view', '42'],

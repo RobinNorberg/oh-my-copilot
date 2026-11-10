@@ -3,13 +3,13 @@
  * engine's pinned config, the local forge mirror's receive-pack (its hooks
  * and config), and the snapshot's object store metadata. Real git.
  */
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { defaultExec, type Exec } from '../../../ship/exec.js';
-import { hostGitEnv, runHostGit } from '../../../team/git-worktree.js';
+import { hostGitEnv, hostGitHardeningArgs, runHostGit } from '../../../team/git-worktree.js';
 import { FactorySafetyError, gitHardeningArgs, hardenedGitExec, mirrorReceivePackArg } from '../exec.js';
 import { compareSnapshots, objectStoreMetaHash, replaceObjectsProblem, snapshotRepo } from '../review-guard.js';
 import { gitIn } from './fake-lanes.js';
@@ -137,8 +137,90 @@ describe('the local forge mirror push (H1)', () => {
     expect(existsSync(marker)).toBe(true);
   });
 
+  describe('a mirror redirected to another repository (HIGH-1)', () => {
+    let evil: string;
+    let ranMarker: string;
+
+    beforeEach(() => {
+      // <evil> has alternates, so receive-pack runs its core.alternateRefsCommand while advertising refs.
+      const other = join(dir, 'other.git');
+      gitIn(dir, 'init', '-q', '--bare', other);
+      gitIn(root, 'push', '-q', other, 'HEAD:refs/heads/o');
+      evil = join(dir, 'evil.git');
+      gitIn(dir, 'init', '-q', '--bare', evil);
+      writeFileSync(join(evil, 'objects', 'info', 'alternates'), `${join(other, 'objects')}\n`);
+      ranMarker = join(dir, 'alternate-refs-ran');
+      const fwd = (p: string) => p.replace(/\\/g, '/');
+      gitIn(dir, 'config', '--file', join(evil, 'config'), 'core.alternateRefsCommand', `echo x > '${fwd(ranMarker)}'; git --git-dir='${fwd(other)}' for-each-ref --format='%(objectname)'`);
+    });
+
+    it.each([
+      ['a gitfile .git', (m: string, e: string) => writeFileSync(join(m, '.git'), `gitdir: ${e}\n`)],
+      ['a commondir', (m: string, e: string) => writeFileSync(join(m, 'commondir'), `${e}\n`)],
+    ])('%s pointing at a repository with alternateRefsCommand refuses the push and the fetch; a plain push runs the command', (_what, plant) => {
+      const sha = git('rev-parse', 'HEAD');
+      plant(mirror, evil);
+      const exec = hardenedGitExec(defaultExec, hooks, () => mirror);
+      expect(() => exec('git', ['push', 'omg-local', `${sha}:refs/heads/main`], { cwd: root })).toThrow(/would point git at another repository/);
+      expect(() => exec('git', ['fetch', 'omg-local', 'main'], { cwd: root })).toThrow(/would point git at another repository/);
+      expect(() => exec('git', ['ls-remote', 'omg-local'], { cwd: root })).toThrow(/would point git at another repository/);
+      expect(existsSync(ranMarker)).toBe(false);
+      expect(gitIn(dir, '--git-dir', evil, 'for-each-ref', '--format=%(refname)')).toBe('');
+      // Control: git really follows the redirect and runs the command on a plain push.
+      gitIn(root, 'push', '-q', mirror, `${sha}:refs/heads/control`);
+      expect(existsSync(ranMarker)).toBe(true);
+      expect(gitIn(dir, '--git-dir', evil, 'for-each-ref', '--format=%(refname)')).toBe('refs/heads/control');
+    });
+
+    it('the pinned receive-pack runs no alternateRefsCommand even when git follows a redirect written after the check', () => {
+      const sha = git('rev-parse', 'HEAD');
+      writeFileSync(join(mirror, 'commondir'), `${evil}\n`);
+      // The engine's receive-pack command as hardenedGitExec appends it, without the refusal in front (a write between check and use).
+      const pinned = gitIn(root, 'push', '-q', mirror, `${sha}:refs/heads/pinned`, mirrorReceivePackArg(hooks));
+      expect(pinned).toBe('');
+      expect(gitIn(dir, '--git-dir', evil, 'rev-parse', 'refs/heads/pinned')).toBe(sha);
+      expect(existsSync(ranMarker)).toBe(false);
+      gitIn(root, 'push', '-q', mirror, `${sha}:refs/heads/control`);
+      expect(existsSync(ranMarker)).toBe(true);
+    });
+
+    it('a gitdir or config.worktree file, or a mirror that is a link or junction, refuses the transport', () => {
+      const sha = git('rev-parse', 'HEAD');
+      const exec = hardenedGitExec(defaultExec, hooks, () => mirror);
+      for (const name of ['gitdir', 'config.worktree']) {
+        writeFileSync(join(mirror, name), `${evil}\n`);
+        expect(() => exec('git', ['push', 'omg-local', `${sha}:refs/heads/main`], { cwd: root })).toThrow(new RegExp(`has ${name.replace('.', '\\.')}, which would point`));
+        rmSync(join(mirror, name));
+      }
+      const linked = join(dir, 'linked.git');
+      symlinkSync(evil, linked, 'junction');
+      const viaLink = hardenedGitExec(defaultExec, hooks, () => linked);
+      expect(() => viaLink('git', ['fetch', 'omg-local', 'main'], { cwd: root })).toThrow(/is a link or junction/);
+      expect(existsSync(ranMarker)).toBe(false);
+      // The clean mirror still takes the push.
+      expect(exec('git', ['push', 'omg-local', `${sha}:refs/heads/main`], { cwd: root }).status).toBe(0);
+    });
+
+    it('a fetch into a repository with alternates runs its alternateRefsCommand under plain git, never under the engine or host pins (L-1)', () => {
+      const sha = git('rev-parse', 'HEAD');
+      gitIn(root, 'push', '-q', mirror, `${sha}:refs/heads/main`);
+      rmSync(ranMarker, { force: true });
+      const me = join(dir, 'me');
+      gitIn(dir, 'init', '-q', me);
+      writeFileSync(join(me, '.git', 'objects', 'info', 'alternates'), `${join(dir, 'other.git', 'objects')}\n`);
+      gitIn(me, 'config', 'core.alternateRefsCommand', gitIn(dir, 'config', '--file', join(evil, 'config'), 'core.alternateRefsCommand'));
+      expect(gitHardeningArgs(hooks, 'fetch')).toContain('core.alternateRefsCommand=true');
+      expect(hostGitHardeningArgs()).toContain('core.alternateRefsCommand=true');
+      gitIn(me, ...gitHardeningArgs(hooks, 'fetch'), 'fetch', '-q', mirror, '+refs/heads/main:refs/remotes/m/main');
+      expect(gitIn(me, 'rev-parse', 'refs/remotes/m/main')).toBe(sha);
+      expect(existsSync(ranMarker)).toBe(false);
+      gitIn(me, 'fetch', '-q', mirror, '+refs/heads/main:refs/remotes/c/main');
+      expect(existsSync(ranMarker)).toBe(true);
+    });
+  });
+
   it('the receive-pack command carries the empty hooks dir, quoted; a quote in the path is refused', () => {
-    expect(mirrorReceivePackArg(hooks)).toBe(`--receive-pack=git -c core.hooksPath='${hooks}' -c core.fsmonitor=false receive-pack`);
+    expect(mirrorReceivePackArg(hooks)).toBe(`--receive-pack=git -c core.hooksPath='${hooks}' -c core.fsmonitor=false -c core.alternateRefsCommand=true -c core.alternateRefsPrefixes= -c receive.autogc=false receive-pack`);
     expect(() => mirrorReceivePackArg(join(dir, "it's"))).toThrow(FactorySafetyError);
   });
 
@@ -162,16 +244,12 @@ describe('the local forge mirror push (H1)', () => {
 describe('the snapshot sees what steers ancestry (M2)', () => {
   const exec = defaultExec;
 
-  it('a planted shallow, objects/info/alternates or commit-graph, or a bitmap name, is reported', () => {
+  it('a planted shallow, objects/info/alternates or http-alternates is reported', () => {
     const common = join(root, '.git');
     const plant: Array<() => void> = [
       () => writeFileSync(join(common, 'shallow'), `${git('rev-parse', 'HEAD')}\n`),
       () => writeFileSync(join(common, 'objects', 'info', 'alternates'), `${join(dir, 'elsewhere')}\n`),
-      () => writeFileSync(join(common, 'objects', 'info', 'commit-graph'), 'CGPH forged'),
-      () => { mkdirSync(join(common, 'objects', 'info', 'commit-graphs'), { recursive: true }); writeFileSync(join(common, 'objects', 'info', 'commit-graphs', 'commit-graph-chain'), 'x\n'); },
-      () => { mkdirSync(join(common, 'objects', 'pack'), { recursive: true }); writeFileSync(join(common, 'objects', 'pack', 'multi-pack-index'), 'MIDX'); },
-      () => writeFileSync(join(common, 'objects', 'pack', 'pack-1.bitmap'), 'b'),
-      () => writeFileSync(join(common, 'objects', 'pack', 'pack-1.promisor'), ''),
+      () => writeFileSync(join(common, 'objects', 'info', 'http-alternates'), 'https://example.invalid/objects\n'),
     ];
     // Each plant changes the hash (fs only); one full snapshot pair shows the compare reports it.
     const before = snapshotRepo(exec, root);
@@ -182,7 +260,19 @@ describe('the snapshot sees what steers ancestry (M2)', () => {
       expect(now, String(p)).not.toBe(last);
       last = now;
     }
-    expect(compareSnapshots(before, snapshotRepo(exec, root))).toContain('the object store metadata changed (shallow, objects/info/: commit-graph, commit-graphs/, alternates; objects/pack/multi-pack-index, *.bitmap, *.promisor)');
+    expect(compareSnapshots(before, snapshotRepo(exec, root))).toContain('the object store metadata changed (shallow, objects/info/alternates, objects/info/http-alternates)');
+  });
+
+  it("the user's own commit-graph, multi-pack-index and bitmap writes in the main checkout do not park (M-E)", () => {
+    commitEmpty('two');
+    const before = snapshotRepo(exec, root);
+    git('commit-graph', 'write', '--reachable');
+    git('repack', '-adb', '--write-midx');
+    const common = join(root, '.git');
+    expect(existsSync(join(common, 'objects', 'info', 'commit-graph')) || existsSync(join(common, 'objects', 'info', 'commit-graphs'))).toBe(true);
+    expect(existsSync(join(common, 'objects', 'pack', 'multi-pack-index'))).toBe(true);
+    expect(objectStoreMetaHash(common)).toBe(before.objectMeta);
+    expect(compareSnapshots(before, snapshotRepo(exec, root))).toEqual([]);
   });
 
   it('a baseline from an older release (no objectMeta) is not compared on it; an unchanged store passes', () => {
