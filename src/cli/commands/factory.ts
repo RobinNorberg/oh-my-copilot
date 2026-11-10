@@ -43,7 +43,7 @@ import type { ForgeKind } from '../../forge/types.js';
 import { CopilotLaneBackend, type LaneBackend } from '../../factory/run/lane.js';
 import type { GateConfigLoader } from '../../factory/run/prepare.js';
 import {
-  acquireFactoryRepoOwner, acquireFactoryRepoOwnerForRun, defaultOwnerDeps, describeOwner, FactoryBusyError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState,
+  acquireFactoryRepoOwnerForRun, defaultOwnerDeps, describeOwner, FactoryBusyError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState,
   refuseWhileEngineRuns, runLabel, unreadableOwnerMessage, withOwnerFileLock, type HeldOwner,
   requestFactoryCancel, verifyFactoryIntegrity, type FactoryOwner, type FactoryRunKey, type FactoryRunState,
 } from '../../factory/run/state.js';
@@ -362,7 +362,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         // origin/<base>): busy (exit 6) means nothing was fetched or written. The engine uses the held lock as its own.
         let held: HeldOwner | undefined;
         if (!o.dryRun) {
-          // A `scan` holder (poll's heal scan or base sync, a read command's fetch) is waited out once (L6).
+          // A `scan` holder (poll's heal scan or base sync, a read command's fetch) is waited out (SCAN_WAIT_MS, longer than a read fetch can run: FETCH_TIMEOUT_MS).
           held = acquireFactoryRepoOwnerForRun(root, issue ?? 'next', () => new Date().toISOString());
           // The claim key before the fetch: the forge kind from the config as it is (no fetch); none on the local forge.
           try {
