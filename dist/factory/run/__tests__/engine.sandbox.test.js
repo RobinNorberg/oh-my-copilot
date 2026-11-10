@@ -37,7 +37,10 @@ describe('engine-side commit of a write lane', () => {
     it('a detect-only fix lane after the PR exists is recorded in a PR comment', async () => {
         const finding = { severity: 'major', file: 'a.ts', line: 1, summary: 'a must be b' };
         const out = await run([edit('a.ts', 'a\n'), review('request-changes', [finding]), edit('a.ts', 'b\n', sandboxOf('detect-only')), review('approve')]).done;
-        expect(out.gate?.name, out.message).toBe('merge');
+        // The merge step's human review read cannot vouch for a PR an unsandboxed lane could have touched (PR #471 M-1).
+        expect(out.gate?.name, out.message).toBe('human-review');
+        expect(out.gate?.reason).toContain(`a lane ran without the enforced sandbox (it could reach GitHub with your login)`);
+        expect(out.gate?.reason).toContain(`issue-${ISSUE}-fix-1 (sandbox detect-only`);
         const create = h.raw.find((c) => c.cmd === 'gh' && c.args.includes('create'));
         expect(readFileSync(create.args[create.args.indexOf('--body-file') + 1], 'utf8')).not.toContain('detect-only');
         const notes = h.raw.filter((c) => c.cmd === 'gh' && c.args[1] === 'comment').map((c) => readFileSync(c.args[c.args.indexOf('--body-file') + 1], 'utf8'));

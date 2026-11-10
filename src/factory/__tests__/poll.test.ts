@@ -60,7 +60,7 @@ const feedbackJson = (threads: Array<[string, string]> = [], collaboratorsMore =
     repository: {
       viewerPermission: 'WRITE', collaborators: { pageInfo: { hasNextPage: collaboratorsMore }, edges: [] },
       pullRequest: {
-        headRefOid: HEAD, latestReviews: { pageInfo: DONE, nodes: [] }, reviewRequests: { pageInfo: DONE, nodes: [] },
+        headRefOid: HEAD, latestReviews: { pageInfo: DONE, nodes: [] }, latestOpinionatedReviews: { pageInfo: DONE, nodes: [] }, reviewRequests: { pageInfo: DONE, nodes: [] },
         reviewThreads: {
           pageInfo: DONE,
           nodes: threads.map(([id, login]) => ({

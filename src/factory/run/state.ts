@@ -229,8 +229,18 @@ export interface FactoryRunState {
   mergeBounces?: number;
   /** The engine-owned prepare checkout's HEAD when the engine last left it. */
   checkoutHead?: string;
-  /** The last human feedback round consumed (sealed with the rest of the state). */
-  humanReview?: { seenAt: string; head: string; digest: string };
+  /**
+   * The last human feedback round consumed (sealed with the rest of the
+   * state): when, at which head, the digest of what the fix lane got, and
+   * the ids of the threads handed to it (at most MAX_HUMAN_THREAD_IDS).
+   */
+  humanReview?: { seenAt: string; head: string; digest: string; threadIds: string[] };
+  /**
+   * The head at which the human accepted, with `omg factory run
+   * --allow-unsandboxed-lanes`, that write lanes ran without the enforced
+   * sandbox (460-7); a new head parks again.
+   */
+  unsandboxedAck?: string;
   /** The Copilot coding agent session of an issue run whose implementer is the agent (coding-agent-lane.ts); sealed, shape-checked on load. */
   codingAgent?: CodingAgentRunRecord;
   /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */
@@ -454,13 +464,38 @@ function shapeProblem(s: Record<string, unknown>): string | null {
     const x = l as Record<string, unknown>;
     const sbx = x?.sandbox as Record<string, unknown> | undefined;
     return isStr(x?.id) && isStr(x.kind) && isStr(x.status) && isStr(x.startSha) && typeof x.maxCredits === 'number'
-      && (sbx === undefined || (typeof sbx === 'object' && sbx !== null && isStr(sbx.mode) && isCount(sbx.unsandboxedCalls)));
+      && (sbx === undefined || (typeof sbx === 'object' && sbx !== null && isStr(sbx.mode) && isCount(sbx.unsandboxedCalls)
+        && (sbx.writeNetwork === undefined || sbx.writeNetwork === 'none' || sbx.writeNetwork === 'registry')));
   })) return 'lanes';
   if (typeof s.retries !== 'object' || s.retries === null || !Object.values(s.retries).every(isCount)) return 'retries';
   if (typeof s.lostStreak !== 'object' || s.lostStreak === null) return 'lostStreak';
   if (typeof s.elapsedMs !== 'number' || !isCount(s.ciFixRounds)) return 'elapsedMs/ciFixRounds';
   if (!Array.isArray(s.history)) return 'history';
   if (!isStr(s.createdAt) || !isStr(s.updatedAt)) return 'createdAt/updatedAt';
+  return humanReviewShapeProblem(s);
+}
+
+// --- Human review fields (night 3 L2b): checked here, before the engine reads them -------------
+
+const HEX40 = /^[0-9a-f]{40}$/;
+/** Thread ids one human round may record: 100 review threads and 50 review bodies fit. */
+export const MAX_HUMAN_THREAD_IDS = 200;
+const THREAD_ID = (v: unknown): boolean => typeof v === 'string' && v.length > 0 && v.length <= 200;
+const FEEDBACK_FORGES: readonly unknown[] = ['github', 'azure-devops', 'local'];
+
+/** `humanReview`, `unsandboxedAck` and every lane's `feedback`: absent, or exactly their shape. */
+function humanReviewShapeProblem(s: Record<string, unknown>): string | null {
+  const h = s.humanReview as Record<string, unknown> | undefined;
+  if (h !== undefined && (typeof h !== 'object' || h === null || Array.isArray(h) || !isStr(h.seenAt) || !isStr(h.head) || !HEX40.test(h.head)
+    || !isStr(h.digest) || !HEX64.test(h.digest) || (h.threadIds !== undefined && (!Array.isArray(h.threadIds) || h.threadIds.length > MAX_HUMAN_THREAD_IDS || !h.threadIds.every(THREAD_ID)))
+    || Object.keys(h).some((k) => k !== 'seenAt' && k !== 'head' && k !== 'digest' && k !== 'threadIds'))) return 'humanReview';
+  if (s.unsandboxedAck !== undefined && (!isStr(s.unsandboxedAck) || !HEX40.test(s.unsandboxedAck))) return 'unsandboxedAck';
+  const lanes = s.lanes as Array<Record<string, unknown>>;
+  if (!lanes.every((l) => {
+    const f = l.feedback as Record<string, unknown> | undefined;
+    return f === undefined || (typeof f === 'object' && f !== null && !Array.isArray(f) && f.source === 'human' && FEEDBACK_FORGES.includes(f.forge)
+      && isCount(f.items) && Object.keys(f).every((k) => k === 'source' || k === 'forge' || k === 'items') && l.kind === 'fix');
+  })) return 'lanes.feedback';
   return null;
 }
 
@@ -484,6 +519,9 @@ export function parseFactoryState(path: string, key: FactoryRunKey, raw: string)
   const problem = shapeProblem(s);
   if (problem) throw new FactoryStateError(`${path} is malformed (field ${problem})`);
   if (runKeyOf(parsed as FactoryRunState) !== key) throw new FactoryStateError(`${path} is not a factory run state for ${runLabel(key)}`);
+  // A humanReview sealed before thread ids were recorded handed none.
+  const h = s.humanReview as Record<string, unknown> | undefined;
+  if (h && h.threadIds === undefined) h.threadIds = [];
   return parsed as FactoryRunState;
 }
 

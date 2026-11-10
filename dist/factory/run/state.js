@@ -239,7 +239,8 @@ function shapeProblem(s) {
         const x = l;
         const sbx = x?.sandbox;
         return isStr(x?.id) && isStr(x.kind) && isStr(x.status) && isStr(x.startSha) && typeof x.maxCredits === 'number'
-            && (sbx === undefined || (typeof sbx === 'object' && sbx !== null && isStr(sbx.mode) && isCount(sbx.unsandboxedCalls)));
+            && (sbx === undefined || (typeof sbx === 'object' && sbx !== null && isStr(sbx.mode) && isCount(sbx.unsandboxedCalls)
+                && (sbx.writeNetwork === undefined || sbx.writeNetwork === 'none' || sbx.writeNetwork === 'registry')));
     }))
         return 'lanes';
     if (typeof s.retries !== 'object' || s.retries === null || !Object.values(s.retries).every(isCount))
@@ -252,6 +253,30 @@ function shapeProblem(s) {
         return 'history';
     if (!isStr(s.createdAt) || !isStr(s.updatedAt))
         return 'createdAt/updatedAt';
+    return humanReviewShapeProblem(s);
+}
+// --- Human review fields (night 3 L2b): checked here, before the engine reads them -------------
+const HEX40 = /^[0-9a-f]{40}$/;
+/** Thread ids one human round may record: 100 review threads and 50 review bodies fit. */
+export const MAX_HUMAN_THREAD_IDS = 200;
+const THREAD_ID = (v) => typeof v === 'string' && v.length > 0 && v.length <= 200;
+const FEEDBACK_FORGES = ['github', 'azure-devops', 'local'];
+/** `humanReview`, `unsandboxedAck` and every lane's `feedback`: absent, or exactly their shape. */
+function humanReviewShapeProblem(s) {
+    const h = s.humanReview;
+    if (h !== undefined && (typeof h !== 'object' || h === null || Array.isArray(h) || !isStr(h.seenAt) || !isStr(h.head) || !HEX40.test(h.head)
+        || !isStr(h.digest) || !HEX64.test(h.digest) || (h.threadIds !== undefined && (!Array.isArray(h.threadIds) || h.threadIds.length > MAX_HUMAN_THREAD_IDS || !h.threadIds.every(THREAD_ID)))
+        || Object.keys(h).some((k) => k !== 'seenAt' && k !== 'head' && k !== 'digest' && k !== 'threadIds')))
+        return 'humanReview';
+    if (s.unsandboxedAck !== undefined && (!isStr(s.unsandboxedAck) || !HEX40.test(s.unsandboxedAck)))
+        return 'unsandboxedAck';
+    const lanes = s.lanes;
+    if (!lanes.every((l) => {
+        const f = l.feedback;
+        return f === undefined || (typeof f === 'object' && f !== null && !Array.isArray(f) && f.source === 'human' && FEEDBACK_FORGES.includes(f.forge)
+            && isCount(f.items) && Object.keys(f).every((k) => k === 'source' || k === 'forge' || k === 'items') && l.kind === 'fix');
+    }))
+        return 'lanes.feedback';
     return null;
 }
 /** Read and shape-check the state file; throws FactoryStateError on malformed content. */
@@ -278,6 +303,10 @@ export function parseFactoryState(path, key, raw) {
         throw new FactoryStateError(`${path} is malformed (field ${problem})`);
     if (runKeyOf(parsed) !== key)
         throw new FactoryStateError(`${path} is not a factory run state for ${runLabel(key)}`);
+    // A humanReview sealed before thread ids were recorded handed none.
+    const h = s.humanReview;
+    if (h && h.threadIds === undefined)
+        h.threadIds = [];
     return parsed;
 }
 /**
