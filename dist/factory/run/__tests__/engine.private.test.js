@@ -421,12 +421,9 @@ describe('factory.run.layout from the base-committed .copilot/omg.jsonc (review-
     }, T);
     it('an untrusted base (not in ship.trustedBases) is never read: its "private" is ignored and the run is shared; a trusted one is read', async () => {
         w = baseConfigWorld('{ "factory": { "run": { "layout": "private" } } }\n');
-        // Counted when the lane starts: the layout is decided before it. (#484's secret scan reads the base's
-        // factory.run.secretScan.allowPaths at the engine commit after the lane, whatever ship.trustedBases says, as on dev.)
-        let readsAtLane = -1;
-        const untrusted = lanesFor(w, [(ctx) => { readsAtLane = baseConfigReads(); return greet()(ctx); }]);
+        const untrusted = lanesFor(w, [greet()]);
         await runFactoryEngine(localOpts(w, untrusted, { runUserConfig: { ship: { trustedBases: ['dev'] } } }));
-        expect(readsAtLane).toBe(0);
+        expect(baseConfigReads()).toBe(0);
         expect(readFactoryState(w.root, LOCAL_ISSUE).layout).toBeUndefined();
         expect(untrusted.started[0].worktree).toBeUndefined();
         // Control: the same base in a new world, trusted (the defaults name main), is read and makes the run private.
@@ -439,6 +436,22 @@ describe('factory.run.layout from the base-committed .copilot/omg.jsonc (review-
         const s = readFactoryState(w.root, LOCAL_ISSUE);
         expect(s.layout).toBe(2);
         expect(trusted.started[0].worktree?.path.startsWith(work)).toBe(true);
+    }, T);
+    it('factory.run.secretScan.allowPaths committed on an untrusted base are not used: the park says why and names the ways out; on a trusted base they apply', async () => {
+        const token = ['ghp', 'Z9y8X7w6V5u4T3s2R1q0P9o8N7m6L5k4J3i2'].join('_');
+        const content = '{ "factory": { "run": { "secretScan": { "allowPaths": ["test/fixtures/**"] } } } }\n';
+        const fixture = commitFile('test/fixtures/tok.txt', `${token}\n`);
+        w = baseConfigWorld(content);
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [fixture]), { runUserConfig: { ship: { trustedBases: ['dev'] } }, secretScanUserConfig: null }));
+        expect(out.gate?.name, out.message).toBe('secret-shaped-content');
+        expect(baseConfigReads()).toBe(0);
+        expect(out.gate?.reason).toContain(`The factory.run.secretScan.allowPaths committed in .copilot/omg.jsonc were not used, because base ${BASE} is not in ship.trustedBases: rerun with --allow-secret-shapes for this head, or set allowPaths in your user config (or add ${BASE} to ship.trustedBases there).`);
+        // Control: the same base, trusted by the defaults (dev, main, master): the committed allowPaths skip the fixture.
+        rmSync(w.dir, { recursive: true, force: true });
+        w = baseConfigWorld(content);
+        const ok = await runFactoryEngine(localOpts(w, lanesFor(w, [fixture, review('approve')]), { runUserConfig: null, secretScanUserConfig: null }));
+        expect(ok.gate?.name, ok.message).not.toBe('secret-shaped-content');
+        expect(baseConfigReads()).toBeGreaterThan(0);
     }, T);
 });
 /** Ship's defaults with the one required check the local forge replaces (as engine-local-harness localTestGateConfig). */
