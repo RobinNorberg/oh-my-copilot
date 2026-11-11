@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { defaultExec } from '../../../ship/exec.js';
 import { factoryGuardExec } from '../exec.js';
 import { compareSnapshots, RESTORE_SCOPE_KEY, snapshotRepo, type RepoSnapshot } from '../review-guard.js';
-import { BENIGN_KEYS, benignKey, CONFIG_LOCKED, quarantineTamper, readTamperHold, STILL_ACTIVE, tamperHoldMessage } from '../tamper-quarantine.js';
+import { BENIGN_KEYS, benignChange, benignKey, CONFIG_LOCKED, quarantineTamper, readTamperHold, STILL_ACTIVE, tamperHoldMessage } from '../tamper-quarantine.js';
 
 const exec = factoryGuardExec(defaultExec);
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
@@ -69,6 +69,7 @@ function makeUnreadable(path: string, strict = false): boolean {
 
 describe('H1: config keys are an allowlist', () => {
   it('diff.external (a key the old denylist missed) runs on a plain `git diff`; the quarantine puts the old value back and holds, the user\'s benign key stays', () => {
+    git(root, 'config', 'remote.origin.url', 'https://example.invalid/repo.git');
     const before = snapshotRepo(exec, root);
     const marker = join(dir, 'ran.txt');
     const script = join(dir, 'ext.js');
@@ -96,15 +97,23 @@ describe('H1: config keys are an allowlist', () => {
     expect(existsSync(marker)).toBe(false);
   });
 
-  it('only allowlisted keys (user.email, a remote\'s prune option, a branch upstream): left in place, copied, no hold', () => {
+  it('only benign keys (user.email, a remote\'s prune option, `git push -u origin feature` with origin unchanged, a pull mode, a description, a removed upstream): left in place, copied, no hold', () => {
+    git(root, 'config', 'remote.origin.url', 'https://example.invalid/repo.git');
+    git(root, 'config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*');
+    git(root, 'config', 'branch.old.remote', 'origin');
+    git(root, 'config', 'branch.old.merge', 'refs/heads/old');
     const before = snapshotRepo(exec, root);
     git(root, 'config', 'user.email', 'me@example.invalid');
     git(root, 'config', 'remote.fork.prune', 'true');
-    git(root, 'config', 'branch.main.merge', 'refs/heads/main');
+    git(root, 'config', 'branch.feature.remote', 'origin');
+    git(root, 'config', 'branch.feature.merge', 'refs/heads/feature');
+    git(root, 'config', 'branch.feature.rebase', 'true');
+    git(root, 'config', 'branch.feature.description', 'my work');
+    git(root, 'config', '--unset', 'branch.old.merge');
     const configNow = readFileSync(join(common, 'config'));
     const { hold } = quarantine(before);
     expect(hold.held).toBeUndefined();
-    expect(hold.kept!.join('\n')).toMatch(/config \(only branch\.main\.merge, remote\.fork\.prune, user\.email changed: allowlisted keys that name no program; left as it is; a copy is in /);
+    expect(hold.kept!.join('\n')).toMatch(/config \(only branch\.feature\.description, branch\.feature\.merge, branch\.feature\.rebase, branch\.feature\.remote, branch\.old\.merge, \.\.\. changed: allowlisted keys that name no program; left as it is; a copy is in /);
     expect(readFileSync(join(common, 'config')).equals(configNow)).toBe(true);
     expect(readTamperHold(ledgerDir, root)).toBeNull();
   });
@@ -162,7 +171,11 @@ describe('H1: config keys are an allowlist', () => {
     expect(benignKey('remote.origin.fetch')).toBe(false);
     expect(benignKey('remote.origin.tagopt')).toBe(true);
     expect(benignKey('user.email')).toBe(true);
-    expect(benignKey('branch.feat/x.y.remote')).toBe(true);
+    expect(benignKey('branch.feat/x.y.rebase')).toBe(true);
+    // Benign by value only (benignChange), never by name.
+    expect(benignKey('branch.feat/x.y.remote')).toBe(false);
+    expect(benignKey('branch.main.pushremote')).toBe(false);
+    expect(benignKey('branch.main.merge')).toBe(false);
     expect(BENIGN_KEYS.every((b) => b.why.length > 0)).toBe(true);
     git(root, 'config', 'core.hooksPath', '.githooks');
     const before = snapshotRepo(exec, root);
@@ -170,6 +183,93 @@ describe('H1: config keys are an allowlist', () => {
     const { hold } = quarantine(before);
     expect(hold.held).toBe(true);
     expect(git(root, 'config', '--file', join(common, 'config'), '--get', 'core.hookspath')).toBe('.githooks');
+  });
+});
+
+describe('review-484c 1: a branch\'s remote, pushremote and merge are benign by value only', () => {
+  type Cfg = Record<string, string[]>;
+  const ORIGIN: Cfg = { 'remote.origin.url': ['https://example.invalid/repo.git'], 'remote.origin.fetch': ['+refs/heads/*:refs/remotes/origin/*'] };
+  const cfg = (c: Cfg) => new Map(Object.entries(c));
+  // [name, key, was, now, benign]
+  const cases: [string, string, Cfg, Cfg, boolean][] = [
+    ['`git push -u origin feature`: remote', 'branch.feature.remote', ORIGIN, { ...ORIGIN, 'branch.feature.remote': ['origin'], 'branch.feature.merge': ['refs/heads/feature'] }, true],
+    ['`git push -u origin feature`: merge', 'branch.feature.merge', ORIGIN, { ...ORIGIN, 'branch.feature.remote': ['origin'], 'branch.feature.merge': ['refs/heads/feature'] }, true],
+    ['pushremote naming the unchanged origin', 'branch.main.pushremote', ORIGIN, { ...ORIGIN, 'branch.main.pushremote': ['origin'] }, true],
+    ['rebase', 'branch.main.rebase', ORIGIN, { ...ORIGIN, 'branch.main.rebase': ['true'] }, true],
+    ['description', 'branch.main.description', ORIGIN, { ...ORIGIN, 'branch.main.description': ['x'] }, true],
+    ['a removed remote', 'branch.main.remote', { ...ORIGIN, 'branch.main.remote': ['origin'] }, ORIGIN, true],
+    ['a removed merge', 'branch.main.merge', { ...ORIGIN, 'branch.main.merge': ['refs/heads/main'] }, ORIGIN, true],
+    ['remote=../evil', 'branch.main.remote', ORIGIN, { ...ORIGIN, 'branch.main.remote': ['../evil'] }, false],
+    ['remote=a URL', 'branch.main.remote', ORIGIN, { ...ORIGIN, 'branch.main.remote': ['https://host.invalid/x'] }, false],
+    ['remote=.', 'branch.main.remote', ORIGIN, { ...ORIGIN, 'branch.main.remote': ['.'] }, false],
+    ['remote=a Windows path', 'branch.main.remote', ORIGIN, { ...ORIGIN, 'branch.main.remote': ['C:\\evil'] }, false],
+    ['remote=a remote added in the same run', 'branch.main.remote', ORIGIN, { ...ORIGIN, 'remote.sink.url': ['../sink'], 'branch.main.remote': ['sink'] }, false],
+    ['remote=origin, but origin\'s url changed in the same run', 'branch.main.remote', ORIGIN, { ...ORIGIN, 'remote.origin.url': ['../evil'], 'branch.main.remote': ['origin'] }, false],
+    ['remote=origin, but origin\'s fetch changed in the same run', 'branch.main.remote', ORIGIN, { ...ORIGIN, 'remote.origin.fetch': ['+refs/replace/*:refs/replace/*'], 'branch.main.remote': ['origin'] }, false],
+    ['remote=origin, but origin got a pushurl in the same run', 'branch.main.pushremote', ORIGIN, { ...ORIGIN, 'remote.origin.pushurl': ['../sink'], 'branch.main.pushremote': ['origin'] }, false],
+    ['remote naming a remote with no url before the run', 'branch.main.remote', { 'remote.bare.fetch': ['+refs/heads/*:refs/remotes/bare/*'] }, { 'remote.bare.fetch': ['+refs/heads/*:refs/remotes/bare/*'], 'branch.main.remote': ['bare'] }, false],
+    ['merge=refs/replace/x', 'branch.main.merge', { ...ORIGIN, 'branch.main.remote': ['origin'] }, { ...ORIGIN, 'branch.main.remote': ['origin'], 'branch.main.merge': ['refs/replace/x'] }, false],
+    ['merge=refs/remotes/...', 'branch.main.merge', { ...ORIGIN, 'branch.main.remote': ['origin'] }, { ...ORIGIN, 'branch.main.remote': ['origin'], 'branch.main.merge': ['refs/remotes/origin/main'] }, false],
+    ['merge with `..`', 'branch.main.merge', { ...ORIGIN, 'branch.main.remote': ['origin'] }, { ...ORIGIN, 'branch.main.remote': ['origin'], 'branch.main.merge': ['refs/heads/../x'] }, false],
+    ['merge on a branch whose remote is `.`', 'branch.main.merge', { ...ORIGIN, 'branch.main.remote': ['.'] }, { ...ORIGIN, 'branch.main.remote': ['.'], 'branch.main.merge': ['refs/heads/x'] }, false],
+    ['merge on a branch with no remote', 'branch.main.merge', ORIGIN, { ...ORIGIN, 'branch.main.merge': ['refs/heads/main'] }, false],
+    ['pushremote=../sink', 'branch.main.pushremote', ORIGIN, { ...ORIGIN, 'branch.main.pushremote': ['../sink'] }, false],
+    ['pushremote=.', 'branch.main.pushremote', ORIGIN, { ...ORIGIN, 'branch.main.pushremote': ['.'] }, false],
+    ['two remote values (git takes the last)', 'branch.main.remote', ORIGIN, { ...ORIGIN, 'branch.main.remote': ['origin', '../evil'] }, false],
+    ['an unknown branch key', 'branch.main.mergeoptions', ORIGIN, { ...ORIGIN, 'branch.main.mergeoptions': ['--no-verify'] }, false],
+  ];
+  it.each(cases)('%s', (_name, key, was, now, benign) => {
+    expect(benignChange(key, cfg(was), cfg(now))).toBe(benign);
+  });
+
+  it('A: branch.main.remote=<another repository> + merge: a plain `git pull` on a copy merges the lane\'s commit; the quarantine puts both keys back and holds', () => {
+    const evil = join(dir, 'evil');
+    git(dir, 'clone', '-q', root, evil);
+    git(evil, 'config', 'user.email', 't@example.invalid');
+    git(evil, 'config', 'user.name', 't');
+    writeFileSync(join(evil, 'a.txt'), 'EVIL\n');
+    git(evil, 'commit', '-q', '-am', 'evil');
+
+    const before = snapshotRepo(exec, root);
+    git(root, 'config', 'branch.main.remote', evil.replace(/\\/g, '/'));
+    git(root, 'config', 'branch.main.merge', 'refs/heads/main');
+    // Control: a copy of the repository as the lane left it; the user's next plain pull brings the lane's content.
+    const control = join(dir, 'control');
+    cpSync(root, control, { recursive: true });
+    git(control, 'pull', '-q', '--ff-only');
+    expect(git(control, 'show', 'HEAD:a.txt')).toBe('EVIL');
+
+    const { hold } = quarantine(before);
+    expect(hold.held).toBe(true);
+    expect(hold.restored.join('\n')).toMatch(/^config \(branch\.main\.merge, branch\.main\.remote put back\)$/m);
+    expect(() => git(root, 'config', '--file', join(common, 'config'), '--get', 'branch.main.remote')).toThrow();
+    expect(() => git(root, 'config', '--file', join(common, 'config'), '--get', 'branch.main.merge')).toThrow();
+    expect(readTamperHold(ledgerDir, root)).not.toBeNull();
+    expect(() => git(root, 'pull', '-q', '--ff-only')).toThrow();
+    expect(git(root, 'show', 'HEAD:a.txt')).toBe('a');
+  });
+
+  it('C: a lane branch + branch.main.remote=. + merge=refs/heads/<lane branch>: a plain `git pull` on a copy merges it; the quarantine puts both keys back and holds', () => {
+    const before = snapshotRepo(exec, root);
+    git(root, 'checkout', '-q', '-b', 'lane-x');
+    writeFileSync(join(root, 'a.txt'), 'LOCALEVIL\n');
+    git(root, 'commit', '-q', '-am', 'lane');
+    git(root, 'checkout', '-q', 'main');
+    git(root, 'config', 'branch.main.remote', '.');
+    git(root, 'config', 'branch.main.merge', 'refs/heads/lane-x');
+    const control = join(dir, 'control');
+    cpSync(root, control, { recursive: true });
+    git(control, 'pull', '-q', '--ff-only');
+    expect(git(control, 'show', 'HEAD:a.txt')).toBe('LOCALEVIL');
+
+    const { hold } = quarantine(before);
+    expect(hold.held).toBe(true);
+    expect(hold.restored.join('\n')).toMatch(/^config \(branch\.main\.merge, branch\.main\.remote put back\)$/m);
+    expect(() => git(root, 'config', '--file', join(common, 'config'), '--get', 'branch.main.remote')).toThrow();
+    expect(() => git(root, 'config', '--file', join(common, 'config'), '--get', 'branch.main.merge')).toThrow();
+    expect(readTamperHold(ledgerDir, root)).not.toBeNull();
+    expect(() => git(root, 'pull', '-q', '--ff-only')).toThrow();
+    expect(git(root, 'show', 'HEAD:a.txt')).toBe('a');
   });
 });
 
@@ -317,5 +417,18 @@ describe('H3, L5, L6: each item on its own', () => {
     expect(readFileSync(join(common, 'hooks', 'pre-commit'), 'utf8')).toBe('#!/bin/sh\necho mine\n');
     expect(hold.restored).toContain('hooks/pre-commit');
     expect(git(root, 'status', '--porcelain')).toBe('');
+  });
+
+  it('review-484c 8: a hold that cannot be written is not reported as held', () => {
+    const before = snapshotRepo(exec, root);
+    writeFileSync(join(common, 'hooks', 'post-checkout'), '#!/bin/sh\necho planted\n', { mode: 0o755 });
+    // holds/ cannot be made: a file stands where the folder goes.
+    mkdirSync(ledgerDir, { recursive: true });
+    writeFileSync(join(ledgerDir, 'holds'), 'not a folder');
+    const { hold } = quarantine(before);
+    expect(existsSync(join(common, 'hooks', 'post-checkout'))).toBe(false);
+    expect(hold.held).toBe(false);
+    expect(hold.holdNotWritten).toBeTruthy();
+    expect(hold.failed).toMatch(/the hold could not be written: /);
   });
 });

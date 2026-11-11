@@ -17,10 +17,11 @@
  *   are written back (an added file is removed); a deleted file is restored.
  * - config, config.worktree, every worktrees/<id>/config.worktree and the
  *   submodules' config files: saved into the quarantine always. When every
- *   added, changed or removed key is on BENIGN_KEYS (keys that name no
- *   program and redirect nothing: user.*, a branch's upstream, a remote's
- *   tag and prune options...) the file stays as it is: that is what a
- *   user's own `git push -u` or `git config user.email` during the run
+ *   added, changed or removed key is benign (BENIGN_KEYS: keys that name no
+ *   program and redirect nothing, user.*, a remote's tag and prune
+ *   options...; a branch's remote, pushremote and merge only by value, see
+ *   benignChange) the file stays as it is: that is what a user's own
+ *   `git push -u origin x` or `git config user.email` during the run
  *   writes. Any other key counts as program-running or redirecting (an
  *   allowlist, so a key git adds later, or one like diff.external, is never
  *   missed; a remote's url, pushurl and fetch are not on it, review-484b 1:
@@ -100,8 +101,10 @@ export interface TamperHold {
   /** How to put the user's own change back, per item (also undo.txt in the quarantine). */
   undo?: string[];
   failed?: string;
-  /** True when the hold was set; false: only listed and copied. */
+  /** True when the hold was set; false: only listed and copied, or the hold file could not be written (holdNotWritten). */
   held?: boolean;
+  /** Why the hold file could not be written, when a hold was due: no run is held. */
+  holdNotWritten?: string;
 }
 
 /**
@@ -111,7 +114,8 @@ export interface TamperHold {
  */
 export const BENIGN_KEYS: readonly { re: RegExp; why: string }[] = [
   { re: /^user\.[^.]+$/, why: 'who commits (name, email, the signing key name): the signing program is gpg.*, which is not on this list' },
-  { re: /^branch\..+\.(?:remote|pushremote|merge|rebase|description)$/, why: 'a branch\'s upstream, push remote, pull mode and description (`git push -u`, `git branch -u`); none names a program' },
+  // Not remote, pushremote or merge (review-484c 1): those are benign only by their values, see benignChange.
+  { re: /^branch\..+\.(?:rebase|description)$/, why: 'a branch\'s pull mode and description; neither names a program or a place' },
   { re: /^branch\..+\.vscode-merge-base$/, why: 'written by VS Code when it creates a branch; git never reads it' },
   // Not url, pushurl or fetch (review-484b 1): they send the user's next push to a host the lane picks, or fetch its
   // commits and refs (refs/replace/* too) into the user's repository on the next plain `git fetch` or `git pull`.
@@ -121,6 +125,56 @@ export const BENIGN_KEYS: readonly { re: RegExp; why: string }[] = [
 ];
 
 export const benignKey = (key: string): boolean => BENIGN_KEYS.some((b) => b.re.test(key));
+
+/** A config file's values per key, in order (null for a bare boolean); keys as `git config --list` prints them. */
+export type ConfigValues = ReadonlyMap<string, readonly (string | null)[]>;
+
+const BRANCH_UPSTREAM = /^branch\.(.+)\.(remote|pushremote|merge)$/;
+/** A local branch ref: no `..`, no control character, nothing else git refuses in a ref name. */
+const HEADS_REF = /^refs\/heads\/(?!.*\.\.)[^\p{Cc}\s~^:?*[\\]+$/u;
+
+const sameValues = (a: readonly (string | null)[] | undefined, b: readonly (string | null)[] | undefined): boolean => JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
+
+/**
+ * `name` is a plain remote name (not a path, a URL or `.`) of a remote that
+ * had a url in the snapshot's config, and whose url, pushurl and fetch are
+ * the same now: a pull or push through it reaches only what the user had
+ * configured before the run.
+ */
+function unchangedOldRemote(name: string | null | undefined, was: ConfigValues, now: ConfigValues): boolean {
+  if (typeof name !== 'string' || /^\.*$/.test(name) || /[/:\\\s\p{Cc}]/u.test(name)) return false;
+  if (!was.get(`remote.${name}.url`)?.length) return false;
+  return ['url', 'pushurl', 'fetch'].every((k) => sameValues(was.get(`remote.${name}.${k}`), now.get(`remote.${name}.${k}`)));
+}
+
+/**
+ * Whether one key that was added, changed or removed between `was` (the
+ * snapshot's config) and `now` is benign. Pure.
+ *
+ * branch.<b>.remote, pushremote and merge decide what the user's next plain
+ * `git pull` merges and where a plain `git push` goes, and git takes a path,
+ * a URL or `.` (this repository) there with no remote.* key changed
+ * (review-484c 1). So they are benign by value only:
+ * - removed: it can only take a default away from a pull or a push;
+ * - remote / pushremote: the plain name of a remote that existed before the
+ *   run and is unchanged (unchangedOldRemote): the user's own
+ *   `git push -u origin x`;
+ * - merge: every value is refs/heads/<name> and the branch's remote as git
+ *   reads it now passes the rule above: a pull can then only bring what the
+ *   user's own unchanged remote serves.
+ * Every other key is benign only when on BENIGN_KEYS.
+ */
+export function benignChange(key: string, was: ConfigValues, now: ConfigValues): boolean {
+  const m = BRANCH_UPSTREAM.exec(key);
+  if (!m) return benignKey(key);
+  const values = now.get(key);
+  if (!values?.length) return true;
+  if (m[2] === 'merge') {
+    const remote = now.get(`branch.${m[1]}.remote`);
+    return values.every((v) => typeof v === 'string' && HEADS_REF.test(v)) && remote?.length === 1 && unchangedOldRemote(remote[0], was, now);
+  }
+  return values.length === 1 && unchangedOldRemote(values[0], was, now);
+}
 
 /** `[key, value]` entries of a config file, in order, as git parses it (`--file` follows no include); value null for a bare boolean. */
 function configEntries(bytes: Buffer | null, tmp: string): [string, string | null][] | null {
@@ -140,20 +194,25 @@ function configEntries(bytes: Buffer | null, tmp: string): [string, string | nul
   }
 }
 
-const valuesByKey = (entries: [string, string | null][]): Map<string, string> => {
+const valuesByKey = (entries: [string, string | null][]): Map<string, (string | null)[]> => {
   const m = new Map<string, (string | null)[]>();
   for (const [k, v] of entries) m.set(k, [...(m.get(k) ?? []), v]);
-  return new Map([...m].map(([k, vs]) => [k, JSON.stringify(vs)]));
+  return m;
 };
 
-/** The keys whose values (in order) differ, added and removed ones included; null when a file does not parse. */
-function changedKeys(before: Buffer | null, after: Buffer | null, tmp: string): string[] | null {
-  const was = configEntries(before, tmp);
-  const now = configEntries(after, tmp);
-  if (!was || !now) return null;
-  const a = valuesByKey(was);
-  const b = valuesByKey(now);
-  return [...new Set([...a.keys(), ...b.keys()])].filter((k) => a.get(k) !== b.get(k)).sort();
+/**
+ * The keys whose values (in order) differ, added and removed ones included,
+ * and those of them that are not benign (benignChange, on both files'
+ * values); null when a file does not parse.
+ */
+function changedKeys(before: Buffer | null, after: Buffer | null, tmp: string): { keys: string[]; held: string[] } | null {
+  const wasEntries = configEntries(before, tmp);
+  const nowEntries = configEntries(after, tmp);
+  if (!wasEntries || !nowEntries) return null;
+  const was = valuesByKey(wasEntries);
+  const now = valuesByKey(nowEntries);
+  const keys = [...new Set([...was.keys(), ...now.keys()])].filter((k) => !sameValues(was.get(k), now.get(k))).sort();
+  return { keys, held: keys.filter((k) => !benignChange(k, was, now)) };
 }
 
 /**
@@ -419,9 +478,9 @@ export function quarantineTamper(i: QuarantineInput): TamperHold {
           const current = decode(is)!;
           quarantine();
           mkdirSync(tmp, { recursive: true });
-          const keys = changedKeys(old, current, tmp);
-          if (keys !== null) {
-            const program = keys.filter((k) => !benignKey(k));
+          const diff = changedKeys(old, current, tmp);
+          if (diff !== null) {
+            const { keys, held: program } = diff;
             if (program.length === 0) {
               let copy = '';
               try { copy = `; a copy is in ${saveBytes(rel, current)}`; } catch { /* the file stays; nothing to undo */ }
@@ -440,7 +499,7 @@ export function quarantineTamper(i: QuarantineInput): TamperHold {
               if (!locked.equals(current)) writeFileSync(to, locked);
               const keysNow = changedKeys(old, locked, tmp);
               if (keysNow !== null) {
-                putBack = keysNow.filter((k) => !benignKey(k));
+                putBack = keysNow.held;
                 if (putBack.length === 0) { exact = true; return locked; }
               }
               const out = keysNow !== null && old !== null ? putKeysBack(locked, old, putBack, tmp) : null;
@@ -555,6 +614,9 @@ export function quarantineTamper(i: QuarantineInput): TamperHold {
   try {
     writeTamperHold(i.ledgerDir, i.root, hold);
   } catch (error) {
+    // No hold file exists, so nothing holds the next run (review-484c 8): the caller says so.
+    hold.held = false;
+    hold.holdNotWritten = errText(error);
     hold.failed = `${hold.failed ? `${hold.failed}; ` : ''}the hold could not be written: ${errText(error)}`;
   }
   return hold;
@@ -606,7 +668,7 @@ export function tamperHoldMessage(ledgerDir: string, root: string): string | nul
   const path = tamperHoldPath(ledgerDir, root);
   if (hold === 'unreadable') return `a tamper hold is set on this checkout (${path}, unreadable), so no factory run starts here; check the repository's .git (hooks, config, info, refs), then run ${RELEASE_TAMPER_COMMAND}`;
   const active = hold.active ?? [];
-  return `a tamper hold is set on this checkout since ${hold.at} (run ${hold.run} parked at ${hold.gate}), so no factory run starts here${hold.quarantine ? `; what changed in .git is in ${hold.quarantine}` : ''}${active.length ? `; ${active.length} item(s) are ${STILL_ACTIVE}: ${active.slice(0, 3).join('; ')}` : ''}. Your own change during that run (a git config key, \`git remote add\` or \`git remote set-url\` included, a hook husky or an editor installed) triggers this too: put it back with the cp command in undo.txt in that folder if it was yours. Then run ${RELEASE_TAMPER_COMMAND}`;
+  return `a tamper hold is set on this checkout since ${hold.at} (run ${hold.run} parked at ${hold.gate}), so no factory run starts here${hold.quarantine ? `; what changed in .git is in ${hold.quarantine}` : ''}${active.length ? `; ${active.length} item(s) are ${STILL_ACTIVE}: ${active.slice(0, 3).join('; ')}` : ''}. Your own change during that run (a git config key, \`git remote add\` or \`git remote set-url\` included, and a branch's upstream set to a path, a URL, "." or a remote added during the run, a hook husky or an editor installed) triggers this too: put it back with the cp command in undo.txt in that folder if it was yours. Then run ${RELEASE_TAMPER_COMMAND}`;
 }
 
 /** `release --tamper`: the hold's report lines, after the hold file is removed; null when there was none. */
