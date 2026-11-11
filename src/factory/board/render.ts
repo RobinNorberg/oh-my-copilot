@@ -60,6 +60,7 @@ export function runLine(r: BoardRow, prefix: string): string {
   parts.push(...flagText(r));
   const lines = [`  ${parts.join('  ')}`];
   if (run?.gate) lines.push(chalk.gray(`        ${run.gate.reason}`));
+  if (run?.gate?.detail) lines.push(chalk.gray(`        local only: ${run.gate.detail}`));
   if (run?.privateDir) lines.push(chalk.gray(`        layout private: ${run.privateDir}`));
   return lines.join('\n');
 }

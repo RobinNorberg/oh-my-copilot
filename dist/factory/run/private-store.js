@@ -1167,7 +1167,33 @@ function deleteImportRef(ctx, user, ref, expected) {
         if (!SHA.test(old))
             return false;
     }
-    return git(ctx, user, [`--git-dir=${user}`, 'update-ref', '--no-deref', '-d', ref, old]).status === 0;
+    if (git(ctx, user, [`--git-dir=${user}`, 'update-ref', '--no-deref', '-d', ref, old]).status !== 0)
+        return false;
+    pruneEmptyImportDirs(user, ref);
+    return true;
+}
+/**
+ * L10: git leaves the empty `refs/omg-import/<run>/` and `refs/omg-import/`
+ * dirs behind once their last loose ref is deleted. Each goes only while it
+ * is a plain empty directory (rmdir removes nothing else; a link is left).
+ */
+function pruneEmptyImportDirs(user, ref) {
+    const parts = ref.split('/');
+    for (const n of [parts.length - 1, parts.length - 2]) {
+        const dir = join(user, ...parts.slice(0, n));
+        // git may have removed the run's dir itself already.
+        if (!lexists(dir))
+            continue;
+        try {
+            const st = lstatSync(dir);
+            if (st.isSymbolicLink() || !st.isDirectory() || readdirSync(dir).length > 0)
+                return;
+            rmdirSync(dir);
+        }
+        catch {
+            return;
+        }
+    }
 }
 function importChecked(input, ref, ctx) {
     const { userGitDir: user, privateRepo: p, sha, startSha } = input;

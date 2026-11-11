@@ -108,6 +108,14 @@ export interface FactoryGate {
    * definition, the one definition `--allow-gate-change` may accept.
    */
   definition?: string;
+  /**
+   * H1 (review-490): output of the PR's own code for this park (the failing
+   * tests, a redacted and bounded output tail, a link target it chose).
+   * Local only: run status, the board and the CLI show it; the issue
+   * comment, PR notes, outcome posts and every other forge write never read
+   * it (they get `reason`), because the PR's code chooses what it prints.
+   */
+  detail?: string;
 }
 
 export interface FactoryFinding {
@@ -462,7 +470,7 @@ export function moveTo(state: FactoryRunState, to: FactoryPhase, note: string, n
 }
 
 /** Park at a named human gate; the phase stays so a rerun re-evaluates it. */
-export function setGate(state: FactoryRunState, name: string, reason: string, now: string, extra: Pick<FactoryGate, 'definition'> = {}): FactoryRunState {
+export function setGate(state: FactoryRunState, name: string, reason: string, now: string, extra: Pick<FactoryGate, 'definition' | 'detail'> = {}): FactoryRunState {
   return {
     ...state,
     gate: { name, reason, at: now, ...extra },
@@ -521,6 +529,8 @@ export function runRemote(state: Pick<FactoryRunState, 'remote'>): string {
 
 const isStr = (v: unknown): v is string => typeof v === 'string';
 const HEX64 = /^[0-9a-f]{64}$/;
+/** The bound of FactoryGate.detail (the engine writes at most about 3 KB). */
+export const GATE_DETAIL_MAX_CHARS = 4_000;
 const isCount = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
 
 function shapeProblem(s: Record<string, unknown>): string | null {
@@ -535,6 +545,8 @@ function shapeProblem(s: Record<string, unknown>): string | null {
   if (s.gateChangeApproved !== undefined && (s.forgeKind !== 'local' || !isStr(s.gateChangeApproved) || !HEX64.test(s.gateChangeApproved))) return 'gateChangeApproved';
   const gateDef = (s.gate as { definition?: unknown } | undefined)?.definition;
   if (gateDef !== undefined && (s.forgeKind !== 'local' || !isStr(gateDef) || !HEX64.test(gateDef))) return 'gate.definition';
+  const gateDetail = (s.gate as { detail?: unknown } | undefined)?.detail;
+  if (gateDetail !== undefined && (!isStr(gateDetail) || gateDetail.length > GATE_DETAIL_MAX_CHARS)) return 'gate.detail';
   if (s.prepareChecks !== undefined && s.prepareChecks !== 'auto' && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr)))) return 'prepareChecks';
   if (s.trackerStage !== undefined && !(PROGRESS_STAGES as readonly unknown[]).includes(s.trackerStage)) return 'trackerStage';
   if (s.codingAgent !== undefined && (s.kind === 'ci-heal' || codingAgentRecordProblem(s.codingAgent) !== null)) return 'codingAgent';

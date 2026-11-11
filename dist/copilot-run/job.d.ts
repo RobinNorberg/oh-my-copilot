@@ -61,6 +61,14 @@ export declare const WORKTREE_TEAM = "copilot-run";
  * DISABLE_OMC would not allow.
  */
 export declare const STOP_CONTINUATION_SKIP_TOKEN = "persistent-mode,workflow-drift-guard,code-simplifier";
+/**
+ * The OMC_SKIP_HOOKS entries that turn off the project-memory hooks in a
+ * session the host commits for (omg factory lanes): they write
+ * `.omg/project-memory.json`, your home path in it, into the lane's
+ * worktree (first live test L5/L9). The engine's staging skips `.omg/`
+ * runtime files anyway (lane-commit.ts isOmcRuntimePath).
+ */
+export declare const PROJECT_MEMORY_SKIP_TOKEN = "project-memory-session,project-memory-posttool";
 export type CopilotRunIsolation = 'worktree' | 'none';
 export type CopilotRunStatus = 'starting' | 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled';
 /** `write` (default): the worker policy. `review`: no write tool, and no git command that moves or rewrites the tree. */

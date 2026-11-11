@@ -44,6 +44,33 @@ describe('omg factory setup: GitHub', () => {
         expect(r.preview).toEqual([{ id: 7, title: 'Add the export button', url: 'https://example.test/7', readiness: READINESS_PLACEHOLDER }]);
         expect(existsSync(userFile(w))).toBe(false);
     });
+    it('L1: writes ship.base from origin (dev when origin has it, else its default branch), keeps a configured one, and says so when neither is known', async () => {
+        const mainOnly = githubWorld();
+        mainOnly.answers['git symbolic-ref --quiet --short refs/remotes/origin/HEAD'] = { status: 0, stdout: 'origin/main\n' };
+        const r1 = await run(mainOnly, { intake: 'label:factory', yes: true, json: true });
+        expect(r1.exitCode, r1.error).toBe(0);
+        expect(read(projectFile(mainOnly)).ship).toEqual({ base: 'main' });
+        expect(r1.notes.join('\n')).toMatch(/base branch main \(ship\.base, detected: origin's default branch\)/);
+        expect(r1.notes.join('\n')).toMatch(/only on main once it is committed there/);
+        // L2: the next step.
+        expect(r1.notes.join('\n')).toMatch(/next: commit .*omg\.jsonc and get it onto main \(a PR into main\); until then omg factory check and run ignore its factory\.forge and factory\.progress/);
+        const withDev = githubWorld();
+        withDev.answers['git rev-parse --verify --quiet refs/remotes/origin/dev'] = { status: 0, stdout: 'a'.repeat(40) };
+        withDev.answers['git symbolic-ref --quiet --short refs/remotes/origin/HEAD'] = { status: 0, stdout: 'origin/main\n' };
+        await run(withDev, { intake: 'label:factory', yes: true, json: true });
+        expect(read(projectFile(withDev)).ship).toEqual({ base: 'dev' });
+        const configured = githubWorld();
+        mkdirSync(join(configured.root, '.copilot'), { recursive: true });
+        writeFileSync(projectFile(configured), '{ "ship": { "base": "trunk" } }\n');
+        configured.answers['git symbolic-ref --quiet --short refs/remotes/origin/HEAD'] = { status: 0, stdout: 'origin/main\n' };
+        await run(configured, { intake: 'label:factory', yes: true, json: true });
+        expect(read(projectFile(configured)).ship).toEqual({ base: 'trunk' });
+        const unknown = githubWorld();
+        const r4 = await run(unknown, { intake: 'label:factory', yes: true, json: true });
+        expect(r4.exitCode, r4.error).toBe(0);
+        expect(read(projectFile(unknown)).ship).toBeUndefined();
+        expect(r4.notes.join('\n')).toMatch(/no base branch detected \(origin has no dev branch and refs\/remotes\/origin\/HEAD is not set; git remote set-head origin --auto sets it\): set ship\.base/);
+    });
     it('--dry-run writes nothing and creates no label, but shows the diff and the preview', async () => {
         const w = githubWorld();
         const r = await run(w, { intake: 'milestone:v5.18', dryRun: true, json: true });

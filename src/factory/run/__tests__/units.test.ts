@@ -1,11 +1,11 @@
-import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { parseProgressLog } from '../../../lib/agent-progress.js';
 import { assertLaneCreditCap, DEFAULT_FACTORY_RUN_LIMITS, nextLaneCap, resolveFactoryRunLimits, runCreditsExceeded } from '../budget.js';
-import { ciFixPrompt, conflictFixPrompt, fenceFor, findPlanLink, fixPrompt, hasAcceptanceCriteria, implementPrompt, issueAuthorTrusted, oneLine, reviewPrompt } from '../engine.js';
+import { ciFailureTail, nodeModulesWriteDenied, sandboxIncompatibleAdvice, ciFixPrompt, conflictFixPrompt, fenceFor, findPlanLink, fixPrompt, hasAcceptanceCriteria, implementPrompt, issueAuthorTrusted, oneLine, reviewPrompt } from '../engine.js';
 import { ghRepoArg } from '../../../forge/github/gh.js';
 import { shipyardKeySearch } from '../../../forge/types.js';
 import { assertFactoryCommand, factoryGuardExec, FactorySafetyError, hardenedGitExec, type TrackerWriteContext } from '../exec.js';
@@ -26,7 +26,8 @@ import {
   type FactoryRunState,
 } from '../state.js';
 import { gitIn } from './fake-lanes.js';
-import { linkNodeModules, unlinkNodeModules } from '../prepare.js';
+import { GATE_CACHE_DIRS, GATE_TREE_FILE_MAX_BYTES, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, unlinkNodeModules } from '../prepare.js';
+import { nodeModulesTreeProblem } from '../../../copilot-run/sandbox.js';
 
 const SHA = '0123456789abcdef0123456789abcdef01234567';
 const block = (o: unknown) => `Review done.\n\n\`\`\`json\n${JSON.stringify(o)}\n\`\`\`\n`;
@@ -812,6 +813,24 @@ describe('gates timeout config', () => {
   });
 });
 
+describe('L7: the ci-failed park tail', () => {
+  it('names where it failed, the failing tests and a redacted, visible, bounded output tail', () => {
+    const detail = ['noise', ...Array.from({ length: 20 }, (_, i) => `line ${i}`), `token ${'ghp_'}${'a'.repeat(36)}`, 'esc \u001b[31mred\u001b[0m', 'x'.repeat(500)].join('\n');
+    const { where, detail: tail } = ciFailureTail({ source: 'prepare', startSha: 'a'.repeat(40), checks: ['prepare tests'], tests: ['src/a.test.ts > adds'], detail });
+    expect(where).toBe('; the failure is from the prepare checks on this host (the OS sandbox when gates are enforced), not from the forge CI');
+    // H1: the tests and the tail are the local detail; the forge-bound part never carries them.
+    expect(where).not.toContain('adds');
+    expect(tail).toContain('failing tests: src/a.test.ts > adds');
+    expect(tail).toContain('; output tail: ');
+    expect(tail).not.toContain('noise');
+    expect(tail).not.toContain('a'.repeat(36));
+    expect(tail).not.toContain('\u001b');
+    expect(tail).not.toContain('\n');
+    expect(tail.length).toBeLessThan(1_800);
+    expect(ciFailureTail({ source: 'ci', startSha: 'a'.repeat(40), checks: ['build'], tests: [] })).toEqual({ where: '', detail: '' });
+  });
+});
+
 describe('the prepare checkout\'s node_modules link', () => {
   const dirs: string[] = [];
   afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -826,13 +845,97 @@ describe('the prepare checkout\'s node_modules link', () => {
     return { root, checkout };
   }
 
-  it('unlinkNodeModules removes the link linkNodeModules made and never its target', () => {
+  const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+  const unlinkOne = (p: string) => { try { unlinkSync(p); } catch { rmdirSync(p); } };
+
+  it('unlinkNodeModules removes the tree linkNodeModules made and never its target', () => {
     const { root, checkout } = setup();
     linkNodeModules(root, checkout);
     expect(existsSync(join(checkout, 'node_modules', 'typescript', 'package.json'))).toBe(true);
     unlinkNodeModules(root, checkout);
     expect(existsSync(join(checkout, 'node_modules'))).toBe(false);
     expect(readFileSync(join(root, 'node_modules', 'typescript', 'package.json'), 'utf-8')).toBe('{}\n');
+  });
+
+  it('L4: builds a real node_modules dir with one link per top-level entry (scopes and .bin whole) and fresh per-run cache dirs', () => {
+    const { root, checkout } = setup();
+    const nm = join(root, 'node_modules');
+    for (const d of ['@scope/pkg', '.bin', '.vite/deps', '.cache/babel-loader', '.pnpm/x']) mkdirSync(join(nm, d), { recursive: true });
+    writeFileSync(join(nm, '@scope', 'pkg', 'index.js'), 'scoped\n');
+    writeFileSync(join(nm, '.bin', 'tsc'), 'shim\n');
+    writeFileSync(join(nm, '.vite', 'deps', 'old.js'), 'yours\n');
+    writeFileSync(join(nm, '.package-lock.json'), '{}\n');
+    linkNodeModules(root, checkout);
+    const tree = join(checkout, 'node_modules');
+    expect(lstatSync(tree).isSymbolicLink()).toBe(false);
+    expect(lstatSync(tree).isDirectory()).toBe(true);
+    for (const name of ['typescript', '@scope', '.bin', '.pnpm']) {
+      expect(lstatSync(join(tree, name)).isSymbolicLink()).toBe(true);
+      expect(realpathSync.native(join(tree, name))).toBe(realpathSync.native(join(nm, name)));
+    }
+    expect(readFileSync(join(tree, '@scope', 'pkg', 'index.js'), 'utf-8')).toBe('scoped\n');
+    expect(readFileSync(join(tree, '.bin', 'tsc'), 'utf-8')).toBe('shim\n');
+    // Your caches are never linked in: fresh empty dirs, writable without touching yours.
+    for (const name of ['.vite', '.cache']) {
+      expect(lstatSync(join(tree, name)).isSymbolicLink()).toBe(false);
+      expect(readdirSync(join(tree, name))).toEqual([]);
+    }
+    expect(existsSync(join(tree, '.vitest'))).toBe(true);
+    // A cache the tool creates fresh lands in the tree, not in yours.
+    mkdirSync(join(tree, '.vite', 'vitest'), { recursive: true });
+    writeFileSync(join(tree, '.vite', 'vitest', 'results.json'), '{}');
+    expect(existsSync(join(nm, '.vite', 'vitest'))).toBe(false);
+    expect(lstatSync(join(tree, '.package-lock.json')).isFile()).toBe(true);
+    unlinkNodeModules(root, checkout);
+    expect(existsSync(tree)).toBe(false);
+    expect(readFileSync(join(nm, '.vite', 'deps', 'old.js'), 'utf-8')).toBe('yours\n');
+    expect(readFileSync(join(nm, '@scope', 'pkg', 'index.js'), 'utf-8')).toBe('scoped\n');
+    expect(readFileSync(join(nm, '.bin', 'tsc'), 'utf-8')).toBe('shim\n');
+  });
+
+  it('L4: removal never follows a link, one planted in a cache dir or re-pointed included; the marker in the target survives', () => {
+    const { root, checkout } = setup();
+    const outside = join(root, '..', 'outside');
+    mkdirSync(outside);
+    writeFileSync(join(outside, 'marker.txt'), 'keep\n');
+    linkNodeModules(root, checkout);
+    const tree = join(checkout, 'node_modules');
+    symlinkSync(outside, join(tree, '.vite', 'planted'), linkType);
+    unlinkOne(join(tree, 'typescript'));
+    symlinkSync(outside, join(tree, 'typescript'), linkType);
+    unlinkNodeModules(root, checkout);
+    expect(existsSync(tree)).toBe(false);
+    expect(readFileSync(join(outside, 'marker.txt'), 'utf-8')).toBe('keep\n');
+    expect(readFileSync(join(root, 'node_modules', 'typescript', 'package.json'), 'utf-8')).toBe('{}\n');
+  });
+
+  it('L4: replaces the single junction of an older release with the tree; leaves a tree already there', () => {
+    const { root, checkout } = setup();
+    symlinkSync(join(root, 'node_modules'), join(checkout, 'node_modules'), linkType);
+    linkNodeModules(root, checkout);
+    expect(lstatSync(join(checkout, 'node_modules')).isSymbolicLink()).toBe(false);
+    expect(existsSync(join(checkout, 'node_modules', '.vite'))).toBe(true);
+    writeFileSync(join(checkout, 'node_modules', '.vite', 'run.json'), '{}');
+    linkNodeModules(root, checkout);
+    expect(existsSync(join(checkout, 'node_modules', '.vite', 'run.json'))).toBe(true);
+    unlinkNodeModules(root, checkout);
+    expect(existsSync(join(root, 'node_modules', 'typescript', 'package.json'))).toBe(true);
+  });
+
+  it('L4 M4: nodeModulesTreeProblem accepts the engine tree and refuses a re-pointed or added link', () => {
+    const { root, checkout } = setup();
+    const outside = join(root, '..', 'secret');
+    mkdirSync(outside);
+    linkNodeModules(root, checkout);
+    const target = join(root, 'node_modules');
+    expect(nodeModulesTreeProblem(checkout, target)).toEqual({ problem: null, linked: true });
+    symlinkSync(outside, join(checkout, 'node_modules', 'evil'), linkType);
+    expect(nodeModulesTreeProblem(checkout, target).problem).toMatch(/evil points to .*secret, not .*evil the engine linked/);
+    unlinkOne(join(checkout, 'node_modules', 'evil'));
+    unlinkOne(join(checkout, 'node_modules', 'typescript'));
+    symlinkSync(join(target, '.bin'), join(checkout, 'node_modules', 'typescript'), linkType);
+    expect(nodeModulesTreeProblem(checkout, target).problem).toMatch(/typescript points to/);
+    unlinkNodeModules(root, checkout);
   });
 
   it('leaves a real node_modules directory and a link to anything else', () => {
@@ -846,5 +949,64 @@ describe('the prepare checkout\'s node_modules link', () => {
     symlinkSync(join(other.root, 'elsewhere'), join(other.checkout, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
     unlinkNodeModules(other.root, other.checkout);
     expect(existsSync(join(other.checkout, 'node_modules'))).toBe(true);
+  });
+
+  it('M1 (review-490): .tmp is a fresh per-run dir (create-vite tsBuildInfoFile), yours is never linked', () => {
+    const { root, checkout } = setup();
+    mkdirSync(join(root, 'node_modules', '.tmp'));
+    writeFileSync(join(root, 'node_modules', '.tmp', 'tsconfig.app.tsbuildinfo'), 'yours\n');
+    linkNodeModules(root, checkout);
+    const tmp = join(checkout, 'node_modules', '.tmp');
+    expect(GATE_CACHE_DIRS).toContain('.tmp');
+    expect(lstatSync(tmp).isSymbolicLink()).toBe(false);
+    expect(readdirSync(tmp)).toEqual([]);
+    writeFileSync(join(tmp, 'tsconfig.app.tsbuildinfo'), 'run\n');
+    expect(readFileSync(join(root, 'node_modules', '.tmp', 'tsconfig.app.tsbuildinfo'), 'utf-8')).toBe('yours\n');
+    unlinkNodeModules(root, checkout);
+    expect(existsSync(join(checkout, 'node_modules'))).toBe(false);
+  });
+
+  it('M3 (review-490): with the marker deleted every link of the tree is still unlinked, never followed; the outside marker survives', () => {
+    const { root, checkout } = setup();
+    const outside = join(root, '..', 'outside');
+    mkdirSync(outside);
+    writeFileSync(join(outside, 'marker.txt'), 'keep\n');
+    linkNodeModules(root, checkout);
+    const tree = join(checkout, 'node_modules');
+    symlinkSync(outside, join(tree, '.vite', 'planted'), linkType);
+    rmSync(join(tree, GATE_TREE_MARKER));
+    expect(gateTreeHasLinks(checkout)).toBe(true);
+    unlinkNodeModules(root, checkout);
+    expect(gateTreeHasLinks(checkout)).toBe(false);
+    expect(existsSync(join(tree, 'typescript'))).toBe(false);
+    expect(existsSync(join(tree, '.vite', 'planted'))).toBe(false);
+    // A link-free dir is left to the caller's own removal; nothing outside lost a file.
+    rmSync(tree, { recursive: true });
+    expect(readFileSync(join(outside, 'marker.txt'), 'utf-8')).toBe('keep\n');
+    expect(readFileSync(join(root, 'node_modules', 'typescript', 'package.json'), 'utf-8')).toBe('{}\n');
+  });
+
+  it('L3 (review-490): a top-level file over the size bound is not copied into the tree', () => {
+    const { root, checkout } = setup();
+    writeFileSync(join(root, 'node_modules', '.package-lock.json'), '{}\n');
+    writeFileSync(join(root, 'node_modules', 'big.bin'), Buffer.alloc(GATE_TREE_FILE_MAX_BYTES + 1));
+    const notes: string[] = [];
+    linkNodeModules(root, checkout, (m) => notes.push(m));
+    expect(existsSync(join(checkout, 'node_modules', '.package-lock.json'))).toBe(true);
+    expect(existsSync(join(checkout, 'node_modules', 'big.bin'))).toBe(false);
+    expect(notes.join('\n')).toMatch(/big\.bin .*not copied/);
+    unlinkNodeModules(root, checkout);
+  });
+
+  it('M1: a permission error under node_modules in the base tail names that dir instead of the registry advice', () => {
+    expect(nodeModulesWriteDenied("error TS5033: Could not write file 'C:\\w\\base-x\\node_modules\\.prisma\\client\\x.d.ts': EPERM: operation not permitted")).toBe('node_modules/.prisma');
+    expect(nodeModulesWriteDenied("Error: EPERM: operation not permitted, open 'C:\\w\\base-x\\node_modules\\.astro\\types.d.ts'")).toBe('node_modules/.astro');
+    expect(nodeModulesWriteDenied("EACCES: permission denied, mkdir '/w/base/node_modules/@scope/tool/cache'")).toBe('node_modules/@scope/tool');
+    expect(nodeModulesWriteDenied('npm ERR! network request failed')).toBeUndefined();
+    const advice = sandboxIncompatibleAdvice("EROFS: read-only file system, open '/w/node_modules/.prisma/x'");
+    expect(advice).toContain('cannot write node_modules/.prisma');
+    expect(advice).toContain('.tmp');
+    expect(advice).not.toContain('writeNetwork');
+    expect(sandboxIncompatibleAdvice(undefined)).toContain('writeNetwork "registry"');
   });
 });

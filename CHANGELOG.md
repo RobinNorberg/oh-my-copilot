@@ -4,6 +4,33 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+# oh-my-copilot v5.25.1
+
+## [5.25.1] - 2026-11-11
+
+### Fixed
+
+- **A create-vite TypeScript build failed in the gate sandbox (review-490 M1).** `node_modules/.tmp` (tsc's `tsBuildInfoFile` in the create-vite templates) is a fresh per-run dir; a base calibration that hits EPERM/EACCES/EROFS under `node_modules` names the dir in the park instead of the registry advice.
+- **A busy file during the gate tree's removal turned a verdict into a step error (review-490 M2).** The removal warns; the calibration result stands and the checkout is re-linked.
+- **Lane commits dropped tracked `.omg/` files (review-490 L1).** Only untracked runtime files are skipped. Top-level `node_modules` files over 16 MiB are no longer copied into the gate tree (L3).
+
+- **Sandboxed prepare checks failed every Vite/vitest repository (first live GitHub test, L4).** All tests passed, then vitest's results-cache write to `node_modules/.vite` hit the read-only `node_modules` junction (`EPERM`), the run counted a test failure and spent the ci-fix round; the base calibration had passed only because it ran `vitest --version`. The prepare checkout and the base calibration now get a per-run `node_modules` tree (one link per top-level entry of yours, fresh `.cache`, `.vite`, `.vite-temp` and `.vitest` dirs), and vitest's calibration loads its config in that tree. See REFERENCE "The gate's node_modules".
+- **Lanes committed `.omg/project-memory.json` (L5).** The engine's staging now skips everything under `.omg/` except `.omg/skills/`; a lane that changed only those files left no changes. Factory lanes also run with the project-memory hooks off.
+- **`omg factory setup` on GitHub or Azure DevOps assumed `dev` (L1).** It now writes `ship.base` when no config names one: origin's `dev`, else origin's default branch; when neither is known it says so. Setup and the "ignoring ... from the working-tree project config" warnings name the next step: commit `.copilot/omg.jsonc` on the base (L2).
+- **A park after a rerun ignored the PR's human review (L8).** A park the run hits again after a rerun (prepare, CI, gates) names the open trusted review threads and change requests on the PR, and that the human fix round starts at the merge step. No fix lane starts before then.
+- **The `ci-failed` park showed no output (L7).** It now says when the failure came from the prepare checks on this host, and shows the failing tests and a bounded, redacted output tail in `status`, `board` and the CLI (local only, never on the forge: H1 below).
+- **`omg factory check` said "prepare checks: none" without a reason (L3).** It now names each built-in check the base asks for that is skipped and what to run (`npm ci`, or fetch the base).
+- **An empty `.git/refs/omg-import` dir stayed in your clone after a private-layout import (L10).** It goes with the last import ref.
+- **`run clean` after `run cancel` on a parked run only refused (L11).** Cancel and clean now name the command that finishes the cancel (`omg factory run <n>`, no lane starts).
+
+### Security
+
+- **The PR's own output never reaches the forge (review-490 H1).** The failing tests and the output tail of a `ci-failed` park, the output of a failed sandboxed `npm ci` (`gate-install-needed`) and the link target of a re-pointed `node_modules` link (`lane-tampered`) are the park's local detail (`gate.detail` in the sealed run state): `omg factory run status`, `board` and the CLI show it; the issue comment, PR notes and outcome posts carry only the check names and where to see the output, in every sandbox mode. The PR's code chooses what it prints, and in the gate sandbox it can read files such as credential stores on hosts that cannot deny paths.
+- **A deleted marker no longer leaves the gate tree's links (review-490 M3).** Every link in a real `node_modules` dir of an engine checkout is unlinked before removal, marker or not.
+
+- **PR code can no longer write your `node_modules` through the gate (L4 fix).** Only your `node_modules` itself is granted to the gate sandbox, read-only; each link of the per-run tree must point at `<your node_modules>/<its name>`, or the run parks at `lane-tampered` (review-483 M4 kept). The tree is removed links first, never followed.
+- **No home path in lane commits (L9).** `.omg/project-memory.json` carried an absolute local path with the Windows user name into the PR history; it is no longer written in lane worktrees nor committed.
+
 # oh-my-copilot v5.25.0
 
 ## [5.25.0] - 2026-11-11

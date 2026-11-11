@@ -96,6 +96,14 @@ export interface FactoryGate {
      * definition, the one definition `--allow-gate-change` may accept.
      */
     definition?: string;
+    /**
+     * H1 (review-490): output of the PR's own code for this park (the failing
+     * tests, a redacted and bounded output tail, a link target it chose).
+     * Local only: run status, the board and the CLI show it; the issue
+     * comment, PR notes, outcome posts and every other forge write never read
+     * it (they get `reason`), because the PR's code chooses what it prints.
+     */
+    detail?: string;
 }
 export interface FactoryFinding {
     severity: 'blocker' | 'major' | 'minor' | 'nit';
@@ -415,7 +423,7 @@ export declare function createFactoryState(input: {
 /** Move to `to` (clearing any gate), appending history. Terminal phases never move. */
 export declare function moveTo(state: FactoryRunState, to: FactoryPhase, note: string, now: string): FactoryRunState;
 /** Park at a named human gate; the phase stays so a rerun re-evaluates it. */
-export declare function setGate(state: FactoryRunState, name: string, reason: string, now: string, extra?: Pick<FactoryGate, 'definition'>): FactoryRunState;
+export declare function setGate(state: FactoryRunState, name: string, reason: string, now: string, extra?: Pick<FactoryGate, 'definition' | 'detail'>): FactoryRunState;
 /**
  * The tracker progress stage of a run (factory forges design §7): a merge
  * gate or the merge phase is ready-to-merge, any other gate and failed are
@@ -433,6 +441,8 @@ export declare function verifyFactoryIntegrity(state: FactoryRunState): boolean;
 export declare function forgeResumeProblem(state: Pick<FactoryRunState, 'forgeKind' | 'issue' | 'kind' | 'heal' | 'repoUrl'>, resolved: ForgeKind, resolvedRepoUrl?: string): string | null;
 /** The git remote of a run: `origin` unless the state seals the local forge's `omg-local`. */
 export declare function runRemote(state: Pick<FactoryRunState, 'remote'>): string;
+/** The bound of FactoryGate.detail (the engine writes at most about 3 KB). */
+export declare const GATE_DETAIL_MAX_CHARS = 4000;
 /** Thread ids one human round may record: 100 review threads and 50 review bodies fit. */
 export declare const MAX_HUMAN_THREAD_IDS = 200;
 /** Read and shape-check the state file; throws FactoryStateError on malformed content. */

@@ -92,6 +92,11 @@ describe('omg factory run CLI', () => {
     out = [];
     expect(await cli(d, 'cancel', String(ISSUE))).toBe(0);
     expect(factoryCancelRequested(h.root, ISSUE)).toBe(true);
+    // L11: the parked run's cancel and clean name the command that finishes the cancel.
+    expect(out.join('\n')).toContain(`no engine works on a parked run, so finish the cancel with omg factory run ${ISSUE} (no lane starts), then omg factory run clean ${ISSUE}`);
+    out = [];
+    expect(await cli(d, 'clean', String(ISSUE))).toBe(1);
+    expect(out.join('\n')).toContain(`has a cancel requested but not finished (phase merge, awaiting-human: merge): run omg factory run ${ISSUE} to finish the cancel (no lane starts), then omg factory run clean ${ISSUE} again`);
     out = [];
     expect(await cli(d, 'status', String(ISSUE))).toBe(0);
     expect(out.join('\n')).toMatch(/cancel requested/);

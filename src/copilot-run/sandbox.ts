@@ -16,7 +16,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, posix, resolve, win32 } from 'node:path';
 
 import { userConfigLayers } from '../ship/config.js';
@@ -314,6 +314,45 @@ function sameRealPath(real: string, want: string, platform: NodeJS.Platform): bo
   return platform === 'win32' ? real.toLowerCase() === w.toLowerCase() : real === w;
 }
 
+/**
+ * Why `<worktree>/node_modules` must not be granted, or null. `target` is the
+ * engine-recorded node_modules (review-483 M4). A single link must resolve
+ * to it (older releases). A real directory is the engine's per-run tree
+ * (factory/run/prepare.ts linkNodeModules): each top-level link in it must
+ * point at `<target>/<its own name>` exactly, so a link the PR's code
+ * re-pointed or added (to your home, your checkout, a git dir) is refused,
+ * never granted. Plain dirs and files in it are the checkout's own
+ * (read-write anyway). `linked`: the tree uses `target` at all.
+ */
+export function nodeModulesTreeProblem(worktree: string, target: string, platform: NodeJS.Platform = process.platform): { problem: string | null; linked: boolean } {
+  const nm = join(worktree, 'node_modules');
+  let st;
+  try { st = lstatSync(nm); } catch { return { problem: null, linked: false }; }
+  if (st.isSymbolicLink()) {
+    let real: string;
+    try { real = realpathSync.native(nm); } catch (error) { return { problem: `${nm} is a link that cannot be resolved (${error instanceof Error ? error.message : String(error)})`, linked: false }; }
+    return sameRealPath(real, target, platform) ? { problem: null, linked: true } : { problem: `${nm} resolves to ${real}, not your node_modules ${target} (the only target the engine links)`, linked: false };
+  }
+  if (!st.isDirectory()) return { problem: null, linked: false };
+  const P = platform === 'win32' ? win32 : posix;
+  const same = (a: string, b: string) => (platform === 'win32' ? P.resolve(a).toLowerCase() === P.resolve(b).toLowerCase() : P.resolve(a) === P.resolve(b));
+  let linked = false;
+  for (const name of readdirSync(nm)) {
+    const p = join(nm, name);
+    let link: string;
+    try {
+      if (!lstatSync(p).isSymbolicLink()) continue;
+      link = readlinkSync(p);
+    } catch (error) {
+      return { problem: `${p} cannot be read (${error instanceof Error ? error.message : String(error)})`, linked: false };
+    }
+    const to = P.resolve(P.dirname(p), link);
+    if (!same(to, join(target, name))) return { problem: `${p} points to ${to}, not ${join(target, name)} the engine linked`, linked: false };
+    linked = true;
+  }
+  return { problem: null, linked };
+}
+
 /** The target of `<worktree>/node_modules` when it is a junction or symlink (read-only for a write session). */
 function nodeModulesLinkTarget(worktree: string): string | null {
   const nm = join(worktree, 'node_modules');
@@ -439,9 +478,14 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
   if (isUnderRoot(ctx.jobDir, ctx.worktree, ctx.platform)) {
     throw new Error(`the job dir ${ctx.jobDir} lies inside the lane-writable worktree ${ctx.worktree}; use isolation "worktree"`);
   }
-  const nm = nodeModulesLinkTarget(ctx.worktree);
-  if (nm && ctx.nodeModulesTarget !== undefined && !sameRealPath(nm, ctx.nodeModulesTarget, ctx.platform)) {
-    throw new Error(`the node_modules link in ${ctx.worktree} resolves to ${nm}, not ${ctx.nodeModulesTarget} the engine linked; it is not granted`);
+  let nm: string | null;
+  if (ctx.nodeModulesTarget === undefined) nm = nodeModulesLinkTarget(ctx.worktree);
+  else {
+    // The engine's link or per-run tree: only the engine-recorded target is granted (read-only), never a link's own target.
+    const tree = nodeModulesTreeProblem(ctx.worktree, ctx.nodeModulesTarget, ctx.platform);
+    if (tree.problem) throw new Error(`the node_modules in ${ctx.worktree} is not as the engine linked it (${tree.problem}); it is not granted`);
+    nm = null;
+    if (tree.linked) try { nm = realpathSync.native(ctx.nodeModulesTarget); } catch { /* nothing to grant */ }
   }
   const filesystem: SandboxConfig['userPolicy']['filesystem'] = {
     readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],

@@ -6,7 +6,7 @@
  * engine's push from it. Real git in temp dirs; no gh, az or copilot.
  */
 import { createHash } from 'node:crypto';
-import { appendFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -16,6 +16,7 @@ import type { Exec } from '../../../ship/exec.js';
 import { cleanFactoryRun, privateRunLockPath } from '../clean.js';
 import { EXIT_AWAITING_HUMAN, runFactoryEngine, type FactoryEngineOptions } from '../engine.js';
 import { GATE_INSTALL_GATE, REPO_GUARD_GATE } from '../private-run.js';
+import { GATE_TREE_MARKER } from '../prepare.js';
 import type { SandboxRunRequest } from '../sandbox-exec.js';
 import { readFactoryState, requestFactoryCancel } from '../state.js';
 import { readTamperHold } from '../tamper-quarantine.js';
@@ -113,8 +114,9 @@ describe('factory run with factory.run.layout "private"', () => {
     }
     expect(w.gateRuns.map((r) => r.cwd)).toEqual([join(s.privateDir!, 'w', 'prep')]);
     expect(existsSync(join(w.root, '.omg', 'team'))).toBe(false);
-    // The prepare checkout links your node_modules (the lockfile is the base's).
-    expect(lstatSync(join(s.privateDir!, 'w', 'prep', 'node_modules')).isSymbolicLink()).toBe(true);
+    // The prepare checkout links your node_modules (the lockfile is the base's): the per-run tree of links (L4).
+    expect(lstatSync(join(s.privateDir!, 'w', 'prep', 'node_modules')).isDirectory()).toBe(true);
+    expect(existsSync(join(s.privateDir!, 'w', 'prep', 'node_modules', GATE_TREE_MARKER))).toBe(true);
 
     // The user's .git: only the local forge's own remote, its tracking refs and fetch bookkeeping changed; no worktree, branch or import ref.
     // The engine's push names the mirror path, yet git on the Linux CI runner moved the omg-local tracking ref of the pushed
@@ -391,9 +393,9 @@ describe('the prepare checkout\'s node_modules link (review-483 M4)', () => {
       if (/check[12]\.mjs$/.test(args[0] ?? '')) {
         ran.push(args[0]);
         if (args[0] === 'check1.mjs') {
-          // The PR's code in the read-write checkout points the link elsewhere (temp dirs only).
+          // The PR's code in the read-write checkout moves the engine's per-run tree aside and links elsewhere (temp dirs only).
           const link = join(o!.cwd!, 'node_modules');
-          try { unlinkSync(link); } catch { rmdirSync(link); }
+          renameSync(link, `${link}.moved`);
           symlinkSync(elsewhere, link, process.platform === 'win32' ? 'junction' : 'dir');
         }
         return { status: 0, stdout: 'ok\n', stderr: '' };
@@ -404,7 +406,10 @@ describe('the prepare checkout\'s node_modules link (review-483 M4)', () => {
     const o = localOpts(w, lanesFor(w, [greet(), review('approve')]), { runUserConfig: env.user, gateConfig });
     const out = await runFactoryEngine({ ...o, exec, gateSandbox: attested(exec) });
     expect(out.gate?.name, out.message).toBe('lane-tampered');
-    expect(out.gate?.reason).toMatch(/did not run: .*node_modules resolves to .*elsewhere, not your node_modules \(the only link the engine makes there\)/);
+    // H1 (review-490): the target the PR's code chose is local detail only; the forge-bound reason never names it.
+    expect(out.gate?.reason).toMatch(/did not run: .*node_modules \(or a link in it\) is not as the engine made it/);
+    expect(out.gate?.reason).not.toMatch(/elsewhere/);
+    expect(out.gate?.detail).toMatch(/node_modules resolves to .*elsewhere, not your node_modules .*\(the only target the engine links\)/);
     expect(ran).toEqual(['check1.mjs']);
     expect(readFileSync(join(w.root, 'node_modules', 'marker.txt'), 'utf8')).toBe('yours\n');
   }, T);

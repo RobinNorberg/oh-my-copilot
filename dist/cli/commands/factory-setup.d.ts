@@ -123,5 +123,18 @@ export declare function detectLocalBase(exec: Exec, root: string, configs: Reado
     base: string;
     write: boolean;
 } | null;
+/**
+ * L1: a GitHub or Azure DevOps repository's base. A ship.base in the project
+ * or user config wins (written: false); else `dev` when origin has it, else
+ * origin's default branch (`refs/remotes/origin/HEAD`, which `git clone`
+ * sets), and setup writes it as ship.base. Null when neither is known.
+ */
+export declare function detectRemoteBase(exec: Exec, root: string, configs: ReadonlyArray<{
+    path: string;
+    config: unknown;
+}>): {
+    base: string;
+    write: boolean;
+} | null;
 export declare function factorySetupCommand(deps?: FactorySetupDeps): Command;
 //# sourceMappingURL=factory-setup.d.ts.map
