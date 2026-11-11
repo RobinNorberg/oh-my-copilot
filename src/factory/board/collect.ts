@@ -242,9 +242,10 @@ const PARKED_MERGE_STEP = /: run [^;]*, then [^;]*$/;
  * `omg factory pr review` on the local forge) replaces "no open trusted
  * threads or change requests" with a do-not-merge line. The same trusted
  * read the engine and `omg factory poll` use (ForgeReviews.reviewFeedback:
- * untrusted authors are already dropped); a forge without it keeps the text.
+ * untrusted authors are already dropped); a forge without it keeps the text,
+ * and so does --no-check off the local forge (no PR lookups).
  */
-function reviewNow(forge: Forge, s: FactoryRunState, row: BoardRow, warnings: string[]): void {
+export function reviewNow(forge: Forge, s: FactoryRunState, row: BoardRow, warnings: string[]): void {
   const gate = row.run?.gate;
   if (!gate || s.gate?.name !== 'merge' || s.pr === undefined || !s.head || !forge.reviews.reviewFeedback) return;
   let fb: ReturnType<NonNullable<Forge['reviews']['reviewFeedback']>>;
@@ -350,7 +351,7 @@ export function collectBoard(input: CollectBoardInput): Pick<BoardJson, 'columns
       continue;
     }
     Object.assign(row, runPart(root, s, warnings));
-    reviewNow(forge, s, row, warnings);
+    if (input.check || forge.kind === 'local') reviewNow(forge, s, row, warnings);
     if (!row.title && s.issueTitle) row.title = plainText(s.issueTitle);
     const expected = trackerStageOf(s);
     row.stage = { expected, ...(s.trackerStage ? { recorded: s.trackerStage } : {}) };
@@ -371,7 +372,7 @@ export function collectBoard(input: CollectBoardInput): Pick<BoardJson, 'columns
     if (s.forgeKind !== undefined && s.forgeKind !== config.kind) warnings.push(`omg factory board: run ${runLabel(key)} started on ${s.forgeKind}, but the forge resolves to ${config.kind}`);
     const row: BoardRow = { id: key, title: plainText(s.issueTitle ?? (s.kind === 'ci-heal' ? 'ci-heal' : '')), url: '', stage: { expected: trackerStageOf(s), ...(s.trackerStage ? { recorded: s.trackerStage } : {}) }, flags: [] };
     Object.assign(row, runPart(root, s, warnings));
-    reviewNow(forge, s, row, warnings);
+    if (input.check || forge.kind === 'local') reviewNow(forge, s, row, warnings);
     row.flags = flagsOf(config, s, row, now);
     outside.push(row);
   }

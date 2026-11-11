@@ -1394,6 +1394,16 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
         shipBlock = { ...shipBlock, advisoryChecks: [] };
       });
 
+      it('M1: a base whose committed config names no ship.requiredChecks still waits for all 19 of this repository\'s checks (never green on Test alone)', async () => {
+        shipBlock = { allowAdminMerge: true, advisoryChecks: [] };
+        checksJson = JSON.stringify([{ name: 'Test', state: 'SUCCESS', link: 'https://github.com/o/r/actions/runs/77/job/88', startedAt: '2026-10-21T10:00:00Z', completedAt: '2026-10-21T10:05:00Z' }]);
+        const result = await runRelease(clocked(), { version: V, to: 'pr', timeoutMinutes: 5 });
+        expect(result.phases[0]).toMatchObject({ status: 'blocked', note: expect.stringMatching(/CI still pending at the --timeout/) });
+        expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+        // The gate waited on this repository's list (OMG_REPOSITORY_REQUIRED_CHECKS), not the reported-checks default.
+        expect(events.some((e) => e.phase === 'pr' && /gates pending: 18 pending, 0 failed/.test(e.note ?? ''))).toBe(true);
+      });
+
       it('CI pending at the --timeout: blocked without --drive, pending (no pr record) with it', async () => {
         checksJson = inProgress();
         const plain = await runRelease(clocked(), { version: V, to: 'pr', timeoutMinutes: 5 });

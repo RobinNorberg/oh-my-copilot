@@ -113,7 +113,7 @@ export function isRequiredChecksArgs(args: readonly string[], repoArg: string | 
   const [host, owner, name] = parts;
   if (args[0] !== 'api' || args[1] !== '--hostname' || args[2].toLowerCase() !== host.toLowerCase() || args[3] !== '--method' || args[4] !== 'GET') return false;
   const m = BRANCH_PATH.exec(args[5]) ?? (commits ? COMMIT_PATH.exec(args[5]) : null);
-  return m !== null && m[1] === owner && m[2] === name;
+  return m !== null && m[1] === owner && m[2] === name && !/^\.+$/.test(m[3]);
 }
 
 function readJson(exec: Exec, args: string[], cwd?: string): unknown {

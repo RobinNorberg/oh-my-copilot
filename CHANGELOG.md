@@ -4,6 +4,22 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The factory's gates waited 90 minutes on every repository except oh-my-copilot (second live test, M1).** The built-in `ship.requiredChecks` was oh-my-copilot's own 19 CI job names. It now names nothing: with no names configured, `omg factory run` on GitHub requires the base branch's required status checks (branch protection and rulesets, read with your token) when it can read them, and otherwise every check GitHub reports for the head. All must pass. A green read waits 120 s after the newest check activity for late checks, within `factory.run.gatesTimeoutMinutes`. A head where nothing reports at all is green with the note "no CI checks are configured for this repository" in the merge park and the PR's merge comment. A configured name that never reports parks at `awaiting-human: missing-checks` with the names and where to fix them, once every other check finished, instead of waiting for `gates-timeout`. The gates heartbeat names the pending checks. `omg factory setup` on GitHub prints what the gates will require and the checks the base's latest commit reported; `omg factory check` warns when a configured name matches none of them. oh-my-copilot's own list moved to its committed `.copilot/omg.jsonc`, so its runs, `omg ship` and `omg release` require the same 19 checks as before (`omg release` falls back to them on a base without the key). On another repository, `omg ship` (no branch-protection read) now requires every reported check instead of names that never appear; Azure DevOps requires every blocking policy evaluation.
+- **The merge park said the resume command twice (M2).** A park reason that already names `omg factory run <n>` no longer gets "Resume with ..." appended.
+- **A cancelled run's comment repeated the merge command (M6).** The outcome comment and the spec rollup line of a cancelled run say where it was parked and that the PR stays as it is, without the old park reason.
+- **The board showed "no open trusted threads" after a new GitHub review thread (M4).** The board reads the review state of a merge-parked run on GitHub and Azure DevOps as it did on the local forge (not with `--no-check`, which makes no PR lookups).
+- **The park after a human fix round did not say what continues the run (M3).** It names each outdated thread (id, author, file and line), the fix round and the commit that addressed it, and that resolving the thread or replying in it continues. The engine still never resolves a human's thread, and posts no reply on it: its own reply would read as new review input.
+
+### Changed
+
+- **Write lanes run the repository's format and lint scripts (M5).** The implement and fix lane prompts name the `format`, `format:check`, `prettier` and `lint` scripts that the base commit's `package.json` defines (names only) and tell the lane to run them before it finishes. The reference shows how to add a format check to `ship.prepare.checks`.
+
+### Security
+
+- **A PR cannot turn the reported-checks gate green by deleting a CI definition.** Factory lanes may not change other CI systems' files (`.circleci/`, `.gitlab-ci.yml`, `.buildkite/`, `.travis.yml`, `Jenkinsfile`, `appveyor.yml`, `.drone.yml`, `bitbucket-pipelines.yml`, `.woodpecker/`) as they already may not change `.github/`, and the factory merge rule needs the owner for a PR that touches them, as for `.github/workflows/`. The branch-protection reads are two exact `gh api` GETs of the run's own repository in the factory, setup and check guards.
+
 # oh-my-copilot v5.25.1
 
 ## [5.25.1] - 2026-11-11

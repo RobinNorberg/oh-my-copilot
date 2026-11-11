@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resolveForgeConfig } from '../../../forge/config.js';
 import type { Forge, ForgeReviewFeedback } from '../../../forge/types.js';
 import { computeFactoryIntegrity, createFactoryState, factoryStatePath, moveTo, runKeyOf, setGate, type FactoryRunState } from '../../run/state.js';
-import { collectBoard } from '../collect.js';
+import { collectBoard, reviewNow } from '../collect.js';
 import { runLine } from '../render.js';
 
 const HEAD = 'b'.repeat(40);
@@ -64,10 +64,31 @@ describe('board/poll merge park on the local forge (F50)', () => {
     expect(runLine(row, '#')).toContain('do not merge');
   });
 
-  it('no review since the park keeps the parked text; another forge is never read', () => {
+  it('no review since the park keeps the parked text', () => {
     expect(boardWith(none).row.run!.gate!.reason).toBe(PARKED);
+  });
+
+  it('--no-check off the local forge makes no PR lookup: the parked text stays', () => {
     const gh = boardWith({ ...none, decisions: [{ author: 'x', state: 'changes-requested', at: T0 }] }, 'github');
     expect(gh.read).toEqual([]);
     expect(gh.row.run!.gate!.reason).toBe(PARKED);
+  });
+
+  it('M4: on GitHub the board reads the review state the same way (a thread posted after the park, as poll sees it)', () => {
+    const s = { ...setGate(moveTo(createFactoryState({ issue: 3, repoUrl: 'https://github.com/o/r', base: 'main' }, T0), 'merge', 'gates green', T0), 'merge', PARKED, T0), pr: 2, head: HEAD };
+    const read: Array<[number, string]> = [];
+    const forge = (fb: ForgeReviewFeedback) => ({ kind: 'github', reviews: { reviewFeedback: (pr: number, head: string) => { read.push([pr, head]); return fb; } } }) as unknown as Forge;
+    const row = { id: 3, run: { gate: { name: 'merge', reason: PARKED } } } as unknown as Parameters<typeof reviewNow>[2];
+    const warnings: string[] = [];
+    reviewNow(forge({ ...none, threads: [{ id: 'PRRT_1', author: 'robin', body: 'use a constant', file: 'src/a.ts', line: 6, at: T0 }] }), s, row, warnings);
+    expect(read).toEqual([[2, HEAD]]);
+    expect(warnings).toEqual([]);
+    const reason = row.run!.gate!.reason;
+    expect(reason).not.toContain('no open trusted threads or change requests');
+    expect(reason).toContain('human review now: 1 open review thread(s) on PR #2: do not merge; omg factory run 3 reads it');
+    expect(reason).not.toContain('run git merge');
+    const quiet = { id: 3, run: { gate: { name: 'merge', reason: PARKED } } } as unknown as Parameters<typeof reviewNow>[2];
+    reviewNow(forge(none), s, quiet, warnings);
+    expect(quiet.run!.gate!.reason).toBe(PARKED);
   });
 });
