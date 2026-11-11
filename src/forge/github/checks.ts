@@ -88,7 +88,24 @@ export function requiredChecksArgs(repoArg: string, base: string): string[][] {
   const [host, owner, name] = repoParts(repoArg) ?? [];
   if (!host) throw new Error(`not a GitHub repository argument: ${repoArg}`);
   const b = encodeURIComponent(base);
-  return [apiGet(host, `repos/${owner}/${name}/branches/${b}`), apiGet(host, `repos/${owner}/${name}/rules/branches/${b}`)];
+  return [apiGet(host, `repos/${owner}/${name}/branches/${b}`), apiGet(host, `repos/${owner}/${name}/rules/branches/${b}?per_page=100&page=1`)];
+}
+
+/** Pages read of a paginated list (rules, check suites, check runs); a longer list counts as unreadable. */
+export const MAX_API_PAGES = 10;
+
+/** `args` (one of the GETs here, ending in `page=1`) for page `page`. */
+const atPage = (args: readonly string[], page: number): string[] => [...args.slice(0, 5), args[5].replace(/page=1$/, `page=${page}`)];
+
+/**
+ * The paginated GETs of the factory's gate reads at a full commit sha:
+ * the commit's check suites and its check runs (with their app ids).
+ */
+export function gateReadArgs(repoArg: string, sha: string, what: 'check-suites' | 'check-runs'): string[] {
+  const [host, owner, name] = repoParts(repoArg) ?? [];
+  if (!host) throw new Error(`not a GitHub repository argument: ${repoArg}`);
+  if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error(`not a full commit sha: ${sha}`);
+  return apiGet(host, `repos/${owner}/${name}/commits/${sha}/${what}?per_page=100&page=1`);
 }
 
 /** The GETs of latestChecks for `ref` of `repoArg`: the commit's check runs and its combined status. */
@@ -99,8 +116,10 @@ export function commitChecksArgs(repoArg: string, ref: string): string[][] {
   return [apiGet(host, `repos/${owner}/${name}/commits/${r}/check-runs?per_page=100`), apiGet(host, `repos/${owner}/${name}/commits/${r}/status?per_page=100`)];
 }
 
-const BRANCH_PATH = /^repos\/([^/]+)\/([^/]+)\/(?:branches|rules\/branches)\/([A-Za-z0-9_.%-]+)$/;
+const BRANCH_PATH = /^repos\/([^/]+)\/([^/]+)\/(?:branches\/([A-Za-z0-9_.%-]+)|rules\/branches\/([A-Za-z0-9_.%-]+)\?per_page=100&page=(?:[1-9]|10))$/;
 const COMMIT_PATH = /^repos\/([^/]+)\/([^/]+)\/commits\/([A-Za-z0-9_.%-]+)\/(?:check-runs|status)\?per_page=100$/;
+/** The factory run's gate reads: a full sha only (the base's check names, the head's suites and runs). */
+const GATE_READ_PATH = /^repos\/([^/]+)\/([^/]+)\/commits\/([0-9a-f]{40})\/(?:(?:check-runs|status)\?per_page=100|(?:check-suites|check-runs)\?per_page=100&page=(?:[1-9]|10))$/;
 
 /**
  * True for exactly one of the GETs above on `repoArg` (the guards of
@@ -109,11 +128,27 @@ const COMMIT_PATH = /^repos\/([^/]+)\/([^/]+)\/commits\/([A-Za-z0-9_.%-]+)\/(?:c
  */
 export function isRequiredChecksArgs(args: readonly string[], repoArg: string | undefined, commits = false): boolean {
   const parts = repoParts(repoArg);
-  if (!parts || args.length !== 6) return false;
+  if (!parts) return false;
+  return pathOf(args, parts, (path) => BRANCH_PATH.exec(path) ?? (commits ? COMMIT_PATH.exec(path) : null));
+}
+
+/** The GET `args` on `parts` whose path `match` accepts for the same owner/name, with no dot-only segment. */
+function pathOf(args: readonly string[], parts: [string, string, string], match: (path: string) => RegExpExecArray | null): boolean {
   const [host, owner, name] = parts;
-  if (args[0] !== 'api' || args[1] !== '--hostname' || args[2].toLowerCase() !== host.toLowerCase() || args[3] !== '--method' || args[4] !== 'GET') return false;
-  const m = BRANCH_PATH.exec(args[5]) ?? (commits ? COMMIT_PATH.exec(args[5]) : null);
-  return m !== null && m[1] === owner && m[2] === name && !/^\.+$/.test(m[3]);
+  if (args.length !== 6 || args[0] !== 'api' || args[1] !== '--hostname' || args[2].toLowerCase() !== host.toLowerCase() || args[3] !== '--method' || args[4] !== 'GET') return false;
+  const m = match(args[5]);
+  const segment = m?.[3] ?? m?.[4];
+  return m !== null && m[1] === owner && m[2] === name && segment !== undefined && !/^\.+$/.test(segment);
+}
+
+/**
+ * True for exactly one of the factory run's gate reads on `repoArg` (the
+ * run guard): the commit-check GETs at a full sha (the base's check names)
+ * and the paginated check-suite / check-run GETs (gateReadArgs).
+ */
+export function isGateReadArgs(args: readonly string[], repoArg: string | undefined): boolean {
+  const parts = repoParts(repoArg);
+  return parts !== undefined && pathOf(args, parts, (path) => GATE_READ_PATH.exec(path));
 }
 
 function readJson(exec: Exec, args: string[], cwd?: string): unknown {
@@ -140,30 +175,99 @@ function readJson(exec: Exec, args: string[], cwd?: string): unknown {
  * check); a readable empty list is [].
  */
 export function ghRequiredChecks(exec: Exec, repoArg: string, base: string, cwd?: string): string[] | undefined {
+  return ghRequiredCheckRules(exec, repoArg, base, cwd)?.names;
+}
+
+/**
+ * ghRequiredChecks with the app each name is required from: a ruleset's
+ * `integration_id`, a classic protection check's `app_id` (absent, null or
+ * -1 = any source). A name required from two different apps keeps no app
+ * (name matching), since one check run cannot satisfy both.
+ */
+export function ghRequiredCheckRules(exec: Exec, repoArg: string, base: string, cwd?: string): { names: string[]; apps: Record<string, number> } | undefined {
   const [branchArgs, rulesArgs] = requiredChecksArgs(repoArg, base);
   const names = new Set<string>();
-  const add = (v: unknown) => { if (typeof v === 'string' && v.length > 0) names.add(v); };
+  const apps = new Map<string, number | null>();
+  const add = (v: unknown, app?: unknown) => {
+    if (typeof v !== 'string' || v.length === 0) return;
+    names.add(v);
+    const id = typeof app === 'number' && Number.isInteger(app) && app > 0 ? app : null;
+    apps.set(v, apps.has(v) && apps.get(v) !== id ? null : id);
+  };
   const branch = readJson(exec, branchArgs, cwd) as { protection?: { required_status_checks?: { contexts?: unknown; checks?: unknown } } } | undefined;
-  const rules = readJson(exec, rulesArgs, cwd);
-  if ((branch === undefined || typeof branch !== 'object') && !Array.isArray(rules)) return undefined;
+  const rules = readPages(exec, rulesArgs, cwd, (page) => (Array.isArray(page) ? page : undefined));
+  if ((branch === undefined || typeof branch !== 'object') && rules === undefined) return undefined;
   const rsc = branch?.protection?.required_status_checks;
-  for (const c of Array.isArray(rsc?.contexts) ? rsc!.contexts as unknown[] : []) add(c);
-  for (const c of Array.isArray(rsc?.checks) ? rsc!.checks as Array<{ context?: unknown }> : []) add(c?.context);
-  for (const rule of Array.isArray(rules) ? rules : []) {
+  const checks = Array.isArray(rsc?.checks) ? rsc!.checks as Array<{ context?: unknown; app_id?: unknown }> : [];
+  for (const c of Array.isArray(rsc?.contexts) ? rsc!.contexts as unknown[] : []) add(c, checks.find((k) => k?.context === c)?.app_id);
+  for (const c of checks) add(c?.context, c?.app_id);
+  for (const rule of rules ?? []) {
     const r = rule as { type?: unknown; parameters?: { required_status_checks?: unknown } };
     if (r?.type !== 'required_status_checks') continue;
     const list = r.parameters?.required_status_checks;
-    for (const c of Array.isArray(list) ? list as Array<{ context?: unknown }> : []) add(c?.context);
+    for (const c of Array.isArray(list) ? list as Array<{ context?: unknown; integration_id?: unknown }> : []) add(c?.context, c?.integration_id);
   }
-  return [...names];
+  return { names: [...names], apps: Object.fromEntries([...apps].filter((e): e is [string, number] => e[1] !== null)) };
 }
 
-/** The check names (check runs and commit statuses) GitHub reports for `ref`; undefined = unreadable. */
-export function ghCommitCheckNames(exec: Exec, repoArg: string, ref: string, cwd?: string): string[] | undefined {
+/**
+ * Every item of a paginated GET (`first` ends in `page=1`, 100 per page):
+ * `items` picks a page's list. Stops at a short page; undefined when a page
+ * is unreadable or the list is longer than MAX_API_PAGES pages.
+ */
+function readPages(exec: Exec, first: readonly string[], cwd: string | undefined, items: (page: unknown) => unknown[] | undefined): unknown[] | undefined {
+  const out: unknown[] = [];
+  for (let page = 1; page <= MAX_API_PAGES; page += 1) {
+    const list = items(readJson(exec, atPage(first, page), cwd));
+    if (list === undefined) return undefined;
+    out.push(...list);
+    if (list.length < 100) return out;
+  }
+  return undefined;
+}
+
+/** One check suite of a commit (GET commits/<sha>/check-suites). */
+export interface GhCheckSuite {
+  status: string;
+  /** The app's slug (`github-actions` for workflows); undefined when GitHub names none. */
+  app?: string;
+  /** latest_check_runs_count: the suite's check runs so far. */
+  runs: number;
+}
+
+/** The check suites GitHub lists for `sha` (gateReadArgs, paginated); undefined = unreadable. */
+export function ghCheckSuites(exec: Exec, repoArg: string, sha: string, cwd?: string): GhCheckSuite[] | undefined {
+  const raw = readPages(exec, gateReadArgs(repoArg, sha, 'check-suites'), cwd, (page) => {
+    const list = (page as { check_suites?: unknown } | undefined)?.check_suites;
+    return Array.isArray(list) ? list : undefined;
+  });
+  if (raw === undefined) return undefined;
+  const out: GhCheckSuite[] = [];
+  for (const s of raw as Array<{ status?: unknown; app?: { slug?: unknown }; latest_check_runs_count?: unknown }>) {
+    if (typeof s?.status !== 'string') return undefined;
+    out.push({ status: s.status, ...(typeof s.app?.slug === 'string' ? { app: s.app.slug } : {}), runs: typeof s.latest_check_runs_count === 'number' ? s.latest_check_runs_count : 0 });
+  }
+  return out;
+}
+
+/** The check runs GitHub lists for `sha` with their app ids (gateReadArgs, paginated); undefined = unreadable. */
+export function ghCheckRunApps(exec: Exec, repoArg: string, sha: string, cwd?: string): Array<{ name: string; appId?: number }> | undefined {
+  const raw = readPages(exec, gateReadArgs(repoArg, sha, 'check-runs'), cwd, (page) => {
+    const list = (page as { check_runs?: unknown } | undefined)?.check_runs;
+    return Array.isArray(list) ? list : undefined;
+  });
+  if (raw === undefined) return undefined;
+  return (raw as Array<{ name?: unknown; app?: { id?: unknown } }>)
+    .filter((r) => typeof r?.name === 'string')
+    .map((r) => ({ name: r.name as string, ...(typeof r.app?.id === 'number' ? { appId: r.app.id } : {}) }));
+}
+
+/** The check names (check runs and commit statuses) GitHub reports for `ref`; undefined = unreadable (with `both`: either read failed). */
+export function ghCommitCheckNames(exec: Exec, repoArg: string, ref: string, cwd?: string, both = false): string[] | undefined {
   const [runsArgs, statusArgs] = commitChecksArgs(repoArg, ref);
   const runs = readJson(exec, runsArgs, cwd) as { check_runs?: unknown } | undefined;
   const status = readJson(exec, statusArgs, cwd) as { statuses?: unknown } | undefined;
-  if (!runs && !status) return undefined;
+  if (both ? !runs || !status : !runs && !status) return undefined;
   const names = new Set<string>();
   for (const r of Array.isArray(runs?.check_runs) ? runs!.check_runs as Array<{ name?: unknown }> : []) if (typeof r?.name === 'string' && r.name) names.add(r.name);
   for (const s of Array.isArray(status?.statuses) ? status!.statuses as Array<{ context?: unknown }> : []) if (typeof s?.context === 'string' && s.context) names.add(s.context);

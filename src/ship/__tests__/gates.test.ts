@@ -124,10 +124,11 @@ describe('merge rule on recorded gh pr checks JSON', () => {
     expect(report.pending.sort()).toEqual(['Build', 'Test']);
   });
 
-  it('fails closed on unknown, cancelled and neutral states', () => {
-    for (const state of ['CANCELLED', 'NEUTRAL', 'TIMED_OUT', 'SOMETHING_NEW']) {
+  it('fails closed on unknown and cancelled states; NEUTRAL passes as GitHub protection counts it (review-493 M-1)', () => {
+    for (const state of ['CANCELLED', 'TIMED_OUT', 'STALE', 'ACTION_REQUIRED', 'SOMETHING_NEW']) {
       expect(evaluateChecks(233, withCheck('Build', { state }), CONFIG).verdict).toBe('failed');
     }
+    expect(evaluateChecks(233, withCheck('Build', { state: 'NEUTRAL' }), CONFIG).verdict).toBe('green');
   });
 
   it('a failure outranks pending checks', () => {

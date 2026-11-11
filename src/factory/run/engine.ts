@@ -57,7 +57,7 @@ import { createHash } from 'crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'path';
-import { BASE_CONFIG_PATH, configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, readBaseFile, remoteRepoMismatch, resolveTrustedBases, userConfigLayers } from '../../ship/config.js';
+import { BASE_CONFIG_PATH, configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, omgRepositoryFallback, readBaseFile, remoteRepoMismatch, resolveTrustedBases, userConfigLayers } from '../../ship/config.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT, type PrepareCheckResult, type PrepareCheckRun } from '../../ship/prepare.js';
@@ -66,8 +66,8 @@ import { nodeModulesTreeProblem, resolveGatesSandboxMode, resolveRequireDeniedPa
 import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs, type SandboxRunner, type SandboxRunRequest } from './sandbox-exec.js';
 import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
 import { driveGates } from './gates-driver.js';
-import { missingCheckHint, NO_CI_CHECKS_NOTE } from '../../ship/gates.js';
-import { ghRequiredChecks } from '../../forge/github/checks.js';
+import { missingCheckHint, NO_CI_CHECKS_NOTE, noHeadChecksText, type GateHeadReads } from '../../ship/gates.js';
+import { ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules } from '../../forge/github/checks.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
 import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText, type ReadAt, type TeamContext } from '../team/context.js';
 import { mergeComment, mergeDecision, type MergeView } from './merge-policy.js';
@@ -2400,7 +2400,7 @@ class FactoryEngine {
         return;
       }
       this.save((s) => { const { pendingCommit: _p, ...rest } = s; return rest; });
-      if (commit.refusal === 'protected') return this.gate('protected-paths', `lane ${p.laneId}: ${commit.reason}; nothing was committed or pushed`);
+      if (commit.refusal === 'protected') return this.gate('protected-paths', `lane ${p.laneId}: ${commit.reason}; nothing was committed or pushed. Rerun ${this.resume} to run the step again (the lane must leave those paths alone), or stop with ${cancelCommand(this.key)}`);
       if (commit.refusal === 'gitlink' || commit.refusal === 'escaped') return this.gate('sandbox-escaped', `${kind} lane ${p.laneId}: ${commit.reason}; nothing was committed or pushed`);
       return this.laneFailed(p.key, kind, `lane ${p.laneId}: ${commit.reason}`);
     }
@@ -2874,11 +2874,17 @@ class FactoryEngine {
       const configured = loaded.config.requiredChecks.filter((c) => c !== LOCAL_GATE_CHECK);
       if (configured.length > 0 && JSON.stringify(loaded.config.requiredChecks) !== JSON.stringify(DEFAULT_SHIP_CONFIG.requiredChecks)) this.o.warn?.(`omg factory run: the local forge ignores ship.requiredChecks ${configured.join(', ')}; the gates wait for ${LOCAL_GATE_CHECK} only`);
       loaded = { ...loaded, config: { ...loaded.config, requiredChecks: [LOCAL_GATE_CHECK], advisoryChecks: [] } };
-    } else if (loaded.config.requiredChecks.length === 0 && this.forge?.kind !== 'azure-devops') {
+    } else {
+      // This repository's PRs require its own checks even when the base's committed config predates them (only adds names).
+      loaded = { ...loaded, config: omgRepositoryFallback(loaded.config, this.state.repoUrl) };
+    }
+    if (!local && loaded.config.requiredChecks.length === 0 && this.forge?.kind !== 'azure-devops') {
       // No ship.requiredChecks: GitHub's required checks for the base when the token can read them, else every reported check.
       const repo = this.githubReadContext()?.repo;
-      const required = (repo ? ghRequiredChecks(this.exec, repo, view.baseRefName, this.o.root) : undefined) ?? [];
-      if (required.length > 0) loaded = { ...loaded, config: { ...loaded.config, requiredChecks: required, requiredChecksFrom: 'branch-protection' } };
+      const required = repo ? ghRequiredCheckRules(this.exec, repo, view.baseRefName, this.o.root) : undefined;
+      if (required && required.names.length > 0) {
+        loaded = { ...loaded, config: { ...loaded.config, requiredChecks: required.names, requiredChecksFrom: 'branch-protection', ...(Object.keys(required.apps).length > 0 ? { requiredCheckApps: required.apps } : {}) } };
+      }
     }
     if (tracking() !== before) this.rebaseRecheck();
     this.gateCfg = { baseSha: view.baseRefOid, loaded };
@@ -3916,6 +3922,7 @@ class FactoryEngine {
     const local = this.forge?.kind === 'local';
     const forge = local ? this.localGateForge(this.forge!) : this.forge;
     const deadline = this.clock() + this.o.limits.gatesTimeoutMs;
+    const reads = this.gateReads(view);
     let out: Awaited<ReturnType<typeof driveGates>>;
     for (;;) {
       if (local && !(await this.ensureLocalGate(head))) return;
@@ -3924,6 +3931,7 @@ class FactoryEngine {
         out = await driveGates({
           exec: this.exec, cwd: this.o.root, pr, head, config, known,
           ...(forge ? { forge } : {}),
+          ...(reads ? { reads } : {}),
           deadline,
           now: this.clock,
           sleep: this.o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))),
@@ -3934,7 +3942,7 @@ class FactoryEngine {
           onReport: (r, note) => {
             this.writeShip(pr, (cur) => ({ ...cur!, lastGates: { verdict: r.verdict, at: this.iso(), failed: r.failed, pending: r.pending } }));
             const named = r.pending.length > 0 ? ` (${r.pending.slice(0, 5).join(', ')}${r.pending.length > 5 ? ', ...' : ''})` : '';
-            this.progress.heartbeat('gates', `${note}; failed ${r.failed.length}, pending ${r.pending.length}${named}`, fields());
+            this.progress.heartbeat('gates', `${note}; failed ${r.failed.length}, pending ${r.pending.length}${named}${r.noHeadChecks ? `; ${noHeadChecksText(r.noHeadChecks)}` : ''}`, fields());
           },
           onWait: (note) => {
             this.reload();
@@ -3976,7 +3984,7 @@ class FactoryEngine {
         this.gate('ci-flaky', `known-flaky failures at ${at} are out of rerun budget (${out.report.failed.join(', ')}); rerun the failed jobs by hand`);
         return;
       case 'no-workflows':
-        this.gate('no-workflows', `no checks and no workflow runs exist for ${at}; push the branch with a token that triggers workflows, or close and reopen PR #${pr}`);
+        this.gate('no-workflows', `${out.report.noHeadChecks ? `${noHeadChecksText(out.report.noHeadChecks)} (head ${at})` : `no checks and no workflow runs exist for ${at}`}; push the branch with a token that triggers workflows (or enable Actions), or close and reopen PR #${pr}`);
         return;
       case 'timeout':
         this.gate('gates-timeout', `gates did not settle within factory.run.gatesTimeoutMinutes ${Math.round(this.o.limits.gatesTimeoutMs / 60_000)} at ${at}${out.report ? ` (pending: ${out.report.pending.join(', ') || 'none'})` : ''}`);
@@ -4011,7 +4019,7 @@ class FactoryEngine {
     if (ship.phase !== 'ready') throw new FactoryStepError(`ship state for PR #${pr} is ${ship.phase}, not ready`);
     if (this.humanReviewParked(pr, head, ship)) return;
     const { config, known } = this.gateConfig(view);
-    const decision = mergeDecision(this.exec, this.o.root, ship, view, config, known, this.forge);
+    const decision = mergeDecision(this.exec, this.o.root, ship, view, config, known, this.forge, this.gateReads(view));
     if (!decision.ok && decision.reasons.some((r) => r.startsWith('gates are '))) {
       // The merge rule's one-shot read and watchGates can disagree (a check flapping); bounded per run, across reruns.
       const bounces = (this.state.mergeBounces ?? 0) + 1;
@@ -4790,6 +4798,28 @@ class FactoryEngine {
   private agentChoice?: CodingAgentChoice;
 
   /** The repository-only GitHub read context (the coding agent's status read): the run's repository as intake recorded it. */
+  /**
+   * The gates' GitHub reads (GateHeadReads) on a GitHub run, through the run
+   * guard's exact shapes on the run's repository: the base commit's checks
+   * (read once per base sha), the head's check suites and check-run apps.
+   * None on the local forge and Azure DevOps.
+   */
+  private gateReads(view: MergeView): GateHeadReads | undefined {
+    const repo = this.githubReadContext()?.repo;
+    if (!repo || this.forge?.kind === 'local' || this.forge?.kind === 'azure-devops') return undefined;
+    const base = view.baseRefOid;
+    let baseChecks: { names: readonly string[] | undefined } | undefined;
+    return {
+      baseChecks: () => {
+        // An unverifiable base sha is unreadable: it counts as a base with checks (no "no CI" green).
+        baseChecks ??= { names: /^[0-9a-f]{40}$/.test(base) ? ghCommitCheckNames(this.exec, repo, base, this.o.root, true) : undefined };
+        return baseChecks.names;
+      },
+      suites: (head) => ghCheckSuites(this.exec, repo, head, this.o.root),
+      runApps: (head) => ghCheckRunApps(this.exec, repo, head, this.o.root),
+    };
+  }
+
   private githubReadContext(): GithubReadContext | undefined {
     const repo = this.state?.repoUrl ? codingAgentRepoOf(this.state.repoUrl) : undefined;
     return repo ? { repo: ghRepoArg(repo) } : undefined;

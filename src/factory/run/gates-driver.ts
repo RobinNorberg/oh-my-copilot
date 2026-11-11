@@ -19,7 +19,7 @@
 
 import type { KnownFlakyTest, ShipConfig } from '../../ship/config.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
-import { fetchWorkflowRuns, NO_WORKFLOWS_TRIGGERED, parseFailingTests, watchGates, type GateForge, type GateReport, type SettleClock } from '../../ship/gates.js';
+import { fetchWorkflowRuns, NO_WORKFLOWS_TRIGGERED, parseFailingTests, watchGates, type GateForge, type GateHeadReads, type GateReport, type SettleClock } from '../../ship/gates.js';
 import { ghJobLog } from '../../forge/github/checks.js';
 import { ghPrHead } from '../../forge/github/reviews.js';
 
@@ -49,6 +49,8 @@ export interface GatesDriverInput {
   /** A poll without an accepted read (waiting for GitHub, a stale read). */
   onWait: (note: string) => void;
   cancelled: () => boolean;
+  /** The GitHub gate reads (GateHeadReads: base checks, check suites, check-run apps); omitted = none. */
+  reads?: GateHeadReads;
   /** The forge reads (ship's GateForge); omitted = GitHub, the gh calls below. */
   forge?: GateForge;
 }
@@ -132,7 +134,7 @@ export async function driveGates(o: GatesDriverInput): Promise<GatesOutcome> {
         // A cancel lands between ship's polls, not only at the end of its window.
         watch: true, reruns: o.reruns, sleep: async (ms) => { if (o.cancelled()) throw new GatesCancelled(); await o.sleep(ms); }, now: o.now,
         ...(o.forge ? { forge: o.forge } : {}),
-        settle, stopOnMissing: true,
+        settle, stopOnMissing: true, ...(o.reads ? { reads: o.reads } : {}),
       });
     } catch (error) {
       if (error instanceof GatesCancelled) return { kind: 'cancelled' };

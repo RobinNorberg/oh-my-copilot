@@ -81,9 +81,11 @@ const KEY = String(ISSUE);
 /** The review phase: head read before the lane and on its verdict, then the review comment. */
 const REVIEW = (key: string) => [HEAD_STATE, HEAD_STATE, comment('pr', PR, key, 'review')];
 /** One gates-loop read on a fixed head (checks, runs, the head re-read), then the driver's own head and runs read. */
-const GATES_GREEN = [HEAD_STATE, CHECKS, runList('<head>'), VIEW_HEAD, HEAD_STATE, runList('<head>')];
+// The head's check suites (review-493 M-2): green needs each completed.
+const suites = (sha: string) => `gh ["api","--hostname","github.com","--method","GET","repos/o/r/commits/${sha}/check-suites?per_page=100&page=1"] cwd=<root>`;
+const GATES_GREEN = [HEAD_STATE, CHECKS, runList('<head>'), suites('<head>'), VIEW_HEAD, HEAD_STATE, runList('<head>')];
 /** The merge park: the PR view, the merge-rule gate read on that head, the PR comment with the command (the item's gate comment and its read for a parent rollup follow). */
-const MERGE_PARK = (key: string) => [MERGE_VIEW, REVIEW_READ, CHECKS, runList('<head>'), VIEW_HEAD, comment('pr', PR, key, 'merge')];
+const MERGE_PARK = (key: string) => [MERGE_VIEW, REVIEW_READ, CHECKS, runList('<head>'), suites('<head>'), VIEW_HEAD, comment('pr', PR, key, 'merge')];
 
 /** The review-feedback query as literal text: any change to REVIEW_FEEDBACK_QUERY must break this test (the query is part of the pinned gh argv). */
 const PINNED_REVIEW_FEEDBACK_QUERY =
@@ -127,7 +129,7 @@ describe('gh argv baseline: factory engine (issue run)', () => {
       ...REVIEW(KEY),
       MERGE_VIEW, READY, MERGE_VIEW,
       // Pending, then failed: one watch per window, then the driver reads the runs and the failed job's log.
-      HEAD_STATE, CHECKS, runList('<red>'), VIEW_HEAD, CHECKS, runList('<red>'), VIEW_HEAD,
+      HEAD_STATE, CHECKS, runList('<red>'), suites('<red>'), VIEW_HEAD, CHECKS, runList('<red>'), suites('<red>'), VIEW_HEAD,
       HEAD_STATE, runList('<red>'), 'gh ["run","view","--job","200","--log"] cwd=<root>',
       // The ci-fix push, a new review on the new head; prepare without a second `pr ready`.
       ...REVIEW(KEY),

@@ -255,6 +255,8 @@ export interface Harness {
      * a whole ExecResult.
      */
     reviews?: (head: string) => Record<string, unknown> | ExecResult;
+    /** Any other `gh api --hostname <h> --method GET <path>` read by path (undefined = unscripted). */
+    api?: (path: string) => ExecResult | undefined;
   };
   /** `node <script> ...` (prepare's tsc / eslint / vitest / inventory): exit 0 unless scripted. */
   node: (args: string[]) => ExecResult;
@@ -409,6 +411,8 @@ export function harness(prefix = 'omg-factory-run-'): Harness {
       const pull = { headRefOid: head, latestReviews: { pageInfo: done, nodes: [] }, latestOpinionatedReviews: { pageInfo: done, nodes: [] }, reviewRequests: { pageInfo: done, nodes: [] }, reviewThreads: { pageInfo: done, nodes: [] }, ...answer };
       return ok(JSON.stringify({ data: { viewer: { login: 'o' }, repository: { viewerPermission: 'ADMIN', collaborators: { pageInfo: done, edges: [{ permission: 'ADMIN', node: { login: 'o' } }, { permission: 'WRITE', node: { login: 'dana' } }] }, pullRequest: pull } } }));
     }
+    const read = cmd === 'gh' && args[0] === 'api' && args[3] === '--method' && args[4] === 'GET' ? h.gh.api?.(args[5]) : undefined;
+    if (read) return read;
     return { status: 1, stdout: '', stderr: `unscripted: ${key}` };
   };
   return h;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolveShipConfig, type ShipConfig } from '../config.js';
-import { applySettle, CHECK_SETTLE_MS, evaluateChecks, NO_CI_CHECKS_NOTE, NO_WORKFLOWS_TRIGGERED, watchGates, type GateForge, type GhCheck, type WorkflowRun } from '../gates.js';
+import { applySettle, CHECK_SETTLE_MS, evaluateChecks, NO_CI_CHECKS_NOTE, NO_WORKFLOWS_TRIGGERED, watchGates, type GateForge, type GateHeadReads, type GhCheck, type WorkflowRun } from '../gates.js';
 import type { Exec } from '../exec.js';
 
 const HEAD = 'a'.repeat(40);
@@ -10,6 +10,8 @@ const DEFAULT: ShipConfig = resolveShipConfig(undefined);
 const NAMED: ShipConfig = resolveShipConfig({ requiredChecks: ['check', 'lint'], advisoryChecks: [] });
 const done = (name: string, at: number, state = 'SUCCESS'): GhCheck => ({ name, state, startedAt: iso(at - 20_000), completedAt: iso(at) });
 const noExec: Exec = () => { throw new Error('no gh call expected: the forge answers'); };
+/** GitHub reads where the base commit reported no check and the head has no suite. */
+const NO_CI_BASE: GateHeadReads = { baseChecks: () => [], suites: () => [], runApps: () => undefined };
 
 /** A forge that reports `checks()` / `runs()` for HEAD on every read. */
 function forge(checks: () => GhCheck[], runs: () => WorkflowRun[] = () => []): GateForge {
@@ -54,9 +56,9 @@ describe('M1: the reported-checks rule (no ship.requiredChecks)', () => {
     expect(evaluateChecks(1, [done('check', T0), done('lint', T0, 'FAILURE')], DEFAULT).verdict).toBe('failed');
   });
 
-  it('no check and no run at all: green with the no-CI note only after the settle window, never on a read without history', async () => {
+  it('no check and no run at all: green with the no-CI note only after the settle window when the base commit reported no check either, never on a read without history', async () => {
     const c = clock();
-    const r = await watchGates({ exec: noExec, pr: 1, config: DEFAULT, known: [], headSha: HEAD, watch: true, forge: forge(() => []), ...c });
+    const r = await watchGates({ exec: noExec, pr: 1, config: DEFAULT, known: [], headSha: HEAD, watch: true, forge: forge(() => []), reads: NO_CI_BASE, ...c });
     expect(r.report.verdict).toBe('green');
     expect(r.report.noChecks).toBe(true);
     expect(r.report.pending).toEqual([]);
@@ -127,5 +129,73 @@ describe('M1: a configured (or branch-protection) name that never reports', () =
     const second = await watchGates({ exec: noExec, pr: 1, config: short, known: [], headSha: HEAD, watch: true, forge: f, stopOnMissing: true, settle, ...c });
     expect(second.report.missing).toEqual(['lint']);
     expect(c.now() - T0).toBeLessThanOrEqual(2 * 60_000 + 30_000);
+  });
+});
+
+describe('review-493 fix round 1: no-CI only when the base ran none, NEUTRAL, check suites, required apps', () => {
+  const reads = (o: Partial<GateHeadReads>): GateHeadReads => ({ ...NO_CI_BASE, ...o });
+  const short = resolveShipConfig({ watchTimeoutMinutes: 10 });
+
+  it('HIGH-1: a base with checks and a head with none stays pending past the window, saying the base ran CI', async () => {
+    const c = clock();
+    const r = await watchGates({ exec: noExec, pr: 1, config: short, known: [], headSha: HEAD, watch: true, forge: forge(() => []), reads: reads({ baseChecks: () => ['Build', 'Test', 'Lint', 'a', 'b', 'c'] }), ...c });
+    expect(r.timedOut).toBe(true);
+    expect(c.now() - T0).toBeGreaterThan(CHECK_SETTLE_MS);
+    expect(r.report.verdict).toBe('pending');
+    expect(r.report.noChecks).toBeUndefined();
+    expect(r.report.pending).toEqual([NO_WORKFLOWS_TRIGGERED]);
+    expect(r.report.noHeadChecks).toEqual({ base: ['Build', 'Test', 'Lint', 'a', 'b', 'c'] });
+    const text = r.report.suggestions.join('\n');
+    expect(text).toContain('the base commit ran CI (Build, Test, Lint, a, b, and 1 more) but nothing has reported for this head: Actions may be disabled, delayed, or the push did not trigger workflows');
+    expect(text).not.toContain(NO_CI_CHECKS_NOTE);
+  });
+
+  it('HIGH-1: a base read failure (or no GitHub reads at all) never grants "no CI"', async () => {
+    for (const r of [reads({ baseChecks: () => undefined }), undefined]) {
+      const c = clock();
+      const out = await watchGates({ exec: noExec, pr: 1, config: short, known: [], headSha: HEAD, watch: true, forge: forge(() => []), ...(r ? { reads: r } : {}), ...c });
+      expect(out.report.verdict).toBe('pending');
+      expect(out.report.noHeadChecks).toEqual({});
+      expect(out.report.suggestions.join('\n')).toContain("the base commit's checks could not be read");
+    }
+  });
+
+  it('M-1: a NEUTRAL check run passes; STALE, CANCELLED, TIMED_OUT and ACTION_REQUIRED stay failed', () => {
+    expect(evaluateChecks(1, [done('codeql', T0, 'NEUTRAL')], DEFAULT).verdict).toBe('green');
+    for (const state of ['STALE', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED']) expect(evaluateChecks(1, [done('x', T0, state)], DEFAULT).verdict).toBe('failed');
+  });
+
+  it('M-2: a queued Actions suite with no runs yet keeps the gates pending past the window', () => {
+    const green = evaluateChecks(1, [done('check', T0)], DEFAULT);
+    const late = T0 + 10 * CHECK_SETTLE_MS;
+    const r = applySettle(green, DEFAULT, late, T0, reads({ suites: () => [{ status: 'queued', app: 'github-actions', runs: 0 }] }), HEAD);
+    expect(r.verdict).toBe('pending');
+    expect(r.pending).toEqual(['check suite github-actions (queued)']);
+    // A head with nothing reported is not "no CI" while that suite is queued either.
+    const none = applySettle({ ...evaluateChecks(1, [], DEFAULT), pending: [NO_WORKFLOWS_TRIGGERED] }, DEFAULT, late, T0, reads({ suites: () => [{ status: 'in_progress', runs: 0 }] }), HEAD);
+    expect(none.verdict).toBe('pending');
+    expect(none.noChecks).toBeUndefined();
+  });
+
+  it('M-2: an idle third-party suite (queued, no runs) blocks only inside the window; an unreadable suite list keeps the window rule', () => {
+    const green = evaluateChecks(1, [done('check', T0)], DEFAULT);
+    const idle = reads({ suites: () => [{ status: 'queued', app: 'some-app', runs: 0 }, { status: 'completed', app: 'github-actions', runs: 3 }] });
+    expect(applySettle(green, DEFAULT, T0 + 30_000, T0, idle, HEAD).verdict).toBe('pending');
+    expect(applySettle(green, DEFAULT, T0 + CHECK_SETTLE_MS, T0, idle, HEAD).verdict).toBe('green');
+    // A third-party suite that is running (or has runs) blocks after the window too.
+    expect(applySettle(green, DEFAULT, T0 + CHECK_SETTLE_MS, T0, reads({ suites: () => [{ status: 'in_progress', app: 'some-app', runs: 1 }] }), HEAD).verdict).toBe('pending');
+    expect(applySettle(green, DEFAULT, T0 + CHECK_SETTLE_MS, T0, reads({ suites: () => undefined }), HEAD).verdict).toBe('green');
+  });
+
+  it('M-3: a required check bound to an app is satisfied only by a check run of that app; unreadable runs keep name matching', async () => {
+    const config = resolveShipConfig({ requiredChecks: ['build'], advisoryChecks: [] });
+    const bound = { ...config, requiredCheckApps: { build: 15368 } };
+    const run = async (r: GateHeadReads, cfg: ShipConfig) => (await watchGates({ exec: noExec, pr: 1, config: cfg, known: [], headSha: HEAD, watch: false, forge: forge(() => [done('build', T0)]), reads: r, ...clock(T0 + CHECK_SETTLE_MS) })).report;
+    const other = await run(reads({ runApps: () => [{ name: 'build', appId: 999 }] }), bound);
+    expect(other.verdict).toBe('pending');
+    expect(other.pending).toEqual(['build (required from GitHub App 15368; no check run of that app reported it)']);
+    expect((await run(reads({ runApps: () => [{ name: 'build', appId: 15368 }] }), bound)).verdict).toBe('green');
+    expect((await run(reads({ runApps: () => undefined }), bound)).verdict).toBe('green');
+    expect((await run(reads({ runApps: () => [{ name: 'build', appId: 999 }] }), config)).verdict).toBe('green');
   });
 });
