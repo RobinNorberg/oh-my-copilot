@@ -62,8 +62,8 @@ import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT } from '../../ship/prepare.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { resolveGatesSandboxMode, resolveRequireDeniedPaths } from '../../copilot-run/sandbox.js';
-import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxJobRoot, splitFileListArgs } from './sandbox-exec.js';
-import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeWorkerWorktree, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
+import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs } from './sandbox-exec.js';
+import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
 import { driveGates } from './gates-driver.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
 import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText } from '../team/context.js';
@@ -308,6 +308,8 @@ function calibrationArgs(c, dir) {
         return [script, '--version'];
     return vitest ? [script, 'run', ...files] : [script, ...files];
 }
+/** The fixed failure text of a built-in eslint or vitest check whose one changed file name the sandbox shell cannot carry. */
+export const BUILT_IN_FILE_NAME_TOO_LONG = 'a changed file name is too long for the sandbox shell';
 /**
  * A built-in eslint or vitest check over the changed files, cut into calls
  * that each fit the sandbox shell (a large PR's file list can exceed the
@@ -1594,22 +1596,29 @@ class FactoryEngine {
         if (this.protectedCache)
             return this.protectedCache;
         const problems = [];
+        const sources = [];
         let paths = [];
         try {
-            paths = configuredProtectedPaths(this.o.root, (source, error) => problems.push(`${source}: ${error}`));
+            paths = configuredProtectedPaths(this.o.root, (source, error) => {
+                sources.push(source);
+                problems.push(error.startsWith(source) ? error : `${source}: ${error}`);
+            });
         }
         catch (error) {
             problems.push(errText(error));
         }
         const problem = problems.length > 0 ? oneLine(problems.join('; '), 500) : undefined;
+        // The usual cause is a JSONC syntax error anywhere in the file, so the fix names the file, not one key.
+        const fix = sources.length > 0 ? `fix the JSON in ${oneLine(sources.join(' and '), 500)}` : 'fix the user config or .copilot/omg.jsonc';
         if (problem)
-            this.o.warn?.(`omg factory run: the configured protected paths (a non-default ship.knownFlakyFile) cannot be read (${problem}); the engine will not push until they can`);
-        this.protectedCache = { paths, ...(problem ? { problem } : {}) };
+            this.o.warn?.(`omg factory run: the configured protected paths cannot be read (${problem}); the engine will not push until they can: ${fix}`);
+        this.protectedCache = { paths, ...(problem ? { problem, fix } : {}) };
         return this.protectedCache;
     }
     /** The park when a publish cannot know the whole protected list: fail closed, never push with a protection dropped. */
     protectedPathsUnread(what, problem) {
-        this.gate('protected-paths', `the configured protected paths cannot be read (${problem}), so ${what} cannot be checked against all of them; nothing was pushed. Fix that config (ship.knownFlakyFile in the user config or .copilot/omg.jsonc), then rerun ${this.resume}`);
+        const fix = this.protectedCache?.fix ?? 'fix the user config or .copilot/omg.jsonc';
+        this.gate('protected-paths', `the configured protected paths cannot be read (${problem}), so ${what} cannot be checked against all of them; nothing was pushed. ${fix[0].toUpperCase()}${fix.slice(1)}, then rerun ${this.resume}`);
     }
     /** One fresh retry per phase key, then the named `<kind>-failed` gate. */
     laneFailed(key, kind, reason, gateName = `${kind}-failed`) {
@@ -2012,9 +2021,11 @@ class FactoryEngine {
     }
     /**
      * The prepare checkout's directory is gone (removed with rm -rf) while git
-     * still lists it: host git (hardened) prunes the entries whose directory is
-     * missing, so `worktree add` can use the path again. Nothing that exists is
-     * touched; a checkout that is there, or not listed, is left alone.
+     * still lists it: only its own admin entry (the recorded checkoutAdmin, or
+     * the one whose gitdir names the checkout) is removed, so `worktree add` can
+     * use the path again. Never `git worktree prune`: that would drop every
+     * stale entry, a user's worktree on an unmounted drive included. A
+     * checkout that is there, or not listed, is left alone.
      */
     pruneMissingCheckout(path) {
         if (existsSync(path))
@@ -2022,8 +2033,16 @@ class FactoryEngine {
         const listed = runHostGit(this.o.root, ['worktree', 'list', '--porcelain']);
         if (!listed.split(/\r?\n/).some((l) => l.startsWith('worktree ') && samePath(l.slice('worktree '.length).trim(), path)))
             return;
-        runHostGit(this.o.root, ['worktree', 'prune']);
-        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `the prepare checkout ${path} was removed by hand; git worktree prune dropped its stale entry` }] }));
+        let removed;
+        try {
+            removed = removeStaleWorktreeEntry(this.o.root, path, this.state.checkoutAdmin);
+        }
+        catch (error) {
+            throw new FactoryStepError(`the engine's prepare checkout ${path} is gone, but its git worktree entry is not one the engine can remove safely (${visibleLine(errText(error))}); inspect it with git worktree list --porcelain and remove it by hand (git worktree remove --force ${path}), then rerun ${this.resume}`);
+        }
+        if (!removed)
+            throw new FactoryStepError(`the engine's prepare checkout ${path} is gone and git still lists it, but no entry under the git dir's worktrees/ names it; remove it by hand (git worktree remove --force ${path}), then rerun ${this.resume}`);
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `the prepare checkout ${path} was removed by hand; its own stale git worktree entry was dropped (no other entry was touched)` }] }));
         this.rebaseRecheck();
     }
     /** A prepare checkout an older release made: no admin dir in the run state and no git links recorded in this process. */
@@ -2415,6 +2434,15 @@ class FactoryEngine {
             return plain('unsandboxed');
         let why = `factory.run.sandbox.gates is "ack" (${at.gates.source})`;
         if (at.gates.mode === 'enforced') {
+            // A built-in eslint or vitest part still too long after fileListParts holds one changed file name the sandbox
+            // shell cannot carry. That name is the PR's own doing, like a lint error, so a plain FAILURE of this check
+            // rather than a park: a park would hand the human an unsandboxed run of a name the PR chose, while the ci-fix
+            // lane gets the check "prepare lint" (or "prepare tests") with this fixed text as its detail and can rename
+            // the file. Never the --allow-unsandboxed-gates offer, and decided before any sandbox call for this part.
+            // Configured commands are trusted config and keep their own refusal path below.
+            if (c.kind === 'built-in' && (c.args[0] === VITEST_SCRIPT || c.args[0] === ESLINT_SCRIPT) && sandboxCommandTooLong(process.platform, c.argv, path)) {
+                return { status: 1, stdout: '', stderr: BUILT_IN_FILE_NAME_TOO_LONG };
+            }
             const r = this.o.gateSandbox
                 ? await this.o.gateSandbox({ purpose: 'prepare', argv: c.argv, exe: c.exe, args: c.args, cwd: path, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...(at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}) })
                 : { ran: false, reason: 'no OS sandbox runner was given to the engine' };
@@ -2434,9 +2462,11 @@ class FactoryEngine {
             }
             if (r.started)
                 return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoVerdictReason(head, label, r.reason) });
-            // An earlier check of this head already ran the PR's code in the sandbox: a start failure now may be its doing
-            // (never one of the command's own shape or length, which the ack park still offers to run).
-            if (!r.refused && (ran.modes.has('enforced') || ran.modes.has('enforced-readable')) && !this.gatesAccepted(head)) {
+            // An earlier check of this head already ran the PR's code in the sandbox: a start failure now may be its doing.
+            // Only a configured command (trusted config) refused for its own shape or length keeps the ack offer; a
+            // built-in's argv holds the PR's file names, so its refusal parks here too.
+            const ownShape = r.refused === true && c.kind === 'configured';
+            if (!ownShape && (ran.modes.has('enforced') || ran.modes.has('enforced-readable')) && !this.gatesAccepted(head)) {
                 return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoStartAfterCodeReason(head, label, r.reason) });
             }
             why = `the OS sandbox gave no verdict: ${r.reason}`;
@@ -2815,6 +2845,10 @@ class FactoryEngine {
                 out = this.o.gateSandbox
                     ? await runLocalGate({ ...input, mode: 'enforced', sandbox: { run: this.o.gateSandbox, commonGitDir: common, requireDeniedPaths: gates.requireDeniedPaths } })
                     : { started: false, reason: 'no OS sandbox runner was given to the engine', sandbox: true };
+                // The gate handed the PR's code of this head to the sandbox (a verdict or not): a later start failure on a
+                // rerun of the gate for this head may be that code's doing.
+                if ((out.started || out.noVerdict) && this.state.sandboxedGateHead !== head)
+                    this.save((x) => ({ ...x, sandboxedGateHead: head }));
                 if (!out.started && out.noVerdict) {
                     // It ran in the sandbox and said nothing a verdict can rest on: never the ack park, never a FAILURE.
                     if (checkoutGitLink(checkout).hash !== linkBefore)
@@ -2823,8 +2857,10 @@ class FactoryEngine {
                     return false;
                 }
                 unavailable = !out.started && out.sandbox === true;
-                // Prepare already ran the PR's code of this checkout in the sandbox: a start failure now may be its doing.
-                if (unavailable && !out.started && !out.refused && this.state.sandboxedPrepareHead === head && !this.gatesAccepted(head)) {
+                // Prepare, or an earlier run of this gate, already ran the PR's code of this head in the sandbox: a start
+                // failure now may be its doing.
+                const codeRan = this.state.sandboxedPrepareHead === head || this.state.sandboxedGateHead === head;
+                if (unavailable && !out.started && !out.refused && codeRan && !this.gatesAccepted(head)) {
                     if (checkoutGitLink(checkout).hash !== linkBefore)
                         return this.gateTamperedByGate(head, checkout, stateDir);
                     this.gate(GATE_NO_VERDICT_GATE, this.gateNoStartAfterCodeReason(head, `the local gate \`${gate.join(' ')}\``, out.reason));

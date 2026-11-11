@@ -248,6 +248,8 @@ export declare function pinCheckoutGit(exec: Exec, pin: () => {
     workTree: string;
     gitDir: string;
 } | undefined): Exec;
+/** The fixed failure text of a built-in eslint or vitest check whose one changed file name the sandbox shell cannot carry. */
+export declare const BUILT_IN_FILE_NAME_TOO_LONG = "a changed file name is too long for the sandbox shell";
 /**
  * A built-in eslint or vitest check over the changed files, cut into calls
  * that each fit the sandbox shell (a large PR's file list can exceed the

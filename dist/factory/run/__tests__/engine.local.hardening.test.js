@@ -5,7 +5,7 @@
  * read through the git links recorded at its creation (M5). Real git, fake
  * lanes and gate, no gh / az / copilot.
  */
-import { closeSync, cpSync, existsSync, ftruncateSync, mkdirSync, openSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync, writeSync } from 'node:fs';
+import { closeSync, cpSync, existsSync, ftruncateSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync, writeSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { resolveForgeConfig } from '../../../forge/config.js';
@@ -321,12 +321,19 @@ describe('factory run on the local forge: git hardening', () => {
         expect(cleaned.kept, JSON.stringify(cleaned.kept)).toEqual([]);
         expect(existsSync(checkout)).toBe(false);
     }, 600_000);
-    it('L-2: a prepare checkout removed with rm -rf (its admin dir still registered) is pruned and prepared again', async () => {
+    it('L-2: a prepare checkout removed with rm -rf (its admin dir still registered) loses only its own entry and is prepared again', async () => {
         w = localWorld();
         const first = await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')])));
         expect(first.gate?.name, first.message).toBe('merge');
         const head = readFactoryState(w.root, LOCAL_ISSUE).head;
         const checkout = checkoutPath(w.root, LOCAL_ISSUE);
+        // A worktree the user owns whose directory is only unavailable (an unmounted drive): its entry must survive.
+        const userWt = join(w.dir, 'user-wt');
+        gitIn(w.root, 'worktree', 'add', '--detach', userWt, 'HEAD');
+        const userAdmin = join(w.root, '.git', 'worktrees', 'user-wt');
+        expect(existsSync(join(userAdmin, 'HEAD'))).toBe(true);
+        const away = `${userWt}-away`;
+        renameSync(userWt, away);
         // This test repository has no node_modules, so no link is inside the checkout.
         rmSync(checkout, { recursive: true, force: true });
         expect(gitIn(w.root, 'worktree', 'list', '--porcelain')).toContain('factory');
@@ -335,7 +342,12 @@ describe('factory run on the local forge: git hardening', () => {
         expect(again.gate?.name, again.message).toBe('merge');
         expect(w.gateRuns).toHaveLength(2);
         expect(w.gateRuns[1].cwd).toBe(checkout);
-        expect(readFactoryState(w.root, LOCAL_ISSUE).history.some((h) => h.note.includes('git worktree prune dropped its stale entry'))).toBe(true);
+        expect(readFactoryState(w.root, LOCAL_ISSUE).history.some((h) => h.note.includes('its own stale git worktree entry was dropped'))).toBe(true);
+        // The user's entry (admin dir, HEAD, index) is untouched, and lists cleanly once its directory is back.
+        expect(existsSync(join(userAdmin, 'HEAD'))).toBe(true);
+        expect(existsSync(join(userAdmin, 'index'))).toBe(true);
+        renameSync(away, userWt);
+        expect(gitIn(w.root, 'worktree', 'list', '--porcelain')).not.toContain('prunable');
     }, 300_000);
     it('L-6: an unreadable protected-paths config warns once and parks the publish (fail closed); nothing is pushed', async () => {
         w = localWorld();
@@ -346,8 +358,10 @@ describe('factory run on the local forge: git hardening', () => {
         const lanes = lanesFor(w, [greet(), review('approve')]);
         const out = await runFactoryEngine(localOpts(w, lanes, { warn: (m) => warnings.push(m) }));
         expect(out.gate?.name, out.message).toBe('protected-paths');
-        expect(out.gate?.reason).toMatch(/the configured protected paths cannot be read \(project config: .*ship config must be an object\), so the change cannot be checked against all of them; nothing was pushed/);
+        expect(out.gate?.reason).toMatch(/the configured protected paths cannot be read \(project config .*omg\.jsonc: ship config must be an object\), so the change cannot be checked against all of them; nothing was pushed\. Fix the JSON in project config .*omg\.jsonc, then rerun/);
+        expect(out.gate?.reason).not.toContain('knownFlakyFile');
         expect(warnings.filter((m) => m.includes('configured protected paths'))).toHaveLength(1);
+        expect(warnings.find((m) => m.includes('configured protected paths'))).toMatch(/fix the JSON in project config .*omg\.jsonc$/);
         expect(readFactoryState(w.root, LOCAL_ISSUE).pr).toBeUndefined();
         expect(w.gateRuns).toEqual([]);
     }, 300_000);

@@ -18762,7 +18762,7 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
   const branch = mode === "named" ? getBranchName(teamName, workerName) : "HEAD";
   validateResolvedPath(wtPath, join37(getOmcRoot(repoRoot), "team"));
   try {
-    runHostGit(repoRoot, ["worktree", "prune"]);
+    if (!existsSync32(wtPath)) removeStaleWorktreeEntry(repoRoot, wtPath);
   } catch {
   }
   if (existsSync32(wtPath)) {
@@ -18947,7 +18947,7 @@ function removeWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
       }
     }
     try {
-      runHostGit(repoRoot, ["worktree", "prune"]);
+      if (!existsSync32(wtPath)) removeStaleWorktreeEntry(repoRoot, wtPath);
     } catch {
     }
     if (branchHead) deleteWorkerBranchAt(repoRoot, branch, branchHead);
@@ -18988,6 +18988,46 @@ function removeTreeByPath(dir) {
   }
   unlinkUntrackedWorktreeLinks(dir, [], false);
   rmSync3(dir, { recursive: true, force: true });
+}
+function removeStaleWorktreeEntry(repoRoot, wtPath, adminName) {
+  if (existsSync32(wtPath)) throw new Error(`stale_worktree_entry: ${wtPath} exists, so its worktree entry is not stale`);
+  const common = resolve13(repoRoot, runHostGit(repoRoot, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).trim());
+  const root = join37(common, "worktrees");
+  const want = canonicalPathForComparison(join37(wtPath, ".git"));
+  const real = (dir2) => {
+    try {
+      const st = lstatSync8(dir2);
+      return st.isDirectory() && !st.isSymbolicLink();
+    } catch {
+      return false;
+    }
+  };
+  const namesWtPath = (name2) => {
+    const dir2 = join37(root, name2);
+    if (!isAdminDirOf(common, dir2) || !real(dir2)) return false;
+    try {
+      const gitdir = join37(dir2, "gitdir");
+      if (!lstatSync8(gitdir).isFile()) return false;
+      return canonicalPathForComparison(resolve13(dir2, readFileSync22(gitdir, "utf8").trim())) === want;
+    } catch {
+      return false;
+    }
+  };
+  let name;
+  if (adminName !== void 0) {
+    if (!namesWtPath(adminName)) throw new Error(`stale_worktree_entry: ${join37(root, adminName)} is not a real directory in ${root} whose gitdir names ${join37(wtPath, ".git")}`);
+    name = adminName;
+  } else {
+    const matches = real(root) ? readdirSync13(root).filter(namesWtPath) : [];
+    if (matches.length === 0) return false;
+    if (matches.length > 1) throw new Error(`stale_worktree_entry: ${matches.length} entries in ${root} name ${join37(wtPath, ".git")}`);
+    name = matches[0];
+  }
+  const dir = join37(root, name);
+  if (existsSync32(join37(dir, "locked"))) throw new Error(`stale_worktree_entry: ${dir} is locked`);
+  removeTreeByPath(dir);
+  if (findRegisteredWorktree(repoRoot, wtPath) !== null) throw new Error(`stale_worktree_entry: git still lists ${wtPath} after its entry ${dir} was removed`);
+  return true;
 }
 function removeTamperedWorktree(repoRoot, teamName, workerName, wtPath, links, commonDir) {
   const removeTree = removeTreeByPath;
