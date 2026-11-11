@@ -668,6 +668,33 @@ describe('omg factory poll: factory.intake.autoStart', () => {
         expect(ticks().at(-1)).toMatchObject({ idle: true, intake: { ran: true }, rateLimited: true, autoStart: { started: false, reason: 'the tick was rate-limited' } });
         expect(e.starts).toEqual([]);
     });
+    it('B2: with factory.run.maxConcurrent 2 and the private layout it starts `--next --parallel <free slots>` while a run is in flight; idle means no slot held; all slots held or a shared engine block it', async () => {
+        const PAR = { factory: { intake: { autoStart: true }, run: { layout: 'private', maxConcurrent: 2 } } };
+        const seen = [];
+        const autoStart = async (o) => { seen.push(o.parallel); return { exitCode: 0, parsed: true, next: null, message: '--parallel 1: 1 run(s) ended; exit 0' }; };
+        const alive = { pid: 2, hostname: hostname(), isAlive: (pid) => pid === 99 || pid === 98 };
+        mkdirSync(join(factoryStateDir(root), 'slots'), { recursive: true });
+        // A private run in flight holds slot 0: not idle, yet one more run may start (one free slot).
+        save(moveTo(issueRun(5), 'implement', 'plan ok', T0));
+        writeFileSync(join(factoryStateDir(root), 'slots', 'slot-0.owner'), JSON.stringify({ pid: 99, hostname: hostname(), startedAt: T0, run: '5' }));
+        await poll(scripted().exec, { once: true, json: true, prs: false }, on({ autoStart }, { trustedUser: () => PAR, owner: alive }));
+        expect(ticks().at(-1)).toMatchObject({ idle: false, autoStart: { started: true } });
+        expect(seen).toEqual([1]);
+        // Both slots held: blocked with the reason.
+        writeFileSync(join(factoryStateDir(root), 'slots', 'slot-1.owner'), JSON.stringify({ pid: 98, hostname: hostname(), startedAt: T0, run: '6' }));
+        await poll(scripted().exec, { once: true, json: true, prs: false }, on({ autoStart }, { trustedUser: () => PAR, owner: alive }));
+        expect(ticks().at(-1).autoStart).toEqual({ started: false, reason: 'all 2 parallel slots are held (factory.run.maxConcurrent 2)' });
+        rmSync(join(factoryStateDir(root), 'slots'), { recursive: true });
+        // A shared engine holds the checkout: blocked.
+        writeFileSync(factoryRepoOwnerPath(root), JSON.stringify({ pid: 99, hostname: hostname(), startedAt: T0, run: '4' }));
+        await poll(scripted().exec, { once: true, json: true, prs: false }, on({ autoStart }, { trustedUser: () => PAR, owner: alive }));
+        expect(ticks().at(-1).autoStart).toEqual({ started: false, reason: 'the run lock is held: a shared-layout engine runs in this repository' });
+        rmSync(factoryRepoOwnerPath(root));
+        rmSync(factoryStatePath(root, 5));
+        // Without the private layout the old rule holds: no `parallel`, idle only.
+        await poll(scripted().exec, { once: true, json: true, prs: false }, on({ autoStart }, { trustedUser: () => ({ factory: { intake: { autoStart: true }, run: { maxConcurrent: 2 } } }), owner: alive }));
+        expect(seen.at(-1)).toBeUndefined();
+    });
     it('not started while the run lock is held or without budget headroom', async () => {
         const e = engine();
         const owner = () => writeFileSync(factoryRepoOwnerPath(root), JSON.stringify({ pid: 99, hostname: hostname(), startedAt: T0, run: '4' }));

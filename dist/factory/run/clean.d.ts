@@ -67,6 +67,8 @@ export interface FactoryCleanOptions {
     runUserConfig?: unknown;
     /** The private layout: recorded gate processes under a dir that still run (default: gate-procs.ts liveGateProcs); tests pass one. */
     liveGateProcs?: (dir: string) => number[];
+    /** The local forge's state dir, home of the local gate's process records (default: getGlobalOmcStatePath('forge'), the engine's default). */
+    localGateStateDir?: string;
 }
 export type LaneProcessRecord = NonNullable<FactoryRunState['lanes'][number]['process']>;
 export type LaneProcessState = 'live' | 'dead' | 'mismatch' | 'unknown';

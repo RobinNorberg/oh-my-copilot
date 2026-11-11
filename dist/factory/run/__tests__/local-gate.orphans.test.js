@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createGateProcTracker, gateProcsPath, liveGateProcs, readGateProcs, reapGateProcs, sweepGateProcs } from '../gate-procs.js';
+import { createGateProcTracker, gateProcsPath, GateProcsUnreadableError, liveGateProcs, readGateProcs, reapGateProcs, sweepGateProcs } from '../gate-procs.js';
 import { runLocalGate } from '../local-gate.js';
 import { isProcessAlive } from '../../../platform/process-utils.js';
 const HEAD = 'a'.repeat(40);
@@ -228,15 +228,22 @@ describe('gate process bookkeeping hardening', () => {
     }, 60_000);
 });
 describe('liveGateProcs (review-483 I.4: the proof before a private run dir is removed)', () => {
-    it('names only recorded pids whose start identity still matches; signals nothing; a missing dir or a malformed record names none', () => {
+    it('names only recorded pids whose start identity still matches; signals nothing; a missing dir names none; a malformed record or an unlistable dir may be live (review-483b L-e: it throws)', () => {
         const dir = join(tmp, 'prepare-procs');
         expect(liveGateProcs(dir)).toEqual([]);
         mkdirSync(dir, { recursive: true });
         writeFileSync(join(dir, `${'b'.repeat(40)}.json`), JSON.stringify({ version: 1, startedAt: new Date().toISOString(), root: { pid: 1001, identity: 'ticks:1' }, orphans: [{ pid: 1002, identity: 'ticks:2' }, { pid: 1003, identity: 'ticks:3' }] }));
-        writeFileSync(join(dir, `${'c'.repeat(40)}.json`), '{ not json');
         writeFileSync(join(dir, 'notes.json'), JSON.stringify({ version: 1, startedAt: 'x', root: { pid: 1004, identity: 'ticks:4' }, orphans: [] }));
         const now = { 1001: 'ticks:1', 1002: 'ticks:99', 1004: 'ticks:4' };
         expect(liveGateProcs(dir, { identitySync: (pid) => now[pid] ?? null })).toEqual([1001]);
+        // Fail closed: a record that does not parse names no pid it could prove gone.
+        writeFileSync(join(dir, `${'c'.repeat(40)}.json`), '{ not json');
+        expect(() => liveGateProcs(dir, { identitySync: (pid) => now[pid] ?? null })).toThrow(GateProcsUnreadableError);
+        expect(() => liveGateProcs(dir, { identitySync: (pid) => now[pid] ?? null })).toThrow(/cccc+\.json cannot be read, so a gate process may still run/);
+        // A path that exists but is not a listable dir.
+        const file = join(tmp, 'not-a-dir');
+        writeFileSync(file, 'x');
+        expect(() => liveGateProcs(file)).toThrow(/cannot be listed \(ENOTDIR\)/);
     });
 });
 //# sourceMappingURL=local-gate.orphans.test.js.map

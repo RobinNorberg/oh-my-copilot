@@ -60,6 +60,7 @@ export interface BoardRow {
             pid: number;
             host: string;
             since: string;
+            slot?: number;
         };
         credits: number;
         integrity: 'ok' | 'bad' | 'none';

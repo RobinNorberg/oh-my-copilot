@@ -24,6 +24,7 @@ import { type ChainSkillStatus, type RouteTable } from '../../hooks/session-end/
 import { type LoadedFactoryRunLimits } from '../../factory/run/budget.js';
 import { type FactoryRunOutcome, type LaneProcessOps } from '../../factory/run/engine.js';
 import type { LoadedForgeConfig } from '../../forge/config.js';
+import type { ForgeKind } from '../../forge/types.js';
 import { type LaneBackend } from '../../factory/run/lane.js';
 import type { GateConfigLoader } from '../../factory/run/prepare.js';
 import { type SandboxRunner } from '../../factory/run/sandbox-exec.js';
@@ -31,6 +32,8 @@ import { type FactoryRunKey, type FactoryRunState } from '../../factory/run/stat
 import { type Exec } from '../../ship/exec.js';
 import { type FactoryCheckDeps } from '../../factory/check/cli.js';
 import type { FactoryPollDeps } from '../../factory/poll.js';
+import { type ParallelChildOutcome, type ParallelSettings } from '../../factory/run/parallel.js';
+import { type RunLayoutChoice } from '../../factory/run/private-run.js';
 export declare function renderChainStatus(status: ChainStatus): string;
 /** Seams for `omg factory run` (tests script gh/git and the lanes; nothing live). */
 export interface FactoryRunDeps {
@@ -60,6 +63,22 @@ export interface FactoryRunDeps {
     gateSandbox?: (root: string) => SandboxRunner;
     /** Liveness, kill and the lane process-tree proof (default: the engine's defaultLaneProcessOps). */
     processes?: LaneProcessOps;
+    /**
+     * B2: factory.run.maxConcurrent / maxInFlightCredits and the layout from
+     * the trusted layers (the user config; the `.copilot/omg.jsonc` at the
+     * base's local tracking ref when the base is trusted; no fetch). Omitted =
+     * one engine per checkout and no credit reservation, as before.
+     */
+    parallel?: (root: string, base: string, kind: ForgeKind | undefined) => {
+        settings: ParallelSettings;
+        layout: RunLayoutChoice;
+    };
+    /** The `--parallel` children (default: a child `omg factory run --next --json` of this CLI entry, poll's auto-start). */
+    parallelChild?: (o: {
+        root: string;
+        args: readonly string[];
+        signals: (forward: (signal: NodeJS.Signals) => void) => () => void;
+    }) => Promise<ParallelChildOutcome>;
 }
 export declare const defaultFactoryRunDeps: FactoryRunDeps;
 /**
@@ -82,6 +101,37 @@ export declare function renderFactoryRunState(state: FactoryRunState, o?: {
  * Read-only.
  */
 export declare function liveFactoryRuns(root: string, ledgerDir: string, claimRepo: string | null): {
+    credits?: {
+        lane: string;
+        cap: number;
+        run?: string;
+        pid: number;
+    }[] | {
+        unreadable: string;
+    } | undefined;
+    importLock?: {
+        parkedAt?: string | undefined;
+        root?: string | undefined;
+        startedAt?: string | undefined;
+        hostname?: string | undefined;
+        pid?: number | undefined;
+        run?: string | undefined;
+    } | undefined;
+    slots?: ({
+        slot: number;
+        unreadable: boolean;
+    } | {
+        privateDir?: string | undefined;
+        layout: string;
+        parkedAt?: string | undefined;
+        root?: string | undefined;
+        startedAt?: string | undefined;
+        hostname?: string | undefined;
+        pid?: number | undefined;
+        run?: string | undefined;
+        slot: number;
+        unreadable?: undefined;
+    })[] | undefined;
     engine: {
         sharedState?: boolean | undefined;
         parkedAt?: string | undefined;

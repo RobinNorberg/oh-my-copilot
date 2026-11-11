@@ -63,7 +63,7 @@ import { type FactoryRunLimits } from './budget.js';
 import { type LocalGateRunner } from './local-gate.js';
 import { type LaneBackend, type LaneProcess } from './lane.js';
 import { type LaneTreeProof } from './lane-procs.js';
-import { EXIT_BUSY, type FactoryGate, type FactoryHealRecord, type FactoryPhase, type FactoryRunKey, type FactoryRunState, type OwnerDeps, type HeldOwner } from './state.js';
+import { EXIT_BUSY, type FactoryGate, type FactoryHealRecord, type FactoryPhase, type FactoryRunKey, type FactoryRunState, type OwnerDeps, type HeldOwner, type HeldSlot } from './state.js';
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export declare const EXIT_AWAITING_HUMAN = 4;
 export { EXIT_BUSY };
@@ -163,6 +163,35 @@ export interface FactoryEngineOptions {
      * and neither acquires nor releases it; the caller releases it.
      */
     repoOwner?: HeldOwner;
+    /**
+     * B2: run as one of several private-layout engines in this checkout
+     * (factory.run.maxConcurrent > 1, layout "private"): the engine takes a
+     * slot (or uses `slot`, held by the caller, who releases it) instead of
+     * the checkout's engine lock, fetches the base under the repository import
+     * lock, and parks before its first lane when its layout resolves to shared.
+     * Absent: exactly the one-engine-per-checkout behaviour.
+     */
+    parallel?: {
+        maxConcurrent: number;
+        slot?: HeldSlot;
+    };
+    /**
+     * The item's owner file, already taken by the caller's atomic pick
+     * (`run --next` in a parallel run): the engine uses it as its own and
+     * releases it at the end, also when it refuses before starting.
+     */
+    runOwner?: HeldOwner;
+    /**
+     * B2: factory.run.maxInFlightCredits in effect (set, or laneMaxCredits x
+     * maxConcurrent in a parallel run): each lane reserves its cap in the
+     * repository's credit file first (parallel.ts). Absent: no reservation.
+     */
+    creditLimit?: number;
+    /** How long a lane waits for credits in flight to end before it parks at budget (default laneTimeoutMs + grace), and the re-check interval. */
+    creditWait?: {
+        maxMs?: number;
+        pollMs?: number;
+    };
     /**
      * The repository the cross-clone claim is keyed on (factoryClaimRepo: the
      * trusted origin URL; localFactoryClaimRepo on the local forge), null for
@@ -334,4 +363,6 @@ export declare function humanFeedbackDigest(fb: ForgeReviewFeedback): string;
  * state or git write.
  */
 export declare function runFactoryEngine(o: FactoryEngineOptions): Promise<FactoryRunOutcome>;
+/** A run whose layout is sealed shared: no private store, and a lane or the coding agent already started (implement decides the layout before that). */
+export declare function sharedLayoutSealed(s: Pick<FactoryRunState, 'layout' | 'lanes' | 'codingAgent'>): boolean;
 //# sourceMappingURL=engine.d.ts.map

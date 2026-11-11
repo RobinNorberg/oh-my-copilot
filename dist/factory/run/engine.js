@@ -109,7 +109,9 @@ import { GATE_INSTALL_GATE, IMPORT_REFUSED_GATE, LAYOUT_UNSUPPORTED_GATE, PRIVAT
 import { lockfileUnchanged, PrivateRepoTampered, PrivateStoreError, userRepoGuardSnapshot } from './private-store.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted } from './plan-rules.js';
-import { acquireFactoryOwner, acquireFactoryRepoOwner, createFactoryState, defaultOwnerDeps, EXIT_BUSY, factoryCancelRequested, forgeResumeProblem, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, healRunKey, moveTo, overwriteFactoryState, ownerHolding, parseFactoryState, readFactoryState, reviewerName, runLabel, runSlug, setGate, shipVerdictHash, TERMINAL_FACTORY_PHASES, factoryBranch, trackerStageOf, updateFactoryState, runRemote, verifyFactoryIntegrity, unreadableOwnerMessage, describeOwner, FactoryBusyError, FactoryTamperHoldError, ownerRecord, } from './state.js';
+import { acquireFactoryOwner, acquireFactoryRepoOwner, createFactoryState, defaultOwnerDeps, EXIT_BUSY, factoryCancelRequested, forgeResumeProblem, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, healRunKey, moveTo, overwriteFactoryState, ownerHolding, parseFactoryState, readFactoryState, reviewerName, runLabel, runSlug, setGate, shipVerdictHash, TERMINAL_FACTORY_PHASES, factoryBranch, trackerStageOf, updateFactoryState, runRemote, verifyFactoryIntegrity, unreadableOwnerMessage, describeOwner, FactoryBusyError, FactoryTamperHoldError, ownerRecord, acquireRunSlot, claimOwner, factorySlotPath, withRepoImportLock, } from './state.js';
+import { PARALLEL_LAYOUT_GATE, readTrustedBaseLayerAtRef, reserveLaneCredits } from './parallel.js';
+import { claimRepoKey } from './claims.js';
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export const EXIT_AWAITING_HUMAN = 4;
 export { EXIT_BUSY };
@@ -714,6 +716,88 @@ class FactoryEngine {
         });
         return this.priv;
     }
+    runLock;
+    /**
+     * B2: hold `<run dir>/run.lock` (an owner record, the run owner's
+     * process) while this engine works in the private run dir, so `run clean`
+     * never removes it under a live engine. Taken once the private store is
+     * known (run start or resume); released when the engine ends.
+     */
+    holdRunLock() {
+        const p = this.priv;
+        if (!p || this.runLock)
+            return;
+        this.runLock = claimOwner(p.layout.lock, this.iso(), this.o.owner ?? defaultOwnerDeps(), (prior) => `the run dir ${p.layout.runDir} is held by another engine (${describeOwner(prior)})`, { run: String(this.key) });
+    }
+    releaseRunLock() {
+        this.runLock?.release();
+        this.runLock = undefined;
+        for (const settle of this.creditSettles.splice(0))
+            settle(0);
+    }
+    /** The credit reservations of this engine's lanes not settled yet (a lost lane): settled before the next one, and at the end. */
+    creditSettles = [];
+    /**
+     * B2: reserve `cap` for lane `id` (parallel.ts reserveLaneCredits) against
+     * o.creditLimit. Over the limit while other lanes are in flight: wait for
+     * one to end (re-checked every pollMs, a cancel stops the wait), at most
+     * maxMs, then park at budget; a cap over the limit on its own parks at
+     * once; an unreadable reservation file parks (fail closed). The settle
+     * function, or null when it parked or a cancel came.
+     */
+    async reserveCredits(id, cap) {
+        for (const settle of this.creditSettles.splice(0))
+            settle(0);
+        const limit = this.o.creditLimit;
+        const deps = this.o.owner ?? defaultOwnerDeps();
+        let repo8;
+        try {
+            repo8 = claimRepoKey(this.state.repoUrl, this.o.root).slice(0, 8);
+        }
+        catch (error) {
+            this.gate('budget', `the credits in flight cannot be checked (${errText(error)}); rerun ${this.resume}`);
+            return null;
+        }
+        const maxMs = this.o.creditWait?.maxMs ?? this.o.limits.laneTimeoutMs + LANE_GRACE_MS;
+        const pollMs = this.o.creditWait?.pollMs ?? 15_000;
+        const begun = this.clock();
+        let said = false;
+        for (;;) {
+            let d;
+            try {
+                d = reserveLaneCredits({ ledgerDir: this.o.ledgerDir ?? defaultLedgerDir(), repo8, id, run: String(this.key), cap, limit, now: this.iso(), deps, warn: (m) => this.o.warn?.(m) });
+            }
+            catch (error) {
+                this.gate('budget', `${errText(error)}; then rerun ${this.resume}`);
+                return null;
+            }
+            if (d.ok) {
+                let done = false;
+                const settle = (credits) => {
+                    if (done)
+                        return;
+                    done = true;
+                    const at = this.creditSettles.indexOf(settle);
+                    if (at >= 0)
+                        this.creditSettles.splice(at, 1);
+                    d.settle(credits);
+                };
+                this.creditSettles.push(settle);
+                return settle;
+            }
+            if (!d.wait || this.clock() - begun >= maxMs) {
+                this.gate('budget', `${d.reason}${d.wait ? ` (waited ${Math.round((this.clock() - begun) / 60_000)} min)` : ''}; rerun ${this.resume} once a lane in flight ended`);
+                return null;
+            }
+            if (!said) {
+                said = true;
+                this.o.warn?.(`omg factory run: lane ${id} waits for credits in flight: ${d.reason}`);
+            }
+            await (this.o.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))))(pollMs);
+            if (this.cancelWanted(this.reload()))
+                return null;
+        }
+    }
     /** Seal the private repository's config hash again after an engine-made config write (review-481 h). */
     sealPrivate() {
         const p = this.priv;
@@ -741,11 +825,16 @@ class FactoryEngine {
         if (!this.privateRun())
             return undefined;
         try {
-            return snapshotRepo(this.exec, this.o.root, this.stateRootRel);
+            // B2: parallel runs read your repository between other runs' imports, never in the middle of one.
+            return this.userRepoQuiet(() => snapshotRepo(this.exec, this.o.root, this.stateRootRel));
         }
         catch (error) {
             throw new FactoryStepError(`the snapshot of your repository before ${what} failed: ${errText(error)}`);
         }
+    }
+    /** `fn` under the repository import lock in a parallel run (no other run's import is half done), else as is. */
+    userRepoQuiet(fn) {
+        return this.o.parallel ? withRepoImportLock(this.o.root, `snapshot:${this.key}`, fn) : fn();
     }
     /**
      * What changed in the user's repository against `before` (userSnap), each
@@ -756,7 +845,7 @@ class FactoryEngine {
         if (!before)
             return [];
         try {
-            const after = snapshotRepo(this.exec, this.o.root, this.stateRootRel, before);
+            const after = this.userRepoQuiet(() => snapshotRepo(this.exec, this.o.root, this.stateRootRel, before));
             const own = engineRef && after.refs[engineRef.name] === engineRef.sha;
             const was = own ? { ...before, refs: { ...before.refs, [engineRef.name]: engineRef.sha } } : before;
             return compareSnapshots(was, after, {}, { fetchedRef: this.fetchedRef }).map((p) => `your repository: ${p}`);
@@ -916,6 +1005,7 @@ class FactoryEngine {
             return false;
         }
         this.priv = made.run;
+        this.holdRunLock();
         this.ledger.setUserGuard(made.guard);
         this.save((x) => ({
             ...x, layout: 2, privateDir: made.run.layout.runDir, privateStore: made.record,
@@ -1073,6 +1163,10 @@ class FactoryEngine {
     }
     /** Fetch the base after checking origin is the issue's repository; GitHub's own record of the base is read in PR 3. */
     fetchBase() {
+        // B2: a parallel engine fetches into your repository only under the import lock (another engine may import or push).
+        return this.o.parallel ? withRepoImportLock(this.o.root, `import:${this.key}`, () => this.fetchBaseNow()) : this.fetchBaseNow();
+    }
+    fetchBaseNow() {
         const remote = runRemote(this.state);
         if (remote === LOCAL_REMOTE) {
             // The local forge: create the engine-owned mirror once, then sync the local base into it (fast-forward only)
@@ -1255,6 +1349,7 @@ class FactoryEngine {
                     this.gate('lane-tampered', `${replaced} ${this.resume}`);
                 const priv = this.privateRun();
                 if (priv) {
+                    this.holdRunLock();
                     // Run start of a private-layout run: leftover trash and this run's stale import refs (a crash after an import).
                     try {
                         priv.resumeSweep(runSlug(this.key));
@@ -1908,6 +2003,10 @@ class FactoryEngine {
         this.save((s) => ({ ...s, baseSha }));
         if (undecided && !this.resolveLayout(baseSha))
             return;
+        // B2: a parallel engine runs the private layout only; the sealed base may say otherwise than the CLI's read before the fetch.
+        if (undecided && this.o.parallel && this.layoutChoice !== 'private') {
+            return this.gate(PARALLEL_LAYOUT_GATE, `this run started as one of several parallel runs (factory.run.maxConcurrent ${this.o.parallel.maxConcurrent}), but factory.run.layout resolved to "shared" at the base ${baseSha.slice(0, 12)}; parallel runs need factory.run.layout: "private". No lane has started: set factory.run.layout "private" in your user config, or factory.run.maxConcurrent 1, then rerun ${this.resume}`);
+        }
         if (undecided && this.layoutChoice === 'private' && !this.setupPrivate(baseSha))
             return;
         const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(this.readAt(baseSha), pathsInText(this.state.plan?.text ?? ''))), 'implement');
@@ -3397,7 +3496,13 @@ class FactoryEngine {
         const dirs = [join(this.gateJobRoot(), 'prepare-procs')];
         if (this.forge?.kind === 'local' && HEX40.test(head))
             dirs.push(dirname(gateProcsPath(this.localGateStateDir(), this.o.root, head)));
-        return [...new Set(dirs.flatMap((d) => liveGateProcs(d)))];
+        try {
+            return [...new Set(dirs.flatMap((d) => liveGateProcs(d)))];
+        }
+        catch (error) {
+            // An unreadable record dir counts as "may be live" (review-483b L-e): nothing is removed.
+            throw new FactoryStepError(`${errText(error)}; the engine's prepare checkout is not removed. Fix that, then rerun ${this.resume}`);
+        }
     }
     /**
      * True once the sealed gate argv really started: a verdict in the run's
@@ -3827,6 +3932,8 @@ class FactoryEngine {
         const branch = name.slice(prefix.length);
         if (branch === s.branch && s.head !== undefined && sha === s.head)
             return true;
+        if (this.o.parallel && this.otherRunsTransport(branch, sha))
+            return true;
         if (s.remote !== LOCAL_REMOTE || this.o.forge?.config.kind !== 'local')
             return false;
         // The base: only the local base sha the engine synced (or, before a sync in this invocation, the local base itself),
@@ -3842,6 +3949,31 @@ class FactoryEngine {
             return false;
         }
     };
+    /**
+     * B2, parallel runs only: a remote-tracking ref another run's engine moves
+     * through its own fetch or push under the import lock (`branch` relative
+     * to the run's remote): the base (another run's base fetch: any sha, since
+     * GitHub's base sha cannot be read here without a fetch; each engine reads
+     * the base only from its own fetch under the lock, so a planted value is
+     * overwritten before use), or another run's factory branch at a head that
+     * run's own state records. Never this run's own refs (its own rules apply).
+     */
+    otherRunsTransport(branch, sha) {
+        const s = this.state;
+        if (branch === s.base)
+            return true;
+        const m = /^factory\/(?:issue-(\d+)|(heal-[0-9a-f]{8}))$/.exec(branch);
+        if (!m || branch === s.branch)
+            return false;
+        const key = m[1] !== undefined ? Number(m[1]) : m[2];
+        try {
+            const other = readFactoryState(this.o.root, key);
+            return other !== null && [other.head, other.pendingHead, other.prepared?.head].includes(sha);
+        }
+        catch {
+            return false;
+        }
+    }
     /** The lane's comparison against its before-snapshot: its own branch and worktree entry may appear. */
     laneProblems(kind, before, result, startRef, laneId) {
         const allowed = result.branch ? { [`refs/heads/${result.branch}`]: kind === 'review' ? startRef : (result.headSha ?? '*') } : {};
@@ -4128,6 +4260,9 @@ class FactoryEngine {
     /** The park half of recheckFailed: the lane's process tree killed, the quarantine (snapQuarantine), the run back to its lane. */
     async recheckPark(late) {
         const { r, found, now, where } = late;
+        // A park the import section set first (the repo guard after the push: review-483b L-d) is joined, never overwritten.
+        const earlier = this.state.gate;
+        const also = earlier ? `. Also ${earlier.name}: ${earlier.reason}` : '';
         // The lane's process tree goes before the quarantine (audit review M3), then one more compare.
         const killed = await this.killTamperingLane(r.laneId, found, now);
         const problems = killed.problems;
@@ -4135,7 +4270,7 @@ class FactoryEngine {
         const what = `shared git state changed after lane ${r.laneId} passed its check (found ${where}): ${problems.slice(0, 5).join('; ')}${this.snapQuarantine(r.snapshot, r.kind === 'review' ? 'review-tampered' : 'lane-tampered', problems, killed.after ?? now, killed.note)}`;
         if (r.kind === 'review') {
             this.markVerdict(r.laneId, 'invalid', `late change: ${problems.join('; ')}`);
-            this.save((x) => setGate(x.phase === 'review' ? x : moveTo(x, 'review', `review lane ${r.laneId}'s verdict is discarded`, at), 'review-tampered', `${what}; its verdict is discarded`, at));
+            this.save((x) => setGate(x.phase === 'review' ? x : moveTo(x, 'review', `review lane ${r.laneId}'s verdict is discarded`, at), 'review-tampered', `${what}; its verdict is discarded${also}`, at));
         }
         else {
             // Each write-lane kind is the phase that runs it (a coding-agent lane runs in implement).
@@ -4143,7 +4278,7 @@ class FactoryEngine {
             this.updateLane(r.laneId, { note: `late change: ${problems.join('; ')}` });
             this.save((x) => {
                 const { pendingHead: _p, pendingParents: _pp, ...rest } = x;
-                return setGate(x.phase === back ? rest : moveTo(rest, back, `lane ${r.laneId}'s head is dropped`, at), 'lane-tampered', `${what}; nothing it made is pushed`, at);
+                return setGate(x.phase === back ? rest : moveTo(rest, back, `lane ${r.laneId}'s head is dropped`, at), 'lane-tampered', `${what}; nothing it made is pushed${also}`, at);
             });
         }
     }
@@ -4280,13 +4415,17 @@ class FactoryEngine {
         let note;
         let usage = capUsage(maxCredits);
         let tampered = false;
+        let userTamper;
         try {
             const c = await this.o.lanes.cancel(remoteId);
             if (isTerminalLaneState(c.result.state)) {
                 usage = usageOf(c.result);
                 settleHeal(usage.credits);
-                const { problems } = this.laneProblems(kind, before, c.result, startRef, laneId);
+                const { problems, after } = this.laneProblems(kind, before, c.result, startRef, laneId);
                 tampered = problems.length > 0;
+                // Review-483b L-c: the private layout routes a change found in YOUR repository through laneTampered (quarantine + hold), as runLane does.
+                if (this.privateRun() && problems.some(isUserRepoProblem))
+                    userTamper = { problems, ...(after ? { after } : {}), ...(this.laneUserBefore(laneId, c.result.sandbox) ? { userBase: this.laneUserBefore(laneId, c.result.sandbox) } : {}) };
                 note = tampered ? `cancelled; tamper check: ${problems.slice(0, 5).join('; ')}` : 'cancelled; tamper check clean';
             }
             else {
@@ -4300,6 +4439,9 @@ class FactoryEngine {
         this.updateLane(laneId, { status: 'cancelled', endedAt: this.iso(), usage, note, ...(tampered && kind === 'review' ? { verdict: 'invalid' } : {}) });
         if (tampered)
             this.o.warn?.(`omg factory run: lane ${laneId} ${note}`);
+        // The quarantine and hold come before the cancel finishes (the cancel flag still ends the run at the next step).
+        if (userTamper)
+            await this.laneTampered(laneId, kind, userTamper.problems, before, userTamper.after, userTamper.userBase);
         await this.cancel();
         return { kind: 'stopped' };
     }
@@ -4370,10 +4512,20 @@ class FactoryEngine {
                 }
             };
         }
-        this.ledger.setRecheck(undefined);
         const seq = this.state.lanes.filter((l) => l.kind === kind).length + 1;
         // A ci-heal lane id starts `heal-`: the budget ledger's `factory-lane:heal-*` records feed the daily heal cap.
         const id = `${runSlug(this.key)}-${kind}-${seq}`;
+        // B2: the lane's cap is reserved against factory.run.maxInFlightCredits (parallel.ts) before it starts; settled with the heal reservation.
+        if (this.o.creditLimit !== undefined) {
+            const credit = await this.reserveCredits(id, cap.cap);
+            if (!credit) {
+                settleHeal(0);
+                return { kind: 'stopped' };
+            }
+            const heal = settleHeal;
+            settleHeal = (credits) => { heal(credits); credit(credits); };
+        }
+        this.ledger.setRecheck(undefined);
         const startedAt = this.iso();
         const record = { id, kind, startSha: startRef, status: 'running', maxCredits: cap.cap, startedAt, ...(laneTree ? { worktree: laneTree } : {}) };
         // The baseline is persisted before the lane exists, so a lost lane or a resume compares against it.
@@ -5310,7 +5462,7 @@ function codingAgentDryRun(o, forgeKind, repoUrl, source, caps) {
  * trusted layer, is read at the sealed base by the real run); nothing for the
  * shared layout, so that output is unchanged.
  */
-function dryLayoutNote(o) {
+function dryLayoutNote(o, exec, local) {
     let user = o.runUserConfig;
     if (user === undefined) {
         try {
@@ -5321,8 +5473,12 @@ function dryLayoutNote(o) {
         }
     }
     try {
-        const { layout, source } = resolveRunLayout(user, undefined);
-        return layout === 'private' ? `, in the private layout (factory.run.layout "private" from the ${source}: its own git repository under the work root)` : '';
+        // Review-483b INFO-2: the base layer too (the .copilot/omg.jsonc at the base's local tracking ref, trusted bases only;
+        // no fetch in a dry run), unless the user config already decides; the real run reads it again at the sealed base.
+        // A base file that cannot be read counts as unset here without a warning (the dry run's output stays as it was).
+        const own = resolveRunLayout(user, undefined);
+        const { layout, source } = own.source !== 'default' ? own : resolveRunLayout(undefined, readTrustedBaseLayerAtRef(exec, o.root, o.base, local ? `refs/heads/${o.base}` : `refs/remotes/origin/${o.base}`, user));
+        return layout === 'private' ? `, in the private layout (factory.run.layout "private" from ${source === 'user config' ? 'the user config' : source}: its own git repository under the work root)` : '';
     }
     catch (error) {
         return `; but ${errText(error)}, so the run would park at awaiting-human: ${PRIVATE_STORE_GATE}`;
@@ -5377,7 +5533,7 @@ function dryRun(o) {
             return { exitCode: 0, phase: null, state: null, message: `dry run: ${problem}; the run would stop at awaiting-human: ${HEAL_DIAGNOSIS_GATE}`, plan: { next: 'awaiting-human', reason: HEAL_DIAGNOSIS_GATE, ...caps } };
         const go = o.heal.approved || (o.heal.autoImplement && o.heal.record.class !== 'regression-or-env');
         return go
-            ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from the heal diagnosis; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o)}`, plan: { next: 'implement', planSource: 'heal diagnosis', ...caps } }
+            ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from the heal diagnosis; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o, exec, forge?.kind === 'local')}`, plan: { next: 'implement', planSource: 'heal diagnosis', ...caps } }
             : { exitCode: 0, phase: null, state: null, message: `dry run: the run would stop at awaiting-human: ${HEAL_APPROVE_GATE}`, plan: { next: 'awaiting-human', reason: HEAL_APPROVE_GATE, ...caps } };
     }
     if (forge) {
@@ -5405,7 +5561,7 @@ function dryRun(o) {
         if (agent)
             return agent;
         return source
-            ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o)}${gateNote}`, plan: { next: 'implement', planSource: source, ...caps, ...(gateProblem ? { gateProblem } : {}) } }
+            ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o, exec, forge.kind === 'local')}${gateNote}`, plan: { next: 'implement', planSource: source, ...caps, ...(gateProblem ? { gateProblem } : {}) } }
             : { exitCode: 0, phase: null, state: null, message: 'dry run: no plan (no Acceptance Criteria, "Acceptance criteria" heading or trusted omg-plan: link); the run would stop at awaiting-human: needs-plan', plan: { next: 'awaiting-human', reason: 'needs-plan', ...caps } };
     }
     const res = ghIssueView(exec, o.issue, o.root);
@@ -5430,7 +5586,7 @@ function dryRun(o) {
     if (agent)
         return agent;
     return source
-        ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o)}`, plan: { next: 'implement', planSource: source, ...caps } }
+        ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o, exec, false)}`, plan: { next: 'implement', planSource: source, ...caps } }
         : { exitCode: 0, phase: null, state: null, message: 'dry run: no plan (no "Acceptance criteria" heading or omg-plan: link); the run would stop at awaiting-human: needs-plan', plan: { next: 'awaiting-human', reason: 'needs-plan', ...caps } };
 }
 /**
@@ -5451,20 +5607,40 @@ export async function runFactoryEngine(o) {
         throw new FactoryTamperHoldError(held);
     const now = new Date((o.now ?? Date.now)()).toISOString();
     // The repository lock first (unless the caller already holds it): a second engine refuses before it touches anything.
-    const repoOwner = o.repoOwner ?? acquireFactoryRepoOwner(o.root, key, now, o.owner);
-    const releaseRepoOwner = () => { if (!o.repoOwner)
+    // B2: a parallel private-layout engine takes a slot instead (state.ts LOCK ORDER); it never takes the engine lock.
+    let repoOwner;
+    try {
+        repoOwner = o.parallel
+            ? o.parallel.slot ?? acquireRunSlot(o.root, key, o.parallel.maxConcurrent, () => new Date((o.now ?? Date.now)()).toISOString(), o.owner)
+            : o.repoOwner ?? acquireFactoryRepoOwner(o.root, key, now, o.owner);
+    }
+    catch (error) {
+        o.runOwner?.release();
+        throw error;
+    }
+    const callerHeld = o.parallel ? o.parallel.slot !== undefined : o.repoOwner !== undefined;
+    const releaseRepoOwner = () => { if (!callerHeld)
         repoOwner.release(); };
     // Then the item's claim across clones of the repository (claims.ts), then the item's own owner file.
     let claim;
     let owner;
+    let ownerTaken = false;
     let ledger;
     let hooksDir;
     try {
+        // A run started in the shared layout keeps it and runs alone (no migration): never next to parallel runs (B2).
+        if (o.parallel) {
+            const existing = readFactoryState(o.root, key);
+            if (existing && sharedLayoutSealed(existing)) {
+                throw new FactoryBusyError(`the run of ${runLabel(key)} started in the shared layout and keeps it (there is no migration), so it runs only alone in this checkout: rerun ${resumeCommand(key)} when no private parallel run is active (omg factory run status lists them), with factory.run.maxConcurrent 1 in your user config`);
+            }
+        }
         // Like every engine git command, the origin read is hardened (the CLI's read is the same helper); its empty hooks dir is made only when the read runs.
         const repo = engineClaimRepo(o, (local) => (local ? trustedLocalFactoryClaimRepo : trustedFactoryClaimRepo)(o.exec, o.root, dir));
         if (repo)
             claim = acquireFactoryClaim(dir, repo, o.root, key, now, o.owner);
-        owner = acquireFactoryOwner(o.root, key, now, o.owner);
+        owner = o.runOwner ?? acquireFactoryOwner(o.root, key, now, o.owner);
+        ownerTaken = true;
         try {
             ledger = EngineLedger.open(dir, o.root, key);
             hooksDir = emptyHooksDir(dir);
@@ -5475,17 +5651,22 @@ export async function runFactoryEngine(o) {
         }
     }
     catch (error) {
+        if (!ownerTaken)
+            o.runOwner?.release();
         claim?.release();
         releaseRepoOwner();
         throw error;
     }
-    const ownerPaths = [factoryRepoOwnerPath(o.root), factoryOwnerPath(o.root, key)];
+    const lockPath = o.parallel ? factorySlotPath(o.root, repoOwner.slot) : factoryRepoOwnerPath(o.root);
+    const ownerPaths = [lockPath, factoryOwnerPath(o.root, key)];
     for (const path of ownerPaths)
         ledger.record(path, existsSync(path) ? readFileSync(path, 'utf8') : null);
+    const engine = new FactoryEngine(o, ledger, hooksDir);
     try {
-        return await new FactoryEngine(o, ledger, hooksDir).start(owner.tookOver);
+        return await engine.start(owner.tookOver);
     }
     finally {
+        engine.releaseRunLock();
         owner.release();
         // A run that stopped before a terminal phase keeps its claim, parked (claims.ts); a terminal or never-started run frees it.
         // A state that cannot be read may hide a run in flight: the claim is parked, never released (L-b).
@@ -5495,5 +5676,9 @@ export async function runFactoryEngine(o) {
         for (const path of ownerPaths)
             ledger.record(path, null);
     }
+}
+/** A run whose layout is sealed shared: no private store, and a lane or the coding agent already started (implement decides the layout before that). */
+export function sharedLayoutSealed(s) {
+    return s.layout !== 2 && (s.lanes.length > 0 || s.codingAgent !== undefined);
 }
 //# sourceMappingURL=engine.js.map

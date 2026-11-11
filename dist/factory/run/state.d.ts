@@ -517,6 +517,60 @@ export declare function acquireFactoryOwner(root: string, key: FactoryRunKey, no
  * poller's heal tick and local base sync, `omg factory heal scan`).
  */
 export declare function acquireFactoryRepoOwner(root: string, key: FactoryRunKey | 'next' | 'scan', now: string, deps?: OwnerDeps): HeldOwner;
+/** The slot owner files of private-layout parallel runs (factory.run.maxConcurrent). */
+export declare function factorySlotsDir(root: string): string;
+export declare function factorySlotPath(root: string, slot: number): string;
+/** The repository import lock (an owner record): held only around git transport into or out of your repository. */
+export declare function factoryImportLockPath(root: string): string;
+/** One slot file a live (or unreadable) holder has: unreadable counts as held. */
+export interface HeldSlotView {
+    slot: number;
+    path: string;
+    owner: FactoryOwner | 'unreadable';
+}
+/** Every slot file a live holder holds or nobody can read, whatever maxConcurrent is now (a lowered value never hides a live run). */
+export declare function heldSlots(root: string, deps?: OwnerDeps): HeldSlotView[];
+/** A held slot: the owner file of slot `slot`. */
+export interface HeldSlot extends HeldOwner {
+    slot: number;
+}
+/**
+ * Take one of `max` slots for `key` (claimOwner records: identity, takeover
+ * of a dead holder, unreadable = held), then make sure no shared-layout
+ * engine holds this checkout's engine lock: a `scan` holder is waited out
+ * for at most `scanWaitMs`; any other live holder (or an unreadable file)
+ * gives the slot back and is busy. No free slot: FactoryBusyError (exit 6)
+ * "N runs active (maxConcurrent N)" with the holders.
+ */
+export declare function acquireRunSlot(root: string, key: FactoryRunKey | 'next', max: number, now: () => string, deps?: OwnerDeps, scanWaitMs?: number): HeldSlot;
+/** How long an engine waits for another engine's import, fetch or push (sized for a first seed fetch or a slow push of a big repository). */
+export declare const IMPORT_LOCK_WAIT_MS: number;
+/** How long a scan holder (poll, read commands, clean of a private run) waits for an import in flight. */
+export declare const IMPORT_LOCK_SCAN_WAIT_MS = 60000;
+/** The busy error of the import lock: the holder and how long it waited; FactoryBusyError.holderRun is `import`. */
+export declare class ImportLockBusyError extends FactoryBusyError {
+    constructor(message: string);
+}
+/**
+ * Take the repository import lock (factoryImportLockPath) for `label`
+ * (`import:<key>`, `scan`): a claimOwner record, so a holder whose process
+ * is gone (pid dead, or reused: start identity) is taken over at once and a
+ * live holder is never taken over, however long it holds (no age rule: a
+ * slow push or a first seed fetch of a big repository keeps it). A live
+ * holder is waited for at most `waitMs`, then ImportLockBusyError; an
+ * unreadable file is busy at once (a human removes it: omg factory run release).
+ */
+export declare function acquireImportLock(root: string, label: string, now: () => string, deps?: OwnerDeps, waitMs?: number): HeldOwner;
+/**
+ * Run `fn` (synchronous: it is never held across an await, so never across
+ * a lane or a gate) under the repository import lock (acquireImportLock).
+ * Re-entrant within one process.
+ */
+export declare function withRepoImportLock<T>(root: string, label: string, fn: () => T, o?: {
+    deps?: OwnerDeps;
+    waitMs?: number;
+    now?: () => string;
+}): T;
 /** How long an engine-side start (run, heal run/approve/cancel, run reset, run clean, the poller's auto-start) waits for a `scan` holder before it is busy. */
 export declare const SCAN_WAIT_MS = 60000;
 /** The poller's auto-start blocks the event loop while it waits, so it waits only this long for a `scan` holder. */
