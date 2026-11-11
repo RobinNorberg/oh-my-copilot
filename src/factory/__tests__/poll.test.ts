@@ -18,6 +18,7 @@ import type { ForgeFactory } from '../../forge/types.js';
 import type { Exec, ExecResult } from '../../ship/exec.js';
 import { FactorySafetyError } from '../run/exec.js';
 import { HealRunRefused } from '../heal/run.js';
+import { writeTamperHold } from '../run/tamper-quarantine.js';
 import { HEAL_PIPELINE_MISSING, type ScanResult } from '../heal/cli.js';
 import { adoConfig } from '../../forge/ado/__tests__/world.js';
 import { DEFAULT_HEAL_CONFIG } from '../heal/config.js';
@@ -170,6 +171,15 @@ describe('omg factory poll on GitHub', () => {
     const audit = readFileSync(pollAuditPath(root), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     expect(audit.map((a) => [a.kind, a.id])).toEqual([['intake-new', 1], ['intake-new', 2], ['pr-done', 4]]);
     expect(audit[2]).toMatchObject({ pr: 9, state: 'MERGED', hint: 'omg factory run 4' });
+  });
+
+  it('F53: the first tick does not list an item a run is already on as new', async () => {
+    save(moveTo(issueRun(1), 'implement', 'plan ok', T0));
+    const w = scripted({ listed: [1, 2] });
+    expect(await poll(w.exec, { once: true, json: true }, { projectConfig: () => LABEL })).toBe(0);
+    expect(ticks()[0].intake).toMatchObject({ ran: true, items: 2, new: [{ id: 2 }] });
+    // It is not marked seen, so it shows as new once its run is reset.
+    expect(JSON.parse(readFileSync(pollStatePath(root), 'utf8')).seen).toEqual([2]);
   });
 
   it('a second tick reports only items new since the seen file', async () => {
@@ -612,6 +622,19 @@ describe('omg factory poll: factory.intake.autoStart', () => {
     expect(await poll(scripted().exec, { once: true, json: true }, on(e, { trustedUser: () => undefined }))).toBe(0);
     expect(ticks()[0]).toMatchObject({ idle: true, autoStart: { started: false, reason: 'factory.intake.autoStart is off' } });
     expect(e.starts).toEqual([]);
+  });
+
+  it('a tamper hold on the checkout blocks the auto-start with the release command', async () => {
+    const e = engine();
+    const ledgerDir = mkdtempSync(join(tmpdir(), 'omg-poll-hold-'));
+    try {
+      writeTamperHold(ledgerDir, root, { root, at: '2026-11-10T00:00:00.000Z', run: '7', gate: 'lane-tampered', quarantine: join(ledgerDir, 'q'), moved: ['hooks/pre-commit'], restored: [], notRestored: [], refs: [] });
+      expect(await poll(scripted().exec, { once: true, json: true }, on(e, { ledgerDir }))).toBe(0);
+      expect(ticks()[0].autoStart).toEqual({ started: false, reason: expect.stringMatching(/tamper hold .*omg factory run release --tamper/) });
+      expect(e.starts).toEqual([]);
+    } finally {
+      rmSync(ledgerDir, { recursive: true, force: true });
+    }
   });
 
   it('a working-tree key is ignored with a warning', async () => {

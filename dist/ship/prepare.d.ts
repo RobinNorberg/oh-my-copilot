@@ -17,7 +17,7 @@
  * during the checks stays out of it. `omg ship merge` re-checks the content
  * of every engine commit anyway (readCommitsSinceReview).
  */
-import type { Exec } from './exec.js';
+import type { Exec, ExecResult } from './exec.js';
 export type StepStatus = 'ok' | 'skipped' | 'failed';
 export interface PrepareStep {
     name: string;
@@ -37,6 +37,13 @@ export interface PrepareOptions {
     /** The PR's repository URL on GitHub (prRepoUrl); the remote must point at it. */
     repoUrl: string | undefined;
     remote?: string;
+    /**
+     * The caller already fetched `baseSha` into this checkout's object store
+     * and checked it is GitHub's base (omg factory run's private layout: the
+     * checkout's repository has no remote): the remote check and the fetch are
+     * skipped, and `baseSha` must be a commit there.
+     */
+    prefetchedBase?: boolean;
     /** Run the checks (default true); false is `--no-checks`. */
     checks?: boolean;
     /**
@@ -120,5 +127,33 @@ export declare function describePrepareChecks(configured: readonly (readonly str
 export declare function selectTargetedTests(changed: readonly string[], exists: (relPath: string) => boolean): string[];
 /** Generator verifications to run when their inputs changed. */
 export declare function selectGeneratorChecks(changed: readonly string[]): string[][];
+/**
+ * One command prepare runs from the checkout's content (the PR's own code):
+ * a configured check, a built-in check, or the inventory generator. Git
+ * (preflight, fetch, merge, the inventory commit) is never one of these.
+ */
+export interface PrepareCheckRun {
+    /** The step it belongs to (a check's name, or `inventory`). */
+    step: string;
+    /** configured: ship.prepare.checks (the caller's commandExec); built-in / inventory: `node <script>` (exec). */
+    kind: 'configured' | 'built-in' | 'inventory';
+    /** The configured argv, or the built-in's `node <script> ...` argv. */
+    argv: readonly string[];
+    exe: string;
+    args: string[];
+}
+/** A check's result; `notStarted` (only from runPrepareAsync's runCheck) = no verdict, prepare stops at PREPARE_SANDBOX_STEP. */
+export type PrepareCheckResult = ExecResult & {
+    notStarted?: string;
+};
+/** The step prepare fails when a check gave no verdict (the OS sandbox could not run it): an engine problem, never a fix lane. */
+export declare const PREPARE_SANDBOX_STEP = "checks-sandbox";
+/** ship's prepare: every check through `exec` / `commandExec`, synchronously. */
 export declare function runPrepare(opts: PrepareOptions): PrepareResult;
+/**
+ * prepare with every check through `runCheck` (omg factory run: the OS
+ * sandbox), awaited; git still runs through `exec`. A check whose result
+ * carries `notStarted` stops prepare at PREPARE_SANDBOX_STEP.
+ */
+export declare function runPrepareAsync(opts: PrepareOptions, runCheck: (check: PrepareCheckRun) => Promise<PrepareCheckResult>): Promise<PrepareResult>;
 //# sourceMappingURL=prepare.d.ts.map

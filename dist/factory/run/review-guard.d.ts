@@ -81,9 +81,22 @@ export interface RepoSnapshot {
     worktrees: Record<string, WorktreeEntry>;
     hooks: string;
     info: string;
+    /**
+     * Hash of `remotes/` and `branches/`: git's legacy remote definition
+     * files, still read for a remote name the config does not define
+     * (review-484d N1). Absent in a baseline recorded by an older release (the
+     * compare then skips it).
+     */
+    legacyRemotes?: string;
     /** Submodule git dir (relative to `modules/`) -> hash of its config, hooks, info and alternates. */
     modules: Record<string, string>;
     alternates: string;
+    /**
+     * Hash of what steers ancestry answers besides the commits: `shallow`,
+     * `objects/info/alternates` and `http-alternates` (objectStoreMetaHash). Absent in a
+     * baseline recorded by an older release (the compare then skips it).
+     */
+    objectMeta?: string;
     /** Hash of the global git config files and every include target (see the module comment). */
     globalConfig: string;
     /** Hash of the bounded list of ignored main-checkout paths (see the module comment). */
@@ -92,13 +105,62 @@ export interface RepoSnapshot {
     mainSymbolic: string;
     /** `git status --porcelain=v1 -z --untracked-files=all` of the main checkout (stableStatus). */
     mainStatus: string;
+    /**
+     * The bytes of what a tamper is quarantined and restored from
+     * (tamper-quarantine.ts, restorableFiles): `config`, `config.worktree`,
+     * every file under `hooks/` and `info/` (not info/refs), every
+     * `worktrees/<id>/config.worktree` and the submodule git dirs' config,
+     * hooks and info, by path relative to the common git dir, as
+     * `b64:<bytes>` (`b64x:` when executable), `big:<sha256>` (over
+     * RESTORE_FILE_MAX_BYTES, or past RESTORE_TOTAL_MAX_BYTES),
+     * `link:<target>` or `unreadable:<code>`. Absent in a snapshot recorded by
+     * an older release.
+     */
+    restore?: Record<string, string>;
 }
+/** A file the snapshot keeps the bytes of is at most this big; a bigger one is kept as its hash. */
+export declare const RESTORE_FILE_MAX_BYTES: number;
+/** All the kept bytes of one snapshot together. */
+export declare const RESTORE_TOTAL_MAX_BYTES: number;
+/**
+ * The key of RepoSnapshot.restore that marks a snapshot whose kept bytes also
+ * cover `worktrees/<id>/config.worktree` and the submodule git dirs under
+ * `modules/` (no real path starts with `#`). A snapshot without it was
+ * recorded by an earlier release: the quarantine then leaves those paths
+ * alone and names them as still active.
+ */
+export declare const RESTORE_SCOPE_KEY = "#scope";
+export declare const RESTORE_SCOPE = "modules,worktrees,remotes";
+/**
+ * The paths (relative to the common git dir, `/`-separated) the snapshot
+ * keeps bytes of, as RepoSnapshot.restore encodes them: `config`,
+ * `config.worktree`, `hooks/**`, `info/**` (not info/refs), every
+ * `worktrees/<id>/config.worktree`, and per submodule git dir under
+ * `modules/` (nested ones too) its `config`, `config.worktree`, `hooks/**`
+ * and `info/**`. Never follows a link (lstat). A file or directory that
+ * cannot be read is kept as `unreadable:<code>` (a lane can chmod a planted
+ * hook to 000; the quarantine then moves it aside without reading it).
+ */
+export declare function restorableFiles(commonDir: string): Record<string, string>;
 export declare class SnapshotError extends Error {
 }
 /** Top-level ignored files and directories the snapshot hashes by content. */
 export declare const SENSITIVE_IGNORED: readonly [".npmrc", ".yarnrc", ".yarnrc.yml", "node_modules/.bin"];
-/** Hash of every entry under `dir` (relative name, kind and content); `absent` when there is none. */
-export declare function treeHash(dir: string): string;
+/** Hash of every entry under `dir` (relative name, kind and content), minus the top-level names in `omit`; `absent` when there is none. */
+export declare function treeHash(dir: string, omit?: readonly string[]): string;
+/** The problem text of a changed `remotes/` or `branches/` (legacy remote definitions). */
+export declare const LEGACY_REMOTES_CHANGED = "the remotes/ or branches/ directory changed (legacy remote definitions git still reads)";
+/**
+ * The object store state a forged file could use to change merge-base,
+ * rev-list or a three-dot diff without a ref moving (RepoSnapshot.objectMeta):
+ * `shallow` and the alternates. Not the commit-graph, commit-graphs/,
+ * multi-pack-index or bitmaps: the engine and host git read none of them
+ * (core.commitGraph / core.multiPackIndex=false), while the user's own
+ * `git gc --auto` and `git maintenance` rewrite them, so hashing them only
+ * parked runs. Not the `*.promisor` packs either: they take effect only
+ * under the partial clone config, which the config hash covers.
+ */
+export declare function objectStoreMetaHash(commonDir: string): string;
 /** Every submodule git dir under `modules/` (module names may hold slashes; submodules nest); a non-directory entry is kept as such. */
 export declare function moduleEntries(commonDir: string): Record<string, string>;
 /** git's own include depth limit. */
@@ -133,6 +195,15 @@ export declare function stableStatus(raw: string, stateRootRel: string | null): 
  * differs from it; the comparison then reports that file.
  */
 export declare function snapshotRepo(exec: Exec, root: string, stateRootRel?: string | null, against?: RepoSnapshot): RepoSnapshot;
+/**
+ * Why the shared git dir may not carry a factory run, or null: replace refs
+ * (`refs/replace/*`, loose or packed) or an `info/grafts` file. The engine's
+ * own git ignores both (GIT_NO_REPLACE_OBJECTS, an empty GIT_GRAFT_FILE), but
+ * a replace ref planted before the run would sit in every baseline snapshot,
+ * so the compare would never flag it; the repository's other git users still
+ * honour them. Refused at the start and at every resume.
+ */
+export declare function replaceObjectsProblem(exec: Exec, root: string): string | null;
 /** Same file system path (realpath when both exist; case-insensitive on Windows). */
 export declare function samePath(a: string, b: string): boolean;
 export interface CompareAllowance {

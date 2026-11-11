@@ -122,6 +122,11 @@ export declare function reapStaleSessionEndOwner(directory: string, sessionId: s
 export declare function releaseSessionEndJob(directory: string, sessionId: string, nonce: string, generation: number, reason?: string): SessionEndJobV1 | null;
 export declare function updateSessionEndJob(directory: string, sessionId: string, expectedOwner: string, mutate: (job: SessionEndJobV1) => void): SessionEndJobV1 | null;
 export declare function claimSessionEndAction(directory: string, sessionId: string, ownerNonce: string, name: SessionEndActionName, deadlineAt: number): SessionEndJobV1 | null;
+/**
+ * Settle a legacy `openclaw` action whose durable snapshot says OpenClaw was not
+ * enabled, without a runner process or run folder (#479). Owner-fenced like a claim.
+ */
+export declare function settleDisabledOpenClawAction(directory: string, sessionId: string, ownerNonce: string): SessionEndJobV1 | null;
 export declare function markSessionEndActionRunner(directory: string, sessionId: string, ownerNonce: string, name: SessionEndActionName, runnerNonce: string, phase: 'started' | 'armed' | 'result-recorded'): SessionEndJobV1 | null;
 export declare function finishSessionEndAction(directory: string, sessionId: string, ownerNonce: string, name: SessionEndActionName, runnerNonce: string, completed: boolean, code: string): SessionEndJobV1 | null;
 /** Claims fair durable discovery tickets and retires tickets whose manifests are terminal. */

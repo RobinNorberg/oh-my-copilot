@@ -16,7 +16,7 @@ import { resolveHealConfig } from '../../../factory/heal/config.js';
 import { resolveForgeConfig } from '../../../forge/config.js';
 import { BASE_CONFIG_PATH } from '../../../ship/config.js';
 import { defaultExec } from '../../../ship/exec.js';
-import { commitFile, FakeLanes, gitIn, harness, ISSUE, REPO_URL, review, testGateConfig } from '../../../factory/run/__tests__/fake-lanes.js';
+import { commitFile, FakeLanes, gitIn, harness, ISSUE, REPO_URL, review, testGateConfig, attestedSandbox } from '../../../factory/run/__tests__/fake-lanes.js';
 const ADO_URL = 'https://dev.azure.com/contoso/Web/_git/web-app';
 const ok = (stdout = '') => ({ status: 0, stdout, stderr: '' });
 let out;
@@ -39,7 +39,7 @@ describe('omg factory run forge wiring', () => {
         const lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')]);
         const deps = {
             exec, lanes: () => lanes, limits: () => resolveFactoryRunLimits(undefined, undefined), base: () => 'dev',
-            ledgerDir: h.ledgerDir, gateConfig: testGateConfig, forge,
+            ledgerDir: h.ledgerDir, gateConfig: testGateConfig, gateSandbox: () => attestedSandbox(() => h.exec), forge,
         };
         await factoryRunCommand(deps).parseAsync([String(ISSUE), '--json'], { from: 'user' });
         expect(process.exitCode ?? 0).toBe(0);
@@ -60,7 +60,7 @@ describe('omg factory run without a usable forge (F9)', () => {
         exec: (cmd, args, opts) => (cmd === 'git' && args.join(' ') === 'rev-parse --show-toplevel' ? ok(`${h.root}
 `) : h.exec(cmd, args, opts)),
         lanes: () => new FakeLanes(h.root, []), limits: () => resolveFactoryRunLimits(undefined, undefined), base: () => 'dev',
-        ledgerDir: h.ledgerDir, gateConfig: testGateConfig, forge,
+        ledgerDir: h.ledgerDir, gateConfig: testGateConfig, gateSandbox: () => attestedSandbox(() => h.exec), forge,
     });
     const unavailable = () => { throw new FactoryForgeUnavailableError('no origin remote: omg factory needs a GitHub or Azure DevOps origin'); };
     it.each([

@@ -64,6 +64,8 @@ export interface BoardRow {
         credits: number;
         integrity: 'ok' | 'bad' | 'none';
         updatedAt: string;
+        /** factory.run.layout "private": the run dir under the work root (absent = the shared layout). */
+        privateDir?: string;
     };
     stage: {
         expected?: ProgressStage;

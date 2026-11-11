@@ -60,6 +60,22 @@ export interface LaneStartInput {
         role: string;
         run: string;
     };
+    /**
+     * The private layout (private-run.ts): the engine-made lane worktree
+     * `<run>/w/<n>` (detached at `baseRef`, links recorded) in the run's private
+     * repository, and where the job dir goes (`<run>/jobs`). Omitted = the
+     * shared layout: the backend makes the worktree in `cwd`'s repository and
+     * the job dir under its OMC root, as before.
+     */
+    worktree?: {
+        path: string;
+        commonGitDir: string;
+    };
+    jobRoot?: string;
+    /** Private layout: paths the lane's sandbox denies where the host can (the seed, the other runs' and lanes' dirs). */
+    deniedPaths?: string[];
+    /** Private layout: privateRepoProblem, run right before the backend's host git reads the worktree after the session. */
+    beforeHostGit?: () => string | null;
     /** Cloud backends only. */
     customAgent?: string;
     timeoutMs: number;

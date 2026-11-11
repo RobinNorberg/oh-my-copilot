@@ -28,6 +28,8 @@ const OWNER = { pid: 4242, hostname: 'test-host', isAlive: () => false };
 const forgeWith = (gate) => ({ config: { ...w.config, local: { ...w.config.local, gate } }, options: { ...factoryForgeOptions(w.root), stateDir: w.stateDir } });
 const prStore = () => JSON.parse(readFileSync(join(w.config.repo.url.slice(0, -'.git'.length), 'prs.json'), 'utf8'));
 const notStarted = async () => ({ status: 127, stdout: '', stderr: '', timedOut: false, startError: 'the local gate executable pnpm is not on PATH' });
+/** The plain (unsandboxed) gate runner's start errors: factory.run.sandbox.gates "unsandboxed" (under "enforced" the gate runs in the sandbox, where a start failure is no verdict). */
+const UNSANDBOXED_GATES = { factory: { run: { sandbox: { gates: 'unsandboxed' } } } };
 /** Commit package.json on the base, so the lanes branch from it. */
 function basePackage(scripts) {
     const text = `${JSON.stringify({ name: 'demo', version: '1.0.0', scripts }, null, 2)}\n`;
@@ -39,7 +41,7 @@ function basePackage(scripts) {
 describe('F37: a sealed gate that never started does not bind the run', () => {
     it('a rerun after the unstartable-gate park adopts the fixed trusted gate and reaches the merge gate', async () => {
         w = localWorld(['pnpm', 'test']);
-        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')]), { localGate: notStarted }));
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')]), { localGate: notStarted, gateSandboxUserConfig: UNSANDBOXED_GATES }));
         expect(out.gate?.name, out.message).toBe('gates');
         expect(out.gate?.reason).toMatch(/the local gate could not start/);
         expect(readFactoryState(w.root, LOCAL_ISSUE).localGate).toEqual(['pnpm', 'test']);
@@ -66,8 +68,6 @@ describe('F38: cancel closes the local PR; clean + reset make the item runnable 
         expect(comments).toMatch(/The local PR is closed \(cancelled\).*omg factory run reset 7/);
         const forge = createForge(w.exec, w.root, w.config, { ...factoryForgeOptions(w.root), stateDir: w.stateDir, local: { omgRoot: getOmcRoot(w.root) } });
         const resetOpts = { root: w.root, issue: LOCAL_ISSUE, exec: w.exec, forge, mirror: w.config.repo.url, ledgerDir: w.ledgerDir, owner: OWNER };
-        // The worktrees go first.
-        expect(() => resetFactoryRun(resetOpts)).toThrow(/still has worktrees .*omg factory run clean 7 first/);
         // A live engine in this checkout makes clean and reset busy (exit 6) before any git, forge or ledger step.
         const busyOwner = { ...OWNER, isAlive: () => true };
         writeFileSync(factoryRepoOwnerPath(w.root), JSON.stringify({ pid: 99, hostname: OWNER.hostname, startedAt: 'x', run: '8' }));

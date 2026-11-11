@@ -3,6 +3,7 @@ import * as path from 'path';
 import { createHash, randomUUID } from 'crypto';
 import { atomicWriteJsonSync } from '../../lib/atomic-write.js';
 import { getOmcRoot, validateSessionId } from '../../lib/worktree-paths.js';
+import { isOpenClawEnabled } from '../../openclaw/config.js';
 
 export type SessionEndActionName = 'foreground-cleanup' | 'wiki-capture' | 'team-cleanup' | 'python-cleanup' | 'reply-cleanup' | 'callback' | 'notification' | 'openclaw' | 'spawn-next';
 export type ActionStatus = 'pending' | 'claimed' | 'retryable' | 'completed' | 'expired';
@@ -59,6 +60,15 @@ const ACTIONS: Array<[SessionEndActionName, 'required' | 'best-effort']> = [
   ['foreground-cleanup', 'required'], ['wiki-capture', 'required'], ['team-cleanup', 'required'], ['python-cleanup', 'required'], ['reply-cleanup', 'required'],
   ['callback', 'best-effort'], ['notification', 'best-effort'], ['openclaw', 'best-effort'], ['spawn-next', 'best-effort'],
 ];
+/**
+ * The actions a manifest created now is seeded with. `openclaw` is only seeded
+ * when OpenClaw is enabled (#479): otherwise its runner would spawn and create a
+ * run folder for an action that does nothing. A manifest from an older build may
+ * still carry it; the worker settles that one without a runner (settleDisabledOpenClawAction).
+ */
+function seededActions(): Array<[SessionEndActionName, 'required' | 'best-effort']> {
+  return ACTIONS.filter(([name]) => name !== 'openclaw' || isOpenClawEnabled());
+}
 const TEST_PRODUCER_GRACE_ENV = 'OMC_SESSION_END_TEST_PRODUCER_GRACE_MS';
 const PRODUCER_GRACE_MS = process.env.NODE_ENV === 'test' && /^\d+$/.test(process.env[TEST_PRODUCER_GRACE_ENV] ?? '')
   ? Math.max(1, Number(process.env[TEST_PRODUCER_GRACE_ENV]))
@@ -190,7 +200,12 @@ export function updateSessionEndActionPayload(directory: string, sessionId: stri
     if (job.jobId !== authority.jobId || !job.owner || job.owner.nonce !== authority.ownerNonce) throw new Error('owner-conflict');
     const claimed = job.actions[authority.actionName];
     if (claimed.status !== 'claimed' || claimed.attempts !== authority.attempt || claimed.claimantNonce !== authority.ownerNonce || claimed.runner?.runnerNonce !== authority.runnerNonce || claimed.runner.phase !== 'armed') throw new Error('runner-conflict');
-    for (const name of actionNames) job.actions[name].payload = { ...job.actions[name].payload, ...payload };
+    for (const name of actionNames) {
+      const target = job.actions[name];
+      // A manifest seeded while OpenClaw is disabled has no openclaw action (#479).
+      if (!target && name === 'openclaw') continue;
+      target.payload = { ...target.payload, ...payload };
+    }
   });
 }
 /** `mismatch` retries only a stale revision: owner-fenced heartbeat paths must not spin on a rejection or a lock timeout. */
@@ -209,7 +224,7 @@ export function prepareCoreManifest(directory: string, sessionId: string, payloa
         // actions this build knows that the manifest lacks — otherwise new
         // deferred actions (spawn-next chain enqueue) are silently dropped and
         // the chain halts despite a recorded 'enqueued' decision.
-        const missing = ACTIONS.filter(([name]) => !(name in existing.actions));
+        const missing = seededActions().filter(([name]) => !(name in existing.actions));
         if (existing.producers.core.state !== 'absent') {
           if (missing.length === 0) return existing;
           const next: SessionEndJobV1 = { ...existing, actions: { ...existing.actions }, revision: existing.revision + 1, updatedAt: nowIso() };
@@ -221,7 +236,7 @@ export function prepareCoreManifest(directory: string, sessionId: string, payloa
         for (const [name, action] of Object.entries(next.actions)) if (name !== 'wiki-capture') action.payload = durablePayload;
         atomicWriteJsonSync(jobPath, next); const reread = readPath(jobPath); if (!reread || reread.revision !== next.revision) throw new Error('session-end-manifest-reread-mismatch'); return reread;
       }
-      const now = nowIso(); const actions = Object.fromEntries(ACTIONS.map(([name, klass]) => [name, newAction(name, klass, durablePayload)])) as SessionEndJobV1['actions'];
+      const now = nowIso(); const actions = Object.fromEntries(seededActions().map(([name, klass]) => [name, newAction(name, klass, durablePayload)])) as SessionEndJobV1['actions'];
       const job: SessionEndJobV1 = { version: 1, jobId: randomUUID(), sessionId, scopeKey: digest(directory), revision: 0, createdAt: now, updatedAt: now, ...initialDeadlines(), producers: { core: { state: 'prepared', intentKey: digest(durablePayload), payloadDigest: digest(durablePayload) }, wiki: { state: 'absent' } }, actions, owner: null, phase: 'collecting' };
       atomicWriteJsonSync(jobPath, job); return readPath(jobPath);
     });
@@ -266,7 +281,7 @@ export function sealWikiManifest(directory: string, sessionId: string, payload?:
       const existing = readPath(jobPath);
       if (!existing) {
         const now = nowIso();
-        const actions = Object.fromEntries(ACTIONS.map(([name, klass]) => [name, newAction(name, klass, {})])) as SessionEndJobV1['actions'];
+        const actions = Object.fromEntries(seededActions().map(([name, klass]) => [name, newAction(name, klass, {})])) as SessionEndJobV1['actions'];
         const wiki = payload ? { state: 'sealed' as const, intentKey: digest(payload), payloadDigest: digest(payload), sealedAt: now, sealedBy: 'wiki-producer' as const } : { state: 'no-op' as const, sealedAt: now, sealedBy: 'wiki-producer' as const };
         if (payload) actions['wiki-capture'].payload = payload; else { actions['wiki-capture'].status = 'completed'; actions['wiki-capture'].completedAt = now; }
         const job: SessionEndJobV1 = { version: 1, jobId: randomUUID(), sessionId, scopeKey: digest(directory), revision: 0, createdAt: now, updatedAt: now, ...initialDeadlines(), producers: { core: { state: 'absent' }, wiki }, actions, owner: null, phase: 'collecting' };
@@ -297,6 +312,17 @@ export function reapStaleSessionEndOwner(directory: string, sessionId: string, e
 export function releaseSessionEndJob(directory: string, sessionId: string, nonce: string, generation: number, reason = 'worker-released'): SessionEndJobV1 | null { return mutateLatest(directory, sessionId, (job) => { if (!job.owner || job.owner.nonce !== nonce || job.owner.leaseGeneration !== generation) throw new Error('release-conflict'); for (const action of Object.values(job.actions)) { if (action.status === 'claimed' && action.claimantNonce === nonce && action.runner?.phase === 'reserved' && action.runner.attempt === action.attempts) { action.attempts--; action.status = action.attempts > 0 ? 'retryable' : 'pending'; action.claimantNonce = undefined; action.claimedAt = undefined; action.runner = undefined; } } job.owner = null; if (job.phase !== 'complete') { job.phase = 'recoverable-failure'; job.recoverableFailure = { reason, releasedAt: nowIso(), ownerNonce: nonce }; } }, 'mismatch'); }
 export function updateSessionEndJob(directory: string, sessionId: string, expectedOwner: string, mutate: (job: SessionEndJobV1) => void): SessionEndJobV1 | null { return mutateLatest(directory, sessionId, (job) => { if (job.owner?.nonce !== expectedOwner || job.phase === 'complete') throw new Error('owner-conflict'); mutate(job); }, 'mismatch'); }
 export function claimSessionEndAction(directory: string, sessionId: string, ownerNonce: string, name: SessionEndActionName, deadlineAt: number): SessionEndJobV1 | null { return updateSessionEndJob(directory, sessionId, ownerNonce, (job) => { const action = job.actions[name]; if (!action || !['pending', 'retryable'].includes(action.status) || action.claimantNonce) throw new Error('action-claim-conflict'); if (action.class === 'best-effort' && action.attempts > 0) { action.status = 'expired'; action.lastOutcomeCode = 'delivery-attempted'; return; } if ((action.class === 'required' && (action.attempts >= REQUIRED_ACTION_MAX_ATTEMPTS || Date.now() >= Date.parse(job.bestEffortDeadlineAt))) || (action.class === 'best-effort' && Date.now() >= Date.parse(job.bestEffortDeadlineAt))) { action.status = 'expired'; action.lastOutcomeCode = action.class === 'required' ? action.attempts >= REQUIRED_ACTION_MAX_ATTEMPTS ? 'required-attempt-limit' : 'required-deadline-expired' : 'deadline-expired'; return; } action.status = 'claimed'; action.attempts++; action.claimantNonce = ownerNonce; action.claimedAt = nowIso(); action.runner = { attempt: action.attempts, runnerNonce: randomUUID(), phase: 'reserved', deadlineAt: new Date(deadlineAt).toISOString() }; }); }
+/**
+ * Settle a legacy `openclaw` action whose durable snapshot says OpenClaw was not
+ * enabled, without a runner process or run folder (#479). Owner-fenced like a claim.
+ */
+export function settleDisabledOpenClawAction(directory: string, sessionId: string, ownerNonce: string): SessionEndJobV1 | null {
+  return updateSessionEndJob(directory, sessionId, ownerNonce, (job) => {
+    const action = job.actions.openclaw;
+    if (!action || !['pending', 'retryable'].includes(action.status) || action.claimantNonce || action.payload.openClawEnabled === true) throw new Error('action-skip-conflict');
+    action.status = 'completed'; action.lastOutcomeCode = 'skipped-openclaw-disabled'; action.completedAt = nowIso();
+  });
+}
 export function markSessionEndActionRunner(directory: string, sessionId: string, ownerNonce: string, name: SessionEndActionName, runnerNonce: string, phase: 'started' | 'armed' | 'result-recorded'): SessionEndJobV1 | null { return updateSessionEndJob(directory, sessionId, ownerNonce, (job) => { const action = job.actions[name]; if (action.status !== 'claimed' || action.runner?.runnerNonce !== runnerNonce) throw new Error('runner-phase-conflict'); action.runner.phase = phase; }); }
 export function finishSessionEndAction(directory: string, sessionId: string, ownerNonce: string, name: SessionEndActionName, runnerNonce: string, completed: boolean, code: string): SessionEndJobV1 | null { return updateSessionEndJob(directory, sessionId, ownerNonce, (job) => { const action = job.actions[name]; if (action.status !== 'claimed' || action.claimantNonce !== ownerNonce || action.runner?.runnerNonce !== runnerNonce) throw new Error('action-result-conflict'); action.status = completed ? 'completed' : action.class === 'best-effort' ? 'expired' : 'retryable'; action.lastOutcomeCode = code; action.completedAt = completed ? nowIso() : undefined; action.claimantNonce = undefined; action.runner.phase = 'terminal'; }); }
 /** Claims fair durable discovery tickets and retires tickets whose manifests are terminal. */

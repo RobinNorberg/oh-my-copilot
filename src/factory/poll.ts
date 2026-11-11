@@ -79,6 +79,8 @@ import { adoHealFor, ciDeps, HEAL_PIPELINE_MISSING, runHealScan, type AdoHeal, t
 import { HealRunRefused } from './heal/run.js';
 import { DEFAULT_FACTORY_RUN_LIMITS, resolveFactoryRunLimits, type FactoryRunLimits } from './run/budget.js';
 import { FactoryForgeUnavailableError } from './run/forge-roots.js';
+import { defaultLedgerDir } from './run/ledger.js';
+import { tamperHoldMessage } from './run/tamper-quarantine.js';
 import { visibleLine } from '../forge/review-feedback.js';
 import { resolveTeamConfig, TeamConfigError } from './team/context.js';
 import { staleGateReminders, type Reminder } from './team/reminders.js';
@@ -513,6 +515,8 @@ export interface PollContext {
   owner: OwnerDeps;
   /** A `scan` lock whose release failed (it warned): retried at the next tick (L7). */
   unreleasedScan?: HeldOwner;
+  /** The tamper hold on the checkout (tamper-quarantine.ts), null when none: no auto-start while it is set (default: the factory ledger's). */
+  tamperHold?: () => string | null;
   now: () => number;
   /** Row signatures of the previous tick (board diff), and PR facts (audit on change); updated by pollTick. */
   previous: { board: Map<string, string>; prs: Map<string, string>; ledger?: boolean };
@@ -600,8 +604,12 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
         }
         // A read-failed item stays new, so the next tick checks it again.
         const failed = new Set(results.filter((r) => r.reasons[0] === 'read-failed').map((r) => r.id));
-        step('intake seen', () => updateSeen(root, ids.filter((id) => !failed.has(id)), at));
-        intake = { ran: true, items: ids.length, new: results.map((r) => ({ id: r.id, bucket: r.bucket, reasons: r.reasons })) };
+        // F53: an item a run is already on is not new work (a first tick, with an empty seen file, would list it).
+        // It is not marked seen either, so it shows as new once the run is reset or moved aside.
+        const active = new Set(results.filter((r) => (r.reasons[0] ?? '').startsWith('run-active')).map((r) => r.id));
+        step('intake seen', () => updateSeen(root, ids.filter((id) => !failed.has(id) && !active.has(id)), at));
+        const work = results.filter((r) => !active.has(r.id));
+        intake = { ran: true, items: ids.length, new: work.map((r) => ({ id: r.id, bucket: r.bucket, reasons: r.reasons })) };
       }
     }
   }
@@ -687,7 +695,9 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
 
   // 5. auto-start: at most one run, on an idle tick only.
   let autoStart: PollTick['autoStart'];
+  const held = config.intake.autoStart ? (ctx.tamperHold ?? (() => tamperHoldMessage(defaultLedgerDir(), root)))() : null;
   const blocked = !config.intake.autoStart ? 'factory.intake.autoStart is off'
+    : held ? held
     : locked ? 'the run lock is held: an engine runs in this repository'
       : unsound ? 'a run state is unreadable or fails its integrity check'
           : !idle ? 'a run is in flight'
@@ -778,6 +788,8 @@ export type FactoryPollDeps = FactoryBoardDeps & {
   autoStart?: PollAutoStart;
   budget?: PollBudget;
   owner?: OwnerDeps;
+  /** The factory ledger dir its tamper holds are read from (default defaultLedgerDir()). */
+  ledgerDir?: string;
   /** Waits `ms` or until `wake` aborts. */
   sleep?: (ms: number, wake: AbortSignal) => Promise<void>;
   /** Subscribe to the stop signals (default SIGINT and SIGTERM, passed to the handler); returns the unsubscribe. */
@@ -845,6 +857,7 @@ export async function runFactoryPoll(o: FactoryPollOptions, deps: FactoryPollDep
     }),
     budget: deps.budget ?? defaultPollBudget(() => layers),
     remindAfterHours: teamConfig.remindAfterHours,
+    tamperHold: () => tamperHoldMessage(deps.ledgerDir ?? defaultLedgerDir(), read.root),
     owner, now, previous: { board: new Map(), prs: new Map() }, tick: 0,
   };
   let interval = base;

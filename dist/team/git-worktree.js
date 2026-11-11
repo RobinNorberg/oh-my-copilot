@@ -75,9 +75,24 @@ export function hostGitHardeningArgs() {
         ...EXEC_KEY_OVERRIDES.flatMap((kv) => ['-c', kv]),
     ];
 }
+/**
+ * Host git is local only (no fetch or push runs here), so every key below is
+ * pinned on every command:
+ * - core.commitGraph / core.multiPackIndex=false: ancestry and diff reads use
+ *   the commits themselves, never a commit-graph or MIDX someone wrote.
+ * - gc.auto=0, maintenance.auto=false, fetch.writeCommitGraph=false: host git
+ *   never repacks or writes a commit-graph (the snapshot hashes objects/info).
+ * - commit.gpgSign=false: no signing program runs (commit-tree also passes
+ *   --no-gpg-sign).
+ * - protocol.ext.allow=never: the ext:: transport runs a command.
+ * - core.alternateRefsCommand=true: a fetch lists the alternates' refs with
+ *   it; `true` lists none and runs nothing planted.
+ */
 const EXEC_KEY_OVERRIDES = [
     'core.fsmonitor=false', 'core.pager=cat', 'diff.external=', 'core.sshCommand=ssh', 'credential.helper=',
     'gpg.program=gpg', 'gpg.ssh.program=ssh-keygen', 'gpg.x509.program=gpgsm', 'core.editor=:', 'sequence.editor=:',
+    'core.commitGraph=false', 'core.multiPackIndex=false', 'gc.auto=0', 'maintenance.auto=false', 'fetch.writeCommitGraph=false',
+    'commit.gpgSign=false', 'protocol.ext.allow=never', 'core.alternateRefsCommand=true',
 ];
 let emptyAttributesFile = null;
 /** A host-owned empty file for core.attributesFile; a fresh one whenever the last is gone or not empty. */
@@ -95,6 +110,8 @@ function hostAttributesFile() {
 const WORK_TREE_SUBCOMMANDS = new Set([
     'status', 'diff', 'diff-files', 'diff-index', 'ls-files', 'worktree', 'checkout', 'checkout-index', 'restore',
     'switch', 'reset', 'add', 'stash', 'merge', 'commit', 'update-index', 'read-tree', 'apply', 'rm', 'mv', 'clean',
+    // `hash-object --stdin --path`: the path selects attributes, so a filter could run on the bytes.
+    'hash-object',
 ]);
 /** Global options before a subcommand that take the next argument as their value. */
 const GLOBAL_OPTIONS_WITH_VALUE = new Set(['-c', '-C', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env']);
@@ -118,16 +135,28 @@ function gitSubcommandIndex(args) {
  * also gets GIT_LFS_SKIP_SMUDGE=1: host git only inspects and never checks
  * files out (`worktree add` does not come here), so a git-lfs that still runs
  * (hostGitDriverOverrides blanks filter.lfs) downloads and writes nothing.
+ * And GIT_NO_REPLACE_OBJECTS=1 (GIT_REPLACE_REF_BASE dropped): a
+ * `refs/replace/<base>` planted in the shared git dir would make the
+ * protected-path diff, ls-tree and merge-tree read another tree than the
+ * commit the engine names. Git still honours `info/grafts` under
+ * GIT_NO_REPLACE_OBJECTS, so GIT_GRAFT_FILE names a file that never exists
+ * (inside the empty hooks dir).
  */
 export function hostGitEnv(args, base = process.env) {
     const valueOf = (flag) => {
         const i = args.indexOf(flag);
         return i >= 0 && i + 1 < args.length ? args[i + 1] : undefined;
     };
+    const kept = {};
+    for (const [key, value] of Object.entries(base)) {
+        if (!/^GIT_(?:REPLACE_REF_BASE|GRAFT_FILE|NO_REPLACE_OBJECTS)$/i.test(key))
+            kept[key] = value;
+    }
+    const pins = { GIT_LFS_SKIP_SMUDGE: '1', GIT_NO_REPLACE_OBJECTS: '1', GIT_GRAFT_FILE: join(hostHooksDir(), 'grafts') };
     const gitDir = valueOf('--git-dir');
     if (!gitDir)
-        return { ...base, GIT_LFS_SKIP_SMUDGE: '1' };
-    const env = { ...base, GIT_DIR: resolve(gitDir), GIT_LFS_SKIP_SMUDGE: '1' };
+        return { ...kept, ...pins };
+    const env = { ...kept, GIT_DIR: resolve(gitDir), ...pins };
     const workTree = valueOf('--work-tree');
     if (workTree)
         env.GIT_WORK_TREE = resolve(workTree);
@@ -213,7 +242,16 @@ function hostGitExe() {
  * process.env) is the environment the pins are set over (the factory
  * engine's commit identity).
  */
-export function runHostGit(cwd, args, timeout, baseEnv = process.env) {
+export function runHostGit(cwd, args, timeout, baseEnv = process.env, input) {
+    const { argv, env } = hostGitCommand(cwd, args, timeout, baseEnv);
+    return execFileSync(hostGitExe(), argv, { cwd, env, encoding: 'utf-8', stdio: 'pipe', windowsHide: true, timeout, ...(input !== undefined ? { input, maxBuffer: 64 * 1024 * 1024 } : {}) });
+}
+/** runHostGit with raw stdout bytes (`cat-file --batch` of binary blobs). */
+export function runHostGitBuffer(cwd, args, timeout, baseEnv = process.env, input) {
+    const { argv, env } = hostGitCommand(cwd, args, timeout, baseEnv);
+    return execFileSync(hostGitExe(), argv, { cwd, env, stdio: 'pipe', windowsHide: true, timeout, maxBuffer: 512 * 1024 * 1024, ...(input !== undefined ? { input } : {}) });
+}
+function hostGitCommand(cwd, args, timeout, baseEnv) {
     const env = hostGitEnv(args, baseEnv);
     const recorded = env.GIT_DIR ? recordedGitDirs.get(env.GIT_DIR) : undefined;
     if (recorded && !sameGitLinks(readWorktreeGitLinks(recorded.wtPath), recorded.links)) {
@@ -237,7 +275,7 @@ export function runHostGit(cwd, args, timeout, baseEnv = process.env) {
         if (IGNORE_SUBMODULES_SUBCOMMANDS.has(subcommand))
             finalArgs = [...args.slice(0, at + 1), '--ignore-submodules=all', ...args.slice(at + 1)];
     }
-    return execFileSync(hostGitExe(), [...hostGitHardeningArgs(), ...tree, ...finalArgs], { cwd, env, encoding: 'utf-8', stdio: 'pipe', windowsHide: true, timeout });
+    return { argv: [...hostGitHardeningArgs(), ...tree, ...finalArgs], env };
 }
 /** `-c` pairs on every host command in a lane worktree: no submodule recursion, status or summary. */
 const LANE_SUBMODULE_OVERRIDES = ['submodule.recurse=false', 'diff.ignoreSubmodules=all', 'status.submoduleSummary=false'];
@@ -610,7 +648,8 @@ function removeRuntimeLeftover(wtPath, retryMs = RUNTIME_LEFTOVER_RETRY_MS) {
  * (`.git` skipped, links not followed) before `git worktree remove`: git
  * deletes ignored entries with the tree, and on win32 it recurses through a
  * junction (a linked node_modules) and empties its target. Only the link goes;
- * the target is untouched. Tracked symlinks are left to git. Throws
+ * the target is untouched. Tracked symlinks are left to git unless
+ * `keepTracked` is false (a tree being discarded: every link goes). Throws
  * `worktree_link_unremovable` when a link cannot be unlinked.
  */
 function unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs = [], keepTracked = true) {
@@ -662,6 +701,35 @@ function unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs = [], keepTracked = tru
             }
         }
     }
+}
+/** The first symlink or junction under `dir` (lstat walk, links never followed), or null. */
+function firstLinkUnder(dir) {
+    const pending = [dir];
+    while (pending.length > 0) {
+        const current = pending.pop();
+        let entries;
+        try {
+            entries = readdirSync(current, { withFileTypes: true });
+        }
+        catch {
+            continue;
+        }
+        for (const entry of entries) {
+            const path = join(current, entry.name);
+            let stat;
+            try {
+                stat = lstatSync(path);
+            }
+            catch {
+                continue;
+            }
+            if (stat.isSymbolicLink())
+                return path;
+            if (stat.isDirectory())
+                pending.push(path);
+        }
+    }
+    return null;
 }
 function gitOrNull(args, cwd) {
     try {
@@ -1050,8 +1118,11 @@ export function ensureWorkerWorktree(teamName, workerName, repoRoot, options = {
     const wtPath = getWorktreePath(repoRoot, teamName, workerName);
     const branch = mode === 'named' ? getBranchName(teamName, workerName) : 'HEAD';
     validateResolvedPath(wtPath, join(getOmcRoot(repoRoot), 'team'));
+    // A stale entry of this worker's own path (its directory removed by hand) would block `worktree add`: drop only
+    // that one, never `git worktree prune`, which drops every stale entry, the user's own included. Best effort.
     try {
-        runHostGit(repoRoot, ['worktree', 'prune']);
+        if (!existsSync(wtPath))
+            removeStaleWorktreeEntry(repoRoot, wtPath);
     }
     catch { /* ignore */ }
     if (existsSync(wtPath)) {
@@ -1167,7 +1238,9 @@ export function prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, 
  * With the worktree directory already gone, the named branch is checked the
  * same way and kept when it holds unmerged worker commits. `contained`: commits
  * (full shas the caller verified, e.g. a fetched remote branch) whose history
- * also counts as merged.
+ * also counts as merged. `discardChanges`: the caller gives up the
+ * worktree's uncommitted changes (a cancelled factory run's lane): a dirty
+ * tree is removed too; the path guard and the commit checks still apply.
  */
 export function removeWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
     const contained = options.contained ?? [];
@@ -1194,7 +1267,15 @@ export function removeWorkerWorktree(teamName, workerName, repoRoot, options = {
             gitDirArgs = worktreeGitDirArgs(wtPath);
             laneCommonDir = commonDir;
         }
-        prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, wtPath, gitDirArgs);
+        if (!options.discardChanges)
+            prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, wtPath, gitDirArgs);
+        else if (existsSync(wtPath)) {
+            validateWorktreeRemovalTarget({
+                candidatePath: wtPath,
+                expectedRoots: [join(getOmcRoot(repoRoot), 'team', sanitizeName(teamName), 'worktrees')],
+                mainRepoRoots: [repoRoot],
+            });
+        }
         const baseCommit = readMetadata(repoRoot, teamName).find((entry) => entry.workerName === workerName)?.baseCommit;
         let registered;
         try {
@@ -1250,8 +1331,19 @@ export function removeWorkerWorktree(teamName, workerName, repoRoot, options = {
             error.code = 'worktree_remove_failed';
             throw error;
         }
-        if (existsSync(wtPath))
-            unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs);
+        if (existsSync(wtPath)) {
+            // Discarding: the tree is thrown away, so tracked links go too. A lane can replace a tracked symlink with a
+            // junction to an outside directory, which `git worktree remove --force` would empty on win32.
+            unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs, !options.discardChanges);
+            if (options.discardChanges) {
+                const left = firstLinkUnder(wtPath);
+                if (left) {
+                    const error = new Error(`worktree_link_unremovable: preserving worker worktree at ${wtPath}; a link is still there after unlinking: ${left}`);
+                    error.code = 'worktree_link_unremovable';
+                    throw error;
+                }
+            }
+        }
         try {
             if (options.gitLinks && laneCommonDir) {
                 // An agent's worktree goes by path, not `git worktree remove`: that
@@ -1277,7 +1369,7 @@ export function removeWorkerWorktree(teamName, workerName, repoRoot, options = {
                     removeTreeByPath(options.gitLinks.adminDir);
             }
             else {
-                runHostGit(repoRoot, ['worktree', 'remove', ...(force ? ['--force'] : []), wtPath]);
+                runHostGit(repoRoot, ['worktree', 'remove', ...(force || (options.discardChanges && !submodules) ? ['--force'] : []), wtPath]);
             }
         }
         catch (err) {
@@ -1293,8 +1385,11 @@ export function removeWorkerWorktree(teamName, workerName, repoRoot, options = {
             }
             // Unregistered/absent stale paths are best-effort cleanup only.
         }
+        // Only this worktree's own entry, when its directory is gone and git still lists it (never `git worktree prune`,
+        // which would drop every other stale entry too, the user's own included); best effort, as the prune was.
         try {
-            runHostGit(repoRoot, ['worktree', 'prune']);
+            if (!existsSync(wtPath))
+                removeStaleWorktreeEntry(repoRoot, wtPath);
         }
         catch { /* ignore */ }
         if (branchHead)
@@ -1312,6 +1407,13 @@ export function removeWorkerWorktree(teamName, workerName, repoRoot, options = {
                 removeRuntimeLeftover(wtPath);
             else
                 rmSync(wtPath, { recursive: true, force: true });
+        }
+        // Discarding skipped the AGENTS.md restore: its managed backup goes now (the worktree is gone).
+        if (options.discardChanges && !existsSync(wtPath)) {
+            try {
+                restoreWorktreeRootAgents(teamName, workerName, repoRoot, wtPath);
+            }
+            catch { /* best effort */ }
         }
         forgetMetadataUnlocked(repoRoot, teamName, workerName);
         forgetWorktreeGitLinks(wtPath);
@@ -1338,6 +1440,78 @@ function removeTreeByPath(dir) {
     }
     unlinkUntrackedWorktreeLinks(dir, [], false);
     rmSync(dir, { recursive: true, force: true });
+}
+/**
+ * Drop the stale admin entry of `wtPath` alone (its directory is gone), never
+ * by `git worktree prune`: that drops every stale entry, a user's worktree on
+ * an unmounted drive included (its HEAD, its index, the only reference to its
+ * detached commits). The entry is `<common>/worktrees/<adminName>` when the
+ * caller recorded it, else the one whose `gitdir` file names `<wtPath>/.git`.
+ * It must be a real directory (not a link) directly under
+ * `<common>/worktrees`, not locked, and its `gitdir` must name
+ * `<wtPath>/.git`. False when no entry names `wtPath`; throws on anything
+ * else unexpected, and when git still lists `wtPath` afterwards.
+ */
+export function removeStaleWorktreeEntry(repoRoot, wtPath, adminName) {
+    if (existsSync(wtPath))
+        throw new Error(`stale_worktree_entry: ${wtPath} exists, so its worktree entry is not stale`);
+    const common = resolve(repoRoot, runHostGit(repoRoot, ['rev-parse', '--path-format=absolute', '--git-common-dir']).trim());
+    const root = join(common, 'worktrees');
+    const want = canonicalPathForComparison(join(wtPath, '.git'));
+    const real = (dir) => {
+        try {
+            const st = lstatSync(dir);
+            return st.isDirectory() && !st.isSymbolicLink();
+        }
+        catch {
+            return false;
+        }
+    };
+    // `worktrees/` itself must be a real directory in both branches: through a link the entry removed would be the link target's.
+    let rootPresent = true;
+    try {
+        lstatSync(root);
+    }
+    catch {
+        rootPresent = false;
+    }
+    if (rootPresent && !real(root))
+        throw new Error(`stale_worktree_entry: ${root} is not a real directory (a link or a file)`);
+    const namesWtPath = (name) => {
+        const dir = join(root, name);
+        if (!isAdminDirOf(common, dir) || !real(dir))
+            return false;
+        try {
+            const gitdir = join(dir, 'gitdir');
+            if (!lstatSync(gitdir).isFile())
+                return false;
+            return canonicalPathForComparison(resolve(dir, readFileSync(gitdir, 'utf8').trim())) === want;
+        }
+        catch {
+            return false;
+        }
+    };
+    let name;
+    if (adminName !== undefined) {
+        if (!namesWtPath(adminName))
+            throw new Error(`stale_worktree_entry: ${join(root, adminName)} is not a real directory in ${root} whose gitdir names ${join(wtPath, '.git')}`);
+        name = adminName;
+    }
+    else {
+        const matches = real(root) ? readdirSync(root).filter(namesWtPath) : [];
+        if (matches.length === 0)
+            return false;
+        if (matches.length > 1)
+            throw new Error(`stale_worktree_entry: ${matches.length} entries in ${root} name ${join(wtPath, '.git')}`);
+        name = matches[0];
+    }
+    const dir = join(root, name);
+    if (existsSync(join(dir, 'locked')))
+        throw new Error(`stale_worktree_entry: ${dir} is locked`);
+    removeTreeByPath(dir);
+    if (findRegisteredWorktree(repoRoot, wtPath) !== null)
+        throw new Error(`stale_worktree_entry: git still lists ${wtPath} after its entry ${dir} was removed`);
+    return true;
 }
 /**
  * Remove a worktree whose git links no longer match the record, without

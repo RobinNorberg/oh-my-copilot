@@ -19,6 +19,15 @@ const CONFIG_FILE = process.env.OMC_OPENCLAW_CONFIG
 let _cachedConfig: OpenClawConfig | undefined | null = null;
 
 /**
+ * The single "OpenClaw is enabled" switch: OMC_OPENCLAW=1 (set by `--openclaw`).
+ * Every gate that would otherwise create OpenClaw state or spawn OpenClaw work
+ * must use this, so a disabled install leaves no `openclaw` directories behind.
+ */
+export function isOpenClawEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.OMC_OPENCLAW === "1";
+}
+
+/**
  * Read and cache the OpenClaw configuration.
  *
  * Returns null when:
@@ -29,7 +38,7 @@ let _cachedConfig: OpenClawConfig | undefined | null = null;
  */
 export function getOpenClawConfig(): OpenClawConfig | null {
   // Gate: only active when --openclaw flag was used
-  if (process.env.OMC_OPENCLAW !== "1") {
+  if (!isOpenClawEnabled()) {
     return null;
   }
 

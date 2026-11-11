@@ -100,6 +100,12 @@ export declare function hostGitHardeningArgs(): string[];
  * also gets GIT_LFS_SKIP_SMUDGE=1: host git only inspects and never checks
  * files out (`worktree add` does not come here), so a git-lfs that still runs
  * (hostGitDriverOverrides blanks filter.lfs) downloads and writes nothing.
+ * And GIT_NO_REPLACE_OBJECTS=1 (GIT_REPLACE_REF_BASE dropped): a
+ * `refs/replace/<base>` planted in the shared git dir would make the
+ * protected-path diff, ls-tree and merge-tree read another tree than the
+ * commit the engine names. Git still honours `info/grafts` under
+ * GIT_NO_REPLACE_OBJECTS, so GIT_GRAFT_FILE names a file that never exists
+ * (inside the empty hooks dir).
  */
 export declare function hostGitEnv(args: readonly string[], base?: NodeJS.ProcessEnv): NodeJS.ProcessEnv;
 /**
@@ -138,7 +144,9 @@ export declare function hostGitDriverOverrides(cwd: string, env?: NodeJS.Process
  * process.env) is the environment the pins are set over (the factory
  * engine's commit identity).
  */
-export declare function runHostGit(cwd: string, args: readonly string[], timeout?: number, baseEnv?: NodeJS.ProcessEnv): string;
+export declare function runHostGit(cwd: string, args: readonly string[], timeout?: number, baseEnv?: NodeJS.ProcessEnv, input?: string | Buffer): string;
+/** runHostGit with raw stdout bytes (`cat-file --batch` of binary blobs). */
+export declare function runHostGitBuffer(cwd: string, args: readonly string[], timeout?: number, baseEnv?: NodeJS.ProcessEnv, input?: string | Buffer): Buffer;
 /** The empty tree of each object format: GIT_ATTR_SOURCE names it, so host git reads no `.gitattributes`. */
 export declare const EMPTY_TREE: Readonly<Record<string, string>>;
 /** The first git that honours GIT_ATTR_SOURCE (git --attr-source, 2.41.0). */
@@ -257,14 +265,29 @@ export declare function prepareWorkerWorktreeForRemoval(teamName: string, worker
  * With the worktree directory already gone, the named branch is checked the
  * same way and kept when it holds unmerged worker commits. `contained`: commits
  * (full shas the caller verified, e.g. a fetched remote branch) whose history
- * also counts as merged.
+ * also counts as merged. `discardChanges`: the caller gives up the
+ * worktree's uncommitted changes (a cancelled factory run's lane): a dirty
+ * tree is removed too; the path guard and the commit checks still apply.
  */
 export declare function removeWorkerWorktree(teamName: string, workerName: string, repoRoot: string, options?: {
     gitLinks?: WorktreeGitLinks;
     contained?: readonly string[];
+    discardChanges?: boolean;
 }): {
     tampered: string | null;
 };
+/**
+ * Drop the stale admin entry of `wtPath` alone (its directory is gone), never
+ * by `git worktree prune`: that drops every stale entry, a user's worktree on
+ * an unmounted drive included (its HEAD, its index, the only reference to its
+ * detached commits). The entry is `<common>/worktrees/<adminName>` when the
+ * caller recorded it, else the one whose `gitdir` file names `<wtPath>/.git`.
+ * It must be a real directory (not a link) directly under
+ * `<common>/worktrees`, not locked, and its `gitdir` must name
+ * `<wtPath>/.git`. False when no entry names `wtPath`; throws on anything
+ * else unexpected, and when git still lists `wtPath` afterwards.
+ */
+export declare function removeStaleWorktreeEntry(repoRoot: string, wtPath: string, adminName?: string): boolean;
 /** List all worktrees for a team. */
 export declare function listTeamWorktrees(teamName: string, repoRoot: string): WorktreeInfo[];
 export declare function inspectTeamWorktreeCleanupSafety(teamName: string, repoRoot: string): TeamWorktreeCleanupSafety;

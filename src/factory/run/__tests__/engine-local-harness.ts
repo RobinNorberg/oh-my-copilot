@@ -20,7 +20,7 @@ import type { FactoryEngineOptions } from '../engine.js';
 import { factoryForgeOptions } from '../forge-roots.js';
 import type { LocalGateRunner } from '../local-gate.js';
 import type { GateConfigLoader } from '../prepare.js';
-import { FakeLanes, FakeProcesses, gitIn, type LaneScript } from './fake-lanes.js';
+import { FakeLanes, FakeProcesses, gitIn, type LaneScript, withTestSandbox } from './fake-lanes.js';
 
 export const LOCAL_ISSUE = 7;
 export const BASE = 'main';
@@ -89,7 +89,7 @@ export const localTestGateConfig: GateConfigLoader = () => ({
 });
 
 export function localOpts(w: LocalWorld, lanes: FakeLanes, over: Partial<FactoryEngineOptions> = {}): FactoryEngineOptions {
-  return {
+  return withTestSandbox({
     root: w.root,
     issue: LOCAL_ISSUE,
     exec: w.exec,
@@ -104,7 +104,7 @@ export function localOpts(w: LocalWorld, lanes: FakeLanes, over: Partial<Factory
     forge: { config: w.config, options: { ...factoryForgeOptions(w.root), stateDir: w.stateDir } },
     localGate: w.gate,
     ...over,
-  };
+  }, over);
 }
 
 export const lanesFor = (w: LocalWorld, scripts: LaneScript[]) => new FakeLanes(w.root, scripts);

@@ -29,8 +29,8 @@ export interface FakeCalls {
 
 export const newCalls = (): FakeCalls => ({ connections: [], sessions: [], prompts: [], optionsUpdates: [], globalGitConfigs: [] });
 
-/** The server `rpc` of a fake client with sandbox support `sandbox`. */
-export function fakeClientRpc(sandbox: FakeSandbox): unknown {
+/** The server `rpc` of a fake client with sandbox support `sandbox` (`deniedPaths`: the host reports denied_paths). */
+export function fakeClientRpc(sandbox: FakeSandbox, deniedPaths = false): unknown {
   if (sandbox === 'no-rpc') return undefined;
   const supported = sandbox !== 'unsupported';
   return {
@@ -38,7 +38,7 @@ export function fakeClientRpc(sandbox: FakeSandbox): unknown {
       getHostSupport: async () => ({
         supported,
         ...(supported ? {} : { reason: 'MXC is not available on this host' }),
-        capabilities: [{ name: 'shell', supported }, { name: 'network', supported }, { name: 'denied_paths', supported: false }],
+        capabilities: [{ name: 'shell', supported }, { name: 'network', supported }, { name: 'denied_paths', supported: supported && deniedPaths }],
       }),
     },
   };

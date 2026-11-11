@@ -20,7 +20,7 @@ import { humanFeedbackDigest, runFactoryEngine, type FactoryEngineOptions } from
 import { factoryForgeOptions } from '../forge-roots.js';
 import { createFactoryState, parseFactoryState, readFactoryState, type FactoryRunState } from '../state.js';
 import { renderFactoryRunState } from '../../../cli/commands/factory.js';
-import { commitFile, FakeLanes, FakeProcesses, harness, ISSUE, PR, REPO_URL, review, testGateConfig, type Harness, type LaneScript } from './fake-lanes.js';
+import { commitFile, FakeLanes, FakeProcesses, harness, ISSUE, PR, REPO_URL, review, testGateConfig, withTestSandbox, type Harness, type LaneScript } from './fake-lanes.js';
 
 // Each run drives a few hundred real git processes; the timeout only bounds a hang.
 vi.setConfig({ testTimeout: scaleTiming(240_000) });
@@ -70,7 +70,7 @@ function run(scripts: LaneScript[], o: RunOptions = {}) {
     ...(o.allowUnsandboxedLanes ? { allowUnsandboxedLanes: true } : {}),
     ...(o.noForge ? {} : { forge: { config: config(o.review, o.repoName), options: factoryForgeOptions(h.root) } }),
   };
-  return { lanes, done: runFactoryEngine(opts) };
+  return { lanes, done: runFactoryEngine(withTestSandbox(opts)) };
 }
 
 const user = (login: string) => ({ __typename: 'User', login });
@@ -479,6 +479,11 @@ describe('the run state shape check covers humanReview and lane feedback', () =>
     ['null', null],
   ])('refuses humanReview with %s', (_n, humanReview) => {
     expect(() => parse({ ...base(), humanReview })).toThrow(/field humanReview/);
+  });
+
+  it('review-482b B: checkoutAdmin is one admin dir name, nothing else', () => {
+    expect(parse({ ...base(), checkoutAdmin: 'issue-7.checkout-2' }).checkoutAdmin).toBe('issue-7.checkout-2');
+    for (const bad of ['../x', 'a/b', 'a\\b', '..', '.', '', 'x y', 7]) expect(() => parse({ ...base(), checkoutAdmin: bad }), String(bad)).toThrow(/field checkoutAdmin/);
   });
 
   it.each([

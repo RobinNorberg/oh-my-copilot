@@ -84,6 +84,47 @@ export declare function loadSandboxSettings(root: string, scope: SandboxScope, l
     settings: SandboxSettings;
     warnings: string[];
 };
+/**
+ * `factory.run.sandbox.gates`: how `omg factory run` runs the PR's own code in
+ * prepare's checks and the local gate. `enforced` runs each command in the
+ * write-profile OS sandbox (and falls back to `ack` where it cannot);
+ * `ack` runs it unsandboxed only after `--allow-unsandboxed-gates` named the
+ * head; `unsandboxed` runs it unsandboxed with a warning.
+ */
+export type GatesSandboxMode = 'enforced' | 'ack' | 'unsandboxed';
+export declare const GATES_SANDBOX_MODES: readonly GatesSandboxMode[];
+/** The trusted layers `factory.run.sandbox.gates` is read from: never the working tree or the PR head. */
+export interface GatesSandboxLayers {
+    /** The user config at its default location (userConfigLayers().trustedUser). */
+    user: unknown;
+    /** The `.copilot/omg.jsonc` committed at the run's verified base sha (undefined when not read). */
+    base: unknown;
+    /** The engine's own environment: {@link SANDBOX_KILL_ENV}=off maps to `ack` (a park per head, never a plain run by itself). */
+    env: NodeJS.ProcessEnv;
+}
+/**
+ * The gates mode and where it came from. The kill switch wins, then the user
+ * config, then the base's committed config, then `enforced`. The base may set
+ * `enforced` or `ack` but never `unsandboxed` (the PR's repository must not
+ * switch the sandbox off for its own code): that throws, as does any other
+ * value.
+ */
+export declare function resolveGatesSandboxMode(layers: GatesSandboxLayers): {
+    mode: GatesSandboxMode;
+    source: string;
+};
+/**
+ * `factory.run.sandbox.requireDeniedPaths`: a sandboxed gate on a host that
+ * does not report `denied_paths` (Windows today) runs and counts by default,
+ * with the credential files under the user profile readable; `true` makes
+ * such a host give no verdict (the gates-unsandboxed park). Read from the
+ * user config and the base-committed `.copilot/omg.jsonc` only; either layer
+ * can turn it on and no layer can turn it off over the other's `true`.
+ */
+export declare function resolveRequireDeniedPaths(layers: Pick<GatesSandboxLayers, 'user' | 'base'>): {
+    require: boolean;
+    source: string;
+};
 /** The SDK's SandboxConfig (rpc.d.ts), the fields this module sets. */
 export interface SandboxConfig {
     enabled: boolean;
@@ -135,6 +176,25 @@ export interface SandboxPolicyContext {
     extraReadonly?: string[];
     /** The OMC global state root to deny (default getGlobalOmcStateRoot()); a test seam. */
     omcStateRoot?: string;
+    /**
+     * More paths a write session is denied where the host can deny paths (the
+     * factory private layout: the store's seed and the other runs' and lanes'
+     * dirs); a path that holds a grant is left out, like the state root.
+     */
+    extraDenied?: string[];
+    /**
+     * The user's main checkout, whose OMC root holds the budget ledger the
+     * write profile denies. Default: the dir of the common git dir when that is
+     * a `.git` (the factory private layout's common git dir is the private
+     * repository's, so the engine names the user's checkout; review-483 L1).
+     */
+    mainRoot?: string;
+    /**
+     * The only target a `<worktree>/node_modules` link may resolve to (the
+     * dir the engine linked; review-483 M4): a link elsewhere throws instead
+     * of being granted read-only. Unset: the link's target as it is (lanes).
+     */
+    nodeModulesTarget?: string;
 }
 export declare const REGISTRY_HOSTS: readonly string[];
 /**

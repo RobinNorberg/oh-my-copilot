@@ -28,6 +28,7 @@ import { CopilotRunManager, defaultCopilotRunDeps } from '../copilot-run/job.js'
 import { DEFAULT_FACTORY_RUN_LIMITS, runCredits } from '../factory/run/budget.js';
 import { runFactoryEngine } from '../factory/run/engine.js';
 import { CopilotLaneBackend } from '../factory/run/lane.js';
+import { createSandboxRunner } from '../factory/run/sandbox-exec.js';
 import { readFactoryState, verifyFactoryIntegrity } from '../factory/run/state.js';
 import { REVIEW_FEEDBACK_QUERY } from '../forge/github/graphql.js';
 import { resolveShipConfig } from '../ship/config.js';
@@ -269,6 +270,8 @@ export async function runFactoryRunScenario(input) {
             base: FACTORY_RUN_BASE,
             ledgerDir: join(dir, 'ledger'),
             gateConfig: smokeGateConfig,
+            // Prepare's checks (none in this fixture) would run in the OS sandbox, as in omg factory run.
+            gateSandbox: createSandboxRunner(repo),
             now,
             warn: (m) => { warnings.push(m); },
             ...input.engine,

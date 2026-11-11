@@ -313,12 +313,13 @@ async function getProcessStartTimeLinux(pid: number, deadlineAt?: number): Promi
  *
  * - Linux: reads /proc/<pid>/stat synchronously (microseconds).
  * - macOS: spawnSync('ps', ...) to get the process start time.
- * - Windows: spawnSync('powershell', ...) to get StartTime ticks.
+ * - Windows: spawnSync('powershell', ...) to get StartTime ticks; with
+ *   `fallbacks`, then CIM and wmic, as getProcessStartIdentity.
  *
  * Returns null if the identity cannot be captured synchronously. The caller
  * must fail closed (no signal) when this returns null.
  */
-export function getProcessStartIdentitySync(pid: number): string | null {
+export function getProcessStartIdentitySync(pid: number, o: { fallbacks?: boolean } = {}): string | null {
   if (!Number.isInteger(pid) || pid <= 0) return null;
   if (process.platform === 'linux') {
     try {
@@ -344,13 +345,26 @@ export function getProcessStartIdentitySync(pid: number): string | null {
     }
   }
   if (process.platform === 'win32') {
+    // `fallbacks`: the async reader's sources (Get-Process, then CIM, then wmic), for a caller that has seen the pid
+    // alive and must not read a busy machine's timeout as "no identity"; the default stays one quick Get-Process.
+    const commands = [
+      `$p = Get-Process -Id ${pid} -ErrorAction Stop; if ($p -and $p.StartTime) { $p.StartTime.ToUniversalTime().Ticks }`,
+      ...(o.fallbacks ? [`$p = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" -ErrorAction Stop; if ($p -and $p.CreationDate) { ([DateTime]$p.CreationDate).ToUniversalTime().Ticks }`] : []),
+    ];
+    for (const cmd of commands) {
+      try {
+        const result = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', cmd],
+          { encoding: 'utf8', timeout: o.fallbacks ? 5000 : 3000, windowsHide: true });
+        const ticks = result.status === 0 ? result.stdout?.trim().match(/^\d+$/)?.[0] : undefined;
+        if (ticks) return `ticks:${ticks}`;
+      } catch { /* the next source */ }
+    }
+    if (!o.fallbacks) return null;
     try {
-      const cmd = `$p = Get-Process -Id ${pid} -ErrorAction Stop; if ($p -and $p.StartTime) { $p.StartTime.ToUniversalTime().Ticks }`;
-      const result = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', cmd],
-        { encoding: 'utf8', timeout: 3000, windowsHide: true });
-      if (result.status !== 0 || !result.stdout) return null;
-      const ticks = result.stdout.trim().match(/^\d+$/)?.[0];
-      return ticks ? `ticks:${ticks}` : null;
+      const result = spawnSync('wmic', ['process', 'where', `ProcessId=${pid}`, 'get', 'CreationDate', '/format:csv'],
+        { encoding: 'utf8', timeout: 5000, windowsHide: true });
+      const match = result.status === 0 ? result.stdout?.match(/(\d{14}\.\d{6}[+-]\d{3})/) : null;
+      return match ? dmtfCreationDateToTicks(match[1]) : null;
     } catch {
       return null;
     }

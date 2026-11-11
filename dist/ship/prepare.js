@@ -19,6 +19,7 @@
  */
 import { existsSync } from 'fs';
 import { isAbsolute, join, posix } from 'path';
+import { visibleLine } from '../forge/review-feedback.js';
 import { isPlainBranchName, readBaseFile, remoteRepoMismatch } from './config.js';
 export const INVENTORY_DIR = 'inventory';
 export const INVENTORY_SCRIPT = 'scripts/generate-inventory-graph.mjs';
@@ -134,7 +135,32 @@ function lines(text) {
 function tail(text, n = 20) {
     return lines(text).slice(-n).join('\n');
 }
+/** The step prepare fails when a check gave no verdict (the OS sandbox could not run it): an engine problem, never a fix lane. */
+export const PREPARE_SANDBOX_STEP = 'checks-sandbox';
+/** ship's prepare: every check through `exec` / `commandExec`, synchronously. */
 export function runPrepare(opts) {
+    const steps = prepareSteps(opts);
+    const commandExec = opts.commandExec ?? opts.exec;
+    let next = steps.next();
+    while (!next.done) {
+        const c = next.value;
+        next = steps.next((c.kind === 'configured' ? commandExec : opts.exec)(c.exe, c.args, { cwd: opts.cwd }));
+    }
+    return next.value;
+}
+/**
+ * prepare with every check through `runCheck` (omg factory run: the OS
+ * sandbox), awaited; git still runs through `exec`. A check whose result
+ * carries `notStarted` stops prepare at PREPARE_SANDBOX_STEP.
+ */
+export async function runPrepareAsync(opts, runCheck) {
+    const steps = prepareSteps(opts);
+    let next = steps.next();
+    while (!next.done)
+        next = steps.next(await runCheck(next.value));
+    return next.value;
+}
+function* prepareSteps(opts) {
     const { exec, cwd, base } = opts;
     const remote = opts.remote ?? 'origin';
     const node = opts.node ?? process.execPath;
@@ -187,17 +213,24 @@ export function runPrepare(opts) {
         return fail('preflight', 'the index has staged changes; commit or unstage them first');
     steps.push({ name: 'preflight', status: 'ok', detail: branch });
     // 2. fetch from the PR's repository; the fetched base must be the commit GitHub reports
-    const mismatch = remoteRepoMismatch(exec, cwd, remote, opts.repoUrl);
-    if (mismatch)
-        return fail('remote', `${mismatch}; refusing to fetch (fail closed)`);
-    const fetched = git('fetch', remote, base);
-    if (fetched.status !== 0)
-        return fail('fetch', tail(fetched.stderr));
-    const local = git('rev-parse', '--verify', upstream);
-    if (local.status !== 0 || local.stdout.trim() !== baseSha) {
-        return fail('fetch', `${upstream} is ${local.stdout.trim() || 'missing'}, but GitHub reports ${base} at ${baseSha}; refusing (fail closed; re-run if ${base} just moved)`);
+    if (opts.prefetchedBase) {
+        if (git('cat-file', '-e', `${baseSha}^{commit}`).status !== 0)
+            return fail('fetch', `the base ${baseSha} the caller fetched is not a commit in the checkout's repository`);
+        steps.push({ name: 'fetch', status: 'ok', detail: `${base} = ${baseSha} (fetched by the caller)` });
     }
-    steps.push({ name: 'fetch', status: 'ok', detail: `${upstream} = ${baseSha}` });
+    else {
+        const mismatch = remoteRepoMismatch(exec, cwd, remote, opts.repoUrl);
+        if (mismatch)
+            return fail('remote', `${mismatch}; refusing to fetch (fail closed)`);
+        const fetched = git('fetch', remote, base);
+        if (fetched.status !== 0)
+            return fail('fetch', tail(fetched.stderr));
+        const local = git('rev-parse', '--verify', upstream);
+        if (local.status !== 0 || local.stdout.trim() !== baseSha) {
+            return fail('fetch', `${upstream} is ${local.stdout.trim() || 'missing'}, but GitHub reports ${base} at ${baseSha}; refusing (fail closed; re-run if ${base} just moved)`);
+        }
+        steps.push({ name: 'fetch', status: 'ok', detail: `${upstream} = ${baseSha}` });
+    }
     // 3. merge GitHub's base sha in (never rebase, never by ref name)
     if (git('merge-base', '--is-ancestor', baseSha, 'HEAD').status === 0) {
         steps.push({ name: 'merge-base', status: 'skipped', detail: `already contains ${base} ${baseSha.slice(0, 12)}` });
@@ -242,19 +275,22 @@ export function runPrepare(opts) {
             return fail(PREPARE_CONFIG_STEP, `ship.prepare.checks ${JSON.stringify(missing.argv)}: ${missing.missing}`);
         if (opts.commands.length === 0)
             steps.push({ name: 'checks', status: 'skipped', detail: 'ship.prepare.checks is empty' });
-        const run = opts.commandExec ?? exec;
         for (const c of opts.commands) {
             if ('missing' in c)
                 continue;
             const name = c.argv.join(' ').slice(0, 80);
-            const r = run(c.exe, c.args, { cwd });
+            const r = yield { step: name, kind: 'configured', argv: c.argv, exe: c.exe, args: c.args };
+            if (r.notStarted !== undefined)
+                return fail(PREPARE_SANDBOX_STEP, `${name}: ${r.notStarted}`);
             if (r.status !== 0)
                 return fail(name, tail(`${r.stdout}\n${r.stderr}`));
             steps.push({ name, status: 'ok' });
         }
     }
     else {
-        const changed = lines(git('diff', '--name-only', `${baseSha}...HEAD`).stdout);
+        // -z: every name verbatim (core.quotePath=false would otherwise print non-ASCII names, smart quotes included, raw and
+        // a name with a newline would split); the names reach the checks only as argv words, never as shell text.
+        const changed = git('diff', '--name-only', '-z', `${baseSha}...HEAD`).stdout.split('\0').filter(Boolean);
         const lintable = changed.filter((f) => /^src\/.*\.(?:ts|tsx|mts)$/.test(f) && !f.endsWith('.d.ts') && exists(f));
         const tests = selectTargetedTests(changed, exists);
         const plan = [
@@ -271,23 +307,32 @@ export function runPrepare(opts) {
                 steps.push({ name, status: 'skipped', detail: skipReason });
                 continue;
             }
-            const r = exec(node, args, { cwd });
+            const r = yield { step: name, kind: 'built-in', argv: [node, ...args], exe: node, args };
+            if (r.notStarted !== undefined)
+                return fail(PREPARE_SANDBOX_STEP, `${name}: ${r.notStarted}`);
             if (r.status !== 0)
                 return fail(name, tail(`${r.stdout}\n${r.stderr}`));
-            steps.push({ name, status: 'ok', detail: args.slice(1).join(' ').slice(0, 300) });
+            // The file names are the PR's (-z keeps control characters): shown, never raw, in the detail status output prints.
+            steps.push({ name, status: 'ok', detail: args.slice(1).map(visibleLine).join(' ').slice(0, 300) });
         }
     }
     // 5. inventory regeneration, always the last commit (only in a repository that has the generator)
     if (found.lost.inventory)
         return fail('inventory', found.lost.inventory);
+    const inventory = (mode) => ({ step: 'inventory', kind: 'inventory', argv: [node, INVENTORY_SCRIPT, mode], exe: node, args: [INVENTORY_SCRIPT, mode] });
+    const current = found.inventory ? yield inventory('--verify') : undefined;
+    if (current?.notStarted !== undefined)
+        return fail(PREPARE_SANDBOX_STEP, `inventory: ${current.notStarted}`);
     if (!found.inventory) {
         steps.push({ name: 'inventory', status: 'skipped', detail: `no ${INVENTORY_SCRIPT} on the base` });
     }
-    else if (exec(node, [INVENTORY_SCRIPT, '--verify'], { cwd }).status === 0) {
+    else if (current.status === 0) {
         steps.push({ name: 'inventory', status: 'skipped', detail: 'baseline is current' });
     }
     else {
-        const written = exec(node, [INVENTORY_SCRIPT, '--write'], { cwd });
+        const written = yield inventory('--write');
+        if (written.notStarted !== undefined)
+            return fail(PREPARE_SANDBOX_STEP, `inventory: ${written.notStarted}`);
         if (written.status !== 0)
             return fail('inventory', tail(written.stderr || written.stdout));
         const added = git('add', '--', INVENTORY_DIR);
@@ -300,7 +345,9 @@ export function runPrepare(opts) {
                 return fail('inventory', tail(committed.stderr || committed.stdout));
             housekeepingCommits.push(head());
         }
-        const verified = exec(node, [INVENTORY_SCRIPT, '--verify'], { cwd });
+        const verified = yield inventory('--verify');
+        if (verified.notStarted !== undefined)
+            return fail(PREPARE_SANDBOX_STEP, `inventory: ${verified.notStarted}`);
         if (verified.status !== 0)
             return fail('inventory', `regenerated baseline still fails --verify:\n${tail(verified.stderr || verified.stdout)}`);
         steps.push({ name: 'inventory', status: 'ok', detail: 'regenerated as the last commit' });

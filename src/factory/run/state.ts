@@ -21,7 +21,7 @@
 import { createHash } from 'crypto';
 import { existsSync, lstatSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { hostname } from 'os';
-import { dirname, join, resolve } from 'path';
+import { dirname, isAbsolute, join, resolve } from 'path';
 import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { acquireFileLockSync, lockPathFor, releaseFileLockSync, withFileLockSync } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -88,6 +88,13 @@ export interface FactoryLaneRecord {
   /** The local job's OS sandbox as it ended (mode, host support, attestation; design §5); absent for remote lanes. */
   sandbox?: CopilotRunSandboxState;
   note?: string;
+  /**
+   * Whether the lane's stop is unconfirmed (its Copilot child may still run in
+   * its worktree): true when the engine could not confirm it, false once the
+   * engine or a human (`--lane-stopped`) confirmed it. Absent (older states,
+   * other paths): run clean / reset read the note.
+   */
+  stopUnconfirmed?: boolean;
   startedAt: string;
   endedAt?: string;
 }
@@ -229,6 +236,16 @@ export interface FactoryRunState {
   mergeBounces?: number;
   /** The engine-owned prepare checkout's HEAD when the engine last left it. */
   checkoutHead?: string;
+  /** The checkout head a prepare left after the PR's code ran in the OS sandbox there (a local gate start failure on it parks at gate-no-verdict). */
+  sandboxedPrepareHead?: string;
+  /** The head the local gate last ran on in the OS sandbox (the command was handed over): a later gate start failure on it parks at gate-no-verdict. Optional: older state files lack it. */
+  sandboxedGateHead?: string;
+  /**
+   * The name of the prepare checkout's admin dir under `<common>/worktrees/`,
+   * as `worktree add` made it: a later invocation reads the checkout only
+   * through that admin dir, never another one its `.git` file names.
+   */
+  checkoutAdmin?: string;
   /**
    * The last human feedback round consumed (sealed with the rest of the
    * state): when, at which head, the digest of what the fix lane got, and
@@ -241,10 +258,55 @@ export interface FactoryRunState {
    * sandbox (460-7); a new head parks again.
    */
   unsandboxedAck?: string;
+  /**
+   * The head whose prepare checks and local gate the human accepted to run
+   * WITHOUT the OS sandbox (`omg factory run --allow-unsandboxed-gates` after
+   * an awaiting-human: gates-unsandboxed park; factory.run.sandbox.gates
+   * "ack", or "enforced" where the sandbox is unavailable). A prepare that
+   * ran under it carries it to the head it prepared; any other head parks again.
+   */
+  unsandboxedGatesAck?: string;
+  /**
+   * A write lane's work the engine has not committed yet because its commit
+   * parked (audit H3/L3): secret-shaped content (`secretFindings`), or a lane
+   * process that survived the kill. The rerun after that park retries the
+   * commit of the same worktree (no new lane is billed). `secretAck`: the
+   * (path, kind) pairs the human accepted with `--allow-secret-shapes` for
+   * THIS lane commit only; a new pair parks again.
+   */
+  pendingCommit?: FactoryPendingCommit;
+  /**
+   * Base calibrations of a check in the sandbox (sandbox-exec.ts), keyed by
+   * the sha256 of the base sha and the check's argv: whether the command
+   * passes in the sandbox on the trusted base itself, and its output tail.
+   */
+  gateCalibration?: Record<string, { ok: boolean; tail?: string }>;
   /** The Copilot coding agent session of an issue run whose implementer is the agent (coding-agent-lane.ts); sealed, shape-checked on load. */
   codingAgent?: CodingAgentRunRecord;
   /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */
   gateComments?: string[];
+  /**
+   * factory.run.layout "private" (item 2, private-run.ts): set once, when the
+   * implement step sealed the base and created the run's private repository;
+   * absent = the shared layout (layout 1, every run before it). A run keeps
+   * the layout it started with: a resume never switches it.
+   */
+  layout?: 2;
+  /** A private-layout run's dir `<work>/<repo8>/<slug>` (private-store.ts privateRunLayout). */
+  privateDir?: string;
+  /**
+   * The engine's record of the private repository (sealed): the user
+   * repository's common git dir resolved at run start, the config hash after
+   * the engine's last own config write, the longest tracked path at the base,
+   * and the number of the next import (refs/omg-import/<slug>/<n>).
+   */
+  privateStore?: { userGitDir: string; configHash: string; longestPath: number; nextImport: number };
+  /**
+   * The parents of `pendingHead` as the engine committed it (private layout:
+   * the import's expectedParents, never read from the commit). Set and
+   * cleared with pendingHead.
+   */
+  pendingParents?: string[];
   /**
    * The progress stage last written to the tracker (factory forges design §7);
    * absent until the first write succeeds, and in states written before
@@ -281,6 +343,19 @@ export const EXIT_BUSY = 6;
  * checkout, the item's own run, or the item's claim from another clone.
  * `omg factory run` exits EXIT_BUSY for it; nothing was touched.
  */
+export interface FactoryPendingCommit {
+  laneId: string;
+  /** The phase retry key of the lane (implement, fix@<n>, ...). */
+  key: string;
+  start: string;
+  parents: string[];
+  worktree: string;
+  branch: string | null;
+  message: string;
+  secretFindings?: { path: string; kind: string }[];
+  secretAck?: { path: string; kind: string }[];
+}
+
 export class FactoryBusyError extends FactoryStateError {
   /** The holder's run key when a live owner file refused (`scan`: the poller's heal scan or base sync, or a read command's fetch). */
   readonly holderRun?: string;
@@ -288,6 +363,14 @@ export class FactoryBusyError extends FactoryStateError {
     super(message);
     this.name = 'FactoryBusyError';
     if (holderRun !== undefined) this.holderRun = holderRun;
+  }
+}
+
+/** A tamper hold is set on the checkout (tamper-quarantine.ts): busy (exit 6) until `omg factory run release --tamper`. */
+export class FactoryTamperHoldError extends FactoryBusyError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FactoryTamperHoldError';
   }
 }
 
@@ -455,6 +538,13 @@ function shapeProblem(s: Record<string, unknown>): string | null {
   if (s.prepareChecks !== undefined && s.prepareChecks !== 'auto' && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr)))) return 'prepareChecks';
   if (s.trackerStage !== undefined && !(PROGRESS_STAGES as readonly unknown[]).includes(s.trackerStage)) return 'trackerStage';
   if (s.codingAgent !== undefined && (s.kind === 'ci-heal' || codingAgentRecordProblem(s.codingAgent) !== null)) return 'codingAgent';
+  // The private layout comes whole: layout 2, its run dir and the engine's record, or none of them.
+  if (s.layout !== undefined || s.privateDir !== undefined || s.privateStore !== undefined) {
+    const ps = s.privateStore as Record<string, unknown> | undefined;
+    if (s.layout !== 2 || !isStr(s.privateDir) || !isAbsolute(s.privateDir) || typeof ps !== 'object' || ps === null
+      || !isStr(ps.userGitDir) || !isAbsolute(ps.userGitDir) || !isStr(ps.configHash) || !HEX64.test(ps.configHash) || !isCount(ps.longestPath) || !isCount(ps.nextImport)) return 'layout';
+  }
+  if (s.pendingParents !== undefined && (!Array.isArray(s.pendingParents) || s.pendingParents.length === 0 || !s.pendingParents.every((x) => isStr(x) && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(x)))) return 'pendingParents';
   if (s.kind === 'ci-heal') {
     const h = s.heal as Record<string, unknown> | undefined;
     const d = h?.diagnosis as Record<string, unknown> | undefined;
@@ -464,6 +554,7 @@ function shapeProblem(s: Record<string, unknown>): string | null {
     const x = l as Record<string, unknown>;
     const sbx = x?.sandbox as Record<string, unknown> | undefined;
     return isStr(x?.id) && isStr(x.kind) && isStr(x.status) && isStr(x.startSha) && typeof x.maxCredits === 'number'
+      && (x.stopUnconfirmed === undefined || typeof x.stopUnconfirmed === 'boolean')
       && (sbx === undefined || (typeof sbx === 'object' && sbx !== null && isStr(sbx.mode) && isCount(sbx.unsandboxedCalls)
         && (sbx.writeNetwork === undefined || sbx.writeNetwork === 'none' || sbx.writeNetwork === 'registry')));
   })) return 'lanes';
@@ -483,6 +574,23 @@ export const MAX_HUMAN_THREAD_IDS = 200;
 const THREAD_ID = (v: unknown): boolean => typeof v === 'string' && v.length > 0 && v.length <= 200;
 const FEEDBACK_FORGES: readonly unknown[] = ['github', 'azure-devops', 'local'];
 
+const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+const findingsOk = (v: unknown): boolean => Array.isArray(v) && v.length <= 1000 && v.every((f) => {
+  const r = f as Record<string, unknown> | null;
+  return typeof r === 'object' && r !== null && isStr(r.path) && r.path.length <= 4096 && isStr(r.kind) && /^[a-z-]{1,40}$/.test(r.kind)
+    && Object.keys(r).every((k) => k === 'path' || k === 'kind');
+});
+
+function pendingCommitShapeOk(v: unknown): boolean {
+  const p = v as Record<string, unknown> | null;
+  return typeof p === 'object' && p !== null && !Array.isArray(p)
+    && isStr(p.laneId) && isStr(p.key) && isStr(p.start) && FULL_SHA.test(p.start)
+    && Array.isArray(p.parents) && p.parents.length > 0 && p.parents.length <= 2 && p.parents.every((x) => isStr(x) && FULL_SHA.test(x))
+    && isStr(p.worktree) && (p.branch === null || isStr(p.branch)) && isStr(p.message) && p.message.length <= 8000
+    && (p.secretFindings === undefined || findingsOk(p.secretFindings)) && (p.secretAck === undefined || findingsOk(p.secretAck))
+    && Object.keys(p).every((k) => ['laneId', 'key', 'start', 'parents', 'worktree', 'branch', 'message', 'secretFindings', 'secretAck'].includes(k));
+}
+
 /** `humanReview`, `unsandboxedAck` and every lane's `feedback`: absent, or exactly their shape. */
 function humanReviewShapeProblem(s: Record<string, unknown>): string | null {
   const h = s.humanReview as Record<string, unknown> | undefined;
@@ -490,6 +598,18 @@ function humanReviewShapeProblem(s: Record<string, unknown>): string | null {
     || !isStr(h.digest) || !HEX64.test(h.digest) || (h.threadIds !== undefined && (!Array.isArray(h.threadIds) || h.threadIds.length > MAX_HUMAN_THREAD_IDS || !h.threadIds.every(THREAD_ID)))
     || Object.keys(h).some((k) => k !== 'seenAt' && k !== 'head' && k !== 'digest' && k !== 'threadIds'))) return 'humanReview';
   if (s.unsandboxedAck !== undefined && (!isStr(s.unsandboxedAck) || !HEX40.test(s.unsandboxedAck))) return 'unsandboxedAck';
+  if (s.unsandboxedGatesAck !== undefined && (!isStr(s.unsandboxedGatesAck) || !HEX40.test(s.unsandboxedGatesAck))) return 'unsandboxedGatesAck';
+  if (s.pendingCommit !== undefined && !pendingCommitShapeOk(s.pendingCommit)) return 'pendingCommit';
+  if (s.sandboxedPrepareHead !== undefined && (!isStr(s.sandboxedPrepareHead) || !HEX40.test(s.sandboxedPrepareHead))) return 'sandboxedPrepareHead';
+  if (s.sandboxedGateHead !== undefined && (!isStr(s.sandboxedGateHead) || !HEX40.test(s.sandboxedGateHead))) return 'sandboxedGateHead';
+  // One admin dir name under <common>/worktrees (git makes it from the checkout's base name): no separator, nothing else.
+  if (s.checkoutAdmin !== undefined && (!isStr(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === '.' || s.checkoutAdmin === '..')) return 'checkoutAdmin';
+  const cal = s.gateCalibration as Record<string, unknown> | undefined;
+  if (cal !== undefined && (typeof cal !== 'object' || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
+    const e = v as Record<string, unknown> | null;
+    return HEX64.test(k) && typeof e === 'object' && e !== null && typeof e.ok === 'boolean' && (e.tail === undefined || isStr(e.tail))
+      && Object.keys(e).every((x) => x === 'ok' || x === 'tail');
+  }))) return 'gateCalibration';
   const lanes = s.lanes as Array<Record<string, unknown>>;
   if (!lanes.every((l) => {
     const f = l.feedback as Record<string, unknown> | undefined;

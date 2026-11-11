@@ -25,6 +25,31 @@ it('pins the Darwin identity probe locale despite an inherited non-English local
   }
 });
 
+it('Windows sync identity: one Get-Process by default; with fallbacks, CIM then wmic after a timed-out Get-Process (478c F2)', () => {
+  const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+  const timedOut = { pid: 1, status: null, signal: 'SIGTERM' as const, output: [], stdout: '', stderr: '' };
+  const spawn = vi.spyOn(childProcess, 'spawnSync');
+  try {
+    spawn.mockReturnValue(timedOut);
+    expect(getProcessStartIdentitySync(4321)).toBeNull();
+    expect(spawn).toHaveBeenCalledTimes(1);
+
+    spawn.mockReset();
+    spawn.mockReturnValueOnce(timedOut).mockReturnValueOnce({ ...timedOut, status: 0, signal: null, stdout: '638666666666666666\r\n' });
+    expect(getProcessStartIdentitySync(4321, { fallbacks: true })).toBe('ticks:638666666666666666');
+    expect(String(spawn.mock.calls[1][1]?.at(-1))).toContain('Get-CimInstance Win32_Process -Filter "ProcessId = 4321"');
+
+    spawn.mockReset();
+    spawn.mockReturnValueOnce(timedOut).mockReturnValueOnce(timedOut)
+      .mockReturnValueOnce({ ...timedOut, status: 0, signal: null, stdout: 'Node,CreationDate\r\nH,20240115123045.123456+000\r\n' });
+    expect(getProcessStartIdentitySync(4321, { fallbacks: true })).toBe(dmtfCreationDateToTicks('20240115123045.123456+000'));
+    expect(spawn.mock.calls[2][0]).toBe('wmic');
+  } finally {
+    spawn.mockRestore();
+    platform.mockRestore();
+  }
+});
+
 describe('Windows process start identity formats', () => {
   it('converts DMTF creation dates to ticks with full 100ns precision', () => {
     // 2024-01-15 12:30:45.123456 UTC

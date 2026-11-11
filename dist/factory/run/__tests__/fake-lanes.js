@@ -14,6 +14,7 @@ import { gitIn } from '../../../copilot-run/__tests__/fake-sdk.js';
 import { resolveShipConfig } from '../../../ship/config.js';
 import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-worktree.js';
 import { defaultExec } from '../../../ship/exec.js';
+import { defaultLocalGateRunner } from '../local-gate.js';
 import { REVIEW_FEEDBACK_QUERY } from '../../../forge/github/graphql.js';
 import { LaneLostError } from '../lane.js';
 export { gitIn };
@@ -47,13 +48,21 @@ export class FakeLanes {
             throw new Error(`fake lanes: no script for lane ${n + 1} (${input.laneId})`);
         // Unique across backends: a resumed run's lanes get new job ids (and lane branches), like copilot_run.
         const remoteId = `cr-fake${n + 1}${this.suffix}`;
-        const branch = `omc-team/copilot-run/${remoteId}`;
-        const worktree = join(this.root, '.omg', 'team', 'copilot-run', 'worktrees', remoteId);
-        mkdirSync(join(worktree, '..'), { recursive: true });
-        const baseSha = gitIn(this.root, 'rev-parse', '--verify', `${input.baseRef}^{commit}`);
-        gitIn(this.root, 'worktree', 'add', '-q', '-b', branch, worktree, baseSha);
-        // Like copilot_run: the git links are recorded at creation.
-        recordWorktreeGitLinks(worktree, readWorktreeGitLinks(worktree));
+        // The private layout: the engine made the worktree (detached, links recorded); like copilot_run, no branch then.
+        const own = input.worktree;
+        const branch = own ? '' : `omc-team/copilot-run/${remoteId}`;
+        const worktree = own ? own.path : join(this.root, '.omg', 'team', 'copilot-run', 'worktrees', remoteId);
+        let baseSha;
+        if (own) {
+            baseSha = gitIn(worktree, 'rev-parse', 'HEAD');
+        }
+        else {
+            mkdirSync(join(worktree, '..'), { recursive: true });
+            baseSha = gitIn(this.root, 'rev-parse', '--verify', `${input.baseRef}^{commit}`);
+            gitIn(this.root, 'worktree', 'add', '-q', '-b', branch, worktree, baseSha);
+            // Like copilot_run: the git links are recorded at creation.
+            recordWorktreeGitLinks(worktree, readWorktreeGitLinks(worktree));
+        }
         this.jobs.set(remoteId, { ctx: { input, worktree, branch, baseSha, root: this.root }, script, runningPolls: this.runningPolls[n] ?? 0 });
         return { remoteId };
     }
@@ -62,11 +71,11 @@ export class FakeLanes {
         const o = job.outcome ?? {};
         return {
             state,
-            branch: job.ctx.branch,
+            branch: job.ctx.branch || null,
             pr: null,
             headSha: terminal ? gitIn(job.ctx.worktree, 'rev-parse', 'HEAD') : null,
             baseSha: job.ctx.baseSha,
-            worktree: job.ctx.worktree,
+            worktree: o.reportWorktree ?? job.ctx.worktree,
             changes: terminal && !o.noChanges ? summarizeChanges(job.ctx.worktree, job.ctx.baseSha) : null,
             finalText: o.finalText ?? null,
             logsUrl: null,
@@ -134,6 +143,13 @@ export class FakeProcesses {
         if (this.killable)
             this.live.delete(p.pid);
     }
+    /** What treeGone answers (default: the tree is gone); `trees` records each call's worktree. */
+    tree = { kind: 'gone', killed: [] };
+    trees = [];
+    async treeGone(_p, worktree) {
+        this.trees.push(worktree);
+        return this.tree;
+    }
 }
 /** Lane scripts. A write lane leaves its change uncommitted: the engine commits it (lane-commit.ts). */
 export const commitFile = (path, content = 'work\n', credits = 5) => ({ worktree }) => {
@@ -171,6 +187,45 @@ export const testGateConfig = () => ({
     config: { ...resolveShipConfig(undefined), requiredChecks: ['Test'], advisoryChecks: [] },
     known: [],
 });
+/**
+ * The engine tests' OS sandbox: every command counts as run in the attested
+ * sandbox. A prepare check runs through the test's exec seam (as the
+ * unsandboxed engine ran it), the local gate through the test's gate runner
+ * or else the engine's plain one (a runner whose executable cannot start
+ * gives no verdict), and a base
+ * calibration passes without running anything. Tests of the sandbox
+ * decisions themselves pass their own runner.
+ */
+export function attestedSandbox(exec, gate = () => undefined) {
+    return async (req) => {
+        if (req.purpose === 'calibrate')
+            return { ran: true, status: 0, output: '', timedOut: false };
+        // No test runner: the engine's own plain runner, as the engine ran the gate before the sandbox.
+        const runner = gate() ?? defaultLocalGateRunner;
+        if (req.purpose === 'gate') {
+            const r = await runner(req.argv, req.cwd, req.timeoutMs);
+            if (r.startError !== undefined)
+                return { ran: false, reason: r.startError };
+            return { ran: true, status: r.timedOut ? 124 : r.status, output: `${r.stdout}${r.stderr ? `\n${r.stderr}` : ''}`, timedOut: r.timedOut };
+        }
+        const r = exec()(req.exe, [...req.args], { cwd: req.cwd });
+        return { ran: true, status: r.status, output: `${r.stdout}${r.stderr ? `\n${r.stderr}` : ''}`, timedOut: false };
+    };
+}
+/**
+ * Engine options with the test sandbox (attestedSandbox over the options'
+ * own exec and gate runner) and no user config for factory.run.sandbox.gates,
+ * unless `over` sets either (a `gateSandbox: undefined` there means none).
+ */
+export function withTestSandbox(o, over = {}) {
+    return {
+        ...o,
+        ...('gateSandboxUserConfig' in over ? {} : { gateSandboxUserConfig: null }),
+        // The developer's own factory.run.layout never reaches the tests.
+        ...('runUserConfig' in over || 'runUserConfig' in o ? {} : { runUserConfig: null }),
+        ...('gateSandbox' in over ? {} : { gateSandbox: attestedSandbox(() => o.exec, () => o.localGate) }),
+    };
+}
 /** `<dir>/remote.git` (bare) and `<dir>/repo` on `dev` tracking it; `.omg/` ignored. */
 export function harness(prefix = 'omg-factory-run-') {
     const dir = mkdtempSync(join(tmpdir(), prefix));

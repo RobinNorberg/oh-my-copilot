@@ -169,6 +169,76 @@ export function loadSandboxSettings(root: string, scope: SandboxScope, layers: S
   return { settings, warnings };
 }
 
+/**
+ * `factory.run.sandbox.gates`: how `omg factory run` runs the PR's own code in
+ * prepare's checks and the local gate. `enforced` runs each command in the
+ * write-profile OS sandbox (and falls back to `ack` where it cannot);
+ * `ack` runs it unsandboxed only after `--allow-unsandboxed-gates` named the
+ * head; `unsandboxed` runs it unsandboxed with a warning.
+ */
+export type GatesSandboxMode = 'enforced' | 'ack' | 'unsandboxed';
+
+export const GATES_SANDBOX_MODES: readonly GatesSandboxMode[] = ['enforced', 'ack', 'unsandboxed'];
+
+/** The trusted layers `factory.run.sandbox.gates` is read from: never the working tree or the PR head. */
+export interface GatesSandboxLayers {
+  /** The user config at its default location (userConfigLayers().trustedUser). */
+  user: unknown;
+  /** The `.copilot/omg.jsonc` committed at the run's verified base sha (undefined when not read). */
+  base: unknown;
+  /** The engine's own environment: {@link SANDBOX_KILL_ENV}=off maps to `ack` (a park per head, never a plain run by itself). */
+  env: NodeJS.ProcessEnv;
+}
+
+/**
+ * The gates mode and where it came from. The kill switch wins, then the user
+ * config, then the base's committed config, then `enforced`. The base may set
+ * `enforced` or `ack` but never `unsandboxed` (the PR's repository must not
+ * switch the sandbox off for its own code): that throws, as does any other
+ * value.
+ */
+export function resolveGatesSandboxMode(layers: GatesSandboxLayers): { mode: GatesSandboxMode; source: string } {
+  // The kill switch never runs the PR's code unsandboxed by itself: it parks per head for the human's ack.
+  if (layers.env[SANDBOX_KILL_ENV] === 'off') return { mode: 'ack', source: `${SANDBOX_KILL_ENV}=off` };
+  const read = (config: unknown, source: string): GatesSandboxMode | undefined => {
+    // factory.run.sandbox only: copilotRun.sandbox (copilot_run jobs) has no gates.
+    const value = sandboxBlock({ factory: (config as { factory?: unknown } | null | undefined)?.factory }, 'factory', source).gates;
+    if (value === undefined) return undefined;
+    if (!(GATES_SANDBOX_MODES as readonly unknown[]).includes(value)) throw new Error(`${source}: factory.run.sandbox.gates must be ${GATES_SANDBOX_MODES.map((m) => JSON.stringify(m)).join(' or ')}`);
+    return value as GatesSandboxMode;
+  };
+  const user = read(layers.user, 'user config');
+  const base = read(layers.base, 'the base .copilot/omg.jsonc');
+  if (base === 'unsandboxed') {
+    throw new Error('factory.run.sandbox.gates "unsandboxed" is accepted from the user config only, never from the repository\'s .copilot/omg.jsonc; set it in your user config, or use "ack" there');
+  }
+  if (user) return { mode: user, source: 'user config' };
+  if (base) return { mode: base, source: 'the base .copilot/omg.jsonc' };
+  return { mode: 'enforced', source: 'default' };
+}
+
+/**
+ * `factory.run.sandbox.requireDeniedPaths`: a sandboxed gate on a host that
+ * does not report `denied_paths` (Windows today) runs and counts by default,
+ * with the credential files under the user profile readable; `true` makes
+ * such a host give no verdict (the gates-unsandboxed park). Read from the
+ * user config and the base-committed `.copilot/omg.jsonc` only; either layer
+ * can turn it on and no layer can turn it off over the other's `true`.
+ */
+export function resolveRequireDeniedPaths(layers: Pick<GatesSandboxLayers, 'user' | 'base'>): { require: boolean; source: string } {
+  const read = (config: unknown, source: string): boolean | undefined => {
+    const value = sandboxBlock({ factory: (config as { factory?: unknown } | null | undefined)?.factory }, 'factory', source).requireDeniedPaths;
+    if (value === undefined) return undefined;
+    if (typeof value !== 'boolean') throw new Error(`${source}: factory.run.sandbox.requireDeniedPaths must be a boolean`);
+    return value;
+  };
+  const user = read(layers.user, 'user config');
+  const base = read(layers.base, 'the base .copilot/omg.jsonc');
+  if (user) return { require: true, source: 'user config' };
+  if (base) return { require: true, source: 'the base .copilot/omg.jsonc' };
+  return { require: false, source: user === false || base === false ? 'config' : 'default' };
+}
+
 // ---------------------------------------------------------------------------
 // Policy (§4.2 review, §4.3 write)
 // ---------------------------------------------------------------------------
@@ -214,9 +284,35 @@ export interface SandboxPolicyContext {
   extraReadonly?: string[];
   /** The OMC global state root to deny (default getGlobalOmcStateRoot()); a test seam. */
   omcStateRoot?: string;
+  /**
+   * More paths a write session is denied where the host can deny paths (the
+   * factory private layout: the store's seed and the other runs' and lanes'
+   * dirs); a path that holds a grant is left out, like the state root.
+   */
+  extraDenied?: string[];
+  /**
+   * The user's main checkout, whose OMC root holds the budget ledger the
+   * write profile denies. Default: the dir of the common git dir when that is
+   * a `.git` (the factory private layout's common git dir is the private
+   * repository's, so the engine names the user's checkout; review-483 L1).
+   */
+  mainRoot?: string;
+  /**
+   * The only target a `<worktree>/node_modules` link may resolve to (the
+   * dir the engine linked; review-483 M4): a link elsewhere throws instead
+   * of being granted read-only. Unset: the link's target as it is (lanes).
+   */
+  nodeModulesTarget?: string;
 }
 
 export const REGISTRY_HOSTS: readonly string[] = ['registry.npmjs.org', '*.npmjs.org'];
+
+/** `real` (a realpath) is the realpath of `want`; false when `want` cannot be resolved. Case-folded on win32. */
+function sameRealPath(real: string, want: string, platform: NodeJS.Platform): boolean {
+  let w: string;
+  try { w = realpathSync.native(want); } catch { return false; }
+  return platform === 'win32' ? real.toLowerCase() === w.toLowerCase() : real === w;
+}
 
 /** The target of `<worktree>/node_modules` when it is a junction or symlink (read-only for a write session). */
 function nodeModulesLinkTarget(worktree: string): string | null {
@@ -344,6 +440,9 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
     throw new Error(`the job dir ${ctx.jobDir} lies inside the lane-writable worktree ${ctx.worktree}; use isolation "worktree"`);
   }
   const nm = nodeModulesLinkTarget(ctx.worktree);
+  if (nm && ctx.nodeModulesTarget !== undefined && !sameRealPath(nm, ctx.nodeModulesTarget, ctx.platform)) {
+    throw new Error(`the node_modules link in ${ctx.worktree} resolves to ${nm}, not ${ctx.nodeModulesTarget} the engine linked; it is not granted`);
+  }
   const filesystem: SandboxConfig['userPolicy']['filesystem'] = {
     readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
     readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...(nm ? [nm] : []), ...tools, ...settings.extraReadonlyPaths],
@@ -355,6 +454,8 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
       '.ssh', '.gitconfig', '.omg', '.copilot', '.azure', '.git-credentials', join('.config', 'git', 'credentials'), join('.cache', 'git', 'credential'),
       join('.config', 'gh'), '.aws', '.npmrc', '.docker', '.kube', '.netrc', join('.cargo', 'credentials'), join('.cargo', 'credentials.toml'),
       '.gnupg', '.pypirc', join('.config', 'gcloud'),
+      // Windows: gh's hosts.yml (%APPDATA%\GitHub CLI) and the GCM/MSAL token cache (%LOCALAPPDATA%\.IdentityService).
+      ...(ctx.platform === 'win32' ? [join('AppData', 'Roaming', 'GitHub CLI'), join('AppData', 'Local', '.IdentityService')] : []),
     ].map((p) => join(ctx.realHome, p));
     // A grant canon cannot resolve (a dangling link) holds nothing: the deny stays.
     const grants = [...filesystem.readwritePaths, ...filesystem.readonlyPaths, ctx.realHome];
@@ -367,7 +468,7 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
     // The factory ledger (OMC_STATE_DIR/factory-ledger, as defaultLedgerDir in factory/run/ledger.ts; the team bundle may not import src/factory; ~/.omg/factory-ledger is under the home deny) and the budget ledger
     // (<omc root of the main checkout>/state/budget-ledger.json) live elsewhere when OMC_STATE_DIR is set: name the real
     // paths, and only those that exist (the host may refuse a deny of a missing path). A granted job dir stays granted.
-    const mainRoot = basename(ctx.commonGitDir) === '.git' ? dirname(ctx.commonGitDir) : undefined;
+    const mainRoot = ctx.mainRoot ?? (basename(ctx.commonGitDir) === '.git' ? dirname(ctx.commonGitDir) : undefined);
     const ledgers = [...(process.env.OMC_STATE_DIR?.trim() ? [join(resolve(process.env.OMC_STATE_DIR), 'factory-ledger')] : []), ...(mainRoot ? [join(getOmcRoot(mainRoot), 'state', 'budget-ledger.json')] : [])];
     // The engine creates the forge dir and the factory ledger dir later, and the lane could read them once they exist: make them now so the
     // deny names them (the host may refuse a deny of a missing path). The budget ledger is a file the engine writes on first use, so only an existing one is named.
@@ -380,6 +481,7 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
       ...ledgers.map((l) => (l.endsWith('factory-ledger') ? ensureDir(l) : l)).filter(existsSync),
     ];
     filesystem.deniedPaths.push(...[...new Set(stateDeny)].filter((p) => !holdsGrant(p) && !covered(p)));
+    filesystem.deniedPaths.push(...[...new Set(ctx.extraDenied ?? [])].filter((p) => existsSync(p) && !holdsGrant(p) && !covered(p)));
     if (ctx.platform !== 'win32') {
       // Sockets that run commands for the caller outside the sandbox: the user's runtime dir (D-Bus, systemd, agents),
       // the container daemons and the SSH agent. Never a dir that holds a grant (the root, the home, a parent of either,

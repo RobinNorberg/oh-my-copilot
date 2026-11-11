@@ -4,8 +4,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 export const newCalls = () => ({ connections: [], sessions: [], prompts: [], optionsUpdates: [], globalGitConfigs: [] });
-/** The server `rpc` of a fake client with sandbox support `sandbox`. */
-export function fakeClientRpc(sandbox) {
+/** The server `rpc` of a fake client with sandbox support `sandbox` (`deniedPaths`: the host reports denied_paths). */
+export function fakeClientRpc(sandbox, deniedPaths = false) {
     if (sandbox === 'no-rpc')
         return undefined;
     const supported = sandbox !== 'unsupported';
@@ -14,7 +14,7 @@ export function fakeClientRpc(sandbox) {
             getHostSupport: async () => ({
                 supported,
                 ...(supported ? {} : { reason: 'MXC is not available on this host' }),
-                capabilities: [{ name: 'shell', supported }, { name: 'network', supported }, { name: 'denied_paths', supported: false }],
+                capabilities: [{ name: 'shell', supported }, { name: 'network', supported }, { name: 'denied_paths', supported: supported && deniedPaths }],
             }),
         },
     };

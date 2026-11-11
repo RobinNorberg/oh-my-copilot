@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { copyFileSync, mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync, readFileSync, symlinkSync } from 'fs';
+import { copyFileSync, mkdtempSync, renameSync, rmSync, existsSync, writeFileSync, mkdirSync, readFileSync, symlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { execFileSync, spawn } from 'child_process';
-import { createWorkerWorktree, removeWorkerWorktree, listTeamWorktrees, cleanupTeamWorktrees, ensureWorkerWorktree, installWorktreeRootAgents, restoreWorktreeRootAgents, prepareWorkerWorktreeForRemoval, writePreservedWorktreesRecord, readPreservedWorktreesRecord, deleteWorkerBranchAt, } from '../git-worktree.js';
+import { createWorkerWorktree, removeWorkerWorktree, listTeamWorktrees, cleanupTeamWorktrees, ensureWorkerWorktree, installWorktreeRootAgents, restoreWorktreeRootAgents, prepareWorkerWorktreeForRemoval, writePreservedWorktreesRecord, readPreservedWorktreesRecord, deleteWorkerBranchAt, removeStaleWorktreeEntry, } from '../git-worktree.js';
 import { requiresSymlinks } from '../../__tests__/helpers/platform.js';
 /**
  * Compare paths by segments rather than by separator. The production code
@@ -110,6 +110,26 @@ describe('git-worktree', () => {
         });
     });
     describe('removeWorkerWorktree', () => {
+        it('discardChanges unlinks a tracked symlink path replaced by a junction, never following it', () => {
+            // A tracked symlink (mode 120000) without needing symlink rights: on win32 git checks it out as a plain file.
+            const blob = execFileSync('git', ['hash-object', '-w', '--stdin'], { cwd: repoDir, input: 'README.md' }).toString().trim();
+            execFileSync('git', ['update-index', '--add', '--cacheinfo', `120000,${blob},linked`], { cwd: repoDir, stdio: 'pipe' });
+            execFileSync('git', ['commit', '-m', 'tracked symlink'], { cwd: repoDir, stdio: 'pipe' });
+            const target = mkdtempSync(join(tmpdir(), 'git-worktree-link-target-'));
+            try {
+                writeFileSync(join(target, 'sentinel.txt'), 'keep me');
+                const info = createWorkerWorktree(teamName, 'tracked-link-worker', repoDir);
+                rmSync(join(info.path, 'linked'), { force: true });
+                symlinkSync(target, join(info.path, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
+                writeFileSync(join(info.path, 'README.md'), 'partial edit\n');
+                removeWorkerWorktree(teamName, 'tracked-link-worker', repoDir, { discardChanges: true });
+                expect(existsSync(info.path)).toBe(false);
+                expect(readFileSync(join(target, 'sentinel.txt'), 'utf-8')).toBe('keep me');
+            }
+            finally {
+                rmSync(target, { recursive: true, force: true });
+            }
+        });
         it('unlinks ignored junctions/symlinks before removal and leaves their targets intact', () => {
             // No trailing slash: git sees a POSIX symlink as a file, which `node_modules/` does not match.
             writeFileSync(join(repoDir, '.gitignore'), 'node_modules\n');
@@ -333,6 +353,59 @@ describe('git-worktree', () => {
             // Branch should be deleted
             const branches = execFileSync('git', ['branch'], { cwd: repoDir, encoding: 'utf-8' });
             expect(branches).not.toContain('omc-team/');
+        });
+        it('review 482 #3: drops only the worker\'s own stale entry; a user worktree whose directory is missing keeps its admin dir, HEAD and index', () => {
+            // A worktree the user owns, its directory only unavailable (an unmounted drive): `git worktree prune` would drop it.
+            const outside = mkdtempSync(join(tmpdir(), 'git-worktree-user-'));
+            const userWt = join(outside, 'user-wt');
+            try {
+                execFileSync('git', ['worktree', 'add', '--detach', userWt, 'HEAD'], { cwd: repoDir, stdio: 'pipe' });
+                const userAdmin = join(repoDir, '.git', 'worktrees', 'user-wt');
+                renameSync(userWt, `${userWt}-away`);
+                const list = () => execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: repoDir, encoding: 'utf-8' });
+                // The worker's directory removed by hand: ensure re-adds it (its own stale entry dropped first).
+                const info = ensureWorkerWorktree(teamName, 'worker1', repoDir, { mode: 'detached', requireCleanLeader: false });
+                rmSync(info.path, { recursive: true, force: true });
+                const again = ensureWorkerWorktree(teamName, 'worker1', repoDir, { mode: 'detached', requireCleanLeader: false });
+                expect(again.created).toBe(true);
+                expect(existsSync(join(userAdmin, 'HEAD'))).toBe(true);
+                expect(existsSync(join(userAdmin, 'index'))).toBe(true);
+                // Removed by hand again, then removeWorkerWorktree: the worker's entry goes, the user's stays.
+                rmSync(again.path, { recursive: true, force: true });
+                removeWorkerWorktree(teamName, 'worker1', repoDir);
+                expect(toPosixPath(list())).not.toContain('/worktrees/worker1');
+                expect(execFileSync('git', ['branch'], { cwd: repoDir, encoding: 'utf-8' })).not.toContain('omc-team/');
+                expect(existsSync(join(userAdmin, 'HEAD'))).toBe(true);
+                expect(existsSync(join(userAdmin, 'index'))).toBe(true);
+                renameSync(`${userWt}-away`, userWt);
+                expect(list()).not.toContain('prunable');
+            }
+            finally {
+                try {
+                    execFileSync('git', ['worktree', 'remove', '--force', userWt], { cwd: repoDir, stdio: 'pipe' });
+                }
+                catch { /* already gone */ }
+                rmSync(outside, { recursive: true, force: true });
+            }
+        });
+        it('review-482b B: a `worktrees/` that is a link is refused in both branches; the entry behind it stays', () => {
+            const outside = mkdtempSync(join(tmpdir(), 'git-worktree-linked-'));
+            try {
+                const wtPath = join(outside, 'gone-wt');
+                const entry = join(outside, 'target', 'gone-wt');
+                mkdirSync(entry, { recursive: true });
+                writeFileSync(join(entry, 'gitdir'), `${join(wtPath, '.git')}\n`);
+                writeFileSync(join(entry, 'HEAD'), 'ref: refs/heads/main\n');
+                rmSync(join(repoDir, '.git', 'worktrees'), { recursive: true, force: true });
+                symlinkSync(join(outside, 'target'), join(repoDir, '.git', 'worktrees'), process.platform === 'win32' ? 'junction' : 'dir');
+                expect(() => removeStaleWorktreeEntry(repoDir, wtPath, 'gone-wt')).toThrow(/worktrees is not a real directory/);
+                expect(() => removeStaleWorktreeEntry(repoDir, wtPath)).toThrow(/worktrees is not a real directory/);
+                expect(existsSync(join(entry, 'HEAD'))).toBe(true);
+            }
+            finally {
+                rmSync(join(repoDir, '.git', 'worktrees'), { recursive: true, force: true });
+                rmSync(outside, { recursive: true, force: true });
+            }
         });
         it('throws and preserves metadata when git refuses to remove a registered worktree', () => {
             const workerName = 'locked-worker';

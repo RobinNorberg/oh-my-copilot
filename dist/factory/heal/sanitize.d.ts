@@ -12,6 +12,24 @@ export declare const DELIMITER_PREFIX = "HEAL-UNTRUSTED-";
 /** Characters per evidence line after cleaning. */
 export declare const MAX_EVIDENCE_LINE_CHARS = 400;
 export declare const REDACTED = "[redacted]";
+/** What a secret-shaped match is (named in a lane-commit park; the value never is). */
+export type SecretShapeKind = 'private-key' | 'github-token' | 'aws-access-key' | 'npm-token' | 'api-key' | 'jwt' | 'npmrc-auth-token' | 'azure-devops-pat';
+/**
+ * Token and key shapes: the one list behind both the log redaction below and
+ * the lane-commit content scan (lane-commit.ts). Each is specific enough that
+ * ordinary source text does not match: a PEM PRIVATE key header (RSA, EC,
+ * OPENSSH, ENCRYPTED...; public keys and certificates are not secrets),
+ * GitHub's prefixed tokens, AWS access key ids, npm tokens, `sk-` / `sk-ant-`
+ * API keys, a three-part JWT, an `.npmrc` `_authToken=` with a literal value
+ * (not `${NPM_TOKEN}`), and the Azure DevOps PAT format that carries the
+ * `AZDO` signature (the older 52-character PAT has no distinguishable shape).
+ */
+export declare const SECRET_SHAPES: readonly {
+    kind: SecretShapeKind;
+    re: RegExp;
+}[];
+/** The kinds of secret shape in `text` (each once, in list order); never the matched values. */
+export declare function secretShapeKinds(text: string): SecretShapeKind[];
 /** Secrets a CI log may echo (tokens, keys, URL credentials), replaced by {@link REDACTED}. */
 export declare function redactSecrets(s: string): string;
 /** One raw log line as evidence: prefix, ANSI and control characters gone, secrets redacted, capped. */

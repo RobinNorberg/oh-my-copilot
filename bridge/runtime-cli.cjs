@@ -7633,7 +7633,7 @@ async function getProcessStartTimeLinux(pid, deadlineAt) {
     return void 0;
   }
 }
-function getProcessStartIdentitySync(pid) {
+function getProcessStartIdentitySync(pid, o = {}) {
   if (!Number.isInteger(pid) || pid <= 0) return null;
   if (process.platform === "linux") {
     try {
@@ -7662,16 +7662,31 @@ function getProcessStartIdentitySync(pid) {
     }
   }
   if (process.platform === "win32") {
+    const commands = [
+      `$p = Get-Process -Id ${pid} -ErrorAction Stop; if ($p -and $p.StartTime) { $p.StartTime.ToUniversalTime().Ticks }`,
+      ...o.fallbacks ? [`$p = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" -ErrorAction Stop; if ($p -and $p.CreationDate) { ([DateTime]$p.CreationDate).ToUniversalTime().Ticks }`] : []
+    ];
+    for (const cmd of commands) {
+      try {
+        const result = (0, import_child_process6.spawnSync)(
+          "powershell",
+          ["-NoProfile", "-NonInteractive", "-Command", cmd],
+          { encoding: "utf8", timeout: o.fallbacks ? 5e3 : 3e3, windowsHide: true }
+        );
+        const ticks = result.status === 0 ? result.stdout?.trim().match(/^\d+$/)?.[0] : void 0;
+        if (ticks) return `ticks:${ticks}`;
+      } catch {
+      }
+    }
+    if (!o.fallbacks) return null;
     try {
-      const cmd = `$p = Get-Process -Id ${pid} -ErrorAction Stop; if ($p -and $p.StartTime) { $p.StartTime.ToUniversalTime().Ticks }`;
       const result = (0, import_child_process6.spawnSync)(
-        "powershell",
-        ["-NoProfile", "-NonInteractive", "-Command", cmd],
-        { encoding: "utf8", timeout: 3e3, windowsHide: true }
+        "wmic",
+        ["process", "where", `ProcessId=${pid}`, "get", "CreationDate", "/format:csv"],
+        { encoding: "utf8", timeout: 5e3, windowsHide: true }
       );
-      if (result.status !== 0 || !result.stdout) return null;
-      const ticks = result.stdout.trim().match(/^\d+$/)?.[0];
-      return ticks ? `ticks:${ticks}` : null;
+      const match = result.status === 0 ? result.stdout?.match(/(\d{14}\.\d{6}[+-]\d{3})/) : null;
+      return match ? dmtfCreationDateToTicks(match[1]) : null;
     } catch {
       return null;
     }
@@ -17039,9 +17054,14 @@ function hostGitEnv(args, base = process.env) {
     const i = args.indexOf(flag);
     return i >= 0 && i + 1 < args.length ? args[i + 1] : void 0;
   };
+  const kept = {};
+  for (const [key, value] of Object.entries(base)) {
+    if (!/^GIT_(?:REPLACE_REF_BASE|GRAFT_FILE|NO_REPLACE_OBJECTS)$/i.test(key)) kept[key] = value;
+  }
+  const pins = { GIT_LFS_SKIP_SMUDGE: "1", GIT_NO_REPLACE_OBJECTS: "1", GIT_GRAFT_FILE: (0, import_node_path11.join)(hostHooksDir(), "grafts") };
   const gitDir = valueOf("--git-dir");
-  if (!gitDir) return { ...base, GIT_LFS_SKIP_SMUDGE: "1" };
-  const env = { ...base, GIT_DIR: (0, import_node_path11.resolve)(gitDir), GIT_LFS_SKIP_SMUDGE: "1" };
+  if (!gitDir) return { ...kept, ...pins };
+  const env = { ...kept, GIT_DIR: (0, import_node_path11.resolve)(gitDir), ...pins };
   const workTree = valueOf("--work-tree");
   if (workTree) env.GIT_WORK_TREE = (0, import_node_path11.resolve)(workTree);
   if ((0, import_node_path11.basename)((0, import_node_path11.dirname)((0, import_node_path11.resolve)(gitDir))) === "worktrees") env.GIT_COMMON_DIR = (0, import_node_path11.dirname)((0, import_node_path11.dirname)((0, import_node_path11.resolve)(gitDir)));
@@ -17080,7 +17100,11 @@ function hostGitExe() {
   if (git2 === null) throw new Error("host git: git is not on PATH");
   return git2;
 }
-function runHostGit(cwd, args, timeout, baseEnv = process.env) {
+function runHostGit(cwd, args, timeout, baseEnv = process.env, input) {
+  const { argv, env } = hostGitCommand(cwd, args, timeout, baseEnv);
+  return (0, import_node_child_process4.execFileSync)(hostGitExe(), argv, { cwd, env, encoding: "utf-8", stdio: "pipe", windowsHide: true, timeout, ...input !== void 0 ? { input, maxBuffer: 64 * 1024 * 1024 } : {} });
+}
+function hostGitCommand(cwd, args, timeout, baseEnv) {
   const env = hostGitEnv(args, baseEnv);
   const recorded = env.GIT_DIR ? recordedGitDirs.get(env.GIT_DIR) : void 0;
   if (recorded && !sameGitLinks(readWorktreeGitLinks(recorded.wtPath), recorded.links)) {
@@ -17100,7 +17124,7 @@ function runHostGit(cwd, args, timeout, baseEnv = process.env) {
     tree = [...tree, ...LANE_SUBMODULE_OVERRIDES.flatMap((kv) => ["-c", kv])];
     if (IGNORE_SUBMODULES_SUBCOMMANDS.has(subcommand)) finalArgs = [...args.slice(0, at + 1), "--ignore-submodules=all", ...args.slice(at + 1)];
   }
-  return (0, import_node_child_process4.execFileSync)(hostGitExe(), [...hostGitHardeningArgs(), ...tree, ...finalArgs], { cwd, env, encoding: "utf-8", stdio: "pipe", windowsHide: true, timeout });
+  return { argv: [...hostGitHardeningArgs(), ...tree, ...finalArgs], env };
 }
 function git(repoRoot, args, cwd = repoRoot) {
   return runHostGit(cwd, args).trim();
@@ -17355,6 +17379,30 @@ function unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs = [], keepTracked = tru
       }
     }
   }
+}
+function firstLinkUnder(dir) {
+  const pending = [dir];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    let entries;
+    try {
+      entries = (0, import_node_fs11.readdirSync)(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const path5 = (0, import_node_path11.join)(current, entry.name);
+      let stat2;
+      try {
+        stat2 = (0, import_node_fs11.lstatSync)(path5);
+      } catch {
+        continue;
+      }
+      if (stat2.isSymbolicLink()) return path5;
+      if (stat2.isDirectory()) pending.push(path5);
+    }
+  }
+  return null;
 }
 function gitOrNull(args, cwd) {
   try {
@@ -17638,7 +17686,7 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
   const branch = mode === "named" ? getBranchName(teamName, workerName) : "HEAD";
   validateResolvedPath(wtPath, (0, import_node_path11.join)(getOmcRoot(repoRoot), "team"));
   try {
-    runHostGit(repoRoot, ["worktree", "prune"]);
+    if (!(0, import_node_fs11.existsSync)(wtPath)) removeStaleWorktreeEntry(repoRoot, wtPath);
   } catch {
   }
   if ((0, import_node_fs11.existsSync)(wtPath)) {
@@ -17741,7 +17789,14 @@ function removeWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
       gitDirArgs = worktreeGitDirArgs(wtPath);
       laneCommonDir = commonDir;
     }
-    prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, wtPath, gitDirArgs);
+    if (!options.discardChanges) prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, wtPath, gitDirArgs);
+    else if ((0, import_node_fs11.existsSync)(wtPath)) {
+      validateWorktreeRemovalTarget({
+        candidatePath: wtPath,
+        expectedRoots: [(0, import_node_path11.join)(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees")],
+        mainRepoRoots: [repoRoot]
+      });
+    }
     const baseCommit = readMetadata(repoRoot, teamName).find((entry) => entry.workerName === workerName)?.baseCommit;
     let registered;
     try {
@@ -17777,7 +17832,17 @@ function removeWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
       error.code = "worktree_remove_failed";
       throw error;
     }
-    if ((0, import_node_fs11.existsSync)(wtPath)) unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs);
+    if ((0, import_node_fs11.existsSync)(wtPath)) {
+      unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs, !options.discardChanges);
+      if (options.discardChanges) {
+        const left = firstLinkUnder(wtPath);
+        if (left) {
+          const error = new Error(`worktree_link_unremovable: preserving worker worktree at ${wtPath}; a link is still there after unlinking: ${left}`);
+          error.code = "worktree_link_unremovable";
+          throw error;
+        }
+      }
+    }
     try {
       if (options.gitLinks && laneCommonDir) {
         if ((0, import_node_fs11.existsSync)(wtPath)) {
@@ -17795,7 +17860,7 @@ function removeWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
         }
         if (isAdminDirOf(laneCommonDir, options.gitLinks.adminDir)) removeTreeByPath(options.gitLinks.adminDir);
       } else {
-        runHostGit(repoRoot, ["worktree", "remove", ...force ? ["--force"] : [], wtPath]);
+        runHostGit(repoRoot, ["worktree", "remove", ...force || options.discardChanges && !submodules ? ["--force"] : [], wtPath]);
       }
     } catch (err) {
       if (wasRegisteredWorktree && (!force || isRegisteredWorktreePath(repoRoot, wtPath))) {
@@ -17806,7 +17871,7 @@ function removeWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
       }
     }
     try {
-      runHostGit(repoRoot, ["worktree", "prune"]);
+      if (!(0, import_node_fs11.existsSync)(wtPath)) removeStaleWorktreeEntry(repoRoot, wtPath);
     } catch {
     }
     if (branchHead) deleteWorkerBranchAt(repoRoot, branch, branchHead);
@@ -17818,6 +17883,12 @@ function removeWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
       });
       if (force) removeRuntimeLeftover(wtPath);
       else (0, import_node_fs11.rmSync)(wtPath, { recursive: true, force: true });
+    }
+    if (options.discardChanges && !(0, import_node_fs11.existsSync)(wtPath)) {
+      try {
+        restoreWorktreeRootAgents(teamName, workerName, repoRoot, wtPath);
+      } catch {
+      }
     }
     forgetMetadataUnlocked(repoRoot, teamName, workerName);
     forgetWorktreeGitLinks(wtPath);
@@ -17841,6 +17912,53 @@ function removeTreeByPath(dir) {
   }
   unlinkUntrackedWorktreeLinks(dir, [], false);
   (0, import_node_fs11.rmSync)(dir, { recursive: true, force: true });
+}
+function removeStaleWorktreeEntry(repoRoot, wtPath, adminName) {
+  if ((0, import_node_fs11.existsSync)(wtPath)) throw new Error(`stale_worktree_entry: ${wtPath} exists, so its worktree entry is not stale`);
+  const common = (0, import_node_path11.resolve)(repoRoot, runHostGit(repoRoot, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).trim());
+  const root = (0, import_node_path11.join)(common, "worktrees");
+  const want = canonicalPathForComparison((0, import_node_path11.join)(wtPath, ".git"));
+  const real = (dir2) => {
+    try {
+      const st = (0, import_node_fs11.lstatSync)(dir2);
+      return st.isDirectory() && !st.isSymbolicLink();
+    } catch {
+      return false;
+    }
+  };
+  let rootPresent = true;
+  try {
+    (0, import_node_fs11.lstatSync)(root);
+  } catch {
+    rootPresent = false;
+  }
+  if (rootPresent && !real(root)) throw new Error(`stale_worktree_entry: ${root} is not a real directory (a link or a file)`);
+  const namesWtPath = (name2) => {
+    const dir2 = (0, import_node_path11.join)(root, name2);
+    if (!isAdminDirOf(common, dir2) || !real(dir2)) return false;
+    try {
+      const gitdir = (0, import_node_path11.join)(dir2, "gitdir");
+      if (!(0, import_node_fs11.lstatSync)(gitdir).isFile()) return false;
+      return canonicalPathForComparison((0, import_node_path11.resolve)(dir2, (0, import_node_fs11.readFileSync)(gitdir, "utf8").trim())) === want;
+    } catch {
+      return false;
+    }
+  };
+  let name;
+  if (adminName !== void 0) {
+    if (!namesWtPath(adminName)) throw new Error(`stale_worktree_entry: ${(0, import_node_path11.join)(root, adminName)} is not a real directory in ${root} whose gitdir names ${(0, import_node_path11.join)(wtPath, ".git")}`);
+    name = adminName;
+  } else {
+    const matches = real(root) ? (0, import_node_fs11.readdirSync)(root).filter(namesWtPath) : [];
+    if (matches.length === 0) return false;
+    if (matches.length > 1) throw new Error(`stale_worktree_entry: ${matches.length} entries in ${root} name ${(0, import_node_path11.join)(wtPath, ".git")}`);
+    name = matches[0];
+  }
+  const dir = (0, import_node_path11.join)(root, name);
+  if ((0, import_node_fs11.existsSync)((0, import_node_path11.join)(dir, "locked"))) throw new Error(`stale_worktree_entry: ${dir} is locked`);
+  removeTreeByPath(dir);
+  if (findRegisteredWorktree(repoRoot, wtPath) !== null) throw new Error(`stale_worktree_entry: git still lists ${wtPath} after its entry ${dir} was removed`);
+  return true;
 }
 function removeTamperedWorktree(repoRoot, teamName, workerName, wtPath, links, commonDir) {
   const removeTree = removeTreeByPath;
@@ -17933,7 +18051,15 @@ var init_git_worktree = __esm({
       "gpg.ssh.program=ssh-keygen",
       "gpg.x509.program=gpgsm",
       "core.editor=:",
-      "sequence.editor=:"
+      "sequence.editor=:",
+      "core.commitGraph=false",
+      "core.multiPackIndex=false",
+      "gc.auto=0",
+      "maintenance.auto=false",
+      "fetch.writeCommitGraph=false",
+      "commit.gpgSign=false",
+      "protocol.ext.allow=never",
+      "core.alternateRefsCommand=true"
     ];
     emptyAttributesFile = null;
     WORK_TREE_SUBCOMMANDS = /* @__PURE__ */ new Set([
@@ -17957,7 +18083,9 @@ var init_git_worktree = __esm({
       "apply",
       "rm",
       "mv",
-      "clean"
+      "clean",
+      // `hash-object --stdin --path`: the path selects attributes, so a filter could run on the bytes.
+      "hash-object"
     ]);
     GLOBAL_OPTIONS_WITH_VALUE = /* @__PURE__ */ new Set(["-c", "-C", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env"]);
     LANE_SUBMODULE_OVERRIDES = ["submodule.recurse=false", "diff.ignoreSubmodules=all", "status.submoduleSummary=false"];

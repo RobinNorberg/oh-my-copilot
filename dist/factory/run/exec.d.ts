@@ -158,7 +158,29 @@ export declare function assertFactoryCommand(cmd: string, args: string[], extraP
  */
 export declare function factoryGuardExec(exec: Exec, extraProtected?: () => readonly string[], ado?: () => AdoGuardContext | undefined, writes?: () => TrackerWriteContext | undefined, local?: () => LocalGuardContext | undefined, github?: () => GithubReadContext | undefined, agent?: () => CodingAgentStepContext | undefined): Exec;
 /** Prepended to every hardened git command, after the guard checked the plain shape. */
-export declare function gitHardeningArgs(hooksDir: string): string[];
+export declare function gitHardeningArgs(hooksDir: string, subcommand?: string): string[];
+/**
+ * The `--receive-pack` of a push to the local forge mirror. A push to a path
+ * spawns receive-pack in the mirror, and git drops this process's `-c` for a
+ * local transport, so the mirror's own hooks (pre-receive, update,
+ * post-receive, reference-transaction) and core.hooksPath would run; this
+ * command passes the empty hooks dir to that receive-pack itself, and pins
+ * the other config it would run or act on (core.alternateRefsCommand lists
+ * alternates' refs, receive.autogc repacks; core.bare=true and the deny
+ * settings keep a push to the mirror's HEAD branch from checking a tree out
+ * there, with its filters, under receive.denyCurrentBranch=updateInstead).
+ * Command-line config beats every
+ * file the mirror reads, so a config written after mirrorConfigProblem
+ * checked it changes none of these. Git runs it through `sh`, so the path is
+ * single-quoted (a path with a quote is refused).
+ */
+export declare function mirrorReceivePackArg(hooksDir: string): string;
+/**
+ * The `--upload-pack` of a fetch or ls-remote on the local forge mirror: the
+ * upload-pack that runs in the mirror never runs a core.alternateRefsCommand
+ * written there after mirrorConfigProblem checked its config.
+ */
+export declare const MIRROR_UPLOAD_PACK_ARG = "--upload-pack=git -c core.alternateRefsCommand=true upload-pack";
 /**
  * Prepended to a transport command on the local forge's `omg-local` remote:
  * the stock pack programs, so a `remote.omg-local.receivepack` or
@@ -199,7 +221,8 @@ export declare function localTransportArgs(args: readonly string[], mirror?: str
  * sshCommand, pushInsteadOf or clean filter there parks the run.
  *
  * `localMirror` (the local forge) is the engine-owned mirror path a push on
- * `omg-local` goes to (localTransportArgs).
+ * `omg-local` goes to (localTransportArgs). Every push, fetch and ls-remote on
+ * `omg-local` checks it first (mirrorConfigProblem), so one without it throws.
  */
 export declare function hardenedGitExec(exec: Exec, hooksDir: string, localMirror?: () => string | undefined): Exec;
 //# sourceMappingURL=exec.d.ts.map

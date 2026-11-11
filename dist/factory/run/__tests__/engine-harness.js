@@ -13,7 +13,7 @@ import { factoryGuardExec } from '../exec.js';
 import { EngineLedger } from '../ledger.js';
 import { snapshotRepo } from '../review-guard.js';
 import { updateFactoryState } from '../state.js';
-import { FakeLanes, FakeProcesses, harness, ISSUE, PR, testGateConfig } from './fake-lanes.js';
+import { FakeLanes, FakeProcesses, harness, ISSUE, PR, testGateConfig, withTestSandbox } from './fake-lanes.js';
 export let h;
 export let procs;
 /** A fresh harness per test; call once at the top of each test file that uses it. */
@@ -28,7 +28,7 @@ export function useEngineHarness() {
 }
 export const limits = (over = {}) => ({ ...DEFAULT_FACTORY_RUN_LIMITS, ...over });
 export function opts(lanes, over = {}) {
-    return {
+    return withTestSandbox({
         root: h.root,
         issue: ISSUE,
         exec: h.exec,
@@ -41,7 +41,7 @@ export function opts(lanes, over = {}) {
         processes: procs,
         gateConfig: testGateConfig,
         ...over,
-    };
+    }, over);
 }
 export const ledger = () => EngineLedger.open(h.ledgerDir, h.root, ISSUE);
 /** The Copilot child the crashed lane recorded (crashDuringLane). */

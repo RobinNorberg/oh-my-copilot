@@ -8,7 +8,7 @@ import { afterEach, beforeEach } from 'vitest';
 import type { Exec, ExecResult } from '../../../ship/exec.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import type { FactoryEngineOptions } from '../engine.js';
-import { commitFile, FakeLanes, FakeProcesses, harness, ISSUE, REPO_URL, review, testGateConfig, type Harness, type LaneScript } from './fake-lanes.js';
+import { commitFile, FakeLanes, FakeProcesses, harness, ISSUE, REPO_URL, review, testGateConfig, type Harness, type LaneScript, withTestSandbox } from './fake-lanes.js';
 
 export const SPEC = 12;
 
@@ -64,7 +64,7 @@ export const exec: Exec = (cmd, args, o) => {
 };
 
 export function opts(scripts: LaneScript[], over: Partial<FactoryEngineOptions> = {}): FactoryEngineOptions {
-  return {
+  return withTestSandbox({
     root: h.root,
     issue: ISSUE,
     exec,
@@ -78,7 +78,7 @@ export function opts(scripts: LaneScript[], over: Partial<FactoryEngineOptions> 
     gateConfig: testGateConfig,
     warn: (m) => warnings.push(m),
     ...over,
-  };
+  }, over);
 }
 
 export const happy = (): LaneScript[] => [commitFile('src/greet.ts', 'export const greet = () => "hi";\n'), review('approve')];

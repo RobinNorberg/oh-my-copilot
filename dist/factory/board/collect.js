@@ -123,6 +123,7 @@ function runPart(root, s, warnings) {
         credits: Number(runCredits(s).toFixed(2)),
         integrity,
         updatedAt: plainText(s.updatedAt),
+        ...(s.layout === 2 && s.privateDir ? { privateDir: plainText(s.privateDir) } : {}),
     };
     if (s.pr === undefined)
         return { run };
@@ -149,6 +150,38 @@ function flagsOf(config, s, row, now) {
     if (!TERMINAL_FACTORY_PHASES.includes(s.phase) && !s.gate && Number.isFinite(updated) && now - updated > BOARD_STALE_MS)
         flags.push('stale');
     return flags;
+}
+/** The merge park's human-review clause, as the engine read the PR when it parked. */
+const PARKED_REVIEW = /; human review: [\s\S]*?; if the PR gets new review comments before you merge, rerun [^;]*? first/;
+/** The merge park's closing step (engine.ts merge gate): ": run <merge command>, then <rerun>". */
+const PARKED_MERGE_STEP = /: run [^;]*, then [^;]*$/;
+/**
+ * F50: on the local forge, a run parked at the merge gate shows the PR's
+ * review state now, not the clause the engine wrote at the park: a change
+ * request or open note recorded since (`omg factory pr review`) replaces
+ * "no open trusted threads or change requests" with a do-not-merge line.
+ * A local read only (the PR store); other forges keep the parked text.
+ */
+function reviewNow(forge, s, row, warnings) {
+    const gate = row.run?.gate;
+    if (forge.kind !== 'local' || !gate || s.gate?.name !== 'merge' || s.pr === undefined || !s.head || !forge.reviews.reviewFeedback)
+        return;
+    let fb;
+    try {
+        fb = forge.reviews.reviewFeedback(s.pr, s.head);
+    }
+    catch (error) {
+        if (error instanceof FactorySafetyError)
+            throw error;
+        warnings.push(`omg factory board: the review state of local PR #${s.pr} is unreadable: ${message(error)}`);
+        return;
+    }
+    const by = [...new Set(fb.decisions.filter((d) => d.state === 'changes-requested').map((d) => d.author))];
+    if (by.length === 0 && fb.threads.length === 0)
+        return;
+    const what = [fb.threads.length > 0 ? `${fb.threads.length} open review note(s)` : '', by.length > 0 ? `changes requested by ${by.join(', ')}` : ''].filter(Boolean).join(' and ');
+    // The parked ": run <merge command>, then <rerun>" tail goes too: it would tell the human to merge.
+    gate.reason = plainText(`${gate.reason.replace(PARKED_REVIEW, '').replace(PARKED_MERGE_STEP, '')}; human review now: ${what} on local PR #${s.pr}: do not merge${typeof s.issue === 'number' && s.kind !== 'ci-heal' ? `; omg factory run ${s.issue} reads it` : ''}`);
 }
 /** Item reads go through a memo, so check's viewItem reads also give the board its live labels and column. */
 function memoTracker(forge) {
@@ -246,6 +279,7 @@ export function collectBoard(input) {
             continue;
         }
         Object.assign(row, runPart(root, s, warnings));
+        reviewNow(forge, s, row, warnings);
         if (!row.title && s.issueTitle)
             row.title = plainText(s.issueTitle);
         const expected = trackerStageOf(s);
@@ -269,6 +303,7 @@ export function collectBoard(input) {
             warnings.push(`omg factory board: run ${runLabel(key)} started on ${s.forgeKind}, but the forge resolves to ${config.kind}`);
         const row = { id: key, title: plainText(s.issueTitle ?? (s.kind === 'ci-heal' ? 'ci-heal' : '')), url: '', stage: { expected: trackerStageOf(s), ...(s.trackerStage ? { recorded: s.trackerStage } : {}) }, flags: [] };
         Object.assign(row, runPart(root, s, warnings));
+        reviewNow(forge, s, row, warnings);
         row.flags = flagsOf(config, s, row, now);
         outside.push(row);
     }

@@ -96,7 +96,7 @@ const ROWS = [
         rule: 'run-finished (cancelled, local forge: not terminal, run reset reopens the item)',
         world: { kind: 'local', items: [item(1)], runs: { 1: { phase: 'cancelled' } } },
         bucket: 'blocked', reasons: ['run-finished:cancelled'],
-        detail: 'the factory run was cancelled; omg factory run clean 1, then omg factory run reset 1, makes the item runnable again',
+        detail: "the factory run was cancelled; omg factory run reset 1 makes the item runnable again (it removes the run's worktrees)",
     },
     { rule: 'run-finished (failed)', world: { items: [item(1)], runs: { 1: { phase: 'failed' } } }, bucket: 'blocked', reasons: ['run-finished:failed'] },
     {

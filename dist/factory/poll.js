@@ -74,6 +74,8 @@ import { adoHealFor, ciDeps, HEAL_PIPELINE_MISSING, runHealScan } from './heal/c
 import { HealRunRefused } from './heal/run.js';
 import { DEFAULT_FACTORY_RUN_LIMITS, resolveFactoryRunLimits } from './run/budget.js';
 import { FactoryForgeUnavailableError } from './run/forge-roots.js';
+import { defaultLedgerDir } from './run/ledger.js';
+import { tamperHoldMessage } from './run/tamper-quarantine.js';
 import { visibleLine } from '../forge/review-feedback.js';
 import { resolveTeamConfig, TeamConfigError } from './team/context.js';
 import { staleGateReminders } from './team/reminders.js';
@@ -496,8 +498,12 @@ export async function pollTick(ctx) {
                 }
                 // A read-failed item stays new, so the next tick checks it again.
                 const failed = new Set(results.filter((r) => r.reasons[0] === 'read-failed').map((r) => r.id));
-                step('intake seen', () => updateSeen(root, ids.filter((id) => !failed.has(id)), at));
-                intake = { ran: true, items: ids.length, new: results.map((r) => ({ id: r.id, bucket: r.bucket, reasons: r.reasons })) };
+                // F53: an item a run is already on is not new work (a first tick, with an empty seen file, would list it).
+                // It is not marked seen either, so it shows as new once the run is reset or moved aside.
+                const active = new Set(results.filter((r) => (r.reasons[0] ?? '').startsWith('run-active')).map((r) => r.id));
+                step('intake seen', () => updateSeen(root, ids.filter((id) => !failed.has(id) && !active.has(id)), at));
+                const work = results.filter((r) => !active.has(r.id));
+                intake = { ran: true, items: ids.length, new: work.map((r) => ({ id: r.id, bucket: r.bucket, reasons: r.reasons })) };
             }
         }
     }
@@ -593,13 +599,15 @@ export async function pollTick(ctx) {
     const rateLimited = [...errors, ...warnings].some((m) => ADO_RATE_LIMITED.test(m) || GITHUB_RATE_LIMITED.test(m));
     // 5. auto-start: at most one run, on an idle tick only.
     let autoStart;
+    const held = config.intake.autoStart ? (ctx.tamperHold ?? (() => tamperHoldMessage(defaultLedgerDir(), root)))() : null;
     const blocked = !config.intake.autoStart ? 'factory.intake.autoStart is off'
-        : locked ? 'the run lock is held: an engine runs in this repository'
-            : unsound ? 'a run state is unreadable or fails its integrity check'
-                : !idle ? 'a run is in flight'
-                    : !intake.ran ? `no intake read this tick (${intake.reason})`
-                        : rateLimited ? 'the tick was rate-limited'
-                            : null;
+        : held ? held
+            : locked ? 'the run lock is held: an engine runs in this repository'
+                : unsound ? 'a run state is unreadable or fails its integrity check'
+                    : !idle ? 'a run is in flight'
+                        : !intake.ran ? `no intake read this tick (${intake.reason})`
+                            : rateLimited ? 'the tick was rate-limited'
+                                : null;
     if (blocked)
         autoStart = { started: false, reason: blocked };
     else {
@@ -735,6 +743,7 @@ export async function runFactoryPoll(o, deps) {
         }),
         budget: deps.budget ?? defaultPollBudget(() => layers),
         remindAfterHours: teamConfig.remindAfterHours,
+        tamperHold: () => tamperHoldMessage(deps.ledgerDir ?? defaultLedgerDir(), read.root),
         owner, now, previous: { board: new Map(), prs: new Map() }, tick: 0,
     };
     let interval = base;

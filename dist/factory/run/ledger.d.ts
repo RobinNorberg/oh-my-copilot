@@ -25,6 +25,7 @@
  * lane is told to work in, and that the engine compares against its in-memory
  * copy while it runs.
  */
+import type { UserRepoGuard } from './private-store.js';
 import type { RepoSnapshot } from './review-guard.js';
 import type { FactoryLaneKind, FactoryRunKey } from './state.js';
 export declare class LedgerError extends Error {
@@ -41,6 +42,8 @@ export interface LedgerRecheck {
     /** Shared git state right after the lane's check passed (re-based after the engine's own fetch / push). */
     snapshot: RepoSnapshot;
 }
+/** The private layout: the baseline key of the USER repository's snapshot around a lane (review-483 M3). */
+export declare const userBaselineKey: (laneId: string) => string;
 export declare const sha256: (data: string | Buffer) => string;
 /** `$OMC_STATE_DIR/factory-ledger` or `~/.omg/factory-ledger`: outside the repository. */
 export declare function defaultLedgerDir(env?: NodeJS.ProcessEnv): string;
@@ -79,9 +82,13 @@ export declare class EngineLedger {
     restore(paths: readonly string[], stamp: string): string[];
     setBaseline(laneId: string, snapshot: RepoSnapshot): void;
     baseline(laneId: string): RepoSnapshot | undefined;
+    /** Drops the lane's baseline and, in the private layout, its user-repository baseline (userBaselineKey). */
     dropBaseline(laneId: string): void;
     get recheck(): LedgerRecheck | undefined;
     setRecheck(recheck: LedgerRecheck | undefined): void;
+    /** The private layout's user repository guard baseline (taken at run start, re-taken after each clean import and push). */
+    get userGuard(): UserRepoGuard | undefined;
+    setUserGuard(guard: UserRepoGuard | undefined): void;
     private persist;
 }
 /** True when the directory exists and holds no entry. */

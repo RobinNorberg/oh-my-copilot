@@ -179,6 +179,31 @@ export async function reapGateProcs(path, deps = defaultGateProcDeps()) {
     }
     rmSync(path, { force: true });
 }
+/**
+ * The recorded gate processes under `dir` (every `<sha>.json` record) that
+ * still run with their recorded start identity: the proof, before a dir a
+ * gate or prepare check ran in is removed, that none of its processes is
+ * still there (a private run's prepare checkout or run dir, review-483 I.4).
+ * Never signals anything.
+ */
+export function liveGateProcs(dir, deps = defaultGateProcDeps()) {
+    let names;
+    try {
+        names = readdirSync(dir);
+    }
+    catch {
+        return [];
+    }
+    const live = [];
+    for (const name of names.filter((n) => /^[0-9a-f]{40}\.json$/.test(n))) {
+        const record = readGateProcs(join(dir, name));
+        for (const p of record ? [...(record.root ? [record.root] : []), ...record.orphans] : []) {
+            if (p.pid !== process.pid && deps.identitySync(p.pid) === p.identity && !live.includes(p.pid))
+                live.push(p.pid);
+        }
+    }
+    return live;
+}
 const swept = new Set();
 /**
  * Once per process and record directory: reap every record there, not only the

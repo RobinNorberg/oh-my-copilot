@@ -10,7 +10,7 @@ import { EXIT_AWAITING_HUMAN, EXIT_BUSY } from '../../../factory/run/engine.js';
 import { createFactoryState, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStatePath, moveTo, overwriteFactoryState, readFactoryState, } from '../../../factory/run/state.js';
 import { resolveForgeConfig } from '../../../forge/config.js';
 import { scaleTiming } from '../../../__tests__/helpers/platform.js';
-import { commitFile, FakeLanes, harness, ISSUE, REPO_URL, review, testGateConfig } from '../../../factory/run/__tests__/fake-lanes.js';
+import { commitFile, FakeLanes, FakeProcesses, harness, ISSUE, REPO_URL, review, testGateConfig, attestedSandbox } from '../../../factory/run/__tests__/fake-lanes.js';
 // The full engine flows below run dozens of real git commands. Alone they take 40-120 s on a
 // loaded win32 host, at the 120 s suite default; nothing in them asserts timing, so this is
 // only a hang guard.
@@ -40,7 +40,9 @@ function deps(over = {}) {
         limits: () => resolveFactoryRunLimits(undefined, undefined),
         base: () => 'dev',
         ledgerDir: h.ledgerDir,
-        gateConfig: testGateConfig,
+        gateConfig: testGateConfig, gateSandbox: () => attestedSandbox(() => h.exec),
+        // The fake lanes record no runtime process: the real tree proof would warn on stderr, which `out` captures.
+        processes: new FakeProcesses(),
         ...over,
     };
 }
@@ -367,7 +369,7 @@ describe('omg factory run CLI', () => {
             expect(text).toContain(`unreadable owner file (held until removed: omg factory run release): ${factoryOwnerPath(h.root, 14)}`);
             expect(text).not.toContain('\u001b[2J');
         });
-        it('on the local forge the CLI keys no claim, as the engine: an origin-keyed claim on #7 makes nothing busy, is not listed and is not released', async () => {
+        it('on the local forge the CLI keys claims on the root commit, as the engine (F60): an origin-keyed claim on #7 makes nothing busy, is not listed and is not released', async () => {
             lanes = new FakeLanes(h.root, []);
             const { claim } = otherClone(7);
             const forgeKinds = [];

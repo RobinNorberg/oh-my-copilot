@@ -33,12 +33,14 @@ import { CopilotRunManager, defaultCopilotRunDeps } from '../../copilot-run/job.
 import { resolveFactoryRunLimits, runCredits } from '../../factory/run/budget.js';
 import { cleanFactoryRun } from '../../factory/run/clean.js';
 import { resetFactoryRun } from '../../factory/run/reset.js';
-import { claimBusyMessage, factoryClaimHolder, factoryClaimRepo, listFactoryClaims, removeFactoryClaim, SHARED_STATE_WARNING, trustedFactoryClaimRepo } from '../../factory/run/claims.js';
+import { claimBusyMessage, factoryClaimHolder, factoryClaimRepo, isShallowClaimRepo, listFactoryClaims, localFactoryClaimRepo, removeFactoryClaim, SHARED_STATE_WARNING, shallowClaimWarning, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo } from '../../factory/run/claims.js';
 import { EXIT_AWAITING_HUMAN, EXIT_BUSY, runFactoryEngine } from '../../factory/run/engine.js';
 import { factoryGuardExec, hardenedGitExec } from '../../factory/run/exec.js';
 import { EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, factoryForgeOptions, loadFactoryForgeConfig, originForgeKind, syncLocalMirror } from '../../factory/run/forge-roots.js';
 import { CopilotLaneBackend } from '../../factory/run/lane.js';
-import { acquireFactoryRepoOwnerForRun, defaultOwnerDeps, describeOwner, FactoryBusyError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState, refuseWhileEngineRuns, runLabel, unreadableOwnerMessage, withOwnerFileLock, requestFactoryCancel, verifyFactoryIntegrity, } from '../../factory/run/state.js';
+import { createSandboxRunner } from '../../factory/run/sandbox-exec.js';
+import { releaseTamperHold, tamperHoldMessage } from '../../factory/run/tamper-quarantine.js';
+import { acquireFactoryRepoOwnerForRun, defaultOwnerDeps, describeOwner, FactoryBusyError, FactoryTamperHoldError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState, refuseWhileEngineRuns, runLabel, unreadableOwnerMessage, withOwnerFileLock, requestFactoryCancel, verifyFactoryIntegrity, } from '../../factory/run/state.js';
 import { resolveShipConfig, userConfigLayers } from '../../ship/config.js';
 import { defaultExec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
@@ -99,6 +101,7 @@ export const defaultFactoryRunDeps = {
         return resolveShipConfig({ base: pick(projectConfig(root)) ?? pick(userConfigLayers().user) }).base;
     },
     forge: (root, base, opts) => loadFactoryForgeConfig(factoryGuardExec(defaultExec), root, base, userConfigLayers().trustedUser, projectConfig(root), opts),
+    gateSandbox: (root) => createSandboxRunner(root),
 };
 class FactoryUsageError extends Error {
 }
@@ -159,8 +162,14 @@ export function renderFactoryRunState(state, o = {}) {
         lines.push(chalk.yellow('cancel requested'));
     if (state.head)
         lines.push(`head ${state.head.slice(0, 12)}`);
+    if (state.layout === 2 && state.privateDir)
+        lines.push(`layout private: ${plainText(state.privateDir)}`);
     if (state.unsandboxedAck)
         lines.push(chalk.yellow(`lanes without the enforced sandbox accepted for ${state.unsandboxedAck.slice(0, 12)} (--allow-unsandboxed-lanes)`));
+    if (state.pendingCommit)
+        lines.push(chalk.yellow(`lane ${plainText(state.pendingCommit.laneId)}'s work is not committed yet (the rerun commits the same worktree)${state.pendingCommit.secretFindings?.length ? `; secret-shaped: ${state.pendingCommit.secretFindings.map((f) => plainText(`${f.path} (${f.kind})`)).join(', ')}` : ''}`));
+    if (state.unsandboxedGatesAck)
+        lines.push(chalk.yellow(`prepare checks and the local gate without the OS sandbox accepted for ${state.unsandboxedGatesAck.slice(0, 12)} (--allow-unsandboxed-gates)`));
     lines.push(`lanes ${state.lanes.length}  run AI credits ${runCredits(state).toFixed(2)}  elapsed ${Math.round(state.elapsedMs / 60_000)} min`);
     for (const lane of state.lanes) {
         const credits = lane.usage ? `${lane.usage.credits.toFixed(2)}/${lane.maxCredits}` : `-/${lane.maxCredits}`;
@@ -237,15 +246,32 @@ function readOnlyForgeKind(deps, root, base) {
 }
 /**
  * The repository the claims of this checkout are keyed on, exactly as the
- * engine keys them: none on the local forge (it makes no claim; L-f), else
- * the origin through the engine's hardened read (trustedFactoryClaimRepo;
- * L-g). A dry run reads it through the plain guard, as the engine's dry run
- * does, and writes nothing.
+ * engine keys them: the origin through the engine's hardened read
+ * (trustedFactoryClaimRepo; L-g), on the local forge the repository's root
+ * commit instead (never origin; dogfood F60). A dry run reads it through the
+ * plain guard, as the engine's dry run does, and writes nothing. A shallow
+ * clone's own key is warned about through `warn` (one per command:
+ * shallowWarnOnce).
  */
-function cliClaimRepo(deps, root, kind, dryRun = false) {
-    if (kind === 'local')
-        return null;
-    return dryRun ? factoryClaimRepo(factoryGuardExec(deps.exec), root) : trustedFactoryClaimRepo(deps.exec, root, deps.ledgerDir ?? defaultLedgerDir());
+function cliClaimRepo(deps, root, kind, dryRun = false, warn = shallowWarnOnce()) {
+    const ledgerDir = deps.ledgerDir ?? defaultLedgerDir();
+    if (kind === 'local') {
+        const repo = dryRun ? localFactoryClaimRepo(factoryGuardExec(deps.exec), root) : trustedLocalFactoryClaimRepo(deps.exec, root, ledgerDir);
+        if (repo && isShallowClaimRepo(repo))
+            warn(shallowClaimWarning(root, repo));
+        return repo;
+    }
+    return dryRun ? factoryClaimRepo(factoryGuardExec(deps.exec), root) : trustedFactoryClaimRepo(deps.exec, root, ledgerDir);
+}
+/** A warner that prints its first line only (stderr): a command reads the claim key more than once. */
+function shallowWarnOnce() {
+    let done = false;
+    return (m) => {
+        if (done)
+            return;
+        done = true;
+        console.error(chalk.yellow(m));
+    };
 }
 const OWNER_FILE = /^run-(\d+|heal-[0-9a-f]{8})\.owner$/;
 /** One owner or claim record for `run status`: whitelisted fields, every string through plainText. */
@@ -320,6 +346,8 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         .option('--dry-run', 'Resolve the issue and plan and print the next step; no state, lanes or pushes')
         .option('--allow-gate-change', 'Local forge: accept the one change to the local gate\'s definition (package.json script, package-manager config or gate file) that parked the run at gate-definition-changed; a later change parks again')
         .option('--allow-unsandboxed-lanes', 'Accept, for the parked head only, that write lanes ran without the enforced sandbox (the run parked at human-review for it): you checked the threads and reviews of the PR yourself; a new head parks again')
+        .option('--allow-unsandboxed-gates', 'Accept, for the parked head only, that prepare\'s checks and the local gate run the PR\'s code WITHOUT the OS sandbox, as you (the run parked at gates-unsandboxed for it): you reviewed the diff yourself; a new head parks again')
+        .option('--allow-secret-shapes', 'Accept the secret-shaped content (the key or token shapes, by path and kind, the park named) that parked a lane commit at secret-shaped-content, for that lane commit only: you checked they are test fixtures, not real secrets; a new path or kind parks again')
         .option('--json', 'JSON output')
         .action((issueRaw, o) => factoryGuarded(Boolean(o.json), async () => {
         if (o.next && issueRaw !== undefined)
@@ -340,15 +368,20 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
             console.error(chalk.yellow(w));
         const base = deps.base(root);
         let claimRepo = null;
+        const warnShallow = shallowWarnOnce();
         // A real run takes this checkout's engine lock before anything touches git (the forge-config loader fetches
         // origin/<base>): busy (exit 6) means nothing was fetched or written. The engine uses the held lock as its own.
         let held;
         if (!o.dryRun) {
+            // A tamper hold stops every run in this checkout (exit 6) before anything is locked or fetched; the engine checks it again.
+            const hold = tamperHoldMessage(deps.ledgerDir ?? defaultLedgerDir(), root);
+            if (hold)
+                throw new FactoryTamperHoldError(hold);
             // A `scan` holder (poll's heal scan or base sync, a read command's fetch) is waited out (SCAN_WAIT_MS, longer than a read fetch can run: FETCH_TIMEOUT_MS).
             held = acquireFactoryRepoOwnerForRun(root, issue ?? 'next', () => new Date().toISOString());
             // The claim key before the fetch: the forge kind from the config as it is (no fetch); none on the local forge.
             try {
-                claimRepo = cliClaimRepo(deps, root, readOnlyForgeKind(deps, root, base));
+                claimRepo = cliClaimRepo(deps, root, readOnlyForgeKind(deps, root, base), false, warnShallow);
             }
             catch (error) {
                 held.release();
@@ -372,7 +405,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
             for (const w of loaded?.warnings ?? [])
                 console.error(chalk.yellow(w));
             // The loaded forge is the run's: the claim key the engine and the pick use follows it.
-            claimRepo = cliClaimRepo(deps, root, loaded?.config.kind, Boolean(o.dryRun));
+            claimRepo = cliClaimRepo(deps, root, loaded?.config.kind, Boolean(o.dryRun), warnShallow);
             // The full untrusted roots, never a partial list (critic amendments §A.14; the engine re-checks).
             const forge = loaded ? { config: loaded.config, options: factoryForgeOptions(root) } : undefined;
             const skipped = [];
@@ -407,10 +440,14 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
                         ...(held ? { repoOwner: held } : {}),
                         ...(o.allowGateChange ? { allowGateChange: true } : {}),
                         ...(o.allowUnsandboxedLanes ? { allowUnsandboxedLanes: true } : {}),
+                        ...(o.allowUnsandboxedGates ? { allowUnsandboxedGates: true } : {}),
+                        ...(o.allowSecretShapes ? { allowSecretShapes: true } : {}),
+                        ...(deps.gateSandbox && !o.dryRun ? { gateSandbox: deps.gateSandbox(root) } : {}),
                         lanes: o.dryRun ? NO_LANES : deps.lanes(root),
                         ...(forge ? { forge } : {}),
                         ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}),
                         ...(deps.gateConfig ? { gateConfig: deps.gateConfig } : {}),
+                        ...(deps.processes ? { processes: deps.processes } : {}),
                         interrupted: () => signals > 0,
                         warn: (m) => console.error(chalk.yellow(m)),
                     });
@@ -419,7 +456,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
                 }
                 catch (error) {
                     // L9: another clone claimed the picked item after the pick: pick once more, skipping it.
-                    if (!(error instanceof FactoryBusyError) || !o.next || picked === undefined || skipped.length > 0)
+                    if (!(error instanceof FactoryBusyError) || error instanceof FactoryTamperHoldError || !o.next || picked === undefined || skipped.length > 0)
                         throw error;
                     skipped.push(picked);
                     if (!o.json)
@@ -449,8 +486,11 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
     run
         .command('clean <issue>')
         .description('Remove the worktrees and local branches of a merged or cancelled run, only when nothing would be lost (the PR branch on GitHub is kept); busy (exit 6) while an engine runs in this checkout')
+        .option('--discard', 'A cancelled run only: give up uncommitted lane changes (a cancel mid-lane leaves them), so those worktrees go too; commits are still kept')
+        .option('--lane-stopped', 'With a lane whose stop was not confirmed (busy, exit 6): your word that its Copilot child has stopped; recorded in the run history. A child seen alive with its recorded start identity still refuses')
+        .option('--seed', 'A private-layout run (factory.run.layout "private"): also remove the repository\'s private store seed once no other run dir is left next to it')
         .option('--json', 'JSON output')
-        .action((issueRaw, _o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
+        .action((issueRaw, o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
         const issue = parseIssue(issueRaw);
         const root = factoryRoot(exec);
         // The run's own forge (its sealed state) when it has one, else the config as it is (no fetch).
@@ -462,14 +502,22 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
             kind = undefined;
         }
         const claimRepo = cliClaimRepo(deps, root, kind ?? readOnlyForgeKind(deps, root, deps.base(root)));
-        const result = cleanFactoryRun({ root, issue, exec: deps.exec, claimRepo, ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
+        if (o.laneStopped && !o.discard)
+            throw new FactoryUsageError('--lane-stopped applies to --discard');
+        const result = cleanFactoryRun({ root, issue, exec: deps.exec, claimRepo, ...(o.discard ? { discard: true } : {}), ...(o.laneStopped ? { laneStopped: true } : {}), ...(o.seed ? { seed: true } : {}), ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
         if (c.optsWithGlobals().json)
             console.log(JSON.stringify({ ok: result.kept.length === 0, ...result }, null, 2));
         else {
+            for (const id of result.acknowledged ?? [])
+                console.log(chalk.yellow(`lane ${id}: its stop is taken on your word (--lane-stopped), recorded in the run history`));
             for (const path of result.removed)
                 console.log(chalk.green(`removed ${path}`));
             for (const k of result.kept)
                 console.log(chalk.yellow(`kept ${k.worktree}: ${k.reason}`));
+            // F59: a cancel mid-lane leaves partial edits; name the command that gives them up.
+            if (!o.discard && result.kept.some((k) => k.reason.startsWith('worktree_dirty')) && readFactoryState(root, issue)?.phase === 'cancelled') {
+                console.log(chalk.yellow(`the run is cancelled: omg factory run clean ${issue} --discard gives up the uncommitted lane changes${kind === 'local' ? `, and omg factory run reset ${issue} does that itself before it starts the run over` : ''}`));
+            }
             if (result.removed.length === 0 && result.kept.length === 0)
                 console.log(`nothing to clean for factory run #${issue}`);
         }
@@ -477,9 +525,10 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
     }));
     run
         .command('reset <issue>')
-        .description('Local forge only: start a cancelled run over (after run clean): close its local PR, keep its mirror branch as factory/cancelled/..., move the run state aside; busy (exit 6) while an engine runs in this checkout or another clone claims the item')
+        .description('Local forge only: start a cancelled run over: remove its worktrees (uncommitted lane changes are given up, commits kept), close its local PR, keep its mirror branch as factory/cancelled/..., move the run state aside; busy (exit 6) while an engine runs in this checkout or another clone claims the item')
         .option('--json', 'JSON output')
-        .action((issueRaw, _o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
+        .option('--lane-stopped', 'With a lane whose stop was not confirmed (busy, exit 6): your word that its Copilot child has stopped; recorded in the run history. A child seen alive with its recorded start identity still refuses')
+        .action((issueRaw, o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
         const issue = parseIssue(issueRaw);
         const root = factoryRoot(exec);
         // The engine lock before the forge-config loader (it may fetch): busy touches nothing.
@@ -488,19 +537,25 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
             const loaded = deps.forge?.(root, deps.base(root), { dryRun: false });
             if (!loaded || loaded.config.kind !== 'local')
                 throw new FactoryUsageError('omg factory run reset is for the local forge only (factory.forge.kind "local")');
-            // The local forge makes no claim (L-f): reset has none to check or delete.
+            // The local forge keys its claim on the root commit (F60): reset checks it and deletes this checkout's.
             const claimRepo = cliClaimRepo(deps, root, loaded.config.kind);
             const read = forgeReadExec(deps.exec, loaded.config, root);
             const forge = createForge(read.exec, root, loaded.config, { ...read.options, local: { omgRoot: getOmcRoot(root) } });
-            const result = resetFactoryRun({ root, issue, exec: deps.exec, forge, mirror: loaded.config.repo.url, repoOwner: held, claimRepo, ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
+            const result = resetFactoryRun({ root, issue, exec: deps.exec, forge, mirror: loaded.config.repo.url, repoOwner: held, claimRepo, ...(o.laneStopped ? { laneStopped: true } : {}), ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
             if (c.optsWithGlobals().json)
                 console.log(JSON.stringify({ ok: true, ...result }, null, 2));
             else {
+                for (const id of result.acknowledgedLanes ?? [])
+                    console.log(chalk.yellow(`lane ${id}: its stop is taken on your word (--lane-stopped), recorded in the run history`));
+                for (const path of result.removedWorktrees ?? [])
+                    console.log(chalk.green(`removed ${path} (uncommitted lane changes given up)`));
                 if (result.closedPr !== undefined)
                     console.log(chalk.green(`closed local PR #${result.closedPr} (cancelled)`));
                 if (result.keptBranch)
                     console.log(chalk.green(`kept the run's branch as ${result.keptBranch} in the mirror`));
                 console.log(chalk.green(`moved the run state to ${result.stateMovedTo}; omg factory run ${issue} starts a new run`));
+                if (result.claimKept)
+                    console.log(chalk.yellow(`the claim on the item was left in place: ${result.claimKept}`));
             }
             return 0;
         }
@@ -510,10 +565,24 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
     }));
     run
         .command('release [issue]')
-        .description('A human clears a claim nobody runs: the item\'s cross-clone claim (parked, crashed or unreadable) and its owner file here; without an issue, this checkout\'s engine lock. A live holder is busy (exit 6)')
+        .description('A human clears a claim nobody runs: the item\'s cross-clone claim (parked, crashed or unreadable) and its owner file here; without an issue, this checkout\'s engine lock. A live holder is busy (exit 6). With --tamper: print what a tamper quarantine moved and clear the hold that stops new runs here')
+        .option('--tamper', 'Clear this checkout\'s tamper hold (set after a lane-, review- or prepare-tampered park) after printing what was quarantined and restored')
         .option('--json', 'JSON output')
-        .action((issueRaw, _o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
+        .action((issueRaw, o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
         const root = factoryRoot(exec);
+        if (o.tamper) {
+            if (issueRaw !== undefined)
+                throw new FactoryUsageError('--tamper takes no issue: the hold is on the checkout');
+            const lines = releaseTamperHold(deps.ledgerDir ?? defaultLedgerDir(), root);
+            if (c.optsWithGlobals().json)
+                console.log(JSON.stringify({ ok: true, released: lines !== null, report: (lines ?? []).map(plainText) }, null, 2));
+            else if (lines === null)
+                console.log('no tamper hold is set on this checkout');
+            else
+                for (const line of lines)
+                    console.log(plainText(line));
+            return 0;
+        }
         const me = defaultOwnerDeps();
         const removed = [];
         // The check and the unlink under the owner file's lock (L-c): a live holder never loses its file.
@@ -666,6 +735,7 @@ export function factoryCommand() {
         lanes: defaultFactoryRunDeps.lanes,
         ledgerDir: defaultLedgerDir(),
         runLimits: defaultFactoryRunDeps.limits,
+        gateSandbox: defaultFactoryRunDeps.gateSandbox,
         forgeKind: (root) => originForgeKind(factoryGuardExec(defaultExec), root),
         // Azure DevOps only: the trusted forge config naming factory.heal.pipeline (GitHub never loads it).
         forge: defaultFactoryRunDeps.forge,

@@ -90,9 +90,22 @@ export interface RepoSnapshot {
   worktrees: Record<string, WorktreeEntry>;
   hooks: string;
   info: string;
+  /**
+   * Hash of `remotes/` and `branches/`: git's legacy remote definition
+   * files, still read for a remote name the config does not define
+   * (review-484d N1). Absent in a baseline recorded by an older release (the
+   * compare then skips it).
+   */
+  legacyRemotes?: string;
   /** Submodule git dir (relative to `modules/`) -> hash of its config, hooks, info and alternates. */
   modules: Record<string, string>;
   alternates: string;
+  /**
+   * Hash of what steers ancestry answers besides the commits: `shallow`,
+   * `objects/info/alternates` and `http-alternates` (objectStoreMetaHash). Absent in a
+   * baseline recorded by an older release (the compare then skips it).
+   */
+  objectMeta?: string;
   /** Hash of the global git config files and every include target (see the module comment). */
   globalConfig: string;
   /** Hash of the bounded list of ignored main-checkout paths (see the module comment). */
@@ -101,6 +114,100 @@ export interface RepoSnapshot {
   mainSymbolic: string;
   /** `git status --porcelain=v1 -z --untracked-files=all` of the main checkout (stableStatus). */
   mainStatus: string;
+  /**
+   * The bytes of what a tamper is quarantined and restored from
+   * (tamper-quarantine.ts, restorableFiles): `config`, `config.worktree`,
+   * every file under `hooks/` and `info/` (not info/refs), every
+   * `worktrees/<id>/config.worktree` and the submodule git dirs' config,
+   * hooks and info, by path relative to the common git dir, as
+   * `b64:<bytes>` (`b64x:` when executable), `big:<sha256>` (over
+   * RESTORE_FILE_MAX_BYTES, or past RESTORE_TOTAL_MAX_BYTES),
+   * `link:<target>` or `unreadable:<code>`. Absent in a snapshot recorded by
+   * an older release.
+   */
+  restore?: Record<string, string>;
+}
+
+/** A file the snapshot keeps the bytes of is at most this big; a bigger one is kept as its hash. */
+export const RESTORE_FILE_MAX_BYTES = 1024 * 1024;
+/** All the kept bytes of one snapshot together. */
+export const RESTORE_TOTAL_MAX_BYTES = 8 * 1024 * 1024;
+
+/**
+ * The key of RepoSnapshot.restore that marks a snapshot whose kept bytes also
+ * cover `worktrees/<id>/config.worktree` and the submodule git dirs under
+ * `modules/` (no real path starts with `#`). A snapshot without it was
+ * recorded by an earlier release: the quarantine then leaves those paths
+ * alone and names them as still active.
+ */
+export const RESTORE_SCOPE_KEY = '#scope';
+export const RESTORE_SCOPE = 'modules,worktrees,remotes';
+
+/**
+ * The paths (relative to the common git dir, `/`-separated) the snapshot
+ * keeps bytes of, as RepoSnapshot.restore encodes them: `config`,
+ * `config.worktree`, `hooks/**`, `info/**` (not info/refs), every
+ * `worktrees/<id>/config.worktree`, and per submodule git dir under
+ * `modules/` (nested ones too) its `config`, `config.worktree`, `hooks/**`
+ * and `info/**`. Never follows a link (lstat). A file or directory that
+ * cannot be read is kept as `unreadable:<code>` (a lane can chmod a planted
+ * hook to 000; the quarantine then moves it aside without reading it).
+ */
+export function restorableFiles(commonDir: string): Record<string, string> {
+  const out: Record<string, string> = { [RESTORE_SCOPE_KEY]: RESTORE_SCOPE };
+  let total = 0;
+  const unreadable = (error: unknown) => `unreadable:${(error as NodeJS.ErrnoException).code ?? 'error'}`;
+  const keep = (rel: string, abs: string, top: boolean) => {
+    let st;
+    try { st = lstatSync(abs); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') out[rel] = unreadable(error); return; }
+    if (st.isSymbolicLink()) {
+      let target = '?';
+      try { target = readlinkSync(abs); } catch { /* unreadable link */ }
+      out[rel] = `link:${target}`;
+    } else if (st.isDirectory()) {
+      let names: string[];
+      try { names = readdirSync(abs).sort(); } catch (error) { out[rel] = unreadable(error); return; }
+      for (const name of names) {
+        if (top && rel === 'info' && name === 'refs') continue;
+        keep(`${rel}/${name}`, join(abs, name), false);
+      }
+    } else if (st.isFile()) {
+      let bytes: Buffer;
+      try { bytes = readFileSync(abs); } catch (error) { out[rel] = unreadable(error); return; }
+      if (bytes.length <= RESTORE_FILE_MAX_BYTES && total + bytes.length <= RESTORE_TOTAL_MAX_BYTES) {
+        total += bytes.length;
+        out[rel] = `${st.mode & 0o111 ? 'b64x' : 'b64'}:${bytes.toString('base64')}`;
+      } else {
+        out[rel] = `big:${createHash('sha256').update(bytes).digest('hex')}`;
+      }
+    }
+  };
+  for (const name of ['config', 'config.worktree', 'hooks', 'info', 'remotes', 'branches']) keep(name, join(commonDir, name), true);
+  const wtDir = join(commonDir, 'worktrees');
+  if (!notADirectory(wtDir) && existsSync(wtDir)) {
+    let ids: string[] = [];
+    try { ids = readdirSync(wtDir).sort(); } catch { /* the compare reports it */ }
+    for (const id of ids) if (!notADirectory(join(wtDir, id))) keep(`worktrees/${id}/config.worktree`, join(wtDir, id, 'config.worktree'), false);
+  }
+  // The submodule git dirs as moduleEntries finds them (a link is never entered; the compare reports it).
+  const modules = (dir: string, rel: string) => {
+    if (notADirectory(dir) || !existsSync(dir)) return;
+    let names: string[] = [];
+    try { names = readdirSync(dir).sort(); } catch { return; }
+    for (const name of names) {
+      const p = join(dir, name);
+      const r = `${rel}/${name}`;
+      if (notADirectory(p)) continue;
+      if (existsSync(join(p, 'HEAD')) || existsSync(join(p, 'config'))) {
+        for (const f of ['config', 'config.worktree', 'hooks', 'info']) keep(`${r}/${f}`, join(p, f), false);
+        modules(join(p, 'modules'), `${r}/modules`);
+      } else {
+        modules(p, r);
+      }
+    }
+  };
+  modules(join(commonDir, 'modules'), 'modules');
+  return out;
 }
 
 export class SnapshotError extends Error {}
@@ -125,19 +232,25 @@ const sha = (text: string) => createHash('sha256').update(text).digest('hex');
 
 function fileHash(path: string): string {
   if (!existsSync(path)) return 'absent';
-  return createHash('sha256').update(readFileSync(path)).digest('hex');
+  // A file made unreadable (chmod 000, a deny ACE) is a change the compare reports, not a snapshot failure.
+  try {
+    return createHash('sha256').update(readFileSync(path)).digest('hex');
+  } catch (error) {
+    return `unreadable:${(error as NodeJS.ErrnoException).code ?? 'error'}`;
+  }
 }
 
 function fileText(path: string): string {
   return existsSync(path) ? readFileSync(path, 'utf8').trim() : '';
 }
 
-/** Hash of every entry under `dir` (relative name, kind and content); `absent` when there is none. */
-export function treeHash(dir: string): string {
+/** Hash of every entry under `dir` (relative name, kind and content), minus the top-level names in `omit`; `absent` when there is none. */
+export function treeHash(dir: string, omit: readonly string[] = []): string {
   if (!existsSync(dir)) return 'absent';
   const entries: string[] = [];
   const walk = (abs: string, rel: string) => {
     for (const name of readdirSync(abs).sort()) {
+      if (!rel && omit.includes(name)) continue;
       const p = join(abs, name);
       const r = rel ? `${rel}/${name}` : name;
       const st = lstatSync(p);
@@ -155,8 +268,45 @@ function pathHash(path: string): string {
   return lstatSync(path).isDirectory() ? `d ${treeHash(path)}` : `f ${fileHash(path)}`;
 }
 
+/** The problem text of a changed `remotes/` or `branches/` (legacy remote definitions). */
+export const LEGACY_REMOTES_CHANGED = 'the remotes/ or branches/ directory changed (legacy remote definitions git still reads)';
+
+/** `remotes/` and `branches/` of a common git dir (see RepoSnapshot.legacyRemotes). */
+function legacyRemotesHash(commonDir: string): string {
+  return `${treeHash(join(commonDir, 'remotes'))} ${treeHash(join(commonDir, 'branches'))}`;
+}
+
 function alternatesHash(gitDir: string): string {
   return `${fileHash(join(gitDir, 'objects', 'info', 'alternates'))} ${fileHash(join(gitDir, 'objects', 'info', 'http-alternates'))}`;
+}
+
+/** One file of the object store's metadata: content hash, or a link or directory by kind. */
+function metaEntry(path: string): string {
+  let st;
+  try { st = lstatSync(path); } catch { return 'absent'; }
+  if (st.isSymbolicLink()) return `l ${readlinkSync(path)}`;
+  if (st.isDirectory()) return 'd';
+  return `f ${fileHash(path)}`;
+}
+
+/** The object store files the snapshot hashes (objectStoreMetaHash), relative to the common git dir. */
+const OBJECT_META_FILES = ['shallow', 'objects/info/alternates', 'objects/info/http-alternates'];
+
+/**
+ * The object store state a forged file could use to change merge-base,
+ * rev-list or a three-dot diff without a ref moving (RepoSnapshot.objectMeta):
+ * `shallow` and the alternates. Not the commit-graph, commit-graphs/,
+ * multi-pack-index or bitmaps: the engine and host git read none of them
+ * (core.commitGraph / core.multiPackIndex=false), while the user's own
+ * `git gc --auto` and `git maintenance` rewrite them, so hashing them only
+ * parked runs. Not the `*.promisor` packs either: they take effect only
+ * under the partial clone config, which the config hash covers.
+ */
+export function objectStoreMetaHash(commonDir: string): string {
+  const entries = OBJECT_META_FILES.map((rel) => `${rel} ${metaEntry(join(commonDir, ...rel.split('/')))}`);
+  const info = join(commonDir, 'objects', 'info');
+  if (notADirectory(info)) entries.push(`objects/info ${NOT_A_DIR}${notADirectory(info)}`);
+  return sha(entries.join('\n'));
 }
 
 /** What a path is when it is not a real directory (lstat, so a symlink or junction is never followed); null for a directory. */
@@ -348,7 +498,8 @@ export function snapshotRepo(exec: Exec, root: string, stateRootRel: string | nu
   const files = {
     config: fileHash(join(commonDir, 'config')),
     configWorktree: fileHash(join(commonDir, 'config.worktree')),
-    info: treeHash(join(commonDir, 'info')),
+    // Not info/refs: only a dumb-HTTP server reads it, and the user's own gc or repack rewrites it (update-server-info).
+    info: treeHash(join(commonDir, 'info'), ['refs']),
     modules: moduleEntries(commonDir),
     globalConfig: globalConfigHash([
       join(commonDir, 'config'), join(commonDir, 'config.worktree'),
@@ -365,12 +516,37 @@ export function snapshotRepo(exec: Exec, root: string, stateRootRel: string | nu
     worktreeIds,
     worktrees: worktreeEntries(commonDir, worktreeIds),
     hooks: treeHash(join(commonDir, 'hooks')),
+    legacyRemotes: legacyRemotesHash(commonDir),
     alternates: alternatesHash(commonDir),
+    objectMeta: objectStoreMetaHash(commonDir),
     ignored: ignoredHash(root),
     mainHead: run(exec, root, ['rev-parse', 'HEAD']).trim(),
     mainSymbolic: run(exec, root, ['rev-parse', '--symbolic-full-name', 'HEAD']).trim(),
     mainStatus: statusUnsafe ? STATUS_SKIPPED : stableStatus(run(exec, root, ['status', '--porcelain=v1', '-z', '--untracked-files=all']), stateRootRel),
+    restore: restorableFiles(commonDir),
   };
+}
+
+/**
+ * Why the shared git dir may not carry a factory run, or null: replace refs
+ * (`refs/replace/*`, loose or packed) or an `info/grafts` file. The engine's
+ * own git ignores both (GIT_NO_REPLACE_OBJECTS, an empty GIT_GRAFT_FILE), but
+ * a replace ref planted before the run would sit in every baseline snapshot,
+ * so the compare would never flag it; the repository's other git users still
+ * honour them. Refused at the start and at every resume.
+ */
+export function replaceObjectsProblem(exec: Exec, root: string): string | null {
+  try {
+    const rawCommon = run(exec, root, ['rev-parse', '--git-common-dir']).trim();
+    const commonDir = isAbsolute(rawCommon) ? rawCommon : resolve(root, rawCommon);
+    const replaced = run(exec, root, ['for-each-ref', FOR_EACH_REF_FORMAT]).split(/\r?\n/)
+      .map((l) => l.trim().split(' ')[0]).filter((name) => name.startsWith('refs/replace/'));
+    const found = [...replaced.slice(0, 5), ...(existsSync(join(commonDir, 'info', 'grafts')) ? [join(commonDir, 'info', 'grafts')] : [])];
+    if (found.length === 0) return null;
+    return `the repository has git replace refs or grafts (${found.join(', ')}${replaced.length > 5 ? ', ...' : ''}), which make git read other commits or trees than the ones named; the factory does not run on it. Inspect them (git replace -l; git for-each-ref refs/replace/), delete what you did not create (git replace -d <sha>; remove info/grafts), then rerun`;
+  } catch (error) {
+    return `the replace refs and grafts of the repository cannot be read: ${error instanceof Error ? error.message : String(error)}`;
+  }
 }
 
 /** Same file system path (realpath when both exist; case-insensitive on Windows). */
@@ -453,6 +629,7 @@ export function compareSnapshots(before: RepoSnapshot, after: RepoSnapshot, allo
   }
   if (before.hooks !== after.hooks) problems.push('the hooks/ directory changed');
   if (before.info !== after.info) problems.push('the info/ directory changed');
+  if (before.legacyRemotes !== undefined && before.legacyRemotes !== after.legacyRemotes) problems.push(LEGACY_REMOTES_CHANGED);
   const mods = new Set([...Object.keys(before.modules ?? {}), ...Object.keys(after.modules ?? {})]);
   for (const m of [...mods].sort()) {
     const was = before.modules?.[m];
@@ -462,6 +639,7 @@ export function compareSnapshots(before: RepoSnapshot, after: RepoSnapshot, allo
     problems.push(was === undefined ? `submodule git dir modules/${m} was added` : now === undefined ? `submodule git dir modules/${m} was removed` : `modules/${m} changed (config, hooks, info or alternates)`);
   }
   if (before.alternates !== after.alternates) problems.push('objects/info/alternates changed');
+  if (before.objectMeta !== undefined && before.objectMeta !== after.objectMeta) problems.push('the object store metadata changed (shallow, objects/info/alternates, objects/info/http-alternates)');
   if (before.globalConfig !== after.globalConfig) problems.push('the global git config or a file a git config includes changed (~/.gitconfig, $XDG_CONFIG_HOME/git/config, include.path / includeIf targets)');
   if (before.ignored !== after.ignored) problems.push(`an ignored file in the main checkout changed (.env*, ${SENSITIVE_IGNORED.join(', ')})`);
   if (before.mainHead !== after.mainHead) problems.push(`the main checkout's HEAD moved ${before.mainHead.slice(0, 12)} -> ${after.mainHead.slice(0, 12)}`);
