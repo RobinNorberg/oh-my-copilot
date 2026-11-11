@@ -761,6 +761,11 @@ export interface HeldOwner {
   tookOver?: FactoryOwner;
 }
 
+/** tryScanLock's hold: `importLock` when it also took the import lock (a slot was held); pass it to withRepoImportLock's `held`. */
+export interface ScanHold extends HeldOwner {
+  importLock?: HeldOwner;
+}
+
 /**
  * Claim the single-runner owner file. A live owner (or one on another host,
  * whose pid cannot be checked) refuses; a dead pid on this host is taken
@@ -801,6 +806,11 @@ export function acquireFactoryRepoOwner(root: string, key: FactoryRunKey | 'next
 //   5. short file locks (owner-file locks, the credit reservation file, the local forge's store).
 // A slot holder only READS engine.owner (waiting out a `scan` holder before it holds anything else), and a `scan`
 // holder takes import.lock only while a slot is held; so a scan waits for an import, never the other way round.
+// Claims of run-<key>.owner (2) never wait: a held one is busy at once (claimOwner behind a short file lock),
+// so no holder of a later lock ever waits on one. `--next`'s pick takes the item's owner file after its import-lock
+// section (the base fetch) ended, never inside it (review-487 M-4). The import-lock waits are awaited where the
+// caller can await (acquireImportLockAsync: signals run while waiting); a synchronous wait remains only in sync
+// paths (clean, the poller's scan, a section reached from sync code), bounded as below.
 
 /** The slot owner files of private-layout parallel runs (factory.run.maxConcurrent). */
 export function factorySlotsDir(root: string): string {
@@ -915,46 +925,85 @@ export class ImportLockBusyError extends FactoryBusyError {
  * unreadable file is busy at once (a human removes it: omg factory run release).
  */
 export function acquireImportLock(root: string, label: string, now: () => string, deps: OwnerDeps = defaultOwnerDeps(), waitMs: number = IMPORT_LOCK_WAIT_MS): HeldOwner {
-  const path = factoryImportLockPath(root);
-  const key = resolve(path);
   const start = scanWait.clock();
   for (;;) {
-    try {
-      const held = claimOwner(path, now(), deps, (prior) => `the repository import lock ${path} is held by ${describeOwner(prior)} (another run fetches, imports or pushes)`, { run: label, root: resolve(root) });
-      // This process holds it now: a nested withRepoImportLock of the same process runs inside (claimOwner would take its own record over).
-      importDepth.set(key, 1);
-      return { ...held, release: () => { importDepth.delete(key); return held.release(); } };
-    } catch (error) {
-      if (!(error instanceof FactoryBusyError)) throw error;
-      const waited = scanWait.clock() - start;
-      if (error.message.startsWith('the owner file ') || waited >= waitMs) {
-        throw new ImportLockBusyError(`${error.message}; waited ${Math.round(waited / 1000)} s: rerun when it is done (omg factory run status names the holder)`);
-      }
-      scanWait.sleep(Math.min(SCAN_POLL_MS, waitMs - waited));
-    }
+    const r = tryImportLock(root, label, now, deps, scanWait.clock() - start, waitMs);
+    if ('held' in r) return r.held;
+    scanWait.sleep(r.sleepMs);
   }
 }
 
-/** The import lock this process holds now, per path: a nested section of the same process runs inside the outer one. */
-const importDepth = new Map<string, number>();
+/** One attempt: the held lock, or how long to sleep before the next (ImportLockBusyError past `waitMs` or for an unreadable file). */
+function tryImportLock(root: string, label: string, now: () => string, deps: OwnerDeps, waited: number, waitMs: number): { held: HeldOwner } | { busy: string; sleepMs: number } {
+  const path = factoryImportLockPath(root);
+  const key = `${resolve(path)}\0${deps.pid}`;
+  // Review-487 L-4: this process holding it already (a hold not passed in explicitly) is never taken over (claimOwner
+  // takes a record of its own pid over): the nested section would run unlocked. It refuses instead.
+  if (importHeld.has(key)) throw new FactoryStateError(`this process already holds the repository import lock ${path}; a nested section must be given that hold (withRepoImportLock's held option)`);
+  try {
+    const held = claimOwner(path, now(), deps, (prior) => `the repository import lock ${path} is held by ${describeOwner(prior)} (another run fetches, imports or pushes)`, { run: label, root: resolve(root) });
+    importHeld.add(key);
+    let released = false;
+    return { held: { ...held, release: () => { if (!released) { released = true; importHeld.delete(key); } return held.release(); } } };
+  } catch (error) {
+    if (!(error instanceof FactoryBusyError)) throw error;
+    if (error.message.startsWith('the owner file ') || waited >= waitMs) {
+      throw new ImportLockBusyError(`${error.message}; waited ${Math.round(waited / 1000)} s: rerun when it is done (omg factory run status names the holder)`);
+    }
+    return { busy: error.message, sleepMs: Math.min(SCAN_POLL_MS, waitMs - waited) };
+  }
+}
+
+/** The import locks this process holds (path and owner pid; acquired, not released): a second acquisition by the same pid refuses. */
+const importHeld = new Set<string>();
+/** The import lock paths a synchronous section of this process runs inside right now (set only for that call, never across an await). */
+const importInside = new Set<string>();
 
 /**
  * Run `fn` (synchronous: it is never held across an await, so never across
  * a lane or a gate) under the repository import lock (acquireImportLock).
- * Re-entrant within one process.
+ * Re-entrant inside the synchronous call of an outer withRepoImportLock of
+ * this process only. `held`: the caller already holds the lock (a scan
+ * hold, an awaited acquireImportLockAsync); `fn` runs inside it and the
+ * caller releases it (review-487 L-4: no process-wide flag across awaits).
  */
-export function withRepoImportLock<T>(root: string, label: string, fn: () => T, o: { deps?: OwnerDeps; waitMs?: number; now?: () => string } = {}): T {
+export function withRepoImportLock<T>(root: string, label: string, fn: () => T, o: { deps?: OwnerDeps; waitMs?: number; now?: () => string; held?: HeldOwner } = {}): T {
   const path = resolve(factoryImportLockPath(root));
-  const depth = importDepth.get(path) ?? 0;
-  if (depth > 0) {
-    importDepth.set(path, depth + 1);
-    try { return fn(); } finally { importDepth.set(path, depth); }
-  }
-  const held = acquireImportLock(root, label, o.now ?? (() => new Date().toISOString()), o.deps ?? defaultOwnerDeps(), o.waitMs ?? IMPORT_LOCK_WAIT_MS);
+  if (importInside.has(path)) return fn();
+  const held = o.held ?? acquireImportLock(root, label, o.now ?? (() => new Date().toISOString()), o.deps ?? defaultOwnerDeps(), o.waitMs ?? IMPORT_LOCK_WAIT_MS);
+  importInside.add(path);
   try {
     return fn();
   } finally {
-    held.release();
+    importInside.delete(path);
+    if (!o.held) held.release();
+  }
+}
+
+/**
+ * withRepoImportLock whose wait never blocks the event loop (review-487
+ * M-3): while another process holds the lock, the holder is re-read every
+ * SCAN_POLL_MS between awaited sleeps, so SIGINT, SIGTERM and a supervisor's
+ * forwarded stop run meanwhile. The successful claim, the synchronous `fn`
+ * and the release run in one synchronous turn: the lock is never held across
+ * an await. `stopped`: read between polls; true ends the wait with
+ * ImportLockBusyError (nothing ran under the lock; a rerun continues).
+ */
+export async function withRepoImportLockAsync<T>(root: string, label: string, fn: () => T, o: { deps?: OwnerDeps; waitMs?: number; now?: () => string; stopped?: () => boolean; sleep?: (ms: number) => Promise<void> } = {}): Promise<T> {
+  const now = o.now ?? (() => new Date().toISOString());
+  const sleep = o.sleep ?? ((ms: number) => new Promise<void>((r) => { setTimeout(r, ms); }));
+  const start = scanWait.clock();
+  for (;;) {
+    const r = tryImportLock(root, label, now, o.deps ?? defaultOwnerDeps(), scanWait.clock() - start, o.waitMs ?? IMPORT_LOCK_WAIT_MS);
+    if ('held' in r) {
+      try {
+        return withRepoImportLock(root, label, fn, { held: r.held });
+      } finally {
+        r.held.release();
+      }
+    }
+    if (o.stopped?.()) throw new ImportLockBusyError(`${r.busy}; stopped by a signal while waiting for it (nothing was done under the lock): rerun to continue`);
+    await sleep(r.sleepMs);
   }
 }
 
@@ -1001,7 +1050,7 @@ export function acquireFactoryRepoOwnerForRun(root: string, key: FactoryRunKey |
  * holder is waited out that long first). Any other error (EACCES on the
  * state dir, ...) throws: it is not "busy".
  */
-export function tryScanLock(root: string, now: string, deps: OwnerDeps = defaultOwnerDeps(), waitMs = 0): HeldOwner | FactoryBusyError {
+export function tryScanLock(root: string, now: string, deps: OwnerDeps = defaultOwnerDeps(), waitMs = 0): ScanHold | FactoryBusyError {
   let held: HeldOwner;
   try {
     held = waitMs > 0 ? acquireFactoryRepoOwnerForRun(root, 'scan', () => now, deps, waitMs) : acquireFactoryRepoOwner(root, 'scan', now, deps);
@@ -1020,7 +1069,7 @@ export function tryScanLock(root: string, now: string, deps: OwnerDeps = default
     if (error instanceof FactoryBusyError) return error;
     throw error;
   }
-  return { release: () => { const a = imp.release(); return held.release() && a; }, relabel: held.relabel };
+  return { release: () => { const a = imp.release(); return held.release() && a; }, relabel: held.relabel, importLock: imp };
 }
 
 /**
@@ -1045,8 +1094,8 @@ const engineBusyText = (prior: Partial<FactoryOwner>, key?: string): string => p
   : `another omg factory engine runs in this repository (${describeOwner(prior)}); one engine runs per checkout at a time${key === 'next' ? ', so run --next after it ends' : key === 'scan' ? ', so retry after it ends' : key ? `, so start ${ownerText(key)} after it ends` : ''} (parallel runs need separate clones)`;
 
 /** The one rule for an owner or claim file that does not parse: it is held (never taken over, never "not busy") until a human removes it. */
-export const unreadableOwnerMessage = (path: string): string =>
-  `the owner file ${path} is unreadable, so it counts as held; check that no engine uses it, then remove it (omg factory run release)`;
+export const unreadableOwnerMessage = (path: string, release = 'omg factory run release'): string =>
+  `the owner file ${path} is unreadable, so it counts as held; check that no engine uses it, then remove it (${release})`;
 
 /**
  * Throws FactoryBusyError while the checkout's engine lock is held: a live

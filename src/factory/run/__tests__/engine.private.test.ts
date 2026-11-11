@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { readMirrorRef } from '../../../forge/local/index.js';
 import { loadTrustedShipConfig, resolveShipConfig } from '../../../ship/config.js';
 import type { Exec } from '../../../ship/exec.js';
-import { cleanFactoryRun } from '../clean.js';
+import { cleanFactoryRun, privateRunLockPath } from '../clean.js';
 import { EXIT_AWAITING_HUMAN, runFactoryEngine, type FactoryEngineOptions } from '../engine.js';
 import { GATE_INSTALL_GATE, REPO_GUARD_GATE } from '../private-run.js';
 import type { SandboxRunRequest } from '../sandbox-exec.js';
@@ -306,7 +306,10 @@ describe('factory run with factory.run.layout "private"', () => {
     expect(held.kept.map((k) => k.reason).join('\n')).toMatch(/run_live: the run's engine holds .*run\.lock \(7, pid 4999 .*omg factory run cancel 7 stops it/);
     writeFileSync(lock, '{bad');
     const unreadable = cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, claimRepo: null, ledgerDir: w.ledgerDir, runUserConfig: env.user, localGateStateDir: w.stateDir });
-    expect(unreadable.kept.map((k) => k.reason).join('\n')).toMatch(/run_live: the owner file .*run\.lock is unreadable, so it counts as held/);
+    expect(unreadable.kept.map((k) => k.reason).join('\n')).toMatch(/run_live: the owner file .*run\.lock is unreadable, so it counts as held; .*\(omg factory run release 7\)/);
+    // Review-487 L-2: `omg factory run release 7` finds exactly this run.lock (and frees it when dead or unreadable).
+    expect(privateRunLockPath(w.root, LOCAL_ISSUE, env.user)).toBe(lock);
+    expect(privateRunLockPath(w.root, 99, env.user)).toBeUndefined();
     unlinkSync(lock);
     // review-483 I.4: a prepare check's recorded process that still runs keeps the run dir (the proof before removal).
     const probed: string[] = [];

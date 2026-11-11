@@ -56,7 +56,7 @@
  * 5 incompatible (as `omg factory check`).
  */
 
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { appendFileSync, existsSync, lstatSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { ledgerPath, ledgerTotals, parseLedger } from '../budget/ledger.js';
@@ -89,6 +89,7 @@ import {
 } from './run/state.js';
 import { resolveParallelSettings } from './run/parallel.js';
 import { resolveRunLayout } from './run/private-run.js';
+import { killProcessTree } from '../smoke/process-utils.js';
 
 /**
  * B2: factory.run.maxConcurrent when it is above 1 and factory.run.layout is
@@ -409,6 +410,8 @@ export function defaultPollAutoStart(entry: string | undefined = process.argv[1]
       killer = setTimeout(() => killTree('SIGKILL'), o.graceMs ?? AUTO_START_GRACE_MS);
     }, timeoutMs);
     unsubscribe = o.signals?.((signal) => {
+      // SIGKILL (a supervisor's second Ctrl+C): the child's whole tree, synchronously (taskkill /T on Windows), before the caller exits.
+      if (signal === 'SIGKILL') { killProcessTree(child.pid, spawnSync); return; }
       if (process.platform !== 'win32' || signal !== 'SIGINT') child.kill(signal);
     }) ?? unsubscribe;
   });

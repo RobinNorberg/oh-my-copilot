@@ -100,7 +100,8 @@ export function readTrustedBaseLayerAtRef(exec: Exec, root: string, base: string
   try { trusted = resolveTrustedBases(user).includes(base); } catch { /* a bad ship.trustedBases: no base is trusted */ }
   if (!trusted) return undefined;
   try {
-    const sha = exec('git', ['rev-parse', '--verify', ref], { cwd: root, env: TRUSTED_READ_ENV }).stdout.trim();
+    // A sha the caller read itself (review-487 L-1: the remote's, by ls-remote) is used as is.
+    const sha = /^[0-9a-f]{40}$/.test(ref) ? ref : exec('git', ['rev-parse', '--verify', ref], { cwd: root, env: TRUSTED_READ_ENV }).stdout.trim();
     if (!/^[0-9a-f]{40}$/.test(sha)) return undefined;
     const text = readBaseFile(exec, root, sha, BASE_CONFIG_PATH);
     return text && text.trim() ? parseJsonc(text) : undefined;

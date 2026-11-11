@@ -322,7 +322,8 @@ function factoryGit(a: string[], protectedBranches: readonly string[], extraProt
     }
     case 'ls-remote': {
       const m = r.length === 2 && remote ? /^refs\/heads\/(.+)$/.exec(r[1]) : null;
-      return Boolean(m) && isFactoryBranch(m![1], protectedBranches);
+      // Review-487 HIGH-1: also the run's base (read-only), which a parallel run's compare reads under the import lock.
+      return Boolean(m) && (isFactoryBranch(m![1], protectedBranches) || extraProtected.includes(m![1]));
     }
     case 'init':
       // The local forge's bare mirror, created once under the engine-owned forge state dir.

@@ -44,7 +44,7 @@ import {
   privateWorktreePath, removeRunDir, rerecordConfigHash, resolveUserGitDir, staleImportRefs, userRepoGuardChanges, userRepoGuardSnapshot, compareUserRepoGuard,
   PrivateStoreError, type ImportRefusalCode, type PrivateGitOptions, type PrivateRepo, type PrivateRunLayout, type PrivateStoreContext, type UserGuardDetail, type UserRepoGuard,
 } from './private-store.js';
-import { IMPORT_LOCK_WAIT_MS, withRepoImportLock, type FactoryRunState } from './state.js';
+import { IMPORT_LOCK_WAIT_MS, withRepoImportLock, type FactoryRunState, type HeldOwner } from './state.js';
 
 export type RunLayoutChoice = 'shared' | 'private';
 export type GateInstallChoice = 'park' | 'sandboxed';
@@ -498,8 +498,8 @@ function identityEnv(): Record<string, string> {
  * the per-repository seed lock under the work root, which every checkout of
  * the repository shares (its seed). Lock order: import.lock, then the seed lock.
  */
-export function withImportLock<T>(root: string, layout: PrivateRunLayout, label: string, fn: () => T): T {
-  return withRepoImportLock(root, label, () => withSeedLock(layout, fn));
+export function withImportLock<T>(root: string, layout: PrivateRunLayout, label: string, fn: () => T, held?: HeldOwner): T {
+  return withRepoImportLock(root, label, () => withSeedLock(layout, fn), held ? { held } : {});
 }
 
 /**
