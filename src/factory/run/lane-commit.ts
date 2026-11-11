@@ -9,16 +9,36 @@
  * and the git dir, work tree and common dir pinned to the links recorded when
  * the worktree was created (a changed link refuses before any git runs).
  *
- * The commit is built from objects: `add -A` into the worktree's index, then
+ * The commit is built from objects: the engine reads every changed file
+ * itself and writes the bytes as blobs into a temporary index seeded from the
+ * start tree (stageEngineRead: git never reads the worktree, so a link swapped
+ * in after the checks cannot make GIT read a file outside it; the engine's
+ * own read could follow a link swapped onto a parent directory, so
+ * engineRead pins every parent's identity and checks it again after the
+ * read, which leaves only a swap away and back inside that window: see
+ * REFERENCE's security model), then
  * `write-tree` and `commit-tree` with engine-chosen parents and the
  * engine-owned identity, so no commit hook and no signing program runs and
  * nothing the lane wrote picks the author. The lane's branch and its
  * worktree's HEAD move to the commit only from the value they started at.
+ * The caller first proves the lane's process tree gone (lane-procs.ts).
  *
  * Refused before any commit: a lane that moved its HEAD, a new or changed
  * gitlink (host git never enters a nested repository, so its content is
- * unreviewed), a link host git could follow out of the worktree, a
- * merge-rule or lane-protected path, and an empty change.
+ * unreviewed; the engine reads each start gitlink's checked-out HEAD
+ * itself; a submodule directory that is gone is committed as a deletion,
+ * as `add -A` did), a link host git could follow out of the worktree, a
+ * changed symlink placeholder (core.symlinks=false), a file over
+ * LANE_FILE_MAX_BYTES, changed files over LANE_COMMIT_MAX_BYTES together,
+ * a merge-rule or lane-protected path, secret-shaped
+ * content in a changed file, a changed path's name or the commit message
+ * (heal/sanitize.ts SECRET_SHAPES: a key or token the lane could have copied
+ * in from outside its sandbox) unless acknowledged or allow-listed, and an
+ * empty change.
+ *
+ * Parameterised by explicit paths only (the worktree with its recorded git
+ * links, and `repoRoot`, whose common git dir holds the lane's branch): a
+ * run whose lanes work in another repository passes that repository's root.
  *
  * Links: Git for Windows follows a directory junction in `add -A`, and the
  * engine's git runs outside the sandbox with the user's read rights, so a
@@ -30,13 +50,16 @@
  * to the start tree.
  */
 
-import { lstatSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { closeSync, constants as fsConstants, existsSync, fstatSync, lstatSync, mkdtempSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { jobRefProblem } from '../../copilot-run/job.js';
+import { secretShapeKinds, type SecretShapeKind } from '../heal/sanitize.js';
 import { OmcPaths } from '../../lib/worktree-paths.js';
 import { protectedChanges } from '../../ship/merge.js';
-import { EMPTY_TREE, runHostGit, worktreeGitDirArgs } from '../../team/git-worktree.js';
+import { EMPTY_TREE, runHostGit, runHostGitBuffer, worktreeGitDirArgs } from '../../team/git-worktree.js';
 
 /** Author and committer of every engine-made lane commit (fixed: nothing a lane wrote chooses it). */
 export const ENGINE_COMMIT_IDENTITY = Object.freeze({ name: 'omg factory', email: 'omg-factory@oh-my-copilot.invalid' });
@@ -68,11 +91,17 @@ export const ADO_PIPELINE_PATHS: readonly string[] = ['azure-pipelines.yml', 'az
  */
 export const LANE_PROTECTED_PATHS: readonly string[] = ['.github/', '.copilot/', '.claude/', '.vscode/', '.mcp.json', '.husky/', '.omg/skills/', '.omc/skills/', 'AGENTS.md', 'CLAUDE.md', ...ADO_PIPELINE_PATHS];
 
-export type LaneCommitRefusal = 'moved' | 'gitlink' | 'escaped' | 'protected' | 'empty' | 'error';
+export type LaneCommitRefusal = 'moved' | 'gitlink' | 'escaped' | 'protected' | 'secret' | 'empty' | 'error';
+
+/** One secret-shaped hit of the content scan: the path and the shape, never the value. */
+export interface SecretFinding {
+  path: string;
+  kind: SecretShapeKind;
+}
 
 export type LaneCommitResult =
   | { ok: true; sha: string; files: string[]; notes: string[] }
-  | { ok: false; refusal: LaneCommitRefusal; reason: string };
+  | { ok: false; refusal: LaneCommitRefusal; reason: string; findings?: SecretFinding[] };
 
 export interface LaneCommitInput {
   /** The lane worktree (its git links were recorded at creation). */
@@ -88,6 +117,12 @@ export interface LaneCommitInput {
   message: string;
   /** Configured merge-rule paths beyond PROTECTED_PATHS (ship.knownFlakyFile). */
   extraProtected?: readonly string[];
+  /** (path, kind) pairs of the secret scan the human acknowledged (`--allow-secret-shapes` after a secret-shaped-content park). */
+  secretAck?: readonly SecretFinding[];
+  /** Path globs the secret scan skips (factory.run.secretScan.allowPaths, trusted layers only: test fixtures). */
+  secretAllowPaths?: readonly string[];
+  /** Test seam: lower limits (default LANE_COMMIT_MAX_BYTES and FAST_IMPORT_BATCH_BYTES). */
+  limits?: { totalBytes?: number; batchBytes?: number };
 }
 
 const errText = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -201,16 +236,429 @@ export function outsideWorktree(worktree: string, files: readonly string[]): str
   });
 }
 
-/** `<sha>\t<path>` of every `mode` entry (160000 gitlink, 120000 symlink) in `ls-files -z --stage` (index) or `ls-tree -r -z` (tree) output. */
-function entriesOfMode(out: string, from: 'index' | 'tree', mode: '160000' | '120000'): Set<string> {
-  const set = new Set<string>();
-  for (const entry of out.split('\0')) {
-    if (!entry.startsWith(`${mode} `)) continue;
-    const tab = entry.indexOf('\t');
-    const fields = entry.slice(0, tab).split(' ');
-    set.add(`${from === 'index' ? fields[1] : fields[2]}\t${entry.slice(tab + 1)}`);
+const findingKey = (f: SecretFinding) => `${f.kind}\0${f.path}`;
+
+/** The finding path of a secret shape in the commit message. */
+export const SECRET_MESSAGE_PATH = '(commit message)';
+
+/** The finding path of a secret shape in a changed path's NAME: a hash of it, so the value is never echoed. */
+export const secretPathLabel = (path: string): string => `(the name of a changed path, sha256 ${createHash('sha256').update(path).digest('hex').slice(0, 12)})`;
+
+/** `**` any path segments, `*` and `?` within one segment; matched against the whole repo-relative path. */
+export function pathGlobMatches(glob: string, path: string): boolean {
+  let re = '';
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === '*' && glob[i + 1] === '*') {
+      i++;
+      if (glob[i + 1] === '/') { i++; re += '(?:.*/)?'; } else re += '.*';
+    } else if (c === '*') re += '[^/]*';
+    else if (c === '?') re += '[^/]';
+    else re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
   }
-  return set;
+  return new RegExp(`^${re}$`).test(path);
+}
+
+/**
+ * A changed file bigger than this is refused (`error`) instead of read: the
+ * engine holds every changed file in memory (and a batch of them twice
+ * while it builds a fast-import stream), so a multi-GB file would crash
+ * it. 100 MiB is
+ * GitHub's own hard per-file limit: a bigger file could never be pushed.
+ */
+export const LANE_FILE_MAX_BYTES = 100 * 1024 * 1024;
+
+/**
+ * The changed files of one lane commit together (review-484b 6): over this
+ * the commit is refused (`error`) instead of read on. The engine keeps
+ * every changed file's bytes for the secret scan, so this bounds its memory;
+ * 1 GiB is half of GitHub's 2 GiB limit for one push (the run's push
+ * carries the lane commit), and no reviewable change of a coding lane comes
+ * near it.
+ */
+export const LANE_COMMIT_MAX_BYTES = 1024 * 1024 * 1024;
+
+/** The blobs go to git in `fast-import` streams of about this size, so the stream never doubles all the bytes at once. */
+export const FAST_IMPORT_BATCH_BYTES = 64 * 1024 * 1024;
+
+/** One path of the lane's change, read by the engine (never by git). */
+type EngineRead =
+  | { kind: 'deleted' }
+  | { kind: 'dir' }
+  | { kind: 'link' }
+  | { kind: 'other' }
+  | { kind: 'big'; size: bigint }
+  | { kind: 'swapped'; why: string }
+  | { kind: 'file'; bytes: Buffer; exec: boolean; nlink: number };
+
+const gone = (err: unknown) => ['ENOENT', 'ENOTDIR'].includes((err as NodeJS.ErrnoException).code ?? '');
+
+/**
+ * Read `rel` under `worktree` without following any link: the worktree and
+ * every parent component lstat'ed (a link there is `swapped`; a missing or
+ * non-directory one means the path is gone) and their (dev, ino) kept, the
+ * file itself lstat'ed, opened (O_NOFOLLOW where the platform has it), its
+ * fstat dev/ino compared with the lstat, read whole, then lstat'ed again
+ * (same file, same size), and then the whole parent chain lstat'ed again: a
+ * junction or symlink swapped onto a parent after its first lstat (O_NOFOLLOW
+ * guards only the last component, and open follows a link in the middle)
+ * changes that component's identity. On Linux the opened descriptor's own
+ * path (/proc/self/fd) must also be the expected one. Anything that changed
+ * between the steps is `swapped`. Not closed: a parent swapped away and back
+ * again entirely between two lstats (see REFERENCE, security model).
+ * `realRoot` is the worktree's realpath (computed once by the caller).
+ */
+export function engineRead(worktree: string, rel: string, realRoot?: string): EngineRead {
+  const segs = rel.split('/');
+  const chain: { path: string; dev: bigint; ino: bigint; follow: boolean }[] = [];
+  // The worktree itself may sit under a link the user made (a home dir on another drive): followed, but pinned.
+  const top = statSync(worktree, { bigint: true });
+  chain.push({ path: worktree, dev: top.dev, ino: top.ino, follow: true });
+  let dir = worktree;
+  for (let i = 0; i < segs.length - 1; i++) {
+    dir = join(dir, segs[i]);
+    let st;
+    try { st = lstatSync(dir, { bigint: true }); } catch (err) { if (gone(err)) return { kind: 'deleted' }; throw err; }
+    if (st.isSymbolicLink()) return { kind: 'swapped', why: `${segs.slice(0, i + 1).join('/')} is a symlink or junction` };
+    if (!st.isDirectory()) return { kind: 'deleted' };
+    chain.push({ path: dir, dev: st.dev, ino: st.ino, follow: false });
+  }
+  const abs = join(worktree, ...segs);
+  let first;
+  try { first = lstatSync(abs, { bigint: true }); } catch (err) { if (gone(err)) return { kind: 'deleted' }; throw err; }
+  if (first.isSymbolicLink()) return { kind: 'link' };
+  if (first.isDirectory()) return { kind: 'dir' };
+  if (!first.isFile()) return { kind: 'other' };
+  if (first.size > BigInt(LANE_FILE_MAX_BYTES)) return { kind: 'big', size: first.size };
+  const fd = openSync(abs, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+  let bytes: Buffer;
+  try {
+    const opened = fstatSync(fd, { bigint: true });
+    if (!opened.isFile() || opened.dev !== first.dev || opened.ino !== first.ino) return { kind: 'swapped', why: `${rel} was replaced between its lstat and its open` };
+    if (opened.size > BigInt(LANE_FILE_MAX_BYTES)) return { kind: 'big', size: opened.size };
+    if (process.platform === 'linux') {
+      // The path the kernel opened, whatever the components were at that moment.
+      let viaFd = '';
+      try { viaFd = readlinkSync(`/proc/self/fd/${fd}`); } catch { /* no /proc: the chain check below still runs */ }
+      const expected = join(realRoot ?? realpathSync.native(worktree), ...segs);
+      if (viaFd && viaFd !== expected) return { kind: 'swapped', why: `${rel} was opened through another path (${viaFd})` };
+    }
+    bytes = readFileSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  let again;
+  try { again = lstatSync(abs, { bigint: true }); } catch { return { kind: 'swapped', why: `${rel} disappeared while the engine read it` }; }
+  if (!again.isFile() || again.dev !== first.dev || again.ino !== first.ino || again.size !== BigInt(bytes.length)) {
+    return { kind: 'swapped', why: `${rel} changed while the engine read it` };
+  }
+  for (const c of chain) {
+    let st;
+    try { st = c.follow ? statSync(c.path, { bigint: true }) : lstatSync(c.path, { bigint: true }); } catch { return { kind: 'swapped', why: `${relative(worktree, c.path) || 'the worktree'} disappeared while the engine read ${rel}` }; }
+    if ((!c.follow && st.isSymbolicLink()) || !st.isDirectory() || st.dev !== c.dev || st.ino !== c.ino) {
+      return { kind: 'swapped', why: `${relative(worktree, c.path).split(sep).join('/') || 'the worktree'} was replaced while the engine read ${rel}` };
+    }
+  }
+  return { kind: 'file', bytes, exec: (Number(first.mode) & 0o100) !== 0, nlink: Number(first.nlink) };
+}
+
+/**
+ * What a start-tree gitlink (160000) at `rel` is checked out at, read by the
+ * engine (host git runs with --ignore-submodules=all and never enters it):
+ * `absent` when the directory is gone, `unchecked` when it holds no `.git`
+ * (a submodule that was never initialised: git keeps the gitlink as it is),
+ * the sha its HEAD names, or `unknown` with why. Nothing here is committed;
+ * the sha is only compared.
+ */
+export function gitlinkHead(worktree: string, rel: string): { kind: 'absent' } | { kind: 'unchecked' } | { kind: 'not-dir' } | { kind: 'head'; sha: string } | { kind: 'unknown'; why: string } {
+  const dir = join(worktree, ...rel.split('/'));
+  let st;
+  try { st = lstatSync(dir); } catch (err) { if (gone(err)) return { kind: 'absent' }; return { kind: 'unknown', why: errText(err) }; }
+  if (st.isSymbolicLink()) return { kind: 'unknown', why: 'it is a link' };
+  if (!st.isDirectory()) return { kind: 'not-dir' };
+  const dotGit = join(dir, '.git');
+  let g;
+  try { g = lstatSync(dotGit); } catch (err) { if (gone(err)) return { kind: 'unchecked' }; return { kind: 'unknown', why: errText(err) }; }
+  try {
+    let gitDir: string;
+    if (g.isDirectory()) gitDir = dotGit;
+    else if (g.isFile()) {
+      const m = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(dotGit, 'utf8'));
+      if (!m) return { kind: 'unknown', why: 'its .git file names no gitdir' };
+      gitDir = resolve(dir, m[1]);
+    } else return { kind: 'unknown', why: 'its .git is a link' };
+    let refsDir = gitDir;
+    try { refsDir = resolve(gitDir, readFileSync(join(gitDir, 'commondir'), 'utf8').trim()); } catch { /* not a linked worktree */ }
+    let head = readFileSync(join(gitDir, 'HEAD'), 'utf8').trim();
+    for (let depth = 0; depth < 5 && head.startsWith('ref:'); depth++) {
+      const ref = head.slice(4).trim();
+      if (!/^refs\/[^\0]+$/.test(ref) || ref.split('/').includes('..')) return { kind: 'unknown', why: `its HEAD names ${JSON.stringify(ref.slice(0, 80))}` };
+      const base = existsSync(join(gitDir, ...ref.split('/'))) ? gitDir : refsDir;
+      try {
+        head = readFileSync(join(base, ...ref.split('/')), 'utf8').trim();
+      } catch {
+        let packed = '';
+        try { packed = readFileSync(join(refsDir, 'packed-refs'), 'utf8'); } catch { /* none */ }
+        const line = packed.split('\n').find((l) => l.endsWith(` ${ref}`) && !l.startsWith('#') && !l.startsWith('^'));
+        if (!line) return { kind: 'unknown', why: `its HEAD names ${ref}, which has no commit` };
+        head = line.split(' ')[0];
+      }
+    }
+    return HEX.test(head) ? { kind: 'head', sha: head } : { kind: 'unknown', why: 'its HEAD names no commit' };
+  } catch (err) {
+    return { kind: 'unknown', why: errText(err) };
+  }
+}
+
+/** git's gather_stats (convert.c): CRLF pairs, lone CR, NUL, printable and non-printable bytes. */
+export function textStats(buf: Buffer): { crlf: number; lonecr: number; nul: number; printable: number; nonprintable: number } {
+  const s = { crlf: 0, lonecr: 0, nul: 0, printable: 0, nonprintable: 0 };
+  for (let i = 0; i < buf.length; i++) {
+    const c = buf[i];
+    if (c === 13) {
+      if (buf[i + 1] === 10) { s.crlf++; i++; } else s.lonecr++;
+      continue;
+    }
+    if (c === 10) continue;
+    if (c === 127) s.nonprintable++;
+    else if (c < 32) {
+      // BS, HT, ESC and FF count as printable.
+      if (c === 8 || c === 9 || c === 27 || c === 12) s.printable++;
+      else { if (c === 0) s.nul++; s.nonprintable++; }
+    } else s.printable++;
+  }
+  // A trailing ^Z (EOF) is not counted as non-printable.
+  if (buf.length > 0 && buf[buf.length - 1] === 26) s.nonprintable--;
+  return s;
+}
+
+/** git's convert_is_binary. */
+export function isBinaryText(s: ReturnType<typeof textStats>): boolean {
+  return s.lonecr > 0 || s.nul > 0 || (s.printable >> 7) < s.nonprintable;
+}
+
+/** git's has_crlf_in_index on the index (start) blob: it holds a CR, is text, and has a CRLF. */
+function hasCrlfInIndex(blob: Buffer): boolean {
+  if (!blob.includes(13)) return false;
+  const s = textStats(blob);
+  return !isBinaryText(s) && s.crlf > 0;
+}
+
+/**
+ * git's crlf_to_git for core.autocrlf true or input with no text/eol
+ * attribute (CRLF_AUTO_*), after the caller checked that the bytes are text
+ * with a CRLF and that the start blob has none (has_crlf_in_index): every CR
+ * goes (a text file has no lone CR).
+ */
+export function autoCrlfToGit(buf: Buffer): Buffer {
+  return Buffer.from(buf.filter((c) => c !== 13));
+}
+
+/** Blob bytes by sha, one `cat-file --batch` for all of them (hardened host git). */
+function readBlobs(worktree: string, shas: readonly string[]): Map<string, Buffer> {
+  const out = new Map<string, Buffer>();
+  const wanted = [...new Set(shas)];
+  if (wanted.length === 0) return out;
+  const buf = runHostGitBuffer(worktree, [...worktreeGitDirArgs(worktree), 'cat-file', '--batch'], GIT_TIMEOUT_MS, process.env, `${wanted.join('\n')}\n`);
+  let at = 0;
+  while (at < buf.length) {
+    const nl = buf.indexOf(10, at);
+    if (nl < 0) break;
+    const m = /^([0-9a-f]+) blob (\d+)$/.exec(buf.subarray(at, nl).toString('latin1'));
+    if (!m) throw new Error(`git cat-file --batch printed ${JSON.stringify(buf.subarray(at, Math.min(nl, at + 80)).toString('latin1'))}`);
+    const size = Number(m[2]);
+    out.set(m[1], buf.subarray(nl + 1, nl + 1 + size));
+    at = nl + 1 + size + 1;
+  }
+  return out;
+}
+
+/** `mode type sha\tpath` entries of `ls-tree -r -z` output by path. */
+function treeEntries(out: string): Map<string, { mode: string; sha: string }> {
+  const map = new Map<string, { mode: string; sha: string }>();
+  for (const entry of out.split('\0')) {
+    const tab = entry.indexOf('\t');
+    if (tab < 0) continue;
+    const [mode, , sha] = entry.slice(0, tab).split(' ');
+    map.set(entry.slice(tab + 1), { mode, sha });
+  }
+  return map;
+}
+
+/** The paths `status --porcelain=v1 -z` lists (`--no-renames`: one path per entry). */
+function statusPaths(out: string): string[] {
+  return [...new Set(out.split('\0').filter((e) => e.length > 3).map((e) => e.slice(3)))];
+}
+
+type Staged =
+  | { ok: true; tree: string; files: string[]; findings: SecretFinding[]; notes: string[] }
+  | { ok: false; refusal: LaneCommitRefusal; reason: string };
+
+/**
+ * Engine-read staging (audit H3, layer 2): the lane's change as a tree,
+ * built without git reading the worktree. Git lists what changed (`status`,
+ * which only compares); the engine reads each listed path itself
+ * (engineRead) and writes the bytes as blobs: one `fast-import` for all of
+ * them, so 1 000 files cost one process. The blobs go into a temporary
+ * index seeded from the start tree (`update-index --index-info`, objects
+ * only) and `write-tree` makes the tree. A link anywhere on a path, a hard
+ * link, a nested repository or a file swapped while it was read refuses.
+ *
+ * Line endings, as `add -A` under runHostGit did: GIT_ATTR_SOURCE is the
+ * empty tree, so a `.gitattributes` in the worktree or the tree never
+ * applies (no text/eol/filter from the lane), and every filter driver is
+ * blanked; what still converts is `core.autocrlf` (Git for Windows' system
+ * config sets it true) and the repository's own `info/attributes`. Bytes
+ * without a CR convert under neither, so they are written as read (as
+ * `hash-object --no-filters` would). With autocrlf true or input, a text
+ * file (git's own binary heuristic) with a CRLF loses its CRs unless the
+ * start's blob at that path is text with a CRLF (has_crlf_in_index): git's
+ * convert.c rules for CRLF_AUTO_*, reimplemented (textStats, autoCrlfToGit)
+ * so 1 000 CRLF files do not cost 1 000 git processes. When
+ * `info/attributes` has content (any attribute may apply), or core.safecrlf
+ * is strict (git refuses an irreversible conversion), each such file is
+ * hashed by `git hash-object -w --stdin --path=<path>` instead: git applies
+ * its own conversion to the bytes the engine read, from stdin.
+ * The executable bit: from the file on POSIX when core.fileMode is on,
+ * else the start's mode (git keeps the index mode).
+ *
+ * The secret scan (audit L3) reads the same bytes: every changed blob whose
+ * sha is not already in the start tree and whose path no allowPaths glob
+ * matches.
+ */
+function stageEngineRead(input: LaneCommitInput, git: (args: string[], env?: NodeJS.ProcessEnv, stdin?: string | Buffer) => string, ignored: ReadonlySet<string>): Staged {
+  const refuse = (refusal: LaneCommitRefusal, reason: string): Staged => ({ ok: false, refusal, reason });
+  const runtime = RUNTIME_STATE_DIRS.map((d) => `${d}/`);
+  // Untrimmed: the first entry's status code may start with a space.
+  const listed = statusPaths(runHostGit(input.worktree, [...worktreeGitDirArgs(input.worktree), '--no-optional-locks', '-c', 'core.untrackedCache=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all', '--no-renames'], GIT_TIMEOUT_MS))
+    .filter((p) => !runtime.some((d) => p.startsWith(d)) && !ignored.has(p.replace(/\/$/, '')))
+    .sort();
+  const start = treeEntries(git(['ls-tree', '-r', '-z', '--full-tree', input.start]));
+  const nested = listed.filter((p) => p.endsWith('/'));
+  if (nested.length > 0) {
+    return refuse('gitlink', `the lane added or changed nested repositories (gitlinks): ${nested.slice(0, 5).map((p) => p.slice(0, -1)).join(', ')}; host git does not enter them, so their content is not reviewed`);
+  }
+  const common = resolve(input.worktree, git(['rev-parse', '--path-format=absolute', '--git-common-dir']));
+  let infoAttributes = false;
+  try { infoAttributes = readFileSync(join(common, 'info', 'attributes'), 'utf8').trim() !== ''; } catch { /* none */ }
+  const configValue = (key: string) => {
+    try { return git(['config', '--get', key]).toLowerCase(); } catch { return ''; }
+  };
+  const autocrlf = configValue('core.autocrlf');
+  const crlfAuto = autocrlf === 'input' || ['true', 'yes', 'on', '1'].includes(autocrlf);
+  const fileMode = process.platform !== 'win32' && !['false', 'no', 'off', '0'].includes(configValue('core.fileMode'));
+  const files: { path: string; mode: string; bytes: Buffer }[] = [];
+  const deleted: string[] = [];
+  const symlinks: string[] = [];
+  const hardLinked: string[] = [];
+  // Every gitlink of the start tree, read by the engine (status runs with --ignore-submodules=all, so a moved submodule
+  // is never listed): a different commit checked out refuses as `add -A` + the gitlink check did. The directory gone is
+  // a deletion, as `add -A` staged it (review-484b 5): it adds no content.
+  const movedGitlinks: string[] = [];
+  for (const [path, e] of start) {
+    if (e.mode !== '160000') continue;
+    const at = gitlinkHead(input.worktree, path);
+    if (at.kind === 'unchecked' || at.kind === 'not-dir' || (at.kind === 'head' && at.sha === e.sha)) continue;
+    if (at.kind === 'absent') { deleted.push(path); continue; }
+    movedGitlinks.push(`${path} (${at.kind === 'head' ? `checked out at ${at.sha.slice(0, 12)}, not ${e.sha.slice(0, 12)}` : at.why})`);
+  }
+  if (movedGitlinks.length > 0) {
+    return refuse('gitlink', `the lane changed nested repositories (gitlinks): ${movedGitlinks.slice(0, 5).join(', ')}; host git does not enter them, so their content is not reviewed`);
+  }
+  const realRoot = realpathSync.native(input.worktree);
+  const maxTotal = input.limits?.totalBytes ?? LANE_COMMIT_MAX_BYTES;
+  let total = 0;
+  for (const path of listed) {
+    const read = engineRead(input.worktree, path, realRoot);
+    const was = start.get(path);
+    if (read.kind === 'swapped') return refuse('escaped', `a path of the lane's change cannot be read safely: ${read.why}; host git could read through it outside the worktree`);
+    if (read.kind === 'link') { symlinks.push(path); continue; }
+    if (read.kind === 'other') return refuse('error', `${path} is not a regular file, directory or link`);
+    if (read.kind === 'big') return refuse('error', `${path} is ${read.size} bytes, over the lane commit's per-file limit of ${LANE_FILE_MAX_BYTES} bytes (GitHub refuses files over 100 MiB); nothing was committed`);
+    if (read.kind === 'deleted' || read.kind === 'dir') {
+      // A tracked file replaced by a directory: the file goes; the directory's files are listed on their own.
+      if (was && was.mode !== '160000') deleted.push(path);
+      continue;
+    }
+    // A symlink checked out as a text placeholder (core.symlinks=false, Git for Windows' default): `add -A` kept the
+    // 120000 mode with the new text as the link target, which the old check refused.
+    if (was?.mode === '120000') { symlinks.push(path); continue; }
+    // A hard link to a file outside the worktree passes the link checks, but shares its inode.
+    if (read.nlink > 1) { hardLinked.push(path); continue; }
+    total += read.bytes.length;
+    if (total > maxTotal) return refuse('error', `the lane's changed files are over the lane commit's total limit of ${maxTotal} bytes; nothing was committed`);
+    const mode = fileMode ? (read.exec ? '100755' : '100644') : was?.mode === '100755' ? '100755' : '100644';
+    files.push({ path, mode, bytes: read.bytes });
+  }
+  if (symlinks.length > 0) return refuse('escaped', `the lane added or changed symlinks: ${symlinks.slice(0, 5).join(', ')}`);
+  if (hardLinked.length > 0) return refuse('escaped', `the lane staged hard-linked files (their content may come from outside the worktree): ${hardLinked.slice(0, 5).join(', ')}`);
+
+  const tmp = mkdtempSync(join(tmpdir(), 'omg-lane-commit-'));
+  try {
+    const env = engineGitEnv({ GIT_INDEX_FILE: join(tmp, 'index') });
+    git(['read-tree', input.start], env);
+    // core.autocrlf without attributes (autoCrlfToGit); info/attributes or a strict core.safecrlf: git converts (or dies) itself.
+    const viaGitSet = new Set<string>(infoAttributes ? files.map((f) => f.path) : []);
+    if (crlfAuto && !infoAttributes) {
+      const strictSafe = ['true', 'yes', 'on', '1'].includes(configValue('core.safecrlf'));
+      const candidates = files.filter((f) => { const s = textStats(f.bytes); return s.crlf > 0 && !isBinaryText(s); });
+      const indexBlobs = readBlobs(input.worktree, candidates.map((f) => start.get(f.path)).filter((e) => e?.mode.startsWith('100')).map((e) => e!.sha));
+      for (const f of candidates) {
+        const was = start.get(f.path);
+        const blob = was?.mode.startsWith('100') ? indexBlobs.get(was.sha) : undefined;
+        if (blob && hasCrlfInIndex(blob)) continue;
+        if (strictSafe) viaGitSet.add(f.path);
+        else f.bytes = autoCrlfToGit(f.bytes);
+      }
+    }
+    const viaGit = (f: { path: string }) => viaGitSet.has(f.path);
+    const shas = new Map<string, string>();
+    const raw = files.filter((f) => !viaGit(f));
+    for (const f of files.filter(viaGit)) {
+      const sha = git(['hash-object', '-w', '--stdin', `--path=${f.path}`], env, f.bytes);
+      if (!HEX.test(sha)) throw new Error(`git hash-object printed ${JSON.stringify(sha.slice(0, 80))}`);
+      shas.set(f.path, sha);
+    }
+    // One fast-import per batch of about FAST_IMPORT_BATCH_BYTES: the stream copies only that batch's bytes.
+    const batchBytes = input.limits?.batchBytes ?? FAST_IMPORT_BATCH_BYTES;
+    for (let from = 0; from < raw.length;) {
+      let to = from;
+      let size = 0;
+      while (to < raw.length && (to === from || size + raw[to].bytes.length <= batchBytes)) size += raw[to++].bytes.length;
+      const batch = raw.slice(from, to);
+      const marks = join(tmp, 'marks');
+      const stream = Buffer.concat([...batch.flatMap((f, i) => [Buffer.from(`blob\nmark :${i + 1}\ndata ${f.bytes.length}\n`), f.bytes, Buffer.from('\n')]), Buffer.from('done\n')]);
+      git(['fast-import', '--quiet', '--done', `--export-marks=${marks}`], env, stream);
+      const byMark = new Map(readFileSync(marks, 'utf8').split('\n').map((l) => /^:(\d+) ([0-9a-f]+)$/.exec(l.trim())).filter((m) => m !== null).map((m) => [Number(m![1]), m![2]]));
+      batch.forEach((f, i) => {
+        const sha = byMark.get(i + 1);
+        if (!sha || !HEX.test(sha)) throw new Error(`git fast-import wrote no blob for ${f.path}`);
+        shas.set(f.path, sha);
+      });
+      from = to;
+    }
+    const zero = '0'.repeat(input.start.length);
+    // Deletions first, so a file replaced by a directory (or the reverse) never collides in the index.
+    const info = [...deleted.map((p) => `0 ${zero}\t${p}\0`), ...files.map((f) => `${f.mode} ${shas.get(f.path)}\t${f.path}\0`)].join('');
+    if (info) git(['update-index', '-z', '--index-info'], env, info);
+    const tree = git(['write-tree'], env);
+    if (!HEX.test(tree)) return refuse('error', `git write-tree printed ${JSON.stringify(tree.slice(0, 80))}`);
+    const changed = git(['diff-tree', '-r', '-z', '--no-renames', '--name-only', input.start, tree]).split('\0').filter(Boolean);
+    const changedSet = new Set(changed);
+    const known = new Set([...start.values()].map((e) => e.sha));
+    const findings: SecretFinding[] = [];
+    for (const f of files) {
+      if (!changedSet.has(f.path) || known.has(shas.get(f.path)!) || (input.secretAllowPaths ?? []).some((g) => pathGlobMatches(g, f.path))) continue;
+      for (const kind of secretShapeKinds(f.bytes.toString('latin1'))) findings.push({ path: f.path, kind });
+    }
+    // A token in a path name would be pushed too; the finding names the path by a hash so the value is never echoed.
+    for (const path of changed) {
+      for (const kind of secretShapeKinds(path)) findings.push({ path: secretPathLabel(path), kind });
+    }
+    return { ok: true, tree, files: changed, findings, notes: [] };
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -225,7 +673,7 @@ export function commitLaneWork(input: LaneCommitInput): LaneCommitResult {
     }
     // Throws when no links were recorded for the worktree; runHostGit re-checks them before every command.
     const dirs = worktreeGitDirArgs(input.worktree);
-    const git = (args: string[], env?: NodeJS.ProcessEnv) => runHostGit(input.worktree, [...dirs, ...args], GIT_TIMEOUT_MS, env).trim();
+    const git = (args: string[], env?: NodeJS.ProcessEnv, stdin?: string | Buffer) => runHostGit(input.worktree, [...dirs, ...args], GIT_TIMEOUT_MS, env, stdin).trim();
     const head = git(['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
     if (head !== input.start) {
       return { ok: false, refusal: 'moved', reason: `the lane moved its worktree's HEAD to ${head.slice(0, 12) || '(none)'} (it started at ${input.start.slice(0, 12)}); a write lane leaves its changes uncommitted and the engine commits them` };
@@ -234,60 +682,39 @@ export function commitLaneWork(input: LaneCommitInput): LaneCommitResult {
     const ignored = new Set(git(['ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory']).split('\0').filter(Boolean).map((p) => p.replace(/\/$/, '')));
     const link = linkEscape(input.worktree, ignored);
     if (link) return { ok: false, refusal: 'escaped', reason: link };
-    // An exclude pathspec naming an ignored path fails `add` ("paths are ignored"), and git skips that path anyway.
-    const isIgnored = (p: string) => p.split('/').some((_, i, segs) => ignored.has(segs.slice(0, i + 1).join('/')));
-    const excludes = RUNTIME_STATE_DIRS.filter((d) => !isIgnored(d)).map((d) => `:(top,exclude)${d}`);
-    git(['add', '-A', '--', '.', ...excludes], engineGitEnv());
-    // Every refusal from here resets the index to the start tree, so nothing the lane staged stays staged.
-    const refuse = (refusal: LaneCommitRefusal, reason: string): LaneCommitResult => {
-      try {
-        git(['read-tree', input.start]);
-      } catch (err) {
-        return { ok: false, refusal, reason: `${reason}; the index could not be reset: ${errText(err)}` };
-      }
-      return { ok: false, refusal, reason };
-    };
-    const index = git(['ls-files', '-z', '--stage']);
-    const startTree = git(['ls-tree', '-r', '-z', '--full-tree', input.start]);
-    const changedOfMode = (mode: '160000' | '120000') => {
-      const known = entriesOfMode(startTree, 'tree', mode);
-      return [...entriesOfMode(index, 'index', mode)].filter((g) => !known.has(g)).map((g) => g.slice(g.indexOf('\t') + 1));
-    };
-    const nested = changedOfMode('160000');
-    if (nested.length > 0) {
-      return refuse('gitlink', `the lane added or changed nested repositories (gitlinks): ${nested.slice(0, 5).join(', ')}; host git does not enter them, so their content is not reviewed`);
-    }
-    const symlinks = changedOfMode('120000');
-    if (symlinks.length > 0) return refuse('escaped', `the lane added or changed symlinks: ${symlinks.slice(0, 5).join(', ')}`);
-    const files = git(['diff', '--cached', '--no-ext-diff', '--no-textconv', '--no-renames', '--name-only', '-z', input.start, '--']).split('\0').filter(Boolean);
+    const staged = stageEngineRead(input, git, ignored);
+    if (!staged.ok) return staged;
+    const { tree, files, notes } = staged;
+    const refuse = (refusal: LaneCommitRefusal, reason: string): LaneCommitResult => ({ ok: false, refusal, reason });
     const outside = outsideWorktree(input.worktree, files);
     if (outside.length > 0) return refuse('escaped', `staged paths resolve outside the worktree (through a link): ${outside.slice(0, 5).join(', ')}`);
-    // A hard link to a file outside the worktree passes the link walk and the realpath check, but shares its inode.
-    const hardLinked = files.filter((f) => {
-      try {
-        return lstatSync(join(input.worktree, f)).nlink > 1;
-      } catch {
-        return false; // deleted by the lane
-      }
-    });
-    if (hardLinked.length > 0) return refuse('escaped', `the lane staged hard-linked files (their content may come from outside the worktree): ${hardLinked.slice(0, 5).join(', ')}`);
     const hit = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...(input.extraProtected ?? [])]);
     if (hit.length > 0) return refuse('protected', `the lane changed merge-rule or lane-protected paths: ${hit.join(', ')}`);
+    const acked = new Set((input.secretAck ?? []).map(findingKey));
+    // The commit message carries the lane's own summary: a token it quotes would be pushed with it.
+    const messageFindings = secretShapeKinds(input.message).map((kind): SecretFinding => ({ path: SECRET_MESSAGE_PATH, kind }));
+    const secrets = [...staged.findings, ...messageFindings].filter((f) => !acked.has(findingKey(f)));
+    if (secrets.length > 0) {
+      return { ok: false, refusal: 'secret', findings: secrets, reason: `the lane's change holds secret-shaped content (the values are not shown): ${secrets.slice(0, 10).map((f) => `${f.path} (${f.kind})`).join(', ')}${secrets.length > 10 ? `, and ${secrets.length - 10} more` : ''}` };
+    }
     if (input.branch) {
       // The job has ended, but a loose ref rewritten since as `ref: refs/heads/main` (or a link) would make update-ref move main.
       const common = resolve(input.repoRoot, runHostGit(input.repoRoot, ['rev-parse', '--path-format=absolute', '--git-common-dir'], GIT_TIMEOUT_MS).trim());
       const problem = jobRefProblem(common, input.repoRoot, `refs/heads/${input.branch}`);
       if (problem) return refuse('escaped', `the lane branch ${input.branch} is not a plain commit ref (${problem}); nothing was committed`);
     }
-    const tree = git(['write-tree']);
-    if (!HEX.test(tree)) return { ok: false, refusal: 'error', reason: `git write-tree printed ${JSON.stringify(tree.slice(0, 80))}` };
     if (tree === git(['rev-parse', '--verify', '--quiet', `${input.start}^{tree}`])) {
       return { ok: false, refusal: 'empty', reason: 'the lane left no changes in its worktree' };
     }
     const sha = git(['commit-tree', '--no-gpg-sign', ...input.parents.flatMap((p) => ['-p', p]), '-m', input.message, tree], engineGitEnv());
     if (!HEX.test(sha)) return { ok: false, refusal: 'error', reason: `git commit-tree printed ${JSON.stringify(sha.slice(0, 80))}` };
-    const notes: string[] = [];
     git(['update-ref', '--no-deref', '-m', 'omg factory run: the engine commit of the lane', 'HEAD', sha, input.start]);
+    // The worktree's own index follows its HEAD (as `add -A` left it), from objects only: git reads no worktree file.
+    try {
+      git(['read-tree', tree]);
+    } catch (err) {
+      notes.push(`the lane worktree's index was not moved to the commit (${errText(err)}), so git status there may list the committed changes`);
+    }
     if (input.branch) {
       const ref = `refs/heads/${input.branch}`;
       const at = runHostGit(input.repoRoot, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], GIT_TIMEOUT_MS).trim();

@@ -481,6 +481,11 @@ describe('the run state shape check covers humanReview and lane feedback', () =>
     expect(() => parse({ ...base(), humanReview })).toThrow(/field humanReview/);
   });
 
+  it('review-482b B: checkoutAdmin is one admin dir name, nothing else', () => {
+    expect(parse({ ...base(), checkoutAdmin: 'issue-7.checkout-2' }).checkoutAdmin).toBe('issue-7.checkout-2');
+    for (const bad of ['../x', 'a/b', 'a\\b', '..', '.', '', 'x y', 7]) expect(() => parse({ ...base(), checkoutAdmin: bad }), String(bad)).toThrow(/field checkoutAdmin/);
+  });
+
   it.each([
     ['another source', { source: 'ai', forge: 'github', items: 1 }],
     ['an unknown forge', { source: 'human', forge: 'gitlab', items: 1 }],

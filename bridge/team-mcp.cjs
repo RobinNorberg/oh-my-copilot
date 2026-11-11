@@ -18727,7 +18727,11 @@ function hostGitExe() {
   if (git2 === null) throw new Error("host git: git is not on PATH");
   return git2;
 }
-function runHostGit(cwd, args, timeout, baseEnv = process.env) {
+function runHostGit(cwd, args, timeout, baseEnv = process.env, input) {
+  const { argv, env } = hostGitCommand(cwd, args, timeout, baseEnv);
+  return (0, import_node_child_process2.execFileSync)(hostGitExe(), argv, { cwd, env, encoding: "utf-8", stdio: "pipe", windowsHide: true, timeout, ...input !== void 0 ? { input, maxBuffer: 64 * 1024 * 1024 } : {} });
+}
+function hostGitCommand(cwd, args, timeout, baseEnv) {
   const env = hostGitEnv(args, baseEnv);
   const recorded = env.GIT_DIR ? recordedGitDirs.get(env.GIT_DIR) : void 0;
   if (recorded && !sameGitLinks(readWorktreeGitLinks(recorded.wtPath), recorded.links)) {
@@ -18747,7 +18751,7 @@ function runHostGit(cwd, args, timeout, baseEnv = process.env) {
     tree = [...tree, ...LANE_SUBMODULE_OVERRIDES.flatMap((kv) => ["-c", kv])];
     if (IGNORE_SUBMODULES_SUBCOMMANDS.has(subcommand)) finalArgs = [...args.slice(0, at + 1), "--ignore-submodules=all", ...args.slice(at + 1)];
   }
-  return (0, import_node_child_process2.execFileSync)(hostGitExe(), [...hostGitHardeningArgs(), ...tree, ...finalArgs], { cwd, env, encoding: "utf-8", stdio: "pipe", windowsHide: true, timeout });
+  return { argv: [...hostGitHardeningArgs(), ...tree, ...finalArgs], env };
 }
 function git(repoRoot, args, cwd = repoRoot) {
   return runHostGit(cwd, args).trim();
@@ -19386,6 +19390,13 @@ function removeStaleWorktreeEntry(repoRoot, wtPath, adminName) {
       return false;
     }
   };
+  let rootPresent = true;
+  try {
+    (0, import_node_fs8.lstatSync)(root);
+  } catch {
+    rootPresent = false;
+  }
+  if (rootPresent && !real(root)) throw new Error(`stale_worktree_entry: ${root} is not a real directory (a link or a file)`);
   const namesWtPath = (name2) => {
     const dir2 = (0, import_node_path9.join)(root, name2);
     if (!isAdminDirOf(common, dir2) || !real(dir2)) return false;
@@ -19533,7 +19544,9 @@ var init_git_worktree = __esm({
       "apply",
       "rm",
       "mv",
-      "clean"
+      "clean",
+      // `hash-object --stdin --path`: the path selects attributes, so a filter could run on the bytes.
+      "hash-object"
     ]);
     GLOBAL_OPTIONS_WITH_VALUE = /* @__PURE__ */ new Set(["-c", "-C", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env"]);
     LANE_SUBMODULE_OVERRIDES = ["submodule.recurse=false", "diff.ignoreSubmodules=all", "status.submoduleSummary=false"];

@@ -61,6 +61,126 @@ import { basename, dirname, isAbsolute, join, resolve } from 'path';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { recordedWorktreeGitLinks, runHostGit, worktreeGitDirArgs } from '../../team/git-worktree.js';
 import { FOR_EACH_REF_FORMAT } from './exec.js';
+/** A file the snapshot keeps the bytes of is at most this big; a bigger one is kept as its hash. */
+export const RESTORE_FILE_MAX_BYTES = 1024 * 1024;
+/** All the kept bytes of one snapshot together. */
+export const RESTORE_TOTAL_MAX_BYTES = 8 * 1024 * 1024;
+/**
+ * The key of RepoSnapshot.restore that marks a snapshot whose kept bytes also
+ * cover `worktrees/<id>/config.worktree` and the submodule git dirs under
+ * `modules/` (no real path starts with `#`). A snapshot without it was
+ * recorded by an earlier release: the quarantine then leaves those paths
+ * alone and names them as still active.
+ */
+export const RESTORE_SCOPE_KEY = '#scope';
+export const RESTORE_SCOPE = 'modules,worktrees';
+/**
+ * The paths (relative to the common git dir, `/`-separated) the snapshot
+ * keeps bytes of, as RepoSnapshot.restore encodes them: `config`,
+ * `config.worktree`, `hooks/**`, `info/**` (not info/refs), every
+ * `worktrees/<id>/config.worktree`, and per submodule git dir under
+ * `modules/` (nested ones too) its `config`, `config.worktree`, `hooks/**`
+ * and `info/**`. Never follows a link (lstat). A file or directory that
+ * cannot be read is kept as `unreadable:<code>` (a lane can chmod a planted
+ * hook to 000; the quarantine then moves it aside without reading it).
+ */
+export function restorableFiles(commonDir) {
+    const out = { [RESTORE_SCOPE_KEY]: RESTORE_SCOPE };
+    let total = 0;
+    const unreadable = (error) => `unreadable:${error.code ?? 'error'}`;
+    const keep = (rel, abs, top) => {
+        let st;
+        try {
+            st = lstatSync(abs);
+        }
+        catch (error) {
+            if (error.code !== 'ENOENT')
+                out[rel] = unreadable(error);
+            return;
+        }
+        if (st.isSymbolicLink()) {
+            let target = '?';
+            try {
+                target = readlinkSync(abs);
+            }
+            catch { /* unreadable link */ }
+            out[rel] = `link:${target}`;
+        }
+        else if (st.isDirectory()) {
+            let names;
+            try {
+                names = readdirSync(abs).sort();
+            }
+            catch (error) {
+                out[rel] = unreadable(error);
+                return;
+            }
+            for (const name of names) {
+                if (top && rel === 'info' && name === 'refs')
+                    continue;
+                keep(`${rel}/${name}`, join(abs, name), false);
+            }
+        }
+        else if (st.isFile()) {
+            let bytes;
+            try {
+                bytes = readFileSync(abs);
+            }
+            catch (error) {
+                out[rel] = unreadable(error);
+                return;
+            }
+            if (bytes.length <= RESTORE_FILE_MAX_BYTES && total + bytes.length <= RESTORE_TOTAL_MAX_BYTES) {
+                total += bytes.length;
+                out[rel] = `${st.mode & 0o111 ? 'b64x' : 'b64'}:${bytes.toString('base64')}`;
+            }
+            else {
+                out[rel] = `big:${createHash('sha256').update(bytes).digest('hex')}`;
+            }
+        }
+    };
+    for (const name of ['config', 'config.worktree', 'hooks', 'info'])
+        keep(name, join(commonDir, name), true);
+    const wtDir = join(commonDir, 'worktrees');
+    if (!notADirectory(wtDir) && existsSync(wtDir)) {
+        let ids = [];
+        try {
+            ids = readdirSync(wtDir).sort();
+        }
+        catch { /* the compare reports it */ }
+        for (const id of ids)
+            if (!notADirectory(join(wtDir, id)))
+                keep(`worktrees/${id}/config.worktree`, join(wtDir, id, 'config.worktree'), false);
+    }
+    // The submodule git dirs as moduleEntries finds them (a link is never entered; the compare reports it).
+    const modules = (dir, rel) => {
+        if (notADirectory(dir) || !existsSync(dir))
+            return;
+        let names = [];
+        try {
+            names = readdirSync(dir).sort();
+        }
+        catch {
+            return;
+        }
+        for (const name of names) {
+            const p = join(dir, name);
+            const r = `${rel}/${name}`;
+            if (notADirectory(p))
+                continue;
+            if (existsSync(join(p, 'HEAD')) || existsSync(join(p, 'config'))) {
+                for (const f of ['config', 'config.worktree', 'hooks', 'info'])
+                    keep(`${r}/${f}`, join(p, f), false);
+                modules(join(p, 'modules'), `${r}/modules`);
+            }
+            else {
+                modules(p, r);
+            }
+        }
+    };
+    modules(join(commonDir, 'modules'), 'modules');
+    return out;
+}
 export class SnapshotError extends Error {
 }
 /** Top-level ignored files and directories the snapshot hashes by content. */
@@ -81,7 +201,13 @@ const sha = (text) => createHash('sha256').update(text).digest('hex');
 function fileHash(path) {
     if (!existsSync(path))
         return 'absent';
-    return createHash('sha256').update(readFileSync(path)).digest('hex');
+    // A file made unreadable (chmod 000, a deny ACE) is a change the compare reports, not a snapshot failure.
+    try {
+        return createHash('sha256').update(readFileSync(path)).digest('hex');
+    }
+    catch (error) {
+        return `unreadable:${error.code ?? 'error'}`;
+    }
 }
 function fileText(path) {
     return existsSync(path) ? readFileSync(path, 'utf8').trim() : '';
@@ -401,6 +527,7 @@ export function snapshotRepo(exec, root, stateRootRel = '.omg', against) {
         mainHead: run(exec, root, ['rev-parse', 'HEAD']).trim(),
         mainSymbolic: run(exec, root, ['rev-parse', '--symbolic-full-name', 'HEAD']).trim(),
         mainStatus: statusUnsafe ? STATUS_SKIPPED : stableStatus(run(exec, root, ['status', '--porcelain=v1', '-z', '--untracked-files=all']), stateRootRel),
+        restore: restorableFiles(commonDir),
     };
 }
 /**

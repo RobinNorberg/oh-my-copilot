@@ -36,6 +36,7 @@ import { checkoutWorker, FACTORY_CHECKOUT_TEAM, unlinkNodeModules } from './prep
 import { dmtfCreationDateToTicks, getProcessStartIdentitySync, isProcessAlive } from '../../platform/process-utils.js';
 import { acquireFactoryOwner, acquireFactoryRepoOwnerForRun, FactoryBusyError, factoryStatePath, FactoryStateError, readFactoryState, runRemote, updateFactoryState, runSlug, verifyFactoryIntegrity, type FactoryRunState, type OwnerDeps } from './state.js';
 import { removeFactoryClaim } from './claims.js';
+import { liveGateProcs } from './gate-procs.js';
 import { removeRunDir, type PrivateRunLayout } from './private-store.js';
 import { expectedPrivateLayout, withImportLock } from './private-run.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -82,6 +83,8 @@ export interface FactoryCleanOptions {
   seed?: boolean;
   /** The trusted user config factory.run.workDir is read from (default: userConfigLayers().trustedUser); tests pass one. */
   runUserConfig?: unknown;
+  /** The private layout: recorded gate processes under a dir that still run (default: gate-procs.ts liveGateProcs); tests pass one. */
+  liveGateProcs?: (dir: string) => number[];
 }
 
 export type LaneProcessRecord = NonNullable<FactoryRunState['lanes'][number]['process']>;
@@ -150,6 +153,12 @@ function cleanPrivateRun(o: FactoryCleanOptions, state: FactoryRunState, result:
     const may = state.lanes.map((l) => ({ l, may: laneMayRun(l, o.processState ?? laneProcessState) })).find((x) => x.may !== null);
     if (may && (may.may!.live || !o.laneStopped)) {
       result.kept.push({ worktree: runDir, reason: `lane_may_run: lane ${may.l.id}: ${may.may!.why}; stop it, then rerun ${o.rerun ?? `omg factory run clean ${o.issue}`}${may.may!.live ? '' : ' --discard --lane-stopped'}` });
+      return;
+    }
+    // A prepare check's leftover process (recorded under <run>/gates) must be gone before its dir is removed (review-483 I.4).
+    const gateLive = (o.liveGateProcs ?? liveGateProcs)(join(runDir, 'gates', 'prepare-procs'));
+    if (gateLive.length > 0) {
+      result.kept.push({ worktree: runDir, reason: `gate_may_run: process(es) a prepare check started in the run dir still run (pid ${gateLive.join(', ')}); stop them (Task Manager, or kill -9 ${gateLive.join(' ')}), then rerun ${o.rerun ?? `omg factory run clean ${o.issue}`}` });
       return;
     }
     if (o.keepTamperEvidence && state.lanes.some((l) => TAMPER_NOTE.test(l.note ?? ''))) {

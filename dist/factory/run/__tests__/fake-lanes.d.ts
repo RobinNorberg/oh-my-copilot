@@ -4,6 +4,7 @@ export declare const ENFORCED_SANDBOX: CopilotRunSandboxState;
 import { gitIn } from '../../../copilot-run/__tests__/fake-sdk.js';
 import { type Exec, type ExecResult } from '../../../ship/exec.js';
 import type { FactoryEngineOptions, LaneProcessOps } from '../engine.js';
+import type { LaneTreeProof } from '../lane-procs.js';
 import { type LocalGateRunner } from '../local-gate.js';
 import type { GateConfigLoader } from '../prepare.js';
 import type { SandboxRunner } from '../sandbox-exec.js';
@@ -74,6 +75,10 @@ export declare class FakeProcesses implements LaneProcessOps {
     readonly killed: number[];
     state(p: LaneProcess): Promise<'live' | 'dead' | 'mismatch' | 'unknown'>;
     terminate(p: LaneProcess): Promise<void>;
+    /** What treeGone answers (default: the tree is gone); `trees` records each call's worktree. */
+    tree: LaneTreeProof;
+    readonly trees: (string | null)[];
+    treeGone(_p: LaneProcess | null | undefined, worktree: string | null): Promise<LaneTreeProof>;
 }
 /** Lane scripts. A write lane leaves its change uncommitted: the engine commits it (lane-commit.ts). */
 export declare const commitFile: (path: string, content?: string, credits?: number) => LaneScript;

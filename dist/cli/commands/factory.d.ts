@@ -22,7 +22,7 @@ import { Command } from 'commander';
 import { type ChainStatus } from '../../factory/status.js';
 import { type ChainSkillStatus, type RouteTable } from '../../hooks/session-end/routing.js';
 import { type LoadedFactoryRunLimits } from '../../factory/run/budget.js';
-import { type FactoryRunOutcome } from '../../factory/run/engine.js';
+import { type FactoryRunOutcome, type LaneProcessOps } from '../../factory/run/engine.js';
 import type { LoadedForgeConfig } from '../../forge/config.js';
 import { type LaneBackend } from '../../factory/run/lane.js';
 import type { GateConfigLoader } from '../../factory/run/prepare.js';
@@ -58,6 +58,8 @@ export interface FactoryRunDeps {
      * "enforced" then parks at gates-unsandboxed, never runs unsandboxed.
      */
     gateSandbox?: (root: string) => SandboxRunner;
+    /** Liveness, kill and the lane process-tree proof (default: the engine's defaultLaneProcessOps). */
+    processes?: LaneProcessOps;
 }
 export declare const defaultFactoryRunDeps: FactoryRunDeps;
 /**

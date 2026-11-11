@@ -74,6 +74,8 @@ import { adoHealFor, ciDeps, HEAL_PIPELINE_MISSING, runHealScan } from './heal/c
 import { HealRunRefused } from './heal/run.js';
 import { DEFAULT_FACTORY_RUN_LIMITS, resolveFactoryRunLimits } from './run/budget.js';
 import { FactoryForgeUnavailableError } from './run/forge-roots.js';
+import { defaultLedgerDir } from './run/ledger.js';
+import { tamperHoldMessage } from './run/tamper-quarantine.js';
 import { visibleLine } from '../forge/review-feedback.js';
 import { resolveTeamConfig, TeamConfigError } from './team/context.js';
 import { staleGateReminders } from './team/reminders.js';
@@ -597,13 +599,15 @@ export async function pollTick(ctx) {
     const rateLimited = [...errors, ...warnings].some((m) => ADO_RATE_LIMITED.test(m) || GITHUB_RATE_LIMITED.test(m));
     // 5. auto-start: at most one run, on an idle tick only.
     let autoStart;
+    const held = config.intake.autoStart ? (ctx.tamperHold ?? (() => tamperHoldMessage(defaultLedgerDir(), root)))() : null;
     const blocked = !config.intake.autoStart ? 'factory.intake.autoStart is off'
-        : locked ? 'the run lock is held: an engine runs in this repository'
-            : unsound ? 'a run state is unreadable or fails its integrity check'
-                : !idle ? 'a run is in flight'
-                    : !intake.ran ? `no intake read this tick (${intake.reason})`
-                        : rateLimited ? 'the tick was rate-limited'
-                            : null;
+        : held ? held
+            : locked ? 'the run lock is held: an engine runs in this repository'
+                : unsound ? 'a run state is unreadable or fails its integrity check'
+                    : !idle ? 'a run is in flight'
+                        : !intake.ran ? `no intake read this tick (${intake.reason})`
+                            : rateLimited ? 'the tick was rate-limited'
+                                : null;
     if (blocked)
         autoStart = { started: false, reason: blocked };
     else {
@@ -739,6 +743,7 @@ export async function runFactoryPoll(o, deps) {
         }),
         budget: deps.budget ?? defaultPollBudget(() => layers),
         remindAfterHours: teamConfig.remindAfterHours,
+        tamperHold: () => tamperHoldMessage(deps.ledgerDir ?? defaultLedgerDir(), read.root),
         owner, now, previous: { board: new Map(), prs: new Map() }, tick: 0,
     };
     let interval = base;
