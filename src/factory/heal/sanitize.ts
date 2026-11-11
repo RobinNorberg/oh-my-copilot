@@ -29,8 +29,10 @@ const SECRET_PATTERNS: readonly [RegExp, string][] = [
   [/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, `Bearer ${REDACTED}`],
   // A JWT: base64url header and payload (both JSON objects, so `eyJ`) and an optional signature.
   [/\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*/g, REDACTED],
-  // .npmrc credentials (`//registry/:_authToken=…`, legacy `_auth=` base64 and `_password=`).
-  [/(_authToken|_auth|_password)(\s*=\s*)[^\s"']+/g, `$1$2${REDACTED}`],
+  // npm credentials: .npmrc (`//registry/:_authToken=…`, legacy `_auth=` base64 and `_password=`), the JSON or colon
+  // form (`npm config list --json`: `"_authToken": "…"`) and the env forms; any case. The left boundary keeps a key
+  // that only ends in one of these names (`config_password=x`) as it is.
+  [/(?<![A-Za-z0-9])(_authToken|_auth|_password|NODE_AUTH_TOKEN|NPM_TOKEN|NPM_CONFIG__AUTHTOKEN)("?\s*[=:]\s*"?)[^\s"']+/gi, `$1$2${REDACTED}`],
   // OpenAI-style `sk-…` and Anthropic `sk-ant-…` keys (a digit somewhere, so a word like `sk-learn-…` stays).
   [/\bsk-(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{20,}/g, REDACTED],
   // URL userinfo: https://user:pass@host, https://token@host.

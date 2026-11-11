@@ -509,12 +509,13 @@ function trustedUserConfigPathOrDefault(): string {
  */
 export function configuredProtectedPaths(root: string, onProblem?: (source: string, error: string) => void): string[] {
   const paths = new Set<string>();
+  // Each source names its file, so a problem says which file to fix.
+  let userPath: string | null = null;
+  try { userPath = trustedUserConfigPath(); } catch { /* no resolvable home: userConfigLayers reads no trusted layer */ }
+  const projectPath = resolveProjectConfigPath(root);
   const layers: Array<[() => unknown, string]> = [
-    [() => userConfigLayers().trustedUser, 'user config (default location)'],
-    [() => {
-      const path = resolveProjectConfigPath(root);
-      return existsSync(path) ? parseJsonc(readFileSync(path, 'utf8')) : undefined;
-    }, 'project config'],
+    [() => userConfigLayers().trustedUser, userPath ? `user config ${userPath}` : 'user config (default location)'],
+    [() => (existsSync(projectPath) ? parseJsonc(readFileSync(projectPath, 'utf8')) : undefined), `project config ${projectPath}`],
   ];
   for (const [read, source] of layers) {
     try {

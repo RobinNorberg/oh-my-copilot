@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { copyFileSync, mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync, readFileSync, symlinkSync } from 'fs';
+import { copyFileSync, mkdtempSync, renameSync, rmSync, existsSync, writeFileSync, mkdirSync, readFileSync, symlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { execFileSync, spawn } from 'child_process';
@@ -410,6 +410,39 @@ describe('git-worktree', () => {
       // Branch should be deleted
       const branches = execFileSync('git', ['branch'], { cwd: repoDir, encoding: 'utf-8' });
       expect(branches).not.toContain('omc-team/');
+    });
+
+    it('review 482 #3: drops only the worker\'s own stale entry; a user worktree whose directory is missing keeps its admin dir, HEAD and index', () => {
+      // A worktree the user owns, its directory only unavailable (an unmounted drive): `git worktree prune` would drop it.
+      const outside = mkdtempSync(join(tmpdir(), 'git-worktree-user-'));
+      const userWt = join(outside, 'user-wt');
+      try {
+        execFileSync('git', ['worktree', 'add', '--detach', userWt, 'HEAD'], { cwd: repoDir, stdio: 'pipe' });
+        const userAdmin = join(repoDir, '.git', 'worktrees', 'user-wt');
+        renameSync(userWt, `${userWt}-away`);
+        const list = () => execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: repoDir, encoding: 'utf-8' });
+
+        // The worker's directory removed by hand: ensure re-adds it (its own stale entry dropped first).
+        const info = ensureWorkerWorktree(teamName, 'worker1', repoDir, { mode: 'detached', requireCleanLeader: false })!;
+        rmSync(info.path, { recursive: true, force: true });
+        const again = ensureWorkerWorktree(teamName, 'worker1', repoDir, { mode: 'detached', requireCleanLeader: false })!;
+        expect(again.created).toBe(true);
+        expect(existsSync(join(userAdmin, 'HEAD'))).toBe(true);
+        expect(existsSync(join(userAdmin, 'index'))).toBe(true);
+
+        // Removed by hand again, then removeWorkerWorktree: the worker's entry goes, the user's stays.
+        rmSync(again.path, { recursive: true, force: true });
+        removeWorkerWorktree(teamName, 'worker1', repoDir);
+        expect(toPosixPath(list())).not.toContain('/worktrees/worker1');
+        expect(execFileSync('git', ['branch'], { cwd: repoDir, encoding: 'utf-8' })).not.toContain('omc-team/');
+        expect(existsSync(join(userAdmin, 'HEAD'))).toBe(true);
+        expect(existsSync(join(userAdmin, 'index'))).toBe(true);
+        renameSync(`${userWt}-away`, userWt);
+        expect(list()).not.toContain('prunable');
+      } finally {
+        try { execFileSync('git', ['worktree', 'remove', '--force', userWt], { cwd: repoDir, stdio: 'pipe' }); } catch { /* already gone */ }
+        rmSync(outside, { recursive: true, force: true });
+      }
     });
 
     it('throws and preserves metadata when git refuses to remove a registered worktree', () => {

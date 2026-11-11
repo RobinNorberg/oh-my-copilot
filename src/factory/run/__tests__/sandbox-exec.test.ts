@@ -339,7 +339,19 @@ describe('runSandboxed', () => {
       expect(out, text).toContain('[redacted]');
     }
     expect(redactGateOutput('//registry.npmjs.org/:_authToken=abc')).toBe('//registry.npmjs.org/:_authToken=[redacted]');
+    // #8: the JSON / colon form, the env forms and any case; the value built at run time.
+    const value = ['npm', 'Zx9', 'Qw8', 'Er7'].join('_');
+    for (const [text, kept] of [
+      [`"//registry.npmjs.org/:_authToken": "${value}",`, '"//registry.npmjs.org/:_authToken": "[redacted]",'],
+      [`_authToken: ${value}`, '_authToken: [redacted]'],
+      [`NODE_AUTH_TOKEN=${value}`, 'NODE_AUTH_TOKEN=[redacted]'],
+      [`NPM_TOKEN=${value}`, 'NPM_TOKEN=[redacted]'],
+      [`NPM_CONFIG__AUTHTOKEN=${value}`, 'NPM_CONFIG__AUTHTOKEN=[redacted]'],
+      [`npm_config__authtoken=${value}`, 'npm_config__authtoken=[redacted]'],
+      [`//npm.example/:_AUTH=${value}`, '//npm.example/:_AUTH=[redacted]'],
+    ] as const) expect(redactGateOutput(text), text).toBe(kept);
     const ordinary = [
+      'config_password=x', 'MY_NPM_TOKEN_NAME is documented', 'db_auth=on',
       'HEAD is 9fb7e347addff4cac28206858ca6f58aec2792cc',
       'sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
       'expected "dGhpcyBpcyBhIHRlc3Qgb3V0cHV0IHdpdGggbm8gc2VjcmV0cyBpbiBpdA==" to equal "SGVsbG8gd29ybGQ="',
