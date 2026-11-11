@@ -125735,7 +125735,7 @@ function git3(ctx, cwd2, args, extraEnv = {}) {
   const timeoutMs = ctx.timeoutMs ?? PRIVATE_GIT_TIMEOUT_MS;
   const started = Date.now();
   const r = (ctx.exec ?? defaultExec)("git", [...privateGitPins(ctx.tools), ...args], { cwd: cwd2, env: { ...extraEnv, ...privateGitEnv(ctx.tools) }, timeoutMs });
-  if (r.status !== 0 && Date.now() - started >= timeoutMs) throw new PrivateGitTimeout(timeoutMs);
+  if (r.status !== 0 && (Date.now() - started >= timeoutMs || /spawnSync .* ETIMEDOUT$/.test(r.stderr))) throw new PrivateGitTimeout(timeoutMs);
   return r;
 }
 function gitOk(ctx, cwd2, args, what) {

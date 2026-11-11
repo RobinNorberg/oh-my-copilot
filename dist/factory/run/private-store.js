@@ -266,8 +266,9 @@ function git(ctx, cwd, args, extraEnv = {}) {
     const timeoutMs = ctx.timeoutMs ?? PRIVATE_GIT_TIMEOUT_MS;
     const started = Date.now();
     const r = (ctx.exec ?? defaultExec)('git', [...privateGitPins(ctx.tools), ...args], { cwd, env: { ...extraEnv, ...privateGitEnv(ctx.tools) }, timeoutMs });
-    // spawnSync kills the child at the timeout and reports a failure; a failure that took the whole budget is that kill.
-    if (r.status !== 0 && Date.now() - started >= timeoutMs)
+    // spawnSync kills the child at the timeout and reports a failure (defaultExec appends its ETIMEDOUT error to stderr); a failure
+    // that took the whole budget is that kill too. The libuv timer can fire a little before Date.now() shows the full budget.
+    if (r.status !== 0 && (Date.now() - started >= timeoutMs || /spawnSync .* ETIMEDOUT$/.test(r.stderr)))
         throw new PrivateGitTimeout(timeoutMs);
     return r;
 }
