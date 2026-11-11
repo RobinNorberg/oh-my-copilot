@@ -4,6 +4,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+# oh-my-copilot v5.25.2
+
+## [5.25.2] - 2026-11-11
+
 ### Fixed
 
 - **No false "no CI" green, stricter green on GitHub (review of the second live test fixes).** A head where nothing reported is green with the "no CI checks are configured" note only when the PR's base commit reported no check either, neither the base nor the head tree holds a CI definition (`.github/workflows/` or another CI system's files: CI that runs only on pull requests leaves the base without checks), and the head's check suites were read and are empty; when the base ran CI, a CI definition exists, or any of these reads fails, the factory parks at `awaiting-human: no-workflows` saying that the base ran CI (up to 5 names) but nothing has reported for this head (Actions disabled or delayed, or a push that triggered no workflow). `omg ship` and Azure DevOps cannot read the base, so a head with no check never turns green there. A `NEUTRAL` check run now passes, as GitHub's protection counts it. The factory's green also needs every check suite of the head completed (an idle queued suite of another app than GitHub Actions does not block once the settle window passed, unless that app ran checks on the base commit), pages through the rulesets, and accepts a required check bound to a GitHub App only from that app's check run. A PR of oh-my-copilot whose base has no `ship.requiredChecks` yet (`main` before this release lands there) requires the repository's 19 checks in `omg ship`, the factory and `omg release`. A lane that changes a CI definition is told that a human must make that change, with the rerun and cancel commands.
