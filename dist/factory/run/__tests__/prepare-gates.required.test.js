@@ -6,7 +6,7 @@ import { readShipState } from '../../../ship/state.js';
 import { EXIT_AWAITING_HUMAN } from '../engine.js';
 import { commitFile, greenGates, ISSUE, PR, review } from './fake-lanes.js';
 import { scaleTiming } from '../../../__tests__/helpers/platform.js';
-import { h, usePrepareGatesHarness, run } from './prepare-gates-harness.js';
+import { h, moveBase, usePrepareGatesHarness, run } from './prepare-gates-harness.js';
 vi.setConfig({ testTimeout: scaleTiming(90_000) });
 usePrepareGatesHarness();
 const config = (requiredChecks) => () => ({ config: { ...resolveShipConfig(undefined), requiredChecks, advisoryChecks: [] }, known: [] });
@@ -17,6 +17,9 @@ const baseChecks = (names) => (path) => {
         return ok({ check_runs: names.map((name) => ({ name })) });
     if (/\/commits\/[0-9a-f]{40}\/status\?per_page=100$/.test(path))
         return ok({ statuses: [] });
+    // review-493b B-1(b): the no-CI rule needs the head's check suites read (empty here).
+    if (/\/commits\/[0-9a-f]{40}\/check-suites\?per_page=100&page=1$/.test(path))
+        return ok({ check_suites: [] });
     return undefined;
 };
 describe('M1: required checks on a repository that is not oh-my-copilot', () => {
@@ -52,8 +55,18 @@ describe('M1: required checks on a repository that is not oh-my-copilot', () => 
         expect(out.gate?.name, out.message).toBe('no-workflows');
         expect(out.gate?.reason).toContain('the base commit ran CI (Build, Test) but nothing has reported for this head: Actions may be disabled, delayed, or the push did not trigger workflows');
         expect(out.message).not.toContain(NO_CI_CHECKS_NOTE);
-        expect(out.message.match(/omg factory run /g)).toHaveLength(1);
+        expect(out.message.match(/omg factory run \d/g)).toHaveLength(1);
+        expect(out.gate?.reason).toContain('; to stop instead: omg factory run cancel ');
         expect(readShipState(h.root, PR).phase).toBe('gates');
+    });
+    it('review-493b B-1(a): a workflow file in the tree, a base without checks (pull_request-only CI) and a silent head park no-workflows naming the file', async () => {
+        h.gh.gates = [{ checks: [], runs: [] }];
+        h.gh.api = baseChecks([]);
+        moveBase('.github/workflows/x.yml', 'on: pull_request\n');
+        const out = await run([commitFile('a.ts'), review('approve')], { gateConfig: config([]) }).done;
+        expect(out.gate?.name, out.message).toBe('no-workflows');
+        expect(out.gate?.reason).toContain('this repository has CI definitions (.github/workflows/x.yml) but nothing reported for this commit');
+        expect(out.message).not.toContain(NO_CI_CHECKS_NOTE);
     });
     it('no names: every reported check counts; a green read is accepted after the settle window', async () => {
         h.gh.gates = [greenGates()];

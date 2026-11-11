@@ -60,6 +60,7 @@ import { isGateReadArgs, isRequiredChecksArgs } from '../../forge/github/checks.
 import { LOCAL_REMOTE, STATE_CHANGE_LOG_FLAGS } from '../../forge/local/mirror.js';
 import { assertSafeCommand, isTrustedFetch, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { triageWriteGh } from '../triage/guard.js';
+import { CI_TREE_PATHS } from './lane-commit.js';
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
 export const FACTORY_BRANCH_PREFIX = 'factory/';
 export { MAX_TRACKER_BODY_CHARS } from '../../forge/body-file.js';
@@ -334,6 +335,9 @@ function factoryGit(a, protectedBranches, extraProtected = [], local, agent) {
         case 'ls-tree':
             // Two-axis review: the standards files on the base commit.
             if (r.length === 6 && same(r.slice(0, 3), ['-r', '-z', '--name-only']) && /^[0-9a-f]{40}$/.test(r[3]) && same(r.slice(4), ['--', 'docs/standards/']))
+                return true;
+            // The gates' no-CI rule: the CI definition files on the base or head commit (exactly CI_TREE_PATHS).
+            if (r.length === 5 + CI_TREE_PATHS.length && same(r.slice(0, 3), ['-r', '-z', '--name-only']) && /^[0-9a-f]{40}$/.test(r[3]) && same(r.slice(4), ['--', ...CI_TREE_PATHS]))
                 return true;
             // The local forge's backlog at the base commit (backlogListArgs): one plain repo directory, never `..`.
             if (r.length === 5 && same(r.slice(0, 2), ['-z', '--name-only']) && /^[0-9a-f]{40}$/.test(r[2]) && r[3] === '--' && r[4].endsWith('/')) {

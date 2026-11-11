@@ -40387,21 +40387,23 @@ function applySettle(report, config2, now, watchedSince, reads, head) {
   const undated = report.checks.length === 0 || stamps.some((s) => s === -Infinity);
   const newest = Math.max(...stamps, undated ? watchedSince ?? Infinity : -Infinity);
   const settled = now - newest >= CHECK_SETTLE_MS;
-  const open3 = openSuites(reads && head ? reads.suites(head) : void 0, settled);
-  return applyOpenSuites(settleChecks(report, config2, settled, reads, open3.length > 0), open3);
+  const suites = reads && head ? reads.suites(head) : void 0;
+  const open3 = openSuites(suites, settled, reads?.baseSuites);
+  return applyOpenSuites(settleChecks(report, config2, settled, reads, open3.length > 0, suites), open3);
 }
-function settleChecks(report, config2, settled, reads, suiteOpen) {
+function settleChecks(report, config2, settled, reads, suiteOpen, suites) {
   if (config2.requiredChecks.length === 0) {
     if (report.verdict === "green" && !settled) {
       return { ...report, verdict: "pending", pending: [...report.pending, `settle window: waiting ${Math.round(CHECK_SETTLE_MS / 1e3)} s after the last check activity for late checks`] };
     }
     if (report.verdict === "pending" && report.checks.length === 0 && report.pending.length === 1 && report.pending[0] === NO_WORKFLOWS_TRIGGERED && settled && !suiteOpen) {
       const base = reads?.baseChecks();
-      if (base === void 0 || base.length > 0) {
-        const noHeadChecks = base === void 0 ? {} : { base: [...base] };
+      const defs = base === void 0 || base.length > 0 ? void 0 : reads.ciDefinitions();
+      const noHeadChecks = base === void 0 ? {} : base.length > 0 ? { base: [...base] } : defs === void 0 || defs.length > 0 ? { base: [], ciDefinitions: [...defs ?? []] } : suites === void 0 ? { base: [], suites: "unreadable" } : suites.length > 0 ? { base: [], suites: "present" } : void 0;
+      if (noHeadChecks) {
         return { ...report, noHeadChecks, suggestions: [...report.suggestions.filter((s) => !s.startsWith(NO_WORKFLOWS_TRIGGERED)), noHeadChecksText(noHeadChecks)] };
       }
-      return { ...report, verdict: "green", pending: [], noChecks: true, suggestions: [...report.suggestions.filter((s) => !s.startsWith(NO_WORKFLOWS_TRIGGERED)), `${NO_CI_CHECKS_NOTE} (nothing reported for this head within ${Math.round(CHECK_SETTLE_MS / 1e3)} s, and the base commit reported no check either)`] };
+      return { ...report, verdict: "green", pending: [], noChecks: true, suggestions: [...report.suggestions.filter((s) => !s.startsWith(NO_WORKFLOWS_TRIGGERED)), `${NO_CI_CHECKS_NOTE} (nothing reported for this head within ${Math.round(CHECK_SETTLE_MS / 1e3)} s, the base commit reported no check either, and neither the base nor the head tree holds a CI definition)`] };
     }
     return report;
   }
@@ -40413,14 +40415,27 @@ function settleChecks(report, config2, settled, reads, suiteOpen) {
 }
 function noHeadChecksText(n) {
   const window = `${Math.round(CHECK_SETTLE_MS / 1e3)} s`;
+  const causes = "Actions may be disabled, delayed, or the push did not trigger workflows";
+  if (n.ciDefinitions) {
+    if (n.ciDefinitions.length === 0) return `nothing has reported a check for this head within ${window}, and the CI definitions in the base and head trees could not be read, so the gates do not assume this repository has no CI: ${causes}`;
+    const files = `${n.ciDefinitions.slice(0, 5).join(", ")}${n.ciDefinitions.length > 5 ? `, and ${n.ciDefinitions.length - 5} more` : ""}`;
+    return `this repository has CI definitions (${files}) but nothing reported for this commit within ${window} (the base commit reported no check either, as CI that runs only on pull requests leaves it): ${causes}`;
+  }
+  if (n.suites === "present") return `nothing has reported a check for this head within ${window}, but GitHub lists check suites for it, so the gates do not assume this repository has no CI: ${causes}`;
+  if (n.suites === "unreadable") return `nothing has reported a check for this head within ${window}, and its check suites could not be read (GitHub API error, rate limit or too many pages), so the gates do not assume this repository has no CI: ${causes}`;
   if (n.base === void 0) {
     return `nothing has reported a check for this head within ${window}, and the base commit's checks could not be read, so the gates do not assume this repository has no CI: Actions may be disabled, delayed, or the push did not trigger workflows`;
   }
   const names = `${n.base.slice(0, 5).join(", ")}${n.base.length > 5 ? `, and ${n.base.length - 5} more` : ""}`;
   return `the base commit ran CI (${names}) but nothing has reported for this head: Actions may be disabled, delayed, or the push did not trigger workflows`;
 }
-function openSuites(suites, settled) {
-  return (suites ?? []).filter((s) => s.status.toLowerCase() !== "completed").filter((s) => !(settled && s.runs === 0 && s.app !== void 0 && s.app !== "github-actions" && s.status.toLowerCase() === "queued")).map((s) => `check suite ${s.app ?? "(unnamed app)"} (${s.status.toLowerCase()})`);
+function openSuites(suites, settled, baseSuites) {
+  let base = null;
+  const idleOnBase = (app) => {
+    if (base === null) base = baseSuites ? baseSuites() : void 0;
+    return base !== void 0 && base.every((b) => b.app !== app || b.runs === 0);
+  };
+  return (suites ?? []).filter((s) => s.status.toLowerCase() !== "completed").filter((s) => !(settled && s.runs === 0 && s.app !== void 0 && s.app !== "github-actions" && s.status.toLowerCase() === "queued" && idleOnBase(s.app))).map((s) => `check suite ${s.app ?? "(unnamed app)"} (${s.status.toLowerCase()})`);
 }
 function applyOpenSuites(report, open3) {
   if (open3.length === 0) return report;
@@ -42975,7 +42990,7 @@ function conflictFixStart(repoRoot, head, base, message) {
   if (!HEX.test(sha3)) throw new Error(`git commit-tree printed ${JSON.stringify(sha3.slice(0, 80))}`);
   return { sha: sha3, conflicted: [...new Set(conflicted)] };
 }
-var import_node_crypto3, import_node_fs10, import_node_os5, import_node_path11, ENGINE_COMMIT_IDENTITY, GIT_TIMEOUT_MS, MAX_MESSAGE_CHARS, HEX, MAX_WALK_ENTRIES, MAX_WALK_DEPTH, ADO_PIPELINE_PATHS, CI_DEFINITION_PATHS, LANE_PROTECTED_PATHS, errText3, CI_SKIP, TRAILER, ANY_LINE_TRAILER, findingKey, SECRET_MESSAGE_PATH, secretPathLabel, LANE_FILE_MAX_BYTES, LANE_COMMIT_MAX_BYTES, FAST_IMPORT_BATCH_BYTES, gone;
+var import_node_crypto3, import_node_fs10, import_node_os5, import_node_path11, ENGINE_COMMIT_IDENTITY, GIT_TIMEOUT_MS, MAX_MESSAGE_CHARS, HEX, MAX_WALK_ENTRIES, MAX_WALK_DEPTH, ADO_PIPELINE_PATHS, CI_DEFINITION_PATHS, CI_TREE_PATHS, LANE_PROTECTED_PATHS, errText3, CI_SKIP, TRAILER, ANY_LINE_TRAILER, findingKey, SECRET_MESSAGE_PATH, secretPathLabel, LANE_FILE_MAX_BYTES, LANE_COMMIT_MAX_BYTES, FAST_IMPORT_BATCH_BYTES, gone;
 var init_lane_commit = __esm({
   "src/factory/run/lane-commit.ts"() {
     "use strict";
@@ -42996,6 +43011,7 @@ var init_lane_commit = __esm({
     MAX_WALK_DEPTH = 64;
     ADO_PIPELINE_PATHS = ["azure-pipelines.yml", "azure-pipelines.yaml", ".azure-pipelines/", ".azuredevops/", ".pipelines/"];
     CI_DEFINITION_PATHS = [".circleci/", ".gitlab-ci.yml", ".buildkite/", ".travis.yml", "Jenkinsfile", "appveyor.yml", ".appveyor.yml", ".drone.yml", "bitbucket-pipelines.yml", ".woodpecker/", ".woodpecker.yml"];
+    CI_TREE_PATHS = [".github/workflows/", ...ADO_PIPELINE_PATHS, ...CI_DEFINITION_PATHS];
     LANE_PROTECTED_PATHS = [".github/", ".copilot/", ".claude/", ".vscode/", ".mcp.json", ".husky/", ".omg/skills/", ".omc/skills/", "AGENTS.md", "CLAUDE.md", ...ADO_PIPELINE_PATHS, ...CI_DEFINITION_PATHS];
     errText3 = (err) => err instanceof Error ? err.message : String(err);
     CI_SKIP = /\[\s*(?:(?:skip|no)[\s-]+(?:ci|actions)|(?:ci|actions)[\s-]+skip)\s*\]/gi;
@@ -44477,6 +44493,7 @@ function factoryGit(a, protectedBranches, extraProtected = [], local, agent) {
       return r.length === 3 && r[0] === "--no-ext-diff" && r[1] === "--no-textconv" && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[2]) ? true : null;
     case "ls-tree":
       if (r.length === 6 && same2(r.slice(0, 3), ["-r", "-z", "--name-only"]) && /^[0-9a-f]{40}$/.test(r[3]) && same2(r.slice(4), ["--", "docs/standards/"])) return true;
+      if (r.length === 5 + CI_TREE_PATHS.length && same2(r.slice(0, 3), ["-r", "-z", "--name-only"]) && /^[0-9a-f]{40}$/.test(r[3]) && same2(r.slice(4), ["--", ...CI_TREE_PATHS])) return true;
       if (r.length === 5 && same2(r.slice(0, 2), ["-z", "--name-only"]) && /^[0-9a-f]{40}$/.test(r[2]) && r[3] === "--" && r[4].endsWith("/")) {
         return isPlainRepoPath(r[4].slice(0, -1));
       }
@@ -44669,6 +44686,7 @@ var init_exec2 = __esm({
     init_mirror();
     init_exec();
     init_guard2();
+    init_lane_commit();
     init_body_file();
     FACTORY_BRANCH_PREFIX = "factory/";
     FactorySafetyError = class extends ShipSafetyError {
@@ -58600,7 +58618,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             this.gate("ci-flaky", `known-flaky failures at ${at} are out of rerun budget (${out.report.failed.join(", ")}); rerun the failed jobs by hand`);
             return;
           case "no-workflows":
-            this.gate("no-workflows", `${out.report.noHeadChecks ? `${noHeadChecksText(out.report.noHeadChecks)} (head ${at})` : `no checks and no workflow runs exist for ${at}`}; push the branch with a token that triggers workflows (or enable Actions), or close and reopen PR #${pr}`);
+            this.gate("no-workflows", `${out.report.noHeadChecks ? `${noHeadChecksText(out.report.noHeadChecks)} (head ${at})` : `no checks and no workflow runs exist for ${at}`}; push the branch with a token that triggers workflows (or enable Actions), or close and reopen PR #${pr}${out.report.noHeadChecks ? `; to stop instead: ${cancelCommand(this.key)}` : ""}`);
             return;
           case "timeout":
             this.gate("gates-timeout", `gates did not settle within factory.run.gatesTimeoutMinutes ${Math.round(this.o.limits.gatesTimeoutMs / 6e4)} at ${at}${out.report ? ` (pending: ${out.report.pending.join(", ") || "none"})` : ""}`);
@@ -59382,14 +59400,35 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         if (!repo || this.forge?.kind === "local" || this.forge?.kind === "azure-devops") return void 0;
         const base = view.baseRefOid;
         let baseChecks;
+        let ciDefinitions;
+        let baseSuites;
         return {
           baseChecks: () => {
             baseChecks ??= { names: /^[0-9a-f]{40}$/.test(base) ? ghCommitCheckNames(this.exec, repo, base, this.o.root, true) : void 0 };
             return baseChecks.names;
           },
+          ciDefinitions: () => {
+            ciDefinitions ??= { files: this.ciDefinitionFiles([this.state.baseSha, this.state.head]) };
+            return ciDefinitions.files;
+          },
           suites: (head) => ghCheckSuites(this.exec, repo, head, this.o.root),
+          baseSuites: () => {
+            baseSuites ??= { suites: /^[0-9a-f]{40}$/.test(base) ? ghCheckSuites(this.exec, repo, base, this.o.root) : void 0 };
+            return baseSuites.suites;
+          },
           runApps: (head) => ghCheckRunApps(this.exec, repo, head, this.o.root)
         };
+      }
+      /** The CI definition files in these commits' trees (ls-tree, TRUSTED_READ_ENV); undefined = a sha missing / not HEX40 or a read failed. */
+      ciDefinitionFiles(shas) {
+        const files = /* @__PURE__ */ new Set();
+        for (const sha3 of shas) {
+          if (!sha3 || !/^[0-9a-f]{40}$/.test(sha3)) return void 0;
+          const res = this.exec("git", ["ls-tree", "-r", "-z", "--name-only", sha3, "--", ...CI_TREE_PATHS], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+          if (res.status !== 0) return void 0;
+          for (const f of res.stdout.split("\0")) if (f) files.add(f);
+        }
+        return [...files];
       }
       githubReadContext() {
         const repo = this.state?.repoUrl ? codingAgentRepoOf(this.state.repoUrl) : void 0;

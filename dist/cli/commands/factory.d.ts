@@ -178,7 +178,7 @@ export declare function liveFactoryRuns(root: string, ledgerDir: string, claimRe
         pid?: number | undefined;
         run?: string | undefined;
         key: FactoryRunKey;
-        state: "live" | "unreadable" | "parked" | "here";
+        state: "unreadable" | "live" | "parked" | "here";
         path: string;
     }[];
 };

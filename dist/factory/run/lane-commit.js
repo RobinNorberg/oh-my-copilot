@@ -96,6 +96,8 @@ export const ADO_PIPELINE_PATHS = ['azure-pipelines.yml', 'azure-pipelines.yaml'
  * drop a CI system's definition and with it the checks.
  */
 export const CI_DEFINITION_PATHS = ['.circleci/', '.gitlab-ci.yml', '.buildkite/', '.travis.yml', 'Jenkinsfile', 'appveyor.yml', '.appveyor.yml', '.drone.yml', 'bitbucket-pipelines.yml', '.woodpecker/', '.woodpecker.yml'];
+/** Every CI system's definition paths (GitHub Actions, Azure Pipelines, the rest): the gates' no-CI rule reads them from the base and head trees. */
+export const CI_TREE_PATHS = ['.github/workflows/', ...ADO_PIPELINE_PATHS, ...CI_DEFINITION_PATHS];
 export const LANE_PROTECTED_PATHS = ['.github/', '.copilot/', '.claude/', '.vscode/', '.mcp.json', '.husky/', '.omg/skills/', '.omc/skills/', 'AGENTS.md', 'CLAUDE.md', ...ADO_PIPELINE_PATHS, ...CI_DEFINITION_PATHS];
 const errText = (err) => (err instanceof Error ? err.message : String(err));
 /** The engine's env with the commit identity fixed, and no variable that redirects the index or object store. */

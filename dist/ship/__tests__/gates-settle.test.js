@@ -9,7 +9,7 @@ const NAMED = resolveShipConfig({ requiredChecks: ['check', 'lint'], advisoryChe
 const done = (name, at, state = 'SUCCESS') => ({ name, state, startedAt: iso(at - 20_000), completedAt: iso(at) });
 const noExec = () => { throw new Error('no gh call expected: the forge answers'); };
 /** GitHub reads where the base commit reported no check and the head has no suite. */
-const NO_CI_BASE = { baseChecks: () => [], suites: () => [], runApps: () => undefined };
+const NO_CI_BASE = { baseChecks: () => [], ciDefinitions: () => [], suites: () => [], baseSuites: () => [], runApps: () => undefined };
 /** A forge that reports `checks()` / `runs()` for HEAD on every read. */
 function forge(checks, runs = () => []) {
     return {
@@ -176,6 +176,56 @@ describe('review-493 fix round 1: no-CI only when the base ran none, NEUTRAL, ch
         expect((await run(reads({ runApps: () => [{ name: 'build', appId: 15368 }] }), bound)).verdict).toBe('green');
         expect((await run(reads({ runApps: () => undefined }), bound)).verdict).toBe('green');
         expect((await run(reads({ runApps: () => [{ name: 'build', appId: 999 }] }), config)).verdict).toBe('green');
+    });
+});
+describe('review-493b fix round 2: no-CI needs no CI definition and a readable empty suite list; idle apps judged by the base', () => {
+    const reads = (o) => ({ ...NO_CI_BASE, ...o });
+    const short = resolveShipConfig({ watchTimeoutMinutes: 10 });
+    const watch = async (r) => {
+        const c = clock();
+        const out = await watchGates({ exec: noExec, pr: 1, config: short, known: [], headSha: HEAD, watch: true, forge: forge(() => []), reads: r, ...c });
+        return { out, elapsed: c.now() - T0 };
+    };
+    it('B-1(a): a workflow in the tree, a base without checks (pull_request-only CI) and a silent head stay pending past the window', async () => {
+        const { out, elapsed } = await watch(reads({ ciDefinitions: () => ['.github/workflows/x.yml'] }));
+        expect(out.timedOut).toBe(true);
+        expect(elapsed).toBeGreaterThan(CHECK_SETTLE_MS);
+        expect(out.report.verdict).toBe('pending');
+        expect(out.report.noChecks).toBeUndefined();
+        expect(out.report.noHeadChecks).toEqual({ base: [], ciDefinitions: ['.github/workflows/x.yml'] });
+        const text = out.report.suggestions.join('\n');
+        expect(text).toContain('this repository has CI definitions (.github/workflows/x.yml) but nothing reported for this commit');
+        expect(text).not.toContain(NO_CI_CHECKS_NOTE);
+    });
+    it('B-1(a): a tree read failure never grants "no CI"', async () => {
+        const { out } = await watch(reads({ ciDefinitions: () => undefined }));
+        expect(out.report.verdict).toBe('pending');
+        expect(out.report.noHeadChecks).toEqual({ base: [], ciDefinitions: [] });
+        expect(out.report.suggestions.join('\n')).toContain('the CI definitions in the base and head trees could not be read');
+    });
+    it('B-1(b): an unreadable suite list never grants "no CI"', async () => {
+        const { out } = await watch(reads({ suites: () => undefined }));
+        expect(out.report.verdict).toBe('pending');
+        expect(out.report.noChecks).toBeUndefined();
+        expect(out.report.noHeadChecks).toEqual({ base: [], suites: 'unreadable' });
+        expect(out.report.suggestions.join('\n')).toContain('its check suites could not be read');
+    });
+    it('no CI definition anywhere, base and head without checks, suites read and empty: green with the note', async () => {
+        const { out } = await watch(reads({}));
+        expect(out.report.verdict).toBe('green');
+        expect(out.report.noChecks).toBe(true);
+        expect(out.report.suggestions.join('\n')).toContain(NO_CI_CHECKS_NOTE);
+    });
+    it('N-1: a queued 0-run suite of an app that ran checks on the base keeps the gates pending; an app idle on both stops blocking', () => {
+        const green = evaluateChecks(1, [done('check', T0)], DEFAULT);
+        const late = T0 + 10 * CHECK_SETTLE_MS;
+        const head = () => [{ status: 'queued', app: 'buildkite', runs: 0 }, { status: 'completed', app: 'github-actions', runs: 3 }];
+        const ranOnBase = applySettle(green, DEFAULT, late, T0, reads({ suites: head, baseSuites: () => [{ status: 'completed', app: 'buildkite', runs: 2 }] }), HEAD);
+        expect(ranOnBase.verdict).toBe('pending');
+        expect(ranOnBase.pending).toEqual(['check suite buildkite (queued)']);
+        expect(applySettle(green, DEFAULT, late, T0, reads({ suites: head, baseSuites: () => [{ status: 'queued', app: 'buildkite', runs: 0 }] }), HEAD).verdict).toBe('green');
+        // An unreadable base suite list keeps the app blocking (fail closed).
+        expect(applySettle(green, DEFAULT, late, T0, reads({ suites: head, baseSuites: () => undefined }), HEAD).verdict).toBe('pending');
     });
 });
 //# sourceMappingURL=gates-settle.test.js.map

@@ -82,6 +82,8 @@ export declare const ADO_PIPELINE_PATHS: readonly string[];
  * drop a CI system's definition and with it the checks.
  */
 export declare const CI_DEFINITION_PATHS: readonly string[];
+/** Every CI system's definition paths (GitHub Actions, Azure Pipelines, the rest): the gates' no-CI rule reads them from the base and head trees. */
+export declare const CI_TREE_PATHS: readonly string[];
 export declare const LANE_PROTECTED_PATHS: readonly string[];
 export type LaneCommitRefusal = 'moved' | 'gitlink' | 'escaped' | 'protected' | 'secret' | 'empty' | 'error';
 /** One secret-shaped hit of the content scan: the path and the shape, never the value. */

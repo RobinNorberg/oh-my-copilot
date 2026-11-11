@@ -99,10 +99,15 @@ export interface GateReport {
      * Nothing reported for this head past the settle window, but the gates do
      * not treat the repository as having no CI (applySettle): `base` = the
      * checks the PR's base commit reported, undefined = not read (unreadable,
-     * or a read with no GitHub API access). Text: noHeadChecksText.
+     * or a read with no GitHub API access); `ciDefinitions` = the CI
+     * definition files the base or head tree holds (empty list = the trees
+     * could not be read); `suites` = the head's check suites could not be
+     * read, or GitHub lists some (all completed) for it. Text: noHeadChecksText.
      */
     noHeadChecks?: {
         base?: string[];
+        ciDefinitions?: string[];
+        suites?: 'unreadable' | 'present';
     };
 }
 /**
@@ -113,8 +118,20 @@ export interface GateReport {
 export interface GateHeadReads {
     /** The check names the PR's base commit reported (the no-CI rule). */
     baseChecks: () => readonly string[] | undefined;
+    /**
+     * The CI definition files (`.github/workflows/` and the other CI systems')
+     * in the sealed base commit's tree or the head's tree (the no-CI rule:
+     * any = this repository has CI); undefined = unreadable.
+     */
+    ciDefinitions: () => readonly string[] | undefined;
     /** The head's check suites (green needs each completed). */
     suites: (head: string) => ReadonlyArray<{
+        status: string;
+        app?: string;
+        runs: number;
+    }> | undefined;
+    /** The PR base commit's check suites (an idle app's suite is exempt only when that app ran nothing on the base either). */
+    baseSuites: () => ReadonlyArray<{
         status: string;
         app?: string;
         runs: number;
@@ -154,8 +171,10 @@ export declare function missingCheckHint(missing: readonly string[], config: Pic
  *   out the window (a late check may still appear), and a head with no check
  *   and no workflow run is green with `noChecks` once the window passed,
  *   but only when `reads.baseChecks` says the base commit reported no check
- *   either; otherwise (or unreadable, or no `reads`) it stays pending with
- *   `noHeadChecks`.
+ *   either, `reads.ciDefinitions` finds no CI definition in the base or head
+ *   tree, and the head's check suites read succeeded and are empty;
+ *   otherwise (or any of them unreadable, or no `reads`) it stays pending
+ *   with `noHeadChecks`.
  * - `reads.suites` (the head's check suites, when readable): green also needs
  *   each suite completed (openSuites).
  * - names required: when every reported check and run completed, nothing
@@ -164,9 +183,7 @@ export declare function missingCheckHint(missing: readonly string[], config: Pic
  */
 export declare function applySettle(report: GateReport, config: Pick<ShipConfig, 'requiredChecks' | 'advisoryChecks' | 'requiredChecksFrom'>, now: number, watchedSince: number | undefined, reads?: GateHeadReads, head?: string): GateReport;
 /** Why a head that reported nothing is not "no CI" (GateReport.noHeadChecks): the park, heartbeat and suggestion text. */
-export declare function noHeadChecksText(n: {
-    base?: readonly string[];
-}): string;
+export declare function noHeadChecksText(n: NonNullable<GateReport['noHeadChecks']>): string;
 /**
  * ShipConfig.requiredCheckApps on the head's check runs (`runApps`): a
  * required name whose check runs all come from another app is pending (a
