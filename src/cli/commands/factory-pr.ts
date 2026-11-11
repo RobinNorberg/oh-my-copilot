@@ -130,7 +130,9 @@ export async function runFactoryPr(
     const lagging = /^[0-9a-f]{40}$/.test(localBase) && /^[0-9a-f]{40}$/.test(v.baseRefOid)
       && git('git', ['merge-base', '--is-ancestor', v.baseRefOid, localBase], { cwd: ctx.root, env: TRUSTED_READ_ENV }).status === 0;
     if (localBase !== v.baseRefOid && !lagging) {
-      throw new Error(`local PR #${n}: the local forge mirror's ${v.baseRefName} is at ${v.baseRefOid}, which is not your ${v.baseRefName} ${localBase || '(unreadable)'} or an ancestor of it; the ${action} would use a base you do not have. Check what wrote the mirror, or let omg factory run sync it, then read the PR again`);
+      // The base name comes from the PR store: shown, never printed raw.
+      const baseName = visibleLine(v.baseRefName);
+      throw new Error(`local PR #${n}: the local forge mirror's ${baseName} is at ${v.baseRefOid}, which is not your ${baseName} ${localBase || '(unreadable)'} or an ancestor of it; the ${action} would use a base you do not have. Check what wrote the mirror, or let omg factory run sync it, then read the PR again`);
     }
     base = localBase;
   }

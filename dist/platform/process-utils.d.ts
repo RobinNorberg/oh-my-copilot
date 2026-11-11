@@ -44,12 +44,15 @@ export declare function getProcessStartTime(pid: number, deadlineAt?: number): P
  *
  * - Linux: reads /proc/<pid>/stat synchronously (microseconds).
  * - macOS: spawnSync('ps', ...) to get the process start time.
- * - Windows: spawnSync('powershell', ...) to get StartTime ticks.
+ * - Windows: spawnSync('powershell', ...) to get StartTime ticks; with
+ *   `fallbacks`, then CIM and wmic, as getProcessStartIdentity.
  *
  * Returns null if the identity cannot be captured synchronously. The caller
  * must fail closed (no signal) when this returns null.
  */
-export declare function getProcessStartIdentitySync(pid: number): string | null;
+export declare function getProcessStartIdentitySync(pid: number, o?: {
+    fallbacks?: boolean;
+}): string | null;
 /**
  * Gracefully terminate a process with escalation.
  */

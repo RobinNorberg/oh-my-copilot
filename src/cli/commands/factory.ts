@@ -538,6 +538,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
             if (result.closedPr !== undefined) console.log(chalk.green(`closed local PR #${result.closedPr} (cancelled)`));
             if (result.keptBranch) console.log(chalk.green(`kept the run's branch as ${result.keptBranch} in the mirror`));
             console.log(chalk.green(`moved the run state to ${result.stateMovedTo}; omg factory run ${issue} starts a new run`));
+            if (result.claimKept) console.log(chalk.yellow(`the claim on the item was left in place: ${result.claimKept}`));
           }
           return 0;
         } finally {

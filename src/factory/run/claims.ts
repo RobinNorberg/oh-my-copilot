@@ -80,7 +80,7 @@ export const isShallowClaimRepo = (repo: string): boolean => isLocalClaimRepo(re
 
 /** The one line a command prints when this checkout is a shallow clone on the local forge. */
 export function shallowClaimWarning(root: string, repo: string): string {
-  return `omg factory: ${root} is a shallow clone, so its claims are keyed ${repo} and shared with no other clone (another clone may run the same item); optional: git fetch --unshallow gives it the shared key`;
+  return `omg factory: ${root} is a shallow clone, so its claims are keyed ${repo} and not shared with full clones (a full clone may run the same item; shallow clones at the same boundary do share them); optional: git fetch --unshallow gives it the full clones' key`;
 }
 
 /**
@@ -93,7 +93,8 @@ export function shallowClaimWarning(root: string, repo: string): string {
  * shares the root commit shares the key (a false busy, which `run release`
  * clears). A shallow clone's boundary commits count as roots, so it gets a
  * key of its own, `local-shallow:<sha>`: it shares no claim with the full
- * clones (shallowClaimWarning says so), and every command keeps working.
+ * clones (shallow clones at the same boundary share one; shallowClaimWarning
+ * says so), and every command keeps working.
  */
 export function localFactoryClaimRepo(exec: Exec, root: string): string | null {
   let shallow = false;
@@ -316,6 +317,8 @@ export function claimBusyMessage(key: FactoryRunKey, hold: ClaimHold): string {
 export interface HeldClaim {
   release: () => void;
   park: (at: string) => void;
+  /** Local forge: remove this checkout's records of the item under the keys it no longer computes (sweepRootClaims); never throws. */
+  sweep?: () => void;
   tookOver?: ClaimRecord;
 }
 
@@ -352,6 +355,7 @@ export function acquireFactoryClaim(ledgerDir: string, repoUrl: string, root: st
       atomicWriteFileSync(path, `${JSON.stringify(parked)}\n`);
     }),
     ...(tookOver ? { tookOver } : {}),
+    ...(isLocalClaimRepo(repoUrl) ? { sweep: () => { try { sweepRootClaims(ledgerDir, me, key, path, { deps, platform }); } catch { /* a live one stays: judged by its own run */ } } } : {}),
   };
 }
 
@@ -369,8 +373,13 @@ export function settleFactoryClaim(claim: HeldClaim, root: string, key: FactoryR
     const p = runPhase(root, key, ledgerDir);
     terminal = !('unreadable' in p) && (p.phase === null || TERMINAL_FACTORY_PHASES.includes(p.phase));
   } catch { /* unreadable: parked, never released */ }
-  if (terminal) claim.release();
-  else claim.park(at);
+  if (terminal) {
+    claim.release();
+    // After git fetch --unshallow the run's earlier claim sits under its old key: it goes with the run (F4).
+    claim.sweep?.();
+  } else {
+    claim.park(at);
+  }
   return terminal ? 'released' : 'parked';
 }
 
@@ -381,22 +390,35 @@ export function settleFactoryClaim(claim: HeldClaim, root: string, key: FactoryR
  * the deleted path, or null when there was nothing to delete.
  */
 export function removeFactoryClaim(ledgerDir: string, repoUrl: string, root: string, key: FactoryRunKey, o: { onlyRoot?: boolean; deps?: OwnerDeps; platform?: NodeJS.Platform } = {}): string | null {
-  const own = removeClaimFile(factoryClaimPath(ledgerDir, repoUrl, root, key), root, key, o);
-  if (!isShallowClaimRepo(repoUrl)) return own;
-  // A shallow clone cannot compute the key a claim of this checkout was recorded under before (a full history, or
-  // an earlier depth): that claim, found by its recorded root, goes too, never another checkout's.
+  const ownPath = factoryClaimPath(ledgerDir, repoUrl, root, key);
+  const own = removeClaimFile(ownPath, root, key, o);
+  if (!isLocalClaimRepo(repoUrl)) return own;
+  return sweepRootClaims(ledgerDir, root, key, ownPath, o) ?? own;
+}
+
+/**
+ * The local forge's key follows the history (local-shallow: while shallow,
+ * local-root: after `git fetch --unshallow`, another boundary at another
+ * depth), so a claim of this checkout may sit under a key it no longer
+ * computes: every other claim dir's record of `key` whose recorded root is
+ * this checkout goes, never another checkout's. Another checkout's record is
+ * skipped before the live check, so another clone's or repository's live run
+ * of the same item number never makes this command busy. The last removed
+ * path, or null.
+ */
+function sweepRootClaims(ledgerDir: string, root: string, key: FactoryRunKey, ownPath: string, o: { deps?: OwnerDeps; platform?: NodeJS.Platform }): string | null {
   let dirs: string[] = [];
   try { dirs = readdirSync(join(ledgerDir, 'claims')).sort(); } catch { /* no claims yet */ }
-  let found = own;
+  let found: string | null = null;
   for (const dir of dirs) {
     const path = join(ledgerDir, 'claims', dir, `run-${key}.owner`);
-    if (path === factoryClaimPath(ledgerDir, repoUrl, root, key)) continue;
-    found = removeClaimFile(path, root, key, { ...o, onlyRoot: true }) ?? found;
+    if (path === ownPath) continue;
+    found = removeClaimFile(path, root, key, { ...o, onlyRoot: true, rootFirst: true }) ?? found;
   }
   return found;
 }
 
-function removeClaimFile(path: string, root: string, key: FactoryRunKey, o: { onlyRoot?: boolean; deps?: OwnerDeps; platform?: NodeJS.Platform }): string | null {
+function removeClaimFile(path: string, root: string, key: FactoryRunKey, o: { onlyRoot?: boolean; rootFirst?: boolean; deps?: OwnerDeps; platform?: NodeJS.Platform }): string | null {
   if (!existsSync(path)) return null;
   const deps = o.deps ?? defaultOwnerDeps();
   const platform = o.platform ?? process.platform;
@@ -404,13 +426,15 @@ function removeClaimFile(path: string, root: string, key: FactoryRunKey, o: { on
     if (!existsSync(path)) return null;
     let claim: unknown;
     try { claim = JSON.parse(readFileSync(path, 'utf8')); } catch { claim = undefined; }
+    const mine = () => {
+      const other = isClaimRecord(claim) ? claimRoot(claim.root) : null;
+      return other !== null && canonicalPath(other, platform) === canonicalPath(root, platform);
+    };
+    if (o.rootFirst && !mine()) return null;
     if (isClaimRecord(claim) && claim.pid !== undefined && ownerHolds(claim as FactoryOwner, deps)) {
       throw new FactoryBusyError(claimBusyMessage(key, { state: 'live', path, claim, why: `claimed by a live engine (${describeOwner(claim)})` }));
     }
-    if (o.onlyRoot) {
-      const other = isClaimRecord(claim) ? claimRoot(claim.root) : null;
-      if (other === null || canonicalPath(other, platform) !== canonicalPath(root, platform)) return null;
-    }
+    if (o.onlyRoot && !mine()) return null;
     unlinkSync(path);
     return path;
   });

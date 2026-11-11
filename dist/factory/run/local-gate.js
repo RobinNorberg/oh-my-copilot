@@ -366,7 +366,7 @@ async function runSandboxedGate(i, base, now) {
     if (!r.ran) {
         drop();
         // `noVerdict`: the command was handed to the sandbox and gave no verdict (gate-no-verdict, never the ack park).
-        return { started: false, reason: r.reason, sandbox: true, ...(r.started ? { noVerdict: true } : {}) };
+        return { started: false, reason: r.reason, sandbox: true, ...(r.started ? { noVerdict: true } : {}), ...(r.refused ? { refused: true } : {}) };
     }
     const output = `${r.output}${r.timedOut ? `\nlocal gate timed out after ${i.timeoutMinutes} min` : ''}`;
     const done = {

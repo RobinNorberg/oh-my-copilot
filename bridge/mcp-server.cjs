@@ -12046,7 +12046,7 @@ async function getProcessStartTimeLinux(pid, deadlineAt) {
     return void 0;
   }
 }
-function getProcessStartIdentitySync(pid) {
+function getProcessStartIdentitySync(pid, o = {}) {
   if (!Number.isInteger(pid) || pid <= 0) return null;
   if (process.platform === "linux") {
     try {
@@ -12075,16 +12075,31 @@ function getProcessStartIdentitySync(pid) {
     }
   }
   if (process.platform === "win32") {
+    const commands = [
+      `$p = Get-Process -Id ${pid} -ErrorAction Stop; if ($p -and $p.StartTime) { $p.StartTime.ToUniversalTime().Ticks }`,
+      ...o.fallbacks ? [`$p = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" -ErrorAction Stop; if ($p -and $p.CreationDate) { ([DateTime]$p.CreationDate).ToUniversalTime().Ticks }`] : []
+    ];
+    for (const cmd of commands) {
+      try {
+        const result = (0, import_child_process.spawnSync)(
+          "powershell",
+          ["-NoProfile", "-NonInteractive", "-Command", cmd],
+          { encoding: "utf8", timeout: o.fallbacks ? 5e3 : 3e3, windowsHide: true }
+        );
+        const ticks = result.status === 0 ? result.stdout?.trim().match(/^\d+$/)?.[0] : void 0;
+        if (ticks) return `ticks:${ticks}`;
+      } catch {
+      }
+    }
+    if (!o.fallbacks) return null;
     try {
-      const cmd = `$p = Get-Process -Id ${pid} -ErrorAction Stop; if ($p -and $p.StartTime) { $p.StartTime.ToUniversalTime().Ticks }`;
       const result = (0, import_child_process.spawnSync)(
-        "powershell",
-        ["-NoProfile", "-NonInteractive", "-Command", cmd],
-        { encoding: "utf8", timeout: 3e3, windowsHide: true }
+        "wmic",
+        ["process", "where", `ProcessId=${pid}`, "get", "CreationDate", "/format:csv"],
+        { encoding: "utf8", timeout: 5e3, windowsHide: true }
       );
-      if (result.status !== 0 || !result.stdout) return null;
-      const ticks = result.stdout.trim().match(/^\d+$/)?.[0];
-      return ticks ? `ticks:${ticks}` : null;
+      const match = result.status === 0 ? result.stdout?.match(/(\d{14}\.\d{6}[+-]\d{3})/) : null;
+      return match ? dmtfCreationDateToTicks(match[1]) : null;
     } catch {
       return null;
     }
@@ -30948,20 +30963,24 @@ function trustedUserConfigPathOrDefault() {
     return "the default user config location";
   }
 }
-function configuredProtectedPaths(root) {
+function configuredProtectedPaths(root, onProblem) {
   const paths = /* @__PURE__ */ new Set();
+  let userPath = null;
+  try {
+    userPath = trustedUserConfigPath();
+  } catch {
+  }
+  const projectPath = resolveProjectConfigPath(root);
   const layers = [
-    [() => userConfigLayers().trustedUser, "user config (default location)"],
-    [() => {
-      const path15 = resolveProjectConfigPath(root);
-      return (0, import_fs47.existsSync)(path15) ? parseJsonc((0, import_fs47.readFileSync)(path15, "utf8")) : void 0;
-    }, "project config"]
+    [() => userConfigLayers().trustedUser, userPath ? `user config ${userPath}` : "user config (default location)"],
+    [() => (0, import_fs47.existsSync)(projectPath) ? parseJsonc((0, import_fs47.readFileSync)(projectPath, "utf8")) : void 0, `project config ${projectPath}`]
   ];
   for (const [read, source] of layers) {
     try {
       const file = shipBlock(read(), source).knownFlakyFile;
       if (isRepoPath(file) && file !== DEFAULT_SHIP_CONFIG.knownFlakyFile) paths.add(file);
-    } catch {
+    } catch (error2) {
+      onProblem?.(source, error2 instanceof Error ? error2.message : String(error2));
     }
   }
   return [...paths];
@@ -41291,7 +41310,7 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
   const branch2 = mode === "named" ? getBranchName(teamName, workerName) : "HEAD";
   validateResolvedPath(wtPath, (0, import_node_path10.join)(getOmcRoot(repoRoot), "team"));
   try {
-    runHostGit(repoRoot, ["worktree", "prune"]);
+    if (!(0, import_node_fs9.existsSync)(wtPath)) removeStaleWorktreeEntry(repoRoot, wtPath);
   } catch {
   }
   if ((0, import_node_fs9.existsSync)(wtPath)) {
@@ -41476,7 +41495,7 @@ function removeWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
       }
     }
     try {
-      runHostGit(repoRoot, ["worktree", "prune"]);
+      if (!(0, import_node_fs9.existsSync)(wtPath)) removeStaleWorktreeEntry(repoRoot, wtPath);
     } catch {
     }
     if (branchHead) deleteWorkerBranchAt(repoRoot, branch2, branchHead);
@@ -41517,6 +41536,46 @@ function removeTreeByPath(dir) {
   }
   unlinkUntrackedWorktreeLinks(dir, [], false);
   (0, import_node_fs9.rmSync)(dir, { recursive: true, force: true });
+}
+function removeStaleWorktreeEntry(repoRoot, wtPath, adminName) {
+  if ((0, import_node_fs9.existsSync)(wtPath)) throw new Error(`stale_worktree_entry: ${wtPath} exists, so its worktree entry is not stale`);
+  const common = (0, import_node_path10.resolve)(repoRoot, runHostGit(repoRoot, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).trim());
+  const root = (0, import_node_path10.join)(common, "worktrees");
+  const want = canonicalPathForComparison((0, import_node_path10.join)(wtPath, ".git"));
+  const real2 = (dir2) => {
+    try {
+      const st = (0, import_node_fs9.lstatSync)(dir2);
+      return st.isDirectory() && !st.isSymbolicLink();
+    } catch {
+      return false;
+    }
+  };
+  const namesWtPath = (name2) => {
+    const dir2 = (0, import_node_path10.join)(root, name2);
+    if (!isAdminDirOf(common, dir2) || !real2(dir2)) return false;
+    try {
+      const gitdir = (0, import_node_path10.join)(dir2, "gitdir");
+      if (!(0, import_node_fs9.lstatSync)(gitdir).isFile()) return false;
+      return canonicalPathForComparison((0, import_node_path10.resolve)(dir2, (0, import_node_fs9.readFileSync)(gitdir, "utf8").trim())) === want;
+    } catch {
+      return false;
+    }
+  };
+  let name;
+  if (adminName !== void 0) {
+    if (!namesWtPath(adminName)) throw new Error(`stale_worktree_entry: ${(0, import_node_path10.join)(root, adminName)} is not a real directory in ${root} whose gitdir names ${(0, import_node_path10.join)(wtPath, ".git")}`);
+    name = adminName;
+  } else {
+    const matches = real2(root) ? (0, import_node_fs9.readdirSync)(root).filter(namesWtPath) : [];
+    if (matches.length === 0) return false;
+    if (matches.length > 1) throw new Error(`stale_worktree_entry: ${matches.length} entries in ${root} name ${(0, import_node_path10.join)(wtPath, ".git")}`);
+    name = matches[0];
+  }
+  const dir = (0, import_node_path10.join)(root, name);
+  if ((0, import_node_fs9.existsSync)((0, import_node_path10.join)(dir, "locked"))) throw new Error(`stale_worktree_entry: ${dir} is locked`);
+  removeTreeByPath(dir);
+  if (findRegisteredWorktree(repoRoot, wtPath) !== null) throw new Error(`stale_worktree_entry: git still lists ${wtPath} after its entry ${dir} was removed`);
+  return true;
 }
 function removeTamperedWorktree(repoRoot, teamName, workerName, wtPath, links, commonDir) {
   const removeTree = removeTreeByPath;
@@ -46987,6 +47046,8 @@ function humanReviewShapeProblem(s) {
   if (h !== void 0 && (typeof h !== "object" || h === null || Array.isArray(h) || !isStr2(h.seenAt) || !isStr2(h.head) || !HEX409.test(h.head) || !isStr2(h.digest) || !HEX64.test(h.digest) || h.threadIds !== void 0 && (!Array.isArray(h.threadIds) || h.threadIds.length > MAX_HUMAN_THREAD_IDS || !h.threadIds.every(THREAD_ID)) || Object.keys(h).some((k) => k !== "seenAt" && k !== "head" && k !== "digest" && k !== "threadIds"))) return "humanReview";
   if (s.unsandboxedAck !== void 0 && (!isStr2(s.unsandboxedAck) || !HEX409.test(s.unsandboxedAck))) return "unsandboxedAck";
   if (s.unsandboxedGatesAck !== void 0 && (!isStr2(s.unsandboxedGatesAck) || !HEX409.test(s.unsandboxedGatesAck))) return "unsandboxedGatesAck";
+  if (s.sandboxedPrepareHead !== void 0 && (!isStr2(s.sandboxedPrepareHead) || !HEX409.test(s.sandboxedPrepareHead))) return "sandboxedPrepareHead";
+  if (s.sandboxedGateHead !== void 0 && (!isStr2(s.sandboxedGateHead) || !HEX409.test(s.sandboxedGateHead))) return "sandboxedGateHead";
   const cal = s.gateCalibration;
   if (cal !== void 0 && (typeof cal !== "object" || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
     const e = v;
@@ -47294,7 +47355,7 @@ function factoryClaimRepo(exec, root) {
   }
 }
 function shallowClaimWarning(root, repo) {
-  return `omg factory: ${root} is a shallow clone, so its claims are keyed ${repo} and shared with no other clone (another clone may run the same item); optional: git fetch --unshallow gives it the shared key`;
+  return `omg factory: ${root} is a shallow clone, so its claims are keyed ${repo} and not shared with full clones (a full clone may run the same item; shallow clones at the same boundary do share them); optional: git fetch --unshallow gives it the full clones' key`;
 }
 function localFactoryClaimRepo(exec, root) {
   let shallow = false;
@@ -47466,7 +47527,13 @@ function acquireFactoryClaim(ledgerDir, repoUrl, root, key, now, deps = defaultO
       atomicWriteFileSync(path15, `${JSON.stringify(parked)}
 `);
     }),
-    ...tookOver ? { tookOver } : {}
+    ...tookOver ? { tookOver } : {},
+    ...isLocalClaimRepo(repoUrl) ? { sweep: () => {
+      try {
+        sweepRootClaims(ledgerDir, me, key, path15, { deps, platform });
+      } catch {
+      }
+    } } : {}
   };
 }
 function settleFactoryClaim(claim, root, key, ledgerDir, at) {
@@ -47476,9 +47543,52 @@ function settleFactoryClaim(claim, root, key, ledgerDir, at) {
     terminal = !("unreadable" in p) && (p.phase === null || TERMINAL_FACTORY_PHASES.includes(p.phase));
   } catch {
   }
-  if (terminal) claim.release();
-  else claim.park(at);
+  if (terminal) {
+    claim.release();
+    claim.sweep?.();
+  } else {
+    claim.park(at);
+  }
   return terminal ? "released" : "parked";
+}
+function sweepRootClaims(ledgerDir, root, key, ownPath, o) {
+  let dirs = [];
+  try {
+    dirs = (0, import_fs82.readdirSync)((0, import_path99.join)(ledgerDir, "claims")).sort();
+  } catch {
+  }
+  let found = null;
+  for (const dir of dirs) {
+    const path15 = (0, import_path99.join)(ledgerDir, "claims", dir, `run-${key}.owner`);
+    if (path15 === ownPath) continue;
+    found = removeClaimFile(path15, root, key, { ...o, onlyRoot: true, rootFirst: true }) ?? found;
+  }
+  return found;
+}
+function removeClaimFile(path15, root, key, o) {
+  if (!(0, import_fs82.existsSync)(path15)) return null;
+  const deps = o.deps ?? defaultOwnerDeps();
+  const platform = o.platform ?? process.platform;
+  return withOwnerFileLock(path15, () => {
+    if (!(0, import_fs82.existsSync)(path15)) return null;
+    let claim;
+    try {
+      claim = JSON.parse((0, import_fs82.readFileSync)(path15, "utf8"));
+    } catch {
+      claim = void 0;
+    }
+    const mine = () => {
+      const other = isClaimRecord(claim) ? claimRoot(claim.root) : null;
+      return other !== null && canonicalPath(other, platform) === canonicalPath(root, platform);
+    };
+    if (o.rootFirst && !mine()) return null;
+    if (isClaimRecord(claim) && claim.pid !== void 0 && ownerHolds(claim, deps)) {
+      throw new FactoryBusyError(claimBusyMessage(key, { state: "live", path: path15, claim, why: `claimed by a live engine (${describeOwner(claim)})` }));
+    }
+    if (o.onlyRoot && !mine()) return null;
+    (0, import_fs82.unlinkSync)(path15);
+    return path15;
+  });
 }
 var import_crypto24, import_fs82, import_path99, LOCAL_CLAIM_PREFIX, LOCAL_SHALLOW_CLAIM_PREFIX, HEX4010, isLocalClaimRepo, isShallowClaimRepo, GITHUB_ALIASES, isClaimRecord, SHARED_STATE_WARNING;
 var init_claims = __esm({
@@ -47725,7 +47835,7 @@ ${r.stderr}`));
       if (r.notStarted !== void 0) return fail2(PREPARE_SANDBOX_STEP, `${name}: ${r.notStarted}`);
       if (r.status !== 0) return fail2(name, tail(`${r.stdout}
 ${r.stderr}`));
-      steps.push({ name, status: "ok", detail: args.slice(1).join(" ").slice(0, 300) });
+      steps.push({ name, status: "ok", detail: args.slice(1).map(visibleLine).join(" ").slice(0, 300) });
     }
   }
   if (found.lost.inventory) return fail2("inventory", found.lost.inventory);
@@ -47766,6 +47876,7 @@ var init_prepare2 = __esm({
     "use strict";
     import_fs85 = require("fs");
     import_path101 = require("path");
+    init_review_feedback();
     init_config2();
     INVENTORY_DIR = "inventory";
     INVENTORY_SCRIPT = "scripts/generate-inventory-graph.mjs";
@@ -48272,6 +48383,14 @@ var init_sanitize = __esm({
       [/\bgithub_pat_[A-Za-z0-9_]{20,}/g, REDACTED2],
       [/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, REDACTED2],
       [/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, `Bearer ${REDACTED2}`],
+      // A JWT: base64url header and payload (both JSON objects, so `eyJ`) and an optional signature.
+      [/\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*/g, REDACTED2],
+      // npm credentials: .npmrc (`//registry/:_authToken=…`, legacy `_auth=` base64 and `_password=`), the JSON or colon
+      // form (`npm config list --json`: `"_authToken": "…"`) and the env forms; any case. The left boundary keeps a key
+      // that only ends in one of these names (`config_password=x`) as it is.
+      [/(?<![A-Za-z0-9])(_authToken|_auth|_password|NODE_AUTH_TOKEN|NPM_TOKEN|NPM_CONFIG__AUTHTOKEN)("?\s*[=:]\s*"?)[^\s"']+/gi, `$1$2${REDACTED2}`],
+      // OpenAI-style `sk-…` and Anthropic `sk-ant-…` keys (a digit somewhere, so a word like `sk-learn-…` stays).
+      [/\bsk-(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{20,}/g, REDACTED2],
       // URL userinfo: https://user:pass@host, https://token@host.
       [/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, `$1${REDACTED2}@`]
     ];
@@ -48283,15 +48402,33 @@ function sandboxShellCommand(platform, argv, cwd, marker) {
   if (argv.length === 0 || !/^[A-Za-z0-9-]+$/.test(marker) || [cwd, ...argv].some((a) => a.includes("\0"))) return null;
   if (platform === "win32") {
     if (argv.some((a) => a === "" || a.includes('"'))) return null;
-    const payload2 = Buffer.from(JSON.stringify({ cwd, argv }), "utf8").toString("base64");
+    const payload2 = Buffer.from([cwd, ...argv].join("\0"), "utf8").toString("base64");
     return [
-      `$omgP = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload2}')) | ConvertFrom-Json`,
-      "$omgV = @($omgP.argv)",
-      `if ($omgV.Count -eq ${argv.length} -and $omgP.cwd -is [string]) { Set-Location -LiteralPath $omgP.cwd -ErrorAction Stop; $ErrorActionPreference = 'Continue'; $omgE = $omgV[0]; $omgR = @($omgV | Select-Object -Skip 1); $global:LASTEXITCODE = $null; & $omgE @omgR 2>&1 | ForEach-Object { $omgL = "$_"; if ($omgL.Length -gt ${SHELL_LINE_CHARS}) { $omgL.Substring(0, ${SHELL_LINE_CHARS}) } else { $omgL } } | Select-Object -Last ${SHELL_OUTPUT_LINES}; "${marker} $LASTEXITCODE" }`
+      `$omgV = @([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload2}')).Split([char]0))`,
+      `if ($omgV.Count -eq ${argv.length + 1}) { Set-Location -LiteralPath $omgV[0] -ErrorAction Stop; $ErrorActionPreference = 'Continue'; $omgE = $omgV[1]; $omgR = @($omgV | Select-Object -Skip 2);$global:LASTEXITCODE = $null; & $omgE @omgR 2>&1 | ForEach-Object { $omgL = "$_"; if ($omgL.Length -gt ${SHELL_LINE_CHARS}) { $omgL.Substring(0, ${SHELL_LINE_CHARS}) } else { $omgL } } | Select-Object -Last ${SHELL_OUTPUT_LINES}; "${marker} $LASTEXITCODE" }`
     ].join("; ");
   }
   const payload = Buffer.from([cwd, ...argv].map((w) => `${w}\0`).join(""), "utf8").toString("base64");
   return `omg_a=(); while IFS= read -r -d '' omg_w; do omg_a+=("$omg_w"); done < <(printf '%s' '${payload}' | base64 -d); if [ "\${#omg_a[@]}" -eq ${argv.length + 1} ] && omg_o=$(mktemp) && cd -- "\${omg_a[0]}"; then "\${omg_a[@]:1}" > "$omg_o" 2>&1; omg_s=$?; tail -c ${SHELL_OUTPUT_BYTES} -- "$omg_o"; rm -f -- "$omg_o"; printf '\\n%s %s\\n' '${marker}' "$omg_s"; fi`;
+}
+function sandboxCommandTooLong(platform, argv, cwd) {
+  const command = sandboxShellCommand(platform, argv, cwd, SIZING_MARKER);
+  return command !== null && command.length > sandboxCommandMaxChars(platform);
+}
+function splitFileListArgs(platform, exe, args, fixed, cwd) {
+  if (!sandboxCommandTooLong(platform, [exe, ...args], cwd) || args.length <= fixed + 1) return [[...args]];
+  const head = args.slice(0, fixed);
+  const parts = [];
+  let chunk = [];
+  for (const file of args.slice(fixed)) {
+    if (chunk.length > 0 && sandboxCommandTooLong(platform, [exe, ...head, ...chunk, file], cwd)) {
+      parts.push([...head, ...chunk]);
+      chunk = [];
+    }
+    chunk.push(file);
+  }
+  parts.push([...head, ...chunk]);
+  return parts;
 }
 function readMarker(output, marker) {
   const none = { code: null, output };
@@ -48309,11 +48446,16 @@ function redactGateOutput(text3) {
 }
 async function runSandboxed(argv, o, deps) {
   const notStarted = (reason) => ({ ran: false, reason });
+  const refuse = (reason) => ({ ran: false, reason, refused: true });
   const noVerdict = (reason) => ({ ran: false, reason, started: true });
   const sleep9 = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   const marker = `${MARKER_PREFIX}${(0, import_node_crypto4.randomBytes)(8).toString("hex")}`;
   const command = sandboxShellCommand(deps.platform, argv, o.cwd, marker);
-  if (command === null) return notStarted("the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)");
+  if (command === null) return refuse("the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)");
+  const max = sandboxCommandMaxChars(deps.platform);
+  if (command.length > max) {
+    return refuse(`the command is too long for the sandbox shell: it encodes to ${command.length} characters, above the ${max} that ${deps.platform === "win32" ? "a Windows command line" : "one shell argument"} can safely carry; shorten the configured command`);
+  }
   const jobHome = (0, import_node_path14.join)(o.jobRoot, `gate-${Date.now().toString(36)}-${(0, import_node_crypto4.randomBytes)(4).toString("hex")}`);
   const workDir = (0, import_node_path14.join)(jobHome, "work");
   let client = null;
@@ -48337,7 +48479,7 @@ async function runSandboxed(argv, o, deps) {
     (0, import_node_fs13.mkdirSync)((0, import_node_path14.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
     (0, import_node_fs13.mkdirSync)(env2.TEMP, { recursive: true });
     (0, import_node_fs13.writeFileSync)(env2.GIT_CONFIG_GLOBAL, "[credential]\n	helper =\n");
-    Object.assign(env2, { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never", COPILOT_ALLOW_ALL: "false" });
+    Object.assign(env2, { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never", COPILOT_ALLOW_ALL: "false", GIT_CEILING_DIRECTORIES: (0, import_node_path14.resolve)(o.jobRoot) });
     const gitHubToken = sessionGitHubToken(deps.env);
     const { CopilotClient, RuntimeConnection } = loaded2.module;
     const c = new CopilotClient({
@@ -48553,7 +48695,7 @@ function gateEnv(env2, home) {
     GCM_INTERACTIVE: "never"
   };
 }
-var import_node_crypto4, import_node_fs13, import_node_os6, import_node_path14, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS3, CANCEL_GRACE_MS, ATTEST_WAIT_MS, CREDENTIAL_FILES_READABLE_NOTE, MARKER_PREFIX, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, SHELL_LINE_CHARS, tail2, sandboxJobRoot, GATE_ENV_KEPT;
+var import_node_crypto4, import_node_fs13, import_node_os6, import_node_path14, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS3, CANCEL_GRACE_MS, ATTEST_WAIT_MS, CREDENTIAL_FILES_READABLE_NOTE, MARKER_PREFIX, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, SHELL_LINE_CHARS, sandboxCommandMaxChars, SIZING_MARKER, tail2, sandboxJobRoot, GATE_ENV_KEPT;
 var init_sandbox_exec = __esm({
   "src/factory/run/sandbox-exec.ts"() {
     "use strict";
@@ -48583,6 +48725,8 @@ var init_sandbox_exec = __esm({
     SHELL_OUTPUT_BYTES = 64 * 1024;
     SHELL_OUTPUT_LINES = 400;
     SHELL_LINE_CHARS = 2e3;
+    sandboxCommandMaxChars = (platform) => platform === "win32" ? 28e3 : 12e4;
+    SIZING_MARKER = `${MARKER_PREFIX}${"0".repeat(16)}`;
     tail2 = (text3) => {
       const clean = redactGateOutput(text3);
       return clean.length > SANDBOX_OUTPUT_TAIL_CHARS ? clean.slice(-SANDBOX_OUTPUT_TAIL_CHARS) : clean;
@@ -51284,7 +51428,7 @@ async function runSandboxedGate(i, base, now) {
   }
   if (!r.ran) {
     drop();
-    return { started: false, reason: r.reason, sandbox: true, ...r.started ? { noVerdict: true } : {} };
+    return { started: false, reason: r.reason, sandbox: true, ...r.started ? { noVerdict: true } : {}, ...r.refused ? { refused: true } : {} };
   }
   const output = `${r.output}${r.timedOut ? `
 local gate timed out after ${i.timeoutMinutes} min` : ""}`;
@@ -51731,26 +51875,6 @@ function checkoutChanges(root, checkout, raw) {
   }
   return parseStatusPaths(raw).filter((p) => p && !(ownLink && (p === "node_modules" || p === "node_modules/")));
 }
-function ignoredLink(checkout, ignored) {
-  const stack = ignored.map((p) => p.replace(/\/$/, ""));
-  while (stack.length > 0) {
-    const rel = stack.pop();
-    let st;
-    try {
-      st = (0, import_fs94.lstatSync)((0, import_path111.join)(checkout, rel));
-    } catch {
-      continue;
-    }
-    if (st.isSymbolicLink()) return rel;
-    if (!st.isDirectory()) continue;
-    for (const d of (0, import_fs94.readdirSync)((0, import_path111.join)(checkout, rel), { withFileTypes: true })) {
-      const child = `${rel}/${d.name}`;
-      if (d.isSymbolicLink()) return child;
-      if (d.isDirectory()) stack.push(child);
-    }
-  }
-  return null;
-}
 function parseStatusPaths(raw) {
   const records2 = raw.split("\0");
   const paths = [];
@@ -51791,6 +51915,12 @@ function calibrationArgs(c, dir) {
   const files = (vitest ? rest.slice(1) : rest).filter((f) => (0, import_fs94.existsSync)((0, import_path111.join)(dir, f)));
   if (files.length === 0) return [script, "--version"];
   return vitest ? [script, "run", ...files] : [script, ...files];
+}
+function fileListParts(c, cwd, platform = process.platform) {
+  const script = c.args[0];
+  if (c.kind !== "built-in" || script !== VITEST_SCRIPT && script !== ESLINT_SCRIPT) return [c];
+  const parts = splitFileListArgs(platform, c.exe, c.args, script === VITEST_SCRIPT ? 2 : 1, cwd);
+  return parts.length === 1 ? [c] : parts.map((args) => ({ ...c, argv: [c.exe, ...args], args }));
 }
 function errText5(error2) {
   return error2 instanceof Error ? error2.message : String(error2);
@@ -52051,7 +52181,7 @@ async function runFactoryEngine(o) {
     for (const path15 of ownerPaths) ledger.record(path15, null);
   }
 }
-var import_crypto28, import_fs94, import_os21, import_path111, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4015, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
+var import_crypto28, import_fs94, import_os21, import_path111, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4015, BUILT_IN_FILE_NAME_TOO_LONG, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
 var init_engine = __esm({
   "src/factory/run/engine.ts"() {
     "use strict";
@@ -52169,6 +52299,7 @@ var init_engine = __esm({
       }
     };
     HEX4015 = /^[0-9a-f]{40}$/;
+    BUILT_IN_FILE_NAME_TOO_LONG = "a changed file name is too long for the sandbox shell";
     cancelCommand = (key) => typeof key === "number" ? `omg factory run cancel ${key}` : `omg factory heal cancel ${key.slice("heal-".length)}`;
     resumeCommand = (key) => typeof key === "number" ? `omg factory run ${key}` : `omg factory heal approve ${key.slice("heal-".length)}`;
     HEAL_ACCEPTANCE = "the failing test(s) listed in classification.json pass, and `npm test` passes";
@@ -52240,6 +52371,8 @@ var init_engine = __esm({
       unsandboxedAllowed;
       /** The gate found the prepare checkout missing and sent the run back to prepare once in this invocation. */
       reprepared = false;
+      /** protectedExtras, once per invocation. */
+      protectedCache;
       /** The head `--allow-unsandboxed-gates` accepts (the gates-unsandboxed park's head, captured at resume). */
       gatesAllowed;
       /** factory.run.sandbox.gates, resolved once per trusted base commit. */
@@ -53134,11 +53267,7 @@ ${item.acceptance}
         }
         if (!result.worktree) return this.laneFailed(key, lane.kind, `lane ${lane.id} reports no local worktree, so the engine cannot commit its changes`);
         if (this.recheckFailed("before the engine commit")) return;
-        let extraProtected = [];
-        try {
-          extraProtected = configuredProtectedPaths(this.o.root);
-        } catch {
-        }
+        const extraProtected = this.protectedExtras().paths;
         const title = `${lane.kind}: ${oneLine(this.state.issueTitle ?? `issue ${this.o.issue}`)} (#${this.o.issue})`;
         const commit = commitLaneWork({
           worktree: result.worktree,
@@ -53170,12 +53299,37 @@ ${item.acceptance}
        * against a replaced start) is still caught before the push.
        */
       laneProtectedPaths() {
-        let extra = [];
+        const extra = this.protectedExtras();
+        return { paths: [...LANE_PROTECTED_PATHS, ...extra.paths], ...extra.problem ? { problem: extra.problem } : {} };
+      }
+      /**
+       * The configured protected paths (configuredProtectedPaths), read once per
+       * invocation; a layer that cannot be read is warned about once and named in
+       * `problem`, which parks every publish (protectedPathsUnread).
+       */
+      protectedExtras() {
+        if (this.protectedCache) return this.protectedCache;
+        const problems = [];
+        const sources = [];
+        let paths = [];
         try {
-          extra = configuredProtectedPaths(this.o.root);
-        } catch {
+          paths = configuredProtectedPaths(this.o.root, (source, error2) => {
+            sources.push(source);
+            problems.push(error2.startsWith(source) ? error2 : `${source}: ${error2}`);
+          });
+        } catch (error2) {
+          problems.push(errText5(error2));
         }
-        return [...LANE_PROTECTED_PATHS, ...extra];
+        const problem = problems.length > 0 ? oneLine(problems.join("; "), 500) : void 0;
+        const fix = sources.length > 0 ? `fix the JSON in ${oneLine(sources.join(" and "), 500)}` : "fix the user config or .copilot/omg.jsonc";
+        if (problem) this.o.warn?.(`omg factory run: the configured protected paths cannot be read (${problem}); the engine will not push until they can: ${fix}`);
+        this.protectedCache = { paths, ...problem ? { problem, fix } : {} };
+        return this.protectedCache;
+      }
+      /** The park when a publish cannot know the whole protected list: fail closed, never push with a protection dropped. */
+      protectedPathsUnread(what, problem) {
+        const fix = this.protectedCache?.fix ?? "fix the user config or .copilot/omg.jsonc";
+        this.gate("protected-paths", `the configured protected paths cannot be read (${problem}), so ${what} cannot be checked against all of them; nothing was pushed. ${fix[0].toUpperCase()}${fix.slice(1)}, then rerun ${this.resume}`);
       }
       /** One fresh retry per phase key, then the named `<kind>-failed` gate. */
       laneFailed(key, kind, reason, gateName = `${kind}-failed`) {
@@ -53199,7 +53353,9 @@ ${item.acceptance}
         if (!s.baseSha) throw new FactoryStepError("publish needs the base sha the run started at");
         const files = listChangedFiles(this.exec, this.o.root, s.baseSha, cand);
         if (files === null) throw new FactoryStepError(`git diff ${s.baseSha.slice(0, 12)}...${cand.slice(0, 12)} failed`);
-        const hit = protectedChanges(files, this.laneProtectedPaths());
+        const protectedList = this.laneProtectedPaths();
+        if (protectedList.problem) return this.protectedPathsUnread("the change", protectedList.problem);
+        const hit = protectedChanges(files, protectedList.paths);
         if (hit.length > 0) {
           this.gate("protected-paths", `the change touches merge-rule paths: ${hit.join(", ")}; nothing was pushed`);
           return;
@@ -53493,6 +53649,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
       discardCheckout() {
         const path15 = checkoutPath(this.o.root, this.key);
         if (!(0, import_fs94.existsSync)(path15)) return;
+        if (this.legacyCheckout(path15)) return this.discardLegacyCheckout(path15);
         const gitArgs = this.checkoutGitArgs(path15);
         if (typeof gitArgs === "string") throw new FactoryStepError(`the engine's prepare checkout ${path15} cannot be read safely: ${gitArgs}${this.state.checkoutAdmin ? "; inspect it and remove it by hand" : `. ${this.freshCheckoutRecovery()}`}`);
         let head;
@@ -53507,7 +53664,8 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         }
         unlinkNodeModules(this.o.root, path15);
         try {
-          removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [head] });
+          const gitLinks = recordedWorktreeGitLinks(path15);
+          removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [head], ...gitLinks ? { gitLinks } : {} });
           forgetWorktreeGitLinks(path15);
         } catch (error2) {
           linkNodeModules(this.o.root, path15);
@@ -53516,6 +53674,53 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         this.save((x) => {
           const { checkoutHead: _c, checkoutAdmin: _a, ...rest } = x;
           return rest;
+        });
+        this.rebaseRecheck();
+      }
+      /**
+       * The prepare checkout's directory is gone (removed with rm -rf) while git
+       * still lists it: only its own admin entry (the recorded checkoutAdmin, or
+       * the one whose gitdir names the checkout) is removed, so `worktree add` can
+       * use the path again. Never `git worktree prune`: that would drop every
+       * stale entry, a user's worktree on an unmounted drive included. A
+       * checkout that is there, or not listed, is left alone.
+       */
+      pruneMissingCheckout(path15) {
+        if ((0, import_fs94.existsSync)(path15)) return;
+        const listed = runHostGit(this.o.root, ["worktree", "list", "--porcelain"]);
+        if (!listed.split(/\r?\n/).some((l) => l.startsWith("worktree ") && samePath2(l.slice("worktree ".length).trim(), path15))) return;
+        let removed;
+        try {
+          removed = removeStaleWorktreeEntry(this.o.root, path15, this.state.checkoutAdmin);
+        } catch (error2) {
+          throw new FactoryStepError(`the engine's prepare checkout ${path15} is gone, but its git worktree entry is not one the engine can remove safely (${visibleLine(errText5(error2))}); inspect it with git worktree list --porcelain and remove it by hand (git worktree remove --force ${path15}), then rerun ${this.resume}`);
+        }
+        if (!removed) throw new FactoryStepError(`the engine's prepare checkout ${path15} is gone and git still lists it, but no entry under the git dir's worktrees/ names it; remove it by hand (git worktree remove --force ${path15}), then rerun ${this.resume}`);
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `the prepare checkout ${path15} was removed by hand; its own stale git worktree entry was dropped (no other entry was touched)` }] }));
+        this.rebaseRecheck();
+      }
+      /** A prepare checkout an older release made: no admin dir in the run state and no git links recorded in this process. */
+      legacyCheckout(path15) {
+        return (0, import_fs94.existsSync)(path15) && !this.state.checkoutAdmin && !recordedWorktreeGitLinks(path15);
+      }
+      /**
+       * Discard a prepare checkout made before checkoutAdmin was recorded, as
+       * `omg factory run clean` does (the engine's node_modules link first, then
+       * the guarded removal, which refuses a tree with changes or commits the run
+       * did not make), so the run prepares a fresh one instead of parking.
+       */
+      discardLegacyCheckout(path15) {
+        unlinkNodeModules(this.o.root, path15);
+        const contained = [this.state.head, this.state.checkoutHead].filter((sha3) => typeof sha3 === "string" && HEX4015.test(sha3));
+        try {
+          removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [...new Set(contained)] });
+        } catch (error2) {
+          linkNodeModules(this.o.root, path15);
+          throw new FactoryStepError(`could not discard the engine's prepare checkout ${path15}, which an older release made: ${errText5(error2)}. ${this.freshCheckoutRecovery()}`);
+        }
+        this.save((x) => {
+          const { checkoutHead: _c, checkoutAdmin: _a, ...rest } = x;
+          return { ...rest, history: [...rest.history, { at: this.iso(), from: rest.phase, to: rest.phase, note: `discarded the prepare checkout an older release made (${path15}); it is prepared again` }] };
         });
         this.rebaseRecheck();
       }
@@ -53545,7 +53750,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           if (!links) return "its .git file or admin dir is missing, a link or malformed";
           const admin = this.state.checkoutAdmin;
           if (!admin) return `the run state records no admin dir for it (a checkout made before this release, or by something else)`;
-          if ((0, import_path111.basename)(links.adminDir) !== admin) return `its .git file names the admin dir ${links.adminDir}, but the engine's \`worktree add\` made ${admin}`;
+          if ((0, import_path111.basename)(links.adminDir) !== admin) return `its .git file names the admin dir ${visibleLine(links.adminDir)}, but the engine's \`worktree add\` made ${admin}`;
           let common;
           try {
             common = (0, import_path111.resolve)(this.o.root, this.run(["rev-parse", "--git-common-dir"]).trim());
@@ -53554,7 +53759,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           }
           const gitdir = links.gitdir.trim();
           if (!worktreeGitLinksIntact(path15, links, common) || !samePath2((0, import_path111.isAbsolute)(gitdir) ? gitdir : (0, import_path111.resolve)(links.adminDir, gitdir), (0, import_path111.join)(path15, ".git")) || links.commondir.trim() !== "../..") {
-            return `its .git file names ${links.adminDir}, which is not the admin dir git made for it under ${(0, import_path111.join)(common, "worktrees")}`;
+            return `its .git file names ${visibleLine(links.adminDir)}, which is not the admin dir git made for it under ${(0, import_path111.join)(common, "worktrees")}`;
           }
           try {
             recordWorktreeGitLinks(path15, links);
@@ -53616,6 +53821,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         if (this.recheckFailed("before prepare")) return;
         this.discardCheckout();
         const path15 = checkoutPath(this.o.root, this.key);
+        this.pruneMissingCheckout(path15);
         const branch2 = checkoutBranch(this.key);
         const common = (0, import_path111.resolve)(this.o.root, this.run(["rev-parse", "--git-common-dir"]).trim());
         const refProblem = jobRefProblem(common, this.o.root, `refs/heads/${branch2}`);
@@ -53664,7 +53870,8 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         }
         const fetched = result.steps.some((st) => st.name === "fetch" && st.status === "ok");
         const sandboxNote = ran.modes.size > 0 ? [{ at: this.iso(), from: s.phase, to: s.phase, note: `prepare checks on ${head.slice(0, 12)} ran ${[...ran.modes].map((m) => m === "enforced" ? "in the OS sandbox" : m === "enforced-readable" ? `in the OS sandbox (${CREDENTIAL_FILES_READABLE_NOTE})` : `unsandboxed (${m})`).join(" and ")}` }] : [];
-        this.save((x) => ({ ...x, checkoutHead, ...fetched ? { baseSha: view.baseRefOid } : {}, history: [...x.history, ...sandboxNote] }));
+        const sandboxed = ran.modes.has("enforced") || ran.modes.has("enforced-readable");
+        this.save((x) => ({ ...x, checkoutHead, ...sandboxed ? { sandboxedPrepareHead: checkoutHead } : {}, ...fetched ? { baseSha: view.baseRefOid } : {}, history: [...x.history, ...sandboxNote] }));
         if (result.ok) return this.publishPrepared(pr, head, checkoutHead, result.housekeepingCommits, view.baseRefOid, ran.acked && this.state.unsandboxedGatesAck === head);
         const failed = result.steps.at(-1);
         if (failed?.name === PREPARE_SANDBOX_STEP) {
@@ -53743,6 +53950,16 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         const at = head.slice(0, 12);
         return `${what} on ${at} would run the PR's own code WITHOUT the OS sandbox (${why}). Acknowledging trusts ALL of ${at}'s code (every prepare check, the inventory generator, the local gate, and the head prepare makes from it) with your user account: your files, git config and credentials, and a process it leaves behind keeps running as you. Review the PR's whole diff (tests, configs, scripts) yourself, then rerun ${this.resume} --allow-unsandboxed-gates to run it unsandboxed for ${at} only`;
       }
+      /**
+       * The park when the sandbox did not start for `what` after the PR's code of
+       * this head already ran in it (an earlier prepare check): the PR's code may
+       * be the cause (a full disk, a process it left), so the
+       * --allow-unsandboxed-gates offer is not made; no pass, no failure.
+       */
+      gateNoStartAfterCodeReason(head, what, why) {
+        const at = head.slice(0, 12);
+        return `${what} on ${at} could not start in the OS sandbox (${why}) after the PR's code of this head already ran in it (an earlier prepare check), so the PR's code may be the cause. The head is not judged: no pass, no FAILURE, no ci-fix lane, and --allow-unsandboxed-gates does not apply here. Rerun ${this.resume} to try again; if it parks here again, review the PR's diff and fix the cause`;
+      }
       /** The park after the command ran in the sandbox without a verdict: no ack offer, no pass, no failure. `why` is fixed text (sandbox-exec.ts). */
       gateNoVerdictReason(head, what, why) {
         const at = head.slice(0, 12);
@@ -53770,10 +53987,24 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
        * anything runs unsandboxed. A sandbox that started the command and gave
        * no verdict stops at gate-no-verdict (no ack offer). From the first check
        * on, engine git in the checkout names its git dir (checkoutGitPin), and a
-       * gitfile that changed around a check stops at lane-tampered.
+       * gitfile that changed around a check stops at lane-tampered. A built-in
+       * file list too long for the sandbox shell runs as several calls that must
+       * all pass (fileListParts). A sandbox that does not start after an earlier
+       * check of the head ran in it stops at gate-no-verdict (no ack offer): the
+       * PR's code may have caused it.
        */
       async prepareCheck(c, at) {
         const { head, path: path15, ran } = at;
+        const parts = fileListParts(c, path15);
+        if (parts.length > 1) {
+          const outputs = [];
+          for (const part of parts) {
+            const r = await this.prepareCheck(part, at);
+            if (r.notStarted !== void 0 || r.status !== 0) return r;
+            outputs.push(r.stdout);
+          }
+          return { status: 0, stdout: outputs.join("\n"), stderr: "" };
+        }
         const label = this.prepareCheckLabel(c);
         const stop = (park) => {
           ran.park = park;
@@ -53807,6 +54038,9 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         if (at.gates.mode === "unsandboxed") return plain("unsandboxed");
         let why = `factory.run.sandbox.gates is "ack" (${at.gates.source})`;
         if (at.gates.mode === "enforced") {
+          if (c.kind === "built-in" && (c.args[0] === VITEST_SCRIPT || c.args[0] === ESLINT_SCRIPT) && sandboxCommandTooLong(process.platform, c.argv, path15)) {
+            return { status: 1, stdout: "", stderr: BUILT_IN_FILE_NAME_TOO_LONG };
+          }
           const r = this.o.gateSandbox ? await this.o.gateSandbox({ purpose: "prepare", argv: c.argv, exe: c.exe, args: c.args, cwd: path15, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {} }) : { ran: false, reason: "no OS sandbox runner was given to the engine" };
           const t = tampered();
           if (t) return t;
@@ -53819,6 +54053,10 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             return { status: r.timedOut ? 124 : r.status, stdout: redactGateOutput(r.output), stderr: "" };
           }
           if (r.started) return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoVerdictReason(head, label, r.reason) });
+          const ownShape = r.refused === true && c.kind === "configured";
+          if (!ownShape && (ran.modes.has("enforced") || ran.modes.has("enforced-readable")) && !this.gatesAccepted(head)) {
+            return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoStartAfterCodeReason(head, label, r.reason) });
+          }
           why = `the OS sandbox gave no verdict: ${r.reason}`;
         }
         if (this.gatesAccepted(head)) return plain("ack");
@@ -53938,7 +54176,9 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           }
           const files = listChangedFiles(this.exec, this.o.root, baseSha, next);
           if (files === null) throw new FactoryStepError(`git diff ${baseSha.slice(0, 12)}...${next.slice(0, 12)} failed`);
-          const hit = protectedChanges(files, this.laneProtectedPaths());
+          const protectedList = this.laneProtectedPaths();
+          if (protectedList.problem) return this.protectedPathsUnread("the prepared head", protectedList.problem);
+          const hit = protectedChanges(files, protectedList.paths);
           if (hit.length > 0) {
             this.gate("protected-paths", `the prepared head touches merge-rule paths: ${hit.join(", ")}; nothing was pushed`);
             return;
@@ -54053,11 +54293,11 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           return false;
         }
         const checkout = checkoutPath(this.o.root, this.key);
+        if (this.legacyCheckout(checkout)) this.discardLegacyCheckout(checkout);
         let at = "";
         if ((0, import_fs94.existsSync)(checkout)) {
           const gitArgs = this.checkoutGitArgs(checkout);
           let dirty = [];
-          let link = null;
           let problem = typeof gitArgs === "string" ? gitArgs : null;
           if (typeof gitArgs !== "string") {
             const indexDir = (0, import_fs94.mkdtempSync)((0, import_path111.join)((0, import_os21.tmpdir)(), "omg-gate-index-"));
@@ -54067,9 +54307,6 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
               runHostGit(checkout, [...gitArgs, "read-tree", at], void 0, fresh);
               const status = [...gitArgs, "-c", "core.untrackedCache=false", "status", "--porcelain=v1", "-z", "--untracked-files=all"];
               dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, void 0, fresh));
-              if (at === head && dirty.length === 0) {
-                link = ignoredLink(checkout, checkoutChanges(this.o.root, checkout, runHostGit(checkout, [...status, "--ignored=matching"], void 0, fresh)));
-              }
             } catch (error2) {
               problem = errText5(error2);
             } finally {
@@ -54082,10 +54319,6 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           }
           if (at === head && dirty.length > 0) {
             this.gate("lane-tampered", `the engine's prepare checkout ${checkout} is at ${head.slice(0, 12)} but its working tree differs from it (${dirty.slice(0, 5).join(", ")}): a changed tracked file or an untracked file that is not ignored, so the local gate did not run; inspect it and undo what the PR's code changed there, then rerun ${this.resume}`);
-            return false;
-          }
-          if (link) {
-            this.gate("lane-tampered", `the engine's prepare checkout ${checkout} has an ignored symlink or junction ${link} the engine did not make, which would pull content from outside the checkout into the gate, so the local gate did not run; inspect it and remove the link, then rerun ${this.resume}`);
             return false;
           }
         } else if (!this.reprepared && this.state.pr !== void 0) {
@@ -54144,12 +54377,19 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           out = { started: false, reason: why, sandbox: true };
           if (gates.mode === "enforced") {
             out = this.o.gateSandbox ? await runLocalGate({ ...input, mode: "enforced", sandbox: { run: this.o.gateSandbox, commonGitDir: common, requireDeniedPaths: gates.requireDeniedPaths } }) : { started: false, reason: "no OS sandbox runner was given to the engine", sandbox: true };
+            if ((out.started || out.noVerdict) && this.state.sandboxedGateHead !== head) this.save((x) => ({ ...x, sandboxedGateHead: head }));
             if (!out.started && out.noVerdict) {
               if (checkoutGitLink(checkout).hash !== linkBefore) return this.gateTamperedByGate(head, checkout, stateDir);
               this.gate(GATE_NO_VERDICT_GATE, this.gateNoVerdictReason(head, `the local gate \`${gate.join(" ")}\``, out.reason));
               return false;
             }
             unavailable = !out.started && out.sandbox === true;
+            const codeRan = this.state.sandboxedPrepareHead === head || this.state.sandboxedGateHead === head;
+            if (unavailable && !out.started && !out.refused && codeRan && !this.gatesAccepted(head)) {
+              if (checkoutGitLink(checkout).hash !== linkBefore) return this.gateTamperedByGate(head, checkout, stateDir);
+              this.gate(GATE_NO_VERDICT_GATE, this.gateNoStartAfterCodeReason(head, `the local gate \`${gate.join(" ")}\``, out.reason));
+              return false;
+            }
             if (unavailable && !out.started) why = `the OS sandbox gave no verdict: ${out.reason}`;
           }
           if (unavailable) {
@@ -55025,11 +55265,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         const files = listChangedFiles(this.exec, this.o.root, from, check2.head);
         if (files === null) throw new FactoryStepError(`git diff ${from.slice(0, 12)}...${check2.head.slice(0, 12)} failed`);
         if (files.length === 0) return this.gate(CODING_AGENT_ADOPT_GATE, `the coding agent's pull request #${check2.pr} changes nothing against ${s.base}; nothing was adopted; ${this.codingAgentRestart()}`);
-        let extraProtected = [];
-        try {
-          extraProtected = configuredProtectedPaths(this.o.root);
-        } catch {
-        }
+        const extraProtected = this.protectedExtras().paths;
         const hit = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...extraProtected]);
         if (hit.length > 0) return this.gate("protected-paths", `the coding agent's pull request #${check2.pr} changes merge-rule or lane-protected paths: ${hit.join(", ")}; nothing was adopted or pushed`);
         const links = linkEntries(this.run(codingAgentTreeArgs(from), "git", TRUSTED_READ_ENV), this.run(codingAgentTreeArgs(check2.head), "git", TRUSTED_READ_ENV));

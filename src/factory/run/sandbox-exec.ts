@@ -99,10 +99,13 @@ export const CREDENTIAL_FILES_READABLE_NOTE = 'sandboxed; credential files reada
  * `started`: the command was handed to the shell under the confirmed policy
  * and gave no verdict (the engine's gate-no-verdict park, never the
  * --allow-unsandboxed-gates one); unset: nothing of the PR's ran.
+ * `refused`: the configured argv itself cannot be handed to the sandbox
+ * shell (its shape or length), before any runtime launched: a property of
+ * the command, which no code of the PR can cause.
  */
 export type SandboxRunResult =
   | { ran: true; status: number; output: string; timedOut: boolean; credentialFilesReadable?: true }
-  | { ran: false; reason: string; started?: true };
+  | { ran: false; reason: string; started?: true; refused?: true };
 
 export type SandboxRunner = (req: SandboxRunRequest) => Promise<SandboxRunResult>;
 
@@ -136,9 +139,9 @@ export const SHELL_LINE_CHARS = 2_000;
  * The shell command executeUserRequested runs (the runtime's shell:
  * PowerShell on Windows, bash elsewhere). No word of `cwd` or `argv` is ever
  * spliced into shell source: they travel as one base64 literal (only
- * `[A-Za-z0-9+/=]`), which the shell decodes into an array (PowerShell: UTF-8
- * JSON `{cwd, argv}`; bash: NUL-terminated words, since bash has no JSON
- * parser and no argv word can hold a NUL), checks the word count of, changes
+ * `[A-Za-z0-9+/=]`), which the shell decodes into an array (UTF-8 words
+ * separated by NUL in PowerShell, terminated by NUL in bash: no argv word can
+ * hold a NUL, and no parser can retype a word), checks the word count of, changes
  * into the first (a failure runs nothing and prints no marker), runs the
  * rest as the command, keeps only the tail of its merged output, then prints
  * `<marker> <exit code>` as the last line. On Windows the argv may not hold
@@ -150,17 +153,58 @@ export function sandboxShellCommand(platform: NodeJS.Platform, argv: readonly st
   if (argv.length === 0 || !/^[A-Za-z0-9-]+$/.test(marker) || [cwd, ...argv].some((a) => a.includes('\0'))) return null;
   if (platform === 'win32') {
     if (argv.some((a) => a === '' || a.includes('"'))) return null;
-    const payload = Buffer.from(JSON.stringify({ cwd, argv }), 'utf8').toString('base64');
+    // NUL-separated words, as for bash: no JSON parser, so pwsh 7 cannot turn a date-shaped word into a DateTime.
+    const payload = Buffer.from([cwd, ...argv].join('\0'), 'utf8').toString('base64');
     return [
-      `$omgP = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')) | ConvertFrom-Json`,
-      '$omgV = @($omgP.argv)',
-      `if ($omgV.Count -eq ${argv.length} -and $omgP.cwd -is [string]) { Set-Location -LiteralPath $omgP.cwd -ErrorAction Stop; $ErrorActionPreference = 'Continue'; $omgE = $omgV[0]; $omgR = @($omgV | Select-Object -Skip 1); $global:LASTEXITCODE = $null; & $omgE @omgR 2>&1 | ForEach-Object { $omgL = "$_"; if ($omgL.Length -gt ${SHELL_LINE_CHARS}) { $omgL.Substring(0, ${SHELL_LINE_CHARS}) } else { $omgL } } | Select-Object -Last ${SHELL_OUTPUT_LINES}; "${marker} $LASTEXITCODE" }`,
+      `$omgV = @([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')).Split([char]0))`,
+      `if ($omgV.Count -eq ${argv.length + 1}) { Set-Location -LiteralPath $omgV[0] -ErrorAction Stop; $ErrorActionPreference = 'Continue'; $omgE = $omgV[1]; $omgR = @($omgV | Select-Object -Skip 2);$global:LASTEXITCODE = $null; & $omgE @omgR 2>&1 | ForEach-Object { $omgL = "$_"; if ($omgL.Length -gt ${SHELL_LINE_CHARS}) { $omgL.Substring(0, ${SHELL_LINE_CHARS}) } else { $omgL } } | Select-Object -Last ${SHELL_OUTPUT_LINES}; "${marker} $LASTEXITCODE" }`,
     ].join('; ');
   }
   const payload = Buffer.from([cwd, ...argv].map((w) => `${w}\0`).join(''), 'utf8').toString('base64');
   // The output goes to a temp file (TMPDIR: the job's own temp dir) and only its tail is printed: `tail -c` on a file
   // seeks, while on a pipe some coreutils releases print more than the bound (seen with 9.4 on Ubuntu 24.04).
   return `omg_a=(); while IFS= read -r -d '' omg_w; do omg_a+=("$omg_w"); done < <(printf '%s' '${payload}' | base64 -d); if [ "\${#omg_a[@]}" -eq ${argv.length + 1} ] && omg_o=$(mktemp) && cd -- "\${omg_a[0]}"; then "\${omg_a[@]:1}" > "$omg_o" 2>&1; omg_s=$?; tail -c ${SHELL_OUTPUT_BYTES} -- "$omg_o"; rm -f -- "$omg_o"; printf '\\n%s %s\\n' '${marker}' "$omg_s"; fi`;
+}
+
+/**
+ * The longest shell command runSandboxed hands to the runtime. The SDK types
+ * do not say how the runtime passes it to its shell; assume one argument of
+ * a process command line: on Windows CreateProcess takes 32 767 characters
+ * in all, and the shell's path, its flags and quote escaping need the rest;
+ * elsewhere Linux caps one argv string at 131 072 bytes.
+ */
+export const sandboxCommandMaxChars = (platform: NodeJS.Platform): number => (platform === 'win32' ? 28_000 : 120_000);
+
+/** A marker of the real one's length, for sizing a command before the run. */
+const SIZING_MARKER = `${MARKER_PREFIX}${'0'.repeat(16)}`;
+
+/** Whether `argv` in `cwd` encodes to a shell command above sandboxCommandMaxChars (false for one the shell refuses anyway). */
+export function sandboxCommandTooLong(platform: NodeJS.Platform, argv: readonly string[], cwd: string): boolean {
+  const command = sandboxShellCommand(platform, argv, cwd, SIZING_MARKER);
+  return command !== null && command.length > sandboxCommandMaxChars(platform);
+}
+
+/**
+ * A built-in check's `<script> [run] <file...>` args (`fixed` = the words
+ * before the file list) cut into several argument lists, each with at least
+ * one file and, where one file allows it, short enough for the sandbox
+ * shell. One list when the whole command fits. The caller runs them all and
+ * counts a pass only when every one passes.
+ */
+export function splitFileListArgs(platform: NodeJS.Platform, exe: string, args: readonly string[], fixed: number, cwd: string): string[][] {
+  if (!sandboxCommandTooLong(platform, [exe, ...args], cwd) || args.length <= fixed + 1) return [[...args]];
+  const head = args.slice(0, fixed);
+  const parts: string[][] = [];
+  let chunk: string[] = [];
+  for (const file of args.slice(fixed)) {
+    if (chunk.length > 0 && sandboxCommandTooLong(platform, [exe, ...head, ...chunk, file], cwd)) {
+      parts.push([...head, ...chunk]);
+      chunk = [];
+    }
+    chunk.push(file);
+  }
+  parts.push([...head, ...chunk]);
+  return parts;
 }
 
 /**
@@ -182,7 +226,7 @@ export function readMarker(output: string, marker: string): { code: number | nul
   return { code: Number(m[2]), output: lines.slice(0, i).join('\n') };
 }
 
-/** Token-shaped text (GitHub, npm, AWS keys, PEM private keys, Bearer values) replaced before an output tail is kept anywhere. */
+/** Token-shaped text (GitHub, npm, AWS, sk- / sk-ant- keys, JWTs, .npmrc credentials, PEM private keys, Bearer values) replaced before an output tail is kept anywhere; pattern-based: only text printed verbatim. */
 export function redactGateOutput(text: string): string {
   return redactSecrets(text)
     .replace(/\bnpm_[A-Za-z0-9]{36}\b/g, '[redacted]')
@@ -206,12 +250,18 @@ type ShellRpc = {
  */
 export async function runSandboxed(argv: readonly string[], o: SandboxExecOptions, deps: SandboxExecDeps): Promise<SandboxRunResult> {
   const notStarted = (reason: string): SandboxRunResult => ({ ran: false, reason });
+  // The argv itself cannot be handed over (its shape or length): nothing launched, and no PR code can cause it.
+  const refuse = (reason: string): SandboxRunResult => ({ ran: false, reason, refused: true });
   // After the command was handed over: fixed text only (the output and the runtime's error may be the command's).
   const noVerdict = (reason: string): SandboxRunResult => ({ ran: false, reason, started: true });
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const marker = `${MARKER_PREFIX}${randomBytes(8).toString('hex')}`;
   const command = sandboxShellCommand(deps.platform, argv, o.cwd, marker);
-  if (command === null) return notStarted('the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)');
+  if (command === null) return refuse('the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)');
+  const max = sandboxCommandMaxChars(deps.platform);
+  if (command.length > max) {
+    return refuse(`the command is too long for the sandbox shell: it encodes to ${command.length} characters, above the ${max} that ${deps.platform === 'win32' ? 'a Windows command line' : 'one shell argument'} can safely carry; shorten the configured command`);
+  }
   const jobHome = join(o.jobRoot, `gate-${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`);
   // The runtime's own working directory and its only trusted folder: empty, fresh per command, never the checkout.
   const workDir = join(jobHome, 'work');
@@ -236,7 +286,9 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
     mkdirSync(env.TEMP!, { recursive: true });
     // No credential helper for a git the command starts (the system one is Git for Windows' manager).
     writeFileSync(env.GIT_CONFIG_GLOBAL!, '[credential]\n\thelper =\n');
-    Object.assign(env, { GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', COPILOT_ALLOW_ALL: 'false' });
+    // GIT_CEILING_DIRECTORIES: a git root search from the runtime's working dir stops at the job root, so it never reaches
+    // the root repository's work tree (the job root is under its .omg/) and its hooks or instructions.
+    Object.assign(env, { GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', COPILOT_ALLOW_ALL: 'false', GIT_CEILING_DIRECTORIES: resolve(o.jobRoot) });
     const gitHubToken = sessionGitHubToken(deps.env);
 
     const { CopilotClient, RuntimeConnection } = loaded.module;

@@ -12,10 +12,11 @@ import { factoryRunCommand, type FactoryRunDeps } from '../../../cli/commands/fa
 import { resolveForgeConfig, type LoadedForgeConfig } from '../../../forge/config.js';
 import { defaultExec } from '../../../ship/exec.js';
 import { resolveFactoryRunLimits } from '../budget.js';
-import { claimRepoKey, factoryClaimPath, isShallowClaimRepo, LOCAL_CLAIM_PREFIX, LOCAL_SHALLOW_CLAIM_PREFIX, localFactoryClaimRepo, removeFactoryClaim } from '../claims.js';
+import { acquireFactoryClaim, claimRepoKey, factoryClaimPath, isShallowClaimRepo, LOCAL_CLAIM_PREFIX, LOCAL_SHALLOW_CLAIM_PREFIX, localFactoryClaimRepo, removeFactoryClaim, settleFactoryClaim } from '../claims.js';
 import { EXIT_BUSY, runFactoryEngine } from '../engine.js';
 import { factoryForgeOptions } from '../forge-roots.js';
-import { FactoryBusyError, readFactoryState, requestFactoryCancel } from '../state.js';
+import { createFactoryState, FactoryBusyError, factoryStatePath, overwriteFactoryState, readFactoryState, requestFactoryCancel, type FactoryPhase } from '../state.js';
+import { EngineLedger } from '../ledger.js';
 import { commitFile, FakeLanes, gitIn, review } from './fake-lanes.js';
 import { lanesFor, LOCAL_ISSUE, localOpts, localTestGateConfig, localWorld, type LocalWorld } from './engine-local-harness.js';
 
@@ -87,7 +88,7 @@ describe('F60: local-forge claims across clones', () => {
     let out: string[] = [];
     vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => { out.push(a.join(' ')); });
     vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => { out.push(a.join(' ')); });
-    const WARNING = /is a shallow clone, so its claims are keyed local-shallow:[0-9a-f]{40} and shared with no other clone/;
+    const WARNING = /is a shallow clone, so its claims are keyed local-shallow:[0-9a-f]{40} and not shared with full clones \(a full clone may run the same item; shallow clones at the same boundary do share them\)/;
     const cli = async (warnings: number, ...argv: string[]): Promise<{ code: number; text: string }> => {
       out = [];
       process.exitCode = undefined;
@@ -156,10 +157,68 @@ describe('F60: local-forge claims across clones', () => {
     // Another checkout's claim under that key is never removed.
     expect(removeFactoryClaim(w.ledgerDir, shallowKey, w.root, 8)).toBeNull();
     expect(existsSync(foreign)).toBe(true);
-    // A full clone's key never scans other keys.
+    // F4: a full local clone's key (after git fetch --unshallow) sweeps this checkout's record under the old key too.
     writeFileSync(recorded, JSON.stringify({ hostname: 'h', startedAt: '2026-11-10T00:00:00.000Z', run: '7', root: w.root, parkedAt: '2026-11-10T01:00:00.000Z' }));
-    expect(removeFactoryClaim(w.ledgerDir, `${LOCAL_CLAIM_PREFIX}${'c'.repeat(40)}`, w.root, 7, { onlyRoot: true })).toBeNull();
+    expect(removeFactoryClaim(w.ledgerDir, `${LOCAL_CLAIM_PREFIX}${'c'.repeat(40)}`, w.root, 7, { onlyRoot: true })).toBe(recorded);
+    expect(existsSync(recorded)).toBe(false);
+    // A GitHub key never scans other keys.
+    writeFileSync(recorded, JSON.stringify({ hostname: 'h', startedAt: '2026-11-10T00:00:00.000Z', run: '7', root: w.root, parkedAt: '2026-11-10T01:00:00.000Z' }));
+    expect(removeFactoryClaim(w.ledgerDir, 'https://github.com/o/r', w.root, 7, { onlyRoot: true })).toBeNull();
     expect(existsSync(recorded)).toBe(true);
+  });
+
+  it('F1: another checkout\'s LIVE claim of the same item number under another key never makes the sweep busy', () => {
+    const x = localWorld();
+    w = x;
+    const liveFor = (root: string, run: string) => JSON.stringify({ pid: 1, hostname: 'another-host', startedAt: '2026-11-10T00:00:00.000Z', run, root });
+    // A full clone of this repository, and another repository on this machine, each running item #7 right now.
+    const fullClone = factoryClaimPath(x.ledgerDir, `${LOCAL_CLAIM_PREFIX}${'a'.repeat(40)}`, join(x.dir, 'full'), 7);
+    const otherRepo = factoryClaimPath(x.ledgerDir, 'https://github.com/someone/else', join(x.dir, 'else'), 7);
+    for (const [path, root] of [[fullClone, join(x.dir, 'full')], [otherRepo, join(x.dir, 'else')]] as const) {
+      mkdirSync(join(path, '..'), { recursive: true });
+      writeFileSync(path, liveFor(root, '7'));
+    }
+    // This checkout's own parked record under a third key still goes.
+    const mine = factoryClaimPath(x.ledgerDir, `${LOCAL_CLAIM_PREFIX}${'d'.repeat(40)}`, x.root, 7);
+    mkdirSync(join(mine, '..'), { recursive: true });
+    writeFileSync(mine, JSON.stringify({ hostname: 'h', startedAt: '2026-11-10T00:00:00.000Z', run: '7', root: x.root, parkedAt: '2026-11-10T01:00:00.000Z' }));
+    const shallowKey = `${LOCAL_SHALLOW_CLAIM_PREFIX}${'b'.repeat(40)}`;
+    expect(removeFactoryClaim(x.ledgerDir, shallowKey, x.root, 7, { onlyRoot: true })).toBe(mine);
+    expect(existsSync(fullClone)).toBe(true);
+    expect(existsSync(otherRepo)).toBe(true);
+    // A live claim this checkout recorded under another key is still busy for clean / reset.
+    writeFileSync(mine, liveFor(x.root, '7'));
+    expect(() => removeFactoryClaim(x.ledgerDir, shallowKey, x.root, 7, { onlyRoot: true })).toThrow(FactoryBusyError);
+  });
+
+  it('F4: a terminal settle sweeps this checkout\'s claim left under the old shallow key; a park keeps it; another checkout\'s stays', () => {
+    const x = localWorld();
+    w = x;
+    const old = factoryClaimPath(x.ledgerDir, `${LOCAL_SHALLOW_CLAIM_PREFIX}${'b'.repeat(40)}`, x.root, 9);
+    const foreign = factoryClaimPath(x.ledgerDir, `${LOCAL_SHALLOW_CLAIM_PREFIX}${'b'.repeat(40)}`, x.root, 10);
+    mkdirSync(join(old, '..'), { recursive: true });
+    const parked = (root: string, run: string) => JSON.stringify({ hostname: 'h', startedAt: '2026-11-10T00:00:00.000Z', run, root, parkedAt: '2026-11-10T01:00:00.000Z' });
+    writeFileSync(old, parked(x.root, '9'));
+    writeFileSync(foreign, parked(join(x.dir, 'elsewhere'), '10'));
+    const fullKey = `${LOCAL_CLAIM_PREFIX}${'c'.repeat(40)}`;
+    const owner = { pid: process.pid, hostname: 'h', isAlive: () => true };
+    // The run state of #9 here: in flight (review), so the settle parks and the old record stays.
+    const statePath = factoryStatePath(x.root, 9);
+    mkdirSync(join(statePath, '..'), { recursive: true });
+    const write = (phase: FactoryPhase) => {
+      const { content } = overwriteFactoryState(x.root, 9, { ...createFactoryState({ issue: 9, repoUrl: 'x', base: 'main' }, '2026-11-10T00:00:00.000Z'), phase });
+      EngineLedger.open(x.ledgerDir, x.root, 9).record(statePath, content);
+    };
+    write('review');
+    const held = acquireFactoryClaim(x.ledgerDir, fullKey, x.root, 9, '2026-11-10T02:00:00.000Z', owner);
+    expect(settleFactoryClaim(held, x.root, 9, x.ledgerDir, '2026-11-10T03:00:00.000Z')).toBe('parked');
+    expect(existsSync(old)).toBe(true);
+    write('merged');
+    const again = acquireFactoryClaim(x.ledgerDir, fullKey, x.root, 9, '2026-11-10T04:00:00.000Z', owner);
+    expect(settleFactoryClaim(again, x.root, 9, x.ledgerDir, '2026-11-10T05:00:00.000Z')).toBe('released');
+    expect(existsSync(factoryClaimPath(x.ledgerDir, fullKey, x.root, 9))).toBe(false);
+    expect(existsSync(old)).toBe(false);
+    expect(existsSync(foreign)).toBe(true);
   });
 
   it('a run parked in clone A makes the same item busy (exit 6) in clone B, dry run included', async () => {

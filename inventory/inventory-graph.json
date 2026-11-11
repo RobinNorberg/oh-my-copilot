@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "c3d398fd03b232b8bc84b6ff38360b9f46862775",
-    "sourceSha256": "0dadb8a7b5e6a0b470633926369dddc855bf0b505f401726f8d230aec3501b23",
+    "head": "ad25b3a7c1780b6c7f8b587cd456ddbdd3706888",
+    "sourceSha256": "54d00c980a27931655a0a958b37397937b201adb44c95ff408c9ece13c591e25",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "c3d398fd03b232b8bc84b6ff38360b9f46862775",
-  "sourceSha256": "0dadb8a7b5e6a0b470633926369dddc855bf0b505f401726f8d230aec3501b23",
+  "head": "ad25b3a7c1780b6c7f8b587cd456ddbdd3706888",
+  "sourceSha256": "54d00c980a27931655a0a958b37397937b201adb44c95ff408c9ece13c591e25",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2044,
-      "total": 2069
+      "srcFiles": 2045,
+      "total": 2070
     },
     "generated": {
-      "distFiles": 7544,
+      "distFiles": 7548,
       "bridgeFiles": 8,
-      "total": 7552
+      "total": 7556
     },
     "prompt": {
       "promptLikeFiles": 72
@@ -3414,6 +3414,10 @@
       "dist/factory/run/__tests__/engine.coding-agent.test.d.ts.map",
       "dist/factory/run/__tests__/engine.coding-agent.test.js",
       "dist/factory/run/__tests__/engine.coding-agent.test.js.map",
+      "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.d.ts",
+      "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.js",
+      "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.js.map",
       "dist/factory/run/__tests__/engine.gates-sandbox.test.d.ts",
       "dist/factory/run/__tests__/engine.gates-sandbox.test.d.ts.map",
       "dist/factory/run/__tests__/engine.gates-sandbox.test.js",
@@ -22142,6 +22146,26 @@
         "id": "dist/factory/run/__tests__/engine.coding-agent.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.coding-agent.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/engine.gates-sandbox.test.d.ts",
@@ -55844,6 +55868,11 @@
         "path": "src/factory/run/__tests__/engine.coding-agent.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.gates-sandbox.test.ts"
@@ -88411,6 +88440,61 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts",
+        "to": "src/factory/run/__tests__/engine-local-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts",
+        "to": "src/factory/run/__tests__/engine-local-harness.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts",
+        "to": "src/factory/run/sandbox-exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts",
+        "to": "src/ship/prepare.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -88464,6 +88548,11 @@
         "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
         "to": "src/factory/run/prepare.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
+        "to": "src/factory/run/sandbox-exec.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
@@ -88877,8 +88966,18 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.local.claims.test.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.claims.test.ts",
         "to": "src/factory/run/state.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.claims.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.local.claims.test.ts",
@@ -89022,22 +89121,12 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.local.hardening.test.ts",
-        "to": "src/factory/run/forge-roots.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.local.hardening.test.ts",
         "to": "src/factory/run/ledger.ts",
         "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.local.hardening.test.ts",
         "to": "src/factory/run/prepare.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.local.hardening.test.ts",
-        "to": "src/factory/run/reset.ts",
         "kind": "imports"
       },
       {
@@ -89052,17 +89141,7 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.local.hardening.test.ts",
-        "to": "src/forge/index.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.local.hardening.test.ts",
         "to": "src/forge/local/index.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.local.hardening.test.ts",
-        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -89108,6 +89187,11 @@
       {
         "from": "src/factory/run/__tests__/engine.local.reset-discard.test.ts",
         "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.reset-discard.test.ts",
+        "to": "src/factory/run/claims.ts",
         "kind": "imports"
       },
       {
@@ -89932,6 +90016,11 @@
       },
       {
         "from": "src/factory/run/__tests__/git-hardening.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/git-hardening.test.ts",
         "to": "src/factory/run/exec.ts",
         "kind": "imports"
       },
@@ -90652,6 +90741,11 @@
       },
       {
         "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
         "to": "src/factory/run/local-gate.ts",
         "kind": "imports"
       },
@@ -90664,6 +90758,11 @@
         "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
         "to": "src/factory/run/sandbox-exec.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
+        "to": "src/ship/prepare.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/sandbox-exec.test.ts",
@@ -115642,6 +115741,11 @@
       },
       {
         "from": "src/ship/prepare.ts",
+        "to": "src/forge/review-feedback.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/prepare.ts",
         "to": "src/ship/config.ts",
         "kind": "imports"
       },
@@ -129652,12 +129756,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10839,
-      "edgeCount": 13249,
-      "importEdgeCount": 10900,
+      "nodeCount": 10844,
+      "edgeCount": 13264,
+      "importEdgeCount": 10912,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "af6e8245bd830e353d094e84c4f586db0d67ef9c0a2aa69d7a6421dfb12b8abf",
-  "manifestSha256": "7c6302957beed32284cf725ce05cdfb421c4300d9776db8a74ff78c37e11dc53"
+  "inventorySha256": "d4a715cbefc345a03acfc1433c3ad2f53c8d7e04b069afa4a672b09d64860009",
+  "manifestSha256": "508b52888e2bfea13790c96fe32db2ae10b47008805874234793e79a0023363d"
 }

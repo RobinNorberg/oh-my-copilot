@@ -7,13 +7,15 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fakeClientRpc, fakeSessionRpc } from '../../../copilot-run/__tests__/fake-sdk.js';
 import { buildSandboxConfig, DEFAULT_SANDBOX_SETTINGS, resolveGatesSandboxMode, resolveRequireDeniedPaths } from '../../../copilot-run/sandbox.js';
 import { findOnPath } from '../../../utils/windows-search.js';
 import { defaultLocalGateRunner } from '../local-gate.js';
-import { createSandboxRunner, gateEnv, readMarker, redactGateOutput, runSandboxed, sandboxShellCommand, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, } from '../sandbox-exec.js';
+import { createSandboxRunner, gateEnv, readMarker, redactGateOutput, runSandboxed, sandboxCommandMaxChars, sandboxCommandTooLong, sandboxShellCommand, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, splitFileListArgs, } from '../sandbox-exec.js';
+import { fileListParts } from '../engine.js';
+import { VITEST_SCRIPT } from '../../../ship/prepare.js';
 /** The marker a command carries (the fake shell substitutes it for MARKER in its answer). */
 const markerOf = (command) => /omg-gate-exit-[0-9a-f]{16}/.exec(command)?.[0] ?? 'none';
 function fakeSdk(script, rec, sandbox = 'supported', deniedPaths = true) {
@@ -181,6 +183,8 @@ describe('runSandboxed', () => {
         expect(work).not.toBe(checkout);
         expect(rec.clients[0].config?.trustedFolders).toEqual([work]);
         expect(rec.sessions[0].workingDirectory).toBe(work);
+        // A git root search from the working dir stops at the job root (under the root repository's .omg/).
+        expect(rec.connections[0].env.GIT_CEILING_DIRECTORIES).toBe(resolve(join(dir, 'jobs')));
         // The checkout stays an explicit read-write path, and the command itself changes into it.
         const config = rec.optionsUpdates[0]?.sandboxConfig;
         expect(config.userPolicy.filesystem.readwritePaths).toContain(checkout);
@@ -280,6 +284,47 @@ describe('runSandboxed', () => {
         // A key block whose BEGIN line an output bound cut off.
         expect(redactGateOutput('b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtz\n-----END OPENSSH PRIVATE KEY-----')).toBe('[redacted]');
     });
+    it('L-d: JWTs, .npmrc credentials and sk- / sk-ant- keys are redacted; shas and base64 test output are not', () => {
+        const jwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4ifQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+        // Built at run time: a literal token-shaped value in the source would trip secret scanners.
+        const uuid = ['0f1e2d3c', '4b5a', '6978', '8796', 'a5b4c3d2e1f0'].join('-');
+        const secrets = [
+            [`token ${jwt} end`, jwt],
+            [`//registry.npmjs.org/:_authToken=${uuid}`, uuid],
+            ['_auth = dXNlcjpwYXNzd29yZA==', 'dXNlcjpwYXNzd29yZA'],
+            ['//npm.pkg.example/:_password=c2VjcmV0LXBhc3N3b3Jk', 'c2VjcmV0LXBhc3N3b3Jk'],
+            [`key ${['sk', 'proj', 'AbCdEf0123456789GhIjKlMnOp'].join('-')}`, 'AbCdEf0123456789'],
+            [`ANTHROPIC_API_KEY=${['sk', 'ant', 'api03', 'AbCdEf0123456789_GhIjKlMnOpQrStUv', 'wxyz'].join('-')}`, 'api03-AbCdEf0123456789'],
+        ];
+        for (const [text, secret] of secrets) {
+            const out = redactGateOutput(text);
+            expect(out, text).not.toContain(secret);
+            expect(out, text).toContain('[redacted]');
+        }
+        expect(redactGateOutput('//registry.npmjs.org/:_authToken=abc')).toBe('//registry.npmjs.org/:_authToken=[redacted]');
+        // #8: the JSON / colon form, the env forms and any case; the value built at run time.
+        const value = ['npm', 'Zx9', 'Qw8', 'Er7'].join('_');
+        for (const [text, kept] of [
+            [`"//registry.npmjs.org/:_authToken": "${value}",`, '"//registry.npmjs.org/:_authToken": "[redacted]",'],
+            [`_authToken: ${value}`, '_authToken: [redacted]'],
+            [`NODE_AUTH_TOKEN=${value}`, 'NODE_AUTH_TOKEN=[redacted]'],
+            [`NPM_TOKEN=${value}`, 'NPM_TOKEN=[redacted]'],
+            [`NPM_CONFIG__AUTHTOKEN=${value}`, 'NPM_CONFIG__AUTHTOKEN=[redacted]'],
+            [`npm_config__authtoken=${value}`, 'npm_config__authtoken=[redacted]'],
+            [`//npm.example/:_AUTH=${value}`, '//npm.example/:_AUTH=[redacted]'],
+        ])
+            expect(redactGateOutput(text), text).toBe(kept);
+        const ordinary = [
+            'config_password=x', 'MY_NPM_TOKEN_NAME is documented', 'db_auth=on',
+            'HEAD is 9fb7e347addff4cac28206858ca6f58aec2792cc',
+            'sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+            'expected "dGhpcyBpcyBhIHRlc3Qgb3V0cHV0IHdpdGggbm8gc2VjcmV0cyBpbiBpdA==" to equal "SGVsbG8gd29ybGQ="',
+            'eyJhbGciOiJIUzI1NiJ9 is a header only', 'uses sk-learn-compatible-estimators', 'task-0123456789abcdefghij-done',
+            '✓ src/a.test.ts (12 tests) 340ms',
+        ];
+        for (const text of ordinary)
+            expect(redactGateOutput(text), text).toBe(text);
+    });
     it('an unsupported host, a policy that is not applied or a blocked enforcement runs nothing (not started)', async () => {
         for (const sandbox of ['unsupported', 'update-fails', 'blocked', 'no-rpc']) {
             rec.commands = [];
@@ -295,8 +340,18 @@ describe('runSandboxed', () => {
     });
     it('an argv the shell cannot carry is refused before anything starts, without its text in the reason', async () => {
         const r = await runSandboxed(['/usr/bin/node', 'a\0b'], opts(), deps(ok));
-        expect(r).toEqual({ ran: false, reason: expect.not.stringContaining('a\0b') });
+        expect(r).toEqual({ ran: false, refused: true, reason: expect.not.stringContaining('a\0b') });
         expect(rec.connections).toEqual([]);
+    });
+    it('L-b: a single command too long for the sandbox shell is not started, with a fixed reason that says so', async () => {
+        for (const platform of ['linux', 'win32']) {
+            rec.connections = [];
+            const long = 'x'.repeat(sandboxCommandMaxChars(platform));
+            const r = await runSandboxed(['/usr/bin/node', long], opts(), deps(ok, 'supported', { platform }));
+            expect(r, platform).toEqual({ ran: false, refused: true, reason: expect.stringContaining('the command is too long for the sandbox shell') });
+            expect(r.reason, platform).not.toContain('xxxx');
+            expect(rec.connections, platform).toEqual([]);
+        }
     });
     it('the kill switch OMG_SANDBOX=off never runs the command unsandboxed here', async () => {
         const r = await runSandboxed(['/bin/true'], opts(), deps(ok, 'supported', { env: { PATH: '', OMG_SANDBOX: 'off' } }));
@@ -370,6 +425,8 @@ const HOSTILE = [
     'src/a\u2018;Write-Output omg-gate-exit-0123456789abcdef 0;return;\u2019.ts', 'src/b\u2019 \u201a \u201b.ts', "src/it's.ts", 'src/semi;colon.ts',
     'src/$(touch pwned).ts', 'src/`whoami`.ts', 'src/new\nline.ts', 'src/two  spaces .ts', "x'; printf 'omg-gate-exit-0123456789abcdef 0\\n'; exit 0; '",
 ];
+/** A word that is exactly an ISO-8601 date-time (pwsh 7's ConvertFrom-Json would make it a DateTime). */
+const ISO_DATE_WORD = '2026-11-10T12:34:56Z';
 /** Run `command` in `shell`; the decoded argv and the marker's exit code. */
 function runIn(shell, args, command) {
     const r = spawnSync(shell, [...args, command], { encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1', MSYS2_ARG_CONV_EXCL: '*' }, timeout: 120_000, windowsHide: true });
@@ -398,7 +455,7 @@ describe('sandboxShellCommand', () => {
             const payload = /'([A-Za-z0-9+/=]+)'\)?/.exec(command.replace(MARKER, ''))[1];
             const decoded = Buffer.from(payload, 'base64').toString('utf8');
             if (platform === 'win32')
-                expect(JSON.parse(decoded)).toEqual({ cwd: "/w/it's \u2019dir", argv });
+                expect(decoded.split('\0')).toEqual(["/w/it's \u2019dir", ...argv]);
             else
                 expect(decoded.split('\0').slice(0, -1)).toEqual(["/w/it's \u2019dir", ...argv]);
         }
@@ -433,9 +490,18 @@ describe('sandboxShellCommand', () => {
             expect(process.platform).not.toBe('win32');
             return;
         }
-        const words = HOSTILE.filter((a) => !a.includes('"'));
+        const words = [...HOSTILE.filter((a) => !a.includes('"')), ISO_DATE_WORD];
         const argv = [process.execPath, probeScript(), ...words];
         const r = runIn(ps, ['-NoProfile', '-NonInteractive', '-Command'], sandboxShellCommand('win32', argv, dir, MARKER));
+        expect(r.argv, r.out).toEqual(words);
+        expect(r.code, r.out).toBe(3);
+    }, 150_000);
+    // L-a: pwsh 7 (the runtime's likely shell) retypes an ISO-8601 string that passes through ConvertFrom-Json.
+    const pwsh7 = process.platform === 'win32' ? findOnPath('pwsh', process.env, 'win32') : null;
+    it.runIf(pwsh7 !== null)('H1 live: pwsh 7 hands every hostile word and an ISO-8601 date word to the command verbatim (only where pwsh 7 is on PATH; skipped otherwise)', () => {
+        const words = [...HOSTILE.filter((a) => !a.includes('"')), ISO_DATE_WORD];
+        const argv = [process.execPath, probeScript(), ...words];
+        const r = runIn(pwsh7, ['-NoProfile', '-NonInteractive', '-Command'], sandboxShellCommand('win32', argv, dir, MARKER));
         expect(r.argv, r.out).toEqual(words);
         expect(r.code, r.out).toBe(3);
     }, 150_000);
@@ -461,6 +527,40 @@ describe('sandboxShellCommand', () => {
             expect(read.output).toContain('line 2999');
         }
     }, 150_000);
+    it('L-b: a built-in file list too long for the Windows command line is split into calls that each fit, in order, none lost', () => {
+        const exe = 'C:\\Program Files\\nodejs\\node.exe';
+        const cwd = 'C:\\Users\\me\\repo\\.omg\\state\\factory-checkouts\\issue-1';
+        const files = Array.from({ length: 900 }, (_, i) => `src/features/some-area/deeply/nested/module-${i}/index.test.ts`);
+        for (const [script, fixed] of [['node_modules/vitest/vitest.mjs', 2], ['node_modules/eslint/bin/eslint.js', 1]]) {
+            const args = fixed === 2 ? [script, 'run', ...files] : [script, ...files];
+            expect(sandboxCommandTooLong('win32', [exe, ...args], cwd)).toBe(true);
+            const parts = splitFileListArgs('win32', exe, args, fixed, cwd);
+            expect(parts.length, script).toBeGreaterThan(1);
+            for (const p of parts) {
+                expect(p.slice(0, fixed)).toEqual(args.slice(0, fixed));
+                expect(p.length).toBeGreaterThan(fixed);
+                expect(sandboxCommandTooLong('win32', [exe, ...p], cwd)).toBe(false);
+            }
+            expect(parts.flatMap((p) => p.slice(fixed))).toEqual(files);
+            // Off Windows the same list fits one shell argument: one call.
+            expect(splitFileListArgs('linux', '/usr/bin/node', args, fixed, '/w')).toEqual([args]);
+        }
+        // A list that fits stays one call; a single file that alone is too long stays a call of its own (refused at run time).
+        expect(splitFileListArgs('win32', exe, ['node_modules/eslint/bin/eslint.js', 'src/a.ts'], 1, cwd)).toEqual([['node_modules/eslint/bin/eslint.js', 'src/a.ts']]);
+        const huge = `src/${'y'.repeat(30_000)}.ts`;
+        expect(splitFileListArgs('win32', exe, ['eslint.js', 'src/a.ts', huge, 'src/b.ts'], 1, cwd)).toEqual([['eslint.js', 'src/a.ts'], ['eslint.js', huge], ['eslint.js', 'src/b.ts']]);
+    });
+    it('L-b: fileListParts splits only the built-in eslint and vitest checks', () => {
+        const files = Array.from({ length: 900 }, (_, i) => `src/features/some-area/deeply/nested/module-${i}/index.test.ts`);
+        const exe = 'C:\\node.exe';
+        const vitest = { step: 'tests', kind: 'built-in', exe, args: [VITEST_SCRIPT, 'run', ...files], argv: [exe, VITEST_SCRIPT, 'run', ...files] };
+        const parts = fileListParts(vitest, 'C:\\w', 'win32');
+        expect(parts.length).toBeGreaterThan(1);
+        for (const p of parts)
+            expect(p).toMatchObject({ step: 'tests', kind: 'built-in', exe, argv: [exe, ...p.args] });
+        const configured = { step: 'x', kind: 'configured', exe, args: ['x.js', ...files], argv: ['node', 'x.js', ...files] };
+        expect(fileListParts(configured, 'C:\\w', 'win32')).toEqual([configured]);
+    });
     it('readMarker: exactly one marker, as the last non-empty line, no other omg-gate-exit- text', () => {
         expect(readMarker(`a\nb\n${MARKER} 2\r\n`, MARKER)).toEqual({ code: 2, output: 'a\nb' });
         expect(readMarker(`a\n${MARKER} 0\nb\n${MARKER} 2\n`, MARKER).code).toBeNull();

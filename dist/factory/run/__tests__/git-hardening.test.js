@@ -11,6 +11,7 @@ import { defaultExec } from '../../../ship/exec.js';
 import { hostGitEnv, hostGitHardeningArgs, runHostGit } from '../../../team/git-worktree.js';
 import { FactorySafetyError, gitHardeningArgs, hardenedGitExec, MIRROR_UPLOAD_PACK_ARG, mirrorReceivePackArg } from '../exec.js';
 import { compareSnapshots, objectStoreMetaHash, replaceObjectsProblem, snapshotRepo } from '../review-guard.js';
+import { pinCheckoutGit } from '../engine.js';
 import { gitIn } from './fake-lanes.js';
 let dir;
 let root;
@@ -268,6 +269,33 @@ describe('the local forge mirror push (H1)', () => {
         expect(listed.stdout.split(/\s+/)[0]).toBe(sha);
         expect(MIRROR_UPLOAD_PACK_ARG).toBe('--upload-pack=git -c core.alternateRefsCommand=true upload-pack');
         expect(seen.filter((a) => a.includes('fetch') || a.includes('ls-remote')).every((a) => a.includes(MIRROR_UPLOAD_PACK_ARG))).toBe(true);
+    });
+    it('pinCheckoutGit inside hardenedGitExec: a fetch from the pinned checkout keeps the mirror checks and the upload-pack pin, --git-dir after the -c pairs', () => {
+        const sha = git('rev-parse', 'HEAD');
+        gitIn(root, 'push', '-q', mirror, `${sha}:refs/heads/main`);
+        const checkout = join(dir, 'checkout');
+        git('worktree', 'add', '-q', '--detach', checkout, sha);
+        const adminDir = gitIn(checkout, 'rev-parse', '--absolute-git-dir');
+        const seen = [];
+        const recording = (cmd, args, opts) => { seen.push({ args: [...args], ...(opts?.cwd ? { cwd: opts.cwd } : {}) }); return defaultExec(cmd, args, opts); };
+        const exec = hardenedGitExec(pinCheckoutGit(recording, () => ({ workTree: checkout, gitDir: adminDir })), hooks, () => mirror);
+        expect(exec('git', ['fetch', 'omg-local', 'main'], { cwd: checkout }).status).toBe(0);
+        const pinned = seen.filter((c) => c.cwd === checkout);
+        // The refused-config, url-rewrite and remote-name reads, then the transport: all through the recorded git dir.
+        expect(pinned.length).toBeGreaterThanOrEqual(4);
+        for (const c of pinned) {
+            let at = 0;
+            while (c.args[at] === '-c')
+                at += 2;
+            expect(at, c.args.join(' ')).toBeGreaterThan(0);
+            expect(c.args[at], c.args.join(' ')).toBe(`--git-dir=${adminDir}`);
+            expect(c.args[at + 1]).toBe(`--work-tree=${checkout}`);
+        }
+        const transport = pinned.at(-1).args;
+        expect(transport).toContain('fetch');
+        expect(transport).toContain(MIRROR_UPLOAD_PACK_ARG);
+        // The mirror's own config check names no checkout (no cwd): it is never pinned.
+        expect(seen.some((c) => c.cwd === undefined)).toBe(true);
     });
     it('the receive-pack command carries the empty hooks dir, quoted; a quote in the path is refused', () => {
         expect(mirrorReceivePackArg(hooks)).toBe(`--receive-pack=git -c core.hooksPath='${hooks}' -c core.fsmonitor=false -c core.alternateRefsCommand=true -c core.alternateRefsPrefixes= -c receive.autogc=false -c core.bare=true -c receive.denyCurrentBranch=refuse -c receive.denyDeleteCurrent=refuse receive-pack`);
