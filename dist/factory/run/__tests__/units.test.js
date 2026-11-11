@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseProgressLog } from '../../../lib/agent-progress.js';
 import { assertLaneCreditCap, DEFAULT_FACTORY_RUN_LIMITS, nextLaneCap, resolveFactoryRunLimits, runCreditsExceeded } from '../budget.js';
-import { ciFailureTail, ciFixPrompt, conflictFixPrompt, fenceFor, findPlanLink, fixPrompt, hasAcceptanceCriteria, implementPrompt, issueAuthorTrusted, oneLine, reviewPrompt } from '../engine.js';
+import { ciFailureTail, nodeModulesWriteDenied, sandboxIncompatibleAdvice, ciFixPrompt, conflictFixPrompt, fenceFor, findPlanLink, fixPrompt, hasAcceptanceCriteria, implementPrompt, issueAuthorTrusted, oneLine, reviewPrompt } from '../engine.js';
 import { ghRepoArg } from '../../../forge/github/gh.js';
 import { shipyardKeySearch } from '../../../forge/types.js';
 import { assertFactoryCommand, factoryGuardExec, FactorySafetyError, hardenedGitExec } from '../exec.js';
@@ -13,7 +13,7 @@ import { createFactoryProgress } from '../progress.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from '../review-output.js';
 import { acquireFactoryOwner, acquireFactoryRepoOwner, createFactoryState, factoryCancelRequested, factoryStatePath, moveTo, requestFactoryCancel, setGate, updateFactoryState, } from '../state.js';
 import { gitIn } from './fake-lanes.js';
-import { linkNodeModules, unlinkNodeModules } from '../prepare.js';
+import { GATE_CACHE_DIRS, GATE_TREE_FILE_MAX_BYTES, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, unlinkNodeModules } from '../prepare.js';
 import { nodeModulesTreeProblem } from '../../../copilot-run/sandbox.js';
 const SHA = '0123456789abcdef0123456789abcdef01234567';
 const block = (o) => `Review done.\n\n\`\`\`json\n${JSON.stringify(o)}\n\`\`\`\n`;
@@ -741,16 +741,18 @@ describe('gates timeout config', () => {
 describe('L7: the ci-failed park tail', () => {
     it('names where it failed, the failing tests and a redacted, visible, bounded output tail', () => {
         const detail = ['noise', ...Array.from({ length: 20 }, (_, i) => `line ${i}`), `token ${'ghp_'}${'a'.repeat(36)}`, 'esc \u001b[31mred\u001b[0m', 'x'.repeat(500)].join('\n');
-        const tail = ciFailureTail({ source: 'prepare', startSha: 'a'.repeat(40), checks: ['prepare tests'], tests: ['src/a.test.ts > adds'], detail });
-        expect(tail).toContain('; the failure is from the prepare checks on this host (the OS sandbox when gates are enforced), not from the forge CI');
-        expect(tail).toContain('; failing tests: src/a.test.ts > adds');
+        const { where, detail: tail } = ciFailureTail({ source: 'prepare', startSha: 'a'.repeat(40), checks: ['prepare tests'], tests: ['src/a.test.ts > adds'], detail });
+        expect(where).toBe('; the failure is from the prepare checks on this host (the OS sandbox when gates are enforced), not from the forge CI');
+        // H1: the tests and the tail are the local detail; the forge-bound part never carries them.
+        expect(where).not.toContain('adds');
+        expect(tail).toContain('failing tests: src/a.test.ts > adds');
         expect(tail).toContain('; output tail: ');
         expect(tail).not.toContain('noise');
         expect(tail).not.toContain('a'.repeat(36));
         expect(tail).not.toContain('\u001b');
         expect(tail).not.toContain('\n');
         expect(tail.length).toBeLessThan(1_800);
-        expect(ciFailureTail({ source: 'ci', startSha: 'a'.repeat(40), checks: ['build'], tests: [] })).toBe('');
+        expect(ciFailureTail({ source: 'ci', startSha: 'a'.repeat(40), checks: ['build'], tests: [] })).toEqual({ where: '', detail: '' });
     });
 });
 describe('the prepare checkout\'s node_modules link', () => {
@@ -870,6 +872,61 @@ describe('the prepare checkout\'s node_modules link', () => {
         symlinkSync(join(other.root, 'elsewhere'), join(other.checkout, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
         unlinkNodeModules(other.root, other.checkout);
         expect(existsSync(join(other.checkout, 'node_modules'))).toBe(true);
+    });
+    it('M1 (review-490): .tmp is a fresh per-run dir (create-vite tsBuildInfoFile), yours is never linked', () => {
+        const { root, checkout } = setup();
+        mkdirSync(join(root, 'node_modules', '.tmp'));
+        writeFileSync(join(root, 'node_modules', '.tmp', 'tsconfig.app.tsbuildinfo'), 'yours\n');
+        linkNodeModules(root, checkout);
+        const tmp = join(checkout, 'node_modules', '.tmp');
+        expect(GATE_CACHE_DIRS).toContain('.tmp');
+        expect(lstatSync(tmp).isSymbolicLink()).toBe(false);
+        expect(readdirSync(tmp)).toEqual([]);
+        writeFileSync(join(tmp, 'tsconfig.app.tsbuildinfo'), 'run\n');
+        expect(readFileSync(join(root, 'node_modules', '.tmp', 'tsconfig.app.tsbuildinfo'), 'utf-8')).toBe('yours\n');
+        unlinkNodeModules(root, checkout);
+        expect(existsSync(join(checkout, 'node_modules'))).toBe(false);
+    });
+    it('M3 (review-490): with the marker deleted every link of the tree is still unlinked, never followed; the outside marker survives', () => {
+        const { root, checkout } = setup();
+        const outside = join(root, '..', 'outside');
+        mkdirSync(outside);
+        writeFileSync(join(outside, 'marker.txt'), 'keep\n');
+        linkNodeModules(root, checkout);
+        const tree = join(checkout, 'node_modules');
+        symlinkSync(outside, join(tree, '.vite', 'planted'), linkType);
+        rmSync(join(tree, GATE_TREE_MARKER));
+        expect(gateTreeHasLinks(checkout)).toBe(true);
+        unlinkNodeModules(root, checkout);
+        expect(gateTreeHasLinks(checkout)).toBe(false);
+        expect(existsSync(join(tree, 'typescript'))).toBe(false);
+        expect(existsSync(join(tree, '.vite', 'planted'))).toBe(false);
+        // A link-free dir is left to the caller's own removal; nothing outside lost a file.
+        rmSync(tree, { recursive: true });
+        expect(readFileSync(join(outside, 'marker.txt'), 'utf-8')).toBe('keep\n');
+        expect(readFileSync(join(root, 'node_modules', 'typescript', 'package.json'), 'utf-8')).toBe('{}\n');
+    });
+    it('L3 (review-490): a top-level file over the size bound is not copied into the tree', () => {
+        const { root, checkout } = setup();
+        writeFileSync(join(root, 'node_modules', '.package-lock.json'), '{}\n');
+        writeFileSync(join(root, 'node_modules', 'big.bin'), Buffer.alloc(GATE_TREE_FILE_MAX_BYTES + 1));
+        const notes = [];
+        linkNodeModules(root, checkout, (m) => notes.push(m));
+        expect(existsSync(join(checkout, 'node_modules', '.package-lock.json'))).toBe(true);
+        expect(existsSync(join(checkout, 'node_modules', 'big.bin'))).toBe(false);
+        expect(notes.join('\n')).toMatch(/big\.bin .*not copied/);
+        unlinkNodeModules(root, checkout);
+    });
+    it('M1: a permission error under node_modules in the base tail names that dir instead of the registry advice', () => {
+        expect(nodeModulesWriteDenied("error TS5033: Could not write file 'C:\\w\\base-x\\node_modules\\.prisma\\client\\x.d.ts': EPERM: operation not permitted")).toBe('node_modules/.prisma');
+        expect(nodeModulesWriteDenied("Error: EPERM: operation not permitted, open 'C:\\w\\base-x\\node_modules\\.astro\\types.d.ts'")).toBe('node_modules/.astro');
+        expect(nodeModulesWriteDenied("EACCES: permission denied, mkdir '/w/base/node_modules/@scope/tool/cache'")).toBe('node_modules/@scope/tool');
+        expect(nodeModulesWriteDenied('npm ERR! network request failed')).toBeUndefined();
+        const advice = sandboxIncompatibleAdvice("EROFS: read-only file system, open '/w/node_modules/.prisma/x'");
+        expect(advice).toContain('cannot write node_modules/.prisma');
+        expect(advice).toContain('.tmp');
+        expect(advice).not.toContain('writeNetwork');
+        expect(sandboxIncompatibleAdvice(undefined)).toContain('writeNetwork "registry"');
     });
 });
 //# sourceMappingURL=units.test.js.map

@@ -49,6 +49,7 @@ export interface BoardRow {
         gate?: {
             name: string;
             reason: string;
+            detail?: string;
         };
         pr?: number;
         head?: string;

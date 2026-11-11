@@ -283,14 +283,28 @@ export declare class StateTamperedError extends Error {
     readonly paths: string[];
     constructor(paths: string[]);
 }
+/** The last lines of `text`, redacted (token shapes), each made visible and one line, bounded: a gate's local `detail`. */
+export declare function parkTail(text: string): string;
 /**
- * L7: why a ci-failed park failed, for the park text, status, board and
- * issue comment: where it ran (a prepare failure ran in the OS sandbox on
- * this host, not in the forge's CI), the failing tests, and the last lines
- * of the output, redacted (token shapes), each made visible and one line,
- * bounded. Empty without a detail or tests.
+ * L7 + H1 (review-490): a ci-failed park. `where` goes into the forge-bound
+ * reason: where the failure ran (a prepare failure ran in the OS sandbox on
+ * this host, not in the forge's CI). `detail` is the gate's LOCAL detail:
+ * the failing tests and the output tail, both chosen by the PR's code, so
+ * never in the issue comment, PR notes or outcome posts (status, board and
+ * the CLI show it). `detail` is empty without an output or tests.
  */
-export declare function ciFailureTail(failure: FactoryCiFailure): string;
+export declare function ciFailureTail(failure: FactoryCiFailure): {
+    where: string;
+    detail: string;
+};
+/**
+ * M1 (review-490): the dir under node_modules a permission error in the
+ * base calibration's output names (EPERM, EACCES or EROFS on a path under
+ * node_modules), as `node_modules/<entry>`; undefined when there is none.
+ */
+export declare function nodeModulesWriteDenied(tail: string): string | undefined;
+/** What the gate-sandbox-incompatible park of a failing base calibration tells the human to do. */
+export declare function sandboxIncompatibleAdvice(tail: string | undefined): string;
 /**
  * Engine git in the prepare checkout once the PR's code ran there: the admin
  * dir recorded at `worktree add` (recordWorktreeGitLinks, before any of it

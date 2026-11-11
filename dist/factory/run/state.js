@@ -203,6 +203,8 @@ export function runRemote(state) {
 }
 const isStr = (v) => typeof v === 'string';
 const HEX64 = /^[0-9a-f]{64}$/;
+/** The bound of FactoryGate.detail (the engine writes at most about 3 KB). */
+export const GATE_DETAIL_MAX_CHARS = 4_000;
 const isCount = (v) => Number.isInteger(v) && v >= 0;
 function shapeProblem(s) {
     if (!isStr(s.repoUrl) || !isStr(s.base) || !s.base || !isStr(s.branch) || !s.branch)
@@ -225,6 +227,9 @@ function shapeProblem(s) {
     const gateDef = s.gate?.definition;
     if (gateDef !== undefined && (s.forgeKind !== 'local' || !isStr(gateDef) || !HEX64.test(gateDef)))
         return 'gate.definition';
+    const gateDetail = s.gate?.detail;
+    if (gateDetail !== undefined && (!isStr(gateDetail) || gateDetail.length > GATE_DETAIL_MAX_CHARS))
+        return 'gate.detail';
     if (s.prepareChecks !== undefined && s.prepareChecks !== 'auto' && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr))))
         return 'prepareChecks';
     if (s.trackerStage !== undefined && !PROGRESS_STAGES.includes(s.trackerStage))

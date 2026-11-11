@@ -397,7 +397,10 @@ describe('the prepare checkout\'s node_modules link (review-483 M4)', () => {
         const o = localOpts(w, lanesFor(w, [greet(), review('approve')]), { runUserConfig: env.user, gateConfig });
         const out = await runFactoryEngine({ ...o, exec, gateSandbox: attested(exec) });
         expect(out.gate?.name, out.message).toBe('lane-tampered');
-        expect(out.gate?.reason).toMatch(/did not run: .*node_modules resolves to .*elsewhere, not your node_modules .*\(the only target the engine links\)/);
+        // H1 (review-490): the target the PR's code chose is local detail only; the forge-bound reason never names it.
+        expect(out.gate?.reason).toMatch(/did not run: .*node_modules \(or a link in it\) is not as the engine made it/);
+        expect(out.gate?.reason).not.toMatch(/elsewhere/);
+        expect(out.gate?.detail).toMatch(/node_modules resolves to .*elsewhere, not your node_modules .*\(the only target the engine links\)/);
         expect(ran).toEqual(['check1.mjs']);
         expect(readFileSync(join(w.root, 'node_modules', 'marker.txt'), 'utf8')).toBe('yours\n');
     }, T);

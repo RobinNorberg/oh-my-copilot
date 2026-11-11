@@ -120059,8 +120059,8 @@ function statusPaths(out) {
 }
 function stageEngineRead(input, git8, ignored) {
   const refuse2 = (refusal, reason) => ({ ok: false, refusal, reason });
-  const listed2 = statusPaths(runHostGit(input.worktree, [...worktreeGitDirArgs(input.worktree), "--no-optional-locks", "-c", "core.untrackedCache=false", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames"], GIT_TIMEOUT_MS3)).filter((p) => !isOmcRuntimePath(p) && !ignored.has(p.replace(/\/$/, ""))).sort();
   const start = treeEntries(git8(["ls-tree", "-r", "-z", "--full-tree", input.start]));
+  const listed2 = statusPaths(runHostGit(input.worktree, [...worktreeGitDirArgs(input.worktree), "--no-optional-locks", "-c", "core.untrackedCache=false", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames"], GIT_TIMEOUT_MS3)).filter((p) => (!isOmcRuntimePath(p) || start.has(p)) && !ignored.has(p.replace(/\/$/, ""))).sort();
   const nested = listed2.filter((p) => p.endsWith("/"));
   if (nested.length > 0) {
     return refuse2("gitlink", `the lane added or changed nested repositories (gitlinks): ${nested.slice(0, 5).map((p) => p.slice(0, -1)).join(", ")}; host git does not enter them, so their content is not reviewed`);
@@ -126156,6 +126156,8 @@ function shapeProblem2(s) {
   if (s.gateChangeApproved !== void 0 && (s.forgeKind !== "local" || !isStr2(s.gateChangeApproved) || !HEX64.test(s.gateChangeApproved))) return "gateChangeApproved";
   const gateDef = s.gate?.definition;
   if (gateDef !== void 0 && (s.forgeKind !== "local" || !isStr2(gateDef) || !HEX64.test(gateDef))) return "gate.definition";
+  const gateDetail = s.gate?.detail;
+  if (gateDetail !== void 0 && (!isStr2(gateDetail) || gateDetail.length > GATE_DETAIL_MAX_CHARS)) return "gate.detail";
   if (s.prepareChecks !== void 0 && s.prepareChecks !== "auto" && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr2)))) return "prepareChecks";
   if (s.trackerStage !== void 0 && !PROGRESS_STAGES.includes(s.trackerStage)) return "trackerStage";
   if (s.codingAgent !== void 0 && (s.kind === "ci-heal" || codingAgentRecordProblem(s.codingAgent) !== null)) return "codingAgent";
@@ -126526,7 +126528,7 @@ function claimOwner(path30, now2, deps, busy, fields = {}) {
   };
   return { release, relabel, ...tookOver ? { tookOver } : {} };
 }
-var import_crypto50, import_fs157, import_os35, import_path184, FACTORY_PHASES, TERMINAL_FACTORY_PHASES, HEAL_RUN_KEY, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, FactoryStateError, EXIT_BUSY, FactoryBusyError, FactoryTamperHoldError, runSlug, runLabel, isStr2, HEX64, isCount3, HEX409, MAX_HUMAN_THREAD_IDS, THREAD_ID, FEEDBACK_FORGES, FULL_SHA2, findingsOk, ownIdentity, startIdentity, defaultOwnerDeps, ownerText, SLOT_FILE, slotText, IMPORT_LOCK_WAIT_MS, IMPORT_LOCK_SCAN_WAIT_MS, ImportLockBusyError, importHeld, importInside, SCAN_WAIT_MS, AUTO_START_SCAN_WAIT_MS, READ_SCAN_WAIT_MS, SCAN_POLL_MS, scanWait, engineBusyMessage, engineBusyText, unreadableOwnerMessage, isOwnerRecord, LOCK_STALE_MS5;
+var import_crypto50, import_fs157, import_os35, import_path184, FACTORY_PHASES, TERMINAL_FACTORY_PHASES, HEAL_RUN_KEY, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, FactoryStateError, EXIT_BUSY, FactoryBusyError, FactoryTamperHoldError, runSlug, runLabel, isStr2, HEX64, GATE_DETAIL_MAX_CHARS, isCount3, HEX409, MAX_HUMAN_THREAD_IDS, THREAD_ID, FEEDBACK_FORGES, FULL_SHA2, findingsOk, ownIdentity, startIdentity, defaultOwnerDeps, ownerText, SLOT_FILE, slotText, IMPORT_LOCK_WAIT_MS, IMPORT_LOCK_SCAN_WAIT_MS, ImportLockBusyError, importHeld, importInside, SCAN_WAIT_MS, AUTO_START_SCAN_WAIT_MS, READ_SCAN_WAIT_MS, SCAN_POLL_MS, scanWait, engineBusyMessage, engineBusyText, unreadableOwnerMessage, isOwnerRecord, LOCK_STALE_MS5;
 var init_state6 = __esm({
   "src/factory/run/state.ts"() {
     "use strict";
@@ -126589,6 +126591,7 @@ var init_state6 = __esm({
     runLabel = (key) => typeof key === "number" ? `#${key}` : key;
     isStr2 = (v) => typeof v === "string";
     HEX64 = /^[0-9a-f]{64}$/;
+    GATE_DETAIL_MAX_CHARS = 4e3;
     isCount3 = (v) => Number.isInteger(v) && v >= 0;
     HEX409 = /^[0-9a-f]{40}$/;
     MAX_HUMAN_THREAD_IDS = 200;
@@ -126650,7 +126653,7 @@ function unlinkLink(p) {
     (0, import_fs158.rmdirSync)(p);
   }
 }
-function linkNodeModules(root2, checkout) {
+function linkNodeModules(root2, checkout, warn) {
   const source = (0, import_path185.join)(root2, "node_modules");
   const target = (0, import_path185.join)(checkout, "node_modules");
   if (!(0, import_fs158.existsSync)(source) || !(0, import_fs158.existsSync)(checkout)) return;
@@ -126674,6 +126677,10 @@ function linkNodeModules(root2, checkout) {
         continue;
       }
       if (st.isFile()) {
+        if (st.size > GATE_TREE_FILE_MAX_BYTES) {
+          warn?.(`omg factory run: node_modules/${e.name} (${st.size} bytes) is over ${GATE_TREE_FILE_MAX_BYTES} bytes, so it is not copied into the gate's node_modules tree ${target}`);
+          continue;
+        }
         (0, import_fs158.copyFileSync)((0, import_path185.join)(source, e.name), (0, import_path185.join)(target, e.name));
         continue;
       }
@@ -126720,7 +126727,36 @@ function unlinkNodeModules(root2, checkout) {
     unlinkOwnLink(root2, target);
     return;
   }
-  if (st.isDirectory() && (0, import_fs158.existsSync)((0, import_path185.join)(target, GATE_TREE_MARKER)) && !sameDir(target, (0, import_path185.join)(root2, "node_modules"))) removeGateTree(target);
+  if (!st.isDirectory() || sameDir(target, (0, import_path185.join)(root2, "node_modules"))) return;
+  unlinkTreeLinks(target);
+  if ((0, import_fs158.existsSync)((0, import_path185.join)(target, GATE_TREE_MARKER))) removeGateTree(target);
+}
+function unlinkTreeLinks(dir) {
+  for (const name of (0, import_fs158.readdirSync)(dir)) {
+    const p = (0, import_path185.join)(dir, name);
+    const st = (0, import_fs158.lstatSync)(p);
+    if (st.isSymbolicLink()) unlinkLink(p);
+    else if (st.isDirectory()) unlinkTreeLinks(p);
+  }
+}
+function gateTreeHasLinks(checkout) {
+  const walk = (p) => {
+    const st = (0, import_fs158.lstatSync)(p);
+    if (st.isSymbolicLink()) return true;
+    if (!st.isDirectory()) return false;
+    return (0, import_fs158.readdirSync)(p).some((name) => walk((0, import_path185.join)(p, name)));
+  };
+  const target = (0, import_path185.join)(checkout, "node_modules");
+  try {
+    (0, import_fs158.lstatSync)(target);
+  } catch {
+    return false;
+  }
+  try {
+    return walk(target);
+  } catch {
+    return true;
+  }
 }
 function sameDir(a, b) {
   try {
@@ -126731,7 +126767,7 @@ function sameDir(a, b) {
     return false;
   }
 }
-var import_fs158, import_path185, FACTORY_CHECKOUT_TEAM, checkoutWorker, GATE_CACHE_DIRS, GATE_TREE_MARKER, defaultGateConfigLoader;
+var import_fs158, import_path185, FACTORY_CHECKOUT_TEAM, checkoutWorker, GATE_CACHE_DIRS, GATE_TREE_MARKER, GATE_TREE_FILE_MAX_BYTES, defaultGateConfigLoader;
 var init_prepare = __esm({
   "src/factory/run/prepare.ts"() {
     "use strict";
@@ -126742,8 +126778,9 @@ var init_prepare = __esm({
     init_state6();
     FACTORY_CHECKOUT_TEAM = "factory-run";
     checkoutWorker = (issue2) => runSlug(issue2);
-    GATE_CACHE_DIRS = [".cache", ".vite", ".vite-temp", ".vitest"];
+    GATE_CACHE_DIRS = [".cache", ".tmp", ".vite", ".vite-temp", ".vitest"];
     GATE_TREE_MARKER = ".omg-gate-tree";
+    GATE_TREE_FILE_MAX_BYTES = 16 * 1024 * 1024;
     defaultGateConfigLoader = (i) => {
       const layers = userConfigLayers();
       const config2 = loadTrustedShipConfig({
@@ -128450,7 +128487,10 @@ var init_private_run = __esm({
        */
       removeWorktree(path30) {
         if ((0, import_fs162.existsSync)(path30)) {
-          unlinkNodeModules(this.root, path30);
+          try {
+            unlinkNodeModules(this.root, path30);
+          } catch {
+          }
           removeRunDir(path30, this.layout.work);
         }
         const admin = (0, import_path189.join)(this.repo.gitDir, "worktrees");
@@ -128765,8 +128805,8 @@ function cleanHeldFactoryRun(o, state) {
       result.kept.push({ worktree: path30, reason: `tamper_evidence: its lane note records tamper problems; inspect it, then omg factory run clean ${o.issue} --discard removes it` });
       continue;
     }
-    if (team === FACTORY_CHECKOUT_TEAM) unlinkNodeModules(o.root, path30);
     try {
+      if (team === FACTORY_CHECKOUT_TEAM) unlinkNodeModules(o.root, path30);
       const gitLinks = recordedWorktreeGitLinks(path30);
       removeWorkerWorktree(team, worker, o.root, { contained, ...gitLinks ? { gitLinks } : {}, ...o.discard ? { discardChanges: true } : {} });
       if (existed) result.removed.push(path30);
@@ -133717,13 +133757,29 @@ function parseStatusPaths(raw) {
   }
   return paths;
 }
+function parkTail(text4) {
+  const lines4 = redactGateOutput(text4).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-PARK_TAIL_LINES);
+  const tail5 = lines4.map((l) => oneLine(visibleLine(l), PARK_TAIL_LINE_CHARS)).join(" | ");
+  return tail5.length > PARK_TAIL_CHARS ? `...${tail5.slice(-PARK_TAIL_CHARS)}` : tail5;
+}
 function ciFailureTail(failure4) {
   const where = failure4.source === "prepare" ? "; the failure is from the prepare checks on this host (the OS sandbox when gates are enforced), not from the forge CI" : "";
-  const tests = failure4.tests.length > 0 ? `; failing tests: ${failure4.tests.slice(0, 5).map((t) => oneLine(visibleLine(t), PARK_TAIL_LINE_CHARS)).join(", ")}${failure4.tests.length > 5 ? ` and ${failure4.tests.length - 5} more` : ""}` : "";
-  const lines4 = failure4.detail ? redactGateOutput(failure4.detail).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-PARK_TAIL_LINES) : [];
-  let tail5 = lines4.map((l) => oneLine(visibleLine(l), PARK_TAIL_LINE_CHARS)).join(" | ");
-  if (tail5.length > PARK_TAIL_CHARS) tail5 = `...${tail5.slice(-PARK_TAIL_CHARS)}`;
-  return `${where}${tests}${tail5 ? `; output tail: ${tail5}` : ""}`;
+  const tests = failure4.tests.length > 0 ? `failing tests: ${failure4.tests.slice(0, 5).map((t) => oneLine(visibleLine(t), PARK_TAIL_LINE_CHARS)).join(", ")}${failure4.tests.length > 5 ? ` and ${failure4.tests.length - 5} more` : ""}` : "";
+  const tail5 = failure4.detail ? parkTail(failure4.detail) : "";
+  return { where, detail: [tests, tail5 ? `output tail: ${tail5}` : ""].filter(Boolean).join("; ") };
+}
+function nodeModulesWriteDenied(tail5) {
+  for (const line2 of tail5.split(/\r?\n/)) {
+    if (!/\b(?:EPERM|EACCES|EROFS)\b/.test(line2)) continue;
+    const m = /node_modules[\x5c/]+(@[\w.-]+[\x5c/]+[\w.-]+|[\w.@-]+)/.exec(line2);
+    if (m) return `node_modules/${m[1].replace(/[\x5c/]+/g, "/")}`;
+  }
+  return void 0;
+}
+function sandboxIncompatibleAdvice(tail5) {
+  const denied = tail5 ? nodeModulesWriteDenied(tail5) : void 0;
+  if (!denied || GATE_CACHE_DIRS.includes(denied.slice("node_modules/".length))) return 'Your gate fails in the sandbox on the base: set factory.run.sandbox.writeNetwork "registry" if it needs the npm registry';
+  return `Your gate cannot write ${denied} in the sandbox: node_modules is read-only there except the fresh per-run dirs ${GATE_CACHE_DIRS.join(", ")}. Move that tool's output or cache out of node_modules (for tsc a tsBuildInfoFile outside it, for vite a cacheDir outside it), or report ${denied} to oh-my-copilot so it can become a per-run dir`;
 }
 function pinCheckoutGit(exec3, pin) {
   return (cmd, args, opts) => {
@@ -134063,7 +134119,7 @@ async function runFactoryEngine(o) {
 function sharedLayoutSealed(s) {
   return s.layout !== 2 && (s.lanes.length > 0 || s.codingAgent !== void 0);
 }
-var import_crypto55, import_fs173, import_os39, import_path201, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4017, PARK_TAIL_LINES, PARK_TAIL_LINE_CHARS, PARK_TAIL_CHARS, isHumanReadGate, CALIBRATION_NO_TEST_FILTER, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
+var import_crypto55, import_fs173, import_os39, import_path201, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4017, PARK_TAIL_LINES, PARK_TAIL_LINE_CHARS, PARK_TAIL_CHARS, localDetailNote, isHumanReadGate, CALIBRATION_NO_TEST_FILTER, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
 var init_engine = __esm({
   "src/factory/run/engine.ts"() {
     "use strict";
@@ -134193,6 +134249,7 @@ var init_engine = __esm({
     PARK_TAIL_LINES = 12;
     PARK_TAIL_LINE_CHARS = 200;
     PARK_TAIL_CHARS = 1500;
+    localDetailNote = (key, what) => `; ${what} is shown on this host only (omg factory run status ${key}), never posted`;
     isHumanReadGate = (name) => name === HUMAN_REVIEW_GATE || name === "merge" || name === "fix-rounds-spent" || name === "head-moved-externally";
     CALIBRATION_NO_TEST_FILTER = "omg-calibration-matches-no-test-file";
     BUILT_IN_FILE_NAME_TOO_LONG = "a changed file name is too long for the sandbox shell";
@@ -134403,9 +134460,11 @@ var init_engine = __esm({
       pushRemoteMismatch(s) {
         return s.remote === LOCAL_REMOTE ? localRemoteMismatch(this.exec, this.o.root, s.repoUrl) : remoteRepoMismatch(this.exec, this.o.root, runRemote(s), s.repoUrl);
       }
-      gate(name, reason) {
+      /** `detail`: the PR code's output for this park, local only (FactoryGate.detail, H1); the forge-bound text is `reason`. */
+      gate(name, reason, detail) {
         const pending = this.resumedFromPark && !isHumanReadGate(name) ? this.pendingHumanNote() : "";
-        this.save((s) => setGate(s, name, `${reason}${pending}`, this.iso()));
+        const local = detail ? detail.slice(-GATE_DETAIL_MAX_CHARS) : "";
+        this.save((s) => setGate(s, name, `${reason}${pending}`, this.iso(), local ? { detail: local } : {}));
       }
       /** Set by resumed(): this run re-evaluates a park, so a park it hits again names the PR's pending human review (L8). */
       resumedFromPark = false;
@@ -134818,7 +134877,7 @@ var init_engine = __esm({
       async privateNodeModules(p, path30, baseSha, head, loaded2) {
         const rule = lockfileUnchanged(p.repo, baseSha, head, p.ctx);
         if (rule.policy === "junction") {
-          linkNodeModules(this.o.root, path30);
+          linkNodeModules(this.o.root, path30, this.o.warn);
           return null;
         }
         const what = rule.lockfiles.length === 0 ? "the base has no lockfile" : `the PR changes ${rule.changed.join(", ")}`;
@@ -134836,7 +134895,7 @@ var init_engine = __esm({
         if ("missing" in target) return { name: GATE_INSTALL_GATE, reason: `${what}, and npm cannot be started for the sandboxed install (${target.missing}); install npm, then rerun ${this.resume}` };
         const r = this.o.gateSandbox ? await this.sandboxRun({ purpose: "install", argv, exe: target.exe, args: target.args, cwd: path30, commonGitDir: p.repo.gitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, network: "registry" }) : { ran: false, reason: "no OS sandbox runner was given to the engine" };
         if (!r.ran) return { name: GATE_INSTALL_GATE, reason: `${what}, and npm ci --ignore-scripts could not run in the OS sandbox (${r.reason}); fix that, or set factory.run.gateInstall "park", then rerun ${this.resume}` };
-        if (r.status !== 0 || r.timedOut) return { name: GATE_INSTALL_GATE, reason: `${what}, and npm ci --ignore-scripts in the OS sandbox failed (exit ${r.status}${r.timedOut ? ", timed out" : ""}): ${redactGateOutput(r.output).trim().slice(-1500)}; rerun ${this.resume} after fixing it` };
+        if (r.status !== 0 || r.timedOut) return { name: GATE_INSTALL_GATE, reason: `${what}, and npm ci --ignore-scripts in the OS sandbox failed (exit ${r.status}${r.timedOut ? ", timed out" : ""})${localDetailNote(this.key, "its output")}; rerun ${this.resume} after fixing it`, detail: parkTail(r.output) };
         this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `${what}: npm ci --ignore-scripts ran in the OS sandbox in the prepare checkout` }] }));
         return null;
       }
@@ -136228,13 +136287,13 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         if (head !== this.state.head && head !== this.state.checkoutHead) {
           throw new FactoryStepError(`the engine's prepare checkout ${path30} is at ${head.slice(0, 12)}, which the engine did not leave there; inspect it and remove it by hand`);
         }
-        unlinkNodeModules(this.o.root, path30);
         try {
+          unlinkNodeModules(this.o.root, path30);
           const gitLinks = recordedWorktreeGitLinks(path30);
           removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [head], ...gitLinks ? { gitLinks } : {} });
           forgetWorktreeGitLinks(path30);
         } catch (error2) {
-          linkNodeModules(this.o.root, path30);
+          linkNodeModules(this.o.root, path30, this.o.warn);
           throw new FactoryStepError(`could not discard the engine's prepare checkout ${path30}: ${errText6(error2)}`);
         }
         this.save((x) => {
@@ -136276,12 +136335,12 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
        * did not make), so the run prepares a fresh one instead of parking.
        */
       discardLegacyCheckout(path30) {
-        unlinkNodeModules(this.o.root, path30);
         const contained = [this.state.head, this.state.checkoutHead].filter((sha3) => typeof sha3 === "string" && HEX4017.test(sha3));
         try {
+          unlinkNodeModules(this.o.root, path30);
           removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [...new Set(contained)] });
         } catch (error2) {
-          linkNodeModules(this.o.root, path30);
+          linkNodeModules(this.o.root, path30, this.o.warn);
           throw new FactoryStepError(`could not discard the engine's prepare checkout ${path30}, which an older release made: ${errText6(error2)}. ${this.freshCheckoutRecovery()}`);
         }
         this.save((x) => {
@@ -136424,10 +136483,10 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         if (priv) {
           const install2 = await this.privateNodeModules(priv, path30, view2.baseRefOid, head, this.gateConfig(view2));
           if (install2) {
-            this.gate(install2.name, install2.reason);
+            this.gate(install2.name, install2.reason, install2.detail);
             return;
           }
-        } else linkNodeModules(this.o.root, path30);
+        } else linkNodeModules(this.o.root, path30, this.o.warn);
         const gitLink = checkoutGitLink(path30);
         if (!gitLink.gitDir) throw new FactoryStepError(`the new prepare checkout ${path30} has no gitfile naming its git dir (${gitLink.hash})`);
         if (!samePath2(gitLink.gitDir, recorded.adminDir)) throw new FactoryStepError(`the new prepare checkout ${path30} names the git dir ${gitLink.gitDir}, not the admin dir ${recorded.adminDir} its git links were recorded with`);
@@ -136442,7 +136501,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
             (c) => this.prepareCheck(c, { head, path: path30, commonGitDir: common, baseSha: view2.baseRefOid, gates, ran, gitLink: { hash: gitLink.hash, gitDir: gitLink.gitDir } })
           );
           if (ran.park?.name === "lane-tampered") {
-            this.gate(ran.park.name, ran.park.reason);
+            this.gate(ran.park.name, ran.park.reason, ran.park.detail);
             return;
           }
           if (ran.modes.has("ack") || ran.modes.has("unsandboxed")) {
@@ -136466,7 +136525,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         const failed3 = result.steps.at(-1);
         if (failed3?.name === PREPARE_SANDBOX_STEP) {
           if (!ran.park) throw new FactoryStepError(`prepare stopped without a verdict: ${failed3.detail ?? "unknown check"}`);
-          this.gate(ran.park.name, ran.park.reason);
+          this.gate(ran.park.name, ran.park.reason, ran.park.detail);
           return;
         }
         if (failed3?.name === "merge-base" && (result.conflicts ?? []).length > 0) {
@@ -136637,7 +136696,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             return { status: 1, stdout: "", stderr: BUILT_IN_FILE_NAME_TOO_LONG };
           }
           const repointed = this.nodeModulesRepointed(path30);
-          if (repointed) return stop({ name: "lane-tampered", reason: `${label2} on ${head.slice(0, 12)} did not run: ${repointed}, so the PR's code changed it; nothing of this prepare is trusted and nothing is pushed; inspect and remove ${path30} by hand` });
+          if (repointed) return stop({ name: "lane-tampered", reason: `${label2} on ${head.slice(0, 12)} did not run: ${(0, import_path201.join)(path30, "node_modules")} (or a link in it) is not as the engine made it, so the PR's code changed it${localDetailNote(this.key, "which link")}; nothing of this prepare is trusted and nothing is pushed; inspect and remove ${path30} by hand`, detail: oneLine(visibleLine(repointed), PARK_TAIL_CHARS) });
           const r = this.o.gateSandbox ? await this.sandboxRun({ purpose: "prepare", argv: c.argv, exe: c.exe, args: c.args, cwd: path30, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {} }) : { ran: false, reason: "no OS sandbox runner was given to the engine" };
           const t = tampered();
           if (t) return t;
@@ -136685,7 +136744,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         if (cal.ok) return null;
         return {
           name: GATE_SANDBOX_INCOMPATIBLE_GATE,
-          reason: `${what} fails in the OS sandbox on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). Your gate fails in the sandbox on the base: set factory.run.sandbox.writeNetwork "registry" if it needs the npm registry, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1500)}` : ""}`
+          reason: `${what} fails in the OS sandbox on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${sandboxIncompatibleAdvice(cal.tail)}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1500)}` : ""}`
         };
       }
       /**
@@ -136705,7 +136764,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           const env2 = { ...process.env, GIT_INDEX_FILE: index, GIT_NO_REPLACE_OBJECTS: "1" };
           runHostGit(this.o.root, ["read-tree", baseSha], void 0, env2);
           runHostGit(this.o.root, ["checkout-index", "-a", "-f", `--prefix=${dir.replace(/\\/g, "/")}/`], void 0, env2);
-          linkNodeModules(this.o.root, dir);
+          linkNodeModules(this.o.root, dir, this.o.warn);
           const r = await this.sandboxRun({ purpose: "calibrate", argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {} });
           if (!r.ran) return { notStarted: r.reason };
           const tail5 = r.output.trim().slice(-2e3);
@@ -136713,14 +136772,12 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         } catch (error2) {
           return { notStarted: errText6(error2).slice(0, 300) };
         } finally {
-          unlinkNodeModules(this.o.root, dir);
-          let linked = true;
           try {
-            (0, import_fs173.lstatSync)((0, import_path201.join)(dir, "node_modules"));
-          } catch {
-            linked = false;
+            unlinkNodeModules(this.o.root, dir);
+          } catch (error2) {
+            this.o.warn?.(`omg factory run: could not remove the node_modules tree of the base calibration dir ${dir}: ${errText6(error2)}`);
           }
-          if (linked) this.o.warn?.(`omg factory run: the base calibration dir ${dir} still has its node_modules (links to yours); unlink every link in it by hand, then remove the dir`);
+          if (gateTreeHasLinks(dir)) this.o.warn?.(`omg factory run: the base calibration dir ${dir} still has its node_modules (links to yours); unlink every link in it by hand, then remove the dir`);
           else try {
             (0, import_fs173.rmSync)(dir, { recursive: true, force: true });
           } catch {
@@ -136842,7 +136899,8 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
       ciFailed(failure4, note) {
         if (this.state.ciFixRounds >= this.o.limits.maxCiFixRounds) {
           this.save((x) => ({ ...x, ciFailure: failure4 }));
-          this.gate("ci-failed", `${note}: ${failure4.checks.join(", ")}; the CI-fix rounds are spent (${this.state.ciFixRounds}/${this.o.limits.maxCiFixRounds})${ciFailureTail(failure4)}`);
+          const { where, detail } = ciFailureTail(failure4);
+          this.gate("ci-failed", `${note}: ${failure4.checks.join(", ")}; the CI-fix rounds are spent (${this.state.ciFixRounds}/${this.o.limits.maxCiFixRounds})${where}${detail ? localDetailNote(this.key, "the output (failing tests, output tail)") : ""}`, detail);
           return;
         }
         this.save((x) => moveTo({ ...x, ciFailure: failure4, ciFixRounds: x.ciFixRounds + 1 }, "ci-fix", note, this.iso()));
@@ -137018,7 +137076,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           if (gates.mode === "enforced") {
             const repointed = this.nodeModulesRepointed(checkout);
             if (repointed) {
-              this.gate("lane-tampered", `the local gate did not run on ${head.slice(0, 12)}: ${repointed}, so the PR's code changed it; inspect and remove ${checkout} by hand, then rerun ${this.resume}`);
+              this.gate("lane-tampered", `the local gate did not run on ${head.slice(0, 12)}: ${(0, import_path201.join)(checkout, "node_modules")} (or a link in it) is not as the engine made it, so the PR's code changed it${localDetailNote(this.key, "which link")}; inspect and remove ${checkout} by hand, then rerun ${this.resume}`, oneLine(visibleLine(repointed), PARK_TAIL_CHARS));
               return false;
             }
             out = this.o.gateSandbox ? await runLocalGate({ ...input, mode: "enforced", sandbox: { run: (req) => this.sandboxRun(req), commonGitDir: common, requireDeniedPaths: gates.requireDeniedPaths } }) : { started: false, reason: "no OS sandbox runner was given to the engine", sandbox: true };
@@ -143207,6 +143265,7 @@ function runLine(r, prefix) {
   parts.push(...flagText(r));
   const lines4 = [`  ${parts.join("  ")}`];
   if (run3?.gate) lines4.push(source_default.gray(`        ${run3.gate.reason}`));
+  if (run3?.gate?.detail) lines4.push(source_default.gray(`        local only: ${run3.gate.detail}`));
   if (run3?.privateDir) lines4.push(source_default.gray(`        layout private: ${run3.privateDir}`));
   return lines4.join("\n");
 }
@@ -143302,7 +143361,7 @@ function runPart(root2, s, warnings) {
   const running = s.lanes.find((l) => l.status === "running");
   const run3 = {
     phase: s.phase,
-    ...s.gate ? { gate: { name: plainText(s.gate.name), reason: plainText(s.gate.reason) } } : {},
+    ...s.gate ? { gate: { name: plainText(s.gate.name), reason: plainText(s.gate.reason), ...s.gate.detail ? { detail: plainText(s.gate.detail) } : {} } } : {},
     ...s.pr !== void 0 ? { pr: s.pr } : {},
     ...s.head ? { head: plainText(s.head) } : {},
     lanes: s.lanes.length,
@@ -144534,6 +144593,7 @@ async function factoryGuarded(json, fn) {
 function renderFactoryRunState(state, o = {}) {
   const lines4 = [`${source_default.bold(`factory run #${state.issue}`)}  phase=${source_default.cyan(state.phase)}  base=${state.base}  branch=${state.branch}${state.pr ? `  PR #${state.pr}` : ""}`];
   if (state.gate && o.gate !== false) lines4.push(source_default.yellow(`awaiting-human: ${state.gate.name}: ${state.gate.reason}`));
+  if (state.gate?.detail) lines4.push(source_default.gray(`  local only (not posted): ${plainText(state.gate.detail)}`));
   if (state.cancelRequested && state.phase !== "cancelled") lines4.push(source_default.yellow("cancel requested"));
   if (state.head) lines4.push(`head ${state.head.slice(0, 12)}`);
   if (state.layout === 2 && state.privateDir) lines4.push(`layout private: ${plainText(state.privateDir)}`);

@@ -152,7 +152,10 @@ describe('base calibration', () => {
             });
             const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run }));
             expect(out.gate?.name, out.message).toBe('lane-tampered');
-            expect(out.gate?.reason).toMatch(/vitest points to .*omg-secret-/);
+            // H1: the link target the PR's code chose is local detail only; the forge-bound reason names the tree.
+            expect(out.gate?.reason).toContain('is not as the engine made it');
+            expect(out.gate?.reason).not.toMatch(/omg-secret-/);
+            expect(readFactoryState(w.root, LOCAL_ISSUE)?.gate?.detail).toMatch(/vitest points to .*omg-secret-/);
             expect(s.reqs.map((r) => r.purpose)).toEqual(['prepare']);
         }
         finally {

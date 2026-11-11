@@ -60,8 +60,9 @@ export declare const ENGINE_COMMIT_IDENTITY: Readonly<{
  * write in its worktree: everything under `.omg/` (state, sessions,
  * notepad.md, project-memory.json with your home path in it, plans, research,
  * logs, artifacts, handoffs, ultragoal, ...) except `.omg/skills/`, the
- * documented committable exception. Skipped by the engine's staging, never
- * committed or summarized; a lane that changed only these left no changes.
+ * documented committable exception. Skipped by the engine's staging when
+ * untracked (never committed or summarized; a lane that changed only these
+ * left no changes); a path the start tree tracks is staged as any other (L1).
  */
 export declare function isOmcRuntimePath(path: string): boolean;
 /**

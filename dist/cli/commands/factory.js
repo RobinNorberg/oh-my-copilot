@@ -226,6 +226,9 @@ export function renderFactoryRunState(state, o = {}) {
     const lines = [`${chalk.bold(`factory run #${state.issue}`)}  phase=${chalk.cyan(state.phase)}  base=${state.base}  branch=${state.branch}${state.pr ? `  PR #${state.pr}` : ''}`];
     if (state.gate && o.gate !== false)
         lines.push(chalk.yellow(`awaiting-human: ${state.gate.name}: ${state.gate.reason}`));
+    // H1: the PR code's output for the park; never posted to the forge.
+    if (state.gate?.detail)
+        lines.push(chalk.gray(`  local only (not posted): ${plainText(state.gate.detail)}`));
     if (state.cancelRequested && state.phase !== 'cancelled')
         lines.push(chalk.yellow('cancel requested'));
     if (state.head)

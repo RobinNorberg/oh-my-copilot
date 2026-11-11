@@ -29,14 +29,18 @@ export function checkoutBranch(issue) {
  * The tool-cache dirs a gate's node_modules gets fresh and empty per run,
  * even when your node_modules has them: vite and vitest (`.vite`, the
  * bundled-config `.vite-temp`, `.vitest`) and find-cache-dir users such as
- * babel-loader, eslint-loader and terser (`.cache`). Your copies are never
+ * babel-loader, eslint-loader and terser (`.cache`), and `.tmp`, where the
+ * create-vite TypeScript templates put tsc's `tsBuildInfoFile` (a pure
+ * incremental cache: fresh only means a full build). Your copies are never
  * linked in: a cache the PR's code wrote there would run on your next
  * `vite dev`. They are made whether or not yours has them; any other name
  * your node_modules lacks is simply creatable in the tree.
  */
-export const GATE_CACHE_DIRS = ['.cache', '.vite', '.vite-temp', '.vitest'];
+export const GATE_CACHE_DIRS = ['.cache', '.tmp', '.vite', '.vite-temp', '.vitest'];
 /** The engine's own file in a node_modules tree it built (linkNodeModules). */
 export const GATE_TREE_MARKER = '.omg-gate-tree';
+/** L3 (review-490): the largest top-level node_modules file copied into a tree (npm's `.package-lock.json` of a big monorepo is a few MB). */
+export const GATE_TREE_FILE_MAX_BYTES = 16 * 1024 * 1024;
 function unlinkLink(p) {
     // A junction or directory symlink on win32: rmdir removes the link itself.
     try {
@@ -52,14 +56,15 @@ function unlinkLink(p) {
  * `node_modules` directory holding one junction (win32) or directory
  * symlink per top-level entry of yours (`@scope` dirs and `.bin` linked
  * whole), the GATE_CACHE_DIRS as fresh empty dirs, and top-level files
- * (`.package-lock.json`) copied. In the gate sandbox the checkout is
+ * (`.package-lock.json`) copied up to GATE_TREE_FILE_MAX_BYTES (a larger one
+ * is skipped with a `warn` note). In the gate sandbox the checkout is
  * read-write and your node_modules read-only, so tools that write a cache
  * under node_modules (vitest's results cache in `.vite`) write into this
  * per-run tree, never into yours. A single junction from an older release
  * is replaced; anything else already there is left alone. Every link is
  * unlinked (never followed) by unlinkNodeModules before the dir goes.
  */
-export function linkNodeModules(root, checkout) {
+export function linkNodeModules(root, checkout, warn) {
     const source = join(root, 'node_modules');
     const target = join(checkout, 'node_modules');
     if (!existsSync(source) || !existsSync(checkout))
@@ -89,6 +94,10 @@ export function linkNodeModules(root, checkout) {
                 continue;
             }
             if (st.isFile()) {
+                if (st.size > GATE_TREE_FILE_MAX_BYTES) {
+                    warn?.(`omg factory run: node_modules/${e.name} (${st.size} bytes) is over ${GATE_TREE_FILE_MAX_BYTES} bytes, so it is not copied into the gate's node_modules tree ${target}`);
+                    continue;
+                }
                 // A copy, never a link: a hard link would hand the PR's code your file to write.
                 copyFileSync(join(source, e.name), join(target, e.name));
                 continue;
@@ -143,8 +152,9 @@ function removeGateTree(dir) {
  * POSIX a symlink named node_modules is untracked for a `node_modules/`
  * gitignore line (directory-only), so removeWorkerWorktree would see a dirty
  * tree. The single link of older releases goes only when it resolves to the
- * root's node_modules; the engine's tree (a real dir with GATE_TREE_MARKER)
- * goes whole, its links unlinked, never followed. Your node_modules is never
+ * root's node_modules. In a real node_modules dir every link at any depth is
+ * unlinked, never followed, marker or not (M3); the engine's tree (with
+ * GATE_TREE_MARKER) then goes whole. Your node_modules is never
  * touched, and anything else is left to the caller's own (link-safe) removal
  * and dirty check.
  */
@@ -161,8 +171,53 @@ export function unlinkNodeModules(root, checkout) {
         unlinkOwnLink(root, target);
         return;
     }
-    if (st.isDirectory() && existsSync(join(target, GATE_TREE_MARKER)) && !sameDir(target, join(root, 'node_modules')))
+    if (!st.isDirectory() || sameDir(target, join(root, 'node_modules')))
+        return;
+    // M3 (review-490): a real node_modules dir in an engine checkout is treated as the engine's tree whether or not the
+    // marker is still there (the PR's code can delete it): every link at any depth goes first, never followed. The
+    // marker only decides whether the rest goes too; without it the caller's own (link-safe) removal takes the files.
+    unlinkTreeLinks(target);
+    if (existsSync(join(target, GATE_TREE_MARKER)))
         removeGateTree(target);
+}
+/** Unlink every symlink and junction under `dir` at any depth, never following one; files and dirs stay. */
+function unlinkTreeLinks(dir) {
+    for (const name of readdirSync(dir)) {
+        const p = join(dir, name);
+        const st = lstatSync(p);
+        if (st.isSymbolicLink())
+            unlinkLink(p);
+        else if (st.isDirectory())
+            unlinkTreeLinks(p);
+    }
+}
+/**
+ * True when `<checkout>/node_modules` is, or still holds, a link at any
+ * depth (or cannot be fully read): removing that dir recursively could go
+ * through a link into your node_modules. False when it is absent or link-free.
+ */
+export function gateTreeHasLinks(checkout) {
+    const walk = (p) => {
+        const st = lstatSync(p);
+        if (st.isSymbolicLink())
+            return true;
+        if (!st.isDirectory())
+            return false;
+        return readdirSync(p).some((name) => walk(join(p, name)));
+    };
+    const target = join(checkout, 'node_modules');
+    try {
+        lstatSync(target);
+    }
+    catch {
+        return false;
+    }
+    try {
+        return walk(target);
+    }
+    catch {
+        return true;
+    }
 }
 function sameDir(a, b) {
     try {
