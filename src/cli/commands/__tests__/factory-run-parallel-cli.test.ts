@@ -13,6 +13,7 @@ import { factoryGuardExec } from '../../../factory/run/exec.js';
 import { resolveFactoryRunLimits } from '../../../factory/run/budget.js';
 import type { ParallelChildOutcome } from '../../../factory/run/parallel.js';
 import { factoryRepoOwnerPath, readFactoryState } from '../../../factory/run/state.js';
+import { writeTamperHold } from '../../../factory/run/tamper-quarantine.js';
 import type { Exec } from '../../../ship/exec.js';
 import { FakeProcesses, gitIn, harness, type Harness } from '../../../factory/run/__tests__/fake-lanes.js';
 
@@ -116,9 +117,15 @@ describe('omg factory run with factory.run.maxConcurrent', () => {
 
   it('review-487 L-1: with no opt-in in the user config nothing is read (no git, no forge kind); the base layer is read at the sha the remote holds, never at a planted tracking ref', () => {
     const calls: string[] = [];
-    const spy: Exec = (cmd, args, o) => { calls.push(`${cmd} ${args.join(' ')}`); return factoryGuardExec(h.exec, () => ['dev'])(cmd, args, o); };
+    // origin as the forge config's repository (review-487b BLOCK-2: the remote check before the base read); the local bare repo serves it.
+    const remoteUrl = (args: string[]) => args[0] === 'remote' && args[1] === 'get-url';
+    const spy: Exec = (cmd, args, o) => {
+      calls.push(`${cmd} ${args.join(' ')}`);
+      if (cmd === 'git' && remoteUrl(args)) return { status: 0, stdout: 'https://github.com/o/r\n', stderr: '' };
+      return factoryGuardExec(h.exec, () => ['dev'])(cmd, args, o);
+    };
     let kindRead = 0;
-    const kind = () => { kindRead += 1; return undefined; };
+    const kind = () => { kindRead += 1; return { kind: 'github' as const, repoUrl: 'https://github.com/o/r' }; };
     expect(parallelLayers(h.root, 'dev', kind, null, spy)).toBeUndefined();
     expect(parallelLayers(h.root, 'dev', kind, { factory: { run: { workDir: '/x' } } }, spy)).toBeUndefined();
     expect(calls).toEqual([]);
@@ -143,6 +150,48 @@ describe('omg factory run with factory.run.maxConcurrent', () => {
     expect(calls.some((c) => c.startsWith('git ls-remote origin refs/heads/dev'))).toBe(true);
     // The scan lock it read under is released.
     expect(existsSync(factoryRepoOwnerPath(h.root))).toBe(false);
+    // Review-487b BLOCK-2: origin naming another repository (or no forge config naming one): no ls-remote, no fetch; the base keys count as unset.
+    calls.length = 0;
+    out = [];
+    const other = parallelLayers(h.root, 'dev', () => ({ kind: 'github', repoUrl: 'https://github.com/someone/else' }), user, spy);
+    expect(other?.settings).toMatchObject({ maxConcurrent: 1, source: 'default' });
+    expect(calls.filter((c) => / (ls-remote|fetch) /.test(` ${c} `))).toEqual([]);
+    expect(out.join('\n')).toMatch(/origin\/dev is not read \(remote origin points at https:\/\/github\.com\/o\/r, but the PR is in https:\/\/github\.com\/someone\/else\)/);
+    expect(parallelLayers(h.root, 'dev', () => undefined, user, spy)?.settings.maxConcurrent).toBe(1);
+    expect(calls.filter((c) => / (ls-remote|fetch) /.test(` ${c} `))).toEqual([]);
+  });
+
+  it('review-487b BLOCK-2: a tamper hold refuses the run before the parallel settings are read (no ls-remote, no fetch)', async () => {
+    writeTamperHold(h.ledgerDir, h.root, { root: h.root, at: '2026-11-11T00:00:00.000Z', run: '7', gate: 'lane-tampered', quarantine: join(h.ledgerDir, 'q'), moved: ['hooks/pre-commit'], restored: [], notRestored: [], refs: [] });
+    let read = 0;
+    const calls: string[] = [];
+    const plain = deps();
+    const d = deps({
+      parallel: () => { read += 1; return { settings: { maxConcurrent: 2, source: 'user config' }, layout: 'private' }; },
+      exec: (cmd, args, o) => { calls.push(`${cmd} ${args.join(' ')}`); return plain.exec(cmd, args, o); },
+    });
+    const code = await cli(d, '7');
+    expect(code, out.join('\n')).not.toBe(0);
+    expect(out.join('\n')).toMatch(/tamper hold/);
+    expect(read).toBe(0);
+    expect(calls.filter((c) => / (ls-remote|fetch) /.test(` ${c} `))).toEqual([]);
+  });
+
+  it('review-487b BLOCK-3: the stop listeners go in before the loader only in a parallel (slot) run; any other run keeps dev\'s order', async () => {
+    const seen: Array<{ mode: string; listening: number }> = [];
+    let mode = '';
+    const before = new Set(process.listeners('SIGINT'));
+    const forge: FactoryRunDeps['forge'] = (_root, _base, opts) => {
+      if (opts?.dryRun) throw new Error('no forge config');
+      seen.push({ mode, listening: process.listeners('SIGINT').filter((l) => !before.has(l)).length });
+      throw new Error('loader stops here');
+    };
+    mode = 'single';
+    expect(await cli(deps({ forge }), '7')).not.toBe(0);
+    mode = 'slot';
+    expect(await cli(deps({ ...parallel(2, 'private'), forge }), '7')).not.toBe(0);
+    expect(seen).toEqual([{ mode: 'single', listening: 0 }, { mode: 'slot', listening: 1 }]);
+    expect(process.listeners('SIGINT').filter((l) => !before.has(l))).toEqual([]);
   });
 
   it('review-487 M-3: a second Ctrl+C kills every running child\'s tree (SIGKILL forward) before the supervisor exits 130', async () => {

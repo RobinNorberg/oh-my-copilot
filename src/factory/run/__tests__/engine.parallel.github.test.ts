@@ -12,7 +12,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { Exec } from '../../../ship/exec.js';
 import { readTamperHold } from '../tamper-quarantine.js';
-import { FactoryBusyError, factoryImportLockPath, ImportLockBusyError, readFactoryState, scanWait } from '../state.js';
+import { FactoryBusyError, factoryImportLockPath, FactoryTamperHoldError, ImportLockBusyError, readFactoryState, requestFactoryCancel, scanWait } from '../state.js';
 import { commitFile, ENFORCED_SANDBOX, gitIn, ISSUE, type LaneScript } from './fake-lanes.js';
 import { h, run, useEngineHarness } from './engine-harness.js';
 
@@ -110,5 +110,76 @@ describe('parallel private runs on GitHub: other runs\' transports in your repos
     const lane = readFactoryState(h.root, ISSUE)!.lanes[0];
     expect(lane.status).toBe('running');
     expect(lane.note).toMatch(/its tamper check did not run/);
+  }, T);
+
+  it('review-487b BLOCK-1: a planted http.proxy plus a moved refs/remotes/origin/<base> parks with the hold, no ls-remote or fetch runs on that config, and a rerun is refused by the hold (not busy)', async () => {
+    const calls: string[] = [];
+    let laneDone = false;
+    const exec: Exec = (cmd, args, o) => {
+      if (laneDone && cmd === 'git') calls.push(args.join(' '));
+      return h.exec(cmd, args, o);
+    };
+    const plant = () => {
+      gitIn(h.root, 'config', 'http.proxy', 'http://127.0.0.1:1');
+      gitIn(h.root, 'update-ref', 'refs/remotes/origin/dev', planted());
+      laneDone = true;
+    };
+    const { done } = run([asYou(plant)], { runUserConfig: privateUser(), exec, ...parallel });
+    const out = await done;
+    expect(out.gate?.name, out.message).toBe('lane-tampered');
+    expect(out.gate?.reason).toMatch(/your repository: ref refs\/remotes\/origin\/dev moved/);
+    expect(out.gate?.reason).toMatch(/your repository: the common git config changed/);
+    expect(readTamperHold(h.ledgerDir, h.root)).not.toBeNull();
+    expect(calls.filter((c) => / ?(ls-remote|fetch) /.test(` ${c} `))).toEqual([]);
+    const again = await run([], { runUserConfig: privateUser(), exec, ...parallel }).done.then(() => null, (e: unknown) => e);
+    expect(again).toBeInstanceOf(FactoryTamperHoldError);
+    expect(calls.filter((c) => / ?(ls-remote|fetch) /.test(` ${c} `))).toEqual([]);
+  }, T);
+
+  it('review-487b F-2: the base moved twice (the tracking ref at an older sha the remote published, the remote further on) is excused: no park, no hold', async () => {
+    const movedTwice = () => {
+      const older = planted();
+      gitIn(h.root, 'push', '-q', 'origin', `${older}:refs/heads/dev`);
+      const newer = gitIn(h.root, 'commit-tree', '-p', older, '-m', 'newer', `${older}^{tree}`);
+      gitIn(h.root, 'push', '-q', 'origin', `${newer}:refs/heads/dev`);
+      // Another run fetched `older`; the remote moved on to `newer` since.
+      gitIn(h.root, 'update-ref', 'refs/remotes/origin/dev', older);
+    };
+    const { done } = run([asYou(movedTwice)], { runUserConfig: privateUser(), ...parallel });
+    const out = await done;
+    expect(out.gate?.name, out.message).not.toBe('lane-tampered');
+    expect(readTamperHold(h.ledgerDir, h.root)).toBeNull();
+    expect(readFactoryState(h.root, ISSUE)!.lanes[0].status).toBe('completed');
+  }, T);
+
+  it('review-487b F-2: a planted commit is no ancestor of the remote\'s head, so it parks even with the remote moved on', async () => {
+    const plantAfterMove = () => {
+      const next = planted();
+      gitIn(h.root, 'push', '-q', 'origin', `${next}:refs/heads/dev`);
+      gitIn(h.root, 'update-ref', 'refs/remotes/origin/dev', gitIn(h.root, 'commit-tree', '-p', next, '-m', 'planted on top', `${next}^{tree}`));
+    };
+    const { done } = run([asYou(plantAfterMove)], { runUserConfig: privateUser(), ...parallel });
+    const out = await done;
+    expect(out.gate?.name, out.message).toBe('lane-tampered');
+    expect(out.gate?.reason).toMatch(/your repository: ref refs\/remotes\/origin\/dev moved/);
+  }, T);
+
+  it('review-487b F-3: with a cancel requested, an unreadable remote leaves the ref unexcused: the run is not busy, no hold', async () => {
+    let offline = false;
+    const exec: Exec = (cmd, args, o) => (offline && cmd === 'git' && args.includes('ls-remote')
+      ? { status: 128, stdout: '', stderr: 'fatal: unable to access the remote' }
+      : h.exec(cmd, args, o));
+    const goOffline = () => {
+      gitIn(h.root, 'update-ref', 'refs/remotes/origin/dev', planted());
+      offline = true;
+      requestFactoryCancel(h.root, ISSUE, new Date().toISOString());
+    };
+    const { done } = run([asYou(goOffline)], { runUserConfig: privateUser(), exec, ...parallel });
+    const out = await done;
+    expect(out.message).not.toMatch(/could not be read/);
+    expect(readTamperHold(h.ledgerDir, h.root)).toBeNull();
+    const s = readFactoryState(h.root, ISSUE)!;
+    expect(s.lanes[0].status).not.toBe('running');
+    expect(s.phase === 'cancelled' || s.gate?.name === 'lane-tampered', `${s.phase} ${s.gate?.name}`).toBe(true);
   }, T);
 });

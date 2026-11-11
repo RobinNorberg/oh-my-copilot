@@ -203,6 +203,8 @@ export const MAX_MERGE_BOUNCES = 2;/** Lane waits are sliced so the cancel flag 
 export const DEFAULT_POLL_MS = 5_000;
 /** The engine cancels a lane this long past its own timeout (copilot_run enforces the timeout first). */
 const LANE_GRACE_MS = 60_000;
+/** The flags of the compare's fetch of the remote's head by sha (review-487b F-2): objects only, nothing else written. */
+const REMOTE_HEAD_FETCH_FLAGS: readonly string[] = ['--no-tags', '--no-write-fetch-head', '--no-auto-gc', '--refmap='];
 /** The bound of a compare's `git ls-remote` of the base or another run's branch (review-487 HIGH-1); past it the run stops busy. */
 const LS_REMOTE_TIMEOUT_MS = 60_000;
 
@@ -3976,27 +3978,49 @@ class FactoryEngine {
   private otherRunsTransport(branch: string, sha: string): boolean {
     const s = this.state;
     if (branch !== s.base && (branch === s.branch || !/^factory\/(?:issue-\d+|heal-[0-9a-f]{8})$/.test(branch))) return false;
-    return this.remoteHeadNow(branch) === sha;
+    return this.remotePublished(branch, sha);
   }
 
-  /** The sha `git ls-remote <remote> refs/heads/<branch>` reports now (null: no such branch), under the import lock; FactoryBusyError when it cannot be read. */
-  private remoteHeadNow(branch: string): string | null {
+  /**
+   * Whether `sha` is a commit the remote published for `branch`, read under
+   * the import lock: the sha `git ls-remote <remote> refs/heads/<branch>`
+   * reports now, or (review-487b F-2: the base moved again after another
+   * run's fetch) an ancestor of it. The remote unreadable: FactoryBusyError,
+   * except with a cancel requested (review-487b F-3): then the ref is not
+   * excused, so the run parks (a ref-only change holds nothing) and the
+   * cancel completes instead of the run staying busy.
+   */
+  private remotePublished(branch: string, sha: string): boolean {
     const remote = runRemote(this.state);
-    const busy = (why: string) => new FactoryBusyError(`the remote ${remote} could not be read (${why}), so a change of refs/remotes/${remote}/${branch} in your repository by another run's fetch or push cannot be told from a change by a lane; nothing was judged: rerun ${this.resume} to compare again`);
-    return withRepoImportLock(this.o.root, `snapshot:${this.key}`, () => {
-      // The remote must still be the run's repository before git talks to it (as before the engine's own fetch).
-      const mismatch = remoteRepoMismatch(this.exec, this.o.root, remote, this.state.repoUrl);
-      if (mismatch) return null;
-      let res: ReturnType<Exec>;
+    const cancelling = Boolean(this.state.cancelRequested) || factoryCancelRequested(this.o.root, this.key);
+    const busy = (why: string) => new FactoryBusyError(`the remote ${remote} could not be read (${visibleLine(why)}), so a change of refs/remotes/${remote}/${branch} in your repository by another run's fetch or push cannot be told from a change by a lane; nothing was judged: rerun ${this.resume} to compare again once the remote can be read, or ${cancelCommand(this.key)} and then rerun to park the run`);
+    const git = (args: string[], timeoutMs?: number) => {
       try {
-        res = this.exec('git', ['ls-remote', remote, `refs/heads/${branch}`], { cwd: this.o.root, env: TRUSTED_READ_ENV, timeoutMs: LS_REMOTE_TIMEOUT_MS });
+        return this.exec('git', args, { cwd: this.o.root, env: TRUSTED_READ_ENV, ...(timeoutMs ? { timeoutMs } : {}) });
       } catch (error) {
         throw busy(errText(error));
       }
-      if (res.status !== 0) throw busy(`git ls-remote ${remote} refs/heads/${branch} exit ${res.status}: ${res.stderr.trim().split('\n')[0] ?? ''}`);
-      const head = res.stdout.trim().split(/\s+/)[0] ?? '';
-      return HEX40.test(head) ? head : null;
-    });
+    };
+    try {
+      return withRepoImportLock(this.o.root, `snapshot:${this.key}`, () => {
+        // The remote must still be the run's repository before git talks to it (as before the engine's own fetch).
+        if (remoteRepoMismatch(this.exec, this.o.root, remote, this.state.repoUrl)) return false;
+        const listed = git(['ls-remote', remote, `refs/heads/${branch}`], LS_REMOTE_TIMEOUT_MS);
+        if (listed.status !== 0) throw busy(`git ls-remote ${remote} refs/heads/${branch} exit ${listed.status}: ${listed.stderr.trim().split('\n')[0] ?? ''}`);
+        const head = listed.stdout.trim().split(/\s+/)[0] ?? '';
+        if (!HEX40.test(head)) return false;
+        if (head === sha) return true;
+        // F-2: the remote's head, fetched by its sha (objects only: no ref, no FETCH_HEAD, no tags), then the ancestry.
+        // This cannot excuse a commit a lane planted: `sha` must be reachable from the head the remote reports, so it is
+        // a commit the remote itself published (another run's older fetch), never one that exists only on this machine.
+        const fetched = git(['fetch', ...REMOTE_HEAD_FETCH_FLAGS, remote, head], LS_REMOTE_TIMEOUT_MS);
+        if (fetched.status !== 0) throw busy(`git fetch ${remote} ${head.slice(0, 12)} exit ${fetched.status}: ${fetched.stderr.trim().split('\n')[0] ?? ''}`);
+        return git(['merge-base', '--is-ancestor', sha, head]).status === 0;
+      });
+    } catch (error) {
+      if (cancelling && error instanceof FactoryBusyError) return false;
+      throw error;
+    }
   }
 
   /** The lane's comparison against its before-snapshot: its own branch and worktree entry may appear. */
@@ -4007,7 +4031,9 @@ class FactoryEngine {
     try {
       const after = this.snap(before);
       const newWorktree = result.worktree ? { path: result.worktree } : result.remoteId ? { id: result.remoteId } : undefined;
-      return { after, problems: [...compareSnapshots(before, after, allowed, { fetchedRef: this.fetchedRef, ...(newWorktree ? { newWorktree } : {}) }), ...user] };
+      // Review-487b BLOCK-1: a change found in your repository already parks; no remote is consulted (fetchedRef) on top of it.
+      const fetchedRef = user.length === 0 ? this.fetchedRef : undefined;
+      return { after, problems: [...compareSnapshots(before, after, allowed, { ...(fetchedRef ? { fetchedRef } : {}), ...(newWorktree ? { newWorktree } : {}) }), ...user] };
     } catch (error) {
       if (error instanceof FactoryBusyError) throw error;
       return { problems: [`the post-lane snapshot failed: ${errText(error)}`, ...user] };
@@ -4222,7 +4248,8 @@ class FactoryEngine {
     if (!after) return { problems, note };
     try {
       const again = this.snap(after);
-      for (const p of compareSnapshots(after, again, {}, { fetchedRef: this.fetchedRef })) if (!problems.includes(p)) problems.push(p);
+      // Tampering was found already: no remote is consulted (review-487b BLOCK-1); a moved tracking ref is listed too.
+      for (const p of compareSnapshots(after, again)) if (!problems.includes(p)) problems.push(p);
       return { problems, after: again, note };
     } catch (error) {
       problems.push(`the snapshot after the lane's processes were killed failed: ${errText(error)}`);
@@ -4356,22 +4383,27 @@ class FactoryEngine {
     if (!baseline) {
       problems = ['the engine has no snapshot from before the lane started'];
     } else {
+      // The private layout: a lost lane not confirmed to have run in the enforced sandbox is compared with your repository
+      // too, first: a change found there already parks, so the compare below consults no remote (review-487b BLOCK-1).
+      const user = await this.importReady(() => this.laneUserProblems(lane.id, confirmedSandbox ?? lane.sandbox), !laneSandboxEnforced(confirmedSandbox ?? lane.sandbox));
       try {
         const jobRef = (name: string, sha: string) => lane.jobId !== undefined && name.startsWith('refs/heads/') && name.endsWith(`/${lane.jobId}`)
           && (lane.kind !== 'review' || sha === lane.startSha);
-        after = this.snap(baseline);
-        problems = compareSnapshots(baseline, after, {}, {
-          refAllowed: jobRef,
-          fetchedRef: this.fetchedRef,
-          ...(lane.jobId ? { newWorktree: { id: lane.jobId } } : {}),
+        // Review-487b F-4: under the import lock with an awaited wait (fetchedRef's ls-remote runs inside the hold).
+        problems = await this.importReady(() => {
+          after = this.snap(baseline);
+          return compareSnapshots(baseline, after, {}, {
+            refAllowed: jobRef,
+            ...(user.length === 0 ? { fetchedRef: this.fetchedRef } : {}),
+            ...(lane.jobId ? { newWorktree: { id: lane.jobId } } : {}),
+          });
         });
       } catch (error) {
         // Review-487 M-1: busy is not a change; the lane stays `running`, so the rerun settles and compares it again.
         if (error instanceof FactoryBusyError) throw error;
         problems = [`the snapshot failed: ${errText(error)}`];
       }
-      // The private layout: a lost lane not confirmed to have run in the enforced sandbox is compared with your repository too.
-      problems.push(...await this.importReady(() => this.laneUserProblems(lane.id, confirmedSandbox ?? lane.sandbox), !laneSandboxEnforced(confirmedSandbox ?? lane.sandbox)));
+      problems.push(...user);
     }
     const note = `${reason}${childNote}`;
     this.save((x) => ({
@@ -4958,8 +4990,11 @@ class FactoryEngine {
     let after: RepoSnapshot | undefined;
     let problems: string[];
     try {
-      after = this.snap(before);
-      problems = compareSnapshots(before, after, {}, { fetchedRef: this.fetchedRef });
+      // Review-487b F-4: under the import lock with an awaited wait (fetchedRef's ls-remote runs inside the hold).
+      problems = await this.importReady(() => {
+        after = this.snap(before);
+        return compareSnapshots(before, after, {}, { fetchedRef: this.fetchedRef });
+      });
     } catch (error) {
       if (error instanceof FactoryBusyError) throw error;
       problems = [`the post-fetch snapshot failed: ${errText(error)}`];

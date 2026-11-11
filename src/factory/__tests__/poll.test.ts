@@ -27,7 +27,7 @@ import { healStateDir } from '../heal/state.js';
 import { computeFactoryIntegrity, createFactoryState, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, moveTo, runKeyOf, setGate, type FactoryRunState } from '../run/state.js';
 import {
   acquirePoller, defaultPollHealScan, holdForRefs, nextInterval, parseInterval, PollBusyError, pollAuditPath, pollStatePath, POLL_JSON_SCHEMA_VERSION, POLL_MAX_INTERVAL_MS,
-  autoStartTimeoutMs, defaultPollAutoStart, defaultPollBudget, parseRunNextOutcome, runFactoryPoll, type FactoryPollDeps, type FactoryPollOptions, type PollAutoStart, type PollHealScan, type PollTick,
+  autoStartTimeoutMs, defaultPollAutoStart, defaultPollBudget, parseRunNextOutcome, pollParallel, runFactoryPoll, type FactoryPollDeps, type FactoryPollOptions, type PollAutoStart, type PollHealScan, type PollTick,
 } from '../poll.js';
 
 const SHA = 'a'.repeat(40);
@@ -926,3 +926,17 @@ setInterval(() => {}, 1000);
   });
 });
 
+
+describe('omg factory poll: the parallel auto-start needs the user config opt-in (review-487b F-1)', () => {
+  it('maxConcurrent and layout committed only on the base start one ordinary run (no --parallel), silently; with the user opt-in the base key counts', () => {
+    const err: string[] = [];
+    const base = { factory: { run: { maxConcurrent: 3, layout: 'private' } } };
+    expect(pollParallel(null, base, (m) => err.push(m))).toBeUndefined();
+    expect(pollParallel({ factory: { intake: { autoStart: true } } }, base, (m) => err.push(m))).toBeUndefined();
+    expect(err).toEqual([]);
+    // The CLI's rule: the user config sets layout "private" (or maxConcurrent / maxInFlightCredits); the base supplies the rest.
+    expect(pollParallel({ factory: { run: { layout: 'private' } } }, base, (m) => err.push(m))).toBe(3);
+    expect(pollParallel({ factory: { run: { maxConcurrent: 2, layout: 'private' } } }, base, (m) => err.push(m))).toBe(2);
+    expect(err).toEqual([]);
+  });
+});

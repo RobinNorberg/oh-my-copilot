@@ -40,6 +40,7 @@ import { factoryGuardExec, hardenedGitExec } from '../../factory/run/exec.js';
 import { EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, factoryForgeOptions, loadFactoryForgeConfig, originForgeKind, syncLocalMirror } from '../../factory/run/forge-roots.js';
 import type { LoadedForgeConfig } from '../../forge/config.js';
 import type { ForgeKind } from '../../forge/types.js';
+import { visibleLine } from '../../forge/review-feedback.js';
 import { CopilotLaneBackend, type LaneBackend } from '../../factory/run/lane.js';
 import type { GateConfigLoader } from '../../factory/run/prepare.js';
 import { createSandboxRunner, type SandboxRunner } from '../../factory/run/sandbox-exec.js';
@@ -50,7 +51,7 @@ import {
   requestFactoryCancel, verifyFactoryIntegrity, type FactoryOwner, type FactoryRunKey, type FactoryRunState,
   acquireFactoryOwner, acquireRunSlot, factoryImportLockPath, heldSlots, withRepoImportLock, withRepoImportLockAsync, tryScanLock, SCAN_WAIT_MS, type HeldSlot,
 } from '../../factory/run/state.js';
-import { resolveShipConfig, userConfigLayers } from '../../ship/config.js';
+import { remoteRepoMismatch, resolveShipConfig, userConfigLayers } from '../../ship/config.js';
 import { defaultExec, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { healCommand } from '../../factory/heal/cli.js';
@@ -71,7 +72,7 @@ import { checkEnvFor, fetchBase, FETCH_TIMEOUT_MS, forgeReadExec, localBase, mis
 import { BUCKET_ORDER, checkItems, plainText, type CheckResult } from '../../factory/check/score.js';
 import { createForge } from '../../forge/index.js';
 import { liveCreditReservations, parallelLayoutRefusal, readTrustedBaseLayerAtRef, releaseDeadCreditReservations, resolveParallelSettings, runParallelSupervisor, type ParallelChildOutcome, type ParallelSettings } from '../../factory/run/parallel.js';
-import { resolveRunLayout, type RunLayoutChoice } from '../../factory/run/private-run.js';
+import { resolveRunLayout, userParallelOptIn, type RunLayoutChoice } from '../../factory/run/private-run.js';
 import { skillSlash } from '../../utils/skill-slash.js';
 
 export function renderChainStatus(status: ChainStatus): string {
@@ -134,7 +135,7 @@ export interface FactoryRunDeps {
    * needed. Undefined (or omitted) = one engine per checkout and no credit
    * reservation, exactly as before: the default path reads no git.
    */
-  parallel?: (root: string, base: string, kind: () => ForgeKind | undefined) => { settings: ParallelSettings; layout: RunLayoutChoice } | undefined;
+  parallel?: (root: string, base: string, forge: () => ParallelForge | undefined) => { settings: ParallelSettings; layout: RunLayoutChoice } | undefined;
   /** The `--parallel` children (default: a child `omg factory run --next --json` of this CLI entry, poll's auto-start). */
   parallelChild?: (o: { root: string; args: readonly string[]; signals: (forward: (signal: NodeJS.Signals) => void) => () => void }) => Promise<ParallelChildOutcome>;
 }
@@ -149,19 +150,16 @@ export interface FactoryRunDeps {
  * read under the checkout's scan lock (with parallel runs live, also the
  * import lock), never the tracking ref a lane could have moved.
  */
-function defaultParallelLayers(root: string, base: string, kind: () => ForgeKind | undefined): { settings: ParallelSettings; layout: RunLayoutChoice } | undefined {
+function defaultParallelLayers(root: string, base: string, kind: () => ParallelForge | undefined): { settings: ParallelSettings; layout: RunLayoutChoice } | undefined {
   let user: unknown;
   try { user = userConfigLayers().trustedUser; } catch { user = null; }
   return parallelLayers(root, base, kind, user, factoryGuardExec(hardenedGitExec(defaultExec, emptyHooksDir(defaultLedgerDir())), () => [base]));
 }
 
 /** defaultParallelLayers for a given trusted user config and guarded `exec` (exported for its tests). */
-export function parallelLayers(root: string, base: string, kind: () => ForgeKind | undefined, user: unknown, exec: Exec): { settings: ParallelSettings; layout: RunLayoutChoice } | undefined {
-  const keys = (user as { factory?: { run?: Record<string, unknown> } } | null)?.factory?.run;
+export function parallelLayers(root: string, base: string, kind: () => ParallelForge | undefined, user: unknown, exec: Exec): { settings: ParallelSettings; layout: RunLayoutChoice } | undefined {
   const userLayout = resolveRunLayout(user, undefined);
-  const optIn = (typeof keys === 'object' && keys !== null && (keys.maxConcurrent !== undefined || keys.maxInFlightCredits !== undefined))
-    || (userLayout.source !== 'default' && userLayout.layout === 'private');
-  if (!optIn) return undefined;
+  if (!userParallelOptIn(user)) return undefined;
   const warn = (m: string) => console.error(chalk.yellow(plainText(m)));
   const own = resolveParallelSettings(user, undefined, warn);
   // Nothing to read from the base when the user config already decides both keys that matter here.
@@ -171,8 +169,14 @@ export function parallelLayers(root: string, base: string, kind: () => ForgeKind
 }
 
 /** The base layer at a sha this call read (see defaultParallelLayers); undefined (warned) when it cannot be read. */
-function readBaseLayerAfterFetch(exec: Exec, root: string, base: string, kind: ForgeKind | undefined, user: unknown, warn: (m: string) => void): unknown {
-  if (kind === 'local') return readTrustedBaseLayerAtRef(exec, root, base, `refs/heads/${base}`, user, warn);
+function readBaseLayerAfterFetch(exec: Exec, root: string, base: string, forge: ParallelForge | undefined, user: unknown, warn: (m: string) => void): unknown {
+  if (forge?.kind === 'local') return readTrustedBaseLayerAtRef(exec, root, base, `refs/heads/${base}`, user, warn);
+  // Review-487b BLOCK-2: origin must still be the forge config's repository before git talks to it, as before the engine's fetch.
+  const mismatch = remoteRepoMismatch(exec, root, 'origin', forge?.repoUrl);
+  if (mismatch) {
+    warn(`omg factory run: origin/${base} is not read (${forge ? mismatch : 'no forge config names the repository (omg factory setup)'}); the factory.run keys of the ${base} .copilot/omg.jsonc count as unset`);
+    return undefined;
+  }
   const held = tryScanLock(root, new Date().toISOString(), defaultOwnerDeps(), SCAN_WAIT_MS);
   if (held instanceof FactoryBusyError) throw held;
   // With parallel runs live, the scan also holds the import lock (their fetches and pushes wait); else no engine runs here.
@@ -182,7 +186,7 @@ function readBaseLayerAfterFetch(exec: Exec, root: string, base: string, kind: F
       const ls = exec('git', ['ls-remote', 'origin', `refs/heads/${base}`], { cwd: root, env: TRUSTED_READ_ENV, timeoutMs: FETCH_TIMEOUT_MS });
       const sha = ls.status === 0 ? ls.stdout.trim().split(/\s+/)[0] ?? '' : '';
       if (!/^[0-9a-f]{40}$/.test(sha)) {
-        warn(`omg factory run: origin/${base} could not be read (git ls-remote${ls.status === 0 ? ': no such branch' : ` exit ${ls.status}: ${ls.stderr.trim().split('\n')[0] ?? ''}`}); the factory.run keys of the ${base} .copilot/omg.jsonc count as unset`);
+        warn(`omg factory run: origin/${base} could not be read (git ls-remote${ls.status === 0 ? ': no such branch' : ` exit ${ls.status}: ${visibleLine(ls.stderr.trim().split('\n')[0] ?? '')}`}); the factory.run keys of the ${base} .copilot/omg.jsonc count as unset`);
         return undefined;
       }
       // The commit itself (the tracking ref the fetch writes is not read: the layer is read at `sha` only).
@@ -342,6 +346,22 @@ function itemBusy(deps: FactoryRunDeps, root: string, key: FactoryRunKey, claimR
  * loader's dry-run mode: the committed config at the tracking ref as it
  * is), undefined when no loader is wired or it fails.
  */
+/** The forge kind and repository the parallel settings' base read needs (review-487b BLOCK-2: the remote check). */
+export interface ParallelForge {
+  kind: ForgeKind;
+  repoUrl: string;
+}
+
+/** readOnlyForgeKind with the repository URL the forge config names. */
+function readOnlyParallelForge(deps: FactoryRunDeps, root: string, base: string): ParallelForge | undefined {
+  try {
+    const config = deps.forge?.(root, base, { dryRun: true }).config;
+    return config ? { kind: config.kind, repoUrl: config.repo.url } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function readOnlyForgeKind(deps: FactoryRunDeps, root: string, base: string): ForgeKind | undefined {
   try {
     return deps.forge?.(root, base, { dryRun: true }).config.kind;
@@ -502,6 +522,12 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         // Review-487 L-1: the settings are read only for a run that could use them: never for a dry run, nor for the
         // resume of a run sealed in the shared layout (it keeps the checkout's engine lock: no migration, it runs alone).
         let par: ReturnType<NonNullable<FactoryRunDeps['parallel']>>;
+        // Review-487b BLOCK-2: a tamper hold refuses the run before anything reads git (the opt-in base read below runs
+        // ls-remote and a fetch); the check is a file read, and it runs again under the lock below as on dev.
+        if (!o.dryRun) {
+          const hold = tamperHoldMessage(deps.ledgerDir ?? defaultLedgerDir(), root);
+          if (hold) throw new FactoryTamperHoldError(hold);
+        }
         if (!o.dryRun && deps.parallel) {
           let sealedShared = false;
           if (issue !== undefined) {
@@ -512,7 +538,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
               sealedShared = true;
             }
           }
-          if (!sealedShared) par = deps.parallel(root, base, () => readOnlyForgeKind(deps, root, base));
+          if (!sealedShared) par = deps.parallel(root, base, () => readOnlyParallelForge(deps, root, base));
         }
         const refusal = par ? parallelLayoutRefusal(par.settings, par.layout) : null;
         if (refusal) throw new FactoryUsageError(refusal);
@@ -520,7 +546,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         if (o.parallel !== undefined) {
           if (!o.next) throw new FactoryUsageError('--parallel applies to --next');
           if (o.dryRun) throw new FactoryUsageError('--parallel starts real runs; it does not combine with --dry-run');
-          if (!slotMode) throw new FactoryUsageError('--parallel needs factory.run.maxConcurrent above 1 and factory.run.layout: "private" (user config, or the .copilot/omg.jsonc committed on a trusted base)');
+          if (!slotMode) throw new FactoryUsageError('--parallel needs factory.run.maxConcurrent above 1 and factory.run.layout: "private"; parallel runs are an opt-in of your user config (factory.run.maxConcurrent, maxInFlightCredits or layout "private" there), and only then can the .copilot/omg.jsonc committed on a trusted base supply the other key');
           return runParallel(deps, root, Math.min(o.parallel, par!.settings.maxConcurrent), parent, Boolean(o.json));
         }
         const creditLimit = slotMode ? par!.settings.maxInFlightCredits ?? limits.laneMaxCredits * par!.settings.maxConcurrent : par?.settings.maxInFlightCredits;
@@ -555,7 +581,9 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
           console.error(chalk.yellow('omg factory run: stopping after the current poll (cancelling the lane); press again to exit at once'));
         };
         try {
-          if (!o.dryRun) { process.on('SIGINT', onSignal); process.on('SIGTERM', onSignal); }
+          // Review-487b BLOCK-3: a parallel run listens before the loader (its import-lock wait ends busy on a signal);
+          // every other run keeps dev's order: a Ctrl+C during the loader's fetch ends the CLI at once.
+          if (!o.dryRun && slotMode) { process.on('SIGINT', onSignal); process.on('SIGTERM', onSignal); }
           // The loader fetches origin/<base> into your repository: under the import lock in a parallel run.
           const loaded = await importLocked(() => deps.forge?.(root, base, { dryRun: Boolean(o.dryRun) }));
           for (const w of loaded?.warnings ?? []) console.error(chalk.yellow(w));
@@ -566,6 +594,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
           const skipped: number[] = [];
           let picked: number | undefined;
           let runOwner: HeldOwner | undefined;
+          if (!o.dryRun && !slotMode) { process.on('SIGINT', onSignal); process.on('SIGTERM', onSignal); }
           // B2: the pick takes the item's owner file atomically (a busy item is skipped, never waited on).
           const take = slotMode ? (id: number): HeldOwner | null => {
             try {
