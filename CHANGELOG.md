@@ -4,6 +4,22 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Sandboxed prepare checks failed every Vite/vitest repository (first live GitHub test, L4).** All tests passed, then vitest's results-cache write to `node_modules/.vite` hit the read-only `node_modules` junction (`EPERM`), the run counted a test failure and spent the ci-fix round; the base calibration had passed only because it ran `vitest --version`. The prepare checkout and the base calibration now get a per-run `node_modules` tree (one link per top-level entry of yours, fresh `.cache`, `.vite`, `.vite-temp` and `.vitest` dirs), and vitest's calibration loads its config in that tree. See REFERENCE "The gate's node_modules".
+- **Lanes committed `.omg/project-memory.json` (L5).** The engine's staging now skips everything under `.omg/` except `.omg/skills/`; a lane that changed only those files left no changes. Factory lanes also run with the project-memory hooks off.
+- **`omg factory setup` on GitHub or Azure DevOps assumed `dev` (L1).** It now writes `ship.base` when no config names one: origin's `dev`, else origin's default branch; when neither is known it says so. Setup and the "ignoring ... from the working-tree project config" warnings name the next step: commit `.copilot/omg.jsonc` on the base (L2).
+- **A park after a rerun ignored the PR's human review (L8).** A park the run hits again after a rerun (prepare, CI, gates) names the open trusted review threads and change requests on the PR, and that the human fix round starts at the merge step. No fix lane starts before then.
+- **The `ci-failed` park showed no output (L7).** It now says when the failure came from the prepare checks on this host, names the failing tests and ends with a bounded, redacted output tail, in the park, `status`, `board` and the issue comment.
+- **`omg factory check` said "prepare checks: none" without a reason (L3).** It now names each built-in check the base asks for that is skipped and what to run (`npm ci`, or fetch the base).
+- **An empty `.git/refs/omg-import` dir stayed in your clone after a private-layout import (L10).** It goes with the last import ref.
+- **`run clean` after `run cancel` on a parked run only refused (L11).** Cancel and clean now name the command that finishes the cancel (`omg factory run <n>`, no lane starts).
+
+### Security
+
+- **PR code can no longer write your `node_modules` through the gate (L4 fix).** Only your `node_modules` itself is granted to the gate sandbox, read-only; each link of the per-run tree must point at `<your node_modules>/<its name>`, or the run parks at `lane-tampered` (review-483 M4 kept). The tree is removed links first, never followed.
+- **No home path in lane commits (L9).** `.omg/project-memory.json` carried an absolute local path with the Windows user name into the PR history; it is no longer written in lane worktrees nor committed.
+
 # oh-my-copilot v5.25.0
 
 ## [5.25.0] - 2026-11-11
