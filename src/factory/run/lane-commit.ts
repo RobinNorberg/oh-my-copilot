@@ -23,12 +23,14 @@
  * worktree's HEAD move to the commit only from the value they started at.
  * The caller first proves the lane's process tree gone (lane-procs.ts).
  *
- * Refused before any commit: a lane that moved its HEAD, a new, changed or
- * removed gitlink (host git never enters a nested repository, so its content
- * is unreviewed; the engine reads each start gitlink's checked-out HEAD
- * itself), a link host git could follow out of the worktree, a changed
- * symlink placeholder (core.symlinks=false), a file over
- * LANE_FILE_MAX_BYTES, a merge-rule or lane-protected path, secret-shaped
+ * Refused before any commit: a lane that moved its HEAD, a new or changed
+ * gitlink (host git never enters a nested repository, so its content is
+ * unreviewed; the engine reads each start gitlink's checked-out HEAD
+ * itself; a submodule directory that is gone is committed as a deletion,
+ * as `add -A` did), a link host git could follow out of the worktree, a
+ * changed symlink placeholder (core.symlinks=false), a file over
+ * LANE_FILE_MAX_BYTES, changed files over LANE_COMMIT_MAX_BYTES together,
+ * a merge-rule or lane-protected path, secret-shaped
  * content in a changed file, a changed path's name or the commit message
  * (heal/sanitize.ts SECRET_SHAPES: a key or token the lane could have copied
  * in from outside its sandbox) unless acknowledged or allow-listed, and an
@@ -119,6 +121,8 @@ export interface LaneCommitInput {
   secretAck?: readonly SecretFinding[];
   /** Path globs the secret scan skips (factory.run.secretScan.allowPaths, trusted layers only: test fixtures). */
   secretAllowPaths?: readonly string[];
+  /** Test seam: lower limits (default LANE_COMMIT_MAX_BYTES and FAST_IMPORT_BATCH_BYTES). */
+  limits?: { totalBytes?: number; batchBytes?: number };
 }
 
 const errText = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -257,11 +261,25 @@ export function pathGlobMatches(glob: string, path: string): boolean {
 
 /**
  * A changed file bigger than this is refused (`error`) instead of read: the
- * engine holds every changed file in memory (twice while it builds the
- * fast-import stream), so a multi-GB file would crash it. 100 MiB is
+ * engine holds every changed file in memory (and a batch of them twice
+ * while it builds a fast-import stream), so a multi-GB file would crash
+ * it. 100 MiB is
  * GitHub's own hard per-file limit: a bigger file could never be pushed.
  */
 export const LANE_FILE_MAX_BYTES = 100 * 1024 * 1024;
+
+/**
+ * The changed files of one lane commit together (review-484b 6): over this
+ * the commit is refused (`error`) instead of read on. The engine keeps
+ * every changed file's bytes for the secret scan, so this bounds its memory;
+ * 1 GiB is half of GitHub's 2 GiB limit for one push (the run's push
+ * carries the lane commit), and no reviewable change of a coding lane comes
+ * near it.
+ */
+export const LANE_COMMIT_MAX_BYTES = 1024 * 1024 * 1024;
+
+/** The blobs go to git in `fast-import` streams of about this size, so the stream never doubles all the bytes at once. */
+export const FAST_IMPORT_BATCH_BYTES = 64 * 1024 * 1024;
 
 /** One path of the lane's change, read by the engine (never by git). */
 type EngineRead =
@@ -534,18 +552,22 @@ function stageEngineRead(input: LaneCommitInput, git: (args: string[], env?: Nod
   const symlinks: string[] = [];
   const hardLinked: string[] = [];
   // Every gitlink of the start tree, read by the engine (status runs with --ignore-submodules=all, so a moved submodule
-  // is never listed): a different commit checked out, or the directory gone, refuses as `add -A` + the gitlink check did.
+  // is never listed): a different commit checked out refuses as `add -A` + the gitlink check did. The directory gone is
+  // a deletion, as `add -A` staged it (review-484b 5): it adds no content.
   const movedGitlinks: string[] = [];
   for (const [path, e] of start) {
     if (e.mode !== '160000') continue;
     const at = gitlinkHead(input.worktree, path);
     if (at.kind === 'unchecked' || at.kind === 'not-dir' || (at.kind === 'head' && at.sha === e.sha)) continue;
-    movedGitlinks.push(`${path} (${at.kind === 'head' ? `checked out at ${at.sha.slice(0, 12)}, not ${e.sha.slice(0, 12)}` : at.kind === 'absent' ? 'its directory is gone' : at.why})`);
+    if (at.kind === 'absent') { deleted.push(path); continue; }
+    movedGitlinks.push(`${path} (${at.kind === 'head' ? `checked out at ${at.sha.slice(0, 12)}, not ${e.sha.slice(0, 12)}` : at.why})`);
   }
   if (movedGitlinks.length > 0) {
-    return refuse('gitlink', `the lane changed or removed nested repositories (gitlinks): ${movedGitlinks.slice(0, 5).join(', ')}; host git does not enter them, so their content is not reviewed`);
+    return refuse('gitlink', `the lane changed nested repositories (gitlinks): ${movedGitlinks.slice(0, 5).join(', ')}; host git does not enter them, so their content is not reviewed`);
   }
   const realRoot = realpathSync.native(input.worktree);
+  const maxTotal = input.limits?.totalBytes ?? LANE_COMMIT_MAX_BYTES;
+  let total = 0;
   for (const path of listed) {
     const read = engineRead(input.worktree, path, realRoot);
     const was = start.get(path);
@@ -563,6 +585,8 @@ function stageEngineRead(input: LaneCommitInput, git: (args: string[], env?: Nod
     if (was?.mode === '120000') { symlinks.push(path); continue; }
     // A hard link to a file outside the worktree passes the link checks, but shares its inode.
     if (read.nlink > 1) { hardLinked.push(path); continue; }
+    total += read.bytes.length;
+    if (total > maxTotal) return refuse('error', `the lane's changed files are over the lane commit's total limit of ${maxTotal} bytes; nothing was committed`);
     const mode = fileMode ? (read.exec ? '100755' : '100644') : was?.mode === '100755' ? '100755' : '100644';
     files.push({ path, mode, bytes: read.bytes });
   }
@@ -595,16 +619,23 @@ function stageEngineRead(input: LaneCommitInput, git: (args: string[], env?: Nod
       if (!HEX.test(sha)) throw new Error(`git hash-object printed ${JSON.stringify(sha.slice(0, 80))}`);
       shas.set(f.path, sha);
     }
-    if (raw.length > 0) {
+    // One fast-import per batch of about FAST_IMPORT_BATCH_BYTES: the stream copies only that batch's bytes.
+    const batchBytes = input.limits?.batchBytes ?? FAST_IMPORT_BATCH_BYTES;
+    for (let from = 0; from < raw.length;) {
+      let to = from;
+      let size = 0;
+      while (to < raw.length && (to === from || size + raw[to].bytes.length <= batchBytes)) size += raw[to++].bytes.length;
+      const batch = raw.slice(from, to);
       const marks = join(tmp, 'marks');
-      const stream = Buffer.concat([...raw.flatMap((f, i) => [Buffer.from(`blob\nmark :${i + 1}\ndata ${f.bytes.length}\n`), f.bytes, Buffer.from('\n')]), Buffer.from('done\n')]);
+      const stream = Buffer.concat([...batch.flatMap((f, i) => [Buffer.from(`blob\nmark :${i + 1}\ndata ${f.bytes.length}\n`), f.bytes, Buffer.from('\n')]), Buffer.from('done\n')]);
       git(['fast-import', '--quiet', '--done', `--export-marks=${marks}`], env, stream);
       const byMark = new Map(readFileSync(marks, 'utf8').split('\n').map((l) => /^:(\d+) ([0-9a-f]+)$/.exec(l.trim())).filter((m) => m !== null).map((m) => [Number(m![1]), m![2]]));
-      raw.forEach((f, i) => {
+      batch.forEach((f, i) => {
         const sha = byMark.get(i + 1);
         if (!sha || !HEX.test(sha)) throw new Error(`git fast-import wrote no blob for ${f.path}`);
         shas.set(f.path, sha);
       });
+      from = to;
     }
     const zero = '0'.repeat(input.start.length);
     // Deletions first, so a file replaced by a directory (or the reverse) never collides in the index.

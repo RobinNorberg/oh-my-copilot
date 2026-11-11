@@ -12,6 +12,19 @@ import { readTamperHold, releaseTamperHold, tamperHoldPath } from '../tamper-qua
 import { FakeProcesses, gitIn, ISSUE, remoteHead, review, type LaneScript } from './fake-lanes.js';
 import { edit, h, run, useSandboxHarness } from './engine-sandbox-harness.js';
 
+// review-484b 4: lets one test make quarantineTamper throw; every other call goes to the real one.
+const quarantineFault = vi.hoisted(() => ({ error: undefined as Error | undefined }));
+vi.mock('../tamper-quarantine.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../tamper-quarantine.js')>();
+  return {
+    ...real,
+    quarantineTamper: (...args: Parameters<typeof real.quarantineTamper>) => {
+      if (quarantineFault.error) throw quarantineFault.error;
+      return real.quarantineTamper(...args);
+    },
+  };
+});
+
 useSandboxHarness();
 
 // A fake token of the github-token shape, built so this source file never holds one.
@@ -215,6 +228,41 @@ describe('tamper quarantine and hold (M3)', () => {
     expect(out.gate?.reason).toMatch(/process\(es\) pid 4242 still run after the engine killed them: STILL ACTIVE/);
     const hold = readTamperHold(h.ledgerDir, h.root);
     expect(hold !== null && hold !== 'unreadable' ? hold.active!.join('\n') : '').toContain('pid 4242');
+    releaseTamperHold(h.ledgerDir, h.root);
+  });
+
+  it('review-484b 2: on the tamper path a process tree that cannot be proven gone is named STILL ACTIVE and holds, even when only an allowlisted key changed', async () => {
+    const procs = new FakeProcesses();
+    procs.tree = { kind: 'unproven', why: 'the process listing took over 10 s' };
+    const userEdit: LaneScript = (ctx) => {
+      gitIn(h.root, 'config', 'user.email', 'me@example.invalid');
+      return edit('a.ts', 'a\n')(ctx);
+    };
+    const out = await run([userEdit], { processes: procs }).done;
+    expect(out.gate?.name, out.message).toBe('lane-tampered');
+    expect(out.gate?.reason).toMatch(/process tree could not be proven gone \(the process listing took over 10 s; the job's own tree kill ran\): STILL ACTIVE/);
+    expect(out.gate?.reason).toContain('omg factory run release --tamper');
+    const hold = readTamperHold(h.ledgerDir, h.root);
+    expect(hold !== null && hold !== 'unreadable' ? hold.active!.join('\n') : '').toMatch(/could not be proven gone.*make sure no process of that lane still runs/);
+    releaseTamperHold(h.ledgerDir, h.root);
+  });
+
+  it('review-484b 4: a quarantine that throws still writes a minimal hold and says so', async () => {
+    quarantineFault.error = new Error('injected quarantine fault');
+    const planting: LaneScript = (ctx) => {
+      writeFileSync(join(commonDir(), 'hooks', 'pre-commit'), '#!/bin/sh\necho planted\n', { mode: 0o755 });
+      return edit('a.ts', 'a\n')(ctx);
+    };
+    try {
+      const out = await run([planting]).done;
+      expect(out.gate?.name, out.message).toBe('lane-tampered');
+      expect(out.gate?.reason).toContain('The tamper quarantine failed (injected quarantine fault); .git was left as it is, so new factory runs in this checkout are held until omg factory run release --tamper');
+    } finally {
+      quarantineFault.error = undefined;
+    }
+    const hold = readTamperHold(h.ledgerDir, h.root);
+    expect(hold !== null && hold !== 'unreadable' ? { held: hold.held, failed: hold.failed } : hold).toEqual({ held: true, failed: 'the tamper quarantine failed (injected quarantine fault); nothing in .git was quarantined or restored' });
+    await expect(run([]).done).rejects.toBeInstanceOf(FactoryTamperHoldError);
     releaseTamperHold(h.ledgerDir, h.root);
   });
 
