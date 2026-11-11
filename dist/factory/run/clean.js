@@ -22,10 +22,10 @@
  * `clean --discard` removes it.
  */
 import { existsSync, readdirSync } from 'fs';
-import { dirname, join, resolve } from 'path';
+import { join, resolve } from 'path';
 import { WORKTREE_TEAM } from '../../copilot-run/job.js';
 import { LOCAL_REMOTE } from '../../forge/local/index.js';
-import { remoteRepoMismatch } from '../../ship/config.js';
+import { remoteRepoMismatch, userConfigLayers } from '../../ship/config.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { getWorktreePath, recordedWorktreeGitLinks, removeWorkerWorktree } from '../../team/git-worktree.js';
 import { factoryGuardExec, hardenedGitExec } from './exec.js';
@@ -33,9 +33,11 @@ import { localRemoteMismatch } from './forge-roots.js';
 import { defaultLedgerDir, emptyHooksDir, EngineLedger } from './ledger.js';
 import { checkoutWorker, FACTORY_CHECKOUT_TEAM, unlinkNodeModules } from './prepare.js';
 import { dmtfCreationDateToTicks, getProcessStartIdentitySync, isProcessAlive } from '../../platform/process-utils.js';
-import { acquireFactoryOwner, acquireFactoryRepoOwnerForRun, FactoryBusyError, factoryStatePath, FactoryStateError, readFactoryState, runRemote, updateFactoryState, verifyFactoryIntegrity } from './state.js';
+import { acquireFactoryOwner, acquireFactoryRepoOwnerForRun, FactoryBusyError, factoryStatePath, FactoryStateError, readFactoryState, runRemote, updateFactoryState, runSlug, verifyFactoryIntegrity } from './state.js';
 import { removeFactoryClaim } from './claims.js';
 import { removeRunDir } from './private-store.js';
+import { expectedPrivateLayout, withImportLock } from './private-run.js';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 const HEX40 = /^[0-9a-f]{40}$/;
 const UNCONFIRMED_NOTE = /not confirmed|cancel failed|may still run/;
 const TAMPER_NOTE = /\btampered: |tamper check: /;
@@ -88,9 +90,25 @@ function laneMayRun(lane, state) {
  * repository's seed goes too once no other run dir is left next to it.
  */
 function cleanPrivateRun(o, state, result) {
-    const runDir = resolve(state.privateDir);
-    const repoDir = dirname(runDir);
-    const work = dirname(repoDir);
+    // The dir is recomputed from the trusted config and must equal the record before anything is removed (review-483 M5).
+    let layout;
+    try {
+        let userConfig = o.runUserConfig;
+        if (userConfig === undefined) {
+            try {
+                userConfig = userConfigLayers().trustedUser;
+            }
+            catch {
+                userConfig = null;
+            }
+        }
+        layout = expectedPrivateLayout(state, { root: o.root, omcRoot: getOmcRoot(o.root), slug: runSlug(o.issue), userConfig });
+    }
+    catch (error) {
+        result.kept.push({ worktree: resolve(state.privateDir), reason: error instanceof Error ? error.message : String(error) });
+        return;
+    }
+    const { runDir, repoDir, work } = layout;
     if (existsSync(runDir)) {
         const may = state.lanes.map((l) => ({ l, may: laneMayRun(l, o.processState ?? laneProcessState) })).find((x) => x.may !== null);
         if (may && (may.may.live || !o.laneStopped)) {
@@ -110,23 +128,26 @@ function cleanPrivateRun(o, state, result) {
             return;
         }
     }
-    if (!o.seed)
+    if (!o.seed || !existsSync(repoDir))
         return;
     const seed = join(repoDir, 'seed.git');
-    let others = [];
     try {
-        others = readdirSync(repoDir).filter((n) => n !== 'seed.git' && n !== 'import.lock' && !n.startsWith('.trash-'));
-    }
-    catch { /* no repository dir */ }
-    if (others.length > 0) {
-        result.kept.push({ worktree: seed, reason: `seed_in_use: other runs of this repository still have their dirs (${others.join(', ')}) next to it` });
-        return;
-    }
-    try {
-        if (existsSync(seed)) {
-            removeRunDir(seed, work);
-            result.removed.push(seed);
-        }
+        // Under the import lock: another checkout's run start (seed fetch, clone) on this repository waits (review-483 L5).
+        withImportLock(layout, () => {
+            let others = [];
+            try {
+                others = readdirSync(repoDir).filter((n) => n !== 'seed.git' && n !== 'import.lock' && !n.startsWith('.trash-'));
+            }
+            catch { /* no repository dir */ }
+            if (others.length > 0) {
+                result.kept.push({ worktree: seed, reason: `seed_in_use: other runs of this repository still have their dirs (${others.join(', ')}) next to it` });
+                return;
+            }
+            if (existsSync(seed)) {
+                removeRunDir(seed, work);
+                result.removed.push(seed);
+            }
+        });
     }
     catch (error) {
         result.kept.push({ worktree: seed, reason: error instanceof Error ? error.message : String(error) });

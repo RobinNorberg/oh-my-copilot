@@ -182,6 +182,19 @@ export interface SandboxPolicyContext {
      * dirs); a path that holds a grant is left out, like the state root.
      */
     extraDenied?: string[];
+    /**
+     * The user's main checkout, whose OMC root holds the budget ledger the
+     * write profile denies. Default: the dir of the common git dir when that is
+     * a `.git` (the factory private layout's common git dir is the private
+     * repository's, so the engine names the user's checkout; review-483 L1).
+     */
+    mainRoot?: string;
+    /**
+     * The only target a `<worktree>/node_modules` link may resolve to (the
+     * dir the engine linked; review-483 M4): a link elsewhere throws instead
+     * of being granted read-only. Unset: the link's target as it is (lanes).
+     */
+    nodeModulesTarget?: string;
 }
 export declare const REGISTRY_HOSTS: readonly string[];
 /**

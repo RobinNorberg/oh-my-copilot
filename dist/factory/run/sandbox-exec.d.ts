@@ -58,6 +58,12 @@ export interface SandboxRunRequest {
     requireDeniedPaths?: boolean;
     /** The network this command needs over factory.run.sandbox.writeNetwork (the private layout's `npm ci --ignore-scripts`: the registry). */
     network?: 'registry';
+    /** The user's checkout (the budget ledger the sandbox denies) when `commonGitDir` is another repository's (the private layout). */
+    mainRoot?: string;
+    /** The only dir a `<cwd>/node_modules` link may resolve to (the one the engine linked); another target is refused, never granted. */
+    nodeModulesTarget?: string;
+    /** Where the per-command job home goes (default sandboxJobRoot(root); the private layout: under the run dir). */
+    jobRoot?: string;
 }
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
 export declare const CREDENTIAL_FILES_READABLE_NOTE = "sandboxed; credential files readable on this host";
@@ -99,6 +105,9 @@ export interface SandboxExecOptions {
     jobRoot: string;
     /** factory.run.sandbox.requireDeniedPaths (default false: a host without denied_paths runs, its verdict marked). */
     requireDeniedPaths?: boolean;
+    /** SandboxRunRequest.mainRoot / nodeModulesTarget. */
+    mainRoot?: string;
+    nodeModulesTarget?: string;
 }
 export declare const MARKER_PREFIX = "omg-gate-exit-";
 /** The command's output the POSIX form keeps (`tail -c`) before the marker line. */

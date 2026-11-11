@@ -75,7 +75,7 @@ export class FakeLanes {
             pr: null,
             headSha: terminal ? gitIn(job.ctx.worktree, 'rev-parse', 'HEAD') : null,
             baseSha: job.ctx.baseSha,
-            worktree: job.ctx.worktree,
+            worktree: o.reportWorktree ?? job.ctx.worktree,
             changes: terminal && !o.noChanges ? summarizeChanges(job.ctx.worktree, job.ctx.baseSha) : null,
             finalText: o.finalText ?? null,
             logsUrl: null,

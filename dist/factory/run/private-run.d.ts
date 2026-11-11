@@ -137,8 +137,14 @@ export declare class PrivateRun {
         record: PrivateStoreRecord;
         guard: UserRepoGuard;
     };
-    /** The run of a private-layout state (resume): the recorded dir and record, never recomputed from config. */
-    static fromState(s: FactoryRunState, input: Pick<PrivateRunInput, 'root' | 'ledgerDir' | 'exec' | 'platform' | 'warn'>): PrivateRun;
+    /**
+     * The run of a private-layout state (resume). The recorded dir must be
+     * exactly where the trusted user config's work root and the run's
+     * repository and slug put it (review-483 M5: a wrong or tampered privateDir
+     * never names a dir to resume in or remove), and git must still be 2.44 or
+     * later (review-483 L4). Throws PrivateStoreError.
+     */
+    static fromState(s: FactoryRunState, input: Pick<PrivateRunInput, 'root' | 'omcRoot' | 'slug' | 'userConfig' | 'ledgerDir' | 'exec' | 'platform' | 'warn'>): PrivateRun;
     /** At every resume (B1b scope 1/5): leftover `.trash-*` and this run's stale import refs (a crash after an import). */
     resumeSweep(slug: string): void;
     problem(): string | null;
@@ -204,6 +210,14 @@ export declare class PrivateRun {
         pushed: (value: T) => boolean;
     }): ImportOutcome<T>;
 }
+/**
+ * The layout of a private-layout state, recomputed from the trusted user
+ * config's work root (privateWorkRoot), the run's repository (claimRepoKey)
+ * and its slug, and required to equal the recorded privateDir before
+ * anything resumes in it or removes it (review-483 M5). Throws
+ * PrivateStoreError naming both dirs; nothing is touched.
+ */
+export declare function expectedPrivateLayout(s: Pick<FactoryRunState, 'privateDir' | 'repoUrl'>, input: Pick<PrivateRunInput, 'root' | 'omcRoot' | 'slug' | 'userConfig' | 'platform'>): PrivateRunLayout;
 /**
  * The short lock around the store's transports into and out of the user
  * repository (seed fetch, clone, imports, push): one file per repository

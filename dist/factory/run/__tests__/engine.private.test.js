@@ -6,7 +6,7 @@
  * engine's push from it. Real git in temp dirs; no gh, az or copilot.
  */
 import { createHash } from 'node:crypto';
-import { appendFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readMirrorRef } from '../../../forge/local/index.js';
@@ -15,7 +15,7 @@ import { cleanFactoryRun } from '../clean.js';
 import { EXIT_AWAITING_HUMAN, runFactoryEngine } from '../engine.js';
 import { GATE_INSTALL_GATE, REPO_GUARD_GATE } from '../private-run.js';
 import { readFactoryState, requestFactoryCancel } from '../state.js';
-import { commitFile, FakeLanes, gitIn, review } from './fake-lanes.js';
+import { commitFile, ENFORCED_SANDBOX, FakeLanes, gitIn, review } from './fake-lanes.js';
 import { BASE, foreignCommands, lanesFor, LOCAL_ISSUE, localOpts, localWorld } from './engine-local-harness.js';
 const T = 600_000;
 let w;
@@ -33,15 +33,13 @@ function privateWorld() {
     const work = join(world.dir, 'fw');
     return { w: world, work, user: { factory: { run: { layout: 'private', workDir: work } } } };
 }
-/** Every file under the user's .git (objects/ aside) with its content hash: what the run may change is asserted against it. */
+/** Every file under the user's .git (objects/ included) with its content hash: what the run may change is asserted against it. */
 function gitListing(root) {
     const out = new Map();
     const walk = (dir) => {
         for (const name of readdirSync(dir)) {
             const p = join(dir, name);
             const rel = relative(join(root, '.git'), p).replace(/\\/g, '/');
-            if (rel === 'objects')
-                continue;
             const st = lstatSync(p);
             if (st.isDirectory())
                 walk(p);
@@ -55,12 +53,25 @@ function gitListing(root) {
 function changedPaths(before, after) {
     return [...new Set([...before.keys(), ...after.keys()])].filter((k) => before.get(k) !== after.get(k)).sort();
 }
+/** The git config text without its `[remote "omg-local"]` section (the local forge's own remote). */
+function withoutLocalRemote(config) {
+    const out = [];
+    let skip = false;
+    for (const line of config.split(/\r?\n/)) {
+        if (/^\s*\[/.test(line))
+            skip = /^\s*\[remote "omg-local"\]\s*$/.test(line);
+        if (!skip)
+            out.push(line);
+    }
+    return out.join('\n').trimEnd();
+}
 const opts = (env, scripts, over = {}) => localOpts(env.w, lanesFor(env.w, scripts), { runUserConfig: env.user, ...over });
 describe('factory run with factory.run.layout "private"', () => {
     it('implement -> review -> prepare -> local gate -> merge park: lanes, prepare and the gate work under the work root; the user repository only gets the imported commit and the push', async () => {
         const env = privateWorld();
         w = env.w;
         const before = gitListing(w.root);
+        const beforeConfig = readFileSync(join(w.root, '.git', 'config'), 'utf8');
         const lanes = lanesFor(w, [greet(), review('approve')]);
         const out = await runFactoryEngine(localOpts(w, lanes, { runUserConfig: env.user }));
         expect(out.exitCode, out.message).toBe(0);
@@ -86,8 +97,16 @@ describe('factory run with factory.run.layout "private"', () => {
         // The engine's push names the mirror path, yet git on the Linux CI runner moved the omg-local tracking ref of the pushed
         // branch (Windows git does not): it may exist, and then only at the pushed head.
         const pushedTracking = `refs/remotes/omg-local/factory/issue-${LOCAL_ISSUE}`;
-        const changed = changedPaths(before, gitListing(w.root));
-        expect(changed.filter((p) => !/^(config|FETCH_HEAD|(logs\/)?refs\/remotes\/omg-local\/(main|factory\/issue-\d+))$/.test(p))).toEqual([]);
+        const after = gitListing(w.root);
+        const changed = changedPaths(before, after);
+        expect(changed.filter((p) => !/^(config|FETCH_HEAD|(logs\/)?refs\/remotes\/omg-local\/(main|factory\/issue-\d+)|objects\/.*)$/.test(p))).toEqual([]);
+        // review-483 L6: of the config only the local forge's `[remote "omg-local"]` section changed.
+        expect(withoutLocalRemote(readFileSync(join(w.root, '.git', 'config'), 'utf8'))).toBe(withoutLocalRemote(beforeConfig));
+        // objects/: only new loose objects and packs (the imported commit and what the mirror sync fetched); none changed or gone,
+        // and no alternates, http-alternates or other info file.
+        const objects = changed.filter((p) => p.startsWith('objects/'));
+        expect(objects.filter((p) => before.has(p))).toEqual([]);
+        expect(objects.filter((p) => !/^objects\/([0-9a-f]{2}\/[0-9a-f]{38}|pack\/pack-[0-9a-f]{40}\.(pack|idx|rev|keep))$/.test(p))).toEqual([]);
         const refs = gitIn(w.root, 'for-each-ref', '--format=%(refname) %(objectname)').split('\n').filter((l) => l !== '');
         for (const line of refs.filter((l) => l.startsWith(`${pushedTracking} `)))
             expect(line).toBe(`${pushedTracking} ${s.head}`);
@@ -243,9 +262,94 @@ describe('factory run with factory.run.layout "private"', () => {
         requestFactoryCancel(w.root, LOCAL_ISSUE, new Date().toISOString());
         const cancelled = await runFactoryEngine(opts(env, []));
         expect(cancelled.phase, cancelled.message).toBe('cancelled');
-        const result = cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, claimRepo: null, ledgerDir: w.ledgerDir });
+        // review-483 M5: a work root that does not put the run dir where the state says refuses; nothing is removed.
+        const elsewhere = cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, claimRepo: null, ledgerDir: w.ledgerDir, runUserConfig: { factory: { run: { workDir: join(w.dir, 'fw-other') } } } });
+        expect(elsewhere.removed).toEqual([]);
+        expect(elsewhere.kept.map((k) => k.reason).join('\n')).toMatch(/the run's recorded private dir .* is not .*fw-other.*, so nothing was resumed or removed/);
+        expect(existsSync(s.privateDir)).toBe(true);
+        const result = cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, claimRepo: null, ledgerDir: w.ledgerDir, runUserConfig: env.user, seed: true });
         expect(result.removed).toContain(s.privateDir);
+        expect(result.removed).toContain(join(s.privateDir, '..', 'seed.git'));
         expect(existsSync(s.privateDir)).toBe(false);
+        expect(readFileSync(join(w.root, 'node_modules', 'marker.txt'), 'utf8')).toBe('yours\n');
+    }, T);
+});
+describe('your repository around untrusted code that ran without the enforced sandbox (review-483 M3)', () => {
+    const DETECT_ONLY = { ...ENFORCED_SANDBOX, mode: 'detect-only' };
+    it('a detect-only lane that makes a ref in your repository parks at lane-tampered; a detect-only lane that leaves it alone runs on', async () => {
+        let env = privateWorld();
+        w = env.w;
+        const sneaky = (ctx) => {
+            gitIn(w.root, 'update-ref', 'refs/heads/sneaky', gitIn(w.root, 'rev-parse', 'HEAD'));
+            return { ...greet()(ctx), sandbox: DETECT_ONLY };
+        };
+        const out = await runFactoryEngine(opts(env, [sneaky]));
+        expect(out.gate?.name, out.message).toBe('lane-tampered');
+        expect(out.gate?.reason).toMatch(/your repository: ref refs\/heads\/sneaky was created/);
+        expect(readMirrorRef(w.config.repo.url, `factory/issue-${LOCAL_ISSUE}`)).toBeFalsy();
+        rmSync(w.dir, { recursive: true, force: true });
+        env = privateWorld();
+        w = env.w;
+        const clean = (ctx) => ({ ...greet()(ctx), sandbox: DETECT_ONLY });
+        const ok = await runFactoryEngine(opts(env, [clean, review('approve')]));
+        expect(ok.gate?.name, ok.message).toBe('merge');
+    }, T);
+    it('an unsandboxed local gate that changes your repository\'s git state parks at lane-tampered and its verdict is not used', async () => {
+        const env = privateWorld();
+        w = env.w;
+        const gate = async (argv, cwd, ms) => {
+            gitIn(w.root, 'config', 'alias.st', 'status');
+            return w.gate(argv, cwd, ms);
+        };
+        const out = await runFactoryEngine(opts(env, [greet(), review('approve')], { localGate: gate, gateSandboxUserConfig: { factory: { run: { sandbox: { gates: 'unsandboxed' } } } } }));
+        expect(out.gate?.name, out.message).toBe('lane-tampered');
+        expect(out.gate?.reason).toMatch(/^the local gate \(the PR's own code\) ran without the OS sandbox and changed your repository's git state, so its verdict is not used; .*your repository: the common git config changed/);
+    }, T);
+});
+describe('the lane worktree the engine commits in (review-483 L7)', () => {
+    it('a backend that names another worktree than the one the engine made parks at lane-tampered; nothing is committed in it', async () => {
+        const env = privateWorld();
+        w = env.w;
+        const headBefore = gitIn(w.root, 'rev-parse', 'HEAD');
+        const other = (ctx) => ({ ...greet()(ctx), reportWorktree: w.root });
+        const out = await runFactoryEngine(opts(env, [other]));
+        expect(out.gate?.name, out.message).toBe('lane-tampered');
+        expect(out.gate?.reason).toMatch(/implement lane .* reports the worktree .*, not .*w[\\/]1 the engine made for it; nothing was committed or pushed/);
+        expect(gitIn(w.root, 'rev-parse', 'HEAD')).toBe(headBefore);
+        expect(gitIn(w.root, 'status', '--porcelain')).toBe('');
+    }, T);
+});
+describe('the prepare checkout\'s node_modules link (review-483 M4)', () => {
+    it('a prepare check that re-points the node_modules junction: the next check is not handed to the sandbox and the run parks at lane-tampered; your node_modules is untouched', async () => {
+        const env = privateWorld();
+        w = env.w;
+        const elsewhere = join(w.dir, 'elsewhere');
+        mkdirSync(elsewhere);
+        const ran = [];
+        const exec = (cmd, args, o) => {
+            if (/check[12]\.mjs$/.test(args[0] ?? '')) {
+                ran.push(args[0]);
+                if (args[0] === 'check1.mjs') {
+                    // The PR's code in the read-write checkout points the link elsewhere (temp dirs only).
+                    const link = join(o.cwd, 'node_modules');
+                    try {
+                        unlinkSync(link);
+                    }
+                    catch {
+                        rmdirSync(link);
+                    }
+                    symlinkSync(elsewhere, link, process.platform === 'win32' ? 'junction' : 'dir');
+                }
+                return { status: 0, stdout: 'ok\n', stderr: '' };
+            }
+            return w.exec(cmd, args, o);
+        };
+        const gateConfig = () => ({ config: { ...localTestConfig(), prepareChecks: [[process.execPath, 'check1.mjs'], [process.execPath, 'check2.mjs']] }, known: [] });
+        const o = localOpts(w, lanesFor(w, [greet(), review('approve')]), { runUserConfig: env.user, gateConfig });
+        const out = await runFactoryEngine({ ...o, exec, gateSandbox: attested(exec) });
+        expect(out.gate?.name, out.message).toBe('lane-tampered');
+        expect(out.gate?.reason).toMatch(/did not run: .*node_modules resolves to .*elsewhere, not your node_modules \(the only link the engine makes there\)/);
+        expect(ran).toEqual(['check1.mjs']);
         expect(readFileSync(join(w.root, 'node_modules', 'marker.txt'), 'utf8')).toBe('yours\n');
     }, T);
 });

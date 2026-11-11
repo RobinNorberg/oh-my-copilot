@@ -254,6 +254,8 @@ export async function runSandboxed(argv, o, deps) {
                     hostCommits: true,
                     toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
                     extraReadonly: proxy.caPaths,
+                    ...(o.mainRoot ? { mainRoot: resolve(o.mainRoot) } : {}),
+                    ...(o.nodeModulesTarget ? { nodeModulesTarget: resolve(o.nodeModulesTarget) } : {}),
                 };
             },
             note: (text) => { notes.push(text); },
@@ -421,8 +423,10 @@ export function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers
             timeoutMs: req.timeoutMs,
             network: req.network ?? settings.writeNetwork,
             settings,
-            jobRoot: sandboxJobRoot(root),
+            jobRoot: req.jobRoot ?? sandboxJobRoot(root),
             ...(req.requireDeniedPaths ? { requireDeniedPaths: true } : {}),
+            ...(req.mainRoot ? { mainRoot: req.mainRoot } : {}),
+            ...(req.nodeModulesTarget ? { nodeModulesTarget: req.nodeModulesTarget } : {}),
         }, deps);
     };
 }

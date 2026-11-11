@@ -63,6 +63,8 @@ export interface FactoryCleanOptions {
     rerun?: string;
     /** The private layout: also remove the repository's private store seed once no other run dir is left (`--seed`). */
     seed?: boolean;
+    /** The trusted user config factory.run.workDir is read from (default: userConfigLayers().trustedUser); tests pass one. */
+    runUserConfig?: unknown;
 }
 export type LaneProcessRecord = NonNullable<FactoryRunState['lanes'][number]['process']>;
 export type LaneProcessState = 'live' | 'dead' | 'mismatch' | 'unknown';

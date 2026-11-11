@@ -9,6 +9,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { defaultExec } from '../../../ship/exec.js';
 import { gitVersionProblem, printableKey } from '../private-store.js';
 import { IMPORT_REFUSED_GATE, PrivateRun, REPO_GUARD_GATE, resolveGateInstall, resolveRunLayout } from '../private-run.js';
 const T = 240_000;
@@ -223,6 +224,22 @@ describe('PrivateRun', () => {
         const reason = !out.ok ? out.park.reason : '';
         expect(reason).toMatch(/The guard cannot compare your repository's core\.hooksPath at the work tree root or the git dir: .* at all, so every import parks while it stays\. Fix it \(.*\), then rerun omg factory run 7; or omg factory run cancel 7 stops the run/);
         expect(reason).not.toMatch(/rerunning .* continues/);
+    }, T);
+    it('review-483 M5 + L4: a resume requires the recorded dir to be where the config puts it, and git 2.44 still', () => {
+        const made = PrivateRun.create({ root, omcRoot: join(root, '.omg'), slug: 'issue-7', repoUrl: 'https://github.com/o/r', userConfig: { factory: { run: { workDir: work } } }, ledgerDir: join(dir, 'ledger') }, base);
+        const state = { layout: 2, privateDir: made.run.layout.runDir, privateStore: made.record, baseSha: base, repoUrl: 'https://github.com/o/r' };
+        const input = { root, omcRoot: join(root, '.omg'), slug: 'issue-7', userConfig: { factory: { run: { workDir: work } } }, ledgerDir: join(dir, 'ledger') };
+        expect(PrivateRun.fromState(state, input).layout.runDir).toBe(made.run.layout.runDir);
+        // A tampered record (another dir under the work root, or outside it) or a changed work root: refused, nothing touched.
+        for (const privateDir of [join(work, 'x', 'issue-7'), join(dir, 'elsewhere'), join(made.run.layout.repoDir, 'issue-8')]) {
+            expect(() => PrivateRun.fromState({ ...state, privateDir }, input)).toThrow(/the run's recorded private dir .* is not .*, so nothing was resumed or removed/);
+        }
+        expect(() => PrivateRun.fromState(state, { ...input, userConfig: { factory: { run: { workDir: join(dir, 'fw2') } } } })).toThrow(/is not .*fw2/);
+        expect(() => PrivateRun.fromState(state, { ...input, slug: 'issue-8' })).toThrow(/is not .*issue-8/);
+        // A git downgraded since the run started.
+        const old = (cmd, args, o) => (args[0] === '--version' ? { status: 0, stdout: 'git version 2.43.0\n', stderr: '' } : defaultExec(cmd, args, o));
+        expect(() => PrivateRun.fromState(state, { ...input, exec: old })).toThrow(/needs git 2\.44 or later/);
+        expect(existsSync(made.run.layout.runDir)).toBe(true);
     }, T);
     it('run start again (resume) deletes this run\'s stale import refs and leftover trash', () => {
         const p = create();
