@@ -206,6 +206,47 @@ describe('PrivateRun', () => {
     expect(importRefs()).toBe('');
   }, T);
 
+  it('review-483 HIGH-1: run start refuses a guard item that can never compare (a hook over 1 MiB, core.hooksPath at the root, an unreadable include), naming it; nothing is made', () => {
+    const layout = PrivateRun.runLayout({ root, omcRoot: join(root, '.omg'), slug: 'issue-7', repoUrl: 'https://github.com/o/r', userConfig: { factory: { run: { workDir: work } } } });
+    const refused = (setup: () => void, what: RegExp) => {
+      setup();
+      expect(() => create()).toThrow(what);
+      // Nothing was made: no seed, no run dir, no import ref.
+      expect(existsSync(layout.seed)).toBe(false);
+      expect(existsSync(layout.runDir)).toBe(false);
+      expect(importRefs()).toBe('');
+    };
+    const big = join(root, '.git', 'hooks', 'pre-commit');
+    refused(() => writeFileSync(big, Buffer.alloc(1024 * 1024 + 1, 0x61)), /import guard cannot compare your repository's hooks dir too large to compare \(.*\): .*hooks, so every import would park; fix it \(.*keep hook files under 1 MiB/);
+    rmSync(big);
+    refused(() => g(root, ['config', 'core.hooksPath', '.']), /core\.hooksPath at the work tree root or the git dir: .*so every import would park/);
+    g(root, ['config', '--unset', 'core.hooksPath']);
+    // A conditional include git never follows (its condition is false) that the guard cannot read to the end: it includes itself.
+    const loop = join(dir, 'loop.gitconfig').replace(/\\/g, '/');
+    writeFileSync(loop, `[include]\n\tpath = ${loop}\n`);
+    refused(() => g(root, ['config', 'includeIf.gitdir:/nowhere/at/all/.path', loop]), /unreadable config, include or git state: .*loop\.gitconfig.*so every import would park/);
+  }, T);
+
+  it('review-483 HIGH-1 control: an ordinary repository (husky hooks path, git lfs hooks) starts, and a stuck item later parks without "rerunning continues"', () => {
+    mkdirSync(join(root, '.husky'));
+    writeHook(join(root, '.husky'), 'pre-commit', join(dir, 'unused'));
+    g(root, ['config', 'core.hooksPath', '.husky']);
+    for (const h of ['pre-push', 'post-checkout', 'post-commit', 'post-merge']) {
+      writeFileSync(join(root, '.git', 'hooks', h), `#!/bin/sh\ncommand -v git-lfs >/dev/null 2>&1 || exit 2\ngit lfs ${h} "$@"\n`);
+    }
+    g(root, ['config', 'filter.lfs.process', 'git-lfs filter-process']);
+    const p = create();
+    const first = publish(p, mkCommit(p.repo.gitDir, [base], [{ path: 'y', content: 'y\n' }]), [base], base);
+    expect(first.out.ok).toBe(true);
+    // The user points core.hooksPath at the root during the run: the park says what to fix, not that a rerun continues.
+    g(root, ['config', 'core.hooksPath', '.']);
+    const { out } = publish(p, mkCommit(p.repo.gitDir, [base], [{ path: 'z', content: 'z\n' }]), [base], base, { baseline: first.set[0] });
+    expect(out).toMatchObject({ ok: false, park: { name: REPO_GUARD_GATE } });
+    const reason = !out.ok ? out.park.reason : '';
+    expect(reason).toMatch(/The guard cannot compare your repository's core\.hooksPath at the work tree root or the git dir: .* at all, so every import parks while it stays\. Fix it \(.*\), then rerun omg factory run 7; or omg factory run cancel 7 stops the run/);
+    expect(reason).not.toMatch(/rerunning .* continues/);
+  }, T);
+
   it('run start again (resume) deletes this run\'s stale import refs and leftover trash', () => {
     const p = create();
     g(root, ['update-ref', 'refs/omg-import/issue-7/3', base]);

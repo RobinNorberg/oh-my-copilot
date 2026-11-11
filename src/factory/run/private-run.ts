@@ -153,12 +153,36 @@ const KIND_TEXT: Record<UserGuardDetail['kind'], string> = {
  * kind, path and key name of each changed entry, never a value or a
  * fingerprint, and that the user's own change trips it too.
  */
-export function guardChangedReason(details: readonly UserGuardDetail[], resume: string, cancel: string): string {
-  const what = details.slice(0, 5).map((d) => `${KIND_TEXT[d.kind]}${d.key && d.kind === 'config-key' ? ` ${d.key} in` : ''}: ${d.path}`);
-  const more = details.length > 5 ? ` (and ${details.length - 5} more)` : '';
-  return `your repository's ${what.join('; ') || 'git state'}${more} changed during the run, so nothing more was imported or pushed. `
+export function guardChangedReason(details: readonly UserGuardDetail[], resume: string, cancel: string, stuck: readonly UserGuardDetail[] = []): string {
+  const head = `your repository's ${guardItemsText(details) || 'git state'} changed during the run, so nothing more was imported or pushed. `;
+  // An item the guard can never compare parks every import while it stays: a rerun alone does not continue (review-483 HIGH-1).
+  if (stuck.length > 0) {
+    return `${head}The guard cannot compare your repository's ${guardItemsText(stuck)} at all, so every import parks while it stays. `
+      + `Fix it (${STUCK_FIX}), then rerun ${resume}; or ${cancel} stops the run (factory.run.layout "shared" in your user config avoids this check for the next run).`;
+  }
+  return head
     + 'Your own change does this too (git submodule update --init, git lfs install --local, a local alias, scalar or fsmonitor, husky on a branch switch). '
     + `Check the change; rerunning ${resume} continues and takes your repository as it is then; ${cancel} stops the run.`;
+}
+
+/** What the user does about an item the guard cannot compare. */
+const STUCK_FIX = 'make the config or include readable, keep hook files under 1 MiB and the hooks dir under 2 000 entries and 3 levels deep, and point core.hooksPath at a dir other than the work tree root or the git dir';
+
+/** The kind, key name and path of up to five guard entries (never a value or a fingerprint). */
+function guardItemsText(details: readonly UserGuardDetail[]): string {
+  const what = details.slice(0, 5).map((d) => `${KIND_TEXT[d.kind]}${d.key && d.kind === 'config-key' ? ` ${d.key} in` : ''}: ${d.path}`);
+  return `${what.join('; ')}${details.length > 5 ? ` (and ${details.length - 5} more)` : ''}`;
+}
+
+/**
+ * The entries of `guard` that compareUserRepoGuard always reports as changed
+ * (an unreadable config, include or git state; a hooks dir too large to
+ * compare; core.hooksPath at the work tree root or the git dir): with one of
+ * them a private run would park at every import (review-483 HIGH-1). Empty
+ * when the guard compares cleanly.
+ */
+export function stuckGuardEntries(guard: UserRepoGuard): UserGuardDetail[] {
+  return compareUserRepoGuard(guard, guard).length > 0 ? userRepoGuardChanges(guard, guard) : [];
 }
 
 /** The park for an import refusal: the module's fixed reason, and the command that continues or cancels. */
@@ -221,6 +245,11 @@ export class PrivateRun {
       if (existsSync(layout.runDir)) removeRunDir(layout.runDir, layout.work);
       // The baseline the first import compares with: taken before any store transport touched the repository.
       const guard = userRepoGuardSnapshot(userGitDir, ctx);
+      // An item the guard can never compare would park every import: refused here, before the store is made (review-483 HIGH-1).
+      const stuck = stuckGuardEntries(guard);
+      if (stuck.length > 0) {
+        throw new PrivateStoreError(`the import guard cannot compare your repository's ${guardItemsText(stuck)}, so every import would park; fix it (${STUCK_FIX})`);
+      }
       ensureSeed(layout, userGitDir, baseSha, ctx);
       const repo = createPrivateRepo(layout, baseSha, ctx);
       const record: PrivateStoreRecord = { userGitDir, configHash: repo.configHash, longestPath: repo.longestPath, nextImport: 0 };
@@ -386,7 +415,7 @@ export class PrivateRun {
       const baseline = o.baseline ?? userRepoGuardSnapshot(this.userGitDir, this.ctx);
       const now = userRepoGuardSnapshot(this.userGitDir, this.ctx);
       if (compareUserRepoGuard(baseline, now).length > 0) {
-        return { ok: false as const, pushed: false, park: { name: REPO_GUARD_GATE, reason: guardChangedReason(userRepoGuardChanges(baseline, now), o.resume, o.cancel) } };
+        return { ok: false as const, pushed: false, park: { name: REPO_GUARD_GATE, reason: guardChangedReason(userRepoGuardChanges(baseline, now), o.resume, o.cancel, stuckGuardEntries(now)) } };
       }
       const held: Array<{ n: number; sha: string }> = [];
       const drop = () => {
@@ -409,7 +438,7 @@ export class PrivateRun {
       const after = userRepoGuardSnapshot(this.userGitDir, this.ctx);
       if (compareUserRepoGuard(baseline, after).length > 0) {
         const pushed = o.pushed(value);
-        return { ok: false as const, pushed, park: { name: REPO_GUARD_GATE, reason: `${pushed ? `${o.what} was pushed, and then ` : ''}${guardChangedReason(userRepoGuardChanges(baseline, after), o.resume, o.cancel)}` } };
+        return { ok: false as const, pushed, park: { name: REPO_GUARD_GATE, reason: `${pushed ? `${o.what} was pushed, and then ` : ''}${guardChangedReason(userRepoGuardChanges(baseline, after), o.resume, o.cancel, stuckGuardEntries(after))}` } };
       }
       o.setBaseline(after);
       return { ok: true as const, value };

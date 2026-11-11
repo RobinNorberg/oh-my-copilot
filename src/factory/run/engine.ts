@@ -57,7 +57,7 @@ import { createHash } from 'crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'path';
-import { BASE_CONFIG_PATH, configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, readBaseFile, remoteRepoMismatch, userConfigLayers } from '../../ship/config.js';
+import { BASE_CONFIG_PATH, configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, readBaseFile, remoteRepoMismatch, resolveTrustedBases, userConfigLayers } from '../../ship/config.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT, type PrepareCheckResult, type PrepareCheckRun } from '../../ship/prepare.js';
@@ -931,19 +931,69 @@ class FactoryEngine {
     return p ? p.worktreePath('prep') : checkoutPath(this.o.root, this.key);
   }
 
-  /** factory.run.layout from the trusted layers at `baseSha` (user config, then the base .copilot/omg.jsonc); false when it parked. */
+  /**
+   * The `.copilot/omg.jsonc` committed at `commit` for the factory.run keys,
+   * read only when the run's base is in ship.trustedBases (the rule
+   * loadTrustedShipConfig applies to the base layer). Undefined when the base
+   * is untrusted, or the file is absent, unreadable or not JSONC (warned): a
+   * broken base layer counts as unset, so a shared run keeps today's path and
+   * the strict gate-config load parks on a bad file later as before
+   * (review-483 MEDIUM-1).
+   */
+  private trustedBaseLayer(commit: string | undefined): unknown {
+    if (!commit) return undefined;
+    let trusted = false;
+    try { trusted = resolveTrustedBases(this.runUserConfig()).includes(this.state.base); } catch { /* a bad ship.trustedBases: no base is trusted here */ }
+    if (!trusted) return undefined;
+    try {
+      const text = readBaseFile(this.exec, this.o.root, commit, BASE_CONFIG_PATH);
+      return text && text.trim() ? parseJsonc(text) : undefined;
+    } catch (error) {
+      this.o.warn?.(`omg factory run: the ${BASE_CONFIG_PATH} committed on ${this.state.base} could not be read for factory.run (${errText(error)}); its factory.run keys count as unset`);
+      return undefined;
+    }
+  }
+
+  /**
+   * factory.run.layout from the trusted layers at `baseSha` (the user config,
+   * else the base layer when trusted). An invalid user value throws; an
+   * invalid base value counts as unset (warned), like a broken base file.
+   * Without `baseSha` only the user config is read.
+   */
+  private layoutFromLayers(baseSha?: string): { layout: RunLayoutChoice; source: string } {
+    const own = resolveRunLayout(this.runUserConfig(), undefined);
+    if (own.source !== 'default' || !baseSha) return own;
+    try {
+      return resolveRunLayout(undefined, this.trustedBaseLayer(baseSha));
+    } catch (error) {
+      this.o.warn?.(`omg factory run: ${errText(error)}; the key counts as unset (shared layout)`);
+      return own;
+    }
+  }
+
+  /** factory.run.layout from the trusted layers at `baseSha`; false when it parked (only an invalid value in the user config parks). */
   private resolveLayout(baseSha: string): boolean {
     try {
-      const user = this.runUserConfig();
-      const own = resolveRunLayout(user, undefined);
-      // The base layer is read only when the user config leaves the key unset.
-      const text = own.source === 'default' ? readBaseFile(this.exec, this.o.root, baseSha, BASE_CONFIG_PATH) : null;
-      this.layoutChoice = text && text.trim() ? resolveRunLayout(user, parseJsonc(text)).layout : own.layout;
+      this.layoutChoice = this.layoutFromLayers(baseSha).layout;
       return true;
     } catch (error) {
-      this.gate(PRIVATE_STORE_GATE, `factory.run.layout could not be read: ${errText(error)}; fix it in the user config or the .copilot/omg.jsonc committed on ${this.state.base}, then rerun ${this.resume}`);
+      this.gate(PRIVATE_STORE_GATE, `factory.run.layout could not be read: ${errText(error)}; fix it in the user config, then rerun ${this.resume}`);
       return false;
     }
+  }
+
+  /**
+   * The park when the private layout is asked for (either trusted layer) and
+   * the implementer is the coding agent, which pushes to the PR branch
+   * itself, outside the private repository (review-483 M2: never a silent
+   * shared fallback). Null when the layout is shared; an invalid user value
+   * is left to resolveLayout.
+   */
+  private agentLayoutPark(baseSha?: string): string | null {
+    let layout: { layout: RunLayoutChoice; source: string };
+    try { layout = this.layoutFromLayers(baseSha); } catch { return null; }
+    if (layout.layout !== 'private') return null;
+    return `factory.run.layout "private" (from ${layout.source === 'user config' ? 'your user config' : layout.source}) does not support factory.run.implementer "coding-agent" yet (the agent pushes to the PR branch itself, outside the private repository); nothing was assigned. Set factory.run.layout "shared" in your user config (it overrides the base .copilot/omg.jsonc), or set factory.run.implementer back to "copilot", then rerun ${this.resume}`;
   }
 
   /**
@@ -1039,9 +1089,8 @@ class FactoryEngine {
     const what = rule.lockfiles.length === 0 ? 'the base has no lockfile' : `the PR changes ${rule.changed.join(', ')}`;
     let mode: 'park' | 'sandboxed';
     try {
-      const commit = (loaded.config as { trustedBaseCommit?: string }).trustedBaseCommit;
-      const text = commit ? readBaseFile(this.exec, this.o.root, commit, BASE_CONFIG_PATH) : null;
-      mode = resolveGateInstall(this.runUserConfig(), text && text.trim() ? parseJsonc(text) : undefined).mode;
+      // The same trusted-base decision as the layout (trustedBaseLayer); the loader already left an untrusted base unread.
+      mode = resolveGateInstall(this.runUserConfig(), this.trustedBaseLayer((loaded.config as { trustedBaseCommit?: string }).trustedBaseCommit)).mode;
     } catch (error) {
       return { name: GATE_INSTALL_GATE, reason: `${what}, and factory.run.gateInstall could not be read: ${errText(error)}; fix it, then rerun ${this.resume}` };
     }
@@ -1814,16 +1863,13 @@ class FactoryEngine {
   private async implement(): Promise<void> {
     // The layout is decided once, before the run's first lane, and sealed with its private store (never switched later).
     const undecided = this.state.layout !== 2 && !this.state.codingAgent && this.state.lanes.length === 0;
-    // The coding agent pushes to the PR branch itself: refused when the user config asks for the private layout (no fetch needed to tell).
-    let userLayout: RunLayoutChoice = 'shared';
-    try { userLayout = resolveRunLayout(this.runUserConfig(), undefined).layout; } catch { /* resolveLayout parks on it below */ }
-    if (undecided && userLayout === 'private' && this.state.kind !== 'ci-heal' && this.o.issue) {
+    // The coding agent pushes to the PR branch itself: refused when the user config asks for the private layout (no fetch
+    // needed to tell); the base layer is read at the fetched base before the first assignment (codingAgentAssign).
+    if (undecided && this.state.kind !== 'ci-heal' && this.o.issue) {
+      const park = this.agentLayoutPark();
       let agent = false;
-      try { agent = this.codingAgentChoice().use; } catch { /* codingAgentImplement parks on it */ }
-      if (agent) {
-        this.gate(LAYOUT_UNSUPPORTED_GATE, `factory.run.layout "private" does not support factory.run.implementer "coding-agent" yet (the agent pushes to the PR branch itself, outside the private repository); set factory.run.layout "shared" or the implementer back to the default, then rerun ${this.resume}`);
-        return;
-      }
+      if (park) try { agent = this.codingAgentChoice().use; } catch { /* codingAgentImplement parks on it */ }
+      if (park && agent) return this.gate(LAYOUT_UNSUPPORTED_GATE, park);
     }
     if (await this.codingAgentImplement()) return;
     const baseSha = this.fetchBase();
@@ -3894,6 +3940,9 @@ class FactoryEngine {
     const cfg = this.codingAgentSettings();
     const baseSha = this.fetchBase();
     this.save((x) => ({ ...x, baseSha }));
+    // Before the first assignment: the private layout from either trusted layer refuses the agent (review-483 M2).
+    const layoutPark = this.state.codingAgent ? null : this.agentLayoutPark(baseSha);
+    if (layoutPark) return this.gate(LAYOUT_UNSUPPORTED_GATE, layoutPark);
     const pre = this.codingAgentStatus(PRE_ASSIGN_SINCE);
     if (pre.status.phase === 'truncated') return this.gate(CODING_AGENT_GATE, this.codingAgentTruncated(pre.status));
     if (pre.status.phase === 'unavailable') {

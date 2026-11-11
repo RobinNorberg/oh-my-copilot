@@ -11,7 +11,7 @@ import { join, relative } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { readMirrorRef } from '../../../forge/local/index.js';
-import { resolveShipConfig } from '../../../ship/config.js';
+import { loadTrustedShipConfig, resolveShipConfig } from '../../../ship/config.js';
 import type { Exec } from '../../../ship/exec.js';
 import { cleanFactoryRun } from '../clean.js';
 import { EXIT_AWAITING_HUMAN, runFactoryEngine, type FactoryEngineOptions } from '../engine.js';
@@ -251,6 +251,61 @@ describe('factory run with factory.run.layout "private"', () => {
     expect(result.removed).toContain(s.privateDir);
     expect(existsSync(s.privateDir!)).toBe(false);
     expect(readFileSync(join(w.root, 'node_modules', 'marker.txt'), 'utf8')).toBe('yours\n');
+  }, T);
+});
+
+describe('factory.run.layout from the base-committed .copilot/omg.jsonc (review-483 MEDIUM-1)', () => {
+  /** The local world with `content` committed as the base's .copilot/omg.jsonc. */
+  function baseConfigWorld(content: string): LocalWorld {
+    const world = localWorld();
+    mkdirSync(join(world.root, '.copilot'), { recursive: true });
+    writeFileSync(join(world.root, '.copilot', 'omg.jsonc'), content);
+    gitIn(world.root, 'add', '.copilot/omg.jsonc');
+    gitIn(world.root, 'commit', '-q', '-m', 'base config');
+    return world;
+  }
+  const baseConfigReads = () => w.raw.filter((c) => c.args.some((a) => a.endsWith(':.copilot/omg.jsonc'))).length;
+
+  it('a shared run with a base omg.jsonc syntax error runs its lane as before; the strict gate-config load parks on the file later', async () => {
+    w = baseConfigWorld('{ "factory": { "run": { "layout": ');
+    // The working-tree copy is valid (the project config layer would park on it first: protected paths).
+    writeFileSync(join(w.root, '.copilot', 'omg.jsonc'), '{}\n');
+    // Ship's strict loader as the engine's local default, without the developer's own user config.
+    const gateConfig: FactoryEngineOptions['gateConfig'] = (i) => ({
+      config: loadTrustedShipConfig({ exec: i.exec, root: i.root, base: i.base, baseSha: i.baseSha, repoUrl: i.repoUrl, strict: true, remote: 'omg-local', user: null, trustedUser: null, warn: i.warn }),
+      known: [],
+    });
+    const lanes = lanesFor(w, [greet(), review('approve')]);
+    const out = await runFactoryEngine(localOpts(w, lanes, { runUserConfig: null, gateConfig }));
+    const s = readFactoryState(w.root, LOCAL_ISSUE)!;
+    expect(s.layout).toBeUndefined();
+    expect(s.history.some((h) => /factory\.run\.layout could not be read/.test(h.note))).toBe(false);
+    expect(s.lanes.map((l) => l.kind), JSON.stringify(out.gate)).toEqual(['implement', 'review']);
+    expect(lanes.started[0].worktree).toBeUndefined();
+    // As on dev: the prepare step's strict load fails on the file (a step error the rerun resumes), after the lanes ran.
+    expect(out.exitCode, out.message).toBe(1);
+    expect(out.gate).toBeUndefined();
+    expect(out.message).toMatch(/factory run step prepare failed: the trusted ship config could not be loaded: main [0-9a-f]{12}:\.copilot\/omg\.jsonc is not valid JSONC/);
+  }, T);
+
+  it('an untrusted base (not in ship.trustedBases) is never read: its "private" is ignored and the run is shared; a trusted one is read', async () => {
+    w = baseConfigWorld('{ "factory": { "run": { "layout": "private" } } }\n');
+    const untrusted = lanesFor(w, [greet()]);
+    await runFactoryEngine(localOpts(w, untrusted, { runUserConfig: { ship: { trustedBases: ['dev'] } } }));
+    expect(baseConfigReads()).toBe(0);
+    expect(readFactoryState(w.root, LOCAL_ISSUE)!.layout).toBeUndefined();
+    expect(untrusted.started[0].worktree).toBeUndefined();
+
+    // Control: the same base in a new world, trusted (the defaults name main), is read and makes the run private.
+    rmSync(w.dir, { recursive: true, force: true });
+    w = baseConfigWorld('{ "factory": { "run": { "layout": "private" } } }\n');
+    const work = join(w.dir, 'fw');
+    const trusted = lanesFor(w, [greet()]);
+    await runFactoryEngine(localOpts(w, trusted, { runUserConfig: { factory: { run: { workDir: work } } } }));
+    expect(baseConfigReads()).toBeGreaterThan(0);
+    const s = readFactoryState(w.root, LOCAL_ISSUE)!;
+    expect(s.layout).toBe(2);
+    expect(trusted.started[0].worktree?.path.startsWith(work)).toBe(true);
   }, T);
 });
 
