@@ -1400,6 +1400,8 @@ export class CopilotRunManager {
           toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
           extraReadonly: proxy.caPaths,
           ...(job.deniedPaths.length > 0 ? { extraDenied: job.deniedPaths } : {}),
+          // A caller-made worktree (the private layout): its common git dir is not the checkout's, whose budget ledger stays denied.
+          ...(job.external ? { mainRoot: job.ledgerCwd } : {}),
         };
       },
       note: (text) => { job.notes.push(text); },

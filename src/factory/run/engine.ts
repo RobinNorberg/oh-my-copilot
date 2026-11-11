@@ -63,7 +63,7 @@ import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT, type PrepareCheckResult, type PrepareCheckRun } from '../../ship/prepare.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { resolveGatesSandboxMode, resolveRequireDeniedPaths, type GatesSandboxMode } from '../../copilot-run/sandbox.js';
-import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs, type SandboxRunner } from './sandbox-exec.js';
+import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs, type SandboxRunner, type SandboxRunRequest } from './sandbox-exec.js';
 import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
 import { driveGates } from './gates-driver.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
@@ -124,7 +124,7 @@ import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from
 import { isTerminalLaneState, LaneLostError, type LaneBackend, type LaneProcess, type LaneProfile, type LaneResult } from './lane.js';
 import { jobRefProblem } from '../../copilot-run/job.js';
 import { commitLaneWork, conflictFixStart, LANE_PROTECTED_PATHS, laneCommitMessage } from './lane-commit.js';
-import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir } from './ledger.js';
+import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir, userBaselineKey } from './ledger.js';
 import { createFactoryProgress, type FactoryProgress } from './progress.js';
 import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaimRepo, isShallowClaimRepo, localFactoryClaimRepo, shallowClaimWarning, settleFactoryClaim, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo, type HeldClaim } from './claims.js';
 import { compareSnapshots, replaceObjectsProblem, samePath, snapshotRepo, verifyReviewWorktree, type RepoSnapshot } from './review-guard.js';
@@ -661,6 +661,16 @@ function sandboxPark(result: LaneResult): { name: 'sandbox-unavailable' | 'sandb
   return null;
 }
 
+/**
+ * Whether a lane's recorded sandbox kept all of its calls in the OS sandbox
+ * (enforced or read-only, or refused before any call ran): the private
+ * layout then trusts that the lane could not write the user's repository;
+ * detect-only, a call outside the sandbox or no record do not (review-483 M3).
+ */
+function laneSandboxEnforced(s: LaneResult['sandbox'] | undefined): boolean {
+  return !!s && s.unsandboxedCalls === 0 && (s.mode === 'enforced' || s.mode === 'read-only-no-shell' || s.mode === 'refused');
+}
+
 /** The factory phase that follows an approved ship run in `phase` (ship state wins on resume). */
 function shipFollower(phase: ShipState['phase']): FactoryPhase {
   if (phase === 'gates') return 'gates';
@@ -925,6 +935,85 @@ class FactoryEngine {
     return p ? snapshotRepo(p.exec(), p.repo.repo, null, against) : snapshotRepo(this.exec, this.o.root, this.stateRootRel, against);
   }
 
+  /**
+   * The private layout only: the snapshot of the USER's repository the shared
+   * layout takes around a step (review-483 M3). Taken before each lane,
+   * prepare and local gate; compared after it only when that step's untrusted
+   * code ran without the enforced sandbox (userRepoProblems). Undefined in
+   * the shared layout, whose snap() already is this snapshot.
+   */
+  private userSnap(what: string): RepoSnapshot | undefined {
+    if (!this.privateRun()) return undefined;
+    try {
+      return snapshotRepo(this.exec, this.o.root, this.stateRootRel);
+    } catch (error) {
+      throw new FactoryStepError(`the snapshot of your repository before ${what} failed: ${errText(error)}`);
+    }
+  }
+
+  /**
+   * What changed in the user's repository against `before` (userSnap), each
+   * entry prefixed. `engineRef`: a remote-tracking ref the engine's own fetch
+   * may have moved in the meantime (the base, to GitHub's base sha).
+   */
+  private userRepoProblems(before: RepoSnapshot | undefined, engineRef?: { name: string; sha: string }): string[] {
+    if (!before) return [];
+    try {
+      const after = snapshotRepo(this.exec, this.o.root, this.stateRootRel, before);
+      const own = engineRef && after.refs[engineRef.name] === engineRef.sha;
+      const was = own ? { ...before, refs: { ...before.refs, [engineRef.name]: engineRef.sha } } : before;
+      return compareSnapshots(was, after, {}, { fetchedRef: this.fetchedRef }).map((p) => `your repository: ${p}`);
+    } catch (error) {
+      return [`the snapshot of your repository failed: ${errText(error)}`];
+    }
+  }
+
+  /**
+   * Where the gate sandbox's per-command job homes, the base calibration
+   * copies and the prepare checks' process records go: the run dir in the
+   * private layout (review-483 L8), the repository's OMC state root otherwise.
+   */
+  private gateJobRoot(): string {
+    const p = this.privateRun();
+    return p ? join(p.layout.runDir, 'gates') : sandboxJobRoot(this.o.root);
+  }
+
+  /**
+   * The OS sandbox runner with this run's fixed fields: the only target a
+   * node_modules link in the command's dir may have (your node_modules, the
+   * only link the engine makes there; review-483 M4) and, in the private
+   * layout, your checkout (its budget ledger stays denied; L1) and the job
+   * root under the run dir (L8).
+   */
+  private sandboxRun(req: SandboxRunRequest): ReturnType<SandboxRunner> {
+    const p = this.privateRun();
+    return this.o.gateSandbox!({ ...req, nodeModulesTarget: join(this.o.root, 'node_modules'), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}) });
+  }
+
+  /**
+   * Why `<checkout>/node_modules` must not be granted: a link that does not
+   * resolve to your node_modules (the only link the engine makes there), so
+   * the PR's code re-pointed it (review-483 M4). Null when it is not a link,
+   * or is the engine's.
+   */
+  private nodeModulesRepointed(checkout: string): string | null {
+    const link = join(checkout, 'node_modules');
+    try {
+      if (!lstatSync(link).isSymbolicLink()) return null;
+    } catch {
+      return null;
+    }
+    let real: string;
+    try {
+      real = realpathSync.native(link);
+    } catch (error) {
+      return `${link} is a link that cannot be resolved (${errText(error)})`;
+    }
+    let want = '';
+    try { want = realpathSync.native(join(this.o.root, 'node_modules')); } catch { /* no node_modules of yours: no link may be there */ }
+    return want && samePath(real, want) ? null : `${link} resolves to ${real}, not your node_modules (the only link the engine makes there)`;
+  }
+
   /** The engine's prepare and local-gate checkout: `<run>/w/prep` in the private layout. */
   private checkoutDir(): string {
     const p = this.privateRun();
@@ -1101,7 +1190,7 @@ class FactoryEngine {
     const target = resolveLocalGateArgv(argv, { cwd: path, subject: 'the sandboxed install', configKey: 'factory.run.gateInstall' });
     if ('missing' in target) return { name: GATE_INSTALL_GATE, reason: `${what}, and npm cannot be started for the sandboxed install (${target.missing}); install npm, then rerun ${this.resume}` };
     const r = this.o.gateSandbox
-      ? await this.o.gateSandbox({ purpose: 'install', argv, exe: target.exe, args: target.args, cwd: path, commonGitDir: p.repo.gitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, network: 'registry' })
+      ? await this.sandboxRun({ purpose: 'install', argv, exe: target.exe, args: target.args, cwd: path, commonGitDir: p.repo.gitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, network: 'registry' })
       : { ran: false as const, reason: 'no OS sandbox runner was given to the engine' };
     if (!r.ran) return { name: GATE_INSTALL_GATE, reason: `${what}, and npm ci --ignore-scripts could not run in the OS sandbox (${r.reason}); fix that, or set factory.run.gateInstall "park", then rerun ${this.resume}` };
     if (r.status !== 0 || r.timedOut) return { name: GATE_INSTALL_GATE, reason: `${what}, and npm ci --ignore-scripts in the OS sandbox failed (exit ${r.status}${r.timedOut ? ', timed out' : ''}): ${redactGateOutput(r.output).trim().slice(-1_500)}; rerun ${this.resume} after fixing it` };
@@ -2579,6 +2668,8 @@ class FactoryEngine {
     } catch (error) {
       throw new FactoryStepError(`the pre-prepare snapshot failed: ${errText(error)}`);
     }
+    // The private layout: your repository too, compared after prepare if a check ran without the OS sandbox (review-483 M3).
+    const userBefore = this.userSnap('prepare');
     mkdirSync(dirname(path), { recursive: true });
     if (priv) {
       priv.addWorktree(path, head, branch);
@@ -2620,6 +2711,13 @@ class FactoryEngine {
       if (ran.park?.name === 'lane-tampered') {
         this.gate(ran.park.name, ran.park.reason);
         return;
+      }
+      if (ran.modes.has('ack') || ran.modes.has('unsandboxed')) {
+        const mine = this.userRepoProblems(userBefore, { name: `refs/remotes/${runRemote(s)}/${s.base}`, sha: view.baseRefOid });
+        if (mine.length > 0) {
+          this.gate('lane-tampered', `prepare's checks (the PR's own code) ran without the OS sandbox and changed your repository's git state, so nothing is pushed; inspect your repository: ${mine.slice(0, 5).join('; ')}`);
+          return;
+        }
       }
       if (this.prepareTampered(before, path, branch, view.baseRefOid)) return;
       // Still inside the pin: engine git names the checkout's git dir as it was before any PR code ran (checkoutGitPin).
@@ -2793,7 +2891,7 @@ class FactoryEngine {
       else ran.acked = true;
       ran.modes.add(how);
       // The orphans of an unsandboxed check (Windows does not reparent them) are recorded and killed after it, as the local gate's.
-      const procs = join(sandboxJobRoot(this.o.root), 'prepare-procs', `${head}.json`);
+      const procs = join(this.gateJobRoot(), 'prepare-procs', `${head}.json`);
       mkdirSync(dirname(procs), { recursive: true });
       await sweepGateProcs(dirname(procs)).catch(() => undefined);
       await reapGateProcs(procs).catch(() => undefined);
@@ -2820,8 +2918,11 @@ class FactoryEngine {
       if (c.kind === 'built-in' && (c.args[0] === VITEST_SCRIPT || c.args[0] === ESLINT_SCRIPT) && sandboxCommandTooLong(process.platform, c.argv, path)) {
         return { status: 1, stdout: '', stderr: BUILT_IN_FILE_NAME_TOO_LONG };
       }
+      // A node_modules link the PR's code re-pointed is never granted to the sandbox (review-483 M4).
+      const repointed = this.nodeModulesRepointed(path);
+      if (repointed) return stop({ name: 'lane-tampered', reason: `${label} on ${head.slice(0, 12)} did not run: ${repointed}, so the PR's code changed it; nothing of this prepare is trusted and nothing is pushed; inspect and remove ${path} by hand` });
       const r = this.o.gateSandbox
-        ? await this.o.gateSandbox({ purpose: 'prepare', argv: c.argv, exe: c.exe, args: c.args, cwd: path, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...(at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}) })
+        ? await this.sandboxRun({ purpose: 'prepare', argv: c.argv, exe: c.exe, args: c.args, cwd: path, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...(at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}) })
         : { ran: false as const, reason: 'no OS sandbox runner was given to the engine' };
       const t = tampered();
       if (t) return t;
@@ -2884,7 +2985,7 @@ class FactoryEngine {
   private async runOnBase(c: { argv: readonly string[]; exe: string; args: readonly string[]; kind?: PrepareCheckRun['kind'] }, baseSha: string, commonGitDir: string, timeoutMs: number): Promise<{ ok: boolean; tail?: string } | { notStarted: string }> {
     if (!this.o.gateSandbox) return { notStarted: 'no OS sandbox runner was given to the engine' };
     if (!HEX40.test(baseSha)) return { notStarted: `the base ${JSON.stringify(baseSha)} is not a full commit id` };
-    const jobRoot = sandboxJobRoot(this.o.root);
+    const jobRoot = this.gateJobRoot();
     mkdirSync(jobRoot, { recursive: true });
     const dir = mkdtempSync(join(jobRoot, 'base-'));
     const index = `${dir}.index`;
@@ -2893,7 +2994,7 @@ class FactoryEngine {
       runHostGit(this.o.root, ['read-tree', baseSha], undefined, env);
       runHostGit(this.o.root, ['checkout-index', '-a', '-f', `--prefix=${dir.replace(/\\/g, '/')}/`], undefined, env);
       linkNodeModules(this.o.root, dir);
-      const r = await this.o.gateSandbox({ purpose: 'calibrate', argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...(this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {}) });
+      const r = await this.sandboxRun({ purpose: 'calibrate', argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...(this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {}) });
       if (!r.ran) return { notStarted: r.reason };
       const tail = r.output.trim().slice(-2_000);
       return { ok: r.status === 0 && !r.timedOut, ...(tail ? { tail } : {}) };
@@ -3198,6 +3299,8 @@ class FactoryEngine {
       return false;
     }
     const linkBefore = checkoutGitLink(checkout).hash;
+    // The private layout: your repository too, compared after the gate if it ran without the OS sandbox (review-483 M3).
+    const userBefore = this.userSnap('the local gate');
     let out: Awaited<ReturnType<typeof runLocalGate>>;
     if (gates.mode === 'unsandboxed') {
       this.noteUnsandboxedGates(head, 'the local gate');
@@ -3207,8 +3310,14 @@ class FactoryEngine {
       let unavailable = gates.mode === 'ack';
       out = { started: false, reason: why, sandbox: true };
       if (gates.mode === 'enforced') {
+        // A node_modules link the PR's code re-pointed is never granted to the sandbox (review-483 M4).
+        const repointed = this.nodeModulesRepointed(checkout);
+        if (repointed) {
+          this.gate('lane-tampered', `the local gate did not run on ${head.slice(0, 12)}: ${repointed}, so the PR's code changed it; inspect and remove ${checkout} by hand, then rerun ${this.resume}`);
+          return false;
+        }
         out = this.o.gateSandbox
-          ? await runLocalGate({ ...input, mode: 'enforced', sandbox: { run: this.o.gateSandbox, commonGitDir: common, requireDeniedPaths: gates.requireDeniedPaths } })
+          ? await runLocalGate({ ...input, mode: 'enforced', sandbox: { run: (req) => this.sandboxRun(req), commonGitDir: common, requireDeniedPaths: gates.requireDeniedPaths } })
           : { started: false, reason: 'no OS sandbox runner was given to the engine', sandbox: true };
         // The gate handed the PR's code of this head to the sandbox (a verdict or not): a later start failure on a
         // rerun of the gate for this head may be that code's doing.
@@ -3246,6 +3355,13 @@ class FactoryEngine {
     }
     const record = out.record;
     this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `local gate ${record.state} on ${head.slice(0, 12)} (exit ${record.exitCode}, ${record.sandbox === 'enforced' ? `in the OS sandbox${record.sandboxNote ? ` (${record.sandboxNote})` : ''}` : `unsandboxed: ${record.sandbox}`})` }] }));
+    if (record.sandbox !== 'enforced') {
+      const mine = this.userRepoProblems(userBefore);
+      if (mine.length > 0) {
+        this.gate('lane-tampered', `the local gate (the PR's own code) ran without the OS sandbox and changed your repository's git state, so its verdict is not used; inspect your repository, then rerun ${this.resume}: ${mine.slice(0, 5).join('; ')}`);
+        return false;
+      }
+    }
     // The gate ran the PR's own code: the shared git state must be what the engine left.
     if (this.recheckFailed('after the local gate')) return false;
     if (record.sandboxNote) this.noteCredentialFilesReadable(head);
@@ -3460,15 +3576,28 @@ class FactoryEngine {
   };
 
   /** The lane's comparison against its before-snapshot: its own branch and worktree entry may appear. */
-  private laneProblems(kind: FactoryLaneKind, before: RepoSnapshot, result: LaneResult, startRef: string): { problems: string[]; after?: RepoSnapshot } {
+  private laneProblems(kind: FactoryLaneKind, before: RepoSnapshot, result: LaneResult, startRef: string, laneId: string): { problems: string[]; after?: RepoSnapshot } {
     const allowed = result.branch ? { [`refs/heads/${result.branch}`]: kind === 'review' ? startRef : (result.headSha ?? '*') } : {};
+    // The private layout: a lane that did not run in the enforced sandbox ran as you, so your repository is compared too (review-483 M3).
+    const user = this.laneUserProblems(laneId, result.sandbox);
     try {
       const after = this.snap(before);
       const newWorktree = result.worktree ? { path: result.worktree } : result.remoteId ? { id: result.remoteId } : undefined;
-      return { after, problems: compareSnapshots(before, after, allowed, { fetchedRef: this.fetchedRef, ...(newWorktree ? { newWorktree } : {}) }) };
+      return { after, problems: [...compareSnapshots(before, after, allowed, { fetchedRef: this.fetchedRef, ...(newWorktree ? { newWorktree } : {}) }), ...user] };
     } catch (error) {
-      return { problems: [`the post-lane snapshot failed: ${errText(error)}`] };
+      return { problems: [`the post-lane snapshot failed: ${errText(error)}`, ...user] };
     }
+  }
+
+  /**
+   * The private layout: the user-repository comparison of a lane whose
+   * recorded sandbox was not enforced (detect-only, refused after unsandboxed
+   * calls, no record); none in the shared layout or for an enforced lane.
+   */
+  private laneUserProblems(laneId: string, sandbox: LaneResult['sandbox'] | undefined): string[] {
+    if (!this.privateRun() || laneSandboxEnforced(sandbox)) return [];
+    const before = this.ledger.baseline(userBaselineKey(laneId));
+    return before ? this.userRepoProblems(before) : ['the engine has no snapshot of your repository from before the lane'];
   }
 
   /** Park after a lane changed shared git state; a review lane's verdict is discarded. */
@@ -3593,6 +3722,8 @@ class FactoryEngine {
       } catch (error) {
         problems = [`the snapshot failed: ${errText(error)}`];
       }
+      // The private layout: a lost lane not confirmed to have run in the enforced sandbox is compared with your repository too.
+      problems.push(...this.laneUserProblems(lane.id, confirmedSandbox ?? lane.sandbox));
     }
     const note = `${reason}${childNote}`;
     this.save((x) => ({
@@ -3644,7 +3775,7 @@ class FactoryEngine {
       if (isTerminalLaneState(c.result.state)) {
         usage = usageOf(c.result);
         settleHeal(usage.credits);
-        const { problems } = this.laneProblems(kind, before, c.result, startRef);
+        const { problems } = this.laneProblems(kind, before, c.result, startRef, laneId);
         tampered = problems.length > 0;
         note = tampered ? `cancelled; tamper check: ${problems.slice(0, 5).join('; ')}` : 'cancelled; tamper check clean';
       } else {
@@ -3700,6 +3831,8 @@ class FactoryEngine {
     } catch (error) {
       throw new FactoryStepError(`the pre-lane snapshot failed: ${errText(error)}`);
     }
+    // The private layout: your repository too, compared after the lane if it ran without the enforced sandbox (review-483 M3).
+    const userBefore = this.userSnap(`the ${kind} lane`);
     // A ci-heal lane also passes the heal caps, reserved last so nothing above can strand the reservation;
     // without the heal inputs it does not start.
     let cap = runCap;
@@ -3728,6 +3861,7 @@ class FactoryEngine {
     // The baseline is persisted before the lane exists, so a lost lane or a resume compares against it.
     try {
       this.ledger.setBaseline(id, before);
+      if (userBefore) this.ledger.setBaseline(userBaselineKey(id), userBefore);
       this.save((s) => ({ ...s, lanes: [...s.lanes, record] }));
     } catch (error) {
       // No lane started: the heal reservation is released before the step fails.
@@ -3800,7 +3934,7 @@ class FactoryEngine {
     this.progress.emit(`lane-${kind}`, status === 'completed' ? 'ok' : 'fail', `lane ${id} ${result.state}, ${usage.credits.toFixed(2)} AI credits`, { ...this.fields(), lane: id, job: remoteId });
 
     // Mandatory tamper check around every lane, whatever its outcome.
-    const { problems, after } = this.laneProblems(kind, before, result, startRef);
+    const { problems, after } = this.laneProblems(kind, before, result, startRef, id);
     this.ledger.dropBaseline(id);
     if (problems.length > 0 || !after) {
       this.laneTampered(id, kind, problems);

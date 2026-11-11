@@ -91,6 +91,12 @@ export interface SandboxRunRequest {
   requireDeniedPaths?: boolean;
   /** The network this command needs over factory.run.sandbox.writeNetwork (the private layout's `npm ci --ignore-scripts`: the registry). */
   network?: 'registry';
+  /** The user's checkout (the budget ledger the sandbox denies) when `commonGitDir` is another repository's (the private layout). */
+  mainRoot?: string;
+  /** The only dir a `<cwd>/node_modules` link may resolve to (the one the engine linked); another target is refused, never granted. */
+  nodeModulesTarget?: string;
+  /** Where the per-command job home goes (default sandboxJobRoot(root); the private layout: under the run dir). */
+  jobRoot?: string;
 }
 
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
@@ -128,6 +134,9 @@ export interface SandboxExecOptions {
   jobRoot: string;
   /** factory.run.sandbox.requireDeniedPaths (default false: a host without denied_paths runs, its verdict marked). */
   requireDeniedPaths?: boolean;
+  /** SandboxRunRequest.mainRoot / nodeModulesTarget. */
+  mainRoot?: string;
+  nodeModulesTarget?: string;
 }
 
 export const MARKER_PREFIX = 'omg-gate-exit-';
@@ -327,6 +336,8 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
           hostCommits: true,
           toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
           extraReadonly: proxy.caPaths,
+          ...(o.mainRoot ? { mainRoot: resolve(o.mainRoot) } : {}),
+          ...(o.nodeModulesTarget ? { nodeModulesTarget: resolve(o.nodeModulesTarget) } : {}),
         };
       },
       note: (text) => { notes.push(text); },
@@ -449,8 +460,10 @@ export function createSandboxRunner(root: string, deps: SandboxExecDeps = defaul
       timeoutMs: req.timeoutMs,
       network: req.network ?? settings.writeNetwork,
       settings,
-      jobRoot: sandboxJobRoot(root),
+      jobRoot: req.jobRoot ?? sandboxJobRoot(root),
       ...(req.requireDeniedPaths ? { requireDeniedPaths: true } : {}),
+      ...(req.mainRoot ? { mainRoot: req.mainRoot } : {}),
+      ...(req.nodeModulesTarget ? { nodeModulesTarget: req.nodeModulesTarget } : {}),
     }, deps);
   };
 }

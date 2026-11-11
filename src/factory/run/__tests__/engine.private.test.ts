@@ -6,7 +6,7 @@
  * engine's push from it. Real git in temp dirs; no gh, az or copilot.
  */
 import { createHash } from 'node:crypto';
-import { appendFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -18,7 +18,7 @@ import { EXIT_AWAITING_HUMAN, runFactoryEngine, type FactoryEngineOptions } from
 import { GATE_INSTALL_GATE, REPO_GUARD_GATE } from '../private-run.js';
 import type { SandboxRunRequest } from '../sandbox-exec.js';
 import { readFactoryState, requestFactoryCancel } from '../state.js';
-import { commitFile, FakeLanes, gitIn, review, type LaneScript } from './fake-lanes.js';
+import { commitFile, ENFORCED_SANDBOX, FakeLanes, gitIn, review, type LaneScript } from './fake-lanes.js';
 import { BASE, foreignCommands, lanesFor, LOCAL_ISSUE, localOpts, localWorld, type LocalWorld } from './engine-local-harness.js';
 
 const T = 600_000;
@@ -250,6 +250,72 @@ describe('factory run with factory.run.layout "private"', () => {
     const result = cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, claimRepo: null, ledgerDir: w.ledgerDir });
     expect(result.removed).toContain(s.privateDir);
     expect(existsSync(s.privateDir!)).toBe(false);
+    expect(readFileSync(join(w.root, 'node_modules', 'marker.txt'), 'utf8')).toBe('yours\n');
+  }, T);
+});
+
+describe('your repository around untrusted code that ran without the enforced sandbox (review-483 M3)', () => {
+  const DETECT_ONLY = { ...ENFORCED_SANDBOX, mode: 'detect-only' } as typeof ENFORCED_SANDBOX;
+
+  it('a detect-only lane that makes a ref in your repository parks at lane-tampered; a detect-only lane that leaves it alone runs on', async () => {
+    let env = privateWorld();
+    w = env.w;
+    const sneaky: LaneScript = (ctx) => {
+      gitIn(w.root, 'update-ref', 'refs/heads/sneaky', gitIn(w.root, 'rev-parse', 'HEAD'));
+      return { ...greet()(ctx), sandbox: DETECT_ONLY };
+    };
+    const out = await runFactoryEngine(opts(env, [sneaky]));
+    expect(out.gate?.name, out.message).toBe('lane-tampered');
+    expect(out.gate?.reason).toMatch(/your repository: ref refs\/heads\/sneaky was created/);
+    expect(readMirrorRef(w.config.repo.url, `factory/issue-${LOCAL_ISSUE}`)).toBeFalsy();
+
+    rmSync(w.dir, { recursive: true, force: true });
+    env = privateWorld();
+    w = env.w;
+    const clean: LaneScript = (ctx) => ({ ...greet()(ctx), sandbox: DETECT_ONLY });
+    const ok = await runFactoryEngine(opts(env, [clean, review('approve')]));
+    expect(ok.gate?.name, ok.message).toBe('merge');
+  }, T);
+
+  it('an unsandboxed local gate that changes your repository\'s git state parks at lane-tampered and its verdict is not used', async () => {
+    const env = privateWorld();
+    w = env.w;
+    const gate: typeof w.gate = async (argv, cwd, ms) => {
+      gitIn(w.root, 'config', 'alias.st', 'status');
+      return w.gate(argv, cwd, ms);
+    };
+    const out = await runFactoryEngine(opts(env, [greet(), review('approve')], { localGate: gate, gateSandboxUserConfig: { factory: { run: { sandbox: { gates: 'unsandboxed' } } } } }));
+    expect(out.gate?.name, out.message).toBe('lane-tampered');
+    expect(out.gate?.reason).toMatch(/^the local gate \(the PR's own code\) ran without the OS sandbox and changed your repository's git state, so its verdict is not used; .*your repository: the common git config changed/);
+  }, T);
+});
+
+describe('the prepare checkout\'s node_modules link (review-483 M4)', () => {
+  it('a prepare check that re-points the node_modules junction: the next check is not handed to the sandbox and the run parks at lane-tampered; your node_modules is untouched', async () => {
+    const env = privateWorld();
+    w = env.w;
+    const elsewhere = join(w.dir, 'elsewhere');
+    mkdirSync(elsewhere);
+    const ran: string[] = [];
+    const exec: Exec = (cmd, args, o) => {
+      if (/check[12]\.mjs$/.test(args[0] ?? '')) {
+        ran.push(args[0]);
+        if (args[0] === 'check1.mjs') {
+          // The PR's code in the read-write checkout points the link elsewhere (temp dirs only).
+          const link = join(o!.cwd!, 'node_modules');
+          try { unlinkSync(link); } catch { rmdirSync(link); }
+          symlinkSync(elsewhere, link, process.platform === 'win32' ? 'junction' : 'dir');
+        }
+        return { status: 0, stdout: 'ok\n', stderr: '' };
+      }
+      return w.exec(cmd, args, o);
+    };
+    const gateConfig = () => ({ config: { ...localTestConfig(), prepareChecks: [[process.execPath, 'check1.mjs'], [process.execPath, 'check2.mjs']] }, known: [] });
+    const o = localOpts(w, lanesFor(w, [greet(), review('approve')]), { runUserConfig: env.user, gateConfig });
+    const out = await runFactoryEngine({ ...o, exec, gateSandbox: attested(exec) });
+    expect(out.gate?.name, out.message).toBe('lane-tampered');
+    expect(out.gate?.reason).toMatch(/did not run: .*node_modules resolves to .*elsewhere, not your node_modules \(the only link the engine makes there\)/);
+    expect(ran).toEqual(['check1.mjs']);
     expect(readFileSync(join(w.root, 'node_modules', 'marker.txt'), 'utf8')).toBe('yours\n');
   }, T);
 });

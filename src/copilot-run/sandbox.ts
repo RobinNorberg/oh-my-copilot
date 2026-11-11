@@ -290,9 +290,29 @@ export interface SandboxPolicyContext {
    * dirs); a path that holds a grant is left out, like the state root.
    */
   extraDenied?: string[];
+  /**
+   * The user's main checkout, whose OMC root holds the budget ledger the
+   * write profile denies. Default: the dir of the common git dir when that is
+   * a `.git` (the factory private layout's common git dir is the private
+   * repository's, so the engine names the user's checkout; review-483 L1).
+   */
+  mainRoot?: string;
+  /**
+   * The only target a `<worktree>/node_modules` link may resolve to (the
+   * dir the engine linked; review-483 M4): a link elsewhere throws instead
+   * of being granted read-only. Unset: the link's target as it is (lanes).
+   */
+  nodeModulesTarget?: string;
 }
 
 export const REGISTRY_HOSTS: readonly string[] = ['registry.npmjs.org', '*.npmjs.org'];
+
+/** `real` (a realpath) is the realpath of `want`; false when `want` cannot be resolved. Case-folded on win32. */
+function sameRealPath(real: string, want: string, platform: NodeJS.Platform): boolean {
+  let w: string;
+  try { w = realpathSync.native(want); } catch { return false; }
+  return platform === 'win32' ? real.toLowerCase() === w.toLowerCase() : real === w;
+}
 
 /** The target of `<worktree>/node_modules` when it is a junction or symlink (read-only for a write session). */
 function nodeModulesLinkTarget(worktree: string): string | null {
@@ -420,6 +440,9 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
     throw new Error(`the job dir ${ctx.jobDir} lies inside the lane-writable worktree ${ctx.worktree}; use isolation "worktree"`);
   }
   const nm = nodeModulesLinkTarget(ctx.worktree);
+  if (nm && ctx.nodeModulesTarget !== undefined && !sameRealPath(nm, ctx.nodeModulesTarget, ctx.platform)) {
+    throw new Error(`the node_modules link in ${ctx.worktree} resolves to ${nm}, not ${ctx.nodeModulesTarget} the engine linked; it is not granted`);
+  }
   const filesystem: SandboxConfig['userPolicy']['filesystem'] = {
     readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
     readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...(nm ? [nm] : []), ...tools, ...settings.extraReadonlyPaths],
@@ -445,7 +468,7 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
     // The factory ledger (OMC_STATE_DIR/factory-ledger, as defaultLedgerDir in factory/run/ledger.ts; the team bundle may not import src/factory; ~/.omg/factory-ledger is under the home deny) and the budget ledger
     // (<omc root of the main checkout>/state/budget-ledger.json) live elsewhere when OMC_STATE_DIR is set: name the real
     // paths, and only those that exist (the host may refuse a deny of a missing path). A granted job dir stays granted.
-    const mainRoot = basename(ctx.commonGitDir) === '.git' ? dirname(ctx.commonGitDir) : undefined;
+    const mainRoot = ctx.mainRoot ?? (basename(ctx.commonGitDir) === '.git' ? dirname(ctx.commonGitDir) : undefined);
     const ledgers = [...(process.env.OMC_STATE_DIR?.trim() ? [join(resolve(process.env.OMC_STATE_DIR), 'factory-ledger')] : []), ...(mainRoot ? [join(getOmcRoot(mainRoot), 'state', 'budget-ledger.json')] : [])];
     // The engine creates the forge dir and the factory ledger dir later, and the lane could read them once they exist: make them now so the
     // deny names them (the host may refuse a deny of a missing path). The budget ledger is a file the engine writes on first use, so only an existing one is named.

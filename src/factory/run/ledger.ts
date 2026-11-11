@@ -68,7 +68,10 @@ interface LedgerData {
   userGuard?: UserRepoGuard;
 }
 
-export const sha256 = (data: string | Buffer): string => createHash('sha256').update(data).digest('hex');
+/** The private layout: the baseline key of the USER repository's snapshot around a lane (review-483 M3). */
+export const userBaselineKey = (laneId: string): string => `${laneId}@user`;
+
+export const sha256 =(data: string | Buffer): string => createHash('sha256').update(data).digest('hex');
 
 /** `$OMC_STATE_DIR/factory-ledger` or `~/.omg/factory-ledger`: outside the repository. */
 export function defaultLedgerDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -188,9 +191,11 @@ export class EngineLedger {
     return this.data.baselines[laneId];
   }
 
+  /** Drops the lane's baseline and, in the private layout, its user-repository baseline (userBaselineKey). */
   dropBaseline(laneId: string): void {
-    if (!(laneId in this.data.baselines)) return;
-    delete this.data.baselines[laneId];
+    const keys = [laneId, userBaselineKey(laneId)].filter((k) => k in this.data.baselines);
+    if (keys.length === 0) return;
+    for (const k of keys) delete this.data.baselines[k];
     this.persist();
   }
 
