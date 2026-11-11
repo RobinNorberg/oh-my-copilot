@@ -260,6 +260,8 @@ describe('importFromPrivate', () => {
     expect(() => dropImportRef(userGit, run, 1, base, ctx)).toThrow(/import ref left/);
     dropImportRef(userGit, run, 1, sha, ctx);
     expect(userRef()).toBe('');
+    // L10: no empty refs/omg-import dir is left behind in your .git.
+    expect(existsSync(join(userGit, 'refs', 'omg-import'))).toBe(false);
   }, T);
 
   it('refuses wrong parents, protected paths (ship, CLAUDE.md, .github/, configured), a new gitlink and a new symlink; the ref is dropped each time', () => {
