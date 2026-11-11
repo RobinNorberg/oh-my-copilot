@@ -2077,6 +2077,8 @@ class FactoryEngine {
   /** --allow-secret-shapes answered this invocation's secret-shaped-content park (start()). */
   private secretShapesAllowed = false;
   private warnedTreeUnproven = false;
+  /** The base whose committed allowPaths the last secretAllowPaths() skipped (not in ship.trustedBases), for the park text. */
+  private allowPathsBaseUntrusted: string | undefined;
 
   /**
    * The engine commit of a write lane's worktree (lane-commit.ts), also the
@@ -2127,7 +2129,7 @@ class FactoryEngine {
       if (commit.refusal === 'secret') {
         const findings = commit.findings ?? [];
         this.save((s) => ({ ...s, pendingCommit: { ...p, secretFindings: findings } }));
-        this.gate(SECRET_SHAPES_GATE, `${kind} lane ${p.laneId}: ${commit.reason}. A key or token in the change may have been copied in from outside the lane's sandbox, so nothing was committed or pushed. Look at those files in ${p.worktree}: remove the secret and rerun ${this.resume}, or, when they are test fixtures, rerun ${this.resume} --allow-secret-shapes (accepts exactly these paths and kinds for this lane commit; factory.run.secretScan.allowPaths in your user config or the base's omg.jsonc skips fixture paths for good). A hit in a path's name is named by a hash of the name (git -C ${p.worktree} status lists the names; rename the file). A hit in the commit message (the lane's own summary) cannot be edited: --allow-secret-shapes commits it as it is. To give the lane's work up instead: omg factory run cancel ${this.key}`);
+        this.gate(SECRET_SHAPES_GATE, `${kind} lane ${p.laneId}: ${commit.reason}. A key or token in the change may have been copied in from outside the lane's sandbox, so nothing was committed or pushed. Look at those files in ${p.worktree}: remove the secret and rerun ${this.resume}, or, when they are test fixtures, rerun ${this.resume} --allow-secret-shapes (accepts exactly these paths and kinds for this lane commit; factory.run.secretScan.allowPaths in your user config or the base's omg.jsonc skips fixture paths for good). A hit in a path's name is named by a hash of the name (git -C ${p.worktree} status lists the names; rename the file). A hit in the commit message (the lane's own summary) cannot be edited: --allow-secret-shapes commits it as it is.${this.allowPathsBaseUntrusted !== undefined ? ` The factory.run.secretScan.allowPaths committed in .copilot/omg.jsonc were not used, because base ${this.allowPathsBaseUntrusted} is not in ship.trustedBases: rerun with --allow-secret-shapes for this head, or set allowPaths in your user config (or add ${this.allowPathsBaseUntrusted} to ship.trustedBases there).` : ''} To give the lane's work up instead: omg factory run cancel ${this.key}`);
         return;
       }
       this.save((s) => { const { pendingCommit: _p, ...rest } = s; return rest; });
@@ -2169,7 +2171,8 @@ class FactoryEngine {
    * factory.run.secretScan.allowPaths: path globs the lane commit's secret
    * scan skips (test fixtures), from the trusted layers only (the user
    * config at its default location and `.copilot/omg.jsonc` committed at the
-   * run's sealed base sha; never the working tree or the PR head). A glob
+   * run's sealed base sha, read only when the base is in ship.trustedBases;
+   * never the working tree or the PR head). A glob
    * that would match every path is ignored with a warning (it would switch
    * the scan off). An unreadable layer is skipped with a warning.
    */
@@ -2194,7 +2197,12 @@ class FactoryEngine {
     }
     read(user, 'your user config');
     const base = this.state.baseSha;
-    if (base && HEX40.test(base)) {
+    // The base layer only from a trusted base (ship.trustedBases, as every base-layer read): else only the user config's apply.
+    this.allowPathsBaseUntrusted = undefined;
+    let trusted = false;
+    try { trusted = resolveTrustedBases(this.runUserConfig()).includes(this.state.base); } catch { /* a bad ship.trustedBases: no base is trusted */ }
+    if (base && HEX40.test(base) && !trusted) this.allowPathsBaseUntrusted = this.state.base;
+    else if (base && HEX40.test(base)) {
       try {
         const text = readBaseFile(this.exec, this.o.root, base, BASE_CONFIG_PATH);
         if (text && text.trim()) read(parseJsonc(text), `${BASE_CONFIG_PATH} at the base ${base.slice(0, 12)}`);
