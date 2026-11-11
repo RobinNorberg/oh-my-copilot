@@ -12,19 +12,31 @@
  * The commit is built from objects: the engine reads every changed file
  * itself and writes the bytes as blobs into a temporary index seeded from the
  * start tree (stageEngineRead: git never reads the worktree, so a link swapped
- * in after the checks cannot make git read a file outside it), then
+ * in after the checks cannot make GIT read a file outside it; the engine's
+ * own read could follow a link swapped onto a parent directory, so
+ * engineRead pins every parent's identity and checks it again after the
+ * read, which leaves only a swap away and back inside that window: see
+ * REFERENCE's security model), then
  * `write-tree` and `commit-tree` with engine-chosen parents and the
  * engine-owned identity, so no commit hook and no signing program runs and
  * nothing the lane wrote picks the author. The lane's branch and its
  * worktree's HEAD move to the commit only from the value they started at.
  * The caller first proves the lane's process tree gone (lane-procs.ts).
  *
- * Refused before any commit: a lane that moved its HEAD, a new or changed
- * gitlink (host git never enters a nested repository, so its content is
- * unreviewed), a link host git could follow out of the worktree, a
- * merge-rule or lane-protected path, secret-shaped content (heal/sanitize.ts
- * SECRET_SHAPES: a key or token the lane could have copied in from outside
- * its sandbox) unless acknowledged or allow-listed, and an empty change.
+ * Refused before any commit: a lane that moved its HEAD, a new, changed or
+ * removed gitlink (host git never enters a nested repository, so its content
+ * is unreviewed; the engine reads each start gitlink's checked-out HEAD
+ * itself), a link host git could follow out of the worktree, a changed
+ * symlink placeholder (core.symlinks=false), a file over
+ * LANE_FILE_MAX_BYTES, a merge-rule or lane-protected path, secret-shaped
+ * content in a changed file, a changed path's name or the commit message
+ * (heal/sanitize.ts SECRET_SHAPES: a key or token the lane could have copied
+ * in from outside its sandbox) unless acknowledged or allow-listed, and an
+ * empty change.
+ *
+ * Parameterised by explicit paths only (the worktree with its recorded git
+ * links, and `repoRoot`, whose common git dir holds the lane's branch): a
+ * run whose lanes work in another repository passes that repository's root.
  *
  * Links: Git for Windows follows a directory junction in `add -A`, and the
  * engine's git runs outside the sandbox with the user's read rights, so a
@@ -35,7 +47,8 @@
  * real directory is outside the worktree's; those refusals reset the index
  * to the start tree.
  */
-import { closeSync, constants as fsConstants, fstatSync, lstatSync, mkdtempSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { closeSync, constants as fsConstants, existsSync, fstatSync, lstatSync, mkdtempSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { jobRefProblem } from '../../copilot-run/job.js';
@@ -189,6 +202,10 @@ export function outsideWorktree(worktree, files) {
     });
 }
 const findingKey = (f) => `${f.kind}\0${f.path}`;
+/** The finding path of a secret shape in the commit message. */
+export const SECRET_MESSAGE_PATH = '(commit message)';
+/** The finding path of a secret shape in a changed path's NAME: a hash of it, so the value is never echoed. */
+export const secretPathLabel = (path) => `(the name of a changed path, sha256 ${createHash('sha256').update(path).digest('hex').slice(0, 12)})`;
 /** `**` any path segments, `*` and `?` within one segment; matched against the whole repo-relative path. */
 export function pathGlobMatches(glob, path) {
     let re = '';
@@ -212,23 +229,41 @@ export function pathGlobMatches(glob, path) {
     }
     return new RegExp(`^${re}$`).test(path);
 }
+/**
+ * A changed file bigger than this is refused (`error`) instead of read: the
+ * engine holds every changed file in memory (twice while it builds the
+ * fast-import stream), so a multi-GB file would crash it. 100 MiB is
+ * GitHub's own hard per-file limit: a bigger file could never be pushed.
+ */
+export const LANE_FILE_MAX_BYTES = 100 * 1024 * 1024;
 const gone = (err) => ['ENOENT', 'ENOTDIR'].includes(err.code ?? '');
 /**
- * Read `rel` under `worktree` without following any link: every parent
- * component lstat'ed (a link there is `swapped`; a missing or non-directory
- * one means the path is gone), the file itself lstat'ed, opened (O_NOFOLLOW
- * where the platform has it), its fstat dev/ino compared with the lstat, read
- * whole, then lstat'ed again (same file, same size). Anything that changed
- * between the steps is `swapped`.
+ * Read `rel` under `worktree` without following any link: the worktree and
+ * every parent component lstat'ed (a link there is `swapped`; a missing or
+ * non-directory one means the path is gone) and their (dev, ino) kept, the
+ * file itself lstat'ed, opened (O_NOFOLLOW where the platform has it), its
+ * fstat dev/ino compared with the lstat, read whole, then lstat'ed again
+ * (same file, same size), and then the whole parent chain lstat'ed again: a
+ * junction or symlink swapped onto a parent after its first lstat (O_NOFOLLOW
+ * guards only the last component, and open follows a link in the middle)
+ * changes that component's identity. On Linux the opened descriptor's own
+ * path (/proc/self/fd) must also be the expected one. Anything that changed
+ * between the steps is `swapped`. Not closed: a parent swapped away and back
+ * again entirely between two lstats (see REFERENCE, security model).
+ * `realRoot` is the worktree's realpath (computed once by the caller).
  */
-export function engineRead(worktree, rel) {
+export function engineRead(worktree, rel, realRoot) {
     const segs = rel.split('/');
+    const chain = [];
+    // The worktree itself may sit under a link the user made (a home dir on another drive): followed, but pinned.
+    const top = statSync(worktree, { bigint: true });
+    chain.push({ path: worktree, dev: top.dev, ino: top.ino, follow: true });
     let dir = worktree;
     for (let i = 0; i < segs.length - 1; i++) {
         dir = join(dir, segs[i]);
         let st;
         try {
-            st = lstatSync(dir);
+            st = lstatSync(dir, { bigint: true });
         }
         catch (err) {
             if (gone(err))
@@ -239,6 +274,7 @@ export function engineRead(worktree, rel) {
             return { kind: 'swapped', why: `${segs.slice(0, i + 1).join('/')} is a symlink or junction` };
         if (!st.isDirectory())
             return { kind: 'deleted' };
+        chain.push({ path: dir, dev: st.dev, ino: st.ino, follow: false });
     }
     const abs = join(worktree, ...segs);
     let first;
@@ -256,12 +292,27 @@ export function engineRead(worktree, rel) {
         return { kind: 'dir' };
     if (!first.isFile())
         return { kind: 'other' };
+    if (first.size > BigInt(LANE_FILE_MAX_BYTES))
+        return { kind: 'big', size: first.size };
     const fd = openSync(abs, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
     let bytes;
     try {
         const opened = fstatSync(fd, { bigint: true });
         if (!opened.isFile() || opened.dev !== first.dev || opened.ino !== first.ino)
             return { kind: 'swapped', why: `${rel} was replaced between its lstat and its open` };
+        if (opened.size > BigInt(LANE_FILE_MAX_BYTES))
+            return { kind: 'big', size: opened.size };
+        if (process.platform === 'linux') {
+            // The path the kernel opened, whatever the components were at that moment.
+            let viaFd = '';
+            try {
+                viaFd = readlinkSync(`/proc/self/fd/${fd}`);
+            }
+            catch { /* no /proc: the chain check below still runs */ }
+            const expected = join(realRoot ?? realpathSync.native(worktree), ...segs);
+            if (viaFd && viaFd !== expected)
+                return { kind: 'swapped', why: `${rel} was opened through another path (${viaFd})` };
+        }
         bytes = readFileSync(fd);
     }
     finally {
@@ -277,7 +328,96 @@ export function engineRead(worktree, rel) {
     if (!again.isFile() || again.dev !== first.dev || again.ino !== first.ino || again.size !== BigInt(bytes.length)) {
         return { kind: 'swapped', why: `${rel} changed while the engine read it` };
     }
+    for (const c of chain) {
+        let st;
+        try {
+            st = c.follow ? statSync(c.path, { bigint: true }) : lstatSync(c.path, { bigint: true });
+        }
+        catch {
+            return { kind: 'swapped', why: `${relative(worktree, c.path) || 'the worktree'} disappeared while the engine read ${rel}` };
+        }
+        if ((!c.follow && st.isSymbolicLink()) || !st.isDirectory() || st.dev !== c.dev || st.ino !== c.ino) {
+            return { kind: 'swapped', why: `${relative(worktree, c.path).split(sep).join('/') || 'the worktree'} was replaced while the engine read ${rel}` };
+        }
+    }
     return { kind: 'file', bytes, exec: (Number(first.mode) & 0o100) !== 0, nlink: Number(first.nlink) };
+}
+/**
+ * What a start-tree gitlink (160000) at `rel` is checked out at, read by the
+ * engine (host git runs with --ignore-submodules=all and never enters it):
+ * `absent` when the directory is gone, `unchecked` when it holds no `.git`
+ * (a submodule that was never initialised: git keeps the gitlink as it is),
+ * the sha its HEAD names, or `unknown` with why. Nothing here is committed;
+ * the sha is only compared.
+ */
+export function gitlinkHead(worktree, rel) {
+    const dir = join(worktree, ...rel.split('/'));
+    let st;
+    try {
+        st = lstatSync(dir);
+    }
+    catch (err) {
+        if (gone(err))
+            return { kind: 'absent' };
+        return { kind: 'unknown', why: errText(err) };
+    }
+    if (st.isSymbolicLink())
+        return { kind: 'unknown', why: 'it is a link' };
+    if (!st.isDirectory())
+        return { kind: 'not-dir' };
+    const dotGit = join(dir, '.git');
+    let g;
+    try {
+        g = lstatSync(dotGit);
+    }
+    catch (err) {
+        if (gone(err))
+            return { kind: 'unchecked' };
+        return { kind: 'unknown', why: errText(err) };
+    }
+    try {
+        let gitDir;
+        if (g.isDirectory())
+            gitDir = dotGit;
+        else if (g.isFile()) {
+            const m = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(dotGit, 'utf8'));
+            if (!m)
+                return { kind: 'unknown', why: 'its .git file names no gitdir' };
+            gitDir = resolve(dir, m[1]);
+        }
+        else
+            return { kind: 'unknown', why: 'its .git is a link' };
+        let refsDir = gitDir;
+        try {
+            refsDir = resolve(gitDir, readFileSync(join(gitDir, 'commondir'), 'utf8').trim());
+        }
+        catch { /* not a linked worktree */ }
+        let head = readFileSync(join(gitDir, 'HEAD'), 'utf8').trim();
+        for (let depth = 0; depth < 5 && head.startsWith('ref:'); depth++) {
+            const ref = head.slice(4).trim();
+            if (!/^refs\/[^\0]+$/.test(ref) || ref.split('/').includes('..'))
+                return { kind: 'unknown', why: `its HEAD names ${JSON.stringify(ref.slice(0, 80))}` };
+            const base = existsSync(join(gitDir, ...ref.split('/'))) ? gitDir : refsDir;
+            try {
+                head = readFileSync(join(base, ...ref.split('/')), 'utf8').trim();
+            }
+            catch {
+                let packed = '';
+                try {
+                    packed = readFileSync(join(refsDir, 'packed-refs'), 'utf8');
+                }
+                catch { /* none */ }
+                const line = packed.split('\n').find((l) => l.endsWith(` ${ref}`) && !l.startsWith('#') && !l.startsWith('^'));
+                if (!line)
+                    return { kind: 'unknown', why: `its HEAD names ${ref}, which has no commit` };
+                head = line.split(' ')[0];
+            }
+        }
+        return HEX.test(head) ? { kind: 'head', sha: head } : { kind: 'unknown', why: 'its HEAD names no commit' };
+    }
+    catch (err) {
+        return { kind: 'unknown', why: errText(err) };
+    }
 }
 /** git's gather_stats (convert.c): CRLF pairs, lone CR, NUL, printable and non-printable bytes. */
 export function textStats(buf) {
@@ -437,8 +577,23 @@ function stageEngineRead(input, git, ignored) {
     const deleted = [];
     const symlinks = [];
     const hardLinked = [];
+    // Every gitlink of the start tree, read by the engine (status runs with --ignore-submodules=all, so a moved submodule
+    // is never listed): a different commit checked out, or the directory gone, refuses as `add -A` + the gitlink check did.
+    const movedGitlinks = [];
+    for (const [path, e] of start) {
+        if (e.mode !== '160000')
+            continue;
+        const at = gitlinkHead(input.worktree, path);
+        if (at.kind === 'unchecked' || at.kind === 'not-dir' || (at.kind === 'head' && at.sha === e.sha))
+            continue;
+        movedGitlinks.push(`${path} (${at.kind === 'head' ? `checked out at ${at.sha.slice(0, 12)}, not ${e.sha.slice(0, 12)}` : at.kind === 'absent' ? 'its directory is gone' : at.why})`);
+    }
+    if (movedGitlinks.length > 0) {
+        return refuse('gitlink', `the lane changed or removed nested repositories (gitlinks): ${movedGitlinks.slice(0, 5).join(', ')}; host git does not enter them, so their content is not reviewed`);
+    }
+    const realRoot = realpathSync.native(input.worktree);
     for (const path of listed) {
-        const read = engineRead(input.worktree, path);
+        const read = engineRead(input.worktree, path, realRoot);
         const was = start.get(path);
         if (read.kind === 'swapped')
             return refuse('escaped', `a path of the lane's change cannot be read safely: ${read.why}; host git could read through it outside the worktree`);
@@ -448,10 +603,18 @@ function stageEngineRead(input, git, ignored) {
         }
         if (read.kind === 'other')
             return refuse('error', `${path} is not a regular file, directory or link`);
+        if (read.kind === 'big')
+            return refuse('error', `${path} is ${read.size} bytes, over the lane commit's per-file limit of ${LANE_FILE_MAX_BYTES} bytes (GitHub refuses files over 100 MiB); nothing was committed`);
         if (read.kind === 'deleted' || read.kind === 'dir') {
             // A tracked file replaced by a directory: the file goes; the directory's files are listed on their own.
             if (was && was.mode !== '160000')
                 deleted.push(path);
+            continue;
+        }
+        // A symlink checked out as a text placeholder (core.symlinks=false, Git for Windows' default): `add -A` kept the
+        // 120000 mode with the new text as the link target, which the old check refused.
+        if (was?.mode === '120000') {
+            symlinks.push(path);
             continue;
         }
         // A hard link to a file outside the worktree passes the link checks, but shares its inode.
@@ -526,6 +689,11 @@ function stageEngineRead(input, git, ignored) {
             for (const kind of secretShapeKinds(f.bytes.toString('latin1')))
                 findings.push({ path: f.path, kind });
         }
+        // A token in a path name would be pushed too; the finding names the path by a hash so the value is never echoed.
+        for (const path of changed) {
+            for (const kind of secretShapeKinds(path))
+                findings.push({ path: secretPathLabel(path), kind });
+        }
         return { ok: true, tree, files: changed, findings, notes: [] };
     }
     finally {
@@ -566,7 +734,9 @@ export function commitLaneWork(input) {
         if (hit.length > 0)
             return refuse('protected', `the lane changed merge-rule or lane-protected paths: ${hit.join(', ')}`);
         const acked = new Set((input.secretAck ?? []).map(findingKey));
-        const secrets = staged.findings.filter((f) => !acked.has(findingKey(f)));
+        // The commit message carries the lane's own summary: a token it quotes would be pushed with it.
+        const messageFindings = secretShapeKinds(input.message).map((kind) => ({ path: SECRET_MESSAGE_PATH, kind }));
+        const secrets = [...staged.findings, ...messageFindings].filter((f) => !acked.has(findingKey(f)));
         if (secrets.length > 0) {
             return { ok: false, refusal: 'secret', findings: secrets, reason: `the lane's change holds secret-shaped content (the values are not shown): ${secrets.slice(0, 10).map((f) => `${f.path} (${f.kind})`).join(', ')}${secrets.length > 10 ? `, and ${secrets.length - 10} more` : ''}` };
         }

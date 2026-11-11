@@ -19390,6 +19390,13 @@ function removeStaleWorktreeEntry(repoRoot, wtPath, adminName) {
       return false;
     }
   };
+  let rootPresent = true;
+  try {
+    (0, import_node_fs8.lstatSync)(root);
+  } catch {
+    rootPresent = false;
+  }
+  if (rootPresent && !real(root)) throw new Error(`stale_worktree_entry: ${root} is not a real directory (a link or a file)`);
   const namesWtPath = (name2) => {
     const dir2 = (0, import_node_path9.join)(root, name2);
     if (!isAdminDirOf(common, dir2) || !real(dir2)) return false;

@@ -115,7 +115,8 @@ describe('tamper quarantine and hold (M3)', () => {
         expect(out.gate?.name, out.message).toBe('lane-tampered');
         expect(out.gate?.reason).toMatch(/Tamper quarantine \(.*\): moved to the quarantine: .*hooks\/pre-commit/);
         expect(out.gate?.reason).toContain('omg factory run release --tamper');
-        expect(out.gate?.reason).toMatch(/your own change to \.git during the run/);
+        expect(out.gate?.reason).toMatch(/Your own change during the run .*undo\.txt/);
+        expect(out.gate?.reason).not.toMatch(/Nothing that runs code/);
         // Moved out of .git, restored, deleted:
         expect(existsSync(join(commonDir(), 'hooks', 'pre-commit'))).toBe(false);
         expect(readFileSync(join(commonDir(), 'config'), 'utf8')).toBe(before);
@@ -145,7 +146,7 @@ describe('tamper quarantine and hold (M3)', () => {
         };
         const out = await run([userEdit]).done;
         expect(out.gate?.name, out.message).toBe('lane-tampered');
-        expect(out.gate?.reason).toMatch(/not restored: config \(no program-running key changed; left as it is/);
+        expect(out.gate?.reason).toMatch(/left as it is: config \(only user\.email changed: allowlisted keys that name no program; left as it is/);
         expect(out.gate?.reason).toMatch(/refs\/heads\/mine was created .*git update-ref -d refs\/heads\/mine/);
         expect(out.gate?.reason).toMatch(/no hold was set/);
         // gitIn passes its own -c user.email: read the file itself.
@@ -155,6 +156,59 @@ describe('tamper quarantine and hold (M3)', () => {
         const q = /Tamper quarantine \(([^)]+)\)/.exec(out.gate.reason)[1];
         expect(readFileSync(join(q, 'config'), 'utf8')).toContain('me@example.invalid');
         expect(readFileSync(join(q, 'refs.txt'), 'utf8')).toContain('refs/heads/mine');
+    });
+    it('M3: the lane\'s process tree is killed before the quarantine, and what an orphan planted in between is quarantined too', async () => {
+        const hook = () => join(commonDir(), 'hooks', 'pre-commit');
+        const late = () => join(commonDir(), 'hooks', 'post-checkout');
+        const seen = [];
+        // The kill: the planted hook is still there (no quarantine yet); the orphan's last act plants another one.
+        class Orphan extends FakeProcesses {
+            async treeGone(...args) {
+                seen.push(existsSync(hook()));
+                writeFileSync(late(), '#!/bin/sh\necho late\n', { mode: 0o755 });
+                await super.treeGone(...args);
+                return { kind: 'gone', killed: [999] };
+            }
+        }
+        const planting = (ctx) => {
+            writeFileSync(hook(), '#!/bin/sh\necho planted\n', { mode: 0o755 });
+            return edit('a.ts', 'a\n')(ctx);
+        };
+        const out = await run([planting], { processes: new Orphan() }).done;
+        expect(out.gate?.name, out.message).toBe('lane-tampered');
+        expect(seen).toEqual([true]);
+        expect(out.gate?.reason).toMatch(/killed process\(es\) left from lane .* tree first \(pid 999\)/);
+        expect(existsSync(hook())).toBe(false);
+        expect(existsSync(late())).toBe(false);
+        const hold = readTamperHold(h.ledgerDir, h.root);
+        expect(hold !== null && hold !== 'unreadable' ? hold.moved : []).toEqual(expect.arrayContaining(['hooks/pre-commit', 'hooks/post-checkout']));
+        releaseTamperHold(h.ledgerDir, h.root);
+    });
+    it('M3: a lane process that survives the kill is named STILL ACTIVE and holds', async () => {
+        const procs = new FakeProcesses();
+        procs.tree = { kind: 'survivors', pids: [4242] };
+        const planting = (ctx) => {
+            writeFileSync(join(commonDir(), 'hooks', 'pre-commit'), '#!/bin/sh\necho planted\n', { mode: 0o755 });
+            return edit('a.ts', 'a\n')(ctx);
+        };
+        const out = await run([planting], { processes: procs }).done;
+        expect(out.gate?.name, out.message).toBe('lane-tampered');
+        expect(out.gate?.reason).toMatch(/process\(es\) pid 4242 still run after the engine killed them: STILL ACTIVE/);
+        const hold = readTamperHold(h.ledgerDir, h.root);
+        expect(hold !== null && hold !== 'unreadable' ? hold.active.join('\n') : '').toContain('pid 4242');
+        releaseTamperHold(h.ledgerDir, h.root);
+    });
+    it('H1: diff.external set during the lane is put back and holds (it is not on the allowlist)', async () => {
+        const planting = (ctx) => {
+            gitIn(h.root, 'config', 'diff.external', 'evil-differ');
+            return edit('a.ts', 'a\n')(ctx);
+        };
+        const out = await run([planting]).done;
+        expect(out.gate?.name, out.message).toBe('lane-tampered');
+        expect(out.gate?.reason).toMatch(/restored from the run's snapshot: config \(diff\.external put back\)/);
+        expect(readFileSync(join(commonDir(), 'config'), 'utf8')).not.toContain('evil-differ');
+        expect(readTamperHold(h.ledgerDir, h.root)).not.toBeNull();
+        releaseTamperHold(h.ledgerDir, h.root);
     });
     it('a change outside .git (a file in the main checkout) parks without a quarantine or a hold', async () => {
         const mainEdit = (ctx) => {

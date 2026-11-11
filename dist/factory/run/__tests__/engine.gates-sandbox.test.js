@@ -410,6 +410,21 @@ describe('a sandbox that does not start after the PR\'s code of the head already
         expect(out.gate?.reason).not.toContain('Acknowledging trusts');
         expect(w.gateRuns).toEqual([]);
     }, MULTI_RUN_MS);
+    it('review-482b A: on a rerun, the FIRST prepare check of a head an earlier invocation already ran in the sandbox parks gate-no-verdict on a start failure', async () => {
+        w = localWorld();
+        const two = (input) => { const g = gateConfig()(input); return { ...g, config: { ...g.config, prepareChecks: [PREPARE_CHECK, ['node', 'check2.js']] } }; };
+        const first = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: sandbox((req) => (req.args.includes('check2.js') ? NOT_STARTED : PASS)).run, gateConfig: two }));
+        expect(first.gate?.name, first.message).toBe(GATE_NO_VERDICT_GATE);
+        const state = readFactoryState(w.root, LOCAL_ISSUE);
+        expect(state.sandboxedPrepareHead).toBe(state.head);
+        // The rerun: this invocation has run nothing in the sandbox yet, but the sealed state says the head's code did.
+        const s = sandbox(() => NOT_STARTED);
+        const again = await runFactoryEngine(opts(lanesFor(w, []), { gateSandbox: s.run, gateConfig: two }));
+        expect(again.gate?.name, again.message).toBe(GATE_NO_VERDICT_GATE);
+        expect(again.gate?.reason).toContain('the prepare check `node check.js`');
+        expect(again.gate?.reason).toContain('--allow-unsandboxed-gates does not apply here');
+        expect(w.gateRuns).toEqual([]);
+    }, MULTI_RUN_MS);
     it('the local gate after a sandboxed prepare parks gate-no-verdict, not the --allow-unsandboxed-gates offer', async () => {
         w = localWorld();
         const s = sandbox((req) => (req.purpose === 'gate' ? NOT_STARTED : PASS));

@@ -12,19 +12,31 @@
  * The commit is built from objects: the engine reads every changed file
  * itself and writes the bytes as blobs into a temporary index seeded from the
  * start tree (stageEngineRead: git never reads the worktree, so a link swapped
- * in after the checks cannot make git read a file outside it), then
+ * in after the checks cannot make GIT read a file outside it; the engine's
+ * own read could follow a link swapped onto a parent directory, so
+ * engineRead pins every parent's identity and checks it again after the
+ * read, which leaves only a swap away and back inside that window: see
+ * REFERENCE's security model), then
  * `write-tree` and `commit-tree` with engine-chosen parents and the
  * engine-owned identity, so no commit hook and no signing program runs and
  * nothing the lane wrote picks the author. The lane's branch and its
  * worktree's HEAD move to the commit only from the value they started at.
  * The caller first proves the lane's process tree gone (lane-procs.ts).
  *
- * Refused before any commit: a lane that moved its HEAD, a new or changed
- * gitlink (host git never enters a nested repository, so its content is
- * unreviewed), a link host git could follow out of the worktree, a
- * merge-rule or lane-protected path, secret-shaped content (heal/sanitize.ts
- * SECRET_SHAPES: a key or token the lane could have copied in from outside
- * its sandbox) unless acknowledged or allow-listed, and an empty change.
+ * Refused before any commit: a lane that moved its HEAD, a new, changed or
+ * removed gitlink (host git never enters a nested repository, so its content
+ * is unreviewed; the engine reads each start gitlink's checked-out HEAD
+ * itself), a link host git could follow out of the worktree, a changed
+ * symlink placeholder (core.symlinks=false), a file over
+ * LANE_FILE_MAX_BYTES, a merge-rule or lane-protected path, secret-shaped
+ * content in a changed file, a changed path's name or the commit message
+ * (heal/sanitize.ts SECRET_SHAPES: a key or token the lane could have copied
+ * in from outside its sandbox) unless acknowledged or allow-listed, and an
+ * empty change.
+ *
+ * Parameterised by explicit paths only (the worktree with its recorded git
+ * links, and `repoRoot`, whose common git dir holds the lane's branch): a
+ * run whose lanes work in another repository passes that repository's root.
  *
  * Links: Git for Windows follows a directory junction in `add -A`, and the
  * engine's git runs outside the sandbox with the user's read rights, so a
@@ -100,8 +112,19 @@ export interface LaneCommitInput {
 export declare function laneCommitMessage(title: string, body: string | null): string;
 /** The staged paths whose real directory is outside the worktree's (a link git followed). */
 export declare function outsideWorktree(worktree: string, files: readonly string[]): string[];
+/** The finding path of a secret shape in the commit message. */
+export declare const SECRET_MESSAGE_PATH = "(commit message)";
+/** The finding path of a secret shape in a changed path's NAME: a hash of it, so the value is never echoed. */
+export declare const secretPathLabel: (path: string) => string;
 /** `**` any path segments, `*` and `?` within one segment; matched against the whole repo-relative path. */
 export declare function pathGlobMatches(glob: string, path: string): boolean;
+/**
+ * A changed file bigger than this is refused (`error`) instead of read: the
+ * engine holds every changed file in memory (twice while it builds the
+ * fast-import stream), so a multi-GB file would crash it. 100 MiB is
+ * GitHub's own hard per-file limit: a bigger file could never be pushed.
+ */
+export declare const LANE_FILE_MAX_BYTES: number;
 /** One path of the lane's change, read by the engine (never by git). */
 type EngineRead = {
     kind: 'deleted';
@@ -112,6 +135,9 @@ type EngineRead = {
 } | {
     kind: 'other';
 } | {
+    kind: 'big';
+    size: bigint;
+} | {
     kind: 'swapped';
     why: string;
 } | {
@@ -121,14 +147,42 @@ type EngineRead = {
     nlink: number;
 };
 /**
- * Read `rel` under `worktree` without following any link: every parent
- * component lstat'ed (a link there is `swapped`; a missing or non-directory
- * one means the path is gone), the file itself lstat'ed, opened (O_NOFOLLOW
- * where the platform has it), its fstat dev/ino compared with the lstat, read
- * whole, then lstat'ed again (same file, same size). Anything that changed
- * between the steps is `swapped`.
+ * Read `rel` under `worktree` without following any link: the worktree and
+ * every parent component lstat'ed (a link there is `swapped`; a missing or
+ * non-directory one means the path is gone) and their (dev, ino) kept, the
+ * file itself lstat'ed, opened (O_NOFOLLOW where the platform has it), its
+ * fstat dev/ino compared with the lstat, read whole, then lstat'ed again
+ * (same file, same size), and then the whole parent chain lstat'ed again: a
+ * junction or symlink swapped onto a parent after its first lstat (O_NOFOLLOW
+ * guards only the last component, and open follows a link in the middle)
+ * changes that component's identity. On Linux the opened descriptor's own
+ * path (/proc/self/fd) must also be the expected one. Anything that changed
+ * between the steps is `swapped`. Not closed: a parent swapped away and back
+ * again entirely between two lstats (see REFERENCE, security model).
+ * `realRoot` is the worktree's realpath (computed once by the caller).
  */
-export declare function engineRead(worktree: string, rel: string): EngineRead;
+export declare function engineRead(worktree: string, rel: string, realRoot?: string): EngineRead;
+/**
+ * What a start-tree gitlink (160000) at `rel` is checked out at, read by the
+ * engine (host git runs with --ignore-submodules=all and never enters it):
+ * `absent` when the directory is gone, `unchecked` when it holds no `.git`
+ * (a submodule that was never initialised: git keeps the gitlink as it is),
+ * the sha its HEAD names, or `unknown` with why. Nothing here is committed;
+ * the sha is only compared.
+ */
+export declare function gitlinkHead(worktree: string, rel: string): {
+    kind: 'absent';
+} | {
+    kind: 'unchecked';
+} | {
+    kind: 'not-dir';
+} | {
+    kind: 'head';
+    sha: string;
+} | {
+    kind: 'unknown';
+    why: string;
+};
 /** git's gather_stats (convert.c): CRLF pairs, lone CR, NUL, printable and non-printable bytes. */
 export declare function textStats(buf: Buffer): {
     crlf: number;
