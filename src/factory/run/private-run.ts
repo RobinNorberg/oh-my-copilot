@@ -158,10 +158,21 @@ export function guardChangedReason(details: readonly UserGuardDetail[], resume: 
     return `${head}The guard cannot compare your repository's ${guardItemsText(stuck)} at all, so every import parks while it stays. `
       + `Fix it (${STUCK_FIX}), then rerun ${resume}; or ${cancel} stops the run (factory.run.layout "shared" in your user config avoids this check for the next run).`;
   }
+  // Review-483b L-b: a changed hook or config item can run code on your next git command (a lane or gate that escaped
+  // its sandbox may have planted it; nothing was quarantined): never "rerunning continues" for it, name it and say check first.
+  const risky = details.filter((d) => RUNS_CODE.has(d.kind));
+  if (risky.length > 0) {
+    return head
+      + `The ${guardItemsText(risky)} can run code on your next git command, so check it before rerunning: remove it unless you made it yourself (husky, git lfs install --local, a local alias, scalar or fsmonitor do this too). `
+      + `Once your repository is as you expect, rerun ${resume} (it takes your repository as it is then); ${cancel} stops the run.`;
+  }
   return head
     + 'Your own change does this too (git submodule update --init, git lfs install --local, a local alias, scalar or fsmonitor, husky on a branch switch). '
     + `Check the change; rerunning ${resume} continues and takes your repository as it is then; ${cancel} stops the run.`;
 }
+
+/** Guard entries whose change can make your next git command run code (hooks, config). */
+const RUNS_CODE: ReadonlySet<UserGuardDetail['kind']> = new Set(['hooks-dir', 'hooks-path', 'hooks-path-root', 'config-key', 'config-link', 'redirect-entry', 'gitdir']);
 
 /** What the user does about an item the guard cannot compare. */
 const STUCK_FIX = 'make the config or include readable, keep hook files under 1 MiB and the hooks dir under 2 000 entries and 3 levels deep, and point core.hooksPath at a dir other than the work tree root or the git dir';

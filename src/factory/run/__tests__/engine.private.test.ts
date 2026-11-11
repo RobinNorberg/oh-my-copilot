@@ -171,7 +171,7 @@ describe('factory run with factory.run.layout "private"', () => {
     expect(existsSync(marker)).toBe(true);
   }, T);
 
-  it('a change to your repository\'s hooks during the run parks before the import with an actionable message; a rerun continues', async () => {
+  it('a change to your repository\'s hooks during the run parks before the import naming the hook, check it before rerunning (review-483b L-b); a rerun continues', async () => {
     const env = privateWorld();
     w = env.w;
     const plant: LaneScript = (ctx) => {
@@ -182,7 +182,8 @@ describe('factory run with factory.run.layout "private"', () => {
     const first = await runFactoryEngine(opts(env, [plant]));
     expect(first.gate?.name, first.message).toBe(REPO_GUARD_GATE);
     expect(first.gate?.reason).toContain(`your repository's hooks dir: ${join(w.root, '.git', 'hooks')} changed during the run`);
-    expect(first.gate?.reason).toMatch(/Your own change does this too.*rerunning omg factory run 7 continues/);
+    expect(first.gate?.reason).toMatch(/can run code on your next git command, so check it before rerunning.*rerun omg factory run 7/);
+    expect(first.gate?.reason).not.toMatch(/rerunning .* continues/);
     expect(readMirrorRef(w.config.repo.url, `factory/issue-${LOCAL_ISSUE}`)).toBeFalsy();
 
     const second = await runFactoryEngine(opts(env, [review('approve')]));

@@ -34,8 +34,8 @@ import { CopilotRunManager, defaultCopilotRunDeps } from '../../copilot-run/job.
 import { resolveFactoryRunLimits, runCredits, type LoadedFactoryRunLimits } from '../../factory/run/budget.js';
 import { cleanFactoryRun } from '../../factory/run/clean.js';
 import { resetFactoryRun } from '../../factory/run/reset.js';
-import { claimBusyMessage, factoryClaimHolder, factoryClaimRepo, isShallowClaimRepo, listFactoryClaims, localFactoryClaimRepo, removeFactoryClaim, SHARED_STATE_WARNING, shallowClaimWarning, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo } from '../../factory/run/claims.js';
-import { EXIT_AWAITING_HUMAN, EXIT_BUSY, runFactoryEngine, type FactoryRunOutcome, type LaneProcessOps } from '../../factory/run/engine.js';
+import { claimBusyMessage, claimRepoKey, factoryClaimHolder, factoryClaimRepo, isShallowClaimRepo, listFactoryClaims, localFactoryClaimRepo, removeFactoryClaim, SHARED_STATE_WARNING, shallowClaimWarning, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo } from '../../factory/run/claims.js';
+import { EXIT_AWAITING_HUMAN, EXIT_BUSY, runFactoryEngine, sharedLayoutSealed, type FactoryRunOutcome, type LaneProcessOps } from '../../factory/run/engine.js';
 import { factoryGuardExec, hardenedGitExec } from '../../factory/run/exec.js';
 import { EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, factoryForgeOptions, loadFactoryForgeConfig, originForgeKind, syncLocalMirror } from '../../factory/run/forge-roots.js';
 import type { LoadedForgeConfig } from '../../forge/config.js';
@@ -48,6 +48,7 @@ import {
   acquireFactoryRepoOwnerForRun, defaultOwnerDeps, describeOwner, FactoryBusyError, FactoryTamperHoldError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState,
   refuseWhileEngineRuns, runLabel, unreadableOwnerMessage, withOwnerFileLock, type HeldOwner,
   requestFactoryCancel, verifyFactoryIntegrity, type FactoryOwner, type FactoryRunKey, type FactoryRunState,
+  acquireFactoryOwner, acquireRunSlot, factoryImportLockPath, heldSlots, withRepoImportLock, type HeldSlot,
 } from '../../factory/run/state.js';
 import { resolveShipConfig, userConfigLayers } from '../../ship/config.js';
 import { defaultExec, type Exec } from '../../ship/exec.js';
@@ -65,10 +66,12 @@ import { factorySetupCommand } from './factory-setup.js';
 import { factoryBoardCommand } from './factory-board.js';
 import { factoryPrCommand } from './factory-pr.js';
 import { factoryPollCommand } from './factory-poll.js';
-import { defaultPollHealScan } from '../../factory/poll.js';
+import { defaultPollAutoStart, defaultPollHealScan } from '../../factory/poll.js';
 import { checkEnvFor, fetchBase, forgeReadExec, localBase, missingLocalBase, parseItemId, readForgeOptions } from '../../factory/check/cli.js';
 import { BUCKET_ORDER, checkItems, plainText, type CheckResult } from '../../factory/check/score.js';
 import { createForge } from '../../forge/index.js';
+import { liveCreditReservations, parallelLayoutRefusal, readTrustedBaseLayerAtRef, releaseDeadCreditReservations, resolveParallelSettings, runParallelSupervisor, type ParallelChildOutcome, type ParallelSettings } from '../../factory/run/parallel.js';
+import { resolveRunLayout, type RunLayoutChoice } from '../../factory/run/private-run.js';
 import { skillSlash } from '../../utils/skill-slash.js';
 
 export function renderChainStatus(status: ChainStatus): string {
@@ -123,6 +126,30 @@ export interface FactoryRunDeps {
   gateSandbox?: (root: string) => SandboxRunner;
   /** Liveness, kill and the lane process-tree proof (default: the engine's defaultLaneProcessOps). */
   processes?: LaneProcessOps;
+  /**
+   * B2: factory.run.maxConcurrent / maxInFlightCredits and the layout from
+   * the trusted layers (the user config; the `.copilot/omg.jsonc` at the
+   * base's local tracking ref when the base is trusted; no fetch). Omitted =
+   * one engine per checkout and no credit reservation, as before.
+   */
+  parallel?: (root: string, base: string, kind: ForgeKind | undefined) => { settings: ParallelSettings; layout: RunLayoutChoice };
+  /** The `--parallel` children (default: a child `omg factory run --next --json` of this CLI entry, poll's auto-start). */
+  parallelChild?: (o: { root: string; args: readonly string[]; signals: (forward: (signal: NodeJS.Signals) => void) => () => void }) => Promise<ParallelChildOutcome>;
+}
+
+/** The production `parallel` dep: the trusted user config, then the base layer at the local tracking ref (hardened, guarded git reads). */
+function defaultParallelLayers(root: string, base: string, kind: ForgeKind | undefined): { settings: ParallelSettings; layout: RunLayoutChoice } {
+  let user: unknown;
+  try { user = userConfigLayers().trustedUser; } catch { user = null; }
+  const warn = (m: string) => console.error(chalk.yellow(plainText(m)));
+  const own = resolveParallelSettings(user, undefined, warn);
+  // Nothing to read from the base when the user config already decides both keys that matter here.
+  const userLayout = resolveRunLayout(user, undefined);
+  const needBase = own.source === 'default' || userLayout.source === 'default';
+  const baseLayer = needBase
+    ? readTrustedBaseLayerAtRef(factoryGuardExec(hardenedGitExec(defaultExec, emptyHooksDir(defaultLedgerDir())), () => [base]), root, base, kind === 'local' ? `refs/heads/${base}` : `refs/remotes/origin/${base}`, user, warn)
+    : undefined;
+  return { settings: resolveParallelSettings(user, baseLayer, warn), layout: resolveRunLayout(user, baseLayer).layout };
 }
 
 function projectConfig(root: string): unknown {
@@ -141,6 +168,7 @@ export const defaultFactoryRunDeps: FactoryRunDeps = {
   },
   forge: (root, base, opts) => loadFactoryForgeConfig(factoryGuardExec(defaultExec), root, base, userConfigLayers().trustedUser, projectConfig(root), opts),
   gateSandbox: (root) => createSandboxRunner(root),
+  parallel: (root, base, kind) => defaultParallelLayers(root, base, kind),
 };
 
 class FactoryUsageError extends Error {}
@@ -222,7 +250,7 @@ export function renderFactoryRunState(state: FactoryRunState, o: { gate?: boolea
  * claim from another clone: claims.ts) is skipped, never waited on, and
  * listed in `claimed`. Null with the checked rows when nothing is runnable.
  */
-function pickNext(deps: FactoryRunDeps, root: string, base: string, loaded: LoadedForgeConfig, parent: number | undefined, claimRepo: string | null, skip: readonly number[] = []): { next: CheckResult | null; items: CheckResult[]; claimed: number[]; warnings: string[] } {
+function pickNext(deps: FactoryRunDeps, root: string, base: string, loaded: LoadedForgeConfig, parent: number | undefined, claimRepo: string | null, skip: readonly number[] = [], take?: (id: number) => HeldOwner | null): { next: CheckResult | null; owner?: HeldOwner; items: CheckResult[]; claimed: number[]; warnings: string[] } {
   const { config } = loaded;
   const source = config.intake.source;
   if (parent === undefined && !source) throw new FactoryUsageError('--next needs --parent <spec> or factory.intake.source');
@@ -238,7 +266,12 @@ function pickNext(deps: FactoryRunDeps, root: string, base: string, loaded: Load
   const claimed: number[] = [];
   for (const r of items) {
     if (r.bucket !== 'runnable') continue;
-    if (!skip.includes(r.id) && itemBusy(deps, root, r.id, claimRepo) === null) return { next: r, items, claimed, warnings };
+    if (!skip.includes(r.id) && itemBusy(deps, root, r.id, claimRepo) === null) {
+      if (!take) return { next: r, items, claimed, warnings };
+      // B2 (parallel engines): the item's owner file is taken here, before the item is announced, so two engines never start one item.
+      const owner = take(r.id);
+      if (owner) return { next: r, owner, items, claimed, warnings };
+    }
     claimed.push(r.id);
   }
   return { next: null, items, claimed, warnings };
@@ -344,7 +377,30 @@ export function liveFactoryRuns(root: string, ledgerDir: string, claimRepo: stri
   const claims = claimRepo
     ? listFactoryClaims(ledgerDir, claimRepo, root, me).map((c) => ({ key: c.key, state: c.state, path: plainText(c.path), ...(c.claim ? ownerView(c.claim) : {}), ...(c.sharedState ? { sharedState: true } : {}) }))
     : [];
-  return { engine: engine ? { ...ownerView(engine), ...(engineShared ? { sharedState: true } : {}) } : null, runs, unreadable, claims };
+  // B2: the parallel private-layout engines (their slot, layout and private dir), the import lock's holder, the credits in flight.
+  const slots = heldSlots(root, me).map((s) => {
+    if (s.owner === 'unreadable') {
+      unreadable.push(plainText(s.path));
+      return { slot: s.slot, unreadable: true };
+    }
+    let state: FactoryRunState | null = null;
+    try { state = /^\d+$/.test(String(s.owner.run)) ? readFactoryState(root, Number(s.owner.run)) : null; } catch { state = null; }
+    return { slot: s.slot, ...ownerView(s.owner), layout: state?.layout === 2 ? 'private' : state ? 'shared' : 'unknown', ...(state?.privateDir ? { privateDir: plainText(state.privateDir) } : {}) };
+  });
+  const imp = held(factoryImportLockPath(root));
+  let credits: Array<{ lane: string; cap: number; run?: string; pid: number }> | { unreadable: string } = [];
+  if (claimRepo) {
+    try {
+      credits = liveCreditReservations(ledgerDir, claimRepoKey(claimRepo, root).slice(0, 8), me).map((r) => ({ lane: plainText(r.id), cap: r.cap, ...(r.run ? { run: plainText(r.run) } : {}), pid: r.pid }));
+    } catch (error) {
+      credits = { unreadable: plainText(error instanceof Error ? error.message : String(error)) };
+    }
+  }
+  // The B2 keys appear only when there is something to show (a checkout without parallel runs reads as before).
+  return {
+    engine: engine ? { ...ownerView(engine), ...(engineShared ? { sharedState: true } : {}) } : null, runs, unreadable, claims,
+    ...(slots.length > 0 ? { slots } : {}), ...(imp ? { importLock: ownerView(imp) } : {}), ...(!Array.isArray(credits) || credits.length > 0 ? { credits } : {}),
+  };
 }
 
 const bucketCounts = (items: readonly CheckResult[]): Record<string, number> =>
@@ -376,8 +432,9 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
     .option('--allow-unsandboxed-lanes', 'Accept, for the parked head only, that write lanes ran without the enforced sandbox (the run parked at human-review for it): you checked the threads and reviews of the PR yourself; a new head parks again')
     .option('--allow-unsandboxed-gates', 'Accept, for the parked head only, that prepare\'s checks and the local gate run the PR\'s code WITHOUT the OS sandbox, as you (the run parked at gates-unsandboxed for it): you reviewed the diff yourself; a new head parks again')
     .option('--allow-secret-shapes', 'Accept the secret-shaped content (the key or token shapes, by path and kind, the park named) that parked a lane commit at secret-shaped-content, for that lane commit only: you checked they are test fixtures, not real secrets; a new path or kind parks again')
+    .option('--parallel <n>', 'With --next and factory.run.maxConcurrent above 1 (factory.run.layout "private"): run up to min(n, maxConcurrent) runs at once, each its own `omg factory run --next` process; a slot is refilled when a run ends, until nothing is runnable or Ctrl+C', integerOption(1, 64))
     .option('--json', 'JSON output')
-    .action((issueRaw: string | undefined, o: { next?: boolean; parent?: string; dryRun?: boolean; allowGateChange?: boolean; allowUnsandboxedLanes?: boolean; allowUnsandboxedGates?: boolean; allowSecretShapes?: boolean; json?: boolean }) =>
+    .action((issueRaw: string | undefined, o: { next?: boolean; parent?: string; parallel?: number; dryRun?: boolean; allowGateChange?: boolean; allowUnsandboxedLanes?: boolean; allowUnsandboxedGates?: boolean; allowSecretShapes?: boolean; json?: boolean }) =>
       factoryGuarded(Boolean(o.json), async () => {
         if (o.next && issueRaw !== undefined) throw new FactoryUsageError('--next takes no issue: it picks the next runnable item');
         if (o.parent !== undefined && !o.next) throw new FactoryUsageError('--parent applies to --next');
@@ -397,12 +454,37 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         // A real run takes this checkout's engine lock before anything touches git (the forge-config loader fetches
         // origin/<base>): busy (exit 6) means nothing was fetched or written. The engine uses the held lock as its own.
         let held: HeldOwner | undefined;
+        // B2: parallel private-layout runs (factory.run.maxConcurrent > 1 with layout "private", trusted layers only).
+        const par = !o.dryRun && deps.parallel ? deps.parallel(root, base, readOnlyForgeKind(deps, root, base)) : undefined;
+        const refusal = par ? parallelLayoutRefusal(par.settings, par.layout) : null;
+        if (refusal) throw new FactoryUsageError(refusal);
+        let slotMode = par !== undefined && par.settings.maxConcurrent > 1;
+        // A run started in the shared layout keeps the checkout's engine lock (no migration): it runs alone.
+        if (slotMode && issue !== undefined) {
+          try {
+            const s = readFactoryState(root, issue);
+            if (s && sharedLayoutSealed(s)) slotMode = false;
+          } catch {
+            slotMode = false;
+          }
+        }
+        if (o.parallel !== undefined) {
+          if (!o.next) throw new FactoryUsageError('--parallel applies to --next');
+          if (o.dryRun) throw new FactoryUsageError('--parallel starts real runs; it does not combine with --dry-run');
+          if (!slotMode) throw new FactoryUsageError('--parallel needs factory.run.maxConcurrent above 1 and factory.run.layout: "private" (user config, or the .copilot/omg.jsonc committed on a trusted base)');
+          return runParallel(deps, root, Math.min(o.parallel, par!.settings.maxConcurrent), parent, Boolean(o.json));
+        }
+        const creditLimit = slotMode ? par!.settings.maxInFlightCredits ?? limits.laneMaxCredits * par!.settings.maxConcurrent : par?.settings.maxInFlightCredits;
+        const importLocked = <T>(fn: () => T): T => (slotMode ? withRepoImportLock(root, 'import:cli', fn) : fn());
         if (!o.dryRun) {
           // A tamper hold stops every run in this checkout (exit 6) before anything is locked or fetched; the engine checks it again.
           const hold = tamperHoldMessage(deps.ledgerDir ?? defaultLedgerDir(), root);
           if (hold) throw new FactoryTamperHoldError(hold);
           // A `scan` holder (poll's heal scan or base sync, a read command's fetch) is waited out (SCAN_WAIT_MS, longer than a read fetch can run: FETCH_TIMEOUT_MS).
-          held = acquireFactoryRepoOwnerForRun(root, issue ?? 'next', () => new Date().toISOString());
+          // B2: a parallel run takes a slot instead of the engine lock (busy, exit 6, when all are held or a shared engine runs).
+          held = slotMode
+            ? acquireRunSlot(root, issue ?? 'next', par!.settings.maxConcurrent, () => new Date().toISOString())
+            : acquireFactoryRepoOwnerForRun(root, issue ?? 'next', () => new Date().toISOString());
           // The claim key before the fetch: the forge kind from the config as it is (no fetch); none on the local forge.
           try {
             claimRepo = cliClaimRepo(deps, root, readOnlyForgeKind(deps, root, base), false, warnShallow);
@@ -423,7 +505,8 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
           console.error(chalk.yellow('omg factory run: stopping after the current poll (cancelling the lane); press again to exit at once'));
         };
         try {
-          const loaded = deps.forge?.(root, base, { dryRun: Boolean(o.dryRun) });
+          // The loader fetches origin/<base> into your repository: under the import lock in a parallel run.
+          const loaded = importLocked(() => deps.forge?.(root, base, { dryRun: Boolean(o.dryRun) }));
           for (const w of loaded?.warnings ?? []) console.error(chalk.yellow(w));
           // The loaded forge is the run's: the claim key the engine and the pick use follows it.
           claimRepo = cliClaimRepo(deps, root, loaded?.config.kind, Boolean(o.dryRun), warnShallow);
@@ -431,11 +514,22 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
           const forge = loaded ? { config: loaded.config, options: factoryForgeOptions(root) } : undefined;
           const skipped: number[] = [];
           let picked: number | undefined;
+          let runOwner: HeldOwner | undefined;
+          // B2: the pick takes the item's owner file atomically (a busy item is skipped, never waited on).
+          const take = slotMode ? (id: number): HeldOwner | null => {
+            try {
+              return acquireFactoryOwner(root, id, new Date().toISOString());
+            } catch (error) {
+              if (error instanceof FactoryBusyError) return null;
+              throw error;
+            }
+          } : undefined;
           if (!o.dryRun) { process.on('SIGINT', onSignal); process.on('SIGTERM', onSignal); }
           for (;;) {
             if (o.next) {
               if (!loaded) throw new FactoryUsageError('--next needs the forge config (omg factory setup)');
-              const { next, items, claimed, warnings: pickWarnings } = pickNext(deps, root, base, loaded, parent, claimRepo, skipped);
+              const { next, owner: pickedOwner, items, claimed, warnings: pickWarnings } = importLocked(() => pickNext(deps, root, base, loaded, parent, claimRepo, skipped, take));
+              runOwner = pickedOwner;
               for (const w of pickWarnings) console.error(chalk.yellow(plainText(w)));
               const counts = bucketCounts(items);
               if (!next) {
@@ -450,7 +544,10 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
             try {
               const outcome = await runFactoryEngine({
                 root, issue: issue!, exec: deps.exec, limits, base, dryRun: Boolean(o.dryRun), claimRepo,
-                ...(held ? { repoOwner: held } : {}),
+                ...(held && !slotMode ? { repoOwner: held } : {}),
+                ...(held && slotMode ? { parallel: { maxConcurrent: par!.settings.maxConcurrent, slot: held as HeldSlot } } : {}),
+                ...(runOwner ? { runOwner } : {}),
+                ...(creditLimit !== undefined && !o.dryRun ? { creditLimit } : {}),
                 ...(o.allowGateChange ? { allowGateChange: true } : {}),
                 ...(o.allowUnsandboxedLanes ? { allowUnsandboxedLanes: true } : {}),
                 ...(o.allowUnsandboxedGates ? { allowUnsandboxedGates: true } : {}),
@@ -467,8 +564,10 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
               printOutcome(Boolean(o.json), outcome, picked);
               return outcome.exitCode;
             } catch (error) {
-              // L9: another clone claimed the picked item after the pick: pick once more, skipping it.
-              if (!(error instanceof FactoryBusyError) || error instanceof FactoryTamperHoldError || !o.next || picked === undefined || skipped.length > 0) throw error;
+              // The engine owns (and released) the picked owner file, also when it refused.
+              runOwner = undefined;
+              // L9: another clone claimed the picked item after the pick: pick once more, skipping it (B2: in a parallel run up to 20 times).
+              if (!(error instanceof FactoryBusyError) || error instanceof FactoryTamperHoldError || !o.next || picked === undefined || skipped.length >= (slotMode ? 20 : 1)) throw error;
               skipped.push(picked);
               if (!o.json) console.error(chalk.yellow(`busy: ${plainText(error.message)}; picking again`));
             }
@@ -479,6 +578,52 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
           held?.release();
         }
       }));
+
+  /**
+   * `run --next --parallel N`: the supervisor. Up to `n` children `omg
+   * factory run --next --json` (poll's auto-start child: own process group on
+   * POSIX, the signals forwarded; Ctrl+C reaches Windows children through the
+   * console), each one engine with its own slot; refilled when one ends
+   * with a code other than busy, until a child finds nothing runnable or a
+   * stop signal (the second exits at once). One line per child; `--json`:
+   * `{ ok, parallel, interrupted, exitCode, children: [{ index, exitCode, next, message }], message }`.
+   */
+  async function runParallel(deps: FactoryRunDeps, root: string, n: number, parent: number | undefined, json: boolean): Promise<number> {
+    const forwards = new Set<(signal: NodeJS.Signals) => void>();
+    let stops = 0;
+    const stoppers = new Set<() => void>();
+    const onSignal = (signal: NodeJS.Signals) => {
+      stops += 1;
+      for (const f of forwards) f(signal);
+      if (stops > 1) process.exit(130);
+      if (!json) console.error(chalk.yellow('omg factory run --parallel: no new run starts; waiting for the running ones (each stops after its current poll); press again to exit at once'));
+      for (const s of stoppers) s();
+    };
+    const sigint = () => onSignal('SIGINT');
+    const sigterm = () => onSignal('SIGTERM');
+    process.on('SIGINT', sigint);
+    process.on('SIGTERM', sigterm);
+    const args = parent !== undefined ? ['--parent', String(parent)] : [];
+    const signals = (forward: (signal: NodeJS.Signals) => void) => { forwards.add(forward); return () => { forwards.delete(forward); }; };
+    const child = deps.parallelChild ?? ((c: { root: string; args: readonly string[]; signals: typeof signals }) => defaultPollAutoStart(process.argv[1], { signals: c.signals })({ root: c.root, args: c.args }));
+    try {
+      const result = await runParallelSupervisor({
+        n,
+        spawn: () => child({ root, args, signals }),
+        onStop: (stop) => { stoppers.add(stop); return () => { stoppers.delete(stop); }; },
+        report: (index, r) => {
+          if (!json) console.log(`run ${index + 1}: exit ${r.exitCode}${r.next !== null ? ` #${r.next}` : ''}: ${plainText(r.message)}`);
+        },
+      });
+      const summary = `--parallel ${n}: ${result.children.length} run(s) ended${result.interrupted ? ' (stopped by a signal)' : ''}; exit ${result.exitCode}`;
+      if (json) console.log(JSON.stringify({ ok: result.exitCode === 0, parallel: n, interrupted: result.interrupted, exitCode: result.exitCode, children: result.children.map((c) => ({ index: c.index, exitCode: c.exitCode, next: c.next, message: plainText(c.message) })), message: summary }, null, 2));
+      else console.log(summary);
+      return result.exitCode;
+    } finally {
+      process.off('SIGINT', sigint);
+      process.off('SIGTERM', sigterm);
+    }
+  }
 
   run
     .command('cancel <issue>')
@@ -582,8 +727,26 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
           if (h && h !== 'unreadable') throw new FactoryBusyError(`${path} is held by a live engine (${describeOwner(h)}); omg factory run cancel stops it`);
           if (existsSync(path)) { unlinkSync(path); removed.push(path); }
         });
-        if (issueRaw === undefined) removeOwnerFile(factoryRepoOwnerPath(root));
-        else {
+        const kept: string[] = [];
+        if (issueRaw === undefined) {
+          removeOwnerFile(factoryRepoOwnerPath(root));
+          // B2: a dead (or unreadable) holder's slot, import lock and credit reservations; a live holder keeps its own.
+          const freeIfDead = (path: string) => withOwnerFileLock(path, () => {
+            const h = ownerHolding(path, me);
+            if (h && h !== 'unreadable') { kept.push(`${path} (${describeOwner(h)})`); return; }
+            if (existsSync(path)) { unlinkSync(path); removed.push(path); }
+          });
+          let slotNames: string[] = [];
+          try { slotNames = readdirSync(join(factoryStateDir(root), 'slots')).filter((n) => /^slot-\d+\.owner$/.test(n)).sort(); } catch { /* no slots */ }
+          for (const n of slotNames) freeIfDead(join(factoryStateDir(root), 'slots', n));
+          if (existsSync(factoryImportLockPath(root))) freeIfDead(factoryImportLockPath(root));
+          const claimRepo = existsSync(join(deps.ledgerDir ?? defaultLedgerDir(), 'credits')) ? cliClaimRepo(deps, root, readOnlyForgeKind(deps, root, deps.base(root))) : null;
+          if (claimRepo) {
+            const c = releaseDeadCreditReservations(deps.ledgerDir ?? defaultLedgerDir(), claimRepoKey(claimRepo, root).slice(0, 8), me);
+            removed.push(...c.freed);
+            kept.push(...c.kept.map((k) => `credit reservation ${k}`));
+          }
+        } else {
           const issue = parseIssue(issueRaw);
           refuseWhileEngineRuns(root, me);
           const claimRepo = cliClaimRepo(deps, root, readOnlyForgeKind(deps, root, deps.base(root)));
@@ -591,9 +754,12 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
           if (claim) removed.push(claim);
           removeOwnerFile(factoryOwnerPath(root, issue));
         }
-        if (c.optsWithGlobals().json) console.log(JSON.stringify({ ok: true, removed: removed.map(plainText) }, null, 2));
-        else if (removed.length === 0) console.log('nothing to release');
-        else for (const path of removed) console.log(chalk.green(`released ${plainText(path)}`));
+        if (c.optsWithGlobals().json) console.log(JSON.stringify({ ok: true, removed: removed.map(plainText), ...(kept.length > 0 ? { kept: kept.map(plainText) } : {}) }, null, 2));
+        else {
+          if (removed.length === 0) console.log('nothing to release');
+          else for (const path of removed) console.log(chalk.green(`released ${plainText(path)}`));
+          for (const k of kept) console.log(chalk.yellow(`kept ${plainText(k)}: its holder is live (omg factory run cancel stops a run)`));
+        }
         return 0;
       }));
 
@@ -611,8 +777,16 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
             `${o.pid !== undefined ? `pid ${o.pid}` : 'no live process'} on ${o.hostname ?? 'unknown host'} since ${o.startedAt ?? 'unknown'}${o.parkedAt ? `, parked ${o.parkedAt}` : ''}${o.root ? ` in ${o.root}` : ''}`;
           if (c.optsWithGlobals().json) console.log(JSON.stringify({ ok: true, ...live }, null, 2));
           else {
-            if (!live.engine && live.runs.length === 0) console.log('no factory engine runs in this checkout');
+            if (!live.engine && live.runs.length === 0 && !live.slots) console.log('no factory engine runs in this checkout');
             if (live.engine) console.log(`engine lock: ${live.engine.run ?? 'run unknown'}, ${line(live.engine)}`);
+            for (const s of live.slots ?? []) {
+              if ('unreadable' in s) continue;
+              const v = s as { slot: number; run?: string; layout: string; privateDir?: string } & Parameters<typeof line>[0];
+              console.log(`slot ${v.slot}: ${v.run !== undefined && /^\d+$/.test(v.run) ? `#${v.run}` : v.run ?? 'run unknown'} (${v.layout} layout${v.privateDir ? `, ${v.privateDir}` : ''}), ${line(v)}`);
+            }
+            if (live.importLock) console.log(`import lock: ${live.importLock.run ?? 'holder unknown'}, ${line(live.importLock)}`);
+            if (live.credits && Array.isArray(live.credits)) console.log(`credits in flight: ${live.credits.map((r) => `${r.lane} ${r.cap}`).join(', ')}`);
+            else if (live.credits) console.log(chalk.yellow(`credits in flight unknown: ${live.credits.unreadable}`));
             if (live.engine?.sharedState) console.log(chalk.yellow(`engine lock taken in another folder: ${SHARED_STATE_WARNING}`));
             for (const r of live.runs) console.log(`live ${label(r.key)}: ${line(r)}`);
             for (const path of live.unreadable) console.log(chalk.yellow(`unreadable owner file (held until removed: omg factory run release): ${path}`));

@@ -187,7 +187,7 @@ import {
   withRepoImportLock,
   type HeldSlot,
 } from './state.js';
-import { PARALLEL_LAYOUT_GATE, reserveLaneCredits } from './parallel.js';
+import { PARALLEL_LAYOUT_GATE, readTrustedBaseLayerAtRef, reserveLaneCredits } from './parallel.js';
 import { claimRepoKey } from './claims.js';
 
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
@@ -4175,6 +4175,9 @@ class FactoryEngine {
   /** The park half of recheckFailed: the lane's process tree killed, the quarantine (snapQuarantine), the run back to its lane. */
   private async recheckPark(late: LateChange): Promise<void> {
     const { r, found, now, where } = late;
+    // A park the import section set first (the repo guard after the push: review-483b L-d) is joined, never overwritten.
+    const earlier = this.state.gate;
+    const also = earlier ? `. Also ${earlier.name}: ${earlier.reason}` : '';
     // The lane's process tree goes before the quarantine (audit review M3), then one more compare.
     const killed = await this.killTamperingLane(r.laneId, found, now);
     const problems = killed.problems;
@@ -4182,14 +4185,14 @@ class FactoryEngine {
     const what = `shared git state changed after lane ${r.laneId} passed its check (found ${where}): ${problems.slice(0, 5).join('; ')}${this.snapQuarantine(r.snapshot, r.kind === 'review' ? 'review-tampered' : 'lane-tampered', problems, killed.after ?? now, killed.note)}`;
     if (r.kind === 'review') {
       this.markVerdict(r.laneId, 'invalid', `late change: ${problems.join('; ')}`);
-      this.save((x) => setGate(x.phase === 'review' ? x : moveTo(x, 'review', `review lane ${r.laneId}'s verdict is discarded`, at), 'review-tampered', `${what}; its verdict is discarded`, at));
+      this.save((x) => setGate(x.phase === 'review' ? x : moveTo(x, 'review', `review lane ${r.laneId}'s verdict is discarded`, at), 'review-tampered', `${what}; its verdict is discarded${also}`, at));
     } else {
       // Each write-lane kind is the phase that runs it (a coding-agent lane runs in implement).
       const back: FactoryPhase = r.kind === 'coding-agent' ? 'implement' : r.kind;
       this.updateLane(r.laneId, { note: `late change: ${problems.join('; ')}` });
       this.save((x) => {
         const { pendingHead: _p, pendingParents: _pp, ...rest } = x;
-        return setGate(x.phase === back ? rest : moveTo(rest, back, `lane ${r.laneId}'s head is dropped`, at), 'lane-tampered', `${what}; nothing it made is pushed`, at);
+        return setGate(x.phase === back ? rest : moveTo(rest, back, `lane ${r.laneId}'s head is dropped`, at), 'lane-tampered', `${what}; nothing it made is pushed${also}`, at);
       });
     }
   }
@@ -4317,13 +4320,16 @@ class FactoryEngine {
     let note: string;
     let usage = capUsage(maxCredits);
     let tampered = false;
+    let userTamper: { problems: string[]; after?: RepoSnapshot; userBase?: RepoSnapshot } | undefined;
     try {
       const c = await this.o.lanes.cancel(remoteId);
       if (isTerminalLaneState(c.result.state)) {
         usage = usageOf(c.result);
         settleHeal(usage.credits);
-        const { problems } = this.laneProblems(kind, before, c.result, startRef, laneId);
+        const { problems, after } = this.laneProblems(kind, before, c.result, startRef, laneId);
         tampered = problems.length > 0;
+        // Review-483b L-c: the private layout routes a change found in YOUR repository through laneTampered (quarantine + hold), as runLane does.
+        if (this.privateRun() && problems.some(isUserRepoProblem)) userTamper = { problems, ...(after ? { after } : {}), ...(this.laneUserBefore(laneId, c.result.sandbox) ? { userBase: this.laneUserBefore(laneId, c.result.sandbox) } : {}) };
         note = tampered ? `cancelled; tamper check: ${problems.slice(0, 5).join('; ')}` : 'cancelled; tamper check clean';
       } else {
         note = `cancelled; the cancel was not confirmed (state ${c.result.state}), so the tamper check was skipped`;
@@ -4334,6 +4340,8 @@ class FactoryEngine {
     this.ledger.dropBaseline(laneId);
     this.updateLane(laneId, { status: 'cancelled', endedAt: this.iso(), usage, note, ...(tampered && kind === 'review' ? { verdict: 'invalid' as const } : {}) });
     if (tampered) this.o.warn?.(`omg factory run: lane ${laneId} ${note}`);
+    // The quarantine and hold come before the cancel finishes (the cancel flag still ends the run at the next step).
+    if (userTamper) await this.laneTampered(laneId, kind, userTamper.problems, before, userTamper.after, userTamper.userBase);
     await this.cancel();
     return { kind: 'stopped' };
   }
@@ -5303,13 +5311,16 @@ function codingAgentDryRun(o: FactoryEngineOptions, forgeKind: string, repoUrl: 
  * trusted layer, is read at the sealed base by the real run); nothing for the
  * shared layout, so that output is unchanged.
  */
-function dryLayoutNote(o: FactoryEngineOptions): string {
+function dryLayoutNote(o: FactoryEngineOptions, exec: Exec, local: boolean): string {
   let user = o.runUserConfig;
   if (user === undefined) {
     try { user = userConfigLayers().trustedUser; } catch { user = null; }
   }
   try {
-    const { layout, source } = resolveRunLayout(user, undefined);
+    // Review-483b INFO-2: the base layer too (the .copilot/omg.jsonc at the base's local tracking ref, trusted bases only;
+    // no fetch in a dry run), unless the user config already decides; the real run reads it again at the sealed base.
+    const own = resolveRunLayout(user, undefined);
+    const { layout, source } = own.source !== 'default' ? own : resolveRunLayout(undefined, readTrustedBaseLayerAtRef(exec, o.root, o.base, local ? `refs/heads/${o.base}` : `refs/remotes/origin/${o.base}`, user, (m) => o.warn?.(m)));
     return layout === 'private' ? `, in the private layout (factory.run.layout "private" from the ${source}: its own git repository under the work root)` : '';
   } catch (error) {
     return `; but ${errText(error)}, so the run would park at awaiting-human: ${PRIVATE_STORE_GATE}`;
@@ -5361,7 +5372,7 @@ function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
     if (problem) return { exitCode: 0, phase: null, state: null, message: `dry run: ${problem}; the run would stop at awaiting-human: ${HEAL_DIAGNOSIS_GATE}`, plan: { next: 'awaiting-human', reason: HEAL_DIAGNOSIS_GATE, ...caps } };
     const go = o.heal.approved || (o.heal.autoImplement && o.heal.record!.class !== 'regression-or-env');
     return go
-      ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from the heal diagnosis; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o)}`, plan: { next: 'implement', planSource: 'heal diagnosis', ...caps } }
+      ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from the heal diagnosis; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o, exec, forge?.kind === 'local')}`, plan: { next: 'implement', planSource: 'heal diagnosis', ...caps } }
       : { exitCode: 0, phase: null, state: null, message: `dry run: the run would stop at awaiting-human: ${HEAL_APPROVE_GATE}`, plan: { next: 'awaiting-human', reason: HEAL_APPROVE_GATE, ...caps } };
   }
   if (forge) {
@@ -5385,7 +5396,7 @@ function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
     const agent = source ? codingAgentDryRun(o, forge.kind, o.forge!.config.repo.url, source, caps) : undefined;
     if (agent) return agent;
     return source
-      ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o)}${gateNote}`, plan: { next: 'implement', planSource: source, ...caps, ...(gateProblem ? { gateProblem } : {}) } }
+      ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o, exec, forge.kind === 'local')}${gateNote}`, plan: { next: 'implement', planSource: source, ...caps, ...(gateProblem ? { gateProblem } : {}) } }
       : { exitCode: 0, phase: null, state: null, message: 'dry run: no plan (no Acceptance Criteria, "Acceptance criteria" heading or trusted omg-plan: link); the run would stop at awaiting-human: needs-plan', plan: { next: 'awaiting-human', reason: 'needs-plan', ...caps } };
   }
   const res = ghIssueView(exec, o.issue!, o.root);
@@ -5405,7 +5416,7 @@ function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
   const agent = source ? codingAgentDryRun(o, 'github', repoUrl, source, caps) : undefined;
   if (agent) return agent;
   return source
-    ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o)}`, plan: { next: 'implement', planSource: source, ...caps } }
+    ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o, exec, false)}`, plan: { next: 'implement', planSource: source, ...caps } }
     : { exitCode: 0, phase: null, state: null, message: 'dry run: no plan (no "Acceptance criteria" heading or omg-plan: link); the run would stop at awaiting-human: needs-plan', plan: { next: 'awaiting-human', reason: 'needs-plan', ...caps } };
 }
 
