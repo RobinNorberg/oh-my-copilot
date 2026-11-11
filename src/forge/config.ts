@@ -323,7 +323,8 @@ export interface LoadedForgeConfig {
  */
 export function resolveForgeConfig(trustedUser: unknown, base: unknown, project: unknown, originUrl: string | undefined, context?: ForgeConfigContext): LoadedForgeConfig {
   const warnings: string[] = [];
-  const baseSource = 'base-branch .copilot/omg.jsonc';
+  // L2: what to do is part of every "ignoring ... from the working-tree project config" warning.
+  const baseSource = 'base-branch .copilot/omg.jsonc (commit the file on the base branch, e.g. by a PR into it, for it to count)';
 
   // forge.* identity: user -> base; the working tree never sets it.
   const uForge = factoryBlock(trustedUser, 'forge', 'user config');

@@ -133,6 +133,8 @@ export function assertSetupCommand(cmd: string, args: string[], repo: ForgeRepo,
         // F20: the local forge's base detection (does dev exist, else the current branch).
         || (repo.kind === 'local' && (same(args, ['symbolic-ref', '--quiet', '--short', 'HEAD'])
           || (args.length === 4 && same(args.slice(0, 3), ['rev-parse', '--verify', '--quiet']) && args[3].startsWith('refs/heads/') && isPlainBranchName(args[3].slice('refs/heads/'.length)))))
+        // L1: a remote forge's base detection (does origin have dev, else origin's default branch).
+        || (repo.kind !== 'local' && (same(args, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']) || same(args, ['rev-parse', '--verify', '--quiet', 'refs/remotes/origin/dev'])))
         : false;
   if (!ok) refuse('not one of the command shapes the setup wizard runs');
 }
