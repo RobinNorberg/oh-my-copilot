@@ -16,6 +16,7 @@ import { factoryForgeOptions } from '../forge-roots.js';
 import { resetFactoryRun, type FactoryResetOptions } from '../reset.js';
 import { factoryStatePath, FactoryBusyError, readFactoryState, requestFactoryCancel, updateFactoryState } from '../state.js';
 import { EngineLedger } from '../ledger.js';
+import { factoryClaimPath, LOCAL_CLAIM_PREFIX, LOCAL_SHALLOW_CLAIM_PREFIX } from '../claims.js';
 import { FakeLanes, gitIn } from './fake-lanes.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { LOCAL_ISSUE, localOpts, localWorld, type LocalWorld } from './engine-local-harness.js';
@@ -180,5 +181,79 @@ describe('F59: reset after a cancel mid-lane', () => {
     const done = resetFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, forge, mirror: w.config.repo.url, ledgerDir: w.ledgerDir, owner: OWNER, processState: () => 'live' });
     expect(done.removedWorktrees).toContain(worktree);
     expect(done.acknowledgedLanes).toBeUndefined();
+  });
+});
+
+describe('review 478c F1: reset never throws after the state was moved aside', () => {
+  it('a live claim of this checkout under another key is reported as kept, not thrown; another checkout\'s live claim is skipped', async () => {
+    w = localWorld();
+    const lanes = new FakeLanes(w.root, [() => ({ finalText: 'never read' })], [2]);
+    lanes.onRunningPoll = () => requestFactoryCancel(w.root, LOCAL_ISSUE, new Date().toISOString());
+    const out = await runFactoryEngine(localOpts(w, lanes));
+    expect(out.phase, out.message).toBe('cancelled');
+    const liveFor = (root: string) => JSON.stringify({ pid: 1, hostname: 'another-host', startedAt: '2026-11-10T00:00:00.000Z', run: String(LOCAL_ISSUE), root });
+    const mine = factoryClaimPath(w.ledgerDir, `${LOCAL_CLAIM_PREFIX}${'a'.repeat(40)}`, w.root, LOCAL_ISSUE);
+    const theirs = factoryClaimPath(w.ledgerDir, 'https://github.com/someone/else', join(w.dir, 'else'), LOCAL_ISSUE);
+    for (const [path, root] of [[mine, w.root], [theirs, join(w.dir, 'else')]] as const) {
+      mkdirSync(join(path, '..'), { recursive: true });
+      writeFileSync(path, liveFor(root));
+    }
+    const forge = createForge(w.exec, w.root, w.config, { ...factoryForgeOptions(w.root), stateDir: w.stateDir, local: { omgRoot: getOmcRoot(w.root) } });
+    const reset = resetFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, forge, mirror: w.config.repo.url, ledgerDir: w.ledgerDir, owner: OWNER, claimRepo: `${LOCAL_SHALLOW_CLAIM_PREFIX}${'b'.repeat(40)}` });
+    expect(reset.stateMovedTo).toMatch(/\.reset-/);
+    expect(readFactoryState(w.root, LOCAL_ISSUE)).toBeNull();
+    expect(reset.claimKept).toMatch(/claimed by a live engine/);
+    expect(reset.claimKept).toContain(mine);
+    expect(existsSync(mine)).toBe(true);
+    expect(existsSync(theirs)).toBe(true);
+  });
+});
+
+describe('review 478c F6: --lane-stopped appends to the lane note', () => {
+  it('tamper text in the note survives the acknowledgement, so a later reset still keeps that worktree as evidence', async () => {
+    w = localWorld();
+    const lanes = new FakeLanes(w.root, [() => ({ finalText: 'never read' })], [2]);
+    lanes.cancelFails = true;
+    lanes.onRunningPoll = () => requestFactoryCancel(w.root, LOCAL_ISSUE, new Date().toISOString());
+    const out = await runFactoryEngine(localOpts(w, lanes));
+    expect(out.phase, out.message).toBe('cancelled');
+    // The engine's own write (through its ledger): the lane's note records a tamper problem as well as the unconfirmed stop.
+    const ledger = EngineLedger.open(w.ledgerDir, w.root, LOCAL_ISSUE);
+    updateFactoryState(w.root, LOCAL_ISSUE, (cur) => ({ ...cur!, lanes: cur!.lanes.map((l, i) => (i === 0 ? { ...l, note: `tampered: .git/hooks/pre-commit; ${l.note ?? ''}` } : l)) }), {
+      onWrite: (path, content) => ledger.record(path, content),
+    });
+    const forge = createForge(w.exec, w.root, w.config, { ...factoryForgeOptions(w.root), stateDir: w.stateDir, local: { omgRoot: getOmcRoot(w.root) } });
+    const reset = (o: Partial<FactoryResetOptions> = {}) => resetFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, forge, mirror: w.config.repo.url, ledgerDir: w.ledgerDir, owner: OWNER, processState: () => 'unknown', ...o });
+    expect(() => reset({ laneStopped: true })).toThrow(/worktrees kept as tamper evidence/);
+    const note = readFactoryState(w.root, LOCAL_ISSUE)!.lanes[0].note!;
+    expect(note).toMatch(/^tampered: \.git\/hooks\/pre-commit; .*; the stop was confirmed by a human \(--lane-stopped, /);
+    expect(readFactoryState(w.root, LOCAL_ISSUE)!.lanes[0].stopUnconfirmed).toBe(false);
+    // A later reset (no flag needed now) still keeps the tree.
+    expect(() => reset()).toThrow(/worktrees kept as tamper evidence/);
+  });
+});
+
+describe('review 478c F5: cancel() confirms a running lane\'s stop', () => {
+  it('a running lane with a stale "not confirmed" note whose cancel now confirms gets stopUnconfirmed false and a confirmed note', async () => {
+    w = localWorld();
+    let t = 1_000_000;
+    const lanes = new FakeLanes(w.root, [() => ({ finalText: 'never read' })], [10_000]);
+    lanes.cancelFails = true;
+    const first = await runFactoryEngine(localOpts(w, lanes, { limits: { ...DEFAULT_FACTORY_RUN_LIMITS, laneTimeoutMs: 60_000 }, now: () => (t += 61_000) }));
+    expect(first.gate?.name, first.message).toBe('lane-unconfirmed');
+    // The resume's settle still cannot confirm the stop (the lane stays running, its note stale); cancel() then can.
+    const cancel = lanes.cancel.bind(lanes);
+    let calls = 0;
+    lanes.cancel = async (id: string) => {
+      calls += 1;
+      lanes.cancelFails = calls === 1;
+      return cancel(id);
+    };
+    requestFactoryCancel(w.root, LOCAL_ISSUE, new Date().toISOString());
+    const second = await runFactoryEngine(localOpts(w, lanes));
+    expect(second.phase, second.message).toBe('cancelled');
+    expect(calls).toBe(2);
+    const lane = readFactoryState(w.root, LOCAL_ISSUE)!.lanes[0];
+    expect(lane).toMatchObject({ status: 'cancelled', stopUnconfirmed: false, note: 'cancelled; the stop was confirmed' });
   });
 });

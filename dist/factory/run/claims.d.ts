@@ -61,7 +61,8 @@ export declare function shallowClaimWarning(root: string, repo: string): string;
  * shares the root commit shares the key (a false busy, which `run release`
  * clears). A shallow clone's boundary commits count as roots, so it gets a
  * key of its own, `local-shallow:<sha>`: it shares no claim with the full
- * clones (shallowClaimWarning says so), and every command keeps working.
+ * clones (shallow clones at the same boundary share one; shallowClaimWarning
+ * says so), and every command keeps working.
  */
 export declare function localFactoryClaimRepo(exec: Exec, root: string): string | null;
 /** localFactoryClaimRepo through the engine's hardened git, as trustedFactoryClaimRepo. */
@@ -113,6 +114,8 @@ export declare function claimBusyMessage(key: FactoryRunKey, hold: ClaimHold): s
 export interface HeldClaim {
     release: () => void;
     park: (at: string) => void;
+    /** Local forge: remove this checkout's records of the item under the keys it no longer computes (sweepRootClaims); never throws. */
+    sweep?: () => void;
     tookOver?: ClaimRecord;
 }
 /** Claim `key` of the repository for the engine in `root`; a held claim (factoryClaimHolder) refuses with a FactoryBusyError. */

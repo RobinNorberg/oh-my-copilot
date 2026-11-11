@@ -197,9 +197,10 @@ export declare function loadTrustedShipConfig(input: TrustedShipConfigInput): Lo
  * default location and from the working-tree project config under `root`.
  * Protection only widens here, so the untrusted project file may add a path
  * but never drop one; the base branch is not read (no fetch). An unreadable
- * layer adds nothing.
+ * layer adds nothing; `onProblem` hears about it (the factory parks a publish
+ * then: a dropped protection is the unsafe direction).
  */
-export declare function configuredProtectedPaths(root: string): string[];
+export declare function configuredProtectedPaths(root: string, onProblem?: (source: string, error: string) => void): string[];
 /**
  * The known-flaky list committed at the verified base commit (never the PR
  * head; LoadedShipConfig.trustedBaseCommit). No commit or no file = empty.

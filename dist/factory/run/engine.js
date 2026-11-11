@@ -53,7 +53,7 @@
  * GitHub runs keep the gh calls unchanged.
  */
 import { createHash } from 'crypto';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'path';
 import { BASE_CONFIG_PATH, configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, readBaseFile, remoteRepoMismatch, userConfigLayers } from '../../ship/config.js';
@@ -62,8 +62,8 @@ import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT } from '../../ship/prepare.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { resolveGatesSandboxMode, resolveRequireDeniedPaths } from '../../copilot-run/sandbox.js';
-import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxJobRoot } from './sandbox-exec.js';
-import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeWorkerWorktree, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
+import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs } from './sandbox-exec.js';
+import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
 import { driveGates } from './gates-driver.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
 import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText } from '../team/context.js';
@@ -98,16 +98,14 @@ import { getGlobalOmcStatePath } from '../../utils/paths.js';
 import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
 import { isTerminalLaneState, LaneLostError } from './lane.js';
 import { jobRefProblem } from '../../copilot-run/job.js';
-import { commitLaneWork, conflictFixStart, LANE_PROTECTED_PATHS, laneCommitMessage, pathGlobMatches } from './lane-commit.js';
-import { proveLaneTreeGone } from './lane-procs.js';
-import { quarantineTamper, RELEASE_TAMPER_COMMAND, tamperHoldMessage } from './tamper-quarantine.js';
+import { commitLaneWork, conflictFixStart, LANE_PROTECTED_PATHS, laneCommitMessage } from './lane-commit.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir } from './ledger.js';
 import { createFactoryProgress } from './progress.js';
 import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaimRepo, isShallowClaimRepo, localFactoryClaimRepo, shallowClaimWarning, settleFactoryClaim, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo } from './claims.js';
 import { compareSnapshots, replaceObjectsProblem, samePath, snapshotRepo, verifyReviewWorktree } from './review-guard.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted } from './plan-rules.js';
-import { acquireFactoryOwner, acquireFactoryRepoOwner, createFactoryState, defaultOwnerDeps, EXIT_BUSY, factoryCancelRequested, forgeResumeProblem, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, healRunKey, moveTo, overwriteFactoryState, ownerHolding, parseFactoryState, readFactoryState, reviewerName, runLabel, runSlug, setGate, shipVerdictHash, TERMINAL_FACTORY_PHASES, factoryBranch, trackerStageOf, updateFactoryState, runRemote, verifyFactoryIntegrity, unreadableOwnerMessage, describeOwner, FactoryBusyError, FactoryTamperHoldError, ownerRecord, } from './state.js';
+import { acquireFactoryOwner, acquireFactoryRepoOwner, createFactoryState, defaultOwnerDeps, EXIT_BUSY, factoryCancelRequested, forgeResumeProblem, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, healRunKey, moveTo, overwriteFactoryState, ownerHolding, parseFactoryState, readFactoryState, reviewerName, runLabel, runSlug, setGate, shipVerdictHash, TERMINAL_FACTORY_PHASES, factoryBranch, trackerStageOf, updateFactoryState, runRemote, verifyFactoryIntegrity, unreadableOwnerMessage, describeOwner, FactoryBusyError, ownerRecord, } from './state.js';
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export const EXIT_AWAITING_HUMAN = 4;
 export { EXIT_BUSY };
@@ -178,7 +176,6 @@ export const defaultLaneProcessOps = {
             return;
         await terminateOwnedProcessTree({ pid: p.pid, expectedStartIdentity: p.identity, deadlineAt: new Date(Date.now() + PROCESS_DEADLINE_MS).toISOString(), force: true });
     },
-    treeGone: (p, worktree) => proveLaneTreeGone({ process: p, worktree }),
 };
 /** A gh / git failure in an engine step: phase `fail`, state unchanged, exit 1; a rerun resumes at the phase. */
 export class FactoryStepError extends Error {
@@ -243,37 +240,6 @@ function checkoutChanges(root, checkout, raw) {
     catch { /* no link */ }
     return parseStatusPaths(raw).filter((p) => p && !(ownLink && (p === 'node_modules' || p === 'node_modules/')));
 }
-/**
- * The first ignored path (as `git status --ignored=matching` lists them, the
- * engine's own node_modules link already left out) that is a symlink or
- * junction or holds one below it, or null. Directories are walked without
- * following any link.
- */
-function ignoredLink(checkout, ignored) {
-    const stack = ignored.map((p) => p.replace(/\/$/, ''));
-    while (stack.length > 0) {
-        const rel = stack.pop();
-        let st;
-        try {
-            st = lstatSync(join(checkout, rel));
-        }
-        catch {
-            continue;
-        }
-        if (st.isSymbolicLink())
-            return rel;
-        if (!st.isDirectory())
-            continue;
-        for (const d of readdirSync(join(checkout, rel), { withFileTypes: true })) {
-            const child = `${rel}/${d.name}`;
-            if (d.isSymbolicLink())
-                return child;
-            if (d.isDirectory())
-                stack.push(child);
-        }
-    }
-    return null;
-}
 /** The paths of `git status --porcelain=v1 -z` records (an R/C record's original path included). */
 function parseStatusPaths(raw) {
     const records = raw.split('\0');
@@ -299,7 +265,7 @@ const HEX40 = /^[0-9a-f]{40}$/;
  * INSIDE hardenedGitExec, which (and the guard around it) sees the plain
  * shape.
  */
-function pinCheckoutGit(exec, pin) {
+export function pinCheckoutGit(exec, pin) {
     return (cmd, args, opts) => {
         const p = pin();
         const git = cmd.replace(/\\/g, '/').split('/').pop().toLowerCase().replace(/\.exe$/, '') === 'git';
@@ -341,6 +307,20 @@ function calibrationArgs(c, dir) {
     if (files.length === 0)
         return [script, '--version'];
     return vitest ? [script, 'run', ...files] : [script, ...files];
+}
+/** The fixed failure text of a built-in eslint or vitest check whose one changed file name the sandbox shell cannot carry. */
+export const BUILT_IN_FILE_NAME_TOO_LONG = 'a changed file name is too long for the sandbox shell';
+/**
+ * A built-in eslint or vitest check over the changed files, cut into calls
+ * that each fit the sandbox shell (a large PR's file list can exceed the
+ * Windows command line); one call for every other check.
+ */
+export function fileListParts(c, cwd, platform = process.platform) {
+    const script = c.args[0];
+    if (c.kind !== 'built-in' || (script !== VITEST_SCRIPT && script !== ESLINT_SCRIPT))
+        return [c];
+    const parts = splitFileListArgs(platform, c.exe, c.args, script === VITEST_SCRIPT ? 2 : 1, cwd);
+    return parts.length === 1 ? [c] : parts.map((args) => ({ ...c, argv: [c.exe, ...args], args }));
 }
 function errText(error) {
     return error instanceof Error ? error.message : String(error);
@@ -512,6 +492,8 @@ class FactoryEngine {
     unsandboxedAllowed;
     /** The gate found the prepare checkout missing and sent the run back to prepare once in this invocation. */
     reprepared = false;
+    /** protectedExtras, once per invocation. */
+    protectedCache;
     /** The head `--allow-unsandboxed-gates` accepts (the gates-unsandboxed park's head, captured at resume). */
     gatesAllowed;
     /** factory.run.sandbox.gates, resolved once per trusted base commit. */
@@ -867,13 +849,6 @@ class FactoryEngine {
             else
                 this.o.warn?.(`omg factory run: --allow-unsandboxed-gates is ignored: the run for ${this.what} is not parked at awaiting-human: ${GATES_UNSANDBOXED_GATE}`);
         }
-        // --allow-secret-shapes answers one secret-shaped-content park (its lane commit's findings), never in advance.
-        if (this.o.allowSecretShapes) {
-            if (existing?.gate?.name === SECRET_SHAPES_GATE && existing.pendingCommit?.secretFindings?.length)
-                this.secretShapesAllowed = true;
-            else
-                this.o.warn?.(`omg factory run: --allow-secret-shapes is ignored: the run for ${this.what} is not parked at awaiting-human: ${SECRET_SHAPES_GATE}`);
-        }
         // Replace refs or grafts in the shared git dir: refused before a run starts, parked on a resume.
         const replaced = replaceObjectsProblem(this.exec, this.o.root);
         if (replaced && !existing) {
@@ -1081,11 +1056,7 @@ class FactoryEngine {
                 if (this.gateDefinitionUnknownParked('no further lane was started'))
                     continue;
                 this.progress.emit(phase, 'start', undefined, this.fields());
-                // A lane commit that parked (secret-shaped content, a surviving lane process) is retried on the same worktree, no new lane.
-                if (s.pendingCommit)
-                    await this.retryPendingCommit(s.pendingCommit);
-                else
-                    await this.step(phase);
+                await this.step(phase);
                 const after = this.state;
                 if (!after.gate && after.phase !== phase && !TERMINAL_FACTORY_PHASES.includes(after.phase))
                     this.progress.emit(phase, 'ok', `-> ${after.phase}`, this.fields());
@@ -1536,7 +1507,7 @@ class FactoryEngine {
         this.save((s) => ({ ...s, baseSha }));
         const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(this.readAt(baseSha), pathsInText(this.state.plan?.text ?? ''))), 'implement');
         if (out.kind === 'done')
-            await this.acceptWriteLane(out, 'implement', baseSha);
+            this.acceptWriteLane(out, 'implement', baseSha);
     }
     async fix() {
         const head = this.state.head;
@@ -1548,7 +1519,7 @@ class FactoryEngine {
         const round = ship?.fixRounds ?? 0;
         const out = await this.runLane('fix', head, 'write', fixPrompt(this.state, round), `fix@${round}`);
         if (out.kind === 'done')
-            await this.acceptWriteLane(out, `fix@${round}`, head);
+            this.acceptWriteLane(out, `fix@${round}`, head);
     }
     /**
      * A write lane's result: the engine commits the lane's worktree changes on
@@ -1556,7 +1527,7 @@ class FactoryEngine {
      * no gitlink), then publish. Runs only after runLane confirmed the lane's
      * end and its tamper check, and after one more recheck of the shared state.
      */
-    async acceptWriteLane(out, key, start, parents = [start]) {
+    acceptWriteLane(out, key, start, parents = [start]) {
         const { result, lane } = out;
         const sandbox = sandboxPark(result);
         if (sandbox) {
@@ -1580,144 +1551,31 @@ class FactoryEngine {
         }
         if (!result.worktree)
             return this.laneFailed(key, lane.kind, `lane ${lane.id} reports no local worktree, so the engine cannot commit its changes`);
-        const title = `${lane.kind}: ${oneLine(this.state.issueTitle ?? `issue ${this.o.issue}`)} (#${this.o.issue})`;
-        await this.commitWriteLane({
-            laneId: lane.id, key, start, parents: [...parents], worktree: result.worktree, branch: result.branch, message: laneCommitMessage(title, result.finalText),
-        });
-    }
-    /** --allow-secret-shapes answered this invocation's secret-shaped-content park (start()). */
-    secretShapesAllowed = false;
-    warnedTreeUnproven = false;
-    /**
-     * The engine commit of a write lane's worktree (lane-commit.ts), also the
-     * retry after a park that left `pendingCommit` (secret-shaped content, a
-     * lane process that survived its kill): first the lane runtime's whole
-     * process tree must be gone (lane-procs.ts; a listing that fails warns and
-     * goes on, a positively seen survivor parks lane-unconfirmed), then the
-     * shared state is re-compared, then the commit.
-     */
-    async commitWriteLane(p) {
-        const lane = this.state.lanes.find((l) => l.id === p.laneId);
-        if (!lane)
-            throw new FactoryStepError(`the lane ${p.laneId} of the pending commit is not in the run state`);
-        const kind = lane.kind;
-        const ops = this.o.processes ?? defaultLaneProcessOps;
-        const proof = await ops.treeGone(lane.process, p.worktree);
-        if (proof.kind === 'survivors') {
-            this.save((s) => ({ ...s, pendingCommit: p }));
-            this.gate('lane-unconfirmed', `${kind} lane ${p.laneId} ended, but process(es) of its tree still run after the engine killed them (pid ${proof.pids.join(', ')}); they could still change the worktree, so nothing was committed. Stop them (Task Manager, or kill -9 ${proof.pids.join(' ')}), then rerun ${this.resume}: the engine commits the same worktree (no new lane); to give the lane's work up instead, omg factory run cancel ${this.key}`);
-            return;
-        }
-        if (proof.kind === 'unproven') {
-            if (!this.warnedTreeUnproven) {
-                this.warnedTreeUnproven = true;
-                this.o.warn?.(`omg factory run: the process tree of lane ${p.laneId} could not be proven gone (${proof.why}); the job's own tree kill ran, so the engine commits anyway`);
-            }
-            this.save((s) => ({ ...s, history: [...s.history, { at: this.iso(), from: s.phase, to: s.phase, note: `lane ${p.laneId}: process tree not proven (${proof.why})` }] }));
-        }
-        else if (proof.killed.length > 0) {
-            this.save((s) => ({ ...s, history: [...s.history, { at: this.iso(), from: s.phase, to: s.phase, note: `lane ${p.laneId}: the engine killed process(es) left from its tree (pid ${proof.killed.join(', ')}) before the commit` }] }));
-        }
         // A late change after the lane's tamper check (a child the engine missed) parks before engine git runs in the lane worktree.
         if (this.recheckFailed('before the engine commit'))
             return;
-        let extraProtected = [];
-        try {
-            extraProtected = configuredProtectedPaths(this.o.root);
-        }
-        catch { /* the defaults still apply */ }
+        const extraProtected = this.protectedExtras().paths;
+        const title = `${lane.kind}: ${oneLine(this.state.issueTitle ?? `issue ${this.o.issue}`)} (#${this.o.issue})`;
         const commit = commitLaneWork({
-            worktree: p.worktree, start: p.start, parents: p.parents, repoRoot: this.o.root, branch: p.branch, message: p.message, extraProtected,
-            secretAck: (p.secretAck ?? []), secretAllowPaths: this.secretAllowPaths(),
+            worktree: result.worktree, start, parents, repoRoot: this.o.root, branch: result.branch,
+            message: laneCommitMessage(title, result.finalText), extraProtected,
         });
         if (!commit.ok) {
-            if (commit.refusal === 'secret') {
-                const findings = commit.findings ?? [];
-                this.save((s) => ({ ...s, pendingCommit: { ...p, secretFindings: findings } }));
-                this.gate(SECRET_SHAPES_GATE, `${kind} lane ${p.laneId}: ${commit.reason}. A key or token in the change may have been copied in from outside the lane's sandbox, so nothing was committed or pushed. Look at those files in ${p.worktree}: remove the secret and rerun ${this.resume}, or, when they are test fixtures, rerun ${this.resume} --allow-secret-shapes (accepts exactly these paths and kinds for this lane commit; factory.run.secretScan.allowPaths in your user config or the base's omg.jsonc skips fixture paths for good). To give the lane's work up instead: omg factory run cancel ${this.key}`);
-                return;
-            }
-            this.save((s) => { const { pendingCommit: _p, ...rest } = s; return rest; });
             if (commit.refusal === 'protected')
-                return this.gate('protected-paths', `lane ${p.laneId}: ${commit.reason}; nothing was committed or pushed`);
+                return this.gate('protected-paths', `lane ${lane.id}: ${commit.reason}; nothing was committed or pushed`);
             if (commit.refusal === 'gitlink' || commit.refusal === 'escaped')
-                return this.gate('sandbox-escaped', `${kind} lane ${p.laneId}: ${commit.reason}; nothing was committed or pushed`);
-            return this.laneFailed(p.key, kind, `lane ${p.laneId}: ${commit.reason}`);
+                return this.gate('sandbox-escaped', `${lane.kind} lane ${lane.id}: ${commit.reason}; nothing was committed or pushed`);
+            return this.laneFailed(key, lane.kind, `lane ${lane.id}: ${commit.reason}`);
         }
         // The engine's own commit moved the lane's branch and worktree HEAD: the new baseline of the recheck.
         this.rebaseRecheck();
         const head = commit.sha;
-        this.updateLane(p.laneId, { endSha: head, ...(commit.notes.length > 0 ? { note: commit.notes.join('; ') } : {}) });
+        this.updateLane(lane.id, { endSha: head, ...(commit.notes.length > 0 ? { note: commit.notes.join('; ') } : {}) });
         // A detect-only lane after the PR exists (fix, conflict-fix, ci-fix) is recorded in a PR comment; the first one is in the PR body.
-        if (lane.sandbox?.mode === 'detect-only' && this.state.pr) {
-            this.commentOnce('pr', `detect-only@${p.laneId}`, 'sandbox', `**Sandbox: detect-only.** ${kind} lane ${p.laneId} ran without an OS sandbox (\`writeUnsandboxed: "detect-only"\`).\n`);
+        if (result.sandbox?.mode === 'detect-only' && this.state.pr) {
+            this.commentOnce('pr', `detect-only@${lane.id}`, 'sandbox', `**Sandbox: detect-only.** ${lane.kind} lane ${lane.id} ran without an OS sandbox (\`writeUnsandboxed: "detect-only"\`).\n`);
         }
-        const acked = p.secretAck?.length ? `; secret-shaped content accepted (--allow-secret-shapes): ${p.secretAck.map((f) => `${f.path} (${f.kind})`).join(', ')}` : '';
-        this.save((s) => {
-            const { pendingCommit: _p, ...rest } = s;
-            return moveTo({ ...rest, pendingHead: head }, 'publish', `the engine committed lane ${p.laneId}'s changes as ${head.slice(0, 12)}${acked}`, this.iso());
-        });
-    }
-    /** The rerun after a park that left `pendingCommit`: the same worktree is committed again (with the human's acknowledgement). */
-    async retryPendingCommit(p) {
-        let next = p;
-        if (this.secretShapesAllowed && p.secretFindings?.length) {
-            this.secretShapesAllowed = false;
-            const ack = [...(p.secretAck ?? []), ...p.secretFindings];
-            next = { ...p, secretAck: ack };
-            this.save((s) => ({ ...s, pendingCommit: next, history: [...s.history, { at: this.iso(), from: s.phase, to: s.phase, note: `secret-shaped content accepted for lane ${p.laneId} (--allow-secret-shapes): ${p.secretFindings.map((f) => `${f.path} (${f.kind})`).join(', ')}` }] }));
-        }
-        const { secretFindings: _f, ...rest } = next;
-        await this.commitWriteLane(rest);
-    }
-    /**
-     * factory.run.secretScan.allowPaths: path globs the lane commit's secret
-     * scan skips (test fixtures), from the trusted layers only (the user
-     * config at its default location and `.copilot/omg.jsonc` committed at the
-     * run's sealed base sha; never the working tree or the PR head). A glob
-     * that would match every path is ignored with a warning (it would switch
-     * the scan off). An unreadable layer is skipped with a warning.
-     */
-    secretAllowPaths() {
-        const globs = [];
-        const read = (cfg, source) => {
-            const v = cfg?.factory?.run?.secretScan;
-            const list = v?.allowPaths;
-            if (list === undefined)
-                return;
-            if (!Array.isArray(list) || !list.every((g) => typeof g === 'string' && g.trim() !== '' && !g.startsWith('/'))) {
-                this.o.warn?.(`omg factory run: factory.run.secretScan.allowPaths in ${source} must be a list of repo-relative path globs; ignored`);
-                return;
-            }
-            for (const g of list) {
-                if (pathGlobMatches(g, 'a') && pathGlobMatches(g, 'b/c/d.e'))
-                    this.o.warn?.(`omg factory run: factory.run.secretScan.allowPaths ${JSON.stringify(g)} in ${source} matches every path (it would switch the secret scan off); ignored`);
-                else
-                    globs.push(g);
-            }
-        };
-        let user = this.o.secretScanUserConfig;
-        if (user === undefined) {
-            try {
-                user = userConfigLayers().trustedUser;
-            }
-            catch {
-                user = undefined;
-            }
-        }
-        read(user, 'your user config');
-        const base = this.state.baseSha;
-        if (base && HEX40.test(base)) {
-            try {
-                const text = readBaseFile(this.exec, this.o.root, base, BASE_CONFIG_PATH);
-                if (text && text.trim())
-                    read(parseJsonc(text), `${BASE_CONFIG_PATH} at the base ${base.slice(0, 12)}`);
-            }
-            catch (error) {
-                this.o.warn?.(`omg factory run: factory.run.secretScan.allowPaths at the base could not be read (${errText(error)}); only the user config's apply`);
-            }
-        }
-        return globs;
+        this.save((s) => moveTo({ ...s, pendingHead: head }, 'publish', `the engine committed lane ${lane.id}'s changes as ${head.slice(0, 12)}`, this.iso()));
     }
     /**
      * The paths the lane commit refuses beyond ship's PROTECTED_PATHS
@@ -1726,12 +1584,41 @@ class FactoryEngine {
      * against a replaced start) is still caught before the push.
      */
     laneProtectedPaths() {
-        let extra = [];
+        const extra = this.protectedExtras();
+        return { paths: [...LANE_PROTECTED_PATHS, ...extra.paths], ...(extra.problem ? { problem: extra.problem } : {}) };
+    }
+    /**
+     * The configured protected paths (configuredProtectedPaths), read once per
+     * invocation; a layer that cannot be read is warned about once and named in
+     * `problem`, which parks every publish (protectedPathsUnread).
+     */
+    protectedExtras() {
+        if (this.protectedCache)
+            return this.protectedCache;
+        const problems = [];
+        const sources = [];
+        let paths = [];
         try {
-            extra = configuredProtectedPaths(this.o.root);
+            paths = configuredProtectedPaths(this.o.root, (source, error) => {
+                sources.push(source);
+                problems.push(error.startsWith(source) ? error : `${source}: ${error}`);
+            });
         }
-        catch { /* the defaults still apply */ }
-        return [...LANE_PROTECTED_PATHS, ...extra];
+        catch (error) {
+            problems.push(errText(error));
+        }
+        const problem = problems.length > 0 ? oneLine(problems.join('; '), 500) : undefined;
+        // The usual cause is a JSONC syntax error anywhere in the file, so the fix names the file, not one key.
+        const fix = sources.length > 0 ? `fix the JSON in ${oneLine(sources.join(' and '), 500)}` : 'fix the user config or .copilot/omg.jsonc';
+        if (problem)
+            this.o.warn?.(`omg factory run: the configured protected paths cannot be read (${problem}); the engine will not push until they can: ${fix}`);
+        this.protectedCache = { paths, ...(problem ? { problem, fix } : {}) };
+        return this.protectedCache;
+    }
+    /** The park when a publish cannot know the whole protected list: fail closed, never push with a protection dropped. */
+    protectedPathsUnread(what, problem) {
+        const fix = this.protectedCache?.fix ?? 'fix the user config or .copilot/omg.jsonc';
+        this.gate('protected-paths', `the configured protected paths cannot be read (${problem}), so ${what} cannot be checked against all of them; nothing was pushed. ${fix[0].toUpperCase()}${fix.slice(1)}, then rerun ${this.resume}`);
     }
     /** One fresh retry per phase key, then the named `<kind>-failed` gate. */
     laneFailed(key, kind, reason, gateName = `${kind}-failed`) {
@@ -1757,7 +1644,10 @@ class FactoryEngine {
         const files = listChangedFiles(this.exec, this.o.root, s.baseSha, cand);
         if (files === null)
             throw new FactoryStepError(`git diff ${s.baseSha.slice(0, 12)}...${cand.slice(0, 12)} failed`);
-        const hit = protectedChanges(files, this.laneProtectedPaths());
+        const protectedList = this.laneProtectedPaths();
+        if (protectedList.problem)
+            return this.protectedPathsUnread('the change', protectedList.problem);
+        const hit = protectedChanges(files, protectedList.paths);
         if (hit.length > 0) {
             this.gate('protected-paths', `the change touches merge-rule paths: ${hit.join(', ')}; nothing was pushed`);
             return;
@@ -2092,6 +1982,8 @@ class FactoryEngine {
         const path = checkoutPath(this.o.root, this.key);
         if (!existsSync(path))
             return;
+        if (this.legacyCheckout(path))
+            return this.discardLegacyCheckout(path);
         const gitArgs = this.checkoutGitArgs(path);
         if (typeof gitArgs === 'string')
             throw new FactoryStepError(`the engine's prepare checkout ${path} cannot be read safely: ${gitArgs}${this.state.checkoutAdmin ? '; inspect it and remove it by hand' : `. ${this.freshCheckoutRecovery()}`}`);
@@ -2110,8 +2002,10 @@ class FactoryEngine {
         // The engine's own node_modules link would count as untracked on POSIX (a `node_modules/` ignore line skips symlinks).
         unlinkNodeModules(this.o.root, path);
         try {
-            // Only engine-made commits are in it (checked above); nothing else holds them.
-            removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [head] });
+            // Only engine-made commits are in it (checked above); nothing else holds them. Through the recorded links: removal
+            // never discovers a `.git` file the PR's code rewrote.
+            const gitLinks = recordedWorktreeGitLinks(path);
+            removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [head], ...(gitLinks ? { gitLinks } : {}) });
             forgetWorktreeGitLinks(path);
         }
         catch (error) {
@@ -2122,6 +2016,58 @@ class FactoryEngine {
         this.save((x) => {
             const { checkoutHead: _c, checkoutAdmin: _a, ...rest } = x;
             return rest;
+        });
+        this.rebaseRecheck();
+    }
+    /**
+     * The prepare checkout's directory is gone (removed with rm -rf) while git
+     * still lists it: only its own admin entry (the recorded checkoutAdmin, or
+     * the one whose gitdir names the checkout) is removed, so `worktree add` can
+     * use the path again. Never `git worktree prune`: that would drop every
+     * stale entry, a user's worktree on an unmounted drive included. A
+     * checkout that is there, or not listed, is left alone.
+     */
+    pruneMissingCheckout(path) {
+        if (existsSync(path))
+            return;
+        const listed = runHostGit(this.o.root, ['worktree', 'list', '--porcelain']);
+        if (!listed.split(/\r?\n/).some((l) => l.startsWith('worktree ') && samePath(l.slice('worktree '.length).trim(), path)))
+            return;
+        let removed;
+        try {
+            removed = removeStaleWorktreeEntry(this.o.root, path, this.state.checkoutAdmin);
+        }
+        catch (error) {
+            throw new FactoryStepError(`the engine's prepare checkout ${path} is gone, but its git worktree entry is not one the engine can remove safely (${visibleLine(errText(error))}); inspect it with git worktree list --porcelain and remove it by hand (git worktree remove --force ${path}), then rerun ${this.resume}`);
+        }
+        if (!removed)
+            throw new FactoryStepError(`the engine's prepare checkout ${path} is gone and git still lists it, but no entry under the git dir's worktrees/ names it; remove it by hand (git worktree remove --force ${path}), then rerun ${this.resume}`);
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `the prepare checkout ${path} was removed by hand; its own stale git worktree entry was dropped (no other entry was touched)` }] }));
+        this.rebaseRecheck();
+    }
+    /** A prepare checkout an older release made: no admin dir in the run state and no git links recorded in this process. */
+    legacyCheckout(path) {
+        return existsSync(path) && !this.state.checkoutAdmin && !recordedWorktreeGitLinks(path);
+    }
+    /**
+     * Discard a prepare checkout made before checkoutAdmin was recorded, as
+     * `omg factory run clean` does (the engine's node_modules link first, then
+     * the guarded removal, which refuses a tree with changes or commits the run
+     * did not make), so the run prepares a fresh one instead of parking.
+     */
+    discardLegacyCheckout(path) {
+        unlinkNodeModules(this.o.root, path);
+        const contained = [this.state.head, this.state.checkoutHead].filter((sha) => typeof sha === 'string' && HEX40.test(sha));
+        try {
+            removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [...new Set(contained)] });
+        }
+        catch (error) {
+            linkNodeModules(this.o.root, path);
+            throw new FactoryStepError(`could not discard the engine's prepare checkout ${path}, which an older release made: ${errText(error)}. ${this.freshCheckoutRecovery()}`);
+        }
+        this.save((x) => {
+            const { checkoutHead: _c, checkoutAdmin: _a, ...rest } = x;
+            return { ...rest, history: [...rest.history, { at: this.iso(), from: rest.phase, to: rest.phase, note: `discarded the prepare checkout an older release made (${path}); it is prepared again` }] };
         });
         this.rebaseRecheck();
     }
@@ -2154,7 +2100,7 @@ class FactoryEngine {
             if (!admin)
                 return `the run state records no admin dir for it (a checkout made before this release, or by something else)`;
             if (basename(links.adminDir) !== admin)
-                return `its .git file names the admin dir ${links.adminDir}, but the engine's \`worktree add\` made ${admin}`;
+                return `its .git file names the admin dir ${visibleLine(links.adminDir)}, but the engine's \`worktree add\` made ${admin}`;
             let common;
             try {
                 common = resolve(this.o.root, this.run(['rev-parse', '--git-common-dir']).trim());
@@ -2164,7 +2110,7 @@ class FactoryEngine {
             }
             const gitdir = links.gitdir.trim();
             if (!worktreeGitLinksIntact(path, links, common) || !samePath(isAbsolute(gitdir) ? gitdir : resolve(links.adminDir, gitdir), join(path, '.git')) || links.commondir.trim() !== '../..') {
-                return `its .git file names ${links.adminDir}, which is not the admin dir git made for it under ${join(common, 'worktrees')}`;
+                return `its .git file names ${visibleLine(links.adminDir)}, which is not the admin dir git made for it under ${join(common, 'worktrees')}`;
             }
             try {
                 recordWorktreeGitLinks(path, links);
@@ -2241,6 +2187,9 @@ class FactoryEngine {
             return;
         this.discardCheckout();
         const path = checkoutPath(this.o.root, this.key);
+        // A checkout removed with rm -rf leaves its admin dir registered, and `worktree add` then refuses the path
+        // (before the pre-prepare snapshot: the prune changes the shared worktree entries).
+        this.pruneMissingCheckout(path);
         const branch = checkoutBranch(this.key);
         // `worktree add -B` writes through a symbolic ref: a checkout branch a lane rewrote as `ref: refs/heads/main` would move main.
         const common = resolve(this.o.root, this.run(['rev-parse', '--git-common-dir']).trim());
@@ -2301,7 +2250,8 @@ class FactoryEngine {
         const fetched = result.steps.some((st) => st.name === 'fetch' && st.status === 'ok');
         // From here the PR's diff (review, protected paths) is against the base GitHub reports.
         const sandboxNote = ran.modes.size > 0 ? [{ at: this.iso(), from: s.phase, to: s.phase, note: `prepare checks on ${head.slice(0, 12)} ran ${[...ran.modes].map((m) => (m === 'enforced' ? 'in the OS sandbox' : m === 'enforced-readable' ? `in the OS sandbox (${CREDENTIAL_FILES_READABLE_NOTE})` : `unsandboxed (${m})`)).join(' and ')}` }] : [];
-        this.save((x) => ({ ...x, checkoutHead, ...(fetched ? { baseSha: view.baseRefOid } : {}), history: [...x.history, ...sandboxNote] }));
+        const sandboxed = ran.modes.has('enforced') || ran.modes.has('enforced-readable');
+        this.save((x) => ({ ...x, checkoutHead, ...(sandboxed ? { sandboxedPrepareHead: checkoutHead } : {}), ...(fetched ? { baseSha: view.baseRefOid } : {}), history: [...x.history, ...sandboxNote] }));
         // The accepted head's code ran unsandboxed: publishPrepared carries the ack to the prepared head once it holds only the engine's own commits.
         if (result.ok)
             return this.publishPrepared(pr, head, checkoutHead, result.housekeepingCommits, view.baseRefOid, ran.acked && this.state.unsandboxedGatesAck === head);
@@ -2387,6 +2337,16 @@ class FactoryEngine {
         const at = head.slice(0, 12);
         return `${what} on ${at} would run the PR's own code WITHOUT the OS sandbox (${why}). Acknowledging trusts ALL of ${at}'s code (every prepare check, the inventory generator, the local gate, and the head prepare makes from it) with your user account: your files, git config and credentials, and a process it leaves behind keeps running as you. Review the PR's whole diff (tests, configs, scripts) yourself, then rerun ${this.resume} --allow-unsandboxed-gates to run it unsandboxed for ${at} only`;
     }
+    /**
+     * The park when the sandbox did not start for `what` after the PR's code of
+     * this head already ran in it (an earlier prepare check): the PR's code may
+     * be the cause (a full disk, a process it left), so the
+     * --allow-unsandboxed-gates offer is not made; no pass, no failure.
+     */
+    gateNoStartAfterCodeReason(head, what, why) {
+        const at = head.slice(0, 12);
+        return `${what} on ${at} could not start in the OS sandbox (${why}) after the PR's code of this head already ran in it (an earlier prepare check), so the PR's code may be the cause. The head is not judged: no pass, no FAILURE, no ci-fix lane, and --allow-unsandboxed-gates does not apply here. Rerun ${this.resume} to try again; if it parks here again, review the PR's diff and fix the cause`;
+    }
     /** The park after the command ran in the sandbox without a verdict: no ack offer, no pass, no failure. `why` is fixed text (sandbox-exec.ts). */
     gateNoVerdictReason(head, what, why) {
         const at = head.slice(0, 12);
@@ -2414,10 +2374,26 @@ class FactoryEngine {
      * anything runs unsandboxed. A sandbox that started the command and gave
      * no verdict stops at gate-no-verdict (no ack offer). From the first check
      * on, engine git in the checkout names its git dir (checkoutGitPin), and a
-     * gitfile that changed around a check stops at lane-tampered.
+     * gitfile that changed around a check stops at lane-tampered. A built-in
+     * file list too long for the sandbox shell runs as several calls that must
+     * all pass (fileListParts). A sandbox that does not start after an earlier
+     * check of the head ran in it stops at gate-no-verdict (no ack offer): the
+     * PR's code may have caused it.
      */
     async prepareCheck(c, at) {
         const { head, path, ran } = at;
+        const parts = fileListParts(c, path);
+        if (parts.length > 1) {
+            // Every part must pass; the first that does not is the check's result (its park, or its failure).
+            const outputs = [];
+            for (const part of parts) {
+                const r = await this.prepareCheck(part, at);
+                if (r.notStarted !== undefined || r.status !== 0)
+                    return r;
+                outputs.push(r.stdout);
+            }
+            return { status: 0, stdout: outputs.join('\n'), stderr: '' };
+        }
         const label = this.prepareCheckLabel(c);
         const stop = (park) => {
             ran.park = park;
@@ -2458,6 +2434,15 @@ class FactoryEngine {
             return plain('unsandboxed');
         let why = `factory.run.sandbox.gates is "ack" (${at.gates.source})`;
         if (at.gates.mode === 'enforced') {
+            // A built-in eslint or vitest part still too long after fileListParts holds one changed file name the sandbox
+            // shell cannot carry. That name is the PR's own doing, like a lint error, so a plain FAILURE of this check
+            // rather than a park: a park would hand the human an unsandboxed run of a name the PR chose, while the ci-fix
+            // lane gets the check "prepare lint" (or "prepare tests") with this fixed text as its detail and can rename
+            // the file. Never the --allow-unsandboxed-gates offer, and decided before any sandbox call for this part.
+            // Configured commands are trusted config and keep their own refusal path below.
+            if (c.kind === 'built-in' && (c.args[0] === VITEST_SCRIPT || c.args[0] === ESLINT_SCRIPT) && sandboxCommandTooLong(process.platform, c.argv, path)) {
+                return { status: 1, stdout: '', stderr: BUILT_IN_FILE_NAME_TOO_LONG };
+            }
             const r = this.o.gateSandbox
                 ? await this.o.gateSandbox({ purpose: 'prepare', argv: c.argv, exe: c.exe, args: c.args, cwd: path, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...(at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}) })
                 : { ran: false, reason: 'no OS sandbox runner was given to the engine' };
@@ -2477,6 +2462,13 @@ class FactoryEngine {
             }
             if (r.started)
                 return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoVerdictReason(head, label, r.reason) });
+            // An earlier check of this head already ran the PR's code in the sandbox: a start failure now may be its doing.
+            // Only a configured command (trusted config) refused for its own shape or length keeps the ack offer; a
+            // built-in's argv holds the PR's file names, so its refusal parks here too.
+            const ownShape = r.refused === true && c.kind === 'configured';
+            if (!ownShape && (ran.modes.has('enforced') || ran.modes.has('enforced-readable')) && !this.gatesAccepted(head)) {
+                return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoStartAfterCodeReason(head, label, r.reason) });
+            }
             why = `the OS sandbox gave no verdict: ${r.reason}`;
         }
         if (this.gatesAccepted(head))
@@ -2589,8 +2581,7 @@ class FactoryEngine {
             problems = [`the post-prepare snapshot failed: ${errText(error)}`];
         }
         if (problems.length > 0) {
-            const quarantined = this.quarantineTampered(strip(before), 'prepare-tampered', problems, after ? strip(after) : undefined);
-            this.gate('lane-tampered', `prepare's checks (the PR's own code) changed shared git state outside the checkout's worktree entry, its branch and ${runRemote(this.state)}/${this.state.base}, so nothing is pushed; inspect and remove ${path} by hand: ${problems.slice(0, 5).join('; ')}${quarantined}`);
+            this.gate('lane-tampered', `prepare's checks (the PR's own code) changed shared git state outside the checkout's worktree entry, its branch and ${runRemote(this.state)}/${this.state.base}, so nothing is pushed; inspect and remove ${path} by hand: ${problems.slice(0, 5).join('; ')}`);
             return true;
         }
         const r = this.ledger.recheck;
@@ -2615,7 +2606,10 @@ class FactoryEngine {
             const files = listChangedFiles(this.exec, this.o.root, baseSha, next);
             if (files === null)
                 throw new FactoryStepError(`git diff ${baseSha.slice(0, 12)}...${next.slice(0, 12)} failed`);
-            const hit = protectedChanges(files, this.laneProtectedPaths());
+            const protectedList = this.laneProtectedPaths();
+            if (protectedList.problem)
+                return this.protectedPathsUnread('the prepared head', protectedList.problem);
+            const hit = protectedChanges(files, protectedList.paths);
             if (hit.length > 0) {
                 this.gate('protected-paths', `the prepared head touches merge-rule paths: ${hit.join(', ')}; nothing was pushed`);
                 return;
@@ -2686,7 +2680,7 @@ class FactoryEngine {
         const conflicted = merged.conflicted.length > 0 ? merged.conflicted : this.state.conflicts ?? [];
         const out = await this.runLane('conflict-fix', merged.sha, 'write', conflictFixPrompt(this.state, conflicted), key);
         if (out.kind === 'done')
-            await this.acceptWriteLane(out, key, merged.sha, [head, baseSha]);
+            this.acceptWriteLane(out, key, merged.sha, [head, baseSha]);
     }
     async ciFix() {
         const f = this.state.ciFailure;
@@ -2695,7 +2689,7 @@ class FactoryEngine {
         const key = `ci-fix@${this.state.ciFixRounds}`;
         const out = await this.runLane('ci-fix', f.startSha, 'write', ciFixPrompt(this.state), key);
         if (out.kind === 'done')
-            await this.acceptWriteLane(out, key, f.startSha);
+            this.acceptWriteLane(out, key, f.startSha);
     }
     /** The gate timeout of the local forge config (minutes). */
     localGateTimeout() {
@@ -2744,21 +2738,22 @@ class FactoryEngine {
             return false;
         }
         const checkout = checkoutPath(this.o.root, this.key);
+        // A checkout an older release prepared (no admin dir recorded): discarded as run clean would, then prepared again.
+        if (this.legacyCheckout(checkout))
+            this.discardLegacyCheckout(checkout);
         let at = '';
         if (existsSync(checkout)) {
             // The recorded git dir, never the checkout's `.git` file (the PR's code ran there in prepare).
             const gitArgs = this.checkoutGitArgs(checkout);
             let dirty = [];
-            let link = null;
             let problem = typeof gitArgs === 'string' ? gitArgs : null;
             if (typeof gitArgs !== 'string') {
                 // The status compares with a fresh index read from HEAD, never the checkout's own (the PR's code could set
                 // skip-worktree or assume-unchanged bits, plant an untracked cache, or keep a stale stat match there).
-                // Ignored files are left alone: prepare's checks and the gate run the same head's code in the same trust domain,
-                // so a check's ignored output (dist/, target/, a previous gate's coverage/) gives the gate nothing the PR's own
-                // tests could not do. What this protects is that the tracked tree is the recorded head and nothing untracked
-                // that is not ignored was added. An ignored link (other than the engine's node_modules link) still parks: a
-                // link is how content from outside the checkout would be pulled in.
+                // Ignored entries of any kind are left alone, links included (a Python venv, bazel-* links, a check's npm ci):
+                // prepare's checks and the gate run the same head's code in the same sandbox, so ignored output gives the gate
+                // nothing the PR's own tests could not do, and removal unlinks links before it deletes anything. What this
+                // protects is that the tracked tree is the recorded head and nothing untracked that is not ignored was added.
                 const indexDir = mkdtempSync(join(tmpdir(), 'omg-gate-index-'));
                 try {
                     at = runHostGit(checkout, [...gitArgs, 'rev-parse', 'HEAD']).trim();
@@ -2766,9 +2761,6 @@ class FactoryEngine {
                     runHostGit(checkout, [...gitArgs, 'read-tree', at], undefined, fresh);
                     const status = [...gitArgs, '-c', 'core.untrackedCache=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all'];
                     dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, undefined, fresh));
-                    if (at === head && dirty.length === 0) {
-                        link = ignoredLink(checkout, checkoutChanges(this.o.root, checkout, runHostGit(checkout, [...status, '--ignored=matching'], undefined, fresh)));
-                    }
                 }
                 catch (error) {
                     problem = errText(error);
@@ -2783,10 +2775,6 @@ class FactoryEngine {
             }
             if (at === head && dirty.length > 0) {
                 this.gate('lane-tampered', `the engine's prepare checkout ${checkout} is at ${head.slice(0, 12)} but its working tree differs from it (${dirty.slice(0, 5).join(', ')}): a changed tracked file or an untracked file that is not ignored, so the local gate did not run; inspect it and undo what the PR's code changed there, then rerun ${this.resume}`);
-                return false;
-            }
-            if (link) {
-                this.gate('lane-tampered', `the engine's prepare checkout ${checkout} has an ignored symlink or junction ${link} the engine did not make, which would pull content from outside the checkout into the gate, so the local gate did not run; inspect it and remove the link, then rerun ${this.resume}`);
                 return false;
             }
         }
@@ -2857,6 +2845,10 @@ class FactoryEngine {
                 out = this.o.gateSandbox
                     ? await runLocalGate({ ...input, mode: 'enforced', sandbox: { run: this.o.gateSandbox, commonGitDir: common, requireDeniedPaths: gates.requireDeniedPaths } })
                     : { started: false, reason: 'no OS sandbox runner was given to the engine', sandbox: true };
+                // The gate handed the PR's code of this head to the sandbox (a verdict or not): a later start failure on a
+                // rerun of the gate for this head may be that code's doing.
+                if ((out.started || out.noVerdict) && this.state.sandboxedGateHead !== head)
+                    this.save((x) => ({ ...x, sandboxedGateHead: head }));
                 if (!out.started && out.noVerdict) {
                     // It ran in the sandbox and said nothing a verdict can rest on: never the ack park, never a FAILURE.
                     if (checkoutGitLink(checkout).hash !== linkBefore)
@@ -2865,6 +2857,15 @@ class FactoryEngine {
                     return false;
                 }
                 unavailable = !out.started && out.sandbox === true;
+                // Prepare, or an earlier run of this gate, already ran the PR's code of this head in the sandbox: a start
+                // failure now may be its doing.
+                const codeRan = this.state.sandboxedPrepareHead === head || this.state.sandboxedGateHead === head;
+                if (unavailable && !out.started && !out.refused && codeRan && !this.gatesAccepted(head)) {
+                    if (checkoutGitLink(checkout).hash !== linkBefore)
+                        return this.gateTamperedByGate(head, checkout, stateDir);
+                    this.gate(GATE_NO_VERDICT_GATE, this.gateNoStartAfterCodeReason(head, `the local gate \`${gate.join(' ')}\``, out.reason));
+                    return false;
+                }
                 if (unavailable && !out.started)
                     why = `the OS sandbox gave no verdict: ${out.reason}`;
             }
@@ -3133,51 +3134,14 @@ class FactoryEngine {
         }
     }
     /** Park after a lane changed shared git state; a review lane's verdict is discarded. */
-    laneTampered(laneId, kind, problems, before, after) {
-        const quarantined = before ? this.quarantineTampered(before, kind === 'review' ? 'review-tampered' : 'lane-tampered', problems, after) : '';
+    laneTampered(laneId, kind, problems) {
         if (kind === 'review') {
             this.markVerdict(laneId, 'invalid', `tampered: ${problems.join('; ')}`);
-            this.gate('review-tampered', `shared git state changed while review lane ${laneId} ran (by the lane or anyone else working in this repository), so its verdict is discarded: ${problems.slice(0, 5).join('; ')}${quarantined}`);
+            this.gate('review-tampered', `shared git state changed while review lane ${laneId} ran (by the lane or anyone else working in this repository), so its verdict is discarded: ${problems.slice(0, 5).join('; ')}`);
             return;
         }
         this.updateLane(laneId, { note: `tampered: ${problems.join('; ')}` });
-        this.gate('lane-tampered', `${kind} lane ${laneId} changed shared git state outside its own branch and worktree, so nothing it made is pushed: ${problems.slice(0, 5).join('; ')}${quarantined}`);
-    }
-    /**
-     * After a tamper of the shared git dir: quarantine what changed since
-     * `before` (this run's snapshot), restore what is safe, hold new runs
-     * (tamper-quarantine.ts). The clause the park reason gets; never throws.
-     */
-    quarantineTampered(before, gate, problems, after) {
-        let refsNow = after?.refs;
-        if (!refsNow) {
-            try {
-                refsNow = snapshotRepo(this.exec, this.o.root, this.stateRootRel).refs;
-            }
-            catch {
-                refsNow = undefined;
-            }
-        }
-        // Only the refs the compare reported (compareSnapshots' `ref <name> ...`): the lane's own branch and the engine's fetches are allowed there.
-        const onlyRefs = problems.map((p) => /^ref (\S+) (?:was created|was deleted|moved|is at)/.exec(p)?.[1]).filter((n) => Boolean(n));
-        try {
-            const hold = quarantineTamper({ ledgerDir: this.o.ledgerDir ?? defaultLedgerDir(), root: this.o.root, before, ...(refsNow ? { refsNow } : {}), onlyRefs, run: String(this.key), gate, at: this.iso() });
-            if (!hold.quarantine && !hold.failed && hold.refs.length === 0)
-                return '';
-            const did = [
-                hold.moved.length ? `moved to the quarantine: ${hold.moved.slice(0, 5).join(', ')}` : '',
-                hold.restored.length ? `restored from the run's snapshot: ${hold.restored.slice(0, 5).join(', ')}` : '',
-                hold.notRestored.length ? `not restored: ${hold.notRestored.slice(0, 3).join('; ')}` : '',
-                hold.refs.length ? `refs: ${hold.refs.slice(0, 3).join('; ')}` : '',
-                hold.failed ?? '',
-            ].filter(Boolean).join('; ');
-            if (!hold.held)
-                return `. Tamper quarantine${hold.quarantine ? ` (${hold.quarantine})` : ''}: ${did}. Nothing that runs code changed in .git, so no hold was set; if a listed change was not yours, undo it with the command shown (refs.txt in that folder)`;
-            return `. Tamper quarantine${hold.quarantine ? ` (${hold.quarantine})` : ''}: ${did}. New factory runs in this checkout are held until ${RELEASE_TAMPER_COMMAND}; your own change to .git during the run (git config, a hook husky or an editor installed) triggers this too: put it back from the quarantine folder if it was yours`;
-        }
-        catch (error) {
-            return `. The tamper quarantine failed (${errText(error)}); .git was left as it is`;
-        }
+        this.gate('lane-tampered', `${kind} lane ${laneId} changed shared git state outside its own branch and worktree, so nothing it made is pushed: ${problems.slice(0, 5).join('; ')}`);
     }
     /**
      * Re-compare the shared git state with the snapshot after the last checked
@@ -3204,7 +3168,7 @@ class FactoryEngine {
             return false;
         this.ledger.setRecheck(undefined);
         const at = this.iso();
-        const what = `shared git state changed after lane ${r.laneId} passed its check (found ${where}): ${problems.slice(0, 5).join('; ')}${this.quarantineTampered(r.snapshot, r.kind === 'review' ? 'review-tampered' : 'lane-tampered', problems)}`;
+        const what = `shared git state changed after lane ${r.laneId} passed its check (found ${where}): ${problems.slice(0, 5).join('; ')}`;
         if (r.kind === 'review') {
             this.markVerdict(r.laneId, 'invalid', `late change: ${problems.join('; ')}`);
             this.save((x) => setGate(x.phase === 'review' ? x : moveTo(x, 'review', `review lane ${r.laneId}'s verdict is discarded`, at), 'review-tampered', `${what}; its verdict is discarded`, at));
@@ -3312,7 +3276,7 @@ class FactoryEngine {
         }));
         this.ledger.dropBaseline(lane.id);
         if (problems.length > 0 || !after) {
-            this.laneTampered(lane.id, lane.kind, problems, baseline, after);
+            this.laneTampered(lane.id, lane.kind, problems);
             return false;
         }
         // A late edit (a child the engine missed) is re-compared at the next step boundary and before the next push.
@@ -3512,7 +3476,7 @@ class FactoryEngine {
         const { problems, after } = this.laneProblems(kind, before, result, startRef);
         this.ledger.dropBaseline(id);
         if (problems.length > 0 || !after) {
-            this.laneTampered(id, kind, problems, before, after);
+            this.laneTampered(id, kind, problems);
             return { kind: 'stopped' };
         }
         this.ledger.setRecheck({ laneId: id, kind, snapshot: after });
@@ -3898,11 +3862,7 @@ class FactoryEngine {
             throw new FactoryStepError(`git diff ${from.slice(0, 12)}...${check.head.slice(0, 12)} failed`);
         if (files.length === 0)
             return this.gate(CODING_AGENT_ADOPT_GATE, `the coding agent's pull request #${check.pr} changes nothing against ${s.base}; nothing was adopted; ${this.codingAgentRestart()}`);
-        let extraProtected = [];
-        try {
-            extraProtected = configuredProtectedPaths(this.o.root);
-        }
-        catch { /* the defaults still apply */ }
+        const extraProtected = this.protectedExtras().paths;
         const hit = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...extraProtected]);
         if (hit.length > 0)
             return this.gate('protected-paths', `the coding agent's pull request #${check.pr} changes merge-rule or lane-protected paths: ${hit.join(', ')}; nothing was adopted or pushed`);
@@ -4250,7 +4210,7 @@ class FactoryEngine {
         if (lane?.kind === 'fix')
             this.updateLane(lane.id, { feedback: { source: 'human', forge: this.forge?.kind ?? 'github', items: open.length } });
         if (out.kind === 'done')
-            await this.acceptWriteLane(out, `fix@${round}`, head);
+            this.acceptWriteLane(out, `fix@${round}`, head);
     }
 }
 /** The merge step's park while trusted human review feedback stands, or the read cannot vouch for it. */
@@ -4261,8 +4221,6 @@ export const REVIEW_REQUESTED_GATE = 'review-requested';
 export const UNSANDBOXED_LANES_REASON = 'a lane ran without the enforced sandbox';
 /** The park before the PR's own code (prepare checks, the local gate) would run without the OS sandbox; `--allow-unsandboxed-gates` answers it. */
 export const GATES_UNSANDBOXED_GATE = 'gates-unsandboxed';
-/** The park when a lane's change holds a key or token shape (lane-commit.ts secret scan); `--allow-secret-shapes` answers it. */
-export const SECRET_SHAPES_GATE = 'secret-shaped-content';
 /** The park when a check fails in the sandbox on the trusted base itself: a sandbox problem, never a ci-fix lane. */
 export const GATE_SANDBOX_INCOMPATIBLE_GATE = 'gate-sandbox-incompatible';
 /**
@@ -4466,10 +4424,6 @@ export async function runFactoryEngine(o) {
         return dryRun(o);
     const key = engineRunKey(o);
     const dir = o.ledgerDir ?? defaultLedgerDir();
-    // A tamper hold (tamper-quarantine.ts) stops every run here until a human clears it; nothing is locked, read or written.
-    const held = tamperHoldMessage(dir, o.root);
-    if (held)
-        throw new FactoryTamperHoldError(held);
     const now = new Date((o.now ?? Date.now)()).toISOString();
     // The repository lock first (unless the caller already holds it): a second engine refuses before it touches anything.
     const repoOwner = o.repoOwner ?? acquireFactoryRepoOwner(o.root, key, now, o.owner);

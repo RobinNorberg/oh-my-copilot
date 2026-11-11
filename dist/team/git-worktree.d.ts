@@ -276,6 +276,18 @@ export declare function removeWorkerWorktree(teamName: string, workerName: strin
 }): {
     tampered: string | null;
 };
+/**
+ * Drop the stale admin entry of `wtPath` alone (its directory is gone), never
+ * by `git worktree prune`: that drops every stale entry, a user's worktree on
+ * an unmounted drive included (its HEAD, its index, the only reference to its
+ * detached commits). The entry is `<common>/worktrees/<adminName>` when the
+ * caller recorded it, else the one whose `gitdir` file names `<wtPath>/.git`.
+ * It must be a real directory (not a link) directly under
+ * `<common>/worktrees`, not locked, and its `gitdir` must name
+ * `<wtPath>/.git`. False when no entry names `wtPath`; throws on anything
+ * else unexpected, and when git still lists `wtPath` afterwards.
+ */
+export declare function removeStaleWorktreeEntry(repoRoot: string, wtPath: string, adminName?: string): boolean;
 /** List all worktrees for a team. */
 export declare function listTeamWorktrees(teamName: string, repoRoot: string): WorktreeInfo[];
 export declare function inspectTeamWorktreeCleanupSafety(teamName: string, repoRoot: string): TeamWorktreeCleanupSafety;

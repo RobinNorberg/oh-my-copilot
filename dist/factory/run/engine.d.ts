@@ -53,6 +53,7 @@
  * GitHub runs keep the gh calls unchanged.
  */
 import { type Exec } from '../../ship/exec.js';
+import { type PrepareCheckRun } from '../../ship/prepare.js';
 import { type SandboxRunner } from './sandbox-exec.js';
 import { type AzEntry } from '../../forge/ado/az-binary.js';
 import type { ForgeOptions, ResolvedForgeConfig } from '../../forge/types.js';
@@ -247,6 +248,27 @@ export declare class StateTamperedError extends Error {
     readonly paths: string[];
     constructor(paths: string[]);
 }
+/**
+ * Engine git in the prepare checkout once the PR's code ran there: the admin
+ * dir recorded at `worktree add` (recordWorktreeGitLinks, before any of it
+ * ran) and the work tree, named on the command line (`--git-dir`,
+ * `--work-tree`), so a rewritten `.git` file cannot point that git at a
+ * config of the PR's (a filter driver on `git add`). It wraps the plain exec
+ * INSIDE hardenedGitExec, which (and the guard around it) sees the plain
+ * shape.
+ */
+export declare function pinCheckoutGit(exec: Exec, pin: () => {
+    workTree: string;
+    gitDir: string;
+} | undefined): Exec;
+/** The fixed failure text of a built-in eslint or vitest check whose one changed file name the sandbox shell cannot carry. */
+export declare const BUILT_IN_FILE_NAME_TOO_LONG = "a changed file name is too long for the sandbox shell";
+/**
+ * A built-in eslint or vitest check over the changed files, cut into calls
+ * that each fit the sandbox shell (a large PR's file list can exceed the
+ * Windows command line); one call for every other check.
+ */
+export declare function fileListParts(c: PrepareCheckRun, cwd: string, platform?: NodeJS.Platform): PrepareCheckRun[];
 export { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted, TRUSTED_PLAN_AUTHORS, type IssueComment } from './plan-rules.js';
 export { ciFixPrompt, conflictFixPrompt, fenceFor, fixPrompt, implementPrompt, MAX_REVIEW_DIFF_CHARS, oneLine, reviewPrompt } from './prompts.js';
 /** The run's key: `heal-<sig8>` for a ci-heal run, else the issue number. */

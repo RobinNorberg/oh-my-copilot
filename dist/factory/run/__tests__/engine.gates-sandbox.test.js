@@ -11,9 +11,10 @@
 import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { readLocalCheckRecord } from '../../../forge/local/index.js';
+import { localCheckRecordPath, readLocalCheckRecord } from '../../../forge/local/index.js';
 import { resolveShipConfig } from '../../../ship/config.js';
 import { EXIT_AWAITING_HUMAN, GATE_NO_VERDICT_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATES_UNSANDBOXED_GATE, runFactoryEngine } from '../engine.js';
+import { sandboxShellCommand } from '../sandbox-exec.js';
 import { EngineLedger } from '../ledger.js';
 import { factoryStatePath, overwriteFactoryState, readFactoryState } from '../state.js';
 import { BASE, lanesFor, LOCAL_ISSUE, localOpts, localWorld } from './engine-local-harness.js';
@@ -265,9 +266,10 @@ describe('a sandbox that withholds or forges a verdict (review 474 item 10)', ()
         w = localWorld();
         const parked = sandbox((req) => (req.purpose === 'gate' ? { ran: false, reason: 'the sandbox is not available: MXC is not available on this host' } : PASS));
         const first = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: parked.run }));
-        expect(first.gate?.name, first.message).toBe(GATES_UNSANDBOXED_GATE);
+        // Prepare ran the head's code in the sandbox, so a gate sandbox that does not start offers no ack (review 474b L-c).
+        expect(first.gate?.name, first.message).toBe(GATE_NO_VERDICT_GATE);
         // What the engine before this change left at the same point: the run in its phase, no park, no ack, no calibration.
-        const { gate: _g, unsandboxedGatesAck: _a, gateCalibration: _c, ...old } = readFactoryState(w.root, LOCAL_ISSUE);
+        const { gate: _g, unsandboxedGatesAck: _a, gateCalibration: _c, sandboxedPrepareHead: _p, ...old } = readFactoryState(w.root, LOCAL_ISSUE);
         // Written as the engine writes it: the ledger records the bytes, so the next run reads it as its own.
         const { content } = overwriteFactoryState(w.root, LOCAL_ISSUE, old);
         EngineLedger.open(w.ledgerDir, w.root, LOCAL_ISSUE).record(factoryStatePath(w.root, LOCAL_ISSUE), content);
@@ -392,6 +394,83 @@ describe('gates "unsandboxed"', () => {
         expect(out.gate?.name, out.message).toBe(GATES_UNSANDBOXED_GATE);
         expect(out.gate?.reason).toContain('factory.run.sandbox.gates is "ack" (the base .copilot/omg.jsonc)');
         expect(s.reqs).toEqual([]);
+    }, MULTI_RUN_MS);
+});
+describe('a sandbox that does not start after the PR\'s code of the head already ran in it (review 474b L-c)', () => {
+    const NOT_STARTED = { ran: false, reason: 'the sandbox runtime failed: ENOSPC: no space left on device' };
+    it('a later prepare check parks gate-no-verdict, not the --allow-unsandboxed-gates offer; nothing runs unsandboxed', async () => {
+        w = localWorld();
+        const two = (input) => { const g = gateConfig()(input); return { ...g, config: { ...g.config, prepareChecks: [PREPARE_CHECK, ['node', 'check2.js']] } }; };
+        const s = sandbox((req) => (req.args.includes('check2.js') ? NOT_STARTED : PASS));
+        const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run, gateConfig: two }));
+        expect(out.gate?.name, out.message).toBe(GATE_NO_VERDICT_GATE);
+        expect(out.gate?.reason).toContain('the prepare check `node check2.js`');
+        expect(out.gate?.reason).toContain('after the PR\'s code of this head already ran in it');
+        expect(out.gate?.reason).toContain('--allow-unsandboxed-gates does not apply here');
+        expect(out.gate?.reason).not.toContain('Acknowledging trusts');
+        expect(w.gateRuns).toEqual([]);
+    }, MULTI_RUN_MS);
+    it('the local gate after a sandboxed prepare parks gate-no-verdict, not the --allow-unsandboxed-gates offer', async () => {
+        w = localWorld();
+        const s = sandbox((req) => (req.purpose === 'gate' ? NOT_STARTED : PASS));
+        const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run }));
+        expect(out.gate?.name, out.message).toBe(GATE_NO_VERDICT_GATE);
+        expect(out.gate?.reason).toContain('the local gate `node --test`');
+        expect(out.gate?.reason).toContain('ENOSPC');
+        expect(out.gate?.reason).not.toContain('Acknowledging trusts');
+        const state = readFactoryState(w.root, LOCAL_ISSUE);
+        expect(state.sandboxedPrepareHead).toBe(state.head);
+        expect(readLocalCheckRecord(w.stateDir, w.root, state.head)).toBeUndefined();
+        expect(w.gateRuns).toEqual([]);
+    }, MULTI_RUN_MS);
+    it('a gate command the sandbox shell refuses by its own shape or length still gets the --allow-unsandboxed-gates offer', async () => {
+        w = localWorld();
+        const refused = { ran: false, refused: true, reason: 'the command is too long for the sandbox shell: it encodes to 30000 characters, above the 28000 that a Windows command line can safely carry; shorten the configured command' };
+        const s = sandbox((req) => (req.purpose === 'gate' ? refused : PASS));
+        const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run }));
+        expect(out.gate?.name, out.message).toBe(GATES_UNSANDBOXED_GATE);
+        expect(out.gate?.reason).toContain('too long for the sandbox shell');
+        expect(w.gateRuns).toEqual([]);
+    }, MULTI_RUN_MS);
+    it('review 482 #1: a configured prepare check with a double quote (refused on Windows) after a sandboxed one keeps the --allow-unsandboxed-gates offer', async () => {
+        w = localWorld();
+        const quoted = ['node', 'check2.js', 'say "hi"'];
+        const two = (input) => { const g = gateConfig()(input); return { ...g, config: { ...g.config, prepareChecks: [PREPARE_CHECK, quoted] } }; };
+        // The Windows shell encoding refuses a `"` word: what runSandboxed answers there, on every host here.
+        const s = sandbox((req) => (sandboxShellCommand('win32', req.argv, req.cwd, 'M') === null ? { ran: false, refused: true, reason: 'the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)' } : PASS));
+        const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run, gateConfig: two }));
+        expect(out.gate?.name, out.message).toBe(GATES_UNSANDBOXED_GATE);
+        expect(out.gate?.reason).toContain('double quote');
+        expect(out.gate?.reason).toContain('--allow-unsandboxed-gates');
+        expect(s.reqs.map((r) => r.args)).toEqual([['check.js'], ['check2.js', 'say "hi"']]);
+        expect(w.gateRuns).toEqual([]);
+    }, MULTI_RUN_MS);
+    it('review 482 #10: a rerun of the local gate for a head it already ran in the sandbox parks gate-no-verdict on a start failure', async () => {
+        w = localWorld();
+        const first = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: sandbox().run }));
+        expect(first.gate?.name, first.message).toBe('merge');
+        const head = readFactoryState(w.root, LOCAL_ISSUE).head;
+        expect(readFactoryState(w.root, LOCAL_ISSUE).sandboxedGateHead).toBe(head);
+        // Only the gate's own record decides: prepare's is dropped, and the gate runs again for the same head.
+        const rerun = (drop) => {
+            const state = { ...readFactoryState(w.root, LOCAL_ISSUE) };
+            delete state.gate;
+            for (const k of drop)
+                delete state[k];
+            const { content } = overwriteFactoryState(w.root, LOCAL_ISSUE, state);
+            EngineLedger.open(w.ledgerDir, w.root, LOCAL_ISSUE).record(factoryStatePath(w.root, LOCAL_ISSUE), content);
+            rmSync(localCheckRecordPath(w.stateDir, w.root, head), { force: true });
+        };
+        const NOT_STARTED = { ran: false, reason: 'the sandbox runtime failed: ENOSPC: no space left on device' };
+        rerun(['sandboxedPrepareHead']);
+        const again = await runFactoryEngine(opts(lanesFor(w, []), { gateSandbox: sandbox((req) => (req.purpose === 'gate' ? NOT_STARTED : PASS)).run }));
+        expect(again.gate?.name, again.message).toBe(GATE_NO_VERDICT_GATE);
+        expect(again.gate?.reason).toContain('--allow-unsandboxed-gates does not apply here');
+        // Without that record (an older state file) the start failure keeps the offer, as before.
+        rerun(['sandboxedPrepareHead', 'sandboxedGateHead']);
+        const old = await runFactoryEngine(opts(lanesFor(w, []), { gateSandbox: sandbox((req) => (req.purpose === 'gate' ? NOT_STARTED : PASS)).run }));
+        expect(old.gate?.name, old.message).toBe(GATES_UNSANDBOXED_GATE);
+        expect(w.gateRuns).toEqual([]);
     }, MULTI_RUN_MS);
 });
 //# sourceMappingURL=engine.gates-sandbox.test.js.map

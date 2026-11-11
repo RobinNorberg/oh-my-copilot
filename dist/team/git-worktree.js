@@ -1118,8 +1118,11 @@ export function ensureWorkerWorktree(teamName, workerName, repoRoot, options = {
     const wtPath = getWorktreePath(repoRoot, teamName, workerName);
     const branch = mode === 'named' ? getBranchName(teamName, workerName) : 'HEAD';
     validateResolvedPath(wtPath, join(getOmcRoot(repoRoot), 'team'));
+    // A stale entry of this worker's own path (its directory removed by hand) would block `worktree add`: drop only
+    // that one, never `git worktree prune`, which drops every stale entry, the user's own included. Best effort.
     try {
-        runHostGit(repoRoot, ['worktree', 'prune']);
+        if (!existsSync(wtPath))
+            removeStaleWorktreeEntry(repoRoot, wtPath);
     }
     catch { /* ignore */ }
     if (existsSync(wtPath)) {
@@ -1382,8 +1385,11 @@ export function removeWorkerWorktree(teamName, workerName, repoRoot, options = {
             }
             // Unregistered/absent stale paths are best-effort cleanup only.
         }
+        // Only this worktree's own entry, when its directory is gone and git still lists it (never `git worktree prune`,
+        // which would drop every other stale entry too, the user's own included); best effort, as the prune was.
         try {
-            runHostGit(repoRoot, ['worktree', 'prune']);
+            if (!existsSync(wtPath))
+                removeStaleWorktreeEntry(repoRoot, wtPath);
         }
         catch { /* ignore */ }
         if (branchHead)
@@ -1434,6 +1440,68 @@ function removeTreeByPath(dir) {
     }
     unlinkUntrackedWorktreeLinks(dir, [], false);
     rmSync(dir, { recursive: true, force: true });
+}
+/**
+ * Drop the stale admin entry of `wtPath` alone (its directory is gone), never
+ * by `git worktree prune`: that drops every stale entry, a user's worktree on
+ * an unmounted drive included (its HEAD, its index, the only reference to its
+ * detached commits). The entry is `<common>/worktrees/<adminName>` when the
+ * caller recorded it, else the one whose `gitdir` file names `<wtPath>/.git`.
+ * It must be a real directory (not a link) directly under
+ * `<common>/worktrees`, not locked, and its `gitdir` must name
+ * `<wtPath>/.git`. False when no entry names `wtPath`; throws on anything
+ * else unexpected, and when git still lists `wtPath` afterwards.
+ */
+export function removeStaleWorktreeEntry(repoRoot, wtPath, adminName) {
+    if (existsSync(wtPath))
+        throw new Error(`stale_worktree_entry: ${wtPath} exists, so its worktree entry is not stale`);
+    const common = resolve(repoRoot, runHostGit(repoRoot, ['rev-parse', '--path-format=absolute', '--git-common-dir']).trim());
+    const root = join(common, 'worktrees');
+    const want = canonicalPathForComparison(join(wtPath, '.git'));
+    const real = (dir) => {
+        try {
+            const st = lstatSync(dir);
+            return st.isDirectory() && !st.isSymbolicLink();
+        }
+        catch {
+            return false;
+        }
+    };
+    const namesWtPath = (name) => {
+        const dir = join(root, name);
+        if (!isAdminDirOf(common, dir) || !real(dir))
+            return false;
+        try {
+            const gitdir = join(dir, 'gitdir');
+            if (!lstatSync(gitdir).isFile())
+                return false;
+            return canonicalPathForComparison(resolve(dir, readFileSync(gitdir, 'utf8').trim())) === want;
+        }
+        catch {
+            return false;
+        }
+    };
+    let name;
+    if (adminName !== undefined) {
+        if (!namesWtPath(adminName))
+            throw new Error(`stale_worktree_entry: ${join(root, adminName)} is not a real directory in ${root} whose gitdir names ${join(wtPath, '.git')}`);
+        name = adminName;
+    }
+    else {
+        const matches = real(root) ? readdirSync(root).filter(namesWtPath) : [];
+        if (matches.length === 0)
+            return false;
+        if (matches.length > 1)
+            throw new Error(`stale_worktree_entry: ${matches.length} entries in ${root} name ${join(wtPath, '.git')}`);
+        name = matches[0];
+    }
+    const dir = join(root, name);
+    if (existsSync(join(dir, 'locked')))
+        throw new Error(`stale_worktree_entry: ${dir} is locked`);
+    removeTreeByPath(dir);
+    if (findRegisteredWorktree(repoRoot, wtPath) !== null)
+        throw new Error(`stale_worktree_entry: git still lists ${wtPath} after its entry ${dir} was removed`);
+    return true;
 }
 /**
  * Remove a worktree whose git links no longer match the record, without

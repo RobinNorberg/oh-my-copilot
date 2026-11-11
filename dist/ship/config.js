@@ -447,16 +447,21 @@ function trustedUserConfigPathOrDefault() {
  * default location and from the working-tree project config under `root`.
  * Protection only widens here, so the untrusted project file may add a path
  * but never drop one; the base branch is not read (no fetch). An unreadable
- * layer adds nothing.
+ * layer adds nothing; `onProblem` hears about it (the factory parks a publish
+ * then: a dropped protection is the unsafe direction).
  */
-export function configuredProtectedPaths(root) {
+export function configuredProtectedPaths(root, onProblem) {
     const paths = new Set();
+    // Each source names its file, so a problem says which file to fix.
+    let userPath = null;
+    try {
+        userPath = trustedUserConfigPath();
+    }
+    catch { /* no resolvable home: userConfigLayers reads no trusted layer */ }
+    const projectPath = resolveProjectConfigPath(root);
     const layers = [
-        [() => userConfigLayers().trustedUser, 'user config (default location)'],
-        [() => {
-                const path = resolveProjectConfigPath(root);
-                return existsSync(path) ? parseJsonc(readFileSync(path, 'utf8')) : undefined;
-            }, 'project config'],
+        [() => userConfigLayers().trustedUser, userPath ? `user config ${userPath}` : 'user config (default location)'],
+        [() => (existsSync(projectPath) ? parseJsonc(readFileSync(projectPath, 'utf8')) : undefined), `project config ${projectPath}`],
     ];
     for (const [read, source] of layers) {
         try {
@@ -464,7 +469,10 @@ export function configuredProtectedPaths(root) {
             if (isRepoPath(file) && file !== DEFAULT_SHIP_CONFIG.knownFlakyFile)
                 paths.add(file);
         }
-        catch { /* unreadable: the defaults still apply */ }
+        catch (error) {
+            // Unreadable: the defaults still apply.
+            onProblem?.(source, error instanceof Error ? error.message : String(error));
+        }
     }
     return [...paths];
 }
