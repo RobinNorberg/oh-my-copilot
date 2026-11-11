@@ -23,8 +23,11 @@ import { TRUSTED_READ_ENV } from './exec.js';
  * Every check oh-my-copilot's own CI reports on a PR to dev or main (ci.yml,
  * pr-check.yml); the jobs that consume the Build output start late (`needs:
  * [build]`). The repository's committed .copilot/omg.jsonc sets exactly these
- * as `ship.requiredChecks` (a drift test keeps them equal); `omg release`
- * falls back to them when the base it lands on has no configured names yet.
+ * as `ship.requiredChecks` (a drift test keeps them equal). A PR of this
+ * repository whose base has no configured names yet (main before the release
+ * that added them) still requires them: loadTrustedShipConfig, which
+ * `omg ship`, the factory and `omg release` use, fills an empty list with
+ * them (omgRepositoryFallback). That only ever adds names.
  */
 export const OMG_REPOSITORY_REQUIRED_CHECKS = Object.freeze([
     'Lint & Type Check',
@@ -447,7 +450,21 @@ export function loadTrustedShipConfig(input) {
             merged[key] = value;
     }
     merged.trustedBases = trustedBases;
-    return { ...resolveShipConfig(merged), trustedBaseCommit: trusted ? commit : undefined };
+    return omgRepositoryFallback({ ...resolveShipConfig(merged), trustedBaseCommit: trusted ? commit : undefined }, input.repoUrl);
+}
+/** This repository's repoIdentity (lower case). */
+const OMG_REPOSITORY_IDENTITY = 'gh:github.com/robinnorberg/oh-my-copilot';
+/**
+ * A PR of this repository (`repoUrl`, GitHub's PR repository url, compared
+ * on its repoIdentity) whose loaded config names no required check requires
+ * OMG_REPOSITORY_REQUIRED_CHECKS: its base may predate the committed list.
+ * Only an empty list is filled, so this never removes a name; any other
+ * repository keeps its loaded list.
+ */
+export function omgRepositoryFallback(config, repoUrl) {
+    if (config.requiredChecks.length > 0 || !repoUrl || repoIdentity(repoUrl) !== OMG_REPOSITORY_IDENTITY)
+        return config;
+    return { ...config, requiredChecks: [...OMG_REPOSITORY_REQUIRED_CHECKS] };
 }
 function trustedUserConfigPathOrDefault() {
     try {

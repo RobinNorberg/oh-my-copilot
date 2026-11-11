@@ -10,6 +10,15 @@ import { h, usePrepareGatesHarness, run } from './prepare-gates-harness.js';
 vi.setConfig({ testTimeout: scaleTiming(90_000) });
 usePrepareGatesHarness();
 const config = (requiredChecks) => () => ({ config: { ...resolveShipConfig(undefined), requiredChecks, advisoryChecks: [] }, known: [] });
+const ok = (body) => ({ status: 0, stdout: JSON.stringify(body), stderr: '' });
+/** The base commit's check runs / statuses (review-493 HIGH-1); every other GitHub read is unscripted. */
+const baseChecks = (names) => (path) => {
+    if (/\/commits\/[0-9a-f]{40}\/check-runs\?per_page=100$/.test(path))
+        return ok({ check_runs: names.map((name) => ({ name })) });
+    if (/\/commits\/[0-9a-f]{40}\/status\?per_page=100$/.test(path))
+        return ok({ statuses: [] });
+    return undefined;
+};
 describe('M1: required checks on a repository that is not oh-my-copilot', () => {
     it('a configured name that never reports parks missing-checks with the fix, long before the gates timeout', async () => {
         h.gh.gates = [greenGates()];
@@ -23,8 +32,9 @@ describe('M1: required checks on a repository that is not oh-my-copilot', () => 
         expect(out.message.match(/omg factory run /g)).toHaveLength(1);
         expect(now - start).toBeLessThan(15 * 60_000);
     });
-    it('no names and no CI at all: green with the no-CI note in the merge park and the PR merge comment', async () => {
+    it('no names and no CI at all (the base commit reported no check either): green with the no-CI note in the merge park and the PR merge comment', async () => {
         h.gh.gates = [{ checks: [], runs: [] }];
+        h.gh.api = baseChecks([]);
         const bodies = [];
         h.onCall = (c) => { if (c.startsWith(`gh pr comment ${PR} --body-file `))
             bodies.push(readFileSync(c.split('--body-file ')[1], 'utf8')); };
@@ -34,6 +44,16 @@ describe('M1: required checks on a repository that is not oh-my-copilot', () => 
         expect(readShipState(h.root, PR).phase).toBe('ready');
         const comment = bodies.find((b) => b.includes('Merge is a human step'));
         expect(comment).toContain(`Note: ${NO_CI_CHECKS_NOTE}`);
+    });
+    it('review-493 HIGH-1: no check on the head while the base commit ran CI parks no-workflows naming the base checks, never the no-CI merge', async () => {
+        h.gh.gates = [{ checks: [], runs: [] }];
+        h.gh.api = baseChecks(['Build', 'Test']);
+        const out = await run([commitFile('a.ts'), review('approve')], { gateConfig: config([]) }).done;
+        expect(out.gate?.name, out.message).toBe('no-workflows');
+        expect(out.gate?.reason).toContain('the base commit ran CI (Build, Test) but nothing has reported for this head: Actions may be disabled, delayed, or the push did not trigger workflows');
+        expect(out.message).not.toContain(NO_CI_CHECKS_NOTE);
+        expect(out.message.match(/omg factory run /g)).toHaveLength(1);
+        expect(readShipState(h.root, PR).phase).toBe('gates');
     });
     it('no names: every reported check counts; a green read is accepted after the settle window', async () => {
         h.gh.gates = [greenGates()];

@@ -97,7 +97,7 @@ export async function driveGates(o) {
                 watch: true, reruns: o.reruns, sleep: async (ms) => { if (o.cancelled())
                     throw new GatesCancelled(); await o.sleep(ms); }, now: o.now,
                 ...(o.forge ? { forge: o.forge } : {}),
-                settle, stopOnMissing: true,
+                settle, stopOnMissing: true, ...(o.reads ? { reads: o.reads } : {}),
             });
         }
         catch (error) {

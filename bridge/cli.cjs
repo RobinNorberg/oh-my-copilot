@@ -96328,7 +96328,11 @@ function loadTrustedShipConfig(input) {
     else merged[key] = value;
   }
   merged.trustedBases = trustedBases;
-  return { ...resolveShipConfig(merged), trustedBaseCommit: trusted ? commit : void 0 };
+  return omgRepositoryFallback({ ...resolveShipConfig(merged), trustedBaseCommit: trusted ? commit : void 0 }, input.repoUrl);
+}
+function omgRepositoryFallback(config2, repoUrl) {
+  if (config2.requiredChecks.length > 0 || !repoUrl || repoIdentity(repoUrl) !== OMG_REPOSITORY_IDENTITY) return config2;
+  return { ...config2, requiredChecks: [...OMG_REPOSITORY_REQUIRED_CHECKS] };
 }
 function trustedUserConfigPathOrDefault() {
   try {
@@ -96366,7 +96370,7 @@ function loadBaseKnownFlaky(exec3, root2, commit, file) {
   const text4 = readBaseFile(exec3, root2, commit, file);
   return text4 && text4.trim() ? parseKnownFlaky(text4, `${commit.slice(0, 12)}:${file}`) : [];
 }
-var import_fs98, import_os20, import_path120, OMG_REPOSITORY_REQUIRED_CHECKS, DEFAULT_SHIP_CONFIG, SHIP_SAFETY_KEYS, SHIP_USER_ONLY_KEYS, BASE_CONFIG_PATH, FULL_SHA;
+var import_fs98, import_os20, import_path120, OMG_REPOSITORY_REQUIRED_CHECKS, DEFAULT_SHIP_CONFIG, SHIP_SAFETY_KEYS, SHIP_USER_ONLY_KEYS, BASE_CONFIG_PATH, FULL_SHA, OMG_REPOSITORY_IDENTITY;
 var init_config4 = __esm({
   "src/ship/config.ts"() {
     "use strict";
@@ -96429,6 +96433,7 @@ var init_config4 = __esm({
     SHIP_USER_ONLY_KEYS = ["trustedBases"];
     BASE_CONFIG_PATH = ".copilot/omg.jsonc";
     FULL_SHA = /^[0-9a-f]{40}$/;
+    OMG_REPOSITORY_IDENTITY = "gh:github.com/robinnorberg/oh-my-copilot";
   }
 });
 
@@ -118842,7 +118847,13 @@ function requiredChecksArgs(repoArg, base) {
   const [host, owner, name] = repoParts(repoArg) ?? [];
   if (!host) throw new Error(`not a GitHub repository argument: ${repoArg}`);
   const b = encodeURIComponent(base);
-  return [apiGet(host, `repos/${owner}/${name}/branches/${b}`), apiGet(host, `repos/${owner}/${name}/rules/branches/${b}`)];
+  return [apiGet(host, `repos/${owner}/${name}/branches/${b}`), apiGet(host, `repos/${owner}/${name}/rules/branches/${b}?per_page=100&page=1`)];
+}
+function gateReadArgs(repoArg, sha3, what) {
+  const [host, owner, name] = repoParts(repoArg) ?? [];
+  if (!host) throw new Error(`not a GitHub repository argument: ${repoArg}`);
+  if (!/^[0-9a-f]{40}$/.test(sha3)) throw new Error(`not a full commit sha: ${sha3}`);
+  return apiGet(host, `repos/${owner}/${name}/commits/${sha3}/${what}?per_page=100&page=1`);
 }
 function commitChecksArgs(repoArg, ref) {
   const [host, owner, name] = repoParts(repoArg) ?? [];
@@ -118852,11 +118863,19 @@ function commitChecksArgs(repoArg, ref) {
 }
 function isRequiredChecksArgs(args, repoArg, commits = false) {
   const parts = repoParts(repoArg);
-  if (!parts || args.length !== 6) return false;
+  if (!parts) return false;
+  return pathOf2(args, parts, (path30) => BRANCH_PATH.exec(path30) ?? (commits ? COMMIT_PATH.exec(path30) : null));
+}
+function pathOf2(args, parts, match) {
   const [host, owner, name] = parts;
-  if (args[0] !== "api" || args[1] !== "--hostname" || args[2].toLowerCase() !== host.toLowerCase() || args[3] !== "--method" || args[4] !== "GET") return false;
-  const m = BRANCH_PATH.exec(args[5]) ?? (commits ? COMMIT_PATH.exec(args[5]) : null);
-  return m !== null && m[1] === owner && m[2] === name && !/^\.+$/.test(m[3]);
+  if (args.length !== 6 || args[0] !== "api" || args[1] !== "--hostname" || args[2].toLowerCase() !== host.toLowerCase() || args[3] !== "--method" || args[4] !== "GET") return false;
+  const m = match(args[5]);
+  const segment = m?.[3] ?? m?.[4];
+  return m !== null && m[1] === owner && m[2] === name && segment !== void 0 && !/^\.+$/.test(segment);
+}
+function isGateReadArgs(args, repoArg) {
+  const parts = repoParts(repoArg);
+  return parts !== void 0 && pathOf2(args, parts, (path30) => GATE_READ_PATH.exec(path30));
 }
 function readJson3(exec3, args, cwd2) {
   let res;
@@ -118873,36 +118892,75 @@ function readJson3(exec3, args, cwd2) {
   }
 }
 function ghRequiredChecks(exec3, repoArg, base, cwd2) {
+  return ghRequiredCheckRules(exec3, repoArg, base, cwd2)?.names;
+}
+function ghRequiredCheckRules(exec3, repoArg, base, cwd2) {
   const [branchArgs, rulesArgs] = requiredChecksArgs(repoArg, base);
   const names = /* @__PURE__ */ new Set();
-  const add = (v) => {
-    if (typeof v === "string" && v.length > 0) names.add(v);
+  const apps = /* @__PURE__ */ new Map();
+  const add = (v, app) => {
+    if (typeof v !== "string" || v.length === 0) return;
+    names.add(v);
+    const id = typeof app === "number" && Number.isInteger(app) && app > 0 ? app : null;
+    apps.set(v, apps.has(v) && apps.get(v) !== id ? null : id);
   };
   const branch2 = readJson3(exec3, branchArgs, cwd2);
-  const rules = readJson3(exec3, rulesArgs, cwd2);
-  if ((branch2 === void 0 || typeof branch2 !== "object") && !Array.isArray(rules)) return void 0;
+  const rules = readPages(exec3, rulesArgs, cwd2, (page) => Array.isArray(page) ? page : void 0);
+  if ((branch2 === void 0 || typeof branch2 !== "object") && rules === void 0) return void 0;
   const rsc = branch2?.protection?.required_status_checks;
-  for (const c of Array.isArray(rsc?.contexts) ? rsc.contexts : []) add(c);
-  for (const c of Array.isArray(rsc?.checks) ? rsc.checks : []) add(c?.context);
-  for (const rule of Array.isArray(rules) ? rules : []) {
+  const checks = Array.isArray(rsc?.checks) ? rsc.checks : [];
+  for (const c of Array.isArray(rsc?.contexts) ? rsc.contexts : []) add(c, checks.find((k) => k?.context === c)?.app_id);
+  for (const c of checks) add(c?.context, c?.app_id);
+  for (const rule of rules ?? []) {
     const r = rule;
     if (r?.type !== "required_status_checks") continue;
     const list3 = r.parameters?.required_status_checks;
-    for (const c of Array.isArray(list3) ? list3 : []) add(c?.context);
+    for (const c of Array.isArray(list3) ? list3 : []) add(c?.context, c?.integration_id);
   }
-  return [...names];
+  return { names: [...names], apps: Object.fromEntries([...apps].filter((e) => e[1] !== null)) };
 }
-function ghCommitCheckNames(exec3, repoArg, ref, cwd2) {
+function readPages(exec3, first, cwd2, items) {
+  const out = [];
+  for (let page = 1; page <= MAX_API_PAGES; page += 1) {
+    const list3 = items(readJson3(exec3, atPage(first, page), cwd2));
+    if (list3 === void 0) return void 0;
+    out.push(...list3);
+    if (list3.length < 100) return out;
+  }
+  return void 0;
+}
+function ghCheckSuites(exec3, repoArg, sha3, cwd2) {
+  const raw = readPages(exec3, gateReadArgs(repoArg, sha3, "check-suites"), cwd2, (page) => {
+    const list3 = page?.check_suites;
+    return Array.isArray(list3) ? list3 : void 0;
+  });
+  if (raw === void 0) return void 0;
+  const out = [];
+  for (const s of raw) {
+    if (typeof s?.status !== "string") return void 0;
+    out.push({ status: s.status, ...typeof s.app?.slug === "string" ? { app: s.app.slug } : {}, runs: typeof s.latest_check_runs_count === "number" ? s.latest_check_runs_count : 0 });
+  }
+  return out;
+}
+function ghCheckRunApps(exec3, repoArg, sha3, cwd2) {
+  const raw = readPages(exec3, gateReadArgs(repoArg, sha3, "check-runs"), cwd2, (page) => {
+    const list3 = page?.check_runs;
+    return Array.isArray(list3) ? list3 : void 0;
+  });
+  if (raw === void 0) return void 0;
+  return raw.filter((r) => typeof r?.name === "string").map((r) => ({ name: r.name, ...typeof r.app?.id === "number" ? { appId: r.app.id } : {} }));
+}
+function ghCommitCheckNames(exec3, repoArg, ref, cwd2, both = false) {
   const [runsArgs, statusArgs] = commitChecksArgs(repoArg, ref);
   const runs = readJson3(exec3, runsArgs, cwd2);
   const status = readJson3(exec3, statusArgs, cwd2);
-  if (!runs && !status) return void 0;
+  if (both ? !runs || !status : !runs && !status) return void 0;
   const names = /* @__PURE__ */ new Set();
   for (const r of Array.isArray(runs?.check_runs) ? runs.check_runs : []) if (typeof r?.name === "string" && r.name) names.add(r.name);
   for (const s of Array.isArray(status?.statuses) ? status.statuses : []) if (typeof s?.context === "string" && s.context) names.add(s.context);
   return [...names];
 }
-var SEGMENT, HOST, apiGet, BRANCH_PATH, COMMIT_PATH;
+var SEGMENT, HOST, apiGet, MAX_API_PAGES, atPage, BRANCH_PATH, COMMIT_PATH, GATE_READ_PATH;
 var init_checks = __esm({
   "src/forge/github/checks.ts"() {
     "use strict";
@@ -118910,8 +118968,11 @@ var init_checks = __esm({
     SEGMENT = /^[A-Za-z0-9_.-]+$/;
     HOST = /^[a-z0-9.-]+$/i;
     apiGet = (host, path30) => ["api", "--hostname", host, "--method", "GET", path30];
-    BRANCH_PATH = /^repos\/([^/]+)\/([^/]+)\/(?:branches|rules\/branches)\/([A-Za-z0-9_.%-]+)$/;
+    MAX_API_PAGES = 10;
+    atPage = (args, page) => [...args.slice(0, 5), args[5].replace(/page=1$/, `page=${page}`)];
+    BRANCH_PATH = /^repos\/([^/]+)\/([^/]+)\/(?:branches\/([A-Za-z0-9_.%-]+)|rules\/branches\/([A-Za-z0-9_.%-]+)\?per_page=100&page=(?:[1-9]|10))$/;
     COMMIT_PATH = /^repos\/([^/]+)\/([^/]+)\/commits\/([A-Za-z0-9_.%-]+)\/(?:check-runs|status)\?per_page=100$/;
+    GATE_READ_PATH = /^repos\/([^/]+)\/([^/]+)\/commits\/([0-9a-f]{40})\/(?:(?:check-runs|status)\?per_page=100|(?:check-suites|check-runs)\?per_page=100&page=(?:[1-9]|10))$/;
   }
 });
 
@@ -118993,17 +119054,26 @@ function missingCheckHint(missing, config2) {
   const names = missing.join(", ");
   return config2.requiredChecksFrom === "branch-protection" ? `required check(s) ${names} never reported for this head although the base branch's protection requires them: fix the CI workflow that should report them, or the branch protection / ruleset` : `required check(s) ${names} never reported for this head: no CI job has that name; fix ship.requiredChecks in your user config or in the base branch's committed .copilot/omg.jsonc (exact check names as the PR's checks show them)`;
 }
-function applySettle(report3, config2, now2, watchedSince) {
+function applySettle(report3, config2, now2, watchedSince, reads, head) {
   const stamps = report3.checks.map((c) => Math.max(stamp(c.startedAt) ?? -Infinity, stamp(c.completedAt) ?? -Infinity));
   const undated = report3.checks.length === 0 || stamps.some((s) => s === -Infinity);
   const newest = Math.max(...stamps, undated ? watchedSince ?? Infinity : -Infinity);
   const settled = now2 - newest >= CHECK_SETTLE_MS;
+  const open9 = openSuites(reads && head ? reads.suites(head) : void 0, settled);
+  return applyOpenSuites(settleChecks(report3, config2, settled, reads, open9.length > 0), open9);
+}
+function settleChecks(report3, config2, settled, reads, suiteOpen) {
   if (config2.requiredChecks.length === 0) {
     if (report3.verdict === "green" && !settled) {
       return { ...report3, verdict: "pending", pending: [...report3.pending, `settle window: waiting ${Math.round(CHECK_SETTLE_MS / 1e3)} s after the last check activity for late checks`] };
     }
-    if (report3.verdict === "pending" && report3.checks.length === 0 && report3.pending.length === 1 && report3.pending[0] === NO_WORKFLOWS_TRIGGERED && settled) {
-      return { ...report3, verdict: "green", pending: [], noChecks: true, suggestions: [...report3.suggestions.filter((s) => !s.startsWith(NO_WORKFLOWS_TRIGGERED)), `${NO_CI_CHECKS_NOTE} (nothing reported for this head within ${Math.round(CHECK_SETTLE_MS / 1e3)} s)`] };
+    if (report3.verdict === "pending" && report3.checks.length === 0 && report3.pending.length === 1 && report3.pending[0] === NO_WORKFLOWS_TRIGGERED && settled && !suiteOpen) {
+      const base = reads?.baseChecks();
+      if (base === void 0 || base.length > 0) {
+        const noHeadChecks = base === void 0 ? {} : { base: [...base] };
+        return { ...report3, noHeadChecks, suggestions: [...report3.suggestions.filter((s) => !s.startsWith(NO_WORKFLOWS_TRIGGERED)), noHeadChecksText(noHeadChecks)] };
+      }
+      return { ...report3, verdict: "green", pending: [], noChecks: true, suggestions: [...report3.suggestions.filter((s) => !s.startsWith(NO_WORKFLOWS_TRIGGERED)), `${NO_CI_CHECKS_NOTE} (nothing reported for this head within ${Math.round(CHECK_SETTLE_MS / 1e3)} s, and the base commit reported no check either)`] };
     }
     return report3;
   }
@@ -119012,6 +119082,35 @@ function applySettle(report3, config2, now2, watchedSince) {
   if (missing.length === 0 || report3.checks.length === 0 || report3.failed.length > 0 || !settled) return report3;
   if (!report3.pending.every((p) => missing.includes(p))) return report3;
   return { ...report3, missing, suggestions: [...report3.suggestions, missingCheckHint(missing, config2)] };
+}
+function noHeadChecksText(n) {
+  const window = `${Math.round(CHECK_SETTLE_MS / 1e3)} s`;
+  if (n.base === void 0) {
+    return `nothing has reported a check for this head within ${window}, and the base commit's checks could not be read, so the gates do not assume this repository has no CI: Actions may be disabled, delayed, or the push did not trigger workflows`;
+  }
+  const names = `${n.base.slice(0, 5).join(", ")}${n.base.length > 5 ? `, and ${n.base.length - 5} more` : ""}`;
+  return `the base commit ran CI (${names}) but nothing has reported for this head: Actions may be disabled, delayed, or the push did not trigger workflows`;
+}
+function openSuites(suites, settled) {
+  return (suites ?? []).filter((s) => s.status.toLowerCase() !== "completed").filter((s) => !(settled && s.runs === 0 && s.app !== void 0 && s.app !== "github-actions" && s.status.toLowerCase() === "queued")).map((s) => `check suite ${s.app ?? "(unnamed app)"} (${s.status.toLowerCase()})`);
+}
+function applyOpenSuites(report3, open9) {
+  if (open9.length === 0) return report3;
+  return { ...report3, verdict: report3.verdict === "green" ? "pending" : report3.verdict, pending: [...report3.pending, ...open9] };
+}
+function applyRequiredApps(report3, config2, runApps) {
+  const apps = Object.entries(config2.requiredCheckApps ?? {});
+  if (apps.length === 0 || runApps === void 0) return report3;
+  const wrong = apps.filter(([name, app]) => report3.checks.some((c) => c.name === name && c.class === "pass") && !runApps.some((r) => r.name === name && r.appId === app));
+  if (wrong.length === 0) return report3;
+  const names = new Set(wrong.map(([n]) => n));
+  const checks = report3.checks.map((c) => names.has(c.name) && c.class === "pass" ? { ...c, class: "pending" } : c);
+  return {
+    ...report3,
+    checks,
+    verdict: report3.verdict === "green" ? "pending" : report3.verdict,
+    pending: [...report3.pending, ...wrong.map(([n, app]) => `${n} (required from GitHub App ${app}; no check run of that app reported it)`)]
+  };
 }
 function parseChecksJson(stdout) {
   let parsed2;
@@ -119236,12 +119335,13 @@ function fetchHeadSha(exec3, pr, cwd2) {
 function fetchWorkflowRuns(exec3, headSha, cwd2) {
   return ghRunsForHead(exec3, headSha, cwd2);
 }
-function evaluateGates(exec3, pr, config2, known, cwd2, headSha, forge, watchedSince, now2 = Date.now) {
+function evaluateGates(exec3, pr, config2, known, cwd2, headSha, forge, watchedSince, now2 = Date.now, reads) {
   const readHead = () => forge ? forge.reviews.prHead(pr).headRefOid : fetchHeadSha(exec3, pr, cwd2);
   const head = headSha ?? readHead();
   const checked2 = evaluateChecks(pr, forge ? forge.checks.checks(pr, head) : fetchChecks(exec3, pr, cwd2), config2);
   const runs = forge ? forge.checks.runsForHead(pr, head) : fetchWorkflowRuns(exec3, head, cwd2);
-  const report3 = applySettle(applyNoWorkflows(applyWorkflowRuns(checked2, runs), runs, head), config2, now2(), watchedSince);
+  const apps = Object.keys(config2.requiredCheckApps ?? {}).length > 0 ? applyRequiredApps(checked2, config2, reads?.runApps(head)) : checked2;
+  const report3 = applySettle(applyNoWorkflows(applyWorkflowRuns(apps, runs), runs, head), config2, now2(), watchedSince, reads, head);
   const after = readHead();
   if (after !== head) {
     return {
@@ -119270,7 +119370,7 @@ async function watchGates(opts) {
     const key = opts.headSha ?? "";
     if (settle.since === void 0 || settle.head !== key) Object.assign(settle, { head: key, since: opts.now() });
     try {
-      report3 = evaluateGates(opts.exec, opts.pr, config2, opts.known, opts.cwd, opts.headSha, opts.forge, settle.since, opts.now);
+      report3 = evaluateGates(opts.exec, opts.pr, config2, opts.known, opts.cwd, opts.headSha, opts.forge, settle.since, opts.now, opts.reads);
     } catch (error2) {
       const message4 = error2 instanceof Error ? error2.message : String(error2);
       if (!opts.retryTransient || !opts.watch || !(error2 instanceof GhChecksError) || !TRANSIENT_GH_ERROR.test(message4)) throw error2;
@@ -119315,7 +119415,7 @@ var init_gates = __esm({
     RUN_FIELDS = "databaseId,status,conclusion,workflowName,headSha";
     CHECK_SETTLE_MS = 12e4;
     NO_CI_CHECKS_NOTE = "no CI checks are configured for this repository";
-    PASS_STATES = /* @__PURE__ */ new Set(["SUCCESS", "SKIPPED"]);
+    PASS_STATES = /* @__PURE__ */ new Set(["SUCCESS", "SKIPPED", "NEUTRAL"]);
     PENDING_STATES = /* @__PURE__ */ new Set(["PENDING", "QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED", "EXPECTED"]);
     GhChecksError = class extends Error {
       constructor(message4) {
@@ -120332,7 +120432,11 @@ function commitLaneWork(input) {
     const outside = outsideWorktree(input.worktree, files);
     if (outside.length > 0) return refuse2("escaped", `staged paths resolve outside the worktree (through a link): ${outside.slice(0, 5).join(", ")}`);
     const hit2 = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...input.extraProtected ?? []]);
-    if (hit2.length > 0) return refuse2("protected", `the lane changed merge-rule or lane-protected paths: ${hit2.join(", ")}`);
+    if (hit2.length > 0) {
+      const ci = protectedChanges(hit2, [".github/workflows/", ...ADO_PIPELINE_PATHS, ...CI_DEFINITION_PATHS]);
+      const human = ci.length > 0 ? `. ${ci.join(", ")} ${ci.length === 1 ? "is a CI definition path" : "are CI definition paths"}, which a factory lane may never change: a human must make that change, in a commit or PR of their own outside the factory` : "";
+      return refuse2("protected", `the lane changed merge-rule or lane-protected paths: ${hit2.join(", ")}${human}`);
+    }
     const acked = new Set((input.secretAck ?? []).map(findingKey));
     const messageFindings = secretShapeKinds(input.message).map((kind) => ({ path: SECRET_MESSAGE_PATH, kind }));
     const secrets = [...staged.findings, ...messageFindings].filter((f) => !acked.has(findingKey(f)));
@@ -121916,7 +122020,7 @@ function factoryGh(a, writes, github, agent) {
   if (isCodingAgentAssignArgs(a, agent) || isCodingAgentCloseArgs(a, agent)) return true;
   if (isCodingAgentLinkCommentArgs(a, agent)) return true;
   const [group, sub, ...r] = a;
-  if (group === "api") return isReviewFeedbackArgs(a, github?.repo) || isRequiredChecksArgs(a, github?.repo) ? true : null;
+  if (group === "api") return isReviewFeedbackArgs(a, github?.repo) || isRequiredChecksArgs(a, github?.repo) || isGateReadArgs(a, github?.repo) ? true : null;
   if (group === "issue") {
     if (sub === "view") return r.length === 3 && NUMBER5.test(r[0]) && r[1] === "--json" && JSON_FIELDS2.test(r[2]);
     if (sub === "comment") return r.length === 3 && NUMBER5.test(r[0]) && r[1] === "--body-file" && isFile2(r[2]);
@@ -129937,7 +130041,8 @@ async function driveGates(o) {
         now: o.now,
         ...o.forge ? { forge: o.forge } : {},
         settle,
-        stopOnMissing: true
+        stopOnMissing: true,
+        ...o.reads ? { reads: o.reads } : {}
       });
     } catch (error2) {
       if (error2 instanceof GatesCancelled) return { kind: "cancelled" };
@@ -130454,8 +130559,8 @@ var init_context = __esm({
 });
 
 // src/factory/run/merge-policy.ts
-function mergeDecision(exec3, root2, ship, view2, config2, known, forge) {
-  const gate = evaluateGates(exec3, view2.number, config2, known, root2, view2.headRefOid, forge, ship.phase === "ready" ? 0 : void 0);
+function mergeDecision(exec3, root2, ship, view2, config2, known, forge, reads) {
+  const gate = evaluateGates(exec3, view2.number, config2, known, root2, view2.headRefOid, forge, ship.phase === "ready" ? 0 : void 0, Date.now, reads);
   const noChecks = gate.noChecks ? { noChecks: true } : {};
   const reviewed = latestVerdict(ship)?.sha;
   const commits = readCommitsSinceReview(exec3, root2, reviewed, view2.headRefOid, view2.baseRefOid, ship.housekeepingCommits);
@@ -135942,7 +136047,7 @@ ${item.acceptance}
             const { pendingCommit: _p, ...rest } = s;
             return rest;
           });
-          if (commit.refusal === "protected") return this.gate("protected-paths", `lane ${p.laneId}: ${commit.reason}; nothing was committed or pushed`);
+          if (commit.refusal === "protected") return this.gate("protected-paths", `lane ${p.laneId}: ${commit.reason}; nothing was committed or pushed. Rerun ${this.resume} to run the step again (the lane must leave those paths alone), or stop with ${cancelCommand(this.key)}`);
           if (commit.refusal === "gitlink" || commit.refusal === "escaped") return this.gate("sandbox-escaped", `${kind} lane ${p.laneId}: ${commit.reason}; nothing was committed or pushed`);
           return this.laneFailed(p.key, kind, `lane ${p.laneId}: ${commit.reason}`);
         }
@@ -136392,10 +136497,15 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           const configured = loaded2.config.requiredChecks.filter((c) => c !== LOCAL_GATE_CHECK);
           if (configured.length > 0 && JSON.stringify(loaded2.config.requiredChecks) !== JSON.stringify(DEFAULT_SHIP_CONFIG.requiredChecks)) this.o.warn?.(`omg factory run: the local forge ignores ship.requiredChecks ${configured.join(", ")}; the gates wait for ${LOCAL_GATE_CHECK} only`);
           loaded2 = { ...loaded2, config: { ...loaded2.config, requiredChecks: [LOCAL_GATE_CHECK], advisoryChecks: [] } };
-        } else if (loaded2.config.requiredChecks.length === 0 && this.forge?.kind !== "azure-devops") {
+        } else {
+          loaded2 = { ...loaded2, config: omgRepositoryFallback(loaded2.config, this.state.repoUrl) };
+        }
+        if (!local && loaded2.config.requiredChecks.length === 0 && this.forge?.kind !== "azure-devops") {
           const repo = this.githubReadContext()?.repo;
-          const required2 = (repo ? ghRequiredChecks(this.exec, repo, view2.baseRefName, this.o.root) : void 0) ?? [];
-          if (required2.length > 0) loaded2 = { ...loaded2, config: { ...loaded2.config, requiredChecks: required2, requiredChecksFrom: "branch-protection" } };
+          const required2 = repo ? ghRequiredCheckRules(this.exec, repo, view2.baseRefName, this.o.root) : void 0;
+          if (required2 && required2.names.length > 0) {
+            loaded2 = { ...loaded2, config: { ...loaded2.config, requiredChecks: required2.names, requiredChecksFrom: "branch-protection", ...Object.keys(required2.apps).length > 0 ? { requiredCheckApps: required2.apps } : {} } };
+          }
         }
         if (tracking() !== before) this.rebaseRecheck();
         this.gateCfg = { baseSha: view2.baseRefOid, loaded: loaded2 };
@@ -137334,6 +137444,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         const local = this.forge?.kind === "local";
         const forge = local ? this.localGateForge(this.forge) : this.forge;
         const deadline = this.clock() + this.o.limits.gatesTimeoutMs;
+        const reads = this.gateReads(view2);
         let out;
         for (; ; ) {
           if (local && !await this.ensureLocalGate(head)) return;
@@ -137347,6 +137458,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
               config: config2,
               known,
               ...forge ? { forge } : {},
+              ...reads ? { reads } : {},
               deadline,
               now: this.clock,
               sleep: this.o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))),
@@ -137359,7 +137471,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
               onReport: (r, note) => {
                 this.writeShip(pr, (cur) => ({ ...cur, lastGates: { verdict: r.verdict, at: this.iso(), failed: r.failed, pending: r.pending } }));
                 const named = r.pending.length > 0 ? ` (${r.pending.slice(0, 5).join(", ")}${r.pending.length > 5 ? ", ..." : ""})` : "";
-                this.progress.heartbeat("gates", `${note}; failed ${r.failed.length}, pending ${r.pending.length}${named}`, fields());
+                this.progress.heartbeat("gates", `${note}; failed ${r.failed.length}, pending ${r.pending.length}${named}${r.noHeadChecks ? `; ${noHeadChecksText(r.noHeadChecks)}` : ""}`, fields());
               },
               onWait: (note) => {
                 this.reload();
@@ -137399,7 +137511,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             this.gate("ci-flaky", `known-flaky failures at ${at} are out of rerun budget (${out.report.failed.join(", ")}); rerun the failed jobs by hand`);
             return;
           case "no-workflows":
-            this.gate("no-workflows", `no checks and no workflow runs exist for ${at}; push the branch with a token that triggers workflows, or close and reopen PR #${pr}`);
+            this.gate("no-workflows", `${out.report.noHeadChecks ? `${noHeadChecksText(out.report.noHeadChecks)} (head ${at})` : `no checks and no workflow runs exist for ${at}`}; push the branch with a token that triggers workflows (or enable Actions), or close and reopen PR #${pr}`);
             return;
           case "timeout":
             this.gate("gates-timeout", `gates did not settle within factory.run.gatesTimeoutMinutes ${Math.round(this.o.limits.gatesTimeoutMs / 6e4)} at ${at}${out.report ? ` (pending: ${out.report.pending.join(", ") || "none"})` : ""}`);
@@ -137433,7 +137545,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         if (ship.phase !== "ready") throw new FactoryStepError(`ship state for PR #${pr} is ${ship.phase}, not ready`);
         if (this.humanReviewParked(pr, head, ship)) return;
         const { config: config2, known } = this.gateConfig(view2);
-        const decision = mergeDecision(this.exec, this.o.root, ship, view2, config2, known, this.forge);
+        const decision = mergeDecision(this.exec, this.o.root, ship, view2, config2, known, this.forge, this.gateReads(view2));
         if (!decision.ok && decision.reasons.some((r) => r.startsWith("gates are "))) {
           const bounces = (this.state.mergeBounces ?? 0) + 1;
           this.save((x) => ({ ...x, mergeBounces: bounces }));
@@ -138170,6 +138282,26 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
       /** Whether this invocation's run uses the coding agent, and its keys (resolved once; its warning printed once). */
       agentChoice;
       /** The repository-only GitHub read context (the coding agent's status read): the run's repository as intake recorded it. */
+      /**
+       * The gates' GitHub reads (GateHeadReads) on a GitHub run, through the run
+       * guard's exact shapes on the run's repository: the base commit's checks
+       * (read once per base sha), the head's check suites and check-run apps.
+       * None on the local forge and Azure DevOps.
+       */
+      gateReads(view2) {
+        const repo = this.githubReadContext()?.repo;
+        if (!repo || this.forge?.kind === "local" || this.forge?.kind === "azure-devops") return void 0;
+        const base = view2.baseRefOid;
+        let baseChecks;
+        return {
+          baseChecks: () => {
+            baseChecks ??= { names: /^[0-9a-f]{40}$/.test(base) ? ghCommitCheckNames(this.exec, repo, base, this.o.root, true) : void 0 };
+            return baseChecks.names;
+          },
+          suites: (head) => ghCheckSuites(this.exec, repo, head, this.o.root),
+          runApps: (head) => ghCheckRunApps(this.exec, repo, head, this.o.root)
+        };
+      }
       githubReadContext() {
         const repo = this.state?.repoUrl ? codingAgentRepoOf(this.state.repoUrl) : void 0;
         return repo ? { repo: ghRepoArg(repo) } : void 0;

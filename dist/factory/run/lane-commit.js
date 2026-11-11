@@ -777,8 +777,12 @@ export function commitLaneWork(input) {
         if (outside.length > 0)
             return refuse('escaped', `staged paths resolve outside the worktree (through a link): ${outside.slice(0, 5).join(', ')}`);
         const hit = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...(input.extraProtected ?? [])]);
-        if (hit.length > 0)
-            return refuse('protected', `the lane changed merge-rule or lane-protected paths: ${hit.join(', ')}`);
+        if (hit.length > 0) {
+            // A CI definition decides which checks the gates require: only a human changes it, never a lane.
+            const ci = protectedChanges(hit, ['.github/workflows/', ...ADO_PIPELINE_PATHS, ...CI_DEFINITION_PATHS]);
+            const human = ci.length > 0 ? `. ${ci.join(', ')} ${ci.length === 1 ? 'is a CI definition path' : 'are CI definition paths'}, which a factory lane may never change: a human must make that change, in a commit or PR of their own outside the factory` : '';
+            return refuse('protected', `the lane changed merge-rule or lane-protected paths: ${hit.join(', ')}${human}`);
+        }
         const acked = new Set((input.secretAck ?? []).map(findingKey));
         // The commit message carries the lane's own summary: a token it quotes would be pushed with it.
         const messageFindings = secretShapeKinds(input.message).map((kind) => ({ path: SECRET_MESSAGE_PATH, kind }));
