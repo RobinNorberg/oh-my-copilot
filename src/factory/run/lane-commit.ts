@@ -68,8 +68,17 @@ const GIT_TIMEOUT_MS = 60_000;
 /** A commit message is cut at this many characters. */
 const MAX_MESSAGE_CHARS = 4_000;
 const HEX = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
-/** Untracked runtime state a lane's plugin hooks write in its worktree; never committed. */
-const RUNTIME_STATE_DIRS = ['state', 'sessions'].map((d) => `${OmcPaths.ROOT}/${d}`);
+/**
+ * oh-my-copilot's own runtime artifacts a lane's session and plugin hooks
+ * write in its worktree: everything under `.omg/` (state, sessions,
+ * notepad.md, project-memory.json with your home path in it, plans, research,
+ * logs, artifacts, handoffs, ultragoal, ...) except `.omg/skills/`, the
+ * documented committable exception. Skipped by the engine's staging, never
+ * committed or summarized; a lane that changed only these left no changes.
+ */
+export function isOmcRuntimePath(path: string): boolean {
+  return path.startsWith(`${OmcPaths.ROOT}/`) && !path.startsWith(`${OmcPaths.SKILLS}/`);
+}
 /** The link walk gives up (and the lane parks) past this many entries or this depth. */
 const MAX_WALK_ENTRIES = 200_000;
 const MAX_WALK_DEPTH = 64;
@@ -528,10 +537,9 @@ type Staged =
  */
 function stageEngineRead(input: LaneCommitInput, git: (args: string[], env?: NodeJS.ProcessEnv, stdin?: string | Buffer) => string, ignored: ReadonlySet<string>): Staged {
   const refuse = (refusal: LaneCommitRefusal, reason: string): Staged => ({ ok: false, refusal, reason });
-  const runtime = RUNTIME_STATE_DIRS.map((d) => `${d}/`);
   // Untrimmed: the first entry's status code may start with a space.
   const listed = statusPaths(runHostGit(input.worktree, [...worktreeGitDirArgs(input.worktree), '--no-optional-locks', '-c', 'core.untrackedCache=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all', '--no-renames'], GIT_TIMEOUT_MS))
-    .filter((p) => !runtime.some((d) => p.startsWith(d)) && !ignored.has(p.replace(/\/$/, '')))
+    .filter((p) => !isOmcRuntimePath(p) && !ignored.has(p.replace(/\/$/, '')))
     .sort();
   const start = treeEntries(git(['ls-tree', '-r', '-z', '--full-tree', input.start]));
   const nested = listed.filter((p) => p.endsWith('/'));

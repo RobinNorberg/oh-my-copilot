@@ -514,7 +514,7 @@ function checkoutChanges(root: string, checkout: string, raw: string): string[] 
     else ownTree = st.isDirectory() && existsSync(join(link, GATE_TREE_MARKER));
   } catch { /* no link */ }
   // Of the tree only untracked entries are dropped: a tracked file under node_modules the PR's code changed still counts.
-  const untracked = ownTree ? new Set(raw.split(' ').filter((r) => r.startsWith('?? ')).map((r) => r.slice(3))) : new Set<string>();
+  const untracked = ownTree ? new Set(raw.split('\0').filter((r) => r.startsWith('?? ')).map((r) => r.slice(3))) : new Set<string>();
   return parseStatusPaths(raw).filter((p) => p && !(ownLink && (p === 'node_modules' || p === 'node_modules/')) && !(untracked.has(p) && p.startsWith('node_modules/')));
 }
 
