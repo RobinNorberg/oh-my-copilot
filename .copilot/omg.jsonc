@@ -1,0 +1,28 @@
+// oh-my-copilot project config for this repository (read by `omg factory run` from the base commit).
+{
+  "factory": {
+    "run": {
+      "secretScan": {
+        // The test files that hold token-shaped fixture values (built at run time where they can be), found by running
+        // the lane-commit secret scan over the tracked tree. Exact files only: a broad glob would let a lane commit a
+        // real secret anywhere under it unscanned.
+        "allowPaths": [
+          "src/__tests__/copilot-notification-hook.test.ts",
+          "src/factory/heal/__tests__/debug.test.ts",
+          "src/factory/run/__tests__/lane-commit.staging.test.ts",
+          "src/factory/run/__tests__/sandbox-exec.test.ts",
+          "src/factory/setup/__tests__/e2e.test.ts",
+          "src/notifications/__tests__/redact.test.ts",
+          "src/smoke/replay/__tests__/redact.test.ts",
+          "dist/__tests__/copilot-notification-hook.test.js",
+          "dist/factory/heal/__tests__/debug.test.js",
+          "dist/factory/run/__tests__/lane-commit.staging.test.js",
+          "dist/factory/run/__tests__/sandbox-exec.test.js",
+          "dist/factory/setup/__tests__/e2e.test.js",
+          "dist/notifications/__tests__/redact.test.js",
+          "dist/smoke/replay/__tests__/redact.test.js"
+        ]
+      }
+    }
+  }
+}
