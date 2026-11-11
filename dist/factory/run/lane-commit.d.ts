@@ -23,12 +23,14 @@
  * worktree's HEAD move to the commit only from the value they started at.
  * The caller first proves the lane's process tree gone (lane-procs.ts).
  *
- * Refused before any commit: a lane that moved its HEAD, a new, changed or
- * removed gitlink (host git never enters a nested repository, so its content
- * is unreviewed; the engine reads each start gitlink's checked-out HEAD
- * itself), a link host git could follow out of the worktree, a changed
- * symlink placeholder (core.symlinks=false), a file over
- * LANE_FILE_MAX_BYTES, a merge-rule or lane-protected path, secret-shaped
+ * Refused before any commit: a lane that moved its HEAD, a new or changed
+ * gitlink (host git never enters a nested repository, so its content is
+ * unreviewed; the engine reads each start gitlink's checked-out HEAD
+ * itself; a submodule directory that is gone is committed as a deletion,
+ * as `add -A` did), a link host git could follow out of the worktree, a
+ * changed symlink placeholder (core.symlinks=false), a file over
+ * LANE_FILE_MAX_BYTES, changed files over LANE_COMMIT_MAX_BYTES together,
+ * a merge-rule or lane-protected path, secret-shaped
  * content in a changed file, a changed path's name or the commit message
  * (heal/sanitize.ts SECRET_SHAPES: a key or token the lane could have copied
  * in from outside its sandbox) unless acknowledged or allow-listed, and an
@@ -103,6 +105,11 @@ export interface LaneCommitInput {
     secretAck?: readonly SecretFinding[];
     /** Path globs the secret scan skips (factory.run.secretScan.allowPaths, trusted layers only: test fixtures). */
     secretAllowPaths?: readonly string[];
+    /** Test seam: lower limits (default LANE_COMMIT_MAX_BYTES and FAST_IMPORT_BATCH_BYTES). */
+    limits?: {
+        totalBytes?: number;
+        batchBytes?: number;
+    };
 }
 /**
  * A commit message from untrusted lane text: no control, format or bidi
@@ -120,11 +127,23 @@ export declare const secretPathLabel: (path: string) => string;
 export declare function pathGlobMatches(glob: string, path: string): boolean;
 /**
  * A changed file bigger than this is refused (`error`) instead of read: the
- * engine holds every changed file in memory (twice while it builds the
- * fast-import stream), so a multi-GB file would crash it. 100 MiB is
+ * engine holds every changed file in memory (and a batch of them twice
+ * while it builds a fast-import stream), so a multi-GB file would crash
+ * it. 100 MiB is
  * GitHub's own hard per-file limit: a bigger file could never be pushed.
  */
 export declare const LANE_FILE_MAX_BYTES: number;
+/**
+ * The changed files of one lane commit together (review-484b 6): over this
+ * the commit is refused (`error`) instead of read on. The engine keeps
+ * every changed file's bytes for the secret scan, so this bounds its memory;
+ * 1 GiB is half of GitHub's 2 GiB limit for one push (the run's push
+ * carries the lane commit), and no reviewable change of a coding lane comes
+ * near it.
+ */
+export declare const LANE_COMMIT_MAX_BYTES: number;
+/** The blobs go to git in `fast-import` streams of about this size, so the stream never doubles all the bytes at once. */
+export declare const FAST_IMPORT_BATCH_BYTES: number;
 /** One path of the lane's change, read by the engine (never by git). */
 type EngineRead = {
     kind: 'deleted';

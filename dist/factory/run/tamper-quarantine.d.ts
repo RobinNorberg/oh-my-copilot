@@ -18,14 +18,18 @@
  * - config, config.worktree, every worktrees/<id>/config.worktree and the
  *   submodules' config files: saved into the quarantine always. When every
  *   added, changed or removed key is on BENIGN_KEYS (keys that name no
- *   program: user.*, a branch's upstream, a remote's URLs and refspecs...)
- *   the file stays as it is: that is what a user's own `git push -u`,
- *   `git remote add` or `git config user.email` during the run writes. Any
- *   other key counts as program-running (an allowlist, so a key git adds
- *   later, or one like diff.external, is never missed): its old values are
- *   put back (`git config --file` on a copy; the whole old file when that
- *   cannot be done), and the undo command for the user's own change is in
- *   undo.txt.
+ *   program and redirect nothing: user.*, a branch's upstream, a remote's
+ *   tag and prune options...) the file stays as it is: that is what a
+ *   user's own `git push -u` or `git config user.email` during the run
+ *   writes. Any other key counts as program-running or redirecting (an
+ *   allowlist, so a key git adds later, or one like diff.external, is never
+ *   missed; a remote's url, pushurl and fetch are not on it, review-484b 1:
+ *   they send the user's next fetch, pull or push where the lane chose): its
+ *   old values are put back under git's own lock (`<file>.lock` created
+ *   exclusively, the file read again under it, the keys merged onto THAT
+ *   content with `git config --file` on a copy, written into the lock and
+ *   renamed over; the whole old file when a key cannot be merged exactly),
+ *   and the undo command for the user's own change is in undo.txt.
  * - refs: a created refs/replace/* is deleted (its value saved); every other
  *   ref change is only listed with the update-ref command that undoes it,
  *   because the user's own commit or branch switch during a run moves refs
@@ -34,9 +38,10 @@
  * renames the item into the quarantine (or `<name>.omg-quarantined` next to
  * it on another volume), which needs no read; an item that can be neither
  * saved nor restored is named STILL ACTIVE, and the rest go on. Nothing is
- * deleted that is not first saved. A restore writes a temporary file next to
- * the target and renames it over (atomic), and leaves the item alone while
- * git holds its `.lock`. A file the snapshot holds only as a hash (over
+ * deleted that is not first saved. A hook or info/ restore writes a
+ * temporary file next to the target and renames it over (atomic); a config
+ * restore goes through the lock above, and a lock someone else holds leaves
+ * that item STILL ACTIVE. A file the snapshot holds only as a hash (over
  * 1 MiB, unreadable) or a link is moved away but not written back.
  *
  * Every compare problem that is not a ref change, an allowlisted config
@@ -96,6 +101,8 @@ export declare const BENIGN_KEYS: readonly {
     why: string;
 }[];
 export declare const benignKey: (key: string) => boolean;
+/** The reason a config restore fails while someone else holds `<file>.lock`. */
+export declare const CONFIG_LOCKED = "git config is locked by another process";
 export interface QuarantineInput {
     ledgerDir: string;
     root: string;
@@ -108,6 +115,8 @@ export interface QuarantineInput {
     onlyRefs?: readonly string[];
     /** The compare's problems: each not handled here is named STILL ACTIVE and holds. */
     problems?: readonly string[];
+    /** Test seam: called right before a config file's lock is taken (where a concurrent `git config` would land). */
+    beforeConfigLock?: (abs: string) => void;
     run: string;
     gate: string;
     at: string;

@@ -4,14 +4,14 @@
  * active and holds. Real git in temp repos, no engine.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { defaultExec } from '../../../ship/exec.js';
 import { factoryGuardExec } from '../exec.js';
 import { compareSnapshots, RESTORE_SCOPE_KEY, snapshotRepo } from '../review-guard.js';
-import { BENIGN_KEYS, benignKey, quarantineTamper, readTamperHold, STILL_ACTIVE } from '../tamper-quarantine.js';
+import { BENIGN_KEYS, benignKey, CONFIG_LOCKED, quarantineTamper, readTamperHold, STILL_ACTIVE, tamperHoldMessage } from '../tamper-quarantine.js';
 const exec = factoryGuardExec(defaultExec);
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
 let dir;
@@ -97,17 +97,55 @@ describe('H1: config keys are an allowlist', () => {
         execFileSync('git', ['diff'], { cwd: root, stdio: 'pipe' });
         expect(existsSync(marker)).toBe(false);
     });
-    it('only allowlisted keys (user.email, a remote, a branch upstream): left in place, copied, no hold', () => {
+    it('only allowlisted keys (user.email, a remote\'s prune option, a branch upstream): left in place, copied, no hold', () => {
         const before = snapshotRepo(exec, root);
         git(root, 'config', 'user.email', 'me@example.invalid');
-        git(root, 'remote', 'add', 'fork', 'https://example.invalid/fork.git');
+        git(root, 'config', 'remote.fork.prune', 'true');
         git(root, 'config', 'branch.main.merge', 'refs/heads/main');
         const configNow = readFileSync(join(common, 'config'));
         const { hold } = quarantine(before);
         expect(hold.held).toBeUndefined();
-        expect(hold.kept.join('\n')).toMatch(/config \(only branch\.main\.merge, remote\.fork\.fetch, remote\.fork\.url, user\.email changed: allowlisted keys that name no program; left as it is; a copy is in /);
+        expect(hold.kept.join('\n')).toMatch(/config \(only branch\.main\.merge, remote\.fork\.prune, user\.email changed: allowlisted keys that name no program; left as it is; a copy is in /);
         expect(readFileSync(join(common, 'config')).equals(configNow)).toBe(true);
         expect(readTamperHold(ledgerDir, root)).toBeNull();
+    });
+    it('review-484b 1: remote.origin.url pointed at another repository + a replace-ref refspec are both put back and hold; without that a plain `git fetch` brings the replace ref in', () => {
+        // The user's real origin, there before the run.
+        const legit = join(dir, 'legit.git');
+        git(dir, 'clone', '-q', '--bare', root, legit);
+        git(root, 'remote', 'add', 'origin', legit.replace(/\\/g, '/'));
+        git(root, 'fetch', '-q', 'origin');
+        const victimHead = git(root, 'rev-parse', 'HEAD');
+        // The lane's repository: a replace ref that swaps the user's HEAD commit for one with other content.
+        const evil = join(dir, 'evil');
+        git(dir, 'clone', '-q', root, evil);
+        git(evil, 'config', 'user.email', 't@example.invalid');
+        git(evil, 'config', 'user.name', 't');
+        writeFileSync(join(evil, 'a.txt'), 'EVIL\n');
+        git(evil, 'commit', '-q', '-am', 'evil');
+        git(evil, 'replace', victimHead, git(evil, 'rev-parse', 'HEAD'));
+        const before = snapshotRepo(exec, root);
+        git(root, 'remote', 'set-url', 'origin', evil.replace(/\\/g, '/'));
+        git(root, 'config', 'remote.origin.fetch', '+refs/replace/*:refs/replace/*');
+        // Control: a copy of the repository as the lane left it; the user's next plain fetch takes the replace ref.
+        const control = join(dir, 'control');
+        cpSync(root, control, { recursive: true });
+        git(control, 'fetch', '-q');
+        expect(git(control, 'show', 'HEAD:a.txt')).toBe('EVIL');
+        const { hold } = quarantine(before);
+        expect(hold.held).toBe(true);
+        expect(hold.restored.join('\n')).toMatch(/^config \(remote\.origin\.fetch, remote\.origin\.url put back\)$/m);
+        expect(git(root, 'config', '--file', join(common, 'config'), '--get', 'remote.origin.url')).toBe(legit.replace(/\\/g, '/'));
+        expect(git(root, 'config', '--file', join(common, 'config'), '--get-all', 'remote.origin.fetch')).toBe('+refs/heads/*:refs/remotes/origin/*');
+        expect(hold.undo.join('\n')).toMatch(/config: if the change was yours, put your version back: cp /);
+        expect(readFileSync(join(hold.quarantine, 'config'), 'utf8')).toContain('refs/replace/');
+        // The message says the user's own `git remote set-url` triggers this, and how to clear it.
+        const message = tamperHoldMessage(ledgerDir, root);
+        expect(message).toContain('`git remote set-url`');
+        expect(message).toContain('omg factory run release --tamper');
+        git(root, 'fetch', '-q');
+        expect(git(root, 'for-each-ref', 'refs/replace/')).toBe('');
+        expect(git(root, 'show', 'HEAD:a.txt')).toBe('a');
     });
     it('a removed program key counts too, and an unknown key is never benign', () => {
         expect(benignKey('diff.external')).toBe(false);
@@ -116,6 +154,10 @@ describe('H1: config keys are an allowlist', () => {
         expect(benignKey('core.hookspath')).toBe(false);
         expect(benignKey('branch.main.mergeoptions')).toBe(false);
         expect(benignKey('remote.origin.uploadpack')).toBe(false);
+        expect(benignKey('remote.origin.url')).toBe(false);
+        expect(benignKey('remote.origin.pushurl')).toBe(false);
+        expect(benignKey('remote.origin.fetch')).toBe(false);
+        expect(benignKey('remote.origin.tagopt')).toBe(true);
         expect(benignKey('user.email')).toBe(true);
         expect(benignKey('branch.feat/x.y.remote')).toBe(true);
         expect(BENIGN_KEYS.every((b) => b.why.length > 0)).toBe(true);
@@ -228,11 +270,35 @@ describe('H3, L5, L6: each item on its own', () => {
         writeFileSync(join(common, 'hooks', 'pre-push'), '#!/bin/sh\necho planted\n', { mode: 0o755 });
         writeFileSync(join(common, 'config.lock'), '');
         const { hold } = quarantine(before);
-        expect(hold.active.join('\n')).toMatch(new RegExp(`^config: ${STILL_ACTIVE.replace(/[()]/g, '\\$&')}: .*config\\.lock exists`, 'm'));
+        expect(hold.active.join('\n')).toMatch(new RegExp(`^config: ${STILL_ACTIVE.replace(/[()]/g, '\\$&')}: it could not be moved or restored \\(${CONFIG_LOCKED}\\)`, 'm'));
+        // The lock someone else holds is theirs: left in place.
+        expect(existsSync(join(common, 'config.lock'))).toBe(true);
         expect(existsSync(join(common, 'hooks', 'pre-push'))).toBe(false);
         expect(readFileSync(join(common, 'config'), 'utf8')).toContain('evil');
         expect(hold.held).toBe(true);
         unlinkSync(join(common, 'config.lock'));
+    });
+    it('review-484b 3: a `git config` written between the first read and the restore survives; the restore merges onto the file as it is under the lock', () => {
+        const before = snapshotRepo(exec, root);
+        git(root, 'config', 'core.fsmonitor', 'evil');
+        const after = snapshotRepo(exec, root, '.omg', before);
+        let locked = false;
+        const hold = quarantineTamper({
+            ledgerDir, root, before, after, refsNow: after.refs, problems: compareSnapshots(before, after), run: '7', gate: 'lane-tampered', at: '2026-11-11T00:00:09.000Z',
+            beforeConfigLock: (abs) => {
+                // The user's own command, after the engine read the file and before it takes the lock.
+                git(root, 'config', '--file', abs, 'user.name', 'written meanwhile');
+                locked = true;
+            },
+        });
+        expect(locked).toBe(true);
+        expect(hold.active).toEqual([]);
+        expect(hold.restored.join('\n')).toMatch(/^config \(core\.fsmonitor put back\)$/m);
+        expect(git(root, 'config', '--file', join(common, 'config'), '--get', 'user.name')).toBe('written meanwhile');
+        expect(() => git(root, 'config', '--file', join(common, 'config'), '--get', 'core.fsmonitor')).toThrow();
+        expect(existsSync(join(common, 'config.lock'))).toBe(false);
+        // The copy of the user's version is the one read under the lock (it holds the later value too).
+        expect(readFileSync(join(hold.quarantine, 'config'), 'utf8')).toContain('written meanwhile');
     });
     it('a changed hook is restored atomically from the snapshot\'s bytes', () => {
         writeFileSync(join(common, 'hooks', 'pre-commit'), '#!/bin/sh\necho mine\n', { mode: 0o755 });

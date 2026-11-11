@@ -18,14 +18,18 @@
  * - config, config.worktree, every worktrees/<id>/config.worktree and the
  *   submodules' config files: saved into the quarantine always. When every
  *   added, changed or removed key is on BENIGN_KEYS (keys that name no
- *   program: user.*, a branch's upstream, a remote's URLs and refspecs...)
- *   the file stays as it is: that is what a user's own `git push -u`,
- *   `git remote add` or `git config user.email` during the run writes. Any
- *   other key counts as program-running (an allowlist, so a key git adds
- *   later, or one like diff.external, is never missed): its old values are
- *   put back (`git config --file` on a copy; the whole old file when that
- *   cannot be done), and the undo command for the user's own change is in
- *   undo.txt.
+ *   program and redirect nothing: user.*, a branch's upstream, a remote's
+ *   tag and prune options...) the file stays as it is: that is what a
+ *   user's own `git push -u` or `git config user.email` during the run
+ *   writes. Any other key counts as program-running or redirecting (an
+ *   allowlist, so a key git adds later, or one like diff.external, is never
+ *   missed; a remote's url, pushurl and fetch are not on it, review-484b 1:
+ *   they send the user's next fetch, pull or push where the lane chose): its
+ *   old values are put back under git's own lock (`<file>.lock` created
+ *   exclusively, the file read again under it, the keys merged onto THAT
+ *   content with `git config --file` on a copy, written into the lock and
+ *   renamed over; the whole old file when a key cannot be merged exactly),
+ *   and the undo command for the user's own change is in undo.txt.
  * - refs: a created refs/replace/* is deleted (its value saved); every other
  *   ref change is only listed with the update-ref command that undoes it,
  *   because the user's own commit or branch switch during a run moves refs
@@ -34,9 +38,10 @@
  * renames the item into the quarantine (or `<name>.omg-quarantined` next to
  * it on another volume), which needs no read; an item that can be neither
  * saved nor restored is named STILL ACTIVE, and the rest go on. Nothing is
- * deleted that is not first saved. A restore writes a temporary file next to
- * the target and renames it over (atomic), and leaves the item alone while
- * git holds its `.lock`. A file the snapshot holds only as a hash (over
+ * deleted that is not first saved. A hook or info/ restore writes a
+ * temporary file next to the target and renames it over (atomic); a config
+ * restore goes through the lock above, and a lock someone else holds leaves
+ * that item STILL ACTIVE. A file the snapshot holds only as a hash (over
  * 1 MiB, unreadable) or a link is moved away but not written back.
  *
  * Every compare problem that is not a ref change, an allowlisted config
@@ -58,7 +63,7 @@
  * so a run whose lanes work in another repository (a private store) passes
  * that repository's snapshot; the hold stays keyed on the checkout.
  */
-import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, copyFileSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { atomicWriteFileSync } from '../../lib/atomic-write.js';
 import { runHostGit } from '../../team/git-worktree.js';
@@ -79,7 +84,9 @@ export const BENIGN_KEYS = [
     { re: /^user\.[^.]+$/, why: 'who commits (name, email, the signing key name): the signing program is gpg.*, which is not on this list' },
     { re: /^branch\..+\.(?:remote|pushremote|merge|rebase|description)$/, why: 'a branch\'s upstream, push remote, pull mode and description (`git push -u`, `git branch -u`); none names a program' },
     { re: /^branch\..+\.vscode-merge-base$/, why: 'written by VS Code when it creates a branch; git never reads it' },
-    { re: /^remote\..+\.(?:url|pushurl|fetch|tagopt|prune|prunetags)$/, why: 'a remote\'s URLs and refspecs (`git remote add`): a `<x>::` URL runs git-remote-<x> from your PATH only, ext:: stays off unless protocol.* allows it, and protocol.*, uploadpack and receivepack are not on this list' },
+    // Not url, pushurl or fetch (review-484b 1): they send the user's next push to a host the lane picks, or fetch its
+    // commits and refs (refs/replace/* too) into the user's repository on the next plain `git fetch` or `git pull`.
+    { re: /^remote\..+\.(?:tagopt|prune|prunetags)$/, why: 'which tags a fetch follows and whether it prunes gone remote branches, from the remote the user configured into its own remote-tracking refs' },
     { re: /^remote\..+\.gh-resolved$/, why: 'written by the GitHub CLI to pick the base remote; git never reads it' },
     { re: /^maintenance\.(?:auto|strategy|[^.]+\.(?:enabled|schedule))$/, why: '`git maintenance start` writes them; they pick only git\'s own built-in tasks' },
 ];
@@ -201,6 +208,65 @@ function assertParentsReal(common, rel) {
             throw new Error(`${dir} is not a real directory`);
     }
 }
+/** The reason a config restore fails while someone else holds `<file>.lock`. */
+export const CONFIG_LOCKED = 'git config is locked by another process';
+/**
+ * Rewrite the config file `abs` under git's own lock protocol (review-484b
+ * 3): `<abs>.lock` created with O_EXCL (held: CONFIG_LOCKED), the file read
+ * again under the lock, `compute` on THAT content (null: the file goes),
+ * written into the lock file and renamed over the file. A `git config` that
+ * ran after the engine first read the file is kept; one that runs now fails
+ * on the lock, as between two git commands.
+ */
+function restoreConfigLocked(abs, compute) {
+    const lock = `${abs}.lock`;
+    let fd;
+    try {
+        fd = openSync(lock, 'wx', 0o644);
+    }
+    catch (error) {
+        if (error.code === 'EEXIST')
+            throw new Error(CONFIG_LOCKED);
+        throw error;
+    }
+    try {
+        let locked = null;
+        try {
+            locked = readFileSync(abs);
+        }
+        catch (error) {
+            if (error.code !== 'ENOENT')
+                throw error;
+        }
+        const out = compute(locked);
+        if (out === null) {
+            closeSync(fd);
+            fd = undefined;
+            if (locked !== null)
+                unlinkSync(abs);
+            unlinkSync(lock);
+            return;
+        }
+        writeSync(fd, out);
+        fsyncSync(fd);
+        closeSync(fd);
+        fd = undefined;
+        renameSync(lock, abs);
+    }
+    catch (error) {
+        if (fd !== undefined) {
+            try {
+                closeSync(fd);
+            }
+            catch { /* already closed */ }
+        }
+        try {
+            unlinkSync(lock);
+        }
+        catch { /* renamed or gone */ }
+        throw error;
+    }
+}
 /** Write `bytes` at `abs` atomically (temp file next to it, then rename); refuses while git holds `<abs>.lock`. */
 function atomicRestore(abs, bytes, exec) {
     if (existsSync(`${abs}.lock`))
@@ -294,6 +360,8 @@ function problemStatus(p, touched, before, after) {
     return 'unhandled';
 }
 function advice(p, common) {
+    if (/^lane \S+'s process/.test(p))
+        return 'make sure no process of that lane still runs (copilot, node, git or a shell started from its worktree: Task Manager or ps) before you release the hold; one that runs can change .git again';
     if (/global git config/.test(p))
         return 'check ~/.gitconfig, $XDG_CONFIG_HOME/git/config and every include.path / includeIf target they or the repository config name, and remove what you did not add';
     if (/^an ignored file in the main checkout changed/.test(p))
@@ -385,18 +453,33 @@ export function quarantineTamper(i) {
                             return false;
                         }
                         const to = saveBytes(rel, current);
-                        const merged = old !== null ? putKeysBack(current, old, program, tmp) : null;
                         assertParentsReal(common, rel);
-                        if (merged)
-                            atomicRestore(abs, merged, false);
-                        else if (old !== null)
-                            atomicRestore(abs, old, false);
-                        else {
-                            unlinkSync(abs);
+                        i.beforeConfigLock?.(abs);
+                        // Under the lock, on the file as it is NOW: which keys go back, and the merge (a later `git config` stays).
+                        let putBack = program;
+                        let exact = false;
+                        restoreConfigLocked(abs, (locked) => {
+                            if (locked === null)
+                                return old;
+                            // The user's version as it is now (it may hold a key written since the first read).
+                            if (!locked.equals(current))
+                                writeFileSync(to, locked);
+                            const keysNow = changedKeys(old, locked, tmp);
+                            if (keysNow !== null) {
+                                putBack = keysNow.filter((k) => !benignKey(k));
+                                if (putBack.length === 0) {
+                                    exact = true;
+                                    return locked;
+                                }
+                            }
+                            const out = keysNow !== null && old !== null ? putKeysBack(locked, old, putBack, tmp) : null;
+                            exact = out !== null;
+                            return out ?? old;
+                        });
+                        if (old === null)
                             hold.moved.push(rel);
-                        }
-                        if (old !== null)
-                            hold.restored.push(`${rel} (${program.slice(0, 5).join(', ')}${program.length > 5 ? ', ...' : ''} put back${merged ? '' : '; the whole file, so other changes to it are only in the copy'})`);
+                        else
+                            hold.restored.push(`${rel} (${putBack.slice(0, 5).join(', ')}${putBack.length > 5 ? ', ...' : ''} put back${exact ? '' : '; the whole file, so other changes to it are only in the copy'})`);
                         hold.undo.push(`${rel}: if the change was yours, put your version back: cp "${to}" "${abs}"`);
                         return false;
                     }
@@ -576,7 +659,7 @@ export function tamperHoldMessage(ledgerDir, root) {
     if (hold === 'unreadable')
         return `a tamper hold is set on this checkout (${path}, unreadable), so no factory run starts here; check the repository's .git (hooks, config, info, refs), then run ${RELEASE_TAMPER_COMMAND}`;
     const active = hold.active ?? [];
-    return `a tamper hold is set on this checkout since ${hold.at} (run ${hold.run} parked at ${hold.gate}), so no factory run starts here${hold.quarantine ? `; what changed in .git is in ${hold.quarantine}` : ''}${active.length ? `; ${active.length} item(s) are ${STILL_ACTIVE}: ${active.slice(0, 3).join('; ')}` : ''}. Your own change during that run (a git config key, a hook husky or an editor installed) triggers this too: put it back with the cp command in undo.txt in that folder if it was yours. Then run ${RELEASE_TAMPER_COMMAND}`;
+    return `a tamper hold is set on this checkout since ${hold.at} (run ${hold.run} parked at ${hold.gate}), so no factory run starts here${hold.quarantine ? `; what changed in .git is in ${hold.quarantine}` : ''}${active.length ? `; ${active.length} item(s) are ${STILL_ACTIVE}: ${active.slice(0, 3).join('; ')}` : ''}. Your own change during that run (a git config key, \`git remote add\` or \`git remote set-url\` included, a hook husky or an editor installed) triggers this too: put it back with the cp command in undo.txt in that folder if it was yours. Then run ${RELEASE_TAMPER_COMMAND}`;
 }
 /** `release --tamper`: the hold's report lines, after the hold file is removed; null when there was none. */
 export function releaseTamperHold(ledgerDir, root) {

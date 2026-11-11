@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readWorktreeGitLinks, recordWorktreeGitLinks, runHostGit, worktreeGitDirArgs } from '../../../team/git-worktree.js';
-import { commitLaneWork, engineRead, LANE_FILE_MAX_BYTES, pathGlobMatches } from '../lane-commit.js';
+import { commitLaneWork, engineRead, LANE_COMMIT_MAX_BYTES, LANE_FILE_MAX_BYTES, pathGlobMatches } from '../lane-commit.js';
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
 // A fake token of the github-token shape, built so this source file never holds one.
 const TOKEN = ['ghp', 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8'].join('_');
@@ -238,14 +238,16 @@ describe('review-484 M1, M2: what `add -A` refused before is still refused', () 
         expect(res).toMatchObject({ ok: false, refusal: 'gitlink' });
         expect(res.reason).toMatch(/sub \(checked out at [0-9a-f]{12}, not [0-9a-f]{12}\)/);
     });
-    it('a gitlink whose directory is gone refuses `gitlink`', () => {
+    it('a gitlink whose directory is gone is committed as a deletion: the tree equals the one `add -A` staged (review-484b 5)', () => {
         withSubmodule();
         const { worktree, start } = laneTree();
         rmSync(join(worktree, 'sub'), { recursive: true, force: true });
         writeFileSync(join(worktree, 'a.txt'), 'b\n');
+        const expected = addAllTree(worktree, start);
+        expect(git(root, 'ls-tree', expected, 'sub')).toBe('');
         const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: root, branch: null, message: 'x' });
-        expect(res).toMatchObject({ ok: false, refusal: 'gitlink' });
-        expect(res.reason).toContain('sub (its directory is gone)');
+        expect(res.ok, JSON.stringify(res)).toBe(true);
+        expect(treeOf(res.sha)).toBe(expected);
     });
     it('a symlink placeholder (core.symlinks=false) the lane edited refuses `escaped`, as the old 120000 check did', () => {
         commitAll({ 'a.txt': 'a\n' });
@@ -318,6 +320,22 @@ describe('review-484 M4, L3: the commit message, path names, a huge file', () =>
         const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: root, branch: null, message: 'x' });
         expect(res).toMatchObject({ ok: false, refusal: 'error' });
         expect(res.reason).toBe(`big.bin is ${LANE_FILE_MAX_BYTES + 1} bytes, over the lane commit's per-file limit of ${LANE_FILE_MAX_BYTES} bytes (GitHub refuses files over 100 MiB); nothing was committed`);
+    });
+    it('changed files over the total limit together are refused with a fixed reason; under it, blobs go in several fast-import batches and the tree equals `add -A` (review-484b 6)', () => {
+        expect(LANE_COMMIT_MAX_BYTES).toBe(1024 * 1024 * 1024);
+        commitAll({ 'a.txt': 'a\n' });
+        const { worktree, start } = laneTree();
+        for (const name of ['one.txt', 'two.txt', 'three.txt'])
+            writeFileSync(join(worktree, name), `${name} 0123456789\n`);
+        const over = commitLaneWork({ worktree, start, parents: [start], repoRoot: root, branch: null, message: 'x', limits: { totalBytes: 40 } });
+        expect(over).toMatchObject({ ok: false, refusal: 'error' });
+        expect(over.reason).toBe('the lane\'s changed files are over the lane commit\'s total limit of 40 bytes; nothing was committed');
+        expect(git(root, 'rev-parse', 'HEAD')).toBe(start);
+        // A batch of at most 20 bytes: one file per fast-import.
+        const expected = addAllTree(worktree, start);
+        const ok = commitLaneWork({ worktree, start, parents: [start], repoRoot: root, branch: null, message: 'x', limits: { totalBytes: 100, batchBytes: 20 } });
+        expect(ok.ok, JSON.stringify(ok)).toBe(true);
+        expect(treeOf(ok.sha)).toBe(expected);
     });
 });
 //# sourceMappingURL=lane-commit.staging.test.js.map

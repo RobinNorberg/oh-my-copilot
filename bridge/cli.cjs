@@ -120032,12 +120032,18 @@ function stageEngineRead(input, git7, ignored) {
     if (e.mode !== "160000") continue;
     const at = gitlinkHead(input.worktree, path30);
     if (at.kind === "unchecked" || at.kind === "not-dir" || at.kind === "head" && at.sha === e.sha) continue;
-    movedGitlinks.push(`${path30} (${at.kind === "head" ? `checked out at ${at.sha.slice(0, 12)}, not ${e.sha.slice(0, 12)}` : at.kind === "absent" ? "its directory is gone" : at.why})`);
+    if (at.kind === "absent") {
+      deleted.push(path30);
+      continue;
+    }
+    movedGitlinks.push(`${path30} (${at.kind === "head" ? `checked out at ${at.sha.slice(0, 12)}, not ${e.sha.slice(0, 12)}` : at.why})`);
   }
   if (movedGitlinks.length > 0) {
-    return refuse("gitlink", `the lane changed or removed nested repositories (gitlinks): ${movedGitlinks.slice(0, 5).join(", ")}; host git does not enter them, so their content is not reviewed`);
+    return refuse("gitlink", `the lane changed nested repositories (gitlinks): ${movedGitlinks.slice(0, 5).join(", ")}; host git does not enter them, so their content is not reviewed`);
   }
   const realRoot = import_node_fs27.realpathSync.native(input.worktree);
+  const maxTotal = input.limits?.totalBytes ?? LANE_COMMIT_MAX_BYTES;
+  let total = 0;
   for (const path30 of listed2) {
     const read = engineRead(input.worktree, path30, realRoot);
     const was = start.get(path30);
@@ -120060,6 +120066,8 @@ function stageEngineRead(input, git7, ignored) {
       hardLinked.push(path30);
       continue;
     }
+    total += read.bytes.length;
+    if (total > maxTotal) return refuse("error", `the lane's changed files are over the lane commit's total limit of ${maxTotal} bytes; nothing was committed`);
     const mode = fileMode ? read.exec ? "100755" : "100644" : was?.mode === "100755" ? "100755" : "100644";
     files.push({ path: path30, mode, bytes: read.bytes });
   }
@@ -120093,19 +120101,25 @@ function stageEngineRead(input, git7, ignored) {
       if (!HEX.test(sha3)) throw new Error(`git hash-object printed ${JSON.stringify(sha3.slice(0, 80))}`);
       shas.set(f.path, sha3);
     }
-    if (raw.length > 0) {
+    const batchBytes = input.limits?.batchBytes ?? FAST_IMPORT_BATCH_BYTES;
+    for (let from = 0; from < raw.length; ) {
+      let to = from;
+      let size = 0;
+      while (to < raw.length && (to === from || size + raw[to].bytes.length <= batchBytes)) size += raw[to++].bytes.length;
+      const batch = raw.slice(from, to);
       const marks = (0, import_node_path33.join)(tmp, "marks");
-      const stream = Buffer.concat([...raw.flatMap((f, i) => [Buffer.from(`blob
+      const stream = Buffer.concat([...batch.flatMap((f, i) => [Buffer.from(`blob
 mark :${i + 1}
 data ${f.bytes.length}
 `), f.bytes, Buffer.from("\n")]), Buffer.from("done\n")]);
       git7(["fast-import", "--quiet", "--done", `--export-marks=${marks}`], env2, stream);
       const byMark = new Map((0, import_node_fs27.readFileSync)(marks, "utf8").split("\n").map((l) => /^:(\d+) ([0-9a-f]+)$/.exec(l.trim())).filter((m) => m !== null).map((m) => [Number(m[1]), m[2]]));
-      raw.forEach((f, i) => {
+      batch.forEach((f, i) => {
         const sha3 = byMark.get(i + 1);
         if (!sha3 || !HEX.test(sha3)) throw new Error(`git fast-import wrote no blob for ${f.path}`);
         shas.set(f.path, sha3);
       });
+      from = to;
     }
     const zero = "0".repeat(input.start.length);
     const info = [...deleted.map((p) => `0 ${zero}	${p}\0`), ...files.map((f) => `${f.mode} ${shas.get(f.path)}	${f.path}\0`)].join("");
@@ -120202,7 +120216,7 @@ function conflictFixStart(repoRoot3, head, base, message4) {
   if (!HEX.test(sha3)) throw new Error(`git commit-tree printed ${JSON.stringify(sha3.slice(0, 80))}`);
   return { sha: sha3, conflicted: [...new Set(conflicted)] };
 }
-var import_node_crypto15, import_node_fs27, import_node_os8, import_node_path33, ENGINE_COMMIT_IDENTITY, GIT_TIMEOUT_MS3, MAX_MESSAGE_CHARS, HEX, RUNTIME_STATE_DIRS, MAX_WALK_ENTRIES, MAX_WALK_DEPTH, ADO_PIPELINE_PATHS, LANE_PROTECTED_PATHS, errText3, CI_SKIP, TRAILER, ANY_LINE_TRAILER, findingKey, SECRET_MESSAGE_PATH, secretPathLabel, LANE_FILE_MAX_BYTES, gone;
+var import_node_crypto15, import_node_fs27, import_node_os8, import_node_path33, ENGINE_COMMIT_IDENTITY, GIT_TIMEOUT_MS3, MAX_MESSAGE_CHARS, HEX, RUNTIME_STATE_DIRS, MAX_WALK_ENTRIES, MAX_WALK_DEPTH, ADO_PIPELINE_PATHS, LANE_PROTECTED_PATHS, errText3, CI_SKIP, TRAILER, ANY_LINE_TRAILER, findingKey, SECRET_MESSAGE_PATH, secretPathLabel, LANE_FILE_MAX_BYTES, LANE_COMMIT_MAX_BYTES, FAST_IMPORT_BATCH_BYTES, gone;
 var init_lane_commit = __esm({
   "src/factory/run/lane-commit.ts"() {
     "use strict";
@@ -120232,6 +120246,8 @@ var init_lane_commit = __esm({
     SECRET_MESSAGE_PATH = "(commit message)";
     secretPathLabel = (path30) => `(the name of a changed path, sha256 ${(0, import_node_crypto15.createHash)("sha256").update(path30).digest("hex").slice(0, 12)})`;
     LANE_FILE_MAX_BYTES = 100 * 1024 * 1024;
+    LANE_COMMIT_MAX_BYTES = 1024 * 1024 * 1024;
+    FAST_IMPORT_BATCH_BYTES = 64 * 1024 * 1024;
     gone = (err) => ["ENOENT", "ENOTDIR"].includes(err.code ?? "");
   }
 });
@@ -130952,6 +130968,49 @@ function assertParentsReal(common, rel) {
     if (st.isSymbolicLink() || !st.isDirectory()) throw new Error(`${dir} is not a real directory`);
   }
 }
+function restoreConfigLocked(abs, compute) {
+  const lock = `${abs}.lock`;
+  let fd;
+  try {
+    fd = (0, import_node_fs32.openSync)(lock, "wx", 420);
+  } catch (error2) {
+    if (error2.code === "EEXIST") throw new Error(CONFIG_LOCKED);
+    throw error2;
+  }
+  try {
+    let locked = null;
+    try {
+      locked = (0, import_node_fs32.readFileSync)(abs);
+    } catch (error2) {
+      if (error2.code !== "ENOENT") throw error2;
+    }
+    const out = compute(locked);
+    if (out === null) {
+      (0, import_node_fs32.closeSync)(fd);
+      fd = void 0;
+      if (locked !== null) (0, import_node_fs32.unlinkSync)(abs);
+      (0, import_node_fs32.unlinkSync)(lock);
+      return;
+    }
+    (0, import_node_fs32.writeSync)(fd, out);
+    (0, import_node_fs32.fsyncSync)(fd);
+    (0, import_node_fs32.closeSync)(fd);
+    fd = void 0;
+    (0, import_node_fs32.renameSync)(lock, abs);
+  } catch (error2) {
+    if (fd !== void 0) {
+      try {
+        (0, import_node_fs32.closeSync)(fd);
+      } catch {
+      }
+    }
+    try {
+      (0, import_node_fs32.unlinkSync)(lock);
+    } catch {
+    }
+    throw error2;
+  }
+}
 function atomicRestore(abs, bytes, exec3) {
   if ((0, import_node_fs32.existsSync)(`${abs}.lock`)) throw new Error(`${(0, import_node_path38.basename)(abs)}.lock exists (a git command is writing it), so it was not restored`);
   let st;
@@ -131016,6 +131075,7 @@ function problemStatus(p, touched, before, after) {
   return "unhandled";
 }
 function advice(p, common) {
+  if (/^lane \S+'s process/.test(p)) return "make sure no process of that lane still runs (copilot, node, git or a shell started from its worktree: Task Manager or ps) before you release the hold; one that runs can change .git again";
   if (/global git config/.test(p)) return "check ~/.gitconfig, $XDG_CONFIG_HOME/git/config and every include.path / includeIf target they or the repository config name, and remove what you did not add";
   if (/^an ignored file in the main checkout changed/.test(p)) return "check .env*, .npmrc, .yarnrc, .yarnrc.yml and node_modules/.bin in the checkout (they also run on your next npm or yarn command) and remove what you did not add";
   if (/snapshot failed/.test(p)) return `the engine could not tell what changed: check ${common} (config, hooks, info, refs) by hand`;
@@ -131070,15 +131130,27 @@ function quarantineTamper(i) {
               return false;
             }
             const to = saveBytes2(rel, current);
-            const merged = old !== null ? putKeysBack(current, old, program3, tmp) : null;
             assertParentsReal(common, rel);
-            if (merged) atomicRestore(abs, merged, false);
-            else if (old !== null) atomicRestore(abs, old, false);
-            else {
-              (0, import_node_fs32.unlinkSync)(abs);
-              hold.moved.push(rel);
-            }
-            if (old !== null) hold.restored.push(`${rel} (${program3.slice(0, 5).join(", ")}${program3.length > 5 ? ", ..." : ""} put back${merged ? "" : "; the whole file, so other changes to it are only in the copy"})`);
+            i.beforeConfigLock?.(abs);
+            let putBack = program3;
+            let exact = false;
+            restoreConfigLocked(abs, (locked) => {
+              if (locked === null) return old;
+              if (!locked.equals(current)) (0, import_node_fs32.writeFileSync)(to, locked);
+              const keysNow = changedKeys(old, locked, tmp);
+              if (keysNow !== null) {
+                putBack = keysNow.filter((k) => !benignKey(k));
+                if (putBack.length === 0) {
+                  exact = true;
+                  return locked;
+                }
+              }
+              const out = keysNow !== null && old !== null ? putKeysBack(locked, old, putBack, tmp) : null;
+              exact = out !== null;
+              return out ?? old;
+            });
+            if (old === null) hold.moved.push(rel);
+            else hold.restored.push(`${rel} (${putBack.slice(0, 5).join(", ")}${putBack.length > 5 ? ", ..." : ""} put back${exact ? "" : "; the whole file, so other changes to it are only in the copy"})`);
             hold.undo.push(`${rel}: if the change was yours, put your version back: cp "${to}" "${abs}"`);
             return false;
           }
@@ -131244,7 +131316,7 @@ function tamperHoldMessage(ledgerDir, root2) {
   const path30 = tamperHoldPath(ledgerDir, root2);
   if (hold === "unreadable") return `a tamper hold is set on this checkout (${path30}, unreadable), so no factory run starts here; check the repository's .git (hooks, config, info, refs), then run ${RELEASE_TAMPER_COMMAND}`;
   const active = hold.active ?? [];
-  return `a tamper hold is set on this checkout since ${hold.at} (run ${hold.run} parked at ${hold.gate}), so no factory run starts here${hold.quarantine ? `; what changed in .git is in ${hold.quarantine}` : ""}${active.length ? `; ${active.length} item(s) are ${STILL_ACTIVE}: ${active.slice(0, 3).join("; ")}` : ""}. Your own change during that run (a git config key, a hook husky or an editor installed) triggers this too: put it back with the cp command in undo.txt in that folder if it was yours. Then run ${RELEASE_TAMPER_COMMAND}`;
+  return `a tamper hold is set on this checkout since ${hold.at} (run ${hold.run} parked at ${hold.gate}), so no factory run starts here${hold.quarantine ? `; what changed in .git is in ${hold.quarantine}` : ""}${active.length ? `; ${active.length} item(s) are ${STILL_ACTIVE}: ${active.slice(0, 3).join("; ")}` : ""}. Your own change during that run (a git config key, \`git remote add\` or \`git remote set-url\` included, a hook husky or an editor installed) triggers this too: put it back with the cp command in undo.txt in that folder if it was yours. Then run ${RELEASE_TAMPER_COMMAND}`;
 }
 function releaseTamperHold(ledgerDir, root2) {
   const hold = readTamperHold(ledgerDir, root2);
@@ -131272,7 +131344,7 @@ function releaseTamperHold(ledgerDir, root2) {
   lines4.push("hold cleared: factory runs start again in this checkout");
   return lines4;
 }
-var import_node_fs32, import_node_path38, repoKey, tamperHoldPath, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, BENIGN_KEYS, benignKey, valuesByKey, decode2, isConfigRel, realDir, errText5, LINKS_DIR;
+var import_node_fs32, import_node_path38, repoKey, tamperHoldPath, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, BENIGN_KEYS, benignKey, valuesByKey, decode2, isConfigRel, realDir, errText5, CONFIG_LOCKED, LINKS_DIR;
 var init_tamper_quarantine = __esm({
   "src/factory/run/tamper-quarantine.ts"() {
     "use strict";
@@ -131290,7 +131362,9 @@ var init_tamper_quarantine = __esm({
       { re: /^user\.[^.]+$/, why: "who commits (name, email, the signing key name): the signing program is gpg.*, which is not on this list" },
       { re: /^branch\..+\.(?:remote|pushremote|merge|rebase|description)$/, why: "a branch's upstream, push remote, pull mode and description (`git push -u`, `git branch -u`); none names a program" },
       { re: /^branch\..+\.vscode-merge-base$/, why: "written by VS Code when it creates a branch; git never reads it" },
-      { re: /^remote\..+\.(?:url|pushurl|fetch|tagopt|prune|prunetags)$/, why: "a remote's URLs and refspecs (`git remote add`): a `<x>::` URL runs git-remote-<x> from your PATH only, ext:: stays off unless protocol.* allows it, and protocol.*, uploadpack and receivepack are not on this list" },
+      // Not url, pushurl or fetch (review-484b 1): they send the user's next push to a host the lane picks, or fetch its
+      // commits and refs (refs/replace/* too) into the user's repository on the next plain `git fetch` or `git pull`.
+      { re: /^remote\..+\.(?:tagopt|prune|prunetags)$/, why: "which tags a fetch follows and whether it prunes gone remote branches, from the remote the user configured into its own remote-tracking refs" },
       { re: /^remote\..+\.gh-resolved$/, why: "written by the GitHub CLI to pick the base remote; git never reads it" },
       { re: /^maintenance\.(?:auto|strategy|[^.]+\.(?:enabled|schedule))$/, why: "`git maintenance start` writes them; they pick only git's own built-in tasks" }
     ];
@@ -131311,6 +131385,7 @@ var init_tamper_quarantine = __esm({
       }
     };
     errText5 = (error2) => error2 instanceof Error ? error2.message : String(error2);
+    CONFIG_LOCKED = "git config is locked by another process";
     LINKS_DIR = ".links";
   }
 });
@@ -134498,11 +134573,18 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           ].filter(Boolean).join("; ");
           const where = hold.quarantine ? ` (${hold.quarantine})` : "";
           if (!hold.held) {
-            return `${note}. Tamper quarantine${where}: ${did}. Only refs, config keys on the allowlist of keys that name no program (user.*, a branch's upstream, a remote's URLs and refspecs) or files that run nothing changed, so no hold was set; if a listed change was not yours, undo it with the command shown (refs.txt in that folder)`;
+            return `${note}. Tamper quarantine${where}: ${did}. Only refs, config keys on the allowlist of keys that name no program and redirect nothing (user.*, a branch's upstream, a remote's tag and prune options) or files that run nothing changed, so no hold was set; if a listed change was not yours, undo it with the command shown (refs.txt in that folder)`;
           }
-          return `${note}. Tamper quarantine${where}: ${did}. New factory runs in this checkout are held until ${RELEASE_TAMPER_COMMAND}${active.length ? " (deal with what is still active first)" : ""}. Your own change during the run (a git config key, a hook husky or an editor installed) triggers this too: if it was yours, put it back with the cp command in undo.txt in the quarantine folder`;
+          return `${note}. Tamper quarantine${where}: ${did}. New factory runs in this checkout are held until ${RELEASE_TAMPER_COMMAND}${active.length ? " (deal with what is still active first)" : ""}. Your own change during the run (a git config key, \`git remote add\` or \`git remote set-url\` included, a hook husky or an editor installed) triggers this too: if it was yours, put it back with the cp command in undo.txt in the quarantine folder`;
         } catch (error2) {
-          return `${note}. The tamper quarantine failed (${errText6(error2)}); .git was left as it is`;
+          const ledgerDir = this.o.ledgerDir ?? defaultLedgerDir();
+          const failed3 = `the tamper quarantine failed (${errText6(error2)}); nothing in .git was quarantined or restored`;
+          try {
+            writeTamperHold(ledgerDir, this.o.root, { root: (0, import_path197.resolve)(this.o.root), at: this.iso(), run: String(this.key), gate, moved: [], restored: [], notRestored: [], refs: [], failed: failed3, held: true });
+          } catch (holdError) {
+            return `${note}. The tamper quarantine failed (${errText6(error2)}) and the hold could not be written either (${errText6(holdError)}); .git was left as it is: check its config, hooks, info and refs by hand before you run the factory here again`;
+          }
+          return `${note}. The tamper quarantine failed (${errText6(error2)}); .git was left as it is, so new factory runs in this checkout are held until ${RELEASE_TAMPER_COMMAND}: check .git's config, hooks, info and refs by hand first`;
         }
       }
       /**
@@ -134519,10 +134601,10 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         try {
           const proof = await (this.o.processes ?? defaultLaneProcessOps).treeGone(lane?.process, lane?.worktree ?? null);
           if (proof.kind === "survivors") problems.push(`lane ${laneId}'s process(es) pid ${proof.pids.join(", ")} still run after the engine killed them`);
-          else if (proof.kind === "unproven") note = `. The lane's process tree could not be proven gone (${proof.why}); the job's own tree kill ran`;
+          else if (proof.kind === "unproven") problems.push(`lane ${laneId}'s process tree could not be proven gone (${proof.why}; the job's own tree kill ran)`);
           else if (proof.killed.length > 0) note = `. The engine killed process(es) left from lane ${laneId}'s tree first (pid ${proof.killed.join(", ")})`;
         } catch (error2) {
-          note = `. The lane's process tree could not be checked (${errText6(error2)})`;
+          problems.push(`lane ${laneId}'s process tree could not be checked (${errText6(error2)})`);
         }
         if (!after) return { problems, note };
         try {
