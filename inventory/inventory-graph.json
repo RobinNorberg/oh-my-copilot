@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "788af88bc3cb87b4f093c38b50ffa74de89dc078",
-    "sourceSha256": "cd764504b1adec0f876e56f3e56994ffef1a2b96ab8b43c3671f919f7873d0e3",
+    "head": "ea0d89a9db5efec33b411a7bd73d5d7bfe590fcd",
+    "sourceSha256": "363ca2ac721f806b4fe8607a0152545d804063e44b8b9f9ef1e547deffe2a877",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "788af88bc3cb87b4f093c38b50ffa74de89dc078",
-  "sourceSha256": "cd764504b1adec0f876e56f3e56994ffef1a2b96ab8b43c3671f919f7873d0e3",
+  "head": "ea0d89a9db5efec33b411a7bd73d5d7bfe590fcd",
+  "sourceSha256": "363ca2ac721f806b4fe8607a0152545d804063e44b8b9f9ef1e547deffe2a877",
   "counts": {
     "public": {
       "skills": 98,
@@ -83607,6 +83607,11 @@
       },
       {
         "from": "src/copilot-run/__tests__/sandbox.state-deny.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/sandbox.state-deny.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
       },
@@ -90827,6 +90832,16 @@
       },
       {
         "from": "src/factory/run/__tests__/private-run.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/private-run.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/private-run.test.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
       },
@@ -91272,8 +91287,18 @@
       },
       {
         "from": "src/factory/run/clean.ts",
+        "to": "src/factory/run/private-run.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/clean.ts",
         "to": "src/factory/run/private-store.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/clean.ts",
+        "to": "src/factory/run/private-store.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/clean.ts",
@@ -91288,6 +91313,11 @@
       {
         "from": "src/factory/run/clean.ts",
         "to": "src/forge/local/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/clean.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -130128,11 +130158,11 @@
     ],
     "stats": {
       "nodeCount": 10864,
-      "edgeCount": 13315,
-      "importEdgeCount": 10951,
+      "edgeCount": 13321,
+      "importEdgeCount": 10955,
       "registerEdgeCount": 119
     }
   },
   "inventorySha256": "3ab8744f41bd980df9f0e27ed946b45288bde38349c124d0edd6d5c83aa6405e",
-  "manifestSha256": "3491472c1bcebf72decdefce074598dc1e65e9eb4c60f3c146f8d27c55d31207"
+  "manifestSha256": "cd4532e0d198be0ce3c97fdbb0ab90eb728839e7033641b0b012af702356ccbb"
 }
