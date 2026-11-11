@@ -5,23 +5,19 @@
  * read through the git links recorded at its creation (M5). Real git, fake
  * lanes and gate, no gh / az / copilot.
  */
-import { closeSync, cpSync, existsSync, ftruncateSync, mkdirSync, openSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync, writeSync } from 'node:fs';
+import { closeSync, cpSync, existsSync, ftruncateSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync, writeSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { resolveForgeConfig } from '../../../forge/config.js';
 import { localCheckRecordPath, readMirrorRef, writeLocalCheckRecord } from '../../../forge/local/index.js';
-import { createForge } from '../../../forge/index.js';
-import { getOmcRoot } from '../../../lib/worktree-paths.js';
 import { forgetWorktreeGitLinks } from '../../../team/git-worktree.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { runFactoryEngine } from '../engine.js';
 import { checkoutPath } from '../prepare.js';
 import { factoryStatePath, overwriteFactoryState, readFactoryState, requestFactoryCancel } from '../state.js';
 import { cleanFactoryRun } from '../clean.js';
-import { factoryForgeOptions } from '../forge-roots.js';
 import { EngineLedger } from '../ledger.js';
-import { resetFactoryRun } from '../reset.js';
 import { commitFile, gitIn, review } from './fake-lanes.js';
 import { BASE, lanesFor, LOCAL_ISSUE, localOpts, localTestGateConfig, localWorld, type LocalWorld } from './engine-local-harness.js';
 
@@ -205,13 +201,13 @@ describe('factory run on the local forge: git hardening', () => {
     expect(seen).toEqual([true]);
   }, 300_000);
 
-  it('B1: an ignored junction or symlink a prepare check leaves (pulling content from outside) parks before the gate', async () => {
+  it('C-1: an ignored junction or symlink a prepare check leaves (a venv, bazel-* links) reaches the gate; its target stays intact', async () => {
     w = localWorld();
     writeFileSync(join(w.root, '.gitignore'), '.omg/\ndist/\n');
     gitIn(w.root, 'commit', '-q', '-am', 'ignore build output');
     const outside = join(w.dir, 'outside');
     mkdirSync(outside);
-    writeFileSync(join(outside, 'planted.test.js'), 'process.exit(0)\n');
+    writeFileSync(join(outside, 'keep.txt'), 'keep\n');
     const inner = w.exec;
     const checkout = checkoutPath(w.root, LOCAL_ISSUE);
     w.exec = (cmd, args, opts) => {
@@ -221,11 +217,16 @@ describe('factory run on the local forge: git hardening', () => {
       }
       return inner(cmd, args, opts);
     };
+    const seen: boolean[] = [];
+    const gate = w.gate;
+    w.gate = async (argv, cwd, ...rest) => {
+      seen.push(existsSync(join(cwd, 'dist', 'sub', 'ext', 'keep.txt')));
+      return gate(argv, cwd, ...rest);
+    };
     const out = await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')]), withCheck));
-    expect(out.gate?.name, out.message).toBe('lane-tampered');
-    expect(out.gate?.reason).toMatch(/has an ignored symlink or junction dist\/sub\/ext the engine did not make/);
-    expect(w.gateRuns).toEqual([]);
-    expect(existsSync(join(outside, 'planted.test.js'))).toBe(true);
+    expect(out.gate?.name, out.message).toBe('merge');
+    expect(seen).toEqual([true]);
+    expect(readFileSync(join(outside, 'keep.txt'), 'utf8')).toBe('keep\n');
   }, 300_000);
 
   it('a prepare checkout removed by hand is prepared again on the next run; the gate then runs in the fresh checkout', async () => {
@@ -288,10 +289,12 @@ describe('factory run on the local forge: git hardening', () => {
     expect(w.gateRuns).toEqual([]);
   }, 300_000);
 
-  it('M-B upgrade: a checkout made before checkoutAdmin was recorded names the recovery; cancel, clean (B3: mirror checked), reset and a rerun prepare a fresh one', async () => {
+  it('L-1: a checkout made before checkoutAdmin was recorded is discarded and prepared again; the gate runs with no lane re-run', async () => {
     w = localWorld();
-    const first = await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')])));
+    const lanes = lanesFor(w, [greet(), review('approve')]);
+    const first = await runFactoryEngine(localOpts(w, lanes));
     expect(first.gate?.name, first.message).toBe('merge');
+    const lanesRun = lanes.started.length;
     const checkout = checkoutPath(w.root, LOCAL_ISSUE);
     // What an older release left: the same state without checkoutAdmin (written and recorded as that engine would), a new process.
     const { checkoutAdmin: _a, ...older } = readFactoryState(w.root, LOCAL_ISSUE)!;
@@ -300,15 +303,19 @@ describe('factory run on the local forge: git hardening', () => {
     forgetWorktreeGitLinks(checkout);
     // A checks rerun: the gate is due again.
     rmSync(localCheckRecordPath(w.stateDir, w.root, older.head!));
-    const parked = await runFactoryEngine(localOpts(w, lanesFor(w, [])));
-    expect(parked.gate?.name, parked.message).toBe('lane-tampered');
-    expect(parked.gate?.reason).toMatch(/a checkout made before this release.*run omg factory run cancel 7, omg factory run clean 7, omg factory run reset 7, then omg factory run 7: the new run prepares again/);
-    expect(w.gateRuns).toHaveLength(1);
+    const again = await runFactoryEngine(localOpts(w, lanes));
+    expect(again.gate?.name, again.message).toBe('merge');
+    expect(lanes.started).toHaveLength(lanesRun);
+    expect(w.gateRuns).toHaveLength(2);
+    expect(w.gateRuns[1].cwd).toBe(checkout);
+    const state = readFactoryState(w.root, LOCAL_ISSUE)!;
+    expect(state.checkoutAdmin).toBeTruthy();
+    expect(state.history.some((h) => h.note.startsWith('discarded the prepare checkout an older release made'))).toBe(true);
 
+    // B3: clean's fetch and ls-remote check the mirror like the engine's: a planted commondir refuses it.
     requestFactoryCancel(w.root, LOCAL_ISSUE, new Date().toISOString());
     expect((await runFactoryEngine(localOpts(w, lanesFor(w, [])))).phase).toBe('cancelled');
     const owner = { pid: 4242, hostname: 'test-host', isAlive: () => false };
-    // B3: clean's fetch and ls-remote check the mirror like the engine's: a planted commondir refuses it.
     const commondir = join(w.config.repo.url, 'commondir');
     writeFileSync(commondir, `${join(w.dir, 'evil.git')}\n`);
     expect(() => cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, ledgerDir: w.ledgerDir, owner })).toThrow(/has commondir, which would point git at another repository/);
@@ -317,15 +324,53 @@ describe('factory run on the local forge: git hardening', () => {
     const cleaned = cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, ledgerDir: w.ledgerDir, owner });
     expect(cleaned.kept, JSON.stringify(cleaned.kept)).toEqual([]);
     expect(existsSync(checkout)).toBe(false);
-    const forge = createForge(w.exec, w.root, w.config, { ...factoryForgeOptions(w.root), stateDir: w.stateDir, local: { omgRoot: getOmcRoot(w.root) } });
-    resetFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, forge, mirror: w.config.repo.url, ledgerDir: w.ledgerDir, owner });
+  }, 600_000);
 
-    const rerun = await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')])));
-    expect(rerun.gate?.name, rerun.message).toBe('merge');
+  it('L-2: a prepare checkout removed with rm -rf (its admin dir still registered) loses only its own entry and is prepared again', async () => {
+    w = localWorld();
+    const first = await runFactoryEngine(localOpts(w, lanesFor(w, [greet(), review('approve')])));
+    expect(first.gate?.name, first.message).toBe('merge');
+    const head = readFactoryState(w.root, LOCAL_ISSUE)!.head!;
+    const checkout = checkoutPath(w.root, LOCAL_ISSUE);
+    // A worktree the user owns whose directory is only unavailable (an unmounted drive): its entry must survive.
+    const userWt = join(w.dir, 'user-wt');
+    gitIn(w.root, 'worktree', 'add', '--detach', userWt, 'HEAD');
+    const userAdmin = join(w.root, '.git', 'worktrees', 'user-wt');
+    expect(existsSync(join(userAdmin, 'HEAD'))).toBe(true);
+    const away = `${userWt}-away`;
+    renameSync(userWt, away);
+    // This test repository has no node_modules, so no link is inside the checkout.
+    rmSync(checkout, { recursive: true, force: true });
+    expect(gitIn(w.root, 'worktree', 'list', '--porcelain')).toContain('factory');
+    rmSync(localCheckRecordPath(w.stateDir, w.root, head));
+    const again = await runFactoryEngine(localOpts(w, lanesFor(w, [])));
+    expect(again.gate?.name, again.message).toBe('merge');
     expect(w.gateRuns).toHaveLength(2);
     expect(w.gateRuns[1].cwd).toBe(checkout);
-    expect(readFactoryState(w.root, LOCAL_ISSUE)!.checkoutAdmin).toBeTruthy();
-  }, 600_000);
+    expect(readFactoryState(w.root, LOCAL_ISSUE)!.history.some((h) => h.note.includes('its own stale git worktree entry was dropped'))).toBe(true);
+    // The user's entry (admin dir, HEAD, index) is untouched, and lists cleanly once its directory is back.
+    expect(existsSync(join(userAdmin, 'HEAD'))).toBe(true);
+    expect(existsSync(join(userAdmin, 'index'))).toBe(true);
+    renameSync(away, userWt);
+    expect(gitIn(w.root, 'worktree', 'list', '--porcelain')).not.toContain('prunable');
+  }, 300_000);
+
+  it('L-6: an unreadable protected-paths config warns once and parks the publish (fail closed); nothing is pushed', async () => {
+    w = localWorld();
+    // The working-tree project config the protected-path read uses, with a ship block it cannot read.
+    mkdirSync(join(w.root, '.copilot'), { recursive: true });
+    writeFileSync(join(w.root, '.copilot', 'omg.jsonc'), '{ "ship": "not an object" }\n');
+    const warnings: string[] = [];
+    const lanes = lanesFor(w, [greet(), review('approve')]);
+    const out = await runFactoryEngine(localOpts(w, lanes, { warn: (m) => warnings.push(m) }));
+    expect(out.gate?.name, out.message).toBe('protected-paths');
+    expect(out.gate?.reason).toMatch(/the configured protected paths cannot be read \(project config .*omg\.jsonc: ship config must be an object\), so the change cannot be checked against all of them; nothing was pushed\. Fix the JSON in project config .*omg\.jsonc, then rerun/);
+    expect(out.gate?.reason).not.toContain('knownFlakyFile');
+    expect(warnings.filter((m) => m.includes('configured protected paths'))).toHaveLength(1);
+    expect(warnings.find((m) => m.includes('configured protected paths'))).toMatch(/fix the JSON in project config .*omg\.jsonc$/);
+    expect(readFactoryState(w.root, LOCAL_ISSUE)!.pr).toBeUndefined();
+    expect(w.gateRuns).toEqual([]);
+  }, 300_000);
 
   it('M-C: a PR store set to MERGED while your base does not contain the head parks; the run is not merged', async () => {
     w = localWorld();

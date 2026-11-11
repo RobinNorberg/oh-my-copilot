@@ -107,6 +107,16 @@ describe('runPrepare', () => {
         expect(vitest).toContain(' src/__tests__/skills.test.ts');
         expect(vitest).toContain(' src/ship/__tests__/gates.test.ts');
     });
+    it('a changed file name with control or bidi characters reaches the check verbatim but its step detail only shown', () => {
+        const name = 'src/a\u001b[31m‮evil\u0007.ts';
+        const { exec, calls } = fakeRepo({ [`git diff --name-only -z ${BASE_SHA}...HEAD`]: res(0, `${name}\0`) });
+        const r = runPrepare({ ...base, exec });
+        expect(r.ok, r.blockedReason).toBe(true);
+        expect(calls).toContain(`node node_modules/eslint/bin/eslint.js ${name}`);
+        const detail = r.steps.find((s) => s.name === 'lint').detail;
+        expect(detail).toBe('src/a[31m<U+202E>evil.ts');
+        expect(detail).not.toMatch(/[\p{Cc}\p{Cf}]/u);
+    });
     it('skips the merge when the base is already contained and the inventory when current', () => {
         const { exec, calls } = fakeRepo({ 'git merge-base --is-ancestor': res(0) });
         const r = runPrepare({ ...base, exec, checks: false });

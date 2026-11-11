@@ -37,6 +37,8 @@ export interface FactoryResetResult {
     acknowledgedLanes?: string[];
     /** Where the old run state was moved. */
     stateMovedTo: string;
+    /** Why this checkout's claim on the item was left in place after the reset (a live engine held it then). */
+    claimKept?: string;
 }
 export interface FactoryResetOptions {
     root: string;

@@ -54,7 +54,7 @@
  */
 
 import { createHash } from 'crypto';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'path';
 import { BASE_CONFIG_PATH, configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, readBaseFile, remoteRepoMismatch, userConfigLayers } from '../../ship/config.js';
@@ -63,8 +63,8 @@ import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT, type PrepareCheckResult, type PrepareCheckRun } from '../../ship/prepare.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { resolveGatesSandboxMode, resolveRequireDeniedPaths, type GatesSandboxMode } from '../../copilot-run/sandbox.js';
-import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxJobRoot, type SandboxRunner } from './sandbox-exec.js';
-import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeWorkerWorktree, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
+import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs, type SandboxRunner } from './sandbox-exec.js';
+import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
 import { driveGates } from './gates-driver.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
 import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText, type ReadAt, type TeamContext } from '../team/context.js';
@@ -459,29 +459,6 @@ function checkoutChanges(root: string, checkout: string, raw: string): string[] 
   return parseStatusPaths(raw).filter((p) => p && !(ownLink && (p === 'node_modules' || p === 'node_modules/')));
 }
 
-/**
- * The first ignored path (as `git status --ignored=matching` lists them, the
- * engine's own node_modules link already left out) that is a symlink or
- * junction or holds one below it, or null. Directories are walked without
- * following any link.
- */
-function ignoredLink(checkout: string, ignored: readonly string[]): string | null {
-  const stack = ignored.map((p) => p.replace(/\/$/, ''));
-  while (stack.length > 0) {
-    const rel = stack.pop()!;
-    let st;
-    try { st = lstatSync(join(checkout, rel)); } catch { continue; }
-    if (st.isSymbolicLink()) return rel;
-    if (!st.isDirectory()) continue;
-    for (const d of readdirSync(join(checkout, rel), { withFileTypes: true })) {
-      const child = `${rel}/${d.name}`;
-      if (d.isSymbolicLink()) return child;
-      if (d.isDirectory()) stack.push(child);
-    }
-  }
-  return null;
-}
-
 /** The paths of `git status --porcelain=v1 -z` records (an R/C record's original path included). */
 function parseStatusPaths(raw: string): string[] {
   const records = raw.split('\0');
@@ -507,7 +484,7 @@ const HEX40 = /^[0-9a-f]{40}$/;
  * INSIDE hardenedGitExec, which (and the guard around it) sees the plain
  * shape.
  */
-function pinCheckoutGit(exec: Exec, pin: () => { workTree: string; gitDir: string } | undefined): Exec {
+export function pinCheckoutGit(exec: Exec, pin: () => { workTree: string; gitDir: string } | undefined): Exec {
   return (cmd, args, opts) => {
     const p = pin();
     const git = cmd.replace(/\\/g, '/').split('/').pop()!.toLowerCase().replace(/\.exe$/, '') === 'git';
@@ -545,6 +522,21 @@ function calibrationArgs(c: { args: readonly string[]; kind?: PrepareCheckRun['k
   const files = (vitest ? rest.slice(1) : rest).filter((f) => existsSync(join(dir, f)));
   if (files.length === 0) return [script, '--version'];
   return vitest ? [script, 'run', ...files] : [script, ...files];
+}
+
+/** The fixed failure text of a built-in eslint or vitest check whose one changed file name the sandbox shell cannot carry. */
+export const BUILT_IN_FILE_NAME_TOO_LONG = 'a changed file name is too long for the sandbox shell';
+
+/**
+ * A built-in eslint or vitest check over the changed files, cut into calls
+ * that each fit the sandbox shell (a large PR's file list can exceed the
+ * Windows command line); one call for every other check.
+ */
+export function fileListParts(c: PrepareCheckRun, cwd: string, platform: NodeJS.Platform = process.platform): PrepareCheckRun[] {
+  const script = c.args[0];
+  if (c.kind !== 'built-in' || (script !== VITEST_SCRIPT && script !== ESLINT_SCRIPT)) return [c];
+  const parts = splitFileListArgs(platform, c.exe, c.args, script === VITEST_SCRIPT ? 2 : 1, cwd);
+  return parts.length === 1 ? [c] : parts.map((args) => ({ ...c, argv: [c.exe, ...args], args }));
 }
 
 function errText(error: unknown): string {
@@ -723,6 +715,8 @@ class FactoryEngine {
   private unsandboxedAllowed?: string;
   /** The gate found the prepare checkout missing and sent the run back to prepare once in this invocation. */
   private reprepared = false;
+  /** protectedExtras, once per invocation. */
+  private protectedCache: { paths: string[]; problem?: string; fix?: string } | undefined;
   /** The head `--allow-unsandboxed-gates` accepts (the gates-unsandboxed park's head, captured at resume). */
   private gatesAllowed?: string;
   /** factory.run.sandbox.gates, resolved once per trusted base commit. */
@@ -1880,8 +1874,7 @@ class FactoryEngine {
     if (!result.worktree) return this.laneFailed(key, lane.kind, `lane ${lane.id} reports no local worktree, so the engine cannot commit its changes`);
     // A late change after the lane's tamper check (a child the engine missed) parks before engine git runs in the lane worktree.
     if (this.recheckFailed('before the engine commit')) return;
-    let extraProtected: string[] = [];
-    try { extraProtected = configuredProtectedPaths(this.o.root); } catch { /* the defaults still apply */ }
+    const extraProtected = this.protectedExtras().paths;
     const title = `${lane.kind}: ${oneLine(this.state.issueTitle ?? `issue ${this.o.issue}`)} (#${this.o.issue})`;
     // The private layout: the commit is made in the run's private repository (checked first), on no branch; publish imports it.
     const priv = this.privateRun();
@@ -1913,10 +1906,41 @@ class FactoryEngine {
    * use the same list, so a commit that slipped past the lane check (a diff
    * against a replaced start) is still caught before the push.
    */
-  private laneProtectedPaths(): string[] {
-    let extra: string[] = [];
-    try { extra = configuredProtectedPaths(this.o.root); } catch { /* the defaults still apply */ }
-    return [...LANE_PROTECTED_PATHS, ...extra];
+  private laneProtectedPaths(): { paths: string[]; problem?: string } {
+    const extra = this.protectedExtras();
+    return { paths: [...LANE_PROTECTED_PATHS, ...extra.paths], ...(extra.problem ? { problem: extra.problem } : {}) };
+  }
+
+  /**
+   * The configured protected paths (configuredProtectedPaths), read once per
+   * invocation; a layer that cannot be read is warned about once and named in
+   * `problem`, which parks every publish (protectedPathsUnread).
+   */
+  private protectedExtras(): { paths: string[]; problem?: string; fix?: string } {
+    if (this.protectedCache) return this.protectedCache;
+    const problems: string[] = [];
+    const sources: string[] = [];
+    let paths: string[] = [];
+    try {
+      paths = configuredProtectedPaths(this.o.root, (source, error) => {
+        sources.push(source);
+        problems.push(error.startsWith(source) ? error : `${source}: ${error}`);
+      });
+    } catch (error) {
+      problems.push(errText(error));
+    }
+    const problem = problems.length > 0 ? oneLine(problems.join('; '), 500) : undefined;
+    // The usual cause is a JSONC syntax error anywhere in the file, so the fix names the file, not one key.
+    const fix = sources.length > 0 ? `fix the JSON in ${oneLine(sources.join(' and '), 500)}` : 'fix the user config or .copilot/omg.jsonc';
+    if (problem) this.o.warn?.(`omg factory run: the configured protected paths cannot be read (${problem}); the engine will not push until they can: ${fix}`);
+    this.protectedCache = { paths, ...(problem ? { problem, fix } : {}) };
+    return this.protectedCache;
+  }
+
+  /** The park when a publish cannot know the whole protected list: fail closed, never push with a protection dropped. */
+  private protectedPathsUnread(what: string, problem: string): void {
+    const fix = this.protectedCache?.fix ?? 'fix the user config or .copilot/omg.jsonc';
+    this.gate('protected-paths', `the configured protected paths cannot be read (${problem}), so ${what} cannot be checked against all of them; nothing was pushed. ${fix[0].toUpperCase()}${fix.slice(1)}, then rerun ${this.resume}`);
   }
 
   /** One fresh retry per phase key, then the named `<kind>-failed` gate. */
@@ -1942,7 +1966,12 @@ class FactoryEngine {
     const push = (): { parked: boolean; pushed: boolean } => {
       const files = listChangedFiles(this.exec, this.o.root, baseSha, cand);
       if (files === null) throw new FactoryStepError(`git diff ${baseSha.slice(0, 12)}...${cand.slice(0, 12)} failed`);
-      const hit = protectedChanges(files, this.laneProtectedPaths());
+      const protectedList = this.laneProtectedPaths();
+      if (protectedList.problem) {
+        this.protectedPathsUnread('the change', protectedList.problem);
+        return { parked: true, pushed: false };
+      }
+      const hit = protectedChanges(files, protectedList.paths);
       if (hit.length > 0) {
         this.gate('protected-paths', `the change touches merge-rule paths: ${hit.join(', ')}; nothing was pushed`);
         return { parked: true, pushed: false };
@@ -2266,6 +2295,8 @@ class FactoryEngine {
   private discardCheckout(): void {
     const path = this.checkoutDir();
     if (!existsSync(path)) return;
+    // Shared layout only: no older release made a private-layout w/prep, and its links are not in the user's repository.
+    if (!this.privateRun() && this.legacyCheckout(path)) return this.discardLegacyCheckout(path);
     const gitArgs = this.checkoutGitArgs(path);
     if (typeof gitArgs === 'string') throw new FactoryStepError(`the engine's prepare checkout ${path} cannot be read safely: ${gitArgs}${this.state.checkoutAdmin ? '; inspect it and remove it by hand' : `. ${this.freshCheckoutRecovery()}`}`);
     const priv = this.privateRun();
@@ -2306,8 +2337,10 @@ class FactoryEngine {
     // The engine's own node_modules link would count as untracked on POSIX (a `node_modules/` ignore line skips symlinks).
     unlinkNodeModules(this.o.root, path);
     try {
-      // Only engine-made commits are in it (checked above); nothing else holds them.
-      removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [head] });
+      // Only engine-made commits are in it (checked above); nothing else holds them. Through the recorded links: removal
+      // never discovers a `.git` file the PR's code rewrote.
+      const gitLinks = recordedWorktreeGitLinks(path);
+      removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [head], ...(gitLinks ? { gitLinks } : {}) });
       forgetWorktreeGitLinks(path);
     } catch (error) {
       // A kept checkout keeps its tooling (the local gate runs in it).
@@ -2317,6 +2350,56 @@ class FactoryEngine {
     this.save((x) => {
       const { checkoutHead: _c, checkoutAdmin: _a, ...rest } = x;
       return rest;
+    });
+    this.rebaseRecheck();
+  }
+
+  /**
+   * The prepare checkout's directory is gone (removed with rm -rf) while git
+   * still lists it: only its own admin entry (the recorded checkoutAdmin, or
+   * the one whose gitdir names the checkout) is removed, so `worktree add` can
+   * use the path again. Never `git worktree prune`: that would drop every
+   * stale entry, a user's worktree on an unmounted drive included. A
+   * checkout that is there, or not listed, is left alone.
+   */
+  private pruneMissingCheckout(path: string): void {
+    if (existsSync(path)) return;
+    const listed = runHostGit(this.o.root, ['worktree', 'list', '--porcelain']);
+    if (!listed.split(/\r?\n/).some((l) => l.startsWith('worktree ') && samePath(l.slice('worktree '.length).trim(), path))) return;
+    let removed: boolean;
+    try {
+      removed = removeStaleWorktreeEntry(this.o.root, path, this.state.checkoutAdmin);
+    } catch (error) {
+      throw new FactoryStepError(`the engine's prepare checkout ${path} is gone, but its git worktree entry is not one the engine can remove safely (${visibleLine(errText(error))}); inspect it with git worktree list --porcelain and remove it by hand (git worktree remove --force ${path}), then rerun ${this.resume}`);
+    }
+    if (!removed) throw new FactoryStepError(`the engine's prepare checkout ${path} is gone and git still lists it, but no entry under the git dir's worktrees/ names it; remove it by hand (git worktree remove --force ${path}), then rerun ${this.resume}`);
+    this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `the prepare checkout ${path} was removed by hand; its own stale git worktree entry was dropped (no other entry was touched)` }] }));
+    this.rebaseRecheck();
+  }
+
+  /** A prepare checkout an older release made: no admin dir in the run state and no git links recorded in this process. */
+  private legacyCheckout(path: string): boolean {
+    return existsSync(path) && !this.state.checkoutAdmin && !recordedWorktreeGitLinks(path);
+  }
+
+  /**
+   * Discard a prepare checkout made before checkoutAdmin was recorded, as
+   * `omg factory run clean` does (the engine's node_modules link first, then
+   * the guarded removal, which refuses a tree with changes or commits the run
+   * did not make), so the run prepares a fresh one instead of parking.
+   */
+  private discardLegacyCheckout(path: string): void {
+    unlinkNodeModules(this.o.root, path);
+    const contained = [this.state.head, this.state.checkoutHead].filter((sha): sha is string => typeof sha === 'string' && HEX40.test(sha));
+    try {
+      removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [...new Set(contained)] });
+    } catch (error) {
+      linkNodeModules(this.o.root, path);
+      throw new FactoryStepError(`could not discard the engine's prepare checkout ${path}, which an older release made: ${errText(error)}. ${this.freshCheckoutRecovery()}`);
+    }
+    this.save((x) => {
+      const { checkoutHead: _c, checkoutAdmin: _a, ...rest } = x;
+      return { ...rest, history: [...rest.history, { at: this.iso(), from: rest.phase, to: rest.phase, note: `discarded the prepare checkout an older release made (${path}); it is prepared again` }] };
     });
     this.rebaseRecheck();
   }
@@ -2348,7 +2431,7 @@ class FactoryEngine {
       if (!links) return 'its .git file or admin dir is missing, a link or malformed';
       const admin = this.state.checkoutAdmin;
       if (!admin) return `the run state records no admin dir for it (a checkout made before this release, or by something else)`;
-      if (basename(links.adminDir) !== admin) return `its .git file names the admin dir ${links.adminDir}, but the engine's \`worktree add\` made ${admin}`;
+      if (basename(links.adminDir) !== admin) return `its .git file names the admin dir ${visibleLine(links.adminDir)}, but the engine's \`worktree add\` made ${admin}`;
       let common: string;
       try {
         common = this.privateRun()?.repo.gitDir ?? resolve(this.o.root, this.run(['rev-parse', '--git-common-dir']).trim());
@@ -2357,7 +2440,7 @@ class FactoryEngine {
       }
       const gitdir = links.gitdir.trim();
       if (!worktreeGitLinksIntact(path, links, common) || !samePath(isAbsolute(gitdir) ? gitdir : resolve(links.adminDir, gitdir), join(path, '.git')) || links.commondir.trim() !== '../..') {
-        return `its .git file names ${links.adminDir}, which is not the admin dir git made for it under ${join(common, 'worktrees')}`;
+        return `its .git file names ${visibleLine(links.adminDir)}, which is not the admin dir git made for it under ${join(common, 'worktrees')}`;
       }
       try {
         recordWorktreeGitLinks(path, links);
@@ -2424,8 +2507,12 @@ class FactoryEngine {
     if (this.recheckFailed('before prepare')) return;
     this.discardCheckout();
     const path = this.checkoutDir();
-    const branch = checkoutBranch(this.key);
     const priv = this.privateRun();
+    // A checkout removed with rm -rf leaves its admin dir registered, and `worktree add` then refuses the path
+    // (before the pre-prepare snapshot: the prune changes the shared worktree entries). The private layout's w/prep is
+    // the engine's own and is removed with its links (removeWorktree), never registered in the user's repository.
+    if (!priv) this.pruneMissingCheckout(path);
+    const branch = checkoutBranch(this.key);
     if (priv) {
       // The private checkout has no remote: the base is fetched in the user's repository, checked to be the forge's, then brought in by sha.
       const fetchedBase = this.fetchBase();
@@ -2497,7 +2584,8 @@ class FactoryEngine {
     const fetched = result.steps.some((st) => st.name === 'fetch' && st.status === 'ok');
     // From here the PR's diff (review, protected paths) is against the base GitHub reports.
     const sandboxNote = ran.modes.size > 0 ? [{ at: this.iso(), from: s.phase, to: s.phase, note: `prepare checks on ${head.slice(0, 12)} ran ${[...ran.modes].map((m) => (m === 'enforced' ? 'in the OS sandbox' : m === 'enforced-readable' ? `in the OS sandbox (${CREDENTIAL_FILES_READABLE_NOTE})` : `unsandboxed (${m})`)).join(' and ')}` }] : [];
-    this.save((x) => ({ ...x, checkoutHead, ...(fetched ? { baseSha: view.baseRefOid } : {}), history: [...x.history, ...sandboxNote] }));
+    const sandboxed = ran.modes.has('enforced') || ran.modes.has('enforced-readable');
+    this.save((x) => ({ ...x, checkoutHead, ...(sandboxed ? { sandboxedPrepareHead: checkoutHead } : {}), ...(fetched ? { baseSha: view.baseRefOid } : {}), history: [...x.history, ...sandboxNote] }));
     // The accepted head's code ran unsandboxed: publishPrepared carries the ack to the prepared head once it holds only the engine's own commits.
     if (result.ok) return this.publishPrepared(pr, head, checkoutHead, result.housekeepingCommits, view.baseRefOid, ran.acked && this.state.unsandboxedGatesAck === head);
 
@@ -2584,6 +2672,17 @@ class FactoryEngine {
     return `${what} on ${at} would run the PR's own code WITHOUT the OS sandbox (${why}). Acknowledging trusts ALL of ${at}'s code (every prepare check, the inventory generator, the local gate, and the head prepare makes from it) with your user account: your files, git config and credentials, and a process it leaves behind keeps running as you. Review the PR's whole diff (tests, configs, scripts) yourself, then rerun ${this.resume} --allow-unsandboxed-gates to run it unsandboxed for ${at} only`;
   }
 
+  /**
+   * The park when the sandbox did not start for `what` after the PR's code of
+   * this head already ran in it (an earlier prepare check): the PR's code may
+   * be the cause (a full disk, a process it left), so the
+   * --allow-unsandboxed-gates offer is not made; no pass, no failure.
+   */
+  private gateNoStartAfterCodeReason(head: string, what: string, why: string): string {
+    const at = head.slice(0, 12);
+    return `${what} on ${at} could not start in the OS sandbox (${why}) after the PR's code of this head already ran in it (an earlier prepare check), so the PR's code may be the cause. The head is not judged: no pass, no FAILURE, no ci-fix lane, and --allow-unsandboxed-gates does not apply here. Rerun ${this.resume} to try again; if it parks here again, review the PR's diff and fix the cause`;
+  }
+
   /** The park after the command ran in the sandbox without a verdict: no ack offer, no pass, no failure. `why` is fixed text (sandbox-exec.ts). */
   private gateNoVerdictReason(head: string, what: string, why: string): string {
     const at = head.slice(0, 12);
@@ -2613,10 +2712,25 @@ class FactoryEngine {
    * anything runs unsandboxed. A sandbox that started the command and gave
    * no verdict stops at gate-no-verdict (no ack offer). From the first check
    * on, engine git in the checkout names its git dir (checkoutGitPin), and a
-   * gitfile that changed around a check stops at lane-tampered.
+   * gitfile that changed around a check stops at lane-tampered. A built-in
+   * file list too long for the sandbox shell runs as several calls that must
+   * all pass (fileListParts). A sandbox that does not start after an earlier
+   * check of the head ran in it stops at gate-no-verdict (no ack offer): the
+   * PR's code may have caused it.
    */
   private async prepareCheck(c: PrepareCheckRun, at: { head: string; path: string; commonGitDir: string; baseSha: string; gates: { mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean }; ran: { modes: Set<string>; acked: boolean; park?: { name: string; reason: string } }; gitLink: { hash: string; gitDir: string } }): Promise<PrepareCheckResult> {
     const { head, path, ran } = at;
+    const parts = fileListParts(c, path);
+    if (parts.length > 1) {
+      // Every part must pass; the first that does not is the check's result (its park, or its failure).
+      const outputs: string[] = [];
+      for (const part of parts) {
+        const r = await this.prepareCheck(part, at);
+        if (r.notStarted !== undefined || r.status !== 0) return r;
+        outputs.push(r.stdout);
+      }
+      return { status: 0, stdout: outputs.join('\n'), stderr: '' };
+    }
     const label = this.prepareCheckLabel(c);
     const stop = (park: { name: string; reason: string }): PrepareCheckResult => {
       ran.park = park;
@@ -2651,6 +2765,15 @@ class FactoryEngine {
     if (at.gates.mode === 'unsandboxed') return plain('unsandboxed');
     let why = `factory.run.sandbox.gates is "ack" (${at.gates.source})`;
     if (at.gates.mode === 'enforced') {
+      // A built-in eslint or vitest part still too long after fileListParts holds one changed file name the sandbox
+      // shell cannot carry. That name is the PR's own doing, like a lint error, so a plain FAILURE of this check
+      // rather than a park: a park would hand the human an unsandboxed run of a name the PR chose, while the ci-fix
+      // lane gets the check "prepare lint" (or "prepare tests") with this fixed text as its detail and can rename
+      // the file. Never the --allow-unsandboxed-gates offer, and decided before any sandbox call for this part.
+      // Configured commands are trusted config and keep their own refusal path below.
+      if (c.kind === 'built-in' && (c.args[0] === VITEST_SCRIPT || c.args[0] === ESLINT_SCRIPT) && sandboxCommandTooLong(process.platform, c.argv, path)) {
+        return { status: 1, stdout: '', stderr: BUILT_IN_FILE_NAME_TOO_LONG };
+      }
       const r = this.o.gateSandbox
         ? await this.o.gateSandbox({ purpose: 'prepare', argv: c.argv, exe: c.exe, args: c.args, cwd: path, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...(at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}) })
         : { ran: false as const, reason: 'no OS sandbox runner was given to the engine' };
@@ -2665,6 +2788,13 @@ class FactoryEngine {
         return { status: r.timedOut ? 124 : r.status, stdout: redactGateOutput(r.output), stderr: '' };
       }
       if (r.started) return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoVerdictReason(head, label, r.reason) });
+      // An earlier check of this head already ran the PR's code in the sandbox: a start failure now may be its doing.
+      // Only a configured command (trusted config) refused for its own shape or length keeps the ack offer; a
+      // built-in's argv holds the PR's file names, so its refusal parks here too.
+      const ownShape = r.refused === true && c.kind === 'configured';
+      if (!ownShape && (ran.modes.has('enforced') || ran.modes.has('enforced-readable')) && !this.gatesAccepted(head)) {
+        return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoStartAfterCodeReason(head, label, r.reason) });
+      }
       why = `the OS sandbox gave no verdict: ${r.reason}`;
     }
     if (this.gatesAccepted(head)) return plain('ack');
@@ -2784,7 +2914,12 @@ class FactoryEngine {
       const push = (): { parked: boolean; pushed: boolean } => {
         const files = listChangedFiles(this.exec, this.o.root, baseSha, next);
         if (files === null) throw new FactoryStepError(`git diff ${baseSha.slice(0, 12)}...${next.slice(0, 12)} failed`);
-        const hit = protectedChanges(files, this.laneProtectedPaths());
+        const protectedList = this.laneProtectedPaths();
+        if (protectedList.problem) {
+          this.protectedPathsUnread('the prepared head', protectedList.problem);
+          return { parked: true, pushed: false };
+        }
+        const hit = protectedChanges(files, protectedList.paths);
         if (hit.length > 0) {
           this.gate('protected-paths', `the prepared head touches merge-rule paths: ${hit.join(', ')}; nothing was pushed`);
           return { parked: true, pushed: false };
@@ -2927,6 +3062,9 @@ class FactoryEngine {
       return false;
     }
     const checkout = this.checkoutDir();
+    // A checkout an older release prepared (no admin dir recorded): discarded as run clean would, then prepared again.
+    // Shared layout only: no older release made a private-layout w/prep.
+    if (!this.privateRun() && this.legacyCheckout(checkout)) this.discardLegacyCheckout(checkout);
     let at = '';
     // The private layout: the host git reads below go to the private repository, which must still be the engine's.
     this.privateRun()?.assert();
@@ -2934,16 +3072,14 @@ class FactoryEngine {
       // The recorded git dir, never the checkout's `.git` file (the PR's code ran there in prepare).
       const gitArgs = this.checkoutGitArgs(checkout);
       let dirty: string[] = [];
-      let link: string | null = null;
       let problem = typeof gitArgs === 'string' ? gitArgs : null;
       if (typeof gitArgs !== 'string') {
         // The status compares with a fresh index read from HEAD, never the checkout's own (the PR's code could set
         // skip-worktree or assume-unchanged bits, plant an untracked cache, or keep a stale stat match there).
-        // Ignored files are left alone: prepare's checks and the gate run the same head's code in the same trust domain,
-        // so a check's ignored output (dist/, target/, a previous gate's coverage/) gives the gate nothing the PR's own
-        // tests could not do. What this protects is that the tracked tree is the recorded head and nothing untracked
-        // that is not ignored was added. An ignored link (other than the engine's node_modules link) still parks: a
-        // link is how content from outside the checkout would be pulled in.
+        // Ignored entries of any kind are left alone, links included (a Python venv, bazel-* links, a check's npm ci):
+        // prepare's checks and the gate run the same head's code in the same sandbox, so ignored output gives the gate
+        // nothing the PR's own tests could not do, and removal unlinks links before it deletes anything. What this
+        // protects is that the tracked tree is the recorded head and nothing untracked that is not ignored was added.
         const indexDir = mkdtempSync(join(tmpdir(), 'omg-gate-index-'));
         try {
           at = runHostGit(checkout, [...gitArgs, 'rev-parse', 'HEAD']).trim();
@@ -2951,9 +3087,6 @@ class FactoryEngine {
           runHostGit(checkout, [...gitArgs, 'read-tree', at], undefined, fresh);
           const status = [...gitArgs, '-c', 'core.untrackedCache=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all'];
           dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, undefined, fresh));
-          if (at === head && dirty.length === 0) {
-            link = ignoredLink(checkout, checkoutChanges(this.o.root, checkout, runHostGit(checkout, [...status, '--ignored=matching'], undefined, fresh)));
-          }
         } catch (error) {
           problem = errText(error);
         } finally {
@@ -2966,10 +3099,6 @@ class FactoryEngine {
       }
       if (at === head && dirty.length > 0) {
         this.gate('lane-tampered', `the engine's prepare checkout ${checkout} is at ${head.slice(0, 12)} but its working tree differs from it (${dirty.slice(0, 5).join(', ')}): a changed tracked file or an untracked file that is not ignored, so the local gate did not run; inspect it and undo what the PR's code changed there, then rerun ${this.resume}`);
-        return false;
-      }
-      if (link) {
-        this.gate('lane-tampered', `the engine's prepare checkout ${checkout} has an ignored symlink or junction ${link} the engine did not make, which would pull content from outside the checkout into the gate, so the local gate did not run; inspect it and remove the link, then rerun ${this.resume}`);
         return false;
       }
     } else if (!this.reprepared && this.state.pr !== undefined) {
@@ -3035,6 +3164,9 @@ class FactoryEngine {
         out = this.o.gateSandbox
           ? await runLocalGate({ ...input, mode: 'enforced', sandbox: { run: this.o.gateSandbox, commonGitDir: common, requireDeniedPaths: gates.requireDeniedPaths } })
           : { started: false, reason: 'no OS sandbox runner was given to the engine', sandbox: true };
+        // The gate handed the PR's code of this head to the sandbox (a verdict or not): a later start failure on a
+        // rerun of the gate for this head may be that code's doing.
+        if ((out.started || out.noVerdict) && this.state.sandboxedGateHead !== head) this.save((x) => ({ ...x, sandboxedGateHead: head }));
         if (!out.started && out.noVerdict) {
           // It ran in the sandbox and said nothing a verdict can rest on: never the ack park, never a FAILURE.
           if (checkoutGitLink(checkout).hash !== linkBefore) return this.gateTamperedByGate(head, checkout, stateDir);
@@ -3042,6 +3174,14 @@ class FactoryEngine {
           return false;
         }
         unavailable = !out.started && out.sandbox === true;
+        // Prepare, or an earlier run of this gate, already ran the PR's code of this head in the sandbox: a start
+        // failure now may be its doing.
+        const codeRan = this.state.sandboxedPrepareHead === head || this.state.sandboxedGateHead === head;
+        if (unavailable && !out.started && !out.refused && codeRan && !this.gatesAccepted(head)) {
+          if (checkoutGitLink(checkout).hash !== linkBefore) return this.gateTamperedByGate(head, checkout, stateDir);
+          this.gate(GATE_NO_VERDICT_GATE, this.gateNoStartAfterCodeReason(head, `the local gate \`${gate.join(' ')}\``, out.reason));
+          return false;
+        }
         if (unavailable && !out.started) why = `the OS sandbox gave no verdict: ${out.reason}`;
       }
       if (unavailable) {
@@ -3981,8 +4121,7 @@ class FactoryEngine {
     const files = listChangedFiles(this.exec, this.o.root, from, check.head);
     if (files === null) throw new FactoryStepError(`git diff ${from.slice(0, 12)}...${check.head.slice(0, 12)} failed`);
     if (files.length === 0) return this.gate(CODING_AGENT_ADOPT_GATE, `the coding agent's pull request #${check.pr} changes nothing against ${s.base}; nothing was adopted; ${this.codingAgentRestart()}`);
-    let extraProtected: string[] = [];
-    try { extraProtected = configuredProtectedPaths(this.o.root); } catch { /* the defaults still apply */ }
+    const extraProtected = this.protectedExtras().paths;
     const hit = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...extraProtected]);
     if (hit.length > 0) return this.gate('protected-paths', `the coding agent's pull request #${check.pr} changes merge-rule or lane-protected paths: ${hit.join(', ')}; nothing was adopted or pushed`);
     const links = linkEntries(this.run(codingAgentTreeArgs(from), 'git', TRUSTED_READ_ENV), this.run(codingAgentTreeArgs(check.head), 'git', TRUSTED_READ_ENV));

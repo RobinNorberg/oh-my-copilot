@@ -27,7 +27,7 @@ import { WORKTREE_TEAM } from '../../copilot-run/job.js';
 import { LOCAL_REMOTE } from '../../forge/local/index.js';
 import { remoteRepoMismatch } from '../../ship/config.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
-import { getWorktreePath, removeWorkerWorktree } from '../../team/git-worktree.js';
+import { getWorktreePath, recordedWorktreeGitLinks, removeWorkerWorktree } from '../../team/git-worktree.js';
 import { factoryGuardExec, hardenedGitExec } from './exec.js';
 import { localRemoteMismatch } from './forge-roots.js';
 import { defaultLedgerDir, emptyHooksDir, EngineLedger } from './ledger.js';
@@ -53,7 +53,8 @@ export function laneProcessState(p) {
     const expected = p.identity.startsWith('dmtf:') ? dmtfCreationDateToTicks(p.identity.slice('dmtf:'.length)) : p.identity;
     if (!expected)
         return 'unknown';
-    const current = getProcessStartIdentitySync(p.pid);
+    // The engine's async reader falls back to CIM and wmic: a busy machine must not turn a live child into "unknown".
+    const current = getProcessStartIdentitySync(p.pid, { fallbacks: true });
     if (current === null)
         return isProcessAlive(p.pid) ? 'unknown' : 'dead';
     return current === expected ? 'live' : 'mismatch';
@@ -204,7 +205,8 @@ export function cleanHeldFactoryRun(o, state) {
                 return {
                     ...s,
                     updatedAt: at,
-                    lanes: s.lanes.map((l) => (ids.has(l.id) ? { ...l, stopUnconfirmed: false, note: `the stop was confirmed by a human (--lane-stopped, ${at})` } : l)),
+                    // Appended, never replaced: tamper text in the note keeps the worktree as evidence for reset (keepTamperEvidence).
+                    lanes: s.lanes.map((l) => (ids.has(l.id) ? { ...l, stopUnconfirmed: false, note: `${l.note ? `${l.note}; ` : ''}the stop was confirmed by a human (--lane-stopped, ${at})` } : l)),
                     history: [...s.history, ...busy.map((b) => ({ at, from: s.phase, to: s.phase, note: `lane ${b.lane.id} (${b.lane.jobId}): --lane-stopped: a human confirmed that its Copilot child stopped (${ids.get(b.lane.id)})` }))],
                 };
             }, {
@@ -263,7 +265,9 @@ export function cleanHeldFactoryRun(o, state) {
         if (team === FACTORY_CHECKOUT_TEAM)
             unlinkNodeModules(o.root, path);
         try {
-            removeWorkerWorktree(team, worker, o.root, { contained, ...(o.discard ? { discardChanges: true } : {}) });
+            // Through the git links recorded at its creation when this process has them: removal never discovers a rewritten `.git`.
+            const gitLinks = recordedWorktreeGitLinks(path);
+            removeWorkerWorktree(team, worker, o.root, { contained, ...(gitLinks ? { gitLinks } : {}), ...(o.discard ? { discardChanges: true } : {}) });
             if (existed)
                 result.removed.push(path);
         }

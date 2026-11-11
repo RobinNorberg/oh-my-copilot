@@ -29,7 +29,7 @@
  * lane B2 (parallel runs) replaces.
  */
 
-import { existsSync, readdirSync } from 'fs';
+import { existsSync, readdirSync, readFileSync } from 'fs';
 import { basename, join, resolve } from 'path';
 
 import { withFileLockSync } from '../../lib/file-lock.js';
@@ -320,14 +320,30 @@ export class PrivateRun {
 
   /**
    * Remove a private worktree: its node_modules link first, then removeRunDir
-   * (links unlinked, never followed), then `worktree prune` with the pins.
-   * Only after its process tree is gone (the caller's lane end or gate end).
+   * (links unlinked, never followed), then its own admin entry under the
+   * private git dir's worktrees/ (the one whose gitdir file names
+   * `<path>/.git`), by path; never `git worktree prune`. Only after its
+   * process tree is gone (the caller's lane end or gate end).
    */
   removeWorktree(path: string): void {
-    if (!existsSync(path)) return;
-    unlinkNodeModules(this.root, path);
-    removeRunDir(path, this.layout.work);
-    privateGitOk(this.repo, this.ctx, ['worktree', 'prune'], 'git worktree prune');
+    if (existsSync(path)) {
+      unlinkNodeModules(this.root, path);
+      removeRunDir(path, this.layout.work);
+    }
+    const admin = join(this.repo.gitDir, 'worktrees');
+    if (!existsSync(admin)) return;
+    const want = resolve(path, '.git');
+    const same = (a: string, b: string) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
+    for (const name of readdirSync(admin)) {
+      const dir = join(admin, name);
+      let gitdir: string;
+      try {
+        gitdir = readFileSync(join(dir, 'gitdir'), 'utf8').trim();
+      } catch {
+        continue;
+      }
+      if (same(resolve(dir, gitdir), want)) removeRunDir(dir, this.layout.work);
+    }
   }
 
   /**
