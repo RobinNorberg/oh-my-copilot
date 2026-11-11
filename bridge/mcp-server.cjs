@@ -52823,10 +52823,19 @@ function resolveGateInstall(user, base) {
   }
   return { mode: "park", source: "default" };
 }
-function guardChangedReason(details, resume, cancel) {
+function guardChangedReason(details, resume, cancel, stuck = []) {
+  const head = `your repository's ${guardItemsText(details) || "git state"} changed during the run, so nothing more was imported or pushed. `;
+  if (stuck.length > 0) {
+    return `${head}The guard cannot compare your repository's ${guardItemsText(stuck)} at all, so every import parks while it stays. Fix it (${STUCK_FIX}), then rerun ${resume}; or ${cancel} stops the run (factory.run.layout "shared" in your user config avoids this check for the next run).`;
+  }
+  return head + `Your own change does this too (git submodule update --init, git lfs install --local, a local alias, scalar or fsmonitor, husky on a branch switch). Check the change; rerunning ${resume} continues and takes your repository as it is then; ${cancel} stops the run.`;
+}
+function guardItemsText(details) {
   const what = details.slice(0, 5).map((d) => `${KIND_TEXT[d.kind]}${d.key && d.kind === "config-key" ? ` ${d.key} in` : ""}: ${d.path}`);
-  const more = details.length > 5 ? ` (and ${details.length - 5} more)` : "";
-  return `your repository's ${what.join("; ") || "git state"}${more} changed during the run, so nothing more was imported or pushed. Your own change does this too (git submodule update --init, git lfs install --local, a local alias, scalar or fsmonitor, husky on a branch switch). Check the change; rerunning ${resume} continues and takes your repository as it is then; ${cancel} stops the run.`;
+  return `${what.join("; ")}${details.length > 5 ? ` (and ${details.length - 5} more)` : ""}`;
+}
+function stuckGuardEntries(guard) {
+  return compareUserRepoGuard(guard, guard).length > 0 ? userRepoGuardChanges(guard, guard) : [];
 }
 function importRefusalPark(code, reason, what, ref, resume, cancel, privateDir) {
   const pre = `the engine did not import ${what} into your repository: ${reason}; nothing of it was pushed`;
@@ -52876,7 +52885,7 @@ function dropStaleImports(userGitDir, slug, ctx, warn) {
     if (!dropStaleImportRef(userGitDir, ref, sha3, ctx)) warn(`omg factory run: the stale import ref ${ref} could not be deleted; delete it by hand (git update-ref -d ${ref})`);
   }
 }
-var import_fs95, import_path113, LAYOUT_UNSUPPORTED_GATE, PRIVATE_STORE_GATE, REPO_GUARD_GATE, IMPORT_REFUSED_GATE, GATE_INSTALL_GATE, IMPORT_LOCK_WAIT_MS, run2, KIND_TEXT, inside, PrivateRun;
+var import_fs95, import_path113, LAYOUT_UNSUPPORTED_GATE, PRIVATE_STORE_GATE, REPO_GUARD_GATE, IMPORT_REFUSED_GATE, GATE_INSTALL_GATE, IMPORT_LOCK_WAIT_MS, run2, KIND_TEXT, STUCK_FIX, inside, PrivateRun;
 var init_private_run = __esm({
   "src/factory/run/private-run.ts"() {
     "use strict";
@@ -52918,6 +52927,7 @@ var init_private_run = __esm({
       "http-alternates": "http-alternates file",
       "replace-ref": "replace ref"
     };
+    STUCK_FIX = "make the config or include readable, keep hook files under 1 MiB and the hooks dir under 2 000 entries and 3 levels deep, and point core.hooksPath at a dir other than the work tree root or the git dir";
     inside = (p, dir, platform) => {
       const norm2 = (x) => platform === "win32" ? (0, import_path113.resolve)(x).toLowerCase() : (0, import_path113.resolve)(x);
       const a = norm2(p);
@@ -52962,6 +52972,10 @@ var init_private_run = __esm({
           dropStaleImports(userGitDir, input.slug, ctx, warn);
           if ((0, import_fs95.existsSync)(layout.runDir)) removeRunDir(layout.runDir, layout.work);
           const guard = userRepoGuardSnapshot(userGitDir, ctx);
+          const stuck = stuckGuardEntries(guard);
+          if (stuck.length > 0) {
+            throw new PrivateStoreError(`the import guard cannot compare your repository's ${guardItemsText(stuck)}, so every import would park; fix it (${STUCK_FIX})`);
+          }
           ensureSeed(layout, userGitDir, baseSha, ctx);
           const repo = createPrivateRepo(layout, baseSha, ctx);
           const record3 = { userGitDir, configHash: repo.configHash, longestPath: repo.longestPath, nextImport: 0 };
@@ -53113,7 +53127,7 @@ var init_private_run = __esm({
           const baseline = o.baseline ?? userRepoGuardSnapshot(this.userGitDir, this.ctx);
           const now = userRepoGuardSnapshot(this.userGitDir, this.ctx);
           if (compareUserRepoGuard(baseline, now).length > 0) {
-            return { ok: false, pushed: false, park: { name: REPO_GUARD_GATE, reason: guardChangedReason(userRepoGuardChanges(baseline, now), o.resume, o.cancel) } };
+            return { ok: false, pushed: false, park: { name: REPO_GUARD_GATE, reason: guardChangedReason(userRepoGuardChanges(baseline, now), o.resume, o.cancel, stuckGuardEntries(now)) } };
           }
           const held = [];
           const drop = () => {
@@ -53140,7 +53154,7 @@ var init_private_run = __esm({
           const after = userRepoGuardSnapshot(this.userGitDir, this.ctx);
           if (compareUserRepoGuard(baseline, after).length > 0) {
             const pushed = o.pushed(value);
-            return { ok: false, pushed, park: { name: REPO_GUARD_GATE, reason: `${pushed ? `${o.what} was pushed, and then ` : ""}${guardChangedReason(userRepoGuardChanges(baseline, after), o.resume, o.cancel)}` } };
+            return { ok: false, pushed, park: { name: REPO_GUARD_GATE, reason: `${pushed ? `${o.what} was pushed, and then ` : ""}${guardChangedReason(userRepoGuardChanges(baseline, after), o.resume, o.cancel, stuckGuardEntries(after))}` } };
           }
           o.setBaseline(after);
           return { ok: true, value };
@@ -53871,18 +53885,73 @@ var init_engine = __esm({
         const p = this.privateRun();
         return p ? p.worktreePath("prep") : checkoutPath(this.o.root, this.key);
       }
-      /** factory.run.layout from the trusted layers at `baseSha` (user config, then the base .copilot/omg.jsonc); false when it parked. */
+      /**
+       * The `.copilot/omg.jsonc` committed at `commit` for the factory.run keys,
+       * read only when the run's base is in ship.trustedBases (the rule
+       * loadTrustedShipConfig applies to the base layer). Undefined when the base
+       * is untrusted, or the file is absent, unreadable or not JSONC (warned): a
+       * broken base layer counts as unset, so a shared run keeps today's path and
+       * the strict gate-config load parks on a bad file later as before
+       * (review-483 MEDIUM-1).
+       */
+      trustedBaseLayer(commit) {
+        if (!commit) return void 0;
+        let trusted = false;
+        try {
+          trusted = resolveTrustedBases(this.runUserConfig()).includes(this.state.base);
+        } catch {
+        }
+        if (!trusted) return void 0;
+        try {
+          const text3 = readBaseFile(this.exec, this.o.root, commit, BASE_CONFIG_PATH);
+          return text3 && text3.trim() ? parseJsonc(text3) : void 0;
+        } catch (error2) {
+          this.o.warn?.(`omg factory run: the ${BASE_CONFIG_PATH} committed on ${this.state.base} could not be read for factory.run (${errText5(error2)}); its factory.run keys count as unset`);
+          return void 0;
+        }
+      }
+      /**
+       * factory.run.layout from the trusted layers at `baseSha` (the user config,
+       * else the base layer when trusted). An invalid user value throws; an
+       * invalid base value counts as unset (warned), like a broken base file.
+       * Without `baseSha` only the user config is read.
+       */
+      layoutFromLayers(baseSha) {
+        const own = resolveRunLayout(this.runUserConfig(), void 0);
+        if (own.source !== "default" || !baseSha) return own;
+        try {
+          return resolveRunLayout(void 0, this.trustedBaseLayer(baseSha));
+        } catch (error2) {
+          this.o.warn?.(`omg factory run: ${errText5(error2)}; the key counts as unset (shared layout)`);
+          return own;
+        }
+      }
+      /** factory.run.layout from the trusted layers at `baseSha`; false when it parked (only an invalid value in the user config parks). */
       resolveLayout(baseSha) {
         try {
-          const user = this.runUserConfig();
-          const own = resolveRunLayout(user, void 0);
-          const text3 = own.source === "default" ? readBaseFile(this.exec, this.o.root, baseSha, BASE_CONFIG_PATH) : null;
-          this.layoutChoice = text3 && text3.trim() ? resolveRunLayout(user, parseJsonc(text3)).layout : own.layout;
+          this.layoutChoice = this.layoutFromLayers(baseSha).layout;
           return true;
         } catch (error2) {
-          this.gate(PRIVATE_STORE_GATE, `factory.run.layout could not be read: ${errText5(error2)}; fix it in the user config or the .copilot/omg.jsonc committed on ${this.state.base}, then rerun ${this.resume}`);
+          this.gate(PRIVATE_STORE_GATE, `factory.run.layout could not be read: ${errText5(error2)}; fix it in the user config, then rerun ${this.resume}`);
           return false;
         }
+      }
+      /**
+       * The park when the private layout is asked for (either trusted layer) and
+       * the implementer is the coding agent, which pushes to the PR branch
+       * itself, outside the private repository (review-483 M2: never a silent
+       * shared fallback). Null when the layout is shared; an invalid user value
+       * is left to resolveLayout.
+       */
+      agentLayoutPark(baseSha) {
+        let layout;
+        try {
+          layout = this.layoutFromLayers(baseSha);
+        } catch {
+          return null;
+        }
+        if (layout.layout !== "private") return null;
+        return `factory.run.layout "private" (from ${layout.source === "user config" ? "your user config" : layout.source}) does not support factory.run.implementer "coding-agent" yet (the agent pushes to the PR branch itself, outside the private repository); nothing was assigned. Set factory.run.layout "shared" in your user config (it overrides the base .copilot/omg.jsonc), or set factory.run.implementer back to "copilot", then rerun ${this.resume}`;
       }
       /**
        * Run start of the private layout (B1b scope 1): the store's checks, the
@@ -53991,9 +54060,7 @@ var init_engine = __esm({
         const what = rule.lockfiles.length === 0 ? "the base has no lockfile" : `the PR changes ${rule.changed.join(", ")}`;
         let mode;
         try {
-          const commit = loaded2.config.trustedBaseCommit;
-          const text3 = commit ? readBaseFile(this.exec, this.o.root, commit, BASE_CONFIG_PATH) : null;
-          mode = resolveGateInstall(this.runUserConfig(), text3 && text3.trim() ? parseJsonc(text3) : void 0).mode;
+          mode = resolveGateInstall(this.runUserConfig(), this.trustedBaseLayer(loaded2.config.trustedBaseCommit)).mode;
         } catch (error2) {
           return { name: GATE_INSTALL_GATE, reason: `${what}, and factory.run.gateInstall could not be read: ${errText5(error2)}; fix it, then rerun ${this.resume}` };
         }
@@ -54740,21 +54807,14 @@ ${item.acceptance}
       }
       async implement() {
         const undecided = this.state.layout !== 2 && !this.state.codingAgent && this.state.lanes.length === 0;
-        let userLayout = "shared";
-        try {
-          userLayout = resolveRunLayout(this.runUserConfig(), void 0).layout;
-        } catch {
-        }
-        if (undecided && userLayout === "private" && this.state.kind !== "ci-heal" && this.o.issue) {
+        if (undecided && this.state.kind !== "ci-heal" && this.o.issue) {
+          const park = this.agentLayoutPark();
           let agent = false;
-          try {
+          if (park) try {
             agent = this.codingAgentChoice().use;
           } catch {
           }
-          if (agent) {
-            this.gate(LAYOUT_UNSUPPORTED_GATE, `factory.run.layout "private" does not support factory.run.implementer "coding-agent" yet (the agent pushes to the PR branch itself, outside the private repository); set factory.run.layout "shared" or the implementer back to the default, then rerun ${this.resume}`);
-            return;
-          }
+          if (park && agent) return this.gate(LAYOUT_UNSUPPORTED_GATE, park);
         }
         if (await this.codingAgentImplement()) return;
         const baseSha = this.fetchBase();
@@ -56684,6 +56744,8 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         const cfg = this.codingAgentSettings();
         const baseSha = this.fetchBase();
         this.save((x) => ({ ...x, baseSha }));
+        const layoutPark = this.state.codingAgent ? null : this.agentLayoutPark(baseSha);
+        if (layoutPark) return this.gate(LAYOUT_UNSUPPORTED_GATE, layoutPark);
         const pre = this.codingAgentStatus(PRE_ASSIGN_SINCE);
         if (pre.status.phase === "truncated") return this.gate(CODING_AGENT_GATE, this.codingAgentTruncated(pre.status));
         if (pre.status.phase === "unavailable") {

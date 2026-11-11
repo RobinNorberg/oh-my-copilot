@@ -103,7 +103,15 @@ export type ImportOutcome<T> = {
  * kind, path and key name of each changed entry, never a value or a
  * fingerprint, and that the user's own change trips it too.
  */
-export declare function guardChangedReason(details: readonly UserGuardDetail[], resume: string, cancel: string): string;
+export declare function guardChangedReason(details: readonly UserGuardDetail[], resume: string, cancel: string, stuck?: readonly UserGuardDetail[]): string;
+/**
+ * The entries of `guard` that compareUserRepoGuard always reports as changed
+ * (an unreadable config, include or git state; a hooks dir too large to
+ * compare; core.hooksPath at the work tree root or the git dir): with one of
+ * them a private run would park at every import (review-483 HIGH-1). Empty
+ * when the guard compares cleanly.
+ */
+export declare function stuckGuardEntries(guard: UserRepoGuard): UserGuardDetail[];
 /** The park for an import refusal: the module's fixed reason, and the command that continues or cancels. */
 export declare function importRefusalPark(code: ImportRefusalCode, reason: string, what: string, ref: string, resume: string, cancel: string, privateDir: string): Park;
 export declare class PrivateRun {
