@@ -1602,6 +1602,10 @@ export function removeStaleWorktreeEntry(repoRoot: string, wtPath: string, admin
   const real = (dir: string): boolean => {
     try { const st = lstatSync(dir); return st.isDirectory() && !st.isSymbolicLink(); } catch { return false; }
   };
+  // `worktrees/` itself must be a real directory in both branches: through a link the entry removed would be the link target's.
+  let rootPresent = true;
+  try { lstatSync(root); } catch { rootPresent = false; }
+  if (rootPresent && !real(root)) throw new Error(`stale_worktree_entry: ${root} is not a real directory (a link or a file)`);
   const namesWtPath = (name: string): boolean => {
     const dir = join(root, name);
     if (!isAdminDirOf(common, dir) || !real(dir)) return false;

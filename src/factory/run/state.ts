@@ -573,6 +573,8 @@ function humanReviewShapeProblem(s: Record<string, unknown>): string | null {
   if (s.pendingCommit !== undefined && !pendingCommitShapeOk(s.pendingCommit)) return 'pendingCommit';
   if (s.sandboxedPrepareHead !== undefined && (!isStr(s.sandboxedPrepareHead) || !HEX40.test(s.sandboxedPrepareHead))) return 'sandboxedPrepareHead';
   if (s.sandboxedGateHead !== undefined && (!isStr(s.sandboxedGateHead) || !HEX40.test(s.sandboxedGateHead))) return 'sandboxedGateHead';
+  // One admin dir name under <common>/worktrees (git makes it from the checkout's base name): no separator, nothing else.
+  if (s.checkoutAdmin !== undefined && (!isStr(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === '.' || s.checkoutAdmin === '..')) return 'checkoutAdmin';
   const cal = s.gateCalibration as Record<string, unknown> | undefined;
   if (cal !== undefined && (typeof cal !== 'object' || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
     const e = v as Record<string, unknown> | null;
