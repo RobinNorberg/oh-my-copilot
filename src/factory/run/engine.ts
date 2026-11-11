@@ -5341,7 +5341,7 @@ function codingAgentDryRun(o: FactoryEngineOptions, forgeKind: string, repoUrl: 
  * trusted layer, is read at the sealed base by the real run); nothing for the
  * shared layout, so that output is unchanged.
  */
-function dryLayoutNote(o: FactoryEngineOptions, exec: Exec, local: boolean): string {
+function dryLayoutNote(o: FactoryEngineOptions, exec: Exec | null, local: boolean): string {
   let user = o.runUserConfig;
   if (user === undefined) {
     try { user = userConfigLayers().trustedUser; } catch { user = null; }
@@ -5350,8 +5350,9 @@ function dryLayoutNote(o: FactoryEngineOptions, exec: Exec, local: boolean): str
     // Review-483b INFO-2: the base layer too (the .copilot/omg.jsonc at the base's local tracking ref, trusted bases only;
     // no fetch in a dry run), unless the user config already decides; the real run reads it again at the sealed base.
     // A base file that cannot be read counts as unset here without a warning (the dry run's output stays as it was).
+    // The gh-only path (no forge config: the engine's pre-forge GitHub flow) keeps its exact git calls and reads the user layer only.
     const own = resolveRunLayout(user, undefined);
-    const { layout, source } = own.source !== 'default' ? own : resolveRunLayout(undefined, readTrustedBaseLayerAtRef(exec, o.root, o.base, local ? `refs/heads/${o.base}` : `refs/remotes/origin/${o.base}`, user));
+    const { layout, source } = own.source !== 'default' || !exec ? own : resolveRunLayout(undefined, readTrustedBaseLayerAtRef(exec, o.root, o.base, local ? `refs/heads/${o.base}` : `refs/remotes/origin/${o.base}`, user));
     return layout === 'private' ? `, in the private layout (factory.run.layout "private" from ${source === 'user config' ? 'the user config' : source}: its own git repository under the work root)` : '';
   } catch (error) {
     return `; but ${errText(error)}, so the run would park at awaiting-human: ${PRIVATE_STORE_GATE}`;
@@ -5447,7 +5448,7 @@ function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
   const agent = source ? codingAgentDryRun(o, 'github', repoUrl, source, caps) : undefined;
   if (agent) return agent;
   return source
-    ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o, exec, false)}`, plan: { next: 'implement', planSource: source, ...caps } }
+    ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o, null, false)}`, plan: { next: 'implement', planSource: source, ...caps } }
     : { exitCode: 0, phase: null, state: null, message: 'dry run: no plan (no "Acceptance criteria" heading or omg-plan: link); the run would stop at awaiting-human: needs-plan', plan: { next: 'awaiting-human', reason: 'needs-plan', ...caps } };
 }
 
