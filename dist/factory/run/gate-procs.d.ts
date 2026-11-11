@@ -33,6 +33,10 @@ export interface GateProcRecord {
     /** Windows: descendants found after the root exited. */
     orphans: GateProc[];
 }
+/** liveGateProcs could not tell: a record dir or record is unreadable, so a gate process may still run (fail closed). */
+export declare class GateProcsUnreadableError extends Error {
+    constructor(message: string);
+}
 export declare const gateProcsPath: (stateDir: string, root: string, head: string) => string;
 /** The record at `path`; undefined when absent or not a well-formed record (it is then ignored, never trusted). */
 export declare function readGateProcs(path: string): GateProcRecord | undefined;
@@ -70,7 +74,9 @@ export declare function reapGateProcs(path: string, deps?: GateProcDeps): Promis
  * still run with their recorded start identity: the proof, before a dir a
  * gate or prepare check ran in is removed, that none of its processes is
  * still there (a private run's prepare checkout or run dir, review-483 I.4).
- * Never signals anything.
+ * Never signals anything. Fails closed (review-483b L-e): a record dir that
+ * exists but cannot be listed, or a record that cannot be read or parsed,
+ * throws GateProcsUnreadableError ("may be live"); only a missing dir is empty.
  */
 export declare function liveGateProcs(dir: string, deps?: Pick<GateProcDeps, 'identitySync'>): number[];
 /**

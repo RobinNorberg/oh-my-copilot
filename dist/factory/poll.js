@@ -55,7 +55,7 @@
  * 1 a read failed in the `--once` tick, or another poller runs; 2 usage;
  * 5 incompatible (as `omg factory check`).
  */
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { appendFileSync, existsSync, lstatSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { ledgerPath, ledgerTotals, parseLedger } from '../budget/ledger.js';
@@ -79,7 +79,29 @@ import { tamperHoldMessage } from './run/tamper-quarantine.js';
 import { visibleLine } from '../forge/review-feedback.js';
 import { resolveTeamConfig, TeamConfigError } from './team/context.js';
 import { staleGateReminders } from './team/reminders.js';
-import { AUTO_START_SCAN_WAIT_MS, acquireFactoryRepoOwnerForRun, defaultOwnerDeps, EXIT_BUSY, FactoryBusyError, factoryRepoOwnerPath, ownerHolding, runLabel, TERMINAL_FACTORY_PHASES, tryScanLock, verifyFactoryIntegrity, } from './run/state.js';
+import { AUTO_START_SCAN_WAIT_MS, acquireFactoryRepoOwnerForRun, acquireRunSlot, defaultOwnerDeps, heldSlots, EXIT_BUSY, FactoryBusyError, factoryRepoOwnerPath, ownerHolding, runLabel, TERMINAL_FACTORY_PHASES, tryScanLock, verifyFactoryIntegrity, } from './run/state.js';
+import { resolveParallelSettings } from './run/parallel.js';
+import { resolveRunLayout, userParallelOptIn } from './run/private-run.js';
+import { killProcessTree } from '../smoke/process-utils.js';
+/**
+ * B2: factory.run.maxConcurrent when it is above 1 and factory.run.layout is
+ * "private" in the trusted layers (the user config, the base layer); else
+ * undefined (one run at a time). An invalid value is reported and counts as 1.
+ * Only with the user config's opt-in (userParallelOptIn, the CLI's rule,
+ * review-487b F-1): keys committed only on the base start one run at a time.
+ */
+export function pollParallel(trustedUser, base, err) {
+    try {
+        if (!userParallelOptIn(trustedUser))
+            return undefined;
+        const s = resolveParallelSettings(trustedUser, base, err);
+        return s.maxConcurrent > 1 && resolveRunLayout(trustedUser, base).layout === 'private' ? s.maxConcurrent : undefined;
+    }
+    catch (error) {
+        err(`omg factory poll: ${message(error)}; the auto-start starts one run at a time`);
+        return undefined;
+    }
+}
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
 export const POLL_JSON_SCHEMA_VERSION = 1;
 export const POLL_DEFAULT_INTERVAL_MS = 5 * 60_000;
@@ -287,7 +309,7 @@ export function parseRunNextOutcome(stdout) {
  * to the engine process (its lanes are not reached).
  */
 export function defaultPollAutoStart(entry = process.argv[1], o = {}) {
-    return ({ root }) => new Promise((resolve) => {
+    return ({ root, parallel, args }) => new Promise((resolve) => {
         if (!entry) {
             resolve({ exitCode: 1, parsed: false, next: null, message: 'cannot locate the omg CLI entry to start omg factory run --next' });
             return;
@@ -312,7 +334,7 @@ export function defaultPollAutoStart(entry = process.argv[1], o = {}) {
         const notStarted = (error) => settle({ exitCode: 1, parsed: false, next: null, message: `omg factory run --next did not start: ${message(error)}` });
         let child;
         try {
-            child = spawn(process.execPath, [entry, 'factory', 'run', '--next', '--json'], { cwd: root, stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true, detached: process.platform !== 'win32' });
+            child = spawn(process.execPath, [entry, 'factory', 'run', '--next', '--json', ...(parallel !== undefined ? ['--parallel', String(parallel)] : []), ...(args ?? [])], { cwd: root, stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true, detached: process.platform !== 'win32' });
         }
         catch (error) {
             notStarted(error);
@@ -354,6 +376,11 @@ export function defaultPollAutoStart(entry = process.argv[1], o = {}) {
             killer = setTimeout(() => killTree('SIGKILL'), o.graceMs ?? AUTO_START_GRACE_MS);
         }, timeoutMs);
         unsubscribe = o.signals?.((signal) => {
+            // SIGKILL (a supervisor's second Ctrl+C): the child's whole tree, synchronously (taskkill /T on Windows), before the caller exits.
+            if (signal === 'SIGKILL') {
+                killProcessTree(child.pid, spawnSync);
+                return;
+            }
             if (process.platform !== 'win32' || signal !== 'SIGINT')
                 child.kill(signal);
         }) ?? unsubscribe;
@@ -576,7 +603,10 @@ export async function pollTick(ctx) {
             prs.push(row);
         }
     }
-    const locked = engineBusy(root, ctx.owner);
+    const sharedEngine = engineBusy(root, ctx.owner);
+    // B2: idle means no shared engine AND no parallel slot held (a private-layout run holds a slot, not the engine lock).
+    const slots = heldSlots(root, ctx.owner).length;
+    const locked = sharedEngine || slots > 0;
     // A run state that is unreadable or fails its integrity seal may hide a run in flight: never idle.
     const unsound = broken.size > 0 || [...runs.values()].some((s) => !verifyFactoryIntegrity(s));
     const idle = !locked && !unsound && !live.some(([, s]) => !s.gate);
@@ -597,17 +627,20 @@ export async function pollTick(ctx) {
         ctx.previous.board = next;
     }
     const rateLimited = [...errors, ...warnings].some((m) => ADO_RATE_LIMITED.test(m) || GITHUB_RATE_LIMITED.test(m));
-    // 5. auto-start: at most one run, on an idle tick only.
+    // 5. auto-start: at most one run, on an idle tick only; B2 (ctx.parallel): `--next --parallel <n>` while a slot is free.
     let autoStart;
+    const par = ctx.parallel !== undefined && ctx.parallel > 1 ? ctx.parallel : undefined;
     const held = config.intake.autoStart ? (ctx.tamperHold ?? (() => tamperHoldMessage(defaultLedgerDir(), root)))() : null;
     const blocked = !config.intake.autoStart ? 'factory.intake.autoStart is off'
         : held ? held
-            : locked ? 'the run lock is held: an engine runs in this repository'
-                : unsound ? 'a run state is unreadable or fails its integrity check'
-                    : !idle ? 'a run is in flight'
-                        : !intake.ran ? `no intake read this tick (${intake.reason})`
-                            : rateLimited ? 'the tick was rate-limited'
-                                : null;
+            : par !== undefined && sharedEngine ? 'the run lock is held: a shared-layout engine runs in this repository'
+                : par !== undefined && slots >= par ? `all ${par} parallel slots are held (factory.run.maxConcurrent ${par})`
+                    : par === undefined && locked ? 'the run lock is held: an engine runs in this repository'
+                        : unsound ? 'a run state is unreadable or fails its integrity check'
+                            : par === undefined && !idle ? 'a run is in flight'
+                                : !intake.ran ? `no intake read this tick (${intake.reason})`
+                                    : rateLimited ? 'the tick was rate-limited'
+                                        : null;
     if (blocked)
         autoStart = { started: false, reason: blocked };
     else {
@@ -620,7 +653,11 @@ export async function pollTick(ctx) {
             // tick. It is released for the child, whose own claim at start is the binding one: an engine that slips in
             // between makes that claim refuse, so two engines never run.
             try {
-                acquireFactoryRepoOwnerForRun(root, AUTO_START_CLAIM, () => at, ctx.owner, AUTO_START_SCAN_WAIT_MS).release();
+                // B2: a parallel auto-start probes for a free slot the same way (taken and released; the children take their own).
+                if (par !== undefined)
+                    acquireRunSlot(root, 'next', par, () => at, ctx.owner, AUTO_START_SCAN_WAIT_MS).release();
+                else
+                    acquireFactoryRepoOwnerForRun(root, AUTO_START_CLAIM, () => at, ctx.owner, AUTO_START_SCAN_WAIT_MS).release();
             }
             catch (error) {
                 reason = `the run lock is held: ${message(error)}`;
@@ -629,8 +666,8 @@ export async function pollTick(ctx) {
         if (reason)
             autoStart = { started: false, reason: plainText(reason) };
         else {
-            audit(root, { kind: 'auto-start' }, at);
-            const r = await ctx.autoStart({ root });
+            audit(root, { kind: 'auto-start', ...(par !== undefined ? { parallel: par - slots } : {}) }, at);
+            const r = await ctx.autoStart({ root, ...(par !== undefined ? { parallel: par - slots } : {}) });
             audit(root, { kind: 'auto-start-done', ...(r.parsed ? { next: r.next } : { outcome: 'unreadable' }), exitCode: r.exitCode }, new Date(ctx.now()).toISOString());
             autoStart = { started: true, parsed: r.parsed, next: r.parsed ? r.next : null, exitCode: r.exitCode, message: plainText(r.message) };
         }
@@ -744,6 +781,7 @@ export async function runFactoryPoll(o, deps) {
         budget: deps.budget ?? defaultPollBudget(() => layers),
         remindAfterHours: teamConfig.remindAfterHours,
         tamperHold: () => tamperHoldMessage(deps.ledgerDir ?? defaultLedgerDir(), read.root),
+        ...(() => { const n = pollParallel(layers.trustedUser, layers.base, (m) => deps.err(plainText(m))); return n !== undefined ? { parallel: n } : {}; })(),
         owner, now, previous: { board: new Map(), prs: new Map() }, tick: 0,
     };
     let interval = base;

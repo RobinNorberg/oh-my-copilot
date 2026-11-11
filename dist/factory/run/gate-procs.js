@@ -30,6 +30,13 @@ const execFileAsync = promisify(execFile);
 /** How long one cleanup step (listing, identity, kill) may take. */
 const STEP_DEADLINE_MS = 15_000;
 const HEX40 = /^[0-9a-f]{40}$/;
+/** liveGateProcs could not tell: a record dir or record is unreadable, so a gate process may still run (fail closed). */
+export class GateProcsUnreadableError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'GateProcsUnreadableError';
+    }
+}
 export const gateProcsPath = (stateDir, root, head) => {
     if (!HEX40.test(head))
         throw new Error(`gate-procs: ${JSON.stringify(head)} is not a 40-hex commit`);
@@ -184,19 +191,26 @@ export async function reapGateProcs(path, deps = defaultGateProcDeps()) {
  * still run with their recorded start identity: the proof, before a dir a
  * gate or prepare check ran in is removed, that none of its processes is
  * still there (a private run's prepare checkout or run dir, review-483 I.4).
- * Never signals anything.
+ * Never signals anything. Fails closed (review-483b L-e): a record dir that
+ * exists but cannot be listed, or a record that cannot be read or parsed,
+ * throws GateProcsUnreadableError ("may be live"); only a missing dir is empty.
  */
 export function liveGateProcs(dir, deps = defaultGateProcDeps()) {
     let names;
     try {
         names = readdirSync(dir);
     }
-    catch {
-        return [];
+    catch (error) {
+        const code = error.code;
+        if (code === 'ENOENT')
+            return [];
+        throw new GateProcsUnreadableError(`the gate process records in ${dir} cannot be listed (${code ?? String(error)}), so a gate process may still run there`);
     }
     const live = [];
     for (const name of names.filter((n) => /^[0-9a-f]{40}\.json$/.test(n))) {
         const record = readGateProcs(join(dir, name));
+        if (!record)
+            throw new GateProcsUnreadableError(`the gate process record ${join(dir, name)} cannot be read, so a gate process may still run; check that none does (Task Manager, ps), then remove that file`);
         for (const p of record ? [...(record.root ? [record.root] : []), ...record.orphans] : []) {
             if (p.pid !== process.pid && deps.identitySync(p.pid) === p.identity && !live.includes(p.pid))
                 live.push(p.pid);

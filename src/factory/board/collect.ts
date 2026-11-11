@@ -31,7 +31,7 @@ import { latestVerdict, readShipState } from '../../ship/state.js';
 import { runCredits } from '../run/budget.js';
 import { FactorySafetyError } from '../run/exec.js';
 import {
-  factoryOwnerPath, factoryStateDir, ownerHolding, readFactoryState, runKeyOf, runLabel, TERMINAL_FACTORY_PHASES, trackerStageOf, verifyFactoryIntegrity,
+  factoryOwnerPath, factoryStateDir, heldSlots, ownerHolding, readFactoryState, runKeyOf, runLabel, TERMINAL_FACTORY_PHASES, trackerStageOf, verifyFactoryIntegrity,
   type FactoryPhase, type FactoryRunKey, type FactoryRunState,
 } from '../run/state.js';
 import { renderBoard } from './render.js';
@@ -61,7 +61,7 @@ export interface BoardRow {
     /** The lane running now, if any. */
     runningLane?: string;
     /** The engine running the item now (its owner file held by a live process); absent when none runs. */
-    live?: { pid: number; host: string; since: string };
+    live?: { pid: number; host: string; since: string; slot?: number };
     credits: number;
     integrity: 'ok' | 'bad' | 'none';
     updatedAt: string;
@@ -174,7 +174,10 @@ function columnTitle(config: ResolvedForgeConfig, stage: BoardStage): string {
 /** The live engine of a run, read-only (an unreadable owner file shows nothing: the engine's own claim decides). */
 function liveOf(root: string, s: FactoryRunState): { live?: { pid: number; host: string; since: string } } {
   const h = ownerHolding(factoryOwnerPath(root, runKeyOf(s)));
-  return h === null || h === 'unreadable' ? {} : { live: { pid: h.pid, host: plainText(h.hostname), since: plainText(String(h.startedAt)) } };
+  if (h === null || h === 'unreadable') return {};
+  // B2: the parallel slot this run's engine holds, when it runs as one of several private-layout runs.
+  const slot = heldSlots(root).find((x) => x.owner !== 'unreadable' && x.owner.run === String(runKeyOf(s)) && x.owner.pid === h.pid);
+  return { live: { pid: h.pid, host: plainText(h.hostname), since: plainText(String(h.startedAt)), ...(slot ? { slot: slot.slot } : {}) } };
 }
 
 function runPart(root: string, s: FactoryRunState, warnings: string[]): Pick<BoardRow, 'run' | 'gates'> {

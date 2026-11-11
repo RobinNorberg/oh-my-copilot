@@ -581,6 +581,11 @@ export interface CompareAllowance {
 export function compareSnapshots(before: RepoSnapshot, after: RepoSnapshot, allowedNewRefs: Readonly<Record<string, string>> = {}, allow: CompareAllowance = {}): string[] {
   const problems: string[] = [];
   if (before.commonDir !== after.commonDir) problems.push(`common git dir moved (${before.commonDir} -> ${after.commonDir})`);
+  // Review-487b BLOCK-1: a remote-tracking ref fetchedRef could excuse is only a candidate here. fetchedRef may talk to
+  // the remote (ls-remote, fetch), so it runs last and only when nothing else differs: a lane that planted transport
+  // config (http.proxy, core.sshCommand, url.*.insteadOf) and moved a tracking ref is reported as tamper with its
+  // config change, and no git transport runs on that config.
+  const refLines: { line: string; name?: string; sha?: string }[] = [];
   const names = new Set([...Object.keys(before.refs), ...Object.keys(after.refs)]);
   for (const name of [...names].sort()) {
     const was = before.refs[name];
@@ -588,11 +593,23 @@ export function compareSnapshots(before: RepoSnapshot, after: RepoSnapshot, allo
     if (was === now) continue;
     if (was === undefined && name in allowedNewRefs && (allowedNewRefs[name] === '*' || now === allowedNewRefs[name])) continue;
     if (was === undefined && now !== undefined && allow.refAllowed?.(name, now)) continue;
-    if (now !== undefined && name.startsWith('refs/remotes/') && allow.fetchedRef?.(name, now)) continue;
-    if (was === undefined) problems.push(`ref ${name} was created (${now.slice(0, 12)})`);
-    else if (now === undefined) problems.push(`ref ${name} was deleted (was ${was.slice(0, 12)})`);
-    else problems.push(`ref ${name} moved ${was.slice(0, 12)} -> ${now.slice(0, 12)}`);
+    const candidate = now !== undefined && name.startsWith('refs/remotes/') && allow.fetchedRef !== undefined;
+    if (was === undefined) refLines.push({ line: `ref ${name} was created (${now.slice(0, 12)})`, ...(candidate ? { name, sha: now } : {}) });
+    else if (now === undefined) refLines.push({ line: `ref ${name} was deleted (was ${was.slice(0, 12)})` });
+    else refLines.push({ line: `ref ${name} moved ${was.slice(0, 12)} -> ${now.slice(0, 12)}`, ...(candidate ? { name, sha: now } : {}) });
   }
+  const rest = compareRest(before, after, allow);
+  const othersDiffer = problems.length > 0 || rest.length > 0 || refLines.some((r) => r.name === undefined);
+  for (const r of refLines) {
+    if (r.name !== undefined && !othersDiffer && allow.fetchedRef!(r.name, r.sha!)) continue;
+    problems.push(r.line);
+  }
+  return [...problems, ...rest];
+}
+
+/** compareSnapshots' checks other than the refs (no remote is consulted here). */
+function compareRest(before: RepoSnapshot, after: RepoSnapshot, allow: CompareAllowance): string[] {
+  const problems: string[] = [];
   if (before.config !== after.config) problems.push('the common git config changed');
   if (before.configWorktree !== after.configWorktree) problems.push('config.worktree changed');
   const ids = new Set([...Object.keys(before.worktreeConfigs), ...Object.keys(after.worktreeConfigs)]);

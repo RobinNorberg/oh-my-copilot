@@ -65,6 +65,14 @@ import { type ScanResult } from './heal/cli.js';
 import { type FactoryRunLimits } from './run/budget.js';
 import { type Reminder } from './team/reminders.js';
 import { type FactoryRunKey, type HeldOwner, type OwnerDeps } from './run/state.js';
+/**
+ * B2: factory.run.maxConcurrent when it is above 1 and factory.run.layout is
+ * "private" in the trusted layers (the user config, the base layer); else
+ * undefined (one run at a time). An invalid value is reported and counts as 1.
+ * Only with the user config's opt-in (userParallelOptIn, the CLI's rule,
+ * review-487b F-1): keys committed only on the base start one run at a time.
+ */
+export declare function pollParallel(trustedUser: unknown, base: unknown, err: (m: string) => void): number | undefined;
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
 export declare const POLL_JSON_SCHEMA_VERSION = 1;
 export declare const POLL_DEFAULT_INTERVAL_MS: number;
@@ -125,6 +133,8 @@ export declare function defaultPollHealScan(exec: Exec, config: (root: string) =
  */
 export type PollAutoStart = (o: {
     root: string;
+    parallel?: number;
+    args?: readonly string[];
 }) => Promise<{
     exitCode: number;
     parsed: boolean;
@@ -299,6 +309,13 @@ export interface PollContext {
     unreleasedScan?: HeldOwner;
     /** The tamper hold on the checkout (tamper-quarantine.ts), null when none: no auto-start while it is set (default: the factory ledger's). */
     tamperHold?: () => string | null;
+    /**
+     * B2: factory.run.maxConcurrent when it is above 1 with factory.run.layout
+     * "private" (trusted layers): the auto-start runs `omg factory run --next
+     * --parallel <n>` whenever a slot is free, also while other runs are in
+     * flight. Absent: one run at a time, on an idle tick only (as before).
+     */
+    parallel?: number;
     now: () => number;
     /** Row signatures of the previous tick (board diff), and PR facts (audit on change); updated by pollTick. */
     previous: {

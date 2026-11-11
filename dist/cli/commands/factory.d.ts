@@ -24,6 +24,7 @@ import { type ChainSkillStatus, type RouteTable } from '../../hooks/session-end/
 import { type LoadedFactoryRunLimits } from '../../factory/run/budget.js';
 import { type FactoryRunOutcome, type LaneProcessOps } from '../../factory/run/engine.js';
 import type { LoadedForgeConfig } from '../../forge/config.js';
+import type { ForgeKind } from '../../forge/types.js';
 import { type LaneBackend } from '../../factory/run/lane.js';
 import type { GateConfigLoader } from '../../factory/run/prepare.js';
 import { type SandboxRunner } from '../../factory/run/sandbox-exec.js';
@@ -31,6 +32,8 @@ import { type FactoryRunKey, type FactoryRunState } from '../../factory/run/stat
 import { type Exec } from '../../ship/exec.js';
 import { type FactoryCheckDeps } from '../../factory/check/cli.js';
 import type { FactoryPollDeps } from '../../factory/poll.js';
+import { type ParallelChildOutcome, type ParallelSettings } from '../../factory/run/parallel.js';
+import { type RunLayoutChoice } from '../../factory/run/private-run.js';
 export declare function renderChainStatus(status: ChainStatus): string;
 /** Seams for `omg factory run` (tests script gh/git and the lanes; nothing live). */
 export interface FactoryRunDeps {
@@ -60,7 +63,30 @@ export interface FactoryRunDeps {
     gateSandbox?: (root: string) => SandboxRunner;
     /** Liveness, kill and the lane process-tree proof (default: the engine's defaultLaneProcessOps). */
     processes?: LaneProcessOps;
+    /**
+     * B2: factory.run.maxConcurrent / maxInFlightCredits and the layout from
+     * the trusted layers (the user config; the `.copilot/omg.jsonc` committed
+     * on a trusted base, read only after this CLI's own locked fetch, at the
+     * fetched sha: review-487 L-1). `kind`: the forge kind, read only when
+     * needed. Undefined (or omitted) = one engine per checkout and no credit
+     * reservation, exactly as before: the default path reads no git.
+     */
+    parallel?: (root: string, base: string, forge: () => ParallelForge | undefined) => {
+        settings: ParallelSettings;
+        layout: RunLayoutChoice;
+    } | undefined;
+    /** The `--parallel` children (default: a child `omg factory run --next --json` of this CLI entry, poll's auto-start). */
+    parallelChild?: (o: {
+        root: string;
+        args: readonly string[];
+        signals: (forward: (signal: NodeJS.Signals) => void) => () => void;
+    }) => Promise<ParallelChildOutcome>;
 }
+/** defaultParallelLayers for a given trusted user config and guarded `exec` (exported for its tests). */
+export declare function parallelLayers(root: string, base: string, kind: () => ParallelForge | undefined, user: unknown, exec: Exec): {
+    settings: ParallelSettings;
+    layout: RunLayoutChoice;
+} | undefined;
 export declare const defaultFactoryRunDeps: FactoryRunDeps;
 /**
  * The `omg factory run --json` documents on stdout. `omg factory poll`'s
@@ -76,12 +102,53 @@ export declare function renderFactoryRunState(state: FactoryRunState, o?: {
     gate?: boolean;
 }): string;
 /**
+ * The forge kind of this checkout read without a fetch (the forge-config
+ * loader's dry-run mode: the committed config at the tracking ref as it
+ * is), undefined when no loader is wired or it fails.
+ */
+/** The forge kind and repository the parallel settings' base read needs (review-487b BLOCK-2: the remote check). */
+export interface ParallelForge {
+    kind: ForgeKind;
+    repoUrl: string;
+}
+/**
  * The live engines of this checkout (its engine lock and every run owner
  * file a live process holds), the owner files nobody can read (held, listed
  * apart), and the cross-clone claims that hold an item of this repository.
  * Read-only.
  */
 export declare function liveFactoryRuns(root: string, ledgerDir: string, claimRepo: string | null): {
+    credits?: {
+        lane: string;
+        cap: number;
+        run?: string;
+        pid: number;
+    }[] | {
+        unreadable: string;
+    } | undefined;
+    importLock?: {
+        parkedAt?: string | undefined;
+        root?: string | undefined;
+        startedAt?: string | undefined;
+        hostname?: string | undefined;
+        pid?: number | undefined;
+        run?: string | undefined;
+    } | undefined;
+    slots?: ({
+        slot: number;
+        unreadable: boolean;
+    } | {
+        privateDir?: string | undefined;
+        layout: string;
+        parkedAt?: string | undefined;
+        root?: string | undefined;
+        startedAt?: string | undefined;
+        hostname?: string | undefined;
+        pid?: number | undefined;
+        run?: string | undefined;
+        slot: number;
+        unreadable?: undefined;
+    })[] | undefined;
     engine: {
         sharedState?: boolean | undefined;
         parkedAt?: string | undefined;
