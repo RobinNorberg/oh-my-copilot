@@ -135,6 +135,13 @@ export class FakeProcesses {
         if (this.killable)
             this.live.delete(p.pid);
     }
+    /** What treeGone answers (default: the tree is gone); `trees` records each call's worktree. */
+    tree = { kind: 'gone', killed: [] };
+    trees = [];
+    async treeGone(_p, worktree) {
+        this.trees.push(worktree);
+        return this.tree;
+    }
 }
 /** Lane scripts. A write lane leaves its change uncommitted: the engine commits it (lane-commit.ts). */
 export const commitFile = (path, content = 'work\n', credits = 5) => ({ worktree }) => {

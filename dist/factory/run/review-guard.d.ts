@@ -98,7 +98,43 @@ export interface RepoSnapshot {
     mainSymbolic: string;
     /** `git status --porcelain=v1 -z --untracked-files=all` of the main checkout (stableStatus). */
     mainStatus: string;
+    /**
+     * The bytes of what a tamper is quarantined and restored from
+     * (tamper-quarantine.ts, restorableFiles): `config`, `config.worktree`,
+     * every file under `hooks/` and `info/` (not info/refs), every
+     * `worktrees/<id>/config.worktree` and the submodule git dirs' config,
+     * hooks and info, by path relative to the common git dir, as
+     * `b64:<bytes>` (`b64x:` when executable), `big:<sha256>` (over
+     * RESTORE_FILE_MAX_BYTES, or past RESTORE_TOTAL_MAX_BYTES),
+     * `link:<target>` or `unreadable:<code>`. Absent in a snapshot recorded by
+     * an older release.
+     */
+    restore?: Record<string, string>;
 }
+/** A file the snapshot keeps the bytes of is at most this big; a bigger one is kept as its hash. */
+export declare const RESTORE_FILE_MAX_BYTES: number;
+/** All the kept bytes of one snapshot together. */
+export declare const RESTORE_TOTAL_MAX_BYTES: number;
+/**
+ * The key of RepoSnapshot.restore that marks a snapshot whose kept bytes also
+ * cover `worktrees/<id>/config.worktree` and the submodule git dirs under
+ * `modules/` (no real path starts with `#`). A snapshot without it was
+ * recorded by an earlier release: the quarantine then leaves those paths
+ * alone and names them as still active.
+ */
+export declare const RESTORE_SCOPE_KEY = "#scope";
+export declare const RESTORE_SCOPE = "modules,worktrees";
+/**
+ * The paths (relative to the common git dir, `/`-separated) the snapshot
+ * keeps bytes of, as RepoSnapshot.restore encodes them: `config`,
+ * `config.worktree`, `hooks/**`, `info/**` (not info/refs), every
+ * `worktrees/<id>/config.worktree`, and per submodule git dir under
+ * `modules/` (nested ones too) its `config`, `config.worktree`, `hooks/**`
+ * and `info/**`. Never follows a link (lstat). A file or directory that
+ * cannot be read is kept as `unreadable:<code>` (a lane can chmod a planted
+ * hook to 000; the quarantine then moves it aside without reading it).
+ */
+export declare function restorableFiles(commonDir: string): Record<string, string>;
 export declare class SnapshotError extends Error {
 }
 /** Top-level ignored files and directories the snapshot hashes by content. */

@@ -10,7 +10,7 @@ import { EXIT_AWAITING_HUMAN, EXIT_BUSY } from '../../../factory/run/engine.js';
 import { createFactoryState, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStatePath, moveTo, overwriteFactoryState, readFactoryState, } from '../../../factory/run/state.js';
 import { resolveForgeConfig } from '../../../forge/config.js';
 import { scaleTiming } from '../../../__tests__/helpers/platform.js';
-import { commitFile, FakeLanes, harness, ISSUE, REPO_URL, review, testGateConfig, attestedSandbox } from '../../../factory/run/__tests__/fake-lanes.js';
+import { commitFile, FakeLanes, FakeProcesses, harness, ISSUE, REPO_URL, review, testGateConfig, attestedSandbox } from '../../../factory/run/__tests__/fake-lanes.js';
 // The full engine flows below run dozens of real git commands. Alone they take 40-120 s on a
 // loaded win32 host, at the 120 s suite default; nothing in them asserts timing, so this is
 // only a hang guard.
@@ -41,6 +41,8 @@ function deps(over = {}) {
         base: () => 'dev',
         ledgerDir: h.ledgerDir,
         gateConfig: testGateConfig, gateSandbox: () => attestedSandbox(() => h.exec),
+        // The fake lanes record no runtime process: the real tree proof would warn on stderr, which `out` captures.
+        processes: new FakeProcesses(),
         ...over,
     };
 }

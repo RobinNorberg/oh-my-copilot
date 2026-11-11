@@ -39,7 +39,8 @@ import { factoryGuardExec, hardenedGitExec } from '../../factory/run/exec.js';
 import { EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, factoryForgeOptions, loadFactoryForgeConfig, originForgeKind, syncLocalMirror } from '../../factory/run/forge-roots.js';
 import { CopilotLaneBackend } from '../../factory/run/lane.js';
 import { createSandboxRunner } from '../../factory/run/sandbox-exec.js';
-import { acquireFactoryRepoOwnerForRun, defaultOwnerDeps, describeOwner, FactoryBusyError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState, refuseWhileEngineRuns, runLabel, unreadableOwnerMessage, withOwnerFileLock, requestFactoryCancel, verifyFactoryIntegrity, } from '../../factory/run/state.js';
+import { releaseTamperHold, tamperHoldMessage } from '../../factory/run/tamper-quarantine.js';
+import { acquireFactoryRepoOwnerForRun, defaultOwnerDeps, describeOwner, FactoryBusyError, FactoryTamperHoldError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState, refuseWhileEngineRuns, runLabel, unreadableOwnerMessage, withOwnerFileLock, requestFactoryCancel, verifyFactoryIntegrity, } from '../../factory/run/state.js';
 import { resolveShipConfig, userConfigLayers } from '../../ship/config.js';
 import { defaultExec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
@@ -163,6 +164,8 @@ export function renderFactoryRunState(state, o = {}) {
         lines.push(`head ${state.head.slice(0, 12)}`);
     if (state.unsandboxedAck)
         lines.push(chalk.yellow(`lanes without the enforced sandbox accepted for ${state.unsandboxedAck.slice(0, 12)} (--allow-unsandboxed-lanes)`));
+    if (state.pendingCommit)
+        lines.push(chalk.yellow(`lane ${plainText(state.pendingCommit.laneId)}'s work is not committed yet (the rerun commits the same worktree)${state.pendingCommit.secretFindings?.length ? `; secret-shaped: ${state.pendingCommit.secretFindings.map((f) => plainText(`${f.path} (${f.kind})`)).join(', ')}` : ''}`));
     if (state.unsandboxedGatesAck)
         lines.push(chalk.yellow(`prepare checks and the local gate without the OS sandbox accepted for ${state.unsandboxedGatesAck.slice(0, 12)} (--allow-unsandboxed-gates)`));
     lines.push(`lanes ${state.lanes.length}  run AI credits ${runCredits(state).toFixed(2)}  elapsed ${Math.round(state.elapsedMs / 60_000)} min`);
@@ -342,6 +345,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         .option('--allow-gate-change', 'Local forge: accept the one change to the local gate\'s definition (package.json script, package-manager config or gate file) that parked the run at gate-definition-changed; a later change parks again')
         .option('--allow-unsandboxed-lanes', 'Accept, for the parked head only, that write lanes ran without the enforced sandbox (the run parked at human-review for it): you checked the threads and reviews of the PR yourself; a new head parks again')
         .option('--allow-unsandboxed-gates', 'Accept, for the parked head only, that prepare\'s checks and the local gate run the PR\'s code WITHOUT the OS sandbox, as you (the run parked at gates-unsandboxed for it): you reviewed the diff yourself; a new head parks again')
+        .option('--allow-secret-shapes', 'Accept the secret-shaped content (the key or token shapes, by path and kind, the park named) that parked a lane commit at secret-shaped-content, for that lane commit only: you checked they are test fixtures, not real secrets; a new path or kind parks again')
         .option('--json', 'JSON output')
         .action((issueRaw, o) => factoryGuarded(Boolean(o.json), async () => {
         if (o.next && issueRaw !== undefined)
@@ -367,6 +371,10 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         // origin/<base>): busy (exit 6) means nothing was fetched or written. The engine uses the held lock as its own.
         let held;
         if (!o.dryRun) {
+            // A tamper hold stops every run in this checkout (exit 6) before anything is locked or fetched; the engine checks it again.
+            const hold = tamperHoldMessage(deps.ledgerDir ?? defaultLedgerDir(), root);
+            if (hold)
+                throw new FactoryTamperHoldError(hold);
             // A `scan` holder (poll's heal scan or base sync, a read command's fetch) is waited out (SCAN_WAIT_MS, longer than a read fetch can run: FETCH_TIMEOUT_MS).
             held = acquireFactoryRepoOwnerForRun(root, issue ?? 'next', () => new Date().toISOString());
             // The claim key before the fetch: the forge kind from the config as it is (no fetch); none on the local forge.
@@ -431,11 +439,13 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
                         ...(o.allowGateChange ? { allowGateChange: true } : {}),
                         ...(o.allowUnsandboxedLanes ? { allowUnsandboxedLanes: true } : {}),
                         ...(o.allowUnsandboxedGates ? { allowUnsandboxedGates: true } : {}),
+                        ...(o.allowSecretShapes ? { allowSecretShapes: true } : {}),
                         ...(deps.gateSandbox && !o.dryRun ? { gateSandbox: deps.gateSandbox(root) } : {}),
                         lanes: o.dryRun ? NO_LANES : deps.lanes(root),
                         ...(forge ? { forge } : {}),
                         ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}),
                         ...(deps.gateConfig ? { gateConfig: deps.gateConfig } : {}),
+                        ...(deps.processes ? { processes: deps.processes } : {}),
                         interrupted: () => signals > 0,
                         warn: (m) => console.error(chalk.yellow(m)),
                     });
@@ -444,7 +454,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
                 }
                 catch (error) {
                     // L9: another clone claimed the picked item after the pick: pick once more, skipping it.
-                    if (!(error instanceof FactoryBusyError) || !o.next || picked === undefined || skipped.length > 0)
+                    if (!(error instanceof FactoryBusyError) || error instanceof FactoryTamperHoldError || !o.next || picked === undefined || skipped.length > 0)
                         throw error;
                     skipped.push(picked);
                     if (!o.json)
@@ -552,10 +562,24 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
     }));
     run
         .command('release [issue]')
-        .description('A human clears a claim nobody runs: the item\'s cross-clone claim (parked, crashed or unreadable) and its owner file here; without an issue, this checkout\'s engine lock. A live holder is busy (exit 6)')
+        .description('A human clears a claim nobody runs: the item\'s cross-clone claim (parked, crashed or unreadable) and its owner file here; without an issue, this checkout\'s engine lock. A live holder is busy (exit 6). With --tamper: print what a tamper quarantine moved and clear the hold that stops new runs here')
+        .option('--tamper', 'Clear this checkout\'s tamper hold (set after a lane-, review- or prepare-tampered park) after printing what was quarantined and restored')
         .option('--json', 'JSON output')
-        .action((issueRaw, _o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
+        .action((issueRaw, o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
         const root = factoryRoot(exec);
+        if (o.tamper) {
+            if (issueRaw !== undefined)
+                throw new FactoryUsageError('--tamper takes no issue: the hold is on the checkout');
+            const lines = releaseTamperHold(deps.ledgerDir ?? defaultLedgerDir(), root);
+            if (c.optsWithGlobals().json)
+                console.log(JSON.stringify({ ok: true, released: lines !== null, report: (lines ?? []).map(plainText) }, null, 2));
+            else if (lines === null)
+                console.log('no tamper hold is set on this checkout');
+            else
+                for (const line of lines)
+                    console.log(plainText(line));
+            return 0;
+        }
         const me = defaultOwnerDeps();
         const removed = [];
         // The check and the unlink under the owner file's lock (L-c): a live holder never loses its file.

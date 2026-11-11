@@ -18,6 +18,7 @@ import type { ForgeFactory } from '../../forge/types.js';
 import type { Exec, ExecResult } from '../../ship/exec.js';
 import { FactorySafetyError } from '../run/exec.js';
 import { HealRunRefused } from '../heal/run.js';
+import { writeTamperHold } from '../run/tamper-quarantine.js';
 import { HEAL_PIPELINE_MISSING, type ScanResult } from '../heal/cli.js';
 import { adoConfig } from '../../forge/ado/__tests__/world.js';
 import { DEFAULT_HEAL_CONFIG } from '../heal/config.js';
@@ -621,6 +622,19 @@ describe('omg factory poll: factory.intake.autoStart', () => {
     expect(await poll(scripted().exec, { once: true, json: true }, on(e, { trustedUser: () => undefined }))).toBe(0);
     expect(ticks()[0]).toMatchObject({ idle: true, autoStart: { started: false, reason: 'factory.intake.autoStart is off' } });
     expect(e.starts).toEqual([]);
+  });
+
+  it('a tamper hold on the checkout blocks the auto-start with the release command', async () => {
+    const e = engine();
+    const ledgerDir = mkdtempSync(join(tmpdir(), 'omg-poll-hold-'));
+    try {
+      writeTamperHold(ledgerDir, root, { root, at: '2026-11-10T00:00:00.000Z', run: '7', gate: 'lane-tampered', quarantine: join(ledgerDir, 'q'), moved: ['hooks/pre-commit'], restored: [], notRestored: [], refs: [] });
+      expect(await poll(scripted().exec, { once: true, json: true }, on(e, { ledgerDir }))).toBe(0);
+      expect(ticks()[0].autoStart).toEqual({ started: false, reason: expect.stringMatching(/tamper hold .*omg factory run release --tamper/) });
+      expect(e.starts).toEqual([]);
+    } finally {
+      rmSync(ledgerDir, { recursive: true, force: true });
+    }
   });
 
   it('a working-tree key is ignored with a warning', async () => {

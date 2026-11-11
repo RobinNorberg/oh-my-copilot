@@ -15,6 +15,7 @@ import {
   writePreservedWorktreesRecord,
   readPreservedWorktreesRecord,
   deleteWorkerBranchAt,
+  removeStaleWorktreeEntry,
 } from '../git-worktree.js';
 import { requiresSymlinks } from '../../__tests__/helpers/platform.js';
 
@@ -441,6 +442,25 @@ describe('git-worktree', () => {
         expect(list()).not.toContain('prunable');
       } finally {
         try { execFileSync('git', ['worktree', 'remove', '--force', userWt], { cwd: repoDir, stdio: 'pipe' }); } catch { /* already gone */ }
+        rmSync(outside, { recursive: true, force: true });
+      }
+    });
+
+    it('review-482b B: a `worktrees/` that is a link is refused in both branches; the entry behind it stays', () => {
+      const outside = mkdtempSync(join(tmpdir(), 'git-worktree-linked-'));
+      try {
+        const wtPath = join(outside, 'gone-wt');
+        const entry = join(outside, 'target', 'gone-wt');
+        mkdirSync(entry, { recursive: true });
+        writeFileSync(join(entry, 'gitdir'), `${join(wtPath, '.git')}\n`);
+        writeFileSync(join(entry, 'HEAD'), 'ref: refs/heads/main\n');
+        rmSync(join(repoDir, '.git', 'worktrees'), { recursive: true, force: true });
+        symlinkSync(join(outside, 'target'), join(repoDir, '.git', 'worktrees'), process.platform === 'win32' ? 'junction' : 'dir');
+        expect(() => removeStaleWorktreeEntry(repoDir, wtPath, 'gone-wt')).toThrow(/worktrees is not a real directory/);
+        expect(() => removeStaleWorktreeEntry(repoDir, wtPath)).toThrow(/worktrees is not a real directory/);
+        expect(existsSync(join(entry, 'HEAD'))).toBe(true);
+      } finally {
+        rmSync(join(repoDir, '.git', 'worktrees'), { recursive: true, force: true });
         rmSync(outside, { recursive: true, force: true });
       }
     });

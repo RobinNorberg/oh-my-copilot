@@ -312,6 +312,9 @@ describe('runSandboxed', () => {
             [`NPM_CONFIG__AUTHTOKEN=${value}`, 'NPM_CONFIG__AUTHTOKEN=[redacted]'],
             [`npm_config__authtoken=${value}`, 'npm_config__authtoken=[redacted]'],
             [`//npm.example/:_AUTH=${value}`, '//npm.example/:_AUTH=[redacted]'],
+            // review-482b C: single-quoted values (YAML, shell).
+            [`_password: '${value}'`, "_password: '[redacted]'"],
+            [`_authToken='${value}'`, "_authToken='[redacted]'"],
         ])
             expect(redactGateOutput(text), text).toBe(kept);
         const ordinary = [

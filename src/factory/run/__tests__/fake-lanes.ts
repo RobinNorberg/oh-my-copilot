@@ -18,6 +18,7 @@ import { resolveShipConfig } from '../../../ship/config.js';
 import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-worktree.js';
 import { defaultExec, type Exec, type ExecResult } from '../../../ship/exec.js';
 import type { FactoryEngineOptions, LaneProcessOps } from '../engine.js';
+import type { LaneTreeProof } from '../lane-procs.js';
 import { defaultLocalGateRunner, type LocalGateRunner } from '../local-gate.js';
 import type { GateConfigLoader } from '../prepare.js';
 import type { SandboxRunner } from '../sandbox-exec.js';
@@ -172,6 +173,15 @@ export class FakeProcesses implements LaneProcessOps {
   async terminate(p: LaneProcess): Promise<void> {
     this.killed.push(p.pid);
     if (this.killable) this.live.delete(p.pid);
+  }
+
+  /** What treeGone answers (default: the tree is gone); `trees` records each call's worktree. */
+  tree: LaneTreeProof = { kind: 'gone', killed: [] };
+  readonly trees: (string | null)[] = [];
+
+  async treeGone(_p: LaneProcess | null | undefined, worktree: string | null): Promise<LaneTreeProof> {
+    this.trees.push(worktree);
+    return this.tree;
   }
 }
 

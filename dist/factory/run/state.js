@@ -52,11 +52,6 @@ export class FactoryStateError extends Error {
 }
 /** Exit code of a run that did not start: another engine holds this checkout, the item's run or its claim (FactoryBusyError). */
 export const EXIT_BUSY = 6;
-/**
- * A live owner holds what the caller tried to claim: another engine in this
- * checkout, the item's own run, or the item's claim from another clone.
- * `omg factory run` exits EXIT_BUSY for it; nothing was touched.
- */
 export class FactoryBusyError extends FactoryStateError {
     /** The holder's run key when a live owner file refused (`scan`: the poller's heal scan or base sync, or a read command's fetch). */
     holderRun;
@@ -65,6 +60,13 @@ export class FactoryBusyError extends FactoryStateError {
         this.name = 'FactoryBusyError';
         if (holderRun !== undefined)
             this.holderRun = holderRun;
+    }
+}
+/** A tamper hold is set on the checkout (tamper-quarantine.ts): busy (exit 6) until `omg factory run release --tamper`. */
+export class FactoryTamperHoldError extends FactoryBusyError {
+    constructor(message) {
+        super(message);
+        this.name = 'FactoryTamperHoldError';
     }
 }
 /** The run's key: its issue number, or `heal-<sig8>` for a ci-heal run. */
@@ -262,6 +264,21 @@ const HEX40 = /^[0-9a-f]{40}$/;
 export const MAX_HUMAN_THREAD_IDS = 200;
 const THREAD_ID = (v) => typeof v === 'string' && v.length > 0 && v.length <= 200;
 const FEEDBACK_FORGES = ['github', 'azure-devops', 'local'];
+const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+const findingsOk = (v) => Array.isArray(v) && v.length <= 1000 && v.every((f) => {
+    const r = f;
+    return typeof r === 'object' && r !== null && isStr(r.path) && r.path.length <= 4096 && isStr(r.kind) && /^[a-z-]{1,40}$/.test(r.kind)
+        && Object.keys(r).every((k) => k === 'path' || k === 'kind');
+});
+function pendingCommitShapeOk(v) {
+    const p = v;
+    return typeof p === 'object' && p !== null && !Array.isArray(p)
+        && isStr(p.laneId) && isStr(p.key) && isStr(p.start) && FULL_SHA.test(p.start)
+        && Array.isArray(p.parents) && p.parents.length > 0 && p.parents.length <= 2 && p.parents.every((x) => isStr(x) && FULL_SHA.test(x))
+        && isStr(p.worktree) && (p.branch === null || isStr(p.branch)) && isStr(p.message) && p.message.length <= 8000
+        && (p.secretFindings === undefined || findingsOk(p.secretFindings)) && (p.secretAck === undefined || findingsOk(p.secretAck))
+        && Object.keys(p).every((k) => ['laneId', 'key', 'start', 'parents', 'worktree', 'branch', 'message', 'secretFindings', 'secretAck'].includes(k));
+}
 /** `humanReview`, `unsandboxedAck` and every lane's `feedback`: absent, or exactly their shape. */
 function humanReviewShapeProblem(s) {
     const h = s.humanReview;
@@ -273,10 +290,15 @@ function humanReviewShapeProblem(s) {
         return 'unsandboxedAck';
     if (s.unsandboxedGatesAck !== undefined && (!isStr(s.unsandboxedGatesAck) || !HEX40.test(s.unsandboxedGatesAck)))
         return 'unsandboxedGatesAck';
+    if (s.pendingCommit !== undefined && !pendingCommitShapeOk(s.pendingCommit))
+        return 'pendingCommit';
     if (s.sandboxedPrepareHead !== undefined && (!isStr(s.sandboxedPrepareHead) || !HEX40.test(s.sandboxedPrepareHead)))
         return 'sandboxedPrepareHead';
     if (s.sandboxedGateHead !== undefined && (!isStr(s.sandboxedGateHead) || !HEX40.test(s.sandboxedGateHead)))
         return 'sandboxedGateHead';
+    // One admin dir name under <common>/worktrees (git makes it from the checkout's base name): no separator, nothing else.
+    if (s.checkoutAdmin !== undefined && (!isStr(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === '.' || s.checkoutAdmin === '..'))
+        return 'checkoutAdmin';
     const cal = s.gateCalibration;
     if (cal !== undefined && (typeof cal !== 'object' || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
         const e = v;

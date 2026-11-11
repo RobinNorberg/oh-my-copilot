@@ -62,6 +62,7 @@ import type { ForgeReviewFeedback } from '../../forge/types.js';
 import { type FactoryRunLimits } from './budget.js';
 import { type LocalGateRunner } from './local-gate.js';
 import { type LaneBackend, type LaneProcess } from './lane.js';
+import { type LaneTreeProof } from './lane-procs.js';
 import { EXIT_BUSY, type FactoryGate, type FactoryHealRecord, type FactoryPhase, type FactoryRunKey, type FactoryRunState, type OwnerDeps, type HeldOwner } from './state.js';
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export declare const EXIT_AWAITING_HUMAN = 4;
@@ -134,6 +135,16 @@ export interface FactoryEngineOptions {
      */
     allowUnsandboxedGates?: boolean;
     /**
+     * The human accepts the secret-shaped content that parked a lane's commit
+     * (`--allow-secret-shapes` on a rerun of a run parked at awaiting-human:
+     * secret-shaped-content): exactly the parked (path, kind) pairs, for that
+     * lane commit only (recorded in the sealed state); a new pair parks again.
+     * Without such a park the flag is ignored with a warning.
+     */
+    allowSecretShapes?: boolean;
+    /** The trusted user config factory.run.secretScan.allowPaths is read from (default: userConfigLayers().trustedUser); tests pass one. */
+    secretScanUserConfig?: unknown;
+    /**
      * The OS sandbox prepare's checks and the local gate run in
      * (factory.run.sandbox.gates "enforced"; sandbox-exec.ts createSandboxRunner,
      * which the CLI passes). Omitted = no sandbox: an enforced run then parks
@@ -198,6 +209,8 @@ export interface LaneProcessOps {
     state(p: LaneProcess): Promise<'live' | 'dead' | 'mismatch' | 'unknown'>;
     /** Kill the child's process tree, only while its start identity still matches. */
     terminate(p: LaneProcess): Promise<void>;
+    /** After a write lane ended, before its commit: the lane runtime's whole tree is gone (lane-procs.ts). */
+    treeGone(p: LaneProcess | null | undefined, worktree: string | null): Promise<LaneTreeProof>;
 }
 /**
  * Start-identity checks from platform/process-utils.ts (PowerShell ticks on
@@ -290,6 +303,8 @@ export declare const REVIEW_REQUESTED_GATE = "review-requested";
 export declare const UNSANDBOXED_LANES_REASON = "a lane ran without the enforced sandbox";
 /** The park before the PR's own code (prepare checks, the local gate) would run without the OS sandbox; `--allow-unsandboxed-gates` answers it. */
 export declare const GATES_UNSANDBOXED_GATE = "gates-unsandboxed";
+/** The park when a lane's change holds a key or token shape (lane-commit.ts secret scan); `--allow-secret-shapes` answers it. */
+export declare const SECRET_SHAPES_GATE = "secret-shaped-content";
 /** The park when a check fails in the sandbox on the trusted base itself: a sandbox problem, never a ci-fix lane. */
 export declare const GATE_SANDBOX_INCOMPATIBLE_GATE = "gate-sandbox-incompatible";
 /**
