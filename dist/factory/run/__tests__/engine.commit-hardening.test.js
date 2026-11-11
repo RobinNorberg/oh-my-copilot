@@ -3,7 +3,7 @@
  * proof, the secret-shape park and its acknowledgement, and the tamper
  * quarantine with its hold. Fake lanes, real git.
  */
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { FactoryTamperHoldError, readFactoryState } from '../state.js';
@@ -244,6 +244,28 @@ describe('tamper quarantine and hold (M3)', () => {
         expect(hold !== null && hold !== 'unreadable' ? { held: hold.held, failed: hold.failed } : hold).toEqual({ held: true, failed: 'the tamper quarantine failed (injected quarantine fault); nothing in .git was quarantined or restored' });
         await expect(run([]).done).rejects.toBeInstanceOf(FactoryTamperHoldError);
         releaseTamperHold(h.ledgerDir, h.root);
+    });
+    it('review-484c 8: a hold that cannot be written is not reported as held; the message says what to check by hand', async () => {
+        const holds = join(h.ledgerDir, 'holds');
+        const planting = (ctx) => {
+            writeFileSync(join(commonDir(), 'hooks', 'pre-commit'), '#!/bin/sh\necho planted\n', { mode: 0o755 });
+            // holds/ cannot be made: a file stands where the folder goes.
+            mkdirSync(h.ledgerDir, { recursive: true });
+            writeFileSync(holds, 'not a folder');
+            return edit('a.ts', 'a\n')(ctx);
+        };
+        try {
+            const out = await run([planting]).done;
+            expect(out.gate?.name, out.message).toBe('lane-tampered');
+            expect(out.gate?.reason).toContain('A hold was due, but it could not be written (');
+            expect(out.gate?.reason).toContain('so new factory runs in this checkout are NOT held: before you run the factory here again, check .git\'s config, hooks, info and refs by hand');
+            expect(out.gate?.reason).not.toContain('are held until');
+            expect(existsSync(join(commonDir(), 'hooks', 'pre-commit'))).toBe(false);
+        }
+        finally {
+            rmSync(holds, { force: true });
+        }
+        expect(readTamperHold(h.ledgerDir, h.root)).toBeNull();
     });
     it('H1: diff.external set during the lane is put back and holds (it is not on the allowlist)', async () => {
         const planting = (ctx) => {

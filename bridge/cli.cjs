@@ -130895,6 +130895,22 @@ var init_lane_procs = __esm({
 });
 
 // src/factory/run/tamper-quarantine.ts
+function unchangedOldRemote(name, was, now2) {
+  if (typeof name !== "string" || /^\.*$/.test(name) || /[/:\\\s\p{Cc}]/u.test(name)) return false;
+  if (!was.get(`remote.${name}.url`)?.length) return false;
+  return ["url", "pushurl", "fetch"].every((k) => sameValues(was.get(`remote.${name}.${k}`), now2.get(`remote.${name}.${k}`)));
+}
+function benignChange(key, was, now2) {
+  const m = BRANCH_UPSTREAM.exec(key);
+  if (!m) return benignKey(key);
+  const values = now2.get(key);
+  if (!values?.length) return true;
+  if (m[2] === "merge") {
+    const remote = now2.get(`branch.${m[1]}.remote`);
+    return values.every((v) => typeof v === "string" && HEADS_REF.test(v)) && remote?.length === 1 && unchangedOldRemote(remote[0], was, now2);
+  }
+  return values.length === 1 && unchangedOldRemote(values[0], was, now2);
+}
 function configEntries(bytes, tmp) {
   if (bytes === null) return [];
   const file = (0, import_node_path38.join)(tmp, `cfg-${Math.random().toString(36).slice(2)}`);
@@ -130915,12 +130931,13 @@ function configEntries(bytes, tmp) {
   }
 }
 function changedKeys(before, after, tmp) {
-  const was = configEntries(before, tmp);
-  const now2 = configEntries(after, tmp);
-  if (!was || !now2) return null;
-  const a = valuesByKey(was);
-  const b = valuesByKey(now2);
-  return [.../* @__PURE__ */ new Set([...a.keys(), ...b.keys()])].filter((k) => a.get(k) !== b.get(k)).sort();
+  const wasEntries = configEntries(before, tmp);
+  const nowEntries = configEntries(after, tmp);
+  if (!wasEntries || !nowEntries) return null;
+  const was = valuesByKey(wasEntries);
+  const now2 = valuesByKey(nowEntries);
+  const keys = [.../* @__PURE__ */ new Set([...was.keys(), ...now2.keys()])].filter((k) => !sameValues(was.get(k), now2.get(k))).sort();
+  return { keys, held: keys.filter((k) => !benignChange(k, was, now2)) };
 }
 function putKeysBack(current, old, keys, tmp) {
   const entries = configEntries(old, tmp);
@@ -131117,9 +131134,9 @@ function quarantineTamper(i) {
           const current = decode2(is);
           quarantine();
           (0, import_node_fs32.mkdirSync)(tmp, { recursive: true });
-          const keys = changedKeys(old, current, tmp);
-          if (keys !== null) {
-            const program3 = keys.filter((k) => !benignKey(k));
+          const diff = changedKeys(old, current, tmp);
+          if (diff !== null) {
+            const { keys, held: program3 } = diff;
             if (program3.length === 0) {
               let copy = "";
               try {
@@ -131139,7 +131156,7 @@ function quarantineTamper(i) {
               if (!locked.equals(current)) (0, import_node_fs32.writeFileSync)(to, locked);
               const keysNow = changedKeys(old, locked, tmp);
               if (keysNow !== null) {
-                putBack = keysNow.filter((k) => !benignKey(k));
+                putBack = keysNow.held;
                 if (putBack.length === 0) {
                   exact = true;
                   return locked;
@@ -131269,6 +131286,8 @@ function quarantineTamper(i) {
   try {
     writeTamperHold(i.ledgerDir, i.root, hold);
   } catch (error2) {
+    hold.held = false;
+    hold.holdNotWritten = errText5(error2);
     hold.failed = `${hold.failed ? `${hold.failed}; ` : ""}the hold could not be written: ${errText5(error2)}`;
   }
   return hold;
@@ -131316,7 +131335,7 @@ function tamperHoldMessage(ledgerDir, root2) {
   const path30 = tamperHoldPath(ledgerDir, root2);
   if (hold === "unreadable") return `a tamper hold is set on this checkout (${path30}, unreadable), so no factory run starts here; check the repository's .git (hooks, config, info, refs), then run ${RELEASE_TAMPER_COMMAND}`;
   const active = hold.active ?? [];
-  return `a tamper hold is set on this checkout since ${hold.at} (run ${hold.run} parked at ${hold.gate}), so no factory run starts here${hold.quarantine ? `; what changed in .git is in ${hold.quarantine}` : ""}${active.length ? `; ${active.length} item(s) are ${STILL_ACTIVE}: ${active.slice(0, 3).join("; ")}` : ""}. Your own change during that run (a git config key, \`git remote add\` or \`git remote set-url\` included, a hook husky or an editor installed) triggers this too: put it back with the cp command in undo.txt in that folder if it was yours. Then run ${RELEASE_TAMPER_COMMAND}`;
+  return `a tamper hold is set on this checkout since ${hold.at} (run ${hold.run} parked at ${hold.gate}), so no factory run starts here${hold.quarantine ? `; what changed in .git is in ${hold.quarantine}` : ""}${active.length ? `; ${active.length} item(s) are ${STILL_ACTIVE}: ${active.slice(0, 3).join("; ")}` : ""}. Your own change during that run (a git config key, \`git remote add\` or \`git remote set-url\` included, and a branch's upstream set to a path, a URL, "." or a remote added during the run, a hook husky or an editor installed) triggers this too: put it back with the cp command in undo.txt in that folder if it was yours. Then run ${RELEASE_TAMPER_COMMAND}`;
 }
 function releaseTamperHold(ledgerDir, root2) {
   const hold = readTamperHold(ledgerDir, root2);
@@ -131344,7 +131363,7 @@ function releaseTamperHold(ledgerDir, root2) {
   lines4.push("hold cleared: factory runs start again in this checkout");
   return lines4;
 }
-var import_node_fs32, import_node_path38, repoKey, tamperHoldPath, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, BENIGN_KEYS, benignKey, valuesByKey, decode2, isConfigRel, realDir, errText5, CONFIG_LOCKED, LINKS_DIR;
+var import_node_fs32, import_node_path38, repoKey, tamperHoldPath, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, BENIGN_KEYS, benignKey, BRANCH_UPSTREAM, HEADS_REF, sameValues, valuesByKey, decode2, isConfigRel, realDir, errText5, CONFIG_LOCKED, LINKS_DIR;
 var init_tamper_quarantine = __esm({
   "src/factory/run/tamper-quarantine.ts"() {
     "use strict";
@@ -131360,7 +131379,8 @@ var init_tamper_quarantine = __esm({
     STILL_ACTIVE = "STILL ACTIVE (it can run on your next git command)";
     BENIGN_KEYS = [
       { re: /^user\.[^.]+$/, why: "who commits (name, email, the signing key name): the signing program is gpg.*, which is not on this list" },
-      { re: /^branch\..+\.(?:remote|pushremote|merge|rebase|description)$/, why: "a branch's upstream, push remote, pull mode and description (`git push -u`, `git branch -u`); none names a program" },
+      // Not remote, pushremote or merge (review-484c 1): those are benign only by their values, see benignChange.
+      { re: /^branch\..+\.(?:rebase|description)$/, why: "a branch's pull mode and description; neither names a program or a place" },
       { re: /^branch\..+\.vscode-merge-base$/, why: "written by VS Code when it creates a branch; git never reads it" },
       // Not url, pushurl or fetch (review-484b 1): they send the user's next push to a host the lane picks, or fetch its
       // commits and refs (refs/replace/* too) into the user's repository on the next plain `git fetch` or `git pull`.
@@ -131369,10 +131389,13 @@ var init_tamper_quarantine = __esm({
       { re: /^maintenance\.(?:auto|strategy|[^.]+\.(?:enabled|schedule))$/, why: "`git maintenance start` writes them; they pick only git's own built-in tasks" }
     ];
     benignKey = (key) => BENIGN_KEYS.some((b) => b.re.test(key));
+    BRANCH_UPSTREAM = /^branch\.(.+)\.(remote|pushremote|merge)$/;
+    HEADS_REF = /^refs\/heads\/(?!.*\.\.)[^\p{Cc}\s~^:?*[\\]+$/u;
+    sameValues = (a, b) => JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
     valuesByKey = (entries) => {
       const m = /* @__PURE__ */ new Map();
       for (const [k, v] of entries) m.set(k, [...m.get(k) ?? [], v]);
-      return new Map([...m].map(([k, vs]) => [k, JSON.stringify(vs)]));
+      return m;
     };
     decode2 = (v) => v?.startsWith("b64:") ? Buffer.from(v.slice(4), "base64") : v?.startsWith("b64x:") ? Buffer.from(v.slice(5), "base64") : null;
     isConfigRel = (rel) => /^(?:config|config\.worktree|worktrees\/[^/]+\/config\.worktree|modules\/.+\/(?:config|config\.worktree))$/.test(rel) && !/\/(?:hooks|info)\//.test(`/${rel}`);
@@ -134572,10 +134595,13 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             hold.failed ?? ""
           ].filter(Boolean).join("; ");
           const where = hold.quarantine ? ` (${hold.quarantine})` : "";
-          if (!hold.held) {
-            return `${note}. Tamper quarantine${where}: ${did}. Only refs, config keys on the allowlist of keys that name no program and redirect nothing (user.*, a branch's upstream, a remote's tag and prune options) or files that run nothing changed, so no hold was set; if a listed change was not yours, undo it with the command shown (refs.txt in that folder)`;
+          if (hold.holdNotWritten !== void 0) {
+            return `${note}. Tamper quarantine${where}: ${did}. A hold was due, but it could not be written (${hold.holdNotWritten}), so new factory runs in this checkout are NOT held: before you run the factory here again, check .git's config, hooks, info and refs by hand${active.length ? " and deal with what is still active" : ""}, and that ${tamperHoldPath(this.o.ledgerDir ?? defaultLedgerDir(), this.o.root)} can be written`;
           }
-          return `${note}. Tamper quarantine${where}: ${did}. New factory runs in this checkout are held until ${RELEASE_TAMPER_COMMAND}${active.length ? " (deal with what is still active first)" : ""}. Your own change during the run (a git config key, \`git remote add\` or \`git remote set-url\` included, a hook husky or an editor installed) triggers this too: if it was yours, put it back with the cp command in undo.txt in the quarantine folder`;
+          if (!hold.held) {
+            return `${note}. Tamper quarantine${where}: ${did}. Only refs, config keys that name no program and redirect nothing (user.*, a remote's tag and prune options, a branch's remote or merge naming a remote that existed before the run and is unchanged, as your own \`git push -u <remote> <branch>\` writes) or files that run nothing changed, so no hold was set; if a listed change was not yours, undo it with the command shown (refs.txt in that folder)`;
+          }
+          return `${note}. Tamper quarantine${where}: ${did}. New factory runs in this checkout are held until ${RELEASE_TAMPER_COMMAND}${active.length ? " (deal with what is still active first)" : ""}. Your own change during the run (a git config key, \`git remote add\` or \`git remote set-url\` included, and a branch's upstream set to a path, a URL, "." or a remote added during the run, a hook husky or an editor installed) triggers this too: if it was yours, put it back with the cp command in undo.txt in the quarantine folder`;
         } catch (error2) {
           const ledgerDir = this.o.ledgerDir ?? defaultLedgerDir();
           const failed3 = `the tamper quarantine failed (${errText6(error2)}); nothing in .git was quarantined or restored`;

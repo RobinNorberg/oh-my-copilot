@@ -17,10 +17,11 @@
  *   are written back (an added file is removed); a deleted file is restored.
  * - config, config.worktree, every worktrees/<id>/config.worktree and the
  *   submodules' config files: saved into the quarantine always. When every
- *   added, changed or removed key is on BENIGN_KEYS (keys that name no
- *   program and redirect nothing: user.*, a branch's upstream, a remote's
- *   tag and prune options...) the file stays as it is: that is what a
- *   user's own `git push -u` or `git config user.email` during the run
+ *   added, changed or removed key is benign (BENIGN_KEYS: keys that name no
+ *   program and redirect nothing, user.*, a remote's tag and prune
+ *   options...; a branch's remote, pushremote and merge only by value, see
+ *   benignChange) the file stays as it is: that is what a user's own
+ *   `git push -u origin x` or `git config user.email` during the run
  *   writes. Any other key counts as program-running or redirecting (an
  *   allowlist, so a key git adds later, or one like diff.external, is never
  *   missed; a remote's url, pushurl and fetch are not on it, review-484b 1:
@@ -88,8 +89,10 @@ export interface TamperHold {
     /** How to put the user's own change back, per item (also undo.txt in the quarantine). */
     undo?: string[];
     failed?: string;
-    /** True when the hold was set; false: only listed and copied. */
+    /** True when the hold was set; false: only listed and copied, or the hold file could not be written (holdNotWritten). */
     held?: boolean;
+    /** Why the hold file could not be written, when a hold was due: no run is held. */
+    holdNotWritten?: string;
 }
 /**
  * Config keys that name no program and make git load nothing (as `git config
@@ -101,6 +104,26 @@ export declare const BENIGN_KEYS: readonly {
     why: string;
 }[];
 export declare const benignKey: (key: string) => boolean;
+/** A config file's values per key, in order (null for a bare boolean); keys as `git config --list` prints them. */
+export type ConfigValues = ReadonlyMap<string, readonly (string | null)[]>;
+/**
+ * Whether one key that was added, changed or removed between `was` (the
+ * snapshot's config) and `now` is benign. Pure.
+ *
+ * branch.<b>.remote, pushremote and merge decide what the user's next plain
+ * `git pull` merges and where a plain `git push` goes, and git takes a path,
+ * a URL or `.` (this repository) there with no remote.* key changed
+ * (review-484c 1). So they are benign by value only:
+ * - removed: it can only take a default away from a pull or a push;
+ * - remote / pushremote: the plain name of a remote that existed before the
+ *   run and is unchanged (unchangedOldRemote): the user's own
+ *   `git push -u origin x`;
+ * - merge: every value is refs/heads/<name> and the branch's remote as git
+ *   reads it now passes the rule above: a pull can then only bring what the
+ *   user's own unchanged remote serves.
+ * Every other key is benign only when on BENIGN_KEYS.
+ */
+export declare function benignChange(key: string, was: ConfigValues, now: ConfigValues): boolean;
 /** The reason a config restore fails while someone else holds `<file>.lock`. */
 export declare const CONFIG_LOCKED = "git config is locked by another process";
 export interface QuarantineInput {

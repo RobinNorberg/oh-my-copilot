@@ -100,7 +100,7 @@ import { isTerminalLaneState, LaneLostError } from './lane.js';
 import { jobRefProblem } from '../../copilot-run/job.js';
 import { commitLaneWork, conflictFixStart, LANE_PROTECTED_PATHS, laneCommitMessage, pathGlobMatches } from './lane-commit.js';
 import { proveLaneTreeGone } from './lane-procs.js';
-import { quarantineTamper, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, tamperHoldMessage, writeTamperHold } from './tamper-quarantine.js';
+import { quarantineTamper, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, tamperHoldMessage, tamperHoldPath, writeTamperHold } from './tamper-quarantine.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir } from './ledger.js';
 import { createFactoryProgress } from './progress.js';
 import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaimRepo, isShallowClaimRepo, localFactoryClaimRepo, shallowClaimWarning, settleFactoryClaim, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo } from './claims.js';
@@ -3311,10 +3311,13 @@ class FactoryEngine {
                 hold.failed ?? '',
             ].filter(Boolean).join('; ');
             const where = hold.quarantine ? ` (${hold.quarantine})` : '';
-            if (!hold.held) {
-                return `${note}. Tamper quarantine${where}: ${did}. Only refs, config keys on the allowlist of keys that name no program and redirect nothing (user.*, a branch's upstream, a remote's tag and prune options) or files that run nothing changed, so no hold was set; if a listed change was not yours, undo it with the command shown (refs.txt in that folder)`;
+            if (hold.holdNotWritten !== undefined) {
+                return `${note}. Tamper quarantine${where}: ${did}. A hold was due, but it could not be written (${hold.holdNotWritten}), so new factory runs in this checkout are NOT held: before you run the factory here again, check .git's config, hooks, info and refs by hand${active.length ? ' and deal with what is still active' : ''}, and that ${tamperHoldPath(this.o.ledgerDir ?? defaultLedgerDir(), this.o.root)} can be written`;
             }
-            return `${note}. Tamper quarantine${where}: ${did}. New factory runs in this checkout are held until ${RELEASE_TAMPER_COMMAND}${active.length ? ' (deal with what is still active first)' : ''}. Your own change during the run (a git config key, \`git remote add\` or \`git remote set-url\` included, a hook husky or an editor installed) triggers this too: if it was yours, put it back with the cp command in undo.txt in the quarantine folder`;
+            if (!hold.held) {
+                return `${note}. Tamper quarantine${where}: ${did}. Only refs, config keys that name no program and redirect nothing (user.*, a remote's tag and prune options, a branch's remote or merge naming a remote that existed before the run and is unchanged, as your own \`git push -u <remote> <branch>\` writes) or files that run nothing changed, so no hold was set; if a listed change was not yours, undo it with the command shown (refs.txt in that folder)`;
+            }
+            return `${note}. Tamper quarantine${where}: ${did}. New factory runs in this checkout are held until ${RELEASE_TAMPER_COMMAND}${active.length ? ' (deal with what is still active first)' : ''}. Your own change during the run (a git config key, \`git remote add\` or \`git remote set-url\` included, and a branch's upstream set to a path, a URL, "." or a remote added during the run, a hook husky or an editor installed) triggers this too: if it was yours, put it back with the cp command in undo.txt in the quarantine folder`;
         }
         catch (error) {
             // Fail closed (review-484b 4): nothing was undone, so new runs are held until a human looked at .git.
