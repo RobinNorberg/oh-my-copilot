@@ -143,6 +143,14 @@ export interface QuarantineInput {
     run: string;
     gate: string;
     at: string;
+    /**
+     * false: quarantine and restore only, never write a hold (a private-layout
+     * run's own git dir: tampering there parks that run, never your checkout).
+     * Default true.
+     */
+    hold?: boolean;
+    /** Appended to the quarantine folder's name (e.g. the private run's slug). */
+    label?: string;
 }
 /**
  * Quarantine and restore after a tamper (see the module comment), then

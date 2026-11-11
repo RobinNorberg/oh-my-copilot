@@ -73,7 +73,7 @@ export const RESTORE_TOTAL_MAX_BYTES = 8 * 1024 * 1024;
  * alone and names them as still active.
  */
 export const RESTORE_SCOPE_KEY = '#scope';
-export const RESTORE_SCOPE = 'modules,worktrees';
+export const RESTORE_SCOPE = 'modules,worktrees,remotes';
 /**
  * The paths (relative to the common git dir, `/`-separated) the snapshot
  * keeps bytes of, as RepoSnapshot.restore encodes them: `config`,
@@ -139,7 +139,7 @@ export function restorableFiles(commonDir) {
             }
         }
     };
-    for (const name of ['config', 'config.worktree', 'hooks', 'info'])
+    for (const name of ['config', 'config.worktree', 'hooks', 'info', 'remotes', 'branches'])
         keep(name, join(commonDir, name), true);
     const wtDir = join(commonDir, 'worktrees');
     if (!notADirectory(wtDir) && existsSync(wtDir)) {
@@ -241,6 +241,12 @@ function pathHash(path) {
     if (!existsSync(path))
         return 'absent';
     return lstatSync(path).isDirectory() ? `d ${treeHash(path)}` : `f ${fileHash(path)}`;
+}
+/** The problem text of a changed `remotes/` or `branches/` (legacy remote definitions). */
+export const LEGACY_REMOTES_CHANGED = 'the remotes/ or branches/ directory changed (legacy remote definitions git still reads)';
+/** `remotes/` and `branches/` of a common git dir (see RepoSnapshot.legacyRemotes). */
+function legacyRemotesHash(commonDir) {
+    return `${treeHash(join(commonDir, 'remotes'))} ${treeHash(join(commonDir, 'branches'))}`;
 }
 function alternatesHash(gitDir) {
     return `${fileHash(join(gitDir, 'objects', 'info', 'alternates'))} ${fileHash(join(gitDir, 'objects', 'info', 'http-alternates'))}`;
@@ -521,6 +527,7 @@ export function snapshotRepo(exec, root, stateRootRel = '.omg', against) {
         worktreeIds,
         worktrees: worktreeEntries(commonDir, worktreeIds),
         hooks: treeHash(join(commonDir, 'hooks')),
+        legacyRemotes: legacyRemotesHash(commonDir),
         alternates: alternatesHash(commonDir),
         objectMeta: objectStoreMetaHash(commonDir),
         ignored: ignoredHash(root),
@@ -640,6 +647,8 @@ export function compareSnapshots(before, after, allowedNewRefs = {}, allow = {})
         problems.push('the hooks/ directory changed');
     if (before.info !== after.info)
         problems.push('the info/ directory changed');
+    if (before.legacyRemotes !== undefined && before.legacyRemotes !== after.legacyRemotes)
+        problems.push(LEGACY_REMOTES_CHANGED);
     const mods = new Set([...Object.keys(before.modules ?? {}), ...Object.keys(after.modules ?? {})]);
     for (const m of [...mods].sort()) {
         const was = before.modules?.[m];

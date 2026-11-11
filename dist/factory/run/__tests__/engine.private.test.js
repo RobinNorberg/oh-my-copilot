@@ -15,7 +15,8 @@ import { cleanFactoryRun } from '../clean.js';
 import { EXIT_AWAITING_HUMAN, runFactoryEngine } from '../engine.js';
 import { GATE_INSTALL_GATE, REPO_GUARD_GATE } from '../private-run.js';
 import { readFactoryState, requestFactoryCancel } from '../state.js';
-import { commitFile, ENFORCED_SANDBOX, FakeLanes, gitIn, review } from './fake-lanes.js';
+import { readTamperHold } from '../tamper-quarantine.js';
+import { commitFile, ENFORCED_SANDBOX, FakeLanes, FakeProcesses, gitIn, review } from './fake-lanes.js';
 import { BASE, foreignCommands, lanesFor, LOCAL_ISSUE, localOpts, localWorld } from './engine-local-harness.js';
 const T = 600_000;
 let w;
@@ -65,7 +66,21 @@ function withoutLocalRemote(config) {
     }
     return out.join('\n').trimEnd();
 }
-const opts = (env, scripts, over = {}) => localOpts(env.w, lanesFor(env.w, scripts), { runUserConfig: env.user, ...over });
+const opts = (env, scripts, over = {}) => localOpts(env.w, lanesFor(env.w, scripts), { runUserConfig: env.user, secretScanUserConfig: null, ...over });
+/** The file a private-layout quarantine saved (folder `<at>-private-issue-<n>` under the ledger's quarantine dir), by its path in the git dir. */
+function privateQuarantined(ledgerDir, rel) {
+    const top = join(ledgerDir, 'quarantine');
+    if (!existsSync(top))
+        return undefined;
+    for (const key of readdirSync(top)) {
+        for (const run of readdirSync(join(top, key)).filter((n) => n.endsWith(`-private-issue-${LOCAL_ISSUE}`))) {
+            const p = join(top, key, run, ...rel.split('/'));
+            if (existsSync(p))
+                return p;
+        }
+    }
+    return undefined;
+}
 describe('factory run with factory.run.layout "private"', () => {
     it('implement -> review -> prepare -> local gate -> merge park: lanes, prepare and the gate work under the work root; the user repository only gets the imported commit and the push', async () => {
         const env = privateWorld();
@@ -118,6 +133,7 @@ describe('factory run with factory.run.layout "private"', () => {
     it('a hook planted in the private repository by a lane never runs: the lane parks at lane-tampered (control: plain git runs it)', async () => {
         const env = privateWorld();
         w = env.w;
+        const userGit = gitListing(w.root);
         const marker = join(w.dir, 'hook-ran');
         const plant = (ctx) => {
             const hooks = join(ctx.input.worktree.commonGitDir, 'hooks');
@@ -132,6 +148,17 @@ describe('factory run with factory.run.layout "private"', () => {
         expect(existsSync(marker)).toBe(false);
         expect(readMirrorRef(w.config.repo.url, `factory/issue-${LOCAL_ISSUE}`)).toBeFalsy();
         const s = readFactoryState(w.root, LOCAL_ISSUE);
+        // #484's quarantine acted on the PRIVATE git dir (the hook moved out, under the run's name), with no hold on your checkout.
+        const hooks = join(s.privateDir, 'repo', '.git', 'hooks');
+        expect(existsSync(join(hooks, 'reference-transaction'))).toBe(false);
+        const saved = privateQuarantined(w.ledgerDir, 'hooks/reference-transaction');
+        expect(saved).toBeDefined();
+        expect(out.gate?.reason).toMatch(/never your repository, so no hold was set on your checkout/);
+        expect(readTamperHold(w.ledgerDir, w.root)).toBeNull();
+        // Your .git: nothing but the engine's own base fetch (the local forge's remote, its tracking ref, objects) changed.
+        expect(changedPaths(userGit, gitListing(w.root)).filter((p) => !/^(config|FETCH_HEAD|(logs\/)?refs\/remotes\/omg-local\/main|objects\/.*)$/.test(p))).toEqual([]);
+        // Control: the quarantined hook put back, plain git in the private repository runs it.
+        writeFileSync(join(hooks, 'reference-transaction'), readFileSync(saved), { mode: 0o755 });
         gitIn(join(s.privateDir, 'repo'), 'update-ref', 'refs/control', s.baseSha);
         expect(existsSync(marker)).toBe(true);
     }, T);
@@ -267,6 +294,13 @@ describe('factory run with factory.run.layout "private"', () => {
         expect(elsewhere.removed).toEqual([]);
         expect(elsewhere.kept.map((k) => k.reason).join('\n')).toMatch(/the run's recorded private dir .* is not .*fw-other.*, so nothing was resumed or removed/);
         expect(existsSync(s.privateDir)).toBe(true);
+        // review-483 I.4: a prepare check's recorded process that still runs keeps the run dir (the proof before removal).
+        const probed = [];
+        const busy = cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, claimRepo: null, ledgerDir: w.ledgerDir, runUserConfig: env.user, liveGateProcs: (d) => { probed.push(d); return [4242]; } });
+        expect(busy.removed).toEqual([]);
+        expect(busy.kept.map((k) => k.reason).join('\n')).toMatch(/gate_may_run: .*pid 4242/);
+        expect(probed).toEqual([join(s.privateDir, 'gates', 'prepare-procs')]);
+        expect(existsSync(s.privateDir)).toBe(true);
         const result = cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, claimRepo: null, ledgerDir: w.ledgerDir, runUserConfig: env.user, seed: true });
         expect(result.removed).toContain(s.privateDir);
         expect(result.removed).toContain(join(s.privateDir, '..', 'seed.git'));
@@ -387,9 +421,12 @@ describe('factory.run.layout from the base-committed .copilot/omg.jsonc (review-
     }, T);
     it('an untrusted base (not in ship.trustedBases) is never read: its "private" is ignored and the run is shared; a trusted one is read', async () => {
         w = baseConfigWorld('{ "factory": { "run": { "layout": "private" } } }\n');
-        const untrusted = lanesFor(w, [greet()]);
+        // Counted when the lane starts: the layout is decided before it. (#484's secret scan reads the base's
+        // factory.run.secretScan.allowPaths at the engine commit after the lane, whatever ship.trustedBases says, as on dev.)
+        let readsAtLane = -1;
+        const untrusted = lanesFor(w, [(ctx) => { readsAtLane = baseConfigReads(); return greet()(ctx); }]);
         await runFactoryEngine(localOpts(w, untrusted, { runUserConfig: { ship: { trustedBases: ['dev'] } } }));
-        expect(baseConfigReads()).toBe(0);
+        expect(readsAtLane).toBe(0);
         expect(readFactoryState(w.root, LOCAL_ISSUE).layout).toBeUndefined();
         expect(untrusted.started[0].worktree).toBeUndefined();
         // Control: the same base in a new world, trusted (the defaults name main), is read and makes the run private.
@@ -420,4 +457,53 @@ function attested(exec) {
         return { ran: true, status: r.status, output: `${r.stdout}${r.stderr}`, timedOut: false };
     };
 }
+describe('#484 with the private layout (merge of #484 into #483)', () => {
+    // A fake token of the github-token shape, built so this source file never holds one.
+    const TOKEN = ['ghp', 'Z9y8X7w6V5u4T3s2R1q0P9o8N7m6L5k4J3i2'].join('_');
+    it('a private-layout lane commit goes through the process-tree proof and the secret scan on the private worktree: a hit parks; --allow-secret-shapes commits and imports it', async () => {
+        const env = privateWorld();
+        w = env.w;
+        const procs = new FakeProcesses();
+        const leaky = commitFile('src/config.js', `export const token = '${TOKEN}';\n`);
+        const first = await runFactoryEngine(opts(env, [leaky], { processes: procs }));
+        expect(first.gate?.name, first.message).toBe('secret-shaped-content');
+        expect(first.gate?.reason).toContain('src/config.js (github-token)');
+        const s = readFactoryState(w.root, LOCAL_ISSUE);
+        // The proof and the commit ran on the engine's own lane worktree in the private repository.
+        expect(s.pendingCommit?.worktree.startsWith(join(s.privateDir, 'w'))).toBe(true);
+        expect(s.pendingCommit?.branch).toBeNull();
+        expect(procs.trees.length).toBeGreaterThan(0);
+        for (const t of procs.trees)
+            expect(t.startsWith(join(s.privateDir, 'w'))).toBe(true);
+        expect(readMirrorRef(w.config.repo.url, `factory/issue-${LOCAL_ISSUE}`)).toBeFalsy();
+        expect(JSON.stringify(s)).not.toContain(TOKEN.slice(4));
+        const ok = await runFactoryEngine(opts(env, [review('approve')], { allowSecretShapes: true, processes: procs }));
+        expect(ok.gate?.name, ok.message).toBe('merge');
+        const done = readFactoryState(w.root, LOCAL_ISSUE);
+        expect(done.lanes.filter((l) => l.kind === 'implement')).toHaveLength(1);
+        expect(gitIn(w.root, 'show', `${done.head}:src/config.js`)).toContain('export const token');
+        expect(done.history.map((x) => x.note).join('\n')).toMatch(/secret-shaped content accepted for lane .* src\/config\.js \(github-token\)/);
+    }, T);
+    it('a detect-only lane that plants a hook in YOUR repository is caught by the full snapshot: #484\'s quarantine moves it out and holds your checkout', async () => {
+        const env = privateWorld();
+        w = env.w;
+        const DETECT_ONLY = { ...ENFORCED_SANDBOX, mode: 'detect-only' };
+        const hook = join(w.root, '.git', 'hooks', 'post-checkout');
+        const plant = (ctx) => {
+            writeFileSync(hook, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+            return { ...greet()(ctx), sandbox: DETECT_ONLY };
+        };
+        const out = await runFactoryEngine(opts(env, [plant]));
+        expect(out.gate?.name, out.message).toBe('lane-tampered');
+        expect(out.gate?.reason).toMatch(/your repository: the hooks\/ directory changed/);
+        expect(out.gate?.reason).toMatch(/New factory runs in this checkout are held until omg factory run release --tamper/);
+        expect(existsSync(hook)).toBe(false);
+        const hold = readTamperHold(w.ledgerDir, w.root);
+        expect(hold && hold !== 'unreadable' ? hold.held : undefined).toBe(true);
+        expect(hold && hold !== 'unreadable' ? hold.moved : []).toContain('hooks/post-checkout');
+        // Nothing was quarantined from the private repository (it did not change).
+        expect(privateQuarantined(w.ledgerDir, 'hooks/post-checkout')).toBeUndefined();
+        expect(readMirrorRef(w.config.repo.url, `factory/issue-${LOCAL_ISSUE}`)).toBeFalsy();
+    }, T);
+});
 //# sourceMappingURL=engine.private.test.js.map

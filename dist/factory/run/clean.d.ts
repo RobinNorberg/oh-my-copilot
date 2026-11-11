@@ -65,6 +65,8 @@ export interface FactoryCleanOptions {
     seed?: boolean;
     /** The trusted user config factory.run.workDir is read from (default: userConfigLayers().trustedUser); tests pass one. */
     runUserConfig?: unknown;
+    /** The private layout: recorded gate processes under a dir that still run (default: gate-procs.ts liveGateProcs); tests pass one. */
+    liveGateProcs?: (dir: string) => number[];
 }
 export type LaneProcessRecord = NonNullable<FactoryRunState['lanes'][number]['process']>;
 export type LaneProcessState = 'live' | 'dead' | 'mismatch' | 'unknown';

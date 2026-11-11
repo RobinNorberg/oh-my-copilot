@@ -69,7 +69,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { atomicWriteFileSync } from '../../lib/atomic-write.js';
 import { runHostGit } from '../../team/git-worktree.js';
 import { sha256 } from './ledger.js';
-import { restorableFiles, RESTORE_SCOPE, RESTORE_SCOPE_KEY } from './review-guard.js';
+import { LEGACY_REMOTES_CHANGED, restorableFiles, RESTORE_SCOPE_KEY } from './review-guard.js';
 /** The checkout's key under quarantine/ and holds/ (the ledger's own per-root key). */
 export const repoKey = (root) => sha256(resolve(root).toLowerCase()).slice(0, 16);
 export const tamperHoldPath = (ledgerDir, root) => join(ledgerDir, 'holds', `${repoKey(root)}.json`);
@@ -389,6 +389,8 @@ function problemStatus(p, touched, before, after) {
         return touched('hooks/') ? 'ok' : 'unhandled';
     if (p === 'the info/ directory changed')
         return touched('info/') ? 'ok' : 'unhandled';
+    if (p === LEGACY_REMOTES_CHANGED)
+        return touched('remotes/') || touched('branches/') ? 'ok' : 'unhandled';
     let m = /^worktrees\/([^/]+)\/config\.worktree changed$/.exec(p);
     if (m)
         return touched(`worktrees/${m[1]}/config.worktree`) ? 'ok' : 'unhandled';
@@ -435,7 +437,7 @@ export function quarantineTamper(i) {
     const kept = i.before.restore;
     const touchedRels = [];
     const failedRels = new Set();
-    const dir = join(i.ledgerDir, 'quarantine', repoKey(i.root), i.at.replace(/[:.]/g, '-'));
+    const dir = join(i.ledgerDir, 'quarantine', repoKey(i.root), `${i.at.replace(/[:.]/g, '-')}${i.label ? `-${i.label.replace(/[^A-Za-z0-9._-]/g, '_')}` : ''}`);
     const quarantine = () => {
         if (!hold.quarantine) {
             mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -455,9 +457,14 @@ export function quarantineTamper(i) {
             hold.failed = `the repository's git dir could not be read: ${errText(error)}`;
         }
         if (now) {
-            const scoped = kept[RESTORE_SCOPE_KEY] === RESTORE_SCOPE;
+            // A path kept only since a later release (its scope word missing from an older snapshot) is left alone and named.
+            const scopes = (kept[RESTORE_SCOPE_KEY] ?? '').split(',');
+            const inScope = (rel) => {
+                const top = /^(modules|worktrees|remotes|branches)\//.exec(rel)?.[1];
+                return !top || scopes.includes(top === 'branches' ? 'remotes' : top);
+            };
             const changed = [...new Set([...Object.keys(kept), ...Object.keys(now)])]
-                .filter((rel) => rel !== RESTORE_SCOPE_KEY && kept[rel] !== now[rel] && (scoped || !/^(?:modules|worktrees)\//.test(rel)))
+                .filter((rel) => rel !== RESTORE_SCOPE_KEY && kept[rel] !== now[rel] && inScope(rel))
                 .sort();
             touchedRels.push(...changed);
             const tmp = join(dir, '.tmp');
@@ -650,6 +657,9 @@ export function quarantineTamper(i) {
     // No hold when only refs (not replace refs) and allowlisted config keys changed: what the user's own git does during a run.
     const replaced = hold.refs.some((r) => r.startsWith('refs/replace/'));
     if (!hold.failed && hold.moved.length + hold.restored.length + hold.notRestored.length + hold.active.length === 0 && !replaced)
+        return hold;
+    // No hold at all (a private run's own git dir): what was done is in the quarantine and the caller's park.
+    if (i.hold === false)
         return hold;
     hold.held = true;
     try {
