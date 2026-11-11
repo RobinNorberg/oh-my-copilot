@@ -35,7 +35,7 @@ import { resolveFactoryRunLimits, runCredits, type LoadedFactoryRunLimits } from
 import { cleanFactoryRun } from '../../factory/run/clean.js';
 import { resetFactoryRun } from '../../factory/run/reset.js';
 import { claimBusyMessage, factoryClaimHolder, factoryClaimRepo, isShallowClaimRepo, listFactoryClaims, localFactoryClaimRepo, removeFactoryClaim, SHARED_STATE_WARNING, shallowClaimWarning, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo } from '../../factory/run/claims.js';
-import { EXIT_AWAITING_HUMAN, EXIT_BUSY, runFactoryEngine, type FactoryRunOutcome } from '../../factory/run/engine.js';
+import { EXIT_AWAITING_HUMAN, EXIT_BUSY, runFactoryEngine, type FactoryRunOutcome, type LaneProcessOps } from '../../factory/run/engine.js';
 import { factoryGuardExec, hardenedGitExec } from '../../factory/run/exec.js';
 import { EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, factoryForgeOptions, loadFactoryForgeConfig, originForgeKind, syncLocalMirror } from '../../factory/run/forge-roots.js';
 import type { LoadedForgeConfig } from '../../forge/config.js';
@@ -121,6 +121,8 @@ export interface FactoryRunDeps {
    * "enforced" then parks at gates-unsandboxed, never runs unsandboxed.
    */
   gateSandbox?: (root: string) => SandboxRunner;
+  /** Liveness, kill and the lane process-tree proof (default: the engine's defaultLaneProcessOps). */
+  processes?: LaneProcessOps;
 }
 
 function projectConfig(root: string): unknown {
@@ -457,6 +459,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
                 ...(forge ? { forge } : {}),
                 ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}),
                 ...(deps.gateConfig ? { gateConfig: deps.gateConfig } : {}),
+                ...(deps.processes ? { processes: deps.processes } : {}),
                 interrupted: () => signals > 0,
                 warn: (m) => console.error(chalk.yellow(m)),
               });
