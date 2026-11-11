@@ -125,7 +125,7 @@ import { getGlobalOmcStatePath } from '../../utils/paths.js';
 import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
 import { isTerminalLaneState, LaneLostError, type LaneBackend, type LaneProcess, type LaneProfile, type LaneResult } from './lane.js';
 import { jobRefProblem } from '../../copilot-run/job.js';
-import { commitLaneWork, conflictFixStart, LANE_PROTECTED_PATHS, laneCommitMessage, pathGlobMatches, type SecretFinding } from './lane-commit.js';
+import { CI_TREE_PATHS, commitLaneWork, conflictFixStart, LANE_PROTECTED_PATHS, laneCommitMessage, pathGlobMatches, type SecretFinding } from './lane-commit.js';
 import { proveLaneTreeGone, type LaneTreeProof } from './lane-procs.js';
 import { quarantineTamper, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, tamperHoldMessage, tamperHoldPath, writeTamperHold } from './tamper-quarantine.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir, userBaselineKey } from './ledger.js';
@@ -3984,7 +3984,7 @@ class FactoryEngine {
         this.gate('ci-flaky', `known-flaky failures at ${at} are out of rerun budget (${out.report.failed.join(', ')}); rerun the failed jobs by hand`);
         return;
       case 'no-workflows':
-        this.gate('no-workflows', `${out.report.noHeadChecks ? `${noHeadChecksText(out.report.noHeadChecks)} (head ${at})` : `no checks and no workflow runs exist for ${at}`}; push the branch with a token that triggers workflows (or enable Actions), or close and reopen PR #${pr}`);
+        this.gate('no-workflows', `${out.report.noHeadChecks ? `${noHeadChecksText(out.report.noHeadChecks)} (head ${at})` : `no checks and no workflow runs exist for ${at}`}; push the branch with a token that triggers workflows (or enable Actions), or close and reopen PR #${pr}${out.report.noHeadChecks ? `; to stop instead: ${cancelCommand(this.key)}` : ''}`);
         return;
       case 'timeout':
         this.gate('gates-timeout', `gates did not settle within factory.run.gatesTimeoutMinutes ${Math.round(this.o.limits.gatesTimeoutMs / 60_000)} at ${at}${out.report ? ` (pending: ${out.report.pending.join(', ') || 'none'})` : ''}`);
@@ -4809,15 +4809,39 @@ class FactoryEngine {
     if (!repo || this.forge?.kind === 'local' || this.forge?.kind === 'azure-devops') return undefined;
     const base = view.baseRefOid;
     let baseChecks: { names: readonly string[] | undefined } | undefined;
+    let ciDefinitions: { files: readonly string[] | undefined } | undefined;
+    let baseSuites: { suites: ReturnType<GateHeadReads['baseSuites']> } | undefined;
     return {
       baseChecks: () => {
         // An unverifiable base sha is unreadable: it counts as a base with checks (no "no CI" green).
         baseChecks ??= { names: /^[0-9a-f]{40}$/.test(base) ? ghCommitCheckNames(this.exec, repo, base, this.o.root, true) : undefined };
         return baseChecks.names;
       },
+      ciDefinitions: () => {
+        // The sealed base (state.baseSha) and the pushed head (state.head) trees, through the engine's hardened git
+        // with replace objects off. A sha that is not HEX40, or a failed read, is unreadable: counts as "has CI".
+        ciDefinitions ??= { files: this.ciDefinitionFiles([this.state.baseSha, this.state.head]) };
+        return ciDefinitions.files;
+      },
       suites: (head) => ghCheckSuites(this.exec, repo, head, this.o.root),
+      baseSuites: () => {
+        baseSuites ??= { suites: /^[0-9a-f]{40}$/.test(base) ? ghCheckSuites(this.exec, repo, base, this.o.root) : undefined };
+        return baseSuites.suites;
+      },
       runApps: (head) => ghCheckRunApps(this.exec, repo, head, this.o.root),
     };
+  }
+
+  /** The CI definition files in these commits' trees (ls-tree, TRUSTED_READ_ENV); undefined = a sha missing / not HEX40 or a read failed. */
+  private ciDefinitionFiles(shas: ReadonlyArray<string | undefined>): string[] | undefined {
+    const files = new Set<string>();
+    for (const sha of shas) {
+      if (!sha || !/^[0-9a-f]{40}$/.test(sha)) return undefined;
+      const res = this.exec('git', ['ls-tree', '-r', '-z', '--name-only', sha, '--', ...CI_TREE_PATHS], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+      if (res.status !== 0) return undefined;
+      for (const f of res.stdout.split('\0')) if (f) files.add(f);
+    }
+    return [...files];
   }
 
   private githubReadContext(): GithubReadContext | undefined {

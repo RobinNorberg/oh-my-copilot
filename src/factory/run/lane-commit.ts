@@ -103,6 +103,9 @@ export const ADO_PIPELINE_PATHS: readonly string[] = ['azure-pipelines.yml', 'az
  */
 export const CI_DEFINITION_PATHS: readonly string[] = ['.circleci/', '.gitlab-ci.yml', '.buildkite/', '.travis.yml', 'Jenkinsfile', 'appveyor.yml', '.appveyor.yml', '.drone.yml', 'bitbucket-pipelines.yml', '.woodpecker/', '.woodpecker.yml'];
 
+/** Every CI system's definition paths (GitHub Actions, Azure Pipelines, the rest): the gates' no-CI rule reads them from the base and head trees. */
+export const CI_TREE_PATHS: readonly string[] = ['.github/workflows/', ...ADO_PIPELINE_PATHS, ...CI_DEFINITION_PATHS];
+
 export const LANE_PROTECTED_PATHS: readonly string[] = ['.github/', '.copilot/', '.claude/', '.vscode/', '.mcp.json', '.husky/', '.omg/skills/', '.omc/skills/', 'AGENTS.md', 'CLAUDE.md', ...ADO_PIPELINE_PATHS, ...CI_DEFINITION_PATHS];
 
 export type LaneCommitRefusal = 'moved' | 'gitlink' | 'escaped' | 'protected' | 'secret' | 'empty' | 'error';
