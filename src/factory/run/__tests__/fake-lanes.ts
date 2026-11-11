@@ -44,6 +44,8 @@ export interface LaneOutcome {
   lost?: boolean;
   /** The lane's sandbox record; a write lane's default is enforced without network (a confirmed host); null = no record. */
   sandbox?: CopilotRunSandboxState | null;
+  /** The worktree the result names (default: the lane's own; a backend naming another one). */
+  reportWorktree?: string;
   /** The result carries no change summary (git could not tell). */
   noChanges?: boolean;
 }
@@ -111,7 +113,7 @@ export class FakeLanes implements LaneBackend {
       pr: null,
       headSha: terminal ? gitIn(job.ctx.worktree, 'rev-parse', 'HEAD') : null,
       baseSha: job.ctx.baseSha,
-      worktree: job.ctx.worktree,
+      worktree: o.reportWorktree ?? job.ctx.worktree,
       changes: terminal && !o.noChanges ? summarizeChanges(job.ctx.worktree, job.ctx.baseSha) : null,
       finalText: o.finalText ?? null,
       logsUrl: null,

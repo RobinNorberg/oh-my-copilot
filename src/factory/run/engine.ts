@@ -914,7 +914,10 @@ class FactoryEngine {
   /** The private layout's store of this run (from the sealed state), or undefined in the shared layout. */
   private privateRun(): PrivateRun | undefined {
     if (this.state?.layout !== 2) return undefined;
-    this.priv ??= PrivateRun.fromState(this.state, { root: this.o.root, ledgerDir: this.o.ledgerDir ?? defaultLedgerDir(), exec: this.o.exec, warn: (m) => this.o.warn?.(m) });
+    this.priv ??= PrivateRun.fromState(this.state, {
+      root: this.o.root, omcRoot: getOmcRoot(this.o.root), slug: runSlug(this.key), userConfig: this.runUserConfig(),
+      ledgerDir: this.o.ledgerDir ?? defaultLedgerDir(), exec: this.o.exec, warn: (m) => this.o.warn?.(m),
+    });
     return this.priv;
   }
 
@@ -1117,10 +1120,14 @@ class FactoryEngine {
    * checks and push (private-run.ts publishImports): false when it parked.
    */
   private privateImports(p: PrivateRun, steps: readonly ImportStep[], what: string, body: () => { parked: boolean; pushed: boolean }): boolean {
-    let extra: string[] = [];
-    try { extra = configuredProtectedPaths(this.o.root); } catch { /* the defaults still apply */ }
+    // The publish checks' own list (lane-protected paths and the configured extras); an unreadable list parks (review-483 L2).
+    const protectedList = this.laneProtectedPaths();
+    if (protectedList.problem) {
+      this.protectedPathsUnread(what, protectedList.problem);
+      return false;
+    }
     const out = p.publishImports({
-      steps, slug: runSlug(this.key), what, resume: this.resume, cancel: cancelCommand(this.key), extraProtected: extra,
+      steps, slug: runSlug(this.key), what, resume: this.resume, cancel: cancelCommand(this.key), extraProtected: protectedList.paths,
       nextImport: () => {
         const n = this.state.privateStore!.nextImport;
         this.save((x) => ({ ...x, privateStore: { ...x.privateStore!, nextImport: n + 1 } }));
@@ -1387,6 +1394,17 @@ class FactoryEngine {
         // A rerun after lane-unconfirmed is the human's word that the job stopped (used only when the engine cannot tell).
         const humanCleared = existing.gate?.name === 'lane-unconfirmed';
         this.save((s) => this.resumed(s, tookOver));
+        // The private layout: the recorded store must be where the config puts it and git still new enough, before
+        // anything (a lost lane's settle included) reads it (review-483 M5, L4).
+        if (existing.layout === 2) {
+          try {
+            this.privateRun();
+          } catch (error) {
+            if (!(error instanceof PrivateStoreError)) throw error;
+            this.gate(PRIVATE_STORE_GATE, `${error.message}; then rerun ${this.resume}, or ${cancelCommand(this.key)}`);
+            return this.loop();
+          }
+        }
         // A coding-agent lane has no job or worktree here: the agent works on GitHub, and the implement step reads its status.
         for (const lane of this.state.lanes.filter((l) => l.status === 'running' && l.kind !== 'coding-agent')) {
           if (!(await this.settleLost(lane, 'lost at resume; its worktree is kept for inspection', humanCleared))) break;
@@ -2014,6 +2032,10 @@ class FactoryEngine {
     // The private layout: the commit is made in the run's private repository (checked first), on no branch; publish imports it.
     const priv = this.privateRun();
     priv?.assert();
+    // The private layout commits only in the worktree the engine made for this lane, never one the backend names (review-483 L7).
+    if (priv && (!lane.worktree || !samePath(result.worktree, lane.worktree))) {
+      return this.gate('lane-tampered', `${lane.kind} lane ${lane.id} reports the worktree ${result.worktree}, not ${lane.worktree ?? '(none recorded)'} the engine made for it; nothing was committed or pushed`);
+    }
     const commit = commitLaneWork({
       worktree: result.worktree, start, parents, repoRoot: priv ? priv.repo.repo : this.o.root, branch: priv ? null : result.branch,
       message: laneCommitMessage(title, result.finalText), extraProtected,
@@ -2032,7 +2054,8 @@ class FactoryEngine {
       this.commentOnce('pr', `detect-only@${lane.id}`, 'sandbox', `**Sandbox: detect-only.** ${lane.kind} lane ${lane.id} ran without an OS sandbox (\`writeUnsandboxed: "detect-only"\`).\n`);
     }
     // The parents as the engine chose them: the private layout's import expects exactly these, never what the commit says.
-    this.save((s) => moveTo({ ...s, pendingHead: head, pendingParents: [...parents] }, 'publish', `the engine committed lane ${lane.id}'s changes as ${head.slice(0, 12)}`, this.iso()));
+    // Recorded for the private layout only: a shared run's state keeps the shape older releases wrote (review-483 L10).
+    this.save((s) => moveTo({ ...s, pendingHead: head, ...(priv ? { pendingParents: [...parents] } : {}) }, 'publish', `the engine committed lane ${lane.id}'s changes as ${head.slice(0, 12)}`, this.iso()));
   }
 
   /**
@@ -3926,7 +3949,8 @@ class FactoryEngine {
       usage,
       endedAt: this.iso(),
       ...(result.headSha ? { endSha: result.headSha } : {}),
-      ...(result.worktree ? { worktree: result.worktree } : {}),
+      // The private layout keeps the engine's own record of the worktree it made (acceptWriteLane compares the backend's with it).
+      ...(result.worktree && !laneTree ? { worktree: result.worktree } : {}),
       ...(result.error ? { note: result.error } : {}),
       ...(result.sandbox ? { sandbox: result.sandbox } : {}),
     });

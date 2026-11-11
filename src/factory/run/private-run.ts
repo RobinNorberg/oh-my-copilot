@@ -30,7 +30,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync } from 'fs';
-import { basename, join, resolve } from 'path';
+import { join, resolve } from 'path';
 
 import { withFileLockSync } from '../../lib/file-lock.js';
 import { defaultExec, type Exec, type ExecResult } from '../../ship/exec.js';
@@ -198,7 +198,7 @@ export function importRefusalPark(code: ImportRefusalCode, reason: string, what:
     case 'timeout':
       return { name: IMPORT_REFUSED_GATE, reason: `${pre}. Rerun ${resume} to try the import again` };
     case 'bad-input':
-      return { name: IMPORT_REFUSED_GATE, reason: `${pre}. A commit the run already pushed is missing from your repository (a git gc --prune=now?); fetch the PR branch back (git fetch <remote> <branch>), then rerun ${resume}, or ${cancel}` };
+      return { name: IMPORT_REFUSED_GATE, reason: `${pre}. A commit the run already imported is missing from your repository (a git gc --prune=now?). If the run pushed it, fetch the PR branch back (git fetch <remote> <branch>), then rerun ${resume}; if it was only imported, never pushed (prepare's merge before a ci-fix lane), it cannot be fetched back: ${cancel} and start the run again` };
     default:
       return { name: IMPORT_REFUSED_GATE, reason: `${pre}. Inspect the run's private repository ${privateDir}; ${cancel}, then omg factory run clean removes it` };
   }
@@ -257,17 +257,21 @@ export class PrivateRun {
     });
   }
 
-  /** The run of a private-layout state (resume): the recorded dir and record, never recomputed from config. */
-  static fromState(s: FactoryRunState, input: Pick<PrivateRunInput, 'root' | 'ledgerDir' | 'exec' | 'platform' | 'warn'>): PrivateRun {
+  /**
+   * The run of a private-layout state (resume). The recorded dir must be
+   * exactly where the trusted user config's work root and the run's
+   * repository and slug put it (review-483 M5: a wrong or tampered privateDir
+   * never names a dir to resume in or remove), and git must still be 2.44 or
+   * later (review-483 L4). Throws PrivateStoreError.
+   */
+  static fromState(s: FactoryRunState, input: Pick<PrivateRunInput, 'root' | 'omcRoot' | 'slug' | 'userConfig' | 'ledgerDir' | 'exec' | 'platform' | 'warn'>): PrivateRun {
     if (s.layout !== 2 || !s.privateDir || !s.privateStore || !s.baseSha) throw new PrivateStoreError('the run state has no private store record');
-    const runDir = resolve(s.privateDir);
-    const repoDir = resolve(runDir, '..');
-    const layout: PrivateRunLayout = {
-      work: resolve(repoDir, '..'), repo8: basename(repoDir), repoDir, seed: join(repoDir, 'seed.git'), runDir,
-      repo: join(runDir, 'repo'), gitDir: join(runDir, 'repo', '.git'), worktrees: join(runDir, 'w'), jobs: join(runDir, 'jobs'), lock: join(runDir, 'run.lock'),
-    };
+    const layout = expectedPrivateLayout(s, input);
+    const ctx = PrivateRun.context(input);
+    const version = gitVersionProblem(ctx.exec);
+    if (version) throw new PrivateStoreError(`${version}; upgrade git, then rerun (the run's private repository needs it)`);
     const repo: PrivateRepo = { repo: layout.repo, gitDir: layout.gitDir, seed: layout.seed, baseSha: s.baseSha, configHash: s.privateStore.configHash, longestPath: s.privateStore.longestPath };
-    return new PrivateRun(layout, repo, PrivateRun.context(input), s.privateStore.userGitDir, input.root, input.warn);
+    return new PrivateRun(layout, repo, ctx, s.privateStore.userGitDir, input.root, input.warn);
   }
 
   /** At every resume (B1b scope 1/5): leftover `.trash-*` and this run's stale import refs (a crash after an import). */
@@ -444,6 +448,28 @@ export class PrivateRun {
       return { ok: true as const, value };
     });
   }
+}
+
+/**
+ * The layout of a private-layout state, recomputed from the trusted user
+ * config's work root (privateWorkRoot), the run's repository (claimRepoKey)
+ * and its slug, and required to equal the recorded privateDir before
+ * anything resumes in it or removes it (review-483 M5). Throws
+ * PrivateStoreError naming both dirs; nothing is touched.
+ */
+export function expectedPrivateLayout(s: Pick<FactoryRunState, 'privateDir' | 'repoUrl'>, input: Pick<PrivateRunInput, 'root' | 'omcRoot' | 'slug' | 'userConfig' | 'platform'>): PrivateRunLayout {
+  const platform = input.platform ?? process.platform;
+  let layout: PrivateRunLayout;
+  try {
+    layout = PrivateRun.runLayout({ ...input, repoUrl: s.repoUrl });
+  } catch (error) {
+    throw new PrivateStoreError(`the run's private dir ${s.privateDir} cannot be checked: ${error instanceof Error ? error.message : String(error)}; nothing was resumed or removed`);
+  }
+  const norm = (p: string) => (platform === 'win32' ? resolve(p).toLowerCase() : resolve(p));
+  if (!s.privateDir || norm(s.privateDir) !== norm(layout.runDir)) {
+    throw new PrivateStoreError(`the run's recorded private dir ${s.privateDir ?? '(none)'} is not ${layout.runDir}, where factory.run.workDir and the run's repository put it, so nothing was resumed or removed. Restore factory.run.workDir to the value the run started with, or cancel the run and remove ${s.privateDir ?? 'the dir'} by hand (unlink any node_modules link in it first)`);
+  }
+  return layout;
 }
 
 /** The engine's fixed commit identity for prepare's merge and inventory commits in the private repository (no global config there). */
