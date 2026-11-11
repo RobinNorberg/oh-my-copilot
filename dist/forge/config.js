@@ -302,7 +302,8 @@ function forgeIdentity(forge, ado, dropKind) {
  */
 export function resolveForgeConfig(trustedUser, base, project, originUrl, context) {
     const warnings = [];
-    const baseSource = 'base-branch .copilot/omg.jsonc';
+    // L2: what to do is part of every "ignoring ... from the working-tree project config" warning.
+    const baseSource = 'base-branch .copilot/omg.jsonc (commit the file on the base branch, e.g. by a PR into it, for it to count)';
     // forge.* identity: user -> base; the working tree never sets it.
     const uForge = factoryBlock(trustedUser, 'forge', 'user config');
     const bForge = factoryBlock(base, 'forge', baseSource);

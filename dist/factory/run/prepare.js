@@ -11,7 +11,7 @@
  * (`git worktree add -B <branch> <path> <sha>`); ship's runPrepare then runs
  * in it with push off, and the engine pushes the result itself.
  */
-import { existsSync, lstatSync, realpathSync, rmdirSync, symlinkSync, unlinkSync } from 'fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, rmdirSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { loadBaseKnownFlaky, loadTrustedShipConfig, userConfigLayers } from '../../ship/config.js';
 import { getBranchName, getWorktreePath } from '../../team/git-worktree.js';
@@ -26,43 +26,152 @@ export function checkoutBranch(issue) {
     return getBranchName(FACTORY_CHECKOUT_TEAM, checkoutWorker(issue));
 }
 /**
- * Junction (win32) or symlink the main checkout's node_modules into the
- * prepare checkout, so prepare's tsc / eslint / vitest find their binaries.
- * removeWorkerWorktree unlinks it before the worktree goes, so its target
- * is never emptied.
+ * The tool-cache dirs a gate's node_modules gets fresh and empty per run,
+ * even when your node_modules has them: vite and vitest (`.vite`, the
+ * bundled-config `.vite-temp`, `.vitest`) and find-cache-dir users such as
+ * babel-loader, eslint-loader and terser (`.cache`). Your copies are never
+ * linked in: a cache the PR's code wrote there would run on your next
+ * `vite dev`. They are made whether or not yours has them; any other name
+ * your node_modules lacks is simply creatable in the tree.
+ */
+export const GATE_CACHE_DIRS = ['.cache', '.vite', '.vite-temp', '.vitest'];
+/** The engine's own file in a node_modules tree it built (linkNodeModules). */
+export const GATE_TREE_MARKER = '.omg-gate-tree';
+function unlinkLink(p) {
+    // A junction or directory symlink on win32: rmdir removes the link itself.
+    try {
+        unlinkSync(p);
+    }
+    catch {
+        rmdirSync(p);
+    }
+}
+/**
+ * Give the prepare checkout (or a calibration dir) your node_modules so
+ * prepare's tsc / eslint / vitest find their packages: a real
+ * `node_modules` directory holding one junction (win32) or directory
+ * symlink per top-level entry of yours (`@scope` dirs and `.bin` linked
+ * whole), the GATE_CACHE_DIRS as fresh empty dirs, and top-level files
+ * (`.package-lock.json`) copied. In the gate sandbox the checkout is
+ * read-write and your node_modules read-only, so tools that write a cache
+ * under node_modules (vitest's results cache in `.vite`) write into this
+ * per-run tree, never into yours. A single junction from an older release
+ * is replaced; anything else already there is left alone. Every link is
+ * unlinked (never followed) by unlinkNodeModules before the dir goes.
  */
 export function linkNodeModules(root, checkout) {
     const source = join(root, 'node_modules');
     const target = join(checkout, 'node_modules');
-    if (!existsSync(source) || !existsSync(checkout) || existsSync(target))
+    if (!existsSync(source) || !existsSync(checkout))
         return;
-    symlinkSync(source, target, process.platform === 'win32' ? 'junction' : 'dir');
+    let present = true;
+    try {
+        present = !lstatSync(target).isSymbolicLink() || !unlinkOwnLink(root, target);
+    }
+    catch {
+        present = false;
+    }
+    if (present)
+        return;
+    mkdirSync(target);
+    try {
+        writeFileSync(join(target, GATE_TREE_MARKER), '');
+        for (const name of GATE_CACHE_DIRS)
+            mkdirSync(join(target, name));
+        for (const e of readdirSync(source, { withFileTypes: true })) {
+            if (e.name === GATE_TREE_MARKER || GATE_CACHE_DIRS.includes(e.name))
+                continue;
+            let st;
+            try {
+                st = statSync(join(source, e.name));
+            }
+            catch {
+                continue;
+            }
+            if (st.isFile()) {
+                // A copy, never a link: a hard link would hand the PR's code your file to write.
+                copyFileSync(join(source, e.name), join(target, e.name));
+                continue;
+            }
+            if (!st.isDirectory())
+                continue;
+            symlinkSync(join(source, e.name), join(target, e.name), process.platform === 'win32' ? 'junction' : 'dir');
+        }
+    }
+    catch (error) {
+        removeGateTree(target);
+        throw error;
+    }
+}
+/** Unlink `link` when it resolves to the root's node_modules (the single link of older releases); true when it went. */
+function unlinkOwnLink(root, link) {
+    try {
+        const real = (p) => (process.platform === 'win32' ? realpathSync(p).toLowerCase() : realpathSync(p));
+        if (real(link) !== real(join(root, 'node_modules')))
+            return false;
+    }
+    catch {
+        return false;
+    }
+    unlinkLink(link);
+    return true;
 }
 /**
- * Remove the link linkNodeModules made before the checkout is discarded:
- * on POSIX a symlink named node_modules is untracked for a `node_modules/`
+ * Remove a node_modules tree linkNodeModules built, never through a link:
+ * every symlink and junction at any depth is unlinked first (the PR's code
+ * may have planted one in a cache dir), then files and dirs bottom up. A
+ * dir is read only after an lstat says it is a plain directory.
+ */
+function removeGateTree(dir) {
+    const walk = (d) => {
+        for (const name of readdirSync(d)) {
+            const p = join(d, name);
+            const st = lstatSync(p);
+            if (st.isSymbolicLink())
+                unlinkLink(p);
+            else if (st.isDirectory())
+                walk(p);
+            else
+                unlinkSync(p);
+        }
+        rmdirSync(d);
+    };
+    walk(dir);
+}
+/**
+ * Remove what linkNodeModules made before the checkout is discarded: on
+ * POSIX a symlink named node_modules is untracked for a `node_modules/`
  * gitignore line (directory-only), so removeWorkerWorktree would see a dirty
- * tree. Only a link that resolves to the root's node_modules goes; the
- * target is never touched, and anything else is left to the dirty check.
+ * tree. The single link of older releases goes only when it resolves to the
+ * root's node_modules; the engine's tree (a real dir with GATE_TREE_MARKER)
+ * goes whole, its links unlinked, never followed. Your node_modules is never
+ * touched, and anything else is left to the caller's own (link-safe) removal
+ * and dirty check.
  */
 export function unlinkNodeModules(root, checkout) {
     const target = join(checkout, 'node_modules');
+    let st;
     try {
-        if (!lstatSync(target).isSymbolicLink())
-            return;
-        const real = (p) => (process.platform === 'win32' ? realpathSync(p).toLowerCase() : realpathSync(p));
-        if (real(target) !== real(join(root, 'node_modules')))
-            return;
+        st = lstatSync(target);
     }
     catch {
         return;
     }
-    // A junction or directory symlink on win32: rmdir removes the link itself.
+    if (st.isSymbolicLink()) {
+        unlinkOwnLink(root, target);
+        return;
+    }
+    if (st.isDirectory() && existsSync(join(target, GATE_TREE_MARKER)) && !sameDir(target, join(root, 'node_modules')))
+        removeGateTree(target);
+}
+function sameDir(a, b) {
     try {
-        unlinkSync(target);
+        const ra = realpathSync(a);
+        const rb = realpathSync(b);
+        return process.platform === 'win32' ? ra.toLowerCase() === rb.toLowerCase() : ra === rb;
     }
     catch {
-        rmdirSync(target);
+        return false;
     }
 }
 /**

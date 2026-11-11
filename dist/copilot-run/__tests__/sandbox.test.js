@@ -333,7 +333,7 @@ describe('buildSandboxConfig', () => {
                 rmdirSync(link);
             }
             point(elsewhere);
-            expect(() => buildSandboxConfig('write', c, host())).toThrow(/node_modules link in .* resolves to .*secret, not .* the engine linked; it is not granted/);
+            expect(() => buildSandboxConfig('write', c, host())).toThrow(/node_modules in .* is not as the engine linked it \(.*resolves to .*secret, not your node_modules .*\); it is not granted/);
             expect(() => buildSandboxConfig('write', c, host({ shell: true, denied_paths: true }))).toThrow(/it is not granted/);
             // Without nodeModulesTarget (lanes): the link's target as it is, today's rule.
             expect(buildSandboxConfig('write', { ...c, nodeModulesTarget: undefined }, host()).userPolicy.filesystem.readonlyPaths).toContain(realpathSync.native(elsewhere));

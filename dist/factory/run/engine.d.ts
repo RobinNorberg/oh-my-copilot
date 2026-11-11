@@ -296,6 +296,16 @@ export declare function pinCheckoutGit(exec: Exec, pin: () => {
     workTree: string;
     gitDir: string;
 } | undefined): Exec;
+/**
+ * The calibration args of a check on the base copy `dir`: a built-in vitest
+ * or eslint run keeps only the files the base has (the PR may add test
+ * files). With none left, vitest still runs with its config loaded (a filter
+ * no file matches, `--passWithNoTests`), so a config the sandbox cannot load
+ * shows here; eslint just starts (`--version`). Every other command runs
+ * unchanged.
+ */
+/** A vitest file filter no test file matches (the calibration of a PR whose tests the base lacks). */
+export declare const CALIBRATION_NO_TEST_FILTER = "omg-calibration-matches-no-test-file";
 /** The fixed failure text of a built-in eslint or vitest check whose one changed file name the sandbox shell cannot carry. */
 export declare const BUILT_IN_FILE_NAME_TOO_LONG = "a changed file name is too long for the sandbox shell";
 /**

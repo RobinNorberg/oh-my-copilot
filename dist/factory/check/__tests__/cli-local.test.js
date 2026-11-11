@@ -43,6 +43,23 @@ describe('omg factory check on the local (offline) forge', () => {
         expect(await runFactoryCheck({ ids: ['1'] }, deps)).toBe(0);
         expect(repo.out.join('\n')).toContain('prepare checks: cargo check');
     });
+    it('L3: says why a built-in prepare check is skipped and what to run (no node_modules, a tool not installed)', async () => {
+        const repo = localRepo();
+        writeFile(repo, '.copilot/backlog/1-add-remove.md', backlogItem('Add remove'));
+        writeFile(repo, 'package.json', '{}\n');
+        writeFile(repo, 'tsconfig.json', '{}\n');
+        commitAll(repo);
+        expect(await runFactoryCheck({ ids: ['1'] }, checkDeps(repo))).toBe(0);
+        const text = repo.out.join('\n');
+        expect(text).toContain('prepare checks: none');
+        expect(text).toContain('prepare check skipped: tsc, eslint and vitest: the base has package.json but there is no node_modules in this checkout (prepare uses yours); run npm ci');
+        repo.out.length = 0;
+        writeFile(repo, 'node_modules/vitest/vitest.mjs', '\n');
+        expect(await runFactoryCheck({ ids: ['1'], json: true }, checkDeps(repo))).toBe(0);
+        const json = JSON.parse(repo.out.join('\n'));
+        expect(json.prepareChecks).toEqual(['vitest on the tests mapped from the diff']);
+        expect(json.prepareChecksSkipped).toEqual(['tsc: the base has tsconfig.json but node_modules/typescript/bin/tsc is not installed; run npm ci']);
+    });
     it('describes the prepare checks from the base commit, like prepare: an uncommitted tsconfig.json adds nothing', async () => {
         const repo = localRepo();
         writeFile(repo, '.copilot/backlog/1-add-remove.md', backlogItem('Add remove'));

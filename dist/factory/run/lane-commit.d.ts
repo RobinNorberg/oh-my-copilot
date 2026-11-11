@@ -56,6 +56,15 @@ export declare const ENGINE_COMMIT_IDENTITY: Readonly<{
     email: "omg-factory@oh-my-copilot.invalid";
 }>;
 /**
+ * oh-my-copilot's own runtime artifacts a lane's session and plugin hooks
+ * write in its worktree: everything under `.omg/` (state, sessions,
+ * notepad.md, project-memory.json with your home path in it, plans, research,
+ * logs, artifacts, handoffs, ultragoal, ...) except `.omg/skills/`, the
+ * documented committable exception. Skipped by the engine's staging, never
+ * committed or summarized; a lane that changed only these left no changes.
+ */
+export declare function isOmcRuntimePath(path: string): boolean;
+/**
  * Where Azure Pipelines definitions conventionally live: the CI that gates an
  * ADO PR. A lane may not change them (a red build could turn green), and on
  * Azure DevOps a PR touching them needs the owner (merge-policy.ts).

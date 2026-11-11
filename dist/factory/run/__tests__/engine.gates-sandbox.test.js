@@ -8,12 +8,14 @@
  * on the local forge with fake lanes, a recording fake sandbox and a
  * recording plain runner: no Copilot runtime, no network.
  */
-import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { localCheckRecordPath, readLocalCheckRecord } from '../../../forge/local/index.js';
 import { resolveShipConfig } from '../../../ship/config.js';
 import { EXIT_AWAITING_HUMAN, GATE_NO_VERDICT_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATES_UNSANDBOXED_GATE, runFactoryEngine } from '../engine.js';
+import { GATE_TREE_MARKER } from '../prepare.js';
 import { sandboxShellCommand } from '../sandbox-exec.js';
 import { EngineLedger } from '../ledger.js';
 import { factoryStatePath, overwriteFactoryState, readFactoryState } from '../state.js';
@@ -103,6 +105,59 @@ describe('gates "enforced" (the default)', () => {
     }, MULTI_RUN_MS);
 });
 describe('base calibration', () => {
+    it('L4: the PR checkout and the base calibration both get a per-run node_modules tree; a cache write lands there, never in yours', async () => {
+        w = localWorld();
+        // A temp-dir node_modules in the test repository (never a real one).
+        appendFileSync(join(w.root, '.gitignore'), 'node_modules/\n');
+        mkdirSync(join(w.root, 'node_modules', 'vitest'), { recursive: true });
+        writeFileSync(join(w.root, 'node_modules', 'vitest', 'package.json'), '{}\n');
+        const seen = [];
+        const s = sandbox((req) => {
+            const nm = join(req.cwd, 'node_modules');
+            // What vitest does after its tests: write its results cache under node_modules/.vite.
+            mkdirSync(join(nm, '.vite', 'vitest'), { recursive: true });
+            writeFileSync(join(nm, '.vite', 'vitest', 'results.json'), req.purpose);
+            seen.push({ purpose: req.purpose, tree: !lstatSync(nm).isSymbolicLink() && existsSync(join(nm, GATE_TREE_MARKER)), pkg: existsSync(join(nm, 'vitest', 'package.json')) });
+            return req.purpose === 'calibrate' ? PASS : { ran: true, status: req.purpose === 'gate' ? 1 : 0, output: 'failed', timedOut: false };
+        });
+        const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run }));
+        expect(s.reqs.map((r) => r.purpose), out.message).toContain('calibrate');
+        for (const x of seen)
+            expect(x).toEqual({ purpose: x.purpose, tree: true, pkg: true });
+        expect(existsSync(join(w.root, 'node_modules', '.vite'))).toBe(false);
+        expect(s.reqs.every((r) => r.nodeModulesTarget === join(w.root, 'node_modules'))).toBe(true);
+        // The calibration dir is gone, its tree with it; your node_modules is intact.
+        expect(existsSync(s.reqs.find((r) => r.purpose === 'calibrate').cwd)).toBe(false);
+        expect(existsSync(join(w.root, 'node_modules', 'vitest', 'package.json'))).toBe(true);
+    }, MULTI_RUN_MS);
+    it('L4 M4: a link in the per-run node_modules tree the PR code re-pointed parks lane-tampered before the next check, never granted', async () => {
+        w = localWorld();
+        appendFileSync(join(w.root, '.gitignore'), 'node_modules/\n');
+        mkdirSync(join(w.root, 'node_modules', 'vitest'), { recursive: true });
+        const secret = mkdtempSync(join(tmpdir(), 'omg-secret-'));
+        try {
+            const s = sandbox((req) => {
+                if (req.purpose === 'prepare') {
+                    const link = join(req.cwd, 'node_modules', 'vitest');
+                    try {
+                        unlinkSync(link);
+                    }
+                    catch {
+                        rmdirSync(link);
+                    }
+                    symlinkSync(secret, link, process.platform === 'win32' ? 'junction' : 'dir');
+                }
+                return PASS;
+            });
+            const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run }));
+            expect(out.gate?.name, out.message).toBe('lane-tampered');
+            expect(out.gate?.reason).toMatch(/vitest points to .*omg-secret-/);
+            expect(s.reqs.map((r) => r.purpose)).toEqual(['prepare']);
+        }
+        finally {
+            rmSync(secret, { recursive: true, force: true });
+        }
+    }, MULTI_RUN_MS);
     it('a gate that fails in the sandbox on the base too parks gate-sandbox-incompatible: no FAILURE record, no ci-fix lane', async () => {
         w = localWorld();
         const s = sandbox((req) => (req.purpose === 'prepare' ? { ran: true, status: 0, output: '', timedOut: false } : { ran: true, status: 1, output: 'EACCES node_modules/.vite', timedOut: false }));

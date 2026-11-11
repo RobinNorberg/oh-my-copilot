@@ -96,6 +96,14 @@ const MAX_START_REF_CHARS = 256;
  * DISABLE_OMC would not allow.
  */
 export const STOP_CONTINUATION_SKIP_TOKEN = 'persistent-mode,workflow-drift-guard,code-simplifier';
+/**
+ * The OMC_SKIP_HOOKS entries that turn off the project-memory hooks in a
+ * session the host commits for (omg factory lanes): they write
+ * `.omg/project-memory.json`, your home path in it, into the lane's
+ * worktree (first live test L5/L9). The engine's staging skips `.omg/`
+ * runtime files anyway (lane-commit.ts isOmcRuntimePath).
+ */
+export const PROJECT_MEMORY_SKIP_TOKEN = 'project-memory-session,project-memory-posttool';
 export class CopilotRunError extends Error {
 }
 /**
@@ -1218,8 +1226,9 @@ export class CopilotRunManager {
         Object.assign(env, { OMC_GIT_GUARDRAILS: '1', COPILOT_ALLOW_ALL: 'false', OMC_BUDGET_HOST_LEDGER: '1', GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' });
         delete env[COPILOT_RUN_ALLOW_ENV];
         // OMC_* from the caller is stripped above, so this is the session's only skip list.
-        if (job.disableStopContinuations)
-            env.OMC_SKIP_HOOKS = STOP_CONTINUATION_SKIP_TOKEN;
+        const skipHooks = [...(job.disableStopContinuations ? [STOP_CONTINUATION_SKIP_TOKEN] : []), ...(job.hostCommits ? [PROJECT_MEMORY_SKIP_TOKEN] : [])];
+        if (skipHooks.length > 0)
+            env.OMC_SKIP_HOOKS = skipHooks.join(',');
         let scrubDir = null;
         if (job.scrubCredentials) {
             // COPILOT_GITHUB_TOKEN reaches the session over RPC (gitHubToken), never through the allowlisted env.

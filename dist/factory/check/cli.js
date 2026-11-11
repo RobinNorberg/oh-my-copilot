@@ -30,7 +30,7 @@ import { factoryForgeOptions, unsupportedForge } from '../run/forge-roots.js';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { BASE_CONFIG_PATH, isPlainBranchName, readBaseFile, resolveShipConfig, trustedPrepareChecks } from '../../ship/config.js';
-import { baseFileExists, describePrepareChecks } from '../../ship/prepare.js';
+import { baseFileExists, describePrepareChecks, skippedPrepareChecks } from '../../ship/prepare.js';
 import { TRUSTED_FETCH_ENV, TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { isAdoCommand, runGuardedAdo } from '../../forge/ado/guard.js';
@@ -458,10 +458,17 @@ export async function runFactoryCheck(o, deps) {
     let marker;
     const { root, base, baseSha, config, baseConfig, forge, exec } = openReadForge(o, deps, warnings, 'omg factory check', () => marker);
     let prepareChecks;
+    let prepareSkipped;
     try {
         // The same detection prepare runs: repository markers from the base commit, the tool packages from the root's node_modules.
         const baseHas = baseSha ? baseFileExists(exec, root, baseSha) : () => false;
-        prepareChecks = describePrepareChecks(trustedPrepareChecks(deps.trustedUser(), baseConfig), baseHas, (p) => existsSync(join(root, p)));
+        const configured = trustedPrepareChecks(deps.trustedUser(), baseConfig);
+        prepareChecks = describePrepareChecks(configured, baseHas, (p) => existsSync(join(root, p)));
+        // L3: why a built-in check is not run, and what to do.
+        prepareSkipped = [
+            ...(!baseSha && !configured ? [`the base ${base} is not available here (fetch origin), so its markers (tsconfig.json, eslint config) cannot be read`] : []),
+            ...skippedPrepareChecks(configured, baseHas, (p) => existsSync(join(root, p))),
+        ];
     }
     catch (error) {
         throw new CheckUsageError(error instanceof Error ? error.message : String(error));
@@ -521,6 +528,7 @@ export async function runFactoryCheck(o, deps) {
             forge: config.kind,
             limitations,
             prepareChecks,
+            ...(prepareSkipped.length > 0 ? { prepareChecksSkipped: prepareSkipped } : {}),
             ...(gate ? { gate } : {}),
             repo: config.repo.url,
             source: ids.length > 0 || parent !== undefined || !source ? null : { ...source },
@@ -537,6 +545,8 @@ export async function runFactoryCheck(o, deps) {
         for (const l of limitations)
             deps.out(chalk.gray(l));
         deps.out(chalk.gray(`prepare checks: ${prepareChecks.length > 0 ? prepareChecks.join('; ') : 'none'}`));
+        for (const why of prepareSkipped)
+            deps.out(chalk.yellow(`prepare check skipped: ${why}`));
         if (gate)
             deps.out((gate.startsWith('unresolved') ? chalk.yellow : chalk.gray)(`gate: ${plainText(gate)}`));
         deps.out(renderCheckTable(items));

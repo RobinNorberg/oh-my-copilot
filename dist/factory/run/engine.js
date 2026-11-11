@@ -61,7 +61,7 @@ import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT } from '../../ship/prepare.js';
 import { parseJsonc } from '../../utils/jsonc.js';
-import { resolveGatesSandboxMode, resolveRequireDeniedPaths } from '../../copilot-run/sandbox.js';
+import { nodeModulesTreeProblem, resolveGatesSandboxMode, resolveRequireDeniedPaths } from '../../copilot-run/sandbox.js';
 import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs } from './sandbox-exec.js';
 import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
 import { driveGates } from './gates-driver.js';
@@ -80,7 +80,7 @@ import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, g
 import { ghDependsOn, ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, githubTracker } from '../../forge/github/tracker.js';
 import { isSatisfied } from '../check/score.js';
 import { outcomePosts, postedBefore } from './outcome.js';
-import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, linkNodeModules, unlinkNodeModules } from './prepare.js';
+import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_TREE_MARKER, linkNodeModules, unlinkNodeModules } from './prepare.js';
 import { canTransition, createShipState, transition, latestVerdict, parseShipState, recordVerdict, shipStatePath, updateShipState, verifyShipIntegrity, } from '../../ship/state.js';
 import { ghReviewFeedback } from '../../forge/github/reviews.js';
 import { ReviewHeadMovedError, visibleLine } from '../../forge/review-feedback.js';
@@ -235,21 +235,30 @@ function hostGitStatus(cwd, args) {
 }
 /**
  * The paths of `git status --porcelain=v1 -z` output in the prepare
- * checkout, minus the engine's own node_modules link (linkNodeModules: on
- * POSIX a `node_modules/` ignore line does not match a symlink). A rename or
+ * checkout, minus the engine's own node_modules link or tree
+ * (linkNodeModules: on POSIX a `node_modules/` ignore line does not match a
+ * symlink, and a repository may not ignore node_modules at all). A rename or
  * copy record is followed by its original path as a record of its own,
  * without the two status letters.
  */
 function checkoutChanges(root, checkout, raw) {
     let ownLink = false;
+    let ownTree = false;
     try {
-        // Only the link linkNodeModules made (to the main checkout's node_modules), never one the PR's code pointed elsewhere.
+        // Only the link linkNodeModules made (to the main checkout's node_modules), never one the PR's code pointed elsewhere,
+        // or its per-run tree (a real dir it marked; the gate re-checks every link in it before granting).
         const link = join(checkout, 'node_modules');
         const real = (p) => (process.platform === 'win32' ? realpathSync(p).toLowerCase() : realpathSync(p));
-        ownLink = lstatSync(link).isSymbolicLink() && real(link) === real(join(root, 'node_modules'));
+        const st = lstatSync(link);
+        if (st.isSymbolicLink())
+            ownLink = real(link) === real(join(root, 'node_modules'));
+        else
+            ownTree = st.isDirectory() && existsSync(join(link, GATE_TREE_MARKER));
     }
     catch { /* no link */ }
-    return parseStatusPaths(raw).filter((p) => p && !(ownLink && (p === 'node_modules' || p === 'node_modules/')));
+    // Of the tree only untracked entries are dropped: a tracked file under node_modules the PR's code changed still counts.
+    const untracked = ownTree ? new Set(raw.split('\0').filter((r) => r.startsWith('?? ')).map((r) => r.slice(3))) : new Set();
+    return parseStatusPaths(raw).filter((p) => p && !(ownLink && (p === 'node_modules' || p === 'node_modules/')) && !(untracked.has(p) && p.startsWith('node_modules/')));
 }
 /** The paths of `git status --porcelain=v1 -z` records (an R/C record's original path included). */
 function parseStatusPaths(raw) {
@@ -306,9 +315,13 @@ function checkoutGitLink(checkout) {
 /**
  * The calibration args of a check on the base copy `dir`: a built-in vitest
  * or eslint run keeps only the files the base has (the PR may add test
- * files), and with none left just starts the tool (`--version`); every other
- * command runs unchanged.
+ * files). With none left, vitest still runs with its config loaded (a filter
+ * no file matches, `--passWithNoTests`), so a config the sandbox cannot load
+ * shows here; eslint just starts (`--version`). Every other command runs
+ * unchanged.
  */
+/** A vitest file filter no test file matches (the calibration of a PR whose tests the base lacks). */
+export const CALIBRATION_NO_TEST_FILTER = 'omg-calibration-matches-no-test-file';
 function calibrationArgs(c, dir) {
     const [script, ...rest] = c.args;
     if (c.kind !== 'built-in' || (script !== VITEST_SCRIPT && script !== ESLINT_SCRIPT))
@@ -316,7 +329,7 @@ function calibrationArgs(c, dir) {
     const vitest = script === VITEST_SCRIPT;
     const files = (vitest ? rest.slice(1) : rest).filter((f) => existsSync(join(dir, f)));
     if (files.length === 0)
-        return [script, '--version'];
+        return vitest ? [script, 'run', '--passWithNoTests', CALIBRATION_NO_TEST_FILTER] : [script, '--version'];
     return vitest ? [script, 'run', ...files] : [script, ...files];
 }
 /** The fixed failure text of a built-in eslint or vitest check whose one changed file name the sandbox shell cannot carry. */
@@ -914,33 +927,13 @@ class FactoryEngine {
         return this.o.gateSandbox({ ...req, nodeModulesTarget: join(this.o.root, 'node_modules'), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}) });
     }
     /**
-     * Why `<checkout>/node_modules` must not be granted: a link that does not
-     * resolve to your node_modules (the only link the engine makes there), so
-     * the PR's code re-pointed it (review-483 M4). Null when it is not a link,
-     * or is the engine's.
+     * Why `<checkout>/node_modules` must not be granted: a link in the
+     * engine's per-run tree (or the single link of older releases) that does
+     * not point where the engine linked it in your node_modules, so the PR's
+     * code re-pointed it (review-483 M4). Null when it is the engine's.
      */
     nodeModulesRepointed(checkout) {
-        const link = join(checkout, 'node_modules');
-        try {
-            if (!lstatSync(link).isSymbolicLink())
-                return null;
-        }
-        catch {
-            return null;
-        }
-        let real;
-        try {
-            real = realpathSync.native(link);
-        }
-        catch (error) {
-            return `${link} is a link that cannot be resolved (${errText(error)})`;
-        }
-        let want = '';
-        try {
-            want = realpathSync.native(join(this.o.root, 'node_modules'));
-        }
-        catch { /* no node_modules of yours: no link may be there */ }
-        return want && samePath(real, want) ? null : `${link} resolves to ${real}, not your node_modules (the only link the engine makes there)`;
+        return nodeModulesTreeProblem(checkout, join(this.o.root, 'node_modules')).problem;
     }
     /** The engine's prepare and local-gate checkout: `<run>/w/prep` in the private layout. */
     checkoutDir() {
@@ -3337,14 +3330,14 @@ class FactoryEngine {
             unlinkNodeModules(this.o.root, dir);
             let linked = true;
             try {
-                linked = lstatSync(join(dir, 'node_modules')).isSymbolicLink();
+                lstatSync(join(dir, 'node_modules'));
             }
             catch {
                 linked = false;
             }
-            // A link that is still there is left with its dir: removing through it would empty the root's node_modules.
+            // A link or tree that is still there is left with its dir: removing through a link would empty the root's node_modules.
             if (linked)
-                this.o.warn?.(`omg factory run: the base calibration dir ${dir} still links node_modules; remove the link by hand, then the dir`);
+                this.o.warn?.(`omg factory run: the base calibration dir ${dir} still has its node_modules (links to yours); unlink every link in it by hand, then remove the dir`);
             else
                 try {
                     rmSync(dir, { recursive: true, force: true });

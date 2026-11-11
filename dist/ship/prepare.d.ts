@@ -120,6 +120,13 @@ export declare function baseFileExists(exec: Exec, cwd: string, commit: string):
 /** What prepare runs, one line per check (`omg factory check`, from the same base detection); [] = none. */
 export declare function describePrepareChecks(configured: readonly (readonly string[])[] | undefined, baseHas: (relPath: string) => boolean, exists?: (relPath: string) => boolean): string[];
 /**
+ * L3: the built-in checks the base asks for that prepare would skip, and
+ * what to run (`omg factory check`); [] with configured checks. The tool
+ * packages come from your node_modules, so a checkout without one runs no
+ * tsc, eslint or vitest.
+ */
+export declare function skippedPrepareChecks(configured: readonly (readonly string[])[] | undefined, baseHas: (relPath: string) => boolean, exists?: (relPath: string) => boolean): string[];
+/**
  * Tests to run for a diff: changed test files, plus `X.test.ts` beside or in
  * `__tests__/` next to each changed `src/**\/X.ts`, plus the skills suite when
  * skills/ changed. Only files that exist are returned (sorted, unique).
