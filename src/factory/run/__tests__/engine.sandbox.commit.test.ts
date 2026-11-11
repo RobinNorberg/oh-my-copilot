@@ -328,6 +328,20 @@ describe('commitLaneWork', () => {
     }
   });
 
+  it('review-493 L-2: a lane that changed a CI definition is told a human must make that change, naming the path', () => {
+    for (const path of ['.github/workflows/ci.yml', '.gitlab-ci.yml', '.circleci/config.yml']) {
+      const { worktree, start, branch } = laneTree(`cr-ci-${path.replace(/[^a-z]/gi, '')}`);
+      mkdirSync(join(worktree, path, '..'), { recursive: true });
+      writeFileSync(join(worktree, path), 'x\n');
+      const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: h.root, branch, message: 'x' });
+      expect(res, path).toMatchObject({ ok: false, refusal: 'protected', reason: expect.stringContaining(`${path} is a CI definition path, which a factory lane may never change: a human must make that change`) });
+    }
+    const { worktree, start, branch } = laneTree('cr-ci-agents');
+    writeFileSync(join(worktree, 'AGENTS.md'), 'x\n');
+    const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: h.root, branch, message: 'x' });
+    expect(res.ok ? '' : res.reason).not.toContain('CI definition');
+  });
+
   it('refuses the Azure Pipelines definitions (the CI that gates an ADO PR), in any case', () => {
     for (const path of ['azure-pipelines.yml', 'Azure-Pipelines.YAML', '.azure-pipelines/ci.yml', '.azuredevops/pull_request_template.md', '.Pipelines/build.yml']) {
       const { worktree, start, branch } = laneTree(`cr-ado-${path.replace(/[^a-z]/gi, '')}`);

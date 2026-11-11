@@ -97,9 +97,16 @@ export const ADO_PIPELINE_PATHS: readonly string[] = ['azure-pipelines.yml', 'az
  * `.github/` covers `.github/copilot-instructions.md` and the workflows;
  * `.claude/`, `.mcp.json` and `.vscode/` hold the hooks, MCP servers and
  * tasks other agents and editors run from a checkout, `.husky/` the git hooks
- * husky installs.
+ * husky installs. CI_DEFINITION_PATHS: with no `ship.requiredChecks` the
+ * gates require every check the forge reports, so a lane must not be able to
+ * drop a CI system's definition and with it the checks.
  */
-export const LANE_PROTECTED_PATHS: readonly string[] = ['.github/', '.copilot/', '.claude/', '.vscode/', '.mcp.json', '.husky/', '.omg/skills/', '.omc/skills/', 'AGENTS.md', 'CLAUDE.md', ...ADO_PIPELINE_PATHS];
+export const CI_DEFINITION_PATHS: readonly string[] = ['.circleci/', '.gitlab-ci.yml', '.buildkite/', '.travis.yml', 'Jenkinsfile', 'appveyor.yml', '.appveyor.yml', '.drone.yml', 'bitbucket-pipelines.yml', '.woodpecker/', '.woodpecker.yml'];
+
+/** Every CI system's definition paths (GitHub Actions, Azure Pipelines, the rest): the gates' no-CI rule reads them from the base and head trees. */
+export const CI_TREE_PATHS: readonly string[] = ['.github/workflows/', ...ADO_PIPELINE_PATHS, ...CI_DEFINITION_PATHS];
+
+export const LANE_PROTECTED_PATHS: readonly string[] = ['.github/', '.copilot/', '.claude/', '.vscode/', '.mcp.json', '.husky/', '.omg/skills/', '.omc/skills/', 'AGENTS.md', 'CLAUDE.md', ...ADO_PIPELINE_PATHS, ...CI_DEFINITION_PATHS];
 
 export type LaneCommitRefusal = 'moved' | 'gitlink' | 'escaped' | 'protected' | 'secret' | 'empty' | 'error';
 
@@ -700,7 +707,12 @@ export function commitLaneWork(input: LaneCommitInput): LaneCommitResult {
     const outside = outsideWorktree(input.worktree, files);
     if (outside.length > 0) return refuse('escaped', `staged paths resolve outside the worktree (through a link): ${outside.slice(0, 5).join(', ')}`);
     const hit = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...(input.extraProtected ?? [])]);
-    if (hit.length > 0) return refuse('protected', `the lane changed merge-rule or lane-protected paths: ${hit.join(', ')}`);
+    if (hit.length > 0) {
+      // A CI definition decides which checks the gates require: only a human changes it, never a lane.
+      const ci = protectedChanges(hit, ['.github/workflows/', ...ADO_PIPELINE_PATHS, ...CI_DEFINITION_PATHS]);
+      const human = ci.length > 0 ? `. ${ci.join(', ')} ${ci.length === 1 ? 'is a CI definition path' : 'are CI definition paths'}, which a factory lane may never change: a human must make that change, in a commit or PR of their own outside the factory` : '';
+      return refuse('protected', `the lane changed merge-rule or lane-protected paths: ${hit.join(', ')}${human}`);
+    }
     const acked = new Set((input.secretAck ?? []).map(findingKey));
     // The commit message carries the lane's own summary: a token it quotes would be pushed with it.
     const messageFindings = secretShapeKinds(input.message).map((kind): SecretFinding => ({ path: SECRET_MESSAGE_PATH, kind }));

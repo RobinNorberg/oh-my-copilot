@@ -145,6 +145,8 @@ export interface Harness {
          * a whole ExecResult.
          */
         reviews?: (head: string) => Record<string, unknown> | ExecResult;
+        /** Any other `gh api --hostname <h> --method GET <path>` read by path (undefined = unscripted). */
+        api?: (path: string) => ExecResult | undefined;
     };
     /** `node <script> ...` (prepare's tsc / eslint / vitest / inventory): exit 0 unless scripted. */
     node: (args: string[]) => ExecResult;

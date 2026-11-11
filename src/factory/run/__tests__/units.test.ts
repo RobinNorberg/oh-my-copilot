@@ -9,6 +9,7 @@ import { ciFailureTail, nodeModulesWriteDenied, sandboxIncompatibleAdvice, ciFix
 import { ghRepoArg } from '../../../forge/github/gh.js';
 import { shipyardKeySearch } from '../../../forge/types.js';
 import { assertFactoryCommand, factoryGuardExec, FactorySafetyError, hardenedGitExec, type TrackerWriteContext } from '../exec.js';
+import { CI_TREE_PATHS } from '../lane-commit.js';
 import { EngineLedger, LedgerError } from '../ledger.js';
 import { createFactoryProgress } from '../progress.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from '../review-output.js';
@@ -175,6 +176,16 @@ describe('two-axis review (docs/standards/ on the base)', () => {
       ['ls-tree', '-r', '-z', '--name-only', 'HEAD', '--', 'docs/standards/'],
       ['ls-tree', '-r', '-z', '--name-only', SHA, '--', 'docs/'],
       ['ls-tree', '-r', '-z', '--name-only', SHA, '--', 'docs/standards/', 'x'],
+    ]) expect(() => assertFactoryCommand('git', args)).toThrow(FactorySafetyError);
+  });
+
+  it('review-493b B-1: the guard allows the CI-definition ls-tree only with exactly CI_TREE_PATHS at a full sha', () => {
+    expect(() => assertFactoryCommand('git', ['ls-tree', '-r', '-z', '--name-only', SHA, '--', ...CI_TREE_PATHS])).not.toThrow();
+    for (const args of [
+      ['ls-tree', '-r', '-z', '--name-only', 'HEAD', '--', ...CI_TREE_PATHS],
+      ['ls-tree', '-r', '-z', '--name-only', SHA, '--', ...CI_TREE_PATHS.slice(1)],
+      ['ls-tree', '-r', '-z', '--name-only', SHA, '--', ...CI_TREE_PATHS, 'x'],
+      ['ls-tree', '-r', '-z', '--name-only', SHA, '--', '.github/', ...CI_TREE_PATHS.slice(1)],
     ]) expect(() => assertFactoryCommand('git', args)).toThrow(FactorySafetyError);
   });
 

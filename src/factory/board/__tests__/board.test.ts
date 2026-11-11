@@ -67,6 +67,12 @@ function scripted(issues: Record<number, Issue>, listed = Object.keys(issues).ma
         return ok(JSON.stringify({ title: i.title, body: i.body, state: 'OPEN', url: `${REPO}/issues/${n}`, author: { login: 'o' }, comments: [], labels: (i.labels ?? []).map((name) => ({ name })) }));
       }
       if (args[0] === 'pr' && args[1] === 'list') return ok('[]');
+      // M4: the merge-parked run's review state now (no review since the park).
+      if (args[0] === 'api' && args[1] === 'graphql') {
+        const done = { hasNextPage: false };
+        const pull = { headRefOid: HEAD, latestReviews: { pageInfo: done, nodes: [] }, latestOpinionatedReviews: { pageInfo: done, nodes: [] }, reviewRequests: { pageInfo: done, nodes: [] }, reviewThreads: { pageInfo: done, nodes: [] } };
+        return ok(JSON.stringify({ data: { viewer: { login: 'o' }, repository: { viewerPermission: 'ADMIN', collaborators: { pageInfo: done, edges: [] }, pullRequest: pull } } }));
+      }
     }
     throw new Error(`unscripted ${cmd} ${a}`);
   };
@@ -205,8 +211,9 @@ describe('omg factory board on GitHub', () => {
     expect(b.outside[0]).toMatchObject({ title: 'explicit id red', url: '', run: { phase: 'review' } });
     expect(b.outside[1]).toMatchObject({ id: 'heal-0123abcd', title: 'ci-heal', stage: { expected: 'verifying' }, run: { phase: 'gates' } });
 
-    // Only reads reached gh.
-    expect(w.calls.filter((c) => c.startsWith('gh ')).every((c) => /^gh (?:issue (?:list|view)|pr list) /.test(c))).toBe(true);
+    // Only reads reached gh (M4: the merge-parked run's review read is the fixed GraphQL query).
+    expect(w.calls.filter((c) => c.startsWith('gh ')).every((c) => /^gh (?:(?:issue (?:list|view)|pr list) |api graphql --hostname github\.com -f query=query\()/.test(c))).toBe(true);
+    expect(w.calls.filter((c) => c.startsWith('gh api graphql'))).toHaveLength(1);
   });
 
   it('a run whose owner file a live engine holds is marked live; a dead owner is not', async () => {

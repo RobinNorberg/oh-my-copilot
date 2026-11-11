@@ -12,7 +12,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { shipCommand } from '../../cli/commands/ship.js';
-import { DEFAULT_SHIP_CONFIG, loadTrustedShipConfig, parseKnownFlaky, resolveShipConfig } from '../../ship/config.js';
+import { DEFAULT_SHIP_CONFIG, loadTrustedShipConfig, OMG_REPOSITORY_REQUIRED_CHECKS, parseKnownFlaky, resolveShipConfig } from '../../ship/config.js';
 import { guardExec } from '../../ship/exec.js';
 import { evaluateGates, watchGates } from '../../ship/gates.js';
 import { mergeCommand } from '../../ship/merge.js';
@@ -24,7 +24,8 @@ const fixture = (name) => readFileSync(join(SHIP_FIXTURES, name), 'utf8');
 const GREEN = JSON.parse(fixture('checks-pr233-green.json'));
 const KNOWN_TEXT = readFileSync(join(REPO_ROOT, DEFAULT_SHIP_CONFIG.knownFlakyFile), 'utf8');
 const KNOWN = parseKnownFlaky(KNOWN_TEXT, DEFAULT_SHIP_CONFIG.knownFlakyFile);
-const CONFIG = resolveShipConfig(undefined);
+// The recorded fixtures are this repository's CI: its committed ship.requiredChecks.
+const CONFIG = resolveShipConfig({ requiredChecks: [...OMG_REPOSITORY_REQUIRED_CHECKS] });
 const PR = 233;
 const HEAD = 'f'.repeat(40);
 const MOVED = 'd'.repeat(40);
@@ -177,7 +178,7 @@ describe('gh argv baseline: src/cli/commands/ship.ts', () => {
     /** The gh calls of one subcommand; `trusted` runs the real trust-model loader (base-branch config and known-flaky list). */
     async function ship(...argv) {
         const r = recordingExec(world, { '<root>': root }, ['gh']);
-        const loader = trusted ? (ctx) => loadTrustedShipConfig({ ...ctx, user: null, warn: () => { } }) : () => resolveShipConfig(shipBlock);
+        const loader = trusted ? (ctx) => loadTrustedShipConfig({ ...ctx, user: null, warn: () => { } }) : () => resolveShipConfig({ requiredChecks: [...OMG_REPOSITORY_REQUIRED_CHECKS], ...shipBlock });
         process.exitCode = undefined;
         await shipCommand(r.exec, loader).parseAsync(argv, { from: 'user' });
         process.exitCode = undefined;

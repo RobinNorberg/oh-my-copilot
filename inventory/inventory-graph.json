@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "499693f9290d30d1fee7c75195cdedd89dcf9b80",
-    "sourceSha256": "a95554e33b831576b80bed1de69fac58eafa2042cee5a53e0e745985f930524d",
+    "head": "468dbb1d9f90c08f1c39023172fe831c8f77a6db",
+    "sourceSha256": "6ef6fbe8fa8c660f905aa8d1202001c38e5531d1aae4f511603cd5283c79a048",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "499693f9290d30d1fee7c75195cdedd89dcf9b80",
-  "sourceSha256": "a95554e33b831576b80bed1de69fac58eafa2042cee5a53e0e745985f930524d",
+  "head": "468dbb1d9f90c08f1c39023172fe831c8f77a6db",
+  "sourceSha256": "6ef6fbe8fa8c660f905aa8d1202001c38e5531d1aae4f511603cd5283c79a048",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2060,
-      "total": 2085
+      "srcFiles": 2064,
+      "total": 2089
     },
     "generated": {
-      "distFiles": 7608,
+      "distFiles": 7624,
       "bridgeFiles": 8,
-      "total": 7616
+      "total": 7632
     },
     "prompt": {
       "promptLikeFiles": 72
@@ -3606,6 +3606,10 @@
       "dist/factory/run/__tests__/prepare-gates.gates.test.d.ts.map",
       "dist/factory/run/__tests__/prepare-gates.gates.test.js",
       "dist/factory/run/__tests__/prepare-gates.gates.test.js.map",
+      "dist/factory/run/__tests__/prepare-gates.required.test.d.ts",
+      "dist/factory/run/__tests__/prepare-gates.required.test.d.ts.map",
+      "dist/factory/run/__tests__/prepare-gates.required.test.js",
+      "dist/factory/run/__tests__/prepare-gates.required.test.js.map",
       "dist/factory/run/__tests__/prepare-gates.test.d.ts",
       "dist/factory/run/__tests__/prepare-gates.test.d.ts.map",
       "dist/factory/run/__tests__/prepare-gates.test.js",
@@ -3818,6 +3822,10 @@
       "dist/factory/setup/progress-pick.d.ts.map",
       "dist/factory/setup/progress-pick.js",
       "dist/factory/setup/progress-pick.js.map",
+      "dist/factory/setup/required-checks.d.ts",
+      "dist/factory/setup/required-checks.d.ts.map",
+      "dist/factory/setup/required-checks.js",
+      "dist/factory/setup/required-checks.js.map",
       "dist/factory/setup/workflows.d.ts",
       "dist/factory/setup/workflows.d.ts.map",
       "dist/factory/setup/workflows.js",
@@ -4458,6 +4466,10 @@
       "dist/forge/github/__tests__/coding-agent.test.d.ts.map",
       "dist/forge/github/__tests__/coding-agent.test.js",
       "dist/forge/github/__tests__/coding-agent.test.js.map",
+      "dist/forge/github/__tests__/required-checks.test.d.ts",
+      "dist/forge/github/__tests__/required-checks.test.d.ts.map",
+      "dist/forge/github/__tests__/required-checks.test.js",
+      "dist/forge/github/__tests__/required-checks.test.js.map",
       "dist/forge/github/__tests__/reviews-feedback.test.d.ts",
       "dist/forge/github/__tests__/reviews-feedback.test.d.ts.map",
       "dist/forge/github/__tests__/reviews-feedback.test.js",
@@ -7228,6 +7240,10 @@
       "dist/ship/__tests__/exec-plant.test.d.ts.map",
       "dist/ship/__tests__/exec-plant.test.js",
       "dist/ship/__tests__/exec-plant.test.js.map",
+      "dist/ship/__tests__/gates-settle.test.d.ts",
+      "dist/ship/__tests__/gates-settle.test.d.ts.map",
+      "dist/ship/__tests__/gates-settle.test.js",
+      "dist/ship/__tests__/gates-settle.test.js.map",
       "dist/ship/__tests__/gates.test.d.ts",
       "dist/ship/__tests__/gates.test.d.ts.map",
       "dist/ship/__tests__/gates.test.js",
@@ -23173,6 +23189,26 @@
         "path": "dist/factory/run/__tests__/prepare-gates.gates.test.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/prepare-gates.required.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.required.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.required.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.required.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.required.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.required.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.required.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.required.test.js.map"
+      },
+      {
         "id": "dist/factory/run/__tests__/prepare-gates.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/prepare-gates.test.d.ts"
@@ -24231,6 +24267,26 @@
         "id": "dist/factory/setup/progress-pick.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/setup/progress-pick.js.map"
+      },
+      {
+        "id": "dist/factory/setup/required-checks.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/required-checks.d.ts"
+      },
+      {
+        "id": "dist/factory/setup/required-checks.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/required-checks.d.ts.map"
+      },
+      {
+        "id": "dist/factory/setup/required-checks.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/required-checks.js"
+      },
+      {
+        "id": "dist/factory/setup/required-checks.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/required-checks.js.map"
       },
       {
         "id": "dist/factory/setup/workflows.d.ts",
@@ -27431,6 +27487,26 @@
         "id": "dist/forge/github/__tests__/coding-agent.test.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/github/__tests__/coding-agent.test.js.map"
+      },
+      {
+        "id": "dist/forge/github/__tests__/required-checks.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/__tests__/required-checks.test.d.ts"
+      },
+      {
+        "id": "dist/forge/github/__tests__/required-checks.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/__tests__/required-checks.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/github/__tests__/required-checks.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/__tests__/required-checks.test.js"
+      },
+      {
+        "id": "dist/forge/github/__tests__/required-checks.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/__tests__/required-checks.test.js.map"
       },
       {
         "id": "dist/forge/github/__tests__/reviews-feedback.test.d.ts",
@@ -41281,6 +41357,26 @@
         "id": "dist/ship/__tests__/exec-plant.test.js.map",
         "kind": "generated-dist",
         "path": "dist/ship/__tests__/exec-plant.test.js.map"
+      },
+      {
+        "id": "dist/ship/__tests__/gates-settle.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/gates-settle.test.d.ts"
+      },
+      {
+        "id": "dist/ship/__tests__/gates-settle.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/gates-settle.test.d.ts.map"
+      },
+      {
+        "id": "dist/ship/__tests__/gates-settle.test.js",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/gates-settle.test.js"
+      },
+      {
+        "id": "dist/ship/__tests__/gates-settle.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/gates-settle.test.js.map"
       },
       {
         "id": "dist/ship/__tests__/gates.test.d.ts",
@@ -56473,6 +56569,11 @@
         "path": "src/factory/run/__tests__/prepare-gates.gates.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/prepare-gates.required.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/prepare-gates.required.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/prepare-gates.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/prepare-gates.test.ts"
@@ -56796,6 +56897,11 @@
         "id": "src/factory/setup/progress-pick.ts",
         "kind": "src",
         "path": "src/factory/setup/progress-pick.ts"
+      },
+      {
+        "id": "src/factory/setup/required-checks.ts",
+        "kind": "src",
+        "path": "src/factory/setup/required-checks.ts"
       },
       {
         "id": "src/factory/setup/workflows.ts",
@@ -57771,6 +57877,11 @@
         "id": "src/forge/github/__tests__/coding-agent.test.ts",
         "kind": "src",
         "path": "src/forge/github/__tests__/coding-agent.test.ts"
+      },
+      {
+        "id": "src/forge/github/__tests__/required-checks.test.ts",
+        "kind": "src",
+        "path": "src/forge/github/__tests__/required-checks.test.ts"
       },
       {
         "id": "src/forge/github/__tests__/reviews-feedback.test.ts",
@@ -61356,6 +61467,11 @@
         "id": "src/ship/__tests__/fixtures/project-config-admin-merge.jsonc",
         "kind": "src",
         "path": "src/ship/__tests__/fixtures/project-config-admin-merge.jsonc"
+      },
+      {
+        "id": "src/ship/__tests__/gates-settle.test.ts",
+        "kind": "src",
+        "path": "src/ship/__tests__/gates-settle.test.ts"
       },
       {
         "id": "src/ship/__tests__/gates.test.ts",
@@ -81631,6 +81747,11 @@
       },
       {
         "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/factory/setup/required-checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
         "to": "src/factory/setup/workflows.ts",
         "kind": "imports"
       },
@@ -81677,6 +81798,11 @@
       {
         "from": "src/cli/commands/factory-setup.ts",
         "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/forge/github/gh.ts",
         "kind": "imports"
       },
       {
@@ -86366,6 +86492,11 @@
       },
       {
         "from": "src/factory/check/cli.ts",
+        "to": "src/factory/setup/required-checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
         "to": "src/forge/ado/az-binary.ts",
         "kind": "imports"
       },
@@ -86397,6 +86528,11 @@
       {
         "from": "src/factory/check/cli.ts",
         "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/forge/github/checks.ts",
         "kind": "imports"
       },
       {
@@ -91510,6 +91646,56 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/__tests__/prepare-gates.required.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.required.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.required.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.required.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.required.test.ts",
+        "to": "src/factory/run/__tests__/prepare-gates-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.required.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.required.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.required.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.required.test.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.required.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/__tests__/prepare-gates.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -91948,6 +92134,11 @@
         "from": "src/factory/run/__tests__/units.test.ts",
         "to": "src/factory/run/exec.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/units.test.ts",
+        "to": "src/factory/run/lane-commit.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/units.test.ts",
@@ -92546,6 +92737,11 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/forge/github/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/forge/github/coding-agent.ts",
         "kind": "imports"
       },
@@ -92626,6 +92822,16 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/ship/merge.ts",
         "kind": "imports"
       },
@@ -92691,6 +92897,11 @@
       },
       {
         "from": "src/factory/run/exec.ts",
+        "to": "src/factory/run/lane-commit.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/exec.ts",
         "to": "src/factory/triage/guard.ts",
         "kind": "imports"
       },
@@ -92712,6 +92923,11 @@
       {
         "from": "src/factory/run/exec.ts",
         "to": "src/forge/body-file.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/exec.ts",
+        "to": "src/forge/github/checks.ts",
         "kind": "imports"
       },
       {
@@ -93138,6 +93354,11 @@
         "from": "src/factory/run/merge-policy.ts",
         "to": "src/ship/gates.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/merge-policy.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/merge-policy.ts",
@@ -94231,6 +94452,16 @@
       },
       {
         "from": "src/factory/setup/guard.ts",
+        "to": "src/forge/github/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/guard.ts",
+        "to": "src/forge/github/gh.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/guard.ts",
         "to": "src/forge/types.ts",
         "kind": "type-imports"
       },
@@ -94332,6 +94563,21 @@
       {
         "from": "src/factory/setup/progress-pick.ts",
         "to": "src/utils/jsonc.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/required-checks.ts",
+        "to": "src/forge/github/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/required-checks.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/required-checks.ts",
+        "to": "src/ship/gates.ts",
         "kind": "imports"
       },
       {
@@ -98228,6 +98474,41 @@
         "from": "src/forge/github/__tests__/coding-agent.test.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/required-checks.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/required-checks.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/required-checks.test.ts",
+        "to": "src/factory/run/lane-commit.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/required-checks.test.ts",
+        "to": "src/factory/setup/required-checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/required-checks.test.ts",
+        "to": "src/forge/github/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/required-checks.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/required-checks.test.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
       },
       {
         "from": "src/forge/github/__tests__/reviews-feedback.test.ts",
@@ -116700,6 +116981,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/ship/__tests__/gates-settle.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates-settle.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates-settle.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates-settle.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates-settle.test.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates-settle.test.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/ship/__tests__/gates.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -116998,6 +117309,11 @@
         "from": "src/ship/__tests__/workflow-checks.test.ts",
         "to": "src/ship/workflow.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/workflow-checks.test.ts",
+        "to": "src/utils/jsonc.ts",
+        "kind": "imports"
       },
       {
         "from": "src/ship/config.ts",
@@ -131156,12 +131472,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10920,
-      "edgeCount": 13456,
-      "importEdgeCount": 11062,
+      "nodeCount": 10940,
+      "edgeCount": 13496,
+      "importEdgeCount": 11094,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "83e1c160dbadb3c4ee8074ca997b2418149f67d05c94dbedc4bf72f9db3b6396",
-  "manifestSha256": "90554cba059d4102c4e7a4a79a191a92a539941de947c9b3b4761027b96d5956"
+  "inventorySha256": "8d53bf93f3bd28334c1cde6db289377dd7d91f05736f7a84a05438f8c424cf4f",
+  "manifestSha256": "982c8369bc383bcc3384f7e62cd9199aeae22db71081fe4eacf392215b05ba59"
 }

@@ -6,7 +6,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { shipCommand, EXIT_PENDING } from '../ship.js';
 import type { Exec, ExecResult } from '../../../ship/exec.js';
-import { loadTrustedShipConfig, resolveShipConfig } from '../../../ship/config.js';
+import { loadTrustedShipConfig, OMG_REPOSITORY_REQUIRED_CHECKS, resolveShipConfig } from '../../../ship/config.js';
 import { readShipState, shipStatePath } from '../../../ship/state.js';
 import { resolveProgressFile } from '../../../lib/agent-progress.js';
 import type { DriveProcess, DriverLiveness } from '../../../release/drive.js';
@@ -79,7 +79,7 @@ describe('omg ship CLI (scripted gh/git, no network)', () => {
 
   async function run(...argv: string[]): Promise<number> {
     process.exitCode = undefined;
-    await shipCommand(exec, () => resolveShipConfig(shipBlock)).parseAsync(argv, { from: 'user' });
+    await shipCommand(exec, () => resolveShipConfig({ requiredChecks: [...OMG_REPOSITORY_REQUIRED_CHECKS], ...shipBlock })).parseAsync(argv, { from: 'user' });
     const code = Number(process.exitCode ?? 0);
     process.exitCode = undefined;
     return code;
@@ -132,7 +132,7 @@ describe('omg ship CLI (scripted gh/git, no network)', () => {
         return exec(cmd, args, opts);
       };
       process.exitCode = undefined;
-      await shipCommand(scripted, () => resolveShipConfig(shipBlock), { sleep: async (ms) => { t += ms; }, now: () => t, proc }).parseAsync(['gates', '42', '--drive', ...argv], { from: 'user' });
+      await shipCommand(scripted, () => resolveShipConfig({ requiredChecks: [...OMG_REPOSITORY_REQUIRED_CHECKS], ...shipBlock }), { sleep: async (ms) => { t += ms; }, now: () => t, proc }).parseAsync(['gates', '42', '--drive', ...argv], { from: 'user' });
       const code = Number(process.exitCode ?? 0);
       process.exitCode = undefined;
       return code;
@@ -295,7 +295,7 @@ describe('omg ship CLI (scripted gh/git, no network)', () => {
     await run('verdict', '42', '--reviewer', 'verifier-1', '--sha', HEAD, '--approve');
     const other: Exec = (cmd, args, o) => (args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? ok('feat/other\n') : exec(cmd, args, o));
     process.exitCode = undefined;
-    await shipCommand(other, () => resolveShipConfig({})).parseAsync(['prepare', '42', '--no-checks', '--push'], { from: 'user' });
+    await shipCommand(other, () => resolveShipConfig({ requiredChecks: [...OMG_REPOSITORY_REQUIRED_CHECKS] })).parseAsync(['prepare', '42', '--no-checks', '--push'], { from: 'user' });
     expect(Number(process.exitCode)).toBe(1);
     process.exitCode = undefined;
     expect(logs.join('\n')).toMatch(/ship run is for feat\/x/);

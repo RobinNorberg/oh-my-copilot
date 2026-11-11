@@ -20,8 +20,23 @@ export interface ShipConfig {
     /**
      * Checks CI always reports for a PR (exact names). A missing one counts as
      * pending, so a gate read before `needs:`-dependent jobs exist is never green.
+     * Empty (the default) = the forge's required checks for the base when the
+     * caller read them, else every check the forge reports (gates.ts applySettle).
      */
     requiredChecks: string[];
+    /**
+     * Set by the caller, never from a config file: `requiredChecks` came from
+     * the forge's branch protection / rulesets, not from `ship.requiredChecks`
+     * (the missing-check hint names where to fix it).
+     */
+    requiredChecksFrom?: 'branch-protection';
+    /**
+     * Set by the caller, never from a config file: a required name -> the
+     * GitHub App id the branch protection / ruleset requires it from
+     * (`integration_id` / `app_id`). The gates then accept only a check run of
+     * that app under the name (gates.ts applyRequiredApps).
+     */
+    requiredCheckApps?: Record<string, number>;
     /** Repo-relative JSON file listing known-flaky tests. */
     knownFlakyFile: string;
     /** Fix rounds allowed after the first changes-requested verdict before the run blocks. */
@@ -51,6 +66,17 @@ export interface ShipConfig {
     prepareChecks?: string[][];
 }
 export type ShipConfigInput = Partial<ShipConfig>;
+/**
+ * Every check oh-my-copilot's own CI reports on a PR to dev or main (ci.yml,
+ * pr-check.yml); the jobs that consume the Build output start late (`needs:
+ * [build]`). The repository's committed .copilot/omg.jsonc sets exactly these
+ * as `ship.requiredChecks` (a drift test keeps them equal). A PR of this
+ * repository whose base has no configured names yet (main before the release
+ * that added them) still requires them: loadTrustedShipConfig, which
+ * `omg ship`, the factory and `omg release` use, fills an empty list with
+ * them (omgRepositoryFallback). That only ever adds names.
+ */
+export declare const OMG_REPOSITORY_REQUIRED_CHECKS: readonly string[];
 export declare const DEFAULT_SHIP_CONFIG: Readonly<ShipConfig>;
 /**
  * Syntactic branch-name check (no git): word characters, `.`, `/`, `-`, never
@@ -174,6 +200,12 @@ export declare function resolveTrustedBases(trustedUser: unknown): string[];
  */
 export declare function trustedPrepareChecks(trustedUser: unknown, base: unknown): string[][] | undefined;
 /**
+ * ship.requiredChecks as loadTrustedShipConfig resolves it (a safety key):
+ * the user config at its default location, else the base's committed
+ * `.copilot/omg.jsonc`; [] = none configured (the default). For `omg factory check` and setup.
+ */
+export declare function trustedRequiredChecks(trustedUser: unknown, base: unknown): string[];
+/**
  * Resolve the ship config for a run. Precedence:
  * - safety keys (SHIP_SAFETY_KEYS): the user config at its default location,
  *   then the trusted base's committed `.copilot/omg.jsonc`, then the
@@ -191,6 +223,14 @@ export declare function trustedPrepareChecks(trustedUser: unknown, base: unknown
  * with `strict`, the load throws.
  */
 export declare function loadTrustedShipConfig(input: TrustedShipConfigInput): LoadedShipConfig;
+/**
+ * A PR of this repository (`repoUrl`, GitHub's PR repository url, compared
+ * on its repoIdentity) whose loaded config names no required check requires
+ * OMG_REPOSITORY_REQUIRED_CHECKS: its base may predate the committed list.
+ * Only an empty list is filled, so this never removes a name; any other
+ * repository keeps its loaded list.
+ */
+export declare function omgRepositoryFallback<T extends Pick<ShipConfig, 'requiredChecks'>>(config: T, repoUrl: string | undefined): T;
 /**
  * Merge-rule paths beyond PROTECTED_PATHS for a guard outside a ship run
  * (copilot_run): a non-default ship.knownFlakyFile from the user config at its

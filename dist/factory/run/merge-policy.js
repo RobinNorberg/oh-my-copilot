@@ -8,10 +8,10 @@
  * finishes as `merged` once the human merged.
  */
 import { DEFAULT_SHIP_CONFIG } from '../../ship/config.js';
-import { evaluateGates } from '../../ship/gates.js';
+import { evaluateGates, NO_CI_CHECKS_NOTE } from '../../ship/gates.js';
 import { decideMerge, listChangedFiles, readCommitsSinceReview } from '../../ship/merge.js';
 import { latestVerdict } from '../../ship/state.js';
-import { ADO_PIPELINE_PATHS } from './lane-commit.js';
+import { ADO_PIPELINE_PATHS, CI_DEFINITION_PATHS } from './lane-commit.js';
 import { runLabel } from './state.js';
 // The merge view is the GitHub forge's `gh pr view --json MERGE_VIEW_FIELDS` read.
 export { MERGE_VIEW_FIELDS, parseMergeView } from '../../forge/github/reviews.js';
@@ -22,15 +22,20 @@ export { MERGE_VIEW_FIELDS, parseMergeView } from '../../forge/github/reviews.js
  * With an Azure DevOps `forge` the gate read goes through it, its blocking
  * branch policies are reasons too, a PR touching the Azure Pipelines
  * definitions (ADO_PIPELINE_PATHS) needs the owner as PROTECTED_PATHS do, and
- * the command is its head-pinned PATCH.
+ * the command is its head-pinned PATCH. `reads` are the gates loop's GitHub
+ * reads (GateHeadReads), so this read applies the same no-CI, suite and app rules.
  */
-export function mergeDecision(exec, root, ship, view, config, known, forge) {
-    const gate = evaluateGates(exec, view.number, config, known, root, view.headRefOid, forge);
+export function mergeDecision(exec, root, ship, view, config, known, forge, reads) {
+    // Ship phase ready: the gates loop already waited out the settle window for this head, so this read has that history.
+    const gate = evaluateGates(exec, view.number, config, known, root, view.headRefOid, forge, ship.phase === 'ready' ? 0 : undefined, Date.now, reads);
+    const noChecks = gate.noChecks ? { noChecks: true } : {};
     const reviewed = latestVerdict(ship)?.sha;
     const commits = readCommitsSinceReview(exec, root, reviewed, view.headRefOid, view.baseRefOid, ship.housekeepingCommits);
     const extraProtected = [
         ...(config.knownFlakyFile !== DEFAULT_SHIP_CONFIG.knownFlakyFile ? [config.knownFlakyFile] : []),
         ...(forge ? ADO_PIPELINE_PATHS : []),
+        // The reported-checks rule (no ship.requiredChecks) trusts the forge's check list: a PR that drops a CI definition needs the owner.
+        ...CI_DEFINITION_PATHS,
     ];
     const decision = decideMerge({
         state: ship, pr: view, gate, ...commits,
@@ -38,7 +43,7 @@ export function mergeDecision(exec, root, ship, view, config, known, forge) {
         extraProtected,
     });
     if (!forge)
-        return decision;
+        return { ...decision, ...noChecks };
     const reasons = [...decision.reasons, ...forge.merge.blockingPolicies(view.number, view.headRefOid).map((r) => `Azure DevOps branch policy: ${r}`)];
     const human = forge.merge.humanMerge?.(view.number, view.headRefOid);
     return {
@@ -46,6 +51,7 @@ export function mergeDecision(exec, root, ship, view, config, known, forge) {
         reasons,
         command: human?.command ?? forge.merge.humanMergeCommand(view.number, view.headRefOid),
         ...(human ? { body: { file: human.bodyFile, sha256: human.bodySha256 } } : {}),
+        ...noChecks,
     };
 }
 /** The body file's lines under the command (ADO): its path and SHA-256, for the human to check before running it. */
@@ -58,6 +64,7 @@ export function mergeComment(issue, decision, resume = `omg factory run ${issue}
         ? [
             `Factory run for ${label}: independent review approved, gates are green, and \`omg ship\`'s merge rule allows this head.`,
             '',
+            ...(decision.noChecks ? [`Note: ${NO_CI_CHECKS_NOTE}: nothing reported a check for this head, so no CI ran on it. Check the change yourself before you merge.`, ''] : []),
             'Merge is a human step. To merge exactly the head the gates checked:',
             '',
             '```',

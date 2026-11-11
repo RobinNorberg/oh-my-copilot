@@ -20037,7 +20037,7 @@ var init_exec = __esm({
 });
 
 // src/ship/config.ts
-var import_fs34, import_os9, import_path40, DEFAULT_SHIP_CONFIG;
+var import_fs34, import_os9, import_path40, OMG_REPOSITORY_REQUIRED_CHECKS, DEFAULT_SHIP_CONFIG;
 var init_config2 = __esm({
   "src/ship/config.ts"() {
     "use strict";
@@ -20049,6 +20049,27 @@ var init_config2 = __esm({
     init_project_config_path();
     init_remote_url();
     init_exec();
+    OMG_REPOSITORY_REQUIRED_CHECKS = Object.freeze([
+      "Lint & Type Check",
+      "Test",
+      "Test (Windows path suite)",
+      "better-sqlite3 Node 26 (ubuntu-latest)",
+      "better-sqlite3 Node 26 (windows-2022)",
+      "PreCompact restore (ubuntu-latest)",
+      "PreCompact restore (macos-latest)",
+      "PreCompact restore (windows-2022)",
+      "Multi-repo Path Gate (AST-grep) (ubuntu-latest)",
+      "Multi-repo Path Gate (AST-grep) (windows-2022)",
+      "Version Consistency Check",
+      "Build",
+      "npm pack + install test",
+      "Copilot smoke (tier 2)",
+      "Base Branch Check",
+      "Size Check",
+      "Draft PR Check",
+      "omg update + session-start hook",
+      "Statechart suite (Node 24)"
+    ]);
     DEFAULT_SHIP_CONFIG = Object.freeze({
       base: "dev",
       // No Committed Build Artifacts (ci.yml) and the pull_request_target
@@ -20060,33 +20081,12 @@ var init_config2 = __esm({
         "Socket Security: Pull Request Alerts",
         "Socket Security: Project Report"
       ],
-      // Every check this repo's CI reports on a PR to dev (ci.yml, pr-check.yml);
-      // the jobs that consume the Build output start late (`needs: [build]`).
-      // ci.yml runs only for PRs to main / dev
-      // (`pull_request.branches`): on a PR to another base their checks never
-      // report and stay pending, so such a base needs its own requiredChecks in
-      // the user config.
-      requiredChecks: [
-        "Lint & Type Check",
-        "Test",
-        "Test (Windows path suite)",
-        "better-sqlite3 Node 26 (ubuntu-latest)",
-        "better-sqlite3 Node 26 (windows-2022)",
-        "PreCompact restore (ubuntu-latest)",
-        "PreCompact restore (macos-latest)",
-        "PreCompact restore (windows-2022)",
-        "Multi-repo Path Gate (AST-grep) (ubuntu-latest)",
-        "Multi-repo Path Gate (AST-grep) (windows-2022)",
-        "Version Consistency Check",
-        "Build",
-        "npm pack + install test",
-        "Copilot smoke (tier 2)",
-        "Base Branch Check",
-        "Size Check",
-        "Draft PR Check",
-        "omg update + session-start hook",
-        "Statechart suite (Node 24)"
-      ],
+      // No names: the gate requires the checks the forge marks required for the
+      // base (GitHub branch protection / rulesets, read by the caller) and every
+      // check the forge reports for the head, after the settle window
+      // (src/ship/gates.ts applySettle). oh-my-copilot's own list is in its
+      // committed .copilot/omg.jsonc (OMG_REPOSITORY_REQUIRED_CHECKS).
+      requiredChecks: [],
       knownFlakyFile: ".github/known-flaky-tests.json",
       maxFixRounds: 2,
       allowAdminMerge: false,

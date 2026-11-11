@@ -14,6 +14,8 @@
 import { ShipSafetyError } from '../../ship/exec.js';
 import { adoRouteById, findAdoRoute } from '../../forge/ado/routes.js';
 import { isPlainBranchName } from '../../ship/config.js';
+import { isRequiredChecksArgs } from '../../forge/github/checks.js';
+import { ghRepoArg } from '../../forge/github/gh.js';
 export class SetupError extends Error {
     exitCode;
     constructor(exitCode, message) {
@@ -53,7 +55,9 @@ function ghAllowed(a, repo) {
         || same(a, ['label', 'list', '--json', 'name', '--limit', '1000'])
         || (a.length === 5 && a[0] === 'label' && a[1] === 'create' && LABEL_NAME.test(a[2]) && a[3] === '--color' && a[4] === LABEL_COLOR)
         // Setup-only GET: open milestones of exactly this repository (design §4 step 4).
-        || same(a, ['api', '--hostname', repo.host, '--method', 'GET', milestonesPath(repo)]);
+        || same(a, ['api', '--hostname', repo.host, '--method', 'GET', milestonesPath(repo)])
+        // M1: the base's required checks and its latest commit's checks (what the gates will require), exact GETs.
+        || isRequiredChecksArgs(a, ghRepoArg(repo), true);
 }
 function pairsAllowed(tokens, allowed) {
     const out = new Map();

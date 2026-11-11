@@ -10,12 +10,12 @@
 
 import { DEFAULT_SHIP_CONFIG, type KnownFlakyTest, type ShipConfig } from '../../ship/config.js';
 import type { Exec } from '../../ship/exec.js';
-import { evaluateGates } from '../../ship/gates.js';
+import { evaluateGates, NO_CI_CHECKS_NOTE, type GateHeadReads } from '../../ship/gates.js';
 import { decideMerge, listChangedFiles, readCommitsSinceReview, type MergeDecision } from '../../ship/merge.js';
 import { latestVerdict, type ShipState } from '../../ship/state.js';
 import type { MergeView } from '../../forge/github/reviews.js';
 import type { Forge } from '../../forge/types.js';
-import { ADO_PIPELINE_PATHS } from './lane-commit.js';
+import { ADO_PIPELINE_PATHS, CI_DEFINITION_PATHS } from './lane-commit.js';
 import { runLabel, type FactoryRunKey } from './state.js';
 
 // The merge view is the GitHub forge's `gh pr view --json MERGE_VIEW_FIELDS` read.
@@ -24,6 +24,8 @@ export { MERGE_VIEW_FIELDS, parseMergeView, type MergeView } from '../../forge/g
 /** A merge decision; on Azure DevOps also the body file the human command reads and its SHA-256. */
 export interface FactoryMergeDecision extends MergeDecision {
   body?: { file: string; sha256: string };
+  /** The gate read was green with no check at all (NO_CI_CHECKS_NOTE): said in the park and the PR comment. */
+  noChecks?: true;
 }
 
 /**
@@ -33,22 +35,27 @@ export interface FactoryMergeDecision extends MergeDecision {
  * With an Azure DevOps `forge` the gate read goes through it, its blocking
  * branch policies are reasons too, a PR touching the Azure Pipelines
  * definitions (ADO_PIPELINE_PATHS) needs the owner as PROTECTED_PATHS do, and
- * the command is its head-pinned PATCH.
+ * the command is its head-pinned PATCH. `reads` are the gates loop's GitHub
+ * reads (GateHeadReads), so this read applies the same no-CI, suite and app rules.
  */
-export function mergeDecision(exec: Exec, root: string, ship: ShipState, view: MergeView, config: ShipConfig, known: readonly KnownFlakyTest[], forge?: Pick<Forge, 'checks' | 'reviews' | 'merge'>): FactoryMergeDecision {
-  const gate = evaluateGates(exec, view.number, config, known, root, view.headRefOid, forge);
+export function mergeDecision(exec: Exec, root: string, ship: ShipState, view: MergeView, config: ShipConfig, known: readonly KnownFlakyTest[], forge?: Pick<Forge, 'checks' | 'reviews' | 'merge'>, reads?: GateHeadReads): FactoryMergeDecision {
+  // Ship phase ready: the gates loop already waited out the settle window for this head, so this read has that history.
+  const gate = evaluateGates(exec, view.number, config, known, root, view.headRefOid, forge, ship.phase === 'ready' ? 0 : undefined, Date.now, reads);
+  const noChecks = gate.noChecks ? { noChecks: true as const } : {};
   const reviewed = latestVerdict(ship)?.sha;
   const commits = readCommitsSinceReview(exec, root, reviewed, view.headRefOid, view.baseRefOid, ship.housekeepingCommits);
   const extraProtected = [
     ...(config.knownFlakyFile !== DEFAULT_SHIP_CONFIG.knownFlakyFile ? [config.knownFlakyFile] : []),
     ...(forge ? ADO_PIPELINE_PATHS : []),
+    // The reported-checks rule (no ship.requiredChecks) trusts the forge's check list: a PR that drops a CI definition needs the owner.
+    ...CI_DEFINITION_PATHS,
   ];
   const decision = decideMerge({
     state: ship, pr: view, gate, ...commits,
     changedFiles: listChangedFiles(exec, root, view.baseRefOid, view.headRefOid),
     extraProtected,
   });
-  if (!forge) return decision;
+  if (!forge) return { ...decision, ...noChecks };
   const reasons = [...decision.reasons, ...forge.merge.blockingPolicies(view.number, view.headRefOid).map((r) => `Azure DevOps branch policy: ${r}`)];
   const human = forge.merge.humanMerge?.(view.number, view.headRefOid);
   return {
@@ -56,6 +63,7 @@ export function mergeDecision(exec: Exec, root: string, ship: ShipState, view: M
     reasons,
     command: human?.command ?? forge.merge.humanMergeCommand(view.number, view.headRefOid),
     ...(human ? { body: { file: human.bodyFile, sha256: human.bodySha256 } } : {}),
+    ...noChecks,
   };
 }
 
@@ -71,6 +79,7 @@ export function mergeComment(issue: FactoryRunKey, decision: FactoryMergeDecisio
     ? [
       `Factory run for ${label}: independent review approved, gates are green, and \`omg ship\`'s merge rule allows this head.`,
       '',
+      ...(decision.noChecks ? [`Note: ${NO_CI_CHECKS_NOTE}: nothing reported a check for this head, so no CI ran on it. Check the change yourself before you merge.`, ''] : []),
       'Merge is a human step. To merge exactly the head the gates checked:',
       '',
       '```',

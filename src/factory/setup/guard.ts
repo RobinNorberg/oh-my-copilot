@@ -17,6 +17,8 @@ import type { AzEntry } from '../../forge/ado/az-binary.js';
 import { adoRouteById, findAdoRoute } from '../../forge/ado/routes.js';
 import type { ForgeRepo } from '../../forge/types.js';
 import { isPlainBranchName } from '../../ship/config.js';
+import { isRequiredChecksArgs } from '../../forge/github/checks.js';
+import { ghRepoArg } from '../../forge/github/gh.js';
 
 /** Exit codes (design §4): 2 usage, 3 auth or extension missing, 5 incompatible. */
 export type SetupExitCode = 1 | 2 | 3 | 5;
@@ -70,7 +72,9 @@ function ghAllowed(a: string[], repo: ForgeRepo): boolean {
     || same(a, ['label', 'list', '--json', 'name', '--limit', '1000'])
     || (a.length === 5 && a[0] === 'label' && a[1] === 'create' && LABEL_NAME.test(a[2]) && a[3] === '--color' && a[4] === LABEL_COLOR)
     // Setup-only GET: open milestones of exactly this repository (design §4 step 4).
-    || same(a, ['api', '--hostname', repo.host, '--method', 'GET', milestonesPath(repo)]);
+    || same(a, ['api', '--hostname', repo.host, '--method', 'GET', milestonesPath(repo)])
+    // M1: the base's required checks and its latest commit's checks (what the gates will require), exact GETs.
+    || isRequiredChecksArgs(a, ghRepoArg(repo), true);
 }
 
 function pairsAllowed(tokens: readonly string[], allowed: readonly string[]): Map<string, string> | undefined {

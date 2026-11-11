@@ -57,7 +57,7 @@ import { createHash } from 'crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'path';
-import { BASE_CONFIG_PATH, configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, readBaseFile, remoteRepoMismatch, resolveTrustedBases, userConfigLayers } from '../../ship/config.js';
+import { BASE_CONFIG_PATH, configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, omgRepositoryFallback, readBaseFile, remoteRepoMismatch, resolveTrustedBases, userConfigLayers } from '../../ship/config.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT, type PrepareCheckResult, type PrepareCheckRun } from '../../ship/prepare.js';
@@ -66,6 +66,8 @@ import { nodeModulesTreeProblem, resolveGatesSandboxMode, resolveRequireDeniedPa
 import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs, type SandboxRunner, type SandboxRunRequest } from './sandbox-exec.js';
 import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
 import { driveGates } from './gates-driver.js';
+import { missingCheckHint, NO_CI_CHECKS_NOTE, noHeadChecksText, type GateHeadReads } from '../../ship/gates.js';
+import { ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules } from '../../forge/github/checks.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
 import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText, type ReadAt, type TeamContext } from '../team/context.js';
 import { mergeComment, mergeDecision, type MergeView } from './merge-policy.js';
@@ -109,7 +111,7 @@ import {
 import { ghReviewFeedback } from '../../forge/github/reviews.js';
 import { ReviewHeadMovedError, visibleLine } from '../../forge/review-feedback.js';
 import type { ForgeRepo, ForgeReviewFeedback } from '../../forge/types.js';
-import { humanFixPrompt } from './prompts.js';
+import { humanFixPrompt, laneScripts } from './prompts.js';
 import { lockPathFor } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { checkDiagnosis } from '../heal/diagnosis-output.js';
@@ -123,7 +125,7 @@ import { getGlobalOmcStatePath } from '../../utils/paths.js';
 import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
 import { isTerminalLaneState, LaneLostError, type LaneBackend, type LaneProcess, type LaneProfile, type LaneResult } from './lane.js';
 import { jobRefProblem } from '../../copilot-run/job.js';
-import { commitLaneWork, conflictFixStart, LANE_PROTECTED_PATHS, laneCommitMessage, pathGlobMatches, type SecretFinding } from './lane-commit.js';
+import { CI_TREE_PATHS, commitLaneWork, conflictFixStart, LANE_PROTECTED_PATHS, laneCommitMessage, pathGlobMatches, type SecretFinding } from './lane-commit.js';
 import { proveLaneTreeGone, type LaneTreeProof } from './lane-procs.js';
 import { quarantineTamper, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, tamperHoldMessage, tamperHoldPath, writeTamperHold } from './tamper-quarantine.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir, userBaselineKey } from './ledger.js';
@@ -1888,7 +1890,8 @@ class FactoryEngine {
       phase: this.state.phase,
       gate,
       state: this.state,
-      message: `awaiting-human: ${gate.name}: ${gate.reason}. Resume with ${this.resume}.`,
+      // A reason that already names the rerun command says it once (M2).
+      message: `awaiting-human: ${gate.name}: ${gate.reason}${gate.reason.includes(this.resume) ? '' : `. Resume with ${this.resume}.`}`,
       ...(gate.name === 'merge' && this.mergeCmd ? { mergeCommand: this.mergeCmd } : {}),
     };
   }
@@ -2235,6 +2238,17 @@ class FactoryEngine {
    * (replace refs off, commit checked, a regular file only): undefined when the path
    * is absent there, a throw for any other failure. Reads are cached per call.
    */
+  /** M5: the format / lint script names of the BASE commit's package.json (laneScripts); unreadable = none. */
+  private laneScripts(): string[] {
+    const base = this.state.baseSha;
+    if (!base) return [];
+    try {
+      return laneScripts(this.readTeamFile(base, 'package.json'));
+    } catch {
+      return [];
+    }
+  }
+
   private readAt(sha: string): ReadAt {
     const seen = new Map<string, string | undefined>();
     return (path) => {
@@ -2277,7 +2291,7 @@ class FactoryEngine {
       return this.gate(PARALLEL_LAYOUT_GATE, `this run started as one of several parallel runs (factory.run.maxConcurrent ${this.o.parallel.maxConcurrent}), but factory.run.layout resolved to "shared" at the base ${baseSha.slice(0, 12)}; parallel runs need factory.run.layout: "private". No lane has started: set factory.run.layout "private" in your user config, or factory.run.maxConcurrent 1, then rerun ${this.resume}`);
     }
     if (undecided && this.layoutChoice === 'private' && !(await this.setupPrivate(baseSha))) return;
-    const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(this.readAt(baseSha), pathsInText(this.state.plan?.text ?? ''))), 'implement');
+    const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(this.readAt(baseSha), pathsInText(this.state.plan?.text ?? '')), this.laneScripts()), 'implement');
     if (out.kind === 'done') await this.acceptWriteLane(out, 'implement', baseSha);
   }
 
@@ -2287,7 +2301,7 @@ class FactoryEngine {
     const ship = this.readShip(this.state.pr);
     if (this.isHumanRound(head, ship)) return this.humanFix(this.state.pr, head, ship);
     const round = ship?.fixRounds ?? 0;
-    const out = await this.runLane('fix', head, 'write', fixPrompt(this.state, round), `fix@${round}`);
+    const out = await this.runLane('fix', head, 'write', fixPrompt(this.state, round, this.laneScripts()), `fix@${round}`);
     if (out.kind === 'done') await this.acceptWriteLane(out, `fix@${round}`, head);
   }
 
@@ -2386,7 +2400,7 @@ class FactoryEngine {
         return;
       }
       this.save((s) => { const { pendingCommit: _p, ...rest } = s; return rest; });
-      if (commit.refusal === 'protected') return this.gate('protected-paths', `lane ${p.laneId}: ${commit.reason}; nothing was committed or pushed`);
+      if (commit.refusal === 'protected') return this.gate('protected-paths', `lane ${p.laneId}: ${commit.reason}; nothing was committed or pushed. Rerun ${this.resume} to run the step again (the lane must leave those paths alone), or stop with ${cancelCommand(this.key)}`);
       if (commit.refusal === 'gitlink' || commit.refusal === 'escaped') return this.gate('sandbox-escaped', `${kind} lane ${p.laneId}: ${commit.reason}; nothing was committed or pushed`);
       return this.laneFailed(p.key, kind, `lane ${p.laneId}: ${commit.reason}`);
     }
@@ -2860,6 +2874,17 @@ class FactoryEngine {
       const configured = loaded.config.requiredChecks.filter((c) => c !== LOCAL_GATE_CHECK);
       if (configured.length > 0 && JSON.stringify(loaded.config.requiredChecks) !== JSON.stringify(DEFAULT_SHIP_CONFIG.requiredChecks)) this.o.warn?.(`omg factory run: the local forge ignores ship.requiredChecks ${configured.join(', ')}; the gates wait for ${LOCAL_GATE_CHECK} only`);
       loaded = { ...loaded, config: { ...loaded.config, requiredChecks: [LOCAL_GATE_CHECK], advisoryChecks: [] } };
+    } else {
+      // This repository's PRs require its own checks even when the base's committed config predates them (only adds names).
+      loaded = { ...loaded, config: omgRepositoryFallback(loaded.config, this.state.repoUrl) };
+    }
+    if (!local && loaded.config.requiredChecks.length === 0 && this.forge?.kind !== 'azure-devops') {
+      // No ship.requiredChecks: GitHub's required checks for the base when the token can read them, else every reported check.
+      const repo = this.githubReadContext()?.repo;
+      const required = repo ? ghRequiredCheckRules(this.exec, repo, view.baseRefName, this.o.root) : undefined;
+      if (required && required.names.length > 0) {
+        loaded = { ...loaded, config: { ...loaded.config, requiredChecks: required.names, requiredChecksFrom: 'branch-protection', ...(Object.keys(required.apps).length > 0 ? { requiredCheckApps: required.apps } : {}) } };
+      }
     }
     if (tracking() !== before) this.rebaseRecheck();
     this.gateCfg = { baseSha: view.baseRefOid, loaded };
@@ -3897,6 +3922,7 @@ class FactoryEngine {
     const local = this.forge?.kind === 'local';
     const forge = local ? this.localGateForge(this.forge!) : this.forge;
     const deadline = this.clock() + this.o.limits.gatesTimeoutMs;
+    const reads = this.gateReads(view);
     let out: Awaited<ReturnType<typeof driveGates>>;
     for (;;) {
       if (local && !(await this.ensureLocalGate(head))) return;
@@ -3905,6 +3931,7 @@ class FactoryEngine {
         out = await driveGates({
           exec: this.exec, cwd: this.o.root, pr, head, config, known,
           ...(forge ? { forge } : {}),
+          ...(reads ? { reads } : {}),
           deadline,
           now: this.clock,
           sleep: this.o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))),
@@ -3914,7 +3941,8 @@ class FactoryEngine {
           },
           onReport: (r, note) => {
             this.writeShip(pr, (cur) => ({ ...cur!, lastGates: { verdict: r.verdict, at: this.iso(), failed: r.failed, pending: r.pending } }));
-            this.progress.heartbeat('gates', `${note}; failed ${r.failed.length}, pending ${r.pending.length}`, fields());
+            const named = r.pending.length > 0 ? ` (${r.pending.slice(0, 5).join(', ')}${r.pending.length > 5 ? ', ...' : ''})` : '';
+            this.progress.heartbeat('gates', `${note}; failed ${r.failed.length}, pending ${r.pending.length}${named}${r.noHeadChecks ? `; ${noHeadChecksText(r.noHeadChecks)}` : ''}`, fields());
           },
           onWait: (note) => {
             this.reload();
@@ -3934,12 +3962,17 @@ class FactoryEngine {
     const at = head.slice(0, 12);
     switch (out.kind) {
       case 'cancelled': return;
-      case 'green':
-        this.writeShip(pr, (cur) => transition(cur!, 'ready', `gates green at ${at}`, this.iso()));
+      case 'green': {
+        const note = `gates green at ${at}${out.report.noChecks ? ` (${NO_CI_CHECKS_NOTE})` : ''}`;
+        this.writeShip(pr, (cur) => transition(cur!, 'ready', note, this.iso()));
         this.save((x) => {
           const { ciFailure: _f, ...rest } = x;
-          return moveTo(rest, 'merge', `gates green at ${at}`, this.iso());
+          return moveTo(rest, 'merge', note, this.iso());
         });
+        return;
+      }
+      case 'missing-checks':
+        this.gate('missing-checks', `${missingCheckHint(out.missing, config)}; every other check completed at ${at} and nothing new reported for the settle window, so the gates stop waiting; fix it, then rerun ${this.resume}`);
         return;
       case 'failed': {
         // F43: the local gate has no CI page to read; its output tail is the ci-fix lane's only evidence.
@@ -3951,7 +3984,7 @@ class FactoryEngine {
         this.gate('ci-flaky', `known-flaky failures at ${at} are out of rerun budget (${out.report.failed.join(', ')}); rerun the failed jobs by hand`);
         return;
       case 'no-workflows':
-        this.gate('no-workflows', `no checks and no workflow runs exist for ${at}; push the branch with a token that triggers workflows, or close and reopen PR #${pr}`);
+        this.gate('no-workflows', `${out.report.noHeadChecks ? `${noHeadChecksText(out.report.noHeadChecks)} (head ${at})` : `no checks and no workflow runs exist for ${at}`}; push the branch with a token that triggers workflows (or enable Actions), or close and reopen PR #${pr}${out.report.noHeadChecks ? `; to stop instead: ${cancelCommand(this.key)}` : ''}`);
         return;
       case 'timeout':
         this.gate('gates-timeout', `gates did not settle within factory.run.gatesTimeoutMinutes ${Math.round(this.o.limits.gatesTimeoutMs / 60_000)} at ${at}${out.report ? ` (pending: ${out.report.pending.join(', ') || 'none'})` : ''}`);
@@ -3986,7 +4019,7 @@ class FactoryEngine {
     if (ship.phase !== 'ready') throw new FactoryStepError(`ship state for PR #${pr} is ${ship.phase}, not ready`);
     if (this.humanReviewParked(pr, head, ship)) return;
     const { config, known } = this.gateConfig(view);
-    const decision = mergeDecision(this.exec, this.o.root, ship, view, config, known, this.forge);
+    const decision = mergeDecision(this.exec, this.o.root, ship, view, config, known, this.forge, this.gateReads(view));
     if (!decision.ok && decision.reasons.some((r) => r.startsWith('gates are '))) {
       // The merge rule's one-shot read and watchGates can disagree (a check flapping); bounded per run, across reruns.
       const bounces = (this.state.mergeBounces ?? 0) + 1;
@@ -4002,7 +4035,7 @@ class FactoryEngine {
     const cmd = decision.command.join(' ');
     this.mergeCmd = decision.ok ? cmd : undefined;
     this.commentOnce('pr', `merge@${head.slice(0, 12)}`, 'merge', `${mergeComment(this.key, decision, this.resume)}${decision.ok ? this.humanComment ?? '' : ''}`);
-    if (decision.ok) this.gate('merge', `merge is a human step; review approved and gates green at ${head.slice(0, 12)}${this.humanNote ?? ''}: run ${cmd}, then ${this.resume}`);
+    if (decision.ok) this.gate('merge', `merge is a human step; review approved and gates green at ${head.slice(0, 12)}${decision.noChecks ? ` (${NO_CI_CHECKS_NOTE}: no CI ran on this head, check the change yourself)` : ''}${this.humanNote ?? ''}: run ${cmd}, then ${this.resume}`);
     else this.gate('merge-refused', `ship's merge rule refuses ${head.slice(0, 12)}: ${decision.reasons.join('; ')}`);
   }
 
@@ -4765,6 +4798,52 @@ class FactoryEngine {
   private agentChoice?: CodingAgentChoice;
 
   /** The repository-only GitHub read context (the coding agent's status read): the run's repository as intake recorded it. */
+  /**
+   * The gates' GitHub reads (GateHeadReads) on a GitHub run, through the run
+   * guard's exact shapes on the run's repository: the base commit's checks
+   * (read once per base sha), the head's check suites and check-run apps.
+   * None on the local forge and Azure DevOps.
+   */
+  private gateReads(view: MergeView): GateHeadReads | undefined {
+    const repo = this.githubReadContext()?.repo;
+    if (!repo || this.forge?.kind === 'local' || this.forge?.kind === 'azure-devops') return undefined;
+    const base = view.baseRefOid;
+    let baseChecks: { names: readonly string[] | undefined } | undefined;
+    let ciDefinitions: { files: readonly string[] | undefined } | undefined;
+    let baseSuites: { suites: ReturnType<GateHeadReads['baseSuites']> } | undefined;
+    return {
+      baseChecks: () => {
+        // An unverifiable base sha is unreadable: it counts as a base with checks (no "no CI" green).
+        baseChecks ??= { names: /^[0-9a-f]{40}$/.test(base) ? ghCommitCheckNames(this.exec, repo, base, this.o.root, true) : undefined };
+        return baseChecks.names;
+      },
+      ciDefinitions: () => {
+        // The sealed base (state.baseSha) and the pushed head (state.head) trees, through the engine's hardened git
+        // with replace objects off. A sha that is not HEX40, or a failed read, is unreadable: counts as "has CI".
+        ciDefinitions ??= { files: this.ciDefinitionFiles([this.state.baseSha, this.state.head]) };
+        return ciDefinitions.files;
+      },
+      suites: (head) => ghCheckSuites(this.exec, repo, head, this.o.root),
+      baseSuites: () => {
+        baseSuites ??= { suites: /^[0-9a-f]{40}$/.test(base) ? ghCheckSuites(this.exec, repo, base, this.o.root) : undefined };
+        return baseSuites.suites;
+      },
+      runApps: (head) => ghCheckRunApps(this.exec, repo, head, this.o.root),
+    };
+  }
+
+  /** The CI definition files in these commits' trees (ls-tree, TRUSTED_READ_ENV); undefined = a sha missing / not HEX40 or a read failed. */
+  private ciDefinitionFiles(shas: ReadonlyArray<string | undefined>): string[] | undefined {
+    const files = new Set<string>();
+    for (const sha of shas) {
+      if (!sha || !/^[0-9a-f]{40}$/.test(sha)) return undefined;
+      const res = this.exec('git', ['ls-tree', '-r', '-z', '--name-only', sha, '--', ...CI_TREE_PATHS], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+      if (res.status !== 0) return undefined;
+      for (const f of res.stdout.split('\0')) if (f) files.add(f);
+    }
+    return [...files];
+  }
+
   private githubReadContext(): GithubReadContext | undefined {
     const repo = this.state?.repoUrl ? codingAgentRepoOf(this.state.repoUrl) : undefined;
     return repo ? { repo: ghRepoArg(repo) } : undefined;
@@ -5333,7 +5412,9 @@ class FactoryEngine {
       // Every open thread went to the last fix lane and reads the same: the lane answered it, or it stands.
       if (outdated.length > 0) {
         const standing = open.length > outdated.length ? `; ${open.length - outdated.length} other thread(s) went to the fix round at ${last!.head.slice(0, 12)} and still stand` : '';
-        this.gate(HUMAN_REVIEW_GATE, `${outdated.length} review thread(s) were outdated by the fix but not resolved: ${this.threadNames(outdated)}. Resolve them or reply on the PR, then rerun ${this.resume}${standing}${commented}${ignored}`);
+        // M3: the gate stays (only the reviewer resolves a human's thread), but it says what happened and what continues.
+        const where = this.names(outdated.map((t) => `${t.id.slice(0, 60)} by ${t.author}${t.file ? ` on ${oneLine(t.file, 120)}${Number.isSafeInteger(t.line) && t.line! > 0 ? `:${t.line}` : ''}` : ''}`));
+        this.gate(HUMAN_REVIEW_GATE, `${outdated.length} review thread(s) went to the fix round at ${last!.head.slice(0, 12)} and were addressed by commit ${head.slice(0, 12)} (it changed the lines they are on), but they are not resolved: ${where}. If the fix answers a thread, resolve it on the PR; if not, reply in it (a new comment goes to another fix round). Either continues the run: then rerun ${this.resume}${standing}${commented}${ignored}`);
         return true;
       }
       this.gate(HUMAN_REVIEW_GATE, `${what}; this same feedback already went to a fix round at ${last!.head.slice(0, 12)}: resolve the threads, or reply in them for another round${gone}`);
@@ -5444,7 +5525,7 @@ class FactoryEngine {
     if (last?.digest !== digest || last.threadIds.join('\n') !== threadIds.join('\n')) this.save((x) => ({ ...x, humanReview: { seenAt: this.iso(), head, digest, threadIds } }));
     const round = current.fixRounds;
     const before = this.state.lanes.length;
-    const out = await this.runLane('fix', head, 'write', humanFixPrompt(this.state, round, open, by), `fix@${round}`);
+    const out = await this.runLane('fix', head, 'write', humanFixPrompt(this.state, round, open, by, this.laneScripts()), `fix@${round}`);
     const lane = this.state.lanes[before];
     if (lane?.kind === 'fix') this.updateLane(lane.id, { feedback: { source: 'human', forge: this.forge?.kind ?? 'github', items: open.length } });
     if (out.kind === 'done') await this.acceptWriteLane(out, `fix@${round}`, head);

@@ -19,6 +19,37 @@ import { getConfigPaths, loadJsoncFile } from '../config/loader.js';
 import { LEGACY_PROJECT_CONFIG_FILE, resolveProjectConfigPath } from '../config/project-config-path.js';
 import { parseAzureDevOpsRepoUrl, urlHostAgrees } from '../providers/remote-url.js';
 import { TRUSTED_READ_ENV } from './exec.js';
+/**
+ * Every check oh-my-copilot's own CI reports on a PR to dev or main (ci.yml,
+ * pr-check.yml); the jobs that consume the Build output start late (`needs:
+ * [build]`). The repository's committed .copilot/omg.jsonc sets exactly these
+ * as `ship.requiredChecks` (a drift test keeps them equal). A PR of this
+ * repository whose base has no configured names yet (main before the release
+ * that added them) still requires them: loadTrustedShipConfig, which
+ * `omg ship`, the factory and `omg release` use, fills an empty list with
+ * them (omgRepositoryFallback). That only ever adds names.
+ */
+export const OMG_REPOSITORY_REQUIRED_CHECKS = Object.freeze([
+    'Lint & Type Check',
+    'Test',
+    'Test (Windows path suite)',
+    'better-sqlite3 Node 26 (ubuntu-latest)',
+    'better-sqlite3 Node 26 (windows-2022)',
+    'PreCompact restore (ubuntu-latest)',
+    'PreCompact restore (macos-latest)',
+    'PreCompact restore (windows-2022)',
+    'Multi-repo Path Gate (AST-grep) (ubuntu-latest)',
+    'Multi-repo Path Gate (AST-grep) (windows-2022)',
+    'Version Consistency Check',
+    'Build',
+    'npm pack + install test',
+    'Copilot smoke (tier 2)',
+    'Base Branch Check',
+    'Size Check',
+    'Draft PR Check',
+    'omg update + session-start hook',
+    'Statechart suite (Node 24)',
+]);
 export const DEFAULT_SHIP_CONFIG = Object.freeze({
     base: 'dev',
     // No Committed Build Artifacts (ci.yml) and the pull_request_target
@@ -30,33 +61,12 @@ export const DEFAULT_SHIP_CONFIG = Object.freeze({
         'Socket Security: Pull Request Alerts',
         'Socket Security: Project Report',
     ],
-    // Every check this repo's CI reports on a PR to dev (ci.yml, pr-check.yml);
-    // the jobs that consume the Build output start late (`needs: [build]`).
-    // ci.yml runs only for PRs to main / dev
-    // (`pull_request.branches`): on a PR to another base their checks never
-    // report and stay pending, so such a base needs its own requiredChecks in
-    // the user config.
-    requiredChecks: [
-        'Lint & Type Check',
-        'Test',
-        'Test (Windows path suite)',
-        'better-sqlite3 Node 26 (ubuntu-latest)',
-        'better-sqlite3 Node 26 (windows-2022)',
-        'PreCompact restore (ubuntu-latest)',
-        'PreCompact restore (macos-latest)',
-        'PreCompact restore (windows-2022)',
-        'Multi-repo Path Gate (AST-grep) (ubuntu-latest)',
-        'Multi-repo Path Gate (AST-grep) (windows-2022)',
-        'Version Consistency Check',
-        'Build',
-        'npm pack + install test',
-        'Copilot smoke (tier 2)',
-        'Base Branch Check',
-        'Size Check',
-        'Draft PR Check',
-        'omg update + session-start hook',
-        'Statechart suite (Node 24)',
-    ],
+    // No names: the gate requires the checks the forge marks required for the
+    // base (GitHub branch protection / rulesets, read by the caller) and every
+    // check the forge reports for the head, after the settle window
+    // (src/ship/gates.ts applySettle). oh-my-copilot's own list is in its
+    // committed .copilot/omg.jsonc (OMG_REPOSITORY_REQUIRED_CHECKS).
+    requiredChecks: [],
     knownFlakyFile: '.github/known-flaky-tests.json',
     maxFixRounds: 2,
     allowAdminMerge: false,
@@ -309,6 +319,15 @@ export function trustedPrepareChecks(trustedUser, base) {
     return resolveShipConfig({ prepare }).prepareChecks;
 }
 /**
+ * ship.requiredChecks as loadTrustedShipConfig resolves it (a safety key):
+ * the user config at its default location, else the base's committed
+ * `.copilot/omg.jsonc`; [] = none configured (the default). For `omg factory check` and setup.
+ */
+export function trustedRequiredChecks(trustedUser, base) {
+    const requiredChecks = shipBlock(trustedUser, 'user config (default location)').requiredChecks ?? shipBlock(base, BASE_CONFIG_PATH).requiredChecks;
+    return resolveShipConfig({ requiredChecks }).requiredChecks;
+}
+/**
  * Resolve the ship config for a run. Precedence:
  * - safety keys (SHIP_SAFETY_KEYS): the user config at its default location,
  *   then the trusted base's committed `.copilot/omg.jsonc`, then the
@@ -431,7 +450,21 @@ export function loadTrustedShipConfig(input) {
             merged[key] = value;
     }
     merged.trustedBases = trustedBases;
-    return { ...resolveShipConfig(merged), trustedBaseCommit: trusted ? commit : undefined };
+    return omgRepositoryFallback({ ...resolveShipConfig(merged), trustedBaseCommit: trusted ? commit : undefined }, input.repoUrl);
+}
+/** This repository's repoIdentity (lower case). */
+const OMG_REPOSITORY_IDENTITY = 'gh:github.com/robinnorberg/oh-my-copilot';
+/**
+ * A PR of this repository (`repoUrl`, GitHub's PR repository url, compared
+ * on its repoIdentity) whose loaded config names no required check requires
+ * OMG_REPOSITORY_REQUIRED_CHECKS: its base may predate the committed list.
+ * Only an empty list is filled, so this never removes a name; any other
+ * repository keeps its loaded list.
+ */
+export function omgRepositoryFallback(config, repoUrl) {
+    if (config.requiredChecks.length > 0 || !repoUrl || repoIdentity(repoUrl) !== OMG_REPOSITORY_IDENTITY)
+        return config;
+    return { ...config, requiredChecks: [...OMG_REPOSITORY_REQUIRED_CHECKS] };
 }
 function trustedUserConfigPathOrDefault() {
     try {
