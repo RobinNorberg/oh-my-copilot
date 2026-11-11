@@ -134193,7 +134193,7 @@ var init_engine = __esm({
     PARK_TAIL_LINES = 12;
     PARK_TAIL_LINE_CHARS = 200;
     PARK_TAIL_CHARS = 1500;
-    isHumanReadGate = (name) => name === HUMAN_REVIEW_GATE || name === "fix-rounds-spent" || name === "head-moved-externally";
+    isHumanReadGate = (name) => name === HUMAN_REVIEW_GATE || name === "merge" || name === "fix-rounds-spent" || name === "head-moved-externally";
     CALIBRATION_NO_TEST_FILTER = "omg-calibration-matches-no-test-file";
     BUILT_IN_FILE_NAME_TOO_LONG = "a changed file name is too long for the sandbox shell";
     USER_REPO_PREFIX = "your repository: ";
@@ -138371,6 +138371,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
        * moved is head-moved-externally; not moved (the review read lags) parks too.
        */
       readHuman(pr, head) {
+        this.pendingHuman ??= "";
         const read = this.humanReader();
         if (typeof read === "string") {
           this.gate(HUMAN_REVIEW_GATE, read);
