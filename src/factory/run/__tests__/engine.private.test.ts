@@ -16,6 +16,7 @@ import type { Exec } from '../../../ship/exec.js';
 import { cleanFactoryRun, privateRunLockPath } from '../clean.js';
 import { EXIT_AWAITING_HUMAN, runFactoryEngine, type FactoryEngineOptions } from '../engine.js';
 import { GATE_INSTALL_GATE, REPO_GUARD_GATE } from '../private-run.js';
+import { GATE_TREE_MARKER } from '../prepare.js';
 import type { SandboxRunRequest } from '../sandbox-exec.js';
 import { readFactoryState, requestFactoryCancel } from '../state.js';
 import { readTamperHold } from '../tamper-quarantine.js';
@@ -113,8 +114,9 @@ describe('factory run with factory.run.layout "private"', () => {
     }
     expect(w.gateRuns.map((r) => r.cwd)).toEqual([join(s.privateDir!, 'w', 'prep')]);
     expect(existsSync(join(w.root, '.omg', 'team'))).toBe(false);
-    // The prepare checkout links your node_modules (the lockfile is the base's).
-    expect(lstatSync(join(s.privateDir!, 'w', 'prep', 'node_modules')).isSymbolicLink()).toBe(true);
+    // The prepare checkout links your node_modules (the lockfile is the base's): the per-run tree of links (L4).
+    expect(lstatSync(join(s.privateDir!, 'w', 'prep', 'node_modules')).isDirectory()).toBe(true);
+    expect(existsSync(join(s.privateDir!, 'w', 'prep', 'node_modules', GATE_TREE_MARKER))).toBe(true);
 
     // The user's .git: only the local forge's own remote, its tracking refs and fetch bookkeeping changed; no worktree, branch or import ref.
     // The engine's push names the mirror path, yet git on the Linux CI runner moved the omg-local tracking ref of the pushed

@@ -1,4 +1,4 @@
-import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -27,6 +27,7 @@ import {
 } from '../state.js';
 import { gitIn } from './fake-lanes.js';
 import { linkNodeModules, unlinkNodeModules } from '../prepare.js';
+import { nodeModulesTreeProblem } from '../../../copilot-run/sandbox.js';
 
 const SHA = '0123456789abcdef0123456789abcdef01234567';
 const block = (o: unknown) => `Review done.\n\n\`\`\`json\n${JSON.stringify(o)}\n\`\`\`\n`;
@@ -826,13 +827,97 @@ describe('the prepare checkout\'s node_modules link', () => {
     return { root, checkout };
   }
 
-  it('unlinkNodeModules removes the link linkNodeModules made and never its target', () => {
+  const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+  const unlinkOne = (p: string) => { try { unlinkSync(p); } catch { rmdirSync(p); } };
+
+  it('unlinkNodeModules removes the tree linkNodeModules made and never its target', () => {
     const { root, checkout } = setup();
     linkNodeModules(root, checkout);
     expect(existsSync(join(checkout, 'node_modules', 'typescript', 'package.json'))).toBe(true);
     unlinkNodeModules(root, checkout);
     expect(existsSync(join(checkout, 'node_modules'))).toBe(false);
     expect(readFileSync(join(root, 'node_modules', 'typescript', 'package.json'), 'utf-8')).toBe('{}\n');
+  });
+
+  it('L4: builds a real node_modules dir with one link per top-level entry (scopes and .bin whole) and fresh per-run cache dirs', () => {
+    const { root, checkout } = setup();
+    const nm = join(root, 'node_modules');
+    for (const d of ['@scope/pkg', '.bin', '.vite/deps', '.cache/babel-loader', '.pnpm/x']) mkdirSync(join(nm, d), { recursive: true });
+    writeFileSync(join(nm, '@scope', 'pkg', 'index.js'), 'scoped\n');
+    writeFileSync(join(nm, '.bin', 'tsc'), 'shim\n');
+    writeFileSync(join(nm, '.vite', 'deps', 'old.js'), 'yours\n');
+    writeFileSync(join(nm, '.package-lock.json'), '{}\n');
+    linkNodeModules(root, checkout);
+    const tree = join(checkout, 'node_modules');
+    expect(lstatSync(tree).isSymbolicLink()).toBe(false);
+    expect(lstatSync(tree).isDirectory()).toBe(true);
+    for (const name of ['typescript', '@scope', '.bin', '.pnpm']) {
+      expect(lstatSync(join(tree, name)).isSymbolicLink()).toBe(true);
+      expect(realpathSync.native(join(tree, name))).toBe(realpathSync.native(join(nm, name)));
+    }
+    expect(readFileSync(join(tree, '@scope', 'pkg', 'index.js'), 'utf-8')).toBe('scoped\n');
+    expect(readFileSync(join(tree, '.bin', 'tsc'), 'utf-8')).toBe('shim\n');
+    // Your caches are never linked in: fresh empty dirs, writable without touching yours.
+    for (const name of ['.vite', '.cache']) {
+      expect(lstatSync(join(tree, name)).isSymbolicLink()).toBe(false);
+      expect(readdirSync(join(tree, name))).toEqual([]);
+    }
+    expect(existsSync(join(tree, '.vitest'))).toBe(true);
+    // A cache the tool creates fresh lands in the tree, not in yours.
+    mkdirSync(join(tree, '.vite', 'vitest'), { recursive: true });
+    writeFileSync(join(tree, '.vite', 'vitest', 'results.json'), '{}');
+    expect(existsSync(join(nm, '.vite', 'vitest'))).toBe(false);
+    expect(lstatSync(join(tree, '.package-lock.json')).isFile()).toBe(true);
+    unlinkNodeModules(root, checkout);
+    expect(existsSync(tree)).toBe(false);
+    expect(readFileSync(join(nm, '.vite', 'deps', 'old.js'), 'utf-8')).toBe('yours\n');
+    expect(readFileSync(join(nm, '@scope', 'pkg', 'index.js'), 'utf-8')).toBe('scoped\n');
+    expect(readFileSync(join(nm, '.bin', 'tsc'), 'utf-8')).toBe('shim\n');
+  });
+
+  it('L4: removal never follows a link, one planted in a cache dir or re-pointed included; the marker in the target survives', () => {
+    const { root, checkout } = setup();
+    const outside = join(root, '..', 'outside');
+    mkdirSync(outside);
+    writeFileSync(join(outside, 'marker.txt'), 'keep\n');
+    linkNodeModules(root, checkout);
+    const tree = join(checkout, 'node_modules');
+    symlinkSync(outside, join(tree, '.vite', 'planted'), linkType);
+    unlinkOne(join(tree, 'typescript'));
+    symlinkSync(outside, join(tree, 'typescript'), linkType);
+    unlinkNodeModules(root, checkout);
+    expect(existsSync(tree)).toBe(false);
+    expect(readFileSync(join(outside, 'marker.txt'), 'utf-8')).toBe('keep\n');
+    expect(readFileSync(join(root, 'node_modules', 'typescript', 'package.json'), 'utf-8')).toBe('{}\n');
+  });
+
+  it('L4: replaces the single junction of an older release with the tree; leaves a tree already there', () => {
+    const { root, checkout } = setup();
+    symlinkSync(join(root, 'node_modules'), join(checkout, 'node_modules'), linkType);
+    linkNodeModules(root, checkout);
+    expect(lstatSync(join(checkout, 'node_modules')).isSymbolicLink()).toBe(false);
+    expect(existsSync(join(checkout, 'node_modules', '.vite'))).toBe(true);
+    writeFileSync(join(checkout, 'node_modules', '.vite', 'run.json'), '{}');
+    linkNodeModules(root, checkout);
+    expect(existsSync(join(checkout, 'node_modules', '.vite', 'run.json'))).toBe(true);
+    unlinkNodeModules(root, checkout);
+    expect(existsSync(join(root, 'node_modules', 'typescript', 'package.json'))).toBe(true);
+  });
+
+  it('L4 M4: nodeModulesTreeProblem accepts the engine tree and refuses a re-pointed or added link', () => {
+    const { root, checkout } = setup();
+    const outside = join(root, '..', 'secret');
+    mkdirSync(outside);
+    linkNodeModules(root, checkout);
+    const target = join(root, 'node_modules');
+    expect(nodeModulesTreeProblem(checkout, target)).toEqual({ problem: null, linked: true });
+    symlinkSync(outside, join(checkout, 'node_modules', 'evil'), linkType);
+    expect(nodeModulesTreeProblem(checkout, target).problem).toMatch(/evil points to .*secret, not .*evil the engine linked/);
+    unlinkOne(join(checkout, 'node_modules', 'evil'));
+    unlinkOne(join(checkout, 'node_modules', 'typescript'));
+    symlinkSync(join(target, '.bin'), join(checkout, 'node_modules', 'typescript'), linkType);
+    expect(nodeModulesTreeProblem(checkout, target).problem).toMatch(/typescript points to/);
+    unlinkNodeModules(root, checkout);
   });
 
   it('leaves a real node_modules directory and a link to anything else', () => {
