@@ -4,6 +4,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+# oh-my-copilot v5.25.1
+
+## [5.25.1] - 2026-11-11
+
 ### Fixed
 
 - **A create-vite TypeScript build failed in the gate sandbox (review-490 M1).** `node_modules/.tmp` (tsc's `tsBuildInfoFile` in the create-vite templates) is a fresh per-run dir; a base calibration that hits EPERM/EACCES/EROFS under `node_modules` names the dir in the park instead of the registry advice.
