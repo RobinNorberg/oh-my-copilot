@@ -24,9 +24,9 @@
  *   checks and hardened push, the import refs dropped, the guard compared
  *   again with the PRE-import baseline, and only then a new baseline.
  *
- * One engine per checkout (the per-checkout engine lock is unchanged); the
- * import lock is a plain file lock per repository under the work root that
- * lane B2 (parallel runs) replaces.
+ * Several private-layout engines may run in one checkout (lane B2:
+ * factory.run.maxConcurrent, slots in state.ts); their transports into and
+ * out of the user repository are serialised by withImportLock.
  */
 
 import { existsSync, readdirSync, readFileSync } from 'fs';
@@ -44,7 +44,7 @@ import {
   privateWorktreePath, removeRunDir, rerecordConfigHash, resolveUserGitDir, staleImportRefs, userRepoGuardChanges, userRepoGuardSnapshot, compareUserRepoGuard,
   PrivateStoreError, type ImportRefusalCode, type PrivateGitOptions, type PrivateRepo, type PrivateRunLayout, type PrivateStoreContext, type UserGuardDetail, type UserRepoGuard,
 } from './private-store.js';
-import type { FactoryRunState } from './state.js';
+import { IMPORT_LOCK_WAIT_MS, withRepoImportLock, type FactoryRunState } from './state.js';
 
 export type RunLayoutChoice = 'shared' | 'private';
 export type GateInstallChoice = 'park' | 'sandboxed';
@@ -60,8 +60,6 @@ export const IMPORT_REFUSED_GATE = 'import-refused';
 /** The park when the PR head changes a lockfile and factory.run.gateInstall is "park". */
 export const GATE_INSTALL_GATE = 'gate-install-needed';
 
-/** How long publishImports waits for another engine's import (lane B2 replaces this lock). */
-export const IMPORT_LOCK_WAIT_MS = 60_000;
 
 const run = (config: unknown): Record<string, unknown> | undefined => {
   const r = (config as { factory?: { run?: unknown } } | null | undefined)?.factory?.run;
@@ -239,7 +237,7 @@ export class PrivateRun {
     const layout = PrivateRun.runLayout(input);
     const userGitDir = resolveUserGitDir(input.root, ctx);
     const warn = input.warn ?? (() => {});
-    return withImportLock(layout, () => {
+    return withImportLock(input.root, layout, `import:${input.slug}`, () => {
       sweepTrash(layout, warn);
       dropStaleImports(userGitDir, input.slug, ctx, warn);
       if (existsSync(layout.runDir)) removeRunDir(layout.runDir, layout.work);
@@ -276,7 +274,7 @@ export class PrivateRun {
 
   /** At every resume (B1b scope 1/5): leftover `.trash-*` and this run's stale import refs (a crash after an import). */
   resumeSweep(slug: string): void {
-    withImportLock(this.layout, () => {
+    withImportLock(this.root, this.layout, `import:${slug}`, () => {
       sweepTrash(this.layout, this.warn);
       dropStaleImports(this.userGitDir, slug, this.ctx, this.warn);
     });
@@ -322,7 +320,7 @@ export class PrivateRun {
   /** `sha` is in the private repository: else fetched by sha from the user repository (seed first), kept by an engine ref. */
   ensureCommit(sha: string): void {
     if (privateHasCommit(this.repo, this.ctx, sha)) return;
-    withImportLock(this.layout, () => fetchIntoPrivate(this.layout, this.repo, this.userGitDir, sha, this.ctx));
+    withImportLock(this.root, this.layout, `import:${this.layout.runDir}`, () => fetchIntoPrivate(this.layout, this.repo, this.userGitDir, sha, this.ctx));
     // A ref keeps the fetched objects (fetchIntoPrivate leaves them unreferenced; review-481b l).
     this.gitOk(['update-ref', '--no-deref', '-m', 'omg private store: keep', `refs/omg/keep/${sha}`, sha], `keeping ${sha}`);
   }
@@ -415,7 +413,7 @@ export class PrivateRun {
     body: () => T;
     pushed: (value: T) => boolean;
   }): ImportOutcome<T> {
-    return withImportLock(this.layout, () => {
+    return withImportLock(this.root, this.layout, `import:${o.slug}`, () => {
       const baseline = o.baseline ?? userRepoGuardSnapshot(this.userGitDir, this.ctx);
       const now = userRepoGuardSnapshot(this.userGitDir, this.ctx);
       if (compareUserRepoGuard(baseline, now).length > 0) {
@@ -481,12 +479,26 @@ function identityEnv(): Record<string, string> {
 }
 
 /**
- * The short lock around the store's transports into and out of the user
- * repository (seed fetch, clone, imports, push): one file per repository
- * under the work root. Lane B2 replaces it with the import lock across engines.
+ * The lock around the store's transports into and out of the user
+ * repository (seed fetch, clone, imports, push), lane B2: first the
+ * checkout's repository import lock (state.ts withRepoImportLock: an owner
+ * record, a dead holder taken over by process identity, a live one never;
+ * shared with the parallel engines' base fetches and the scan holders), then
+ * the per-repository seed lock under the work root, which every checkout of
+ * the repository shares (its seed). Lock order: import.lock, then the seed lock.
  */
-export function withImportLock<T>(layout: PrivateRunLayout, fn: () => T): T {
-  return withFileLockSync(join(layout.repoDir, 'import.lock'), fn, { timeoutMs: IMPORT_LOCK_WAIT_MS, staleLockMs: 10 * 60_000 });
+export function withImportLock<T>(root: string, layout: PrivateRunLayout, label: string, fn: () => T): T {
+  return withRepoImportLock(root, label, () => withSeedLock(layout, fn));
+}
+
+/**
+ * The per-repository seed lock (`<work>/<repo8>/import.lock`, a plain file
+ * lock): a holder whose pid is alive is never reaped, however old the lock
+ * (file-lock's rule: stale only when old AND its pid is dead), so a first
+ * seed fetch of a big repository is not stolen (review-483 L9).
+ */
+export function withSeedLock<T>(layout: PrivateRunLayout, fn: () => T): T {
+  return withFileLockSync(join(layout.repoDir, 'import.lock'), fn, { timeoutMs: IMPORT_LOCK_WAIT_MS, staleLockMs: 60_000 });
 }
 
 /** Remove the `<repoDir>/.trash-*` a failed removeRunDir left (the SLUG pattern cannot name one). */
