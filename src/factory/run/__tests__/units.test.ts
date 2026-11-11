@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { parseProgressLog } from '../../../lib/agent-progress.js';
 import { assertLaneCreditCap, DEFAULT_FACTORY_RUN_LIMITS, nextLaneCap, resolveFactoryRunLimits, runCreditsExceeded } from '../budget.js';
-import { ciFixPrompt, conflictFixPrompt, fenceFor, findPlanLink, fixPrompt, hasAcceptanceCriteria, implementPrompt, issueAuthorTrusted, oneLine, reviewPrompt } from '../engine.js';
+import { ciFailureTail, ciFixPrompt, conflictFixPrompt, fenceFor, findPlanLink, fixPrompt, hasAcceptanceCriteria, implementPrompt, issueAuthorTrusted, oneLine, reviewPrompt } from '../engine.js';
 import { ghRepoArg } from '../../../forge/github/gh.js';
 import { shipyardKeySearch } from '../../../forge/types.js';
 import { assertFactoryCommand, factoryGuardExec, FactorySafetyError, hardenedGitExec, type TrackerWriteContext } from '../exec.js';
@@ -810,6 +810,22 @@ describe('gates timeout config', () => {
     expect(raised.limits.gatesTimeoutMs).toBe(120 * 60_000);
     expect(raised.warnings.join('\n')).toMatch(/gatesTimeoutMinutes 300 .* can only lower a limit/);
     expect(resolveFactoryRunLimits(user, { factory: { run: { gatesTimeoutMinutes: 30 } } }).limits.gatesTimeoutMs).toBe(30 * 60_000);
+  });
+});
+
+describe('L7: the ci-failed park tail', () => {
+  it('names where it failed, the failing tests and a redacted, visible, bounded output tail', () => {
+    const detail = ['noise', ...Array.from({ length: 20 }, (_, i) => `line ${i}`), `token ${'ghp_'}${'a'.repeat(36)}`, 'esc \u001b[31mred\u001b[0m', 'x'.repeat(500)].join('\n');
+    const tail = ciFailureTail({ source: 'prepare', startSha: 'a'.repeat(40), checks: ['prepare tests'], tests: ['src/a.test.ts > adds'], detail });
+    expect(tail).toContain('; the failure is from the prepare checks on this host (the OS sandbox when gates are enforced), not from the forge CI');
+    expect(tail).toContain('; failing tests: src/a.test.ts > adds');
+    expect(tail).toContain('; output tail: ');
+    expect(tail).not.toContain('noise');
+    expect(tail).not.toContain('a'.repeat(36));
+    expect(tail).not.toContain('\u001b');
+    expect(tail).not.toContain('\n');
+    expect(tail.length).toBeLessThan(1_800);
+    expect(ciFailureTail({ source: 'ci', startSha: 'a'.repeat(40), checks: ['build'], tests: [] })).toBe('');
   });
 });
 
