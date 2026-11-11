@@ -98,6 +98,33 @@ function localGateProcDirs(o, state) {
         return [];
     return [dirname(gateProcsPath(o.localGateStateDir ?? getGlobalOmcStatePath('forge'), o.root, head))];
 }
+/**
+ * Review-487 L-2: the `<run dir>/run.lock` of issue `issue`'s private run,
+ * at the path its sealed state and the trusted user config's work root give
+ * (expectedPrivateLayout, as clean recomputes it), for `omg factory run
+ * release <issue>`; undefined when there is no sealed private run or the
+ * recorded dir is not where the config puts it (then nothing is touched).
+ */
+export function privateRunLockPath(root, issue, runUserConfig) {
+    try {
+        const state = readFactoryState(root, issue);
+        if (!state || state.layout !== 2 || !state.privateDir || !verifyFactoryIntegrity(state))
+            return undefined;
+        let userConfig = runUserConfig;
+        if (userConfig === undefined) {
+            try {
+                userConfig = userConfigLayers().trustedUser;
+            }
+            catch {
+                userConfig = null;
+            }
+        }
+        return expectedPrivateLayout(state, { root, omcRoot: getOmcRoot(root), slug: runSlug(issue), userConfig }).lock;
+    }
+    catch {
+        return undefined;
+    }
+}
 function cleanPrivateRun(o, state, result) {
     // The dir is recomputed from the trusted config and must equal the record before anything is removed (review-483 M5).
     let layout;
@@ -127,7 +154,7 @@ function cleanPrivateRun(o, state, result) {
         // B2: a live engine of this run holds <run>/run.lock; its dir is never removed under it (an unreadable lock counts as held).
         const lockHolder = ownerHolding(layout.lock, o.owner);
         if (lockHolder !== null) {
-            result.kept.push({ worktree: runDir, reason: `run_live: ${lockHolder === 'unreadable' ? unreadableOwnerMessage(layout.lock) : `the run's engine holds ${layout.lock} (${describeOwner(lockHolder)}); omg factory run cancel ${o.issue} stops it, then rerun ${o.rerun ?? `omg factory run clean ${o.issue}`}`}` });
+            result.kept.push({ worktree: runDir, reason: `run_live: ${lockHolder === 'unreadable' ? unreadableOwnerMessage(layout.lock, `omg factory run release ${o.issue}`) : `the run's engine holds ${layout.lock} (${describeOwner(lockHolder)}); omg factory run cancel ${o.issue} stops it, then rerun ${o.rerun ?? `omg factory run clean ${o.issue}`}`}` });
             return;
         }
         // A prepare check's or the local gate's leftover process must be gone before its dir is removed (review-483 I.4, 483b L-a):
@@ -177,7 +204,7 @@ function cleanPrivateRun(o, state, result) {
                 removeRunDir(seed, work);
                 result.removed.push(seed);
             }
-        });
+        }, o.importLock);
     }
     catch (error) {
         result.kept.push({ worktree: seed, reason: error instanceof Error ? error.message : String(error) });
@@ -201,11 +228,13 @@ export function cleanFactoryRun(o) {
     // shared engine still refuses it; private parallel runs keep running, and the fetch below is serialised with their
     // imports through the import lock tryScanLock adds while a slot is held). A shared run's clean is as before.
     let repoOwner;
+    let importLock;
     if (state.layout === 2 && state.privateDir) {
         const scan = tryScanLock(o.root, now, o.owner, SCAN_WAIT_MS);
         if (scan instanceof FactoryBusyError)
             throw scan;
         repoOwner = scan;
+        importLock = scan.importLock;
     }
     else
         repoOwner = acquireFactoryRepoOwnerForRun(o.root, o.issue, () => now, o.owner);
@@ -218,7 +247,7 @@ export function cleanFactoryRun(o) {
         throw error;
     }
     try {
-        return cleanHeldFactoryRun(o, state);
+        return cleanHeldFactoryRun(importLock ? { ...o, importLock } : o, state);
     }
     finally {
         owner.release();

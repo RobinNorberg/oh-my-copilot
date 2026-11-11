@@ -4,12 +4,14 @@
  * --parallel needs the private layout, and the --parallel supervisor spawns
  * min(n, maxConcurrent) children, forwards the stop signal and reports each.
  */
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { factoryRunCommand } from '../factory.js';
+import { factoryRunCommand, parallelLayers } from '../factory.js';
+import { factoryGuardExec } from '../../../factory/run/exec.js';
 import { resolveFactoryRunLimits } from '../../../factory/run/budget.js';
 import { factoryRepoOwnerPath, readFactoryState } from '../../../factory/run/state.js';
-import { FakeProcesses, harness } from '../../../factory/run/__tests__/fake-lanes.js';
+import { FakeProcesses, gitIn, harness } from '../../../factory/run/__tests__/fake-lanes.js';
 let h;
 let out;
 beforeEach(() => {
@@ -98,6 +100,63 @@ describe('omg factory run with factory.run.maxConcurrent', () => {
         expect(json.message).toMatch(/--parallel 2: 3 run\(s\) ended \(stopped by a signal\); exit 130/);
         // The supervisor's listeners are gone.
         expect(process.listeners('SIGINT').filter((l) => !before.has(l))).toEqual([]);
+    });
+    it('review-487 L-1: with no opt-in in the user config nothing is read (no git, no forge kind); the base layer is read at the sha the remote holds, never at a planted tracking ref', () => {
+        const calls = [];
+        const spy = (cmd, args, o) => { calls.push(`${cmd} ${args.join(' ')}`); return factoryGuardExec(h.exec, () => ['dev'])(cmd, args, o); };
+        let kindRead = 0;
+        const kind = () => { kindRead += 1; return undefined; };
+        expect(parallelLayers(h.root, 'dev', kind, null, spy)).toBeUndefined();
+        expect(parallelLayers(h.root, 'dev', kind, { factory: { run: { workDir: '/x' } } }, spy)).toBeUndefined();
+        expect(calls).toEqual([]);
+        expect(kindRead).toBe(0);
+        // The base commits maxConcurrent 3 (pushed); a lane then points refs/remotes/origin/dev at a commit saying 16.
+        mkdirSync(join(h.root, '.copilot'), { recursive: true });
+        writeFileSync(join(h.root, '.copilot', 'omg.jsonc'), '{ "factory": { "run": { "maxConcurrent": 3 } } }\n');
+        gitIn(h.root, 'add', '.copilot/omg.jsonc');
+        gitIn(h.root, 'commit', '-q', '-m', 'three');
+        gitIn(h.root, 'push', '-q', 'origin', 'dev');
+        const real = gitIn(h.root, 'rev-parse', 'HEAD');
+        writeFileSync(join(h.root, '.copilot', 'omg.jsonc'), '{ "factory": { "run": { "maxConcurrent": 16, "maxInFlightCredits": 100000 } } }\n');
+        gitIn(h.root, 'commit', '-q', '-am', 'sixteen');
+        const plantedSha = gitIn(h.root, 'rev-parse', 'HEAD');
+        gitIn(h.root, 'reset', '-q', '--hard', real);
+        gitIn(h.root, 'update-ref', 'refs/remotes/origin/dev', plantedSha);
+        const user = { ship: { trustedBases: ['dev'] }, factory: { run: { layout: 'private' } } };
+        const got = parallelLayers(h.root, 'dev', kind, user, spy);
+        expect(got?.settings).toMatchObject({ maxConcurrent: 3, source: 'the base .copilot/omg.jsonc' });
+        expect(got?.settings.maxInFlightCredits).toBeUndefined();
+        expect(got?.layout).toBe('private');
+        expect(calls.some((c) => c.startsWith('git ls-remote origin refs/heads/dev'))).toBe(true);
+        // The scan lock it read under is released.
+        expect(existsSync(factoryRepoOwnerPath(h.root))).toBe(false);
+    });
+    it('review-487 M-3: a second Ctrl+C kills every running child\'s tree (SIGKILL forward) before the supervisor exits 130', async () => {
+        const got = [];
+        const exits = [];
+        const ends = [];
+        const d = deps({
+            ...parallel(2, 'private'),
+            parallelChild: ({ signals }) => new Promise((resolve) => {
+                const mine = [];
+                got.push(mine);
+                const off = signals((s) => { mine.push(s); });
+                ends.push(() => { off(); resolve({ exitCode: 130, parsed: false, next: null, message: 'ended' }); });
+            }),
+        });
+        vi.spyOn(process, 'exit').mockImplementation(((code) => { exits.push(`exit ${code} after ${got.map((g) => g.join('+')).join(', ')}`); }));
+        const before = new Set(process.listeners('SIGINT'));
+        const run = cli(d, '--next', '--parallel', '2', '--json');
+        await new Promise((r) => setTimeout(r, 0));
+        expect(got.length).toBe(2);
+        const [listener] = process.listeners('SIGINT').filter((l) => !before.has(l));
+        listener();
+        listener();
+        // Both children got the stop, then SIGKILL (their trees), and only then the exit.
+        expect(exits).toEqual(['exit 130 after SIGINT+SIGKILL, SIGINT+SIGKILL']);
+        for (const end of ends)
+            end();
+        expect(await run).toBe(130);
     });
 });
 //# sourceMappingURL=factory-run-parallel-cli.test.js.map

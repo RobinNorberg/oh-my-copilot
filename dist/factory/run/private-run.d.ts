@@ -30,7 +30,7 @@
  */
 import { type Exec, type ExecResult } from '../../ship/exec.js';
 import { type ImportRefusalCode, type PrivateRepo, type PrivateRunLayout, type PrivateStoreContext, type UserGuardDetail, type UserRepoGuard } from './private-store.js';
-import { type FactoryRunState } from './state.js';
+import { type FactoryRunState, type HeldOwner } from './state.js';
 export type RunLayoutChoice = 'shared' | 'private';
 export type GateInstallChoice = 'park' | 'sandboxed';
 /** The park when the private layout cannot run this part yet (an actionable command to continue is in the reason). */
@@ -225,7 +225,7 @@ export declare function expectedPrivateLayout(s: Pick<FactoryRunState, 'privateD
  * the per-repository seed lock under the work root, which every checkout of
  * the repository shares (its seed). Lock order: import.lock, then the seed lock.
  */
-export declare function withImportLock<T>(root: string, layout: PrivateRunLayout, label: string, fn: () => T): T;
+export declare function withImportLock<T>(root: string, layout: PrivateRunLayout, label: string, fn: () => T, held?: HeldOwner): T;
 /**
  * The per-repository seed lock (`<work>/<repo8>/import.lock`, a plain file
  * lock): a holder whose pid is alive is never reaped, however old the lock

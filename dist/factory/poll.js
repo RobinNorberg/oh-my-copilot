@@ -55,7 +55,7 @@
  * 1 a read failed in the `--once` tick, or another poller runs; 2 usage;
  * 5 incompatible (as `omg factory check`).
  */
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { appendFileSync, existsSync, lstatSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { ledgerPath, ledgerTotals, parseLedger } from '../budget/ledger.js';
@@ -82,6 +82,7 @@ import { staleGateReminders } from './team/reminders.js';
 import { AUTO_START_SCAN_WAIT_MS, acquireFactoryRepoOwnerForRun, acquireRunSlot, defaultOwnerDeps, heldSlots, EXIT_BUSY, FactoryBusyError, factoryRepoOwnerPath, ownerHolding, runLabel, TERMINAL_FACTORY_PHASES, tryScanLock, verifyFactoryIntegrity, } from './run/state.js';
 import { resolveParallelSettings } from './run/parallel.js';
 import { resolveRunLayout } from './run/private-run.js';
+import { killProcessTree } from '../smoke/process-utils.js';
 /**
  * B2: factory.run.maxConcurrent when it is above 1 and factory.run.layout is
  * "private" in the trusted layers (the user config, the base layer); else
@@ -371,6 +372,11 @@ export function defaultPollAutoStart(entry = process.argv[1], o = {}) {
             killer = setTimeout(() => killTree('SIGKILL'), o.graceMs ?? AUTO_START_GRACE_MS);
         }, timeoutMs);
         unsubscribe = o.signals?.((signal) => {
+            // SIGKILL (a supervisor's second Ctrl+C): the child's whole tree, synchronously (taskkill /T on Windows), before the caller exits.
+            if (signal === 'SIGKILL') {
+                killProcessTree(child.pid, spawnSync);
+                return;
+            }
             if (process.platform !== 'win32' || signal !== 'SIGINT')
                 child.kill(signal);
         }) ?? unsubscribe;

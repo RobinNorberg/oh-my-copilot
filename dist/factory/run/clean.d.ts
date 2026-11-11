@@ -22,7 +22,7 @@
  * `clean --discard` removes it.
  */
 import { type Exec } from '../../ship/exec.js';
-import { type FactoryRunState, type OwnerDeps } from './state.js';
+import { type FactoryRunState, type HeldOwner, type OwnerDeps } from './state.js';
 export interface FactoryCleanResult {
     /** Worktree paths removed (with their branches). */
     removed: string[];
@@ -69,6 +69,8 @@ export interface FactoryCleanOptions {
     liveGateProcs?: (dir: string) => number[];
     /** The local forge's state dir, home of the local gate's process records (default: getGlobalOmcStatePath('forge'), the engine's default). */
     localGateStateDir?: string;
+    /** The repository import lock the caller already holds (tryScanLock's importLock): the seed removal runs inside it. */
+    importLock?: HeldOwner;
 }
 export type LaneProcessRecord = NonNullable<FactoryRunState['lanes'][number]['process']>;
 export type LaneProcessState = 'live' | 'dead' | 'mismatch' | 'unknown';
@@ -79,6 +81,14 @@ export type LaneProcessState = 'live' | 'dead' | 'mismatch' | 'unknown';
  * compare is unknown.
  */
 export declare function laneProcessState(p: LaneProcessRecord): LaneProcessState;
+/**
+ * Review-487 L-2: the `<run dir>/run.lock` of issue `issue`'s private run,
+ * at the path its sealed state and the trusted user config's work root give
+ * (expectedPrivateLayout, as clean recomputes it), for `omg factory run
+ * release <issue>`; undefined when there is no sealed private run or the
+ * recorded dir is not where the config puts it (then nothing is touched).
+ */
+export declare function privateRunLockPath(root: string, issue: number, runUserConfig?: unknown): string | undefined;
 export declare function cleanFactoryRun(o: FactoryCleanOptions): FactoryCleanResult;
 /**
  * The body of cleanFactoryRun for a caller that already holds this

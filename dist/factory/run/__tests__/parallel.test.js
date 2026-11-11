@@ -12,7 +12,7 @@ import { pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getOmcRoot } from '../../../lib/worktree-paths.js';
-import { acquireFactoryOwner, acquireFactoryRepoOwner, acquireImportLock, acquireRunSlot, EXIT_BUSY, FactoryBusyError, factoryImportLockPath, factoryRepoOwnerPath, factorySlotPath, heldSlots, ImportLockBusyError, scanWait, SCAN_WAIT_MS, tryScanLock, withRepoImportLock, } from '../state.js';
+import { acquireFactoryOwner, acquireFactoryRepoOwner, acquireImportLock, acquireRunSlot, EXIT_BUSY, FactoryBusyError, factoryImportLockPath, factoryRepoOwnerPath, factorySlotPath, heldSlots, ImportLockBusyError, scanWait, SCAN_WAIT_MS, tryScanLock, withRepoImportLock, withRepoImportLockAsync, } from '../state.js';
 import { creditReservationPath, parallelLayoutRefusal, releaseDeadCreditReservations, reserveLaneCredits, resolveParallelSettings, runParallelSupervisor } from '../parallel.js';
 const HOST = 'test-host';
 /** Owner deps of a fake process `pid`; `alive` is the set of pids that run. */
@@ -152,6 +152,76 @@ describe('the repository import lock', () => {
         expect(existsSync(factoryRepoOwnerPath(root))).toBe(false);
         slot.release();
     });
+    it('review-487 M-3: the awaited wait leaves the event loop free (a timer runs while it waits); a stop ends it busy with nothing run; a released holder lets fn run in one turn', async () => {
+        const alive = new Set([101, 102]);
+        const holder = acquireImportLock(root, 'import:issue-7', NOW, deps(101, alive));
+        let stopped = false;
+        setTimeout(() => { stopped = true; }, 0);
+        let ran = false;
+        const err = await withRepoImportLockAsync(root, 'import:issue-8', () => { ran = true; }, { deps: deps(102, alive), now: NOW, stopped: () => stopped, sleep: (ms) => new Promise((r) => { setTimeout(r, Math.min(ms, 20)); }) }).then(() => null, (e) => e);
+        expect(err).toBeInstanceOf(ImportLockBusyError);
+        expect(err.message).toMatch(/held by import:issue-7, pid 101 .*stopped by a signal while waiting for it \(nothing was done under the lock\)/);
+        expect(ran).toBe(false);
+        expect(JSON.parse(readFileSync(factoryImportLockPath(root), 'utf8'))).toMatchObject({ pid: 101 });
+        // The holder ends between two polls: fn runs under the lock (its own label), released after it.
+        let polls = 0;
+        const seen = await withRepoImportLockAsync(root, 'import:issue-8', () => JSON.parse(readFileSync(factoryImportLockPath(root), 'utf8')).run, {
+            deps: deps(102, alive), now: NOW, sleep: async () => { if (++polls === 2)
+                holder.release(); },
+        });
+        expect(seen).toBe('import:issue-8');
+        expect(polls).toBe(2);
+        expect(existsSync(factoryImportLockPath(root))).toBe(false);
+    });
+    it('review-487 L-4: a hold of this process is never taken over by a second acquisition (it refuses); a nested section given the hold runs inside it', () => {
+        const alive = new Set([101]);
+        const scanLike = acquireImportLock(root, 'scan', NOW, deps(101, alive));
+        expect(() => withRepoImportLock(root, 'import:issue-7', () => 'ran unlocked', { deps: deps(101, alive), now: NOW })).toThrow(/this process already holds the repository import lock/);
+        expect(JSON.parse(readFileSync(factoryImportLockPath(root), 'utf8'))).toMatchObject({ run: 'scan' });
+        expect(withRepoImportLock(root, 'import:issue-7', () => JSON.parse(readFileSync(factoryImportLockPath(root), 'utf8')).run, { held: scanLike })).toBe('scan');
+        // Still held by the caller (it releases), then free for the next.
+        expect(existsSync(factoryImportLockPath(root))).toBe(true);
+        scanLike.release();
+        expect(withRepoImportLock(root, 'import:issue-7', () => 'locked', { deps: deps(101, alive), now: NOW })).toBe('locked');
+        expect(existsSync(factoryImportLockPath(root))).toBe(false);
+    });
+    it('review-487 L-6: two processes contend for import.lock for real: only one is inside at a time, both finish, no lock is left', async () => {
+        // Each child enters the import section 4 times, writing enter/leave lines around a short hold.
+        const script = join(dir, 'contend.ts');
+        const log = join(dir, 'contend.log');
+        const stateUrl = pathToFileURL(resolve(__dirname, '..', 'state.ts')).href;
+        writeFileSync(script, [
+            'import { appendFileSync, existsSync, writeFileSync } from "node:fs";',
+            `import { withRepoImportLock } from ${JSON.stringify(stateUrl)};`,
+            'const [root, log, tag] = process.argv.slice(2);',
+            // A start barrier (bounded), so both contend at once however slowly each process starts on a loaded runner.
+            'writeFileSync(`${log}.ready-${tag}`, "");',
+            'const until = Date.now() + 120_000;',
+            'while (!(existsSync(`${log}.ready-a`) && existsSync(`${log}.ready-b`)) && Date.now() < until) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);',
+            'for (let i = 0; i < 4; i++) {',
+            '  withRepoImportLock(root, `import:${tag}`, () => {',
+            '    appendFileSync(log, `enter ${tag}\\n`);',
+            '    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 150);',
+            '    appendFileSync(log, `leave ${tag}\\n`);',
+            '  });',
+            '}',
+        ].join('\n'));
+        const tsx = resolve(__dirname, '..', '..', '..', '..', 'node_modules', 'tsx', 'dist', 'cli.mjs');
+        await Promise.all(['a', 'b'].map((tag) => new Promise((res, rej) => {
+            const p = spawn(process.execPath, [tsx, script, root, log, tag], { stdio: ['ignore', 'pipe', 'pipe'] });
+            let err = '';
+            p.stderr.on('data', (d) => { err += d.toString(); });
+            p.on('close', (code) => (code === 0 ? res() : rej(new Error(`child ${tag} exit ${code}: ${err}`))));
+        })));
+        const lines = readFileSync(log, 'utf8').trim().split('\n');
+        expect(lines).toHaveLength(16);
+        // Strictly alternating enter X / leave X: never two sections at once.
+        for (let i = 0; i < lines.length; i += 2) {
+            expect(lines[i]).toMatch(/^enter [ab]$/);
+            expect(lines[i + 1]).toBe(lines[i].replace('enter', 'leave'));
+        }
+        expect(existsSync(factoryImportLockPath(root))).toBe(false);
+    }, 240_000);
 });
 describe('credit reservation (factory.run.maxInFlightCredits)', () => {
     const ledger = () => join(dir, 'ledger');

@@ -109,7 +109,7 @@ import { GATE_INSTALL_GATE, IMPORT_REFUSED_GATE, LAYOUT_UNSUPPORTED_GATE, PRIVAT
 import { lockfileUnchanged, PrivateRepoTampered, PrivateStoreError, userRepoGuardSnapshot } from './private-store.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted } from './plan-rules.js';
-import { acquireFactoryOwner, acquireFactoryRepoOwner, createFactoryState, defaultOwnerDeps, EXIT_BUSY, factoryCancelRequested, forgeResumeProblem, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, healRunKey, moveTo, overwriteFactoryState, ownerHolding, parseFactoryState, readFactoryState, reviewerName, runLabel, runSlug, setGate, shipVerdictHash, TERMINAL_FACTORY_PHASES, factoryBranch, trackerStageOf, updateFactoryState, runRemote, verifyFactoryIntegrity, unreadableOwnerMessage, describeOwner, FactoryBusyError, FactoryTamperHoldError, ownerRecord, acquireRunSlot, claimOwner, factorySlotPath, withRepoImportLock, } from './state.js';
+import { acquireFactoryOwner, acquireFactoryRepoOwner, createFactoryState, defaultOwnerDeps, EXIT_BUSY, factoryCancelRequested, forgeResumeProblem, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, healRunKey, moveTo, overwriteFactoryState, ownerHolding, parseFactoryState, readFactoryState, reviewerName, runLabel, runSlug, setGate, shipVerdictHash, TERMINAL_FACTORY_PHASES, factoryBranch, trackerStageOf, updateFactoryState, runRemote, verifyFactoryIntegrity, unreadableOwnerMessage, describeOwner, FactoryBusyError, FactoryTamperHoldError, ownerRecord, acquireRunSlot, claimOwner, factorySlotPath, withRepoImportLock, withRepoImportLockAsync, } from './state.js';
 import { PARALLEL_LAYOUT_GATE, readTrustedBaseLayerAtRef, reserveLaneCredits } from './parallel.js';
 import { claimRepoKey } from './claims.js';
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
@@ -124,6 +124,8 @@ export const MAX_MERGE_BOUNCES = 2; /** Lane waits are sliced so the cancel flag
 export const DEFAULT_POLL_MS = 5_000;
 /** The engine cancels a lane this long past its own timeout (copilot_run enforces the timeout first). */
 const LANE_GRACE_MS = 60_000;
+/** The bound of a compare's `git ls-remote` of the base or another run's branch (review-487 HIGH-1); past it the run stops busy. */
+const LS_REMOTE_TIMEOUT_MS = 60_000;
 /** Re-reads of a lagging Azure DevOps PR head (an ancestor of the engine's push) before the step stops as pending. */
 export const ADO_HEAD_LAG_POLLS = 12;
 /**
@@ -727,7 +729,15 @@ class FactoryEngine {
         const p = this.priv;
         if (!p || this.runLock)
             return;
-        this.runLock = claimOwner(p.layout.lock, this.iso(), this.o.owner ?? defaultOwnerDeps(), (prior) => `the run dir ${p.layout.runDir} is held by another engine (${describeOwner(prior)})`, { run: String(this.key) });
+        try {
+            this.runLock = claimOwner(p.layout.lock, this.iso(), this.o.owner ?? defaultOwnerDeps(), (prior) => `the run dir ${p.layout.runDir} is held by another engine (${describeOwner(prior)})`, { run: String(this.key) });
+        }
+        catch (error) {
+            // Review-487 L-2: an unreadable run.lock names the command that frees it (a dead or unreadable one, never a live holder).
+            if (error instanceof FactoryBusyError && error.message === unreadableOwnerMessage(p.layout.lock))
+                throw new FactoryBusyError(unreadableOwnerMessage(p.layout.lock, typeof this.key === 'number' ? `omg factory run release ${this.key}` : undefined));
+            throw error;
+        }
     }
     releaseRunLock() {
         this.runLock?.release();
@@ -829,8 +839,28 @@ class FactoryEngine {
             return this.userRepoQuiet(() => snapshotRepo(this.exec, this.o.root, this.stateRootRel));
         }
         catch (error) {
+            if (error instanceof FactoryBusyError)
+                throw error;
             throw new FactoryStepError(`the snapshot of your repository before ${what} failed: ${errText(error)}`);
         }
+    }
+    /**
+     * Review-487 M-3: a parallel run waits for the repository import lock with
+     * awaited polls (signals and a forwarded stop run meanwhile), then runs the
+     * synchronous `fn` inside that hold: every import-lock section of `fn`
+     * (fetchBase, userRepoQuiet, the private store's withImportLock, the
+     * compare's ls-remote) runs in it without a blocking wait. A signal that
+     * arrives during the wait (not one already being handled, as by a cancel)
+     * ends it busy: nothing ran under the lock, and a rerun continues. Not
+     * parallel, or `needed` false (an enforced lane's compare reads only the
+     * private repository): `fn` as is.
+     */
+    async importReady(fn, needed = true) {
+        if (!this.o.parallel || !needed)
+            return fn();
+        const interrupted = this.o.interrupted ?? (() => false);
+        const already = interrupted();
+        return withRepoImportLockAsync(this.o.root, `import:${runSlug(this.key)}`, fn, { stopped: () => !already && interrupted() });
     }
     /** `fn` under the repository import lock in a parallel run (no other run's import is half done), else as is. */
     userRepoQuiet(fn) {
@@ -845,12 +875,19 @@ class FactoryEngine {
         if (!before)
             return [];
         try {
-            const after = this.userRepoQuiet(() => snapshotRepo(this.exec, this.o.root, this.stateRootRel, before));
-            const own = engineRef && after.refs[engineRef.name] === engineRef.sha;
-            const was = own ? { ...before, refs: { ...before.refs, [engineRef.name]: engineRef.sha } } : before;
-            return compareSnapshots(was, after, {}, { fetchedRef: this.fetchedRef }).map((p) => `your repository: ${p}`);
+            // B2: the snapshot and the compare (its ls-remote reads: otherRunsTransport) under one hold of the import lock.
+            return this.userRepoQuiet(() => {
+                const after = snapshotRepo(this.exec, this.o.root, this.stateRootRel, before);
+                const own = engineRef && after.refs[engineRef.name] === engineRef.sha;
+                const was = own ? { ...before, refs: { ...before.refs, [engineRef.name]: engineRef.sha } } : before;
+                return compareSnapshots(was, after, {}, { fetchedRef: this.fetchedRef }).map((p) => `your repository: ${p}`);
+            });
         }
         catch (error) {
+            // Review-487 M-1: a busy (or unreadable) import lock, or an unreadable remote, is not a change: the run stops
+            // busy (exit 6) with the holder named, the baseline is kept, and a rerun compares again.
+            if (error instanceof FactoryBusyError)
+                throw error;
             return [`the snapshot of your repository failed: ${errText(error)}`];
         }
     }
@@ -990,13 +1027,13 @@ class FactoryEngine {
      * layout, run dir and record sealed together. False when it parked: the
      * run has not started a lane, so the shared layout is one config change away.
      */
-    setupPrivate(baseSha) {
+    async setupPrivate(baseSha) {
         let made;
         try {
-            made = PrivateRun.create({
+            made = await this.importReady(() => PrivateRun.create({
                 root: this.o.root, omcRoot: getOmcRoot(this.o.root), slug: runSlug(this.key), repoUrl: this.state.repoUrl, userConfig: this.runUserConfig(),
                 ledgerDir: this.o.ledgerDir ?? defaultLedgerDir(), exec: this.o.exec, warn: (m) => this.o.warn?.(m),
-            }, baseSha);
+            }, baseSha));
         }
         catch (error) {
             if (!(error instanceof PrivateStoreError))
@@ -1017,14 +1054,14 @@ class FactoryEngine {
      * Import engine commits (the private layout) around `body`, the caller's
      * checks and push (private-run.ts publishImports): false when it parked.
      */
-    privateImports(p, steps, what, body) {
+    async privateImports(p, steps, what, body) {
         // The publish checks' own list (lane-protected paths and the configured extras); an unreadable list parks (review-483 L2).
         const protectedList = this.laneProtectedPaths();
         if (protectedList.problem) {
             this.protectedPathsUnread(what, protectedList.problem);
             return false;
         }
-        const out = p.publishImports({
+        const out = await this.importReady(() => p.publishImports({
             steps, slug: runSlug(this.key), what, resume: this.resume, cancel: cancelCommand(this.key), extraProtected: protectedList.paths,
             nextImport: () => {
                 const n = this.state.privateStore.nextImport;
@@ -1035,7 +1072,7 @@ class FactoryEngine {
             setBaseline: (g) => this.ledger.setUserGuard(g),
             body,
             pushed: (v) => v.pushed,
-        });
+        }));
         if (!out.ok) {
             this.gate(out.park.name, out.park.reason);
             return false;
@@ -1144,13 +1181,13 @@ class FactoryEngine {
      * Any other head is the caller's to judge. GitHub reads once, as before.
      */
     async settledPr(pr, head, read) {
-        let v = read();
+        let v = await read();
         if (!this.forge)
             return v;
         const lagging = () => typeof v.headRefOid === 'string' && v.headRefOid !== head && this.isAncestor(v.headRefOid, head);
         for (let i = 0; i < ADO_HEAD_LAG_POLLS && lagging(); i++) {
             await (this.o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))))(this.o.pollMs ?? DEFAULT_POLL_MS);
-            v = read();
+            v = await read();
         }
         if (lagging())
             throw new FactoryStepError(`pending: Azure DevOps still reports PR #${pr} at ${String(v.headRefOid).slice(0, 12)}, an ancestor of the engine's push ${head.slice(0, 12)} (the forge is lagging); rerun ${this.resume}`);
@@ -1352,7 +1389,7 @@ class FactoryEngine {
                     this.holdRunLock();
                     // Run start of a private-layout run: leftover trash and this run's stale import refs (a crash after an import).
                     try {
-                        priv.resumeSweep(runSlug(this.key));
+                        await this.importReady(() => priv.resumeSweep(runSlug(this.key)));
                     }
                     catch (error) {
                         this.o.warn?.(`omg factory run: the private store sweep failed: ${errText(error)}`);
@@ -1881,7 +1918,7 @@ class FactoryEngine {
             return this.healIntake();
         if (this.forge?.kind === 'local') {
             // The backlog is read at the synced base commit; skipped malformed items are reported once.
-            this.fetchBase();
+            await this.importReady(() => this.fetchBase());
             try {
                 this.adoIntake(this.forge);
             }
@@ -1920,7 +1957,7 @@ class FactoryEngine {
                 this.gate('needs-plan', `omg-plan ${JSON.stringify(s.planLink)} is not a repo-relative path`);
                 return;
             }
-            const baseSha = this.fetchBase();
+            const baseSha = await this.importReady(() => this.fetchBase());
             const text = readBaseFile(this.exec, this.o.root, baseSha, s.planLink);
             if (text === null || !text.trim()) {
                 this.gate('needs-plan', `omg-plan ${s.planLink} is missing or empty on ${s.base} at ${baseSha.slice(0, 12)}`);
@@ -1999,7 +2036,7 @@ class FactoryEngine {
         }
         if (await this.codingAgentImplement())
             return;
-        const baseSha = this.fetchBase();
+        const baseSha = await this.importReady(() => this.fetchBase());
         this.save((s) => ({ ...s, baseSha }));
         if (undecided && !this.resolveLayout(baseSha))
             return;
@@ -2007,7 +2044,7 @@ class FactoryEngine {
         if (undecided && this.o.parallel && this.layoutChoice !== 'private') {
             return this.gate(PARALLEL_LAYOUT_GATE, `this run started as one of several parallel runs (factory.run.maxConcurrent ${this.o.parallel.maxConcurrent}), but factory.run.layout resolved to "shared" at the base ${baseSha.slice(0, 12)}; parallel runs need factory.run.layout: "private". No lane has started: set factory.run.layout "private" in your user config, or factory.run.maxConcurrent 1, then rerun ${this.resume}`);
         }
-        if (undecided && this.layoutChoice === 'private' && !this.setupPrivate(baseSha))
+        if (undecided && this.layoutChoice === 'private' && !(await this.setupPrivate(baseSha)))
             return;
         const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(this.readAt(baseSha), pathsInText(this.state.plan?.text ?? ''))), 'implement');
         if (out.kind === 'done')
@@ -2327,7 +2364,7 @@ class FactoryEngine {
                 this.gate(IMPORT_REFUSED_GATE, `the engine has no record of the parents of ${cand.slice(0, 12)}, so it is not imported or pushed; ${cancelCommand(this.key)} and start the item again`);
                 return;
             }
-            const imported = this.privateImports(priv, [{ sha: cand, parents, start: parents.length > 1 ? parents[1] : parents[0] }], 'the lane commit', push);
+            const imported = await this.privateImports(priv, [{ sha: cand, parents, start: parents.length > 1 ? parents[1] : parents[0] }], 'the lane commit', push);
             if (late)
                 return void await this.recheckPark(late);
             if (!imported)
@@ -2569,6 +2606,10 @@ class FactoryEngine {
         return this.forge ? this.forge.reviews.prHead(pr) : this.gh((exec, cwd) => ghPrHeadState(exec, pr, cwd));
     }
     /** `gh pr view <pr> --json MERGE_VIEW_FIELDS`, or the forge's viewPr (ADO: base/head = lastMergeTarget/SourceCommit). */
+    /** prView; on the local forge (its base sync takes the import lock) after an awaited wait for that lock (importReady). */
+    prViewReady(pr) {
+        return this.forge?.kind === 'local' ? this.importReady(() => this.prView(pr)) : this.prView(pr);
+    }
     prView(pr) {
         if (!this.forge)
             return this.gh((exec, cwd) => ghMergeView(exec, pr, cwd));
@@ -2836,7 +2877,7 @@ class FactoryEngine {
         const { pr, head } = s;
         if (!pr || !head)
             throw new FactoryStepError('prepare needs a published head and PR');
-        const view = await this.settledPr(pr, head, () => this.prView(pr));
+        const view = await this.settledPr(pr, head, () => this.prViewReady(pr));
         if (this.prGone(view))
             return;
         const ship = this.readShip(pr);
@@ -2901,10 +2942,10 @@ class FactoryEngine {
         const branch = checkoutBranch(this.key);
         if (priv) {
             // The private checkout has no remote: the base is fetched in the user's repository, checked to be the forge's, then brought in by sha.
-            const fetchedBase = this.fetchBase();
+            const fetchedBase = await this.importReady(() => this.fetchBase());
             if (fetchedBase !== view.baseRefOid)
                 throw new FactoryStepError(`${runRemote(s)}/${s.base} is ${fetchedBase.slice(0, 12)}, but the forge reports ${s.base} at ${view.baseRefOid.slice(0, 12)}; refusing (fail closed; rerun ${this.resume} if ${s.base} just moved)`);
-            priv.ensureCommit(view.baseRefOid);
+            await this.importReady(() => priv.ensureCommit(view.baseRefOid));
         }
         // `worktree add -B` writes through a symbolic ref: a checkout branch a lane rewrote as `ref: refs/heads/main` would move main.
         const common = priv ? priv.repo.gitDir : resolve(this.o.root, this.run(['rev-parse', '--git-common-dir']).trim());
@@ -2922,7 +2963,7 @@ class FactoryEngine {
             throw new FactoryStepError(`the pre-prepare snapshot failed: ${errText(error)}`);
         }
         // The private layout: your repository too, compared after prepare if a check ran without the OS sandbox (review-483 M3).
-        const userBefore = this.userSnap('prepare');
+        const userBefore = await this.importReady(() => this.userSnap('prepare'));
         mkdirSync(dirname(path), { recursive: true });
         if (priv) {
             priv.addWorktree(path, head, branch);
@@ -2971,7 +3012,7 @@ class FactoryEngine {
                 return;
             }
             if (ran.modes.has('ack') || ran.modes.has('unsandboxed')) {
-                const mine = this.userRepoProblems(userBefore, { name: `refs/remotes/${runRemote(s)}/${s.base}`, sha: view.baseRefOid });
+                const mine = await this.importReady(() => this.userRepoProblems(userBefore, { name: `refs/remotes/${runRemote(s)}/${s.base}`, sha: view.baseRefOid }));
                 if (mine.length > 0) {
                     // As on the shared layout: your repository's changes are quarantined and hold (review-483 I.2).
                     const quarantined = this.userQuarantine(userBefore, 'prepare-tampered', mine);
@@ -3018,7 +3059,7 @@ class FactoryEngine {
                 const steps = this.housekeepingSteps(priv, head, checkoutHead, result.housekeepingCommits, view.baseRefOid);
                 if (!Array.isArray(steps))
                     return this.gate(steps.name, steps.reason);
-                if (!this.privateImports(priv, steps, 'prepare\'s commit', () => ({ parked: false, pushed: false })))
+                if (!(await this.privateImports(priv, steps, 'prepare\'s commit', () => ({ parked: false, pushed: false }))))
                     return;
             }
             this.ciFailed({ source: 'prepare', startSha: checkoutHead, checks: [`prepare ${failed.name}`], tests: [], detail: failed.detail ?? '' }, `prepare ${failed.name} failed at ${checkoutHead.slice(0, 12)}`);
@@ -3403,7 +3444,7 @@ class FactoryEngine {
                 const steps = this.housekeepingSteps(priv, reviewed, next, housekeeping, baseSha);
                 if (!Array.isArray(steps))
                     return this.gate(steps.name, steps.reason);
-                const imported = this.privateImports(priv, steps, 'prepare\'s commit', push);
+                const imported = await this.privateImports(priv, steps, 'prepare\'s commit', push);
                 if (late)
                     return void await this.recheckPark(late);
                 if (!imported)
@@ -3460,8 +3501,7 @@ class FactoryEngine {
         // The private layout: the engine's merge is made in the private repository (checked first; both sides brought in by sha).
         const priv = this.privateRun();
         if (priv) {
-            priv.ensureCommit(head);
-            priv.ensureCommit(baseSha);
+            await this.importReady(() => { priv.ensureCommit(head); priv.ensureCommit(baseSha); });
             priv.assert();
         }
         try {
@@ -3642,7 +3682,7 @@ class FactoryEngine {
         }
         const linkBefore = checkoutGitLink(checkout).hash;
         // The private layout: your repository too, compared after the gate if it ran without the OS sandbox (review-483 M3).
-        const userBefore = this.userSnap('the local gate');
+        const userBefore = await this.importReady(() => this.userSnap('the local gate'));
         let out;
         if (gates.mode === 'unsandboxed') {
             this.noteUnsandboxedGates(head, 'the local gate');
@@ -3704,7 +3744,7 @@ class FactoryEngine {
         const record = out.record;
         this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `local gate ${record.state} on ${head.slice(0, 12)} (exit ${record.exitCode}, ${record.sandbox === 'enforced' ? `in the OS sandbox${record.sandboxNote ? ` (${record.sandboxNote})` : ''}` : `unsandboxed: ${record.sandbox}`})` }] }));
         if (record.sandbox !== 'enforced') {
-            const mine = this.userRepoProblems(userBefore);
+            const mine = await this.importReady(() => this.userRepoProblems(userBefore));
             if (mine.length > 0) {
                 // As on the shared layout: your repository's changes are quarantined and hold (review-483 I.2).
                 const quarantined = this.userQuarantine(userBefore, 'lane-tampered', mine);
@@ -3757,7 +3797,7 @@ class FactoryEngine {
         const { pr, head } = this.state;
         if (!pr || !head)
             throw new FactoryStepError('gates needs a published head and PR');
-        const view = this.prView(pr);
+        const view = await this.prViewReady(pr);
         if (this.prGone(view))
             return;
         const ship = this.readShip(pr);
@@ -3859,7 +3899,7 @@ class FactoryEngine {
         if (!pr || !head)
             throw new FactoryStepError('merge needs a published head and PR');
         this.codingAgentHandOff();
-        const view = await this.settledPr(pr, head, () => this.prView(pr));
+        const view = await this.settledPr(pr, head, () => this.prViewReady(pr));
         if (this.prGone(view))
             return;
         if (view.headRefOid !== head) {
@@ -3932,9 +3972,12 @@ class FactoryEngine {
         const branch = name.slice(prefix.length);
         if (branch === s.branch && s.head !== undefined && sha === s.head)
             return true;
-        if (this.o.parallel && this.otherRunsTransport(branch, sha))
+        const local = s.remote === LOCAL_REMOTE && this.o.forge?.config.kind === 'local';
+        // Review-487 HIGH-1 / M-2: the local forge keeps its strict rules below (the base at the synced local base only;
+        // another branch at the mirror's ref); GitHub and Azure DevOps excuse another run's transport only at the remote's sha.
+        if (this.o.parallel && !local && this.otherRunsTransport(branch, sha))
             return true;
-        if (s.remote !== LOCAL_REMOTE || this.o.forge?.config.kind !== 'local')
+        if (!local)
             return false;
         // The base: only the local base sha the engine synced (or, before a sync in this invocation, the local base itself),
         // never whatever the mirror holds now.
@@ -3950,29 +3993,42 @@ class FactoryEngine {
         }
     };
     /**
-     * B2, parallel runs only: a remote-tracking ref another run's engine moves
-     * through its own fetch or push under the import lock (`branch` relative
-     * to the run's remote): the base (another run's base fetch: any sha, since
-     * GitHub's base sha cannot be read here without a fetch; each engine reads
-     * the base only from its own fetch under the lock, so a planted value is
-     * overwritten before use), or another run's factory branch at a head that
-     * run's own state records. Never this run's own refs (its own rules apply).
+     * B2, parallel runs on GitHub / Azure DevOps only: a remote-tracking ref
+     * another run's engine moved through its own fetch or push (`branch`
+     * relative to the run's remote): the base or another run's factory branch,
+     * excused only at exactly the sha the remote holds for it NOW, read with
+     * `git ls-remote` under the import lock at compare time (review-487 HIGH-1,
+     * M-2: never any sha, never a lane-writable state file). Never this run's
+     * own branch (its own rule applies). The remote unreadable: busy (exit 6),
+     * never excused and never a tamper park; a rerun compares again.
      */
     otherRunsTransport(branch, sha) {
         const s = this.state;
-        if (branch === s.base)
-            return true;
-        const m = /^factory\/(?:issue-(\d+)|(heal-[0-9a-f]{8}))$/.exec(branch);
-        if (!m || branch === s.branch)
+        if (branch !== s.base && (branch === s.branch || !/^factory\/(?:issue-\d+|heal-[0-9a-f]{8})$/.test(branch)))
             return false;
-        const key = m[1] !== undefined ? Number(m[1]) : m[2];
-        try {
-            const other = readFactoryState(this.o.root, key);
-            return other !== null && [other.head, other.pendingHead, other.prepared?.head].includes(sha);
-        }
-        catch {
-            return false;
-        }
+        return this.remoteHeadNow(branch) === sha;
+    }
+    /** The sha `git ls-remote <remote> refs/heads/<branch>` reports now (null: no such branch), under the import lock; FactoryBusyError when it cannot be read. */
+    remoteHeadNow(branch) {
+        const remote = runRemote(this.state);
+        const busy = (why) => new FactoryBusyError(`the remote ${remote} could not be read (${why}), so a change of refs/remotes/${remote}/${branch} in your repository by another run's fetch or push cannot be told from a change by a lane; nothing was judged: rerun ${this.resume} to compare again`);
+        return withRepoImportLock(this.o.root, `snapshot:${this.key}`, () => {
+            // The remote must still be the run's repository before git talks to it (as before the engine's own fetch).
+            const mismatch = remoteRepoMismatch(this.exec, this.o.root, remote, this.state.repoUrl);
+            if (mismatch)
+                return null;
+            let res;
+            try {
+                res = this.exec('git', ['ls-remote', remote, `refs/heads/${branch}`], { cwd: this.o.root, env: TRUSTED_READ_ENV, timeoutMs: LS_REMOTE_TIMEOUT_MS });
+            }
+            catch (error) {
+                throw busy(errText(error));
+            }
+            if (res.status !== 0)
+                throw busy(`git ls-remote ${remote} refs/heads/${branch} exit ${res.status}: ${res.stderr.trim().split('\n')[0] ?? ''}`);
+            const head = res.stdout.trim().split(/\s+/)[0] ?? '';
+            return HEX40.test(head) ? head : null;
+        });
     }
     /** The lane's comparison against its before-snapshot: its own branch and worktree entry may appear. */
     laneProblems(kind, before, result, startRef, laneId) {
@@ -3985,6 +4041,8 @@ class FactoryEngine {
             return { after, problems: [...compareSnapshots(before, after, allowed, { fetchedRef: this.fetchedRef, ...(newWorktree ? { newWorktree } : {}) }), ...user] };
         }
         catch (error) {
+            if (error instanceof FactoryBusyError)
+                throw error;
             return { problems: [`the post-lane snapshot failed: ${errText(error)}`, ...user] };
         }
     }
@@ -4200,10 +4258,21 @@ class FactoryEngine {
             problems.push(proc(`lane ${laneId}'s process tree could not be checked (${errText(error)})`));
         }
         // Your repository again after the kill (the private layout, a lane that ran as you): a change made in between counts too.
-        if (this.privateRun() && userBefore)
-            for (const p of this.userRepoProblems(userBefore))
+        if (this.privateRun() && userBefore) {
+            let again;
+            try {
+                again = await this.importReady(() => this.userRepoProblems(userBefore));
+            }
+            catch (error) {
+                // A change was found already, so this parks anyway; your repository not compared again counts there (holds).
+                if (!(error instanceof FactoryBusyError))
+                    throw error;
+                again = [proc(`your repository could not be compared again after the kill (${errText(error)})`)];
+            }
+            for (const p of again)
                 if (!problems.includes(p))
                     problems.push(p);
+        }
         if (!after)
             return { problems, note };
         try {
@@ -4250,6 +4319,9 @@ class FactoryEngine {
             found = compareSnapshots(own ? { ...r.snapshot, refs: { ...r.snapshot.refs, [tracking]: now.refs[tracking] } } : r.snapshot, now, {}, { fetchedRef: this.fetchedRef });
         }
         catch (error) {
+            // Review-487 M-1: busy (import lock, an unreadable remote) judges nothing; the recheck baseline stays for the rerun.
+            if (error instanceof FactoryBusyError)
+                throw error;
             found = [`the snapshot failed: ${errText(error)}`];
         }
         if (found.length === 0)
@@ -4362,10 +4434,13 @@ class FactoryEngine {
                 });
             }
             catch (error) {
+                // Review-487 M-1: busy is not a change; the lane stays `running`, so the rerun settles and compares it again.
+                if (error instanceof FactoryBusyError)
+                    throw error;
                 problems = [`the snapshot failed: ${errText(error)}`];
             }
             // The private layout: a lost lane not confirmed to have run in the enforced sandbox is compared with your repository too.
-            problems.push(...this.laneUserProblems(lane.id, confirmedSandbox ?? lane.sandbox));
+            problems.push(...await this.importReady(() => this.laneUserProblems(lane.id, confirmedSandbox ?? lane.sandbox), !laneSandboxEnforced(confirmedSandbox ?? lane.sandbox)));
         }
         const note = `${reason}${childNote}`;
         this.save((x) => ({
@@ -4421,7 +4496,7 @@ class FactoryEngine {
             if (isTerminalLaneState(c.result.state)) {
                 usage = usageOf(c.result);
                 settleHeal(usage.credits);
-                const { problems, after } = this.laneProblems(kind, before, c.result, startRef, laneId);
+                const { problems, after } = await this.importReady(() => this.laneProblems(kind, before, c.result, startRef, laneId), !laneSandboxEnforced(c.result.sandbox));
                 tampered = problems.length > 0;
                 // Review-483b L-c: the private layout routes a change found in YOUR repository through laneTampered (quarantine + hold), as runLane does.
                 if (this.privateRun() && problems.some(isUserRepoProblem))
@@ -4433,6 +4508,9 @@ class FactoryEngine {
             }
         }
         catch (error) {
+            // Review-487 M-1: a busy compare keeps the lane `running` with its baselines; the rerun settles and compares it.
+            if (error instanceof FactoryBusyError)
+                throw error;
             note = `cancelled; the cancel failed (${errText(error)}), so the tamper check was skipped`;
         }
         this.ledger.dropBaseline(laneId);
@@ -4491,7 +4569,7 @@ class FactoryEngine {
             throw new FactoryStepError(`the pre-lane snapshot failed: ${errText(error)}`);
         }
         // The private layout: your repository too, compared after the lane if it ran without the enforced sandbox (review-483 M3).
-        const userBefore = this.userSnap(`the ${kind} lane`);
+        const userBefore = await this.importReady(() => this.userSnap(`the ${kind} lane`));
         // A ci-heal lane also passes the heal caps, reserved last so nothing above can strand the reservation;
         // without the heal inputs it does not start.
         let cap = runCap;
@@ -4615,7 +4693,18 @@ class FactoryEngine {
             this.save((x) => ({ ...x, lostStreak: { ...x.lostStreak, [kind]: 0 } }));
         this.progress.emit(`lane-${kind}`, status === 'completed' ? 'ok' : 'fail', `lane ${id} ${result.state}, ${usage.credits.toFixed(2)} AI credits`, { ...this.fields(), lane: id, job: remoteId });
         // Mandatory tamper check around every lane, whatever its outcome.
-        const { problems, after } = this.laneProblems(kind, before, result, startRef, id);
+        let checked;
+        try {
+            checked = await this.importReady(() => this.laneProblems(kind, before, result, startRef, id), !laneSandboxEnforced(result.sandbox));
+        }
+        catch (error) {
+            // Review-487 M-1: the compare could not run (the import lock busy, the remote unreadable): nothing is judged.
+            // The lane goes back to `running` with its baselines, so the rerun settles it (settleLost) and compares again.
+            if (error instanceof FactoryBusyError)
+                this.updateLane(id, { status: 'running', note: `its tamper check did not run: ${errText(error)}` });
+            throw error;
+        }
+        const { problems, after } = checked;
         const userBase = this.laneUserBefore(id, result.sandbox);
         this.ledger.dropBaseline(id);
         if (problems.length > 0 || !after) {
@@ -4755,7 +4844,7 @@ class FactoryEngine {
         const issue = this.o.issue;
         const repo = this.codingAgentRepo();
         const cfg = this.codingAgentSettings();
-        const baseSha = this.fetchBase();
+        const baseSha = await this.importReady(() => this.fetchBase());
         this.save((x) => ({ ...x, baseSha }));
         // Before the first assignment: the private layout from either trusted layer refuses the agent (review-483 M2).
         const layoutPark = this.state.codingAgent ? null : this.agentLayoutPark(baseSha);
@@ -4966,7 +5055,7 @@ class FactoryEngine {
         if (await this.recheckFailed('before the coding agent fetch'))
             return;
         // The configured base's tip now: the adopted range starts where the head left it (human commits on a moved base are not the agent's).
-        const baseTip = this.fetchBase();
+        const baseTip = await this.importReady(() => this.fetchBase());
         const mismatch = remoteRepoMismatch(this.exec, this.o.root, runRemote(s), s.repoUrl);
         if (mismatch)
             throw new FactoryStepError(`refusing to fetch: ${mismatch}`);
@@ -4986,6 +5075,8 @@ class FactoryEngine {
             problems = compareSnapshots(before, after, {}, { fetchedRef: this.fetchedRef });
         }
         catch (error) {
+            if (error instanceof FactoryBusyError)
+                throw error;
             problems = [`the post-fetch snapshot failed: ${errText(error)}`];
         }
         if (problems.length > 0 || !after) {
@@ -5478,7 +5569,9 @@ function dryLayoutNote(o, exec, local) {
         // A base file that cannot be read counts as unset here without a warning (the dry run's output stays as it was).
         // The gh-only path (no forge config: the engine's pre-forge GitHub flow) keeps its exact git calls and reads the user layer only.
         const own = resolveRunLayout(user, undefined);
-        const { layout, source } = own.source !== 'default' || !exec ? own : resolveRunLayout(undefined, readTrustedBaseLayerAtRef(exec, o.root, o.base, local ? `refs/heads/${o.base}` : `refs/remotes/origin/${o.base}`, user));
+        // Review-487 L-1: only the local forge's base branch (its trusted base); never a remote-tracking ref a lane could have
+        // moved (a dry run fetches nothing and holds no lock), so on GitHub / Azure DevOps the note reads the user layer only.
+        const { layout, source } = own.source !== 'default' || !exec || !local ? own : resolveRunLayout(undefined, readTrustedBaseLayerAtRef(exec, o.root, o.base, `refs/heads/${o.base}`, user));
         return layout === 'private' ? `, in the private layout (factory.run.layout "private" from ${source === 'user config' ? 'the user config' : source}: its own git repository under the work root)` : '';
     }
     catch (error) {

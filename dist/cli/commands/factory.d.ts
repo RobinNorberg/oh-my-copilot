@@ -65,14 +65,16 @@ export interface FactoryRunDeps {
     processes?: LaneProcessOps;
     /**
      * B2: factory.run.maxConcurrent / maxInFlightCredits and the layout from
-     * the trusted layers (the user config; the `.copilot/omg.jsonc` at the
-     * base's local tracking ref when the base is trusted; no fetch). Omitted =
-     * one engine per checkout and no credit reservation, as before.
+     * the trusted layers (the user config; the `.copilot/omg.jsonc` committed
+     * on a trusted base, read only after this CLI's own locked fetch, at the
+     * fetched sha: review-487 L-1). `kind`: the forge kind, read only when
+     * needed. Undefined (or omitted) = one engine per checkout and no credit
+     * reservation, exactly as before: the default path reads no git.
      */
-    parallel?: (root: string, base: string, kind: ForgeKind | undefined) => {
+    parallel?: (root: string, base: string, kind: () => ForgeKind | undefined) => {
         settings: ParallelSettings;
         layout: RunLayoutChoice;
-    };
+    } | undefined;
     /** The `--parallel` children (default: a child `omg factory run --next --json` of this CLI entry, poll's auto-start). */
     parallelChild?: (o: {
         root: string;
@@ -80,6 +82,11 @@ export interface FactoryRunDeps {
         signals: (forward: (signal: NodeJS.Signals) => void) => () => void;
     }) => Promise<ParallelChildOutcome>;
 }
+/** defaultParallelLayers for a given trusted user config and guarded `exec` (exported for its tests). */
+export declare function parallelLayers(root: string, base: string, kind: () => ForgeKind | undefined, user: unknown, exec: Exec): {
+    settings: ParallelSettings;
+    layout: RunLayoutChoice;
+} | undefined;
 export declare const defaultFactoryRunDeps: FactoryRunDeps;
 /**
  * The `omg factory run --json` documents on stdout. `omg factory poll`'s

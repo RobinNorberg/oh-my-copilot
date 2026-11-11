@@ -99516,8 +99516,8 @@ function exportPath(target, condition) {
   if (typeof cond === "string") return cond;
   return typeof cond?.default === "string" ? cond.default : void 0;
 }
-function npmRootG(env2, spawnSync21) {
-  const res = process.platform === "win32" ? spawnSync21("npm root -g", { env: env2, encoding: "utf8", timeout: 15e3, windowsHide: true, shell: true }) : spawnSync21("npm", ["root", "-g"], { env: env2, encoding: "utf8", timeout: 15e3 });
+function npmRootG(env2, spawnSync22) {
+  const res = process.platform === "win32" ? spawnSync22("npm root -g", { env: env2, encoding: "utf8", timeout: 15e3, windowsHide: true, shell: true }) : spawnSync22("npm", ["root", "-g"], { env: env2, encoding: "utf8", timeout: 15e3 });
   const out = String(res.stdout ?? "").trim();
   return res.status === 0 && out ? out : null;
 }
@@ -99557,11 +99557,11 @@ function resolveShimTarget(shim, read = (p) => (0, import_fs103.readFileSync)(p,
   }
   return null;
 }
-async function loadCopilotSdk(env2 = process.env, spawnSync21 = import_child_process30.spawnSync) {
-  const found = await findCopilotSdk(env2, spawnSync21);
+async function loadCopilotSdk(env2 = process.env, spawnSync22 = import_child_process30.spawnSync) {
+  const found = await findCopilotSdk(env2, spawnSync22);
   return found ? withCassette(found, env2) : null;
 }
-async function findCopilotSdk(env2, spawnSync21) {
+async function findCopilotSdk(env2, spawnSync22) {
   const spec = SDK_PACKAGE;
   try {
     const mod = await import(spec);
@@ -99584,7 +99584,7 @@ async function findCopilotSdk(env2, spawnSync21) {
     const hit2 = await tryRoot(root2);
     if (hit2) return hit2;
   }
-  return tryRoot(npmRootG(env2, spawnSync21));
+  return tryRoot(npmRootG(env2, spawnSync22));
 }
 function withTimeout2(promise, ms, label2) {
   let timer;
@@ -99633,8 +99633,8 @@ function pidAlive(pid) {
     return err.code === "EPERM";
   }
 }
-function prepareSdkProject(spawnSync21, projectDir, remoteDir, env2) {
-  const git8 = (args, cwd2) => spawnSync21("git", args, { cwd: cwd2, env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
+function prepareSdkProject(spawnSync22, projectDir, remoteDir, env2) {
+  const git8 = (args, cwd2) => spawnSync22("git", args, { cwd: cwd2, env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
   (0, import_fs103.mkdirSync)(projectDir, { recursive: true });
   (0, import_fs103.writeFileSync)((0, import_path125.join)(projectDir, "hello.txt"), "omg smoke fixture\n");
   const steps = [
@@ -99715,8 +99715,8 @@ function collectFiletools(projectDir, probe) {
     created: read(FILETOOLS_FILES.created) !== null
   };
 }
-function remoteRefs(spawnSync21, remoteDir, env2) {
-  const res = spawnSync21("git", ["--git-dir", remoteDir, "for-each-ref"], { env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
+function remoteRefs(spawnSync22, remoteDir, env2) {
+  const res = spawnSync22("git", ["--git-dir", remoteDir, "for-each-ref"], { env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
   return res.status === 0 ? String(res.stdout ?? "") : null;
 }
 function scenarioPlaceholderDirs(input, name) {
@@ -121703,7 +121703,7 @@ function factoryGit(a, protectedBranches, extraProtected = [], local, agent) {
     }
     case "ls-remote": {
       const m = r.length === 2 && remote ? /^refs\/heads\/(.+)$/.exec(r[1]) : null;
-      return Boolean(m) && isFactoryBranch(m[1], protectedBranches);
+      return Boolean(m) && (isFactoryBranch(m[1], protectedBranches) || extraProtected.includes(m[1]));
     }
     case "init":
       return r.length === 3 && same2(r.slice(0, 2), ["--bare", "--quiet"]) && isMirrorPath(r[2], local);
@@ -126272,43 +126272,65 @@ function acquireRunSlot(root2, key, max, now2, deps = defaultOwnerDeps(), scanWa
   }
 }
 function acquireImportLock(root2, label2, now2, deps = defaultOwnerDeps(), waitMs = IMPORT_LOCK_WAIT_MS) {
-  const path30 = factoryImportLockPath(root2);
-  const key = (0, import_path184.resolve)(path30);
   const start = scanWait.clock();
   for (; ; ) {
-    try {
-      const held = claimOwner(path30, now2(), deps, (prior) => `the repository import lock ${path30} is held by ${describeOwner(prior)} (another run fetches, imports or pushes)`, { run: label2, root: (0, import_path184.resolve)(root2) });
-      importDepth.set(key, 1);
-      return { ...held, release: () => {
-        importDepth.delete(key);
-        return held.release();
-      } };
-    } catch (error2) {
-      if (!(error2 instanceof FactoryBusyError)) throw error2;
-      const waited = scanWait.clock() - start;
-      if (error2.message.startsWith("the owner file ") || waited >= waitMs) {
-        throw new ImportLockBusyError(`${error2.message}; waited ${Math.round(waited / 1e3)} s: rerun when it is done (omg factory run status names the holder)`);
+    const r = tryImportLock(root2, label2, now2, deps, scanWait.clock() - start, waitMs);
+    if ("held" in r) return r.held;
+    scanWait.sleep(r.sleepMs);
+  }
+}
+function tryImportLock(root2, label2, now2, deps, waited, waitMs) {
+  const path30 = factoryImportLockPath(root2);
+  const key = `${(0, import_path184.resolve)(path30)}\0${deps.pid}`;
+  if (importHeld.has(key)) throw new FactoryStateError(`this process already holds the repository import lock ${path30}; a nested section must be given that hold (withRepoImportLock's held option)`);
+  try {
+    const held = claimOwner(path30, now2(), deps, (prior) => `the repository import lock ${path30} is held by ${describeOwner(prior)} (another run fetches, imports or pushes)`, { run: label2, root: (0, import_path184.resolve)(root2) });
+    importHeld.add(key);
+    let released = false;
+    return { held: { ...held, release: () => {
+      if (!released) {
+        released = true;
+        importHeld.delete(key);
       }
-      scanWait.sleep(Math.min(SCAN_POLL_MS, waitMs - waited));
+      return held.release();
+    } } };
+  } catch (error2) {
+    if (!(error2 instanceof FactoryBusyError)) throw error2;
+    if (error2.message.startsWith("the owner file ") || waited >= waitMs) {
+      throw new ImportLockBusyError(`${error2.message}; waited ${Math.round(waited / 1e3)} s: rerun when it is done (omg factory run status names the holder)`);
     }
+    return { busy: error2.message, sleepMs: Math.min(SCAN_POLL_MS, waitMs - waited) };
   }
 }
 function withRepoImportLock(root2, label2, fn, o = {}) {
   const path30 = (0, import_path184.resolve)(factoryImportLockPath(root2));
-  const depth = importDepth.get(path30) ?? 0;
-  if (depth > 0) {
-    importDepth.set(path30, depth + 1);
-    try {
-      return fn();
-    } finally {
-      importDepth.set(path30, depth);
-    }
-  }
-  const held = acquireImportLock(root2, label2, o.now ?? (() => (/* @__PURE__ */ new Date()).toISOString()), o.deps ?? defaultOwnerDeps(), o.waitMs ?? IMPORT_LOCK_WAIT_MS);
+  if (importInside.has(path30)) return fn();
+  const held = o.held ?? acquireImportLock(root2, label2, o.now ?? (() => (/* @__PURE__ */ new Date()).toISOString()), o.deps ?? defaultOwnerDeps(), o.waitMs ?? IMPORT_LOCK_WAIT_MS);
+  importInside.add(path30);
   try {
     return fn();
   } finally {
-    held.release();
+    importInside.delete(path30);
+    if (!o.held) held.release();
+  }
+}
+async function withRepoImportLockAsync(root2, label2, fn, o = {}) {
+  const now2 = o.now ?? (() => (/* @__PURE__ */ new Date()).toISOString());
+  const sleep13 = o.sleep ?? ((ms) => new Promise((r) => {
+    setTimeout(r, ms);
+  }));
+  const start = scanWait.clock();
+  for (; ; ) {
+    const r = tryImportLock(root2, label2, now2, o.deps ?? defaultOwnerDeps(), scanWait.clock() - start, o.waitMs ?? IMPORT_LOCK_WAIT_MS);
+    if ("held" in r) {
+      try {
+        return withRepoImportLock(root2, label2, fn, { held: r.held });
+      } finally {
+        r.held.release();
+      }
+    }
+    if (o.stopped?.()) throw new ImportLockBusyError(`${r.busy}; stopped by a signal while waiting for it (nothing was done under the lock): rerun to continue`);
+    await sleep13(r.sleepMs);
   }
 }
 function acquireFactoryRepoOwnerForRun(root2, key, now2, deps = defaultOwnerDeps(), boundMs = SCAN_WAIT_MS) {
@@ -126344,7 +126366,7 @@ function tryScanLock(root2, now2, deps = defaultOwnerDeps(), waitMs = 0) {
   return { release: () => {
     const a = imp.release();
     return held.release() && a;
-  }, relabel: held.relabel };
+  }, relabel: held.relabel, importLock: imp };
 }
 function ownerFromOtherCheckout(prior, root2, platform = process.platform) {
   if (typeof prior.root !== "string") return false;
@@ -126444,7 +126466,7 @@ function claimOwner(path30, now2, deps, busy, fields = {}) {
   };
   return { release, relabel, ...tookOver ? { tookOver } : {} };
 }
-var import_crypto50, import_fs157, import_os35, import_path184, FACTORY_PHASES, TERMINAL_FACTORY_PHASES, HEAL_RUN_KEY, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, FactoryStateError, EXIT_BUSY, FactoryBusyError, FactoryTamperHoldError, runSlug, runLabel, isStr2, HEX64, isCount3, HEX409, MAX_HUMAN_THREAD_IDS, THREAD_ID, FEEDBACK_FORGES, FULL_SHA2, findingsOk, ownIdentity, startIdentity, defaultOwnerDeps, ownerText, SLOT_FILE, slotText, IMPORT_LOCK_WAIT_MS, IMPORT_LOCK_SCAN_WAIT_MS, ImportLockBusyError, importDepth, SCAN_WAIT_MS, AUTO_START_SCAN_WAIT_MS, READ_SCAN_WAIT_MS, SCAN_POLL_MS, scanWait, engineBusyMessage, engineBusyText, unreadableOwnerMessage, isOwnerRecord, LOCK_STALE_MS5;
+var import_crypto50, import_fs157, import_os35, import_path184, FACTORY_PHASES, TERMINAL_FACTORY_PHASES, HEAL_RUN_KEY, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, FactoryStateError, EXIT_BUSY, FactoryBusyError, FactoryTamperHoldError, runSlug, runLabel, isStr2, HEX64, isCount3, HEX409, MAX_HUMAN_THREAD_IDS, THREAD_ID, FEEDBACK_FORGES, FULL_SHA2, findingsOk, ownIdentity, startIdentity, defaultOwnerDeps, ownerText, SLOT_FILE, slotText, IMPORT_LOCK_WAIT_MS, IMPORT_LOCK_SCAN_WAIT_MS, ImportLockBusyError, importHeld, importInside, SCAN_WAIT_MS, AUTO_START_SCAN_WAIT_MS, READ_SCAN_WAIT_MS, SCAN_POLL_MS, scanWait, engineBusyMessage, engineBusyText, unreadableOwnerMessage, isOwnerRecord, LOCK_STALE_MS5;
 var init_state6 = __esm({
   "src/factory/run/state.ts"() {
     "use strict";
@@ -126534,7 +126556,8 @@ var init_state6 = __esm({
         this.name = "ImportLockBusyError";
       }
     };
-    importDepth = /* @__PURE__ */ new Map();
+    importHeld = /* @__PURE__ */ new Set();
+    importInside = /* @__PURE__ */ new Set();
     SCAN_WAIT_MS = 6e4;
     AUTO_START_SCAN_WAIT_MS = 5e3;
     READ_SCAN_WAIT_MS = 1e4;
@@ -126547,7 +126570,7 @@ var init_state6 = __esm({
     };
     engineBusyMessage = (prior, root2, key) => engineBusyText(prior, key) + (ownerFromOtherCheckout(prior, root2) ? "; WARNING: that engine runs in another folder that shares this checkout's state root (a linked worktree, or with OMC_STATE_DIR set a clone with the same folder name: parallel clones need distinct folder names)" : "");
     engineBusyText = (prior, key) => prior.run === "scan" ? `the poller's heal scan or base sync, or a factory read command's fetch, holds this checkout for a moment (${describeOwner(prior)}); retry` : `another omg factory engine runs in this repository (${describeOwner(prior)}); one engine runs per checkout at a time${key === "next" ? ", so run --next after it ends" : key === "scan" ? ", so retry after it ends" : key ? `, so start ${ownerText(key)} after it ends` : ""} (parallel runs need separate clones)`;
-    unreadableOwnerMessage = (path30) => `the owner file ${path30} is unreadable, so it counts as held; check that no engine uses it, then remove it (omg factory run release)`;
+    unreadableOwnerMessage = (path30, release = "omg factory run release") => `the owner file ${path30} is unreadable, so it counts as held; check that no engine uses it, then remove it (${release})`;
     isOwnerRecord = (v) => typeof v === "object" && v !== null && Number.isInteger(v.pid) && typeof v.hostname === "string";
     LOCK_STALE_MS5 = 3e4;
   }
@@ -128062,8 +128085,8 @@ function identityEnv() {
     GIT_COMMITTER_EMAIL: ENGINE_COMMIT_IDENTITY.email
   };
 }
-function withImportLock(root2, layout, label2, fn) {
-  return withRepoImportLock(root2, label2, () => withSeedLock(layout, fn));
+function withImportLock(root2, layout, label2, fn, held) {
+  return withRepoImportLock(root2, label2, () => withSeedLock(layout, fn), held ? { held } : {});
 }
 function withSeedLock(layout, fn) {
   return withFileLockSync((0, import_path189.join)(layout.repoDir, "import.lock"), fn, { timeoutMs: IMPORT_LOCK_WAIT_MS, staleLockMs: 6e4 });
@@ -128392,6 +128415,23 @@ function localGateProcDirs(o, state) {
   if (state.remote !== LOCAL_REMOTE || !head || !HEX4012.test(head)) return [];
   return [(0, import_path190.dirname)(gateProcsPath(o.localGateStateDir ?? getGlobalOmcStatePath("forge"), o.root, head))];
 }
+function privateRunLockPath(root2, issue2, runUserConfig) {
+  try {
+    const state = readFactoryState(root2, issue2);
+    if (!state || state.layout !== 2 || !state.privateDir || !verifyFactoryIntegrity(state)) return void 0;
+    let userConfig = runUserConfig;
+    if (userConfig === void 0) {
+      try {
+        userConfig = userConfigLayers().trustedUser;
+      } catch {
+        userConfig = null;
+      }
+    }
+    return expectedPrivateLayout(state, { root: root2, omcRoot: getOmcRoot(root2), slug: runSlug(issue2), userConfig }).lock;
+  } catch {
+    return void 0;
+  }
+}
 function cleanPrivateRun(o, state, result) {
   let layout;
   try {
@@ -128417,7 +128457,7 @@ function cleanPrivateRun(o, state, result) {
     }
     const lockHolder = ownerHolding(layout.lock, o.owner);
     if (lockHolder !== null) {
-      result.kept.push({ worktree: runDir, reason: `run_live: ${lockHolder === "unreadable" ? unreadableOwnerMessage(layout.lock) : `the run's engine holds ${layout.lock} (${describeOwner(lockHolder)}); omg factory run cancel ${o.issue} stops it, then rerun ${o.rerun ?? `omg factory run clean ${o.issue}`}`}` });
+      result.kept.push({ worktree: runDir, reason: `run_live: ${lockHolder === "unreadable" ? unreadableOwnerMessage(layout.lock, `omg factory run release ${o.issue}`) : `the run's engine holds ${layout.lock} (${describeOwner(lockHolder)}); omg factory run cancel ${o.issue} stops it, then rerun ${o.rerun ?? `omg factory run clean ${o.issue}`}`}` });
       return;
     }
     const gateDirs = [(0, import_path190.join)(runDir, "gates", "prepare-procs"), ...localGateProcDirs(o, state)];
@@ -128461,7 +128501,7 @@ function cleanPrivateRun(o, state, result) {
         removeRunDir(seed, work);
         result.removed.push(seed);
       }
-    });
+    }, o.importLock);
   } catch (error2) {
     result.kept.push({ worktree: seed, reason: error2 instanceof Error ? error2.message : String(error2) });
   }
@@ -128476,10 +128516,12 @@ function cleanFactoryRun(o) {
   if (o.discard && state.phase !== "cancelled") throw new FactoryStateError(`the factory run for issue #${o.issue} is ${state.phase}; --discard gives up uncommitted lane changes of a cancelled run only`);
   const now2 = o.now ?? (/* @__PURE__ */ new Date()).toISOString();
   let repoOwner;
+  let importLock;
   if (state.layout === 2 && state.privateDir) {
     const scan = tryScanLock(o.root, now2, o.owner, SCAN_WAIT_MS);
     if (scan instanceof FactoryBusyError) throw scan;
     repoOwner = scan;
+    importLock = scan.importLock;
   } else repoOwner = acquireFactoryRepoOwnerForRun(o.root, o.issue, () => now2, o.owner);
   let owner;
   try {
@@ -128489,7 +128531,7 @@ function cleanFactoryRun(o) {
     throw error2;
   }
   try {
-    return cleanHeldFactoryRun(o, state);
+    return cleanHeldFactoryRun(importLock ? { ...o, importLock } : o, state);
   } finally {
     owner.release();
     repoOwner.release();
@@ -133300,7 +133342,7 @@ function readTrustedBaseLayerAtRef(exec3, root2, base, ref, user, warn = () => {
   }
   if (!trusted) return void 0;
   try {
-    const sha3 = exec3("git", ["rev-parse", "--verify", ref], { cwd: root2, env: TRUSTED_READ_ENV }).stdout.trim();
+    const sha3 = /^[0-9a-f]{40}$/.test(ref) ? ref : exec3("git", ["rev-parse", "--verify", ref], { cwd: root2, env: TRUSTED_READ_ENV }).stdout.trim();
     if (!/^[0-9a-f]{40}$/.test(sha3)) return void 0;
     const text4 = readBaseFile(exec3, root2, sha3, BASE_CONFIG_PATH);
     return text4 && text4.trim() ? parseJsonc(text4) : void 0;
@@ -133690,7 +133732,7 @@ function dryLayoutNote(o, exec3, local) {
   }
   try {
     const own2 = resolveRunLayout(user, void 0);
-    const { layout, source } = own2.source !== "default" || !exec3 ? own2 : resolveRunLayout(void 0, readTrustedBaseLayerAtRef(exec3, o.root, o.base, local ? `refs/heads/${o.base}` : `refs/remotes/origin/${o.base}`, user));
+    const { layout, source } = own2.source !== "default" || !exec3 || !local ? own2 : resolveRunLayout(void 0, readTrustedBaseLayerAtRef(exec3, o.root, o.base, `refs/heads/${o.base}`, user));
     return layout === "private" ? `, in the private layout (factory.run.layout "private" from ${source === "user config" ? "the user config" : source}: its own git repository under the work root)` : "";
   } catch (error2) {
     return `; but ${errText6(error2)}, so the run would park at awaiting-human: ${PRIVATE_STORE_GATE}`;
@@ -133847,7 +133889,7 @@ async function runFactoryEngine(o) {
 function sharedLayoutSealed(s) {
   return s.layout !== 2 && (s.lanes.length > 0 || s.codingAgent !== void 0);
 }
-var import_crypto55, import_fs173, import_os39, import_path201, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4017, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
+var import_crypto55, import_fs173, import_os39, import_path201, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4017, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
 var init_engine = __esm({
   "src/factory/run/engine.ts"() {
     "use strict";
@@ -133919,6 +133961,7 @@ var init_engine = __esm({
     MAX_MERGE_BOUNCES = 2;
     DEFAULT_POLL_MS = 5e3;
     LANE_GRACE_MS = 6e4;
+    LS_REMOTE_TIMEOUT_MS = 6e4;
     ADO_HEAD_LAG_POLLS = 12;
     localGateConfigLoader = (i) => {
       const layers = userConfigLayers();
@@ -134217,7 +134260,12 @@ var init_engine = __esm({
       holdRunLock() {
         const p = this.priv;
         if (!p || this.runLock) return;
-        this.runLock = claimOwner(p.layout.lock, this.iso(), this.o.owner ?? defaultOwnerDeps(), (prior) => `the run dir ${p.layout.runDir} is held by another engine (${describeOwner(prior)})`, { run: String(this.key) });
+        try {
+          this.runLock = claimOwner(p.layout.lock, this.iso(), this.o.owner ?? defaultOwnerDeps(), (prior) => `the run dir ${p.layout.runDir} is held by another engine (${describeOwner(prior)})`, { run: String(this.key) });
+        } catch (error2) {
+          if (error2 instanceof FactoryBusyError && error2.message === unreadableOwnerMessage(p.layout.lock)) throw new FactoryBusyError(unreadableOwnerMessage(p.layout.lock, typeof this.key === "number" ? `omg factory run release ${this.key}` : void 0));
+          throw error2;
+        }
       }
       releaseRunLock() {
         this.runLock?.release();
@@ -134308,8 +134356,26 @@ var init_engine = __esm({
         try {
           return this.userRepoQuiet(() => snapshotRepo(this.exec, this.o.root, this.stateRootRel));
         } catch (error2) {
+          if (error2 instanceof FactoryBusyError) throw error2;
           throw new FactoryStepError(`the snapshot of your repository before ${what} failed: ${errText6(error2)}`);
         }
+      }
+      /**
+       * Review-487 M-3: a parallel run waits for the repository import lock with
+       * awaited polls (signals and a forwarded stop run meanwhile), then runs the
+       * synchronous `fn` inside that hold: every import-lock section of `fn`
+       * (fetchBase, userRepoQuiet, the private store's withImportLock, the
+       * compare's ls-remote) runs in it without a blocking wait. A signal that
+       * arrives during the wait (not one already being handled, as by a cancel)
+       * ends it busy: nothing ran under the lock, and a rerun continues. Not
+       * parallel, or `needed` false (an enforced lane's compare reads only the
+       * private repository): `fn` as is.
+       */
+      async importReady(fn, needed = true) {
+        if (!this.o.parallel || !needed) return fn();
+        const interrupted = this.o.interrupted ?? (() => false);
+        const already = interrupted();
+        return withRepoImportLockAsync(this.o.root, `import:${runSlug(this.key)}`, fn, { stopped: () => !already && interrupted() });
       }
       /** `fn` under the repository import lock in a parallel run (no other run's import is half done), else as is. */
       userRepoQuiet(fn) {
@@ -134323,11 +134389,14 @@ var init_engine = __esm({
       userRepoProblems(before, engineRef) {
         if (!before) return [];
         try {
-          const after = this.userRepoQuiet(() => snapshotRepo(this.exec, this.o.root, this.stateRootRel, before));
-          const own2 = engineRef && after.refs[engineRef.name] === engineRef.sha;
-          const was = own2 ? { ...before, refs: { ...before.refs, [engineRef.name]: engineRef.sha } } : before;
-          return compareSnapshots(was, after, {}, { fetchedRef: this.fetchedRef }).map((p) => `your repository: ${p}`);
+          return this.userRepoQuiet(() => {
+            const after = snapshotRepo(this.exec, this.o.root, this.stateRootRel, before);
+            const own2 = engineRef && after.refs[engineRef.name] === engineRef.sha;
+            const was = own2 ? { ...before, refs: { ...before.refs, [engineRef.name]: engineRef.sha } } : before;
+            return compareSnapshots(was, after, {}, { fetchedRef: this.fetchedRef }).map((p) => `your repository: ${p}`);
+          });
         } catch (error2) {
+          if (error2 instanceof FactoryBusyError) throw error2;
           return [`the snapshot of your repository failed: ${errText6(error2)}`];
         }
       }
@@ -134456,10 +134525,10 @@ var init_engine = __esm({
        * layout, run dir and record sealed together. False when it parked: the
        * run has not started a lane, so the shared layout is one config change away.
        */
-      setupPrivate(baseSha) {
+      async setupPrivate(baseSha) {
         let made;
         try {
-          made = PrivateRun.create({
+          made = await this.importReady(() => PrivateRun.create({
             root: this.o.root,
             omcRoot: getOmcRoot(this.o.root),
             slug: runSlug(this.key),
@@ -134468,7 +134537,7 @@ var init_engine = __esm({
             ledgerDir: this.o.ledgerDir ?? defaultLedgerDir(),
             exec: this.o.exec,
             warn: (m) => this.o.warn?.(m)
-          }, baseSha);
+          }, baseSha));
         } catch (error2) {
           if (!(error2 instanceof PrivateStoreError)) throw error2;
           this.gate(PRIVATE_STORE_GATE, `factory.run.layout is "private", and the run's private repository could not be set up: ${error2.message}. Fix that and rerun ${this.resume}, or set factory.run.layout "shared" in your user config and rerun (no lane has started)`);
@@ -134490,13 +134559,13 @@ var init_engine = __esm({
        * Import engine commits (the private layout) around `body`, the caller's
        * checks and push (private-run.ts publishImports): false when it parked.
        */
-      privateImports(p, steps, what, body) {
+      async privateImports(p, steps, what, body) {
         const protectedList = this.laneProtectedPaths();
         if (protectedList.problem) {
           this.protectedPathsUnread(what, protectedList.problem);
           return false;
         }
-        const out = p.publishImports({
+        const out = await this.importReady(() => p.publishImports({
           steps,
           slug: runSlug(this.key),
           what,
@@ -134512,7 +134581,7 @@ var init_engine = __esm({
           setBaseline: (g) => this.ledger.setUserGuard(g),
           body,
           pushed: (v) => v.pushed
-        });
+        }));
         if (!out.ok) {
           this.gate(out.park.name, out.park.reason);
           return false;
@@ -134610,12 +134679,12 @@ var init_engine = __esm({
        * Any other head is the caller's to judge. GitHub reads once, as before.
        */
       async settledPr(pr, head, read) {
-        let v = read();
+        let v = await read();
         if (!this.forge) return v;
         const lagging = () => typeof v.headRefOid === "string" && v.headRefOid !== head && this.isAncestor(v.headRefOid, head);
         for (let i = 0; i < ADO_HEAD_LAG_POLLS && lagging(); i++) {
           await (this.o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))))(this.o.pollMs ?? DEFAULT_POLL_MS);
-          v = read();
+          v = await read();
         }
         if (lagging()) throw new FactoryStepError(`pending: Azure DevOps still reports PR #${pr} at ${String(v.headRefOid).slice(0, 12)}, an ancestor of the engine's push ${head.slice(0, 12)} (the forge is lagging); rerun ${this.resume}`);
         return v;
@@ -134769,7 +134838,7 @@ var init_engine = __esm({
             if (priv) {
               this.holdRunLock();
               try {
-                priv.resumeSweep(runSlug(this.key));
+                await this.importReady(() => priv.resumeSweep(runSlug(this.key)));
               } catch (error2) {
                 this.o.warn?.(`omg factory run: the private store sweep failed: ${errText6(error2)}`);
               }
@@ -135236,7 +135305,7 @@ ${item.acceptance}
       async intake() {
         if (this.state.kind === "ci-heal") return this.healIntake();
         if (this.forge?.kind === "local") {
-          this.fetchBase();
+          await this.importReady(() => this.fetchBase());
           try {
             this.adoIntake(this.forge);
           } finally {
@@ -135268,7 +135337,7 @@ ${item.acceptance}
             this.gate("needs-plan", `omg-plan ${JSON.stringify(s.planLink)} is not a repo-relative path`);
             return;
           }
-          const baseSha = this.fetchBase();
+          const baseSha = await this.importReady(() => this.fetchBase());
           const text4 = readBaseFile(this.exec, this.o.root, baseSha, s.planLink);
           if (text4 === null || !text4.trim()) {
             this.gate("needs-plan", `omg-plan ${s.planLink} is missing or empty on ${s.base} at ${baseSha.slice(0, 12)}`);
@@ -135333,13 +135402,13 @@ ${item.acceptance}
           if (park && agent) return this.gate(LAYOUT_UNSUPPORTED_GATE, park);
         }
         if (await this.codingAgentImplement()) return;
-        const baseSha = this.fetchBase();
+        const baseSha = await this.importReady(() => this.fetchBase());
         this.save((s) => ({ ...s, baseSha }));
         if (undecided && !this.resolveLayout(baseSha)) return;
         if (undecided && this.o.parallel && this.layoutChoice !== "private") {
           return this.gate(PARALLEL_LAYOUT_GATE, `this run started as one of several parallel runs (factory.run.maxConcurrent ${this.o.parallel.maxConcurrent}), but factory.run.layout resolved to "shared" at the base ${baseSha.slice(0, 12)}; parallel runs need factory.run.layout: "private". No lane has started: set factory.run.layout "private" in your user config, or factory.run.maxConcurrent 1, then rerun ${this.resume}`);
         }
-        if (undecided && this.layoutChoice === "private" && !this.setupPrivate(baseSha)) return;
+        if (undecided && this.layoutChoice === "private" && !await this.setupPrivate(baseSha)) return;
         const out = await this.runLane("implement", baseSha, "write", implementPrompt(this.state, this.teamContext(this.readAt(baseSha), pathsInText(this.state.plan?.text ?? ""))), "implement");
         if (out.kind === "done") await this.acceptWriteLane(out, "implement", baseSha);
       }
@@ -135634,7 +135703,7 @@ ${item.acceptance}
             this.gate(IMPORT_REFUSED_GATE, `the engine has no record of the parents of ${cand.slice(0, 12)}, so it is not imported or pushed; ${cancelCommand(this.key)} and start the item again`);
             return;
           }
-          const imported = this.privateImports(priv, [{ sha: cand, parents, start: parents.length > 1 ? parents[1] : parents[0] }], "the lane commit", push);
+          const imported = await this.privateImports(priv, [{ sha: cand, parents, start: parents.length > 1 ? parents[1] : parents[0] }], "the lane commit", push);
           if (late3) return void await this.recheckPark(late3);
           if (!imported) return;
         } else {
@@ -135847,6 +135916,10 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         return this.forge ? this.forge.reviews.prHead(pr) : this.gh((exec3, cwd2) => ghPrHeadState(exec3, pr, cwd2));
       }
       /** `gh pr view <pr> --json MERGE_VIEW_FIELDS`, or the forge's viewPr (ADO: base/head = lastMergeTarget/SourceCommit). */
+      /** prView; on the local forge (its base sync takes the import lock) after an awaited wait for that lock (importReady). */
+      prViewReady(pr) {
+        return this.forge?.kind === "local" ? this.importReady(() => this.prView(pr)) : this.prView(pr);
+      }
       prView(pr) {
         if (!this.forge) return this.gh((exec3, cwd2) => ghMergeView(exec3, pr, cwd2));
         if (this.forge.kind !== "local") {
@@ -136073,7 +136146,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         const s = this.state;
         const { pr, head } = s;
         if (!pr || !head) throw new FactoryStepError("prepare needs a published head and PR");
-        const view2 = await this.settledPr(pr, head, () => this.prView(pr));
+        const view2 = await this.settledPr(pr, head, () => this.prViewReady(pr));
         if (this.prGone(view2)) return;
         const ship = this.readShip(pr);
         if (!ship) throw new FactoryStepError(`no ship state for PR #${pr}`);
@@ -136120,9 +136193,9 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         if (!priv) this.pruneMissingCheckout(path30);
         const branch2 = checkoutBranch(this.key);
         if (priv) {
-          const fetchedBase = this.fetchBase();
+          const fetchedBase = await this.importReady(() => this.fetchBase());
           if (fetchedBase !== view2.baseRefOid) throw new FactoryStepError(`${runRemote(s)}/${s.base} is ${fetchedBase.slice(0, 12)}, but the forge reports ${s.base} at ${view2.baseRefOid.slice(0, 12)}; refusing (fail closed; rerun ${this.resume} if ${s.base} just moved)`);
-          priv.ensureCommit(view2.baseRefOid);
+          await this.importReady(() => priv.ensureCommit(view2.baseRefOid));
         }
         const common = priv ? priv.repo.gitDir : (0, import_path201.resolve)(this.o.root, this.run(["rev-parse", "--git-common-dir"]).trim());
         const refProblem = jobRefProblem(common, priv ? priv.repo.repo : this.o.root, `refs/heads/${branch2}`);
@@ -136136,7 +136209,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         } catch (error2) {
           throw new FactoryStepError(`the pre-prepare snapshot failed: ${errText6(error2)}`);
         }
-        const userBefore = this.userSnap("prepare");
+        const userBefore = await this.importReady(() => this.userSnap("prepare"));
         (0, import_fs173.mkdirSync)((0, import_path201.dirname)(path30), { recursive: true });
         if (priv) {
           priv.addWorktree(path30, head, branch2);
@@ -136175,7 +136248,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
             return;
           }
           if (ran.modes.has("ack") || ran.modes.has("unsandboxed")) {
-            const mine = this.userRepoProblems(userBefore, { name: `refs/remotes/${runRemote(s)}/${s.base}`, sha: view2.baseRefOid });
+            const mine = await this.importReady(() => this.userRepoProblems(userBefore, { name: `refs/remotes/${runRemote(s)}/${s.base}`, sha: view2.baseRefOid }));
             if (mine.length > 0) {
               const quarantined = this.userQuarantine(userBefore, "prepare-tampered", mine);
               this.gate("lane-tampered", `prepare's checks (the PR's own code) ran without the OS sandbox and changed your repository's git state, so nothing is pushed; inspect your repository: ${mine.slice(0, 5).join("; ")}${quarantined}`);
@@ -136212,7 +136285,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           if (priv && checkoutHead !== head) {
             const steps = this.housekeepingSteps(priv, head, checkoutHead, result.housekeepingCommits, view2.baseRefOid);
             if (!Array.isArray(steps)) return this.gate(steps.name, steps.reason);
-            if (!this.privateImports(priv, steps, "prepare's commit", () => ({ parked: false, pushed: false }))) return;
+            if (!await this.privateImports(priv, steps, "prepare's commit", () => ({ parked: false, pushed: false }))) return;
           }
           this.ciFailed({ source: "prepare", startSha: checkoutHead, checks: [`prepare ${failed3.name}`], tests: [], detail: failed3.detail ?? "" }, `prepare ${failed3.name} failed at ${checkoutHead.slice(0, 12)}`);
           return;
@@ -136537,7 +136610,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           if (priv) {
             const steps = this.housekeepingSteps(priv, reviewed, next, housekeeping, baseSha);
             if (!Array.isArray(steps)) return this.gate(steps.name, steps.reason);
-            const imported = this.privateImports(priv, steps, "prepare's commit", push);
+            const imported = await this.privateImports(priv, steps, "prepare's commit", push);
             if (late3) return void await this.recheckPark(late3);
             if (!imported) return;
           } else {
@@ -136583,8 +136656,10 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         let merged;
         const priv = this.privateRun();
         if (priv) {
-          priv.ensureCommit(head);
-          priv.ensureCommit(baseSha);
+          await this.importReady(() => {
+            priv.ensureCommit(head);
+            priv.ensureCommit(baseSha);
+          });
           priv.assert();
         }
         try {
@@ -136733,7 +136808,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           return false;
         }
         const linkBefore = checkoutGitLink(checkout).hash;
-        const userBefore = this.userSnap("the local gate");
+        const userBefore = await this.importReady(() => this.userSnap("the local gate"));
         let out;
         if (gates.mode === "unsandboxed") {
           this.noteUnsandboxedGates(head, "the local gate");
@@ -136780,7 +136855,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         const record3 = out.record;
         this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `local gate ${record3.state} on ${head.slice(0, 12)} (exit ${record3.exitCode}, ${record3.sandbox === "enforced" ? `in the OS sandbox${record3.sandboxNote ? ` (${record3.sandboxNote})` : ""}` : `unsandboxed: ${record3.sandbox}`})` }] }));
         if (record3.sandbox !== "enforced") {
-          const mine = this.userRepoProblems(userBefore);
+          const mine = await this.importReady(() => this.userRepoProblems(userBefore));
           if (mine.length > 0) {
             const quarantined = this.userQuarantine(userBefore, "lane-tampered", mine);
             this.gate("lane-tampered", `the local gate (the PR's own code) ran without the OS sandbox and changed your repository's git state, so its verdict is not used; inspect your repository, then rerun ${this.resume}: ${mine.slice(0, 5).join("; ")}${quarantined}`);
@@ -136827,7 +136902,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
       async gates() {
         const { pr, head } = this.state;
         if (!pr || !head) throw new FactoryStepError("gates needs a published head and PR");
-        const view2 = this.prView(pr);
+        const view2 = await this.prViewReady(pr);
         if (this.prGone(view2)) return;
         const ship = this.readShip(pr);
         if (!ship) throw new FactoryStepError(`no ship state for PR #${pr}`);
@@ -136923,7 +136998,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         const { pr, head } = this.state;
         if (!pr || !head) throw new FactoryStepError("merge needs a published head and PR");
         this.codingAgentHandOff();
-        const view2 = await this.settledPr(pr, head, () => this.prView(pr));
+        const view2 = await this.settledPr(pr, head, () => this.prViewReady(pr));
         if (this.prGone(view2)) return;
         if (view2.headRefOid !== head) {
           this.gate("head-moved-externally", `PR #${pr} head is ${view2.headRefOid.slice(0, 12)}, the engine pushed ${head.slice(0, 12)}`);
@@ -136983,8 +137058,9 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         if (!name.startsWith(prefix)) return false;
         const branch2 = name.slice(prefix.length);
         if (branch2 === s.branch && s.head !== void 0 && sha3 === s.head) return true;
-        if (this.o.parallel && this.otherRunsTransport(branch2, sha3)) return true;
-        if (s.remote !== LOCAL_REMOTE || this.o.forge?.config.kind !== "local") return false;
+        const local = s.remote === LOCAL_REMOTE && this.o.forge?.config.kind === "local";
+        if (this.o.parallel && !local && this.otherRunsTransport(branch2, sha3)) return true;
+        if (!local) return false;
         if (branch2 === s.base) {
           const trusted = this.basePushSha ?? this.exec("git", ["rev-parse", "--verify", `refs/heads/${s.base}`], { cwd: this.o.root, env: TRUSTED_READ_ENV }).stdout.trim();
           return HEX4017.test(trusted) && sha3 === trusted;
@@ -136996,26 +137072,37 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         }
       };
       /**
-       * B2, parallel runs only: a remote-tracking ref another run's engine moves
-       * through its own fetch or push under the import lock (`branch` relative
-       * to the run's remote): the base (another run's base fetch: any sha, since
-       * GitHub's base sha cannot be read here without a fetch; each engine reads
-       * the base only from its own fetch under the lock, so a planted value is
-       * overwritten before use), or another run's factory branch at a head that
-       * run's own state records. Never this run's own refs (its own rules apply).
+       * B2, parallel runs on GitHub / Azure DevOps only: a remote-tracking ref
+       * another run's engine moved through its own fetch or push (`branch`
+       * relative to the run's remote): the base or another run's factory branch,
+       * excused only at exactly the sha the remote holds for it NOW, read with
+       * `git ls-remote` under the import lock at compare time (review-487 HIGH-1,
+       * M-2: never any sha, never a lane-writable state file). Never this run's
+       * own branch (its own rule applies). The remote unreadable: busy (exit 6),
+       * never excused and never a tamper park; a rerun compares again.
        */
       otherRunsTransport(branch2, sha3) {
         const s = this.state;
-        if (branch2 === s.base) return true;
-        const m = /^factory\/(?:issue-(\d+)|(heal-[0-9a-f]{8}))$/.exec(branch2);
-        if (!m || branch2 === s.branch) return false;
-        const key = m[1] !== void 0 ? Number(m[1]) : m[2];
-        try {
-          const other = readFactoryState(this.o.root, key);
-          return other !== null && [other.head, other.pendingHead, other.prepared?.head].includes(sha3);
-        } catch {
-          return false;
-        }
+        if (branch2 !== s.base && (branch2 === s.branch || !/^factory\/(?:issue-\d+|heal-[0-9a-f]{8})$/.test(branch2))) return false;
+        return this.remoteHeadNow(branch2) === sha3;
+      }
+      /** The sha `git ls-remote <remote> refs/heads/<branch>` reports now (null: no such branch), under the import lock; FactoryBusyError when it cannot be read. */
+      remoteHeadNow(branch2) {
+        const remote = runRemote(this.state);
+        const busy = (why) => new FactoryBusyError(`the remote ${remote} could not be read (${why}), so a change of refs/remotes/${remote}/${branch2} in your repository by another run's fetch or push cannot be told from a change by a lane; nothing was judged: rerun ${this.resume} to compare again`);
+        return withRepoImportLock(this.o.root, `snapshot:${this.key}`, () => {
+          const mismatch2 = remoteRepoMismatch(this.exec, this.o.root, remote, this.state.repoUrl);
+          if (mismatch2) return null;
+          let res;
+          try {
+            res = this.exec("git", ["ls-remote", remote, `refs/heads/${branch2}`], { cwd: this.o.root, env: TRUSTED_READ_ENV, timeoutMs: LS_REMOTE_TIMEOUT_MS });
+          } catch (error2) {
+            throw busy(errText6(error2));
+          }
+          if (res.status !== 0) throw busy(`git ls-remote ${remote} refs/heads/${branch2} exit ${res.status}: ${res.stderr.trim().split("\n")[0] ?? ""}`);
+          const head = res.stdout.trim().split(/\s+/)[0] ?? "";
+          return HEX4017.test(head) ? head : null;
+        });
       }
       /** The lane's comparison against its before-snapshot: its own branch and worktree entry may appear. */
       laneProblems(kind, before, result, startRef, laneId) {
@@ -137026,6 +137113,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           const newWorktree = result.worktree ? { path: result.worktree } : result.remoteId ? { id: result.remoteId } : void 0;
           return { after, problems: [...compareSnapshots(before, after, allowed, { fetchedRef: this.fetchedRef, ...newWorktree ? { newWorktree } : {} }), ...user] };
         } catch (error2) {
+          if (error2 instanceof FactoryBusyError) throw error2;
           return { problems: [`the post-lane snapshot failed: ${errText6(error2)}`, ...user] };
         }
       }
@@ -137233,7 +137321,14 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           problems.push(proc(`lane ${laneId}'s process tree could not be checked (${errText6(error2)})`));
         }
         if (this.privateRun() && userBefore) {
-          for (const p of this.userRepoProblems(userBefore)) if (!problems.includes(p)) problems.push(p);
+          let again;
+          try {
+            again = await this.importReady(() => this.userRepoProblems(userBefore));
+          } catch (error2) {
+            if (!(error2 instanceof FactoryBusyError)) throw error2;
+            again = [proc(`your repository could not be compared again after the kill (${errText6(error2)})`)];
+          }
+          for (const p of again) if (!problems.includes(p)) problems.push(p);
         }
         if (!after) return { problems, note };
         try {
@@ -137273,6 +137368,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           const own2 = this.state.prepared !== void 0 && now2.refs[tracking] === this.state.prepared.head;
           found = compareSnapshots(own2 ? { ...r.snapshot, refs: { ...r.snapshot.refs, [tracking]: now2.refs[tracking] } } : r.snapshot, now2, {}, { fetchedRef: this.fetchedRef });
         } catch (error2) {
+          if (error2 instanceof FactoryBusyError) throw error2;
           found = [`the snapshot failed: ${errText6(error2)}`];
         }
         if (found.length === 0) return void 0;
@@ -137370,9 +137466,10 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
               ...lane.jobId ? { newWorktree: { id: lane.jobId } } : {}
             });
           } catch (error2) {
+            if (error2 instanceof FactoryBusyError) throw error2;
             problems = [`the snapshot failed: ${errText6(error2)}`];
           }
-          problems.push(...this.laneUserProblems(lane.id, confirmedSandbox ?? lane.sandbox));
+          problems.push(...await this.importReady(() => this.laneUserProblems(lane.id, confirmedSandbox ?? lane.sandbox), !laneSandboxEnforced(confirmedSandbox ?? lane.sandbox)));
         }
         const note = `${reason}${childNote}`;
         this.save((x) => ({
@@ -137423,7 +137520,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           if (isTerminalLaneState(c.result.state)) {
             usage = usageOf(c.result);
             settleHeal(usage.credits);
-            const { problems, after } = this.laneProblems(kind, before, c.result, startRef, laneId);
+            const { problems, after } = await this.importReady(() => this.laneProblems(kind, before, c.result, startRef, laneId), !laneSandboxEnforced(c.result.sandbox));
             tampered = problems.length > 0;
             if (this.privateRun() && problems.some(isUserRepoProblem)) userTamper = { problems, ...after ? { after } : {}, ...this.laneUserBefore(laneId, c.result.sandbox) ? { userBase: this.laneUserBefore(laneId, c.result.sandbox) } : {} };
             note = tampered ? `cancelled; tamper check: ${problems.slice(0, 5).join("; ")}` : "cancelled; tamper check clean";
@@ -137431,6 +137528,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             note = `cancelled; the cancel was not confirmed (state ${c.result.state}), so the tamper check was skipped`;
           }
         } catch (error2) {
+          if (error2 instanceof FactoryBusyError) throw error2;
           note = `cancelled; the cancel failed (${errText6(error2)}), so the tamper check was skipped`;
         }
         this.ledger.dropBaseline(laneId);
@@ -137478,7 +137576,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         } catch (error2) {
           throw new FactoryStepError(`the pre-lane snapshot failed: ${errText6(error2)}`);
         }
-        const userBefore = this.userSnap(`the ${kind} lane`);
+        const userBefore = await this.importReady(() => this.userSnap(`the ${kind} lane`));
         let cap = runCap;
         let settleHeal = (_credits) => {
         };
@@ -137593,7 +137691,14 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         });
         if (status === "completed") this.save((x) => ({ ...x, lostStreak: { ...x.lostStreak, [kind]: 0 } }));
         this.progress.emit(`lane-${kind}`, status === "completed" ? "ok" : "fail", `lane ${id} ${result.state}, ${usage.credits.toFixed(2)} AI credits`, { ...this.fields(), lane: id, job: remoteId });
-        const { problems, after } = this.laneProblems(kind, before, result, startRef, id);
+        let checked2;
+        try {
+          checked2 = await this.importReady(() => this.laneProblems(kind, before, result, startRef, id), !laneSandboxEnforced(result.sandbox));
+        } catch (error2) {
+          if (error2 instanceof FactoryBusyError) this.updateLane(id, { status: "running", note: `its tamper check did not run: ${errText6(error2)}` });
+          throw error2;
+        }
+        const { problems, after } = checked2;
         const userBase = this.laneUserBefore(id, result.sandbox);
         this.ledger.dropBaseline(id);
         if (problems.length > 0 || !after) {
@@ -137719,7 +137824,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         const issue2 = this.o.issue;
         const repo = this.codingAgentRepo();
         const cfg = this.codingAgentSettings();
-        const baseSha = this.fetchBase();
+        const baseSha = await this.importReady(() => this.fetchBase());
         this.save((x) => ({ ...x, baseSha }));
         const layoutPark = this.state.codingAgent ? null : this.agentLayoutPark(baseSha);
         if (layoutPark) return this.gate(LAYOUT_UNSUPPORTED_GATE, layoutPark);
@@ -137897,7 +138002,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         if (!check2.ok) return this.gate(CODING_AGENT_ADOPT_GATE, this.codingAgentAdoptRefusal(status, check2.reasons));
         if (!s.baseSha) throw new FactoryStepError("adopting the coding agent pull request needs the base sha the run assigned at");
         if (await this.recheckFailed("before the coding agent fetch")) return;
-        const baseTip = this.fetchBase();
+        const baseTip = await this.importReady(() => this.fetchBase());
         const mismatch2 = remoteRepoMismatch(this.exec, this.o.root, runRemote(s), s.repoUrl);
         if (mismatch2) throw new FactoryStepError(`refusing to fetch: ${mismatch2}`);
         let before;
@@ -137913,6 +138018,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           after = this.snap(before);
           problems = compareSnapshots(before, after, {}, { fetchedRef: this.fetchedRef });
         } catch (error2) {
+          if (error2 instanceof FactoryBusyError) throw error2;
           problems = [`the post-fetch snapshot failed: ${errText6(error2)}`];
         }
         if (problems.length > 0 || !after) {
@@ -143640,6 +143746,10 @@ function defaultPollAutoStart(entry2 = process.argv[1], o = {}) {
       killer = setTimeout(() => killTree("SIGKILL"), o.graceMs ?? AUTO_START_GRACE_MS);
     }, timeoutMs);
     unsubscribe = o.signals?.((signal) => {
+      if (signal === "SIGKILL") {
+        killProcessTree2(child.pid, import_child_process49.spawnSync);
+        return;
+      }
       if (process.platform !== "win32" || signal !== "SIGINT") child.kill(signal);
     }) ?? unsubscribe;
   });
@@ -144002,6 +144112,7 @@ var init_poll = __esm({
     init_state6();
     init_parallel();
     init_private_run();
+    init_process_utils2();
     POLL_JSON_SCHEMA_VERSION = 1;
     POLL_DEFAULT_INTERVAL_MS = 5 * 6e4;
     POLL_MIN_INTERVAL_MS = 2 * 6e4;
@@ -144106,12 +144217,38 @@ function defaultParallelLayers(root2, base, kind) {
   } catch {
     user = null;
   }
+  return parallelLayers(root2, base, kind, user, factoryGuardExec(hardenedGitExec(defaultExec, emptyHooksDir2(defaultLedgerDir())), () => [base]));
+}
+function parallelLayers(root2, base, kind, user, exec3) {
+  const keys = user?.factory?.run;
+  const userLayout = resolveRunLayout(user, void 0);
+  const optIn = typeof keys === "object" && keys !== null && (keys.maxConcurrent !== void 0 || keys.maxInFlightCredits !== void 0) || userLayout.source !== "default" && userLayout.layout === "private";
+  if (!optIn) return void 0;
   const warn = (m) => console.error(source_default.yellow(plainText(m)));
   const own2 = resolveParallelSettings(user, void 0, warn);
-  const userLayout = resolveRunLayout(user, void 0);
   const needBase = own2.source === "default" || userLayout.source === "default";
-  const baseLayer2 = needBase ? readTrustedBaseLayerAtRef(factoryGuardExec(hardenedGitExec(defaultExec, emptyHooksDir2(defaultLedgerDir())), () => [base]), root2, base, kind === "local" ? `refs/heads/${base}` : `refs/remotes/origin/${base}`, user, warn) : void 0;
+  const baseLayer2 = needBase ? readBaseLayerAfterFetch(exec3, root2, base, kind(), user, warn) : void 0;
   return { settings: resolveParallelSettings(user, baseLayer2, warn), layout: resolveRunLayout(user, baseLayer2).layout };
+}
+function readBaseLayerAfterFetch(exec3, root2, base, kind, user, warn) {
+  if (kind === "local") return readTrustedBaseLayerAtRef(exec3, root2, base, `refs/heads/${base}`, user, warn);
+  const held = tryScanLock(root2, (/* @__PURE__ */ new Date()).toISOString(), defaultOwnerDeps(), SCAN_WAIT_MS);
+  if (held instanceof FactoryBusyError) throw held;
+  const inside2 = (fn) => held.importLock ? withRepoImportLock(root2, "import:cli", fn, { held: held.importLock }) : fn();
+  try {
+    return inside2(() => {
+      const ls = exec3("git", ["ls-remote", "origin", `refs/heads/${base}`], { cwd: root2, env: TRUSTED_READ_ENV, timeoutMs: FETCH_TIMEOUT_MS });
+      const sha3 = ls.status === 0 ? ls.stdout.trim().split(/\s+/)[0] ?? "" : "";
+      if (!/^[0-9a-f]{40}$/.test(sha3)) {
+        warn(`omg factory run: origin/${base} could not be read (git ls-remote${ls.status === 0 ? ": no such branch" : ` exit ${ls.status}: ${ls.stderr.trim().split("\n")[0] ?? ""}`}); the factory.run keys of the ${base} .copilot/omg.jsonc count as unset`);
+        return void 0;
+      }
+      fetchBase(exec3, root2, base, []);
+      return readTrustedBaseLayerAtRef(exec3, root2, base, sha3, user, warn);
+    });
+  } finally {
+    held.release();
+  }
 }
 function projectConfig(root2) {
   const path30 = resolveProjectConfigPath(root2);
@@ -144158,13 +144295,13 @@ function renderFactoryRunState(state, o = {}) {
   for (const h of state.history.slice(-5)) lines4.push(source_default.gray(`  ${h.at} ${h.from ?? "-"} -> ${h.to}: ${h.note}`));
   return lines4.join("\n");
 }
-function pickNext(deps, root2, base, loaded2, parent, claimRepo, skip = [], take) {
+async function pickNext(deps, root2, base, loaded2, parent, claimRepo, skip = [], take, lockFetch = (fn) => fn()) {
   const { config: config2 } = loaded2;
   const source = config2.intake.source;
   if (parent === void 0 && !source) throw new FactoryUsageError("--next needs --parent <spec> or factory.intake.source");
   const read = forgeReadExec(deps.exec, config2, root2);
   const warnings = [];
-  const baseSha = config2.kind === "local" ? localBase(read.exec, root2, base, warnings) : fetchBase(read.exec, root2, base, warnings);
+  const baseSha = await lockFetch(() => config2.kind === "local" ? localBase(read.exec, root2, base, warnings) : fetchBase(read.exec, root2, base, warnings));
   if (config2.kind === "local" && !baseSha) throw new FactoryUsageError(missingLocalBase(base));
   const forge = createForge(read.exec, root2, config2, readForgeOptions(config2, root2, read.options, base, baseSha, false));
   const ids2 = parent !== void 0 ? forge.tracker.viewItem(parent).children : forge.tracker.queryItems(source, config2.intake.limit);
@@ -144300,18 +144437,22 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
     let claimRepo = null;
     const warnShallow = shallowWarnOnce();
     let held;
-    const par = !o.dryRun && deps.parallel ? deps.parallel(root2, base, readOnlyForgeKind(deps, root2, base)) : void 0;
+    let par;
+    if (!o.dryRun && deps.parallel) {
+      let sealedShared = false;
+      if (issue2 !== void 0) {
+        try {
+          const s = readFactoryState(root2, issue2);
+          sealedShared = s !== null && sharedLayoutSealed(s);
+        } catch {
+          sealedShared = true;
+        }
+      }
+      if (!sealedShared) par = deps.parallel(root2, base, () => readOnlyForgeKind(deps, root2, base));
+    }
     const refusal = par ? parallelLayoutRefusal(par.settings, par.layout) : null;
     if (refusal) throw new FactoryUsageError(refusal);
-    let slotMode = par !== void 0 && par.settings.maxConcurrent > 1;
-    if (slotMode && issue2 !== void 0) {
-      try {
-        const s = readFactoryState(root2, issue2);
-        if (s && sharedLayoutSealed(s)) slotMode = false;
-      } catch {
-        slotMode = false;
-      }
-    }
+    const slotMode = par !== void 0 && par.settings.maxConcurrent > 1;
     if (o.parallel !== void 0) {
       if (!o.next) throw new FactoryUsageError("--parallel applies to --next");
       if (o.dryRun) throw new FactoryUsageError("--parallel starts real runs; it does not combine with --dry-run");
@@ -144319,7 +144460,8 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
       return runParallel(deps, root2, Math.min(o.parallel, par.settings.maxConcurrent), parent, Boolean(o.json));
     }
     const creditLimit = slotMode ? par.settings.maxInFlightCredits ?? limits.laneMaxCredits * par.settings.maxConcurrent : par?.settings.maxInFlightCredits;
-    const importLocked = (fn) => slotMode ? withRepoImportLock(root2, "import:cli", fn) : fn();
+    let signals = 0;
+    const importLocked = async (fn) => slotMode ? withRepoImportLockAsync(root2, "import:cli", fn, { stopped: () => signals > 0 }) : fn();
     if (!o.dryRun) {
       const hold = tamperHoldMessage(deps.ledgerDir ?? defaultLedgerDir(), root2);
       if (hold) throw new FactoryTamperHoldError(hold);
@@ -144336,14 +144478,17 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
         throw new FactoryBusyError(busy);
       }
     }
-    let signals = 0;
     const onSignal = () => {
       signals += 1;
       if (signals > 1) process.exit(130);
       console.error(source_default.yellow("omg factory run: stopping after the current poll (cancelling the lane); press again to exit at once"));
     };
     try {
-      const loaded2 = importLocked(() => deps.forge?.(root2, base, { dryRun: Boolean(o.dryRun) }));
+      if (!o.dryRun) {
+        process.on("SIGINT", onSignal);
+        process.on("SIGTERM", onSignal);
+      }
+      const loaded2 = await importLocked(() => deps.forge?.(root2, base, { dryRun: Boolean(o.dryRun) }));
       for (const w of loaded2?.warnings ?? []) console.error(source_default.yellow(w));
       claimRepo = cliClaimRepo(deps, root2, loaded2?.config.kind, Boolean(o.dryRun), warnShallow);
       const forge = loaded2 ? { config: loaded2.config, options: factoryForgeOptions(root2) } : void 0;
@@ -144358,14 +144503,10 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
           throw error2;
         }
       } : void 0;
-      if (!o.dryRun) {
-        process.on("SIGINT", onSignal);
-        process.on("SIGTERM", onSignal);
-      }
       for (; ; ) {
         if (o.next) {
           if (!loaded2) throw new FactoryUsageError("--next needs the forge config (omg factory setup)");
-          const { next, owner: pickedOwner, items, claimed, warnings: pickWarnings } = importLocked(() => pickNext(deps, root2, base, loaded2, parent, claimRepo, skipped, take));
+          const { next, owner: pickedOwner, items, claimed, warnings: pickWarnings } = await pickNext(deps, root2, base, loaded2, parent, claimRepo, skipped, take, importLocked);
           runOwner = pickedOwner;
           for (const w of pickWarnings) console.error(source_default.yellow(plainText(w)));
           const counts = bucketCounts(items);
@@ -144425,7 +144566,7 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
     const stoppers = /* @__PURE__ */ new Set();
     const onSignal = (signal) => {
       stops += 1;
-      for (const f of forwards) f(signal);
+      for (const f of forwards) f(stops > 1 ? "SIGKILL" : signal);
       if (stops > 1) process.exit(130);
       if (!json) console.error(source_default.yellow("omg factory run --parallel: no new run starts; waiting for the running ones (each stops after its current poll); press again to exit at once"));
       for (const s of stoppers) s();
@@ -144521,7 +144662,7 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
       held.release();
     }
   }));
-  run3.command("release [issue]").description("A human clears a claim nobody runs: the item's cross-clone claim (parked, crashed or unreadable) and its owner file here; without an issue, this checkout's engine lock. A live holder is busy (exit 6). With --tamper: print what a tamper quarantine moved and clear the hold that stops new runs here").option("--tamper", "Clear this checkout's tamper hold (set after a lane-, review- or prepare-tampered park) after printing what was quarantined and restored").option("--json", "JSON output").action((issueRaw, o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
+  run3.command("release [issue]").description("A human clears a claim nobody runs: the item's cross-clone claim (parked, crashed or unreadable), its owner file here and its private run dir's run.lock (dead or unreadable); without an issue, this checkout's engine lock. A live holder is busy (exit 6). With --tamper: print what a tamper quarantine moved and clear the hold that stops new runs here").option("--tamper", "Clear this checkout's tamper hold (set after a lane-, review- or prepare-tampered park) after printing what was quarantined and restored").option("--json", "JSON output").action((issueRaw, o, c) => factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
     const root2 = factoryRoot(exec3);
     if (o.tamper) {
       if (issueRaw !== void 0) throw new FactoryUsageError("--tamper takes no issue: the hold is on the checkout");
@@ -144542,19 +144683,19 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
       }
     });
     const kept = [];
+    const freeIfDead = (path30) => withOwnerFileLock(path30, () => {
+      const h = ownerHolding(path30, me);
+      if (h && h !== "unreadable") {
+        kept.push(`${path30} (${describeOwner(h)})`);
+        return;
+      }
+      if ((0, import_fs188.existsSync)(path30)) {
+        (0, import_fs188.unlinkSync)(path30);
+        removed.push(path30);
+      }
+    });
     if (issueRaw === void 0) {
       removeOwnerFile(factoryRepoOwnerPath(root2));
-      const freeIfDead = (path30) => withOwnerFileLock(path30, () => {
-        const h = ownerHolding(path30, me);
-        if (h && h !== "unreadable") {
-          kept.push(`${path30} (${describeOwner(h)})`);
-          return;
-        }
-        if ((0, import_fs188.existsSync)(path30)) {
-          (0, import_fs188.unlinkSync)(path30);
-          removed.push(path30);
-        }
-      });
       let slotNames = [];
       try {
         slotNames = (0, import_fs188.readdirSync)((0, import_path216.join)(factoryStateDir3(root2), "slots")).filter((n) => /^slot-\d+\.owner$/.test(n)).sort();
@@ -144575,6 +144716,8 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
       const claim = claimRepo ? removeFactoryClaim(deps.ledgerDir ?? defaultLedgerDir(), claimRepo, root2, issue2, { deps: me }) : null;
       if (claim) removed.push(claim);
       removeOwnerFile(factoryOwnerPath(root2, issue2));
+      const lock = privateRunLockPath(root2, issue2);
+      if (lock && (0, import_fs188.existsSync)(lock)) freeIfDead(lock);
     }
     if (c.optsWithGlobals().json) console.log(JSON.stringify({ ok: true, removed: removed.map(plainText), ...kept.length > 0 ? { kept: kept.map(plainText) } : {} }, null, 2));
     else {
@@ -148200,7 +148343,7 @@ async function runSdkHost(spec, deps) {
   return outcome;
 }
 async function runSdkHostMain(specPath, loadInProcessTools) {
-  const { spawnSync: spawnSync21 } = await import("node:child_process");
+  const { spawnSync: spawnSync22 } = await import("node:child_process");
   const { loadCopilotSdk: loadCopilotSdk2 } = await Promise.resolve().then(() => (init_copilot_sdk_driver(), copilot_sdk_driver_exports));
   const { killProcessTree: killProcessTree3 } = await Promise.resolve().then(() => (init_process_utils2(), process_utils_exports2));
   const { getProcessStartIdentitySync: getProcessStartIdentitySync2, isProcessAlive: isProcessAlive3 } = await Promise.resolve().then(() => (init_process_utils(), process_utils_exports));
@@ -148216,11 +148359,11 @@ async function runSdkHostMain(specPath, loadInProcessTools) {
     if (spec?.schema_version !== 1 || !spec.worker_name || !spec.state_root) throw new Error("invalid sdk host spec");
     log3(`start team=${spec.team_name} worker=${spec.worker_name} attempt=${spec.attempt_id}`);
     const outcome = await runSdkHost(spec, {
-      loadSdk: () => loadCopilotSdk2(process.env, spawnSync21),
+      loadSdk: () => loadCopilotSdk2(process.env, spawnSync22),
       pid: process.pid,
       startIdentity: (pid) => getProcessStartIdentitySync2(pid),
       isAlive: (pid) => isProcessAlive3(pid),
-      killTree: (pid) => killProcessTree3(pid, spawnSync21),
+      killTree: (pid) => killProcessTree3(pid, spawnSync22),
       platform: process.platform,
       pollMs: 250,
       env: process.env,
@@ -170016,8 +170159,8 @@ function doctorPayloads(project, sessionId, now2 = /* @__PURE__ */ new Date()) {
     Notification: [{ payload: { hook_event_name: "Notification", sessionId, timestamp: now2.getTime(), cwd: project, title: "Shell completed", message: "omg hooks doctor", notification_type: "shell_completed" } }]
   };
 }
-function checkNode(spawnSync21, env2) {
-  const res = spawnSync21("node", ["--version"], { env: env2, encoding: "utf8", timeout: 15e3, windowsHide: true });
+function checkNode(spawnSync22, env2) {
+  const res = spawnSync22("node", ["--version"], { env: env2, encoding: "utf8", timeout: 15e3, windowsHide: true });
   const version3 = String(res.stdout ?? "").trim();
   if (res.status === 0 && /^v\d+/.test(version3)) return { id: "node.path", status: "ok", detail: `node ${version3} on PATH` };
   return {
@@ -170026,12 +170169,12 @@ function checkNode(spawnSync21, env2) {
     detail: `\`node\` is not runnable from PATH (${res.error?.message ?? `exit ${String(res.status)}`}); every copilot/hooks.json entry execs node, so no hook runs`
   };
 }
-function checkCopilotVersion(env2, deps, spawnSync21) {
+function checkCopilotVersion(env2, deps, spawnSync22) {
   const id = "copilot.version";
   const { bin, source } = resolveCopilotBinary(void 0, env2, deps);
   if (!bin) return { id, status: "warn", detail: `copilot not found (PATH, COPILOT_CLI_PATH, WinGet); the fork targets ${TARGET_COPILOT_VERSION}` };
   const plan = buildHostBinarySpawn(bin, ["--version"]);
-  const res = spawnSync21(plan.command, plan.args, { env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true, windowsVerbatimArguments: plan.windowsVerbatimArguments });
+  const res = spawnSync22(plan.command, plan.args, { env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true, windowsVerbatimArguments: plan.windowsVerbatimArguments });
   const version3 = parseCopilotVersion(String(res.stdout ?? ""));
   if (!version3) return { id, status: "warn", detail: `${bin} (${source}) --version gave no version`, evidence: clip(`${res.stdout ?? ""}${res.stderr ?? ""}`) };
   const cmp = compareCopilotVersions(version3, TARGET_COPILOT_VERSION);
@@ -170112,7 +170255,7 @@ function dispatchCheck(event, entry2, result) {
   if (result.durationMs > budgetMs * SLOW_FRACTION) return { id, status: "warn", detail: `exit 0 in ${timing}, ${out}; used over ${SLOW_FRACTION * 100}% of the timeout` };
   return { id, status: "ok", detail: `exit 0 in ${timing}, ${out}` };
 }
-function dispatchChecks(manifest, root2, env2, spawnSync21, deps, only) {
+function dispatchChecks(manifest, root2, env2, spawnSync22, deps, only) {
   const events = Object.keys(manifest.hooks).filter((e) => !only || e === only);
   if (only && events.length === 0) return [{ id: `dispatch.${only}`, status: "fail", detail: `${COPILOT_HOOKS_PATH} registers no ${only} (events: ${Object.keys(manifest.hooks).join(", ")})` }];
   const parent = (0, import_fs197.mkdtempSync)((0, import_path226.join)((0, import_os45.tmpdir)(), "omg-hooks-doctor-"));
@@ -170122,7 +170265,7 @@ function dispatchChecks(manifest, root2, env2, spawnSync21, deps, only) {
     const project = (0, import_path226.join)(parent, "project");
     (0, import_fs197.mkdirSync)(home);
     (0, import_fs197.mkdirSync)(project);
-    spawnSync21("git", ["init", "-q"], { cwd: project, encoding: "utf8", timeout: 3e4, windowsHide: true });
+    spawnSync22("git", ["init", "-q"], { cwd: project, encoding: "utf8", timeout: 3e4, windowsHide: true });
     (0, import_fs197.writeFileSync)((0, import_path226.join)(project, "README.md"), "# omg hooks doctor\n");
     const sandboxEnv = { ...buildSessionEnv(env2, (0, import_path226.join)(home, ".copilot")), HOME: home, USERPROFILE: home };
     const payloads = doctorPayloads(project, `omg-hooks-doctor-${(deps.randomUUID ?? import_crypto64.randomUUID)()}`);
@@ -170134,7 +170277,7 @@ function dispatchChecks(manifest, root2, env2, spawnSync21, deps, only) {
           checks.push({ id: `dispatch.${event}`, status: "warn", detail: "no recorded payload for this event; not dispatched" });
           continue;
         }
-        checks.push(dispatchCheck(event, entry2, dispatchHookEntry(event, entry2, root2, variant.payload, { cwd: project, env: sandboxEnv, spawnSync: spawnSync21 })));
+        checks.push(dispatchCheck(event, entry2, dispatchHookEntry(event, entry2, root2, variant.payload, { cwd: project, env: sandboxEnv, spawnSync: spawnSync22 })));
       }
     }
     return checks;
@@ -170158,12 +170301,12 @@ function dispatchChecks(manifest, root2, env2, spawnSync21, deps, only) {
 async function runHooksDoctor(opts = {}) {
   const env2 = opts.env ?? process.env;
   const deps = opts.deps ?? {};
-  const spawnSync21 = deps.spawnSync ?? import_child_process54.spawnSync;
+  const spawnSync22 = deps.spawnSync ?? import_child_process54.spawnSync;
   const root2 = (0, import_path226.resolve)(opts.pluginRoot ?? resolveDefaultPluginRoot(env2));
   const checks = [];
-  const node = checkNode(spawnSync21, env2);
+  const node = checkNode(spawnSync22, env2);
   checks.push(node);
-  checks.push(checkCopilotVersion(env2, deps, spawnSync21));
+  checks.push(checkCopilotVersion(env2, deps, spawnSync22));
   checks.push(await checkManifestSync(root2, deps));
   let manifest = null;
   try {
@@ -170175,7 +170318,7 @@ async function runHooksDoctor(opts = {}) {
     checks.push(checkScripts(manifest, root2));
     if (opts.dispatch !== false) {
       if (node.status === "fail") checks.push({ id: "dispatch", status: "fail", detail: "skipped: node is not on PATH" });
-      else checks.push(...dispatchChecks(manifest, root2, env2, spawnSync21, deps, opts.event));
+      else checks.push(...dispatchChecks(manifest, root2, env2, spawnSync22, deps, opts.event));
     }
   }
   return { ok: checks.every((c) => c.status !== "fail"), pluginRoot: root2, checks };

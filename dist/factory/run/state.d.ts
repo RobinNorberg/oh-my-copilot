@@ -502,6 +502,10 @@ export interface HeldOwner {
     relabel: (run: string) => void;
     tookOver?: FactoryOwner;
 }
+/** tryScanLock's hold: `importLock` when it also took the import lock (a slot was held); pass it to withRepoImportLock's `held`. */
+export interface ScanHold extends HeldOwner {
+    importLock?: HeldOwner;
+}
 /**
  * Claim the single-runner owner file. A live owner (or one on another host,
  * whose pid cannot be checked) refuses; a dead pid on this host is taken
@@ -564,13 +568,33 @@ export declare function acquireImportLock(root: string, label: string, now: () =
 /**
  * Run `fn` (synchronous: it is never held across an await, so never across
  * a lane or a gate) under the repository import lock (acquireImportLock).
- * Re-entrant within one process.
+ * Re-entrant inside the synchronous call of an outer withRepoImportLock of
+ * this process only. `held`: the caller already holds the lock (a scan
+ * hold, an awaited acquireImportLockAsync); `fn` runs inside it and the
+ * caller releases it (review-487 L-4: no process-wide flag across awaits).
  */
 export declare function withRepoImportLock<T>(root: string, label: string, fn: () => T, o?: {
     deps?: OwnerDeps;
     waitMs?: number;
     now?: () => string;
+    held?: HeldOwner;
 }): T;
+/**
+ * withRepoImportLock whose wait never blocks the event loop (review-487
+ * M-3): while another process holds the lock, the holder is re-read every
+ * SCAN_POLL_MS between awaited sleeps, so SIGINT, SIGTERM and a supervisor's
+ * forwarded stop run meanwhile. The successful claim, the synchronous `fn`
+ * and the release run in one synchronous turn: the lock is never held across
+ * an await. `stopped`: read between polls; true ends the wait with
+ * ImportLockBusyError (nothing ran under the lock; a rerun continues).
+ */
+export declare function withRepoImportLockAsync<T>(root: string, label: string, fn: () => T, o?: {
+    deps?: OwnerDeps;
+    waitMs?: number;
+    now?: () => string;
+    stopped?: () => boolean;
+    sleep?: (ms: number) => Promise<void>;
+}): Promise<T>;
 /** How long an engine-side start (run, heal run/approve/cancel, run reset, run clean, the poller's auto-start) waits for a `scan` holder before it is busy. */
 export declare const SCAN_WAIT_MS = 60000;
 /** The poller's auto-start blocks the event loop while it waits, so it waits only this long for a `scan` holder. */
@@ -599,7 +623,7 @@ export declare function acquireFactoryRepoOwnerForRun(root: string, key: Factory
  * holder is waited out that long first). Any other error (EACCES on the
  * state dir, ...) throws: it is not "busy".
  */
-export declare function tryScanLock(root: string, now: string, deps?: OwnerDeps, waitMs?: number): HeldOwner | FactoryBusyError;
+export declare function tryScanLock(root: string, now: string, deps?: OwnerDeps, waitMs?: number): ScanHold | FactoryBusyError;
 /**
  * True when the engine lock of `root` was taken from another folder (its
  * recorded `root`): that folder resolves to this checkout's state root (a
@@ -608,7 +632,7 @@ export declare function tryScanLock(root: string, now: string, deps?: OwnerDeps,
  */
 export declare function ownerFromOtherCheckout(prior: Pick<FactoryOwner, 'root'>, root: string, platform?: NodeJS.Platform): boolean;
 /** The one rule for an owner or claim file that does not parse: it is held (never taken over, never "not busy") until a human removes it. */
-export declare const unreadableOwnerMessage: (path: string) => string;
+export declare const unreadableOwnerMessage: (path: string, release?: string) => string;
 /**
  * Throws FactoryBusyError while the checkout's engine lock is held: a live
  * engine, or an unreadable lock file. Read-only; acquireFactoryRepoOwner

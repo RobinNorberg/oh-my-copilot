@@ -450,8 +450,8 @@ function identityEnv() {
  * the per-repository seed lock under the work root, which every checkout of
  * the repository shares (its seed). Lock order: import.lock, then the seed lock.
  */
-export function withImportLock(root, layout, label, fn) {
-    return withRepoImportLock(root, label, () => withSeedLock(layout, fn));
+export function withImportLock(root, layout, label, fn, held) {
+    return withRepoImportLock(root, label, () => withSeedLock(layout, fn), held ? { held } : {});
 }
 /**
  * The per-repository seed lock (`<work>/<repo8>/import.lock`, a plain file
