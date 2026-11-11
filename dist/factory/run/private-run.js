@@ -68,6 +68,20 @@ export function resolveRunLayout(user, base) {
     }
     return { layout: 'shared', source: 'default' };
 }
+/**
+ * Whether the user config opts into parallel runs (review-487 L-1): it sets
+ * factory.run.maxConcurrent or maxInFlightCredits, or layout "private".
+ * Without that opt-in the base layer's maxConcurrent and maxInFlightCredits
+ * count for nothing (the CLI and the poller's auto-start alike). Throws on
+ * an invalid user layout, as resolveRunLayout does.
+ */
+export function userParallelOptIn(user) {
+    const keys = run(user);
+    if (keys && (keys.maxConcurrent !== undefined || keys.maxInFlightCredits !== undefined))
+        return true;
+    const layout = resolveRunLayout(user, undefined);
+    return layout.source !== 'default' && layout.layout === 'private';
+}
 /** factory.run.gateInstall from the same trusted layers: "park" (default) or "sandboxed". */
 export function resolveGateInstall(user, base) {
     for (const [config, source] of [[user, 'user config'], [base, 'the base .copilot/omg.jsonc']]) {

@@ -23,7 +23,7 @@ import { DEFAULT_HEAL_CONFIG } from '../heal/config.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../run/budget.js';
 import { healStateDir } from '../heal/state.js';
 import { computeFactoryIntegrity, createFactoryState, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, moveTo, runKeyOf, setGate } from '../run/state.js';
-import { acquirePoller, defaultPollHealScan, holdForRefs, nextInterval, parseInterval, PollBusyError, pollAuditPath, pollStatePath, POLL_JSON_SCHEMA_VERSION, POLL_MAX_INTERVAL_MS, autoStartTimeoutMs, defaultPollAutoStart, defaultPollBudget, parseRunNextOutcome, runFactoryPoll, } from '../poll.js';
+import { acquirePoller, defaultPollHealScan, holdForRefs, nextInterval, parseInterval, PollBusyError, pollAuditPath, pollStatePath, POLL_JSON_SCHEMA_VERSION, POLL_MAX_INTERVAL_MS, autoStartTimeoutMs, defaultPollAutoStart, defaultPollBudget, parseRunNextOutcome, pollParallel, runFactoryPoll, } from '../poll.js';
 const SHA = 'a'.repeat(40);
 const HEAD = 'b'.repeat(40);
 const T0 = '2026-10-31T10:00:00.000Z';
@@ -897,6 +897,19 @@ setInterval(() => {}, 1000);
             expect(await run).toEqual({ exitCode: 1, parsed: false, next: null, message: 'no outcome on stdout (ended by SIGTERM)' });
             expect(unsubscribed).toBe(true);
         });
+    });
+});
+describe('omg factory poll: the parallel auto-start needs the user config opt-in (review-487b F-1)', () => {
+    it('maxConcurrent and layout committed only on the base start one ordinary run (no --parallel), silently; with the user opt-in the base key counts', () => {
+        const err = [];
+        const base = { factory: { run: { maxConcurrent: 3, layout: 'private' } } };
+        expect(pollParallel(null, base, (m) => err.push(m))).toBeUndefined();
+        expect(pollParallel({ factory: { intake: { autoStart: true } } }, base, (m) => err.push(m))).toBeUndefined();
+        expect(err).toEqual([]);
+        // The CLI's rule: the user config sets layout "private" (or maxConcurrent / maxInFlightCredits); the base supplies the rest.
+        expect(pollParallel({ factory: { run: { layout: 'private' } } }, base, (m) => err.push(m))).toBe(3);
+        expect(pollParallel({ factory: { run: { maxConcurrent: 2, layout: 'private' } } }, base, (m) => err.push(m))).toBe(2);
+        expect(err).toEqual([]);
     });
 });
 //# sourceMappingURL=poll.test.js.map

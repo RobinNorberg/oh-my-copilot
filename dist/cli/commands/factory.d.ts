@@ -71,7 +71,7 @@ export interface FactoryRunDeps {
      * needed. Undefined (or omitted) = one engine per checkout and no credit
      * reservation, exactly as before: the default path reads no git.
      */
-    parallel?: (root: string, base: string, kind: () => ForgeKind | undefined) => {
+    parallel?: (root: string, base: string, forge: () => ParallelForge | undefined) => {
         settings: ParallelSettings;
         layout: RunLayoutChoice;
     } | undefined;
@@ -83,7 +83,7 @@ export interface FactoryRunDeps {
     }) => Promise<ParallelChildOutcome>;
 }
 /** defaultParallelLayers for a given trusted user config and guarded `exec` (exported for its tests). */
-export declare function parallelLayers(root: string, base: string, kind: () => ForgeKind | undefined, user: unknown, exec: Exec): {
+export declare function parallelLayers(root: string, base: string, kind: () => ParallelForge | undefined, user: unknown, exec: Exec): {
     settings: ParallelSettings;
     layout: RunLayoutChoice;
 } | undefined;
@@ -101,6 +101,16 @@ export declare const factoryRunJson: {
 export declare function renderFactoryRunState(state: FactoryRunState, o?: {
     gate?: boolean;
 }): string;
+/**
+ * The forge kind of this checkout read without a fetch (the forge-config
+ * loader's dry-run mode: the committed config at the tracking ref as it
+ * is), undefined when no loader is wired or it fails.
+ */
+/** The forge kind and repository the parallel settings' base read needs (review-487b BLOCK-2: the remote check). */
+export interface ParallelForge {
+    kind: ForgeKind;
+    repoUrl: string;
+}
 /**
  * The live engines of this checkout (its engine lock and every run owner
  * file a live process holds), the owner files nobody can read (held, listed

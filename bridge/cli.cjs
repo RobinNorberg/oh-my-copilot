@@ -121705,6 +121705,8 @@ function factoryGit(a, protectedBranches, extraProtected = [], local, agent) {
       const m = r.length === 2 && remote ? /^refs\/heads\/(.+)$/.exec(r[1]) : null;
       return Boolean(m) && (isFactoryBranch(m[1], protectedBranches) || extraProtected.includes(m[1]));
     }
+    case "fetch":
+      return r.length === 6 && same2(r.slice(0, 4), ["--no-tags", "--no-write-fetch-head", "--no-auto-gc", "--refmap="]) && r[4] === "origin" && /^[0-9a-f]{40}$/.test(r[5]) ? true : null;
     case "init":
       return r.length === 3 && same2(r.slice(0, 2), ["--bare", "--quiet"]) && isMirrorPath(r[2], local);
     case "remote":
@@ -122347,6 +122349,7 @@ function samePath2(a, b) {
 function compareSnapshots(before, after, allowedNewRefs = {}, allow = {}) {
   const problems = [];
   if (before.commonDir !== after.commonDir) problems.push(`common git dir moved (${before.commonDir} -> ${after.commonDir})`);
+  const refLines = [];
   const names = /* @__PURE__ */ new Set([...Object.keys(before.refs), ...Object.keys(after.refs)]);
   for (const name of [...names].sort()) {
     const was = before.refs[name];
@@ -122354,11 +122357,21 @@ function compareSnapshots(before, after, allowedNewRefs = {}, allow = {}) {
     if (was === now2) continue;
     if (was === void 0 && name in allowedNewRefs && (allowedNewRefs[name] === "*" || now2 === allowedNewRefs[name])) continue;
     if (was === void 0 && now2 !== void 0 && allow.refAllowed?.(name, now2)) continue;
-    if (now2 !== void 0 && name.startsWith("refs/remotes/") && allow.fetchedRef?.(name, now2)) continue;
-    if (was === void 0) problems.push(`ref ${name} was created (${now2.slice(0, 12)})`);
-    else if (now2 === void 0) problems.push(`ref ${name} was deleted (was ${was.slice(0, 12)})`);
-    else problems.push(`ref ${name} moved ${was.slice(0, 12)} -> ${now2.slice(0, 12)}`);
+    const candidate = now2 !== void 0 && name.startsWith("refs/remotes/") && allow.fetchedRef !== void 0;
+    if (was === void 0) refLines.push({ line: `ref ${name} was created (${now2.slice(0, 12)})`, ...candidate ? { name, sha: now2 } : {} });
+    else if (now2 === void 0) refLines.push({ line: `ref ${name} was deleted (was ${was.slice(0, 12)})` });
+    else refLines.push({ line: `ref ${name} moved ${was.slice(0, 12)} -> ${now2.slice(0, 12)}`, ...candidate ? { name, sha: now2 } : {} });
   }
+  const rest = compareRest(before, after, allow);
+  const othersDiffer = problems.length > 0 || rest.length > 0 || refLines.some((r) => r.name === void 0);
+  for (const r of refLines) {
+    if (r.name !== void 0 && !othersDiffer && allow.fetchedRef(r.name, r.sha)) continue;
+    problems.push(r.line);
+  }
+  return [...problems, ...rest];
+}
+function compareRest(before, after, allow) {
+  const problems = [];
   if (before.config !== after.config) problems.push("the common git config changed");
   if (before.configWorktree !== after.configWorktree) problems.push("config.worktree changed");
   const ids2 = /* @__PURE__ */ new Set([...Object.keys(before.worktreeConfigs), ...Object.keys(after.worktreeConfigs)]);
@@ -128018,6 +128031,12 @@ function resolveRunLayout(user, base) {
     return { layout: v, source };
   }
   return { layout: "shared", source: "default" };
+}
+function userParallelOptIn(user) {
+  const keys = run2(user);
+  if (keys && (keys.maxConcurrent !== void 0 || keys.maxInFlightCredits !== void 0)) return true;
+  const layout = resolveRunLayout(user, void 0);
+  return layout.source !== "default" && layout.layout === "private";
 }
 function resolveGateInstall(user, base) {
   for (const [config2, source] of [[user, "user config"], [base, "the base .copilot/omg.jsonc"]]) {
@@ -133889,7 +133908,7 @@ async function runFactoryEngine(o) {
 function sharedLayoutSealed(s) {
   return s.layout !== 2 && (s.lanes.length > 0 || s.codingAgent !== void 0);
 }
-var import_crypto55, import_fs173, import_os39, import_path201, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4017, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
+var import_crypto55, import_fs173, import_os39, import_path201, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4017, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
 var init_engine = __esm({
   "src/factory/run/engine.ts"() {
     "use strict";
@@ -133961,6 +133980,7 @@ var init_engine = __esm({
     MAX_MERGE_BOUNCES = 2;
     DEFAULT_POLL_MS = 5e3;
     LANE_GRACE_MS = 6e4;
+    REMOTE_HEAD_FETCH_FLAGS = ["--no-tags", "--no-write-fetch-head", "--no-auto-gc", "--refmap="];
     LS_REMOTE_TIMEOUT_MS = 6e4;
     ADO_HEAD_LAG_POLLS = 12;
     localGateConfigLoader = (i) => {
@@ -137084,25 +137104,44 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
       otherRunsTransport(branch2, sha3) {
         const s = this.state;
         if (branch2 !== s.base && (branch2 === s.branch || !/^factory\/(?:issue-\d+|heal-[0-9a-f]{8})$/.test(branch2))) return false;
-        return this.remoteHeadNow(branch2) === sha3;
+        return this.remotePublished(branch2, sha3);
       }
-      /** The sha `git ls-remote <remote> refs/heads/<branch>` reports now (null: no such branch), under the import lock; FactoryBusyError when it cannot be read. */
-      remoteHeadNow(branch2) {
+      /**
+       * Whether `sha` is a commit the remote published for `branch`, read under
+       * the import lock: the sha `git ls-remote <remote> refs/heads/<branch>`
+       * reports now, or (review-487b F-2: the base moved again after another
+       * run's fetch) an ancestor of it. The remote unreadable: FactoryBusyError,
+       * except with a cancel requested (review-487b F-3): then the ref is not
+       * excused, so the run parks (a ref-only change holds nothing) and the
+       * cancel completes instead of the run staying busy.
+       */
+      remotePublished(branch2, sha3) {
         const remote = runRemote(this.state);
-        const busy = (why) => new FactoryBusyError(`the remote ${remote} could not be read (${why}), so a change of refs/remotes/${remote}/${branch2} in your repository by another run's fetch or push cannot be told from a change by a lane; nothing was judged: rerun ${this.resume} to compare again`);
-        return withRepoImportLock(this.o.root, `snapshot:${this.key}`, () => {
-          const mismatch2 = remoteRepoMismatch(this.exec, this.o.root, remote, this.state.repoUrl);
-          if (mismatch2) return null;
-          let res;
+        const cancelling = Boolean(this.state.cancelRequested) || factoryCancelRequested(this.o.root, this.key);
+        const busy = (why) => new FactoryBusyError(`the remote ${remote} could not be read (${visibleLine(why)}), so a change of refs/remotes/${remote}/${branch2} in your repository by another run's fetch or push cannot be told from a change by a lane; nothing was judged: rerun ${this.resume} to compare again once the remote can be read, or ${cancelCommand(this.key)} and then rerun to park the run`);
+        const git8 = (args, timeoutMs) => {
           try {
-            res = this.exec("git", ["ls-remote", remote, `refs/heads/${branch2}`], { cwd: this.o.root, env: TRUSTED_READ_ENV, timeoutMs: LS_REMOTE_TIMEOUT_MS });
+            return this.exec("git", args, { cwd: this.o.root, env: TRUSTED_READ_ENV, ...timeoutMs ? { timeoutMs } : {} });
           } catch (error2) {
             throw busy(errText6(error2));
           }
-          if (res.status !== 0) throw busy(`git ls-remote ${remote} refs/heads/${branch2} exit ${res.status}: ${res.stderr.trim().split("\n")[0] ?? ""}`);
-          const head = res.stdout.trim().split(/\s+/)[0] ?? "";
-          return HEX4017.test(head) ? head : null;
-        });
+        };
+        try {
+          return withRepoImportLock(this.o.root, `snapshot:${this.key}`, () => {
+            if (remoteRepoMismatch(this.exec, this.o.root, remote, this.state.repoUrl)) return false;
+            const listed2 = git8(["ls-remote", remote, `refs/heads/${branch2}`], LS_REMOTE_TIMEOUT_MS);
+            if (listed2.status !== 0) throw busy(`git ls-remote ${remote} refs/heads/${branch2} exit ${listed2.status}: ${listed2.stderr.trim().split("\n")[0] ?? ""}`);
+            const head = listed2.stdout.trim().split(/\s+/)[0] ?? "";
+            if (!HEX4017.test(head)) return false;
+            if (head === sha3) return true;
+            const fetched = git8(["fetch", ...REMOTE_HEAD_FETCH_FLAGS, remote, head], LS_REMOTE_TIMEOUT_MS);
+            if (fetched.status !== 0) throw busy(`git fetch ${remote} ${head.slice(0, 12)} exit ${fetched.status}: ${fetched.stderr.trim().split("\n")[0] ?? ""}`);
+            return git8(["merge-base", "--is-ancestor", sha3, head]).status === 0;
+          });
+        } catch (error2) {
+          if (cancelling && error2 instanceof FactoryBusyError) return false;
+          throw error2;
+        }
       }
       /** The lane's comparison against its before-snapshot: its own branch and worktree entry may appear. */
       laneProblems(kind, before, result, startRef, laneId) {
@@ -137111,7 +137150,8 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         try {
           const after = this.snap(before);
           const newWorktree = result.worktree ? { path: result.worktree } : result.remoteId ? { id: result.remoteId } : void 0;
-          return { after, problems: [...compareSnapshots(before, after, allowed, { fetchedRef: this.fetchedRef, ...newWorktree ? { newWorktree } : {} }), ...user] };
+          const fetchedRef = user.length === 0 ? this.fetchedRef : void 0;
+          return { after, problems: [...compareSnapshots(before, after, allowed, { ...fetchedRef ? { fetchedRef } : {}, ...newWorktree ? { newWorktree } : {} }), ...user] };
         } catch (error2) {
           if (error2 instanceof FactoryBusyError) throw error2;
           return { problems: [`the post-lane snapshot failed: ${errText6(error2)}`, ...user] };
@@ -137333,7 +137373,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         if (!after) return { problems, note };
         try {
           const again = this.snap(after);
-          for (const p of compareSnapshots(after, again, {}, { fetchedRef: this.fetchedRef })) if (!problems.includes(p)) problems.push(p);
+          for (const p of compareSnapshots(after, again)) if (!problems.includes(p)) problems.push(p);
           return { problems, after: again, note };
         } catch (error2) {
           problems.push(`the snapshot after the lane's processes were killed failed: ${errText6(error2)}`);
@@ -137457,19 +137497,22 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         if (!baseline) {
           problems = ["the engine has no snapshot from before the lane started"];
         } else {
+          const user = await this.importReady(() => this.laneUserProblems(lane.id, confirmedSandbox ?? lane.sandbox), !laneSandboxEnforced(confirmedSandbox ?? lane.sandbox));
           try {
             const jobRef = (name, sha3) => lane.jobId !== void 0 && name.startsWith("refs/heads/") && name.endsWith(`/${lane.jobId}`) && (lane.kind !== "review" || sha3 === lane.startSha);
-            after = this.snap(baseline);
-            problems = compareSnapshots(baseline, after, {}, {
-              refAllowed: jobRef,
-              fetchedRef: this.fetchedRef,
-              ...lane.jobId ? { newWorktree: { id: lane.jobId } } : {}
+            problems = await this.importReady(() => {
+              after = this.snap(baseline);
+              return compareSnapshots(baseline, after, {}, {
+                refAllowed: jobRef,
+                ...user.length === 0 ? { fetchedRef: this.fetchedRef } : {},
+                ...lane.jobId ? { newWorktree: { id: lane.jobId } } : {}
+              });
             });
           } catch (error2) {
             if (error2 instanceof FactoryBusyError) throw error2;
             problems = [`the snapshot failed: ${errText6(error2)}`];
           }
-          problems.push(...await this.importReady(() => this.laneUserProblems(lane.id, confirmedSandbox ?? lane.sandbox), !laneSandboxEnforced(confirmedSandbox ?? lane.sandbox)));
+          problems.push(...user);
         }
         const note = `${reason}${childNote}`;
         this.save((x) => ({
@@ -138015,8 +138058,10 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         let after;
         let problems;
         try {
-          after = this.snap(before);
-          problems = compareSnapshots(before, after, {}, { fetchedRef: this.fetchedRef });
+          problems = await this.importReady(() => {
+            after = this.snap(before);
+            return compareSnapshots(before, after, {}, { fetchedRef: this.fetchedRef });
+          });
         } catch (error2) {
           if (error2 instanceof FactoryBusyError) throw error2;
           problems = [`the post-fetch snapshot failed: ${errText6(error2)}`];
@@ -143562,6 +143607,7 @@ var init_reminders = __esm({
 // src/factory/poll.ts
 function pollParallel(trustedUser, base, err) {
   try {
+    if (!userParallelOptIn(trustedUser)) return void 0;
     const s = resolveParallelSettings(trustedUser, base, err);
     return s.maxConcurrent > 1 && resolveRunLayout(trustedUser, base).layout === "private" ? s.maxConcurrent : void 0;
   } catch (error2) {
@@ -144220,18 +144266,21 @@ function defaultParallelLayers(root2, base, kind) {
   return parallelLayers(root2, base, kind, user, factoryGuardExec(hardenedGitExec(defaultExec, emptyHooksDir2(defaultLedgerDir())), () => [base]));
 }
 function parallelLayers(root2, base, kind, user, exec3) {
-  const keys = user?.factory?.run;
   const userLayout = resolveRunLayout(user, void 0);
-  const optIn = typeof keys === "object" && keys !== null && (keys.maxConcurrent !== void 0 || keys.maxInFlightCredits !== void 0) || userLayout.source !== "default" && userLayout.layout === "private";
-  if (!optIn) return void 0;
+  if (!userParallelOptIn(user)) return void 0;
   const warn = (m) => console.error(source_default.yellow(plainText(m)));
   const own2 = resolveParallelSettings(user, void 0, warn);
   const needBase = own2.source === "default" || userLayout.source === "default";
   const baseLayer2 = needBase ? readBaseLayerAfterFetch(exec3, root2, base, kind(), user, warn) : void 0;
   return { settings: resolveParallelSettings(user, baseLayer2, warn), layout: resolveRunLayout(user, baseLayer2).layout };
 }
-function readBaseLayerAfterFetch(exec3, root2, base, kind, user, warn) {
-  if (kind === "local") return readTrustedBaseLayerAtRef(exec3, root2, base, `refs/heads/${base}`, user, warn);
+function readBaseLayerAfterFetch(exec3, root2, base, forge, user, warn) {
+  if (forge?.kind === "local") return readTrustedBaseLayerAtRef(exec3, root2, base, `refs/heads/${base}`, user, warn);
+  const mismatch2 = remoteRepoMismatch(exec3, root2, "origin", forge?.repoUrl);
+  if (mismatch2) {
+    warn(`omg factory run: origin/${base} is not read (${forge ? mismatch2 : "no forge config names the repository (omg factory setup)"}); the factory.run keys of the ${base} .copilot/omg.jsonc count as unset`);
+    return void 0;
+  }
   const held = tryScanLock(root2, (/* @__PURE__ */ new Date()).toISOString(), defaultOwnerDeps(), SCAN_WAIT_MS);
   if (held instanceof FactoryBusyError) throw held;
   const inside2 = (fn) => held.importLock ? withRepoImportLock(root2, "import:cli", fn, { held: held.importLock }) : fn();
@@ -144240,7 +144289,7 @@ function readBaseLayerAfterFetch(exec3, root2, base, kind, user, warn) {
       const ls = exec3("git", ["ls-remote", "origin", `refs/heads/${base}`], { cwd: root2, env: TRUSTED_READ_ENV, timeoutMs: FETCH_TIMEOUT_MS });
       const sha3 = ls.status === 0 ? ls.stdout.trim().split(/\s+/)[0] ?? "" : "";
       if (!/^[0-9a-f]{40}$/.test(sha3)) {
-        warn(`omg factory run: origin/${base} could not be read (git ls-remote${ls.status === 0 ? ": no such branch" : ` exit ${ls.status}: ${ls.stderr.trim().split("\n")[0] ?? ""}`}); the factory.run keys of the ${base} .copilot/omg.jsonc count as unset`);
+        warn(`omg factory run: origin/${base} could not be read (git ls-remote${ls.status === 0 ? ": no such branch" : ` exit ${ls.status}: ${visibleLine(ls.stderr.trim().split("\n")[0] ?? "")}`}); the factory.run keys of the ${base} .copilot/omg.jsonc count as unset`);
         return void 0;
       }
       fetchBase(exec3, root2, base, []);
@@ -144326,6 +144375,14 @@ function itemBusy(deps, root2, key, claimRepo) {
   if (h) return `omg factory run ${runLabel(key)} is already running (${describeOwner(h)})`;
   const claim = claimRepo ? factoryClaimHolder(deps.ledgerDir ?? defaultLedgerDir(), claimRepo, root2, key, me) : null;
   return claim ? claimBusyMessage(key, claim) : null;
+}
+function readOnlyParallelForge(deps, root2, base) {
+  try {
+    const config2 = deps.forge?.(root2, base, { dryRun: true }).config;
+    return config2 ? { kind: config2.kind, repoUrl: config2.repo.url } : void 0;
+  } catch {
+    return void 0;
+  }
 }
 function readOnlyForgeKind(deps, root2, base) {
   try {
@@ -144438,6 +144495,10 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
     const warnShallow = shallowWarnOnce();
     let held;
     let par;
+    if (!o.dryRun) {
+      const hold = tamperHoldMessage(deps.ledgerDir ?? defaultLedgerDir(), root2);
+      if (hold) throw new FactoryTamperHoldError(hold);
+    }
     if (!o.dryRun && deps.parallel) {
       let sealedShared = false;
       if (issue2 !== void 0) {
@@ -144448,7 +144509,7 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
           sealedShared = true;
         }
       }
-      if (!sealedShared) par = deps.parallel(root2, base, () => readOnlyForgeKind(deps, root2, base));
+      if (!sealedShared) par = deps.parallel(root2, base, () => readOnlyParallelForge(deps, root2, base));
     }
     const refusal = par ? parallelLayoutRefusal(par.settings, par.layout) : null;
     if (refusal) throw new FactoryUsageError(refusal);
@@ -144456,7 +144517,7 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
     if (o.parallel !== void 0) {
       if (!o.next) throw new FactoryUsageError("--parallel applies to --next");
       if (o.dryRun) throw new FactoryUsageError("--parallel starts real runs; it does not combine with --dry-run");
-      if (!slotMode) throw new FactoryUsageError('--parallel needs factory.run.maxConcurrent above 1 and factory.run.layout: "private" (user config, or the .copilot/omg.jsonc committed on a trusted base)');
+      if (!slotMode) throw new FactoryUsageError('--parallel needs factory.run.maxConcurrent above 1 and factory.run.layout: "private"; parallel runs are an opt-in of your user config (factory.run.maxConcurrent, maxInFlightCredits or layout "private" there), and only then can the .copilot/omg.jsonc committed on a trusted base supply the other key');
       return runParallel(deps, root2, Math.min(o.parallel, par.settings.maxConcurrent), parent, Boolean(o.json));
     }
     const creditLimit = slotMode ? par.settings.maxInFlightCredits ?? limits.laneMaxCredits * par.settings.maxConcurrent : par?.settings.maxInFlightCredits;
@@ -144484,7 +144545,7 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
       console.error(source_default.yellow("omg factory run: stopping after the current poll (cancelling the lane); press again to exit at once"));
     };
     try {
-      if (!o.dryRun) {
+      if (!o.dryRun && slotMode) {
         process.on("SIGINT", onSignal);
         process.on("SIGTERM", onSignal);
       }
@@ -144495,6 +144556,10 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
       const skipped = [];
       let picked;
       let runOwner;
+      if (!o.dryRun && !slotMode) {
+        process.on("SIGINT", onSignal);
+        process.on("SIGTERM", onSignal);
+      }
       const take = slotMode ? (id) => {
         try {
           return acquireFactoryOwner(root2, id, (/* @__PURE__ */ new Date()).toISOString());
@@ -145068,6 +145133,7 @@ var init_factory = __esm({
     init_engine();
     init_exec2();
     init_forge_roots();
+    init_review_feedback();
     init_lane();
     init_sandbox_exec();
     init_tamper_quarantine();

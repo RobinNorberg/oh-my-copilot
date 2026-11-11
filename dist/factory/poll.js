@@ -81,15 +81,19 @@ import { resolveTeamConfig, TeamConfigError } from './team/context.js';
 import { staleGateReminders } from './team/reminders.js';
 import { AUTO_START_SCAN_WAIT_MS, acquireFactoryRepoOwnerForRun, acquireRunSlot, defaultOwnerDeps, heldSlots, EXIT_BUSY, FactoryBusyError, factoryRepoOwnerPath, ownerHolding, runLabel, TERMINAL_FACTORY_PHASES, tryScanLock, verifyFactoryIntegrity, } from './run/state.js';
 import { resolveParallelSettings } from './run/parallel.js';
-import { resolveRunLayout } from './run/private-run.js';
+import { resolveRunLayout, userParallelOptIn } from './run/private-run.js';
 import { killProcessTree } from '../smoke/process-utils.js';
 /**
  * B2: factory.run.maxConcurrent when it is above 1 and factory.run.layout is
  * "private" in the trusted layers (the user config, the base layer); else
  * undefined (one run at a time). An invalid value is reported and counts as 1.
+ * Only with the user config's opt-in (userParallelOptIn, the CLI's rule,
+ * review-487b F-1): keys committed only on the base start one run at a time.
  */
 export function pollParallel(trustedUser, base, err) {
     try {
+        if (!userParallelOptIn(trustedUser))
+            return undefined;
         const s = resolveParallelSettings(trustedUser, base, err);
         return s.maxConcurrent > 1 && resolveRunLayout(trustedUser, base).layout === 'private' ? s.maxConcurrent : undefined;
     }

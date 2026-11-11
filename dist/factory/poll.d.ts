@@ -69,6 +69,8 @@ import { type FactoryRunKey, type HeldOwner, type OwnerDeps } from './run/state.
  * B2: factory.run.maxConcurrent when it is above 1 and factory.run.layout is
  * "private" in the trusted layers (the user config, the base layer); else
  * undefined (one run at a time). An invalid value is reported and counts as 1.
+ * Only with the user config's opt-in (userParallelOptIn, the CLI's rule,
+ * review-487b F-1): keys committed only on the base start one run at a time.
  */
 export declare function pollParallel(trustedUser: unknown, base: unknown, err: (m: string) => void): number | undefined;
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
