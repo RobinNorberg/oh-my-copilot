@@ -294,6 +294,8 @@ export async function runParallelSupervisor(o: ParallelSupervisorOptions): Promi
           o.report?.(index, r);
           // Nothing runnable: no more refills. Busy (no free slot, the checkout held): that slot is not refilled.
           if (r.exitCode === 0 && r.parsed && r.next === null) exhausted = true;
+          // A child that failed before it took an item (a config error, an unreadable outcome) would fail again: no more refills.
+          if (r.exitCode !== 0 && r.exitCode !== EXIT_BUSY && (!r.parsed || r.next === null)) exhausted = true;
           if (r.exitCode === EXIT_BUSY) capacity = Math.max(0, capacity - 1);
           wake();
         });

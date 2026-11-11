@@ -1091,10 +1091,16 @@ class FactoryEngine {
   private userSnap(what: string): RepoSnapshot | undefined {
     if (!this.privateRun()) return undefined;
     try {
-      return snapshotRepo(this.exec, this.o.root, this.stateRootRel);
+      // B2: parallel runs read your repository between other runs' imports, never in the middle of one.
+      return this.userRepoQuiet(() => snapshotRepo(this.exec, this.o.root, this.stateRootRel));
     } catch (error) {
       throw new FactoryStepError(`the snapshot of your repository before ${what} failed: ${errText(error)}`);
     }
+  }
+
+  /** `fn` under the repository import lock in a parallel run (no other run's import is half done), else as is. */
+  private userRepoQuiet<T>(fn: () => T): T {
+    return this.o.parallel ? withRepoImportLock(this.o.root, `snapshot:${this.key}`, fn) : fn();
   }
 
   /**
@@ -1105,7 +1111,7 @@ class FactoryEngine {
   private userRepoProblems(before: RepoSnapshot | undefined, engineRef?: { name: string; sha: string }): string[] {
     if (!before) return [];
     try {
-      const after = snapshotRepo(this.exec, this.o.root, this.stateRootRel, before);
+      const after = this.userRepoQuiet(() => snapshotRepo(this.exec, this.o.root, this.stateRootRel, before));
       const own = engineRef && after.refs[engineRef.name] === engineRef.sha;
       const was = own ? { ...before, refs: { ...before.refs, [engineRef.name]: engineRef.sha } } : before;
       return compareSnapshots(was, after, {}, { fetchedRef: this.fetchedRef }).map((p) => `your repository: ${p}`);
@@ -3901,6 +3907,7 @@ class FactoryEngine {
     if (!name.startsWith(prefix)) return false;
     const branch = name.slice(prefix.length);
     if (branch === s.branch && s.head !== undefined && sha === s.head) return true;
+    if (this.o.parallel && this.otherRunsTransport(branch, sha)) return true;
     if (s.remote !== LOCAL_REMOTE || this.o.forge?.config.kind !== 'local') return false;
     // The base: only the local base sha the engine synced (or, before a sync in this invocation, the local base itself),
     // never whatever the mirror holds now.
@@ -3914,6 +3921,29 @@ class FactoryEngine {
       return false;
     }
   };
+
+  /**
+   * B2, parallel runs only: a remote-tracking ref another run's engine moves
+   * through its own fetch or push under the import lock (`branch` relative
+   * to the run's remote): the base (another run's base fetch: any sha, since
+   * GitHub's base sha cannot be read here without a fetch; each engine reads
+   * the base only from its own fetch under the lock, so a planted value is
+   * overwritten before use), or another run's factory branch at a head that
+   * run's own state records. Never this run's own refs (its own rules apply).
+   */
+  private otherRunsTransport(branch: string, sha: string): boolean {
+    const s = this.state;
+    if (branch === s.base) return true;
+    const m = /^factory\/(?:issue-(\d+)|(heal-[0-9a-f]{8}))$/.exec(branch);
+    if (!m || branch === s.branch) return false;
+    const key: FactoryRunKey = m[1] !== undefined ? Number(m[1]) : (m[2] as `heal-${string}`);
+    try {
+      const other = readFactoryState(this.o.root, key);
+      return other !== null && [other.head, other.pendingHead, other.prepared?.head].includes(sha);
+    } catch {
+      return false;
+    }
+  }
 
   /** The lane's comparison against its before-snapshot: its own branch and worktree entry may appear. */
   private laneProblems(kind: FactoryLaneKind, before: RepoSnapshot, result: LaneResult, startRef: string, laneId: string): { problems: string[]; after?: RepoSnapshot } {
