@@ -92,7 +92,7 @@ import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, g
 import { ghDependsOn, ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, githubTracker } from '../../forge/github/tracker.js';
 import { isSatisfied, type DependencyForge } from '../check/score.js';
 import { outcomePosts, postedBefore, type OutcomeEvent } from './outcome.js';
-import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_TREE_MARKER, linkNodeModules, unlinkNodeModules, type GateConfig, type GateConfigLoader } from './prepare.js';
+import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, unlinkNodeModules, type GateConfig, type GateConfigLoader } from './prepare.js';
 import {
   canTransition,
   createShipState,
@@ -158,6 +158,7 @@ import {
   runLabel,
   runSlug,
   setGate,
+  GATE_DETAIL_MAX_CHARS,
   shipVerdictHash,
   TERMINAL_FACTORY_PHASES,
   factoryBranch,
@@ -539,21 +540,54 @@ const PARK_TAIL_LINES = 12;
 const PARK_TAIL_LINE_CHARS = 200;
 const PARK_TAIL_CHARS = 1_500;
 
-/**
- * L7: why a ci-failed park failed, for the park text, status, board and
- * issue comment: where it ran (a prepare failure ran in the OS sandbox on
- * this host, not in the forge's CI), the failing tests, and the last lines
- * of the output, redacted (token shapes), each made visible and one line,
- * bounded. Empty without a detail or tests.
- */
-export function ciFailureTail(failure: FactoryCiFailure): string {
-  const where = failure.source === 'prepare' ? '; the failure is from the prepare checks on this host (the OS sandbox when gates are enforced), not from the forge CI' : '';
-  const tests = failure.tests.length > 0 ? `; failing tests: ${failure.tests.slice(0, 5).map((t) => oneLine(visibleLine(t), PARK_TAIL_LINE_CHARS)).join(', ')}${failure.tests.length > 5 ? ` and ${failure.tests.length - 5} more` : ''}` : '';
-  const lines = failure.detail ? redactGateOutput(failure.detail).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-PARK_TAIL_LINES) : [];
-  let tail = lines.map((l) => oneLine(visibleLine(l), PARK_TAIL_LINE_CHARS)).join(' | ');
-  if (tail.length > PARK_TAIL_CHARS) tail = `...${tail.slice(-PARK_TAIL_CHARS)}`;
-  return `${where}${tests}${tail ? `; output tail: ${tail}` : ''}`;
+/** The last lines of `text`, redacted (token shapes), each made visible and one line, bounded: a gate's local `detail`. */
+export function parkTail(text: string): string {
+  const lines = redactGateOutput(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-PARK_TAIL_LINES);
+  const tail = lines.map((l) => oneLine(visibleLine(l), PARK_TAIL_LINE_CHARS)).join(' | ');
+  return tail.length > PARK_TAIL_CHARS ? `...${tail.slice(-PARK_TAIL_CHARS)}` : tail;
 }
+
+/**
+ * L7 + H1 (review-490): a ci-failed park. `where` goes into the forge-bound
+ * reason: where the failure ran (a prepare failure ran in the OS sandbox on
+ * this host, not in the forge's CI). `detail` is the gate's LOCAL detail:
+ * the failing tests and the output tail, both chosen by the PR's code, so
+ * never in the issue comment, PR notes or outcome posts (status, board and
+ * the CLI show it). `detail` is empty without an output or tests.
+ */
+export function ciFailureTail(failure: FactoryCiFailure): { where: string; detail: string } {
+  const where = failure.source === 'prepare' ? '; the failure is from the prepare checks on this host (the OS sandbox when gates are enforced), not from the forge CI' : '';
+  const tests = failure.tests.length > 0 ? `failing tests: ${failure.tests.slice(0, 5).map((t) => oneLine(visibleLine(t), PARK_TAIL_LINE_CHARS)).join(', ')}${failure.tests.length > 5 ? ` and ${failure.tests.length - 5} more` : ''}` : '';
+  const tail = failure.detail ? parkTail(failure.detail) : '';
+  return { where, detail: [tests, tail ? `output tail: ${tail}` : ''].filter(Boolean).join('; ') };
+}
+
+/**
+ * M1 (review-490): the dir under node_modules a permission error in the
+ * base calibration's output names (EPERM, EACCES or EROFS on a path under
+ * node_modules), as `node_modules/<entry>`; undefined when there is none.
+ */
+export function nodeModulesWriteDenied(tail: string): string | undefined {
+  // The code and the path in either order on one line (node: "EPERM: ..., open '<path>'"; tsc: "Could not write file '<path>': EPERM").
+  for (const line of tail.split(/\r?\n/)) {
+    if (!/\b(?:EPERM|EACCES|EROFS)\b/.test(line)) continue;
+    // [\x5c/]: a backslash or a slash (Windows and POSIX paths).
+    const m = /node_modules[\x5c/]+(@[\w.-]+[\x5c/]+[\w.-]+|[\w.@-]+)/.exec(line);
+    if (m) return `node_modules/${m[1].replace(/[\x5c/]+/g, '/')}`;
+  }
+  return undefined;
+}
+
+/** What the gate-sandbox-incompatible park of a failing base calibration tells the human to do. */
+export function sandboxIncompatibleAdvice(tail: string | undefined): string {
+  const denied = tail ? nodeModulesWriteDenied(tail) : undefined;
+  // A per-run dir is writable in the tree already: a denial there is not this case.
+  if (!denied || GATE_CACHE_DIRS.includes(denied.slice('node_modules/'.length))) return 'Your gate fails in the sandbox on the base: set factory.run.sandbox.writeNetwork "registry" if it needs the npm registry';
+  return `Your gate cannot write ${denied} in the sandbox: node_modules is read-only there except the fresh per-run dirs ${GATE_CACHE_DIRS.join(', ')}. Move that tool's output or cache out of node_modules (for tsc a tsBuildInfoFile outside it, for vite a cacheDir outside it), or report ${denied} to oh-my-copilot so it can become a per-run dir`;
+}
+
+/** H1: the forge-bound sentence of a park whose detail is local only. */
+const localDetailNote = (key: FactoryRunKey, what: string): string => `; ${what} is shown on this host only (omg factory run status ${key}), never posted`;
 
 /** Parks of the human review read itself and the merge park (which follows that read), which pendingHumanNote never adds to. */
 const isHumanReadGate = (name: string): boolean => name === HUMAN_REVIEW_GATE || name === 'merge' || name === 'fix-rounds-spent' || name === 'head-moved-externally';
@@ -1004,9 +1038,11 @@ class FactoryEngine {
     return s.remote === LOCAL_REMOTE ? localRemoteMismatch(this.exec, this.o.root, s.repoUrl) : remoteRepoMismatch(this.exec, this.o.root, runRemote(s), s.repoUrl);
   }
 
-  private gate(name: string, reason: string): void {
+  /** `detail`: the PR code's output for this park, local only (FactoryGate.detail, H1); the forge-bound text is `reason`. */
+  private gate(name: string, reason: string, detail?: string): void {
     const pending = this.resumedFromPark && !isHumanReadGate(name) ? this.pendingHumanNote() : '';
-    this.save((s) => setGate(s, name, `${reason}${pending}`, this.iso()));
+    const local = detail ? detail.slice(-GATE_DETAIL_MAX_CHARS) : '';
+    this.save((s) => setGate(s, name, `${reason}${pending}`, this.iso(), local ? { detail: local } : {}));
   }
 
   /** Set by resumed(): this run re-evaluates a park, so a park it hits again names the PR's pending human review (L8). */
@@ -1419,7 +1455,7 @@ class FactoryEngine {
   private async privateNodeModules(p: PrivateRun, path: string, baseSha: string, head: string, loaded: GateConfig): Promise<Park | null> {
     const rule = lockfileUnchanged(p.repo, baseSha, head, p.ctx);
     if (rule.policy === 'junction') {
-      linkNodeModules(this.o.root, path);
+      linkNodeModules(this.o.root, path, this.o.warn);
       return null;
     }
     const what = rule.lockfiles.length === 0 ? 'the base has no lockfile' : `the PR changes ${rule.changed.join(', ')}`;
@@ -1440,7 +1476,7 @@ class FactoryEngine {
       ? await this.sandboxRun({ purpose: 'install', argv, exe: target.exe, args: target.args, cwd: path, commonGitDir: p.repo.gitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, network: 'registry' })
       : { ran: false as const, reason: 'no OS sandbox runner was given to the engine' };
     if (!r.ran) return { name: GATE_INSTALL_GATE, reason: `${what}, and npm ci --ignore-scripts could not run in the OS sandbox (${r.reason}); fix that, or set factory.run.gateInstall "park", then rerun ${this.resume}` };
-    if (r.status !== 0 || r.timedOut) return { name: GATE_INSTALL_GATE, reason: `${what}, and npm ci --ignore-scripts in the OS sandbox failed (exit ${r.status}${r.timedOut ? ', timed out' : ''}): ${redactGateOutput(r.output).trim().slice(-1_500)}; rerun ${this.resume} after fixing it` };
+    if (r.status !== 0 || r.timedOut) return { name: GATE_INSTALL_GATE, reason: `${what}, and npm ci --ignore-scripts in the OS sandbox failed (exit ${r.status}${r.timedOut ? ', timed out' : ''})${localDetailNote(this.key, 'its output')}; rerun ${this.resume} after fixing it`, detail: parkTail(r.output) };
     this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `${what}: npm ci --ignore-scripts ran in the OS sandbox in the prepare checkout` }] }));
     return null;
   }
@@ -2882,8 +2918,9 @@ class FactoryEngine {
       throw new FactoryStepError(`the engine's prepare checkout ${path} is at ${head.slice(0, 12)}, which the engine did not leave there; inspect it and remove it by hand`);
     }
     // The engine's own node_modules link would count as untracked on POSIX (a `node_modules/` ignore line skips symlinks).
-    unlinkNodeModules(this.o.root, path);
     try {
+      // Inside the try (M2, review-490): a removal error (EBUSY/EPERM on win32) re-links and keeps the checkout like any other.
+      unlinkNodeModules(this.o.root, path);
       // Only engine-made commits are in it (checked above); nothing else holds them. Through the recorded links: removal
       // never discovers a `.git` file the PR's code rewrote.
       const gitLinks = recordedWorktreeGitLinks(path);
@@ -2891,7 +2928,7 @@ class FactoryEngine {
       forgetWorktreeGitLinks(path);
     } catch (error) {
       // A kept checkout keeps its tooling (the local gate runs in it).
-      linkNodeModules(this.o.root, path);
+      linkNodeModules(this.o.root, path, this.o.warn);
       throw new FactoryStepError(`could not discard the engine's prepare checkout ${path}: ${errText(error)}`);
     }
     this.save((x) => {
@@ -2936,12 +2973,12 @@ class FactoryEngine {
    * did not make), so the run prepares a fresh one instead of parking.
    */
   private discardLegacyCheckout(path: string): void {
-    unlinkNodeModules(this.o.root, path);
     const contained = [this.state.head, this.state.checkoutHead].filter((sha): sha is string => typeof sha === 'string' && HEX40.test(sha));
     try {
+      unlinkNodeModules(this.o.root, path);
       removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [...new Set(contained)] });
     } catch (error) {
-      linkNodeModules(this.o.root, path);
+      linkNodeModules(this.o.root, path, this.o.warn);
       throw new FactoryStepError(`could not discard the engine's prepare checkout ${path}, which an older release made: ${errText(error)}. ${this.freshCheckoutRecovery()}`);
     }
     this.save((x) => {
@@ -3100,10 +3137,10 @@ class FactoryEngine {
       // Your node_modules only for an unchanged lockfile; else factory.run.gateInstall (park, or a sandboxed npm ci).
       const install = await this.privateNodeModules(priv, path, view.baseRefOid, head, this.gateConfig(view));
       if (install) {
-        this.gate(install.name, install.reason);
+        this.gate(install.name, install.reason, install.detail);
         return;
       }
-    } else linkNodeModules(this.o.root, path);
+    } else linkNodeModules(this.o.root, path, this.o.warn);
     // The checkout's gitfile before any PR code ran: compared after each check, and its git dir named to engine git from then on.
     const gitLink = checkoutGitLink(path);
     if (!gitLink.gitDir) throw new FactoryStepError(`the new prepare checkout ${path} has no gitfile naming its git dir (${gitLink.hash})`);
@@ -3111,7 +3148,7 @@ class FactoryEngine {
     // Configured checks are resolved without a shell (never a .cmd/.bat); every check runs per factory.run.sandbox.gates (prepareCheck).
     const commands = configured?.map((argv) => ({ argv, ...resolveLocalGateArgv(argv, { cwd: path, subject: 'the prepare check', configKey: 'ship.prepare.checks' }) }));
     const gates = this.gatesSandbox(this.gateConfig(view));
-    const ran = { modes: new Set<string>(), acked: false, park: undefined as { name: string; reason: string } | undefined };
+    const ran = { modes: new Set<string>(), acked: false, park: undefined as Park | undefined };
     let result: Awaited<ReturnType<typeof runPrepareAsync>>;
     let checkoutHead: string;
     try {
@@ -3121,7 +3158,7 @@ class FactoryEngine {
       );
       // A changed gitfile parks before any further engine git reads the checkout.
       if (ran.park?.name === 'lane-tampered') {
-        this.gate(ran.park.name, ran.park.reason);
+        this.gate(ran.park.name, ran.park.reason, ran.park.detail);
         return;
       }
       if (ran.modes.has('ack') || ran.modes.has('unsandboxed')) {
@@ -3150,7 +3187,7 @@ class FactoryEngine {
     const failed = result.steps.at(-1);
     if (failed?.name === PREPARE_SANDBOX_STEP) {
       if (!ran.park) throw new FactoryStepError(`prepare stopped without a verdict: ${failed.detail ?? 'unknown check'}`);
-      this.gate(ran.park.name, ran.park.reason);
+      this.gate(ran.park.name, ran.park.reason, ran.park.detail);
       return;
     }
     if (failed?.name === 'merge-base' && (result.conflicts ?? []).length > 0) {
@@ -3276,7 +3313,7 @@ class FactoryEngine {
    * check of the head ran in it stops at gate-no-verdict (no ack offer): the
    * PR's code may have caused it.
    */
-  private async prepareCheck(c: PrepareCheckRun, at: { head: string; path: string; commonGitDir: string; baseSha: string; gates: { mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean }; ran: { modes: Set<string>; acked: boolean; park?: { name: string; reason: string } }; gitLink: { hash: string; gitDir: string } }): Promise<PrepareCheckResult> {
+  private async prepareCheck(c: PrepareCheckRun, at: { head: string; path: string; commonGitDir: string; baseSha: string; gates: { mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean }; ran: { modes: Set<string>; acked: boolean; park?: Park }; gitLink: { hash: string; gitDir: string } }): Promise<PrepareCheckResult> {
     const { head, path, ran } = at;
     const parts = fileListParts(c, path);
     if (parts.length > 1) {
@@ -3290,7 +3327,7 @@ class FactoryEngine {
       return { status: 0, stdout: outputs.join('\n'), stderr: '' };
     }
     const label = this.prepareCheckLabel(c);
-    const stop = (park: { name: string; reason: string }): PrepareCheckResult => {
+    const stop = (park: Park): PrepareCheckResult => {
       ran.park = park;
       return { status: 1, stdout: '', stderr: '', notStarted: park.reason };
     };
@@ -3334,7 +3371,8 @@ class FactoryEngine {
       }
       // A node_modules link the PR's code re-pointed is never granted to the sandbox (review-483 M4).
       const repointed = this.nodeModulesRepointed(path);
-      if (repointed) return stop({ name: 'lane-tampered', reason: `${label} on ${head.slice(0, 12)} did not run: ${repointed}, so the PR's code changed it; nothing of this prepare is trusted and nothing is pushed; inspect and remove ${path} by hand` });
+      // H1: the problem names a link target the PR's code chose: local detail only.
+      if (repointed) return stop({ name: 'lane-tampered', reason: `${label} on ${head.slice(0, 12)} did not run: ${join(path, 'node_modules')} (or a link in it) is not as the engine made it, so the PR's code changed it${localDetailNote(this.key, 'which link')}; nothing of this prepare is trusted and nothing is pushed; inspect and remove ${path} by hand`, detail: oneLine(visibleLine(repointed), PARK_TAIL_CHARS) });
       const r = this.o.gateSandbox
         ? await this.sandboxRun({ purpose: 'prepare', argv: c.argv, exe: c.exe, args: c.args, cwd: path, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...(at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}) })
         : { ran: false as const, reason: 'no OS sandbox runner was given to the engine' };
@@ -3391,7 +3429,7 @@ class FactoryEngine {
     if (cal.ok) return null;
     return {
       name: GATE_SANDBOX_INCOMPATIBLE_GATE,
-      reason: `${what} fails in the OS sandbox on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). Your gate fails in the sandbox on the base: set factory.run.sandbox.writeNetwork "registry" if it needs the npm registry, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1_500)}` : ''}`,
+      reason: `${what} fails in the OS sandbox on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${sandboxIncompatibleAdvice(cal.tail)}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1_500)}` : ''}`,
     };
   }
 
@@ -3412,7 +3450,7 @@ class FactoryEngine {
       const env = { ...process.env, GIT_INDEX_FILE: index, GIT_NO_REPLACE_OBJECTS: '1' };
       runHostGit(this.o.root, ['read-tree', baseSha], undefined, env);
       runHostGit(this.o.root, ['checkout-index', '-a', '-f', `--prefix=${dir.replace(/\\/g, '/')}/`], undefined, env);
-      linkNodeModules(this.o.root, dir);
+      linkNodeModules(this.o.root, dir, this.o.warn);
       const r = await this.sandboxRun({ purpose: 'calibrate', argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...(this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {}) });
       if (!r.ran) return { notStarted: r.reason };
       const tail = r.output.trim().slice(-2_000);
@@ -3420,11 +3458,10 @@ class FactoryEngine {
     } catch (error) {
       return { notStarted: errText(error).slice(0, 300) };
     } finally {
-      unlinkNodeModules(this.o.root, dir);
-      let linked = true;
-      try { lstatSync(join(dir, 'node_modules')); } catch { linked = false; }
-      // A link or tree that is still there is left with its dir: removing through a link would empty the root's node_modules.
-      if (linked) this.o.warn?.(`omg factory run: the base calibration dir ${dir} still has its node_modules (links to yours); unlink every link in it by hand, then remove the dir`);
+      // M2 (review-490): a removal error (EBUSY/EPERM on win32) only warns; it never replaces the calibration result.
+      try { unlinkNodeModules(this.o.root, dir); } catch (error) { this.o.warn?.(`omg factory run: could not remove the node_modules tree of the base calibration dir ${dir}: ${errText(error)}`); }
+      // A link that is still there is left with its dir: removing through a link would empty the root's node_modules.
+      if (gateTreeHasLinks(dir)) this.o.warn?.(`omg factory run: the base calibration dir ${dir} still has its node_modules (links to yours); unlink every link in it by hand, then remove the dir`);
       else try { rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
       try { rmSync(index, { force: true }); } catch { /* best effort */ }
     }
@@ -3549,7 +3586,9 @@ class FactoryEngine {
     if (this.state.ciFixRounds >= this.o.limits.maxCiFixRounds) {
       // The failure of this head is recorded, so a rerun on the same head re-checks it (F58, recheckAfterCiPark).
       this.save((x) => ({ ...x, ciFailure: failure }));
-      this.gate('ci-failed', `${note}: ${failure.checks.join(', ')}; the CI-fix rounds are spent (${this.state.ciFixRounds}/${this.o.limits.maxCiFixRounds})${ciFailureTail(failure)}`);
+      // H1: the failing tests and the output tail are the PR code's output: local detail only, never in the forge-bound reason.
+      const { where, detail } = ciFailureTail(failure);
+      this.gate('ci-failed', `${note}: ${failure.checks.join(', ')}; the CI-fix rounds are spent (${this.state.ciFixRounds}/${this.o.limits.maxCiFixRounds})${where}${detail ? localDetailNote(this.key, 'the output (failing tests, output tail)') : ''}`, detail);
       return;
     }
     this.save((x) => moveTo({ ...x, ciFailure: failure, ciFixRounds: x.ciFixRounds + 1 }, 'ci-fix', note, this.iso()));
@@ -3752,7 +3791,7 @@ class FactoryEngine {
         // A node_modules link the PR's code re-pointed is never granted to the sandbox (review-483 M4).
         const repointed = this.nodeModulesRepointed(checkout);
         if (repointed) {
-          this.gate('lane-tampered', `the local gate did not run on ${head.slice(0, 12)}: ${repointed}, so the PR's code changed it; inspect and remove ${checkout} by hand, then rerun ${this.resume}`);
+          this.gate('lane-tampered', `the local gate did not run on ${head.slice(0, 12)}: ${join(checkout, 'node_modules')} (or a link in it) is not as the engine made it, so the PR's code changed it${localDetailNote(this.key, 'which link')}; inspect and remove ${checkout} by hand, then rerun ${this.resume}`, oneLine(visibleLine(repointed), PARK_TAIL_CHARS));
           return false;
         }
         out = this.o.gateSandbox

@@ -135,7 +135,7 @@ export interface ImportStep {
   start: string;
 }
 
-export type Park = { name: string; reason: string };
+export type Park = { name: string; reason: string; detail?: string };
 
 /** What publishImports returns: the body's value, or the park (nothing more was pushed once it parked before the body). */
 export type ImportOutcome<T> = { ok: true; value: T } | { ok: false; park: Park; pushed: boolean };
@@ -383,7 +383,8 @@ export class PrivateRun {
    */
   removeWorktree(path: string): void {
     if (existsSync(path)) {
-      unlinkNodeModules(this.root, path);
+      // M2 (review-490): a removal error is not fatal here: removeRunDir unlinks every link itself, never following one.
+      try { unlinkNodeModules(this.root, path); } catch { /* removeRunDir below */ }
       removeRunDir(path, this.layout.work);
     }
     const admin = join(this.repo.gitDir, 'worktrees');

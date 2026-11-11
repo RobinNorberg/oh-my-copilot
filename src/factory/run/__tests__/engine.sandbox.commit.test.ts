@@ -1,4 +1,4 @@
-import { existsSync, linkSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -278,6 +278,31 @@ describe('commitLaneWork', () => {
     expect(isOmcRuntimePath('.omg/skills/x/SKILL.md')).toBe(false);
     expect(isOmcRuntimePath('.omg/project-memory.json')).toBe(true);
     expect(isOmcRuntimePath('src/.omg/x')).toBe(false);
+  });
+
+  it('L1 (review-490): a TRACKED .omg/ path the lane changed or deleted is committed and listed; untracked runtime files are still never added', () => {
+    const { worktree, branch } = laneTree('cr-runtime-tracked');
+    writeFileSync(join(worktree, '.gitignore'), '');
+    mkdirSync(join(worktree, '.omg', 'plans'), { recursive: true });
+    mkdirSync(join(worktree, '.omg', 'research'), { recursive: true });
+    writeFileSync(join(worktree, '.omg', 'plans', 'p.md'), 'plan v1\n');
+    writeFileSync(join(worktree, '.omg', 'research', 'r.md'), 'notes\n');
+    gitIn(worktree, 'add', '-A');
+    gitIn(worktree, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-m', 'commit .omg/plans');
+    const start = gitIn(worktree, 'rev-parse', 'HEAD').trim();
+    writeFileSync(join(worktree, '.omg', 'plans', 'p.md'), 'plan v2\n');
+    rmSync(join(worktree, '.omg', 'research', 'r.md'));
+    mkdirSync(join(worktree, '.omg', 'state'), { recursive: true });
+    mkdirSync(join(worktree, '.omg', 'sessions'), { recursive: true });
+    writeFileSync(join(worktree, '.omg', 'project-memory.json'), '{}\n');
+    writeFileSync(join(worktree, '.omg', 'state', 's.json'), '{}\n');
+    writeFileSync(join(worktree, '.omg', 'sessions', 'x.json'), '{}\n');
+    writeFileSync(join(worktree, '.omg', 'plans', 'new-untracked.md'), 'x\n');
+    const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: h.root, branch, message: 'x' });
+    expect(res.ok, JSON.stringify(res)).toBe(true);
+    expect((res as { files: string[] }).files.sort()).toEqual(['.omg/plans/p.md', '.omg/research/r.md']);
+    const committed = gitIn(h.root, 'show', '--name-status', '--format=', branch).trim().split('\n').map((l) => l.replace(/\s+/, ' ')).sort();
+    expect(committed).toEqual(['D .omg/research/r.md', 'M .omg/plans/p.md']);
   });
 
   it('outsideWorktree names a staged path whose real directory is outside the worktree', () => {

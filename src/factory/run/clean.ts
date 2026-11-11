@@ -377,8 +377,9 @@ export function cleanHeldFactoryRun(o: FactoryCleanOptions, state: FactoryRunSta
       continue;
     }
     // The engine's node_modules link in its prepare checkout (untracked on POSIX for a `node_modules/` ignore line).
-    if (team === FACTORY_CHECKOUT_TEAM) unlinkNodeModules(o.root, path);
     try {
+      // Inside the try (M2, review-490): a removal error keeps this worktree (named in kept) and clean goes on to the next.
+      if (team === FACTORY_CHECKOUT_TEAM) unlinkNodeModules(o.root, path);
       // Through the git links recorded at its creation when this process has them: removal never discovers a rewritten `.git`.
       const gitLinks = recordedWorktreeGitLinks(path);
       removeWorkerWorktree(team, worker, o.root, { contained, ...(gitLinks ? { gitLinks } : {}), ...(o.discard ? { discardChanges: true } : {}) });
