@@ -555,8 +555,8 @@ export function ciFailureTail(failure: FactoryCiFailure): string {
   return `${where}${tests}${tail ? `; output tail: ${tail}` : ''}`;
 }
 
-/** Parks of the human review read itself, which pendingHumanNote never adds to. */
-const isHumanReadGate = (name: string): boolean => name === HUMAN_REVIEW_GATE || name === 'fix-rounds-spent' || name === 'head-moved-externally';
+/** Parks of the human review read itself and the merge park (which follows that read), which pendingHumanNote never adds to. */
+const isHumanReadGate = (name: string): boolean => name === HUMAN_REVIEW_GATE || name === 'merge' || name === 'fix-rounds-spent' || name === 'head-moved-externally';
 
 /**
  * Engine git in the prepare checkout once the PR's code ran there: the admin
@@ -5193,6 +5193,8 @@ class FactoryEngine {
    * moved is head-moved-externally; not moved (the review read lags) parks too.
    */
   private readHuman(pr: number, head: string): ForgeReviewFeedback | null {
+    // The merge step's own read: a park after it names its findings itself, so pendingHumanNote reads nothing more.
+    this.pendingHuman ??= '';
     const read = this.humanReader();
     if (typeof read === 'string') {
       this.gate(HUMAN_REVIEW_GATE, read);
