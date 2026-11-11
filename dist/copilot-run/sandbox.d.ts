@@ -198,6 +198,20 @@ export interface SandboxPolicyContext {
 }
 export declare const REGISTRY_HOSTS: readonly string[];
 /**
+ * Why `<worktree>/node_modules` must not be granted, or null. `target` is the
+ * engine-recorded node_modules (review-483 M4). A single link must resolve
+ * to it (older releases). A real directory is the engine's per-run tree
+ * (factory/run/prepare.ts linkNodeModules): each top-level link in it must
+ * point at `<target>/<its own name>` exactly, so a link the PR's code
+ * re-pointed or added (to your home, your checkout, a git dir) is refused,
+ * never granted. Plain dirs and files in it are the checkout's own
+ * (read-write anyway). `linked`: the tree uses `target` at all.
+ */
+export declare function nodeModulesTreeProblem(worktree: string, target: string, platform?: NodeJS.Platform): {
+    problem: string | null;
+    linked: boolean;
+};
+/**
  * The read-write carve-outs of the read-only common git dir for a write
  * session: `objects/` and its own `worktrees/<name>` admin dir. No ref is
  * granted: the job worktree's HEAD is detached, so a commit writes only the

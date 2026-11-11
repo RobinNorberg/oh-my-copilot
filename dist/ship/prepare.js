@@ -88,6 +88,24 @@ export function describePrepareChecks(configured, baseHas, exists = baseHas) {
         out.push(`${INVENTORY_SCRIPT} --verify (regenerated as the last commit)`);
     return out;
 }
+/**
+ * L3: the built-in checks the base asks for that prepare would skip, and
+ * what to run (`omg factory check`); [] with configured checks. The tool
+ * packages come from your node_modules, so a checkout without one runs no
+ * tsc, eslint or vitest.
+ */
+export function skippedPrepareChecks(configured, baseHas, exists = baseHas) {
+    if (configured)
+        return [];
+    if (!exists('node_modules'))
+        return !baseHas('package.json') ? [] : ['tsc, eslint and vitest: the base has package.json but there is no node_modules in this checkout (prepare uses yours); run npm ci (or your package manager\'s install), then check again'];
+    const out = [];
+    if (baseHas('tsconfig.json') && !exists(TSC_SCRIPT))
+        out.push(`tsc: the base has tsconfig.json but ${TSC_SCRIPT} is not installed; run npm ci`);
+    if (ESLINT_CONFIGS.some(baseHas) && !exists(ESLINT_SCRIPT))
+        out.push(`eslint: the base has an eslint config but ${ESLINT_SCRIPT} is not installed; run npm ci`);
+    return out;
+}
 const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
 /**
  * Tests to run for a diff: changed test files, plus `X.test.ts` beside or in

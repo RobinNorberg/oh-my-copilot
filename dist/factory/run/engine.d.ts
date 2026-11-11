@@ -63,7 +63,7 @@ import { type FactoryRunLimits } from './budget.js';
 import { type LocalGateRunner } from './local-gate.js';
 import { type LaneBackend, type LaneProcess } from './lane.js';
 import { type LaneTreeProof } from './lane-procs.js';
-import { EXIT_BUSY, type FactoryGate, type FactoryHealRecord, type FactoryPhase, type FactoryRunKey, type FactoryRunState, type OwnerDeps, type HeldOwner, type HeldSlot } from './state.js';
+import { EXIT_BUSY, type FactoryCiFailure, type FactoryGate, type FactoryHealRecord, type FactoryPhase, type FactoryRunKey, type FactoryRunState, type OwnerDeps, type HeldOwner, type HeldSlot } from './state.js';
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export declare const EXIT_AWAITING_HUMAN = 4;
 export { EXIT_BUSY };
@@ -283,6 +283,28 @@ export declare class StateTamperedError extends Error {
     readonly paths: string[];
     constructor(paths: string[]);
 }
+/** The last lines of `text`, redacted (token shapes), each made visible and one line, bounded: a gate's local `detail`. */
+export declare function parkTail(text: string): string;
+/**
+ * L7 + H1 (review-490): a ci-failed park. `where` goes into the forge-bound
+ * reason: where the failure ran (a prepare failure ran in the OS sandbox on
+ * this host, not in the forge's CI). `detail` is the gate's LOCAL detail:
+ * the failing tests and the output tail, both chosen by the PR's code, so
+ * never in the issue comment, PR notes or outcome posts (status, board and
+ * the CLI show it). `detail` is empty without an output or tests.
+ */
+export declare function ciFailureTail(failure: FactoryCiFailure): {
+    where: string;
+    detail: string;
+};
+/**
+ * M1 (review-490): the dir under node_modules a permission error in the
+ * base calibration's output names (EPERM, EACCES or EROFS on a path under
+ * node_modules), as `node_modules/<entry>`; undefined when there is none.
+ */
+export declare function nodeModulesWriteDenied(tail: string): string | undefined;
+/** What the gate-sandbox-incompatible park of a failing base calibration tells the human to do. */
+export declare function sandboxIncompatibleAdvice(tail: string | undefined): string;
 /**
  * Engine git in the prepare checkout once the PR's code ran there: the admin
  * dir recorded at `worktree add` (recordWorktreeGitLinks, before any of it
@@ -296,6 +318,16 @@ export declare function pinCheckoutGit(exec: Exec, pin: () => {
     workTree: string;
     gitDir: string;
 } | undefined): Exec;
+/**
+ * The calibration args of a check on the base copy `dir`: a built-in vitest
+ * or eslint run keeps only the files the base has (the PR may add test
+ * files). With none left, vitest still runs with its config loaded (a filter
+ * no file matches, `--passWithNoTests`), so a config the sandbox cannot load
+ * shows here; eslint just starts (`--version`). Every other command runs
+ * unchanged.
+ */
+/** A vitest file filter no test file matches (the calibration of a PR whose tests the base lacks). */
+export declare const CALIBRATION_NO_TEST_FILTER = "omg-calibration-matches-no-test-file";
 /** The fixed failure text of a built-in eslint or vitest check whose one changed file name the sandbox shell cannot carry. */
 export declare const BUILT_IN_FILE_NAME_TOO_LONG = "a changed file name is too long for the sandbox shell";
 /**

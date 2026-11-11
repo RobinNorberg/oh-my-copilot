@@ -1,9 +1,9 @@
-import { existsSync, linkSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-worktree.js';
 import { protectedChanges } from '../../../ship/merge.js';
-import { commitLaneWork, LANE_PROTECTED_PATHS, laneCommitMessage, outsideWorktree } from '../lane-commit.js';
+import { commitLaneWork, isOmcRuntimePath, LANE_PROTECTED_PATHS, laneCommitMessage, outsideWorktree } from '../lane-commit.js';
 import { readFactoryState } from '../state.js';
 import { gitIn, ISSUE, noCommit, remoteHead, review } from './fake-lanes.js';
 import { h, useSandboxHarness, run, sandboxOf, edit, dirLink, outsideDir } from './engine-sandbox-harness.js';
@@ -244,6 +244,51 @@ describe('commitLaneWork', () => {
         const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: h.root, branch, message: 'x' });
         expect(res.ok, JSON.stringify(res)).toBe(true);
         expect(res.files).toContain('a.ts');
+    });
+    it('L5/L9: every oh-my-copilot runtime file under .omg/ is skipped (not refused), .omg/skills/ excepted; a change of only those is no change', () => {
+        const { worktree, start, branch } = laneTree('cr-runtime');
+        writeFileSync(join(worktree, '.gitignore'), '');
+        const runtime = ['project-memory.json', 'notepad.md', 'plans/p.md', 'research/r.md', 'logs/l.log', 'artifacts/a.txt', 'handoffs/h.md', 'ultragoal/u.json', 'progress/x.json', 'release/r.md', 'state/s.json', 'sessions/x.json', 'anything-else.json'];
+        for (const p of runtime) {
+            mkdirSync(join(worktree, '.omg', p, '..'), { recursive: true });
+            writeFileSync(join(worktree, '.omg', p), '{"projectRoot":"C:\\\\Users\\\\someone"}\n');
+        }
+        writeFileSync(join(worktree, 'a.ts'), 'a\n');
+        const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: h.root, branch, message: 'x' });
+        expect(res.ok, JSON.stringify(res)).toBe(true);
+        expect(res.files.sort()).toEqual(['.gitignore', 'a.ts']);
+        expect(gitIn(h.root, 'show', '--name-only', '--format=', branch).split('\n').filter((p) => p.startsWith('.omg/'))).toEqual([]);
+        const only = laneTree('cr-runtime-only');
+        mkdirSync(join(only.worktree, '.omg'), { recursive: true });
+        writeFileSync(join(only.worktree, '.omg', 'project-memory.json'), '{}\n');
+        expect(commitLaneWork({ worktree: only.worktree, start: only.start, parents: [only.start], repoRoot: h.root, branch: only.branch, message: 'x' })).toMatchObject({ ok: false, refusal: 'empty' });
+        expect(isOmcRuntimePath('.omg/skills/x/SKILL.md')).toBe(false);
+        expect(isOmcRuntimePath('.omg/project-memory.json')).toBe(true);
+        expect(isOmcRuntimePath('src/.omg/x')).toBe(false);
+    });
+    it('L1 (review-490): a TRACKED .omg/ path the lane changed or deleted is committed and listed; untracked runtime files are still never added', () => {
+        const { worktree, branch } = laneTree('cr-runtime-tracked');
+        writeFileSync(join(worktree, '.gitignore'), '');
+        mkdirSync(join(worktree, '.omg', 'plans'), { recursive: true });
+        mkdirSync(join(worktree, '.omg', 'research'), { recursive: true });
+        writeFileSync(join(worktree, '.omg', 'plans', 'p.md'), 'plan v1\n');
+        writeFileSync(join(worktree, '.omg', 'research', 'r.md'), 'notes\n');
+        gitIn(worktree, 'add', '-A');
+        gitIn(worktree, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-m', 'commit .omg/plans');
+        const start = gitIn(worktree, 'rev-parse', 'HEAD').trim();
+        writeFileSync(join(worktree, '.omg', 'plans', 'p.md'), 'plan v2\n');
+        rmSync(join(worktree, '.omg', 'research', 'r.md'));
+        mkdirSync(join(worktree, '.omg', 'state'), { recursive: true });
+        mkdirSync(join(worktree, '.omg', 'sessions'), { recursive: true });
+        writeFileSync(join(worktree, '.omg', 'project-memory.json'), '{}\n');
+        writeFileSync(join(worktree, '.omg', 'state', 's.json'), '{}\n');
+        writeFileSync(join(worktree, '.omg', 'sessions', 'x.json'), '{}\n');
+        writeFileSync(join(worktree, '.omg', 'plans', 'new-untracked.md'), 'x\n');
+        const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: h.root, branch, message: 'x' });
+        expect(res.ok, JSON.stringify(res)).toBe(true);
+        expect(res.files.sort()).toEqual(['.omg/plans/p.md', '.omg/research/r.md']);
+        const committed = gitIn(h.root, 'show', '--name-status', '--format=', branch).trim().split('\n').map((l) => l.replace(/\s+/, ' ')).sort();
+        expect(committed).toEqual(['D .omg/research/r.md', 'M .omg/plans/p.md']);
     });
     it('outsideWorktree names a staged path whose real directory is outside the worktree', () => {
         const { worktree } = laneTree('cr-outside');

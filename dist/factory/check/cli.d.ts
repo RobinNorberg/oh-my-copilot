@@ -91,6 +91,8 @@ export interface CheckJson {
     limitations: string[];
     /** What a run's prepare step will run in this repository (ship.prepare.checks, else the detected built-ins); [] = none. */
     prepareChecks: string[];
+    /** L3: why a built-in prepare check is skipped, with what to run. */
+    prepareChecksSkipped?: string[];
     /** The local forge's gate definition status (`ok`, `unresolved (<why>)` or `not set`); absent on GitHub and Azure DevOps. */
     gate?: string;
     repo: string;

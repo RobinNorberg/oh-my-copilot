@@ -54,7 +54,7 @@ export interface BoardRow {
   check?: { bucket: CheckBucket; priority: number | null; reasons: string[]; detail: string };
   run?: {
     phase: FactoryPhase;
-    gate?: { name: string; reason: string };
+    gate?: { name: string; reason: string; detail?: string };
     pr?: number;
     head?: string;
     lanes: number;
@@ -185,7 +185,7 @@ function runPart(root: string, s: FactoryRunState, warnings: string[]): Pick<Boa
   const running = s.lanes.find((l) => l.status === 'running');
   const run: NonNullable<BoardRow['run']> = {
     phase: s.phase,
-    ...(s.gate ? { gate: { name: plainText(s.gate.name), reason: plainText(s.gate.reason) } } : {}),
+    ...(s.gate ? { gate: { name: plainText(s.gate.name), reason: plainText(s.gate.reason), ...(s.gate.detail ? { detail: plainText(s.gate.detail) } : {}) } } : {}),
     ...(s.pr !== undefined ? { pr: s.pr } : {}),
     ...(s.head ? { head: plainText(s.head) } : {}),
     lanes: s.lanes.length,

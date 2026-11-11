@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CopilotRunManager, STOP_CONTINUATION_SKIP_TOKEN, filterDriverOverrides, hostGit, hostGitHardeningArgs, relativeHooksPathRule, reviewProfileDenial, scrubLaneCredentials, sharedGitStateChanges, sharedGitStateSnapshot, summarizeChanges, } from '../job.js';
+import { CopilotRunManager, PROJECT_MEMORY_SKIP_TOKEN, STOP_CONTINUATION_SKIP_TOKEN, filterDriverOverrides, hostGit, hostGitHardeningArgs, relativeHooksPathRule, reviewProfileDenial, scrubLaneCredentials, sharedGitStateChanges, sharedGitStateSnapshot, summarizeChanges, } from '../job.js';
 import { forgetWorktreeGitLinks, hostGitAttrSourceProblem, hostGitEnv, readWorktreeGitLinks, recordWorktreeGitLinks, recordedWorktreeGitLinks, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact, } from '../../team/git-worktree.js';
 import { copilotRunStartTool, setCopilotRunManagerForTests } from '../../tools/copilot-run-tools.js';
 import { SANDBOX_KILL_ENV } from '../sandbox.js';
@@ -235,6 +235,13 @@ describe('copilot_run allowLive and session env', () => {
         expect(lane.OMC_GIT_GUARDRAILS).toBe('1');
         expect(plain.OMC_SKIP_HOOKS).toBeUndefined();
         expect(plain.OMG_COPILOT_RUN_ALLOW).toBeUndefined();
+    });
+    it('L5: a session the host commits for (factory lanes) also skips the project-memory hooks, which would write .omg/project-memory.json into its worktree', async () => {
+        const m = manager('idle', {});
+        await m.wait(m.start({ prompt: 'a', cwd: repo }, { allowLive: true, disableStopContinuations: true, hostCommits: true }).jobId, 10_000);
+        const [lane] = calls.connections.map((c) => c.env);
+        expect(PROJECT_MEMORY_SKIP_TOKEN).toBe('project-memory-session,project-memory-posttool');
+        expect(lane.OMC_SKIP_HOOKS).toBe(`${STOP_CONTINUATION_SKIP_TOKEN},${PROJECT_MEMORY_SKIP_TOKEN}`);
     });
     it('scrubCredentials: no GitHub tokens or other secrets, an empty gh config, no git credential helper; COPILOT_GITHUB_TOKEN still reaches the session', async () => {
         const secrets = {

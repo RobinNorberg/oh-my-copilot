@@ -49,6 +49,11 @@ try {
  * Main hook execution
  */
 async function main() {
+  const skipHooks = (process.env.OMC_SKIP_HOOKS || '').split(',').map((hook) => hook.trim());
+  if (process.env.DISABLE_OMC === '1' || process.env.DISABLE_OMC === 'true' || skipHooks.includes('project-memory-session')) {
+    console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+    return;
+  }
   try {
     const input = await readStdin();
     let data = {};

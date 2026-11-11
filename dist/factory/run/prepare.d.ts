@@ -20,20 +20,54 @@ export declare const checkoutWorker: (issue: FactoryRunKey) => string;
 export declare function checkoutPath(root: string, issue: FactoryRunKey): string;
 export declare function checkoutBranch(issue: FactoryRunKey): string;
 /**
- * Junction (win32) or symlink the main checkout's node_modules into the
- * prepare checkout, so prepare's tsc / eslint / vitest find their binaries.
- * removeWorkerWorktree unlinks it before the worktree goes, so its target
- * is never emptied.
+ * The tool-cache dirs a gate's node_modules gets fresh and empty per run,
+ * even when your node_modules has them: vite and vitest (`.vite`, the
+ * bundled-config `.vite-temp`, `.vitest`) and find-cache-dir users such as
+ * babel-loader, eslint-loader and terser (`.cache`), and `.tmp`, where the
+ * create-vite TypeScript templates put tsc's `tsBuildInfoFile` (a pure
+ * incremental cache: fresh only means a full build). Your copies are never
+ * linked in: a cache the PR's code wrote there would run on your next
+ * `vite dev`. They are made whether or not yours has them; any other name
+ * your node_modules lacks is simply creatable in the tree.
  */
-export declare function linkNodeModules(root: string, checkout: string): void;
+export declare const GATE_CACHE_DIRS: readonly string[];
+/** The engine's own file in a node_modules tree it built (linkNodeModules). */
+export declare const GATE_TREE_MARKER = ".omg-gate-tree";
+/** L3 (review-490): the largest top-level node_modules file copied into a tree (npm's `.package-lock.json` of a big monorepo is a few MB). */
+export declare const GATE_TREE_FILE_MAX_BYTES: number;
 /**
- * Remove the link linkNodeModules made before the checkout is discarded:
- * on POSIX a symlink named node_modules is untracked for a `node_modules/`
+ * Give the prepare checkout (or a calibration dir) your node_modules so
+ * prepare's tsc / eslint / vitest find their packages: a real
+ * `node_modules` directory holding one junction (win32) or directory
+ * symlink per top-level entry of yours (`@scope` dirs and `.bin` linked
+ * whole), the GATE_CACHE_DIRS as fresh empty dirs, and top-level files
+ * (`.package-lock.json`) copied up to GATE_TREE_FILE_MAX_BYTES (a larger one
+ * is skipped with a `warn` note). In the gate sandbox the checkout is
+ * read-write and your node_modules read-only, so tools that write a cache
+ * under node_modules (vitest's results cache in `.vite`) write into this
+ * per-run tree, never into yours. A single junction from an older release
+ * is replaced; anything else already there is left alone. Every link is
+ * unlinked (never followed) by unlinkNodeModules before the dir goes.
+ */
+export declare function linkNodeModules(root: string, checkout: string, warn?: (message: string) => void): void;
+/**
+ * Remove what linkNodeModules made before the checkout is discarded: on
+ * POSIX a symlink named node_modules is untracked for a `node_modules/`
  * gitignore line (directory-only), so removeWorkerWorktree would see a dirty
- * tree. Only a link that resolves to the root's node_modules goes; the
- * target is never touched, and anything else is left to the dirty check.
+ * tree. The single link of older releases goes only when it resolves to the
+ * root's node_modules. In a real node_modules dir every link at any depth is
+ * unlinked, never followed, marker or not (M3); the engine's tree (with
+ * GATE_TREE_MARKER) then goes whole. Your node_modules is never
+ * touched, and anything else is left to the caller's own (link-safe) removal
+ * and dirty check.
  */
 export declare function unlinkNodeModules(root: string, checkout: string): void;
+/**
+ * True when `<checkout>/node_modules` is, or still holds, a link at any
+ * depth (or cannot be fully read): removing that dir recursively could go
+ * through a link into your node_modules. False when it is absent or link-free.
+ */
+export declare function gateTreeHasLinks(checkout: string): boolean;
 export interface GateConfig {
     config: ShipConfig;
     known: KnownFlakyTest[];

@@ -216,6 +216,26 @@ export function detectLocalBase(exec: Exec, root: string, configs: ReadonlyArray
   return head.status === 0 && isPlainBranchName(current) ? { base: current, write: true } : null;
 }
 
+/**
+ * L1: a GitHub or Azure DevOps repository's base. A ship.base in the project
+ * or user config wins (written: false); else `dev` when origin has it, else
+ * origin's default branch (`refs/remotes/origin/HEAD`, which `git clone`
+ * sets), and setup writes it as ship.base. Null when neither is known.
+ */
+export function detectRemoteBase(exec: Exec, root: string, configs: ReadonlyArray<{ path: string; config: unknown }>): { base: string; write: boolean } | null {
+  for (const { path, config } of configs) {
+    const ship = (config as { ship?: unknown } | null | undefined)?.ship;
+    if (ship === null || typeof ship !== 'object' || !('base' in ship)) continue;
+    const base = (ship as { base?: unknown }).base;
+    if (!isPlainBranchName(base)) throw new SetupError(2, `ship.base ${JSON.stringify(base)} in ${path} is not a plain branch name: set it to the branch you merge into (or remove it to let setup detect one)`);
+    return { base, write: false };
+  }
+  if (exec('git', ['rev-parse', '--verify', '--quiet', 'refs/remotes/origin/dev'], { cwd: root }).status === 0) return { base: 'dev', write: true };
+  const head = exec('git', ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'], { cwd: root });
+  const name = head.stdout.trim().replace(/^origin\//, '');
+  return head.status === 0 && isPlainBranchName(name) ? { base: name, write: true } : null;
+}
+
 /** The scorer's repository side: run state and plan files at the local origin/<base> (no fetch: the wizard stays read-only). */
 function previewEnv(guarded: Exec, root: string, config: ResolvedForgeConfig, base: string): { check: CheckEnv; baseSha: string | null } {
   // The local forge's base is the local branch (no origin to read).
@@ -328,9 +348,13 @@ async function setup(o: FactorySetupOptions, deps: FactorySetupDeps, cwd: string
   // The heal pipeline (optional): only a build definition of the forge repository; it goes to the project file, which is read from <base>.
   const healPipeline = ado ? await pickHealPipeline(io, prompter, o.healPipeline) : undefined;
   // F20: the base the notes name; on the local forge detected and, when no config names it, written as ship.base.
-  const localBase = local ? detectLocalBase(io.exec, root, [{ path: projectPath, config: readConfig(projectPath) }, { path: userPath, config: readConfig(userPath) }]) : null;
+  // L1: on GitHub and Azure DevOps origin's dev, else origin's default branch.
+  const configs = [{ path: projectPath, config: readConfig(projectPath) }, { path: userPath, config: readConfig(userPath) }];
+  const localBase = local ? detectLocalBase(io.exec, root, configs) : detectRemoteBase(io.exec, root, configs);
   const base = localBase?.base ?? defaultFactoryRunDeps.base(root);
   if (local && !localBase) out.notes.push(`no base branch detected (detached HEAD and no dev branch): set ship.base in ${projectPath} to the branch you merge into`);
+  if (!local && !localBase) out.notes.push(`no base branch detected (origin has no dev branch and refs/remotes/origin/HEAD is not set; git remote set-head origin --auto sets it): set ship.base in ${projectPath} to the branch you merge into; until then the factory assumes ${base}`);
+  if (!local && localBase?.write) out.notes.push(`base branch ${base} (ship.base, detected: ${base === 'dev' ? 'origin has a dev branch' : "origin's default branch"}); change ship.base in ${projectPath} if you merge into another branch`);
   out.config = {
     ...buildSection(repo, { source, itemTypes }, progress, team),
     ...(healPipeline ? { heal: { pipeline: healPipeline } } : {}),
@@ -368,6 +392,8 @@ async function setup(o: FactorySetupOptions, deps: FactorySetupDeps, cwd: string
   out.diffs = planned.map((w) => ({ path: w.path, scope: w.scope, diff: w.diff }));
   if (scope === 'user') out.notes.push(`--scope user: the forge identity, intake and progress belong to this repository, so they go to ${projectPath}; the user config ${userPath} is shared by every repository and gets only trustedAuthors.`);
   out.notes.push(`${projectPath} is a protected path: omg factory reads forge.* and progress.* from it only on ${base} once it is committed there.`);
+  // L2: setup commits nothing, so until that commit lands the factory ignores what it just wrote there.
+  if (!local) out.notes.push(`next: commit ${projectPath} and get it onto ${base} (a PR into ${base}); until then omg factory check and run ignore its factory.forge and factory.progress (no progress labels are applied) and use the defaults`);
   if (trustedAuthors.length > 0) out.notes.push(`trustedAuthors go to the user config ${userPath} only.`);
   if (healPipeline) out.notes.push(`factory.heal.pipeline (build definition ${healPipeline.definitionId}) counts once ${projectPath} is committed on ${base}; omg factory heal ignores it in the working tree.`);
 

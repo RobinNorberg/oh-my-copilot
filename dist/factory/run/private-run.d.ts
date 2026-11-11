@@ -94,6 +94,7 @@ export interface ImportStep {
 export type Park = {
     name: string;
     reason: string;
+    detail?: string;
 };
 /** What publishImports returns: the body's value, or the park (nothing more was pushed once it parked before the body). */
 export type ImportOutcome<T> = {

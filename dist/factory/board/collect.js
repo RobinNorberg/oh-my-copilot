@@ -118,7 +118,7 @@ function runPart(root, s, warnings) {
     const running = s.lanes.find((l) => l.status === 'running');
     const run = {
         phase: s.phase,
-        ...(s.gate ? { gate: { name: plainText(s.gate.name), reason: plainText(s.gate.reason) } } : {}),
+        ...(s.gate ? { gate: { name: plainText(s.gate.name), reason: plainText(s.gate.reason), ...(s.gate.detail ? { detail: plainText(s.gate.detail) } : {}) } } : {}),
         ...(s.pr !== undefined ? { pr: s.pr } : {}),
         ...(s.head ? { head: plainText(s.head) } : {}),
         lanes: s.lanes.length,
