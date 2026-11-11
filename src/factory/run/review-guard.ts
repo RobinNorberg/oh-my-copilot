@@ -225,7 +225,12 @@ const sha = (text: string) => createHash('sha256').update(text).digest('hex');
 
 function fileHash(path: string): string {
   if (!existsSync(path)) return 'absent';
-  return createHash('sha256').update(readFileSync(path)).digest('hex');
+  // A file made unreadable (chmod 000, a deny ACE) is a change the compare reports, not a snapshot failure.
+  try {
+    return createHash('sha256').update(readFileSync(path)).digest('hex');
+  } catch (error) {
+    return `unreadable:${(error as NodeJS.ErrnoException).code ?? 'error'}`;
+  }
 }
 
 function fileText(path: string): string {
