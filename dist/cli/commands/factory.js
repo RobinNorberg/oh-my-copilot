@@ -445,6 +445,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
                         ...(forge ? { forge } : {}),
                         ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}),
                         ...(deps.gateConfig ? { gateConfig: deps.gateConfig } : {}),
+                        ...(deps.processes ? { processes: deps.processes } : {}),
                         interrupted: () => signals > 0,
                         warn: (m) => console.error(chalk.yellow(m)),
                     });
