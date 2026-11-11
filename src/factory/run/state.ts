@@ -21,7 +21,7 @@
 import { createHash } from 'crypto';
 import { existsSync, lstatSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { hostname } from 'os';
-import { dirname, join, resolve } from 'path';
+import { dirname, isAbsolute, join, resolve } from 'path';
 import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { acquireFileLockSync, lockPathFor, releaseFileLockSync, withFileLockSync } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -286,6 +286,28 @@ export interface FactoryRunState {
   /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */
   gateComments?: string[];
   /**
+   * factory.run.layout "private" (item 2, private-run.ts): set once, when the
+   * implement step sealed the base and created the run's private repository;
+   * absent = the shared layout (layout 1, every run before it). A run keeps
+   * the layout it started with: a resume never switches it.
+   */
+  layout?: 2;
+  /** A private-layout run's dir `<work>/<repo8>/<slug>` (private-store.ts privateRunLayout). */
+  privateDir?: string;
+  /**
+   * The engine's record of the private repository (sealed): the user
+   * repository's common git dir resolved at run start, the config hash after
+   * the engine's last own config write, the longest tracked path at the base,
+   * and the number of the next import (refs/omg-import/<slug>/<n>).
+   */
+  privateStore?: { userGitDir: string; configHash: string; longestPath: number; nextImport: number };
+  /**
+   * The parents of `pendingHead` as the engine committed it (private layout:
+   * the import's expectedParents, never read from the commit). Set and
+   * cleared with pendingHead.
+   */
+  pendingParents?: string[];
+  /**
    * The progress stage last written to the tracker (factory forges design §7);
    * absent until the first write succeeds, and in states written before
    * progress sync existed (optional, so their seal still verifies).
@@ -516,6 +538,13 @@ function shapeProblem(s: Record<string, unknown>): string | null {
   if (s.prepareChecks !== undefined && s.prepareChecks !== 'auto' && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr)))) return 'prepareChecks';
   if (s.trackerStage !== undefined && !(PROGRESS_STAGES as readonly unknown[]).includes(s.trackerStage)) return 'trackerStage';
   if (s.codingAgent !== undefined && (s.kind === 'ci-heal' || codingAgentRecordProblem(s.codingAgent) !== null)) return 'codingAgent';
+  // The private layout comes whole: layout 2, its run dir and the engine's record, or none of them.
+  if (s.layout !== undefined || s.privateDir !== undefined || s.privateStore !== undefined) {
+    const ps = s.privateStore as Record<string, unknown> | undefined;
+    if (s.layout !== 2 || !isStr(s.privateDir) || !isAbsolute(s.privateDir) || typeof ps !== 'object' || ps === null
+      || !isStr(ps.userGitDir) || !isAbsolute(ps.userGitDir) || !isStr(ps.configHash) || !HEX64.test(ps.configHash) || !isCount(ps.longestPath) || !isCount(ps.nextImport)) return 'layout';
+  }
+  if (s.pendingParents !== undefined && (!Array.isArray(s.pendingParents) || s.pendingParents.length === 0 || !s.pendingParents.every((x) => isStr(x) && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(x)))) return 'pendingParents';
   if (s.kind === 'ci-heal') {
     const h = s.heal as Record<string, unknown> | undefined;
     const d = h?.diagnosis as Record<string, unknown> | undefined;

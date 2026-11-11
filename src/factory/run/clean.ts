@@ -22,10 +22,11 @@
  * `clean --discard` removes it.
  */
 
-import { existsSync } from 'fs';
+import { existsSync, readdirSync } from 'fs';
+import { join, resolve } from 'path';
 import { WORKTREE_TEAM } from '../../copilot-run/job.js';
 import { LOCAL_REMOTE } from '../../forge/local/index.js';
-import { remoteRepoMismatch } from '../../ship/config.js';
+import { remoteRepoMismatch, userConfigLayers } from '../../ship/config.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { getWorktreePath, recordedWorktreeGitLinks, removeWorkerWorktree } from '../../team/git-worktree.js';
 import { factoryGuardExec, hardenedGitExec } from './exec.js';
@@ -33,8 +34,12 @@ import { localRemoteMismatch } from './forge-roots.js';
 import { defaultLedgerDir, emptyHooksDir, EngineLedger } from './ledger.js';
 import { checkoutWorker, FACTORY_CHECKOUT_TEAM, unlinkNodeModules } from './prepare.js';
 import { dmtfCreationDateToTicks, getProcessStartIdentitySync, isProcessAlive } from '../../platform/process-utils.js';
-import { acquireFactoryOwner, acquireFactoryRepoOwnerForRun, FactoryBusyError, factoryStatePath, FactoryStateError, readFactoryState, runRemote, updateFactoryState, verifyFactoryIntegrity, type FactoryRunState, type OwnerDeps } from './state.js';
+import { acquireFactoryOwner, acquireFactoryRepoOwnerForRun, FactoryBusyError, factoryStatePath, FactoryStateError, readFactoryState, runRemote, updateFactoryState, runSlug, verifyFactoryIntegrity, type FactoryRunState, type OwnerDeps } from './state.js';
 import { removeFactoryClaim } from './claims.js';
+import { liveGateProcs } from './gate-procs.js';
+import { removeRunDir, type PrivateRunLayout } from './private-store.js';
+import { expectedPrivateLayout, withImportLock } from './private-run.js';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 
 const HEX40 = /^[0-9a-f]{40}$/;
 
@@ -74,6 +79,12 @@ export interface FactoryCleanOptions {
   laneStopped?: boolean;
   /** The command a refusal tells the human to rerun (default: `omg factory run clean <issue> --discard`). */
   rerun?: string;
+  /** The private layout: also remove the repository's private store seed once no other run dir is left (`--seed`). */
+  seed?: boolean;
+  /** The trusted user config factory.run.workDir is read from (default: userConfigLayers().trustedUser); tests pass one. */
+  runUserConfig?: unknown;
+  /** The private layout: recorded gate processes under a dir that still run (default: gate-procs.ts liveGateProcs); tests pass one. */
+  liveGateProcs?: (dir: string) => number[];
 }
 
 export type LaneProcessRecord = NonNullable<FactoryRunState['lanes'][number]['process']>;
@@ -114,6 +125,73 @@ function laneMayRun(lane: FactoryRunState['lanes'][number], state: (p: LaneProce
   if (st === 'dead' || st === 'mismatch') return null;
   if (st === 'live') return { why: `${what} and its Copilot child pid ${lane.process.pid} still runs (its start identity matches)`, live: true };
   return { why: `${what} and whether its Copilot child pid ${lane.process.pid} still runs cannot be told (no start identity to compare)`, live: false };
+}
+
+/**
+ * A private-layout run's dir (private-run.ts): removed with removeRunDir
+ * (links such as the prepare checkout's node_modules junction unlinked first,
+ * never followed; the dir moved aside first, so a process still in it makes
+ * the removal refuse), only when no lane's Copilot child may still run there
+ * and, for a reset, no lane note records tamper evidence. With `seed`, the
+ * repository's seed goes too once no other run dir is left next to it.
+ */
+function cleanPrivateRun(o: FactoryCleanOptions, state: FactoryRunState, result: FactoryCleanResult): void {
+  // The dir is recomputed from the trusted config and must equal the record before anything is removed (review-483 M5).
+  let layout: PrivateRunLayout;
+  try {
+    let userConfig = o.runUserConfig;
+    if (userConfig === undefined) {
+      try { userConfig = userConfigLayers().trustedUser; } catch { userConfig = null; }
+    }
+    layout = expectedPrivateLayout(state, { root: o.root, omcRoot: getOmcRoot(o.root), slug: runSlug(o.issue), userConfig });
+  } catch (error) {
+    result.kept.push({ worktree: resolve(state.privateDir!), reason: error instanceof Error ? error.message : String(error) });
+    return;
+  }
+  const { runDir, repoDir, work } = layout;
+  if (existsSync(runDir)) {
+    const may = state.lanes.map((l) => ({ l, may: laneMayRun(l, o.processState ?? laneProcessState) })).find((x) => x.may !== null);
+    if (may && (may.may!.live || !o.laneStopped)) {
+      result.kept.push({ worktree: runDir, reason: `lane_may_run: lane ${may.l.id}: ${may.may!.why}; stop it, then rerun ${o.rerun ?? `omg factory run clean ${o.issue}`}${may.may!.live ? '' : ' --discard --lane-stopped'}` });
+      return;
+    }
+    // A prepare check's leftover process (recorded under <run>/gates) must be gone before its dir is removed (review-483 I.4).
+    const gateLive = (o.liveGateProcs ?? liveGateProcs)(join(runDir, 'gates', 'prepare-procs'));
+    if (gateLive.length > 0) {
+      result.kept.push({ worktree: runDir, reason: `gate_may_run: process(es) a prepare check started in the run dir still run (pid ${gateLive.join(', ')}); stop them (Task Manager, or kill -9 ${gateLive.join(' ')}), then rerun ${o.rerun ?? `omg factory run clean ${o.issue}`}` });
+      return;
+    }
+    if (o.keepTamperEvidence && state.lanes.some((l) => TAMPER_NOTE.test(l.note ?? ''))) {
+      result.kept.push({ worktree: runDir, reason: `tamper_evidence: a lane note records tamper problems; inspect ${runDir}, then omg factory run clean ${o.issue} --discard removes it` });
+      return;
+    }
+    try {
+      removeRunDir(runDir, work);
+      result.removed.push(runDir);
+    } catch (error) {
+      result.kept.push({ worktree: runDir, reason: error instanceof Error ? error.message : String(error) });
+      return;
+    }
+  }
+  if (!o.seed || !existsSync(repoDir)) return;
+  const seed = join(repoDir, 'seed.git');
+  try {
+    // Under the import lock: another checkout's run start (seed fetch, clone) on this repository waits (review-483 L5).
+    withImportLock(layout, () => {
+      let others: string[] = [];
+      try { others = readdirSync(repoDir).filter((n) => n !== 'seed.git' && n !== 'import.lock' && !n.startsWith('.trash-')); } catch { /* no repository dir */ }
+      if (others.length > 0) {
+        result.kept.push({ worktree: seed, reason: `seed_in_use: other runs of this repository still have their dirs (${others.join(', ')}) next to it` });
+        return;
+      }
+      if (existsSync(seed)) {
+        removeRunDir(seed, work);
+        result.removed.push(seed);
+      }
+    });
+  } catch (error) {
+    result.kept.push({ worktree: seed, reason: error instanceof Error ? error.message : String(error) });
+  }
 }
 
 export function cleanFactoryRun(o: FactoryCleanOptions): FactoryCleanResult {
@@ -224,9 +302,12 @@ export function cleanHeldFactoryRun(o: FactoryCleanOptions, state: FactoryRunSta
   ];
   const result: FactoryCleanResult = { removed: [], kept: [], contained, ...(acknowledged.length > 0 ? { acknowledged } : {}) };
   const tamperedJobs = new Set(o.keepTamperEvidence ? state.lanes.filter((l) => l.jobId && TAMPER_NOTE.test(l.note ?? '')).map((l) => l.jobId!) : []);
+  // The private layout: the run's whole dir (private repository, lane worktrees, prepare checkout, job dirs) under the work root.
+  if (state.layout === 2 && state.privateDir) cleanPrivateRun(o, state, result);
   for (const [team, worker] of targets) {
     const path = getWorktreePath(o.root, team, worker);
     const existed = existsSync(path);
+    if (!existed && state.layout === 2) continue;
     if (existed && team === WORKTREE_TEAM && tamperedJobs.has(worker)) {
       result.kept.push({ worktree: path, reason: `tamper_evidence: its lane note records tamper problems; inspect it, then omg factory run clean ${o.issue} --discard removes it` });
       continue;

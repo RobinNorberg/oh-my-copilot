@@ -43,7 +43,7 @@ export declare const SANDBOX_OUTPUT_TAIL_CHARS = 8000;
 /** One command for the sandbox: the configured argv (for records and messages) and what it resolved to. */
 export interface SandboxRunRequest {
     /** What runs it: a prepare check, the local gate, or a base calibration of either. */
-    purpose: 'prepare' | 'gate' | 'calibrate';
+    purpose: 'prepare' | 'gate' | 'calibrate' | 'install';
     /** The configured argv (ship.prepare.checks, factory.forge.local.gate) or the built-in check's. */
     argv: readonly string[];
     /** The executable and arguments it resolved to (resolveLocalGateArgv: never a .cmd/.bat). */
@@ -56,6 +56,14 @@ export interface SandboxRunRequest {
     timeoutMs: number;
     /** factory.run.sandbox.requireDeniedPaths: a host without denied_paths gives no verdict instead of running. */
     requireDeniedPaths?: boolean;
+    /** The network this command needs over factory.run.sandbox.writeNetwork (the private layout's `npm ci --ignore-scripts`: the registry). */
+    network?: 'registry';
+    /** The user's checkout (the budget ledger the sandbox denies) when `commonGitDir` is another repository's (the private layout). */
+    mainRoot?: string;
+    /** The only dir a `<cwd>/node_modules` link may resolve to (the one the engine linked); another target is refused, never granted. */
+    nodeModulesTarget?: string;
+    /** Where the per-command job home goes (default sandboxJobRoot(root); the private layout: under the run dir). */
+    jobRoot?: string;
 }
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
 export declare const CREDENTIAL_FILES_READABLE_NOTE = "sandboxed; credential files readable on this host";
@@ -97,6 +105,9 @@ export interface SandboxExecOptions {
     jobRoot: string;
     /** factory.run.sandbox.requireDeniedPaths (default false: a host without denied_paths runs, its verdict marked). */
     requireDeniedPaths?: boolean;
+    /** SandboxRunRequest.mainRoot / nodeModulesTarget. */
+    mainRoot?: string;
+    nodeModulesTarget?: string;
 }
 export declare const MARKER_PREFIX = "omg-gate-exit-";
 /** The command's output the POSIX form keeps (`tail -c`) before the marker line. */

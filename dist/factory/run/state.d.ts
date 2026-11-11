@@ -302,6 +302,33 @@ export interface FactoryRunState {
     /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */
     gateComments?: string[];
     /**
+     * factory.run.layout "private" (item 2, private-run.ts): set once, when the
+     * implement step sealed the base and created the run's private repository;
+     * absent = the shared layout (layout 1, every run before it). A run keeps
+     * the layout it started with: a resume never switches it.
+     */
+    layout?: 2;
+    /** A private-layout run's dir `<work>/<repo8>/<slug>` (private-store.ts privateRunLayout). */
+    privateDir?: string;
+    /**
+     * The engine's record of the private repository (sealed): the user
+     * repository's common git dir resolved at run start, the config hash after
+     * the engine's last own config write, the longest tracked path at the base,
+     * and the number of the next import (refs/omg-import/<slug>/<n>).
+     */
+    privateStore?: {
+        userGitDir: string;
+        configHash: string;
+        longestPath: number;
+        nextImport: number;
+    };
+    /**
+     * The parents of `pendingHead` as the engine committed it (private layout:
+     * the import's expectedParents, never read from the commit). Set and
+     * cleared with pendingHead.
+     */
+    pendingParents?: string[];
+    /**
      * The progress stage last written to the tracker (factory forges design §7);
      * absent until the first write succeeds, and in states written before
      * progress sync existed (optional, so their seal still verifies).

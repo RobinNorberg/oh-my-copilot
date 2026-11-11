@@ -66,6 +66,14 @@ export declare function createGateProcTracker(path: string, startedAtMs: number,
  */
 export declare function reapGateProcs(path: string, deps?: GateProcDeps): Promise<void>;
 /**
+ * The recorded gate processes under `dir` (every `<sha>.json` record) that
+ * still run with their recorded start identity: the proof, before a dir a
+ * gate or prepare check ran in is removed, that none of its processes is
+ * still there (a private run's prepare checkout or run dir, review-483 I.4).
+ * Never signals anything.
+ */
+export declare function liveGateProcs(dir: string, deps?: Pick<GateProcDeps, 'identitySync'>): number[];
+/**
  * Once per process and record directory: reap every record there, not only the
  * one of the head about to be gated (a head that is never gated again would
  * otherwise keep its leftovers alive).

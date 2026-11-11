@@ -35,7 +35,7 @@
  * the message). importFromPrivate returns a typed result whose reasons are
  * fixed text: nothing a lane wrote (paths, ref names, git output) is in them.
  */
-import { type Exec } from '../../ship/exec.js';
+import { type Exec, type ExecResult } from '../../ship/exec.js';
 export declare class PrivateStoreError extends Error {
     /** git's stderr or other tool output: diagnostics only, never part of `message`. */
     readonly detail: string;
@@ -111,6 +111,8 @@ export interface PrivateStoreContext {
 }
 /** Ten minutes: a first seed fetch or clone of a large repository fits; a hung pack or a FIFO include does not hang the engine (review-481 L7). */
 export declare const PRIVATE_GIT_TIMEOUT_MS = 600000;
+/** resolveUserGitDir's budget (review-481c N5): a plain rev-parse, which a FIFO include holds no longer than this. */
+export declare const RESOLVE_TIMEOUT_MS = 30000;
 /** A git command here ran out of time and was killed; fixed text. */
 export declare class PrivateGitTimeout extends PrivateStoreError {
     constructor(ms: number);
@@ -145,6 +147,8 @@ export declare function uploadPackCommand(tools: PrivateGitTools): string;
  * closed.
  */
 export declare function privateGitEnv(tools: PrivateGitTools): Record<string, string>;
+/** A file in a capped (hooks) listing larger than this is not read: the listing is TOO_LARGE (review-481c N1). */
+export declare const HOOK_FILE_MAX_BYTES: number;
 /**
  * The user repository's common git dir, resolved once (at run start) from
  * the checkout and then passed to every function here, so a later rewrite of
@@ -196,6 +200,12 @@ export interface UserRepoGuard {
     items: Record<UserGuardItem, string>;
     entries: UserGuardEntry[];
 }
+/**
+ * A config key name fit to print: URL userinfo in a subsection
+ * (`url.https://user:token@host/.insteadof`) and a URL query or fragment up to
+ * the key name (`url.https://h/?t=X.insteadof`: review-481c N4) masked.
+ */
+export declare const printableKey: (key: string) => string;
 /**
  * The narrow user-repository guard the engine takes under the import lock
  * (design 6/8; review-481 M4 with the lead's L5 rule): hashes of only what
@@ -308,6 +318,56 @@ export declare function createPrivateRepo(layout: PrivateRunLayout, baseSha: str
  * must have the commit.
  */
 export declare function fetchIntoPrivate(layout: PrivateRunLayout, p: PrivateRepo, userGitDir: string, sha: string, ctx: PrivateStoreContext): void;
+/** privateRepoProblem refused an engine command: the private repository changed outside the engine (the engine parks). */
+export declare class PrivateRepoTampered extends PrivateStoreError {
+    constructor(problem: string, gitDir: string);
+}
+/** Throws PrivateRepoTampered unless privateRepoProblem passes. */
+export declare function assertPrivateRepo(p: PrivateRepo, ctx: PrivateStoreContext): void;
+export interface PrivateGitOptions {
+    /** The work tree: a lane worktree, `prep` or the clone dir (default: the clone dir). */
+    workTree?: string;
+    /** The git dir to name (a worktree's admin dir as recorded at its creation; default: the private git dir). */
+    gitDir?: string;
+    /** Extra environment (the engine's commit identity); never GIT_* that redirects (the pins and privateGitEnv win). */
+    env?: Readonly<Record<string, string>>;
+}
+/**
+ * One engine git command in the private repository (review-481 B1b a/b):
+ * privateRepoProblem first (PrivateRepoTampered), then git with the pins and
+ * privateGitEnv, and the git dir and work tree named on the command line,
+ * never discovered from a lane-writable `.git` file.
+ */
+export declare function privateGit(p: PrivateRepo, ctx: PrivateStoreContext, args: readonly string[], o?: PrivateGitOptions): ExecResult;
+/** privateGit that throws PrivateStoreError (fixed text `what`, stderr in detail) on a non-zero exit; returns stdout. */
+export declare function privateGitOk(p: PrivateRepo, ctx: PrivateStoreContext, args: readonly string[], what: string, o?: PrivateGitOptions): string;
+/**
+ * An Exec for code that runs plain `git <args>` with a cwd (snapshotRepo,
+ * ship's runPrepare) against the private repository: every call goes through
+ * privateGit with the git dir `gitDirOf(cwd)` names (a recorded admin dir, or
+ * the private git dir for the clone dir); a cwd it does not know, or any
+ * other program, is refused (exit 127), so nothing runs by discovery.
+ */
+export declare function privateExec(p: PrivateRepo, ctx: PrivateStoreContext, gitDirOf: (cwd: string) => string | null, env?: Readonly<Record<string, string>>): Exec;
+/** git 2.44 is the first that knows GIT_NO_LAZY_FETCH (older git ignores it silently: review-481b j). */
+export declare const PRIVATE_GIT_MIN_VERSION: readonly [2, 44];
+/** Null, or why the git on PATH is too old for the private store (or its version cannot be read). */
+export declare function gitVersionProblem(exec?: Exec): string | null;
+/**
+ * Re-record the config hash after an engine-made config write (review-481
+ * h): the allowlist (engineConfigProblem) still applies, so a write the
+ * engine did not mean to make is refused, not accepted.
+ */
+export declare function rerecordConfigHash(p: PrivateRepo, ctx: PrivateStoreContext): PrivateRepo;
+/** True when the private repository has `sha` as a commit (privateRepoProblem first). */
+export declare function privateHasCommit(p: PrivateRepo, ctx: PrivateStoreContext, sha: string): boolean;
+/** The import refs (`refs/omg-import/<run>/*`) left in the user repository, with their values (a crash after an import). */
+export declare function staleImportRefs(userGitDir: string, run: string, ctx: PrivateStoreContext): Array<{
+    ref: string;
+    sha: string;
+}>;
+/** Delete one stale import ref against the value it holds (staleImportRefs); false when it stays. */
+export declare function dropStaleImportRef(userGitDir: string, ref: string, sha: string, ctx: PrivateStoreContext): boolean;
 export interface ImportInput {
     /** The user repository's common git dir (resolveUserGitDir at run start). */
     userGitDir: string;

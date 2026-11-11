@@ -432,3 +432,79 @@ describe('H3, L5, L6: each item on its own', () => {
     expect(hold.failed).toMatch(/the hold could not be written: /);
   });
 });
+
+describe('review-484d follow-ups (merge of #484 into #483)', () => {
+  it('N1: a planted .git/remotes/<name> and .git/branches/<name> (legacy remote definitions) are quarantined and hold; a plain `git fetch <name>` on a copy uses them', () => {
+    const evil = join(dir, 'evil');
+    git(dir, 'clone', '-q', root, evil);
+    git(evil, 'config', 'user.email', 't@example.invalid');
+    git(evil, 'config', 'user.name', 't');
+    writeFileSync(join(evil, 'a.txt'), 'EVIL\n');
+    git(evil, 'commit', '-q', '-am', 'evil');
+    const url = evil.replace(/\\/g, '/');
+
+    const before = snapshotRepo(exec, root);
+    mkdirSync(join(common, 'remotes'), { recursive: true });
+    writeFileSync(join(common, 'remotes', 'upstream'), `URL: ${url}\nPull: refs/heads/main:refs/remotes/upstream/main\n`);
+    mkdirSync(join(common, 'branches'), { recursive: true });
+    writeFileSync(join(common, 'branches', 'other'), `${url}\n`);
+    // Control: a copy as the lane left it; the user's `git fetch upstream` follows the planted file.
+    const control = join(dir, 'control');
+    cpSync(root, control, { recursive: true });
+    git(control, 'fetch', '-q', 'upstream');
+    expect(git(control, 'show', 'refs/remotes/upstream/main:a.txt')).toBe('EVIL');
+
+    const { hold, problems } = quarantine(before);
+    expect(problems).toContain('the remotes/ or branches/ directory changed (legacy remote definitions git still reads)');
+    expect(hold.held).toBe(true);
+    expect(hold.moved).toEqual(expect.arrayContaining(['remotes/upstream', 'branches/other']));
+    expect(hold.active).toEqual([]);
+    expect(existsSync(join(common, 'remotes', 'upstream'))).toBe(false);
+    expect(existsSync(join(common, 'branches', 'other'))).toBe(false);
+    expect(readFileSync(join(hold.quarantine!, 'remotes', 'upstream'), 'utf8')).toContain(url);
+    expect(readTamperHold(ledgerDir, root)).not.toBeNull();
+    expect(() => git(root, 'fetch', '-q', 'upstream')).toThrow();
+  });
+
+  it('N1: under a snapshot from before remotes/ was kept (an older scope), a planted remotes file is not touched but named STILL ACTIVE and holds', () => {
+    const before = snapshotRepo(exec, root);
+    const old: RepoSnapshot = { ...before, restore: { ...before.restore, [RESTORE_SCOPE_KEY]: 'modules,worktrees' } };
+    mkdirSync(join(common, 'remotes'), { recursive: true });
+    writeFileSync(join(common, 'remotes', 'upstream'), 'URL: ../elsewhere\n');
+    const { hold } = quarantine(old);
+    expect(hold.held).toBe(true);
+    expect(existsSync(join(common, 'remotes', 'upstream'))).toBe(true);
+    expect(hold.active!.join('\n')).toMatch(/remotes\/ or branches\/ directory changed.*STILL ACTIVE/);
+  });
+
+  it('probe B: branch.main.pushremote=<a path> sends a plain `git push` there on a copy; the quarantine puts it back and holds, the push then goes to origin', () => {
+    const origin = join(dir, 'origin.git');
+    git(dir, 'clone', '-q', '--bare', root, origin);
+    git(root, 'remote', 'add', 'origin', origin.replace(/\\/g, '/'));
+    git(root, 'fetch', '-q', 'origin');
+    git(root, 'branch', '-q', '-u', 'origin/main');
+    writeFileSync(join(root, 'a.txt'), 'yours\n');
+    git(root, 'commit', '-q', '-am', 'yours');
+    const sink = join(dir, 'sink.git');
+    git(dir, 'init', '-q', '--bare', sink);
+
+    const before = snapshotRepo(exec, root);
+    git(root, 'config', 'branch.main.pushremote', sink.replace(/\\/g, '/'));
+    // Control: a copy as the lane left it; the user's plain push lands in the sink.
+    const control = join(dir, 'control');
+    cpSync(root, control, { recursive: true });
+    git(control, 'push', '-q');
+    expect(git(sink, 'rev-parse', 'refs/heads/main')).toBe(git(root, 'rev-parse', 'HEAD'));
+    rmSync(sink, { recursive: true, force: true });
+    git(dir, 'init', '-q', '--bare', sink);
+
+    const { hold } = quarantine(before);
+    expect(hold.held).toBe(true);
+    expect(hold.restored.join('\n')).toMatch(/^config \(branch\.main\.pushremote put back\)$/m);
+    expect(() => git(root, 'config', '--file', join(common, 'config'), '--get', 'branch.main.pushremote')).toThrow();
+    expect(readTamperHold(ledgerDir, root)).not.toBeNull();
+    git(root, 'push', '-q');
+    expect(() => git(sink, 'rev-parse', '--verify', '-q', 'refs/heads/main')).toThrow();
+    expect(git(origin, 'rev-parse', 'refs/heads/main')).toBe(git(root, 'rev-parse', 'HEAD'));
+  });
+});

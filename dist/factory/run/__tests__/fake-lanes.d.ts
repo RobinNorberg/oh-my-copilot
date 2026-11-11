@@ -27,6 +27,8 @@ export interface LaneOutcome {
     lost?: boolean;
     /** The lane's sandbox record; a write lane's default is enforced without network (a confirmed host); null = no record. */
     sandbox?: CopilotRunSandboxState | null;
+    /** The worktree the result names (default: the lane's own; a backend naming another one). */
+    reportWorktree?: string;
     /** The result carries no change summary (git could not tell). */
     noChanges?: boolean;
 }

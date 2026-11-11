@@ -184,6 +184,17 @@ export function resolveRequireDeniedPaths(layers) {
     return { require: false, source: user === false || base === false ? 'config' : 'default' };
 }
 export const REGISTRY_HOSTS = ['registry.npmjs.org', '*.npmjs.org'];
+/** `real` (a realpath) is the realpath of `want`; false when `want` cannot be resolved. Case-folded on win32. */
+function sameRealPath(real, want, platform) {
+    let w;
+    try {
+        w = realpathSync.native(want);
+    }
+    catch {
+        return false;
+    }
+    return platform === 'win32' ? real.toLowerCase() === w.toLowerCase() : real === w;
+}
 /** The target of `<worktree>/node_modules` when it is a junction or symlink (read-only for a write session). */
 function nodeModulesLinkTarget(worktree) {
     const nm = join(worktree, 'node_modules');
@@ -329,6 +340,9 @@ export function buildSandboxConfig(profile, ctx, host) {
         throw new Error(`the job dir ${ctx.jobDir} lies inside the lane-writable worktree ${ctx.worktree}; use isolation "worktree"`);
     }
     const nm = nodeModulesLinkTarget(ctx.worktree);
+    if (nm && ctx.nodeModulesTarget !== undefined && !sameRealPath(nm, ctx.nodeModulesTarget, ctx.platform)) {
+        throw new Error(`the node_modules link in ${ctx.worktree} resolves to ${nm}, not ${ctx.nodeModulesTarget} the engine linked; it is not granted`);
+    }
     const filesystem = {
         readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
         readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...(nm ? [nm] : []), ...tools, ...settings.extraReadonlyPaths],
@@ -364,7 +378,7 @@ export function buildSandboxConfig(profile, ctx, host) {
         // The factory ledger (OMC_STATE_DIR/factory-ledger, as defaultLedgerDir in factory/run/ledger.ts; the team bundle may not import src/factory; ~/.omg/factory-ledger is under the home deny) and the budget ledger
         // (<omc root of the main checkout>/state/budget-ledger.json) live elsewhere when OMC_STATE_DIR is set: name the real
         // paths, and only those that exist (the host may refuse a deny of a missing path). A granted job dir stays granted.
-        const mainRoot = basename(ctx.commonGitDir) === '.git' ? dirname(ctx.commonGitDir) : undefined;
+        const mainRoot = ctx.mainRoot ?? (basename(ctx.commonGitDir) === '.git' ? dirname(ctx.commonGitDir) : undefined);
         const ledgers = [...(process.env.OMC_STATE_DIR?.trim() ? [join(resolve(process.env.OMC_STATE_DIR), 'factory-ledger')] : []), ...(mainRoot ? [join(getOmcRoot(mainRoot), 'state', 'budget-ledger.json')] : [])];
         // The engine creates the forge dir and the factory ledger dir later, and the lane could read them once they exist: make them now so the
         // deny names them (the host may refuse a deny of a missing path). The budget ledger is a file the engine writes on first use, so only an existing one is named.
@@ -380,6 +394,7 @@ export function buildSandboxConfig(profile, ctx, host) {
             ...ledgers.map((l) => (l.endsWith('factory-ledger') ? ensureDir(l) : l)).filter(existsSync),
         ];
         filesystem.deniedPaths.push(...[...new Set(stateDeny)].filter((p) => !holdsGrant(p) && !covered(p)));
+        filesystem.deniedPaths.push(...[...new Set(ctx.extraDenied ?? [])].filter((p) => existsSync(p) && !holdsGrant(p) && !covered(p)));
         if (ctx.platform !== 'win32') {
             // Sockets that run commands for the caller outside the sandbox: the user's runtime dir (D-Bus, systemd, agents),
             // the container daemons and the SSH agent. Never a dir that holds a grant (the root, the home, a parent of either,

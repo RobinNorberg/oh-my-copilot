@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -342,6 +342,30 @@ describe('buildSandboxConfig', () => {
       const none = buildSandboxConfig('write', c, host()).userPolicy.filesystem.readonlyPaths;
       expect(none).not.toContain(join(gitDir, 'config.worktree'));
       expect(none).not.toContain(join(worktree, '.git'));
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('review-483 M4: with nodeModulesTarget, a node_modules link re-pointed elsewhere is refused, never granted; the engine\'s own link is granted as before', () => {
+    const base = mkdtempSync(join(tmpdir(), 'omg-sbx-nm-'));
+    try {
+      const worktree = join(base, 'wt');
+      const yours = join(base, 'user', 'node_modules');
+      const elsewhere = join(base, 'secret');
+      for (const d of [worktree, yours, elsewhere]) mkdirSync(d, { recursive: true });
+      const link = join(worktree, 'node_modules');
+      const point = (to: string) => symlinkSync(to, link, process.platform === 'win32' ? 'junction' : 'dir');
+      const c = { ...ctx, worktree, platform: process.platform, nodeModulesTarget: yours };
+      point(yours);
+      expect(buildSandboxConfig('write', c, host()).userPolicy.filesystem.readonlyPaths).toContain(realpathSync.native(yours));
+      // Re-pointed (the PR's code in a read-write checkout): refused with or without a deny-capable host.
+      try { unlinkSync(link); } catch { rmdirSync(link); }
+      point(elsewhere);
+      expect(() => buildSandboxConfig('write', c, host())).toThrow(/node_modules link in .* resolves to .*secret, not .* the engine linked; it is not granted/);
+      expect(() => buildSandboxConfig('write', c, host({ shell: true, denied_paths: true }))).toThrow(/it is not granted/);
+      // Without nodeModulesTarget (lanes): the link's target as it is, today's rule.
+      expect(buildSandboxConfig('write', { ...c, nodeModulesTarget: undefined }, host()).userPolicy.filesystem.readonlyPaths).toContain(realpathSync.native(elsewhere));
     } finally {
       rmSync(base, { recursive: true, force: true });
     }

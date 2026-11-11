@@ -199,6 +199,7 @@ export function renderFactoryRunState(state: FactoryRunState, o: { gate?: boolea
   if (state.gate && o.gate !== false) lines.push(chalk.yellow(`awaiting-human: ${state.gate.name}: ${state.gate.reason}`));
   if (state.cancelRequested && state.phase !== 'cancelled') lines.push(chalk.yellow('cancel requested'));
   if (state.head) lines.push(`head ${state.head.slice(0, 12)}`);
+  if (state.layout === 2 && state.privateDir) lines.push(`layout private: ${plainText(state.privateDir)}`);
   if (state.unsandboxedAck) lines.push(chalk.yellow(`lanes without the enforced sandbox accepted for ${state.unsandboxedAck.slice(0, 12)} (--allow-unsandboxed-lanes)`));
   if (state.pendingCommit) lines.push(chalk.yellow(`lane ${plainText(state.pendingCommit.laneId)}'s work is not committed yet (the rerun commits the same worktree)${state.pendingCommit.secretFindings?.length ? `; secret-shaped: ${state.pendingCommit.secretFindings.map((f) => plainText(`${f.path} (${f.kind})`)).join(', ')}` : ''}`));
   if (state.unsandboxedGatesAck) lines.push(chalk.yellow(`prepare checks and the local gate without the OS sandbox accepted for ${state.unsandboxedGatesAck.slice(0, 12)} (--allow-unsandboxed-gates)`));
@@ -497,8 +498,9 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
     .description('Remove the worktrees and local branches of a merged or cancelled run, only when nothing would be lost (the PR branch on GitHub is kept); busy (exit 6) while an engine runs in this checkout')
     .option('--discard', 'A cancelled run only: give up uncommitted lane changes (a cancel mid-lane leaves them), so those worktrees go too; commits are still kept')
     .option('--lane-stopped', 'With a lane whose stop was not confirmed (busy, exit 6): your word that its Copilot child has stopped; recorded in the run history. A child seen alive with its recorded start identity still refuses')
+    .option('--seed', 'A private-layout run (factory.run.layout "private"): also remove the repository\'s private store seed once no other run dir is left next to it')
     .option('--json', 'JSON output')
-    .action((issueRaw: string, o: { discard?: boolean; laneStopped?: boolean }, c: Command) =>
+    .action((issueRaw: string, o: { discard?: boolean; laneStopped?: boolean; seed?: boolean }, c: Command) =>
       factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
         const issue = parseIssue(issueRaw);
         const root = factoryRoot(exec);
@@ -507,7 +509,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         try { kind = readFactoryState(root, issue)?.forgeKind; } catch { kind = undefined; }
         const claimRepo = cliClaimRepo(deps, root, kind ?? readOnlyForgeKind(deps, root, deps.base(root)));
         if (o.laneStopped && !o.discard) throw new FactoryUsageError('--lane-stopped applies to --discard');
-        const result = cleanFactoryRun({ root, issue, exec: deps.exec, claimRepo, ...(o.discard ? { discard: true } : {}), ...(o.laneStopped ? { laneStopped: true } : {}), ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
+        const result = cleanFactoryRun({ root, issue, exec: deps.exec, claimRepo, ...(o.discard ? { discard: true } : {}), ...(o.laneStopped ? { laneStopped: true } : {}), ...(o.seed ? { seed: true } : {}), ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
         if (c.optsWithGlobals().json) console.log(JSON.stringify({ ok: result.kept.length === 0, ...result }, null, 2));
         else {
           for (const id of result.acknowledged ?? []) console.log(chalk.yellow(`lane ${id}: its stop is taken on your word (--lane-stopped), recorded in the run history`));

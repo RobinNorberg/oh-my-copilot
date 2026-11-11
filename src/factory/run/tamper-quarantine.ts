@@ -71,7 +71,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { atomicWriteFileSync } from '../../lib/atomic-write.js';
 import { runHostGit } from '../../team/git-worktree.js';
 import { sha256 } from './ledger.js';
-import { restorableFiles, RESTORE_SCOPE, RESTORE_SCOPE_KEY, type RepoSnapshot } from './review-guard.js';
+import { LEGACY_REMOTES_CHANGED, restorableFiles, RESTORE_SCOPE_KEY, type RepoSnapshot } from './review-guard.js';
 
 /** The checkout's key under quarantine/ and holds/ (the ledger's own per-root key). */
 export const repoKey = (root: string): string => sha256(resolve(root).toLowerCase()).slice(0, 16);
@@ -369,6 +369,7 @@ function problemStatus(p: string, touched: (prefix: string) => boolean, before: 
   if (p === 'config.worktree changed') return touched('config.worktree') ? 'ok' : 'unhandled';
   if (p === 'the hooks/ directory changed') return touched('hooks/') ? 'ok' : 'unhandled';
   if (p === 'the info/ directory changed') return touched('info/') ? 'ok' : 'unhandled';
+  if (p === LEGACY_REMOTES_CHANGED) return touched('remotes/') || touched('branches/') ? 'ok' : 'unhandled';
   let m = /^worktrees\/([^/]+)\/config\.worktree changed$/.exec(p);
   if (m) return touched(`worktrees/${m[1]}/config.worktree`) ? 'ok' : 'unhandled';
   m = /^submodule git dir (modules\/.+) was removed$/.exec(p);
@@ -414,6 +415,14 @@ export interface QuarantineInput {
   run: string;
   gate: string;
   at: string;
+  /**
+   * false: quarantine and restore only, never write a hold (a private-layout
+   * run's own git dir: tampering there parks that run, never your checkout).
+   * Default true.
+   */
+  hold?: boolean;
+  /** Appended to the quarantine folder's name (e.g. the private run's slug). */
+  label?: string;
 }
 
 /**
@@ -427,7 +436,7 @@ export function quarantineTamper(i: QuarantineInput): TamperHold {
   const kept = i.before.restore;
   const touchedRels: string[] = [];
   const failedRels = new Set<string>();
-  const dir = join(i.ledgerDir, 'quarantine', repoKey(i.root), i.at.replace(/[:.]/g, '-'));
+  const dir = join(i.ledgerDir, 'quarantine', repoKey(i.root), `${i.at.replace(/[:.]/g, '-')}${i.label ? `-${i.label.replace(/[^A-Za-z0-9._-]/g, '_')}` : ''}`);
   const quarantine = (): string => {
     if (!hold.quarantine) {
       mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -441,9 +450,14 @@ export function quarantineTamper(i: QuarantineInput): TamperHold {
     let now: Record<string, string> | null = null;
     try { now = restorableFiles(common); } catch (error) { hold.failed = `the repository's git dir could not be read: ${errText(error)}`; }
     if (now) {
-      const scoped = kept[RESTORE_SCOPE_KEY] === RESTORE_SCOPE;
+      // A path kept only since a later release (its scope word missing from an older snapshot) is left alone and named.
+      const scopes = (kept[RESTORE_SCOPE_KEY] ?? '').split(',');
+      const inScope = (rel: string): boolean => {
+        const top = /^(modules|worktrees|remotes|branches)\//.exec(rel)?.[1];
+        return !top || scopes.includes(top === 'branches' ? 'remotes' : top);
+      };
       const changed = [...new Set([...Object.keys(kept), ...Object.keys(now)])]
-        .filter((rel) => rel !== RESTORE_SCOPE_KEY && kept[rel] !== now![rel] && (scoped || !/^(?:modules|worktrees)\//.test(rel)))
+        .filter((rel) => rel !== RESTORE_SCOPE_KEY && kept[rel] !== now![rel] && inScope(rel))
         .sort();
       touchedRels.push(...changed);
       const tmp = join(dir, '.tmp');
@@ -610,6 +624,8 @@ export function quarantineTamper(i: QuarantineInput): TamperHold {
   // No hold when only refs (not replace refs) and allowlisted config keys changed: what the user's own git does during a run.
   const replaced = hold.refs.some((r) => r.startsWith('refs/replace/'));
   if (!hold.failed && hold.moved.length + hold.restored.length + hold.notRestored.length + hold.active!.length === 0 && !replaced) return hold;
+  // No hold at all (a private run's own git dir): what was done is in the quarantine and the caller's park.
+  if (i.hold === false) return hold;
   hold.held = true;
   try {
     writeTamperHold(i.ledgerDir, i.root, hold);

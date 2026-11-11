@@ -52,7 +52,9 @@ export class CopilotLaneBackend {
             timeoutMs: input.timeoutMs,
             maxCredits: input.maxCredits,
             ...(input.model ? { model: input.model } : {}),
-        }, { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, ...(input.ledgerTag ? { ledgerTag: { kind: 'factory-lane', ...input.ledgerTag } } : {}), sandboxScope: 'factory', ...(input.scrubCredentials ? { scrubCredentials: true } : {}), ...(input.engineCommits ? { hostCommits: true } : {}) });
+        }, { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, ...(input.ledgerTag ? { ledgerTag: { kind: 'factory-lane', ...input.ledgerTag } } : {}), sandboxScope: 'factory', ...(input.scrubCredentials ? { scrubCredentials: true } : {}), ...(input.engineCommits ? { hostCommits: true } : {}),
+            ...(input.worktree ? { worktree: input.worktree } : {}), ...(input.jobRoot ? { jobRoot: input.jobRoot } : {}),
+            ...(input.deniedPaths ? { deniedPaths: input.deniedPaths } : {}), ...(input.beforeHostGit ? { beforeHostGit: input.beforeHostGit } : {}) });
         return { remoteId: snap.jobId };
     }
     async poll(remoteId) {
@@ -88,7 +90,8 @@ export class CopilotLaneBackend {
         const worktree = snap.worktree?.path ?? null;
         return {
             state,
-            branch: snap.worktree?.branch ?? null,
+            // A caller-made worktree (private layout) has no job branch.
+            branch: snap.worktree?.branch || null,
             pr: null,
             // Read by the job when it ended, through the recorded git dir, hardened: never via the lane-writable `.git` file.
             headSha: worktree && isTerminalLaneState(state) ? snap.worktree?.headCommit ?? null : null,

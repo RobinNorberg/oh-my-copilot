@@ -90,6 +90,13 @@ export interface RepoSnapshot {
   worktrees: Record<string, WorktreeEntry>;
   hooks: string;
   info: string;
+  /**
+   * Hash of `remotes/` and `branches/`: git's legacy remote definition
+   * files, still read for a remote name the config does not define
+   * (review-484d N1). Absent in a baseline recorded by an older release (the
+   * compare then skips it).
+   */
+  legacyRemotes?: string;
   /** Submodule git dir (relative to `modules/`) -> hash of its config, hooks, info and alternates. */
   modules: Record<string, string>;
   alternates: string;
@@ -134,7 +141,7 @@ export const RESTORE_TOTAL_MAX_BYTES = 8 * 1024 * 1024;
  * alone and names them as still active.
  */
 export const RESTORE_SCOPE_KEY = '#scope';
-export const RESTORE_SCOPE = 'modules,worktrees';
+export const RESTORE_SCOPE = 'modules,worktrees,remotes';
 
 /**
  * The paths (relative to the common git dir, `/`-separated) the snapshot
@@ -175,7 +182,7 @@ export function restorableFiles(commonDir: string): Record<string, string> {
       }
     }
   };
-  for (const name of ['config', 'config.worktree', 'hooks', 'info']) keep(name, join(commonDir, name), true);
+  for (const name of ['config', 'config.worktree', 'hooks', 'info', 'remotes', 'branches']) keep(name, join(commonDir, name), true);
   const wtDir = join(commonDir, 'worktrees');
   if (!notADirectory(wtDir) && existsSync(wtDir)) {
     let ids: string[] = [];
@@ -259,6 +266,14 @@ export function treeHash(dir: string, omit: readonly string[] = []): string {
 function pathHash(path: string): string {
   if (!existsSync(path)) return 'absent';
   return lstatSync(path).isDirectory() ? `d ${treeHash(path)}` : `f ${fileHash(path)}`;
+}
+
+/** The problem text of a changed `remotes/` or `branches/` (legacy remote definitions). */
+export const LEGACY_REMOTES_CHANGED = 'the remotes/ or branches/ directory changed (legacy remote definitions git still reads)';
+
+/** `remotes/` and `branches/` of a common git dir (see RepoSnapshot.legacyRemotes). */
+function legacyRemotesHash(commonDir: string): string {
+  return `${treeHash(join(commonDir, 'remotes'))} ${treeHash(join(commonDir, 'branches'))}`;
 }
 
 function alternatesHash(gitDir: string): string {
@@ -501,6 +516,7 @@ export function snapshotRepo(exec: Exec, root: string, stateRootRel: string | nu
     worktreeIds,
     worktrees: worktreeEntries(commonDir, worktreeIds),
     hooks: treeHash(join(commonDir, 'hooks')),
+    legacyRemotes: legacyRemotesHash(commonDir),
     alternates: alternatesHash(commonDir),
     objectMeta: objectStoreMetaHash(commonDir),
     ignored: ignoredHash(root),
@@ -613,6 +629,7 @@ export function compareSnapshots(before: RepoSnapshot, after: RepoSnapshot, allo
   }
   if (before.hooks !== after.hooks) problems.push('the hooks/ directory changed');
   if (before.info !== after.info) problems.push('the info/ directory changed');
+  if (before.legacyRemotes !== undefined && before.legacyRemotes !== after.legacyRemotes) problems.push(LEGACY_REMOTES_CHANGED);
   const mods = new Set([...Object.keys(before.modules ?? {}), ...Object.keys(after.modules ?? {})]);
   for (const m of [...mods].sort()) {
     const was = before.modules?.[m];

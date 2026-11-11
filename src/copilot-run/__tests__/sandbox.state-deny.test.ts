@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -90,6 +91,26 @@ describe('the OMC global state root is denied to the lane', () => {
       const list = denied({ ...ctx, omcStateRoot: stateRoot, jobDir, jobHome: join(jobDir, 'home') });
       expect(list).toContain(join(stateRoot, 'forge'));
       expect(list).toContain(defaultLedgerDir(process.env));
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('review-483 L1: the private layout names your checkout (mainRoot), so its budget ledger stays denied although the common git dir is the private repository\'s', () => {
+    // The budget ledger in the checkout's own .omg (no central state dir).
+    vi.stubEnv('OMC_STATE_DIR', '');
+    try {
+      // Real repositories, so each OMC root is the checkout's own .omg (never a fallback outside the temp dir).
+      const user = join(root, 'user-l1');
+      const privRepo = join(root, 'fw', 'r8', 'issue-7', 'repo');
+      for (const d of [user, privRepo]) spawnSync('git', ['init', '-q', d], { encoding: 'utf8' });
+      const budget = join(getOmcRoot(user), 'state', 'budget-ledger.json');
+      expect(budget.startsWith(user)).toBe(true);
+      mkdirSync(join(budget, '..'), { recursive: true });
+      writeFileSync(budget, '{}');
+      const priv = { ...ctx, commonGitDir: join(privRepo, '.git'), omcStateRoot: join(root, 'omc-home', 'state') };
+      expect(denied(priv)).not.toContain(budget);
+      expect(denied({ ...priv, mainRoot: user })).toContain(budget);
     } finally {
       vi.unstubAllEnvs();
     }

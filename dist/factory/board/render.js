@@ -66,6 +66,8 @@ export function runLine(r, prefix) {
     const lines = [`  ${parts.join('  ')}`];
     if (run?.gate)
         lines.push(chalk.gray(`        ${run.gate.reason}`));
+    if (run?.privateDir)
+        lines.push(chalk.gray(`        layout private: ${run.privateDir}`));
     return lines.join('\n');
 }
 export function renderBoard(b) {

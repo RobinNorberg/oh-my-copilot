@@ -81,6 +81,13 @@ export interface RepoSnapshot {
     worktrees: Record<string, WorktreeEntry>;
     hooks: string;
     info: string;
+    /**
+     * Hash of `remotes/` and `branches/`: git's legacy remote definition
+     * files, still read for a remote name the config does not define
+     * (review-484d N1). Absent in a baseline recorded by an older release (the
+     * compare then skips it).
+     */
+    legacyRemotes?: string;
     /** Submodule git dir (relative to `modules/`) -> hash of its config, hooks, info and alternates. */
     modules: Record<string, string>;
     alternates: string;
@@ -123,7 +130,7 @@ export declare const RESTORE_TOTAL_MAX_BYTES: number;
  * alone and names them as still active.
  */
 export declare const RESTORE_SCOPE_KEY = "#scope";
-export declare const RESTORE_SCOPE = "modules,worktrees";
+export declare const RESTORE_SCOPE = "modules,worktrees,remotes";
 /**
  * The paths (relative to the common git dir, `/`-separated) the snapshot
  * keeps bytes of, as RepoSnapshot.restore encodes them: `config`,
@@ -141,6 +148,8 @@ export declare class SnapshotError extends Error {
 export declare const SENSITIVE_IGNORED: readonly [".npmrc", ".yarnrc", ".yarnrc.yml", "node_modules/.bin"];
 /** Hash of every entry under `dir` (relative name, kind and content), minus the top-level names in `omit`; `absent` when there is none. */
 export declare function treeHash(dir: string, omit?: readonly string[]): string;
+/** The problem text of a changed `remotes/` or `branches/` (legacy remote definitions). */
+export declare const LEGACY_REMOTES_CHANGED = "the remotes/ or branches/ directory changed (legacy remote definitions git still reads)";
 /**
  * The object store state a forged file could use to change merge-base,
  * rev-list or a three-dot diff without a ref moving (RepoSnapshot.objectMeta):

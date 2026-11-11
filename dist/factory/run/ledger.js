@@ -36,6 +36,8 @@ export class LedgerError extends Error {
         this.name = 'LedgerError';
     }
 }
+/** The private layout: the baseline key of the USER repository's snapshot around a lane (review-483 M3). */
+export const userBaselineKey = (laneId) => `${laneId}@user`;
 export const sha256 = (data) => createHash('sha256').update(data).digest('hex');
 /** `$OMC_STATE_DIR/factory-ledger` or `~/.omg/factory-ledger`: outside the repository. */
 export function defaultLedgerDir(env = process.env) {
@@ -153,10 +155,13 @@ export class EngineLedger {
     baseline(laneId) {
         return this.data.baselines[laneId];
     }
+    /** Drops the lane's baseline and, in the private layout, its user-repository baseline (userBaselineKey). */
     dropBaseline(laneId) {
-        if (!(laneId in this.data.baselines))
+        const keys = [laneId, userBaselineKey(laneId)].filter((k) => k in this.data.baselines);
+        if (keys.length === 0)
             return;
-        delete this.data.baselines[laneId];
+        for (const k of keys)
+            delete this.data.baselines[k];
         this.persist();
     }
     get recheck() {
@@ -167,6 +172,17 @@ export class EngineLedger {
             this.data.recheck = recheck;
         else
             delete this.data.recheck;
+        this.persist();
+    }
+    /** The private layout's user repository guard baseline (taken at run start, re-taken after each clean import and push). */
+    get userGuard() {
+        return this.data.userGuard;
+    }
+    setUserGuard(guard) {
+        if (guard)
+            this.data.userGuard = guard;
+        else
+            delete this.data.userGuard;
         this.persist();
     }
     persist() {

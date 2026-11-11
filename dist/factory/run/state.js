@@ -20,7 +20,7 @@
 import { createHash } from 'crypto';
 import { existsSync, lstatSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { hostname } from 'os';
-import { dirname, join, resolve } from 'path';
+import { dirname, isAbsolute, join, resolve } from 'path';
 import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { acquireFileLockSync, lockPathFor, releaseFileLockSync, withFileLockSync } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -231,6 +231,15 @@ function shapeProblem(s) {
         return 'trackerStage';
     if (s.codingAgent !== undefined && (s.kind === 'ci-heal' || codingAgentRecordProblem(s.codingAgent) !== null))
         return 'codingAgent';
+    // The private layout comes whole: layout 2, its run dir and the engine's record, or none of them.
+    if (s.layout !== undefined || s.privateDir !== undefined || s.privateStore !== undefined) {
+        const ps = s.privateStore;
+        if (s.layout !== 2 || !isStr(s.privateDir) || !isAbsolute(s.privateDir) || typeof ps !== 'object' || ps === null
+            || !isStr(ps.userGitDir) || !isAbsolute(ps.userGitDir) || !isStr(ps.configHash) || !HEX64.test(ps.configHash) || !isCount(ps.longestPath) || !isCount(ps.nextImport))
+            return 'layout';
+    }
+    if (s.pendingParents !== undefined && (!Array.isArray(s.pendingParents) || s.pendingParents.length === 0 || !s.pendingParents.every((x) => isStr(x) && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(x))))
+        return 'pendingParents';
     if (s.kind === 'ci-heal') {
         const h = s.heal;
         const d = h?.diagnosis;
