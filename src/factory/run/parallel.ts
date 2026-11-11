@@ -86,7 +86,7 @@ export function resolveParallelSettings(user: unknown, base: unknown, warn: (m: 
 /** Why more than one concurrent run is refused for this layout, or null. */
 export function parallelLayoutRefusal(settings: ParallelSettings, layout: 'shared' | 'private'): string | null {
   if (settings.maxConcurrent <= 1 || layout === 'private') return null;
-  return `factory.run.maxConcurrent ${settings.maxConcurrent} (from the ${settings.source}) runs several runs at once only with factory.run.layout: "private" (each run in its own private git repository); the shared layout runs one engine per checkout. Set factory.run.layout "private" in your user config, or set factory.run.maxConcurrent 1`;
+  return `factory.run.maxConcurrent ${settings.maxConcurrent} (from ${settings.source === 'the base .copilot/omg.jsonc' ? settings.source : `the ${settings.source}`}) runs several runs at once only with factory.run.layout: "private" (each run in its own private git repository); the shared layout runs one engine per checkout. Set factory.run.layout "private" in your user config, or set factory.run.maxConcurrent 1`;
 }
 
 /**
@@ -100,7 +100,7 @@ export function readTrustedBaseLayerAtRef(exec: Exec, root: string, base: string
   try { trusted = resolveTrustedBases(user).includes(base); } catch { /* a bad ship.trustedBases: no base is trusted */ }
   if (!trusted) return undefined;
   try {
-    const sha = exec('git', ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], { cwd: root, env: TRUSTED_READ_ENV }).stdout.trim();
+    const sha = exec('git', ['rev-parse', '--verify', ref], { cwd: root, env: TRUSTED_READ_ENV }).stdout.trim();
     if (!/^[0-9a-f]{40}$/.test(sha)) return undefined;
     const text = readBaseFile(exec, root, sha, BASE_CONFIG_PATH);
     return text && text.trim() ? parseJsonc(text) : undefined;

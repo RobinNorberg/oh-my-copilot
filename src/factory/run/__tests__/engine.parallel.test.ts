@@ -157,6 +157,20 @@ describe('credits in flight and the layout check (B2)', () => {
     expect(existsSync(path)).toBe(false);
   }, T);
 
+  it('review-483b INFO-2: the dry run\'s layout note reads the trusted base layer too (no fetch); an untrusted base is not read', async () => {
+    w = localWorld();
+    mkdirSync(join(w.root, '.copilot'), { recursive: true });
+    writeFileSync(join(w.root, '.copilot', 'omg.jsonc'), '{ "factory": { "run": { "layout": "private" } } }\n');
+    gitIn(w.root, 'add', '.copilot/omg.jsonc');
+    gitIn(w.root, 'commit', '-q', '-m', 'opt in to the private layout');
+    const dry = await runFactoryEngine(localOpts(w, new FakeLanes(w.root, []), { dryRun: true, runUserConfig: null, secretScanUserConfig: null }));
+    expect(dry.message).toMatch(/in the private layout \(factory\.run\.layout "private" from the base \.copilot\/omg\.jsonc: /);
+    // ship.trustedBases without main: the base layer is not read, the note says nothing.
+    const untrusted = await runFactoryEngine(localOpts(w, new FakeLanes(w.root, []), { dryRun: true, runUserConfig: { ship: { trustedBases: ['dev'] } }, secretScanUserConfig: null }));
+    expect(untrusted.message).not.toMatch(/private layout/);
+    expect(readFactoryState(w.root, LOCAL_ISSUE)).toBeNull();
+  }, T);
+
   it('a parallel engine whose layout resolves to shared parks before any lane, naming factory.run.layout "private"', async () => {
     w = localWorld();
     const lanes = new FakeLanes(w.root, []);

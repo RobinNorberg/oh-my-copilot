@@ -5349,9 +5349,10 @@ function dryLayoutNote(o: FactoryEngineOptions, exec: Exec, local: boolean): str
   try {
     // Review-483b INFO-2: the base layer too (the .copilot/omg.jsonc at the base's local tracking ref, trusted bases only;
     // no fetch in a dry run), unless the user config already decides; the real run reads it again at the sealed base.
+    // A base file that cannot be read counts as unset here without a warning (the dry run's output stays as it was).
     const own = resolveRunLayout(user, undefined);
-    const { layout, source } = own.source !== 'default' ? own : resolveRunLayout(undefined, readTrustedBaseLayerAtRef(exec, o.root, o.base, local ? `refs/heads/${o.base}` : `refs/remotes/origin/${o.base}`, user, (m) => o.warn?.(m)));
-    return layout === 'private' ? `, in the private layout (factory.run.layout "private" from the ${source}: its own git repository under the work root)` : '';
+    const { layout, source } = own.source !== 'default' ? own : resolveRunLayout(undefined, readTrustedBaseLayerAtRef(exec, o.root, o.base, local ? `refs/heads/${o.base}` : `refs/remotes/origin/${o.base}`, user));
+    return layout === 'private' ? `, in the private layout (factory.run.layout "private" from ${source === 'user config' ? 'the user config' : source}: its own git repository under the work root)` : '';
   } catch (error) {
     return `; but ${errText(error)}, so the run would park at awaiting-human: ${PRIVATE_STORE_GATE}`;
   }
