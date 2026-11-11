@@ -159,8 +159,10 @@ export declare class PrivateRun {
     addWorktree(path: string, sha: string, branch?: string): void;
     /**
      * Remove a private worktree: its node_modules link first, then removeRunDir
-     * (links unlinked, never followed), then `worktree prune` with the pins.
-     * Only after its process tree is gone (the caller's lane end or gate end).
+     * (links unlinked, never followed), then its own admin entry under the
+     * private git dir's worktrees/ (the one whose gitdir file names
+     * `<path>/.git`), by path; never `git worktree prune`. Only after its
+     * process tree is gone (the caller's lane end or gate end).
      */
     removeWorktree(path: string): void;
     /**
