@@ -283,8 +283,13 @@ function factoryGit(a, protectedBranches, extraProtected = [], local, agent) {
         }
         case 'ls-remote': {
             const m = r.length === 2 && remote ? /^refs\/heads\/(.+)$/.exec(r[1]) : null;
-            return Boolean(m) && isFactoryBranch(m[1], protectedBranches);
+            // Review-487 HIGH-1: also the run's base (read-only), which a parallel run's compare reads under the import lock.
+            return Boolean(m) && (isFactoryBranch(m[1], protectedBranches) || extraProtected.includes(m[1]));
         }
+        case 'fetch':
+            // Review-487b F-2: a parallel run's compare fetches the remote's head by its sha (objects only: no ref, no
+            // FETCH_HEAD, no tags, no gc) to read whether a tracking ref's sha is an ancestor of it. Ship decides every other fetch.
+            return r.length === 6 && same(r.slice(0, 4), ['--no-tags', '--no-write-fetch-head', '--no-auto-gc', '--refmap=']) && r[4] === 'origin' && /^[0-9a-f]{40}$/.test(r[5]) ? true : null;
         case 'init':
             // The local forge's bare mirror, created once under the engine-owned forge state dir.
             return r.length === 3 && same(r.slice(0, 2), ['--bare', '--quiet']) && isMirrorPath(r[2], local);

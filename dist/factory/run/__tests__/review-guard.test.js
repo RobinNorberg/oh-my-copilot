@@ -137,6 +137,21 @@ describe('review-lane tamper check', () => {
         const local = { ...before, refs: { ...before.refs, 'refs/heads/x': sha } };
         expect(compareSnapshots(before, local, {}, { fetchedRef: () => true })).toEqual([`ref refs/heads/x was created (${sha.slice(0, 12)})`]);
     });
+    it('review-487b BLOCK-1: fetchedRef (which may talk to the remote) is consulted only when nothing else differs', () => {
+        const before = snapshotRepo(exec, h.root);
+        const sha = Object.values(before.refs)[0];
+        const name = 'refs/remotes/origin/zz-fetched';
+        let asked = 0;
+        const fetchedRef = () => { asked += 1; return true; };
+        const moved = { ...before, refs: { ...before.refs, [name]: sha } };
+        expect(compareSnapshots(before, moved, {}, { fetchedRef })).toEqual([]);
+        expect(asked).toBe(1);
+        // The config changed too (a planted http.proxy, say): the ref is reported with it, and the remote is never asked.
+        expect(compareSnapshots(before, { ...moved, config: 'changed' }, {}, { fetchedRef })).toEqual([`ref ${name} was created (${sha.slice(0, 12)})`, 'the common git config changed']);
+        // Another ref that no predicate excuses counts as "something else" as well.
+        expect(compareSnapshots(before, { ...moved, refs: { ...moved.refs, 'refs/heads/x': sha } }, {}, { fetchedRef })).toHaveLength(2);
+        expect(asked).toBe(1);
+    });
     it('skips git status when the config already differs (a changed config may name a clean filter)', () => {
         const before = snapshotRepo(exec, h.root);
         appendFileSync(join(h.root, '.git', 'config'), '[filter "evil"]\n\tclean = sh -c "touch pwned"\n');

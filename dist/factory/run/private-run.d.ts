@@ -24,13 +24,13 @@
  *   checks and hardened push, the import refs dropped, the guard compared
  *   again with the PRE-import baseline, and only then a new baseline.
  *
- * One engine per checkout (the per-checkout engine lock is unchanged); the
- * import lock is a plain file lock per repository under the work root that
- * lane B2 (parallel runs) replaces.
+ * Several private-layout engines may run in one checkout (lane B2:
+ * factory.run.maxConcurrent, slots in state.ts); their transports into and
+ * out of the user repository are serialised by withImportLock.
  */
 import { type Exec, type ExecResult } from '../../ship/exec.js';
 import { type ImportRefusalCode, type PrivateRepo, type PrivateRunLayout, type PrivateStoreContext, type UserGuardDetail, type UserRepoGuard } from './private-store.js';
-import type { FactoryRunState } from './state.js';
+import { type FactoryRunState, type HeldOwner } from './state.js';
 export type RunLayoutChoice = 'shared' | 'private';
 export type GateInstallChoice = 'park' | 'sandboxed';
 /** The park when the private layout cannot run this part yet (an actionable command to continue is in the reason). */
@@ -43,8 +43,6 @@ export declare const REPO_GUARD_GATE = "repo-guard-changed";
 export declare const IMPORT_REFUSED_GATE = "import-refused";
 /** The park when the PR head changes a lockfile and factory.run.gateInstall is "park". */
 export declare const GATE_INSTALL_GATE = "gate-install-needed";
-/** How long publishImports waits for another engine's import (lane B2 replaces this lock). */
-export declare const IMPORT_LOCK_WAIT_MS = 60000;
 /**
  * factory.run.layout from the trusted layers only: the user config, then the
  * `.copilot/omg.jsonc` committed at the sealed base (never the working tree
@@ -54,6 +52,14 @@ export declare function resolveRunLayout(user: unknown, base: unknown): {
     layout: RunLayoutChoice;
     source: string;
 };
+/**
+ * Whether the user config opts into parallel runs (review-487 L-1): it sets
+ * factory.run.maxConcurrent or maxInFlightCredits, or layout "private".
+ * Without that opt-in the base layer's maxConcurrent and maxInFlightCredits
+ * count for nothing (the CLI and the poller's auto-start alike). Throws on
+ * an invalid user layout, as resolveRunLayout does.
+ */
+export declare function userParallelOptIn(user: unknown): boolean;
 /** factory.run.gateInstall from the same trusted layers: "park" (default) or "sandboxed". */
 export declare function resolveGateInstall(user: unknown, base: unknown): {
     mode: GateInstallChoice;
@@ -219,9 +225,20 @@ export declare class PrivateRun {
  */
 export declare function expectedPrivateLayout(s: Pick<FactoryRunState, 'privateDir' | 'repoUrl'>, input: Pick<PrivateRunInput, 'root' | 'omcRoot' | 'slug' | 'userConfig' | 'platform'>): PrivateRunLayout;
 /**
- * The short lock around the store's transports into and out of the user
- * repository (seed fetch, clone, imports, push): one file per repository
- * under the work root. Lane B2 replaces it with the import lock across engines.
+ * The lock around the store's transports into and out of the user
+ * repository (seed fetch, clone, imports, push), lane B2: first the
+ * checkout's repository import lock (state.ts withRepoImportLock: an owner
+ * record, a dead holder taken over by process identity, a live one never;
+ * shared with the parallel engines' base fetches and the scan holders), then
+ * the per-repository seed lock under the work root, which every checkout of
+ * the repository shares (its seed). Lock order: import.lock, then the seed lock.
  */
-export declare function withImportLock<T>(layout: PrivateRunLayout, fn: () => T): T;
+export declare function withImportLock<T>(root: string, layout: PrivateRunLayout, label: string, fn: () => T, held?: HeldOwner): T;
+/**
+ * The per-repository seed lock (`<work>/<repo8>/import.lock`, a plain file
+ * lock): a holder whose pid is alive is never reaped, however old the lock
+ * (file-lock's rule: stale only when old AND its pid is dead), so a first
+ * seed fetch of a big repository is not stolen (review-483 L9).
+ */
+export declare function withSeedLock<T>(layout: PrivateRunLayout, fn: () => T): T;
 //# sourceMappingURL=private-run.d.ts.map

@@ -23,7 +23,7 @@
  */
 
 import { existsSync, readdirSync } from 'fs';
-import { join, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
 import { WORKTREE_TEAM } from '../../copilot-run/job.js';
 import { LOCAL_REMOTE } from '../../forge/local/index.js';
 import { remoteRepoMismatch, userConfigLayers } from '../../ship/config.js';
@@ -34,9 +34,13 @@ import { localRemoteMismatch } from './forge-roots.js';
 import { defaultLedgerDir, emptyHooksDir, EngineLedger } from './ledger.js';
 import { checkoutWorker, FACTORY_CHECKOUT_TEAM, unlinkNodeModules } from './prepare.js';
 import { dmtfCreationDateToTicks, getProcessStartIdentitySync, isProcessAlive } from '../../platform/process-utils.js';
-import { acquireFactoryOwner, acquireFactoryRepoOwnerForRun, FactoryBusyError, factoryStatePath, FactoryStateError, readFactoryState, runRemote, updateFactoryState, runSlug, verifyFactoryIntegrity, type FactoryRunState, type OwnerDeps } from './state.js';
+import {
+  acquireFactoryOwner, acquireFactoryRepoOwnerForRun, describeOwner, FactoryBusyError, factoryStatePath, FactoryStateError, ownerHolding, readFactoryState, runRemote, SCAN_WAIT_MS, tryScanLock,
+  unreadableOwnerMessage, updateFactoryState, runSlug, verifyFactoryIntegrity, type FactoryRunState, type HeldOwner, type OwnerDeps,
+} from './state.js';
 import { removeFactoryClaim } from './claims.js';
-import { liveGateProcs } from './gate-procs.js';
+import { gateProcsPath, liveGateProcs } from './gate-procs.js';
+import { getGlobalOmcStatePath } from '../../utils/paths.js';
 import { removeRunDir, type PrivateRunLayout } from './private-store.js';
 import { expectedPrivateLayout, withImportLock } from './private-run.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -85,6 +89,10 @@ export interface FactoryCleanOptions {
   runUserConfig?: unknown;
   /** The private layout: recorded gate processes under a dir that still run (default: gate-procs.ts liveGateProcs); tests pass one. */
   liveGateProcs?: (dir: string) => number[];
+  /** The local forge's state dir, home of the local gate's process records (default: getGlobalOmcStatePath('forge'), the engine's default). */
+  localGateStateDir?: string;
+  /** The repository import lock the caller already holds (tryScanLock's importLock): the seed removal runs inside it. */
+  importLock?: HeldOwner;
 }
 
 export type LaneProcessRecord = NonNullable<FactoryRunState['lanes'][number]['process']>;
@@ -135,6 +143,34 @@ function laneMayRun(lane: FactoryRunState['lanes'][number], state: (p: LaneProce
  * and, for a reset, no lane note records tamper evidence. With `seed`, the
  * repository's seed goes too once no other run dir is left next to it.
  */
+/** The local gate's process record dir for the run's checkout head (the local forge only): it lives under the forge state dir, outside the run dir. */
+function localGateProcDirs(o: FactoryCleanOptions, state: FactoryRunState): string[] {
+  const head = state.checkoutHead ?? state.head;
+  if (state.remote !== LOCAL_REMOTE || !head || !HEX40.test(head)) return [];
+  return [dirname(gateProcsPath(o.localGateStateDir ?? getGlobalOmcStatePath('forge'), o.root, head))];
+}
+
+/**
+ * Review-487 L-2: the `<run dir>/run.lock` of issue `issue`'s private run,
+ * at the path its sealed state and the trusted user config's work root give
+ * (expectedPrivateLayout, as clean recomputes it), for `omg factory run
+ * release <issue>`; undefined when there is no sealed private run or the
+ * recorded dir is not where the config puts it (then nothing is touched).
+ */
+export function privateRunLockPath(root: string, issue: number, runUserConfig?: unknown): string | undefined {
+  try {
+    const state = readFactoryState(root, issue);
+    if (!state || state.layout !== 2 || !state.privateDir || !verifyFactoryIntegrity(state)) return undefined;
+    let userConfig = runUserConfig;
+    if (userConfig === undefined) {
+      try { userConfig = userConfigLayers().trustedUser; } catch { userConfig = null; }
+    }
+    return expectedPrivateLayout(state, { root, omcRoot: getOmcRoot(root), slug: runSlug(issue), userConfig }).lock;
+  } catch {
+    return undefined;
+  }
+}
+
 function cleanPrivateRun(o: FactoryCleanOptions, state: FactoryRunState, result: FactoryCleanResult): void {
   // The dir is recomputed from the trusted config and must equal the record before anything is removed (review-483 M5).
   let layout: PrivateRunLayout;
@@ -155,10 +191,24 @@ function cleanPrivateRun(o: FactoryCleanOptions, state: FactoryRunState, result:
       result.kept.push({ worktree: runDir, reason: `lane_may_run: lane ${may.l.id}: ${may.may!.why}; stop it, then rerun ${o.rerun ?? `omg factory run clean ${o.issue}`}${may.may!.live ? '' : ' --discard --lane-stopped'}` });
       return;
     }
-    // A prepare check's leftover process (recorded under <run>/gates) must be gone before its dir is removed (review-483 I.4).
-    const gateLive = (o.liveGateProcs ?? liveGateProcs)(join(runDir, 'gates', 'prepare-procs'));
+    // B2: a live engine of this run holds <run>/run.lock; its dir is never removed under it (an unreadable lock counts as held).
+    const lockHolder = ownerHolding(layout.lock, o.owner);
+    if (lockHolder !== null) {
+      result.kept.push({ worktree: runDir, reason: `run_live: ${lockHolder === 'unreadable' ? unreadableOwnerMessage(layout.lock, `omg factory run release ${o.issue}`) : `the run's engine holds ${layout.lock} (${describeOwner(lockHolder)}); omg factory run cancel ${o.issue} stops it, then rerun ${o.rerun ?? `omg factory run clean ${o.issue}`}`}` });
+      return;
+    }
+    // A prepare check's or the local gate's leftover process must be gone before its dir is removed (review-483 I.4, 483b L-a):
+    // the prepare checks record under <run>/gates, the local gate under the forge state dir for the checkout's head.
+    const gateDirs = [join(runDir, 'gates', 'prepare-procs'), ...localGateProcDirs(o, state)];
+    let gateLive: number[];
+    try {
+      gateLive = [...new Set(gateDirs.flatMap((d) => (o.liveGateProcs ?? liveGateProcs)(d)))];
+    } catch (error) {
+      result.kept.push({ worktree: runDir, reason: `gate_may_run: ${error instanceof Error ? error.message : String(error)}; then rerun ${o.rerun ?? `omg factory run clean ${o.issue}`}` });
+      return;
+    }
     if (gateLive.length > 0) {
-      result.kept.push({ worktree: runDir, reason: `gate_may_run: process(es) a prepare check started in the run dir still run (pid ${gateLive.join(', ')}); stop them (Task Manager, or kill -9 ${gateLive.join(' ')}), then rerun ${o.rerun ?? `omg factory run clean ${o.issue}`}` });
+      result.kept.push({ worktree: runDir, reason: `gate_may_run: process(es) a prepare check or the local gate started in the run dir still run (pid ${gateLive.join(', ')}); stop them (Task Manager, or kill -9 ${gateLive.join(' ')}), then rerun ${o.rerun ?? `omg factory run clean ${o.issue}`}` });
       return;
     }
     if (o.keepTamperEvidence && state.lanes.some((l) => TAMPER_NOTE.test(l.note ?? ''))) {
@@ -177,7 +227,7 @@ function cleanPrivateRun(o: FactoryCleanOptions, state: FactoryRunState, result:
   const seed = join(repoDir, 'seed.git');
   try {
     // Under the import lock: another checkout's run start (seed fetch, clone) on this repository waits (review-483 L5).
-    withImportLock(layout, () => {
+    withImportLock(o.root, layout, `clean:${o.issue}`, () => {
       let others: string[] = [];
       try { others = readdirSync(repoDir).filter((n) => n !== 'seed.git' && n !== 'import.lock' && !n.startsWith('.trash-')); } catch { /* no repository dir */ }
       if (others.length > 0) {
@@ -188,7 +238,7 @@ function cleanPrivateRun(o: FactoryCleanOptions, state: FactoryRunState, result:
         removeRunDir(seed, work);
         result.removed.push(seed);
       }
-    });
+    }, o.importLock);
   } catch (error) {
     result.kept.push({ worktree: seed, reason: error instanceof Error ? error.message : String(error) });
   }
@@ -205,7 +255,17 @@ export function cleanFactoryRun(o: FactoryCleanOptions): FactoryCleanResult {
   // A live engine in this checkout refuses (busy, exit 6) before any git operation: clean removes worktrees and
   // branches in the shared git dir, which that engine's tamper check would see. Then the issue's own owner file.
   const now = o.now ?? new Date().toISOString();
-  const repoOwner = acquireFactoryRepoOwnerForRun(o.root, o.issue, () => now, o.owner);
+  // B2: a private-layout run's worktrees are outside this checkout, so its clean takes the engine lock as `scan` (a
+  // shared engine still refuses it; private parallel runs keep running, and the fetch below is serialised with their
+  // imports through the import lock tryScanLock adds while a slot is held). A shared run's clean is as before.
+  let repoOwner: HeldOwner;
+  let importLock: HeldOwner | undefined;
+  if (state.layout === 2 && state.privateDir) {
+    const scan = tryScanLock(o.root, now, o.owner, SCAN_WAIT_MS);
+    if (scan instanceof FactoryBusyError) throw scan;
+    repoOwner = scan;
+    importLock = scan.importLock;
+  } else repoOwner = acquireFactoryRepoOwnerForRun(o.root, o.issue, () => now, o.owner);
   let owner: ReturnType<typeof acquireFactoryOwner>;
   try {
     owner = acquireFactoryOwner(o.root, o.issue, now, o.owner);
@@ -214,7 +274,7 @@ export function cleanFactoryRun(o: FactoryCleanOptions): FactoryCleanResult {
     throw error;
   }
   try {
-    return cleanHeldFactoryRun(o, state);
+    return cleanHeldFactoryRun(importLock ? { ...o, importLock } : o, state);
   } finally {
     owner.release();
     repoOwner.release();

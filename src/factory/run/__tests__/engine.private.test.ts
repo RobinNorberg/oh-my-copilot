@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { readMirrorRef } from '../../../forge/local/index.js';
 import { loadTrustedShipConfig, resolveShipConfig } from '../../../ship/config.js';
 import type { Exec } from '../../../ship/exec.js';
-import { cleanFactoryRun } from '../clean.js';
+import { cleanFactoryRun, privateRunLockPath } from '../clean.js';
 import { EXIT_AWAITING_HUMAN, runFactoryEngine, type FactoryEngineOptions } from '../engine.js';
 import { GATE_INSTALL_GATE, REPO_GUARD_GATE } from '../private-run.js';
 import type { SandboxRunRequest } from '../sandbox-exec.js';
@@ -171,7 +171,7 @@ describe('factory run with factory.run.layout "private"', () => {
     expect(existsSync(marker)).toBe(true);
   }, T);
 
-  it('a change to your repository\'s hooks during the run parks before the import with an actionable message; a rerun continues', async () => {
+  it('a change to your repository\'s hooks during the run parks before the import naming the hook, check it before rerunning (review-483b L-b); a rerun continues', async () => {
     const env = privateWorld();
     w = env.w;
     const plant: LaneScript = (ctx) => {
@@ -182,7 +182,8 @@ describe('factory run with factory.run.layout "private"', () => {
     const first = await runFactoryEngine(opts(env, [plant]));
     expect(first.gate?.name, first.message).toBe(REPO_GUARD_GATE);
     expect(first.gate?.reason).toContain(`your repository's hooks dir: ${join(w.root, '.git', 'hooks')} changed during the run`);
-    expect(first.gate?.reason).toMatch(/Your own change does this too.*rerunning omg factory run 7 continues/);
+    expect(first.gate?.reason).toMatch(/can run code on your next git command, so check it before rerunning.*rerun omg factory run 7/);
+    expect(first.gate?.reason).not.toMatch(/rerunning .* continues/);
     expect(readMirrorRef(w.config.repo.url, `factory/issue-${LOCAL_ISSUE}`)).toBeFalsy();
 
     const second = await runFactoryEngine(opts(env, [review('approve')]));
@@ -297,14 +298,31 @@ describe('factory run with factory.run.layout "private"', () => {
     expect(elsewhere.removed).toEqual([]);
     expect(elsewhere.kept.map((k) => k.reason).join('\n')).toMatch(/the run's recorded private dir .* is not .*fw-other.*, so nothing was resumed or removed/);
     expect(existsSync(s.privateDir!)).toBe(true);
+    // B2: a live engine of the run holds <run>/run.lock: clean keeps the dir (an unreadable lock counts as held too).
+    const lock = join(s.privateDir!, 'run.lock');
+    writeFileSync(lock, JSON.stringify({ pid: 4999, hostname: 'h', startedAt: '2026-11-11T00:00:00.000Z', run: '7' }));
+    const held = cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, claimRepo: null, ledgerDir: w.ledgerDir, runUserConfig: env.user, localGateStateDir: w.stateDir, owner: { pid: 1, hostname: 'h', isAlive: (p) => p === 4999 } });
+    expect(held.removed).toEqual([]);
+    expect(held.kept.map((k) => k.reason).join('\n')).toMatch(/run_live: the run's engine holds .*run\.lock \(7, pid 4999 .*omg factory run cancel 7 stops it/);
+    writeFileSync(lock, '{bad');
+    const unreadable = cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, claimRepo: null, ledgerDir: w.ledgerDir, runUserConfig: env.user, localGateStateDir: w.stateDir });
+    expect(unreadable.kept.map((k) => k.reason).join('\n')).toMatch(/run_live: the owner file .*run\.lock is unreadable, so it counts as held; .*\(omg factory run release 7\)/);
+    // Review-487 L-2: `omg factory run release 7` finds exactly this run.lock (and frees it when dead or unreadable).
+    expect(privateRunLockPath(w.root, LOCAL_ISSUE, env.user)).toBe(lock);
+    expect(privateRunLockPath(w.root, 99, env.user)).toBeUndefined();
+    unlinkSync(lock);
     // review-483 I.4: a prepare check's recorded process that still runs keeps the run dir (the proof before removal).
     const probed: string[] = [];
-    const busy = cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, claimRepo: null, ledgerDir: w.ledgerDir, runUserConfig: env.user, liveGateProcs: (d) => { probed.push(d); return [4242]; } });
+    const busy = cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, claimRepo: null, ledgerDir: w.ledgerDir, runUserConfig: env.user, localGateStateDir: w.stateDir, liveGateProcs: (d) => { probed.push(d); return d.startsWith(w.dir) && d.includes('prepare-procs') ? [4242] : []; } });
     expect(busy.removed).toEqual([]);
     expect(busy.kept.map((k) => k.reason).join('\n')).toMatch(/gate_may_run: .*pid 4242/);
-    expect(probed).toEqual([join(s.privateDir!, 'gates', 'prepare-procs')]);
+    expect(probed[0]).toBe(join(s.privateDir!, 'gates', 'prepare-procs'));
+    // Review-483b L-a: the local gate's records (under the forge state dir, outside the run dir) are checked too.
+    expect(probed[1].startsWith(w.stateDir) && probed[1].endsWith('gate-procs')).toBe(true);
+    const gateBusy = cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, claimRepo: null, ledgerDir: w.ledgerDir, runUserConfig: env.user, localGateStateDir: w.stateDir, liveGateProcs: (d) => (d === probed[1] ? [4243] : []) });
+    expect(gateBusy.kept.map((k) => k.reason).join('\n')).toMatch(/gate_may_run: process\(es\) a prepare check or the local gate started .*pid 4243/);
     expect(existsSync(s.privateDir!)).toBe(true);
-    const result = cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, claimRepo: null, ledgerDir: w.ledgerDir, runUserConfig: env.user, seed: true });
+    const result = cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, claimRepo: null, ledgerDir: w.ledgerDir, runUserConfig: env.user, localGateStateDir: w.stateDir, seed: true });
     expect(result.removed).toContain(s.privateDir);
     expect(result.removed).toContain(join(s.privateDir!, '..', 'seed.git'));
     expect(existsSync(s.privateDir!)).toBe(false);
@@ -528,5 +546,28 @@ describe('#484 with the private layout (merge of #484 into #483)', () => {
     // Nothing was quarantined from the private repository (it did not change).
     expect(privateQuarantined(w.ledgerDir, 'hooks/post-checkout')).toBeUndefined();
     expect(readMirrorRef(w.config.repo.url, `factory/issue-${LOCAL_ISSUE}`)).toBeFalsy();
+  }, T);
+
+  it('review-483b L-c: a cancel during a detect-only lane that changed YOUR repository goes through laneTampered (quarantine and hold), then the run is cancelled', async () => {
+    const env = privateWorld();
+    w = env.w;
+    const DETECT_ONLY = { ...ENFORCED_SANDBOX, mode: 'detect-only' } as typeof ENFORCED_SANDBOX;
+    const hook = join(w.root, '.git', 'hooks', 'post-checkout');
+    const lanes = new FakeLanes(w.root, [greet()], [50]);
+    // While the lane runs it plants a hook in your repository; you cancel the run.
+    lanes.onRunningPoll = () => {
+      if (existsSync(hook)) return;
+      writeFileSync(hook, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+      requestFactoryCancel(w.root, LOCAL_ISSUE, new Date().toISOString());
+    };
+    const cancel = lanes.cancel.bind(lanes);
+    lanes.cancel = async (id) => { const c = await cancel(id); return { ...c, result: { ...c.result, sandbox: DETECT_ONLY } }; };
+    const out = await runFactoryEngine(opts(env, [], { lanes }));
+    expect(out.phase, out.message).toBe('cancelled');
+    expect(existsSync(hook)).toBe(false);
+    const hold = readTamperHold(w.ledgerDir, w.root);
+    expect(hold && hold !== 'unreadable' ? hold.held : undefined).toBe(true);
+    expect(hold && hold !== 'unreadable' ? hold.moved : []).toContain('hooks/post-checkout');
+    expect(readFactoryState(w.root, LOCAL_ISSUE)!.history.some((h) => /your repository: the hooks\/ directory changed/.test(h.note))).toBe(true);
   }, T);
 });

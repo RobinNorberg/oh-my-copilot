@@ -28,7 +28,7 @@ import { PROGRESS_STAGES } from '../../forge/types.js';
 import { latestVerdict, readShipState } from '../../ship/state.js';
 import { runCredits } from '../run/budget.js';
 import { FactorySafetyError } from '../run/exec.js';
-import { factoryOwnerPath, factoryStateDir, ownerHolding, readFactoryState, runKeyOf, runLabel, TERMINAL_FACTORY_PHASES, trackerStageOf, verifyFactoryIntegrity, } from '../run/state.js';
+import { factoryOwnerPath, factoryStateDir, heldSlots, ownerHolding, readFactoryState, runKeyOf, runLabel, TERMINAL_FACTORY_PHASES, trackerStageOf, verifyFactoryIntegrity, } from '../run/state.js';
 import { renderBoard } from './render.js';
 /** Bumped on any change to the `--json` shape (src/factory/board/__tests__ pins it). */
 export const BOARD_JSON_SCHEMA_VERSION = 1;
@@ -107,7 +107,11 @@ function columnTitle(config, stage) {
 /** The live engine of a run, read-only (an unreadable owner file shows nothing: the engine's own claim decides). */
 function liveOf(root, s) {
     const h = ownerHolding(factoryOwnerPath(root, runKeyOf(s)));
-    return h === null || h === 'unreadable' ? {} : { live: { pid: h.pid, host: plainText(h.hostname), since: plainText(String(h.startedAt)) } };
+    if (h === null || h === 'unreadable')
+        return {};
+    // B2: the parallel slot this run's engine holds, when it runs as one of several private-layout runs.
+    const slot = heldSlots(root).find((x) => x.owner !== 'unreadable' && x.owner.run === String(runKeyOf(s)) && x.owner.pid === h.pid);
+    return { live: { pid: h.pid, host: plainText(h.hostname), since: plainText(String(h.startedAt)), ...(slot ? { slot: slot.slot } : {}) } };
 }
 function runPart(root, s, warnings) {
     const integrity = verifyFactoryIntegrity(s) ? 'ok' : s.integrity === undefined ? 'none' : 'bad';

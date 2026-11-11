@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { defaultExec, type Exec } from '../../../ship/exec.js';
 import type { FactoryRunState } from '../state.js';
 import { gitVersionProblem, printableKey, type UserRepoGuard } from '../private-store.js';
-import { IMPORT_REFUSED_GATE, PrivateRun, REPO_GUARD_GATE, resolveGateInstall, resolveRunLayout } from '../private-run.js';
+import { guardChangedReason, IMPORT_REFUSED_GATE, PrivateRun, REPO_GUARD_GATE, resolveGateInstall, resolveRunLayout } from '../private-run.js';
 
 const T = 240_000;
 
@@ -177,7 +177,7 @@ describe('PrivateRun', () => {
     expect(existsSync(marker)).toBe(true);
   }, T);
 
-  it('a guard change before the import parks with the kind and path, and says your own change does it too and a rerun continues', () => {
+  it('a guard change before the import parks with the kind and path; a hook names it and says check it before rerunning (review-483b L-b), other items say a rerun continues', () => {
     const p = create();
     const first = publish(p, mkCommit(p.repo.gitDir, [base], [{ path: 'y', content: 'y\n' }]), [base], base);
     expect(first.out.ok).toBe(true);
@@ -188,9 +188,16 @@ describe('PrivateRun', () => {
     expect(out).toMatchObject({ ok: false, pushed: false, park: { name: REPO_GUARD_GATE } });
     const reason = !out.ok ? out.park.reason : '';
     expect(reason).toContain(`your repository's hooks dir: ${join(root, '.git', 'hooks')} changed during the run`);
-    expect(reason).toMatch(/Your own change does this too .*rerunning omg factory run 7 continues/);
+    expect(reason).toMatch(/The hooks dir: .* can run code on your next git command, so check it before rerunning/);
+    expect(reason).not.toMatch(/rerunning .* continues/);
     expect(ran).toBe(0);
     expect(set).toEqual([]);
+    // An item that runs no code (a shallow file, an alternates file) keeps the old text: your own change, a rerun continues.
+    const plain = guardChangedReason([{ item: 'shallow', kind: 'shallow', path: join(root, '.git', 'shallow') }], 'omg factory run 7', 'omg factory run cancel 7');
+    expect(plain).toMatch(/Your own change does this too .*rerunning omg factory run 7 continues/);
+    const mixed = guardChangedReason([{ item: 'shallow', kind: 'shallow', path: 's' }, { item: 'config', kind: 'config-key', key: 'core.fsmonitor', path: 'c' }], 'omg factory run 7', 'omg factory run cancel 7');
+    expect(mixed).toMatch(/The config key core\.fsmonitor in: c can run code .* check it before rerunning/);
+    expect(mixed).not.toMatch(/continues/);
   }, T);
 
   it('a guard change during the push parks after it against the PRE-import baseline, and no new baseline is taken', () => {
