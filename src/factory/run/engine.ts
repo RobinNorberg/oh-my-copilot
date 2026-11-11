@@ -66,6 +66,8 @@ import { nodeModulesTreeProblem, resolveGatesSandboxMode, resolveRequireDeniedPa
 import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs, type SandboxRunner, type SandboxRunRequest } from './sandbox-exec.js';
 import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
 import { driveGates } from './gates-driver.js';
+import { missingCheckHint, NO_CI_CHECKS_NOTE } from '../../ship/gates.js';
+import { ghRequiredChecks } from '../../forge/github/checks.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
 import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText, type ReadAt, type TeamContext } from '../team/context.js';
 import { mergeComment, mergeDecision, type MergeView } from './merge-policy.js';
@@ -109,7 +111,7 @@ import {
 import { ghReviewFeedback } from '../../forge/github/reviews.js';
 import { ReviewHeadMovedError, visibleLine } from '../../forge/review-feedback.js';
 import type { ForgeRepo, ForgeReviewFeedback } from '../../forge/types.js';
-import { humanFixPrompt } from './prompts.js';
+import { humanFixPrompt, laneScripts } from './prompts.js';
 import { lockPathFor } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { checkDiagnosis } from '../heal/diagnosis-output.js';
@@ -1888,7 +1890,8 @@ class FactoryEngine {
       phase: this.state.phase,
       gate,
       state: this.state,
-      message: `awaiting-human: ${gate.name}: ${gate.reason}. Resume with ${this.resume}.`,
+      // A reason that already names the rerun command says it once (M2).
+      message: `awaiting-human: ${gate.name}: ${gate.reason}${gate.reason.includes(this.resume) ? '' : `. Resume with ${this.resume}.`}`,
       ...(gate.name === 'merge' && this.mergeCmd ? { mergeCommand: this.mergeCmd } : {}),
     };
   }
@@ -2235,6 +2238,17 @@ class FactoryEngine {
    * (replace refs off, commit checked, a regular file only): undefined when the path
    * is absent there, a throw for any other failure. Reads are cached per call.
    */
+  /** M5: the format / lint script names of the BASE commit's package.json (laneScripts); unreadable = none. */
+  private laneScripts(): string[] {
+    const base = this.state.baseSha;
+    if (!base) return [];
+    try {
+      return laneScripts(this.readTeamFile(base, 'package.json'));
+    } catch {
+      return [];
+    }
+  }
+
   private readAt(sha: string): ReadAt {
     const seen = new Map<string, string | undefined>();
     return (path) => {
@@ -2277,7 +2291,7 @@ class FactoryEngine {
       return this.gate(PARALLEL_LAYOUT_GATE, `this run started as one of several parallel runs (factory.run.maxConcurrent ${this.o.parallel.maxConcurrent}), but factory.run.layout resolved to "shared" at the base ${baseSha.slice(0, 12)}; parallel runs need factory.run.layout: "private". No lane has started: set factory.run.layout "private" in your user config, or factory.run.maxConcurrent 1, then rerun ${this.resume}`);
     }
     if (undecided && this.layoutChoice === 'private' && !(await this.setupPrivate(baseSha))) return;
-    const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(this.readAt(baseSha), pathsInText(this.state.plan?.text ?? ''))), 'implement');
+    const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(this.readAt(baseSha), pathsInText(this.state.plan?.text ?? '')), this.laneScripts()), 'implement');
     if (out.kind === 'done') await this.acceptWriteLane(out, 'implement', baseSha);
   }
 
@@ -2287,7 +2301,7 @@ class FactoryEngine {
     const ship = this.readShip(this.state.pr);
     if (this.isHumanRound(head, ship)) return this.humanFix(this.state.pr, head, ship);
     const round = ship?.fixRounds ?? 0;
-    const out = await this.runLane('fix', head, 'write', fixPrompt(this.state, round), `fix@${round}`);
+    const out = await this.runLane('fix', head, 'write', fixPrompt(this.state, round, this.laneScripts()), `fix@${round}`);
     if (out.kind === 'done') await this.acceptWriteLane(out, `fix@${round}`, head);
   }
 
@@ -2860,6 +2874,11 @@ class FactoryEngine {
       const configured = loaded.config.requiredChecks.filter((c) => c !== LOCAL_GATE_CHECK);
       if (configured.length > 0 && JSON.stringify(loaded.config.requiredChecks) !== JSON.stringify(DEFAULT_SHIP_CONFIG.requiredChecks)) this.o.warn?.(`omg factory run: the local forge ignores ship.requiredChecks ${configured.join(', ')}; the gates wait for ${LOCAL_GATE_CHECK} only`);
       loaded = { ...loaded, config: { ...loaded.config, requiredChecks: [LOCAL_GATE_CHECK], advisoryChecks: [] } };
+    } else if (loaded.config.requiredChecks.length === 0 && this.forge?.kind !== 'azure-devops') {
+      // No ship.requiredChecks: GitHub's required checks for the base when the token can read them, else every reported check.
+      const repo = this.githubReadContext()?.repo;
+      const required = (repo ? ghRequiredChecks(this.exec, repo, view.baseRefName, this.o.root) : undefined) ?? [];
+      if (required.length > 0) loaded = { ...loaded, config: { ...loaded.config, requiredChecks: required, requiredChecksFrom: 'branch-protection' } };
     }
     if (tracking() !== before) this.rebaseRecheck();
     this.gateCfg = { baseSha: view.baseRefOid, loaded };
@@ -3914,7 +3933,8 @@ class FactoryEngine {
           },
           onReport: (r, note) => {
             this.writeShip(pr, (cur) => ({ ...cur!, lastGates: { verdict: r.verdict, at: this.iso(), failed: r.failed, pending: r.pending } }));
-            this.progress.heartbeat('gates', `${note}; failed ${r.failed.length}, pending ${r.pending.length}`, fields());
+            const named = r.pending.length > 0 ? ` (${r.pending.slice(0, 5).join(', ')}${r.pending.length > 5 ? ', ...' : ''})` : '';
+            this.progress.heartbeat('gates', `${note}; failed ${r.failed.length}, pending ${r.pending.length}${named}`, fields());
           },
           onWait: (note) => {
             this.reload();
@@ -3934,12 +3954,17 @@ class FactoryEngine {
     const at = head.slice(0, 12);
     switch (out.kind) {
       case 'cancelled': return;
-      case 'green':
-        this.writeShip(pr, (cur) => transition(cur!, 'ready', `gates green at ${at}`, this.iso()));
+      case 'green': {
+        const note = `gates green at ${at}${out.report.noChecks ? ` (${NO_CI_CHECKS_NOTE})` : ''}`;
+        this.writeShip(pr, (cur) => transition(cur!, 'ready', note, this.iso()));
         this.save((x) => {
           const { ciFailure: _f, ...rest } = x;
-          return moveTo(rest, 'merge', `gates green at ${at}`, this.iso());
+          return moveTo(rest, 'merge', note, this.iso());
         });
+        return;
+      }
+      case 'missing-checks':
+        this.gate('missing-checks', `${missingCheckHint(out.missing, config)}; every other check completed at ${at} and nothing new reported for the settle window, so the gates stop waiting; fix it, then rerun ${this.resume}`);
         return;
       case 'failed': {
         // F43: the local gate has no CI page to read; its output tail is the ci-fix lane's only evidence.
@@ -4002,7 +4027,7 @@ class FactoryEngine {
     const cmd = decision.command.join(' ');
     this.mergeCmd = decision.ok ? cmd : undefined;
     this.commentOnce('pr', `merge@${head.slice(0, 12)}`, 'merge', `${mergeComment(this.key, decision, this.resume)}${decision.ok ? this.humanComment ?? '' : ''}`);
-    if (decision.ok) this.gate('merge', `merge is a human step; review approved and gates green at ${head.slice(0, 12)}${this.humanNote ?? ''}: run ${cmd}, then ${this.resume}`);
+    if (decision.ok) this.gate('merge', `merge is a human step; review approved and gates green at ${head.slice(0, 12)}${decision.noChecks ? ` (${NO_CI_CHECKS_NOTE}: no CI ran on this head, check the change yourself)` : ''}${this.humanNote ?? ''}: run ${cmd}, then ${this.resume}`);
     else this.gate('merge-refused', `ship's merge rule refuses ${head.slice(0, 12)}: ${decision.reasons.join('; ')}`);
   }
 
@@ -5333,7 +5358,9 @@ class FactoryEngine {
       // Every open thread went to the last fix lane and reads the same: the lane answered it, or it stands.
       if (outdated.length > 0) {
         const standing = open.length > outdated.length ? `; ${open.length - outdated.length} other thread(s) went to the fix round at ${last!.head.slice(0, 12)} and still stand` : '';
-        this.gate(HUMAN_REVIEW_GATE, `${outdated.length} review thread(s) were outdated by the fix but not resolved: ${this.threadNames(outdated)}. Resolve them or reply on the PR, then rerun ${this.resume}${standing}${commented}${ignored}`);
+        // M3: the gate stays (only the reviewer resolves a human's thread), but it says what happened and what continues.
+        const where = this.names(outdated.map((t) => `${t.id.slice(0, 60)} by ${t.author}${t.file ? ` on ${oneLine(t.file, 120)}${Number.isSafeInteger(t.line) && t.line! > 0 ? `:${t.line}` : ''}` : ''}`));
+        this.gate(HUMAN_REVIEW_GATE, `${outdated.length} review thread(s) went to the fix round at ${last!.head.slice(0, 12)} and were addressed by commit ${head.slice(0, 12)} (it changed the lines they are on), but they are not resolved: ${where}. If the fix answers a thread, resolve it on the PR; if not, reply in it (a new comment goes to another fix round). Either continues the run: then rerun ${this.resume}${standing}${commented}${ignored}`);
         return true;
       }
       this.gate(HUMAN_REVIEW_GATE, `${what}; this same feedback already went to a fix round at ${last!.head.slice(0, 12)}: resolve the threads, or reply in them for another round${gone}`);
@@ -5444,7 +5471,7 @@ class FactoryEngine {
     if (last?.digest !== digest || last.threadIds.join('\n') !== threadIds.join('\n')) this.save((x) => ({ ...x, humanReview: { seenAt: this.iso(), head, digest, threadIds } }));
     const round = current.fixRounds;
     const before = this.state.lanes.length;
-    const out = await this.runLane('fix', head, 'write', humanFixPrompt(this.state, round, open, by), `fix@${round}`);
+    const out = await this.runLane('fix', head, 'write', humanFixPrompt(this.state, round, open, by, this.laneScripts()), `fix@${round}`);
     const lane = this.state.lanes[before];
     if (lane?.kind === 'fix') this.updateLane(lane.id, { feedback: { source: 'human', forge: this.forge?.kind ?? 'github', items: open.length } });
     if (out.kind === 'done') await this.acceptWriteLane(out, `fix@${round}`, head);

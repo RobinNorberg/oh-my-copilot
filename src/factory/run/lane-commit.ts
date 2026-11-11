@@ -97,9 +97,13 @@ export const ADO_PIPELINE_PATHS: readonly string[] = ['azure-pipelines.yml', 'az
  * `.github/` covers `.github/copilot-instructions.md` and the workflows;
  * `.claude/`, `.mcp.json` and `.vscode/` hold the hooks, MCP servers and
  * tasks other agents and editors run from a checkout, `.husky/` the git hooks
- * husky installs.
+ * husky installs. CI_DEFINITION_PATHS: with no `ship.requiredChecks` the
+ * gates require every check the forge reports, so a lane must not be able to
+ * drop a CI system's definition and with it the checks.
  */
-export const LANE_PROTECTED_PATHS: readonly string[] = ['.github/', '.copilot/', '.claude/', '.vscode/', '.mcp.json', '.husky/', '.omg/skills/', '.omc/skills/', 'AGENTS.md', 'CLAUDE.md', ...ADO_PIPELINE_PATHS];
+export const CI_DEFINITION_PATHS: readonly string[] = ['.circleci/', '.gitlab-ci.yml', '.buildkite/', '.travis.yml', 'Jenkinsfile', 'appveyor.yml', '.appveyor.yml', '.drone.yml', 'bitbucket-pipelines.yml', '.woodpecker/', '.woodpecker.yml'];
+
+export const LANE_PROTECTED_PATHS: readonly string[] = ['.github/', '.copilot/', '.claude/', '.vscode/', '.mcp.json', '.husky/', '.omg/skills/', '.omc/skills/', 'AGENTS.md', 'CLAUDE.md', ...ADO_PIPELINE_PATHS, ...CI_DEFINITION_PATHS];
 
 export type LaneCommitRefusal = 'moved' | 'gitlink' | 'escaped' | 'protected' | 'secret' | 'empty' | 'error';
 

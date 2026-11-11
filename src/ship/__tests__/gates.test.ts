@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { DEFAULT_SHIP_CONFIG, parseKnownFlaky, resolveShipConfig, type KnownFlakyTest, type ShipConfig } from '../config.js';
+import { DEFAULT_SHIP_CONFIG, OMG_REPOSITORY_REQUIRED_CHECKS, parseKnownFlaky, resolveShipConfig, type KnownFlakyTest, type ShipConfig } from '../config.js';
 import { guardExec, type Exec, type ExecResult } from '../exec.js';
 import {
   aggregateOnly,
@@ -34,7 +34,8 @@ const fixture = (name: string) => readFileSync(join(FIXTURES, name), 'utf8');
 /** Recorded `gh pr checks 233 --json ...` (merged PR; the authorization gate is red by design). */
 const PR233: GhCheck[] = JSON.parse(fixture('checks-pr233-green.json'));
 const KNOWN = parseKnownFlaky(readFileSync(join(REPO_ROOT, DEFAULT_SHIP_CONFIG.knownFlakyFile), 'utf8'), DEFAULT_SHIP_CONFIG.knownFlakyFile);
-const CONFIG: ShipConfig = resolveShipConfig(undefined);
+// This repository's committed ship.requiredChecks (.copilot/omg.jsonc): the recorded PR #233 fixtures are its CI.
+const CONFIG: ShipConfig = resolveShipConfig({ requiredChecks: [...OMG_REPOSITORY_REQUIRED_CHECKS] });
 
 const RUN = '38006018811';
 const TEST_JOB = '114080000001';

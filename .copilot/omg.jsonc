@@ -1,5 +1,32 @@
 // oh-my-copilot project config for this repository (read by `omg factory run` from the base commit).
 {
+  "ship": {
+    // Every check this repository's CI reports on a PR to dev or main (ci.yml, pr-check.yml). A safety key: honoured
+    // from the base commit of a trusted base (and the user config), never from the working tree or a PR head. The
+    // built-in default names nothing (the forge's required checks, else every reported check); a drift test keeps
+    // this list equal to OMG_REPOSITORY_REQUIRED_CHECKS (src/ship/config.ts) and to ci.yml's job names.
+    "requiredChecks": [
+      "Lint & Type Check",
+      "Test",
+      "Test (Windows path suite)",
+      "better-sqlite3 Node 26 (ubuntu-latest)",
+      "better-sqlite3 Node 26 (windows-2022)",
+      "PreCompact restore (ubuntu-latest)",
+      "PreCompact restore (macos-latest)",
+      "PreCompact restore (windows-2022)",
+      "Multi-repo Path Gate (AST-grep) (ubuntu-latest)",
+      "Multi-repo Path Gate (AST-grep) (windows-2022)",
+      "Version Consistency Check",
+      "Build",
+      "npm pack + install test",
+      "Copilot smoke (tier 2)",
+      "Base Branch Check",
+      "Size Check",
+      "Draft PR Check",
+      "omg update + session-start hook",
+      "Statechart suite (Node 24)"
+    ]
+  },
   "factory": {
     "run": {
       "secretScan": {

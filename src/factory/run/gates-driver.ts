@@ -19,7 +19,7 @@
 
 import type { KnownFlakyTest, ShipConfig } from '../../ship/config.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
-import { fetchWorkflowRuns, NO_WORKFLOWS_TRIGGERED, parseFailingTests, watchGates, type GateForge, type GateReport } from '../../ship/gates.js';
+import { fetchWorkflowRuns, NO_WORKFLOWS_TRIGGERED, parseFailingTests, watchGates, type GateForge, type GateReport, type SettleClock } from '../../ship/gates.js';
 import { ghJobLog } from '../../forge/github/checks.js';
 import { ghPrHead } from '../../forge/github/reviews.js';
 
@@ -58,6 +58,8 @@ export type GatesOutcome =
   | { kind: 'failed'; report: GateReport; tests: string[] }
   | { kind: 'flaky'; report: GateReport }
   | { kind: 'no-workflows'; report: GateReport }
+  /** Required names that will not report (GateReport.missing): every other check completed and the settle window passed. */
+  | { kind: 'missing-checks'; report: GateReport; missing: string[] }
   | { kind: 'timeout'; report?: GateReport }
   | { kind: 'head-moved'; headRefOid: string }
   | { kind: 'not-open'; state: string }
@@ -109,6 +111,8 @@ export async function driveGates(o: GatesDriverInput): Promise<GatesOutcome> {
   };
   let noWorkflowsSince: number | null = null;
   let last: GateReport | undefined;
+  // One settle clock for the whole gates phase: a new watch window does not restart the settle window.
+  const settle: SettleClock = {};
   for (;;) {
     if (o.cancelled()) return { kind: 'cancelled' };
     const left = o.deadline - o.now();
@@ -128,6 +132,7 @@ export async function driveGates(o: GatesDriverInput): Promise<GatesOutcome> {
         // A cancel lands between ship's polls, not only at the end of its window.
         watch: true, reruns: o.reruns, sleep: async (ms) => { if (o.cancelled()) throw new GatesCancelled(); await o.sleep(ms); }, now: o.now,
         ...(o.forge ? { forge: o.forge } : {}),
+        settle, stopOnMissing: true,
       });
     } catch (error) {
       if (error instanceof GatesCancelled) return { kind: 'cancelled' };
@@ -146,6 +151,7 @@ export async function driveGates(o: GatesDriverInput): Promise<GatesOutcome> {
     if (report.verdict === 'green') return { kind: 'green', report };
     if (report.verdict === 'failed') return { kind: 'failed', report, tests: failingTestTitles(o.exec, report, o.cwd, o.forge) };
     if (report.verdict === 'flaky' && !res.timedOut) return { kind: 'flaky', report };
+    if (report.missing) return { kind: 'missing-checks', report, missing: report.missing };
     if (report.pending.includes(NO_WORKFLOWS_TRIGGERED)) {
       noWorkflowsSince ??= o.now();
       if (o.now() - noWorkflowsSince >= NO_WORKFLOWS_GRACE_MS) return { kind: 'no-workflows', report };
