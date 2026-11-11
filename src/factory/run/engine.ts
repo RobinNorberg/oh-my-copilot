@@ -534,6 +534,9 @@ function parseStatusPaths(raw: string): string[] {
 
 const HEX40 = /^[0-9a-f]{40}$/;
 
+/** Parks of the human review read itself, which pendingHumanNote never adds to. */
+const isHumanReadGate = (name: string): boolean => name === HUMAN_REVIEW_GATE || name === 'fix-rounds-spent' || name === 'head-moved-externally';
+
 /**
  * Engine git in the prepare checkout once the PR's code ran there: the admin
  * dir recorded at `worktree add` (recordWorktreeGitLinks, before any of it
@@ -981,7 +984,39 @@ class FactoryEngine {
   }
 
   private gate(name: string, reason: string): void {
-    this.save((s) => setGate(s, name, reason, this.iso()));
+    const pending = this.resumedFromPark && !isHumanReadGate(name) ? this.pendingHumanNote() : '';
+    this.save((s) => setGate(s, name, `${reason}${pending}`, this.iso()));
+  }
+
+  /** Set by resumed(): this run re-evaluates a park, so a park it hits again names the PR's pending human review (L8). */
+  private resumedFromPark = false;
+  /** pendingHumanNote's one read per run. */
+  private pendingHuman?: string;
+
+  /**
+   * L8: the open trusted human review threads on the run's PR, for a park
+   * the run hits again after a rerun: a prepare, CI or gate park comes
+   * before the merge step, where the human fix round starts, so the owner
+   * learns their feedback is seen and when it is acted on. One read per run;
+   * it never parks itself: factory.review.human "off", no reader or a failed
+   * read add nothing (the merge step reads again and parks on a failure).
+   */
+  private pendingHumanNote(): string {
+    if (this.pendingHuman !== undefined) return this.pendingHuman;
+    this.pendingHuman = '';
+    const { pr, head } = this.state ?? {};
+    const mode = this.humanMode();
+    if (!pr || !head || !HEX40.test(head) || mode === 'off') return '';
+    const read = this.humanReader();
+    if (!read || typeof read === 'string') return '';
+    let fb: ForgeReviewFeedback;
+    try { fb = read(pr, head); } catch { return ''; }
+    const { open, by } = this.humanOpen(fb);
+    if (open.length === 0 && by.length === 0) return '';
+    const what = `${open.length} open human review thread(s)${open.length > 0 ? ` (${this.threadNames(open)})` : ''}${by.length > 0 ? ` and changes requested by ${this.names(by)}` : ''}`;
+    const when = mode === 'gate-only' ? 'factory.review.human is "gate-only", so address them on the PR' : 'the human fix round for them starts once prepare and the gates pass (at the merge step)';
+    this.pendingHuman = `; PR #${pr} has ${what}: ${when}`;
+    return this.pendingHuman;
   }
 
   // --- The private layout (private-run.ts): thin switches; the layout-specific logic lives there --------------
@@ -1627,6 +1662,7 @@ class FactoryEngine {
     const notes: string[] = [];
     if (tookOver) notes.push(`took over from dead owner pid ${tookOver.pid} on ${tookOver.hostname}`);
     if (s.gate) notes.push(`rerun after awaiting-human: ${s.gate.name}`);
+    if (s.gate) this.resumedFromPark = true;
     const { gate: _gate, ...rest } = s;
     const history = notes.map((note) => ({ at, from: s.phase, to: s.phase, note }));
     // A rerun after a gate gets its retries back for the phase it re-evaluates.
