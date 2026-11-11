@@ -42,7 +42,9 @@ import { missingGitHubLabels, pickProgress, progressFromFlag, validateAdoProgres
 import { applyWrites, buildSection, parsedAfter, planBacklogSample, planTeamSeeds, planWrites } from '../../factory/setup/write.js';
 import { redactAdoSecrets } from '../../forge/ado/redact.js';
 import { redactTokens } from '../../notifications/redact.js';
-import { isPlainBranchName, resolveShipConfig, trustedUserConfigPath } from '../../ship/config.js';
+import { isPlainBranchName, resolveShipConfig, trustedRequiredChecks, trustedUserConfigPath } from '../../ship/config.js';
+import { gateRequirement } from '../../factory/setup/required-checks.js';
+import { ghRepoArg } from '../../forge/github/gh.js';
 import { defaultExec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { checkOrCreateHarborLabels } from './intake.js';
@@ -289,6 +291,11 @@ async function setup(o, deps, cwd, out) {
         out.notes.push(`no base branch detected (origin has no dev branch and refs/remotes/origin/HEAD is not set; git remote set-head origin --auto sets it): set ship.base in ${projectPath} to the branch you merge into; until then the factory assumes ${base}`);
     if (!local && localBase?.write)
         out.notes.push(`base branch ${base} (ship.base, detected: ${base === 'dev' ? 'origin has a dev branch' : "origin's default branch"}); change ship.base in ${projectPath} if you merge into another branch`);
+    if (repo.kind === 'github') {
+        // M1: what the gates will require, from the trusted layers (the project file counts once committed on the base).
+        const gates = gateRequirement(io.exec, ghRepoArg(repo), base, trustedRequiredChecks(readConfig(userPath), readConfig(projectPath)), `the user config ${userPath} or ${projectPath} committed on ${base}`, root);
+        out.notes.push(...gates.notes, ...gates.warnings.map((w) => `warning: ${w}`));
+    }
     out.config = {
         ...buildSection(repo, { source, itemTypes }, progress, team),
         ...(healPipeline ? { heal: { pipeline: healPipeline } } : {}),

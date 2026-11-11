@@ -95,7 +95,12 @@ describe('the merge step reads human review feedback for the head the engine pus
         const { lanes, done: running } = run([...approveAll(), commitFile('src/greet.ts', 'export const greet = () =>  "hi";\n'), review('approve')]);
         const out = await running;
         expect(out.gate?.name, out.message).toBe('human-review');
-        expect(out.gate?.reason).toContain('1 review thread(s) were outdated by the fix but not resolved: T1 by dana. Resolve them or reply on the PR, then rerun');
+        // M3: which thread, the fix round, the commit that addressed it, and what continues the run.
+        const head = readFactoryState(h.root, ISSUE).head.slice(0, 12);
+        expect(out.gate?.reason).toMatch(new RegExp(`^1 review thread\\(s\\) went to the fix round at [0-9a-f]{12} and were addressed by commit ${head} `));
+        expect(out.gate?.reason).toContain('(it changed the lines they are on), but they are not resolved: T1 by dana on src/greet.ts:1. If the fix answers a thread, resolve it on the PR; if not, reply in it (a new comment goes to another fix round). Either continues the run: then rerun omg factory run ');
+        // M2: the resume command is said once.
+        expect(out.message.split('omg factory run ').length - 1, out.message).toBe(1);
         expect(out.gate?.reason).not.toContain('no open');
         expect(lanes.started.map((l) => l.laneId)).toEqual([`issue-${ISSUE}-implement-1`, `issue-${ISSUE}-review-1`, `issue-${ISSUE}-fix-1`, `issue-${ISSUE}-review-2`]);
         expect(readFactoryState(h.root, ISSUE).humanReview.threadIds).toEqual(['T1']);
@@ -105,6 +110,9 @@ describe('the merge step reads human review feedback for the head the engine pus
         const resolved = await run([]).done;
         expect(resolved.gate?.name, resolved.message).toBe('merge');
         expect(resolved.gate?.reason).toContain('no open trusted threads or change requests');
+        // M2: the merge park ends with its own "then omg factory run N", not a second "Resume with ...".
+        expect(resolved.message).toMatch(new RegExp(`, then omg factory run ${ISSUE}$`));
+        expect(resolved.message).not.toContain('Resume with');
         expect(readShipState(h.root, PR).fixRounds).toBe(1);
     });
     it('HIGH-1: an unresolved outdated thread nobody handed to a lane is open input: a fix round in "fix", a park in "gate-only"', async () => {
@@ -118,7 +126,7 @@ describe('the merge step reads human review feedback for the head the engine pus
         expect(lanes.started.map((l) => l.laneId)).toEqual([`issue-${ISSUE}-fix-1`, `issue-${ISSUE}-review-2`]);
         // Handed to the lane, still outdated and unresolved: parked, not a second round.
         expect(out.gate?.name, out.message).toBe('human-review');
-        expect(out.gate?.reason).toContain('outdated by the fix but not resolved: T2 by dana');
+        expect(out.gate?.reason).toMatch(/addressed by commit [0-9a-f]{12} .*but they are not resolved: T2 by dana/);
     });
     it('a trusted thread starts a human fix lane (fenced, shared counter), then the factory reviews again', async () => {
         let first;

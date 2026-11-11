@@ -20,8 +20,16 @@ export interface ShipConfig {
     /**
      * Checks CI always reports for a PR (exact names). A missing one counts as
      * pending, so a gate read before `needs:`-dependent jobs exist is never green.
+     * Empty (the default) = the forge's required checks for the base when the
+     * caller read them, else every check the forge reports (gates.ts applySettle).
      */
     requiredChecks: string[];
+    /**
+     * Set by the caller, never from a config file: `requiredChecks` came from
+     * the forge's branch protection / rulesets, not from `ship.requiredChecks`
+     * (the missing-check hint names where to fix it).
+     */
+    requiredChecksFrom?: 'branch-protection';
     /** Repo-relative JSON file listing known-flaky tests. */
     knownFlakyFile: string;
     /** Fix rounds allowed after the first changes-requested verdict before the run blocks. */
@@ -51,6 +59,14 @@ export interface ShipConfig {
     prepareChecks?: string[][];
 }
 export type ShipConfigInput = Partial<ShipConfig>;
+/**
+ * Every check oh-my-copilot's own CI reports on a PR to dev or main (ci.yml,
+ * pr-check.yml); the jobs that consume the Build output start late (`needs:
+ * [build]`). The repository's committed .copilot/omg.jsonc sets exactly these
+ * as `ship.requiredChecks` (a drift test keeps them equal); `omg release`
+ * falls back to them when the base it lands on has no configured names yet.
+ */
+export declare const OMG_REPOSITORY_REQUIRED_CHECKS: readonly string[];
 export declare const DEFAULT_SHIP_CONFIG: Readonly<ShipConfig>;
 /**
  * Syntactic branch-name check (no git): word characters, `.`, `/`, `-`, never
@@ -173,6 +189,12 @@ export declare function resolveTrustedBases(trustedUser: unknown): string[];
  * `.copilot/omg.jsonc`; undefined = prepare auto-detects. For `omg factory check`.
  */
 export declare function trustedPrepareChecks(trustedUser: unknown, base: unknown): string[][] | undefined;
+/**
+ * ship.requiredChecks as loadTrustedShipConfig resolves it (a safety key):
+ * the user config at its default location, else the base's committed
+ * `.copilot/omg.jsonc`; [] = none configured (the default). For `omg factory check` and setup.
+ */
+export declare function trustedRequiredChecks(trustedUser: unknown, base: unknown): string[];
 /**
  * Resolve the ship config for a run. Precedence:
  * - safety keys (SHIP_SAFETY_KEYS): the user config at its default location,

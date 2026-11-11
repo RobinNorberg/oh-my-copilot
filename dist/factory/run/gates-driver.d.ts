@@ -61,6 +61,12 @@ export type GatesOutcome = {
 } | {
     kind: 'no-workflows';
     report: GateReport;
+}
+/** Required names that will not report (GateReport.missing): every other check completed and the settle window passed. */
+ | {
+    kind: 'missing-checks';
+    report: GateReport;
+    missing: string[];
 } | {
     kind: 'timeout';
     report?: GateReport;

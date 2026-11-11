@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { DEFAULT_SHIP_CONFIG, parseKnownFlaky, resolveShipConfig } from '../config.js';
+import { DEFAULT_SHIP_CONFIG, OMG_REPOSITORY_REQUIRED_CHECKS, parseKnownFlaky, resolveShipConfig } from '../config.js';
 import { guardExec } from '../exec.js';
 import { aggregateOnly, applyFlakyAnalysis, applyWorkflowRuns, analyzeFailedLog, classifyCheck, evaluateChecks, evaluateGates, fetchChecks, logBlockers, NO_WORKFLOWS_TRIGGERED, parseChecksJson, parseFailingTests, parseRunsJson, readJobChecks, watchGates, } from '../gates.js';
 import { EXIT_PENDING, gateExit } from '../../cli/commands/ship.js';
@@ -13,7 +13,8 @@ const fixture = (name) => readFileSync(join(FIXTURES, name), 'utf8');
 /** Recorded `gh pr checks 233 --json ...` (merged PR; the authorization gate is red by design). */
 const PR233 = JSON.parse(fixture('checks-pr233-green.json'));
 const KNOWN = parseKnownFlaky(readFileSync(join(REPO_ROOT, DEFAULT_SHIP_CONFIG.knownFlakyFile), 'utf8'), DEFAULT_SHIP_CONFIG.knownFlakyFile);
-const CONFIG = resolveShipConfig(undefined);
+// This repository's committed ship.requiredChecks (.copilot/omg.jsonc): the recorded PR #233 fixtures are its CI.
+const CONFIG = resolveShipConfig({ requiredChecks: [...OMG_REPOSITORY_REQUIRED_CHECKS] });
 const RUN = '38006018811';
 const TEST_JOB = '114080000001';
 const TEST_LINK = `https://github.com/RobinNorberg/oh-my-copilot/actions/runs/${RUN}/job/${TEST_JOB}`;

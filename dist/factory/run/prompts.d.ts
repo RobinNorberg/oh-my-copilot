@@ -25,8 +25,16 @@ export declare function fenced(lines: string[]): string[];
  * visible and fenced. Empty when there is no context.
  */
 export declare function teamSection(team: TeamContext | undefined, what: 'plan' | 'diff'): string[];
-export declare function implementPrompt(s: FactoryRunState, team?: TeamContext): string;
-export declare function fixPrompt(s: FactoryRunState, round: number): string;
+/** The package.json scripts a write lane is told to run before it finishes (M5), in this order; names only. */
+export declare const LANE_SCRIPT_NAMES: readonly string[];
+/**
+ * LANE_SCRIPT_NAMES that `packageJson` (the BASE commit's package.json text,
+ * never the lane's tree) defines as string scripts. Only the names are used;
+ * the script bodies never reach a prompt. Unreadable or absent = none.
+ */
+export declare function laneScripts(packageJson: string | undefined): string[];
+export declare function implementPrompt(s: FactoryRunState, team?: TeamContext, scripts?: readonly string[]): string;
+export declare function fixPrompt(s: FactoryRunState, round: number, scripts?: readonly string[]): string;
 export declare const planSection: (s: FactoryRunState) => string[];
 /** The human review comments in one fix prompt are cut at this many characters in total. */
 export declare const MAX_HUMAN_FEEDBACK_CHARS = 40000;
@@ -45,7 +53,7 @@ export interface HumanFeedbackThread {
  * `<U+XXXX>`, control characters dropped, the whole block fenced, its total
  * capped. `file` is display text only; the engine never opens it.
  */
-export declare function humanFixPrompt(s: FactoryRunState, round: number, threads: readonly HumanFeedbackThread[], changesRequestedBy?: readonly string[]): string;
+export declare function humanFixPrompt(s: FactoryRunState, round: number, threads: readonly HumanFeedbackThread[], changesRequestedBy?: readonly string[], scripts?: readonly string[]): string;
 /** `conflicted`: the files the engine's merge left conflict markers in (conflictFixStart), else the ones prepare reported. */
 export declare function conflictFixPrompt(s: FactoryRunState, conflicted?: readonly string[]): string;
 export declare function ciFixPrompt(s: FactoryRunState): string;

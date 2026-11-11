@@ -149,6 +149,17 @@ export interface CollectBoardInput {
     now: number;
     warnings: string[];
 }
+/**
+ * F50 / M4: a run parked at the merge gate shows the PR's review state
+ * now, not the clause the engine wrote at the park: a change request or open
+ * trusted thread recorded since (a GitHub or Azure DevOps review, or
+ * `omg factory pr review` on the local forge) replaces "no open trusted
+ * threads or change requests" with a do-not-merge line. The same trusted
+ * read the engine and `omg factory poll` use (ForgeReviews.reviewFeedback:
+ * untrusted authors are already dropped); a forge without it keeps the text,
+ * and so does --no-check off the local forge (no PR lookups).
+ */
+export declare function reviewNow(forge: Forge, s: FactoryRunState, row: BoardRow, warnings: string[]): void;
 export declare function collectBoard(input: CollectBoardInput): Pick<BoardJson, 'columns' | 'outside'> & {
     readFailed: boolean;
 };

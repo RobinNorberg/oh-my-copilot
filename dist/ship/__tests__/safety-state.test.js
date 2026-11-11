@@ -5,7 +5,7 @@ import { tmpdir, userInfo } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { assertSafeCommand, guardExec, scrubShipEnv, ShipSafetyError, TRUSTED_READ_ENV } from '../exec.js';
-import { DEFAULT_SHIP_CONFIG, isPlainBranchName, loadBaseKnownFlaky, loadTrustedShipConfig, resolveShipConfig, SHIP_SAFETY_KEYS, trustedUserConfigPath, userConfigLayers, } from '../config.js';
+import { DEFAULT_SHIP_CONFIG, isPlainBranchName, loadBaseKnownFlaky, loadTrustedShipConfig, OMG_REPOSITORY_REQUIRED_CHECKS, resolveShipConfig, SHIP_SAFETY_KEYS, trustedUserConfigPath, userConfigLayers, } from '../config.js';
 import { evaluateChecks } from '../gates.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { canTransition, computeIntegrity, createShipState, readShipState, recordVerdict, shipStatePath, transition, updateShipState, verifyShipIntegrity, ShipStateError, } from '../state.js';
@@ -285,8 +285,9 @@ describe('ship config', () => {
         expect(() => resolveShipConfig({ requiredChecks: [1] })).toThrow(/requiredChecks/);
         expect(resolveShipConfig({ requiredChecks: [] }).requiredChecks).toEqual([]);
     });
-    it('requires the late needs: jobs by default', () => {
-        expect(resolveShipConfig(undefined).requiredChecks).toEqual(expect.arrayContaining([
+    it('M1: requires no names by default; the list of this repository (with the late needs: jobs) is OMG_REPOSITORY_REQUIRED_CHECKS', () => {
+        expect(resolveShipConfig(undefined).requiredChecks).toEqual([]);
+        expect(OMG_REPOSITORY_REQUIRED_CHECKS).toEqual(expect.arrayContaining([
             'Test', 'Test (Windows path suite)', 'Build', 'npm pack + install test', 'Lint & Type Check', 'Version Consistency Check', 'Copilot smoke (tier 2)',
         ]));
     });
@@ -416,10 +417,20 @@ describe('trusted ship config (safety keys never from the working tree or the PR
         expect(userWins.advisoryChecks).toEqual(['Size Check']);
         // The working tree still sets non-safety keys, and an unchanged safety key does not warn.
         const warnings = [];
-        const project = { ship: { maxFixRounds: 5, allowAdminMerge: true, requiredChecks: [] } };
+        const project = { ship: { maxFixRounds: 5, allowAdminMerge: true, requiredChecks: ['Lane Check'] } };
         const mixed = loadTrustedShipConfig({ exec, root: '.', base: 'dev', baseSha: BASE_SHA, repoUrl: REPO_URL, user: null, project, warn: (m) => warnings.push(m) });
         expect(mixed).toMatchObject({ maxFixRounds: 5, allowAdminMerge: true, requiredChecks: DEFAULT_SHIP_CONFIG.requiredChecks });
         expect(warnings).toEqual([expect.stringMatching(/ignoring ship\.requiredChecks/)]);
+    });
+    it('M1: the committed .copilot/omg.jsonc of this repository on a trusted base gives its 19 required checks; the working tree and an untrusted base never set them', () => {
+        const committed = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '.copilot', 'omg.jsonc'), 'utf8');
+        const { exec } = execWithBase(committed);
+        const warnings = [];
+        const fromBase = loadTrustedShipConfig({ exec, root: '.', base: 'dev', baseSha: BASE_SHA, repoUrl: REPO_URL, user: null, project: { ship: { requiredChecks: ['Lane Check'] } }, warn: (m) => warnings.push(m) });
+        expect(fromBase.requiredChecks).toEqual([...OMG_REPOSITORY_REQUIRED_CHECKS]);
+        expect(warnings).toEqual([expect.stringMatching(/ignoring ship.requiredChecks from the working-tree project config/)]);
+        const untrusted = loadTrustedShipConfig({ exec, root: '.', base: 'feature', baseSha: BASE_SHA, repoUrl: REPO_URL, user: null, project: {}, warn: () => { } });
+        expect(untrusted.requiredChecks).toEqual([]);
     });
     it('H1/M2: a failed fetch, a missing or mismatched base sha skips the base layer with a warning, or throws when strict', () => {
         const base = '{ "ship": { "allowAdminMerge": true } }';

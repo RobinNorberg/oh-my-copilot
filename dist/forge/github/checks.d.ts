@@ -29,4 +29,29 @@ export declare function ghRerun(exec: Exec, runId: string, cwd?: string): {
 };
 /** ForgeChecks on GitHub: `pr checks` already reports the PR head, and a run list is per commit, so `headSha` / `pr` are not needed there. */
 export declare function githubChecks(exec: Exec, cwd?: string): ForgeChecks;
+/**
+ * The two GETs of ghRequiredChecks for `base` of `repoArg` (ghRepoArg):
+ * the branch (its `protection.required_status_checks`) and the rules that
+ * apply to it (rulesets' `required_status_checks`).
+ */
+export declare function requiredChecksArgs(repoArg: string, base: string): string[][];
+/** The GETs of latestChecks for `ref` of `repoArg`: the commit's check runs and its combined status. */
+export declare function commitChecksArgs(repoArg: string, ref: string): string[][];
+/**
+ * True for exactly one of the GETs above on `repoArg` (the guards of
+ * factory run, setup and check allow these reads and nothing broader).
+ * `commits` also allows the commit-check reads (setup and check only).
+ */
+export declare function isRequiredChecksArgs(args: readonly string[], repoArg: string | undefined, commits?: boolean): boolean;
+/**
+ * The status checks GitHub requires on `base` (the default of an empty
+ * `ship.requiredChecks`): the branch protection's required contexts plus
+ * the `required_status_checks` rules of the rulesets that apply to it. Read
+ * from the forge API with the user's token, never from the repository tree.
+ * undefined = neither read worked (the caller falls back to every reported
+ * check); a readable empty list is [].
+ */
+export declare function ghRequiredChecks(exec: Exec, repoArg: string, base: string, cwd?: string): string[] | undefined;
+/** The check names (check runs and commit statuses) GitHub reports for `ref`; undefined = unreadable. */
+export declare function ghCommitCheckNames(exec: Exec, repoArg: string, ref: string, cwd?: string): string[] | undefined;
 //# sourceMappingURL=checks.d.ts.map

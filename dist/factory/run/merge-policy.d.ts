@@ -21,6 +21,8 @@ export interface FactoryMergeDecision extends MergeDecision {
         file: string;
         sha256: string;
     };
+    /** The gate read was green with no check at all (NO_CI_CHECKS_NOTE): said in the park and the PR comment. */
+    noChecks?: true;
 }
 /**
  * ship's decideMerge on a fresh one-shot gate read for the head (no watch,

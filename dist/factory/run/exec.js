@@ -56,6 +56,7 @@ import { isBodyFileIn, readTrackerBody } from '../../forge/body-file.js';
 import { isCodingAgentAssignArgs, isCodingAgentCloseArgs, isCodingAgentStatusArgs } from '../../forge/github/coding-agent.js';
 import { CODING_AGENT_LINK_BODY_ARG, codingAgentLinkBodyProblem, isCodingAgentGitArgs, isCodingAgentLinkCommentArgs } from './coding-agent-lane.js';
 import { isReviewFeedbackArgs } from '../../forge/github/graphql.js';
+import { isRequiredChecksArgs } from '../../forge/github/checks.js';
 import { LOCAL_REMOTE, STATE_CHANGE_LOG_FLAGS } from '../../forge/local/mirror.js';
 import { assertSafeCommand, isTrustedFetch, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { triageWriteGh } from '../triage/guard.js';
@@ -378,8 +379,9 @@ function factoryGh(a, writes, github, agent) {
     const [group, sub, ...r] = a;
     // The other `gh api` shape (besides the coding agent's status read and assign above): the human review read of the
     // run's own repository (fixed query); ship refuses every other.
+    // And the two GETs of the base's required checks (gates without ship.requiredChecks), exact shape, same repository.
     if (group === 'api')
-        return isReviewFeedbackArgs(a, github?.repo) ? true : null;
+        return isReviewFeedbackArgs(a, github?.repo) || isRequiredChecksArgs(a, github?.repo) ? true : null;
     if (group === 'issue') {
         if (sub === 'view')
             return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--json' && JSON_FIELDS.test(r[2]);

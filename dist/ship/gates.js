@@ -16,6 +16,61 @@ import { ghHeadSha, ghJobLog, ghPrChecks, ghRerun, ghRunsForHead } from '../forg
 import { CI_WORKFLOW, jobCheckNames } from './workflow.js';
 export const CHECK_FIELDS = 'name,state,bucket,link,workflow,event,startedAt,completedAt';
 export const RUN_FIELDS = 'databaseId,status,conclusion,workflowName,headSha';
+/**
+ * The settle window: how long the set of reported checks must stay quiet
+ * (no check started or completed) before the gate decides it is complete.
+ * Bounded by the caller's own timeout (the factory's gatesTimeoutMinutes).
+ */
+export const CHECK_SETTLE_MS = 120_000;
+/** Carried into the merge park and the PR note when a head was green with no CI at all. */
+export const NO_CI_CHECKS_NOTE = 'no CI checks are configured for this repository';
+/** A forge timestamp in ms, or undefined (absent, unparsable, or gh's zero time for a queued check). */
+function stamp(value) {
+    const ms = value ? Date.parse(value) : NaN;
+    return Number.isFinite(ms) && ms > Date.UTC(2000, 0, 1) ? ms : undefined;
+}
+/** How to fix a required name that never reports, by where it came from. */
+export function missingCheckHint(missing, config) {
+    const names = missing.join(', ');
+    return config.requiredChecksFrom === 'branch-protection'
+        ? `required check(s) ${names} never reported for this head although the base branch's protection requires them: fix the CI workflow that should report them, or the branch protection / ruleset`
+        : `required check(s) ${names} never reported for this head: no CI job has that name; fix ship.requiredChecks in your user config or in the base branch's committed .copilot/omg.jsonc (exact check names as the PR's checks show them)`;
+}
+/**
+ * The settle window over one gate report (CHECK_SETTLE_MS from the newest
+ * check start / completion the forge reports; a check without a timestamp,
+ * or no check at all, counts from `watchedSince`; undefined = this read has
+ * no history, so a window that needs it has not passed: fail closed).
+ *
+ * - `requiredChecks` empty (the reported-checks rule): a green read waits
+ *   out the window (a late check may still appear), and a head with no check
+ *   and no workflow run is green with `noChecks` once the window passed.
+ * - names required: when every reported check and run completed, nothing
+ *   failed, and only required names are pending past the window, they are
+ *   `missing` with a hint (the verdict stays pending).
+ */
+export function applySettle(report, config, now, watchedSince) {
+    const stamps = report.checks.map((c) => Math.max(stamp(c.startedAt) ?? -Infinity, stamp(c.completedAt) ?? -Infinity));
+    const undated = report.checks.length === 0 || stamps.some((s) => s === -Infinity);
+    const newest = Math.max(...stamps, undated ? (watchedSince ?? Infinity) : -Infinity);
+    const settled = now - newest >= CHECK_SETTLE_MS;
+    if (config.requiredChecks.length === 0) {
+        if (report.verdict === 'green' && !settled) {
+            return { ...report, verdict: 'pending', pending: [...report.pending, `settle window: waiting ${Math.round(CHECK_SETTLE_MS / 1000)} s after the last check activity for late checks`] };
+        }
+        if (report.verdict === 'pending' && report.checks.length === 0 && report.pending.length === 1 && report.pending[0] === NO_WORKFLOWS_TRIGGERED && settled) {
+            return { ...report, verdict: 'green', pending: [], noChecks: true, suggestions: [...report.suggestions.filter((s) => !s.startsWith(NO_WORKFLOWS_TRIGGERED)), `${NO_CI_CHECKS_NOTE} (nothing reported for this head within ${Math.round(CHECK_SETTLE_MS / 1000)} s)`] };
+        }
+        return report;
+    }
+    const reported = new Set(report.checks.map((c) => c.name));
+    const missing = config.requiredChecks.filter((n) => !reported.has(n) && !config.advisoryChecks.includes(n));
+    if (missing.length === 0 || report.checks.length === 0 || report.failed.length > 0 || !settled)
+        return report;
+    if (!report.pending.every((p) => missing.includes(p)))
+        return report;
+    return { ...report, missing, suggestions: [...report.suggestions, missingCheckHint(missing, config)] };
+}
 const PASS_STATES = new Set(['SUCCESS', 'SKIPPED']);
 const PENDING_STATES = new Set(['PENDING', 'QUEUED', 'IN_PROGRESS', 'WAITING', 'REQUESTED', 'EXPECTED']);
 export class GhChecksError extends Error {
@@ -377,13 +432,15 @@ export function fetchWorkflowRuns(exec, headSha, cwd) { return ghRunsForHead(exe
  * jobs' logs are read for known-flaky attribution; an aggregator's named jobs
  * are mapped to checks from the checkout's ci.yml. `forge` replaces the gh
  * reads (GateForge); without it every call is the GitHub one.
+ * `watchedSince` (ms) feeds the settle window (applySettle): when this
+ * head was first read; omitted = a read without history (fail closed).
  */
-export function evaluateGates(exec, pr, config, known, cwd, headSha, forge) {
+export function evaluateGates(exec, pr, config, known, cwd, headSha, forge, watchedSince, now = Date.now) {
     const readHead = () => (forge ? forge.reviews.prHead(pr).headRefOid : fetchHeadSha(exec, pr, cwd));
     const head = headSha ?? readHead();
     const checked = evaluateChecks(pr, forge ? forge.checks.checks(pr, head) : fetchChecks(exec, pr, cwd), config);
     const runs = forge ? forge.checks.runsForHead(pr, head) : fetchWorkflowRuns(exec, head, cwd);
-    const report = applyNoWorkflows(applyWorkflowRuns(checked, runs), runs, head);
+    const report = applySettle(applyNoWorkflows(applyWorkflowRuns(checked, runs), runs, head), config, now(), watchedSince);
     const after = readHead();
     if (after !== head) {
         return {
@@ -413,10 +470,14 @@ export async function watchGates(opts) {
     const { config } = opts;
     const deadline = config.watchTimeoutMinutes > 0 ? opts.now() + config.watchTimeoutMinutes * 60_000 : Infinity;
     const rerun = [];
+    const settle = opts.settle ?? {};
     for (;;) {
         let report;
+        const key = opts.headSha ?? '';
+        if (settle.since === undefined || settle.head !== key)
+            Object.assign(settle, { head: key, since: opts.now() });
         try {
-            report = evaluateGates(opts.exec, opts.pr, config, opts.known, opts.cwd, opts.headSha, opts.forge);
+            report = evaluateGates(opts.exec, opts.pr, config, opts.known, opts.cwd, opts.headSha, opts.forge, settle.since, opts.now);
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -429,7 +490,7 @@ export async function watchGates(opts) {
             continue;
         }
         opts.onReport?.(report);
-        if (!opts.watch || report.verdict === 'green' || report.verdict === 'failed') {
+        if (!opts.watch || report.verdict === 'green' || report.verdict === 'failed' || (opts.stopOnMissing && report.missing)) {
             return { report, rerun, timedOut: false };
         }
         // A fixed head that moved will never settle: hand the pending report back so the caller re-views the PR.

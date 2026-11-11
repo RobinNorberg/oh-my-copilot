@@ -87,7 +87,48 @@ export interface GateReport {
     /** Run ids whose failed jobs are all known-flaky and have no pending sibling jobs. */
     rerunnable: string[];
     suggestions: string[];
+    /** Green with no check and no workflow run at all, under the reported-checks rule (NO_CI_CHECKS_NOTE). */
+    noChecks?: true;
+    /**
+     * Required names (configured or branch protection) still unreported after
+     * every reported check and run completed and the settle window passed:
+     * they will not appear (applySettle). The verdict stays pending.
+     */
+    missing?: string[];
 }
+/**
+ * The settle window: how long the set of reported checks must stay quiet
+ * (no check started or completed) before the gate decides it is complete.
+ * Bounded by the caller's own timeout (the factory's gatesTimeoutMinutes).
+ */
+export declare const CHECK_SETTLE_MS = 120000;
+/** Carried into the merge park and the PR note when a head was green with no CI at all. */
+export declare const NO_CI_CHECKS_NOTE = "no CI checks are configured for this repository";
+/**
+ * When a watch first read a head (kept by the caller across watch windows:
+ * the factory's gates driver). The settle window of a check without a
+ * timestamp, and of a head with no check at all, counts from here.
+ */
+export interface SettleClock {
+    head?: string;
+    since?: number;
+}
+/** How to fix a required name that never reports, by where it came from. */
+export declare function missingCheckHint(missing: readonly string[], config: Pick<ShipConfig, 'requiredChecksFrom'>): string;
+/**
+ * The settle window over one gate report (CHECK_SETTLE_MS from the newest
+ * check start / completion the forge reports; a check without a timestamp,
+ * or no check at all, counts from `watchedSince`; undefined = this read has
+ * no history, so a window that needs it has not passed: fail closed).
+ *
+ * - `requiredChecks` empty (the reported-checks rule): a green read waits
+ *   out the window (a late check may still appear), and a head with no check
+ *   and no workflow run is green with `noChecks` once the window passed.
+ * - names required: when every reported check and run completed, nothing
+ *   failed, and only required names are pending past the window, they are
+ *   `missing` with a hint (the verdict stays pending).
+ */
+export declare function applySettle(report: GateReport, config: Pick<ShipConfig, 'requiredChecks' | 'advisoryChecks' | 'requiredChecksFrom'>, now: number, watchedSince: number | undefined): GateReport;
 export declare class GhChecksError extends Error {
     constructor(message: string);
 }
@@ -185,8 +226,10 @@ export declare function fetchWorkflowRuns(exec: Exec, headSha: string, cwd?: str
  * jobs' logs are read for known-flaky attribution; an aggregator's named jobs
  * are mapped to checks from the checkout's ci.yml. `forge` replaces the gh
  * reads (GateForge); without it every call is the GitHub one.
+ * `watchedSince` (ms) feeds the settle window (applySettle): when this
+ * head was first read; omitted = a read without history (fail closed).
  */
-export declare function evaluateGates(exec: Exec, pr: number, config: ShipConfig, known: readonly KnownFlakyTest[], cwd?: string, headSha?: string, forge?: GateForge): GateReport;
+export declare function evaluateGates(exec: Exec, pr: number, config: ShipConfig, known: readonly KnownFlakyTest[], cwd?: string, headSha?: string, forge?: GateForge, watchedSince?: number, now?: () => number): GateReport;
 export interface WatchOptions {
     exec: Exec;
     pr: number;
@@ -209,6 +252,10 @@ export interface WatchOptions {
     onTransient?: (message: string) => void;
     /** The forge reads (GateForge); omitted = GitHub. */
     forge?: GateForge;
+    /** The settle clock (SettleClock); omitted = one per call, started at its first read. */
+    settle?: SettleClock;
+    /** Return at once when a required name is `missing` (applySettle); otherwise the watch polls on to its timeout. */
+    stopOnMissing?: boolean;
 }
 export interface WatchResult {
     report: GateReport;
