@@ -715,6 +715,8 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         const issue = parseIssue(issueRaw);
         const state = requestFactoryCancel(factoryRoot(exec), issue, new Date().toISOString());
         if (c.optsWithGlobals().json) console.log(JSON.stringify({ ok: true, cancelRequested: true, phase: state.phase }, null, 2));
+        // L11: a parked run has no engine to finish the cancel: name the command that does.
+        else if (state.gate) console.log(chalk.green(`cancel requested for factory run #${issue} (phase ${state.phase}, awaiting-human: ${plainText(state.gate.name)}); no engine works on a parked run, so finish the cancel with omg factory run ${issue} (no lane starts), then omg factory run clean ${issue}`));
         else console.log(chalk.green(`cancel requested for factory run #${issue} (phase ${state.phase}); a running engine stops within seconds, otherwise the next run finishes the cancel`));
         return 0;
       }));
