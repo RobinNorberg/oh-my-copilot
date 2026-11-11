@@ -33,7 +33,7 @@ import { localRemoteMismatch } from './forge-roots.js';
 import { defaultLedgerDir, emptyHooksDir, EngineLedger } from './ledger.js';
 import { checkoutWorker, FACTORY_CHECKOUT_TEAM, unlinkNodeModules } from './prepare.js';
 import { dmtfCreationDateToTicks, getProcessStartIdentitySync, isProcessAlive } from '../../platform/process-utils.js';
-import { acquireFactoryOwner, acquireFactoryRepoOwnerForRun, describeOwner, FactoryBusyError, factoryStatePath, FactoryStateError, ownerHolding, readFactoryState, runRemote, SCAN_WAIT_MS, tryScanLock, unreadableOwnerMessage, updateFactoryState, runSlug, verifyFactoryIntegrity, } from './state.js';
+import { acquireFactoryOwner, acquireFactoryRepoOwnerForRun, describeOwner, factoryCancelRequested, FactoryBusyError, factoryStatePath, FactoryStateError, ownerHolding, readFactoryState, runRemote, SCAN_WAIT_MS, tryScanLock, unreadableOwnerMessage, updateFactoryState, runSlug, verifyFactoryIntegrity, } from './state.js';
 import { removeFactoryClaim } from './claims.js';
 import { gateProcsPath, liveGateProcs } from './gate-procs.js';
 import { getGlobalOmcStatePath } from '../../utils/paths.js';
@@ -216,6 +216,10 @@ export function cleanFactoryRun(o) {
         throw new FactoryStateError(`no factory run for issue #${o.issue}`);
     if (!verifyFactoryIntegrity(state))
         throw new FactoryStateError(`the factory run state for issue #${o.issue} fails its integrity check; nothing is cleaned`);
+    if (state.phase !== 'merged' && state.phase !== 'cancelled' && factoryCancelRequested(o.root, o.issue)) {
+        // L11: cancel only asks; a parked run has no engine to finish it.
+        throw new FactoryStateError(`the factory run for issue #${o.issue} has a cancel requested but not finished (phase ${state.phase}${state.gate ? `, awaiting-human: ${state.gate.name}` : ''}): run omg factory run ${o.issue} to finish the cancel (no lane starts), then omg factory run clean ${o.issue} again`);
+    }
     if (state.phase !== 'merged' && state.phase !== 'cancelled') {
         throw new FactoryStateError(`the factory run for issue #${o.issue} is ${state.phase}${state.gate ? ` (awaiting-human: ${state.gate.name})` : ''}; clean removes the worktrees of a merged or cancelled run only (omg factory run cancel ${o.issue} first)`);
     }

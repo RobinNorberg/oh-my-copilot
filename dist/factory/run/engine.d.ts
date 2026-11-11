@@ -63,7 +63,7 @@ import { type FactoryRunLimits } from './budget.js';
 import { type LocalGateRunner } from './local-gate.js';
 import { type LaneBackend, type LaneProcess } from './lane.js';
 import { type LaneTreeProof } from './lane-procs.js';
-import { EXIT_BUSY, type FactoryGate, type FactoryHealRecord, type FactoryPhase, type FactoryRunKey, type FactoryRunState, type OwnerDeps, type HeldOwner, type HeldSlot } from './state.js';
+import { EXIT_BUSY, type FactoryCiFailure, type FactoryGate, type FactoryHealRecord, type FactoryPhase, type FactoryRunKey, type FactoryRunState, type OwnerDeps, type HeldOwner, type HeldSlot } from './state.js';
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export declare const EXIT_AWAITING_HUMAN = 4;
 export { EXIT_BUSY };
@@ -283,6 +283,14 @@ export declare class StateTamperedError extends Error {
     readonly paths: string[];
     constructor(paths: string[]);
 }
+/**
+ * L7: why a ci-failed park failed, for the park text, status, board and
+ * issue comment: where it ran (a prepare failure ran in the OS sandbox on
+ * this host, not in the forge's CI), the failing tests, and the last lines
+ * of the output, redacted (token shapes), each made visible and one line,
+ * bounded. Empty without a detail or tests.
+ */
+export declare function ciFailureTail(failure: FactoryCiFailure): string;
 /**
  * Engine git in the prepare checkout once the PR's code ran there: the admin
  * dir recorded at `worktree add` (recordWorktreeGitLinks, before any of it

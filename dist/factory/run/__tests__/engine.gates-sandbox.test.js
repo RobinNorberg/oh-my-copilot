@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { localCheckRecordPath, readLocalCheckRecord } from '../../../forge/local/index.js';
+import { appendLocalReview, engineOwnedDir } from '../../../forge/local/store.js';
 import { resolveShipConfig } from '../../../ship/config.js';
 import { EXIT_AWAITING_HUMAN, GATE_NO_VERDICT_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATES_UNSANDBOXED_GATE, runFactoryEngine } from '../engine.js';
 import { GATE_TREE_MARKER } from '../prepare.js';
@@ -234,6 +235,23 @@ const PASS = { ran: true, status: 0, output: 'ok', timedOut: false };
 const WITHHELD = { ran: false, started: true, reason: 'the output did not end with the one exit-code marker line the sandbox shell prints after the command' };
 const ciFixLanes = (lanes) => lanes.started.map((l) => l.laneId).filter((id) => id.includes('ci-fix'));
 describe('a sandbox that withholds or forges a verdict (review 474 item 10)', () => {
+    it('L8: a park hit again after a rerun names the open human review on the PR and when it is handled; the first park reads nothing', async () => {
+        w = localWorld();
+        const s = sandbox((req) => (req.purpose === 'prepare' ? WITHHELD : PASS));
+        const first = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run }));
+        expect(first.gate?.name, first.message).toBe(GATE_NO_VERDICT_GATE);
+        expect(first.gate?.reason).not.toContain('human review');
+        const st = readFactoryState(w.root, LOCAL_ISSUE);
+        const store = engineOwnedDir(w.config.repo.url.slice(0, -'.git'.length), []);
+        appendLocalReview(store, { version: 1, id: 'r1', pr: st.pr, author: 'robin', state: 'changes-requested', body: 'Name it hello', head: st.head, at: '2026-11-11T08:00:00.000Z' });
+        const lanes = lanesFor(w, []);
+        const again = await runFactoryEngine(opts(lanes, { gateSandbox: s.run }));
+        expect(again.gate?.name, again.message).toBe(GATE_NO_VERDICT_GATE);
+        expect(again.gate?.reason).toContain(`; PR #${st.pr} has 1 open human review thread(s) (r1 by robin) and changes requested by robin: the human fix round for them starts once prepare and the gates pass (at the merge step)`);
+        expect(readFactoryState(w.root, LOCAL_ISSUE).gate?.reason).toBe(again.gate?.reason);
+        // Named only: no fix lane starts while the run is parked before the merge step.
+        expect(lanes.started).toEqual([]);
+    }, MULTI_RUN_MS);
     it('a prepare check that ran but gave no verdict parks gate-no-verdict: no ack offer, the flag does not apply, nothing runs unsandboxed', async () => {
         w = localWorld();
         const s = sandbox((req) => (req.purpose === 'prepare' ? WITHHELD : PASS));

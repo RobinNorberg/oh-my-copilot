@@ -49767,7 +49767,23 @@ function deleteImportRef(ctx, user, ref, expected) {
     old = cur.stdout.trim();
     if (!SHA2.test(old)) return false;
   }
-  return git3(ctx, user, [`--git-dir=${user}`, "update-ref", "--no-deref", "-d", ref, old]).status === 0;
+  if (git3(ctx, user, [`--git-dir=${user}`, "update-ref", "--no-deref", "-d", ref, old]).status !== 0) return false;
+  pruneEmptyImportDirs(user, ref);
+  return true;
+}
+function pruneEmptyImportDirs(user, ref) {
+  const parts = ref.split("/");
+  for (const n of [parts.length - 1, parts.length - 2]) {
+    const dir = (0, import_path102.join)(user, ...parts.slice(0, n));
+    if (!lexists2(dir)) continue;
+    try {
+      const st = (0, import_fs85.lstatSync)(dir);
+      if (st.isSymbolicLink() || !st.isDirectory() || (0, import_fs85.readdirSync)(dir).length > 0) return;
+      (0, import_fs85.rmdirSync)(dir);
+    } catch {
+      return;
+    }
+  }
 }
 function importChecked(input, ref, ctx) {
   const { userGitDir: user, privateRepo: p, sha: sha3, startSha } = input;
@@ -54797,6 +54813,14 @@ function parseStatusPaths(raw) {
   }
   return paths;
 }
+function ciFailureTail(failure2) {
+  const where = failure2.source === "prepare" ? "; the failure is from the prepare checks on this host (the OS sandbox when gates are enforced), not from the forge CI" : "";
+  const tests = failure2.tests.length > 0 ? `; failing tests: ${failure2.tests.slice(0, 5).map((t) => oneLine(visibleLine(t), PARK_TAIL_LINE_CHARS)).join(", ")}${failure2.tests.length > 5 ? ` and ${failure2.tests.length - 5} more` : ""}` : "";
+  const lines3 = failure2.detail ? redactGateOutput(failure2.detail).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-PARK_TAIL_LINES) : [];
+  let tail3 = lines3.map((l) => oneLine(visibleLine(l), PARK_TAIL_LINE_CHARS)).join(" | ");
+  if (tail3.length > PARK_TAIL_CHARS) tail3 = `...${tail3.slice(-PARK_TAIL_CHARS)}`;
+  return `${where}${tests}${tail3 ? `; output tail: ${tail3}` : ""}`;
+}
 function pinCheckoutGit(exec, pin) {
   return (cmd, args, opts) => {
     const p = pin();
@@ -55135,7 +55159,7 @@ async function runFactoryEngine(o) {
 function sharedLayoutSealed(s) {
   return s.layout !== 2 && (s.lanes.length > 0 || s.codingAgent !== void 0);
 }
-var import_crypto29, import_fs97, import_os22, import_path115, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4015, CALIBRATION_NO_TEST_FILTER, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
+var import_crypto29, import_fs97, import_os22, import_path115, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4015, PARK_TAIL_LINES, PARK_TAIL_LINE_CHARS, PARK_TAIL_CHARS, isHumanReadGate, CALIBRATION_NO_TEST_FILTER, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
 var init_engine = __esm({
   "src/factory/run/engine.ts"() {
     "use strict";
@@ -55262,6 +55286,10 @@ var init_engine = __esm({
       }
     };
     HEX4015 = /^[0-9a-f]{40}$/;
+    PARK_TAIL_LINES = 12;
+    PARK_TAIL_LINE_CHARS = 200;
+    PARK_TAIL_CHARS = 1500;
+    isHumanReadGate = (name) => name === HUMAN_REVIEW_GATE || name === "fix-rounds-spent" || name === "head-moved-externally";
     CALIBRATION_NO_TEST_FILTER = "omg-calibration-matches-no-test-file";
     BUILT_IN_FILE_NAME_TOO_LONG = "a changed file name is too long for the sandbox shell";
     USER_REPO_PREFIX = "your repository: ";
@@ -55472,7 +55500,41 @@ var init_engine = __esm({
         return s.remote === LOCAL_REMOTE ? localRemoteMismatch(this.exec, this.o.root, s.repoUrl) : remoteRepoMismatch(this.exec, this.o.root, runRemote(s), s.repoUrl);
       }
       gate(name, reason) {
-        this.save((s) => setGate(s, name, reason, this.iso()));
+        const pending = this.resumedFromPark && !isHumanReadGate(name) ? this.pendingHumanNote() : "";
+        this.save((s) => setGate(s, name, `${reason}${pending}`, this.iso()));
+      }
+      /** Set by resumed(): this run re-evaluates a park, so a park it hits again names the PR's pending human review (L8). */
+      resumedFromPark = false;
+      /** pendingHumanNote's one read per run. */
+      pendingHuman;
+      /**
+       * L8: the open trusted human review threads on the run's PR, for a park
+       * the run hits again after a rerun: a prepare, CI or gate park comes
+       * before the merge step, where the human fix round starts, so the owner
+       * learns their feedback is seen and when it is acted on. One read per run;
+       * it never parks itself: factory.review.human "off", no reader or a failed
+       * read add nothing (the merge step reads again and parks on a failure).
+       */
+      pendingHumanNote() {
+        if (this.pendingHuman !== void 0) return this.pendingHuman;
+        this.pendingHuman = "";
+        const { pr, head } = this.state ?? {};
+        const mode = this.humanMode();
+        if (!pr || !head || !HEX4015.test(head) || mode === "off") return "";
+        const read = this.humanReader();
+        if (!read || typeof read === "string") return "";
+        let fb;
+        try {
+          fb = read(pr, head);
+        } catch {
+          return "";
+        }
+        const { open: open3, by } = this.humanOpen(fb);
+        if (open3.length === 0 && by.length === 0) return "";
+        const what = `${open3.length} open human review thread(s)${open3.length > 0 ? ` (${this.threadNames(open3)})` : ""}${by.length > 0 ? ` and changes requested by ${this.names(by)}` : ""}`;
+        const when = mode === "gate-only" ? 'factory.review.human is "gate-only", so address them on the PR' : "the human fix round for them starts once prepare and the gates pass (at the merge step)";
+        this.pendingHuman = `; PR #${pr} has ${what}: ${when}`;
+        return this.pendingHuman;
       }
       // --- The private layout (private-run.ts): thin switches; the layout-specific logic lives there --------------
       /** The trusted user config of factory.run.layout / workDir / gateInstall. */
@@ -56088,6 +56150,7 @@ var init_engine = __esm({
         const notes = [];
         if (tookOver) notes.push(`took over from dead owner pid ${tookOver.pid} on ${tookOver.hostname}`);
         if (s.gate) notes.push(`rerun after awaiting-human: ${s.gate.name}`);
+        if (s.gate) this.resumedFromPark = true;
         const { gate: _gate, ...rest } = s;
         const history = notes.map((note) => ({ at, from: s.phase, to: s.phase, note }));
         return { ...rest, retries: s.gate ? {} : s.retries, updatedAt: at, history: [...s.history, ...history] };
@@ -57875,7 +57938,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
       ciFailed(failure2, note) {
         if (this.state.ciFixRounds >= this.o.limits.maxCiFixRounds) {
           this.save((x) => ({ ...x, ciFailure: failure2 }));
-          this.gate("ci-failed", `${note}: ${failure2.checks.join(", ")}; the CI-fix rounds are spent (${this.state.ciFixRounds}/${this.o.limits.maxCiFixRounds})`);
+          this.gate("ci-failed", `${note}: ${failure2.checks.join(", ")}; the CI-fix rounds are spent (${this.state.ciFixRounds}/${this.o.limits.maxCiFixRounds})${ciFailureTail(failure2)}`);
           return;
         }
         this.save((x) => moveTo({ ...x, ciFailure: failure2, ciFixRounds: x.ciFixRounds + 1 }, "ci-fix", note, this.iso()));

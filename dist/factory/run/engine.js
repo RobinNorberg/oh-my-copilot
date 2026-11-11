@@ -276,6 +276,28 @@ function parseStatusPaths(raw) {
     return paths;
 }
 const HEX40 = /^[0-9a-f]{40}$/;
+/** L7: the output lines a ci-failed park shows, and the characters of each and of the whole tail. */
+const PARK_TAIL_LINES = 12;
+const PARK_TAIL_LINE_CHARS = 200;
+const PARK_TAIL_CHARS = 1_500;
+/**
+ * L7: why a ci-failed park failed, for the park text, status, board and
+ * issue comment: where it ran (a prepare failure ran in the OS sandbox on
+ * this host, not in the forge's CI), the failing tests, and the last lines
+ * of the output, redacted (token shapes), each made visible and one line,
+ * bounded. Empty without a detail or tests.
+ */
+export function ciFailureTail(failure) {
+    const where = failure.source === 'prepare' ? '; the failure is from the prepare checks on this host (the OS sandbox when gates are enforced), not from the forge CI' : '';
+    const tests = failure.tests.length > 0 ? `; failing tests: ${failure.tests.slice(0, 5).map((t) => oneLine(visibleLine(t), PARK_TAIL_LINE_CHARS)).join(', ')}${failure.tests.length > 5 ? ` and ${failure.tests.length - 5} more` : ''}` : '';
+    const lines = failure.detail ? redactGateOutput(failure.detail).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-PARK_TAIL_LINES) : [];
+    let tail = lines.map((l) => oneLine(visibleLine(l), PARK_TAIL_LINE_CHARS)).join(' | ');
+    if (tail.length > PARK_TAIL_CHARS)
+        tail = `...${tail.slice(-PARK_TAIL_CHARS)}`;
+    return `${where}${tests}${tail ? `; output tail: ${tail}` : ''}`;
+}
+/** Parks of the human review read itself, which pendingHumanNote never adds to. */
+const isHumanReadGate = (name) => name === HUMAN_REVIEW_GATE || name === 'fix-rounds-spent' || name === 'head-moved-externally';
 /**
  * Engine git in the prepare checkout once the PR's code ran there: the admin
  * dir recorded at `worktree add` (recordWorktreeGitLinks, before any of it
@@ -709,7 +731,46 @@ class FactoryEngine {
         return s.remote === LOCAL_REMOTE ? localRemoteMismatch(this.exec, this.o.root, s.repoUrl) : remoteRepoMismatch(this.exec, this.o.root, runRemote(s), s.repoUrl);
     }
     gate(name, reason) {
-        this.save((s) => setGate(s, name, reason, this.iso()));
+        const pending = this.resumedFromPark && !isHumanReadGate(name) ? this.pendingHumanNote() : '';
+        this.save((s) => setGate(s, name, `${reason}${pending}`, this.iso()));
+    }
+    /** Set by resumed(): this run re-evaluates a park, so a park it hits again names the PR's pending human review (L8). */
+    resumedFromPark = false;
+    /** pendingHumanNote's one read per run. */
+    pendingHuman;
+    /**
+     * L8: the open trusted human review threads on the run's PR, for a park
+     * the run hits again after a rerun: a prepare, CI or gate park comes
+     * before the merge step, where the human fix round starts, so the owner
+     * learns their feedback is seen and when it is acted on. One read per run;
+     * it never parks itself: factory.review.human "off", no reader or a failed
+     * read add nothing (the merge step reads again and parks on a failure).
+     */
+    pendingHumanNote() {
+        if (this.pendingHuman !== undefined)
+            return this.pendingHuman;
+        this.pendingHuman = '';
+        const { pr, head } = this.state ?? {};
+        const mode = this.humanMode();
+        if (!pr || !head || !HEX40.test(head) || mode === 'off')
+            return '';
+        const read = this.humanReader();
+        if (!read || typeof read === 'string')
+            return '';
+        let fb;
+        try {
+            fb = read(pr, head);
+        }
+        catch {
+            return '';
+        }
+        const { open, by } = this.humanOpen(fb);
+        if (open.length === 0 && by.length === 0)
+            return '';
+        const what = `${open.length} open human review thread(s)${open.length > 0 ? ` (${this.threadNames(open)})` : ''}${by.length > 0 ? ` and changes requested by ${this.names(by)}` : ''}`;
+        const when = mode === 'gate-only' ? 'factory.review.human is "gate-only", so address them on the PR' : 'the human fix round for them starts once prepare and the gates pass (at the merge step)';
+        this.pendingHuman = `; PR #${pr} has ${what}: ${when}`;
+        return this.pendingHuman;
     }
     // --- The private layout (private-run.ts): thin switches; the layout-specific logic lives there --------------
     /** The trusted user config of factory.run.layout / workDir / gateInstall. */
@@ -1410,6 +1471,8 @@ class FactoryEngine {
             notes.push(`took over from dead owner pid ${tookOver.pid} on ${tookOver.hostname}`);
         if (s.gate)
             notes.push(`rerun after awaiting-human: ${s.gate.name}`);
+        if (s.gate)
+            this.resumedFromPark = true;
         const { gate: _gate, ...rest } = s;
         const history = notes.map((note) => ({ at, from: s.phase, to: s.phase, note }));
         // A rerun after a gate gets its retries back for the phase it re-evaluates.
@@ -3481,7 +3544,7 @@ class FactoryEngine {
         if (this.state.ciFixRounds >= this.o.limits.maxCiFixRounds) {
             // The failure of this head is recorded, so a rerun on the same head re-checks it (F58, recheckAfterCiPark).
             this.save((x) => ({ ...x, ciFailure: failure }));
-            this.gate('ci-failed', `${note}: ${failure.checks.join(', ')}; the CI-fix rounds are spent (${this.state.ciFixRounds}/${this.o.limits.maxCiFixRounds})`);
+            this.gate('ci-failed', `${note}: ${failure.checks.join(', ')}; the CI-fix rounds are spent (${this.state.ciFixRounds}/${this.o.limits.maxCiFixRounds})${ciFailureTail(failure)}`);
             return;
         }
         this.save((x) => moveTo({ ...x, ciFailure: failure, ciFixRounds: x.ciFixRounds + 1 }, 'ci-fix', note, this.iso()));
