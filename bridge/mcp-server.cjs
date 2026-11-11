@@ -54822,7 +54822,7 @@ function dryLayoutNote(o, exec, local) {
   }
   try {
     const own = resolveRunLayout(user, void 0);
-    const { layout, source } = own.source !== "default" ? own : resolveRunLayout(void 0, readTrustedBaseLayerAtRef(exec, o.root, o.base, local ? `refs/heads/${o.base}` : `refs/remotes/origin/${o.base}`, user));
+    const { layout, source } = own.source !== "default" || !exec ? own : resolveRunLayout(void 0, readTrustedBaseLayerAtRef(exec, o.root, o.base, local ? `refs/heads/${o.base}` : `refs/remotes/origin/${o.base}`, user));
     return layout === "private" ? `, in the private layout (factory.run.layout "private" from ${source === "user config" ? "the user config" : source}: its own git repository under the work root)` : "";
   } catch (error2) {
     return `; but ${errText6(error2)}, so the run would park at awaiting-human: ${PRIVATE_STORE_GATE}`;
@@ -54912,7 +54912,7 @@ function dryRun(o) {
   const repoUrl = typeof v.url === "string" ? v.url.replace(/\/issues\/\d+$/, "") : "";
   const agent = source ? codingAgentDryRun(o, "github", repoUrl, source, caps) : void 0;
   if (agent) return agent;
-  return source ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o, exec, false)}`, plan: { next: "implement", planSource: source, ...caps } } : { exitCode: 0, phase: null, state: null, message: 'dry run: no plan (no "Acceptance criteria" heading or omg-plan: link); the run would stop at awaiting-human: needs-plan', plan: { next: "awaiting-human", reason: "needs-plan", ...caps } };
+  return source ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits${dryLayoutNote(o, null, false)}`, plan: { next: "implement", planSource: source, ...caps } } : { exitCode: 0, phase: null, state: null, message: 'dry run: no plan (no "Acceptance criteria" heading or omg-plan: link); the run would stop at awaiting-human: needs-plan', plan: { next: "awaiting-human", reason: "needs-plan", ...caps } };
 }
 async function runFactoryEngine(o) {
   assertLaneCreditCap(o.limits);
