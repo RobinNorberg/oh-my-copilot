@@ -33,6 +33,8 @@ export function outcomePosts(s, event, parent, forge) {
     const reached = [...s.history].reverse().find((h) => h.to === event && h.from !== event);
     const lastGate = [...s.history].reverse().map((h) => GATE_NOTE.exec(h.note)).find(Boolean);
     const reason = event === 'merged' ? '' : (lastGate ? `${lastGate[1]}: ${lastGate[2]}` : reached?.note ?? event);
+    // M6: a cancelled run's posts never repeat its last park reason (a merge park's carries the merge command).
+    const wasParked = lastGate ? `it was parked at ${lastGate[1]}` : `it was in phase ${reached?.from ?? 'unknown'}`;
     const posts = [];
     if (event !== 'ready-to-merge') {
         const marker = outcomeMarker('outcome', child, event, head12);
@@ -46,15 +48,23 @@ export function outcomePosts(s, event, parent, forge) {
                 `- AI credits: ${runCredits(s).toFixed(2)}`,
                 `- Human gates: ${gates.length > 0 ? gates.join(', ') : 'none'}`,
             ]
-            : [
-                `Factory run for #${child} is **${event}** (${pr}).`,
-                '',
-                `${fence(reason)}text`,
-                reason,
-                fence(reason),
-                '',
-                `Details: \`omg factory run status ${child}\`.`,
-            ];
+            : event === 'cancelled'
+                ? [
+                    `Factory run for #${child} is **cancelled** (${pr}): ${wasParked}. The factory does no more work on it.`,
+                    '',
+                    s.pr ? 'The pull request stays as it is: the factory did not merge or close it. Close it if you no longer want it.' : 'The run opened no pull request.',
+                    '',
+                    `Details: \`omg factory run status ${child}\`.`,
+                ]
+                : [
+                    `Factory run for #${child} is **${event}** (${pr}).`,
+                    '',
+                    `${fence(reason)}text`,
+                    reason,
+                    fence(reason),
+                    '',
+                    `Details: \`omg factory run status ${child}\`.`,
+                ];
         posts.push({ target: child, tag: `outcome:#${child}:${event}@${head12}`, marker, body: [...lines, '', marker, ''].join('\n') });
     }
     if (parent !== undefined && parent !== child) {
@@ -62,7 +72,8 @@ export function outcomePosts(s, event, parent, forge) {
         const url = s.pr ? prUrl(forge, s.repoUrl, s.pr) : 'no PR';
         const line = event === 'ready-to-merge' ? `- #${child} ready to merge: ${url}`
             : event === 'merged' ? `- #${child} merged (${url})`
-                : `- #${child} ${event}: \`${oneLine(reason)}\``;
+                : event === 'cancelled' ? `- #${child} cancelled (${wasParked})`
+                    : `- #${child} ${event}: \`${oneLine(reason)}\``;
         posts.push({ target: parent, tag: `rollup:#${parent}:#${child}:${event}@${head12}`, marker, body: `${line}\n\n${marker}\n` });
     }
     return posts;

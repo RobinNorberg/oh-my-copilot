@@ -9,6 +9,7 @@
  */
 import { type KnownFlakyTest, type ShipConfig } from '../../ship/config.js';
 import type { Exec } from '../../ship/exec.js';
+import { type GateHeadReads } from '../../ship/gates.js';
 import { type MergeDecision } from '../../ship/merge.js';
 import { type ShipState } from '../../ship/state.js';
 import type { MergeView } from '../../forge/github/reviews.js';
@@ -21,6 +22,8 @@ export interface FactoryMergeDecision extends MergeDecision {
         file: string;
         sha256: string;
     };
+    /** The gate read was green with no check at all (NO_CI_CHECKS_NOTE): said in the park and the PR comment. */
+    noChecks?: true;
 }
 /**
  * ship's decideMerge on a fresh one-shot gate read for the head (no watch,
@@ -29,9 +32,10 @@ export interface FactoryMergeDecision extends MergeDecision {
  * With an Azure DevOps `forge` the gate read goes through it, its blocking
  * branch policies are reasons too, a PR touching the Azure Pipelines
  * definitions (ADO_PIPELINE_PATHS) needs the owner as PROTECTED_PATHS do, and
- * the command is its head-pinned PATCH.
+ * the command is its head-pinned PATCH. `reads` are the gates loop's GitHub
+ * reads (GateHeadReads), so this read applies the same no-CI, suite and app rules.
  */
-export declare function mergeDecision(exec: Exec, root: string, ship: ShipState, view: MergeView, config: ShipConfig, known: readonly KnownFlakyTest[], forge?: Pick<Forge, 'checks' | 'reviews' | 'merge'>): FactoryMergeDecision;
+export declare function mergeDecision(exec: Exec, root: string, ship: ShipState, view: MergeView, config: ShipConfig, known: readonly KnownFlakyTest[], forge?: Pick<Forge, 'checks' | 'reviews' | 'merge'>, reads?: GateHeadReads): FactoryMergeDecision;
 /** The PR comment of the merge gate: the decision and the exact command a human runs. */
 export declare function mergeComment(issue: FactoryRunKey, decision: FactoryMergeDecision, resume?: string): string;
 //# sourceMappingURL=merge-policy.d.ts.map

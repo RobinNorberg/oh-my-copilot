@@ -79,3 +79,26 @@ describe('lane prompts are byte-identical to the pre-move engine output', () => 
     expect(Object.keys(viaPrompts).sort()).toEqual(Object.keys(fixture).sort());
   });
 });
+
+describe('M5: write lanes run the repository format / lint scripts (names from the base package.json)', () => {
+  const s: FactoryRunState = { ...createFactoryState({ issue: 7, repoUrl: 'https://github.com/o/r', base: 'main' }, '2026-11-11T00:00:00.000Z'), head: 'b'.repeat(40) };
+  const LINE = 'Before you finish, run the repository\'s own `npm run format`, `npm run format:check`, `npm run lint` (scripts in its package.json) and fix what they report.';
+
+  it('laneScripts keeps only the known names that are string scripts, in a fixed order; bodies never matter', () => {
+    const pkg = JSON.stringify({ scripts: { lint: 'eslint .', test: 'vitest', 'format:check': 'prettier --check .', format: 'prettier --write .', prettier: 7 } });
+    expect(prompts.laneScripts(pkg)).toEqual(['format', 'format:check', 'lint']);
+    expect(prompts.laneScripts(undefined)).toEqual([]);
+    expect(prompts.laneScripts('{ not json')).toEqual([]);
+    expect(prompts.laneScripts(JSON.stringify({ scripts: ['lint'] }))).toEqual([]);
+  });
+
+  it('implement, fix and human-fix prompts carry the one line after the tests line; without scripts they are unchanged', () => {
+    const scripts = ['format', 'format:check', 'lint'];
+    const implement = prompts.implementPrompt(s, undefined, scripts).split('\n');
+    expect(implement[implement.indexOf('Add or update tests for the change and run the relevant ones.') + 1]).toBe(LINE);
+    expect(prompts.fixPrompt(s, 1, scripts)).toContain(`Run the relevant tests.\n${LINE}`);
+    expect(prompts.humanFixPrompt(s, 1, [], [], scripts)).toContain(`Run the relevant tests.\n${LINE}`);
+    expect(prompts.implementPrompt(s)).not.toContain('Before you finish');
+    expect(prompts.implementPrompt(s, undefined, scripts).replace(`${LINE}\n`, '')).toBe(prompts.implementPrompt(s));
+  });
+});

@@ -50,7 +50,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { isAbsolute, join, resolve, win32 } from 'path';
 import { pathToFileURL } from 'url';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
-import { loadBaseKnownFlaky, prRepoUrl, type LoadedShipConfig } from '../ship/config.js';
+import { loadBaseKnownFlaky, OMG_REPOSITORY_REQUIRED_CHECKS, prRepoUrl, type LoadedShipConfig } from '../ship/config.js';
 import { scrubShipEnv, type Exec, type ExecOptions, type ExecResult } from '../ship/exec.js';
 import { parseFailingTests, TRANSIENT_GH_ERROR, watchGates, type GateReport } from '../ship/gates.js';
 import {
@@ -1440,7 +1440,10 @@ class Release {
         await this.awaitHead(pr, expectedHead, requireAncestor, base, phase);
         continue;
       }
-      const config: LoadedShipConfig = this.deps.loadShipConfig({ exec: this.deps.exec, root: this.deps.root, base, baseSha: view.baseRefOid, repoUrl: prRepoUrl(view.url) });
+      const loaded: LoadedShipConfig = this.deps.loadShipConfig({ exec: this.deps.exec, root: this.deps.root, base, baseSha: view.baseRefOid, repoUrl: prRepoUrl(view.url) });
+      // omg release ships this repository: a base whose committed config has no ship.requiredChecks yet (main before
+      // the release that added them) still waits for this repository's own checks, never the reported-checks default.
+      const config: LoadedShipConfig = loaded.requiredChecks.length > 0 ? loaded : { ...loaded, requiredChecks: [...OMG_REPOSITORY_REQUIRED_CHECKS] };
       const remainingMin = Math.max(0, (this.deadline - this.deps.now()) / 60_000);
       if (remainingMin <= 0) pendingWait(`PR #${pr}: CI still pending at the --timeout; re-run omg release ${this.v} --from ${phase}`);
       const { report, timedOut } = await watchGates({

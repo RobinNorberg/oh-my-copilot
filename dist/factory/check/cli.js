@@ -29,7 +29,8 @@ import { adoGuardContext, defaultAzBinaryDeps } from '../../forge/ado/index.js';
 import { factoryForgeOptions, unsupportedForge } from '../run/forge-roots.js';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { BASE_CONFIG_PATH, isPlainBranchName, readBaseFile, resolveShipConfig, trustedPrepareChecks } from '../../ship/config.js';
+import { BASE_CONFIG_PATH, isPlainBranchName, readBaseFile, resolveShipConfig, trustedPrepareChecks, trustedRequiredChecks } from '../../ship/config.js';
+import { gateRequirement } from '../setup/required-checks.js';
 import { baseFileExists, describePrepareChecks, skippedPrepareChecks } from '../../ship/prepare.js';
 import { TRUSTED_FETCH_ENV, TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
@@ -37,6 +38,7 @@ import { isAdoCommand, runGuardedAdo } from '../../forge/ado/guard.js';
 import { assertFactoryCommand, FactorySafetyError, isPlainRepoPath } from '../run/exec.js';
 import { ghRepoArg } from '../../forge/github/gh.js';
 import { isReviewFeedbackArgs } from '../../forge/github/graphql.js';
+import { isRequiredChecksArgs } from '../../forge/github/checks.js';
 import { FactoryBusyError, factoryStateDir, READ_SCAN_WAIT_MS, readFactoryState, tryScanLock } from '../run/state.js';
 import { gateDefinitionSources } from '../run/local-gate.js';
 import { BUCKET_ORDER, checkItems, plainText } from './score.js';
@@ -57,8 +59,9 @@ const same = (args, shape) => args.length === shape.length && shape.every((v, i)
 function checkGh(a, marker, githubRepo) {
     const [group, sub, ...r] = a;
     // The human review read (poll's thread count): the fixed GraphQL query on the configured repository only.
+    // And the exact GETs of what the gates will require (src/factory/setup/required-checks.ts).
     if (group === 'api')
-        return isReviewFeedbackArgs(a, githubRepo);
+        return isReviewFeedbackArgs(a, githubRepo) || isRequiredChecksArgs(a, githubRepo, true);
     if (group === 'issue' && sub === 'view')
         return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--json' && JSON_FIELDS.test(r[2]);
     if (group === 'issue' && sub === 'list') {
@@ -463,6 +466,11 @@ export async function runFactoryCheck(o, deps) {
         // The same detection prepare runs: repository markers from the base commit, the tool packages from the root's node_modules.
         const baseHas = baseSha ? baseFileExists(exec, root, baseSha) : () => false;
         const configured = trustedPrepareChecks(deps.trustedUser(), baseConfig);
+        // M1: a configured required check name that the base's latest commit never reported would leave a run waiting.
+        const required = trustedRequiredChecks(deps.trustedUser(), baseConfig);
+        if (config.kind === 'github' && required.length > 0) {
+            warnings.push(...gateRequirement(exec, ghRepoArg(config.repo), base, required, `the user config or ${base}:${BASE_CONFIG_PATH}`, root).warnings.map((w) => `omg factory check: ${w}`));
+        }
         prepareChecks = describePrepareChecks(configured, baseHas, (p) => existsSync(join(root, p)));
         // L3: why a built-in check is not run, and what to do.
         prepareSkipped = [

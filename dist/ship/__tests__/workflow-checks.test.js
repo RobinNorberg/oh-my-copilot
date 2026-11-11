@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { DEFAULT_SHIP_CONFIG } from '../config.js';
+import { DEFAULT_SHIP_CONFIG, OMG_REPOSITORY_REQUIRED_CHECKS, trustedRequiredChecks } from '../config.js';
+import { parseJsonc } from '../../utils/jsonc.js';
 import { checkNames, CI_WORKFLOW, jobCheckNames, parseWorkflow } from '../workflow.js';
 /**
  * requiredChecks drift guard: the check names this repo's workflows report on
@@ -67,7 +68,7 @@ describe('requiredChecks drift (workflow files vs the ship defaults)', () => {
     it('PR jobs in .github/workflows equal DEFAULT requiredChecks + advisoryChecks (minus the external Socket app)', () => {
         const { reported, skipped } = prCheckNames();
         expect(new Set(reported).size).toBe(reported.length);
-        const expected = [...DEFAULT_SHIP_CONFIG.requiredChecks, ...DEFAULT_SHIP_CONFIG.advisoryChecks.filter((n) => !EXTERNAL_CHECKS.includes(n)), ...NOT_REQUIRED];
+        const expected = [...OMG_REPOSITORY_REQUIRED_CHECKS, ...DEFAULT_SHIP_CONFIG.advisoryChecks.filter((n) => !EXTERNAL_CHECKS.includes(n)), ...NOT_REQUIRED];
         expect([...reported].sort()).toEqual([...expected].sort());
         expect(skipped).toEqual(TAG_ONLY);
     });
@@ -79,13 +80,13 @@ describe('requiredChecks drift (workflow files vs the ship defaults)', () => {
         expect(reported).not.toContain('omg update + session-start hook');
         expect(reported).toContain('Draft PR Check');
         // So the default requiredChecks never go green on such a base: it needs its own list in the user config.
-        expect(DEFAULT_SHIP_CONFIG.requiredChecks.filter((n) => !reported.includes(n))).toEqual(expect.arrayContaining(['Test', 'Build']));
+        expect(OMG_REPOSITORY_REQUIRED_CHECKS.filter((n) => !reported.includes(n))).toEqual(expect.arrayContaining(['Test', 'Build']));
     });
     it('knows the skipped shard matrix name of a tree-reuse run, and never requires it', () => {
         const jobs = parseWorkflow(readFileSync(join(WORKFLOWS, 'ci.yml'), 'utf8')).jobs;
         const matrixNames = jobs.filter((j) => Object.keys(j.matrix).length > 0).map((j) => j.name ?? j.key);
         expect(matrixNames).toEqual(expect.arrayContaining(TREE_REUSE_SKIPPED));
-        expect(TREE_REUSE_SKIPPED.every((n) => !DEFAULT_SHIP_CONFIG.requiredChecks.includes(n))).toBe(true);
+        expect(TREE_REUSE_SKIPPED.every((n) => !OMG_REPOSITORY_REQUIRED_CHECKS.includes(n))).toBe(true);
     });
     it('covers ci.yml and pr-check.yml', () => {
         const { reported } = prCheckNames();
@@ -101,7 +102,7 @@ describe('requiredChecks drift (workflow files vs the ship defaults)', () => {
             for (const job of parseWorkflow(readFileSync(join(WORKFLOWS, file), 'utf8')).jobs)
                 literal.set(job.name ?? job.key, job);
         }
-        for (const name of [...DEFAULT_SHIP_CONFIG.requiredChecks, 'Copilot smoke (tier 2)']) {
+        for (const name of [...OMG_REPOSITORY_REQUIRED_CHECKS, 'Copilot smoke (tier 2)']) {
             const job = literal.get(name);
             expect(job, `${name}: no job with this literal name`).toBeDefined();
             expect(Object.keys(job.matrix), `${name}: must not be a matrix job`).toEqual([]);
@@ -123,6 +124,20 @@ describe('ci.yml aggregator lines (gates.ts aggregateOnly)', () => {
         expect(names.get('test-shards')).toEqual(['Test shard 1 of 4', 'Test shard 2 of 4', 'Test shard 3 of 4', 'Test shard 4 of 4']);
         expect(names.get('test')).toEqual(['Test']);
         expect(names.get('build')).toEqual(['Build']);
+    });
+});
+describe("this repository's own required checks (M1: the built-in default names nothing)", () => {
+    const committed = parseJsonc(readFileSync(join(HERE, '..', '..', '..', '.copilot', 'omg.jsonc'), 'utf8'));
+    it('the built-in default requires no names (forge-required, else every reported check)', () => {
+        expect(DEFAULT_SHIP_CONFIG.requiredChecks).toEqual([]);
+    });
+    it('the committed .copilot/omg.jsonc sets exactly OMG_REPOSITORY_REQUIRED_CHECKS as ship.requiredChecks', () => {
+        // As omg factory run / omg ship read it from a trusted base commit (no user-config override).
+        expect(trustedRequiredChecks(undefined, committed)).toEqual([...OMG_REPOSITORY_REQUIRED_CHECKS]);
+        expect(OMG_REPOSITORY_REQUIRED_CHECKS).toHaveLength(19);
+    });
+    it('a user-config ship.requiredChecks still wins over the committed list', () => {
+        expect(trustedRequiredChecks({ ship: { requiredChecks: ['check'] } }, committed)).toEqual(['check']);
     });
 });
 //# sourceMappingURL=workflow-checks.test.js.map

@@ -10,6 +10,8 @@ import {
   isPlainBranchName,
   loadBaseKnownFlaky,
   loadTrustedShipConfig,
+  OMG_REPOSITORY_REQUIRED_CHECKS,
+  omgRepositoryFallback,
   resolveShipConfig,
   SHIP_SAFETY_KEYS,
   trustedUserConfigPath,
@@ -317,8 +319,9 @@ describe('ship config', () => {
     expect(resolveShipConfig({ requiredChecks: [] }).requiredChecks).toEqual([]);
   });
 
-  it('requires the late needs: jobs by default', () => {
-    expect(resolveShipConfig(undefined).requiredChecks).toEqual(expect.arrayContaining([
+  it('M1: requires no names by default; the list of this repository (with the late needs: jobs) is OMG_REPOSITORY_REQUIRED_CHECKS', () => {
+    expect(resolveShipConfig(undefined).requiredChecks).toEqual([]);
+    expect(OMG_REPOSITORY_REQUIRED_CHECKS).toEqual(expect.arrayContaining([
       'Test', 'Test (Windows path suite)', 'Build', 'npm pack + install test', 'Lint & Type Check', 'Version Consistency Check', 'Copilot smoke (tier 2)',
     ]));
   });
@@ -446,10 +449,39 @@ describe('trusted ship config (safety keys never from the working tree or the PR
     expect(userWins.advisoryChecks).toEqual(['Size Check']);
     // The working tree still sets non-safety keys, and an unchanged safety key does not warn.
     const warnings: string[] = [];
-    const project = { ship: { maxFixRounds: 5, allowAdminMerge: true, requiredChecks: [] } };
+    const project = { ship: { maxFixRounds: 5, allowAdminMerge: true, requiredChecks: ['Lane Check'] } };
     const mixed = loadTrustedShipConfig({ exec, root: '.', base: 'dev', baseSha: BASE_SHA, repoUrl: REPO_URL, user: null, project, warn: (m) => warnings.push(m) });
     expect(mixed).toMatchObject({ maxFixRounds: 5, allowAdminMerge: true, requiredChecks: DEFAULT_SHIP_CONFIG.requiredChecks });
     expect(warnings).toEqual([expect.stringMatching(/ignoring ship\.requiredChecks/)]);
+  });
+
+  it('M1: the committed .copilot/omg.jsonc of this repository on a trusted base gives its 19 required checks; the working tree and an untrusted base never set them', () => {
+    const committed = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '.copilot', 'omg.jsonc'), 'utf8');
+    const { exec } = execWithBase(committed);
+    const warnings: string[] = [];
+    const fromBase = loadTrustedShipConfig({ exec, root: '.', base: 'dev', baseSha: BASE_SHA, repoUrl: REPO_URL, user: null, project: { ship: { requiredChecks: ['Lane Check'] } }, warn: (m) => warnings.push(m) });
+    expect(fromBase.requiredChecks).toEqual([...OMG_REPOSITORY_REQUIRED_CHECKS]);
+    expect(warnings).toEqual([expect.stringMatching(/ignoring ship.requiredChecks from the working-tree project config/)]);
+    const untrusted = loadTrustedShipConfig({ exec, root: '.', base: 'feature', baseSha: BASE_SHA, repoUrl: REPO_URL, user: null, project: {}, warn: () => {} });
+    expect(untrusted.requiredChecks).toEqual([]);
+  });
+
+  it('review-493 HIGH-2: a PR of this repository whose base config lacks ship.requiredChecks (main before promotion) requires the 19; another repository keeps []', () => {
+    const omg = 'https://github.com/RobinNorberg/oh-my-copilot';
+    const lacking = '{ "ship": { "allowAdminMerge": true } }';
+    // The loader serves omg ship merge (strict), its gate reads, the factory's gate config and omg release.
+    for (const strict of [true, false]) {
+      const main = loadTrustedShipConfig({ exec: execWithBase(lacking, { url: `${omg}.git` }).exec, root: '.', base: 'main', baseSha: BASE_SHA, repoUrl: omg, user: null, project: {}, strict, warn: () => {} });
+      expect(main.trustedBaseCommit).toBe(BASE_SHA);
+      expect(main.requiredChecks).toEqual([...OMG_REPOSITORY_REQUIRED_CHECKS]);
+    }
+    const other = loadTrustedShipConfig({ exec: execWithBase(lacking).exec, root: '.', base: 'main', baseSha: BASE_SHA, repoUrl: REPO_URL, user: null, project: {}, strict: true, warn: () => {} });
+    expect(other.requiredChecks).toEqual([]);
+    // A configured list is used as is (the fallback only fills an empty one).
+    expect(omgRepositoryFallback({ requiredChecks: ['Build'] }, omg).requiredChecks).toEqual(['Build']);
+    expect(omgRepositoryFallback({ requiredChecks: [] }, 'git@github.com:robinnorberg/OH-MY-COPILOT.git').requiredChecks).toEqual([...OMG_REPOSITORY_REQUIRED_CHECKS]);
+    expect(omgRepositoryFallback({ requiredChecks: [] }, 'https://github.com/RobinNorberg/oh-my-copilot-fork').requiredChecks).toEqual([]);
+    expect(omgRepositoryFallback({ requiredChecks: [] }, undefined).requiredChecks).toEqual([]);
   });
 
   it('H1/M2: a failed fetch, a missing or mismatched base sha skips the base layer with a warning, or throws when strict', () => {

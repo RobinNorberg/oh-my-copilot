@@ -87,7 +87,115 @@ export interface GateReport {
     /** Run ids whose failed jobs are all known-flaky and have no pending sibling jobs. */
     rerunnable: string[];
     suggestions: string[];
+    /** Green with no check and no workflow run at all, under the reported-checks rule (NO_CI_CHECKS_NOTE). */
+    noChecks?: true;
+    /**
+     * Required names (configured or branch protection) still unreported after
+     * every reported check and run completed and the settle window passed:
+     * they will not appear (applySettle). The verdict stays pending.
+     */
+    missing?: string[];
+    /**
+     * Nothing reported for this head past the settle window, but the gates do
+     * not treat the repository as having no CI (applySettle): `base` = the
+     * checks the PR's base commit reported, undefined = not read (unreadable,
+     * or a read with no GitHub API access); `ciDefinitions` = the CI
+     * definition files the base or head tree holds (empty list = the trees
+     * could not be read); `suites` = the head's check suites could not be
+     * read, or GitHub lists some (all completed) for it. Text: noHeadChecksText.
+     */
+    noHeadChecks?: {
+        base?: string[];
+        ciDefinitions?: string[];
+        suites?: 'unreadable' | 'present';
+    };
 }
+/**
+ * The GitHub reads a factory run adds to a gate evaluation (its guard allows
+ * them; ship's and Azure DevOps' evaluations have none). Each returns
+ * undefined when unreadable.
+ */
+export interface GateHeadReads {
+    /** The check names the PR's base commit reported (the no-CI rule). */
+    baseChecks: () => readonly string[] | undefined;
+    /**
+     * The CI definition files (`.github/workflows/` and the other CI systems')
+     * in the sealed base commit's tree or the head's tree (the no-CI rule:
+     * any = this repository has CI); undefined = unreadable.
+     */
+    ciDefinitions: () => readonly string[] | undefined;
+    /** The head's check suites (green needs each completed). */
+    suites: (head: string) => ReadonlyArray<{
+        status: string;
+        app?: string;
+        runs: number;
+    }> | undefined;
+    /** The PR base commit's check suites (an idle app's suite is exempt only when that app ran nothing on the base either). */
+    baseSuites: () => ReadonlyArray<{
+        status: string;
+        app?: string;
+        runs: number;
+    }> | undefined;
+    /** The head's check runs with their app ids (ShipConfig.requiredCheckApps). */
+    runApps: (head: string) => ReadonlyArray<{
+        name: string;
+        appId?: number;
+    }> | undefined;
+}
+/**
+ * The settle window: how long the set of reported checks must stay quiet
+ * (no check started or completed) before the gate decides it is complete.
+ * Bounded by the caller's own timeout (the factory's gatesTimeoutMinutes).
+ */
+export declare const CHECK_SETTLE_MS = 120000;
+/** Carried into the merge park and the PR note when a head was green with no CI at all. */
+export declare const NO_CI_CHECKS_NOTE = "no CI checks are configured for this repository";
+/**
+ * When a watch first read a head (kept by the caller across watch windows:
+ * the factory's gates driver). The settle window of a check without a
+ * timestamp, and of a head with no check at all, counts from here.
+ */
+export interface SettleClock {
+    head?: string;
+    since?: number;
+}
+/** How to fix a required name that never reports, by where it came from. */
+export declare function missingCheckHint(missing: readonly string[], config: Pick<ShipConfig, 'requiredChecksFrom'>): string;
+/**
+ * The settle window over one gate report (CHECK_SETTLE_MS from the newest
+ * check start / completion the forge reports; a check without a timestamp,
+ * or no check at all, counts from `watchedSince`; undefined = this read has
+ * no history, so a window that needs it has not passed: fail closed).
+ *
+ * - `requiredChecks` empty (the reported-checks rule): a green read waits
+ *   out the window (a late check may still appear), and a head with no check
+ *   and no workflow run is green with `noChecks` once the window passed,
+ *   but only when `reads.baseChecks` says the base commit reported no check
+ *   either, `reads.ciDefinitions` finds no CI definition in the base or head
+ *   tree, and the head's check suites read succeeded and are empty;
+ *   otherwise (or any of them unreadable, or no `reads`) it stays pending
+ *   with `noHeadChecks`.
+ * - `reads.suites` (the head's check suites, when readable): green also needs
+ *   each suite completed (openSuites).
+ * - names required: when every reported check and run completed, nothing
+ *   failed, and only required names are pending past the window, they are
+ *   `missing` with a hint (the verdict stays pending).
+ */
+export declare function applySettle(report: GateReport, config: Pick<ShipConfig, 'requiredChecks' | 'advisoryChecks' | 'requiredChecksFrom'>, now: number, watchedSince: number | undefined, reads?: GateHeadReads, head?: string): GateReport;
+/** Why a head that reported nothing is not "no CI" (GateReport.noHeadChecks): the park, heartbeat and suggestion text. */
+export declare function noHeadChecksText(n: NonNullable<GateReport['noHeadChecks']>): string;
+/**
+ * ShipConfig.requiredCheckApps on the head's check runs (`runApps`): a
+ * required name whose check runs all come from another app is pending (a
+ * same-named check of another app does not satisfy it; GitHub itself keeps
+ * it expected). Unreadable runs (undefined) keep name matching, and so does
+ * a commit status, which carries no app id: the check-runs API is the only
+ * place GitHub exposes the app, so a status of the name keeps it pending.
+ */
+export declare function applyRequiredApps(report: GateReport, config: Pick<ShipConfig, 'requiredCheckApps'>, runApps: ReadonlyArray<{
+    name: string;
+    appId?: number;
+}> | undefined): GateReport;
 export declare class GhChecksError extends Error {
     constructor(message: string);
 }
@@ -185,8 +293,12 @@ export declare function fetchWorkflowRuns(exec: Exec, headSha: string, cwd?: str
  * jobs' logs are read for known-flaky attribution; an aggregator's named jobs
  * are mapped to checks from the checkout's ci.yml. `forge` replaces the gh
  * reads (GateForge); without it every call is the GitHub one.
+ * `watchedSince` (ms) feeds the settle window (applySettle): when this
+ * head was first read; omitted = a read without history (fail closed).
+ * `reads` (GateHeadReads, the factory run only) adds the base commit's
+ * checks, the head's check suites and its check runs' apps.
  */
-export declare function evaluateGates(exec: Exec, pr: number, config: ShipConfig, known: readonly KnownFlakyTest[], cwd?: string, headSha?: string, forge?: GateForge): GateReport;
+export declare function evaluateGates(exec: Exec, pr: number, config: ShipConfig, known: readonly KnownFlakyTest[], cwd?: string, headSha?: string, forge?: GateForge, watchedSince?: number, now?: () => number, reads?: GateHeadReads): GateReport;
 export interface WatchOptions {
     exec: Exec;
     pr: number;
@@ -209,6 +321,12 @@ export interface WatchOptions {
     onTransient?: (message: string) => void;
     /** The forge reads (GateForge); omitted = GitHub. */
     forge?: GateForge;
+    /** The settle clock (SettleClock); omitted = one per call, started at its first read. */
+    settle?: SettleClock;
+    /** Return at once when a required name is `missing` (applySettle); otherwise the watch polls on to its timeout. */
+    stopOnMissing?: boolean;
+    /** The factory run's GitHub reads (GateHeadReads); omitted = none. */
+    reads?: GateHeadReads;
 }
 export interface WatchResult {
     report: GateReport;

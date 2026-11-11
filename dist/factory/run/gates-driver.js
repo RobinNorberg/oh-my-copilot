@@ -71,6 +71,8 @@ export async function driveGates(o) {
     };
     let noWorkflowsSince = null;
     let last;
+    // One settle clock for the whole gates phase: a new watch window does not restart the settle window.
+    const settle = {};
     for (;;) {
         if (o.cancelled())
             return { kind: 'cancelled' };
@@ -95,6 +97,7 @@ export async function driveGates(o) {
                 watch: true, reruns: o.reruns, sleep: async (ms) => { if (o.cancelled())
                     throw new GatesCancelled(); await o.sleep(ms); }, now: o.now,
                 ...(o.forge ? { forge: o.forge } : {}),
+                settle, stopOnMissing: true, ...(o.reads ? { reads: o.reads } : {}),
             });
         }
         catch (error) {
@@ -118,6 +121,8 @@ export async function driveGates(o) {
             return { kind: 'failed', report, tests: failingTestTitles(o.exec, report, o.cwd, o.forge) };
         if (report.verdict === 'flaky' && !res.timedOut)
             return { kind: 'flaky', report };
+        if (report.missing)
+            return { kind: 'missing-checks', report, missing: report.missing };
         if (report.pending.includes(NO_WORKFLOWS_TRIGGERED)) {
             noWorkflowsSince ??= o.now();
             if (o.now() - noWorkflowsSince >= NO_WORKFLOWS_GRACE_MS)

@@ -18,7 +18,7 @@
  */
 import type { KnownFlakyTest, ShipConfig } from '../../ship/config.js';
 import { type Exec } from '../../ship/exec.js';
-import { type GateForge, type GateReport } from '../../ship/gates.js';
+import { type GateForge, type GateHeadReads, type GateReport } from '../../ship/gates.js';
 /** `pending: no-workflows-triggered` for this long goes to awaiting-human: no-workflows. */
 export declare const NO_WORKFLOWS_GRACE_MS: number;
 /** Test titles kept from those logs (a log is untrusted, PR-controlled output). */
@@ -45,6 +45,8 @@ export interface GatesDriverInput {
     /** A poll without an accepted read (waiting for GitHub, a stale read). */
     onWait: (note: string) => void;
     cancelled: () => boolean;
+    /** The GitHub gate reads (GateHeadReads: base checks, check suites, check-run apps); omitted = none. */
+    reads?: GateHeadReads;
     /** The forge reads (ship's GateForge); omitted = GitHub, the gh calls below. */
     forge?: GateForge;
 }
@@ -61,6 +63,12 @@ export type GatesOutcome = {
 } | {
     kind: 'no-workflows';
     report: GateReport;
+}
+/** Required names that will not report (GateReport.missing): every other check completed and the settle window passed. */
+ | {
+    kind: 'missing-checks';
+    report: GateReport;
+    missing: string[];
 } | {
     kind: 'timeout';
     report?: GateReport;

@@ -50,15 +50,20 @@ describe('outcome and rollup comments (fake gh, real git, real guard)', () => {
         expect(out.gate?.name).toBe('state-tampered');
         expect(warnings.join('\n')).not.toMatch(/outcome comments failed/);
     });
-    it('cancelled: the outcome names the reason and the status command; the rollup line names the phase', async () => {
+    it('cancelled (M6): the outcome names where the run was parked, the PR state and the status command, never the merge command', async () => {
         await runFactoryEngine(opts(happy()));
         requestFactoryCancel(h.root, ISSUE, new Date().toISOString());
         const out = await runFactoryEngine(opts([]));
         expect(out.phase).toBe('cancelled');
         expect(outcomes()).toHaveLength(1);
-        expect(outcomes()[0].body).toContain(`Factory run for #${ISSUE} is **cancelled** (PR #${PR}`);
-        expect(outcomes()[0].body).toContain(`omg factory run status ${ISSUE}`);
-        expect(on(SPEC).at(-1).body.split('\n')[0]).toMatch(new RegExp(`^- #${ISSUE} cancelled: \``));
+        const body = outcomes()[0].body;
+        expect(body).toContain(`Factory run for #${ISSUE} is **cancelled** (PR #${PR}`);
+        expect(body).toContain('it was parked at merge. The factory does no more work on it.');
+        expect(body).toContain('The pull request stays as it is: the factory did not merge or close it.');
+        expect(body).toContain(`omg factory run status ${ISSUE}`);
+        expect(body).not.toMatch(/gh pr merge|--admin|merge is a human step/);
+        const rollup = on(SPEC).at(-1).body.split('\n')[0];
+        expect(rollup).toBe(`- #${ISSUE} cancelled (it was parked at merge)`);
     });
     it('the spec body is never edited: no gh issue edit and no body flag reaches the tracker', async () => {
         await runFactoryEngine(opts(happy()));

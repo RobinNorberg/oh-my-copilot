@@ -57,9 +57,11 @@ import { isBodyFileIn, readTrackerBody } from '../../forge/body-file.js';
 import { isCodingAgentAssignArgs, isCodingAgentCloseArgs, isCodingAgentStatusArgs, type CodingAgentContext } from '../../forge/github/coding-agent.js';
 import { CODING_AGENT_LINK_BODY_ARG, codingAgentLinkBodyProblem, isCodingAgentGitArgs, isCodingAgentLinkCommentArgs, type CodingAgentStepContext } from './coding-agent-lane.js';
 import { isReviewFeedbackArgs } from '../../forge/github/graphql.js';
+import { isGateReadArgs, isRequiredChecksArgs } from '../../forge/github/checks.js';
 import { LOCAL_REMOTE, STATE_CHANGE_LOG_FLAGS } from '../../forge/local/mirror.js';
 import { assertSafeCommand, isTrustedFetch, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { triageWriteGh } from '../triage/guard.js';
+import { CI_TREE_PATHS } from './lane-commit.js';
 
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
 export const FACTORY_BRANCH_PREFIX = 'factory/';
@@ -366,6 +368,8 @@ function factoryGit(a: string[], protectedBranches: readonly string[], extraProt
     case 'ls-tree':
       // Two-axis review: the standards files on the base commit.
       if (r.length === 6 && same(r.slice(0, 3), ['-r', '-z', '--name-only']) && /^[0-9a-f]{40}$/.test(r[3]) && same(r.slice(4), ['--', 'docs/standards/'])) return true;
+      // The gates' no-CI rule: the CI definition files on the base or head commit (exactly CI_TREE_PATHS).
+      if (r.length === 5 + CI_TREE_PATHS.length && same(r.slice(0, 3), ['-r', '-z', '--name-only']) && /^[0-9a-f]{40}$/.test(r[3]) && same(r.slice(4), ['--', ...CI_TREE_PATHS])) return true;
       // The local forge's backlog at the base commit (backlogListArgs): one plain repo directory, never `..`.
       if (r.length === 5 && same(r.slice(0, 2), ['-z', '--name-only']) && /^[0-9a-f]{40}$/.test(r[2]) && r[3] === '--' && r[4].endsWith('/')) {
         return isPlainRepoPath(r[4].slice(0, -1));
@@ -411,7 +415,9 @@ function factoryGh(a: string[], writes?: TrackerWriteContext, github?: GithubRea
   const [group, sub, ...r] = a;
   // The other `gh api` shape (besides the coding agent's status read and assign above): the human review read of the
   // run's own repository (fixed query); ship refuses every other.
-  if (group === 'api') return isReviewFeedbackArgs(a, github?.repo) ? true : null;
+  // And the two GETs of the base's required checks (gates without ship.requiredChecks), exact shape, same repository.
+  // And the gates' commit reads at a full sha (isGateReadArgs: the base's check names, the head's check suites and check runs).
+  if (group === 'api') return isReviewFeedbackArgs(a, github?.repo) || isRequiredChecksArgs(a, github?.repo) || isGateReadArgs(a, github?.repo) ? true : null;
   if (group === 'issue') {
     if (sub === 'view') return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--json' && JSON_FIELDS.test(r[2]);
     if (sub === 'comment') return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--body-file' && isFile(r[2]);
