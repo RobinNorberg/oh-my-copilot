@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "705371ce70ab057b5dda91adbb04ea200db06315",
-    "sourceSha256": "90c2b61588427085a98668bbb19a8174c22986bb256447dd5c51c3d8dd1374df",
+    "head": "0189e4727337dc98e86dc0f44cb7336df21c14f4",
+    "sourceSha256": "a9ccc6b9307c0b4ab4466776084498930eb2b3166063a1833bc28fbe80cc6b22",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "705371ce70ab057b5dda91adbb04ea200db06315",
-  "sourceSha256": "90c2b61588427085a98668bbb19a8174c22986bb256447dd5c51c3d8dd1374df",
+  "head": "0189e4727337dc98e86dc0f44cb7336df21c14f4",
+  "sourceSha256": "a9ccc6b9307c0b4ab4466776084498930eb2b3166063a1833bc28fbe80cc6b22",
   "counts": {
     "public": {
       "skills": 98,
@@ -89111,6 +89111,11 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
         "to": "external:node:path",
         "kind": "imports"
       },
@@ -89153,6 +89158,11 @@
         "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
         "to": "src/factory/run/local-gate.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
+        "to": "src/factory/run/prepare.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
@@ -90198,6 +90208,11 @@
         "from": "src/factory/run/__tests__/engine.private.test.ts",
         "to": "src/factory/run/engine.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.private.test.ts",
+        "to": "src/factory/run/prepare.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.private.test.ts",
@@ -91877,6 +91892,11 @@
       {
         "from": "src/factory/run/__tests__/units.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/units.test.ts",
+        "to": "src/copilot-run/sandbox.ts",
         "kind": "imports"
       },
       {
@@ -131112,11 +131132,11 @@
     ],
     "stats": {
       "nodeCount": 10920,
-      "edgeCount": 13447,
-      "importEdgeCount": 11054,
+      "edgeCount": 13451,
+      "importEdgeCount": 11058,
       "registerEdgeCount": 119
     }
   },
   "inventorySha256": "83e1c160dbadb3c4ee8074ca997b2418149f67d05c94dbedc4bf72f9db3b6396",
-  "manifestSha256": "1afdd87b80c72c1e38948d17dfce6e764bbd85734624c7dbe36ee26d4676b9c2"
+  "manifestSha256": "d0b521c0af6d0e0f80efceec9cb03ae7a3583f95913d53e0a73401a9b56e6924"
 }
