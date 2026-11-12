@@ -47,6 +47,31 @@ describe('a base that moved after the PR was opened', () => {
     expect(gitIn(h.root, 'show', `${state.head}:docs/other.md`)).toBe('another PR merged');
   });
 
+  it('review-518 L1: the gates read base suites at the recorded base: an app queued with 0 runs on the head and the fresh tip, but run on the recorded base, is not exempted', async () => {
+    let stale = '';
+    let live = '';
+    before(PREPARE_VIEW, () => {
+      stale = gitIn(h.root, 'rev-parse', 'refs/remotes/origin/dev');
+      h.gh.baseRefOid = stale;
+      live = moveBase('docs/other.md', 'another PR merged\n');
+    });
+    const suiteReads: string[] = [];
+    h.gh.api = (path) => {
+      const m = /^repos\/o\/r\/commits\/([0-9a-f]{40})\/check-suites\?per_page=100&page=1$/.exec(path);
+      if (!m) return undefined;
+      suiteReads.push(m[1]);
+      // A third-party app: settled on the recorded base, queued with no run on the head and on the tip that just landed.
+      const suite = m[1] === stale ? { status: 'completed', app: { slug: 'ext-ci' }, latest_check_runs_count: 2 } : { status: 'queued', app: { slug: 'ext-ci' }, latest_check_runs_count: 0 };
+      return { status: 0, stdout: JSON.stringify({ total_count: 1, check_suites: [suite] }), stderr: '' };
+    };
+    const out = await run([commitFile('src/greet.ts', 'export const greet = () => "hi";\n'), review('approve')], { gateConfig: trustedLoad }).done;
+    expect(stale).not.toBe(live);
+    expect(out.gate?.name, out.message).not.toBe('merge');
+    expect(out.message).toContain('check suite ext-ci (queued)');
+    expect(suiteReads).toContain(stale);
+    expect(suiteReads).not.toContain(live);
+  });
+
   it('a live tip that is not the fetched ref refuses (fail closed): nothing is merged or pushed', async () => {
     let stale = '';
     let moved = '';
