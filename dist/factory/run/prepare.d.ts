@@ -84,6 +84,16 @@ export declare function gateTreeHasLinks(checkout: string): boolean;
  * whose every segment is a plain dir in the checkout; another is ignored).
  */
 export declare function nestedTreeDirs(checkout: string): string[];
+/**
+ * The nested workspace trees of `checkout` the engine vouches for, as
+ * relative package dirs: the ones linkNodeModules built in this process, or
+ * (after a restart) the base's workspace globs expanded in your checkout ∩
+ * the marker's lines. The marker is PR-writable, so on its own it never
+ * widens anything: the sandbox grant (nestedNodeModulesTargets) and the
+ * dirty check use only this list (review-501 M1, L2); the removal may still
+ * follow the marker (it never follows a link).
+ */
+export declare function trustedNestedRels(root: string, checkout: string, workspaces: readonly string[]): string[];
 export interface GateConfig {
     config: ShipConfig;
     known: KnownFlakyTest[];

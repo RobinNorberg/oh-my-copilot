@@ -55,7 +55,7 @@
 import { createHash } from 'crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'path';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'path';
 import { BASE_CONFIG_PATH, configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, omgRepositoryFallback, readBaseFile, remoteRepoMismatch, resolveTrustedBases, userConfigLayers } from '../../ship/config.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
@@ -82,7 +82,7 @@ import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, g
 import { ghDependsOn, ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, githubTracker } from '../../forge/github/tracker.js';
 import { isSatisfied } from '../check/score.js';
 import { outcomePosts, postedBefore } from './outcome.js';
-import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, nestedTreeDirs, unlinkNodeModules } from './prepare.js';
+import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, trustedNestedRels, unlinkNodeModules } from './prepare.js';
 import { baseWorkspacePatterns } from './workspace-tree.js';
 import { canTransition, createShipState, transition, latestVerdict, parseShipState, recordVerdict, shipStatePath, updateShipState, verifyShipIntegrity, } from '../../ship/state.js';
 import { ghReviewFeedback } from '../../forge/github/reviews.js';
@@ -244,7 +244,7 @@ function hostGitStatus(cwd, args) {
  * copy record is followed by its original path as a record of its own,
  * without the two status letters.
  */
-function checkoutChanges(root, checkout, raw) {
+function checkoutChanges(root, checkout, raw, nested) {
     let ownLink = false;
     let ownTree = false;
     try {
@@ -261,8 +261,9 @@ function checkoutChanges(root, checkout, raw) {
     catch { /* no link */ }
     // Of the tree only untracked entries are dropped: a tracked file under node_modules the PR's code changed still counts.
     const untracked = ownTree ? new Set(raw.split('\0').filter((r) => r.startsWith('?? ')).map((r) => r.slice(3))) : new Set();
-    // The nested workspace trees too (`packages/a/node_modules/`), as the root marker lists them through plain dirs.
-    const trees = ['node_modules/', ...(ownTree ? nestedTreeDirs(checkout).map((d) => `${relative(checkout, d).split(sep).join('/')}/`) : [])];
+    // The nested workspace trees too (`packages/a/node_modules/`), only those of the engine's list (trustedNestedRels):
+    // the marker alone is PR-writable (review-501 L2).
+    const trees = ['node_modules/', ...(ownTree ? nested.map((rel) => `${rel}/node_modules/`) : [])];
     return parseStatusPaths(raw).filter((p) => p && !(ownLink && (p === 'node_modules' || p === 'node_modules/')) && !(untracked.has(p) && trees.some((t) => p.startsWith(t))));
 }
 /** The paths of `git status --porcelain=v1 -z` records (an R/C record's original path included). */
@@ -1025,7 +1026,9 @@ class FactoryEngine {
      */
     sandboxRun(req) {
         const p = this.privateRun();
-        return this.o.gateSandbox({ ...req, nodeModulesTarget: join(this.o.root, 'node_modules'), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}) });
+        // The nested workspace trees' targets the engine vouches for (review-501 M1): the PR-writable marker alone grants nothing.
+        const nested = trustedNestedRels(this.o.root, req.cwd, this.baseWorkspaces()).map((rel) => join(this.o.root, ...rel.split('/'), 'node_modules'));
+        return this.o.gateSandbox({ ...req, nodeModulesTarget: join(this.o.root, 'node_modules'), ...(nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}) });
     }
     /**
      * Why `<checkout>/node_modules` must not be granted: a link in the
@@ -3476,7 +3479,7 @@ class FactoryEngine {
             // A workspace layout the gate does not support (Yarn PnP, a nested git repository, over the bounds) parks here, named.
             const layout = linkNodeModules(this.o.root, dir, this.o.warn, this.baseWorkspaces(baseSha));
             if (layout)
-                return { notStarted: layout };
+                return { notStarted: visibleLine(layout) };
             const r = await this.sandboxRun({ purpose: 'calibrate', argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...(this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {}) });
             if (!r.ran)
                 return { notStarted: r.reason };
@@ -3765,7 +3768,7 @@ class FactoryEngine {
                     const fresh = { ...process.env, GIT_INDEX_FILE: join(indexDir, 'index') };
                     runHostGit(checkout, [...gitArgs, 'read-tree', at], undefined, fresh);
                     const status = [...gitArgs, '-c', 'core.untrackedCache=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all'];
-                    dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, undefined, fresh));
+                    dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, undefined, fresh), trustedNestedRels(this.o.root, checkout, this.baseWorkspaces()));
                 }
                 catch (error) {
                     problem = errText(error);

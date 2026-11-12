@@ -62,6 +62,8 @@ export interface SandboxRunRequest {
     mainRoot?: string;
     /** The only dir a `<cwd>/node_modules` link may resolve to (the one the engine linked); another target is refused, never granted. */
     nodeModulesTarget?: string;
+    /** The nested workspace node_modules of yours the engine validated (SandboxPolicyContext.nestedNodeModulesTargets); only these are granted. */
+    nestedNodeModulesTargets?: string[];
     /** Where the per-command job home goes (default sandboxJobRoot(root); the private layout: under the run dir). */
     jobRoot?: string;
 }
@@ -108,6 +110,7 @@ export interface SandboxExecOptions {
     /** SandboxRunRequest.mainRoot / nodeModulesTarget. */
     mainRoot?: string;
     nodeModulesTarget?: string;
+    nestedNodeModulesTargets?: string[];
 }
 export declare const MARKER_PREFIX = "omg-gate-exit-";
 /** The command's output the POSIX form keeps (`tail -c`) before the marker line. */

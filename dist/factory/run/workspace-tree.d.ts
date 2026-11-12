@@ -32,8 +32,10 @@ export declare function parseWorkspacePatterns(packageJson: string | null, pnpmW
  * A relative workspace path of the exact shape the tree accepts: forward
  * slashes, no empty segment, no dot segment (`.`, `..`, `.omg`, `.git`:
  * the engine's state and other runs' checkouts live there), no
- * node_modules segment, not absolute, no drive, no backslash or control
- * character, at most WORKSPACE_MAX_DEPTH segments. The sandbox grant check
+ * node_modules segment in any case, no segment ending in a dot or space
+ * and none with a `~` (win32 aliases: `node_modules.`, `NODE_M~1`), not
+ * absolute, no drive, no backslash or control character, at most
+ * WORKSPACE_MAX_DEPTH segments. The sandbox grant check
  * (copilot-run/sandbox.ts gateTreeNestedRels) applies the same shape.
  */
 export declare function validWorkspaceRel(rel: string): boolean;

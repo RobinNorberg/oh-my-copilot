@@ -195,6 +195,14 @@ export interface SandboxPolicyContext {
      * of being granted read-only. Unset: the link's target as it is (lanes).
      */
     nodeModulesTarget?: string;
+    /**
+     * The workspace packages' node_modules of yours the engine validated for
+     * this worktree's nested gate trees (factory/run/prepare.ts
+     * trustedNestedRels: its own record, or the base's workspace globs ∩ the
+     * marker). A nested tree is granted only on an exact realpath match with
+     * one of these; the PR-writable marker alone grants nothing. Unset: none.
+     */
+    nestedNodeModulesTargets?: readonly string[];
 }
 export declare const REGISTRY_HOSTS: readonly string[];
 /**
@@ -214,8 +222,9 @@ export declare const REGISTRY_HOSTS: readonly string[];
  * tree's marker lists nested trees (`<rel>/node_modules`); each line of the
  * exact relative shape, through plain dirs only, is checked with
  * `<dirname(target)>/<rel>/node_modules` as its target, and that dir (a
- * real dir, never a link) is returned in `nested` for a read-only grant. A
- * line of another shape is ignored: it grants nothing.
+ * real dir, never a link) is returned in `nested` as a candidate: the
+ * grant needs an exact match with the engine's own list too
+ * (nestedNodeModulesTargets). A line of another shape is ignored.
  */
 export declare function nodeModulesTreeProblem(worktree: string, target: string, platform?: NodeJS.Platform): {
     problem: string | null;

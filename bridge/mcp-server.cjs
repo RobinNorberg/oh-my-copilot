@@ -33101,7 +33101,7 @@ function gateTreeNestedRels(nm) {
   return [...new Set((0, import_node_fs7.readFileSync)(marker, "utf-8").split("\n"))].filter((rel) => {
     if (!rel || rel.length > 512 || /[\\:\0-\x1f]/.test(rel) || rel.startsWith("/")) return false;
     const segs = rel.split("/");
-    return segs.length <= 6 && segs.every((s) => s !== "" && !s.startsWith(".") && s !== "node_modules");
+    return segs.length <= 6 && segs.every((s) => s !== "" && !s.startsWith(".") && !/[ .]$/.test(s) && !s.includes("~") && s.toLowerCase() !== "node_modules");
   });
 }
 function nodeModulesLinkTarget(worktree) {
@@ -33197,7 +33197,15 @@ function buildSandboxConfig(profile, ctx, host) {
       nm = import_node_fs7.realpathSync.native(ctx.nodeModulesTarget);
     } catch {
     }
-    nested = tree.nested ?? [];
+    const fold4 = (p) => ctx.platform === "win32" ? p.toLowerCase() : p;
+    const allowed = new Set((ctx.nestedNodeModulesTargets ?? []).flatMap((p) => {
+      try {
+        return [fold4(import_node_fs7.realpathSync.native(p))];
+      } catch {
+        return [];
+      }
+    }));
+    nested = (tree.nested ?? []).filter((p) => allowed.has(fold4(p)));
   }
   const filesystem = {
     readwritePaths: [ctx.worktree, ...laneHome, ...ctx.hostCommits ? [] : laneGitWritePaths(ctx), ...settings.extraReadwritePaths],
@@ -33780,11 +33788,11 @@ function pathMatchers(dirs) {
       spellings.set(jsonEscape(back), String.raw`\\\\`);
       spellings.set(jsonEscape(jsonEscape(back)), String.raw`\\\\\\\\`);
     }
-    for (const [spelling, sep20] of spellings) {
+    for (const [spelling, sep19] of spellings) {
       out.push({
         name,
         headLength: spelling.length,
-        pattern: new RegExp(`${escapeRegExp(spelling)}(?!${SEGMENT_CHAR})(?:(?:${sep20}|/)${SEGMENT_CHAR}+)*`, win ? "gi" : "g")
+        pattern: new RegExp(`${escapeRegExp(spelling)}(?!${SEGMENT_CHAR})(?:(?:${sep19}|/)${SEGMENT_CHAR}+)*`, win ? "gi" : "g")
       });
     }
   }
@@ -33946,7 +33954,7 @@ var init_redact = __esm({
     PCT_SEG = String.raw`(?:[^\\/\s"'<>|:*?%]|%(?!5C|2F)[0-9A-F]{2})+`;
     POSIX_SEG = String.raw`[^/\s"'\\<>|:*?]+`;
     PCT_SEP = String.raw`(?:%5C|%2F|\/)`;
-    spaced = (seg, sep20) => `(?:${seg}(?: ${seg})+(?=${sep20})|${seg})`;
+    spaced = (seg, sep19) => `(?:${seg}(?: ${seg})+(?=${sep19})|${seg})`;
     USER_HOME_PATHS = userHomePatterns(spaced(WIN_SEG, String.raw`[\\/]`), PCT_SEG, spaced(POSIX_SEG, "/"), "g");
     jsonEscape = (s) => JSON.stringify(s).slice(1, -1);
     KEY_ENV = /HMAC|_KEY$/i;
@@ -48882,7 +48890,7 @@ function pnpmPackages(yaml) {
 function validWorkspaceRel(rel) {
   if (!rel || rel.length > 512 || /[\\:\0-\x1f]/.test(rel) || rel.startsWith("/")) return false;
   const segs = rel.split("/");
-  return segs.length <= WORKSPACE_MAX_DEPTH && segs.every((s) => s !== "" && !s.startsWith(".") && s !== "node_modules");
+  return segs.length <= WORKSPACE_MAX_DEPTH && segs.every((s) => s !== "" && !s.startsWith(".") && !/[ .]$/.test(s) && !s.includes("~") && s.toLowerCase() !== "node_modules");
 }
 function plainDirUnder(base, rel) {
   if (!validWorkspaceRel(rel)) return null;
@@ -49095,11 +49103,14 @@ function linkNodeModules(root, checkout, warn, workspaces = []) {
     for (const rel of built) {
       const dir = plainDirUnder(checkout, rel);
       if (dir) try {
-        removeGateTree((0, import_path100.join)(dir, "node_modules"));
+        if ((0, import_fs83.lstatSync)((0, import_path100.join)(dir, "node_modules")).isDirectory()) removeGateTree((0, import_path100.join)(dir, "node_modules"));
       } catch {
       }
     }
-    removeGateTree(target);
+    try {
+      if ((0, import_fs83.lstatSync)(target).isDirectory()) removeGateTree(target);
+    } catch {
+    }
     throw error2;
   }
   nestedTrees.set(checkout, built);
@@ -49114,6 +49125,21 @@ function isLink(p) {
 }
 function buildGateTree(source, target, root, checkout, label, warn) {
   (0, import_fs83.mkdirSync)(target);
+  const fold4 = (p) => process.platform === "win32" ? p.toLowerCase() : p;
+  const want = (0, import_path100.join)(import_fs83.realpathSync.native(checkout), ...label.split("/").filter((s) => s !== ""), "node_modules");
+  let got;
+  try {
+    got = import_fs83.realpathSync.native(target);
+  } catch {
+    got = "";
+  }
+  if (fold4(got) !== fold4(want)) {
+    try {
+      (0, import_fs83.rmdirSync)(target);
+    } catch {
+    }
+    throw new Error(`the gate's node_modules tree ${target} resolves to ${got || "nothing"}, not ${want}: a dir on its way was replaced by a link`);
+  }
   (0, import_fs83.writeFileSync)((0, import_path100.join)(target, GATE_TREE_MARKER), "");
   for (const name of GATE_CACHE_DIRS) (0, import_fs83.mkdirSync)((0, import_path100.join)(target, name));
   const place = (from, to) => {
@@ -49267,6 +49293,23 @@ function nestedTreeDirs(checkout) {
     }
   }
   return out;
+}
+function trustedNestedRels(root, checkout, workspaces) {
+  const own = nestedTrees.get(checkout);
+  if (own) return [...own];
+  if (workspaces.length === 0) return [];
+  const marker = (0, import_path100.join)(checkout, "node_modules", GATE_TREE_MARKER);
+  const listed = /* @__PURE__ */ new Set();
+  try {
+    const st = (0, import_fs83.lstatSync)((0, import_path100.join)(checkout, "node_modules"));
+    const m = (0, import_fs83.lstatSync)(marker);
+    if (!st.isSymbolicLink() && st.isDirectory() && m.isFile() && m.size <= 64 * 1024) {
+      for (const line of (0, import_fs83.readFileSync)(marker, "utf-8").split("\n")) if (line) listed.add(line);
+    }
+  } catch {
+    return [];
+  }
+  return expandWorkspaceDirs(root, workspaces).dirs.filter((rel) => listed.has(rel));
 }
 function sameDir(a, b) {
   try {
@@ -51464,7 +51507,8 @@ async function runSandboxed(argv, o, deps) {
           toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
           extraReadonly: proxy.caPaths,
           ...o.mainRoot ? { mainRoot: (0, import_node_path14.resolve)(o.mainRoot) } : {},
-          ...o.nodeModulesTarget ? { nodeModulesTarget: (0, import_node_path14.resolve)(o.nodeModulesTarget) } : {}
+          ...o.nodeModulesTarget ? { nodeModulesTarget: (0, import_node_path14.resolve)(o.nodeModulesTarget) } : {},
+          ...o.nestedNodeModulesTargets ? { nestedNodeModulesTargets: o.nestedNodeModulesTargets.map((p) => (0, import_node_path14.resolve)(p)) } : {}
         };
       },
       note: (text3) => {
@@ -51614,7 +51658,8 @@ function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers) {
       jobRoot: req.jobRoot ?? sandboxJobRoot(root),
       ...req.requireDeniedPaths ? { requireDeniedPaths: true } : {},
       ...req.mainRoot ? { mainRoot: req.mainRoot } : {},
-      ...req.nodeModulesTarget ? { nodeModulesTarget: req.nodeModulesTarget } : {}
+      ...req.nodeModulesTarget ? { nodeModulesTarget: req.nodeModulesTarget } : {},
+      ...req.nestedNodeModulesTargets ? { nestedNodeModulesTargets: req.nestedNodeModulesTargets } : {}
     }, deps);
   };
 }
@@ -55474,7 +55519,7 @@ function hostGitStatus(cwd, args) {
     throw error2;
   }
 }
-function checkoutChanges(root, checkout, raw) {
+function checkoutChanges(root, checkout, raw, nested) {
   let ownLink = false;
   let ownTree = false;
   try {
@@ -55486,7 +55531,7 @@ function checkoutChanges(root, checkout, raw) {
   } catch {
   }
   const untracked = ownTree ? new Set(raw.split("\0").filter((r) => r.startsWith("?? ")).map((r) => r.slice(3))) : /* @__PURE__ */ new Set();
-  const trees = ["node_modules/", ...ownTree ? nestedTreeDirs(checkout).map((d) => `${(0, import_path116.relative)(checkout, d).split(import_path116.sep).join("/")}/`) : []];
+  const trees = ["node_modules/", ...ownTree ? nested.map((rel) => `${rel}/node_modules/`) : []];
   return parseStatusPaths(raw).filter((p) => p && !(ownLink && (p === "node_modules" || p === "node_modules/")) && !(untracked.has(p) && trees.some((t) => p.startsWith(t))));
 }
 function parseStatusPaths(raw) {
@@ -56440,7 +56485,8 @@ var init_engine = __esm({
        */
       sandboxRun(req) {
         const p = this.privateRun();
-        return this.o.gateSandbox({ ...req, nodeModulesTarget: (0, import_path116.join)(this.o.root, "node_modules"), ...p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {} });
+        const nested = trustedNestedRels(this.o.root, req.cwd, this.baseWorkspaces()).map((rel) => (0, import_path116.join)(this.o.root, ...rel.split("/"), "node_modules"));
+        return this.o.gateSandbox({ ...req, nodeModulesTarget: (0, import_path116.join)(this.o.root, "node_modules"), ...nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}, ...p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {} });
       }
       /**
        * Why `<checkout>/node_modules` must not be granted: a link in the
@@ -58559,7 +58605,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           runHostGit(this.o.root, ["read-tree", baseSha], void 0, env2);
           runHostGit(this.o.root, ["checkout-index", "-a", "-f", `--prefix=${dir.replace(/\\/g, "/")}/`], void 0, env2);
           const layout = linkNodeModules(this.o.root, dir, this.o.warn, this.baseWorkspaces(baseSha));
-          if (layout) return { notStarted: layout };
+          if (layout) return { notStarted: visibleLine(layout) };
           const r = await this.sandboxRun({ purpose: "calibrate", argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {} });
           if (!r.ran) return { notStarted: r.reason };
           const tail3 = r.output.trim().slice(-2e3);
@@ -58798,7 +58844,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
               const fresh = { ...process.env, GIT_INDEX_FILE: (0, import_path116.join)(indexDir, "index") };
               runHostGit(checkout, [...gitArgs, "read-tree", at], void 0, fresh);
               const status = [...gitArgs, "-c", "core.untrackedCache=false", "status", "--porcelain=v1", "-z", "--untracked-files=all"];
-              dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, void 0, fresh));
+              dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, void 0, fresh), trustedNestedRels(this.o.root, checkout, this.baseWorkspaces()));
             } catch (error2) {
               problem = errText6(error2);
             } finally {

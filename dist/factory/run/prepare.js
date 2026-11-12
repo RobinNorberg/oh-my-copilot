@@ -117,11 +117,17 @@ export function linkNodeModules(root, checkout, warn, workspaces = []) {
             const dir = plainDirUnder(checkout, rel);
             if (dir)
                 try {
-                    removeGateTree(join(dir, 'node_modules'));
+                    if (lstatSync(join(dir, 'node_modules')).isDirectory())
+                        removeGateTree(join(dir, 'node_modules'));
                 }
                 catch { /* the caller's link-safe removal */ }
         }
-        removeGateTree(target);
+        // Only a real dir (L3: the tree may be gone, or a link someone swapped in, which is never walked).
+        try {
+            if (lstatSync(target).isDirectory())
+                removeGateTree(target);
+        }
+        catch { /* gone */ }
         throw error;
     }
     nestedTrees.set(checkout, built);
@@ -148,6 +154,24 @@ const linkType = () => (process.platform === 'win32' ? 'junction' : 'dir');
  */
 function buildGateTree(source, target, root, checkout, label, warn) {
     mkdirSync(target);
+    // L3 (review-501): a dir on the way swapped for a junction or link after plainDirUnder (a surviving PR process) would
+    // put the tree, its marker and its links outside the checkout: the new dir must be where it was meant to be.
+    const fold = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+    const want = join(realpathSync.native(checkout), ...label.split('/').filter((s) => s !== ''), 'node_modules');
+    let got;
+    try {
+        got = realpathSync.native(target);
+    }
+    catch {
+        got = '';
+    }
+    if (fold(got) !== fold(want)) {
+        try {
+            rmdirSync(target);
+        }
+        catch { /* left for the caller's removal */ }
+        throw new Error(`the gate's node_modules tree ${target} resolves to ${got || 'nothing'}, not ${want}: a dir on its way was replaced by a link`);
+    }
     writeFileSync(join(target, GATE_TREE_MARKER), '');
     for (const name of GATE_CACHE_DIRS)
         mkdirSync(join(target, name));
@@ -364,6 +388,37 @@ export function nestedTreeDirs(checkout) {
         catch { /* gone */ }
     }
     return out;
+}
+/**
+ * The nested workspace trees of `checkout` the engine vouches for, as
+ * relative package dirs: the ones linkNodeModules built in this process, or
+ * (after a restart) the base's workspace globs expanded in your checkout ∩
+ * the marker's lines. The marker is PR-writable, so on its own it never
+ * widens anything: the sandbox grant (nestedNodeModulesTargets) and the
+ * dirty check use only this list (review-501 M1, L2); the removal may still
+ * follow the marker (it never follows a link).
+ */
+export function trustedNestedRels(root, checkout, workspaces) {
+    const own = nestedTrees.get(checkout);
+    if (own)
+        return [...own];
+    if (workspaces.length === 0)
+        return [];
+    const marker = join(checkout, 'node_modules', GATE_TREE_MARKER);
+    const listed = new Set();
+    try {
+        const st = lstatSync(join(checkout, 'node_modules'));
+        const m = lstatSync(marker);
+        if (!st.isSymbolicLink() && st.isDirectory() && m.isFile() && m.size <= 64 * 1024) {
+            for (const line of readFileSync(marker, 'utf-8').split('\n'))
+                if (line)
+                    listed.add(line);
+        }
+    }
+    catch {
+        return [];
+    }
+    return expandWorkspaceDirs(root, workspaces).dirs.filter((rel) => listed.has(rel));
 }
 function sameDir(a, b) {
     try {

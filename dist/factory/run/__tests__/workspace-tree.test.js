@@ -1,9 +1,15 @@
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, unlinkNodeModules } from '../prepare.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, trustedNestedRels, unlinkNodeModules } from '../prepare.js';
 import { expandWorkspaceDirs, parseWorkspacePatterns, plainDirUnder, validWorkspaceRel, WORKSPACE_MAX_PACKAGES } from '../workspace-tree.js';
+// L3 (review-501): a hook run right after plainDirUnder answers, to swap a dir for a junction in that window.
+const swap = vi.hoisted(() => ({ after: null }));
+vi.mock('../workspace-tree.js', async (orig) => {
+    const m = await orig();
+    return { ...m, plainDirUnder: (base, rel) => { const out = m.plainDirUnder(base, rel); swap.after?.(base, rel, out); return out; } };
+});
 const linkType = process.platform === 'win32' ? 'junction' : 'dir';
 const real = (p) => realpathSync.native(p);
 const dirs = [];
@@ -43,7 +49,7 @@ describe('workspace globs from the base', () => {
         expect(parseWorkspacePatterns(JSON.stringify({ workspaces: [1, null, ' '] }), null)).toEqual([]);
     });
     it('validWorkspaceRel and plainDirUnder take exact relative shapes only', () => {
-        for (const bad of ['', '/abs', '../x', 'a/../b', 'a//b', './a', 'a\\b', 'C:/x', 'a/b/c/d/e/f/g', '.omg/w', 'a/.git', 'a/node_modules/b'])
+        for (const bad of ['', '/abs', '../x', 'a/../b', 'a//b', './a', 'a\\b', 'C:/x', 'a/b/c/d/e/f/g', '.omg/w', 'a/.git', 'a/node_modules/b', 'Node_Modules/foo', 'node_modules./foo', 'NODE_M~1/foo', 'a /b', 'a./b', 'pack~1/a'])
             expect(validWorkspaceRel(bad)).toBe(false);
         expect(validWorkspaceRel('packages/a')).toBe(true);
         const dir = tmp();
@@ -229,6 +235,51 @@ describe('the gate node_modules tree in a workspace', () => {
         expect(existsSync(join(checkout, 'packages', 'a', 'node_modules'))).toBe(false);
         expect(gateTreeHasLinks(checkout)).toBe(false);
         expect(existsSync(join(root, 'packages', 'a', 'node_modules', 'dep', 'package.json'))).toBe(true);
+    });
+    it('review-501 M1/L2: trustedNestedRels is the engine\'s own record, or after a restart the base globs ∩ the marker; a marker line alone counts for nothing', () => {
+        const { root, checkout } = monorepo();
+        file(join(root, 'packages', 'a', 'node_modules', 'dep', 'package.json'));
+        file(join(root, 'tools', 'scratch', 'package.json'));
+        file(join(root, 'tools', 'scratch', 'node_modules', 'x', 'package.json'));
+        linkNodeModules(root, checkout, undefined, ['packages/*']);
+        file(join(checkout, 'src', 'node_modules', 'vitest', 'package.json'));
+        file(join(checkout, 'tools', 'scratch', 'node_modules', 'x', 'package.json'));
+        writeFileSync(join(checkout, 'node_modules', GATE_TREE_MARKER), 'packages/a\nsrc\ntools/scratch\n');
+        // In this process: the record, whatever the marker says now.
+        expect(trustedNestedRels(root, checkout, ['packages/*'])).toEqual(['packages/a']);
+        unlinkNodeModules(root, checkout);
+        // A restart (no record): a tree the engine built earlier, its marker rewritten by the PR's code.
+        mkdirSync(join(checkout, 'node_modules'));
+        mkdirSync(join(checkout, 'packages', 'a', 'node_modules'));
+        writeFileSync(join(checkout, 'node_modules', GATE_TREE_MARKER), 'packages/a\nsrc\ntools/scratch\n');
+        expect(trustedNestedRels(root, checkout, ['packages/*'])).toEqual(['packages/a']);
+        expect(trustedNestedRels(root, checkout, [])).toEqual([]);
+        rmSync(join(checkout, 'node_modules', GATE_TREE_MARKER));
+        expect(trustedNestedRels(root, checkout, ['packages/*'])).toEqual([]);
+    });
+    it('review-501 L3: a package dir swapped for a junction after plainDirUnder is refused; nothing is made outside the checkout', () => {
+        const { dir, root, checkout } = monorepo();
+        file(join(root, 'packages', 'a', 'node_modules', 'dep', 'package.json'));
+        const outside = join(dir, 'outside');
+        mkdirSync(outside);
+        swap.after = (base, rel, out) => {
+            if (base !== checkout || rel !== 'packages/a' || !out)
+                return;
+            swap.after = null;
+            rmSync(out, { recursive: true });
+            symlinkSync(outside, out, linkType);
+        };
+        try {
+            expect(() => linkNodeModules(root, checkout, undefined, ['packages/*'])).toThrow(/resolves to .*outside.*a dir on its way was replaced by a link/);
+        }
+        finally {
+            swap.after = null;
+        }
+        expect(readdirSync(outside)).toEqual([]);
+        expect(existsSync(join(checkout, 'node_modules'))).toBe(false);
+        expect(existsSync(join(root, 'packages', 'a', 'node_modules', 'dep', 'package.json'))).toBe(true);
+        // The swapped-in link is left for the caller's link-safe removal (never walked).
+        expect(lstatSync(join(checkout, 'packages', 'a')).isSymbolicLink()).toBe(true);
     });
     it('Yarn PnP returns the problem naming the file; no workspaces keeps the single-tree behaviour', () => {
         const pnp = monorepo();

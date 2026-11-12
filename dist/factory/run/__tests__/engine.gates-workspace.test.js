@@ -78,6 +78,9 @@ describe('workspaces in the sandboxed gate', () => {
             expect(v.evil).toBe(false);
             expect(v.grants).toEqual([realpathSync.native(join(w.root, 'packages', 'a', 'node_modules'))]);
         }
+        // review-501 M1: the engine names the nested target it vouches for; the sandbox grants only that one.
+        for (const r of s.reqs)
+            expect(r.nestedNodeModulesTargets).toEqual([join(w.root, 'packages', 'a', 'node_modules')]);
         // Your packages and node_modules are untouched.
         expect(existsSync(join(w.root, 'packages', 'a', 'node_modules', 'left-pad', 'package.json'))).toBe(true);
         expect(existsSync(join(w.root, 'packages', 'a', 'node_modules', '.vite'))).toBe(false);
@@ -91,6 +94,25 @@ describe('workspaces in the sandboxed gate', () => {
         expect(out.gate?.name, out.message).not.toBe('lane-tampered');
         expect(out.gate?.reason ?? '').not.toMatch(/working tree differs/);
         expect(s.reqs.some((r) => existsSync(join(r.cwd, 'packages', 'a', 'node_modules')))).toBe(true);
+    }, MULTI_RUN_MS);
+    it('review-501 L2: a marker the PR rewrote to `src` with an untracked src/node_modules planted is caught by the dirty check', async () => {
+        w = workspaceWorld();
+        writeFileSync(join(w.root, '.gitignore'), '.omg/\n/node_modules\n.pnp.cjs\n');
+        gitIn(w.root, 'commit', '-qam', 'root-only ignore');
+        let planted = false;
+        const s = sandbox((req) => {
+            // The PR's code in a prepare check: names `src` in the marker and plants a fake vitest under src/node_modules.
+            if (!planted && req.purpose !== 'calibrate' && existsSync(join(req.cwd, 'src'))) {
+                planted = true;
+                appendFileSync(join(req.cwd, 'node_modules', '.omg-gate-tree'), 'src\n');
+                file(join(req.cwd, 'src', 'node_modules', 'vitest', 'package.json'), '{"name":"vitest"}');
+            }
+            return PASS;
+        });
+        const out = await runFactoryEngine(opts(s.run));
+        expect(planted).toBe(true);
+        expect(out.gate?.name, out.message).toBe('lane-tampered');
+        expect(out.gate?.reason).toMatch(/working tree differs from it \(.*src\/node_modules\/vitest\/package\.json/);
     }, MULTI_RUN_MS);
     it('Yarn PnP: the base calibration parks at gate-sandbox-incompatible naming .pnp.cjs, without running the command', async () => {
         w = workspaceWorld();
