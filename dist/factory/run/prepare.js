@@ -98,9 +98,10 @@ export function linkNodeModules(root, checkout, warn, workspaces = []) {
         // A nested tree for each workspace package whose node_modules exists in your checkout (npm puts version conflicts
         // there, pnpm every package's direct deps), in the same package dir of the gate checkout.
         for (const rel of ws.dirs) {
-            const src = plainDirUnder(root, `${rel}/node_modules`);
+            const yours = plainDirUnder(root, rel);
+            const src = yours ? join(yours, 'node_modules') : null;
             const dir = plainDirUnder(checkout, rel);
-            if (!src || !dir)
+            if (!src || !dir || isLink(src) || !existsSync(src) || !statSync(src).isDirectory())
                 continue;
             const nested = join(dir, 'node_modules');
             if (existsSync(nested) || isLink(nested))

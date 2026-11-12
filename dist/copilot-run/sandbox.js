@@ -308,6 +308,14 @@ export function nodeModulesTreeProblem(worktree, target, platform = process.plat
             continue;
         }
         const yours = join(P.dirname(target), ...rel.split('/'), 'node_modules');
+        // Only a workspace package of yours: its package.json is there and its dir lies in your checkout by realpath.
+        try {
+            if (!lstatSync(join(P.dirname(yours), 'package.json')).isFile() || !isUnderRoot(P.dirname(yours), P.dirname(target), platform))
+                continue;
+        }
+        catch {
+            continue;
+        }
         const r = check(inner, yours, false);
         if ('problem' in r)
             return { problem: r.problem, linked: false };
@@ -326,7 +334,7 @@ export function nodeModulesTreeProblem(worktree, target, platform = process.plat
 }
 /** The engine's marker in a gate node_modules tree (factory/run/prepare.ts GATE_TREE_MARKER; the team bundle may not import src/factory). */
 const GATE_TREE_MARKER_NAME = '.omg-gate-tree';
-/** The nested tree dirs the marker of the gate tree `nm` lists, each of the exact relative shape (no `..`, `.`, empty, absolute, drive or backslash; at most 6 segments). */
+/** The nested tree dirs the marker of the gate tree `nm` lists, each of the exact relative shape (no empty, dot or node_modules segment, not absolute, no drive or backslash; at most 6 segments). */
 function gateTreeNestedRels(nm) {
     const marker = join(nm, GATE_TREE_MARKER_NAME);
     try {
@@ -341,7 +349,8 @@ function gateTreeNestedRels(nm) {
         if (!rel || rel.length > 512 || /[\\:\0-\x1f]/.test(rel) || rel.startsWith('/'))
             return false;
         const segs = rel.split('/');
-        return segs.length <= 6 && segs.every((s) => s !== '' && s !== '.' && s !== '..');
+        // No dot segment (`.omg`, `.git`: engine state and other runs' checkouts) and no node_modules segment.
+        return segs.length <= 6 && segs.every((s) => s !== '' && !s.startsWith('.') && s !== 'node_modules');
     });
 }
 /** The target of `<worktree>/node_modules` when it is a junction or symlink (read-only for a write session). */
@@ -521,7 +530,8 @@ export function buildSandboxConfig(profile, ctx, host) {
             ...(ctx.platform === 'win32' ? [join('AppData', 'Roaming', 'GitHub CLI'), join('AppData', 'Local', '.IdentityService')] : []),
         ].map((p) => join(ctx.realHome, p));
         // A grant canon cannot resolve (a dangling link) holds nothing: the deny stays.
-        const grants = [...filesystem.readwritePaths, ...filesystem.readonlyPaths, ctx.realHome];
+        // A nested workspace grant never lifts a deny (the PR-writable marker names it): a deny around it stays.
+        const grants = [...filesystem.readwritePaths, ...filesystem.readonlyPaths.filter((p) => !nested.includes(p)), ctx.realHome];
         const holdsGrant = (s) => grants.some((g) => { try {
             return isUnderRoot(g, s, ctx.platform);
         }

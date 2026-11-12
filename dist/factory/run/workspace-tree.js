@@ -83,14 +83,17 @@ function pnpmPackages(yaml) {
 }
 /**
  * A relative workspace path of the exact shape the tree accepts: forward
- * slashes, no empty, `.` or `..` segment, not absolute, no drive, no
- * backslash or control character, at most WORKSPACE_MAX_DEPTH segments.
+ * slashes, no empty segment, no dot segment (`.`, `..`, `.omg`, `.git`:
+ * the engine's state and other runs' checkouts live there), no
+ * node_modules segment, not absolute, no drive, no backslash or control
+ * character, at most WORKSPACE_MAX_DEPTH segments. The sandbox grant check
+ * (copilot-run/sandbox.ts gateTreeNestedRels) applies the same shape.
  */
 export function validWorkspaceRel(rel) {
     if (!rel || rel.length > 512 || /[\\:\0-\x1f]/.test(rel) || rel.startsWith('/'))
         return false;
     const segs = rel.split('/');
-    return segs.length <= WORKSPACE_MAX_DEPTH && segs.every((s) => s !== '' && s !== '.' && s !== '..');
+    return segs.length <= WORKSPACE_MAX_DEPTH && segs.every((s) => s !== '' && !s.startsWith('.') && s !== 'node_modules');
 }
 /** `<base>/<rel>` when every segment of it is a plain directory (no link, junction or file on the way); else null. */
 export function plainDirUnder(base, rel) {

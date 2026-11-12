@@ -43,7 +43,7 @@ describe('workspace globs from the base', () => {
         expect(parseWorkspacePatterns(JSON.stringify({ workspaces: [1, null, ' '] }), null)).toEqual([]);
     });
     it('validWorkspaceRel and plainDirUnder take exact relative shapes only', () => {
-        for (const bad of ['', '/abs', '../x', 'a/../b', 'a//b', './a', 'a\\b', 'C:/x', 'a/b/c/d/e/f/g'])
+        for (const bad of ['', '/abs', '../x', 'a/../b', 'a//b', './a', 'a\\b', 'C:/x', 'a/b/c/d/e/f/g', '.omg/w', 'a/.git', 'a/node_modules/b'])
             expect(validWorkspaceRel(bad)).toBe(false);
         expect(validWorkspaceRel('packages/a')).toBe(true);
         const dir = tmp();

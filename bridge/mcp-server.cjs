@@ -33073,6 +33073,11 @@ function nodeModulesTreeProblem(worktree, target, platform = process.platform) {
       continue;
     }
     const yours = (0, import_node_path8.join)(P.dirname(target), ...rel.split("/"), "node_modules");
+    try {
+      if (!(0, import_node_fs7.lstatSync)((0, import_node_path8.join)(P.dirname(yours), "package.json")).isFile() || !isUnderRoot(P.dirname(yours), P.dirname(target), platform)) continue;
+    } catch {
+      continue;
+    }
     const r = check2(inner, yours, false);
     if ("problem" in r) return { problem: r.problem, linked: false };
     if (!r.linked) continue;
@@ -33096,7 +33101,7 @@ function gateTreeNestedRels(nm) {
   return [...new Set((0, import_node_fs7.readFileSync)(marker, "utf-8").split("\n"))].filter((rel) => {
     if (!rel || rel.length > 512 || /[\\:\0-\x1f]/.test(rel) || rel.startsWith("/")) return false;
     const segs = rel.split("/");
-    return segs.length <= 6 && segs.every((s) => s !== "" && s !== "." && s !== "..");
+    return segs.length <= 6 && segs.every((s) => s !== "" && !s.startsWith(".") && s !== "node_modules");
   });
 }
 function nodeModulesLinkTarget(worktree) {
@@ -33222,7 +33227,7 @@ function buildSandboxConfig(profile, ctx, host) {
       // Windows: gh's hosts.yml (%APPDATA%\GitHub CLI) and the GCM/MSAL token cache (%LOCALAPPDATA%\.IdentityService).
       ...ctx.platform === "win32" ? [(0, import_node_path8.join)("AppData", "Roaming", "GitHub CLI"), (0, import_node_path8.join)("AppData", "Local", ".IdentityService")] : []
     ].map((p) => (0, import_node_path8.join)(ctx.realHome, p));
-    const grants = [...filesystem.readwritePaths, ...filesystem.readonlyPaths, ctx.realHome];
+    const grants = [...filesystem.readwritePaths, ...filesystem.readonlyPaths.filter((p) => !nested.includes(p)), ctx.realHome];
     const holdsGrant = (s) => grants.some((g) => {
       try {
         return isUnderRoot(g, s, ctx.platform);
@@ -48877,7 +48882,7 @@ function pnpmPackages(yaml) {
 function validWorkspaceRel(rel) {
   if (!rel || rel.length > 512 || /[\\:\0-\x1f]/.test(rel) || rel.startsWith("/")) return false;
   const segs = rel.split("/");
-  return segs.length <= WORKSPACE_MAX_DEPTH && segs.every((s) => s !== "" && s !== "." && s !== "..");
+  return segs.length <= WORKSPACE_MAX_DEPTH && segs.every((s) => s !== "" && !s.startsWith(".") && s !== "node_modules");
 }
 function plainDirUnder(base, rel) {
   if (!validWorkspaceRel(rel)) return null;
@@ -49075,9 +49080,10 @@ function linkNodeModules(root, checkout, warn, workspaces = []) {
   try {
     buildGateTree(source, target, root, checkout, "", warn);
     for (const rel of ws.dirs) {
-      const src = plainDirUnder(root, `${rel}/node_modules`);
+      const yours = plainDirUnder(root, rel);
+      const src = yours ? (0, import_path100.join)(yours, "node_modules") : null;
       const dir = plainDirUnder(checkout, rel);
-      if (!src || !dir) continue;
+      if (!src || !dir || isLink(src) || !(0, import_fs83.existsSync)(src) || !(0, import_fs83.statSync)(src).isDirectory()) continue;
       const nested = (0, import_path100.join)(dir, "node_modules");
       if ((0, import_fs83.existsSync)(nested) || isLink(nested)) continue;
       built.push(rel);
