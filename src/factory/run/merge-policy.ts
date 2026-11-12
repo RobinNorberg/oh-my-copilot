@@ -45,8 +45,13 @@ export interface FactoryMergeDecision extends MergeDecision {
   blocking?: string[];
 }
 
-/** A forge-reported check name or state in a park reason: one line, no backticks, capped. */
-const checkText = (s: string, max: number): string => oneLine(s.replace(/`/g, "'"), max) || '(unnamed)';
+/**
+ * A forge-reported check name or state in a park reason (it may reach a PR
+ * comment or progress sync): one line, no format characters (bidi,
+ * zero-width), no backticks, no '@' that could mention someone (a full-width
+ * '＠' instead), capped.
+ */
+const checkText = (s: string, max: number): string => oneLine(s.replace(/\p{Cf}/gu, '').replace(/`/g, "'").replace(/@/g, '＠'), max) || '(unnamed)';
 
 /**
  * ship's decideMerge on a fresh one-shot gate read for the head (no watch,
