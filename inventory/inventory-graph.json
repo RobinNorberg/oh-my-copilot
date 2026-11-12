@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "93d48d89080e5a18d909478ea504e252c56ba393",
-    "sourceSha256": "f7b7d72e9bad8e2d317afcd7cf1e02eaf83aaca42a96b0d1f63b93e975ce01d9",
+    "head": "296d55e87cfcd8ccd8dc33f9db6c66c63b504bd4",
+    "sourceSha256": "c71e54e91c4bbf776f25d4c8c2b7093c731ccd78eeb34a4267f0353998befb8b",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "93d48d89080e5a18d909478ea504e252c56ba393",
-  "sourceSha256": "f7b7d72e9bad8e2d317afcd7cf1e02eaf83aaca42a96b0d1f63b93e975ce01d9",
+  "head": "296d55e87cfcd8ccd8dc33f9db6c66c63b504bd4",
+  "sourceSha256": "c71e54e91c4bbf776f25d4c8c2b7093c731ccd78eeb34a4267f0353998befb8b",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2092,
-      "total": 2117
+      "srcFiles": 2095,
+      "total": 2120
     },
     "generated": {
-      "distFiles": 7736,
+      "distFiles": 7748,
       "bridgeFiles": 8,
-      "total": 7744
+      "total": 7756
     },
     "prompt": {
       "promptLikeFiles": 72
@@ -3510,6 +3510,10 @@
       "dist/factory/run/__tests__/engine.gates-container.test.d.ts.map",
       "dist/factory/run/__tests__/engine.gates-container.test.js",
       "dist/factory/run/__tests__/engine.gates-container.test.js.map",
+      "dist/factory/run/__tests__/engine.gates-git-view.test.d.ts",
+      "dist/factory/run/__tests__/engine.gates-git-view.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.gates-git-view.test.js",
+      "dist/factory/run/__tests__/engine.gates-git-view.test.js.map",
       "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.d.ts",
       "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.d.ts.map",
       "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.js",
@@ -3646,6 +3650,10 @@
       "dist/factory/run/__tests__/git-hardening.test.d.ts.map",
       "dist/factory/run/__tests__/git-hardening.test.js",
       "dist/factory/run/__tests__/git-hardening.test.js.map",
+      "dist/factory/run/__tests__/git-view.test.d.ts",
+      "dist/factory/run/__tests__/git-view.test.d.ts.map",
+      "dist/factory/run/__tests__/git-view.test.js",
+      "dist/factory/run/__tests__/git-view.test.js.map",
       "dist/factory/run/__tests__/lane-commit.staging.test.d.ts",
       "dist/factory/run/__tests__/lane-commit.staging.test.d.ts.map",
       "dist/factory/run/__tests__/lane-commit.staging.test.js",
@@ -3790,6 +3798,10 @@
       "dist/factory/run/gates-driver.d.ts.map",
       "dist/factory/run/gates-driver.js",
       "dist/factory/run/gates-driver.js.map",
+      "dist/factory/run/git-view.d.ts",
+      "dist/factory/run/git-view.d.ts.map",
+      "dist/factory/run/git-view.js",
+      "dist/factory/run/git-view.js.map",
       "dist/factory/run/lane-commit.d.ts",
       "dist/factory/run/lane-commit.d.ts.map",
       "dist/factory/run/lane-commit.js",
@@ -22821,6 +22833,26 @@
         "path": "dist/factory/run/__tests__/engine.gates-container.test.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/engine.gates-git-view.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.gates-git-view.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.gates-git-view.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.gates-git-view.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.gates-git-view.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.gates-git-view.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.gates-git-view.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.gates-git-view.test.js.map"
+      },
+      {
         "id": "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.d.ts"
@@ -23499,6 +23531,26 @@
         "id": "dist/factory/run/__tests__/git-hardening.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/git-hardening.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/git-view.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/git-view.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/git-view.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/git-view.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/git-view.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/git-view.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/git-view.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/git-view.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/lane-commit.staging.test.d.ts",
@@ -24219,6 +24271,26 @@
         "id": "dist/factory/run/gates-driver.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/gates-driver.js.map"
+      },
+      {
+        "id": "dist/factory/run/git-view.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/git-view.d.ts"
+      },
+      {
+        "id": "dist/factory/run/git-view.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/git-view.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/git-view.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/git-view.js"
+      },
+      {
+        "id": "dist/factory/run/git-view.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/git-view.js.map"
       },
       {
         "id": "dist/factory/run/lane-commit.d.ts",
@@ -57121,6 +57193,11 @@
         "path": "src/factory/run/__tests__/engine.gates-container.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.gates-git-view.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts"
@@ -57289,6 +57366,11 @@
         "id": "src/factory/run/__tests__/git-hardening.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/git-hardening.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/git-view.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/git-view.test.ts"
       },
       {
         "id": "src/factory/run/__tests__/lane-commit.staging.test.ts",
@@ -57474,6 +57556,11 @@
         "id": "src/factory/run/gates-driver.ts",
         "kind": "src",
         "path": "src/factory/run/gates-driver.ts"
+      },
+      {
+        "id": "src/factory/run/git-view.ts",
+        "kind": "src",
+        "path": "src/factory/run/git-view.ts"
       },
       {
         "id": "src/factory/run/lane-commit.ts",
@@ -91098,6 +91185,66 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
+        "to": "src/factory/run/__tests__/engine-local-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
+        "to": "src/factory/run/__tests__/engine-local-harness.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
+        "to": "src/factory/run/prepare.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
+        "to": "src/factory/run/sandbox-exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -93098,6 +93245,51 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/__tests__/git-view.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/git-view.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/git-view.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/git-view.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/git-view.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/git-view.test.ts",
+        "to": "src/factory/run/git-view.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/git-view.test.ts",
+        "to": "src/factory/run/git-view.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/git-view.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/git-view.test.ts",
+        "to": "src/team/git-worktree.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/__tests__/lane-commit.staging.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -94674,6 +94866,16 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/git-view.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/git-view.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/lane-commit.ts",
         "kind": "imports"
       },
@@ -95258,6 +95460,16 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/factory/run/git-view.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/git-view.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/lane-commit.ts",
         "to": "external:node:crypto",
         "kind": "imports"
@@ -95659,6 +95871,11 @@
       },
       {
         "from": "src/factory/run/private-run.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/private-run.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -95671,6 +95888,11 @@
         "from": "src/factory/run/private-run.ts",
         "to": "src/factory/run/claims.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/private-run.ts",
+        "to": "src/factory/run/git-view.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/private-run.ts",
@@ -95720,6 +95942,11 @@
       {
         "from": "src/factory/run/private-run.ts",
         "to": "src/team/git-worktree.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/private-run.ts",
+        "to": "src/utils/windows-search.ts",
         "kind": "imports"
       },
       {
@@ -133659,12 +133886,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 11080,
-      "edgeCount": 13771,
-      "importEdgeCount": 11309,
+      "nodeCount": 11095,
+      "edgeCount": 13799,
+      "importEdgeCount": 11331,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "cb72bfcd0a3c9d572bf14977218d11363c5fc854e2e015e0050b169769daedda",
-  "manifestSha256": "0082d51d6bc44909c8df43ec2dfbe481ede504e00a2d9ec42c05d1498b842c9f"
+  "inventorySha256": "e866c2a903b24d494bbe3fd67f2d1cab7c198f38ea7ee08d051c9d0636bd7563",
+  "manifestSha256": "99be99a87208135c16d23f14c8147d2c8c10814daa6caf77ae0f781e9e95fdd9"
 }
