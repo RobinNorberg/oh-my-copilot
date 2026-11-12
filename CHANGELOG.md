@@ -10,6 +10,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **Check names are made safe in merge reasons.** `omg ship merge`, the factory's Azure DevOps branch policy reason, its `ci-flaky` and `gates-timeout` park reasons, and the release CI failure details show each name in a code span. Backticks, `@` mentions, table pipes and line breaks are removed from the text. Long names are cut without splitting an emoji, and a branch policy reason keeps up to 160 characters so its status stays visible.
 - **The Herdr launch message names the host CLI.** It says `copilot launched in Herdr workspace` instead of `Claude launched`.
 
+### Docs
+
+- **Inventory baseline needs no regeneration after a merge.** Checked locally: two branches that change different `src` files and each run `--write` leave `inventory/inventory-graph.json` unchanged, merge without conflict, and pass `--verify` with no regeneration. Explained in `docs/FIELD-TESTING.md`.
+
 # oh-my-copilot v5.27.0
 
 ## [5.27.0] - 2026-11-12
