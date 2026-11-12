@@ -110,7 +110,7 @@ import { CI_TREE_PATHS, commitLaneWork, conflictFixStart, LANE_PROTECTED_PATHS, 
 import { proveLaneTreeGone } from './lane-procs.js';
 import { quarantineTamper, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, tamperHoldMessage, tamperHoldPath, writeTamperHold } from './tamper-quarantine.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir, userBaselineKey } from './ledger.js';
-import { createFactoryProgress } from './progress.js';
+import { createFactoryProgress, HEARTBEAT_MIN_MS } from './progress.js';
 import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaimRepo, isShallowClaimRepo, localFactoryClaimRepo, shallowClaimWarning, settleFactoryClaim, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo } from './claims.js';
 import { compareSnapshots, replaceObjectsProblem, samePath, snapshotRepo, verifyReviewWorktree } from './review-guard.js';
 import { GATE_INSTALL_GATE, IMPORT_REFUSED_GATE, LAYOUT_UNSUPPORTED_GATE, PRIVATE_STORE_GATE, PrivateRun, REPO_GUARD_GATE, resolveGateInstall, resolveRunLayout } from './private-run.js';
@@ -5349,6 +5349,20 @@ class FactoryEngine {
         this.updateLane(id, { jobId: remoteId });
         this.progress.emit(`lane-${kind}`, 'start', `lane ${id} cap ${cap.cap} AI credits`, { ...this.fields(), lane: id, job: remoteId });
         const begun = this.clock();
+        // No-progress timeout (factory.run.laneIdleMinutes): progress is a new lastEventAt from the backend, timed on the
+        // engine's clock. A backend that cannot tell (lastEventAt absent) is bounded by the wall-time limit only.
+        let progressAt = begun;
+        let lastEventAt = null;
+        let stalled = false;
+        const stopLane = async () => {
+            try {
+                const c = await this.o.lanes.cancel(remoteId);
+                return isTerminalLaneState(c.result.state) ? c.result : null;
+            }
+            catch {
+                return null; /* not confirmed */
+            }
+        };
         let result;
         for (;;) {
             const s = this.reload();
@@ -5370,14 +5384,35 @@ class FactoryEngine {
                 this.updateLane(id, { process: { pid: proc.pid, identity: proc.identity } });
             if (isTerminalLaneState(result.state))
                 break;
-            if (this.clock() - begun > this.o.limits.laneTimeoutMs + LANE_GRACE_MS) {
-                let confirmed = null;
-                try {
-                    const c = await this.o.lanes.cancel(remoteId);
-                    if (isTerminalLaneState(c.result.state))
-                        confirmed = c.result;
+            if (result.lastEventAt && result.lastEventAt !== lastEventAt) {
+                lastEventAt = result.lastEventAt;
+                progressAt = this.clock();
+                // Persisted for `omg factory run status`, at most once a minute (every event would rewrite the state).
+                const stored = this.state.lanes.find((l) => l.id === id)?.lastEventAt;
+                if (!stored || Date.parse(lastEventAt) - Date.parse(stored) >= HEARTBEAT_MIN_MS)
+                    this.updateLane(id, { lastEventAt });
+            }
+            if (result.lastEventAt !== undefined && this.clock() - progressAt > this.o.limits.laneIdleMs) {
+                const quiet = `no session event (tool call, message or usage) for ${Math.round(this.o.limits.laneIdleMs / 60_000)} min (last event ${lastEventAt ?? `none since its start at ${startedAt}`})`;
+                const confirmed = await stopLane();
+                if (!confirmed) {
+                    this.updateLane(id, { note: `stalled: ${quiet}; its cancel was not confirmed` });
+                    this.gate('lane-unconfirmed', `lane ${id} (${remoteId}) stalled: ${quiet}, and its cancel was not confirmed; it may still run, so its tamper check cannot be trusted yet. Stop the job, then rerun ${this.resume}`);
+                    return { kind: 'stopped' };
                 }
-                catch { /* not confirmed */ }
+                // The lane finished between our poll and the cancel, with a session event after the last one we saw: a normal
+                // completion (the tamper check and accept path below still run). Any doubt stays a stall.
+                if (confirmed.state === 'completed' && confirmed.lastEventAt && confirmed.lastEventAt !== lastEventAt) {
+                    result = confirmed;
+                    break;
+                }
+                // Fail closed: a stalled lane is a failed lane (nothing is committed or pushed), with the normal fresh retry.
+                result = { ...confirmed, state: 'failed', error: `stalled: ${quiet}` };
+                stalled = true;
+                break;
+            }
+            if (this.clock() - begun > this.o.limits.laneTimeoutMs + LANE_GRACE_MS) {
+                const confirmed = await stopLane();
                 if (!confirmed) {
                     // The lane may still run: its after-snapshot would race it. Leave it running for the next rerun to settle.
                     this.updateLane(id, { note: 'engine wall-time limit passed; its cancel was not confirmed' });
@@ -5387,11 +5422,11 @@ class FactoryEngine {
                 result = { ...confirmed, state: 'timeout', error: `engine wall-time limit ${Math.round(this.o.limits.laneTimeoutMs / 60_000)} min passed` };
                 break;
             }
-            this.progress.heartbeat(`lane-${kind}`, `lane ${id} ${result.state}`, { ...this.fields(), lane: id, job: remoteId });
+            this.progress.heartbeat(`lane-${kind}`, `lane ${id} ${result.state}${result.lastEventAt !== undefined ? `, last event ${lastEventAt ?? 'none yet'}` : ''}`, { ...this.fields(), lane: id, job: remoteId });
         }
         const usage = usageOf(result);
         settleHeal(usage.credits);
-        const status = result.state === 'completed' ? 'completed' : result.state === 'cancelled' ? 'cancelled' : 'failed';
+        const status = stalled ? 'stalled' : result.state === 'completed' ? 'completed' : result.state === 'cancelled' ? 'cancelled' : 'failed';
         this.updateLane(id, {
             status,
             usage,
@@ -5404,7 +5439,7 @@ class FactoryEngine {
         });
         if (status === 'completed')
             this.save((x) => ({ ...x, lostStreak: { ...x.lostStreak, [kind]: 0 } }));
-        this.progress.emit(`lane-${kind}`, status === 'completed' ? 'ok' : 'fail', `lane ${id} ${result.state}, ${usage.credits.toFixed(2)} AI credits`, { ...this.fields(), lane: id, job: remoteId });
+        this.progress.emit(`lane-${kind}`, status === 'completed' ? 'ok' : 'fail', `lane ${id} ${stalled ? 'stalled' : result.state}, ${usage.credits.toFixed(2)} AI credits`, { ...this.fields(), lane: id, job: remoteId });
         // Mandatory tamper check around every lane, whatever its outcome.
         let checked;
         try {
