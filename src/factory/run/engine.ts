@@ -1294,6 +1294,8 @@ class FactoryEngine {
     const nested = trustedNestedRels(this.o.root, req.cwd, this.baseWorkspaces()).map((rel) => join(this.o.root, ...rel.split('/'), 'node_modules'));
     // isolation "container" (gatesSandbox, user config): the runner uses the container, labelled with this run.
     const container = this.gatesModeCache?.container;
+    // review-499b N3: never the OS sandbox because gatesSandbox() was not resolved yet in this process.
+    if (!container && this.containerIsolated()) return Promise.reject(new FactoryStepError('factory.run.sandbox.isolation "container" is set in your user config, but the gate settings were not resolved before a gate command; nothing ran'));
     const r = this.o.gateSandbox!({ ...req, nodeModulesTarget: join(this.o.root, 'node_modules'), ...(nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}), ...(container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {}) });
     if (!container) return r;
     return r.then((out) => {
@@ -2994,7 +2996,7 @@ class FactoryEngine {
       forgetWorktreeGitLinks(path);
     } catch (error) {
       // A kept checkout keeps its tooling (the local gate runs in it); with isolation "container" it never had the link.
-      if (!this.gatesModeCache?.container) this.linkGateTree(path);
+      if (!this.containerIsolated()) this.linkGateTree(path);
       throw new FactoryStepError(`could not discard the engine's prepare checkout ${path}: ${errText(error)}`);
     }
     this.save((x) => {
@@ -3044,7 +3046,7 @@ class FactoryEngine {
       unlinkNodeModules(this.o.root, path);
       removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [...new Set(contained)] });
     } catch (error) {
-      if (!this.gatesModeCache?.container) this.linkGateTree(path);
+      if (!this.containerIsolated()) this.linkGateTree(path);
       throw new FactoryStepError(`could not discard the engine's prepare checkout ${path}, which an older release made: ${errText(error)}. ${this.freshCheckoutRecovery()}`);
     }
     this.save((x) => {
@@ -3314,6 +3316,21 @@ class FactoryEngine {
     }
     this.gatesModeCache = { commit, ...resolved };
     return this.gatesModeCache;
+  }
+
+  /**
+   * Whether isolation "container" is in force, before or without a base read:
+   * it comes from the user config alone (review-499b N3). A user config that
+   * cannot be read or resolved counts as container, so the engine never
+   * links your node_modules into a checkout or runs on the OS sandbox by default.
+   */
+  private containerIsolated(): boolean {
+    if (this.gatesModeCache) return this.gatesModeCache.container !== undefined;
+    let user = this.o.gateSandboxUserConfig;
+    if (user === undefined) {
+      try { user = userConfigLayers().trustedUser; } catch { return true; }
+    }
+    try { return resolveGateIsolation({ user, base: undefined }).container !== undefined; } catch { return true; }
   }
 
   /**
