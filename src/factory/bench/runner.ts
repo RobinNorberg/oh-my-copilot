@@ -307,8 +307,12 @@ export interface LedgerSnapshot {
   epoch?: string;
 }
 
-const defaultLedger = (root: string): LedgerSnapshot => {
+export const defaultLedger = (root: string): LedgerSnapshot => {
   const path = ledgerPath(root);
+  // No file yet (a fresh repository): nothing counted and no epoch. parseLedger's
+  // default ledger carries since = now, a new value on every read, which would
+  // look like a reset; ledgerTracker adopts the first real file's epoch instead.
+  if (!existsSync(path)) return { premiumRequests: 0, credits: 0, records: {} };
   const { ledger, invalid } = parseLedger(path);
   if (invalid) throw new Error(`the budget ledger ${path} is unreadable; the bench cannot enforce --max-requests without it`);
   const t = ledgerTotals(ledger);
@@ -325,19 +329,24 @@ const defaultLedger = (root: string): LedgerSnapshot => {
  * The bench's ledger usage since `start`: per record the highest value seen
  * (a 0x shutdown correction keeps the counted calls: never under), summed
  * and minus the start. Throws on anything else that went down: a reset, a
- * record removed, a drop that is not estimated -> measured.
+ * record removed, a drop that is not estimated -> measured. A start without
+ * a ledger file (no epoch) adopts the first epoch it sees and requires it
+ * from then on; a file that was seen and then disappears throws.
  */
 export function ledgerTracker(start: LedgerSnapshot): (now: LedgerSnapshot) => { premiumRequests: number; credits: number } {
   const last = new Map(Object.entries(start.records ?? {}));
   const high = new Map(last);
   const base = { premiumRequests: start.premiumRequests, credits: start.credits };
+  let epoch = start.epoch;
   return (now) => {
     if (!start.records || !now.records) {
       const delta = { premiumRequests: now.premiumRequests - base.premiumRequests, credits: now.credits - base.credits };
       if (!(delta.premiumRequests >= 0) || !(delta.credits >= 0)) throw new Error(`the budget ledger went down since the bench started (${delta.premiumRequests} requests, ${delta.credits} credits); it cannot be trusted`);
       return delta;
     }
-    if (now.epoch !== start.epoch) throw new Error('the budget ledger was reset since the bench started; it cannot be trusted');
+    if (epoch !== undefined && now.epoch === undefined) throw new Error('the budget ledger file disappeared since the bench started; it cannot be trusted');
+    if (epoch === undefined && now.epoch !== undefined) epoch = now.epoch;
+    if (now.epoch !== epoch) throw new Error('the budget ledger was reset since the bench started; it cannot be trusted');
     for (const [key, was] of last) {
       const is = now.records[key];
       if (!is) throw new Error(`the budget ledger record ${key} disappeared since the bench started; it cannot be trusted`);
