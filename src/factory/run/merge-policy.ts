@@ -32,7 +32,7 @@ export interface FactoryMergeDecision extends MergeDecision {
   body?: { file: string; sha256: string };
   /** The gate read was green with no check at all (NO_CI_CHECKS_NOTE): said in the park and the PR comment. */
   noChecks?: true;
-  /** The checks the gate read counted as passed on this head (auto-merge needs at least one). */
+  /** The checks that ran and SUCCEEDED on this head (auto-merge needs at least one); SKIPPED, NEUTRAL and known-flaky failures are not here. */
   checks?: string[];
 }
 
@@ -49,7 +49,7 @@ export interface FactoryMergeDecision extends MergeDecision {
 export function mergeDecision(exec: Exec, root: string, ship: ShipState, view: MergeView, config: ShipConfig, known: readonly KnownFlakyTest[], forge?: Pick<Forge, 'checks' | 'reviews' | 'merge'>, reads?: GateHeadReads): FactoryMergeDecision {
   // Ship phase ready: the gates loop already waited out the settle window for this head, so this read has that history.
   const gate = evaluateGates(exec, view.number, config, known, root, view.headRefOid, forge, ship.phase === 'ready' ? 0 : undefined, Date.now, reads);
-  const noChecks = { ...(gate.noChecks ? { noChecks: true as const } : {}), checks: gate.checks.filter((c) => c.class === 'pass').map((c) => c.name) };
+  const noChecks = { ...(gate.noChecks ? { noChecks: true as const } : {}), checks: gate.checks.filter((c) => c.class === 'pass' && c.state.toUpperCase() === 'SUCCESS').map((c) => c.name) };
   const reviewed = latestVerdict(ship)?.sha;
   const commits = readCommitsSinceReview(exec, root, reviewed, view.headRefOid, view.baseRefOid, ship.housekeepingCommits);
   const extraProtected = [

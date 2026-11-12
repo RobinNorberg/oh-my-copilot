@@ -58,7 +58,7 @@ import { isCodingAgentAssignArgs, isCodingAgentCloseArgs, isCodingAgentStatusArg
 import { CODING_AGENT_LINK_BODY_ARG, codingAgentLinkBodyProblem, isCodingAgentGitArgs, isCodingAgentLinkCommentArgs, type CodingAgentStepContext } from './coding-agent-lane.js';
 import { isReviewFeedbackArgs } from '../../forge/github/graphql.js';
 import { isGateReadArgs, isRequiredChecksArgs } from '../../forge/github/checks.js';
-import { isGithubAutoMergeArgs } from '../../forge/github/merge.js';
+import { isGithubAutoMergeArgs, isGithubCommitReadArgs } from '../../forge/github/merge.js';
 import { LOCAL_REMOTE, STATE_CHANGE_LOG_FLAGS } from '../../forge/local/mirror.js';
 import { assertSafeCommand, isTrustedFetch, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { triageWriteGh } from '../triage/guard.js';
@@ -354,6 +354,8 @@ function factoryGit(a: string[], protectedBranches: readonly string[], extraProt
     case 'config':
       // The tamper check hashes the file core.excludesFile names; ship decides the rest.
       if (same(a, [...LOCAL_REMOTE_REFUSED_CONFIG_ARGS]) || same(a, [...URL_REWRITE_CONFIG_ARGS]) || same(a, [...REMOTE_CONFIG_ARGS])) return true;
+      // The auto-merge's deny list adds your core.hooksPath (every scope, read-only).
+      if (same(r, ['--show-scope', '--get-all', 'core.hooksPath'])) return true;
       return same(r, ['--get', 'core.excludesFile']) ? true : null;
     case 'for-each-ref':
       return same(r, [FOR_EACH_REF_FORMAT]);
@@ -377,6 +379,8 @@ function factoryGit(a: string[], protectedBranches: readonly string[], extraProt
       if (r.length === 5 && same(r.slice(0, 2), ['-z', '--name-only']) && /^[0-9a-f]{40}$/.test(r[2]) && r[3] === '--' && r[4].endsWith('/')) {
         return isPlainRepoPath(r[4].slice(0, -1));
       }
+      // The auto-merge's test config read: the root entry names of the base commit (read-only, no path).
+      if (r.length === 3 && r[0] === '-z' && r[1] === '--name-only' && /^[0-9a-f]{40}$/.test(r[2])) return true;
       // One entry of the tree at a commit (the team files: exit status and mode tell absent from a gitlink, a tree or a link, whatever the locale): one plain file path.
       if (r.length === 4 && r[0] === '-z' && /^[0-9a-f]{40}$/.test(r[1]) && r[2] === '--') return isPlainRepoPath(r[3]);
       return null;
@@ -425,7 +429,8 @@ function factoryGh(a: string[], writes?: TrackerWriteContext, github?: GithubRea
   // And, only inside the engine's auto-merge step, its head-pinned REST merge of exactly that PR and sha (never `gh pr merge`).
   if (group === 'api') {
     const step = github?.autoMerge ? { repo: github.repo, ...github.autoMerge } : undefined;
-    return isReviewFeedbackArgs(a, github?.repo) || isRequiredChecksArgs(a, github?.repo) || isGateReadArgs(a, github?.repo) || isGithubAutoMergeArgs(a, step) ? true : null;
+    // And the read of one commit (GET, the run's repository): the auto-merge's first-parent check of its merge commit.
+    return isReviewFeedbackArgs(a, github?.repo) || isRequiredChecksArgs(a, github?.repo) || isGateReadArgs(a, github?.repo) || isGithubAutoMergeArgs(a, step) || isGithubCommitReadArgs(a, github?.repo) ? true : null;
   }
   if (group === 'issue') {
     if (sub === 'view') return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--json' && JSON_FIELDS.test(r[2]);
@@ -560,7 +565,7 @@ const ENGINE_GIT_PINS = [
  * commit would run gpg.program under commit.gpgSign. With these (and
  * GIT_LFS_SKIP_SMUDGE=1) LFS files stay pointer files there.
  */
-const LOCAL_ONLY_GIT_PINS = ['commit.gpgSign=false', 'tag.gpgSign=false', 'filter.lfs.smudge=', 'filter.lfs.process=', 'filter.lfs.required=false'];
+const LOCAL_ONLY_GIT_PINS = ['commit.gpgSign=false', 'tag.gpgSign=false', 'filter.lfs.smudge=', 'filter.lfs.process=', 'filter.lfs.required=false', 'merge.renormalize=false'];
 
 /** Subcommands that talk to a remote: they keep the user's transport setup (see ENGINE_GIT_PINS). */
 const TRANSPORT_SUBCOMMANDS = new Set(['push', 'fetch', 'ls-remote', 'pull', 'clone']);
