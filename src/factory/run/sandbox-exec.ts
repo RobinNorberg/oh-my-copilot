@@ -97,6 +97,8 @@ export interface SandboxRunRequest {
   mainRoot?: string;
   /** The only dir a `<cwd>/node_modules` link may resolve to (the one the engine linked); another target is refused, never granted. */
   nodeModulesTarget?: string;
+  /** The nested workspace node_modules of yours the engine validated (SandboxPolicyContext.nestedNodeModulesTargets); only these are granted. */
+  nestedNodeModulesTargets?: string[];
   /** Where the per-command job home goes (default sandboxJobRoot(root); the private layout: under the run dir). */
   jobRoot?: string;
   /**
@@ -149,6 +151,7 @@ export interface SandboxExecOptions {
   /** SandboxRunRequest.mainRoot / nodeModulesTarget. */
   mainRoot?: string;
   nodeModulesTarget?: string;
+  nestedNodeModulesTargets?: string[];
 }
 
 export const MARKER_PREFIX = 'omg-gate-exit-';
@@ -349,6 +352,7 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
           extraReadonly: proxy.caPaths,
           ...(o.mainRoot ? { mainRoot: resolve(o.mainRoot) } : {}),
           ...(o.nodeModulesTarget ? { nodeModulesTarget: resolve(o.nodeModulesTarget) } : {}),
+          ...(o.nestedNodeModulesTargets ? { nestedNodeModulesTargets: o.nestedNodeModulesTargets.map((p) => resolve(p)) } : {}),
         };
       },
       note: (text) => { notes.push(text); },
@@ -480,6 +484,7 @@ export function createSandboxRunner(root: string, deps: SandboxExecDeps = defaul
       ...(req.requireDeniedPaths ? { requireDeniedPaths: true } : {}),
       ...(req.mainRoot ? { mainRoot: req.mainRoot } : {}),
       ...(req.nodeModulesTarget ? { nodeModulesTarget: req.nodeModulesTarget } : {}),
+      ...(req.nestedNodeModulesTargets ? { nestedNodeModulesTargets: req.nestedNodeModulesTargets } : {}),
     }, deps);
   };
 }

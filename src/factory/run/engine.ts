@@ -95,7 +95,8 @@ import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, g
 import { ghDependsOn, ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, githubTracker } from '../../forge/github/tracker.js';
 import { isSatisfied, type DependencyForge } from '../check/score.js';
 import { outcomePosts, postedBefore, type OutcomeEvent } from './outcome.js';
-import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, unlinkNodeModules, type GateConfig, type GateConfigLoader } from './prepare.js';
+import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, trustedNestedRels, unlinkNodeModules, type GateConfig, type GateConfigLoader } from './prepare.js';
+import { baseWorkspacePatterns } from './workspace-tree.js';
 import {
   canTransition,
   createShipState,
@@ -505,7 +506,7 @@ function hostGitStatus(cwd: string, args: readonly string[]): number {
  * copy record is followed by its original path as a record of its own,
  * without the two status letters.
  */
-function checkoutChanges(root: string, checkout: string, raw: string): string[] {
+function checkoutChanges(root: string, checkout: string, raw: string, nested: readonly string[]): string[] {
   let ownLink = false;
   let ownTree = false;
   try {
@@ -519,7 +520,10 @@ function checkoutChanges(root: string, checkout: string, raw: string): string[] 
   } catch { /* no link */ }
   // Of the tree only untracked entries are dropped: a tracked file under node_modules the PR's code changed still counts.
   const untracked = ownTree ? new Set(raw.split('\0').filter((r) => r.startsWith('?? ')).map((r) => r.slice(3))) : new Set<string>();
-  return parseStatusPaths(raw).filter((p) => p && !(ownLink && (p === 'node_modules' || p === 'node_modules/')) && !(untracked.has(p) && p.startsWith('node_modules/')));
+  // The nested workspace trees too (`packages/a/node_modules/`), only those of the engine's list (trustedNestedRels):
+  // the marker alone is PR-writable (review-501 L2).
+  const trees = ['node_modules/', ...(ownTree ? nested.map((rel) => `${rel}/node_modules/`) : [])];
+  return parseStatusPaths(raw).filter((p) => p && !(ownLink && (p === 'node_modules' || p === 'node_modules/')) && !(untracked.has(p) && trees.some((t) => p.startsWith(t))));
 }
 
 /** The paths of `git status --porcelain=v1 -z` records (an R/C record's original path included). */
@@ -842,6 +846,8 @@ class FactoryEngine {
   private mergeCmd?: string;
   /** Ship's gate config of this invocation, by the base sha it was loaded at. */
   private gateCfg?: { baseSha: string; loaded: GateConfig };
+  /** The base's workspace globs of this invocation (baseWorkspaces), by the base sha they were read at. */
+  private wsGlobs?: { baseSha: string; globs: string[] };
   /** The Azure DevOps forge; undefined = GitHub through the gh calls. */
   private readonly forge?: Forge;
   /** The forge, for messages. */
@@ -1284,9 +1290,11 @@ class FactoryEngine {
    */
   private sandboxRun(req: SandboxRunRequest): ReturnType<SandboxRunner> {
     const p = this.privateRun();
+    // The nested workspace trees' targets the engine vouches for (review-501 M1): the PR-writable marker alone grants nothing.
+    const nested = trustedNestedRels(this.o.root, req.cwd, this.baseWorkspaces()).map((rel) => join(this.o.root, ...rel.split('/'), 'node_modules'));
     // isolation "container" (gatesSandbox, user config): the runner uses the container, labelled with this run.
     const container = this.gatesModeCache?.container;
-    const r = this.o.gateSandbox!({ ...req, nodeModulesTarget: join(this.o.root, 'node_modules'), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}), ...(container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {}) });
+    const r = this.o.gateSandbox!({ ...req, nodeModulesTarget: join(this.o.root, 'node_modules'), ...(nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}), ...(container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {}) });
     if (!container) return r;
     return r.then((out) => {
       if (out.ran && out.imageId) this.containerImageId = out.imageId;
@@ -1302,6 +1310,27 @@ class FactoryEngine {
    */
   private nodeModulesRepointed(checkout: string): string | null {
     return nodeModulesTreeProblem(checkout, join(this.o.root, 'node_modules')).problem;
+  }
+
+  /**
+   * The workspace globs (workspace-tree.ts) of the TRUSTED BASE at `baseSha`
+   * (root package.json, pnpm-workspace.yaml), never the PR head's; none when
+   * there is no full base sha or the files are absent. Without a sha: the
+   * last base read in this invocation, else the run's recorded base.
+   */
+  private baseWorkspaces(baseSha?: string): string[] {
+    const sha = baseSha ?? this.wsGlobs?.baseSha ?? this.state.baseSha;
+    if (!sha || !HEX40.test(sha)) return [];
+    if (this.wsGlobs?.baseSha === sha) return this.wsGlobs.globs;
+    const read = (file: string): string | null => { try { return runHostGit(this.o.root, ['cat-file', 'blob', `${sha}:${file}`]); } catch { return null; } };
+    this.wsGlobs = { baseSha: sha, globs: baseWorkspacePatterns(read) };
+    return this.wsGlobs.globs;
+  }
+
+  /** linkNodeModules with the base's workspaces; a layout it does not support is a warning here (the base calibration parks on it). */
+  private linkGateTree(path: string, baseSha?: string): void {
+    const problem = linkNodeModules(this.o.root, path, this.o.warn, this.baseWorkspaces(baseSha));
+    if (problem) this.o.warn?.(`omg factory run: ${problem}; a gate that fails in the sandbox parks at ${GATE_SANDBOX_INCOMPATIBLE_GATE}`);
   }
 
   /** The engine's prepare and local-gate checkout: `<run>/w/prep` in the private layout. */
@@ -1469,7 +1498,7 @@ class FactoryEngine {
     if (this.gatesSandbox(loaded).container) return null;
     const rule = lockfileUnchanged(p.repo, baseSha, head, p.ctx);
     if (rule.policy === 'junction') {
-      linkNodeModules(this.o.root, path, this.o.warn);
+      this.linkGateTree(path, baseSha);
       return null;
     }
     const what = rule.lockfiles.length === 0 ? 'the base has no lockfile' : `the PR changes ${rule.changed.join(', ')}`;
@@ -2965,7 +2994,7 @@ class FactoryEngine {
       forgetWorktreeGitLinks(path);
     } catch (error) {
       // A kept checkout keeps its tooling (the local gate runs in it); with isolation "container" it never had the link.
-      if (!this.gatesModeCache?.container) linkNodeModules(this.o.root, path, this.o.warn);
+      if (!this.gatesModeCache?.container) this.linkGateTree(path);
       throw new FactoryStepError(`could not discard the engine's prepare checkout ${path}: ${errText(error)}`);
     }
     this.save((x) => {
@@ -3015,7 +3044,7 @@ class FactoryEngine {
       unlinkNodeModules(this.o.root, path);
       removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [...new Set(contained)] });
     } catch (error) {
-      if (!this.gatesModeCache?.container) linkNodeModules(this.o.root, path, this.o.warn);
+      if (!this.gatesModeCache?.container) this.linkGateTree(path);
       throw new FactoryStepError(`could not discard the engine's prepare checkout ${path}, which an older release made: ${errText(error)}. ${this.freshCheckoutRecovery()}`);
     }
     this.save((x) => {
@@ -3179,7 +3208,7 @@ class FactoryEngine {
       }
     } else if (!this.gatesSandbox(this.gateConfig(view)).container) {
       // isolation "container" (C1, review-499): no link to your node_modules in a checkout the container's writes come back to.
-      linkNodeModules(this.o.root, path, this.o.warn);
+      this.linkGateTree(path, view.baseRefOid);
     }
     // The checkout's gitfile before any PR code ran: compared after each check, and its git dir named to engine git from then on.
     const gitLink = checkoutGitLink(path);
@@ -3512,7 +3541,11 @@ class FactoryEngine {
       runHostGit(this.o.root, ['read-tree', baseSha], undefined, env);
       runHostGit(this.o.root, ['checkout-index', '-a', '-f', `--prefix=${dir.replace(/\\/g, '/')}/`], undefined, env);
       // isolation "container": the container installs its own; your node_modules is never linked in (C1, review-499).
-      if (!this.gatesModeCache?.container) linkNodeModules(this.o.root, dir, this.o.warn);
+      if (!this.gatesModeCache?.container) {
+        // A workspace layout the gate does not support (Yarn PnP, a nested git repository, over the bounds) parks here, named.
+        const layout = linkNodeModules(this.o.root, dir, this.o.warn, this.baseWorkspaces(baseSha));
+        if (layout) return { notStarted: visibleLine(layout) };
+      }
       const r = await this.sandboxRun({ purpose: 'calibrate', argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...(this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {}) });
       if (!r.ran) return { notStarted: r.reason };
       const tail = r.output.trim().slice(-2_000);
@@ -3773,7 +3806,7 @@ class FactoryEngine {
           const fresh = { ...process.env, GIT_INDEX_FILE: join(indexDir, 'index') };
           runHostGit(checkout, [...gitArgs, 'read-tree', at], undefined, fresh);
           const status = [...gitArgs, '-c', 'core.untrackedCache=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all'];
-          dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, undefined, fresh));
+          dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, undefined, fresh), trustedNestedRels(this.o.root, checkout, this.baseWorkspaces()));
         } catch (error) {
           problem = errText(error);
         } finally {

@@ -256,6 +256,7 @@ export async function runSandboxed(argv, o, deps) {
                     extraReadonly: proxy.caPaths,
                     ...(o.mainRoot ? { mainRoot: resolve(o.mainRoot) } : {}),
                     ...(o.nodeModulesTarget ? { nodeModulesTarget: resolve(o.nodeModulesTarget) } : {}),
+                    ...(o.nestedNodeModulesTargets ? { nestedNodeModulesTargets: o.nestedNodeModulesTargets.map((p) => resolve(p)) } : {}),
                 };
             },
             note: (text) => { notes.push(text); },
@@ -433,6 +434,7 @@ export function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers
             ...(req.requireDeniedPaths ? { requireDeniedPaths: true } : {}),
             ...(req.mainRoot ? { mainRoot: req.mainRoot } : {}),
             ...(req.nodeModulesTarget ? { nodeModulesTarget: req.nodeModulesTarget } : {}),
+            ...(req.nestedNodeModulesTargets ? { nestedNodeModulesTargets: req.nestedNodeModulesTargets } : {}),
         }, deps);
     };
 }

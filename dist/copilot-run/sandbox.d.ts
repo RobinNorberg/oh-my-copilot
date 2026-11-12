@@ -228,6 +228,14 @@ export interface SandboxPolicyContext {
      * of being granted read-only. Unset: the link's target as it is (lanes).
      */
     nodeModulesTarget?: string;
+    /**
+     * The workspace packages' node_modules of yours the engine validated for
+     * this worktree's nested gate trees (factory/run/prepare.ts
+     * trustedNestedRels: its own record, or the base's workspace globs ∩ the
+     * marker). A nested tree is granted only on an exact realpath match with
+     * one of these; the PR-writable marker alone grants nothing. Unset: none.
+     */
+    nestedNodeModulesTargets?: readonly string[];
 }
 export declare const REGISTRY_HOSTS: readonly string[];
 /**
@@ -239,10 +247,22 @@ export declare const REGISTRY_HOSTS: readonly string[];
  * re-pointed or added (to your home, your checkout, a git dir) is refused,
  * never granted. Plain dirs and files in it are the checkout's own
  * (read-write anyway). `linked`: the tree uses `target` at all.
+ *
+ * Workspaces (factory/run/workspace-tree.ts): a link may also point into
+ * the worktree itself, lexically and by realpath (a workspace self-link to
+ * the gate checkout's package; it grants nothing the worktree does not
+ * have), and the links in a real `@scope` dir are checked the same way. The
+ * tree's marker lists nested trees (`<rel>/node_modules`); each line of the
+ * exact relative shape, through plain dirs only, is checked with
+ * `<dirname(target)>/<rel>/node_modules` as its target, and that dir (a
+ * real dir, never a link) is returned in `nested` as a candidate: the
+ * grant needs an exact match with the engine's own list too
+ * (nestedNodeModulesTargets). A line of another shape is ignored.
  */
 export declare function nodeModulesTreeProblem(worktree: string, target: string, platform?: NodeJS.Platform): {
     problem: string | null;
     linked: boolean;
+    nested?: string[];
 };
 /**
  * The read-write carve-outs of the read-only common git dir for a write

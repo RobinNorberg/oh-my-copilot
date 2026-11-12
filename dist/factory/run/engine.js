@@ -61,8 +61,7 @@ import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT } from '../../ship/prepare.js';
 import { parseJsonc } from '../../utils/jsonc.js';
-import { nodeModulesTreeProblem, resolveGateIsolation, resolveGatesSandboxMode, resolveRequireDeniedPaths } from '../../copilot-run/sandbox.js';
-import { CONTAINER_INCOMPATIBLE_ADVICE, containerRunLabel, GATE_CONTAINER_UNAVAILABLE_GATE } from './container-gate.js';
+import { nodeModulesTreeProblem, resolveGatesSandboxMode, resolveRequireDeniedPaths } from '../../copilot-run/sandbox.js';
 import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs } from './sandbox-exec.js';
 import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
 import { driveGates } from './gates-driver.js';
@@ -83,7 +82,8 @@ import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, g
 import { ghDependsOn, ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, githubTracker } from '../../forge/github/tracker.js';
 import { isSatisfied } from '../check/score.js';
 import { outcomePosts, postedBefore } from './outcome.js';
-import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, unlinkNodeModules } from './prepare.js';
+import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, trustedNestedRels, unlinkNodeModules } from './prepare.js';
+import { baseWorkspacePatterns } from './workspace-tree.js';
 import { canTransition, createShipState, transition, latestVerdict, parseShipState, recordVerdict, shipStatePath, updateShipState, verifyShipIntegrity, } from '../../ship/state.js';
 import { ghReviewFeedback } from '../../forge/github/reviews.js';
 import { ReviewHeadMovedError, visibleLine } from '../../forge/review-feedback.js';
@@ -244,7 +244,7 @@ function hostGitStatus(cwd, args) {
  * copy record is followed by its original path as a record of its own,
  * without the two status letters.
  */
-function checkoutChanges(root, checkout, raw) {
+function checkoutChanges(root, checkout, raw, nested) {
     let ownLink = false;
     let ownTree = false;
     try {
@@ -261,7 +261,10 @@ function checkoutChanges(root, checkout, raw) {
     catch { /* no link */ }
     // Of the tree only untracked entries are dropped: a tracked file under node_modules the PR's code changed still counts.
     const untracked = ownTree ? new Set(raw.split('\0').filter((r) => r.startsWith('?? ')).map((r) => r.slice(3))) : new Set();
-    return parseStatusPaths(raw).filter((p) => p && !(ownLink && (p === 'node_modules' || p === 'node_modules/')) && !(untracked.has(p) && p.startsWith('node_modules/')));
+    // The nested workspace trees too (`packages/a/node_modules/`), only those of the engine's list (trustedNestedRels):
+    // the marker alone is PR-writable (review-501 L2).
+    const trees = ['node_modules/', ...(ownTree ? nested.map((rel) => `${rel}/node_modules/`) : [])];
+    return parseStatusPaths(raw).filter((p) => p && !(ownLink && (p === 'node_modules' || p === 'node_modules/')) && !(untracked.has(p) && trees.some((t) => p.startsWith(t))));
 }
 /** The paths of `git status --porcelain=v1 -z` records (an R/C record's original path included). */
 function parseStatusPaths(raw) {
@@ -562,6 +565,8 @@ class FactoryEngine {
     mergeCmd;
     /** Ship's gate config of this invocation, by the base sha it was loaded at. */
     gateCfg;
+    /** The base's workspace globs of this invocation (baseWorkspaces), by the base sha they were read at. */
+    wsGlobs;
     /** The Azure DevOps forge; undefined = GitHub through the gh calls. */
     forge;
     /** The forge, for messages. */
@@ -593,8 +598,6 @@ class FactoryEngine {
     gatesAllowed;
     /** factory.run.sandbox.gates, resolved once per trusted base commit. */
     gatesModeCache;
-    /** The gate image's id (`sha256:...`) the last container run reported: base calibrations are keyed on it, not on the tag (L2, review-499). */
-    containerImageId;
     /** The one-per-run warning that the sandbox on this host cannot deny paths was given. */
     warnedCredentialFilesReadable = false;
     /** Calibrations re-run in this invocation (a failing one is retried once per invocation). */
@@ -1023,16 +1026,9 @@ class FactoryEngine {
      */
     sandboxRun(req) {
         const p = this.privateRun();
-        // isolation "container" (gatesSandbox, user config): the runner uses the container, labelled with this run.
-        const container = this.gatesModeCache?.container;
-        const r = this.o.gateSandbox({ ...req, nodeModulesTarget: join(this.o.root, 'node_modules'), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}), ...(container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {}) });
-        if (!container)
-            return r;
-        return r.then((out) => {
-            if (out.ran && out.imageId)
-                this.containerImageId = out.imageId;
-            return out;
-        });
+        // The nested workspace trees' targets the engine vouches for (review-501 M1): the PR-writable marker alone grants nothing.
+        const nested = trustedNestedRels(this.o.root, req.cwd, this.baseWorkspaces()).map((rel) => join(this.o.root, ...rel.split('/'), 'node_modules'));
+        return this.o.gateSandbox({ ...req, nodeModulesTarget: join(this.o.root, 'node_modules'), ...(nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}) });
     }
     /**
      * Why `<checkout>/node_modules` must not be granted: a link in the
@@ -1042,6 +1038,33 @@ class FactoryEngine {
      */
     nodeModulesRepointed(checkout) {
         return nodeModulesTreeProblem(checkout, join(this.o.root, 'node_modules')).problem;
+    }
+    /**
+     * The workspace globs (workspace-tree.ts) of the TRUSTED BASE at `baseSha`
+     * (root package.json, pnpm-workspace.yaml), never the PR head's; none when
+     * there is no full base sha or the files are absent. Without a sha: the
+     * last base read in this invocation, else the run's recorded base.
+     */
+    baseWorkspaces(baseSha) {
+        const sha = baseSha ?? this.wsGlobs?.baseSha ?? this.state.baseSha;
+        if (!sha || !HEX40.test(sha))
+            return [];
+        if (this.wsGlobs?.baseSha === sha)
+            return this.wsGlobs.globs;
+        const read = (file) => { try {
+            return runHostGit(this.o.root, ['cat-file', 'blob', `${sha}:${file}`]);
+        }
+        catch {
+            return null;
+        } };
+        this.wsGlobs = { baseSha: sha, globs: baseWorkspacePatterns(read) };
+        return this.wsGlobs.globs;
+    }
+    /** linkNodeModules with the base's workspaces; a layout it does not support is a warning here (the base calibration parks on it). */
+    linkGateTree(path, baseSha) {
+        const problem = linkNodeModules(this.o.root, path, this.o.warn, this.baseWorkspaces(baseSha));
+        if (problem)
+            this.o.warn?.(`omg factory run: ${problem}; a gate that fails in the sandbox parks at ${GATE_SANDBOX_INCOMPATIBLE_GATE}`);
     }
     /** The engine's prepare and local-gate checkout: `<run>/w/prep` in the private layout. */
     checkoutDir() {
@@ -1214,12 +1237,9 @@ class FactoryEngine {
      * sandbox with the registry reachable. Null when the checkout is ready.
      */
     async privateNodeModules(p, path, baseSha, head, loaded) {
-        // isolation "container": every command installs into its own container volume; the checkout needs no node_modules.
-        if (this.gatesSandbox(loaded).container)
-            return null;
         const rule = lockfileUnchanged(p.repo, baseSha, head, p.ctx);
         if (rule.policy === 'junction') {
-            linkNodeModules(this.o.root, path, this.o.warn);
+            this.linkGateTree(path, baseSha);
             return null;
         }
         const what = rule.lockfiles.length === 0 ? 'the base has no lockfile' : `the PR changes ${rule.changed.join(', ')}`;
@@ -2889,9 +2909,8 @@ class FactoryEngine {
             forgetWorktreeGitLinks(path);
         }
         catch (error) {
-            // A kept checkout keeps its tooling (the local gate runs in it); with isolation "container" it never had the link.
-            if (!this.gatesModeCache?.container)
-                linkNodeModules(this.o.root, path, this.o.warn);
+            // A kept checkout keeps its tooling (the local gate runs in it).
+            this.linkGateTree(path);
             throw new FactoryStepError(`could not discard the engine's prepare checkout ${path}: ${errText(error)}`);
         }
         this.save((x) => {
@@ -2943,8 +2962,7 @@ class FactoryEngine {
             removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [...new Set(contained)] });
         }
         catch (error) {
-            if (!this.gatesModeCache?.container)
-                linkNodeModules(this.o.root, path, this.o.warn);
+            this.linkGateTree(path);
             throw new FactoryStepError(`could not discard the engine's prepare checkout ${path}, which an older release made: ${errText(error)}. ${this.freshCheckoutRecovery()}`);
         }
         this.save((x) => {
@@ -3126,10 +3144,8 @@ class FactoryEngine {
                 return;
             }
         }
-        else if (!this.gatesSandbox(this.gateConfig(view)).container) {
-            // isolation "container" (C1, review-499): no link to your node_modules in a checkout the container's writes come back to.
-            linkNodeModules(this.o.root, path, this.o.warn);
-        }
+        else
+            this.linkGateTree(path, view.baseRefOid);
         // The checkout's gitfile before any PR code ran: compared after each check, and its git dir named to engine git from then on.
         const gitLink = checkoutGitLink(path);
         if (!gitLink.gitDir)
@@ -3231,15 +3247,7 @@ class FactoryEngine {
         try {
             const text = commit ? readBaseFile(this.exec, this.o.root, commit, BASE_CONFIG_PATH) : null;
             const base = text && text.trim() ? parseJsonc(text) : undefined;
-            // factory.run.sandbox.isolation / .container: the user config only; a committed value is ignored with a notice.
-            const isolation = resolveGateIsolation({ user, base });
-            if (isolation.ignoredBase.length > 0)
-                this.o.warn?.(`omg factory run: ignoring ${isolation.ignoredBase.join(' and ')} in the base .copilot/omg.jsonc: where the PR's code runs is set in your user config only`);
-            resolved = { ...resolveGatesSandboxMode({ user, base, env: process.env }), requireDeniedPaths: resolveRequireDeniedPaths({ user, base }).require, ...(isolation.container ? { container: isolation.container } : {}) };
-            // L3 (review-499): "ack" (or the kill switch) means the OS sandbox is not used; with the container the PR's code
-            // still runs there, never plainly on your host after an ack.
-            if (resolved.container && resolved.mode === 'ack')
-                resolved = { ...resolved, mode: 'enforced', source: `${resolved.source}; isolation "container" runs it in the gate container` };
+            resolved = { ...resolveGatesSandboxMode({ user, base, env: process.env }), requireDeniedPaths: resolveRequireDeniedPaths({ user, base }).require };
         }
         catch (error) {
             throw new FactoryStepError(`factory.run.sandbox: ${errText(error)}`);
@@ -3281,14 +3289,6 @@ class FactoryEngine {
     gateNoStartAfterCodeReason(head, what, why) {
         const at = head.slice(0, 12);
         return `${what} on ${at} could not start in the OS sandbox (${why}) after the PR's code of this head already ran in it (an earlier prepare check), so the PR's code may be the cause. The head is not judged: no pass, no FAILURE, no ci-fix lane, and --allow-unsandboxed-gates does not apply here. Rerun ${this.resume} to try again; if it parks here again, review the PR's diff and fix the cause`;
-    }
-    /** The park when isolation "container" cannot run `what` (container-gate.ts): nothing ran, no ack offer, no fallback. */
-    gateContainerUnavailableReason(head, what, why) {
-        return `${what} on ${head.slice(0, 12)} did not run: factory.run.sandbox.isolation is "container" and the gate container is not available (${why}). The head is not judged: no pass, no FAILURE, no ci-fix lane, and it never falls back to the Copilot sandbox. Fix that, then rerun ${this.resume}`;
-    }
-    /** Where a sandboxed command runs, for parks and notes: the gate container (isolation "container") or the OS sandbox. */
-    sandboxName() {
-        return this.gatesModeCache?.container ? `the gate container (${this.gatesModeCache.container.runtime} ${this.gatesModeCache.container.image})` : 'the OS sandbox';
     }
     /** The park after the command ran in the sandbox without a verdict: no ack offer, no pass, no failure. `why` is fixed text (sandbox-exec.ts). */
     gateNoVerdictReason(head, what, why) {
@@ -3414,9 +3414,6 @@ class FactoryEngine {
             }
             if (r.started)
                 return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoVerdictReason(head, label, r.reason) });
-            // isolation "container" without a usable runtime: its own park, never the weaker sandbox and never the ack offer.
-            if (r.unavailable)
-                return stop({ name: GATE_CONTAINER_UNAVAILABLE_GATE, reason: this.gateContainerUnavailableReason(head, label, r.reason) });
             // An earlier check of this head already ran the PR's code in the sandbox: a start failure now may be its doing.
             // Only a configured command (trusted config) refused for its own shape or length keeps the ack offer; a
             // built-in's argv holds the PR's file names, so its refusal parks here too.
@@ -3442,25 +3439,22 @@ class FactoryEngine {
      * on the base itself, or its calibration could not run.
      */
     async calibrateGate(c, baseSha, commonGitDir, timeoutMs, what, head) {
-        // A calibration holds for the isolation it ran in: the gate container's (and its image, by id once a run reported it)
-        // is keyed apart from the OS sandbox's.
-        const container = this.gatesModeCache?.container;
-        const key = createHash('sha256').update(`${baseSha}\0${JSON.stringify(c.argv)}${container ? `\0container\0${container.runtime}\0${this.containerImageId ?? container.image}` : ''}`).digest('hex');
+        const key = createHash('sha256').update(`${baseSha}\0${JSON.stringify(c.argv)}`).digest('hex');
         let cal = this.state.gateCalibration?.[key];
         if (!cal || (!cal.ok && !this.recalibrated.has(key))) {
             this.recalibrated.add(key);
             const out = await this.runOnBase(c, baseSha, commonGitDir, timeoutMs);
             if ('notStarted' in out) {
-                return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${what} failed in ${this.sandboxName()} on ${head.slice(0, 12)}, and its calibration on the base ${baseSha.slice(0, 12)} could not run (${out.notStarted}); the failure is not counted (no ci-fix lane). Fix the cause, then rerun ${this.resume}. ${ACK_WARNING}` };
+                return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${what} failed in the OS sandbox on ${head.slice(0, 12)}, and its calibration on the base ${baseSha.slice(0, 12)} could not run (${out.notStarted}); the failure is not counted (no ci-fix lane). Fix the cause, then rerun ${this.resume}. ${ACK_WARNING}` };
             }
             cal = out;
-            this.save((x) => ({ ...x, gateCalibration: { ...(x.gateCalibration ?? {}), [key]: out }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `calibrated ${what.slice(0, 120)} in ${this.sandboxName()} on the base ${baseSha.slice(0, 12)}: ${out.ok ? 'passes' : 'fails'}` }] }));
+            this.save((x) => ({ ...x, gateCalibration: { ...(x.gateCalibration ?? {}), [key]: out }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `calibrated ${what.slice(0, 120)} in the OS sandbox on the base ${baseSha.slice(0, 12)}: ${out.ok ? 'passes' : 'fails'}` }] }));
         }
         if (cal.ok)
             return null;
         return {
             name: GATE_SANDBOX_INCOMPATIBLE_GATE,
-            reason: `${what} fails in ${this.sandboxName()} on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${this.gatesModeCache?.container ? CONTAINER_INCOMPATIBLE_ADVICE : sandboxIncompatibleAdvice(cal.tail)}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1_500)}` : ''}`,
+            reason: `${what} fails in the OS sandbox on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${sandboxIncompatibleAdvice(cal.tail)}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1_500)}` : ''}`,
         };
     }
     /**
@@ -3482,9 +3476,10 @@ class FactoryEngine {
             const env = { ...process.env, GIT_INDEX_FILE: index, GIT_NO_REPLACE_OBJECTS: '1' };
             runHostGit(this.o.root, ['read-tree', baseSha], undefined, env);
             runHostGit(this.o.root, ['checkout-index', '-a', '-f', `--prefix=${dir.replace(/\\/g, '/')}/`], undefined, env);
-            // isolation "container": the container installs its own; your node_modules is never linked in (C1, review-499).
-            if (!this.gatesModeCache?.container)
-                linkNodeModules(this.o.root, dir, this.o.warn);
+            // A workspace layout the gate does not support (Yarn PnP, a nested git repository, over the bounds) parks here, named.
+            const layout = linkNodeModules(this.o.root, dir, this.o.warn, this.baseWorkspaces(baseSha));
+            if (layout)
+                return { notStarted: visibleLine(layout) };
             const r = await this.sandboxRun({ purpose: 'calibrate', argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...(this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {}) });
             if (!r.ran)
                 return { notStarted: r.reason };
@@ -3773,7 +3768,7 @@ class FactoryEngine {
                     const fresh = { ...process.env, GIT_INDEX_FILE: join(indexDir, 'index') };
                     runHostGit(checkout, [...gitArgs, 'read-tree', at], undefined, fresh);
                     const status = [...gitArgs, '-c', 'core.untrackedCache=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all'];
-                    dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, undefined, fresh));
+                    dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, undefined, fresh), trustedNestedRels(this.o.root, checkout, this.baseWorkspaces()));
                 }
                 catch (error) {
                     problem = errText(error);
@@ -3875,10 +3870,6 @@ class FactoryEngine {
                     if (checkoutGitLink(checkout).hash !== linkBefore)
                         return this.gateTamperedByGate(head, checkout, stateDir);
                     this.gate(GATE_NO_VERDICT_GATE, this.gateNoVerdictReason(head, `the local gate \`${gate.join(' ')}\``, out.reason));
-                    return false;
-                }
-                if (!out.started && out.unavailable) {
-                    this.gate(GATE_CONTAINER_UNAVAILABLE_GATE, this.gateContainerUnavailableReason(head, `the local gate \`${gate.join(' ')}\``, out.reason));
                     return false;
                 }
                 unavailable = !out.started && out.sandbox === true;

@@ -247,6 +247,17 @@ function sameRealPath(real, want, platform) {
  * re-pointed or added (to your home, your checkout, a git dir) is refused,
  * never granted. Plain dirs and files in it are the checkout's own
  * (read-write anyway). `linked`: the tree uses `target` at all.
+ *
+ * Workspaces (factory/run/workspace-tree.ts): a link may also point into
+ * the worktree itself, lexically and by realpath (a workspace self-link to
+ * the gate checkout's package; it grants nothing the worktree does not
+ * have), and the links in a real `@scope` dir are checked the same way. The
+ * tree's marker lists nested trees (`<rel>/node_modules`); each line of the
+ * exact relative shape, through plain dirs only, is checked with
+ * `<dirname(target)>/<rel>/node_modules` as its target, and that dir (a
+ * real dir, never a link) is returned in `nested` as a candidate: the
+ * grant needs an exact match with the engine's own list too
+ * (nestedNodeModulesTargets). A line of another shape is ignored.
  */
 export function nodeModulesTreeProblem(worktree, target, platform = process.platform) {
     const nm = join(worktree, 'node_modules');
@@ -271,24 +282,120 @@ export function nodeModulesTreeProblem(worktree, target, platform = process.plat
         return { problem: null, linked: false };
     const P = platform === 'win32' ? win32 : posix;
     const same = (a, b) => (platform === 'win32' ? P.resolve(a).toLowerCase() === P.resolve(b).toLowerCase() : P.resolve(a) === P.resolve(b));
-    let linked = false;
-    for (const name of readdirSync(nm)) {
-        const p = join(nm, name);
-        let link;
+    // Lexically under the worktree (never the worktree itself), and the link's realpath too (isUnderRoot resolves links).
+    const insideWorktree = (p, to) => {
+        const rel = P.relative(P.resolve(worktree), to);
+        if (!rel || rel.startsWith('..') || P.isAbsolute(rel))
+            return false;
         try {
-            if (!lstatSync(p).isSymbolicLink())
+            return isUnderRoot(p, worktree, platform);
+        }
+        catch {
+            return false;
+        }
+    };
+    /** The links in `dir` (and in its real `@scope` dirs): each `<base>/<name>` or into the worktree; true when one uses `base`. */
+    const check = (dir, base, scoped) => {
+        let linked = false;
+        for (const name of readdirSync(dir)) {
+            const p = join(dir, name);
+            let link;
+            try {
+                const e = lstatSync(p);
+                if (!e.isSymbolicLink()) {
+                    if (!scoped && name.startsWith('@') && e.isDirectory()) {
+                        const inner = check(p, join(base, name), true);
+                        if ('problem' in inner)
+                            return inner;
+                        linked ||= inner.linked;
+                    }
+                    continue;
+                }
+                link = readlinkSync(p);
+            }
+            catch (error) {
+                return { problem: `${p} cannot be read (${error instanceof Error ? error.message : String(error)})` };
+            }
+            const to = P.resolve(P.dirname(p), link);
+            if (same(to, join(base, name)))
+                linked = true;
+            else if (!insideWorktree(p, to))
+                return { problem: `${p} points to ${to}, not ${join(base, name)} the engine linked` };
+        }
+        return { linked };
+    };
+    const top = check(nm, target, false);
+    if ('problem' in top)
+        return { problem: top.problem, linked: false };
+    const nested = [];
+    for (const rel of gateTreeNestedRels(nm)) {
+        let dir = worktree;
+        let plain = true;
+        for (const s of rel.split('/')) {
+            dir = join(dir, s);
+            try {
+                const e = lstatSync(dir);
+                plain = !e.isSymbolicLink() && e.isDirectory();
+            }
+            catch {
+                plain = false;
+            }
+            if (!plain)
+                break;
+        }
+        const inner = join(dir, 'node_modules');
+        try {
+            if (!plain || lstatSync(inner).isSymbolicLink() || !lstatSync(inner).isDirectory())
                 continue;
-            link = readlinkSync(p);
+        }
+        catch {
+            continue;
+        }
+        const yours = join(P.dirname(target), ...rel.split('/'), 'node_modules');
+        // Only a workspace package of yours: its package.json is there and its dir lies in your checkout by realpath.
+        try {
+            if (!lstatSync(join(P.dirname(yours), 'package.json')).isFile() || !isUnderRoot(P.dirname(yours), P.dirname(target), platform))
+                continue;
+        }
+        catch {
+            continue;
+        }
+        const r = check(inner, yours, false);
+        if ('problem' in r)
+            return { problem: r.problem, linked: false };
+        if (!r.linked)
+            continue;
+        try {
+            if (lstatSync(yours).isSymbolicLink() || !lstatSync(yours).isDirectory())
+                return { problem: `${yours} is not a plain directory, so the links of ${inner} to it are not granted`, linked: false };
+            nested.push(realpathSync.native(yours));
         }
         catch (error) {
-            return { problem: `${p} cannot be read (${error instanceof Error ? error.message : String(error)})`, linked: false };
+            return { problem: `${yours} cannot be read (${error instanceof Error ? error.message : String(error)})`, linked: false };
         }
-        const to = P.resolve(P.dirname(p), link);
-        if (!same(to, join(target, name)))
-            return { problem: `${p} points to ${to}, not ${join(target, name)} the engine linked`, linked: false };
-        linked = true;
     }
-    return { problem: null, linked };
+    return { problem: null, linked: top.linked, ...(nested.length > 0 ? { nested } : {}) };
+}
+/** The engine's marker in a gate node_modules tree (factory/run/prepare.ts GATE_TREE_MARKER; the team bundle may not import src/factory). */
+const GATE_TREE_MARKER_NAME = '.omg-gate-tree';
+/** The nested tree dirs the marker of the gate tree `nm` lists, each of the exact relative shape (no empty, dot or node_modules segment in any case, none ending in a dot or space or holding `~`, not absolute, no drive or backslash; at most 6 segments). */
+function gateTreeNestedRels(nm) {
+    const marker = join(nm, GATE_TREE_MARKER_NAME);
+    try {
+        const m = lstatSync(marker);
+        if (!m.isFile() || m.size > 64 * 1024)
+            return [];
+    }
+    catch {
+        return [];
+    }
+    return [...new Set(readFileSync(marker, 'utf-8').split('\n'))].filter((rel) => {
+        if (!rel || rel.length > 512 || /[\\:\0-\x1f]/.test(rel) || rel.startsWith('/'))
+            return false;
+        const segs = rel.split('/');
+        // No dot segment (`.omg`, `.git`: engine state and other runs' checkouts) and no node_modules segment, nor a win32 alias of one.
+        return segs.length <= 6 && segs.every((s) => s !== '' && !s.startsWith('.') && !/[ .]$/.test(s) && !s.includes('~') && s.toLowerCase() !== 'node_modules');
+    });
 }
 /** The target of `<worktree>/node_modules` when it is a junction or symlink (read-only for a write session). */
 function nodeModulesLinkTarget(worktree) {
@@ -435,6 +542,7 @@ export function buildSandboxConfig(profile, ctx, host) {
         throw new Error(`the job dir ${ctx.jobDir} lies inside the lane-writable worktree ${ctx.worktree}; use isolation "worktree"`);
     }
     let nm;
+    let nested = [];
     if (ctx.nodeModulesTarget === undefined)
         nm = nodeModulesLinkTarget(ctx.worktree);
     else {
@@ -448,10 +556,20 @@ export function buildSandboxConfig(profile, ctx, host) {
                 nm = realpathSync.native(ctx.nodeModulesTarget);
             }
             catch { /* nothing to grant */ }
+        // A workspace package's node_modules of yours that a nested gate tree links to (read-only, like the root's), only
+        // when it is exactly one the engine validated (review-501 M1): the marker naming it is PR-writable.
+        const fold = (p) => (ctx.platform === 'win32' ? p.toLowerCase() : p);
+        const allowed = new Set((ctx.nestedNodeModulesTargets ?? []).flatMap((p) => { try {
+            return [fold(realpathSync.native(p))];
+        }
+        catch {
+            return [];
+        } }));
+        nested = (tree.nested ?? []).filter((p) => allowed.has(fold(p)));
     }
     const filesystem = {
         readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
-        readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...(nm ? [nm] : []), ...tools, ...settings.extraReadonlyPaths],
+        readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...(nm ? [nm] : []), ...nested, ...tools, ...settings.extraReadonlyPaths],
     };
     if (host.capabilities.denied_paths === true) {
         // Git's plaintext credential stores (~/.git-credentials, XDG), the credential-cache daemon's socket dir, and the
@@ -464,7 +582,8 @@ export function buildSandboxConfig(profile, ctx, host) {
             ...(ctx.platform === 'win32' ? [join('AppData', 'Roaming', 'GitHub CLI'), join('AppData', 'Local', '.IdentityService')] : []),
         ].map((p) => join(ctx.realHome, p));
         // A grant canon cannot resolve (a dangling link) holds nothing: the deny stays.
-        const grants = [...filesystem.readwritePaths, ...filesystem.readonlyPaths, ctx.realHome];
+        // A nested workspace grant never lifts a deny (the PR-writable marker names it): a deny around it stays.
+        const grants = [...filesystem.readwritePaths, ...filesystem.readonlyPaths.filter((p) => !nested.includes(p)), ctx.realHome];
         const holdsGrant = (s) => grants.some((g) => { try {
             return isUnderRoot(g, s, ctx.platform);
         }
