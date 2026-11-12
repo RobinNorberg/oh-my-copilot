@@ -383,6 +383,7 @@ describe('buildSandboxConfig', () => {
       const yoursA = join(user, 'packages', 'a', 'node_modules');
       const secret = join(base, 'secret');
       for (const d of [join(yours, 'typescript'), join(yoursA, 'left-pad'), join(worktree, 'packages', 'a'), join(worktree, 'packages', 'b'), secret]) mkdirSync(d, { recursive: true });
+      writeFileSync(join(user, 'packages', 'a', 'package.json'), '{}');
       const tree = join(worktree, 'node_modules');
       mkdirSync(join(tree, '@scope'), { recursive: true });
       writeFileSync(join(tree, '.omg-gate-tree'), 'packages/a\n../escape\n');
@@ -413,6 +414,40 @@ describe('buildSandboxConfig', () => {
       symlinkSync(join(worktree, 'packages'), join(worktree, 'via'), lt);
       writeFileSync(join(tree, '.omg-gate-tree'), 'via/a\n');
       expect(nodeModulesTreeProblem(worktree, yours)).toEqual({ problem: null, linked: true });
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('workspaces, adversarial: a marker line into .omg or a dir without package.json grants nothing, and a nested grant never lifts a deny around it', () => {
+    const base = mkdtempSync(join(tmpdir(), 'omg-sbx-ws2-'));
+    const lt = process.platform === 'win32' ? 'junction' : 'dir';
+    try {
+      const user = join(base, 'user');
+      const worktree = join(base, 'wt');
+      const yours = join(user, 'node_modules');
+      mkdirSync(join(yours, 'typescript'), { recursive: true });
+      const tree = join(worktree, 'node_modules');
+      mkdirSync(tree, { recursive: true });
+      symlinkSync(join(yours, 'typescript'), join(tree, 'typescript'), lt);
+      // Another run's checkout of yours (denied), a real node_modules with a package.json, and an engine state dir.
+      const other = join(user, 'runs', 'issue-8');
+      const state = join(user, '.omg', 'w');
+      const bare = join(user, 'nopkg');
+      for (const d of [join(other, 'node_modules', 'x'), join(state, 'node_modules', 'x'), join(bare, 'node_modules', 'x')]) mkdirSync(d, { recursive: true });
+      writeFileSync(join(other, 'package.json'), '{}');
+      writeFileSync(join(state, 'package.json'), '{}');
+      for (const rel of ['runs/issue-8', '.omg/w', 'nopkg']) {
+        mkdirSync(join(worktree, ...rel.split('/'), 'node_modules'), { recursive: true });
+        symlinkSync(join(user, ...rel.split('/'), 'node_modules', 'x'), join(worktree, ...rel.split('/'), 'node_modules', 'x'), lt);
+      }
+      writeFileSync(join(tree, '.omg-gate-tree'), 'runs/issue-8\n.omg/w\nnopkg\n');
+      expect(nodeModulesTreeProblem(worktree, yours)).toEqual({ problem: null, linked: true, nested: [realpathSync.native(join(other, 'node_modules'))] });
+      const c = { ...ctx, worktree, platform: process.platform, nodeModulesTarget: yours, extraDenied: [other] };
+      const fs = buildSandboxConfig('write', c, host({ shell: true, denied_paths: true })).userPolicy.filesystem;
+      expect(fs.deniedPaths).toContain(other);
+      expect(fs.readonlyPaths).not.toContain(realpathSync.native(join(state, 'node_modules')));
+      expect(fs.readonlyPaths).not.toContain(realpathSync.native(join(bare, 'node_modules')));
     } finally {
       rmSync(base, { recursive: true, force: true });
     }

@@ -50,7 +50,7 @@ describe('workspace globs from the base', () => {
   });
 
   it('validWorkspaceRel and plainDirUnder take exact relative shapes only', () => {
-    for (const bad of ['', '/abs', '../x', 'a/../b', 'a//b', './a', 'a\\b', 'C:/x', 'a/b/c/d/e/f/g']) expect(validWorkspaceRel(bad)).toBe(false);
+    for (const bad of ['', '/abs', '../x', 'a/../b', 'a//b', './a', 'a\\b', 'C:/x', 'a/b/c/d/e/f/g', '.omg/w', 'a/.git', 'a/node_modules/b']) expect(validWorkspaceRel(bad)).toBe(false);
     expect(validWorkspaceRel('packages/a')).toBe(true);
     const dir = tmp();
     mkdirSync(join(dir, 'real', 'pkg'), { recursive: true });
