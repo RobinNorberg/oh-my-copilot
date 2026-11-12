@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "646df71cffee6c2765fbee6b9ad7efe7d728ff59",
-    "sourceSha256": "b2c9da32cce6f0a8e623c761504a29256c47c7e2507d70e2b677fc2135fe7be7",
+    "head": "c64929f2cde65bdddf2a6a034cab070cd3dc4231",
+    "sourceSha256": "0c4b1688217f50291068a7d9c216ba6c6344756ddae46acccd4cfcd28f79d14e",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "646df71cffee6c2765fbee6b9ad7efe7d728ff59",
-  "sourceSha256": "b2c9da32cce6f0a8e623c761504a29256c47c7e2507d70e2b677fc2135fe7be7",
+  "head": "c64929f2cde65bdddf2a6a034cab070cd3dc4231",
+  "sourceSha256": "0c4b1688217f50291068a7d9c216ba6c6344756ddae46acccd4cfcd28f79d14e",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2097,
-      "total": 2122
+      "srcFiles": 2096,
+      "total": 2121
     },
     "generated": {
-      "distFiles": 7756,
+      "distFiles": 7752,
       "bridgeFiles": 8,
-      "total": 7764
+      "total": 7760
     },
     "prompt": {
       "promptLikeFiles": 72
@@ -3510,10 +3510,6 @@
       "dist/factory/run/__tests__/engine.gates-container.test.d.ts.map",
       "dist/factory/run/__tests__/engine.gates-container.test.js",
       "dist/factory/run/__tests__/engine.gates-container.test.js.map",
-      "dist/factory/run/__tests__/engine.gates-git-view-fail.test.d.ts",
-      "dist/factory/run/__tests__/engine.gates-git-view-fail.test.d.ts.map",
-      "dist/factory/run/__tests__/engine.gates-git-view-fail.test.js",
-      "dist/factory/run/__tests__/engine.gates-git-view-fail.test.js.map",
       "dist/factory/run/__tests__/engine.gates-git-view.test.d.ts",
       "dist/factory/run/__tests__/engine.gates-git-view.test.d.ts.map",
       "dist/factory/run/__tests__/engine.gates-git-view.test.js",
@@ -22839,26 +22835,6 @@
         "id": "dist/factory/run/__tests__/engine.gates-container.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.gates-container.test.js.map"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.gates-git-view-fail.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.gates-git-view-fail.test.d.ts"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.gates-git-view-fail.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.gates-git-view-fail.test.d.ts.map"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.gates-git-view-fail.test.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.gates-git-view-fail.test.js"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.gates-git-view-fail.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.gates-git-view-fail.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/engine.gates-git-view.test.d.ts",
@@ -57241,11 +57217,6 @@
         "path": "src/factory/run/__tests__/engine.gates-container.test.ts"
       },
       {
-        "id": "src/factory/run/__tests__/engine.gates-git-view-fail.test.ts",
-        "kind": "src",
-        "path": "src/factory/run/__tests__/engine.gates-git-view-fail.test.ts"
-      },
-      {
         "id": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.gates-git-view.test.ts"
@@ -87369,11 +87340,6 @@
       },
       {
         "from": "src/factory/bench/score.ts",
-        "to": "src/factory/run/lane-commit.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/bench/score.ts",
         "to": "src/factory/run/state.ts",
         "kind": "imports"
       },
@@ -91244,51 +91210,6 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
-        "to": "src/ship/config.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-git-view-fail.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-git-view-fail.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-git-view-fail.test.ts",
-        "to": "src/factory/run/__tests__/engine-local-harness.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-git-view-fail.test.ts",
-        "to": "src/factory/run/__tests__/engine-local-harness.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-git-view-fail.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-git-view-fail.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-git-view-fail.test.ts",
-        "to": "src/factory/run/prepare.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-git-view-fail.test.ts",
-        "to": "src/factory/run/sandbox-exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-git-view-fail.test.ts",
         "to": "src/ship/config.ts",
         "kind": "imports"
       },
@@ -134039,12 +133960,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 11105,
-      "edgeCount": 13818,
-      "importEdgeCount": 11345,
+      "nodeCount": 11100,
+      "edgeCount": 13808,
+      "importEdgeCount": 11338,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "5e8792d5ff7f3127415b7ae76f6815eba4a6f6160d0fd25d6c5df01150c2b4a2",
-  "manifestSha256": "5c999dd266bb7a8be51c9c946ab0ac9d5c9960531463c223af71aee2ac4c4dbf"
+  "inventorySha256": "fb0ceedffc8a5d64d8ed4a5cb144c9a0cbd403ccf8c34b838546a1d235a3efa7",
+  "manifestSha256": "276118f783e6eb7bb4190beb6387c8ba58236be95ab4464321289d9e6a5d00c5"
 }
