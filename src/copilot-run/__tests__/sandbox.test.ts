@@ -394,10 +394,12 @@ describe('buildSandboxConfig', () => {
       symlinkSync(join(yoursA, 'left-pad'), join(nested, 'left-pad'), lt);
       symlinkSync(join(worktree, 'packages', 'b'), join(nested, 'b'), lt);
       expect(nodeModulesTreeProblem(worktree, yours)).toEqual({ problem: null, linked: true, nested: [realpathSync.native(yoursA)] });
-      const c = { ...ctx, worktree, platform: process.platform, nodeModulesTarget: yours };
+      const c = { ...ctx, worktree, platform: process.platform, nodeModulesTarget: yours, nestedNodeModulesTargets: [yoursA] };
       const ro = buildSandboxConfig('write', c, host()).userPolicy.filesystem.readonlyPaths;
       expect(ro).toContain(realpathSync.native(yours));
       expect(ro).toContain(realpathSync.native(yoursA));
+      // review-501 M1: the marker alone grants nothing; the engine's list must name it.
+      expect(buildSandboxConfig('write', { ...c, nestedNodeModulesTargets: undefined }, host()).userPolicy.filesystem.readonlyPaths).not.toContain(realpathSync.native(yoursA));
       // A nested link re-pointed to a secret dir, and a scoped link to the worktree's parent: refused, never granted.
       relink(join(nested, 'left-pad'), secret);
       expect(nodeModulesTreeProblem(worktree, yours).problem).toMatch(/left-pad points to .*secret, not .*left-pad the engine linked/);
@@ -448,6 +450,39 @@ describe('buildSandboxConfig', () => {
       expect(fs.deniedPaths).toContain(other);
       expect(fs.readonlyPaths).not.toContain(realpathSync.native(join(state, 'node_modules')));
       expect(fs.readonlyPaths).not.toContain(realpathSync.native(join(bare, 'node_modules')));
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('review-501 M1/L1: a marker naming a non-workspace tools/scratch with a planted tree grants nothing, and node_modules aliases are refused', () => {
+    const base = mkdtempSync(join(tmpdir(), 'omg-sbx-ws3-'));
+    const lt = process.platform === 'win32' ? 'junction' : 'dir';
+    try {
+      const user = join(base, 'user');
+      const worktree = join(base, 'wt');
+      const yours = join(user, 'node_modules');
+      const yoursA = join(user, 'packages', 'a', 'node_modules');
+      for (const d of [join(yours, 'typescript'), join(yoursA, 'x'), join(user, 'tools', 'scratch', 'node_modules', 'x')]) mkdirSync(d, { recursive: true });
+      writeFileSync(join(user, 'packages', 'a', 'package.json'), '{}');
+      writeFileSync(join(user, 'tools', 'scratch', 'package.json'), '{}');
+      const tree = join(worktree, 'node_modules');
+      mkdirSync(tree, { recursive: true });
+      symlinkSync(join(yours, 'typescript'), join(tree, 'typescript'), lt);
+      // The PR's code plants a tree for tools/scratch (not a workspace of the base) next to the real one of packages/a.
+      for (const rel of ['packages/a', 'tools/scratch']) {
+        mkdirSync(join(worktree, ...rel.split('/'), 'node_modules'), { recursive: true });
+        symlinkSync(join(user, ...rel.split('/'), 'node_modules', 'x'), join(worktree, ...rel.split('/'), 'node_modules', 'x'), lt);
+      }
+      writeFileSync(join(tree, '.omg-gate-tree'), 'packages/a\ntools/scratch\n');
+      // The engine's list holds only packages/a: tools/scratch is a candidate of the marker, never granted.
+      const c = { ...ctx, worktree, platform: process.platform, nodeModulesTarget: yours, nestedNodeModulesTargets: [yoursA] };
+      const ro = buildSandboxConfig('write', c, host()).userPolicy.filesystem.readonlyPaths;
+      expect(ro).toContain(realpathSync.native(yoursA));
+      expect(ro).not.toContain(realpathSync.native(join(user, 'tools', 'scratch', 'node_modules')));
+      // L1: a node_modules segment in another case, with a trailing dot, or as an 8.3 alias is not a marker line at all.
+      writeFileSync(join(tree, '.omg-gate-tree'), 'Node_Modules/foo\nnode_modules./foo\nNODE_M~1/foo\npackages/a \npackages/a.\n');
+      expect(nodeModulesTreeProblem(worktree, yours)).toEqual({ problem: null, linked: true });
     } finally {
       rmSync(base, { recursive: true, force: true });
     }

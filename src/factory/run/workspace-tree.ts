@@ -82,14 +82,16 @@ function pnpmPackages(yaml: string): string[] {
  * A relative workspace path of the exact shape the tree accepts: forward
  * slashes, no empty segment, no dot segment (`.`, `..`, `.omg`, `.git`:
  * the engine's state and other runs' checkouts live there), no
- * node_modules segment, not absolute, no drive, no backslash or control
- * character, at most WORKSPACE_MAX_DEPTH segments. The sandbox grant check
+ * node_modules segment in any case, no segment ending in a dot or space
+ * and none with a `~` (win32 aliases: `node_modules.`, `NODE_M~1`), not
+ * absolute, no drive, no backslash or control character, at most
+ * WORKSPACE_MAX_DEPTH segments. The sandbox grant check
  * (copilot-run/sandbox.ts gateTreeNestedRels) applies the same shape.
  */
 export function validWorkspaceRel(rel: string): boolean {
   if (!rel || rel.length > 512 || /[\\:\0-\x1f]/.test(rel) || rel.startsWith('/')) return false;
   const segs = rel.split('/');
-  return segs.length <= WORKSPACE_MAX_DEPTH && segs.every((s) => s !== '' && !s.startsWith('.') && s !== 'node_modules');
+  return segs.length <= WORKSPACE_MAX_DEPTH && segs.every((s) => s !== '' && !s.startsWith('.') && !/[ .]$/.test(s) && !s.includes('~') && s.toLowerCase() !== 'node_modules');
 }
 
 /** `<base>/<rel>` when every segment of it is a plain directory (no link, junction or file on the way); else null. */

@@ -303,6 +303,14 @@ export interface SandboxPolicyContext {
    * of being granted read-only. Unset: the link's target as it is (lanes).
    */
   nodeModulesTarget?: string;
+  /**
+   * The workspace packages' node_modules of yours the engine validated for
+   * this worktree's nested gate trees (factory/run/prepare.ts
+   * trustedNestedRels: its own record, or the base's workspace globs ∩ the
+   * marker). A nested tree is granted only on an exact realpath match with
+   * one of these; the PR-writable marker alone grants nothing. Unset: none.
+   */
+  nestedNodeModulesTargets?: readonly string[];
 }
 
 export const REGISTRY_HOSTS: readonly string[] = ['registry.npmjs.org', '*.npmjs.org'];
@@ -331,8 +339,9 @@ function sameRealPath(real: string, want: string, platform: NodeJS.Platform): bo
  * tree's marker lists nested trees (`<rel>/node_modules`); each line of the
  * exact relative shape, through plain dirs only, is checked with
  * `<dirname(target)>/<rel>/node_modules` as its target, and that dir (a
- * real dir, never a link) is returned in `nested` for a read-only grant. A
- * line of another shape is ignored: it grants nothing.
+ * real dir, never a link) is returned in `nested` as a candidate: the
+ * grant needs an exact match with the engine's own list too
+ * (nestedNodeModulesTargets). A line of another shape is ignored.
  */
 export function nodeModulesTreeProblem(worktree: string, target: string, platform: NodeJS.Platform = process.platform): { problem: string | null; linked: boolean; nested?: string[] } {
   const nm = join(worktree, 'node_modules');
@@ -414,7 +423,7 @@ export function nodeModulesTreeProblem(worktree: string, target: string, platfor
 /** The engine's marker in a gate node_modules tree (factory/run/prepare.ts GATE_TREE_MARKER; the team bundle may not import src/factory). */
 const GATE_TREE_MARKER_NAME = '.omg-gate-tree';
 
-/** The nested tree dirs the marker of the gate tree `nm` lists, each of the exact relative shape (no empty, dot or node_modules segment, not absolute, no drive or backslash; at most 6 segments). */
+/** The nested tree dirs the marker of the gate tree `nm` lists, each of the exact relative shape (no empty, dot or node_modules segment in any case, none ending in a dot or space or holding `~`, not absolute, no drive or backslash; at most 6 segments). */
 function gateTreeNestedRels(nm: string): string[] {
   const marker = join(nm, GATE_TREE_MARKER_NAME);
   try {
@@ -426,8 +435,8 @@ function gateTreeNestedRels(nm: string): string[] {
   return [...new Set(readFileSync(marker, 'utf-8').split('\n'))].filter((rel) => {
     if (!rel || rel.length > 512 || /[\\:\0-\x1f]/.test(rel) || rel.startsWith('/')) return false;
     const segs = rel.split('/');
-    // No dot segment (`.omg`, `.git`: engine state and other runs' checkouts) and no node_modules segment.
-    return segs.length <= 6 && segs.every((s) => s !== '' && !s.startsWith('.') && s !== 'node_modules');
+    // No dot segment (`.omg`, `.git`: engine state and other runs' checkouts) and no node_modules segment, nor a win32 alias of one.
+    return segs.length <= 6 && segs.every((s) => s !== '' && !s.startsWith('.') && !/[ .]$/.test(s) && !s.includes('~') && s.toLowerCase() !== 'node_modules');
   });
 }
 
@@ -565,8 +574,11 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
     if (tree.problem) throw new Error(`the node_modules in ${ctx.worktree} is not as the engine linked it (${tree.problem}); it is not granted`);
     nm = null;
     if (tree.linked) try { nm = realpathSync.native(ctx.nodeModulesTarget); } catch { /* nothing to grant */ }
-    // A workspace package's node_modules of yours that a nested gate tree links to (read-only, like the root's).
-    nested = tree.nested ?? [];
+    // A workspace package's node_modules of yours that a nested gate tree links to (read-only, like the root's), only
+    // when it is exactly one the engine validated (review-501 M1): the marker naming it is PR-writable.
+    const fold = (p: string) => (ctx.platform === 'win32' ? p.toLowerCase() : p);
+    const allowed = new Set((ctx.nestedNodeModulesTargets ?? []).flatMap((p) => { try { return [fold(realpathSync.native(p))]; } catch { return []; } }));
+    nested = (tree.nested ?? []).filter((p) => allowed.has(fold(p)));
   }
   const filesystem: SandboxConfig['userPolicy']['filesystem'] = {
     readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
