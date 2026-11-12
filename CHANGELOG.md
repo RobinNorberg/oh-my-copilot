@@ -9,6 +9,12 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **Stalled factory lanes end on their own.** A lane whose Copilot session sends no event for `factory.run.laneIdleMinutes` (default 15) is cancelled and recorded as `stalled`. Nothing it did is pushed, and it gets the normal fresh retry. Park text and `omg factory run status` name the lane and its last event time, and the progress log's heartbeat shows it too. The lowest value is 1 minute. A lane that finishes just before its cancel, with a new event, counts as a normal completion. A long quiet tool call or host sleep can still stall a healthy lane; raise the limit in your user config if that happens.
 - **Wait in the foreground.** The executor agent, the factory implement, fix and CI-fix lane prompts, and the `babysit`, `fix-ci`, `ralph` and `ralph-experiment` skills now say: wait for CI or tests in the foreground (`gh pr checks <N> --watch`, or read the job's output file), never idle on a background notification.
 
+### Fixed
+
+- **Plugin hooks keep working in a config folder shared with WSL or macOS.** Setup on Linux or macOS keeps the `node` plus arguments hook form when `node` is in a standard system folder (`/usr/local/bin`, `/usr/bin`, `/bin`, Homebrew or MacPorts). A `node` that only nvm, fnm, volta or a login shell puts on PATH gets the `find-node.sh` form, because a host started from a desktop launcher may not see it. Native Windows no longer needs a repair afterwards.
+- **Check names are made safe in merge reasons.** `omg ship merge`, the factory's Azure DevOps branch policy reason, its `ci-flaky` and `gates-timeout` park reasons, and the release CI failure details show each name in a code span. Backticks, `@` mentions, table pipes and line breaks are removed from the text. Long names are cut without splitting an emoji, and a branch policy reason keeps up to 160 characters so its status stays visible.
+- **The Herdr launch message names the host CLI.** It says `copilot launched in Herdr workspace` instead of `Claude launched`.
+
 ### Tests
 
 - **Loosened the jev-compaction linear-time bound.** The 1M-slash test now allows 250 ms instead of 50 ms, because shared CI runners measured about 51 ms. A quadratic regression would still take seconds.
