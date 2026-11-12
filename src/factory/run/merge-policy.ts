@@ -22,6 +22,7 @@ import { latestVerdict, type ShipState } from '../../ship/state.js';
 import type { MergeView } from '../../forge/github/reviews.js';
 import type { Forge } from '../../forge/types.js';
 import { ADO_PIPELINE_PATHS, CI_DEFINITION_PATHS } from './lane-commit.js';
+import { oneLine } from './prompts.js';
 import { runLabel, type FactoryRunKey } from './state.js';
 
 // The merge view is the GitHub forge's `gh pr view --json MERGE_VIEW_FIELDS` read.
@@ -36,7 +37,16 @@ export interface FactoryMergeDecision extends MergeDecision {
   checks?: string[];
   /** The checks on this head that were SKIPPED or NEUTRAL: without required checks auto-merge needs none (review-498b N6). */
   unsettled?: string[];
+  /**
+   * Every non-advisory check on this head whose raw state is not SUCCESS,
+   * SKIPPED or NEUTRAL (a known-flaky FAILURE included), as a sanitised
+   * `name (STATE)` or `name (STATE, known-flaky)`: auto-merge needs none.
+   */
+  blocking?: string[];
 }
+
+/** A forge-reported check name or state in a park reason: one line, no backticks, capped. */
+const checkText = (s: string, max: number): string => oneLine(s.replace(/`/g, "'"), max) || '(unnamed)';
 
 /**
  * ship's decideMerge on a fresh one-shot gate read for the head (no watch,
@@ -51,8 +61,13 @@ export interface FactoryMergeDecision extends MergeDecision {
 export function mergeDecision(exec: Exec, root: string, ship: ShipState, view: MergeView, config: ShipConfig, known: readonly KnownFlakyTest[], forge?: Pick<Forge, 'checks' | 'reviews' | 'merge'>, reads?: GateHeadReads): FactoryMergeDecision {
   // Ship phase ready: the gates loop already waited out the settle window for this head, so this read has that history.
   const gate = evaluateGates(exec, view.number, config, known, root, view.headRefOid, forge, ship.phase === 'ready' ? 0 : undefined, Date.now, reads);
-  const noChecks = { ...(gate.noChecks ? { noChecks: true as const } : {}), checks: gate.checks.filter((c) => c.class === 'pass' && c.state.toUpperCase() === 'SUCCESS').map((c) => c.name),
-    unsettled: gate.checks.filter((c) => ['SKIPPED', 'NEUTRAL'].includes(c.state.toUpperCase())).map((c) => c.name) };
+  // Raw states only: the gate's `pass` class (and its `flaky` verdict) never stands in for a SUCCESS here. Advisory checks are ignored.
+  const counted = gate.checks.filter((c) => c.class !== 'advisory');
+  const flaky = new Set(gate.flaky.filter((a) => a.knownFlaky).map((a) => a.check));
+  const noChecks = { ...(gate.noChecks ? { noChecks: true as const } : {}), checks: counted.filter((c) => c.class === 'pass' && c.state.toUpperCase() === 'SUCCESS').map((c) => c.name),
+    unsettled: counted.filter((c) => ['SKIPPED', 'NEUTRAL'].includes(c.state.toUpperCase())).map((c) => c.name),
+    blocking: counted.filter((c) => !['SUCCESS', 'SKIPPED', 'NEUTRAL'].includes(c.state.toUpperCase()))
+      .map((c) => `${checkText(c.name, 80)} (${checkText(c.state.toUpperCase(), 24)}${flaky.has(c.name) ? ', known-flaky' : ''})`) };
   const reviewed = latestVerdict(ship)?.sha;
   const commits = readCommitsSinceReview(exec, root, reviewed, view.headRefOid, view.baseRefOid, ship.housekeepingCommits);
   const extraProtected = [

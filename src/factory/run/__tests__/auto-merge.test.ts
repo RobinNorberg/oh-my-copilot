@@ -477,7 +477,7 @@ describe('autoMergeVerdict', () => {
     head: HEAD,
     config: all,
     run: { ciHeal: false, forgeKind: 'github', history: [{ note: 'implement' }] },
-    decision: { ok: true, reasons: [], checks: ['Test', 'Lint'] },
+    decision: { ok: true, reasons: [], checks: ['Test', 'Lint'], blocking: [] },
     verdict: { sha: HEAD, verdict: 'approve', reviewer: 'factory-review' },
     human: { commentOnly: 0 },
     labels: ['factory'],
@@ -496,7 +496,7 @@ describe('autoMergeVerdict', () => {
     const history = [{ note: 'awaiting-human: merge: merge is a human step' }, { note: 'awaiting-human: ci-failed: Test failed' }];
     expect(autoMergeVerdict({ ...ok, run: { ...ok.run, history }, requiredChecks: ['Test'] })).toMatchObject({ ok: true, tier: 'docs' });
     // N6: with required checks set, a skipped non-required check (a docs-only path filter) does not block.
-    expect(autoMergeVerdict({ ...ok, decision: { ok: true, reasons: [], checks: ['Test'], unsettled: ['Docs preview'] }, requiredChecks: ['Test'] })).toMatchObject({ ok: true });
+    expect(autoMergeVerdict({ ...ok, decision: { ok: true, reasons: [], checks: ['Test'], unsettled: ['Docs preview'], blocking: [] }, requiredChecks: ['Test'] })).toMatchObject({ ok: true });
   });
 
   const fails: Array<[string, Partial<AutoMergeInput>, RegExp]> = [
