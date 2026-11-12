@@ -195,7 +195,7 @@ describe('inventory-graph drift enforcement (#3702)', () => {
     expect(existsSync(BASELINE)).toBe(true);
     const baseline = JSON.parse(readFileSync(BASELINE, 'utf8'));
     expect(baseline.schemaVersion).toBe(2);
-    expect(baseline.repository).toBe('Yeachan-Heo/oh-my-claudecode');
+    expect(baseline.repository).toBe('RobinNorberg/oh-my-copilot');
     expect(baseline.provenance.base).toBe(EXPECTED_BASE);
     expect(baseline.provenance.planningHead).toBe(EXPECTED_PLANNING_HEAD);
     // Baseline should be minimal (only provenance, no graph/counts)
@@ -333,10 +333,11 @@ describe('inventory-graph drift enforcement (#3702)', () => {
     expect(m.graph.edges.some((e) => e.from === 'src/features/delegation-categories/index.ts' && e.kind.endsWith('-unresolved'))).toBe(false);
   });
 
-  it('generator is deterministic (two consecutive runs yield identical inventorySha256)', { timeout: 30_000 }, () => {
+  it('generator is deterministic (two consecutive runs yield identical inventorySha256)', { timeout: scaleTiming(120_000) }, () => {
     const opts = { cwd: REPO_ROOT, encoding: 'utf8' as const, maxBuffer: 20 * 1024 * 1024 };
     const r1 = spawnSync('node', [GENERATOR], opts);
     expect(r1.status, r1.stderr || r1.stdout).toBe(0);
+    const r2 = spawnSync('node', [GENERATOR], opts);
     expect(r2.status, r2.stderr || r2.stdout).toBe(0);
     const a = JSON.parse(r1.stdout as unknown as string) as Manifest;
     const b = JSON.parse(r2.stdout as unknown as string) as Manifest;
@@ -459,7 +460,7 @@ describe('inventory-graph drift enforcement (#3702)', () => {
     expect(existsSync(outsideOut)).toBe(false);
   });
 
-  it('--write produces minimal baseline without volatile fields', { timeout: 30_000 }, () => {
+  it('--write produces minimal baseline without volatile fields', { timeout: scaleTiming(60_000) }, () => {
     const temp = join(REPO_ROOT, `.tmp-write-check-${process.pid}-${Math.random().toString(16).slice(2)}.json`);
     const opts = { cwd: REPO_ROOT, encoding: 'utf8' as const, maxBuffer: 20 * 1024 * 1024 };
     const result = spawnSync('node', [GENERATOR, '--write', '--out', temp], opts);
@@ -493,7 +494,7 @@ describe('inventory-graph drift enforcement (#3702)', () => {
     const opts = { cwd: REPO_ROOT, encoding: 'utf8' as const, maxBuffer: 20 * 1024 * 1024 };
     const minimal = () => ({
       schemaVersion: 2,
-      repository: 'Yeachan-Heo/oh-my-claudecode',
+      repository: 'RobinNorberg/oh-my-copilot',
       provenance: { base: EXPECTED_BASE, planningHead: EXPECTED_PLANNING_HEAD, generator: 'scripts/generate-inventory-graph.mjs' } as Record<string, unknown>,
     });
     const cases: Array<[string, Record<string, unknown>]> = [
@@ -520,10 +521,10 @@ describe('inventory-graph drift enforcement (#3702)', () => {
     const anchors = { base: EXPECTED_BASE, planningHead: EXPECTED_PLANNING_HEAD };
     const cases: Array<[string, Record<string, unknown>]> = [
       ['anchors only', { provenance: { ...anchors } }],
-      ['missing generator', { schemaVersion: 2, repository: 'Yeachan-Heo/oh-my-claudecode', provenance: { ...anchors } }],
+      ['missing generator', { schemaVersion: 2, repository: 'RobinNorberg/oh-my-copilot', provenance: { ...anchors } }],
       ['extra inventorySha256', {
         schemaVersion: 2,
-        repository: 'Yeachan-Heo/oh-my-claudecode',
+        repository: 'RobinNorberg/oh-my-copilot',
         provenance: { ...anchors, generator: 'scripts/generate-inventory-graph.mjs' },
         inventorySha256: '0'.repeat(64),
       }],
