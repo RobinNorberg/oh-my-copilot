@@ -590,8 +590,14 @@ export function nodeModulesWriteDenied(tail: string): string | undefined {
   return undefined;
 }
 
+/** The advice when the base's gate runs git's own transport, which cannot run in the Copilot sandbox on Windows. */
+export const GIT_TRANSPORT_SANDBOX_ADVICE = 'Your gate runs git clone, fetch or push (also to a local path or a temp repository), which cannot run in the OS sandbox on Windows: git starts that transport through Git for Windows\' sh.exe, and no MSYS2 program starts in the sandbox; the sandbox has no network either. Read-only git (rev-parse, ls-files, log) and git init, add and commit work. Make those tests skip the transport, run them outside prepare, or set factory.run.sandbox.isolation "container" (with an image that has git) in your user config';
+
 /** What the gate-sandbox-incompatible park of a failing base calibration tells the human to do. */
-export function sandboxIncompatibleAdvice(tail: string | undefined): string {
+export function sandboxIncompatibleAdvice(tail: string | undefined, platform: NodeJS.Platform = process.platform): string {
+  // git clone, fetch and push to a local path start git-upload-pack / git-receive-pack through Git for Windows' sh.exe,
+  // and no MSYS2 program starts in the Copilot sandbox on Windows (exit 0xC0000142, live 2026-11-12); no network either.
+  if (platform === 'win32' && tail?.includes('Could not read from remote repository')) return GIT_TRANSPORT_SANDBOX_ADVICE;
   const denied = tail ? nodeModulesWriteDenied(tail) : undefined;
   // A per-run dir is writable in the tree already: a denial there is not this case.
   if (!denied || GATE_CACHE_DIRS.includes(denied.slice('node_modules/'.length))) return 'Your gate fails in the sandbox on the base: set factory.run.sandbox.writeNetwork "registry" if it needs the npm registry';
