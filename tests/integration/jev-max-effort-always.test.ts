@@ -441,8 +441,8 @@ describe("pre-tool-enforcer.mjs: OMC_JEV_MAX_EFFORT_ALWAYS caps every explicit T
     }, 30000);
 
     it("keeps a configured per-agent model (issue #3242) and caps the effort", async () => {
-      mkdirSync(join(cwd, ".claude"), { recursive: true });
-      writeFileSync(join(cwd, ".claude", "omc.jsonc"), '{ "agents": { "explore": { "model": "sonnet" } } }');
+      mkdirSync(join(cwd, ".copilot"), { recursive: true });
+      writeFileSync(join(cwd, ".copilot", "omg.jsonc"), '{ "agents": { "explore": { "model": "sonnet" } } }');
       const input = agentInput({ subagent_type: "oh-my-copilot:explore", model: undefined, effort: "max" }, "Task");
       const routingEnv = { OMC_JEV: undefined, OMC_ROUTING_FORCE_INHERIT: "false" };
       expect(await routedInput(input, { ...routingEnv, ...ALWAYS })).toEqual({

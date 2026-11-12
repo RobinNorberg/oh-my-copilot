@@ -155,8 +155,8 @@ describe("keyword-detector.mjs: OMC_JEV_TASK_SIZE_NOTICE", () => {
   }
 
   function writeProjectConfig(taskSizeDetection: Record<string, unknown>) {
-    mkdirSync(join(cwd, ".claude"), { recursive: true });
-    writeFileSync(join(cwd, ".claude", "omc.jsonc"), JSON.stringify({ taskSizeDetection }));
+    mkdirSync(join(cwd, ".copilot"), { recursive: true });
+    writeFileSync(join(cwd, ".copilot", "omg.jsonc"), JSON.stringify({ taskSizeDetection }));
   }
 
   function taskSizeLog() {

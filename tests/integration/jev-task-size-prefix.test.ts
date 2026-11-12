@@ -244,8 +244,8 @@ describe("keyword-detector.mjs: OMC_JEV_TASK_SIZE_PREFIX_WINS", () => {
 
     it("drops nothing when task-size suppression is turned off in the config", async () => {
       choice = "medium";
-      mkdirSync(join(cwd, ".claude"), { recursive: true });
-      writeFileSync(join(cwd, ".claude", "omc.jsonc"), JSON.stringify({ taskSizeDetection: { suppressHeavyModesForSmallTasks: false } }));
+      mkdirSync(join(cwd, ".copilot"), { recursive: true });
+      writeFileSync(join(cwd, ".copilot", "omg.jsonc"), JSON.stringify({ taskSizeDetection: { suppressHeavyModesForSmallTasks: false } }));
       expectKept(await run("quick: use ralph to fix this", PREFIX_WINS));
       expectJevAnswered();
     });

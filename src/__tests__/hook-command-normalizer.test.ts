@@ -85,6 +85,17 @@ describe('shipped hooks manifest', () => {
     }
   });
 
+  it('on Windows only restores the shipped form, e.g. after a WSL setup rewrote a shared cache', () => {
+    // A config dir shared between WSL and native Windows: the POSIX rewrite left
+    // `sh find-node.sh`, which Windows cannot run. win32 never invents a
+    // host-specific form; it puts back exactly the shipped manifest.
+    const shared = freshManifest();
+    expect(normalizer.normalizeHooksDataForPlatform(shared, 'linux')).toBe(true);
+    expect(normalizer.normalizeHooksDataForPlatform(shared, 'win32')).toBe(true);
+    expect(shared).toEqual(freshManifest());
+    expect(normalizer.normalizeHooksDataForPlatform(shared, 'win32')).toBe(false);
+  });
+
   it('needs no patch on Windows and is rewritten to the bootstrap on POSIX', () => {
     expect(normalizer.normalizeHooksDataForPlatform(freshManifest(), 'win32')).toBe(false);
 

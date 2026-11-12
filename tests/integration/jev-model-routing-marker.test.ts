@@ -401,8 +401,8 @@ describe("pre-tool-enforcer.mjs: model-routing use marker", () => {
     }, 15000);
 
     it("wins over the model from agents.<name>.model in the project config", async () => {
-      mkdirSync(join(cwd, ".claude"), { recursive: true });
-      writeFileSync(join(cwd, ".claude", "omc.jsonc"), JSON.stringify({ agents: { executor: { model: "sonnet" } } }));
+      mkdirSync(join(cwd, ".copilot"), { recursive: true });
+      writeFileSync(join(cwd, ".copilot", "omg.jsonc"), JSON.stringify({ agents: { executor: { model: "sonnet" } } }));
       const routed = await routedInput(
         agentInput(`use opus high\n${TASK}`, { model: undefined, subagent_type: "oh-my-copilot:executor" }),
         { XDG_CONFIG_HOME: join(cwd, "config"), APPDATA: join(cwd, "config"), OMC_ROUTING_FORCE_INHERIT: "false" },

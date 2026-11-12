@@ -952,9 +952,9 @@ describe("jev advisory points: opt-in actions", () => {
       let result = await detectIntent(intentPrompt, apply);
       expect(result.stdout).toContain("intent");
 
-      mkdirSync(join(cwd, ".claude"), { recursive: true });
+      mkdirSync(join(cwd, ".copilot"), { recursive: true });
       writeFileSync(
-        join(cwd, ".claude", "omc.jsonc"),
+        join(cwd, ".copilot", "omg.jsonc"),
         JSON.stringify({ keywordDetector: { disabled: ["intent"] } }),
       );
       result = await detectIntent(intentPrompt, apply);
