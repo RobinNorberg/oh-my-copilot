@@ -92,6 +92,7 @@ export type SandboxRunResult = {
     output: string;
     timedOut: boolean;
     credentialFilesReadable?: true;
+    imageId?: string;
 } | {
     ran: false;
     reason: string;

@@ -138,8 +138,10 @@ export interface GateContainerSettings {
     cpus: number;
     /** `--pids-limit`. */
     pidsLimit: number;
-    /** How long the dependency install (`npm ci`, with network) may run. */
+    /** How long each dependency install step (`npm ci`, then its scripts) may run. */
     installTimeoutMinutes: number;
+    /** The most a command's work volume may hold (e.g. "10g"); over it, a watchdog kills that command's container. */
+    diskLimit: string;
 }
 /** The default gate image: the host Node major on Debian bookworm slim. */
 export declare const defaultGateImage: (nodeVersion?: string) => string;

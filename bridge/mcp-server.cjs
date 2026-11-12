@@ -33013,7 +33013,8 @@ function resolveGateIsolation(layers, nodeVersion = process.versions.node) {
   const image = c.image === void 0 ? defaultGateImage(nodeVersion) : typeof c.image === "string" && /^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,254}$/.test(c.image) ? c.image : bad("container.image", "an image reference (letters, digits and . _ / : @ -, not starting with -)");
   const memory = c.memory === void 0 ? "4g" : typeof c.memory === "string" && /^[1-9]\d{0,5}[kmg]$/i.test(c.memory) ? c.memory : bad("container.memory", 'a size such as "4g" or "512m"');
   const cpus2 = c.cpus === void 0 ? 2 : typeof c.cpus === "number" && c.cpus > 0 && c.cpus <= 64 ? c.cpus : bad("container.cpus", "a number above 0 and at most 64");
-  const container = { runtime, image, memory, cpus: cpus2, pidsLimit: int2("pidsLimit", 64, 65536, 1024), installTimeoutMinutes: int2("installTimeoutMinutes", 1, 120, 15) };
+  const diskLimit = c.diskLimit === void 0 ? "10g" : typeof c.diskLimit === "string" && /^[1-9]\d{0,5}[mg]$/i.test(c.diskLimit) ? c.diskLimit : bad("container.diskLimit", 'a size such as "10g" or "800m"');
+  const container = { runtime, image, memory, cpus: cpus2, pidsLimit: int2("pidsLimit", 64, 65536, 1024), installTimeoutMinutes: int2("installTimeoutMinutes", 1, 120, 15), diskLimit };
   return { isolation, ...isolation === "container" ? { container } : {}, ignoredBase };
 }
 function sameRealPath(real2, want, platform) {
@@ -33488,7 +33489,7 @@ var init_sandbox2 = __esm({
     SANDBOX_KILL_ENV = "OMG_SANDBOX";
     isStringArray2 = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");
     GATES_SANDBOX_MODES = ["enforced", "ack", "unsandboxed"];
-    CONTAINER_KEYS = ["runtime", "image", "memory", "cpus", "pidsLimit", "installTimeoutMinutes"];
+    CONTAINER_KEYS = ["runtime", "image", "memory", "cpus", "pidsLimit", "installTimeoutMinutes", "diskLimit"];
     defaultGateImage = (nodeVersion = process.versions.node) => `node:${nodeVersion.split(".")[0]}-bookworm-slim`;
     REGISTRY_HOSTS = ["registry.npmjs.org", "*.npmjs.org"];
     errText = (err) => err instanceof Error ? err.message : String(err);
@@ -51086,6 +51087,47 @@ function containerEnvArgs(extra = {}) {
   };
   return Object.entries(env2).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
 }
+function inContainerLimit(timeoutMs, argv) {
+  return ["timeout", "-s", "KILL", `${Math.ceil(timeoutMs / 1e3) + IN_CONTAINER_GRACE_S}s`, ...argv];
+}
+function sizeBytes(size) {
+  const m = /^(\d+)([mg])$/i.exec(size);
+  if (!m) throw new Error(`not a size: ${size}`);
+  return Number(m[1]) * (m[2].toLowerCase() === "g" ? 1024 ** 3 : 1024 ** 2);
+}
+function lockfileCachePolicy(lock) {
+  if (!lock || typeof lock !== "object" || Array.isArray(lock)) return { refuse: "the lockfile is not a JSON object" };
+  const outside = { refuse: "the lockfile has a package that does not come from the npm registry (git, a tarball URL or a file); the gate container installs registry packages only" };
+  let integrity = true;
+  const check2 = (e, version2) => {
+    if (typeof e.resolved === "string" && !REGISTRY_PREFIXES.some((p) => e.resolved.startsWith(p))) return false;
+    if (typeof version2 === "string" && /^[a-z+]+:/i.test(version2) && !version2.startsWith("npm:")) return false;
+    if (typeof e.integrity !== "string" || e.integrity === "") integrity = false;
+    return true;
+  };
+  const packages = lock.packages;
+  if (packages && typeof packages === "object" && !Array.isArray(packages)) {
+    for (const [key, raw] of Object.entries(packages)) {
+      if (key === "" || !raw || typeof raw !== "object") continue;
+      const e = raw;
+      if (!key.includes("node_modules/") || e.link === true || e.inBundle === true) continue;
+      if (!check2(e)) return outside;
+    }
+    return integrity ? "shared" : "private";
+  }
+  const walk = (deps, depth) => {
+    if (!deps || typeof deps !== "object" || depth > 64) return true;
+    for (const raw of Object.values(deps)) {
+      if (!raw || typeof raw !== "object") continue;
+      const e = raw;
+      if (e.bundled === true) continue;
+      if (!check2(e, e.version) || !walk(e.dependencies, depth + 1)) return false;
+    }
+    return true;
+  };
+  if (!walk(lock.dependencies, 0)) return outside;
+  return integrity ? "shared" : "private";
+}
 function installPlan(checkout) {
   const regular = (name) => {
     try {
@@ -51096,7 +51138,19 @@ function installPlan(checkout) {
   };
   if (!regular("package.json")) return { kind: "none" };
   for (const lock of ["npm-shrinkwrap.json", "package-lock.json"]) {
-    if (regular(lock)) return { kind: "npm-ci", lockHash: (0, import_node_crypto6.createHash)("sha256").update((0, import_node_fs14.readFileSync)((0, import_node_path15.join)(checkout, lock))).digest("hex").slice(0, 16) };
+    if (!regular(lock)) continue;
+    const path15 = (0, import_node_path15.join)(checkout, lock);
+    if ((0, import_node_fs14.lstatSync)(path15).size > LOCKFILE_MAX_BYTES) return { kind: "unsupported", reason: `${lock} is larger than the gate container reads` };
+    const bytes = (0, import_node_fs14.readFileSync)(path15);
+    let json;
+    try {
+      json = JSON.parse(bytes.toString("utf8"));
+    } catch {
+      return { kind: "unsupported", reason: `${lock} is not valid JSON` };
+    }
+    const policy = lockfileCachePolicy(json);
+    if (typeof policy === "object") return { kind: "unsupported", reason: policy.refuse };
+    return { kind: "npm-ci", lockHash: (0, import_node_crypto6.createHash)("sha256").update(bytes).digest("hex").slice(0, 16), sharedCache: policy === "shared" };
   }
   let pkg = {};
   try {
@@ -51123,6 +51177,50 @@ function containerArgv(req) {
     return `${SRC}/${rel.split(import_node_path15.sep).join("/")}`;
   });
 }
+function checkoutCopyProblem(checkout) {
+  let root;
+  try {
+    root = import_node_fs14.realpathSync.native(checkout);
+  } catch {
+    return "the checkout could not be resolved";
+  }
+  let seen = 0;
+  const inside2 = (p) => samePathOrUnder(p, root);
+  const walk = (dir) => {
+    for (const name of (0, import_node_fs14.readdirSync)(dir)) {
+      if (name === ".git" || name === "node_modules") continue;
+      if (++seen > SCAN_MAX_ENTRIES) return "the checkout has more files than the gate container copies";
+      const path15 = (0, import_node_path15.join)(dir, name);
+      const st = (0, import_node_fs14.lstatSync)(path15);
+      if (st.isSymbolicLink()) {
+        let target;
+        try {
+          target = import_node_fs14.realpathSync.native(path15);
+        } catch {
+          return "the checkout has a link whose target does not exist";
+        }
+        if (!inside2(target)) return "the checkout has a link (a symbolic link or junction) that points outside it";
+        continue;
+      }
+      if (st.isDirectory()) {
+        const p = walk(path15);
+        if (p) return p;
+      } else if (st.isFile() && st.nlink > 1) return "the checkout has a file with more than one hard link";
+    }
+    return null;
+  };
+  try {
+    return walk(root);
+  } catch {
+    return "the checkout could not be listed";
+  }
+}
+function samePathOrUnder(p, root) {
+  const norm2 = (x) => process.platform === "win32" ? x.toLowerCase() : x;
+  const a = norm2(p);
+  const b = norm2(root);
+  return a === b || a.startsWith(b.endsWith(import_node_path15.sep) ? b : b + import_node_path15.sep);
+}
 async function runContainerGate(req, s, runLabel2, deps) {
   const unavailable = (reason) => ({ ran: false, reason, unavailable: true });
   const noVerdict = (reason) => ({ ran: false, reason, started: true });
@@ -51136,41 +51234,117 @@ async function runContainerGate(req, s, runLabel2, deps) {
     return { ran: true, status: 0, output: "gate container: dependencies are installed in the container per command", timedOut: false };
   }
   if (!/^[a-z0-9-]{1,60}$/.test(runLabel2)) return unavailable(`the run label ${JSON.stringify(runLabel2)} is not [a-z0-9-]`);
+  let diskLimit;
+  try {
+    diskLimit = sizeBytes(s.diskLimit);
+  } catch {
+    return unavailable(`factory.run.sandbox.container.diskLimit ${JSON.stringify(s.diskLimit)} is not a size`);
+  }
   const probe = await deps.exec(bin, ["version", "--format", "{{.Server.Version}}"], { timeoutMs: PROBE_TIMEOUT_MS });
   if (probe.spawnError !== void 0) return unavailable(`the container runtime ${bin} is not installed or not on PATH (${probe.spawnError}); install it, ${switchBack}`);
   if (probe.status !== 0) return unavailable(`the container runtime ${bin} does not answer (${firstLine(probe.tail) || `exit ${probe.status}`}); start ${bin === "docker" ? "Docker Desktop or the docker daemon" : "the podman machine or service"}, ${switchBack}`);
-  const image = await deps.exec(bin, ["image", "inspect", "--format", "{{.Id}}", s.image], { timeoutMs: PROBE_TIMEOUT_MS });
+  const inspectImage = () => deps.exec(bin, ["image", "inspect", "--format", "{{.Id}}", s.image], { timeoutMs: PROBE_TIMEOUT_MS });
+  let image = await inspectImage();
   if (image.status !== 0) {
     log(`omg factory run: pulling the gate image ${s.image} with ${bin} (factory.run.sandbox.container.image); pin a digest there to fix what runs`);
     const pulled = await deps.exec(bin, ["pull", s.image], { timeoutMs: PULL_TIMEOUT_MS });
     if (pulled.status !== 0) return unavailable(`the gate image ${s.image} is not present and ${bin} pull failed (${firstLine(lastLines(pulled.tail)) || `exit ${pulled.status}`}); pull it yourself, set factory.run.sandbox.container.image, ${switchBack}`);
+    image = await inspectImage();
   }
+  const imageId = /^(sha256:[0-9a-f]{64})$/m.exec(image.tail.trim())?.[1];
   const plan = installPlan(req.cwd);
   if (plan.kind === "unsupported") return unavailable(`${plan.reason}; ${switchBack}`);
+  const scan = checkoutCopyProblem(req.cwd);
+  if (scan) return noVerdict(`${scan}, so it is not copied into the gate container; nothing is counted`);
   const id = (deps.id ?? (() => (0, import_node_crypto6.randomBytes)(4).toString("hex")))();
   const name = `${CONTAINER_NAME_PREFIX}${runLabel2}-${id}`;
   const volume = name;
-  const cache = plan.kind === "npm-ci" ? `${CONTAINER_NAME_PREFIX}cache-${plan.lockHash}` : void 0;
+  const network = `${name}-net`;
+  const cache = plan.kind === "npm-ci" && plan.sharedCache ? `${CONTAINER_NAME_PREFIX}cache-${plan.lockHash}` : void 0;
   const labels = ["--label", `${RUN_LABEL2}=${runLabel2}`, "--label", `${GATE_LABEL}=1`];
   const harden = hardeningArgs(s);
   const work = ["--mount", mountArg(["type=volume", `source=${volume}`, `target=${WORK}`])];
-  const kill = (container) => async () => {
-    await deps.exec(bin, ["kill", container], { timeoutMs: KILL_TIMEOUT_MS });
-  };
+  const workRo = ["--mount", mountArg(["type=volume", `source=${volume}`, `target=${WORK}`, "readonly"])];
+  const started = [];
   let volumeMade = false;
+  let networkMade = false;
+  const ran = (o) => ({ ran: true, ...o, ...imageId ? { imageId } : {} });
+  const removeNetwork = async () => {
+    if (!networkMade) return;
+    const rm4 = await deps.exec(bin, ["network", "rm", network], { timeoutMs: PROBE_TIMEOUT_MS }).catch(() => null);
+    if (rm4?.status === 0) networkMade = false;
+  };
+  const step = (container, opts, argv, timeoutMs, full) => {
+    started.push(container);
+    return deps.exec(bin, ["run", "--name", container, ...opts, s.image, ...inContainerLimit(timeoutMs, argv)], {
+      timeoutMs,
+      ...full !== void 0 ? { full } : {},
+      onTimeout: async () => {
+        await deps.exec(bin, ["kill", container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
+        await deps.exec(bin, ["rm", "-f", container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
+      }
+    });
+  };
+  const watched = async (container, run3) => {
+    let stopped = false;
+    let over = false;
+    let timer;
+    let inflight = Promise.resolve();
+    const tick = () => {
+      inflight = (async () => {
+        if (stopped) return;
+        const duName = `${container}-du`;
+        if (!started.includes(duName)) started.push(duName);
+        const du = await deps.exec(bin, [
+          "run",
+          "--name",
+          duName,
+          ...labels,
+          ...harden,
+          "--network",
+          "none",
+          // root without DAC override: only DAC_READ_SEARCH, so a dir the PR made unreadable is still counted.
+          "--user",
+          "0:0",
+          "--cap-add",
+          "DAC_READ_SEARCH",
+          "--read-only",
+          ...workRo,
+          s.image,
+          ...inContainerLimit(PROBE_TIMEOUT_MS, ["du", "-sxk", WORK])
+        ], { timeoutMs: PROBE_TIMEOUT_MS + 2 * IN_CONTAINER_GRACE_S * 1e3 }).catch(() => null);
+        const kb = du?.status === 0 ? Number(/^(\d+)\s+\/work\s*$/m.exec(du.tail)?.[1]) : NaN;
+        if (!stopped && Number.isFinite(kb) && kb * 1024 > diskLimit) {
+          over = true;
+          await deps.exec(bin, ["kill", container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
+          await deps.exec(bin, ["rm", "-f", container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
+          return;
+        }
+        if (!stopped) timer = setTimeout(tick, deps.diskWatchMs ?? DISK_WATCH_MS);
+      })();
+    };
+    timer = setTimeout(tick, deps.diskWatchMs ?? DISK_WATCH_MS);
+    try {
+      const r = await run3();
+      return over ? { ...r, overDisk: true } : r;
+    } finally {
+      stopped = true;
+      clearTimeout(timer);
+      await inflight;
+    }
+  };
+  const overDisk = (what, r) => ran({ status: 1, output: tail2(`${r.tail.trim()}
+${what} in the gate container used more than factory.run.sandbox.container.diskLimit (${s.diskLimit}) and was stopped`), timedOut: false });
   try {
     const made = await deps.exec(bin, ["volume", "create", ...labels, volume], { timeoutMs: PROBE_TIMEOUT_MS });
     if (made.status !== 0) return unavailable(`${bin} could not create the gate volume (${firstLine(made.tail) || `exit ${made.status}`}); check the runtime's disk, ${switchBack}`);
     volumeMade = true;
     if (cache) {
-      const c = await deps.exec(bin, ["volume", "create", "--label", `${GATE_LABEL}=1`, "--label", "omg.cache=npm", cache], { timeoutMs: PROBE_TIMEOUT_MS });
-      if (c.status !== 0) return unavailable(`${bin} could not create the npm cache volume (${firstLine(c.tail) || `exit ${c.status}`}); ${switchBack}`);
+      const problem2 = await ensureCacheVolume(deps.exec, bin, cache);
+      if (problem2) return unavailable(`${problem2}; ${switchBack}`);
     }
     const cacheMount = cache ? ["--mount", mountArg(["type=volume", `source=${cache}`, `target=/cache`])] : [];
-    const copy = await deps.exec(bin, [
-      "run",
-      "--name",
-      `${name}-copy`,
+    const copy = await step(`${name}-copy`, [
       ...labels,
       ...harden,
       "--network",
@@ -51187,54 +51361,49 @@ async function runContainerGate(req, s, runLabel2, deps) {
       "--mount",
       mountArg(["type=bind", `source=${(0, import_node_path15.resolve)(req.cwd)}`, "target=/in", "readonly"]),
       ...work,
-      ...cacheMount,
-      s.image,
-      "sh",
-      "-c",
-      COPY_SCRIPT
-    ], { timeoutMs: COPY_TIMEOUT_MS, onTimeout: kill(`${name}-copy`) });
+      ...cacheMount
+    ], ["sh", "-c", COPY_SCRIPT], COPY_TIMEOUT_MS);
     if (copy.status !== 0) return noVerdict(`copying the checkout into the gate container failed (exit ${copy.status ?? "none"}${copy.timedOut ? ", timed out" : ""}); nothing is counted`);
     const runBase = [...labels, ...harden, "--user", CONTAINER_USER, "--read-only", "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=1g", ...work, "-w", SRC];
-    if (cache) {
+    const ownCache = { npm_config_cache: `${WORK}/home/.npm` };
+    if (plan.kind === "npm-ci") {
       const timeoutMs = s.installTimeoutMinutes * 6e4;
-      const inst = await deps.exec(bin, [
-        "run",
-        "--name",
-        `${name}-install`,
+      const net2 = await deps.exec(bin, ["network", "create", ...labels, ...bin === "docker" ? ["--driver", "bridge", "-o", "com.docker.network.bridge.enable_icc=false"] : ["-o", "isolate=true"], network], { timeoutMs: PROBE_TIMEOUT_MS });
+      if (net2.status !== 0) return unavailable(`${bin} could not create the gate install network (${firstLine(net2.tail) || `exit ${net2.status}`}); ${switchBack}`);
+      networkMade = true;
+      const fetchName = `${name}-install`;
+      const inst = await watched(fetchName, () => step(fetchName, [
         ...runBase,
+        "--network",
+        network,
         ...cacheMount,
-        ...containerEnvArgs({ npm_config_cache: "/cache/npm" }),
-        s.image,
-        "npm",
-        "ci"
-      ], { timeoutMs, onTimeout: kill(`${name}-install`) });
-      if (inst.timedOut) return { ran: true, status: 124, output: tail2(`${inst.tail.trim()}
-the dependency install (npm ci) in the gate container timed out after ${s.installTimeoutMinutes} min`), timedOut: true };
+        ...containerEnvArgs({ ...cache ? { npm_config_cache: "/cache/npm" } : ownCache, npm_config_registry: NPM_REGISTRY })
+      ], ["npm", "ci", "--ignore-scripts"], timeoutMs));
+      await removeNetwork();
+      if (inst.overDisk) return overDisk("the dependency install (npm ci)", inst);
+      if (inst.timedOut) return ran({ status: 124, output: tail2(`${inst.tail.trim()}
+the dependency install (npm ci) in the gate container timed out after ${s.installTimeoutMinutes} min`), timedOut: true });
       if (inst.status === null || inst.status === 125) return noVerdict(`the container runtime failed while the dependency install ran (exit ${inst.status ?? "none"}); nothing is counted`);
-      if (inst.status !== 0) return { ran: true, status: inst.status, output: tail2(`${inst.tail.trim()}
-the dependency install (npm ci) in the gate container failed (exit ${inst.status})`), timedOut: false };
+      if (inst.status !== 0) return ran({ status: inst.status, output: tail2(`${inst.tail.trim()}
+the dependency install (npm ci) in the gate container failed (exit ${inst.status})`), timedOut: false });
+      const scriptsName = `${name}-scripts`;
+      const scripts = await watched(scriptsName, () => step(scriptsName, [...runBase, "--network", "none", ...containerEnvArgs(ownCache)], ["sh", "-c", SCRIPTS_SCRIPT], timeoutMs));
+      if (scripts.overDisk) return overDisk("the install scripts", scripts);
+      if (scripts.timedOut) return ran({ status: 124, output: tail2(`${scripts.tail.trim()}
+the install scripts in the gate container timed out after ${s.installTimeoutMinutes} min`), timedOut: true });
+      if (scripts.status === null || scripts.status === 125) return noVerdict(`the container runtime failed while the install scripts ran (exit ${scripts.status ?? "none"}); nothing is counted`);
+      if (scripts.status !== 0) return ran({ status: scripts.status, output: tail2(`${scripts.tail.trim()}
+the install scripts (npm rebuild and the root's install scripts, no network) in the gate container failed (exit ${scripts.status})`), timedOut: false });
     }
     const argv = containerArgv(req);
-    const r = await deps.exec(bin, [
-      "run",
-      "--name",
-      name,
-      ...runBase,
-      "--network",
-      "none",
-      ...containerEnvArgs({ npm_config_cache: `${WORK}/home/.npm` }),
-      s.image,
-      ...argv
-    ], { timeoutMs: req.timeoutMs, onTimeout: kill(name) });
-    if (r.timedOut) return { ran: true, status: 124, output: tail2(`${r.tail.trim()}
-timed out after ${req.timeoutMs} ms`), timedOut: true };
+    const r = await watched(name, () => step(name, [...runBase, "--network", "none", ...containerEnvArgs(ownCache)], argv, req.timeoutMs));
+    if (r.overDisk) return overDisk("the command", r);
+    if (r.timedOut) return ran({ status: 124, output: tail2(`${r.tail.trim()}
+timed out after ${req.timeoutMs} ms`), timedOut: true });
     if (r.spawnError !== void 0 || r.status === null || r.status === 125) return noVerdict(`the container runtime failed while the command ran (exit ${r.status ?? "none"}); nothing is counted`);
-    const result = { ran: true, status: r.status, output: tail2(r.tail.trim()), timedOut: false };
+    const result = ran({ status: r.status, output: tail2(r.tail.trim()), timedOut: false });
     if (req.purpose !== "prepare" || r.status !== 0) return result;
-    const back = await deps.exec(bin, [
-      "run",
-      "--name",
-      `${name}-export`,
+    const back = await step(`${name}-export`, [
       ...labels,
       ...harden,
       "--network",
@@ -51242,19 +51411,8 @@ timed out after ${req.timeoutMs} ms`), timedOut: true };
       "--user",
       CONTAINER_USER,
       "--read-only",
-      "--mount",
-      mountArg(["type=volume", `source=${volume}`, `target=${WORK}`, "readonly"]),
-      s.image,
-      "tar",
-      "-C",
-      SRC,
-      "--exclude=.git",
-      "--exclude=node_modules",
-      "--format=posix",
-      "-cf",
-      "-",
-      "."
-    ], { timeoutMs: COPY_TIMEOUT_MS, full: COPY_BACK_MAX_BYTES, onTimeout: kill(`${name}-export`) });
+      ...workRo
+    ], ["tar", "-C", SRC, "--exclude=.git", "--exclude=node_modules", "--format=posix", "-cf", "-", "."], COPY_TIMEOUT_MS, COPY_BACK_MAX_BYTES);
     if (back.status !== 0 || !back.stdout) return noVerdict(`reading the prepare check's changes back from the gate container failed (${back.overflow ? "over the size bound" : `exit ${back.status ?? "none"}`}); nothing is counted`);
     const problem = applyCopyBack(req.cwd, back.stdout, deps.platform ?? process.platform);
     if (problem) return noVerdict(`the prepare check's changes cannot be copied back safely (${problem}); nothing is counted`);
@@ -51262,6 +51420,8 @@ timed out after ${req.timeoutMs} ms`), timedOut: true };
   } catch {
     return noVerdict("the gate container failed unexpectedly; nothing is counted");
   } finally {
+    for (const c of started) await deps.exec(bin, ["rm", "-f", c], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
+    await removeNetwork();
     if (volumeMade) {
       for (let i = 0; i < 3; i++) {
         const rm4 = await deps.exec(bin, ["volume", "rm", "-f", volume], { timeoutMs: PROBE_TIMEOUT_MS }).catch(() => null);
@@ -51270,6 +51430,26 @@ timed out after ${req.timeoutMs} ms`), timedOut: true };
       }
     }
   }
+}
+async function ensureCacheVolume(exec, bin, cache) {
+  const inspect = await exec(bin, ["volume", "inspect", "--format", "{{.Driver}}|{{json .Labels}}|{{json .Options}}", cache], { timeoutMs: PROBE_TIMEOUT_MS });
+  if (inspect.status === 0) {
+    const [driver, labelsJson, optionsJson] = inspect.tail.trim().split("\n")[0].split("|");
+    let labels;
+    let options;
+    try {
+      labels = JSON.parse(labelsJson ?? "");
+      options = JSON.parse(optionsJson ?? "");
+    } catch {
+      return `the npm cache volume ${cache} cannot be inspected; remove it (${bin} volume rm ${cache})`;
+    }
+    const l = labels ?? {};
+    const noOptions = options === null || typeof options === "object" && Object.keys(options).length === 0;
+    if (driver !== "local" || l[CACHE_LABEL] !== "npm" || l[GATE_LABEL] !== "1" || !noOptions) return `a volume named ${cache} exists that the factory did not make (driver, labels or options differ); remove or rename it`;
+    return null;
+  }
+  const c = await exec(bin, ["volume", "create", "--label", `${GATE_LABEL}=1`, "--label", `${CACHE_LABEL}=npm`, cache], { timeoutMs: PROBE_TIMEOUT_MS });
+  return c.status === 0 ? null : `${bin} could not create the npm cache volume (${firstLine(c.tail) || `exit ${c.status}`})`;
 }
 function readTar(buf, maxEntries = COPY_BACK_MAX_ENTRIES) {
   const entries = [];
@@ -51344,30 +51524,63 @@ function parsePax(data) {
   }
   return out;
 }
+function foldPath(p, platform) {
+  return foldsCase(platform) ? dropIgnorable(p.normalize("NFC")).toLowerCase() : p;
+}
+function isName(component, name, platform) {
+  if (!foldsCase(platform)) return component === name;
+  const c = dropIgnorable(component.normalize("NFC"));
+  return c.toLowerCase() === name || c.toUpperCase() === name.toUpperCase() || c.normalize("NFKC").toLowerCase() === name;
+}
 function safeRelPath(raw, platform) {
   const p = raw.replace(/^(?:\.\/)+/, "").replace(/\/+$/, "");
   if (p === "" || p === ".") return "";
   if (p.startsWith("/") || p.includes("\0") || p.includes("\\")) return null;
   const parts = p.split("/");
   if (parts.some((s) => s === "" || s === "." || s === "..")) return null;
-  if (parts.some((s) => s === ".git" || s === "node_modules")) return null;
-  if (platform === "win32" && parts.some((s) => /[<>:"|?*\x00-\x1f]/.test(s) || /[. ]$/.test(s) || /^(?:con|prn|aux|nul|com\d|lpt\d)(?:\..*)?$/i.test(s))) return null;
+  if (parts.some((s) => isName(s, ".git", platform) || isName(s, "node_modules", platform))) return null;
+  if (platform === "win32" && parts.some((s) => /[<>:"|?*\x00-\x1f]/.test(s) || /[. ]$/.test(s) || /~\d/.test(s) || /^(?:con|prn|aux|nul|com\d|lpt\d|conin\$|conout\$)(?:\..*)?$/i.test(s))) return null;
   return p;
 }
-function hostTree(root) {
+function hostTree(root, platform) {
   const out = /* @__PURE__ */ new Map();
   const walk = (dir, rel) => {
     for (const name of (0, import_node_fs14.readdirSync)(dir)) {
-      if (name === ".git" || name === "node_modules") continue;
+      if (isName(name, ".git", platform) || isName(name, "node_modules", platform)) continue;
       const r = rel ? `${rel}/${name}` : name;
       const st = (0, import_node_fs14.lstatSync)((0, import_node_path15.join)(dir, name));
-      const kind = st.isSymbolicLink() ? "symlink" : st.isDirectory() ? "dir" : st.isFile() ? "file" : "other";
-      out.set(r, kind);
+      const kind = st.isSymbolicLink() ? "symlink" : st.isDirectory() ? "dir" : st.isFile() && st.nlink === 1 ? "file" : "other";
+      out.set(foldPath(r, platform), { rel: r, kind });
       if (kind === "dir") walk((0, import_node_path15.join)(dir, name), r);
     }
   };
   walk(root, "");
   return out;
+}
+function onDiskProblem(checkout, realRoot, rel, leaf) {
+  const parts = rel.split("/");
+  let deepest = checkout;
+  for (let i = 0; i < parts.length; i++) {
+    const path15 = (0, import_node_path15.join)(checkout, ...parts.slice(0, i + 1));
+    let st;
+    try {
+      st = (0, import_node_fs14.lstatSync)(path15);
+    } catch {
+      break;
+    }
+    if (st.isSymbolicLink()) return "a file would be written through a host link";
+    if (i < parts.length - 1 || leaf === "dir") {
+      if (!st.isDirectory()) return "a file would be written under a non-directory";
+      deepest = path15;
+    } else if (!st.isFile() || st.nlink !== 1) return "a file replaces a host directory, link or hard-linked file";
+  }
+  let real2;
+  try {
+    real2 = import_node_fs14.realpathSync.native(deepest);
+  } catch {
+    return "a parent directory could not be resolved";
+  }
+  return samePathOrUnder(real2, realRoot) ? null : "a file would be written outside the checkout";
 }
 function applyCopyBack(checkout, tar, platform) {
   let entries;
@@ -51377,8 +51590,10 @@ function applyCopyBack(checkout, tar, platform) {
     return "the tar stream is malformed or too large";
   }
   let host;
+  let realRoot;
   try {
-    host = hostTree(checkout);
+    host = hostTree(checkout, platform);
+    realRoot = import_node_fs14.realpathSync.native(checkout);
   } catch {
     return "the checkout could not be listed";
   }
@@ -51387,11 +51602,13 @@ function applyCopyBack(checkout, tar, platform) {
     const rel = safeRelPath(e.path, platform);
     if (rel === null) return "an entry has a path that cannot be written here";
     if (rel === "") continue;
-    want.set(rel, e);
+    const key = foldPath(rel, platform);
+    if (want.has(key)) return "two entries name the same file on this host";
+    want.set(key, { rel, e });
   }
   const writes = [];
-  for (const [rel, e] of want) {
-    const kind = host.get(rel);
+  for (const [key, { rel, e }] of want) {
+    const kind = host.get(key)?.kind;
     if (e.type === "dir") {
       if (kind !== void 0 && kind !== "dir") return "a directory replaces a host file or link";
       continue;
@@ -51401,31 +51618,56 @@ function applyCopyBack(checkout, tar, platform) {
       continue;
     }
     if (e.type !== "file") return "the check created a hardlink, device or other special file";
-    if (kind !== void 0 && kind !== "file") return "a file replaces a host directory or link";
+    if (kind !== void 0 && kind !== "file") return "a file replaces a host directory, link or hard-linked file";
     const parts = rel.split("/");
     for (let i = 1; i < parts.length; i++) {
-      const parent = host.get(parts.slice(0, i).join("/"));
+      const pkey = foldPath(parts.slice(0, i).join("/"), platform);
+      const parent = host.get(pkey)?.kind;
       if (parent !== void 0 && parent !== "dir") return "a file would be written through a host link";
-      const w = want.get(parts.slice(0, i).join("/"));
-      if (parent === void 0 && w && w.type !== "dir") return "a file would be written under a non-directory";
+      const w = want.get(pkey);
+      if (parent === void 0 && w && w.e.type !== "dir") return "a file would be written under a non-directory";
     }
+    const disk = onDiskProblem(checkout, realRoot, rel, "file");
+    if (disk) return disk;
     if (kind === "file") {
       const cur = (0, import_node_fs14.readFileSync)((0, import_node_path15.join)(checkout, ...parts));
       if (cur.equals(e.data)) continue;
     }
     writes.push({ rel, data: e.data, mode: e.mode });
   }
-  const removals = [...host].filter(([rel, kind]) => (kind === "file" || kind === "symlink") && !want.has(rel)).map(([rel]) => rel);
+  const removals = [...host].filter(([key, h]) => (h.kind === "file" || h.kind === "symlink") && !want.has(key)).map(([, h]) => h.rel);
+  for (const rel of removals) {
+    const parent = rel.split("/").slice(0, -1).join("/");
+    if (parent && onDiskProblem(checkout, realRoot, parent, "dir")) return "a file to remove lies under a host link";
+  }
   for (const { rel, data, mode } of writes) {
     const path15 = (0, import_node_path15.join)(checkout, ...rel.split("/"));
-    (0, import_node_fs14.mkdirSync)((0, import_node_path15.join)(checkout, ...rel.split("/").slice(0, -1)), { recursive: true });
-    (0, import_node_fs14.writeFileSync)(path15, data);
-    if (platform !== "win32") (0, import_node_fs14.chmodSync)(path15, mode & 73 ? 493 : 420);
+    const dir = (0, import_node_path15.dirname)(path15);
+    let tmp;
+    try {
+      (0, import_node_fs14.mkdirSync)(dir, { recursive: true });
+      if (!samePathOrUnder(import_node_fs14.realpathSync.native(dir), realRoot)) return "a file would be written outside the checkout; files before it were written";
+      tmp = (0, import_node_path15.join)(dir, `.omg-copy-back-${(0, import_node_crypto6.randomBytes)(6).toString("hex")}`);
+      (0, import_node_fs14.writeFileSync)(tmp, data, { flag: "wx" });
+      if (platform !== "win32") (0, import_node_fs14.chmodSync)(tmp, mode & 73 ? 493 : 420);
+      (0, import_node_fs14.renameSync)(tmp, path15);
+      tmp = void 0;
+    } catch {
+      if (tmp) try {
+        (0, import_node_fs14.unlinkSync)(tmp);
+      } catch {
+      }
+      return "writing a file back failed part-way; files before it were written";
+    }
   }
-  for (const rel of removals) (0, import_node_fs14.unlinkSync)((0, import_node_path15.join)(checkout, ...rel.split("/")));
+  try {
+    for (const rel of removals) (0, import_node_fs14.unlinkSync)((0, import_node_path15.join)(checkout, ...rel.split("/")));
+  } catch {
+    return "removing a file the check deleted failed part-way";
+  }
   return null;
 }
-var import_node_child_process5, import_node_crypto6, import_node_fs14, import_node_path15, GATE_CONTAINER_UNAVAILABLE_GATE, CONTAINER_INCOMPATIBLE_ADVICE, CONTAINER_NAME_PREFIX, RUN_LABEL2, GATE_LABEL, CONTAINER_PATH, CONTAINER_USER, WORK, SRC, PROBE_TIMEOUT_MS, PULL_TIMEOUT_MS, COPY_TIMEOUT_MS, KILL_TIMEOUT_MS, OUTPUT_TAIL_BYTES, COPY_BACK_MAX_BYTES, COPY_BACK_MAX_ENTRIES, defaultContainerExec, isNodeExe, COPY_SCRIPT, tail2, firstLine, lastLines;
+var import_node_child_process5, import_node_crypto6, import_node_fs14, import_node_path15, GATE_CONTAINER_UNAVAILABLE_GATE, CONTAINER_INCOMPATIBLE_ADVICE, CONTAINER_NAME_PREFIX, RUN_LABEL2, GATE_LABEL, CACHE_LABEL, CONTAINER_PATH, CONTAINER_USER, WORK, SRC, NPM_REGISTRY, REGISTRY_PREFIXES, PROBE_TIMEOUT_MS, PULL_TIMEOUT_MS, COPY_TIMEOUT_MS, KILL_TIMEOUT_MS, IN_CONTAINER_GRACE_S, DISK_WATCH_MS, OUTPUT_TAIL_BYTES, COPY_BACK_MAX_BYTES, COPY_BACK_MAX_ENTRIES, SCAN_MAX_ENTRIES, LOCKFILE_MAX_BYTES, defaultContainerExec, isNodeExe, COPY_SCRIPT, SCRIPTS_SCRIPT, tail2, firstLine, lastLines, IGNORABLE, dropIgnorable, foldsCase;
 var init_container_gate = __esm({
   "src/factory/run/container-gate.ts"() {
     "use strict";
@@ -51436,21 +51678,28 @@ var init_container_gate = __esm({
     init_sandbox_exec();
     init_state5();
     GATE_CONTAINER_UNAVAILABLE_GATE = "gate-container-unavailable";
-    CONTAINER_INCOMPATIBLE_ADVICE = 'Your gate fails in the gate container on the base: there it runs with no network, no git dir, as a non-root user on a read-only root (only /tmp, the checkout and HOME writable), with the dependencies npm ci installs from your lockfile. Make the gate work there (or pick another factory.run.sandbox.container.image), or set factory.run.sandbox.isolation "copilot" in your user config';
+    CONTAINER_INCOMPATIBLE_ADVICE = 'Your gate fails in the gate container on the base: there it runs with no network, no git dir, as a non-root user on a read-only root (only /tmp, the checkout and HOME writable), with the dependencies npm ci installs from your lockfile and their install scripts run without network. Make the gate work there (or pick another factory.run.sandbox.container.image), or set factory.run.sandbox.isolation "copilot" in your user config';
     CONTAINER_NAME_PREFIX = "omg-gate-";
     RUN_LABEL2 = "omg.run";
     GATE_LABEL = "omg.gate";
+    CACHE_LABEL = "omg.cache";
     CONTAINER_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
     CONTAINER_USER = "1000:1000";
     WORK = "/work";
     SRC = `${WORK}/src`;
+    NPM_REGISTRY = "https://registry.npmjs.org/";
+    REGISTRY_PREFIXES = [NPM_REGISTRY, "https://registry.yarnpkg.com/"];
     PROBE_TIMEOUT_MS = 2e4;
     PULL_TIMEOUT_MS = 15 * 6e4;
     COPY_TIMEOUT_MS = 10 * 6e4;
     KILL_TIMEOUT_MS = 3e4;
+    IN_CONTAINER_GRACE_S = 30;
+    DISK_WATCH_MS = 1e4;
     OUTPUT_TAIL_BYTES = 64 * 1024;
     COPY_BACK_MAX_BYTES = 256 * 1024 * 1024;
     COPY_BACK_MAX_ENTRIES = 1e5;
+    SCAN_MAX_ENTRIES = 2e5;
+    LOCKFILE_MAX_BYTES = 64 * 1024 * 1024;
     defaultContainerExec = (bin, args, o) => new Promise((done) => {
       let tail4 = Buffer.alloc(0);
       const out = [];
@@ -51514,12 +51763,23 @@ var init_container_gate = __esm({
       `chown -R ${CONTAINER_USER} ${WORK}`,
       'if [ -d /cache ]; then mkdir -p /cache/npm; [ "$(stat -c %u /cache/npm)" = 1000 ] || chown -R 1000:1000 /cache; fi'
     ].join("; ");
+    SCRIPTS_SCRIPT = [
+      "set -e",
+      "npm rebuild --foreground-scripts",
+      'for s in preinstall install postinstall prepublish preprepare prepare postprepare; do npm run --if-present --ignore-scripts "$s"; done'
+    ].join("; ");
     tail2 = (text3) => {
       const clean = redactGateOutput(text3);
       return clean.length > SANDBOX_OUTPUT_TAIL_CHARS ? clean.slice(-SANDBOX_OUTPUT_TAIL_CHARS) : clean;
     };
     firstLine = (text3) => text3.trim().split("\n")[0]?.trim().slice(0, 300) ?? "";
     lastLines = (text3) => text3.trim().split("\n").slice(-1).join("\n");
+    IGNORABLE = [[173, 173], [8203, 8207], [8234, 8238], [8288, 8292], [65279, 65279]];
+    dropIgnorable = (s) => [...s].filter((ch) => {
+      const c = ch.codePointAt(0);
+      return !IGNORABLE.some(([a, b]) => c >= a && c <= b);
+    }).join("");
+    foldsCase = (platform) => platform === "win32" || platform === "darwin";
   }
 });
 
@@ -56206,6 +56466,8 @@ var init_engine = __esm({
       gatesAllowed;
       /** factory.run.sandbox.gates, resolved once per trusted base commit. */
       gatesModeCache;
+      /** The gate image's id (`sha256:...`) the last container run reported: base calibrations are keyed on it, not on the tag (L2, review-499). */
+      containerImageId;
       /** The one-per-run warning that the sandbox on this host cannot deny paths was given. */
       warnedCredentialFilesReadable = false;
       /** Calibrations re-run in this invocation (a failing one is retried once per invocation). */
@@ -56565,7 +56827,12 @@ var init_engine = __esm({
       sandboxRun(req) {
         const p = this.privateRun();
         const container = this.gatesModeCache?.container;
-        return this.o.gateSandbox({ ...req, nodeModulesTarget: (0, import_path115.join)(this.o.root, "node_modules"), ...p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}, ...container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {} });
+        const r = this.o.gateSandbox({ ...req, nodeModulesTarget: (0, import_path115.join)(this.o.root, "node_modules"), ...p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}, ...container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {} });
+        if (!container) return r;
+        return r.then((out) => {
+          if (out.ran && out.imageId) this.containerImageId = out.imageId;
+          return out;
+        });
       }
       /**
        * Why `<checkout>/node_modules` must not be granted: a link in the
@@ -58188,7 +58455,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [head], ...gitLinks ? { gitLinks } : {} });
           forgetWorktreeGitLinks(path15);
         } catch (error2) {
-          linkNodeModules(this.o.root, path15, this.o.warn);
+          if (!this.gatesModeCache?.container) linkNodeModules(this.o.root, path15, this.o.warn);
           throw new FactoryStepError(`could not discard the engine's prepare checkout ${path15}: ${errText6(error2)}`);
         }
         this.save((x) => {
@@ -58235,7 +58502,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           unlinkNodeModules(this.o.root, path15);
           removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [...new Set(contained)] });
         } catch (error2) {
-          linkNodeModules(this.o.root, path15, this.o.warn);
+          if (!this.gatesModeCache?.container) linkNodeModules(this.o.root, path15, this.o.warn);
           throw new FactoryStepError(`could not discard the engine's prepare checkout ${path15}, which an older release made: ${errText6(error2)}. ${this.freshCheckoutRecovery()}`);
         }
         this.save((x) => {
@@ -58381,7 +58648,9 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
             this.gate(install.name, install.reason, install.detail);
             return;
           }
-        } else linkNodeModules(this.o.root, path15, this.o.warn);
+        } else if (!this.gatesSandbox(this.gateConfig(view)).container) {
+          linkNodeModules(this.o.root, path15, this.o.warn);
+        }
         const gitLink = checkoutGitLink(path15);
         if (!gitLink.gitDir) throw new FactoryStepError(`the new prepare checkout ${path15} has no gitfile naming its git dir (${gitLink.hash})`);
         if (!samePath2(gitLink.gitDir, recorded.adminDir)) throw new FactoryStepError(`the new prepare checkout ${path15} names the git dir ${gitLink.gitDir}, not the admin dir ${recorded.adminDir} its git links were recorded with`);
@@ -58471,6 +58740,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           const isolation = resolveGateIsolation({ user, base });
           if (isolation.ignoredBase.length > 0) this.o.warn?.(`omg factory run: ignoring ${isolation.ignoredBase.join(" and ")} in the base .copilot/omg.jsonc: where the PR's code runs is set in your user config only`);
           resolved = { ...resolveGatesSandboxMode({ user, base, env: process.env }), requireDeniedPaths: resolveRequireDeniedPaths({ user, base }).require, ...isolation.container ? { container: isolation.container } : {} };
+          if (resolved.container && resolved.mode === "ack") resolved = { ...resolved, mode: "enforced", source: `${resolved.source}; isolation "container" runs it in the gate container` };
         } catch (error2) {
           throw new FactoryStepError(`factory.run.sandbox: ${errText6(error2)}`);
         }
@@ -58637,7 +58907,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
        */
       async calibrateGate(c, baseSha, commonGitDir, timeoutMs, what, head) {
         const container = this.gatesModeCache?.container;
-        const key = (0, import_crypto29.createHash)("sha256").update(`${baseSha}\0${JSON.stringify(c.argv)}${container ? `\0container\0${container.runtime}\0${container.image}` : ""}`).digest("hex");
+        const key = (0, import_crypto29.createHash)("sha256").update(`${baseSha}\0${JSON.stringify(c.argv)}${container ? `\0container\0${container.runtime}\0${this.containerImageId ?? container.image}` : ""}`).digest("hex");
         let cal = this.state.gateCalibration?.[key];
         if (!cal || !cal.ok && !this.recalibrated.has(key)) {
           this.recalibrated.add(key);
@@ -58671,7 +58941,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           const env2 = { ...process.env, GIT_INDEX_FILE: index, GIT_NO_REPLACE_OBJECTS: "1" };
           runHostGit(this.o.root, ["read-tree", baseSha], void 0, env2);
           runHostGit(this.o.root, ["checkout-index", "-a", "-f", `--prefix=${dir.replace(/\\/g, "/")}/`], void 0, env2);
-          linkNodeModules(this.o.root, dir, this.o.warn);
+          if (!this.gatesModeCache?.container) linkNodeModules(this.o.root, dir, this.o.warn);
           const r = await this.sandboxRun({ purpose: "calibrate", argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {} });
           if (!r.ran) return { notStarted: r.reason };
           const tail4 = r.output.trim().slice(-2e3);
