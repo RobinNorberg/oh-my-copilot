@@ -40242,6 +40242,34 @@ var init_governor = __esm({
   }
 });
 
+// src/forge/github/gh.ts
+function ghRun(exec, args, cwd) {
+  const res = exec("gh", args, { cwd });
+  if (res.status !== 0) throw new GhCommandError(`gh ${args.join(" ")} failed (exit ${res.status}): ${res.stderr.trim().split("\n")[0]}`);
+  return res.stdout;
+}
+function ghJson(exec, args, cwd) {
+  const out = ghRun(exec, args, cwd);
+  try {
+    return JSON.parse(out);
+  } catch {
+    throw new GhCommandError(`gh ${args.join(" ")} returned no JSON`);
+  }
+}
+var GhCommandError, ghRepoArg;
+var init_gh = __esm({
+  "src/forge/github/gh.ts"() {
+    "use strict";
+    GhCommandError = class extends Error {
+      constructor(message) {
+        super(message);
+        this.name = "GhCommandError";
+      }
+    };
+    ghRepoArg = (repo) => `${repo.host}/${repo.owner}/${repo.name}`;
+  }
+});
+
 // src/forge/github/checks.ts
 function ghPrChecks(exec, pr, cwd) {
   const res = exec("gh", ["pr", "checks", String(pr), "--json", CHECK_FIELDS], { cwd });
@@ -40294,6 +40322,22 @@ function requiredChecksArgs(repoArg, base) {
   if (!host) throw new Error(`not a GitHub repository argument: ${repoArg}`);
   const b = encodeURIComponent(base);
   return [apiGet(host, `repos/${owner}/${name}/branches/${b}`), apiGet(host, `repos/${owner}/${name}/rules/branches/${b}?per_page=100&page=1`)];
+}
+function ghBranchTip(exec, repoArg, base, cwd) {
+  const [args] = requiredChecksArgs(repoArg, base);
+  const res = exec("gh", args, { cwd });
+  let v;
+  try {
+    v = JSON.parse(res.stdout);
+  } catch {
+    v = void 0;
+  }
+  const sha3 = typeof v === "object" && v !== null && typeof v.commit === "object" && v.commit !== null ? v.commit.sha : void 0;
+  if (res.status !== 0 || v?.name !== base || typeof sha3 !== "string" || !/^[0-9a-f]{40}$/.test(sha3)) {
+    const why = res.status !== 0 ? `exit ${res.status}: ${res.stderr.trim().split("\n")[0]}` : "no branch of that name with a commit sha";
+    throw new GhCommandError(`gh api ${args[5]} did not return ${base}'s tip (${why}); refusing (fail closed)`);
+  }
+  return sha3;
 }
 function gateReadArgs(repoArg, sha3, what) {
   const [host, owner, name] = repoParts(repoArg) ?? [];
@@ -40408,6 +40452,7 @@ var init_checks = __esm({
   "src/forge/github/checks.ts"() {
     "use strict";
     init_gates();
+    init_gh();
     SEGMENT = /^[A-Za-z0-9_.-]+$/;
     HOST = /^[a-z0-9.-]+$/i;
     apiGet = (host, path15) => ["api", "--hostname", host, "--method", "GET", path15];
@@ -43208,34 +43253,6 @@ var init_body_file = __esm({
     import_fs67 = require("fs");
     import_path84 = require("path");
     MAX_TRACKER_BODY_CHARS = 65536;
-  }
-});
-
-// src/forge/github/gh.ts
-function ghRun(exec, args, cwd) {
-  const res = exec("gh", args, { cwd });
-  if (res.status !== 0) throw new GhCommandError(`gh ${args.join(" ")} failed (exit ${res.status}): ${res.stderr.trim().split("\n")[0]}`);
-  return res.stdout;
-}
-function ghJson(exec, args, cwd) {
-  const out = ghRun(exec, args, cwd);
-  try {
-    return JSON.parse(out);
-  } catch {
-    throw new GhCommandError(`gh ${args.join(" ")} returned no JSON`);
-  }
-}
-var GhCommandError, ghRepoArg;
-var init_gh = __esm({
-  "src/forge/github/gh.ts"() {
-    "use strict";
-    GhCommandError = class extends Error {
-      constructor(message) {
-        super(message);
-        this.name = "GhCommandError";
-      }
-    };
-    ghRepoArg = (repo) => `${repo.host}/${repo.owner}/${repo.name}`;
   }
 });
 
@@ -59774,7 +59791,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         return this.forge?.kind === "local" ? this.importReady(() => this.prView(pr)) : this.prView(pr);
       }
       prView(pr) {
-        if (!this.forge) return this.gh((exec, cwd) => ghMergeView(exec, pr, cwd));
+        if (!this.forge) return this.liveBase(this.gh((exec, cwd) => ghMergeView(exec, pr, cwd)));
         if (this.forge.kind !== "local") {
           const v2 = this.forge.reviews.viewPr(pr);
           return { number: v2.number, state: v2.state, isDraft: v2.isDraft, baseRefName: v2.baseRefName, baseRefOid: v2.baseRefOid, headRefOid: v2.headRefOid };
@@ -59794,6 +59811,19 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         if (v.baseRefOid !== sealed) throw new MirrorBaseMovedError(`the local forge mirror's ${this.state.base} moved to ${v.baseRefOid.slice(0, 12)} while the PR was read; the engine synced ${sealed.slice(0, 12)}. Check what wrote the mirror ${this.o.forge.config.repo.url}, then rerun ${this.resume}`);
         return { number: v.number, state: v.state, isDraft: v.isDraft, baseRefName: v.baseRefName, baseRefOid: sealed, headRefOid: v.headRefOid };
       }
+      /**
+       * GitHub: an open PR's base sha is its base branch's live tip (ghBranchTip), not the PR's baseRefOid, which
+       * stays at the base of the PR's last update after another merge into the base. Prepare merges this tip, the
+       * trusted config is read at it after the fetched ref is checked against it, and the merge rule's diffs and
+       * housekeeping checks see the base the head contains. A failed read fails closed; a closed, merged or
+       * retargeted PR keeps its view (prGone stops or parks before any base is used).
+       */
+      liveBase(view) {
+        if (view.state !== "OPEN" || view.baseRefName !== this.state.base) return view;
+        const repo = this.githubReadContext()?.repo;
+        if (!repo) throw new FactoryStepError(`the run's GitHub repository is not known, so the live tip of ${this.state.base} cannot be read for PR #${view.number}; refusing (fail closed)`);
+        return { ...view, baseRefOid: this.gh((exec, cwd) => ghBranchTip(exec, repo, view.baseRefName, cwd)) };
+      }
       /** The PR is not open, or targets another base: true when the run moved (merged) or parked. */
       prGone(view) {
         if (view.state === "MERGED") {
@@ -59811,7 +59841,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         return false;
       }
       /**
-       * Ship's gate config at GitHub's base sha, loaded once per base sha. When
+       * Ship's gate config at the view's base sha (on GitHub the base branch's live tip, liveBase), loaded once per base sha. When
        * its fetch moved origin/<base>, the recheck baseline follows.
        */
       gateConfig(view) {
