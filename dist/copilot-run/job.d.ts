@@ -240,6 +240,8 @@ export type CopilotRunSnapshot = {
     }>;
     notes?: string[];
     eventsPath: string;
+    /** When the session last emitted an event (a tool call, a message, usage); null before the first one. Factory lanes stall on it. */
+    lastEventAt?: string | null;
     /**
      * The copilot runtime child once it started: its pid and start identity
      * (null when it could not be read). A caller that outlives a crash of this

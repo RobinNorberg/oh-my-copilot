@@ -57,7 +57,8 @@ export function healRunKey(sig8: string): FactoryRunKey {
 
 /** Every lane kind except review is a write lane. Each but coding-agent is also the phase that runs it; a coding-agent lane runs in the implement phase. */
 export type FactoryLaneKind = 'implement' | 'review' | 'fix' | 'conflict-fix' | 'ci-fix' | 'coding-agent';
-export type FactoryLaneStatus = 'running' | 'completed' | 'failed' | 'lost' | 'cancelled';
+/** `stalled`: the engine cancelled a lane whose session went quiet past factory.run.laneIdleMinutes (a failed lane). */
+export type FactoryLaneStatus = 'running' | 'completed' | 'failed' | 'stalled' | 'lost' | 'cancelled';
 export type FactoryLaneVerdict = 'approve' | 'changes-requested' | 'invalid';
 
 export interface FactoryLaneRecord {
@@ -95,6 +96,8 @@ export interface FactoryLaneRecord {
    * other paths): run clean / reset read the note.
    */
   stopUnconfirmed?: boolean;
+  /** The session's last event the engine saw (ISO, refreshed at most once a minute); status and park text name it. */
+  lastEventAt?: string;
   startedAt: string;
   endedAt?: string;
 }

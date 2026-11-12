@@ -4,6 +4,11 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Stalled factory lanes end on their own.** A lane whose Copilot session sends no event for `factory.run.laneIdleMinutes` (default 15) is cancelled and recorded as `stalled`. Nothing it did is pushed, and it gets the normal fresh retry. Park text and `omg factory run status` name the lane and its last event time, and the progress log's heartbeat shows it too. The lowest value is 1 minute. A lane that finishes just before its cancel, with a new event, counts as a normal completion. A long quiet tool call or host sleep can still stall a healthy lane; raise the limit in your user config if that happens.
+- **Wait in the foreground.** The executor agent, the factory implement, fix and CI-fix lane prompts, and the `babysit`, `fix-ci`, `ralph` and `ralph-experiment` skills now say: wait for CI or tests in the foreground (`gh pr checks <N> --watch`, or read the job's output file), never idle on a background notification.
+
 ### Changed
 
 - **Windows: checks that use git clone, fetch or push no longer park the factory.** In the Copilot OS sandbox on Windows these cannot run (Git for Windows' `sh.exe` exits `0xC0000142` there). When a check fails on the base for that reason, the engine confirms the cause, then runs the check in the gate container (an image with git). It runs the check without a sandbox when no container runtime works, or when the base fails in the container too. A plain failure counts only when the base passes plainly. A base that fails in the container is remembered per image id, so later runs skip the container. Each such run warns and leaves a history note and a PR note. A run with a plain check is never auto-merged. Set `factory.run.sandbox.windowsGitTransport: "strict"` in your user config to keep the old park; an unreadable user config keeps it too. See "Known gap: git transport in the Windows sandbox" in docs/REFERENCE.md.

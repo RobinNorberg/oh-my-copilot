@@ -102,7 +102,8 @@ are in scope.
    evidence.
 
 Poll with `gh pr checks --watch` or a sleep loop at a stated interval; state
-the interval. Stop when the PR is merge-ready, merged, closed, or the user
+the interval. Wait in the foreground (`gh pr checks <N> --watch`); never
+idle on a background notification. Stop when the PR is merge-ready, merged, closed, or the user
 says stop, and say which.
 
 ## The verdict policy

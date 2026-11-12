@@ -46,6 +46,8 @@ describe('CopilotLaneBackend', () => {
         expect(result.logsUrl).toMatch(/events\.jsonl$/);
         expect(result.pr).toBeNull();
         expect(result.error).toBeNull();
+        // The session's last event time: the engine's no-progress timeout reads it.
+        expect(Number.isNaN(Date.parse(result.lastEventAt ?? ''))).toBe(false);
         // A lane session never gets the env opt-in and never runs the blocking Stop hooks.
         const env = calls.connections[0].env;
         expect(env.OMG_COPILOT_RUN_ALLOW).toBeUndefined();
