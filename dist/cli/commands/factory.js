@@ -54,6 +54,7 @@ import { resolveHealConfig } from '../../factory/heal/config.js';
 import { defaultLedgerDir, emptyHooksDir } from '../../factory/run/ledger.js';
 import { listenForgeRefusal } from '../../factory/setup/detect.js';
 import { factorySetupCommand } from './factory-setup.js';
+import { factoryBenchCommand } from './factory-bench.js';
 import { factoryBoardCommand } from './factory-board.js';
 import { factoryPrCommand } from './factory-pr.js';
 import { factoryPollCommand } from './factory-poll.js';
@@ -1032,6 +1033,7 @@ export function factoryCommand() {
         forge: defaultFactoryRunDeps.forge,
     }));
     cmd.addCommand(factorySetupCommand());
+    cmd.addCommand(factoryBenchCommand());
     cmd
         .command('listen')
         .description('Run the intake listener daemon: HMAC-verified webhook events -> intake label gate -> headless harbor sessions')
