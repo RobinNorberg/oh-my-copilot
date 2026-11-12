@@ -129294,7 +129294,8 @@ var init_private_run = __esm({
         if ((0, import_fs163.existsSync)(path30)) {
           try {
             unlinkNodeModules(this.root, path30);
-          } catch {
+          } catch (e) {
+            this.warn(`omg factory run: the node_modules links in ${path30} could not be unlinked: ${e instanceof Error ? e.message : String(e)}`);
           }
           removeRunDir(path30, this.layout.work);
         }
