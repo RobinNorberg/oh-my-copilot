@@ -304,6 +304,7 @@ export interface FactoryRunState {
     gateCalibration?: Record<string, {
         ok: boolean;
         tail?: string;
+        gitTransport?: true;
     }>;
     /** The Copilot coding agent session of an issue run whose implementer is the agent (coding-agent-lane.ts); sealed, shape-checked on load. */
     codingAgent?: CodingAgentRunRecord;

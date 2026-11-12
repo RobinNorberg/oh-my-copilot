@@ -153,6 +153,15 @@ export interface FactoryEngineOptions {
     gateSandbox?: SandboxRunner;
     /** The trusted user config factory.run.sandbox.gates is read from (default: userConfigLayers().trustedUser); tests pass one. */
     gateSandboxUserConfig?: unknown;
+    /**
+     * The host the Windows git-transport fallback is decided for: its platform
+     * and Git for Windows' sh.exe the probe starts (default process.platform
+     * and gitForWindowsShell); tests pass one.
+     */
+    gitTransportHost?: {
+        platform: NodeJS.Platform;
+        shell: () => string | null;
+    };
     /** The trusted user config factory.merge.auto is read from (default: userConfigLayers().trustedUser); tests pass one. */
     autoMergeUserConfig?: unknown;
     now?: () => number;
@@ -307,6 +316,19 @@ export declare function ciFailureTail(failure: FactoryCiFailure): {
 export declare function nodeModulesWriteDenied(tail: string): string | undefined;
 /** The advice when the base's gate runs git's own transport, which cannot run in the Copilot sandbox on Windows. */
 export declare const GIT_TRANSPORT_SANDBOX_ADVICE = "Your gate runs git clone, fetch or push (also to a local path or a temp repository), which cannot run in the OS sandbox on Windows: git starts that transport through Git for Windows' sh.exe, and no MSYS2 program starts in the sandbox; the sandbox has no network either. Read-only git (rev-parse, ls-files, log) and git init, add and commit work. Make those tests skip the transport, run them outside prepare, or set factory.run.sandbox.isolation \"container\" (with an image that has git) in your user config";
+/** What git prints when its transport process (sh.exe running git-receive-pack / git-upload-pack) died. */
+export declare const GIT_TRANSPORT_FAILURE = "Could not read from remote repository";
+/**
+ * STATUS_DLL_INIT_FAILED (0xC0000142) as an exit status, unsigned and signed:
+ * an MSYS2 program in the Copilot sandbox on Windows. msys-2.0.dll's start
+ * makes a directory object under \BaseNamedObjects, which the sandbox's
+ * low-integrity token may not create (live 2026-11-12, Copilot CLI 1.0.105,
+ * Git for Windows 2.51.2: also with every path readable and with a copy of
+ * the runtime at another path). No filesystem grant or env var changes it.
+ */
+export declare const MSYS_DLL_INIT_FAILED: readonly number[];
+/** A base calibration's output that names git's failed transport, on Windows (the OS sandbox only). */
+export declare const windowsGitTransportFailure: (output: string | undefined, platform?: NodeJS.Platform) => boolean;
 /** What the gate-sandbox-incompatible park of a failing base calibration tells the human to do. */
 export declare function sandboxIncompatibleAdvice(tail: string | undefined, platform?: NodeJS.Platform): string;
 /**

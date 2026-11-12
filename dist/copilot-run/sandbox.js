@@ -226,6 +226,29 @@ export function resolveGateIsolation(layers, nodeVersion = process.versions.node
     const container = { runtime, image, memory, cpus, pidsLimit: int('pidsLimit', 64, 65_536, 1_024), installTimeoutMinutes: int('installTimeoutMinutes', 1, 120, 15), diskLimit };
     return { isolation, ...(isolation === 'container' ? { container } : {}), ignoredBase };
 }
+/** The Windows git-transport fallback's image when the user names none: the full bookworm image, which has git. */
+export const defaultGitGateImage = (nodeVersion = process.versions.node) => `node:${nodeVersion.split('.')[0]}-bookworm`;
+/**
+ * `factory.run.sandbox.windowsGitTransport` from the USER config only (a
+ * base-committed value is ignored: `ignoredBase`), and the container the
+ * fallback tries first: the user's `factory.run.sandbox.container` settings,
+ * with an image that has git (defaultGitGateImage) unless the user names
+ * one. A malformed user value throws.
+ */
+export function resolveWindowsGitTransport(layers, nodeVersion = process.versions.node) {
+    const block = (config) => {
+        const raw = config?.factory?.run?.sandbox;
+        return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    };
+    const user = block(layers.user);
+    const v = user.windowsGitTransport;
+    if (v !== undefined && v !== 'fallback' && v !== 'strict')
+        throw new Error('user config: factory.run.sandbox.windowsGitTransport must be "fallback" or "strict"');
+    const own = user.container;
+    const container = resolveGateIsolation({ user: { factory: { run: { sandbox: { isolation: 'container', ...(own !== undefined ? { container: own } : {}) } } } }, base: undefined }, nodeVersion).container;
+    const named = typeof own === 'object' && own !== null && own.image !== undefined;
+    return { mode: v ?? 'fallback', container: named ? container : { ...container, image: defaultGitGateImage(nodeVersion) }, ignoredBase: block(layers.base).windowsGitTransport !== undefined };
+}
 export const REGISTRY_HOSTS = ['registry.npmjs.org', '*.npmjs.org'];
 /** `real` (a realpath) is the realpath of `want`; false when `want` cannot be resolved. Case-folded on win32. */
 function sameRealPath(real, want, platform) {

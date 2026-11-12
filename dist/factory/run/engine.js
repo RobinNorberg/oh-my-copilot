@@ -61,7 +61,7 @@ import { scrubShipEnv, TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT } from '../../ship/prepare.js';
 import { parseJsonc } from '../../utils/jsonc.js';
-import { nodeModulesTreeProblem, resolveGateIsolation, resolveGatesSandboxMode, resolveRequireDeniedPaths } from '../../copilot-run/sandbox.js';
+import { gitForWindowsShell, nodeModulesTreeProblem, resolveGateIsolation, resolveGatesSandboxMode, resolveRequireDeniedPaths, resolveWindowsGitTransport } from '../../copilot-run/sandbox.js';
 import { CONTAINER_INCOMPATIBLE_ADVICE, containerRunLabel, GATE_CONTAINER_UNAVAILABLE_GATE } from './container-gate.js';
 import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs } from './sandbox-exec.js';
 import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, runHostGitBuffer, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
@@ -329,11 +329,24 @@ export function nodeModulesWriteDenied(tail) {
 }
 /** The advice when the base's gate runs git's own transport, which cannot run in the Copilot sandbox on Windows. */
 export const GIT_TRANSPORT_SANDBOX_ADVICE = 'Your gate runs git clone, fetch or push (also to a local path or a temp repository), which cannot run in the OS sandbox on Windows: git starts that transport through Git for Windows\' sh.exe, and no MSYS2 program starts in the sandbox; the sandbox has no network either. Read-only git (rev-parse, ls-files, log) and git init, add and commit work. Make those tests skip the transport, run them outside prepare, or set factory.run.sandbox.isolation "container" (with an image that has git) in your user config';
+/** What git prints when its transport process (sh.exe running git-receive-pack / git-upload-pack) died. */
+export const GIT_TRANSPORT_FAILURE = 'Could not read from remote repository';
+/**
+ * STATUS_DLL_INIT_FAILED (0xC0000142) as an exit status, unsigned and signed:
+ * an MSYS2 program in the Copilot sandbox on Windows. msys-2.0.dll's start
+ * makes a directory object under \BaseNamedObjects, which the sandbox's
+ * low-integrity token may not create (live 2026-11-12, Copilot CLI 1.0.105,
+ * Git for Windows 2.51.2: also with every path readable and with a copy of
+ * the runtime at another path). No filesystem grant or env var changes it.
+ */
+export const MSYS_DLL_INIT_FAILED = [0xc0000142, 0xc0000142 - 2 ** 32];
+/** A base calibration's output that names git's failed transport, on Windows (the OS sandbox only). */
+export const windowsGitTransportFailure = (output, platform = process.platform) => platform === 'win32' && !!output?.includes(GIT_TRANSPORT_FAILURE);
 /** What the gate-sandbox-incompatible park of a failing base calibration tells the human to do. */
 export function sandboxIncompatibleAdvice(tail, platform = process.platform) {
     // git clone, fetch and push to a local path start git-upload-pack / git-receive-pack through Git for Windows' sh.exe,
     // and no MSYS2 program starts in the Copilot sandbox on Windows (exit 0xC0000142, live 2026-11-12); no network either.
-    if (platform === 'win32' && tail?.includes('Could not read from remote repository'))
+    if (windowsGitTransportFailure(tail, platform))
         return GIT_TRANSPORT_SANDBOX_ADVICE;
     const denied = tail ? nodeModulesWriteDenied(tail) : undefined;
     // A per-run dir is writable in the tree already: a denial there is not this case.
@@ -608,6 +621,8 @@ class FactoryEngine {
     gatesAllowed;
     /** factory.run.sandbox.gates, resolved once per trusted base commit. */
     gatesModeCache;
+    /** Whether MSYS2 (Git for Windows' sh.exe) cannot start in the OS sandbox: probed once per invocation, when first needed. */
+    msysProbe;
     /** The gate image's id (`sha256:...`) the last container run reported: base calibrations are keyed on it, not on the tag (L2, review-499). */
     containerImageId;
     /** The one-per-run warning that the sandbox on this host cannot deny paths was given. */
@@ -1037,12 +1052,13 @@ class FactoryEngine {
      * layout, your checkout (its budget ledger stays denied; L1) and the job
      * root under the run dir (L8).
      */
-    sandboxRun(req) {
+    sandboxRun(req, fallbackContainer) {
         const p = this.privateRun();
         // The nested workspace trees' targets the engine vouches for (review-501 M1): the PR-writable marker alone grants nothing.
         const nested = trustedNestedRels(this.o.root, req.cwd, this.baseWorkspaces()).map((rel) => join(this.o.root, ...rel.split('/'), 'node_modules'));
-        // isolation "container" (gatesSandbox, user config): the runner uses the container, labelled with this run.
-        const container = this.gatesModeCache?.container;
+        // isolation "container" (gatesSandbox, user config), or the Windows git-transport fallback's container: the runner
+        // uses the container, labelled with this run.
+        const container = this.gatesModeCache?.container ?? fallbackContainer;
         // review-499b N3: never the OS sandbox because gatesSandbox() was not resolved yet in this process.
         if (!container && this.containerIsolated())
             return Promise.reject(new FactoryStepError('factory.run.sandbox.isolation "container" is set in your user config, but the gate settings were not resolved before a gate command; nothing ran'));
@@ -1098,8 +1114,8 @@ class FactoryEngine {
      * git. The OS sandbox: `run` as it is (the prepare checkout's link to its
      * git dir works there, read-only).
      */
-    async withGitView(sha, what, run) {
-        if (!this.gatesModeCache?.container)
+    async withGitView(sha, what, run, inContainer = !!this.gatesModeCache?.container) {
+        if (!inContainer)
             return run({});
         const jobRoot = this.gateJobRoot();
         mkdirSync(jobRoot, { recursive: true });
@@ -3293,7 +3309,7 @@ class FactoryEngine {
                 this.gate(ran.park.name, ran.park.reason, ran.park.detail);
                 return;
             }
-            if (ran.modes.has('ack') || ran.modes.has('unsandboxed')) {
+            if (ran.modes.has('ack') || ran.modes.has('unsandboxed') || ran.modes.has('git-transport')) {
                 const mine = await this.importReady(() => this.userRepoProblems(userBefore, { name: `refs/remotes/${runRemote(s)}/${s.base}`, sha: view.baseRefOid }));
                 if (mine.length > 0) {
                     // As on the shared layout: your repository's changes are quarantined and hold (review-483 I.2).
@@ -3312,7 +3328,7 @@ class FactoryEngine {
         }
         const fetched = result.steps.some((st) => st.name === 'fetch' && st.status === 'ok');
         // From here the PR's diff (review, protected paths) is against the base prepare merged (on GitHub its live tip, liveBase).
-        const sandboxNote = ran.modes.size > 0 ? [{ at: this.iso(), from: s.phase, to: s.phase, note: `prepare checks on ${head.slice(0, 12)} ran ${[...ran.modes].map((m) => (m === 'enforced' ? 'in the OS sandbox' : m === 'enforced-readable' ? `in the OS sandbox (${CREDENTIAL_FILES_READABLE_NOTE})` : `unsandboxed (${m})`)).join(' and ')}` }] : [];
+        const sandboxNote = ran.modes.size > 0 ? [{ at: this.iso(), from: s.phase, to: s.phase, note: `prepare checks on ${head.slice(0, 12)} ran ${[...ran.modes].map((m) => (m === 'enforced' ? 'in the OS sandbox' : m === 'enforced-readable' ? `in the OS sandbox (${CREDENTIAL_FILES_READABLE_NOTE})` : m === 'git-transport-container' ? 'in the gate container (Windows git-transport fallback)' : `unsandboxed (${m})`)).join(' and ')}` }] : [];
         const sandboxed = ran.modes.has('enforced') || ran.modes.has('enforced-readable');
         this.save((x) => ({ ...x, checkoutHead, ...(sandboxed ? { sandboxedPrepareHead: checkoutHead } : {}), ...(fetched ? { baseSha: view.baseRefOid } : {}), history: [...x.history, ...sandboxNote] }));
         // The accepted head's code ran unsandboxed: publishPrepared carries the ack to the prepared head once it holds only the engine's own commits.
@@ -3379,7 +3395,11 @@ class FactoryEngine {
             const isolation = resolveGateIsolation({ user, base });
             if (isolation.ignoredBase.length > 0)
                 this.o.warn?.(`omg factory run: ignoring ${isolation.ignoredBase.join(' and ')} in the base .copilot/omg.jsonc: where the PR's code runs is set in your user config only`);
-            resolved = { ...resolveGatesSandboxMode({ user, base, env: process.env }), requireDeniedPaths: resolveRequireDeniedPaths({ user, base }).require, ...(isolation.container ? { container: isolation.container } : {}) };
+            // factory.run.sandbox.windowsGitTransport: the user config only, like isolation.
+            const transport = resolveWindowsGitTransport({ user, base });
+            if (transport.ignoredBase)
+                this.o.warn?.('omg factory run: ignoring factory.run.sandbox.windowsGitTransport in the base .copilot/omg.jsonc: whether the PR\'s code may run outside the OS sandbox is set in your user config only');
+            resolved = { ...resolveGatesSandboxMode({ user, base, env: process.env }), requireDeniedPaths: resolveRequireDeniedPaths({ user, base }).require, ...(isolation.container ? { container: isolation.container } : {}), gitTransport: { mode: transport.mode, container: transport.container } };
             // L3 (review-499): "ack" (or the kill switch) means the OS sandbox is not used; with the container the PR's code
             // still runs there, never plainly on your host after an ack.
             if (resolved.container && resolved.mode === 'ack')
@@ -3456,8 +3476,63 @@ class FactoryEngine {
         return `${what} on ${head.slice(0, 12)} did not run: factory.run.sandbox.isolation is "container" and the gate container is not available (${why}). The head is not judged: no pass, no FAILURE, no ci-fix lane, and it never falls back to the Copilot sandbox. Fix that, then rerun ${this.resume}`;
     }
     /** Where a sandboxed command runs, for parks and notes: the gate container (isolation "container") or the OS sandbox. */
-    sandboxName() {
-        return this.gatesModeCache?.container ? `the gate container (${this.gatesModeCache.container.runtime} ${this.gatesModeCache.container.image})` : 'the OS sandbox';
+    sandboxName(container = this.gatesModeCache?.container) {
+        return container ? `the gate container (${container.runtime} ${container.image})` : 'the OS sandbox';
+    }
+    get gatePlatform() {
+        return this.o.gitTransportHost?.platform ?? process.platform;
+    }
+    /**
+     * Whether Git for Windows' sh.exe fails to start in the OS sandbox with
+     * STATUS_DLL_INIT_FAILED: one turnless sandbox command in an empty dir,
+     * once per invocation. False when there is no Git for Windows shell or the
+     * probe gives no verdict, so the fallback never rests on a guess.
+     */
+    msysBlocked(commonGitDir) {
+        this.msysProbe ??= (async () => {
+            const sh = this.o.gitTransportHost ? this.o.gitTransportHost.shell() : gitForWindowsShell(process.env);
+            if (!sh || !existsSync(sh))
+                return false;
+            const jobRoot = this.gateJobRoot();
+            mkdirSync(jobRoot, { recursive: true });
+            const dir = mkdtempSync(join(jobRoot, 'msys-probe-'));
+            try {
+                const r = await this.sandboxRun({ purpose: 'calibrate', argv: [sh, '-c', 'exit 0'], exe: sh, args: ['-c', 'exit 0'], cwd: dir, commonGitDir, timeoutMs: 120_000 });
+                return r.ran && MSYS_DLL_INIT_FAILED.includes(r.status);
+            }
+            catch {
+                return false;
+            }
+            finally {
+                try {
+                    rmSync(dir, { recursive: true, force: true });
+                }
+                catch { /* best effort */ }
+            }
+        })();
+        return this.msysProbe;
+    }
+    /**
+     * The Windows git-transport fallback for a check whose base calibration
+     * failed in the OS sandbox with git's transport error (calibrateGate's
+     * `gitTransport`): the container to try first (factory.run.sandbox
+     * .container, an image with git), or null when the run keeps the park:
+     * factory.run.sandbox.windowsGitTransport "strict", or the probe does not
+     * show MSYS2 failing to start in the sandbox (the cause is another one).
+     */
+    async gitTransportFallback(commonGitDir) {
+        const settings = this.gatesModeCache?.gitTransport;
+        if (!settings || settings.mode === 'strict' || this.gatesModeCache?.container || this.gatePlatform !== 'win32')
+            return null;
+        return (await this.msysBlocked(commonGitDir)) ? settings.container : null;
+    }
+    /** The loud note of a check the Windows git-transport fallback runs outside the OS sandbox: a warning, a history note, one PR note per head. */
+    noteGitTransportFallback(head, what, how, container) {
+        const where = how === 'container' ? `in ${this.sandboxName(container)}` : 'WITHOUT any sandbox, as your user (no gate container could run it)';
+        const text = `${what} on ${head.slice(0, 12)} ran ${where}: its base fails in the OS sandbox on Windows because git clone, fetch and push need Git for Windows' sh.exe, which cannot start there (known gap; factory.run.sandbox.windowsGitTransport "strict" in your user config parks instead)`;
+        this.o.warn?.(`omg factory run: ${text}`);
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: text.slice(0, 400) }] }));
+        this.commentOnce('pr', `git-transport-${how}@${head.slice(0, 12)}`, 'sandbox', `**Sandbox: Windows git-transport fallback.** ${text}.\n`);
     }
     /** The park after the command ran in the sandbox without a verdict: no ack offer, no pass, no failure. `why` is fixed text (sandbox-exec.ts). */
     gateNoVerdictReason(head, what, why) {
@@ -3521,10 +3596,11 @@ class FactoryEngine {
         }));
         // One mechanism: the admin dir recorded at `worktree add` (recordWorktreeGitLinks), the same one host git reads through.
         this.checkoutGitPin = { workTree: path, gitDir: worktreeGitDirArgs(path)[1] };
+        // 'git-transport': the Windows git-transport fallback without a container (noted by the caller).
         const plain = async (how) => {
             if (how === 'unsandboxed')
                 this.noteUnsandboxedGates(head, label);
-            else
+            else if (how === 'ack')
                 ran.acked = true;
             ran.modes.add(how);
             // The orphans of an unsandboxed check (Windows does not reparent them) are recorded and killed after it, as the local gate's.
@@ -3584,6 +3660,34 @@ class FactoryEngine {
                 if (r.status === 0 && !r.timedOut)
                     return { status: 0, stdout: redactGateOutput(r.output), stderr: '' };
                 const park = await this.calibrateGate(c, at.baseSha, at.commonGitDir, PREPARE_CHECK_TIMEOUT_MS, label, head);
+                // The base cannot run in the OS sandbox on Windows (git transport): the gate container, else plainly, never a park by default.
+                const fallback = park?.gitTransport ? await this.gitTransportFallback(at.commonGitDir) : null;
+                if (fallback) {
+                    const fr = await this.withGitView(checkedOut, label, (view) => this.sandboxRun({ purpose: 'prepare', argv: c.argv, exe: c.exe, args: c.args, cwd: path, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...view }, fallback), true);
+                    const ft = tampered();
+                    if (ft)
+                        return ft;
+                    if (fr.ran) {
+                        this.noteGitTransportFallback(head, label, 'container', fallback);
+                        ran.modes.add('git-transport-container');
+                        if (fr.status === 0 && !fr.timedOut)
+                            return { status: 0, stdout: redactGateOutput(fr.output), stderr: '' };
+                        // A failure there counts only when the base passes in the same container; a base that fails there too
+                        // (the project cannot install or run in it) leaves the plain run.
+                        const cpark = await this.calibrateGate(c, at.baseSha, at.commonGitDir, PREPARE_CHECK_TIMEOUT_MS, label, head, fallback);
+                        if (!cpark)
+                            return { status: fr.timedOut ? 124 : fr.status, stdout: redactGateOutput(fr.output), stderr: '' };
+                        this.o.warn?.(`omg factory run: the Windows git-transport fallback cannot use the gate container for ${label}: it fails there on the base too`);
+                    }
+                    else if (fr.started) {
+                        return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoVerdictReason(head, label, fr.reason) });
+                    }
+                    else {
+                        this.o.warn?.(`omg factory run: the Windows git-transport fallback could not use the gate container: ${fr.reason}`);
+                    }
+                    this.noteGitTransportFallback(head, label, 'unsandboxed', fallback);
+                    return plain('git-transport');
+                }
                 if (park)
                     return stop(park);
                 return { status: r.timedOut ? 124 : r.status, stdout: redactGateOutput(r.output), stderr: '' };
@@ -3615,28 +3719,32 @@ class FactoryEngine {
      * retried once per invocation, after the human changed the config). Null
      * when the base passes (the failure is the PR's: a ci-fix lane may start),
      * else the gate-sandbox-incompatible park: the command fails in the sandbox
-     * on the base itself, or its calibration could not run.
+     * on the base itself, or its calibration could not run. `gitTransport`:
+     * the base failed in the OS sandbox with git's transport error on Windows
+     * (the caller decides on the fallback). `fallbackContainer`: calibrate in
+     * the Windows git-transport fallback's container instead.
      */
-    async calibrateGate(c, baseSha, commonGitDir, timeoutMs, what, head) {
+    async calibrateGate(c, baseSha, commonGitDir, timeoutMs, what, head, fallbackContainer) {
         // A calibration holds for the isolation it ran in: the gate container's (and its image, by id once a run reported it)
         // is keyed apart from the OS sandbox's.
-        const container = this.gatesModeCache?.container;
+        const container = this.gatesModeCache?.container ?? fallbackContainer;
         const key = createHash('sha256').update(`${baseSha}\0${JSON.stringify(c.argv)}${container ? `\0container\0${container.runtime}\0${this.containerImageId ?? container.image}` : ''}`).digest('hex');
         let cal = this.state.gateCalibration?.[key];
         if (!cal || (!cal.ok && !this.recalibrated.has(key))) {
             this.recalibrated.add(key);
-            const out = await this.runOnBase(c, baseSha, commonGitDir, timeoutMs);
+            const out = await this.runOnBase(c, baseSha, commonGitDir, timeoutMs, fallbackContainer);
             if ('notStarted' in out) {
-                return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${what} failed in ${this.sandboxName()} on ${head.slice(0, 12)}, and its calibration on the base ${baseSha.slice(0, 12)} could not run (${out.notStarted}); the failure is not counted (no ci-fix lane). Fix the cause, then rerun ${this.resume}. ${ACK_WARNING}` };
+                return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${what} failed in ${this.sandboxName(container)} on ${head.slice(0, 12)}, and its calibration on the base ${baseSha.slice(0, 12)} could not run (${out.notStarted}); the failure is not counted (no ci-fix lane). Fix the cause, then rerun ${this.resume}. ${ACK_WARNING}` };
             }
             cal = out;
-            this.save((x) => ({ ...x, gateCalibration: { ...(x.gateCalibration ?? {}), [key]: out }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `calibrated ${what.slice(0, 120)} in ${this.sandboxName()} on the base ${baseSha.slice(0, 12)}: ${out.ok ? 'passes' : 'fails'}` }] }));
+            this.save((x) => ({ ...x, gateCalibration: { ...(x.gateCalibration ?? {}), [key]: out }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `calibrated ${what.slice(0, 120)} in ${this.sandboxName(container)} on the base ${baseSha.slice(0, 12)}: ${out.ok ? 'passes' : 'fails'}` }] }));
         }
         if (cal.ok)
             return null;
         return {
             name: GATE_SANDBOX_INCOMPATIBLE_GATE,
-            reason: `${what} fails in ${this.sandboxName()} on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${this.gatesModeCache?.container ? CONTAINER_INCOMPATIBLE_ADVICE : sandboxIncompatibleAdvice(cal.tail)}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1_500)}` : ''}`,
+            reason: `${what} fails in ${this.sandboxName(container)} on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${container ? CONTAINER_INCOMPATIBLE_ADVICE : cal.gitTransport ? GIT_TRANSPORT_SANDBOX_ADVICE : sandboxIncompatibleAdvice(cal.tail)}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1_500)}` : ''}`,
+            ...(!container && cal.gitTransport ? { gitTransport: true } : {}),
         };
     }
     /**
@@ -3644,8 +3752,11 @@ class FactoryEngine {
      * read-tree` into a private index and `checkout-index --prefix` into a
      * fresh dir under the gate job root (no worktree, branch or ref is made),
      * the root's node_modules linked in, removed after (the link first).
+     * `gitTransport`: it failed in the OS sandbox on Windows with git's
+     * transport error anywhere in the output (the tail kept may not show it).
      */
-    async runOnBase(c, baseSha, commonGitDir, timeoutMs) {
+    async runOnBase(c, baseSha, commonGitDir, timeoutMs, fallbackContainer) {
+        const container = this.gatesModeCache?.container ?? fallbackContainer;
         if (!this.o.gateSandbox)
             return { notStarted: 'no OS sandbox runner was given to the engine' };
         if (!HEX40.test(baseSha))
@@ -3661,17 +3772,18 @@ class FactoryEngine {
             // The export has no git: a one-commit view of the base at <dir>/.git, removed with the dir (git-view.ts).
             const gitView = this.makeGitView(dir, baseSha, this.hostViewSource(), 'the base calibration');
             // isolation "container": the container installs its own; your node_modules is never linked in (C1, review-499).
-            if (!this.gatesModeCache?.container) {
+            if (!container) {
                 // A workspace layout the gate does not support (Yarn PnP, a nested git repository, over the bounds) parks here, named.
                 const layout = linkNodeModules(this.o.root, dir, this.o.warn, this.baseWorkspaces(baseSha));
                 if (layout)
                     return { notStarted: visibleLine(layout) };
             }
-            const r = await this.sandboxRun({ purpose: 'calibrate', argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...(this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {}), ...(gitView ? { gitView } : {}) });
+            const r = await this.sandboxRun({ purpose: 'calibrate', argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...(this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {}), ...(gitView ? { gitView } : {}) }, fallbackContainer);
             if (!r.ran)
                 return { notStarted: r.reason };
             const tail = r.output.trim().slice(-2_000);
-            return { ok: r.status === 0 && !r.timedOut, ...(tail ? { tail } : {}) };
+            const ok = r.status === 0 && !r.timedOut;
+            return { ok, ...(tail ? { tail } : {}), ...(!ok && !container && windowsGitTransportFailure(r.output, this.gatePlatform) ? { gitTransport: true } : {}) };
         }
         catch (error) {
             return { notStarted: errText(error).slice(0, 300) };
@@ -4117,6 +4229,50 @@ class FactoryEngine {
             : await this.calibrateGate({ argv: gate, exe: target.exe, args: target.args }, base, common, timeoutMinutes * 60_000, `the local gate \`${gate.join(' ')}\``, head);
         if (!park)
             return true;
+        // The base cannot run in the OS sandbox on Windows (git transport): the gate container, else plainly, never a park by default.
+        const fallback = 'gitTransport' in park && park.gitTransport ? await this.gitTransportFallback(common) : null;
+        if (fallback && base && !('missing' in target)) {
+            const what = `the local gate \`${gate.join(' ')}\``;
+            let fo = await runLocalGate({ ...input, mode: 'enforced', sandbox: { run: (req) => this.withGitView(() => head, 'the local gate', (view) => this.sandboxRun({ ...req, ...view }, fallback), true), commonGitDir: common, requireDeniedPaths: false } });
+            if (checkoutGitLink(checkout).hash !== linkBefore)
+                return this.gateTamperedByGate(head, checkout, stateDir);
+            if (!fo.started && fo.noVerdict) {
+                this.gate(GATE_NO_VERDICT_GATE, this.gateNoVerdictReason(head, what, fo.reason));
+                return false;
+            }
+            if (fo.started)
+                this.noteGitTransportFallback(head, what, 'container', fallback);
+            // A failure in the container counts only when the base passes in the same container; a base that fails there
+            // too (the project cannot install or run in it) leaves the plain run, as a container that does not start does.
+            const cpark = fo.started && fo.record.state === 'FAILURE'
+                ? await this.calibrateGate({ argv: gate, exe: target.exe, args: target.args }, base, common, timeoutMinutes * 60_000, what, head, fallback)
+                : null;
+            const how = fo.started && !cpark ? 'container' : 'unsandboxed';
+            if (how === 'unsandboxed') {
+                this.o.warn?.(`omg factory run: the Windows git-transport fallback ${fo.started ? `cannot use the gate container for ${what}: it fails there on the base too` : `could not use the gate container: ${fo.reason}`}`);
+                this.noteGitTransportFallback(head, what, 'unsandboxed', fallback);
+                fo = await runLocalGate({ ...input, mode: 'unsandboxed' });
+                if (checkoutGitLink(checkout).hash !== linkBefore)
+                    return this.gateTamperedByGate(head, checkout, stateDir);
+            }
+            if (!fo.started) {
+                this.gate('gates', `the local gate could not start: ${fo.reason}; fix factory.forge.local.gate, then rerun ${this.resume}`);
+                return false;
+            }
+            if (how === 'unsandboxed') {
+                const mine = await this.importReady(() => this.userRepoProblems(userBefore));
+                if (mine.length > 0) {
+                    const quarantined = this.userQuarantine(userBefore, 'lane-tampered', mine);
+                    this.gate('lane-tampered', `the local gate (the PR's own code) ran without the OS sandbox and changed your repository's git state, so its verdict is not used; inspect your repository, then rerun ${this.resume}: ${mine.slice(0, 5).join('; ')}${quarantined}`);
+                    return false;
+                }
+            }
+            if (await this.recheckFailed('after the local gate'))
+                return false;
+            const rec = fo.record;
+            this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `local gate ${rec.state} on ${head.slice(0, 12)} (exit ${rec.exitCode}, Windows git-transport fallback: ${how === 'container' ? this.sandboxName(fallback) : 'unsandboxed'})` }] }));
+            return true;
+        }
         // The FAILURE record would start a ci-fix lane on the next read: the head is judged again after the human's fix.
         rmSync(localCheckRecordPath(stateDir, this.o.root, head), { force: true });
         this.gate(park.name, park.reason);

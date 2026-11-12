@@ -316,8 +316,8 @@ function humanReviewShapeProblem(s) {
     const cal = s.gateCalibration;
     if (cal !== undefined && (typeof cal !== 'object' || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
         const e = v;
-        return HEX64.test(k) && typeof e === 'object' && e !== null && typeof e.ok === 'boolean' && (e.tail === undefined || isStr(e.tail))
-            && Object.keys(e).every((x) => x === 'ok' || x === 'tail');
+        return HEX64.test(k) && typeof e === 'object' && e !== null && typeof e.ok === 'boolean' && (e.tail === undefined || isStr(e.tail)) && (e.gitTransport === undefined || e.gitTransport === true)
+            && Object.keys(e).every((x) => x === 'ok' || x === 'tail' || x === 'gitTransport');
     })))
         return 'gateCalibration';
     const lanes = s.lanes;
