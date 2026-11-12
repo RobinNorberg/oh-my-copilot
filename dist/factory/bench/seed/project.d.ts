@@ -9,7 +9,7 @@
  * Bump BENCH_FIXTURE_VERSION on any change here or in issues.ts: results of
  * different fixture versions are not comparable (compare warns).
  */
-export declare const BENCH_FIXTURE_VERSION = 1;
+export declare const BENCH_FIXTURE_VERSION = 2;
 /** The integration branch of the fixture (a default ship.trustedBases entry). */
 export declare const BENCH_BASE = "main";
 /** The backlog label every bench item carries (factory.intake.source). */

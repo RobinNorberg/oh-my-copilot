@@ -61310,7 +61310,8 @@ if (problems.length > 0) process.exit(1);
 console.log('lint ok');
 `;
     BENCH_PROJECT_FILES = {
-      ".gitignore": "node_modules/\n.omg/\n",
+      // `node_modules` without a slash: the fixture's node_modules may be a symlink (init --node-modules), which `node_modules/` would not ignore.
+      ".gitignore": "node_modules\n.omg/\n",
       ".copilot/omg.jsonc": BENCH_OMG_JSONC,
       ".github/workflows/ci.yml": `name: CI
 on: [push, pull_request]
