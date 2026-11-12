@@ -66,7 +66,7 @@ import { nodeModulesTreeProblem, resolveGateIsolation, resolveGatesSandboxMode, 
 import { CONTAINER_INCOMPATIBLE_ADVICE, containerRunLabel, GATE_CONTAINER_UNAVAILABLE_GATE } from './container-gate.js';
 import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs, type SandboxRunner, type SandboxRunRequest, type SandboxRunResult } from './sandbox-exec.js';
 import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, runHostGitBuffer, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
-import { buildGitView, type GitViewSource } from './git-view.js';
+import { buildGitView, GIT_VIEW_MAX_BYTES, GIT_VIEW_MAX_OBJECTS, type GitViewSource } from './git-view.js';
 import { driveGates } from './gates-driver.js';
 import { missingCheckHint, NO_CI_CHECKS_NOTE, noHeadChecksText, type GateHeadReads } from '../../ship/gates.js';
 import { ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules } from '../../forge/github/checks.js';
@@ -1369,7 +1369,7 @@ class FactoryEngine {
         const priv = this.privateRun();
         gitView = this.buildViewOrClean(dir, at, priv ? priv.viewSource() : this.hostViewSource());
       } catch (error) {
-        return { ran: false, started: true, reason: `the git view of ${what} could not be built (${oneLine(errText(error), 300)}); nothing ran` };
+        return { ran: false, started: true, reason: `${GIT_VIEW_UNBUILT}${what} could not be built (${oneLine(errText(error), 300)}); nothing ran` };
       }
       return await run({ gitView });
     } finally {
@@ -3470,6 +3470,10 @@ class FactoryEngine {
   /** The park after the command ran in the sandbox without a verdict: no ack offer, no pass, no failure. `why` is fixed text (sandbox-exec.ts). */
   private gateNoVerdictReason(head: string, what: string, why: string): string {
     const at = head.slice(0, 12);
+    // withGitView's own failure: nothing ran, so the PR's code had no exit code to hide.
+    if (why.startsWith(GIT_VIEW_UNBUILT)) {
+      return `${what} on ${at} did not run: ${why}. The head is not judged: no pass, no FAILURE, no ci-fix lane, and the check never runs without git. Rerun ${this.resume} to try again; if it parks here again, check free disk space and the size of the head (a git view holds at most ${GIT_VIEW_MAX_OBJECTS} objects and ${GIT_VIEW_MAX_BYTES / (1024 * 1024)} MB), or set factory.run.sandbox.isolation back to "copilot" in your user config`;
+    }
     return `${what} on ${at} ran in the OS sandbox but gave no verdict (${why}). The head is not judged: no pass, no FAILURE, no ci-fix lane, and --allow-unsandboxed-gates does not apply here. Rerun ${this.resume} to try again; if it parks here again, review the PR's diff: the PR's code can hide its own exit code (a second or missing exit marker, a killed shell, a hang)`;
   }
 
@@ -5989,6 +5993,8 @@ export const GATE_SANDBOX_INCOMPATIBLE_GATE = 'gate-sandbox-incompatible';
  * contradiction, no attestation, a timeout with no answer): never a pass or a FAILURE, and no --allow-unsandboxed-gates.
  */
 export const GATE_NO_VERDICT_GATE = 'gate-no-verdict';
+/** How withGitView's own no-verdict reason starts: gateNoVerdictReason gives it its own sentence (nothing ran). */
+const GIT_VIEW_UNBUILT = 'the git view of ';
 /** What the gate-sandbox-incompatible park says about "ack": never a fix for a PR nobody reviewed. */
 const ACK_WARNING = 'Do not switch factory.run.sandbox.gates to "ack" for a PR whose whole diff you have not reviewed: "ack" runs its code as you, with your credentials';
 /** How long one prepare check may run (the sandbox needs a bound; ship's own prepare has none). */

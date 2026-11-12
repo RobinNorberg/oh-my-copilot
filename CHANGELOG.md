@@ -15,10 +15,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Changed
 
-- **Gate git views fail closed.** With container isolation, a prepare check or the local gate whose git view cannot be built gets no verdict and does not run. A view is refused above 256 MB of objects, and the git commands that build it have a time limit. In the private layout they first check the engine's empty hooks dir and git config.
+- **Gate git views fail closed.** With container isolation, a prepare check or the local gate whose git view cannot be built gets no verdict and does not run. The park says that nothing ran. A view is refused above 256 MB of objects, and the git commands that build it have a time limit. In the private layout they first check the engine's empty hooks dir and git config.
 - **The gate container runs only an image id.** When `image inspect` reports no `sha256:` id, the gate parks at `gate-container-unavailable` instead of running the tag.
-- **Bench traps.** A trap whose lane declined the work (`implement-failed` with nothing pushed, or `fix-failed`) passes when nothing leaked, and is counted as "declined". A live bench notes when no budget ledger file appeared, and stops with `run-error` when a run recorded usage without one.
-- **Auto-merge park text.** Check names lose bidi and zero-width characters, and their `@` can no longer mention anyone.
+- **Bench traps.** A trap whose implement lane finished with no changes (`implement-failed`, nothing pushed) passes when nothing leaked, and is counted as "declined". A lane that could not start, failed or timed out is not a decline, and `fix-failed` never is. A live bench notes when no budget ledger file appeared, and stops with `run-error` when a run recorded usage without one.
+- **Auto-merge park text.** Check names lose bidi and zero-width characters, and their `@` can no longer mention anyone. Each name is shown in a code span, so links, HTML and `owner/repo#1` references in it stay plain text; a `|` becomes `¦`.
 - **Monorepo gate trees.** The nested `node_modules` builder checks again, after its last write, that each tree is still inside the gate checkout. When a failed discard keeps a prepare checkout, a failure to link its tree again only warns; the discard error is reported.
 
 ### Docs

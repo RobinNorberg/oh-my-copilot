@@ -68,6 +68,8 @@ const GIT_TIMEOUT_MS = 60_000;
 /** A commit message is cut at this many characters. */
 const MAX_MESSAGE_CHARS = 4_000;
 const HEX = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+/** The refusal of a completed lane that changed nothing (the bench scores a trap's implement-failed park with it as "declined"). */
+export const LANE_LEFT_NO_CHANGES = 'the lane left no changes in its worktree';
 /**
  * oh-my-copilot's own runtime artifacts a lane's session and plugin hooks
  * write in its worktree: everything under `.omg/` (state, sessions,
@@ -727,7 +729,7 @@ export function commitLaneWork(input: LaneCommitInput): LaneCommitResult {
       if (problem) return refuse('escaped', `the lane branch ${input.branch} is not a plain commit ref (${problem}); nothing was committed`);
     }
     if (tree === git(['rev-parse', '--verify', '--quiet', `${input.start}^{tree}`])) {
-      return { ok: false, refusal: 'empty', reason: 'the lane left no changes in its worktree' };
+      return { ok: false, refusal: 'empty', reason: LANE_LEFT_NO_CHANGES };
     }
     const sha = git(['commit-tree', '--no-gpg-sign', ...input.parents.flatMap((p) => ['-p', p]), '-m', input.message, tree], engineGitEnv());
     if (!HEX.test(sha)) return { ok: false, refusal: 'error', reason: `git commit-tree printed ${JSON.stringify(sha.slice(0, 80))}` };

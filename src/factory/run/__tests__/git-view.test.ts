@@ -110,8 +110,16 @@ describe('buildGitView', () => {
     expect(() => buildGitView(join(dir, 'big'), sha, watched, viewGit, 4)).toThrow(/bytes of objects, above the 4 a git view holds/);
     expect(seen).not.toContain('pack-objects');
     expect(existsSync(join(dir, 'big'))).toBe(false);
-    const missing: GitViewSource = (args, input) => (args[0] === 'cat-file' && args[1].startsWith('--batch-check') ? Buffer.from(`${'0'.repeat(40)} missing\n`) : source(repo)(args, input));
+    const isCheck = (args: readonly string[]): boolean => args[0] === 'cat-file' && args[1].startsWith('--batch-check');
+    const sizes = (input: Buffer | undefined): string[] => String(input).split('\n').filter(Boolean).map(() => '4');
+    const missing: GitViewSource = (args, input) => (isCheck(args) ? Buffer.from(['4', '4', `${'0'.repeat(40)} missing`].join('\n')) : source(repo)(args, input));
     expect(() => buildGitView(join(dir, 'gone'), sha, missing, viewGit)).toThrow(/could not be read/);
+    // L3: fewer (or more) size lines than objects refuse: a short answer must not sum to a small total.
+    const short: GitViewSource = (args, input) => (isCheck(args) ? Buffer.from(`${sizes(input).slice(1).join('\n')}\n`) : source(repo)(args, input));
+    expect(() => buildGitView(join(dir, 'short'), sha, short, viewGit)).toThrow(/reported 2 object sizes for the 3 objects/);
+    const extra: GitViewSource = (args, input) => (isCheck(args) ? Buffer.from(`${[...sizes(input), '4'].join('\n')}\n`) : source(repo)(args, input));
+    expect(() => buildGitView(join(dir, 'extra'), sha, extra, viewGit)).toThrow(/reported 4 object sizes for the 3 objects/);
+    expect(existsSync(join(dir, 'short'))).toBe(false);
     // Under the default cap the same commit builds.
     expect(buildGitView(join(dir, 'ok'), sha, source(repo), viewGit)).toBe(join(dir, 'ok', '.git'));
   });

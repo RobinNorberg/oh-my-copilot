@@ -55,7 +55,10 @@ export function buildGitView(dir: string, sha: string, source: GitViewSource, gi
   // The objects' total size before any pack is made; a size git cannot report (a missing object) refuses too.
   const ids = list.toString('utf8').split('\n').map((l) => l.trim().split(' ')[0]).filter(Boolean);
   let bytes = 0;
-  for (const line of source(['cat-file', '--batch-check=%(objectsize)'], Buffer.from(`${ids.join('\n')}\n`)).toString('utf8').split('\n').filter((l) => l.trim())) {
+  const sizes = source(['cat-file', '--batch-check=%(objectsize)'], Buffer.from(`${ids.join('\n')}\n`)).toString('utf8').split('\n').filter((l) => l.trim());
+  // One size per object: a short answer must not sum to a small total.
+  if (sizes.length !== ids.length) throw new Error(`git reported ${sizes.length} object sizes for the ${ids.length} objects of ${sha.slice(0, 12)}`);
+  for (const line of sizes) {
     if (!/^\d+$/.test(line.trim())) throw new Error(`the size of an object of ${sha.slice(0, 12)} could not be read (${line.trim().slice(0, 80)})`);
     bytes += Number(line.trim());
   }
