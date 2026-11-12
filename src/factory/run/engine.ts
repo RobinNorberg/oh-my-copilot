@@ -62,7 +62,8 @@ import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT, type PrepareCheckResult, type PrepareCheckRun } from '../../ship/prepare.js';
 import { parseJsonc } from '../../utils/jsonc.js';
-import { nodeModulesTreeProblem, resolveGatesSandboxMode, resolveRequireDeniedPaths, type GatesSandboxMode } from '../../copilot-run/sandbox.js';
+import { nodeModulesTreeProblem, resolveGateIsolation, resolveGatesSandboxMode, resolveRequireDeniedPaths, type GateContainerSettings, type GatesSandboxMode } from '../../copilot-run/sandbox.js';
+import { CONTAINER_INCOMPATIBLE_ADVICE, containerRunLabel, GATE_CONTAINER_UNAVAILABLE_GATE } from './container-gate.js';
 import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs, type SandboxRunner, type SandboxRunRequest } from './sandbox-exec.js';
 import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
 import { driveGates } from './gates-driver.js';
@@ -871,7 +872,7 @@ class FactoryEngine {
   /** The head `--allow-unsandboxed-gates` accepts (the gates-unsandboxed park's head, captured at resume). */
   private gatesAllowed?: string;
   /** factory.run.sandbox.gates, resolved once per trusted base commit. */
-  private gatesModeCache?: { commit: string | undefined; mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean };
+  private gatesModeCache?: { commit: string | undefined; mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean; container?: GateContainerSettings };
   /** The one-per-run warning that the sandbox on this host cannot deny paths was given. */
   private warnedCredentialFilesReadable = false;
   /** Calibrations re-run in this invocation (a failing one is retried once per invocation). */
@@ -1281,7 +1282,9 @@ class FactoryEngine {
    */
   private sandboxRun(req: SandboxRunRequest): ReturnType<SandboxRunner> {
     const p = this.privateRun();
-    return this.o.gateSandbox!({ ...req, nodeModulesTarget: join(this.o.root, 'node_modules'), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}) });
+    // isolation "container" (gatesSandbox, user config): the runner uses the container, labelled with this run.
+    const container = this.gatesModeCache?.container;
+    return this.o.gateSandbox!({ ...req, nodeModulesTarget: join(this.o.root, 'node_modules'), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}), ...(container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {}) });
   }
 
   /**
@@ -1455,6 +1458,8 @@ class FactoryEngine {
    * sandbox with the registry reachable. Null when the checkout is ready.
    */
   private async privateNodeModules(p: PrivateRun, path: string, baseSha: string, head: string, loaded: GateConfig): Promise<Park | null> {
+    // isolation "container": every command installs into its own container volume; the checkout needs no node_modules.
+    if (this.gatesSandbox(loaded).container) return null;
     const rule = lockfileUnchanged(p.repo, baseSha, head, p.ctx);
     if (rule.policy === 'junction') {
       linkNodeModules(this.o.root, path, this.o.warn);
@@ -3247,18 +3252,21 @@ class FactoryEngine {
    * factory.run.sandbox.requireDeniedPaths comes from the same two layers
    * (resolveRequireDeniedPaths: either may turn it on).
    */
-  private gatesSandbox(loaded: GateConfig): { mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean } {
+  private gatesSandbox(loaded: GateConfig): { mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean; container?: GateContainerSettings } {
     const commit = (loaded.config as { trustedBaseCommit?: string }).trustedBaseCommit;
     if (this.gatesModeCache && this.gatesModeCache.commit === commit) return this.gatesModeCache;
     let user = this.o.gateSandboxUserConfig;
     if (user === undefined) {
       try { user = userConfigLayers().trustedUser; } catch { user = null; }
     }
-    let resolved: { mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean };
+    let resolved: { mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean; container?: GateContainerSettings };
     try {
       const text = commit ? readBaseFile(this.exec, this.o.root, commit, BASE_CONFIG_PATH) : null;
       const base = text && text.trim() ? parseJsonc(text) : undefined;
-      resolved = { ...resolveGatesSandboxMode({ user, base, env: process.env }), requireDeniedPaths: resolveRequireDeniedPaths({ user, base }).require };
+      // factory.run.sandbox.isolation / .container: the user config only; a committed value is ignored with a notice.
+      const isolation = resolveGateIsolation({ user, base });
+      if (isolation.ignoredBase.length > 0) this.o.warn?.(`omg factory run: ignoring ${isolation.ignoredBase.join(' and ')} in the base .copilot/omg.jsonc: where the PR's code runs is set in your user config only`);
+      resolved = { ...resolveGatesSandboxMode({ user, base, env: process.env }), requireDeniedPaths: resolveRequireDeniedPaths({ user, base }).require, ...(isolation.container ? { container: isolation.container } : {}) };
     } catch (error) {
       throw new FactoryStepError(`factory.run.sandbox: ${errText(error)}`);
     }
@@ -3301,6 +3309,16 @@ class FactoryEngine {
   private gateNoStartAfterCodeReason(head: string, what: string, why: string): string {
     const at = head.slice(0, 12);
     return `${what} on ${at} could not start in the OS sandbox (${why}) after the PR's code of this head already ran in it (an earlier prepare check), so the PR's code may be the cause. The head is not judged: no pass, no FAILURE, no ci-fix lane, and --allow-unsandboxed-gates does not apply here. Rerun ${this.resume} to try again; if it parks here again, review the PR's diff and fix the cause`;
+  }
+
+  /** The park when isolation "container" cannot run `what` (container-gate.ts): nothing ran, no ack offer, no fallback. */
+  private gateContainerUnavailableReason(head: string, what: string, why: string): string {
+    return `${what} on ${head.slice(0, 12)} did not run: factory.run.sandbox.isolation is "container" and the gate container is not available (${why}). The head is not judged: no pass, no FAILURE, no ci-fix lane, and it never falls back to the Copilot sandbox. Fix that, then rerun ${this.resume}`;
+  }
+
+  /** Where a sandboxed command runs, for parks and notes: the gate container (isolation "container") or the OS sandbox. */
+  private sandboxName(): string {
+    return this.gatesModeCache?.container ? `the gate container (${this.gatesModeCache.container.runtime} ${this.gatesModeCache.container.image})` : 'the OS sandbox';
   }
 
   /** The park after the command ran in the sandbox without a verdict: no ack offer, no pass, no failure. `why` is fixed text (sandbox-exec.ts). */
@@ -3415,6 +3433,8 @@ class FactoryEngine {
         return { status: r.timedOut ? 124 : r.status, stdout: redactGateOutput(r.output), stderr: '' };
       }
       if (r.started) return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoVerdictReason(head, label, r.reason) });
+      // isolation "container" without a usable runtime: its own park, never the weaker sandbox and never the ack offer.
+      if (r.unavailable) return stop({ name: GATE_CONTAINER_UNAVAILABLE_GATE, reason: this.gateContainerUnavailableReason(head, label, r.reason) });
       // An earlier check of this head already ran the PR's code in the sandbox: a start failure now may be its doing.
       // Only a configured command (trusted config) refused for its own shape or length keeps the ack offer; a
       // built-in's argv holds the PR's file names, so its refusal parks here too.
@@ -3440,21 +3460,23 @@ class FactoryEngine {
    * on the base itself, or its calibration could not run.
    */
   private async calibrateGate(c: { argv: readonly string[]; exe: string; args: readonly string[]; kind?: PrepareCheckRun['kind'] }, baseSha: string, commonGitDir: string, timeoutMs: number, what: string, head: string): Promise<{ name: string; reason: string } | null> {
-    const key = createHash('sha256').update(`${baseSha}\0${JSON.stringify(c.argv)}`).digest('hex');
+    // A calibration holds for the isolation it ran in: the gate container's (and its image) is keyed apart from the OS sandbox's.
+    const container = this.gatesModeCache?.container;
+    const key = createHash('sha256').update(`${baseSha}\0${JSON.stringify(c.argv)}${container ? `\0container\0${container.runtime}\0${container.image}` : ''}`).digest('hex');
     let cal = this.state.gateCalibration?.[key];
     if (!cal || (!cal.ok && !this.recalibrated.has(key))) {
       this.recalibrated.add(key);
       const out = await this.runOnBase(c, baseSha, commonGitDir, timeoutMs);
       if ('notStarted' in out) {
-        return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${what} failed in the OS sandbox on ${head.slice(0, 12)}, and its calibration on the base ${baseSha.slice(0, 12)} could not run (${out.notStarted}); the failure is not counted (no ci-fix lane). Fix the cause, then rerun ${this.resume}. ${ACK_WARNING}` };
+        return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${what} failed in ${this.sandboxName()} on ${head.slice(0, 12)}, and its calibration on the base ${baseSha.slice(0, 12)} could not run (${out.notStarted}); the failure is not counted (no ci-fix lane). Fix the cause, then rerun ${this.resume}. ${ACK_WARNING}` };
       }
       cal = out;
-      this.save((x) => ({ ...x, gateCalibration: { ...(x.gateCalibration ?? {}), [key]: out }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `calibrated ${what.slice(0, 120)} in the OS sandbox on the base ${baseSha.slice(0, 12)}: ${out.ok ? 'passes' : 'fails'}` }] }));
+      this.save((x) => ({ ...x, gateCalibration: { ...(x.gateCalibration ?? {}), [key]: out }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `calibrated ${what.slice(0, 120)} in ${this.sandboxName()} on the base ${baseSha.slice(0, 12)}: ${out.ok ? 'passes' : 'fails'}` }] }));
     }
     if (cal.ok) return null;
     return {
       name: GATE_SANDBOX_INCOMPATIBLE_GATE,
-      reason: `${what} fails in the OS sandbox on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${sandboxIncompatibleAdvice(cal.tail)}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1_500)}` : ''}`,
+      reason: `${what} fails in ${this.sandboxName()} on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${this.gatesModeCache?.container ? CONTAINER_INCOMPATIBLE_ADVICE : sandboxIncompatibleAdvice(cal.tail)}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1_500)}` : ''}`,
     };
   }
 
@@ -3829,6 +3851,10 @@ class FactoryEngine {
           // It ran in the sandbox and said nothing a verdict can rest on: never the ack park, never a FAILURE.
           if (checkoutGitLink(checkout).hash !== linkBefore) return this.gateTamperedByGate(head, checkout, stateDir);
           this.gate(GATE_NO_VERDICT_GATE, this.gateNoVerdictReason(head, `the local gate \`${gate.join(' ')}\``, out.reason));
+          return false;
+        }
+        if (!out.started && out.unavailable) {
+          this.gate(GATE_CONTAINER_UNAVAILABLE_GATE, this.gateContainerUnavailableReason(head, `the local gate \`${gate.join(' ')}\``, out.reason));
           return false;
         }
         unavailable = !out.started && out.sandbox === true;
