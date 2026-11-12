@@ -144322,7 +144322,7 @@ var init_factory_dashboard = __esm({
     init_collect2();
     init_render2();
     init_cli();
-    defaultRoot = () => (0, import_child_process49.execFileSync)("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    defaultRoot = () => (0, import_child_process49.execFileSync)("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], windowsHide: true }).trim();
     defaultDashboardDeps = { root: defaultRoot, out: (l) => console.log(l), err: (l) => console.error(l) };
   }
 });

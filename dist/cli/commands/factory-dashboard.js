@@ -10,7 +10,7 @@ import chalk from 'chalk';
 import { collectDashboard } from '../../factory/dashboard/collect.js';
 import { renderDashboardHtml } from '../../factory/dashboard/render.js';
 import { EXIT_CHECK_FAILED, EXIT_CHECK_USAGE } from '../../factory/check/cli.js';
-const defaultRoot = () => execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+const defaultRoot = () => execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim();
 export const defaultDashboardDeps = { root: defaultRoot, out: (l) => console.log(l), err: (l) => console.error(l) };
 export function factoryDashboardCommand(deps = defaultDashboardDeps) {
     return new Command('dashboard')
