@@ -41700,7 +41700,7 @@ function hostGitExe() {
 }
 function runHostGit(cwd, args, timeout, baseEnv = process.env, input) {
   const { argv, env: env2 } = hostGitCommand(cwd, args, timeout, baseEnv);
-  return (0, import_node_child_process3.execFileSync)(hostGitExe(), argv, { cwd, env: env2, encoding: "utf-8", stdio: "pipe", windowsHide: true, timeout, ...input !== void 0 ? { input, maxBuffer: 64 * 1024 * 1024 } : {} });
+  return (0, import_node_child_process3.execFileSync)(hostGitExe(), argv, { cwd, env: env2, encoding: "utf-8", stdio: "pipe", windowsHide: true, timeout, maxBuffer: HOST_GIT_MAX_BUFFER, ...input !== void 0 ? { input } : {} });
 }
 function runHostGitBuffer(cwd, args, timeout, baseEnv = process.env, input) {
   const { argv, env: env2 } = hostGitCommand(cwd, args, timeout, baseEnv);
@@ -42529,7 +42529,7 @@ function removeTamperedWorktree(repoRoot, teamName, workerName, wtPath, links, c
   forgetMetadataUnlocked(repoRoot, teamName, workerName);
   return `the git links of ${wtPath} (its .git file, or its admin dir's gitdir, commondir or config.worktree) changed or are gone, so no git ran in it; the worktree and its admin dir were removed by path and branch ${getBranchName(teamName, workerName)} was kept for inspection`;
 }
-var import_node_fs9, import_node_os4, import_node_path10, import_node_child_process3, import_node_crypto2, emptyHooksDir, EXEC_KEY_OVERRIDES, emptyAttributesFile, WORK_TREE_SUBCOMMANDS, GLOBAL_OPTIONS_WITH_VALUE, LANE_SUBMODULE_OVERRIDES, IGNORE_SUBMODULES_SUBCOMMANDS, EMPTY_TREE, HOST_GIT_ATTR_SOURCE_MIN, hostGitVersionCache, recordedGitDirs, pathKey, UNTRACKED_OMC_STATE, WORKTREE_RUNTIME_STATE_DIRS, RUNTIME_LEFTOVER_RETRY_MS;
+var import_node_fs9, import_node_os4, import_node_path10, import_node_child_process3, import_node_crypto2, emptyHooksDir, EXEC_KEY_OVERRIDES, emptyAttributesFile, WORK_TREE_SUBCOMMANDS, GLOBAL_OPTIONS_WITH_VALUE, HOST_GIT_MAX_BUFFER, LANE_SUBMODULE_OVERRIDES, IGNORE_SUBMODULES_SUBCOMMANDS, EMPTY_TREE, HOST_GIT_ATTR_SOURCE_MIN, hostGitVersionCache, recordedGitDirs, pathKey, UNTRACKED_OMC_STATE, WORKTREE_RUNTIME_STATE_DIRS, RUNTIME_LEFTOVER_RETRY_MS;
 var init_git_worktree = __esm({
   "src/team/git-worktree.ts"() {
     "use strict";
@@ -42592,6 +42592,7 @@ var init_git_worktree = __esm({
       "hash-object"
     ]);
     GLOBAL_OPTIONS_WITH_VALUE = /* @__PURE__ */ new Set(["-c", "-C", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env"]);
+    HOST_GIT_MAX_BUFFER = 256 * 1024 * 1024;
     LANE_SUBMODULE_OVERRIDES = ["submodule.recurse=false", "diff.ignoreSubmodules=all", "status.submoduleSummary=false"];
     IGNORE_SUBMODULES_SUBCOMMANDS = /* @__PURE__ */ new Set(["status", "diff", "diff-files", "diff-index", "diff-tree"]);
     EMPTY_TREE = {

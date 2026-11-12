@@ -92333,6 +92333,7 @@ var git_worktree_exports = {};
 __export(git_worktree_exports, {
   EMPTY_TREE: () => EMPTY_TREE,
   HOST_GIT_ATTR_SOURCE_MIN: () => HOST_GIT_ATTR_SOURCE_MIN,
+  HOST_GIT_MAX_BUFFER: () => HOST_GIT_MAX_BUFFER,
   checkWorkerWorktreeRemovalSafety: () => checkWorkerWorktreeRemovalSafety,
   cleanupTeamWorktrees: () => cleanupTeamWorktrees,
   createWorkerWorktree: () => createWorkerWorktree,
@@ -92454,7 +92455,7 @@ function hostGitExe() {
 }
 function runHostGit(cwd2, args, timeout, baseEnv2 = process.env, input) {
   const { argv, env: env2 } = hostGitCommand(cwd2, args, timeout, baseEnv2);
-  return (0, import_node_child_process11.execFileSync)(hostGitExe(), argv, { cwd: cwd2, env: env2, encoding: "utf-8", stdio: "pipe", windowsHide: true, timeout, ...input !== void 0 ? { input, maxBuffer: 64 * 1024 * 1024 } : {} });
+  return (0, import_node_child_process11.execFileSync)(hostGitExe(), argv, { cwd: cwd2, env: env2, encoding: "utf-8", stdio: "pipe", windowsHide: true, timeout, maxBuffer: HOST_GIT_MAX_BUFFER, ...input !== void 0 ? { input } : {} });
 }
 function runHostGitBuffer(cwd2, args, timeout, baseEnv2 = process.env, input) {
   const { argv, env: env2 } = hostGitCommand(cwd2, args, timeout, baseEnv2);
@@ -93427,7 +93428,7 @@ function cleanupTeamWorktrees(teamName, repoRoot3) {
   }
   return { removed, preserved, retained };
 }
-var import_node_fs19, import_node_os5, import_node_path23, import_node_child_process11, import_node_crypto11, emptyHooksDir, EXEC_KEY_OVERRIDES, emptyAttributesFile, WORK_TREE_SUBCOMMANDS, GLOBAL_OPTIONS_WITH_VALUE, LANE_SUBMODULE_OVERRIDES, IGNORE_SUBMODULES_SUBCOMMANDS, EMPTY_TREE, HOST_GIT_ATTR_SOURCE_MIN, hostGitVersionCache, recordedGitDirs, pathKey, UNTRACKED_OMC_STATE, WORKTREE_RUNTIME_STATE_DIRS, RUNTIME_LEFTOVER_RETRY_MS;
+var import_node_fs19, import_node_os5, import_node_path23, import_node_child_process11, import_node_crypto11, emptyHooksDir, EXEC_KEY_OVERRIDES, emptyAttributesFile, WORK_TREE_SUBCOMMANDS, GLOBAL_OPTIONS_WITH_VALUE, HOST_GIT_MAX_BUFFER, LANE_SUBMODULE_OVERRIDES, IGNORE_SUBMODULES_SUBCOMMANDS, EMPTY_TREE, HOST_GIT_ATTR_SOURCE_MIN, hostGitVersionCache, recordedGitDirs, pathKey, UNTRACKED_OMC_STATE, WORKTREE_RUNTIME_STATE_DIRS, RUNTIME_LEFTOVER_RETRY_MS;
 var init_git_worktree = __esm({
   "src/team/git-worktree.ts"() {
     "use strict";
@@ -93490,6 +93491,7 @@ var init_git_worktree = __esm({
       "hash-object"
     ]);
     GLOBAL_OPTIONS_WITH_VALUE = /* @__PURE__ */ new Set(["-c", "-C", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env"]);
+    HOST_GIT_MAX_BUFFER = 256 * 1024 * 1024;
     LANE_SUBMODULE_OVERRIDES = ["submodule.recurse=false", "diff.ignoreSubmodules=all", "status.submoduleSummary=false"];
     IGNORE_SUBMODULES_SUBCOMMANDS = /* @__PURE__ */ new Set(["status", "diff", "diff-files", "diff-index", "diff-tree"]);
     EMPTY_TREE = {
@@ -94098,7 +94100,7 @@ function checkMergeConflicts(workerBranch, baseBranch, repoRoot3) {
     (0, import_node_child_process12.execFileSync)(
       "git",
       ["merge-tree", "--write-tree", baseBranch, workerBranch],
-      { cwd: repoRoot3, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], windowsHide: true }
+      { cwd: repoRoot3, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], windowsHide: true, maxBuffer: HOST_GIT_MAX_BUFFER }
     );
     return [];
   } catch (err) {
@@ -94123,12 +94125,12 @@ function checkMergeConflicts(workerBranch, baseBranch, repoRoot3) {
   const baseDiff = (0, import_node_child_process12.execFileSync)(
     "git",
     ["diff", "--name-only", mergeBase, baseBranch],
-    { cwd: repoRoot3, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], windowsHide: true }
+    { cwd: repoRoot3, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], windowsHide: true, maxBuffer: HOST_GIT_MAX_BUFFER }
   ).trim();
   const workerDiff = (0, import_node_child_process12.execFileSync)(
     "git",
     ["diff", "--name-only", mergeBase, workerBranch],
-    { cwd: repoRoot3, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], windowsHide: true }
+    { cwd: repoRoot3, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], windowsHide: true, maxBuffer: HOST_GIT_MAX_BUFFER }
   ).trim();
   if (!baseDiff || !workerDiff) {
     return [];
@@ -94159,7 +94161,8 @@ function mergeWorkerBranch(workerBranch, baseBranch, repoRoot3) {
     (0, import_node_child_process12.execFileSync)("git", ["merge", "--no-ff", "-m", `Merge ${workerBranch} into ${baseBranch}`, workerBranch], {
       cwd: repoRoot3,
       stdio: "pipe",
-      windowsHide: true
+      windowsHide: true,
+      maxBuffer: HOST_GIT_MAX_BUFFER
     });
     const mergeCommit = (0, import_node_child_process12.execFileSync)("git", ["rev-parse", "HEAD"], {
       cwd: repoRoot3,
@@ -94708,7 +94711,8 @@ async function startMergeOrchestrator(config2) {
             cwd: wtPath,
             encoding: "utf-8",
             stdio: "pipe",
-            windowsHide: true
+            windowsHide: true,
+            maxBuffer: HOST_GIT_MAX_BUFFER
           });
           conflictingFiles = parseUUFiles(status);
         } catch {
@@ -94898,7 +94902,8 @@ async function startMergeOrchestrator(config2) {
         cwd: entry2.workerWorktreePath,
         encoding: "utf-8",
         stdio: "pipe",
-        windowsHide: true
+        windowsHide: true,
+        maxBuffer: HOST_GIT_MAX_BUFFER
       }).trim();
       if (status.length > 0) {
         const dirtyFiles = status.split("\n").map((l) => l.trim().replace(/^\S+\s+/, "")).filter((s) => s.length > 0);
@@ -101319,7 +101324,8 @@ function inspectLeaderCheckoutForWorktrees(cwd2) {
     cwd: cwd2,
     encoding: "utf-8",
     stdio: ["ignore", "pipe", "ignore"],
-    windowsHide: true
+    windowsHide: true,
+    maxBuffer: HOST_GIT_MAX_BUFFER
   });
   try {
     run3(["rev-parse", "--verify", "HEAD"]);

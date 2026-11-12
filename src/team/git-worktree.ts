@@ -294,6 +294,13 @@ export function hostGitDriverOverrides(cwd: string, env?: NodeJS.ProcessEnv, tim
   ];
 }
 
+/**
+ * Output cap for runHostGit (and the other git spawns whose output scales
+ * with the repository: ls-tree -r, ls-files, diff --name-only, status). Node's
+ * 1 MiB default fails `ls-tree -r` on a repository of about 10k files.
+ */
+export const HOST_GIT_MAX_BUFFER = 256 * 1024 * 1024;
+
 /** Absolute git for a host spawn (see resolveBareExe: Node 20 searches the cwd for a bare name). */
 function hostGitExe(): string {
   const git = resolveBareExe('git');
@@ -319,11 +326,12 @@ function hostGitExe(): string {
  * what execFileSync throws, when the drivers cannot be listed, or
  * `sandbox-escaped:` when the recorded links changed. `baseEnv` (default
  * process.env) is the environment the pins are set over (the factory
- * engine's commit identity).
+ * engine's commit identity). Output beyond HOST_GIT_MAX_BUFFER throws
+ * (ENOBUFS), so a caller that maps a throw to "git failed" stays fail-closed.
  */
 export function runHostGit(cwd: string, args: readonly string[], timeout?: number, baseEnv: NodeJS.ProcessEnv = process.env, input?: string | Buffer): string {
   const { argv, env } = hostGitCommand(cwd, args, timeout, baseEnv);
-  return execFileSync(hostGitExe(), argv, { cwd, env, encoding: 'utf-8', stdio: 'pipe', windowsHide: true, timeout, ...(input !== undefined ? { input, maxBuffer: 64 * 1024 * 1024 } : {}) });
+  return execFileSync(hostGitExe(), argv, { cwd, env, encoding: 'utf-8', stdio: 'pipe', windowsHide: true, timeout, maxBuffer: HOST_GIT_MAX_BUFFER, ...(input !== undefined ? { input } : {}) });
 }
 
 /** runHostGit with raw stdout bytes (`cat-file --batch` of binary blobs). */

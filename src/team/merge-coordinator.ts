@@ -11,7 +11,7 @@
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
-import { listTeamWorktrees } from './git-worktree.js';
+import { HOST_GIT_MAX_BUFFER, listTeamWorktrees } from './git-worktree.js';
 
 const BRANCH_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9/_.-]*$/;
 
@@ -111,7 +111,7 @@ export function checkMergeConflicts(
   try {
     execFileSync(
       'git', ['merge-tree', '--write-tree', baseBranch, workerBranch],
-      { cwd: repoRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }
+      { cwd: repoRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, maxBuffer: HOST_GIT_MAX_BUFFER }
     );
     // Exit code 0 means no conflicts
     return [];
@@ -140,11 +140,11 @@ export function checkMergeConflicts(
 
   const baseDiff = execFileSync(
     'git', ['diff', '--name-only', mergeBase, baseBranch],
-    { cwd: repoRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }
+    { cwd: repoRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, maxBuffer: HOST_GIT_MAX_BUFFER }
   ).trim();
   const workerDiff = execFileSync(
     'git', ['diff', '--name-only', mergeBase, workerBranch],
-    { cwd: repoRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }
+    { cwd: repoRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, maxBuffer: HOST_GIT_MAX_BUFFER }
   ).trim();
 
   if (!baseDiff || !workerDiff) {
@@ -190,7 +190,7 @@ export function mergeWorkerBranch(
 
     // Attempt merge
     execFileSync('git', ['merge', '--no-ff', '-m', `Merge ${workerBranch} into ${baseBranch}`, workerBranch], {
-      cwd: repoRoot, stdio: 'pipe', windowsHide: true
+      cwd: repoRoot, stdio: 'pipe', windowsHide: true, maxBuffer: HOST_GIT_MAX_BUFFER
     });
 
     // Get merge commit hash
