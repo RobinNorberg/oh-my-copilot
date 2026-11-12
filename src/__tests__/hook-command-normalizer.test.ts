@@ -1,17 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 /**
  * The shipped hooks manifest uses the exec form (`command: "node"` plus
  * `args`): the host spawns node with no shell, so a plugin root that contains
- * spaces stays one argument on Windows. POSIX installs are rewritten to the
- * find-node bootstrap unconditionally: find-node.sh resolves `node` from PATH
- * when it is there and from the nvm/fnm/volta locations when it is not. These
- * tests pin that the choice is made from the platform alone — an earlier
- * version probed the setup process's PATH, which is not the PATH hooks are
- * later spawned with.
+ * spaces stays one argument on Windows. POSIX keeps that exec form when the
+ * caller reports that `node` resolves on the hook PATH, so a config dir shared
+ * with native Windows keeps working; otherwise it is rewritten to the
+ * find-node bootstrap, which also resolves nvm/fnm/volta installs. The probe
+ * refuses to trust an npm lifecycle PATH and the default is the bootstrap.
  */
 
 const REPO_ROOT = join(__dirname, '..', '..');
@@ -21,9 +20,10 @@ type Hook = { type?: string; command?: string; args?: string[] };
 type Manifest = { hooks: Record<string, Array<{ hooks: Hook[] }>> };
 type Normalizer = {
   UNIX_HOOK_PREFIX: string;
-  hookPrefixForPlatform: (platform?: string) => string;
+  hookPrefixForPlatform: (platform?: string, options?: { nodeOnPath?: boolean }) => string;
+  nodeResolvesOnHookPath: (env?: NodeJS.ProcessEnv) => boolean;
   normalizeHookCommand: (command: string, prefix?: string) => string;
-  normalizeHooksDataForPlatform: (data: unknown, platform?: string) => boolean;
+  normalizeHooksDataForPlatform: (data: unknown, platform?: string, options?: { nodeOnPath?: boolean }) => boolean;
 };
 
 const normalizer = (await import(pathToFileURL(MODULE_PATH).href)) as Normalizer;
@@ -45,13 +45,32 @@ describe('hook prefix selection', () => {
     expect(normalizer.UNIX_HOOK_PREFIX).toContain('find-node.sh');
   });
 
-  it('does not consult PATH when choosing the POSIX prefix', () => {
-    // The regression this guards: probing whether `node` resolves samples the
-    // setup process's environment, not the one the host CLI spawns hooks with.
-    const source = readFileSync(MODULE_PATH, 'utf-8');
-    expect(source).not.toContain('spawnSync');
-    expect(source).not.toContain('nodeResolvesOnHookPath');
-    expect(source).not.toMatch(/\benv\.PATH\b/);
+  it('keeps the exec form on POSIX only when the caller says node resolves', () => {
+    for (const platform of ['linux', 'darwin']) {
+      expect(normalizer.hookPrefixForPlatform(platform, { nodeOnPath: true }), platform).toBe('node');
+      expect(normalizer.hookPrefixForPlatform(platform, { nodeOnPath: false }), platform).toBe(normalizer.UNIX_HOOK_PREFIX);
+    }
+    expect(normalizer.hookPrefixForPlatform('win32', { nodeOnPath: false })).toBe('node');
+  });
+});
+
+describe('nodeResolvesOnHookPath', () => {
+  it('reports false under an npm lifecycle script, whose PATH is not the hook PATH', () => {
+    expect(normalizer.nodeResolvesOnHookPath({ ...process.env, npm_lifecycle_event: 'postinstall' })).toBe(false);
+    expect(normalizer.nodeResolvesOnHookPath({ ...process.env, npm_execpath: '/usr/lib/npm-cli.js' })).toBe(false);
+  });
+
+  it('reports false when PATH has no node', () => {
+    const env: NodeJS.ProcessEnv = { PATH: join(REPO_ROOT, 'no-such-dir') };
+    if (process.platform === 'win32') env.SystemRoot = process.env.SystemRoot;
+    expect(normalizer.nodeResolvesOnHookPath(env)).toBe(false);
+  });
+
+  it('reports true when PATH holds the running node', () => {
+    const env = { ...process.env, PATH: dirname(process.execPath) };
+    delete env.npm_lifecycle_event;
+    delete env.npm_execpath;
+    expect(normalizer.nodeResolvesOnHookPath(env)).toBe(true);
   });
 });
 
@@ -96,7 +115,24 @@ describe('shipped hooks manifest', () => {
     expect(normalizer.normalizeHooksDataForPlatform(shared, 'win32')).toBe(false);
   });
 
-  it('needs no patch on Windows and is rewritten to the bootstrap on POSIX', () => {
+  it('stays unchanged on POSIX when node resolves, so a shared config dir keeps working on Windows', () => {
+    for (const platform of ['linux', 'darwin']) {
+      const data = freshManifest();
+      expect(normalizer.normalizeHooksDataForPlatform(data, platform, { nodeOnPath: true }), platform).toBe(false);
+      expect(data, platform).toEqual(freshManifest());
+      // And Windows has nothing to repair afterwards.
+      expect(normalizer.normalizeHooksDataForPlatform(data, 'win32'), platform).toBe(false);
+    }
+  });
+
+  it('restores the exec form on POSIX with node on PATH after an earlier find-node rewrite', () => {
+    const data = freshManifest();
+    expect(normalizer.normalizeHooksDataForPlatform(data, 'linux')).toBe(true);
+    expect(normalizer.normalizeHooksDataForPlatform(data, 'linux', { nodeOnPath: true })).toBe(true);
+    expect(data).toEqual(freshManifest());
+  });
+
+  it('needs no patch on Windows and is rewritten to the bootstrap on POSIX without node', () => {
     expect(normalizer.normalizeHooksDataForPlatform(freshManifest(), 'win32')).toBe(false);
 
     for (const platform of ['linux', 'darwin']) {

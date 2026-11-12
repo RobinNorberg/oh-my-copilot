@@ -11,8 +11,15 @@ export function windowsExecArgs(script: string, extra?: string[]): string[];
 
 export function unixShellCommand(script: string, extra?: string[]): string;
 
-export function hookPrefixForPlatform(platform?: string): string;
+export interface HookPlatformOptions {
+  /** True when a bare `node` resolves on the hook PATH: POSIX then keeps the exec form. */
+  nodeOnPath?: boolean;
+}
+
+export function nodeResolvesOnHookPath(env?: NodeJS.ProcessEnv): boolean;
+
+export function hookPrefixForPlatform(platform?: string, options?: HookPlatformOptions): string;
 
 export function normalizeHookCommand(command: string, prefix?: string): string;
 
-export function normalizeHooksDataForPlatform(data: unknown, platform?: string): boolean;
+export function normalizeHooksDataForPlatform(data: unknown, platform?: string, options?: HookPlatformOptions): boolean;

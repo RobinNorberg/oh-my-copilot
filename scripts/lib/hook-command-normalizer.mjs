@@ -9,9 +9,15 @@
 // receives the plugin directory as its script, and the hook exits at
 // package_json_reader. That spelling is accepted on input and repaired.
 //
-// Unix published caches still rewrite to find-node.sh. nvm/fnm often leave
-// `node` off PATH in non-interactive shells, and that rewrite runs under sh.
-// A git checkout does not rewrite the manifest (plugin-setup.mjs).
+// The shipped exec form is platform-neutral: Windows and POSIX hosts both
+// spawn `node` with no shell. A Unix published cache is rewritten to the
+// find-node.sh bootstrap only when `node` does not resolve on the hook PATH
+// (nvm/fnm often leave it off in non-interactive shells). Keeping the exec form
+// everywhere else means a config directory shared between WSL/macOS and native
+// Windows keeps working without a Windows-side repair. A git checkout does not
+// rewrite the manifest (plugin-setup.mjs).
+
+import { spawnSync } from 'node:child_process';
 
 export const UNIX_HOOK_PREFIX = 'sh "${CLAUDE_PLUGIN_ROOT}"/scripts/find-node.sh "${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs ';
 
@@ -77,8 +83,27 @@ export function unixShellCommand(script, extra = []) {
   return `${UNIX_HOOK_PREFIX}"\${CLAUDE_PLUGIN_ROOT}"/scripts/${script}${tail}`;
 }
 
-export function hookPrefixForPlatform(platform = process.platform) {
-  return platform === 'win32' ? 'node' : UNIX_HOOK_PREFIX;
+/**
+ * True when a bare `node` resolves from `env`. Under an npm lifecycle script
+ * npm prepends its own Node directory to PATH, so the probe cannot see the
+ * real hook PATH and reports false. That keeps the find-node bootstrap, which
+ * works either way.
+ */
+export function nodeResolvesOnHookPath(env = process.env) {
+  if (env.npm_lifecycle_event || env.npm_execpath) return false;
+  try {
+    return spawnSync('node', ['-v'], { env, timeout: 5000, windowsHide: true, stdio: 'ignore' }).status === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `nodeOnPath` defaults to false, so a caller that does not probe keeps the
+ * conservative find-node rewrite on POSIX.
+ */
+export function hookPrefixForPlatform(platform = process.platform, { nodeOnPath = false } = {}) {
+  return platform === 'win32' || nodeOnPath ? 'node' : UNIX_HOOK_PREFIX;
 }
 
 /**
@@ -93,7 +118,8 @@ export function normalizeHookCommand(command, prefix = UNIX_HOOK_PREFIX) {
   return unixShellCommand(parsed.script, parsed.extra);
 }
 
-export function normalizeHooksDataForPlatform(data, platform = process.platform) {
+export function normalizeHooksDataForPlatform(data, platform = process.platform, { nodeOnPath = false } = {}) {
+  const execForm = hookPrefixForPlatform(platform, { nodeOnPath }) === 'node';
   let patched = false;
 
   for (const groups of Object.values(data?.hooks ?? {})) {
@@ -104,7 +130,7 @@ export function normalizeHooksDataForPlatform(data, platform = process.platform)
         const parsed = parseHookInvocation(hook);
         if (!parsed) continue;
 
-        if (platform === 'win32') {
+        if (execForm) {
           const nextArgs = windowsExecArgs(parsed.script, parsed.extra);
           if (hook.command === 'node' && sameArgs(hook.args, nextArgs)) continue;
           hook.command = 'node';
