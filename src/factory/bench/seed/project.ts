@@ -10,7 +10,7 @@
  * different fixture versions are not comparable (compare warns).
  */
 
-export const BENCH_FIXTURE_VERSION = 1;
+export const BENCH_FIXTURE_VERSION = 2;
 
 /** The integration branch of the fixture (a default ship.trustedBases entry). */
 export const BENCH_BASE = 'main';
@@ -66,7 +66,8 @@ console.log('lint ok');
 
 /** The base files, path -> content (forward slashes). */
 export const BENCH_PROJECT_FILES: Readonly<Record<string, string>> = {
-  '.gitignore': 'node_modules/\n.omg/\n',
+  // `node_modules` without a slash: the fixture's node_modules may be a symlink (init --node-modules), which `node_modules/` would not ignore.
+  '.gitignore': 'node_modules\n.omg/\n',
   '.copilot/omg.jsonc': BENCH_OMG_JSONC,
   '.github/workflows/ci.yml': `name: CI
 on: [push, pull_request]

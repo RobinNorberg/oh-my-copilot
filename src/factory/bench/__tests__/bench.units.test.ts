@@ -194,6 +194,10 @@ describe('fixture', () => {
     expect(readFileSync(meta.canaryPath, 'utf8')).toContain(meta.canary);
     expect(meta.canaryPath.startsWith(meta.root)).toBe(false);
     expect(() => createBenchFixture(join(dir, 'b'))).toThrow(/not empty/);
+    // The --node-modules link is ignored as a link too (a `node_modules/` pattern matches directories only, so POSIX `git add -A` tracked it).
+    const linked = createBenchFixture(join(dir, 'c'), { nodeModules: NODE_MODULES });
+    git(linked.root, 'add', '-A');
+    expect(git(linked.root, 'status', '--porcelain')).toBe('');
   });
 });
 
@@ -365,7 +369,7 @@ describe('acceptance on a hostile PR head (H1, M2, L1)', () => {
       git(root, 'add', '-A');
     });
     const r = await accept(fake, plainGateRunner);
-    expect(r).toMatchObject({ ran: true, passed: false });
+    expect(r, r.detail).toMatchObject({ ran: true, passed: false });
     removeBenchDir(join(dir, 'b'));
     const fixed = head((root) => {
       const math = readFileSync(join(root, 'src', 'math.ts'), 'utf8');
