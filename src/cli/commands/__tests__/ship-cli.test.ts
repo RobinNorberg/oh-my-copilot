@@ -341,7 +341,7 @@ describe('omg ship CLI (scripted gh/git, no network)', () => {
     expect(await runTrusted('gates', '42')).toBe(1);
     expect(logs.join('\n')).toMatch(/ignoring ship\.allowAdminMerge from the working-tree project config/);
     expect(await runTrusted('merge', '42')).toBe(1);
-    expect(logs.join('\n')).toMatch(/gates are failed \(failed: Test\)/);
+    expect(logs.join('\n')).toMatch(/gates are failed \(failed: `Test`\)/);
     expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
     expect(calls).toContain(`git show ${BASE}:.copilot/omg.jsonc`);
   });

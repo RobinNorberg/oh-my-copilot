@@ -41105,6 +41105,16 @@ var init_sanitize = __esm({
   }
 });
 
+// src/ship/check-name.ts
+var checkText, checkName;
+var init_check_name = __esm({
+  "src/ship/check-name.ts"() {
+    "use strict";
+    checkText = (s, max) => Array.from(s.replace(new RegExp("\\p{Cf}", "gu"), "").replace(/`/g, "'").replace(/@/g, "\uFF20").replace(/\|/g, "\xA6").replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, " ").replace(/\s+/g, " ").trim()).slice(0, max).join("") || "(unnamed)";
+    checkName = (s) => `\`${checkText(s, 80)}\``;
+  }
+});
+
 // src/forge/github/merge.ts
 function ghMergeCommand(pr, headSha) {
   return ["gh", "pr", "merge", String(pr), "--admin", "--merge", "--match-head-commit", headSha];
@@ -41411,7 +41421,7 @@ function decideMerge({ state, pr, gate, commitsSinceReview, baseHistory, houseke
   if (pr.isDraft) reasons.push("PR is a draft (gh pr ready first)");
   if (pr.baseRefName !== state.base) reasons.push(`PR base is ${pr.baseRefName}, ship run expects ${state.base}`);
   if (gate.verdict !== "green") {
-    const detail = [...gate.failed.map((n) => `failed: ${n}`), ...gate.pending.map((n) => `pending: ${n}`)].join("; ");
+    const detail = [...gate.failed.map((n) => `failed: ${checkName(n)}`), ...gate.pending.map((n) => `pending: ${checkName(n)}`)].join("; ");
     reasons.push(`gates are ${gate.verdict}${detail ? ` (${detail})` : ""}`);
   }
   const verdict = latestVerdict(state);
@@ -41434,6 +41444,7 @@ var HOUSEKEEPING_DIR, PROTECTED_PATHS;
 var init_merge2 = __esm({
   "src/ship/merge.ts"() {
     "use strict";
+    init_check_name();
     init_exec();
     init_merge();
     init_state4();
@@ -45647,7 +45658,7 @@ function checkSegment(tokens, role, ctx) {
   }
   return null;
 }
-function checkText(text3, ctx, raw) {
+function checkText2(text3, ctx, raw) {
   const segments2 = text3.split("|");
   if (segments2.length > MAX_SEGMENTS) return `more than ${MAX_SEGMENTS} pipeline segments`;
   const names = [];
@@ -45686,9 +45697,9 @@ function reviewShellAllowlist(req, ctx) {
   if (wide) return deny(`non-ASCII character U+${wide[0].codePointAt(0).toString(16).toUpperCase().padStart(4, "0")}`);
   const bad = FORBIDDEN_CHARS.exec(raw);
   if (bad) return deny(`forbidden character ${JSON.stringify(bad[0])}`);
-  const parsed = checkText(raw, ctx, true);
+  const parsed = checkText2(raw, ctx, true);
   if (typeof parsed === "string") return deny(parsed);
-  const normalized = checkText(normalizeShellCommand(raw), ctx, false);
+  const normalized = checkText2(normalizeShellCommand(raw), ctx, false);
   if (typeof normalized === "string") return deny(`${normalized} (after quote normalization)`);
   const seen = /* @__PURE__ */ new Set([...parsed, ...normalized]);
   const unknown2 = runtimeIdentifiers(req).find((id) => !seen.has(id));
@@ -53593,7 +53604,7 @@ function mergeDecision(exec, root, ship, view, config2, known, forge, reads) {
     ...gate.noChecks ? { noChecks: true } : {},
     checks: counted.filter((c) => c.class === "pass" && c.state.toUpperCase() === "SUCCESS").map((c) => c.name),
     unsettled: counted.filter((c) => ["SKIPPED", "NEUTRAL"].includes(c.state.toUpperCase())).map((c) => c.name),
-    blocking: counted.filter((c) => !["SUCCESS", "SKIPPED", "NEUTRAL"].includes(c.state.toUpperCase())).map((c) => `${checkName(c.name)} (${checkText2(c.state.toUpperCase(), 24)}${flaky.has(c.name) ? ", known-flaky" : ""})`)
+    blocking: counted.filter((c) => !["SUCCESS", "SKIPPED", "NEUTRAL"].includes(c.state.toUpperCase())).map((c) => `${checkName(c.name)} (${checkText(c.state.toUpperCase(), 24)}${flaky.has(c.name) ? ", known-flaky" : ""})`)
   };
   const reviewed = latestVerdict(ship)?.sha;
   const commits = readCommitsSinceReview(exec, root, reviewed, view.headRefOid, view.baseRefOid, ship.housekeepingCommits);
@@ -53612,7 +53623,7 @@ function mergeDecision(exec, root, ship, view, config2, known, forge, reads) {
     extraProtected
   });
   if (!forge) return { ...decision, ...noChecks };
-  const reasons = [...decision.reasons, ...forge.merge.blockingPolicies(view.number, view.headRefOid).map((r) => `Azure DevOps branch policy: ${r}`)];
+  const reasons = [...decision.reasons, ...forge.merge.blockingPolicies(view.number, view.headRefOid).map((r) => `Azure DevOps branch policy: \`${checkText(r, 160)}\``)];
   const human = forge.merge.humanMerge?.(view.number, view.headRefOid);
   return {
     ok: reasons.length === 0,
@@ -53648,20 +53659,19 @@ function mergeComment(issue2, decision, resume = `omg factory run ${issue2}`) {
     ""
   ].join("\n");
 }
-var checkText2, checkName, bodyLines;
+var bodyLines;
 var init_merge_policy = __esm({
   "src/factory/run/merge-policy.ts"() {
     "use strict";
+    init_check_name();
     init_config2();
     init_gates();
     init_merge2();
     init_state4();
     init_lane_commit();
-    init_prompts2();
     init_state5();
     init_reviews3();
-    checkText2 = (s, max) => oneLine(s.replace(new RegExp("\\p{Cf}", "gu"), "").replace(/`/g, "'").replace(/@/g, "\uFF20").replace(/\|/g, "\xA6"), max) || "(unnamed)";
-    checkName = (s) => `\`${checkText2(s, 80)}\``;
+    init_check_name();
     bodyLines = (decision) => decision.body ? ["", `The command reads its body from \`${decision.body.file}\` (SHA-256 \`${decision.body.sha256}\`); check that file before running it.`] : [];
   }
 });
@@ -57770,6 +57780,7 @@ var init_engine = __esm({
     import_path117 = require("path");
     init_config2();
     init_exec();
+    init_check_name();
     init_merge2();
     init_prepare2();
     init_jsonc();
@@ -61083,13 +61094,13 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             return;
           }
           case "flaky":
-            this.gate("ci-flaky", `known-flaky failures at ${at} are out of rerun budget (${out.report.failed.join(", ")}); rerun the failed jobs by hand`);
+            this.gate("ci-flaky", `known-flaky failures at ${at} are out of rerun budget (${out.report.failed.map(checkName).join(", ")}); rerun the failed jobs by hand`);
             return;
           case "no-workflows":
             this.gate("no-workflows", `${out.report.noHeadChecks ? `${noHeadChecksText(out.report.noHeadChecks)} (head ${at})` : `no checks and no workflow runs exist for ${at}`}; push the branch with a token that triggers workflows (or enable Actions), or close and reopen PR #${pr}${out.report.noHeadChecks ? `; to stop instead: ${cancelCommand(this.key)}` : ""}`);
             return;
           case "timeout":
-            this.gate("gates-timeout", `gates did not settle within factory.run.gatesTimeoutMinutes ${Math.round(this.o.limits.gatesTimeoutMs / 6e4)} at ${at}${out.report ? ` (pending: ${out.report.pending.join(", ") || "none"})` : ""}; rerun ${this.resume} to wait again, or ${cancelCommand(this.key)}`);
+            this.gate("gates-timeout", `gates did not settle within factory.run.gatesTimeoutMinutes ${Math.round(this.o.limits.gatesTimeoutMs / 6e4)} at ${at}${out.report ? ` (pending: ${out.report.pending.map(checkName).join(", ") || "none"})` : ""}; rerun ${this.resume} to wait again, or ${cancelCommand(this.key)}`);
             return;
           case "head-moved":
             this.gate("head-moved-externally", `PR #${pr} head is ${out.headRefOid.slice(0, 12)}, the engine pushed ${at}`);

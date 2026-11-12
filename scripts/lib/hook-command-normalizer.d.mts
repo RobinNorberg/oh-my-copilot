@@ -11,8 +11,23 @@ export function windowsExecArgs(script: string, extra?: string[]): string[];
 
 export function unixShellCommand(script: string, extra?: string[]): string;
 
-export function hookPrefixForPlatform(platform?: string): string;
+export interface HookPlatformOptions {
+  /** True when a bare `node` resolves on the hook PATH: POSIX then keeps the exec form. */
+  nodeOnPath?: boolean;
+}
+
+export const SYSTEM_PATH_DIRS: string[];
+
+export function systemPathDirs(exists?: (dir: string) => boolean): string[];
+
+export function minimalHookEnv(env?: NodeJS.ProcessEnv, pathDirs?: string[]): { PATH: string; HOME?: string };
+
+export function nodeResolvesOnHookPath(env?: NodeJS.ProcessEnv, pathDirs?: string[]): boolean;
+
+export function patchHooksManifestFile(path: string, platform?: string, probe?: () => boolean): string | null;
+
+export function hookPrefixForPlatform(platform?: string, options?: HookPlatformOptions): string;
 
 export function normalizeHookCommand(command: string, prefix?: string): string;
 
-export function normalizeHooksDataForPlatform(data: unknown, platform?: string): boolean;
+export function normalizeHooksDataForPlatform(data: unknown, platform?: string, options?: HookPlatformOptions): boolean;
