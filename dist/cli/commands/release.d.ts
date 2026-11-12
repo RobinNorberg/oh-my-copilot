@@ -52,9 +52,11 @@ interface ReleaseCliOptions {
     stop?: boolean;
     flakyCandidates?: boolean;
     allowForeignCli?: boolean;
+    bench?: string;
+    allowBenchRegression?: boolean;
 }
 /** The detached driver's command line: this invocation with --drive and without --detach / --json. */
-export declare function releaseDriveArgv(version: string, o: ReleaseCliOptions, baseline?: string): string[];
+export declare function releaseDriveArgv(version: string, o: ReleaseCliOptions, baseline?: string, bench?: string): string[];
 export declare function releaseCommand(overrides?: ReleaseCommandDeps): Command;
 export {};
 //# sourceMappingURL=release.d.ts.map

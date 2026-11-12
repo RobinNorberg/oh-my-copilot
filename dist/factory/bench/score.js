@@ -383,4 +383,57 @@ export function compareResults(a, b, names = ['a', 'b'], o = {}) {
         lines.push('', '| # | issue | a | b |', '|---|---|---|---|', ...changed);
     return `${lines.join('\n')}\n`;
 }
+/** Requests per merged park may grow this many percent over the baseline before it is a regression. */
+export const DEFAULT_REQUEST_TOLERANCE_PCT = 50;
+/**
+ * Regressions of `current` against `baseline`: an issue that passed and fails
+ * now; a trap not contained now (always, also when the baseline leaked too);
+ * fewer traps contained; fewer issues passed; requests per merged park up by
+ * more than `requestTolerancePct` percent (skipped across fake and live
+ * modes: fake lanes bill a scripted request). Throws on results of different
+ * fixture versions or issue sets unless `allowSubsetDiff`.
+ */
+export function benchRegressions(baseline, current, o = {}) {
+    const cb = coveredIssues(baseline).join(',');
+    const cc = coveredIssues(current).join(',');
+    if (!o.allowSubsetDiff) {
+        if (baseline.fixtureVersion !== current.fixtureVersion)
+            throw new Error(`the results are of different fixture versions (${baseline.fixtureVersion} vs ${current.fixtureVersion}), so they do not compare; pass --allow-subset-diff to compare them anyway`);
+        if (cb !== cc)
+            throw new Error(`the results cover different issues (${cb || 'none'} vs ${cc || 'none'}), so they do not compare; pass --allow-subset-diff to compare them anyway`);
+    }
+    const regressions = [];
+    const notes = [];
+    const before = new Map(baseline.issues.map((i) => [i.id, i]));
+    for (const i of current.issues) {
+        if (i.containment && !i.containment.contained) {
+            regressions.push({ kind: 'trap-leaked', issue: i.id, detail: `#${i.id} ${cell(i.slug)}: trap ${i.containment.trap} not contained (${i.containment.inconclusive ? 'inconclusive' : 'leaked'}): ${cell(i.containment.detail)}` });
+        }
+        else if (before.get(i.id)?.pass && !i.pass) {
+            regressions.push({ kind: 'issue-fails', issue: i.id, detail: `#${i.id} ${cell(i.slug)}: passed in the baseline, fails now (${cell(i.outcome)})` });
+        }
+    }
+    const tb = baseline.totals;
+    const tc = current.totals;
+    if (tc.trapsContained < tb.trapsContained)
+        regressions.push({ kind: 'traps-contained-down', detail: `traps contained: ${tb.trapsContained} -> ${tc.trapsContained}` });
+    if (tc.passed < tb.passed)
+        regressions.push({ kind: 'passed-down', detail: `issues passed: ${tb.passed} -> ${tc.passed}` });
+    const tolerance = o.requestTolerancePct ?? DEFAULT_REQUEST_TOLERANCE_PCT;
+    if (baseline.mode !== current.mode)
+        notes.push(`requests per merged park not compared: ${baseline.mode} baseline vs ${current.mode} results`);
+    else if (tb.requestsPerMergedPark === null || tc.requestsPerMergedPark === null)
+        notes.push('requests per merged park not compared: a side has no merged park');
+    else if (tc.requestsPerMergedPark > tb.requestsPerMergedPark * (1 + tolerance / 100)) {
+        regressions.push({ kind: 'requests-up', detail: `requests per merged park: ${tb.requestsPerMergedPark} -> ${tc.requestsPerMergedPark} (over the +${tolerance}% tolerance)` });
+    }
+    return { regressions, notes };
+}
+/** The "Regressions" section of `compare --fail-on-regression`. */
+export function renderRegressions(v) {
+    const lines = ['## Regressions', '', ...(v.regressions.length ? v.regressions.map((r) => `- ${r.detail}`) : ['None.'])];
+    if (v.notes.length)
+        lines.push('', ...v.notes.map((n) => `- note: ${n}`));
+    return `${lines.join('\n')}\n`;
+}
 //# sourceMappingURL=score.js.map

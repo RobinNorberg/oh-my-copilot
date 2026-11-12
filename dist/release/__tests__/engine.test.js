@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'os';
 import { dirname, join, win32 } from 'path';
 import { resolveShipConfig } from '../../ship/config.js';
-import { defaultReleaseExec, defaultReleaseExecAsync, PHASES, phasePlan, readReleaseState, releaseStatePath, resumePoint, processListing, runRelease, } from '../engine.js';
+import { BENCH_RESULTS_KIND, BENCH_RESULTS_SCHEMA_VERSION, computeTotals } from '../../factory/bench/score.js';
+import { BENCH_BASELINE, defaultReleaseExec, defaultReleaseExecAsync, PHASES, phasePlan, readReleaseState, releaseStatePath, resumePoint, processListing, runRelease, } from '../engine.js';
 import { SMOKE_INPUTS } from '../checks.js';
 import { driveRelease } from '../drive.js';
 const V = '5.12.2';
@@ -330,6 +331,57 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
         it('treats an unpublished package (E404) as no npm latest', async () => {
             handlers.push((key) => (key === 'npm view oh-my-copilot dist-tags.latest' ? no('npm error code E404') : undefined), preflightOk);
             expect((await release({ to: 'preflight' })).ok).toBe(true);
+        });
+        describe('factory bench (--bench against the committed baseline)', () => {
+            const issue = (id, pass = true, contained = null) => ({
+                id, slug: `i${id}`, title: 't', difficulty: 1, category: 'docs', expect: ['merged-park'], outcome: pass ? 'merged-park' : 'park:x', pass, acceptance: null,
+                containment: contained === null ? null : { trap: 'secret', contained, detail: contained ? 'clean' : 'a pushed commit adds secret-shaped content' },
+                head: null, pr: null, premiumRequests: 2, credits: 2, lanes: [], wallMs: 1, phaseMs: {},
+            });
+            const results = (issues) => ({
+                schemaVersion: BENCH_RESULTS_SCHEMA_VERSION, kind: BENCH_RESULTS_KIND, mode: 'live', omgVersion: 'x', fixtureVersion: 2, startedAt: 's', finishedAt: 'f',
+                caps: { maxRequests: 9, maxCredits: null, maxMinutes: 240, parallel: 1 }, subset: null, stopped: null, ledger: null, notes: [], issues, totals: computeTotals(issues),
+            });
+            const current = (issues) => {
+                const path = join(root, 'current.json');
+                writeFileSync(path, JSON.stringify(results(issues)));
+                return path;
+            };
+            beforeEach(() => {
+                write(BENCH_BASELINE, JSON.stringify(results([issue(2), issue(10, true, true)])));
+                handlers.push(preflightOk);
+            });
+            it('without --bench preflight passes and says no comparison was made', async () => {
+                const result = await release({ to: 'preflight' });
+                expect(result.ok).toBe(true);
+                expect(result.phases[0].note).toContain('no factory bench comparison');
+                expect(logs.join('\n')).toContain('factory bench: no comparison made');
+                expect((await release({ dryRun: true, from: 'preflight', to: 'preflight' })).phases[0].steps.at(-1)).toBe('factory bench: no comparison (pass --bench <results.json>)');
+            });
+            it('passes on no regression; refuses a regression or a leaked trap unless --allow-bench-regression', async () => {
+                const same = await release({ to: 'preflight', bench: current([issue(2), issue(10, true, true)]) });
+                expect(same.ok).toBe(true);
+                expect(same.phases[0].note).toContain(`no factory bench regression against ${BENCH_BASELINE}`);
+                const worse = current([issue(2, false), issue(10, false, false)]);
+                const refused = await release({ from: 'preflight', to: 'preflight', bench: worse });
+                expect(refused.ok).toBe(false);
+                const details = refused.phases[0].details.join('\n');
+                expect(details).toContain('factory bench regression: #2 i2: passed in the baseline, fails now (park:x)');
+                expect(details).toContain('factory bench regression: #10 i10: trap secret not contained (leaked)');
+                expect(details).toContain('pass --allow-bench-regression to release anyway');
+                const allowed = await release({ from: 'preflight', to: 'preflight', bench: worse, allowBenchRegression: true });
+                expect(allowed.ok).toBe(true);
+                expect(allowed.phases[0].note).toMatch(/\d+ factory bench regression\(s\) allowed/);
+                expect(logs.join('\n')).toContain('(allowed: --allow-bench-regression)');
+            });
+            it('refuses unreadable or unlike results (another issue set, no baseline) even with --allow-bench-regression', async () => {
+                const subset = await release({ to: 'preflight', bench: current([issue(2)]), allowBenchRegression: true });
+                expect(subset.ok).toBe(false);
+                expect(subset.phases[0].details.join('\n')).toContain('factory bench: the results cover different issues');
+                rmSync(join(root, BENCH_BASELINE));
+                const missing = await release({ from: 'preflight', to: 'preflight', bench: current([issue(2)]) });
+                expect(missing.phases[0].details.join('\n')).toMatch(/factory bench: .*baseline\.json: not readable/);
+            });
         });
         it('accepts a staged rename only when both sides are prose files', async () => {
             handlers.push((key) => (key === 'git status --porcelain' ? ok('R  README.md -> docs/REFERENCE.md\nR  src/x.ts -> CHANGELOG.md\n') : undefined), preflightOk);

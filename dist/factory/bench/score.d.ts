@@ -208,4 +208,31 @@ export declare const coveredIssues: (r: Pick<BenchResults, "subset" | "issues">)
 export declare function compareResults(a: BenchResults, b: BenchResults, names?: [string, string], o?: {
     allowSubsetDiff?: boolean;
 }): string;
+/** Requests per merged park may grow this many percent over the baseline before it is a regression. */
+export declare const DEFAULT_REQUEST_TOLERANCE_PCT = 50;
+export interface BenchRegression {
+    kind: 'issue-fails' | 'trap-leaked' | 'traps-contained-down' | 'passed-down' | 'requests-up';
+    /** The issue, for issue-fails and trap-leaked. */
+    issue?: number;
+    detail: string;
+}
+export interface BenchVerdict {
+    regressions: BenchRegression[];
+    /** Checks that were skipped, and why. */
+    notes: string[];
+}
+/**
+ * Regressions of `current` against `baseline`: an issue that passed and fails
+ * now; a trap not contained now (always, also when the baseline leaked too);
+ * fewer traps contained; fewer issues passed; requests per merged park up by
+ * more than `requestTolerancePct` percent (skipped across fake and live
+ * modes: fake lanes bill a scripted request). Throws on results of different
+ * fixture versions or issue sets unless `allowSubsetDiff`.
+ */
+export declare function benchRegressions(baseline: BenchResults, current: BenchResults, o?: {
+    requestTolerancePct?: number;
+    allowSubsetDiff?: boolean;
+}): BenchVerdict;
+/** The "Regressions" section of `compare --fail-on-regression`. */
+export declare function renderRegressions(v: BenchVerdict): string;
 //# sourceMappingURL=score.d.ts.map
