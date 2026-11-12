@@ -1,20 +1,36 @@
 /**
  * Merge policy for `omg factory run` (owner override of design §8): merge is
- * ALWAYS human. There is no `factory.merge` key and no auto mode, and nothing
- * here runs a merge (the factory guard refuses `gh pr merge` outright). After
- * green gates the engine asks ship's decideMerge for the verdict on the
- * current head, prints the exact admin merge command, comments it on the PR
- * and parks at `awaiting-human: merge`. A later run reads `gh pr view` and
- * finishes as `merged` once the human merged.
+ * a human step by DEFAULT. After green gates the engine asks ship's
+ * decideMerge for the verdict on the current head, prints the exact admin
+ * merge command, comments it on the PR and parks at `awaiting-human: merge`.
+ * A later run reads `gh pr view` and finishes as `merged` once the human merged.
+ *
+ * Opt-in (auto-merge.ts): `factory.merge.auto` in the USER config, per
+ * repository, lets the engine itself merge a low-risk PR (tiers docs, tests,
+ * small) when every condition holds on the exact head; a committed value is
+ * ignored with a notice. Nothing in this file runs a merge. Only the engine
+ * merges: the factory guard still refuses `gh pr merge`, and admits the
+ * head-pinned GitHub REST merge only inside the engine's auto-merge step.
+ * Azure DevOps always stays human.
  */
 import { DEFAULT_SHIP_CONFIG } from '../../ship/config.js';
 import { evaluateGates, NO_CI_CHECKS_NOTE } from '../../ship/gates.js';
 import { decideMerge, listChangedFiles, readCommitsSinceReview } from '../../ship/merge.js';
 import { latestVerdict } from '../../ship/state.js';
 import { ADO_PIPELINE_PATHS, CI_DEFINITION_PATHS } from './lane-commit.js';
+import { oneLine } from './prompts.js';
 import { runLabel } from './state.js';
 // The merge view is the GitHub forge's `gh pr view --json MERGE_VIEW_FIELDS` read.
 export { MERGE_VIEW_FIELDS, parseMergeView } from '../../forge/github/reviews.js';
+/**
+ * A forge-reported check name or state in a park reason (it may reach a PR
+ * comment or progress sync): one line, no format characters (bidi,
+ * zero-width), no backticks, no '@' that could mention someone (a full-width
+ * '＠' instead), no '|' that could split a table cell ('¦'), capped.
+ */
+const checkText = (s, max) => oneLine(s.replace(/\p{Cf}/gu, '').replace(/`/g, "'").replace(/@/g, '＠').replace(/\|/g, '¦'), max) || '(unnamed)';
+/** A check name in a code span, so markdown links, HTML and `owner/repo#1` cross-references stay literal text. */
+export const checkName = (s) => `\`${checkText(s, 80)}\``;
 /**
  * ship's decideMerge on a fresh one-shot gate read for the head (no watch,
  * no rerun) and the commits since the reviewed sha. `view.baseRefOid` must be
@@ -28,7 +44,13 @@ export { MERGE_VIEW_FIELDS, parseMergeView } from '../../forge/github/reviews.js
 export function mergeDecision(exec, root, ship, view, config, known, forge, reads) {
     // Ship phase ready: the gates loop already waited out the settle window for this head, so this read has that history.
     const gate = evaluateGates(exec, view.number, config, known, root, view.headRefOid, forge, ship.phase === 'ready' ? 0 : undefined, Date.now, reads);
-    const noChecks = gate.noChecks ? { noChecks: true } : {};
+    // Raw states only: the gate's `pass` class (and its `flaky` verdict) never stands in for a SUCCESS here. Advisory checks are ignored.
+    const counted = gate.checks.filter((c) => c.class !== 'advisory');
+    const flaky = new Set(gate.flaky.filter((a) => a.knownFlaky).map((a) => a.check));
+    const noChecks = { ...(gate.noChecks ? { noChecks: true } : {}), checks: counted.filter((c) => c.class === 'pass' && c.state.toUpperCase() === 'SUCCESS').map((c) => c.name),
+        unsettled: counted.filter((c) => ['SKIPPED', 'NEUTRAL'].includes(c.state.toUpperCase())).map((c) => c.name),
+        blocking: counted.filter((c) => !['SUCCESS', 'SKIPPED', 'NEUTRAL'].includes(c.state.toUpperCase()))
+            .map((c) => `${checkName(c.name)} (${checkText(c.state.toUpperCase(), 24)}${flaky.has(c.name) ? ', known-flaky' : ''})`) };
     const reviewed = latestVerdict(ship)?.sha;
     const commits = readCommitsSinceReview(exec, root, reviewed, view.headRefOid, view.baseRefOid, ship.housekeepingCommits);
     const extraProtected = [

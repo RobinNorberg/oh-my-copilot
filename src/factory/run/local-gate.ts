@@ -341,7 +341,7 @@ const tailOf = (text: string): string => {
  * record is removed again): its executable cannot start, or (`sandbox`) the
  * OS sandbox could not run it with an attested verdict.
  */
-export type LocalGateOutcome = { started: true; record: LocalCheckRecord } | { started: false; reason: string; sandbox?: true; noVerdict?: true; refused?: true };
+export type LocalGateOutcome = { started: true; record: LocalCheckRecord } | { started: false; reason: string; sandbox?: true; noVerdict?: true; refused?: true; unavailable?: true };
 
 /**
  * Run the gate for `head` and record SUCCESS or FAILURE (a PENDING record is
@@ -407,7 +407,8 @@ async function runSandboxedGate(i: LocalGateInput, base: LocalCheckRecord, now: 
   if (!r.ran) {
     drop();
     // `noVerdict`: the command was handed to the sandbox and gave no verdict (gate-no-verdict, never the ack park).
-    return { started: false, reason: r.reason, sandbox: true, ...(r.started ? { noVerdict: true as const } : {}), ...(r.refused ? { refused: true as const } : {}) };
+    // `unavailable`: isolation "container" without a usable runtime (gate-container-unavailable, never the ack park).
+    return { started: false, reason: r.reason, sandbox: true, ...(r.started ? { noVerdict: true as const } : {}), ...(r.refused ? { refused: true as const } : {}), ...(r.unavailable ? { unavailable: true as const } : {}) };
   }
   const output = `${r.output}${r.timedOut ? `\nlocal gate timed out after ${i.timeoutMinutes} min` : ''}`;
   const done: LocalCheckRecord = {

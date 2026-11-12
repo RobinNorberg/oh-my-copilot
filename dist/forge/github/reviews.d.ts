@@ -13,6 +13,8 @@ import { type ReviewTrust } from './graphql.js';
 export declare const MERGE_VIEW_FIELDS = "number,state,isDraft,baseRefName,baseRefOid,headRefOid";
 export interface MergeView extends PrView {
     baseRefOid: string;
+    /** Set by the factory engine's live-tip view (liveBase): the PR's own recorded baseRefOid, for reads that need a base with settled CI. */
+    recordedBaseRefOid?: string;
 }
 /** Parse `gh pr view --json MERGE_VIEW_FIELDS`; null when a field is missing or malformed. */
 export declare function parseMergeView(stdout: string): MergeView | null;

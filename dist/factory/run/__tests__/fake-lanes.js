@@ -221,6 +221,8 @@ export function withTestSandbox(o, over = {}) {
     return {
         ...o,
         ...('gateSandboxUserConfig' in over ? {} : { gateSandboxUserConfig: null }),
+        // The developer's own factory.merge.auto never reaches the tests.
+        ...('autoMergeUserConfig' in over ? {} : { autoMergeUserConfig: null }),
         // The developer's own factory.run.layout never reaches the tests.
         ...('runUserConfig' in over || 'runUserConfig' in o ? {} : { runUserConfig: null }),
         ...('gateSandbox' in over ? {} : { gateSandbox: attestedSandbox(() => o.exec, () => o.localGate) }),
@@ -283,7 +285,7 @@ export function harness(prefix = 'omg-factory-run-') {
             const remote = bareRef(bare, `refs/heads/${h.gh.branch}`);
             const base = bareRef(bare, 'refs/heads/dev');
             const headRefOid = h.gh.headSequence.shift() ?? h.gh.headOverride ?? remote;
-            return ok(JSON.stringify({ number: PR, headRefOid, state: h.gh.merged ? 'MERGED' : 'OPEN', isDraft: !h.gh.ready, baseRefName: 'dev', baseRefOid: base }));
+            return ok(JSON.stringify({ number: PR, headRefOid, state: h.gh.merged ? 'MERGED' : 'OPEN', isDraft: !h.gh.ready, baseRefName: 'dev', baseRefOid: h.gh.baseRefOid ?? base }));
         }
         if (key === `gh pr ready ${PR}`) {
             h.gh.ready = true;
@@ -324,6 +326,9 @@ export function harness(prefix = 'omg-factory-run-') {
         const read = cmd === 'gh' && args[0] === 'api' && args[3] === '--method' && args[4] === 'GET' ? h.gh.api?.(args[5]) : undefined;
         if (read)
             return read;
+        // The base branch's live tip (ghBranchTip): the bare remote's dev.
+        if (key === 'gh api --hostname github.com --method GET repos/o/r/branches/dev')
+            return ok(JSON.stringify({ name: 'dev', commit: { sha: bareRef(bare, 'refs/heads/dev') } }));
         return { status: 1, stdout: '', stderr: `unscripted: ${key}` };
     };
     return h;

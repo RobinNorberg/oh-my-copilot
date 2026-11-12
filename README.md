@@ -287,6 +287,7 @@ The `omg` binary covers setup and the headless workflows:
 | `omg team 3:copilot "fix failing tests"`                 | run a team of workers: headless SDK workers in a Copilot CLI session, tmux panes elsewhere |
 | `omg ask codex "identify architecture risks"`            | ask another AI CLI and save the answer as an artifact                |
 | `omg factory setup` / `check` / `run <issue>`            | configure the software factory, bucket intake items, drive one issue to a merge-ready PR |
+| `omg factory dashboard` / `bench`                        | one-page HTML view of all factory runs, built from local state; a seeded benchmark of the factory |
 | `omg ship status <pr>`                                   | show a ship run's review verdicts and gate state                     |
 | `omg smoke copilot`                                      | load-check the plugin in a real Copilot CLI                          |
 | `omg budget`                                             | show the AI Credits ledger                                           |

@@ -1,30 +1,31 @@
-# oh-my-copilot v5.25.2
+# oh-my-copilot v5.26.0
 
-This patch fixes what the second live test of the software factory found. With 5.25.1 a factory run reached the merge step end to end on a real GitHub repository, but only after a manual setting. This release removes the need for it.
+This release adds six things to the software factory, and fixes what we found when we ran the factory on oh-my-copilot's own backlog. Three of its pull requests were merged into this release.
 
-Install with `npm install -g oh-my-copilot@5.25.2`, or from the plugin marketplace: `copilot plugin update oh-my-copilot@omc`.
+Install with `npm install -g oh-my-copilot@5.26.0`, or from the plugin marketplace: `copilot plugin update oh-my-copilot@omc`.
 
-## Fixed
+## New
 
-- **The factory's CI gate works on repositories other than oh-my-copilot** (#493). The built-in list of required checks was this project's own 19 CI job names, so on any other repository the gate waited for checks that never exist. With no `ship.requiredChecks` configured, the gate on GitHub now requires the checks your branch protection or rulesets require. When those cannot be read, it requires every check GitHub reports for the commit. All of them must pass, and every check suite of the commit must be finished.
-- **A configured check that never reports is named.** The run parks at `missing-checks` with the name and where to change it, and no longer waits 90 minutes in silence.
-- **A check with the result "neutral" counts as passed.**
-- **The merge park text gives the resume command once.** The comment for a cancelled run no longer repeats the old merge command. The board shows the current review state.
-- **After a human review fix round** the park text names the thread, the commit that addressed it, and that resolving or answering it continues the run.
-- **Lane prompts name the repository's own format and lint scripts** (from `package.json` on the base branch), so a lane formats its code before it finishes.
+- **`omg factory bench`.** A benchmark for the factory on the local forge: 12 seeded issues with hidden acceptance tests, 4 of them traps (edit a CI file, commit a secret, read outside the repository, widen the committed config). `--fake` costs nothing and runs in CI. `--live` needs `--max-requests`, checks your default model, and refuses unless your gates are sandboxed. `compare` diffs two results. First live baseline: both graded tasks reached the merge step with their hidden tests green at 2 premium requests each, and all 3 traps were contained.
+- **`omg factory run --max-requests <n>`.** Stops starting lanes once the run's lanes used n premium requests. The lane in flight finishes, so a run can end a little above n.
+- **`omg factory dashboard`.** One self-contained HTML page (or `--json`) of all factory runs from local state: status, parks, time per phase, credits and premium requests per run, role and day, and bench results.
+- **Container isolation for gates (opt-in).** `factory.run.sandbox.isolation: "container"` in your user config runs prepare checks, the local gate and the base comparison in Docker or Podman with no credentials, no user profile and no network while repository code runs. Packages download in a separate step without running any scripts. Disk and time limits stop only our own containers. Docker is tested; Podman is not.
+- **Opt-in auto-merge by trust tier.** `factory.merge.auto` in your user config, per repository: `docs` (root README/CHANGELOG/CONTRIBUTING and `docs/`), `tests`, `small`. Every check on the head must have succeeded, the factory review must approve that commit, and no human review may be open. Agent prompts, CI files, manifests, lockfiles, install scripts, build output and the factory's own code never auto-merge. The default is unchanged: a human merges.
+- **Monorepo gates.** npm, pnpm and yarn workspaces get a per-package gate `node_modules` tree, with the package list read from the base branch.
 
-## Security
+## Fixed (found by running the factory on its own repository)
 
-- **"No CI checks are configured" is never said by mistake.** The gate goes green without CI only when the base commit has no checks, neither the base nor the pull request contains a CI definition file, and the commit's check suites were read and are empty. Any failed read keeps the gate waiting.
-- **Lanes may not change CI definition files** of other CI systems either (for example `azure-pipelines.yml`, `.gitlab-ci.yml`, `.circleci/`, `Jenkinsfile`). A human must make that change.
-- **oh-my-copilot's own 19 required checks are unchanged.** They now live in this repository's committed `.copilot/omg.jsonc`, and `omg ship`, the factory and `omg release` fall back to them for this repository.
+- **Lanes failed on larger repositories.** Git output was capped at 1 MiB, so the change check failed on any repository with about 10,000 files. The cap is now 256 MiB, and anything above it still fails closed.
+- **Every open run blocked after a merge to dev.** GitHub's recorded base of a pull request goes stale. The engine now reads the base branch's live tip, still requires the fetched base to match it, and reads base CI history from a base whose CI has finished.
+- **Checks that need git parked on the base.** The gate's copy of the base branch now gets a small git repository of exactly that commit.
+- **Two git reads failed open.** A failed read of untracked files, or of the main checkout's status, is no longer taken as "nothing there".
+- **Auto-merge on GitHub** keeps the merge human when dev moved after prepare, and treats any check that did not succeed as blocking, including known-flaky failures.
 
 ## Caveats
 
-- **This version has not been run live.** The second live test ran 5.25.1 with `ship.requiredChecks` set by hand. The new default is tested with fakes.
-- **Azure DevOps behaviour changed and is not verified live.** It used to wait on the 19 names and now requires every policy evaluation that is not advisory.
-- **A third-party CI app that is slow to start can be missed** when it created no check suite on the base commit and your branch protection does not name its check. Name required checks in branch protection or in `ship.requiredChecks`.
-- `omg ship` does not read branch protection. Without configured names it requires every reported check.
-- The engine does not answer on an outdated review thread. You resolve it and rerun.
-- All caveats of 5.24.0, 5.25.0 and 5.25.1 still apply.
+- **On Windows, Git for Windows cannot clone, fetch or push inside the Copilot sandbox.** Tests that push to a temporary remote fail in prepare and park at `gate-sandbox-incompatible`. Use container isolation, or set `ship.prepare.checks` in your user config.
+- **Do not run Claude Code or Copilot in a checkout while the factory works in it.** Tools that write into the folder trip `lane-tampered`. Use a separate clone.
+- **Factory lanes do not rebuild committed build output.** In a repository that commits `dist/`, a maintainer rebuilds it before merging.
+- **Auto-merge has known limits**, listed in docs/REFERENCE.md: for example a test that mocks the code it tests, or a tool that install scripts call and the engine cannot follow.
+- **Azure DevOps** still compares against the target commit it reports, which can lag; a run then refuses until it is rerun.
 - **Test evidence:** this release was published with CI on the release commit, not the maintainer's local full test suite.

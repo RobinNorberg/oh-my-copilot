@@ -136,6 +136,11 @@ export declare function mirrorNamedRemoteKeys(stdout: string, mirror: string): s
 /** The GitHub repository a run reads review feedback from: gh's `HOST/OWNER/NAME` (ghRepoArg). */
 export interface GithubReadContext {
     repo: string;
+    /** Set by the engine only inside its opt-in auto-merge step (auto-merge.ts): the one head-pinned REST merge it may run. */
+    autoMerge?: {
+        pr: number;
+        head: string;
+    };
 }
 /**
  * Throws FactorySafetyError unless the command is a factory shape or a

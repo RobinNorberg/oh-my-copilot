@@ -153,6 +153,8 @@ export interface FactoryEngineOptions {
     gateSandbox?: SandboxRunner;
     /** The trusted user config factory.run.sandbox.gates is read from (default: userConfigLayers().trustedUser); tests pass one. */
     gateSandboxUserConfig?: unknown;
+    /** The trusted user config factory.merge.auto is read from (default: userConfigLayers().trustedUser); tests pass one. */
+    autoMergeUserConfig?: unknown;
     now?: () => number;
     pollMs?: number;
     progressFile?: string;
@@ -303,8 +305,10 @@ export declare function ciFailureTail(failure: FactoryCiFailure): {
  * node_modules), as `node_modules/<entry>`; undefined when there is none.
  */
 export declare function nodeModulesWriteDenied(tail: string): string | undefined;
+/** The advice when the base's gate runs git's own transport, which cannot run in the Copilot sandbox on Windows. */
+export declare const GIT_TRANSPORT_SANDBOX_ADVICE = "Your gate runs git clone, fetch or push (also to a local path or a temp repository), which cannot run in the OS sandbox on Windows: git starts that transport through Git for Windows' sh.exe, and no MSYS2 program starts in the sandbox; the sandbox has no network either. Read-only git (rev-parse, ls-files, log) and git init, add and commit work. Make those tests skip the transport, run them outside prepare, or set factory.run.sandbox.isolation \"container\" (with an image that has git) in your user config";
 /** What the gate-sandbox-incompatible park of a failing base calibration tells the human to do. */
-export declare function sandboxIncompatibleAdvice(tail: string | undefined): string;
+export declare function sandboxIncompatibleAdvice(tail: string | undefined, platform?: NodeJS.Platform): string;
 /**
  * Engine git in the prepare checkout once the PR's code ran there: the admin
  * dir recorded at `worktree add` (recordWorktreeGitLinks, before any of it

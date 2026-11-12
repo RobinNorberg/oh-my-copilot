@@ -8,6 +8,7 @@
 import type { Exec } from '../../ship/exec.js';
 import { CHECK_FIELDS, GhChecksError, parseChecksJson, parseRunsJson, RUN_FIELDS, TRANSIENT_GH_ERROR, type GhCheck, type WorkflowRun } from '../../ship/gates.js';
 import type { ForgeChecks } from '../types.js';
+import { GhCommandError } from './gh.js';
 
 /** Run `gh pr checks <pr> --json ...`; "no checks reported" is an empty list. */
 export function ghPrChecks(exec: Exec, pr: number, cwd?: string): GhCheck[] {
@@ -89,6 +90,27 @@ export function requiredChecksArgs(repoArg: string, base: string): string[][] {
   if (!host) throw new Error(`not a GitHub repository argument: ${repoArg}`);
   const b = encodeURIComponent(base);
   return [apiGet(host, `repos/${owner}/${name}/branches/${b}`), apiGet(host, `repos/${owner}/${name}/rules/branches/${b}?per_page=100&page=1`)];
+}
+
+/**
+ * The live tip of `base` on `repoArg`: the branch GET of requiredChecksArgs
+ * (the same exact shape the run guard admits). A pull request's baseRefOid
+ * is the base when the PR was last updated, not the branch now: it stays
+ * behind after another merge into the base. Throws GhCommandError on a
+ * failed read, on another branch name (a renamed branch redirects) and on
+ * anything but a full commit sha.
+ */
+export function ghBranchTip(exec: Exec, repoArg: string, base: string, cwd?: string): string {
+  const [args] = requiredChecksArgs(repoArg, base);
+  const res = exec('gh', args, { cwd });
+  let v: { name?: unknown; commit?: { sha?: unknown } } | undefined;
+  try { v = JSON.parse(res.stdout) as typeof v; } catch { v = undefined; }
+  const sha = typeof v === 'object' && v !== null && typeof v.commit === 'object' && v.commit !== null ? v.commit.sha : undefined;
+  if (res.status !== 0 || v?.name !== base || typeof sha !== 'string' || !/^[0-9a-f]{40}$/.test(sha)) {
+    const why = res.status !== 0 ? `exit ${res.status}: ${res.stderr.trim().split('\n')[0]}` : 'no branch of that name with a commit sha';
+    throw new GhCommandError(`gh api ${args[5]} did not return ${base}'s tip (${why}); refusing (fail closed)`);
+  }
+  return sha;
 }
 
 /** Pages read of a paginated list (rules, check suites, check runs); a longer list counts as unreadable. */

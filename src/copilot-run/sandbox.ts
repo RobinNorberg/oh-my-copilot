@@ -239,6 +239,69 @@ export function resolveRequireDeniedPaths(layers: Pick<GatesSandboxLayers, 'user
   return { require: false, source: user === false || base === false ? 'config' : 'default' };
 }
 
+/** `factory.run.sandbox.isolation`: where a sandboxed gate runs (the Copilot OS sandbox, or a local container). */
+export type GateIsolation = 'copilot' | 'container';
+
+/** `factory.run.sandbox.container`: the container the gate runs in with isolation "container". */
+export interface GateContainerSettings {
+  runtime: 'docker' | 'podman';
+  /** An image reference; default `node:<host major>-bookworm-slim`. A digest pin (`name@sha256:...`) is kept as given. */
+  image: string;
+  /** `--memory` (e.g. "4g"). */
+  memory: string;
+  /** `--cpus`. */
+  cpus: number;
+  /** `--pids-limit`. */
+  pidsLimit: number;
+  /** How long each dependency install step (`npm ci`, then its scripts) may run. */
+  installTimeoutMinutes: number;
+  /** The most a command's work volume may hold (e.g. "10g"); over it, a watchdog kills that command's container. */
+  diskLimit: string;
+}
+
+const CONTAINER_KEYS = ['runtime', 'image', 'memory', 'cpus', 'pidsLimit', 'installTimeoutMinutes', 'diskLimit'] as const;
+
+/** The default gate image: the host Node major on Debian bookworm slim. */
+export const defaultGateImage = (nodeVersion: string = process.versions.node): string => `node:${nodeVersion.split('.')[0]}-bookworm-slim`;
+
+/**
+ * `factory.run.sandbox.isolation` and `factory.run.sandbox.container` from
+ * the USER config only: the PR's repository must never choose where its own
+ * code runs or with what limits, so a value committed in the base's
+ * `.copilot/omg.jsonc` is ignored (`ignoredBase` names it for a notice). A
+ * malformed user value throws. The image may not start with `-` (it is one
+ * argv word after the runtime's options) and holds only reference characters.
+ */
+export function resolveGateIsolation(layers: Pick<GatesSandboxLayers, 'user' | 'base'>, nodeVersion: string = process.versions.node): { isolation: GateIsolation; container?: GateContainerSettings; ignoredBase: string[] } {
+  const block = (config: unknown): Record<string, unknown> => {
+    const raw = (config as { factory?: { run?: { sandbox?: unknown } } } | null | undefined)?.factory?.run?.sandbox;
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+  };
+  const base = block(layers.base);
+  const ignoredBase = (['isolation', 'container'] as const).filter((k) => base[k] !== undefined).map((k) => `factory.run.sandbox.${k}`);
+  const user = block(layers.user);
+  const bad = (key: string, want: string): never => { throw new Error(`user config: factory.run.sandbox.${key} must be ${want}`); };
+  const isolation = user.isolation === undefined ? 'copilot' : user.isolation === 'copilot' || user.isolation === 'container' ? user.isolation : bad('isolation', '"copilot" or "container"');
+  const raw = user.container ?? {};
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) bad('container', 'an object');
+  const c = raw as Record<string, unknown>;
+  const unknown = Object.keys(c).filter((k) => !(CONTAINER_KEYS as readonly string[]).includes(k));
+  if (unknown.length > 0) bad('container', `an object with only ${CONTAINER_KEYS.join(', ')} (got ${unknown.join(', ')})`);
+  const int = (key: string, min: number, max: number, fallback: number): number => {
+    const v = c[key];
+    if (v === undefined) return fallback;
+    return typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : bad(`container.${key}`, `an integer from ${min} to ${max}`);
+  };
+  const runtime = c.runtime === undefined ? 'docker' : c.runtime === 'docker' || c.runtime === 'podman' ? c.runtime : bad('container.runtime', '"docker" or "podman"');
+  const image = c.image === undefined ? defaultGateImage(nodeVersion)
+    : typeof c.image === 'string' && /^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,254}$/.test(c.image) ? c.image : bad('container.image', 'an image reference (letters, digits and . _ / : @ -, not starting with -)');
+  const memory = c.memory === undefined ? '4g' : typeof c.memory === 'string' && /^[1-9]\d{0,5}[kmg]$/i.test(c.memory) ? c.memory : bad('container.memory', 'a size such as "4g" or "512m"');
+  const cpus = c.cpus === undefined ? 2 : typeof c.cpus === 'number' && c.cpus > 0 && c.cpus <= 64 ? c.cpus : bad('container.cpus', 'a number above 0 and at most 64');
+  const diskLimit = c.diskLimit === undefined ? '10g' : typeof c.diskLimit === 'string' && /^[1-9]\d{0,5}[mg]$/i.test(c.diskLimit) ? c.diskLimit : bad('container.diskLimit', 'a size such as "10g" or "800m"');
+  const container: GateContainerSettings = { runtime, image, memory, cpus, pidsLimit: int('pidsLimit', 64, 65_536, 1_024), installTimeoutMinutes: int('installTimeoutMinutes', 1, 120, 15), diskLimit };
+  return { isolation, ...(isolation === 'container' ? { container } : {}), ignoredBase };
+}
+
 // ---------------------------------------------------------------------------
 // Policy (§4.2 review, §4.3 write)
 // ---------------------------------------------------------------------------
@@ -303,6 +366,14 @@ export interface SandboxPolicyContext {
    * of being granted read-only. Unset: the link's target as it is (lanes).
    */
   nodeModulesTarget?: string;
+  /**
+   * The workspace packages' node_modules of yours the engine validated for
+   * this worktree's nested gate trees (factory/run/prepare.ts
+   * trustedNestedRels: its own record, or the base's workspace globs ∩ the
+   * marker). A nested tree is granted only on an exact realpath match with
+   * one of these; the PR-writable marker alone grants nothing. Unset: none.
+   */
+  nestedNodeModulesTargets?: readonly string[];
 }
 
 export const REGISTRY_HOSTS: readonly string[] = ['registry.npmjs.org', '*.npmjs.org'];
@@ -323,8 +394,19 @@ function sameRealPath(real: string, want: string, platform: NodeJS.Platform): bo
  * re-pointed or added (to your home, your checkout, a git dir) is refused,
  * never granted. Plain dirs and files in it are the checkout's own
  * (read-write anyway). `linked`: the tree uses `target` at all.
+ *
+ * Workspaces (factory/run/workspace-tree.ts): a link may also point into
+ * the worktree itself, lexically and by realpath (a workspace self-link to
+ * the gate checkout's package; it grants nothing the worktree does not
+ * have), and the links in a real `@scope` dir are checked the same way. The
+ * tree's marker lists nested trees (`<rel>/node_modules`); each line of the
+ * exact relative shape, through plain dirs only, is checked with
+ * `<dirname(target)>/<rel>/node_modules` as its target, and that dir (a
+ * real dir, never a link) is returned in `nested` as a candidate: the
+ * grant needs an exact match with the engine's own list too
+ * (nestedNodeModulesTargets). A line of another shape is ignored.
  */
-export function nodeModulesTreeProblem(worktree: string, target: string, platform: NodeJS.Platform = process.platform): { problem: string | null; linked: boolean } {
+export function nodeModulesTreeProblem(worktree: string, target: string, platform: NodeJS.Platform = process.platform): { problem: string | null; linked: boolean; nested?: string[] } {
   const nm = join(worktree, 'node_modules');
   let st;
   try { st = lstatSync(nm); } catch { return { problem: null, linked: false }; }
@@ -336,21 +418,89 @@ export function nodeModulesTreeProblem(worktree: string, target: string, platfor
   if (!st.isDirectory()) return { problem: null, linked: false };
   const P = platform === 'win32' ? win32 : posix;
   const same = (a: string, b: string) => (platform === 'win32' ? P.resolve(a).toLowerCase() === P.resolve(b).toLowerCase() : P.resolve(a) === P.resolve(b));
-  let linked = false;
-  for (const name of readdirSync(nm)) {
-    const p = join(nm, name);
-    let link: string;
-    try {
-      if (!lstatSync(p).isSymbolicLink()) continue;
-      link = readlinkSync(p);
-    } catch (error) {
-      return { problem: `${p} cannot be read (${error instanceof Error ? error.message : String(error)})`, linked: false };
+  // Lexically under the worktree (never the worktree itself), and the link's realpath too (isUnderRoot resolves links).
+  const insideWorktree = (p: string, to: string): boolean => {
+    const rel = P.relative(P.resolve(worktree), to);
+    if (!rel || rel.startsWith('..') || P.isAbsolute(rel)) return false;
+    try { return isUnderRoot(p, worktree, platform); } catch { return false; }
+  };
+  /** The links in `dir` (and in its real `@scope` dirs): each `<base>/<name>` or into the worktree; true when one uses `base`. */
+  const check = (dir: string, base: string, scoped: boolean): { problem: string } | { linked: boolean } => {
+    let linked = false;
+    for (const name of readdirSync(dir)) {
+      const p = join(dir, name);
+      let link: string;
+      try {
+        const e = lstatSync(p);
+        if (!e.isSymbolicLink()) {
+          if (!scoped && name.startsWith('@') && e.isDirectory()) {
+            const inner = check(p, join(base, name), true);
+            if ('problem' in inner) return inner;
+            linked ||= inner.linked;
+          }
+          continue;
+        }
+        link = readlinkSync(p);
+      } catch (error) {
+        return { problem: `${p} cannot be read (${error instanceof Error ? error.message : String(error)})` };
+      }
+      const to = P.resolve(P.dirname(p), link);
+      if (same(to, join(base, name))) linked = true;
+      else if (!insideWorktree(p, to)) return { problem: `${p} points to ${to}, not ${join(base, name)} the engine linked` };
     }
-    const to = P.resolve(P.dirname(p), link);
-    if (!same(to, join(target, name))) return { problem: `${p} points to ${to}, not ${join(target, name)} the engine linked`, linked: false };
-    linked = true;
+    return { linked };
+  };
+  const top = check(nm, target, false);
+  if ('problem' in top) return { problem: top.problem, linked: false };
+  const nested: string[] = [];
+  for (const rel of gateTreeNestedRels(nm)) {
+    let dir = worktree;
+    let plain = true;
+    for (const s of rel.split('/')) {
+      dir = join(dir, s);
+      try { const e = lstatSync(dir); plain = !e.isSymbolicLink() && e.isDirectory(); } catch { plain = false; }
+      if (!plain) break;
+    }
+    const inner = join(dir, 'node_modules');
+    try { if (!plain || lstatSync(inner).isSymbolicLink() || !lstatSync(inner).isDirectory()) continue; } catch { continue; }
+    const yours = join(P.dirname(target), ...rel.split('/'), 'node_modules');
+    // Only a workspace package of yours: its package.json is there and its dir lies in your checkout by realpath.
+    try {
+      if (!lstatSync(join(P.dirname(yours), 'package.json')).isFile() || !isUnderRoot(P.dirname(yours), P.dirname(target), platform)) continue;
+    } catch {
+      continue;
+    }
+    const r = check(inner, yours, false);
+    if ('problem' in r) return { problem: r.problem, linked: false };
+    if (!r.linked) continue;
+    try {
+      if (lstatSync(yours).isSymbolicLink() || !lstatSync(yours).isDirectory()) return { problem: `${yours} is not a plain directory, so the links of ${inner} to it are not granted`, linked: false };
+      nested.push(realpathSync.native(yours));
+    } catch (error) {
+      return { problem: `${yours} cannot be read (${error instanceof Error ? error.message : String(error)})`, linked: false };
+    }
   }
-  return { problem: null, linked };
+  return { problem: null, linked: top.linked, ...(nested.length > 0 ? { nested } : {}) };
+}
+
+/** The engine's marker in a gate node_modules tree (factory/run/prepare.ts GATE_TREE_MARKER; the team bundle may not import src/factory). */
+const GATE_TREE_MARKER_NAME = '.omg-gate-tree';
+
+/** The nested tree dirs the marker of the gate tree `nm` lists, each of the exact relative shape (no empty, dot or node_modules segment in any case, none ending in a dot or space or holding `~`, not absolute, no drive or backslash; at most 6 segments). */
+function gateTreeNestedRels(nm: string): string[] {
+  const marker = join(nm, GATE_TREE_MARKER_NAME);
+  try {
+    const m = lstatSync(marker);
+    if (!m.isFile() || m.size > 64 * 1024) return [];
+  } catch {
+    return [];
+  }
+  return [...new Set(readFileSync(marker, 'utf-8').split('\n'))].filter((rel) => {
+    if (!rel || rel.length > 512 || /[\\:\0-\x1f]/.test(rel) || rel.startsWith('/')) return false;
+    const segs = rel.split('/');
+    // No dot segment (`.omg`, `.git`: engine state and other runs' checkouts) and no node_modules segment, nor a win32 alias of one.
+    return segs.length <= 6 && segs.every((s) => s !== '' && !s.startsWith('.') && !/[ .]$/.test(s) && !s.includes('~') && s.toLowerCase() !== 'node_modules');
+  });
 }
 
 /** The target of `<worktree>/node_modules` when it is a junction or symlink (read-only for a write session). */
@@ -479,6 +629,7 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
     throw new Error(`the job dir ${ctx.jobDir} lies inside the lane-writable worktree ${ctx.worktree}; use isolation "worktree"`);
   }
   let nm: string | null;
+  let nested: string[] = [];
   if (ctx.nodeModulesTarget === undefined) nm = nodeModulesLinkTarget(ctx.worktree);
   else {
     // The engine's link or per-run tree: only the engine-recorded target is granted (read-only), never a link's own target.
@@ -486,10 +637,15 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
     if (tree.problem) throw new Error(`the node_modules in ${ctx.worktree} is not as the engine linked it (${tree.problem}); it is not granted`);
     nm = null;
     if (tree.linked) try { nm = realpathSync.native(ctx.nodeModulesTarget); } catch { /* nothing to grant */ }
+    // A workspace package's node_modules of yours that a nested gate tree links to (read-only, like the root's), only
+    // when it is exactly one the engine validated (review-501 M1): the marker naming it is PR-writable.
+    const fold = (p: string) => (ctx.platform === 'win32' ? p.toLowerCase() : p);
+    const allowed = new Set((ctx.nestedNodeModulesTargets ?? []).flatMap((p) => { try { return [fold(realpathSync.native(p))]; } catch { return []; } }));
+    nested = (tree.nested ?? []).filter((p) => allowed.has(fold(p)));
   }
   const filesystem: SandboxConfig['userPolicy']['filesystem'] = {
     readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
-    readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...(nm ? [nm] : []), ...tools, ...settings.extraReadonlyPaths],
+    readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...(nm ? [nm] : []), ...nested, ...tools, ...settings.extraReadonlyPaths],
   };
   if (host.capabilities.denied_paths === true) {
     // Git's plaintext credential stores (~/.git-credentials, XDG), the credential-cache daemon's socket dir, and the
@@ -502,7 +658,8 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
       ...(ctx.platform === 'win32' ? [join('AppData', 'Roaming', 'GitHub CLI'), join('AppData', 'Local', '.IdentityService')] : []),
     ].map((p) => join(ctx.realHome, p));
     // A grant canon cannot resolve (a dangling link) holds nothing: the deny stays.
-    const grants = [...filesystem.readwritePaths, ...filesystem.readonlyPaths, ctx.realHome];
+    // A nested workspace grant never lifts a deny (the PR-writable marker names it): a deny around it stays.
+    const grants = [...filesystem.readwritePaths, ...filesystem.readonlyPaths.filter((p) => !nested.includes(p)), ctx.realHome];
     const holdsGrant = (s: string) => grants.some((g) => { try { return isUnderRoot(g, s, ctx.platform); } catch { return false; } });
     // The OMC global state root (OMC_HOME/state, XDG state omc, or ~/.omg/state) holds the forge mirrors and PR store, the
     // factory ledger and the budget ledger: the engine's trust anchors. Denied whole, unless a grant lives inside it (the

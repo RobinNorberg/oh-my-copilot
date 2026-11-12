@@ -29,19 +29,22 @@
  * out of the user repository are serialised by withImportLock.
  */
 
+import { execFileSync } from 'child_process';
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join, resolve } from 'path';
 
 import { withFileLockSync } from '../../lib/file-lock.js';
-import { defaultExec, type Exec, type ExecResult } from '../../ship/exec.js';
+import { defaultExec, scrubShipEnv, type Exec, type ExecResult } from '../../ship/exec.js';
 import { recordedWorktreeGitLinks, recordWorktreeGitLinks, readWorktreeGitLinks } from '../../team/git-worktree.js';
+import { childEnv, hardenWindowsExeSearch, resolveBareExe } from '../../utils/windows-search.js';
 import { claimRepoKey } from './claims.js';
+import type { GitViewSource } from './git-view.js';
 import { ENGINE_COMMIT_IDENTITY } from './lane-commit.js';
 import { unlinkNodeModules } from './prepare.js';
 import {
   assertPrivateRepo, createPrivateRepo, dropImportRef, dropStaleImportRef, ensureSeed, fetchIntoPrivate, gitVersionProblem, importFromPrivate,
-  longPathProblem, privateExec, privateGit, privateGitOk, privateGitTools, privateHasCommit, privateRepoProblem, privateRunLayout, privateWorkRoot,
-  privateWorktreePath, removeRunDir, rerecordConfigHash, resolveUserGitDir, staleImportRefs, userRepoGuardChanges, userRepoGuardSnapshot, compareUserRepoGuard,
+  longPathProblem, privateExec, privateGit, privateGitEnv, privateGitOk, privateGitPins, privateGitTools, privateHasCommit, PRIVATE_GIT_TIMEOUT_MS, privateRepoProblem, privateRunLayout, privateWorkRoot,
+  privateWorktreePath, removeRunDir, rerecordConfigHash, resolveUserGitDir, staleImportRefs, toolsProblem, userRepoGuardChanges, userRepoGuardSnapshot, compareUserRepoGuard,
   PrivateStoreError, type ImportRefusalCode, type PrivateGitOptions, type PrivateRepo, type PrivateRunLayout, type PrivateStoreContext, type UserGuardDetail, type UserRepoGuard,
 } from './private-store.js';
 import { IMPORT_LOCK_WAIT_MS, withRepoImportLock, type FactoryRunState, type HeldOwner } from './state.js';
@@ -324,6 +327,32 @@ export class PrivateRun {
     return privateGit(this.repo, this.ctx, args, this.gitOptions(workTree));
   }
 
+  /**
+   * git-view.ts's source in the private repository (a gate container's view
+   * of a commit made here): privateRepoProblem before every command, the
+   * store's pins and env, the private git dir named, stdout as bytes.
+   */
+  viewSource(): GitViewSource {
+    return (args, input) => {
+      this.assert();
+      // The same tools check as the store's own git (hooks dir empty, global config empty).
+      const problem = toolsProblem(this.ctx.tools);
+      if (problem) throw new PrivateStoreError(problem);
+      hardenWindowsExeSearch();
+      const exe = resolveBareExe('git');
+      if (!exe) throw new PrivateStoreError('git is not on PATH');
+      return execFileSync(exe, [...privateGitPins(this.ctx.tools), `--git-dir=${this.repo.gitDir}`, ...args], {
+        cwd: this.repo.repo,
+        env: childEnv({ ...scrubShipEnv(process.env), ...privateGitEnv(this.ctx.tools) }),
+        stdio: 'pipe',
+        windowsHide: true,
+        maxBuffer: 1024 * 1024 * 1024,
+        timeout: this.ctx.timeoutMs ?? PRIVATE_GIT_TIMEOUT_MS,
+        ...(input !== undefined ? { input } : {}),
+      });
+    };
+  }
+
   private gitOptions(workTree?: string): PrivateGitOptions {
     if (!workTree) return { env: identityEnv() };
     const gitDir = this.recordedGitDir(workTree);
@@ -384,7 +413,7 @@ export class PrivateRun {
   removeWorktree(path: string): void {
     if (existsSync(path)) {
       // M2 (review-490): a removal error is not fatal here: removeRunDir unlinks every link itself, never following one.
-      try { unlinkNodeModules(this.root, path); } catch { /* removeRunDir below */ }
+      try { unlinkNodeModules(this.root, path); } catch (e) { this.warn(`omg factory run: the node_modules links in ${path} could not be unlinked: ${e instanceof Error ? e.message : String(e)}`); }
       removeRunDir(path, this.layout.work);
     }
     const admin = join(this.repo.gitDir, 'worktrees');

@@ -49,9 +49,11 @@ import {
   missingSandboxEnv,
   proxyCaEnv,
   sessionGitHubToken,
+  type GateContainerSettings,
   type SandboxConfigLayers,
   type SandboxSettings,
 } from '../../copilot-run/sandbox.js';
+import { defaultContainerExec, runContainerGate } from './container-gate.js';
 import { SessionSandboxController } from '../../copilot-run/sandbox-session.js';
 import { errText, withTimeout } from '../../copilot-run/timeout.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -95,8 +97,23 @@ export interface SandboxRunRequest {
   mainRoot?: string;
   /** The only dir a `<cwd>/node_modules` link may resolve to (the one the engine linked); another target is refused, never granted. */
   nodeModulesTarget?: string;
+  /** The nested workspace node_modules of yours the engine validated (SandboxPolicyContext.nestedNodeModulesTargets); only these are granted. */
+  nestedNodeModulesTargets?: string[];
   /** Where the per-command job home goes (default sandboxJobRoot(root); the private layout: under the run dir). */
   jobRoot?: string;
+  /**
+   * factory.run.sandbox.isolation "container" (user config only, resolved by the engine): the command runs in a
+   * local container (container-gate.ts) instead of the Copilot OS sandbox, never in both, never falling back.
+   */
+  container?: GateContainerSettings;
+  /** The run's container label (container-gate.ts containerRunLabel); needed with `container`. */
+  runLabel?: string;
+  /**
+   * The engine-made one-commit git view of what `cwd` holds (git-view.ts), as its git dir on the host. With
+   * `container` it becomes the copy's `.git` (the checkout's own `.git` never enters the container). The OS
+   * sandbox reads no field: a base calibration's view is `<cwd>/.git` there, a prepare checkout uses its own link.
+   */
+  gitView?: string;
 }
 
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
@@ -110,10 +127,13 @@ export const CREDENTIAL_FILES_READABLE_NOTE = 'sandboxed; credential files reada
  * `refused`: the configured argv itself cannot be handed to the sandbox
  * shell (its shape or length), before any runtime launched: a property of
  * the command, which no code of the PR can cause.
+ * `unavailable` (isolation "container" only): the container runtime, its
+ * daemon or image is missing, or the project cannot be installed there;
+ * nothing of the PR's ran (the engine's gate-container-unavailable park).
  */
 export type SandboxRunResult =
-  | { ran: true; status: number; output: string; timedOut: boolean; credentialFilesReadable?: true }
-  | { ran: false; reason: string; started?: true; refused?: true };
+  | { ran: true; status: number; output: string; timedOut: boolean; credentialFilesReadable?: true; imageId?: string }
+  | { ran: false; reason: string; started?: true; refused?: true; unavailable?: true };
 
 export type SandboxRunner = (req: SandboxRunRequest) => Promise<SandboxRunResult>;
 
@@ -137,6 +157,7 @@ export interface SandboxExecOptions {
   /** SandboxRunRequest.mainRoot / nodeModulesTarget. */
   mainRoot?: string;
   nodeModulesTarget?: string;
+  nestedNodeModulesTargets?: string[];
 }
 
 export const MARKER_PREFIX = 'omg-gate-exit-';
@@ -337,6 +358,7 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
           extraReadonly: proxy.caPaths,
           ...(o.mainRoot ? { mainRoot: resolve(o.mainRoot) } : {}),
           ...(o.nodeModulesTarget ? { nodeModulesTarget: resolve(o.nodeModulesTarget) } : {}),
+          ...(o.nestedNodeModulesTargets ? { nestedNodeModulesTargets: o.nestedNodeModulesTargets.map((p) => resolve(p)) } : {}),
         };
       },
       note: (text) => { notes.push(text); },
@@ -447,6 +469,11 @@ export const sandboxJobRoot = (root: string): string => join(getOmcRoot(root), '
  */
 export function createSandboxRunner(root: string, deps: SandboxExecDeps = defaultCopilotRunDeps(), layers?: SandboxConfigLayers): SandboxRunner {
   return async (req) => {
+    // isolation "container": resolved by the engine from the user config; the Copilot sandbox is never tried instead.
+    if (req.container) {
+      if (!req.runLabel) return { ran: false, reason: 'the gate container request has no run label', unavailable: true };
+      return runContainerGate(req, req.container, req.runLabel, { exec: defaultContainerExec, platform: deps.platform });
+    }
     let settings: SandboxSettings;
     try {
       settings = (layers ? loadSandboxSettings(root, 'factory', layers) : loadSandboxSettings(root, 'factory')).settings;
@@ -463,6 +490,7 @@ export function createSandboxRunner(root: string, deps: SandboxExecDeps = defaul
       ...(req.requireDeniedPaths ? { requireDeniedPaths: true } : {}),
       ...(req.mainRoot ? { mainRoot: req.mainRoot } : {}),
       ...(req.nodeModulesTarget ? { nodeModulesTarget: req.nodeModulesTarget } : {}),
+      ...(req.nestedNodeModulesTargets ? { nestedNodeModulesTargets: req.nestedNodeModulesTargets } : {}),
     }, deps);
   };
 }

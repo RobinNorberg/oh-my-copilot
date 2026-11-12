@@ -56,21 +56,25 @@
 import { createHash } from 'crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'path';
+import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'path';
 import { BASE_CONFIG_PATH, configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, omgRepositoryFallback, readBaseFile, remoteRepoMismatch, resolveTrustedBases, userConfigLayers } from '../../ship/config.js';
-import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
+import { scrubShipEnv, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT, type PrepareCheckResult, type PrepareCheckRun } from '../../ship/prepare.js';
 import { parseJsonc } from '../../utils/jsonc.js';
-import { nodeModulesTreeProblem, resolveGatesSandboxMode, resolveRequireDeniedPaths, type GatesSandboxMode } from '../../copilot-run/sandbox.js';
-import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs, type SandboxRunner, type SandboxRunRequest } from './sandbox-exec.js';
-import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
+import { nodeModulesTreeProblem, resolveGateIsolation, resolveGatesSandboxMode, resolveRequireDeniedPaths, type GateContainerSettings, type GatesSandboxMode } from '../../copilot-run/sandbox.js';
+import { CONTAINER_INCOMPATIBLE_ADVICE, containerRunLabel, GATE_CONTAINER_UNAVAILABLE_GATE } from './container-gate.js';
+import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs, type SandboxRunner, type SandboxRunRequest, type SandboxRunResult } from './sandbox-exec.js';
+import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, runHostGitBuffer, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
+import { buildGitView, GIT_VIEW_MAX_BYTES, GIT_VIEW_MAX_OBJECTS, type GitViewSource } from './git-view.js';
 import { driveGates } from './gates-driver.js';
 import { missingCheckHint, NO_CI_CHECKS_NOTE, noHeadChecksText, type GateHeadReads } from '../../ship/gates.js';
-import { ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules } from '../../forge/github/checks.js';
+import { ghBranchTip, ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules } from '../../forge/github/checks.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
 import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText, type ReadAt, type TeamContext } from '../team/context.js';
-import { mergeComment, mergeDecision, type MergeView } from './merge-policy.js';
+import { mergeComment, mergeDecision, type FactoryMergeDecision, type MergeView } from './merge-policy.js';
+import { autoMergeComment, autoMergeVerdict, baseInstallFiles, baseTestSetup as baseTestSetupOf, classifyChanges, committedMergeConfig, hasFrontmatter, isFrontmatterCandidate, parseChangedEntries, patchLines, resolveAutoMergeConfig, TEST_CONFIG_NAME, type ChangedEntry, type PatchLine } from './auto-merge.js';
+import { githubAutoMergeArgs, githubCommitReadArgs } from '../../forge/github/merge.js';
 import { resolveAzEntry, type AzEntry } from '../../forge/ado/az-binary.js';
 import { adoGuardContext, defaultAzBinaryDeps, type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
 import { adoBuildUrl } from '../../forge/ado/checks.js';
@@ -94,7 +98,8 @@ import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, g
 import { ghDependsOn, ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, githubTracker } from '../../forge/github/tracker.js';
 import { isSatisfied, type DependencyForge } from '../check/score.js';
 import { outcomePosts, postedBefore, type OutcomeEvent } from './outcome.js';
-import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, unlinkNodeModules, type GateConfig, type GateConfigLoader } from './prepare.js';
+import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, trustedNestedRels, unlinkNodeModules, type GateConfig, type GateConfigLoader } from './prepare.js';
+import { baseWorkspacePatterns } from './workspace-tree.js';
 import {
   canTransition,
   createShipState,
@@ -133,7 +138,7 @@ import { createFactoryProgress, type FactoryProgress } from './progress.js';
 import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaimRepo, isShallowClaimRepo, localFactoryClaimRepo, shallowClaimWarning, settleFactoryClaim, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo, type HeldClaim } from './claims.js';
 import { compareSnapshots, replaceObjectsProblem, samePath, snapshotRepo, verifyReviewWorktree, type RepoSnapshot } from './review-guard.js';
 import { GATE_INSTALL_GATE, IMPORT_REFUSED_GATE, LAYOUT_UNSUPPORTED_GATE, PRIVATE_STORE_GATE, PrivateRun, REPO_GUARD_GATE, resolveGateInstall, resolveRunLayout, type ImportStep, type Park, type RunLayoutChoice } from './private-run.js';
-import { lockfileUnchanged, PrivateRepoTampered, PrivateStoreError, userRepoGuardSnapshot } from './private-store.js';
+import { lockfileUnchanged, PRIVATE_GIT_TIMEOUT_MS, PrivateRepoTampered, PrivateStoreError, userRepoGuardSnapshot } from './private-store.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted, type IssueComment } from './plan-rules.js';
 import {
@@ -287,6 +292,8 @@ export interface FactoryEngineOptions {
   gateSandbox?: SandboxRunner;
   /** The trusted user config factory.run.sandbox.gates is read from (default: userConfigLayers().trustedUser); tests pass one. */
   gateSandboxUserConfig?: unknown;
+  /** The trusted user config factory.merge.auto is read from (default: userConfigLayers().trustedUser); tests pass one. */
+  autoMergeUserConfig?: unknown;
   now?: () => number;
   pollMs?: number;
   progressFile?: string;
@@ -504,7 +511,7 @@ function hostGitStatus(cwd: string, args: readonly string[]): number {
  * copy record is followed by its original path as a record of its own,
  * without the two status letters.
  */
-function checkoutChanges(root: string, checkout: string, raw: string): string[] {
+function checkoutChanges(root: string, checkout: string, raw: string, nested: readonly string[]): string[] {
   let ownLink = false;
   let ownTree = false;
   try {
@@ -518,7 +525,10 @@ function checkoutChanges(root: string, checkout: string, raw: string): string[] 
   } catch { /* no link */ }
   // Of the tree only untracked entries are dropped: a tracked file under node_modules the PR's code changed still counts.
   const untracked = ownTree ? new Set(raw.split('\0').filter((r) => r.startsWith('?? ')).map((r) => r.slice(3))) : new Set<string>();
-  return parseStatusPaths(raw).filter((p) => p && !(ownLink && (p === 'node_modules' || p === 'node_modules/')) && !(untracked.has(p) && p.startsWith('node_modules/')));
+  // The nested workspace trees too (`packages/a/node_modules/`), only those of the engine's list (trustedNestedRels):
+  // the marker alone is PR-writable (review-501 L2).
+  const trees = ['node_modules/', ...(ownTree ? nested.map((rel) => `${rel}/node_modules/`) : [])];
+  return parseStatusPaths(raw).filter((p) => p && !(ownLink && (p === 'node_modules' || p === 'node_modules/')) && !(untracked.has(p) && trees.some((t) => p.startsWith(t))));
 }
 
 /** The paths of `git status --porcelain=v1 -z` records (an R/C record's original path included). */
@@ -580,8 +590,14 @@ export function nodeModulesWriteDenied(tail: string): string | undefined {
   return undefined;
 }
 
+/** The advice when the base's gate runs git's own transport, which cannot run in the Copilot sandbox on Windows. */
+export const GIT_TRANSPORT_SANDBOX_ADVICE = 'Your gate runs git clone, fetch or push (also to a local path or a temp repository), which cannot run in the OS sandbox on Windows: git starts that transport through Git for Windows\' sh.exe, and no MSYS2 program starts in the sandbox; the sandbox has no network either. Read-only git (rev-parse, ls-files, log) and git init, add and commit work. Make those tests skip the transport, run them outside prepare, or set factory.run.sandbox.isolation "container" (with an image that has git) in your user config';
+
 /** What the gate-sandbox-incompatible park of a failing base calibration tells the human to do. */
-export function sandboxIncompatibleAdvice(tail: string | undefined): string {
+export function sandboxIncompatibleAdvice(tail: string | undefined, platform: NodeJS.Platform = process.platform): string {
+  // git clone, fetch and push to a local path start git-upload-pack / git-receive-pack through Git for Windows' sh.exe,
+  // and no MSYS2 program starts in the Copilot sandbox on Windows (exit 0xC0000142, live 2026-11-12); no network either.
+  if (platform === 'win32' && tail?.includes('Could not read from remote repository')) return GIT_TRANSPORT_SANDBOX_ADVICE;
   const denied = tail ? nodeModulesWriteDenied(tail) : undefined;
   // A per-run dir is writable in the tree already: a denial there is not this case.
   if (!denied || GATE_CACHE_DIRS.includes(denied.slice('node_modules/'.length))) return 'Your gate fails in the sandbox on the base: set factory.run.sandbox.writeNetwork "registry" if it needs the npm registry';
@@ -841,6 +857,8 @@ class FactoryEngine {
   private mergeCmd?: string;
   /** Ship's gate config of this invocation, by the base sha it was loaded at. */
   private gateCfg?: { baseSha: string; loaded: GateConfig };
+  /** The base's workspace globs of this invocation (baseWorkspaces), by the base sha they were read at. */
+  private wsGlobs?: { baseSha: string; globs: string[] };
   /** The Azure DevOps forge; undefined = GitHub through the gh calls. */
   private readonly forge?: Forge;
   /** The forge, for messages. */
@@ -871,9 +889,12 @@ class FactoryEngine {
   /** The head `--allow-unsandboxed-gates` accepts (the gates-unsandboxed park's head, captured at resume). */
   private gatesAllowed?: string;
   /** factory.run.sandbox.gates, resolved once per trusted base commit. */
-  private gatesModeCache?: { commit: string | undefined; mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean };
+  private gatesModeCache?: { commit: string | undefined; mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean; container?: GateContainerSettings };
+  /** The gate image's id (`sha256:...`) the last container run reported: base calibrations are keyed on it, not on the tag (L2, review-499). */
+  private containerImageId?: string;
   /** The one-per-run warning that the sandbox on this host cannot deny paths was given. */
   private warnedCredentialFilesReadable = false;
+  private warnedCommittedMerge = false;
   /** Calibrations re-run in this invocation (a failing one is retried once per invocation). */
   private readonly recalibrated = new Set<string>();
   /** The prepare checkout's git dir, named explicitly to engine git there once the PR's code ran in it (pinCheckoutGit). */
@@ -1281,7 +1302,79 @@ class FactoryEngine {
    */
   private sandboxRun(req: SandboxRunRequest): ReturnType<SandboxRunner> {
     const p = this.privateRun();
-    return this.o.gateSandbox!({ ...req, nodeModulesTarget: join(this.o.root, 'node_modules'), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}) });
+    // The nested workspace trees' targets the engine vouches for (review-501 M1): the PR-writable marker alone grants nothing.
+    const nested = trustedNestedRels(this.o.root, req.cwd, this.baseWorkspaces()).map((rel) => join(this.o.root, ...rel.split('/'), 'node_modules'));
+    // isolation "container" (gatesSandbox, user config): the runner uses the container, labelled with this run.
+    const container = this.gatesModeCache?.container;
+    // review-499b N3: never the OS sandbox because gatesSandbox() was not resolved yet in this process.
+    if (!container && this.containerIsolated()) return Promise.reject(new FactoryStepError('factory.run.sandbox.isolation "container" is set in your user config, but the gate settings were not resolved before a gate command; nothing ran'));
+    const r = this.o.gateSandbox!({ ...req, nodeModulesTarget: join(this.o.root, 'node_modules'), ...(nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}), ...(container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {}) });
+    if (!container) return r;
+    return r.then((out) => {
+      if (out.ran && out.imageId) this.containerImageId = out.imageId;
+      return out;
+    });
+  }
+
+  /** git-view.ts's source in your repository (the base, a shared-layout checkout's commits): hardened host git, GIT_* scrubbed. */
+  private hostViewSource(): GitViewSource {
+    const env = scrubShipEnv(process.env);
+    return (args, input) => runHostGitBuffer(this.o.root, args, PRIVATE_GIT_TIMEOUT_MS, env, input);
+  }
+
+  /** buildGitView with timed host git on the new view; a failure removes what was made and throws. */
+  private buildViewOrClean(dir: string, sha: string, source: GitViewSource): string {
+    const env = scrubShipEnv(process.env);
+    try {
+      return buildGitView(dir, sha, source, (cwd, args, input) => runHostGit(cwd, args, PRIVATE_GIT_TIMEOUT_MS, env, input));
+    } catch (error) {
+      try { rmSync(join(dir, '.git'), { recursive: true, force: true }); } catch { /* best effort */ }
+      throw error;
+    }
+  }
+
+  /**
+   * A one-commit git view of `sha` at `<dir>/.git` (git-view.ts), or none:
+   * a failure only warns and removes what was made, and the command runs
+   * without git as before (a check that needs git then fails on its own).
+   * The base calibration only; a container gate gets no verdict instead.
+   */
+  private makeGitView(dir: string, sha: string, source: GitViewSource, what: string): string | undefined {
+    try {
+      return this.buildViewOrClean(dir, sha, source);
+    } catch (error) {
+      this.o.warn?.(`omg factory run: ${what} at ${sha.slice(0, 12)} runs without a git view (${oneLine(errText(error), 300)}); a check there that runs git fails`);
+      return undefined;
+    }
+  }
+
+  /**
+   * isolation "container": `run` with a one-commit git view of the commit
+   * `sha()` reads (engine git, before the container starts), made in a fresh
+   * dir under the gate job root and removed after; the checkout's own `.git`
+   * names a host git dir the container never sees. A view that cannot be
+   * built runs nothing: no verdict (gate-no-verdict), never a run without
+   * git. The OS sandbox: `run` as it is (the prepare checkout's link to its
+   * git dir works there, read-only).
+   */
+  private async withGitView(sha: () => string, what: string, run: (view: { gitView?: string }) => Promise<SandboxRunResult>): Promise<SandboxRunResult> {
+    if (!this.gatesModeCache?.container) return run({});
+    const jobRoot = this.gateJobRoot();
+    mkdirSync(jobRoot, { recursive: true });
+    const dir = mkdtempSync(join(jobRoot, 'gitview-'));
+    try {
+      let gitView: string;
+      try {
+        const at = sha().trim();
+        const priv = this.privateRun();
+        gitView = this.buildViewOrClean(dir, at, priv ? priv.viewSource() : this.hostViewSource());
+      } catch (error) {
+        return { ran: false, started: true, reason: `${GIT_VIEW_UNBUILT}${what} could not be built (${oneLine(errText(error), 300)}); nothing ran` };
+      }
+      return await run({ gitView });
+    } finally {
+      try { rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
+    }
   }
 
   /**
@@ -1292,6 +1385,41 @@ class FactoryEngine {
    */
   private nodeModulesRepointed(checkout: string): string | null {
     return nodeModulesTreeProblem(checkout, join(this.o.root, 'node_modules')).problem;
+  }
+
+  /**
+   * The workspace globs (workspace-tree.ts) of the TRUSTED BASE at `baseSha`
+   * (root package.json, pnpm-workspace.yaml), never the PR head's; none when
+   * there is no full base sha or the files are absent. Without a sha: the
+   * last base read in this invocation, else the run's recorded base.
+   */
+  private baseWorkspaces(baseSha?: string): string[] {
+    const sha = baseSha ?? this.wsGlobs?.baseSha ?? this.state.baseSha;
+    if (!sha || !HEX40.test(sha)) return [];
+    if (this.wsGlobs?.baseSha === sha) return this.wsGlobs.globs;
+    const read = (file: string): string | null => { try { return runHostGit(this.o.root, ['cat-file', 'blob', `${sha}:${file}`]); } catch { return null; } };
+    this.wsGlobs = { baseSha: sha, globs: baseWorkspacePatterns(read) };
+    return this.wsGlobs.globs;
+  }
+
+  /** linkNodeModules with the base's workspaces; a layout it does not support is a warning here (the base calibration parks on it). */
+  private linkGateTree(path: string, baseSha?: string): void {
+    const problem = linkNodeModules(this.o.root, path, this.o.warn, this.baseWorkspaces(baseSha));
+    if (problem) this.o.warn?.(`omg factory run: ${problem}; a gate that fails in the sandbox parks at ${GATE_SANDBOX_INCOMPATIBLE_GATE}`);
+  }
+
+  /**
+   * A checkout kept after a failed discard gets its node_modules tree back
+   * (the local gate runs in it). A failure only warns: the discard's own
+   * error is the one reported (review-501b INFO).
+   */
+  private relinkKeptCheckout(path: string): void {
+    if (this.containerIsolated()) return;
+    try {
+      this.linkGateTree(path);
+    } catch (error) {
+      this.o.warn?.(`omg factory run: could not link the node_modules tree of the kept prepare checkout ${path} again (${oneLine(errText(error), 300)})`);
+    }
   }
 
   /** The engine's prepare and local-gate checkout: `<run>/w/prep` in the private layout. */
@@ -1455,9 +1583,11 @@ class FactoryEngine {
    * sandbox with the registry reachable. Null when the checkout is ready.
    */
   private async privateNodeModules(p: PrivateRun, path: string, baseSha: string, head: string, loaded: GateConfig): Promise<Park | null> {
+    // isolation "container": every command installs into its own container volume; the checkout needs no node_modules.
+    if (this.gatesSandbox(loaded).container) return null;
     const rule = lockfileUnchanged(p.repo, baseSha, head, p.ctx);
     if (rule.policy === 'junction') {
-      linkNodeModules(this.o.root, path, this.o.warn);
+      this.linkGateTree(path, baseSha);
       return null;
     }
     const what = rule.lockfiles.length === 0 ? 'the base has no lockfile' : `the PR changes ${rule.changed.join(', ')}`;
@@ -2816,7 +2946,7 @@ class FactoryEngine {
   }
 
   private prView(pr: number): MergeView {
-    if (!this.forge) return this.gh((exec, cwd) => ghMergeView(exec, pr, cwd));
+    if (!this.forge) return this.liveBase(this.gh((exec, cwd) => ghMergeView(exec, pr, cwd)));
     // The local forge: the human merged on the local base, so sync it to the mirror first (fast-forward only); the PR then reads MERGED.
     if (this.forge.kind !== 'local') {
       const v = this.forge.reviews.viewPr(pr);
@@ -2834,6 +2964,20 @@ class FactoryEngine {
     const v = this.forge.reviews.viewPr(pr);
     if (v.baseRefOid !== sealed) throw new MirrorBaseMovedError(`the local forge mirror's ${this.state.base} moved to ${v.baseRefOid.slice(0, 12)} while the PR was read; the engine synced ${sealed.slice(0, 12)}. Check what wrote the mirror ${this.o.forge!.config.repo.url}, then rerun ${this.resume}`);
     return { number: v.number, state: v.state, isDraft: v.isDraft, baseRefName: v.baseRefName, baseRefOid: sealed, headRefOid: v.headRefOid };
+  }
+
+  /**
+   * GitHub: an open PR's base sha is its base branch's live tip (ghBranchTip), not the PR's baseRefOid, which
+   * stays at the base of the PR's last update after another merge into the base. Prepare merges this tip, the
+   * trusted config is read at it after the fetched ref is checked against it, and the merge rule's diffs and
+   * housekeeping checks see the base the head contains. A failed read fails closed; a closed, merged or
+   * retargeted PR keeps its view (prGone stops or parks before any base is used).
+   */
+  private liveBase(view: MergeView): MergeView {
+    if (view.state !== 'OPEN' || view.baseRefName !== this.state.base) return view;
+    const repo = this.githubReadContext()?.repo;
+    if (!repo) throw new FactoryStepError(`the run's GitHub repository is not known, so the live tip of ${this.state.base} cannot be read for PR #${view.number}; refusing (fail closed)`);
+    return { ...view, recordedBaseRefOid: view.baseRefOid, baseRefOid: this.gh((exec, cwd) => ghBranchTip(exec, repo, view.baseRefName, cwd)) };
   }
 
   /** The PR is not open, or targets another base: true when the run moved (merged) or parked. */
@@ -2854,7 +2998,7 @@ class FactoryEngine {
   }
 
   /**
-   * Ship's gate config at GitHub's base sha, loaded once per base sha. When
+   * Ship's gate config at the view's base sha (on GitHub the base branch's live tip, liveBase), loaded once per base sha. When
    * its fetch moved origin/<base>, the recheck baseline follows.
    */
   private gateConfig(view: MergeView): GateConfig {
@@ -2952,8 +3096,8 @@ class FactoryEngine {
       removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [head], ...(gitLinks ? { gitLinks } : {}) });
       forgetWorktreeGitLinks(path);
     } catch (error) {
-      // A kept checkout keeps its tooling (the local gate runs in it).
-      linkNodeModules(this.o.root, path, this.o.warn);
+      // A kept checkout keeps its tooling (the local gate runs in it); with isolation "container" it never had the link.
+      this.relinkKeptCheckout(path);
       throw new FactoryStepError(`could not discard the engine's prepare checkout ${path}: ${errText(error)}`);
     }
     this.save((x) => {
@@ -3003,7 +3147,7 @@ class FactoryEngine {
       unlinkNodeModules(this.o.root, path);
       removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [...new Set(contained)] });
     } catch (error) {
-      linkNodeModules(this.o.root, path, this.o.warn);
+      this.relinkKeptCheckout(path);
       throw new FactoryStepError(`could not discard the engine's prepare checkout ${path}, which an older release made: ${errText(error)}. ${this.freshCheckoutRecovery()}`);
     }
     this.save((x) => {
@@ -3165,7 +3309,10 @@ class FactoryEngine {
         this.gate(install.name, install.reason, install.detail);
         return;
       }
-    } else linkNodeModules(this.o.root, path, this.o.warn);
+    } else if (!this.gatesSandbox(this.gateConfig(view)).container) {
+      // isolation "container" (C1, review-499): no link to your node_modules in a checkout the container's writes come back to.
+      this.linkGateTree(path, view.baseRefOid);
+    }
     // The checkout's gitfile before any PR code ran: compared after each check, and its git dir named to engine git from then on.
     const gitLink = checkoutGitLink(path);
     if (!gitLink.gitDir) throw new FactoryStepError(`the new prepare checkout ${path} has no gitfile naming its git dir (${gitLink.hash})`);
@@ -3202,7 +3349,7 @@ class FactoryEngine {
       this.checkoutGitPin = undefined;
     }
     const fetched = result.steps.some((st) => st.name === 'fetch' && st.status === 'ok');
-    // From here the PR's diff (review, protected paths) is against the base GitHub reports.
+    // From here the PR's diff (review, protected paths) is against the base prepare merged (on GitHub its live tip, liveBase).
     const sandboxNote = ran.modes.size > 0 ? [{ at: this.iso(), from: s.phase, to: s.phase, note: `prepare checks on ${head.slice(0, 12)} ran ${[...ran.modes].map((m) => (m === 'enforced' ? 'in the OS sandbox' : m === 'enforced-readable' ? `in the OS sandbox (${CREDENTIAL_FILES_READABLE_NOTE})` : `unsandboxed (${m})`)).join(' and ')}` }] : [];
     const sandboxed = ran.modes.has('enforced') || ran.modes.has('enforced-readable');
     this.save((x) => ({ ...x, checkoutHead, ...(sandboxed ? { sandboxedPrepareHead: checkoutHead } : {}), ...(fetched ? { baseSha: view.baseRefOid } : {}), history: [...x.history, ...sandboxNote] }));
@@ -3247,23 +3394,44 @@ class FactoryEngine {
    * factory.run.sandbox.requireDeniedPaths comes from the same two layers
    * (resolveRequireDeniedPaths: either may turn it on).
    */
-  private gatesSandbox(loaded: GateConfig): { mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean } {
+  private gatesSandbox(loaded: GateConfig): { mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean; container?: GateContainerSettings } {
     const commit = (loaded.config as { trustedBaseCommit?: string }).trustedBaseCommit;
     if (this.gatesModeCache && this.gatesModeCache.commit === commit) return this.gatesModeCache;
     let user = this.o.gateSandboxUserConfig;
     if (user === undefined) {
       try { user = userConfigLayers().trustedUser; } catch { user = null; }
     }
-    let resolved: { mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean };
+    let resolved: { mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean; container?: GateContainerSettings };
     try {
       const text = commit ? readBaseFile(this.exec, this.o.root, commit, BASE_CONFIG_PATH) : null;
       const base = text && text.trim() ? parseJsonc(text) : undefined;
-      resolved = { ...resolveGatesSandboxMode({ user, base, env: process.env }), requireDeniedPaths: resolveRequireDeniedPaths({ user, base }).require };
+      // factory.run.sandbox.isolation / .container: the user config only; a committed value is ignored with a notice.
+      const isolation = resolveGateIsolation({ user, base });
+      if (isolation.ignoredBase.length > 0) this.o.warn?.(`omg factory run: ignoring ${isolation.ignoredBase.join(' and ')} in the base .copilot/omg.jsonc: where the PR's code runs is set in your user config only`);
+      resolved = { ...resolveGatesSandboxMode({ user, base, env: process.env }), requireDeniedPaths: resolveRequireDeniedPaths({ user, base }).require, ...(isolation.container ? { container: isolation.container } : {}) };
+      // L3 (review-499): "ack" (or the kill switch) means the OS sandbox is not used; with the container the PR's code
+      // still runs there, never plainly on your host after an ack.
+      if (resolved.container && resolved.mode === 'ack') resolved = { ...resolved, mode: 'enforced', source: `${resolved.source}; isolation "container" runs it in the gate container` };
     } catch (error) {
       throw new FactoryStepError(`factory.run.sandbox: ${errText(error)}`);
     }
     this.gatesModeCache = { commit, ...resolved };
     return this.gatesModeCache;
+  }
+
+  /**
+   * Whether isolation "container" is in force, before or without a base read:
+   * it comes from the user config alone (review-499b N3). A user config that
+   * cannot be read or resolved counts as container, so the engine never
+   * links your node_modules into a checkout or runs on the OS sandbox by default.
+   */
+  private containerIsolated(): boolean {
+    if (this.gatesModeCache) return this.gatesModeCache.container !== undefined;
+    let user = this.o.gateSandboxUserConfig;
+    if (user === undefined) {
+      try { user = userConfigLayers().trustedUser; } catch { return true; }
+    }
+    try { return resolveGateIsolation({ user, base: undefined }).container !== undefined; } catch { return true; }
   }
 
   /**
@@ -3303,9 +3471,23 @@ class FactoryEngine {
     return `${what} on ${at} could not start in the OS sandbox (${why}) after the PR's code of this head already ran in it (an earlier prepare check), so the PR's code may be the cause. The head is not judged: no pass, no FAILURE, no ci-fix lane, and --allow-unsandboxed-gates does not apply here. Rerun ${this.resume} to try again; if it parks here again, review the PR's diff and fix the cause`;
   }
 
+  /** The park when isolation "container" cannot run `what` (container-gate.ts): nothing ran, no ack offer, no fallback. */
+  private gateContainerUnavailableReason(head: string, what: string, why: string): string {
+    return `${what} on ${head.slice(0, 12)} did not run: factory.run.sandbox.isolation is "container" and the gate container is not available (${why}). The head is not judged: no pass, no FAILURE, no ci-fix lane, and it never falls back to the Copilot sandbox. Fix that, then rerun ${this.resume}`;
+  }
+
+  /** Where a sandboxed command runs, for parks and notes: the gate container (isolation "container") or the OS sandbox. */
+  private sandboxName(): string {
+    return this.gatesModeCache?.container ? `the gate container (${this.gatesModeCache.container.runtime} ${this.gatesModeCache.container.image})` : 'the OS sandbox';
+  }
+
   /** The park after the command ran in the sandbox without a verdict: no ack offer, no pass, no failure. `why` is fixed text (sandbox-exec.ts). */
   private gateNoVerdictReason(head: string, what: string, why: string): string {
     const at = head.slice(0, 12);
+    // withGitView's own failure: nothing ran, so the PR's code had no exit code to hide.
+    if (why.startsWith(GIT_VIEW_UNBUILT)) {
+      return `${what} on ${at} did not run: ${why}. The head is not judged: no pass, no FAILURE, no ci-fix lane, and the check never runs without git. Rerun ${this.resume} to try again; if it parks here again, check free disk space and the size of the head (a git view holds at most ${GIT_VIEW_MAX_OBJECTS} objects and ${GIT_VIEW_MAX_BYTES / (1024 * 1024)} MB), or set factory.run.sandbox.isolation back to "copilot" in your user config`;
+    }
     return `${what} on ${at} ran in the OS sandbox but gave no verdict (${why}). The head is not judged: no pass, no FAILURE, no ci-fix lane, and --allow-unsandboxed-gates does not apply here. Rerun ${this.resume} to try again; if it parks here again, review the PR's diff: the PR's code can hide its own exit code (a second or missing exit marker, a killed shell, a hang)`;
   }
 
@@ -3398,8 +3580,11 @@ class FactoryEngine {
       const repointed = this.nodeModulesRepointed(path);
       // H1: the problem names a link target the PR's code chose: local detail only.
       if (repointed) return stop({ name: 'lane-tampered', reason: `${label} on ${head.slice(0, 12)} did not run: ${join(path, 'node_modules')} (or a link in it) is not as the engine made it, so the PR's code changed it${localDetailNote(this.key, 'which link')}; nothing of this prepare is trusted and nothing is pushed; inspect and remove ${path} by hand`, detail: oneLine(visibleLine(repointed), PARK_TAIL_CHARS) });
+      // Still inside checkoutGitPin: engine git reads the checkout's HEAD (prepare's merge or inventory commit) through its recorded git dir.
+      const priv = this.privateRun();
+      const checkedOut = () => (priv ? priv.gitOk(['rev-parse', 'HEAD'], 'reading the prepare checkout', path) : this.run(['rev-parse', 'HEAD'], 'git', undefined, path));
       const r = this.o.gateSandbox
-        ? await this.sandboxRun({ purpose: 'prepare', argv: c.argv, exe: c.exe, args: c.args, cwd: path, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...(at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}) })
+        ? await this.withGitView(checkedOut, label, (view) => this.sandboxRun({ purpose: 'prepare', argv: c.argv, exe: c.exe, args: c.args, cwd: path, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...(at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}), ...view }))
         : { ran: false as const, reason: 'no OS sandbox runner was given to the engine' };
       const t = tampered();
       if (t) return t;
@@ -3415,6 +3600,8 @@ class FactoryEngine {
         return { status: r.timedOut ? 124 : r.status, stdout: redactGateOutput(r.output), stderr: '' };
       }
       if (r.started) return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoVerdictReason(head, label, r.reason) });
+      // isolation "container" without a usable runtime: its own park, never the weaker sandbox and never the ack offer.
+      if (r.unavailable) return stop({ name: GATE_CONTAINER_UNAVAILABLE_GATE, reason: this.gateContainerUnavailableReason(head, label, r.reason) });
       // An earlier check of this head already ran the PR's code in the sandbox: a start failure now may be its doing.
       // Only a configured command (trusted config) refused for its own shape or length keeps the ack offer; a
       // built-in's argv holds the PR's file names, so its refusal parks here too.
@@ -3440,21 +3627,24 @@ class FactoryEngine {
    * on the base itself, or its calibration could not run.
    */
   private async calibrateGate(c: { argv: readonly string[]; exe: string; args: readonly string[]; kind?: PrepareCheckRun['kind'] }, baseSha: string, commonGitDir: string, timeoutMs: number, what: string, head: string): Promise<{ name: string; reason: string } | null> {
-    const key = createHash('sha256').update(`${baseSha}\0${JSON.stringify(c.argv)}`).digest('hex');
+    // A calibration holds for the isolation it ran in: the gate container's (and its image, by id once a run reported it)
+    // is keyed apart from the OS sandbox's.
+    const container = this.gatesModeCache?.container;
+    const key = createHash('sha256').update(`${baseSha}\0${JSON.stringify(c.argv)}${container ? `\0container\0${container.runtime}\0${this.containerImageId ?? container.image}` : ''}`).digest('hex');
     let cal = this.state.gateCalibration?.[key];
     if (!cal || (!cal.ok && !this.recalibrated.has(key))) {
       this.recalibrated.add(key);
       const out = await this.runOnBase(c, baseSha, commonGitDir, timeoutMs);
       if ('notStarted' in out) {
-        return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${what} failed in the OS sandbox on ${head.slice(0, 12)}, and its calibration on the base ${baseSha.slice(0, 12)} could not run (${out.notStarted}); the failure is not counted (no ci-fix lane). Fix the cause, then rerun ${this.resume}. ${ACK_WARNING}` };
+        return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${what} failed in ${this.sandboxName()} on ${head.slice(0, 12)}, and its calibration on the base ${baseSha.slice(0, 12)} could not run (${out.notStarted}); the failure is not counted (no ci-fix lane). Fix the cause, then rerun ${this.resume}. ${ACK_WARNING}` };
       }
       cal = out;
-      this.save((x) => ({ ...x, gateCalibration: { ...(x.gateCalibration ?? {}), [key]: out }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `calibrated ${what.slice(0, 120)} in the OS sandbox on the base ${baseSha.slice(0, 12)}: ${out.ok ? 'passes' : 'fails'}` }] }));
+      this.save((x) => ({ ...x, gateCalibration: { ...(x.gateCalibration ?? {}), [key]: out }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `calibrated ${what.slice(0, 120)} in ${this.sandboxName()} on the base ${baseSha.slice(0, 12)}: ${out.ok ? 'passes' : 'fails'}` }] }));
     }
     if (cal.ok) return null;
     return {
       name: GATE_SANDBOX_INCOMPATIBLE_GATE,
-      reason: `${what} fails in the OS sandbox on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${sandboxIncompatibleAdvice(cal.tail)}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1_500)}` : ''}`,
+      reason: `${what} fails in ${this.sandboxName()} on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${this.gatesModeCache?.container ? CONTAINER_INCOMPATIBLE_ADVICE : sandboxIncompatibleAdvice(cal.tail)}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1_500)}` : ''}`,
     };
   }
 
@@ -3475,8 +3665,15 @@ class FactoryEngine {
       const env = { ...process.env, GIT_INDEX_FILE: index, GIT_NO_REPLACE_OBJECTS: '1' };
       runHostGit(this.o.root, ['read-tree', baseSha], undefined, env);
       runHostGit(this.o.root, ['checkout-index', '-a', '-f', `--prefix=${dir.replace(/\\/g, '/')}/`], undefined, env);
-      linkNodeModules(this.o.root, dir, this.o.warn);
-      const r = await this.sandboxRun({ purpose: 'calibrate', argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...(this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {}) });
+      // The export has no git: a one-commit view of the base at <dir>/.git, removed with the dir (git-view.ts).
+      const gitView = this.makeGitView(dir, baseSha, this.hostViewSource(), 'the base calibration');
+      // isolation "container": the container installs its own; your node_modules is never linked in (C1, review-499).
+      if (!this.gatesModeCache?.container) {
+        // A workspace layout the gate does not support (Yarn PnP, a nested git repository, over the bounds) parks here, named.
+        const layout = linkNodeModules(this.o.root, dir, this.o.warn, this.baseWorkspaces(baseSha));
+        if (layout) return { notStarted: visibleLine(layout) };
+      }
+      const r = await this.sandboxRun({ purpose: 'calibrate', argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...(this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {}), ...(gitView ? { gitView } : {}) });
       if (!r.ran) return { notStarted: r.reason };
       const tail = r.output.trim().slice(-2_000);
       return { ok: r.status === 0 && !r.timedOut, ...(tail ? { tail } : {}) };
@@ -3736,7 +3933,7 @@ class FactoryEngine {
           const fresh = { ...process.env, GIT_INDEX_FILE: join(indexDir, 'index') };
           runHostGit(checkout, [...gitArgs, 'read-tree', at], undefined, fresh);
           const status = [...gitArgs, '-c', 'core.untrackedCache=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all'];
-          dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, undefined, fresh));
+          dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, undefined, fresh), trustedNestedRels(this.o.root, checkout, this.baseWorkspaces()));
         } catch (error) {
           problem = errText(error);
         } finally {
@@ -3820,7 +4017,7 @@ class FactoryEngine {
           return false;
         }
         out = this.o.gateSandbox
-          ? await runLocalGate({ ...input, mode: 'enforced', sandbox: { run: (req) => this.sandboxRun(req), commonGitDir: common, requireDeniedPaths: gates.requireDeniedPaths } })
+          ? await runLocalGate({ ...input, mode: 'enforced', sandbox: { run: (req) => this.withGitView(() => head, 'the local gate', (view) => this.sandboxRun({ ...req, ...view })), commonGitDir: common, requireDeniedPaths: gates.requireDeniedPaths } })
           : { started: false, reason: 'no OS sandbox runner was given to the engine', sandbox: true };
         // The gate handed the PR's code of this head to the sandbox (a verdict or not): a later start failure on a
         // rerun of the gate for this head may be that code's doing.
@@ -3829,6 +4026,10 @@ class FactoryEngine {
           // It ran in the sandbox and said nothing a verdict can rest on: never the ack park, never a FAILURE.
           if (checkoutGitLink(checkout).hash !== linkBefore) return this.gateTamperedByGate(head, checkout, stateDir);
           this.gate(GATE_NO_VERDICT_GATE, this.gateNoVerdictReason(head, `the local gate \`${gate.join(' ')}\``, out.reason));
+          return false;
+        }
+        if (!out.started && out.unavailable) {
+          this.gate(GATE_CONTAINER_UNAVAILABLE_GATE, this.gateContainerUnavailableReason(head, `the local gate \`${gate.join(' ')}\``, out.reason));
           return false;
         }
         unavailable = !out.started && out.sandbox === true;
@@ -3987,7 +4188,7 @@ class FactoryEngine {
         this.gate('no-workflows', `${out.report.noHeadChecks ? `${noHeadChecksText(out.report.noHeadChecks)} (head ${at})` : `no checks and no workflow runs exist for ${at}`}; push the branch with a token that triggers workflows (or enable Actions), or close and reopen PR #${pr}${out.report.noHeadChecks ? `; to stop instead: ${cancelCommand(this.key)}` : ''}`);
         return;
       case 'timeout':
-        this.gate('gates-timeout', `gates did not settle within factory.run.gatesTimeoutMinutes ${Math.round(this.o.limits.gatesTimeoutMs / 60_000)} at ${at}${out.report ? ` (pending: ${out.report.pending.join(', ') || 'none'})` : ''}`);
+        this.gate('gates-timeout', `gates did not settle within factory.run.gatesTimeoutMinutes ${Math.round(this.o.limits.gatesTimeoutMs / 60_000)} at ${at}${out.report ? ` (pending: ${out.report.pending.join(', ') || 'none'})` : ''}; rerun ${this.resume} to wait again, or ${cancelCommand(this.key)}`);
         return;
       case 'head-moved':
         this.gate('head-moved-externally', `PR #${pr} head is ${out.headRefOid.slice(0, 12)}, the engine pushed ${at}`);
@@ -4032,20 +4233,23 @@ class FactoryEngine {
       this.save((x) => moveTo(x, 'gates', `gates no longer green: ${decision.reasons.join('; ')}`, this.iso()));
       return;
     }
+    // Opt-in (factory.merge.auto, user config only): true = the engine merged and the run finished; a string = why it did not.
+    const auto = decision.ok ? await this.autoMerge(pr, head, view, ship, decision, config) : undefined;
+    if (auto === true) return;
     const cmd = decision.command.join(' ');
     this.mergeCmd = decision.ok ? cmd : undefined;
     this.commentOnce('pr', `merge@${head.slice(0, 12)}`, 'merge', `${mergeComment(this.key, decision, this.resume)}${decision.ok ? this.humanComment ?? '' : ''}`);
-    if (decision.ok) this.gate('merge', `merge is a human step; review approved and gates green at ${head.slice(0, 12)}${decision.noChecks ? ` (${NO_CI_CHECKS_NOTE}: no CI ran on this head, check the change yourself)` : ''}${this.humanNote ?? ''}: run ${cmd}, then ${this.resume}`);
+    if (decision.ok) this.gate('merge', `merge is a human step; review approved and gates green at ${head.slice(0, 12)}${decision.noChecks ? ` (${NO_CI_CHECKS_NOTE}: no CI ran on this head, check the change yourself)` : ''}${this.humanNote ?? ''}${auto ? `; auto-merge (factory.merge.auto) not taken: ${auto}` : ''}: run ${cmd}, then ${this.resume}`);
     else this.gate('merge-refused', `ship's merge rule refuses ${head.slice(0, 12)}: ${decision.reasons.join('; ')}`);
   }
 
-  /** The human merged the PR: ship and factory record it; the run is done. */
-  private finishMerged(pr: number): void {
+  /** The human merged the PR (or the opt-in auto-merge did, `by` and the base it moved to): ship and factory record it; the run is done. */
+  private finishMerged(pr: number, by = 'a human', mergedBase?: string): void {
     // The local forge's MERGED is a PR store file the PR's code could write (its mergedHead too): it counts only when
     // your base (as the engine synced it in this invocation, else refs/heads/<base>) contains the head the engine pushed.
     if (this.forge?.kind === 'local') {
       const head = this.state.head ?? '';
-      const base = this.basePushSha ?? this.exec('git', ['rev-parse', '--verify', `refs/heads/${this.state.base}`], { cwd: this.o.root, env: TRUSTED_READ_ENV }).stdout.trim();
+      const base = mergedBase ?? this.basePushSha ?? this.exec('git', ['rev-parse', '--verify', `refs/heads/${this.state.base}`], { cwd: this.o.root, env: TRUSTED_READ_ENV }).stdout.trim();
       if (!HEX40.test(base) || !this.isAncestor(head, base)) {
         this.gate('lane-tampered', `the local forge reports PR #${pr} merged, but your ${this.state.base} ${base.slice(0, 12) || '(unreadable)'} does not contain the head the engine pushed ${head.slice(0, 12) || '(none)'}; something else wrote the PR store. Check what did (a prepare check or gate is the PR's own code), then rerun ${this.resume}`);
         return;
@@ -4053,10 +4257,263 @@ class FactoryEngine {
     }
     this.writeShip(pr, (cur) => {
       if (!cur) throw new FactoryStepError(`no ship state for PR #${pr}`);
-      return canTransition(cur.phase, 'merged') ? transition(cur, 'merged', `merged on ${this.forgeName} by a human`, this.iso()) : cur;
+      return canTransition(cur.phase, 'merged') ? transition(cur, 'merged', `merged on ${this.forgeName} by ${by}`, this.iso()) : cur;
     });
-    this.save((x) => moveTo(x, 'merged', `PR #${pr} merged on ${this.forgeName}`, this.iso()));
+    this.save((x) => moveTo(x, 'merged', `PR #${pr} merged on ${this.forgeName}${by === 'a human' ? '' : ` by ${by}`}`, this.iso()));
     this.progress.emit('merged', 'done', `PR #${pr} merged`, this.fields());
+  }
+
+  /**
+   * Opt-in auto-merge (auto-merge.ts), after ship's merge rule allowed the
+   * head: undefined when factory.merge.auto is off for this repository, a
+   * short reason when a condition fails or the merge did not go through (the
+   * human park follows, unchanged), true when the engine merged and finished
+   * the run. Every input is read here by the engine (trusted), on the exact
+   * head: the user config, the diff's modes and line counts, the labels, the
+   * human review read of this merge step. The PR is read again right before
+   * the merge, which is pinned to the head (GitHub REST `sha`; the local
+   * forge merges only a head that already contains your clean, checked-out base).
+   */
+  private async autoMerge(pr: number, head: string, view: MergeView, ship: ShipState, decision: FactoryMergeDecision, config: GateConfig['config']): Promise<true | string | undefined> {
+    const local = this.forge?.kind === 'local';
+    let user = this.o.autoMergeUserConfig;
+    if (user === undefined) {
+      try { user = userConfigLayers().trustedUser; } catch { user = null; }
+    }
+    const commit = (config as { trustedBaseCommit?: string }).trustedBaseCommit;
+    if (commit && !this.warnedCommittedMerge) {
+      try {
+        const text = readBaseFile(this.exec, this.o.root, commit, BASE_CONFIG_PATH);
+        if (text && text.trim() && committedMergeConfig(parseJsonc(text))) {
+          this.warnedCommittedMerge = true;
+          this.o.warn?.(`omg factory run: factory.merge in the committed ${BASE_CONFIG_PATH} is ignored: auto-merge is set in your user config only (factory.merge.auto), because a PR can change committed config`);
+        }
+      } catch { /* an unreadable committed config sets nothing */ }
+    }
+    const resolved = resolveAutoMergeConfig(user, { url: this.state.repoUrl || undefined, root: this.o.root, local });
+    if (resolved.error) {
+      this.o.warn?.(`omg factory run: ${resolved.error}; auto-merge stays off`);
+      return undefined;
+    }
+    if (!resolved.config) return undefined;
+    // Labels: the issue's and (GitHub) the PR's; unreadable = null, which keeps the merge human.
+    let labels: string[] | null;
+    try {
+      const issue = this.state.kind === 'ci-heal' || !this.o.issue ? [] : (this.forge ? this.forge.tracker.viewItem(this.o.issue) : ghViewItem(this.exec, this.o.issue, this.o.root)).labels;
+      const prLabels = this.forge ? [] : ((JSON.parse(ghRun(this.exec, ['pr', 'view', String(pr), '--json', 'labels'], this.o.root)) as { labels?: Array<{ name?: unknown }> }).labels ?? []).map((l) => String(l.name));
+      labels = [...issue, ...prLabels];
+    } catch {
+      labels = null;
+    }
+    const diff = (flag: string) => this.exec('git', ['diff', '--no-ext-diff', '--no-textconv', flag, '-z', '--no-renames', '--no-abbrev', `${view.baseRefOid}...${head}`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+    const raw = diff('--raw');
+    const num = diff('--numstat');
+    const entries = raw.status === 0 && num.status === 0 ? parseChangedEntries(raw.stdout, num.stdout) : null;
+    const extra = [config.knownFlakyFile];
+    let protectedProblem: string | undefined;
+    extra.push(...configuredProtectedPaths(this.o.root, (source, error) => { protectedProblem = `${source}: ${error}`; }));
+    // Your core.hooksPath (repository, global or system config; the engine's own command-line pin is skipped): a PR never changes the hooks you run.
+    const hooks = this.exec('git', ['config', '--show-scope', '--get-all', 'core.hooksPath'], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+    if (hooks.status > 1) protectedProblem ??= `git config core.hooksPath could not be read (exit ${hooks.status})`;
+    else {
+      for (const line of hooks.stdout.split('\n')) {
+        const [scope, ...rest] = line.split('\t');
+        const value = rest.join('\t').trim();
+        if (!value || scope === 'command') continue;
+        // Normalised first: `scripts/../h2` is h2 (review-498b INFO). `.` (the root) is covered by deniedPaths' root hook names (review-498c L-e).
+        const rel = posix.normalize((isAbsolute(value) ? relative(this.o.root, value) : value).replace(/\\/g, '/'));
+        if (rel && rel !== '.' && !rel.startsWith('..') && !isAbsolute(rel)) extra.push(`${rel.replace(/\/+$/, '')}/`);
+      }
+    }
+    const tiers = resolved.config.tiers;
+    const testSetup = tiers.some((t) => t !== 'docs') ? this.baseTestSetup(view.baseRefOid) : undefined;
+    const frontmatter = tiers.some((t) => t !== 'tests') && entries ? this.frontmatterPaths(entries, view.baseRefOid, head) : undefined;
+    let installFiles: { paths: string[]; problem?: string };
+    // The base's root names (binding.gyp, pnpm-workspace.yaml make install run code the engine does not read: review-498c L-b).
+    const rootList = this.exec('git', ['ls-tree', '-z', '--name-only', view.baseRefOid], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+    try {
+      if (rootList.status !== 0) throw new Error(`the base's root files could not be listed (exit ${rootList.status})`);
+      installFiles = baseInstallFiles(readBaseFile(this.exec, this.o.root, view.baseRefOid, 'package.json'), rootList.stdout.split('\0').filter(Boolean));
+    } catch (error) {
+      // Unreadable: nothing extra is denied, so the small tier is off; docs and tests cannot touch a script anyway.
+      installFiles = { paths: [], problem: `the base package.json could not be read (${oneLine(error instanceof Error ? error.message : String(error), 120)})` };
+    }
+    let patch: PatchLine[] | null | undefined;
+    if (tiers.some((t) => t !== 'docs')) {
+      const diffText = this.exec('git', ['diff', '--no-ext-diff', '--no-textconv', `${view.baseRefOid}...${head}`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+      patch = diffText.status === 0 ? patchLines(diffText.stdout) : null;
+    }
+    const changes = protectedProblem ? { reasons: [`the configured protected paths could not be read (${protectedProblem})`], evidence: [] } : classifyChanges(entries, resolved.config, {
+      extraDenied: extra, installFiles, ...(testSetup ? { testSetup } : {}), ...(frontmatter ? { frontmatter } : {}), ...(patch !== undefined ? { patch } : {}),
+    });
+    const pending = this.state.pendingCommit;
+    const verdict = autoMergeVerdict({
+      head,
+      config: resolved.config,
+      run: {
+        ciHeal: this.state.kind === 'ci-heal',
+        forgeKind: this.forge?.kind ?? 'github',
+        history: this.state.history,
+        ...(this.state.unsandboxedAck ? { unsandboxedAck: this.state.unsandboxedAck } : {}),
+        ...(this.state.unsandboxedGatesAck ? { unsandboxedGatesAck: this.state.unsandboxedGatesAck } : {}),
+        ...(this.state.gateChangeApproved ? { gateChangeApproved: this.state.gateChangeApproved } : {}),
+        ...(pending?.secretAck ? { secretAck: pending.secretAck } : {}),
+      },
+      decision,
+      requiredChecks: config.requiredChecks,
+      ...(latestVerdict(ship) ? { verdict: latestVerdict(ship)! } : {}),
+      ...(this.humanClear?.head === head ? { human: { commentOnly: this.humanClear.commentOnly } } : {}),
+      labels,
+      changes,
+    });
+    const short = (reasons: readonly string[]) => `${reasons.slice(0, 3).join('; ')}${reasons.length > 3 ? `; and ${reasons.length - 3} more` : ''}`;
+    if (!verdict.ok || !verdict.tier) return short(verdict.reasons);
+    // TOCTOU: read the PR again right before the merge; any move keeps the merge human.
+    const again = await this.prViewReady(pr);
+    if (again.state !== 'OPEN' || again.isDraft || again.headRefOid !== head || again.baseRefOid !== view.baseRefOid || again.baseRefName !== view.baseRefName) {
+      return `the PR changed between the check and the merge (now ${again.state.toLowerCase()}, head ${String(again.headRefOid).slice(0, 12)}, base ${String(again.baseRefOid).slice(0, 12)})`;
+    }
+    const added = (entries ?? []).filter((e) => e.status === 'A').map((e) => e.path);
+    const merged: { base?: string; mergeSha?: string } | string = local ? this.localAutoMerge(head, view.baseRefOid, added) : this.githubAutoMerge(pr, head, view.baseRefOid);
+    if (typeof merged === 'string') return merged;
+    const by = `the factory (auto-merge tier ${verdict.tier})`;
+    this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `auto-merged by tier ${verdict.tier} at ${head.slice(0, 12)}: ${verdict.evidence.join('; ')}` }] }));
+    this.commentOnce('pr', `auto-merge@${head.slice(0, 12)}`, 'merge', autoMergeComment(runLabel(this.key), verdict.tier, head, verdict.evidence, by));
+    // GitHub pins only the head: a base that moved between the re-read and the PUT is merged into unchecked. Say so loudly.
+    if (!local) {
+      const moved = this.githubMergeBaseProblem(merged.mergeSha, view.baseRefOid);
+      if (moved) {
+        const text = `WARNING: auto-merge of ${head.slice(0, 12)}: ${moved}. The merged result was not checked by the gates; check ${this.state.base} now. Turn on "Require branches to be up to date before merging" in branch protection to prevent this.`;
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: text }] }));
+        this.commentOnce('pr', `auto-merge-base@${head.slice(0, 12)}`, 'merge', `Factory run for ${runLabel(this.key)}: ${text}\n`);
+        this.o.warn?.(`omg factory run: ${text}`);
+      }
+    }
+    this.finishMerged(pr, by, merged.base);
+    return true;
+  }
+
+  /**
+   * GitHub: the head-pinned REST merge (GitHub refuses a moved head with 409), admitted by the guard for this step only.
+   * The head must already contain `base`, the live tip (liveBase), as localAutoMerge requires (review-518 L2): a base that
+   * moved after prepare would be merged with a tree the gates never checked. A tip missing from the object store = not contained.
+   */
+  private githubAutoMerge(pr: number, head: string, base: string): { base?: string; mergeSha?: string } | string {
+    if (!this.isAncestor(base, head)) return `${this.state.base} moved after prepare (head ${head.slice(0, 12)} does not contain ${this.state.base} ${base.slice(0, 12)}); rerun ${this.resume} to merge the new base`;
+    const repo = this.githubReadContext()?.repo;
+    const args = repo ? githubAutoMergeArgs({ repo, pr, head }) : undefined;
+    if (!args) return 'the run\'s GitHub repository is not known, so there is no head-pinned merge to run';
+    this.autoMergeStep = { pr, head };
+    try {
+      const res = this.exec('gh', args, { cwd: this.o.root });
+      if (res.status !== 0) return `GitHub refused the head-pinned merge: ${oneLine(res.stderr || res.stdout, 200)}`;
+      let out: { merged?: unknown; sha?: unknown };
+      try { out = JSON.parse(res.stdout) as { merged?: unknown; sha?: unknown }; } catch { out = {}; }
+      if (out.merged !== true) return `GitHub did not confirm the merge: ${oneLine(res.stdout, 200)}`;
+      return typeof out.sha === 'string' && HEX40.test(out.sha) ? { mergeSha: out.sha } : {};
+    } finally {
+      this.autoMergeStep = undefined;
+    }
+  }
+
+  /** After the GitHub merge: why its merge commit's first parent is not the base the gates checked (undefined = it is). */
+  private githubMergeBaseProblem(mergeSha: string | undefined, baseSha: string): string | undefined {
+    const repo = this.githubReadContext()?.repo;
+    const args = repo && mergeSha ? githubCommitReadArgs(repo, mergeSha) : undefined;
+    if (!args) return `GitHub did not return the merge commit, so its first parent could not be checked against ${this.state.base} ${baseSha.slice(0, 12)}`;
+    let parents: unknown;
+    try {
+      const res = this.exec('gh', args, { cwd: this.o.root });
+      parents = res.status === 0 ? (JSON.parse(res.stdout) as { parents?: Array<{ sha?: unknown }> }).parents : undefined;
+    } catch {
+      parents = undefined;
+    }
+    const first = Array.isArray(parents) ? (parents[0] as { sha?: unknown } | undefined)?.sha : undefined;
+    if (typeof first !== 'string') return `the merge commit ${mergeSha!.slice(0, 12)} could not be read, so its first parent could not be checked against ${this.state.base} ${baseSha.slice(0, 12)}`;
+    return first === baseSha ? undefined : `GitHub merged into ${this.state.base} ${first.slice(0, 12)}, not ${baseSha.slice(0, 12)} the gates checked (the base moved before the merge)`;
+  }
+
+  /**
+   * The Markdown-like changed files (isFrontmatterCandidate) whose BASE blob
+   * (not added) or HEAD blob (not deleted) starts with frontmatter (review-498b
+   * N1): a skill, command, agent or mission contract a tool parses. Read with
+   * ship's exact `git show <sha>:<path>`; a read that fails (or a path that
+   * shape refuses) or more than 200 such files is a problem, which keeps the
+   * docs and small tiers off.
+   */
+  private frontmatterPaths(entries: readonly ChangedEntry[], baseSha: string, head: string): { paths: string[]; problem?: string } {
+    const candidates = entries.filter((e) => isFrontmatterCandidate(e.path));
+    if (candidates.length > 200) return { paths: [], problem: `${candidates.length} Markdown-like files changed; the engine reads at most 200 for frontmatter` };
+    const paths: string[] = [];
+    for (const e of candidates) {
+      const shas = [...(e.status !== 'A' ? [baseSha] : []), ...(e.status !== 'D' ? [head] : [])];
+      for (const sha of shas) {
+        let text: string | null;
+        try { text = readBaseFile(this.exec, this.o.root, sha, e.path); } catch (error) {
+          return { paths, problem: `${e.path} could not be read at ${sha.slice(0, 12)} to check for frontmatter (${oneLine(error instanceof Error ? error.message : String(error), 120)})` };
+        }
+        if (text !== null && hasFrontmatter(text)) { paths.push(e.path); break; }
+      }
+    }
+    return { paths };
+  }
+
+  /**
+   * The setup files of the BASE commit's root test configs (baseTestSetup),
+   * never the head's: the PR cannot hide its own setup file. A listing or
+   * read that fails is a problem, which keeps the tests and small tiers off.
+   */
+  private baseTestSetup(baseSha: string): { paths: string[]; problem?: string } {
+    const list = this.exec('git', ['ls-tree', '-z', '--name-only', baseSha], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+    if (list.status !== 0) return { paths: [], problem: `the base's root files could not be listed (exit ${list.status})` };
+    const files: Array<{ path: string; text: string }> = [];
+    for (const name of list.stdout.split('\0').filter((n) => TEST_CONFIG_NAME.test(n))) {
+      try {
+        const text = readBaseFile(this.exec, this.o.root, baseSha, name);
+        if (text !== null) files.push({ path: name, text });
+      } catch (error) {
+        return { paths: [], problem: `the base test config ${name} could not be read (${oneLine(error instanceof Error ? error.message : String(error), 120)})` };
+      }
+    }
+    return baseTestSetupOf(files);
+  }
+
+  /**
+   * The local forge: `git merge --no-ff --no-edit --no-verify <head>` in your
+   * repository, only with your base checked out there, no tracked change, the
+   * base still at the commit the run synced, and the head already containing
+   * it (so the merge takes the head's tree as is: no merge driver runs), and
+   * no path the PR adds already in your checkout. Like every engine git
+   * command it runs under hardenedGitExec: core.hooksPath is the engine's
+   * empty dir (no post-merge from .git/hooks or a tracked hooks dir) and
+   * merge.renormalize is off. A failed merge is aborted. Returns the base's new commit.
+   */
+  private localAutoMerge(head: string, baseSha: string, added: readonly string[]): { base: string } | string {
+    const git = (args: string[]) => this.exec('git', args, { cwd: this.o.root, env: TRUSTED_READ_ENV });
+    // git overwrites an ignored or untracked file in the way without asking: a path the PR adds must not exist in your checkout yet.
+    // review-498b L1: every parent too: an ignored FILE `a` (or a link) where the PR adds `a/b.md` is replaced by git.
+    const inTheWay = added.filter((p) => {
+      const parts = p.split('/');
+      return parts.some((_, n) => {
+        try { const st = lstatSync(join(this.o.root, ...parts.slice(0, n + 1))); return n === parts.length - 1 || !st.isDirectory(); } catch { return false; }
+      });
+    });
+    if (inTheWay.length > 0) return `the PR adds ${inTheWay.slice(0, 3).join(', ')}${inTheWay.length > 3 ? ` and ${inTheWay.length - 3} more` : ''}, which already exist in your checkout, or under a file or link there (an ignored or untracked file the merge would overwrite)`;
+    const branch = git(['rev-parse', '--symbolic-full-name', 'HEAD']);
+    if (branch.status !== 0 || branch.stdout.trim() !== `refs/heads/${this.state.base}`) return `your repository does not have ${this.state.base} checked out (the local merge runs there)`;
+    const dirty = git(['status', '--porcelain', '--untracked-files=no']);
+    if (dirty.status !== 0 || dirty.stdout.trim() !== '') return `your repository has uncommitted changes to tracked files`;
+    const at = git(['rev-parse', '--verify', `refs/heads/${this.state.base}`]).stdout.trim();
+    if (at !== baseSha) return `your ${this.state.base} is at ${at.slice(0, 12) || '(unreadable)'}, not ${baseSha.slice(0, 12)} the gates checked against`;
+    if (git(['merge-base', '--is-ancestor', baseSha, head]).status !== 0) return `head ${head.slice(0, 12)} does not contain ${this.state.base} ${baseSha.slice(0, 12)}; a merge would combine trees the gates never checked`;
+    const res = git(['merge', '--no-ff', '--no-edit', '--no-verify', head]);
+    if (res.status !== 0) {
+      if (git(['rev-parse', '-q', '--verify', 'MERGE_HEAD']).status === 0) git(['merge', '--abort']);
+      return `git merge of ${head.slice(0, 12)} failed: ${oneLine(res.stderr || res.stdout, 200)}`;
+    }
+    const after = git(['rev-parse', '--verify', `refs/heads/${this.state.base}`]).stdout.trim();
+    if (!HEX40.test(after) || git(['merge-base', '--is-ancestor', head, after]).status !== 0) return `after the merge your ${this.state.base} does not contain ${head.slice(0, 12)}; check your repository`;
+    return { base: after };
   }
 
   // --- Shared git state around lanes -------------------------------------------------------------
@@ -4794,6 +5251,8 @@ class FactoryEngine {
 
   /** The coding agent write context, set ONLY around the assign and around the agent PR's link comment and close; cleared in finally. */
   private agentStep?: CodingAgentStepContext;
+  /** Set only around the opt-in auto-merge's GitHub REST merge (the guard admits that one call for this PR and head). */
+  private autoMergeStep?: { pr: number; head: string };
   /** Whether this invocation's run uses the coding agent, and its keys (resolved once; its warning printed once). */
   private agentChoice?: CodingAgentChoice;
 
@@ -4802,12 +5261,15 @@ class FactoryEngine {
    * The gates' GitHub reads (GateHeadReads) on a GitHub run, through the run
    * guard's exact shapes on the run's repository: the base commit's checks
    * (read once per base sha), the head's check suites and check-run apps.
-   * None on the local forge and Azure DevOps.
+   * None on the local forge and Azure DevOps. The base is the PR's RECORDED
+   * baseRefOid (review-518 L1), not liveBase's tip: a tip that just landed
+   * has no settled CI yet, so "the base reported no check" and "this app is
+   * idle on the base" would hold for it while its runs are still queued.
    */
   private gateReads(view: MergeView): GateHeadReads | undefined {
     const repo = this.githubReadContext()?.repo;
     if (!repo || this.forge?.kind === 'local' || this.forge?.kind === 'azure-devops') return undefined;
-    const base = view.baseRefOid;
+    const base = view.recordedBaseRefOid ?? view.baseRefOid;
     let baseChecks: { names: readonly string[] | undefined } | undefined;
     let ciDefinitions: { files: readonly string[] | undefined } | undefined;
     let baseSuites: { suites: ReturnType<GateHeadReads['baseSuites']> } | undefined;
@@ -4846,7 +5308,7 @@ class FactoryEngine {
 
   private githubReadContext(): GithubReadContext | undefined {
     const repo = this.state?.repoUrl ? codingAgentRepoOf(this.state.repoUrl) : undefined;
-    return repo ? { repo: ghRepoArg(repo) } : undefined;
+    return repo ? { repo: ghRepoArg(repo), ...(this.autoMergeStep ? { autoMerge: this.autoMergeStep } : {}) } : undefined;
   }
 
   private withAgentStep<T>(ctx: CodingAgentStepContext, call: () => T): T {
@@ -5264,6 +5726,8 @@ class FactoryEngine {
   private humanNote?: string;
   /** The same read for the merge comment on the PR. */
   private humanComment?: string;
+  /** The same read as auto-merge needs it: clean at this head, and its comment-only reviews (undefined = not read). */
+  private humanClear?: { head: string; commentOnly: number };
 
   /** factory.review.human from the trusted layers; absent (no forge config included) = "fix". */
   private humanMode(): 'off' | 'gate-only' | 'fix' {
@@ -5369,6 +5833,7 @@ class FactoryEngine {
   private humanReviewParked(pr: number, head: string, ship: ShipState): boolean {
     this.humanNote = undefined;
     this.humanComment = undefined;
+    this.humanClear = undefined;
     const mode = this.humanMode();
     if (mode === 'off') return false;
     const fb = this.readHuman(pr, head);
@@ -5441,6 +5906,7 @@ class FactoryEngine {
     const read = `${none}${approved.length > 0 ? `, approved at this head by ${this.names(approved)}` : ''}${commented}${also}${ignored}${gone}${sandbox}`;
     this.humanNote = `; human review: ${read}; ${rerun}`;
     this.humanComment = `\nHuman review at this head: ${read}.\n\nIf the PR gets new review comments before you merge, rerun \`${this.resume}\` first.\n`;
+    this.humanClear = { head, commentOnly: commentOnly.length };
     return false;
   }
 
@@ -5549,6 +6015,8 @@ export const GATE_SANDBOX_INCOMPATIBLE_GATE = 'gate-sandbox-incompatible';
  * contradiction, no attestation, a timeout with no answer): never a pass or a FAILURE, and no --allow-unsandboxed-gates.
  */
 export const GATE_NO_VERDICT_GATE = 'gate-no-verdict';
+/** How withGitView's own no-verdict reason starts: gateNoVerdictReason gives it its own sentence (nothing ran). */
+const GIT_VIEW_UNBUILT = 'the git view of ';
 /** What the gate-sandbox-incompatible park says about "ack": never a fix for a PR nobody reviewed. */
 const ACK_WARNING = 'Do not switch factory.run.sandbox.gates to "ack" for a PR whose whole diff you have not reviewed: "ack" runs its code as you, with your credentials';
 /** How long one prepare check may run (the sandbox needs a bound; ship's own prepare has none). */

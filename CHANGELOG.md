@@ -4,6 +4,32 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+# oh-my-copilot v5.26.0
+
+## [5.26.0] - 2026-11-12
+
+### Added
+
+- **`omg factory dashboard`.** One self-contained HTML page of all factory runs, from local state only: status, park reasons, time per phase, credits and requests, bench results. `--out`, `--json`, `--since`.
+- **Opt-in auto-merge by trust tier (`factory.merge.auto`).** User config only, per repository; tiers `docs`, `tests`, `small`; `docsDenied` and `securityCritical` globs. The default is unchanged: a human merges. See the Auto-merge section of docs/REFERENCE.md for the conditions and the known limits.
+- **Container isolation for gates (`factory.run.sandbox.isolation: "container"`).** User config only. Prepare checks, the local gate and the same checks on the base branch for comparison run in a Docker or Podman container with no credentials and no network while the command runs. New park `gate-container-unavailable`. `omg factory check` shows the runtime. Docker is tested; Podman is not.
+- **Monorepo and workspace gates.** npm, pnpm and yarn (node-modules linker) workspaces get a per-package gate `node_modules` tree. The workspace list comes from the base branch. Yarn Plug'n'Play and nested git repositories are not supported; when the gate then fails, the run parks at `gate-sandbox-incompatible` with the reason.
+- **`omg factory bench`.** A seeded local-forge benchmark: 12 graded issues with 4 traps and hidden acceptance tests. `--fake` costs nothing; `--live` needs `--max-requests`. Versioned JSON results with a markdown summary, plus `compare`, `--issues` and `--allow-multiplier`.
+- **`omg factory run --max-requests <n>`.** Stops starting lanes once the run's lanes used n premium requests (the lane in flight finishes, so the run can end a little above n).
+
+### Changed
+
+- **Gate git views fail closed.** With container isolation, a prepare check or the local gate whose git view cannot be built gets no verdict and does not run. The park says that nothing ran. A view is refused above 256 MB of objects, and the git commands that build it have a time limit. In the private layout they first check the engine's empty hooks dir and git config.
+- **The gate container runs only an image id.** When `image inspect` reports no `sha256:` id, the gate parks at `gate-container-unavailable` instead of running the tag.
+- **Bench traps.** A trap whose implement lane finished with no changes (`implement-failed`, nothing pushed) passes when nothing leaked, and is counted as "declined". A lane that could not start, failed or timed out is not a decline, and `fix-failed` never is. A live bench notes when no budget ledger file appeared, and stops with `run-error` when a run recorded usage without one.
+- **Auto-merge park text.** Check names lose bidi and zero-width characters, and their `@` can no longer mention anyone. Each name is shown in a code span, so links, HTML and `owner/repo#1` references in it stay plain text; a `|` becomes `¦`.
+- **Monorepo gate trees.** The nested `node_modules` builder checks again, after its last write, that each tree is still inside the gate checkout. When a failed discard keeps a prepare checkout, a failure to link its tree again only warns; the discard error is reported.
+
+### Docs
+
+- Do not run Claude Code, Copilot CLI or another tool that writes into the checkout while the factory runs in it: it trips `lane-tampered`. Use a separate clone.
+- On Windows, Git for Windows transport (`clone`, `fetch`, `push`) cannot run in the Copilot sandbox, so a test that pushes to a temporary remote parks at `gate-sandbox-incompatible`. Use container isolation, set `ship.prepare.checks` in your user config, or keep such tests out of the mapped tests.
+
 # oh-my-copilot v5.25.2
 
 ## [5.25.2] - 2026-11-11

@@ -23,6 +23,7 @@
  */
 import { type Exec } from '../../ship/exec.js';
 import { type FactoryRunState, type HeldOwner, type OwnerDeps } from './state.js';
+import { type ContainerExecSync } from './container-gate.js';
 export interface FactoryCleanResult {
     /** Worktree paths removed (with their branches). */
     removed: string[];
@@ -71,6 +72,8 @@ export interface FactoryCleanOptions {
     localGateStateDir?: string;
     /** The repository import lock the caller already holds (tryScanLock's importLock): the seed removal runs inside it. */
     importLock?: HeldOwner;
+    /** The container runtime CLI for isolation "container" (default container-gate.ts defaultContainerExecSync); tests pass a fake. */
+    containerExecSync?: ContainerExecSync;
 }
 export type LaneProcessRecord = NonNullable<FactoryRunState['lanes'][number]['process']>;
 export type LaneProcessState = 'live' | 'dead' | 'mismatch' | 'unknown';

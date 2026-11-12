@@ -1,11 +1,17 @@
 /**
  * Merge policy for `omg factory run` (owner override of design §8): merge is
- * ALWAYS human. There is no `factory.merge` key and no auto mode, and nothing
- * here runs a merge (the factory guard refuses `gh pr merge` outright). After
- * green gates the engine asks ship's decideMerge for the verdict on the
- * current head, prints the exact admin merge command, comments it on the PR
- * and parks at `awaiting-human: merge`. A later run reads `gh pr view` and
- * finishes as `merged` once the human merged.
+ * a human step by DEFAULT. After green gates the engine asks ship's
+ * decideMerge for the verdict on the current head, prints the exact admin
+ * merge command, comments it on the PR and parks at `awaiting-human: merge`.
+ * A later run reads `gh pr view` and finishes as `merged` once the human merged.
+ *
+ * Opt-in (auto-merge.ts): `factory.merge.auto` in the USER config, per
+ * repository, lets the engine itself merge a low-risk PR (tiers docs, tests,
+ * small) when every condition holds on the exact head; a committed value is
+ * ignored with a notice. Nothing in this file runs a merge. Only the engine
+ * merges: the factory guard still refuses `gh pr merge`, and admits the
+ * head-pinned GitHub REST merge only inside the engine's auto-merge step.
+ * Azure DevOps always stays human.
  */
 import { type KnownFlakyTest, type ShipConfig } from '../../ship/config.js';
 import type { Exec } from '../../ship/exec.js';
@@ -24,7 +30,19 @@ export interface FactoryMergeDecision extends MergeDecision {
     };
     /** The gate read was green with no check at all (NO_CI_CHECKS_NOTE): said in the park and the PR comment. */
     noChecks?: true;
+    /** The checks that ran and SUCCEEDED on this head (auto-merge needs at least one); SKIPPED, NEUTRAL and known-flaky failures are not here. */
+    checks?: string[];
+    /** The checks on this head that were SKIPPED or NEUTRAL: without required checks auto-merge needs none (review-498b N6). */
+    unsettled?: string[];
+    /**
+     * Every non-advisory check on this head whose raw state is not SUCCESS,
+     * SKIPPED or NEUTRAL (a known-flaky FAILURE included), as a sanitised
+     * `` `name` (STATE) `` or `` `name` (STATE, known-flaky) ``: auto-merge needs none.
+     */
+    blocking?: string[];
 }
+/** A check name in a code span, so markdown links, HTML and `owner/repo#1` cross-references stay literal text. */
+export declare const checkName: (s: string) => string;
 /**
  * ship's decideMerge on a fresh one-shot gate read for the head (no watch,
  * no rerun) and the commits since the reviewed sha. `view.baseRefOid` must be

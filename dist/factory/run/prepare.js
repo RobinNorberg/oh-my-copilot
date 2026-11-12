@@ -11,11 +11,12 @@
  * (`git worktree add -B <branch> <path> <sha>`); ship's runPrepare then runs
  * in it with push off, and the engine pushes the result itself.
  */
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, rmdirSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmdirSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { loadBaseKnownFlaky, loadTrustedShipConfig, userConfigLayers } from '../../ship/config.js';
 import { getBranchName, getWorktreePath } from '../../team/git-worktree.js';
 import { runSlug } from './state.js';
+import { expandWorkspaceDirs, plainDirUnder, workspaceLinkTarget } from './workspace-tree.js';
 export const FACTORY_CHECKOUT_TEAM = 'factory-run';
 /** `issue-<n>`, or `heal-<sig8>` for a ci-heal run. */
 export const checkoutWorker = (issue) => runSlug(issue);
@@ -63,12 +64,25 @@ function unlinkLink(p) {
  * per-run tree, never into yours. A single junction from an older release
  * is replaced; anything else already there is left alone. Every link is
  * unlinked (never followed) by unlinkNodeModules before the dir goes.
+ *
+ * Workspaces: `workspaces` are the TRUSTED BASE's globs (never the PR
+ * head's). Each matched package dir whose node_modules exists in your
+ * checkout gets the same kind of tree in that package dir of the gate
+ * checkout, and a workspace self-link (`node_modules/@scope/pkg ->
+ * packages/pkg`) resolves to the gate checkout's package, never your
+ * working tree. Returns why the layout is not supported (Yarn PnP, a nested
+ * git repository, over the bounds; the folder named), else null; the trees
+ * that can be built still are.
  */
-export function linkNodeModules(root, checkout, warn) {
+export function linkNodeModules(root, checkout, warn, workspaces = []) {
     const source = join(root, 'node_modules');
     const target = join(checkout, 'node_modules');
-    if (!existsSync(source) || !existsSync(checkout))
-        return;
+    if (!existsSync(checkout))
+        return null;
+    // Workspaces (monorepos): the base's globs, expanded in your checkout (workspace-tree.ts).
+    const ws = workspaces.length > 0 ? expandWorkspaceDirs(root, workspaces, warn) : { dirs: [], problem: null };
+    if (!existsSync(source))
+        return ws.problem;
     let present = true;
     try {
         present = !lstatSync(target).isSymbolicLink() || !unlinkOwnLink(root, target);
@@ -77,40 +91,151 @@ export function linkNodeModules(root, checkout, warn) {
         present = false;
     }
     if (present)
-        return;
-    mkdirSync(target);
+        return ws.problem;
+    const built = [];
     try {
-        writeFileSync(join(target, GATE_TREE_MARKER), '');
-        for (const name of GATE_CACHE_DIRS)
-            mkdirSync(join(target, name));
-        for (const e of readdirSync(source, { withFileTypes: true })) {
-            if (e.name === GATE_TREE_MARKER || GATE_CACHE_DIRS.includes(e.name))
+        buildGateTree(source, target, root, checkout, '', warn);
+        // A nested tree for each workspace package whose node_modules exists in your checkout (npm puts version conflicts
+        // there, pnpm every package's direct deps), in the same package dir of the gate checkout.
+        for (const rel of ws.dirs) {
+            const yours = plainDirUnder(root, rel);
+            const src = yours ? join(yours, 'node_modules') : null;
+            const dir = plainDirUnder(checkout, rel);
+            if (!src || !dir || isLink(src) || !existsSync(src) || !statSync(src).isDirectory())
                 continue;
-            let st;
-            try {
-                st = statSync(join(source, e.name));
-            }
-            catch {
+            const nested = join(dir, 'node_modules');
+            if (existsSync(nested) || isLink(nested))
                 continue;
-            }
-            if (st.isFile()) {
-                if (st.size > GATE_TREE_FILE_MAX_BYTES) {
-                    warn?.(`omg factory run: node_modules/${e.name} (${st.size} bytes) is over ${GATE_TREE_FILE_MAX_BYTES} bytes, so it is not copied into the gate's node_modules tree ${target}`);
-                    continue;
-                }
-                // A copy, never a link: a hard link would hand the PR's code your file to write.
-                copyFileSync(join(source, e.name), join(target, e.name));
-                continue;
-            }
-            if (!st.isDirectory())
-                continue;
-            symlinkSync(join(source, e.name), join(target, e.name), process.platform === 'win32' ? 'junction' : 'dir');
+            built.push(rel);
+            buildGateTree(src, nested, root, checkout, `${rel}/`, warn);
         }
+        // The marker lists the nested trees for the removal and the sandbox's grant check (both re-validate every line).
+        writeFileSync(join(target, GATE_TREE_MARKER), built.map((r) => `${r}\n`).join(''));
+        const moved = treeMoved(target, checkout, '');
+        if (moved)
+            throw new Error(moved);
     }
     catch (error) {
-        removeGateTree(target);
+        for (const rel of built) {
+            const dir = plainDirUnder(checkout, rel);
+            if (dir)
+                try {
+                    if (lstatSync(join(dir, 'node_modules')).isDirectory())
+                        removeGateTree(join(dir, 'node_modules'));
+                }
+                catch { /* the caller's link-safe removal */ }
+        }
+        // Only a real dir (L3: the tree may be gone, or a link someone swapped in, which is never walked).
+        try {
+            if (lstatSync(target).isDirectory())
+                removeGateTree(target);
+        }
+        catch { /* gone */ }
         throw error;
     }
+    nestedTrees.set(checkout, built);
+    return ws.problem;
+}
+/** The nested trees linkNodeModules built in this process, per checkout (the marker may be gone; review-490 M3). */
+const nestedTrees = new Map();
+function isLink(p) {
+    try {
+        return lstatSync(p).isSymbolicLink();
+    }
+    catch {
+        return false;
+    }
+}
+const linkType = () => (process.platform === 'win32' ? 'junction' : 'dir');
+/**
+ * One tree: `target` a real dir with the marker, the GATE_CACHE_DIRS fresh,
+ * top-level files of `source` copied (bounded), every dir linked to
+ * `<source>/<name>` read-only, except a link into your working tree outside
+ * any node_modules (a workspace self-link, workspaceLinkTarget), which goes
+ * to the same dir of the gate checkout. A `@scope` dir holding such a link is
+ * a real dir with one link per package; any other is linked whole.
+ */
+function buildGateTree(source, target, root, checkout, label, warn) {
+    mkdirSync(target);
+    // L3 (review-501): a dir on the way swapped for a junction or link after plainDirUnder (a surviving PR process) would
+    // put the tree, its marker and its links outside the checkout: the new dir must be where it was meant to be.
+    const moved = treeMoved(target, checkout, label);
+    if (moved) {
+        try {
+            rmdirSync(target);
+        }
+        catch { /* left for the caller's removal */ }
+        throw new Error(moved);
+    }
+    writeFileSync(join(target, GATE_TREE_MARKER), '');
+    for (const name of GATE_CACHE_DIRS)
+        mkdirSync(join(target, name));
+    const place = (from, to) => {
+        const w = workspaceLinkTarget(from, root, checkout);
+        if ('skip' in w) {
+            warn?.(`omg factory run: ${w.skip}, so it is left out of the gate's node_modules tree ${target}`);
+            return;
+        }
+        symlinkSync('to' in w ? w.to : from, to, linkType());
+    };
+    for (const e of readdirSync(source, { withFileTypes: true })) {
+        if (e.name === GATE_TREE_MARKER || GATE_CACHE_DIRS.includes(e.name))
+            continue;
+        const from = join(source, e.name);
+        let st;
+        try {
+            st = statSync(from);
+        }
+        catch {
+            continue;
+        }
+        if (st.isFile()) {
+            if (st.size > GATE_TREE_FILE_MAX_BYTES) {
+                warn?.(`omg factory run: ${label}node_modules/${e.name} (${st.size} bytes) is over ${GATE_TREE_FILE_MAX_BYTES} bytes, so it is not copied into the gate's node_modules tree ${target}`);
+                continue;
+            }
+            // A copy, never a link: a hard link would hand the PR's code your file to write.
+            copyFileSync(from, join(target, e.name));
+            continue;
+        }
+        if (!st.isDirectory())
+            continue;
+        if (e.name.startsWith('@') && !isLink(from)) {
+            const children = readdirSync(from);
+            if (children.some((c) => !('keep' in workspaceLinkTarget(join(from, c), root, checkout)))) {
+                mkdirSync(join(target, e.name));
+                for (const c of children) {
+                    try {
+                        if (!statSync(join(from, c)).isDirectory())
+                            continue;
+                    }
+                    catch {
+                        continue;
+                    }
+                    place(join(from, c), join(target, e.name, c));
+                }
+                continue;
+            }
+        }
+        place(from, join(target, e.name));
+    }
+    // L3 residual (review-501b): the same check after the last write; a swap during the build fails it (the caller removes, link-safe).
+    const after = treeMoved(target, checkout, label);
+    if (after)
+        throw new Error(after);
+}
+/** Why `target` (the tree for `label` in `checkout`) does not resolve where it was meant to be, or null. */
+function treeMoved(target, checkout, label) {
+    const fold = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+    const want = join(realpathSync.native(checkout), ...label.split('/').filter((s) => s !== ''), 'node_modules');
+    let got;
+    try {
+        got = realpathSync.native(target);
+    }
+    catch {
+        got = '';
+    }
+    return fold(got) === fold(want) ? null : `the gate's node_modules tree ${target} resolves to ${got || 'nothing'}, not ${want}: a dir on its way was replaced by a link`;
 }
 /** Unlink `link` when it resolves to the root's node_modules (the single link of older releases); true when it went. */
 function unlinkOwnLink(root, link) {
@@ -160,6 +285,13 @@ function removeGateTree(dir) {
  */
 export function unlinkNodeModules(root, checkout) {
     const target = join(checkout, 'node_modules');
+    // The nested workspace trees first (the root's marker names them): every link unlinked, never followed.
+    for (const nm of nestedTreeDirs(checkout)) {
+        unlinkTreeLinks(nm);
+        if (existsSync(join(nm, GATE_TREE_MARKER)))
+            removeGateTree(nm);
+    }
+    nestedTrees.delete(checkout);
     let st;
     try {
         st = lstatSync(target);
@@ -206,6 +338,22 @@ export function gateTreeHasLinks(checkout) {
         return readdirSync(p).some((name) => walk(join(p, name)));
     };
     const target = join(checkout, 'node_modules');
+    let nested;
+    try {
+        nested = nestedTreeDirs(checkout);
+    }
+    catch {
+        return true;
+    }
+    for (const nm of nested) {
+        try {
+            if (walk(nm))
+                return true;
+        }
+        catch {
+            return true;
+        }
+    }
     try {
         lstatSync(target);
     }
@@ -218,6 +366,71 @@ export function gateTreeHasLinks(checkout) {
     catch {
         return true;
     }
+}
+/**
+ * The nested workspace trees of `checkout` that are there as real dirs: the
+ * ones linkNodeModules built in this process and the ones the root tree's
+ * marker lists (PR-writable, so every line must be an exact relative path
+ * whose every segment is a plain dir in the checkout; another is ignored).
+ */
+export function nestedTreeDirs(checkout) {
+    const rels = new Set(nestedTrees.get(checkout) ?? []);
+    const marker = join(checkout, 'node_modules', GATE_TREE_MARKER);
+    try {
+        const st = lstatSync(join(checkout, 'node_modules'));
+        const m = lstatSync(marker);
+        if (!st.isSymbolicLink() && st.isDirectory() && m.isFile() && m.size <= 64 * 1024) {
+            for (const line of readFileSync(marker, 'utf-8').split('\n'))
+                if (line)
+                    rels.add(line);
+        }
+    }
+    catch { /* no marker list */ }
+    const out = [];
+    for (const rel of rels) {
+        const dir = plainDirUnder(checkout, rel);
+        if (!dir)
+            continue;
+        const nm = join(dir, 'node_modules');
+        try {
+            const st = lstatSync(nm);
+            if (!st.isSymbolicLink() && st.isDirectory())
+                out.push(nm);
+        }
+        catch { /* gone */ }
+    }
+    return out;
+}
+/**
+ * The nested workspace trees of `checkout` the engine vouches for, as
+ * relative package dirs: the ones linkNodeModules built in this process, or
+ * (after a restart) the base's workspace globs expanded in your checkout ∩
+ * the marker's lines. The marker is PR-writable, so on its own it never
+ * widens anything: the sandbox grant (nestedNodeModulesTargets) and the
+ * dirty check use only this list (review-501 M1, L2); the removal may still
+ * follow the marker (it never follows a link).
+ */
+export function trustedNestedRels(root, checkout, workspaces) {
+    const own = nestedTrees.get(checkout);
+    if (own)
+        return [...own];
+    if (workspaces.length === 0)
+        return [];
+    const marker = join(checkout, 'node_modules', GATE_TREE_MARKER);
+    const listed = new Set();
+    try {
+        const st = lstatSync(join(checkout, 'node_modules'));
+        const m = lstatSync(marker);
+        if (!st.isSymbolicLink() && st.isDirectory() && m.isFile() && m.size <= 64 * 1024) {
+            for (const line of readFileSync(marker, 'utf-8').split('\n'))
+                if (line)
+                    listed.add(line);
+        }
+    }
+    catch {
+        return [];
+    }
+    return expandWorkspaceDirs(root, workspaces).dirs.filter((rel) => listed.has(rel));
 }
 function sameDir(a, b) {
     try {

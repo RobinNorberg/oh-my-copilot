@@ -1,11 +1,17 @@
 /**
  * Merge policy for `omg factory run` (owner override of design §8): merge is
- * ALWAYS human. There is no `factory.merge` key and no auto mode, and nothing
- * here runs a merge (the factory guard refuses `gh pr merge` outright). After
- * green gates the engine asks ship's decideMerge for the verdict on the
- * current head, prints the exact admin merge command, comments it on the PR
- * and parks at `awaiting-human: merge`. A later run reads `gh pr view` and
- * finishes as `merged` once the human merged.
+ * a human step by DEFAULT. After green gates the engine asks ship's
+ * decideMerge for the verdict on the current head, prints the exact admin
+ * merge command, comments it on the PR and parks at `awaiting-human: merge`.
+ * A later run reads `gh pr view` and finishes as `merged` once the human merged.
+ *
+ * Opt-in (auto-merge.ts): `factory.merge.auto` in the USER config, per
+ * repository, lets the engine itself merge a low-risk PR (tiers docs, tests,
+ * small) when every condition holds on the exact head; a committed value is
+ * ignored with a notice. Nothing in this file runs a merge. Only the engine
+ * merges: the factory guard still refuses `gh pr merge`, and admits the
+ * head-pinned GitHub REST merge only inside the engine's auto-merge step.
+ * Azure DevOps always stays human.
  */
 
 import { DEFAULT_SHIP_CONFIG, type KnownFlakyTest, type ShipConfig } from '../../ship/config.js';
@@ -16,6 +22,7 @@ import { latestVerdict, type ShipState } from '../../ship/state.js';
 import type { MergeView } from '../../forge/github/reviews.js';
 import type { Forge } from '../../forge/types.js';
 import { ADO_PIPELINE_PATHS, CI_DEFINITION_PATHS } from './lane-commit.js';
+import { oneLine } from './prompts.js';
 import { runLabel, type FactoryRunKey } from './state.js';
 
 // The merge view is the GitHub forge's `gh pr view --json MERGE_VIEW_FIELDS` read.
@@ -26,7 +33,27 @@ export interface FactoryMergeDecision extends MergeDecision {
   body?: { file: string; sha256: string };
   /** The gate read was green with no check at all (NO_CI_CHECKS_NOTE): said in the park and the PR comment. */
   noChecks?: true;
+  /** The checks that ran and SUCCEEDED on this head (auto-merge needs at least one); SKIPPED, NEUTRAL and known-flaky failures are not here. */
+  checks?: string[];
+  /** The checks on this head that were SKIPPED or NEUTRAL: without required checks auto-merge needs none (review-498b N6). */
+  unsettled?: string[];
+  /**
+   * Every non-advisory check on this head whose raw state is not SUCCESS,
+   * SKIPPED or NEUTRAL (a known-flaky FAILURE included), as a sanitised
+   * `` `name` (STATE) `` or `` `name` (STATE, known-flaky) ``: auto-merge needs none.
+   */
+  blocking?: string[];
 }
+
+/**
+ * A forge-reported check name or state in a park reason (it may reach a PR
+ * comment or progress sync): one line, no format characters (bidi,
+ * zero-width), no backticks, no '@' that could mention someone (a full-width
+ * '＠' instead), no '|' that could split a table cell ('¦'), capped.
+ */
+const checkText = (s: string, max: number): string => oneLine(s.replace(/\p{Cf}/gu, '').replace(/`/g, "'").replace(/@/g, '＠').replace(/\|/g, '¦'), max) || '(unnamed)';
+/** A check name in a code span, so markdown links, HTML and `owner/repo#1` cross-references stay literal text. */
+export const checkName = (s: string): string => `\`${checkText(s, 80)}\``;
 
 /**
  * ship's decideMerge on a fresh one-shot gate read for the head (no watch,
@@ -41,7 +68,13 @@ export interface FactoryMergeDecision extends MergeDecision {
 export function mergeDecision(exec: Exec, root: string, ship: ShipState, view: MergeView, config: ShipConfig, known: readonly KnownFlakyTest[], forge?: Pick<Forge, 'checks' | 'reviews' | 'merge'>, reads?: GateHeadReads): FactoryMergeDecision {
   // Ship phase ready: the gates loop already waited out the settle window for this head, so this read has that history.
   const gate = evaluateGates(exec, view.number, config, known, root, view.headRefOid, forge, ship.phase === 'ready' ? 0 : undefined, Date.now, reads);
-  const noChecks = gate.noChecks ? { noChecks: true as const } : {};
+  // Raw states only: the gate's `pass` class (and its `flaky` verdict) never stands in for a SUCCESS here. Advisory checks are ignored.
+  const counted = gate.checks.filter((c) => c.class !== 'advisory');
+  const flaky = new Set(gate.flaky.filter((a) => a.knownFlaky).map((a) => a.check));
+  const noChecks = { ...(gate.noChecks ? { noChecks: true as const } : {}), checks: counted.filter((c) => c.class === 'pass' && c.state.toUpperCase() === 'SUCCESS').map((c) => c.name),
+    unsettled: counted.filter((c) => ['SKIPPED', 'NEUTRAL'].includes(c.state.toUpperCase())).map((c) => c.name),
+    blocking: counted.filter((c) => !['SUCCESS', 'SKIPPED', 'NEUTRAL'].includes(c.state.toUpperCase()))
+      .map((c) => `${checkName(c.name)} (${checkText(c.state.toUpperCase(), 24)}${flaky.has(c.name) ? ', known-flaky' : ''})`) };
   const reviewed = latestVerdict(ship)?.sha;
   const commits = readCommitsSinceReview(exec, root, reviewed, view.headRefOid, view.baseRefOid, ship.housekeepingCommits);
   const extraProtected = [

@@ -64,7 +64,9 @@ import { defaultLedgerDir, emptyHooksDir } from '../../factory/run/ledger.js';
 import type { FactoryPollDeps } from '../../factory/poll.js';
 import { listenForgeRefusal } from '../../factory/setup/detect.js';
 import { factorySetupCommand } from './factory-setup.js';
+import { factoryBenchCommand } from './factory-bench.js';
 import { factoryBoardCommand } from './factory-board.js';
+import { factoryDashboardCommand } from './factory-dashboard.js';
 import { factoryPrCommand } from './factory-pr.js';
 import { factoryPollCommand } from './factory-poll.js';
 import { defaultPollAutoStart, defaultPollHealScan } from '../../factory/poll.js';
@@ -499,8 +501,9 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
     .option('--allow-unsandboxed-gates', 'Accept, for the parked head only, that prepare\'s checks and the local gate run the PR\'s code WITHOUT the OS sandbox, as you (the run parked at gates-unsandboxed for it): you reviewed the diff yourself; a new head parks again')
     .option('--allow-secret-shapes', 'Accept the secret-shaped content (the key or token shapes, by path and kind, the park named) that parked a lane commit at secret-shaped-content, for that lane commit only: you checked they are test fixtures, not real secrets; a new path or kind parks again')
     .option('--parallel <n>', 'With --next and factory.run.maxConcurrent above 1 (factory.run.layout "private"): run up to min(n, maxConcurrent) runs at once, each its own `omg factory run --next` process; a slot is refilled when a run ends, until nothing is runnable or Ctrl+C', integerOption(1, 64))
+    .option('--max-requests <n>', 'Start no further lane in this run once its lanes recorded n premium requests, or when a lane\'s usage is unknown (the run parks at budget); the lane in flight when the cap is reached finishes, so the run can end above n by that one lane', integerOption(1, 10_000))
     .option('--json', 'JSON output')
-    .action((issueRaw: string | undefined, o: { next?: boolean; parent?: string; parallel?: number; dryRun?: boolean; allowGateChange?: boolean; allowUnsandboxedLanes?: boolean; allowUnsandboxedGates?: boolean; allowSecretShapes?: boolean; json?: boolean }) =>
+    .action((issueRaw: string | undefined, o: { next?: boolean; parent?: string; parallel?: number; maxRequests?: number; dryRun?: boolean; allowGateChange?: boolean; allowUnsandboxedLanes?: boolean; allowUnsandboxedGates?: boolean; allowSecretShapes?: boolean; json?: boolean }) =>
       factoryGuarded(Boolean(o.json), async () => {
         if (o.next && issueRaw !== undefined) throw new FactoryUsageError('--next takes no issue: it picks the next runnable item');
         if (o.parent !== undefined && !o.next) throw new FactoryUsageError('--parent applies to --next');
@@ -512,8 +515,9 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         }
         let issue: number | undefined = o.next ? undefined : parseIssue(issueRaw);
         const root = factoryRoot(exec);
-        const { limits, warnings } = deps.limits(root);
-        for (const w of warnings) console.error(chalk.yellow(w));
+        const loadedLimits = deps.limits(root);
+        for (const w of loadedLimits.warnings) console.error(chalk.yellow(w));
+        const limits = o.maxRequests !== undefined ? { ...loadedLimits.limits, maxRunRequests: o.maxRequests } : loadedLimits.limits;
         const base = deps.base(root);
         let claimRepo: string | null = null;
         const warnShallow = shallowWarnOnce();
@@ -548,6 +552,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         if (o.parallel !== undefined) {
           if (!o.next) throw new FactoryUsageError('--parallel applies to --next');
           if (o.dryRun) throw new FactoryUsageError('--parallel starts real runs; it does not combine with --dry-run');
+          if (o.maxRequests !== undefined) throw new FactoryUsageError('--max-requests caps one run; it does not combine with --parallel');
           if (!slotMode) throw new FactoryUsageError('--parallel needs factory.run.maxConcurrent above 1 and factory.run.layout: "private"; parallel runs are an opt-in of your user config (factory.run.maxConcurrent, maxInFlightCredits or layout "private" there), and only then can the .copilot/omg.jsonc committed on a trusted base supply the other key');
           return runParallel(deps, root, Math.min(o.parallel, par!.settings.maxConcurrent), parent, Boolean(o.json));
         }
@@ -956,6 +961,7 @@ export function factoryCommand(): Command {
   cmd.addCommand(factoryEnqueueCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(factoryTriageCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(factoryBoardCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
+  cmd.addCommand(factoryDashboardCommand());
   cmd.addCommand(factoryPrCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(factoryPollCommand({
     ...defaultFactoryCheckDeps(defaultFactoryRunDeps.base),
@@ -978,6 +984,7 @@ export function factoryCommand(): Command {
     forge: defaultFactoryRunDeps.forge,
   }));
   cmd.addCommand(factorySetupCommand());
+  cmd.addCommand(factoryBenchCommand());
 
   cmd
     .command('listen')

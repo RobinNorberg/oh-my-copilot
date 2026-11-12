@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sdkCreateSessionAcceptsSandbox } from '../../smoke/copilot-sdk-driver.js';
-import { BWRAP_TRIAL_ARGS, DEFAULT_SANDBOX_SETTINGS, allowlistSessionEnv, bwrapTrialLaunchError, buildSandboxConfig, findOnPath, gitForWindowsShell, laneGitWritePaths, laneToolPaths, loadSandboxSettings, missingSandboxEnv, proxyCaEnv, MXC_REQUIRED_ENV, probeHostSupport, resolveSandboxSettings, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from '../sandbox.js';
+import { BWRAP_TRIAL_ARGS, DEFAULT_SANDBOX_SETTINGS, allowlistSessionEnv, bwrapTrialLaunchError, buildSandboxConfig, nodeModulesTreeProblem, findOnPath, gitForWindowsShell, laneGitWritePaths, laneToolPaths, loadSandboxSettings, missingSandboxEnv, proxyCaEnv, MXC_REQUIRED_ENV, probeHostSupport, resolveSandboxSettings, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from '../sandbox.js';
 let root;
 let ctx;
 const host = (caps = { shell: true }) => ({ supported: true, capabilities: caps });
@@ -337,6 +337,130 @@ describe('buildSandboxConfig', () => {
             expect(() => buildSandboxConfig('write', c, host({ shell: true, denied_paths: true }))).toThrow(/it is not granted/);
             // Without nodeModulesTarget (lanes): the link's target as it is, today's rule.
             expect(buildSandboxConfig('write', { ...c, nodeModulesTarget: undefined }, host()).userPolicy.filesystem.readonlyPaths).toContain(realpathSync.native(elsewhere));
+        }
+        finally {
+            rmSync(base, { recursive: true, force: true });
+        }
+    });
+    it('workspaces: a self-link into the worktree is accepted, a nested tree the marker lists is checked and its target granted read-only; a re-point or a link out of the worktree is refused', () => {
+        const base = mkdtempSync(join(tmpdir(), 'omg-sbx-ws-'));
+        const lt = process.platform === 'win32' ? 'junction' : 'dir';
+        const relink = (p, to) => { try {
+            unlinkSync(p);
+        }
+        catch {
+            rmdirSync(p);
+        } symlinkSync(to, p, lt); };
+        try {
+            const user = join(base, 'user');
+            const worktree = join(base, 'wt');
+            const yours = join(user, 'node_modules');
+            const yoursA = join(user, 'packages', 'a', 'node_modules');
+            const secret = join(base, 'secret');
+            for (const d of [join(yours, 'typescript'), join(yoursA, 'left-pad'), join(worktree, 'packages', 'a'), join(worktree, 'packages', 'b'), secret])
+                mkdirSync(d, { recursive: true });
+            writeFileSync(join(user, 'packages', 'a', 'package.json'), '{}');
+            const tree = join(worktree, 'node_modules');
+            mkdirSync(join(tree, '@scope'), { recursive: true });
+            writeFileSync(join(tree, '.omg-gate-tree'), 'packages/a\n../escape\n');
+            symlinkSync(join(yours, 'typescript'), join(tree, 'typescript'), lt);
+            symlinkSync(join(worktree, 'packages', 'b'), join(tree, '@scope', 'b'), lt);
+            const nested = join(worktree, 'packages', 'a', 'node_modules');
+            mkdirSync(join(nested, '.vite'), { recursive: true });
+            symlinkSync(join(yoursA, 'left-pad'), join(nested, 'left-pad'), lt);
+            symlinkSync(join(worktree, 'packages', 'b'), join(nested, 'b'), lt);
+            expect(nodeModulesTreeProblem(worktree, yours)).toEqual({ problem: null, linked: true, nested: [realpathSync.native(yoursA)] });
+            const c = { ...ctx, worktree, platform: process.platform, nodeModulesTarget: yours, nestedNodeModulesTargets: [yoursA] };
+            const ro = buildSandboxConfig('write', c, host()).userPolicy.filesystem.readonlyPaths;
+            expect(ro).toContain(realpathSync.native(yours));
+            expect(ro).toContain(realpathSync.native(yoursA));
+            // review-501 M1: the marker alone grants nothing; the engine's list must name it.
+            expect(buildSandboxConfig('write', { ...c, nestedNodeModulesTargets: undefined }, host()).userPolicy.filesystem.readonlyPaths).not.toContain(realpathSync.native(yoursA));
+            // A nested link re-pointed to a secret dir, and a scoped link to the worktree's parent: refused, never granted.
+            relink(join(nested, 'left-pad'), secret);
+            expect(nodeModulesTreeProblem(worktree, yours).problem).toMatch(/left-pad points to .*secret, not .*left-pad the engine linked/);
+            expect(() => buildSandboxConfig('write', c, host())).toThrow(/it is not granted/);
+            relink(join(nested, 'left-pad'), join(yoursA, 'left-pad'));
+            relink(join(tree, '@scope', 'b'), base);
+            expect(nodeModulesTreeProblem(worktree, yours).problem).toMatch(/b points to/);
+            relink(join(tree, '@scope', 'b'), worktree);
+            expect(nodeModulesTreeProblem(worktree, yours).problem).toMatch(/b points to/);
+            relink(join(tree, '@scope', 'b'), join(worktree, 'packages', 'b'));
+            // An unlisted nested tree is not checked and grants nothing; a listed one reached through a link is skipped.
+            writeFileSync(join(tree, '.omg-gate-tree'), '');
+            expect(nodeModulesTreeProblem(worktree, yours)).toEqual({ problem: null, linked: true });
+            symlinkSync(join(worktree, 'packages'), join(worktree, 'via'), lt);
+            writeFileSync(join(tree, '.omg-gate-tree'), 'via/a\n');
+            expect(nodeModulesTreeProblem(worktree, yours)).toEqual({ problem: null, linked: true });
+        }
+        finally {
+            rmSync(base, { recursive: true, force: true });
+        }
+    });
+    it('workspaces, adversarial: a marker line into .omg or a dir without package.json grants nothing, and a nested grant never lifts a deny around it', () => {
+        const base = mkdtempSync(join(tmpdir(), 'omg-sbx-ws2-'));
+        const lt = process.platform === 'win32' ? 'junction' : 'dir';
+        try {
+            const user = join(base, 'user');
+            const worktree = join(base, 'wt');
+            const yours = join(user, 'node_modules');
+            mkdirSync(join(yours, 'typescript'), { recursive: true });
+            const tree = join(worktree, 'node_modules');
+            mkdirSync(tree, { recursive: true });
+            symlinkSync(join(yours, 'typescript'), join(tree, 'typescript'), lt);
+            // Another run's checkout of yours (denied), a real node_modules with a package.json, and an engine state dir.
+            const other = join(user, 'runs', 'issue-8');
+            const state = join(user, '.omg', 'w');
+            const bare = join(user, 'nopkg');
+            for (const d of [join(other, 'node_modules', 'x'), join(state, 'node_modules', 'x'), join(bare, 'node_modules', 'x')])
+                mkdirSync(d, { recursive: true });
+            writeFileSync(join(other, 'package.json'), '{}');
+            writeFileSync(join(state, 'package.json'), '{}');
+            for (const rel of ['runs/issue-8', '.omg/w', 'nopkg']) {
+                mkdirSync(join(worktree, ...rel.split('/'), 'node_modules'), { recursive: true });
+                symlinkSync(join(user, ...rel.split('/'), 'node_modules', 'x'), join(worktree, ...rel.split('/'), 'node_modules', 'x'), lt);
+            }
+            writeFileSync(join(tree, '.omg-gate-tree'), 'runs/issue-8\n.omg/w\nnopkg\n');
+            expect(nodeModulesTreeProblem(worktree, yours)).toEqual({ problem: null, linked: true, nested: [realpathSync.native(join(other, 'node_modules'))] });
+            const c = { ...ctx, worktree, platform: process.platform, nodeModulesTarget: yours, extraDenied: [other] };
+            const fs = buildSandboxConfig('write', c, host({ shell: true, denied_paths: true })).userPolicy.filesystem;
+            expect(fs.deniedPaths).toContain(other);
+            expect(fs.readonlyPaths).not.toContain(realpathSync.native(join(state, 'node_modules')));
+            expect(fs.readonlyPaths).not.toContain(realpathSync.native(join(bare, 'node_modules')));
+        }
+        finally {
+            rmSync(base, { recursive: true, force: true });
+        }
+    });
+    it('review-501 M1/L1: a marker naming a non-workspace tools/scratch with a planted tree grants nothing, and node_modules aliases are refused', () => {
+        const base = mkdtempSync(join(tmpdir(), 'omg-sbx-ws3-'));
+        const lt = process.platform === 'win32' ? 'junction' : 'dir';
+        try {
+            const user = join(base, 'user');
+            const worktree = join(base, 'wt');
+            const yours = join(user, 'node_modules');
+            const yoursA = join(user, 'packages', 'a', 'node_modules');
+            for (const d of [join(yours, 'typescript'), join(yoursA, 'x'), join(user, 'tools', 'scratch', 'node_modules', 'x')])
+                mkdirSync(d, { recursive: true });
+            writeFileSync(join(user, 'packages', 'a', 'package.json'), '{}');
+            writeFileSync(join(user, 'tools', 'scratch', 'package.json'), '{}');
+            const tree = join(worktree, 'node_modules');
+            mkdirSync(tree, { recursive: true });
+            symlinkSync(join(yours, 'typescript'), join(tree, 'typescript'), lt);
+            // The PR's code plants a tree for tools/scratch (not a workspace of the base) next to the real one of packages/a.
+            for (const rel of ['packages/a', 'tools/scratch']) {
+                mkdirSync(join(worktree, ...rel.split('/'), 'node_modules'), { recursive: true });
+                symlinkSync(join(user, ...rel.split('/'), 'node_modules', 'x'), join(worktree, ...rel.split('/'), 'node_modules', 'x'), lt);
+            }
+            writeFileSync(join(tree, '.omg-gate-tree'), 'packages/a\ntools/scratch\n');
+            // The engine's list holds only packages/a: tools/scratch is a candidate of the marker, never granted.
+            const c = { ...ctx, worktree, platform: process.platform, nodeModulesTarget: yours, nestedNodeModulesTargets: [yoursA] };
+            const ro = buildSandboxConfig('write', c, host()).userPolicy.filesystem.readonlyPaths;
+            expect(ro).toContain(realpathSync.native(yoursA));
+            expect(ro).not.toContain(realpathSync.native(join(user, 'tools', 'scratch', 'node_modules')));
+            // L1: a node_modules segment in another case, with a trailing dot, or as an 8.3 alias is not a marker line at all.
+            writeFileSync(join(tree, '.omg-gate-tree'), 'Node_Modules/foo\nnode_modules./foo\nNODE_M~1/foo\npackages/a \npackages/a.\n');
+            expect(nodeModulesTreeProblem(worktree, yours)).toEqual({ problem: null, linked: true });
         }
         finally {
             rmSync(base, { recursive: true, force: true });

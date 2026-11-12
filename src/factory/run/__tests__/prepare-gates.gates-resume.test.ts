@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { readShipState } from '../../../ship/state.js';
+import { cancelCommand, resumeCommand } from '../engine.js';
 import { readFactoryState, requestFactoryCancel } from '../state.js';
 import type { Exec } from '../../../ship/exec.js';
 import { commitFile, failedGates, gitIn, greenGates, ISSUE, PR, pendingGates, review, type LaneScript } from './fake-lanes.js';
@@ -61,6 +62,7 @@ describe('gates loop', () => {
     const { done } = run([commitFile('a.ts'), review('approve')], { limits: limits({ gatesTimeoutMs: 20 * 60_000 }) });
     const out = await done;
     expect(out.gate?.name).toBe('gates-timeout');
+    expect(out.gate?.reason?.endsWith(`; rerun ${resumeCommand(ISSUE)} to wait again, or ${cancelCommand(ISSUE)}`)).toBe(true);
     expect(readFactoryState(h.root, ISSUE)!.phase).toBe('gates');
   });
 });

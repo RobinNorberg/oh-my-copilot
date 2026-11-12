@@ -208,6 +208,23 @@ describe('factory run with factory.run.layout "private"', () => {
         expect(installs[0].argv).toEqual(['npm', 'ci', '--ignore-scripts']);
         expect(existsSync(join(s.privateDir, 'w', 'prep', 'node_modules'))).toBe(false);
     }, T);
+    it('isolation "container": a lockfile the PR changes needs no host install (the gate container installs per command)', async () => {
+        const env = privateWorld();
+        w = env.w;
+        const reqs = [];
+        const runner = async (req) => {
+            reqs.push(req);
+            if (req.purpose === 'gate') {
+                const r = await w.gate(req.argv, req.cwd, req.timeoutMs);
+                return { ran: true, status: r.status, output: r.stdout, timedOut: false };
+            }
+            return { ran: true, status: 0, output: '', timedOut: false };
+        };
+        const out = await runFactoryEngine(opts(env, [commitFile('package-lock.json', '{"lockfileVersion":3,"x":1}\n'), review('approve')], { gateSandbox: runner, gateSandboxUserConfig: { factory: { run: { sandbox: { isolation: 'container' } } } } }));
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(reqs.map((r) => r.purpose)).not.toContain('install');
+        expect(reqs.filter((r) => r.purpose === 'gate').every((r) => r.container !== undefined && typeof r.runLabel === 'string')).toBe(true);
+    }, T);
     it('a failed prepare check after a base merge: the merge is imported first, then the ci-fix lane\'s commit on it', async () => {
         const env = privateWorld();
         w = env.w;
