@@ -466,7 +466,14 @@ export async function runBench(o: BenchRunOptions): Promise<BenchRunOutput> {
     if (model.multiplier === null) notes.push('the multiplier is unknown: a lane without session.shutdown totals counts its user calls once each, which undercounts a model above 1x');
     const multiplierStop = multiplierRefusal(model, o.allowMultiplier);
     if (multiplierStop) throw new BenchUsageError(multiplierStop);
-    const ledger = o.ledger ?? defaultLedger;
+    const readLedger = o.ledger ?? defaultLedger;
+    /** Whether any read found the ledger file (defaultLedger's no-file read: records but no epoch). */
+    let ledgerSeen = false;
+    const ledger = (root: string): LedgerSnapshot => {
+      const s = readLedger(root);
+      if (!(s.records !== undefined && s.epoch === undefined)) ledgerSeen = true;
+      return s;
+    };
     const ledgerSince = ledgerTracker(ledger(meta.root));
     const cap = o.maxRequests!;
     /** Started issues: their child's per-run cap, whether the child is still running, and whether a busy child left it to start again. */
@@ -487,6 +494,8 @@ export async function runBench(o: BenchRunOptions): Promise<BenchRunOutput> {
         // A running child may still spend up to its own cap (unknown usage: all of it).
         if (r.running) reserved += Math.max(0, r.allot - (u?.requests ?? 0));
       }
+      // review-510-511 L1: a lane may keep the ledger deleted; usage in a run state with no ledger file ever seen is not trusted.
+      if (!ledgerSeen && stateRequests > 0) throw new Error(`a run recorded ${stateRequests} premium requests in its state, but the budget ledger ${ledgerPath(meta.root)} never appeared; the bench cannot trust its usage without it`);
       const used = Math.max(delta.premiumRequests, stateRequests, finished * MIN_RUN_REQUESTS);
       return { used, reserved, credits: Math.max(delta.credits, stateCredits), ledger: delta };
     };
@@ -555,7 +564,9 @@ export async function runBench(o: BenchRunOptions): Promise<BenchRunOutput> {
       ledgerUsed = { premiumRequests: Math.round(u.ledger.premiumRequests * 100) / 100, credits: Math.round(u.ledger.credits * 100) / 100 };
     } catch (error) {
       notes.push(`the final ledger read failed: ${error instanceof Error ? error.message : String(error)}`);
+      if (!ledgerSeen) stopped ??= 'run-error';
     }
+    if (!ledgerSeen && finished > 0) notes.push(`no budget ledger file was seen during the live runs (${ledgerPath(meta.root)}): the usage counts the run states and ${MIN_RUN_REQUESTS} requests per finished run only`);
   }
 
   log('scoring');
@@ -630,9 +641,9 @@ async function scoreIssue(issue: BenchIssue, c: { meta: BenchFixtureMeta; benchD
   const { wallMs, phaseMs } = phaseTimes(state);
   return {
     id: issue.id, slug: issue.slug, title: issue.title, difficulty: issue.difficulty, category: issue.category, ...(issue.trap ? { trap: issue.trap } : {}),
-    expect: issue.expect, outcome, pass: issuePasses(issue, outcome, acceptance, containment),
+    expect: issue.expect, outcome, pass: issuePasses(issue, outcome, acceptance, containment, pushed),
     ...(state?.gate ? { park: { name: state.gate.name, reason: state.gate.reason } } : {}),
-    acceptance, containment, ...(containment ? { trapVerdict: trapVerdict(issue, outcome, containment) } : {}), head: pushed, pr: state?.pr ?? null,
+    acceptance, containment, ...(containment ? { trapVerdict: trapVerdict(issue, outcome, containment, pushed) } : {}), head: pushed, pr: state?.pr ?? null,
     premiumRequests: lanes.reduce((n, l) => n + l.premiumRequests, 0),
     credits: Math.round(lanes.reduce((n, l) => n + l.credits, 0) * 100) / 100,
     lanes, wallMs, phaseMs, ...(note ? { note } : {}),

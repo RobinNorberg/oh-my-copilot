@@ -41,7 +41,7 @@ export function factoryBenchCommand(): Command {
     .command('run')
     .argument('<dir>', 'the fixture directory (omg factory bench init)')
     .option('--fake', 'scripted lanes, no Copilot and no cost: proves the harness, scoring and trap expectations')
-    .option('--live', 'real Copilot lanes through omg factory run <id> in the fixture repository; needs --max-requests and the gate sandbox enforced (factory.run.sandbox.gates "enforced", or isolation "container")')
+    .option('--live', 'real Copilot lanes through omg factory run <id> in the fixture repository; needs --max-requests and the gate sandbox enforced (factory.run.sandbox.gates "enforced", or isolation "container" and gates not "unsandboxed")')
     .option('--max-requests <n>', `the premium-request cap: ${LIVE_CAP_BOUND}`, integerOption(1, 10_000))
     .option('--max-credits <n>', '--live: no run starts once this many AI credits are recorded (a soft stop: runs in flight finish)', integerOption(1, 1_000_000))
     .option('--max-minutes <n>', `no run starts after this many minutes (default ${DEFAULT_BENCH_MAX_MINUTES})`, integerOption(1, 24 * 60))
